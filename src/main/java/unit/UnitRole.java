@@ -1,9 +1,10 @@
 package unit;
 
 public enum UnitRole {
-    GATHERER,
+    GATHER,
     SCOUT,
     FIGHT,
-    BUILDER,
+    BUILD,
     IDLE,
+    SCREEN, // Soak up damage on the front and detect non visible units
 }

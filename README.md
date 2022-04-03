@@ -1,6 +1,6 @@
 #  Infested Artosis (name pending)
 
-A small zerg bot initially clined from [JavaBWAPI](https://github.com/JavaBWAPI/jbwapi-java-template).
+A small zerg bot initially cloned from [JavaBWAPI](https://github.com/JavaBWAPI/jbwapi-java-template).
 
 ### Usage
 ```
