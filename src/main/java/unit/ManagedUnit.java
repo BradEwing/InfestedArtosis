@@ -80,6 +80,16 @@ public class ManagedUnit {
         game.drawLineMap(unitPosition, movementTarget.toPosition(), Color.White);
     }
 
+    private void debugFight() {
+        Position unitPosition = unit.getPosition();
+        if (fightTarget != null) {
+            game.drawLineMap(unitPosition, fightTarget.getPosition(), Color.Red);
+        }
+        if (fightTargetPosition != null) {
+            game.drawLineMap(unitPosition, fightTargetPosition.toPosition(), Color.Orange);
+        }
+    }
+
     private void debugRole() {
         Position unitPosition = unit.getPosition();
         game.drawTextMap(unitPosition, String.format("%s", role), Text.Default);
@@ -107,27 +117,23 @@ public class ManagedUnit {
     // We keep flip flopping states when we have 0 visibility!
     // TODO: handle visibility
     private void fight() {
+        debugFight();
+        // Our fight target is no longer visible, drop in favor of fight target position
+        if (fightTarget != null && fightTarget.getType() == UnitType.Unknown) {
+            fightTarget = null;
+        }
         if (fightTarget != null) {
             unit.attack(fightTarget);
             return;
         }
-        // TODO: determine if Units may get stuck infitely trying to approach fightTargetPosition
-        if (fightTargetPosition != null) {
-            unit.move(fightTargetPosition.toPosition());
-            // TODO: What is standard vision?
-            if (unit.getDistance(fightTargetPosition.toPosition()) < 16) {
-                fightTargetPosition = null;
-            }
-            return;
-        }
 
-        // Remove fight target position if we're close
-        // TODO: May have to tweak this
-        // TODO: account for unreachable fight target position
-        if (unit.getDistance(fightTargetPosition.toPosition()) < 10) {
+        if (game.isVisible(fightTargetPosition)) {
             fightTargetPosition = null;
         }
-
+        // TODO: determine if Units may get stuck infitely trying to approach fightTargetPosition
+        if (fightTargetPosition != null) {
+            return;
+        }
 
         //System.out.printf("FightTarget is null, frame: [%s], unitType: [%s]\n", game.getFrameCount(), unit.getType());
         role = UnitRole.IDLE;
@@ -146,7 +152,7 @@ public class ManagedUnit {
     public void assignClosestEnemyAsFightTarget(List<Unit> enemies) {
         // We bail out if we're close enough to the unit to avoid deadlocking on weird micro situations
         // Don't bail if it's a building though
-        if (fightTarget != null && !fightTarget.getType().isBuilding() && unit != null && fightTarget.getDistance(unit) < LOCK_ENEMY_WITHIN_DISTANCE) {
+        if (fightTarget != null && !fightTarget.getType().isBuilding() && fightTarget.getDistance(unit) < LOCK_ENEMY_WITHIN_DISTANCE) {
             return;
         }
 

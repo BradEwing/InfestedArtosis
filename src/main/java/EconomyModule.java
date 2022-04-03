@@ -274,7 +274,8 @@ public class EconomyModule {
         // 2 Types of Hatch:
         // Base Hatch - Setup resources to assign workers, add to base data
         // Macro Hatch - Take a macro hatch every other time
-        if (canAffordHatch(self) || isNearMaxExpectedWorkers()) {
+        // Limit to 3 plannedHatch to prevent queue deadlock
+        if ((canAffordHatch(self) || isNearMaxExpectedWorkers()) && plannedHatcheries < 3) {
             plannedHatcheries += 1;
             if (((baseLocations.size() + macroHatcheries.size()) % 2) != 0) {
                 planBase();
@@ -378,6 +379,7 @@ public class EconomyModule {
     public void initiatePlannedItems() {
         Player self = game.self();
         int currentUnitAssignAttempts = 0; // accept 3 failures in planning
+        int curPriority = productionQueue.peek().getPriority();
 
         // Loop through items until we exhaust queue or we break because we can't consume top item
         // Call method to attempt to build that type, if we can't build return false and break the loop
@@ -394,6 +396,13 @@ public class EconomyModule {
             if (plannedItem == null) {
                 continue;
             }
+
+            // Only let current priority through the queue
+            if (curPriority < plannedItem.getPriority()) {
+                requeuePlannedItems.add(plannedItem);
+                break;
+            }
+
             switch (plannedItem.type) {
                 case BUILDING:
                     canAssign = assignBuildingItem(self, plannedItem);

@@ -46,17 +46,16 @@ public class UnitManager {
     }
 
     public void onFrame() {
-        if (game.getFrameCount() % 100 == 0) {
-            System.out.printf("managedUnits: [%s]\n", managedUnits);
-        }
-
-
         for (ManagedUnit managedUnit: managedUnits) {
             if (managedUnit.isCanFight() && managedUnit.getRole() != UnitRole.FIGHT && informationManager.isEnemyLocationKnown()) {
                 managedUnit.setRole(UnitRole.FIGHT);
-                assignClosestEnemyToManagedUnit(managedUnit);
             } else if (managedUnit.getRole() != UnitRole.SCOUT && !informationManager.isEnemyLocationKnown()) {
                 reassignToScout(managedUnit);
+            }
+
+            // Check every frame for closest enemy for unit
+            if (managedUnit.getRole() == UnitRole.FIGHT) {
+                assignClosestEnemyToManagedUnit(managedUnit);
             }
 
             managedUnit.execute();
@@ -85,13 +84,8 @@ public class UnitManager {
     }
 
     public void onUnitDestroy(Unit unit) {
-        System.out.printf("onUnitDestory(), id: [%s], unit: [%s], managedUnit: [%s]\n", unit.getID(), unit.getType(), managedUnitLookup.get(unit));
-        // Unit Management cleanup
-        // TODO(bug): Why aren't these getting cleaned up?
-        // Maybe we are assigning as larva?
         ManagedUnit managedUnit = managedUnitLookup.get(unit);
         Boolean isRemoved = managedUnits.remove(managedUnit);
-        System.out.printf("onUnitDestroy(), isRemoved: [%s]\n", isRemoved);
         managedUnitLookup.remove(unit);
         return;
     }
@@ -100,7 +94,6 @@ public class UnitManager {
         List<Unit> enemyUnits = new ArrayList<>();
         if (informationManager.getEnemyUnits().size() > 0) {
             // SetToArray
-            // TODO: refactor to util
             informationManager.getEnemyUnits().stream().forEach(enemyUnits::add);
         } else if (informationManager.getEnemyBuildings().size() > 0) {
             informationManager.getEnemyBuildings().stream().forEach(enemyUnits::add);
@@ -108,35 +101,15 @@ public class UnitManager {
         managedUnit.assignClosestEnemyAsFightTarget(enemyUnits);
     }
 
-    private TilePosition pollScoutTarget() {
-        HashSet<TilePosition> enemyBuildingPositions = informationManager.getEnemyBuildingPositions();
-        if (enemyBuildingPositions.size() > 0) {
-            for (TilePosition target: enemyBuildingPositions) {
-                if (!informationManager.getScoutTargets().contains(target)) {
-                    return target;
-                }
-            }
-        }
-        HashSet<TilePosition> scoutTargets = informationManager.getScoutTargets();
-        for (TilePosition target: scoutTargets) {
-            if (!informationManager.getActiveScoutTargets().contains(target)) {
-                return target;
-            }
-        }
-
-        // TODO: Perhaps this is where a null TilePosition has been originating
-        return null;
-    }
-
     private void reassignToScout(ManagedUnit managedUnit) {
         managedUnit.setRole(UnitRole.SCOUT);
-        TilePosition target = pollScoutTarget();
+        TilePosition target = informationManager.pollScoutTarget();
         informationManager.setActiveScoutTarget(target);
         managedUnit.setMovementTarget(target);
     }
 
     private void createScout(Unit unit) {
-        TilePosition target = pollScoutTarget();
+        TilePosition target = informationManager.pollScoutTarget();
         informationManager.setActiveScoutTarget(target);
         ManagedUnit managedScout = new ManagedUnit(game, unit, UnitRole.SCOUT);
         managedUnitLookup.put(unit, managedScout);

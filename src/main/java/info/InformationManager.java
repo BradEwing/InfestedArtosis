@@ -22,6 +22,8 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Random;
+import java.util.stream.Collectors;
 
 
 @Data
@@ -31,6 +33,7 @@ public class InformationManager {
 
     private HashSet<TilePosition> scoutTargets = new HashSet<>(); // TODO: Better data type to store and track this data
     private HashSet<TilePosition> activeScoutTargets = new HashSet<>();
+
     private ArrayList<TileInfo> scoutHeatMap = new ArrayList<>();
 
     private HashSet<Base> startingBasesSet = new HashSet<>();
@@ -39,6 +42,7 @@ public class InformationManager {
     private HashSet<TilePosition> enemyBuildingPositions = new HashSet<>();
     private HashSet<Unit> enemyBuildings = new HashSet<>();
     private HashSet<Unit> enemyUnits = new HashSet<>();
+
     private Base mainEnemyBase;
 
 
@@ -103,6 +107,34 @@ public class InformationManager {
         activeScoutTargets.add(target);
     }
 
+    public TilePosition pollScoutTarget() {
+        // Walk through
+        if (mainEnemyBase != null) {
+            Base baseTarget = fetchRandomBase(startingBasesSet);
+            if (baseTarget != null) {
+                return baseTarget.getLocation();
+            }
+        }
+
+        HashSet<TilePosition> enemyBuildingPositions = getEnemyBuildingPositions();
+        if (enemyBuildingPositions.size() > 0) {
+            for (TilePosition target: enemyBuildingPositions) {
+                if (!getScoutTargets().contains(target)) {
+                    return target;
+                }
+            }
+        }
+        HashSet<TilePosition> scoutTargets = getScoutTargets();
+
+        for (TilePosition target: scoutTargets) {
+            if (!getActiveScoutTargets().contains(target)) {
+                return target;
+            }
+        }
+
+        return null;
+    }
+
     private void trackEnemyUnits() {
         for (Unit unit: game.getAllUnits()) {
             UnitType unitType = unit.getType();
@@ -132,9 +164,37 @@ public class InformationManager {
         }
     }
 
+    // TODO: Round robin
+    private Base fetchRandomBase(HashSet<Base> basesSet) {
+        return basesSet.stream().skip(new Random().nextInt(basesSet.size())).findFirst().orElse(null);
+    }
+
+    // TODO: Refactor into util
+    private Base closestBaseToUnit(Unit unit, List<Base> baseList) {
+        if (baseList.size() == 1) {
+            return baseList.get(0);
+        }
+        Base closestBase = null;
+        int closestDistance = Integer.MAX_VALUE;
+        for (Base b : baseList) {
+            int distance = unit.getDistance(b.getCenter());
+            if (distance < closestDistance) {
+                closestBase = b;
+                closestDistance = distance;
+            }
+        }
+
+        return closestBase;
+    }
+
     private void trackEnemyBuildings() {
         for (Unit unit: game.getAllUnits()) {
+            if (unit.getPlayer() == game.self()) {
+                continue;
+            }
             UnitType unitType = unit.getType();
+
+
 
             // Unsure if there are repercussions here, but skipping units where type is unknown
             // TODO: track neutral buildings elsewhere
@@ -144,10 +204,15 @@ public class InformationManager {
                 continue;
             }
 
-            if (unit.isVisible() && unitType.isBuilding() && unit.getPlayer() != game.self() && !unitType.isResourceContainer() && !unitType.isNeutral()) {
+            if (unit.isVisible() && unitType.isBuilding() && !unitType.isResourceContainer() && !unitType.isNeutral()) {
                 //System.out.printf("Enemy Building Found, Type: [%s] Player: [%s]\n", unit.getType(), unit.getPlayer().toString());
                 enemyBuildings.add(unit);
                 enemyBuildingPositions.add(unit.getTilePosition());
+
+                // If enemyBase is unknown and this is our first time encountering an enemyUnit, set enemyBase
+                if (mainEnemyBase == null) {
+                    mainEnemyBase = closestBaseToUnit(unit, startingBasesSet.stream().collect(Collectors.toList()));
+                }
             }
         }
 
@@ -193,7 +258,7 @@ public class InformationManager {
         // Are we possibly sending multiple units to the same scout target?
         // And if we remove it here, then the other scout encounters a null target
         for (TilePosition target: activeScoutTargets) {
-            // Bug: null targets are getting passed in! gracefully recover, but log error to oug
+            // Bug: null targets are getting passed in! gracefully recover, but log error to out
             if (target == null) {
                 // TODO: Logging
                 //System.out.printf(String.format("[WARN] target is null! activeScoutTargets: [%s]\n", activeScoutTargets));
@@ -211,6 +276,8 @@ public class InformationManager {
 
     // Iterate through heat map and assign all tiles
     private void assignNewScoutTargets() {
+        // TODO: ONLY consider starting bases IF we do not know enemy location
+        // Round robin assign SCOUTs to bases
         for (TileInfo tileInfo : scoutHeatMap) {
             TilePosition tile = tileInfo.getTile();
             if (!scoutTargets.contains(tile) && tileInfo.isWalkable()) {
@@ -227,7 +294,6 @@ public class InformationManager {
                 scoutTargets.add(tilePosition);
             } else {
                 expansionBasesSet.add(b);
-                scoutTargets.add(tilePosition);
             }
         }
     }
