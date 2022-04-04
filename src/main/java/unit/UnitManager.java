@@ -4,6 +4,9 @@ import bwapi.Game;
 import bwapi.TilePosition;
 import bwapi.Unit;
 import bwapi.UnitType;
+import bwem.BWEM;
+import bwem.CPPath;
+import bwem.ChokePoint;
 import info.InformationManager;
 
 import java.util.ArrayList;
@@ -14,6 +17,7 @@ import java.util.List;
 public class UnitManager {
 
     private Game game;
+    private BWEM bwem;
 
     // Take a dependency on informationManager for now
     // TODO: Pass GameState here to make decisions for units
@@ -25,9 +29,10 @@ public class UnitManager {
     private HashMap<Unit, ManagedUnit> managedUnitLookup = new HashMap<>();
     private HashSet<ManagedUnit> managedUnits = new HashSet<>();
 
-    public UnitManager(Game game, InformationManager informationManager) {
+    public UnitManager(Game game, InformationManager informationManager, BWEM bwem) {
         this.game = game;
         this.informationManager = informationManager;
+        this.bwem = bwem;
 
         initManagedUnits();
     }
@@ -47,6 +52,10 @@ public class UnitManager {
 
     public void onFrame() {
         for (ManagedUnit managedUnit: managedUnits) {
+            if (managedUnit.getPathToTarget() == null || managedUnit.getPathToTarget().size() == 0) {
+                calculateMovementPath(managedUnit);
+            }
+
             if (managedUnit.isCanFight() && managedUnit.getRole() != UnitRole.FIGHT && informationManager.isEnemyLocationKnown()) {
                 managedUnit.setRole(UnitRole.FIGHT);
             } else if (managedUnit.getRole() != UnitRole.SCOUT && !informationManager.isEnemyLocationKnown()) {
@@ -60,7 +69,7 @@ public class UnitManager {
                 assignClosestEnemyToManagedUnit(managedUnit);
             }
 
-            if (managedUnit.getRole() == UnitRole.SCOUT && managedUnit.getMovementTarget() == null) {
+            if (managedUnit.getRole() == UnitRole.SCOUT && managedUnit.getMovementTargetPosition() == null) {
                 assignScoutMovementTarget(managedUnit);
             }
 
@@ -96,6 +105,27 @@ public class UnitManager {
         return;
     }
 
+    private void calculateMovementPath(ManagedUnit managedUnit) {
+        // Don't calculate a new path if we have one
+        if (managedUnit.getPathToTarget() != null && managedUnit.getPathToTarget().size() > 0) {
+            return;
+        }
+        TilePosition movementTargetPosition = managedUnit.getMovementTargetPosition();
+        if (movementTargetPosition == null) {
+            return;
+        }
+
+        TilePosition currentPosition = managedUnit.getUnit().getTilePosition();
+
+        CPPath path = bwem.getMap().getPath(currentPosition.toPosition(), movementTargetPosition.toPosition());
+        List<TilePosition> pathToTarget = new ArrayList<>();
+        for (ChokePoint chokePoint: path) {
+            pathToTarget.add(chokePoint.getCenter().toTilePosition());
+        }
+        managedUnit.setPathToTarget(pathToTarget);
+
+    }
+
     private void assignClosestEnemyToManagedUnit(ManagedUnit managedUnit) {
         List<Unit> enemyUnits = new ArrayList<>();
         if (informationManager.getEnemyUnits().size() > 0) {
@@ -115,7 +145,7 @@ public class UnitManager {
     private void assignScoutMovementTarget(ManagedUnit managedUnit) {
         TilePosition target = informationManager.pollScoutTarget();
         informationManager.setActiveScoutTarget(target);
-        managedUnit.setMovementTarget(target);
+        managedUnit.setMovementTargetPosition(target);
     }
 
     private void createScout(Unit unit) {

@@ -8,11 +8,13 @@ import bwapi.TilePosition;
 import bwapi.Unit;
 
 import bwapi.UnitType;
+import bwem.CPPath;
 import lombok.Data;
 
 import java.util.ArrayList;
 import java.util.List;
 
+import static bwta.BWTA.getShortestPath;
 import static util.Filter.closestUnit;
 
 // TODO: Rename to agent / agent manager?
@@ -25,12 +27,15 @@ public class ManagedUnit {
     private Unit unit;
     private UnitRole role;
     private UnitType unitType;
-    private TilePosition movementTarget;
+    private TilePosition movementTargetPosition;
+
+    private List<TilePosition> pathToTarget;
+    private TilePosition currentStepToTarget;
 
     private Unit fightTarget;
-    private TilePosition fightTargetPosition;
 
     private boolean canFight;
+    private boolean isFlyer;
 
     public ManagedUnit(Game game, Unit unit, UnitRole role) {
         this.game = game;
@@ -39,8 +44,10 @@ public class ManagedUnit {
 
         if (unit.getType() == UnitType.Zerg_Overlord) {
             this.canFight = false;
+            this.isFlyer = true;
         } else {
             this.canFight = true;
+            this.isFlyer = false;
         }
         this.unitType = unit.getType();
         this.unitID = unit.getID();
@@ -63,6 +70,21 @@ public class ManagedUnit {
 
     public void execute() {
         debugRole();
+
+        if (pathToTarget != null && pathToTarget.size() > 1) {
+            debugPathToTarget();
+        }
+
+        // TODO: Determine control flow here
+
+        // For now, we MOVE if our current target is more than 100 away and it exists.
+        // That number will certainly have to be tweaked!
+        if (!isFlyer() && movementTargetPosition != null && unit.getDistance(movementTargetPosition.toPosition()) > 300) {
+            move();
+            return;
+        }
+
+        // If we're close to our unit's target, execute action for role
         switch (role) {
             case SCOUT:
                 scout();
@@ -77,7 +99,7 @@ public class ManagedUnit {
 
     private void debugScout() {
         Position unitPosition = unit.getPosition();
-        game.drawLineMap(unitPosition, movementTarget.toPosition(), Color.White);
+        game.drawLineMap(unitPosition, movementTargetPosition.toPosition(), Color.White);
     }
 
     private void debugFight() {
@@ -85,8 +107,8 @@ public class ManagedUnit {
         if (fightTarget != null) {
             game.drawLineMap(unitPosition, fightTarget.getPosition(), Color.Red);
         }
-        if (fightTargetPosition != null) {
-            game.drawLineMap(unitPosition, fightTargetPosition.toPosition(), Color.Orange);
+        if (movementTargetPosition != null) {
+            game.drawLineMap(unitPosition, movementTargetPosition.toPosition(), Color.Orange);
         }
     }
 
@@ -95,21 +117,52 @@ public class ManagedUnit {
         game.drawTextMap(unitPosition, String.format("%s", role), Text.Default);
     }
 
+    private void debugPathToTarget() {
+        for (int i = 0; i < pathToTarget.size() - 1; i++) {
+            game.drawLineMap(pathToTarget.get(i).toPosition(), pathToTarget.get(i+1).toPosition(), Color.White);
+        }
+    }
+
+    private void debugMove() {
+        game.drawLineMap(unit.getTilePosition().toPosition(), currentStepToTarget.toPosition(), Color.Grey);
+    }
+
+    private void move() {
+        // Check to see if we have a path
+        // If we don't see if can naive move to target
+        if (pathToTarget == null || pathToTarget.size() == 0) {
+            if (movementTargetPosition != null) {
+                unit.move(movementTargetPosition.toPosition());
+            }
+            return;
+        }
+
+        // Check to see if we're close to current step, or if we need to initialize one
+        TilePosition currentPosition = unit.getTilePosition();
+        if (currentStepToTarget == null || currentPosition.getDistance(currentStepToTarget) < 20) {
+            currentStepToTarget = pathToTarget.get(0);
+            currentStepToTarget = pathToTarget.remove(0);
+        }
+
+        debugMove();
+        unit.move(currentStepToTarget.toPosition());
+    }
+
     private void scout() {
         // Need to reassign movementTarget
-        if (movementTarget == null) {
+        if (movementTargetPosition == null) {
             return;
         }
 
         debugScout();
 
-        if (game.isVisible(movementTarget)) {
+        if (game.isVisible(movementTargetPosition)) {
             role = UnitRole.IDLE;
-            movementTarget = null;
+            movementTargetPosition = null;
             return;
         }
         // TODO: micro / avoid enemies
-        unit.move(movementTarget.toPosition());
+        unit.move(movementTargetPosition.toPosition());
     }
 
     // TODO: squads, gather before fighting
@@ -117,6 +170,9 @@ public class ManagedUnit {
     // TODO: handle visibility
     private void fight() {
         debugFight();
+        if (game.getFrameCount() % 30 != 0) {
+            return;
+        }
         // Our fight target is no longer visible, drop in favor of fight target position
         if (fightTarget != null && fightTarget.getType() == UnitType.Unknown) {
             fightTarget = null;
@@ -126,12 +182,12 @@ public class ManagedUnit {
             return;
         }
 
-        if (game.isVisible(fightTargetPosition)) {
-            fightTargetPosition = null;
+        if (game.isVisible(movementTargetPosition)) {
+            movementTargetPosition = null;
         }
         // TODO: determine if Units may get stuck infitely trying to approach fightTargetPosition
-        if (fightTargetPosition != null) {
-            unit.move(fightTargetPosition.toPosition());
+        if (movementTargetPosition != null) {
+            unit.move(movementTargetPosition.toPosition());
             return;
         }
 
@@ -187,6 +243,6 @@ public class ManagedUnit {
             return;
         }
         fightTarget = closestEnemy;
-        fightTargetPosition = closestEnemy.getTilePosition();
+        movementTargetPosition = closestEnemy.getTilePosition();
     }
 }

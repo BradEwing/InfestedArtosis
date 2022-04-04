@@ -109,7 +109,7 @@ public class InformationManager {
 
     public TilePosition pollScoutTarget() {
         // Walk through
-        if (mainEnemyBase != null) {
+        if (mainEnemyBase == null) {
             Base baseTarget = fetchRandomBase(startingBasesSet);
             if (baseTarget != null) {
                 return baseTarget.getLocation();
@@ -271,6 +271,12 @@ public class InformationManager {
         }
         for (TilePosition target: foundTargets) {
             activeScoutTargets.remove(target);
+            // TODO: EXPERIMENTAL, trying to get read of orange dots persisting
+            enemyBuildingPositions.remove(target);
+        }
+
+        if (game.getFrameCount() % 100 == 0) {
+            System.out.printf("checkScoutTargets(), scoutTargets: [%s], activeScoutTargets: [%s]\n", scoutTargets, activeScoutTargets);
         }
     }
 
