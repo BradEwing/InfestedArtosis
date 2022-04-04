@@ -95,7 +95,6 @@ public class ManagedUnit {
         game.drawTextMap(unitPosition, String.format("%s", role), Text.Default);
     }
 
-    // TODO: fix scout drawing on map
     private void scout() {
         // Need to reassign movementTarget
         if (movementTarget == null) {
@@ -132,6 +131,7 @@ public class ManagedUnit {
         }
         // TODO: determine if Units may get stuck infitely trying to approach fightTargetPosition
         if (fightTargetPosition != null) {
+            unit.move(fightTargetPosition.toPosition());
             return;
         }
 

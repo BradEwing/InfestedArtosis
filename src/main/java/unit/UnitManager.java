@@ -53,9 +53,15 @@ public class UnitManager {
                 reassignToScout(managedUnit);
             }
 
+            // TODO: Refactor
+
             // Check every frame for closest enemy for unit
             if (managedUnit.getRole() == UnitRole.FIGHT) {
                 assignClosestEnemyToManagedUnit(managedUnit);
+            }
+
+            if (managedUnit.getRole() == UnitRole.SCOUT && managedUnit.getMovementTarget() == null) {
+                assignScoutMovementTarget(managedUnit);
             }
 
             managedUnit.execute();
@@ -103,18 +109,20 @@ public class UnitManager {
 
     private void reassignToScout(ManagedUnit managedUnit) {
         managedUnit.setRole(UnitRole.SCOUT);
+        assignScoutMovementTarget(managedUnit);
+    }
+
+    private void assignScoutMovementTarget(ManagedUnit managedUnit) {
         TilePosition target = informationManager.pollScoutTarget();
         informationManager.setActiveScoutTarget(target);
         managedUnit.setMovementTarget(target);
     }
 
     private void createScout(Unit unit) {
-        TilePosition target = informationManager.pollScoutTarget();
-        informationManager.setActiveScoutTarget(target);
         ManagedUnit managedScout = new ManagedUnit(game, unit, UnitRole.SCOUT);
         managedUnitLookup.put(unit, managedScout);
-        managedScout.setMovementTarget(target);
         managedUnits.add(managedScout);
+        assignScoutMovementTarget(managedScout);
         return;
     }
 }

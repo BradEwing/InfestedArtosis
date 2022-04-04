@@ -130,7 +130,7 @@ public class EconomyModule {
             }
         }
 
-        if (numDisplayed > productionQueue.size()) {
+        if (numDisplayed < productionQueue.size()) {
             game.drawTextScreen(x, y, String.format("... %s more planned items", productionQueue.size() - numDisplayed), Text.GreyGreen);
         }
     }
@@ -190,7 +190,7 @@ public class EconomyModule {
             return;
         }
 
-        productionQueue.add(new PlannedItem(UnitType.Zerg_Hatchery, currentPriority-1, true, base.getLocation()));
+        productionQueue.add(new PlannedItem(UnitType.Zerg_Hatchery, currentPriority, true, base.getLocation()));
         baseLocations.add(base);
     }
 

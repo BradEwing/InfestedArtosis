@@ -204,7 +204,7 @@ public class InformationManager {
                 continue;
             }
 
-            if (unit.isVisible() && unitType.isBuilding() && !unitType.isResourceContainer() && !unitType.isNeutral()) {
+            if (unit.isVisible() && unitType.isBuilding() && (!unitType.isResourceContainer() || unitType.isRefinery()) && !unitType.isNeutral()) {
                 //System.out.printf("Enemy Building Found, Type: [%s] Player: [%s]\n", unit.getType(), unit.getPlayer().toString());
                 enemyBuildings.add(unit);
                 enemyBuildingPositions.add(unit.getTilePosition());
@@ -278,8 +278,18 @@ public class InformationManager {
     private void assignNewScoutTargets() {
         // TODO: ONLY consider starting bases IF we do not know enemy location
         // Round robin assign SCOUTs to bases
+        int curImportance = 0;
         for (TileInfo tileInfo : scoutHeatMap) {
             TilePosition tile = tileInfo.getTile();
+            int importance = tileInfo.getImportance();
+            if (curImportance == 0) {
+                curImportance = importance;
+            }
+            // Only add highest importance tiles, then break
+            // We add in the event of ties
+            if (importance < curImportance) {
+                break;
+            }
             if (!scoutTargets.contains(tile) && tileInfo.isWalkable()) {
                 scoutTargets.add(tile);
             }
@@ -357,6 +367,7 @@ public class InformationManager {
     private void debugEnemyTargets() {
         if (game.getFrameCount() % 100 == 0) {
             debugEnemyLocations();
+            System.out.printf("Enemy base: [%s]\n", mainEnemyBase);
         }
         for (Unit target: enemyBuildings) {
             game.drawCircleMap(target.getPosition(), 3, Color.Red);
