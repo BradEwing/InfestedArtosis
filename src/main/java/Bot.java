@@ -51,13 +51,17 @@ public class Bot extends DefaultBWListener {
         informationManager = new InformationManager(bwem, game);
         debugMap = new DebugMap(bwem, game);
         economyModule = new EconomyModule(game, bwem); // TODO: reverse
-        unitManager = new UnitManager(game, informationManager);
+        unitManager = new UnitManager(game, informationManager, bwem);
     }
 
 
 
     @Override
     public void onFrame() {
+        if (bwem == null) {
+            System.out.print("bwem is null\n");
+            return;
+        }
         informationManager.onFrame();
         economyModule.onFrame();
         unitManager.onFrame();

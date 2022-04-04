@@ -6,5 +6,5 @@ A small zerg bot initially cloned from [JavaBWAPI](https://github.com/JavaBWAPI/
 ```
 $ mvn package
 
-$ java -jar target/jbwapi-template-1.0-SNAPSHOT-jar-with-dependencies.jar
+$ java -jar target/InfestedArtosis-0.1.0-SNAPSHOT-jar-with-dependencies.jar
 ```
