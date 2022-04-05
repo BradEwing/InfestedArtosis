@@ -1,6 +1,7 @@
 import bwapi.Color;
 import bwapi.Game;
 import bwapi.Player;
+import bwapi.Position;
 import bwapi.Text;
 import bwapi.TilePosition;
 import bwapi.Unit;
@@ -68,6 +69,7 @@ public class EconomyModule {
     // TODO: Use bwem.Mineral and bwem.Geyser?
     private HashMap<Unit, HashSet<Unit>> geyserAssignments = new HashMap<>();
     private HashMap<Unit, HashSet<Unit>> mineralAssignments = new HashMap<>();
+    private HashMap<Unit, UnitType> builderAssignments = new HashMap<>();
 
     private HashSet<Unit> bases = new HashSet<>();
     private HashSet<Base> baseLocations = new HashSet<>();
@@ -137,6 +139,36 @@ public class EconomyModule {
 
     private void debugBaseStats() {
 
+    }
+
+    // TODO: Refactor into debug role
+    private void debugBuildingAssignments() {
+        for (Map.Entry<Unit, UnitType> assignment: builderAssignments.entrySet()) {
+            Unit unit = assignment.getKey();
+            UnitType building = assignment.getValue();
+            Position unitPosition = unit.getPosition();
+            game.drawTextMap(unitPosition, "BUILDER: " + building.toString(), Text.White);
+        }
+    }
+
+    // TODO: Refactor into debug role
+    private void debugMineralAssignments() {
+        for (HashSet<Unit> assignedUnits: mineralAssignments.values()) {
+            for (Unit unit: assignedUnits) {
+                Position unitPosition = unit.getPosition();
+                game.drawTextMap(unitPosition, "GATHER" , Text.White);
+            }
+        }
+    }
+
+    // TODO: Refactor into debug role
+    private void debugGeyserAssignments() {
+        for (HashSet<Unit> assignedUnits: geyserAssignments.values()) {
+            for (Unit unit: assignedUnits) {
+                Position unitPosition = unit.getPosition();
+                game.drawTextMap(unitPosition, "GATHER" , Text.White);
+            }
+        }
     }
 
     // TODO: display this as a counter on the existing base
@@ -221,6 +253,9 @@ public class EconomyModule {
         }
         debugMineralPatches();
         debugProductionQueue();
+        debugBuildingAssignments();
+        debugMineralAssignments();
+        debugGeyserAssignments();
     }
 
     // TODO: Determine why some workers go and stay idle
@@ -261,6 +296,7 @@ public class EconomyModule {
     private int numWorkers() {
         return mineralWorkers + gasWorkers;
     }
+
     private void planItems() {
         Player self = game.self();
         // Macro builder kicks in at 10 supply
@@ -545,6 +581,7 @@ public class EconomyModule {
             // If drone and not assigned, assign
             if (unitType == UnitType.Zerg_Drone && !assignedPlannedItems.containsKey(unit)) {
                 assignedPlannedItems.put(unit, plannedItem);
+                builderAssignments.put(unit, plannedUnit);
                 reservedMinerals += mineralPrice;
                 reservedGas += gasPrice;
                 return true;
@@ -698,6 +735,10 @@ public class EconomyModule {
         return numUnits;
     }
 
+    public void onUnitMorph(Unit unit) {
+        onUnitDestroy(unit);
+    }
+
     // TODO: Track workers on individual mineral patch / gas
     // TODO: Remove workers from tracker when they die
     public void onUnitDestroy(Unit unit) {
@@ -705,6 +746,11 @@ public class EconomyModule {
         if (unit.getPlayer() != self) {
             return;
         }
+
+        if (builderAssignments.containsKey(unit)) {
+            builderAssignments.remove(unit);
+        }
+
         if (assignedWorkers.contains(unit)) {
             for (HashSet<Unit> workers: mineralAssignments.values()) {
                 if (workers.contains(unit)) {

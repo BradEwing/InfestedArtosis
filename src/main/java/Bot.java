@@ -94,6 +94,11 @@ public class Bot extends DefaultBWListener {
         unitManager.onUnitDestroy(unit);
     }
 
+    @Override
+    public void onUnitMorph(Unit unit) {
+        economyModule.onUnitMorph(unit);
+    }
+
     public static void main(String[] args) {
         Bot bot = new Bot();
         bot.bwClient = new BWClient(bot);
