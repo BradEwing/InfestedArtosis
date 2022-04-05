@@ -91,7 +91,12 @@ public class InformationManager {
     }
 
     private void debugEnemyLocations() {
-        System.out.printf("Enemy Units: [%s]\n", enemyUnits);
+
+        System.out.printf("Enemy Units: [");
+        for (Unit enemyUnit: enemyUnits) {
+            System.out.printf("%s, ", enemyUnit.getType());
+        }
+        System.out.printf("]\n");
 
         for (Unit building: enemyBuildings) {
             System.out.printf("Enemy Buildings: [%s]\n", building.getType());
@@ -210,7 +215,7 @@ public class InformationManager {
                 enemyBuildingPositions.add(unit.getTilePosition());
 
                 // If enemyBase is unknown and this is our first time encountering an enemyUnit, set enemyBase
-                if (mainEnemyBase == null) {
+                if (mainEnemyBase == null && unitType.isResourceContainer()) {
                     mainEnemyBase = closestBaseToUnit(unit, startingBasesSet.stream().collect(Collectors.toList()));
                 }
             }
@@ -271,7 +276,7 @@ public class InformationManager {
         }
         for (TilePosition target: foundTargets) {
             activeScoutTargets.remove(target);
-            // TODO: EXPERIMENTAL, trying to get read of orange dots persisting
+            // TODO: EXPERIMENTAL, trying to get rid of orange dots persisting
             enemyBuildingPositions.remove(target);
         }
 

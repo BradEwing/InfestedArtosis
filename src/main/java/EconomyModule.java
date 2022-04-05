@@ -588,7 +588,7 @@ public class EconomyModule {
         for (Unit unit : self.getUnits()) {
             UnitType unitType = unit.getType();
 
-            System.out.printf("assignUpgradeItem(), required: [%s], unitType: [%s] \n", upgrade.whatUpgrades(), unitType);
+            //System.out.printf("assignUpgradeItem(), required: [%s], unitType: [%s] \n", upgrade.whatUpgrades(), unitType);
             if (unitType == upgrade.whatUpgrades() && !assignedPlannedItems.containsKey(unit)) {
                 assignedPlannedItems.put(unit, plannedItem);
                 reservedMinerals += mineralPrice;
