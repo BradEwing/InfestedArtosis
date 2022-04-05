@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static bwta.BWTA.getShortestPath;
+import static util.Filter.closestHostileUnit;
 import static util.Filter.closestUnit;
 
 // TODO: Rename to agent / agent manager?
@@ -71,18 +72,16 @@ public class ManagedUnit {
     public void execute() {
         debugRole();
 
-        if (pathToTarget != null && pathToTarget.size() > 1) {
-            debugPathToTarget();
-        }
-
         // TODO: Determine control flow here
 
         // For now, we MOVE if our current target is more than 100 away and it exists.
         // That number will certainly have to be tweaked!
+        /*
         if (!isFlyer() && movementTargetPosition != null && unit.getDistance(movementTargetPosition.toPosition()) > 300) {
             move();
             return;
         }
+         */
 
         // If we're close to our unit's target, execute action for role
         switch (role) {
@@ -124,23 +123,28 @@ public class ManagedUnit {
     }
 
     private void debugMove() {
-        game.drawLineMap(unit.getTilePosition().toPosition(), currentStepToTarget.toPosition(), Color.Grey);
+        game.drawLineMap(unit.getPosition(), currentStepToTarget.toPosition(), Color.Grey);
     }
 
     private void move() {
+        TilePosition currentPosition = unit.getTilePosition();
+        // If we have a movement step target and we're far away, we do nothing
+        if (currentStepToTarget != null && currentPosition.getDistance(currentStepToTarget) > 50) {
+            return;
+        }
         // Check to see if we have a path
         // If we don't see if can naive move to target
-        if (pathToTarget == null || pathToTarget.size() == 0) {
+        if (pathToTarget == null || pathToTarget.size() < 1) {
             if (movementTargetPosition != null) {
+                pathToTarget = null;
                 unit.move(movementTargetPosition.toPosition());
             }
             return;
         }
 
         // Check to see if we're close to current step, or if we need to initialize one
-        TilePosition currentPosition = unit.getTilePosition();
-        if (currentStepToTarget == null || currentPosition.getDistance(currentStepToTarget) < 20) {
-            currentStepToTarget = pathToTarget.get(0);
+
+        if (currentStepToTarget == null || currentPosition.getDistance(currentStepToTarget) <= 50) {
             currentStepToTarget = pathToTarget.remove(0);
         }
 
@@ -217,18 +221,14 @@ public class ManagedUnit {
         }
 
         List<Unit> filtered = new ArrayList<>();
-        if (unit.getType() == UnitType.Zerg_Zergling) {
-            for (Unit enemyUnit: enemies) {
-                if (unit.canAttack(enemyUnit)) {
-                    filtered.add(enemyUnit);
-                } else if (!enemyUnit.isVisible() && enemyUnit.getType().isBuilding()) {
-                    filtered.add(enemyUnit);
-                }
+
+        for (Unit enemyUnit: enemies) {
+            if (unit.canAttack(enemyUnit)) {
+                filtered.add(enemyUnit);
             }
-        } else {
-            filtered = enemies;
         }
-        Unit closestEnemy = closestUnit(unit, filtered);
+
+        Unit closestEnemy = closestHostileUnit(unit, filtered);
 
         // TODO: Ensure that this can never be null
         // Somehow the closestUnit is null, bail out and assign to scout

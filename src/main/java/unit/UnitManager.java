@@ -52,9 +52,12 @@ public class UnitManager {
 
     public void onFrame() {
         for (ManagedUnit managedUnit: managedUnits) {
+            /**
+             * Disable for now, there's a non-deterministic crash with BWEM and units get stuck in their move path
             if (managedUnit.getPathToTarget() == null || managedUnit.getPathToTarget().size() == 0) {
                 calculateMovementPath(managedUnit);
             }
+             */
 
             if (managedUnit.isCanFight() && managedUnit.getRole() != UnitRole.FIGHT && informationManager.isEnemyLocationKnown()) {
                 managedUnit.setRole(UnitRole.FIGHT);
@@ -128,13 +131,12 @@ public class UnitManager {
 
     private void assignClosestEnemyToManagedUnit(ManagedUnit managedUnit) {
         List<Unit> enemyUnits = new ArrayList<>();
-        if (informationManager.getEnemyUnits().size() > 0) {
-            // SetToArray
-            informationManager.getEnemyUnits().stream().forEach(enemyUnits::add);
-        } else if (informationManager.getEnemyBuildings().size() > 0) {
-            informationManager.getEnemyBuildings().stream().forEach(enemyUnits::add);
+        enemyUnits.addAll(informationManager.getEnemyUnits());
+        enemyUnits.addAll(informationManager.getEnemyBuildings());
+
+        if (enemyUnits.size() > 0) {
+            managedUnit.assignClosestEnemyAsFightTarget(enemyUnits);
         }
-        managedUnit.assignClosestEnemyAsFightTarget(enemyUnits);
     }
 
     private void reassignToScout(ManagedUnit managedUnit) {
