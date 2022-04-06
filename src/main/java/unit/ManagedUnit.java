@@ -174,7 +174,7 @@ public class ManagedUnit {
     // TODO: handle visibility
     private void fight() {
         debugFight();
-        if (game.getFrameCount() % 30 != 0) {
+        if (unit.isAttacking()) {
             return;
         }
         // Our fight target is no longer visible, drop in favor of fight target position
