@@ -98,9 +98,11 @@ public class InformationManager {
         }
         System.out.printf("]\n");
 
+        System.out.printf("Enemy Buildings: [");
         for (Unit building: enemyBuildings) {
-            System.out.printf("Enemy Buildings: [%s]\n", building.getType());
+            System.out.printf("%s, ", building.getType());
         }
+        System.out.printf("]\n");
     }
 
     public void setActiveScoutTarget(TilePosition target) {

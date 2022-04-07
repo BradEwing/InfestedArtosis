@@ -1,4 +1,4 @@
-#  Infested Artosis (name pending)
+#  Infested Artosis
 
 A small zerg bot initially cloned from [JavaBWAPI](https://github.com/JavaBWAPI/jbwapi-java-template).
 

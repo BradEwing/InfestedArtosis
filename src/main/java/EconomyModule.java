@@ -14,6 +14,7 @@ import bwem.Mineral;
 import planner.PlanType;
 import planner.PlannedItem;
 import planner.PlannedItemComparator;
+import util.UnitDistanceComparator;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -22,6 +23,9 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.PriorityQueue;
+import java.util.stream.Collectors;
+
+import static util.Filter.closestUnit;
 
 // TODO: There is economy information here, build order and strategy. refactor
 // Possible arch: GATHER GAME STATE -> PLAN -> EXECUTE
@@ -52,6 +56,13 @@ public class EconomyModule {
     private boolean hasPlannedLurkers = false;
     private boolean hasLair = false;
     private boolean hasPlannedLair = false;
+    private boolean hasPlannedEvoChamberUpgrades1 = false;
+
+    // TODO: Track in info manager / GameState with some sort of base planner class
+    private int numSunkens = 0;
+    // TODO: VERY HACKY! this is because current 9pool hardcodes an extractor, this must be aware of build order
+    private int numExtractors = 1;
+    private int numEvoChambers = 0;
 
     // These worker trackers do not track death or morph into building
     private int mineralWorkers = 0;
@@ -356,6 +367,13 @@ public class EconomyModule {
             hasPlannedLair = true;
         }
 
+        // One extractor per base
+        // TODO: account for bases with no gas or 2 gas
+        if (numExtractors < bases.size()) {
+            numExtractors += 1;
+            productionQueue.add(new PlannedItem(UnitType.Zerg_Extractor, currentPriority, true));
+        }
+
         // Build at 10 workers if not part of initial build order
         if (!hasPlannedPool && !hasPool && self.supplyUsed() > 20) {
             productionQueue.add(new PlannedItem(UnitType.Zerg_Spawning_Pool, currentPriority, true));
@@ -367,13 +385,27 @@ public class EconomyModule {
             hasPlannedDen = true;
         }
 
-        // TODO: Evo Chamber
+        // Evolution Chamber
+        // Plan 2 and first round of upgrades
+        if (numEvoChambers < 2 && self.supplyUsed() > 50) {
+            productionQueue.add(new PlannedItem(UnitType.Zerg_Evolution_Chamber, currentPriority, true));
+            productionQueue.add(new PlannedItem(UnitType.Zerg_Evolution_Chamber, currentPriority, true));
+            numEvoChambers += 2;
+        }
 
         // TODO: Spire
 
         // TODO: Queen's Nest
 
         // TODO: Sunken Colonies
+        // For now, plan 2 sunkens per base we take
+        // Give them high priority, macro tends to be strong
+        if (numSunkens < (bases.size())) {
+            productionQueue.add(new PlannedItem(UnitType.Zerg_Creep_Colony, currentPriority, true));
+            productionQueue.add(new PlannedItem(UnitType.Zerg_Sunken_Colony, currentPriority, true));
+            // TODO: Track Planned + Actually built rather than here
+            numSunkens += 1;
+        }
 
         // TODO: Spore Colonies
 
@@ -396,6 +428,14 @@ public class EconomyModule {
             productionQueue.add(new PlannedItem(UpgradeType.Muscular_Augments, currentPriority));
             productionQueue.add(new PlannedItem(UpgradeType.Grooved_Spines, currentPriority));
             hasPlannedDenUpgrades = true;
+        }
+
+        // Just take first level of upgrades for now
+        if (numEvoChambers > 0 && hasPlannedEvoChamberUpgrades1) {
+            productionQueue.add(new PlannedItem(UpgradeType.Zerg_Melee_Attacks, currentPriority));
+            productionQueue.add(new PlannedItem(UpgradeType.Zerg_Missile_Attacks, currentPriority));
+            productionQueue.add(new PlannedItem(UpgradeType.Zerg_Carapace, currentPriority));
+            hasPlannedEvoChamberUpgrades1 = true;
         }
 
         /** For now, only subject unit production to queue size */
@@ -455,6 +495,9 @@ public class EconomyModule {
         return ((expectedWorkers() * (1 + plannedHatcheries)) - numWorkers() < 6);
     }
 
+    // TODO: Planned item priority on frame?
+    //  - If failed to execute after X frames, increase priority value
+    //  - Track number of retries per PlannedItem, continual failure can warrant dropping from queue entirely and/or exponential backoff
     public void initiatePlannedItems() {
         Player self = game.self();
         int currentUnitAssignAttempts = 0; // accept 3 failures in planning
@@ -551,11 +594,15 @@ public class EconomyModule {
 
     private boolean buildBuilding(Unit unit, PlannedItem plannedItem) {
         final UnitType unitType = plannedItem.getPlannedUnit();
-        TilePosition buildTilePosition = plannedItem.getBuildPosition() != null ? plannedItem.getBuildPosition() : game.getBuildLocation(unitType, unit.getTilePosition());
-        Position buildPosition = buildTilePosition.toPosition();
-        // TODO: Refactor into micro / unit management code
+        // If you do not have a build position, one will be assigned to you
+        if (plannedItem.getBuildPosition() == null) {
+            plannedItem.setBuildPosition(game.getBuildLocation(unitType, unit.getTilePosition()));
+        }
+        TilePosition buildTilePosition = plannedItem.getBuildPosition();
+        Position buildPosition = plannedItem.getBuildPosition().toPosition();
 
-        if (unit.getDistance(buildTilePosition.toPosition()) > 100 && !unit.isMoving()) {
+        // TODO: Refactor into micro / unit management code
+        if (unit.getDistance(buildTilePosition.toPosition()) > 200 && (!unit.isMoving() || unit.isGatheringMinerals())) {
             unit.move(buildPosition);
         }
 
@@ -565,8 +612,14 @@ public class EconomyModule {
             boolean didBuild = unit.build(unitType, buildTilePosition);
             // If we failed to build, try to morph
             if (!didBuild) {
-                unit.morph(unitType);
+                didBuild = unit.morph(unitType);
             }
+
+            if (!didBuild) {
+                // Try to get a new building location
+                plannedItem.setBuildPosition(game.getBuildLocation(unitType, unit.getTilePosition()));
+            }
+
         }
 
         if (unit.isMorphing() || unit.isBeingConstructed()) {
@@ -703,6 +756,32 @@ public class EconomyModule {
         assignUnit(unit);
     }
 
+    // TODO: Refactor
+    private void assignMineral(Unit unit) {
+        // Consider how many mineral workers are mining, compare to size of taken mineral patches
+        // Gather all mineral patches, sort by distance
+        // For each, check for patch with least amount of workers
+        int fewestMineralAssignments;
+        if (mineralWorkers == 0) {
+            fewestMineralAssignments = 0;
+        } else {
+            fewestMineralAssignments = mineralAssignments.size() / mineralWorkers <= 0.5 ? 1 : 0;
+        }
+        List <Unit> claimedMinerals = mineralAssignments.keySet().stream().collect(Collectors.toList());
+        claimedMinerals.sort(new UnitDistanceComparator(unit));
+
+        for (Unit mineral: claimedMinerals) {
+            HashSet<Unit>mineralUnits = mineralAssignments.get(mineral);
+            if (mineralUnits.size() == fewestMineralAssignments) {
+                unit.gather(mineral);
+                mineralWorkers += 1;
+                assignedWorkers.add(unit);
+                mineralUnits.add(unit);
+                break;
+            }
+        }
+    }
+
     // TODO: Set curPriority PER type
     // Only allow items of the curPriority to attempt assignment
     private void assignUnit(Unit unit) {
@@ -730,19 +809,7 @@ public class EconomyModule {
                 }
             } else {
                 if (mineralWorkers < (2 * mineralAssignments.size())) {
-                    // Assign 2 per patch
-                    if (mineralWorkers < (2 * mineralAssignments.size())) {
-                        for (Unit mineral: mineralAssignments.keySet()) {
-                            HashSet<Unit>mineralUnits = mineralAssignments.get(mineral);
-                            if (mineralUnits.size() < 2) {
-                                unit.gather(mineral);
-                                mineralWorkers += 1;
-                                assignedWorkers.add(unit);
-                                mineralUnits.add(unit);
-                                break;
-                            }
-                        }
-                    }
+                    assignMineral(unit);
                 }
             }
         }
@@ -804,21 +871,26 @@ public class EconomyModule {
     // TODO: Should there be special logic here for handling the drones?
     // Need to handle cancel case (building about to die, extractor trick, etc.)
     public void onUnitMorph(Unit unit) {
+        if (unit.getType() == UnitType.Zerg_Larva) {
+            System.out.printf("Unit [%s] onUnitMorph is Larva\n", unit.getID());
+        }
         clearAssignments(unit, false);
     }
 
-    // TODO: Track workers on individual mineral patch / gas
-    // TODO: Remove workers from tracker when they die
     public void onUnitDestroy(Unit unit) {
         Player self = game.self();
         if (unit.getPlayer() != self) {
             return;
         }
 
+        // Extractor is weird
+        if (unit.getType() == UnitType.Zerg_Drone && builderAssignments.containsKey(unit) && builderAssignments.get(unit) == UnitType.Zerg_Extractor) {
+            clearAssignments(unit, false);
+            assignedPlannedItems.remove(unit);
+            return;
+        }
         clearAssignments(unit, true);
     }
-
-    // TODO: Don't drop work that these workers were assigned
 
     /**
      * Remove a unit from all data stores
@@ -827,6 +899,10 @@ public class EconomyModule {
      * @param shouldRequeue flag to reassign a plannedItem if one was assigned
      */
     private void clearAssignments(Unit unit, boolean shouldRequeue) {
+        if (bases.contains(unit)) {
+            bases.remove(unit);
+        }
+
         if (builderAssignments.containsKey(unit)) {
             builderAssignments.remove(unit);
         }
@@ -846,21 +922,28 @@ public class EconomyModule {
             }
         }
 
+        // This is a mineral
         if (mineralAssignments.containsKey(unit)) {
             HashSet<Unit> mineralWorkers = mineralAssignments.get(unit);
-            for (Unit worker: mineralWorkers) {
+            List<Unit> workersToRemove = mineralWorkers.stream().collect(Collectors.toList());
+            for (Unit worker: workersToRemove) {
                 assignedWorkers.remove(worker);
+                mineralWorkers.remove(worker);
+                assignMineral(worker);
             }
-            mineralWorkers.remove(unit);
+
+            mineralAssignments.remove(unit);
         }
 
         // No idle gas workers after geyser destroyed
         if (geyserAssignments.containsKey(unit)) {
             HashSet<Unit> geyserWorkers = geyserAssignments.get(unit);
-            for (Unit worker: geyserWorkers) {
+            List<Unit> workersToRemove = geyserWorkers.stream().collect(Collectors.toList());
+            for (Unit worker: workersToRemove) {
                 assignedWorkers.remove(worker);
+                geyserWorkers.remove(worker);
             }
-            geyserWorkers.remove(unit);
+            geyserAssignments.remove(unit);
         }
 
         // Requeue PlannedItems

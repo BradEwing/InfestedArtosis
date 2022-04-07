@@ -15,6 +15,7 @@ public class PlannedItem {
     // Simple prioritization, will increment elsewhere
     private int priority;
     private int frameStart;
+    private int retries = 0;
 
     @Nullable
     private TilePosition buildPosition;

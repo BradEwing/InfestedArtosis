@@ -27,6 +27,10 @@ public class UnitManager {
 
     // TODO: refactor
     private HashMap<Unit, ManagedUnit> managedUnitLookup = new HashMap<>();
+
+    private HashSet<ManagedUnit> workers = new HashSet<>();
+    private HashSet<ManagedUnit> scouts = new HashSet<>();
+    private HashSet<ManagedUnit> fighters = new HashSet<>();
     private HashSet<ManagedUnit> managedUnits = new HashSet<>();
 
     public UnitManager(Game game, InformationManager informationManager, BWEM bwem) {
@@ -83,8 +87,10 @@ public class UnitManager {
     public void onUnitComplete(Unit unit) {
         // For now, return early if drone or building
         UnitType unitType = unit.getType();
-        if (unitType == UnitType.Zerg_Drone || unitType == UnitType.Zerg_Extractor
-                || unitType == UnitType.Zerg_Hatchery || unitType == UnitType.Zerg_Spawning_Pool || unitType == UnitType.Zerg_Hydralisk_Den) {
+        // TODO: DRONES
+        // TODO: Buildings, why not? Useful when tracking precise morphs
+        // TODO: Building planner
+        if (unitType == UnitType.Zerg_Drone || unitType.isBuilding()) {
             return;
         }
 
