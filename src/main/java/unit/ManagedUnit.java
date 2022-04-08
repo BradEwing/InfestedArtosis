@@ -38,6 +38,9 @@ public class ManagedUnit {
     private boolean canFight;
     private boolean isFlyer;
 
+    private int unreadyUntilFrame = 0;
+    private boolean isReady = true;
+
     public ManagedUnit(Game game, Unit unit, UnitRole role) {
         this.game = game;
         this.unit = unit;
@@ -152,6 +155,12 @@ public class ManagedUnit {
         unit.move(currentStepToTarget.toPosition());
     }
 
+    private void setUnready() {
+        isReady = false;
+        unreadyUntilFrame = game.getFrameCount() + game.getLatencyFrames() + 11;
+        return;
+    }
+
     private void scout() {
         // Need to reassign movementTarget
         if (movementTargetPosition == null) {
@@ -159,6 +168,9 @@ public class ManagedUnit {
         }
 
         debugScout();
+        if (!isReady) {
+            return;
+        }
 
         if (game.isVisible(movementTargetPosition)) {
             role = UnitRole.IDLE;
@@ -166,6 +178,7 @@ public class ManagedUnit {
             return;
         }
         // TODO: micro / avoid enemies
+        setUnready();
         unit.move(movementTargetPosition.toPosition());
     }
 
@@ -174,6 +187,9 @@ public class ManagedUnit {
     // TODO: handle visibility
     private void fight() {
         debugFight();
+        if (!isReady) {
+            return;
+        }
         if (unit.isAttacking()) {
             return;
         }
@@ -195,6 +211,7 @@ public class ManagedUnit {
             return;
         }
 
+        setUnready();
         //System.out.printf("FightTarget is null, frame: [%s], unitType: [%s]\n", game.getFrameCount(), unit.getType());
         role = UnitRole.IDLE;
         return;
@@ -217,7 +234,7 @@ public class ManagedUnit {
         }
 
         if (enemies.size() < 1) {
-            System.out.printf("Invalid enemies passed to assignClosestEnemyAsFightTarget(), enemies: [%s]\n", enemies);
+            //System.out.printf("Invalid enemies passed to assignClosestEnemyAsFightTarget(), enemies: [%s]\n", enemies);
         }
 
         List<Unit> filtered = new ArrayList<>();

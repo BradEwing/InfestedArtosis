@@ -92,6 +92,7 @@ public class InformationManager {
 
     private void debugEnemyLocations() {
 
+        /*
         System.out.printf("Enemy Units: [");
         for (Unit enemyUnit: enemyUnits) {
             System.out.printf("%s, ", enemyUnit.getType());
@@ -103,6 +104,8 @@ public class InformationManager {
             System.out.printf("%s, ", building.getType());
         }
         System.out.printf("]\n");
+
+         */
     }
 
     public void setActiveScoutTarget(TilePosition target) {
@@ -283,7 +286,7 @@ public class InformationManager {
         }
 
         if (game.getFrameCount() % 100 == 0) {
-            System.out.printf("checkScoutTargets(), scoutTargets: [%s], activeScoutTargets: [%s]\n", scoutTargets, activeScoutTargets);
+            //System.out.printf("checkScoutTargets(), scoutTargets: [%s], activeScoutTargets: [%s]\n", scoutTargets, activeScoutTargets);
         }
     }
 
@@ -380,7 +383,7 @@ public class InformationManager {
     private void debugEnemyTargets() {
         if (game.getFrameCount() % 100 == 0) {
             debugEnemyLocations();
-            System.out.printf("Enemy base: [%s]\n", mainEnemyBase);
+            //System.out.printf("Enemy base: [%s]\n", mainEnemyBase);
         }
         for (Unit target: enemyBuildings) {
             game.drawCircleMap(target.getPosition(), 3, Color.Red);

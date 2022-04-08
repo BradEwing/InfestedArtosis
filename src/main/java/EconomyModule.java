@@ -218,8 +218,8 @@ public class EconomyModule {
         //baseLocations.add(newBase);
 
         if (newBase == null) {
-            System.out.printf("Our initial base location is null! bwem.getMap().getBases(): [%s]\n", bases);
-            System.out.printf("Hatchery: [%s]\n", hatchery);
+            //System.out.printf("Our initial base location is null! bwem.getMap().getBases(): [%s]\n", bases);
+            //System.out.printf("Hatchery: [%s]\n", hatchery);
         }
 
         for (Mineral mineral: newBase.getMinerals()) {
@@ -237,7 +237,7 @@ public class EconomyModule {
             }
 
             double distance = mainBase.getLocation().getDistance(b.getLocation());
-            System.out.printf("distance: [%s], closestDistance: [%s], base: [%s]\n", distance, closestDistance, b);
+            //System.out.printf("distance: [%s], closestDistance: [%s], base: [%s]\n", distance, closestDistance, b);
             if (distance < closestDistance) {
                 closestUnoccupiedBase = b;
                 closestDistance = distance;
@@ -280,9 +280,9 @@ public class EconomyModule {
     private void debug() {
         // Log every 100 frames
         if (game.getFrameCount() % 100 == 0) {
-            System.out.printf("Frame: %s, Reserved Minerals: %s, Planned Hatcheries: %s, Macro Hatcheries: %s, CurrentBases: %s" +
-                            " isPlanning: [%s]\n",
-                    game.getFrameCount(), reservedMinerals, plannedHatcheries, macroHatcheries.size(), baseLocations.size(), isPlanning);
+            //System.out.printf("Frame: %s, Reserved Minerals: %s, Planned Hatcheries: %s, Macro Hatcheries: %s, CurrentBases: %s" +
+            //                " isPlanning: [%s]\n",
+            //        game.getFrameCount(), reservedMinerals, plannedHatcheries, macroHatcheries.size(), baseLocations.size(), isPlanning);
         }
         debugMineralPatches();
         debugProductionQueue();
@@ -401,8 +401,8 @@ public class EconomyModule {
         // For now, plan 2 sunkens per base we take
         // Give them high priority, macro tends to be strong
         if (numSunkens < (bases.size())) {
-            productionQueue.add(new PlannedItem(UnitType.Zerg_Creep_Colony, currentPriority, true));
-            productionQueue.add(new PlannedItem(UnitType.Zerg_Sunken_Colony, currentPriority, true));
+            productionQueue.add(new PlannedItem(UnitType.Zerg_Creep_Colony, currentPriority-2, true));
+            productionQueue.add(new PlannedItem(UnitType.Zerg_Sunken_Colony, currentPriority-1, true));
             // TODO: Track Planned + Actually built rather than here
             numSunkens += 1;
         }
@@ -872,7 +872,7 @@ public class EconomyModule {
     // Need to handle cancel case (building about to die, extractor trick, etc.)
     public void onUnitMorph(Unit unit) {
         if (unit.getType() == UnitType.Zerg_Larva) {
-            System.out.printf("Unit [%s] onUnitMorph is Larva\n", unit.getID());
+            //System.out.printf("Unit [%s] onUnitMorph is Larva\n", unit.getID());
         }
         clearAssignments(unit, false);
     }

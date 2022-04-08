@@ -62,6 +62,10 @@ public class UnitManager {
                 calculateMovementPath(managedUnit);
             }
              */
+            // Check if unready units can be ready again
+            if (!managedUnit.isReady() && game.getFrameCount() >= managedUnit.getUnreadyUntilFrame()) {
+                managedUnit.setReady(true);
+            }
 
             if (managedUnit.isCanFight() && managedUnit.getRole() != UnitRole.FIGHT && informationManager.isEnemyLocationKnown()) {
                 managedUnit.setRole(UnitRole.FIGHT);
