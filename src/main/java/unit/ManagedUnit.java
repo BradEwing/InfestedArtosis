@@ -10,6 +10,8 @@ import bwapi.Unit;
 import bwapi.UnitType;
 import bwem.CPPath;
 import lombok.Data;
+import planner.PlanState;
+import planner.PlannedItem;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -34,6 +36,10 @@ public class ManagedUnit {
     private TilePosition currentStepToTarget;
 
     private Unit fightTarget;
+    private Position buildTarget; // TODO: Should this become movementTargetPosition?
+    private Unit gatherTarget;
+    // PlannedItem this unit is assigned to
+    private PlannedItem plannedItem;
 
     private boolean canFight;
     private boolean isFlyer;
@@ -94,6 +100,15 @@ public class ManagedUnit {
             case FIGHT:
                 fight();
                 break;
+            case GATHER:
+                gather();
+                break;
+            case BUILD:
+                build();
+                break;
+            case MORPH:
+                morph();
+                break;
             default:
                 break;
         }
@@ -153,6 +168,67 @@ public class ManagedUnit {
 
         debugMove();
         unit.move(currentStepToTarget.toPosition());
+    }
+
+    private void gather() {
+        if (unit.isGatheringMinerals() || unit.isGatheringGas()) return;
+        if (!isReady) return;
+
+        if ((unit.isCarryingGas() || unit.isCarryingMinerals()) && unit.isIdle()) {
+            setUnready();
+            unit.returnCargo();
+            return;
+        }
+
+        setUnready();
+        unit.gather(gatherTarget);
+    }
+
+    private void build() {
+        if (unit.isBeingConstructed() || unit.isMorphing()) return;
+        if (!isReady) return;
+
+        if (unit.getDistance(buildTarget) > 200 && (!unit.isMoving() || unit.isGatheringMinerals())) {
+            setUnready();
+            unit.move(buildTarget);
+            return;
+        }
+
+        if (game.canMake(unitType, unit)) {
+            // Try to build
+            // TODO: Maybe only check the units we assigned to build, after so many frames we can try to reassign
+            //   - Maybe the PlannedItems are tracked in a higher level state, and their status is updated at the higher level
+            //   - A PlannedItem marked as complete would then be removed from the bot (careful consideration to be sure it's removed everywhere)
+            setUnready();
+            boolean didBuild = unit.build(unitType, buildTarget.toTilePosition());
+            // If we failed to build, try to morph
+            if (!didBuild) {
+                didBuild = unit.morph(unitType);
+            }
+
+            if (!didBuild) {
+                // Try to get a new building location
+                plannedItem.setBuildPosition(game.getBuildLocation(unitType, unit.getTilePosition()));
+            }
+
+            if (didBuild) {
+                plannedItem.setState(PlanState.MORPHING);
+            }
+        }
+    }
+
+    private void morph() {
+        if (!isReady) return;
+
+        final UnitType unitType = plannedItem.getPlannedUnit();
+        if (game.canMake(unitType, unit)) {
+            setUnready();
+            boolean didMorph = unit.morph(unitType);
+            if (didMorph) {
+                plannedItem.setState(PlanState.MORPHING);
+            }
+
+        }
     }
 
     private void setUnready() {
@@ -261,5 +337,13 @@ public class ManagedUnit {
         }
         fightTarget = closestEnemy;
         movementTargetPosition = closestEnemy.getTilePosition();
+    }
+
+    public void assignGather(Unit gatherTarget) {
+
+    }
+
+    public void assignBuilder(PlannedItem buildingPlan) {
+
     }
 }

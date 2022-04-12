@@ -1,8 +1,8 @@
 package planner;
 
 public enum PlanType {
-    UNIT,
-    BUILDING,
-    RESEARCH,
-    UPGRADE,
+    UNIT,     // EXECUTOR: LARVA
+    BUILDING, // EXECUTOR: DRONE
+    TECH,     // EXECUTOR: BUILDING
+    UPGRADE,  // EXECUTOR: BUILDING
 }

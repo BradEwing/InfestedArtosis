@@ -1,3 +1,5 @@
+package macro;
+
 import bwapi.Color;
 import bwapi.Game;
 import bwapi.Player;
@@ -24,8 +26,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.PriorityQueue;
 import java.util.stream.Collectors;
-
-import static util.Filter.closestUnit;
 
 // TODO: There is economy information here, build order and strategy. refactor
 // Possible arch: GATHER GAME STATE -> PLAN -> EXECUTE
@@ -95,7 +95,7 @@ public class EconomyModule {
         this.game = game;
         this.bwem = bwem;
 
-        List<PlannedItem> items = ninePool();
+        List<PlannedItem> items = ninePoolSpeed();
         for (PlannedItem plannedItem: items) {
             productionQueue.add(plannedItem);
         }
@@ -258,7 +258,7 @@ public class EconomyModule {
         baseLocations.add(base);
     }
 
-    private List<PlannedItem> ninePool() {
+    private List<PlannedItem> ninePoolSpeed() {
         List<PlannedItem> list = new ArrayList<>();
         list.add(new PlannedItem(UnitType.Zerg_Drone, 0, false));
         list.add(new PlannedItem(UnitType.Zerg_Drone, 0, false));
@@ -303,22 +303,9 @@ public class EconomyModule {
 
         for (Unit u: game.getAllUnits()) {
             if (u.getType().isWorker() && u.isIdle()) {
-                // Workers can sometimes get stuck and idle, but this code seems to be aggressively removing workers
-                //if (assignedWorkers.contains(u)) {
-                //    assignedWorkers.remove(u);
-                //}
-
                 assignUnit(u);
             }
         }
-
-        /** TODO: Handle idle units
-         * There are GATHER assigned workers that idle, and sometimes workers (incl 4 starting) do not get assigned a role
-        for (Unit u: assignedWorkers) {
-            if (u.isIdle())
-        }
-
-         */
 
         for (Unit u: bases) {
             game.drawCircleMap(u.getPosition(), BASE_MINERAL_DISTANCE, Color.Teal);
@@ -525,7 +512,7 @@ public class EconomyModule {
                 break;
             }
 
-            switch (plannedItem.type) {
+            switch (plannedItem.getType()) {
                 case BUILDING:
                     canAssign = assignBuildingItem(self, plannedItem);
                     break;
@@ -567,9 +554,9 @@ public class EconomyModule {
             final Unit unit = entry.getKey();
             final PlannedItem plannedItem = entry.getValue();
 
-            switch (plannedItem.type) {
+            switch (plannedItem.getType()) {
                 case UNIT:
-                    isPlanExecuted = buildUnit(unit, plannedItem);
+                    isPlanExecuted = morphUnit(unit, plannedItem);
                     break;
                 case BUILDING:
                     isPlanExecuted = buildBuilding(unit, plannedItem);
@@ -622,6 +609,9 @@ public class EconomyModule {
 
         }
 
+        // TODO: This needs to move, maybe only check workers that are in builderAssignments
+        // Listen on morph, or check assignments?
+        // Let this be a listener in EconModule (MacroManager)
         if (unit.isMorphing() || unit.isBeingConstructed()) {
             reservedMinerals -= unitType.mineralPrice();
             reservedGas -= unitType.gasPrice();
@@ -644,7 +634,7 @@ public class EconomyModule {
         return false;
     }
 
-    private boolean buildUnit(Unit unit, PlannedItem plannedItem) {
+    private boolean morphUnit(Unit unit, PlannedItem plannedItem) {
         final UnitType unitType = plannedItem.getPlannedUnit();
         if (game.canMake(unitType, unit)) {
             unit.morph(unitType);
@@ -663,6 +653,7 @@ public class EconomyModule {
         return false;
     }
 
+    // TODO: Handle in BuildingManager (ManagedUnits that are buildings. ManagedBuilding?)
     private boolean buildUpgrade(Unit unit, PlannedItem plannedItem) {
         final UpgradeType upgradeType = plannedItem.getPlannedUpgrade();
         if (game.canUpgrade(upgradeType, unit)) {
@@ -757,6 +748,11 @@ public class EconomyModule {
     }
 
     // TODO: Refactor
+    // The unit.gather needs to be in the unit manager
+    // That requires knowledge about available mineral patches and their assignments
+    // Maybe WorkerManager?
+    // Unit Manager can exchange units with Worker Manager
+    // Need to be able to pass build positions
     private void assignMineral(Unit unit) {
         // Consider how many mineral workers are mining, compare to size of taken mineral patches
         // Gather all mineral patches, sort by distance

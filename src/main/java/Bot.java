@@ -1,19 +1,12 @@
 import bwapi.BWClient;
 import bwapi.DefaultBWListener;
 import bwapi.Game;
-import bwapi.TilePosition;
 import bwapi.Unit;
 import bwapi.UnitType;
 import bwem.BWEM;
 import info.InformationManager;
-import unit.ManagedUnit;
+import macro.EconomyModule;
 import unit.UnitManager;
-import unit.UnitRole;
-
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
 
 /**
  * TODO High Level:

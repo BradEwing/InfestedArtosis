@@ -10,7 +10,8 @@ import org.jetbrains.annotations.Nullable;
 // TODO: Refactor with type reflection?
 @Data
 public class PlannedItem {
-    public PlanType type;
+    private PlanType type;
+    private PlanState state;
 
     // Simple prioritization, will increment elsewhere
     private int priority;
@@ -30,6 +31,7 @@ public class PlannedItem {
         this.priority = priority;
         this.plannedUnit = unitType;
         this.type = isBuilding ? PlanType.BUILDING : PlanType.UNIT;
+        this.state = PlanState.PLANNED;
     }
 
     public PlannedItem(UnitType unitType, int priority, boolean isBuilding, TilePosition buildPosition) {

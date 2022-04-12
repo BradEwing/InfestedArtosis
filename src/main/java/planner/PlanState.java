@@ -2,8 +2,9 @@ package planner;
 
 public enum PlanState {
     PLANNED,
-    LARVA_ASSIGNED,
-    BUILDER_ASSIGNED,
+    SCHEDULE,
+    BUILDING,
     MORPHING,
+    CANCELLED,
     COMPLETE,
 }
