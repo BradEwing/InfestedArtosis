@@ -810,6 +810,10 @@ public class EconomyModule {
             }
         }
 
+        // TODO: onRenegade
+        if (unit.getType() == UnitType.Zerg_Extractor) {
+            geyserAssignments.put(unit, new HashSet<>());
+        }
         if (unit.getType() == UnitType.Zerg_Extractor) {
             geyserAssignments.put(unit, new HashSet<>());
             reservedMinerals -= 50; // TODO: This is a hacky workaround
