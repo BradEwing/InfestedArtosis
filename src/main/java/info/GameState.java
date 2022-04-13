@@ -17,8 +17,10 @@ public class GameState {
     private boolean enemyHasHostileFlyers = false;
 
     private HashSet<PlannedItem> plansNew = new HashSet<>();
+    private HashSet<PlannedItem> plansScheduled = new HashSet<>();
     private HashSet<PlannedItem> plansBuilding = new HashSet<>();
     private HashSet<PlannedItem> plansMorphing = new HashSet<>();
+    private HashSet<PlannedItem> plansComplete = new HashSet<>();
     private HashMap<Unit, PlannedItem> assignedPlannedItems = new HashMap<>();
 
     public GameState() {

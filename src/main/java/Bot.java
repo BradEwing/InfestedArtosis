@@ -4,6 +4,7 @@ import bwapi.Game;
 import bwapi.Unit;
 import bwapi.UnitType;
 import bwem.BWEM;
+import info.GameState;
 import info.InformationManager;
 import macro.EconomyModule;
 import unit.UnitManager;
@@ -27,6 +28,8 @@ public class Bot extends DefaultBWListener {
     private BWClient bwClient;
     private Game game;
 
+    private GameState gameState = new GameState();
+
     // TODO: Can I implement these classes as listeners and register them here? Cleans up Bot class!
     private DebugMap debugMap;
     private EconomyModule economyModule;
@@ -43,7 +46,7 @@ public class Bot extends DefaultBWListener {
 
         informationManager = new InformationManager(bwem, game);
         debugMap = new DebugMap(bwem, game);
-        economyModule = new EconomyModule(game, bwem); // TODO: reverse
+        economyModule = new EconomyModule(game, bwem, gameState); // TODO: reverse
         unitManager = new UnitManager(game, informationManager, bwem);
     }
 

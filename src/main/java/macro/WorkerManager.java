@@ -6,6 +6,7 @@ import bwapi.Position;
 import bwapi.TilePosition;
 import bwapi.Unit;
 import bwapi.UnitType;
+import info.GameState;
 import planner.PlannedItem;
 import unit.ManagedUnit;
 import unit.UnitRole;
@@ -18,6 +19,8 @@ import java.util.stream.Collectors;
 
 public class WorkerManager {
     private Game game;
+
+    private GameState gameState;
 
     private int mineralWorkers = 0;
     private int gasWorkers = 0;
@@ -35,8 +38,9 @@ public class WorkerManager {
     private HashSet<ManagedUnit> gatherers = new HashSet<>();
     private HashSet<ManagedUnit> larva = new HashSet<>();
 
-    public WorkerManager(Game game) {
+    public WorkerManager(Game game, GameState gameState) {
         this.game = game;
+        this.gameState = gameState;
     }
 
     public void onUnitComplete(ManagedUnit managedUnit) {
@@ -46,11 +50,15 @@ public class WorkerManager {
         }
     }
 
+    public void onUnitMorph(ManagedUnit managedUnit) {
+
+    }
+
     public void addMineral(Unit mineral) {
         mineralAssignments.put(mineral, new HashSet<>());
     }
 
-    public void assGeyser(Unit geyser) {
+    public void addGeyser(Unit geyser) {
         geyserAssignments.put(geyser, new HashSet<>());
     }
 
@@ -61,6 +69,14 @@ public class WorkerManager {
     public void removeGeyser(Unit geyser) {
 
     }
+
+    public void addManagedWorker(ManagedUnit managedUnit) {}
+
+    public void removeManagedWorker(ManagedUnit managedUnit) {
+
+    }
+
+    private void clearAssignments() {}
 
     // Initial assignment onUnitComplete
     private void assignWorker(ManagedUnit managedUnit) {
@@ -118,6 +134,73 @@ public class WorkerManager {
                 geyserUnits.add(unit);
                 break;
             }
+        }
+    }
+
+    private boolean assignBuildingItem(PlannedItem plannedItem) {
+        // TODO: Iterate through ManagedWorkers
+        for (Unit unit : self.getUnits()) {
+            if (unit.canBuild(plannedItem.getPlannedUnit()) && !gameState.getAssignedPlannedItems().containsKey(unit) && !builderAssignments.containsKey(unit)) {
+                clearAssignments(unit, false);
+                gameState.getAssignedPlannedItems().put(unit, plannedItem);
+                builderAssignments.put(unit, plannedUnit);
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // TODO: SCHEDULED -> BUILDING in WorkerManager
+    private boolean assignUnitItem(Player self, PlannedItem plannedItem) {
+
+        // Attempt to find a builder
+        // TODO: Iterate through Larva
+        for (Unit unit : self.getUnits()) {
+            UnitType unitType = unit.getType();
+            // If drone and not assigned, assign
+            if (unitType == UnitType.Zerg_Larva && !gameState.getAssignedPlannedItems().containsKey(unit)) {
+                gameState.getAssignedPlannedItems().put(unit, plannedItem);
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private void assignUnit(Unit unit) {
+        Player self = game.self();
+        if (unit.getPlayer() != self) {
+            return;
+        }
+
+        // TODO: Attempt to assign worker to closest hatch
+        //
+        // TODO: Sort geysers to unit, iterate until we find one available for assignment
+        // TODO: Sort minerals to unit, iterate until we find one available for assignment
+        if (unit.getType().isWorker() && !assignedWorkers.contains(unit)) {
+            // Assign 3 per geyser
+            if (gasWorkers < (3 * geyserAssignments.size())) {
+                for (Unit geyser: geyserAssignments.keySet()) {
+                    HashSet<Unit> geyserUnits = geyserAssignments.get(geyser);
+                    if (geyserUnits.size() < 3) {
+                        unit.gather(geyser);
+                        gasWorkers += 1;
+                        assignedWorkers.add(unit);
+                        geyserUnits.add(unit);
+                        break;
+                    }
+                }
+            } else {
+                if (mineralWorkers < (2 * mineralAssignments.size())) {
+                    assignMineral(unit);
+                }
+            }
+        }
+
+        // TODO: onRenegade
+        if (unit.getType() == UnitType.Zerg_Extractor) {
+            geyserAssignments.put(unit, new HashSet<>());
         }
     }
 }

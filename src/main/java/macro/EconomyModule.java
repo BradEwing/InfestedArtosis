@@ -13,6 +13,8 @@ import bwapi.UpgradeType;
 import bwem.BWEM;
 import bwem.Base;
 import bwem.Mineral;
+import info.GameState;
+import planner.PlanState;
 import planner.PlanType;
 import planner.PlannedItem;
 import planner.PlannedItemComparator;
@@ -39,6 +41,8 @@ public class EconomyModule {
     private Game game;
     private BWEM bwem; // TODO: This seems like a code smell?
     private Base mainBase; // TODO: Populate/track from info manager
+
+    private GameState gameState;
 
     // Track in GameState
     // isPlanning contingent on -> hitting min supply set by build order OR queue exhaust OR (MAYBE) enemy unit in base
@@ -89,11 +93,11 @@ public class EconomyModule {
 
     // TODO: Queue populated with an information manager / strategy planner
     private PriorityQueue<PlannedItem> productionQueue = new PriorityQueue<>(new PlannedItemComparator());
-    private HashMap<Unit, PlannedItem> assignedPlannedItems = new HashMap<>();
 
-    public EconomyModule(Game game, BWEM bwem) {
+    public EconomyModule(Game game, BWEM bwem, GameState gameState) {
         this.game = game;
         this.bwem = bwem;
+        this.gameState = gameState;
 
         List<PlannedItem> items = ninePoolSpeed();
         for (PlannedItem plannedItem: items) {
@@ -199,7 +203,8 @@ public class EconomyModule {
         int numDisplayed = 0;
         int x = 100;
         int y = 64;
-        for (PlannedItem plannedItem: assignedPlannedItems.values()) {
+        // TODO: Debug production queue in GameState
+        for (PlannedItem plannedItem: gameState.getAssignedPlannedItems().values()) {
             game.drawTextScreen(x, y, plannedItem.getName() + " " + plannedItem.getPriority(), Text.Green);
             y += 8;
             numDisplayed += 1;
@@ -298,8 +303,9 @@ public class EconomyModule {
         debug();
 
         planItems();
-        initiatePlannedItems();
-        buildItems();
+        schedulePlannedItems();
+        //buildItems();
+        buildUpgrades();
 
         for (Unit u: game.getAllUnits()) {
             if (u.getType().isWorker() && u.isIdle()) {
@@ -310,12 +316,6 @@ public class EconomyModule {
         for (Unit u: bases) {
             game.drawCircleMap(u.getPosition(), BASE_MINERAL_DISTANCE, Color.Teal);
         }
-    }
-
-    // TODO
-    // TODO: BIG
-    private void reassignPlan() {
-
     }
 
     private int expectedWorkers() {
@@ -485,7 +485,7 @@ public class EconomyModule {
     // TODO: Planned item priority on frame?
     //  - If failed to execute after X frames, increase priority value
     //  - Track number of retries per PlannedItem, continual failure can warrant dropping from queue entirely and/or exponential backoff
-    public void initiatePlannedItems() {
+    public void schedulePlannedItems() {
         Player self = game.self();
         int currentUnitAssignAttempts = 0; // accept 3 failures in planning
         int curPriority = productionQueue.peek().getPriority();
@@ -494,11 +494,10 @@ public class EconomyModule {
         // Call method to attempt to build that type, if we can't build return false and break the loop
         // TODO: What to do when current planned item can never be executed
 
-
         List<PlannedItem> requeuePlannedItems = new ArrayList<>();
         // TODO: Importance logic?
         for (int i = 0; i < productionQueue.size(); i++) {
-            boolean canAssign = false;
+            boolean canSchedule = false;
             // If we can't plan, we'll put it back on the queue
             // TODO: Queue backoff, prioritization
             final PlannedItem plannedItem = productionQueue.poll();
@@ -514,19 +513,19 @@ public class EconomyModule {
 
             switch (plannedItem.getType()) {
                 case BUILDING:
-                    canAssign = assignBuildingItem(self, plannedItem);
+                    canSchedule = scheduleBuildingItem(self, plannedItem);
                     break;
                 case UNIT:
                     if (currentUnitAssignAttempts < 3) {
-                        canAssign = assignUnitItem(self, plannedItem);
+                        canSchedule = scheduleUnitItem(self, plannedItem);
                     }
                     break;
                 case UPGRADE:
-                    canAssign = assignUpgradeItem(self, plannedItem);
+                    canSchedule = scheduleUpgradeItem(self, plannedItem);
                     break;
             }
 
-            if (!canAssign) {
+            if (!canSchedule) {
                 if (plannedItem.getType() == PlanType.UNIT) {
                     currentUnitAssignAttempts += 1;
                 }
@@ -541,116 +540,71 @@ public class EconomyModule {
         }
     }
 
-    public void buildItems() {
-        // If no items, exit
-        if (assignedPlannedItems.size() == 0) {
+    // TODO: Refactor this into a WorkerManager or Buildingmanager (TechManager)?
+    // These PlannedItems will not work through state machine in same way as Unit and Buildings
+    // This is a bit of a HACK until properly maintained
+    private void buildUpgrades() {
+        HashSet<PlannedItem> scheduledPlans = gameState.getPlansScheduled();
+        if (scheduledPlans.size() == 0) {
             return;
         }
 
         HashSet<Unit> unitsExecutingPlan = new HashSet<>();
+        List<Map.Entry<Unit, PlannedItem>> scheduledUpgradeAssignments = gameState.getAssignedPlannedItems().entrySet()
+                .stream()
+                .filter(assignment -> assignment.getValue().getType() == PlanType.UPGRADE)
+                .collect(Collectors.toList());
 
-        for (Map.Entry<Unit, PlannedItem> entry : assignedPlannedItems.entrySet()) {
-            boolean isPlanExecuted = false;
+        for (Map.Entry<Unit, PlannedItem> entry: scheduledUpgradeAssignments) {
             final Unit unit = entry.getKey();
             final PlannedItem plannedItem = entry.getValue();
-
-            switch (plannedItem.getType()) {
-                case UNIT:
-                    isPlanExecuted = morphUnit(unit, plannedItem);
-                    break;
-                case BUILDING:
-                    isPlanExecuted = buildBuilding(unit, plannedItem);
-                    break;
-                case UPGRADE:
-                    isPlanExecuted = buildUpgrade(unit, plannedItem);
-                    break;
-            }
-
-            if (isPlanExecuted) {
+            if (buildUpgrade(unit, plannedItem)) {
                 unitsExecutingPlan.add(unit);
+                scheduledPlans.remove(plannedItem);
+                plannedItem.setState(PlanState.BUILDING); // TODO: This is awkward
+                gameState.getPlansBuilding().add(plannedItem);
             }
         }
 
-        // Remove executing plans from assignedPlannedItems
+        // Remove executing plans from gameState.getAssignedPlannedItems()
         for (Iterator<Unit> it = unitsExecutingPlan.iterator(); it.hasNext(); ) {
             Unit u = it.next();
-            assignedPlannedItems.remove(u);
+            gameState.getAssignedPlannedItems().remove(u);
         }
-
     }
 
-    private boolean buildBuilding(Unit unit, PlannedItem plannedItem) {
+    private void plannedItemToMorphing(PlannedItem plannedItem) {
         final UnitType unitType = plannedItem.getPlannedUnit();
-        // If you do not have a build position, one will be assigned to you
-        if (plannedItem.getBuildPosition() == null) {
-            plannedItem.setBuildPosition(game.getBuildLocation(unitType, unit.getTilePosition()));
-        }
-        TilePosition buildTilePosition = plannedItem.getBuildPosition();
-        Position buildPosition = plannedItem.getBuildPosition().toPosition();
+        reservedMinerals -= unitType.mineralPrice();
+        reservedGas -= unitType.gasPrice();
+        plannedSupply = Math.max(0, plannedSupply - unitType.supplyProvided());
 
-        // TODO: Refactor into micro / unit management code
-        if (unit.getDistance(buildTilePosition.toPosition()) > 200 && (!unit.isMoving() || unit.isGatheringMinerals())) {
-            unit.move(buildPosition);
+        if (unitType == UnitType.Zerg_Drone) {
+            plannedWorkers -= 1;
         }
 
-        if (game.canMake(unitType, unit)) {
-
-            // Try to build
-            boolean didBuild = unit.build(unitType, buildTilePosition);
-            // If we failed to build, try to morph
-            if (!didBuild) {
-                didBuild = unit.morph(unitType);
-            }
-
-            if (!didBuild) {
-                // Try to get a new building location
-                plannedItem.setBuildPosition(game.getBuildLocation(unitType, unit.getTilePosition()));
-            }
-
+        // TODO: Execute this in own method w/ switch case
+        if (unitType == UnitType.Zerg_Hydralisk_Den) {
+            hasDen = true;
+            //hasPlannedDen = false; // only plan 1
+        } else if (unitType == UnitType.Zerg_Spawning_Pool) {
+            hasPool = true;
+            //hasPlannedPool = false; // TODO: set this when unit completes
+        } else if (unitType == UnitType.Zerg_Lair) {
+            hasLair = true;
+            //hasPlannedLair = false;
         }
 
-        // TODO: This needs to move, maybe only check workers that are in builderAssignments
-        // Listen on morph, or check assignments?
-        // Let this be a listener in EconModule (MacroManager)
-        if (unit.isMorphing() || unit.isBeingConstructed()) {
-            reservedMinerals -= unitType.mineralPrice();
-            reservedGas -= unitType.gasPrice();
-
-            // TODO: Execute this in own method w/ switch case
-            if (unitType == UnitType.Zerg_Hydralisk_Den) {
-                hasDen = true;
-                //hasPlannedDen = false; // only plan 1
-            } else if (unitType == UnitType.Zerg_Spawning_Pool) {
-                hasPool = true;
-                //hasPlannedPool = false; // TODO: set this when unit completes
-            } else if (unitType == UnitType.Zerg_Lair) {
-                hasLair = true;
-                //hasPlannedLair = false;
-            }
-
-            return true;
-        }
-
-        return false;
+        gameState.getPlansBuilding().remove(plannedItem);
+        plannedItem.setState(PlanState.MORPHING);
+        gameState.getPlansMorphing().add(plannedItem);
     }
 
-    private boolean morphUnit(Unit unit, PlannedItem plannedItem) {
-        final UnitType unitType = plannedItem.getPlannedUnit();
-        if (game.canMake(unitType, unit)) {
-            unit.morph(unitType);
-        }
-
-        if (unit.isMorphing()) {
-            reservedMinerals -= unitType.mineralPrice();
-            reservedGas -= unitType.gasPrice();
-            plannedSupply = Math.max(0, plannedSupply - unitType.supplyProvided());
-            if (unitType == UnitType.Zerg_Drone) {
-                plannedWorkers -= 1;
-            }
-            return true;
-        }
-
-        return false;
+    private void plannedItemToComplete(PlannedItem plannedItem) {
+        gameState.getPlansBuilding().remove(plannedItem);
+        gameState.getPlansMorphing().remove(plannedItem);
+        plannedItem.setState(PlanState.COMPLETE);
+        gameState.getPlansComplete().add(plannedItem);
     }
 
     // TODO: Handle in BuildingManager (ManagedUnits that are buildings. ManagedBuilding?)
@@ -668,36 +622,25 @@ public class EconomyModule {
         return false;
     }
 
-    private void reassignRole() {}
-
-    private void reassignToBuilder() {
-
-    }
-
-    private boolean assignBuildingItem(Player self, PlannedItem plannedItem) {
+    // PLANNED -> SCHEDULED
+    // This involves assigning
+    private boolean scheduleBuildingItem(Player self, PlannedItem plannedItem) {
         // Can we afford this unit?
         final UnitType plannedUnit = plannedItem.getPlannedUnit();
         final int mineralPrice = plannedItem.getPlannedUnit().mineralPrice();
         final int gasPrice = plannedItem.getPlannedUnit().gasPrice();
+
         if (self.minerals() - reservedMinerals < mineralPrice || gasPrice - reservedGas < gasPrice) {
             return false;
         }
 
-        for (Unit unit : self.getUnits()) {
-            if (unit.canBuild(plannedItem.getPlannedUnit()) && !assignedPlannedItems.containsKey(unit) && !builderAssignments.containsKey(unit)) {
-                clearAssignments(unit, false);
-                assignedPlannedItems.put(unit, plannedItem);
-                builderAssignments.put(unit, plannedUnit);
-                reservedMinerals += mineralPrice;
-                reservedGas += gasPrice;
-                return true;
-            }
-        }
-
-        return false;
+        reservedMinerals += mineralPrice;
+        reservedGas += gasPrice;
+        plannedItem.setState(PlanState.SCHEDULE);
+        return true;
     }
 
-    private boolean assignUnitItem(Player self, PlannedItem plannedItem) {
+    private boolean scheduleUnitItem(Player self, PlannedItem plannedItem) {
         // Can we afford this unit?
         final int mineralPrice = plannedItem.getPlannedUnit().mineralPrice();
         final int gasPrice = plannedItem.getPlannedUnit().gasPrice();
@@ -705,22 +648,13 @@ public class EconomyModule {
             return false;
         }
 
-        // Attempt to find a builder
-        for (Unit unit : self.getUnits()) {
-            UnitType unitType = unit.getType();
-            // If drone and not assigned, assign
-            if (unitType == UnitType.Zerg_Larva && !assignedPlannedItems.containsKey(unit)) {
-                assignedPlannedItems.put(unit, plannedItem);
-                reservedMinerals += mineralPrice;
-                reservedGas += gasPrice;
-                return true;
-            }
-        }
-
-        return false;
+        reservedMinerals += mineralPrice;
+        reservedGas += gasPrice;
+        plannedItem.setState(PlanState.SCHEDULE);
+        return true;
     }
 
-    private boolean assignUpgradeItem(Player self, PlannedItem plannedItem) {
+    private boolean scheduleUpgradeItem(Player self, PlannedItem plannedItem) {
         final UpgradeType upgrade = plannedItem.getPlannedUpgrade();
         final int mineralPrice = upgrade.mineralPrice();
         final int gasPrice = upgrade.gasPrice();
@@ -732,8 +666,9 @@ public class EconomyModule {
             UnitType unitType = unit.getType();
 
             //System.out.printf("assignUpgradeItem(), required: [%s], unitType: [%s] \n", upgrade.whatUpgrades(), unitType);
-            if (unitType == upgrade.whatUpgrades() && !assignedPlannedItems.containsKey(unit)) {
-                assignedPlannedItems.put(unit, plannedItem);
+            if (unitType == upgrade.whatUpgrades() && !gameState.getAssignedPlannedItems().containsKey(unit)) {
+                gameState.getAssignedPlannedItems().put(unit, plannedItem);
+                plannedItem.setState(PlanState.SCHEDULE);
                 reservedMinerals += mineralPrice;
                 reservedGas += gasPrice;
                 return true;
@@ -886,7 +821,7 @@ public class EconomyModule {
         // Extractor is weird
         if (unit.getType() == UnitType.Zerg_Drone && builderAssignments.containsKey(unit) && builderAssignments.get(unit) == UnitType.Zerg_Extractor) {
             clearAssignments(unit, false);
-            assignedPlannedItems.remove(unit);
+            gameState.getAssignedPlannedItems().remove(unit);
             return;
         }
         clearAssignments(unit, true);
@@ -907,52 +842,14 @@ public class EconomyModule {
             builderAssignments.remove(unit);
         }
 
-        if (assignedWorkers.contains(unit)) {
-            for (HashSet<Unit> workers: mineralAssignments.values()) {
-                if (workers.contains(unit)) {
-                    workers.remove(unit);
-                    mineralWorkers -= 1;
-                }
-            }
-            for (HashSet<Unit> workers: geyserAssignments.values()) {
-                if (workers.contains(unit)) {
-                    workers.remove(unit);
-                    gasWorkers -= 1;
-                }
-            }
-        }
-
-        // This is a mineral
-        if (mineralAssignments.containsKey(unit)) {
-            HashSet<Unit> mineralWorkers = mineralAssignments.get(unit);
-            List<Unit> workersToRemove = mineralWorkers.stream().collect(Collectors.toList());
-            for (Unit worker: workersToRemove) {
-                assignedWorkers.remove(worker);
-                mineralWorkers.remove(worker);
-                assignMineral(worker);
-            }
-
-            mineralAssignments.remove(unit);
-        }
-
-        // No idle gas workers after geyser destroyed
-        if (geyserAssignments.containsKey(unit)) {
-            HashSet<Unit> geyserWorkers = geyserAssignments.get(unit);
-            List<Unit> workersToRemove = geyserWorkers.stream().collect(Collectors.toList());
-            for (Unit worker: workersToRemove) {
-                assignedWorkers.remove(worker);
-                geyserWorkers.remove(worker);
-            }
-            geyserAssignments.remove(unit);
-        }
-
         // Requeue PlannedItems
         // Put item back onto the queue with greater importance
-        if (assignedPlannedItems.containsKey(unit) && shouldRequeue) {
-            PlannedItem plannedItem = assignedPlannedItems.get(unit);
+        if (gameState.getAssignedPlannedItems().containsKey(unit) && shouldRequeue) {
+            PlannedItem plannedItem = gameState.getAssignedPlannedItems().get(unit);
+            plannedItem.setState(PlanState.PLANNED);
             plannedItem.setPriority(plannedItem.getPriority()-1);
             productionQueue.add(plannedItem);
-            assignedPlannedItems.remove(unit);
+            gameState.getAssignedPlannedItems().remove(unit);
         }
     }
 }
