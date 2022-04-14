@@ -192,7 +192,7 @@ public class WorkerManager {
             if (!gameState.getAssignedPlannedItems().containsKey(unit) && !morphingUnit.contains(managedUnit)) {
                 clearAssignments(managedUnit);
                 plannedItem.setState(PlanState.BUILDING);
-                managedUnit.setRole(UnitRole.BUILD);
+                managedUnit.setRole(UnitRole.MORPH);
                 managedUnit.setPlannedItem(plannedItem);
                 gameState.getAssignedPlannedItems().put(unit, plannedItem);
                 return true;

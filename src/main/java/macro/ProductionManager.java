@@ -423,6 +423,7 @@ public class ProductionManager {
         // Call method to attempt to build that type, if we can't build return false and break the loop
         // TODO: What to do when current planned item can never be executed
 
+        HashSet<PlannedItem> scheduledPlans = gameState.getPlansScheduled();
         List<PlannedItem> requeuePlannedItems = new ArrayList<>();
         // TODO: Importance logic?
         for (int i = 0; i < productionQueue.size(); i++) {
@@ -459,6 +460,8 @@ public class ProductionManager {
                     currentUnitAssignAttempts += 1;
                 }
                 requeuePlannedItems.add(plannedItem);
+            } else {
+                scheduledPlans.add(plannedItem);
             }
         }
 
