@@ -15,6 +15,7 @@ import planner.PlannedItem;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import static bwta.BWTA.getShortestPath;
 import static util.Filter.closestHostileUnit;
@@ -184,6 +185,7 @@ public class ManagedUnit {
         unit.gather(gatherTarget);
     }
 
+    // Attempt build or morph
     private void build() {
         if (unit.isBeingConstructed() || unit.isMorphing()) return;
         if (!isReady) return;
@@ -219,6 +221,7 @@ public class ManagedUnit {
 
     private void morph() {
         if (!isReady) return;
+        if (unit.isMorphing()) return;
 
         final UnitType unitType = plannedItem.getPlannedUnit();
         if (game.canMake(unitType, unit)) {
@@ -344,6 +347,15 @@ public class ManagedUnit {
     }
 
     public void assignBuilder(PlannedItem buildingPlan) {
+
+    }
+
+    // TODO: Refactor into debug role
+    private void debugBuildingAssignments() {
+
+        UnitType building = plannedItem.getPlannedUnit();
+        Position unitPosition = unit.getPosition();
+        game.drawTextMap(unitPosition, "BUILDER: " + building.toString(), Text.White);
 
     }
 }

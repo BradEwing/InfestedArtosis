@@ -1,18 +1,19 @@
 package macro;
 
 import bwapi.Game;
-import bwapi.Player;
-import bwapi.Position;
+import bwapi.Text;
 import bwapi.TilePosition;
 import bwapi.Unit;
 import bwapi.UnitType;
-import info.GameState;
+import planner.PlanState;
+import planner.PlanType;
+import state.GameState;
 import planner.PlannedItem;
 import unit.ManagedUnit;
 import unit.UnitRole;
 import util.UnitDistanceComparator;
 
-import java.util.HashMap;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -22,74 +23,106 @@ public class WorkerManager {
 
     private GameState gameState;
 
-    private int mineralWorkers = 0;
-    private int gasWorkers = 0;
-
-    private HashMap<Unit, HashSet<Unit>> geyserAssignments = new HashMap<>();
-    private HashMap<Unit, HashSet<Unit>> mineralAssignments = new HashMap<>();
-    private HashMap<Unit, UnitType> builderAssignments = new HashMap<>();
-
-    private HashMap<Unit, PlannedItem> assignedPlannedItems = new HashMap<>();
-
-
-    private HashSet<Unit> assignedWorkers = new HashSet<>();
-
     private HashSet<ManagedUnit> assignedManagedWorkers = new HashSet<>();
     private HashSet<ManagedUnit> gatherers = new HashSet<>();
     private HashSet<ManagedUnit> larva = new HashSet<>();
+    private HashSet<ManagedUnit> morphingUnit = new HashSet<>();
 
     public WorkerManager(Game game, GameState gameState) {
         this.game = game;
         this.gameState = gameState;
     }
 
+    public void onFrame() {
+        assignScheduledPlannedItems();
+    }
+
     public void onUnitComplete(ManagedUnit managedUnit) {
         // Assign larva, drones
-        if (managedUnit.getRole() == UnitRole.MORPH) {
+        UnitType unitType = managedUnit.getUnitType();
+        if (unitType == UnitType.Zerg_Drone) {
             assignWorker(managedUnit);
+            return;
+        }
+
+        if (unitType == UnitType.Zerg_Larva) {
+            larva.add(managedUnit);
+            return;
         }
     }
 
     public void onUnitMorph(ManagedUnit managedUnit) {
-
+        clearAssignments(managedUnit);
+        morphingUnit.add(managedUnit);
     }
 
-    public void addMineral(Unit mineral) {
-        mineralAssignments.put(mineral, new HashSet<>());
+
+    public void addManagedWorker(ManagedUnit managedUnit) {
+        assignWorker(managedUnit);
     }
 
-    public void addGeyser(Unit geyser) {
-        geyserAssignments.put(geyser, new HashSet<>());
-    }
-
-    public void removeMineral(Unit mineral) {
-
-    }
-
-    public void removeGeyser(Unit geyser) {
-
-    }
-
-    public void addManagedWorker(ManagedUnit managedUnit) {}
-
+    // onUnitDestroy OR worker is being reassigned to non-worker role
     public void removeManagedWorker(ManagedUnit managedUnit) {
-
+        clearAssignments(managedUnit);
     }
 
-    private void clearAssignments() {}
+    private void assignScheduledPlannedItems() {
+        HashSet<PlannedItem> scheduledPlans = gameState.getPlansScheduled();
+        List<PlannedItem> assignedPlans = new ArrayList<>();
+        for (PlannedItem plannedItem: scheduledPlans) {
+            boolean didAssign = false;
+            if (plannedItem.getType() == PlanType.BUILDING) {
+                didAssign = assignMorphDrone(plannedItem);
+            } else if (plannedItem.getType() == PlanType.UNIT) {
+                didAssign = assignMorphLarva(plannedItem);
+            }
+
+            if (didAssign) {
+                assignedPlans.add(plannedItem);
+            }
+        }
+
+        HashSet<PlannedItem> buildingPlans = gameState.getPlansBuilding();
+        for (PlannedItem plannedItem: assignedPlans) {
+            scheduledPlans.remove(plannedItem);
+            buildingPlans.add(plannedItem);
+        }
+    }
+
+    private void clearAssignments(ManagedUnit managedUnit) {
+        if (assignedManagedWorkers.contains(managedUnit)) {
+            for (HashSet<ManagedUnit> mineralWorkers: gameState.getMineralAssignments().values()) {
+                if (mineralWorkers.contains(managedUnit)) {
+                    gameState.setMineralWorkers(gameState.getMineralWorkers()-1);
+                    mineralWorkers.remove(managedUnit);
+                }
+            }
+            for (HashSet<ManagedUnit> geyserWorkers: gameState.getGeyserAssignments().values()) {
+                if (geyserWorkers.contains(managedUnit)) {
+                    gameState.setGeyserWorkers(gameState.getGeyserWorkers()-1);
+                    geyserWorkers.remove(managedUnit);
+                }
+            }
+        }
+
+        larva.remove(managedUnit);
+        gatherers.remove(managedUnit);
+        assignedManagedWorkers.remove(managedUnit);
+        morphingUnit.remove(managedUnit);
+    }
 
     // Initial assignment onUnitComplete
+    //
     private void assignWorker(ManagedUnit managedUnit) {
         // Assign 3 per geyser
-        if (gasWorkers < (3 * geyserAssignments.size())) {
+        if (gameState.getGeyserWorkers() < (3 * gameState.getGeyserAssignments().size())) {
             assignGeyser(managedUnit);
             return;
         }
-        if (mineralWorkers < (2 * mineralAssignments.size())) {
+        if (gameState.getMineralWorkers() < (2 * gameState.getMineralAssignments().size())) {
             assignMineral(managedUnit);
             return;
         }
-
     }
 
     private void assignMineral(ManagedUnit managedUnit) {
@@ -98,52 +131,53 @@ public class WorkerManager {
         // Gather all mineral patches, sort by distance
         // For each, check for patch with the least amount of workers
         int fewestMineralAssignments;
-        if (mineralWorkers == 0) {
+        if (gameState.getMineralWorkers() == 0) {
             fewestMineralAssignments = 0;
         } else {
-            fewestMineralAssignments = mineralAssignments.size() / mineralWorkers <= 0.5 ? 1 : 0;
+            fewestMineralAssignments = gameState.getMineralAssignments().size() / gameState.getMineralWorkers() <= 0.5 ? 1 : 0;
         }
-        List<Unit> claimedMinerals = mineralAssignments.keySet().stream().collect(Collectors.toList());
+        List<Unit> claimedMinerals = gameState.getMineralAssignments().keySet().stream().collect(Collectors.toList());
         claimedMinerals.sort(new UnitDistanceComparator(unit));
 
         for (Unit mineral: claimedMinerals) {
-            HashSet<Unit> mineralUnits = mineralAssignments.get(mineral);
+            HashSet<ManagedUnit> mineralUnits = gameState.getMineralAssignments().get(mineral);
             if (mineralUnits.size() == fewestMineralAssignments) {
                 managedUnit.setRole(UnitRole.GATHER);
                 managedUnit.setGatherTarget(mineral);
                 assignedManagedWorkers.add(managedUnit);
-                mineralWorkers += 1;
-                assignedWorkers.add(unit);
-                mineralUnits.add(unit);
+                gameState.setMineralWorkers(gameState.getMineralWorkers()+1);
+                mineralUnits.add(managedUnit);
+                gatherers.add(managedUnit);
                 break;
             }
         }
     }
 
-    // TODO: pass ManagedUnit?
+    // TODO: Assign closest geyser
     private void assignGeyser(ManagedUnit managedUnit) {
-        Unit unit = managedUnit.getUnit();
-        for (Unit geyser: geyserAssignments.keySet()) {
-            HashSet<Unit> geyserUnits = geyserAssignments.get(geyser);
+        for (Unit geyser: gameState.getGeyserAssignments().keySet()) {
+            HashSet<ManagedUnit> geyserUnits = gameState.getGeyserAssignments().get(geyser);
             if (geyserUnits.size() < 3) {
                 managedUnit.setRole(UnitRole.GATHER);
                 managedUnit.setGatherTarget(geyser);
                 assignedManagedWorkers.add(managedUnit);
-                gasWorkers += 1;
-                assignedWorkers.add(unit);
-                geyserUnits.add(unit);
+                gameState.setGeyserWorkers(gameState.getGeyserWorkers()+1);
+                geyserUnits.add(managedUnit);
+                gatherers.add(managedUnit);
                 break;
             }
         }
     }
 
-    private boolean assignBuildingItem(PlannedItem plannedItem) {
-        // TODO: Iterate through ManagedWorkers
-        for (Unit unit : self.getUnits()) {
-            if (unit.canBuild(plannedItem.getPlannedUnit()) && !gameState.getAssignedPlannedItems().containsKey(unit) && !builderAssignments.containsKey(unit)) {
-                clearAssignments(unit, false);
+    private boolean assignMorphDrone(PlannedItem plannedItem) {
+        for (ManagedUnit managedUnit : assignedManagedWorkers) {
+            Unit unit = managedUnit.getUnit();
+            if (unit.canBuild(plannedItem.getPlannedUnit()) && !gameState.getAssignedPlannedItems().containsKey(unit)) {
+                clearAssignments(managedUnit);
+                plannedItem.setState(PlanState.BUILDING);
+                managedUnit.setRole(UnitRole.BUILD);
+                managedUnit.setPlannedItem(plannedItem);
                 gameState.getAssignedPlannedItems().put(unit, plannedItem);
-                builderAssignments.put(unit, plannedUnit);
                 return true;
             }
         }
@@ -151,15 +185,15 @@ public class WorkerManager {
         return false;
     }
 
-    // TODO: SCHEDULED -> BUILDING in WorkerManager
-    private boolean assignUnitItem(Player self, PlannedItem plannedItem) {
-
-        // Attempt to find a builder
-        // TODO: Iterate through Larva
-        for (Unit unit : self.getUnits()) {
-            UnitType unitType = unit.getType();
+    private boolean assignMorphLarva(PlannedItem plannedItem) {
+        for (ManagedUnit managedUnit : larva) {
+            Unit unit = managedUnit.getUnit();
             // If drone and not assigned, assign
-            if (unitType == UnitType.Zerg_Larva && !gameState.getAssignedPlannedItems().containsKey(unit)) {
+            if (!gameState.getAssignedPlannedItems().containsKey(unit) && !morphingUnit.contains(managedUnit)) {
+                clearAssignments(managedUnit);
+                plannedItem.setState(PlanState.BUILDING);
+                managedUnit.setRole(UnitRole.BUILD);
+                managedUnit.setPlannedItem(plannedItem);
                 gameState.getAssignedPlannedItems().put(unit, plannedItem);
                 return true;
             }
@@ -168,39 +202,13 @@ public class WorkerManager {
         return false;
     }
 
-    private void assignUnit(Unit unit) {
-        Player self = game.self();
-        if (unit.getPlayer() != self) {
-            return;
-        }
 
-        // TODO: Attempt to assign worker to closest hatch
-        //
-        // TODO: Sort geysers to unit, iterate until we find one available for assignment
-        // TODO: Sort minerals to unit, iterate until we find one available for assignment
-        if (unit.getType().isWorker() && !assignedWorkers.contains(unit)) {
-            // Assign 3 per geyser
-            if (gasWorkers < (3 * geyserAssignments.size())) {
-                for (Unit geyser: geyserAssignments.keySet()) {
-                    HashSet<Unit> geyserUnits = geyserAssignments.get(geyser);
-                    if (geyserUnits.size() < 3) {
-                        unit.gather(geyser);
-                        gasWorkers += 1;
-                        assignedWorkers.add(unit);
-                        geyserUnits.add(unit);
-                        break;
-                    }
-                }
-            } else {
-                if (mineralWorkers < (2 * mineralAssignments.size())) {
-                    assignMineral(unit);
-                }
-            }
-        }
-
-        // TODO: onRenegade
-        if (unit.getType() == UnitType.Zerg_Extractor) {
-            geyserAssignments.put(unit, new HashSet<>());
+    // TODO: display this as a counter on the existing base
+    // TODO: There's a bug where initial workers aren't assigned
+    private void debugMineralPatches() {
+        for (Unit mineral: gameState.getMineralAssignments().keySet()) {
+            TilePosition tilePosition = mineral.getTilePosition();
+            game.drawTextMap(tilePosition.getX() * 32, tilePosition.getY() * 32, String.valueOf(gameState.getMineralAssignments().get(mineral).size()), Text.Yellow);
         }
     }
 }

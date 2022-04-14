@@ -7,5 +7,6 @@ public enum UnitRole {
     BUILD,
     IDLE,
     MORPH,
+    LARVA,
     SCREEN, // Soak up damage on the front and detect non visible units
 }
