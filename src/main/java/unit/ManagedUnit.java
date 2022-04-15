@@ -279,6 +279,7 @@ public class ManagedUnit {
         if (unit.isAttacking()) {
             return;
         }
+        setUnready();
         // Our fight target is no longer visible, drop in favor of fight target position
         if (fightTarget != null && fightTarget.getType() == UnitType.Unknown) {
             fightTarget = null;
@@ -288,7 +289,7 @@ public class ManagedUnit {
             return;
         }
 
-        if (game.isVisible(movementTargetPosition)) {
+        if (movementTargetPosition != null && game.isVisible(movementTargetPosition)) {
             movementTargetPosition = null;
         }
         // TODO: determine if Units may get stuck infitely trying to approach fightTargetPosition
@@ -297,7 +298,6 @@ public class ManagedUnit {
             return;
         }
 
-        setUnready();
         //System.out.printf("FightTarget is null, frame: [%s], unitType: [%s]\n", game.getFrameCount(), unit.getType());
         role = UnitRole.IDLE;
         return;

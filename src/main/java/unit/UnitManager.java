@@ -213,6 +213,7 @@ public class UnitManager {
 
         if (unit.getType() != managedUnit.getUnitType()) {
             managedUnit.setUnitType(unit.getType());
+            managedUnit.setRole(UnitRole.IDLE);
         }
         workerManager.onUnitMorph(managedUnit);
     }

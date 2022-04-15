@@ -16,7 +16,7 @@ public class PlannedItem {
     private String uuid = UUID.randomUUID().toString();
 
     private PlanType type;
-    private PlanState state;
+    private PlanState state = PlanState.PLANNED;
 
     // Simple prioritization, will increment elsewhere
     private int priority;
@@ -36,7 +36,6 @@ public class PlannedItem {
         this.priority = priority;
         this.plannedUnit = unitType;
         this.type = isBuilding ? PlanType.BUILDING : PlanType.UNIT;
-        this.state = PlanState.PLANNED;
     }
 
     public PlannedItem(UnitType unitType, int priority, boolean isBuilding, TilePosition buildPosition) {

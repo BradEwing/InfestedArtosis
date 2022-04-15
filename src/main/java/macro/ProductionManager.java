@@ -89,7 +89,7 @@ public class ProductionManager {
         this.bwem = bwem;
         this.gameState = gameState;
 
-        List<PlannedItem> items = ninePoolSpeed();
+        List<PlannedItem> items = ninePoolTwelveHatch();
         for (PlannedItem plannedItem: items) {
             productionQueue.add(plannedItem);
         }
@@ -195,11 +195,11 @@ public class ProductionManager {
             return;
         }
 
-        productionQueue.add(new PlannedItem(UnitType.Zerg_Hatchery, currentPriority, true, base.getLocation()));
+        productionQueue.add(new PlannedItem(UnitType.Zerg_Hatchery, currentPriority-1, true, base.getLocation()));
         baseLocations.add(base);
     }
 
-    private List<PlannedItem> ninePoolSpeed() {
+    private List<PlannedItem> ninePoolTwelveHatch() {
         List<PlannedItem> list = new ArrayList<>();
         list.add(new PlannedItem(UnitType.Zerg_Drone, 0, false));
         list.add(new PlannedItem(UnitType.Zerg_Drone, 0, false));
@@ -208,11 +208,10 @@ public class ProductionManager {
         list.add(new PlannedItem(UnitType.Zerg_Drone, 0, false));
         list.add(new PlannedItem(UnitType.Zerg_Spawning_Pool, 1, true));
         list.add(new PlannedItem(UnitType.Zerg_Overlord, 2, false));
-        list.add(new PlannedItem(UnitType.Zerg_Extractor, 3, true));
-        list.add(new PlannedItem(UnitType.Zerg_Drone, 3, false));
-        list.add(new PlannedItem(UnitType.Zerg_Zergling, 4, false));
-        list.add(new PlannedItem(UnitType.Zerg_Zergling, 4, false));
-        list.add(new PlannedItem(UnitType.Zerg_Zergling, 4, false));
+        list.add(new PlannedItem(UnitType.Zerg_Zergling, 3, false));
+        list.add(new PlannedItem(UnitType.Zerg_Zergling, 3, false));
+        list.add(new PlannedItem(UnitType.Zerg_Zergling, 3, false));
+        list.add(new PlannedItem(UnitType.Zerg_Hatchery, 4, true));
         return list;
     }
 
@@ -254,7 +253,7 @@ public class ProductionManager {
     }
 
     private int numWorkers() {
-        return mineralWorkers + gasWorkers;
+        return gameState.getMineralWorkers() + gameState.getGeyserWorkers();
     }
 
     private void planItems() {
@@ -318,12 +317,14 @@ public class ProductionManager {
         // TODO: Sunken Colonies
         // For now, plan 2 sunkens per base we take
         // Give them high priority, macro tends to be strong
+        /*
         if (numSunkens < (bases.size())) {
             productionQueue.add(new PlannedItem(UnitType.Zerg_Creep_Colony, currentPriority-2, true));
             productionQueue.add(new PlannedItem(UnitType.Zerg_Sunken_Colony, currentPriority-1, true));
             // TODO: Track Planned + Actually built rather than here
             numSunkens += 1;
         }
+         */
 
         // TODO: Spore Colonies
 
