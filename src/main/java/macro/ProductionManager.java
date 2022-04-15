@@ -665,7 +665,7 @@ public class ProductionManager {
             plannedItemToMorphing(plannedItem);
         }
 
-        clearAssignments(unit, false);
+        clearAssignments(unit);
     }
 
     public void onUnitRenegade(Unit unit) {
@@ -677,9 +677,10 @@ public class ProductionManager {
         if (unit.getType() == UnitType.Zerg_Extractor) {
             reservedMinerals -= UnitType.Zerg_Extractor.mineralPrice();
             reservedGas -= UnitType.Zerg_Extractor.gasPrice();
-            clearAssignments(unit, false);
-            plannedItemToComplete(gameState.getAssignedPlannedItems().get(unit));
-            gameState.getAssignedPlannedItems().remove(unit);
+            clearAssignments(unit);
+            // BUG: It seems that the unit passed here is the extractor, drone was destroyed
+            //plannedItemToComplete(gameState.getAssignedPlannedItems().get(unit));
+            //gameState.getAssignedPlannedItems().remove(unit);
         }
     }
 
@@ -689,28 +690,39 @@ public class ProductionManager {
             return;
         }
 
-        clearAssignments(unit, true);
+        clearAssignments(unit);
     }
 
     /**
      * Remove a unit from all data stores
      *
      * @param unit unit to remove
-     * @param shouldRequeue flag to reassign a plannedItem if one was assigned
      */
-    private void clearAssignments(Unit unit, boolean shouldRequeue) {
+    // TODO: COMPLETE vs Requeue logic
+    private void clearAssignments(Unit unit) {
         if (bases.contains(unit)) {
             bases.remove(unit);
         }
 
+
         // Requeue PlannedItems
         // Put item back onto the queue with greater importance
-        if (gameState.getAssignedPlannedItems().containsKey(unit) && shouldRequeue) {
+        if (gameState.getAssignedPlannedItems().containsKey(unit)) {
             PlannedItem plannedItem = gameState.getAssignedPlannedItems().get(unit);
-            plannedItem.setState(PlanState.PLANNED);
-            plannedItem.setPriority(plannedItem.getPriority()-1);
-            productionQueue.add(plannedItem);
+            // TODO: Bit of a hack, need to handle cancel logic
+            // This is because clearAssignments() requeues if plannedItem state is not complete
+            plannedItemToComplete(plannedItem);
+        }
+
+        /*
+        if (gameState.getAssignedPlannedItems().containsKey(unit)) {
+            PlannedItem plannedItem = gameState.getAssignedPlannedItems().get(unit);
+            if (plannedItem.getState() != PlanState.COMPLETE) {
+                plannedItem.setPriority(plannedItem.getPriority()-1);
+                productionQueue.add(plannedItem);
+            }
             gameState.getAssignedPlannedItems().remove(unit);
         }
+         */
     }
 }

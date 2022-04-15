@@ -76,7 +76,7 @@ public class UnitManager {
 
     public void onFrame() {
         // Wait a frame to let WorkerManager assign roles
-        if (game.getFrameCount() < 2) {
+        if (game.getFrameCount() < 1) {
             return;
         }
 
@@ -124,12 +124,59 @@ public class UnitManager {
         }
     }
 
+    public void onUnitShow(Unit unit) {
+        if (unit.getPlayer() != game.self()) {
+            return;
+        }
+
+        if (unit.getType() == UnitType.Zerg_Larva && !managedUnitLookup.containsKey(unit)) {
+            ManagedUnit managedUnit = createManagedUnit(unit, UnitRole.LARVA);
+            workerManager.onUnitComplete(managedUnit);
+            return;
+        }
+
+        // For now, return early if drone or building
+        UnitType unitType = unit.getType();
+        // TODO: Buildings, why not? Useful when tracking precise morphs
+        // TODO: Building planner
+        if (unitType.isBuilding()) {
+            return;
+        }
+
+        // Consider case where we are already tracking the unit that morphed
+        // TODO: handle case where managed unit type has changed
+        if (managedUnitLookup.containsKey(unit)) {
+            return;
+        }
+
+        // Assign scouts if we don't know where enemy is
+        if (unitType == UnitType.Zerg_Drone || unitType == UnitType.Zerg_Larva) {
+            ManagedUnit managedWorker = new ManagedUnit(game, unit, UnitRole.IDLE);
+            workerManager.onUnitComplete(managedWorker);
+        } else if (unitType == UnitType.Zerg_Overlord || informationManager.getEnemyBuildings().size() + informationManager.getEnemyUnits().size() == 0) {
+            createScout(unit);
+        } else {
+            ManagedUnit managedFighter = new ManagedUnit(game, unit, UnitRole.FIGHT);
+            assignClosestEnemyToManagedUnit(managedFighter);
+            managedUnitLookup.put(unit, managedFighter);
+            managedUnits.add(managedFighter);
+            return;
+
+        }
+    }
+
     public void onUnitComplete(Unit unit) {
         // For now, return early if drone or building
         UnitType unitType = unit.getType();
         // TODO: Buildings, why not? Useful when tracking precise morphs
         // TODO: Building planner
-        if (unitType == UnitType.Zerg_Drone || unitType.isBuilding()) {
+        if (unitType.isBuilding()) {
+            return;
+        }
+
+        // Consider case where we are already tracking the unit that morphed
+        // TODO: handle case where managed unit type has changed
+        if (managedUnitLookup.containsKey(unit)) {
             return;
         }
 
@@ -158,7 +205,20 @@ public class UnitManager {
     }
 
     public void onUnitMorph(Unit unit) {
+        if (unit.getType() == UnitType.Zerg_Larva && !managedUnitLookup.containsKey(unit)) {
+            workerManager.onUnitComplete(createManagedUnit(unit, UnitRole.LARVA));
+            return;
+        }
+
+        if (!managedUnitLookup.containsKey(unit)) {
+            return;
+        }
+
         ManagedUnit managedUnit = managedUnitLookup.get(unit);
+
+        if (unit.getType() != managedUnit.getUnitType()) {
+            managedUnit.setUnitType(unit.getType());
+        }
         workerManager.onUnitMorph(managedUnit);
     }
 
@@ -191,6 +251,13 @@ public class UnitManager {
         if (enemyUnits.size() > 0) {
             managedUnit.assignClosestEnemyAsFightTarget(enemyUnits);
         }
+    }
+
+    private ManagedUnit createManagedUnit(Unit unit, UnitRole role) {
+        ManagedUnit managedUnit = new ManagedUnit(game, unit, role);
+        managedUnitLookup.put(unit, managedUnit);
+        managedUnits.add(managedUnit);
+        return managedUnit;
     }
 
     private void reassignToScout(ManagedUnit managedUnit) {

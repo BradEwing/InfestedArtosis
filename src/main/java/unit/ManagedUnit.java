@@ -37,7 +37,6 @@ public class ManagedUnit {
     private TilePosition currentStepToTarget;
 
     private Unit fightTarget;
-    private Position buildTarget; // TODO: Should this become movementTargetPosition?
     private Unit gatherTarget;
     // PlannedItem this unit is assigned to
     private PlannedItem plannedItem;
@@ -190,27 +189,35 @@ public class ManagedUnit {
         if (unit.isBeingConstructed() || unit.isMorphing()) return;
         if (!isReady) return;
 
+        UnitType plannedUnitType = plannedItem.getPlannedUnit();
+
+        if (plannedItem.getBuildPosition() == null) {
+            TilePosition buildLocation = game.getBuildLocation(plannedUnitType, unit.getTilePosition());
+            plannedItem.setBuildPosition(buildLocation);
+        }
+
+        Position buildTarget = plannedItem.getBuildPosition().toPosition();
         if (unit.getDistance(buildTarget) > 200 && (!unit.isMoving() || unit.isGatheringMinerals())) {
             setUnready();
             unit.move(buildTarget);
             return;
         }
 
-        if (game.canMake(unitType, unit)) {
+        if (game.canMake(plannedUnitType, unit)) {
             // Try to build
             // TODO: Maybe only check the units we assigned to build, after so many frames we can try to reassign
             //   - Maybe the PlannedItems are tracked in a higher level state, and their status is updated at the higher level
             //   - A PlannedItem marked as complete would then be removed from the bot (careful consideration to be sure it's removed everywhere)
             setUnready();
-            boolean didBuild = unit.build(unitType, buildTarget.toTilePosition());
+            boolean didBuild = unit.build(plannedUnitType, buildTarget.toTilePosition());
             // If we failed to build, try to morph
             if (!didBuild) {
-                didBuild = unit.morph(unitType);
+                didBuild = unit.morph(plannedUnitType);
             }
 
             if (!didBuild) {
                 // Try to get a new building location
-                plannedItem.setBuildPosition(game.getBuildLocation(unitType, unit.getTilePosition()));
+                plannedItem.setBuildPosition(game.getBuildLocation(plannedUnitType, unit.getTilePosition()));
             }
 
             if (didBuild) {

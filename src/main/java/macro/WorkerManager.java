@@ -26,7 +26,6 @@ public class WorkerManager {
     private HashSet<ManagedUnit> assignedManagedWorkers = new HashSet<>();
     private HashSet<ManagedUnit> gatherers = new HashSet<>();
     private HashSet<ManagedUnit> larva = new HashSet<>();
-    private HashSet<ManagedUnit> morphingUnit = new HashSet<>();
 
     public WorkerManager(Game game, GameState gameState) {
         this.game = game;
@@ -53,7 +52,9 @@ public class WorkerManager {
 
     public void onUnitMorph(ManagedUnit managedUnit) {
         clearAssignments(managedUnit);
-        morphingUnit.add(managedUnit);
+        if (managedUnit.getUnitType() == UnitType.Zerg_Drone) {
+            assignWorker(managedUnit);
+        }
     }
 
 
@@ -108,7 +109,6 @@ public class WorkerManager {
         larva.remove(managedUnit);
         gatherers.remove(managedUnit);
         assignedManagedWorkers.remove(managedUnit);
-        morphingUnit.remove(managedUnit);
     }
 
     // Initial assignment onUnitComplete
@@ -123,6 +123,9 @@ public class WorkerManager {
             assignMineral(managedUnit);
             return;
         }
+
+        assignedManagedWorkers.add(managedUnit);
+        managedUnit.setRole(UnitRole.IDLE);
     }
 
     private void assignMineral(ManagedUnit managedUnit) {
@@ -189,7 +192,7 @@ public class WorkerManager {
         for (ManagedUnit managedUnit : larva) {
             Unit unit = managedUnit.getUnit();
             // If drone and not assigned, assign
-            if (!gameState.getAssignedPlannedItems().containsKey(unit) && !morphingUnit.contains(managedUnit)) {
+            if (!gameState.getAssignedPlannedItems().containsKey(unit)) {
                 clearAssignments(managedUnit);
                 plannedItem.setState(PlanState.BUILDING);
                 managedUnit.setRole(UnitRole.MORPH);

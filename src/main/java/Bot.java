@@ -66,6 +66,11 @@ public class Bot extends DefaultBWListener {
     }
 
     @Override
+    public void onUnitShow(Unit unit) {
+        unitManager.onUnitShow(unit);
+    }
+
+    @Override
     public void onUnitComplete(Unit unit) {
         if (unit.getPlayer() != game.self()) {
             return;
@@ -76,7 +81,7 @@ public class Bot extends DefaultBWListener {
 
         informationManager.onUnitComplete(unit);
         economyModule.onUnitComplete(unit);
-        unitManager.onUnitComplete(unit);
+        //unitManager.onUnitComplete(unit);
     }
 
     @Override
