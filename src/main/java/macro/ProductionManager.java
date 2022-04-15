@@ -18,6 +18,7 @@ import planner.PlannedItem;
 import planner.PlannedItemComparator;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -200,7 +201,6 @@ public class ProductionManager {
 
     private List<PlannedItem> ninePoolSpeed() {
         List<PlannedItem> list = new ArrayList<>();
-        list.add(new PlannedItem(UnitType.Zerg_Drone, 0, false));
         list.add(new PlannedItem(UnitType.Zerg_Drone, 0, false));
         list.add(new PlannedItem(UnitType.Zerg_Drone, 0, false));
         list.add(new PlannedItem(UnitType.Zerg_Drone, 0, false));
@@ -424,6 +424,14 @@ public class ProductionManager {
         // TODO: What to do when current planned item can never be executed
 
         HashSet<PlannedItem> scheduledPlans = gameState.getPlansScheduled();
+        if (scheduledPlans.size() > 1) {
+            List<PlannedItem> sortedScheduledPlans = scheduledPlans.stream().collect(Collectors.toList());
+            Collections.sort(sortedScheduledPlans, new PlannedItemComparator());
+            int schedulePriority = sortedScheduledPlans.get(0).getPriority();
+            curPriority = Math.min(curPriority, schedulePriority);
+        }
+
+
         List<PlannedItem> requeuePlannedItems = new ArrayList<>();
         // TODO: Importance logic?
         for (int i = 0; i < productionQueue.size(); i++) {
@@ -534,11 +542,12 @@ public class ProductionManager {
         gameState.getPlansMorphing().add(plannedItem);
     }
 
-    private void plannedItemToComplete(PlannedItem plannedItem) {
+    private void plannedItemToComplete(Unit unit, PlannedItem plannedItem) {
         gameState.getPlansBuilding().remove(plannedItem);
         gameState.getPlansMorphing().remove(plannedItem);
         plannedItem.setState(PlanState.COMPLETE);
         gameState.getPlansComplete().add(plannedItem);
+        gameState.getAssignedPlannedItems().remove(unit);
     }
 
     // TODO: Handle in BuildingManager (ManagedUnits that are buildings. ManagedBuilding?)
@@ -711,7 +720,7 @@ public class ProductionManager {
             PlannedItem plannedItem = gameState.getAssignedPlannedItems().get(unit);
             // TODO: Bit of a hack, need to handle cancel logic
             // This is because clearAssignments() requeues if plannedItem state is not complete
-            plannedItemToComplete(plannedItem);
+            plannedItemToComplete(unit, plannedItem);
         }
 
         /*

@@ -179,21 +179,6 @@ public class UnitManager {
         if (managedUnitLookup.containsKey(unit)) {
             return;
         }
-
-        // Assign scouts if we don't know where enemy is
-        if (unitType == UnitType.Zerg_Drone || unitType == UnitType.Zerg_Larva) {
-            ManagedUnit managedWorker = new ManagedUnit(game, unit, UnitRole.IDLE);
-            workerManager.onUnitComplete(managedWorker);
-        } else if (unitType == UnitType.Zerg_Overlord || informationManager.getEnemyBuildings().size() + informationManager.getEnemyUnits().size() == 0) {
-            createScout(unit);
-        } else {
-            ManagedUnit managedFighter = new ManagedUnit(game, unit, UnitRole.FIGHT);
-            assignClosestEnemyToManagedUnit(managedFighter);
-            managedUnitLookup.put(unit, managedFighter);
-            managedUnits.add(managedFighter);
-            return;
-
-        }
     }
 
     public void onUnitDestroy(Unit unit) {
@@ -215,6 +200,16 @@ public class UnitManager {
         }
 
         ManagedUnit managedUnit = managedUnitLookup.get(unit);
+
+        // TODO: Managed Buildings
+        if (unit.getType() == UnitType.Buildings) {
+            workerManager.removeManagedWorker(managedUnit);
+            managedUnits.remove(managedUnit);
+            managedUnitLookup.remove(unit);
+            return;
+        }
+
+
 
         if (unit.getType() != managedUnit.getUnitType()) {
             managedUnit.setUnitType(unit.getType());

@@ -7,6 +7,7 @@ import bwapi.Unit;
 import bwapi.UnitType;
 import planner.PlanState;
 import planner.PlanType;
+import planner.PlannedItemComparator;
 import state.GameState;
 import planner.PlannedItem;
 import unit.ManagedUnit;
@@ -14,6 +15,7 @@ import unit.UnitRole;
 import util.UnitDistanceComparator;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -68,9 +70,20 @@ public class WorkerManager {
     }
 
     private void assignScheduledPlannedItems() {
-        HashSet<PlannedItem> scheduledPlans = gameState.getPlansScheduled();
+        List<PlannedItem> scheduledPlans = gameState.getPlansScheduled().stream().collect(Collectors.toList());
+        if (scheduledPlans.size() < 1) {
+            return;
+        }
+
+        Collections.sort(scheduledPlans, new PlannedItemComparator());
         List<PlannedItem> assignedPlans = new ArrayList<>();
+        int curPriority = scheduledPlans.get(0).getPriority();
+
         for (PlannedItem plannedItem: scheduledPlans) {
+            // Are we broken here?
+            if (plannedItem.getPriority() > curPriority) {
+                break;
+            }
             boolean didAssign = false;
             if (plannedItem.getType() == PlanType.BUILDING) {
                 didAssign = assignMorphDrone(plannedItem);
@@ -88,6 +101,8 @@ public class WorkerManager {
             scheduledPlans.remove(plannedItem);
             buildingPlans.add(plannedItem);
         }
+
+        gameState.setPlansScheduled(scheduledPlans.stream().collect(Collectors.toCollection(HashSet::new)));
     }
 
     private void clearAssignments(ManagedUnit managedUnit) {
