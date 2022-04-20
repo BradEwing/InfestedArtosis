@@ -89,7 +89,7 @@ public class ProductionManager {
         this.bwem = bwem;
         this.gameState = gameState;
 
-        List<PlannedItem> items = ninePoolTwelveHatch();
+        List<PlannedItem> items = ninePool();
         for (PlannedItem plannedItem: items) {
             productionQueue.add(plannedItem);
         }
@@ -199,7 +199,7 @@ public class ProductionManager {
         baseLocations.add(base);
     }
 
-    private List<PlannedItem> ninePoolTwelveHatch() {
+    private List<PlannedItem> ninePool() {
         List<PlannedItem> list = new ArrayList<>();
         list.add(new PlannedItem(UnitType.Zerg_Drone, 0, false));
         list.add(new PlannedItem(UnitType.Zerg_Drone, 0, false));
@@ -211,7 +211,6 @@ public class ProductionManager {
         list.add(new PlannedItem(UnitType.Zerg_Zergling, 3, false));
         list.add(new PlannedItem(UnitType.Zerg_Zergling, 3, false));
         list.add(new PlannedItem(UnitType.Zerg_Zergling, 3, false));
-        list.add(new PlannedItem(UnitType.Zerg_Hatchery, 4, true));
         return list;
     }
 

@@ -181,7 +181,7 @@ public class UnitManager {
         }
     }
 
-    public void onUnitDestroy(Unit unit) {
+    private void removeManagedUnit(Unit unit) {
         ManagedUnit managedUnit = managedUnitLookup.get(unit);
         workerManager.removeManagedWorker(managedUnit);
         Boolean isRemoved = managedUnits.remove(managedUnit);
@@ -189,9 +189,20 @@ public class UnitManager {
         return;
     }
 
+    public void onUnitDestroy(Unit unit) {
+        removeManagedUnit(unit);
+    }
+
     public void onUnitMorph(Unit unit) {
         if (unit.getType() == UnitType.Zerg_Larva && !managedUnitLookup.containsKey(unit)) {
             workerManager.onUnitComplete(createManagedUnit(unit, UnitRole.LARVA));
+            return;
+        }
+
+        // TODO: BuildingManager
+        //   - Static D
+        if (managedUnitLookup.containsKey(unit) && unit.getType().isBuilding()) {
+            removeManagedUnit(unit);
             return;
         }
 
