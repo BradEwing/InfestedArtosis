@@ -8,6 +8,8 @@ import bwem.BWEM;
 import bwem.CPPath;
 import bwem.ChokePoint;
 import info.InformationManager;
+import macro.WorkerManager;
+import state.GameState;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -19,11 +21,14 @@ public class UnitManager {
     private Game game;
     private BWEM bwem;
 
+    private GameState gameState;
+
     // Take a dependency on informationManager for now
     // TODO: Pass GameState here to make decisions for units
     //
     // Should workers go here? Probably, especially if they are pulled for base defense
     private InformationManager informationManager;
+    private WorkerManager workerManager;
 
     // TODO: refactor
     private HashMap<Unit, ManagedUnit> managedUnitLookup = new HashMap<>();
@@ -33,21 +38,36 @@ public class UnitManager {
     private HashSet<ManagedUnit> fighters = new HashSet<>();
     private HashSet<ManagedUnit> managedUnits = new HashSet<>();
 
-    public UnitManager(Game game, InformationManager informationManager, BWEM bwem) {
+    public UnitManager(Game game, InformationManager informationManager, BWEM bwem, GameState gameState) {
         this.game = game;
         this.informationManager = informationManager;
         this.bwem = bwem;
+        this.gameState = gameState;
 
+        workerManager = new WorkerManager(game, gameState);
         initManagedUnits();
     }
 
     // TODO: Assign starting drones here as well, then pass to econ manager?
     private void initManagedUnits() {
         for (Unit unit: game.getAllUnits()) {
-            if (unit.getPlayer() != game.self()) {
-                if (unit.getType() == UnitType.Zerg_Overlord) {
-                    ManagedUnit managedUnit = new ManagedUnit(game, unit, UnitRole.SCOUT);
+            if (unit.getPlayer() == game.self()) {
+                UnitType unitType = unit.getType();
+                ManagedUnit managedUnit = new ManagedUnit(game, unit, UnitRole.IDLE);
+                if (unitType == UnitType.Zerg_Overlord) {
+                    managedUnit.setRole(UnitRole.SCOUT);
                     managedUnits.add(managedUnit);
+                    managedUnitLookup.put(unit, managedUnit);
+                }
+                if (unitType == UnitType.Zerg_Drone) {
+                    managedUnits.add(managedUnit);
+                    workerManager.onUnitComplete(managedUnit);
+                    managedUnitLookup.put(unit, managedUnit);
+                }
+                if (unitType == UnitType.Zerg_Larva) {
+                    managedUnit.setRole(UnitRole.LARVA);
+                    managedUnits.add(managedUnit);
+                    workerManager.onUnitComplete(managedUnit);
                     managedUnitLookup.put(unit, managedUnit);
                 }
             }
@@ -55,6 +75,13 @@ public class UnitManager {
     }
 
     public void onFrame() {
+        // Wait a frame to let WorkerManager assign roles
+        if (game.getFrameCount() < 1) {
+            return;
+        }
+
+        workerManager.onFrame();
+
         for (ManagedUnit managedUnit: managedUnits) {
             /**
              * Disable for now, there's a non-deterministic crash with BWEM and units get stuck in their move path
@@ -67,20 +94,29 @@ public class UnitManager {
                 managedUnit.setReady(true);
             }
 
-            if (managedUnit.isCanFight() && managedUnit.getRole() != UnitRole.FIGHT && informationManager.isEnemyLocationKnown()) {
+            UnitRole role = managedUnit.getRole();
+
+            if (role == UnitRole.GATHER || role == UnitRole.BUILD || role == UnitRole.MORPH || role == UnitRole.LARVA) {
+                // TODO: Fix, this is hacky
+                // Reassignment from one role to another should be handled elsewhere
+                managedUnit.execute();
+                continue;
+            }
+
+            if (managedUnit.isCanFight() && role != UnitRole.FIGHT && informationManager.isEnemyLocationKnown()) {
                 managedUnit.setRole(UnitRole.FIGHT);
-            } else if (managedUnit.getRole() != UnitRole.SCOUT && !informationManager.isEnemyLocationKnown()) {
+            } else if (role != UnitRole.SCOUT && !informationManager.isEnemyLocationKnown()) {
                 reassignToScout(managedUnit);
             }
 
             // TODO: Refactor
 
             // Check every frame for closest enemy for unit
-            if (managedUnit.getRole() == UnitRole.FIGHT) {
+            if (role == UnitRole.FIGHT) {
                 assignClosestEnemyToManagedUnit(managedUnit);
             }
 
-            if (managedUnit.getRole() == UnitRole.SCOUT && managedUnit.getMovementTargetPosition() == null) {
+            if (role == UnitRole.SCOUT && managedUnit.getMovementTargetPosition() == null) {
                 assignScoutMovementTarget(managedUnit);
             }
 
@@ -88,18 +124,36 @@ public class UnitManager {
         }
     }
 
-    public void onUnitComplete(Unit unit) {
+    public void onUnitShow(Unit unit) {
+        if (unit.getPlayer() != game.self()) {
+            return;
+        }
+
+        if (unit.getType() == UnitType.Zerg_Larva && !managedUnitLookup.containsKey(unit)) {
+            ManagedUnit managedUnit = createManagedUnit(unit, UnitRole.LARVA);
+            workerManager.onUnitComplete(managedUnit);
+            return;
+        }
+
         // For now, return early if drone or building
         UnitType unitType = unit.getType();
-        // TODO: DRONES
         // TODO: Buildings, why not? Useful when tracking precise morphs
         // TODO: Building planner
-        if (unitType == UnitType.Zerg_Drone || unitType.isBuilding()) {
+        if (unitType.isBuilding()) {
+            return;
+        }
+
+        // Consider case where we are already tracking the unit that morphed
+        // TODO: handle case where managed unit type has changed
+        if (managedUnitLookup.containsKey(unit)) {
             return;
         }
 
         // Assign scouts if we don't know where enemy is
-        if (unit.getType() == UnitType.Zerg_Overlord || informationManager.getEnemyBuildings().size() + informationManager.getEnemyUnits().size() == 0) {
+        if (unitType == UnitType.Zerg_Drone || unitType == UnitType.Zerg_Larva) {
+            ManagedUnit managedWorker = new ManagedUnit(game, unit, UnitRole.IDLE);
+            workerManager.onUnitComplete(managedWorker);
+        } else if (unitType == UnitType.Zerg_Overlord || informationManager.getEnemyBuildings().size() + informationManager.getEnemyUnits().size() == 0) {
             createScout(unit);
         } else {
             ManagedUnit managedFighter = new ManagedUnit(game, unit, UnitRole.FIGHT);
@@ -111,11 +165,68 @@ public class UnitManager {
         }
     }
 
-    public void onUnitDestroy(Unit unit) {
+    public void onUnitComplete(Unit unit) {
+        // For now, return early if drone or building
+        UnitType unitType = unit.getType();
+        // TODO: Buildings, why not? Useful when tracking precise morphs
+        // TODO: Building planner
+        if (unitType.isBuilding()) {
+            return;
+        }
+
+        // Consider case where we are already tracking the unit that morphed
+        // TODO: handle case where managed unit type has changed
+        if (managedUnitLookup.containsKey(unit)) {
+            return;
+        }
+    }
+
+    private void removeManagedUnit(Unit unit) {
         ManagedUnit managedUnit = managedUnitLookup.get(unit);
+        workerManager.removeManagedWorker(managedUnit);
         Boolean isRemoved = managedUnits.remove(managedUnit);
         managedUnitLookup.remove(unit);
         return;
+    }
+
+    public void onUnitDestroy(Unit unit) {
+        removeManagedUnit(unit);
+    }
+
+    public void onUnitMorph(Unit unit) {
+        if (unit.getType() == UnitType.Zerg_Larva && !managedUnitLookup.containsKey(unit)) {
+            workerManager.onUnitComplete(createManagedUnit(unit, UnitRole.LARVA));
+            return;
+        }
+
+        // TODO: BuildingManager
+        //   - Static D
+        if (managedUnitLookup.containsKey(unit) && unit.getType().isBuilding()) {
+            removeManagedUnit(unit);
+            return;
+        }
+
+        if (!managedUnitLookup.containsKey(unit)) {
+            return;
+        }
+
+        ManagedUnit managedUnit = managedUnitLookup.get(unit);
+
+        // TODO: Managed Buildings
+        if (unit.getType() == UnitType.Buildings) {
+            workerManager.removeManagedWorker(managedUnit);
+            managedUnits.remove(managedUnit);
+            managedUnitLookup.remove(unit);
+            return;
+        }
+
+
+
+        if (unit.getType() != managedUnit.getUnitType()) {
+            managedUnit.setUnitType(unit.getType());
+            managedUnit.setRole(UnitRole.IDLE);
+        }
+        workerManager.onUnitMorph(managedUnit);
     }
 
     private void calculateMovementPath(ManagedUnit managedUnit) {
@@ -147,6 +258,13 @@ public class UnitManager {
         if (enemyUnits.size() > 0) {
             managedUnit.assignClosestEnemyAsFightTarget(enemyUnits);
         }
+    }
+
+    private ManagedUnit createManagedUnit(Unit unit, UnitRole role) {
+        ManagedUnit managedUnit = new ManagedUnit(game, unit, role);
+        managedUnitLookup.put(unit, managedUnit);
+        managedUnits.add(managedUnit);
+        return managedUnit;
     }
 
     private void reassignToScout(ManagedUnit managedUnit) {

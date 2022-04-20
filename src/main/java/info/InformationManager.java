@@ -17,6 +17,7 @@ import lombok.Data;
 import map.TileComparator;
 import map.TileInfo;
 import map.TileType;
+import state.GameState;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -30,6 +31,8 @@ import java.util.stream.Collectors;
 public class InformationManager {
     private BWEM bwem;
     private Game game;
+
+    private GameState gameState;
 
     private HashSet<TilePosition> scoutTargets = new HashSet<>(); // TODO: Better data type to store and track this data
     private HashSet<TilePosition> activeScoutTargets = new HashSet<>();
@@ -46,9 +49,10 @@ public class InformationManager {
     private Base mainEnemyBase;
 
 
-    public InformationManager(BWEM bwem, Game game) {
+    public InformationManager(BWEM bwem, Game game, GameState gameState) {
         this.bwem = bwem;
         this.game = game;
+        this.gameState = gameState;
 
         initBases();
         initializeHeatMap();
@@ -79,6 +83,15 @@ public class InformationManager {
 
         if (enemyUnits.contains(unit)) {
             enemyUnits.remove(unit);
+        }
+
+        // TODO: move?
+        if (unit.getType().isMineralField()) {
+            removeMineral(unit);
+        }
+
+        if (unit.getType().isRefinery()) {
+            removeGeyser(unit);
         }
 
         return;
@@ -226,6 +239,14 @@ public class InformationManager {
             }
         }
 
+    }
+
+    private void removeMineral(Unit mineral) {
+        gameState.getMineralAssignments().remove(mineral);
+    }
+
+    private void removeGeyser(Unit geyser) {
+        gameState.getGeyserAssignments().remove(geyser);
     }
 
     private boolean canSeeEnemyBuilding() {

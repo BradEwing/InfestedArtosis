@@ -10,9 +10,12 @@ import bwapi.Unit;
 import bwapi.UnitType;
 import bwem.CPPath;
 import lombok.Data;
+import planner.PlanState;
+import planner.PlannedItem;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import static bwta.BWTA.getShortestPath;
 import static util.Filter.closestHostileUnit;
@@ -34,6 +37,9 @@ public class ManagedUnit {
     private TilePosition currentStepToTarget;
 
     private Unit fightTarget;
+    private Unit gatherTarget;
+    // PlannedItem this unit is assigned to
+    private PlannedItem plannedItem;
 
     private boolean canFight;
     private boolean isFlyer;
@@ -93,6 +99,15 @@ public class ManagedUnit {
                 break;
             case FIGHT:
                 fight();
+                break;
+            case GATHER:
+                gather();
+                break;
+            case BUILD:
+                build();
+                break;
+            case MORPH:
+                morph();
                 break;
             default:
                 break;
@@ -155,6 +170,77 @@ public class ManagedUnit {
         unit.move(currentStepToTarget.toPosition());
     }
 
+    private void gather() {
+        if (unit.isGatheringMinerals() || unit.isGatheringGas()) return;
+        if (!isReady) return;
+
+        if ((unit.isCarryingGas() || unit.isCarryingMinerals()) && unit.isIdle()) {
+            setUnready();
+            unit.returnCargo();
+            return;
+        }
+
+        setUnready();
+        unit.gather(gatherTarget);
+    }
+
+    // Attempt build or morph
+    private void build() {
+        if (unit.isBeingConstructed() || unit.isMorphing()) return;
+        if (!isReady) return;
+
+        UnitType plannedUnitType = plannedItem.getPlannedUnit();
+
+        if (plannedItem.getBuildPosition() == null) {
+            TilePosition buildLocation = game.getBuildLocation(plannedUnitType, unit.getTilePosition());
+            plannedItem.setBuildPosition(buildLocation);
+        }
+
+        Position buildTarget = plannedItem.getBuildPosition().toPosition();
+        if (unit.getDistance(buildTarget) > 200 && (!unit.isMoving() || unit.isGatheringMinerals())) {
+            setUnready();
+            unit.move(buildTarget);
+            return;
+        }
+
+        if (game.canMake(plannedUnitType, unit)) {
+            // Try to build
+            // TODO: Maybe only check the units we assigned to build, after so many frames we can try to reassign
+            //   - Maybe the PlannedItems are tracked in a higher level state, and their status is updated at the higher level
+            //   - A PlannedItem marked as complete would then be removed from the bot (careful consideration to be sure it's removed everywhere)
+            setUnready();
+            boolean didBuild = unit.build(plannedUnitType, buildTarget.toTilePosition());
+            // If we failed to build, try to morph
+            if (!didBuild) {
+                didBuild = unit.morph(plannedUnitType);
+            }
+
+            if (!didBuild) {
+                // Try to get a new building location
+                plannedItem.setBuildPosition(game.getBuildLocation(plannedUnitType, unit.getTilePosition()));
+            }
+
+            if (didBuild) {
+                plannedItem.setState(PlanState.MORPHING);
+            }
+        }
+    }
+
+    private void morph() {
+        if (!isReady) return;
+        if (unit.isMorphing()) return;
+
+        final UnitType unitType = plannedItem.getPlannedUnit();
+        if (game.canMake(unitType, unit)) {
+            setUnready();
+            boolean didMorph = unit.morph(unitType);
+            if (didMorph) {
+                plannedItem.setState(PlanState.MORPHING);
+            }
+
+        }
+    }
+
     private void setUnready() {
         isReady = false;
         unreadyUntilFrame = game.getFrameCount() + game.getLatencyFrames() + 11;
@@ -193,6 +279,7 @@ public class ManagedUnit {
         if (unit.isAttacking()) {
             return;
         }
+        setUnready();
         // Our fight target is no longer visible, drop in favor of fight target position
         if (fightTarget != null && fightTarget.getType() == UnitType.Unknown) {
             fightTarget = null;
@@ -202,7 +289,7 @@ public class ManagedUnit {
             return;
         }
 
-        if (game.isVisible(movementTargetPosition)) {
+        if (movementTargetPosition != null && game.isVisible(movementTargetPosition)) {
             movementTargetPosition = null;
         }
         // TODO: determine if Units may get stuck infitely trying to approach fightTargetPosition
@@ -211,7 +298,6 @@ public class ManagedUnit {
             return;
         }
 
-        setUnready();
         //System.out.printf("FightTarget is null, frame: [%s], unitType: [%s]\n", game.getFrameCount(), unit.getType());
         role = UnitRole.IDLE;
         return;
@@ -261,5 +347,22 @@ public class ManagedUnit {
         }
         fightTarget = closestEnemy;
         movementTargetPosition = closestEnemy.getTilePosition();
+    }
+
+    public void assignGather(Unit gatherTarget) {
+
+    }
+
+    public void assignBuilder(PlannedItem buildingPlan) {
+
+    }
+
+    // TODO: Refactor into debug role
+    private void debugBuildingAssignments() {
+
+        UnitType building = plannedItem.getPlannedUnit();
+        Position unitPosition = unit.getPosition();
+        game.drawTextMap(unitPosition, "BUILDER: " + building.toString(), Text.White);
+
     }
 }

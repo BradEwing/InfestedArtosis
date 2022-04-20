@@ -6,11 +6,17 @@ import bwapi.UpgradeType;
 
 import lombok.Data;
 import org.jetbrains.annotations.Nullable;
+import unit.ManagedUnit;
+
+import java.util.UUID;
 
 // TODO: Refactor with type reflection?
 @Data
 public class PlannedItem {
-    public PlanType type;
+    private String uuid = UUID.randomUUID().toString();
+
+    private PlanType type;
+    private PlanState state = PlanState.PLANNED;
 
     // Simple prioritization, will increment elsewhere
     private int priority;
@@ -43,6 +49,21 @@ public class PlannedItem {
         this.priority = priority;
         this.plannedUpgrade = upgrade;
         this.type = PlanType.UPGRADE;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (o == this) {
+            return true;
+        }
+
+        if (!(o instanceof PlannedItem)) {
+            return false;
+        }
+
+        PlannedItem u = (PlannedItem) o;
+
+        return uuid == u.getUuid();
     }
     
 
