@@ -176,8 +176,13 @@ public class UnitManager {
 
         // Consider case where we are already tracking the unit that morphed
         // TODO: handle case where managed unit type has changed
-        if (managedUnitLookup.containsKey(unit)) {
+        if (!managedUnitLookup.containsKey(unit)) {
             return;
+        }
+
+        ManagedUnit managedUnit = managedUnitLookup.get(unit);
+        if (managedUnit.getRole() == UnitRole.MORPH) {
+            managedUnit.setRole(UnitRole.IDLE);
         }
     }
 
@@ -224,7 +229,7 @@ public class UnitManager {
 
         if (unit.getType() != managedUnit.getUnitType()) {
             managedUnit.setUnitType(unit.getType());
-            managedUnit.setRole(UnitRole.IDLE);
+            //managedUnit.setRole(UnitRole.IDLE);
         }
         workerManager.onUnitMorph(managedUnit);
     }

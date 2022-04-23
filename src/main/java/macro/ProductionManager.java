@@ -50,7 +50,7 @@ public class ProductionManager {
     private boolean hasPool = false;
     private boolean hasPlannedPool = false;
     private boolean hasMetabolicBoost = false;
-    private boolean hasPlannedMetabolicBoost = false;
+    private boolean hasPlannedMetabolicBoost = true;
     private boolean hasDen = false;
     private boolean hasPlannedDen = false;
     private boolean hasPlannedDenUpgrades = false;
@@ -89,7 +89,7 @@ public class ProductionManager {
         this.bwem = bwem;
         this.gameState = gameState;
 
-        List<PlannedItem> items = ninePool();
+        List<PlannedItem> items = ninePoolSpeed();
         for (PlannedItem plannedItem: items) {
             productionQueue.add(plannedItem);
         }
@@ -155,6 +155,22 @@ public class ProductionManager {
         }
     }
 
+    // TODO: Ensure print out of production queue is displaying how much time is remaining
+    private void debugScheduledPlannedItems() {
+        int numDisplayed = 0;
+        int x = 196;
+        int y = 64;
+        // TODO: Debug production queue in GameState
+        for (PlannedItem plannedItem: gameState.getPlansScheduled()) {
+            game.drawTextScreen(x, y, plannedItem.getName() + " " + plannedItem.getPriority(), Text.Green);
+            y += 8;
+            numDisplayed += 1;
+            if (numDisplayed == 10) {
+                break;
+            }
+        }
+    }
+
     // TODO: refactor
     // Method to add hatchery and surrounding mineral patches to internal data structures
     private void buildBase(Unit hatchery) {
@@ -199,7 +215,7 @@ public class ProductionManager {
         baseLocations.add(base);
     }
 
-    private List<PlannedItem> ninePool() {
+    private List<PlannedItem> ninePoolSpeed() {
         List<PlannedItem> list = new ArrayList<>();
         list.add(new PlannedItem(UnitType.Zerg_Drone, 0, false));
         list.add(new PlannedItem(UnitType.Zerg_Drone, 0, false));
@@ -208,9 +224,14 @@ public class ProductionManager {
         list.add(new PlannedItem(UnitType.Zerg_Drone, 0, false));
         list.add(new PlannedItem(UnitType.Zerg_Spawning_Pool, 1, true));
         list.add(new PlannedItem(UnitType.Zerg_Overlord, 2, false));
-        list.add(new PlannedItem(UnitType.Zerg_Zergling, 3, false));
-        list.add(new PlannedItem(UnitType.Zerg_Zergling, 3, false));
-        list.add(new PlannedItem(UnitType.Zerg_Zergling, 3, false));
+        list.add(new PlannedItem(UnitType.Zerg_Extractor, 3, true));
+        list.add(new PlannedItem(UnitType.Zerg_Drone, 3, false));
+        list.add(new PlannedItem(UnitType.Zerg_Drone, 4, false));
+        list.add(new PlannedItem(UnitType.Zerg_Zergling, 4, false));
+        list.add(new PlannedItem(UnitType.Zerg_Zergling, 4, false));
+        list.add(new PlannedItem(UnitType.Zerg_Zergling, 4, false));
+        list.add(new PlannedItem(UpgradeType.Metabolic_Boost, 5));
+
         return list;
     }
 
@@ -224,6 +245,7 @@ public class ProductionManager {
         }
         debugProductionQueue();
         debugInProgressQueue();
+        debugScheduledPlannedItems();
     }
 
     // TODO: Determine why some workers go and stay idle
@@ -255,6 +277,9 @@ public class ProductionManager {
         return gameState.getMineralWorkers() + gameState.getGeyserWorkers();
     }
 
+    // TODO: Handle elsewhere
+    private int numHatcheries() { return baseLocations.size() + macroHatcheries.size(); }
+
     private void planItems() {
         Player self = game.self();
         // Macro builder kicks in at 10 supply
@@ -271,17 +296,19 @@ public class ProductionManager {
         // Limit to 3 plannedHatch to prevent queue deadlock
         if ((canAffordHatch(self) || isNearMaxExpectedWorkers()) && plannedHatcheries < 3) {
             plannedHatcheries += 1;
-            if (((baseLocations.size() + macroHatcheries.size()) % 2) != 0) {
+            if ((numHatcheries() % 2) != 0) {
                 planBase();
             } else {
-                productionQueue.add(new PlannedItem(UnitType.Zerg_Hatchery, currentPriority, true));
+                productionQueue.add(new PlannedItem(UnitType.Zerg_Hatchery, currentPriority-1, true));
             }
         }
 
+        /*
         if (!hasPlannedLair && !hasLair && self.supplyUsed() > 45) {
             productionQueue.add(new PlannedItem(UnitType.Zerg_Lair, currentPriority, true));
             hasPlannedLair = true;
         }
+         */
 
         // One extractor per base
         // TODO: account for bases with no gas or 2 gas
@@ -356,7 +383,7 @@ public class ProductionManager {
 
         /** For now, only subject unit production to queue size */
         // Base queue size is 3, increases per hatch
-        if (productionQueue.size() >= 3 + (baseLocations.size() * 3) + (macroHatcheries.size() * 3)) {
+        if (productionQueue.size() >= 3 + (numHatcheries() * 3)) {
             return;
         }
 
@@ -384,14 +411,13 @@ public class ProductionManager {
         }
 
         // Plan army
-        if (hasPool && self.supplyUsed() < 400) {
-            productionQueue.add(new PlannedItem(UnitType.Zerg_Zergling, currentPriority, false));
-        }
-
         if (hasDen && self.supplyUsed() < 400) {
             productionQueue.add(new PlannedItem(UnitType.Zerg_Hydralisk, currentPriority, false));
         }
 
+        if (hasPool && self.supplyUsed() < 400) {
+            productionQueue.add(new PlannedItem(UnitType.Zerg_Zergling, currentPriority, false));
+        }
 
         // TODO: Tech upgrades
         /*
@@ -415,6 +441,10 @@ public class ProductionManager {
     //  - If failed to execute after X frames, increase priority value
     //  - Track number of retries per PlannedItem, continual failure can warrant dropping from queue entirely and/or exponential backoff
     public void schedulePlannedItems() {
+        if (productionQueue.size() == 0) {
+            return;
+        }
+
         Player self = game.self();
         int currentUnitAssignAttempts = 0; // accept 3 failures in planning
         int curPriority = productionQueue.peek().getPriority();
@@ -430,7 +460,6 @@ public class ProductionManager {
             int schedulePriority = sortedScheduledPlans.get(0).getPriority();
             curPriority = Math.min(curPriority, schedulePriority);
         }
-
 
         List<PlannedItem> requeuePlannedItems = new ArrayList<>();
         // TODO: Importance logic?
@@ -454,7 +483,8 @@ public class ProductionManager {
                     canSchedule = scheduleBuildingItem(self, plannedItem);
                     break;
                 case UNIT:
-                    if (currentUnitAssignAttempts < 3) {
+                    // Don't keep scheduling units
+                    if (currentUnitAssignAttempts < 3 && scheduledPlans.size() < 3) {
                         canSchedule = scheduleUnitItem(self, plannedItem);
                     }
                     break;
@@ -528,10 +558,10 @@ public class ProductionManager {
         // TODO: Execute this in own method w/ switch case
         if (unitType == UnitType.Zerg_Hydralisk_Den) {
             hasDen = true;
-            //hasPlannedDen = false; // only plan 1
+            hasPlannedDen = false; // only plan 1
         } else if (unitType == UnitType.Zerg_Spawning_Pool) {
             hasPool = true;
-            //hasPlannedPool = false; // TODO: set this when unit completes
+            hasPlannedPool = false; // TODO: set this when unit completes
         } else if (unitType == UnitType.Zerg_Lair) {
             hasLair = true;
             //hasPlannedLair = false;
@@ -601,6 +631,7 @@ public class ProductionManager {
         final UpgradeType upgrade = plannedItem.getPlannedUpgrade();
         final int mineralPrice = upgrade.mineralPrice();
         final int gasPrice = upgrade.gasPrice();
+
         if (self.minerals() - reservedMinerals < mineralPrice || self.gas() - reservedGas < gasPrice) {
             return false;
         }
@@ -608,7 +639,6 @@ public class ProductionManager {
         for (Unit unit : self.getUnits()) {
             UnitType unitType = unit.getType();
 
-            //System.out.printf("assignUpgradeItem(), required: [%s], unitType: [%s] \n", upgrade.whatUpgrades(), unitType);
             if (unitType == upgrade.whatUpgrades() && !gameState.getAssignedPlannedItems().containsKey(unit)) {
                 gameState.getAssignedPlannedItems().put(unit, plannedItem);
                 plannedItem.setState(PlanState.SCHEDULE);

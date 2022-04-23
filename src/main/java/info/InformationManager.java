@@ -149,6 +149,12 @@ public class InformationManager {
         }
         HashSet<TilePosition> scoutTargets = getScoutTargets();
 
+        if (scoutHeatMap.size() > 0) {
+            TileInfo scoutTile = scoutHeatMap.get(0);
+            scoutTile.setImportance(0);
+            return scoutTile.getTile();
+        }
+
         for (TilePosition target: scoutTargets) {
             if (!getActiveScoutTargets().contains(target)) {
                 return target;
@@ -313,7 +319,6 @@ public class InformationManager {
 
     // Iterate through heat map and assign all tiles
     private void assignNewScoutTargets() {
-        // TODO: ONLY consider starting bases IF we do not know enemy location
         // Round robin assign SCOUTs to bases
         int curImportance = 0;
         for (TileInfo tileInfo : scoutHeatMap) {

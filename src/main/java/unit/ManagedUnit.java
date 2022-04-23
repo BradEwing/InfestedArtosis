@@ -276,7 +276,7 @@ public class ManagedUnit {
         if (!isReady) {
             return;
         }
-        if (unit.isAttacking()) {
+        if (unit.isAttackFrame()) {
             return;
         }
         setUnready();

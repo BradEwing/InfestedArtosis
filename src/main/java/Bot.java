@@ -81,7 +81,7 @@ public class Bot extends DefaultBWListener {
 
         informationManager.onUnitComplete(unit);
         economyModule.onUnitComplete(unit);
-        //unitManager.onUnitComplete(unit);
+        unitManager.onUnitComplete(unit);
     }
 
     @Override
