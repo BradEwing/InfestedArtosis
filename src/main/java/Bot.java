@@ -4,6 +4,7 @@ import bwapi.Game;
 import bwapi.Unit;
 import bwapi.UnitType;
 import bwem.BWEM;
+import learning.LearningManager;
 import state.GameState;
 import info.InformationManager;
 import macro.ProductionManager;
@@ -32,6 +33,7 @@ public class Bot extends DefaultBWListener {
 
     // TODO: Can I implement these classes as listeners and register them here? Cleans up Bot class!
     private DebugMap debugMap;
+    private LearningManager learningManager;
     private ProductionManager economyModule;
     private InformationManager informationManager;
     private UnitManager unitManager;
@@ -44,6 +46,7 @@ public class Bot extends DefaultBWListener {
         bwem = new BWEM(game);
         bwem.initialize();
 
+        learningManager = new LearningManager(game.enemy().getRace().toString(), game.enemy().getName());
         informationManager = new InformationManager(bwem, game, gameState);
         debugMap = new DebugMap(bwem, game);
         economyModule = new ProductionManager(game, bwem, gameState); // TODO: reverse
@@ -102,6 +105,11 @@ public class Bot extends DefaultBWListener {
     public void onUnitMorph(Unit unit) {
         economyModule.onUnitMorph(unit);
         unitManager.onUnitMorph(unit);
+    }
+
+    @Override
+    public void onEnd(boolean isWinner) {
+        learningManager.onEnd(isWinner);
     }
 
     public static void main(String[] args) {

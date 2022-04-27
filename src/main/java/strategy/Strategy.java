@@ -6,19 +6,13 @@ import planner.PlannedItem;
 import java.util.ArrayList;
 import java.util.List;
 
-@Data
-public class Strategy {
+public interface Strategy {
 
-    private String name;
+    String getName();
 
-    private int winsTotal;
-    private int losesTotal;
-    private int winsOpponent;
-    private int losesOpponent;
-    private int winsRace;
-    private int losesRace;
+    int getWins();
 
-    private boolean hasExtractor;
+    int getLosses();
 
-    private List<PlannedItem> buildOrder = new ArrayList<>();
+    List<PlannedItem> getBuildOrder();
 }
