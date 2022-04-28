@@ -10,9 +10,5 @@ public interface Strategy {
 
     String getName();
 
-    int getWins();
-
-    int getLosses();
-
     List<PlannedItem> getBuildOrder();
 }

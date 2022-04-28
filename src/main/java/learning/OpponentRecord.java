@@ -2,7 +2,6 @@ package learning;
 
 import lombok.Builder;
 import lombok.Data;
-import strategy.StrategyRecord;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -13,6 +12,4 @@ public class OpponentRecord {
     private String name;
     private String race;
     private Map<String, StrategyRecord> opponentStrategies = new HashMap();
-
-    public OpponentRecord() {}
 }

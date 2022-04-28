@@ -1,7 +1,5 @@
 package learning;
 
-import strategy.StrategyRecord;
-
 import java.util.Comparator;
 
 public class OpponentStrategyRecordComparator implements Comparator<StrategyRecord>  {

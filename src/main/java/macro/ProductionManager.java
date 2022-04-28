@@ -84,13 +84,12 @@ public class ProductionManager {
     // TODO: Queue populated with an information manager / strategy planner
     private PriorityQueue<PlannedItem> productionQueue = new PriorityQueue<>(new PlannedItemComparator());
 
-    public ProductionManager(Game game, BWEM bwem, GameState gameState) {
+    public ProductionManager(Game game, BWEM bwem, GameState gameState, List<PlannedItem> initialBuildOrder) {
         this.game = game;
         this.bwem = bwem;
         this.gameState = gameState;
 
-        List<PlannedItem> items = ninePoolSpeed();
-        for (PlannedItem plannedItem: items) {
+        for (PlannedItem plannedItem: initialBuildOrder) {
             productionQueue.add(plannedItem);
         }
         Unit initialHatch = null;
@@ -213,26 +212,6 @@ public class ProductionManager {
 
         productionQueue.add(new PlannedItem(UnitType.Zerg_Hatchery, currentPriority-1, true, base.getLocation()));
         baseLocations.add(base);
-    }
-
-    private List<PlannedItem> ninePoolSpeed() {
-        List<PlannedItem> list = new ArrayList<>();
-        list.add(new PlannedItem(UnitType.Zerg_Drone, 0, false));
-        list.add(new PlannedItem(UnitType.Zerg_Drone, 0, false));
-        list.add(new PlannedItem(UnitType.Zerg_Drone, 0, false));
-        list.add(new PlannedItem(UnitType.Zerg_Drone, 0, false));
-        list.add(new PlannedItem(UnitType.Zerg_Drone, 0, false));
-        list.add(new PlannedItem(UnitType.Zerg_Spawning_Pool, 1, true));
-        list.add(new PlannedItem(UnitType.Zerg_Overlord, 2, false));
-        list.add(new PlannedItem(UnitType.Zerg_Extractor, 3, true));
-        list.add(new PlannedItem(UnitType.Zerg_Drone, 3, false));
-        list.add(new PlannedItem(UnitType.Zerg_Drone, 4, false));
-        list.add(new PlannedItem(UnitType.Zerg_Zergling, 4, false));
-        list.add(new PlannedItem(UnitType.Zerg_Zergling, 4, false));
-        list.add(new PlannedItem(UnitType.Zerg_Zergling, 4, false));
-        list.add(new PlannedItem(UpgradeType.Metabolic_Boost, 5));
-
-        return list;
     }
 
     // debug console messaging goes here

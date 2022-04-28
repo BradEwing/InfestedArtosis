@@ -1,4 +1,4 @@
-package strategy;
+package learning;
 
 import lombok.Builder;
 import lombok.Data;

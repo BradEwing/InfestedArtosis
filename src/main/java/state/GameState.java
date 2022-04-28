@@ -3,6 +3,7 @@ package state;
 import bwapi.Unit;
 import lombok.Data;
 import planner.PlannedItem;
+import strategy.Strategy;
 import unit.ManagedUnit;
 
 import java.util.HashMap;
@@ -29,6 +30,8 @@ public class GameState {
     private HashSet<PlannedItem> plansMorphing = new HashSet<>();
     private HashSet<PlannedItem> plansComplete = new HashSet<>();
     private HashMap<Unit, PlannedItem> assignedPlannedItems = new HashMap<>();
+
+    private Strategy activeStrategy;
 
     public GameState() {
 

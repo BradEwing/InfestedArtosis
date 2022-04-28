@@ -8,6 +8,7 @@ import learning.LearningManager;
 import state.GameState;
 import info.InformationManager;
 import macro.ProductionManager;
+import strategy.Strategy;
 import unit.UnitManager;
 
 /**
@@ -47,9 +48,10 @@ public class Bot extends DefaultBWListener {
         bwem.initialize();
 
         learningManager = new LearningManager(game.enemy().getRace().toString(), game.enemy().getName());
+        Strategy strategy = learningManager.getDeterminedStrategy();
         informationManager = new InformationManager(bwem, game, gameState);
         debugMap = new DebugMap(bwem, game);
-        economyModule = new ProductionManager(game, bwem, gameState); // TODO: reverse
+        economyModule = new ProductionManager(game, bwem, gameState, strategy.getBuildOrder()); // TODO: reverse
         unitManager = new UnitManager(game, informationManager, bwem, gameState);
     }
 
