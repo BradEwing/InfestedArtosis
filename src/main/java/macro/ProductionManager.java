@@ -63,7 +63,7 @@ public class ProductionManager {
     // TODO: Track in info manager / GameState with some sort of base planner class
     private int numSunkens = 0;
     // TODO: VERY HACKY! this is because current 9pool hardcodes an extractor, this must be aware of build order
-    private int numExtractors = 1;
+    private int numExtractors = 0;
     private int numEvoChambers = 0;
 
     // These worker trackers do not track death or morph into building
@@ -90,6 +90,9 @@ public class ProductionManager {
         this.gameState = gameState;
 
         for (PlannedItem plannedItem: initialBuildOrder) {
+            if (plannedItem.getPlannedUnit() != null && plannedItem.getPlannedUnit() == UnitType.Zerg_Extractor) {
+                numExtractors += 1;
+            }
             productionQueue.add(plannedItem);
         }
         Unit initialHatch = null;

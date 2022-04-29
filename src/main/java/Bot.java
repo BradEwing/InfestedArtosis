@@ -5,6 +5,8 @@ import bwapi.Unit;
 import bwapi.UnitType;
 import bwem.BWEM;
 import learning.LearningManager;
+import learning.OpponentRecord;
+import learning.StrategyRecord;
 import state.GameState;
 import info.InformationManager;
 import macro.ProductionManager;
@@ -33,7 +35,7 @@ public class Bot extends DefaultBWListener {
     private GameState gameState = new GameState();
 
     // TODO: Can I implement these classes as listeners and register them here? Cleans up Bot class!
-    private DebugMap debugMap;
+    private Debug debugMap;
     private LearningManager learningManager;
     private ProductionManager economyModule;
     private InformationManager informationManager;
@@ -47,10 +49,11 @@ public class Bot extends DefaultBWListener {
         bwem = new BWEM(game);
         bwem.initialize();
 
-        learningManager = new LearningManager(game.enemy().getRace().toString(), game.enemy().getName());
+        learningManager = new LearningManager(game.enemy().getRace().toString(), game.enemy().getName(), bwem);
         Strategy strategy = learningManager.getDeterminedStrategy();
+        OpponentRecord opponentRecord = learningManager.getOpponentRecord();
         informationManager = new InformationManager(bwem, game, gameState);
-        debugMap = new DebugMap(bwem, game);
+        debugMap = new Debug(bwem, game, strategy, opponentRecord);
         economyModule = new ProductionManager(game, bwem, gameState, strategy.getBuildOrder()); // TODO: reverse
         unitManager = new UnitManager(game, informationManager, bwem, gameState);
     }

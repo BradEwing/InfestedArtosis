@@ -1,30 +1,49 @@
 package strategy;
 
+import bwapi.Game;
+import strategy.strategies.FivePool;
+import strategy.strategies.FourPool;
 import strategy.strategies.NinePoolSpeed;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 public class StrategyFactory {
+    private static int FOUR = 4;
 
-    private Map<String, Strategy> strategyMap = new HashMap<>();
+    private List<Strategy> allStrategies = new ArrayList<>();
+    private Map<String, Strategy> playableStrategies = new HashMap<>();
 
-    public StrategyFactory() {
-        initStrategies();
+    public StrategyFactory(int numStartingLocations) {
+        initStrategies(numStartingLocations);
     }
 
     public Strategy getByName(String name) {
-        return strategyMap.get(name);
+        return playableStrategies.get(name);
     }
 
-    public List<Strategy> listAll() {
-        return strategyMap.values().stream().collect(Collectors.toList());
+    public List<String> listAllStrategyNames() {
+        return allStrategies.stream().map(s -> s.getName()).collect(Collectors.toList());
     }
 
-    private void initStrategies() {
-        Strategy ninePoolSpeed = new NinePoolSpeed();
-        strategyMap.put(ninePoolSpeed.getName(), ninePoolSpeed);
+    public Set<String> getPlayableStrategies() {
+        return playableStrategies.values().stream().map(s -> s.getName()).collect(Collectors.toSet());
+    }
+
+    private void initStrategies(int numStartingLocations) {
+        allStrategies.add(new NinePoolSpeed());
+        allStrategies.add(new FivePool());
+        allStrategies.add(new FourPool());
+
+        for (Strategy strategy: allStrategies) {
+            if (numStartingLocations == FOUR && !strategy.playsFourPlayerMap()) {
+                continue;
+            }
+            playableStrategies.put(strategy.getName(), strategy);
+        }
     }
 }

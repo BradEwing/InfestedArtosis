@@ -8,10 +8,10 @@ public class OpponentStrategyRecordComparator implements Comparator<StrategyReco
 
     @Override
     public int compare(StrategyRecord x, StrategyRecord y) {
-        if (x.netWins() < y.netWins()) {
+        if (x.netWins() > y.netWins()) {
             return -1;
         }
-        if (x.netWins() > y.netWins()) {
+        if (x.netWins() < y.netWins()) {
             return 1;
         }
         return 0;

@@ -35,5 +35,7 @@ public class NinePoolSpeed implements Strategy {
         return "9PoolSpeed";
     }
 
-
+    public boolean playsFourPlayerMap() {
+        return true;
+    }
 }
