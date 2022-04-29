@@ -4,9 +4,13 @@ import bwapi.Game;
 import bwapi.Unit;
 import bwapi.UnitType;
 import bwem.BWEM;
+import learning.LearningManager;
+import learning.OpponentRecord;
+import learning.StrategyRecord;
 import state.GameState;
 import info.InformationManager;
 import macro.ProductionManager;
+import strategy.Strategy;
 import unit.UnitManager;
 
 /**
@@ -31,7 +35,8 @@ public class Bot extends DefaultBWListener {
     private GameState gameState = new GameState();
 
     // TODO: Can I implement these classes as listeners and register them here? Cleans up Bot class!
-    private DebugMap debugMap;
+    private Debug debugMap;
+    private LearningManager learningManager;
     private ProductionManager economyModule;
     private InformationManager informationManager;
     private UnitManager unitManager;
@@ -44,9 +49,12 @@ public class Bot extends DefaultBWListener {
         bwem = new BWEM(game);
         bwem.initialize();
 
+        learningManager = new LearningManager(game.enemy().getRace().toString(), game.enemy().getName(), bwem);
+        Strategy strategy = learningManager.getDeterminedStrategy();
+        OpponentRecord opponentRecord = learningManager.getOpponentRecord();
         informationManager = new InformationManager(bwem, game, gameState);
-        debugMap = new DebugMap(bwem, game);
-        economyModule = new ProductionManager(game, bwem, gameState); // TODO: reverse
+        debugMap = new Debug(bwem, game, strategy, opponentRecord);
+        economyModule = new ProductionManager(game, bwem, gameState, strategy.getBuildOrder()); // TODO: reverse
         unitManager = new UnitManager(game, informationManager, bwem, gameState);
     }
 
@@ -102,6 +110,11 @@ public class Bot extends DefaultBWListener {
     public void onUnitMorph(Unit unit) {
         economyModule.onUnitMorph(unit);
         unitManager.onUnitMorph(unit);
+    }
+
+    @Override
+    public void onEnd(boolean isWinner) {
+        learningManager.onEnd(isWinner);
     }
 
     public static void main(String[] args) {

@@ -1,8 +1,14 @@
 package strategy;
 
-import lombok.Data;
+import planner.PlannedItem;
 
-@Data
-public class Strategy {
+import java.util.List;
 
+public interface Strategy {
+
+    String getName();
+
+    List<PlannedItem> getBuildOrder();
+
+    boolean playsFourPlayerMap();
 }
