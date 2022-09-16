@@ -1,4 +1,4 @@
-package macro;
+package unit;
 
 import bwapi.Game;
 import bwapi.Text;
@@ -8,16 +8,15 @@ import bwapi.UnitType;
 import planner.PlanState;
 import planner.PlanType;
 import planner.PlannedItemComparator;
-import state.GameState;
+import info.GameState;
 import planner.PlannedItem;
-import unit.ManagedUnit;
-import unit.UnitRole;
 import util.UnitDistanceComparator;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 public class WorkerManager {
@@ -67,6 +66,31 @@ public class WorkerManager {
     // onUnitDestroy OR worker is being reassigned to non-worker role
     public void removeManagedWorker(ManagedUnit managedUnit) {
         clearAssignments(managedUnit);
+    }
+
+    public void removeMineral(Unit unit) {
+        Map<Unit, HashSet<ManagedUnit>> mineralAssignments = gameState.getMineralAssignments();
+        HashSet<ManagedUnit> mineralWorkers = mineralAssignments.get(unit);
+        mineralAssignments.remove(unit);
+        for (ManagedUnit managedUnit: mineralWorkers) {
+            clearAssignments(managedUnit);
+            assignWorker(managedUnit);
+        }
+    }
+
+    public void removeGeyser(Unit unit) {
+        Map<Unit, HashSet<ManagedUnit>> geyserAssignments = gameState.getGeyserAssignments();
+        HashSet<ManagedUnit> geyserWorkers = geyserAssignments.get(unit);
+        geyserAssignments.remove(unit);
+        // TODO: Determine why this is null, it's causing crashes
+        if (geyserWorkers == null) {
+            System.out.printf("no geyserWorkers found for unit: [%s]\n", unit);
+            return;
+        }
+        for (ManagedUnit managedUnit: geyserWorkers) {
+            clearAssignments(managedUnit);
+            assignWorker(managedUnit);
+        }
     }
 
     private void assignScheduledPlannedItems() {

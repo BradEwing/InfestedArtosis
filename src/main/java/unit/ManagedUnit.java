@@ -38,8 +38,10 @@ public class ManagedUnit {
 
     private Unit fightTarget;
     private Unit gatherTarget;
+
     // PlannedItem this unit is assigned to
     private PlannedItem plannedItem;
+    private int buildAttempts;
 
     private boolean canFight;
     private boolean isFlyer;
@@ -129,6 +131,13 @@ public class ManagedUnit {
         }
     }
 
+    private void debugBuild() {
+        Position unitPosition = unit.getPosition();
+        Position buildPosition = plannedItem.getBuildPosition().toPosition();
+        game.drawLineMap(unitPosition, buildPosition, Color.Cyan);
+        game.drawTextMap(unitPosition.add(new Position(8,8)), String.format("Distance: %d", unit.getDistance(buildPosition)), Text.Cyan);
+    }
+
     private void debugRole() {
         Position unitPosition = unit.getPosition();
         game.drawTextMap(unitPosition, String.format("%s", role), Text.Default);
@@ -187,17 +196,22 @@ public class ManagedUnit {
     // Attempt build or morph
     private void build() {
         if (unit.isBeingConstructed() || unit.isMorphing()) return;
+        if (plannedItem.getBuildPosition() != null) {
+            // NOTE: this assumes plannedItem and buildPosition are NOT NULL
+            debugBuild();
+        }
         if (!isReady) return;
 
         UnitType plannedUnitType = plannedItem.getPlannedUnit();
 
         if (plannedItem.getBuildPosition() == null) {
+            System.out.printf("plannedItem buildPosition is null: [%s]\n", plannedItem);
             TilePosition buildLocation = game.getBuildLocation(plannedUnitType, unit.getTilePosition());
             plannedItem.setBuildPosition(buildLocation);
         }
 
         Position buildTarget = plannedItem.getBuildPosition().toPosition();
-        if (unit.getDistance(buildTarget) > 200 && (!unit.isMoving() || unit.isGatheringMinerals())) {
+        if (unit.getDistance(buildTarget) > 20 && (!unit.isMoving() || unit.isGatheringMinerals())) {
             setUnready();
             unit.move(buildTarget);
             return;
@@ -215,9 +229,23 @@ public class ManagedUnit {
                 didBuild = unit.morph(plannedUnitType);
             }
 
-            if (!didBuild) {
-                // Try to get a new building location
-                plannedItem.setBuildPosition(game.getBuildLocation(plannedUnitType, unit.getTilePosition()));
+
+            if (!didBuild && buildAttempts > 3) {
+                buildAttempts += 1;
+                // There is a race condition where didBuild returns false and a new building location is assigned while
+                // the drone initiates the actual build. If the drone does not start the build animation in time, it's reassigned
+                // and can get stuck bouncing around looking for a build location.
+                //
+                // This is a bit hacky but buys ~30 frames to attempt to build at the given location before reassigning elsewhere
+                if (buildAttempts > 3) {
+                    // Try to get a new building location
+                    System.out.printf("failed to build, getting new building location: [%s]\n", plannedItem);
+                    plannedItem.setBuildPosition(game.getBuildLocation(plannedUnitType, unit.getTilePosition()));
+                    buildAttempts = 0;
+                } else {
+                    System.out.printf("failed to build, plannedItem:[%s], buildAttempts: [%s]\n", plannedItem, buildAttempts);
+                }
+
             }
 
             if (didBuild) {

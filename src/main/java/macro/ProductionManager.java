@@ -11,7 +11,7 @@ import bwapi.UpgradeType;
 import bwem.BWEM;
 import bwem.Base;
 import bwem.Mineral;
-import state.GameState;
+import info.GameState;
 import planner.PlanState;
 import planner.PlanType;
 import planner.PlannedItem;
@@ -312,11 +312,13 @@ public class ProductionManager {
 
         // Evolution Chamber
         // Plan 2 and first round of upgrades
+        /*
         if (numEvoChambers < 2 && self.supplyUsed() > 50) {
             productionQueue.add(new PlannedItem(UnitType.Zerg_Evolution_Chamber, currentPriority, true));
             productionQueue.add(new PlannedItem(UnitType.Zerg_Evolution_Chamber, currentPriority, true));
             numEvoChambers += 2;
         }
+         */
 
         // TODO: Spire
 

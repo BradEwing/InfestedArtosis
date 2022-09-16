@@ -2,7 +2,6 @@ package info;
 
 import bwapi.Color;
 import bwapi.Game;
-import bwapi.Position;
 import bwapi.Text;
 import bwapi.TilePosition;
 
@@ -11,13 +10,11 @@ import bwapi.UnitType;
 import bwem.BWEM;
 import bwem.Base;
 
-import bwem.Tile;
 import lombok.Data;
 
 import map.TileComparator;
 import map.TileInfo;
 import map.TileType;
-import state.GameState;
 
 import java.util.ArrayList;
 import java.util.Collections;

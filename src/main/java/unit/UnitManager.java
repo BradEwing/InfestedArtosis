@@ -8,8 +8,7 @@ import bwem.BWEM;
 import bwem.CPPath;
 import bwem.ChokePoint;
 import info.InformationManager;
-import macro.WorkerManager;
-import state.GameState;
+import info.GameState;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -195,6 +194,14 @@ public class UnitManager {
     }
 
     public void onUnitDestroy(Unit unit) {
+        UnitType unitType = unit.getType();
+        if (unitType == UnitType.Resource_Mineral_Field) {
+            workerManager.removeMineral(unit);
+            return;
+        } else if (unitType == UnitType.Zerg_Extractor) {
+            workerManager.removeGeyser(unit);
+            return;
+        }
         removeManagedUnit(unit);
     }
 
