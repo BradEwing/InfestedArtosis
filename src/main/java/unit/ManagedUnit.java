@@ -41,7 +41,7 @@ public class ManagedUnit {
 
     // PlannedItem this unit is assigned to
     private PlannedItem plannedItem;
-    private int buildAttempts;
+    private int buildAttemptFrame;
 
     private boolean canFight;
     private boolean isFlyer;
@@ -204,6 +204,8 @@ public class ManagedUnit {
 
         UnitType plannedUnitType = plannedItem.getPlannedUnit();
 
+        // TODO: This should be determined with a building location planner
+        // Should be assigned to the plannedItem before the plannedItem is assigned to the unit
         if (plannedItem.getBuildPosition() == null) {
             System.out.printf("plannedItem buildPosition is null: [%s]\n", plannedItem);
             TilePosition buildLocation = game.getBuildLocation(plannedUnitType, unit.getTilePosition());
@@ -225,25 +227,28 @@ public class ManagedUnit {
             setUnready();
             boolean didBuild = unit.build(plannedUnitType, buildTarget.toTilePosition());
             // If we failed to build, try to morph
+            // TODO: remove this morph cmd?
             if (!didBuild) {
                 didBuild = unit.morph(plannedUnitType);
             }
 
+            final int frameCount = game.getFrameCount();
 
-            if (!didBuild && buildAttempts > 3) {
-                buildAttempts += 1;
+            if (!didBuild && buildAttemptFrame == 0) {
+                buildAttemptFrame = frameCount;
+            }
+
+
+            if (!didBuild) {
                 // There is a race condition where didBuild returns false and a new building location is assigned while
                 // the drone initiates the actual build. If the drone does not start the build animation in time, it's reassigned
                 // and can get stuck bouncing around looking for a build location.
                 //
-                // This is a bit hacky but buys ~30 frames to attempt to build at the given location before reassigning elsewhere
-                if (buildAttempts > 3) {
+                // This is a bit hacky but buys 120 frames to attempt to build at the given location before reassigning elsewhere
+                if (buildAttemptFrame + 120 < frameCount) {
                     // Try to get a new building location
                     System.out.printf("failed to build, getting new building location: [%s]\n", plannedItem);
                     plannedItem.setBuildPosition(game.getBuildLocation(plannedUnitType, unit.getTilePosition()));
-                    buildAttempts = 0;
-                } else {
-                    System.out.printf("failed to build, plannedItem:[%s], buildAttempts: [%s]\n", plannedItem, buildAttempts);
                 }
 
             }

@@ -72,6 +72,11 @@ public class WorkerManager {
         Map<Unit, HashSet<ManagedUnit>> mineralAssignments = gameState.getMineralAssignments();
         HashSet<ManagedUnit> mineralWorkers = mineralAssignments.get(unit);
         mineralAssignments.remove(unit);
+        // TODO: Determine why this is null, it's causing crashes
+        if (mineralWorkers == null) {
+            System.out.printf("no geyserWorkers found for unit: [%s]\n", unit);
+            return;
+        }
         for (ManagedUnit managedUnit: mineralWorkers) {
             clearAssignments(managedUnit);
             assignWorker(managedUnit);
