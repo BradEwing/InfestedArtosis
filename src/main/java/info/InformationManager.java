@@ -409,7 +409,7 @@ public class InformationManager {
             //System.out.printf("Enemy base: [%s]\n", mainEnemyBase);
         }
         for (Unit target: enemyBuildings) {
-            game.drawCircleMap(target.getPosition(), 3, Color.Red);
+            game.drawCircleMap(target.getPosition(), 3, Color.Yellow);
         }
         for (Unit target: enemyUnits) {
             game.drawCircleMap(target.getPosition(), 3, Color.Red);

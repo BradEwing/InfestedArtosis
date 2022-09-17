@@ -169,7 +169,11 @@ public class UnitManager {
         UnitType unitType = unit.getType();
         // TODO: Buildings, why not? Useful when tracking precise morphs
         // TODO: Building planner
+        // TODO: A matcher dispatcher to determine which units are passed to which manger?
         if (unitType.isBuilding()) {
+            if (unitType == UnitType.Zerg_Extractor) {
+                workerManager.onExtractorComplete(unit);
+            }
             return;
         }
 

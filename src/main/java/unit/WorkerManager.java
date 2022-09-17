@@ -26,6 +26,7 @@ public class WorkerManager {
 
     private HashSet<ManagedUnit> assignedManagedWorkers = new HashSet<>();
     private HashSet<ManagedUnit> gatherers = new HashSet<>();
+    private HashSet<ManagedUnit> mineralGatherers = new HashSet<>();
     private HashSet<ManagedUnit> larva = new HashSet<>();
 
     public WorkerManager(Game game, GameState gameState) {
@@ -98,6 +99,29 @@ public class WorkerManager {
         }
     }
 
+    // onExtractorComplete is called when an extractor is complete, to immediately pull 3 mineral gathering drones
+    // onto the extractor
+    public void onExtractorComplete(Unit extractor) {
+        final List<ManagedUnit> newGeyserWorkers = new ArrayList<>();
+
+        // If less than 3 mineral workers, there are probably have other problems
+        if (mineralGatherers.size() < 3) {
+            return;
+        }
+
+        for (ManagedUnit managedUnit: mineralGatherers) {
+            if (newGeyserWorkers.size() >= 3) {
+                break;
+            }
+            newGeyserWorkers.add(managedUnit);
+        }
+
+        for (ManagedUnit managedUnit: newGeyserWorkers) {
+            clearAssignments(managedUnit);
+            assignToGeyser(managedUnit);
+        }
+    }
+
     private void assignScheduledPlannedItems() {
         List<PlannedItem> scheduledPlans = gameState.getPlansScheduled().stream().collect(Collectors.toList());
         if (scheduledPlans.size() < 1) {
@@ -152,6 +176,7 @@ public class WorkerManager {
 
         larva.remove(managedUnit);
         gatherers.remove(managedUnit);
+        mineralGatherers.remove(managedUnit);
         assignedManagedWorkers.remove(managedUnit);
     }
 
@@ -160,11 +185,11 @@ public class WorkerManager {
     private void assignWorker(ManagedUnit managedUnit) {
         // Assign 3 per geyser
         if (gameState.getGeyserWorkers() < (3 * gameState.getGeyserAssignments().size())) {
-            assignGeyser(managedUnit);
+            assignToGeyser(managedUnit);
             return;
         }
         if (gameState.getMineralWorkers() < (2 * gameState.getMineralAssignments().size())) {
-            assignMineral(managedUnit);
+            assignToMineral(managedUnit);
             return;
         }
 
@@ -172,7 +197,7 @@ public class WorkerManager {
         managedUnit.setRole(UnitRole.IDLE);
     }
 
-    private void assignMineral(ManagedUnit managedUnit) {
+    private void assignToMineral(ManagedUnit managedUnit) {
         Unit unit = managedUnit.getUnit();
         // Consider how many mineral workers are mining, compare to size of taken mineral patches
         // Gather all mineral patches, sort by distance
@@ -191,22 +216,25 @@ public class WorkerManager {
             if (mineralUnits.size() == fewestMineralAssignments) {
                 managedUnit.setRole(UnitRole.GATHER);
                 managedUnit.setGatherTarget(mineral);
+                managedUnit.setHasNewGatherTarget(true);
                 assignedManagedWorkers.add(managedUnit);
                 gameState.setMineralWorkers(gameState.getMineralWorkers()+1);
                 mineralUnits.add(managedUnit);
                 gatherers.add(managedUnit);
+                mineralGatherers.add(managedUnit);
                 break;
             }
         }
     }
 
     // TODO: Assign closest geyser
-    private void assignGeyser(ManagedUnit managedUnit) {
+    private void assignToGeyser(ManagedUnit managedUnit) {
         for (Unit geyser: gameState.getGeyserAssignments().keySet()) {
             HashSet<ManagedUnit> geyserUnits = gameState.getGeyserAssignments().get(geyser);
             if (geyserUnits.size() < 3) {
                 managedUnit.setRole(UnitRole.GATHER);
                 managedUnit.setGatherTarget(geyser);
+                managedUnit.setHasNewGatherTarget(true);
                 assignedManagedWorkers.add(managedUnit);
                 gameState.setGeyserWorkers(gameState.getGeyserWorkers()+1);
                 geyserUnits.add(managedUnit);

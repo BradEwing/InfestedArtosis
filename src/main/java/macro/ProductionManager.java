@@ -62,13 +62,9 @@ public class ProductionManager {
 
     // TODO: Track in info manager / GameState with some sort of base planner class
     private int numSunkens = 0;
-    // TODO: VERY HACKY! this is because current 9pool hardcodes an extractor, this must be aware of build order
+
     private int numExtractors = 0;
     private int numEvoChambers = 0;
-
-    // These worker trackers do not track death or morph into building
-    private int mineralWorkers = 0;
-    private int gasWorkers = 0;
 
     private int reservedMinerals = 0;
     private int reservedGas = 0;

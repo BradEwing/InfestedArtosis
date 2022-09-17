@@ -39,6 +39,8 @@ public class ManagedUnit {
     private Unit fightTarget;
     private Unit gatherTarget;
 
+    private boolean hasNewGatherTarget;
+
     // PlannedItem this unit is assigned to
     private PlannedItem plannedItem;
     private int buildAttemptFrame;
@@ -180,7 +182,7 @@ public class ManagedUnit {
     }
 
     private void gather() {
-        if (unit.isGatheringMinerals() || unit.isGatheringGas()) return;
+        if (!hasNewGatherTarget & (unit.isGatheringMinerals() || unit.isGatheringGas())) return;
         if (!isReady) return;
 
         if ((unit.isCarryingGas() || unit.isCarryingMinerals()) && unit.isIdle()) {
@@ -191,6 +193,7 @@ public class ManagedUnit {
 
         setUnready();
         unit.gather(gatherTarget);
+        hasNewGatherTarget = false;
     }
 
     // Attempt build or morph
