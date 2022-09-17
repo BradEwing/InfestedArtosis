@@ -8,8 +8,7 @@ import bwem.BWEM;
 import bwem.CPPath;
 import bwem.ChokePoint;
 import info.InformationManager;
-import macro.WorkerManager;
-import state.GameState;
+import info.GameState;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -170,7 +169,11 @@ public class UnitManager {
         UnitType unitType = unit.getType();
         // TODO: Buildings, why not? Useful when tracking precise morphs
         // TODO: Building planner
+        // TODO: A matcher dispatcher to determine which units are passed to which manger?
         if (unitType.isBuilding()) {
+            if (unitType == UnitType.Zerg_Extractor) {
+                workerManager.onExtractorComplete(unit);
+            }
             return;
         }
 
@@ -195,6 +198,14 @@ public class UnitManager {
     }
 
     public void onUnitDestroy(Unit unit) {
+        UnitType unitType = unit.getType();
+        if (unitType == UnitType.Resource_Mineral_Field) {
+            workerManager.removeMineral(unit);
+            return;
+        } else if (unitType == UnitType.Zerg_Extractor) {
+            workerManager.removeGeyser(unit);
+            return;
+        }
         removeManagedUnit(unit);
     }
 

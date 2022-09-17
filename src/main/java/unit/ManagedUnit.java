@@ -38,8 +38,12 @@ public class ManagedUnit {
 
     private Unit fightTarget;
     private Unit gatherTarget;
+
+    private boolean hasNewGatherTarget;
+
     // PlannedItem this unit is assigned to
     private PlannedItem plannedItem;
+    private int buildAttemptFrame;
 
     private boolean canFight;
     private boolean isFlyer;
@@ -129,6 +133,13 @@ public class ManagedUnit {
         }
     }
 
+    private void debugBuild() {
+        Position unitPosition = unit.getPosition();
+        Position buildPosition = plannedItem.getBuildPosition().toPosition();
+        game.drawLineMap(unitPosition, buildPosition, Color.Cyan);
+        game.drawTextMap(unitPosition.add(new Position(8,8)), String.format("Distance: %d", unit.getDistance(buildPosition)), Text.Cyan);
+    }
+
     private void debugRole() {
         Position unitPosition = unit.getPosition();
         game.drawTextMap(unitPosition, String.format("%s", role), Text.Default);
@@ -171,7 +182,7 @@ public class ManagedUnit {
     }
 
     private void gather() {
-        if (unit.isGatheringMinerals() || unit.isGatheringGas()) return;
+        if (!hasNewGatherTarget & (unit.isGatheringMinerals() || unit.isGatheringGas())) return;
         if (!isReady) return;
 
         if ((unit.isCarryingGas() || unit.isCarryingMinerals()) && unit.isIdle()) {
@@ -180,24 +191,37 @@ public class ManagedUnit {
             return;
         }
 
+        if (gatherTarget == null) {
+            role = UnitRole.IDLE;
+            return;
+        }
+
         setUnready();
         unit.gather(gatherTarget);
+        hasNewGatherTarget = false;
     }
 
     // Attempt build or morph
     private void build() {
         if (unit.isBeingConstructed() || unit.isMorphing()) return;
+        if (plannedItem.getBuildPosition() != null) {
+            // NOTE: this assumes plannedItem and buildPosition are NOT NULL
+            debugBuild();
+        }
         if (!isReady) return;
 
         UnitType plannedUnitType = plannedItem.getPlannedUnit();
 
+        // TODO: This should be determined with a building location planner
+        // Should be assigned to the plannedItem before the plannedItem is assigned to the unit
         if (plannedItem.getBuildPosition() == null) {
+            //System.out.printf("plannedItem buildPosition is null: [%s]\n", plannedItem);
             TilePosition buildLocation = game.getBuildLocation(plannedUnitType, unit.getTilePosition());
             plannedItem.setBuildPosition(buildLocation);
         }
 
         Position buildTarget = plannedItem.getBuildPosition().toPosition();
-        if (unit.getDistance(buildTarget) > 200 && (!unit.isMoving() || unit.isGatheringMinerals())) {
+        if (unit.getDistance(buildTarget) > 20 && (!unit.isMoving() || unit.isGatheringMinerals())) {
             setUnready();
             unit.move(buildTarget);
             return;
@@ -211,13 +235,30 @@ public class ManagedUnit {
             setUnready();
             boolean didBuild = unit.build(plannedUnitType, buildTarget.toTilePosition());
             // If we failed to build, try to morph
+            // TODO: remove this morph cmd?
             if (!didBuild) {
                 didBuild = unit.morph(plannedUnitType);
             }
 
+            final int frameCount = game.getFrameCount();
+
+            if (!didBuild && buildAttemptFrame == 0) {
+                buildAttemptFrame = frameCount;
+            }
+
+
             if (!didBuild) {
-                // Try to get a new building location
-                plannedItem.setBuildPosition(game.getBuildLocation(plannedUnitType, unit.getTilePosition()));
+                // There is a race condition where didBuild returns false and a new building location is assigned while
+                // the drone initiates the actual build. If the drone does not start the build animation in time, it's reassigned
+                // and can get stuck bouncing around looking for a build location.
+                //
+                // This is a bit hacky but buys 150 frames to attempt to build at the given location before reassigning elsewhere
+                if (buildAttemptFrame + 150 < frameCount) {
+                    // Try to get a new building location
+                    //System.out.printf("failed to build, getting new building location: [%s]\n", plannedItem);
+                    plannedItem.setBuildPosition(game.getBuildLocation(plannedUnitType, unit.getTilePosition()));
+                }
+
             }
 
             if (didBuild) {

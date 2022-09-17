@@ -11,7 +11,7 @@ import bwapi.UpgradeType;
 import bwem.BWEM;
 import bwem.Base;
 import bwem.Mineral;
-import state.GameState;
+import info.GameState;
 import planner.PlanState;
 import planner.PlanType;
 import planner.PlannedItem;
@@ -62,13 +62,9 @@ public class ProductionManager {
 
     // TODO: Track in info manager / GameState with some sort of base planner class
     private int numSunkens = 0;
-    // TODO: VERY HACKY! this is because current 9pool hardcodes an extractor, this must be aware of build order
+
     private int numExtractors = 0;
     private int numEvoChambers = 0;
-
-    // These worker trackers do not track death or morph into building
-    private int mineralWorkers = 0;
-    private int gasWorkers = 0;
 
     private int reservedMinerals = 0;
     private int reservedGas = 0;
@@ -312,11 +308,13 @@ public class ProductionManager {
 
         // Evolution Chamber
         // Plan 2 and first round of upgrades
+        /*
         if (numEvoChambers < 2 && self.supplyUsed() > 50) {
             productionQueue.add(new PlannedItem(UnitType.Zerg_Evolution_Chamber, currentPriority, true));
             productionQueue.add(new PlannedItem(UnitType.Zerg_Evolution_Chamber, currentPriority, true));
             numEvoChambers += 2;
         }
+         */
 
         // TODO: Spire
 

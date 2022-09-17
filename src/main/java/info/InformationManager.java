@@ -2,7 +2,6 @@ package info;
 
 import bwapi.Color;
 import bwapi.Game;
-import bwapi.Position;
 import bwapi.Text;
 import bwapi.TilePosition;
 
@@ -11,13 +10,11 @@ import bwapi.UnitType;
 import bwem.BWEM;
 import bwem.Base;
 
-import bwem.Tile;
 import lombok.Data;
 
 import map.TileComparator;
 import map.TileInfo;
 import map.TileType;
-import state.GameState;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -412,7 +409,7 @@ public class InformationManager {
             //System.out.printf("Enemy base: [%s]\n", mainEnemyBase);
         }
         for (Unit target: enemyBuildings) {
-            game.drawCircleMap(target.getPosition(), 3, Color.Red);
+            game.drawCircleMap(target.getPosition(), 3, Color.Yellow);
         }
         for (Unit target: enemyUnits) {
             game.drawCircleMap(target.getPosition(), 3, Color.Red);

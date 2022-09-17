@@ -1,4 +1,4 @@
-package state;
+package info;
 
 import bwapi.Unit;
 import lombok.Data;

@@ -1,4 +1,4 @@
-package macro;
+package unit;
 
 import bwapi.Game;
 import bwapi.Text;
@@ -8,16 +8,15 @@ import bwapi.UnitType;
 import planner.PlanState;
 import planner.PlanType;
 import planner.PlannedItemComparator;
-import state.GameState;
+import info.GameState;
 import planner.PlannedItem;
-import unit.ManagedUnit;
-import unit.UnitRole;
 import util.UnitDistanceComparator;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 public class WorkerManager {
@@ -27,6 +26,7 @@ public class WorkerManager {
 
     private HashSet<ManagedUnit> assignedManagedWorkers = new HashSet<>();
     private HashSet<ManagedUnit> gatherers = new HashSet<>();
+    private HashSet<ManagedUnit> mineralGatherers = new HashSet<>();
     private HashSet<ManagedUnit> larva = new HashSet<>();
 
     public WorkerManager(Game game, GameState gameState) {
@@ -67,6 +67,65 @@ public class WorkerManager {
     // onUnitDestroy OR worker is being reassigned to non-worker role
     public void removeManagedWorker(ManagedUnit managedUnit) {
         clearAssignments(managedUnit);
+    }
+
+    public void removeMineral(Unit unit) {
+        Map<Unit, HashSet<ManagedUnit>> mineralAssignments = gameState.getMineralAssignments();
+        HashSet<ManagedUnit> mineralWorkers = mineralAssignments.get(unit);
+        mineralAssignments.remove(unit);
+        // TODO: Determine why this is null, it's causing crashes
+        if (mineralWorkers == null) {
+            //System.out.printf("no geyserWorkers found for unit: [%s]\n", unit);
+            return;
+        }
+        for (ManagedUnit managedUnit: mineralWorkers) {
+            clearAssignments(managedUnit);
+            assignWorker(managedUnit);
+        }
+    }
+
+    public void removeGeyser(Unit unit) {
+        Map<Unit, HashSet<ManagedUnit>> geyserAssignments = gameState.getGeyserAssignments();
+        HashSet<ManagedUnit> geyserWorkers = geyserAssignments.get(unit);
+        geyserAssignments.remove(unit);
+        // TODO: Determine why this is null, it's causing crashes
+        if (geyserWorkers == null) {
+            //System.out.printf("no geyserWorkers found for unit: [%s]\n", unit);
+            return;
+        }
+        for (ManagedUnit managedUnit: geyserWorkers) {
+            clearAssignments(managedUnit);
+            assignWorker(managedUnit);
+        }
+    }
+
+    // onExtractorComplete is called when an extractor is complete, to immediately pull 3 mineral gathering drones
+    // onto the extractor
+    public void onExtractorComplete(Unit extractor) {
+        final List<ManagedUnit> newGeyserWorkers = new ArrayList<>();
+
+        // If less than 3 mineral workers, there are probably have other problems
+        if (mineralGatherers.size() < 3) {
+            return;
+        }
+
+        for (ManagedUnit managedUnit: mineralGatherers) {
+            if (newGeyserWorkers.size() >= 3) {
+                break;
+            }
+            newGeyserWorkers.add(managedUnit);
+        }
+
+        for (ManagedUnit managedUnit: newGeyserWorkers) {
+            clearAssignments(managedUnit);
+            assignToGeyser(managedUnit);
+        }
+    }
+
+    // checkLarvaDeadlock sees if all larva are assigned to morph into non overlords and if we're supply blocked
+    // if we meet both conditions, cancel these planned items and unassign the larva (there should be an overlord at top of queue)
+    private void checkLarvaDeadlock() {
+
     }
 
     private void assignScheduledPlannedItems() {
@@ -123,6 +182,7 @@ public class WorkerManager {
 
         larva.remove(managedUnit);
         gatherers.remove(managedUnit);
+        mineralGatherers.remove(managedUnit);
         assignedManagedWorkers.remove(managedUnit);
     }
 
@@ -131,11 +191,11 @@ public class WorkerManager {
     private void assignWorker(ManagedUnit managedUnit) {
         // Assign 3 per geyser
         if (gameState.getGeyserWorkers() < (3 * gameState.getGeyserAssignments().size())) {
-            assignGeyser(managedUnit);
+            assignToGeyser(managedUnit);
             return;
         }
         if (gameState.getMineralWorkers() < (2 * gameState.getMineralAssignments().size())) {
-            assignMineral(managedUnit);
+            assignToMineral(managedUnit);
             return;
         }
 
@@ -143,7 +203,7 @@ public class WorkerManager {
         managedUnit.setRole(UnitRole.IDLE);
     }
 
-    private void assignMineral(ManagedUnit managedUnit) {
+    private void assignToMineral(ManagedUnit managedUnit) {
         Unit unit = managedUnit.getUnit();
         // Consider how many mineral workers are mining, compare to size of taken mineral patches
         // Gather all mineral patches, sort by distance
@@ -162,22 +222,25 @@ public class WorkerManager {
             if (mineralUnits.size() == fewestMineralAssignments) {
                 managedUnit.setRole(UnitRole.GATHER);
                 managedUnit.setGatherTarget(mineral);
+                managedUnit.setHasNewGatherTarget(true);
                 assignedManagedWorkers.add(managedUnit);
                 gameState.setMineralWorkers(gameState.getMineralWorkers()+1);
                 mineralUnits.add(managedUnit);
                 gatherers.add(managedUnit);
+                mineralGatherers.add(managedUnit);
                 break;
             }
         }
     }
 
     // TODO: Assign closest geyser
-    private void assignGeyser(ManagedUnit managedUnit) {
+    private void assignToGeyser(ManagedUnit managedUnit) {
         for (Unit geyser: gameState.getGeyserAssignments().keySet()) {
             HashSet<ManagedUnit> geyserUnits = gameState.getGeyserAssignments().get(geyser);
             if (geyserUnits.size() < 3) {
                 managedUnit.setRole(UnitRole.GATHER);
                 managedUnit.setGatherTarget(geyser);
+                managedUnit.setHasNewGatherTarget(true);
                 assignedManagedWorkers.add(managedUnit);
                 gameState.setGeyserWorkers(gameState.getGeyserWorkers()+1);
                 geyserUnits.add(managedUnit);
