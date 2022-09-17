@@ -75,7 +75,7 @@ public class WorkerManager {
         mineralAssignments.remove(unit);
         // TODO: Determine why this is null, it's causing crashes
         if (mineralWorkers == null) {
-            System.out.printf("no geyserWorkers found for unit: [%s]\n", unit);
+            //System.out.printf("no geyserWorkers found for unit: [%s]\n", unit);
             return;
         }
         for (ManagedUnit managedUnit: mineralWorkers) {
@@ -90,7 +90,7 @@ public class WorkerManager {
         geyserAssignments.remove(unit);
         // TODO: Determine why this is null, it's causing crashes
         if (geyserWorkers == null) {
-            System.out.printf("no geyserWorkers found for unit: [%s]\n", unit);
+            //System.out.printf("no geyserWorkers found for unit: [%s]\n", unit);
             return;
         }
         for (ManagedUnit managedUnit: geyserWorkers) {
@@ -120,6 +120,12 @@ public class WorkerManager {
             clearAssignments(managedUnit);
             assignToGeyser(managedUnit);
         }
+    }
+
+    // checkLarvaDeadlock sees if all larva are assigned to morph into non overlords and if we're supply blocked
+    // if we meet both conditions, cancel these planned items and unassign the larva (there should be an overlord at top of queue)
+    private void checkLarvaDeadlock() {
+
     }
 
     private void assignScheduledPlannedItems() {

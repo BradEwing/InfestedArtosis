@@ -191,6 +191,11 @@ public class ManagedUnit {
             return;
         }
 
+        if (gatherTarget == null) {
+            role = UnitRole.IDLE;
+            return;
+        }
+
         setUnready();
         unit.gather(gatherTarget);
         hasNewGatherTarget = false;
@@ -210,7 +215,7 @@ public class ManagedUnit {
         // TODO: This should be determined with a building location planner
         // Should be assigned to the plannedItem before the plannedItem is assigned to the unit
         if (plannedItem.getBuildPosition() == null) {
-            System.out.printf("plannedItem buildPosition is null: [%s]\n", plannedItem);
+            //System.out.printf("plannedItem buildPosition is null: [%s]\n", plannedItem);
             TilePosition buildLocation = game.getBuildLocation(plannedUnitType, unit.getTilePosition());
             plannedItem.setBuildPosition(buildLocation);
         }
@@ -247,10 +252,10 @@ public class ManagedUnit {
                 // the drone initiates the actual build. If the drone does not start the build animation in time, it's reassigned
                 // and can get stuck bouncing around looking for a build location.
                 //
-                // This is a bit hacky but buys 120 frames to attempt to build at the given location before reassigning elsewhere
-                if (buildAttemptFrame + 120 < frameCount) {
+                // This is a bit hacky but buys 150 frames to attempt to build at the given location before reassigning elsewhere
+                if (buildAttemptFrame + 150 < frameCount) {
                     // Try to get a new building location
-                    System.out.printf("failed to build, getting new building location: [%s]\n", plannedItem);
+                    //System.out.printf("failed to build, getting new building location: [%s]\n", plannedItem);
                     plannedItem.setBuildPosition(game.getBuildLocation(plannedUnitType, unit.getTilePosition()));
                 }
 
