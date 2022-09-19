@@ -172,7 +172,7 @@ public class UnitManager {
         // TODO: A matcher dispatcher to determine which units are passed to which manger?
         if (unitType.isBuilding()) {
             if (unitType == UnitType.Zerg_Extractor) {
-                workerManager.onExtractorComplete(unit);
+                workerManager.onExtractorComplete();
             }
             return;
         }

@@ -1,6 +1,7 @@
 package unit;
 
 import bwapi.Game;
+import bwapi.Player;
 import bwapi.Text;
 import bwapi.TilePosition;
 import bwapi.Unit;
@@ -35,6 +36,9 @@ public class WorkerManager {
     }
 
     public void onFrame() {
+        checksLarvaDeadlock();
+        handleLarvaDeadlock();
+
         assignScheduledPlannedItems();
     }
 
@@ -101,10 +105,10 @@ public class WorkerManager {
 
     // onExtractorComplete is called when an extractor is complete, to immediately pull 3 mineral gathering drones
     // onto the extractor
-    public void onExtractorComplete(Unit extractor) {
+    public void onExtractorComplete() {
         final List<ManagedUnit> newGeyserWorkers = new ArrayList<>();
 
-        // If less than 3 mineral workers, there are probably have other problems
+        // If less than 3 mineral workers, there are probably other problems
         if (mineralGatherers.size() < 3) {
             return;
         }
@@ -120,12 +124,6 @@ public class WorkerManager {
             clearAssignments(managedUnit);
             assignToGeyser(managedUnit);
         }
-    }
-
-    // checkLarvaDeadlock sees if all larva are assigned to morph into non overlords and if we're supply blocked
-    // if we meet both conditions, cancel these planned items and unassign the larva (there should be an overlord at top of queue)
-    private void checkLarvaDeadlock() {
-
     }
 
     private void assignScheduledPlannedItems() {
@@ -269,7 +267,7 @@ public class WorkerManager {
     private boolean assignMorphLarva(PlannedItem plannedItem) {
         for (ManagedUnit managedUnit : larva) {
             Unit unit = managedUnit.getUnit();
-            // If drone and not assigned, assign
+            // If larva and not assigned, assign
             if (!gameState.getAssignedPlannedItems().containsKey(unit)) {
                 clearAssignments(managedUnit);
                 plannedItem.setState(PlanState.BUILDING);
@@ -281,6 +279,77 @@ public class WorkerManager {
         }
 
         return false;
+    }
+
+    // checksLarvaDeadlock determines if all larva are assigned to morph into non overlords and if we're supply blocked
+    // if we meet both conditions, cancel these planned items and unassign the larva (there should be an overlord at top of queue)
+    private void checksLarvaDeadlock() {
+        Player self = game.self();
+        if (self.supplyTotal() - self.supplyUsed() > 0) {
+            return;
+        }
+
+        for (ManagedUnit managedUnit : larva) {
+            if (managedUnit.getRole() == UnitRole.LARVA) {
+                return;
+            }
+        }
+
+        Boolean isOverlordAssignedOrMorphing = false;
+        for (PlannedItem plannedItem: gameState.getAssignedPlannedItems().values()) {
+            if (plannedItem.getType() != PlanType.UNIT) {
+                continue;
+            }
+
+            if (plannedItem.getPlannedUnit() == UnitType.Zerg_Overlord) {
+                isOverlordAssignedOrMorphing = true;
+                break;
+            }
+        }
+
+        // Larva Deadlock Criteria:
+        // - ALL larva assigned
+        // - NO overlord building
+        // - NO overlord scheduled
+
+        // Overlord in production
+        for (PlannedItem plannedItem: gameState.getPlansMorphing()) {
+            if (plannedItem.getType() != PlanType.UNIT) {
+                continue;
+            }
+
+            if (plannedItem.getPlannedUnit() == UnitType.Zerg_Overlord) {
+                isOverlordAssignedOrMorphing = true;
+                break;
+            }
+        }
+
+        if (isOverlordAssignedOrMorphing) {
+            return;
+        }
+
+        gameState.setLarvaDeadlocked(true);
+    }
+
+    private void handleLarvaDeadlock() {
+        if (!gameState.isLarvaDeadlocked()) {
+            return;
+        }
+
+        for (ManagedUnit managedUnit : larva) {
+            Unit unit = managedUnit.getUnit();
+            clearAssignments(managedUnit);
+            managedUnit.setRole(UnitRole.LARVA);
+
+            PlannedItem plannedItem = managedUnit.getPlannedItem();
+            // TODO: Handle cancelled items. Are they requeued?
+            plannedItem.setState(PlanState.CANCELLED);
+            managedUnit.setPlannedItem(null);
+
+            gameState.getAssignedPlannedItems().remove(unit);
+        }
+
+        gameState.setLarvaDeadlocked(false);
     }
 
 
