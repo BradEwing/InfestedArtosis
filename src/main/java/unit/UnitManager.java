@@ -197,13 +197,15 @@ public class UnitManager {
         managedUnits.remove(managedUnit);
         managedUnitLookup.remove(unit);
 
+        if (managedUnit == null) {
+            return;
+        }
 
         TilePosition movementTarget = managedUnit.getMovementTargetPosition();
         HashSet<TilePosition> activeScoutTargets =  informationManager.getActiveScoutTargets();
         if (movementTarget != null && activeScoutTargets.contains(managedUnit.getMovementTargetPosition())) {
             activeScoutTargets.remove(movementTarget);
         }
-        return;
     }
 
     public void onUnitDestroy(Unit unit) {
@@ -308,6 +310,10 @@ public class UnitManager {
         managedUnitLookup.put(unit, managedScout);
         managedUnits.add(managedScout);
         assignScoutMovementTarget(managedScout);
+
+        if (unit.getType() == UnitType.Zerg_Overlord) {
+            managedScout.setCanFight(false);
+        }
         return;
     }
 }
