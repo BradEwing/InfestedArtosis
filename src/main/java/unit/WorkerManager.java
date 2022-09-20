@@ -139,18 +139,31 @@ public class WorkerManager {
 
         Collections.sort(scheduledPlans, new PlannedItemComparator());
         List<PlannedItem> assignedPlans = new ArrayList<>();
-        int curPriority = scheduledPlans.get(0).getPriority();
 
+        boolean blockMorphDroneAssignment = false;
+        boolean blockMorphLarvaAssignment = false;
         for (PlannedItem plannedItem: scheduledPlans) {
             // Are we broken here?
-            if (plannedItem.getPriority() > curPriority) {
+            if (blockMorphDroneAssignment && blockMorphLarvaAssignment) {
                 break;
             }
             boolean didAssign = false;
             if (plannedItem.getType() == PlanType.BUILDING) {
+                if (blockMorphDroneAssignment) {
+                    continue;
+                }
                 didAssign = assignMorphDrone(plannedItem);
+                if (!didAssign) {
+                    blockMorphDroneAssignment = true;
+                }
             } else if (plannedItem.getType() == PlanType.UNIT) {
+                if (blockMorphLarvaAssignment) {
+                    continue;
+                }
                 didAssign = assignMorphLarva(plannedItem);
+                if (!didAssign) {
+                    blockMorphLarvaAssignment = true;
+                }
             }
 
             if (didAssign) {
@@ -275,7 +288,7 @@ public class WorkerManager {
             Unit unit = managedUnit.getUnit();
             // If larva and not assigned, assign
             if (!gameState.getAssignedPlannedItems().containsKey(unit)) {
-                clearAssignments(managedUnit);
+                //clearAssignments(managedUnit);
                 plannedItem.setState(PlanState.BUILDING);
                 managedUnit.setRole(UnitRole.MORPH);
                 managedUnit.setPlannedItem(plannedItem);

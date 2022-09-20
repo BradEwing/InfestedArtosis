@@ -58,6 +58,7 @@ public class UnitManager {
                     managedUnit.setRole(UnitRole.SCOUT);
                     managedUnits.add(managedUnit);
                     managedUnitLookup.put(unit, managedUnit);
+                    managedUnit.setCanFight(false);
                 }
                 if (unitType == UnitType.Zerg_Drone) {
                     managedUnits.add(managedUnit);
