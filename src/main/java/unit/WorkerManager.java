@@ -29,6 +29,7 @@ public class WorkerManager {
     private HashSet<ManagedUnit> gatherers = new HashSet<>();
     private HashSet<ManagedUnit> mineralGatherers = new HashSet<>();
     private HashSet<ManagedUnit> larva = new HashSet<>();
+    private HashSet<ManagedUnit> eggs = new HashSet<>();
 
     public WorkerManager(Game game, GameState gameState) {
         this.game = game;
@@ -60,6 +61,10 @@ public class WorkerManager {
         clearAssignments(managedUnit);
         if (managedUnit.getUnitType() == UnitType.Zerg_Drone) {
             assignWorker(managedUnit);
+        }
+        // eggs
+        if (managedUnit.getUnitType() == UnitType.Zerg_Egg) {
+            eggs.add(managedUnit);
         }
     }
 
@@ -108,8 +113,8 @@ public class WorkerManager {
     public void onExtractorComplete() {
         final List<ManagedUnit> newGeyserWorkers = new ArrayList<>();
 
-        // If less than 3 mineral workers, there are probably other problems
-        if (mineralGatherers.size() < 3) {
+        // If less than 4 mineral workers, there are probably other problems
+        if (mineralGatherers.size() < 4) {
             return;
         }
 
@@ -178,6 +183,7 @@ public class WorkerManager {
             }
         }
 
+        eggs.remove(managedUnit);
         larva.remove(managedUnit);
         gatherers.remove(managedUnit);
         mineralGatherers.remove(managedUnit);
@@ -283,15 +289,36 @@ public class WorkerManager {
 
     // checksLarvaDeadlock determines if all larva are assigned to morph into non overlords and if we're supply blocked
     // if we meet both conditions, cancel these planned items and unassign the larva (there should be an overlord at top of queue)
+    // third condition: scheduled queue is NOT empty and contains 0 overlords
     private void checksLarvaDeadlock() {
         Player self = game.self();
-        if (self.supplyTotal() - self.supplyUsed() > 0) {
+        int supplyTotal = self.supplyTotal();
+        int supplyUsed = self.supplyUsed();
+        if (supplyTotal - supplyUsed > 0) {
+            return;
+        }
+        if (gameState.getPlansScheduled().size() == 0) {
             return;
         }
 
         for (ManagedUnit managedUnit : larva) {
             if (managedUnit.getRole() == UnitRole.LARVA) {
                 return;
+            }
+            if (managedUnit.getRole() == UnitRole.MORPH) {
+                PlannedItem plannedItem = managedUnit.getPlannedItem();
+                if (plannedItem != null & plannedItem.getPlannedUnit() == UnitType.Zerg_Overlord) {
+                    return;
+                }
+            }
+        }
+
+        for (ManagedUnit managedUnit: eggs) {
+            if (managedUnit.getRole() == UnitRole.MORPH) {
+                PlannedItem plannedItem = managedUnit.getPlannedItem();
+                if (plannedItem != null & plannedItem.getPlannedUnit() == UnitType.Zerg_Overlord) {
+                    return;
+                }
             }
         }
 
@@ -343,8 +370,10 @@ public class WorkerManager {
 
             PlannedItem plannedItem = managedUnit.getPlannedItem();
             // TODO: Handle cancelled items. Are they requeued?
-            plannedItem.setState(PlanState.CANCELLED);
-            managedUnit.setPlannedItem(null);
+            if (plannedItem != null) {
+                plannedItem.setState(PlanState.CANCELLED);
+                managedUnit.setPlannedItem(null);
+            }
 
             gameState.getAssignedPlannedItems().remove(unit);
         }
