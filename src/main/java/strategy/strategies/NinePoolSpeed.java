@@ -23,9 +23,9 @@ public class NinePoolSpeed implements Strategy {
         list.add(new PlannedItem(UnitType.Zerg_Extractor, 3, true, false));
         list.add(new PlannedItem(UnitType.Zerg_Drone, 3, false, false));
         list.add(new PlannedItem(UnitType.Zerg_Drone, 4, false, false));
-        list.add(new PlannedItem(UnitType.Zerg_Zergling, 4, false, true));
-        list.add(new PlannedItem(UnitType.Zerg_Zergling, 4, false, true));
-        list.add(new PlannedItem(UnitType.Zerg_Zergling, 4, false, true));
+        list.add(new PlannedItem(UnitType.Zerg_Zergling, 4, false, false));
+        list.add(new PlannedItem(UnitType.Zerg_Zergling, 4, false, false));
+        list.add(new PlannedItem(UnitType.Zerg_Zergling, 4, false, false));
         list.add(new PlannedItem(UpgradeType.Metabolic_Boost, 5, true));
 
         return list;

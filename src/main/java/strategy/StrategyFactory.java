@@ -4,6 +4,7 @@ import bwapi.Game;
 import strategy.strategies.FivePool;
 import strategy.strategies.FourPool;
 import strategy.strategies.NinePoolSpeed;
+import strategy.strategies.TwelveHatch;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -38,6 +39,7 @@ public class StrategyFactory {
         allStrategies.add(new NinePoolSpeed());
         allStrategies.add(new FivePool());
         allStrategies.add(new FourPool());
+        allStrategies.add(new TwelveHatch());
 
         for (Strategy strategy: allStrategies) {
             if (numStartingLocations == FOUR && !strategy.playsFourPlayerMap()) {

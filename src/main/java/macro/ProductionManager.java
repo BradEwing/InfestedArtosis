@@ -373,7 +373,9 @@ public class ProductionManager {
 
         /** For now, only subject unit production to queue size */
         // Base queue size is 3, increases per hatch
-        if (productionQueue.size() >= 3 + (numHatcheries() * 3)) {
+        final int supplyRemaining = self.supplyTotal() - self.supplyUsed();
+
+        if (productionQueue.size() >= 3 + (numHatcheries() * 3) && supplyRemaining > 0) {
             return;
         }
 
@@ -382,7 +384,7 @@ public class ProductionManager {
 
         // Plan supply
         // If negative, trigger higher priority for overlord
-        final int supplyRemaining = self.supplyTotal() - self.supplyUsed();
+
         if (supplyRemaining + plannedSupply < 5 && self.supplyUsed() < 400) {
             plannedSupply += 8;
             productionQueue.add(new PlannedItem(UnitType.Zerg_Overlord, currentPriority / 3, false, false));
@@ -733,7 +735,18 @@ public class ProductionManager {
             return;
         }
 
+        updateTechOnDestroy(unit);
+
         clearAssignments(unit);
+    }
+
+    private void updateTechOnDestroy(Unit unit) {
+        switch (unit.getType()) {
+            case Zerg_Spawning_Pool:
+                hasPool = false;
+            case Zerg_Hydralisk_Den:
+                hasDen = false;
+        }
     }
 
     /**

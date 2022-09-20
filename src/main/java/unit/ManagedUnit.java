@@ -221,7 +221,7 @@ public class ManagedUnit {
         }
 
         Position buildTarget = plannedItem.getBuildPosition().toPosition();
-        if (unit.getDistance(buildTarget) > 20 && (!unit.isMoving() || unit.isGatheringMinerals())) {
+        if (unit.getDistance(buildTarget) > 150 || (!unit.isMoving() || unit.isGatheringMinerals())) {
             setUnready();
             unit.move(buildTarget);
             return;
@@ -300,7 +300,7 @@ public class ManagedUnit {
         }
 
         if (game.isVisible(movementTargetPosition)) {
-            role = UnitRole.IDLE;
+            //role = UnitRole.IDLE;
             movementTargetPosition = null;
             return;
         }
