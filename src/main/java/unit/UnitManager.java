@@ -9,6 +9,7 @@ import bwem.CPPath;
 import bwem.ChokePoint;
 import info.InformationManager;
 import info.GameState;
+import org.bk.ass.sim.BWMirrorAgentFactory;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -102,6 +103,7 @@ public class UnitManager {
                 continue;
             }
 
+            // TODO: infinite flopping between fight and scout states is here
             if (managedUnit.isCanFight() && role != UnitRole.FIGHT && informationManager.isEnemyLocationKnown()) {
                 managedUnit.setRole(UnitRole.FIGHT);
             } else if (role != UnitRole.SCOUT && !informationManager.isEnemyLocationKnown()) {
@@ -192,8 +194,15 @@ public class UnitManager {
     private void removeManagedUnit(Unit unit) {
         ManagedUnit managedUnit = managedUnitLookup.get(unit);
         workerManager.removeManagedWorker(managedUnit);
-        Boolean isRemoved = managedUnits.remove(managedUnit);
+        managedUnits.remove(managedUnit);
         managedUnitLookup.remove(unit);
+
+
+        TilePosition movementTarget = managedUnit.getMovementTargetPosition();
+        HashSet<TilePosition> activeScoutTargets =  informationManager.getActiveScoutTargets();
+        if (movementTarget != null && activeScoutTargets.contains(managedUnit.getMovementTargetPosition())) {
+            activeScoutTargets.remove(movementTarget);
+        }
         return;
     }
 

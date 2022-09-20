@@ -3,6 +3,7 @@ package macro;
 import bwapi.Color;
 import bwapi.Game;
 import bwapi.Player;
+import bwapi.Race;
 import bwapi.Text;
 import bwapi.Unit;
 import bwapi.UnitType;
@@ -51,6 +52,7 @@ public class ProductionManager {
     private boolean hasPool = false;
     private boolean hasPlannedPool = false;
     private boolean hasMetabolicBoost = false;
+    // TODO: set off of strategy
     private boolean hasPlannedMetabolicBoost = true;
     private boolean hasDen = false;
     private boolean hasPlannedDen = false;
@@ -305,7 +307,11 @@ public class ProductionManager {
             hasPlannedPool = true;
         }
         // Plan hydra den, why not?
-        if (!hasPlannedDen && !hasDen && self.supplyUsed() > 40) {
+        // HACK
+        // TODO: Move this out of here
+
+        int hydraSupplyThreshold = game.enemy().getRace() == Race.Protoss ? 20 : 40;
+        if (!hasPlannedDen && !hasDen && self.supplyUsed() > hydraSupplyThreshold) {
             productionQueue.add(new PlannedItem(UnitType.Zerg_Hydralisk_Den, currentPriority, true, false));
             hasPlannedDen = true;
         }
