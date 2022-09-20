@@ -371,20 +371,9 @@ public class ProductionManager {
             hasPlannedEvoChamberUpgrades1 = true;
         }
 
-        /** For now, only subject unit production to queue size */
-        // Base queue size is 3, increases per hatch
-        final int supplyRemaining = self.supplyTotal() - self.supplyUsed();
-
-        if (productionQueue.size() >= 3 + (numHatcheries() * 3) && supplyRemaining > 0) {
-            return;
-        }
-
-        // Once we come here, we never stop
-        isPlanning = true;
-
         // Plan supply
         // If negative, trigger higher priority for overlord
-
+        final int supplyRemaining = self.supplyTotal() - self.supplyUsed();
         if (supplyRemaining + plannedSupply < 5 && self.supplyUsed() < 400) {
             plannedSupply += 8;
             productionQueue.add(new PlannedItem(UnitType.Zerg_Overlord, currentPriority / 3, false, false));
@@ -392,6 +381,19 @@ public class ProductionManager {
             plannedSupply += 8;
             productionQueue.add(new PlannedItem(UnitType.Zerg_Overlord, currentPriority / 2, false, true));
         }
+
+        /** For now, only subject unit production to queue size */
+        // Base queue size is 3, increases per hatch
+
+
+        if (productionQueue.size() >= 3 + (numHatcheries() * 3)) {
+            return;
+        }
+
+        // Once we come here, we never stop
+        isPlanning = true;
+
+
 
         // Plan workers
         // This should be related to num bases + aval min patches and geysers, limited by army and potentially higher level strat info

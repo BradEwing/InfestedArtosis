@@ -46,8 +46,6 @@ public class LearningManager {
         try {
             readOpponentRecord();
         } catch (IOException e) {
-            // TODO: Create Opponent Record here
-            System.out.printf("failed to read file! [%s]", e);
         }
 
         ensureStrategiesInOpponentRecord();
