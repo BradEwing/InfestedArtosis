@@ -17,12 +17,12 @@ public class TwelveHatch implements Strategy {
         list.add(new PlannedItem(UnitType.Zerg_Drone, 1, false, false));
         list.add(new PlannedItem(UnitType.Zerg_Drone, 1, false, false));
         list.add(new PlannedItem(UnitType.Zerg_Drone, 1, false, false));
-        list.add(new PlannedItem(UnitType.Zerg_Drone, 1, false, false));
         list.add(new PlannedItem(UnitType.Zerg_Overlord, 2, false, true));
         list.add(new PlannedItem(UnitType.Zerg_Drone, 3, false, false));
-        list.add(new PlannedItem(UnitType.Zerg_Drone, 3, false, false));
-        list.add(new PlannedItem(UnitType.Zerg_Drone, 3, false, false));
-        list.add(new PlannedItem(UnitType.Zerg_Hatchery, 4, false, true));
+        list.add(new PlannedItem(UnitType.Zerg_Drone, 3, false, true));
+        list.add(new PlannedItem(UnitType.Zerg_Drone, 3, false, true));
+        list.add(new PlannedItem(UnitType.Zerg_Drone, 3, false, true));
+        list.add(new PlannedItem(UnitType.Zerg_Hatchery, 4, true, true));
 
         return list;
     }

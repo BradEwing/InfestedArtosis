@@ -226,7 +226,7 @@ public class ProductionManager {
             return;
         }
 
-        productionQueue.add(new PlannedItem(UnitType.Zerg_Hatchery, currentPriority / 3, true, true, base.getLocation()));
+        productionQueue.add(new PlannedItem(UnitType.Zerg_Hatchery, currentPriority, true, true, base.getLocation()));
         baseLocations.add(base);
     }
 
@@ -281,7 +281,7 @@ public class ProductionManager {
     private void planItems() {
         Player self = game.self();
         // Macro builder kicks in at 10 supply
-        if (!isPlanning && self.supplyUsed() < PLAN_AT_SUPPY && productionQueue.size() > 0) {
+        if (!isPlanning && productionQueue.size() > 0) {
             return;
         }
 
@@ -292,7 +292,7 @@ public class ProductionManager {
         // Base Hatch - Setup resources to assign workers, add to base data
         // Macro Hatch - Take a macro hatch every other time
         // Limit to 3 plannedHatch to prevent queue deadlock
-        if ((canAffordHatch(self) || isNearMaxExpectedWorkers()) && plannedHatcheries < 3) {
+        if ((canAffordHatch(self) || (isNearMaxExpectedWorkers() && canAffordHatchSaturation())) && plannedHatcheries < 3) {
             plannedHatcheries += 1;
             if ((numHatcheries() % 2) != 0) {
                 planBase();
@@ -436,6 +436,10 @@ public class ProductionManager {
         }
 
          */
+    }
+
+    private boolean canAffordHatchSaturation() {
+        return ((numHatcheries() + plannedHatcheries) * 7) <= gameState.getMineralWorkers();
     }
 
     private boolean canAffordHatch(Player self) {
@@ -705,7 +709,11 @@ public class ProductionManager {
                 macroHatcheries.add(unit);
             }
 
-            plannedHatcheries -= 1; // TODO: change this when building starts?
+            plannedHatcheries -= 1;
+            // TODO: How are we getting here?
+            if (plannedHatcheries < 0) {
+                plannedHatcheries = 0;
+            }
         }
     }
 

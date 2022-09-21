@@ -36,10 +36,10 @@ public class StrategyFactory {
     }
 
     private void initStrategies(int numStartingLocations) {
-        //allStrategies.add(new NinePoolSpeed());
+        allStrategies.add(new NinePoolSpeed());
         allStrategies.add(new TwelveHatch());
-        //allStrategies.add(new FivePool());
-        //allStrategies.add(new FourPool());
+        allStrategies.add(new FivePool());
+        allStrategies.add(new FourPool());
 
         for (Strategy strategy: allStrategies) {
             if (numStartingLocations == FOUR && !strategy.playsFourPlayerMap()) {
