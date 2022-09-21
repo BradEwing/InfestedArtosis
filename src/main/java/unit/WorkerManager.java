@@ -31,6 +31,10 @@ public class WorkerManager {
     private HashSet<ManagedUnit> larva = new HashSet<>();
     private HashSet<ManagedUnit> eggs = new HashSet<>();
 
+    // Overlord takes 16 frames to hatch from egg
+    // Buffered w/ 10 additional frames
+    final int OVERLORD_HATCH_ANIMATION_FRAMES = 26;
+
     public WorkerManager(Game game, GameState gameState) {
         this.game = game;
         this.gameState = gameState;
@@ -307,9 +311,18 @@ public class WorkerManager {
         Player self = game.self();
         int supplyTotal = self.supplyTotal();
         int supplyUsed = self.supplyUsed();
-        if (supplyTotal - supplyUsed > 0) {
+
+        int curFrame = game.getFrameCount();
+
+        if (supplyTotal - supplyUsed + gameState.getPlannedSupply() > 0) {
+            gameState.setLarvaDeadlocked(false);
             return;
         }
+
+        if (gameState.isLarvaDeadlocked() && curFrame < gameState.getLarvaDeadlockDetectedFrame() + OVERLORD_HATCH_ANIMATION_FRAMES) {
+            return;
+        }
+
         if (gameState.getPlansScheduled().size() == 0) {
             return;
         }
@@ -369,6 +382,7 @@ public class WorkerManager {
         }
 
         gameState.setLarvaDeadlocked(true);
+        gameState.setLarvaDeadlockDetectedFrame(curFrame);
     }
 
     private void handleLarvaDeadlock() {
@@ -376,10 +390,18 @@ public class WorkerManager {
             return;
         }
 
-        for (ManagedUnit managedUnit : larva) {
+        int frameCount = game.getFrameCount();
+        int frameDeadlockDetected = gameState.getLarvaDeadlockDetectedFrame();
+        if (frameCount < frameDeadlockDetected + OVERLORD_HATCH_ANIMATION_FRAMES) {
+            return;
+        }
+
+        List<ManagedUnit> larvaCopy = larva.stream().collect(Collectors.toList());
+        for (ManagedUnit managedUnit : larvaCopy) {
             Unit unit = managedUnit.getUnit();
             clearAssignments(managedUnit);
             managedUnit.setRole(UnitRole.LARVA);
+            larva.add(managedUnit);
 
             PlannedItem plannedItem = managedUnit.getPlannedItem();
             // TODO: Handle cancelled items. Are they requeued?

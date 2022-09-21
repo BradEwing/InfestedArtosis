@@ -72,7 +72,6 @@ public class ProductionManager {
     private int reservedMinerals = 0;
     private int reservedGas = 0;
     private int currentPriority = 5;
-    private int plannedSupply = 0;
     private int plannedHatcheries = 1; // Start with 1 because we decrement with initial hatch
     private int plannedWorkers = 0;
 
@@ -88,12 +87,6 @@ public class ProductionManager {
         this.bwem = bwem;
         this.gameState = gameState;
 
-        for (PlannedItem plannedItem: initialBuildOrder) {
-            if (plannedItem.getPlannedUnit() != null && plannedItem.getPlannedUnit() == UnitType.Zerg_Extractor) {
-                numExtractors += 1;
-            }
-            productionQueue.add(plannedItem);
-        }
         Unit initialHatch = null;
 
         // For now, let's iterate through twice. There are barely any units initialized
@@ -110,8 +103,29 @@ public class ProductionManager {
         }
 
         List<Base> allBases = bwem.getMap().getBases();
-        mainBase = closestBaseToUnit(initialHatch, allBases);
-        baseLocations.add(mainBase);
+        this.mainBase = closestBaseToUnit(initialHatch, allBases);
+        this.baseLocations.add(mainBase);
+
+        // TODO: extract to own function? assign all buildings in priority queue a location
+        for (PlannedItem plannedItem: initialBuildOrder) {
+            if (plannedItem.getPlannedUnit() != null && plannedItem.getPlannedUnit() == UnitType.Zerg_Extractor) {
+                this.numExtractors += 1;
+            }
+
+            // TODO: be able to decide between base hatch and macro hatch
+            if (plannedItem.getPlannedUnit() != null && plannedItem.getPlannedUnit() == UnitType.Zerg_Hatchery) {
+                Base base = findNewBase();
+                plannedItem.setBuildPosition(base.getLocation());
+                this.baseLocations.add(base);
+            }
+
+            if (plannedItem.getPlannedUnit() != null && plannedItem.getPlannedUnit() == UnitType.Zerg_Drone) {
+                plannedWorkers += 1;
+            }
+
+
+            this.productionQueue.add(plannedItem);
+        }
     }
 
     private void debugAssignedItemsQueue() {
@@ -253,7 +267,7 @@ public class ProductionManager {
     }
 
     private int expectedWorkers() {
-        return (gameState.getMineralAssignments().size() * 2) + (gameState.getGeyserAssignments().size() * 3);
+        return (5 + (bases.size() * 5)) + (gameState.getGeyserAssignments().size() * 3);
     }
 
     private int numWorkers() {
@@ -303,7 +317,7 @@ public class ProductionManager {
 
         // Build at 10 workers if not part of initial build order
         if (!hasPlannedPool && !hasPool && self.supplyUsed() > 20) {
-            productionQueue.add(new PlannedItem(UnitType.Zerg_Spawning_Pool, currentPriority, true, false));
+            productionQueue.add(new PlannedItem(UnitType.Zerg_Spawning_Pool, currentPriority / 4, true, true));
             hasPlannedPool = true;
         }
         // Plan hydra den, why not?
@@ -311,7 +325,7 @@ public class ProductionManager {
         // TODO: Move this out of here
 
         int hydraSupplyThreshold = game.enemy().getRace() == Race.Protoss ? 20 : 40;
-        if (!hasPlannedDen && !hasDen && self.supplyUsed() > hydraSupplyThreshold) {
+        if (hasPool && !hasPlannedDen && !hasDen && self.supplyUsed() > hydraSupplyThreshold) {
             productionQueue.add(new PlannedItem(UnitType.Zerg_Hydralisk_Den, currentPriority, true, false));
             hasPlannedDen = true;
         }
@@ -374,11 +388,12 @@ public class ProductionManager {
         // Plan supply
         // If negative, trigger higher priority for overlord
         final int supplyRemaining = self.supplyTotal() - self.supplyUsed();
+        int plannedSupply = gameState.getPlannedSupply();
         if (supplyRemaining + plannedSupply < 5 && self.supplyUsed() < 400) {
-            plannedSupply += 8;
+            gameState.setPlannedSupply(plannedSupply+8);
             productionQueue.add(new PlannedItem(UnitType.Zerg_Overlord, currentPriority / 3, false, false));
         } else if (supplyRemaining + plannedSupply < 0 && self.supplyUsed() < 400) {
-            plannedSupply += 8;
+            gameState.setPlannedSupply(plannedSupply+8);
             productionQueue.add(new PlannedItem(UnitType.Zerg_Overlord, currentPriority / 2, false, true));
         }
 
@@ -428,7 +443,7 @@ public class ProductionManager {
     }
 
     private boolean isNearMaxExpectedWorkers() {
-        return ((expectedWorkers() * (1 + plannedHatcheries)) - numWorkers() < 6);
+        return ((expectedWorkers() * (1 + plannedHatcheries)) - numWorkers() < 0);
     }
 
     // TODO: Planned item priority on frame?
@@ -558,7 +573,6 @@ public class ProductionManager {
         final UnitType unitType = plannedItem.getPlannedUnit();
         reservedMinerals -= unitType.mineralPrice();
         reservedGas -= unitType.gasPrice();
-        plannedSupply = Math.max(0, plannedSupply - unitType.supplyProvided());
 
         if (unitType == UnitType.Zerg_Drone) {
             plannedWorkers -= 1;
@@ -671,10 +685,16 @@ public class ProductionManager {
             return;
         }
 
+
+
         UnitType unitType = unit.getType();
         // TODO: Move to a building manager or base manager
         if (unitType == UnitType.Zerg_Extractor) {
             gameState.getGeyserAssignments().put(unit, new HashSet<>());
+        }
+
+        if (unitType == UnitType.Zerg_Overlord) {
+            gameState.setPlannedSupply(Math.max(0, gameState.getPlannedSupply() - unitType.supplyProvided()));
         }
 
         if (unitType == UnitType.Zerg_Hatchery) {

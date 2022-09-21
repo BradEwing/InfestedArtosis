@@ -18,6 +18,8 @@ import java.util.HashSet;
 public class GameState {
     private int mineralWorkers;
     private int geyserWorkers;
+    private int plannedSupply;
+    private int larvaDeadlockDetectedFrame;
 
     private HashMap<Unit, HashSet<ManagedUnit>> geyserAssignments = new HashMap<>();
     private HashMap<Unit, HashSet<ManagedUnit>> mineralAssignments = new HashMap<>();
