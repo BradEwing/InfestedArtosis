@@ -53,7 +53,7 @@ public class ProductionManager {
     private boolean hasPlannedPool = false;
     private boolean hasMetabolicBoost = false;
     // TODO: set off of strategy
-    private boolean hasPlannedMetabolicBoost = true;
+    private boolean hasPlannedMetabolicBoost = false;
     private boolean hasDen = false;
     private boolean hasPlannedDen = false;
     private boolean hasPlannedDenUpgrades = false;
@@ -121,6 +121,12 @@ public class ProductionManager {
 
             if (plannedItem.getPlannedUnit() != null && plannedItem.getPlannedUnit() == UnitType.Zerg_Drone) {
                 plannedWorkers += 1;
+            }
+
+            if (plannedItem.getType() == PlanType.UPGRADE) {
+                if (plannedItem.getPlannedUpgrade() == UpgradeType.Metabolic_Boost) {
+                    hasPlannedMetabolicBoost = true;
+                }
             }
 
 

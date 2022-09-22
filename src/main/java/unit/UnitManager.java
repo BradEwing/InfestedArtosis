@@ -248,11 +248,13 @@ public class UnitManager {
             return;
         }
 
-
-
         if (unit.getType() != managedUnit.getUnitType()) {
             managedUnit.setUnitType(unit.getType());
             //managedUnit.setRole(UnitRole.IDLE);
+        }
+
+        if (unit.getType() == UnitType.Zerg_Overlord) {
+            managedUnit.setCanFight(false);
         }
         workerManager.onUnitMorph(managedUnit);
     }

@@ -365,27 +365,36 @@ public class ManagedUnit {
         }
 
         List<Unit> filtered = new ArrayList<>();
+        List<Unit> fogOfWarBuildings = new ArrayList<>();
 
+        // Attempt to find the closest enemy OUTSIDE fog of war
         for (Unit enemyUnit: enemies) {
-            if (unit.canAttack(enemyUnit)) {
+            if (enemyUnit.getType() == UnitType.Unknown) {
+                continue;
+            }
+            if (unit.canAttack(enemyUnit) && unit.isVisible()) {
                 filtered.add(enemyUnit);
+            } else if (unit.getType().isBuilding()) {
+                fogOfWarBuildings.add(enemyUnit);
             }
         }
 
-        Unit closestEnemy = closestHostileUnit(unit, filtered);
-
-        // TODO: Ensure that this can never be null
-        // Somehow the closestUnit is null, bail out and assign to scout
-        if (closestEnemy == null) {
-            //System.out.printf("Closest enemies is null, enemies: [%s], filtered: [", enemies);
-            //for (Unit enemy: enemies) {
-                //System.out.printf("%s, ", enemy.getType());
-            //}
-            //System.out.printf("]\n", enemies);
-
-            role = UnitRole.SCOUT;
+        if (filtered.size() > 0) {
+            Unit closestEnemy = closestHostileUnit(unit, filtered);
+            fightTarget = closestEnemy;
+            movementTargetPosition = closestEnemy.getTilePosition();
             return;
         }
+
+        if (fogOfWarBuildings.size() == 0) {
+            return;
+        }
+
+
+
+        // If everything was filtered, the remainder is buildings in fog of war
+        // Go to closest building
+        Unit closestEnemy = closestHostileUnit(unit, fogOfWarBuildings);
         fightTarget = closestEnemy;
         movementTargetPosition = closestEnemy.getTilePosition();
     }
