@@ -4,6 +4,7 @@ import bwapi.Game;
 import strategy.strategies.FivePool;
 import strategy.strategies.FourPool;
 import strategy.strategies.NinePoolSpeed;
+import strategy.strategies.TwelveHatch;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -36,6 +37,7 @@ public class StrategyFactory {
 
     private void initStrategies(int numStartingLocations) {
         allStrategies.add(new NinePoolSpeed());
+        allStrategies.add(new TwelveHatch());
         allStrategies.add(new FivePool());
         allStrategies.add(new FourPool());
 

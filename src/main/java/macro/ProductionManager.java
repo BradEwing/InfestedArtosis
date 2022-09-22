@@ -3,6 +3,7 @@ package macro;
 import bwapi.Color;
 import bwapi.Game;
 import bwapi.Player;
+import bwapi.Race;
 import bwapi.Text;
 import bwapi.Unit;
 import bwapi.UnitType;
@@ -16,6 +17,7 @@ import planner.PlanState;
 import planner.PlanType;
 import planner.PlannedItem;
 import planner.PlannedItemComparator;
+import unit.ManagedUnit;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -50,6 +52,7 @@ public class ProductionManager {
     private boolean hasPool = false;
     private boolean hasPlannedPool = false;
     private boolean hasMetabolicBoost = false;
+    // TODO: set off of strategy
     private boolean hasPlannedMetabolicBoost = true;
     private boolean hasDen = false;
     private boolean hasPlannedDen = false;
@@ -69,7 +72,6 @@ public class ProductionManager {
     private int reservedMinerals = 0;
     private int reservedGas = 0;
     private int currentPriority = 5;
-    private int plannedSupply = 0;
     private int plannedHatcheries = 1; // Start with 1 because we decrement with initial hatch
     private int plannedWorkers = 0;
 
@@ -85,12 +87,6 @@ public class ProductionManager {
         this.bwem = bwem;
         this.gameState = gameState;
 
-        for (PlannedItem plannedItem: initialBuildOrder) {
-            if (plannedItem.getPlannedUnit() != null && plannedItem.getPlannedUnit() == UnitType.Zerg_Extractor) {
-                numExtractors += 1;
-            }
-            productionQueue.add(plannedItem);
-        }
         Unit initialHatch = null;
 
         // For now, let's iterate through twice. There are barely any units initialized
@@ -107,8 +103,29 @@ public class ProductionManager {
         }
 
         List<Base> allBases = bwem.getMap().getBases();
-        mainBase = closestBaseToUnit(initialHatch, allBases);
-        baseLocations.add(mainBase);
+        this.mainBase = closestBaseToUnit(initialHatch, allBases);
+        this.baseLocations.add(mainBase);
+
+        // TODO: extract to own function? assign all buildings in priority queue a location
+        for (PlannedItem plannedItem: initialBuildOrder) {
+            if (plannedItem.getPlannedUnit() != null && plannedItem.getPlannedUnit() == UnitType.Zerg_Extractor) {
+                this.numExtractors += 1;
+            }
+
+            // TODO: be able to decide between base hatch and macro hatch
+            if (plannedItem.getPlannedUnit() != null && plannedItem.getPlannedUnit() == UnitType.Zerg_Hatchery) {
+                Base base = findNewBase();
+                plannedItem.setBuildPosition(base.getLocation());
+                this.baseLocations.add(base);
+            }
+
+            if (plannedItem.getPlannedUnit() != null && plannedItem.getPlannedUnit() == UnitType.Zerg_Drone) {
+                plannedWorkers += 1;
+            }
+
+
+            this.productionQueue.add(plannedItem);
+        }
     }
 
     private void debugAssignedItemsQueue() {
@@ -209,7 +226,7 @@ public class ProductionManager {
             return;
         }
 
-        productionQueue.add(new PlannedItem(UnitType.Zerg_Hatchery, currentPriority-1, true, base.getLocation()));
+        productionQueue.add(new PlannedItem(UnitType.Zerg_Hatchery, currentPriority, true, true, base.getLocation()));
         baseLocations.add(base);
     }
 
@@ -231,6 +248,8 @@ public class ProductionManager {
 
         debug();
 
+        currentPriority = game.getFrameCount();
+
         planItems();
         schedulePlannedItems();
         //buildItems();
@@ -248,7 +267,7 @@ public class ProductionManager {
     }
 
     private int expectedWorkers() {
-        return (gameState.getMineralAssignments().size() * 2) + (gameState.getGeyserAssignments().size() * 3);
+        return (5 + (bases.size() * 5)) + (gameState.getGeyserAssignments().size() * 3);
     }
 
     private int numWorkers() {
@@ -258,10 +277,11 @@ public class ProductionManager {
     // TODO: Handle elsewhere
     private int numHatcheries() { return baseLocations.size() + macroHatcheries.size(); }
 
+    // TODO: Make this smarter, following a strategy to define unit mix, when to take upgrades, etc.
     private void planItems() {
         Player self = game.self();
         // Macro builder kicks in at 10 supply
-        if (!isPlanning && self.supplyUsed() < PLAN_AT_SUPPY && productionQueue.size() > 0) {
+        if (!isPlanning && productionQueue.size() > 0) {
             return;
         }
 
@@ -272,12 +292,12 @@ public class ProductionManager {
         // Base Hatch - Setup resources to assign workers, add to base data
         // Macro Hatch - Take a macro hatch every other time
         // Limit to 3 plannedHatch to prevent queue deadlock
-        if ((canAffordHatch(self) || isNearMaxExpectedWorkers()) && plannedHatcheries < 3) {
+        if ((canAffordHatch(self) || (isNearMaxExpectedWorkers() && canAffordHatchSaturation())) && plannedHatcheries < 3) {
             plannedHatcheries += 1;
             if ((numHatcheries() % 2) != 0) {
                 planBase();
             } else {
-                productionQueue.add(new PlannedItem(UnitType.Zerg_Hatchery, currentPriority-1, true));
+                productionQueue.add(new PlannedItem(UnitType.Zerg_Hatchery, currentPriority / 3, true, true));
             }
         }
 
@@ -292,17 +312,21 @@ public class ProductionManager {
         // TODO: account for bases with no gas or 2 gas
         if (numExtractors < bases.size()) {
             numExtractors += 1;
-            productionQueue.add(new PlannedItem(UnitType.Zerg_Extractor, currentPriority, true));
+            productionQueue.add(new PlannedItem(UnitType.Zerg_Extractor, currentPriority, true, false));
         }
 
         // Build at 10 workers if not part of initial build order
         if (!hasPlannedPool && !hasPool && self.supplyUsed() > 20) {
-            productionQueue.add(new PlannedItem(UnitType.Zerg_Spawning_Pool, currentPriority, true));
+            productionQueue.add(new PlannedItem(UnitType.Zerg_Spawning_Pool, currentPriority / 4, true, true));
             hasPlannedPool = true;
         }
         // Plan hydra den, why not?
-        if (!hasPlannedDen && !hasDen && self.supplyUsed() > 40) {
-            productionQueue.add(new PlannedItem(UnitType.Zerg_Hydralisk_Den, currentPriority, true));
+        // HACK
+        // TODO: Move this out of here
+
+        int hydraSupplyThreshold = game.enemy().getRace() == Race.Protoss ? 20 : 40;
+        if (hasPool && !hasPlannedDen && !hasDen && self.supplyUsed() > hydraSupplyThreshold) {
+            productionQueue.add(new PlannedItem(UnitType.Zerg_Hydralisk_Den, currentPriority, true, false));
             hasPlannedDen = true;
         }
 
@@ -342,27 +366,41 @@ public class ProductionManager {
         // TODO: Figure out why metabolic boost is not upgrading, why only 1 den upgrade is triggering
         /** Ling Upgrades **/
         if (hasPool && !hasPlannedMetabolicBoost && !hasMetabolicBoost) {
-            productionQueue.add(new PlannedItem(UpgradeType.Metabolic_Boost, currentPriority));
+            productionQueue.add(new PlannedItem(UpgradeType.Metabolic_Boost, currentPriority, false));
             hasPlannedMetabolicBoost = true;
         }
 
         /** Hydra Upgrades */
         if (hasDen && !hasPlannedDenUpgrades) {
-            productionQueue.add(new PlannedItem(UpgradeType.Muscular_Augments, currentPriority));
-            productionQueue.add(new PlannedItem(UpgradeType.Grooved_Spines, currentPriority));
+            productionQueue.add(new PlannedItem(UpgradeType.Muscular_Augments, currentPriority, false));
+            productionQueue.add(new PlannedItem(UpgradeType.Grooved_Spines, currentPriority, false));
             hasPlannedDenUpgrades = true;
         }
 
         // Just take first level of upgrades for now
         if (numEvoChambers > 0 && hasPlannedEvoChamberUpgrades1) {
-            productionQueue.add(new PlannedItem(UpgradeType.Zerg_Melee_Attacks, currentPriority));
-            productionQueue.add(new PlannedItem(UpgradeType.Zerg_Missile_Attacks, currentPriority));
-            productionQueue.add(new PlannedItem(UpgradeType.Zerg_Carapace, currentPriority));
+            productionQueue.add(new PlannedItem(UpgradeType.Zerg_Melee_Attacks, currentPriority, false));
+            productionQueue.add(new PlannedItem(UpgradeType.Zerg_Missile_Attacks, currentPriority, false));
+            productionQueue.add(new PlannedItem(UpgradeType.Zerg_Carapace, currentPriority, false));
             hasPlannedEvoChamberUpgrades1 = true;
+        }
+
+        // Plan supply
+        // If negative, trigger higher priority for overlord
+        final int supplyRemaining = self.supplyTotal() - self.supplyUsed();
+        int plannedSupply = gameState.getPlannedSupply();
+        if (supplyRemaining + plannedSupply < 5 && self.supplyUsed() < 400) {
+            gameState.setPlannedSupply(plannedSupply+8);
+            productionQueue.add(new PlannedItem(UnitType.Zerg_Overlord, currentPriority / 3, false, false));
+        } else if (supplyRemaining + plannedSupply < 0 && self.supplyUsed() < 400) {
+            gameState.setPlannedSupply(plannedSupply+8);
+            productionQueue.add(new PlannedItem(UnitType.Zerg_Overlord, currentPriority / 2, false, true));
         }
 
         /** For now, only subject unit production to queue size */
         // Base queue size is 3, increases per hatch
+
+
         if (productionQueue.size() >= 3 + (numHatcheries() * 3)) {
             return;
         }
@@ -370,16 +408,7 @@ public class ProductionManager {
         // Once we come here, we never stop
         isPlanning = true;
 
-        // Plan supply
-        // If negative, trigger higher priority for overlord
-        final int supplyRemaining = self.supplyTotal() - self.supplyUsed();
-        if (supplyRemaining + plannedSupply < 5 && self.supplyUsed() < 400) {
-            plannedSupply += 8;
-            productionQueue.add(new PlannedItem(UnitType.Zerg_Overlord, currentPriority-1, false));
-        } else if (supplyRemaining + plannedSupply < 0 && self.supplyUsed() < 400) {
-            plannedSupply += 8;
-            productionQueue.add(new PlannedItem(UnitType.Zerg_Overlord, currentPriority-2, false));
-        }
+
 
         // Plan workers
         // This should be related to num bases + aval min patches and geysers, limited by army and potentially higher level strat info
@@ -387,16 +416,16 @@ public class ProductionManager {
         // Limit the number of drones in queue, or they will crowd out production!
         if (plannedWorkers < 3 && numWorkers() < 80 && numWorkers() < expectedWorkers() && self.supplyUsed() < 400) {
             plannedWorkers += 1;
-            productionQueue.add(new PlannedItem(UnitType.Zerg_Drone, currentPriority, false));
+            productionQueue.add(new PlannedItem(UnitType.Zerg_Drone, currentPriority, false, false));
         }
 
         // Plan army
         if (hasDen && self.supplyUsed() < 400) {
-            productionQueue.add(new PlannedItem(UnitType.Zerg_Hydralisk, currentPriority, false));
+            productionQueue.add(new PlannedItem(UnitType.Zerg_Hydralisk, currentPriority, false, false));
         }
 
         if (hasPool && self.supplyUsed() < 400) {
-            productionQueue.add(new PlannedItem(UnitType.Zerg_Zergling, currentPriority, false));
+            productionQueue.add(new PlannedItem(UnitType.Zerg_Zergling, currentPriority, false, false));
         }
 
         // TODO: Tech upgrades
@@ -409,12 +438,16 @@ public class ProductionManager {
          */
     }
 
+    private boolean canAffordHatchSaturation() {
+        return ((numHatcheries() + plannedHatcheries) * 7) <= gameState.getMineralWorkers();
+    }
+
     private boolean canAffordHatch(Player self) {
         return self.minerals() - reservedMinerals > ((1 + plannedHatcheries) * 300);
     }
 
     private boolean isNearMaxExpectedWorkers() {
-        return ((expectedWorkers() * (1 + plannedHatcheries)) - numWorkers() < 6);
+        return ((expectedWorkers() * (1 + plannedHatcheries)) - numWorkers() < 0);
     }
 
     // TODO: Planned item priority on frame?
@@ -426,24 +459,29 @@ public class ProductionManager {
         }
 
         Player self = game.self();
-        int currentUnitAssignAttempts = 0; // accept 3 failures in planning
-        int curPriority = productionQueue.peek().getPriority();
 
         // Loop through items until we exhaust queue or we break because we can't consume top item
         // Call method to attempt to build that type, if we can't build return false and break the loop
         // TODO: What to do when current planned item can never be executed
+        // This is done for supply deadlock, need to build logic for when tech prereq is destroyed
 
         HashSet<PlannedItem> scheduledPlans = gameState.getPlansScheduled();
-        if (scheduledPlans.size() > 1) {
-            List<PlannedItem> sortedScheduledPlans = scheduledPlans.stream().collect(Collectors.toList());
-            Collections.sort(sortedScheduledPlans, new PlannedItemComparator());
-            int schedulePriority = sortedScheduledPlans.get(0).getPriority();
-            curPriority = Math.min(curPriority, schedulePriority);
-        }
 
         List<PlannedItem> requeuePlannedItems = new ArrayList<>();
-        // TODO: Importance logic?
+        // Try to schedule one each of unit, building or upgrade per frame.
+        boolean skipScheduleUnit = false;
+        boolean skipScheduleBuilding = false;
+        boolean skipScheduleUpgrade = false;
         for (int i = 0; i < productionQueue.size(); i++) {
+            if (skipScheduleUnit && skipScheduleBuilding && skipScheduleUpgrade) {
+                break;
+            }
+
+            // Don't over schedule units
+            if (!skipScheduleUnit && scheduledPlans.size() >= 1) {
+                skipScheduleUnit = true;
+            }
+
             boolean canSchedule = false;
             // If we can't plan, we'll put it back on the queue
             // TODO: Queue backoff, prioritization
@@ -452,32 +490,42 @@ public class ProductionManager {
                 continue;
             }
 
-            // Only let current priority through the queue
-            if (curPriority < plannedItem.getPriority()) {
+            PlanType planType = plannedItem.getType();
+            Boolean skipSchedule = (planType == PlanType.BUILDING && skipScheduleBuilding) ||
+                    (planType == PlanType.UNIT && skipScheduleUnit) ||
+                    (planType == PlanType.UPGRADE && skipScheduleUpgrade);
+
+            if (skipSchedule) {
                 requeuePlannedItems.add(plannedItem);
-                break;
+                continue;
             }
 
-            switch (plannedItem.getType()) {
+            switch (planType) {
                 case BUILDING:
                     canSchedule = scheduleBuildingItem(self, plannedItem);
+                    if (!canSchedule) {
+                        skipScheduleBuilding = true;
+                    }
                     break;
                 case UNIT:
-                    // Don't keep scheduling units
-                    if (currentUnitAssignAttempts < 3 && scheduledPlans.size() < 3) {
-                        canSchedule = scheduleUnitItem(self, plannedItem);
+                    canSchedule = scheduleUnitItem(self, plannedItem);
+                    if (!canSchedule) {
+                        skipScheduleUnit = true;
                     }
                     break;
                 case UPGRADE:
                     canSchedule = scheduleUpgradeItem(self, plannedItem);
+                    if (!canSchedule) {
+                        skipScheduleUpgrade = true;
+                    }
                     break;
             }
 
             if (!canSchedule) {
-                if (plannedItem.getType() == PlanType.UNIT) {
-                    currentUnitAssignAttempts += 1;
-                }
                 requeuePlannedItems.add(plannedItem);
+                if (plannedItem.isBlockOtherPlans()) {
+                    break;
+                }
             } else {
                 scheduledPlans.add(plannedItem);
             }
@@ -529,7 +577,6 @@ public class ProductionManager {
         final UnitType unitType = plannedItem.getPlannedUnit();
         reservedMinerals -= unitType.mineralPrice();
         reservedGas -= unitType.gasPrice();
-        plannedSupply = Math.max(0, plannedSupply - unitType.supplyProvided());
 
         if (unitType == UnitType.Zerg_Drone) {
             plannedWorkers -= 1;
@@ -579,7 +626,6 @@ public class ProductionManager {
     // This involves assigning
     private boolean scheduleBuildingItem(Player self, PlannedItem plannedItem) {
         // Can we afford this unit?
-        final UnitType plannedUnit = plannedItem.getPlannedUnit();
         final int mineralPrice = plannedItem.getPlannedUnit().mineralPrice();
         final int gasPrice = plannedItem.getPlannedUnit().gasPrice();
 
@@ -643,10 +689,16 @@ public class ProductionManager {
             return;
         }
 
+
+
         UnitType unitType = unit.getType();
         // TODO: Move to a building manager or base manager
         if (unitType == UnitType.Zerg_Extractor) {
             gameState.getGeyserAssignments().put(unit, new HashSet<>());
+        }
+
+        if (unitType == UnitType.Zerg_Overlord) {
+            gameState.setPlannedSupply(Math.max(0, gameState.getPlannedSupply() - unitType.supplyProvided()));
         }
 
         if (unitType == UnitType.Zerg_Hatchery) {
@@ -657,7 +709,11 @@ public class ProductionManager {
                 macroHatcheries.add(unit);
             }
 
-            plannedHatcheries -= 1; // TODO: change this when building starts?
+            plannedHatcheries -= 1;
+            // TODO: How are we getting here?
+            if (plannedHatcheries < 0) {
+                plannedHatcheries = 0;
+            }
         }
     }
 
@@ -709,7 +765,18 @@ public class ProductionManager {
             return;
         }
 
+        updateTechOnDestroy(unit);
+
         clearAssignments(unit);
+    }
+
+    private void updateTechOnDestroy(Unit unit) {
+        switch (unit.getType()) {
+            case Zerg_Spawning_Pool:
+                hasPool = false;
+            case Zerg_Hydralisk_Den:
+                hasDen = false;
+        }
     }
 
     /**

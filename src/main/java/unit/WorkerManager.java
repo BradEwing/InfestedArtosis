@@ -1,6 +1,7 @@
 package unit;
 
 import bwapi.Game;
+import bwapi.Player;
 import bwapi.Text;
 import bwapi.TilePosition;
 import bwapi.Unit;
@@ -28,6 +29,11 @@ public class WorkerManager {
     private HashSet<ManagedUnit> gatherers = new HashSet<>();
     private HashSet<ManagedUnit> mineralGatherers = new HashSet<>();
     private HashSet<ManagedUnit> larva = new HashSet<>();
+    private HashSet<ManagedUnit> eggs = new HashSet<>();
+
+    // Overlord takes 16 frames to hatch from egg
+    // Buffered w/ 10 additional frames
+    final int OVERLORD_HATCH_ANIMATION_FRAMES = 26;
 
     public WorkerManager(Game game, GameState gameState) {
         this.game = game;
@@ -35,6 +41,9 @@ public class WorkerManager {
     }
 
     public void onFrame() {
+        checksLarvaDeadlock();
+        handleLarvaDeadlock();
+
         assignScheduledPlannedItems();
     }
 
@@ -56,6 +65,10 @@ public class WorkerManager {
         clearAssignments(managedUnit);
         if (managedUnit.getUnitType() == UnitType.Zerg_Drone) {
             assignWorker(managedUnit);
+        }
+        // eggs
+        if (managedUnit.getUnitType() == UnitType.Zerg_Egg) {
+            eggs.add(managedUnit);
         }
     }
 
@@ -101,16 +114,16 @@ public class WorkerManager {
 
     // onExtractorComplete is called when an extractor is complete, to immediately pull 3 mineral gathering drones
     // onto the extractor
-    public void onExtractorComplete(Unit extractor) {
+    public void onExtractorComplete() {
         final List<ManagedUnit> newGeyserWorkers = new ArrayList<>();
 
-        // If less than 3 mineral workers, there are probably have other problems
-        if (mineralGatherers.size() < 3) {
+        // If less than 4 mineral workers, there are probably other problems
+        if (mineralGatherers.size() < 4) {
             return;
         }
 
         for (ManagedUnit managedUnit: mineralGatherers) {
-            if (newGeyserWorkers.size() >= 3) {
+            if (newGeyserWorkers.size() >= 2) {
                 break;
             }
             newGeyserWorkers.add(managedUnit);
@@ -122,12 +135,6 @@ public class WorkerManager {
         }
     }
 
-    // checkLarvaDeadlock sees if all larva are assigned to morph into non overlords and if we're supply blocked
-    // if we meet both conditions, cancel these planned items and unassign the larva (there should be an overlord at top of queue)
-    private void checkLarvaDeadlock() {
-
-    }
-
     private void assignScheduledPlannedItems() {
         List<PlannedItem> scheduledPlans = gameState.getPlansScheduled().stream().collect(Collectors.toList());
         if (scheduledPlans.size() < 1) {
@@ -136,18 +143,31 @@ public class WorkerManager {
 
         Collections.sort(scheduledPlans, new PlannedItemComparator());
         List<PlannedItem> assignedPlans = new ArrayList<>();
-        int curPriority = scheduledPlans.get(0).getPriority();
 
+        boolean blockMorphDroneAssignment = false;
+        boolean blockMorphLarvaAssignment = false;
         for (PlannedItem plannedItem: scheduledPlans) {
             // Are we broken here?
-            if (plannedItem.getPriority() > curPriority) {
+            if (blockMorphDroneAssignment && blockMorphLarvaAssignment) {
                 break;
             }
             boolean didAssign = false;
             if (plannedItem.getType() == PlanType.BUILDING) {
+                if (blockMorphDroneAssignment) {
+                    continue;
+                }
                 didAssign = assignMorphDrone(plannedItem);
+                if (!didAssign) {
+                    blockMorphDroneAssignment = true;
+                }
             } else if (plannedItem.getType() == PlanType.UNIT) {
+                if (blockMorphLarvaAssignment) {
+                    continue;
+                }
                 didAssign = assignMorphLarva(plannedItem);
+                if (!didAssign) {
+                    blockMorphLarvaAssignment = true;
+                }
             }
 
             if (didAssign) {
@@ -180,6 +200,7 @@ public class WorkerManager {
             }
         }
 
+        eggs.remove(managedUnit);
         larva.remove(managedUnit);
         gatherers.remove(managedUnit);
         mineralGatherers.remove(managedUnit);
@@ -269,9 +290,9 @@ public class WorkerManager {
     private boolean assignMorphLarva(PlannedItem plannedItem) {
         for (ManagedUnit managedUnit : larva) {
             Unit unit = managedUnit.getUnit();
-            // If drone and not assigned, assign
+            // If larva and not assigned, assign
             if (!gameState.getAssignedPlannedItems().containsKey(unit)) {
-                clearAssignments(managedUnit);
+                //clearAssignments(managedUnit);
                 plannedItem.setState(PlanState.BUILDING);
                 managedUnit.setRole(UnitRole.MORPH);
                 managedUnit.setPlannedItem(plannedItem);
@@ -281,6 +302,118 @@ public class WorkerManager {
         }
 
         return false;
+    }
+
+    // checksLarvaDeadlock determines if all larva are assigned to morph into non overlords and if we're supply blocked
+    // if we meet both conditions, cancel these planned items and unassign the larva (there should be an overlord at top of queue)
+    // third condition: scheduled queue is NOT empty and contains 0 overlords
+    private void checksLarvaDeadlock() {
+        Player self = game.self();
+        int supplyTotal = self.supplyTotal();
+        int supplyUsed = self.supplyUsed();
+
+        int curFrame = game.getFrameCount();
+
+        if (supplyTotal - supplyUsed + gameState.getPlannedSupply() > 0) {
+            gameState.setLarvaDeadlocked(false);
+            return;
+        }
+
+        if (gameState.isLarvaDeadlocked() && curFrame < gameState.getLarvaDeadlockDetectedFrame() + OVERLORD_HATCH_ANIMATION_FRAMES) {
+            return;
+        }
+
+        if (gameState.getPlansScheduled().size() == 0) {
+            return;
+        }
+
+        for (ManagedUnit managedUnit : larva) {
+            if (managedUnit.getRole() == UnitRole.LARVA) {
+                return;
+            }
+            if (managedUnit.getRole() == UnitRole.MORPH) {
+                PlannedItem plannedItem = managedUnit.getPlannedItem();
+                if (plannedItem != null & plannedItem.getPlannedUnit() == UnitType.Zerg_Overlord) {
+                    return;
+                }
+            }
+        }
+
+        for (ManagedUnit managedUnit: eggs) {
+            if (managedUnit.getRole() == UnitRole.MORPH) {
+                PlannedItem plannedItem = managedUnit.getPlannedItem();
+                if (plannedItem != null & plannedItem.getPlannedUnit() == UnitType.Zerg_Overlord) {
+                    return;
+                }
+            }
+        }
+
+        Boolean isOverlordAssignedOrMorphing = false;
+        for (PlannedItem plannedItem: gameState.getAssignedPlannedItems().values()) {
+            if (plannedItem.getType() != PlanType.UNIT) {
+                continue;
+            }
+
+            if (plannedItem.getPlannedUnit() == UnitType.Zerg_Overlord) {
+                isOverlordAssignedOrMorphing = true;
+                break;
+            }
+        }
+
+        // Larva Deadlock Criteria:
+        // - ALL larva assigned
+        // - NO overlord building
+        // - NO overlord scheduled
+
+        // Overlord in production
+        for (PlannedItem plannedItem: gameState.getPlansMorphing()) {
+            if (plannedItem.getType() != PlanType.UNIT) {
+                continue;
+            }
+
+            if (plannedItem.getPlannedUnit() == UnitType.Zerg_Overlord) {
+                isOverlordAssignedOrMorphing = true;
+                break;
+            }
+        }
+
+        if (isOverlordAssignedOrMorphing) {
+            return;
+        }
+
+        gameState.setLarvaDeadlocked(true);
+        gameState.setLarvaDeadlockDetectedFrame(curFrame);
+    }
+
+    private void handleLarvaDeadlock() {
+        if (!gameState.isLarvaDeadlocked()) {
+            return;
+        }
+
+        int frameCount = game.getFrameCount();
+        int frameDeadlockDetected = gameState.getLarvaDeadlockDetectedFrame();
+        if (frameCount < frameDeadlockDetected + OVERLORD_HATCH_ANIMATION_FRAMES) {
+            return;
+        }
+
+        List<ManagedUnit> larvaCopy = larva.stream().collect(Collectors.toList());
+        for (ManagedUnit managedUnit : larvaCopy) {
+            Unit unit = managedUnit.getUnit();
+            clearAssignments(managedUnit);
+            managedUnit.setRole(UnitRole.LARVA);
+            larva.add(managedUnit);
+
+            PlannedItem plannedItem = managedUnit.getPlannedItem();
+            // TODO: Handle cancelled items. Are they requeued?
+            if (plannedItem != null) {
+                plannedItem.setState(PlanState.CANCELLED);
+                managedUnit.setPlannedItem(null);
+            }
+
+            gameState.getAssignedPlannedItems().remove(unit);
+        }
+
+        gameState.setLarvaDeadlocked(false);
     }
 
 

@@ -9,6 +9,7 @@ import bwem.CPPath;
 import bwem.ChokePoint;
 import info.InformationManager;
 import info.GameState;
+import org.bk.ass.sim.BWMirrorAgentFactory;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -57,6 +58,7 @@ public class UnitManager {
                     managedUnit.setRole(UnitRole.SCOUT);
                     managedUnits.add(managedUnit);
                     managedUnitLookup.put(unit, managedUnit);
+                    managedUnit.setCanFight(false);
                 }
                 if (unitType == UnitType.Zerg_Drone) {
                     managedUnits.add(managedUnit);
@@ -102,6 +104,7 @@ public class UnitManager {
                 continue;
             }
 
+            // TODO: infinite flopping between fight and scout states is here
             if (managedUnit.isCanFight() && role != UnitRole.FIGHT && informationManager.isEnemyLocationKnown()) {
                 managedUnit.setRole(UnitRole.FIGHT);
             } else if (role != UnitRole.SCOUT && !informationManager.isEnemyLocationKnown()) {
@@ -172,7 +175,7 @@ public class UnitManager {
         // TODO: A matcher dispatcher to determine which units are passed to which manger?
         if (unitType.isBuilding()) {
             if (unitType == UnitType.Zerg_Extractor) {
-                workerManager.onExtractorComplete(unit);
+                workerManager.onExtractorComplete();
             }
             return;
         }
@@ -192,9 +195,18 @@ public class UnitManager {
     private void removeManagedUnit(Unit unit) {
         ManagedUnit managedUnit = managedUnitLookup.get(unit);
         workerManager.removeManagedWorker(managedUnit);
-        Boolean isRemoved = managedUnits.remove(managedUnit);
+        managedUnits.remove(managedUnit);
         managedUnitLookup.remove(unit);
-        return;
+
+        if (managedUnit == null) {
+            return;
+        }
+
+        TilePosition movementTarget = managedUnit.getMovementTargetPosition();
+        HashSet<TilePosition> activeScoutTargets =  informationManager.getActiveScoutTargets();
+        if (movementTarget != null && activeScoutTargets.contains(managedUnit.getMovementTargetPosition())) {
+            activeScoutTargets.remove(movementTarget);
+        }
     }
 
     public void onUnitDestroy(Unit unit) {
@@ -299,6 +311,10 @@ public class UnitManager {
         managedUnitLookup.put(unit, managedScout);
         managedUnits.add(managedScout);
         assignScoutMovementTarget(managedScout);
+
+        if (unit.getType() == UnitType.Zerg_Overlord) {
+            managedScout.setCanFight(false);
+        }
         return;
     }
 }

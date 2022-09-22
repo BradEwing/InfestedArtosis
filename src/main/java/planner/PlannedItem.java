@@ -23,6 +23,9 @@ public class PlannedItem {
     private int frameStart;
     private int retries = 0;
 
+    // Block other plannedItem types in the queue
+    private boolean blockOtherPlans;
+
     @Nullable
     private TilePosition buildPosition;
 
@@ -32,23 +35,26 @@ public class PlannedItem {
     @Nullable
     private UpgradeType plannedUpgrade;
 
-    public PlannedItem(UnitType unitType, int priority, boolean isBuilding) {
+    public PlannedItem(UnitType unitType, int priority, boolean isBuilding, boolean isBlocking) {
         this.priority = priority;
         this.plannedUnit = unitType;
         this.type = isBuilding ? PlanType.BUILDING : PlanType.UNIT;
+        this.blockOtherPlans = isBlocking;
     }
 
-    public PlannedItem(UnitType unitType, int priority, boolean isBuilding, TilePosition buildPosition) {
+    public PlannedItem(UnitType unitType, int priority, boolean isBuilding, boolean isBlocking, TilePosition buildPosition) {
         this.priority = priority;
         this.plannedUnit = unitType;
         this.type = isBuilding ? PlanType.BUILDING : PlanType.UNIT;
         this.buildPosition = buildPosition;
+        this.blockOtherPlans = isBlocking;
     }
 
-    public PlannedItem(UpgradeType upgrade, int priority) {
+    public PlannedItem(UpgradeType upgrade, int priority, boolean isBlocking) {
         this.priority = priority;
         this.plannedUpgrade = upgrade;
         this.type = PlanType.UPGRADE;
+        this.blockOtherPlans = isBlocking;
     }
 
     @Override

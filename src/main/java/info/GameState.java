@@ -18,12 +18,15 @@ import java.util.HashSet;
 public class GameState {
     private int mineralWorkers;
     private int geyserWorkers;
+    private int plannedSupply;
+    private int larvaDeadlockDetectedFrame;
 
     private HashMap<Unit, HashSet<ManagedUnit>> geyserAssignments = new HashMap<>();
     private HashMap<Unit, HashSet<ManagedUnit>> mineralAssignments = new HashMap<>();
 
     private boolean enemyHasCloakedUnits = false;
     private boolean enemyHasHostileFlyers = false;
+    private boolean isLarvaDeadlocked = false;
 
     private HashSet<PlannedItem> plansScheduled = new HashSet<>();
     private HashSet<PlannedItem> plansBuilding = new HashSet<>();
