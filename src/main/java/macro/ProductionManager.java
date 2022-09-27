@@ -69,6 +69,10 @@ public class ProductionManager {
     private int numExtractors = 0;
     private int numEvoChambers = 0;
 
+    // TODO: Determine from desired unit composition / active strategy
+    // Because bot is only on hatch tech, only take 1 for now
+    private int targetExtractors = 1;
+
     private int reservedMinerals = 0;
     private int reservedGas = 0;
     private int currentPriority = 5;
@@ -316,7 +320,7 @@ public class ProductionManager {
 
         // One extractor per base
         // TODO: account for bases with no gas or 2 gas
-        if (numExtractors < bases.size()) {
+        if (numExtractors < bases.size() && numExtractors < targetExtractors) {
             numExtractors += 1;
             productionQueue.add(new PlannedItem(UnitType.Zerg_Extractor, currentPriority, true, false));
         }

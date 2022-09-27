@@ -100,6 +100,21 @@ public class InformationManager {
         return enemyUnits.size() + enemyBuildings.size() > 0;
     }
 
+    public boolean isEnemyUnitVisible() {
+        for (Unit enemy: enemyUnits) {
+            if (enemy.isVisible()) {
+                return true;
+            }
+        }
+        for (Unit enemy: enemyBuildings) {
+            if (enemy.isVisible()) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private void debugEnemyLocations() {
 
         /*
@@ -127,7 +142,7 @@ public class InformationManager {
         activeScoutTargets.add(target);
     }
 
-    public TilePosition pollScoutTarget() {
+    public TilePosition pollScoutTarget(boolean allowDuplicateScoutTarget) {
         // Walk through
         if (mainEnemyBase == null) {
             Base baseTarget = fetchRandomBase(startingBasesSet);
@@ -139,7 +154,7 @@ public class InformationManager {
         HashSet<TilePosition> enemyBuildingPositions = getEnemyBuildingPositions();
         if (enemyBuildingPositions.size() > 0) {
             for (TilePosition target: enemyBuildingPositions) {
-                if (!getScoutTargets().contains(target)) {
+                if (!getScoutTargets().contains(target) || allowDuplicateScoutTarget) {
                     return target;
                 }
             }

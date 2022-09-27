@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.stream.Collectors;
 
 public class UnitManager {
 
@@ -105,9 +106,9 @@ public class UnitManager {
             }
 
             // TODO: infinite flopping between fight and scout states is here
-            if (managedUnit.isCanFight() && role != UnitRole.FIGHT && informationManager.isEnemyLocationKnown()) {
+            if (managedUnit.isCanFight() && role != UnitRole.FIGHT && informationManager.isEnemyLocationKnown() && informationManager.isEnemyUnitVisible()) {
                 managedUnit.setRole(UnitRole.FIGHT);
-            } else if (role != UnitRole.SCOUT && !informationManager.isEnemyLocationKnown()) {
+            } else if (role != UnitRole.SCOUT && !informationManager.isEnemyUnitVisible()) {
                 reassignToScout(managedUnit);
             }
 
@@ -286,7 +287,8 @@ public class UnitManager {
         enemyUnits.addAll(informationManager.getEnemyBuildings());
 
         if (enemyUnits.size() > 0) {
-            managedUnit.assignClosestEnemyAsFightTarget(enemyUnits);
+            // Try to assign an enemy target. If none of the enemies are valid fight targets, fall back to the scout target.
+            managedUnit.assignClosestEnemyAsFightTarget(enemyUnits, informationManager.pollScoutTarget(true));
         }
     }
 
@@ -303,7 +305,14 @@ public class UnitManager {
     }
 
     private void assignScoutMovementTarget(ManagedUnit managedUnit) {
-        TilePosition target = informationManager.pollScoutTarget();
+        if (managedUnit.getMovementTargetPosition() != null) {
+            if (!game.isVisible(managedUnit.getMovementTargetPosition())) {
+                return;
+            }
+            managedUnit.setMovementTargetPosition(null);
+        }
+
+        TilePosition target = informationManager.pollScoutTarget(false);
         informationManager.setActiveScoutTarget(target);
         managedUnit.setMovementTargetPosition(target);
     }

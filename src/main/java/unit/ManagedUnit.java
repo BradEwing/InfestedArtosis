@@ -353,7 +353,7 @@ public class ManagedUnit {
     //  - TODO: Better name for this relationship
     //  - Managed units can have micro/behavior per unit
     //  - For example, zerglings should not target overlords!
-    public void assignClosestEnemyAsFightTarget(List<Unit> enemies) {
+    public void assignClosestEnemyAsFightTarget(List<Unit> enemies, TilePosition backupScoutPosition) {
         // We bail out if we're close enough to the unit to avoid deadlocking on weird micro situations
         // Don't bail if it's a building though
         if (fightTarget != null && !fightTarget.getType().isBuilding() && fightTarget.getDistance(unit) < LOCK_ENEMY_WITHIN_DISTANCE) {
@@ -365,17 +365,11 @@ public class ManagedUnit {
         }
 
         List<Unit> filtered = new ArrayList<>();
-        List<Unit> fogOfWarBuildings = new ArrayList<>();
 
         // Attempt to find the closest enemy OUTSIDE fog of war
         for (Unit enemyUnit: enemies) {
-            if (enemyUnit.getType() == UnitType.Unknown) {
-                continue;
-            }
-            if (unit.canAttack(enemyUnit) && unit.isVisible()) {
+            if (unit.canAttack(enemyUnit) && enemyUnit.isVisible()) {
                 filtered.add(enemyUnit);
-            } else if (unit.getType().isBuilding()) {
-                fogOfWarBuildings.add(enemyUnit);
             }
         }
 
@@ -386,17 +380,7 @@ public class ManagedUnit {
             return;
         }
 
-        if (fogOfWarBuildings.size() == 0) {
-            return;
-        }
-
-
-
-        // If everything was filtered, the remainder is buildings in fog of war
-        // Go to closest building
-        Unit closestEnemy = closestHostileUnit(unit, fogOfWarBuildings);
-        fightTarget = closestEnemy;
-        movementTargetPosition = closestEnemy.getTilePosition();
+        movementTargetPosition = backupScoutPosition;
     }
 
     public void assignGather(Unit gatherTarget) {
