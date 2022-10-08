@@ -31,10 +31,12 @@ public class ManagedUnit {
     private Unit unit;
     private UnitRole role;
     private UnitType unitType;
-    private TilePosition movementTargetPosition;
 
+
+    private TilePosition movementTargetPosition;
     private List<TilePosition> pathToTarget;
     private TilePosition currentStepToTarget;
+    private TilePosition retreatTarget;
 
     private Unit fightTarget;
     private Unit gatherTarget;
@@ -112,6 +114,9 @@ public class ManagedUnit {
                 break;
             case MORPH:
                 morph();
+                break;
+            case RETREAT:
+                retreat();
                 break;
             default:
                 break;
@@ -341,6 +346,26 @@ public class ManagedUnit {
 
         //System.out.printf("FightTarget is null, frame: [%s], unitType: [%s]\n", game.getFrameCount(), unit.getType());
         role = UnitRole.IDLE;
+        return;
+    }
+
+    private void retreat() {
+        if (!isReady) {
+            return;
+        }
+        if (retreatTarget == null) {
+            role = UnitRole.IDLE;
+            return;
+        }
+
+        setUnready();
+
+        if (unit.getDistance(retreatTarget.toPosition()) < 250 || unit.isIdle()) {
+            role = UnitRole.IDLE;
+            return;
+        }
+
+        unit.move(retreatTarget.toPosition());
         return;
     }
 

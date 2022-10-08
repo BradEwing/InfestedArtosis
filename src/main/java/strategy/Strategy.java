@@ -11,4 +11,6 @@ public interface Strategy {
     List<PlannedItem> getBuildOrder();
 
     boolean playsFourPlayerMap();
+
+    boolean isAllIn();
 }

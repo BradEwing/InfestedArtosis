@@ -31,4 +31,6 @@ public class FourPool implements Strategy {
     public boolean playsFourPlayerMap() {
         return false;
     }
+
+    public boolean isAllIn() { return true; }
 }

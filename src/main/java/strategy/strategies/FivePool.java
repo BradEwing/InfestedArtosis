@@ -30,4 +30,6 @@ public class FivePool implements Strategy {
     public boolean playsFourPlayerMap() {
         return false;
     }
+
+    public boolean isAllIn() { return false; }
 }

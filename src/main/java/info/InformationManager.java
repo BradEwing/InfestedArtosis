@@ -43,6 +43,7 @@ public class InformationManager {
     private HashSet<Unit> enemyBuildings = new HashSet<>();
     private HashSet<Unit> enemyUnits = new HashSet<>();
 
+    private Base myBase;
     private Base mainEnemyBase;
 
 
@@ -66,6 +67,8 @@ public class InformationManager {
 
         debugEnemyTargets();
         checkScoutTargets();
+
+        debugInitialHatch();
     }
 
     public void onUnitComplete(Unit unit) {
@@ -351,9 +354,24 @@ public class InformationManager {
     }
 
     private void initBases() {
+        TilePosition initialHatchery = null;
+
+        for (Unit unit: game.getAllUnits()) {
+            if (unit.getPlayer() != game.self()) {
+                continue;
+            }
+
+            if (unit.getType() == UnitType.Zerg_Hatchery) {
+                initialHatchery = unit.getTilePosition();
+                break;
+            }
+        }
         for (final Base b : bwem.getMap().getBases()) {
             TilePosition tilePosition = b.getLocation();
             if (b.isStartingLocation()) {
+                if (tilePosition.getX() == initialHatchery.getX() && tilePosition.getY() == initialHatchery.getY()) {
+                    myBase = b;
+                }
                 startingBasesSet.add(b);
                 scoutTargets.add(tilePosition);
             } else {
@@ -416,6 +434,13 @@ public class InformationManager {
                     String.valueOf(tileInfo.getImportance()),
                     Text.White);
         }
+    }
+
+    private void debugInitialHatch() {
+        if (game.getFrameCount() < 10) {
+            return;
+        }
+        game.drawBoxMap(myBase.getLocation().toPosition(), myBase.getLocation().add(new TilePosition(1,1)).toPosition(), Color.Blue);
     }
 
     private void debugEnemyTargets() {

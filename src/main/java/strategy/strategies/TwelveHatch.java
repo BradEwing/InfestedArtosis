@@ -34,4 +34,6 @@ public class TwelveHatch implements Strategy {
     public boolean playsFourPlayerMap() {
         return true;
     }
+
+    public boolean isAllIn() { return false; }
 }

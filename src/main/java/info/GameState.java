@@ -27,6 +27,7 @@ public class GameState {
     private boolean enemyHasCloakedUnits = false;
     private boolean enemyHasHostileFlyers = false;
     private boolean isLarvaDeadlocked = false;
+    private boolean isAllIn = false;
 
     private HashSet<PlannedItem> plansScheduled = new HashSet<>();
     private HashSet<PlannedItem> plansBuilding = new HashSet<>();
