@@ -1,5 +1,6 @@
 package unit;
 
+import bwapi.Color;
 import bwapi.Game;
 import bwapi.TilePosition;
 import bwapi.Unit;
@@ -16,6 +17,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+
+import static util.Filter.isHostileBuilding;
 
 public class UnitManager {
 
@@ -91,10 +94,17 @@ public class UnitManager {
 
         workerManager.onFrame();
 
+        // TODO: Move me, this is a debug hack
+        if (globalFightersSquad.getMembers().size() > 0) {
+            globalFightersSquad.onFrame();
+            game.drawCircleMap(globalFightersSquad.getCenter(), 256, Color.Teal);
+        }
+
         // Run ASS every 50 frames
         HashSet<ManagedUnit> managedFighters = globalFightersSquad.getMembers();
         if (frameCount % 50 == 0 && managedFighters.size() > 0 && informationManager.isEnemyUnitVisible()) {
             HashSet<Unit> enemyUnits = informationManager.getEnemyUnits();
+            HashSet<Unit> enemyBuildings = informationManager.getEnemyBuildings();
             Simulator simulator = new Simulator.Builder().build();
 
             for (ManagedUnit managedUnit: managedFighters) {
@@ -102,13 +112,29 @@ public class UnitManager {
             }
 
             for (Unit enemyUnit: enemyUnits) {
+                if (enemyUnit.getType() == UnitType.Unknown) {
+                    continue;
+                }
                 try {
                     simulator.addAgentB(agentFactory.of(enemyUnit));
                 } catch (ArithmeticException e) {
-                    System.out.println(String.format("Add Agent Exception: [%s], Unit: [%s]", e, enemyUnit));
+                    System.out.println(String.format("Add Agent Exception: [%s], EnemyUnit: [%s]", e, enemyUnit.getType()));
                     return;
                 }
             }
+
+            for (Unit enemyBuilding: enemyBuildings) {
+                if (!isHostileBuilding(enemyBuilding.getType())) {
+                    continue;
+                }
+                try {
+                    simulator.addAgentB(agentFactory.of(enemyBuilding));
+                } catch (ArithmeticException e) {
+                    System.out.println(String.format("Add Agent Exception: [%s], EnemyBuilding: [%s]", e, enemyBuilding.getType()));
+                    return;
+                }
+            }
+
 
             simulator.simulate(150); // Simulate 15 seconds
 

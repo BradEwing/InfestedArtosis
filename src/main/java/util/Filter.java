@@ -55,7 +55,7 @@ public final class Filter {
         return closestUnit;
     }
 
-    private static boolean isHostileBuilding(UnitType unitType) {
+    public static boolean isHostileBuilding(UnitType unitType) {
         if (!unitType.isBuilding()) {
             return false;
         }

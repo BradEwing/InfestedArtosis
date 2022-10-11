@@ -31,10 +31,6 @@ public class NinePoolSpeed implements Strategy {
         return list;
     }
 
-    public String getName() {
-        return "9PoolSpeed";
-    }
-
     public boolean playsFourPlayerMap() {
         return true;
     }

@@ -24,10 +24,6 @@ public class FourPool implements Strategy {
         return list;
     }
 
-    public String getName() {
-        return "FourPool";
-    }
-
     public boolean playsFourPlayerMap() {
         return false;
     }

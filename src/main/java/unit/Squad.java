@@ -1,5 +1,7 @@
 package unit;
 
+import bwapi.Position;
+import bwapi.TilePosition;
 import lombok.Data;
 
 import java.util.HashSet;
@@ -15,12 +17,11 @@ public class Squad {
 
     private HashSet<ManagedUnit> members = new HashSet<>();
 
-    private int centerX;
-    private int centerY;
+    private Position center;
     private int radius;
 
     public void onFrame() {
-
+        calculateCenter();
     }
 
     public void addUnit(ManagedUnit managedUnit) {
@@ -29,6 +30,19 @@ public class Squad {
 
     public void removeUnit(ManagedUnit managedUnit) {
         members.remove(managedUnit);
+    }
+
+    private void calculateCenter() {
+        int x, y;
+        x = y = 0;
+
+        for (ManagedUnit managedUnit: members) {
+            Position position = managedUnit.getUnit().getPosition();
+            x += position.getX();
+            y += position.getY();
+        }
+
+        this.center = new Position(x / members.size(), y / members.size());
     }
 
     // Determine center and radius

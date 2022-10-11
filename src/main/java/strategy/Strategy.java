@@ -6,7 +6,9 @@ import java.util.List;
 
 public interface Strategy {
 
-    String getName();
+    default String getName() {
+        return this.getClass().getSimpleName();
+    }
 
     List<PlannedItem> getBuildOrder();
 
