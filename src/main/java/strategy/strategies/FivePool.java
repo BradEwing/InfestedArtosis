@@ -23,11 +23,9 @@ public class FivePool implements Strategy {
         return list;
     }
 
-    public String getName() {
-        return "FivePool";
-    }
-
     public boolean playsFourPlayerMap() {
         return false;
     }
+
+    public boolean isAllIn() { return false; }
 }

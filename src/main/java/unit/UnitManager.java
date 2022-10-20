@@ -1,5 +1,6 @@
 package unit;
 
+import bwapi.Color;
 import bwapi.Game;
 import bwapi.TilePosition;
 import bwapi.Unit;
@@ -10,11 +11,18 @@ import bwem.ChokePoint;
 import info.InformationManager;
 import info.GameState;
 import org.bk.ass.sim.BWMirrorAgentFactory;
+import org.bk.ass.sim.Simulator;
+import unit.managed.ManagedUnit;
+import unit.managed.UnitRole;
+import unit.squad.Squad;
+import unit.squad.SquadManager;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+
+import static util.Filter.isHostileBuilding;
 
 public class UnitManager {
 
@@ -23,12 +31,15 @@ public class UnitManager {
 
     private GameState gameState;
 
+    private BWMirrorAgentFactory agentFactory;
+
     // Take a dependency on informationManager for now
     // TODO: Pass GameState here to make decisions for units
     //
     // Should workers go here? Probably, especially if they are pulled for base defense
     private InformationManager informationManager;
     private WorkerManager workerManager;
+    private SquadManager squadManager;
 
     // TODO: refactor
     private HashMap<Unit, ManagedUnit> managedUnitLookup = new HashMap<>();
@@ -43,8 +54,10 @@ public class UnitManager {
         this.informationManager = informationManager;
         this.bwem = bwem;
         this.gameState = gameState;
+        this.agentFactory = new BWMirrorAgentFactory();
 
-        workerManager = new WorkerManager(game, gameState);
+        this.workerManager = new WorkerManager(game, gameState);
+        this.squadManager = new SquadManager(game, informationManager);
         initManagedUnits();
     }
 
@@ -76,12 +89,14 @@ public class UnitManager {
     }
 
     public void onFrame() {
+        int frameCount = game.getFrameCount();
         // Wait a frame to let WorkerManager assign roles
-        if (game.getFrameCount() < 1) {
+        if (frameCount < 1) {
             return;
         }
 
         workerManager.onFrame();
+        squadManager.updateSquads();
 
         for (ManagedUnit managedUnit: managedUnits) {
             /**
@@ -97,7 +112,7 @@ public class UnitManager {
 
             UnitRole role = managedUnit.getRole();
 
-            if (role == UnitRole.GATHER || role == UnitRole.BUILD || role == UnitRole.MORPH || role == UnitRole.LARVA) {
+            if (role == UnitRole.GATHER || role == UnitRole.BUILD || role == UnitRole.MORPH || role == UnitRole.LARVA || role == UnitRole.RETREAT) {
                 // TODO: Fix, this is hacky
                 // Reassignment from one role to another should be handled elsewhere
                 managedUnit.execute();
@@ -105,10 +120,12 @@ public class UnitManager {
             }
 
             // TODO: infinite flopping between fight and scout states is here
-            if (managedUnit.isCanFight() && role != UnitRole.FIGHT && informationManager.isEnemyLocationKnown()) {
+            if (managedUnit.isCanFight() && role != UnitRole.FIGHT && informationManager.isEnemyLocationKnown() && informationManager.isEnemyUnitVisible()) {
                 managedUnit.setRole(UnitRole.FIGHT);
-            } else if (role != UnitRole.SCOUT && !informationManager.isEnemyLocationKnown()) {
+                squadManager.addManagedUnit(managedUnit);
+            } else if (role != UnitRole.SCOUT && !informationManager.isEnemyUnitVisible()) {
                 reassignToScout(managedUnit);
+                squadManager.removeManagedUnit(managedUnit);
             }
 
             // TODO: Refactor
@@ -159,6 +176,7 @@ public class UnitManager {
             createScout(unit);
         } else {
             ManagedUnit managedFighter = new ManagedUnit(game, unit, UnitRole.FIGHT);
+            squadManager.addManagedUnit(managedFighter);
             assignClosestEnemyToManagedUnit(managedFighter);
             managedUnitLookup.put(unit, managedFighter);
             managedUnits.add(managedFighter);
@@ -197,6 +215,7 @@ public class UnitManager {
         workerManager.removeManagedWorker(managedUnit);
         managedUnits.remove(managedUnit);
         managedUnitLookup.remove(unit);
+        squadManager.removeManagedUnit(managedUnit);
 
         if (managedUnit == null) {
             return;
@@ -248,11 +267,13 @@ public class UnitManager {
             return;
         }
 
-
-
         if (unit.getType() != managedUnit.getUnitType()) {
             managedUnit.setUnitType(unit.getType());
             //managedUnit.setRole(UnitRole.IDLE);
+        }
+
+        if (unit.getType() == UnitType.Zerg_Overlord) {
+            managedUnit.setCanFight(false);
         }
         workerManager.onUnitMorph(managedUnit);
     }
@@ -284,7 +305,8 @@ public class UnitManager {
         enemyUnits.addAll(informationManager.getEnemyBuildings());
 
         if (enemyUnits.size() > 0) {
-            managedUnit.assignClosestEnemyAsFightTarget(enemyUnits);
+            // Try to assign an enemy target. If none of the enemies are valid fight targets, fall back to the scout target.
+            managedUnit.assignClosestEnemyAsFightTarget(enemyUnits, informationManager.pollScoutTarget(true));
         }
     }
 
@@ -298,10 +320,18 @@ public class UnitManager {
     private void reassignToScout(ManagedUnit managedUnit) {
         managedUnit.setRole(UnitRole.SCOUT);
         assignScoutMovementTarget(managedUnit);
+        squadManager.removeManagedUnit(managedUnit);
     }
 
     private void assignScoutMovementTarget(ManagedUnit managedUnit) {
-        TilePosition target = informationManager.pollScoutTarget();
+        if (managedUnit.getMovementTargetPosition() != null) {
+            if (!game.isVisible(managedUnit.getMovementTargetPosition())) {
+                return;
+            }
+            managedUnit.setMovementTargetPosition(null);
+        }
+
+        TilePosition target = informationManager.pollScoutTarget(false);
         informationManager.setActiveScoutTarget(target);
         managedUnit.setMovementTargetPosition(target);
     }

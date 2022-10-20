@@ -41,17 +41,21 @@ public final class Filter {
             if (hasSeenEnemyOrHostileBuilding && type.isBuilding() && !isHostileBuilding) {
                 continue;
             }
-            int distance = unit.getDistance(u);
+            int distance = unit.getDistance(u.getPosition());
             if (distance < closestDistance) {
                 closestUnit = u;
                 closestDistance = distance;
             }
         }
 
+        if (closestUnit == null) {
+            return null;
+        }
+
         return closestUnit;
     }
 
-    private static boolean isHostileBuilding(UnitType unitType) {
+    public static boolean isHostileBuilding(UnitType unitType) {
         if (!unitType.isBuilding()) {
             return false;
         }

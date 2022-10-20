@@ -11,6 +11,8 @@ import planner.PlanType;
 import planner.PlannedItemComparator;
 import info.GameState;
 import planner.PlannedItem;
+import unit.managed.ManagedUnit;
+import unit.managed.UnitRole;
 import util.UnitDistanceComparator;
 
 import java.util.ArrayList;

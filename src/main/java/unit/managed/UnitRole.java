@@ -1,4 +1,4 @@
-package unit;
+package unit.managed;
 
 public enum UnitRole {
     GATHER,
@@ -8,6 +8,7 @@ public enum UnitRole {
     IDLE,
     MORPH,
     LARVA,
+    RETREAT,
     EGG,
     SCREEN, // Soak up damage on the front and detect non visible units
 }

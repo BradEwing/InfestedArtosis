@@ -17,10 +17,8 @@ import planner.PlanState;
 import planner.PlanType;
 import planner.PlannedItem;
 import planner.PlannedItemComparator;
-import unit.ManagedUnit;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -53,7 +51,7 @@ public class ProductionManager {
     private boolean hasPlannedPool = false;
     private boolean hasMetabolicBoost = false;
     // TODO: set off of strategy
-    private boolean hasPlannedMetabolicBoost = true;
+    private boolean hasPlannedMetabolicBoost = false;
     private boolean hasDen = false;
     private boolean hasPlannedDen = false;
     private boolean hasPlannedDenUpgrades = false;
@@ -68,6 +66,10 @@ public class ProductionManager {
 
     private int numExtractors = 0;
     private int numEvoChambers = 0;
+
+    // TODO: Determine from desired unit composition / active strategy
+    // Because bot is only on hatch tech, only take 1 for now
+    private int targetExtractors = 1;
 
     private int reservedMinerals = 0;
     private int reservedGas = 0;
@@ -121,6 +123,12 @@ public class ProductionManager {
 
             if (plannedItem.getPlannedUnit() != null && plannedItem.getPlannedUnit() == UnitType.Zerg_Drone) {
                 plannedWorkers += 1;
+            }
+
+            if (plannedItem.getType() == PlanType.UPGRADE) {
+                if (plannedItem.getPlannedUpgrade() == UpgradeType.Metabolic_Boost) {
+                    hasPlannedMetabolicBoost = true;
+                }
             }
 
 
@@ -280,6 +288,7 @@ public class ProductionManager {
     // TODO: Make this smarter, following a strategy to define unit mix, when to take upgrades, etc.
     private void planItems() {
         Player self = game.self();
+        Boolean isAllIn = gameState.isAllIn();
         // Macro builder kicks in at 10 supply
         if (!isPlanning && productionQueue.size() > 0) {
             return;
@@ -292,7 +301,7 @@ public class ProductionManager {
         // Base Hatch - Setup resources to assign workers, add to base data
         // Macro Hatch - Take a macro hatch every other time
         // Limit to 3 plannedHatch to prevent queue deadlock
-        if ((canAffordHatch(self) || (isNearMaxExpectedWorkers() && canAffordHatchSaturation())) && plannedHatcheries < 3) {
+        if (!isAllIn && (canAffordHatch(self) || (isNearMaxExpectedWorkers() && canAffordHatchSaturation())) && plannedHatcheries < 3) {
             plannedHatcheries += 1;
             if ((numHatcheries() % 2) != 0) {
                 planBase();
@@ -310,7 +319,7 @@ public class ProductionManager {
 
         // One extractor per base
         // TODO: account for bases with no gas or 2 gas
-        if (numExtractors < bases.size()) {
+        if (!isAllIn && numExtractors < bases.size() && numExtractors < targetExtractors) {
             numExtractors += 1;
             productionQueue.add(new PlannedItem(UnitType.Zerg_Extractor, currentPriority, true, false));
         }
@@ -325,7 +334,7 @@ public class ProductionManager {
         // TODO: Move this out of here
 
         int hydraSupplyThreshold = game.enemy().getRace() == Race.Protoss ? 20 : 40;
-        if (hasPool && !hasPlannedDen && !hasDen && self.supplyUsed() > hydraSupplyThreshold) {
+        if (!isAllIn && hasPool && !hasPlannedDen && !hasDen && self.supplyUsed() > hydraSupplyThreshold) {
             productionQueue.add(new PlannedItem(UnitType.Zerg_Hydralisk_Den, currentPriority, true, false));
             hasPlannedDen = true;
         }
@@ -365,20 +374,20 @@ public class ProductionManager {
 
         // TODO: Figure out why metabolic boost is not upgrading, why only 1 den upgrade is triggering
         /** Ling Upgrades **/
-        if (hasPool && !hasPlannedMetabolicBoost && !hasMetabolicBoost) {
+        if (!isAllIn && hasPool && !hasPlannedMetabolicBoost && !hasMetabolicBoost) {
             productionQueue.add(new PlannedItem(UpgradeType.Metabolic_Boost, currentPriority, false));
             hasPlannedMetabolicBoost = true;
         }
 
         /** Hydra Upgrades */
-        if (hasDen && !hasPlannedDenUpgrades) {
+        if (!isAllIn && hasDen && !hasPlannedDenUpgrades) {
             productionQueue.add(new PlannedItem(UpgradeType.Muscular_Augments, currentPriority, false));
             productionQueue.add(new PlannedItem(UpgradeType.Grooved_Spines, currentPriority, false));
             hasPlannedDenUpgrades = true;
         }
 
         // Just take first level of upgrades for now
-        if (numEvoChambers > 0 && hasPlannedEvoChamberUpgrades1) {
+        if (!isAllIn && numEvoChambers > 0 && hasPlannedEvoChamberUpgrades1) {
             productionQueue.add(new PlannedItem(UpgradeType.Zerg_Melee_Attacks, currentPriority, false));
             productionQueue.add(new PlannedItem(UpgradeType.Zerg_Missile_Attacks, currentPriority, false));
             productionQueue.add(new PlannedItem(UpgradeType.Zerg_Carapace, currentPriority, false));
@@ -414,7 +423,7 @@ public class ProductionManager {
         // This should be related to num bases + aval min patches and geysers, limited by army and potentially higher level strat info
         // For now, set them to be 1/3 of total supply
         // Limit the number of drones in queue, or they will crowd out production!
-        if (plannedWorkers < 3 && numWorkers() < 80 && numWorkers() < expectedWorkers() && self.supplyUsed() < 400) {
+        if (!isAllIn && plannedWorkers < 3 && numWorkers() < 80 && numWorkers() < expectedWorkers() && self.supplyUsed() < 400) {
             plannedWorkers += 1;
             productionQueue.add(new PlannedItem(UnitType.Zerg_Drone, currentPriority, false, false));
         }

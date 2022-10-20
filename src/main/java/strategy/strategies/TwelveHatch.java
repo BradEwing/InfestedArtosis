@@ -27,11 +27,9 @@ public class TwelveHatch implements Strategy {
         return list;
     }
 
-    public String getName() {
-        return "TwelveHatch";
-    }
-
     public boolean playsFourPlayerMap() {
         return true;
     }
+
+    public boolean isAllIn() { return false; }
 }

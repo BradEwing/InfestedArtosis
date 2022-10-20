@@ -4,7 +4,7 @@ import bwapi.Unit;
 import lombok.Data;
 import planner.PlannedItem;
 import strategy.Strategy;
-import unit.ManagedUnit;
+import unit.managed.ManagedUnit;
 
 import java.util.HashMap;
 import java.util.HashSet;
@@ -27,6 +27,7 @@ public class GameState {
     private boolean enemyHasCloakedUnits = false;
     private boolean enemyHasHostileFlyers = false;
     private boolean isLarvaDeadlocked = false;
+    private boolean isAllIn = false;
 
     private HashSet<PlannedItem> plansScheduled = new HashSet<>();
     private HashSet<PlannedItem> plansBuilding = new HashSet<>();
