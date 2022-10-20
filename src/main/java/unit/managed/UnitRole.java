@@ -1,4 +1,4 @@
-package unit;
+package unit.managed;
 
 public enum UnitRole {
     GATHER,

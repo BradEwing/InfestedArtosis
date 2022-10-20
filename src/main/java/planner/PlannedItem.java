@@ -6,7 +6,6 @@ import bwapi.UpgradeType;
 
 import lombok.Data;
 import org.jetbrains.annotations.Nullable;
-import unit.ManagedUnit;
 
 import java.util.UUID;
 

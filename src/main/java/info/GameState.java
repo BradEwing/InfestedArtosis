@@ -4,7 +4,7 @@ import bwapi.Unit;
 import lombok.Data;
 import planner.PlannedItem;
 import strategy.Strategy;
-import unit.ManagedUnit;
+import unit.managed.ManagedUnit;
 
 import java.util.HashMap;
 import java.util.HashSet;

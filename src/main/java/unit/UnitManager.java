@@ -12,6 +12,10 @@ import info.InformationManager;
 import info.GameState;
 import org.bk.ass.sim.BWMirrorAgentFactory;
 import org.bk.ass.sim.Simulator;
+import unit.managed.ManagedUnit;
+import unit.managed.UnitRole;
+import unit.squad.Squad;
+import unit.squad.SquadManager;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -35,6 +39,7 @@ public class UnitManager {
     // Should workers go here? Probably, especially if they are pulled for base defense
     private InformationManager informationManager;
     private WorkerManager workerManager;
+    private SquadManager squadManager;
 
     // TODO: refactor
     private HashMap<Unit, ManagedUnit> managedUnitLookup = new HashMap<>();
@@ -44,17 +49,15 @@ public class UnitManager {
     private HashSet<ManagedUnit> fighters = new HashSet<>();
     private HashSet<ManagedUnit> managedUnits = new HashSet<>();
 
-    private Squad globalFightersSquad = new Squad();
-
     public UnitManager(Game game, InformationManager informationManager, BWEM bwem, GameState gameState) {
         this.game = game;
         this.informationManager = informationManager;
         this.bwem = bwem;
         this.gameState = gameState;
-
         this.agentFactory = new BWMirrorAgentFactory();
 
-        workerManager = new WorkerManager(game, gameState);
+        this.workerManager = new WorkerManager(game, gameState);
+        this.squadManager = new SquadManager(game, informationManager);
         initManagedUnits();
     }
 
@@ -93,76 +96,7 @@ public class UnitManager {
         }
 
         workerManager.onFrame();
-
-        // TODO: Move me, this is a debug hack
-        if (globalFightersSquad.getMembers().size() > 0) {
-            globalFightersSquad.onFrame();
-            game.drawCircleMap(globalFightersSquad.getCenter(), 256, Color.Teal);
-        }
-
-        // Run ASS every 50 frames
-        HashSet<ManagedUnit> managedFighters = globalFightersSquad.getMembers();
-        if (frameCount % 50 == 0 && managedFighters.size() > 0 && informationManager.isEnemyUnitVisible()) {
-            HashSet<Unit> enemyUnits = informationManager.getEnemyUnits();
-            HashSet<Unit> enemyBuildings = informationManager.getEnemyBuildings();
-            Simulator simulator = new Simulator.Builder().build();
-
-            for (ManagedUnit managedUnit: managedFighters) {
-                simulator.addAgentA(agentFactory.of(managedUnit.getUnit()));
-            }
-
-            for (Unit enemyUnit: enemyUnits) {
-                if (enemyUnit.getType() == UnitType.Unknown) {
-                    continue;
-                }
-                try {
-                    simulator.addAgentB(agentFactory.of(enemyUnit));
-                } catch (ArithmeticException e) {
-                    System.out.println(String.format("Add Agent Exception: [%s], EnemyUnit: [%s]", e, enemyUnit.getType()));
-                    return;
-                }
-            }
-
-            for (Unit enemyBuilding: enemyBuildings) {
-                if (!isHostileBuilding(enemyBuilding.getType())) {
-                    continue;
-                }
-                try {
-                    simulator.addAgentB(agentFactory.of(enemyBuilding));
-                } catch (ArithmeticException e) {
-                    System.out.println(String.format("Add Agent Exception: [%s], EnemyBuilding: [%s]", e, enemyBuilding.getType()));
-                    return;
-                }
-            }
-
-
-            simulator.simulate(150); // Simulate 15 seconds
-
-            if (simulator.getAgentsA().isEmpty()) {
-                for (ManagedUnit managedUnit: managedFighters) {
-                    managedUnit.setRole(UnitRole.RETREAT);
-                    managedUnit.setRetreatTarget(informationManager.getMyBase().getLocation());
-                }
-                return;
-            }
-
-            if (!simulator.getAgentsB().isEmpty()) {
-                // If less than half of units are left, retreat
-                float percentRemaining = (float) simulator.getAgentsA().size() / managedFighters.size();
-                if (percentRemaining < 0.20) {
-                    for (ManagedUnit managedUnit: managedFighters) {
-                        managedUnit.setRole(UnitRole.RETREAT);
-                        managedUnit.setRetreatTarget(informationManager.getMyBase().getLocation());
-                    }
-                    return;
-                }
-            }
-
-            for (ManagedUnit managedUnit: managedFighters) {
-                managedUnit.setRole(UnitRole.FIGHT);
-            }
-            return;
-        }
+        squadManager.updateSquads();
 
         for (ManagedUnit managedUnit: managedUnits) {
             /**
@@ -188,10 +122,10 @@ public class UnitManager {
             // TODO: infinite flopping between fight and scout states is here
             if (managedUnit.isCanFight() && role != UnitRole.FIGHT && informationManager.isEnemyLocationKnown() && informationManager.isEnemyUnitVisible()) {
                 managedUnit.setRole(UnitRole.FIGHT);
-                globalFightersSquad.addUnit(managedUnit);
+                squadManager.addManagedUnit(managedUnit);
             } else if (role != UnitRole.SCOUT && !informationManager.isEnemyUnitVisible()) {
                 reassignToScout(managedUnit);
-                globalFightersSquad.removeUnit(managedUnit);
+                squadManager.removeManagedUnit(managedUnit);
             }
 
             // TODO: Refactor
@@ -242,6 +176,7 @@ public class UnitManager {
             createScout(unit);
         } else {
             ManagedUnit managedFighter = new ManagedUnit(game, unit, UnitRole.FIGHT);
+            squadManager.addManagedUnit(managedFighter);
             assignClosestEnemyToManagedUnit(managedFighter);
             managedUnitLookup.put(unit, managedFighter);
             managedUnits.add(managedFighter);
@@ -280,7 +215,7 @@ public class UnitManager {
         workerManager.removeManagedWorker(managedUnit);
         managedUnits.remove(managedUnit);
         managedUnitLookup.remove(unit);
-        globalFightersSquad.removeUnit(managedUnit);
+        squadManager.removeManagedUnit(managedUnit);
 
         if (managedUnit == null) {
             return;
@@ -385,7 +320,7 @@ public class UnitManager {
     private void reassignToScout(ManagedUnit managedUnit) {
         managedUnit.setRole(UnitRole.SCOUT);
         assignScoutMovementTarget(managedUnit);
-        globalFightersSquad.removeUnit(managedUnit);
+        squadManager.removeManagedUnit(managedUnit);
     }
 
     private void assignScoutMovementTarget(ManagedUnit managedUnit) {
