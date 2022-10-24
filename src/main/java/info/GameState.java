@@ -1,6 +1,7 @@
 package info;
 
 import bwapi.Unit;
+import bwem.Base;
 import lombok.Data;
 import planner.PlannedItem;
 import strategy.Strategy;
@@ -21,6 +22,8 @@ public class GameState {
     private int plannedSupply;
     private int larvaDeadlockDetectedFrame;
 
+    private HashSet<ManagedUnit> gatherers = new HashSet<>();
+
     private HashMap<Unit, HashSet<ManagedUnit>> geyserAssignments = new HashMap<>();
     private HashMap<Unit, HashSet<ManagedUnit>> mineralAssignments = new HashMap<>();
 
@@ -34,6 +37,10 @@ public class GameState {
     private HashSet<PlannedItem> plansMorphing = new HashSet<>();
     private HashSet<PlannedItem> plansComplete = new HashSet<>();
     private HashMap<Unit, PlannedItem> assignedPlannedItems = new HashMap<>();
+
+    private HashMap<Base, HashSet<ManagedUnit>> gatherersAssignedToBase = new HashMap<>();
+
+    private HashMap<Base, HashSet<Unit>> baseToThreatLookup = new HashMap<>();
 
     private Strategy activeStrategy;
 

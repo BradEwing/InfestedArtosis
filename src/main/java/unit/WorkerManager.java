@@ -6,6 +6,7 @@ import bwapi.Text;
 import bwapi.TilePosition;
 import bwapi.Unit;
 import bwapi.UnitType;
+import bwem.Base;
 import planner.PlanState;
 import planner.PlanType;
 import planner.PlannedItemComparator;
@@ -13,10 +14,12 @@ import info.GameState;
 import planner.PlannedItem;
 import unit.managed.ManagedUnit;
 import unit.managed.UnitRole;
+import util.BaseUnitDistanceComparator;
 import util.UnitDistanceComparator;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -28,7 +31,7 @@ public class WorkerManager {
     private GameState gameState;
 
     private HashSet<ManagedUnit> assignedManagedWorkers = new HashSet<>();
-    private HashSet<ManagedUnit> gatherers = new HashSet<>();
+    private HashSet<ManagedUnit> gatherers;
     private HashSet<ManagedUnit> mineralGatherers = new HashSet<>();
     private HashSet<ManagedUnit> larva = new HashSet<>();
     private HashSet<ManagedUnit> eggs = new HashSet<>();
@@ -40,6 +43,7 @@ public class WorkerManager {
     public WorkerManager(Game game, GameState gameState) {
         this.game = game;
         this.gameState = gameState;
+        this.gatherers = gameState.getGatherers();
     }
 
     public void onFrame() {
@@ -207,6 +211,12 @@ public class WorkerManager {
         gatherers.remove(managedUnit);
         mineralGatherers.remove(managedUnit);
         assignedManagedWorkers.remove(managedUnit);
+
+        for (HashSet<ManagedUnit> managedUnitAssignments: gameState.getGatherersAssignedToBase().values()) {
+            if (managedUnitAssignments.contains(managedUnit)) {
+                managedUnitAssignments.remove(managedUnit);
+            }
+        }
     }
 
     // Initial assignment onUnitComplete
@@ -224,6 +234,18 @@ public class WorkerManager {
 
         assignedManagedWorkers.add(managedUnit);
         managedUnit.setRole(UnitRole.IDLE);
+    }
+
+    private void assignToClosestBase(Unit gatherTarget, ManagedUnit gatherer) {
+        HashMap<Base, HashSet<ManagedUnit>> gatherersAssignedToBase = gameState.getGatherersAssignedToBase();
+        List<Base> bases = gatherersAssignedToBase.keySet().stream().collect(Collectors.toList());
+        if (bases.size() == 0) {
+             return;
+        }
+
+        bases.sort(new BaseUnitDistanceComparator(gatherTarget));
+        HashSet<ManagedUnit> assignedManagedUnits = gatherersAssignedToBase.get(bases.get(0));
+        assignedManagedUnits.add(gatherer);
     }
 
     private void assignToMineral(ManagedUnit managedUnit) {
@@ -251,6 +273,7 @@ public class WorkerManager {
                 mineralUnits.add(managedUnit);
                 gatherers.add(managedUnit);
                 mineralGatherers.add(managedUnit);
+                assignToClosestBase(mineral, managedUnit);
                 break;
             }
         }
@@ -268,6 +291,7 @@ public class WorkerManager {
                 gameState.setGeyserWorkers(gameState.getGeyserWorkers()+1);
                 geyserUnits.add(managedUnit);
                 gatherers.add(managedUnit);
+                assignToClosestBase(geyser, managedUnit);
                 break;
             }
         }

@@ -2,25 +2,31 @@ package unit.squad;
 
 import bwapi.Color;
 import bwapi.Game;
+import bwapi.Text;
 import bwapi.Unit;
 import bwapi.UnitType;
+import bwem.Base;
+import info.GameState;
 import info.InformationManager;
 import org.bk.ass.sim.BWMirrorAgentFactory;
 import org.bk.ass.sim.Simulator;
 import unit.managed.ManagedUnit;
 import unit.managed.UnitRole;
-import unit.squad.Squad;
+import util.UnitDistanceComparator;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import static util.Filter.isHostileBuilding;
 
 public class SquadManager {
 
     private Game game;
+    private GameState gameState;
 
     private BWMirrorAgentFactory agentFactory;
 
@@ -28,14 +34,18 @@ public class SquadManager {
 
     private HashSet<Squad> fightSquads;
 
-    public SquadManager(Game game, InformationManager informationManager) {
+    private HashMap<Base, Squad> defenseSquads = new HashMap<>();
+    private HashMap<Base, Squad> gathererSquads;
+
+    public SquadManager(Game game, GameState gameState, InformationManager informationManager) {
         this.game = game;
+        this.gameState = gameState;
         this.informationManager = informationManager;
         this.agentFactory = new BWMirrorAgentFactory();
         this.fightSquads = new HashSet<>();
     }
 
-    public void updateSquads() {
+    public void updateFightSquads() {
         debugPainters();
         removeEmptySquads();
 
@@ -44,12 +54,108 @@ public class SquadManager {
         mergeSquads();
 
         // TODO: split behavior (if unit exceeds squad radius)
-        // TODO: simulate squads ONLY against nearest neighbors
 
         for (Squad fightSquad: fightSquads) {
             fightSquad.onFrame();
-            simulateSquad(fightSquad);
+            simulateFightSquad(fightSquad);
         }
+    }
+
+    public void updateDefenseSquads() {
+        ensureDefenderSquadsHaveTargets();
+    }
+
+    /**
+     * Determines the number of workers required to defend, assigns them to the defense squad and
+     * returns the assigned workers, so they can be removed from the WorkerManager.
+     *
+     * @param base base to defend
+     * @param baseUnits gatherers to assign to defense squad
+     * @param hostileUnits units threatening this base
+     * @return gatherers that have been assigned to defend
+     */
+    public List<ManagedUnit> assignGathererDefenders(Base base, HashSet<ManagedUnit> baseUnits, List<Unit> hostileUnits) {
+        ensureDefenseSquad(base);
+        Squad defenseSquad = defenseSquads.get(base);
+
+        List<ManagedUnit> reassignedGatherers = new ArrayList<>();
+        if (baseUnits.size() < 3 || baseUnits.size() - reassignedGatherers.size() < 3) {
+            return reassignedGatherers;
+        }
+
+        for (ManagedUnit gatherer: baseUnits) {
+            Boolean canClear = canDefenseSquadClearThreat(defenseSquad, hostileUnits);
+            if (canClear) {
+                break;
+            }
+            defenseSquad.addUnit(gatherer);
+            reassignedGatherers.add(gatherer);
+        }
+        for (ManagedUnit managedUnit: reassignedGatherers) {
+            managedUnit.setRole(UnitRole.DEFEND);
+            assignDefenderTarget(managedUnit, hostileUnits);
+        }
+
+        return reassignedGatherers;
+    }
+
+    public List<ManagedUnit> disbandDefendSquad(Base base) {
+        ensureDefenseSquad(base);
+        Squad defenseSquad = defenseSquads.get(base);
+
+        List<ManagedUnit> reassignedDefenders = new ArrayList<>();
+        for (ManagedUnit defender: defenseSquad.getMembers()) {
+            reassignedDefenders.add(defender);
+        }
+
+        for (ManagedUnit defender: reassignedDefenders) {
+            defenseSquad.removeUnit(defender);
+        }
+
+        return reassignedDefenders;
+    }
+
+    private void ensureDefenseSquad(Base base) {
+        if (!defenseSquads.containsKey(base)) {
+            Squad squad = new Squad();
+            squad.setCenter(base.getCenter());
+            defenseSquads.put(base, squad);
+        }
+    }
+
+    private void assignDefenderTarget(ManagedUnit defender, List<Unit> threats) {
+        if (defender.getDefendTarget() != null) {
+            return;
+        }
+        threats.sort(new UnitDistanceComparator(defender.getUnit()));
+        defender.setDefendTarget(threats.get(0));
+    }
+
+    private void ensureDefenderSquadsHaveTargets() {
+        for (Base base: defenseSquads.keySet()) {
+            ensureDefenseSquad(base);
+            Squad squad = defenseSquads.get(base);
+            if (defenseSquads.size() == 0) {
+                continue;
+            }
+            HashSet<Unit> baseThreats = gameState.getBaseToThreatLookup().get(base);
+            if (baseThreats.size() == 0) {
+                continue;
+            }
+            for (ManagedUnit defender: squad.getMembers()) {
+                ensureDefenderHasTarget(defender, baseThreats);
+            }
+        }
+    }
+
+    private void ensureDefenderHasTarget(ManagedUnit defender, HashSet<Unit> baseThreats) {
+        if (!defender.isReady()) {
+            return;
+        }
+        if (defender.getDefendTarget() != null) {
+            return;
+        }
+        assignDefenderTarget(defender, baseThreats.stream().collect(Collectors.toList()));
     }
 
     private void removeEmptySquads() {
@@ -102,7 +208,7 @@ public class SquadManager {
         }
     }
 
-    public void simulateSquad(Squad squad) {
+    private void simulateFightSquad(Squad squad) {
         // Run ASS every 50 frames
         HashSet<ManagedUnit> managedFighters = squad.getMembers();
         if (game.getFrameCount() % 50 == 0 && managedFighters.size() > 0 && informationManager.isEnemyUnitVisible()) {
@@ -169,6 +275,50 @@ public class SquadManager {
         }
     }
 
+    private boolean canDefenseSquadClearThreat(Squad squad, List<Unit> enemyUnits) {
+        HashSet<ManagedUnit> managedDefenders = squad.getMembers();
+
+        Simulator simulator = new Simulator.Builder().build();
+
+        for (ManagedUnit managedUnit: managedDefenders) {
+            if (managedUnit.getUnit().getType() == UnitType.Unknown) {
+                continue;
+            }
+            simulator.addAgentA(agentFactory.of(managedUnit.getUnit()));
+        }
+
+        for (Unit enemyUnit: enemyUnits) {
+            if (enemyUnit.getType() == UnitType.Unknown) {
+                continue;
+            }
+            if ( (int) enemyUnit.getPosition().getDistance(squad.getCenter()) > 256) {
+                continue;
+            }
+            try {
+                simulator.addAgentB(agentFactory.of(enemyUnit));
+            } catch (ArithmeticException e) {
+                return false;
+            }
+        }
+
+        simulator.simulate(150); // Simulate 15 seconds
+
+        if (simulator.getAgentsB().isEmpty()) {
+            return true;
+        }
+
+        if (simulator.getAgentsA().isEmpty()) {
+            return false;
+        }
+
+        float percentRemaining = (float) simulator.getAgentsA().size() / managedDefenders.size();
+        if (percentRemaining >= 0.50) {
+            return true;
+        }
+
+        return false;
+    }
+
     public void addManagedUnit(ManagedUnit managedUnit) {
         for (Squad squad: fightSquads) {
             if (squad.distance(managedUnit) < 256) {
@@ -191,11 +341,19 @@ public class SquadManager {
                 return;
             }
         }
+        for (Base base: defenseSquads.keySet()) {
+            Squad squad = defenseSquads.get(base);
+            squad.removeUnit(managedUnit);
+        }
     }
 
     private void debugPainters() {
         for (Squad squad: fightSquads) {
             game.drawCircleMap(squad.getCenter(), 256, Color.White);
+        }
+        for (Squad squad: defenseSquads.values()) {
+            game.drawCircleMap(squad.getCenter(), 256, Color.White);
+            game.drawTextMap(squad.getCenter(), String.format("Defenders: %s", squad.size()), Text.White);
         }
     }
 }

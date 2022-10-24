@@ -17,6 +17,7 @@ import planner.PlanState;
 import planner.PlanType;
 import planner.PlannedItem;
 import planner.PlannedItemComparator;
+import unit.managed.ManagedUnit;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -106,7 +107,10 @@ public class ProductionManager {
 
         List<Base> allBases = bwem.getMap().getBases();
         this.mainBase = closestBaseToUnit(initialHatch, allBases);
-        this.baseLocations.add(mainBase);
+        addBaseToGameState(mainBase);
+
+        HashMap<Base, HashSet<ManagedUnit>> gatherToBaseAssignments = this.gameState.getGatherersAssignedToBase();
+        gatherToBaseAssignments.put(mainBase, new HashSet<>());
 
         // TODO: extract to own function? assign all buildings in priority queue a location
         for (PlannedItem plannedItem: initialBuildOrder) {
@@ -118,7 +122,7 @@ public class ProductionManager {
             if (plannedItem.getPlannedUnit() != null && plannedItem.getPlannedUnit() == UnitType.Zerg_Hatchery) {
                 Base base = findNewBase();
                 plannedItem.setBuildPosition(base.getLocation());
-                this.baseLocations.add(base);
+                addBaseToGameState(base);
             }
 
             if (plannedItem.getPlannedUnit() != null && plannedItem.getPlannedUnit() == UnitType.Zerg_Drone) {
@@ -227,6 +231,12 @@ public class ProductionManager {
         return closestUnoccupiedBase;
     }
 
+    private void addBaseToGameState(Base base) {
+        HashMap<Base, HashSet<ManagedUnit>> gatherToBaseAssignments = this.gameState.getGatherersAssignedToBase();
+        gatherToBaseAssignments.put(base, new HashSet<>());
+        baseLocations.add(base);
+    }
+
     private void planBase() {
         Base base = findNewBase();
         // all possible bases are taken!
@@ -235,7 +245,7 @@ public class ProductionManager {
         }
 
         productionQueue.add(new PlannedItem(UnitType.Zerg_Hatchery, currentPriority, true, true, base.getLocation()));
-        baseLocations.add(base);
+        addBaseToGameState(base);
     }
 
     // debug console messaging goes here
