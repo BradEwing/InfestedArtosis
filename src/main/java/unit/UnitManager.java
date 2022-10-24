@@ -1,28 +1,26 @@
 package unit;
 
-import bwapi.Color;
 import bwapi.Game;
 import bwapi.TilePosition;
 import bwapi.Unit;
 import bwapi.UnitType;
 import bwem.BWEM;
+import bwem.Base;
 import bwem.CPPath;
 import bwem.ChokePoint;
 import info.InformationManager;
 import info.GameState;
 import org.bk.ass.sim.BWMirrorAgentFactory;
-import org.bk.ass.sim.Simulator;
 import unit.managed.ManagedUnit;
 import unit.managed.UnitRole;
-import unit.squad.Squad;
 import unit.squad.SquadManager;
+import util.UnitDistanceComparator;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-
-import static util.Filter.isHostileBuilding;
+import java.util.stream.Collectors;
 
 public class UnitManager {
 
@@ -57,7 +55,7 @@ public class UnitManager {
         this.agentFactory = new BWMirrorAgentFactory();
 
         this.workerManager = new WorkerManager(game, gameState);
-        this.squadManager = new SquadManager(game, informationManager);
+        this.squadManager = new SquadManager(game, gameState, informationManager);
         initManagedUnits();
     }
 
@@ -95,8 +93,11 @@ public class UnitManager {
             return;
         }
 
+        checkBaseThreats();
+
         workerManager.onFrame();
-        squadManager.updateSquads();
+        squadManager.updateFightSquads();
+        squadManager.updateDefenseSquads();
 
         for (ManagedUnit managedUnit: managedUnits) {
             /**
@@ -112,14 +113,13 @@ public class UnitManager {
 
             UnitRole role = managedUnit.getRole();
 
-            if (role == UnitRole.GATHER || role == UnitRole.BUILD || role == UnitRole.MORPH || role == UnitRole.LARVA || role == UnitRole.RETREAT) {
+            if (role == UnitRole.GATHER || role == UnitRole.BUILD || role == UnitRole.MORPH || role == UnitRole.LARVA || role == UnitRole.RETREAT || role == UnitRole.DEFEND) {
                 // TODO: Fix, this is hacky
                 // Reassignment from one role to another should be handled elsewhere
                 managedUnit.execute();
                 continue;
             }
 
-            // TODO: infinite flopping between fight and scout states is here
             if (managedUnit.isCanFight() && role != UnitRole.FIGHT && informationManager.isEnemyLocationKnown() && informationManager.isEnemyUnitVisible()) {
                 managedUnit.setRole(UnitRole.FIGHT);
                 squadManager.addManagedUnit(managedUnit);
@@ -129,7 +129,6 @@ public class UnitManager {
             }
 
             // TODO: Refactor
-
             // Check every frame for closest enemy for unit
             if (role == UnitRole.FIGHT) {
                 assignClosestEnemyToManagedUnit(managedUnit);
@@ -276,6 +275,44 @@ public class UnitManager {
             managedUnit.setCanFight(false);
         }
         workerManager.onUnitMorph(managedUnit);
+    }
+
+    private void checkBaseThreats() {
+        HashMap<Base, HashSet<Unit>> baseThreats = this.gameState.getBaseToThreatLookup();
+        for (Base base: baseThreats.keySet()) {
+            if (baseThreats.get(base).size() > 0) {
+                assignGatherersToDefense(base);
+            } else {
+                assignDefendersToGather(base);
+            }
+        }
+    }
+
+    private void assignGatherersToDefense(Base base) {
+        HashSet<ManagedUnit> gatherersAssignedToBase = this.gameState.getGatherersAssignedToBase().get(base);
+        if (gatherersAssignedToBase.size() == 0) {
+            return;
+        }
+        List<Unit> threateningUnits = this.gameState.getBaseToThreatLookup()
+                .get(base)
+                .stream()
+                .collect(Collectors.toList());
+
+
+
+        List<ManagedUnit> gatherersToReassign = this.squadManager.assignGathererDefenders(base, gatherersAssignedToBase, threateningUnits);
+        for (ManagedUnit managedUnit: gatherersToReassign) {
+            this.workerManager.removeManagedWorker(managedUnit);
+        }
+    }
+
+    private void assignDefendersToGather(Base base) {
+        HashSet<ManagedUnit> gatherersAssignedToBase = this.gameState.getGatherersAssignedToBase().get(base);
+        List<ManagedUnit> gatherersToReassign = this.squadManager.disbandDefendSquad(base);
+
+        for (ManagedUnit managedUnit: gatherersToReassign) {
+            this.workerManager.addManagedWorker(managedUnit);
+        }
     }
 
     private void calculateMovementPath(ManagedUnit managedUnit) {

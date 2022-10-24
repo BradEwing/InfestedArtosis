@@ -34,6 +34,7 @@ public class ManagedUnit {
     private TilePosition currentStepToTarget;
     private TilePosition retreatTarget;
 
+    private Unit defendTarget;
     private Unit fightTarget;
     private Unit gatherTarget;
 
@@ -113,6 +114,9 @@ public class ManagedUnit {
                 break;
             case RETREAT:
                 retreat();
+                break;
+            case DEFEND:
+                defend();
                 break;
             default:
                 break;
@@ -334,7 +338,7 @@ public class ManagedUnit {
         if (movementTargetPosition != null && game.isVisible(movementTargetPosition)) {
             movementTargetPosition = null;
         }
-        // TODO: determine if Units may get stuck infitely trying to approach fightTargetPosition
+        // TODO: determine if Units may get stuck infinitely trying to approach fightTargetPosition
         if (movementTargetPosition != null) {
             unit.move(movementTargetPosition.toPosition());
             return;
@@ -363,6 +367,24 @@ public class ManagedUnit {
 
         unit.move(retreatTarget.toPosition());
         return;
+    }
+
+    private void defend() {
+        if (!isReady) {
+            return;
+        }
+        if (unit.isAttackFrame()) {
+            return;
+        }
+        setUnready();
+        // Our fight target is no longer visible, drop in favor of fight target position
+        if (defendTarget != null && defendTarget.getType() == UnitType.Unknown) {
+            defendTarget = null;
+        }
+        if (defendTarget != null) {
+            unit.attack(defendTarget);
+            return;
+        }
     }
 
     // TODO: This is potentially expensive?

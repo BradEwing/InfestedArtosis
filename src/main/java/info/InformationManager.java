@@ -15,12 +15,16 @@ import lombok.Data;
 import map.TileComparator;
 import map.TileInfo;
 import map.TileType;
+import unit.managed.ManagedUnit;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Random;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 
@@ -68,6 +72,9 @@ public class InformationManager {
         debugEnemyTargets();
         checkScoutTargets();
 
+        checkIfEnemyUnitsStillThreatenBase();
+        checkBaseThreats();
+
         debugInitialHatch();
     }
 
@@ -84,6 +91,8 @@ public class InformationManager {
         if (enemyUnits.contains(unit)) {
             enemyUnits.remove(unit);
         }
+
+        ensureEnemyUnitRemovedFromBaseThreats(unit);
 
         // TODO: move?
         if (unit.getType().isMineralField()) {
@@ -456,6 +465,61 @@ public class InformationManager {
         }
         for (TilePosition tilePosition: enemyBuildingPositions) {
             game.drawCircleMap(tilePosition.toPosition(), 2, Color.Orange);
+        }
+    }
+
+    private void ensureEnemyUnitRemovedFromBaseThreats(Unit unit) {
+        for (HashSet<Unit> baseThreat: gameState.getBaseToThreatLookup().values()) {
+            if (baseThreat.contains(unit)) {
+                baseThreat.remove(unit);
+            }
+        }
+    }
+
+    private void checkIfEnemyUnitsStillThreatenBase() {
+        HashMap<Base, HashSet<Unit>> baseThreats = gameState.getBaseToThreatLookup();
+        for (Base base: baseThreats.keySet()) {
+            HashSet<Unit> unitThreats = baseThreats.get(base);
+            List<Unit> noLongerThreats = new ArrayList<>();
+            for (Unit unit: unitThreats) {
+                if (unit.getType() == UnitType.Unknown) {
+                    noLongerThreats.add(unit);
+                    continue;
+                }
+                int distance = (int) base.getLocation().toPosition().getDistance(unit.getTilePosition().toPosition());
+                if (distance > 256) {
+                    noLongerThreats.add(unit);
+                    continue;
+                }
+                if (unit.getPlayer() == game.self()) {
+                    noLongerThreats.add(unit);
+                    continue;
+                }
+            }
+
+            for (Unit unit: noLongerThreats) {
+                unitThreats.remove(unit);
+            }
+        }
+    }
+
+    private void checkBaseThreats() {
+        if (enemyUnits.size() < 1) {
+            return;
+        }
+
+        Set<Base> bases = gameState.getGatherersAssignedToBase().keySet();
+        HashMap<Base, HashSet<Unit>> baseThreats = gameState.getBaseToThreatLookup();
+        for (Base base: bases) {
+            if (!baseThreats.containsKey(base)) {
+                baseThreats.put(base, new HashSet<>());
+            }
+
+            for (Unit unit: enemyUnits) {
+                if (base.getLocation().toPosition().getDistance(unit.getTilePosition().toPosition()) < 256) {
+                    baseThreats.get(base).add(unit);
+                }
+            }
         }
     }
 }

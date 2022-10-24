@@ -9,6 +9,7 @@ public enum UnitRole {
     MORPH,
     LARVA,
     RETREAT,
+    DEFEND,
     EGG,
     SCREEN, // Soak up damage on the front and detect non visible units
 }
