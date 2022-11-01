@@ -42,6 +42,7 @@ public class InformationManager {
 
     private HashSet<Base> startingBasesSet = new HashSet<>();
     private HashSet<Base> expansionBasesSet = new HashSet<>();
+    private HashSet<TilePosition> startingBasesTilePositions = new HashSet<>();
 
     private HashSet<TilePosition> enemyBuildingPositions = new HashSet<>();
     private HashSet<Unit> enemyBuildings = new HashSet<>();
@@ -49,6 +50,9 @@ public class InformationManager {
 
     private Base myBase;
     private Base mainEnemyBase;
+
+    private HashMap<Base, Integer> baseScoutAssignments = new HashMap<>();
+    private HashMap<TilePosition, Base> tilePositionToBaseLookup = new HashMap<>();
 
 
     public InformationManager(BWEM bwem, Game game, GameState gameState) {
@@ -157,8 +161,10 @@ public class InformationManager {
     public TilePosition pollScoutTarget(boolean allowDuplicateScoutTarget) {
         // Walk through
         if (mainEnemyBase == null) {
-            Base baseTarget = fetchRandomBase(startingBasesSet);
+            Base baseTarget = fetchBaseRoundRobin(baseScoutAssignments.keySet());
             if (baseTarget != null) {
+                Integer assignments = baseScoutAssignments.get(baseTarget);
+                baseScoutAssignments.put(baseTarget, assignments+1);
                 return baseTarget.getLocation();
             }
         }
@@ -220,6 +226,20 @@ public class InformationManager {
     // TODO: Round robin
     private Base fetchRandomBase(HashSet<Base> basesSet) {
         return basesSet.stream().skip(new Random().nextInt(basesSet.size())).findFirst().orElse(null);
+    }
+
+    private Base fetchBaseRoundRobin(Set<Base> candidateBases) {
+        Base leastScoutedBase = null;
+        Integer fewestScouts = Integer.MAX_VALUE;
+        for (Base base: candidateBases) {
+            Integer assignedScoutsToBase = baseScoutAssignments.get(base);
+            if (assignedScoutsToBase < fewestScouts) {
+                leastScoutedBase = base;
+                fewestScouts = assignedScoutsToBase;
+            }
+
+        }
+        return leastScoutedBase;
     }
 
     // TODO: Refactor into util
@@ -330,15 +350,30 @@ public class InformationManager {
                 foundTargets.add(target);
             }
         }
+
+        for (TilePosition target: startingBasesTilePositions) {
+            if (game.isVisible(target)) {
+                foundTargets.add(target);
+            }
+        }
+
         for (TilePosition target: foundTargets) {
             activeScoutTargets.remove(target);
             // TODO: EXPERIMENTAL, trying to get rid of orange dots persisting
             enemyBuildingPositions.remove(target);
+            startingBasesTilePositions.remove(target);
+            if (tilePositionToBaseLookup.containsKey(target)) {
+                Base b = tilePositionToBaseLookup.get(target);
+                baseScoutAssignments.remove(b, target);
+                tilePositionToBaseLookup.remove(target);
+            }
         }
 
         if (game.getFrameCount() % 100 == 0) {
             //System.out.printf("checkScoutTargets(), scoutTargets: [%s], activeScoutTargets: [%s]\n", scoutTargets, activeScoutTargets);
         }
+
+
     }
 
     // Iterate through heat map and assign all tiles
@@ -381,6 +416,9 @@ public class InformationManager {
                 if (tilePosition.getX() == initialHatchery.getX() && tilePosition.getY() == initialHatchery.getY()) {
                     myBase = b;
                 }
+                startingBasesTilePositions.add(tilePosition);
+                tilePositionToBaseLookup.put(tilePosition, b);
+                baseScoutAssignments.put(b, 0);
                 startingBasesSet.add(b);
                 scoutTargets.add(tilePosition);
             } else {
