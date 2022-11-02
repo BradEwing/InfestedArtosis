@@ -238,6 +238,9 @@ public class SquadManager {
                 if (!isHostileBuilding(enemyBuilding.getType())) {
                     continue;
                 }
+                if ( (int) enemyBuilding.getPosition().getDistance(squad.getCenter()) > 256) {
+                    continue;
+                }
                 try {
                     simulator.addAgentB(agentFactory.of(enemyBuilding));
                 } catch (ArithmeticException e) {
