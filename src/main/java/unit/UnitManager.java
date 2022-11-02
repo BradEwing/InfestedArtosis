@@ -13,8 +13,8 @@ import info.GameState;
 import org.bk.ass.sim.BWMirrorAgentFactory;
 import unit.managed.ManagedUnit;
 import unit.managed.UnitRole;
+import unit.scout.ScoutManager;
 import unit.squad.SquadManager;
-import util.UnitDistanceComparator;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -31,20 +31,13 @@ public class UnitManager {
 
     private BWMirrorAgentFactory agentFactory;
 
-    // Take a dependency on informationManager for now
-    // TODO: Pass GameState here to make decisions for units
-    //
-    // Should workers go here? Probably, especially if they are pulled for base defense
     private InformationManager informationManager;
-    private WorkerManager workerManager;
+    private ScoutManager scoutManager;
     private SquadManager squadManager;
+    private WorkerManager workerManager;
 
-    // TODO: refactor
     private HashMap<Unit, ManagedUnit> managedUnitLookup = new HashMap<>();
 
-    private HashSet<ManagedUnit> workers = new HashSet<>();
-    private HashSet<ManagedUnit> scouts = new HashSet<>();
-    private HashSet<ManagedUnit> fighters = new HashSet<>();
     private HashSet<ManagedUnit> managedUnits = new HashSet<>();
 
     public UnitManager(Game game, InformationManager informationManager, BWEM bwem, GameState gameState) {
@@ -56,6 +49,7 @@ public class UnitManager {
 
         this.workerManager = new WorkerManager(game, gameState);
         this.squadManager = new SquadManager(game, gameState, informationManager);
+        this.scoutManager = new ScoutManager(game, informationManager);
         initManagedUnits();
     }
 
@@ -66,10 +60,7 @@ public class UnitManager {
                 UnitType unitType = unit.getType();
                 ManagedUnit managedUnit = new ManagedUnit(game, unit, UnitRole.IDLE);
                 if (unitType == UnitType.Zerg_Overlord) {
-                    managedUnit.setRole(UnitRole.SCOUT);
-                    managedUnits.add(managedUnit);
-                    managedUnitLookup.put(unit, managedUnit);
-                    managedUnit.setCanFight(false);
+                    createScout(unit);
                 }
                 if (unitType == UnitType.Zerg_Drone) {
                     managedUnits.add(managedUnit);
@@ -98,6 +89,7 @@ public class UnitManager {
         workerManager.onFrame();
         squadManager.updateFightSquads();
         squadManager.updateDefenseSquads();
+        scoutManager.onFrame();
 
         for (ManagedUnit managedUnit: managedUnits) {
             /**
@@ -123,8 +115,9 @@ public class UnitManager {
             if (managedUnit.isCanFight() && role != UnitRole.FIGHT && informationManager.isEnemyLocationKnown() && informationManager.isEnemyUnitVisible()) {
                 managedUnit.setRole(UnitRole.FIGHT);
                 squadManager.addManagedUnit(managedUnit);
+                scoutManager.removeScout(managedUnit);
             } else if (role != UnitRole.SCOUT && !informationManager.isEnemyUnitVisible()) {
-                reassignToScout(managedUnit);
+                scoutManager.addScout(managedUnit);
                 squadManager.removeManagedUnit(managedUnit);
             }
 
@@ -132,10 +125,6 @@ public class UnitManager {
             // Check every frame for closest enemy for unit
             if (role == UnitRole.FIGHT) {
                 assignClosestEnemyToManagedUnit(managedUnit);
-            }
-
-            if (role == UnitRole.SCOUT && managedUnit.getMovementTargetPosition() == null) {
-                assignScoutMovementTarget(managedUnit);
             }
 
             managedUnit.execute();
@@ -211,20 +200,12 @@ public class UnitManager {
 
     private void removeManagedUnit(Unit unit) {
         ManagedUnit managedUnit = managedUnitLookup.get(unit);
+
         workerManager.removeManagedWorker(managedUnit);
         managedUnits.remove(managedUnit);
-        managedUnitLookup.remove(unit);
         squadManager.removeManagedUnit(managedUnit);
-
-        if (managedUnit == null) {
-            return;
-        }
-
-        TilePosition movementTarget = managedUnit.getMovementTargetPosition();
-        HashSet<TilePosition> activeScoutTargets =  informationManager.getActiveScoutTargets();
-        if (movementTarget != null && activeScoutTargets.contains(managedUnit.getMovementTargetPosition())) {
-            activeScoutTargets.remove(movementTarget);
-        }
+        scoutManager.removeScout(managedUnit);
+        managedUnitLookup.remove(unit);
     }
 
     public void onUnitDestroy(Unit unit) {
@@ -354,30 +335,11 @@ public class UnitManager {
         return managedUnit;
     }
 
-    private void reassignToScout(ManagedUnit managedUnit) {
-        managedUnit.setRole(UnitRole.SCOUT);
-        assignScoutMovementTarget(managedUnit);
-        squadManager.removeManagedUnit(managedUnit);
-    }
-
-    private void assignScoutMovementTarget(ManagedUnit managedUnit) {
-        if (managedUnit.getMovementTargetPosition() != null) {
-            if (!game.isVisible(managedUnit.getMovementTargetPosition())) {
-                return;
-            }
-            managedUnit.setMovementTargetPosition(null);
-        }
-
-        TilePosition target = informationManager.pollScoutTarget(false);
-        informationManager.setActiveScoutTarget(target);
-        managedUnit.setMovementTargetPosition(target);
-    }
-
     private void createScout(Unit unit) {
         ManagedUnit managedScout = new ManagedUnit(game, unit, UnitRole.SCOUT);
         managedUnitLookup.put(unit, managedScout);
         managedUnits.add(managedScout);
-        assignScoutMovementTarget(managedScout);
+        scoutManager.addScout(managedScout);
 
         if (unit.getType() == UnitType.Zerg_Overlord) {
             managedScout.setCanFight(false);
