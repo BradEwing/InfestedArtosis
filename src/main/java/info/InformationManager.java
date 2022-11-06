@@ -15,14 +15,13 @@ import lombok.Data;
 import map.TileComparator;
 import map.TileInfo;
 import map.TileType;
-import unit.managed.ManagedUnit;
 
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -46,7 +45,10 @@ public class InformationManager {
 
     private HashSet<TilePosition> enemyBuildingPositions = new HashSet<>();
     private HashSet<Unit> enemyBuildings = new HashSet<>();
+    private HashSet<Unit> visibleEnemyUnits = new HashSet<>();
     private HashSet<Unit> enemyUnits = new HashSet<>();
+
+    private HashMap<Unit, TilePosition> enemyLastKnownLocations = new HashMap<>();
 
     private Base myBase;
     private Base mainEnemyBase;
@@ -82,6 +84,62 @@ public class InformationManager {
         debugInitialHatch();
     }
 
+    public void onUnitHide(Unit unit) {
+        // TODO: Clean up
+        UnitType unitType = unit.getInitialType();
+        if (unit.getPlayer() == game.self() ||
+                unitType == UnitType.Resource_Mineral_Field ||
+                unitType == UnitType.Resource_Vespene_Geyser ||
+                unitType == UnitType.Powerup_Mineral_Cluster_Type_1 ||
+                unitType == UnitType.Powerup_Mineral_Cluster_Type_2 ||
+                unitType == UnitType.Resource_Mineral_Field_Type_2 ||
+                unitType == UnitType.Resource_Mineral_Field_Type_3) {
+            return;
+        }
+
+
+        if (unitType == UnitType.Unknown || unitType == UnitType.Special_Power_Generator ||
+                unitType == UnitType.Special_Protoss_Temple || unitType == UnitType.Special_XelNaga_Temple ||
+                unitType == UnitType.Special_Psi_Disrupter) {
+            return;
+        }
+
+        if (unitType == UnitType.Zerg_Larva) {
+            return;
+        }
+
+        enemyLastKnownLocations.put(unit, unit.getTilePosition());
+    }
+
+    public void onUnitShow(Unit unit) {
+        // TODO: Clean up
+        UnitType unitType = unit.getInitialType();
+        if (unit.getPlayer() == game.self() ||
+                unitType == UnitType.Resource_Mineral_Field ||
+                unitType == UnitType.Resource_Vespene_Geyser ||
+                unitType == UnitType.Powerup_Mineral_Cluster_Type_1 ||
+                unitType == UnitType.Powerup_Mineral_Cluster_Type_2 ||
+                unitType == UnitType.Resource_Mineral_Field_Type_2 ||
+                unitType == UnitType.Resource_Mineral_Field_Type_3) {
+            return;
+        }
+
+
+        if (unitType == UnitType.Unknown || unitType == UnitType.Special_Power_Generator ||
+                unitType == UnitType.Special_Protoss_Temple || unitType == UnitType.Special_XelNaga_Temple ||
+                unitType == UnitType.Special_Psi_Disrupter) {
+            return;
+        }
+
+        if (unitType == UnitType.Zerg_Larva) {
+            return;
+        }
+
+        if (enemyLastKnownLocations.containsKey(unit)) {
+            enemyLastKnownLocations.remove(unit);
+        }
+    }
+
     public void onUnitComplete(Unit unit) {
         return;
     }
@@ -92,8 +150,12 @@ public class InformationManager {
             enemyBuildings.remove(unit);
         }
 
-        if (enemyUnits.contains(unit)) {
-            enemyUnits.remove(unit);
+        if (visibleEnemyUnits.contains(unit)) {
+            visibleEnemyUnits.remove(unit);
+        }
+
+        if (enemyLastKnownLocations.containsKey(unit)) {
+            enemyLastKnownLocations.remove(unit);
         }
 
         ensureEnemyUnitRemovedFromBaseThreats(unit);
@@ -113,11 +175,11 @@ public class InformationManager {
     // TODO(bug): I think problem is here or with calling functions
     // We keep flopping between states
     public boolean isEnemyLocationKnown() {
-        return enemyUnits.size() + enemyBuildings.size() > 0;
+        return visibleEnemyUnits.size() + enemyBuildings.size() > 0;
     }
 
     public boolean isEnemyUnitVisible() {
-        for (Unit enemy: enemyUnits) {
+        for (Unit enemy: visibleEnemyUnits) {
             if (enemy.isVisible()) {
                 return true;
             }
@@ -159,8 +221,9 @@ public class InformationManager {
     }
 
     public TilePosition pollScoutTarget(boolean allowDuplicateScoutTarget) {
+        HashSet<TilePosition> enemyBuildingPositions = getEnemyBuildingPositions();
         // Walk through
-        if (mainEnemyBase == null) {
+        if (mainEnemyBase == null && enemyBuildingPositions.size() == 0) {
             Base baseTarget = fetchBaseRoundRobin(baseScoutAssignments.keySet());
             if (baseTarget != null) {
                 Integer assignments = baseScoutAssignments.get(baseTarget);
@@ -169,7 +232,7 @@ public class InformationManager {
             }
         }
 
-        HashSet<TilePosition> enemyBuildingPositions = getEnemyBuildingPositions();
+
         if (enemyBuildingPositions.size() > 0) {
             for (TilePosition target: enemyBuildingPositions) {
                 if (!getScoutTargets().contains(target) || allowDuplicateScoutTarget) {
@@ -194,6 +257,7 @@ public class InformationManager {
         return null;
     }
 
+    // TODO: Remove in favour of onUnitShow/onUnitHide hooks
     private void trackEnemyUnits() {
         for (Unit unit: game.getAllUnits()) {
             UnitType unitType = unit.getType();
@@ -205,12 +269,12 @@ public class InformationManager {
                 continue;
             }
             if (!unitType.isBuilding() && unit.getPlayer() != game.self() && !unitType.isResourceContainer() && !unitType.isNeutral() && !unit.isMorphing()) {
-                enemyUnits.add(unit);
+                visibleEnemyUnits.add(unit);
             }
         }
 
         List<Unit> unknownUnits = new ArrayList<>();
-        for (Unit unit: enemyUnits) {
+        for (Unit unit: visibleEnemyUnits) {
             if (!unit.isVisible()) {
                 unknownUnits.add(unit);
             }
@@ -219,13 +283,20 @@ public class InformationManager {
 
         // Remove units we've lost sight of
         if (unknownUnits.size() > 1) {
-            unknownUnits.stream().forEach(enemyUnits::remove);
+            unknownUnits.stream().forEach(visibleEnemyUnits::remove);
         }
-    }
 
-    // TODO: Round robin
-    private Base fetchRandomBase(HashSet<Base> basesSet) {
-        return basesSet.stream().skip(new Random().nextInt(basesSet.size())).findFirst().orElse(null);
+        List<Unit> enemyUnitsNotAtLastKnownLocation = new ArrayList<>();
+        for (Unit unit: enemyLastKnownLocations.keySet()) {
+            TilePosition tp = enemyLastKnownLocations.get(unit);
+            if (game.isVisible(tp)) {
+                enemyUnitsNotAtLastKnownLocation.add(unit);
+            }
+        }
+
+        for (Unit unit: enemyUnitsNotAtLastKnownLocation) {
+            enemyLastKnownLocations.remove(unit);
+        }
     }
 
     private Base fetchBaseRoundRobin(Set<Base> candidateBases) {
@@ -359,7 +430,6 @@ public class InformationManager {
 
         for (TilePosition target: foundTargets) {
             activeScoutTargets.remove(target);
-            // TODO: EXPERIMENTAL, trying to get rid of orange dots persisting
             enemyBuildingPositions.remove(target);
             startingBasesTilePositions.remove(target);
             if (tilePositionToBaseLookup.containsKey(target)) {
@@ -498,11 +568,16 @@ public class InformationManager {
         for (Unit target: enemyBuildings) {
             game.drawCircleMap(target.getPosition(), 3, Color.Yellow);
         }
-        for (Unit target: enemyUnits) {
+        for (Unit target: visibleEnemyUnits) {
             game.drawCircleMap(target.getPosition(), 3, Color.Red);
         }
         for (TilePosition tilePosition: enemyBuildingPositions) {
             game.drawCircleMap(tilePosition.toPosition(), 2, Color.Orange);
+        }
+
+        for (Unit unit: enemyLastKnownLocations.keySet()) {
+            TilePosition tp = enemyLastKnownLocations.get(unit);
+            game.drawTextMap(tp.toPosition(), String.format("%s", unit.getInitialType()), Text.White);
         }
     }
 
@@ -542,7 +617,7 @@ public class InformationManager {
     }
 
     private void checkBaseThreats() {
-        if (enemyUnits.size() < 1) {
+        if (visibleEnemyUnits.size() < 1) {
             return;
         }
 
@@ -553,7 +628,7 @@ public class InformationManager {
                 baseThreats.put(base, new HashSet<>());
             }
 
-            for (Unit unit: enemyUnits) {
+            for (Unit unit: visibleEnemyUnits) {
                 if (base.getLocation().toPosition().getDistance(unit.getTilePosition().toPosition()) < 256) {
                     baseThreats.get(base).add(unit);
                 }
