@@ -172,8 +172,6 @@ public class InformationManager {
         return;
     }
 
-    // TODO(bug): I think problem is here or with calling functions
-    // We keep flopping between states
     public boolean isEnemyLocationKnown() {
         return visibleEnemyUnits.size() + enemyBuildings.size() > 0;
     }
