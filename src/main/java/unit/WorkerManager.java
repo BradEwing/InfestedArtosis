@@ -441,14 +441,4 @@ public class WorkerManager {
 
         gameState.setLarvaDeadlocked(false);
     }
-
-
-    // TODO: display this as a counter on the existing base
-    // TODO: There's a bug where initial workers aren't assigned
-    private void debugMineralPatches() {
-        for (Unit mineral: gameState.getMineralAssignments().keySet()) {
-            TilePosition tilePosition = mineral.getTilePosition();
-            game.drawTextMap(tilePosition.getX() * 32, tilePosition.getY() * 32, String.valueOf(gameState.getMineralAssignments().get(mineral).size()), Text.Yellow);
-        }
-    }
 }
