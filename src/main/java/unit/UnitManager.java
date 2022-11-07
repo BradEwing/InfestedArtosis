@@ -53,7 +53,6 @@ public class UnitManager {
         initManagedUnits();
     }
 
-    // TODO: Assign starting drones here as well, then pass to econ manager?
     private void initManagedUnits() {
         for (Unit unit: game.getAllUnits()) {
             if (unit.getPlayer() == game.self()) {

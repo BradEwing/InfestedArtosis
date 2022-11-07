@@ -116,6 +116,10 @@ public class InformationManager {
         return enemyUnits.size() + enemyBuildings.size() > 0;
     }
 
+    public boolean isEnemyBuildingLocationKnown() {
+        return enemyBuildingPositions.size() > 0;
+    }
+
     public boolean isEnemyUnitVisible() {
         for (Unit enemy: enemyUnits) {
             if (enemy.isVisible()) {
