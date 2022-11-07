@@ -86,6 +86,7 @@ public class UnitManager {
         checkBaseThreats();
 
         workerManager.onFrame();
+        squadManager.updateOverlordSquad();
         squadManager.updateFightSquads();
         squadManager.updateDefenseSquads();
         scoutManager.onFrame();
@@ -109,6 +110,14 @@ public class UnitManager {
                 // Reassignment from one role to another should be handled elsewhere
                 managedUnit.execute();
                 continue;
+            }
+
+            // TODO: Refactor
+            // If an enemy building location is known, retreat overlords to bases
+            // TODO: Only retreat if there are things that can harm the overlord
+            if (managedUnit.getUnitType() == UnitType.Zerg_Overlord && role == UnitRole.SCOUT && informationManager.isEnemyBuildingLocationKnown()) {
+                squadManager.addManagedUnit(managedUnit);
+                scoutManager.removeScout(managedUnit);
             }
 
             if (managedUnit.isCanFight() && role != UnitRole.FIGHT && informationManager.isEnemyLocationKnown() && informationManager.isEnemyUnitVisible()) {
@@ -160,15 +169,23 @@ public class UnitManager {
             ManagedUnit managedWorker = new ManagedUnit(game, unit, UnitRole.IDLE);
             workerManager.onUnitComplete(managedWorker);
         } else if (unitType == UnitType.Zerg_Overlord || informationManager.getEnemyBuildings().size() + informationManager.getVisibleEnemyUnits().size() == 0) {
-            createScout(unit);
+            if (unitType == UnitType.Zerg_Overlord && informationManager.isEnemyBuildingLocationKnown()) {
+                ManagedUnit managedOverlord = new ManagedUnit(game, unit, UnitRole.IDLE);
+                squadManager.addManagedUnit(managedOverlord);
+                squadManager.addManagedUnit(managedOverlord);
+                scoutManager.removeScout(managedOverlord);
+                managedUnitLookup.put(unit, managedOverlord);
+                managedUnits.add(managedOverlord);
+                return;
+            } else {
+                createScout(unit);
+            }
         } else {
             ManagedUnit managedFighter = new ManagedUnit(game, unit, UnitRole.FIGHT);
             squadManager.addManagedUnit(managedFighter);
             assignClosestEnemyToManagedUnit(managedFighter);
             managedUnitLookup.put(unit, managedFighter);
             managedUnits.add(managedFighter);
-            return;
-
         }
     }
 

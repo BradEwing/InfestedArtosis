@@ -3,6 +3,7 @@ package unit.squad;
 import bwapi.Color;
 import bwapi.Game;
 import bwapi.Text;
+import bwapi.TilePosition;
 import bwapi.Unit;
 import bwapi.UnitType;
 import bwem.Base;
@@ -32,17 +33,30 @@ public class SquadManager {
 
     private InformationManager informationManager;
 
-    private HashSet<Squad> fightSquads;
+    private Squad overlords = new Squad();
+
+    private HashSet<Squad> fightSquads = new HashSet<>();
 
     private HashMap<Base, Squad> defenseSquads = new HashMap<>();
-    private HashMap<Base, Squad> gathererSquads;
 
     public SquadManager(Game game, GameState gameState, InformationManager informationManager) {
         this.game = game;
         this.gameState = gameState;
         this.informationManager = informationManager;
         this.agentFactory = new BWMirrorAgentFactory();
-        this.fightSquads = new HashSet<>();
+    }
+
+    public void updateOverlordSquad() {
+        TilePosition mainBaseLocation = informationManager.getMyBase().getLocation();
+        for (ManagedUnit managedUnit: overlords.getMembers()) {
+            if (managedUnit.getUnit().getDistance(mainBaseLocation.toPosition()) < 16) {
+                managedUnit.setRole(UnitRole.IDLE);
+                continue;
+            }
+
+            managedUnit.setRole(UnitRole.RETREAT);
+            managedUnit.setRetreatTarget(mainBaseLocation);
+        }
     }
 
     public void updateFightSquads() {
@@ -322,7 +336,21 @@ public class SquadManager {
         return false;
     }
 
+    /**
+     * Adds a managed unit to the squad manager. Overlords are sorted into the overlord squad; all other units are
+     * added to fighr squads.
+     * @param managedUnit
+     */
     public void addManagedUnit(ManagedUnit managedUnit) {
+        if (managedUnit.getUnitType() == UnitType.Zerg_Overlord) {
+            addManagedOverlord(managedUnit);
+            return;
+        }
+
+        addManagedFighter(managedUnit);
+    }
+
+    private void addManagedFighter(ManagedUnit managedUnit) {
         for (Squad squad: fightSquads) {
             if (squad.distance(managedUnit) < 256) {
                 squad.addUnit(managedUnit);
@@ -337,7 +365,20 @@ public class SquadManager {
         fightSquads.add(newSquad);
     }
 
+    private void addManagedOverlord(ManagedUnit overlord) {
+        overlords.addUnit(overlord);
+    }
+
     public void removeManagedUnit(ManagedUnit managedUnit) {
+        if (managedUnit.getUnitType() == UnitType.Zerg_Overlord) {
+            removeManagedOverlord(managedUnit);
+            return;
+        }
+
+        removeManagedFigher(managedUnit);
+    }
+
+    private void removeManagedFigher(ManagedUnit managedUnit) {
         for (Squad squad: fightSquads) {
             if (squad.containsManagedUnit(managedUnit)) {
                 squad.removeUnit(managedUnit);
@@ -348,6 +389,10 @@ public class SquadManager {
             Squad squad = defenseSquads.get(base);
             squad.removeUnit(managedUnit);
         }
+    }
+
+    private void removeManagedOverlord(ManagedUnit overlord) {
+        overlords.removeUnit(overlord);
     }
 
     private void debugPainters() {
