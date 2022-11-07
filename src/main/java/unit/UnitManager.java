@@ -159,7 +159,7 @@ public class UnitManager {
         if (unitType == UnitType.Zerg_Drone || unitType == UnitType.Zerg_Larva) {
             ManagedUnit managedWorker = new ManagedUnit(game, unit, UnitRole.IDLE);
             workerManager.onUnitComplete(managedWorker);
-        } else if (unitType == UnitType.Zerg_Overlord || informationManager.getEnemyBuildings().size() + informationManager.getEnemyUnits().size() == 0) {
+        } else if (unitType == UnitType.Zerg_Overlord || informationManager.getEnemyBuildings().size() + informationManager.getVisibleEnemyUnits().size() == 0) {
             createScout(unit);
         } else {
             ManagedUnit managedFighter = new ManagedUnit(game, unit, UnitRole.FIGHT);
@@ -318,7 +318,7 @@ public class UnitManager {
 
     private void assignClosestEnemyToManagedUnit(ManagedUnit managedUnit) {
         List<Unit> enemyUnits = new ArrayList<>();
-        enemyUnits.addAll(informationManager.getEnemyUnits());
+        enemyUnits.addAll(informationManager.getVisibleEnemyUnits());
         enemyUnits.addAll(informationManager.getEnemyBuildings());
 
         if (enemyUnits.size() > 0) {

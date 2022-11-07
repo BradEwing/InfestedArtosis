@@ -212,7 +212,7 @@ public class SquadManager {
         // Run ASS every 50 frames
         HashSet<ManagedUnit> managedFighters = squad.getMembers();
         if (game.getFrameCount() % 50 == 0 && managedFighters.size() > 0 && informationManager.isEnemyUnitVisible()) {
-            HashSet<Unit> enemyUnits = informationManager.getEnemyUnits();
+            HashSet<Unit> enemyUnits = informationManager.getVisibleEnemyUnits();
             HashSet<Unit> enemyBuildings = informationManager.getEnemyBuildings();
             Simulator simulator = new Simulator.Builder().build();
 
