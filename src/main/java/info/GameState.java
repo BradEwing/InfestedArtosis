@@ -4,7 +4,7 @@ import bwapi.Unit;
 import bwem.Base;
 import lombok.Data;
 import planner.PlannedItem;
-import strategy.Strategy;
+import strategy.Opener;
 import unit.managed.ManagedUnit;
 
 import java.util.HashMap;
@@ -42,7 +42,7 @@ public class GameState {
 
     private HashMap<Base, HashSet<Unit>> baseToThreatLookup = new HashMap<>();
 
-    private Strategy activeStrategy;
+    private Opener activeOpener;
 
     public GameState() {
 

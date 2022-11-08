@@ -1,14 +1,13 @@
-package strategy.strategies;
+package strategy.openers;
 
 import bwapi.UnitType;
-import bwapi.UpgradeType;
 import planner.PlannedItem;
-import strategy.Strategy;
+import strategy.Opener;
 
 import java.util.ArrayList;
 import java.util.List;
 
-public class TwelveHatch implements Strategy {
+public class TwelveHatch implements Opener {
 
     public List<PlannedItem> getBuildOrder() {
 

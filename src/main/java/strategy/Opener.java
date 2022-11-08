@@ -4,7 +4,7 @@ import planner.PlannedItem;
 
 import java.util.List;
 
-public interface Strategy {
+public interface Opener {
 
     default String getName() {
         return this.getClass().getSimpleName();
