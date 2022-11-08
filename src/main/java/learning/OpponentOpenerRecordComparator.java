@@ -2,12 +2,12 @@ package learning;
 
 import java.util.Comparator;
 
-public class OpponentStrategyRecordComparator implements Comparator<StrategyRecord>  {
+public class OpponentOpenerRecordComparator implements Comparator<OpenerRecord>  {
 
-    public OpponentStrategyRecordComparator() {}
+    public OpponentOpenerRecordComparator() {}
 
     @Override
-    public int compare(StrategyRecord x, StrategyRecord y) {
+    public int compare(OpenerRecord x, OpenerRecord y) {
         if (x.netWins() > y.netWins()) {
             return -1;
         }

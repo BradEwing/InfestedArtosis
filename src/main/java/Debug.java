@@ -5,21 +5,21 @@ import bwapi.Text;
 import bwem.BWEM;
 import bwem.Base;
 import learning.OpponentRecord;
-import learning.StrategyRecord;
-import strategy.Strategy;
+import learning.OpenerRecord;
+import strategy.Opener;
 
 // TODO: Move into map dir
 public class Debug {
     private BWEM bwem;
     private Game game;
 
-    private Strategy strategy;
+    private Opener opener;
     private OpponentRecord opponentRecord;
 
-    public Debug(BWEM bwem, Game game, Strategy strategy, OpponentRecord opponentRecord) {
+    public Debug(BWEM bwem, Game game, Opener opener, OpponentRecord opponentRecord) {
         this.bwem = bwem;
         this.game = game;
-        this.strategy = strategy;
+        this.opener = opener;
         this.opponentRecord = opponentRecord;
     }
 
@@ -34,13 +34,13 @@ public class Debug {
 
         game.drawTextScreen(4, 8, "Opponent: " + opponentRecord.getName() + " " + getOpponentRecord());
         game.drawTextScreen(4, 16, "Map: " + game.mapFileName());
-        game.drawTextScreen(4, 24, "Strategy: " + strategy.getName() + " " + getStrategyRecord(), Text.White);
+        game.drawTextScreen(4, 24, "Opener: " + opener.getName() + " " + getOpenerRecord(), Text.White);
         game.drawTextScreen(4, 40, "Frame: " + game.getFrameCount());
     }
 
-    private String getStrategyRecord() {
-        StrategyRecord strategyRecord = opponentRecord.getOpponentStrategies().get(strategy.getName());
-        return String.format("%s_%s", strategyRecord.getWins(), strategyRecord.getLosses());
+    private String getOpenerRecord() {
+        OpenerRecord openerRecord = opponentRecord.getOpenerRecord().get(opener.getName());
+        return String.format("%s_%s", openerRecord.getWins(), openerRecord.getLosses());
     }
 
     private String getOpponentRecord() {

@@ -9,7 +9,7 @@ import learning.OpponentRecord;
 import info.GameState;
 import info.InformationManager;
 import macro.ProductionManager;
-import strategy.Strategy;
+import strategy.Opener;
 import unit.UnitManager;
 
 /**
@@ -49,7 +49,7 @@ public class Bot extends DefaultBWListener {
         bwem.initialize();
 
         learningManager = new LearningManager(game.enemy().getRace().toString(), game.enemy().getName(), bwem);
-        Strategy strategy = learningManager.getDeterminedStrategy();
+        Opener strategy = learningManager.getDeterminedStrategy();
         gameState.setAllIn(strategy.isAllIn());
         OpponentRecord opponentRecord = learningManager.getOpponentRecord();
         informationManager = new InformationManager(bwem, game, gameState);
