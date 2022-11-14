@@ -144,6 +144,12 @@ public class InformationManager {
         return;
     }
 
+    public void onUnitRenegade(Unit unit) {
+        if (unit.getType() == UnitType.Resource_Vespene_Geyser) {
+            onUnitDestroy(unit);
+        }
+    }
+
     public void onUnitDestroy(Unit unit) {
 
         if (enemyBuildings.contains(unit)) {
@@ -335,28 +341,18 @@ public class InformationManager {
 
     private void trackEnemyBuildings() {
         for (Unit unit: game.getAllUnits()) {
-            if (unit.getPlayer() == game.self()) {
+            if (unit.getPlayer() != game.enemy()) {
                 continue;
             }
             UnitType unitType = unit.getType();
 
 
-
-            // Unsure if there are repercussions here, but skipping units where type is unknown
-            // TODO: track neutral buildings elsewhere
-            if (unitType == UnitType.Unknown || unitType == UnitType.Special_Power_Generator ||
-                    unitType == UnitType.Special_Protoss_Temple || unitType == UnitType.Special_XelNaga_Temple ||
-                unitType == UnitType.Special_Psi_Disrupter) {
-                continue;
-            }
-
-            if (unit.isVisible() && unitType.isBuilding() && (!unitType.isResourceContainer() || unitType.isRefinery()) && !unitType.isNeutral()) {
-                //System.out.printf("Enemy Building Found, Type: [%s] Player: [%s]\n", unit.getType(), unit.getPlayer().toString());
+            if (unit.isVisible() && unitType.isBuilding()) {
                 enemyBuildings.add(unit);
                 enemyBuildingPositions.add(unit.getTilePosition());
 
                 // If enemyBase is unknown and this is our first time encountering an enemyUnit, set enemyBase
-                if (mainEnemyBase == null && unitType.isResourceContainer()) {
+                if (mainEnemyBase == null && unitType.isResourceDepot()) {
                     mainEnemyBase = closestBaseToUnit(unit, startingBasesSet.stream().collect(Collectors.toList()));
                 }
             }
