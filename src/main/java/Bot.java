@@ -108,7 +108,10 @@ public class Bot extends DefaultBWListener {
     }
 
     @Override
-    public void onUnitRenegade(Unit unit) { economyModule.onUnitRenegade(unit); }
+    public void onUnitRenegade(Unit unit) {
+        informationManager.onUnitRenegade(unit);
+        economyModule.onUnitRenegade(unit);
+    }
 
     @Override
     public void onUnitMorph(Unit unit) {
