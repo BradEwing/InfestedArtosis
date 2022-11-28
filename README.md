@@ -12,5 +12,5 @@ $ java -jar target/InfestedArtosis-0.1.0-SNAPSHOT-jar-with-dependencies.jar
 ### Release
 
 - Update version tag in `pom.xml`
-- Navigate to Maven tap in Intellij, run compile then package
+- Navigate to Maven tab in Intellij, run compile then package
 - Move new jar file from `target` into `sscait` dir
