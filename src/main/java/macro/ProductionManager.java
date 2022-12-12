@@ -295,15 +295,7 @@ public class ProductionManager {
     // TODO: Handle elsewhere
     private int numHatcheries() { return baseLocations.size() + macroHatcheries.size(); }
 
-    // TODO: Make this smarter, following a strategy to define unit mix, when to take upgrades, etc.
-    private void planItems() {
-        Player self = game.self();
-        Boolean isAllIn = gameState.isAllIn();
-        // Macro builder kicks in at 10 supply
-        if (!isPlanning && productionQueue.size() > 0) {
-            return;
-        }
-
+    private void planBuildings(Player self, Boolean isAllIn) {
         // Allow buildings to arbitrary queue size
         // Always allow hatch to enter queue even if we're at max size (means we are throttled on bandwith)
 
@@ -348,40 +340,9 @@ public class ProductionManager {
             productionQueue.add(new PlannedItem(UnitType.Zerg_Hydralisk_Den, currentPriority, true, false));
             hasPlannedDen = true;
         }
+    }
 
-        // Evolution Chamber
-        // Plan 2 and first round of upgrades
-        /*
-        if (numEvoChambers < 2 && self.supplyUsed() > 50) {
-            productionQueue.add(new PlannedItem(UnitType.Zerg_Evolution_Chamber, currentPriority, true));
-            productionQueue.add(new PlannedItem(UnitType.Zerg_Evolution_Chamber, currentPriority, true));
-            numEvoChambers += 2;
-        }
-         */
-
-        // TODO: Spire
-
-        // TODO: Queen's Nest
-
-        // TODO: Sunken Colonies
-        // For now, plan 2 sunkens per base we take
-        // Give them high priority, macro tends to be strong
-        /*
-        if (numSunkens < (bases.size())) {
-            productionQueue.add(new PlannedItem(UnitType.Zerg_Creep_Colony, currentPriority-2, true));
-            productionQueue.add(new PlannedItem(UnitType.Zerg_Sunken_Colony, currentPriority-1, true));
-            // TODO: Track Planned + Actually built rather than here
-            numSunkens += 1;
-        }
-         */
-
-        // TODO: Spore Colonies
-
-        // NOTE: Always let upgrades to enter the queue, we take them greedily
-        // Plan tech / upgrades
-        // The former should at least be driven by a higher level (strategy) manager
-        // For now, greedily plan upgrades
-
+    private void planUpgrades(Player self, Boolean isAllIn) {
         // TODO: Figure out why metabolic boost is not upgrading, why only 1 den upgrade is triggering
         /** Ling Upgrades **/
         if (!isAllIn && hasPool && !hasPlannedMetabolicBoost && !hasMetabolicBoost) {
@@ -403,9 +364,11 @@ public class ProductionManager {
             productionQueue.add(new PlannedItem(UpgradeType.Zerg_Carapace, currentPriority, false));
             hasPlannedEvoChamberUpgrades1 = true;
         }
+    }
 
-        // Plan supply
-        // If negative, trigger higher priority for overlord
+
+    // planSupply checks if near supply cap or supply blocked
+    private void planSupply(Player self) {
         final int supplyRemaining = self.supplyTotal() - self.supplyUsed();
         int plannedSupply = gameState.getPlannedSupply();
         if (supplyRemaining + plannedSupply < 5 && self.supplyUsed() < 400) {
@@ -415,20 +378,9 @@ public class ProductionManager {
             gameState.setPlannedSupply(plannedSupply+8);
             productionQueue.add(new PlannedItem(UnitType.Zerg_Overlord, currentPriority / 2, false, true));
         }
+    }
 
-        /** For now, only subject unit production to queue size */
-        // Base queue size is 3, increases per hatch
-
-
-        if (productionQueue.size() >= 3 + (numHatcheries() * 3)) {
-            return;
-        }
-
-        // Once we come here, we never stop
-        isPlanning = true;
-
-
-
+    private void planUnits(Player self, Boolean isAllIn) {
         // Plan workers
         // This should be related to num bases + aval min patches and geysers, limited by army and potentially higher level strat info
         // For now, set them to be 1/3 of total supply
@@ -446,15 +398,38 @@ public class ProductionManager {
         if (hasPool && self.supplyUsed() < 400) {
             productionQueue.add(new PlannedItem(UnitType.Zerg_Zergling, currentPriority, false, false));
         }
+    }
 
-        // TODO: Tech upgrades
-        /*
-        if (hasDen && hasLair && !hasPlannedLurkers) {
-            productionQueue.add(new PlannedItem(, currentPriority));
-            hasPlannedLurkers = true;
+    // TODO: Make this smarter, following a strategy to define unit mix, when to take upgrades, etc.
+    private void planItems() {
+        Player self = game.self();
+        Boolean isAllIn = gameState.isAllIn();
+
+        if (!isPlanning && productionQueue.size() > 0) {
+            return;
         }
 
-         */
+        // Once opener items are exhausted, plan items
+        isPlanning = true;
+
+        planBuildings(self, isAllIn);
+
+        // NOTE: Always let upgrades to enter the queue, we take them greedily
+        // Plan tech / upgrades
+        // The former should at least be driven by a higher level (strategy) manager
+        // For now, greedily plan upgrades
+        planUpgrades(self, isAllIn);
+
+        // Plan supply
+        planSupply(self);
+
+        /** For now, only subject unit production to queue size */
+        // Base queue size is 3, increases per hatch
+        if (productionQueue.size() >= 3 + (numHatcheries() * 3)) {
+            return;
+        }
+
+        planUnits(self, isAllIn);
     }
 
     private boolean canAffordHatchSaturation() {
