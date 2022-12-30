@@ -14,5 +14,7 @@ public interface Strategy {
         return this.getClass().getSimpleName();
     }
 
-    Map<UnitType, Double> getUnitMix();
+    // Gets default unit weights for strategy
+    // Can reconfigure these later with game state
+    Map<UnitType, Integer> getUnitWeights();
 }

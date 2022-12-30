@@ -6,14 +6,15 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Default strategy, reflecting the original hardcoded fighter unit mix
+ * Default strategy, reflecting the original hardcoded unit mix
  */
 public class Default implements Strategy {
 
-    public Map<UnitType, Double> getUnitMix() {
-        HashMap<UnitType, Double> map = new HashMap<>();
-        map.put(UnitType.Zerg_Zergling, 0.50);
-        map.put(UnitType.Zerg_Hydralisk, 0.50);
+    // TODO: Handle mix when units are still gated behind tech
+    public Map<UnitType, Integer> getUnitWeights() {
+        HashMap<UnitType, Integer> map = new HashMap<>();
+        map.put(UnitType.Zerg_Zergling, 5);
+        map.put(UnitType.Zerg_Hydralisk, 5);
         return map;
     }
 }

@@ -6,9 +6,9 @@ import java.util.HashMap;
 import java.util.Map;
 
 public class LingFlood implements Strategy {
-    public Map<UnitType, Double> getUnitMix() {
-        HashMap<UnitType, Double> map = new HashMap<>();
-        map.put(UnitType.Zerg_Zergling, 1.00);
+    public Map<UnitType, Integer> getUnitWeights() {
+        HashMap<UnitType, Integer> map = new HashMap<>();
+        map.put(UnitType.Zerg_Zergling, 10);
         return map;
     }
 }

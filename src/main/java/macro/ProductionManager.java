@@ -372,14 +372,16 @@ public class ProductionManager {
         final int supplyRemaining = self.supplyTotal() - self.supplyUsed();
         int plannedSupply = gameState.getPlannedSupply();
         if (supplyRemaining + plannedSupply < 5 && self.supplyUsed() < 400) {
-            gameState.setPlannedSupply(plannedSupply+8);
+            gameState.setPlannedSupply(plannedSupply+16);
             productionQueue.add(new PlannedItem(UnitType.Zerg_Overlord, currentPriority / 3, false, false));
         } else if (supplyRemaining + plannedSupply < 0 && self.supplyUsed() < 400) {
-            gameState.setPlannedSupply(plannedSupply+8);
+            gameState.setPlannedSupply(plannedSupply+16);
             productionQueue.add(new PlannedItem(UnitType.Zerg_Overlord, currentPriority / 2, false, true));
         }
     }
 
+    // TODO: Consider weights
+    // How does drone fit into this?
     private void planUnits(Player self, Boolean isAllIn) {
         // Plan workers
         // This should be related to num bases + aval min patches and geysers, limited by army and potentially higher level strat info
