@@ -9,6 +9,10 @@ public class UnitTypeCount {
     private HashMap<UnitType, Integer> unitTypeCount = new HashMap();
     private HashMap<UnitType, Integer> plannedUnitTypeCount = new HashMap();
 
+    public int get(UnitType unitType) {
+        return unitTypeCount.get(unitType) + plannedUnitTypeCount.get(unitType);
+    }
+
     public void addUnit(UnitType unitType) {
         if (!unitTypeCount.containsKey(unitType)) {
             unitTypeCount.put(unitType, 0);
@@ -34,7 +38,7 @@ public class UnitTypeCount {
     }
 
     public void unplanUnit(UnitType unitType) {
-        if (!unitTypeCount.containsKey(unitType)) {
+        if (!plannedUnitTypeCount.containsKey(unitType)) {
             return;
         }
 

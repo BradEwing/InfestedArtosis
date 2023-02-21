@@ -16,5 +16,5 @@ public interface Strategy {
 
     // Gets default unit weights for strategy
     // Can reconfigure these later with game state
-    Map<UnitType, Integer> getUnitWeights();
+    UnitWeights getUnitWeights();
 }

@@ -51,6 +51,8 @@ public class GameState {
 
     private UnitTypeCount unitTypeCount = new UnitTypeCount();
 
+    private TechProgression techProgression = new TechProgression();
+
     public GameState() {
 
     }

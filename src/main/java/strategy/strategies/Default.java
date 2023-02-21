@@ -11,10 +11,10 @@ import java.util.Map;
 public class Default implements Strategy {
 
     // TODO: Handle mix when units are still gated behind tech
-    public Map<UnitType, Integer> getUnitWeights() {
-        HashMap<UnitType, Integer> map = new HashMap<>();
-        map.put(UnitType.Zerg_Zergling, 5);
-        map.put(UnitType.Zerg_Hydralisk, 5);
-        return map;
+    public UnitWeights getUnitWeights() {
+        UnitWeights weights = new UnitWeights();
+        weights.setWeight(UnitType.Zerg_Zergling, 0.5);
+        weights.setWeight(UnitType.Zerg_Hydralisk, 0.5);
+        return weights;
     }
 }

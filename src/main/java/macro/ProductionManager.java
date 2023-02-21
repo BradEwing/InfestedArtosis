@@ -13,6 +13,8 @@ import bwem.BWEM;
 import bwem.Base;
 import bwem.Mineral;
 import info.GameState;
+import info.TechProgression;
+import info.UnitTypeCount;
 import planner.PlanState;
 import planner.PlanType;
 import planner.PlannedItem;
@@ -48,12 +50,10 @@ public class ProductionManager {
     private boolean isPlanning = false;
 
     // TODO: Track this stuff in GameState
-    private boolean hasPool = false;
     private boolean hasPlannedPool = false;
     private boolean hasMetabolicBoost = false;
     // TODO: set off of strategy
     private boolean hasPlannedMetabolicBoost = false;
-    private boolean hasDen = false;
     private boolean hasPlannedDen = false;
     private boolean hasPlannedDenUpgrades = false;
     private boolean hasLurkers = false;
@@ -326,8 +326,10 @@ public class ProductionManager {
             productionQueue.add(new PlannedItem(UnitType.Zerg_Extractor, currentPriority, true, false));
         }
 
+        TechProgression techProgression = this.gameState.getTechProgression();
+
         // Build at 10 workers if not part of initial build order
-        if (!hasPlannedPool && !hasPool && self.supplyUsed() > 20) {
+        if (!hasPlannedPool && !techProgression.isSpawningPool() && self.supplyUsed() > 20) {
             productionQueue.add(new PlannedItem(UnitType.Zerg_Spawning_Pool, currentPriority / 4, true, true));
             hasPlannedPool = true;
         }
@@ -336,22 +338,23 @@ public class ProductionManager {
         // TODO: Move this out of here
 
         int hydraSupplyThreshold = game.enemy().getRace() == Race.Protoss ? 20 : 40;
-        if (!isAllIn && hasPool && !hasPlannedDen && !hasDen && self.supplyUsed() > hydraSupplyThreshold) {
+        if (!isAllIn && techProgression.isSpawningPool() && !hasPlannedDen && !techProgression.isHydraliskDen() && self.supplyUsed() > hydraSupplyThreshold) {
             productionQueue.add(new PlannedItem(UnitType.Zerg_Hydralisk_Den, currentPriority, true, false));
             hasPlannedDen = true;
         }
     }
 
     private void planUpgrades(Player self, Boolean isAllIn) {
+        TechProgression techProgression = this.gameState.getTechProgression();
         // TODO: Figure out why metabolic boost is not upgrading, why only 1 den upgrade is triggering
         /** Ling Upgrades **/
-        if (!isAllIn && hasPool && !hasPlannedMetabolicBoost && !hasMetabolicBoost) {
+        if (!isAllIn && techProgression.isSpawningPool() && !hasPlannedMetabolicBoost && !hasMetabolicBoost) {
             productionQueue.add(new PlannedItem(UpgradeType.Metabolic_Boost, currentPriority, false));
             hasPlannedMetabolicBoost = true;
         }
 
         /** Hydra Upgrades */
-        if (!isAllIn && hasDen && !hasPlannedDenUpgrades) {
+        if (!isAllIn && techProgression.isHydraliskDen() && !hasPlannedDenUpgrades) {
             productionQueue.add(new PlannedItem(UpgradeType.Muscular_Augments, currentPriority, false));
             productionQueue.add(new PlannedItem(UpgradeType.Grooved_Spines, currentPriority, false));
             hasPlannedDenUpgrades = true;
@@ -381,25 +384,36 @@ public class ProductionManager {
     }
 
     // TODO: Consider weights
-    // How does drone fit into this?
+    // TODO: Droning vs Combat Units
     private void planUnits(Player self, Boolean isAllIn) {
+        if (self.supplyUsed() >= 400) {
+            return;
+        }
         // Plan workers
         // This should be related to num bases + aval min patches and geysers, limited by army and potentially higher level strat info
         // For now, set them to be 1/3 of total supply
         // Limit the number of drones in queue, or they will crowd out production!
-        if (!isAllIn && plannedWorkers < 3 && numWorkers() < 80 && numWorkers() < expectedWorkers() && self.supplyUsed() < 400) {
+        if (!isAllIn && plannedWorkers < 3 && numWorkers() < 80 && numWorkers() < expectedWorkers()) {
             plannedWorkers += 1;
-            productionQueue.add(new PlannedItem(UnitType.Zerg_Drone, currentPriority, false, false));
+            addUnitToQueue(UnitType.Zerg_Drone);
         }
+
+        TechProgression techProgression = this.gameState.getTechProgression();
 
         // Plan army
-        if (hasDen && self.supplyUsed() < 400) {
-            productionQueue.add(new PlannedItem(UnitType.Zerg_Hydralisk, currentPriority, false, false));
+        if (techProgression.isHydraliskDen()) {
+            addUnitToQueue(UnitType.Zerg_Hydralisk);
         }
 
-        if (hasPool && self.supplyUsed() < 400) {
-            productionQueue.add(new PlannedItem(UnitType.Zerg_Zergling, currentPriority, false, false));
+        if (techProgression.isSpawningPool()) {
+            addUnitToQueue(UnitType.Zerg_Zergling);
         }
+    }
+
+    private void addUnitToQueue(UnitType unitType) {
+        UnitTypeCount unitTypeCount = this.gameState.getUnitTypeCount();
+        productionQueue.add(new PlannedItem(unitType, currentPriority, false, false));
+        unitTypeCount.planUnit(unitType);
     }
 
     // TODO: Make this smarter, following a strategy to define unit mix, when to take upgrades, etc.
@@ -578,12 +592,14 @@ public class ProductionManager {
             plannedWorkers -= 1;
         }
 
+        TechProgression techProgression = this.gameState.getTechProgression();
+
         // TODO: Execute this in own method w/ switch case
         if (unitType == UnitType.Zerg_Hydralisk_Den) {
-            hasDen = true;
+            techProgression.setHydraliskDen(true);
             hasPlannedDen = false; // only plan 1
         } else if (unitType == UnitType.Zerg_Spawning_Pool) {
-            hasPool = true;
+            techProgression.setSpawningPool(true);
             hasPlannedPool = false; // TODO: set this when unit completes
         } else if (unitType == UnitType.Zerg_Lair) {
             hasLair = true;
@@ -767,11 +783,12 @@ public class ProductionManager {
     }
 
     private void updateTechOnDestroy(Unit unit) {
+        TechProgression techProgression = this.gameState.getTechProgression();
         switch (unit.getType()) {
             case Zerg_Spawning_Pool:
-                hasPool = false;
+                techProgression.setSpawningPool(false);
             case Zerg_Hydralisk_Den:
-                hasDen = false;
+                techProgression.setHydraliskDen(false);
         }
     }
 

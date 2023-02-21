@@ -180,6 +180,7 @@ public class UnitManager {
 
         UnitTypeCount unitCount = gameState.getUnitTypeCount();
         unitCount.addUnit(unitType);
+        unitCount.unplanUnit(unitType);
     }
 
     public void onUnitComplete(Unit unit) {
@@ -207,6 +208,7 @@ public class UnitManager {
         }
         UnitTypeCount unitCount = gameState.getUnitTypeCount();
         unitCount.addUnit(unitType);
+        unitCount.unplanUnit(unitType);
     }
 
     private void removeManagedUnit(Unit unit) {
