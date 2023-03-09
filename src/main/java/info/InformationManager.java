@@ -15,6 +15,7 @@ import lombok.Data;
 import map.TileComparator;
 import map.TileInfo;
 import map.TileType;
+import strategy.strategies.UnitWeights;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -111,11 +112,36 @@ public class InformationManager {
         enemyLastKnownLocations.put(unit, unit.getTilePosition());
     }
 
+    /**
+     * Update GameState's tech progression to enable new units, tech or upgrades.
+     *
+     * @param unitType tech building
+     */
+    public void updateTechProgression(UnitType unitType) {
+        TechProgression techProgression = gameState.getTechProgression();
+        UnitWeights unitWeights = gameState.getActiveStrategy().getUnitWeights();
+
+        switch(unitType) {
+            case Zerg_Spawning_Pool:
+                techProgression.setSpawningPool(true);
+                unitWeights.enableUnit(UnitType.Zerg_Zergling);
+                break;
+            case Zerg_Hydralisk_Den:
+                techProgression.setHydraliskDen(true);
+                unitWeights.enableUnit(UnitType.Zerg_Hydralisk);
+                break;
+        }
+    }
+
     public void onUnitShow(Unit unit) {
         // TODO: Clean up
         UnitType unitType = unit.getInitialType();
-        if (unit.getPlayer() == game.self() ||
-                unitType == UnitType.Resource_Mineral_Field ||
+
+        if (unit.getPlayer() == game.self()) {
+            updateTechProgression(unitType);
+            return;
+        }
+        if (unitType == UnitType.Resource_Mineral_Field ||
                 unitType == UnitType.Resource_Vespene_Geyser ||
                 unitType == UnitType.Powerup_Mineral_Cluster_Type_1 ||
                 unitType == UnitType.Powerup_Mineral_Cluster_Type_2 ||
@@ -150,7 +176,30 @@ public class InformationManager {
         }
     }
 
+    /**
+     * Update GameState's tech progression to prevent strategy and production from considering given tech.
+     * TODO: ProductionManager resets queue on tech regression
+     *
+     * @param unitType tech building
+     */
+    public void updateTechOnDestroy(UnitType unitType) {
+        TechProgression techProgression = gameState.getTechProgression();
+        UnitWeights unitWeights = gameState.getActiveStrategy().getUnitWeights();
+
+        switch(unitType) {
+            case Zerg_Spawning_Pool:
+                techProgression.setSpawningPool(false);
+                unitWeights.disableUnit(UnitType.Zerg_Zergling);
+                break;
+            case Zerg_Hydralisk_Den:
+                techProgression.setHydraliskDen(false);
+                unitWeights.disableUnit(UnitType.Zerg_Hydralisk);
+                break;
+        }
+    }
+
     public void onUnitDestroy(Unit unit) {
+        UnitType unitType = unit.getType();
 
         if (enemyBuildings.contains(unit)) {
             enemyBuildings.remove(unit);
@@ -164,14 +213,19 @@ public class InformationManager {
             enemyLastKnownLocations.remove(unit);
         }
 
+        // TODO: filter friendly units?
         ensureEnemyUnitRemovedFromBaseThreats(unit);
 
+        if (unit.getPlayer() == game.self()) {
+            updateTechOnDestroy(unitType);
+        }
+
         // TODO: move?
-        if (unit.getType().isMineralField()) {
+        if (unitType.isMineralField()) {
             removeMineral(unit);
         }
 
-        if (unit.getType().isRefinery()) {
+        if (unitType.isRefinery()) {
             removeGeyser(unit);
         }
 

@@ -268,7 +268,7 @@ public class ProductionManager {
 
         currentPriority = game.getFrameCount();
 
-        planItems();
+        plan();
         schedulePlannedItems();
         //buildItems();
         buildUpgrades();
@@ -417,7 +417,7 @@ public class ProductionManager {
     }
 
     // TODO: Make this smarter, following a strategy to define unit mix, when to take upgrades, etc.
-    private void planItems() {
+    private void plan() {
         Player self = game.self();
         Boolean isAllIn = gameState.isAllIn();
 
