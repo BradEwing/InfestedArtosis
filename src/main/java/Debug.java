@@ -2,11 +2,16 @@ import bwapi.Color;
 import bwapi.Game;
 import bwapi.Position;
 import bwapi.Text;
+import bwapi.UnitType;
 import bwem.BWEM;
 import bwem.Base;
+import info.GameState;
+import info.UnitTypeCount;
 import learning.OpponentRecord;
 import learning.OpenerRecord;
 import strategy.Opener;
+
+import java.util.Map;
 
 // TODO: Move into map dir
 public class Debug {
@@ -16,11 +21,14 @@ public class Debug {
     private Opener opener;
     private OpponentRecord opponentRecord;
 
-    public Debug(BWEM bwem, Game game, Opener opener, OpponentRecord opponentRecord) {
+    private GameState gameState;
+
+    public Debug(BWEM bwem, Game game, Opener opener, OpponentRecord opponentRecord, GameState gameState) {
         this.bwem = bwem;
         this.game = game;
         this.opener = opener;
         this.opponentRecord = opponentRecord;
+        this.gameState = gameState;
     }
 
     public void onFrame() {
@@ -36,6 +44,20 @@ public class Debug {
         game.drawTextScreen(4, 16, "Map: " + game.mapFileName());
         game.drawTextScreen(4, 24, "Opener: " + opener.getName() + " " + getOpenerRecord(), Text.White);
         game.drawTextScreen(4, 40, "Frame: " + game.getFrameCount());
+
+        drawUnitCount();
+    }
+
+    private void drawUnitCount() {
+        int x = 256;
+        int y = 16;
+        game.drawTextScreen(x, y, "Unit Count");
+
+        UnitTypeCount unitTypeCount = gameState.getUnitTypeCount();
+        for (Map.Entry<UnitType, Integer> entry: unitTypeCount.getCountLookup().entrySet()) {
+            y += 8;
+            game.drawTextScreen(x, y, entry.getKey().toString() + ": " + entry.getValue().toString());
+        }
     }
 
     private String getOpenerRecord() {

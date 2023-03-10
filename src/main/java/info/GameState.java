@@ -1,14 +1,19 @@
 package info;
 
 import bwapi.Unit;
+import bwapi.UnitType;
 import bwem.Base;
 import lombok.Data;
 import planner.PlannedItem;
 import strategy.Opener;
+import strategy.strategies.Default;
+import strategy.strategies.Strategy;
+import strategy.strategies.UnitWeights;
 import unit.managed.ManagedUnit;
 
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 
 /**
  * Class to handle global state that is shared among various managers.
@@ -43,6 +48,12 @@ public class GameState {
     private HashMap<Base, HashSet<Unit>> baseToThreatLookup = new HashMap<>();
 
     private Opener activeOpener;
+    private Strategy activeStrategy = new Default(); // TODO: Determine in learning manager
+    private UnitWeights unitWeights = activeStrategy.getUnitWeights(); // Set in Strategy or Learning Manager, this is jank
+
+    private UnitTypeCount unitTypeCount = new UnitTypeCount();
+
+    private TechProgression techProgression = new TechProgression();
 
     public GameState() {
 
