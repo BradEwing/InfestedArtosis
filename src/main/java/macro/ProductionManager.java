@@ -321,6 +321,7 @@ public class ProductionManager {
          */
 
         // One extractor per base
+        //  - Not always true, some bases are mineral only. Some maps have double gas.
         // TODO: account for bases with no gas or 2 gas
         if (!isAllIn && numExtractors < bases.size() && numExtractors < targetExtractors) {
             numExtractors += 1;
@@ -334,12 +335,14 @@ public class ProductionManager {
             productionQueue.add(new PlannedItem(UnitType.Zerg_Spawning_Pool, currentPriority / 4, true, true));
             hasPlannedPool = true;
         }
-        // Plan hydra den, why not?
-        // HACK
-        // TODO: Move this out of here
 
-        int hydraSupplyThreshold = game.enemy().getRace() == Race.Protoss ? 20 : 40;
-        if (!isAllIn && techProgression.isSpawningPool() && !hasPlannedDen && !techProgression.isHydraliskDen() && self.supplyUsed() > hydraSupplyThreshold) {
+        if (isAllIn) {
+            return;
+        }
+
+        UnitWeights unitWeights = this.gameState.getUnitWeights();
+
+        if (unitWeights.hasUnit(UnitType.Zerg_Hydralisk) && techProgression.isSpawningPool() && !techProgression.isHydraliskDen()) {
             productionQueue.add(new PlannedItem(UnitType.Zerg_Hydralisk_Den, currentPriority, true, false));
             hasPlannedDen = true;
         }
