@@ -370,7 +370,8 @@ public class SquadManager {
     }
 
     public void removeManagedUnit(ManagedUnit managedUnit) {
-        if (managedUnit.getUnitType() == UnitType.Zerg_Overlord) {
+        UnitType unitType = managedUnit.getUnitType();
+        if (unitType != null && unitType == UnitType.Zerg_Overlord) {
             removeManagedOverlord(managedUnit);
             return;
         }

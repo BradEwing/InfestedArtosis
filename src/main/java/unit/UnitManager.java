@@ -58,6 +58,10 @@ public class UnitManager {
         for (Unit unit: game.getAllUnits()) {
             if (unit.getPlayer() == game.self()) {
                 UnitType unitType = unit.getType();
+                // TODO: Handle hatchery
+                if (unitType.isBuilding()) {
+                    return;
+                }
                 ManagedUnit managedUnit = createManagedUnit(unit, UnitRole.IDLE);
                 if (unitType == UnitType.Zerg_Overlord) {
                     createScout(unit, managedUnit);
@@ -213,6 +217,9 @@ public class UnitManager {
 
     private void removeManagedUnit(Unit unit) {
         ManagedUnit managedUnit = managedUnitLookup.get(unit);
+        if (managedUnit == null) {
+            return;
+        }
 
         workerManager.removeManagedWorker(managedUnit);
         managedUnits.remove(managedUnit);

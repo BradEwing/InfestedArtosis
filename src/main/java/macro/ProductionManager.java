@@ -384,7 +384,6 @@ public class ProductionManager {
         }
     }
 
-    // TODO: Consider weights
     // TODO: Droning vs Combat Units
     private void planUnits(Player self, Boolean isAllIn) {
         if (self.supplyUsed() >= 400) {
