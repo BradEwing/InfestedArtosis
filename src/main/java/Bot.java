@@ -53,7 +53,7 @@ public class Bot extends DefaultBWListener {
         gameState.setAllIn(strategy.isAllIn());
         OpponentRecord opponentRecord = learningManager.getOpponentRecord();
         informationManager = new InformationManager(bwem, game, gameState);
-        debugMap = new Debug(bwem, game, strategy, opponentRecord);
+        debugMap = new Debug(bwem, game, strategy, opponentRecord, gameState);
         economyModule = new ProductionManager(game, bwem, gameState, strategy.getBuildOrder()); // TODO: reverse
         unitManager = new UnitManager(game, informationManager, bwem, gameState);
     }
@@ -115,6 +115,7 @@ public class Bot extends DefaultBWListener {
 
     @Override
     public void onUnitMorph(Unit unit) {
+        informationManager.onUnitMorph(unit);
         economyModule.onUnitMorph(unit);
         unitManager.onUnitMorph(unit);
     }

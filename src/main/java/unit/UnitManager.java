@@ -10,6 +10,7 @@ import bwem.CPPath;
 import bwem.ChokePoint;
 import info.InformationManager;
 import info.GameState;
+import info.UnitTypeCount;
 import org.bk.ass.sim.BWMirrorAgentFactory;
 import unit.managed.ManagedUnit;
 import unit.managed.UnitRole;
@@ -57,20 +58,19 @@ public class UnitManager {
         for (Unit unit: game.getAllUnits()) {
             if (unit.getPlayer() == game.self()) {
                 UnitType unitType = unit.getType();
-                ManagedUnit managedUnit = new ManagedUnit(game, unit, UnitRole.IDLE);
+                // TODO: Handle hatchery
+                if (unitType.isBuilding()) {
+                    return;
+                }
+                ManagedUnit managedUnit = createManagedUnit(unit, UnitRole.IDLE);
                 if (unitType == UnitType.Zerg_Overlord) {
-                    createScout(unit);
+                    createScout(unit, managedUnit);
                 }
                 if (unitType == UnitType.Zerg_Drone) {
-                    managedUnits.add(managedUnit);
-                    workerManager.onUnitComplete(managedUnit);
-                    managedUnitLookup.put(unit, managedUnit);
+                    createDrone(unit, managedUnit);
                 }
                 if (unitType == UnitType.Zerg_Larva) {
-                    managedUnit.setRole(UnitRole.LARVA);
-                    managedUnits.add(managedUnit);
-                    workerManager.onUnitComplete(managedUnit);
-                    managedUnitLookup.put(unit, managedUnit);
+                    createLarva(unit, managedUnit);
                 }
             }
         }
@@ -164,29 +164,27 @@ public class UnitManager {
             return;
         }
 
+        ManagedUnit managedUnit = createManagedUnit(unit, UnitRole.IDLE);
         // Assign scouts if we don't know where enemy is
         if (unitType == UnitType.Zerg_Drone || unitType == UnitType.Zerg_Larva) {
-            ManagedUnit managedWorker = new ManagedUnit(game, unit, UnitRole.IDLE);
-            workerManager.onUnitComplete(managedWorker);
+            workerManager.onUnitComplete(managedUnit);
         } else if (unitType == UnitType.Zerg_Overlord || informationManager.getEnemyBuildings().size() + informationManager.getVisibleEnemyUnits().size() == 0) {
             if (unitType == UnitType.Zerg_Overlord && informationManager.isEnemyBuildingLocationKnown()) {
-                ManagedUnit managedOverlord = new ManagedUnit(game, unit, UnitRole.IDLE);
-                squadManager.addManagedUnit(managedOverlord);
-                squadManager.addManagedUnit(managedOverlord);
-                scoutManager.removeScout(managedOverlord);
-                managedUnitLookup.put(unit, managedOverlord);
-                managedUnits.add(managedOverlord);
+                squadManager.addManagedUnit(managedUnit);
+                scoutManager.removeScout(managedUnit);
                 return;
             } else {
-                createScout(unit);
+                createScout(unit, managedUnit);
             }
         } else {
-            ManagedUnit managedFighter = new ManagedUnit(game, unit, UnitRole.FIGHT);
-            squadManager.addManagedUnit(managedFighter);
-            assignClosestEnemyToManagedUnit(managedFighter);
-            managedUnitLookup.put(unit, managedFighter);
-            managedUnits.add(managedFighter);
+            managedUnit.setRole(UnitRole.FIGHT);
+            squadManager.addManagedUnit(managedUnit);
+            assignClosestEnemyToManagedUnit(managedUnit);
         }
+
+        UnitTypeCount unitCount = gameState.getUnitTypeCount();
+        unitCount.addUnit(unitType);
+        unitCount.unplanUnit(unitType);
     }
 
     public void onUnitComplete(Unit unit) {
@@ -212,10 +210,16 @@ public class UnitManager {
         if (managedUnit.getRole() == UnitRole.MORPH) {
             managedUnit.setRole(UnitRole.IDLE);
         }
+        UnitTypeCount unitCount = gameState.getUnitTypeCount();
+        unitCount.addUnit(unitType);
+        unitCount.unplanUnit(unitType);
     }
 
     private void removeManagedUnit(Unit unit) {
         ManagedUnit managedUnit = managedUnitLookup.get(unit);
+        if (managedUnit == null) {
+            return;
+        }
 
         workerManager.removeManagedWorker(managedUnit);
         managedUnits.remove(managedUnit);
@@ -234,6 +238,8 @@ public class UnitManager {
             return;
         }
         removeManagedUnit(unit);
+        UnitTypeCount unitCount = gameState.getUnitTypeCount();
+        unitCount.removeUnit(unitType);
     }
 
     public void onUnitMorph(Unit unit) {
@@ -344,6 +350,7 @@ public class UnitManager {
         }
     }
 
+
     private ManagedUnit createManagedUnit(Unit unit, UnitRole role) {
         ManagedUnit managedUnit = new ManagedUnit(game, unit, role);
         managedUnitLookup.put(unit, managedUnit);
@@ -351,15 +358,26 @@ public class UnitManager {
         return managedUnit;
     }
 
-    private void createScout(Unit unit) {
-        ManagedUnit managedScout = new ManagedUnit(game, unit, UnitRole.SCOUT);
-        managedUnitLookup.put(unit, managedScout);
-        managedUnits.add(managedScout);
-        scoutManager.addScout(managedScout);
+    private void createScout(Unit unit, ManagedUnit managedUnit) {
+        managedUnit.setRole(UnitRole.SCOUT);
+        scoutManager.addScout(managedUnit);
 
         if (unit.getType() == UnitType.Zerg_Overlord) {
-            managedScout.setCanFight(false);
+            managedUnit.setCanFight(false);
         }
         return;
+    }
+
+    private void createDrone(Unit unit, ManagedUnit managedUnit) {
+        managedUnits.add(managedUnit);
+        workerManager.onUnitComplete(managedUnit);
+        managedUnitLookup.put(unit, managedUnit);
+    }
+
+    private void createLarva(Unit unit, ManagedUnit managedUnit) {
+        managedUnit.setRole(UnitRole.LARVA);
+        managedUnits.add(managedUnit);
+        workerManager.onUnitComplete(managedUnit);
+        managedUnitLookup.put(unit, managedUnit);
     }
 }
