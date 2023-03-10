@@ -115,6 +115,7 @@ public class Bot extends DefaultBWListener {
 
     @Override
     public void onUnitMorph(Unit unit) {
+        informationManager.onUnitMorph(unit);
         economyModule.onUnitMorph(unit);
         unitManager.onUnitMorph(unit);
     }

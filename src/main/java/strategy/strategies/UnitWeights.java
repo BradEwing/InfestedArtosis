@@ -38,7 +38,7 @@ public class UnitWeights {
     // getRandom returns a UnitType based on weight
     public UnitType getRandom() {
         UnitType unitType = UnitType.Unknown;
-        int totalWeight = 0;
+        double totalWeight = 0;
 
         for (Map.Entry<UnitType, Double> e: weightMap.entrySet()) {
             if (!enabledUnitTypes.contains(e.getKey())) {

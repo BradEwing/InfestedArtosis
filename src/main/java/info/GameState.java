@@ -8,6 +8,7 @@ import planner.PlannedItem;
 import strategy.Opener;
 import strategy.strategies.Default;
 import strategy.strategies.Strategy;
+import strategy.strategies.UnitWeights;
 import unit.managed.ManagedUnit;
 
 import java.util.HashMap;
@@ -48,6 +49,7 @@ public class GameState {
 
     private Opener activeOpener;
     private Strategy activeStrategy = new Default(); // TODO: Determine in learning manager
+    private UnitWeights unitWeights = activeStrategy.getUnitWeights(); // Set in Strategy or Learning Manager, this is jank
 
     private UnitTypeCount unitTypeCount = new UnitTypeCount();
 

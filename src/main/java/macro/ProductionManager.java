@@ -19,6 +19,7 @@ import planner.PlanState;
 import planner.PlanType;
 import planner.PlannedItem;
 import planner.PlannedItemComparator;
+import strategy.strategies.UnitWeights;
 import unit.managed.ManagedUnit;
 
 import java.util.ArrayList;
@@ -399,15 +400,14 @@ public class ProductionManager {
         }
 
         TechProgression techProgression = this.gameState.getTechProgression();
+        UnitWeights unitWeights = this.gameState.getUnitWeights();
 
         // Plan army
-        if (techProgression.isHydraliskDen()) {
-            addUnitToQueue(UnitType.Zerg_Hydralisk);
+        UnitType unitToBuild = unitWeights.getRandom();
+        if (unitToBuild == UnitType.Unknown) {
+            return;
         }
-
-        if (techProgression.isSpawningPool()) {
-            addUnitToQueue(UnitType.Zerg_Zergling);
-        }
+        addUnitToQueue(unitToBuild);
     }
 
     private void addUnitToQueue(UnitType unitType) {

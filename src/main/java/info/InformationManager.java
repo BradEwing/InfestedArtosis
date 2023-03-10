@@ -15,6 +15,8 @@ import lombok.Data;
 import map.TileComparator;
 import map.TileInfo;
 import map.TileType;
+import planner.PlanType;
+import planner.PlannedItem;
 import strategy.strategies.UnitWeights;
 
 import java.util.ArrayList;
@@ -119,7 +121,7 @@ public class InformationManager {
      */
     public void updateTechProgression(UnitType unitType) {
         TechProgression techProgression = gameState.getTechProgression();
-        UnitWeights unitWeights = gameState.getActiveStrategy().getUnitWeights();
+        UnitWeights unitWeights = gameState.getUnitWeights();
 
         switch(unitType) {
             case Zerg_Spawning_Pool:
@@ -166,6 +168,22 @@ public class InformationManager {
         }
     }
 
+    public void onUnitMorph(Unit unit) {
+        UnitType unitType = unit.getInitialType();
+
+        HashMap<Unit, PlannedItem> assignedPlannedItems = gameState.getAssignedPlannedItems();
+        PlannedItem assignedPlan = assignedPlannedItems.get(unit);
+        // Currently, only do something here if this unit is assigned to a plan.
+        if (assignedPlan == null) {
+            return;
+        }
+
+        UnitType plannedUnit = assignedPlan.getPlannedUnit();
+        if (assignedPlan.getType() == PlanType.BUILDING) {
+            updateTechProgression(plannedUnit);
+        }
+    }
+
     public void onUnitComplete(Unit unit) {
         return;
     }
@@ -184,7 +202,7 @@ public class InformationManager {
      */
     public void updateTechOnDestroy(UnitType unitType) {
         TechProgression techProgression = gameState.getTechProgression();
-        UnitWeights unitWeights = gameState.getActiveStrategy().getUnitWeights();
+        UnitWeights unitWeights = gameState.getUnitWeights();
 
         switch(unitType) {
             case Zerg_Spawning_Pool:
