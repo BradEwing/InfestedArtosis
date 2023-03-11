@@ -20,4 +20,6 @@ public class OpponentRecord {
     private Map<String, OpenerRecord> opponentStrategies;
 
     private Map<String, OpenerRecord> openerRecord;
+
+    private Map<String, StrategyRecord> strategyRecordMap;
 }

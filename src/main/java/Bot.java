@@ -9,7 +9,8 @@ import learning.OpponentRecord;
 import info.GameState;
 import info.InformationManager;
 import macro.ProductionManager;
-import strategy.Opener;
+import strategy.openers.Opener;
+import strategy.strategies.Strategy;
 import unit.UnitManager;
 
 /**
@@ -49,12 +50,14 @@ public class Bot extends DefaultBWListener {
         bwem.initialize();
 
         learningManager = new LearningManager(game.enemy().getRace().toString(), game.enemy().getName(), bwem);
-        Opener strategy = learningManager.getDeterminedStrategy();
-        gameState.setAllIn(strategy.isAllIn());
+        Opener opener = learningManager.getDeterminedOpener();
+        Strategy strategy = learningManager.getDeterminedStrategy();
+        gameState.setAllIn(opener.isAllIn());
+        gameState.setActiveStrategy(strategy);
         OpponentRecord opponentRecord = learningManager.getOpponentRecord();
         informationManager = new InformationManager(bwem, game, gameState);
-        debugMap = new Debug(bwem, game, strategy, opponentRecord, gameState);
-        economyModule = new ProductionManager(game, bwem, gameState, strategy.getBuildOrder()); // TODO: reverse
+        debugMap = new Debug(bwem, game, opener, opponentRecord, gameState);
+        economyModule = new ProductionManager(game, bwem, gameState, opener.getBuildOrder()); // TODO: reverse
         unitManager = new UnitManager(game, informationManager, bwem, gameState);
     }
 
