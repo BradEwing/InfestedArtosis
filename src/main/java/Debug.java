@@ -9,7 +9,8 @@ import info.GameState;
 import info.UnitTypeCount;
 import learning.OpponentRecord;
 import learning.OpenerRecord;
-import strategy.Opener;
+import learning.StrategyRecord;
+import strategy.openers.Opener;
 
 import java.util.Map;
 
@@ -42,7 +43,8 @@ public class Debug {
 
         game.drawTextScreen(4, 8, "Opponent: " + opponentRecord.getName() + " " + getOpponentRecord());
         game.drawTextScreen(4, 16, "Map: " + game.mapFileName());
-        game.drawTextScreen(4, 24, "Opener: " + opener.getName() + " " + getOpenerRecord(), Text.White);
+        game.drawTextScreen(4, 24, "Opener: " + opener.getNameString() + " " + getOpenerRecord(), Text.White);
+        game.drawTextScreen(4, 32, "Strategy: " + gameState.getActiveStrategy().getName() + " " + getStrategyRecord(), Text.White);
         game.drawTextScreen(4, 40, "Frame: " + game.getFrameCount());
 
         drawUnitCount();
@@ -61,11 +63,16 @@ public class Debug {
     }
 
     private String getOpenerRecord() {
-        OpenerRecord openerRecord = opponentRecord.getOpenerRecord().get(opener.getName());
+        OpenerRecord openerRecord = opponentRecord.getOpenerRecord().get(opener.getNameString());
         return String.format("%s_%s", openerRecord.getWins(), openerRecord.getLosses());
     }
 
     private String getOpponentRecord() {
         return String.format("%s_%s", opponentRecord.getWins(), opponentRecord.getLosses());
+    }
+
+    private String getStrategyRecord() {
+        StrategyRecord strategyRecord = opponentRecord.getStrategyRecordMap().get(gameState.getActiveStrategy().getName());
+        return String.format("%s_%s", strategyRecord.getWins(), strategyRecord.getLosses());
     }
 }

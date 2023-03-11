@@ -7,8 +7,8 @@ import lombok.extern.jackson.Jacksonized;
 @Jacksonized
 @Builder
 @Data
-public class OpenerRecord {
-    private String opener;
+public class StrategyRecord {
+    private String strategy;
     private int wins;
     private int losses;
 
