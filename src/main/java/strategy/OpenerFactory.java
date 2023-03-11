@@ -3,6 +3,7 @@ package strategy;
 import strategy.openers.FivePool;
 import strategy.openers.FourPool;
 import strategy.openers.NinePoolSpeed;
+import strategy.openers.Opener;
 import strategy.openers.OverPool;
 import strategy.openers.TwelveHatch;
 
@@ -28,11 +29,11 @@ public class OpenerFactory {
     }
 
     public List<String> listAllOpenerNames() {
-        return allOpeners.stream().map(s -> s.getName()).collect(Collectors.toList());
+        return allOpeners.stream().map(s -> s.getNameString()).collect(Collectors.toList());
     }
 
     public Set<String> getPlayableOpeners() {
-        return playableOpeners.values().stream().map(s -> s.getName()).collect(Collectors.toSet());
+        return playableOpeners.values().stream().map(s -> s.getNameString()).collect(Collectors.toSet());
     }
 
     private void initOpeners(int numStartingLocations) {
@@ -46,7 +47,7 @@ public class OpenerFactory {
             if (numStartingLocations == FOUR && !opener.playsFourPlayerMap()) {
                 continue;
             }
-            playableOpeners.put(opener.getName(), opener);
+            playableOpeners.put(opener.getNameString(), opener);
         }
     }
 }

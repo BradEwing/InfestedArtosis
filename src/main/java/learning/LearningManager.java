@@ -3,8 +3,10 @@ package learning;
 import bwem.BWEM;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import strategy.Opener;
+import strategy.openers.Opener;
 import strategy.OpenerFactory;
+import strategy.StrategyFactory;
+import strategy.strategies.Strategy;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -28,20 +30,23 @@ public class LearningManager {
     private String opponentFileName;
 
     private OpponentRecord opponentRecord;
-    private OpenerRecord currentOpponentStrategy; // Write this at end of game
+    private OpenerRecord currentOpener; // Write this at end of game
+    private StrategyRecord currentStrategy;
 
     private ObjectMapper mapper = new ObjectMapper();
 
     private OpenerFactory openerFactory;
+    private StrategyFactory strategyFactory;
 
     public LearningManager(String opponentRace, String opponentName, BWEM bwem) {
         this.opponentRace = opponentRace;
         this.opponentName = opponentName;
         this.opponentFileName = opponentName + "_" + opponentRace + ".json";
-        this.opponentRecord = new OpponentRecord(opponentName, opponentRace, 0, 0, new HashMap<>(), new HashMap<>());
+        this.opponentRecord = new OpponentRecord(opponentName, opponentRace, 0, 0, new HashMap<>(), new HashMap<>(), new HashMap<>());
         this.bwem = bwem;
 
         this.openerFactory = new OpenerFactory(bwem.getMap().getStartingLocations().size());
+        this.strategyFactory = new StrategyFactory();
 
         try {
             readOpponentRecord();
@@ -49,19 +54,25 @@ public class LearningManager {
         }
 
         ensureOpenersInOpponentRecord();
+        ensureStrategiesInOpponentRecord();
         determineOpener();
+        determineStrategy();
     }
 
     public void onEnd(boolean isWinner) {
         if (isWinner) {
-            currentOpponentStrategy.setWins(currentOpponentStrategy.getWins()+1);
+            currentOpener.setWins(currentOpener.getWins()+1);
             opponentRecord.setWins(opponentRecord.getWins()+1);
+            currentStrategy.setWins(currentStrategy.getWins()+1);
         } else {
-            currentOpponentStrategy.setLosses(currentOpponentStrategy.getLosses()+1);
+            currentOpener.setLosses(currentOpener.getLosses()+1);
             opponentRecord.setLosses(opponentRecord.getLosses()+1);
+            currentStrategy.setLosses(currentStrategy.getLosses()+1);
         }
         Map<String, OpenerRecord> openerRecords = opponentRecord.getOpenerRecord();
-        openerRecords.put(currentOpponentStrategy.getStrategy(), currentOpponentStrategy);
+        openerRecords.put(currentOpener.getOpener(), currentOpener);
+        Map<String, StrategyRecord> strategyRecordMap = opponentRecord.getStrategyRecordMap();
+        strategyRecordMap.put(currentStrategy.getStrategy(), currentStrategy);
         try {
             writeOpponentRecord();
         } catch (IOException e) {
@@ -69,9 +80,11 @@ public class LearningManager {
         }
     }
 
-    public Opener getDeterminedStrategy() {
-        return openerFactory.getByName(currentOpponentStrategy.getStrategy());
+    public Opener getDeterminedOpener() {
+        return openerFactory.getByName(currentOpener.getOpener());
     }
+
+    public Strategy getDeterminedStrategy() { return strategyFactory.getByName(currentStrategy.getStrategy()); }
 
     public OpponentRecord getOpponentRecord() { return this.opponentRecord; }
 
@@ -118,6 +131,22 @@ public class LearningManager {
         }
     }
 
+    private void ensureStrategiesInOpponentRecord() {
+        Map<String, StrategyRecord> strategyRecordMap = opponentRecord.getStrategyRecordMap();
+        List<String> knownStrategies = strategyRecordMap
+                .keySet()
+                .stream()
+                .collect(Collectors.toList());
+        Set<String> missingStrategies = strategyFactory.listAllOpenerNames()
+                .stream()
+                .filter(s -> !knownStrategies.contains(s))
+                .collect(Collectors.toSet());
+
+        for (String strategy: missingStrategies) {
+            strategyRecordMap.put(strategy, new StrategyRecord(strategy, 0, 0));
+        }
+    }
+
     /**
      * Determine which opener we should pick.
      *
@@ -126,12 +155,22 @@ public class LearningManager {
      * May tweak this later
      */
     private void determineOpener() {
-        List<OpenerRecord> strategies = opponentRecord.getOpenerRecord()
+        List<OpenerRecord> openers = opponentRecord.getOpenerRecord()
                 .values()
                 .stream()
-                .filter(sr -> openerFactory.getPlayableOpeners().contains(sr.getStrategy()))
+                .filter(sr -> openerFactory.getPlayableOpeners().contains(sr.getOpener()))
                 .collect(Collectors.toList());
-        Collections.sort(strategies, new OpponentOpenerRecordComparator());
-        currentOpponentStrategy = strategies.get(0);
+        Collections.sort(openers, new OpponentOpenerRecordComparator());
+        currentOpener = openers.get(0);
+    }
+
+    private void determineStrategy() {
+        List<StrategyRecord> strategies = opponentRecord.getStrategyRecordMap()
+                .values()
+                .stream()
+                .filter(sr -> strategyFactory.getPlayableStrategies(getDeterminedOpener()).contains(sr.getStrategy()))
+                .collect(Collectors.toList());
+        Collections.sort(strategies, new OpponentStrategyRecordComparator());
+        currentStrategy = strategies.get(0);
     }
 }

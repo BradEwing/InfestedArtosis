@@ -3,12 +3,13 @@ package strategy.openers;
 import bwapi.UnitType;
 import bwapi.UpgradeType;
 import planner.PlannedItem;
-import strategy.Opener;
 
 import java.util.ArrayList;
 import java.util.List;
 
 public class NinePoolSpeed implements Opener {
+
+    public OpenerName getName() { return OpenerName.NINE_POOL_SPEED; }
 
     public List<PlannedItem> getBuildOrder() {
 

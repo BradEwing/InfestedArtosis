@@ -2,12 +2,13 @@ package strategy.openers;
 
 import bwapi.UnitType;
 import planner.PlannedItem;
-import strategy.Opener;
 
 import java.util.ArrayList;
 import java.util.List;
 
 public class FivePool implements Opener {
+
+    public OpenerName getName() { return OpenerName.FIVE_POOL; }
 
     public List<PlannedItem> getBuildOrder() {
 
