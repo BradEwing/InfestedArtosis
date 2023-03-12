@@ -342,7 +342,7 @@ public class ProductionManager {
 
         UnitWeights unitWeights = this.gameState.getUnitWeights();
 
-        if (unitWeights.hasUnit(UnitType.Zerg_Hydralisk) && techProgression.isSpawningPool() && !techProgression.isHydraliskDen()) {
+        if (!hasPlannedDen && unitWeights.hasUnit(UnitType.Zerg_Hydralisk) && techProgression.isSpawningPool() && !techProgression.isHydraliskDen()) {
             productionQueue.add(new PlannedItem(UnitType.Zerg_Hydralisk_Den, currentPriority, true, false));
             hasPlannedDen = true;
         }
