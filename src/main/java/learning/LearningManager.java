@@ -160,7 +160,7 @@ public class LearningManager {
                 .stream()
                 .filter(sr -> openerFactory.getPlayableOpeners().contains(sr.getOpener()))
                 .collect(Collectors.toList());
-        Collections.sort(openers, new OpponentOpenerRecordComparator());
+        Collections.sort(openers, new UCBRecordComparator(this.opponentRecord.totalGames()));
         currentOpener = openers.get(0);
     }
 
@@ -170,7 +170,7 @@ public class LearningManager {
                 .stream()
                 .filter(sr -> strategyFactory.getPlayableStrategies(getDeterminedOpener()).contains(sr.getStrategy()))
                 .collect(Collectors.toList());
-        Collections.sort(strategies, new OpponentStrategyRecordComparator());
+        Collections.sort(strategies, new UCBRecordComparator(this.opponentRecord.totalGames()));
         currentStrategy = strategies.get(0);
     }
 }
