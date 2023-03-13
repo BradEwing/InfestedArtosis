@@ -1,5 +1,7 @@
 #  Infested Artosis
 
+![](https://github.com/BradEwing/InfestedArtosis/actions/workflows/ci.yaml/badge.svg)
+
 A small zerg bot initially cloned from [JavaBWAPI](https://github.com/JavaBWAPI/jbwapi-java-template).
 
 ### Usage
