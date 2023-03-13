@@ -441,7 +441,7 @@ public class ProductionManager {
 
         /** For now, only subject unit production to queue size */
         // Base queue size is 3, increases per hatch
-        if (productionQueue.size() >= 3 + (numHatcheries() * 3)) {
+        if (productionQueue.size() >= 3) {
             return;
         }
 
@@ -481,6 +481,9 @@ public class ProductionManager {
         TechProgression techProgression = gameState.getTechProgression();
 
         switch(unitType) {
+            case Zerg_Overlord:
+            case Zerg_Drone:
+                return numHatcheries() > 0;
             case Zerg_Zergling:
                 return hasPlannedPool || techProgression.isSpawningPool();
             case Zerg_Hydralisk_Den:
@@ -493,6 +496,12 @@ public class ProductionManager {
     private boolean canScheduleBuilding(UnitType unitType) {
         TechProgression techProgression = gameState.getTechProgression();
         switch(unitType) {
+            case Zerg_Hatchery:
+            case Zerg_Extractor:
+            case Zerg_Creep_Colony:
+                return true;
+            case Zerg_Spawning_Pool:
+                return numHatcheries() > 0;
             case Zerg_Hydralisk_Den:
                 return techProgression.isSpawningPool();
             default:
@@ -504,10 +513,10 @@ public class ProductionManager {
         TechProgression techProgression = gameState.getTechProgression();
         switch(upgradeType) {
             case Metabolic_Boost:
-                return techProgression.isSpawningPool();
+                return hasPlannedPool || techProgression.isSpawningPool();
             case Muscular_Augments:
             case Grooved_Spines:
-                return techProgression.isHydraliskDen();
+                return hasPlannedDen || techProgression.isHydraliskDen();
                 default:
                 return false;
         }
