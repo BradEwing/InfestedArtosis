@@ -24,7 +24,7 @@ public class StrategyRecord implements UCBRecord {
 
     public double index(int totalGames) {
         if (totalGames == 0 || this.games() == 0) {
-            return 1.0;
+            return 2.0;
         }
         double sampleMean = this.wins() / this.games();
         double c = Math.sqrt(2 * Math.log(totalGames) / this.games());
