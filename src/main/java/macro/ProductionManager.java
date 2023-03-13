@@ -83,7 +83,6 @@ public class ProductionManager {
     private HashSet<Base> baseLocations = new HashSet<>();
     private HashSet<Unit> macroHatcheries = new HashSet<>();
 
-    // TODO: Queue populated with an information manager / strategy planner
     private PriorityQueue<PlannedItem> productionQueue = new PriorityQueue<>(new PlannedItemComparator());
 
     public ProductionManager(Game game, BWEM bwem, GameState gameState, List<PlannedItem> initialBuildOrder) {
@@ -271,7 +270,6 @@ public class ProductionManager {
 
         plan();
         schedulePlannedItems();
-        //buildItems();
         buildUpgrades();
 
         for (Unit u: game.getAllUnits()) {
@@ -462,10 +460,60 @@ public class ProductionManager {
         return ((expectedWorkers() * (1 + plannedHatcheries)) - numWorkers() < 0);
     }
 
-    // TODO: Planned item priority on frame?
-    //  - If failed to execute after X frames, increase priority value
-    //  - Track number of retries per PlannedItem, continual failure can warrant dropping from queue entirely and/or exponential backoff
-    public void schedulePlannedItems() {
+    /**
+     * Planned Items that are impossible to schedule can block the queue.
+     * @return
+     */
+    private boolean canSchedule(PlannedItem plannedItem) {
+        switch (plannedItem.getType()) {
+            case UNIT:
+                return canScheduleUnit(plannedItem.getPlannedUnit());
+            case BUILDING:
+                return canScheduleBuilding(plannedItem.getPlannedUnit());
+            case UPGRADE:
+                return canScheduleUpgrade(plannedItem.getPlannedUpgrade());
+            default:
+                return false;
+        }
+    }
+
+    private boolean canScheduleUnit(UnitType unitType) {
+        TechProgression techProgression = gameState.getTechProgression();
+
+        switch(unitType) {
+            case Zerg_Zergling:
+                return hasPlannedPool || techProgression.isSpawningPool();
+            case Zerg_Hydralisk_Den:
+                return hasPlannedDen || techProgression.isHydraliskDen();
+            default:
+                return false;
+        }
+    }
+
+    private boolean canScheduleBuilding(UnitType unitType) {
+        TechProgression techProgression = gameState.getTechProgression();
+        switch(unitType) {
+            case Zerg_Hydralisk_Den:
+                return techProgression.isSpawningPool();
+            default:
+                return false;
+        }
+    }
+
+    private boolean canScheduleUpgrade(UpgradeType upgradeType) {
+        TechProgression techProgression = gameState.getTechProgression();
+        switch(upgradeType) {
+            case Metabolic_Boost:
+                return techProgression.isSpawningPool();
+            case Muscular_Augments:
+            case Grooved_Spines:
+                return techProgression.isHydraliskDen();
+                default:
+                return false;
+        }
+    }
+
+    private void schedulePlannedItems() {
         if (productionQueue.size() == 0) {
             return;
         }
@@ -474,8 +522,6 @@ public class ProductionManager {
 
         // Loop through items until we exhaust queue or we break because we can't consume top item
         // Call method to attempt to build that type, if we can't build return false and break the loop
-        // TODO: What to do when current planned item can never be executed
-        // This is done for supply deadlock, need to build logic for when tech prereq is destroyed
 
         HashSet<PlannedItem> scheduledPlans = gameState.getPlansScheduled();
 
@@ -496,9 +542,13 @@ public class ProductionManager {
 
             boolean canSchedule = false;
             // If we can't plan, we'll put it back on the queue
-            // TODO: Queue backoff, prioritization
             final PlannedItem plannedItem = productionQueue.poll();
             if (plannedItem == null) {
+                continue;
+            }
+
+            // Don't block the queue if the plan cannot be executed
+            if (!canSchedule(plannedItem)) {
                 continue;
             }
 
@@ -544,7 +594,6 @@ public class ProductionManager {
         }
 
         // Requeue
-        // TODO: Decrement importance in plannedItem?
         for (PlannedItem plannedItem: requeuePlannedItems) {
             productionQueue.add(plannedItem);
         }
