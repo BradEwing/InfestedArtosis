@@ -10,10 +10,12 @@ public class UCBRecordComparator implements Comparator<UCBRecord>  {
 
     @Override
     public int compare(UCBRecord x, UCBRecord y) {
-        if (x.index(this.totalGames) > y.index(this.totalGames)) {
+        double xIndex = x.index(this.totalGames);
+        double yIndex = y.index(this.totalGames);
+        if (xIndex > yIndex) {
             return -1;
         }
-        if (x.index(this.totalGames) < y.index(this.totalGames)) {
+        if (xIndex < yIndex) {
             return 1;
         }
         return 0;
