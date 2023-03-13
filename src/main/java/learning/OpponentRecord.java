@@ -22,4 +22,8 @@ public class OpponentRecord {
     private Map<String, OpenerRecord> openerRecord;
 
     private Map<String, StrategyRecord> strategyRecordMap;
+
+    public int totalGames() {
+        return this.wins + this.losses;
+    }
 }
