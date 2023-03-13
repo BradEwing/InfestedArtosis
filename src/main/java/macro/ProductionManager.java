@@ -19,6 +19,7 @@ import planner.PlanState;
 import planner.PlanType;
 import planner.PlannedItem;
 import planner.PlannedItemComparator;
+import strategy.strategies.Mutalisk;
 import strategy.strategies.UnitWeights;
 import unit.managed.ManagedUnit;
 
@@ -59,8 +60,8 @@ public class ProductionManager {
     private boolean hasPlannedDenUpgrades = false;
     private boolean hasLurkers = false;
     private boolean hasPlannedLurkers = false;
-    private boolean hasLair = false;
     private boolean hasPlannedLair = false;
+    private boolean hasPlannedSpire = false;
     private boolean hasPlannedEvoChamberUpgrades1 = false;
 
     // TODO: Track in info manager / GameState with some sort of base planner class
@@ -138,10 +139,6 @@ public class ProductionManager {
 
             this.productionQueue.add(plannedItem);
         }
-    }
-
-    private void debugAssignedItemsQueue() {
-
     }
 
     private void debugProductionQueue() {
@@ -341,8 +338,20 @@ public class ProductionManager {
         UnitWeights unitWeights = this.gameState.getUnitWeights();
 
         if (!hasPlannedDen && unitWeights.hasUnit(UnitType.Zerg_Hydralisk) && techProgression.isSpawningPool() && !techProgression.isHydraliskDen()) {
-            productionQueue.add(new PlannedItem(UnitType.Zerg_Hydralisk_Den, currentPriority, true, false));
+            productionQueue.add(new PlannedItem(UnitType.Zerg_Hydralisk_Den, currentPriority, true, true));
             hasPlannedDen = true;
+        }
+
+        final boolean needLairTech = unitWeights.hasUnit(UnitType.Zerg_Mutalisk) || unitWeights.hasUnit(UnitType.Zerg_Scourge);
+
+        if (needLairTech && !hasPlannedLair && techProgression.isSpawningPool() && !techProgression.isLair()) {
+            productionQueue.add(new PlannedItem(UnitType.Zerg_Lair, currentPriority, true, true));
+            hasPlannedLair = true;
+        }
+
+        if (!hasPlannedSpire && unitWeights.hasUnit(UnitType.Zerg_Mutalisk) && techProgression.isLair() && !techProgression.isSpire()) {
+            productionQueue.add(new PlannedItem(UnitType.Zerg_Spire, currentPriority, true, true));
+            hasPlannedSpire = true;
         }
     }
 
@@ -486,8 +495,11 @@ public class ProductionManager {
                 return numHatcheries() > 0;
             case Zerg_Zergling:
                 return hasPlannedPool || techProgression.isSpawningPool();
-            case Zerg_Hydralisk_Den:
+            case Zerg_Hydralisk:
                 return hasPlannedDen || techProgression.isHydraliskDen();
+            case Zerg_Mutalisk:
+            case Zerg_Scourge:
+                return hasPlannedSpire || techProgression.isSpire();
             default:
                 return false;
         }
@@ -504,6 +516,10 @@ public class ProductionManager {
                 return numHatcheries() > 0;
             case Zerg_Hydralisk_Den:
                 return techProgression.isSpawningPool();
+            case Zerg_Lair:
+                return numHatcheries() > 0 && techProgression.isSpawningPool();
+            case Zerg_Spire:
+                return techProgression.isLair();
             default:
                 return false;
         }
@@ -654,16 +670,21 @@ public class ProductionManager {
 
         TechProgression techProgression = this.gameState.getTechProgression();
 
-        // TODO: Execute this in own method w/ switch case
-        if (unitType == UnitType.Zerg_Hydralisk_Den) {
-            techProgression.setHydraliskDen(true);
-            hasPlannedDen = false; // only plan 1
-        } else if (unitType == UnitType.Zerg_Spawning_Pool) {
-            techProgression.setSpawningPool(true);
-            hasPlannedPool = false; // TODO: set this when unit completes
-        } else if (unitType == UnitType.Zerg_Lair) {
-            hasLair = true;
-            //hasPlannedLair = false;
+        switch(unitType) {
+            case Zerg_Hydralisk_Den:
+                techProgression.setHydraliskDen(true);
+                hasPlannedDen = false; // only plan 1
+                break;
+            case Zerg_Spawning_Pool:
+                techProgression.setSpawningPool(true);
+                hasPlannedPool = false;
+                break;
+            case Zerg_Lair:
+                techProgression.setLair(true);
+                hasPlannedLair = false;
+            case Zerg_Spire:
+                techProgression.setSpire(true);
+                hasPlannedSpire = false;
         }
 
         gameState.getPlansBuilding().remove(plannedItem);

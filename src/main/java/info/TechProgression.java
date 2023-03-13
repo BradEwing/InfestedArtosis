@@ -7,4 +7,7 @@ public class TechProgression {
 
     private boolean spawningPool = false;
     private boolean hydraliskDen = false;
+    private boolean lair = false;
+    private boolean spire = false;
+
 }
