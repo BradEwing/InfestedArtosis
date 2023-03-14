@@ -32,6 +32,7 @@ public class UnitManager {
 
     private BWMirrorAgentFactory agentFactory;
 
+    private BuildingManager buildingManager;
     private InformationManager informationManager;
     private ScoutManager scoutManager;
     private SquadManager squadManager;
@@ -51,6 +52,7 @@ public class UnitManager {
         this.workerManager = new WorkerManager(game, gameState);
         this.squadManager = new SquadManager(game, gameState, informationManager);
         this.scoutManager = new ScoutManager(game, informationManager);
+        this.buildingManager = new BuildingManager(game, gameState);
         initManagedUnits();
     }
 
@@ -58,9 +60,9 @@ public class UnitManager {
         for (Unit unit: game.getAllUnits()) {
             if (unit.getPlayer() == game.self()) {
                 UnitType unitType = unit.getType();
-                // TODO: Handle hatchery
                 if (unitType.isBuilding()) {
-                    return;
+                    buildingManager.add(unit);
+                    continue;
                 }
                 ManagedUnit managedUnit = createManagedUnit(unit, UnitRole.IDLE);
                 if (unitType == UnitType.Zerg_Overlord) {
@@ -85,6 +87,7 @@ public class UnitManager {
 
         checkBaseThreats();
 
+        buildingManager.onFrame();
         workerManager.onFrame();
         squadManager.updateOverlordSquad();
         squadManager.updateFightSquads();
@@ -237,6 +240,11 @@ public class UnitManager {
             workerManager.removeGeyser(unit);
             return;
         }
+
+        if (unitType.isBuilding()) {
+            this.buildingManager.remove(unit);
+        }
+
         removeManagedUnit(unit);
         UnitTypeCount unitCount = gameState.getUnitTypeCount();
         unitCount.removeUnit(unitType);

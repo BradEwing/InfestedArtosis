@@ -17,6 +17,7 @@ import map.TileInfo;
 import map.TileType;
 import planner.PlanType;
 import planner.PlannedItem;
+import strategy.strategies.Mutalisk;
 import strategy.strategies.UnitWeights;
 
 import java.util.ArrayList;
@@ -132,6 +133,14 @@ public class InformationManager {
                 techProgression.setHydraliskDen(true);
                 unitWeights.enableUnit(UnitType.Zerg_Hydralisk);
                 break;
+            case Zerg_Spire:
+                techProgression.setSpire(true);
+                unitWeights.enableUnit(UnitType.Zerg_Mutalisk);
+                unitWeights.enableUnit(UnitType.Zerg_Scourge);
+                break;
+            case Zerg_Lair:
+                techProgression.setLair(true);
+                break;
         }
     }
 
@@ -212,6 +221,14 @@ public class InformationManager {
             case Zerg_Hydralisk_Den:
                 techProgression.setHydraliskDen(false);
                 unitWeights.disableUnit(UnitType.Zerg_Hydralisk);
+                break;
+            case Zerg_Spire:
+                techProgression.setSpire(false);
+                unitWeights.disableUnit(UnitType.Zerg_Mutalisk);
+                unitWeights.disableUnit(UnitType.Zerg_Scourge);
+                break;
+            case Zerg_Lair:
+                techProgression.setLair(false);
                 break;
         }
     }

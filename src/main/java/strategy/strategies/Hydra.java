@@ -12,7 +12,7 @@ public class Hydra implements Strategy {
     public UnitWeights getUnitWeights() {
         UnitWeights weights = new UnitWeights();
         weights.setWeight(UnitType.Zerg_Zergling, 0.1);
-        weights.setWeight(UnitType.Zerg_Hydralisk_Den, 0.9);
+        weights.setWeight(UnitType.Zerg_Hydralisk, 0.9);
         return weights;
     }
 
