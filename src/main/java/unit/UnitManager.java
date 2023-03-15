@@ -60,10 +60,6 @@ public class UnitManager {
         for (Unit unit: game.getAllUnits()) {
             if (unit.getPlayer() == game.self()) {
                 UnitType unitType = unit.getType();
-                if (unitType.isBuilding()) {
-                    buildingManager.add(unit);
-                    continue;
-                }
                 ManagedUnit managedUnit = createManagedUnit(unit, UnitRole.IDLE);
                 if (unitType == UnitType.Zerg_Overlord) {
                     createScout(unit, managedUnit);
@@ -73,6 +69,9 @@ public class UnitManager {
                 }
                 if (unitType == UnitType.Zerg_Larva) {
                     createLarva(unit, managedUnit);
+                }
+                if (unitType == UnitType.Zerg_Hatchery) {
+                    createHatchery(unit, managedUnit);
                 }
             }
         }
@@ -108,11 +107,16 @@ public class UnitManager {
 
             UnitRole role = managedUnit.getRole();
 
-            if (role == UnitRole.GATHER || role == UnitRole.BUILD || role == UnitRole.MORPH || role == UnitRole.LARVA || role == UnitRole.RETREAT || role == UnitRole.DEFEND) {
-                // TODO: Fix, this is hacky
-                // Reassignment from one role to another should be handled elsewhere
-                managedUnit.execute();
-                continue;
+            switch(role) {
+                case GATHER:
+                case BUILD:
+                case MORPH:
+                case LARVA:
+                case RETREAT:
+                case DEFEND:
+                case BUILDING:
+                    managedUnit.execute();
+                    continue;
             }
 
             // TODO: Refactor
@@ -185,9 +189,7 @@ public class UnitManager {
             assignClosestEnemyToManagedUnit(managedUnit);
         }
 
-        UnitTypeCount unitCount = gameState.getUnitTypeCount();
-        unitCount.addUnit(unitType);
-        unitCount.unplanUnit(unitType);
+
     }
 
     public void onUnitComplete(Unit unit) {
@@ -213,9 +215,6 @@ public class UnitManager {
         if (managedUnit.getRole() == UnitRole.MORPH) {
             managedUnit.setRole(UnitRole.IDLE);
         }
-        UnitTypeCount unitCount = gameState.getUnitTypeCount();
-        unitCount.addUnit(unitType);
-        unitCount.unplanUnit(unitType);
     }
 
     private void removeManagedUnit(Unit unit) {
@@ -224,6 +223,7 @@ public class UnitManager {
             return;
         }
 
+        buildingManager.remove(managedUnit);
         workerManager.removeManagedWorker(managedUnit);
         managedUnits.remove(managedUnit);
         squadManager.removeManagedUnit(managedUnit);
@@ -241,13 +241,7 @@ public class UnitManager {
             return;
         }
 
-        if (unitType.isBuilding()) {
-            this.buildingManager.remove(unit);
-        }
-
         removeManagedUnit(unit);
-        UnitTypeCount unitCount = gameState.getUnitTypeCount();
-        unitCount.removeUnit(unitType);
     }
 
     public void onUnitMorph(Unit unit) {
@@ -386,6 +380,13 @@ public class UnitManager {
         managedUnit.setRole(UnitRole.LARVA);
         managedUnits.add(managedUnit);
         workerManager.onUnitComplete(managedUnit);
+        managedUnitLookup.put(unit, managedUnit);
+    }
+
+    private void createHatchery(Unit unit, ManagedUnit managedUnit) {
+        managedUnit.setRole(UnitRole.BUILDING);
+        managedUnits.add(managedUnit);
+        buildingManager.add(managedUnit);
         managedUnitLookup.put(unit, managedUnit);
     }
 }

@@ -150,6 +150,9 @@ public class InformationManager {
 
         if (unit.getPlayer() == game.self()) {
             updateTechProgression(unitType);
+            UnitTypeCount unitCount = gameState.getUnitTypeCount();
+            unitCount.addUnit(unitType);
+            unitCount.unplanUnit(unitType);
             return;
         }
         if (unitType == UnitType.Resource_Mineral_Field ||
@@ -194,6 +197,10 @@ public class InformationManager {
     }
 
     public void onUnitComplete(Unit unit) {
+        UnitType unitType = unit.getType();
+        UnitTypeCount unitCount = gameState.getUnitTypeCount();
+        unitCount.addUnit(unitType);
+        unitCount.unplanUnit(unitType);
         return;
     }
 
@@ -253,6 +260,9 @@ public class InformationManager {
 
         if (unit.getPlayer() == game.self()) {
             updateTechOnDestroy(unitType);
+
+            UnitTypeCount unitCount = gameState.getUnitTypeCount();
+            unitCount.removeUnit(unitType);
         }
 
         // TODO: move?

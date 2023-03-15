@@ -146,6 +146,9 @@ public class ManagedUnit {
     }
 
     private void debugRole() {
+        if (role == UnitRole.BUILDING) {
+            return;
+        }
         Position unitPosition = unit.getPosition();
         game.drawTextMap(unitPosition, String.format("%s", role), Text.Default);
     }

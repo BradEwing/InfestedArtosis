@@ -29,7 +29,8 @@ public class BuildingManager {
     private Game game;
     private GameState gameState;
 
-    private HashSet<Unit> hatcheries = new HashSet();
+    private HashSet<ManagedUnit> hatcheries = new HashSet();
+    private HashSet<ManagedUnit> morphingManagedUNits = new HashSet<>();
 
     public BuildingManager(Game game, GameState gameState) {
         this.game = game;
@@ -40,20 +41,20 @@ public class BuildingManager {
         assignScheduledPlannedItems();
     }
 
-    public void add(Unit unit) {
-        UnitType unitType = unit.getType();
+    public void add(ManagedUnit managedUnit) {
+        UnitType unitType = managedUnit.getUnitType();
         switch(unitType) {
             case Zerg_Hatchery:
-                this.hatcheries.add(unit);
+                this.hatcheries.add(managedUnit);
                 break;
         }
     }
 
-    public void remove(Unit unit) {
-        UnitType unitType = unit.getType();
+    public void remove(ManagedUnit managedUnit) {
+        UnitType unitType = managedUnit.getUnitType();
         switch(unitType) {
             case Zerg_Hatchery:
-                this.hatcheries.remove(unit);
+                this.hatcheries.remove(managedUnit);
                 break;
         }
     }
@@ -95,10 +96,12 @@ public class BuildingManager {
     }
 
     private boolean assignMorphLair(PlannedItem plannedItem) {
-        for (Unit hatchery : hatcheries) {
+        for (ManagedUnit managedHatchery : hatcheries) {
+            Unit hatchery = managedHatchery.getUnit();
             if (hatchery.canBuild(plannedItem.getPlannedUnit()) && !gameState.getAssignedPlannedItems().containsKey(hatchery)) {
-                plannedItem.setState(PlanState.BUILDING);
+                managedHatchery.setRole(UnitRole.MORPH);
                 gameState.getAssignedPlannedItems().put(hatchery, plannedItem);
+                managedHatchery.setPlannedItem(plannedItem);
                 return true;
             }
         }

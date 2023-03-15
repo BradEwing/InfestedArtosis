@@ -54,10 +54,14 @@ public class ProductionManager {
     // TODO: Track this stuff in GameState
     private boolean hasPlannedPool = false;
     private boolean hasMetabolicBoost = false;
+    private boolean hasMuscularAugments = false;
+    private boolean hasGroovedSpines = false;
     // TODO: set off of strategy
     private boolean hasPlannedMetabolicBoost = false;
     private boolean hasPlannedDen = false;
-    private boolean hasPlannedDenUpgrades = false;
+
+    private boolean hasPlannedGroovedSpines = false;
+    private boolean hasPlannedMuscularAugments = false;
     private boolean hasLurkers = false;
     private boolean hasPlannedLurkers = false;
     private boolean hasPlannedLair = false;
@@ -308,13 +312,6 @@ public class ProductionManager {
             }
         }
 
-        /*
-        if (!hasPlannedLair && !hasLair && self.supplyUsed() > 45) {
-            productionQueue.add(new PlannedItem(UnitType.Zerg_Lair, currentPriority, true));
-            hasPlannedLair = true;
-        }
-         */
-
         // One extractor per base
         //  - Not always true, some bases are mineral only. Some maps have double gas.
         // TODO: account for bases with no gas or 2 gas
@@ -355,20 +352,45 @@ public class ProductionManager {
         }
     }
 
+    /**
+     * Plan to take an upgrade.
+     *
+     * Does not plan if there is no gas; all upgrades require gas.
+     *
+     * TODO: Track when an upgrade completes
+     * TODO: Track upgrade progression in TechProgression
+     *
+     * NOTE: Potential for reinforcement learning to search when to take an upgrade against an opponent.
+     * @param self
+     * @param isAllIn
+     */
     private void planUpgrades(Player self, Boolean isAllIn) {
+
+        if (numExtractors == 0) {
+            return;
+        }
+
         TechProgression techProgression = this.gameState.getTechProgression();
-        // TODO: Figure out why metabolic boost is not upgrading, why only 1 den upgrade is triggering
+        UnitTypeCount unitTypeCount = gameState.getUnitTypeCount();
+
         /** Ling Upgrades **/
-        if (!isAllIn && techProgression.isSpawningPool() && !hasPlannedMetabolicBoost && !hasMetabolicBoost) {
+        if (!isAllIn && techProgression.isSpawningPool() && !hasPlannedMetabolicBoost && !hasMetabolicBoost && unitTypeCount.get(UnitType.Zerg_Zergling) > 8) {
             productionQueue.add(new PlannedItem(UpgradeType.Metabolic_Boost, currentPriority, false));
             hasPlannedMetabolicBoost = true;
         }
 
         /** Hydra Upgrades */
-        if (!isAllIn && techProgression.isHydraliskDen() && !hasPlannedDenUpgrades) {
-            productionQueue.add(new PlannedItem(UpgradeType.Muscular_Augments, currentPriority, false));
-            productionQueue.add(new PlannedItem(UpgradeType.Grooved_Spines, currentPriority, false));
-            hasPlannedDenUpgrades = true;
+        if (!isAllIn && techProgression.isHydraliskDen()) {
+            final int numHydralisks = unitTypeCount.get(UnitType.Zerg_Hydralisk);
+            if (!hasPlannedMuscularAugments && !hasMuscularAugments && numHydralisks > 4) {
+                productionQueue.add(new PlannedItem(UpgradeType.Muscular_Augments, currentPriority, false));
+                hasPlannedMuscularAugments = true;
+            }
+            if (!hasPlannedGroovedSpines && !hasGroovedSpines && numHydralisks > 10) {
+                productionQueue.add(new PlannedItem(UpgradeType.Grooved_Spines, currentPriority, false));
+                hasPlannedGroovedSpines = true;
+            }
+
         }
 
         // Just take first level of upgrades for now
@@ -486,6 +508,7 @@ public class ProductionManager {
         }
     }
 
+    // TODO: Consider units trying to schedule before their required tech
     private boolean canScheduleUnit(UnitType unitType) {
         TechProgression techProgression = gameState.getTechProgression();
 
@@ -555,6 +578,9 @@ public class ProductionManager {
         boolean skipScheduleUnit = false;
         boolean skipScheduleBuilding = false;
         boolean skipScheduleUpgrade = false;
+        /**
+         *
+         */
         for (int i = 0; i < productionQueue.size(); i++) {
             if (skipScheduleUnit && skipScheduleBuilding && skipScheduleUpgrade) {
                 break;
@@ -670,10 +696,11 @@ public class ProductionManager {
 
         TechProgression techProgression = this.gameState.getTechProgression();
 
+        // TODO: Move this to TechProgression
         switch(unitType) {
             case Zerg_Hydralisk_Den:
                 techProgression.setHydraliskDen(true);
-                hasPlannedDen = false; // only plan 1
+                hasPlannedDen = false;
                 break;
             case Zerg_Spawning_Pool:
                 techProgression.setSpawningPool(true);
@@ -682,9 +709,11 @@ public class ProductionManager {
             case Zerg_Lair:
                 techProgression.setLair(true);
                 hasPlannedLair = false;
+                break;
             case Zerg_Spire:
                 techProgression.setSpire(true);
                 hasPlannedSpire = false;
+                break;
         }
 
         gameState.getPlansBuilding().remove(plannedItem);
@@ -722,7 +751,7 @@ public class ProductionManager {
         final int mineralPrice = plannedItem.getPlannedUnit().mineralPrice();
         final int gasPrice = plannedItem.getPlannedUnit().gasPrice();
 
-        if (self.minerals() - reservedMinerals < mineralPrice || gasPrice - reservedGas < gasPrice) {
+        if (self.minerals() - reservedMinerals < mineralPrice || self.gas() - reservedGas < gasPrice) {
             return false;
         }
 
