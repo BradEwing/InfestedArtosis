@@ -3,16 +3,13 @@ package strategy.strategies;
 import bwapi.UnitType;
 import strategy.openers.Opener;
 
-/**
- * Hydralisk heavy.
- *
- * Includes lings at low probability to ensure fighting units before den is complete.
- */
-public class Hydra implements Strategy {
+public class Mutalisk implements Strategy {
+
     public UnitWeights getUnitWeights() {
         UnitWeights weights = new UnitWeights();
         weights.setWeight(UnitType.Zerg_Zergling, 0.1);
-        weights.setWeight(UnitType.Zerg_Hydralisk, 0.9);
+        weights.setWeight(UnitType.Zerg_Mutalisk, 0.8);
+        weights.setWeight(UnitType.Zerg_Scourge, 0.1);
         return weights;
     }
 
@@ -20,6 +17,7 @@ public class Hydra implements Strategy {
     public boolean playsOpener(Opener opener) {
         switch(opener.getName()) {
             case TWELVE_HATCH:
+            case FIVE_POOL:
             case OVER_POOL:
             case NINE_POOL_SPEED:
                 return true;

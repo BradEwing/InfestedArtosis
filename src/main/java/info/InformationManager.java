@@ -17,6 +17,7 @@ import map.TileInfo;
 import map.TileType;
 import planner.PlanType;
 import planner.PlannedItem;
+import strategy.strategies.Mutalisk;
 import strategy.strategies.UnitWeights;
 
 import java.util.ArrayList;
@@ -132,6 +133,14 @@ public class InformationManager {
                 techProgression.setHydraliskDen(true);
                 unitWeights.enableUnit(UnitType.Zerg_Hydralisk);
                 break;
+            case Zerg_Spire:
+                techProgression.setSpire(true);
+                unitWeights.enableUnit(UnitType.Zerg_Mutalisk);
+                unitWeights.enableUnit(UnitType.Zerg_Scourge);
+                break;
+            case Zerg_Lair:
+                techProgression.setLair(true);
+                break;
         }
     }
 
@@ -141,6 +150,9 @@ public class InformationManager {
 
         if (unit.getPlayer() == game.self()) {
             updateTechProgression(unitType);
+            UnitTypeCount unitCount = gameState.getUnitTypeCount();
+            unitCount.addUnit(unitType);
+            unitCount.unplanUnit(unitType);
             return;
         }
         if (unitType == UnitType.Resource_Mineral_Field ||
@@ -185,6 +197,10 @@ public class InformationManager {
     }
 
     public void onUnitComplete(Unit unit) {
+        UnitType unitType = unit.getType();
+        UnitTypeCount unitCount = gameState.getUnitTypeCount();
+        unitCount.addUnit(unitType);
+        unitCount.unplanUnit(unitType);
         return;
     }
 
@@ -213,6 +229,14 @@ public class InformationManager {
                 techProgression.setHydraliskDen(false);
                 unitWeights.disableUnit(UnitType.Zerg_Hydralisk);
                 break;
+            case Zerg_Spire:
+                techProgression.setSpire(false);
+                unitWeights.disableUnit(UnitType.Zerg_Mutalisk);
+                unitWeights.disableUnit(UnitType.Zerg_Scourge);
+                break;
+            case Zerg_Lair:
+                techProgression.setLair(false);
+                break;
         }
     }
 
@@ -236,6 +260,9 @@ public class InformationManager {
 
         if (unit.getPlayer() == game.self()) {
             updateTechOnDestroy(unitType);
+
+            UnitTypeCount unitCount = gameState.getUnitTypeCount();
+            unitCount.removeUnit(unitType);
         }
 
         // TODO: move?
