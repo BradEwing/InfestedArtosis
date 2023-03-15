@@ -43,9 +43,9 @@ public class StrategyFactory {
     }
 
     private void initStrategies() {
-        //allStrategies.add(new Default());
-        //allStrategies.add(new Hydra());
-        //allStrategies.add(new LingFlood());
+        allStrategies.add(new Default());
+        allStrategies.add(new Hydra());
+        allStrategies.add(new LingFlood());
         allStrategies.add(new Mutalisk());
 
         for (Strategy strategy: allStrategies) {
