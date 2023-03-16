@@ -129,7 +129,7 @@ public class WorkerManager {
         }
 
         for (ManagedUnit managedUnit: mineralGatherers) {
-            if (newGeyserWorkers.size() >= 2) {
+            if (newGeyserWorkers.size() >= 3) {
                 break;
             }
             newGeyserWorkers.add(managedUnit);

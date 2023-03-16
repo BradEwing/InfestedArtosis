@@ -64,4 +64,8 @@ public class GameState {
         this.activeStrategy = activeStrategy;
         this.unitWeights = activeStrategy.getUnitWeights();
     }
+
+    public int numGatherers() {
+        return gatherers.size();
+    }
 }

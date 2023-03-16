@@ -512,6 +512,7 @@ public class ProductionManager {
     private boolean canScheduleUnit(UnitType unitType) {
         TechProgression techProgression = gameState.getTechProgression();
 
+        final boolean hasFourOrMoreDrones = gameState.numGatherers() > 3;
         switch(unitType) {
             case Zerg_Overlord:
             case Zerg_Drone:
@@ -519,10 +520,10 @@ public class ProductionManager {
             case Zerg_Zergling:
                 return hasPlannedPool || techProgression.isSpawningPool();
             case Zerg_Hydralisk:
-                return hasPlannedDen || techProgression.isHydraliskDen();
+                return hasFourOrMoreDrones && (hasPlannedDen || techProgression.isHydraliskDen());
             case Zerg_Mutalisk:
             case Zerg_Scourge:
-                return hasPlannedSpire || techProgression.isSpire();
+                return hasFourOrMoreDrones && (hasPlannedSpire || techProgression.isSpire());
             default:
                 return false;
         }
