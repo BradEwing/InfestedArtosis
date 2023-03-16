@@ -3,7 +3,6 @@ package macro;
 import bwapi.Color;
 import bwapi.Game;
 import bwapi.Player;
-import bwapi.Race;
 import bwapi.Text;
 import bwapi.Unit;
 import bwapi.UnitType;
@@ -19,7 +18,6 @@ import planner.PlanState;
 import planner.PlanType;
 import planner.PlannedItem;
 import planner.PlannedItemComparator;
-import strategy.strategies.Mutalisk;
 import strategy.strategies.UnitWeights;
 import unit.managed.ManagedUnit;
 
@@ -54,7 +52,8 @@ public class ProductionManager {
     private int numSunkens = 0;
 
     private int numExtractors = 0;
-    private int numEvoChambers = 0;
+
+    private int scheduledBuildings = 0;
 
     // TODO: Determine from desired unit composition / active strategy
     // Because bot is only on hatch tech, only take 1 for now
@@ -463,10 +462,10 @@ public class ProductionManager {
     }
 
     /**
-     * Planned Items that are impossible to schedule can block the queue.
-     * @return
+     * Plans that are impossible to schedule can block the queue.
+     * @return boolean indicating if the plan can be scheduled
      */
-    private boolean canSchedule(PlannedItem plannedItem) {
+    private boolean canSchedulePlan(PlannedItem plannedItem) {
         switch (plannedItem.getType()) {
             case UNIT:
                 return canScheduleUnit(plannedItem.getPlannedUnit());
@@ -546,21 +545,13 @@ public class ProductionManager {
         HashSet<PlannedItem> scheduledPlans = gameState.getPlansScheduled();
 
         List<PlannedItem> requeuePlannedItems = new ArrayList<>();
-        // Try to schedule one each of unit, building or upgrade per frame.
-        boolean skipScheduleUnit = false;
-        boolean skipScheduleBuilding = false;
-        boolean skipScheduleUpgrade = false;
+        boolean skipSchedule = false;
         /**
          *
          */
         for (int i = 0; i < productionQueue.size(); i++) {
-            if (skipScheduleUnit && skipScheduleBuilding && skipScheduleUpgrade) {
+            if (skipSchedule) {
                 break;
-            }
-
-            // Don't over schedule units
-            if (!skipScheduleUnit && scheduledPlans.size() >= 1) {
-                skipScheduleUnit = true;
             }
 
             boolean canSchedule = false;
@@ -571,14 +562,11 @@ public class ProductionManager {
             }
 
             // Don't block the queue if the plan cannot be executed
-            if (!canSchedule(plannedItem)) {
+            if (!canSchedulePlan(plannedItem)) {
                 continue;
             }
 
             PlanType planType = plannedItem.getType();
-            Boolean skipSchedule = (planType == PlanType.BUILDING && skipScheduleBuilding) ||
-                    (planType == PlanType.UNIT && skipScheduleUnit) ||
-                    (planType == PlanType.UPGRADE && skipScheduleUpgrade);
 
             if (skipSchedule) {
                 requeuePlannedItems.add(plannedItem);
@@ -589,19 +577,19 @@ public class ProductionManager {
                 case BUILDING:
                     canSchedule = scheduleBuildingItem(self, plannedItem);
                     if (!canSchedule) {
-                        skipScheduleBuilding = true;
+                        skipSchedule = true;
                     }
                     break;
                 case UNIT:
                     canSchedule = scheduleUnitItem(self, plannedItem);
                     if (!canSchedule) {
-                        skipScheduleUnit = true;
+                        skipSchedule = true;
                     }
                     break;
                 case UPGRADE:
                     canSchedule = scheduleUpgradeItem(self, plannedItem);
                     if (!canSchedule) {
-                        skipScheduleUpgrade = true;
+                        skipSchedule = true;
                     }
                     break;
             }
@@ -666,6 +654,10 @@ public class ProductionManager {
             plannedWorkers -= 1;
         }
 
+        if (unitType.isBuilding()) {
+            scheduledBuildings -= 1;
+        }
+
         TechProgression techProgression = this.gameState.getTechProgression();
 
         switch(unitType) {
@@ -716,16 +708,17 @@ public class ProductionManager {
     }
 
     // PLANNED -> SCHEDULED
-    // This involves assigning
+    // Allow one building to be scheduled if resources aren't available.
     private boolean scheduleBuildingItem(Player self, PlannedItem plannedItem) {
         // Can we afford this unit?
         final int mineralPrice = plannedItem.getPlannedUnit().mineralPrice();
         final int gasPrice = plannedItem.getPlannedUnit().gasPrice();
 
-        if (self.minerals() - reservedMinerals < mineralPrice || self.gas() - reservedGas < gasPrice) {
+        if (scheduledBuildings > 0 && (self.minerals() - reservedMinerals < mineralPrice || self.gas() - reservedGas < gasPrice)) {
             return false;
         }
 
+        scheduledBuildings += 1;
         reservedMinerals += mineralPrice;
         reservedGas += gasPrice;
         plannedItem.setState(PlanState.SCHEDULE);

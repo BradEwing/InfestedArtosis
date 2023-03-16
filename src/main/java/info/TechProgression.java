@@ -40,7 +40,7 @@ public class TechProgression {
     }
 
     public boolean canPlanSpire() {
-        return lair && !plannedSpire && spire;
+        return lair && !plannedSpire && !spire;
     }
 
     public boolean canPlanMetabolicBoost() {
