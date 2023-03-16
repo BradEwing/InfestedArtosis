@@ -47,26 +47,8 @@ public class ProductionManager {
 
     private GameState gameState;
 
-    // Track in GameState
-    // isPlanning contingent on -> hitting min supply set by build order OR queue exhaust OR (MAYBE) enemy unit in base
+    // isPlanning contingent on -> hitting min supply set by build order OR queue exhaust
     private boolean isPlanning = false;
-
-    // TODO: Track this stuff in GameState
-    private boolean hasPlannedPool = false;
-    private boolean hasMetabolicBoost = false;
-    private boolean hasMuscularAugments = false;
-    private boolean hasGroovedSpines = false;
-    // TODO: set off of strategy
-    private boolean hasPlannedMetabolicBoost = false;
-    private boolean hasPlannedDen = false;
-
-    private boolean hasPlannedGroovedSpines = false;
-    private boolean hasPlannedMuscularAugments = false;
-    private boolean hasLurkers = false;
-    private boolean hasPlannedLurkers = false;
-    private boolean hasPlannedLair = false;
-    private boolean hasPlannedSpire = false;
-    private boolean hasPlannedEvoChamberUpgrades1 = false;
 
     // TODO: Track in info manager / GameState with some sort of base planner class
     private int numSunkens = 0;
@@ -136,7 +118,8 @@ public class ProductionManager {
 
             if (plannedItem.getType() == PlanType.UPGRADE) {
                 if (plannedItem.getPlannedUpgrade() == UpgradeType.Metabolic_Boost) {
-                    hasPlannedMetabolicBoost = true;
+                    TechProgression techProgression = gameState.getTechProgression();
+                    techProgression.setMetabolicBoost(true);
                 }
             }
 
@@ -323,9 +306,9 @@ public class ProductionManager {
         TechProgression techProgression = this.gameState.getTechProgression();
 
         // Build at 10 workers if not part of initial build order
-        if (!hasPlannedPool && !techProgression.isSpawningPool() && self.supplyUsed() > 20) {
+        if (techProgression.canPlanPool() && self.supplyUsed() > 20) {
             productionQueue.add(new PlannedItem(UnitType.Zerg_Spawning_Pool, currentPriority / 4, true, true));
-            hasPlannedPool = true;
+            techProgression.setPlannedSpawningPool(true);
         }
 
         if (isAllIn) {
@@ -334,21 +317,21 @@ public class ProductionManager {
 
         UnitWeights unitWeights = this.gameState.getUnitWeights();
 
-        if (!hasPlannedDen && unitWeights.hasUnit(UnitType.Zerg_Hydralisk) && techProgression.isSpawningPool() && !techProgression.isHydraliskDen()) {
+        if (techProgression.canPlanHydraliskDen() && unitWeights.hasUnit(UnitType.Zerg_Hydralisk)) {
             productionQueue.add(new PlannedItem(UnitType.Zerg_Hydralisk_Den, currentPriority, true, true));
-            hasPlannedDen = true;
+            techProgression.setPlannedDen(true);
         }
 
         final boolean needLairTech = unitWeights.hasUnit(UnitType.Zerg_Mutalisk) || unitWeights.hasUnit(UnitType.Zerg_Scourge);
 
-        if (needLairTech && !hasPlannedLair && techProgression.isSpawningPool() && !techProgression.isLair()) {
+        if (needLairTech && techProgression.canPlanLair()) {
             productionQueue.add(new PlannedItem(UnitType.Zerg_Lair, currentPriority, true, true));
-            hasPlannedLair = true;
+            techProgression.setPlannedLair(true);
         }
 
-        if (!hasPlannedSpire && unitWeights.hasUnit(UnitType.Zerg_Mutalisk) && techProgression.isLair() && !techProgression.isSpire()) {
+        if (techProgression.canPlanSpire() && unitWeights.hasUnit(UnitType.Zerg_Mutalisk)) {
             productionQueue.add(new PlannedItem(UnitType.Zerg_Spire, currentPriority, true, true));
-            hasPlannedSpire = true;
+            techProgression.setPlannedSpire(true);
         }
     }
 
@@ -358,7 +341,6 @@ public class ProductionManager {
      * Does not plan if there is no gas; all upgrades require gas.
      *
      * TODO: Track when an upgrade completes
-     * TODO: Track upgrade progression in TechProgression
      *
      * NOTE: Potential for reinforcement learning to search when to take an upgrade against an opponent.
      * @param self
@@ -366,7 +348,7 @@ public class ProductionManager {
      */
     private void planUpgrades(Player self, Boolean isAllIn) {
 
-        if (numExtractors == 0) {
+        if (numExtractors == 0 || isAllIn) {
             return;
         }
 
@@ -374,31 +356,20 @@ public class ProductionManager {
         UnitTypeCount unitTypeCount = gameState.getUnitTypeCount();
 
         /** Ling Upgrades **/
-        if (!isAllIn && techProgression.isSpawningPool() && !hasPlannedMetabolicBoost && !hasMetabolicBoost && unitTypeCount.get(UnitType.Zerg_Zergling) > 8) {
+        if (techProgression.canPlanMetabolicBoost() && unitTypeCount.get(UnitType.Zerg_Zergling) > 8) {
             productionQueue.add(new PlannedItem(UpgradeType.Metabolic_Boost, currentPriority, false));
-            hasPlannedMetabolicBoost = true;
+            techProgression.setPlannedMetabolicBoost(true);
         }
 
         /** Hydra Upgrades */
-        if (!isAllIn && techProgression.isHydraliskDen()) {
-            final int numHydralisks = unitTypeCount.get(UnitType.Zerg_Hydralisk);
-            if (!hasPlannedMuscularAugments && !hasMuscularAugments && numHydralisks > 4) {
-                productionQueue.add(new PlannedItem(UpgradeType.Muscular_Augments, currentPriority, false));
-                hasPlannedMuscularAugments = true;
-            }
-            if (!hasPlannedGroovedSpines && !hasGroovedSpines && numHydralisks > 10) {
-                productionQueue.add(new PlannedItem(UpgradeType.Grooved_Spines, currentPriority, false));
-                hasPlannedGroovedSpines = true;
-            }
-
+        final int numHydralisks = unitTypeCount.get(UnitType.Zerg_Hydralisk);
+        if (techProgression.canPlanMuscularAugments() && numHydralisks > 4) {
+            productionQueue.add(new PlannedItem(UpgradeType.Muscular_Augments, currentPriority, false));
+            techProgression.setPlannedMuscularAugments(true);
         }
-
-        // Just take first level of upgrades for now
-        if (!isAllIn && numEvoChambers > 0 && hasPlannedEvoChamberUpgrades1) {
-            productionQueue.add(new PlannedItem(UpgradeType.Zerg_Melee_Attacks, currentPriority, false));
-            productionQueue.add(new PlannedItem(UpgradeType.Zerg_Missile_Attacks, currentPriority, false));
-            productionQueue.add(new PlannedItem(UpgradeType.Zerg_Carapace, currentPriority, false));
-            hasPlannedEvoChamberUpgrades1 = true;
+        if (techProgression.canPlanGroovedSpines() && numHydralisks > 10) {
+            productionQueue.add(new PlannedItem(UpgradeType.Grooved_Spines, currentPriority, false));
+            techProgression.setPlannedGroovedSpines(true);
         }
     }
 
@@ -518,12 +489,12 @@ public class ProductionManager {
             case Zerg_Drone:
                 return numHatcheries() > 0;
             case Zerg_Zergling:
-                return hasPlannedPool || techProgression.isSpawningPool();
+                return techProgression.isPlannedSpawningPool() || techProgression.isSpawningPool();
             case Zerg_Hydralisk:
-                return hasFourOrMoreDrones && (hasPlannedDen || techProgression.isHydraliskDen());
+                return hasFourOrMoreDrones && (techProgression.isPlannedDen() || techProgression.isHydraliskDen());
             case Zerg_Mutalisk:
             case Zerg_Scourge:
-                return hasFourOrMoreDrones && (hasPlannedSpire || techProgression.isSpire());
+                return hasFourOrMoreDrones && (techProgression.isPlannedSpire() || techProgression.isSpire());
             default:
                 return false;
         }
@@ -553,10 +524,10 @@ public class ProductionManager {
         TechProgression techProgression = gameState.getTechProgression();
         switch(upgradeType) {
             case Metabolic_Boost:
-                return hasPlannedPool || techProgression.isSpawningPool();
+                return techProgression.isSpawningPool();
             case Muscular_Augments:
             case Grooved_Spines:
-                return hasPlannedDen || techProgression.isHydraliskDen();
+                return techProgression.isHydraliskDen();
                 default:
                 return false;
         }
@@ -697,23 +668,22 @@ public class ProductionManager {
 
         TechProgression techProgression = this.gameState.getTechProgression();
 
-        // TODO: Move this to TechProgression
         switch(unitType) {
             case Zerg_Hydralisk_Den:
                 techProgression.setHydraliskDen(true);
-                hasPlannedDen = false;
+                techProgression.setPlannedDen(false);
                 break;
             case Zerg_Spawning_Pool:
                 techProgression.setSpawningPool(true);
-                hasPlannedPool = false;
+                techProgression.setPlannedSpawningPool(false);
                 break;
             case Zerg_Lair:
                 techProgression.setLair(true);
-                hasPlannedLair = false;
+                techProgression.setPlannedLair(false);
                 break;
             case Zerg_Spire:
                 techProgression.setSpire(true);
-                hasPlannedSpire = false;
+                techProgression.setPlannedSpire(false);
                 break;
         }
 
