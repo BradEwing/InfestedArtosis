@@ -32,7 +32,7 @@ public class Bot extends DefaultBWListener {
     private BWClient bwClient;
     private Game game;
 
-    private GameState gameState = new GameState();
+    private GameState gameState;
 
     // TODO: Can I implement these classes as listeners and register them here? Cleans up Bot class!
     private Debug debugMap;
@@ -45,6 +45,7 @@ public class Bot extends DefaultBWListener {
     public void onStart() {
         game = bwClient.getGame();
 
+        this.gameState = new GameState(game.self());
         // Load BWEM and analyze the map
         bwem = new BWEM(game);
         bwem.initialize();

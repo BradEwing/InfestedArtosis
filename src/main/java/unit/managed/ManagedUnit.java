@@ -81,6 +81,10 @@ public class ManagedUnit {
         return unitID == u.getUnitID();
     }
 
+    public void setPlan(PlannedItem plan) {
+        this.plannedItem = plan;
+    }
+
     public void execute() {
         debugRole();
 

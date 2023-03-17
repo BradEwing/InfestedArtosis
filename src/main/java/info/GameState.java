@@ -1,13 +1,14 @@
 package info;
 
+import bwapi.Player;
 import bwapi.Unit;
+import bwapi.UnitType;
 import bwem.Base;
 import lombok.AccessLevel;
 import lombok.Data;
 import lombok.Setter;
 import planner.PlannedItem;
 import strategy.openers.Opener;
-import strategy.strategies.Default;
 import strategy.strategies.Strategy;
 import strategy.strategies.UnitWeights;
 import unit.managed.ManagedUnit;
@@ -22,15 +23,21 @@ import java.util.HashSet;
  */
 @Data
 public class GameState {
+    private Player self;
+
     private int mineralWorkers;
     private int geyserWorkers;
     private int plannedSupply;
     private int larvaDeadlockDetectedFrame;
 
     private HashSet<ManagedUnit> gatherers = new HashSet<>();
+    private HashSet<ManagedUnit> mineralGatherers = new HashSet<>();
+    private HashSet<ManagedUnit> gasGatherers = new HashSet<>();
 
     private HashMap<Unit, HashSet<ManagedUnit>> geyserAssignments = new HashMap<>();
     private HashMap<Unit, HashSet<ManagedUnit>> mineralAssignments = new HashMap<>();
+
+    private HashSet<ManagedUnit> larva = new HashSet<>();
 
     private boolean enemyHasCloakedUnits = false;
     private boolean enemyHasHostileFlyers = false;
@@ -56,8 +63,11 @@ public class GameState {
 
     private TechProgression techProgression = new TechProgression();
 
-    public GameState() {
+    private ResourceCount resourceCount;
 
+    public GameState(Player self) {
+        this.self = self;
+        this.resourceCount = new ResourceCount(self);
     }
 
     public void setActiveStrategy(Strategy activeStrategy) {
@@ -67,5 +77,11 @@ public class GameState {
 
     public int numGatherers() {
         return gatherers.size();
+    }
+
+    public int numLarva() { return larva.size(); }
+
+    public int frameCanAffordUnit(UnitType unit, int currentFrame) {
+        return this.resourceCount.frameCanAffordUnit(unit, currentFrame, mineralGatherers.size(), gasGatherers.size());
     }
 }
