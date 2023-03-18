@@ -51,8 +51,8 @@ public class Debug {
     }
 
     private void drawUnitCount() {
-        int x = 256;
-        int y = 16;
+        int x = 4;
+        int y = 128;
         game.drawTextScreen(x, y, "Unit Count");
 
         UnitTypeCount unitTypeCount = gameState.getUnitTypeCount();

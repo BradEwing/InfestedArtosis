@@ -2,6 +2,7 @@ package unit;
 
 import bwapi.Game;
 import bwapi.Player;
+import bwapi.Position;
 import bwapi.Text;
 import bwapi.TilePosition;
 import bwapi.Unit;
@@ -32,9 +33,11 @@ public class WorkerManager {
 
     private HashSet<ManagedUnit> assignedManagedWorkers = new HashSet<>();
     private HashSet<ManagedUnit> gatherers;
-    private HashSet<ManagedUnit> mineralGatherers = new HashSet<>();
-    private HashSet<ManagedUnit> larva = new HashSet<>();
+    private HashSet<ManagedUnit> mineralGatherers;
+    private HashSet<ManagedUnit> gasGatherers;
+    private HashSet<ManagedUnit> larva;
     private HashSet<ManagedUnit> eggs = new HashSet<>();
+    private HashSet<ManagedUnit> scheduledDrones = new HashSet<>();
 
     // Overlord takes 16 frames to hatch from egg
     // Buffered w/ 10 additional frames
@@ -44,6 +47,9 @@ public class WorkerManager {
         this.game = game;
         this.gameState = gameState;
         this.gatherers = gameState.getGatherers();
+        this.larva = gameState.getLarva();
+        this.mineralGatherers = gameState.getMineralGatherers();
+        this.gasGatherers = gameState.getGasGatherers();
     }
 
     public void onFrame() {
@@ -51,6 +57,7 @@ public class WorkerManager {
         handleLarvaDeadlock();
 
         assignScheduledPlannedItems();
+        executeScheduledDrones();
     }
 
     public void onUnitComplete(ManagedUnit managedUnit) {
@@ -129,7 +136,7 @@ public class WorkerManager {
         }
 
         for (ManagedUnit managedUnit: mineralGatherers) {
-            if (newGeyserWorkers.size() >= 2) {
+            if (newGeyserWorkers.size() >= 3) {
                 break;
             }
             newGeyserWorkers.add(managedUnit);
@@ -190,6 +197,34 @@ public class WorkerManager {
         gameState.setPlansScheduled(scheduledPlans.stream().collect(Collectors.toCollection(HashSet::new)));
     }
 
+    // TODO: Consider acceleration, more complex paths
+    private int getTravelFrames(Unit unit, Position buildingPosition) {
+        Position unitPosition = unit.getPosition();
+        double distance = buildingPosition.getDistance(unitPosition);
+        double unitSpeed = unit.getType().topSpeed();
+
+        return (int)( distance / unitSpeed );
+    }
+
+    private void executeScheduledDrones() {
+        final int currentFrame = game.getFrameCount();
+        List<ManagedUnit> executed = new ArrayList<>();
+        for (ManagedUnit managedUnit: scheduledDrones) {
+            PlannedItem plan = managedUnit.getPlannedItem();
+            // TODO: Set build position for all scheduled build plans
+            int travelFrames = this.getTravelFrames(managedUnit.getUnit(), plan.getBuildPosition().toPosition());
+            if (currentFrame > plan.getPredictedReadyFrame() - travelFrames) {
+                plan.setState(PlanState.BUILDING);
+                managedUnit.setRole(UnitRole.BUILD);
+                executed.add(managedUnit);
+            }
+        }
+
+        for (ManagedUnit managedUnit: executed) {
+            scheduledDrones.remove(managedUnit);
+        }
+    }
+
     private void clearAssignments(ManagedUnit managedUnit) {
         if (assignedManagedWorkers.contains(managedUnit)) {
             for (HashSet<ManagedUnit> mineralWorkers: gameState.getMineralAssignments().values()) {
@@ -210,6 +245,7 @@ public class WorkerManager {
         larva.remove(managedUnit);
         gatherers.remove(managedUnit);
         mineralGatherers.remove(managedUnit);
+        gasGatherers.remove(managedUnit);
         assignedManagedWorkers.remove(managedUnit);
 
         for (HashSet<ManagedUnit> managedUnitAssignments: gameState.getGatherersAssignedToBase().values()) {
@@ -291,20 +327,31 @@ public class WorkerManager {
                 gameState.setGeyserWorkers(gameState.getGeyserWorkers()+1);
                 geyserUnits.add(managedUnit);
                 gatherers.add(managedUnit);
+                gasGatherers.add(managedUnit);
                 assignToClosestBase(geyser, managedUnit);
                 break;
             }
         }
     }
 
+    // TODO: Estimate current income and time for unit to reach build position.
+    // If expected income exceeds cost at arrival frame, assign drone
+    //
+
+    /**
+     * Assign a drone to the building plan if it's not carrying resources, not mining gas and not already assigned to a plan
+     * The unit will store a scheduled plan until it's time to execute
+     * @param plannedItem plan to build
+     * @return
+     */
     private boolean assignMorphDrone(PlannedItem plannedItem) {
         for (ManagedUnit managedUnit : assignedManagedWorkers) {
             Unit unit = managedUnit.getUnit();
-            if (unit.canBuild(plannedItem.getPlannedUnit()) && !gameState.getAssignedPlannedItems().containsKey(unit)) {
+            if (!unit.isCarrying() && !gasGatherers.contains(managedUnit) && !gameState.getAssignedPlannedItems().containsKey(unit)) {
                 clearAssignments(managedUnit);
-                plannedItem.setState(PlanState.BUILDING);
-                managedUnit.setRole(UnitRole.BUILD);
-                managedUnit.setPlannedItem(plannedItem);
+                // TODO: PlannedItem and UnitRole have a state change IN agent inside of manager
+                scheduledDrones.add(managedUnit);
+                managedUnit.setPlan(plannedItem);
                 gameState.getAssignedPlannedItems().put(unit, plannedItem);
                 return true;
             }
@@ -318,10 +365,10 @@ public class WorkerManager {
             Unit unit = managedUnit.getUnit();
             // If larva and not assigned, assign
             if (!gameState.getAssignedPlannedItems().containsKey(unit)) {
-                //clearAssignments(managedUnit);
+                clearAssignments(managedUnit);
                 plannedItem.setState(PlanState.BUILDING);
                 managedUnit.setRole(UnitRole.MORPH);
-                managedUnit.setPlannedItem(plannedItem);
+                managedUnit.setPlan(plannedItem);
                 gameState.getAssignedPlannedItems().put(unit, plannedItem);
                 return true;
             }
@@ -433,7 +480,7 @@ public class WorkerManager {
             // TODO: Handle cancelled items. Are they requeued?
             if (plannedItem != null) {
                 plannedItem.setState(PlanState.CANCELLED);
-                managedUnit.setPlannedItem(null);
+                managedUnit.setPlan(null);
             }
 
             gameState.getAssignedPlannedItems().remove(unit);

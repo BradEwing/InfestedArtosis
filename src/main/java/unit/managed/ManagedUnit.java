@@ -81,6 +81,10 @@ public class ManagedUnit {
         return unitID == u.getUnitID();
     }
 
+    public void setPlan(PlannedItem plan) {
+        this.plannedItem = plan;
+    }
+
     public void execute() {
         debugRole();
 
@@ -228,7 +232,7 @@ public class ManagedUnit {
             plannedItem.setBuildPosition(buildLocation);
         }
 
-        Position buildTarget = plannedItem.getBuildPosition().toPosition();
+        Position buildTarget = plannedItem.getBuildPosition().toPosition().add(new Position(4,4));
         if (unit.getDistance(buildTarget) > 150 || (!unit.isMoving() || unit.isGatheringMinerals())) {
             setUnready();
             unit.move(buildTarget);

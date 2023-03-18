@@ -21,6 +21,7 @@ public class PlannedItem {
     private int priority;
     private int frameStart;
     private int retries = 0;
+    private int predictedReadyFrame = 0;
 
     // Block other plannedItem types in the queue
     private boolean blockOtherPlans;
