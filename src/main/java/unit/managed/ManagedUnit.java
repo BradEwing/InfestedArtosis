@@ -232,7 +232,7 @@ public class ManagedUnit {
             plannedItem.setBuildPosition(buildLocation);
         }
 
-        Position buildTarget = plannedItem.getBuildPosition().toPosition();
+        Position buildTarget = plannedItem.getBuildPosition().toPosition().add(new Position(4,4));
         if (unit.getDistance(buildTarget) > 150 || (!unit.isMoving() || unit.isGatheringMinerals())) {
             setUnready();
             unit.move(buildTarget);
