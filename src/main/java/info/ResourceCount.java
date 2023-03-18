@@ -76,8 +76,8 @@ public class ResourceCount {
     public int frameCanAffordUnit(UnitType unit, int currentFrame, int mineralWorkers, int gasWorkers) {
         //if (this.canAffordUnit(unit)) { return currentFrame; }
 
-        final int mineralsNeeded = unit.mineralPrice() - reservedMinerals - self.minerals();
-        final int gasNeeded = unit.gasPrice() - reservedGas - self.gas();
+        final int mineralsNeeded = unit.mineralPrice() + reservedMinerals - self.minerals();
+        final int gasNeeded = unit.gasPrice() + reservedGas - self.gas();
 
         int framesToGather = 0;
         if (mineralsNeeded > 0) {
