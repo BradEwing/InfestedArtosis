@@ -21,6 +21,7 @@ public class ResourceCount {
     private Player self;
     private int reservedMinerals = 0;
     private int reservedGas = 0;
+    private int reservedLarva = 0;
 
     public ResourceCount(Player self) {
         this.self = self;
@@ -29,11 +30,16 @@ public class ResourceCount {
     public void reserveUnit(UnitType unit) {
         this.reservedMinerals += unit.mineralPrice();
         this.reservedGas += unit.gasPrice();
+
+        if (!unit.isBuilding()) {
+            reservedLarva += 1;
+        }
     }
 
     public void unreserveUnit(UnitType unit) {
         reservedMinerals -= unit.mineralPrice();
         reservedGas -= unit.gasPrice();
+        reservedLarva -= 1;
     }
 
     public boolean canAffordUnit(UnitType unit) {
@@ -98,7 +104,11 @@ public class ResourceCount {
         }
 
         // Buffer by 10 frames
-        return currentFrame + framesToGather + 10;
+        return currentFrame + framesToGather + 20;
+    }
+
+    public boolean canScheduleLarva(int currentLarva) {
+        return currentLarva >= reservedLarva;
     }
 
     public int frameCanAffordUpgrade() {

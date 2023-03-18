@@ -231,12 +231,6 @@ public class ProductionManager {
 
     // debug console messaging goes here
     private void debug() {
-        // Log every 100 frames
-        if (game.getFrameCount() % 100 == 0) {
-            //System.out.printf("Frame: %s, Reserved Minerals: %s, Planned Hatcheries: %s, Macro Hatcheries: %s, CurrentBases: %s" +
-            //                " isPlanning: [%s]\n",
-            //        game.getFrameCount(), reservedMinerals, plannedHatcheries, macroHatcheries.size(), baseLocations.size(), isPlanning);
-        }
         debugProductionQueue();
         debugInProgressQueue();
         debugScheduledPlannedItems();
@@ -265,7 +259,10 @@ public class ProductionManager {
     }
 
     private int expectedWorkers() {
-        return (5 + (bases.size() * 5)) + (gameState.getGeyserAssignments().size() * 3);
+        final int base = 5;
+        final int expectedMineralWorkers = bases.size() * 7;
+        final int expectedGasWorkers = gameState.getGeyserAssignments().size() * 3;
+        return base + expectedMineralWorkers + expectedGasWorkers;
     }
 
     private int numWorkers() {
@@ -575,7 +572,7 @@ public class ProductionManager {
                     }
                     break;
                 case UNIT:
-                    canSchedule = scheduleUnitItem(self, plannedItem);
+                    canSchedule = scheduleUnitItem(plannedItem);
                     if (!canSchedule) {
                         skipSchedule = true;
                     }
@@ -588,13 +585,13 @@ public class ProductionManager {
                     break;
             }
 
-            if (!canSchedule) {
+            if (canSchedule) {
+                scheduledPlans.add(plannedItem);
+            } else {
                 requeuePlannedItems.add(plannedItem);
                 if (plannedItem.isBlockOtherPlans()) {
                     break;
                 }
-            } else {
-                scheduledPlans.add(plannedItem);
             }
         }
 
@@ -725,14 +722,14 @@ public class ProductionManager {
         return true;
     }
 
-    private boolean scheduleUnitItem(Player self, PlannedItem plannedItem) {
+    private boolean scheduleUnitItem(PlannedItem plannedItem) {
         UnitType unit = plannedItem.getPlannedUnit();
         ResourceCount resourceCount = gameState.getResourceCount();
         if (resourceCount.canAffordUnit(unit)) {
             return false;
         }
 
-        if (gameState.numLarva() == 0) {
+        if (!resourceCount.canScheduleLarva(gameState.numLarva())) {
             return false;
         }
 

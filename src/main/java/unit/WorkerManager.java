@@ -157,30 +157,12 @@ public class WorkerManager {
         Collections.sort(scheduledPlans, new PlannedItemComparator());
         List<PlannedItem> assignedPlans = new ArrayList<>();
 
-        boolean blockMorphDroneAssignment = false;
-        boolean blockMorphLarvaAssignment = false;
         for (PlannedItem plannedItem: scheduledPlans) {
-            // Are we broken here?
-            if (blockMorphDroneAssignment && blockMorphLarvaAssignment) {
-                break;
-            }
             boolean didAssign = false;
             if (plannedItem.getType() == PlanType.BUILDING) {
-                if (blockMorphDroneAssignment) {
-                    continue;
-                }
                 didAssign = assignMorphDrone(plannedItem);
-                if (!didAssign) {
-                    blockMorphDroneAssignment = true;
-                }
             } else if (plannedItem.getType() == PlanType.UNIT) {
-                if (blockMorphLarvaAssignment) {
-                    continue;
-                }
                 didAssign = assignMorphLarva(plannedItem);
-                if (!didAssign) {
-                    blockMorphLarvaAssignment = true;
-                }
             }
 
             if (didAssign) {
