@@ -108,7 +108,7 @@ public class ResourceCount {
     }
 
     public boolean canScheduleLarva(int currentLarva) {
-        return currentLarva >= reservedLarva;
+        return currentLarva > reservedLarva;
     }
 
     public int frameCanAffordUpgrade() {
