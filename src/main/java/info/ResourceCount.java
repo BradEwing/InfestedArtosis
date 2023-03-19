@@ -39,7 +39,10 @@ public class ResourceCount {
     public void unreserveUnit(UnitType unit) {
         reservedMinerals -= unit.mineralPrice();
         reservedGas -= unit.gasPrice();
-        reservedLarva -= 1;
+
+        if (!unit.isBuilding()) {
+            reservedLarva -= 1;
+        }
     }
 
     public boolean canAffordUnit(UnitType unit) {
@@ -108,7 +111,7 @@ public class ResourceCount {
     }
 
     public boolean canScheduleLarva(int currentLarva) {
-        return currentLarva >= reservedLarva;
+        return currentLarva > reservedLarva;
     }
 
     public int frameCanAffordUpgrade() {
