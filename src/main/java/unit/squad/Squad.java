@@ -2,7 +2,6 @@ package unit.squad;
 
 import bwapi.Position;
 import lombok.Data;
-import planner.PlannedItem;
 import unit.managed.ManagedUnit;
 
 import java.util.HashSet;
@@ -17,7 +16,7 @@ import java.util.UUID;
  */
 public class Squad {
 
-    private String id = UUID.randomUUID().toString();
+    private final String id = UUID.randomUUID().toString();
 
     private HashSet<ManagedUnit> members = new HashSet<>();
 
@@ -30,13 +29,18 @@ public class Squad {
             return true;
         }
 
-        if (!(other instanceof PlannedItem)) {
+        if (!(other instanceof Squad)) {
             return false;
         }
 
         Squad s = (Squad) other;
 
-        return s.getId() == this.getId();
+        return this.id.equals(s.getId());
+    }
+
+    @Override
+    public int hashCode() {
+        return this.id.hashCode();
     }
 
     public int distance (Squad other) {
