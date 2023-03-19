@@ -23,7 +23,7 @@ public class ManagedUnit {
     private static int LOCK_ENEMY_WITHIN_DISTANCE = 25;
     private Game game;
 
-    private int unitID; // debug
+    private final int unitID; // debug
     private Unit unit;
     private UnitRole role;
     private UnitType unitType;
@@ -79,6 +79,11 @@ public class ManagedUnit {
         ManagedUnit u = (ManagedUnit) o;
 
         return unitID == u.getUnitID();
+    }
+
+    @Override
+    public int hashCode() {
+        return this.unitID;
     }
 
     public void setPlan(PlannedItem plan) {

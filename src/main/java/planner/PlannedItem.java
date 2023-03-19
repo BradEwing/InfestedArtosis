@@ -12,7 +12,7 @@ import java.util.UUID;
 // TODO: Refactor with type reflection?
 @Data
 public class PlannedItem {
-    private String uuid = UUID.randomUUID().toString();
+    private final String uuid = UUID.randomUUID().toString();
 
     private PlanType type;
     private PlanState state = PlanState.PLANNED;
@@ -69,9 +69,13 @@ public class PlannedItem {
 
         PlannedItem u = (PlannedItem) o;
 
-        return uuid == u.getUuid();
+        return this.uuid.equals(u.getUuid());
     }
-    
+
+    @Override
+    public int hashCode() {
+        return this.uuid.hashCode();
+    }
 
     public String getName() {
         if (plannedUpgrade != null) {
