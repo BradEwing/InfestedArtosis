@@ -40,8 +40,6 @@ public class ProductionManager {
     private static int BASE_MINERAL_DISTANCE = 300;
 
     private Game game;
-    private BWEM bwem; // TODO: This seems like a code smell?
-    private Base mainBase; // TODO: Populate/track from info manager
 
     private GameState gameState;
 
@@ -63,15 +61,10 @@ public class ProductionManager {
     private int plannedHatcheries = 1; // Start with 1 because we decrement with initial hatch
     private int plannedWorkers = 0;
 
-    private HashSet<Unit> bases = new HashSet<>();
-    private HashSet<Base> baseLocations = new HashSet<>();
-    private HashSet<Unit> macroHatcheries = new HashSet<>();
-
     private PriorityQueue<PlannedItem> productionQueue = new PriorityQueue<>(new PlannedItemComparator());
 
-    public ProductionManager(Game game, BWEM bwem, GameState gameState, List<PlannedItem> initialBuildOrder) {
+    public ProductionManager(Game game, GameState gameState, List<PlannedItem> initialBuildOrder) {
         this.game = game;
-        this.bwem = bwem;
         this.gameState = gameState;
 
         Unit initialHatch = null;
@@ -179,45 +172,6 @@ public class ProductionManager {
         }
     }
 
-    // TODO: refactor
-    // Method to add hatchery and surrounding mineral patches to internal data structures
-    private void buildBase(Unit hatchery) {
-        bases.add(hatchery);
-        List<Base> bases = bwem.getMap().getBases();
-        Base newBase = closestBaseToUnit(hatchery, bases);
-        //baseLocations.add(newBase);
-
-        for (Mineral mineral: newBase.getMinerals()) {
-            gameState.getMineralAssignments().put(mineral.getUnit(), new HashSet<>());
-        }
-    }
-
-    // TODO: Refactor
-    private Base findNewBase() {
-        Base closestUnoccupiedBase = null;
-        double closestDistance = Double.MAX_VALUE;
-        for (Base b : bwem.getMap().getBases()) {
-            if (baseLocations.contains(b)) {
-                continue;
-            }
-
-            double distance = mainBase.getLocation().getDistance(b.getLocation());
-
-            if (distance < closestDistance) {
-                closestUnoccupiedBase = b;
-                closestDistance = distance;
-            }
-        }
-
-        return closestUnoccupiedBase;
-    }
-
-    private void addBaseToGameState(Base base) {
-        HashMap<Base, HashSet<ManagedUnit>> gatherToBaseAssignments = this.gameState.getGatherersAssignedToBase();
-        gatherToBaseAssignments.put(base, new HashSet<>());
-        baseLocations.add(base);
-    }
-
     private void planBase() {
         Base base = findNewBase();
         // all possible bases are taken!
@@ -277,7 +231,7 @@ public class ProductionManager {
         // Always allow hatch to enter queue even if we're at max size (means we are throttled on bandwith)
 
         // 2 Types of Hatch:
-        // Base Hatch - Setup resources to assign workers, add to base data
+        // BaseData Hatch - Setup resources to assign workers, add to base data
         // Macro Hatch - Take a macro hatch every other time
         // Limit to 3 plannedHatch to prevent queue deadlock
         if (!isAllIn && (canAffordHatch() || (isNearMaxExpectedWorkers() && canAffordHatchSaturation())) && plannedHatcheries < 3) {
@@ -434,7 +388,7 @@ public class ProductionManager {
         planSupply(self);
 
         /** For now, only subject unit production to queue size */
-        // Base queue size is 3, increases per hatch
+        // BaseData queue size is 3, increases per hatch
         if (productionQueue.size() >= 3) {
             return;
         }
@@ -683,7 +637,7 @@ public class ProductionManager {
         gameState.getAssignedPlannedItems().remove(unit);
     }
 
-    // TODO: Handle in BuildingManager (ManagedUnits that are buildings. ManagedBuilding?)
+    // TODO: Handle in BaseManager (ManagedUnits that are buildings. ManagedBuilding?)
     private boolean buildUpgrade(Unit unit, PlannedItem plannedItem) {
         final UpgradeType upgradeType = plannedItem.getPlannedUpgrade();
         if (game.canUpgrade(upgradeType, unit)) {
@@ -798,20 +752,6 @@ public class ProductionManager {
                 plannedHatcheries = 0;
             }
         }
-    }
-
-    private Base closestBaseToUnit(Unit unit, List<Base> baseList) {
-        Base closestBase = null;
-        int closestDistance = Integer.MAX_VALUE;
-        for (Base b : baseList) {
-            int distance = unit.getDistance(b.getLocation().toPosition());
-            if (distance < closestDistance) {
-                closestBase = b;
-                closestDistance = distance;
-            }
-        }
-
-        return closestBase;
     }
 
     // TODO: Should there be special logic here for handling the drones?

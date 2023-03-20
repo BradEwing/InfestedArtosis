@@ -250,7 +250,7 @@ public class UnitManager {
             return;
         }
 
-        // TODO: BuildingManager
+        // TODO: BaseManager
         //   - Static D
         if (managedUnitLookup.containsKey(unit) && unit.getType().isBuilding()) {
             removeManagedUnit(unit);

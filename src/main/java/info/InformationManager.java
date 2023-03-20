@@ -10,14 +10,11 @@ import bwapi.UnitType;
 import bwem.BWEM;
 import bwem.Base;
 
-import lombok.Data;
-
 import map.TileComparator;
 import map.TileInfo;
 import map.TileType;
 import planner.PlanType;
 import planner.PlannedItem;
-import strategy.strategies.Mutalisk;
 import strategy.strategies.UnitWeights;
 
 import java.util.ArrayList;
@@ -25,13 +22,10 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
-import java.util.Random;
 import java.util.Set;
 import java.util.stream.Collectors;
 
 
-@Data
 public class InformationManager {
     private BWEM bwem;
     private Game game;
@@ -212,7 +206,6 @@ public class InformationManager {
 
     /**
      * Update GameState's tech progression to prevent strategy and production from considering given tech.
-     * TODO: ProductionManager resets queue on tech regression
      *
      * @param unitType tech building
      */
@@ -298,24 +291,6 @@ public class InformationManager {
         }
 
         return false;
-    }
-
-    private void debugEnemyLocations() {
-
-        /*
-        System.out.printf("Enemy Units: [");
-        for (Unit enemyUnit: enemyUnits) {
-            System.out.printf("%s, ", enemyUnit.getType());
-        }
-        System.out.printf("]\n");
-
-        System.out.printf("Enemy Buildings: [");
-        for (Unit building: enemyBuildings) {
-            System.out.printf("%s, ", building.getType());
-        }
-        System.out.printf("]\n");
-
-         */
     }
 
     public void setActiveScoutTarget(TilePosition target) {
@@ -658,10 +633,6 @@ public class InformationManager {
     }
 
     private void debugEnemyTargets() {
-        if (game.getFrameCount() % 100 == 0) {
-            debugEnemyLocations();
-            //System.out.printf("Enemy base: [%s]\n", mainEnemyBase);
-        }
         for (Unit target: enemyBuildings) {
             game.drawCircleMap(target.getPosition(), 3, Color.Yellow);
         }

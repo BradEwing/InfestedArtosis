@@ -4,6 +4,7 @@ import bwapi.Player;
 import bwapi.Unit;
 import bwapi.UnitType;
 import bwem.Base;
+import bwem.Mineral;
 import lombok.AccessLevel;
 import lombok.Data;
 import lombok.Setter;
@@ -65,9 +66,12 @@ public class GameState {
 
     private ResourceCount resourceCount;
 
+    private BaseData buildingData;
+
     public GameState(Player self) {
         this.self = self;
         this.resourceCount = new ResourceCount(self);
+        this.buildingData = new BaseData();
     }
 
     public void setActiveStrategy(Strategy activeStrategy) {
@@ -83,5 +87,19 @@ public class GameState {
 
     public int frameCanAffordUnit(UnitType unit, int currentFrame) {
         return this.resourceCount.frameCanAffordUnit(unit, currentFrame, mineralGatherers.size(), gasGatherers.size());
+    }
+
+    public void addBaseToGameState(Base base) {
+        gatherersAssignedToBase.put(base, new HashSet<>());
+        this.buildingData.addBase(base);
+
+        for (Mineral mineral: base.getMinerals()) {
+            mineralAssignments.put(mineral.getUnit(), new HashSet<>());
+        }
+    }
+
+    public void addMainBase(Base base) {
+        this.buildingData.initializeMainBase(base);
+        addBaseToGameState(base);
     }
 }
