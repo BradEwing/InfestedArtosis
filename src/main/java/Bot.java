@@ -45,10 +45,11 @@ public class Bot extends DefaultBWListener {
     public void onStart() {
         game = bwClient.getGame();
 
-        this.gameState = new GameState(game.self());
         // Load BWEM and analyze the map
         bwem = new BWEM(game);
         bwem.initialize();
+
+        this.gameState = new GameState(game.self(), bwem);
 
         learningManager = new LearningManager(game.enemy().getRace().toString(), game.enemy().getName(), bwem);
         Opener opener = learningManager.getDeterminedOpener();
@@ -58,7 +59,7 @@ public class Bot extends DefaultBWListener {
         OpponentRecord opponentRecord = learningManager.getOpponentRecord();
         informationManager = new InformationManager(bwem, game, gameState);
         debugMap = new Debug(bwem, game, opener, opponentRecord, gameState);
-        economyModule = new ProductionManager(game, bwem, gameState, opener.getBuildOrder()); // TODO: reverse
+        economyModule = new ProductionManager(game, gameState, opener.getBuildOrder()); // TODO: reverse
         unitManager = new UnitManager(game, informationManager, bwem, gameState);
     }
 

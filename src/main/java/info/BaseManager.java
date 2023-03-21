@@ -43,7 +43,13 @@ public class BaseManager {
 
         List<Base> allBases = bwem.getMap().getBases();
         Base mainBase = closestBaseToUnit(initialHatch, allBases);
-        gameState.addMainBase(mainBase);
+        gameState.addMainBase(initialHatch, mainBase);
+    }
+
+    public void onUnitDestroy(Unit unit) {
+        if (unit.getType() == UnitType.Zerg_Hatchery) {
+            gameState.removeHatchery(unit);
+        }
     }
 
     private Base closestBaseToUnit(Unit unit, List<Base> baseList) {

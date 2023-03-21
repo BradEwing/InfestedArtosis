@@ -1,6 +1,5 @@
 package macro;
 
-import bwapi.Color;
 import bwapi.Game;
 import bwapi.Player;
 import bwapi.Text;
@@ -8,9 +7,8 @@ import bwapi.Unit;
 import bwapi.UnitType;
 import bwapi.UpgradeType;
 
-import bwem.BWEM;
 import bwem.Base;
-import bwem.Mineral;
+import info.BaseData;
 import info.GameState;
 import info.ResourceCount;
 import info.TechProgression;
@@ -20,7 +18,6 @@ import planner.PlanType;
 import planner.PlannedItem;
 import planner.PlannedItemComparator;
 import strategy.strategies.UnitWeights;
-import unit.managed.ManagedUnit;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -36,8 +33,6 @@ import java.util.stream.Collectors;
 // STRATEGY -> BUILD ORDER (QUEUE) -> BUILD / ECONOMY MANAGEMENT (rebalance workers) (this file should eventually only be final step)
 //
 public class ProductionManager {
-
-    private static int BASE_MINERAL_DISTANCE = 300;
 
     private Game game;
 
@@ -67,29 +62,10 @@ public class ProductionManager {
         this.game = game;
         this.gameState = gameState;
 
-        Unit initialHatch = null;
+        init(initialBuildOrder);
+    }
 
-        // For now, let's iterate through twice. There are barely any units initialized
-        for (Unit unit: game.getAllUnits()) {
-            // Don't count opponent hatch in ZvZ
-            if (game.self() != unit.getPlayer()) {
-                continue;
-            }
-
-            if (unit.getType() == UnitType.Zerg_Hatchery) {
-                buildBase(unit);
-                initialHatch = unit;
-            }
-        }
-
-        List<Base> allBases = bwem.getMap().getBases();
-        this.mainBase = closestBaseToUnit(initialHatch, allBases);
-        addBaseToGameState(mainBase);
-
-        HashMap<Base, HashSet<ManagedUnit>> gatherToBaseAssignments = this.gameState.getGatherersAssignedToBase();
-        gatherToBaseAssignments.put(mainBase, new HashSet<>());
-
-        // TODO: extract to own function? assign all buildings in priority queue a location
+    private void init(List<PlannedItem> initialBuildOrder) {
         for (PlannedItem plannedItem: initialBuildOrder) {
             if (plannedItem.getPlannedUnit() != null && plannedItem.getPlannedUnit() == UnitType.Zerg_Extractor) {
                 this.numExtractors += 1;
@@ -97,9 +73,8 @@ public class ProductionManager {
 
             // TODO: be able to decide between base hatch and macro hatch
             if (plannedItem.getPlannedUnit() != null && plannedItem.getPlannedUnit() == UnitType.Zerg_Hatchery) {
-                Base base = findNewBase();
+                Base base = gameState.reserveBase();
                 plannedItem.setBuildPosition(base.getLocation());
-                addBaseToGameState(base);
             }
 
             if (plannedItem.getPlannedUnit() != null && plannedItem.getPlannedUnit() == UnitType.Zerg_Drone) {
@@ -109,7 +84,7 @@ public class ProductionManager {
             if (plannedItem.getType() == PlanType.UPGRADE) {
                 if (plannedItem.getPlannedUpgrade() == UpgradeType.Metabolic_Boost) {
                     TechProgression techProgression = gameState.getTechProgression();
-                    techProgression.setMetabolicBoost(true);
+                    techProgression.setPlannedMetabolicBoost(true);
                 }
             }
 
@@ -173,14 +148,13 @@ public class ProductionManager {
     }
 
     private void planBase() {
-        Base base = findNewBase();
+        Base base = gameState.reserveBase();
         // all possible bases are taken!
         if (base == null) {
             return;
         }
 
         productionQueue.add(new PlannedItem(UnitType.Zerg_Hatchery, currentFrame, true, true, base.getLocation()));
-        addBaseToGameState(base);
     }
 
     // debug console messaging goes here
@@ -206,15 +180,11 @@ public class ProductionManager {
                 assignUnit(u);
             }
         }
-
-        for (Unit u: bases) {
-            game.drawCircleMap(u.getPosition(), BASE_MINERAL_DISTANCE, Color.Teal);
-        }
     }
 
     private int expectedWorkers() {
         final int base = 5;
-        final int expectedMineralWorkers = bases.size() * 7;
+        final int expectedMineralWorkers = gameState.getBaseData().currentBaseCount() * 7;
         final int expectedGasWorkers = gameState.getGeyserAssignments().size() * 3;
         return base + expectedMineralWorkers + expectedGasWorkers;
     }
@@ -222,9 +192,6 @@ public class ProductionManager {
     private int numWorkers() {
         return gameState.getMineralWorkers() + gameState.getGeyserWorkers();
     }
-
-    // TODO: Handle elsewhere
-    private int numHatcheries() { return baseLocations.size() + macroHatcheries.size(); }
 
     private void planBuildings(Player self, Boolean isAllIn) {
         // Allow buildings to arbitrary queue size
@@ -236,7 +203,8 @@ public class ProductionManager {
         // Limit to 3 plannedHatch to prevent queue deadlock
         if (!isAllIn && (canAffordHatch() || (isNearMaxExpectedWorkers() && canAffordHatchSaturation())) && plannedHatcheries < 3) {
             plannedHatcheries += 1;
-            if ((numHatcheries() % 2) != 0) {
+            final int numHatcheries = gameState.getBaseData().numHatcheries();
+            if ((numHatcheries % 2) != 0) {
                 planBase();
             } else {
                 productionQueue.add(new PlannedItem(UnitType.Zerg_Hatchery, currentFrame / 3, true, true));
@@ -246,7 +214,7 @@ public class ProductionManager {
         // One extractor per base
         //  - Not always true, some bases are mineral only. Some maps have double gas.
         // TODO: account for bases with no gas or 2 gas
-        if (!isAllIn && numExtractors < bases.size() && numExtractors < targetExtractors) {
+        if (!isAllIn && numExtractors < gameState.getBaseData().currentBaseCount() && numExtractors < targetExtractors) {
             numExtractors += 1;
             productionQueue.add(new PlannedItem(UnitType.Zerg_Extractor, currentFrame, true, false));
         }
@@ -397,7 +365,8 @@ public class ProductionManager {
     }
 
     private boolean canAffordHatchSaturation() {
-        return ((numHatcheries() + plannedHatcheries) * 7) <= gameState.getMineralWorkers();
+        final int numHatcheries = gameState.getBaseData().numHatcheries();
+        return ((numHatcheries + plannedHatcheries) * 7) <= gameState.getMineralWorkers();
     }
 
     private boolean canAffordHatch() {
@@ -431,10 +400,12 @@ public class ProductionManager {
         TechProgression techProgression = gameState.getTechProgression();
 
         final boolean hasFourOrMoreDrones = gameState.numGatherers() > 3;
+        final int numHatcheries = gameState.getBaseData().numHatcheries();
+
         switch(unitType) {
             case Zerg_Overlord:
             case Zerg_Drone:
-                return numHatcheries() > 0;
+                return numHatcheries > 0;
             case Zerg_Zergling:
                 return techProgression.isPlannedSpawningPool() || techProgression.isSpawningPool();
             case Zerg_Hydralisk:
@@ -449,17 +420,18 @@ public class ProductionManager {
 
     private boolean canScheduleBuilding(UnitType unitType) {
         TechProgression techProgression = gameState.getTechProgression();
+        final int numHatcheries = gameState.getBaseData().numHatcheries();
         switch(unitType) {
             case Zerg_Hatchery:
             case Zerg_Extractor:
             case Zerg_Creep_Colony:
                 return true;
             case Zerg_Spawning_Pool:
-                return numHatcheries() > 0;
+                return numHatcheries > 0;
             case Zerg_Hydralisk_Den:
                 return techProgression.isSpawningPool();
             case Zerg_Lair:
-                return numHatcheries() > 0 && techProgression.isSpawningPool();
+                return numHatcheries > 0 && techProgression.isSpawningPool();
             case Zerg_Spire:
                 return techProgression.isLair();
             default:
@@ -666,7 +638,7 @@ public class ProductionManager {
 
         // TODO: Assign building location from building location planner
         if (plannedItem.getBuildPosition() == null) {
-            plannedItem.setBuildPosition(game.getBuildLocation(building, mainBase.getLocation(), 128, true));
+            plannedItem.setBuildPosition(game.getBuildLocation(building, gameState.getBaseData().mainBasePosition(), 128, true));
         }
 
         scheduledBuildings += 1;
@@ -740,10 +712,11 @@ public class ProductionManager {
 
         if (unitType == UnitType.Zerg_Hatchery) {
             // Account for macro hatch
-            if (closestBaseToUnit(unit, bwem.getMap().getBases()).getLocation().getDistance(unit.getTilePosition()) < 1) {
-                buildBase(unit);
+            BaseData baseData = gameState.getBaseData();
+            if (baseData.isBaseTilePosition(unit.getTilePosition())) {
+                gameState.claimBase(unit);
             } else {
-                macroHatcheries.add(unit);
+                gameState.addMacroHatchery(unit);
             }
 
             plannedHatcheries -= 1;
@@ -812,11 +785,6 @@ public class ProductionManager {
      */
     // TODO: COMPLETE vs Requeue logic
     private void clearAssignments(Unit unit) {
-        if (bases.contains(unit)) {
-            bases.remove(unit);
-        }
-
-
         // Requeue PlannedItems
         // Put item back onto the queue with greater importance
         if (gameState.getAssignedPlannedItems().containsKey(unit)) {

@@ -2,6 +2,7 @@ import bwapi.Color;
 import bwapi.Game;
 import bwapi.Position;
 import bwapi.Text;
+import bwapi.Unit;
 import bwapi.UnitType;
 import bwem.BWEM;
 import bwem.Base;
@@ -14,8 +15,10 @@ import strategy.openers.Opener;
 
 import java.util.Map;
 
-// TODO: Move into map dir
 public class Debug {
+
+    private static int BASE_MINERAL_DISTANCE = 300;
+
     private BWEM bwem;
     private Game game;
 
@@ -48,6 +51,7 @@ public class Debug {
         game.drawTextScreen(4, 40, "Frame: " + game.getFrameCount());
 
         drawUnitCount();
+        drawBases();
     }
 
     private void drawUnitCount() {
@@ -59,6 +63,12 @@ public class Debug {
         for (Map.Entry<UnitType, Integer> entry: unitTypeCount.getCountLookup().entrySet()) {
             y += 8;
             game.drawTextScreen(x, y, entry.getKey().toString() + ": " + entry.getValue().toString());
+        }
+    }
+
+    private void drawBases() {
+        for (Unit u: gameState.getBaseData().baseHatcheries()) {
+            game.drawCircleMap(u.getPosition(), BASE_MINERAL_DISTANCE, Color.Teal);
         }
     }
 

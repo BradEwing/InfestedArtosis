@@ -32,11 +32,14 @@ public class InformationManager {
 
     private GameState gameState;
 
+    private BaseManager baseManager;
+
     private HashSet<TilePosition> scoutTargets = new HashSet<>(); // TODO: Better data type to store and track this data
     private HashSet<TilePosition> activeScoutTargets = new HashSet<>();
 
     private ArrayList<TileInfo> scoutHeatMap = new ArrayList<>();
 
+    // TODO: Move to GameState
     private HashSet<Base> startingBasesSet = new HashSet<>();
     private HashSet<Base> expansionBasesSet = new HashSet<>();
     private HashSet<TilePosition> startingBasesTilePositions = new HashSet<>();
@@ -59,6 +62,7 @@ public class InformationManager {
         this.bwem = bwem;
         this.game = game;
         this.gameState = gameState;
+        this.baseManager = new BaseManager(bwem, game, gameState);
 
         initBases();
         initializeHeatMap();
@@ -252,8 +256,8 @@ public class InformationManager {
         ensureEnemyUnitRemovedFromBaseThreats(unit);
 
         if (unit.getPlayer() == game.self()) {
+            baseManager.onUnitDestroy(unit);
             updateTechOnDestroy(unitType);
-
             UnitTypeCount unitCount = gameState.getUnitTypeCount();
             unitCount.removeUnit(unitType);
         }
@@ -303,7 +307,6 @@ public class InformationManager {
     }
 
     public TilePosition pollScoutTarget(boolean allowDuplicateScoutTarget) {
-        HashSet<TilePosition> enemyBuildingPositions = getEnemyBuildingPositions();
         // Walk through
         if (mainEnemyBase == null && enemyBuildingPositions.size() == 0) {
             Base baseTarget = fetchBaseRoundRobin(baseScoutAssignments.keySet());
@@ -317,12 +320,11 @@ public class InformationManager {
 
         if (enemyBuildingPositions.size() > 0) {
             for (TilePosition target: enemyBuildingPositions) {
-                if (!getScoutTargets().contains(target) || allowDuplicateScoutTarget) {
+                if (!scoutTargets.contains(target) || allowDuplicateScoutTarget) {
                     return target;
                 }
             }
         }
-        HashSet<TilePosition> scoutTargets = getScoutTargets();
 
         if (scoutHeatMap.size() > 0) {
             TileInfo scoutTile = scoutHeatMap.get(0);
@@ -331,12 +333,24 @@ public class InformationManager {
         }
 
         for (TilePosition target: scoutTargets) {
-            if (!getActiveScoutTargets().contains(target)) {
+            if (!activeScoutTargets.contains(target)) {
                 return target;
             }
         }
 
         return null;
+    }
+
+    public HashSet<Unit> getEnemyBuildings() {
+        return enemyBuildings;
+    }
+
+    public HashSet<Unit> getVisibleEnemyUnits() {
+        return visibleEnemyUnits;
+    }
+
+    public HashSet<TilePosition> getActiveScoutTargets() {
+        return activeScoutTargets;
     }
 
     // TODO: Remove in favour of onUnitShow/onUnitHide hooks

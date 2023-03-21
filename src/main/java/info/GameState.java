@@ -3,6 +3,7 @@ package info;
 import bwapi.Player;
 import bwapi.Unit;
 import bwapi.UnitType;
+import bwem.BWEM;
 import bwem.Base;
 import bwem.Mineral;
 import lombok.AccessLevel;
@@ -25,6 +26,7 @@ import java.util.HashSet;
 @Data
 public class GameState {
     private Player self;
+    private BWEM bwem;
 
     private int mineralWorkers;
     private int geyserWorkers;
@@ -66,12 +68,13 @@ public class GameState {
 
     private ResourceCount resourceCount;
 
-    private BaseData buildingData;
+    private BaseData baseData;
 
-    public GameState(Player self) {
+    public GameState(Player self, BWEM bwem) {
         this.self = self;
+        this.bwem = bwem;
         this.resourceCount = new ResourceCount(self);
-        this.buildingData = new BaseData();
+        this.baseData = new BaseData(bwem.getMap().getBases());
     }
 
     public void setActiveStrategy(Strategy activeStrategy) {
@@ -89,17 +92,43 @@ public class GameState {
         return this.resourceCount.frameCanAffordUnit(unit, currentFrame, mineralGatherers.size(), gasGatherers.size());
     }
 
-    public void addBaseToGameState(Base base) {
+    public Base reserveBase() {
+        final Base newBase = baseData.findNewBase();
+        return newBase;
+    }
+
+    public Base claimBase(Unit hatchery) {
+        final Base newBase = baseData.findNewBase();
+        addBaseToGameState(hatchery, newBase);
+        return newBase;
+    }
+
+    public void addBaseToGameState(Unit hatchery, Base base) {
         gatherersAssignedToBase.put(base, new HashSet<>());
-        this.buildingData.addBase(base);
+        this.baseData.addBase(hatchery, base);
 
         for (Mineral mineral: base.getMinerals()) {
             mineralAssignments.put(mineral.getUnit(), new HashSet<>());
         }
     }
 
-    public void addMainBase(Base base) {
-        this.buildingData.initializeMainBase(base);
-        addBaseToGameState(base);
+    public void addMainBase(Unit hatchery, Base base) {
+        this.baseData.initializeMainBase(base);
+        addBaseToGameState(hatchery, base);
+    }
+
+    public void addMacroHatchery(Unit hatchery) {
+        this.baseData.addMacroHatchery(hatchery);
+    }
+
+    // TODO: Refactor base lookups into baseData?
+    // TODO: Reassign gatherers
+    public void removeHatchery(Unit hatchery) {
+        if (this.baseData.isBase(hatchery)) {
+            Base base = this.baseData.get(hatchery);
+            gatherersAssignedToBase.remove(base);
+            baseToThreatLookup.remove(base);
+        }
+        this.baseData.removeHatchery(hatchery);
     }
 }
