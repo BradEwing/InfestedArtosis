@@ -48,7 +48,7 @@ public class BaseData {
     }
 
     public boolean isBase(Unit hatchery) {
-        return myBases.contains(hatchery);
+        return baseHatcheries.contains(hatchery);
     }
 
     public void addMacroHatchery(Unit hatchery) {

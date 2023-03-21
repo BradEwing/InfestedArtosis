@@ -97,10 +97,12 @@ public class GameState {
         return newBase;
     }
 
-    public Base claimBase(Unit hatchery) {
+    public void claimBase(Unit hatchery) {
+        if (this.baseData.isBase(hatchery)) {
+            return;
+        }
         final Base newBase = baseData.findNewBase();
         addBaseToGameState(hatchery, newBase);
-        return newBase;
     }
 
     public void addBaseToGameState(Unit hatchery, Base base) {
