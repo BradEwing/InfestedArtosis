@@ -1,4 +1,4 @@
-package map;
+package info.map;
 
 public enum TileType {
     BASE_START,

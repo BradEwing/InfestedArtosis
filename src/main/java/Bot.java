@@ -24,7 +24,7 @@ import unit.UnitManager;
  * - * Potentially refactor scouting code into unit manager
  * - * Define role enums
  * - Smarter scouting:
- * - * Only sweep map if we don't know where any enemies are
+ * - * Only sweep info.map if we don't know where any enemies are
  * - * Avoid enemies that are attacking us
  */
 public class Bot extends DefaultBWListener {
@@ -45,7 +45,7 @@ public class Bot extends DefaultBWListener {
     public void onStart() {
         game = bwClient.getGame();
 
-        // Load BWEM and analyze the map
+        // Load BWEM and analyze the info.map
         bwem = new BWEM(game);
         bwem.initialize();
 

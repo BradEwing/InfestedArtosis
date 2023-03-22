@@ -1,4 +1,4 @@
-package map;
+package info.map;
 
 import bwapi.TilePosition;
 

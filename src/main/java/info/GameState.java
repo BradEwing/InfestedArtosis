@@ -6,6 +6,7 @@ import bwapi.UnitType;
 import bwem.BWEM;
 import bwem.Base;
 import bwem.Mineral;
+import info.map.GameMap;
 import lombok.AccessLevel;
 import lombok.Data;
 import lombok.Setter;
@@ -69,6 +70,9 @@ public class GameState {
     private ResourceCount resourceCount;
 
     private BaseData baseData;
+
+    // Initialized in InformationManager
+    private GameMap gameMap;
 
     public GameState(Player self, BWEM bwem) {
         this.self = self;

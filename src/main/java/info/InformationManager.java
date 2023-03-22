@@ -10,9 +10,10 @@ import bwapi.UnitType;
 import bwem.BWEM;
 import bwem.Base;
 
-import map.TileComparator;
-import map.TileInfo;
-import map.TileType;
+import info.map.GameMap;
+import info.map.TileComparator;
+import info.map.TileInfo;
+import info.map.TileType;
 import planner.PlanType;
 import planner.PlannedItem;
 import strategy.strategies.UnitWeights;
@@ -36,8 +37,6 @@ public class InformationManager {
 
     private HashSet<TilePosition> scoutTargets = new HashSet<>(); // TODO: Better data type to store and track this data
     private HashSet<TilePosition> activeScoutTargets = new HashSet<>();
-
-    private ArrayList<TileInfo> scoutHeatMap = new ArrayList<>();
 
     // TODO: Move to GameState
     private HashSet<Base> startingBasesSet = new HashSet<>();
@@ -65,7 +64,7 @@ public class InformationManager {
         this.baseManager = new BaseManager(bwem, game, gameState);
 
         initBases();
-        initializeHeatMap();
+        initializeGameMap();
     }
 
     public void onFrame() {
@@ -301,7 +300,7 @@ public class InformationManager {
         ensureScoutTargets();
 
         // TODO(bug): Sort
-        // The heat map is sorted every frame, but we grab several items and put them into scoutTargets
+        // The heat info.map is sorted every frame, but we grab several items and put them into scoutTargets
         scoutTargets.remove(target);
         activeScoutTargets.add(target);
     }
@@ -326,8 +325,11 @@ public class InformationManager {
             }
         }
 
-        if (scoutHeatMap.size() > 0) {
-            TileInfo scoutTile = scoutHeatMap.get(0);
+        ArrayList<TileInfo> heatMap = gameState.getGameMap().getHeapMap();
+
+        GameMap gameMap = gameState.getGameMap();
+        if (gameMap.getHeapMap().size() > 0) {
+            TileInfo scoutTile = gameMap.getHeapMap().get(0);
             scoutTile.setImportance(0);
             return scoutTile.getTile();
         }
@@ -532,11 +534,11 @@ public class InformationManager {
 
     }
 
-    // Iterate through heat map and assign all tiles
+    // Iterate through heat info.map and assign all tiles
     private void assignNewScoutTargets() {
         // Round robin assign SCOUTs to bases
         int curImportance = 0;
-        for (TileInfo tileInfo : scoutHeatMap) {
+        for (TileInfo tileInfo : gameState.getGameMap().getHeapMap()) {
             TilePosition tile = tileInfo.getTile();
             int importance = tileInfo.getImportance();
             if (curImportance == 0) {
@@ -583,7 +585,7 @@ public class InformationManager {
         }
     }
 
-    private void initializeHeatMap() {
+    private void initializeGameMap() {
         HashSet<TilePosition> startingPositions = new HashSet<>();
         HashSet<TilePosition> expansionPositions = new HashSet<>();
 
@@ -591,9 +593,11 @@ public class InformationManager {
         startingBasesSet.stream().map(base -> base.getLocation()).forEach(startingPositions::add);
         expansionBasesSet.stream().map(base -> base.getLocation()).forEach(expansionPositions::add);
 
-        for (int i = 0; i< game.mapWidth(); i++) {
-            for (int j = 0; j < game.mapHeight(); j++) {
-                TilePosition tp = new TilePosition(i,j);
+        GameMap gameMap = new GameMap(game.mapWidth(), game.mapHeight());
+
+        for (int x = 0; x< game.mapWidth(); x++) {
+            for (int y = 0; y < game.mapHeight(); y++) {
+                TilePosition tp = new TilePosition(x,y);
                 TileInfo tileInfo;
                 if (startingPositions.contains(tp)) {
                     tileInfo = new TileInfo(tp, 2, game.isWalkable(tp.toWalkPosition()), TileType.BASE_START);
@@ -602,14 +606,17 @@ public class InformationManager {
                 } else {
                     tileInfo = new TileInfo(tp, 0, game.isWalkable(tp.toWalkPosition()), TileType.NORMAL);
                 }
-                scoutHeatMap.add(tileInfo);
+                gameMap.addTile(tileInfo, x, y);
             }
         }
+
+        gameState.setGameMap(gameMap);
     }
 
     private void ageHeatMap() {
         int weight = 1;
-        for (TileInfo tileInfo : scoutHeatMap) {
+        GameMap gameMap = gameState.getGameMap();
+        for (TileInfo tileInfo : gameMap.getHeapMap()) {
             if (game.isVisible(tileInfo.getTile())) {
                 tileInfo.setImportance(0);
                 scoutTargets.remove(tileInfo.getTile());
@@ -626,11 +633,11 @@ public class InformationManager {
 
         }
         // TODO: sorting on EVERY frame sounds like a potential cpu nightmare
-        Collections.sort(scoutHeatMap, new TileComparator());
+        Collections.sort(gameMap.getHeapMap(), new TileComparator());
     }
 
     private void debugHeatMap() {
-        for (TileInfo tileInfo : scoutHeatMap) {
+        for (TileInfo tileInfo : gameState.getGameMap().getHeapMap()) {
             game.drawTextMap(
                     (tileInfo.getTile().getX() * 32) + 8,
                     (tileInfo.getTile().getY() * 32) + 8,
