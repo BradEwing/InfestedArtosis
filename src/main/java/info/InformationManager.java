@@ -330,7 +330,7 @@ public class InformationManager {
         GameMap gameMap = gameState.getGameMap();
         if (gameMap.getHeapMap().size() > 0) {
             TileInfo scoutTile = gameMap.getHeapMap().get(0);
-            scoutTile.setImportance(0);
+            scoutTile.setScoutImportance(0);
             return scoutTile.getTile();
         }
 
@@ -540,7 +540,7 @@ public class InformationManager {
         int curImportance = 0;
         for (TileInfo tileInfo : gameState.getGameMap().getHeapMap()) {
             TilePosition tile = tileInfo.getTile();
-            int importance = tileInfo.getImportance();
+            int importance = tileInfo.getScoutImportance();
             if (curImportance == 0) {
                 curImportance = importance;
             }
@@ -613,12 +613,13 @@ public class InformationManager {
         gameState.setGameMap(gameMap);
     }
 
+    // TODO: Move to GameMap?
     private void ageHeatMap() {
         int weight = 1;
         GameMap gameMap = gameState.getGameMap();
         for (TileInfo tileInfo : gameMap.getHeapMap()) {
             if (game.isVisible(tileInfo.getTile())) {
-                tileInfo.setImportance(0);
+                tileInfo.setScoutImportance(0);
                 scoutTargets.remove(tileInfo.getTile());
             } else {
                 if (tileInfo.getType() == TileType.BASE_START) {
@@ -628,7 +629,7 @@ public class InformationManager {
                 } else if (tileInfo.getType() == TileType.NORMAL) {
                     weight = 1;
                 }
-                tileInfo.setImportance(tileInfo.getImportance()+weight);
+                tileInfo.setScoutImportance(tileInfo.getScoutImportance()+weight);
             }
 
         }
@@ -641,7 +642,7 @@ public class InformationManager {
             game.drawTextMap(
                     (tileInfo.getTile().getX() * 32) + 8,
                     (tileInfo.getTile().getY() * 32) + 8,
-                    String.valueOf(tileInfo.getImportance()),
+                    String.valueOf(tileInfo.getScoutImportance()),
                     Text.White);
         }
     }
