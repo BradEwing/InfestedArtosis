@@ -2,17 +2,22 @@ import bwapi.Color;
 import bwapi.Game;
 import bwapi.Position;
 import bwapi.Text;
+import bwapi.TilePosition;
 import bwapi.Unit;
 import bwapi.UnitType;
 import bwem.BWEM;
 import bwem.Base;
 import info.GameState;
 import info.UnitTypeCount;
+import info.map.GroundPath;
+import info.map.MapTile;
 import learning.OpponentRecord;
 import learning.OpenerRecord;
 import learning.StrategyRecord;
 import strategy.openers.Opener;
 
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 public class Debug {
@@ -52,6 +57,8 @@ public class Debug {
 
         drawUnitCount();
         drawBases();
+        debugGameMap();
+        drawAllBasePaths();
     }
 
     private void drawUnitCount() {
@@ -84,5 +91,33 @@ public class Debug {
     private String getStrategyRecord() {
         StrategyRecord strategyRecord = opponentRecord.getStrategyRecordMap().get(gameState.getActiveStrategy().getName());
         return String.format("%s_%s", strategyRecord.getWins(), strategyRecord.getLosses());
+    }
+
+    private void drawAllBasePaths() {
+        HashMap<Base, GroundPath> pathMap = this.gameState.getBaseData().getBasePaths();
+        for (GroundPath path: pathMap.values()) {
+            drawPath(path.getPath());
+        }
+    }
+
+    private void drawPath(List<MapTile> tiles) {
+        for (MapTile tile: tiles) {
+            TilePosition tp = tile.getTile();
+            game.drawBoxMap(
+                    tp.toPosition(),
+                    tp.add(new TilePosition(1, 1)).toPosition(),
+                    Color.Yellow
+            );
+        }
+    }
+
+    private void debugGameMap() {
+        for (MapTile mapTile : gameState.getGameMap().getHeatMap()) {
+            game.drawTextMap(
+                    (mapTile.getTile().getX() * 32) + 8,
+                    (mapTile.getTile().getY() * 32) + 8,
+                    String.valueOf(mapTile.isBuildable()),
+                    Text.White);
+        }
     }
 }

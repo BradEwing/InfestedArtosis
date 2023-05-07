@@ -2,9 +2,9 @@ package info.map;
 
 import java.util.Comparator;
 
-public class TileComparator implements Comparator<TileInfo> {
+public class MapTileScoutImportanceComparator implements Comparator<MapTile> {
     @Override
-    public int compare(TileInfo x, TileInfo y) {
+    public int compare(MapTile x, MapTile y) {
         if (x.getScoutImportance() > y.getScoutImportance()) {
             return -1;
         } else if (x.getScoutImportance() < y.getScoutImportance()) {

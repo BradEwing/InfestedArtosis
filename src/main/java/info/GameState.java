@@ -97,7 +97,7 @@ public class GameState {
     }
 
     public Base reserveBase() {
-        final Base newBase = baseData.findNewBase();
+        final Base newBase = baseData.findNewBase(this.gameMap);
         return newBase;
     }
 
@@ -105,11 +105,12 @@ public class GameState {
         if (this.baseData.isBase(hatchery)) {
             return;
         }
-        final Base newBase = baseData.findNewBase();
+        final Base newBase = baseData.findNewBase(this.gameMap);
         addBaseToGameState(hatchery, newBase);
     }
 
     public void addBaseToGameState(Unit hatchery, Base base) {
+        if (base == null) { return; }
         gatherersAssignedToBase.put(base, new HashSet<>());
         this.baseData.addBase(hatchery, base);
 
@@ -119,7 +120,7 @@ public class GameState {
     }
 
     public void addMainBase(Unit hatchery, Base base) {
-        this.baseData.initializeMainBase(base);
+        this.baseData.initializeMainBase(base, this.gameMap);
         addBaseToGameState(hatchery, base);
     }
 

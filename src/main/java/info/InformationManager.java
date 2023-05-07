@@ -7,13 +7,15 @@ import bwapi.TilePosition;
 
 import bwapi.Unit;
 import bwapi.UnitType;
+import bwapi.WalkPosition;
 import bwem.BWEM;
 import bwem.Base;
 
+import bwem.Geyser;
 import info.map.GameMap;
-import info.map.TileComparator;
-import info.map.TileInfo;
-import info.map.TileType;
+import info.map.MapTile;
+import info.map.MapTileScoutImportanceComparator;
+import info.map.MapTileType;
 import planner.PlanType;
 import planner.PlannedItem;
 import strategy.strategies.UnitWeights;
@@ -61,10 +63,11 @@ public class InformationManager {
         this.bwem = bwem;
         this.game = game;
         this.gameState = gameState;
-        this.baseManager = new BaseManager(bwem, game, gameState);
 
         initBases();
         initializeGameMap();
+
+        this.baseManager = new BaseManager(bwem, game, gameState);
     }
 
     public void onFrame() {
@@ -325,11 +328,11 @@ public class InformationManager {
             }
         }
 
-        ArrayList<TileInfo> heatMap = gameState.getGameMap().getHeapMap();
+        ArrayList<MapTile> heatMap = gameState.getGameMap().getHeatMap();
 
         GameMap gameMap = gameState.getGameMap();
-        if (gameMap.getHeapMap().size() > 0) {
-            TileInfo scoutTile = gameMap.getHeapMap().get(0);
+        if (gameMap.getHeatMap().size() > 0) {
+            MapTile scoutTile = gameMap.getHeatMap().get(0);
             scoutTile.setScoutImportance(0);
             return scoutTile.getTile();
         }
@@ -538,9 +541,9 @@ public class InformationManager {
     private void assignNewScoutTargets() {
         // Round robin assign SCOUTs to bases
         int curImportance = 0;
-        for (TileInfo tileInfo : gameState.getGameMap().getHeapMap()) {
-            TilePosition tile = tileInfo.getTile();
-            int importance = tileInfo.getScoutImportance();
+        for (MapTile mapTile : gameState.getGameMap().getHeatMap()) {
+            TilePosition tile = mapTile.getTile();
+            int importance = mapTile.getScoutImportance();
             if (curImportance == 0) {
                 curImportance = importance;
             }
@@ -549,7 +552,7 @@ public class InformationManager {
             if (importance < curImportance) {
                 break;
             }
-            if (!scoutTargets.contains(tile) && tileInfo.isWalkable()) {
+            if (!scoutTargets.contains(tile) && mapTile.isBuildable()) {
                 scoutTargets.add(tile);
             }
         }
@@ -588,63 +591,84 @@ public class InformationManager {
     private void initializeGameMap() {
         HashSet<TilePosition> startingPositions = new HashSet<>();
         HashSet<TilePosition> expansionPositions = new HashSet<>();
+        HashSet<TilePosition> resourcePositions = new HashSet<>();
 
         // Convert sets of Bases into sets of TilePosition
         startingBasesSet.stream().map(base -> base.getLocation()).forEach(startingPositions::add);
         expansionBasesSet.stream().map(base -> base.getLocation()).forEach(expansionPositions::add);
 
+        // TODO: Add resource locations
+        // TODO: THIS IS BROKEN
+        for (Base base: startingBasesSet) {
+            for (Geyser geyser: base.getGeysers()) {
+                TilePosition topLeft = geyser.getTopLeft();
+                TilePosition bottomRight = geyser.getBottomRight();
+                for (int x = topLeft.getX(); x < bottomRight.getX(); x++) {
+                    for (int y = topLeft.getY(); y < bottomRight.getY(); y++) {
+                        resourcePositions.add(topLeft.add(new TilePosition(x, y)));
+                    }
+                }
+            }
+        }
+
         GameMap gameMap = new GameMap(game.mapWidth(), game.mapHeight());
 
-        for (int x = 0; x< game.mapWidth(); x++) {
+        for (int x = 0; x < game.mapWidth(); x++) {
             for (int y = 0; y < game.mapHeight(); y++) {
                 TilePosition tp = new TilePosition(x,y);
-                TileInfo tileInfo;
+                MapTile mapTile;
                 if (startingPositions.contains(tp)) {
-                    tileInfo = new TileInfo(tp, 2, game.isWalkable(tp.toWalkPosition()), TileType.BASE_START);
+                    mapTile = new MapTile(tp, 2, true, MapTileType.BASE_START);
                 } else if (expansionPositions.contains(tp)) {
-                    tileInfo = new TileInfo(tp, 1, game.isWalkable(tp.toWalkPosition()), TileType.BASE_EXPANSION);
+                    mapTile = new MapTile(tp, 1, true, MapTileType.BASE_EXPANSION);
+                } else if (resourcePositions.contains(tp)) {
+                    mapTile = new MapTile(tp, 0, false, MapTileType.NORMAL);
                 } else {
-                    tileInfo = new TileInfo(tp, 0, game.isWalkable(tp.toWalkPosition()), TileType.NORMAL);
+                    mapTile = new MapTile(tp, 0, this.isBuildable(tp), MapTileType.NORMAL);
                 }
-                gameMap.addTile(tileInfo, x, y);
+                gameMap.addTile(mapTile, x, y);
             }
         }
 
         gameState.setGameMap(gameMap);
     }
 
+    // Iterates over all walk positions in a tile
+    private boolean isBuildable(TilePosition tp) {
+        WalkPosition wp = tp.toWalkPosition();
+        for (int x = 0; x < 4; x++) {
+            for (int y = 0; y < 4; y++) {
+                if (!game.isWalkable(wp.add(new WalkPosition(x, y)))) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
     // TODO: Move to GameMap?
     private void ageHeatMap() {
         int weight = 1;
         GameMap gameMap = gameState.getGameMap();
-        for (TileInfo tileInfo : gameMap.getHeapMap()) {
-            if (game.isVisible(tileInfo.getTile())) {
-                tileInfo.setScoutImportance(0);
-                scoutTargets.remove(tileInfo.getTile());
+        for (MapTile mapTile : gameMap.getHeatMap()) {
+            if (game.isVisible(mapTile.getTile())) {
+                mapTile.setScoutImportance(0);
+                scoutTargets.remove(mapTile.getTile());
             } else {
-                if (tileInfo.getType() == TileType.BASE_START) {
+                if (mapTile.getType() == MapTileType.BASE_START) {
                     weight = 3;
-                } else if (tileInfo.getType() == TileType.BASE_EXPANSION) {
+                } else if (mapTile.getType() == MapTileType.BASE_EXPANSION) {
                     weight = 2;
-                } else if (tileInfo.getType() == TileType.NORMAL) {
+                } else if (mapTile.getType() == MapTileType.NORMAL) {
                     weight = 1;
                 }
-                tileInfo.setScoutImportance(tileInfo.getScoutImportance()+weight);
+                mapTile.setScoutImportance(mapTile.getScoutImportance()+weight);
             }
 
         }
         // TODO: sorting on EVERY frame sounds like a potential cpu nightmare
-        Collections.sort(gameMap.getHeapMap(), new TileComparator());
-    }
-
-    private void debugHeatMap() {
-        for (TileInfo tileInfo : gameState.getGameMap().getHeapMap()) {
-            game.drawTextMap(
-                    (tileInfo.getTile().getX() * 32) + 8,
-                    (tileInfo.getTile().getY() * 32) + 8,
-                    String.valueOf(tileInfo.getScoutImportance()),
-                    Text.White);
-        }
+        Collections.sort(gameMap.getHeatMap(), new MapTileScoutImportanceComparator());
     }
 
     private void debugInitialHatch() {

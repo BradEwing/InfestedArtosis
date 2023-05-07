@@ -2,7 +2,6 @@ package info.map;
 
 import bwapi.TilePosition;
 import info.exception.NoWalkablePathException;
-import info.map.search.Node;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -10,7 +9,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.PriorityQueue;
-import java.util.stream.IntStream;
 
 /**
  * Bundles up information about the game map.
@@ -19,119 +17,134 @@ public class GameMap {
 
     private int x;
     private int y;
-    private ArrayList<TileInfo> heatMap = new ArrayList<>();
+    private ArrayList<MapTile> heatMap = new ArrayList<>();
 
-    private TileInfo[][] mapTiles;
+    private MapTile[][] mapTiles;
 
     public GameMap(int x, int y) {
-        mapTiles = new TileInfo[x][y];
+        mapTiles = new MapTile[x][y];
         this.x = x;
         this.y = y;
     }
 
-    public void addTile(TileInfo tile, int x, int y) {
+    public void addTile(MapTile tile, int x, int y) {
         mapTiles[x][y] = tile;
         heatMap.add(tile);
     }
 
-    public ArrayList<TileInfo> getHeapMap() {
+    public MapTile get(int x, int y) {
+        return mapTiles[x][y];
+    }
+
+    public ArrayList<MapTile> getHeatMap() {
         return heatMap;
     }
 
     /**
      * A* search to find a walkable path between start and end tiles.
      *
-     * TODO: Consider neutral structures in TileInfo
+     * TODO: Consider neutral structures in MapTile
+     * TODO: Consider current buildings in MapTile
      *
      * @param start origin TilePosition
      * @param end destination TilePosition
      * @return
      * @throws NoWalkablePathException if no walkable path exists
      */
-    public ArrayDeque<TileInfo> aStarSearch(TileInfo start, TileInfo end) throws NoWalkablePathException {
-        Map<TileInfo, TileInfo> cameFrom = new HashMap<>();
-        Map<TileInfo, Integer> gScore = new HashMap<>();
-        Map<TileInfo, Integer> fScore = new HashMap<>();
+    public GroundPath aStarSearch(MapTile start, MapTile end) throws NoWalkablePathException {
+        Map<MapTile, MapTile> cameFrom = new HashMap<>();
+        Map<MapTile, Integer> gScore = new HashMap<>();
+        Map<MapTile, Integer> fScore = new HashMap<>();
 
         gScore.put(start, 0);
         fScore.put(start, this.calculateH(start, end));
 
-        PriorityQueue<TileInfo> openSet = new PriorityQueue<>(new TileFScoreComparator(fScore));
+        PriorityQueue<MapTile> openSet = new PriorityQueue<>(new MapTileFScoreComparator(fScore));
         openSet.add(start);
 
         while (!openSet.isEmpty()) {
-            TileInfo current = openSet.poll();
+            MapTile current = openSet.poll();
             if (current == end) {
                 return reconstructPath(cameFrom, current);
             }
 
-            List<TileInfo> neighbors = this.getNeighbors(current);
+            List<MapTile> neighbors = this.getNeighbors(current);
+            for (MapTile n: neighbors) {
+                int neighborG = Integer.MAX_VALUE;
+                final int currentG = gScore.get(current);
+                final int tentativeGScore = this.calculateG(current, n, currentG);
 
-            // Determine tentative gScore
-            // Compare tentative gScore against gScore of neighbor
+                if (gScore.containsKey(n)) {
+                    neighborG = gScore.get(n);
+                }
 
-            // If tentative g Score is less, set cameFrom, gScore and fScore for neighbor
-            // If neighbor not in openSet, add to openSet
-
+                if (tentativeGScore < neighborG) {
+                    cameFrom.put(n, current);
+                    gScore.put(n, tentativeGScore);
+                    fScore.put(n, this.calculateH(n, end));
+                    if (!openSet.contains(n)) {
+                        openSet.add(n);
+                    }
+                }
+            }
         }
 
         throw new NoWalkablePathException("no walkable path exists");
     }
 
-    private int calculateH(TileInfo current,  TileInfo destination) {
+    public GroundPath aStarSearch(TilePosition start, TilePosition end) throws NoWalkablePathException {
+        final MapTile startTile = this.mapTiles[start.getX()][start.getY()];
+        final MapTile endTile = this.mapTiles[end.getX()][end.getY()];
+        return aStarSearch(startTile, endTile);
+    }
+
+    private int calculateG(MapTile current, MapTile target, int currentG) {
+        return currentG + (int) target.getTile().getDistance(current.getTile());
+    }
+
+    private int calculateH(MapTile current, MapTile destination) {
         return (int) destination.getTile().getDistance(current.getTile());
     }
 
-    private ArrayDeque<TileInfo> reconstructPath(Map<TileInfo, TileInfo> cameFrom, TileInfo current) {
-        ArrayDeque<TileInfo> path = new ArrayDeque<>();
+    private GroundPath reconstructPath(Map<MapTile, MapTile> cameFrom, MapTile current) {
+        ArrayDeque<MapTile> path = new ArrayDeque<>();
         path.add(current);
         while (cameFrom.containsKey(current)) {
             current = cameFrom.get(current);
             path.addFirst(current);
         }
 
-        return path;
+        return new GroundPath(path);
     }
 
     /**
      * Returns neighbor tiles of current that can be considered for ground based path-finding.
      *
+     * TODO: Don't consider diagonal candidate if it can't be reached by at least 1 cardinal direction
+     *
      * @param current
      * @return
      */
-    private List<TileInfo> getNeighbors(TileInfo current) {
-        List<TileInfo> neighbors = new ArrayList<>();
+    private List<MapTile> getNeighbors(MapTile current) {
+        List<MapTile> neighbors = new ArrayList<>();
 
         final int currentX = current.getX();
         final int currentY = current.getY();
 
-        IntStream.range(-1, 1).forEachOrdered(i -> IntStream.range(-1, 1).forEachOrdered(j -> {
-            final int neighborX = currentX+i;
-            final int neighborY = currentY+j;
-            if (!isValidTile(neighborX,neighborY)) {
-                return;
-            }
-            if (neighborX == currentX && neighborY == currentY) {
-                return;
-            }
-
-            final TileInfo candidate = mapTiles[neighborX][neighborY];
-            if (!candidate.isWalkable()) {
-                return;
-            }
-
-            neighbors.add(candidate);
-        }));
-
+        // Add cardinal neighbors
+        // N
+        if (isValidTile(currentX, currentY+1) && mapTiles[currentX][currentY+1].isBuildable()) neighbors.add(mapTiles[currentX][currentY+1]);
+        // S
+        if (isValidTile(currentX, currentY-1) && mapTiles[currentX][currentY-1].isBuildable()) neighbors.add(mapTiles[currentX][currentY-1]);
+        // W
+        if (isValidTile(currentX-1, currentY) && mapTiles[currentX-1][currentY].isBuildable()) neighbors.add(mapTiles[currentX-1][currentY]);
+        // E
+        if (isValidTile(currentX+1, currentY) && mapTiles[currentX+1][currentY].isBuildable()) neighbors.add(mapTiles[currentX+1][currentY]);
 
         return neighbors;
     }
 
     private boolean isValidTile(int x, int y) {
-        return x > 0 && x <= this.x && y > 0 && y <= this.y;
-    }
-
-    private void calculateG(Node node) {
-        this.G = node.getG() + (int)  node.getTilePosition().getDistance(tilePosition);
+        return x > 0 && x < this.x && y > 0 && y < this.y;
     }
 }

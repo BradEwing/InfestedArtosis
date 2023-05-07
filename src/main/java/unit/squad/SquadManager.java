@@ -152,8 +152,10 @@ public class SquadManager {
             if (defenseSquads.size() == 0) {
                 continue;
             }
+
+            // TODO: NPE here where base is lost
             HashSet<Unit> baseThreats = gameState.getBaseToThreatLookup().get(base);
-            if (baseThreats.size() == 0) {
+            if (baseThreats == null || baseThreats.size() == 0) {
                 continue;
             }
             for (ManagedUnit defender: squad.getMembers()) {

@@ -6,16 +6,16 @@ import java.util.Map;
 /**
  * Used for A* search.
  */
-public class TileFScoreComparator implements Comparator<TileInfo> {
+public class MapTileFScoreComparator implements Comparator<MapTile> {
 
-    private Map<TileInfo, Integer> fScoreMap;
+    private Map<MapTile, Integer> fScoreMap;
 
-    public TileFScoreComparator(Map<TileInfo, Integer> fScoreMap) {
+    public MapTileFScoreComparator(Map<MapTile, Integer> fScoreMap) {
         this.fScoreMap = fScoreMap;
     }
 
     @Override
-    public int compare(TileInfo x, TileInfo y) {
+    public int compare(MapTile x, MapTile y) {
         final int fX = fScoreMap.get(x);
         final int fY = fScoreMap.get(y);
         if (fX > fY) {
