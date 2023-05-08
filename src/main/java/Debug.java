@@ -57,8 +57,8 @@ public class Debug {
 
         drawUnitCount();
         drawBases();
-        debugGameMap();
-        drawAllBasePaths();
+        //debugGameMap();
+        //drawAllBasePaths();
     }
 
     private void drawUnitCount() {

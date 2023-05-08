@@ -9,9 +9,9 @@ public class GroundPathComparator implements Comparator<GroundPath> {
     @Override
     public int compare(GroundPath x, GroundPath y) {
         if (x.getGroundDistance() > y.getGroundDistance()) {
-            return -1;
-        } else if (x.getGroundDistance() < y.getGroundDistance()) {
             return 1;
+        } else if (x.getGroundDistance() < y.getGroundDistance()) {
+            return -1;
         }
         return 0;
     }
