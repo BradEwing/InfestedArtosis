@@ -238,20 +238,15 @@ public class WorkerManager {
     }
 
     // Initial assignment onUnitComplete
-    //
+    // Default to mineral
     private void assignWorker(ManagedUnit managedUnit) {
         // Assign 3 per geyser
         if (gameState.getGeyserWorkers() < (3 * gameState.getGeyserAssignments().size())) {
             assignToGeyser(managedUnit);
             return;
         }
-        if (gameState.getMineralWorkers() < (2 * gameState.getMineralAssignments().size())) {
-            assignToMineral(managedUnit);
-            return;
-        }
 
-        assignedManagedWorkers.add(managedUnit);
-        managedUnit.setRole(UnitRole.IDLE);
+        assignToMineral(managedUnit);
     }
 
     private void assignToClosestBase(Unit gatherTarget, ManagedUnit gatherer) {
@@ -275,14 +270,15 @@ public class WorkerManager {
         if (gameState.getMineralWorkers() == 0) {
             fewestMineralAssignments = 0;
         } else {
-            fewestMineralAssignments = gameState.getMineralAssignments().size() / gameState.getMineralWorkers() <= 0.5 ? 1 : 0;
+            // NOTE: Assign 1 per patch but buffer with 5 extra
+            fewestMineralAssignments = gameState.getMineralAssignments().size() / gameState.getMineralWorkers() <= 1 ? 1 : 0;
         }
         List<Unit> claimedMinerals = gameState.getMineralAssignments().keySet().stream().collect(Collectors.toList());
         claimedMinerals.sort(new UnitDistanceComparator(unit));
 
         for (Unit mineral: claimedMinerals) {
             HashSet<ManagedUnit> mineralUnits = gameState.getMineralAssignments().get(mineral);
-            if (mineralUnits.size() == fewestMineralAssignments) {
+            if (mineralUnits.size() <= fewestMineralAssignments) {
                 managedUnit.setRole(UnitRole.GATHER);
                 managedUnit.setGatherTarget(mineral);
                 managedUnit.setHasNewGatherTarget(true);
@@ -292,9 +288,11 @@ public class WorkerManager {
                 gatherers.add(managedUnit);
                 mineralGatherers.add(managedUnit);
                 assignToClosestBase(mineral, managedUnit);
-                break;
+                return;
             }
         }
+
+        return;
     }
 
     // TODO: Assign closest geyser
