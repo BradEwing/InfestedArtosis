@@ -47,7 +47,7 @@ public class SquadManager {
     }
 
     public void updateOverlordSquad() {
-        TilePosition mainBaseLocation = informationManager.getMyBase().getLocation();
+        TilePosition mainBaseLocation = gameState.getBaseData().mainBasePosition();
         for (ManagedUnit managedUnit: overlords.getMembers()) {
             if (managedUnit.getUnit().getDistance(mainBaseLocation.toPosition()) < 16) {
                 managedUnit.setRole(UnitRole.IDLE);
@@ -152,8 +152,10 @@ public class SquadManager {
             if (defenseSquads.size() == 0) {
                 continue;
             }
+
+            // TODO: NPE here where base is lost
             HashSet<Unit> baseThreats = gameState.getBaseToThreatLookup().get(base);
-            if (baseThreats.size() == 0) {
+            if (baseThreats == null || baseThreats.size() == 0) {
                 continue;
             }
             for (ManagedUnit defender: squad.getMembers()) {
@@ -268,7 +270,7 @@ public class SquadManager {
             if (simulator.getAgentsA().isEmpty()) {
                 for (ManagedUnit managedUnit: managedFighters) {
                     managedUnit.setRole(UnitRole.RETREAT);
-                    managedUnit.setRetreatTarget(informationManager.getMyBase().getLocation());
+                    managedUnit.setRetreatTarget(gameState.getBaseData().mainBasePosition());
                 }
                 return;
             }
@@ -279,7 +281,7 @@ public class SquadManager {
                 if (percentRemaining < 0.20) {
                     for (ManagedUnit managedUnit: managedFighters) {
                         managedUnit.setRole(UnitRole.RETREAT);
-                        managedUnit.setRetreatTarget(informationManager.getMyBase().getLocation());
+                        managedUnit.setRetreatTarget(gameState.getBaseData().mainBasePosition());
                     }
                     return;
                 }

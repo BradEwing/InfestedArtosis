@@ -1,6 +1,6 @@
-package map;
+package info.map;
 
-public enum TileType {
+public enum MapTileType {
     BASE_START,
     BASE_EXPANSION,
     NORMAL,
