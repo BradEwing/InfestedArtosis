@@ -97,18 +97,18 @@ public class GameState {
     }
 
     public Base reserveBase() {
-        final Base newBase = baseData.findNewBase(this.gameMap);
-        return newBase;
+        return baseData.reserveBase();
     }
 
     public void claimBase(Unit hatchery) {
         if (this.baseData.isBase(hatchery)) {
             return;
         }
-        final Base newBase = baseData.findNewBase(this.gameMap);
+        final Base newBase = baseData.claimBase(hatchery);
         addBaseToGameState(hatchery, newBase);
     }
 
+    // TODO: Lookup base from reserved
     public void addBaseToGameState(Unit hatchery, Base base) {
         if (base == null) { return; }
         gatherersAssignedToBase.put(base, new HashSet<>());

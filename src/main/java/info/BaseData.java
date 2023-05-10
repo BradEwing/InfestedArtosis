@@ -27,6 +27,7 @@ public class BaseData {
 
     private HashSet<Base> allBases = new HashSet<>();
     private HashSet<Base> myBases = new HashSet<>();
+    private HashSet<Base> reservedBases = new HashSet<>();
     private HashSet<Base> enemyBases = new HashSet<>();
     private HashSet<Base> islands = new HashSet<>();
     private HashSet<Base> mineralOnlyBase = new HashSet<>();
@@ -76,6 +77,36 @@ public class BaseData {
         myBases.add(base);
         baseLookup.put(hatchery, base);
         availableBases.remove(base);
+        reservedBases.remove(base);
+    }
+
+    public Base reserveBase() {
+        final Base base = this.findNewBase();
+        if (base == null) {
+            return null;
+        }
+        reservedBases.add(base);
+        return base;
+    }
+
+    public Base claimBase(Unit hatchery) {
+        TilePosition tp = hatchery.getTilePosition();
+        Base base = null;
+        for (Base reservedBase: reservedBases) {
+            if (tp.equals(reservedBase.getLocation())) {
+                base = reservedBase;
+                break;
+            }
+        }
+
+        if (base == null) {
+            base = this.findNewBase();
+            if (base == null) {
+                return null;
+            }
+        }
+
+        return base;
     }
 
     public Base get(Unit hatchery) {
@@ -116,7 +147,7 @@ public class BaseData {
 
     public int currentBaseCount() { return baseHatcheries.size(); }
 
-    public int numHatcheries() { return myBases.size() + macroHatcheries.size(); }
+    public int numHatcheries() { return myBases.size() + macroHatcheries.size() + reservedBases.size(); }
 
     public TilePosition mainBasePosition() { return mainBase.getLocation(); }
 
@@ -152,16 +183,14 @@ public class BaseData {
      * correctly on maps like Andromeda.
      *
      * Returns null if no bases are available. A base is considered an island if the distance is infinitely far away.
-     * @param gameMap
      * @return
      */
-    public Base findNewBase(GameMap gameMap) {
-
+    public Base findNewBase() {
         // Islands are not included in sorted because their path distance is infinite.
-        // TODO: Fix sorting
         List<Map.Entry<Base, GroundPath>> potential =
                 this.availableBases.entrySet()
                         .stream()
+                        .filter(p -> !reservedBases.contains(p.getKey()))
                         .sorted(Map.Entry.comparingByValue(new GroundPathComparator()))
                         .collect(Collectors.toList());
 
