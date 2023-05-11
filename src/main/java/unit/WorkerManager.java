@@ -3,16 +3,14 @@ package unit;
 import bwapi.Game;
 import bwapi.Player;
 import bwapi.Position;
-import bwapi.Text;
-import bwapi.TilePosition;
 import bwapi.Unit;
 import bwapi.UnitType;
 import bwem.Base;
+import planner.Plan;
 import planner.PlanState;
 import planner.PlanType;
-import planner.PlannedItemComparator;
+import planner.PlanComparator;
 import info.GameState;
-import planner.PlannedItem;
 import unit.managed.ManagedUnit;
 import unit.managed.UnitRole;
 import util.BaseUnitDistanceComparator;
@@ -149,31 +147,31 @@ public class WorkerManager {
     }
 
     private void assignScheduledPlannedItems() {
-        List<PlannedItem> scheduledPlans = gameState.getPlansScheduled().stream().collect(Collectors.toList());
+        List<Plan> scheduledPlans = gameState.getPlansScheduled().stream().collect(Collectors.toList());
         if (scheduledPlans.size() < 1) {
             return;
         }
 
-        Collections.sort(scheduledPlans, new PlannedItemComparator());
-        List<PlannedItem> assignedPlans = new ArrayList<>();
+        Collections.sort(scheduledPlans, new PlanComparator());
+        List<Plan> assignedPlans = new ArrayList<>();
 
-        for (PlannedItem plannedItem: scheduledPlans) {
+        for (Plan plan : scheduledPlans) {
             boolean didAssign = false;
-            if (plannedItem.getType() == PlanType.BUILDING) {
-                didAssign = assignMorphDrone(plannedItem);
-            } else if (plannedItem.getType() == PlanType.UNIT) {
-                didAssign = assignMorphLarva(plannedItem);
+            if (plan.getType() == PlanType.BUILDING) {
+                didAssign = assignMorphDrone(plan);
+            } else if (plan.getType() == PlanType.UNIT) {
+                didAssign = assignMorphLarva(plan);
             }
 
             if (didAssign) {
-                assignedPlans.add(plannedItem);
+                assignedPlans.add(plan);
             }
         }
 
-        HashSet<PlannedItem> buildingPlans = gameState.getPlansBuilding();
-        for (PlannedItem plannedItem: assignedPlans) {
-            scheduledPlans.remove(plannedItem);
-            buildingPlans.add(plannedItem);
+        HashSet<Plan> buildingPlans = gameState.getPlansBuilding();
+        for (Plan plan : assignedPlans) {
+            scheduledPlans.remove(plan);
+            buildingPlans.add(plan);
         }
 
         gameState.setPlansScheduled(scheduledPlans.stream().collect(Collectors.toCollection(HashSet::new)));
@@ -192,7 +190,7 @@ public class WorkerManager {
         final int currentFrame = game.getFrameCount();
         List<ManagedUnit> executed = new ArrayList<>();
         for (ManagedUnit managedUnit: scheduledDrones) {
-            PlannedItem plan = managedUnit.getPlannedItem();
+            Plan plan = managedUnit.getPlan();
             // TODO: Set build position for all scheduled build plans
             int travelFrames = this.getTravelFrames(managedUnit.getUnit(), plan.getBuildPosition().toPosition());
             if (currentFrame > plan.getPredictedReadyFrame() - travelFrames) {
@@ -321,18 +319,18 @@ public class WorkerManager {
     /**
      * Assign a drone to the building plan if it's not carrying resources, not mining gas and not already assigned to a plan
      * The unit will store a scheduled plan until it's time to execute
-     * @param plannedItem plan to build
+     * @param plan plan to build
      * @return
      */
-    private boolean assignMorphDrone(PlannedItem plannedItem) {
+    private boolean assignMorphDrone(Plan plan) {
         for (ManagedUnit managedUnit : assignedManagedWorkers) {
             Unit unit = managedUnit.getUnit();
             if (!unit.isCarrying() && !gasGatherers.contains(managedUnit) && !gameState.getAssignedPlannedItems().containsKey(unit)) {
                 clearAssignments(managedUnit);
-                // TODO: PlannedItem and UnitRole have a state change IN agent inside of manager
+                // TODO: Plan and UnitRole have a state change IN agent inside of manager
                 scheduledDrones.add(managedUnit);
-                managedUnit.setPlan(plannedItem);
-                gameState.getAssignedPlannedItems().put(unit, plannedItem);
+                managedUnit.setPlan(plan);
+                gameState.getAssignedPlannedItems().put(unit, plan);
                 return true;
             }
         }
@@ -340,16 +338,16 @@ public class WorkerManager {
         return false;
     }
 
-    private boolean assignMorphLarva(PlannedItem plannedItem) {
+    private boolean assignMorphLarva(Plan plan) {
         for (ManagedUnit managedUnit : larva) {
             Unit unit = managedUnit.getUnit();
             // If larva and not assigned, assign
             if (!gameState.getAssignedPlannedItems().containsKey(unit)) {
                 clearAssignments(managedUnit);
-                plannedItem.setState(PlanState.BUILDING);
+                plan.setState(PlanState.BUILDING);
                 managedUnit.setRole(UnitRole.MORPH);
-                managedUnit.setPlan(plannedItem);
-                gameState.getAssignedPlannedItems().put(unit, plannedItem);
+                managedUnit.setPlan(plan);
+                gameState.getAssignedPlannedItems().put(unit, plan);
                 return true;
             }
         }
@@ -385,8 +383,8 @@ public class WorkerManager {
                 return;
             }
             if (managedUnit.getRole() == UnitRole.MORPH) {
-                PlannedItem plannedItem = managedUnit.getPlannedItem();
-                if (plannedItem != null & plannedItem.getPlannedUnit() == UnitType.Zerg_Overlord) {
+                Plan plan = managedUnit.getPlan();
+                if (plan != null & plan.getPlannedUnit() == UnitType.Zerg_Overlord) {
                     return;
                 }
             }
@@ -394,20 +392,20 @@ public class WorkerManager {
 
         for (ManagedUnit managedUnit: eggs) {
             if (managedUnit.getRole() == UnitRole.MORPH) {
-                PlannedItem plannedItem = managedUnit.getPlannedItem();
-                if (plannedItem != null & plannedItem.getPlannedUnit() == UnitType.Zerg_Overlord) {
+                Plan plan = managedUnit.getPlan();
+                if (plan != null & plan.getPlannedUnit() == UnitType.Zerg_Overlord) {
                     return;
                 }
             }
         }
 
         Boolean isOverlordAssignedOrMorphing = false;
-        for (PlannedItem plannedItem: gameState.getAssignedPlannedItems().values()) {
-            if (plannedItem.getType() != PlanType.UNIT) {
+        for (Plan plan : gameState.getAssignedPlannedItems().values()) {
+            if (plan.getType() != PlanType.UNIT) {
                 continue;
             }
 
-            if (plannedItem.getPlannedUnit() == UnitType.Zerg_Overlord) {
+            if (plan.getPlannedUnit() == UnitType.Zerg_Overlord) {
                 isOverlordAssignedOrMorphing = true;
                 break;
             }
@@ -419,12 +417,12 @@ public class WorkerManager {
         // - NO overlord scheduled
 
         // Overlord in production
-        for (PlannedItem plannedItem: gameState.getPlansMorphing()) {
-            if (plannedItem.getType() != PlanType.UNIT) {
+        for (Plan plan : gameState.getPlansMorphing()) {
+            if (plan.getType() != PlanType.UNIT) {
                 continue;
             }
 
-            if (plannedItem.getPlannedUnit() == UnitType.Zerg_Overlord) {
+            if (plan.getPlannedUnit() == UnitType.Zerg_Overlord) {
                 isOverlordAssignedOrMorphing = true;
                 break;
             }
@@ -456,10 +454,10 @@ public class WorkerManager {
             managedUnit.setRole(UnitRole.LARVA);
             larva.add(managedUnit);
 
-            PlannedItem plannedItem = managedUnit.getPlannedItem();
+            Plan plan = managedUnit.getPlan();
             // TODO: Handle cancelled items. Are they requeued?
-            if (plannedItem != null) {
-                plannedItem.setState(PlanState.CANCELLED);
+            if (plan != null) {
+                plan.setState(PlanState.CANCELLED);
                 managedUnit.setPlan(null);
             }
 

@@ -10,7 +10,7 @@ import bwapi.Unit;
 import bwapi.UnitType;
 import lombok.Data;
 import planner.PlanState;
-import planner.PlannedItem;
+import planner.Plan;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -40,8 +40,8 @@ public class ManagedUnit {
 
     private boolean hasNewGatherTarget;
 
-    // PlannedItem this unit is assigned to
-    private PlannedItem plannedItem;
+    // Plan this unit is assigned to
+    private Plan plan;
     private int buildAttemptFrame;
 
     private boolean canFight;
@@ -86,8 +86,8 @@ public class ManagedUnit {
         return this.unitID;
     }
 
-    public void setPlan(PlannedItem plan) {
-        this.plannedItem = plan;
+    public void setPlan(Plan plan) {
+        this.plan = plan;
     }
 
     public void execute() {
@@ -149,7 +149,7 @@ public class ManagedUnit {
 
     private void debugBuild() {
         Position unitPosition = unit.getPosition();
-        Position buildPosition = plannedItem.getBuildPosition().toPosition();
+        Position buildPosition = plan.getBuildPosition().toPosition();
         game.drawLineMap(unitPosition, buildPosition, Color.Cyan);
         game.drawTextMap(unitPosition.add(new Position(8,8)), String.format("Distance: %d", unit.getDistance(buildPosition)), Text.Cyan);
     }
@@ -221,23 +221,23 @@ public class ManagedUnit {
     // Attempt build or morph
     private void build() {
         if (unit.isBeingConstructed() || unit.isMorphing()) return;
-        if (plannedItem.getBuildPosition() != null) {
-            // NOTE: this assumes plannedItem and buildPosition are NOT NULL
+        if (plan.getBuildPosition() != null) {
+            // NOTE: this assumes plan and buildPosition are NOT NULL
             debugBuild();
         }
         if (!isReady) return;
 
-        UnitType plannedUnitType = plannedItem.getPlannedUnit();
+        UnitType plannedUnitType = plan.getPlannedUnit();
 
         // TODO: This should be determined with a building location planner
-        // Should be assigned to the plannedItem before the plannedItem is assigned to the unit
-        if (plannedItem.getBuildPosition() == null) {
-            //System.out.printf("plannedItem buildPosition is null: [%s]\n", plannedItem);
+        // Should be assigned to the plan before the plan is assigned to the unit
+        if (plan.getBuildPosition() == null) {
+            //System.out.printf("plan buildPosition is null: [%s]\n", plan);
             TilePosition buildLocation = game.getBuildLocation(plannedUnitType, unit.getTilePosition());
-            plannedItem.setBuildPosition(buildLocation);
+            plan.setBuildPosition(buildLocation);
         }
 
-        Position buildTarget = plannedItem.getBuildPosition().toPosition().add(new Position(4,4));
+        Position buildTarget = plan.getBuildPosition().toPosition().add(new Position(4,4));
         if (unit.getDistance(buildTarget) > 150 || (!unit.isMoving() || unit.isGatheringMinerals())) {
             setUnready();
             unit.move(buildTarget);
@@ -248,7 +248,7 @@ public class ManagedUnit {
             // Try to build
             // TODO: Maybe only check the units we assigned to build, after so many frames we can try to reassign
             //   - Maybe the PlannedItems are tracked in a higher level state, and their status is updated at the higher level
-            //   - A PlannedItem marked as complete would then be removed from the bot (careful consideration to be sure it's removed everywhere)
+            //   - A Plan marked as complete would then be removed from the bot (careful consideration to be sure it's removed everywhere)
             setUnready();
             boolean didBuild = unit.build(plannedUnitType, buildTarget.toTilePosition());
             // If we failed to build, try to morph
@@ -272,14 +272,14 @@ public class ManagedUnit {
                 // This is a bit hacky but buys 150 frames to attempt to build at the given location before reassigning elsewhere
                 if (buildAttemptFrame + 150 < frameCount) {
                     // Try to get a new building location
-                    //System.out.printf("failed to build, getting new building location: [%s]\n", plannedItem);
-                    plannedItem.setBuildPosition(game.getBuildLocation(plannedUnitType, unit.getTilePosition()));
+                    //System.out.printf("failed to build, getting new building location: [%s]\n", plan);
+                    plan.setBuildPosition(game.getBuildLocation(plannedUnitType, unit.getTilePosition()));
                 }
 
             }
 
             if (didBuild) {
-                plannedItem.setState(PlanState.MORPHING);
+                plan.setState(PlanState.MORPHING);
             }
         }
     }
@@ -288,12 +288,12 @@ public class ManagedUnit {
         if (!isReady) return;
         if (unit.isMorphing()) return;
 
-        final UnitType unitType = plannedItem.getPlannedUnit();
+        final UnitType unitType = plan.getPlannedUnit();
         if (game.canMake(unitType, unit)) {
             setUnready();
             boolean didMorph = unit.morph(unitType);
             if (didMorph) {
-                plannedItem.setState(PlanState.MORPHING);
+                plan.setState(PlanState.MORPHING);
             }
 
         }
@@ -442,14 +442,14 @@ public class ManagedUnit {
 
     }
 
-    public void assignBuilder(PlannedItem buildingPlan) {
+    public void assignBuilder(Plan buildingPlan) {
 
     }
 
     // TODO: Refactor into debug role
     private void debugBuildingAssignments() {
 
-        UnitType building = plannedItem.getPlannedUnit();
+        UnitType building = plan.getPlannedUnit();
         Position unitPosition = unit.getPosition();
         game.drawTextMap(unitPosition, "BUILDER: " + building.toString(), Text.White);
 

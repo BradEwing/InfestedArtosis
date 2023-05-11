@@ -4,10 +4,9 @@ import bwapi.Game;
 import bwapi.Unit;
 import bwapi.UnitType;
 import info.GameState;
-import planner.PlanState;
+import planner.Plan;
 import planner.PlanType;
-import planner.PlannedItem;
-import planner.PlannedItemComparator;
+import planner.PlanComparator;
 import unit.managed.ManagedUnit;
 import unit.managed.UnitRole;
 
@@ -60,48 +59,48 @@ public class BuildingManager {
     }
 
     private void assignScheduledPlannedItems() {
-        List<PlannedItem> scheduledPlans = gameState.getPlansScheduled().stream().collect(Collectors.toList());
+        List<Plan> scheduledPlans = gameState.getPlansScheduled().stream().collect(Collectors.toList());
         if (scheduledPlans.size() < 1) {
             return;
         }
 
-        Collections.sort(scheduledPlans, new PlannedItemComparator());
-        List<PlannedItem> assignedPlans = new ArrayList<>();
+        Collections.sort(scheduledPlans, new PlanComparator());
+        List<Plan> assignedPlans = new ArrayList<>();
 
-        for (PlannedItem plannedItem: scheduledPlans) {
-            if (plannedItem.getType() != PlanType.BUILDING) {
+        for (Plan plan : scheduledPlans) {
+            if (plan.getType() != PlanType.BUILDING) {
                 return;
             }
 
-            UnitType unitType = plannedItem.getPlannedUnit();
+            UnitType unitType = plan.getPlannedUnit();
             boolean didAssign = false;
             switch (unitType) {
                 case Zerg_Lair:
-                    didAssign = this.assignMorphLair(plannedItem);
+                    didAssign = this.assignMorphLair(plan);
                     break;
             }
 
             if (didAssign) {
-                assignedPlans.add(plannedItem);
+                assignedPlans.add(plan);
             }
         }
 
-        HashSet<PlannedItem> buildingPlans = gameState.getPlansBuilding();
-        for (PlannedItem plannedItem: assignedPlans) {
-            scheduledPlans.remove(plannedItem);
-            buildingPlans.add(plannedItem);
+        HashSet<Plan> buildingPlans = gameState.getPlansBuilding();
+        for (Plan plan : assignedPlans) {
+            scheduledPlans.remove(plan);
+            buildingPlans.add(plan);
         }
 
         gameState.setPlansScheduled(scheduledPlans.stream().collect(Collectors.toCollection(HashSet::new)));
     }
 
-    private boolean assignMorphLair(PlannedItem plannedItem) {
+    private boolean assignMorphLair(Plan plan) {
         for (ManagedUnit managedHatchery : hatcheries) {
             Unit hatchery = managedHatchery.getUnit();
-            if (hatchery.canBuild(plannedItem.getPlannedUnit()) && !gameState.getAssignedPlannedItems().containsKey(hatchery)) {
+            if (hatchery.canBuild(plan.getPlannedUnit()) && !gameState.getAssignedPlannedItems().containsKey(hatchery)) {
                 managedHatchery.setRole(UnitRole.MORPH);
-                gameState.getAssignedPlannedItems().put(hatchery, plannedItem);
-                managedHatchery.setPlannedItem(plannedItem);
+                gameState.getAssignedPlannedItems().put(hatchery, plan);
+                managedHatchery.setPlan(plan);
                 return true;
             }
         }

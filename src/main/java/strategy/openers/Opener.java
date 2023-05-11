@@ -1,6 +1,6 @@
 package strategy.openers;
 
-import planner.PlannedItem;
+import planner.Plan;
 
 import java.util.List;
 
@@ -12,7 +12,7 @@ public interface Opener {
 
     OpenerName getName();
 
-    List<PlannedItem> getBuildOrder();
+    List<Plan> getBuildOrder();
 
     boolean playsFourPlayerMap();
 

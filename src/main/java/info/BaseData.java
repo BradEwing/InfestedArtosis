@@ -60,7 +60,6 @@ public class BaseData {
                 .filter(b -> b != base)
                 .collect(Collectors.toCollection(HashSet::new));
 
-        // TODO: Fix potentialBases
         for (Base b: potentialBases) {
             try {
                 GroundPath path = map.aStarSearch(mainBase.getLocation(), b.getLocation());
@@ -87,6 +86,12 @@ public class BaseData {
         }
         reservedBases.add(base);
         return base;
+    }
+
+    public void cancelReserveBase(Base base) {
+        GroundPath oldPath = allBasePaths.get(base);
+        availableBases.put(base, oldPath);
+        reservedBases.remove(base);
     }
 
     public Base claimBase(Unit hatchery) {
@@ -153,27 +158,6 @@ public class BaseData {
 
     public boolean isBaseTilePosition(TilePosition tilePosition) {
         return baseTilePositionSet.contains(tilePosition);
-    }
-
-    // TODO: Consider walking path, prioritize gas bases over mineral only
-    public Base findRandomNewBase() {
-        Base closestUnoccupiedBase = null;
-        double closestDistance = Double.MAX_VALUE;
-        for (Base b : allBases) {
-            // TODO: Consider enemy bases
-            if (myBases.contains(b)) {
-                continue;
-            }
-
-            double distance = mainBase.getLocation().getDistance(b.getLocation());
-
-            if (distance < closestDistance) {
-                closestUnoccupiedBase = b;
-                closestDistance = distance;
-            }
-        }
-
-        return closestUnoccupiedBase;
     }
 
     /**

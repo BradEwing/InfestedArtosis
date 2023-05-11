@@ -10,7 +10,7 @@ import info.map.GameMap;
 import lombok.AccessLevel;
 import lombok.Data;
 import lombok.Setter;
-import planner.PlannedItem;
+import planner.Plan;
 import strategy.openers.Opener;
 import strategy.strategies.Strategy;
 import strategy.strategies.UnitWeights;
@@ -48,11 +48,11 @@ public class GameState {
     private boolean isLarvaDeadlocked = false;
     private boolean isAllIn = false;
 
-    private HashSet<PlannedItem> plansScheduled = new HashSet<>();
-    private HashSet<PlannedItem> plansBuilding = new HashSet<>();
-    private HashSet<PlannedItem> plansMorphing = new HashSet<>();
-    private HashSet<PlannedItem> plansComplete = new HashSet<>();
-    private HashMap<Unit, PlannedItem> assignedPlannedItems = new HashMap<>();
+    private HashSet<Plan> plansScheduled = new HashSet<>();
+    private HashSet<Plan> plansBuilding = new HashSet<>();
+    private HashSet<Plan> plansMorphing = new HashSet<>();
+    private HashSet<Plan> plansComplete = new HashSet<>();
+    private HashMap<Unit, Plan> assignedPlannedItems = new HashMap<>();
 
     private HashMap<Base, HashSet<ManagedUnit>> gatherersAssignedToBase = new HashMap<>();
 
@@ -137,5 +137,9 @@ public class GameState {
             baseToThreatLookup.remove(base);
         }
         this.baseData.removeHatchery(hatchery);
+    }
+
+    public void cancelPlan(Plan plan) {
+
     }
 }

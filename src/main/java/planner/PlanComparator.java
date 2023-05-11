@@ -2,10 +2,10 @@ package planner;
 
 import java.util.Comparator;
 
-public class PlannedItemComparator implements Comparator<PlannedItem> {
+public class PlanComparator implements Comparator<Plan> {
 
     @Override
-    public int compare(PlannedItem x, PlannedItem y) {
+    public int compare(Plan x, Plan y) {
         if (x.getPriority() < y.getPriority()) {
             return -1;
         }

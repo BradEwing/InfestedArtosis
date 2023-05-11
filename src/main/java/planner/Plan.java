@@ -11,7 +11,7 @@ import java.util.UUID;
 
 // TODO: Refactor with type reflection?
 @Data
-public class PlannedItem {
+public class Plan {
     private final String uuid = UUID.randomUUID().toString();
 
     private PlanType type;
@@ -35,14 +35,14 @@ public class PlannedItem {
     @Nullable
     private UpgradeType plannedUpgrade;
 
-    public PlannedItem(UnitType unitType, int priority, boolean isBuilding, boolean isBlocking) {
+    public Plan(UnitType unitType, int priority, boolean isBuilding, boolean isBlocking) {
         this.priority = priority;
         this.plannedUnit = unitType;
         this.type = isBuilding ? PlanType.BUILDING : PlanType.UNIT;
         this.blockOtherPlans = isBlocking;
     }
 
-    public PlannedItem(UnitType unitType, int priority, boolean isBuilding, boolean isBlocking, TilePosition buildPosition) {
+    public Plan(UnitType unitType, int priority, boolean isBuilding, boolean isBlocking, TilePosition buildPosition) {
         this.priority = priority;
         this.plannedUnit = unitType;
         this.type = isBuilding ? PlanType.BUILDING : PlanType.UNIT;
@@ -50,7 +50,7 @@ public class PlannedItem {
         this.blockOtherPlans = isBlocking;
     }
 
-    public PlannedItem(UpgradeType upgrade, int priority, boolean isBlocking) {
+    public Plan(UpgradeType upgrade, int priority, boolean isBlocking) {
         this.priority = priority;
         this.plannedUpgrade = upgrade;
         this.type = PlanType.UPGRADE;
@@ -63,11 +63,11 @@ public class PlannedItem {
             return true;
         }
 
-        if (!(o instanceof PlannedItem)) {
+        if (!(o instanceof Plan)) {
             return false;
         }
 
-        PlannedItem u = (PlannedItem) o;
+        Plan u = (Plan) o;
 
         return this.uuid.equals(u.getUuid());
     }
