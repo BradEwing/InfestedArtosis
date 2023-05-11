@@ -1,12 +1,12 @@
 package unit.managed;
 
-import planner.PlannedItem;
+import planner.Plan;
 
 public interface ManagedUnitInterface {
 
     UnitRole getRole();
 
-    void setPlan(PlannedItem plan);
+    void setPlan(Plan plan);
 
     void setRole();
 

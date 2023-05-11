@@ -13,10 +13,10 @@ import info.GameState;
 import info.ResourceCount;
 import info.TechProgression;
 import info.UnitTypeCount;
+import planner.Plan;
 import planner.PlanState;
 import planner.PlanType;
-import planner.PlannedItem;
-import planner.PlannedItemComparator;
+import planner.PlanComparator;
 import strategy.strategies.UnitWeights;
 
 import java.util.ArrayList;
@@ -56,40 +56,40 @@ public class ProductionManager {
     private int plannedHatcheries = 1; // Start with 1 because we decrement with initial hatch
     private int plannedWorkers = 0;
 
-    private PriorityQueue<PlannedItem> productionQueue = new PriorityQueue<>(new PlannedItemComparator());
+    private PriorityQueue<Plan> productionQueue = new PriorityQueue<>(new PlanComparator());
 
-    public ProductionManager(Game game, GameState gameState, List<PlannedItem> initialBuildOrder) {
+    public ProductionManager(Game game, GameState gameState, List<Plan> initialBuildOrder) {
         this.game = game;
         this.gameState = gameState;
 
         init(initialBuildOrder);
     }
 
-    private void init(List<PlannedItem> initialBuildOrder) {
-        for (PlannedItem plannedItem: initialBuildOrder) {
-            if (plannedItem.getPlannedUnit() != null && plannedItem.getPlannedUnit() == UnitType.Zerg_Extractor) {
+    private void init(List<Plan> initialBuildOrder) {
+        for (Plan plan : initialBuildOrder) {
+            if (plan.getPlannedUnit() != null && plan.getPlannedUnit() == UnitType.Zerg_Extractor) {
                 this.numExtractors += 1;
             }
 
             // TODO: be able to decide between base hatch and macro hatch
-            if (plannedItem.getPlannedUnit() != null && plannedItem.getPlannedUnit() == UnitType.Zerg_Hatchery) {
+            if (plan.getPlannedUnit() != null && plan.getPlannedUnit() == UnitType.Zerg_Hatchery) {
                 Base base = gameState.reserveBase();
-                plannedItem.setBuildPosition(base.getLocation());
+                plan.setBuildPosition(base.getLocation());
             }
 
-            if (plannedItem.getPlannedUnit() != null && plannedItem.getPlannedUnit() == UnitType.Zerg_Drone) {
+            if (plan.getPlannedUnit() != null && plan.getPlannedUnit() == UnitType.Zerg_Drone) {
                 plannedWorkers += 1;
             }
 
-            if (plannedItem.getType() == PlanType.UPGRADE) {
-                if (plannedItem.getPlannedUpgrade() == UpgradeType.Metabolic_Boost) {
+            if (plan.getType() == PlanType.UPGRADE) {
+                if (plan.getPlannedUpgrade() == UpgradeType.Metabolic_Boost) {
                     TechProgression techProgression = gameState.getTechProgression();
                     techProgression.setPlannedMetabolicBoost(true);
                 }
             }
 
 
-            this.productionQueue.add(plannedItem);
+            this.productionQueue.add(plan);
         }
     }
 
@@ -97,8 +97,8 @@ public class ProductionManager {
         int numDisplayed = 0;
         int x = 4;
         int y = 64;
-        for (PlannedItem plannedItem : productionQueue) {
-            game.drawTextScreen(x, y, plannedItem.getName() + " " + plannedItem.getPriority(), Text.Green);
+        for (Plan plan : productionQueue) {
+            game.drawTextScreen(x, y, plan.getName() + " " + plan.getPriority(), Text.Green);
             y += 8;
             numDisplayed += 1;
             if (numDisplayed == 10) {
@@ -121,8 +121,8 @@ public class ProductionManager {
         int x = 100;
         int y = 64;
         // TODO: Debug production queue in GameState
-        for (PlannedItem plannedItem: gameState.getAssignedPlannedItems().values()) {
-            game.drawTextScreen(x, y, plannedItem.getName() + " " + plannedItem.getPriority(), Text.Green);
+        for (Plan plan : gameState.getAssignedPlannedItems().values()) {
+            game.drawTextScreen(x, y, plan.getName() + " " + plan.getPriority(), Text.Green);
             y += 8;
             numDisplayed += 1;
             if (numDisplayed == 10) {
@@ -137,8 +137,8 @@ public class ProductionManager {
         int x = 196;
         int y = 64;
         // TODO: Debug production queue in GameState
-        for (PlannedItem plannedItem: gameState.getPlansScheduled()) {
-            game.drawTextScreen(x, y, plannedItem.getName() + " " + plannedItem.getPriority(), Text.Green);
+        for (Plan plan : gameState.getPlansScheduled()) {
+            game.drawTextScreen(x, y, plan.getName() + " " + plan.getPriority(), Text.Green);
             y += 8;
             numDisplayed += 1;
             if (numDisplayed == 10) {
@@ -154,7 +154,7 @@ public class ProductionManager {
             return;
         }
 
-        productionQueue.add(new PlannedItem(UnitType.Zerg_Hatchery, currentFrame, true, true, base.getLocation()));
+        productionQueue.add(new Plan(UnitType.Zerg_Hatchery, currentFrame, true, true, base.getLocation()));
     }
 
     // debug console messaging goes here
@@ -207,7 +207,7 @@ public class ProductionManager {
             if ((numHatcheries % 2) != 0) {
                 planBase();
             } else {
-                productionQueue.add(new PlannedItem(UnitType.Zerg_Hatchery, currentFrame / 3, true, true));
+                productionQueue.add(new Plan(UnitType.Zerg_Hatchery, currentFrame / 3, true, true));
             }
         }
 
@@ -216,14 +216,14 @@ public class ProductionManager {
         // TODO: account for bases with no gas or 2 gas
         if (!isAllIn && numExtractors < gameState.getBaseData().currentBaseCount() && numExtractors < targetExtractors) {
             numExtractors += 1;
-            productionQueue.add(new PlannedItem(UnitType.Zerg_Extractor, currentFrame, true, false));
+            productionQueue.add(new Plan(UnitType.Zerg_Extractor, currentFrame, true, false));
         }
 
         TechProgression techProgression = this.gameState.getTechProgression();
 
         // Build at 10 workers if not part of initial build order
         if (techProgression.canPlanPool() && self.supplyUsed() > 20) {
-            productionQueue.add(new PlannedItem(UnitType.Zerg_Spawning_Pool, currentFrame / 4, true, true));
+            productionQueue.add(new Plan(UnitType.Zerg_Spawning_Pool, currentFrame / 4, true, true));
             techProgression.setPlannedSpawningPool(true);
         }
 
@@ -234,19 +234,19 @@ public class ProductionManager {
         UnitWeights unitWeights = this.gameState.getUnitWeights();
 
         if (techProgression.canPlanHydraliskDen() && unitWeights.hasUnit(UnitType.Zerg_Hydralisk)) {
-            productionQueue.add(new PlannedItem(UnitType.Zerg_Hydralisk_Den, currentFrame, true, true));
+            productionQueue.add(new Plan(UnitType.Zerg_Hydralisk_Den, currentFrame, true, true));
             techProgression.setPlannedDen(true);
         }
 
         final boolean needLairTech = unitWeights.hasUnit(UnitType.Zerg_Mutalisk) || unitWeights.hasUnit(UnitType.Zerg_Scourge);
 
         if (needLairTech && techProgression.canPlanLair()) {
-            productionQueue.add(new PlannedItem(UnitType.Zerg_Lair, currentFrame, true, true));
+            productionQueue.add(new Plan(UnitType.Zerg_Lair, currentFrame, true, true));
             techProgression.setPlannedLair(true);
         }
 
         if (techProgression.canPlanSpire() && unitWeights.hasUnit(UnitType.Zerg_Mutalisk)) {
-            productionQueue.add(new PlannedItem(UnitType.Zerg_Spire, currentFrame, true, true));
+            productionQueue.add(new Plan(UnitType.Zerg_Spire, currentFrame, true, true));
             techProgression.setPlannedSpire(true);
         }
     }
@@ -272,18 +272,18 @@ public class ProductionManager {
 
         /** Ling Upgrades **/
         if (techProgression.canPlanMetabolicBoost() && unitTypeCount.get(UnitType.Zerg_Zergling) > 8) {
-            productionQueue.add(new PlannedItem(UpgradeType.Metabolic_Boost, currentFrame, false));
+            productionQueue.add(new Plan(UpgradeType.Metabolic_Boost, currentFrame, false));
             techProgression.setPlannedMetabolicBoost(true);
         }
 
         /** Hydra Upgrades */
         final int numHydralisks = unitTypeCount.get(UnitType.Zerg_Hydralisk);
         if (techProgression.canPlanMuscularAugments() && numHydralisks > 4) {
-            productionQueue.add(new PlannedItem(UpgradeType.Muscular_Augments, currentFrame, false));
+            productionQueue.add(new Plan(UpgradeType.Muscular_Augments, currentFrame, false));
             techProgression.setPlannedMuscularAugments(true);
         }
         if (techProgression.canPlanGroovedSpines() && numHydralisks > 10) {
-            productionQueue.add(new PlannedItem(UpgradeType.Grooved_Spines, currentFrame, false));
+            productionQueue.add(new Plan(UpgradeType.Grooved_Spines, currentFrame, false));
             techProgression.setPlannedGroovedSpines(true);
         }
     }
@@ -295,10 +295,10 @@ public class ProductionManager {
         int plannedSupply = gameState.getPlannedSupply();
         if (supplyRemaining + plannedSupply < 5 && self.supplyUsed() < 400) {
             gameState.setPlannedSupply(plannedSupply+16);
-            productionQueue.add(new PlannedItem(UnitType.Zerg_Overlord, currentFrame / 3, false, false));
+            productionQueue.add(new Plan(UnitType.Zerg_Overlord, currentFrame / 3, false, false));
         } else if (supplyRemaining + plannedSupply < 0 && self.supplyUsed() < 400) {
             gameState.setPlannedSupply(plannedSupply+16);
-            productionQueue.add(new PlannedItem(UnitType.Zerg_Overlord, currentFrame / 2, false, true));
+            productionQueue.add(new Plan(UnitType.Zerg_Overlord, currentFrame / 2, false, true));
         }
     }
 
@@ -328,7 +328,7 @@ public class ProductionManager {
 
     private void addUnitToQueue(UnitType unitType) {
         UnitTypeCount unitTypeCount = this.gameState.getUnitTypeCount();
-        productionQueue.add(new PlannedItem(unitType, currentFrame, false, false));
+        productionQueue.add(new Plan(unitType, currentFrame, false, false));
         unitTypeCount.planUnit(unitType);
     }
 
@@ -382,14 +382,14 @@ public class ProductionManager {
      * Plans that are impossible to schedule can block the queue.
      * @return boolean indicating if the plan can be scheduled
      */
-    private boolean canSchedulePlan(PlannedItem plannedItem) {
-        switch (plannedItem.getType()) {
+    private boolean canSchedulePlan(Plan plan) {
+        switch (plan.getType()) {
             case UNIT:
-                return canScheduleUnit(plannedItem.getPlannedUnit());
+                return canScheduleUnit(plan.getPlannedUnit());
             case BUILDING:
-                return canScheduleBuilding(plannedItem.getPlannedUnit());
+                return canScheduleBuilding(plan.getPlannedUnit());
             case UPGRADE:
-                return canScheduleUpgrade(plannedItem.getPlannedUpgrade());
+                return canScheduleUpgrade(plan.getPlannedUpgrade());
             default:
                 return false;
         }
@@ -462,9 +462,9 @@ public class ProductionManager {
         // Loop through items until we exhaust queue or we break because we can't consume top item
         // Call method to attempt to build that type, if we can't build return false and break the loop
 
-        HashSet<PlannedItem> scheduledPlans = gameState.getPlansScheduled();
+        HashSet<Plan> scheduledPlans = gameState.getPlansScheduled();
 
-        List<PlannedItem> requeuePlannedItems = new ArrayList<>();
+        List<Plan> requeuePlans = new ArrayList<>();
         boolean skipSchedule = false;
         for (int i = 0; i < productionQueue.size(); i++) {
             if (skipSchedule) {
@@ -473,38 +473,38 @@ public class ProductionManager {
 
             boolean canSchedule = false;
             // If we can't plan, we'll put it back on the queue
-            final PlannedItem plannedItem = productionQueue.poll();
-            if (plannedItem == null) {
+            final Plan plan = productionQueue.poll();
+            if (plan == null) {
                 continue;
             }
 
             // Don't block the queue if the plan cannot be executed
-            if (!canSchedulePlan(plannedItem)) {
+            if (!canSchedulePlan(plan)) {
                 continue;
             }
 
-            PlanType planType = plannedItem.getType();
+            PlanType planType = plan.getType();
 
             if (skipSchedule) {
-                requeuePlannedItems.add(plannedItem);
+                requeuePlans.add(plan);
                 continue;
             }
 
             switch (planType) {
                 case BUILDING:
-                    canSchedule = scheduleBuildingItem(plannedItem);
+                    canSchedule = scheduleBuildingItem(plan);
                     if (!canSchedule) {
                         skipSchedule = true;
                     }
                     break;
                 case UNIT:
-                    canSchedule = scheduleUnitItem(plannedItem);
+                    canSchedule = scheduleUnitItem(plan);
                     if (!canSchedule) {
                         skipSchedule = true;
                     }
                     break;
                 case UPGRADE:
-                    canSchedule = scheduleUpgradeItem(self, plannedItem);
+                    canSchedule = scheduleUpgradeItem(self, plan);
                     if (!canSchedule) {
                         skipSchedule = true;
                     }
@@ -512,18 +512,18 @@ public class ProductionManager {
             }
 
             if (canSchedule) {
-                scheduledPlans.add(plannedItem);
+                scheduledPlans.add(plan);
             } else {
-                requeuePlannedItems.add(plannedItem);
-                if (plannedItem.isBlockOtherPlans()) {
+                requeuePlans.add(plan);
+                if (plan.isBlockOtherPlans()) {
                     break;
                 }
             }
         }
 
         // Requeue
-        for (PlannedItem plannedItem: requeuePlannedItems) {
-            productionQueue.add(plannedItem);
+        for (Plan plan : requeuePlans) {
+            productionQueue.add(plan);
         }
     }
 
@@ -531,25 +531,25 @@ public class ProductionManager {
     // These PlannedItems will not work through state machine in same way as Unit and Buildings
     // This is a bit of a HACK until properly maintained
     private void buildUpgrades() {
-        HashSet<PlannedItem> scheduledPlans = gameState.getPlansScheduled();
+        HashSet<Plan> scheduledPlans = gameState.getPlansScheduled();
         if (scheduledPlans.size() == 0) {
             return;
         }
 
         HashSet<Unit> unitsExecutingPlan = new HashSet<>();
-        List<Map.Entry<Unit, PlannedItem>> scheduledUpgradeAssignments = gameState.getAssignedPlannedItems().entrySet()
+        List<Map.Entry<Unit, Plan>> scheduledUpgradeAssignments = gameState.getAssignedPlannedItems().entrySet()
                 .stream()
                 .filter(assignment -> assignment.getValue().getType() == PlanType.UPGRADE)
                 .collect(Collectors.toList());
 
-        for (Map.Entry<Unit, PlannedItem> entry: scheduledUpgradeAssignments) {
+        for (Map.Entry<Unit, Plan> entry: scheduledUpgradeAssignments) {
             final Unit unit = entry.getKey();
-            final PlannedItem plannedItem = entry.getValue();
-            if (buildUpgrade(unit, plannedItem)) {
+            final Plan plan = entry.getValue();
+            if (buildUpgrade(unit, plan)) {
                 unitsExecutingPlan.add(unit);
-                scheduledPlans.remove(plannedItem);
-                plannedItem.setState(PlanState.BUILDING); // TODO: This is awkward
-                gameState.getPlansBuilding().add(plannedItem);
+                scheduledPlans.remove(plan);
+                plan.setState(PlanState.BUILDING); // TODO: This is awkward
+                gameState.getPlansBuilding().add(plan);
             }
         }
 
@@ -562,8 +562,9 @@ public class ProductionManager {
     // Track planned items that are morphing
     // BUILD -> MORPH
     // Buildings and units
-    private void plannedItemToMorphing(PlannedItem plannedItem) {
-        final UnitType unitType = plannedItem.getPlannedUnit();
+    // TODO: Move to info package
+    private void plannedItemToMorphing(Plan plan) {
+        final UnitType unitType = plan.getPlannedUnit();
         ResourceCount resourceCount = gameState.getResourceCount();
         resourceCount.unreserveUnit(unitType);
 
@@ -596,22 +597,14 @@ public class ProductionManager {
                 break;
         }
 
-        gameState.getPlansBuilding().remove(plannedItem);
-        plannedItem.setState(PlanState.MORPHING);
-        gameState.getPlansMorphing().add(plannedItem);
-    }
-
-    private void plannedItemToComplete(Unit unit, PlannedItem plannedItem) {
-        gameState.getPlansBuilding().remove(plannedItem);
-        gameState.getPlansMorphing().remove(plannedItem);
-        plannedItem.setState(PlanState.COMPLETE);
-        gameState.getPlansComplete().add(plannedItem);
-        gameState.getAssignedPlannedItems().remove(unit);
+        gameState.getPlansBuilding().remove(plan);
+        plan.setState(PlanState.MORPHING);
+        gameState.getPlansMorphing().add(plan);
     }
 
     // TODO: Handle in BaseManager (ManagedUnits that are buildings. ManagedBuilding?)
-    private boolean buildUpgrade(Unit unit, PlannedItem plannedItem) {
-        final UpgradeType upgradeType = plannedItem.getPlannedUpgrade();
+    private boolean buildUpgrade(Unit unit, Plan plan) {
+        final UpgradeType upgradeType = plan.getPlannedUpgrade();
         if (game.canUpgrade(upgradeType, unit)) {
             unit.upgrade(upgradeType);
         }
@@ -627,9 +620,9 @@ public class ProductionManager {
 
     // PLANNED -> SCHEDULED
     // Allow one building to be scheduled if resources aren't available.
-    private boolean scheduleBuildingItem(PlannedItem plannedItem) {
+    private boolean scheduleBuildingItem(Plan plan) {
         // Can we afford this unit?
-        UnitType building = plannedItem.getPlannedUnit();
+        UnitType building = plan.getPlannedUnit();
         ResourceCount resourceCount = gameState.getResourceCount();
         int predictedReadyFrame = gameState.frameCanAffordUnit(building, currentFrame);
         if (scheduledBuildings > 0 && resourceCount.canAffordUnit(building)) {
@@ -637,19 +630,19 @@ public class ProductionManager {
         }
 
         // TODO: Assign building location from building location planner
-        if (plannedItem.getBuildPosition() == null) {
-            plannedItem.setBuildPosition(game.getBuildLocation(building, gameState.getBaseData().mainBasePosition(), 128, true));
+        if (plan.getBuildPosition() == null) {
+            plan.setBuildPosition(game.getBuildLocation(building, gameState.getBaseData().mainBasePosition(), 128, true));
         }
 
         scheduledBuildings += 1;
         resourceCount.reserveUnit(building);
-        plannedItem.setPredictedReadyFrame(predictedReadyFrame);
-        plannedItem.setState(PlanState.SCHEDULE);
+        plan.setPredictedReadyFrame(predictedReadyFrame);
+        plan.setState(PlanState.SCHEDULE);
         return true;
     }
 
-    private boolean scheduleUnitItem(PlannedItem plannedItem) {
-        UnitType unit = plannedItem.getPlannedUnit();
+    private boolean scheduleUnitItem(Plan plan) {
+        UnitType unit = plan.getPlannedUnit();
         ResourceCount resourceCount = gameState.getResourceCount();
         if (resourceCount.canAffordUnit(unit)) {
             return false;
@@ -660,12 +653,12 @@ public class ProductionManager {
         }
 
         resourceCount.reserveUnit(unit);
-        plannedItem.setState(PlanState.SCHEDULE);
+        plan.setState(PlanState.SCHEDULE);
         return true;
     }
 
-    private boolean scheduleUpgradeItem(Player self, PlannedItem plannedItem) {
-        final UpgradeType upgrade = plannedItem.getPlannedUpgrade();
+    private boolean scheduleUpgradeItem(Player self, Plan plan) {
+        final UpgradeType upgrade = plan.getPlannedUpgrade();
         ResourceCount resourceCount = gameState.getResourceCount();
 
         if (resourceCount.canAffordUpgrade(upgrade)) {
@@ -676,8 +669,8 @@ public class ProductionManager {
             UnitType unitType = unit.getType();
 
             if (unitType == upgrade.whatUpgrades() && !gameState.getAssignedPlannedItems().containsKey(unit)) {
-                gameState.getAssignedPlannedItems().put(unit, plannedItem);
-                plannedItem.setState(PlanState.SCHEDULE);
+                gameState.getAssignedPlannedItems().put(unit, plan);
+                plan.setState(PlanState.SCHEDULE);
                 resourceCount.reserveUpgrade(upgrade);
                 return true;
             }
@@ -730,10 +723,10 @@ public class ProductionManager {
     // TODO: Should there be special logic here for handling the drones?
     // Need to handle cancel case (building about to die, extractor trick, etc.)
     public void onUnitMorph(Unit unit) {
-        HashMap<Unit, PlannedItem> assignedPlannedItems = gameState.getAssignedPlannedItems();
+        HashMap<Unit, Plan> assignedPlannedItems = gameState.getAssignedPlannedItems();
         if (assignedPlannedItems.containsKey(unit)) {
-            PlannedItem plannedItem = gameState.getAssignedPlannedItems().get(unit);
-            plannedItemToMorphing(plannedItem);
+            Plan plan = gameState.getAssignedPlannedItems().get(unit);
+            plannedItemToMorphing(plan);
         }
 
         clearAssignments(unit);
@@ -788,21 +781,15 @@ public class ProductionManager {
         // Requeue PlannedItems
         // Put item back onto the queue with greater importance
         if (gameState.getAssignedPlannedItems().containsKey(unit)) {
-            PlannedItem plannedItem = gameState.getAssignedPlannedItems().get(unit);
-            // TODO: Bit of a hack, need to handle cancel logic
-            // This is because clearAssignments() requeues if plannedItem state is not complete
-            plannedItemToComplete(unit, plannedItem);
-        }
-
-        /*
-        if (gameState.getAssignedPlannedItems().containsKey(unit)) {
-            PlannedItem plannedItem = gameState.getAssignedPlannedItems().get(unit);
-            if (plannedItem.getState() != PlanState.COMPLETE) {
-                plannedItem.setPriority(plannedItem.getPriority()-1);
-                productionQueue.add(plannedItem);
+            Plan plan = gameState.getAssignedPlannedItems().get(unit);
+            switch(plan.getState()) {
+                case SCHEDULE:
+                    gameState.cancelPlan(unit, plan);
+                    break;
+                default:
+                    gameState.completePlan(unit, plan);
+                    break;
             }
-            gameState.getAssignedPlannedItems().remove(unit);
         }
-         */
     }
 }

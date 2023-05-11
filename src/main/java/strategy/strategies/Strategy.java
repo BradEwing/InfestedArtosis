@@ -1,12 +1,6 @@
 package strategy.strategies;
 
-import bwapi.UnitType;
-import planner.PlannedItem;
 import strategy.openers.Opener;
-
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
 
 // Represent desired unit types and mix for strategy
 //
