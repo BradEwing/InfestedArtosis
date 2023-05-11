@@ -1,6 +1,7 @@
 package info;
 
 import bwapi.Player;
+import bwapi.TilePosition;
 import bwapi.Unit;
 import bwapi.UnitType;
 import bwem.BWEM;
@@ -11,6 +12,8 @@ import lombok.AccessLevel;
 import lombok.Data;
 import lombok.Setter;
 import planner.Plan;
+import planner.PlanState;
+import planner.PlanType;
 import strategy.openers.Opener;
 import strategy.strategies.Strategy;
 import strategy.strategies.UnitWeights;
@@ -139,7 +142,29 @@ public class GameState {
         this.baseData.removeHatchery(hatchery);
     }
 
-    public void cancelPlan(Plan plan) {
+    public void cancelPlan(Unit unit, Plan plan) {
+        plansBuilding.remove(plan);
+        plansMorphing.remove(plan);
+        plan.setState(PlanState.CANCELLED);
+        assignedPlannedItems.remove(unit);
 
+        if (plan.getType() == PlanType.BUILDING) {
+            UnitType type = plan.getPlannedUnit();
+            resourceCount.unreserveUnit(type);
+
+            TilePosition tp = plan.getBuildPosition();
+            if (tp != null && baseData.isBaseTilePosition(tp)) {
+                Base base = baseData.baseAtTilePosition(tp);
+                baseData.cancelReserveBase(base);
+            }
+        }
+    }
+
+    public void completePlan(Unit unit, Plan plan) {
+        plansBuilding.remove(plan);
+        plansMorphing.remove(plan);
+        plan.setState(PlanState.COMPLETE);
+        plansComplete.add(plan);
+        assignedPlannedItems.remove(unit);
     }
 }

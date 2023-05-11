@@ -602,15 +602,6 @@ public class ProductionManager {
         gameState.getPlansMorphing().add(plan);
     }
 
-    // TODO: Move to info package
-    private void plannedItemToComplete(Unit unit, Plan plan) {
-        gameState.getPlansBuilding().remove(plan);
-        gameState.getPlansMorphing().remove(plan);
-        plan.setState(PlanState.COMPLETE);
-        gameState.getPlansComplete().add(plan);
-        gameState.getAssignedPlannedItems().remove(unit);
-    }
-
     // TODO: Handle in BaseManager (ManagedUnits that are buildings. ManagedBuilding?)
     private boolean buildUpgrade(Unit unit, Plan plan) {
         final UpgradeType upgradeType = plan.getPlannedUpgrade();
@@ -791,24 +782,14 @@ public class ProductionManager {
         // Put item back onto the queue with greater importance
         if (gameState.getAssignedPlannedItems().containsKey(unit)) {
             Plan plan = gameState.getAssignedPlannedItems().get(unit);
-            // TODO: Bit of a hack, need to handle cancel logic
-            // This is because clearAssignments() requeues if plan state is not complete
-            plannedItemToComplete(unit, plan);
-        }
-
-        /*
-        if (gameState.getAssignedPlannedItems().containsKey(unit)) {
-            Plan plannedItem = gameState.getAssignedPlannedItems().get(unit);
-            if (plannedItem.getState() != PlanState.COMPLETE) {
-                plannedItem.setPriority(plannedItem.getPriority()-1);
-                productionQueue.add(plannedItem);
+            switch(plan.getState()) {
+                case SCHEDULE:
+                    gameState.cancelPlan(unit, plan);
+                    break;
+                default:
+                    gameState.completePlan(unit, plan);
+                    break;
             }
-            gameState.getAssignedPlannedItems().remove(unit);
         }
-         */
-    }
-
-    private void cancelPlan(Plan plan) {
-
     }
 }

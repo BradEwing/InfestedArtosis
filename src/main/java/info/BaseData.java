@@ -34,6 +34,7 @@ public class BaseData {
 
     private HashMap<Unit, Base> baseLookup = new HashMap<>();
     private HashSet<TilePosition> baseTilePositionSet = new HashSet<>();
+    private HashMap<TilePosition, Base> baseTilePositionLookup = new HashMap<>();
 
     private HashMap<Base, GroundPath> allBasePaths = new HashMap<>();
     private HashMap<Base, GroundPath> availableBases = new HashMap<>();
@@ -42,6 +43,7 @@ public class BaseData {
         for (Base base: allBases) {
             this.allBases.add(base);
             this.baseTilePositionSet.add(base.getLocation());
+            this.baseTilePositionLookup.put(base.getLocation(), base);
             if (base.getGeysers().size() == 0) {
                 mineralOnlyBase.add(base);
             }
@@ -159,6 +161,8 @@ public class BaseData {
     public boolean isBaseTilePosition(TilePosition tilePosition) {
         return baseTilePositionSet.contains(tilePosition);
     }
+
+    public Base baseAtTilePosition(TilePosition tilePosition) { return baseTilePositionLookup.get(tilePosition); }
 
     /**
      * Finds a new base. Searches for the closest unclaimed base by ground distance.
