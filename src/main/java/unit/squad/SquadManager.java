@@ -254,7 +254,7 @@ public class SquadManager {
                 if (!isHostileBuilding(enemyBuilding.getType())) {
                     continue;
                 }
-                if ( (int) enemyBuilding.getPosition().getDistance(squad.getCenter()) > 256) {
+                if ( (int) enemyBuilding.getPosition().getDistance(squad.getCenter()) > 512) {
                     continue;
                 }
                 try {

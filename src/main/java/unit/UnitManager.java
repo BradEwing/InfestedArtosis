@@ -320,27 +320,6 @@ public class UnitManager {
         }
     }
 
-    private void calculateMovementPath(ManagedUnit managedUnit) {
-        // Don't calculate a new path if we have one
-        if (managedUnit.getPathToTarget() != null && managedUnit.getPathToTarget().size() > 0) {
-            return;
-        }
-        TilePosition movementTargetPosition = managedUnit.getMovementTargetPosition();
-        if (movementTargetPosition == null) {
-            return;
-        }
-
-        TilePosition currentPosition = managedUnit.getUnit().getTilePosition();
-
-        CPPath path = bwem.getMap().getPath(currentPosition.toPosition(), movementTargetPosition.toPosition());
-        List<TilePosition> pathToTarget = new ArrayList<>();
-        for (ChokePoint chokePoint: path) {
-            pathToTarget.add(chokePoint.getCenter().toTilePosition());
-        }
-        managedUnit.setPathToTarget(pathToTarget);
-
-    }
-
     private void assignClosestEnemyToManagedUnit(ManagedUnit managedUnit) {
         List<Unit> enemyUnits = new ArrayList<>();
         enemyUnits.addAll(informationManager.getVisibleEnemyUnits());

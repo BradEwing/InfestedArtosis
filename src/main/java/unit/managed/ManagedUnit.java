@@ -423,7 +423,7 @@ public class ManagedUnit {
 
         // Attempt to find the closest enemy OUTSIDE fog of war
         for (Unit enemyUnit: enemies) {
-            if (unit.canAttack(enemyUnit) && enemyUnit.isVisible()) {
+            if (unit.canAttack(enemyUnit) && enemyUnit.isDetected()) {
                 filtered.add(enemyUnit);
             }
         }

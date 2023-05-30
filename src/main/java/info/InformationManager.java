@@ -286,7 +286,7 @@ public class InformationManager {
 
     public boolean isEnemyUnitVisible() {
         for (Unit enemy: visibleEnemyUnits) {
-            if (enemy.isVisible()) {
+            if (enemy.isDetected()) {
                 return true;
             }
         }
