@@ -2,10 +2,12 @@ package strategy;
 
 import strategy.openers.FivePool;
 import strategy.openers.FourPool;
+import strategy.openers.NineHatch;
 import strategy.openers.NinePoolSpeed;
 import strategy.openers.Opener;
 import strategy.openers.OverPool;
 import strategy.openers.TwelveHatch;
+import strategy.openers.TwelvePool;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -42,6 +44,8 @@ public class OpenerFactory {
         allOpeners.add(new OverPool());
         allOpeners.add(new FivePool());
         allOpeners.add(new FourPool());
+        allOpeners.add(new TwelvePool());
+        allOpeners.add(new NineHatch());
 
         for (Opener opener: allOpeners) {
             if (numStartingLocations == FOUR && !opener.playsFourPlayerMap()) {

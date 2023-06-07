@@ -1,0 +1,32 @@
+package strategy.openers;
+
+import bwapi.UnitType;
+import planner.Plan;
+
+import java.util.ArrayList;
+import java.util.List;
+
+public class NineHatch implements Opener {
+
+    public OpenerName getName() { return OpenerName.NINE_HATCH; }
+
+    public List<Plan> getBuildOrder() {
+
+        List<Plan> list = new ArrayList<>();
+        list.add(new Plan(UnitType.Zerg_Drone, 0, false, false));
+        list.add(new Plan(UnitType.Zerg_Drone, 0, false, false));
+        list.add(new Plan(UnitType.Zerg_Drone, 0, false, false));
+        list.add(new Plan(UnitType.Zerg_Drone, 0, false, false));
+        list.add(new Plan(UnitType.Zerg_Drone, 0, false, false));
+        list.add(new Plan(UnitType.Zerg_Hatchery, 1, true, true));
+
+        return list;
+    }
+
+    public boolean playsFourPlayerMap() {
+        return true;
+    }
+
+    public boolean isAllIn() { return false; }
+
+}
