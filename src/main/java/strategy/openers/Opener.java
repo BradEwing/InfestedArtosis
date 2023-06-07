@@ -14,7 +14,5 @@ public interface Opener {
 
     List<Plan> getBuildOrder();
 
-    boolean playsFourPlayerMap();
-
     boolean isAllIn();
 }

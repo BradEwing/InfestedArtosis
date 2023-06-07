@@ -1,14 +1,7 @@
 package strategy;
 
 import bwapi.Race;
-import strategy.openers.FivePool;
-import strategy.openers.FourPool;
-import strategy.openers.NineHatch;
-import strategy.openers.NinePoolSpeed;
-import strategy.openers.Opener;
-import strategy.openers.OverPool;
-import strategy.openers.TwelveHatch;
-import strategy.openers.TwelvePool;
+import strategy.openers.*;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -18,7 +11,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 public class OpenerFactory {
-    private static int FOUR = 4;
+    private static int TWO = 2;
 
     private Race opponentRace;
 
@@ -53,7 +46,7 @@ public class OpenerFactory {
         allOpeners.add(new NineHatch());
 
         for (Opener opener: allOpeners) {
-            if (numStartingLocations == FOUR && !opener.playsFourPlayerMap()) {
+            if (numStartingLocations != TWO && opener.getName() == OpenerName.FOUR_POOL) {
                 continue;
             }
 

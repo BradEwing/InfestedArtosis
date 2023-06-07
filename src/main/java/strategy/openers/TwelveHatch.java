@@ -27,9 +27,5 @@ public class TwelveHatch implements Opener {
         return list;
     }
 
-    public boolean playsFourPlayerMap() {
-        return true;
-    }
-
     public boolean isAllIn() { return false; }
 }

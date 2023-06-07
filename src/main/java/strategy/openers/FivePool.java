@@ -20,12 +20,8 @@ public class FivePool implements Opener {
         list.add(new Plan(UnitType.Zerg_Zergling, 2, false, false));
         list.add(new Plan(UnitType.Zerg_Zergling, 2, false, false));
         list.add(new Plan(UnitType.Zerg_Zergling, 2, false, false));
-        
-        return list;
-    }
 
-    public boolean playsFourPlayerMap() {
-        return false;
+        return list;
     }
 
     public boolean isAllIn() { return false; }
