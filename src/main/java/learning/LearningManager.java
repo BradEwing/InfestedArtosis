@@ -1,5 +1,6 @@
 package learning;
 
+import bwapi.Race;
 import bwem.BWEM;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -25,7 +26,7 @@ public class LearningManager {
     private static String READ_DIR = "bwapi-data/read/";
     private static String WRITE_DIR = "bwapi-data/write/";
 
-    private String opponentRace;
+    private Race opponentRace;
     private String opponentName;
     private String opponentFileName;
 
@@ -38,14 +39,14 @@ public class LearningManager {
     private OpenerFactory openerFactory;
     private StrategyFactory strategyFactory;
 
-    public LearningManager(String opponentRace, String opponentName, BWEM bwem) {
+    public LearningManager(Race opponentRace, String opponentName, BWEM bwem) {
         this.opponentRace = opponentRace;
         this.opponentName = opponentName;
         this.opponentFileName = opponentName + "_" + opponentRace + ".json";
-        this.opponentRecord = new OpponentRecord(opponentName, opponentRace, 0, 0, new HashMap<>(), new HashMap<>(), new HashMap<>());
+        this.opponentRecord = new OpponentRecord(opponentName, opponentRace.toString(), 0, 0, new HashMap<>(), new HashMap<>(), new HashMap<>());
         this.bwem = bwem;
 
-        this.openerFactory = new OpenerFactory(bwem.getMap().getStartingLocations().size());
+        this.openerFactory = new OpenerFactory(bwem.getMap().getStartingLocations().size(), opponentRace);
         this.strategyFactory = new StrategyFactory();
 
         try {
@@ -92,7 +93,7 @@ public class LearningManager {
         File file = new File(READ_DIR + opponentFileName);
         if (!file.exists()) {
             opponentRecord.setName(opponentName);
-            opponentRecord.setRace(opponentRace);
+            opponentRecord.setRace(opponentRace.toString());
             return;
         }
 

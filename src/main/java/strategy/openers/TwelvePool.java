@@ -6,9 +6,9 @@ import planner.Plan;
 import java.util.ArrayList;
 import java.util.List;
 
-public class TwelveHatch implements Opener {
+public class TwelvePool implements Opener {
 
-    public OpenerName getName() { return OpenerName.TWELVE_HATCH; }
+    public OpenerName getName() { return OpenerName.TWELVE_POOL; }
 
     public List<Plan> getBuildOrder() {
 
@@ -22,7 +22,7 @@ public class TwelveHatch implements Opener {
         list.add(new Plan(UnitType.Zerg_Drone, 3, false, true));
         list.add(new Plan(UnitType.Zerg_Drone, 3, false, true));
         list.add(new Plan(UnitType.Zerg_Drone, 3, false, true));
-        list.add(new Plan(UnitType.Zerg_Hatchery, 4, true, true));
+        list.add(new Plan(UnitType.Zerg_Spawning_Pool, 4, true, true));
 
         return list;
     }

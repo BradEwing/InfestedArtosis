@@ -16,13 +16,10 @@ public class Mutalisk implements Strategy {
     @Override
     public boolean playsOpener(Opener opener) {
         switch(opener.getName()) {
-            case TWELVE_HATCH:
-            case FIVE_POOL:
-            case OVER_POOL:
-            case NINE_POOL_SPEED:
-                return true;
-            default:
+            case FOUR_POOL:
                 return false;
+            default:
+                return true;
         }
     }
 }

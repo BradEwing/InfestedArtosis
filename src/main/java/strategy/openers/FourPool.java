@@ -24,9 +24,5 @@ public class FourPool implements Opener {
         return list;
     }
 
-    public boolean playsFourPlayerMap() {
-        return false;
-    }
-
     public boolean isAllIn() { return true; }
 }

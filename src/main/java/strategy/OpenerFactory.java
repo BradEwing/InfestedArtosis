@@ -1,11 +1,7 @@
 package strategy;
 
-import strategy.openers.FivePool;
-import strategy.openers.FourPool;
-import strategy.openers.NinePoolSpeed;
-import strategy.openers.Opener;
-import strategy.openers.OverPool;
-import strategy.openers.TwelveHatch;
+import bwapi.Race;
+import strategy.openers.*;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -15,12 +11,16 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 public class OpenerFactory {
-    private static int FOUR = 4;
+    private static int TWO = 2;
+
+    private Race opponentRace;
 
     private List<Opener> allOpeners = new ArrayList<>();
     private Map<String, Opener> playableOpeners = new HashMap<>();
 
-    public OpenerFactory(int numStartingLocations) {
+    public OpenerFactory(int numStartingLocations, Race opponentRace) {
+        this.opponentRace = opponentRace;
+
         initOpeners(numStartingLocations);
     }
 
@@ -42,12 +42,81 @@ public class OpenerFactory {
         allOpeners.add(new OverPool());
         allOpeners.add(new FivePool());
         allOpeners.add(new FourPool());
+        allOpeners.add(new TwelvePool());
+        allOpeners.add(new NineHatch());
 
         for (Opener opener: allOpeners) {
-            if (numStartingLocations == FOUR && !opener.playsFourPlayerMap()) {
+            if (numStartingLocations != TWO && opener.getName() == OpenerName.FOUR_POOL) {
+                continue;
+            }
+
+            if (!playsRace(opener)) {
                 continue;
             }
             playableOpeners.put(opener.getNameString(), opener);
+        }
+    }
+
+    private boolean playsRace(Opener opener) {
+        switch(this.opponentRace) {
+            case Zerg:
+                return playsZerg(opener);
+            case Terran:
+                return playsTerran(opener);
+            case Protoss:
+                return playsProtoss(opener);
+            default:
+                return playsRandom(opener);
+        }
+    }
+
+    private boolean playsZerg(Opener opener) {
+        switch (opener.getName()) {
+            case OVER_POOL:
+            case NINE_POOL_SPEED:
+            case NINE_HATCH:
+            case TWELVE_HATCH:
+            case TWELVE_POOL:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private boolean playsTerran(Opener opener) {
+        switch (opener.getName()) {
+            case FOUR_POOL:
+            case TWELVE_HATCH:
+            case TWELVE_POOL:
+            case NINE_POOL_SPEED:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private boolean playsProtoss(Opener opener) {
+        switch (opener.getName()) {
+            case OVER_POOL:
+            case FOUR_POOL:
+            case NINE_POOL_SPEED:
+            case TWELVE_POOL:
+            case TWELVE_HATCH:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private boolean playsRandom(Opener opener) {
+        switch (opener.getName()) {
+            case OVER_POOL:
+            case NINE_POOL_SPEED:
+            case FOUR_POOL:
+            case FIVE_POOL:
+                return true;
+            default:
+                return false;
         }
     }
 }
