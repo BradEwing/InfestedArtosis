@@ -66,6 +66,7 @@ public class ProductionManager {
     }
 
     private void init(List<Plan> initialBuildOrder) {
+        TechProgression techProgression = gameState.getTechProgression();
         for (Plan plan : initialBuildOrder) {
             if (plan.getPlannedUnit() != null && plan.getPlannedUnit() == UnitType.Zerg_Extractor) {
                 this.numExtractors += 1;
@@ -81,9 +82,12 @@ public class ProductionManager {
                 plannedWorkers += 1;
             }
 
+            if (plan.getPlannedUnit() != null && plan.getPlannedUnit() == UnitType.Zerg_Spawning_Pool) {
+                techProgression.setPlannedSpawningPool(true);
+            }
+
             if (plan.getType() == PlanType.UPGRADE) {
                 if (plan.getPlannedUpgrade() == UpgradeType.Metabolic_Boost) {
-                    TechProgression techProgression = gameState.getTechProgression();
                     techProgression.setPlannedMetabolicBoost(true);
                 }
             }
