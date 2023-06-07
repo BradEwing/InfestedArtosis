@@ -19,12 +19,11 @@ public class Hydra implements Strategy {
     @Override
     public boolean playsOpener(Opener opener) {
         switch(opener.getName()) {
-            case TWELVE_HATCH:
-            case OVER_POOL:
-            case NINE_POOL_SPEED:
-                return true;
-            default:
+            case FOUR_POOL:
+            case FIVE_POOL:
                 return false;
+            default:
+                return true;
         }
     }
 }
