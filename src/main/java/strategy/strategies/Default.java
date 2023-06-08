@@ -27,4 +27,7 @@ public class Default implements Strategy {
         }
     }
 
+    public StrategyName getType() {
+        return StrategyName.DEFAULT;
+    }
 }

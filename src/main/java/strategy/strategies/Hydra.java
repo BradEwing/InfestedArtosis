@@ -26,4 +26,8 @@ public class Hydra implements Strategy {
                 return true;
         }
     }
+
+    public StrategyName getType() {
+        return StrategyName.HYDRA;
+    }
 }

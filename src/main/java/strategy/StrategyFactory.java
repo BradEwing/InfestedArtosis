@@ -1,5 +1,6 @@
 package strategy;
 
+import bwapi.Race;
 import strategy.openers.Opener;
 import strategy.strategies.Default;
 import strategy.strategies.Hydra;
@@ -16,10 +17,13 @@ import java.util.stream.Collectors;
 
 public class StrategyFactory {
 
+    private Race opponentRace;
+
     private List<Strategy> allStrategies = new ArrayList<>();
     private Map<String, Strategy> lookup = new HashMap();
 
-    public StrategyFactory() {
+    public StrategyFactory(Race opponentRace) {
+        this.opponentRace = opponentRace;
         initStrategies();
     }
 
@@ -38,7 +42,10 @@ public class StrategyFactory {
      * @return
      */
     public Set<String> getPlayableStrategies(Opener opener) {
-        List<Strategy> playableStrategies = lookup.values().stream().filter(s -> s.playsOpener(opener)).collect(Collectors.toList());
+        List<Strategy> playableStrategies = lookup.values().stream()
+                .filter(s -> s.playsOpener(opener))
+                .filter(s -> playsRace(s))
+                .collect(Collectors.toList());
         return playableStrategies.stream().map(s -> s.getName()).collect(Collectors.toSet());
     }
 
@@ -51,5 +58,40 @@ public class StrategyFactory {
         for (Strategy strategy: allStrategies) {
             lookup.put(strategy.getName(), strategy);
         }
+    }
+
+    private boolean playsRace(Strategy strategy) {
+        switch(this.opponentRace) {
+            case Zerg:
+                return playsZerg(strategy);
+            case Terran:
+                return playsTerran(strategy);
+            case Protoss:
+                return playsProtoss(strategy);
+            default:
+                return playsRandom(strategy);
+        }
+    }
+
+    private boolean playsZerg(Strategy strategy) {
+        switch (strategy.getType()) {
+            case LING_FLOOD:
+            case MUTALISK:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private boolean playsTerran(Strategy _) {
+        return true;
+    }
+
+    private boolean playsProtoss(Strategy _) {
+        return true;
+    }
+
+    private boolean playsRandom(Strategy _) {
+        return true;
     }
 }
