@@ -10,6 +10,8 @@ public interface Strategy {
         return this.getClass().getSimpleName();
     }
 
+    StrategyName getType();
+
     // Gets default unit weights for strategy
     // Can reconfigure these later with game state
     UnitWeights getUnitWeights();

@@ -22,4 +22,8 @@ public class Mutalisk implements Strategy {
                 return true;
         }
     }
+
+    public StrategyName getType() {
+        return StrategyName.MUTALISK;
+    }
 }

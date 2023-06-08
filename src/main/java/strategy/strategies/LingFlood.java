@@ -16,4 +16,8 @@ public class LingFlood implements Strategy {
     public boolean playsOpener(Opener opener) {
         return true;
     }
+
+    public StrategyName getType() {
+        return StrategyName.LING_FLOOD;
+    }
 }

@@ -47,7 +47,7 @@ public class LearningManager {
         this.bwem = bwem;
 
         this.openerFactory = new OpenerFactory(bwem.getMap().getStartingLocations().size(), opponentRace);
-        this.strategyFactory = new StrategyFactory();
+        this.strategyFactory = new StrategyFactory(opponentRace);
 
         try {
             readOpponentRecord();
