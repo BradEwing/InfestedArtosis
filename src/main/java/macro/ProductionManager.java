@@ -44,13 +44,7 @@ public class ProductionManager {
     // TODO: Track in info manager / GameState with some sort of base planner class
     private int numSunkens = 0;
 
-    private int numExtractors = 0;
-
     private int scheduledBuildings = 0;
-
-    // TODO: Determine from desired unit composition / active strategy
-    // Because bot is only on hatch tech, only take 1 for now
-    private int targetExtractors = 1;
 
     private int currentFrame = 5;
     private int plannedHatcheries = 1; // Start with 1 because we decrement with initial hatch
@@ -67,9 +61,11 @@ public class ProductionManager {
 
     private void init(List<Plan> initialBuildOrder) {
         TechProgression techProgression = gameState.getTechProgression();
+        BaseData baseData = gameState.getBaseData();
         for (Plan plan : initialBuildOrder) {
             if (plan.getPlannedUnit() != null && plan.getPlannedUnit() == UnitType.Zerg_Extractor) {
-                this.numExtractors += 1;
+                Unit geyser = baseData.reserveExtractor();
+                plan.setBuildPosition(geyser.getTilePosition());
             }
 
             // TODO: be able to decide between base hatch and macro hatch
@@ -215,12 +211,12 @@ public class ProductionManager {
             }
         }
 
-        // One extractor per base
-        //  - Not always true, some bases are mineral only. Some maps have double gas.
-        // TODO: account for bases with no gas or 2 gas
-        if (!isAllIn && numExtractors < gameState.getBaseData().currentBaseCount() && numExtractors < targetExtractors) {
-            numExtractors += 1;
-            productionQueue.add(new Plan(UnitType.Zerg_Extractor, currentFrame, true, false));
+        if (canPlanExtractor(isAllIn)) {
+            Plan plan = new Plan(UnitType.Zerg_Extractor, currentFrame, true, false);
+            BaseData baseData = gameState.getBaseData();
+            Unit geyser = baseData.reserveExtractor();
+            plan.setBuildPosition(geyser.getTilePosition());
+            productionQueue.add(plan);
         }
 
         TechProgression techProgression = this.gameState.getTechProgression();
@@ -255,6 +251,20 @@ public class ProductionManager {
         }
     }
 
+    private boolean canPlanExtractor(Boolean isAllIn) {
+        BaseData baseData = gameState.getBaseData();
+
+        return !isAllIn &&
+                baseData.canReserveExtractor() &&
+                (baseData.numExtractor() < 1 || needExtractor());
+    }
+
+    private boolean needExtractor() {
+        BaseData baseData = gameState.getBaseData();
+        ResourceCount resourceCount = gameState.getResourceCount();
+        return baseData.numExtractor() < 1 || resourceCount.needExtractor();
+    }
+
     /**
      * Plan to take an upgrade.
      *
@@ -266,8 +276,9 @@ public class ProductionManager {
      * @param isAllIn
      */
     private void planUpgrades(Boolean isAllIn) {
+        BaseData baseData = gameState.getBaseData();
 
-        if (numExtractors == 0 || isAllIn) {
+        if (baseData.numExtractor() == 0 || isAllIn) {
             return;
         }
 

@@ -39,6 +39,9 @@ public class BaseData {
     private HashMap<Base, GroundPath> allBasePaths = new HashMap<>();
     private HashMap<Base, GroundPath> availableBases = new HashMap<>();
 
+    private HashSet<Unit> extractors = new HashSet<>();
+    private HashSet<Unit> availableGeysers = new HashSet<>();
+
     public BaseData(List<Base> allBases) {
         for (Base base: allBases) {
             this.allBases.add(base);
@@ -79,6 +82,26 @@ public class BaseData {
         baseLookup.put(hatchery, base);
         availableBases.remove(base);
         reservedBases.remove(base);
+
+        base.getGeysers().stream().forEach(g -> availableGeysers.add(g.getUnit()));
+    }
+
+    public boolean canReserveExtractor() { return availableGeysers.size() > 0; }
+
+    public Unit reserveExtractor() {
+        Unit candidate = availableGeysers.iterator().next();
+        extractors.add(candidate);
+        availableGeysers.remove(candidate);
+        return candidate;
+    }
+
+    // TODO: Call when drone scheduled to build extractor dies
+    public void addExtractorCandidate(Unit geyser) {
+
+    }
+
+    public int numExtractor() {
+        return extractors.size();
     }
 
     public Base reserveBase() {

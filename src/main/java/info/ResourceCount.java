@@ -45,10 +45,16 @@ public class ResourceCount {
         }
     }
 
+    private int availableMinerals() { return self.minerals() - reservedMinerals; }
+
+    private int availableGas() { return self.gas() - reservedGas; }
+
+    private boolean canAfford(int mineralPrice, int gasPrice) { return availableMinerals() < mineralPrice || availableGas() < gasPrice; }
+
     public boolean canAffordUnit(UnitType unit) {
         final int mineralPrice = unit.mineralPrice();
         final int gasPrice = unit.gasPrice();
-        return self.minerals() - reservedMinerals < mineralPrice || self.gas() - reservedGas < gasPrice;
+        return canAfford(mineralPrice, gasPrice);
     }
 
     public void reserveUpgrade(UpgradeType upgrade) {
@@ -64,11 +70,15 @@ public class ResourceCount {
     public boolean canAffordUpgrade(UpgradeType upgrade) {
         final int mineralPrice = upgrade.mineralPrice();
         final int gasPrice = upgrade.gasPrice();
-        return self.minerals() - reservedMinerals < mineralPrice || self.gas() - reservedGas < gasPrice;
+        return canAfford(mineralPrice, gasPrice);
     }
 
     public boolean canAffordHatch(int plannedHatcheries) {
-        return self.minerals() - reservedMinerals > ((1 + plannedHatcheries) * 300);
+        return availableMinerals() > ((1 + plannedHatcheries) * 300);
+    }
+
+    public boolean needExtractor() {
+        return availableMinerals() - availableGas() > 250;
     }
 
     /**
