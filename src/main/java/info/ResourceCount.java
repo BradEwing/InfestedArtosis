@@ -78,7 +78,7 @@ public class ResourceCount {
     }
 
     public boolean needExtractor() {
-        return availableMinerals() - availableGas() > 250;
+        return availableMinerals() - availableGas() > 200;
     }
 
     /**
