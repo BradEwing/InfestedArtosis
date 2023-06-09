@@ -27,6 +27,8 @@ public class TechProgression {
     private boolean plannedMuscularAugments = false;
     private boolean plannedGroovedSpines = false;
 
+    public boolean canPlanExtractor() { return spawningPool || plannedSpawningPool; }
+
     public boolean canPlanPool() {
         return !plannedSpawningPool && !spawningPool;
     }
