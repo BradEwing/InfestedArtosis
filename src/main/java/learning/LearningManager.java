@@ -70,12 +70,16 @@ public class LearningManager {
             currentOpener.setWins(currentOpener.getWins()+1);
             opponentRecord.setWins(opponentRecord.getWins()+1);
             currentStrategy.setWins(currentStrategy.getWins()+1);
-            defensiveSunkRecord.setWins(defensiveSunkRecord.getWins()+1);
+            if (decisions.isDefensiveSunk()) {
+                defensiveSunkRecord.setWins(defensiveSunkRecord.getWins()+1);
+            }
         } else {
             currentOpener.setLosses(currentOpener.getLosses()+1);
             opponentRecord.setLosses(opponentRecord.getLosses()+1);
             currentStrategy.setLosses(currentStrategy.getLosses()+1);
-            defensiveSunkRecord.setLosses(defensiveSunkRecord.getLosses()+1);
+            if (decisions.isDefensiveSunk()) {
+                defensiveSunkRecord.setLosses(defensiveSunkRecord.getLosses()+1);
+            }
         }
         Map<String, OpenerRecord> openerRecords = opponentRecord.getOpenerRecord();
         openerRecords.put(currentOpener.getOpener(), currentOpener);
