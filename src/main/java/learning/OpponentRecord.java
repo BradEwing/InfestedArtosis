@@ -23,6 +23,8 @@ public class OpponentRecord {
 
     private Map<String, StrategyRecord> strategyRecordMap;
 
+    private DefensiveSunkRecord defensiveSunkRecord;
+
     public int totalGames() {
         return this.wins + this.losses;
     }

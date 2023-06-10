@@ -5,6 +5,7 @@ import bwapi.Unit;
 import bwapi.UnitType;
 import info.GameState;
 import planner.Plan;
+import planner.PlanState;
 import planner.PlanType;
 import planner.PlanComparator;
 import unit.managed.ManagedUnit;
@@ -25,14 +26,13 @@ import java.util.stream.Collectors;
  *
  */
 public class BuildingManager {
-    private Game game;
     private GameState gameState;
 
     private HashSet<ManagedUnit> hatcheries = new HashSet();
-    private HashSet<ManagedUnit> morphingManagedUNits = new HashSet<>();
+    private HashSet<ManagedUnit> colonies = new HashSet<>();
+    private HashSet<ManagedUnit> morphingManagedUnits = new HashSet<>();
 
     public BuildingManager(Game game, GameState gameState) {
-        this.game = game;
         this.gameState = gameState;
     }
 
@@ -46,6 +46,9 @@ public class BuildingManager {
             case Zerg_Hatchery:
                 this.hatcheries.add(managedUnit);
                 break;
+            case Zerg_Creep_Colony:
+                this.colonies.add(managedUnit);
+                break;
         }
     }
 
@@ -54,6 +57,9 @@ public class BuildingManager {
         switch(unitType) {
             case Zerg_Hatchery:
                 this.hatcheries.remove(managedUnit);
+                break;
+            case Zerg_Creep_Colony:
+                this.colonies.remove(managedUnit);
                 break;
         }
     }
@@ -66,10 +72,17 @@ public class BuildingManager {
 
         Collections.sort(scheduledPlans, new PlanComparator());
         List<Plan> assignedPlans = new ArrayList<>();
+        // TODO: Fix bug that keeps complete plan in scheduled
+        List<Plan> completePlans = new ArrayList<>();
 
         for (Plan plan : scheduledPlans) {
             if (plan.getType() != PlanType.BUILDING) {
                 return;
+            }
+
+            if (plan.getState() == PlanState.COMPLETE) {
+                completePlans.add(plan);
+                continue;
             }
 
             UnitType unitType = plan.getPlannedUnit();
@@ -78,6 +91,9 @@ public class BuildingManager {
                 case Zerg_Lair:
                     didAssign = this.assignMorphLair(plan);
                     break;
+                case Zerg_Sunken_Colony:
+                    didAssign = this.assignMorphSunkenColony(plan);
+                    break;
             }
 
             if (didAssign) {
@@ -85,10 +101,14 @@ public class BuildingManager {
             }
         }
 
-        HashSet<Plan> buildingPlans = gameState.getPlansBuilding();
+        HashSet<Plan> morphingPlans = gameState.getPlansMorphing();
         for (Plan plan : assignedPlans) {
             scheduledPlans.remove(plan);
-            buildingPlans.add(plan);
+            morphingPlans.add(plan);
+        }
+
+        for (Plan plan: completePlans) {
+            scheduledPlans.remove(plan);
         }
 
         gameState.setPlansScheduled(scheduledPlans.stream().collect(Collectors.toCollection(HashSet::new)));
@@ -101,6 +121,21 @@ public class BuildingManager {
                 managedHatchery.setRole(UnitRole.MORPH);
                 gameState.getAssignedPlannedItems().put(hatchery, plan);
                 managedHatchery.setPlan(plan);
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private boolean assignMorphSunkenColony(Plan plan) {
+        for (ManagedUnit managedColony : colonies) {
+            Unit colony = managedColony.getUnit();
+            if (colony.canBuild(plan.getPlannedUnit()) &&
+                    !gameState.getAssignedPlannedItems().containsKey(colony)) {
+                managedColony.setRole(UnitRole.MORPH);
+                gameState.getAssignedPlannedItems().put(colony, plan);
+                managedColony.setPlan(plan);
                 return true;
             }
         }
