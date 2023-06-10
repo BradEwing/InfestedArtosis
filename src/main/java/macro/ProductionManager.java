@@ -263,8 +263,10 @@ public class ProductionManager {
 
     private boolean canPlanExtractor(Boolean isAllIn) {
         BaseData baseData = gameState.getBaseData();
+        TechProgression techProgression = gameState.getTechProgression();
 
         return !isAllIn &&
+                techProgression.canPlanExtractor() &&
                 baseData.canReserveExtractor() &&
                 (baseData.numExtractor() < 1 || needExtractor());
     }

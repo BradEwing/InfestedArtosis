@@ -29,6 +29,8 @@ public class TechProgression {
 
     public boolean canPlanSunkenColony() { return spawningPool; }
 
+    public boolean canPlanExtractor() { return spawningPool || plannedSpawningPool; }
+
     public boolean canPlanPool() {
         return !plannedSpawningPool && !spawningPool;
     }
