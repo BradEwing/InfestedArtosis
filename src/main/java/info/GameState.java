@@ -53,10 +53,12 @@ public class GameState {
     private boolean isLarvaDeadlocked = false;
     private boolean isAllIn = false;
 
+    // TODO: refactor into common data structure, address access throughout bot
     private HashSet<Plan> plansScheduled = new HashSet<>();
     private HashSet<Plan> plansBuilding = new HashSet<>();
     private HashSet<Plan> plansMorphing = new HashSet<>();
     private HashSet<Plan> plansComplete = new HashSet<>();
+    private HashSet<Plan> plansImpossible = new HashSet<>(); // If ProductionManager determines impossible, cancel them in WorkerManager
     private HashMap<Unit, Plan> assignedPlannedItems = new HashMap<>();
 
     private HashMap<Base, HashSet<ManagedUnit>> gatherersAssignedToBase = new HashMap<>();
@@ -155,6 +157,7 @@ public class GameState {
     public void cancelPlan(Unit unit, Plan plan) {
         plansBuilding.remove(plan);
         plansMorphing.remove(plan);
+        plansImpossible.remove(plan);
         plan.setState(PlanState.CANCELLED);
         assignedPlannedItems.remove(unit);
 
@@ -176,5 +179,9 @@ public class GameState {
         plan.setState(PlanState.COMPLETE);
         plansComplete.add(plan);
         assignedPlannedItems.remove(unit);
+    }
+
+    public void setImpossiblePlan(Plan plan) {
+        plansImpossible.add(plan);
     }
 }

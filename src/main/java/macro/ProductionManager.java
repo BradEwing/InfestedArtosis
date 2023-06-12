@@ -491,6 +491,7 @@ public class ProductionManager {
         // Call method to attempt to build that type, if we can't build return false and break the loop
 
         HashSet<Plan> scheduledPlans = gameState.getPlansScheduled();
+        HashSet<Plan> impossiblePlans = new HashSet<>();
 
         List<Plan> requeuePlans = new ArrayList<>();
         boolean skipSchedule = false;
@@ -508,6 +509,7 @@ public class ProductionManager {
 
             // Don't block the queue if the plan cannot be executed
             if (!canSchedulePlan(plan)) {
+                impossiblePlans.add(plan);
                 continue;
             }
 
@@ -552,6 +554,10 @@ public class ProductionManager {
         // Requeue
         for (Plan plan : requeuePlans) {
             productionQueue.add(plan);
+        }
+
+        for (Plan plan : impossiblePlans) {
+            gameState.setImpossiblePlan(plan);
         }
     }
 
@@ -796,6 +802,7 @@ public class ProductionManager {
         clearAssignments(unit);
     }
 
+    // TODO: Refactor into info class
     private void updateTechOnDestroy(Unit unit) {
         TechProgression techProgression = this.gameState.getTechProgression();
         switch (unit.getType()) {
@@ -803,6 +810,8 @@ public class ProductionManager {
                 techProgression.setSpawningPool(false);
             case Zerg_Hydralisk_Den:
                 techProgression.setHydraliskDen(false);
+            case Zerg_Spire:
+                techProgression.setSpire(false);
         }
     }
 
