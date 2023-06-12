@@ -71,7 +71,7 @@ public class UnitManager {
                     createLarva(unit, managedUnit);
                 }
                 if (unitType == UnitType.Zerg_Hatchery) {
-                    createHatchery(unit, managedUnit);
+                    createBuilding(unit, managedUnit);
                 }
             }
         }
@@ -157,13 +157,7 @@ public class UnitManager {
             return;
         }
 
-        // For now, return early if drone or building
-        UnitType unitType = unit.getType();
-        // TODO: Buildings, why not? Useful when tracking precise morphs
-        // TODO: Building planner
-        if (unitType.isBuilding()) {
-            return;
-        }
+
 
         // Consider case where we are already tracking the unit that morphed
         // TODO: handle case where managed unit type has changed
@@ -172,6 +166,14 @@ public class UnitManager {
         }
 
         ManagedUnit managedUnit = createManagedUnit(unit, UnitRole.IDLE);
+
+        // For now, return early if drone or building
+        UnitType unitType = unit.getType();
+        if (unitType.isBuilding()) {
+            createBuilding(unit, managedUnit);
+            return;
+        }
+
         // Assign scouts if we don't know where enemy is
         if (unitType == UnitType.Zerg_Drone || unitType == UnitType.Zerg_Larva) {
             workerManager.onUnitComplete(managedUnit);
@@ -250,30 +252,20 @@ public class UnitManager {
             return;
         }
 
-        // TODO: BaseManager
-        //   - Static D
-        if (managedUnitLookup.containsKey(unit) && unit.getType().isBuilding()) {
-            removeManagedUnit(unit);
-            return;
-        }
-
         if (!managedUnitLookup.containsKey(unit)) {
             return;
         }
 
         ManagedUnit managedUnit = managedUnitLookup.get(unit);
 
-        // TODO: Managed Buildings
-        if (unit.getType() == UnitType.Buildings) {
-            workerManager.removeManagedWorker(managedUnit);
-            managedUnits.remove(managedUnit);
-            managedUnitLookup.remove(unit);
-            return;
-        }
-
         if (unit.getType() != managedUnit.getUnitType()) {
             managedUnit.setUnitType(unit.getType());
-            //managedUnit.setRole(UnitRole.IDLE);
+        }
+
+        if (unit.getType().isBuilding()) {
+            removeManagedUnit(unit);
+            createBuilding(unit, managedUnit);
+            return;
         }
 
         if (unit.getType() == UnitType.Zerg_Overlord) {
@@ -362,8 +354,9 @@ public class UnitManager {
         managedUnitLookup.put(unit, managedUnit);
     }
 
-    private void createHatchery(Unit unit, ManagedUnit managedUnit) {
+    private void createBuilding(Unit unit, ManagedUnit managedUnit) {
         managedUnit.setRole(UnitRole.BUILDING);
+        managedUnit.setCanFight(false);
         managedUnits.add(managedUnit);
         buildingManager.add(managedUnit);
         managedUnitLookup.put(unit, managedUnit);

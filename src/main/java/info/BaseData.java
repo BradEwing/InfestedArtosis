@@ -3,10 +3,12 @@ package info;
 import bwapi.TilePosition;
 import bwapi.Unit;
 import bwem.Base;
+import bwem.Tile;
 import info.exception.NoWalkablePathException;
 import info.map.GameMap;
 import info.map.GroundPath;
 import info.map.GroundPathComparator;
+import util.BaseUnitDistanceComparator;
 
 import java.util.HashMap;
 import java.util.HashSet;
@@ -41,6 +43,11 @@ public class BaseData {
 
     private HashSet<Unit> extractors = new HashSet<>();
     private HashSet<Unit> availableGeysers = new HashSet<>();
+
+    // Sunken Colony Tracking
+    // Only take 1 per base for now
+    private HashMap<Base, Unit> sunkenColonyLookup = new HashMap<>();
+    private int reservedSunkenColonies = 0;
 
     public BaseData(List<Base> allBases) {
         for (Base base: allBases) {
@@ -152,7 +159,7 @@ public class BaseData {
     }
 
     public void removeHatchery(Unit hatchery) {
-        if (myBases.contains(hatchery)) {
+        if (baseHatcheries.contains(hatchery)) {
             removeBase(hatchery);
         } else {
             removeMacroHatchery(hatchery);
@@ -219,5 +226,32 @@ public class BaseData {
         }
 
         return null;
+    }
+
+    // TODO: Track by creep colony
+    // Called for onUnitComplete
+    public void addSunkenColony(Unit sunken) {
+        Base base = myBases.stream()
+                .sorted(new BaseUnitDistanceComparator(sunken))
+                .collect(Collectors.toList())
+                .get(0);
+        sunkenColonyLookup.put(base, sunken);
+        if (reservedSunkenColonies > 0) {
+            reservedSunkenColonies -= 1;
+        }
+    }
+
+    public TilePosition reserveSunkenColony() {
+        Base base = myBases.stream()
+                .filter(b -> !sunkenColonyLookup.containsKey(b))
+                .collect(Collectors.toList())
+                .iterator()
+                .next();
+        reservedSunkenColonies += 1;
+        return base.getLocation();
+    }
+
+    public boolean canPlanSunkenColony() {
+        return myBases.size() - reservedSunkenColonies - sunkenColonyLookup.size() > 0;
     }
 }

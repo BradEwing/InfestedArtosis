@@ -155,9 +155,13 @@ public class WorkerManager {
         Collections.sort(scheduledPlans, new PlanComparator());
         List<Plan> assignedPlans = new ArrayList<>();
 
+
         for (Plan plan : scheduledPlans) {
+            UnitType planType = plan.getPlannedUnit();
+
             boolean didAssign = false;
             if (plan.getType() == PlanType.BUILDING) {
+                if (isBuildingMorph(planType)) continue;
                 didAssign = assignMorphDrone(plan);
             } else if (plan.getType() == PlanType.UNIT) {
                 didAssign = assignMorphLarva(plan);
@@ -175,6 +179,16 @@ public class WorkerManager {
         }
 
         gameState.setPlansScheduled(scheduledPlans.stream().collect(Collectors.toCollection(HashSet::new)));
+    }
+
+    private boolean isBuildingMorph(UnitType unitType) {
+        switch(unitType) {
+            case Zerg_Lair:
+            case Zerg_Sunken_Colony:
+                return true;
+            default:
+                return false;
+        }
     }
 
     // TODO: Consider acceleration, more complex paths

@@ -3,6 +3,7 @@ package macro;
 import bwapi.Game;
 import bwapi.Player;
 import bwapi.Text;
+import bwapi.TilePosition;
 import bwapi.Unit;
 import bwapi.UnitType;
 import bwapi.UpgradeType;
@@ -40,9 +41,6 @@ public class ProductionManager {
 
     // isPlanning contingent on -> hitting min supply set by build order OR queue exhaust
     private boolean isPlanning = false;
-
-    // TODO: Track in info manager / GameState with some sort of base planner class
-    private int numSunkens = 0;
 
     private int scheduledBuildings = 0;
 
@@ -194,13 +192,9 @@ public class ProductionManager {
     }
 
     private void planBuildings(Player self, Boolean isAllIn) {
-        // Allow buildings to arbitrary queue size
-        // Always allow hatch to enter queue even if we're at max size (means we are throttled on bandwith)
+        TechProgression techProgression = this.gameState.getTechProgression();
+        BaseData baseData = gameState.getBaseData();
 
-        // 2 Types of Hatch:
-        // BaseData Hatch - Setup resources to assign workers, add to base data
-        // Macro Hatch - Take a macro hatch every other time
-        // Limit to 3 plannedHatch to prevent queue deadlock
         if (!isAllIn && (canAffordHatch() || (isNearMaxExpectedWorkers() && canAffordHatchSaturation())) && plannedHatcheries < 3) {
             plannedHatcheries += 1;
             final int numHatcheries = gameState.getBaseData().numHatcheries();
@@ -213,22 +207,32 @@ public class ProductionManager {
 
         if (canPlanExtractor(isAllIn)) {
             Plan plan = new Plan(UnitType.Zerg_Extractor, currentFrame, true, false);
-            BaseData baseData = gameState.getBaseData();
             Unit geyser = baseData.reserveExtractor();
             plan.setBuildPosition(geyser.getTilePosition());
             productionQueue.add(plan);
         }
 
-        TechProgression techProgression = this.gameState.getTechProgression();
+
 
         // Build at 10 workers if not part of initial build order
         if (techProgression.canPlanPool() && self.supplyUsed() > 20) {
-            productionQueue.add(new Plan(UnitType.Zerg_Spawning_Pool, currentFrame / 4, true, true));
+            productionQueue.add(new Plan(UnitType.Zerg_Spawning_Pool, currentFrame, true, true));
             techProgression.setPlannedSpawningPool(true);
         }
 
         if (isAllIn) {
             return;
+        }
+
+        if (canPlanSunkenColony(techProgression, baseData)) {
+            TilePosition tp = baseData.reserveSunkenColony();
+            tp = game.getBuildLocation(UnitType.Zerg_Creep_Colony, tp, 128, true);
+            Plan creepColonyPlan = new Plan(UnitType.Zerg_Creep_Colony, currentFrame-2, true, true);
+            Plan sunkenColonyPlan = new Plan(UnitType.Zerg_Sunken_Colony, currentFrame-1, true, true);
+            creepColonyPlan.setBuildPosition(tp);
+            sunkenColonyPlan.setBuildPosition(tp);
+            productionQueue.add(creepColonyPlan);
+            productionQueue.add(sunkenColonyPlan);
         }
 
         UnitWeights unitWeights = this.gameState.getUnitWeights();
@@ -251,10 +255,18 @@ public class ProductionManager {
         }
     }
 
+    // TODO: Determine reactive planning of sunken colonies
+    private boolean canPlanSunkenColony(TechProgression techProgression, BaseData baseData) {
+        boolean defensiveSunk = gameState.isDefensiveSunk();
+        return defensiveSunk && techProgression.canPlanSunkenColony() && baseData.canPlanSunkenColony();
+    }
+
     private boolean canPlanExtractor(Boolean isAllIn) {
         BaseData baseData = gameState.getBaseData();
+        TechProgression techProgression = gameState.getTechProgression();
 
         return !isAllIn &&
+                techProgression.canPlanExtractor() &&
                 baseData.canReserveExtractor() &&
                 (baseData.numExtractor() < 1 || needExtractor());
     }
@@ -444,6 +456,7 @@ public class ProductionManager {
             case Zerg_Spawning_Pool:
                 return numHatcheries > 0;
             case Zerg_Hydralisk_Den:
+            case Zerg_Sunken_Colony:
                 return techProgression.isSpawningPool();
             case Zerg_Lair:
                 return numHatcheries > 0 && techProgression.isSpawningPool();
@@ -700,6 +713,7 @@ public class ProductionManager {
 
     // TODO: Set curPriority PER type
     // Only allow items of the curPriority to attempt assignment
+    // TODO: Switch/case block
     private void assignUnit(Unit unit) {
         Player self = game.self();
         if (unit.getPlayer() != self) {
@@ -738,6 +752,7 @@ public class ProductionManager {
     // TODO: Should there be special logic here for handling the drones?
     // Need to handle cancel case (building about to die, extractor trick, etc.)
     public void onUnitMorph(Unit unit) {
+        UnitType unitType = unit.getType();
         HashMap<Unit, Plan> assignedPlannedItems = gameState.getAssignedPlannedItems();
         if (assignedPlannedItems.containsKey(unit)) {
             Plan plan = gameState.getAssignedPlannedItems().get(unit);
@@ -745,6 +760,11 @@ public class ProductionManager {
         }
 
         clearAssignments(unit);
+
+        if (unitType == UnitType.Zerg_Sunken_Colony) {
+            BaseData baseData = gameState.getBaseData();
+            baseData.addSunkenColony(unit);
+        }
     }
 
     public void onUnitRenegade(Unit unit) {
