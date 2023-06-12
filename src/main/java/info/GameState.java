@@ -7,6 +7,7 @@ import bwapi.UnitType;
 import bwem.BWEM;
 import bwem.Base;
 import bwem.Mineral;
+import config.FeatureFlags;
 import info.map.GameMap;
 import learning.Decisions;
 import lombok.AccessLevel;
@@ -92,7 +93,10 @@ public class GameState {
         this.isAllIn = opener.isAllIn();
         this.activeStrategy = decisions.getStrategy();
         this.unitWeights = activeStrategy.getUnitWeights();
-        this.defensiveSunk = decisions.isDefensiveSunk();
+
+        if (FeatureFlags.learnDefensiveSunk) {
+            this.defensiveSunk = decisions.isDefensiveSunk();
+        }
     }
 
     public int numGatherers() {
