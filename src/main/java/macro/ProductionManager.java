@@ -298,7 +298,8 @@ public class ProductionManager {
         UnitTypeCount unitTypeCount = gameState.getUnitTypeCount();
 
         /** Ling Upgrades **/
-        if (techProgression.canPlanMetabolicBoost() && unitTypeCount.get(UnitType.Zerg_Zergling) > 8) {
+        final int numZerglings = unitTypeCount.get(UnitType.Zerg_Zergling);
+        if (techProgression.canPlanMetabolicBoost() && numZerglings > 8) {
             productionQueue.add(new Plan(UpgradeType.Metabolic_Boost, currentFrame, false));
             techProgression.setPlannedMetabolicBoost(true);
         }
