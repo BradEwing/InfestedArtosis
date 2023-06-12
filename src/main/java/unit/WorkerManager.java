@@ -56,6 +56,7 @@ public class WorkerManager {
 
         assignScheduledPlannedItems();
         executeScheduledDrones();
+        releaseImpossiblePlans();
     }
 
     public void onUnitComplete(ManagedUnit managedUnit) {
@@ -179,6 +180,25 @@ public class WorkerManager {
         }
 
         gameState.setPlansScheduled(scheduledPlans.stream().collect(Collectors.toCollection(HashSet::new)));
+    }
+
+    private void releaseImpossiblePlans() {
+        HashSet<Plan> impossiblePlans = gameState.getPlansImpossible();
+        List<Plan> cancelledPlans = new ArrayList<>();
+
+        for (ManagedUnit larva: larva) {
+            Plan currentPlan = larva.getPlan();
+            if (currentPlan != null && impossiblePlans.contains(currentPlan)) {
+                gameState.cancelPlan(larva.getUnit(), currentPlan);
+            }
+        }
+
+        for (ManagedUnit drone: scheduledDrones) {
+            Plan currentPlan = drone.getPlan();
+            if (currentPlan != null && impossiblePlans.contains(currentPlan)) {
+                gameState.cancelPlan(drone.getUnit(), currentPlan);
+            }
+        }
     }
 
     private boolean isBuildingMorph(UnitType unitType) {

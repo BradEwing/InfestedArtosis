@@ -508,6 +508,7 @@ public class ProductionManager {
 
             // Don't block the queue if the plan cannot be executed
             if (!canSchedulePlan(plan)) {
+                gameState.setImpossiblePlan(plan);
                 continue;
             }
 
@@ -796,6 +797,7 @@ public class ProductionManager {
         clearAssignments(unit);
     }
 
+    // TODO: Refactor into info class
     private void updateTechOnDestroy(Unit unit) {
         TechProgression techProgression = this.gameState.getTechProgression();
         switch (unit.getType()) {
@@ -803,6 +805,8 @@ public class ProductionManager {
                 techProgression.setSpawningPool(false);
             case Zerg_Hydralisk_Den:
                 techProgression.setHydraliskDen(false);
+            case Zerg_Spire:
+                techProgression.setSpire(false);
         }
     }
 
