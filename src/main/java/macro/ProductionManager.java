@@ -491,7 +491,6 @@ public class ProductionManager {
         // Call method to attempt to build that type, if we can't build return false and break the loop
 
         HashSet<Plan> scheduledPlans = gameState.getPlansScheduled();
-        HashSet<Plan> impossiblePlans = new HashSet<>();
 
         List<Plan> requeuePlans = new ArrayList<>();
         boolean skipSchedule = false;
@@ -509,7 +508,7 @@ public class ProductionManager {
 
             // Don't block the queue if the plan cannot be executed
             if (!canSchedulePlan(plan)) {
-                impossiblePlans.add(plan);
+                gameState.setImpossiblePlan(plan);
                 continue;
             }
 
@@ -554,10 +553,6 @@ public class ProductionManager {
         // Requeue
         for (Plan plan : requeuePlans) {
             productionQueue.add(plan);
-        }
-
-        for (Plan plan : impossiblePlans) {
-            gameState.setImpossiblePlan(plan);
         }
     }
 
