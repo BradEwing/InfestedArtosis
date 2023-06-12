@@ -263,17 +263,6 @@ public class InformationManager {
             UnitTypeCount unitCount = gameState.getUnitTypeCount();
             unitCount.removeUnit(unitType);
         }
-
-        // TODO: move?
-        if (unitType.isMineralField()) {
-            removeMineral(unit);
-        }
-
-        if (unitType.isRefinery()) {
-            removeGeyser(unit);
-        }
-
-        return;
     }
 
     public boolean isEnemyLocationKnown() {
@@ -451,14 +440,6 @@ public class InformationManager {
             }
         }
 
-    }
-
-    private void removeMineral(Unit mineral) {
-        gameState.getMineralAssignments().remove(mineral);
-    }
-
-    private void removeGeyser(Unit geyser) {
-        gameState.getGeyserAssignments().remove(geyser);
     }
 
     private boolean canSeeEnemyBuilding() {
