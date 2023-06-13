@@ -150,9 +150,6 @@ public class InformationManager {
 
         if (unit.getPlayer() == game.self()) {
             updateTechProgression(unitType);
-            UnitTypeCount unitCount = gameState.getUnitTypeCount();
-            unitCount.addUnit(unitType);
-            unitCount.unplanUnit(unitType);
             return;
         }
         if (unitType == UnitType.Resource_Mineral_Field ||
@@ -192,6 +189,8 @@ public class InformationManager {
 
         UnitType plannedUnit = assignedPlan.getPlannedUnit();
         if (assignedPlan.getType() == PlanType.BUILDING) {
+            UnitTypeCount count = gameState.getUnitTypeCount();
+            count.removeUnit(UnitType.Zerg_Drone);
             updateTechProgression(plannedUnit);
         }
     }

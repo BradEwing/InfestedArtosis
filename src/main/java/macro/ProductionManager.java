@@ -323,10 +323,10 @@ public class ProductionManager {
         int plannedSupply = gameState.getPlannedSupply();
         if (supplyRemaining + plannedSupply < 5 && self.supplyUsed() < 400) {
             gameState.setPlannedSupply(plannedSupply+16);
-            productionQueue.add(new Plan(UnitType.Zerg_Overlord, currentFrame / 3, false, false));
+            addUnitToQueue(UnitType.Zerg_Overlord,1, true);
         } else if (supplyRemaining + plannedSupply < 0 && self.supplyUsed() < 400) {
             gameState.setPlannedSupply(plannedSupply+16);
-            productionQueue.add(new Plan(UnitType.Zerg_Overlord, currentFrame / 2, false, true));
+            addUnitToQueue(UnitType.Zerg_Overlord, 1, true);
         }
     }
 
@@ -341,7 +341,7 @@ public class ProductionManager {
         // Limit the number of drones in queue, or they will crowd out production!
         if (!isAllIn && plannedWorkers < 3 && numWorkers() < 80 && numWorkers() < expectedWorkers()) {
             plannedWorkers += 1;
-            addUnitToQueue(UnitType.Zerg_Drone);
+            addUnitToQueue(UnitType.Zerg_Drone, currentFrame, false);
         }
 
         UnitWeights unitWeights = this.gameState.getUnitWeights();
@@ -351,12 +351,12 @@ public class ProductionManager {
         if (unitToBuild == UnitType.Unknown) {
             return;
         }
-        addUnitToQueue(unitToBuild);
+        addUnitToQueue(unitToBuild, currentFrame, false);
     }
 
-    private void addUnitToQueue(UnitType unitType) {
+    private void addUnitToQueue(UnitType unitType, int priority, boolean isBlocking) {
         UnitTypeCount unitTypeCount = this.gameState.getUnitTypeCount();
-        productionQueue.add(new Plan(unitType, currentFrame, false, false));
+        productionQueue.add(new Plan(unitType, priority, false, isBlocking));
         unitTypeCount.planUnit(unitType);
     }
 

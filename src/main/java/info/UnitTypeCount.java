@@ -35,7 +35,11 @@ public class UnitTypeCount {
         if (!plannedUnitTypeCount.containsKey(unitType)) {
             plannedUnitTypeCount.put(unitType, 0);
         }
-        final int newCount = plannedUnitTypeCount.get(unitType) + 1;
+        int newCount = plannedUnitTypeCount.get(unitType) + 1;
+        if (unitType == UnitType.Zerg_Zergling || unitType == UnitType.Zerg_Scourge) {
+            newCount += 1;
+        }
+
         plannedUnitTypeCount.put(unitType, newCount);
     }
 
@@ -45,7 +49,9 @@ public class UnitTypeCount {
         }
 
         final int newCount = plannedUnitTypeCount.get(unitType) - 1;
-        plannedUnitTypeCount.put(unitType, newCount);
+        if (newCount >= 0) {
+            plannedUnitTypeCount.put(unitType, newCount);
+        }
     }
 
     public HashMap<UnitType, Integer> getCountLookup() {
