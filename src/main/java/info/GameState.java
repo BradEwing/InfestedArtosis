@@ -36,7 +36,7 @@ public class GameState {
 
     private int mineralWorkers;
     private int geyserWorkers;
-    private int plannedSupply;
+    private int plannedSupply; // TODO: Move to ResourceCount
     private int larvaDeadlockDetectedFrame;
 
     private HashSet<ManagedUnit> gatherers = new HashSet<>();
