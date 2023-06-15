@@ -122,11 +122,11 @@ public class UnitManager {
                 scoutManager.removeScout(managedUnit);
             }
 
-            if (managedUnit.isCanFight() && role != UnitRole.FIGHT && informationManager.isEnemyLocationKnown() && informationManager.isEnemyUnitVisible()) {
+            if (managedUnit.isCanFight() && role != UnitRole.FIGHT && informationManager.isEnemyLocationKnown()) {
                 managedUnit.setRole(UnitRole.FIGHT);
                 squadManager.addManagedUnit(managedUnit);
                 scoutManager.removeScout(managedUnit);
-            } else if (role != UnitRole.SCOUT && !informationManager.isEnemyUnitVisible()) {
+            } else if (role != UnitRole.SCOUT && !informationManager.isEnemyUnitVisible() && informationManager.getEnemyBuildings().size() == 0) {
                 scoutManager.addScout(managedUnit);
                 squadManager.removeManagedUnit(managedUnit);
             }
