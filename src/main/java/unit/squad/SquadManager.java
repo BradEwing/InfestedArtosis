@@ -48,6 +48,10 @@ public class SquadManager {
 
     public void updateOverlordSquad() {
         TilePosition mainBaseLocation = gameState.getBaseData().mainBasePosition();
+        if (overlords.getRallyPoint() == null) {
+            overlords.setRallyPoint(mainBaseLocation);
+        }
+
         for (ManagedUnit managedUnit: overlords.getMembers()) {
             if (managedUnit.getUnit().getDistance(mainBaseLocation.toPosition()) < 16) {
                 managedUnit.setRole(UnitRole.IDLE);
@@ -69,9 +73,11 @@ public class SquadManager {
 
         // TODO: split behavior (if unit exceeds squad radius)
 
+        //
+
         for (Squad fightSquad: fightSquads) {
             fightSquad.onFrame();
-            simulateFightSquad(fightSquad);
+            rallyOrFight(fightSquad);
         }
     }
 
@@ -133,6 +139,7 @@ public class SquadManager {
         if (!defenseSquads.containsKey(base)) {
             Squad squad = new Squad();
             squad.setCenter(base.getCenter());
+            squad.setRallyPoint(base.getLocation());
             defenseSquads.put(base, squad);
         }
     }
@@ -216,6 +223,7 @@ public class SquadManager {
 
         for (Set<Squad> mergeSet: toMerge) {
             Squad newSquad = new Squad();
+            newSquad.setRallyPoint(gameState.getBaseData().mainBasePosition());
             for (Squad mergingSquad: mergeSet) {
                 newSquad.merge(mergingSquad);
                 fightSquads.remove(mergingSquad);
@@ -224,6 +232,46 @@ public class SquadManager {
         }
     }
 
+    private List<Unit> enemyUnitsNearSquad(Squad squad) {
+        HashSet<Unit> enemyUnits = informationManager.getVisibleEnemyUnits();
+
+        List<Unit> enemies = new ArrayList<>();
+
+        for (Unit u: enemyUnits) {
+            if ( (int) u.getPosition().getDistance(squad.getCenter()) > 256) {
+                continue;
+            }
+            enemies.add(u);
+        }
+
+        return enemies;
+    }
+
+    private void rallySquad(Squad squad) {
+        for (ManagedUnit managedUnit: squad.getMembers()) {
+            managedUnit.setRallyPoint(gameState.getBaseData().mainBasePosition());
+            managedUnit.setRole(UnitRole.RALLY);
+        }
+    }
+
+    /**
+     * Determines whether a squad should rally or fight.
+     * @param squad
+     */
+    private void rallyOrFight(Squad squad) {
+        if (enemyUnitsNearSquad(squad).size() > 0 || squad.size() > 8) {
+            simulateFightSquad(squad);
+        } else {
+            rallySquad(squad);
+        }
+    }
+
+    /**
+     * TODO: Decompose and rename
+     *
+     * Responsible for running fight simulation
+     * @param squad
+     */
     private void simulateFightSquad(Squad squad) {
         // Run ASS every 50 frames
         HashSet<ManagedUnit> managedFighters = squad.getMembers();
@@ -362,6 +410,7 @@ public class SquadManager {
 
         // No assignment, create new squad
         Squad newSquad = new Squad();
+        newSquad.setRallyPoint(gameState.getBaseData().mainBasePosition());
         newSquad.setCenter(managedUnit.getUnit().getPosition());
         newSquad.addUnit(managedUnit);
         fightSquads.add(newSquad);

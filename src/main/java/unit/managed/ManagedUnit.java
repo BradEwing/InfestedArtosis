@@ -17,7 +17,6 @@ import java.util.List;
 
 import static util.Filter.closestHostileUnit;
 
-// TODO: Rename to agent / agent manager?
 @Data
 public class ManagedUnit {
     private static int LOCK_ENEMY_WITHIN_DISTANCE = 25;
@@ -29,6 +28,8 @@ public class ManagedUnit {
     private UnitType unitType;
 
 
+    // TODO: Consolidate/refactor
+    private TilePosition rallyPoint;
     private TilePosition movementTargetPosition;
     private List<TilePosition> pathToTarget;
     private TilePosition currentStepToTarget;
@@ -90,6 +91,8 @@ public class ManagedUnit {
         this.plan = plan;
     }
 
+    public void setRallyPoint(TilePosition tilePosition) { this.rallyPoint = tilePosition; }
+
     public void execute() {
         debugRole();
 
@@ -126,6 +129,9 @@ public class ManagedUnit {
                 break;
             case DEFEND:
                 defend();
+                break;
+            case RALLY:
+                rally();
                 break;
             default:
                 break;
@@ -170,6 +176,18 @@ public class ManagedUnit {
 
     private void debugMove() {
         game.drawLineMap(unit.getPosition(), currentStepToTarget.toPosition(), Color.Grey);
+    }
+
+    private void rally() {
+        if (!isReady) return;
+        if (rallyPoint == null) return;
+
+        if (unit.getDistance(rallyPoint.toPosition()) < 64) {
+            return;
+        }
+
+        setUnready();
+        unit.move(rallyPoint.toPosition());
     }
 
     private void move() {
