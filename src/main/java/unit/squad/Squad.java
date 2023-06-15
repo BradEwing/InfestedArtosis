@@ -1,6 +1,7 @@
 package unit.squad;
 
 import bwapi.Position;
+import bwapi.TilePosition;
 import lombok.Data;
 import unit.managed.ManagedUnit;
 
@@ -10,15 +11,15 @@ import java.util.UUID;
 @Data
 /**
  * Bundles up managed units that should be functioning together to perform a goal.
- * TODO: Squad merging/splitting
- * TODO: Debug squads
- * TODO: Move into new namespace
  */
 public class Squad {
 
     private final String id = UUID.randomUUID().toString();
 
     private HashSet<ManagedUnit> members = new HashSet<>();
+
+    // TODO: maybe this is consolidated with retreat target
+    private TilePosition rallyPoint;
 
     private Position center;
     private int radius;

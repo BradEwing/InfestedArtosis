@@ -94,12 +94,6 @@ public class UnitManager {
         scoutManager.onFrame();
 
         for (ManagedUnit managedUnit: managedUnits) {
-            /**
-             * Disable for now, there's a non-deterministic crash with BWEM and units get stuck in their move path
-            if (managedUnit.getPathToTarget() == null || managedUnit.getPathToTarget().size() == 0) {
-                calculateMovementPath(managedUnit);
-            }
-             */
             // Check if unready units can be ready again
             if (!managedUnit.isReady() && game.getFrameCount() >= managedUnit.getUnreadyUntilFrame()) {
                 managedUnit.setReady(true);
@@ -115,6 +109,7 @@ public class UnitManager {
                 case RETREAT:
                 case DEFEND:
                 case BUILDING:
+                case RALLY:
                     managedUnit.execute();
                     continue;
             }
