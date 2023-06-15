@@ -1,5 +1,7 @@
 package util;
 
+import bwapi.Position;
+import bwapi.TilePosition;
 import bwapi.Unit;
 import bwapi.UnitType;
 
@@ -42,6 +44,37 @@ public final class Filter {
                 continue;
             }
             int distance = unit.getDistance(u.getPosition());
+            if (distance < closestDistance) {
+                closestUnit = u;
+                closestDistance = distance;
+            }
+        }
+
+        if (closestUnit == null) {
+            return null;
+        }
+
+        return closestUnit;
+    }
+
+    public static Unit closestHostileUnit(Position p, List<Unit> unitList) {
+        if (unitList.size() == 1) {
+            return unitList.get(0);
+        }
+
+        boolean hasSeenEnemyOrHostileBuilding = false;
+        Unit closestUnit = null;
+        double closestDistance = Double.MAX_VALUE;
+        for (Unit u : unitList) {
+            UnitType type = u.getType();
+            boolean isHostileBuilding = isHostileBuilding(type);
+            if (!hasSeenEnemyOrHostileBuilding && (!type.isBuilding() || isHostileBuilding)) {
+                hasSeenEnemyOrHostileBuilding = true;
+            }
+            if (hasSeenEnemyOrHostileBuilding && type.isBuilding() && !isHostileBuilding) {
+                continue;
+            }
+            double distance = p.getDistance(u.getPosition());
             if (distance < closestDistance) {
                 closestUnit = u;
                 closestDistance = distance;

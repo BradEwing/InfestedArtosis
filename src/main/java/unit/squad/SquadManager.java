@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import static util.Filter.closestHostileUnit;
 import static util.Filter.isHostileBuilding;
 
 public class SquadManager {
@@ -234,11 +235,21 @@ public class SquadManager {
 
     private List<Unit> enemyUnitsNearSquad(Squad squad) {
         HashSet<Unit> enemyUnits = informationManager.getVisibleEnemyUnits();
+        HashSet<Unit> enemyBuildings = informationManager.getEnemyBuildings();
 
         List<Unit> enemies = new ArrayList<>();
 
         for (Unit u: enemyUnits) {
-            if ( (int) u.getPosition().getDistance(squad.getCenter()) > 256) {
+            final double d = u.getPosition().getDistance(squad.getCenter());
+            if (d > 256.0) {
+                continue;
+            }
+            enemies.add(u);
+        }
+
+        for (Unit u: enemyBuildings) {
+            final double d = u.getPosition().getDistance(squad.getCenter());
+            if (d > 256.0) {
                 continue;
             }
             enemies.add(u);
@@ -259,7 +270,7 @@ public class SquadManager {
      * @param squad
      */
     private void rallyOrFight(Squad squad) {
-        if (enemyUnitsNearSquad(squad).size() > 0 || squad.size() > 8) {
+        if (enemyUnitsNearSquad(squad).size() > 0 || squad.size() > 5) {
             simulateFightSquad(squad);
         } else {
             rallySquad(squad);
@@ -275,71 +286,80 @@ public class SquadManager {
     private void simulateFightSquad(Squad squad) {
         // Run ASS every 50 frames
         HashSet<ManagedUnit> managedFighters = squad.getMembers();
-        if (game.getFrameCount() % 50 == 0 && managedFighters.size() > 0 && informationManager.isEnemyUnitVisible()) {
-            HashSet<Unit> enemyUnits = informationManager.getVisibleEnemyUnits();
-            HashSet<Unit> enemyBuildings = informationManager.getEnemyBuildings();
-            Simulator simulator = new Simulator.Builder().build();
 
+        HashSet<Unit> enemyBuildings = informationManager.getEnemyBuildings();
+        Unit closest = closestHostileUnit(squad.getCenter(), enemyBuildings.stream().collect(Collectors.toList()));
+
+        if (!informationManager.isEnemyUnitVisible() && enemyBuildings.size() > 0) {
+
+            for (ManagedUnit managedUnit: squad.getMembers()) {
+                managedUnit.setRole(UnitRole.FIGHT);
+                managedUnit.setMovementTargetPosition(closest.getTilePosition());
+            }
+        }
+
+        HashSet<Unit> enemyUnits = informationManager.getVisibleEnemyUnits();
+        Simulator simulator = new Simulator.Builder().build();
+
+        for (ManagedUnit managedUnit: managedFighters) {
+            simulator.addAgentA(agentFactory.of(managedUnit.getUnit()));
+        }
+
+        for (Unit enemyUnit: enemyUnits) {
+            if (enemyUnit.getType() == UnitType.Unknown) {
+                continue;
+            }
+            if ( (int) enemyUnit.getPosition().getDistance(squad.getCenter()) > 256) {
+                continue;
+            }
+            try {
+                simulator.addAgentB(agentFactory.of(enemyUnit));
+            } catch (ArithmeticException e) {
+                return;
+            }
+        }
+
+        for (Unit enemyBuilding: enemyBuildings) {
+            if (!isHostileBuilding(enemyBuilding.getType())) {
+                continue;
+            }
+            if ( (int) enemyBuilding.getPosition().getDistance(squad.getCenter()) > 512) {
+                continue;
+            }
+            try {
+                simulator.addAgentB(agentFactory.of(enemyBuilding));
+            } catch (ArithmeticException e) {
+                return;
+            }
+        }
+
+
+        simulator.simulate(150); // Simulate 15 seconds
+
+        if (simulator.getAgentsA().isEmpty()) {
             for (ManagedUnit managedUnit: managedFighters) {
-                simulator.addAgentA(agentFactory.of(managedUnit.getUnit()));
+                managedUnit.setRole(UnitRole.RETREAT);
+                managedUnit.setRetreatTarget(gameState.getBaseData().mainBasePosition());
             }
+            return;
+        }
 
-            for (Unit enemyUnit: enemyUnits) {
-                if (enemyUnit.getType() == UnitType.Unknown) {
-                    continue;
-                }
-                if ( (int) enemyUnit.getPosition().getDistance(squad.getCenter()) > 256) {
-                    continue;
-                }
-                try {
-                    simulator.addAgentB(agentFactory.of(enemyUnit));
-                } catch (ArithmeticException e) {
-                    return;
-                }
-            }
-
-            for (Unit enemyBuilding: enemyBuildings) {
-                if (!isHostileBuilding(enemyBuilding.getType())) {
-                    continue;
-                }
-                if ( (int) enemyBuilding.getPosition().getDistance(squad.getCenter()) > 512) {
-                    continue;
-                }
-                try {
-                    simulator.addAgentB(agentFactory.of(enemyBuilding));
-                } catch (ArithmeticException e) {
-                    return;
-                }
-            }
-
-
-            simulator.simulate(150); // Simulate 15 seconds
-
-            if (simulator.getAgentsA().isEmpty()) {
+        if (!simulator.getAgentsB().isEmpty()) {
+            // If less than half of units are left, retreat
+            float percentRemaining = (float) simulator.getAgentsA().size() / managedFighters.size();
+            if (percentRemaining < 0.20) {
                 for (ManagedUnit managedUnit: managedFighters) {
                     managedUnit.setRole(UnitRole.RETREAT);
                     managedUnit.setRetreatTarget(gameState.getBaseData().mainBasePosition());
                 }
                 return;
             }
-
-            if (!simulator.getAgentsB().isEmpty()) {
-                // If less than half of units are left, retreat
-                float percentRemaining = (float) simulator.getAgentsA().size() / managedFighters.size();
-                if (percentRemaining < 0.20) {
-                    for (ManagedUnit managedUnit: managedFighters) {
-                        managedUnit.setRole(UnitRole.RETREAT);
-                        managedUnit.setRetreatTarget(gameState.getBaseData().mainBasePosition());
-                    }
-                    return;
-                }
-            }
-
-            for (ManagedUnit managedUnit: managedFighters) {
-                managedUnit.setRole(UnitRole.FIGHT);
-            }
-            return;
         }
+
+        for (ManagedUnit managedUnit: managedFighters) {
+            managedUnit.setRole(UnitRole.FIGHT);
+        }
+        return;
     }
 
     private boolean canDefenseSquadClearThreat(Squad squad, List<Unit> enemyUnits) {

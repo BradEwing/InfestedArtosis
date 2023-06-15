@@ -109,6 +109,7 @@ public class UnitManager {
                 case RETREAT:
                 case DEFEND:
                 case BUILDING:
+                case RALLY:
                     managedUnit.execute();
                     continue;
             }
