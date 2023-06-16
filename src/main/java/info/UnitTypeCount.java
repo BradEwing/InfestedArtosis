@@ -15,6 +15,11 @@ public class UnitTypeCount {
         return unitTypeCount.get(unitType) + plannedUnitTypeCount.get(unitType);
     }
 
+    private int safeGet(UnitType unitType) {
+        ensureUnitType(unitType);
+        return unitTypeCount.get(unitType);
+    }
+
     public void addUnit(UnitType unitType) {
         if (!unitTypeCount.containsKey(unitType)) {
             unitTypeCount.put(unitType, 0);
@@ -66,5 +71,21 @@ public class UnitTypeCount {
         if (!plannedUnitTypeCount.containsKey(unitType)) {
             plannedUnitTypeCount.put(unitType, 0);
         }
+    }
+
+    public int meleeCount() {
+        return safeGet(UnitType.Zerg_Zergling) + safeGet(UnitType.Zerg_Ultralisk);
+    }
+
+    public int rangedCount() {
+        return safeGet(UnitType.Zerg_Hydralisk) + safeGet(UnitType.Zerg_Lurker);
+    }
+
+    public int groundCount() {
+        return meleeCount() + rangedCount() + safeGet(UnitType.Zerg_Defiler);
+    }
+
+    public int airCount() {
+        return safeGet(UnitType.Zerg_Mutalisk) + safeGet(UnitType.Zerg_Guardian) + safeGet(UnitType.Zerg_Devourer);
     }
 }

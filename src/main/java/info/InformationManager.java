@@ -141,6 +141,10 @@ public class InformationManager {
             case Zerg_Lair:
                 techProgression.setLair(true);
                 break;
+            case Zerg_Evolution_Chamber:
+                techProgression.setPlannedEvolutionChambers(techProgression.getPlannedEvolutionChambers()-1);
+                techProgression.setEvolutionChambers(techProgression.evolutionChambers()+1);
+                break;
         }
     }
 
@@ -234,6 +238,10 @@ public class InformationManager {
                 break;
             case Zerg_Lair:
                 techProgression.setLair(false);
+                break;
+            case Zerg_Evolution_Chamber:
+                final int evolutionChambers = techProgression.getEvolutionChambers();
+                techProgression.setEvolutionChambers(evolutionChambers-1);
                 break;
         }
     }
