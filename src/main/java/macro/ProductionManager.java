@@ -338,22 +338,20 @@ public class ProductionManager {
 
 
         /** Evolution Chamber Upgrades **/
-        final int numGroundUnits = numHydralisks + numZerglings;
-
         // Carapace
-        if (techProgression.canPlanCarapaceUpgrades() && numGroundUnits > 8) {
+        if (techProgression.canPlanCarapaceUpgrades() && unitTypeCount.groundCount() > 8) {
             productionQueue.add(new Plan(UpgradeType.Zerg_Carapace, currentFrame, false));
             techProgression.setPlannedCarapaceUpgrades(true);
         }
 
         // Ranged Attack
-        if (techProgression.canPlanRangedUpgrades() && numHydralisks > 8) {
+        if (techProgression.canPlanRangedUpgrades() && unitTypeCount.rangedCount() > 8) {
             productionQueue.add(new Plan(UpgradeType.Zerg_Missile_Attacks, currentFrame, false));
             techProgression.setPlannedRangedUpgrades(true);
         }
 
         // Ranged Attack
-        if (techProgression.canPlanMeleeUpgrades() && numZerglings > 8) {
+        if (techProgression.canPlanMeleeUpgrades() && unitTypeCount.meleeCount() > 8) {
             productionQueue.add(new Plan(UpgradeType.Zerg_Melee_Attacks, currentFrame, false));
             techProgression.setPlannedMeleeUpgrades(true);
         }
@@ -361,12 +359,11 @@ public class ProductionManager {
         /** Spire Upgrades **/
         // TODO: Reactively weigh attack vs defense from game state
         // For now, prefer attack
-        final int numMutalisks = unitTypeCount.get(UnitType.Zerg_Mutalisk);
-        if (techProgression.canPlanFlyerAttack() && numMutalisks > 8) {
+        if (techProgression.canPlanFlyerAttack() && unitTypeCount.airCount() > 8) {
             productionQueue.add(new Plan(UpgradeType.Zerg_Flyer_Attacks, currentFrame, false));
             techProgression.setPlannedFlyerAttack(true);
         }
-        if (techProgression.canPlanFlyerDefense() && numMutalisks > 8) {
+        if (techProgression.canPlanFlyerDefense() && unitTypeCount.airCount() > 8) {
             final int flyerAttackTime = UpgradeType.Zerg_Flyer_Attacks.upgradeTime();
             productionQueue.add(new Plan(UpgradeType.Zerg_Flyer_Carapace, currentFrame+1+flyerAttackTime, false));
             techProgression.setPlannedFlyerDefense(true);
