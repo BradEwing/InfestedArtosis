@@ -338,35 +338,33 @@ public class ProductionManager {
 
 
         /** Evolution Chamber Upgrades **/
-        final int numGroundUnits = numHydralisks + numZerglings;
-
         // Carapace
-        if (techProgression.canPlanCarapaceUpgrades() && numGroundUnits > 8) {
-            productionQueue.add(new Plan(UpgradeType.Zerg_Carapace, currentFrame, false));
+        final int evoBuffer = techProgression.evolutionChamberBuffer();
+        if (techProgression.canPlanCarapaceUpgrades() && unitTypeCount.groundCount() > 8) {
+            productionQueue.add(new Plan(UpgradeType.Zerg_Carapace, currentFrame+evoBuffer, false));
             techProgression.setPlannedCarapaceUpgrades(true);
         }
 
         // Ranged Attack
-        if (techProgression.canPlanRangedUpgrades() && numHydralisks > 8) {
-            productionQueue.add(new Plan(UpgradeType.Zerg_Missile_Attacks, currentFrame, false));
+        if (techProgression.canPlanRangedUpgrades() && unitTypeCount.rangedCount() > 8) {
+            productionQueue.add(new Plan(UpgradeType.Zerg_Missile_Attacks, currentFrame+evoBuffer, false));
             techProgression.setPlannedRangedUpgrades(true);
         }
 
         // Ranged Attack
-        if (techProgression.canPlanMeleeUpgrades() && numZerglings > 8) {
-            productionQueue.add(new Plan(UpgradeType.Zerg_Melee_Attacks, currentFrame, false));
+        if (techProgression.canPlanMeleeUpgrades() && unitTypeCount.meleeCount() > 8) {
+            productionQueue.add(new Plan(UpgradeType.Zerg_Melee_Attacks, currentFrame+evoBuffer, false));
             techProgression.setPlannedMeleeUpgrades(true);
         }
 
         /** Spire Upgrades **/
         // TODO: Reactively weigh attack vs defense from game state
         // For now, prefer attack
-        final int numMutalisks = unitTypeCount.get(UnitType.Zerg_Mutalisk);
-        if (techProgression.canPlanFlyerAttack() && numMutalisks > 8) {
+        if (techProgression.canPlanFlyerAttack() && unitTypeCount.airCount() > 8) {
             productionQueue.add(new Plan(UpgradeType.Zerg_Flyer_Attacks, currentFrame, false));
             techProgression.setPlannedFlyerAttack(true);
         }
-        if (techProgression.canPlanFlyerDefense() && numMutalisks > 8) {
+        if (techProgression.canPlanFlyerDefense() && unitTypeCount.airCount() > 8) {
             final int flyerAttackTime = UpgradeType.Zerg_Flyer_Attacks.upgradeTime();
             productionQueue.add(new Plan(UpgradeType.Zerg_Flyer_Carapace, currentFrame+1+flyerAttackTime, false));
             techProgression.setPlannedFlyerDefense(true);
@@ -762,15 +760,36 @@ public class ProductionManager {
             return false;
         }
 
+        Unit nextAvailable = null;
         for (Unit unit : self.getUnits()) {
             UnitType unitType = unit.getType();
 
-            if (unitType == upgrade.whatUpgrades() && !gameState.getAssignedPlannedItems().containsKey(unit)) {
+            if (unitType != upgrade.whatUpgrades()) {
+                continue;
+            }
+
+            if (nextAvailable == null) {
+                nextAvailable = unit;
+            }
+
+            // TODO: Evo chamber already upgrading passes this check
+            // Needs to be unavailable until upgrade completes
+            if (!unit.isUpgrading() && !gameState.getAssignedPlannedItems().containsKey(unit)) {
                 gameState.getAssignedPlannedItems().put(unit, plan);
                 plan.setState(PlanState.SCHEDULE);
                 resourceCount.reserveUpgrade(upgrade);
                 return true;
             }
+
+            // If no assignment, see if this unit will be available before other buildings
+            if (unit.getRemainingUpgradeTime() > nextAvailable.getRemainingUpgradeTime()) {
+                nextAvailable = unit;
+            }
+        }
+
+        if (nextAvailable != null) {
+            int priority = plan.getPriority();
+            plan.setPriority(priority + nextAvailable.getRemainingUpgradeTime());
         }
 
         return false;
