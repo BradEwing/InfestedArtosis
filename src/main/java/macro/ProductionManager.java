@@ -314,6 +314,41 @@ public class ProductionManager {
             productionQueue.add(new Plan(UpgradeType.Grooved_Spines, currentFrame, false));
             techProgression.setPlannedGroovedSpines(true);
         }
+
+
+        /** Evolution Chamber Upgrades **/
+        final int numGroundUnits = numHydralisks + numZerglings;
+
+        // Carapace
+        if (techProgression.canPlanCarapaceUpgrades() && numGroundUnits > 8) {
+            productionQueue.add(new Plan(UpgradeType.Zerg_Carapace, currentFrame, false));
+            techProgression.setPlannedCarapaceUpgrades(true);
+        }
+
+        // Ranged Attack
+        if (techProgression.canPlanRangedUpgrades() && numHydralisks > 8) {
+            productionQueue.add(new Plan(UpgradeType.Zerg_Missile_Attacks, currentFrame, false));
+            techProgression.setPlannedRangedUpgrades(true);
+        }
+
+        // Ranged Attack
+        if (techProgression.canPlanMeleeUpgrades() && numZerglings > 8) {
+            productionQueue.add(new Plan(UpgradeType.Zerg_Missile_Attacks, currentFrame, false));
+            techProgression.setPlannedMeleeUpgrades(true);
+        }
+
+        /** Spire Upgrades **/
+        // TODO: Reactively weigh attack vs defense from game state
+        // For now, prefer attack
+        final int numMutalisks = unitTypeCount.get(UnitType.Zerg_Mutalisk);
+        if (techProgression.canPlanFlyerAttack() && numMutalisks > 8) {
+            productionQueue.add(new Plan(UpgradeType.Zerg_Flyer_Attacks, currentFrame, false));
+            techProgression.setPlannedFlyerAttack(true);
+        }
+        if (techProgression.canPlanFlyerDefense() && numMutalisks > 8) {
+            productionQueue.add(new Plan(UpgradeType.Zerg_Flyer_Carapace, currentFrame+1, false));
+            techProgression.setPlannedFlyerDefense(true);
+        }
     }
 
 
@@ -476,7 +511,14 @@ public class ProductionManager {
             case Muscular_Augments:
             case Grooved_Spines:
                 return techProgression.isHydraliskDen();
-                default:
+            case Zerg_Carapace:
+            case Zerg_Missile_Attacks:
+            case Zerg_Melee_Attacks:
+                return techProgression.getEvolutionChambers() > 0;
+            case Zerg_Flyer_Attacks:
+            case Zerg_Flyer_Carapace:
+                return techProgression.isSpire();
+            default:
                 return false;
         }
     }

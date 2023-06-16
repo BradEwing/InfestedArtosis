@@ -75,6 +75,10 @@ public class TechProgression {
     public boolean canPlanEvolutionChamber() { return spawningPool && plannedEvolutionChambers + evolutionChambers < 2; }
 
     public boolean canPlanCarapaceUpgrades() {
+        if (plannedCarapaceUpgrades) {
+            return false;
+        }
+
         if (carapaceUpgrades == 0) {
             return false;
         }
@@ -95,6 +99,10 @@ public class TechProgression {
     }
 
     public boolean canPlanRangedUpgrades() {
+        if (plannedRangedUpgrades) {
+            return false;
+        }
+
         if (evolutionChambers == 0) {
             return false;
         }
@@ -115,6 +123,10 @@ public class TechProgression {
     }
 
     public boolean canPlanMeleeUpgrades() {
+        if (plannedMeleeUpgrades) {
+            return false;
+        }
+
         if (evolutionChambers == 0) {
             return false;
         }
@@ -135,6 +147,10 @@ public class TechProgression {
     }
 
     public boolean canPlanFlyerAttack() {
+        if (plannedFlyerAttack) {
+            return false;
+        }
+
         if (!spire) {
             return false;
         }
@@ -151,6 +167,10 @@ public class TechProgression {
     }
 
     public boolean canPlanFlyerDefense() {
+        if (plannedFlyerDefense) {
+            return false;
+        }
+
         if (!spire) {
             return false;
         }
