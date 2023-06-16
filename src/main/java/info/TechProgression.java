@@ -83,7 +83,7 @@ public class TechProgression {
             return false;
         }
 
-        if (carapaceUpgrades == 0) {
+        if (evolutionChambers == 0) {
             return false;
         }
 
