@@ -242,6 +242,12 @@ public class ProductionManager {
             techProgression.setPlannedDen(true);
         }
 
+        if (canPlanEvolutionChamber(techProgression)) {
+            productionQueue.add(new Plan(UnitType.Zerg_Evolution_Chamber, currentFrame, true, true));
+            final int currentEvolutionChambers = techProgression.evolutionChambers();
+            techProgression.setPlannedEvolutionChambers(currentEvolutionChambers+1);
+        }
+
         final boolean needLairTech = unitWeights.hasUnit(UnitType.Zerg_Mutalisk) || unitWeights.hasUnit(UnitType.Zerg_Scourge);
 
         if (needLairTech && techProgression.canPlanLair()) {
@@ -252,6 +258,21 @@ public class ProductionManager {
         if (techProgression.canPlanSpire() && unitWeights.hasUnit(UnitType.Zerg_Mutalisk)) {
             productionQueue.add(new Plan(UnitType.Zerg_Spire, currentFrame, true, true));
             techProgression.setPlannedSpire(true);
+        }
+    }
+
+    private boolean canPlanEvolutionChamber(TechProgression techProgression) {
+        UnitTypeCount count = gameState.getUnitTypeCount();
+        if (!techProgression.canPlanEvolutionChamber()) {
+            return false;
+        }
+
+        final int numEvolutionChambers = techProgression.evolutionChambers();
+        final int groundCount = count.groundCount();
+        if (numEvolutionChambers == 0) {
+            return groundCount > 12;
+        } else {
+            return groundCount > 24;
         }
     }
 
@@ -333,7 +354,7 @@ public class ProductionManager {
 
         // Ranged Attack
         if (techProgression.canPlanMeleeUpgrades() && numZerglings > 8) {
-            productionQueue.add(new Plan(UpgradeType.Zerg_Missile_Attacks, currentFrame, false));
+            productionQueue.add(new Plan(UpgradeType.Zerg_Melee_Attacks, currentFrame, false));
             techProgression.setPlannedMeleeUpgrades(true);
         }
 
@@ -346,7 +367,8 @@ public class ProductionManager {
             techProgression.setPlannedFlyerAttack(true);
         }
         if (techProgression.canPlanFlyerDefense() && numMutalisks > 8) {
-            productionQueue.add(new Plan(UpgradeType.Zerg_Flyer_Carapace, currentFrame+1, false));
+            final int flyerAttackTime = UpgradeType.Zerg_Flyer_Attacks.upgradeTime();
+            productionQueue.add(new Plan(UpgradeType.Zerg_Flyer_Carapace, currentFrame+1+flyerAttackTime, false));
             techProgression.setPlannedFlyerDefense(true);
         }
     }
@@ -493,6 +515,7 @@ public class ProductionManager {
                 return numHatcheries > 0;
             case Zerg_Hydralisk_Den:
             case Zerg_Sunken_Colony:
+            case Zerg_Evolution_Chamber:
                 return techProgression.isSpawningPool();
             case Zerg_Lair:
                 return numHatcheries > 0 && techProgression.isSpawningPool();
@@ -682,9 +705,11 @@ public class ProductionManager {
         }
 
         ResourceCount resourceCount = gameState.getResourceCount();
+        TechProgression techProgression = gameState.getTechProgression();
 
         if (unit.isUpgrading()) {
             resourceCount.unreserveUpgrade(upgradeType);
+            techProgression.upgradeTech(upgradeType);
             return true;
         }
         return false;

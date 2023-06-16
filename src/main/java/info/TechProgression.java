@@ -1,5 +1,6 @@
 package info;
 
+import bwapi.UpgradeType;
 import lombok.Data;
 
 @Data
@@ -73,6 +74,9 @@ public class TechProgression {
     }
 
     public boolean canPlanEvolutionChamber() { return spawningPool && plannedEvolutionChambers + evolutionChambers < 2; }
+
+    // TODO: Code smell, all tech should probably be boolean here, and number of evolution chambers comes from BaseData/BuildingManager
+    public int evolutionChambers() { return plannedEvolutionChambers + evolutionChambers; }
 
     public boolean canPlanCarapaceUpgrades() {
         if (plannedCarapaceUpgrades) {
@@ -184,6 +188,43 @@ public class TechProgression {
         }
 
         return true;
+    }
+
+    public void upgradeTech(UpgradeType u) {
+        switch(u) {
+            case Metabolic_Boost:
+                metabolicBoost = true;
+                plannedMetabolicBoost = false;
+                break;
+            case Muscular_Augments:
+                muscularAugments = true;
+                plannedMuscularAugments = false;
+                break;
+            case Grooved_Spines:
+                groovedSpines = true;
+                plannedGroovedSpines = false;
+                break;
+            case Zerg_Carapace:
+                carapaceUpgrades += 1;
+                plannedCarapaceUpgrades = false;
+                break;
+            case Zerg_Melee_Attacks:
+                meleeUpgrades += 1;
+                plannedMeleeUpgrades = false;
+                break;
+            case Zerg_Missile_Attacks:
+                rangedUpgrades += 1;
+                plannedRangedUpgrades = false;
+                break;
+            case Zerg_Flyer_Attacks:
+                flyerAttack += 1;
+                plannedFlyerAttack = false;
+                break;
+            case Zerg_Flyer_Carapace:
+                flyerDefense += 1;
+                plannedFlyerDefense = false;
+                break;
+        }
     }
 
 }
