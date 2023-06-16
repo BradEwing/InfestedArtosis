@@ -149,7 +149,7 @@ public class ManagedUnit {
             game.drawLineMap(unitPosition, fightTarget.getPosition(), Color.Red);
         }
         if (movementTargetPosition != null) {
-            game.drawLineMap(unitPosition, movementTargetPosition.toPosition(), Color.Orange);
+            game.drawLineMap(unitPosition, movementTargetPosition.toPosition(), Color.White);
         }
     }
 
@@ -357,7 +357,7 @@ public class ManagedUnit {
         }
         setUnready();
         // Our fight target is no longer visible, drop in favor of fight target position
-        if (fightTarget != null && fightTarget.getType() == UnitType.Unknown) {
+        if (fightTarget != null && (fightTarget.getType() == UnitType.Unknown || !fightTarget.isTargetable())) {
             fightTarget = null;
         }
         if (fightTarget != null) {
