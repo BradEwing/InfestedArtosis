@@ -227,4 +227,19 @@ public class TechProgression {
         }
     }
 
+    public int evolutionChamberBuffer() {
+        int buffer = 0;
+        if (plannedCarapaceUpgrades) {
+            buffer += UpgradeType.Zerg_Carapace.upgradeTime();
+        }
+        if (plannedRangedUpgrades) {
+            buffer += UpgradeType.Zerg_Missile_Attacks.upgradeTime();
+        }
+        if (plannedMeleeUpgrades) {
+            buffer += UpgradeType.Zerg_Melee_Attacks.upgradeTime();
+        }
+
+        return buffer;
+    }
+
 }
