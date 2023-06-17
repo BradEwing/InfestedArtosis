@@ -152,7 +152,7 @@ public class ProductionManager {
             return;
         }
 
-        productionQueue.add(new Plan(UnitType.Zerg_Hatchery, currentFrame, true, true, base.getLocation()));
+        productionQueue.add(new Plan(UnitType.Zerg_Hatchery, 2, true, true, base.getLocation()));
     }
 
     // debug console messaging goes here
@@ -201,7 +201,7 @@ public class ProductionManager {
             if ((numHatcheries % 2) != 0) {
                 planBase();
             } else {
-                productionQueue.add(new Plan(UnitType.Zerg_Hatchery, currentFrame / 3, true, true));
+                productionQueue.add(new Plan(UnitType.Zerg_Hatchery, 2, true, true));
             }
         }
 
@@ -382,14 +382,20 @@ public class ProductionManager {
 
     // planSupply checks if near supply cap or supply blocked
     private void planSupply(Player self) {
+        if (self.supplyUsed() >= 400) {
+            return;
+        }
         final int supplyRemaining = self.supplyTotal() - self.supplyUsed();
         int plannedSupply = gameState.getPlannedSupply();
-        if (supplyRemaining + plannedSupply < 5 && self.supplyUsed() < 400) {
-            gameState.setPlannedSupply(plannedSupply+16);
-            addUnitToQueue(UnitType.Zerg_Overlord,1, true);
-        } else if (supplyRemaining + plannedSupply < 0 && self.supplyUsed() < 400) {
-            gameState.setPlannedSupply(plannedSupply+16);
-            addUnitToQueue(UnitType.Zerg_Overlord, 1, true);
+        if (supplyRemaining + plannedSupply < 5) {
+            if (gameState.getBaseData().numHatcheries() > 3) {
+                gameState.setPlannedSupply(plannedSupply+32);
+                addUnitToQueue(UnitType.Zerg_Overlord, 1, true);
+                addUnitToQueue(UnitType.Zerg_Overlord, 1, true);
+            } else {
+                gameState.setPlannedSupply(plannedSupply+16);
+                addUnitToQueue(UnitType.Zerg_Overlord,1, true);
+            }
         }
     }
 
@@ -447,12 +453,20 @@ public class ProductionManager {
         planSupply(self);
 
         /** For now, only subject unit production to queue size */
-        // BaseData queue size is 3, increases per hatch
-        if (productionQueue.size() >= 3) {
+        // restrict units from queue if size is >3 initially, increases per hatch
+        if (productionQueue.size() >= unitQueueSize()) {
             return;
         }
 
         planUnits(self, isAllIn);
+    }
+
+    private int unitQueueSize() {
+        if (gameState.getBaseData().numHatcheries() > 3) {
+            return 6;
+        } else {
+            return 3;
+        }
     }
 
     private boolean canAffordHatchSaturation() {
