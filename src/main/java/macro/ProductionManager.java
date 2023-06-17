@@ -257,6 +257,16 @@ public class ProductionManager {
             productionQueue.add(new Plan(UnitType.Zerg_Spire, currentFrame, true, true));
             techProgression.setPlannedSpire(true);
         }
+
+        if (gameState.canPlanQueensNest()) {
+            productionQueue.add(new Plan(UnitType.Zerg_Queens_Nest, currentFrame, true, true));
+            techProgression.setPlannedQueensNest(true);
+        }
+
+        if (gameState.canPlanHive()) {
+            productionQueue.add(new Plan(UnitType.Zerg_Hive, currentFrame, true, true));
+            techProgression.setPlannedHive(true);
+        }
     }
 
     private boolean canPlanEvolutionChamber(TechProgression techProgression) {
@@ -516,7 +526,10 @@ public class ProductionManager {
             case Zerg_Lair:
                 return numHatcheries > 0 && techProgression.isSpawningPool();
             case Zerg_Spire:
+            case Zerg_Queens_Nest:
                 return techProgression.isLair();
+            case Zerg_Hive:
+                return techProgression.isLair() && techProgression.isQueensNest();
             default:
                 return false;
         }
@@ -686,6 +699,12 @@ public class ProductionManager {
                 techProgression.setSpire(true);
                 techProgression.setPlannedSpire(false);
                 break;
+            case Zerg_Queens_Nest:
+                techProgression.setQueensNest(true);
+                techProgression.setPlannedQueensNest(false);
+            case Zerg_Hive:
+                techProgression.setHive(true);
+                techProgression.setPlannedHive(false);
         }
 
         gameState.getPlansBuilding().remove(plan);

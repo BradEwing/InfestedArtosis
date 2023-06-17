@@ -145,6 +145,13 @@ public class InformationManager {
                 techProgression.setPlannedEvolutionChambers(techProgression.getPlannedEvolutionChambers()-1);
                 techProgression.setEvolutionChambers(techProgression.evolutionChambers()+1);
                 break;
+            case Zerg_Queens_Nest:
+                techProgression.setQueensNest(true);
+                unitWeights.enableUnit(UnitType.Zerg_Queen);
+                break;
+            case Zerg_Hive:
+                techProgression.setHive(true);
+                break;
         }
     }
 
@@ -242,6 +249,13 @@ public class InformationManager {
             case Zerg_Evolution_Chamber:
                 final int evolutionChambers = techProgression.getEvolutionChambers();
                 techProgression.setEvolutionChambers(evolutionChambers-1);
+                break;
+            case Zerg_Queens_Nest:
+                techProgression.setQueensNest(false);
+                unitWeights.disableUnit(UnitType.Zerg_Queen);
+                break;
+            case Zerg_Hive:
+                techProgression.setHive(false);
                 break;
         }
     }
