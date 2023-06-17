@@ -247,10 +247,8 @@ public class ProductionManager {
             final int currentEvolutionChambers = techProgression.evolutionChambers();
             techProgression.setPlannedEvolutionChambers(currentEvolutionChambers+1);
         }
-
-        final boolean needLairTech = unitWeights.hasUnit(UnitType.Zerg_Mutalisk) || unitWeights.hasUnit(UnitType.Zerg_Scourge);
-
-        if (needLairTech && techProgression.canPlanLair()) {
+        
+        if (gameState.canPlanLair()) {
             productionQueue.add(new Plan(UnitType.Zerg_Lair, currentFrame, true, true));
             techProgression.setPlannedLair(true);
         }
@@ -799,9 +797,8 @@ public class ProductionManager {
         assignUnit(unit);
     }
 
-    // TODO: Set curPriority PER type
-    // Only allow items of the curPriority to attempt assignment
     // TODO: Switch/case block
+    // TODO: move everything to InformationManager
     private void assignUnit(Unit unit) {
         Player self = game.self();
         if (unit.getPlayer() != self) {
@@ -867,9 +864,6 @@ public class ProductionManager {
             ResourceCount resourceCount = gameState.getResourceCount();
             resourceCount.unreserveUnit(unitType);
             clearAssignments(unit);
-            // BUG: It seems that the unit passed here is the extractor, drone was destroyed
-            //plannedItemToComplete(gameState.getAssignedPlannedItems().get(unit));
-            //gameState.getAssignedPlannedItems().remove(unit);
         }
     }
 

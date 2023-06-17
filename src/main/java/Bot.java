@@ -1,6 +1,7 @@
 import bwapi.BWClient;
 import bwapi.DefaultBWListener;
 import bwapi.Game;
+import bwapi.Race;
 import bwapi.Unit;
 import bwapi.UnitType;
 import bwem.BWEM;
@@ -50,11 +51,13 @@ public class Bot extends DefaultBWListener {
         bwem = new BWEM(game);
         bwem.initialize();
 
+        Race opponentRace = game.enemy().getRace();
+
         this.gameState = new GameState(game.self(), bwem);
 
-        learningManager = new LearningManager(game.enemy().getRace(), game.enemy().getName(), bwem);
+        learningManager = new LearningManager(opponentRace, game.enemy().getName(), bwem);
         Decisions decisions = learningManager.getDecisions();
-        gameState.onStart(decisions);
+        gameState.onStart(decisions, opponentRace);
         OpponentRecord opponentRecord = learningManager.getOpponentRecord();
         informationManager = new InformationManager(bwem, game, gameState);
         debugMap = new Debug(bwem, game, decisions.getOpener(), opponentRecord, gameState);

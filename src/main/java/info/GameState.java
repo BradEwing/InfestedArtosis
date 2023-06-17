@@ -1,6 +1,7 @@
 package info;
 
 import bwapi.Player;
+import bwapi.Race;
 import bwapi.TilePosition;
 import bwapi.Unit;
 import bwapi.UnitType;
@@ -33,6 +34,8 @@ import java.util.HashSet;
 public class GameState {
     private Player self;
     private BWEM bwem;
+
+    private Race opponentRace; // TODO: Set from InfoManager if opponent is Random
 
     private int mineralWorkers;
     private int geyserWorkers;
@@ -89,7 +92,7 @@ public class GameState {
         this.baseData = new BaseData(bwem.getMap().getBases());
     }
 
-    public void onStart(Decisions decisions) {
+    public void onStart(Decisions decisions, Race opponentRace) {
         Opener opener = decisions.getOpener();
         this.activeOpener = opener;
         this.isAllIn = opener.isAllIn();
@@ -99,6 +102,8 @@ public class GameState {
         if (FeatureFlags.learnDefensiveSunk) {
             this.defensiveSunk = decisions.isDefensiveSunk();
         }
+
+        this.opponentRace = opponentRace;
     }
 
     public int numGatherers() {
@@ -183,5 +188,31 @@ public class GameState {
 
     public void setImpossiblePlan(Plan plan) {
         plansImpossible.add(plan);
+    }
+
+    /**
+     * Checks tech progression, strategy and base data to determine if a lair can be planned.
+     *
+     * // TODO: Determine more reactively:
+     *     - Need lair for next tier of upgrades
+     *     - Need speed overlords for detection or scouting
+     *     - Need hive
+     * @return boolean
+     */
+    public boolean canPlanLair() {
+        final boolean unitsNeedLairTech = unitWeights.hasUnit(UnitType.Zerg_Mutalisk) || unitWeights.hasUnit(UnitType.Zerg_Scourge);
+
+        return unitsNeedLairTech && techProgression.canPlanLair() && hasMinHatchForLair();
+    }
+
+    // Only take 1 hatch -> lair against zerg
+    private boolean hasMinHatchForLair() {
+        final int numHatch = baseData.numHatcheries();
+
+        if (opponentRace == Race.Zerg) {
+            return numHatch > 0;
+        } else {
+            return numHatch > 1;
+        }
     }
 }
