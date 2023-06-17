@@ -388,12 +388,14 @@ public class ProductionManager {
         final int supplyRemaining = self.supplyTotal() - self.supplyUsed();
         int plannedSupply = gameState.getPlannedSupply();
         if (supplyRemaining + plannedSupply < 5) {
-            gameState.setPlannedSupply(plannedSupply+16);
-            addUnitToQueue(UnitType.Zerg_Overlord,1, true);
-        } else if (supplyRemaining + plannedSupply < 0) {
-            gameState.setPlannedSupply(plannedSupply+32);
-            addUnitToQueue(UnitType.Zerg_Overlord, 1, true);
-            addUnitToQueue(UnitType.Zerg_Overlord, 1, true);
+            if (gameState.getBaseData().numHatcheries() > 3) {
+                gameState.setPlannedSupply(plannedSupply+32);
+                addUnitToQueue(UnitType.Zerg_Overlord, 1, true);
+                addUnitToQueue(UnitType.Zerg_Overlord, 1, true);
+            } else {
+                gameState.setPlannedSupply(plannedSupply+16);
+                addUnitToQueue(UnitType.Zerg_Overlord,1, true);
+            }
         }
     }
 
