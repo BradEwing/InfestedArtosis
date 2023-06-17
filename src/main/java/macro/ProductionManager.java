@@ -152,7 +152,7 @@ public class ProductionManager {
             return;
         }
 
-        productionQueue.add(new Plan(UnitType.Zerg_Hatchery, currentFrame, true, true, base.getLocation()));
+        productionQueue.add(new Plan(UnitType.Zerg_Hatchery, 2, true, true, base.getLocation()));
     }
 
     // debug console messaging goes here
@@ -201,7 +201,7 @@ public class ProductionManager {
             if ((numHatcheries % 2) != 0) {
                 planBase();
             } else {
-                productionQueue.add(new Plan(UnitType.Zerg_Hatchery, currentFrame / 3, true, true));
+                productionQueue.add(new Plan(UnitType.Zerg_Hatchery, 2, true, true));
             }
         }
 
