@@ -11,6 +11,7 @@ public class TechProgression {
     private boolean hydraliskDen = false;
     private boolean lair = false;
     private boolean spire = false;
+    private boolean queensNest = false;
     private boolean hive = false;
     private int evolutionChambers = 0;
 
@@ -19,6 +20,8 @@ public class TechProgression {
     private boolean plannedDen = false;
     private boolean plannedLair = false;
     private boolean plannedSpire = false;
+    private boolean plannedQueensNest = false;
+    private boolean plannedHive = false;
     private int plannedEvolutionChambers = 0;
 
     // Upgrades
@@ -57,9 +60,15 @@ public class TechProgression {
         return spawningPool && !plannedLair && !lair;
     }
 
+    public boolean canPlanHive() {
+        return queensNest && lair && !plannedHive && !hive;
+    }
+
     public boolean canPlanSpire() {
         return lair && !plannedSpire && !spire;
     }
+
+    public boolean canPlanQueensNest() { return lair && !plannedQueensNest && !queensNest; }
 
     public boolean canPlanMetabolicBoost() {
         return spawningPool && !plannedMetabolicBoost && !metabolicBoost;
@@ -240,6 +249,23 @@ public class TechProgression {
         }
 
         return buffer;
+    }
+
+    public boolean needLairForNextEvolutionChamberUpgrades() {
+        return meleeUpgrades + rangedUpgrades + carapaceUpgrades > 1;
+    }
+
+    // TODO: Adrenal glands
+    public boolean needHiveForUpgrades() {
+        return needHiveForNextEvolutionChamberUpgrades() || needHiveForSpireUpgrades();
+    }
+
+    private boolean needHiveForSpireUpgrades() {
+        return flyerAttack + flyerDefense > 3;
+    }
+
+    private boolean needHiveForNextEvolutionChamberUpgrades() {
+        return meleeUpgrades + rangedUpgrades + carapaceUpgrades > 3;
     }
 
 }

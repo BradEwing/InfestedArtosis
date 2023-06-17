@@ -28,6 +28,7 @@ import java.util.stream.Collectors;
 public class BuildingManager {
     private GameState gameState;
 
+    private ManagedUnit lair;
     private HashSet<ManagedUnit> hatcheries = new HashSet();
     private HashSet<ManagedUnit> colonies = new HashSet<>();
     private HashSet<ManagedUnit> morphingManagedUnits = new HashSet<>();
@@ -44,6 +45,8 @@ public class BuildingManager {
         UnitType unitType = managedUnit.getUnitType();
         switch(unitType) {
             case Zerg_Hatchery:
+            case Zerg_Lair:
+            case Zerg_Hive:
                 this.hatcheries.add(managedUnit);
                 break;
             case Zerg_Creep_Colony:
@@ -56,6 +59,8 @@ public class BuildingManager {
         UnitType unitType = managedUnit.getUnitType();
         switch(unitType) {
             case Zerg_Hatchery:
+            case Zerg_Lair:
+            case Zerg_Hive:
                 this.hatcheries.remove(managedUnit);
                 break;
             case Zerg_Creep_Colony:
@@ -94,6 +99,9 @@ public class BuildingManager {
                 case Zerg_Sunken_Colony:
                     didAssign = this.assignMorphSunkenColony(plan);
                     break;
+                case Zerg_Hive:
+                    didAssign = this.assignMorphHive(plan);
+                    break;
             }
 
             if (didAssign) {
@@ -121,8 +129,21 @@ public class BuildingManager {
                 managedHatchery.setRole(UnitRole.MORPH);
                 gameState.getAssignedPlannedItems().put(hatchery, plan);
                 managedHatchery.setPlan(plan);
+                lair = managedHatchery;
                 return true;
             }
+        }
+
+        return false;
+    }
+
+    private boolean assignMorphHive(Plan plan) {
+        Unit lairUnit = lair.getUnit();
+        if (lairUnit.canBuild(plan.getPlannedUnit()) && !gameState.getAssignedPlannedItems().containsKey(lairUnit)) {
+            lair.setRole(UnitRole.MORPH);
+            gameState.getAssignedPlannedItems().put(lairUnit, plan);
+            lair.setPlan(plan);
+            return true;
         }
 
         return false;
