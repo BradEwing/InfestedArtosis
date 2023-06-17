@@ -194,15 +194,30 @@ public class GameState {
      * Checks tech progression, strategy and base data to determine if a lair can be planned.
      *
      * // TODO: Determine more reactively:
-     *     - Need lair for next tier of upgrades
      *     - Need speed overlords for detection or scouting
      *     - Need hive
      * @return boolean
      */
     public boolean canPlanLair() {
-        final boolean unitsNeedLairTech = unitWeights.hasUnit(UnitType.Zerg_Mutalisk) || unitWeights.hasUnit(UnitType.Zerg_Scourge);
+        return needLair() && techProgression.canPlanLair() && hasMinHatchForLair();
+    }
 
-        return unitsNeedLairTech && techProgression.canPlanLair() && hasMinHatchForLair();
+    public boolean canPlanHive() {
+        return needHive() && techProgression.canPlanHive();
+    }
+
+    public boolean canPlanQueensNest() {
+        return needHive() && techProgression.canPlanQueensNest();
+    }
+
+    private boolean needLair() {
+        final boolean unitsNeedLairTech = unitWeights.hasUnit(UnitType.Zerg_Mutalisk) || unitWeights.hasUnit(UnitType.Zerg_Scourge) || unitWeights.hasUnit(UnitType.Zerg_Lurker);
+        return unitsNeedLairTech || techProgression.needLairForNextEvolutionChamberUpgrades() || needHive();
+    }
+
+    private boolean needHive() {
+        final boolean unitsNeedHiveTech = unitWeights.hasUnit(UnitType.Zerg_Ultralisk) || unitWeights.hasUnit(UnitType.Zerg_Defiler);
+        return unitsNeedHiveTech || techProgression.needHiveForUpgrades();
     }
 
     // Only take 1 hatch -> lair against zerg
