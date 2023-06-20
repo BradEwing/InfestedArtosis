@@ -26,7 +26,7 @@ public class OpenerRecord implements UCBRecord {
         if (totalGames == 0 || this.games() == 0) {
             return 2.0;
         }
-        double sampleMean = this.wins() / this.games();
+        double sampleMean = (double) this.wins() / this.games(); // cast to double, otherwise this always returns 0.0
         double c = Math.sqrt(2 * Math.log(totalGames) / this.games());
         return sampleMean + c;
     }
