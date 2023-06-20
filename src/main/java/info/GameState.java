@@ -51,7 +51,7 @@ public class GameState {
 
     private HashSet<ManagedUnit> larva = new HashSet<>();
 
-    private boolean enemyHasCloakedUnits = false;
+    private boolean needDetection = false;
     private boolean enemyHasHostileFlyers = false;
     private boolean isLarvaDeadlocked = false;
     private boolean isAllIn = false;
@@ -218,6 +218,32 @@ public class GameState {
     private boolean needHive() {
         final boolean unitsNeedHiveTech = unitWeights.hasUnit(UnitType.Zerg_Ultralisk) || unitWeights.hasUnit(UnitType.Zerg_Defiler);
         return unitsNeedHiveTech || techProgression.needHiveForUpgrades();
+    }
+
+    public boolean canPlanOverlordSpeed() {
+        return techProgression.canPlanOverlordSpeed() && needOverlordSpeed();
+    }
+
+    /**
+     * Take if:
+     *   - Enemy buildings have been seen but none are known.
+     *   - Enemy has cloaked units or tech.
+     *   - >7 overlords
+     *   - Overlords under threat (e.g.
+     * @return boolean
+     */
+    public boolean needOverlordSpeed() {
+        final int numOverlord = unitTypeCount.get(UnitType.Zerg_Overlord);
+
+        if (numOverlord > 7) {
+            return true;
+        }
+
+        if (needDetection) {
+            return true;
+        }
+
+        return false;
     }
 
     // Only take 1 hatch -> lair against zerg

@@ -28,6 +28,7 @@ public class TechProgression {
     private boolean metabolicBoost = false;
     private boolean muscularAugments = false;
     private boolean groovedSpines = false;
+    private boolean overlordSpeed = false;
     private int carapaceUpgrades = 0;
     private int rangedUpgrades = 0;
     private int meleeUpgrades = 0;
@@ -38,6 +39,7 @@ public class TechProgression {
     private boolean plannedMetabolicBoost = false;
     private boolean plannedMuscularAugments = false;
     private boolean plannedGroovedSpines = false;
+    private boolean plannedOverlordSpeed = false;
     private boolean plannedCarapaceUpgrades = false;
     private boolean plannedRangedUpgrades = false;
     private boolean plannedMeleeUpgrades = false;
@@ -81,6 +83,8 @@ public class TechProgression {
     public boolean canPlanGroovedSpines() {
         return hydraliskDen && !plannedGroovedSpines && !groovedSpines;
     }
+
+    public boolean canPlanOverlordSpeed() { return lair && !plannedOverlordSpeed && !overlordSpeed; }
 
     public boolean canPlanEvolutionChamber() { return spawningPool && plannedEvolutionChambers + evolutionChambers < 2; }
 
@@ -232,6 +236,10 @@ public class TechProgression {
             case Zerg_Flyer_Carapace:
                 flyerDefense += 1;
                 plannedFlyerDefense = false;
+                break;
+            case Pneumatized_Carapace:
+                overlordSpeed = true;
+                plannedOverlordSpeed = false;
                 break;
         }
     }
