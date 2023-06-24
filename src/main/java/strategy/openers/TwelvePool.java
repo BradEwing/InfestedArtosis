@@ -23,6 +23,9 @@ public class TwelvePool implements Opener {
         list.add(new Plan(UnitType.Zerg_Drone, 3, false, true));
         list.add(new Plan(UnitType.Zerg_Drone, 3, false, true));
         list.add(new Plan(UnitType.Zerg_Spawning_Pool, 4, true, true));
+        list.add(new Plan(UnitType.Zerg_Zergling, 5, false, true));
+        list.add(new Plan(UnitType.Zerg_Zergling, 5, false, true));
+        list.add(new Plan(UnitType.Zerg_Zergling, 5, false, true));
 
         return list;
     }
