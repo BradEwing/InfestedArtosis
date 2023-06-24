@@ -21,6 +21,7 @@ import strategy.openers.Opener;
 import strategy.strategies.Strategy;
 import strategy.strategies.UnitWeights;
 import unit.managed.ManagedUnit;
+import unit.managed.UnitRole;
 
 import java.util.HashMap;
 import java.util.HashSet;
@@ -229,5 +230,15 @@ public class GameState {
         } else {
             return numHatch > 1;
         }
+    }
+
+    public int availableLarva() {
+        int c = 0;
+        for (ManagedUnit l: larva) {
+            if (l.getRole() == UnitRole.LARVA) {
+                c += 1;
+            }
+        }
+        return c;
     }
 }
