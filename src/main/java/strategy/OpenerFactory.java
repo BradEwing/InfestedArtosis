@@ -100,7 +100,6 @@ public class OpenerFactory {
             case OVER_POOL:
             case FOUR_POOL:
             case NINE_POOL_SPEED:
-            case TWELVE_POOL:
             case TWELVE_HATCH:
                 return true;
             default:
