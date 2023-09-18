@@ -91,19 +91,35 @@ public class ManagedUnit {
 
     public Unit getUnit() { return this.unit; }
 
+    public UnitRole getRole() { return this.role; }
+
     public void setRole(UnitRole role) { this.role = role; }
 
     public void setRetreatTarget(TilePosition tp) { this.retreatTarget = tp; }
 
+    public Unit getDefendTarget() { return this.defendTarget; }
     public void setDefendTarget(Unit unit) { this.defendTarget = unit; }
 
     public boolean isReady() { return this.isReady; }
 
-    public Unit getDefendTarget() { return this.defendTarget; }
+    public void setReady(boolean isReady) { this.isReady = isReady; }
 
+    public int getUnreadyUntilFrame() { return this.unreadyUntilFrame; }
+
+    public boolean canFight() { return this.canFight; }
+
+    public void setCanFight(boolean canFight) { this.canFight = canFight; }
+
+    public void setGatherTarget(Unit unit) { this.gatherTarget = unit; }
+
+    public void hasNewGatherTarget(boolean hasNewGatherTarget) { this.hasNewGatherTarget = hasNewGatherTarget; }
+
+    public TilePosition getMovementTargetPosition() { return this.movementTargetPosition; }
     public void setMovementTargetPosition(TilePosition tp) { movementTargetPosition = tp; }
 
     public UnitType getUnitType() { return this.unitType; }
+
+    public void setUnitType(UnitType unitType) { this.unitType = unitType; }
 
     public Plan getPlan() { return this.plan; }
 

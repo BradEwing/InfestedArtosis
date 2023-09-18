@@ -313,7 +313,7 @@ public class WorkerManager {
             if (mineralUnits.size() <= fewestMineralAssignments) {
                 managedUnit.setRole(UnitRole.GATHER);
                 managedUnit.setGatherTarget(mineral);
-                managedUnit.setHasNewGatherTarget(true);
+                managedUnit.hasNewGatherTarget(true);
                 assignedManagedWorkers.add(managedUnit);
                 gameState.setMineralWorkers(gameState.getMineralWorkers()+1);
                 mineralUnits.add(managedUnit);
@@ -334,7 +334,7 @@ public class WorkerManager {
             if (geyserUnits.size() < 3) {
                 managedUnit.setRole(UnitRole.GATHER);
                 managedUnit.setGatherTarget(geyser);
-                managedUnit.setHasNewGatherTarget(true);
+                managedUnit.hasNewGatherTarget(true);
                 assignedManagedWorkers.add(managedUnit);
                 gameState.setGeyserWorkers(gameState.getGeyserWorkers()+1);
                 geyserUnits.add(managedUnit);
