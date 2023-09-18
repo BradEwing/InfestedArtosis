@@ -8,7 +8,6 @@ import bwapi.TilePosition;
 import bwapi.Unit;
 
 import bwapi.UnitType;
-import lombok.Data;
 import planner.PlanState;
 import planner.Plan;
 
@@ -17,7 +16,6 @@ import java.util.List;
 
 import static util.Filter.closestHostileUnit;
 
-@Data
 public class ManagedUnit {
     private static int LOCK_ENEMY_WITHIN_DISTANCE = 25;
     private Game game;
@@ -32,7 +30,6 @@ public class ManagedUnit {
     private TilePosition rallyPoint;
     private TilePosition movementTargetPosition;
     private List<TilePosition> pathToTarget;
-    private TilePosition currentStepToTarget;
     private TilePosition retreatTarget;
 
     private Unit defendTarget;
@@ -46,7 +43,6 @@ public class ManagedUnit {
     private int buildAttemptFrame;
 
     private boolean canFight;
-    private boolean isFlyer;
 
     private int unreadyUntilFrame = 0;
     private boolean isReady = true;
@@ -58,10 +54,8 @@ public class ManagedUnit {
 
         if (unit.getType() == UnitType.Zerg_Overlord) {
             this.canFight = false;
-            this.isFlyer = true;
         } else {
             this.canFight = true;
-            this.isFlyer = false;
         }
         this.unitType = unit.getType();
         this.unitID = unit.getID();
@@ -87,27 +81,51 @@ public class ManagedUnit {
         return this.unitID;
     }
 
+    public int getUnitID() { return this.unitID; }
+
     public void setPlan(Plan plan) {
         this.plan = plan;
     }
 
     public void setRallyPoint(TilePosition tilePosition) { this.rallyPoint = tilePosition; }
 
+    public Unit getUnit() { return this.unit; }
+
+    public UnitRole getRole() { return this.role; }
+
+    public void setRole(UnitRole role) { this.role = role; }
+
+    public void setRetreatTarget(TilePosition tp) { this.retreatTarget = tp; }
+
+    public Unit getDefendTarget() { return this.defendTarget; }
+    public void setDefendTarget(Unit unit) { this.defendTarget = unit; }
+
+    public boolean isReady() { return this.isReady; }
+
+    public void setReady(boolean isReady) { this.isReady = isReady; }
+
+    public int getUnreadyUntilFrame() { return this.unreadyUntilFrame; }
+
+    public boolean canFight() { return this.canFight; }
+
+    public void setCanFight(boolean canFight) { this.canFight = canFight; }
+
+    public void setGatherTarget(Unit unit) { this.gatherTarget = unit; }
+
+    public void hasNewGatherTarget(boolean hasNewGatherTarget) { this.hasNewGatherTarget = hasNewGatherTarget; }
+
+    public TilePosition getMovementTargetPosition() { return this.movementTargetPosition; }
+    public void setMovementTargetPosition(TilePosition tp) { movementTargetPosition = tp; }
+
+    public UnitType getUnitType() { return this.unitType; }
+
+    public void setUnitType(UnitType unitType) { this.unitType = unitType; }
+
+    public Plan getPlan() { return this.plan; }
+
     public void execute() {
         debugRole();
 
-        // TODO: Determine control flow here
-
-        // For now, we MOVE if our current target is more than 100 away and it exists.
-        // That number will certainly have to be tweaked!
-        /*
-        if (!isFlyer() && movementTargetPosition != null && unit.getDistance(movementTargetPosition.toPosition()) > 300) {
-            move();
-            return;
-        }
-         */
-
-        // If we're close to our unit's target, execute action for role
         switch (role) {
             case SCOUT:
                 scout();
@@ -168,16 +186,6 @@ public class ManagedUnit {
         game.drawTextMap(unitPosition, String.format("%s", role), Text.Default);
     }
 
-    private void debugPathToTarget() {
-        for (int i = 0; i < pathToTarget.size() - 1; i++) {
-            game.drawLineMap(pathToTarget.get(i).toPosition(), pathToTarget.get(i+1).toPosition(), Color.White);
-        }
-    }
-
-    private void debugMove() {
-        game.drawLineMap(unit.getPosition(), currentStepToTarget.toPosition(), Color.Grey);
-    }
-
     private void rally() {
         if (!isReady) return;
         if (rallyPoint == null) return;
@@ -188,32 +196,6 @@ public class ManagedUnit {
 
         setUnready();
         unit.move(rallyPoint.toPosition());
-    }
-
-    private void move() {
-        TilePosition currentPosition = unit.getTilePosition();
-        // If we have a movement step target and we're far away, we do nothing
-        if (currentStepToTarget != null && currentPosition.getDistance(currentStepToTarget) > 50) {
-            return;
-        }
-        // Check to see if we have a path
-        // If we don't see if can naive move to target
-        if (pathToTarget == null || pathToTarget.size() < 1) {
-            if (movementTargetPosition != null) {
-                pathToTarget = null;
-                unit.move(movementTargetPosition.toPosition());
-            }
-            return;
-        }
-
-        // Check to see if we're close to current step, or if we need to initialize one
-
-        if (currentStepToTarget == null || currentPosition.getDistance(currentStepToTarget) <= 50) {
-            currentStepToTarget = pathToTarget.remove(0);
-        }
-
-        debugMove();
-        unit.move(currentStepToTarget.toPosition());
     }
 
     private void gather() {
@@ -454,22 +436,5 @@ public class ManagedUnit {
         }
 
         movementTargetPosition = backupScoutPosition;
-    }
-
-    public void assignGather(Unit gatherTarget) {
-
-    }
-
-    public void assignBuilder(Plan buildingPlan) {
-
-    }
-
-    // TODO: Refactor into debug role
-    private void debugBuildingAssignments() {
-
-        UnitType building = plan.getPlannedUnit();
-        Position unitPosition = unit.getPosition();
-        game.drawTextMap(unitPosition, "BUILDER: " + building.toString(), Text.White);
-
     }
 }

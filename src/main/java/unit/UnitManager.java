@@ -1,16 +1,12 @@
 package unit;
 
 import bwapi.Game;
-import bwapi.TilePosition;
 import bwapi.Unit;
 import bwapi.UnitType;
 import bwem.BWEM;
 import bwem.Base;
-import bwem.CPPath;
-import bwem.ChokePoint;
 import info.InformationManager;
 import info.GameState;
-import info.UnitTypeCount;
 import org.bk.ass.sim.BWMirrorAgentFactory;
 import unit.managed.ManagedUnit;
 import unit.managed.UnitRole;
@@ -122,7 +118,7 @@ public class UnitManager {
                 scoutManager.removeScout(managedUnit);
             }
 
-            if (managedUnit.isCanFight() && role != UnitRole.FIGHT && informationManager.isEnemyLocationKnown()) {
+            if (managedUnit.canFight() && role != UnitRole.FIGHT && informationManager.isEnemyLocationKnown()) {
                 managedUnit.setRole(UnitRole.FIGHT);
                 squadManager.addManagedUnit(managedUnit);
                 scoutManager.removeScout(managedUnit);
