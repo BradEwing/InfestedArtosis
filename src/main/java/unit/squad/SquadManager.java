@@ -260,7 +260,7 @@ public class SquadManager {
 
     private void rallySquad(Squad squad) {
         for (ManagedUnit managedUnit: squad.getMembers()) {
-            managedUnit.setRallyPoint(gameState.getBaseData().mainBasePosition());
+            managedUnit.setRallyPoint(informationManager.getRallyPoint());
             managedUnit.setRole(UnitRole.RALLY);
         }
     }

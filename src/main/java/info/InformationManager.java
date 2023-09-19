@@ -368,7 +368,21 @@ public class InformationManager {
         return activeScoutTargets;
     }
 
-    // TODO: Remove in favour of onUnitShow/onUnitHide hooks
+    /**
+     * Default rally to main, then natural expansion
+     *
+     * @return TilePosition to rally units to
+     */
+    public TilePosition getRallyPoint() {
+        BaseData baseData = gameState.getBaseData();
+        if (baseData.hasNaturalExpansion()) {
+            return baseData.naturalExpansionPosition();
+        } else {
+            return baseData.mainBasePosition();
+        }
+    }
+
+    // TODO: Remove in favour of onUnitShow/onUnitHide hooks?
     private void trackEnemyUnits() {
         for (Unit unit: game.getAllUnits()) {
             UnitType unitType = unit.getType();
