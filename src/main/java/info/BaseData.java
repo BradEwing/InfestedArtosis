@@ -23,6 +23,7 @@ import java.util.stream.Collectors;
 public class BaseData {
 
     private bwem.Base mainBase;
+    private bwem.Base naturalExpansion;
 
     private HashSet<Unit> macroHatcheries = new HashSet<>();
     private HashSet<Unit> baseHatcheries = new HashSet<>();
@@ -89,6 +90,10 @@ public class BaseData {
         baseLookup.put(hatchery, base);
         availableBases.remove(base);
         reservedBases.remove(base);
+
+        if (naturalExpansion == null && myBases.size() > 1) {
+            naturalExpansion = base;
+        }
 
         base.getGeysers().stream().forEach(g -> availableGeysers.add(g.getUnit()));
     }
@@ -187,6 +192,14 @@ public class BaseData {
     public int numHatcheries() { return myBases.size() + macroHatcheries.size() + reservedBases.size(); }
 
     public TilePosition mainBasePosition() { return mainBase.getLocation(); }
+
+    public TilePosition naturalExpansionPosition() {
+        return naturalExpansion.getLocation();
+    }
+
+    public boolean hasNaturalExpansion() {
+        return naturalExpansion != null;
+    }
 
     public boolean isBaseTilePosition(TilePosition tilePosition) {
         return baseTilePositionSet.contains(tilePosition);
