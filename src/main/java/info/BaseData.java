@@ -3,7 +3,6 @@ package info;
 import bwapi.TilePosition;
 import bwapi.Unit;
 import bwem.Base;
-import bwem.Tile;
 import info.exception.NoWalkablePathException;
 import info.map.GameMap;
 import info.map.GroundPath;
@@ -22,8 +21,10 @@ import java.util.stream.Collectors;
  */
 public class BaseData {
 
-    private bwem.Base mainBase;
-    private bwem.Base naturalExpansion;
+    private Base mainBase;
+    private Base naturalExpansion;
+
+    private Base mainEnemyBase;
 
     private HashSet<Unit> macroHatcheries = new HashSet<>();
     private HashSet<Unit> baseHatcheries = new HashSet<>();
@@ -266,5 +267,15 @@ public class BaseData {
 
     public boolean canPlanSunkenColony() {
         return myBases.size() - reservedSunkenColonies - sunkenColonyLookup.size() > 0;
+    }
+
+    public Base getMainEnemyBase() {
+        return mainEnemyBase;
+    }
+
+    public void setMainEnemyBase(Base base) {
+        mainEnemyBase = base;
+        enemyBases.add(base);
+        availableBases.remove(base);
     }
 }

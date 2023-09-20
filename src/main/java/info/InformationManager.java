@@ -52,8 +52,8 @@ public class InformationManager {
 
     private HashMap<Unit, TilePosition> enemyLastKnownLocations = new HashMap<>();
 
+    // TODO: Refactor to BaseData
     private Base myBase;
-    private Base mainEnemyBase;
 
     private HashMap<Base, Integer> baseScoutAssignments = new HashMap<>();
     private HashMap<TilePosition, Base> tilePositionToBaseLookup = new HashMap<>();
@@ -320,7 +320,8 @@ public class InformationManager {
 
     public TilePosition pollScoutTarget(boolean allowDuplicateScoutTarget) {
         // Walk through
-        if (mainEnemyBase == null && enemyBuildingPositions.size() == 0) {
+        BaseData baseData = gameState.getBaseData();
+        if (baseData.getMainEnemyBase() == null && enemyBuildingPositions.size() == 0) {
             Base baseTarget = fetchBaseRoundRobin(baseScoutAssignments.keySet());
             if (baseTarget != null) {
                 Integer assignments = baseScoutAssignments.get(baseTarget);
@@ -457,6 +458,7 @@ public class InformationManager {
     }
 
     private void trackEnemyBuildings() {
+        BaseData baseData = gameState.getBaseData();
         for (Unit unit: game.getAllUnits()) {
             if (unit.getPlayer() != game.enemy()) {
                 continue;
@@ -469,8 +471,8 @@ public class InformationManager {
                 enemyBuildingPositions.add(unit.getTilePosition());
 
                 // If enemyBase is unknown and this is our first time encountering an enemyUnit, set enemyBase
-                if (mainEnemyBase == null && unitType.isResourceDepot()) {
-                    mainEnemyBase = closestBaseToUnit(unit, startingBasesSet.stream().collect(Collectors.toList()));
+                if (baseData.getMainEnemyBase() == null && unitType.isResourceDepot()) {
+                    baseData.setMainEnemyBase(closestBaseToUnit(unit, startingBasesSet.stream().collect(Collectors.toList())));
                 }
             }
         }

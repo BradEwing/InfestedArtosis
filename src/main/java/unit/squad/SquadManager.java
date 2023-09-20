@@ -224,7 +224,8 @@ public class SquadManager {
 
         for (Set<Squad> mergeSet: toMerge) {
             Squad newSquad = new Squad();
-            newSquad.setRallyPoint(gameState.getBaseData().mainBasePosition());
+            newSquad.setStatus(SquadStatus.FIGHT);
+            newSquad.setRallyPoint(this.getRallyPoint(newSquad));
             for (Squad mergingSquad: mergeSet) {
                 newSquad.merge(mergingSquad);
                 fightSquads.remove(mergingSquad);
@@ -259,13 +260,52 @@ public class SquadManager {
     }
 
     private void rallySquad(Squad squad) {
+        TilePosition rallyPoint = this.getRallyPoint(squad);
         for (ManagedUnit managedUnit: squad.getMembers()) {
-            managedUnit.setRallyPoint(informationManager.getRallyPoint());
+            managedUnit.setRallyPoint(rallyPoint);
             managedUnit.setRole(UnitRole.RALLY);
         }
     }
 
     /**
+     * Rallies to the squad closest to the enemy main base, otherwise
+     * defaults to the main or natural expansion.
+     *
+     * Exempts the given squad as a rally candidate.
+     *
+     * Rallys to the closest squad
+     * @return TilePosition to rally squad to
+     */
+    private TilePosition getRallyPoint(Squad squad) {
+        List<Squad> eligibleSquads = fightSquads.stream()
+                .filter(s -> s != squad)
+                .filter(s -> s.getStatus() == SquadStatus.FIGHT)
+                .collect(Collectors.toList());
+
+        final Base enemyMainBase = gameState.getBaseData().getMainEnemyBase();
+        if (eligibleSquads.size() > 1 && enemyMainBase != null) {
+            Squad best = null;
+            for (Squad s: eligibleSquads) {
+                if (best == null) {
+                    best = s;
+                    continue;
+                }
+                final double bestDistance = best.getCenter().getDistance(enemyMainBase.getCenter());
+                final double candidateDistance = s.getCenter().getDistance(enemyMainBase.getCenter());
+                if (candidateDistance < bestDistance) {
+                    best = s;
+                }
+            }
+
+            return best.getCenter().toTilePosition();
+        }
+
+        return informationManager.getRallyPoint();
+    }
+
+    /**
+     *
+     * TODO: Rename
      * Determines whether a squad should rally or fight.
      * @param squad
      */
@@ -291,7 +331,7 @@ public class SquadManager {
         Unit closest = closestHostileUnit(squad.getCenter(), enemyBuildings.stream().collect(Collectors.toList()));
 
         if (!informationManager.isEnemyUnitVisible() && enemyBuildings.size() > 0) {
-
+            squad.setStatus(SquadStatus.FIGHT);
             for (ManagedUnit managedUnit: squad.getMembers()) {
                 managedUnit.setRole(UnitRole.FIGHT);
                 managedUnit.setMovementTargetPosition(closest.getTilePosition());
@@ -337,9 +377,10 @@ public class SquadManager {
         simulator.simulate(150); // Simulate 15 seconds
 
         if (simulator.getAgentsA().isEmpty()) {
+            squad.setStatus(SquadStatus.RETREAT);
             for (ManagedUnit managedUnit: managedFighters) {
                 managedUnit.setRole(UnitRole.RETREAT);
-                managedUnit.setRetreatTarget(gameState.getBaseData().mainBasePosition());
+                managedUnit.setRetreatTarget(this.getRallyPoint(squad));
             }
             return;
         }
@@ -348,14 +389,16 @@ public class SquadManager {
             // If less than half of units are left, retreat
             float percentRemaining = (float) simulator.getAgentsA().size() / managedFighters.size();
             if (percentRemaining < 0.20) {
+                squad.setStatus(SquadStatus.RETREAT);
                 for (ManagedUnit managedUnit: managedFighters) {
                     managedUnit.setRole(UnitRole.RETREAT);
-                    managedUnit.setRetreatTarget(gameState.getBaseData().mainBasePosition());
+                    managedUnit.setRetreatTarget(this.getRallyPoint(squad));
                 }
                 return;
             }
         }
 
+        squad.setStatus(SquadStatus.FIGHT);
         for (ManagedUnit managedUnit: managedFighters) {
             managedUnit.setRole(UnitRole.FIGHT);
         }
@@ -430,7 +473,8 @@ public class SquadManager {
 
         // No assignment, create new squad
         Squad newSquad = new Squad();
-        newSquad.setRallyPoint(gameState.getBaseData().mainBasePosition());
+        newSquad.setStatus(SquadStatus.FIGHT);
+        newSquad.setRallyPoint(this.getRallyPoint(newSquad));
         newSquad.setCenter(managedUnit.getUnit().getPosition());
         newSquad.addUnit(managedUnit);
         fightSquads.add(newSquad);
