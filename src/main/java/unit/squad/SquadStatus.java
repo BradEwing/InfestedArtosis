@@ -1,7 +1,8 @@
 package unit.squad;
 
-public enum SquadRole {
+public enum SquadStatus {
     FIGHT,
     DEFENSE,
     RALLY,
+    RETREAT,
 }

@@ -2,7 +2,9 @@ package unit.squad;
 
 import bwapi.Position;
 import bwapi.TilePosition;
+import lombok.AccessLevel;
 import lombok.Data;
+import lombok.Getter;
 import unit.managed.ManagedUnit;
 
 import java.util.HashSet;
@@ -21,8 +23,10 @@ public class Squad {
     // TODO: maybe this is consolidated with retreat target
     private TilePosition rallyPoint;
 
+    @Getter(AccessLevel.NONE)
     private Position center;
     private int radius;
+    private SquadStatus status;
 
     @Override
     public boolean equals(Object other) {
@@ -74,6 +78,14 @@ public class Squad {
         for (ManagedUnit managedUnit: other.getMembers()) {
             members.add(managedUnit);
         }
+    }
+
+    public Position getCenter() {
+        if (center == null) {
+            calculateCenter();
+        }
+
+        return center;
     }
 
     private void calculateCenter() {
