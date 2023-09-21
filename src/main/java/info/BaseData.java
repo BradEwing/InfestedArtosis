@@ -85,6 +85,10 @@ public class BaseData {
         }
     }
 
+    public Base getMainBase() {
+        return this.mainBase;
+    }
+
     public void addBase(Unit hatchery, Base base) {
         baseHatcheries.add(hatchery);
         myBases.add(base);
@@ -269,6 +273,7 @@ public class BaseData {
         return myBases.size() - reservedSunkenColonies - sunkenColonyLookup.size() > 0;
     }
 
+    // TODO: Remove main enemy base when area is clear
     public Base getMainEnemyBase() {
         return mainEnemyBase;
     }
