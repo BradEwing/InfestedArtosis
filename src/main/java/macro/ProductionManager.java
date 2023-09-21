@@ -152,7 +152,7 @@ public class ProductionManager {
             return;
         }
 
-        productionQueue.add(new Plan(UnitType.Zerg_Hatchery, 2, true, true, base.getLocation()));
+        productionQueue.add(new Plan(UnitType.Zerg_Hatchery, currentFrame, true, true, base.getLocation()));
     }
 
     // debug console messaging goes here
@@ -191,14 +191,24 @@ public class ProductionManager {
         return gameState.getMineralWorkers() + gameState.getGeyserWorkers();
     }
 
+    private boolean shouldPlanBase() {
+        final int numHatcheries = gameState.getBaseData().numHatcheries();
+        final boolean hasOddNumberOfHatcheries = (numHatcheries % 2) != 0;
+        final boolean availableLarva = gameState.availableLarva() > 0;
+        return hasOddNumberOfHatcheries || availableLarva;
+    }
+
+    private boolean canPlanHatchery(boolean isAllIn) {
+        return !isAllIn && (canAffordHatch() || (isNearMaxExpectedWorkers() && canAffordHatchSaturation())) && plannedHatcheries < 3;
+    }
+
     private void planBuildings(Player self, Boolean isAllIn) {
         TechProgression techProgression = this.gameState.getTechProgression();
         BaseData baseData = gameState.getBaseData();
 
-        if (!isAllIn && (canAffordHatch() || (isNearMaxExpectedWorkers() && canAffordHatchSaturation())) && plannedHatcheries < 3) {
+        if (canPlanHatchery(isAllIn)) {
             plannedHatcheries += 1;
-            final int numHatcheries = gameState.getBaseData().numHatcheries();
-            if ((numHatcheries % 2) != 0) {
+            if (shouldPlanBase()) {
                 planBase();
             } else {
                 productionQueue.add(new Plan(UnitType.Zerg_Hatchery, 2, true, true));
