@@ -471,8 +471,14 @@ public class InformationManager {
                 enemyBuildingPositions.add(unit.getTilePosition());
 
                 // If enemyBase is unknown and this is our first time encountering an enemyUnit, set enemyBase
-                if (baseData.getMainEnemyBase() == null && unitType.isResourceDepot()) {
-                    baseData.setMainEnemyBase(closestBaseToUnit(unit, startingBasesSet.stream().collect(Collectors.toList())));
+                if (baseData.getMainEnemyBase() == null) {
+                    Base enemyMainCandidate = closestBaseToUnit(unit, startingBasesSet.stream().collect(Collectors.toList()));
+                    // If enemy main is unknown and closest main is ours, probably a cheese
+                    // TODO: Handle cheese
+                    if (enemyMainCandidate == baseData.getMainBase()) {
+                        continue;
+                    }
+                    baseData.setMainEnemyBase(enemyMainCandidate);
                 }
             }
         }
