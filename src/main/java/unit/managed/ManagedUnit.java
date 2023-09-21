@@ -407,7 +407,7 @@ public class ManagedUnit {
     public void assignClosestEnemyAsFightTarget(List<Unit> enemies, TilePosition backupScoutPosition) {
         // We bail out if we're close enough to the unit to avoid deadlocking on weird micro situations
         // Don't bail if it's a building though
-        if (fightTarget != null && !fightTarget.getType().isBuilding() && fightTarget.getDistance(unit) < LOCK_ENEMY_WITHIN_DISTANCE) {
+        if (this.isLockedToTarget()) {
             return;
         }
 
@@ -428,5 +428,9 @@ public class ManagedUnit {
         }
 
         movementTargetPosition = backupScoutPosition;
+    }
+
+    public boolean isLockedToTarget() {
+        return fightTarget != null && !fightTarget.getType().isBuilding() && fightTarget.getDistance(unit) < LOCK_ENEMY_WITHIN_DISTANCE;
     }
 }

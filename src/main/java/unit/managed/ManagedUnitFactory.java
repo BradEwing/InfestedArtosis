@@ -13,6 +13,8 @@ public class ManagedUnitFactory {
 
     public ManagedUnit create(Unit unit, UnitRole role) {
         switch(unit.getType()) {
+            case Zerg_Mutalisk:
+                return new Mutalisk(game, unit, role);
             default:
                 return new ManagedUnit(game, unit, role);
         }
