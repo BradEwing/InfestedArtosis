@@ -404,19 +404,11 @@ public class ManagedUnit {
     // Maybe reassignment can become state based
     // n fighters * m enemies
     // worst case (200 * 200) = 40000 computations per frame
-    // TODO: Break out ManagedUnitInterface from ManagedUnitInterface
-    //  - TODO: Better name for this relationship
-    //  - Managed units can have micro/behavior per unit
-    //  - For example, zerglings should not target overlords!
     public void assignClosestEnemyAsFightTarget(List<Unit> enemies, TilePosition backupScoutPosition) {
         // We bail out if we're close enough to the unit to avoid deadlocking on weird micro situations
         // Don't bail if it's a building though
         if (fightTarget != null && !fightTarget.getType().isBuilding() && fightTarget.getDistance(unit) < LOCK_ENEMY_WITHIN_DISTANCE) {
             return;
-        }
-
-        if (enemies.size() < 1) {
-            //System.out.printf("Invalid enemies passed to assignClosestEnemyAsFightTarget(), enemies: [%s]\n", enemies);
         }
 
         List<Unit> filtered = new ArrayList<>();

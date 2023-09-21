@@ -9,6 +9,7 @@ import info.InformationManager;
 import info.GameState;
 import org.bk.ass.sim.BWMirrorAgentFactory;
 import unit.managed.ManagedUnit;
+import unit.managed.ManagedUnitFactory;
 import unit.managed.UnitRole;
 import unit.scout.ScoutManager;
 import unit.squad.SquadManager;
@@ -22,12 +23,9 @@ import java.util.stream.Collectors;
 public class UnitManager {
 
     private Game game;
-    private BWEM bwem;
-
     private GameState gameState;
 
-    private BWMirrorAgentFactory agentFactory;
-
+    private ManagedUnitFactory factory;
     private BuildingManager buildingManager;
     private InformationManager informationManager;
     private ScoutManager scoutManager;
@@ -35,16 +33,15 @@ public class UnitManager {
     private WorkerManager workerManager;
 
     private HashMap<Unit, ManagedUnit> managedUnitLookup = new HashMap<>();
-
     private HashSet<ManagedUnit> managedUnits = new HashSet<>();
 
     public UnitManager(Game game, InformationManager informationManager, BWEM bwem, GameState gameState) {
         this.game = game;
-        this.informationManager = informationManager;
-        this.bwem = bwem;
-        this.gameState = gameState;
-        this.agentFactory = new BWMirrorAgentFactory();
 
+        this.gameState = gameState;
+        this.factory = new ManagedUnitFactory(game);
+
+        this.informationManager = informationManager;
         this.workerManager = new WorkerManager(game, gameState);
         this.squadManager = new SquadManager(game, gameState, informationManager);
         this.scoutManager = new ScoutManager(game, informationManager);
@@ -316,7 +313,7 @@ public class UnitManager {
 
 
     private ManagedUnit createManagedUnit(Unit unit, UnitRole role) {
-        ManagedUnit managedUnit = new ManagedUnit(game, unit, role);
+        ManagedUnit managedUnit = factory.create(unit, role);
         managedUnitLookup.put(unit, managedUnit);
         managedUnits.add(managedUnit);
         return managedUnit;
