@@ -126,6 +126,7 @@ public class UnitManager {
 
             // TODO: Refactor
             // Check every frame for closest enemy for unit
+            // TODO: move this into squad manager
             if (role == UnitRole.FIGHT) {
                 assignClosestEnemyToManagedUnit(managedUnit);
             }

@@ -74,7 +74,6 @@ public class SquadManager {
 
         // TODO: split behavior (if unit exceeds squad radius)
 
-        //
 
         for (Squad fightSquad: fightSquads) {
             fightSquad.onFrame();
@@ -310,6 +309,11 @@ public class SquadManager {
      * @param squad
      */
     private void rallyOrFight(Squad squad) {
+        if (squad.getStatus() == SquadStatus.RETREAT) {
+            return;
+        }
+        // If retreating, continue to retreat unless at a base
+        // Only reassess retreat if new unit has joined the squad
         if (enemyUnitsNearSquad(squad).size() > 0 || squad.size() > 5) {
             simulateFightSquad(squad);
         } else {
@@ -451,7 +455,7 @@ public class SquadManager {
 
     /**
      * Adds a managed unit to the squad manager. Overlords are sorted into the overlord squad; all other units are
-     * added to fighr squads.
+     * added to fight squads.
      * @param managedUnit
      */
     public void addManagedUnit(ManagedUnit managedUnit) {
@@ -464,20 +468,30 @@ public class SquadManager {
     }
 
     private void addManagedFighter(ManagedUnit managedUnit) {
+        Squad squad = findCloseSquad(managedUnit);
+        if (squad == null) {
+            squad = newFightSquad();
+        }
+        squad.addUnit(managedUnit);
+        simulateFightSquad(squad);
+    }
+
+    private Squad findCloseSquad(ManagedUnit managedUnit) {
         for (Squad squad: fightSquads) {
             if (squad.distance(managedUnit) < 256) {
-                squad.addUnit(managedUnit);
-                return;
+                return squad;
             }
         }
 
-        // No assignment, create new squad
+        return null;
+    }
+
+    private Squad newFightSquad() {
         Squad newSquad = new Squad();
         newSquad.setStatus(SquadStatus.FIGHT);
         newSquad.setRallyPoint(this.getRallyPoint(newSquad));
-        newSquad.setCenter(managedUnit.getUnit().getPosition());
-        newSquad.addUnit(managedUnit);
         fightSquads.add(newSquad);
+        return newSquad;
     }
 
     private void addManagedOverlord(ManagedUnit overlord) {
