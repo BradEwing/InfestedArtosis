@@ -44,7 +44,7 @@ public class UnitManager {
         this.informationManager = informationManager;
         this.workerManager = new WorkerManager(game, gameState);
         this.squadManager = new SquadManager(game, gameState, informationManager);
-        this.scoutManager = new ScoutManager(game, informationManager);
+        this.scoutManager = new ScoutManager(game, informationManager, gameState);
         this.buildingManager = new BuildingManager(game, gameState);
         initManagedUnits();
     }
@@ -107,28 +107,13 @@ public class UnitManager {
                     continue;
             }
 
-            // TODO: Refactor
-            // If an enemy building location is known, retreat overlords to bases
-            // TODO: Only retreat if there are things that can harm the overlord
-            if (managedUnit.getUnitType() == UnitType.Zerg_Overlord && role == UnitRole.SCOUT && informationManager.isEnemyBuildingLocationKnown()) {
-                squadManager.addManagedUnit(managedUnit);
-                scoutManager.removeScout(managedUnit);
-            }
-
-            if (managedUnit.canFight() && role != UnitRole.FIGHT && informationManager.isEnemyLocationKnown()) {
-                managedUnit.setRole(UnitRole.FIGHT);
-                squadManager.addManagedUnit(managedUnit);
-                scoutManager.removeScout(managedUnit);
-            } else if (role != UnitRole.SCOUT && !informationManager.isEnemyUnitVisible() && informationManager.getEnemyBuildings().size() == 0) {
-                scoutManager.addScout(managedUnit);
-                squadManager.removeManagedUnit(managedUnit);
-            }
-
-            // TODO: Refactor
-            // Check every frame for closest enemy for unit
-            // TODO: move this into squad manager
-            if (role == UnitRole.FIGHT) {
-                assignClosestEnemyToManagedUnit(managedUnit);
+            switch(managedUnit.getUnitType()) {
+                case Zerg_Drone:
+                    onFrameDrone(managedUnit, role);
+                    break;
+                default:
+                    onFrameDefault(managedUnit, role);
+                    break;
             }
 
             managedUnit.execute();
@@ -165,7 +150,11 @@ public class UnitManager {
 
         // Assign scouts if we don't know where enemy is
         if (unitType == UnitType.Zerg_Drone || unitType == UnitType.Zerg_Larva) {
-            workerManager.onUnitComplete(managedUnit);
+            if (scoutManager.needDroneScout()) {
+                scoutManager.addScout(managedUnit);
+            } else {
+                workerManager.onUnitComplete(managedUnit);
+            }
         } else if (unitType == UnitType.Zerg_Overlord || informationManager.getEnemyBuildings().size() + informationManager.getVisibleEnemyUnits().size() == 0) {
             if (unitType == UnitType.Zerg_Overlord && informationManager.isEnemyBuildingLocationKnown()) {
                 squadManager.addManagedUnit(managedUnit);
@@ -246,21 +235,70 @@ public class UnitManager {
         }
 
         ManagedUnit managedUnit = managedUnitLookup.get(unit);
+        final UnitType type = unit.getType();
 
-        if (unit.getType() != managedUnit.getUnitType()) {
+        if (type != managedUnit.getUnitType()) {
             managedUnit.setUnitType(unit.getType());
         }
 
-        if (unit.getType().isBuilding()) {
+        if (type.isBuilding()) {
             removeManagedUnit(unit);
             createBuilding(unit, managedUnit);
             return;
         }
 
-        if (unit.getType() == UnitType.Zerg_Overlord) {
+        if (type == UnitType.Zerg_Overlord) {
             managedUnit.setCanFight(false);
         }
-        workerManager.onUnitMorph(managedUnit);
+        if (type == UnitType.Zerg_Drone) {
+            if (scoutManager.needDroneScout()) {
+                scoutManager.addScout(managedUnit);
+            } else {
+                workerManager.onUnitMorph(managedUnit);
+            }
+        }
+    }
+
+    /**
+     * Handle drone transitions to other Managers
+     *
+     * TODO: Scout harass
+     * TODO: Scout until danger / suicide scout
+     *
+     * @param unit ManagedUnit
+     * @param role UnitRole
+     */
+    private void onFrameDrone(ManagedUnit unit, UnitRole role) {
+        if (role == UnitRole.SCOUT && informationManager.isEnemyLocationKnown()) {
+            scoutManager.removeScout(unit);
+            workerManager.addManagedWorker(unit);
+        }
+    }
+
+    private void onFrameDefault(ManagedUnit managedUnit, UnitRole role) {
+        // TODO: Refactor
+        // If an enemy building location is known, retreat overlords to bases
+        // TODO: Only retreat if there are things that can harm the overlord
+        if (managedUnit.getUnitType() == UnitType.Zerg_Overlord && role == UnitRole.SCOUT && informationManager.isEnemyBuildingLocationKnown()) {
+            squadManager.addManagedUnit(managedUnit);
+            scoutManager.removeScout(managedUnit);
+        }
+
+        if (managedUnit.canFight() && role != UnitRole.FIGHT && informationManager.isEnemyLocationKnown()) {
+            managedUnit.setRole(UnitRole.FIGHT);
+            squadManager.addManagedUnit(managedUnit);
+            scoutManager.removeScout(managedUnit);
+        } else if (role != UnitRole.SCOUT && !informationManager.isEnemyUnitVisible() && informationManager.getEnemyBuildings().size() == 0) {
+            scoutManager.addScout(managedUnit);
+            squadManager.removeManagedUnit(managedUnit);
+        }
+
+        // TODO: Refactor
+        // Check every frame for closest enemy for unit
+        // TODO: move this into squad manager
+        if (role == UnitRole.FIGHT) {
+            assignClosestEnemyToManagedUnit(managedUnit);
+        }
     }
 
     private void checkBaseThreats() {
