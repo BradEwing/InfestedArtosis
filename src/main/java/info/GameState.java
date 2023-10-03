@@ -81,6 +81,7 @@ public class GameState {
     private ResourceCount resourceCount;
 
     private BaseData baseData;
+    private ScoutData scoutData;
 
     // Initialized in InformationManager
     private GameMap gameMap;
@@ -90,6 +91,7 @@ public class GameState {
         this.bwem = bwem;
         this.resourceCount = new ResourceCount(self);
         this.baseData = new BaseData(bwem.getMap().getBases());
+        this.scoutData = new ScoutData();
     }
 
     public void onStart(Decisions decisions, Race opponentRace) {
