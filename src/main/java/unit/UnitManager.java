@@ -7,6 +7,7 @@ import bwem.BWEM;
 import bwem.Base;
 import info.InformationManager;
 import info.GameState;
+import info.ScoutData;
 import org.bk.ass.sim.BWMirrorAgentFactory;
 import unit.managed.ManagedUnit;
 import unit.managed.ManagedUnitFactory;
@@ -44,7 +45,7 @@ public class UnitManager {
         this.informationManager = informationManager;
         this.workerManager = new WorkerManager(game, gameState);
         this.squadManager = new SquadManager(game, gameState, informationManager);
-        this.scoutManager = new ScoutManager(game, informationManager, gameState);
+        this.scoutManager = new ScoutManager(game, gameState);
         this.buildingManager = new BuildingManager(game, gameState);
         initManagedUnits();
     }
@@ -148,6 +149,8 @@ public class UnitManager {
             return;
         }
 
+        ScoutData scoutData = gameState.getScoutData();
+
         // Assign scouts if we don't know where enemy is
         if (unitType == UnitType.Zerg_Drone || unitType == UnitType.Zerg_Larva) {
             if (scoutManager.needDroneScout()) {
@@ -156,7 +159,7 @@ public class UnitManager {
                 workerManager.onUnitComplete(managedUnit);
             }
         } else if (unitType == UnitType.Zerg_Overlord || informationManager.getEnemyBuildings().size() + informationManager.getVisibleEnemyUnits().size() == 0) {
-            if (unitType == UnitType.Zerg_Overlord && informationManager.isEnemyBuildingLocationKnown()) {
+            if (unitType == UnitType.Zerg_Overlord && scoutData.isEnemyBuildingLocationKnown()) {
                 squadManager.addManagedUnit(managedUnit);
                 scoutManager.removeScout(managedUnit);
                 return;
@@ -279,7 +282,8 @@ public class UnitManager {
         // TODO: Refactor
         // If an enemy building location is known, retreat overlords to bases
         // TODO: Only retreat if there are things that can harm the overlord
-        if (managedUnit.getUnitType() == UnitType.Zerg_Overlord && role == UnitRole.SCOUT && informationManager.isEnemyBuildingLocationKnown()) {
+        ScoutData scoutData = gameState.getScoutData();
+        if (managedUnit.getUnitType() == UnitType.Zerg_Overlord && role == UnitRole.SCOUT && scoutData.isEnemyBuildingLocationKnown()) {
             squadManager.addManagedUnit(managedUnit);
             scoutManager.removeScout(managedUnit);
         }
@@ -346,7 +350,7 @@ public class UnitManager {
 
         if (enemyUnits.size() > 0) {
             // Try to assign an enemy target. If none of the enemies are valid fight targets, fall back to the scout target.
-            managedUnit.assignClosestEnemyAsFightTarget(enemyUnits, informationManager.pollScoutTarget(true));
+            managedUnit.assignClosestEnemyAsFightTarget(enemyUnits, scoutManager.pollScoutTarget(true));
         }
     }
 

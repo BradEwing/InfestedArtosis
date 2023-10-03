@@ -37,25 +37,19 @@ public class InformationManager {
 
     private BaseManager baseManager;
 
-    private HashSet<TilePosition> scoutTargets = new HashSet<>(); // TODO: Better data type to store and track this data
-    private HashSet<TilePosition> activeScoutTargets = new HashSet<>();
-
     // TODO: Move to GameState
     private HashSet<Base> startingBasesSet = new HashSet<>();
     private HashSet<Base> expansionBasesSet = new HashSet<>();
     private HashSet<TilePosition> startingBasesTilePositions = new HashSet<>();
 
-    private HashSet<TilePosition> enemyBuildingPositions = new HashSet<>();
     private HashSet<Unit> enemyBuildings = new HashSet<>();
     private HashSet<Unit> visibleEnemyUnits = new HashSet<>();
-    private HashSet<Unit> enemyUnits = new HashSet<>();
 
     private HashMap<Unit, TilePosition> enemyLastKnownLocations = new HashMap<>();
 
     // TODO: Refactor to BaseData
     private Base myBase;
 
-    private HashMap<Base, Integer> baseScoutAssignments = new HashMap<>();
     private HashMap<TilePosition, Base> tilePositionToBaseLookup = new HashMap<>();
 
 
@@ -290,10 +284,6 @@ public class InformationManager {
         return visibleEnemyUnits.size() + enemyBuildings.size() > 0;
     }
 
-    public boolean isEnemyBuildingLocationKnown() {
-        return enemyBuildingPositions.size() > 0;
-    }
-
     public boolean isEnemyUnitVisible() {
         for (Unit enemy: visibleEnemyUnits) {
             if (enemy.isDetected()) {
@@ -309,64 +299,12 @@ public class InformationManager {
         return false;
     }
 
-    public void setActiveScoutTarget(TilePosition target) {
-        ensureScoutTargets();
-
-        // TODO(bug): Sort
-        // The heat info.map is sorted every frame, but we grab several items and put them into scoutTargets
-        scoutTargets.remove(target);
-        activeScoutTargets.add(target);
-    }
-
-    public TilePosition pollScoutTarget(boolean allowDuplicateScoutTarget) {
-        // Walk through
-        BaseData baseData = gameState.getBaseData();
-        if (baseData.getMainEnemyBase() == null && enemyBuildingPositions.size() == 0) {
-            Base baseTarget = fetchBaseRoundRobin(baseScoutAssignments.keySet());
-            if (baseTarget != null) {
-                Integer assignments = baseScoutAssignments.get(baseTarget);
-                baseScoutAssignments.put(baseTarget, assignments+1);
-                return baseTarget.getLocation();
-            }
-        }
-
-
-        if (enemyBuildingPositions.size() > 0) {
-            for (TilePosition target: enemyBuildingPositions) {
-                if (!scoutTargets.contains(target) || allowDuplicateScoutTarget) {
-                    return target;
-                }
-            }
-        }
-
-        ArrayList<MapTile> heatMap = gameState.getGameMap().getHeatMap();
-
-        GameMap gameMap = gameState.getGameMap();
-        if (gameMap.getHeatMap().size() > 0) {
-            MapTile scoutTile = gameMap.getHeatMap().get(0);
-            scoutTile.setScoutImportance(0);
-            return scoutTile.getTile();
-        }
-
-        for (TilePosition target: scoutTargets) {
-            if (!activeScoutTargets.contains(target)) {
-                return target;
-            }
-        }
-
-        return null;
-    }
-
     public HashSet<Unit> getEnemyBuildings() {
         return enemyBuildings;
     }
 
     public HashSet<Unit> getVisibleEnemyUnits() {
         return visibleEnemyUnits;
-    }
-
-    public HashSet<TilePosition> getActiveScoutTargets() {
-        return activeScoutTargets;
     }
 
     /**
@@ -425,20 +363,6 @@ public class InformationManager {
         }
     }
 
-    private Base fetchBaseRoundRobin(Set<Base> candidateBases) {
-        Base leastScoutedBase = null;
-        Integer fewestScouts = Integer.MAX_VALUE;
-        for (Base base: candidateBases) {
-            Integer assignedScoutsToBase = baseScoutAssignments.get(base);
-            if (assignedScoutsToBase < fewestScouts) {
-                leastScoutedBase = base;
-                fewestScouts = assignedScoutsToBase;
-            }
-
-        }
-        return leastScoutedBase;
-    }
-
     // TODO: Refactor into util
     private Base closestBaseToUnit(Unit unit, List<Base> baseList) {
         if (baseList.size() == 1) {
@@ -459,6 +383,7 @@ public class InformationManager {
 
     private void trackEnemyBuildings() {
         BaseData baseData = gameState.getBaseData();
+        ScoutData scoutData = gameState.getScoutData();
         for (Unit unit: game.getAllUnits()) {
             if (unit.getPlayer() != game.enemy()) {
                 continue;
@@ -468,7 +393,7 @@ public class InformationManager {
 
             if (unit.isVisible() && unitType.isBuilding()) {
                 enemyBuildings.add(unit);
-                enemyBuildingPositions.add(unit.getTilePosition());
+                scoutData.addEnemyBuildingLocation(unit.getTilePosition());
 
                 // If enemyBase is unknown and this is our first time encountering an enemyUnit, set enemyBase
                 if (baseData.getMainEnemyBase() == null) {
@@ -500,36 +425,55 @@ public class InformationManager {
         if (canSeeEnemyBuilding()) {
             return;
         }
+        ScoutData scoutData = gameState.getScoutData();
         List<TilePosition> foundBuildings = new ArrayList<>();
-        for (TilePosition tilePosition: enemyBuildingPositions) {
+        for (TilePosition tilePosition: scoutData.getEnemyBuildingPositions()) {
             if (game.isVisible(tilePosition)) {
                 foundBuildings.add(tilePosition);
             }
         }
 
-        foundBuildings.stream().forEach(buildingPosition -> enemyBuildingPositions.remove(buildingPosition));
+        foundBuildings.stream().forEach(buildingPosition -> scoutData.removeEnemyBuildingLocation(buildingPosition));
         return;
     }
 
     private void ensureScoutTargets() {
-        if (scoutTargets.size() < 1) {
-            assignNewScoutTargets();
+        ScoutData scoutData = gameState.getScoutData();
+        if (scoutData.hasScoutTargets()) {
+            return;
+        }
+        // Round robin assign SCOUTs to bases
+        int curImportance = 0;
+        for (MapTile mapTile : gameState.getGameMap().getHeatMap()) {
+            TilePosition tile = mapTile.getTile();
+            int importance = mapTile.getScoutImportance();
+            if (curImportance == 0) {
+                curImportance = importance;
+            }
+            // Only add highest importance tiles, then break
+            // We add in the event of ties
+            if (importance < curImportance) {
+                break;
+            }
+            if (!scoutData.hasScoutTarget(tile) && mapTile.isBuildable()) {
+                scoutData.addScoutTarget(tile);
+            }
         }
     }
 
     private void checkScoutTargets() {
         ensureScoutTargets();
 
+        ScoutData scoutData = gameState.getScoutData();
+
         // Avoid ConcurrentModificationException
         List<TilePosition> foundTargets = new ArrayList<>();
         // Are we possibly sending multiple units to the same scout target?
         // And if we remove it here, then the other scout encounters a null target
-        for (TilePosition target: activeScoutTargets) {
+        for (TilePosition target: scoutData.getActiveScoutTargets()) {
             // Bug: null targets are getting passed in! gracefully recover, but log error to out
             if (target == null) {
-                // TODO: Logging
-                //System.out.printf(String.format("[WARN] target is null! activeScoutTargets: [%s]\n", activeScoutTargets));
-                activeScoutTargets.remove(null);
+                scoutData.removeActiveScoutTarget(target);
                 return;
             }
             if (game.isVisible(target)) {
@@ -544,46 +488,20 @@ public class InformationManager {
         }
 
         for (TilePosition target: foundTargets) {
-            activeScoutTargets.remove(target);
-            enemyBuildingPositions.remove(target);
+            scoutData.removeActiveScoutTarget(target);
+            scoutData.removeEnemyBuildingLocation(target);
             startingBasesTilePositions.remove(target);
             if (tilePositionToBaseLookup.containsKey(target)) {
                 Base b = tilePositionToBaseLookup.get(target);
-                baseScoutAssignments.remove(b, target);
+                scoutData.removeBaseScoutAssignment(b);
                 tilePositionToBaseLookup.remove(target);
-            }
-        }
-
-        if (game.getFrameCount() % 100 == 0) {
-            //System.out.printf("checkScoutTargets(), scoutTargets: [%s], activeScoutTargets: [%s]\n", scoutTargets, activeScoutTargets);
-        }
-
-
-    }
-
-    // Iterate through heat info.map and assign all tiles
-    private void assignNewScoutTargets() {
-        // Round robin assign SCOUTs to bases
-        int curImportance = 0;
-        for (MapTile mapTile : gameState.getGameMap().getHeatMap()) {
-            TilePosition tile = mapTile.getTile();
-            int importance = mapTile.getScoutImportance();
-            if (curImportance == 0) {
-                curImportance = importance;
-            }
-            // Only add highest importance tiles, then break
-            // We add in the event of ties
-            if (importance < curImportance) {
-                break;
-            }
-            if (!scoutTargets.contains(tile) && mapTile.isBuildable()) {
-                scoutTargets.add(tile);
             }
         }
     }
 
     private void initBases() {
         TilePosition initialHatchery = null;
+        ScoutData scoutData = gameState.getScoutData();
 
         for (Unit unit: game.getAllUnits()) {
             if (unit.getPlayer() != game.self()) {
@@ -603,9 +521,9 @@ public class InformationManager {
                 }
                 startingBasesTilePositions.add(tilePosition);
                 tilePositionToBaseLookup.put(tilePosition, b);
-                baseScoutAssignments.put(b, 0);
+                scoutData.addBaseScoutAssignment(b);
                 startingBasesSet.add(b);
-                scoutTargets.add(tilePosition);
+                scoutData.addScoutTarget(tilePosition);
             } else {
                 expansionBasesSet.add(b);
             }
@@ -673,12 +591,14 @@ public class InformationManager {
 
     // TODO: Move to GameMap?
     private void ageHeatMap() {
+        ScoutData scoutData = gameState.getScoutData();
         int weight = 1;
         GameMap gameMap = gameState.getGameMap();
         for (MapTile mapTile : gameMap.getHeatMap()) {
-            if (game.isVisible(mapTile.getTile())) {
+            final TilePosition mapTp = mapTile.getTile();
+            if (game.isVisible(mapTp)) {
                 mapTile.setScoutImportance(0);
-                scoutTargets.remove(mapTile.getTile());
+                scoutData.removeScoutTarget(mapTp);
             } else {
                 if (mapTile.getType() == MapTileType.BASE_START) {
                     weight = 3;
@@ -703,13 +623,14 @@ public class InformationManager {
     }
 
     private void debugEnemyTargets() {
+        ScoutData scoutData = gameState.getScoutData();
         for (Unit target: enemyBuildings) {
             game.drawCircleMap(target.getPosition(), 3, Color.Yellow);
         }
         for (Unit target: visibleEnemyUnits) {
             game.drawCircleMap(target.getPosition(), 3, Color.Red);
         }
-        for (TilePosition tilePosition: enemyBuildingPositions) {
+        for (TilePosition tilePosition: scoutData.getEnemyBuildingPositions()) {
             game.drawCircleMap(tilePosition.toPosition(), 2, Color.Orange);
         }
 
