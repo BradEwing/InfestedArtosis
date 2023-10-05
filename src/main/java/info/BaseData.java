@@ -35,6 +35,7 @@ public class BaseData {
     private HashSet<Base> enemyBases = new HashSet<>();
     private HashSet<Base> islands = new HashSet<>();
     private HashSet<Base> mineralOnlyBase = new HashSet<>();
+    private HashSet<Base> mains = new HashSet<>();
 
     private HashMap<Unit, Base> baseLookup = new HashMap<>();
     private HashSet<TilePosition> baseTilePositionSet = new HashSet<>();
@@ -58,6 +59,9 @@ public class BaseData {
             this.baseTilePositionLookup.put(base.getLocation(), base);
             if (base.getGeysers().size() == 0) {
                 mineralOnlyBase.add(base);
+            }
+            if (base.isStartingLocation()) {
+                mains.add(base);
             }
         }
     }
@@ -283,4 +287,31 @@ public class BaseData {
         enemyBases.add(base);
         availableBases.remove(base);
     }
+
+    /**
+     * Find the farthest starting base
+     * @return
+     */
+    public Base findFarthestStartingBaseByGround() {
+        Base best = null;
+        for (Base b: mains) {
+            if (b == mainBase) {
+                continue;
+            }
+
+            if (best == null) {
+                best = b;
+                continue;
+            }
+            GroundPath bestPath = allBasePaths.get(best);
+            GroundPath candidatePath = allBasePaths.get(b);
+            if (candidatePath.getGroundDistance() > bestPath.getGroundDistance()) {
+                best = b;
+            }
+        }
+
+        return best;
+    }
+
+    public int numMains() { return mains.size(); }
 }

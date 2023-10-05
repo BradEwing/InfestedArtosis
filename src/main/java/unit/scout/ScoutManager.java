@@ -10,14 +10,18 @@ import info.GameState;
 import info.InformationManager;
 import info.ScoutData;
 import info.map.GameMap;
+import info.map.GroundPath;
 import info.map.MapTile;
 import strategy.openers.OpenerName;
 import unit.managed.ManagedUnit;
 import unit.managed.UnitRole;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 public class ScoutManager {
 
@@ -102,6 +106,7 @@ public class ScoutManager {
         return true;
     }
 
+    // TODO: Determine if ground scout can reach Scout Target
     public TilePosition pollScoutTarget(boolean allowDuplicateScoutTarget) {
         // Walk through
         BaseData baseData = gameState.getBaseData();
@@ -134,6 +139,71 @@ public class ScoutManager {
         return scoutData.findNewActiveScoutTarget();
     }
 
+    /**
+     * Determine best base to scout with drone
+     *
+     * 3 unknown locations (4P map): Scout diagonal (overlord goes to the closest natural/main)
+     * 2 unknown locations (3P map, 4P map with 1 scouted): Scout base that is furthest from overlords
+     * 1 unknown location: trivial case
+     * @return
+     */
+    private TilePosition pollDroneScoutTarget() {
+        BaseData baseData = gameState.getBaseData();
+        ScoutData scoutData = gameState.getScoutData();
+        Set<Base> baseSet = scoutData.getScoutingBaseSet();
+
+        final int unscountedMainBases = baseSet.size();
+
+        if (unscountedMainBases == 3) {
+            final Base farthestBase = baseData.findFarthestStartingBaseByGround();
+            updateBaseScoutAssignments(farthestBase);
+            return farthestBase.getLocation();
+        } else if (unscountedMainBases == 2) {
+            final Base farthestBase = fetchBaseFarthestFromScouts(baseSet);
+            updateBaseScoutAssignments(farthestBase);
+            return farthestBase.getLocation();
+        } else {
+            final Base fathestBase = baseSet.stream()
+                    .collect(Collectors.toList())
+                    .get(0);
+            final Base farthestBase = fetchBaseFarthestFromScouts(baseSet);
+            updateBaseScoutAssignments(farthestBase);
+            return fathestBase.getLocation();
+        }
+    }
+
+    private void updateBaseScoutAssignments(Base base) {
+        ScoutData scoutData = gameState.getScoutData();
+        int assignments = scoutData.getScoutsAssignedToBase(base);
+        scoutData.updateBaseScoutAssignment(base, assignments);
+    }
+
+    private Base fetchBaseFarthestFromScouts(Set<Base> mainBases) {
+        Map<Base, Double> baseDistance = new HashMap<>();
+        mainBases.stream().forEach(b -> baseDistance.put(b, Double.MAX_VALUE));
+        for (Base b: mainBases) {
+            for (ManagedUnit scout: scouts) {
+                final double distance = b.getLocation().getDistance(scout.getUnit().getTilePosition());
+                if (distance < baseDistance.get(b)) {
+                    baseDistance.put(b, distance);
+                }
+            }
+        }
+
+        Base farthest = null;
+        for(Map.Entry<Base, Double> entry: baseDistance.entrySet()) {
+            if (farthest == null) {
+                farthest = entry.getKey();
+                continue;
+            }
+            if (entry.getValue() > baseDistance.get(farthest)) {
+                farthest = entry.getKey();
+            }
+        }
+
+        return farthest;
+    }
+
     private Base fetchBaseRoundRobin(Set<Base> candidateBases) {
         Base leastScoutedBase = null;
         Integer fewestScouts = Integer.MAX_VALUE;
@@ -158,7 +228,12 @@ public class ScoutManager {
         }
 
         ScoutData scoutData = gameState.getScoutData();
-        TilePosition target = this.pollScoutTarget(false);
+        TilePosition target = null;
+        if (managedUnit.getUnitType() == UnitType.Zerg_Drone) {
+            target = this.pollDroneScoutTarget();
+        } else {
+            target = this.pollScoutTarget(false);
+        }
         scoutData.setActiveScoutTarget(target);
         managedUnit.setMovementTargetPosition(target);
     }
