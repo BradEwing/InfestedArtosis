@@ -70,6 +70,10 @@ public class ScoutData {
         baseScoutAssignments.put(base, assignments+1);
     }
 
+    /**
+     *
+     * @return Set<Base> containing main bases that have not been scouted
+     */
     public Set<Base> getScoutingBaseSet() { return baseScoutAssignments.keySet(); }
 
     /**
