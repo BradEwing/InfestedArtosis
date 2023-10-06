@@ -232,12 +232,11 @@ public class ManagedUnit {
         // TODO: This should be determined with a building location planner
         // Should be assigned to the plan before the plan is assigned to the unit
         if (plan.getBuildPosition() == null) {
-            //System.out.printf("plan buildPosition is null: [%s]\n", plan);
             TilePosition buildLocation = game.getBuildLocation(plannedUnitType, unit.getTilePosition());
             plan.setBuildPosition(buildLocation);
         }
-
-        Position buildTarget = plan.getBuildPosition().toPosition().add(new Position(4,4));
+        UnitType buildingType = plan.getPlannedUnit();
+        Position buildTarget = getBuilderMoveLocation(buildingType, plan.getBuildPosition());
         if (unit.getDistance(buildTarget) > 150 || (!unit.isMoving() || unit.isGatheringMinerals())) {
             setUnready();
             unit.move(buildTarget);
@@ -250,7 +249,7 @@ public class ManagedUnit {
             //   - Maybe the PlannedItems are tracked in a higher level state, and their status is updated at the higher level
             //   - A Plan marked as complete would then be removed from the bot (careful consideration to be sure it's removed everywhere)
             setUnready();
-            boolean didBuild = unit.build(plannedUnitType, buildTarget.toTilePosition());
+            boolean didBuild = unit.build(plannedUnitType, plan.getBuildPosition());
             // If we failed to build, try to morph
             // TODO: remove this morph cmd?
             if (!didBuild) {
@@ -282,6 +281,13 @@ public class ManagedUnit {
                 plan.setState(PlanState.MORPHING);
             }
         }
+    }
+
+    private Position getBuilderMoveLocation(UnitType building, TilePosition buildTarget) {
+        int height = building.tileHeight() * 16;
+        int width = building.tileWidth() * 16;
+
+        return buildTarget.toPosition().add(new Position(width, height));
     }
 
     private void morph() {
