@@ -877,7 +877,7 @@ public class ProductionManager {
             plannedItemToMorphing(plan);
         }
 
-        clearAssignments(unit);
+        clearAssignments(unit, false);
 
         if (unitType == UnitType.Zerg_Sunken_Colony) {
             BaseData baseData = gameState.getBaseData();
@@ -896,7 +896,7 @@ public class ProductionManager {
         if (unitType == UnitType.Zerg_Extractor) {
             ResourceCount resourceCount = gameState.getResourceCount();
             resourceCount.unreserveUnit(unitType);
-            clearAssignments(unit);
+            clearAssignments(unit, false);
         }
     }
 
@@ -907,7 +907,7 @@ public class ProductionManager {
         }
 
         updateTechOnDestroy(unit);
-        clearAssignments(unit);
+        clearAssignments(unit, true);
     }
 
     // TODO: Refactor into info class
@@ -929,12 +929,18 @@ public class ProductionManager {
      * @param unit unit to remove
      */
     // TODO: COMPLETE vs Requeue logic
-    private void clearAssignments(Unit unit) {
+    private void clearAssignments(Unit unit, boolean isDestroyed) {
         // Requeue PlannedItems
         // Put item back onto the queue with greater importance
         if (gameState.getAssignedPlannedItems().containsKey(unit)) {
             Plan plan = gameState.getAssignedPlannedItems().get(unit);
             switch(plan.getState()) {
+                case BUILDING:
+                    if (isDestroyed) {
+                        gameState.cancelPlan(unit, plan);
+                    } else {
+                        gameState.completePlan(unit, plan);
+                    }
                 case SCHEDULE:
                     gameState.cancelPlan(unit, plan);
                     break;
