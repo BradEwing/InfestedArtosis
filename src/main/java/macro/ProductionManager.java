@@ -278,9 +278,9 @@ public class ProductionManager {
         final int numEvolutionChambers = techProgression.evolutionChambers();
         final int groundCount = count.groundCount();
         if (numEvolutionChambers == 0) {
-            return groundCount > 12;
-        } else {
             return groundCount > 24;
+        } else {
+            return groundCount > 48;
         }
     }
 
@@ -354,13 +354,13 @@ public class ProductionManager {
         }
 
         // Ranged Attack
-        if (techProgression.canPlanRangedUpgrades() && unitTypeCount.rangedCount() > 8) {
+        if (techProgression.canPlanRangedUpgrades() && unitTypeCount.rangedCount() > 12) {
             productionQueue.add(new Plan(UpgradeType.Zerg_Missile_Attacks, currentFrame+evoBuffer, false));
             techProgression.setPlannedRangedUpgrades(true);
         }
 
-        // Ranged Attack
-        if (techProgression.canPlanMeleeUpgrades() && unitTypeCount.meleeCount() > 8) {
+        // Melee Attack
+        if (techProgression.canPlanMeleeUpgrades() && unitTypeCount.meleeCount() > 18) {
             productionQueue.add(new Plan(UpgradeType.Zerg_Melee_Attacks, currentFrame+evoBuffer, false));
             techProgression.setPlannedMeleeUpgrades(true);
         }
@@ -907,7 +907,6 @@ public class ProductionManager {
         }
 
         updateTechOnDestroy(unit);
-
         clearAssignments(unit);
     }
 
