@@ -45,7 +45,7 @@ public class ResourceCount {
         }
     }
 
-    private int availableMinerals() { return self.minerals() - reservedMinerals; }
+    public int availableMinerals() { return self.minerals() - reservedMinerals; }
 
     private int availableGas() { return self.gas() - reservedGas; }
 
@@ -78,7 +78,7 @@ public class ResourceCount {
     }
 
     public boolean needExtractor() {
-        return availableMinerals() - availableGas() > 200;
+        return this.isFloatingGas();
     }
 
     /**
@@ -127,4 +127,8 @@ public class ResourceCount {
     public int frameCanAffordUpgrade() {
         return 0;
     }
+
+    public boolean isFloatingMinerals() { return availableMinerals() + 100 > availableGas(); }
+
+    public boolean isFloatingGas() { return availableMinerals() < availableGas() + 150; }
 }

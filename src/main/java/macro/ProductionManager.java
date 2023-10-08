@@ -109,10 +109,6 @@ public class ProductionManager {
         }
     }
 
-    private void debugBaseStats() {
-
-    }
-
     // TODO: Ensure print out of production queue is displaying how much time is remaining
     private void debugInProgressQueue() {
         int numDisplayed = 0;
@@ -206,7 +202,7 @@ public class ProductionManager {
         }
 
         if (canPlanExtractor(isAllIn)) {
-            Plan plan = new Plan(UnitType.Zerg_Extractor, currentFrame, true, false);
+            Plan plan = new Plan(UnitType.Zerg_Extractor, currentFrame, true, true);
             Unit geyser = baseData.reserveExtractor();
             plan.setBuildPosition(geyser.getTilePosition());
             productionQueue.add(plan);
@@ -582,11 +578,9 @@ public class ProductionManager {
         HashSet<Plan> scheduledPlans = gameState.getPlansScheduled();
 
         List<Plan> requeuePlans = new ArrayList<>();
-        boolean skipSchedule = false;
+        ResourceCount resourceCount = gameState.getResourceCount();
+        int mineralBuffer = resourceCount.availableMinerals();
         for (int i = 0; i < productionQueue.size(); i++) {
-            if (skipSchedule) {
-                break;
-            }
 
             boolean canSchedule = false;
             // If we can't plan, we'll put it back on the queue
@@ -603,29 +597,15 @@ public class ProductionManager {
 
             PlanType planType = plan.getType();
 
-            if (skipSchedule) {
-                requeuePlans.add(plan);
-                continue;
-            }
-
             switch (planType) {
                 case BUILDING:
                     canSchedule = scheduleBuildingItem(plan);
-                    if (!canSchedule) {
-                        skipSchedule = true;
-                    }
                     break;
                 case UNIT:
                     canSchedule = scheduleUnitItem(plan);
-                    if (!canSchedule) {
-                        skipSchedule = true;
-                    }
                     break;
                 case UPGRADE:
                     canSchedule = scheduleUpgradeItem(self, plan);
-                    if (!canSchedule) {
-                        skipSchedule = true;
-                    }
                     break;
             }
 
@@ -633,7 +613,8 @@ public class ProductionManager {
                 scheduledPlans.add(plan);
             } else {
                 requeuePlans.add(plan);
-                if (plan.isBlockOtherPlans()) {
+                mineralBuffer -= plan.mineralPrice();
+                if (plan.isBlockOtherPlans() || mineralBuffer <= 0) {
                     break;
                 }
             }

@@ -86,4 +86,16 @@ public class Plan {
             return "NULL";
         }
     }
+
+    public int mineralPrice() {
+        switch(this.type) {
+            case BUILDING:
+            case UNIT:
+                return plannedUnit.mineralPrice();
+            case UPGRADE:
+                return plannedUpgrade.mineralPrice();
+        }
+
+        return 0;
+    }
 }
