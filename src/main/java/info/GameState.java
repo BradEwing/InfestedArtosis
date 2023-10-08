@@ -232,4 +232,8 @@ public class GameState {
             return numHatch > 1;
         }
     }
+
+    public boolean needGeyserWorkers() { return this.getGeyserWorkers() < (3 * this.getGeyserAssignments().size()); }
+
+    public int needGeyserWorkersAmount() { return (3 * this.getGeyserAssignments().size()) - this.getGeyserWorkers(); }
 }

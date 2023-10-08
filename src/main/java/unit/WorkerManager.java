@@ -6,6 +6,7 @@ import bwapi.Position;
 import bwapi.Unit;
 import bwapi.UnitType;
 import bwem.Base;
+import info.ResourceCount;
 import planner.Plan;
 import planner.PlanState;
 import planner.PlanType;
@@ -17,6 +18,7 @@ import util.BaseUnitDistanceComparator;
 import util.UnitDistanceComparator;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -57,6 +59,7 @@ public class WorkerManager {
         assignScheduledPlannedItems();
         executeScheduledDrones();
         releaseImpossiblePlans();
+        rebalanceCheck();
     }
 
     public void onUnitComplete(ManagedUnit managedUnit) {
@@ -273,7 +276,7 @@ public class WorkerManager {
     // Default to mineral
     private void assignWorker(ManagedUnit managedUnit) {
         // Assign 3 per geyser
-        if (gameState.getGeyserWorkers() < (3 * gameState.getGeyserAssignments().size())) {
+        if (gameState.needGeyserWorkers()) {
             assignToGeyser(managedUnit);
             return;
         }
@@ -499,5 +502,53 @@ public class WorkerManager {
         }
 
         gameState.setLarvaDeadlocked(false);
+    }
+
+    private void rebalanceCheck() {
+        ResourceCount resourceCount = gameState.getResourceCount();
+
+        if (resourceCount.isFloatingGas()) {
+            cutGasHarvesting();
+        } else if (resourceCount.isFloatingMinerals()) {
+            saturateGeysers();
+        }
+    }
+
+    /**
+     * Saturate geysers from gatherers
+     *
+     * TODO: Find closest drones
+     */
+    private void saturateGeysers() {
+        if (!gameState.needGeyserWorkers()) {
+            return;
+        }
+
+        List<ManagedUnit> reassignedWorkers = new ArrayList<>();
+        for (ManagedUnit managedUnit: mineralGatherers) {
+            if (reassignedWorkers.size() >= gameState.needGeyserWorkersAmount()) {
+                break;
+            }
+
+            reassignedWorkers.add(managedUnit);
+        }
+
+        for (ManagedUnit worker: reassignedWorkers) {
+            clearAssignments(worker);
+            assignToGeyser(worker);
+        }
+    }
+
+    /**
+     * Cuts gas harvesting.
+     *
+     * TODO: Partially cut, set reactions of when to cut.
+     */
+    private void cutGasHarvesting() {
+        List<ManagedUnit> geyserWorkers = gasGatherers.stream().collect(Collectors.toList());
+        for (ManagedUnit worker: geyserWorkers) {
+            clearAssignments(worker);
+            assignToMineral(worker);
+        }
     }
 }

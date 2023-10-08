@@ -128,7 +128,7 @@ public class ResourceCount {
         return 0;
     }
 
-    public boolean isFloatingMinerals() { return availableMinerals() + 100 > availableGas(); }
+    public boolean isFloatingMinerals() { return availableMinerals() - availableGas() > 100; }
 
-    public boolean isFloatingGas() { return availableMinerals() < availableGas() + 150; }
+    public boolean isFloatingGas() { return availableGas() - availableMinerals() > 150; }
 }
