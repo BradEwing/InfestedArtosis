@@ -5,6 +5,7 @@ import bwapi.Unit;
 import bwapi.UnitType;
 import bwem.BWEM;
 import bwem.Base;
+import info.BaseData;
 import info.InformationManager;
 import info.GameState;
 import info.ScoutData;
@@ -272,7 +273,7 @@ public class UnitManager {
      * @param role UnitRole
      */
     private void onFrameDrone(ManagedUnit unit, UnitRole role) {
-        if (role == UnitRole.SCOUT && informationManager.isEnemyLocationKnown()) {
+        if (role == UnitRole.SCOUT && scoutManager.endDroneScout()) {
             scoutManager.removeScout(unit);
             workerManager.addManagedWorker(unit);
         }
