@@ -78,7 +78,7 @@ public class ResourceCount {
     }
 
     public boolean needExtractor() {
-        return this.isFloatingGas();
+        return this.isFloatingMinerals();
     }
 
     /**

@@ -3,15 +3,15 @@ package unit.scout;
 import bwapi.Game;
 import bwapi.Race;
 import bwapi.TilePosition;
+import bwapi.Unit;
 import bwapi.UnitType;
 import bwem.Base;
 import info.BaseData;
 import info.GameState;
-import info.InformationManager;
 import info.ScoutData;
 import info.map.GameMap;
-import info.map.GroundPath;
 import info.map.MapTile;
+import info.map.ScoutPath;
 import strategy.openers.OpenerName;
 import unit.managed.ManagedUnit;
 import unit.managed.UnitRole;
@@ -19,6 +19,7 @@ import unit.managed.UnitRole;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -32,6 +33,8 @@ public class ScoutManager {
 
     private HashSet<ManagedUnit> scouts = new HashSet<>();
     private HashSet<ManagedUnit> droneScouts = new HashSet<>();
+
+    private ScoutPath enemyMainScoutPath;
 
     public ScoutManager(Game game, GameState gameState) {
         this.game = game;
@@ -106,6 +109,17 @@ public class ScoutManager {
         return true;
     }
 
+    public boolean endDroneScout() {
+        for (ManagedUnit managedUnit: droneScouts) {
+            Unit unit = managedUnit.getUnit();
+            if (unit.isUnderAttack()) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     // TODO: Determine if ground scout can reach Scout Target
     public TilePosition pollScoutTarget(boolean allowDuplicateScoutTarget) {
         // Walk through
@@ -139,6 +153,33 @@ public class ScoutManager {
         return scoutData.findNewActiveScoutTarget();
     }
 
+
+    private TilePosition pollDroneScoutTarget() {
+        BaseData baseData = gameState.getBaseData();
+        if (!baseData.knowEnemyMainBase()) {
+            return findEnemyMain();
+        }
+
+        return scoutEnemyMain();
+    }
+
+    private TilePosition scoutEnemyMain() {
+        BaseData baseData = gameState.getBaseData();
+        Base enemyMain = baseData.getMainEnemyBase();
+        TilePosition enemyMainTp = enemyMain.getLocation();
+        if (enemyMainScoutPath == null) {
+            ensureEnemyMainMovePoints(enemyMainTp);
+        }
+
+        return enemyMainScoutPath.next();
+    }
+
+    private void ensureEnemyMainMovePoints(TilePosition enemyMainTp) {
+        GameMap gameMap = gameState.getGameMap();
+
+        this.enemyMainScoutPath = gameMap.findScoutPath(enemyMainTp);
+    }
+
     /**
      * Determine best base to scout with drone
      *
@@ -147,7 +188,7 @@ public class ScoutManager {
      * 1 unknown location: trivial case
      * @return
      */
-    private TilePosition pollDroneScoutTarget() {
+    private TilePosition findEnemyMain() {
         BaseData baseData = gameState.getBaseData();
         ScoutData scoutData = gameState.getScoutData();
         Set<Base> baseSet = scoutData.getScoutingBaseSet();

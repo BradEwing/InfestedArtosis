@@ -10,6 +10,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.PriorityQueue;
 
+import static java.lang.Math.max;
+import static java.lang.Math.min;
+
 /**
  * Bundles up information about the game map.
  */
@@ -96,6 +99,22 @@ public class GameMap {
         final MapTile startTile = this.mapTiles[start.getX()][start.getY()];
         final MapTile endTile = this.mapTiles[end.getX()][end.getY()];
         return aStarSearch(startTile, endTile);
+    }
+
+    public ScoutPath findScoutPath(TilePosition center) {
+        List<TilePosition> points = new ArrayList<>();
+
+        TilePosition north = center.add(new TilePosition(0, max(0, center.getY())-7));
+        TilePosition east = center.add(new TilePosition(min(x, center.getX())+7, 0));
+        TilePosition south = center.add(new TilePosition(0, min(y, center.getY())+7));
+        TilePosition west = center.add(new TilePosition(max(0, center.getX())-7, 0));
+
+        points.add(north);
+        points.add(east);
+        points.add(south);
+        points.add(west);
+
+        return new ScoutPath(points);
     }
 
     private int calculateG(MapTile current, MapTile target, int currentG) {

@@ -288,6 +288,8 @@ public class BaseData {
         availableBases.remove(base);
     }
 
+    public boolean knowEnemyMainBase() { return mainEnemyBase != null; }
+
     /**
      * Find the farthest starting base
      * @return
