@@ -356,6 +356,9 @@ public class SquadManager {
             if ( (int) enemyUnit.getPosition().getDistance(squad.getCenter()) > 256) {
                 continue;
             }
+            if (enemyUnit.isBeingConstructed() || enemyUnit.isMorphing()) {
+                continue;
+            }
             try {
                 simulator.addAgentB(agentFactory.of(enemyUnit));
             } catch (ArithmeticException e) {
