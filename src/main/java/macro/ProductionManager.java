@@ -211,7 +211,7 @@ public class ProductionManager {
 
 
         // Build at 10 workers if not part of initial build order
-        if (techProgression.canPlanPool() && self.supplyUsed() > 20) {
+        if (techProgression.canPlanPool()) {
             productionQueue.add(new Plan(UnitType.Zerg_Spawning_Pool, currentFrame, true, true));
             techProgression.setPlannedSpawningPool(true);
         }
