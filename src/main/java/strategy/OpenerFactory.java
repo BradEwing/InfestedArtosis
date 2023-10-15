@@ -44,6 +44,8 @@ public class OpenerFactory {
         allOpeners.add(new FourPool());
         allOpeners.add(new TwelvePool());
         allOpeners.add(new NineHatch());
+        allOpeners.add(new NineHatchInBase());
+        allOpeners.add(new NinePool());
 
         for (Opener opener: allOpeners) {
             if (numStartingLocations != TWO && opener.getName() == OpenerName.FOUR_POOL) {
@@ -77,6 +79,7 @@ public class OpenerFactory {
             case NINE_HATCH:
             case TWELVE_HATCH:
             case TWELVE_POOL:
+            case NINE_HATCH_IN_BASE:
                 return true;
             default:
                 return false;
@@ -99,8 +102,9 @@ public class OpenerFactory {
         switch (opener.getName()) {
             case OVER_POOL:
             case FOUR_POOL:
-            case NINE_POOL_SPEED:
             case TWELVE_HATCH:
+            case NINE_POOL:
+            case NINE_POOL_SPEED:
                 return true;
             default:
                 return false;
@@ -113,6 +117,7 @@ public class OpenerFactory {
             case NINE_POOL_SPEED:
             case FOUR_POOL:
             case FIVE_POOL:
+            case NINE_POOL:
                 return true;
             default:
                 return false;

@@ -106,6 +106,7 @@ public class BuildingManager {
 
             if (didAssign) {
                 assignedPlans.add(plan);
+                break;
             }
         }
 

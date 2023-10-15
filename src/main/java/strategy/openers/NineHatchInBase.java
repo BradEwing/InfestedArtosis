@@ -6,9 +6,9 @@ import planner.Plan;
 import java.util.ArrayList;
 import java.util.List;
 
-public class NineHatch implements Opener {
+public class NineHatchInBase implements Opener {
 
-    public OpenerName getName() { return OpenerName.NINE_HATCH; }
+    public OpenerName getName() { return OpenerName.NINE_HATCH_IN_BASE; }
 
     public List<Plan> getBuildOrder() {
 

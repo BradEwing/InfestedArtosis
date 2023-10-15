@@ -18,6 +18,8 @@ import planner.Plan;
 import planner.PlanState;
 import planner.PlanType;
 import planner.PlanComparator;
+import strategy.openers.Opener;
+import strategy.openers.OpenerName;
 import strategy.strategies.UnitWeights;
 
 import java.util.ArrayList;
@@ -48,6 +50,8 @@ public class ProductionManager {
     private int plannedHatcheries = 1; // Start with 1 because we decrement with initial hatch
     private int plannedWorkers = 0;
 
+    private int macroHatchMod = 0;
+
     private PriorityQueue<Plan> productionQueue = new PriorityQueue<>(new PlanComparator());
 
     public ProductionManager(Game game, GameState gameState, List<Plan> initialBuildOrder) {
@@ -57,9 +61,19 @@ public class ProductionManager {
         init(initialBuildOrder);
     }
 
+    private boolean firstHatchInBase(Opener opener) {
+        if (opener.getName() == OpenerName.NINE_HATCH_IN_BASE) {
+            macroHatchMod = 1;
+            return true;
+        }
+
+        return false;
+    }
+
     private void init(List<Plan> initialBuildOrder) {
         TechProgression techProgression = gameState.getTechProgression();
         BaseData baseData = gameState.getBaseData();
+        Opener opener = gameState.getActiveOpener();
         for (Plan plan : initialBuildOrder) {
             if (plan.getPlannedUnit() != null && plan.getPlannedUnit() == UnitType.Zerg_Extractor) {
                 Unit geyser = baseData.reserveExtractor();
@@ -68,8 +82,10 @@ public class ProductionManager {
 
             // TODO: be able to decide between base hatch and macro hatch
             if (plan.getPlannedUnit() != null && plan.getPlannedUnit() == UnitType.Zerg_Hatchery) {
-                Base base = gameState.reserveBase();
-                plan.setBuildPosition(base.getLocation());
+                if (!firstHatchInBase(opener)) {
+                    Base base = gameState.reserveBase();
+                    plan.setBuildPosition(base.getLocation());
+                }
             }
 
             if (plan.getPlannedUnit() != null && plan.getPlannedUnit() == UnitType.Zerg_Drone) {
@@ -194,7 +210,7 @@ public class ProductionManager {
         if (!isAllIn && (canAffordHatch() || (isNearMaxExpectedWorkers() && canAffordHatchSaturation())) && plannedHatcheries < 3) {
             plannedHatcheries += 1;
             final int numHatcheries = gameState.getBaseData().numHatcheries();
-            if ((numHatcheries % 2) != 0) {
+            if ((numHatcheries % 2) != macroHatchMod) {
                 planBase();
             } else {
                 productionQueue.add(new Plan(UnitType.Zerg_Hatchery, 2, true, true));
@@ -245,7 +261,7 @@ public class ProductionManager {
         }
         
         if (gameState.canPlanLair()) {
-            productionQueue.add(new Plan(UnitType.Zerg_Lair, currentFrame, true, true));
+            productionQueue.add(new Plan(UnitType.Zerg_Lair, currentFrame, true, false));
             techProgression.setPlannedLair(true);
         }
 
