@@ -276,7 +276,7 @@ public class WorkerManager {
     // Default to mineral
     private void assignWorker(ManagedUnit managedUnit) {
         // Assign 3 per geyser
-        if (gameState.needGeyserWorkers()) {
+        if (gameState.needGeyserWorkers() && gameState.needGeyserWorkersAmount() > 0) {
             assignToGeyser(managedUnit);
             return;
         }
@@ -348,10 +348,6 @@ public class WorkerManager {
             }
         }
     }
-
-    // TODO: Estimate current income and time for unit to reach build position.
-    // If expected income exceeds cost at arrival frame, assign drone
-    //
 
     /**
      * Assign a drone to the building plan if it's not carrying resources, not mining gas and not already assigned to a plan

@@ -2,6 +2,7 @@ package macro;
 
 import bwapi.Game;
 import bwapi.Player;
+import bwapi.Race;
 import bwapi.Text;
 import bwapi.TilePosition;
 import bwapi.Unit;
@@ -30,6 +31,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.PriorityQueue;
 import java.util.stream.Collectors;
+
+import static java.lang.Math.min;
 
 // TODO: There is economy information here, build order and strategy. refactor
 // Possible arch: GATHER GAME STATE -> PLAN -> EXECUTE
@@ -192,11 +195,23 @@ public class ProductionManager {
         }
     }
 
+    private boolean canPlanDrone() {
+        final int expectedWorkers = expectedWorkers();
+        return plannedWorkers < 3 && numWorkers() < 80 && numWorkers() < expectedWorkers;
+    }
+
     private int expectedWorkers() {
         final int base = 5;
         final int expectedMineralWorkers = gameState.getBaseData().currentBaseCount() * 7;
         final int expectedGasWorkers = gameState.getGeyserAssignments().size() * 3;
-        return base + expectedMineralWorkers + expectedGasWorkers;
+
+        Race race = gameState.getOpponentRace();
+        switch (race) {
+            case Zerg:
+                return min(expectedMineralWorkers, 7) + expectedGasWorkers;
+            default:
+                return base + expectedMineralWorkers + expectedGasWorkers;
+        }
     }
 
     private int numWorkers() {
@@ -420,7 +435,7 @@ public class ProductionManager {
         // This should be related to num bases + aval min patches and geysers, limited by army and potentially higher level strat info
         // For now, set them to be 1/3 of total supply
         // Limit the number of drones in queue, or they will crowd out production!
-        if (!isAllIn && plannedWorkers < 3 && numWorkers() < 80 && numWorkers() < expectedWorkers()) {
+        if (!isAllIn && canPlanDrone()) {
             plannedWorkers += 1;
             addUnitToQueue(UnitType.Zerg_Drone, currentFrame, false);
         }
