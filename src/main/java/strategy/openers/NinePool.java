@@ -14,14 +14,13 @@ public class NinePool implements Opener {
     public List<Plan> getBuildOrder() {
 
         List<Plan> list = new ArrayList<>();
-        list.add(new Plan(UnitType.Zerg_Drone, 0, false, false));
-        list.add(new Plan(UnitType.Zerg_Drone, 0, false, false));
-        list.add(new Plan(UnitType.Zerg_Drone, 0, false, false));
-        list.add(new Plan(UnitType.Zerg_Drone, 0, false, false));
-        list.add(new Plan(UnitType.Zerg_Drone, 0, false, false));
+        list.add(new Plan(UnitType.Zerg_Drone, 0, false, true));
+        list.add(new Plan(UnitType.Zerg_Drone, 0, false, true));
+        list.add(new Plan(UnitType.Zerg_Drone, 0, false, true));
+        list.add(new Plan(UnitType.Zerg_Drone, 0, false, true));
+        list.add(new Plan(UnitType.Zerg_Drone, 0, false, true));
         list.add(new Plan(UnitType.Zerg_Spawning_Pool, 1, true, true));
         list.add(new Plan(UnitType.Zerg_Overlord, 2, false, false));
-        list.add(new Plan(UnitType.Zerg_Drone, 3, false, false));
         list.add(new Plan(UnitType.Zerg_Drone, 3, false, false));
         list.add(new Plan(UnitType.Zerg_Zergling, 4, false, false));
         list.add(new Plan(UnitType.Zerg_Zergling, 4, false, false));
