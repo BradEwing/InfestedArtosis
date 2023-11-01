@@ -26,7 +26,7 @@ import java.util.stream.Collectors;
 
 public class ScoutManager {
 
-    final int FRAME_DRONE_SCOUT = 1440;
+    final int FRAME_DRONE_SCOUT = 1440; // 1m
 
     private Game game;
     private GameState gameState;
