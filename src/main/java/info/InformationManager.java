@@ -28,6 +28,8 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import static util.Filter.isHostileBuildingToGround;
+
 
 public class InformationManager {
     private BWEM bwem;
@@ -43,6 +45,7 @@ public class InformationManager {
     private HashSet<TilePosition> startingBasesTilePositions = new HashSet<>();
 
     private HashSet<Unit> enemyBuildings = new HashSet<>();
+    private HashSet<Unit> enemyHostileToGroundBuildings = new HashSet<>();
     private HashSet<Unit> visibleEnemyUnits = new HashSet<>();
 
     private HashMap<Unit, TilePosition> enemyLastKnownLocations = new HashMap<>();
@@ -259,6 +262,11 @@ public class InformationManager {
 
         if (enemyBuildings.contains(unit)) {
             enemyBuildings.remove(unit);
+
+        }
+
+        if (enemyHostileToGroundBuildings.contains(unit)) {
+            enemyHostileToGroundBuildings.remove(unit);
         }
 
         if (visibleEnemyUnits.contains(unit)) {
@@ -301,6 +309,10 @@ public class InformationManager {
 
     public HashSet<Unit> getEnemyBuildings() {
         return enemyBuildings;
+    }
+
+    public int getEnemyHostileToGroundBuildingsCount() {
+        return enemyHostileToGroundBuildings.size();
     }
 
     public HashSet<Unit> getVisibleEnemyUnits() {
@@ -394,6 +406,9 @@ public class InformationManager {
             if (unit.isVisible() && unitType.isBuilding()) {
                 enemyBuildings.add(unit);
                 scoutData.addEnemyBuildingLocation(unit.getTilePosition());
+                if (isHostileBuildingToGround(unitType)) {
+                    enemyHostileToGroundBuildings.add(unit);
+                }
 
                 // If enemyBase is unknown and this is our first time encountering an enemyUnit, set enemyBase
                 if (baseData.getMainEnemyBase() == null) {
