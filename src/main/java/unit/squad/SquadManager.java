@@ -22,6 +22,8 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import static java.lang.Math.max;
+import static java.lang.Math.min;
 import static util.Filter.closestHostileUnit;
 import static util.Filter.isHostileBuilding;
 
@@ -309,12 +311,20 @@ public class SquadManager {
      * @param squad
      */
     private void rallyOrFight(Squad squad) {
-        if (squad.getStatus() == SquadStatus.RETREAT) {
+        SquadStatus squadStatus = squad.getStatus();
+        if (squadStatus == SquadStatus.RETREAT) {
             return;
         }
         // If retreating, continue to retreat unless at a base
         // Only reassess retreat if new unit has joined the squad
-        if (enemyUnitsNearSquad(squad).size() > 0 || squad.size() > 5) {
+
+        int staticDefensePenalty = min(informationManager.getEnemyHostileToGroundBuildingsCount(), 5);
+        int moveOutThreshold = 5 * (1 + staticDefensePenalty);
+        // hysteresis
+        if (squadStatus == SquadStatus.FIGHT) {
+            moveOutThreshold = moveOutThreshold / 2;
+        }
+        if (enemyUnitsNearSquad(squad).size() > 0 || squad.size() > moveOutThreshold) {
             simulateFightSquad(squad);
         } else {
             rallySquad(squad);
@@ -357,6 +367,9 @@ public class SquadManager {
                 continue;
             }
             if (enemyUnit.isBeingConstructed() || enemyUnit.isMorphing()) {
+                continue;
+            }
+            if (enemyUnit.getType().isWorker()) {
                 continue;
             }
             try {

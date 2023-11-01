@@ -100,4 +100,16 @@ public final class Filter {
 
         return false;
     }
+
+    public static boolean isHostileBuildingToGround(UnitType unitType) {
+        if (!unitType.isBuilding()) {
+            return false;
+        }
+
+        if (unitType == UnitType.Terran_Bunker || unitType == UnitType.Zerg_Sunken_Colony || unitType == UnitType.Protoss_Photon_Cannon) {
+            return true;
+        }
+
+        return false;
+    }
 }
