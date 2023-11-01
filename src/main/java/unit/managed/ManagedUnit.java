@@ -202,7 +202,7 @@ public class ManagedUnit {
         if (!hasNewGatherTarget & (unit.isGatheringMinerals() || unit.isGatheringGas())) return;
         if (!isReady) return;
 
-        if ((unit.isCarryingGas() || unit.isCarryingMinerals()) && unit.isIdle()) {
+        if (unit.isCarrying()) {
             setUnready();
             unit.returnCargo();
             return;
@@ -227,6 +227,12 @@ public class ManagedUnit {
         }
         if (!isReady) return;
 
+        if (unit.isCarrying()) {
+            unit.returnCargo();
+            setUnready();
+            return;
+        }
+
         UnitType plannedUnitType = plan.getPlannedUnit();
 
         // TODO: This should be determined with a building location planner
@@ -237,7 +243,7 @@ public class ManagedUnit {
         }
         UnitType buildingType = plan.getPlannedUnit();
         Position buildTarget = getBuilderMoveLocation(buildingType, plan.getBuildPosition());
-        if (unit.getDistance(buildTarget) > 150 || (!unit.isMoving() || unit.isGatheringMinerals())) {
+        if (unit.getDistance(buildTarget) > 150 || unit.isGatheringMinerals()) {
             setUnready();
             unit.move(buildTarget);
             return;
