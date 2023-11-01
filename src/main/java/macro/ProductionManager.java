@@ -40,6 +40,8 @@ import static java.lang.Math.min;
 //
 public class ProductionManager {
 
+    final int FRAME_ZVZ_HATCH_RESTRICT = 7200; // 5m
+
     private Game game;
 
     private GameState gameState;
@@ -218,11 +220,37 @@ public class ProductionManager {
         return gameState.getMineralWorkers() + gameState.getGeyserWorkers();
     }
 
+    private boolean canPlanHatchery(boolean isAllIn) {
+        if (isAllIn) {
+             return false;
+        }
+
+        if (plannedHatcheries >= 3) {
+            return false;
+        }
+
+        if (gameState.getOpponentRace() == Race.Zerg) {
+            if (currentFrame <= FRAME_ZVZ_HATCH_RESTRICT) {
+                return false;
+            }
+        }
+
+        if (canAffordHatch()) {
+            return true;
+        }
+
+        if (isNearMaxExpectedWorkers() && canAffordHatchSaturation()) {
+            return true;
+        }
+
+        return false;
+    }
+
     private void planBuildings(Player self, Boolean isAllIn) {
         TechProgression techProgression = this.gameState.getTechProgression();
         BaseData baseData = gameState.getBaseData();
 
-        if (!isAllIn && (canAffordHatch() || (isNearMaxExpectedWorkers() && canAffordHatchSaturation())) && plannedHatcheries < 3) {
+        if (canPlanHatchery(isAllIn)) {
             plannedHatcheries += 1;
             final int numHatcheries = gameState.getBaseData().numHatcheries();
             if ((numHatcheries % 2) != macroHatchMod) {
