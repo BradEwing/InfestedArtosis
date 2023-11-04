@@ -13,12 +13,12 @@ public class OverPool implements Opener {
     public List<Plan> getBuildOrder() {
 
         List<Plan> list = new ArrayList<>();
-        list.add(new Plan(UnitType.Zerg_Drone, 0, false, false));
-        list.add(new Plan(UnitType.Zerg_Drone, 0, false, false));
-        list.add(new Plan(UnitType.Zerg_Drone, 0, false, false));
-        list.add(new Plan(UnitType.Zerg_Drone, 0, false, false));
-        list.add(new Plan(UnitType.Zerg_Drone, 0, false, false));
-        list.add(new Plan(UnitType.Zerg_Overlord, 1, false, false));
+        list.add(new Plan(UnitType.Zerg_Drone, 0, false, true));
+        list.add(new Plan(UnitType.Zerg_Drone, 0, false, true));
+        list.add(new Plan(UnitType.Zerg_Drone, 0, false, true));
+        list.add(new Plan(UnitType.Zerg_Drone, 0, false, true));
+        list.add(new Plan(UnitType.Zerg_Drone, 0, false, true));
+        list.add(new Plan(UnitType.Zerg_Overlord, 1, false, true));
         list.add(new Plan(UnitType.Zerg_Spawning_Pool, 2, true, true));
         list.add(new Plan(UnitType.Zerg_Drone, 3, false, false));
         list.add(new Plan(UnitType.Zerg_Drone, 3, false, false));
