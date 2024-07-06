@@ -2,14 +2,37 @@
 
 ![](https://github.com/BradEwing/InfestedArtosis/actions/workflows/ci.yaml/badge.svg)
 
-A small zerg bot initially cloned from [JavaBWAPI](https://github.com/JavaBWAPI/jbwapi-java-template).
+A zerg bot initially cloned from [JavaBWAPI](https://github.com/JavaBWAPI/jbwapi-java-template).
 
-### Usage
+## Features
+
+- Opener and unit mix selections following the UCB multi-armed bandit algorithm. 
+- Strong macro play
+- Scouting
+- Unit compositions up to lair tech supported. 
+
+### Installation
+
+## Command Line
+
+Ensure that your `$JAVA_HOME` environment variable is set and pointed to Java 1.8 (I use [coretto-1.8 sdk](https://docs.aws.amazon.com/corretto/latest/corretto-8-ug/downloads-list.html))
 ```
 $ mvn package
-
-$ java -jar target/InfestedArtosis-0.1.0-SNAPSHOT-jar-with-dependencies.jar
 ```
+
+
+```
+$ java -jar target/InfestedArtosis-{version}-jar-with-dependencies.jar
+```
+
+## Intellij (Preferred)
+
+1. Open up this project in INtelliJ IDEA.
+2. Set the Java SDK to Java 1.8. 
+
+### Troubleshooting
+
+Feel free to open up a GitHub issue or ping me on the [SSCAIT discord](https://discord.gg/DWHudeXmJE).
 
 ### Release
 
