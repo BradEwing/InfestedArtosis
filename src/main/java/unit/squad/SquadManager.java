@@ -212,6 +212,9 @@ public class SquadManager {
                 if (considered.contains(squad1) || considered.contains(squad2)) {
                     continue;
                 }
+                if (squad1.getSquadType() != squad2.getSquadType()) {
+                    continue;
+                }
                 if (squad1.distance(squad2) < 256) {
                     Set<Squad> mergeSet = new HashSet<>();
                     mergeSet.add(squad1);
@@ -228,6 +231,9 @@ public class SquadManager {
             newSquad.setStatus(SquadStatus.FIGHT);
             newSquad.setRallyPoint(this.getRallyPoint(newSquad));
             for (Squad mergingSquad: mergeSet) {
+                if (newSquad.getSquadType() == null) {
+                    newSquad.setSquadType(mergingSquad.getSquadType());
+                }
                 newSquad.merge(mergingSquad);
                 fightSquads.remove(mergingSquad);
             }
@@ -484,16 +490,20 @@ public class SquadManager {
     }
 
     private void addManagedFighter(ManagedUnit managedUnit) {
-        Squad squad = findCloseSquad(managedUnit);
+        UnitType type = managedUnit.getUnitType();
+        Squad squad = findCloseSquad(managedUnit, type);
         if (squad == null) {
-            squad = newFightSquad();
+            squad = newFightSquad(type);
         }
         squad.addUnit(managedUnit);
         simulateFightSquad(squad);
     }
 
-    private Squad findCloseSquad(ManagedUnit managedUnit) {
+    private Squad findCloseSquad(ManagedUnit managedUnit, UnitType type) {
         for (Squad squad: fightSquads) {
+            if (squad.getSquadType() != type) {
+                continue;
+            }
             if (squad.distance(managedUnit) < 256) {
                 return squad;
             }
@@ -502,10 +512,11 @@ public class SquadManager {
         return null;
     }
 
-    private Squad newFightSquad() {
+    private Squad newFightSquad(UnitType type) {
         Squad newSquad = new Squad();
         newSquad.setStatus(SquadStatus.FIGHT);
         newSquad.setRallyPoint(this.getRallyPoint(newSquad));
+        newSquad.setSquadType(type);
         fightSquads.add(newSquad);
         return newSquad;
     }
@@ -521,10 +532,10 @@ public class SquadManager {
             return;
         }
 
-        removeManagedFigher(managedUnit);
+        removeManagedFighter(managedUnit);
     }
 
-    private void removeManagedFigher(ManagedUnit managedUnit) {
+    private void removeManagedFighter(ManagedUnit managedUnit) {
         for (Squad squad: fightSquads) {
             if (squad.containsManagedUnit(managedUnit)) {
                 squad.removeUnit(managedUnit);

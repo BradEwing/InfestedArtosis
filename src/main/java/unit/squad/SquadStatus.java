@@ -5,4 +5,5 @@ public enum SquadStatus {
     DEFENSE,
     RALLY,
     RETREAT,
+    REGROUP,
 }
