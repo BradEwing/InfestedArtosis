@@ -2,6 +2,7 @@ package unit.squad;
 
 import bwapi.Position;
 import bwapi.TilePosition;
+import bwapi.Unit;
 import bwapi.UnitType;
 import lombok.AccessLevel;
 import lombok.Data;
@@ -31,7 +32,8 @@ public class Squad {
     private Position center;
     private int radius;
     private SquadStatus status;
-    private UnitType squadType = null;
+    private UnitType type = null;
+    private Unit target = null;
 
     @Override
     public boolean equals(Object other) {
@@ -136,11 +138,12 @@ public class Squad {
         if (status == SquadStatus.FIGHT && !grouped) {
             status = SquadStatus.REGROUP;
             for (ManagedUnit u: members) {
-                u.setRole(UnitRole.RALLY);
+                u.setRole(UnitRole.REGROUP);
                 u.setRallyPoint(center.toTilePosition());
             }
         }
         if (status == SquadStatus.REGROUP && grouped) {
+            status = SquadStatus.FIGHT;
             for (ManagedUnit u: members) {
                 u.setRole(UnitRole.FIGHT);
                 u.setRallyPoint(rallyPoint);

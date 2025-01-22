@@ -8,6 +8,7 @@ import bwapi.UnitType;
 import bwem.Base;
 import info.BaseData;
 import info.GameState;
+import info.InformationManager;
 import info.ScoutData;
 import info.map.GameMap;
 import info.map.MapTile;
@@ -27,6 +28,7 @@ import java.util.stream.Collectors;
 public class ScoutManager {
 
     final int FRAME_DRONE_SCOUT = 1440; // 1m
+    private  InformationManager informationManager;
 
     private Game game;
     private GameState gameState;
@@ -36,9 +38,10 @@ public class ScoutManager {
 
     private ScoutPath enemyMainScoutPath;
 
-    public ScoutManager(Game game, GameState gameState) {
+    public ScoutManager(Game game, GameState gameState, InformationManager informationManager) {
         this.game = game;
         this.gameState = gameState;
+        this.informationManager = informationManager;
     }
 
     public void onFrame() {
@@ -119,40 +122,6 @@ public class ScoutManager {
 
         return false;
     }
-
-    // TODO: Determine if ground scout can reach Scout Target
-    public TilePosition pollScoutTarget(boolean allowDuplicateScoutTarget) {
-        // Walk through
-        BaseData baseData = gameState.getBaseData();
-        ScoutData scoutData = gameState.getScoutData();
-        if (baseData.getMainEnemyBase() == null && !scoutData.isEnemyBuildingLocationKnown()) {
-            Base baseTarget = fetchBaseRoundRobin(scoutData.getScoutingBaseSet());
-            if (baseTarget != null) {
-                int assignments = scoutData.getScoutsAssignedToBase(baseTarget);
-                scoutData.updateBaseScoutAssignment(baseTarget, assignments);
-                return baseTarget.getLocation();
-            }
-        }
-
-
-        if (scoutData.isEnemyBuildingLocationKnown()) {
-            for (TilePosition target: scoutData.getEnemyBuildingPositions()) {
-                if (!scoutData.hasScoutTarget(target) || allowDuplicateScoutTarget) {
-                    return target;
-                }
-            }
-        }
-
-        ArrayList<MapTile> heatMap = gameState.getGameMap().getHeatMap();
-        if (heatMap.size() > 0) {
-            MapTile scoutTile = heatMap.get(0);
-            scoutTile.setScoutImportance(0);
-            return scoutTile.getTile();
-        }
-
-        return scoutData.findNewActiveScoutTarget();
-    }
-
 
     private TilePosition pollDroneScoutTarget() {
         BaseData baseData = gameState.getBaseData();
@@ -245,21 +214,6 @@ public class ScoutManager {
         return farthest;
     }
 
-    private Base fetchBaseRoundRobin(Set<Base> candidateBases) {
-        Base leastScoutedBase = null;
-        Integer fewestScouts = Integer.MAX_VALUE;
-        ScoutData scoutData = gameState.getScoutData();
-        for (Base base: candidateBases) {
-            Integer assignedScoutsToBase = scoutData.getScoutsAssignedToBase(base);
-            if (assignedScoutsToBase < fewestScouts) {
-                leastScoutedBase = base;
-                fewestScouts = assignedScoutsToBase;
-            }
-
-        }
-        return leastScoutedBase;
-    }
-
     private void assignScoutMovementTarget(ManagedUnit managedUnit) {
         if (managedUnit.getMovementTargetPosition() != null) {
             if (!game.isVisible(managedUnit.getMovementTargetPosition())) {
@@ -273,7 +227,7 @@ public class ScoutManager {
         if (managedUnit.getUnitType() == UnitType.Zerg_Drone) {
             target = this.pollDroneScoutTarget();
         } else {
-            target = this.pollScoutTarget(false);
+            target = informationManager.pollScoutTarget(false);
         }
         scoutData.setActiveScoutTarget(target);
         managedUnit.setMovementTargetPosition(target);

@@ -106,10 +106,6 @@ public class Bot extends DefaultBWListener {
     @Override
     public void onUnitDestroy(Unit unit) {
         informationManager.onUnitDestroy(unit);
-        if (!unit.getType().isResourceContainer() && unit.getPlayer() != game.self()) {
-            return;
-        }
-
         economyModule.onUnitDestroy(unit);
         unitManager.onUnitDestroy(unit);
     }
