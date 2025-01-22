@@ -2,6 +2,7 @@ package unit.squad;
 
 import bwapi.Color;
 import bwapi.Game;
+import bwapi.Race;
 import bwapi.Text;
 import bwapi.TilePosition;
 import bwapi.Unit;
@@ -212,7 +213,7 @@ public class SquadManager {
                 if (considered.contains(squad1) || considered.contains(squad2)) {
                     continue;
                 }
-                if (squad1.getSquadType() != squad2.getSquadType()) {
+                if (squad1.getType() != squad2.getType()) {
                     continue;
                 }
                 if (squad1.distance(squad2) < 256) {
@@ -231,8 +232,8 @@ public class SquadManager {
             newSquad.setStatus(SquadStatus.FIGHT);
             newSquad.setRallyPoint(this.getRallyPoint(newSquad));
             for (Squad mergingSquad: mergeSet) {
-                if (newSquad.getSquadType() == null) {
-                    newSquad.setSquadType(mergingSquad.getSquadType());
+                if (newSquad.getType() == null) {
+                    newSquad.setType(mergingSquad.getType());
                 }
                 newSquad.merge(mergingSquad);
                 fightSquads.remove(mergingSquad);
@@ -321,20 +322,32 @@ public class SquadManager {
         if (squadStatus == SquadStatus.RETREAT) {
             return;
         }
-        // If retreating, continue to retreat unless at a base
-        // Only reassess retreat if new unit has joined the squad
 
+        int moveOutThreshold = calculateMoveOutThreshold(squad);
+        if (enemyUnitsNearSquad(squad).size() > 0 || squad.size() > moveOutThreshold) {
+            simulateFightSquad(squad);
+        } else {
+            rallySquad(squad);
+        }
+    }
+
+    private int calculateMoveOutThreshold(Squad squad) {
+        SquadStatus squadStatus = squad.getStatus();
+        UnitType type = squad.getType();
+        if (type == UnitType.Zerg_Mutalisk) {
+            if (gameState.getOpponentRace() == Race.Zerg) {
+                return 2;
+            }
+            return 5;
+        }
         int staticDefensePenalty = min(informationManager.getEnemyHostileToGroundBuildingsCount(), 5);
         int moveOutThreshold = 5 * (1 + staticDefensePenalty);
         // hysteresis
         if (squadStatus == SquadStatus.FIGHT) {
             moveOutThreshold = moveOutThreshold / 2;
         }
-        if (enemyUnitsNearSquad(squad).size() > 0 || squad.size() > moveOutThreshold) {
-            simulateFightSquad(squad);
-        } else {
-            rallySquad(squad);
-        }
+
+        return moveOutThreshold;
     }
 
     /**
@@ -427,6 +440,7 @@ public class SquadManager {
         squad.setStatus(SquadStatus.FIGHT);
         for (ManagedUnit managedUnit: managedFighters) {
             managedUnit.setRole(UnitRole.FIGHT);
+            assignEnemyTarget(managedUnit, squad);
         }
         return;
     }
@@ -489,6 +503,14 @@ public class SquadManager {
         addManagedFighter(managedUnit);
     }
 
+    public void onUnitDestroy(Unit unit) {
+        for (Squad squad: fightSquads) {
+            if (squad.getTarget() == unit) {
+                squad.setTarget(null);
+            }
+        }
+    }
+
     private void addManagedFighter(ManagedUnit managedUnit) {
         UnitType type = managedUnit.getUnitType();
         Squad squad = findCloseSquad(managedUnit, type);
@@ -501,7 +523,7 @@ public class SquadManager {
 
     private Squad findCloseSquad(ManagedUnit managedUnit, UnitType type) {
         for (Squad squad: fightSquads) {
-            if (squad.getSquadType() != type) {
+            if (squad.getType() != type) {
                 continue;
             }
             if (squad.distance(managedUnit) < 256) {
@@ -516,7 +538,7 @@ public class SquadManager {
         Squad newSquad = new Squad();
         newSquad.setStatus(SquadStatus.FIGHT);
         newSquad.setRallyPoint(this.getRallyPoint(newSquad));
-        newSquad.setSquadType(type);
+        newSquad.setType(type);
         fightSquads.add(newSquad);
         return newSquad;
     }
@@ -552,6 +574,48 @@ public class SquadManager {
         overlords.removeUnit(overlord);
     }
 
+    /**
+     * Assign target to a fighter and squad.
+     *
+     * Mutalisk squads should all focus the same unit.
+     *
+     * Currently, all other unit squads will be assigned the closest enemy unit.
+     *
+     * @param managedUnit unit that needs a target
+     * @param squad squad that passed fight simulation
+     */
+    private void assignEnemyTarget(ManagedUnit managedUnit, Squad squad) {
+        Unit unit = managedUnit.getUnit();
+        List<Unit> enemyUnits = new ArrayList<>();
+        enemyUnits.addAll(informationManager.getVisibleEnemyUnits());
+        enemyUnits.addAll(informationManager.getEnemyBuildings());
+
+        List<Unit> filtered = new ArrayList<>();
+        // Attempt to find the closest enemy OUTSIDE fog of war
+        for (Unit enemyUnit: enemyUnits) {
+            if (unit.canAttack(enemyUnit) && enemyUnit.isDetected()) {
+                filtered.add(enemyUnit);
+            }
+        }
+
+        if (filtered.size() == 0) {
+            managedUnit.setMovementTargetPosition(informationManager.pollScoutTarget(false));
+            return;
+        }
+
+        Unit closestEnemy = closestHostileUnit(unit, filtered);
+        Unit ft = closestEnemy;
+        if (squad.getType() == UnitType.Zerg_Mutalisk) {
+            if (squad.getTarget() == null) {
+                squad.setTarget(closestEnemy);
+            }
+            ft = squad.getTarget();
+        }
+        managedUnit.setFightTarget(ft);
+        return;
+
+    }
+
     private void debugPainters() {
         for (Squad squad: fightSquads) {
             game.drawCircleMap(squad.getCenter(), 256, Color.White);
@@ -562,3 +626,5 @@ public class SquadManager {
         }
     }
 }
+
+

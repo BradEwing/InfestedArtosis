@@ -46,7 +46,7 @@ public class UnitManager {
         this.informationManager = informationManager;
         this.workerManager = new WorkerManager(game, gameState);
         this.squadManager = new SquadManager(game, gameState, informationManager);
-        this.scoutManager = new ScoutManager(game, gameState);
+        this.scoutManager = new ScoutManager(game, gameState, informationManager);
         this.buildingManager = new BuildingManager(game, gameState);
         initManagedUnits();
     }
@@ -170,7 +170,6 @@ public class UnitManager {
         } else {
             managedUnit.setRole(UnitRole.FIGHT);
             squadManager.addManagedUnit(managedUnit);
-            assignClosestEnemyToManagedUnit(managedUnit);
         }
 
 
@@ -226,6 +225,7 @@ public class UnitManager {
         }
 
         removeManagedUnit(unit);
+        squadManager.onUnitDestroy(unit);
     }
 
     public void onUnitMorph(Unit unit) {
@@ -297,13 +297,6 @@ public class UnitManager {
             scoutManager.addScout(managedUnit);
             squadManager.removeManagedUnit(managedUnit);
         }
-
-        // TODO: Refactor
-        // Check every frame for closest enemy for unit
-        // TODO: move this into squad manager
-        if (role == UnitRole.FIGHT) {
-            assignClosestEnemyToManagedUnit(managedUnit);
-        }
     }
 
     private void checkBaseThreats() {
@@ -343,18 +336,6 @@ public class UnitManager {
             this.workerManager.addManagedWorker(managedUnit);
         }
     }
-
-    private void assignClosestEnemyToManagedUnit(ManagedUnit managedUnit) {
-        List<Unit> enemyUnits = new ArrayList<>();
-        enemyUnits.addAll(informationManager.getVisibleEnemyUnits());
-        enemyUnits.addAll(informationManager.getEnemyBuildings());
-
-        if (enemyUnits.size() > 0) {
-            // Try to assign an enemy target. If none of the enemies are valid fight targets, fall back to the scout target.
-            managedUnit.assignClosestEnemyAsFightTarget(enemyUnits, scoutManager.pollScoutTarget(true));
-        }
-    }
-
 
     private ManagedUnit createManagedUnit(Unit unit, UnitRole role) {
         ManagedUnit managedUnit = factory.create(unit, role);

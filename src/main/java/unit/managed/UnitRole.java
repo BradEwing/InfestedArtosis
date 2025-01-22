@@ -14,4 +14,5 @@ public enum UnitRole {
     SCREEN, // Soak up damage on the front and detect non visible units
     BUILDING,
     RALLY,
+    REGROUP,
 }

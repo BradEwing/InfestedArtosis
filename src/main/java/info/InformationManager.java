@@ -709,4 +709,52 @@ public class InformationManager {
             }
         }
     }
+
+    // TODO: Determine if ground scout can reach Scout Target
+    public TilePosition pollScoutTarget(boolean allowDuplicateScoutTarget) {
+        // Walk through
+        BaseData baseData = gameState.getBaseData();
+        ScoutData scoutData = gameState.getScoutData();
+        if (baseData.getMainEnemyBase() == null && !scoutData.isEnemyBuildingLocationKnown()) {
+            Base baseTarget = fetchBaseRoundRobin(scoutData.getScoutingBaseSet());
+            if (baseTarget != null) {
+                int assignments = scoutData.getScoutsAssignedToBase(baseTarget);
+                scoutData.updateBaseScoutAssignment(baseTarget, assignments);
+                return baseTarget.getLocation();
+            }
+        }
+
+
+        if (scoutData.isEnemyBuildingLocationKnown()) {
+            for (TilePosition target: scoutData.getEnemyBuildingPositions()) {
+                if (!scoutData.hasScoutTarget(target) || allowDuplicateScoutTarget) {
+                    return target;
+                }
+            }
+        }
+
+        ArrayList<MapTile> heatMap = gameState.getGameMap().getHeatMap();
+        if (heatMap.size() > 0) {
+            MapTile scoutTile = heatMap.get(0);
+            scoutTile.setScoutImportance(0);
+            return scoutTile.getTile();
+        }
+
+        return scoutData.findNewActiveScoutTarget();
+    }
+
+    private Base fetchBaseRoundRobin(Set<Base> candidateBases) {
+        Base leastScoutedBase = null;
+        Integer fewestScouts = Integer.MAX_VALUE;
+        ScoutData scoutData = gameState.getScoutData();
+        for (Base base: candidateBases) {
+            Integer assignedScoutsToBase = scoutData.getScoutsAssignedToBase(base);
+            if (assignedScoutsToBase < fewestScouts) {
+                leastScoutedBase = base;
+                fewestScouts = assignedScoutsToBase;
+            }
+
+        }
+        return leastScoutedBase;
+    }
 }

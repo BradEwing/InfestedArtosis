@@ -149,6 +149,7 @@ public class ManagedUnit {
                 defend();
                 break;
             case RALLY:
+            case REGROUP:
                 rally();
                 break;
             default:
@@ -411,34 +412,17 @@ public class ManagedUnit {
         }
     }
 
-    // TODO: This is potentially expensive?
-    // Could potentially run this every so many frames, with a backoff
-    // Maybe reassignment can become state based
-    // n fighters * m enemies
-    // worst case (200 * 200) = 40000 computations per frame
-    public void assignClosestEnemyAsFightTarget(List<Unit> enemies, TilePosition backupScoutPosition) {
+    /**
+     * Assigns the closest enemy as a fight target.
+     * @param newFightTarget new target
+     */
+    public void setFightTarget(Unit newFightTarget) {
         // We bail out if we're close enough to the unit to avoid deadlocking on weird micro situations
         // Don't bail if it's a building though
         if (fightTarget != null && !fightTarget.getType().isBuilding() && fightTarget.getDistance(unit) < LOCK_ENEMY_WITHIN_DISTANCE) {
             return;
         }
-
-        List<Unit> filtered = new ArrayList<>();
-
-        // Attempt to find the closest enemy OUTSIDE fog of war
-        for (Unit enemyUnit: enemies) {
-            if (unit.canAttack(enemyUnit) && enemyUnit.isDetected()) {
-                filtered.add(enemyUnit);
-            }
-        }
-
-        if (filtered.size() > 0) {
-            Unit closestEnemy = closestHostileUnit(unit, filtered);
-            fightTarget = closestEnemy;
-            movementTargetPosition = closestEnemy.getTilePosition();
-            return;
-        }
-
-        movementTargetPosition = backupScoutPosition;
+        fightTarget = newFightTarget;
+        movementTargetPosition = newFightTarget.getTilePosition();
     }
 }
