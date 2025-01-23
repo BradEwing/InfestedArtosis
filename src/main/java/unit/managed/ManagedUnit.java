@@ -11,10 +11,7 @@ import bwapi.UnitType;
 import planner.PlanState;
 import planner.Plan;
 
-import java.util.ArrayList;
 import java.util.List;
-
-import static util.Filter.closestHostileUnit;
 
 public class ManagedUnit {
     private static int LOCK_ENEMY_WITHIN_DISTANCE = 25;
@@ -191,7 +188,13 @@ public class ManagedUnit {
         if (!isReady) return;
         if (rallyPoint == null) return;
 
-        if (unit.getDistance(rallyPoint.toPosition()) < 64) {
+        if (role == UnitRole.RALLY) {
+            if (unit.getDistance(rallyPoint.toPosition()) < 32) {
+                return;
+            }
+        }
+
+        if (unit.getDistance(rallyPoint.toPosition()) < 16) {
             return;
         }
 
@@ -312,7 +315,7 @@ public class ManagedUnit {
         }
     }
 
-    private void setUnready() {
+    public void setUnready() {
         isReady = false;
         unreadyUntilFrame = game.getFrameCount() + game.getLatencyFrames() + 11;
         return;

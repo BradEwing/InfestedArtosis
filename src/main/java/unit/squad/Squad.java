@@ -30,10 +30,12 @@ public class Squad {
 
     @Getter(AccessLevel.NONE)
     private Position center;
-    private int radius;
     private SquadStatus status;
     private UnitType type = null;
     private Unit target = null;
+
+    private double max_dx = 0;
+    private double max_dy = 0;
 
     @Override
     public boolean equals(Object other) {
@@ -53,6 +55,11 @@ public class Squad {
     @Override
     public int hashCode() {
         return this.id.hashCode();
+    }
+
+    public int radius() {
+        final double d = Math.sqrt((max_dx*max_dx)+(max_dy*max_dy));
+        return (int) d;
     }
 
     public int distance (Squad other) {
@@ -116,8 +123,13 @@ public class Squad {
         List<Double> distances = new ArrayList<>();
         double tot = 0;
 
+        max_dx = 0;
+        max_dy = 0;
         for (ManagedUnit u: members) {
-            double d = center.getDistance(u.getUnit().getPosition());
+            Position p = u.getUnit().getPosition();
+            double d = center.getDistance(p);
+            max_dx = Math.max(max_dx, Math.abs(p.getX() - center.getX()));
+            max_dy = Math.max(max_dy, Math.abs(p.getY() - center.getY()));
             distances.add(d);
             tot += d;
         }
@@ -130,7 +142,10 @@ public class Squad {
             }
         }
 
-        return outliers / this.size() < 0.25;
+        final boolean lowOutliers = outliers / this.size() < 0.25;
+        final boolean lowEccentricity = max_dx < 100 && max_dy < 100;
+
+        return lowOutliers && lowEccentricity;
     }
 
     private void checkRegroup() {
@@ -140,13 +155,20 @@ public class Squad {
             for (ManagedUnit u: members) {
                 u.setRole(UnitRole.REGROUP);
                 u.setRallyPoint(center.toTilePosition());
+                u.setMovementTargetPosition(center.toTilePosition());
             }
+            return;
         }
-        if (status == SquadStatus.REGROUP && grouped) {
-            status = SquadStatus.FIGHT;
+        if (status == SquadStatus.REGROUP) {
+            if (grouped) {
+                status = SquadStatus.FIGHT;
+                for (ManagedUnit u: members) {
+                    u.setRole(UnitRole.FIGHT);
+                }
+                return;
+            }
             for (ManagedUnit u: members) {
-                u.setRole(UnitRole.FIGHT);
-                u.setRallyPoint(rallyPoint);
+                u.setRallyPoint(center.toTilePosition());
             }
         }
     }

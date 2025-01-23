@@ -80,7 +80,7 @@ public class SquadManager {
 
         for (Squad fightSquad: fightSquads) {
             fightSquad.onFrame();
-            rallyOrFight(fightSquad);
+            evaluateSquadRole(fightSquad);
         }
     }
 
@@ -312,19 +312,22 @@ public class SquadManager {
     }
 
     /**
-     *
-     * TODO: Rename
-     * Determines whether a squad should rally or fight.
-     * @param squad
+     * Determines whether a squad should continue or change its current role.
+     * @param squad Squad to evaluate
      */
-    private void rallyOrFight(Squad squad) {
+    private void evaluateSquadRole(Squad squad) {
         SquadStatus squadStatus = squad.getStatus();
         if (squadStatus == SquadStatus.RETREAT) {
             return;
         }
+        final boolean closeThreats = enemyUnitsNearSquad(squad).size() > 0;
+
+        if (!closeThreats && squadStatus == SquadStatus.REGROUP) {
+            return;
+        }
 
         int moveOutThreshold = calculateMoveOutThreshold(squad);
-        if (enemyUnitsNearSquad(squad).size() > 0 || squad.size() > moveOutThreshold) {
+        if (closeThreats || squad.size() > moveOutThreshold) {
             simulateFightSquad(squad);
         } else {
             rallySquad(squad);
@@ -618,7 +621,8 @@ public class SquadManager {
 
     private void debugPainters() {
         for (Squad squad: fightSquads) {
-            game.drawCircleMap(squad.getCenter(), 256, Color.White);
+            game.drawCircleMap(squad.getCenter(), squad.radius(), Color.White);
+            game.drawTextMap(squad.getCenter(), String.format("Radius: %d", squad.radius()), Text.White);
         }
         for (Squad squad: defenseSquads.values()) {
             game.drawCircleMap(squad.getCenter(), 256, Color.White);
