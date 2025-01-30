@@ -120,6 +120,9 @@ public class Squad {
      * If 25% of the squad is more than 1.5x the average distance from the center, regroup toward the center.
      */
     private boolean grouped() {
+        if (this.size() < 2) {
+            return true;
+        }
         List<Double> distances = new ArrayList<>();
         double tot = 0;
 
@@ -142,8 +145,10 @@ public class Squad {
             }
         }
 
+        int x_threshold = 100 + (size() * this.getType().width());
+        int y_threshold = 100 + (size() * this.getType().height());
         final boolean lowOutliers = outliers / this.size() < 0.25;
-        final boolean lowEccentricity = max_dx < 100 && max_dy < 100;
+        final boolean lowEccentricity = max_dx < x_threshold && max_dy < y_threshold;
 
         return lowOutliers && lowEccentricity;
     }
