@@ -9,7 +9,6 @@ import bwapi.UpgradeType;
  *
  * Used for production planning and predictions of future game state.
  *
- * TODO: Track supply, possibly larva?
  */
 public class ResourceCount {
 
@@ -22,6 +21,7 @@ public class ResourceCount {
     private int reservedMinerals = 0;
     private int reservedGas = 0;
     private int reservedLarva = 0;
+    private int plannedSupply;
 
     public ResourceCount(Player self) {
         this.self = self;
@@ -131,4 +131,12 @@ public class ResourceCount {
     public boolean isFloatingMinerals() { return availableMinerals() - availableGas() > 100; }
 
     public boolean isFloatingGas() { return availableGas() - availableMinerals() > 150; }
+
+    public int getPlannedSupply() {
+        return plannedSupply;
+    }
+
+    public void setPlannedSupply(int s) {
+        plannedSupply = s;
+    }
 }

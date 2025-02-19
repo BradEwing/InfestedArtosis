@@ -6,19 +6,18 @@ import bwapi.Position;
 import bwapi.Unit;
 import bwapi.UnitType;
 import bwem.Base;
+import info.GameState;
 import info.ResourceCount;
 import planner.Plan;
+import planner.PlanComparator;
 import planner.PlanState;
 import planner.PlanType;
-import planner.PlanComparator;
-import info.GameState;
 import unit.managed.ManagedUnit;
 import unit.managed.UnitRole;
 import util.BaseUnitDistanceComparator;
 import util.UnitDistanceComparator;
 
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -398,7 +397,7 @@ public class WorkerManager {
 
         int curFrame = game.getFrameCount();
 
-        if (supplyTotal - supplyUsed + gameState.getPlannedSupply() > 0) {
+        if (supplyTotal - supplyUsed + gameState.getResourceCount().getPlannedSupply() > 0) {
             gameState.setLarvaDeadlocked(false);
             return;
         }
