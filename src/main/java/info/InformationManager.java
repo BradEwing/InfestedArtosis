@@ -69,7 +69,6 @@ public class InformationManager {
 
     public void onFrame() {
         ageHeatMap();
-        //debugHeatMap();
 
         trackEnemyUnits();
         trackEnemyBuildings();
@@ -142,30 +141,18 @@ public class InformationManager {
     }
 
     public void onUnitShow(Unit unit) {
-        // TODO: Clean up
         UnitType unitType = unit.getInitialType();
 
         if (unit.getPlayer() == game.self()) {
             updateTechProgression(unitType);
             return;
         }
-        if (unitType == UnitType.Resource_Mineral_Field ||
-                unitType == UnitType.Resource_Vespene_Geyser ||
-                unitType == UnitType.Powerup_Mineral_Cluster_Type_1 ||
-                unitType == UnitType.Powerup_Mineral_Cluster_Type_2 ||
-                unitType == UnitType.Resource_Mineral_Field_Type_2 ||
-                unitType == UnitType.Resource_Mineral_Field_Type_3) {
-            return;
-        }
-
-
-        if (unitType == UnitType.Unknown || unitType == UnitType.Special_Power_Generator ||
-                unitType == UnitType.Special_Protoss_Temple || unitType == UnitType.Special_XelNaga_Temple ||
-                unitType == UnitType.Special_Psi_Disrupter) {
-            return;
-        }
-
-        if (unitType == UnitType.Zerg_Larva) {
+        // Check if the unit should be ignored: resource, powerup, special/unknown
+        if (unitType.isResourceContainer()
+                || unitType.isMineralField()
+                || unitType.isNeutral()
+                || unitType.isSpecialBuilding()
+                || unitType == UnitType.Unknown) {
             return;
         }
 
@@ -175,8 +162,6 @@ public class InformationManager {
     }
 
     public void onUnitMorph(Unit unit) {
-        UnitType unitType = unit.getInitialType();
-
         HashMap<Unit, Plan> assignedPlannedItems = gameState.getAssignedPlannedItems();
         Plan assignedPlan = assignedPlannedItems.get(unit);
         // Currently, only do something here if this unit is assigned to a plan.
@@ -322,20 +307,22 @@ public class InformationManager {
         }
     }
 
-    // TODO: Remove in favour of onUnitShow/onUnitHide hooks?
     private void trackEnemyUnits() {
         for (Unit unit: game.getAllUnits()) {
             UnitType unitType = unit.getType();
 
-            // TODO: this is pulling in bad data and polluting the lings
-            // TODO: Track destructible, neutral units elsewhere
-            // TODO: Destructable doors?! Disable Fortress
-            if (unitType == UnitType.Special_Power_Generator || unitType == UnitType.Zerg_Larva || unitType == UnitType.Special_Pit_Door) {
+            // Check if the unit should be ignored: own unit, resource, powerup, special/unknown
+            if (unit.getPlayer() == game.self()
+                    || unitType.isResourceContainer()
+                    || unitType.isMineralField()
+                    || unitType.isNeutral()
+                    || unitType.isSpecialBuilding()
+                    || unitType.isBuilding()
+                    || unit.isMorphing()) {
                 continue;
             }
-            if (!unitType.isBuilding() && unit.getPlayer() != game.self() && !unitType.isResourceContainer() && !unitType.isNeutral() && !unit.isMorphing()) {
-                visibleEnemyUnits.add(unit);
-            }
+
+            visibleEnemyUnits.add(unit);
         }
 
         List<Unit> unknownUnits = new ArrayList<>();
@@ -593,7 +580,6 @@ public class InformationManager {
         return true;
     }
 
-    // TODO: Move to GameMap?
     private void ageHeatMap() {
         ScoutData scoutData = gameState.getScoutData();
         int weight = 1;
@@ -615,7 +601,6 @@ public class InformationManager {
             }
 
         }
-        // TODO: sorting on EVERY frame sounds like a potential cpu nightmare
         Collections.sort(gameMap.getHeatMap(), new MapTileScoutImportanceComparator());
     }
 
