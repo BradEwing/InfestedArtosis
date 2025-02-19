@@ -322,6 +322,10 @@ public class InformationManager {
                 continue;
             }
 
+            if (visibleEnemyUnits.size() > 0 && unitType == UnitType.Zerg_Larva) {
+                continue;
+            }
+
             visibleEnemyUnits.add(unit);
         }
 

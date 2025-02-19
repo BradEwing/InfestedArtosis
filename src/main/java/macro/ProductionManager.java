@@ -441,14 +441,14 @@ public class ProductionManager {
             return;
         }
         final int supplyRemaining = self.supplyTotal() - self.supplyUsed();
-        int plannedSupply = gameState.getPlannedSupply();
+        int plannedSupply = gameState.getResourceCount().getPlannedSupply();
         if (supplyRemaining + plannedSupply < 5) {
             if (gameState.getBaseData().numHatcheries() > 3) {
-                gameState.setPlannedSupply(plannedSupply+32);
+                gameState.getResourceCount().setPlannedSupply(plannedSupply+32);
                 addUnitToQueue(UnitType.Zerg_Overlord, 1, true);
                 addUnitToQueue(UnitType.Zerg_Overlord, 1, true);
             } else {
-                gameState.setPlannedSupply(plannedSupply+16);
+                gameState.getResourceCount().setPlannedSupply(plannedSupply+16);
                 addUnitToQueue(UnitType.Zerg_Overlord,1, true);
             }
         }
@@ -887,7 +887,7 @@ public class ProductionManager {
         }
 
         if (unitType == UnitType.Zerg_Overlord) {
-            gameState.setPlannedSupply(Math.max(0, gameState.getPlannedSupply() - unitType.supplyProvided()));
+            gameState.getResourceCount().setPlannedSupply(Math.max(0, gameState.getResourceCount().getPlannedSupply() - unitType.supplyProvided()));
         }
 
         if (unitType == UnitType.Zerg_Hatchery) {
