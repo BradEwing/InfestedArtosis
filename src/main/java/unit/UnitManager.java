@@ -5,18 +5,15 @@ import bwapi.Unit;
 import bwapi.UnitType;
 import bwem.BWEM;
 import bwem.Base;
-import info.BaseData;
-import info.InformationManager;
 import info.GameState;
+import info.InformationManager;
 import info.ScoutData;
-import org.bk.ass.sim.BWMirrorAgentFactory;
 import unit.managed.ManagedUnit;
 import unit.managed.ManagedUnitFactory;
 import unit.managed.UnitRole;
 import unit.scout.ScoutManager;
 import unit.squad.SquadManager;
 
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -70,6 +67,10 @@ public class UnitManager {
                 }
             }
         }
+    }
+
+    public ScoutManager getScoutManager() {
+        return this.scoutManager;
     }
 
     public void onFrame() {
