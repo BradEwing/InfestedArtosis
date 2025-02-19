@@ -11,16 +11,13 @@ import info.GameState;
 import info.InformationManager;
 import info.ScoutData;
 import info.map.GameMap;
-import info.map.MapTile;
 import info.map.ScoutPath;
 import strategy.openers.OpenerName;
 import unit.managed.ManagedUnit;
 import unit.managed.UnitRole;
 
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -50,6 +47,10 @@ public class ScoutManager {
                 assignScoutMovementTarget(managedUnit);
             }
         }
+    }
+
+    public boolean isDroneScout(Unit unit) {
+        return droneScouts.contains(unit);
     }
 
     public void addScout(ManagedUnit managedUnit) {
