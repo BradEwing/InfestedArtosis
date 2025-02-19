@@ -359,7 +359,7 @@ public class ManagedUnit {
             fightTarget = null;
         }
         if (fightTarget != null) {
-            unit.attack(fightTarget);
+            unit.attack(fightTarget.getPosition());
             return;
         }
 
@@ -410,7 +410,7 @@ public class ManagedUnit {
             defendTarget = null;
         }
         if (defendTarget != null) {
-            unit.attack(defendTarget);
+            unit.attack(defendTarget.getPosition());
             return;
         }
     }
