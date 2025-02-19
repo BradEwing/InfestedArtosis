@@ -86,26 +86,15 @@ public class InformationManager {
     }
 
     public void onUnitHide(Unit unit) {
-        // TODO: Clean up
         UnitType unitType = unit.getInitialType();
-        if (unit.getPlayer() == game.self() ||
-                unitType == UnitType.Resource_Mineral_Field ||
-                unitType == UnitType.Resource_Vespene_Geyser ||
-                unitType == UnitType.Powerup_Mineral_Cluster_Type_1 ||
-                unitType == UnitType.Powerup_Mineral_Cluster_Type_2 ||
-                unitType == UnitType.Resource_Mineral_Field_Type_2 ||
-                unitType == UnitType.Resource_Mineral_Field_Type_3) {
-            return;
-        }
 
-
-        if (unitType == UnitType.Unknown || unitType == UnitType.Special_Power_Generator ||
-                unitType == UnitType.Special_Protoss_Temple || unitType == UnitType.Special_XelNaga_Temple ||
-                unitType == UnitType.Special_Psi_Disrupter) {
-            return;
-        }
-
-        if (unitType == UnitType.Zerg_Larva) {
+        // Check if the unit should be ignored: own unit, resource, powerup, special/unknown
+        if (unit.getPlayer() == game.self()
+                || unitType.isResourceContainer()
+                || unitType.isMineralField()
+                || unitType.isNeutral()
+                || unitType.isSpecialBuilding()
+                || unitType == UnitType.Unknown) {
             return;
         }
 
