@@ -7,6 +7,7 @@ import bwapi.UnitType;
 import lombok.AccessLevel;
 import lombok.Data;
 import lombok.Getter;
+import org.jetbrains.annotations.NotNull;
 import unit.managed.ManagedUnit;
 import unit.managed.UnitRole;
 
@@ -19,7 +20,7 @@ import java.util.UUID;
 /**
  * Bundles up managed units that should be functioning together to perform a goal.
  */
-public class Squad {
+public class Squad implements Comparable<Squad> {
 
     private final String id = UUID.randomUUID().toString();
 
@@ -176,5 +177,10 @@ public class Squad {
                 u.setRallyPoint(center.toTilePosition());
             }
         }
+    }
+
+    @Override
+    public int compareTo(@NotNull Squad o) {
+        return Integer.compare(this.size(), o.size());
     }
 }
