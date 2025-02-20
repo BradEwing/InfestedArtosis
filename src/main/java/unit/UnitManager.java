@@ -376,4 +376,8 @@ public class UnitManager {
         buildingManager.add(managedUnit);
         managedUnitLookup.put(unit, managedUnit);
     }
+
+    public SquadManager getSquadManager() {
+        return this.squadManager;
+    }
 }

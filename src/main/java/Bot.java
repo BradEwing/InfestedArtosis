@@ -63,7 +63,7 @@ public class Bot extends DefaultBWListener {
         economyModule = new ProductionManager(game, gameState, decisions.getOpener().getBuildOrder()); // TODO: reverse
         unitManager = new UnitManager(game, informationManager, bwem, gameState);
 
-        autoObserver = new AutoObserver(game, unitManager.getScoutManager());
+        autoObserver = new AutoObserver(gameState.getConfig(), game, unitManager.getScoutManager(), unitManager.getSquadManager());
     }
 
 

@@ -23,7 +23,6 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import static java.lang.Math.max;
 import static java.lang.Math.min;
 import static util.Filter.closestHostileUnit;
 import static util.Filter.isHostileBuilding;
@@ -631,6 +630,18 @@ public class SquadManager {
             game.drawCircleMap(squad.getCenter(), 256, Color.White);
             game.drawTextMap(squad.getCenter(), String.format("Defenders: %s", squad.size()), Text.White);
         }
+    }
+
+    /**
+     * Retrieves the largest fight squad or returns null if no fight squads exist.
+     * @return Squad OR null
+     */
+    public Squad largestSquad() {
+        if (fightSquads.size() == 0) {
+            return null;
+        }
+        List<Squad> sorted = fightSquads.stream().sorted().collect(Collectors.toList());
+        return sorted.get(sorted.size()-1);
     }
 }
 

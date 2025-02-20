@@ -8,7 +8,7 @@ import bwapi.UnitType;
 import bwem.BWEM;
 import bwem.Base;
 import bwem.Mineral;
-import config.FeatureFlags;
+import config.Config;
 import info.map.GameMap;
 import learning.Decisions;
 import lombok.AccessLevel;
@@ -32,6 +32,7 @@ import java.util.HashSet;
  */
 @Data
 public class GameState {
+    private Config config;
     private Player self;
     private BWEM bwem;
 
@@ -91,6 +92,7 @@ public class GameState {
         this.resourceCount = new ResourceCount(self);
         this.baseData = new BaseData(bwem.getMap().getBases());
         this.scoutData = new ScoutData();
+        this.config = new Config();
     }
 
     public void onStart(Decisions decisions, Race opponentRace) {
@@ -100,7 +102,7 @@ public class GameState {
         this.activeStrategy = decisions.getStrategy();
         this.unitWeights = activeStrategy.getUnitWeights();
 
-        if (FeatureFlags.learnDefensiveSunk) {
+        if (config.learnDefensiveSunk) {
             this.defensiveSunk = decisions.isDefensiveSunk();
         }
 
