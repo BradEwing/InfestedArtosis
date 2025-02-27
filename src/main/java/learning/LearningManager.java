@@ -183,7 +183,7 @@ public class LearningManager {
     private Strategy determineStrategy() {
         if (config.strategyOverride != null) {
              Strategy strategy = strategyFactory.getByName(config.strategyOverride);
-             if (strategyFactory.getPlayableStrategies(decisions.getOpener()).contains(strategy.getName())) {
+             if (strategy != null && strategyFactory.getPlayableStrategies(decisions.getOpener()).contains(strategy.getName())) {
                  currentStrategy = opponentRecord.getStrategyRecordMap().get(strategy.getName());
                  return strategy;
             }
