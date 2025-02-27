@@ -54,7 +54,7 @@ public class Bot extends DefaultBWListener {
 
         this.gameState = new GameState(game.self(), bwem);
 
-        learningManager = new LearningManager(opponentRace, game.enemy().getName(), bwem);
+        learningManager = new LearningManager(gameState.getConfig(), opponentRace, game.enemy().getName(), bwem);
         Decisions decisions = learningManager.getDecisions();
         gameState.onStart(decisions, opponentRace);
         OpponentRecord opponentRecord = learningManager.getOpponentRecord();
