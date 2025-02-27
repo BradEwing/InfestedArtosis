@@ -3,10 +3,10 @@ package learning;
 import bwapi.Race;
 import bwem.BWEM;
 import com.fasterxml.jackson.databind.ObjectMapper;
-
-import strategy.openers.Opener;
+import config.Config;
 import strategy.OpenerFactory;
 import strategy.StrategyFactory;
+import strategy.openers.Opener;
 import strategy.strategies.Strategy;
 
 import java.io.File;
@@ -21,7 +21,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 public class LearningManager {
-    private BWEM bwem;
+    private Config config;
 
     private static String READ_DIR = "bwapi-data/read/";
     private static String WRITE_DIR = "bwapi-data/write/";
@@ -40,12 +40,12 @@ public class LearningManager {
     private OpenerFactory openerFactory;
     private StrategyFactory strategyFactory;
 
-    public LearningManager(Race opponentRace, String opponentName, BWEM bwem) {
+    public LearningManager(Config config, Race opponentRace, String opponentName, BWEM bwem) {
+        this.config = config;
         this.opponentRace = opponentRace;
         this.opponentName = opponentName;
         this.opponentFileName = opponentName + "_" + opponentRace + ".json";
         this.opponentRecord = new OpponentRecord(opponentName, opponentRace.toString(), 0, 0, new HashMap<>(), new HashMap<>(), new HashMap<>(), new DefensiveSunkRecord(0 , 0));
-        this.bwem = bwem;
 
         this.openerFactory = new OpenerFactory(bwem.getMap().getStartingLocations().size(), opponentRace);
         this.strategyFactory = new StrategyFactory(opponentRace);
@@ -181,6 +181,13 @@ public class LearningManager {
     }
 
     private Strategy determineStrategy() {
+        if (config.strategyOverride != null) {
+             Strategy strategy = strategyFactory.getByName(config.strategyOverride);
+             if (strategyFactory.getPlayableStrategies(decisions.getOpener()).contains(strategy.getName())) {
+                 currentStrategy = opponentRecord.getStrategyRecordMap().get(strategy.getName());
+                 return strategy;
+            }
+        }
         List<StrategyRecord> strategies = opponentRecord.getStrategyRecordMap()
                 .values()
                 .stream()
