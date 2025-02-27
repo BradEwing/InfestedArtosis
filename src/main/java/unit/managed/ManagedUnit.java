@@ -6,10 +6,10 @@ import bwapi.Position;
 import bwapi.Text;
 import bwapi.TilePosition;
 import bwapi.Unit;
-
 import bwapi.UnitType;
-import planner.PlanState;
+import bwapi.WeaponType;
 import planner.Plan;
+import planner.PlanState;
 
 import java.util.List;
 
@@ -359,7 +359,11 @@ public class ManagedUnit {
             fightTarget = null;
         }
         if (fightTarget != null) {
-            unit.attack(fightTarget.getPosition());
+            if (canKite(fightTarget)) {
+                kiteEnemy(fightTarget);
+            } else {
+                unit.attack(fightTarget.getPosition());
+            }
             return;
         }
 
@@ -372,7 +376,6 @@ public class ManagedUnit {
             return;
         }
 
-        //System.out.printf("FightTarget is null, frame: [%s], unitType: [%s]\n", game.getFrameCount(), unit.getType());
         role = UnitRole.IDLE;
         return;
     }
@@ -427,5 +430,67 @@ public class ManagedUnit {
         }
         fightTarget = newFightTarget;
         movementTargetPosition = newFightTarget.getTilePosition();
+    }
+
+    private void kiteEnemy(Unit enemy) {
+        if (enemy == null || !enemy.exists() || !enemy.isVisible()) {
+            return;
+        }
+
+        boolean isEnemyAir = enemy.isFlying();
+        WeaponType weapon = isEnemyAir ? unit.getType().airWeapon() : unit.getType().groundWeapon();
+        WeaponType enemyWeapon = unit.isFlying() ? enemy.getType().airWeapon() : enemy.getType().groundWeapon();
+
+        if (weapon == null) {
+            unit.attack(enemy.getPosition());
+            return;
+        }
+
+        int attackRange = weapon.maxRange();
+        int cooldown = isEnemyAir ? unit.getAirWeaponCooldown() : unit.getGroundWeaponCooldown();
+
+        Position enemyPos = enemy.getPosition();
+        Position myPos = unit.getPosition();
+        double distance = myPos.getDistance(enemyPos);
+        double kiteThreshold = weapon.maxRange() * 0.9;
+        if (weapon.maxRange() > enemyWeapon.maxRange()) {
+            kiteThreshold = enemyWeapon.maxRange() + 1;
+        }
+
+        final boolean inAttackRange = distance <= attackRange;
+        final boolean outsideKiteThreshold = distance >= kiteThreshold;
+
+        if (cooldown == 0) {
+            if (inAttackRange && outsideKiteThreshold) {
+                unit.attack(enemy);
+            } else {
+                unit.attack(enemyPos);
+            }
+        } else {
+            int moveDistance = 64; // Adjust this value as needed
+            double dx = myPos.x - enemyPos.x;
+            double dy = myPos.y - enemyPos.y;
+            double length = Math.sqrt(dx * dx + dy * dy);
+            if (length == 0) {
+                unit.move(new Position(myPos.x + moveDistance, myPos.y));
+                return;
+            }
+            dx /= length;
+            dy /= length;
+            Position kitePosition = new Position(
+                    (int)(myPos.x + dx * moveDistance),
+                    (int)(myPos.y + dy * moveDistance)
+            );
+            unit.move(kitePosition);
+        }
+    }
+
+    private boolean canKite(Unit enemy) {
+        if (enemy == null || !enemy.exists() || !enemy.isVisible()) {
+            return false;
+        }
+        boolean isEnemyAir = enemy.isFlying();
+        WeaponType weapon = isEnemyAir ? unit.getType().airWeapon() : unit.getType().groundWeapon();
+        return weapon != null && weapon.maxRange() > 32;
     }
 }
