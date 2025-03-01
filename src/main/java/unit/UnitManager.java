@@ -54,7 +54,7 @@ public class UnitManager {
                 UnitType unitType = unit.getType();
                 ManagedUnit managedUnit = createManagedUnit(unit, UnitRole.IDLE);
                 if (unitType == UnitType.Zerg_Overlord) {
-                    createScout(unit, managedUnit);
+                    createScout(managedUnit);
                 }
                 if (unitType == UnitType.Zerg_Drone) {
                     createDrone(unit, managedUnit);
@@ -110,8 +110,8 @@ public class UnitManager {
                     managedUnit.execute();
                     continue;
             }
-
-            switch(managedUnit.getUnitType()) {
+            UnitType type = managedUnit.getUnitType();
+            switch(type) {
                 case Zerg_Drone:
                     onFrameDrone(managedUnit, role);
                     break;
@@ -138,7 +138,6 @@ public class UnitManager {
 
 
         // Consider case where we are already tracking the unit that morphed
-        // TODO: handle case where managed unit type has changed
         if (managedUnitLookup.containsKey(unit)) {
             return;
         }
@@ -152,29 +151,59 @@ public class UnitManager {
             return;
         }
 
-        ScoutData scoutData = gameState.getScoutData();
+        assignManagedUnit(managedUnit);
+    }
 
-        // Assign scouts if we don't know where enemy is
-        if (unitType == UnitType.Zerg_Drone || unitType == UnitType.Zerg_Larva) {
+    private void assignManagedUnit(ManagedUnit managedUnit) {
+        ScoutData scoutData = gameState.getScoutData();
+        UnitType unitType = managedUnit.getUnitType();
+        UnitRole role = managedUnit.getRole();
+        if (role != UnitRole.IDLE) {
+            return;
+        }
+
+        // Handle Drones and Larvae first
+        if (unitType == UnitType.Zerg_Larva) {
+            workerManager.onUnitComplete(managedUnit);
+            return;
+        }
+        if (unitType == UnitType.Zerg_Drone) {
             if (scoutManager.needDroneScout()) {
-                scoutManager.addScout(managedUnit);
+                createScout(managedUnit);
             } else {
                 workerManager.onUnitComplete(managedUnit);
             }
-        } else if (unitType == UnitType.Zerg_Overlord || informationManager.getEnemyBuildings().size() + informationManager.getVisibleEnemyUnits().size() == 0) {
-            if (unitType == UnitType.Zerg_Overlord && scoutData.isEnemyBuildingLocationKnown()) {
-                squadManager.addManagedUnit(managedUnit);
-                scoutManager.removeScout(managedUnit);
-                return;
-            } else {
-                createScout(unit, managedUnit);
-            }
-        } else {
-            managedUnit.setRole(UnitRole.FIGHT);
-            squadManager.addManagedUnit(managedUnit);
+            return;
         }
 
+        // Handle Overlords as scouts if no building locations known
+        if (unitType == UnitType.Zerg_Overlord) {
+            if (scoutData.isEnemyBuildingLocationKnown()) {
+                squadManager.addManagedUnit(managedUnit);
+                scoutManager.removeScout(managedUnit);
+            } else {
+                createScout(managedUnit);
+            }
+            return;
+        }
 
+        // Scout if enemy presence is unknown
+        if (!informationManager.isEnemyUnitVisible() && informationManager.getEnemyBuildings().isEmpty()) {
+            if (role != UnitRole.SCOUT) {
+                createScout(managedUnit);
+                squadManager.removeManagedUnit(managedUnit);
+            }
+            return;
+        }
+
+        // Default assignment for units that can fight
+        if (managedUnit.canFight()) {
+            managedUnit.setRole(UnitRole.FIGHT);
+            squadManager.addManagedUnit(managedUnit);
+        } else {
+            // Fallback for non-combat units not handled above
+            createScout(managedUnit);
+        }
     }
 
     public void onUnitComplete(Unit unit) {
@@ -191,7 +220,6 @@ public class UnitManager {
         }
 
         // Consider case where we are already tracking the unit that morphed
-        // TODO: handle case where managed unit type has changed
         if (!managedUnitLookup.containsKey(unit)) {
             return;
         }
@@ -200,6 +228,8 @@ public class UnitManager {
         if (managedUnit.getRole() == UnitRole.MORPH) {
             managedUnit.setRole(UnitRole.IDLE);
         }
+
+        assignManagedUnit(managedUnit);
     }
 
     private void removeManagedUnit(Unit unit) {
@@ -247,22 +277,16 @@ public class UnitManager {
             managedUnit.setUnitType(unit.getType());
         }
 
+        removeManagedUnit(unit);
+
         if (type.isBuilding()) {
-            removeManagedUnit(unit);
             createBuilding(unit, managedUnit);
             return;
         }
 
-        if (type == UnitType.Zerg_Overlord) {
-            managedUnit.setCanFight(false);
-        }
-        if (type == UnitType.Zerg_Drone) {
-            if (scoutManager.needDroneScout()) {
-                scoutManager.addScout(managedUnit);
-            } else {
-                workerManager.onUnitMorph(managedUnit);
-            }
-        }
+        createManagedUnit(unit, managedUnit.getRole());
+
+        assignManagedUnit(managedUnit);
     }
 
     /**
@@ -291,14 +315,7 @@ public class UnitManager {
             scoutManager.removeScout(managedUnit);
         }
 
-        if (managedUnit.canFight() && role != UnitRole.FIGHT && informationManager.isEnemyLocationKnown()) {
-            managedUnit.setRole(UnitRole.FIGHT);
-            squadManager.addManagedUnit(managedUnit);
-            scoutManager.removeScout(managedUnit);
-        } else if (role != UnitRole.SCOUT && !informationManager.isEnemyUnitVisible() && informationManager.getEnemyBuildings().size() == 0) {
-            scoutManager.addScout(managedUnit);
-            squadManager.removeManagedUnit(managedUnit);
-        }
+        assignManagedUnit(managedUnit);
     }
 
     private void checkBaseThreats() {
@@ -346,14 +363,9 @@ public class UnitManager {
         return managedUnit;
     }
 
-    private void createScout(Unit unit, ManagedUnit managedUnit) {
+    private void createScout(ManagedUnit managedUnit) {
         managedUnit.setRole(UnitRole.SCOUT);
         scoutManager.addScout(managedUnit);
-
-        if (unit.getType() == UnitType.Zerg_Overlord) {
-            managedUnit.setCanFight(false);
-        }
-        return;
     }
 
     private void createDrone(Unit unit, ManagedUnit managedUnit) {
