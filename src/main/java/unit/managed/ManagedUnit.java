@@ -8,52 +8,60 @@ import bwapi.TilePosition;
 import bwapi.Unit;
 import bwapi.UnitType;
 import bwapi.WeaponType;
+import lombok.AccessLevel;
+import lombok.Getter;
+import lombok.Setter;
 import planner.Plan;
 import planner.PlanState;
 
 import java.util.List;
 
 public class ManagedUnit {
-    private static int LOCK_ENEMY_WITHIN_DISTANCE = 25;
-    private Game game;
+    protected static int LOCK_ENEMY_WITHIN_DISTANCE = 25;
+    protected Game game;
 
-    private final int unitID; // debug
-    private Unit unit;
-    private UnitRole role;
-    private UnitType unitType;
+    @Getter
+    protected final int unitID; // debug
+    @Getter
+    protected Unit unit;
+    @Setter(AccessLevel.PUBLIC) @Getter(AccessLevel.PUBLIC)
+    protected UnitRole role;
+    @Setter @Getter
+    protected UnitType unitType;
 
 
-    // TODO: Consolidate/refactor
-    private TilePosition rallyPoint;
-    private TilePosition movementTargetPosition;
-    private List<TilePosition> pathToTarget;
-    private TilePosition retreatTarget;
+    @Setter
+    protected TilePosition rallyPoint;
+    @Setter @Getter
+    protected TilePosition movementTargetPosition;
+    protected List<TilePosition> pathToTarget;
+    @Setter
+    protected TilePosition retreatTarget;
 
-    private Unit defendTarget;
-    private Unit fightTarget;
-    private Unit gatherTarget;
+    @Setter @Getter
+    protected Unit defendTarget;
+    protected Unit fightTarget;
+    @Setter
+    protected Unit gatherTarget;
 
-    private boolean hasNewGatherTarget;
+    protected boolean hasNewGatherTarget;
 
-    // Plan this unit is assigned to
-    private Plan plan;
-    private int buildAttemptFrame;
+    @Setter @Getter
+    protected Plan plan;
+    protected int buildAttemptFrame;
 
-    private boolean canFight;
+    @Setter
+    protected boolean canFight = true;
 
-    private int unreadyUntilFrame = 0;
-    private boolean isReady = true;
+    @Getter
+    protected int unreadyUntilFrame = 0;
+    protected boolean isReady = true;
 
     public ManagedUnit(Game game, Unit unit, UnitRole role) {
         this.game = game;
         this.unit = unit;
         this.role = role;
 
-        if (unit.getType() == UnitType.Zerg_Overlord) {
-            this.canFight = false;
-        } else {
-            this.canFight = true;
-        }
         this.unitType = unit.getType();
         this.unitID = unit.getID();
     }
@@ -78,47 +86,13 @@ public class ManagedUnit {
         return this.unitID;
     }
 
-    public int getUnitID() { return this.unitID; }
-
-    public void setPlan(Plan plan) {
-        this.plan = plan;
-    }
-
-    public void setRallyPoint(TilePosition tilePosition) { this.rallyPoint = tilePosition; }
-
-    public Unit getUnit() { return this.unit; }
-
-    public UnitRole getRole() { return this.role; }
-
-    public void setRole(UnitRole role) { this.role = role; }
-
-    public void setRetreatTarget(TilePosition tp) { this.retreatTarget = tp; }
-
-    public Unit getDefendTarget() { return this.defendTarget; }
-    public void setDefendTarget(Unit unit) { this.defendTarget = unit; }
-
     public boolean isReady() { return this.isReady; }
 
     public void setReady(boolean isReady) { this.isReady = isReady; }
 
-    public int getUnreadyUntilFrame() { return this.unreadyUntilFrame; }
-
     public boolean canFight() { return this.canFight; }
 
-    public void setCanFight(boolean canFight) { this.canFight = canFight; }
-
-    public void setGatherTarget(Unit unit) { this.gatherTarget = unit; }
-
-    public void hasNewGatherTarget(boolean hasNewGatherTarget) { this.hasNewGatherTarget = hasNewGatherTarget; }
-
-    public TilePosition getMovementTargetPosition() { return this.movementTargetPosition; }
-    public void setMovementTargetPosition(TilePosition tp) { movementTargetPosition = tp; }
-
-    public UnitType getUnitType() { return this.unitType; }
-
-    public void setUnitType(UnitType unitType) { this.unitType = unitType; }
-
-    public Plan getPlan() { return this.plan; }
+    public void setNewGatherTarget(boolean hasNewGatherTarget) { this.hasNewGatherTarget = hasNewGatherTarget; }
 
     public void execute() {
         debugRole();
@@ -184,7 +158,7 @@ public class ManagedUnit {
         game.drawTextMap(unitPosition, String.format("%s", role), Text.Default);
     }
 
-    private void rally() {
+    protected void rally() {
         if (!isReady) return;
         if (rallyPoint == null) return;
 
@@ -202,28 +176,10 @@ public class ManagedUnit {
         unit.move(rallyPoint.toPosition());
     }
 
-    private void gather() {
-        if (!hasNewGatherTarget & (unit.isGatheringMinerals() || unit.isGatheringGas())) return;
-        if (!isReady) return;
-
-        if (unit.isCarrying()) {
-            setUnready();
-            unit.returnCargo();
-            return;
-        }
-
-        if (gatherTarget == null) {
-            role = UnitRole.IDLE;
-            return;
-        }
-
-        setUnready();
-        unit.gather(gatherTarget);
-        hasNewGatherTarget = false;
-    }
+    protected void gather() {}
 
     // Attempt build or morph
-    private void build() {
+    protected void build() {
         if (unit.isBeingConstructed() || unit.isMorphing()) return;
         if (plan.getBuildPosition() != null) {
             // NOTE: this assumes plan and buildPosition are NOT NULL
@@ -255,9 +211,6 @@ public class ManagedUnit {
 
         if (game.canMake(plannedUnitType, unit)) {
             // Try to build
-            // TODO: Maybe only check the units we assigned to build, after so many frames we can try to reassign
-            //   - Maybe the PlannedItems are tracked in a higher level state, and their status is updated at the higher level
-            //   - A Plan marked as complete would then be removed from the bot (careful consideration to be sure it's removed everywhere)
             setUnready();
             boolean didBuild = unit.build(plannedUnitType, plan.getBuildPosition());
             // If we failed to build, try to morph
@@ -281,7 +234,6 @@ public class ManagedUnit {
                 // This is a bit hacky but buys 150 frames to attempt to build at the given location before reassigning elsewhere
                 if (buildAttemptFrame + 150 < frameCount) {
                     // Try to get a new building location
-                    //System.out.printf("failed to build, getting new building location: [%s]\n", plan);
                     plan.setBuildPosition(game.getBuildLocation(plannedUnitType, unit.getTilePosition()));
                 }
 
@@ -300,7 +252,7 @@ public class ManagedUnit {
         return buildTarget.toPosition().add(new Position(width, height));
     }
 
-    private void morph() {
+    protected void morph() {
         if (!isReady) return;
         if (unit.isMorphing()) return;
 
@@ -315,13 +267,12 @@ public class ManagedUnit {
         }
     }
 
-    public void setUnready() {
+    protected void setUnready() {
         isReady = false;
         unreadyUntilFrame = game.getFrameCount() + game.getLatencyFrames() + 11;
-        return;
     }
 
-    private void scout() {
+    protected void scout() {
         // Need to reassign movementTarget
         if (movementTargetPosition == null) {
             return;
@@ -333,19 +284,14 @@ public class ManagedUnit {
         }
 
         if (game.isVisible(movementTargetPosition)) {
-            //role = UnitRole.IDLE;
             movementTargetPosition = null;
             return;
         }
-        // TODO: micro / avoid enemies
         setUnready();
         unit.move(movementTargetPosition.toPosition());
     }
 
-    // TODO: squads, gather before fighting
-    // We keep flip flopping states when we have 0 visibility!
-    // TODO: handle visibility
-    private void fight() {
+    protected void fight() {
         debugFight();
         if (!isReady) {
             return;
@@ -370,17 +316,16 @@ public class ManagedUnit {
         if (movementTargetPosition != null && game.isVisible(movementTargetPosition)) {
             movementTargetPosition = null;
         }
-        // TODO: determine if Units may get stuck infinitely trying to approach fightTargetPosition
+
         if (movementTargetPosition != null) {
             unit.move(movementTargetPosition.toPosition());
             return;
         }
 
         role = UnitRole.IDLE;
-        return;
     }
 
-    private void retreat() {
+    protected void retreat() {
         if (!isReady) {
             return;
         }
@@ -397,26 +342,9 @@ public class ManagedUnit {
         }
 
         unit.move(retreatTarget.toPosition());
-        return;
     }
 
-    private void defend() {
-        if (!isReady) {
-            return;
-        }
-        if (unit.isAttackFrame()) {
-            return;
-        }
-        setUnready();
-        // Our fight target is no longer visible, drop in favor of fight target position
-        if (defendTarget != null && defendTarget.getType() == UnitType.Unknown) {
-            defendTarget = null;
-        }
-        if (defendTarget != null) {
-            unit.attack(defendTarget.getPosition());
-            return;
-        }
-    }
+    protected void defend() {}
 
     /**
      * Assigns the closest enemy as a fight target.
