@@ -425,7 +425,7 @@ public class SquadManager {
             squad.setStatus(SquadStatus.RETREAT);
             for (ManagedUnit managedUnit: managedFighters) {
                 managedUnit.setRole(UnitRole.RETREAT);
-                Position retreatTarget = managedUnit.getRetreatPosition();
+                Position retreatTarget = this.getRallyPoint(squad).toPosition();
                 managedUnit.setRetreatTarget(retreatTarget);
             }
             return;
@@ -434,11 +434,12 @@ public class SquadManager {
         if (!simulator.getAgentsB().isEmpty()) {
             // If less than half of units are left, retreat
             float percentRemaining = (float) simulator.getAgentsA().size() / managedFighters.size();
-            if (percentRemaining < 0.20) {
+            if (percentRemaining < 0.40) {
                 squad.setStatus(SquadStatus.RETREAT);
                 for (ManagedUnit managedUnit: managedFighters) {
                     managedUnit.setRole(UnitRole.RETREAT);
-                    managedUnit.setRetreatTarget(this.getRallyPoint(squad).toPosition());
+                    Position retreatTarget = managedUnit.getRetreatPosition();
+                    managedUnit.setRetreatTarget(retreatTarget);
                 }
                 return;
             }

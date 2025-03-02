@@ -306,11 +306,8 @@ public class UnitManager {
     }
 
     private void onFrameDefault(ManagedUnit managedUnit, UnitRole role) {
-        // TODO: Refactor
-        // If an enemy building location is known, retreat overlords to bases
-        // TODO: Only retreat if there are things that can harm the overlord
         ScoutData scoutData = gameState.getScoutData();
-        if (managedUnit.getUnitType() == UnitType.Zerg_Overlord && role == UnitRole.SCOUT && scoutData.isEnemyBuildingLocationKnown()) {
+        if (role == UnitRole.SCOUT && scoutData.isEnemyBuildingLocationKnown()) {
             squadManager.addManagedUnit(managedUnit);
             scoutManager.removeScout(managedUnit);
         }

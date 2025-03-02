@@ -15,6 +15,7 @@ import planner.Plan;
 import planner.PlanState;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 public class ManagedUnit {
     protected static int LOCK_ENEMY_WITHIN_DISTANCE = 25;
@@ -35,8 +36,11 @@ public class ManagedUnit {
     @Setter @Getter
     protected TilePosition movementTargetPosition;
     protected List<TilePosition> pathToTarget;
+
     @Setter
     protected Position retreatTarget;
+    private Position lastRetreatPosition;
+    private int framesStuck = 0;
 
     @Setter @Getter
     protected Unit defendTarget;
@@ -135,7 +139,10 @@ public class ManagedUnit {
     public Position getRetreatPosition() {
         int currentX = unit.getX();
         int currentY = unit.getY();
-        List<Unit> enemies = game.getUnitsInRadius(currentX, currentY, 64);
+        List<Unit> enemies = game.getUnitsInRadius(currentX, currentY, 64)
+                .stream()
+                .filter(u -> u.getPlayer() != game.self())
+                .collect(Collectors.toList());
 
 
         if (enemies.isEmpty()) {
@@ -310,8 +317,12 @@ public class ManagedUnit {
     }
 
     protected void setUnready() {
+        setUnready(11);
+    }
+
+    protected void setUnready(int unreadyFrames) {
         isReady = false;
-        unreadyUntilFrame = game.getFrameCount() + game.getLatencyFrames() + 11;
+        unreadyUntilFrame = game.getFrameCount() + game.getLatencyFrames() + unreadyFrames;
     }
 
     protected void scout() {
@@ -332,7 +343,7 @@ public class ManagedUnit {
         if (unit.isAttackFrame()) {
             return;
         }
-        setUnready();
+        setUnready(11);
         // Our fight target is no longer visible, drop in favor of fight target position
         if (fightTarget != null && (fightTarget.getType() == UnitType.Unknown || !fightTarget.isTargetable())) {
             fightTarget = null;
@@ -359,16 +370,28 @@ public class ManagedUnit {
     }
 
     protected void retreat() {
-        if (retreatTarget == null) {
+        if (retreatTarget == null || unit.getDistance(retreatTarget) < 16 || unit.isIdle()) {
             role = UnitRole.IDLE;
+            lastRetreatPosition = null;
+            framesStuck = 0;
             return;
         }
 
-        setUnready();
+        setUnready(4);
 
-        // TODO: Detect if unit is stuck or cannot move to that position
-        if (unit.getDistance(retreatTarget) < 16 || unit.isIdle()) {
+        // Detect if unit is stuck
+        Position currentPosition = unit.getPosition();
+        if (lastRetreatPosition != null && currentPosition.getDistance(lastRetreatPosition) < 1.0) {
+            framesStuck++;
+        } else {
+            lastRetreatPosition = currentPosition;
+            framesStuck = 0;
+        }
+
+        if (framesStuck >= 12) {
             role = UnitRole.IDLE;
+            lastRetreatPosition = null;
+            framesStuck = 0;
             return;
         }
 
