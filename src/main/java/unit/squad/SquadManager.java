@@ -2,6 +2,7 @@ package unit.squad;
 
 import bwapi.Color;
 import bwapi.Game;
+import bwapi.Position;
 import bwapi.Race;
 import bwapi.Text;
 import bwapi.TilePosition;
@@ -62,7 +63,7 @@ public class SquadManager {
             }
 
             managedUnit.setRole(UnitRole.RETREAT);
-            managedUnit.setRetreatTarget(mainBaseLocation);
+            managedUnit.setRetreatTarget(mainBaseLocation.toPosition());
         }
     }
 
@@ -424,7 +425,8 @@ public class SquadManager {
             squad.setStatus(SquadStatus.RETREAT);
             for (ManagedUnit managedUnit: managedFighters) {
                 managedUnit.setRole(UnitRole.RETREAT);
-                managedUnit.setRetreatTarget(this.getRallyPoint(squad));
+                Position retreatTarget = managedUnit.getRetreatPosition();
+                managedUnit.setRetreatTarget(retreatTarget);
             }
             return;
         }
@@ -436,7 +438,7 @@ public class SquadManager {
                 squad.setStatus(SquadStatus.RETREAT);
                 for (ManagedUnit managedUnit: managedFighters) {
                     managedUnit.setRole(UnitRole.RETREAT);
-                    managedUnit.setRetreatTarget(this.getRallyPoint(squad));
+                    managedUnit.setRetreatTarget(this.getRallyPoint(squad).toPosition());
                 }
                 return;
             }
@@ -447,7 +449,6 @@ public class SquadManager {
             managedUnit.setRole(UnitRole.FIGHT);
             assignEnemyTarget(managedUnit, squad);
         }
-        return;
     }
 
     private boolean canDefenseSquadClearThreat(Squad squad, List<Unit> enemyUnits) {

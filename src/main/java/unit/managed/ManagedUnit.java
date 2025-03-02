@@ -36,7 +36,7 @@ public class ManagedUnit {
     protected TilePosition movementTargetPosition;
     protected List<TilePosition> pathToTarget;
     @Setter
-    protected TilePosition retreatTarget;
+    protected Position retreatTarget;
 
     @Setter @Getter
     protected Unit defendTarget;
@@ -95,7 +95,11 @@ public class ManagedUnit {
     public void setNewGatherTarget(boolean hasNewGatherTarget) { this.hasNewGatherTarget = hasNewGatherTarget; }
 
     public void execute() {
-        debugRole();
+        debug();
+
+        if (!isReady) {
+            return;
+        }
 
         switch (role) {
             case SCOUT:
@@ -128,38 +132,82 @@ public class ManagedUnit {
         }
     }
 
-    private void debugScout() {
-        Position unitPosition = unit.getPosition();
-        game.drawLineMap(unitPosition, movementTargetPosition.toPosition(), Color.White);
-    }
+    public Position getRetreatPosition() {
+        int currentX = unit.getX();
+        int currentY = unit.getY();
+        List<Unit> enemies = game.getUnitsInRadius(currentX, currentY, 64);
 
-    private void debugFight() {
-        Position unitPosition = unit.getPosition();
-        if (fightTarget != null) {
-            game.drawLineMap(unitPosition, fightTarget.getPosition(), Color.Red);
+
+        if (enemies.isEmpty()) {
+            return new Position(currentX, currentY);
         }
-        if (movementTargetPosition != null) {
-            game.drawLineMap(unitPosition, movementTargetPosition.toPosition(), Color.White);
+
+        int sumDx = 0;
+        int sumDy = 0;
+
+        for (Unit enemy : enemies) {
+            sumDx += enemy.getX() - currentX;
+            sumDy += enemy.getY() - currentY;
         }
+
+        int retreatDx = -sumDx;
+        int retreatDy = -sumDy;
+
+        double length = Math.sqrt(retreatDx * retreatDx + retreatDy * retreatDy);
+        if (length == 0) {
+            return new Position(currentX, currentY);
+        }
+
+        double scale = 128.0 / length;
+        int newX = currentX + (int)(retreatDx * scale);
+        int newY = currentY + (int)(retreatDy * scale);
+
+        return new Position(newX, newY);
     }
 
-    private void debugBuild() {
+    private void debug() {
         Position unitPosition = unit.getPosition();
-        Position buildPosition = plan.getBuildPosition().toPosition();
-        game.drawLineMap(unitPosition, buildPosition, Color.Cyan);
-        game.drawTextMap(unitPosition.add(new Position(8,8)), String.format("Distance: %d", unit.getDistance(buildPosition)), Text.Cyan);
-    }
-
-    private void debugRole() {
+        // Draw role text
+        if (role != null) {
+            game.drawTextMap(unitPosition, role.toString(), Text.Default);
+        }
         if (role == UnitRole.BUILDING) {
             return;
         }
-        Position unitPosition = unit.getPosition();
-        game.drawTextMap(unitPosition, String.format("%s", role), Text.Default);
+
+        if (movementTargetPosition != null) {
+            Position movementPos = movementTargetPosition.toPosition();
+            game.drawLineMap(unitPosition, movementPos, Color.White);
+        }
+
+        if (retreatTarget != null) {
+            game.drawLineMap(unitPosition, retreatTarget, Color.Purple);
+        }
+
+        if (fightTarget != null) {
+            Position fightTargetPos = fightTarget.getPosition();
+            if (fightTargetPos != null) {
+                game.drawLineMap(unitPosition, fightTargetPos, Color.Red);
+            }
+        }
+
+        // Draw build lines and text
+        if (plan != null && plan.getBuildPosition() != null ) {
+
+            Position buildPosition = plan.getBuildPosition().toPosition();
+            game.drawLineMap(unitPosition, buildPosition, Color.Cyan);
+
+            int distance = unit.getDistance(buildPosition);
+            String distanceText = String.format("Distance: %d", distance);
+            Position textPosition = unitPosition.add(new Position(8, 8));
+            game.drawTextMap(textPosition, distanceText, Text.Cyan);
+
+        }
+
+
     }
 
     protected void rally() {
-        if (!isReady) return;
         if (rallyPoint == null) return;
 
         if (role == UnitRole.RALLY) {
@@ -181,11 +229,6 @@ public class ManagedUnit {
     // Attempt build or morph
     protected void build() {
         if (unit.isBeingConstructed() || unit.isMorphing()) return;
-        if (plan.getBuildPosition() != null) {
-            // NOTE: this assumes plan and buildPosition are NOT NULL
-            debugBuild();
-        }
-        if (!isReady) return;
 
         if (unit.isCarrying()) {
             unit.returnCargo();
@@ -253,7 +296,6 @@ public class ManagedUnit {
     }
 
     protected void morph() {
-        if (!isReady) return;
         if (unit.isMorphing()) return;
 
         final UnitType unitType = plan.getPlannedUnit();
@@ -278,11 +320,6 @@ public class ManagedUnit {
             return;
         }
 
-        debugScout();
-        if (!isReady) {
-            return;
-        }
-
         if (game.isVisible(movementTargetPosition)) {
             movementTargetPosition = null;
             return;
@@ -292,10 +329,6 @@ public class ManagedUnit {
     }
 
     protected void fight() {
-        debugFight();
-        if (!isReady) {
-            return;
-        }
         if (unit.isAttackFrame()) {
             return;
         }
@@ -326,9 +359,6 @@ public class ManagedUnit {
     }
 
     protected void retreat() {
-        if (!isReady) {
-            return;
-        }
         if (retreatTarget == null) {
             role = UnitRole.IDLE;
             return;
@@ -336,12 +366,13 @@ public class ManagedUnit {
 
         setUnready();
 
-        if (unit.getDistance(retreatTarget.toPosition()) < 250 || unit.isIdle()) {
+        // TODO: Detect if unit is stuck or cannot move to that position
+        if (unit.getDistance(retreatTarget) < 16 || unit.isIdle()) {
             role = UnitRole.IDLE;
             return;
         }
 
-        unit.move(retreatTarget.toPosition());
+        unit.move(retreatTarget);
     }
 
     protected void defend() {}
@@ -360,6 +391,12 @@ public class ManagedUnit {
         movementTargetPosition = newFightTarget.getTilePosition();
     }
 
+    protected int weaponRange(Unit enemy) {
+        boolean isEnemyAir = enemy.isFlying();
+        WeaponType weapon = isEnemyAir ? unit.getType().airWeapon() : unit.getType().groundWeapon();
+        return weapon.maxRange();
+    }
+
     private void kiteEnemy(Unit enemy) {
         if (enemy == null || !enemy.exists() || !enemy.isVisible()) {
             return;
@@ -374,22 +411,25 @@ public class ManagedUnit {
             return;
         }
 
-        int attackRange = weapon.maxRange();
         int cooldown = isEnemyAir ? unit.getAirWeaponCooldown() : unit.getGroundWeaponCooldown();
 
         Position enemyPos = enemy.getPosition();
         Position myPos = unit.getPosition();
         double distance = myPos.getDistance(enemyPos);
-        double kiteThreshold = weapon.maxRange() * 0.9;
-        if (weapon.maxRange() > enemyWeapon.maxRange()) {
-            kiteThreshold = enemyWeapon.maxRange() + 1;
+        double kiteThreshold = this.weaponRange(enemy) * 0.9;
+        if (this.weaponRange(enemy) > enemyWeapon.maxRange()) {
+            kiteThreshold = enemyWeapon.maxRange();
         }
 
-        final boolean inAttackRange = distance <= attackRange;
         final boolean outsideKiteThreshold = distance >= kiteThreshold;
 
+        if (enemy.getType().isBuilding()) {
+            unit.attack(enemy);
+            return;
+        }
+
         if (cooldown == 0) {
-            if (inAttackRange && outsideKiteThreshold) {
+            if (outsideKiteThreshold) {
                 unit.attack(enemy);
             } else {
                 unit.attack(enemyPos);
