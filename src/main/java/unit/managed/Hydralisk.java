@@ -92,12 +92,4 @@ public class Hydralisk extends ManagedUnit {
 
         kiteFromTarget();
     }
-
-    private void handleNoTarget() {
-        if (movementTargetPosition != null) {
-            unit.move(movementTargetPosition.toPosition());
-            return;
-        }
-        role = UnitRole.IDLE;
-    }
 }

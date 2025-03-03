@@ -497,4 +497,12 @@ public class ManagedUnit {
         WeaponType weapon = isEnemyAir ? unit.getType().airWeapon() : unit.getType().groundWeapon();
         return weapon != null && weapon.maxRange() > 32;
     }
+
+    protected void handleNoTarget() {
+        if (movementTargetPosition != null) {
+            unit.move(movementTargetPosition.toPosition());
+            return;
+        }
+        role = UnitRole.IDLE;
+    }
 }
