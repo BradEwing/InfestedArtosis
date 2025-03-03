@@ -7,6 +7,7 @@ import bwapi.Text;
 import bwapi.TilePosition;
 import bwapi.Unit;
 import bwapi.UnitType;
+import bwapi.WalkPosition;
 import bwapi.WeaponType;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -100,6 +101,8 @@ public class ManagedUnit {
 
     public void execute() {
         debug();
+
+        updateState();
 
         if (!isReady) {
             return;
@@ -331,12 +334,33 @@ public class ManagedUnit {
             return;
         }
 
-        if (game.isVisible(movementTargetPosition)) {
-            movementTargetPosition = null;
-            return;
-        }
         setUnready();
         unit.move(movementTargetPosition.toPosition());
+    }
+
+    private void updateState() {
+        // Check if movementTargetPosition should be set to null
+        if (movementTargetPosition != null) {
+            if (role == UnitRole.SCOUT && game.isVisible(movementTargetPosition)) {
+                movementTargetPosition = null;
+            } else if (role == UnitRole.FIGHT && game.isVisible(movementTargetPosition)) {
+                movementTargetPosition = null;
+            }
+        }
+
+        // Check if retreatTarget should be set to null
+        if (retreatTarget != null) {
+            if (unit.getDistance(retreatTarget) < 16 || unit.isIdle() || (!game.isWalkable(new WalkPosition(retreatTarget)))) {
+                retreatTarget = null;
+                lastRetreatPosition = null;
+                framesStuck = 0;
+            }
+        }
+
+        // Check if fightTarget should be set to null
+        if (fightTarget != null && (fightTarget.getType() == UnitType.Unknown || !fightTarget.isTargetable())) {
+            fightTarget = null;
+        }
     }
 
     protected void fight() {
@@ -344,10 +368,7 @@ public class ManagedUnit {
             return;
         }
         setUnready(11);
-        // Our fight target is no longer visible, drop in favor of fight target position
-        if (fightTarget != null && (fightTarget.getType() == UnitType.Unknown || !fightTarget.isTargetable())) {
-            fightTarget = null;
-        }
+
         if (fightTarget != null) {
             if (canKite(fightTarget)) {
                 kiteEnemy(fightTarget);
@@ -355,10 +376,6 @@ public class ManagedUnit {
                 unit.attack(fightTarget.getPosition());
             }
             return;
-        }
-
-        if (movementTargetPosition != null && game.isVisible(movementTargetPosition)) {
-            movementTargetPosition = null;
         }
 
         if (movementTargetPosition != null) {
@@ -370,10 +387,8 @@ public class ManagedUnit {
     }
 
     protected void retreat() {
-        if (retreatTarget == null || unit.getDistance(retreatTarget) < 16 || unit.isIdle()) {
+        if (retreatTarget == null) {
             role = UnitRole.IDLE;
-            lastRetreatPosition = null;
-            framesStuck = 0;
             return;
         }
 
@@ -389,9 +404,7 @@ public class ManagedUnit {
         }
 
         if (framesStuck >= 12) {
-            role = UnitRole.IDLE;
-            lastRetreatPosition = null;
-            framesStuck = 0;
+            setRetreatTarget(null);
             return;
         }
 

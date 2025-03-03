@@ -2,7 +2,6 @@ package unit.managed;
 
 import bwapi.Game;
 import bwapi.Unit;
-import bwapi.UnitType;
 
 public class Drone extends ManagedUnit {
 
@@ -40,10 +39,7 @@ public class Drone extends ManagedUnit {
             return;
         }
         setUnready();
-        // Our fight target is no longer visible, drop in favor of fight target position
-        if (defendTarget != null && defendTarget.getType() == UnitType.Unknown) {
-            defendTarget = null;
-        }
+
         if (defendTarget != null) {
             unit.attack(defendTarget.getPosition());
         }
