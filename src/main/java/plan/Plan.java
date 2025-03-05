@@ -19,13 +19,13 @@ public class Plan {
     private PlanState state = PlanState.PLANNED;
 
     // Simple prioritization, will increment elsewhere
-    private int priority;
+    protected int priority;
     private int frameStart;
     private int retries = 0;
     private int predictedReadyFrame = 0;
 
     // Block other plannedItem types in the queue
-    private boolean blockOtherPlans;
+    protected boolean blockOtherPlans;
 
     @Nullable
     private TilePosition buildPosition;
@@ -39,32 +39,8 @@ public class Plan {
     @Nullable
     private TechType plannedTechType;
 
-    public Plan(UnitType unitType, int priority, boolean isBuilding, boolean isBlocking) {
+    public Plan(int priority, boolean isBlocking) {
         this.priority = priority;
-        this.plannedUnit = unitType;
-        this.type = isBuilding ? PlanType.BUILDING : PlanType.UNIT;
-        this.blockOtherPlans = isBlocking;
-    }
-
-    public Plan(UnitType unitType, int priority, boolean isBuilding, boolean isBlocking, TilePosition buildPosition) {
-        this.priority = priority;
-        this.plannedUnit = unitType;
-        this.type = isBuilding ? PlanType.BUILDING : PlanType.UNIT;
-        this.buildPosition = buildPosition;
-        this.blockOtherPlans = isBlocking;
-    }
-
-    public Plan(UpgradeType upgrade, int priority, boolean isBlocking) {
-        this.priority = priority;
-        this.plannedUpgrade = upgrade;
-        this.type = PlanType.UPGRADE;
-        this.blockOtherPlans = isBlocking;
-    }
-
-    public Plan(TechType techType, int priority, boolean isBlocking) {
-        this.priority = priority;
-        this.plannedTechType = techType;
-        this.type = PlanType.TECH;
         this.blockOtherPlans = isBlocking;
     }
 
@@ -89,26 +65,10 @@ public class Plan {
     }
 
     public String getName() {
-        if (plannedUpgrade != null) {
-            return plannedUpgrade.toString();
-        } else if (plannedUnit != null) {
-            return plannedUnit.toString();
-        } else if (plannedTechType != null) {
-            return plannedTechType.toString();
-        } else {
-            return "NULL";
-        }
+        return "PLAN";
     }
 
     public int mineralPrice() {
-        switch(this.type) {
-            case BUILDING:
-            case UNIT:
-                return plannedUnit.mineralPrice();
-            case UPGRADE:
-                return plannedUpgrade.mineralPrice();
-        }
-
         return 0;
     }
 }
