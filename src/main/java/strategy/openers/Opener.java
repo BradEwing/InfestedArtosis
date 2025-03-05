@@ -1,6 +1,6 @@
 package strategy.openers;
 
-import planner.Plan;
+import plan.Plan;
 
 import java.util.List;
 

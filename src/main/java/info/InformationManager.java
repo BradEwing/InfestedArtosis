@@ -2,22 +2,21 @@ package info;
 
 import bwapi.Color;
 import bwapi.Game;
+import bwapi.TechType;
 import bwapi.Text;
 import bwapi.TilePosition;
-
 import bwapi.Unit;
 import bwapi.UnitType;
 import bwapi.WalkPosition;
 import bwem.BWEM;
 import bwem.Base;
-
 import bwem.Geyser;
 import info.map.GameMap;
 import info.map.MapTile;
 import info.map.MapTileScoutImportanceComparator;
 import info.map.MapTileType;
-import planner.Plan;
-import planner.PlanType;
+import plan.Plan;
+import plan.PlanType;
 import strategy.strategies.UnitWeights;
 
 import java.util.ArrayList;
@@ -70,6 +69,8 @@ public class InformationManager {
     public void onFrame() {
         ageHeatMap();
 
+        checkResearchOnFrame();
+
         trackEnemyUnits();
         trackEnemyBuildings();
         // TODO: do same for unit positions?
@@ -80,8 +81,6 @@ public class InformationManager {
 
         checkIfEnemyUnitsStillThreatenBase();
         checkBaseThreats();
-
-        debugInitialHatch();
     }
 
     public void onUnitHide(Unit unit) {
@@ -98,6 +97,16 @@ public class InformationManager {
         }
 
         enemyLastKnownLocations.put(unit, unit.getTilePosition());
+    }
+
+    private void checkResearchOnFrame() {
+        TechProgression techProgression = gameState.getTechProgression();
+        UnitWeights unitWeights = gameState.getUnitWeights();
+
+        final boolean hasResearchedLurker = game.self().hasResearched(TechType.Lurker_Aspect);
+        if (!unitWeights.isEnabled(UnitType.Zerg_Lurker) && techProgression.isLurker() && hasResearchedLurker) {
+            unitWeights.enableUnit(UnitType.Zerg_Lurker);
+        }
     }
 
     /**
@@ -606,13 +615,6 @@ public class InformationManager {
 
         }
         Collections.sort(gameMap.getHeatMap(), new MapTileScoutImportanceComparator());
-    }
-
-    private void debugInitialHatch() {
-        if (game.getFrameCount() < 10) {
-            return;
-        }
-        game.drawBoxMap(myBase.getLocation().toPosition(), myBase.getLocation().add(new TilePosition(1,1)).toPosition(), Color.Blue);
     }
 
     private void debugEnemyTargets() {

@@ -1,5 +1,6 @@
-package planner;
+package plan;
 
+import bwapi.TechType;
 import bwapi.TilePosition;
 import bwapi.UnitType;
 import bwapi.UpgradeType;
@@ -9,7 +10,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.UUID;
 
-// TODO: Refactor with type reflection?
+// TODO: Refactor with subclasses
 @Data
 public class Plan {
     private final String uuid = UUID.randomUUID().toString();
@@ -35,6 +36,9 @@ public class Plan {
     @Nullable
     private UpgradeType plannedUpgrade;
 
+    @Nullable
+    private TechType plannedTechType;
+
     public Plan(UnitType unitType, int priority, boolean isBuilding, boolean isBlocking) {
         this.priority = priority;
         this.plannedUnit = unitType;
@@ -54,6 +58,13 @@ public class Plan {
         this.priority = priority;
         this.plannedUpgrade = upgrade;
         this.type = PlanType.UPGRADE;
+        this.blockOtherPlans = isBlocking;
+    }
+
+    public Plan(TechType techType, int priority, boolean isBlocking) {
+        this.priority = priority;
+        this.plannedTechType = techType;
+        this.type = PlanType.TECH;
         this.blockOtherPlans = isBlocking;
     }
 
@@ -82,6 +93,8 @@ public class Plan {
             return plannedUpgrade.toString();
         } else if (plannedUnit != null) {
             return plannedUnit.toString();
+        } else if (plannedTechType != null) {
+            return plannedTechType.toString();
         } else {
             return "NULL";
         }

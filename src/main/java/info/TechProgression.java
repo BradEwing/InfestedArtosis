@@ -1,5 +1,6 @@
 package info;
 
+import bwapi.TechType;
 import bwapi.UpgradeType;
 import lombok.Data;
 
@@ -25,6 +26,7 @@ public class TechProgression {
     private int plannedEvolutionChambers = 0;
 
     // Upgrades
+    private boolean lurker = false;
     private boolean metabolicBoost = false;
     private boolean muscularAugments = false;
     private boolean groovedSpines = false;
@@ -35,6 +37,7 @@ public class TechProgression {
     private int flyerDefense = 0;
 
     // Planned Upgrades
+    private boolean plannedLurker = false;
     private boolean plannedMetabolicBoost = false;
     private boolean plannedMuscularAugments = false;
     private boolean plannedGroovedSpines = false;
@@ -81,6 +84,8 @@ public class TechProgression {
     public boolean canPlanGroovedSpines() {
         return hydraliskDen && !plannedGroovedSpines && !groovedSpines;
     }
+
+    public boolean canPlanLurker() { return hydraliskDen && lair && !plannedLurker && !lurker; }
 
     public boolean canPlanEvolutionChamber() { return spawningPool && plannedEvolutionChambers + evolutionChambers < 2; }
 
@@ -197,6 +202,13 @@ public class TechProgression {
         }
 
         return true;
+    }
+
+    public void upgradeTech(TechType t) {
+        if (TechType.Lurker_Aspect == t) {
+            plannedLurker = false;
+            lurker = true;
+        }
     }
 
     public void upgradeTech(UpgradeType u) {

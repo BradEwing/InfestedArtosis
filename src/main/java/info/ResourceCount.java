@@ -1,6 +1,7 @@
 package info;
 
 import bwapi.Player;
+import bwapi.TechType;
 import bwapi.UnitType;
 import bwapi.UpgradeType;
 
@@ -67,9 +68,25 @@ public class ResourceCount {
         reservedGas -= upgrade.gasPrice();
     }
 
+    public void reserveTechResearch(TechType techType) {
+        this.reservedMinerals += techType.mineralPrice();
+        this.reservedGas += techType.gasPrice();
+    }
+
+    public void unreserveTechResearch(TechType techType) {
+        this.reservedMinerals -= techType.mineralPrice();
+        this.reservedGas -= techType.gasPrice();
+    }
+
     public boolean canAffordUpgrade(UpgradeType upgrade) {
         final int mineralPrice = upgrade.mineralPrice();
         final int gasPrice = upgrade.gasPrice();
+        return canAfford(mineralPrice, gasPrice);
+    }
+
+    public boolean canAffordResearch(TechType techType) {
+        final int mineralPrice = techType.mineralPrice();
+        final int gasPrice = techType.gasPrice();
         return canAfford(mineralPrice, gasPrice);
     }
 

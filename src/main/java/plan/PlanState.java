@@ -1,4 +1,4 @@
-package planner;
+package plan;
 
 public enum PlanState {
     PLANNED,
