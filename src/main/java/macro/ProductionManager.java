@@ -15,10 +15,14 @@ import info.GameState;
 import info.ResourceCount;
 import info.TechProgression;
 import info.UnitTypeCount;
+import plan.BuildingPlan;
 import plan.Plan;
 import plan.PlanComparator;
 import plan.PlanState;
 import plan.PlanType;
+import plan.TechPlan;
+import plan.UnitPlan;
+import plan.UpgradePlan;
 import strategy.openers.Opener;
 import strategy.openers.OpenerName;
 import strategy.strategies.UnitWeights;
@@ -168,7 +172,7 @@ public class ProductionManager {
             return;
         }
 
-        productionQueue.add(new Plan(UnitType.Zerg_Hatchery, 2, true, true, base.getLocation()));
+        productionQueue.add(new BuildingPlan(UnitType.Zerg_Hatchery, 2, true, base.getLocation()));
     }
 
     // debug console messaging goes here
@@ -256,12 +260,13 @@ public class ProductionManager {
             if ((numHatcheries % 2) != macroHatchMod) {
                 planBase();
             } else {
-                productionQueue.add(new Plan(UnitType.Zerg_Hatchery, 2, true, true));
+                Plan plan = new BuildingPlan(UnitType.Zerg_Hatchery, 2, true);
+                productionQueue.add(plan);
             }
         }
 
         if (canPlanExtractor(isAllIn)) {
-            Plan plan = new Plan(UnitType.Zerg_Extractor, currentFrame, true, true);
+            Plan plan = new BuildingPlan(UnitType.Zerg_Extractor, currentFrame, true);
             Unit geyser = baseData.reserveExtractor();
             plan.setBuildPosition(geyser.getTilePosition());
             productionQueue.add(plan);
@@ -271,7 +276,7 @@ public class ProductionManager {
 
         // Build at 10 workers if not part of initial build order
         if (techProgression.canPlanPool()) {
-            productionQueue.add(new Plan(UnitType.Zerg_Spawning_Pool, currentFrame, true, true));
+            productionQueue.add(new BuildingPlan(UnitType.Zerg_Spawning_Pool, currentFrame, true));
             techProgression.setPlannedSpawningPool(true);
         }
 
@@ -282,8 +287,8 @@ public class ProductionManager {
         if (canPlanSunkenColony(techProgression, baseData)) {
             TilePosition tp = baseData.reserveSunkenColony();
             tp = game.getBuildLocation(UnitType.Zerg_Creep_Colony, tp, 128, true);
-            Plan creepColonyPlan = new Plan(UnitType.Zerg_Creep_Colony, currentFrame-2, true, true);
-            Plan sunkenColonyPlan = new Plan(UnitType.Zerg_Sunken_Colony, currentFrame-1, true, true);
+            Plan creepColonyPlan = new BuildingPlan(UnitType.Zerg_Creep_Colony, currentFrame-2, true);
+            Plan sunkenColonyPlan = new BuildingPlan(UnitType.Zerg_Sunken_Colony, currentFrame-1, true);
             creepColonyPlan.setBuildPosition(tp);
             sunkenColonyPlan.setBuildPosition(tp);
             productionQueue.add(creepColonyPlan);
@@ -293,33 +298,33 @@ public class ProductionManager {
         UnitWeights unitWeights = this.gameState.getUnitWeights();
 
         if (gameState.canPlanHydraliskDen()) {
-            productionQueue.add(new Plan(UnitType.Zerg_Hydralisk_Den, currentFrame, true, true));
+            productionQueue.add(new BuildingPlan(UnitType.Zerg_Hydralisk_Den, currentFrame, true));
             techProgression.setPlannedDen(true);
         }
 
         if (canPlanEvolutionChamber(techProgression)) {
-            productionQueue.add(new Plan(UnitType.Zerg_Evolution_Chamber, currentFrame, true, true));
+            productionQueue.add(new BuildingPlan(UnitType.Zerg_Evolution_Chamber, currentFrame,true));
             final int currentEvolutionChambers = techProgression.evolutionChambers();
             techProgression.setPlannedEvolutionChambers(currentEvolutionChambers+1);
         }
         
         if (gameState.canPlanLair()) {
-            productionQueue.add(new Plan(UnitType.Zerg_Lair, currentFrame, true, false));
+            productionQueue.add(new BuildingPlan(UnitType.Zerg_Lair, currentFrame, false));
             techProgression.setPlannedLair(true);
         }
 
         if (techProgression.canPlanSpire() && unitWeights.hasUnit(UnitType.Zerg_Mutalisk)) {
-            productionQueue.add(new Plan(UnitType.Zerg_Spire, currentFrame, true, true));
+            productionQueue.add(new BuildingPlan(UnitType.Zerg_Spire, currentFrame, true));
             techProgression.setPlannedSpire(true);
         }
 
         if (gameState.canPlanQueensNest()) {
-            productionQueue.add(new Plan(UnitType.Zerg_Queens_Nest, currentFrame, true, true));
+            productionQueue.add(new BuildingPlan(UnitType.Zerg_Queens_Nest, currentFrame, true));
             techProgression.setPlannedQueensNest(true);
         }
 
         if (gameState.canPlanHive()) {
-            productionQueue.add(new Plan(UnitType.Zerg_Hive, currentFrame, true, true));
+            productionQueue.add(new BuildingPlan(UnitType.Zerg_Hive, currentFrame, true));
             techProgression.setPlannedHive(true);
         }
     }
@@ -384,23 +389,23 @@ public class ProductionManager {
         /** Ling Upgrades **/
         final int numZerglings = unitTypeCount.get(UnitType.Zerg_Zergling);
         if (techProgression.canPlanMetabolicBoost() && numZerglings > 8) {
-            productionQueue.add(new Plan(UpgradeType.Metabolic_Boost, currentFrame, false));
+            productionQueue.add(new UpgradePlan(UpgradeType.Metabolic_Boost, currentFrame, false));
             techProgression.setPlannedMetabolicBoost(true);
         }
 
         /** Hydra Upgrades */
         final int numHydralisks = unitTypeCount.get(UnitType.Zerg_Hydralisk);
         if (techProgression.canPlanMuscularAugments() && numHydralisks > 4) {
-            productionQueue.add(new Plan(UpgradeType.Muscular_Augments, currentFrame, false));
+            productionQueue.add(new UpgradePlan(UpgradeType.Muscular_Augments, currentFrame, false));
             techProgression.setPlannedMuscularAugments(true);
         }
         if (techProgression.canPlanGroovedSpines() && numHydralisks > 10) {
-            productionQueue.add(new Plan(UpgradeType.Grooved_Spines, currentFrame, false));
+            productionQueue.add(new UpgradePlan(UpgradeType.Grooved_Spines, currentFrame, false));
             techProgression.setPlannedGroovedSpines(true);
         }
         final UnitWeights unitWeights = this.gameState.getUnitWeights();
         if (techProgression.canPlanLurker() && unitWeights.hasUnit(UnitType.Zerg_Lurker)) {
-            productionQueue.add(new Plan(TechType.Lurker_Aspect, currentFrame, true));
+            productionQueue.add(new TechPlan(TechType.Lurker_Aspect, currentFrame, true));
             techProgression.setPlannedLurker(true);
         }
 
@@ -409,19 +414,19 @@ public class ProductionManager {
         // Carapace
         final int evoBuffer = techProgression.evolutionChamberBuffer();
         if (techProgression.canPlanCarapaceUpgrades() && unitTypeCount.groundCount() > 8) {
-            productionQueue.add(new Plan(UpgradeType.Zerg_Carapace, currentFrame+evoBuffer, false));
+            productionQueue.add(new UpgradePlan(UpgradeType.Zerg_Carapace, currentFrame+evoBuffer, false));
             techProgression.setPlannedCarapaceUpgrades(true);
         }
 
         // Ranged Attack
         if (techProgression.canPlanRangedUpgrades() && unitTypeCount.rangedCount() > 12) {
-            productionQueue.add(new Plan(UpgradeType.Zerg_Missile_Attacks, currentFrame+evoBuffer, false));
+            productionQueue.add(new UpgradePlan(UpgradeType.Zerg_Missile_Attacks, currentFrame+evoBuffer, false));
             techProgression.setPlannedRangedUpgrades(true);
         }
 
         // Melee Attack
         if (techProgression.canPlanMeleeUpgrades() && unitTypeCount.meleeCount() > 18) {
-            productionQueue.add(new Plan(UpgradeType.Zerg_Melee_Attacks, currentFrame+evoBuffer, false));
+            productionQueue.add(new UpgradePlan(UpgradeType.Zerg_Melee_Attacks, currentFrame+evoBuffer, false));
             techProgression.setPlannedMeleeUpgrades(true);
         }
 
@@ -429,12 +434,12 @@ public class ProductionManager {
         // TODO: Reactively weigh attack vs defense from game state
         // For now, prefer attack
         if (techProgression.canPlanFlyerAttack() && unitTypeCount.airCount() > 8) {
-            productionQueue.add(new Plan(UpgradeType.Zerg_Flyer_Attacks, currentFrame, false));
+            productionQueue.add(new UpgradePlan(UpgradeType.Zerg_Flyer_Attacks, currentFrame, false));
             techProgression.setPlannedFlyerAttack(true);
         }
         if (techProgression.canPlanFlyerDefense() && unitTypeCount.airCount() > 8) {
             final int flyerAttackTime = UpgradeType.Zerg_Flyer_Attacks.upgradeTime();
-            productionQueue.add(new Plan(UpgradeType.Zerg_Flyer_Carapace, currentFrame+1+flyerAttackTime, false));
+            productionQueue.add(new UpgradePlan(UpgradeType.Zerg_Flyer_Carapace, currentFrame+1+flyerAttackTime, false));
             techProgression.setPlannedFlyerDefense(true);
         }
     }
@@ -485,7 +490,7 @@ public class ProductionManager {
 
     private void addUnitToQueue(UnitType unitType, int priority, boolean isBlocking) {
         UnitTypeCount unitTypeCount = this.gameState.getUnitTypeCount();
-        productionQueue.add(new Plan(unitType, priority, false, isBlocking));
+        productionQueue.add(new UnitPlan(unitType, priority, isBlocking));
         unitTypeCount.planUnit(unitType);
     }
 

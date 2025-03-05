@@ -1,7 +1,9 @@
 package strategy.openers;
 
 import bwapi.UnitType;
+import plan.BuildingPlan;
 import plan.Plan;
+import plan.UnitPlan;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -13,16 +15,16 @@ public class TwelveHatch implements Opener {
     public List<Plan> getBuildOrder() {
 
         List<Plan> list = new ArrayList<>();
-        list.add(new Plan(UnitType.Zerg_Drone, 1, false, false));
-        list.add(new Plan(UnitType.Zerg_Drone, 1, false, false));
-        list.add(new Plan(UnitType.Zerg_Drone, 1, false, false));
-        list.add(new Plan(UnitType.Zerg_Drone, 1, false, false));
-        list.add(new Plan(UnitType.Zerg_Overlord, 2, false, true));
-        list.add(new Plan(UnitType.Zerg_Drone, 3, false, false));
-        list.add(new Plan(UnitType.Zerg_Drone, 3, false, true));
-        list.add(new Plan(UnitType.Zerg_Drone, 3, false, true));
-        list.add(new Plan(UnitType.Zerg_Drone, 3, false, true));
-        list.add(new Plan(UnitType.Zerg_Hatchery, 4, true, true));
+        list.add(new UnitPlan(UnitType.Zerg_Drone, 1, false));
+        list.add(new UnitPlan(UnitType.Zerg_Drone, 1, false));
+        list.add(new UnitPlan(UnitType.Zerg_Drone, 1, false));
+        list.add(new UnitPlan(UnitType.Zerg_Drone, 1, false));
+        list.add(new UnitPlan(UnitType.Zerg_Overlord, 2, true));
+        list.add(new UnitPlan(UnitType.Zerg_Drone, 3, false));
+        list.add(new UnitPlan(UnitType.Zerg_Drone, 3, true));
+        list.add(new UnitPlan(UnitType.Zerg_Drone, 3, true));
+        list.add(new UnitPlan(UnitType.Zerg_Drone, 3, true));
+        list.add(new BuildingPlan(UnitType.Zerg_Hatchery, 4, true));
 
         return list;
     }
