@@ -1,7 +1,7 @@
 package strategy.openers;
 
 import bwapi.UnitType;
-import planner.Plan;
+import plan.Plan;
 
 import java.util.ArrayList;
 import java.util.List;

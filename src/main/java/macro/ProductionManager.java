@@ -3,22 +3,22 @@ package macro;
 import bwapi.Game;
 import bwapi.Player;
 import bwapi.Race;
+import bwapi.TechType;
 import bwapi.Text;
 import bwapi.TilePosition;
 import bwapi.Unit;
 import bwapi.UnitType;
 import bwapi.UpgradeType;
-
 import bwem.Base;
 import info.BaseData;
 import info.GameState;
 import info.ResourceCount;
 import info.TechProgression;
 import info.UnitTypeCount;
-import planner.Plan;
-import planner.PlanState;
-import planner.PlanType;
-import planner.PlanComparator;
+import plan.Plan;
+import plan.PlanComparator;
+import plan.PlanState;
+import plan.PlanType;
 import strategy.openers.Opener;
 import strategy.openers.OpenerName;
 import strategy.strategies.UnitWeights;
@@ -26,7 +26,6 @@ import strategy.strategies.UnitWeights;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.PriorityQueue;
@@ -36,7 +35,7 @@ import static java.lang.Math.min;
 
 // TODO: There is economy information here, build order and strategy. refactor
 // Possible arch: GATHER GAME STATE -> PLAN -> EXECUTE
-// STRATEGY -> BUILD ORDER (QUEUE) -> BUILD / ECONOMY MANAGEMENT (rebalance workers) (this file should eventually only be final step)
+// STRATEGY -> BUILD ORDER (QUEUE) -> BUILD / ECONOMY MANAGEMENT (balance workers) (this file should eventually only be final step)
 //
 public class ProductionManager {
 
@@ -189,6 +188,7 @@ public class ProductionManager {
         plan();
         schedulePlannedItems();
         buildUpgrades();
+        researchTech();
 
         for (Unit u: game.getAllUnits()) {
             if (u.getType().isWorker() && u.isIdle()) {
@@ -292,7 +292,7 @@ public class ProductionManager {
 
         UnitWeights unitWeights = this.gameState.getUnitWeights();
 
-        if (techProgression.canPlanHydraliskDen() && unitWeights.hasUnit(UnitType.Zerg_Hydralisk)) {
+        if (gameState.canPlanHydraliskDen()) {
             productionQueue.add(new Plan(UnitType.Zerg_Hydralisk_Den, currentFrame, true, true));
             techProgression.setPlannedDen(true);
         }
@@ -397,6 +397,11 @@ public class ProductionManager {
         if (techProgression.canPlanGroovedSpines() && numHydralisks > 10) {
             productionQueue.add(new Plan(UpgradeType.Grooved_Spines, currentFrame, false));
             techProgression.setPlannedGroovedSpines(true);
+        }
+        final UnitWeights unitWeights = this.gameState.getUnitWeights();
+        if (techProgression.canPlanLurker() && unitWeights.hasUnit(UnitType.Zerg_Lurker)) {
+            productionQueue.add(new Plan(TechType.Lurker_Aspect, currentFrame, true));
+            techProgression.setPlannedLurker(true);
         }
 
 
@@ -550,6 +555,8 @@ public class ProductionManager {
                 return canScheduleBuilding(plan.getPlannedUnit());
             case UPGRADE:
                 return canScheduleUpgrade(plan.getPlannedUpgrade());
+            case TECH:
+                return canScheduleTech(plan.getPlannedTechType());
             default:
                 return false;
         }
@@ -570,6 +577,8 @@ public class ProductionManager {
                 return techProgression.isPlannedSpawningPool() || techProgression.isSpawningPool();
             case Zerg_Hydralisk:
                 return hasFourOrMoreDrones && (techProgression.isPlannedDen() || techProgression.isHydraliskDen());
+            case Zerg_Lurker:
+                return hasFourOrMoreDrones && (techProgression.isPlannedLurker() || techProgression.isLurker());
             case Zerg_Mutalisk:
             case Zerg_Scourge:
                 return hasFourOrMoreDrones && (techProgression.isPlannedSpire() || techProgression.isSpire());
@@ -599,6 +608,16 @@ public class ProductionManager {
                 return techProgression.isLair();
             case Zerg_Hive:
                 return techProgression.isLair() && techProgression.isQueensNest();
+            default:
+                return false;
+        }
+    }
+
+    private boolean canScheduleTech(TechType techType) {
+        TechProgression techProgression = gameState.getTechProgression();
+        switch (techType) {
+            case Lurker_Aspect:
+                return techProgression.isHydraliskDen();
             default:
                 return false;
         }
@@ -666,6 +685,8 @@ public class ProductionManager {
                 case UPGRADE:
                     canSchedule = scheduleUpgradeItem(self, plan);
                     break;
+                case TECH:
+                    canSchedule = scheduleResearch(plan);
             }
 
             if (canSchedule) {
@@ -712,8 +733,36 @@ public class ProductionManager {
         }
 
         // Remove executing plans from gameState.getAssignedPlannedItems()
-        for (Iterator<Unit> it = unitsExecutingPlan.iterator(); it.hasNext(); ) {
-            Unit u = it.next();
+        for (Unit u : unitsExecutingPlan) {
+            gameState.getAssignedPlannedItems().remove(u);
+        }
+    }
+
+    private void researchTech() {
+        HashSet<Plan> scheduledPlans = gameState.getPlansScheduled();
+        if (scheduledPlans.isEmpty()) {
+            return;
+        }
+
+        HashSet<Unit> unitsExecutingPlan = new HashSet<>();
+        List<Map.Entry<Unit, Plan>> scheduledTechResearch = gameState.getAssignedPlannedItems().entrySet()
+                .stream()
+                .filter(assignment -> assignment.getValue().getType() == PlanType.TECH)
+                .collect(Collectors.toList());
+
+        for (Map.Entry<Unit, Plan> entry: scheduledTechResearch) {
+            final Unit unit = entry.getKey();
+            final Plan plan = entry.getValue();
+            if (researchTech(unit, plan)) {
+                unitsExecutingPlan.add(unit);
+                scheduledPlans.remove(plan);
+                plan.setState(PlanState.BUILDING); // TODO: This is awkward
+                gameState.getPlansBuilding().add(plan);
+            }
+        }
+
+        // Remove executing plans from gameState.getAssignedPlannedItems()
+        for (Unit u : unitsExecutingPlan) {
             gameState.getAssignedPlannedItems().remove(u);
         }
     }
@@ -784,6 +833,23 @@ public class ProductionManager {
         return false;
     }
 
+    private boolean researchTech(Unit unit, Plan plan) {
+        final TechType techType = plan.getPlannedTechType();
+        if (game.canResearch(techType, unit)) {
+            unit.research(techType);
+        }
+
+        ResourceCount resourceCount = gameState.getResourceCount();
+        TechProgression techProgression = gameState.getTechProgression();
+
+        if (unit.isResearching()) {
+            resourceCount.unreserveTechResearch(techType);
+            techProgression.upgradeTech(techType);
+            return true;
+        }
+        return false;
+    }
+
     // PLANNED -> SCHEDULED
     // Allow one building to be scheduled if resources aren't available.
     private boolean scheduleBuildingItem(Plan plan) {
@@ -849,6 +915,48 @@ public class ProductionManager {
                 gameState.getAssignedPlannedItems().put(unit, plan);
                 plan.setState(PlanState.SCHEDULE);
                 resourceCount.reserveUpgrade(upgrade);
+                return true;
+            }
+
+            // If no assignment, see if this unit will be available before other buildings
+            if (unit.getRemainingUpgradeTime() > nextAvailable.getRemainingUpgradeTime()) {
+                nextAvailable = unit;
+            }
+        }
+
+        if (nextAvailable != null) {
+            int priority = plan.getPriority();
+            plan.setPriority(priority + nextAvailable.getRemainingUpgradeTime());
+        }
+
+        return false;
+    }
+
+    private boolean scheduleResearch(Plan plan) {
+        final TechType techType = plan.getPlannedTechType();
+        ResourceCount resourceCount = gameState.getResourceCount();
+
+        if (resourceCount.canAffordResearch(techType)) {
+            return false;
+        }
+
+        Unit nextAvailable = null;
+        for (Unit unit : game.self().getUnits()) {
+            UnitType unitType = unit.getType();
+
+            if (unitType != techType.whatResearches()) {
+                continue;
+            }
+
+            if (nextAvailable == null) {
+                nextAvailable = unit;
+            }
+
+            // Needs to be unavailable until upgrade completes
+            if (!unit.isUpgrading() && !gameState.getAssignedPlannedItems().containsKey(unit)) {
+                gameState.getAssignedPlannedItems().put(unit, plan);
+                plan.setState(PlanState.SCHEDULE);
+                resourceCount.reserveTechResearch(techType);
                 return true;
             }
 

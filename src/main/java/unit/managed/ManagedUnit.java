@@ -12,8 +12,8 @@ import bwapi.WeaponType;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.Setter;
-import planner.Plan;
-import planner.PlanState;
+import plan.Plan;
+import plan.PlanState;
 
 import java.util.List;
 import java.util.stream.Collectors;

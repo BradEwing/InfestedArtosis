@@ -5,6 +5,7 @@ import strategy.openers.Opener;
 import strategy.strategies.Default;
 import strategy.strategies.Hydra;
 import strategy.strategies.LingFlood;
+import strategy.strategies.Lurker;
 import strategy.strategies.Mutalisk;
 import strategy.strategies.Strategy;
 
@@ -54,6 +55,7 @@ public class StrategyFactory {
         allStrategies.add(new Hydra());
         allStrategies.add(new LingFlood());
         allStrategies.add(new Mutalisk());
+        allStrategies.add(new Lurker());
 
         for (Strategy strategy: allStrategies) {
             lookup.put(strategy.getName(), strategy);

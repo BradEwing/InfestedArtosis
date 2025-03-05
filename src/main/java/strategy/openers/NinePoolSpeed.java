@@ -2,7 +2,7 @@ package strategy.openers;
 
 import bwapi.UnitType;
 import bwapi.UpgradeType;
-import planner.Plan;
+import plan.Plan;
 
 import java.util.ArrayList;
 import java.util.List;

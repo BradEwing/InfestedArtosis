@@ -31,6 +31,10 @@ public class UnitWeights {
         enabledUnitTypes.add(unitType);
     }
 
+    public boolean isEnabled(UnitType unitType) {
+        return enabledUnitTypes.contains(unitType);
+    }
+
     public void disableUnit(UnitType unitType) {
         enabledUnitTypes.remove(unitType);
     }

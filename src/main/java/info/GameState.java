@@ -14,9 +14,9 @@ import learning.Decisions;
 import lombok.AccessLevel;
 import lombok.Data;
 import lombok.Setter;
-import planner.Plan;
-import planner.PlanState;
-import planner.PlanType;
+import plan.Plan;
+import plan.PlanState;
+import plan.PlanType;
 import strategy.openers.Opener;
 import strategy.strategies.Strategy;
 import strategy.strategies.UnitWeights;
@@ -213,8 +213,15 @@ public class GameState {
         return needHive() && techProgression.canPlanQueensNest();
     }
 
+    public boolean canPlanHydraliskDen() {
+        final boolean atLeastTwoHatch = baseData.numHatcheries() > 1;
+        return atLeastTwoHatch && techProgression.canPlanHydraliskDen() && unitWeights.hasUnit(UnitType.Zerg_Hydralisk);
+    }
+
     private boolean needLair() {
-        final boolean unitsNeedLairTech = unitWeights.hasUnit(UnitType.Zerg_Mutalisk) || unitWeights.hasUnit(UnitType.Zerg_Scourge) || unitWeights.hasUnit(UnitType.Zerg_Lurker);
+        final boolean unitsNeedLairTech = unitWeights.hasUnit(UnitType.Zerg_Mutalisk) ||
+                unitWeights.hasUnit(UnitType.Zerg_Scourge) ||
+                unitWeights.hasUnit(UnitType.Zerg_Lurker);
         return unitsNeedLairTech || techProgression.needLairForNextEvolutionChamberUpgrades() || needHive();
     }
 

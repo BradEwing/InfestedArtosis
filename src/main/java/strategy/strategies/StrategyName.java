@@ -5,4 +5,5 @@ public enum StrategyName {
     HYDRA,
     LING_FLOOD,
     MUTALISK,
+    LURKER
 }
