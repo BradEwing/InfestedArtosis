@@ -42,6 +42,7 @@ public class GameState {
     private int geyserWorkers;
     private int larvaDeadlockDetectedFrame;
 
+    private HashSet<ManagedUnit> assignedManagedWorkers = new HashSet<>();
     private HashSet<ManagedUnit> gatherers = new HashSet<>();
     private HashSet<ManagedUnit> mineralGatherers = new HashSet<>();
     private HashSet<ManagedUnit> gasGatherers = new HashSet<>();
@@ -244,4 +245,38 @@ public class GameState {
     public boolean needGeyserWorkers() { return this.getGeyserWorkers() < (3 * this.getGeyserAssignments().size()); }
 
     public int needGeyserWorkersAmount() { return (3 * this.getGeyserAssignments().size()) - this.getGeyserWorkers(); }
+
+    /**
+     * Removes managed unit from all data structures.
+     *
+     * This is typically done before assigning it to a new role. This code was
+     * initially lifted from WorkerManager.
+     * @param managedUnit to wipe clean
+     */
+    public void clearAssignments(ManagedUnit managedUnit) {
+        if (assignedManagedWorkers.contains(managedUnit)) {
+            for (HashSet<ManagedUnit> mineralWorkers: mineralAssignments.values()) {
+                if (mineralWorkers.contains(managedUnit)) {
+                    this.mineralWorkers -= 1;
+                    mineralWorkers.remove(managedUnit);
+                }
+            }
+            for (HashSet<ManagedUnit> geyserWorkers: geyserAssignments.values()) {
+                if (geyserWorkers.contains(managedUnit)) {
+                    this.geyserWorkers -= 1;
+                    geyserWorkers.remove(managedUnit);
+                }
+            }
+        }
+
+        larva.remove(managedUnit);
+        gatherers.remove(managedUnit);
+        mineralGatherers.remove(managedUnit);
+        gasGatherers.remove(managedUnit);
+        assignedManagedWorkers.remove(managedUnit);
+
+        for (HashSet<ManagedUnit> managedUnitAssignments: gatherersAssignedToBase.values()) {
+            managedUnitAssignments.remove(managedUnit);
+        }
+    }
 }

@@ -2,14 +2,12 @@ package unit;
 
 import bwapi.Game;
 import bwapi.Player;
-import bwapi.Position;
 import bwapi.Unit;
 import bwapi.UnitType;
 import bwem.Base;
 import info.GameState;
 import info.ResourceCount;
 import plan.Plan;
-import plan.PlanComparator;
 import plan.PlanState;
 import plan.PlanType;
 import unit.managed.ManagedUnit;
@@ -18,7 +16,6 @@ import util.BaseUnitDistanceComparator;
 import util.UnitDistanceComparator;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -30,13 +27,12 @@ public class WorkerManager {
 
     private GameState gameState;
 
-    private HashSet<ManagedUnit> assignedManagedWorkers = new HashSet<>();
+    private HashSet<ManagedUnit> assignedManagedWorkers;
     private HashSet<ManagedUnit> gatherers;
     private HashSet<ManagedUnit> mineralGatherers;
     private HashSet<ManagedUnit> gasGatherers;
     private HashSet<ManagedUnit> larva;
     private HashSet<ManagedUnit> eggs = new HashSet<>();
-    private HashSet<ManagedUnit> scheduledDrones = new HashSet<>();
 
     // Overlord takes 16 frames to hatch from egg
     // Buffered w/ 10 additional frames
@@ -49,15 +45,13 @@ public class WorkerManager {
         this.larva = gameState.getLarva();
         this.mineralGatherers = gameState.getMineralGatherers();
         this.gasGatherers = gameState.getGasGatherers();
+        this.assignedManagedWorkers = gameState.getAssignedManagedWorkers();
     }
 
     public void onFrame() {
         checksLarvaDeadlock();
         handleLarvaDeadlock();
 
-        assignScheduledPlannedItems();
-        executeScheduledDrones();
-        releaseImpossiblePlans();
         rebalanceCheck();
     }
 
@@ -74,25 +68,13 @@ public class WorkerManager {
         }
     }
 
-    public void onUnitMorph(ManagedUnit managedUnit) {
-        clearAssignments(managedUnit);
-        if (managedUnit.getUnitType() == UnitType.Zerg_Drone) {
-            assignWorker(managedUnit);
-        }
-        // eggs
-        if (managedUnit.getUnitType() == UnitType.Zerg_Egg) {
-            eggs.add(managedUnit);
-        }
-    }
-
-
     public void addManagedWorker(ManagedUnit managedUnit) {
         assignWorker(managedUnit);
     }
 
     // onUnitDestroy OR worker is being reassigned to non-worker role
     public void removeManagedWorker(ManagedUnit managedUnit) {
-        clearAssignments(managedUnit);
+        gameState.clearAssignments(managedUnit);
     }
 
     public void removeMineral(Unit unit) {
@@ -105,7 +87,7 @@ public class WorkerManager {
             return;
         }
         for (ManagedUnit managedUnit: mineralWorkers) {
-            clearAssignments(managedUnit);
+            gameState.clearAssignments(managedUnit);
             assignWorker(managedUnit);
         }
     }
@@ -120,7 +102,7 @@ public class WorkerManager {
             return;
         }
         for (ManagedUnit managedUnit: geyserWorkers) {
-            clearAssignments(managedUnit);
+            gameState.clearAssignments(managedUnit);
             assignWorker(managedUnit);
         }
     }
@@ -143,129 +125,8 @@ public class WorkerManager {
         }
 
         for (ManagedUnit managedUnit: newGeyserWorkers) {
-            clearAssignments(managedUnit);
+            gameState.clearAssignments(managedUnit);
             assignToGeyser(managedUnit);
-        }
-    }
-
-    private void assignScheduledPlannedItems() {
-        List<Plan> scheduledPlans = gameState.getPlansScheduled().stream().collect(Collectors.toList());
-        if (scheduledPlans.size() < 1) {
-            return;
-        }
-
-        Collections.sort(scheduledPlans, new PlanComparator());
-        List<Plan> assignedPlans = new ArrayList<>();
-
-
-        for (Plan plan : scheduledPlans) {
-            UnitType planType = plan.getPlannedUnit();
-
-            boolean didAssign = false;
-            if (plan.getType() == PlanType.BUILDING) {
-                if (isBuildingMorph(planType)) continue;
-                didAssign = assignMorphDrone(plan);
-            } else if (plan.getType() == PlanType.UNIT) {
-                didAssign = assignMorphLarva(plan);
-            }
-
-            if (didAssign) {
-                assignedPlans.add(plan);
-            }
-        }
-
-        HashSet<Plan> buildingPlans = gameState.getPlansBuilding();
-        for (Plan plan : assignedPlans) {
-            scheduledPlans.remove(plan);
-            buildingPlans.add(plan);
-        }
-
-        gameState.setPlansScheduled(scheduledPlans.stream().collect(Collectors.toCollection(HashSet::new)));
-    }
-
-    private void releaseImpossiblePlans() {
-        HashSet<Plan> impossiblePlans = gameState.getPlansImpossible();
-
-        for (ManagedUnit larva: larva) {
-            Plan currentPlan = larva.getPlan();
-            if (currentPlan != null && impossiblePlans.contains(currentPlan)) {
-                gameState.cancelPlan(larva.getUnit(), currentPlan);
-            }
-        }
-
-        for (ManagedUnit drone: scheduledDrones) {
-            Plan currentPlan = drone.getPlan();
-            if (currentPlan != null && impossiblePlans.contains(currentPlan)) {
-                gameState.cancelPlan(drone.getUnit(), currentPlan);
-            }
-        }
-    }
-
-    private boolean isBuildingMorph(UnitType unitType) {
-        switch(unitType) {
-            case Zerg_Lair:
-            case Zerg_Sunken_Colony:
-                return true;
-            default:
-                return false;
-        }
-    }
-
-    // TODO: Consider acceleration, more complex paths
-    private int getTravelFrames(Unit unit, Position buildingPosition) {
-        Position unitPosition = unit.getPosition();
-        double distance = buildingPosition.getDistance(unitPosition);
-        double unitSpeed = unit.getType().topSpeed();
-
-        return (int)( distance / unitSpeed );
-    }
-
-    private void executeScheduledDrones() {
-        final int currentFrame = game.getFrameCount();
-        List<ManagedUnit> executed = new ArrayList<>();
-        for (ManagedUnit managedUnit: scheduledDrones) {
-            Plan plan = managedUnit.getPlan();
-            // TODO: Set build position for all scheduled build plans
-            int travelFrames = this.getTravelFrames(managedUnit.getUnit(), plan.getBuildPosition().toPosition());
-            if (currentFrame > plan.getPredictedReadyFrame() - travelFrames) {
-                plan.setState(PlanState.BUILDING);
-                managedUnit.setRole(UnitRole.BUILD);
-                executed.add(managedUnit);
-            }
-        }
-
-        for (ManagedUnit managedUnit: executed) {
-            scheduledDrones.remove(managedUnit);
-        }
-    }
-
-    private void clearAssignments(ManagedUnit managedUnit) {
-        if (assignedManagedWorkers.contains(managedUnit)) {
-            for (HashSet<ManagedUnit> mineralWorkers: gameState.getMineralAssignments().values()) {
-                if (mineralWorkers.contains(managedUnit)) {
-                    gameState.setMineralWorkers(gameState.getMineralWorkers()-1);
-                    mineralWorkers.remove(managedUnit);
-                }
-            }
-            for (HashSet<ManagedUnit> geyserWorkers: gameState.getGeyserAssignments().values()) {
-                if (geyserWorkers.contains(managedUnit)) {
-                    gameState.setGeyserWorkers(gameState.getGeyserWorkers()-1);
-                    geyserWorkers.remove(managedUnit);
-                }
-            }
-        }
-
-        eggs.remove(managedUnit);
-        larva.remove(managedUnit);
-        gatherers.remove(managedUnit);
-        mineralGatherers.remove(managedUnit);
-        gasGatherers.remove(managedUnit);
-        assignedManagedWorkers.remove(managedUnit);
-
-        for (HashSet<ManagedUnit> managedUnitAssignments: gameState.getGatherersAssignedToBase().values()) {
-            if (managedUnitAssignments.contains(managedUnit)) {
-                managedUnitAssignments.remove(managedUnit);
-            }
         }
     }
 
@@ -344,45 +205,6 @@ public class WorkerManager {
                 break;
             }
         }
-    }
-
-    /**
-     * Assign a drone to the building plan if it's not carrying resources, not mining gas and not already assigned to a plan
-     * The unit will store a scheduled plan until it's time to execute
-     * @param plan plan to build
-     * @return
-     */
-    private boolean assignMorphDrone(Plan plan) {
-        for (ManagedUnit managedUnit : assignedManagedWorkers) {
-            Unit unit = managedUnit.getUnit();
-            if (!unit.isCarrying() && !gasGatherers.contains(managedUnit) && !gameState.getAssignedPlannedItems().containsKey(unit)) {
-                clearAssignments(managedUnit);
-                // TODO: Plan and UnitRole have a state change IN agent inside of manager
-                scheduledDrones.add(managedUnit);
-                managedUnit.setPlan(plan);
-                gameState.getAssignedPlannedItems().put(unit, plan);
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private boolean assignMorphLarva(Plan plan) {
-        for (ManagedUnit managedUnit : larva) {
-            Unit unit = managedUnit.getUnit();
-            // If larva and not assigned, assign
-            if (!gameState.getAssignedPlannedItems().containsKey(unit)) {
-                clearAssignments(managedUnit);
-                plan.setState(PlanState.BUILDING);
-                managedUnit.setRole(UnitRole.MORPH);
-                managedUnit.setPlan(plan);
-                gameState.getAssignedPlannedItems().put(unit, plan);
-                return true;
-            }
-        }
-
-        return false;
     }
 
     // checksLarvaDeadlock determines if all larva are assigned to morph into non overlords and if we're supply blocked
@@ -480,7 +302,7 @@ public class WorkerManager {
         List<ManagedUnit> larvaCopy = larva.stream().collect(Collectors.toList());
         for (ManagedUnit managedUnit : larvaCopy) {
             Unit unit = managedUnit.getUnit();
-            clearAssignments(managedUnit);
+            gameState.clearAssignments(managedUnit);
             managedUnit.setRole(UnitRole.LARVA);
             larva.add(managedUnit);
 
@@ -527,7 +349,7 @@ public class WorkerManager {
         }
 
         for (ManagedUnit worker: reassignedWorkers) {
-            clearAssignments(worker);
+            gameState.clearAssignments(worker);
             assignToGeyser(worker);
         }
     }
@@ -540,7 +362,7 @@ public class WorkerManager {
     private void cutGasHarvesting() {
         List<ManagedUnit> geyserWorkers = gasGatherers.stream().collect(Collectors.toList());
         for (ManagedUnit worker: geyserWorkers) {
-            clearAssignments(worker);
+            gameState.clearAssignments(worker);
             assignToMineral(worker);
         }
     }
