@@ -151,7 +151,7 @@ public class Squad implements Comparable<Squad> {
         final boolean lowOutliers = outliers / this.size() < 0.25;
         final boolean lowEccentricity = max_dx < x_threshold && max_dy < y_threshold;
 
-        return lowOutliers && lowEccentricity;
+        return lowOutliers || lowEccentricity;
     }
 
     private void checkRegroup() {

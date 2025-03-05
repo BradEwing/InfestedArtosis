@@ -405,6 +405,7 @@ public class ManagedUnit {
 
         if (framesStuck >= 12) {
             setRetreatTarget(null);
+            role = UnitRole.IDLE;
             return;
         }
 
