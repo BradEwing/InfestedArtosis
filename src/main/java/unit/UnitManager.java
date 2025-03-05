@@ -8,16 +8,17 @@ import bwem.Base;
 import info.GameState;
 import info.InformationManager;
 import info.ScoutData;
+import lombok.Getter;
 import unit.managed.ManagedUnit;
 import unit.managed.ManagedUnitFactory;
 import unit.managed.UnitRole;
 import unit.scout.ScoutManager;
 import unit.squad.SquadManager;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.stream.Collectors;
 
 public class UnitManager {
 
@@ -27,7 +28,9 @@ public class UnitManager {
     private ManagedUnitFactory factory;
     private BuildingManager buildingManager;
     private InformationManager informationManager;
+    @Getter
     private ScoutManager scoutManager;
+    @Getter
     private SquadManager squadManager;
     private WorkerManager workerManager;
 
@@ -67,10 +70,6 @@ public class UnitManager {
                 }
             }
         }
-    }
-
-    public ScoutManager getScoutManager() {
-        return this.scoutManager;
     }
 
     public void onFrame() {
@@ -134,8 +133,6 @@ public class UnitManager {
             workerManager.onUnitComplete(managedUnit);
             return;
         }
-
-
 
         // Consider case where we are already tracking the unit that morphed
         if (managedUnitLookup.containsKey(unit)) {
@@ -318,7 +315,7 @@ public class UnitManager {
     private void checkBaseThreats() {
         HashMap<Base, HashSet<Unit>> baseThreats = this.gameState.getBaseToThreatLookup();
         for (Base base: baseThreats.keySet()) {
-            if (baseThreats.get(base).size() > 0) {
+            if (!baseThreats.get(base).isEmpty()) {
                 assignGatherersToDefense(base);
             } else {
                 assignDefendersToGather(base);
@@ -328,13 +325,11 @@ public class UnitManager {
 
     private void assignGatherersToDefense(Base base) {
         HashSet<ManagedUnit> gatherersAssignedToBase = this.gameState.getGatherersAssignedToBase().get(base);
-        if (gatherersAssignedToBase.size() == 0) {
+        if (gatherersAssignedToBase.isEmpty()) {
             return;
         }
-        List<Unit> threateningUnits = this.gameState.getBaseToThreatLookup()
-                .get(base)
-                .stream()
-                .collect(Collectors.toList());
+        List<Unit> threateningUnits = new ArrayList<>(this.gameState.getBaseToThreatLookup()
+                .get(base));
 
 
 
@@ -384,9 +379,5 @@ public class UnitManager {
         managedUnits.add(managedUnit);
         buildingManager.add(managedUnit);
         managedUnitLookup.put(unit, managedUnit);
-    }
-
-    public SquadManager getSquadManager() {
-        return this.squadManager;
     }
 }

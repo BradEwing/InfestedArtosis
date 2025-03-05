@@ -11,6 +11,7 @@ import learning.Decisions;
 import learning.LearningManager;
 import learning.OpponentRecord;
 import macro.ProductionManager;
+import plan.PlanManager;
 import unit.UnitManager;
 
 /**
@@ -36,6 +37,7 @@ public class Bot extends DefaultBWListener {
 
     private Debug debugMap;
     private LearningManager learningManager;
+    private PlanManager planManager;
     private ProductionManager economyModule;
     private InformationManager informationManager;
     private UnitManager unitManager;
@@ -61,6 +63,7 @@ public class Bot extends DefaultBWListener {
         informationManager = new InformationManager(bwem, game, gameState);
         debugMap = new Debug(bwem, game, decisions.getOpener(), opponentRecord, gameState);
         economyModule = new ProductionManager(game, gameState, decisions.getOpener().getBuildOrder()); // TODO: reverse
+        planManager = new PlanManager(game, gameState);
         unitManager = new UnitManager(game, informationManager, bwem, gameState);
 
         autoObserver = new AutoObserver(gameState.getConfig(), game, unitManager.getScoutManager(), unitManager.getSquadManager());
@@ -70,14 +73,10 @@ public class Bot extends DefaultBWListener {
 
     @Override
     public void onFrame() {
-        if (bwem == null) {
-            System.out.print("bwem is null\n");
-            return;
-        }
         informationManager.onFrame();
         economyModule.onFrame();
+        planManager.onFrame();
         unitManager.onFrame();
-
         debugMap.onFrame();
         autoObserver.onFrame();
     }
