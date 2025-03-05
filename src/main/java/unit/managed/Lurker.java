@@ -6,8 +6,8 @@ import bwapi.Unit;
 public class Lurker extends ManagedUnit {
     private int targetOutOfRangeFrames = 0;
     private int noAttackFrames = 0;
-    private static final int MAX_TARGET_OUT_OF_RANGE_FRAMES = 50;
-    private static final int MAX_NO_ATTACK_FRAMES = 100;
+    private static final int MAX_TARGET_OUT_OF_RANGE_FRAMES = 20;
+    private static final int MAX_NO_ATTACK_FRAMES = 50;
 
     public Lurker(Game game, Unit unit, UnitRole role) {
         super(game, unit, role);
@@ -36,9 +36,9 @@ public class Lurker extends ManagedUnit {
                     unburrowAndReset();
                     return;
                 }
+            } else {
+                targetOutOfRangeFrames = 0;
             }
-            targetOutOfRangeFrames = 0;
-
 
             // Check if attacking
             int cooldown = unit.getGroundWeaponCooldown();
@@ -70,7 +70,17 @@ public class Lurker extends ManagedUnit {
             unburrowAndReset();
             return;
         }
-        super.retreat();
+        this.setRole(UnitRole.FIGHT);
+    }
+
+    @Override
+    protected void rally() {
+        if (unit.isBurrowed()) {
+            this.setUnready();
+            unburrowAndReset();
+            return;
+        }
+        super.rally();
     }
 
     private void unburrowAndReset() {

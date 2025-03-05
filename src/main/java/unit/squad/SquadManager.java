@@ -363,6 +363,15 @@ public class SquadManager {
         // Run ASS every 50 frames
         HashSet<ManagedUnit> managedFighters = squad.getMembers();
 
+        // TODO: Handle Lurker retreat and contain
+        if (squad.getType() == UnitType.Zerg_Lurker) {
+            squad.setStatus(SquadStatus.FIGHT);
+            for (ManagedUnit managedUnit: managedFighters) {
+                managedUnit.setRole(UnitRole.FIGHT);
+                assignEnemyTarget(managedUnit, squad);
+            }
+        }
+
         HashSet<Unit> enemyBuildings = informationManager.getEnemyBuildings();
         Unit closest = closestHostileUnit(squad.getCenter(), enemyBuildings.stream().collect(Collectors.toList()));
 
@@ -600,6 +609,10 @@ public class SquadManager {
         List<Unit> filtered = new ArrayList<>();
         // Attempt to find the closest enemy OUTSIDE fog of war
         for (Unit enemyUnit: enemyUnits) {
+            if (unit.getType() == UnitType.Zerg_Lurker && !enemyUnit.isFlying()) {
+                filtered.add(enemyUnit);
+                continue;
+            }
             if (unit.canAttack(enemyUnit) && enemyUnit.isDetected()) {
                 filtered.add(enemyUnit);
             }
@@ -619,8 +632,6 @@ public class SquadManager {
             ft = squad.getTarget();
         }
         managedUnit.setFightTarget(ft);
-        return;
-
     }
 
     private void debugPainters() {

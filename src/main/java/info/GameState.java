@@ -24,6 +24,8 @@ import unit.managed.ManagedUnit;
 
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * Class to handle global state that is shared among various managers.
@@ -42,6 +44,8 @@ public class GameState {
     private int geyserWorkers;
     private int larvaDeadlockDetectedFrame;
 
+    private HashMap<Unit, ManagedUnit> managedUnitLookup = new HashMap<>();
+    private HashSet<ManagedUnit> managedUnits = new HashSet<>();
     private HashSet<ManagedUnit> assignedManagedWorkers = new HashSet<>();
     private HashSet<ManagedUnit> gatherers = new HashSet<>();
     private HashSet<ManagedUnit> mineralGatherers = new HashSet<>();
@@ -278,5 +282,11 @@ public class GameState {
         for (HashSet<ManagedUnit> managedUnitAssignments: gatherersAssignedToBase.values()) {
             managedUnitAssignments.remove(managedUnit);
         }
+    }
+
+    public List<ManagedUnit> getManagedUnitsByType(UnitType type) {
+        return managedUnits.stream()
+                .filter(m -> m.getUnitType() == type)
+                .collect(Collectors.toList());
     }
 }

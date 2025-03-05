@@ -57,7 +57,7 @@ public class PlanManager {
                 if (isBuildingMorph(planType)) continue;
                 didAssign = assignMorphDrone(plan);
             } else if (plan.getType() == PlanType.UNIT) {
-                didAssign = assignMorphLarva(plan);
+                didAssign = assignMorphUnit(plan);
             }
 
             if (didAssign) {
@@ -149,6 +149,31 @@ public class PlanManager {
             }
         }
 
+        return false;
+    }
+
+    private boolean assignMorphUnit(Plan plan) {
+        switch(plan.getPlannedUnit()) {
+            case Zerg_Lurker:
+                return assignMorphHydralisk(plan);
+            default:
+                return assignMorphLarva(plan);
+        }
+    }
+
+    private boolean assignMorphHydralisk(Plan plan) {
+        List<ManagedUnit> hydralisks = gameState.getManagedUnitsByType(UnitType.Zerg_Hydralisk);
+        for (ManagedUnit managedUnit: hydralisks) {
+            Unit unit = managedUnit.getUnit();
+            if (!gameState.getAssignedPlannedItems().containsKey(unit)) {
+                gameState.clearAssignments(managedUnit);
+                plan.setState(PlanState.MORPHING);
+                managedUnit.setRole(UnitRole.MORPH);
+                managedUnit.setPlan(plan);
+                gameState.getAssignedPlannedItems().put(unit, plan);
+                return true;
+            }
+        }
         return false;
     }
 

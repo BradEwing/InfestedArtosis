@@ -34,8 +34,8 @@ public class UnitManager {
     private SquadManager squadManager;
     private WorkerManager workerManager;
 
-    private HashMap<Unit, ManagedUnit> managedUnitLookup = new HashMap<>();
-    private HashSet<ManagedUnit> managedUnits = new HashSet<>();
+    private HashMap<Unit, ManagedUnit> managedUnitLookup;
+    private HashSet<ManagedUnit> managedUnits;
 
     public UnitManager(Game game, InformationManager informationManager, BWEM bwem, GameState gameState) {
         this.game = game;
@@ -48,6 +48,8 @@ public class UnitManager {
         this.squadManager = new SquadManager(game, gameState, informationManager);
         this.scoutManager = new ScoutManager(game, gameState, informationManager);
         this.buildingManager = new BuildingManager(game, gameState);
+        this.managedUnitLookup = gameState.getManagedUnitLookup();
+        this.managedUnits = gameState.getManagedUnits();
         initManagedUnits();
     }
 
