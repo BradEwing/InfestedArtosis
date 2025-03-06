@@ -481,11 +481,26 @@ public class ProductionManager {
         UnitWeights unitWeights = this.gameState.getUnitWeights();
 
         // Plan army
-        UnitType unitToBuild = unitWeights.getRandom();
+        // TODO: Determine a better way to pick next unit
+        UnitType unitToBuild = getBestUnitToBuild(unitWeights.getRandom());
         if (unitToBuild == UnitType.Unknown) {
             return;
         }
         addUnitToQueue(unitToBuild, currentFrame, false);
+    }
+
+    private UnitType getBestUnitToBuild(UnitType initialCandidate) {
+        UnitWeights unitWeights = this.gameState.getUnitWeights();
+        UnitTypeCount unitCount = this.gameState.getUnitTypeCount();;
+        UnitType nextUnit = initialCandidate;
+
+        final int numHydralisks = unitCount.get(UnitType.Zerg_Hydralisk);
+        final int numLurkers =  unitCount.get(UnitType.Zerg_Lurker);
+        final int targetLurkers = numHydralisks / 2;
+        if (unitWeights.isEnabled(UnitType.Zerg_Lurker) && numLurkers < targetLurkers) {
+            return UnitType.Zerg_Lurker;
+        }
+        return nextUnit;
     }
 
     private void addUnitToQueue(UnitType unitType, int priority, boolean isBlocking) {
@@ -494,7 +509,6 @@ public class ProductionManager {
         unitTypeCount.planUnit(unitType);
     }
 
-    // TODO: Make this smarter, following a strategy to define unit mix, when to take upgrades, etc.
     private void plan() {
         Player self = game.self();
         Boolean isAllIn = gameState.isAllIn();
@@ -507,17 +521,9 @@ public class ProductionManager {
         isPlanning = true;
 
         planBuildings(self, isAllIn);
-
-        // NOTE: Always let upgrades to enter the queue, we take them greedily
-        // Plan tech / upgrades
-        // The former should at least be driven by a higher level (strategy) manager
-        // For now, greedily plan upgrades
         planUpgrades(isAllIn);
-
-        // Plan supply
         planSupply(self);
 
-        /** For now, only subject unit production to queue size */
         // restrict units from queue if size is >3 initially, increases per hatch
         if (productionQueue.size() >= unitQueueSize()) {
             return;
