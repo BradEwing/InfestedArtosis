@@ -32,7 +32,7 @@ public class ResourceCount {
         this.reservedMinerals += unit.mineralPrice();
         this.reservedGas += unit.gasPrice();
 
-        if (!unit.isBuilding()) {
+        if (shouldReserveLarva(unit)) {
             reservedLarva += 1;
         }
     }
@@ -41,9 +41,13 @@ public class ResourceCount {
         reservedMinerals -= unit.mineralPrice();
         reservedGas -= unit.gasPrice();
 
-        if (!unit.isBuilding()) {
+        if (shouldReserveLarva(unit)) {
             reservedLarva -= 1;
         }
+    }
+
+    private boolean shouldReserveLarva(UnitType unit) {
+        return !unit.isBuilding() && unit != UnitType.Zerg_Lurker;
     }
 
     public int availableMinerals() { return self.minerals() - reservedMinerals; }

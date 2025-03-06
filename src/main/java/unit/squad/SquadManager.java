@@ -618,7 +618,7 @@ public class SquadManager {
             }
         }
 
-        if (filtered.size() == 0) {
+        if (filtered.isEmpty()) {
             managedUnit.setMovementTargetPosition(informationManager.pollScoutTarget(false));
             return;
         }

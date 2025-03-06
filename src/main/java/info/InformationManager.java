@@ -325,6 +325,7 @@ public class InformationManager {
                     || unitType.isResourceContainer()
                     || unitType.isMineralField()
                     || unitType.isNeutral()
+                    || unitType == UnitType.Zerg_Lurker_Egg // Hack for neutral eggs
                     || unitType.isSpecialBuilding()
                     || unitType.isBuilding()
                     || unit.isMorphing()) {
