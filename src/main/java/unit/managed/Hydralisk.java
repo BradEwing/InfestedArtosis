@@ -2,9 +2,12 @@ package unit.managed;
 
 import bwapi.Game;
 import bwapi.Position;
+import bwapi.TilePosition;
 import bwapi.Unit;
+import bwapi.UnitType;
 import bwapi.UpgradeType;
 import bwapi.WeaponType;
+import plan.PlanType;
 
 public class Hydralisk extends ManagedUnit {
     private static final int UPGRADED_RANGE_BONUS = 32;
@@ -91,5 +94,15 @@ public class Hydralisk extends ManagedUnit {
         }
 
         kiteFromTarget();
+    }
+
+    @Override
+    public void setMovementTargetPosition(TilePosition tp) {
+        if (plan != null && plan.getType() == PlanType.UNIT && plan.getPlannedUnit() == UnitType.Zerg_Lurker) {
+            this.setRole(UnitRole.MORPH);
+            return;
+        }
+
+        super.setMovementTargetPosition(tp);
     }
 }
