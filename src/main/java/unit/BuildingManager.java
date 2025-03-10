@@ -77,7 +77,7 @@ public class BuildingManager {
 
         Collections.sort(scheduledPlans, new PlanComparator());
         List<Plan> assignedPlans = new ArrayList<>();
-        // TODO: Fix bug that keeps complete macro.plan in scheduled
+        // TODO: Fix bug that keeps complete plan in scheduled
         List<Plan> completePlans = new ArrayList<>();
 
         for (Plan plan : scheduledPlans) {

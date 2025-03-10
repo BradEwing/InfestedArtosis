@@ -173,7 +173,7 @@ public class InformationManager {
     public void onUnitMorph(Unit unit) {
         HashMap<Unit, Plan> assignedPlannedItems = gameState.getAssignedPlannedItems();
         Plan assignedPlan = assignedPlannedItems.get(unit);
-        // Currently, only do something here if this unit is assigned to a macro.plan.
+        // Currently, only do something here if this unit is assigned to a plan.
         if (assignedPlan == null) {
             return;
         }
