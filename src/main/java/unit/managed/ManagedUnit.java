@@ -12,8 +12,8 @@ import bwapi.WeaponType;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.Setter;
-import plan.Plan;
-import plan.PlanState;
+import macro.plan.Plan;
+import macro.plan.PlanState;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -249,7 +249,7 @@ public class ManagedUnit {
         UnitType plannedUnitType = plan.getPlannedUnit();
 
         // TODO: This should be determined with a building location planner
-        // Should be assigned to the plan before the plan is assigned to the unit
+        // Should be assigned to the macro.plan before the macro.plan is assigned to the unit
         if (plan.getBuildPosition() == null) {
             TilePosition buildLocation = game.getBuildLocation(plannedUnitType, unit.getTilePosition());
             plan.setBuildPosition(buildLocation);

@@ -7,7 +7,7 @@ import bwapi.Unit;
 import bwapi.UnitType;
 import bwapi.UpgradeType;
 import bwapi.WeaponType;
-import plan.PlanType;
+import macro.plan.PlanType;
 
 public class Hydralisk extends ManagedUnit {
     private static final int UPGRADED_RANGE_BONUS = 32;

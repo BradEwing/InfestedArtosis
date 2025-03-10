@@ -1,9 +1,9 @@
 package strategy.openers;
 
 import bwapi.UnitType;
-import plan.BuildingPlan;
-import plan.Plan;
-import plan.UnitPlan;
+import macro.plan.BuildingPlan;
+import macro.plan.Plan;
+import macro.plan.UnitPlan;
 
 import java.util.ArrayList;
 import java.util.List;

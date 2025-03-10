@@ -1,4 +1,4 @@
-package plan;
+package macro.plan;
 
 import bwapi.TilePosition;
 import bwapi.UnitType;

@@ -15,14 +15,14 @@ import info.GameState;
 import info.ResourceCount;
 import info.TechProgression;
 import info.UnitTypeCount;
-import plan.BuildingPlan;
-import plan.Plan;
-import plan.PlanComparator;
-import plan.PlanState;
-import plan.PlanType;
-import plan.TechPlan;
-import plan.UnitPlan;
-import plan.UpgradePlan;
+import macro.plan.BuildingPlan;
+import macro.plan.Plan;
+import macro.plan.PlanComparator;
+import macro.plan.PlanState;
+import macro.plan.PlanType;
+import macro.plan.TechPlan;
+import macro.plan.UnitPlan;
+import macro.plan.UpgradePlan;
 import strategy.openers.Opener;
 import strategy.openers.OpenerName;
 import strategy.strategies.UnitWeights;
@@ -37,10 +37,12 @@ import java.util.stream.Collectors;
 
 import static java.lang.Math.min;
 
-// TODO: There is economy information here, build order and strategy. refactor
-// Possible arch: GATHER GAME STATE -> PLAN -> EXECUTE
-// STRATEGY -> BUILD ORDER (QUEUE) -> BUILD / ECONOMY MANAGEMENT (balance workers) (this file should eventually only be final step)
-//
+/**
+ * Manages the production of units, buildings, upgrades and research.
+ * <p>
+ * The Bot's Strategy is responsible for deciding what units should be queued; the exact unit
+ * is currently determined probabilistically by UnitWeights.
+ */
 public class ProductionManager {
 
     final int FRAME_ZVZ_HATCH_RESTRICT = 7200; // 5m
@@ -369,7 +371,7 @@ public class ProductionManager {
     /**
      * Plan to take an upgrade.
      *
-     * Does not plan if there is no gas; all upgrades require gas.
+     * Does not macro.plan if there is no gas; all upgrades require gas.
      *
      * TODO: Track when an upgrade completes
      *
@@ -513,11 +515,11 @@ public class ProductionManager {
         Player self = game.self();
         Boolean isAllIn = gameState.isAllIn();
 
-        if (!isPlanning && productionQueue.size() > 0) {
+        if (!isPlanning && !productionQueue.isEmpty()) {
             return;
         }
 
-        // Once opener items are exhausted, plan items
+        // Once opener items are exhausted, macro.plan items
         isPlanning = true;
 
         planBuildings(self, isAllIn);
@@ -556,7 +558,7 @@ public class ProductionManager {
 
     /**
      * Plans that are impossible to schedule can block the queue.
-     * @return boolean indicating if the plan can be scheduled
+     * @return boolean indicating if the macro.plan can be scheduled
      */
     private boolean canSchedulePlan(Plan plan) {
         switch (plan.getType()) {
@@ -672,13 +674,13 @@ public class ProductionManager {
         for (int i = 0; i < productionQueue.size(); i++) {
 
             boolean canSchedule = false;
-            // If we can't plan, we'll put it back on the queue
+            // If we can't macro.plan, we'll put it back on the queue
             final Plan plan = productionQueue.poll();
             if (plan == null) {
                 continue;
             }
 
-            // Don't block the queue if the plan cannot be executed
+            // Don't block the queue if the macro.plan cannot be executed
             if (!canSchedulePlan(plan)) {
                 gameState.setImpossiblePlan(plan);
                 continue;
@@ -1006,7 +1008,8 @@ public class ProductionManager {
         }
 
         if (unitType == UnitType.Zerg_Overlord) {
-            gameState.getResourceCount().setPlannedSupply(Math.max(0, gameState.getResourceCount().getPlannedSupply() - unitType.supplyProvided()));
+            gameState.getResourceCount()
+                    .setPlannedSupply(Math.max(0, gameState.getResourceCount().getPlannedSupply() - unitType.supplyProvided()));
         }
 
         if (unitType == UnitType.Zerg_Hatchery) {
@@ -1064,23 +1067,10 @@ public class ProductionManager {
         if (unit.getPlayer() != self) {
             return;
         }
-
-        updateTechOnDestroy(unit);
         clearAssignments(unit, true);
     }
 
-    // TODO: Refactor into info class
-    private void updateTechOnDestroy(Unit unit) {
-        TechProgression techProgression = this.gameState.getTechProgression();
-        switch (unit.getType()) {
-            case Zerg_Spawning_Pool:
-                techProgression.setSpawningPool(false);
-            case Zerg_Hydralisk_Den:
-                techProgression.setHydraliskDen(false);
-            case Zerg_Spire:
-                techProgression.setSpire(false);
-        }
-    }
+
 
     /**
      * Remove a unit from all data stores

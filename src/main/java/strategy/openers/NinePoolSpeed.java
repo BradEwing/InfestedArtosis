@@ -2,9 +2,9 @@ package strategy.openers;
 
 import bwapi.UnitType;
 import bwapi.UpgradeType;
-import plan.BuildingPlan;
-import plan.Plan;
-import plan.UpgradePlan;
+import macro.plan.BuildingPlan;
+import macro.plan.Plan;
+import macro.plan.UpgradePlan;
 
 import java.util.List;
 

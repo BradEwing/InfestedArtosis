@@ -1,4 +1,4 @@
-package plan;
+package macro.plan;
 
 import bwapi.UpgradeType;
 import lombok.Getter;

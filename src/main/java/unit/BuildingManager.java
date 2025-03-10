@@ -4,10 +4,10 @@ import bwapi.Game;
 import bwapi.Unit;
 import bwapi.UnitType;
 import info.GameState;
-import plan.Plan;
-import plan.PlanState;
-import plan.PlanType;
-import plan.PlanComparator;
+import macro.plan.Plan;
+import macro.plan.PlanState;
+import macro.plan.PlanType;
+import macro.plan.PlanComparator;
 import unit.managed.ManagedUnit;
 import unit.managed.UnitRole;
 
@@ -77,7 +77,7 @@ public class BuildingManager {
 
         Collections.sort(scheduledPlans, new PlanComparator());
         List<Plan> assignedPlans = new ArrayList<>();
-        // TODO: Fix bug that keeps complete plan in scheduled
+        // TODO: Fix bug that keeps complete macro.plan in scheduled
         List<Plan> completePlans = new ArrayList<>();
 
         for (Plan plan : scheduledPlans) {
