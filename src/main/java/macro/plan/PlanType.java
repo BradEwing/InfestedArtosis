@@ -1,4 +1,4 @@
-package plan;
+package macro.plan;
 
 public enum PlanType {
     UNIT,     // EXECUTOR: LARVA

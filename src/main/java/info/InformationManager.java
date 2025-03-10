@@ -15,8 +15,8 @@ import info.map.GameMap;
 import info.map.MapTile;
 import info.map.MapTileScoutImportanceComparator;
 import info.map.MapTileType;
-import plan.Plan;
-import plan.PlanType;
+import macro.plan.Plan;
+import macro.plan.PlanType;
 import strategy.strategies.UnitWeights;
 
 import java.util.ArrayList;

@@ -4,10 +4,10 @@ import bwapi.Game;
 import bwapi.Unit;
 import bwapi.UnitType;
 import info.GameState;
-import plan.Plan;
-import plan.PlanState;
-import plan.PlanType;
-import plan.PlanComparator;
+import macro.plan.Plan;
+import macro.plan.PlanState;
+import macro.plan.PlanType;
+import macro.plan.PlanComparator;
 import unit.managed.ManagedUnit;
 import unit.managed.UnitRole;
 

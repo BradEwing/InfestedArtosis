@@ -1,4 +1,4 @@
-package plan;
+package macro.plan;
 
 import bwapi.UnitType;
 import lombok.Getter;

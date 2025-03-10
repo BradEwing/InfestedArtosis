@@ -11,7 +11,7 @@ import learning.Decisions;
 import learning.LearningManager;
 import learning.OpponentRecord;
 import macro.ProductionManager;
-import plan.PlanManager;
+import macro.plan.PlanManager;
 import unit.UnitManager;
 
 /**

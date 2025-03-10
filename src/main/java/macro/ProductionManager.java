@@ -15,14 +15,14 @@ import info.GameState;
 import info.ResourceCount;
 import info.TechProgression;
 import info.UnitTypeCount;
-import plan.BuildingPlan;
-import plan.Plan;
-import plan.PlanComparator;
-import plan.PlanState;
-import plan.PlanType;
-import plan.TechPlan;
-import plan.UnitPlan;
-import plan.UpgradePlan;
+import macro.plan.BuildingPlan;
+import macro.plan.Plan;
+import macro.plan.PlanComparator;
+import macro.plan.PlanState;
+import macro.plan.PlanType;
+import macro.plan.TechPlan;
+import macro.plan.UnitPlan;
+import macro.plan.UpgradePlan;
 import strategy.openers.Opener;
 import strategy.openers.OpenerName;
 import strategy.strategies.UnitWeights;
@@ -37,10 +37,12 @@ import java.util.stream.Collectors;
 
 import static java.lang.Math.min;
 
-// TODO: There is economy information here, build order and strategy. refactor
-// Possible arch: GATHER GAME STATE -> PLAN -> EXECUTE
-// STRATEGY -> BUILD ORDER (QUEUE) -> BUILD / ECONOMY MANAGEMENT (balance workers) (this file should eventually only be final step)
-//
+/**
+ * Manages the production of units, buildings, upgrades and research.
+ * <p>
+ * The Bot's Strategy is responsible for deciding what units should be queued; the exact unit
+ * is currently determined probabilistically by UnitWeights.
+ */
 public class ProductionManager {
 
     final int FRAME_ZVZ_HATCH_RESTRICT = 7200; // 5m
@@ -513,7 +515,7 @@ public class ProductionManager {
         Player self = game.self();
         Boolean isAllIn = gameState.isAllIn();
 
-        if (!isPlanning && productionQueue.size() > 0) {
+        if (!isPlanning && !productionQueue.isEmpty()) {
             return;
         }
 
@@ -1006,7 +1008,8 @@ public class ProductionManager {
         }
 
         if (unitType == UnitType.Zerg_Overlord) {
-            gameState.getResourceCount().setPlannedSupply(Math.max(0, gameState.getResourceCount().getPlannedSupply() - unitType.supplyProvided()));
+            gameState.getResourceCount()
+                    .setPlannedSupply(Math.max(0, gameState.getResourceCount().getPlannedSupply() - unitType.supplyProvided()));
         }
 
         if (unitType == UnitType.Zerg_Hatchery) {
@@ -1064,23 +1067,10 @@ public class ProductionManager {
         if (unit.getPlayer() != self) {
             return;
         }
-
-        updateTechOnDestroy(unit);
         clearAssignments(unit, true);
     }
 
-    // TODO: Refactor into info class
-    private void updateTechOnDestroy(Unit unit) {
-        TechProgression techProgression = this.gameState.getTechProgression();
-        switch (unit.getType()) {
-            case Zerg_Spawning_Pool:
-                techProgression.setSpawningPool(false);
-            case Zerg_Hydralisk_Den:
-                techProgression.setHydraliskDen(false);
-            case Zerg_Spire:
-                techProgression.setSpire(false);
-        }
-    }
+
 
     /**
      * Remove a unit from all data stores
