@@ -131,9 +131,9 @@ public class PlanManager {
     }
 
     /**
-     * Assign a drone to the building macro.plan if it's not carrying resources, not mining gas and not already assigned to a macro.plan
-     * The unit will store a scheduled macro.plan until it's time to execute
-     * @param plan macro.plan to build
+     * Assign a drone to the building plan if it's not carrying resources, not mining gas and not already assigned to a plan
+     * The unit will store a scheduled plan until it's time to execute
+     * @param plan plan to build
      * @return
      */
     private boolean assignMorphDrone(Plan plan) {

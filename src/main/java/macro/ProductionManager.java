@@ -371,7 +371,7 @@ public class ProductionManager {
     /**
      * Plan to take an upgrade.
      *
-     * Does not macro.plan if there is no gas; all upgrades require gas.
+     * Does not plan if there is no gas; all upgrades require gas.
      *
      * TODO: Track when an upgrade completes
      *
@@ -519,7 +519,7 @@ public class ProductionManager {
             return;
         }
 
-        // Once opener items are exhausted, macro.plan items
+        // Once opener items are exhausted, plan items
         isPlanning = true;
 
         planBuildings(self, isAllIn);
@@ -558,7 +558,7 @@ public class ProductionManager {
 
     /**
      * Plans that are impossible to schedule can block the queue.
-     * @return boolean indicating if the macro.plan can be scheduled
+     * @return boolean indicating if the plan can be scheduled
      */
     private boolean canSchedulePlan(Plan plan) {
         switch (plan.getType()) {
@@ -674,13 +674,13 @@ public class ProductionManager {
         for (int i = 0; i < productionQueue.size(); i++) {
 
             boolean canSchedule = false;
-            // If we can't macro.plan, we'll put it back on the queue
+            // If we can't plan, we'll put it back on the queue
             final Plan plan = productionQueue.poll();
             if (plan == null) {
                 continue;
             }
 
-            // Don't block the queue if the macro.plan cannot be executed
+            // Don't block the queue if the plan cannot be executed
             if (!canSchedulePlan(plan)) {
                 gameState.setImpossiblePlan(plan);
                 continue;
