@@ -25,7 +25,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 import static util.Filter.isHostileBuildingToGround;
 
@@ -245,7 +244,6 @@ public class InformationManager {
 
         if (enemyBuildings.contains(unit)) {
             enemyBuildings.remove(unit);
-
         }
 
         if (enemyHostileToGroundBuildings.contains(unit)) {
@@ -268,6 +266,13 @@ public class InformationManager {
             updateTechOnDestroy(unitType);
             UnitTypeCount unitCount = gameState.getUnitTypeCount();
             unitCount.removeUnit(unitType);
+        } else {
+            BaseData baseData = gameState.getBaseData();
+            TilePosition tp = unit.getTilePosition();
+            if (unitType.isResourceDepot() && baseData.isBaseTilePosition(tp)) {
+                Base enemyBaseCandidate = baseData.baseAtTilePosition(tp);
+                baseData.removeEnemyBase(enemyBaseCandidate);
+            }
         }
     }
 
@@ -391,28 +396,33 @@ public class InformationManager {
                 continue;
             }
             UnitType unitType = unit.getType();
+            TilePosition tp = unit.getTilePosition();
 
 
             if (unit.isVisible() && unitType.isBuilding()) {
                 enemyBuildings.add(unit);
-                scoutData.addEnemyBuildingLocation(unit.getTilePosition());
+                scoutData.addEnemyBuildingLocation(tp);
                 if (isHostileBuildingToGround(unitType)) {
                     enemyHostileToGroundBuildings.add(unit);
                 }
 
                 // If enemyBase is unknown and this is our first time encountering an enemyUnit, set enemyBase
                 if (baseData.getMainEnemyBase() == null) {
-                    Base enemyMainCandidate = closestBaseToUnit(unit, startingBasesSet.stream().collect(Collectors.toList()));
+                    Base enemyMainCandidate = closestBaseToUnit(unit, new ArrayList<>(startingBasesSet));
                     // If enemy main is unknown and closest main is ours, probably a cheese
-                    // TODO: Handle cheese
+                    // TODO: Handle cheese, detect proxy
                     if (enemyMainCandidate == baseData.getMainBase()) {
                         continue;
                     }
-                    baseData.setMainEnemyBase(enemyMainCandidate);
+                    baseData.addEnemyBase(enemyMainCandidate);
+                }
+
+                if (unitType.isResourceDepot() && baseData.isBaseTilePosition(tp)) {
+                    Base enemyBaseCandidate = baseData.baseAtTilePosition(tp);
+                    baseData.addEnemyBase(enemyBaseCandidate);
                 }
             }
         }
-
     }
 
     private boolean canSeeEnemyBuilding() {
