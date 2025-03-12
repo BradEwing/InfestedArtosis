@@ -3,16 +3,16 @@ import bwapi.Game;
 import bwapi.Position;
 import bwapi.Text;
 import bwapi.TilePosition;
-import bwapi.Unit;
 import bwapi.UnitType;
 import bwem.BWEM;
 import bwem.Base;
+import info.BaseData;
 import info.GameState;
 import info.UnitTypeCount;
 import info.map.GroundPath;
 import info.map.MapTile;
-import learning.OpponentRecord;
 import learning.OpenerRecord;
+import learning.OpponentRecord;
 import learning.StrategyRecord;
 import strategy.openers.Opener;
 
@@ -41,13 +41,7 @@ public class Debug {
     }
 
     public void onFrame() {
-        // Draw bases
-        for (final Base b : bwem.getMap().getBases()) {
-            game.drawBoxMap(
-                    b.getLocation().toPosition(),
-                    b.getLocation().toPosition().add(new Position(127, 95)),
-                    Color.Blue);
-        }
+        drawBases();
 
         game.drawTextScreen(4, 8, "Opponent: " + opponentRecord.getName() + " " + getOpponentRecord());
         game.drawTextScreen(4, 16, "GameMap: " + game.mapFileName());
@@ -56,9 +50,33 @@ public class Debug {
         game.drawTextScreen(4, 40, "Frame: " + game.getFrameCount());
 
         drawUnitCount();
-        drawBases();
         //debugGameMap();
         //drawAllBasePaths();
+    }
+
+    private void drawBases() {
+        BaseData baseData = gameState.getBaseData();
+        for (final Base b : baseData.getMyBases()) {
+            game.drawBoxMap(
+                    b.getLocation().toPosition(),
+                    b.getLocation().toPosition().add(new Position(127, 95)),
+                    Color.Blue
+            );
+        }
+        for (final Base b : baseData.availableBases()) {
+            game.drawBoxMap(
+                    b.getLocation().toPosition(),
+                    b.getLocation().toPosition().add(new Position(127, 95)),
+                    Color.White
+            );
+        }
+        for (final Base b : baseData.getEnemyBases()) {
+            game.drawBoxMap(
+                    b.getLocation().toPosition(),
+                    b.getLocation().toPosition().add(new Position(127, 95)),
+                    Color.Red
+            );
+        }
     }
 
     private void drawUnitCount() {
@@ -70,12 +88,6 @@ public class Debug {
         for (Map.Entry<UnitType, Integer> entry: unitTypeCount.getCountLookup().entrySet()) {
             y += 8;
             game.drawTextScreen(x, y, entry.getKey().toString() + ": " + entry.getValue().toString());
-        }
-    }
-
-    private void drawBases() {
-        for (Unit u: gameState.getBaseData().baseHatcheries()) {
-            game.drawCircleMap(u.getPosition(), BASE_MINERAL_DISTANCE, Color.Teal);
         }
     }
 

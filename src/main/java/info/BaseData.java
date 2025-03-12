@@ -7,12 +7,14 @@ import info.exception.NoWalkablePathException;
 import info.map.GameMap;
 import info.map.GroundPath;
 import info.map.GroundPathComparator;
+import lombok.Getter;
 import util.BaseUnitDistanceComparator;
 
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -23,32 +25,25 @@ public class BaseData {
 
     private Base mainBase;
     private Base naturalExpansion;
-
     private Base mainEnemyBase;
-
     private HashSet<Unit> macroHatcheries = new HashSet<>();
     private HashSet<Unit> baseHatcheries = new HashSet<>();
-
     private HashSet<Base> allBases = new HashSet<>();
+    @Getter
     private HashSet<Base> myBases = new HashSet<>();
     private HashSet<Base> reservedBases = new HashSet<>();
+    @Getter
     private HashSet<Base> enemyBases = new HashSet<>();
     private HashSet<Base> islands = new HashSet<>();
     private HashSet<Base> mineralOnlyBase = new HashSet<>();
     private HashSet<Base> mains = new HashSet<>();
-
     private HashMap<Unit, Base> baseLookup = new HashMap<>();
     private HashSet<TilePosition> baseTilePositionSet = new HashSet<>();
     private HashMap<TilePosition, Base> baseTilePositionLookup = new HashMap<>();
-
     private HashMap<Base, GroundPath> allBasePaths = new HashMap<>();
     private HashMap<Base, GroundPath> availableBases = new HashMap<>();
-
     private HashSet<Unit> extractors = new HashSet<>();
     private HashSet<Unit> availableGeysers = new HashSet<>();
-
-    // Sunken Colony Tracking
-    // Only take 1 per base for now
     private HashMap<Base, Unit> sunkenColonyLookup = new HashMap<>();
     private int reservedSunkenColonies = 0;
 
@@ -105,6 +100,10 @@ public class BaseData {
         }
 
         base.getGeysers().stream().forEach(g -> availableGeysers.add(g.getUnit()));
+    }
+
+    public Set<Base> availableBases() {
+        return availableBases.keySet();
     }
 
     public boolean canReserveExtractor() { return availableGeysers.size() > 0; }
@@ -282,10 +281,38 @@ public class BaseData {
         return mainEnemyBase;
     }
 
-    public void setMainEnemyBase(Base base) {
-        mainEnemyBase = base;
-        enemyBases.add(base);
-        availableBases.remove(base);
+    /**
+     * Adds an enemy base to the tracking structures.
+     * @param base The enemy base to add.
+     */
+    public void addEnemyBase(Base base) {
+        if (enemyBases.add(base)) {
+            availableBases.remove(base);
+            reservedBases.remove(base);
+            // Automatically set as main enemy base if it's a starting location and not already set
+            if (mains.contains(base) && mainEnemyBase == null) {
+                mainEnemyBase = base;
+            }
+        }
+    }
+
+    /**
+     * Removes an enemy base from tracking and makes it available if accessible.
+     * @param base The enemy base to remove.
+     */
+    public void removeEnemyBase(Base base) {
+        if (enemyBases.remove(base)) {
+            if (base == mainEnemyBase) {
+                mainEnemyBase = null;
+            }
+            // Re-add to available bases if not an island
+            if (!islands.contains(base)) {
+                GroundPath path = allBasePaths.get(base);
+                if (path != null) {
+                    availableBases.put(base, path);
+                }
+            }
+        }
     }
 
     public boolean knowEnemyMainBase() { return mainEnemyBase != null; }
