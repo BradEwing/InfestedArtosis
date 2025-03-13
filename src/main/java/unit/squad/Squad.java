@@ -121,7 +121,7 @@ public class Squad implements Comparable<Squad> {
      * If 25% of the squad is more than 1.5x the average distance from the center, regroup toward the center.
      */
     private boolean grouped() {
-        if (this.size() < 2) {
+        if (this.size() < 3) {
             return true;
         }
         List<Double> distances = new ArrayList<>();

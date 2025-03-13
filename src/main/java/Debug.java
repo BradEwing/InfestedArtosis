@@ -125,11 +125,12 @@ public class Debug {
 
     private void debugGameMap() {
         for (MapTile mapTile : gameState.getGameMap().getHeatMap()) {
-            game.drawTextMap(
-                    (mapTile.getTile().getX() * 32) + 8,
-                    (mapTile.getTile().getY() * 32) + 8,
-                    String.valueOf(mapTile.isBuildable()),
-                    Text.White);
+            if (mapTile.isBuildable()) {
+                game.drawBoxMap(
+                        (mapTile.getTile().toPosition()),
+                        (mapTile.getTile().add(new TilePosition(1,1)).toPosition()),
+                        Color.White);
+            }
         }
     }
 }

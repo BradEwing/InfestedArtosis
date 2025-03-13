@@ -152,13 +152,13 @@ public class GameMap {
 
         // Add cardinal neighbors
         // N
-        if (isValidTile(currentX, currentY+1) && mapTiles[currentX][currentY+1].isBuildable()) neighbors.add(mapTiles[currentX][currentY+1]);
+        if (isValidTile(currentX, currentY+1) && mapTiles[currentX][currentY+1].isWalkable()) neighbors.add(mapTiles[currentX][currentY+1]);
         // S
-        if (isValidTile(currentX, currentY-1) && mapTiles[currentX][currentY-1].isBuildable()) neighbors.add(mapTiles[currentX][currentY-1]);
+        if (isValidTile(currentX, currentY-1) && mapTiles[currentX][currentY-1].isWalkable()) neighbors.add(mapTiles[currentX][currentY-1]);
         // W
-        if (isValidTile(currentX-1, currentY) && mapTiles[currentX-1][currentY].isBuildable()) neighbors.add(mapTiles[currentX-1][currentY]);
+        if (isValidTile(currentX-1, currentY) && mapTiles[currentX-1][currentY].isWalkable()) neighbors.add(mapTiles[currentX-1][currentY]);
         // E
-        if (isValidTile(currentX+1, currentY) && mapTiles[currentX+1][currentY].isBuildable()) neighbors.add(mapTiles[currentX+1][currentY]);
+        if (isValidTile(currentX+1, currentY) && mapTiles[currentX+1][currentY].isWalkable()) neighbors.add(mapTiles[currentX+1][currentY]);
 
         return neighbors;
     }

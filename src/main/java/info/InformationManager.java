@@ -575,13 +575,13 @@ public class InformationManager {
                 TilePosition tp = new TilePosition(x,y);
                 MapTile mapTile;
                 if (startingPositions.contains(tp)) {
-                    mapTile = new MapTile(tp, 2, true, MapTileType.BASE_START);
+                    mapTile = new MapTile(tp, 2, true, true, MapTileType.BASE_START);
                 } else if (expansionPositions.contains(tp)) {
-                    mapTile = new MapTile(tp, 1, true, MapTileType.BASE_EXPANSION);
+                    mapTile = new MapTile(tp, 1, true, true, MapTileType.BASE_EXPANSION);
                 } else if (resourcePositions.contains(tp)) {
-                    mapTile = new MapTile(tp, 0, false, MapTileType.NORMAL);
+                    mapTile = new MapTile(tp, 0, false, false, MapTileType.NORMAL);
                 } else {
-                    mapTile = new MapTile(tp, 0, this.isBuildable(tp), MapTileType.NORMAL);
+                    mapTile = new MapTile(tp, 0, this.isBuildable(tp), this.isWalkable(tp), MapTileType.NORMAL);
                 }
                 gameMap.addTile(mapTile, x, y);
             }
@@ -590,8 +590,7 @@ public class InformationManager {
         gameState.setGameMap(gameMap);
     }
 
-    // Iterates over all walk positions in a tile
-    private boolean isBuildable(TilePosition tp) {
+    private boolean isWalkable(TilePosition tp) {
         WalkPosition wp = tp.toWalkPosition();
         for (int x = 0; x < 4; x++) {
             for (int y = 0; y < 4; y++) {
@@ -602,6 +601,14 @@ public class InformationManager {
         }
 
         return true;
+    }
+
+    // Iterates over all walk positions in a tile
+    private boolean isBuildable(TilePosition tp) {
+        if (this.isWalkable(tp)) {
+            return false;
+        }
+        return game.isBuildable(tp);
     }
 
     private void ageHeatMap() {
