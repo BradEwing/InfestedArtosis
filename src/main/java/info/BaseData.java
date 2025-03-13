@@ -216,38 +216,69 @@ public class BaseData {
     public Base baseAtTilePosition(TilePosition tilePosition) { return baseTilePositionLookup.get(tilePosition); }
 
     /**
-     * Finds a new base. Searches for the closest unclaimed base by ground distance.
+     * Finds a new base.
      *
-     * If this is the second base, mineral only bases will be excluded from consideration. Used to take the natural
-     * correctly on maps like Andromeda.
+     * <p>The algorithm selects an unclaimed base that is:
+     * <ul>
+     *   <li>Closest to our main base (i.e., minimal ground path distance)
+     *   <li>If the enemy's main base is known, also as far from the enemy as possible.
+     * </ul>
      *
-     * Returns null if no bases are available. A base is considered an island if the distance is infinitely far away.
-     * @return
+     * <p>If enemy main base is known, for each candidate base a score is computed as:
+     * <br>
+     *     score = (ground path distance from main base) - (Euclidean distance to enemy main base)
+     * <br>
+     * A lower score indicates a candidate that is near our main base and far from the enemy.
+     *
+     * <p>If the enemy main base is not known, the candidate with the smallest ground path distance is chosen.
+     *
+     * <p>Note: When selecting the natural expansion (i.e., when only one base exists),
+     * mineral-only bases (without geysers) are skipped.
+     *
+     * <p>Islands (bases with no walkable ground path) are excluded since they are not present in availableBases.
+     *
+     * @return the best candidate base according to the criteria, or null if no valid base is available.
      */
     public Base findNewBase() {
-        // Islands are not included in sorted because their path distance is infinite.
-        List<Map.Entry<Base, GroundPath>> potential =
-                this.availableBases.entrySet()
-                        .stream()
-                        .filter(p -> !reservedBases.contains(p.getKey()))
-                        .sorted(Map.Entry.comparingByValue(new GroundPathComparator()))
-                        .collect(Collectors.toList());
+        // Build a list of candidate bases that are not already reserved.
+        List<Map.Entry<Base, GroundPath>> potential = this.availableBases.entrySet()
+                .stream()
+                .filter(p -> !reservedBases.contains(p.getKey()))
+                .collect(Collectors.toList());
 
+        // If only one base exists, skip bases with no geysers (mineral-only bases)
+        if (this.myBases.size() == 1) {
+            potential = potential.stream()
+                    .filter(e -> (!e.getKey().getGeysers().isEmpty()))
+                    .collect(Collectors.toList());
+        }
 
-        if (potential == null || potential.size() == 0) {
+        if (potential.isEmpty()) {
             return null;
         }
 
-        for (int i = 0; i < potential.size(); i++) {
-            Base candidate = potential.get(i).getKey();
-            if (this.myBases.size() == 1 && candidate.getGeysers().size() == 0) {
-                continue;
-            }
-            return candidate;
+        if (knowEnemyMainBase()) {
+            Base enemyBase = getMainEnemyBase();
+            // Compute a score for each candidate: lower is better.
+            // score = (ground path distance from main base) - (Euclidean distance to enemy main base)
+            // This favors bases that are near our main base and far from the enemy.
+            return potential.stream()
+                    .min((e1, e2) -> {
+                        double score1 = e1.getValue().getGroundDistance() -
+                                e1.getKey().getLocation().getDistance(enemyBase.getLocation());
+                        double score2 = e2.getValue().getGroundDistance() -
+                                e2.getKey().getLocation().getDistance(enemyBase.getLocation());
+                        return Double.compare(score1, score2);
+                    })
+                    .map(Map.Entry::getKey)
+                    .orElse(null);
+        } else {
+            // Otherwise, sort solely by the ground path distance from our main base.
+            potential.sort(Map.Entry.comparingByValue(new GroundPathComparator()));
+            return potential.get(0).getKey();
         }
-
-        return null;
     }
+
 
     // TODO: Track by creep colony
     // Called for onUnitComplete
