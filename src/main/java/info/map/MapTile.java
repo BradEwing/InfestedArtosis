@@ -14,6 +14,8 @@ public class MapTile {
     @NonNull
     private boolean isBuildable;
     @NonNull
+    private boolean isWalkable;
+    @NonNull
     private MapTileType type;
 
     @Override
