@@ -148,14 +148,14 @@ public class Squad implements Comparable<Squad> {
 
         int x_threshold = 100 + (size() * this.getType().width());
         int y_threshold = 100 + (size() * this.getType().height());
-        final boolean lowOutliers = outliers / this.size() < 0.25;
+        final boolean lowOutliers = (double) outliers / this.size() < 0.25;
         final boolean lowEccentricity = max_dx < x_threshold && max_dy < y_threshold;
 
         return lowOutliers || lowEccentricity;
     }
 
     private void checkRegroup() {
-        boolean grouped = this.grouped();
+        boolean grouped = true;
         if (status == SquadStatus.FIGHT && !grouped) {
             status = SquadStatus.REGROUP;
             for (ManagedUnit u: members) {
