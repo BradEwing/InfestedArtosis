@@ -139,10 +139,9 @@ public class GameMap {
     /**
      * Returns neighbor tiles of current that can be considered for ground based path-finding.
      *
-     * TODO: Don't consider diagonal candidate if it can't be reached by at least 1 cardinal direction
      *
-     * @param current
-     * @return
+     * @param current MapTile to find neighbors for
+     * @return valid MapTile neighbors
      */
     private List<MapTile> getNeighbors(MapTile current) {
         List<MapTile> neighbors = new ArrayList<>();
@@ -150,15 +149,75 @@ public class GameMap {
         final int currentX = current.getX();
         final int currentY = current.getY();
 
-        // Add cardinal neighbors
-        // N
-        if (isValidTile(currentX, currentY+1) && mapTiles[currentX][currentY+1].isWalkable()) neighbors.add(mapTiles[currentX][currentY+1]);
-        // S
-        if (isValidTile(currentX, currentY-1) && mapTiles[currentX][currentY-1].isWalkable()) neighbors.add(mapTiles[currentX][currentY-1]);
-        // W
-        if (isValidTile(currentX-1, currentY) && mapTiles[currentX-1][currentY].isWalkable()) neighbors.add(mapTiles[currentX-1][currentY]);
-        // E
-        if (isValidTile(currentX+1, currentY) && mapTiles[currentX+1][currentY].isWalkable()) neighbors.add(mapTiles[currentX+1][currentY]);
+        // Flags to keep track of walkable cardinal neighbors.
+        boolean northWalkable = false;
+        boolean southWalkable = false;
+        boolean eastWalkable  = false;
+        boolean westWalkable  = false;
+
+        // Cardinal neighbors
+        // North
+        if (isValidTile(currentX, currentY + 1)) {
+            MapTile north = mapTiles[currentX][currentY + 1];
+            if (north.isWalkable()) {
+                neighbors.add(north);
+                northWalkable = true;
+            }
+        }
+        // South
+        if (isValidTile(currentX, currentY - 1)) {
+            MapTile south = mapTiles[currentX][currentY - 1];
+            if (south.isWalkable()) {
+                neighbors.add(south);
+                southWalkable = true;
+            }
+        }
+        // West
+        if (isValidTile(currentX - 1, currentY)) {
+            MapTile west = mapTiles[currentX - 1][currentY];
+            if (west.isWalkable()) {
+                neighbors.add(west);
+                westWalkable = true;
+            }
+        }
+        // East
+        if (isValidTile(currentX + 1, currentY)) {
+            MapTile east = mapTiles[currentX + 1][currentY];
+            if (east.isWalkable()) {
+                neighbors.add(east);
+                eastWalkable = true;
+            }
+        }
+
+        // Diagonal neighbors:
+        // Northeast
+        if (isValidTile(currentX + 1, currentY + 1)) {
+            MapTile ne = mapTiles[currentX + 1][currentY + 1];
+            if (ne.isWalkable() && (northWalkable || eastWalkable)) {
+                neighbors.add(ne);
+            }
+        }
+        // Northwest
+        if (isValidTile(currentX - 1, currentY + 1)) {
+            MapTile nw = mapTiles[currentX - 1][currentY + 1];
+            if (nw.isWalkable() && (northWalkable || westWalkable)) {
+                neighbors.add(nw);
+            }
+        }
+        // Southeast
+        if (isValidTile(currentX + 1, currentY - 1)) {
+            MapTile se = mapTiles[currentX + 1][currentY - 1];
+            if (se.isWalkable() && (southWalkable || eastWalkable)) {
+                neighbors.add(se);
+            }
+        }
+        // Southwest
+        if (isValidTile(currentX - 1, currentY - 1)) {
+            MapTile sw = mapTiles[currentX - 1][currentY - 1];
+            if (sw.isWalkable() && (southWalkable || westWalkable)) {
+                neighbors.add(sw);
+            }
+        }
 
         return neighbors;
     }
