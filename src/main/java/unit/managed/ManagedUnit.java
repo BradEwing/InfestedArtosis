@@ -506,4 +506,23 @@ public class ManagedUnit {
         }
         role = UnitRole.IDLE;
     }
+
+    /**
+     * Finds the closest enemy unit within the unit' attack range.
+     */
+    protected Unit findClosestEnemyInRange() {
+        Unit closest = null;
+        double closestDistance = Double.MAX_VALUE;
+
+        for (Unit enemy : game.getUnitsInRadius(unit.getPosition(), weaponRange(unit))) {
+            if (enemy.getPlayer().isEnemy(game.self()) && enemy.isTargetable()) {
+                double enemyDistance = unit.getDistance(enemy);
+                if (enemyDistance < closestDistance) {
+                    closest = enemy;
+                    closestDistance = enemyDistance;
+                }
+            }
+        }
+        return closest;
+    }
 }
