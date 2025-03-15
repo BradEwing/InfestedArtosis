@@ -40,6 +40,13 @@ public class Lurker extends ManagedUnit {
                 targetOutOfRangeFrames = 0;
             }
 
+            // Find a closer enemy unit
+            Unit closestEnemy = findClosestEnemyInRange();
+            if (closestEnemy != null && closestEnemy != fightTarget) {
+                fightTarget = closestEnemy;
+                noAttackFrames = 0;
+            }
+
             // Check if attacking
             int cooldown = unit.getGroundWeaponCooldown();
             if (cooldown == 0) {
@@ -65,12 +72,13 @@ public class Lurker extends ManagedUnit {
 
     @Override
     protected void retreat() {
-        if (unit.isBurrowed()) {
-            this.setUnready();
-            unburrowAndReset();
+        this.setUnready();
+        this.setRole(UnitRole.FIGHT);
+        if (unit.isBurrowed() && !unit.isUnderAttack()) {
             return;
         }
-        this.setRole(UnitRole.FIGHT);
+
+        unit.burrow();
     }
 
     @Override
