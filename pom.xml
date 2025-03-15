@@ -6,7 +6,7 @@
 
     <groupId>com.github.InfestedArtosis</groupId>
     <artifactId>InfestedArtosis</artifactId>
-    <version>0.36</version>
+    <version>0.37</version>
 
     <repositories>
         <repository>
