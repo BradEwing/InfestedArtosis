@@ -15,6 +15,8 @@ import info.map.GameMap;
 import info.map.MapTile;
 import info.map.MapTileScoutImportanceComparator;
 import info.map.MapTileType;
+import info.tracking.ObservedUnitTracker;
+import lombok.Getter;
 import macro.plan.Plan;
 import macro.plan.PlanType;
 import strategy.strategies.UnitWeights;
@@ -42,15 +44,13 @@ public class InformationManager {
     private HashSet<Base> expansionBasesSet = new HashSet<>();
     private HashSet<TilePosition> startingBasesTilePositions = new HashSet<>();
 
+    @Getter
     private HashSet<Unit> enemyBuildings = new HashSet<>();
     private HashSet<Unit> enemyHostileToGroundBuildings = new HashSet<>();
+    @Getter
     private HashSet<Unit> visibleEnemyUnits = new HashSet<>();
 
     private HashMap<Unit, TilePosition> enemyLastKnownLocations = new HashMap<>();
-
-    // TODO: Refactor to BaseData
-    private Base myBase;
-
     private HashMap<TilePosition, Base> tilePositionToBaseLookup = new HashMap<>();
 
 
@@ -94,6 +94,9 @@ public class InformationManager {
                 || unitType == UnitType.Unknown) {
             return;
         }
+
+        ObservedUnitTracker tracker = gameState.getObservedUnitTracker();
+        tracker.onUnitHide(unit, game.getFrameCount());
 
         enemyLastKnownLocations.put(unit, unit.getTilePosition());
     }
@@ -164,6 +167,10 @@ public class InformationManager {
             return;
         }
 
+        ObservedUnitTracker tracker = gameState.getObservedUnitTracker();
+        tracker.onUnitShow(unit, game.getFrameCount());
+
+
         if (enemyLastKnownLocations.containsKey(unit)) {
             enemyLastKnownLocations.remove(unit);
         }
@@ -190,7 +197,6 @@ public class InformationManager {
         UnitTypeCount unitCount = gameState.getUnitTypeCount();
         unitCount.addUnit(unitType);
         unitCount.unplanUnit(unitType);
-        return;
     }
 
     public void onUnitRenegade(Unit unit) {
@@ -273,11 +279,9 @@ public class InformationManager {
                 Base enemyBaseCandidate = baseData.baseAtTilePosition(tp);
                 baseData.removeEnemyBase(enemyBaseCandidate);
             }
+            ObservedUnitTracker tracker = gameState.getObservedUnitTracker();
+            tracker.onUnitDestroy(unit, game.getFrameCount());
         }
-    }
-
-    public boolean isEnemyLocationKnown() {
-        return visibleEnemyUnits.size() + enemyBuildings.size() > 0;
     }
 
     public boolean isEnemyUnitVisible() {
@@ -295,16 +299,8 @@ public class InformationManager {
         return false;
     }
 
-    public HashSet<Unit> getEnemyBuildings() {
-        return enemyBuildings;
-    }
-
     public int getEnemyHostileToGroundBuildingsCount() {
         return enemyHostileToGroundBuildings.size();
-    }
-
-    public HashSet<Unit> getVisibleEnemyUnits() {
-        return visibleEnemyUnits;
     }
 
     /**
@@ -515,25 +511,11 @@ public class InformationManager {
     }
 
     private void initBases() {
-        TilePosition initialHatchery = null;
         ScoutData scoutData = gameState.getScoutData();
 
-        for (Unit unit: game.getAllUnits()) {
-            if (unit.getPlayer() != game.self()) {
-                continue;
-            }
-
-            if (unit.getType() == UnitType.Zerg_Hatchery) {
-                initialHatchery = unit.getTilePosition();
-                break;
-            }
-        }
         for (final Base b : bwem.getMap().getBases()) {
             TilePosition tilePosition = b.getLocation();
             if (b.isStartingLocation()) {
-                if (tilePosition.getX() == initialHatchery.getX() && tilePosition.getY() == initialHatchery.getY()) {
-                    myBase = b;
-                }
                 startingBasesTilePositions.add(tilePosition);
                 tilePositionToBaseLookup.put(tilePosition, b);
                 scoutData.addBaseScoutAssignment(b);
@@ -605,7 +587,7 @@ public class InformationManager {
 
     // Iterates over all walk positions in a tile
     private boolean isBuildable(TilePosition tp) {
-        if (this.isWalkable(tp)) {
+        if (!this.isWalkable(tp)) {
             return false;
         }
         return game.isBuildable(tp);
