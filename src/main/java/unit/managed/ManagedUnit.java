@@ -373,7 +373,7 @@ public class ManagedUnit {
             if (canKite(fightTarget)) {
                 kiteEnemy(fightTarget);
             } else {
-                unit.attack(fightTarget.getPosition());
+                unit.attack(fightTarget);
             }
             return;
         }
@@ -524,5 +524,22 @@ public class ManagedUnit {
             }
         }
         return closest;
+    }
+
+    protected boolean canFightBack(Unit enemy) {
+        if (enemy == null || !enemy.exists()) {
+            return false;
+        }
+        WeaponType enemyWeapon = unit.isFlying() ? enemy.getType().airWeapon() : enemy.getType().groundWeapon();
+        return enemyWeapon != null && enemyWeapon.maxRange() > 0;
+    }
+
+    protected Unit findThreateningEnemy() {
+        for (Unit enemy : game.getUnitsInRadius(unit.getPosition(), weaponRange(unit) + 64)) {
+            if (enemy.getPlayer().isEnemy(game.self()) && enemy.isTargetable() && canFightBack(enemy)) {
+                return enemy; // Return the first dangerous enemy found
+            }
+        }
+        return null;
     }
 }
