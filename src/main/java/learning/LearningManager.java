@@ -170,6 +170,13 @@ public class LearningManager {
      * May tweak this later
      */
     private Opener determineOpener() {
+        if (config.openerOverride != null) {
+            Opener opener = openerFactory.getByName(config.openerOverride);
+            if (opener != null && openerFactory.getPlayableOpeners().contains(opener.getNameString())) {
+                currentOpener = opponentRecord.getOpenerRecord().get(opener.getNameString());
+                return opener;
+            }
+        }
         List<OpenerRecord> openers = opponentRecord.getOpenerRecord()
                 .values()
                 .stream()
