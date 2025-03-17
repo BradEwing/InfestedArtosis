@@ -10,6 +10,7 @@ import bwem.Base;
 import bwem.Mineral;
 import config.Config;
 import info.map.GameMap;
+import info.tracking.ObservedUnitTracker;
 import learning.Decisions;
 import lombok.AccessLevel;
 import lombok.Data;
@@ -87,6 +88,7 @@ public class GameState {
 
     private BaseData baseData;
     private ScoutData scoutData;
+    private ObservedUnitTracker observedUnitTracker = new ObservedUnitTracker();
 
     // Initialized in InformationManager
     private GameMap gameMap;
