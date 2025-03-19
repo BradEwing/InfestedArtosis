@@ -10,7 +10,7 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * Not a standard ZvP opening in bot land, but could augur at DT rush.
+ * Not a standard ZvP opening in bot land, but could augur a DT rush.
  */
 public class OneGateCore extends ProtossBaseStrategy {
     public OneGateCore() {
