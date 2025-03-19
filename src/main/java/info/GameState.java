@@ -1,5 +1,6 @@
 package info;
 
+import bwapi.Game;
 import bwapi.Player;
 import bwapi.Race;
 import bwapi.TilePosition;
@@ -11,6 +12,7 @@ import bwem.Mineral;
 import config.Config;
 import info.map.GameMap;
 import info.tracking.ObservedUnitTracker;
+import info.tracking.StrategyTracker;
 import learning.Decisions;
 import lombok.AccessLevel;
 import lombok.Data;
@@ -35,6 +37,7 @@ import java.util.stream.Collectors;
  */
 @Data
 public class GameState {
+    private Game game;
     private Config config;
     private Player self;
     private BWEM bwem;
@@ -89,12 +92,14 @@ public class GameState {
     private BaseData baseData;
     private ScoutData scoutData;
     private ObservedUnitTracker observedUnitTracker = new ObservedUnitTracker();
+    private StrategyTracker strategyTracker;
 
     // Initialized in InformationManager
     private GameMap gameMap;
 
-    public GameState(Player self, BWEM bwem) {
-        this.self = self;
+    public GameState(Game game, BWEM bwem) {
+        this.game = game;
+        this.self = game.self();
         this.bwem = bwem;
         this.resourceCount = new ResourceCount(self);
         this.baseData = new BaseData(bwem.getMap().getBases());
@@ -114,6 +119,11 @@ public class GameState {
         }
 
         this.opponentRace = opponentRace;
+        this.strategyTracker = new StrategyTracker(game, opponentRace, this.observedUnitTracker);
+    }
+
+    public void onFrame() {
+        strategyTracker.onFrame();
     }
 
     public int numGatherers() {
@@ -290,5 +300,10 @@ public class GameState {
         return managedUnits.stream()
                 .filter(m -> m.getUnitType() == type)
                 .collect(Collectors.toList());
+    }
+
+    public void updateRace(Race race) {
+        opponentRace = race;
+        strategyTracker.updateRace(race);
     }
 }

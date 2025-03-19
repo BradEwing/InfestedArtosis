@@ -2,6 +2,7 @@ package info;
 
 import bwapi.Color;
 import bwapi.Game;
+import bwapi.Race;
 import bwapi.TechType;
 import bwapi.Text;
 import bwapi.TilePosition;
@@ -66,6 +67,7 @@ public class InformationManager {
     }
 
     public void onFrame() {
+        gameState.onFrame();
         ageHeatMap();
 
         checkResearchOnFrame();
@@ -165,6 +167,10 @@ public class InformationManager {
                 || unitType.isSpecialBuilding()
                 || unitType == UnitType.Unknown) {
             return;
+        }
+        if (gameState.getOpponentRace() == Race.Unknown) {
+            Race race = unit.getType().getRace();
+            gameState.updateRace(race);
         }
 
         ObservedUnitTracker tracker = gameState.getObservedUnitTracker();

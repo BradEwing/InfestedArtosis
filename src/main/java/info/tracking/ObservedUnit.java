@@ -3,16 +3,17 @@ package info.tracking;
 import bwapi.TilePosition;
 import bwapi.Unit;
 import lombok.Data;
+import util.Time;
 
 @Data
 public class ObservedUnit {
-    private final int firstObservedFrame;
-    private int lastObservedFrame;
-    private int destroyedFrame;
+    private Time firstObservedFrame;
+    private Time lastObservedFrame;
+    private Time destroyedFrame;
     private TilePosition lastKnownLocation;
     private final Unit unit;
 
-    public ObservedUnit(Unit unit, int currentFrame) {
+    public ObservedUnit(Unit unit, Time currentFrame) {
         this.unit = unit;
         this.firstObservedFrame = currentFrame;
         this.lastObservedFrame = currentFrame;
