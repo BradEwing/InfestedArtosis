@@ -252,7 +252,7 @@ public class ProductionManager {
         return false;
     }
 
-    private void planBuildings(Player self, Boolean isAllIn) {
+    private void planBuildings(Boolean isAllIn) {
         TechProgression techProgression = this.gameState.getTechProgression();
         BaseData baseData = gameState.getBaseData();
 
@@ -493,7 +493,7 @@ public class ProductionManager {
 
     private UnitType getBestUnitToBuild(UnitType initialCandidate) {
         UnitWeights unitWeights = this.gameState.getUnitWeights();
-        UnitTypeCount unitCount = this.gameState.getUnitTypeCount();;
+        UnitTypeCount unitCount = this.gameState.getUnitTypeCount();
         UnitType nextUnit = initialCandidate;
 
         final int numHydralisks = unitCount.get(UnitType.Zerg_Hydralisk);
@@ -522,7 +522,7 @@ public class ProductionManager {
         // Once opener items are exhausted, plan items
         isPlanning = true;
 
-        planBuildings(self, isAllIn);
+        planBuildings(isAllIn);
         planUpgrades(isAllIn);
         planSupply(self);
 
@@ -657,13 +657,13 @@ public class ProductionManager {
     }
 
     private void schedulePlannedItems() {
-        if (productionQueue.size() == 0) {
+        if (productionQueue.isEmpty()) {
             return;
         }
 
         Player self = game.self();
 
-        // Loop through items until we exhaust queue or we break because we can't consume top item
+        // Loop through items until we exhaust queue, or we break because we can't consume top item
         // Call method to attempt to build that type, if we can't build return false and break the loop
 
         HashSet<Plan> scheduledPlans = gameState.getPlansScheduled();
@@ -714,9 +714,7 @@ public class ProductionManager {
         }
 
         // Requeue
-        for (Plan plan : requeuePlans) {
-            productionQueue.add(plan);
-        }
+        productionQueue.addAll(requeuePlans);
     }
 
     // TODO: Refactor this into WorkerManager or a Buildingmanager (TechManager)?
@@ -724,7 +722,7 @@ public class ProductionManager {
     // This is a bit of a HACK until properly maintained
     private void buildUpgrades() {
         HashSet<Plan> scheduledPlans = gameState.getPlansScheduled();
-        if (scheduledPlans.size() == 0) {
+        if (scheduledPlans.isEmpty()) {
             return;
         }
 
@@ -734,6 +732,7 @@ public class ProductionManager {
                 .filter(assignment -> assignment.getValue().getType() == PlanType.UPGRADE)
                 .collect(Collectors.toList());
 
+        // TODO: Move to BuildingManager or PlanManager
         for (Map.Entry<Unit, Plan> entry: scheduledUpgradeAssignments) {
             final Unit unit = entry.getKey();
             final Plan plan = entry.getValue();
@@ -766,6 +765,7 @@ public class ProductionManager {
         for (Map.Entry<Unit, Plan> entry: scheduledTechResearch) {
             final Unit unit = entry.getKey();
             final Plan plan = entry.getValue();
+            // TODO: Move to BuildingManager or PlanManager
             if (researchTech(unit, plan)) {
                 unitsExecutingPlan.add(unit);
                 scheduledPlans.remove(plan);

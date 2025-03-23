@@ -24,6 +24,7 @@ import strategy.openers.Opener;
 import strategy.strategies.Strategy;
 import strategy.strategies.UnitWeights;
 import unit.managed.ManagedUnit;
+import util.Time;
 
 import java.util.HashMap;
 import java.util.HashSet;
@@ -305,5 +306,9 @@ public class GameState {
     public void updateRace(Race race) {
         opponentRace = race;
         strategyTracker.updateRace(race);
+    }
+
+    public Time getGameTime() {
+        return new Time(game.getFrameCount());
     }
 }
