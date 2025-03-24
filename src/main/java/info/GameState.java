@@ -31,6 +31,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import static java.lang.Math.min;
+
 /**
  * Class to handle global state that is shared among various managers.
  *
@@ -73,6 +75,10 @@ public class GameState {
     private HashSet<Plan> plansComplete = new HashSet<>();
     private HashSet<Plan> plansImpossible = new HashSet<>(); // If ProductionManager determines impossible, cancel them in WorkerManager
     private HashMap<Unit, Plan> assignedPlannedItems = new HashMap<>();
+    private int plannedWorkers;
+    private int plannedHatcheries = 1; // Start with 1 because we decrement with initial hatch
+    @Deprecated
+    private int macroHatchMod = 0; // Used for 9HatchInBase Opener
 
     private HashMap<Base, HashSet<ManagedUnit>> gatherersAssignedToBase = new HashMap<>();
 
@@ -310,5 +316,125 @@ public class GameState {
 
     public Time getGameTime() {
         return new Time(game.getFrameCount());
+    }
+
+    public void addPlannedWorker(int numWorkers) {
+        plannedWorkers += numWorkers;
+    }
+
+    public void removePlannedWorker(int numWorkers) {
+        plannedWorkers -= numWorkers;
+    }
+
+    public void addPlannedHatchery(int numHatcheries) {
+        plannedHatcheries += numHatcheries;
+    }
+
+    public void removePlannedHatchery(int numHatcheries) {
+        plannedHatcheries -= numHatcheries;
+    }
+
+    public boolean canPlanDrone() {
+        final int expectedWorkers = expectedWorkers();
+        return plannedWorkers < 3 && numWorkers() < 80 && numWorkers() < expectedWorkers;
+    }
+
+    public int numWorkers() {
+        return mineralWorkers + geyserWorkers;
+    }
+
+    // How many workers we want.
+    // This is pulled from the old ProductionManager. Ideally this is something set more so
+    // by the active strategies.
+    @Deprecated
+    private int expectedWorkers() {
+        final int base = 5;
+        final int expectedMineralWorkers = baseData.currentBaseCount() * 7;
+        final int expectedGasWorkers = geyserAssignments.size() * 3;
+
+        Race race = opponentRace;
+        switch (race) {
+            case Zerg:
+                return min(expectedMineralWorkers, 7) + expectedGasWorkers;
+            default:
+                return base + expectedMineralWorkers + expectedGasWorkers;
+        }
+    }
+
+    // This is pulled from the old ProductionManager. Ideally this is something set more so
+    // by the active strategies.
+    @Deprecated
+    public boolean canPlanHatchery() {
+        if (isAllIn) {
+            return false;
+        }
+
+        if (plannedHatcheries >= 3) {
+            return false;
+        }
+
+        if (opponentRace == Race.Zerg) {
+            final Time FRAME_ZVZ_HATCH_RESTRICT = new Time(7200); // 5m
+            if (getGameTime().lessThanOrEqual(FRAME_ZVZ_HATCH_RESTRICT)) {
+                return false;
+            }
+        }
+
+        if (canAffordHatch()) {
+            return true;
+        }
+
+        if (isNearMaxExpectedWorkers() && canAffordHatchSaturation()) {
+            return true;
+        }
+
+        return false;
+    }
+
+    private boolean canAffordHatchSaturation() {
+        final int numHatcheries = baseData.numHatcheries();
+        return ((numHatcheries + plannedHatcheries) * 7) <= mineralWorkers;
+    }
+
+    private boolean canAffordHatch() {
+        return resourceCount.canAffordHatch(plannedHatcheries);
+    }
+
+    private boolean isNearMaxExpectedWorkers() {
+        return ((expectedWorkers() * (1 + plannedHatcheries)) - numWorkers() < 0);
+    }
+
+    public boolean canPlanExtractor() {
+        return !isAllIn &&
+                techProgression.canPlanExtractor() &&
+                baseData.canReserveExtractor() &&
+                (baseData.numExtractor() < 1 || needExtractor());
+    }
+
+    private boolean needExtractor() {
+        return baseData.numExtractor() < 1 || resourceCount.needExtractor();
+    }
+
+    // TODO: Determine reactive planning of sunken colonies
+    // This will be addressed by plan() in v2.Strategy
+    @Deprecated
+    public boolean canPlanSunkenColony() {
+        return defensiveSunk && techProgression.canPlanSunkenColony() && baseData.canPlanSunkenColony();
+    }
+
+    // Determine by current strategy and reactions
+    @Deprecated
+    public boolean canPlanEvolutionChamber() {
+        if (!techProgression.canPlanEvolutionChamber()) {
+            return false;
+        }
+
+        final int numEvolutionChambers = techProgression.evolutionChambers();
+        final int groundCount = unitTypeCount.groundCount();
+        if (numEvolutionChambers == 0) {
+            return groundCount > 24;
+        } else {
+            return groundCount > 48;
+        }
     }
 }

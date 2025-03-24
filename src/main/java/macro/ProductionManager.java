@@ -2,10 +2,8 @@ package macro;
 
 import bwapi.Game;
 import bwapi.Player;
-import bwapi.Race;
 import bwapi.TechType;
 import bwapi.Text;
-import bwapi.TilePosition;
 import bwapi.Unit;
 import bwapi.UnitType;
 import bwapi.UpgradeType;
@@ -15,17 +13,15 @@ import info.GameState;
 import info.ResourceCount;
 import info.TechProgression;
 import info.UnitTypeCount;
-import macro.plan.BuildingPlan;
 import macro.plan.Plan;
 import macro.plan.PlanComparator;
 import macro.plan.PlanState;
 import macro.plan.PlanType;
-import macro.plan.TechPlan;
 import macro.plan.UnitPlan;
-import macro.plan.UpgradePlan;
 import strategy.openers.Opener;
 import strategy.openers.OpenerName;
-import strategy.strategies.UnitWeights;
+import strategy.v2.Legacy;
+import strategy.v2.Strategy;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -34,8 +30,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.PriorityQueue;
 import java.util.stream.Collectors;
-
-import static java.lang.Math.min;
 
 /**
  * Manages the production of units, buildings, upgrades and research.
@@ -57,23 +51,24 @@ public class ProductionManager {
     private int scheduledBuildings = 0;
 
     private int currentFrame = 5;
-    private int plannedHatcheries = 1; // Start with 1 because we decrement with initial hatch
-    private int plannedWorkers = 0;
-
-    private int macroHatchMod = 0;
 
     private PriorityQueue<Plan> productionQueue = new PriorityQueue<>(new PlanComparator());
+
+    // TODO: Determine if only 1 active strategy, or if multiple can be active at once.
+    private Strategy activeStrategy;
 
     public ProductionManager(Game game, GameState gameState, List<Plan> initialBuildOrder) {
         this.game = game;
         this.gameState = gameState;
+
+        this.activeStrategy = new Legacy();
 
         init(initialBuildOrder);
     }
 
     private boolean firstHatchInBase(Opener opener) {
         if (opener.getName() == OpenerName.NINE_HATCH_IN_BASE) {
-            macroHatchMod = 1;
+            gameState.setMacroHatchMod(1);
             return true;
         }
 
@@ -90,7 +85,6 @@ public class ProductionManager {
                 plan.setBuildPosition(geyser.getTilePosition());
             }
 
-            // TODO: be able to decide between base hatch and macro hatch
             if (plan.getPlannedUnit() != null && plan.getPlannedUnit() == UnitType.Zerg_Hatchery) {
                 if (!firstHatchInBase(opener)) {
                     Base base = gameState.reserveBase();
@@ -99,7 +93,7 @@ public class ProductionManager {
             }
 
             if (plan.getPlannedUnit() != null && plan.getPlannedUnit() == UnitType.Zerg_Drone) {
-                plannedWorkers += 1;
+                gameState.addPlannedWorker(1);
             }
 
             if (plan.getPlannedUnit() != null && plan.getPlannedUnit() == UnitType.Zerg_Spawning_Pool) {
@@ -167,16 +161,6 @@ public class ProductionManager {
         }
     }
 
-    private void planBase() {
-        Base base = gameState.reserveBase();
-        // all possible bases are taken!
-        if (base == null) {
-            return;
-        }
-
-        productionQueue.add(new BuildingPlan(UnitType.Zerg_Hatchery, 2, true, base.getLocation()));
-    }
-
     // debug console messaging goes here
     private void debug() {
         debugProductionQueue();
@@ -186,7 +170,6 @@ public class ProductionManager {
 
     // TODO: Determine why some workers go and stay idle
     public void onFrame() {
-
         debug();
 
         currentFrame = game.getFrameCount();
@@ -202,250 +185,6 @@ public class ProductionManager {
             }
         }
     }
-
-    private boolean canPlanDrone() {
-        final int expectedWorkers = expectedWorkers();
-        return plannedWorkers < 3 && numWorkers() < 80 && numWorkers() < expectedWorkers;
-    }
-
-    private int expectedWorkers() {
-        final int base = 5;
-        final int expectedMineralWorkers = gameState.getBaseData().currentBaseCount() * 7;
-        final int expectedGasWorkers = gameState.getGeyserAssignments().size() * 3;
-
-        Race race = gameState.getOpponentRace();
-        switch (race) {
-            case Zerg:
-                return min(expectedMineralWorkers, 7) + expectedGasWorkers;
-            default:
-                return base + expectedMineralWorkers + expectedGasWorkers;
-        }
-    }
-
-    private int numWorkers() {
-        return gameState.getMineralWorkers() + gameState.getGeyserWorkers();
-    }
-
-    private boolean canPlanHatchery(boolean isAllIn) {
-        if (isAllIn) {
-             return false;
-        }
-
-        if (plannedHatcheries >= 3) {
-            return false;
-        }
-
-        if (gameState.getOpponentRace() == Race.Zerg) {
-            if (currentFrame <= FRAME_ZVZ_HATCH_RESTRICT) {
-                return false;
-            }
-        }
-
-        if (canAffordHatch()) {
-            return true;
-        }
-
-        if (isNearMaxExpectedWorkers() && canAffordHatchSaturation()) {
-            return true;
-        }
-
-        return false;
-    }
-
-    private void planBuildings(Boolean isAllIn) {
-        TechProgression techProgression = this.gameState.getTechProgression();
-        BaseData baseData = gameState.getBaseData();
-
-        if (canPlanHatchery(isAllIn)) {
-            plannedHatcheries += 1;
-            final int numHatcheries = gameState.getBaseData().numHatcheries();
-            if ((numHatcheries % 2) != macroHatchMod) {
-                planBase();
-            } else {
-                Plan plan = new BuildingPlan(UnitType.Zerg_Hatchery, 2, true);
-                productionQueue.add(plan);
-            }
-        }
-
-        if (canPlanExtractor(isAllIn)) {
-            Plan plan = new BuildingPlan(UnitType.Zerg_Extractor, currentFrame, true);
-            Unit geyser = baseData.reserveExtractor();
-            plan.setBuildPosition(geyser.getTilePosition());
-            productionQueue.add(plan);
-        }
-
-
-
-        // Build at 10 workers if not part of initial build order
-        if (techProgression.canPlanPool()) {
-            productionQueue.add(new BuildingPlan(UnitType.Zerg_Spawning_Pool, currentFrame, true));
-            techProgression.setPlannedSpawningPool(true);
-        }
-
-        if (isAllIn) {
-            return;
-        }
-
-        if (canPlanSunkenColony(techProgression, baseData)) {
-            TilePosition tp = baseData.reserveSunkenColony();
-            tp = game.getBuildLocation(UnitType.Zerg_Creep_Colony, tp, 128, true);
-            Plan creepColonyPlan = new BuildingPlan(UnitType.Zerg_Creep_Colony, currentFrame-2, true);
-            Plan sunkenColonyPlan = new BuildingPlan(UnitType.Zerg_Sunken_Colony, currentFrame-1, true);
-            creepColonyPlan.setBuildPosition(tp);
-            sunkenColonyPlan.setBuildPosition(tp);
-            productionQueue.add(creepColonyPlan);
-            productionQueue.add(sunkenColonyPlan);
-        }
-
-        UnitWeights unitWeights = this.gameState.getUnitWeights();
-
-        if (gameState.canPlanHydraliskDen()) {
-            productionQueue.add(new BuildingPlan(UnitType.Zerg_Hydralisk_Den, currentFrame, true));
-            techProgression.setPlannedDen(true);
-        }
-
-        if (canPlanEvolutionChamber(techProgression)) {
-            productionQueue.add(new BuildingPlan(UnitType.Zerg_Evolution_Chamber, currentFrame,true));
-            final int currentEvolutionChambers = techProgression.evolutionChambers();
-            techProgression.setPlannedEvolutionChambers(currentEvolutionChambers+1);
-        }
-        
-        if (gameState.canPlanLair()) {
-            productionQueue.add(new BuildingPlan(UnitType.Zerg_Lair, currentFrame, false));
-            techProgression.setPlannedLair(true);
-        }
-
-        if (techProgression.canPlanSpire() && unitWeights.hasUnit(UnitType.Zerg_Mutalisk)) {
-            productionQueue.add(new BuildingPlan(UnitType.Zerg_Spire, currentFrame, true));
-            techProgression.setPlannedSpire(true);
-        }
-
-        if (gameState.canPlanQueensNest()) {
-            productionQueue.add(new BuildingPlan(UnitType.Zerg_Queens_Nest, currentFrame, true));
-            techProgression.setPlannedQueensNest(true);
-        }
-
-        if (gameState.canPlanHive()) {
-            productionQueue.add(new BuildingPlan(UnitType.Zerg_Hive, currentFrame, true));
-            techProgression.setPlannedHive(true);
-        }
-    }
-
-    private boolean canPlanEvolutionChamber(TechProgression techProgression) {
-        UnitTypeCount count = gameState.getUnitTypeCount();
-        if (!techProgression.canPlanEvolutionChamber()) {
-            return false;
-        }
-
-        final int numEvolutionChambers = techProgression.evolutionChambers();
-        final int groundCount = count.groundCount();
-        if (numEvolutionChambers == 0) {
-            return groundCount > 24;
-        } else {
-            return groundCount > 48;
-        }
-    }
-
-    // TODO: Determine reactive planning of sunken colonies
-    private boolean canPlanSunkenColony(TechProgression techProgression, BaseData baseData) {
-        boolean defensiveSunk = gameState.isDefensiveSunk();
-        return defensiveSunk && techProgression.canPlanSunkenColony() && baseData.canPlanSunkenColony();
-    }
-
-    private boolean canPlanExtractor(Boolean isAllIn) {
-        BaseData baseData = gameState.getBaseData();
-        TechProgression techProgression = gameState.getTechProgression();
-
-        return !isAllIn &&
-                techProgression.canPlanExtractor() &&
-                baseData.canReserveExtractor() &&
-                (baseData.numExtractor() < 1 || needExtractor());
-    }
-
-    private boolean needExtractor() {
-        BaseData baseData = gameState.getBaseData();
-        ResourceCount resourceCount = gameState.getResourceCount();
-        return baseData.numExtractor() < 1 || resourceCount.needExtractor();
-    }
-
-    /**
-     * Plan to take an upgrade.
-     *
-     * Does not plan if there is no gas; all upgrades require gas.
-     *
-     * TODO: Track when an upgrade completes
-     *
-     * NOTE: Potential for reinforcement learning to search when to take an upgrade against an opponent.
-     * @param isAllIn
-     */
-    private void planUpgrades(Boolean isAllIn) {
-        BaseData baseData = gameState.getBaseData();
-
-        if (baseData.numExtractor() == 0 || isAllIn) {
-            return;
-        }
-
-        TechProgression techProgression = this.gameState.getTechProgression();
-        UnitTypeCount unitTypeCount = gameState.getUnitTypeCount();
-
-        /** Ling Upgrades **/
-        final int numZerglings = unitTypeCount.get(UnitType.Zerg_Zergling);
-        if (techProgression.canPlanMetabolicBoost() && numZerglings > 8) {
-            productionQueue.add(new UpgradePlan(UpgradeType.Metabolic_Boost, currentFrame, false));
-            techProgression.setPlannedMetabolicBoost(true);
-        }
-
-        /** Hydra Upgrades */
-        final int numHydralisks = unitTypeCount.get(UnitType.Zerg_Hydralisk);
-        if (techProgression.canPlanMuscularAugments() && numHydralisks > 4) {
-            productionQueue.add(new UpgradePlan(UpgradeType.Muscular_Augments, currentFrame, false));
-            techProgression.setPlannedMuscularAugments(true);
-        }
-        if (techProgression.canPlanGroovedSpines() && numHydralisks > 10) {
-            productionQueue.add(new UpgradePlan(UpgradeType.Grooved_Spines, currentFrame, false));
-            techProgression.setPlannedGroovedSpines(true);
-        }
-        final UnitWeights unitWeights = this.gameState.getUnitWeights();
-        if (techProgression.canPlanLurker() && unitWeights.hasUnit(UnitType.Zerg_Lurker)) {
-            productionQueue.add(new TechPlan(TechType.Lurker_Aspect, currentFrame, true));
-            techProgression.setPlannedLurker(true);
-        }
-
-
-        /** Evolution Chamber Upgrades **/
-        // Carapace
-        final int evoBuffer = techProgression.evolutionChamberBuffer();
-        if (techProgression.canPlanCarapaceUpgrades() && unitTypeCount.groundCount() > 8) {
-            productionQueue.add(new UpgradePlan(UpgradeType.Zerg_Carapace, currentFrame+evoBuffer, false));
-            techProgression.setPlannedCarapaceUpgrades(true);
-        }
-
-        // Ranged Attack
-        if (techProgression.canPlanRangedUpgrades() && unitTypeCount.rangedCount() > 12) {
-            productionQueue.add(new UpgradePlan(UpgradeType.Zerg_Missile_Attacks, currentFrame+evoBuffer, false));
-            techProgression.setPlannedRangedUpgrades(true);
-        }
-
-        // Melee Attack
-        if (techProgression.canPlanMeleeUpgrades() && unitTypeCount.meleeCount() > 18) {
-            productionQueue.add(new UpgradePlan(UpgradeType.Zerg_Melee_Attacks, currentFrame+evoBuffer, false));
-            techProgression.setPlannedMeleeUpgrades(true);
-        }
-
-        /** Spire Upgrades **/
-        // TODO: Reactively weigh attack vs defense from game state
-        // For now, prefer attack
-        if (techProgression.canPlanFlyerAttack() && unitTypeCount.airCount() > 8) {
-            productionQueue.add(new UpgradePlan(UpgradeType.Zerg_Flyer_Attacks, currentFrame, false));
-            techProgression.setPlannedFlyerAttack(true);
-        }
-        if (techProgression.canPlanFlyerDefense() && unitTypeCount.airCount() > 8) {
-            final int flyerAttackTime = UpgradeType.Zerg_Flyer_Attacks.upgradeTime();
-            productionQueue.add(new UpgradePlan(UpgradeType.Zerg_Flyer_Carapace, currentFrame+1+flyerAttackTime, false));
-            techProgression.setPlannedFlyerDefense(true);
-        }
-    }
-
 
     // planSupply checks if near supply cap or supply blocked
     private void planSupply(Player self) {
@@ -466,45 +205,6 @@ public class ProductionManager {
         }
     }
 
-    // TODO: Droning vs Combat Units
-    private void planUnits(Player self, Boolean isAllIn) {
-        if (self.supplyUsed() >= 400) {
-            return;
-        }
-        // Plan workers
-        // This should be related to num bases + aval min patches and geysers, limited by army and potentially higher level strat info
-        // For now, set them to be 1/3 of total supply
-        // Limit the number of drones in queue, or they will crowd out production!
-        if (!isAllIn && canPlanDrone()) {
-            plannedWorkers += 1;
-            addUnitToQueue(UnitType.Zerg_Drone, currentFrame, false);
-        }
-
-        UnitWeights unitWeights = this.gameState.getUnitWeights();
-
-        // Plan army
-        // TODO: Determine a better way to pick next unit
-        UnitType unitToBuild = getBestUnitToBuild(unitWeights.getRandom());
-        if (unitToBuild == UnitType.Unknown) {
-            return;
-        }
-        addUnitToQueue(unitToBuild, currentFrame, false);
-    }
-
-    private UnitType getBestUnitToBuild(UnitType initialCandidate) {
-        UnitWeights unitWeights = this.gameState.getUnitWeights();
-        UnitTypeCount unitCount = this.gameState.getUnitTypeCount();
-        UnitType nextUnit = initialCandidate;
-
-        final int numHydralisks = unitCount.get(UnitType.Zerg_Hydralisk);
-        final int numLurkers =  unitCount.get(UnitType.Zerg_Lurker);
-        final int targetLurkers = numHydralisks / 2;
-        if (unitWeights.isEnabled(UnitType.Zerg_Lurker) && numLurkers < targetLurkers) {
-            return UnitType.Zerg_Lurker;
-        }
-        return nextUnit;
-    }
-
     private void addUnitToQueue(UnitType unitType, int priority, boolean isBlocking) {
         UnitTypeCount unitTypeCount = this.gameState.getUnitTypeCount();
         productionQueue.add(new UnitPlan(unitType, priority, isBlocking));
@@ -512,9 +212,6 @@ public class ProductionManager {
     }
 
     private void plan() {
-        Player self = game.self();
-        Boolean isAllIn = gameState.isAllIn();
-
         if (!isPlanning && !productionQueue.isEmpty()) {
             return;
         }
@@ -522,16 +219,17 @@ public class ProductionManager {
         // Once opener items are exhausted, plan items
         isPlanning = true;
 
-        planBuildings(isAllIn);
-        planUpgrades(isAllIn);
-        planSupply(self);
 
-        // restrict units from queue if size is >3 initially, increases per hatch
-        if (productionQueue.size() >= unitQueueSize()) {
-            return;
+        planSupply(gameState.getSelf());
+        List<Plan> plans = activeStrategy.plan(gameState);
+        for (Plan p: plans) {
+            // restrict units from queue if size is >3 initially, increases per hatch
+            if (productionQueue.size() >= unitQueueSize() && p.getType() == PlanType.UNIT) {
+                continue;
+            }
+            productionQueue.add(p);
         }
 
-        planUnits(self, isAllIn);
     }
 
     private int unitQueueSize() {
@@ -540,20 +238,6 @@ public class ProductionManager {
         } else {
             return 3;
         }
-    }
-
-    private boolean canAffordHatchSaturation() {
-        final int numHatcheries = gameState.getBaseData().numHatcheries();
-        return ((numHatcheries + plannedHatcheries) * 7) <= gameState.getMineralWorkers();
-    }
-
-    private boolean canAffordHatch() {
-        ResourceCount resourceCount = gameState.getResourceCount();
-        return resourceCount.canAffordHatch(plannedHatcheries);
-    }
-
-    private boolean isNearMaxExpectedWorkers() {
-        return ((expectedWorkers() * (1 + plannedHatcheries)) - numWorkers() < 0);
     }
 
     /**
@@ -789,7 +473,7 @@ public class ProductionManager {
         resourceCount.unreserveUnit(unitType);
 
         if (unitType == UnitType.Zerg_Drone) {
-            plannedWorkers -= 1;
+            gameState.removePlannedWorker(1);
         }
 
         if (unitType.isBuilding()) {
@@ -991,15 +675,12 @@ public class ProductionManager {
         assignUnit(unit);
     }
 
-    // TODO: Switch/case block
-    // TODO: move everything to InformationManager
+
     private void assignUnit(Unit unit) {
         Player self = game.self();
         if (unit.getPlayer() != self) {
             return;
         }
-
-
 
         UnitType unitType = unit.getType();
         // TODO: Move to a building manager or base manager
@@ -1021,15 +702,13 @@ public class ProductionManager {
                 gameState.addMacroHatchery(unit);
             }
 
-            plannedHatcheries -= 1;
-            // TODO: How are we getting here?
-            if (plannedHatcheries < 0) {
-                plannedHatcheries = 0;
+            gameState.removePlannedHatchery(1);
+            if (gameState.getPlannedHatcheries() < 0) {
+                gameState.setPlannedHatcheries(0);
             }
         }
     }
 
-    // TODO: Should there be special logic here for handling the drones?
     // Need to handle cancel case (building about to die, extractor trick, etc.)
     public void onUnitMorph(Unit unit) {
         UnitType unitType = unit.getType();
@@ -1070,14 +749,11 @@ public class ProductionManager {
         clearAssignments(unit, true);
     }
 
-
-
     /**
      * Remove a unit from all data stores
      *
      * @param unit unit to remove
      */
-    // TODO: COMPLETE vs Requeue logic
     private void clearAssignments(Unit unit, boolean isDestroyed) {
         // Requeue PlannedItems
         // Put item back onto the queue with greater importance
