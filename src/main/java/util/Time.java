@@ -1,8 +1,11 @@
 package util;
 
+import lombok.Getter;
+
 public class Time {
     private int minutes;
     private int seconds;
+    @Getter
     private int frames;
 
     // Constructor that accepts frames.
