@@ -46,7 +46,7 @@ public class Debug {
         game.drawTextScreen(4, 8, "Opponent: " + opponentRecord.getName() + " " + getOpponentRecord());
         game.drawTextScreen(4, 16, "GameMap: " + game.mapFileName());
         game.drawTextScreen(4, 24, "Opener: " + opener.getNameString() + " " + getOpenerRecord(), Text.White);
-        game.drawTextScreen(4, 32, "Strategy: " + gameState.getActiveStrategy().getName() + " " + getStrategyRecord(), Text.White);
+        game.drawTextScreen(4, 32, "BuildOrder: " + gameState.getActiveStrategy().getName() + " " + getStrategyRecord(), Text.White);
         game.drawTextScreen(4, 40, "Frame: " + game.getFrameCount());
 
         drawUnitCount();

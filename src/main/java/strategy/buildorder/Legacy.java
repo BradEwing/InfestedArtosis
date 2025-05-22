@@ -1,4 +1,4 @@
-package strategy.v2;
+package strategy.buildorder;
 
 import bwapi.Player;
 import bwapi.Race;
@@ -7,7 +7,6 @@ import bwapi.TilePosition;
 import bwapi.Unit;
 import bwapi.UnitType;
 import bwapi.UpgradeType;
-import bwem.Base;
 import info.BaseData;
 import info.GameState;
 import info.TechProgression;
@@ -25,9 +24,9 @@ import java.util.List;
 
 /**
  * This is a transitory class that captures old production planning logic from the ProductionManager.
- * It will be supplanted with the broader implementation of v2.Strategy.
+ * It will be supplanted with the broader implementation of BuildOrder.
  */
-public class Legacy extends Strategy {
+public class Legacy extends BuildOrder {
     public Legacy() {
         super("Legacy");
         this.activatedAt = new Time(0);
@@ -263,15 +262,5 @@ public class Legacy extends Strategy {
         UnitTypeCount unitTypeCount = gameState.getUnitTypeCount();
         unitTypeCount.planUnit(unitType);
         return new UnitPlan(unitType, priority, isBlocking);
-    }
-
-    private Plan planNewBase(GameState gameState) {
-        Base base = gameState.reserveBase();
-        // all possible bases are taken!
-        if (base == null) {
-            return null;
-        }
-
-        return new BuildingPlan(UnitType.Zerg_Hatchery, 2, true, base.getLocation());
     }
 }

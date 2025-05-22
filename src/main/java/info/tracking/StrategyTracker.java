@@ -70,4 +70,13 @@ public class StrategyTracker {
         possibleStrategies.removeAll(newlyDiscarded);
         discardedStrategies.addAll(newlyDiscarded);
     }
+
+    public boolean isDetectedStrategy(String strategyName) {
+        for (ObservedStrategy strategy : detectedStrategies) {
+            if (strategy.getName().equals(strategyName)) {
+                return true;
+            }
+        }
+        return false;
+    }
 }
