@@ -3,6 +3,7 @@ package strategy.buildorder;
 import bwapi.Race;
 import bwapi.Unit;
 import bwapi.UnitType;
+import bwapi.UpgradeType;
 import bwem.Base;
 import info.BaseData;
 import info.GameState;
@@ -11,6 +12,7 @@ import info.UnitTypeCount;
 import macro.plan.BuildingPlan;
 import macro.plan.Plan;
 import macro.plan.UnitPlan;
+import macro.plan.UpgradePlan;
 import util.Time;
 
 import java.util.HashSet;
@@ -85,5 +87,16 @@ public abstract class BuildOrder {
             gameState.addPlannedWorker(1);
         }
         return new UnitPlan(unitType, gameState.getGameTime().getFrames(), true);
+    }
+
+    protected Plan planUpgrade(GameState gameState, UpgradeType upgradeType) {
+        TechProgression techProgression = gameState.getTechProgression();
+        switch (upgradeType) {
+            case Metabolic_Boost:
+                techProgression.setPlannedMetabolicBoost(true);
+
+        }
+
+        return new UpgradePlan(upgradeType, gameState.getGameTime().getFrames(), false);
     }
 }

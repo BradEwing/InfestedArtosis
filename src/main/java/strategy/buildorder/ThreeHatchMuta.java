@@ -2,6 +2,8 @@ package strategy.buildorder;
 
 import bwapi.Race;
 import bwapi.UnitType;
+import bwapi.UpgradeType;
+import info.BaseData;
 import info.GameState;
 import info.TechProgression;
 import macro.plan.Plan;
@@ -31,7 +33,9 @@ public class ThreeHatchMuta extends ProtossBase {
 
         Time time = gameState.getGameTime();
         TechProgression techProgression = gameState.getTechProgression();
-        int baseCount = gameState.getBaseData().currentBaseCount();
+        BaseData baseData = gameState.getBaseData();
+        int baseCount = baseData.currentBaseCount();
+        int extractorCount = baseData.numExtractor();
         int supply = gameState.getSupply();
         int plannedHatcheries = gameState.getPlannedHatcheries();
         int hatchCount        = gameState.ourUnitCount(UnitType.Zerg_Hatchery);
@@ -48,7 +52,8 @@ public class ThreeHatchMuta extends ProtossBase {
         int enemyObserverCount = gameState.enemyUnitCount(UnitType.Protoss_Observer);
 
         // Gas timing
-        boolean firstGas = gameState.canPlanExtractor() && (time.greaterThan(new Time(2, 32)) || supply > 40);
+        boolean firstGas = gameState.canPlanExtractor() && (time.greaterThan(new Time(2, 32)) || supply > 40) && extractorCount < 1;
+        boolean secondGas = gameState.canPlanExtractor() && (spireCount > 0 || droneCount >= 20);
 
         // Base timing
         boolean wantNatural  = plannedAndCurrentHatcheries < 2 && supply >= 24;
@@ -60,6 +65,8 @@ public class ThreeHatchMuta extends ProtossBase {
         // Spire timing
         boolean wantSpire = techProgression.canPlanSpire() && spireCount < 1 && supply >= 64 && lairCount >= 1 && droneCount >= 16;
 
+        boolean wantMetabolicBoost = techProgression.canPlanMetabolicBoost() && !techProgression.isMetabolicBoost() && lairCount > 0;
+
         // Plan buildings
         if (wantNatural || wantThird) {
             Plan hatcheryPlan = this.planNewBase(gameState);
@@ -69,7 +76,7 @@ public class ThreeHatchMuta extends ProtossBase {
             }
         }
 
-        if (firstGas) {
+        if (firstGas || secondGas) {
             Plan extractorPlan = this.planExtractor(gameState);
             plans.add(extractorPlan);
         }
@@ -91,6 +98,14 @@ public class ThreeHatchMuta extends ProtossBase {
             plans.add(spirePlan);
             return plans;
         }
+
+        // Plan Upgrades
+        if (wantMetabolicBoost) {
+            Plan metabolicBoostPlan = this.planUpgrade(gameState, UpgradeType.Metabolic_Boost);
+            plans.add(metabolicBoostPlan);
+        }
+
+        // Plan Units
 
         final int desiredScourge = enemyCorsairCount + enemyObserverCount;
         if (techProgression.isSpire() && scourgeCount < desiredScourge) {
