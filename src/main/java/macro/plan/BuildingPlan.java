@@ -5,6 +5,7 @@ import bwapi.UnitType;
 import lombok.Getter;
 import lombok.Setter;
 import org.jetbrains.annotations.Nullable;
+import util.Time;
 
 public class BuildingPlan extends Plan {
 
@@ -17,12 +18,23 @@ public class BuildingPlan extends Plan {
     public BuildingPlan(UnitType unitType, int priority, boolean isBlocking) {
         super(priority, isBlocking);
         this.plannedUnit = unitType;
-        this.priority = priority;
         this.blockOtherPlans = isBlocking;
     }
 
     public BuildingPlan(UnitType unitType, int priority, boolean isBlocking, TilePosition buildPosition) {
         super(priority, isBlocking);
+        this.plannedUnit = unitType;
+        this.buildPosition = buildPosition;
+    }
+
+    public BuildingPlan(UnitType unitType, Time time, boolean isBlocking) {
+        super(time.getFrames(), isBlocking);
+        this.plannedUnit = unitType;
+        this.blockOtherPlans = isBlocking;
+    }
+
+    public BuildingPlan(UnitType unitType, Time time, boolean isBlocking, TilePosition buildPosition) {
+        super(time.getFrames(), isBlocking);
         this.plannedUnit = unitType;
         this.buildPosition = buildPosition;
     }

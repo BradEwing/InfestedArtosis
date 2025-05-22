@@ -33,6 +33,11 @@ public class Time {
                 (this.minutes == t2.minutes && this.seconds <= t2.seconds);
     }
 
+    public boolean greaterThan(Time t2) {
+        return (this.minutes > t2.minutes) ||
+                (this.minutes == t2.minutes && this.seconds > t2.seconds);
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;

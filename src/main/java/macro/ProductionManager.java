@@ -18,10 +18,10 @@ import macro.plan.PlanComparator;
 import macro.plan.PlanState;
 import macro.plan.PlanType;
 import macro.plan.UnitPlan;
+import strategy.buildorder.BuildOrder;
+import strategy.buildorder.ThreeHatchMuta;
 import strategy.openers.Opener;
 import strategy.openers.OpenerName;
-import strategy.v2.Legacy;
-import strategy.v2.Strategy;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -34,7 +34,7 @@ import java.util.stream.Collectors;
 /**
  * Manages the production of units, buildings, upgrades and research.
  * <p>
- * The Bot's Strategy is responsible for deciding what units should be queued; the exact unit
+ * The Bot's BuildOrder is responsible for deciding what units should be queued; the exact unit
  * is currently determined probabilistically by UnitWeights.
  */
 public class ProductionManager {
@@ -55,13 +55,15 @@ public class ProductionManager {
     private PriorityQueue<Plan> productionQueue = new PriorityQueue<>(new PlanComparator());
 
     // TODO: Determine if only 1 active strategy, or if multiple can be active at once.
-    private Strategy activeStrategy;
+    private BuildOrder activeBuildOrder;
 
     public ProductionManager(Game game, GameState gameState, List<Plan> initialBuildOrder) {
         this.game = game;
         this.gameState = gameState;
 
-        this.activeStrategy = new Legacy();
+        // TODO: Set from elsewhere
+        //this.activeBuildOrder = new Legacy();
+        this.activeBuildOrder = new ThreeHatchMuta();
 
         init(initialBuildOrder);
     }
@@ -88,6 +90,7 @@ public class ProductionManager {
             if (plan.getPlannedUnit() != null && plan.getPlannedUnit() == UnitType.Zerg_Hatchery) {
                 if (!firstHatchInBase(opener)) {
                     Base base = gameState.reserveBase();
+                    gameState.addPlannedHatchery(1);
                     plan.setBuildPosition(base.getLocation());
                 }
             }
@@ -205,6 +208,8 @@ public class ProductionManager {
         }
     }
 
+    // This is only used for planSupply()
+    // TODO: Move to BuildOrder?
     private void addUnitToQueue(UnitType unitType, int priority, boolean isBlocking) {
         UnitTypeCount unitTypeCount = this.gameState.getUnitTypeCount();
         productionQueue.add(new UnitPlan(unitType, priority, isBlocking));
@@ -221,12 +226,8 @@ public class ProductionManager {
 
 
         planSupply(gameState.getSelf());
-        List<Plan> plans = activeStrategy.plan(gameState);
+        List<Plan> plans = activeBuildOrder.plan(gameState);
         for (Plan p: plans) {
-            // restrict units from queue if size is >3 initially, increases per hatch
-            if (productionQueue.size() >= unitQueueSize() && p.getType() == PlanType.UNIT) {
-                continue;
-            }
             productionQueue.add(p);
         }
 

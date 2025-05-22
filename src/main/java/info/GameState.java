@@ -416,7 +416,7 @@ public class GameState {
     }
 
     // TODO: Determine reactive planning of sunken colonies
-    // This will be addressed by plan() in v2.Strategy
+    // This will be addressed by plan() in BuildOrder
     @Deprecated
     public boolean canPlanSunkenColony() {
         return defensiveSunk && techProgression.canPlanSunkenColony() && baseData.canPlanSunkenColony();
@@ -436,5 +436,17 @@ public class GameState {
         } else {
             return groundCount > 48;
         }
+    }
+
+    public int ourUnitCount(UnitType unitType) {
+        return unitTypeCount.get(unitType);
+    }
+
+    public int enemyUnitCount(UnitType unitType) {
+        return observedUnitTracker.getCountOfLivingUnits(unitType);
+    }
+
+    public int getSupply() {
+        return game.self().supplyUsed();
     }
 }

@@ -54,4 +54,12 @@ public class ObservedUnitTracker {
     public int size() {
         return observedUnits.size();
     }
+
+    public int getCountOfLivingUnits(UnitType unitType) {
+        return (int) observedUnits.values()
+                .stream()
+                .filter(ou -> ou.getUnit().getType() == unitType)
+                .filter(ou -> ou.getDestroyedFrame() == null)
+                .count();
+    }
 }
