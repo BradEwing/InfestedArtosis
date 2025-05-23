@@ -9,6 +9,7 @@ import bwem.Base;
 import info.BaseData;
 import info.GameState;
 import info.UnitTypeCount;
+import info.map.BuildingPlanner;
 import info.map.GroundPath;
 import info.map.MapTile;
 import learning.OpenerRecord;
@@ -52,6 +53,7 @@ public class Debug {
         drawUnitCount();
         //debugGameMap();
         //drawAllBasePaths();
+        debugBuildingPlanner();
     }
 
     private void drawBases() {
@@ -131,6 +133,19 @@ public class Debug {
                         (mapTile.getTile().add(new TilePosition(1,1)).toPosition()),
                         Color.White);
             }
+        }
+    }
+
+    private void debugBuildingPlanner() {
+        BuildingPlanner buildingPlanner = gameState.getBuildingPlanner();
+        if (buildingPlanner == null) {
+            return;
+        }
+        for (Base base: gameState.getBaseData().getMyBases()) {
+            //buildingPlanner.debugBaseCreepTiles(base);
+            buildingPlanner.debugBaseChoke(base);
+            //buildingPlanner.debugLocationForTechBuilding(base, UnitType.Zerg_Spawning_Pool);
+            //buildingPlanner.debugReserveTiles();
         }
     }
 }

@@ -6,7 +6,7 @@ import bwem.Base;
 import java.util.Comparator;
 
 /**
- * UnitDistanceComparator sorts a list of units by distance to the target unit
+ * BaseUnitDistanceComparator sorts a list of units by distance to the target unit
  */
 public class BaseUnitDistanceComparator implements Comparator<Base> {
 

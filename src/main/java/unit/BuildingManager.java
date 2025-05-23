@@ -4,6 +4,7 @@ import bwapi.Game;
 import bwapi.Unit;
 import bwapi.UnitType;
 import info.GameState;
+import info.map.BuildingPlanner;
 import macro.plan.Plan;
 import macro.plan.PlanState;
 import macro.plan.PlanType;
@@ -31,7 +32,6 @@ public class BuildingManager {
     private ManagedUnit lair;
     private HashSet<ManagedUnit> hatcheries = new HashSet();
     private HashSet<ManagedUnit> colonies = new HashSet<>();
-    private HashSet<ManagedUnit> morphingManagedUnits = new HashSet<>();
 
     public BuildingManager(Game game, GameState gameState) {
         this.gameState = gameState;
@@ -42,6 +42,8 @@ public class BuildingManager {
     }
 
     public void add(ManagedUnit managedUnit) {
+        BuildingPlanner buildingPlanner = gameState.getBuildingPlanner();
+        buildingPlanner.reserveBuildingTiles(managedUnit.getUnit());
         UnitType unitType = managedUnit.getUnitType();
         switch(unitType) {
             case Zerg_Hatchery:
@@ -56,6 +58,8 @@ public class BuildingManager {
     }
 
     public void remove(ManagedUnit managedUnit) {
+        BuildingPlanner buildingPlanner = gameState.getBuildingPlanner();
+        buildingPlanner.removeBuildingTiles(managedUnit.getUnit());
         UnitType unitType = managedUnit.getUnitType();
         switch(unitType) {
             case Zerg_Hatchery:

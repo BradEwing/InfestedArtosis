@@ -10,6 +10,7 @@ import bwem.BWEM;
 import bwem.Base;
 import bwem.Mineral;
 import config.Config;
+import info.map.BuildingPlanner;
 import info.map.GameMap;
 import info.tracking.ObservedUnitTracker;
 import info.tracking.StrategyTracker;
@@ -103,6 +104,7 @@ public class GameState {
 
     // Initialized in InformationManager
     private GameMap gameMap;
+    private BuildingPlanner buildingPlanner;
 
     public GameState(Game game, BWEM bwem) {
         this.game = game;
@@ -448,5 +450,10 @@ public class GameState {
 
     public int getSupply() {
         return game.self().supplyUsed();
+    }
+
+    public TilePosition getTechBuildingLocation(UnitType unitType) {
+        Base main = baseData.getMainBase();
+        return buildingPlanner.getLocationForTechBuilding(main, unitType);
     }
 }

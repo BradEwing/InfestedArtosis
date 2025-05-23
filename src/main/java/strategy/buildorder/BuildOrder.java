@@ -1,6 +1,7 @@
 package strategy.buildorder;
 
 import bwapi.Race;
+import bwapi.TilePosition;
 import bwapi.Unit;
 import bwapi.UnitType;
 import bwapi.UpgradeType;
@@ -63,13 +64,19 @@ public abstract class BuildOrder {
     protected Plan planSpawningPool(GameState gameState) {
         TechProgression techProgression = gameState.getTechProgression();
         techProgression.setPlannedSpawningPool(true);
-        return new BuildingPlan(UnitType.Zerg_Spawning_Pool, gameState.getGameTime(), true);
+        Plan plan = new BuildingPlan(UnitType.Zerg_Spawning_Pool, gameState.getGameTime(), true);
+        TilePosition buildPosition = gameState.getTechBuildingLocation(UnitType.Zerg_Spawning_Pool);
+        plan.setBuildPosition(buildPosition);
+        return plan;
     }
 
     protected Plan planSpire(GameState gameState) {
         TechProgression techProgression = gameState.getTechProgression();
         techProgression.setSpire(true);
-        return new BuildingPlan(UnitType.Zerg_Spire, gameState.getGameTime(), true);
+        Plan plan = new BuildingPlan(UnitType.Zerg_Spire, gameState.getGameTime(), true);
+        TilePosition buildPosition = gameState.getTechBuildingLocation(UnitType.Zerg_Spire);
+        plan.setBuildPosition(buildPosition);
+        return plan;
     }
 
     protected Plan planExtractor(GameState gameState) {

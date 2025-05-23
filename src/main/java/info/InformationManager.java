@@ -12,6 +12,7 @@ import bwapi.WalkPosition;
 import bwem.BWEM;
 import bwem.Base;
 import bwem.Geyser;
+import info.map.BuildingPlanner;
 import info.map.GameMap;
 import info.map.MapTile;
 import info.map.MapTileScoutImportanceComparator;
@@ -576,6 +577,7 @@ public class InformationManager {
         }
 
         gameState.setGameMap(gameMap);
+        gameState.setBuildingPlanner(new BuildingPlanner(game, bwem, gameMap));
     }
 
     private boolean isWalkable(TilePosition tp) {
