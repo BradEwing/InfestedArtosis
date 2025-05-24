@@ -16,6 +16,7 @@ import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Queue;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -67,6 +68,13 @@ public class BuildingPlanner {
     public void debugReserveTiles() {
         for (TilePosition tp: reservedTiles) {
             game.drawBoxMap(tp.toPosition(), tp.add(new TilePosition(1, 1)).toPosition(), Color.White);
+        }
+    }
+
+    public void debugNextCreepColonyLocation(Base base) {
+        TilePosition cc = getLocationForCreepColony(base);
+        if (cc != null) {
+            game.drawBoxMap(cc.toPosition(), cc.add(new TilePosition(2, 2)).toPosition(), Color.White);
         }
     }
 
@@ -194,5 +202,43 @@ public class BuildingPlanner {
         return creepTiles;
     }
 
+    /**
+     * Pick a TilePosition to place a new creep colony (for later morphing into a Sunken Colony),
+     * built toward the base’s closest choke.  If there’s existing reserved structures, attempts to build adjacent.
+     */
+    public TilePosition getLocationForCreepColony(Base base) {
+        Position chokeCenter = closestChokeToBase(base);
+        HashSet<TilePosition> creepTiles = findSurroundingCreepTiles(base);
+        TilePosition colonySize = UnitType.Zerg_Creep_Colony.tileSize();
+
+        List<TilePosition> candidates = new ArrayList<>();
+        for (TilePosition tp : creepTiles) {
+            TilePosition se = tp.add(colonySize);
+            if (!creepTiles.contains(se)) continue;
+            if (!isValidBuildingLocation(tp, colonySize, creepTiles)) continue;
+            candidates.add(tp);
+        }
+
+        Set<TilePosition> existing = new HashSet<>(reservedTiles);
+        existing.retainAll(creepTiles);
+
+        if (!existing.isEmpty()) {
+            List<TilePosition> adjacent = new ArrayList<>();
+            for (TilePosition cand : candidates) {
+                for (TilePosition res : existing) {
+                    if (res.getApproxDistance(cand) <= 15) {
+                        adjacent.add(cand);
+                        break;
+                    }
+                }
+            }
+            if (!adjacent.isEmpty()) {
+                candidates = adjacent;
+            }
+        }
+
+        candidates.sort(new TilePositionComparator(chokeCenter.toTilePosition()));
+        return candidates.isEmpty() ? null : candidates.get(0);
+    }
 
 }
