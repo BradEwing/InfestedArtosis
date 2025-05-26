@@ -3,6 +3,7 @@ package unit;
 import bwapi.Game;
 import bwapi.Unit;
 import bwapi.UnitType;
+import info.BaseData;
 import info.GameState;
 import info.map.BuildingPlanner;
 import macro.plan.Plan;
@@ -45,6 +46,7 @@ public class BuildingManager {
         BuildingPlanner buildingPlanner = gameState.getBuildingPlanner();
         buildingPlanner.reserveBuildingTiles(managedUnit.getUnit());
         UnitType unitType = managedUnit.getUnitType();
+        BaseData baseData = gameState.getBaseData();
         switch(unitType) {
             case Zerg_Hatchery:
             case Zerg_Lair:
@@ -53,6 +55,8 @@ public class BuildingManager {
                 break;
             case Zerg_Creep_Colony:
                 this.colonies.add(managedUnit);
+            case Zerg_Sunken_Colony:
+                baseData.addSunkenColony(managedUnit.getUnit());
                 break;
         }
     }
@@ -61,6 +65,10 @@ public class BuildingManager {
         BuildingPlanner buildingPlanner = gameState.getBuildingPlanner();
         buildingPlanner.removeBuildingTiles(managedUnit.getUnit());
         UnitType unitType = managedUnit.getUnitType();
+        if (unitType != managedUnit.getUnit().getType()) {
+            unitType = managedUnit.getUnit().getType();
+        }
+        BaseData baseData = gameState.getBaseData();
         switch(unitType) {
             case Zerg_Hatchery:
             case Zerg_Lair:
@@ -70,12 +78,14 @@ public class BuildingManager {
             case Zerg_Creep_Colony:
                 this.colonies.remove(managedUnit);
                 break;
+            case Zerg_Sunken_Colony:
+                baseData.removeSunkenColony(managedUnit.getUnit());
         }
     }
 
     private void assignScheduledPlannedItems() {
         List<Plan> scheduledPlans = gameState.getPlansScheduled().stream().collect(Collectors.toList());
-        if (scheduledPlans.size() < 1) {
+        if (scheduledPlans.isEmpty()) {
             return;
         }
 

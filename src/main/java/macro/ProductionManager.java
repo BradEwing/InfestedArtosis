@@ -720,11 +720,6 @@ public class ProductionManager {
         }
 
         clearAssignments(unit, false);
-
-        if (unitType == UnitType.Zerg_Sunken_Colony) {
-            BaseData baseData = gameState.getBaseData();
-            baseData.addSunkenColony(unit);
-        }
     }
 
     public void onUnitRenegade(Unit unit) {

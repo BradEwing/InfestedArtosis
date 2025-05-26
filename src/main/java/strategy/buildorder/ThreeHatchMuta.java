@@ -68,6 +68,14 @@ public class ThreeHatchMuta extends ProtossBase {
         boolean wantMetabolicBoost = techProgression.canPlanMetabolicBoost() && !techProgression.isMetabolicBoost() && lairCount > 0;
 
         // Plan buildings
+
+        // Defensive Structures
+        final int desiredSunkenColonies = this.requiredSunkens(gameState);
+        if (gameState.basesNeedingSunken(desiredSunkenColonies).size() > 0) {
+            plans.addAll(this.planSunkenColony(gameState));
+        }
+
+        // Bases
         if (wantNatural || wantThird) {
             Plan hatcheryPlan = this.planNewBase(gameState);
             if (hatcheryPlan != null) {

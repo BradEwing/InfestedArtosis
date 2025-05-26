@@ -30,6 +30,7 @@ import util.Time;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import static java.lang.Math.min;
@@ -417,11 +418,8 @@ public class GameState {
         return baseData.numExtractor() < 1 || resourceCount.needExtractor();
     }
 
-    // TODO: Determine reactive planning of sunken colonies
-    // This will be addressed by plan() in BuildOrder
-    @Deprecated
     public boolean canPlanSunkenColony() {
-        return defensiveSunk && techProgression.canPlanSunkenColony() && baseData.canPlanSunkenColony();
+        return techProgression.canPlanSunkenColony();
     }
 
     // Determine by current strategy and reactions
@@ -455,5 +453,16 @@ public class GameState {
     public TilePosition getTechBuildingLocation(UnitType unitType) {
         Base main = baseData.getMainBase();
         return buildingPlanner.getLocationForTechBuilding(main, unitType);
+    }
+
+    public Set<Base> basesNeedingSunken(int target) {
+        Set<Base> neededBases = new HashSet<>();
+        for (Base base: baseData.getMyBases()) {
+            if (baseData.isEligibleForSunkenColony(base) && baseData.sunkensPerBase(base) < target) {
+                neededBases.add(base);
+            }
+        }
+
+        return neededBases;
     }
 }

@@ -10,6 +10,7 @@ import info.BaseData;
 import info.GameState;
 import info.TechProgression;
 import info.UnitTypeCount;
+import info.map.BuildingPlanner;
 import macro.plan.BuildingPlan;
 import macro.plan.Plan;
 import macro.plan.UnitPlan;
@@ -18,6 +19,7 @@ import util.Time;
 
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 public abstract class BuildOrder {
@@ -43,6 +45,10 @@ public abstract class BuildOrder {
     public abstract List<Plan> plan(GameState gameState);
 
     public abstract boolean playsRace(Race race);
+
+    protected int requiredSunkens(GameState gameState) {
+        return 0;
+    }
 
     protected Plan planNewBase(GameState gameState) {
         Base base = gameState.reserveBase();
@@ -85,6 +91,26 @@ public abstract class BuildOrder {
         Unit geyser = baseData.reserveExtractor();
         plan.setBuildPosition(geyser.getTilePosition());
         return plan;
+    }
+
+    // planSunkenColony returns a set of Creep+Sunken plans
+    // Subtracks 500 from priority as a stop gap to prioritize over existing items in queue.
+    // TODO: Clear queue if defensive structure enters queue?
+    protected Set<Plan> planSunkenColony(GameState gameState) {
+        Set<Plan> plans = new HashSet<>();
+        BaseData baseData = gameState.getBaseData();
+        BuildingPlanner buildingPlanner = gameState.getBuildingPlanner();
+        Optional<Base> eligibleBase = gameState.basesNeedingSunken(this.requiredSunkens(gameState)).stream().findFirst();
+        if (!eligibleBase.isPresent()) {
+            return plans;
+        }
+        baseData.reserveSunkenColony(eligibleBase.get());
+        TilePosition location = buildingPlanner.getLocationForCreepColony(eligibleBase.get());
+        Plan creepColonyPlan = new BuildingPlan(UnitType.Zerg_Creep_Colony, gameState.getGameTime().getFrames()-500, true, location);
+        Plan sunkenColonyPlan = new BuildingPlan(UnitType.Zerg_Sunken_Colony, gameState.getGameTime().getFrames()+UnitType.Zerg_Creep_Colony.buildTime()-500, true, location);
+        plans.add(creepColonyPlan);
+        plans.add(sunkenColonyPlan);
+        return plans;
     }
 
     protected Plan planUnit(GameState gameState, UnitType unitType) {

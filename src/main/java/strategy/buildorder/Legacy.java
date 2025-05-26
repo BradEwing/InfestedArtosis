@@ -3,7 +3,6 @@ package strategy.buildorder;
 import bwapi.Player;
 import bwapi.Race;
 import bwapi.TechType;
-import bwapi.TilePosition;
 import bwapi.Unit;
 import bwapi.UnitType;
 import bwapi.UpgradeType;
@@ -87,16 +86,16 @@ public class Legacy extends BuildOrder {
             return plans;
         }
 
-        if (gameState.canPlanSunkenColony()) {
-            TilePosition tp = baseData.reserveSunkenColony();
-            tp = gameState.getGame().getBuildLocation(UnitType.Zerg_Creep_Colony, tp, 128, true);
-            Plan creepColonyPlan = new BuildingPlan(UnitType.Zerg_Creep_Colony, currentFrame-2, true);
-            Plan sunkenColonyPlan = new BuildingPlan(UnitType.Zerg_Sunken_Colony, currentFrame-1, true);
-            creepColonyPlan.setBuildPosition(tp);
-            sunkenColonyPlan.setBuildPosition(tp);
-            plans.add(creepColonyPlan);
-            plans.add(sunkenColonyPlan);
-        }
+//        if (gameState.canPlanSunkenColony()) {
+//            TilePosition tp = baseData.reserveSunkenColony();
+//            tp = gameState.getGame().getBuildLocation(UnitType.Zerg_Creep_Colony, tp, 128, true);
+//            Plan creepColonyPlan = new BuildingPlan(UnitType.Zerg_Creep_Colony, currentFrame-2, true);
+//            Plan sunkenColonyPlan = new BuildingPlan(UnitType.Zerg_Sunken_Colony, currentFrame-1, true);
+//            creepColonyPlan.setBuildPosition(tp);
+//            sunkenColonyPlan.setBuildPosition(tp);
+//            plans.add(creepColonyPlan);
+//            plans.add(sunkenColonyPlan);
+//        }
 
         UnitWeights unitWeights = gameState.getUnitWeights();
 
