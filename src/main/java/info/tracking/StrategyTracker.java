@@ -45,7 +45,6 @@ public class StrategyTracker {
     public void onFrame() {
         Time currentTime = new Time(game.getFrameCount());
 
-        // 1. Find which strategies in possibleStrategies have just been detected
         Set<ObservedStrategy> newlyDetected = new HashSet<>();
         for (ObservedStrategy strategy : possibleStrategies) {
             if (strategy.isDetected(tracker, currentTime)) {
@@ -53,11 +52,9 @@ public class StrategyTracker {
             }
         }
 
-        // 2. Move newly detected to detectedStrategies (remove them from possible)
         detectedStrategies.addAll(newlyDetected);
         possibleStrategies.removeAll(newlyDetected);
 
-        // 3. For each detected strategy, discard any incompatible strategies
         Set<ObservedStrategy> newlyDiscarded = new HashSet<>();
         for (ObservedStrategy detected : detectedStrategies) {
             for (ObservedStrategy possible : possibleStrategies) {
@@ -66,7 +63,7 @@ public class StrategyTracker {
                 }
             }
         }
-        // Move incompatible strategies from possible to discarded
+
         possibleStrategies.removeAll(newlyDiscarded);
         discardedStrategies.addAll(newlyDiscarded);
     }
