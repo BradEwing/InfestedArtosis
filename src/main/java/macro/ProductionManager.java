@@ -7,7 +7,6 @@ import bwapi.Text;
 import bwapi.Unit;
 import bwapi.UnitType;
 import bwapi.UpgradeType;
-import bwem.Base;
 import info.BaseData;
 import info.GameState;
 import info.ResourceCount;
@@ -19,7 +18,7 @@ import macro.plan.PlanState;
 import macro.plan.PlanType;
 import macro.plan.UnitPlan;
 import strategy.buildorder.BuildOrder;
-import strategy.buildorder.ThreeHatchMuta;
+import strategy.buildorder.FourPool;
 import strategy.openers.Opener;
 import strategy.openers.OpenerName;
 
@@ -63,7 +62,8 @@ public class ProductionManager {
 
         // TODO: Set from elsewhere
         //this.activeBuildOrder = new Legacy();
-        this.activeBuildOrder = new ThreeHatchMuta();
+        //this.activeBuildOrder = new ThreeHatchMuta();
+        this.activeBuildOrder = new FourPool();
 
         init(initialBuildOrder);
     }
@@ -78,40 +78,7 @@ public class ProductionManager {
     }
 
     private void init(List<Plan> initialBuildOrder) {
-        TechProgression techProgression = gameState.getTechProgression();
-        BaseData baseData = gameState.getBaseData();
-        Opener opener = gameState.getActiveOpener();
-        for (Plan plan : initialBuildOrder) {
-            if (plan.getPlannedUnit() != null && plan.getPlannedUnit() == UnitType.Zerg_Extractor) {
-                Unit geyser = baseData.reserveExtractor();
-                plan.setBuildPosition(geyser.getTilePosition());
-            }
-
-            if (plan.getPlannedUnit() != null && plan.getPlannedUnit() == UnitType.Zerg_Hatchery) {
-                if (!firstHatchInBase(opener)) {
-                    Base base = gameState.reserveBase();
-                    gameState.addPlannedHatchery(1);
-                    plan.setBuildPosition(base.getLocation());
-                }
-            }
-
-            if (plan.getPlannedUnit() != null && plan.getPlannedUnit() == UnitType.Zerg_Drone) {
-                gameState.addPlannedWorker(1);
-            }
-
-            if (plan.getPlannedUnit() != null && plan.getPlannedUnit() == UnitType.Zerg_Spawning_Pool) {
-                techProgression.setPlannedSpawningPool(true);
-            }
-
-            if (plan.getType() == PlanType.UPGRADE) {
-                if (plan.getPlannedUpgrade() == UpgradeType.Metabolic_Boost) {
-                    techProgression.setPlannedMetabolicBoost(true);
-                }
-            }
-
-
-            this.productionQueue.add(plan);
-        }
+        return;
     }
 
     private void debugProductionQueue() {
