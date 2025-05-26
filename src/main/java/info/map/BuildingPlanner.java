@@ -226,7 +226,7 @@ public class BuildingPlanner {
             List<TilePosition> adjacent = new ArrayList<>();
             for (TilePosition cand : candidates) {
                 for (TilePosition res : existing) {
-                    if (res.getApproxDistance(cand) <= 15) {
+                    if (res.getApproxDistance(cand) <= 23) {
                         adjacent.add(cand);
                         break;
                     }

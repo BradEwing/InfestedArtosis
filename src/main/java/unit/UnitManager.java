@@ -8,6 +8,7 @@ import bwem.Base;
 import info.GameState;
 import info.InformationManager;
 import info.ScoutData;
+import info.UnitTypeCount;
 import lombok.Getter;
 import unit.managed.ManagedUnit;
 import unit.managed.ManagedUnitFactory;
@@ -130,18 +131,27 @@ public class UnitManager {
             return;
         }
 
+        ManagedUnit managedUnit;
+
         if (unit.getType() == UnitType.Zerg_Larva && !managedUnitLookup.containsKey(unit)) {
-            ManagedUnit managedUnit = createManagedUnit(unit, UnitRole.LARVA);
+            managedUnit = createManagedUnit(unit, UnitRole.LARVA);
             workerManager.onUnitComplete(managedUnit);
             return;
         }
 
         // Consider case where we are already tracking the unit that morphed
         if (managedUnitLookup.containsKey(unit)) {
-            return;
+            managedUnit = managedUnitLookup.get(unit);
+        } else {
+            managedUnit = createManagedUnit(unit, UnitRole.IDLE);
         }
 
-        ManagedUnit managedUnit = createManagedUnit(unit, UnitRole.IDLE);
+        if (unit.getType() != managedUnit.getUnitType()) {
+            UnitTypeCount unitTypeCount = gameState.getUnitTypeCount();
+            unitTypeCount.removeUnit(managedUnit.getUnitType());
+            unitTypeCount.addUnit(unit.getType());
+            managedUnit.setUnitType(unit.getType());
+        }
 
         // For now, return early if drone or building
         UnitType unitType = unit.getType();
@@ -206,14 +216,13 @@ public class UnitManager {
     }
 
     public void onUnitComplete(Unit unit) {
-        // For now, return early if drone or building
         UnitType unitType = unit.getType();
-        // TODO: Buildings, why not? Useful when tracking precise morphs
-        // TODO: Building planner
-        // TODO: A matcher dispatcher to determine which units are passed to which manger?
         if (unitType.isBuilding()) {
             if (unitType == UnitType.Zerg_Extractor) {
                 workerManager.onExtractorComplete();
+            } else {
+                ManagedUnit managedUnit = managedUnitLookup.get(unit);
+                createBuilding(unit, managedUnit);
             }
             return;
         }

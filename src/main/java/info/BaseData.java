@@ -2,6 +2,7 @@ package info;
 
 import bwapi.TilePosition;
 import bwapi.Unit;
+import bwapi.UnitType;
 import bwem.Base;
 import info.exception.NoWalkablePathException;
 import info.map.GameMap;
@@ -44,8 +45,8 @@ public class BaseData {
     private HashMap<Base, GroundPath> availableBases = new HashMap<>();
     private HashSet<Unit> extractors = new HashSet<>();
     private HashSet<Unit> availableGeysers = new HashSet<>();
-    private HashMap<Base, Unit> sunkenColonyLookup = new HashMap<>();
-    private int reservedSunkenColonies = 0;
+    private HashMap<Base, Integer> sunkenColonyLookup = new HashMap<>();
+    private HashMap<Base, Integer> sunkenColonyReserveLookup = new HashMap<>();
 
     public BaseData(List<Base> allBases) {
         for (Base base: allBases) {
@@ -262,16 +263,20 @@ public class BaseData {
             // Compute a score for each candidate: lower is better.
             // score = (ground path distance from main base) - (Euclidean distance to enemy main base)
             // This favors bases that are near our main base and far from the enemy.
-            return potential.stream()
-                    .min((e1, e2) -> {
-                        double score1 = e1.getValue().getGroundDistance() -
-                                e1.getKey().getLocation().getDistance(enemyBase.getLocation());
-                        double score2 = e2.getValue().getGroundDistance() -
-                                e2.getKey().getLocation().getDistance(enemyBase.getLocation());
-                        return Double.compare(score1, score2);
-                    })
-                    .map(Map.Entry::getKey)
-                    .orElse(null);
+            try {
+                return potential.stream()
+                        .min((e1, e2) -> {
+                            double score1 = e1.getValue().getGroundDistance() -
+                                    e1.getKey().getLocation().getDistance(enemyBase.getLocation());
+                            double score2 = e2.getValue().getGroundDistance() -
+                                    e2.getKey().getLocation().getDistance(enemyBase.getLocation());
+                            return Double.compare(score1, score2);
+                        })
+                        .map(Map.Entry::getKey)
+                        .orElse(null);
+            } catch (Exception e) {
+               return null;
+            }
         } else {
             // Otherwise, sort solely by the ground path distance from our main base.
             potential.sort(Map.Entry.comparingByValue(new GroundPathComparator()));
@@ -279,32 +284,46 @@ public class BaseData {
         }
     }
 
+    // Called on onUnitDestroy
+    public void removeSunkenColony(Unit sunken) {
+        if (sunken.getType() != UnitType.Zerg_Sunken_Colony) {
+            return;
+        }
+        Base base = myBases.stream()
+                .sorted(new BaseUnitDistanceComparator(sunken))
+                .collect(Collectors.toList())
+                .get(0);
+        sunkenColonyLookup.put(base, Math.max(sunkenColonyLookup.getOrDefault(base, 0) - 1, 0));
+    }
 
-    // TODO: Track by creep colony
     // Called for onUnitComplete
     public void addSunkenColony(Unit sunken) {
         Base base = myBases.stream()
                 .sorted(new BaseUnitDistanceComparator(sunken))
                 .collect(Collectors.toList())
                 .get(0);
-        sunkenColonyLookup.put(base, sunken);
-        if (reservedSunkenColonies > 0) {
-            reservedSunkenColonies -= 1;
+        sunkenColonyLookup.put(base, sunkenColonyLookup.getOrDefault(base, 0) + 1);
+        sunkenColonyReserveLookup.put(base, Math.max(sunkenColonyReserveLookup.getOrDefault(base, 0) - 1, 0));
+    }
+
+    public void reserveSunkenColony(Base base) {
+        sunkenColonyReserveLookup.put(base, sunkenColonyReserveLookup.getOrDefault(base, 0) + 1);
+    }
+
+    public boolean isEligibleForSunkenColony(Base base) {
+        if (base == mainBase && this.currentBaseCount() > 1) {
+            return false;
         }
+        if (islands.contains(base)) {
+            return false;
+        }
+        return true;
     }
 
-    public TilePosition reserveSunkenColony() {
-        Base base = myBases.stream()
-                .filter(b -> !sunkenColonyLookup.containsKey(b))
-                .collect(Collectors.toList())
-                .iterator()
-                .next();
-        reservedSunkenColonies += 1;
-        return base.getLocation();
-    }
-
-    public boolean canPlanSunkenColony() {
-        return myBases.size() - reservedSunkenColonies - sunkenColonyLookup.size() > 0;
+    public int sunkensPerBase(Base base) {
+        int reserved = sunkenColonyReserveLookup.getOrDefault(base, 0);
+        int sunkens = sunkenColonyLookup.getOrDefault(base, 0);
+        return reserved + sunkens;
     }
 
     // TODO: Remove main enemy base when area is clear
