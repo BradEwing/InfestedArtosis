@@ -4,9 +4,7 @@ import bwapi.Race;
 import bwapi.UnitType;
 import info.BaseData;
 import info.GameState;
-import macro.plan.BuildingPlan;
 import macro.plan.Plan;
-import macro.plan.UnitPlan;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -27,23 +25,47 @@ public class TwelveHatch extends BuildOrder {
     @Override
     public List<Plan> plan(GameState gameState) {
         List<Plan> plans = new ArrayList<>();
-        plans.add(new UnitPlan(UnitType.Zerg_Drone, 1, false));
-        plans.add(new UnitPlan(UnitType.Zerg_Drone, 1, false));
-        plans.add(new UnitPlan(UnitType.Zerg_Drone, 1, false));
-        plans.add(new UnitPlan(UnitType.Zerg_Drone, 1, false));
-        plans.add(new UnitPlan(UnitType.Zerg_Overlord, 2, true));
-        plans.add(new UnitPlan(UnitType.Zerg_Drone, 3, false));
-        plans.add(new UnitPlan(UnitType.Zerg_Drone, 3, true));
-        plans.add(new UnitPlan(UnitType.Zerg_Drone, 3, true));
-        plans.add(new UnitPlan(UnitType.Zerg_Drone, 3, true));
-        plans.add(new BuildingPlan(UnitType.Zerg_Hatchery, 4, true));
+
+        BaseData baseData = gameState.getBaseData();
+        int baseCount = baseData.currentBaseCount();
+        int plannedHatcheries = gameState.getPlannedHatcheries();
+        final int plannedAndCurrentHatcheries = plannedHatcheries + baseCount;
+        int droneCount    = gameState.ourUnitCount(UnitType.Zerg_Drone);
+        int overlordCount = gameState.ourUnitCount(UnitType.Zerg_Overlord);
+
+        if (droneCount < 9 && gameState.canPlanDrone()) {
+            plans.add(planUnit(gameState, UnitType.Zerg_Drone));
+            return plans;
+        }
+
+        if (droneCount >= 8 && overlordCount < 2) {
+            plans.add(planUnit(gameState, UnitType.Zerg_Overlord));
+            return plans;
+        }
+
+        if (droneCount < 12 && gameState.canPlanDrone()) {
+            plans.add(planUnit(gameState, UnitType.Zerg_Drone));
+            return plans;
+        }
+
+        if (droneCount >= 12 && plannedAndCurrentHatcheries < 2) {
+            Plan hatcheryPlan = this.planNewBase(gameState);
+            if (hatcheryPlan != null) {
+                plans.add(hatcheryPlan);
+                return plans;
+            }
+        }
+
         return plans;
     }
 
     @Override
     public boolean shouldTransition(GameState gameState) {
         BaseData baseData = gameState.getBaseData();
-        return baseData.currentBaseCount() >= 2;
+        int baseCount = baseData.currentBaseCount();
+        int plannedHatcheries = gameState.getPlannedHatcheries();
+        final int plannedAndCurrentHatcheries = plannedHatcheries + baseCount;
+        return plannedAndCurrentHatcheries >= 2;
     }
 
     @Override
@@ -52,4 +74,7 @@ public class TwelveHatch extends BuildOrder {
         next.add(new ThreeHatchMuta());
         return next;
     }
+
+    @Override
+    public boolean isOpener() { return true; }
 }

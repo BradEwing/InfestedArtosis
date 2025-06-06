@@ -12,13 +12,13 @@ import info.InformationManager;
 import info.ScoutData;
 import info.map.GameMap;
 import info.map.ScoutPath;
-import strategy.openers.OpenerName;
 import unit.managed.ManagedUnit;
 import unit.managed.UnitRole;
 
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -90,7 +90,7 @@ public class ScoutManager {
      * @return
      */
     public boolean needDroneScout() {
-        if (gameState.getActiveOpener().getName() == OpenerName.FOUR_POOL) {
+        if (Objects.equals(gameState.getActiveBuildOrder().getName(), "4Pool")) {
             return false;
         }
 

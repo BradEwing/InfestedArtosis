@@ -18,9 +18,6 @@ import macro.plan.PlanState;
 import macro.plan.PlanType;
 import macro.plan.UnitPlan;
 import strategy.buildorder.BuildOrder;
-import strategy.buildorder.FourPool;
-import strategy.openers.Opener;
-import strategy.openers.OpenerName;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -56,29 +53,11 @@ public class ProductionManager {
     // TODO: Determine if only 1 active strategy, or if multiple can be active at once.
     private BuildOrder activeBuildOrder;
 
-    public ProductionManager(Game game, GameState gameState, List<Plan> initialBuildOrder) {
+    public ProductionManager(Game game, GameState gameState, BuildOrder opener) {
         this.game = game;
         this.gameState = gameState;
 
-        // TODO: Set from elsewhere
-        //this.activeBuildOrder = new Legacy();
-        //this.activeBuildOrder = new ThreeHatchMuta();
-        this.activeBuildOrder = new FourPool();
-
-        init(initialBuildOrder);
-    }
-
-    private boolean firstHatchInBase(Opener opener) {
-        if (opener.getName() == OpenerName.NINE_HATCH_IN_BASE) {
-            gameState.setMacroHatchMod(1);
-            return true;
-        }
-
-        return false;
-    }
-
-    private void init(List<Plan> initialBuildOrder) {
-        return;
+        this.activeBuildOrder = opener;
     }
 
     private void debugProductionQueue() {
@@ -138,12 +117,12 @@ public class ProductionManager {
         debugScheduledPlannedItems();
     }
 
-    // TODO: Determine why some workers go and stay idle
     public void onFrame() {
         debug();
 
         currentFrame = game.getFrameCount();
 
+        transition();
         plan();
         schedulePlannedItems();
         buildUpgrades();
@@ -153,6 +132,12 @@ public class ProductionManager {
             if (u.getType().isWorker() && u.isIdle()) {
                 assignUnit(u);
             }
+        }
+    }
+
+    private void transition() {
+        if (gameState.isTransitionBuildOrder()) {
+            this.activeBuildOrder = gameState.getActiveBuildOrder();
         }
     }
 
@@ -191,8 +176,10 @@ public class ProductionManager {
         // Once opener items are exhausted, plan items
         isPlanning = true;
 
+        if (!activeBuildOrder.isOpener()) {
+            planSupply(gameState.getSelf());
+        }
 
-        planSupply(gameState.getSelf());
         List<Plan> plans = activeBuildOrder.plan(gameState);
         for (Plan p: plans) {
             productionQueue.add(p);
@@ -227,7 +214,6 @@ public class ProductionManager {
         }
     }
 
-    // TODO: Consider units trying to schedule before their required tech
     private boolean canScheduleUnit(UnitType unitType) {
         TechProgression techProgression = gameState.getTechProgression();
 
@@ -391,7 +377,7 @@ public class ProductionManager {
             if (buildUpgrade(unit, plan)) {
                 unitsExecutingPlan.add(unit);
                 scheduledPlans.remove(plan);
-                plan.setState(PlanState.BUILDING); // TODO: This is awkward
+                plan.setState(PlanState.BUILDING);
                 gameState.getPlansBuilding().add(plan);
             }
         }
@@ -421,7 +407,7 @@ public class ProductionManager {
             if (researchTech(unit, plan)) {
                 unitsExecutingPlan.add(unit);
                 scheduledPlans.remove(plan);
-                plan.setState(PlanState.BUILDING); // TODO: This is awkward
+                plan.setState(PlanState.BUILDING);
                 gameState.getPlansBuilding().add(plan);
             }
         }

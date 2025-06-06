@@ -46,6 +46,10 @@ public abstract class BuildOrder {
 
     public abstract boolean playsRace(Race race);
 
+    public boolean isOpener() { return false; }
+
+    public boolean needLair() { return false; }
+
     protected int requiredSunkens(GameState gameState) {
         return 0;
     }
@@ -58,7 +62,7 @@ public abstract class BuildOrder {
         }
 
         gameState.addPlannedHatchery(1);
-        return new BuildingPlan(UnitType.Zerg_Hatchery, 2, true, base.getLocation());
+        return new BuildingPlan(UnitType.Zerg_Hatchery, gameState.getGameTime(), true, base.getLocation());
     }
 
     protected Plan planLair(GameState gameState) {

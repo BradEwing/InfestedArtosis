@@ -163,4 +163,7 @@ public class ThreeHatchMuta extends ProtossBase {
                 return false;
         }
     }
+
+    @Override
+    public boolean needLair() { return true; }
 }
