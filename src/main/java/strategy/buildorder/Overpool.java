@@ -3,9 +3,8 @@ package strategy.buildorder;
 import bwapi.Race;
 import bwapi.UnitType;
 import info.GameState;
-import macro.plan.BuildingPlan;
+import info.TechProgression;
 import macro.plan.Plan;
-import macro.plan.UnitPlan;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -19,7 +18,7 @@ public class Overpool extends BuildOrder {
 
     @Override
     public boolean shouldTransition(GameState gameState) {
-        return gameState.ourUnitCount(UnitType.Zerg_Spawning_Pool) > 0;
+        return gameState.getTechProgression().isSpawningPool();
     }
 
     @Override
@@ -31,25 +30,43 @@ public class Overpool extends BuildOrder {
 
     @Override
     public List<Plan> plan(GameState gameState) {
-        List<Plan> list = new ArrayList<>();
-        list.add(new UnitPlan(UnitType.Zerg_Drone, 0, true));
-        list.add(new UnitPlan(UnitType.Zerg_Drone, 0, true));
-        list.add(new UnitPlan(UnitType.Zerg_Drone, 0, true));
-        list.add(new UnitPlan(UnitType.Zerg_Drone, 0, true));
-        list.add(new UnitPlan(UnitType.Zerg_Drone, 0, true));
-        list.add(new UnitPlan(UnitType.Zerg_Overlord, 1, true));
-        list.add(new BuildingPlan(UnitType.Zerg_Spawning_Pool, 2, true));
-        list.add(new UnitPlan(UnitType.Zerg_Drone, 3, false));
-        list.add(new UnitPlan(UnitType.Zerg_Drone, 3, false));
-        list.add(new UnitPlan(UnitType.Zerg_Drone, 3, false));
-        list.add(new UnitPlan(UnitType.Zerg_Zergling, 4, false));
-        list.add(new UnitPlan(UnitType.Zerg_Zergling, 4, false));
-        list.add(new UnitPlan(UnitType.Zerg_Zergling, 4, false));
-        return list;
+        List<Plan> plans = new ArrayList<>();
+        TechProgression techProgression = gameState.getTechProgression();
+
+        // Count existing units/buildings
+        int droneCount    = gameState.ourUnitCount(UnitType.Zerg_Drone);
+        int overlordCount = gameState.ourUnitCount(UnitType.Zerg_Overlord);
+        int zerglingCount     = gameState.ourUnitCount(UnitType.Zerg_Zergling);
+
+        if (droneCount < 8 && gameState.canPlanDrone()) {
+            plans.add(planUnit(gameState, UnitType.Zerg_Drone));
+            return plans;
+        }
+
+        if (droneCount > 7 && overlordCount < 2) {
+            plans.add(planUnit(gameState, UnitType.Zerg_Overlord));
+            return plans;
+        }
+
+        if (overlordCount > 1 && techProgression.canPlanPool()) {
+            plans.add(planSpawningPool(gameState));
+            return plans;
+        }
+
+
+        if (zerglingCount < 2 && gameState.canPlanUnit(UnitType.Zerg_Zergling)) {
+            plans.add(planUnit(gameState, UnitType.Zerg_Zergling));
+            return plans;
+        }
+
+        return plans;
     }
 
     @Override
     public boolean playsRace(Race race) {
         return true;
     }
+
+    @Override
+    public boolean isOpener() { return true; }
 }

@@ -49,4 +49,7 @@ public class FourPool extends BuildOrder {
     public boolean playsRace(Race race) {
         return true;
     }
+
+    @Override
+    public boolean isOpener() { return true; }
 }

@@ -15,7 +15,7 @@ import info.map.MapTile;
 import learning.OpenerRecord;
 import learning.OpponentRecord;
 import learning.StrategyRecord;
-import strategy.openers.Opener;
+import strategy.buildorder.BuildOrder;
 
 import java.util.HashMap;
 import java.util.List;
@@ -28,12 +28,12 @@ public class Debug {
     private BWEM bwem;
     private Game game;
 
-    private Opener opener;
+    private BuildOrder opener;
     private OpponentRecord opponentRecord;
 
     private GameState gameState;
 
-    public Debug(BWEM bwem, Game game, Opener opener, OpponentRecord opponentRecord, GameState gameState) {
+    public Debug(BWEM bwem, Game game, BuildOrder opener, OpponentRecord opponentRecord, GameState gameState) {
         this.bwem = bwem;
         this.game = game;
         this.opener = opener;
@@ -46,8 +46,8 @@ public class Debug {
 
         game.drawTextScreen(4, 8, "Opponent: " + opponentRecord.getName() + " " + getOpponentRecord());
         game.drawTextScreen(4, 16, "GameMap: " + game.mapFileName());
-        game.drawTextScreen(4, 24, "Opener: " + opener.getNameString() + " " + getOpenerRecord(), Text.White);
-        game.drawTextScreen(4, 32, "BuildOrder: " + gameState.getActiveStrategy().getName() + " " + getStrategyRecord(), Text.White);
+        game.drawTextScreen(4, 24, "Opener: " + opener.getName() + " " + getOpenerRecord(), Text.White);
+        game.drawTextScreen(4, 32, "BuildOrder: " + gameState.getActiveBuildOrder().getName(), Text.White);
         game.drawTextScreen(4, 40, "Frame: " + game.getFrameCount());
 
         drawUnitCount();
@@ -94,7 +94,7 @@ public class Debug {
     }
 
     private String getOpenerRecord() {
-        OpenerRecord openerRecord = opponentRecord.getOpenerRecord().get(opener.getNameString());
+        OpenerRecord openerRecord = opponentRecord.getOpenerRecord().get(opener.getName());
         return String.format("%s_%s", openerRecord.getWins(), openerRecord.getLosses());
     }
 

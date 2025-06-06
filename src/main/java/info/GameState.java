@@ -6,6 +6,7 @@ import bwapi.Race;
 import bwapi.TilePosition;
 import bwapi.Unit;
 import bwapi.UnitType;
+import bwapi.UpgradeType;
 import bwem.BWEM;
 import bwem.Base;
 import bwem.Mineral;
@@ -21,9 +22,9 @@ import lombok.Setter;
 import macro.plan.Plan;
 import macro.plan.PlanState;
 import macro.plan.PlanType;
+import strategy.buildorder.BuildOrder;
 import strategy.openers.Opener;
 import strategy.strategies.Strategy;
-import strategy.strategies.UnitWeights;
 import unit.managed.ManagedUnit;
 import util.Time;
 
@@ -89,8 +90,10 @@ public class GameState {
     private Opener activeOpener;
     @Setter(AccessLevel.NONE)
     private Strategy activeStrategy;
-    private UnitWeights unitWeights;
     private boolean defensiveSunk = false;
+    private BuildOrder activeBuildOrder;
+
+    private boolean transitionBuildOrder = false;
 
     private UnitTypeCount unitTypeCount = new UnitTypeCount();
 
@@ -118,16 +121,8 @@ public class GameState {
     }
 
     public void onStart(Decisions decisions, Race opponentRace) {
-        Opener opener = decisions.getOpener();
-        this.activeOpener = opener;
-        this.isAllIn = opener.isAllIn();
+        this.activeBuildOrder = decisions.getOpener();
         this.activeStrategy = decisions.getStrategy();
-        this.unitWeights = activeStrategy.getUnitWeights();
-
-        if (config.learnDefensiveSunk) {
-            this.defensiveSunk = decisions.isDefensiveSunk();
-        }
-
         this.opponentRace = opponentRace;
         this.strategyTracker = new StrategyTracker(game, opponentRace, this.observedUnitTracker);
     }
@@ -240,21 +235,12 @@ public class GameState {
         return needHive() && techProgression.canPlanQueensNest();
     }
 
-    public boolean canPlanHydraliskDen() {
-        final boolean atLeastTwoHatch = baseData.numHatcheries() > 1;
-        return atLeastTwoHatch && techProgression.canPlanHydraliskDen() && unitWeights.hasUnit(UnitType.Zerg_Hydralisk);
-    }
-
     private boolean needLair() {
-        final boolean unitsNeedLairTech = unitWeights.hasUnit(UnitType.Zerg_Mutalisk) ||
-                unitWeights.hasUnit(UnitType.Zerg_Scourge) ||
-                unitWeights.hasUnit(UnitType.Zerg_Lurker);
-        return unitsNeedLairTech || techProgression.needLairForNextEvolutionChamberUpgrades() || needHive();
+        return activeBuildOrder.needLair() || techProgression.needLairForNextEvolutionChamberUpgrades() || needHive();
     }
 
     private boolean needHive() {
-        final boolean unitsNeedHiveTech = unitWeights.hasUnit(UnitType.Zerg_Ultralisk) || unitWeights.hasUnit(UnitType.Zerg_Defiler);
-        return unitsNeedHiveTech || techProgression.needHiveForUpgrades();
+        return techProgression.needHiveForUpgrades();
     }
 
     // Only take 1 hatch -> lair against zerg
@@ -349,7 +335,6 @@ public class GameState {
     // How many workers we want.
     // This is pulled from the old ProductionManager. Ideally this is something set more so
     // by the active strategies.
-    @Deprecated
     private int expectedWorkers() {
         final int base = 5;
         final int expectedMineralWorkers = baseData.currentBaseCount() * 7;
@@ -364,49 +349,6 @@ public class GameState {
         }
     }
 
-    // This is pulled from the old ProductionManager. Ideally this is something set more so
-    // by the active strategies.
-    @Deprecated
-    public boolean canPlanHatchery() {
-        if (isAllIn) {
-            return false;
-        }
-
-        if (plannedHatcheries >= 3) {
-            return false;
-        }
-
-        if (opponentRace == Race.Zerg) {
-            final Time FRAME_ZVZ_HATCH_RESTRICT = new Time(7200); // 5m
-            if (getGameTime().lessThanOrEqual(FRAME_ZVZ_HATCH_RESTRICT)) {
-                return false;
-            }
-        }
-
-        if (canAffordHatch()) {
-            return true;
-        }
-
-        if (isNearMaxExpectedWorkers() && canAffordHatchSaturation()) {
-            return true;
-        }
-
-        return false;
-    }
-
-    private boolean canAffordHatchSaturation() {
-        final int numHatcheries = baseData.numHatcheries();
-        return ((numHatcheries + plannedHatcheries) * 7) <= mineralWorkers;
-    }
-
-    private boolean canAffordHatch() {
-        return resourceCount.canAffordHatch(plannedHatcheries);
-    }
-
-    private boolean isNearMaxExpectedWorkers() {
-        return ((expectedWorkers() * (1 + plannedHatcheries)) - numWorkers() < 0);
-    }
-
     public boolean canPlanExtractor() {
         return !isAllIn &&
                 techProgression.canPlanExtractor() &&
@@ -416,10 +358,6 @@ public class GameState {
 
     private boolean needExtractor() {
         return baseData.numExtractor() < 1 || resourceCount.needExtractor();
-    }
-
-    public boolean canPlanSunkenColony() {
-        return techProgression.canPlanSunkenColony();
     }
 
     // Determine by current strategy and reactions
@@ -464,5 +402,23 @@ public class GameState {
         }
 
         return neededBases;
+    }
+
+    public boolean canPlanUnit(UnitType unitType) {
+        switch(unitType) {
+            case Zerg_Zergling:
+                return techProgression.isSpawningPool();
+            default:
+                return false;
+        }
+    }
+
+    public boolean canPlanUpgrade(UpgradeType upgradeType) {
+        switch (upgradeType) {
+            case Metabolic_Boost:
+                return ourUnitCount(UnitType.Zerg_Extractor) > 0 && techProgression.isSpawningPool() && techProgression.canPlanMetabolicBoost();
+            default:
+                return false;
+        }
     }
 }

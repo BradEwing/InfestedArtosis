@@ -4,16 +4,14 @@ import bwapi.Race;
 import bwem.BWEM;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import config.Config;
-import strategy.OpenerFactory;
-import strategy.StrategyFactory;
-import strategy.openers.Opener;
-import strategy.strategies.Strategy;
+import strategy.BuildOrderFactory;
+import strategy.buildorder.BuildOrder;
 
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.Collections;
+import java.nio.file.Files;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -33,12 +31,9 @@ public class LearningManager {
     private OpponentRecord opponentRecord;
     private Decisions decisions = new Decisions();
     private OpenerRecord currentOpener; // Write this at end of game
-    private StrategyRecord currentStrategy;
 
     private ObjectMapper mapper = new ObjectMapper();
-
-    private OpenerFactory openerFactory;
-    private StrategyFactory strategyFactory;
+    private BuildOrderFactory buildOrderFactory;
 
     public LearningManager(Config config, Race opponentRace, String opponentName, BWEM bwem) {
         this.config = config;
@@ -46,9 +41,7 @@ public class LearningManager {
         this.opponentName = opponentName;
         this.opponentFileName = opponentName + "_" + opponentRace + ".json";
         this.opponentRecord = new OpponentRecord(opponentName, opponentRace.toString(), 0, 0, new HashMap<>(), new HashMap<>(), new HashMap<>(), new DefensiveSunkRecord(0 , 0));
-
-        this.openerFactory = new OpenerFactory(bwem.getMap().getStartingLocations().size(), opponentRace);
-        this.strategyFactory = new StrategyFactory(opponentRace);
+        this.buildOrderFactory = new BuildOrderFactory(bwem.getMap().getStartingLocations().size(), opponentRace);
 
         try {
             readOpponentRecord();
@@ -57,11 +50,8 @@ public class LearningManager {
         }
 
         ensureOpenersInOpponentRecord();
-        ensureStrategiesInOpponentRecord();
         ensureDefensiveSunk();
         decisions.setOpener(determineOpener());
-        decisions.setStrategy(determineStrategy());
-        decisions.setDefensiveSunk(determineDefensiveSunk());
     }
 
     public void onEnd(boolean isWinner) {
@@ -69,22 +59,18 @@ public class LearningManager {
         if (isWinner) {
             currentOpener.setWins(currentOpener.getWins()+1);
             opponentRecord.setWins(opponentRecord.getWins()+1);
-            currentStrategy.setWins(currentStrategy.getWins()+1);
             if (decisions.isDefensiveSunk()) {
                 defensiveSunkRecord.setWins(defensiveSunkRecord.getWins()+1);
             }
         } else {
             currentOpener.setLosses(currentOpener.getLosses()+1);
             opponentRecord.setLosses(opponentRecord.getLosses()+1);
-            currentStrategy.setLosses(currentStrategy.getLosses()+1);
             if (decisions.isDefensiveSunk()) {
                 defensiveSunkRecord.setLosses(defensiveSunkRecord.getLosses()+1);
             }
         }
         Map<String, OpenerRecord> openerRecords = opponentRecord.getOpenerRecord();
         openerRecords.put(currentOpener.getOpener(), currentOpener);
-        Map<String, StrategyRecord> strategyRecordMap = opponentRecord.getStrategyRecordMap();
-        strategyRecordMap.put(currentStrategy.getStrategy(), currentStrategy);
         try {
             writeOpponentRecord();
         } catch (IOException e) {
@@ -104,7 +90,7 @@ public class LearningManager {
             return;
         }
 
-        InputStream inJson = new FileInputStream(file);
+        InputStream inJson = Files.newInputStream(file.toPath());
         opponentRecord = mapper.readValue(inJson, OpponentRecord.class);
 
         // Handle new change to JSON file
@@ -125,33 +111,15 @@ public class LearningManager {
 
     private void ensureOpenersInOpponentRecord() {
         Map<String, OpenerRecord> openerRecordMap = opponentRecord.getOpenerRecord();
-        List<String> knownOpeners = openerRecordMap
-                .keySet()
-                .stream()
-                .collect(Collectors.toList());
-        Set<String> missingOpeners = openerFactory.listAllOpenerNames()
+        List<String> knownOpeners = new ArrayList<>(openerRecordMap
+                .keySet());
+        Set<String> missingOpeners = buildOrderFactory.getOpenerNames()
                 .stream()
                 .filter(s -> !knownOpeners.contains(s))
                 .collect(Collectors.toSet());
 
         for (String opener: missingOpeners) {
             openerRecordMap.put(opener, new OpenerRecord(opener, 0, 0));
-        }
-    }
-
-    private void ensureStrategiesInOpponentRecord() {
-        Map<String, StrategyRecord> strategyRecordMap = opponentRecord.getStrategyRecordMap();
-        List<String> knownStrategies = strategyRecordMap
-                .keySet()
-                .stream()
-                .collect(Collectors.toList());
-        Set<String> missingStrategies = strategyFactory.listAllOpenerNames()
-                .stream()
-                .filter(s -> !knownStrategies.contains(s))
-                .collect(Collectors.toSet());
-
-        for (String strategy: missingStrategies) {
-            strategyRecordMap.put(strategy, new StrategyRecord(strategy, 0, 0));
         }
     }
 
@@ -163,50 +131,25 @@ public class LearningManager {
     }
 
     /**
-     * Determine which opener we should pick.
-     *
-     * Currently, pick the opener we have the most net-wins on.
-     *
-     * May tweak this later
+     * Determine which opener we should pick using a UCB algorithm.
      */
-    private Opener determineOpener() {
+    private BuildOrder determineOpener() {
         if (config.openerOverride != null) {
-            Opener opener = openerFactory.getByName(config.openerOverride);
-            if (opener != null && openerFactory.getPlayableOpeners().contains(opener.getNameString())) {
-                currentOpener = opponentRecord.getOpenerRecord().get(opener.getNameString());
-                return opener;
+            BuildOrder forced = buildOrderFactory.getByName(config.openerOverride);
+            if (forced != null && buildOrderFactory.isPlayableOpener(forced)) {
+                currentOpener = opponentRecord.getOpenerRecord().get(forced.getName());
+                return forced;
             }
         }
-        List<OpenerRecord> openers = opponentRecord.getOpenerRecord()
+
+        List<OpenerRecord> allRecords = opponentRecord.getOpenerRecord()
                 .values()
                 .stream()
-                .filter(sr -> openerFactory.getPlayableOpeners().contains(sr.getOpener()))
+                .filter(rec -> buildOrderFactory.isPlayableOpener(buildOrderFactory.getByName(rec.getOpener())))
+                .sorted(new UCBRecordComparator(this.opponentRecord.totalGames()))
                 .collect(Collectors.toList());
-        Collections.sort(openers, new UCBRecordComparator(this.opponentRecord.totalGames()));
-        currentOpener = openers.get(0);
-        return openerFactory.getByName(currentOpener.getOpener());
-    }
 
-    private Strategy determineStrategy() {
-        if (config.strategyOverride != null) {
-             Strategy strategy = strategyFactory.getByName(config.strategyOverride);
-             if (strategy != null && strategyFactory.getPlayableStrategies(decisions.getOpener()).contains(strategy.getName())) {
-                 currentStrategy = opponentRecord.getStrategyRecordMap().get(strategy.getName());
-                 return strategy;
-            }
-        }
-        List<StrategyRecord> strategies = opponentRecord.getStrategyRecordMap()
-                .values()
-                .stream()
-                .filter(sr -> strategyFactory.getPlayableStrategies(decisions.getOpener()).contains(sr.getStrategy()))
-                .collect(Collectors.toList());
-        Collections.sort(strategies, new UCBRecordComparator(this.opponentRecord.totalGames()));
-        currentStrategy = strategies.get(0);
-        return strategyFactory.getByName(currentStrategy.getStrategy());
-    }
-
-    private boolean determineDefensiveSunk() {
-        DefensiveSunkRecord record = opponentRecord.getDefensiveSunkRecord();
-        return record.index(opponentRecord.totalGames()) > 0.5;
+        currentOpener = allRecords.get(0);
+        return buildOrderFactory.getByName(currentOpener.getOpener());
     }
 }

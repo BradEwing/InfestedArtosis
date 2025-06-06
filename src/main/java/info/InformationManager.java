@@ -3,7 +3,6 @@ package info;
 import bwapi.Color;
 import bwapi.Game;
 import bwapi.Race;
-import bwapi.TechType;
 import bwapi.Text;
 import bwapi.TilePosition;
 import bwapi.Unit;
@@ -21,7 +20,7 @@ import info.tracking.ObservedUnitTracker;
 import lombok.Getter;
 import macro.plan.Plan;
 import macro.plan.PlanType;
-import strategy.strategies.UnitWeights;
+import strategy.buildorder.BuildOrder;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -71,8 +70,6 @@ public class InformationManager {
         gameState.onFrame();
         ageHeatMap();
 
-        checkResearchOnFrame();
-
         trackEnemyUnits();
         trackEnemyBuildings();
         // TODO: do same for unit positions?
@@ -83,6 +80,13 @@ public class InformationManager {
 
         checkIfEnemyUnitsStillThreatenBase();
         checkBaseThreats();
+
+        BuildOrder active = gameState.getActiveBuildOrder();
+        if (active.shouldTransition(gameState)) {
+            BuildOrder transition = transitionBuildOrder();
+            gameState.setActiveBuildOrder(transition);
+            gameState.setTransitionBuildOrder(true);
+        }
     }
 
     public void onUnitHide(Unit unit) {
@@ -104,16 +108,6 @@ public class InformationManager {
         enemyLastKnownLocations.put(unit, unit.getTilePosition());
     }
 
-    private void checkResearchOnFrame() {
-        TechProgression techProgression = gameState.getTechProgression();
-        UnitWeights unitWeights = gameState.getUnitWeights();
-
-        final boolean hasResearchedLurker = game.self().hasResearched(TechType.Lurker_Aspect);
-        if (!unitWeights.isEnabled(UnitType.Zerg_Lurker) && techProgression.isLurker() && hasResearchedLurker) {
-            unitWeights.enableUnit(UnitType.Zerg_Lurker);
-        }
-    }
-
     /**
      * Update GameState's tech progression to enable new units, tech or upgrades.
      *
@@ -121,21 +115,16 @@ public class InformationManager {
      */
     public void updateTechProgression(UnitType unitType) {
         TechProgression techProgression = gameState.getTechProgression();
-        UnitWeights unitWeights = gameState.getUnitWeights();
 
         switch(unitType) {
             case Zerg_Spawning_Pool:
                 techProgression.setSpawningPool(true);
-                unitWeights.enableUnit(UnitType.Zerg_Zergling);
                 break;
             case Zerg_Hydralisk_Den:
                 techProgression.setHydraliskDen(true);
-                unitWeights.enableUnit(UnitType.Zerg_Hydralisk);
                 break;
             case Zerg_Spire:
                 techProgression.setSpire(true);
-                unitWeights.enableUnit(UnitType.Zerg_Mutalisk);
-                unitWeights.enableUnit(UnitType.Zerg_Scourge);
                 break;
             case Zerg_Lair:
                 techProgression.setLair(true);
@@ -146,7 +135,6 @@ public class InformationManager {
                 break;
             case Zerg_Queens_Nest:
                 techProgression.setQueensNest(true);
-                unitWeights.enableUnit(UnitType.Zerg_Queen);
                 break;
             case Zerg_Hive:
                 techProgression.setHive(true);
@@ -227,21 +215,16 @@ public class InformationManager {
      */
     public void updateTechOnDestroy(UnitType unitType) {
         TechProgression techProgression = gameState.getTechProgression();
-        UnitWeights unitWeights = gameState.getUnitWeights();
 
         switch(unitType) {
             case Zerg_Spawning_Pool:
                 techProgression.setSpawningPool(false);
-                unitWeights.disableUnit(UnitType.Zerg_Zergling);
                 break;
             case Zerg_Hydralisk_Den:
                 techProgression.setHydraliskDen(false);
-                unitWeights.disableUnit(UnitType.Zerg_Hydralisk);
                 break;
             case Zerg_Spire:
                 techProgression.setSpire(false);
-                unitWeights.disableUnit(UnitType.Zerg_Mutalisk);
-                unitWeights.disableUnit(UnitType.Zerg_Scourge);
                 break;
             case Zerg_Lair:
                 techProgression.setLair(false);
@@ -252,7 +235,6 @@ public class InformationManager {
                 break;
             case Zerg_Queens_Nest:
                 techProgression.setQueensNest(false);
-                unitWeights.disableUnit(UnitType.Zerg_Queen);
                 break;
             case Zerg_Hive:
                 techProgression.setHive(false);
@@ -752,5 +734,12 @@ public class InformationManager {
 
         }
         return leastScoutedBase;
+    }
+
+    // TODO: Consider learning/record
+    private BuildOrder transitionBuildOrder() {
+        BuildOrder active = gameState.getActiveBuildOrder();
+        Set<BuildOrder> candidates = active.transition(gameState);
+        return candidates.stream().findFirst().get();
     }
 }
