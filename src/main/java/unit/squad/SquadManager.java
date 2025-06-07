@@ -593,7 +593,7 @@ public class SquadManager {
     /**
      * Assign target to a fighter and squad.
      *
-     * OneHatchSpire squads should all focus the same unit.
+     * Mutalisk squads should all focus the same unit.
      *
      * Currently, all other unit squads will be assigned the closest enemy unit.
      *
