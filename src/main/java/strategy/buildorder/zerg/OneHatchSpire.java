@@ -10,6 +10,11 @@ import macro.plan.Plan;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ *
+ * OneHatchSpire, baseline ZvZ build.
+ * <a href="https://liquipedia.net/starcraft/9_Pool_Speed_into_1_Hatch_Spire_(vs._Zerg)">Liquipedia</a>
+ */
 public class OneHatchSpire extends ZergBase{
     public OneHatchSpire() {
         super("1HatchSpire");

@@ -16,7 +16,7 @@ import java.util.List;
  *
  * Liquipedia Overview
  * <p>
- * This build opens very similarly to a ZvT 3 Hatch OneHatchSpire build. It looks to get Scourge and/or Mutalisks out very quickly to control Protoss' early midgame Tech, allowing Zerg the freedom to power Drones through the midgame. It can sometimes be used as an aggressive strategy by catching the Protoss main off guard while it has very few Cannons and minimal air defense.
+ * This build opens very similarly to a ZvT 3 Hatch Mutalisk build. It looks to get Scourge and/or Mutalisks out very quickly to control Protoss' early midgame Tech, allowing Zerg the freedom to power Drones through the midgame. It can sometimes be used as an aggressive strategy by catching the Protoss main off guard while it has very few Cannons and minimal air defense.
  * <a href="https://github.com/Cmccrave/McRave/blob/699ecf1b0f8581f318b467c74744027f3eb9b852/Source/McRave/Builds/Zerg/ZvP/ZvP.cpp#L245">McRave 3HatchMuta</a>
  * <a href="https://liquipedia.net/starcraft/3_Hatch_Spire_(vs._Protoss)">Liquipedia</a>
  *
