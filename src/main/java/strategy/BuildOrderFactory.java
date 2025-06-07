@@ -2,12 +2,12 @@ package strategy;
 
 import bwapi.Race;
 import strategy.buildorder.BuildOrder;
-import strategy.buildorder.FourPool;
-import strategy.buildorder.NinePoolSpeed;
-import strategy.buildorder.Overpool;
-import strategy.buildorder.ThreeHatchMuta;
-import strategy.buildorder.TwelveHatch;
-import strategy.buildorder.TwelvePool;
+import strategy.buildorder.opener.FourPool;
+import strategy.buildorder.opener.NinePoolSpeed;
+import strategy.buildorder.opener.Overpool;
+import strategy.buildorder.protoss.ThreeHatchMuta;
+import strategy.buildorder.opener.TwelveHatch;
+import strategy.buildorder.opener.TwelvePool;
 
 import java.util.ArrayList;
 import java.util.HashSet;

@@ -1,4 +1,4 @@
-package strategy.buildorder;
+package strategy.buildorder.protoss;
 
 import bwapi.Race;
 import bwapi.UnitType;
@@ -71,7 +71,7 @@ public class ThreeHatchMuta extends ProtossBase {
 
         // Defensive Structures
         final int desiredSunkenColonies = this.requiredSunkens(gameState);
-        if (gameState.basesNeedingSunken(desiredSunkenColonies).size() > 0) {
+        if (!gameState.basesNeedingSunken(desiredSunkenColonies).isEmpty()) {
             plans.addAll(this.planSunkenColony(gameState));
         }
 
@@ -114,7 +114,6 @@ public class ThreeHatchMuta extends ProtossBase {
         }
 
         // Plan Units
-
         final int desiredScourge = enemyCorsairCount + enemyObserverCount;
         if (techProgression.isSpire() && scourgeCount < desiredScourge) {
             for (int i = 0; i < desiredScourge - scourgeCount; i++) {
@@ -133,8 +132,6 @@ public class ThreeHatchMuta extends ProtossBase {
             return plans;
         }
 
-
-
         final int desiredZerglings = this.zerglingsNeeded(gameState);
         if (zerglingCount < desiredZerglings) {
             for (int i = 0; i < desiredZerglings - zerglingCount; i++) {
@@ -145,8 +142,8 @@ public class ThreeHatchMuta extends ProtossBase {
         }
 
         if (plans.isEmpty() && gameState.canPlanDrone()) {
-            Plan zerglingPlan = this.planUnit(gameState, UnitType.Zerg_Drone);
-            plans.add(zerglingPlan);
+            Plan dronePlan = this.planUnit(gameState, UnitType.Zerg_Drone);
+            plans.add(dronePlan);
             return plans;
         }
 

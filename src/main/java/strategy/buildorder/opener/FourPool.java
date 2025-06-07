@@ -1,10 +1,11 @@
-package strategy.buildorder;
+package strategy.buildorder.opener;
 
 import bwapi.Race;
 import bwapi.UnitType;
 import info.GameState;
 import info.TechProgression;
 import macro.plan.Plan;
+import strategy.buildorder.BuildOrder;
 
 import java.util.ArrayList;
 import java.util.List;

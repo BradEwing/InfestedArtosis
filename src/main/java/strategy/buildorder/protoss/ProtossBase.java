@@ -1,10 +1,11 @@
-package strategy.buildorder;
+package strategy.buildorder.protoss;
 
 import bwapi.Race;
 import bwapi.UnitType;
 import info.GameState;
 import info.tracking.StrategyTracker;
 import macro.plan.Plan;
+import strategy.buildorder.BuildOrder;
 import util.Time;
 
 import java.util.Collections;
@@ -25,6 +26,7 @@ public class ProtossBase extends BuildOrder {
         return false;
     }
 
+    @Override
     protected int zerglingsNeeded(GameState gameState) {
         if (gameState.ourUnitCount(UnitType.Zerg_Spawning_Pool) < 1) {
             return 0;
