@@ -224,7 +224,7 @@ public class GameState {
      * @return boolean
      */
     public boolean canPlanLair() {
-        return needLair() && techProgression.canPlanLair() && hasMinHatchForLair();
+        return needLair() && techProgression.canPlanLair() && hasMinHatchForLair() && ourUnitCount(UnitType.Zerg_Extractor) > 0;
     }
 
     public boolean canPlanHive() {

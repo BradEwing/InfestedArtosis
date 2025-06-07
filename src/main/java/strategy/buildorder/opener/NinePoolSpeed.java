@@ -1,4 +1,4 @@
-package strategy.buildorder;
+package strategy.buildorder.opener;
 
 import bwapi.Race;
 import bwapi.UnitType;
@@ -6,6 +6,9 @@ import bwapi.UpgradeType;
 import info.GameState;
 import info.TechProgression;
 import macro.plan.Plan;
+import strategy.buildorder.BuildOrder;
+import strategy.buildorder.protoss.ThreeHatchMuta;
+import strategy.buildorder.zerg.OneHatchSpire;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -25,7 +28,13 @@ public class NinePoolSpeed extends BuildOrder {
     @Override
     public Set<BuildOrder> transition(GameState gameState) {
         Set<BuildOrder> next = new HashSet<>();
-        next.add(new ThreeHatchMuta());
+        Race opponentRace = gameState.getOpponentRace();
+        switch (opponentRace) {
+            case Protoss:
+                next.add(new ThreeHatchMuta());
+            case Zerg:
+                next.add(new OneHatchSpire());
+        }
         return next;
     }
 

@@ -11,6 +11,7 @@ import info.GameState;
 import info.TechProgression;
 import info.UnitTypeCount;
 import info.map.BuildingPlanner;
+import lombok.Getter;
 import macro.plan.BuildingPlan;
 import macro.plan.Plan;
 import macro.plan.UnitPlan;
@@ -23,15 +24,12 @@ import java.util.Optional;
 import java.util.Set;
 
 public abstract class BuildOrder {
+    @Getter
     private final String name;
     protected Time activatedAt;
 
     protected BuildOrder(String name) {
         this.name = name;
-    }
-
-    public String getName() {
-        return name;
     }
 
     public boolean shouldTransition(GameState gameState) {
@@ -53,6 +51,8 @@ public abstract class BuildOrder {
     protected int requiredSunkens(GameState gameState) {
         return 0;
     }
+
+    protected int zerglingsNeeded(GameState gameState) { return 6; }
 
     protected Plan planNewBase(GameState gameState) {
         Base base = gameState.reserveBase();
@@ -123,6 +123,10 @@ public abstract class BuildOrder {
         if (unitType == UnitType.Zerg_Drone) {
             gameState.addPlannedWorker(1);
         }
+        if (unitType == UnitType.Zerg_Overlord) {
+            int plannedSupply = gameState.getResourceCount().getPlannedSupply();
+            gameState.getResourceCount().setPlannedSupply(plannedSupply+16);
+        }
         return new UnitPlan(unitType, gameState.getGameTime().getFrames(), true);
     }
 
@@ -131,7 +135,9 @@ public abstract class BuildOrder {
         switch (upgradeType) {
             case Metabolic_Boost:
                 techProgression.setPlannedMetabolicBoost(true);
-
+            case Zerg_Flyer_Carapace:
+                int flyerCarapace = techProgression.getFlyerDefense();
+                techProgression.setFlyerDefense(flyerCarapace+1);
         }
 
         return new UpgradePlan(upgradeType, gameState.getGameTime().getFrames(), false);
