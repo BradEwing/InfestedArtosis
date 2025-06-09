@@ -7,6 +7,7 @@ import info.GameState;
 import macro.plan.Plan;
 import strategy.buildorder.BuildOrder;
 import strategy.buildorder.protoss.ThreeHatchMuta;
+import strategy.buildorder.terran.TwoHatchMuta;
 import strategy.buildorder.zerg.OneHatchSpire;
 
 import java.util.ArrayList;
@@ -81,6 +82,8 @@ public class TwelveHatch extends BuildOrder {
                 next.add(new ThreeHatchMuta());
             case Zerg:
                 next.add(new OneHatchSpire());
+            case Terran:
+                next.add(new TwoHatchMuta());
         }
         return next;
     }
