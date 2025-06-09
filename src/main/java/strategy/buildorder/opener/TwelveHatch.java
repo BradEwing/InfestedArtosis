@@ -80,10 +80,13 @@ public class TwelveHatch extends BuildOrder {
         switch (opponentRace) {
             case Protoss:
                 next.add(new ThreeHatchMuta());
+                return next;
             case Zerg:
                 next.add(new OneHatchSpire());
+                return next;
             case Terran:
                 next.add(new TwoHatchMuta());
+                return next;
         }
         return next;
     }
