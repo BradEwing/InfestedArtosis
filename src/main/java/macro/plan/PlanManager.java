@@ -127,7 +127,7 @@ public class PlanManager {
         double distance = buildingPosition.getDistance(unitPosition);
         double unitSpeed = unit.getType().topSpeed();
 
-        return (int)( distance / unitSpeed );
+        return (int)( distance / unitSpeed ) + 250;
     }
 
     /**

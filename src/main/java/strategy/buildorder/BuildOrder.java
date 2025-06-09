@@ -62,13 +62,13 @@ public abstract class BuildOrder {
         }
 
         gameState.addPlannedHatchery(1);
-        return new BuildingPlan(UnitType.Zerg_Hatchery, gameState.getGameTime(), true, base.getLocation());
+        return new BuildingPlan(UnitType.Zerg_Hatchery, gameState.getGameTime().getFrames(), true, base.getLocation());
     }
 
     protected Plan planLair(GameState gameState) {
         TechProgression techProgression = gameState.getTechProgression();
         techProgression.setPlannedLair(true);
-        return new BuildingPlan(UnitType.Zerg_Lair, gameState.getGameTime(), true);
+        return new BuildingPlan(UnitType.Zerg_Lair, 3, true);
     }
 
     protected Plan planSpawningPool(GameState gameState) {
@@ -83,7 +83,7 @@ public abstract class BuildOrder {
     protected Plan planSpire(GameState gameState) {
         TechProgression techProgression = gameState.getTechProgression();
         techProgression.setSpire(true);
-        Plan plan = new BuildingPlan(UnitType.Zerg_Spire, gameState.getGameTime(), true);
+        Plan plan = new BuildingPlan(UnitType.Zerg_Spire, 4, true);
         TilePosition buildPosition = gameState.getTechBuildingLocation(UnitType.Zerg_Spire);
         plan.setBuildPosition(buildPosition);
         return plan;
@@ -91,7 +91,7 @@ public abstract class BuildOrder {
 
     protected Plan planExtractor(GameState gameState) {
         BaseData baseData = gameState.getBaseData();
-        Plan plan = new BuildingPlan(UnitType.Zerg_Extractor, gameState.getGameTime().getFrames(), true);
+        Plan plan = new BuildingPlan(UnitType.Zerg_Extractor, 50, true);
         Unit geyser = baseData.reserveExtractor();
         plan.setBuildPosition(geyser.getTilePosition());
         return plan;
@@ -110,8 +110,8 @@ public abstract class BuildOrder {
         }
         baseData.reserveSunkenColony(eligibleBase.get());
         TilePosition location = buildingPlanner.getLocationForCreepColony(eligibleBase.get());
-        Plan creepColonyPlan = new BuildingPlan(UnitType.Zerg_Creep_Colony, gameState.getGameTime().getFrames()-500, true, location);
-        Plan sunkenColonyPlan = new BuildingPlan(UnitType.Zerg_Sunken_Colony, gameState.getGameTime().getFrames()+UnitType.Zerg_Creep_Colony.buildTime()-500, true, location);
+        Plan creepColonyPlan = new BuildingPlan(UnitType.Zerg_Creep_Colony, 5, true, location);
+        Plan sunkenColonyPlan = new BuildingPlan(UnitType.Zerg_Sunken_Colony, 5, true, location);
         plans.add(creepColonyPlan);
         plans.add(sunkenColonyPlan);
         return plans;

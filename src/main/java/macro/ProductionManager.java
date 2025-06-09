@@ -184,7 +184,6 @@ public class ProductionManager {
         for (Plan p: plans) {
             productionQueue.add(p);
         }
-
     }
 
     private int unitQueueSize() {
