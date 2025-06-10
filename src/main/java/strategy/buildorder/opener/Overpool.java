@@ -22,7 +22,8 @@ public class Overpool extends BuildOrder {
 
     @Override
     public boolean shouldTransition(GameState gameState) {
-        return gameState.getTechProgression().isSpawningPool();
+
+        return gameState.getOpponentRace() != Race.Unknown && gameState.getTechProgression().isSpawningPool();
     }
 
     @Override
@@ -69,7 +70,7 @@ public class Overpool extends BuildOrder {
         }
 
 
-        if (zerglingCount < 2 && gameState.canPlanUnit(UnitType.Zerg_Zergling)) {
+        if (zerglingCount < this.zerglingsNeeded(gameState) && gameState.canPlanUnit(UnitType.Zerg_Zergling)) {
             plans.add(planUnit(gameState, UnitType.Zerg_Zergling));
             return plans;
         }

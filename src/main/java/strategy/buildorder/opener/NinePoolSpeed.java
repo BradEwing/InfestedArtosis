@@ -23,7 +23,7 @@ public class NinePoolSpeed extends BuildOrder {
 
     @Override
     public boolean shouldTransition(GameState gameState) {
-        return gameState.ourUnitCount(UnitType.Zerg_Spawning_Pool) > 0;
+        return gameState.getOpponentRace() != Race.Unknown && gameState.ourUnitCount(UnitType.Zerg_Spawning_Pool) > 0;
     }
 
     @Override
@@ -87,6 +87,11 @@ public class NinePoolSpeed extends BuildOrder {
 
         if (gameState.canPlanUpgrade(UpgradeType.Metabolic_Boost)) {
             plans.add(planUpgrade(gameState, UpgradeType.Metabolic_Boost));
+            return plans;
+        }
+
+        if (zerglingCount <= this.zerglingsNeeded(gameState)) {
+            plans.add(planUnit(gameState, UnitType.Zerg_Zergling));
             return plans;
         }
 
