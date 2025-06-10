@@ -9,6 +9,7 @@ import bwapi.UnitType;
 import bwem.BWEM;
 import bwem.Base;
 import bwem.ChokePoint;
+import bwem.Mineral;
 import util.TilePositionComparator;
 
 import java.util.ArrayList;
@@ -75,6 +76,17 @@ public class BuildingPlanner {
         TilePosition cc = getLocationForCreepColony(base);
         if (cc != null) {
             game.drawBoxMap(cc.toPosition(), cc.add(new TilePosition(2, 2)).toPosition(), Color.White);
+        }
+    }
+
+    public void debugMineralBoundingBox(Base base) {
+        HashSet<TilePosition> tiles = mineralBoundingBox(base);
+        if (!tiles.isEmpty()) {
+            for (TilePosition tp: tiles) {
+                if (tp != null) {
+                    game.drawBoxMap(tp.toPosition(), tp.add(new TilePosition(1, 1)).toPosition(), Color.Blue);
+                }
+            }
         }
     }
 
@@ -160,17 +172,83 @@ public class BuildingPlanner {
         return closestChoke;
     }
 
+    private HashSet<TilePosition> mineralBoundingBox(Base base) {
+        TilePosition topLeft = null;
+        TilePosition bottomRight = null;
+        for (Mineral mineral: base.getMinerals()) {
+            TilePosition mineralTopLeft = mineral.getTopLeft();
+            TilePosition mineralBottomRight = mineral.getBottomRight();
+            game.drawBoxMap(mineralTopLeft.toPosition(), mineralTopLeft.add(new TilePosition(1,1)).toPosition(), Color.Cyan);
+            if (topLeft == null) {
+                topLeft = mineralTopLeft;
+            }
+            if (bottomRight == null) {
+                bottomRight = mineralBottomRight;
+            }
+
+            if (mineralTopLeft.getX() < topLeft.getX()) {
+                topLeft = new TilePosition(mineralTopLeft.getX(), topLeft.getY());
+            }
+            if (mineralTopLeft.getY() > topLeft.getY()) {
+                topLeft = new TilePosition(topLeft.getX(), mineralTopLeft.getY());
+            }
+
+            if (mineralBottomRight.getX() > bottomRight.getX()) {
+                bottomRight = new TilePosition(mineralBottomRight.getX(), bottomRight.getY());
+            }
+            if (mineralBottomRight.getY() < bottomRight.getY()) {
+                bottomRight = new TilePosition(bottomRight.getX(), mineralBottomRight.getY());
+            }
+        }
+
+        // TODO: Geyser
+
+        TilePosition baseTopLeft = base.getLocation();
+        TilePosition baseBottomRight = baseTopLeft.add(new TilePosition(4, 3));
+
+        int mineralMidX = (topLeft.getX()     + bottomRight.getX()) / 2;
+        int mineralMidY = (topLeft.getY()     + bottomRight.getY()) / 2;
+        int baseMidX = (baseTopLeft.getX() + baseBottomRight.getX()) / 2;
+        int baseMidY = (baseTopLeft.getY() + baseBottomRight.getY()) / 2;
+        int dx = mineralMidX - baseMidX;
+        int dy = mineralMidY - baseMidY;
+
+        if (Math.abs(dx) > Math.abs(dy)) {
+            if (dx > 0) {
+                topLeft = new TilePosition(baseTopLeft.getX(), topLeft.getY());
+            } else {
+                bottomRight = new TilePosition(baseBottomRight.getX(), bottomRight.getY());
+            }
+        } else {
+            if (dy > 0) {
+                 bottomRight = new TilePosition(bottomRight.getX(), baseBottomRight.getY());
+            } else {
+                topLeft = new TilePosition(topLeft.getX(), baseTopLeft.getY());
+            }
+        }
+
+        HashSet<TilePosition> boundingTiles = new HashSet<>();
+        for (int x = topLeft.getX(); x <= bottomRight.getX(); x++) {
+            for (int y = bottomRight.getY(); y <= topLeft.getY(); y++) {
+                boundingTiles.add(new TilePosition(x, y));
+            }
+        }
+
+        return boundingTiles;
+    }
+
     // findSurroundingCreepTiles uses breadth first search to find all creepTiles around a base.
     private HashSet<TilePosition> findSurroundingCreepTiles(Base base) {
         HashSet<TilePosition> creepTiles = new HashSet<>();
         HashSet<TilePosition> checked = new HashSet<>();
+        HashSet<TilePosition> mineralBoundingBox = mineralBoundingBox(base);
         Queue<TilePosition> candidates = new LinkedList<>();
         candidates.add(base.getLocation());
 
         while (!candidates.isEmpty()) {
             TilePosition current = candidates.poll();
 
-            if (checked.contains(current)) {
+            if (checked.contains(current) || mineralBoundingBox.contains(current)) {
                 continue;
             }
             checked.add(current);

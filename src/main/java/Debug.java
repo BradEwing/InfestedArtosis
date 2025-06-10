@@ -71,6 +71,11 @@ public class Debug {
                     b.getLocation().toPosition().add(new Position(127, 95)),
                     Color.White
             );
+            game.drawTextMap(
+                    b.getLocation().toPosition(),
+                    String.format("(%d, %d)", b.getLocation().x, b.getLocation().y),
+                    Text.White
+            );
         }
         for (final Base b : baseData.getEnemyBases()) {
             game.drawBoxMap(
@@ -147,6 +152,7 @@ public class Debug {
             //buildingPlanner.debugLocationForTechBuilding(base, UnitType.Zerg_Spawning_Pool);
             //buildingPlanner.debugReserveTiles();
             //buildingPlanner.debugNextCreepColonyLocation(base);
+            buildingPlanner.debugMineralBoundingBox(base);
         }
     }
 }
