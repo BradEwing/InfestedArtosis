@@ -48,7 +48,7 @@ public class GameState {
     private Player self;
     private BWEM bwem;
 
-    private Race opponentRace; // TODO: Set from InfoManager if opponent is Random
+    private Race opponentRace;
 
     private int mineralWorkers;
     private int geyserWorkers;

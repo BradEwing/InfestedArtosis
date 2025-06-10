@@ -2,6 +2,7 @@ package info;
 
 import bwapi.Color;
 import bwapi.Game;
+import bwapi.PlayerType;
 import bwapi.Race;
 import bwapi.Text;
 import bwapi.TilePosition;
@@ -144,6 +145,11 @@ public class InformationManager {
 
     public void onUnitShow(Unit unit) {
         UnitType unitType = unit.getInitialType();
+        PlayerType playerType = unit.getPlayer().getType();
+
+        if (playerType == PlayerType.Neutral || playerType == PlayerType.None) {
+            return;
+        }
 
         if (unit.getPlayer() == game.self()) {
             updateTechProgression(unitType);
@@ -157,6 +163,7 @@ public class InformationManager {
                 || unitType == UnitType.Unknown) {
             return;
         }
+
         if (gameState.getOpponentRace() == Race.Unknown) {
             Race race = unit.getType().getRace();
             gameState.updateRace(race);
