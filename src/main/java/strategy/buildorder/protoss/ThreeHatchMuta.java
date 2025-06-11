@@ -60,7 +60,7 @@ public class ThreeHatchMuta extends ProtossBase {
         boolean wantThird    = plannedAndCurrentHatcheries < 3 && droneCount > 13 && techProgression.isSpawningPool();
 
         // Lair timing
-        boolean wantLair = gameState.canPlanLair() && lairCount < 1 && time.greaterThan(new Time (3, 20));
+        boolean wantLair = gameState.canPlanLair() && lairCount < 1 && time.greaterThan(new Time (2, 30)) && baseCount >= 2;
 
         // Spire timing
         boolean wantSpire = techProgression.canPlanSpire() && spireCount < 1 && supply >= 64 && lairCount >= 1 && droneCount >= 16;
