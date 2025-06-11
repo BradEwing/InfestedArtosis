@@ -10,6 +10,7 @@ import strategy.buildorder.BuildOrder;
 import strategy.buildorder.protoss.ThreeHatchMuta;
 import strategy.buildorder.terran.TwoHatchMuta;
 import strategy.buildorder.zerg.OneHatchSpire;
+import util.Time;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -48,6 +49,7 @@ public class NinePoolSpeed extends BuildOrder {
     public List<Plan> plan(GameState gameState) {
         List<Plan> plans = new ArrayList<>();
         TechProgression techProgression = gameState.getTechProgression();
+        Time gameTime = gameState.getGameTime();
 
         int droneCount     = gameState.ourUnitCount(UnitType.Zerg_Drone);
         int overlordCount  = gameState.ourUnitCount(UnitType.Zerg_Overlord);
@@ -75,12 +77,12 @@ public class NinePoolSpeed extends BuildOrder {
             return plans;
         }
 
-        if (zerglingCount < 3 && gameState.canPlanUnit(UnitType.Zerg_Zergling)) {
+        if (poolCount > 0 && zerglingCount < 3 && gameState.canPlanUnit(UnitType.Zerg_Zergling)) {
             plans.add(planUnit(gameState, UnitType.Zerg_Zergling));
             return plans;
         }
 
-        if (extractorCount < 1 && gameState.canPlanExtractor()) {
+        if (extractorCount < 1 && gameState.canPlanExtractor() && gameTime.greaterThan(new Time(1, 4))) {
             plans.add(planExtractor(gameState));
             return plans;
         }
@@ -90,7 +92,7 @@ public class NinePoolSpeed extends BuildOrder {
             return plans;
         }
 
-        if (zerglingCount <= this.zerglingsNeeded(gameState)) {
+        if (poolCount > 0 && zerglingCount <= this.zerglingsNeeded(gameState)) {
             plans.add(planUnit(gameState, UnitType.Zerg_Zergling));
             return plans;
         }
