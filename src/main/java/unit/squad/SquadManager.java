@@ -341,7 +341,7 @@ public class SquadManager {
             if (gameState.getOpponentRace() == Race.Zerg) {
                 return 2;
             }
-            return 5;
+            return 4;
         }
         int staticDefensePenalty = min(informationManager.getEnemyHostileToGroundBuildingsCount(), 5);
         int moveOutThreshold = 5 * (1 + staticDefensePenalty);

@@ -9,6 +9,7 @@ import bwapi.UnitType;
 import bwem.BWEM;
 import bwem.Base;
 import bwem.ChokePoint;
+import bwem.Geyser;
 import bwem.Mineral;
 import util.TilePositionComparator;
 
@@ -39,14 +40,14 @@ public class BuildingPlanner {
     }
 
     public void debugBaseCreepTiles(Base base) {
-        HashSet<TilePosition> creepTiles = this.findSurroundingCreepTiles(base);
+        Set<TilePosition> creepTiles = this.findSurroundingCreepTiles(base);
         for (TilePosition tp: creepTiles) {
             game.drawBoxMap(tp.toPosition(), tp.add(new TilePosition(1, 1)).toPosition(), Color.Brown);
         }
     }
 
     public void debugBaseChoke(Base base) {
-        HashSet<TilePosition> creepTiles = this.findSurroundingCreepTiles(base);
+        Set<TilePosition> creepTiles = this.findSurroundingCreepTiles(base);
         Position closestChoke = this.closestChokeToBase(base);
         game.drawCircleMap(closestChoke, 2, Color.Yellow);
         List<TilePosition> farthestFromChoke = creepTiles.stream().collect(Collectors.toList());
@@ -90,9 +91,20 @@ public class BuildingPlanner {
         }
     }
 
+    public void debugGeyserBoundingBox(Base base) {
+        HashSet<TilePosition> tiles = geyserBoundingBox(base);
+        if (!tiles.isEmpty()) {
+            for (TilePosition tp: tiles) {
+                if (tp != null) {
+                    game.drawBoxMap(tp.toPosition(), tp.add(new TilePosition(1, 1)).toPosition(), Color.Blue);
+                }
+            }
+        }
+    }
+
     public TilePosition getLocationForTechBuilding(Base base, UnitType unitType) {
         Position closestChoke = this.closestChokeToBase(base);
-        HashSet<TilePosition> creepTiles = this.findSurroundingCreepTiles(base);
+        Set<TilePosition> creepTiles = this.findSurroundingCreepTiles(base);
         TilePosition tileSize = unitType.tileSize();
 
         List<TilePosition> farthestFromChoke = new ArrayList<>(creepTiles);
@@ -144,7 +156,7 @@ public class BuildingPlanner {
         }
     }
 
-    private boolean isValidBuildingLocation(TilePosition candidate, TilePosition tileSize, HashSet<TilePosition> creepTiles) {
+    private boolean isValidBuildingLocation(TilePosition candidate, TilePosition tileSize, Set<TilePosition> creepTiles) {
         for (int dx = 0; dx < tileSize.getX(); dx++) {
             for (int dy = 0; dy < tileSize.getY(); dy++) {
                 TilePosition currentTile = candidate.add(new TilePosition(dx, dy));
@@ -170,6 +182,76 @@ public class BuildingPlanner {
             }
         }
         return closestChoke;
+    }
+
+    private HashSet<TilePosition> geyserBoundingBox(Base base) {
+        TilePosition topLeft = null;
+        TilePosition bottomRight = null;
+        for (Geyser geyser : base.getGeysers()) {
+            TilePosition geyserTopLeft = geyser.getTopLeft();
+            TilePosition geyserBottomRight = geyser.getBottomRight();
+
+            game.drawBoxMap(
+                    geyserTopLeft.toPosition(),
+                    geyserBottomRight.toPosition(),
+                    Color.Green
+            );
+
+            if (topLeft == null) {
+                topLeft = geyserTopLeft;
+            }
+            if (bottomRight == null) {
+                bottomRight = geyserBottomRight;
+            }
+
+            if (geyserTopLeft.getX() < topLeft.getX()) {
+                topLeft = new TilePosition(geyserTopLeft.getX(), topLeft.getY());
+            }
+            if (geyserTopLeft.getY() > topLeft.getY()) {
+                topLeft = new TilePosition(topLeft.getX(), geyserTopLeft.getY());
+            }
+
+            if (geyserBottomRight.getX() > bottomRight.getX()) {
+                bottomRight = new TilePosition(geyserBottomRight.getX(), bottomRight.getY());
+            }
+            if (geyserBottomRight.getY() < bottomRight.getY()) {
+                bottomRight = new TilePosition(bottomRight.getX(), geyserBottomRight.getY());
+            }
+        }
+
+        TilePosition baseTopLeft      = base.getLocation();
+        TilePosition baseBottomRight = baseTopLeft.add(new TilePosition(4, 3));
+
+        int geyserMidX = (topLeft.getX()     + bottomRight.getX())     / 2;
+        int geyserMidY = (topLeft.getY()     + bottomRight.getY())     / 2;
+        int baseMidX   = (baseTopLeft.getX() + baseBottomRight.getX()) / 2;
+        int baseMidY   = (baseTopLeft.getY() + baseBottomRight.getY()) / 2;
+
+        int dx = geyserMidX - baseMidX;
+        int dy = geyserMidY - baseMidY;
+
+        if (Math.abs(dx) > Math.abs(dy)) {
+            if (dx > 0) {
+                topLeft    = new TilePosition(baseTopLeft.getX(), topLeft.getY());
+            } else {
+                bottomRight = new TilePosition(baseBottomRight.getX(), bottomRight.getY());
+            }
+        } else {
+            if (dy > 0) {
+                bottomRight = new TilePosition(bottomRight.getX(), baseBottomRight.getY());
+            } else {
+                topLeft     = new TilePosition(topLeft.getX(), baseTopLeft.getY());
+            }
+        }
+
+        HashSet<TilePosition> boundingTiles = new HashSet<>();
+        for (int x = topLeft.getX(); x <= bottomRight.getX(); x++) {
+            for (int y = bottomRight.getY(); y <= topLeft.getY(); y++) {
+                boundingTiles.add(new TilePosition(x, y));
+            }
+        }
+
+        return boundingTiles;
     }
 
     private HashSet<TilePosition> mineralBoundingBox(Base base) {
@@ -200,8 +282,6 @@ public class BuildingPlanner {
                 bottomRight = new TilePosition(bottomRight.getX(), mineralBottomRight.getY());
             }
         }
-
-        // TODO: Geyser
 
         TilePosition baseTopLeft = base.getLocation();
         TilePosition baseBottomRight = baseTopLeft.add(new TilePosition(4, 3));
@@ -238,17 +318,24 @@ public class BuildingPlanner {
     }
 
     // findSurroundingCreepTiles uses breadth first search to find all creepTiles around a base.
-    private HashSet<TilePosition> findSurroundingCreepTiles(Base base) {
-        HashSet<TilePosition> creepTiles = new HashSet<>();
+    private Set<TilePosition> findSurroundingCreepTiles(Base base) {
+        Set<TilePosition> creepTiles = new HashSet<>();
         HashSet<TilePosition> checked = new HashSet<>();
-        HashSet<TilePosition> mineralBoundingBox = mineralBoundingBox(base);
+        HashSet<TilePosition> mineralExcluded = mineralBoundingBox(base);
+        HashSet<TilePosition> geyserExcluded = geyserBoundingBox(base);
         Queue<TilePosition> candidates = new LinkedList<>();
-        candidates.add(base.getLocation());
+        TilePosition tileSize = new TilePosition(6, 5);
+        TilePosition baseLocation = base.getLocation();
+        for (int x = -1; x < tileSize.getX(); x++) {
+            for (int y = -1; y < tileSize.getX(); y++) {
+                candidates.add(baseLocation.add(new TilePosition(x, y)));
+            }
+        }
 
         while (!candidates.isEmpty()) {
             TilePosition current = candidates.poll();
 
-            if (checked.contains(current) || mineralBoundingBox.contains(current)) {
+            if (checked.contains(current)) {
                 continue;
             }
             checked.add(current);
@@ -277,6 +364,10 @@ public class BuildingPlanner {
             }
         }
 
+        creepTiles = creepTiles.stream()
+                .filter(t -> !mineralExcluded.contains(t) && !geyserExcluded.contains(t))
+                .collect(Collectors.toSet());
+
         return creepTiles;
     }
 
@@ -286,7 +377,7 @@ public class BuildingPlanner {
      */
     public TilePosition getLocationForCreepColony(Base base) {
         Position chokeCenter = closestChokeToBase(base);
-        HashSet<TilePosition> creepTiles = findSurroundingCreepTiles(base);
+        Set<TilePosition> creepTiles = findSurroundingCreepTiles(base);
         TilePosition colonySize = UnitType.Zerg_Creep_Colony.tileSize();
 
         List<TilePosition> candidates = new ArrayList<>();
