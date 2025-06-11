@@ -54,12 +54,12 @@ public class Overpool extends BuildOrder {
         int overlordCount = gameState.ourUnitCount(UnitType.Zerg_Overlord);
         int zerglingCount     = gameState.ourUnitCount(UnitType.Zerg_Zergling);
 
-        if (droneCount < 8 && gameState.canPlanDrone()) {
+        if (droneCount < 9 && gameState.canPlanDrone()) {
             plans.add(planUnit(gameState, UnitType.Zerg_Drone));
             return plans;
         }
 
-        if (droneCount > 7 && overlordCount < 2) {
+        if (droneCount > 8 && overlordCount < 2) {
             plans.add(planUnit(gameState, UnitType.Zerg_Overlord));
             return plans;
         }

@@ -63,7 +63,7 @@ public class TwoHatchMuta extends TerranBase {
         boolean wantThird    = plannedAndCurrentHatcheries < 3 && spireCount > 0 && mutaCount > 5;
 
         // Lair timing
-        boolean wantLair = gameState.canPlanLair() && lairCount < 1 && (hatchCount >= 2 || droneCount >= 12);
+        boolean wantLair = gameState.canPlanLair() && lairCount < 1 && baseCount >= 2;
 
         // Spire timing
         boolean wantSpire = techProgression.canPlanSpire() && spireCount < 1 && lairCount >= 1 && droneCount >= 16;
