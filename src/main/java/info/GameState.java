@@ -16,15 +16,11 @@ import info.map.GameMap;
 import info.tracking.ObservedUnitTracker;
 import info.tracking.StrategyTracker;
 import learning.Decisions;
-import lombok.AccessLevel;
 import lombok.Data;
-import lombok.Setter;
 import macro.plan.Plan;
 import macro.plan.PlanState;
 import macro.plan.PlanType;
 import strategy.buildorder.BuildOrder;
-import strategy.openers.Opener;
-import strategy.strategies.Strategy;
 import unit.managed.ManagedUnit;
 import util.Time;
 
@@ -87,9 +83,6 @@ public class GameState {
 
     private HashMap<Base, HashSet<Unit>> baseToThreatLookup = new HashMap<>();
 
-    private Opener activeOpener;
-    @Setter(AccessLevel.NONE)
-    private Strategy activeStrategy;
     private boolean defensiveSunk = false;
     private BuildOrder activeBuildOrder;
 
@@ -122,7 +115,6 @@ public class GameState {
 
     public void onStart(Decisions decisions, Race opponentRace) {
         this.activeBuildOrder = decisions.getOpener();
-        this.activeStrategy = decisions.getStrategy();
         this.opponentRace = opponentRace;
         this.strategyTracker = new StrategyTracker(game, opponentRace, this.observedUnitTracker);
     }
