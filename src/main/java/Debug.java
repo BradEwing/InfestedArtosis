@@ -107,11 +107,6 @@ public class Debug {
         return String.format("%s_%s", opponentRecord.getWins(), opponentRecord.getLosses());
     }
 
-    private String getStrategyRecord() {
-        StrategyRecord strategyRecord = opponentRecord.getStrategyRecordMap().get(gameState.getActiveStrategy().getName());
-        return String.format("%s_%s", strategyRecord.getWins(), strategyRecord.getLosses());
-    }
-
     private void drawAllBasePaths() {
         HashMap<Base, GroundPath> pathMap = this.gameState.getBaseData().getBasePaths();
         for (GroundPath path: pathMap.values()) {
