@@ -15,6 +15,7 @@ import unit.managed.ManagedUnitFactory;
 import unit.managed.UnitRole;
 import unit.scout.ScoutManager;
 import unit.squad.SquadManager;
+import util.Time;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -335,6 +336,9 @@ public class UnitManager {
     }
 
     private void assignGatherersToDefense(Base base) {
+        if (gameState.getGameTime().greaterThan(new Time(5, 0))) {
+            return;
+        }
         HashSet<ManagedUnit> gatherersAssignedToBase = this.gameState.getGatherersAssignedToBase().get(base);
         if (gatherersAssignedToBase.isEmpty()) {
             return;
