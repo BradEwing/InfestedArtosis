@@ -20,6 +20,7 @@ import java.util.stream.Collectors;
 
 public class LearningManager {
     private Config config;
+    final private int recordVersion = 2;
 
     private static String READ_DIR = "bwapi-data/read/";
     private static String WRITE_DIR = "bwapi-data/write/";
@@ -40,7 +41,7 @@ public class LearningManager {
         this.opponentRace = opponentRace;
         this.opponentName = opponentName;
         this.opponentFileName = opponentName + "_" + opponentRace + ".json";
-        this.opponentRecord = new OpponentRecord(opponentName, opponentRace.toString(), 0, 0, new HashMap<>(), new HashMap<>(), new HashMap<>(), new DefensiveSunkRecord(0 , 0));
+        this.opponentRecord = new OpponentRecord(opponentName, opponentRace.toString(), 0, 0, 0, new HashMap<>());
         this.buildOrderFactory = new BuildOrderFactory(bwem.getMap().getStartingLocations().size(), opponentRace);
 
         try {
@@ -50,12 +51,10 @@ public class LearningManager {
         }
 
         ensureOpenersInOpponentRecord();
-        ensureDefensiveSunk();
         decisions.setOpener(determineOpener());
     }
 
     public void onEnd(boolean isWinner) {
-        DefensiveSunkRecord defensiveSunkRecord = opponentRecord.getDefensiveSunkRecord();
         if (isWinner) {
             currentOpener.setWins(currentOpener.getWins()+1);
             opponentRecord.setWins(opponentRecord.getWins()+1);
@@ -74,7 +73,9 @@ public class LearningManager {
 
     public Decisions getDecisions() { return decisions; }
 
-    public OpponentRecord getOpponentRecord() { return this.opponentRecord; }
+    public OpponentRecord getOpponentRecord() {
+        return this.opponentRecord;
+    }
 
     private void readOpponentRecord() throws IOException {
         File file = new File(READ_DIR + opponentFileName);
@@ -88,8 +89,10 @@ public class LearningManager {
         opponentRecord = mapper.readValue(inJson, OpponentRecord.class);
 
         // Handle new change to JSON file
-        if (opponentRecord.getOpenerRecord() == null) {
+        if (opponentRecord.getOpenerRecord() == null || opponentRecord.getVersion() != recordVersion) {
             opponentRecord.setOpenerRecord(new HashMap<>());
+            opponentRecord.setWins(0);
+            opponentRecord.setLosses(0);
         }
     }
 
@@ -100,6 +103,7 @@ public class LearningManager {
             return;
         }
 
+        opponentRecord.setVersion(recordVersion);
         mapper.writeValue(file, opponentRecord);
     }
 
@@ -114,13 +118,6 @@ public class LearningManager {
 
         for (String opener: missingOpeners) {
             openerRecordMap.put(opener, new OpenerRecord(opener, 0, 0));
-        }
-    }
-
-    private void ensureDefensiveSunk() {
-        DefensiveSunkRecord record = opponentRecord.getDefensiveSunkRecord();
-        if (record == null) {
-            opponentRecord.setDefensiveSunkRecord(new DefensiveSunkRecord(0, 0));
         }
     }
 

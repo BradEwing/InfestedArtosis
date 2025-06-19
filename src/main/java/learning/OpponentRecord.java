@@ -15,15 +15,9 @@ public class OpponentRecord {
 
     private int wins;
     private int losses;
-
-    @Deprecated
-    private Map<String, OpenerRecord> opponentStrategies;
+    private int version;
 
     private Map<String, OpenerRecord> openerRecord;
-
-    private Map<String, StrategyRecord> strategyRecordMap;
-
-    private DefensiveSunkRecord defensiveSunkRecord;
 
     public int totalGames() {
         return this.wins + this.losses;
