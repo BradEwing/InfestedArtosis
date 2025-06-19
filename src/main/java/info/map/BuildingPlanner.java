@@ -219,6 +219,10 @@ public class BuildingPlanner {
             }
         }
 
+        if (topLeft == null || bottomRight == null) {
+            return new HashSet<>();
+        }
+
         TilePosition baseTopLeft      = base.getLocation();
         TilePosition baseBottomRight = baseTopLeft.add(new TilePosition(4, 3));
 
