@@ -24,6 +24,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.PriorityQueue;
 import java.util.stream.Collectors;
 
@@ -176,7 +177,7 @@ public class ProductionManager {
         // Once opener items are exhausted, plan items
         isPlanning = true;
 
-        if (!activeBuildOrder.isOpener()) {
+        if (!activeBuildOrder.isOpener() && !Objects.equals(activeBuildOrder.getName(), "4Pool")) {
             planSupply(gameState.getSelf());
         }
 
