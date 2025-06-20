@@ -11,6 +11,7 @@ import macro.plan.Plan;
 import macro.plan.PlanState;
 import macro.plan.PlanType;
 import unit.managed.ManagedUnit;
+import unit.managed.ManagedUnitToPositionComparator;
 import unit.managed.UnitRole;
 import util.BaseUnitDistanceComparator;
 import util.UnitDistanceComparator;
@@ -109,7 +110,7 @@ public class WorkerManager {
 
     // onExtractorComplete is called when an extractor is complete, to immediately pull 3 mineral gathering drones
     // onto the extractor
-    public void onExtractorComplete() {
+    public void onExtractorComplete(Unit unit) {
         final List<ManagedUnit> newGeyserWorkers = new ArrayList<>();
 
         // If less than 4 mineral workers, there are probably other problems
@@ -117,7 +118,11 @@ public class WorkerManager {
             return;
         }
 
-        for (ManagedUnit managedUnit: mineralGatherers) {
+        List<ManagedUnit> sortedGatherers = mineralGatherers.stream()
+                .sorted(new ManagedUnitToPositionComparator(unit.getPosition()))
+                .collect(Collectors.toList());
+
+        for (ManagedUnit managedUnit: sortedGatherers) {
             if (newGeyserWorkers.size() >= 3) {
                 break;
             }
@@ -144,8 +149,8 @@ public class WorkerManager {
 
     private void assignToClosestBase(Unit gatherTarget, ManagedUnit gatherer) {
         HashMap<Base, HashSet<ManagedUnit>> gatherersAssignedToBase = gameState.getGatherersAssignedToBase();
-        List<Base> bases = gatherersAssignedToBase.keySet().stream().collect(Collectors.toList());
-        if (bases.size() == 0) {
+        List<Base> bases = new ArrayList<>(gatherersAssignedToBase.keySet());
+        if (bases.isEmpty()) {
              return;
         }
 
@@ -226,7 +231,7 @@ public class WorkerManager {
             return;
         }
 
-        if (gameState.getPlansScheduled().size() == 0) {
+        if (gameState.getPlansScheduled().isEmpty()) {
             return;
         }
 
@@ -251,7 +256,7 @@ public class WorkerManager {
             }
         }
 
-        Boolean isOverlordAssignedOrMorphing = false;
+        boolean isOverlordAssignedOrMorphing = false;
         for (Plan plan : gameState.getAssignedPlannedItems().values()) {
             if (plan.getType() != PlanType.UNIT) {
                 continue;
@@ -360,7 +365,7 @@ public class WorkerManager {
      * TODO: Partially cut, set reactions of when to cut.
      */
     private void cutGasHarvesting() {
-        List<ManagedUnit> geyserWorkers = gasGatherers.stream().collect(Collectors.toList());
+        List<ManagedUnit> geyserWorkers = new ArrayList<>(gasGatherers);
         for (ManagedUnit worker: geyserWorkers) {
             gameState.clearAssignments(worker);
             assignToMineral(worker);

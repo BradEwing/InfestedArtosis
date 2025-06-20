@@ -2,16 +2,19 @@ package macro.plan;
 
 import bwapi.Game;
 import bwapi.Position;
+import bwapi.TilePosition;
 import bwapi.Unit;
 import bwapi.UnitType;
 import info.GameState;
 import unit.managed.ManagedUnit;
+import unit.managed.ManagedUnitToPositionComparator;
 import unit.managed.UnitRole;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.stream.Collectors;
 
 public class PlanManager {
 
@@ -131,25 +134,37 @@ public class PlanManager {
     }
 
     /**
-     * Assign a drone to the building plan if it's not carrying resources, not mining gas and not already assigned to a plan
-     * The unit will store a scheduled plan until it's time to execute
+     * Assign a drone to the building plan if it's not carrying resources, not mining gas and not already assigned to a plan.
+     * The unit will store a scheduled plan until it's time to execute.
+     * If the plan has an assigned building location, find the drone closest to the location.
      * @param plan plan to build
-     * @return
+     * @return true if plan assigned, false otherwise
      */
     private boolean assignMorphDrone(Plan plan) {
-        for (ManagedUnit managedUnit : assignedManagedWorkers) {
-            Unit unit = managedUnit.getUnit();
-            if (!unit.isCarrying() && !gasGatherers.contains(managedUnit) && !gameState.getAssignedPlannedItems().containsKey(unit)) {
-                gameState.clearAssignments(managedUnit);
-                // TODO: Plan and UnitRole have a state change IN agent inside of manager
-                scheduledDrones.add(managedUnit);
-                managedUnit.setPlan(plan);
-                gameState.getAssignedPlannedItems().put(unit, plan);
-                return true;
-            }
+        List<ManagedUnit> eligibleDrones = assignedManagedWorkers
+                .stream()
+                .filter(d -> {
+                    Unit unit = d.getUnit();
+                    return !unit.isCarrying() && !gasGatherers.contains(d) && !gameState.getAssignedPlannedItems().containsKey(unit);
+                })
+                .collect(Collectors.toList());
+
+        TilePosition buildPosition = plan.getBuildPosition();
+        if (buildPosition != null) {
+            eligibleDrones.sort(new ManagedUnitToPositionComparator(buildPosition.toPosition()));
         }
 
-        return false;
+        if (eligibleDrones.isEmpty()) {
+            return false;
+        }
+
+        ManagedUnit managedUnit = eligibleDrones.get(0);
+        Unit unit = managedUnit.getUnit();
+        gameState.clearAssignments(managedUnit);
+        scheduledDrones.add(managedUnit);
+        managedUnit.setPlan(plan);
+        gameState.getAssignedPlannedItems().put(unit, plan);
+        return true;
     }
 
     private boolean assignMorphUnit(Plan plan) {

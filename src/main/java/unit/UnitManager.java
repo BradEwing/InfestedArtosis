@@ -220,7 +220,7 @@ public class UnitManager {
         UnitType unitType = unit.getType();
         if (unitType.isBuilding()) {
             if (unitType == UnitType.Zerg_Extractor) {
-                workerManager.onExtractorComplete();
+                workerManager.onExtractorComplete(unit);
             } else {
                 ManagedUnit managedUnit = managedUnitLookup.get(unit);
                 createBuilding(unit, managedUnit);
