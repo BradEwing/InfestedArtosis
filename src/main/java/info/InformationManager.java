@@ -3,6 +3,7 @@ package info;
 import bwapi.Color;
 import bwapi.Game;
 import bwapi.PlayerType;
+import bwapi.Position;
 import bwapi.Race;
 import bwapi.Text;
 import bwapi.TilePosition;
@@ -312,12 +313,12 @@ public class InformationManager {
      *
      * @return TilePosition to rally units to
      */
-    public TilePosition getRallyPoint() {
+    public Position getRallyPoint() {
         BaseData baseData = gameState.getBaseData();
         if (baseData.hasNaturalExpansion()) {
-            return baseData.naturalExpansionPosition();
+            return baseData.naturalExpansionPosition().toPosition();
         } else {
-            return baseData.mainBasePosition();
+            return baseData.mainBasePosition().toPosition();
         }
     }
 

@@ -1,7 +1,6 @@
 package unit.squad;
 
 import bwapi.Position;
-import bwapi.TilePosition;
 import bwapi.Unit;
 import bwapi.UnitType;
 import lombok.AccessLevel;
@@ -27,7 +26,7 @@ public class Squad implements Comparable<Squad> {
     private HashSet<ManagedUnit> members = new HashSet<>();
 
     // TODO: maybe this is consolidated with retreat target
-    private TilePosition rallyPoint;
+    private Position rallyPoint;
 
     @Getter(AccessLevel.NONE)
     private Position center;
@@ -68,7 +67,11 @@ public class Squad implements Comparable<Squad> {
     }
 
     public int distance (ManagedUnit managedUnit) {
-        return (int) center.getDistance(managedUnit.getUnit().getPosition());
+        try {
+            return (int) center.getDistance(managedUnit.getUnit().getPosition());
+        } catch (Exception e) {
+            return 0;
+        }
     }
 
     public void onFrame() {
@@ -160,7 +163,7 @@ public class Squad implements Comparable<Squad> {
             status = SquadStatus.REGROUP;
             for (ManagedUnit u: members) {
                 u.setRole(UnitRole.REGROUP);
-                u.setRallyPoint(center.toTilePosition());
+                u.setRallyPoint(center);
                 u.setMovementTargetPosition(center.toTilePosition());
             }
             return;
@@ -174,7 +177,7 @@ public class Squad implements Comparable<Squad> {
                 return;
             }
             for (ManagedUnit u: members) {
-                u.setRallyPoint(center.toTilePosition());
+                u.setRallyPoint(center);
             }
         }
     }

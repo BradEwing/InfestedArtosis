@@ -33,7 +33,7 @@ public class ManagedUnit {
 
 
     @Setter
-    protected TilePosition rallyPoint;
+    protected Position rallyPoint;
     @Setter @Getter
     protected TilePosition movementTargetPosition;
     protected List<TilePosition> pathToTarget;
@@ -221,17 +221,17 @@ public class ManagedUnit {
         if (rallyPoint == null) return;
 
         if (role == UnitRole.RALLY) {
-            if (unit.getDistance(rallyPoint.toPosition()) < 32) {
+            if (unit.getDistance(rallyPoint) < 32) {
                 return;
             }
         }
 
-        if (unit.getDistance(rallyPoint.toPosition()) < 16) {
+        if (unit.getDistance(rallyPoint) < 16) {
             return;
         }
 
         setUnready();
-        unit.move(rallyPoint.toPosition());
+        unit.move(rallyPoint);
     }
 
     protected void gather() {}
@@ -508,7 +508,7 @@ public class ManagedUnit {
     }
 
     /**
-     * Finds the closest enemy unit within the unit' attack range.
+     * Finds the closest enemy unit within the unit's attack range.
      */
     protected Unit findClosestEnemyInRange() {
         Unit closest = null;
