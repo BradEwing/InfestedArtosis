@@ -2,6 +2,7 @@ package info;
 
 import bwapi.Game;
 import bwapi.Player;
+import bwapi.Position;
 import bwapi.Race;
 import bwapi.TilePosition;
 import bwapi.Unit;
@@ -27,15 +28,14 @@ import util.Time;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
 import static java.lang.Math.min;
 
 /**
- * Class to handle global state that is shared among various managers.
- *
- * Break this into subclasses if too big or need util functions around subsets.
+ * GameState tracks global state that is shared among agents and managers.
  */
 @Data
 public class GameState {
@@ -76,8 +76,6 @@ public class GameState {
     private HashMap<Unit, Plan> assignedPlannedItems = new HashMap<>();
     private int plannedWorkers;
     private int plannedHatcheries = 1; // Start with 1 because we decrement with initial hatch
-    @Deprecated
-    private int macroHatchMod = 0; // Used for 9HatchInBase Opener
 
     private HashMap<Base, HashSet<ManagedUnit>> gatherersAssignedToBase = new HashMap<>();
 
@@ -145,7 +143,6 @@ public class GameState {
         addBaseToGameState(hatchery, newBase);
     }
 
-    // TODO: Lookup base from reserved
     public void addBaseToGameState(Unit hatchery, Base base) {
         if (base == null) { return; }
         gatherersAssignedToBase.put(base, new HashSet<>());
@@ -165,8 +162,6 @@ public class GameState {
         this.baseData.addMacroHatchery(hatchery);
     }
 
-    // TODO: Refactor base lookups into baseData?
-    // TODO: Reassign gatherers
     public void removeHatchery(Unit hatchery) {
         if (this.baseData.isBase(hatchery)) {
             Base base = this.baseData.get(hatchery);
@@ -208,11 +203,8 @@ public class GameState {
     }
 
     /**
-     * Checks tech progression, strategy and base data to determine if a lair can be planned.
+     * Checks tech progression, build order and base data to determine if a lair can be planned.
      *
-     * // TODO: Determine more reactively:
-     *     - Need speed overlords for detection or scouting
-     *     - Need hive
      * @return boolean
      */
     public boolean canPlanLair() {
@@ -352,22 +344,6 @@ public class GameState {
         return baseData.numExtractor() < 1 || resourceCount.needExtractor();
     }
 
-    // Determine by current strategy and reactions
-    @Deprecated
-    public boolean canPlanEvolutionChamber() {
-        if (!techProgression.canPlanEvolutionChamber()) {
-            return false;
-        }
-
-        final int numEvolutionChambers = techProgression.evolutionChambers();
-        final int groundCount = unitTypeCount.groundCount();
-        if (numEvolutionChambers == 0) {
-            return groundCount > 24;
-        } else {
-            return groundCount > 48;
-        }
-    }
-
     public int ourUnitCount(UnitType unitType) {
         return unitTypeCount.get(unitType);
     }
@@ -412,5 +388,55 @@ public class GameState {
             default:
                 return false;
         }
+    }
+
+    /**
+     * Gets all positions that are within range of enemy static defense structures.
+     *
+     * @return Set of positions that are covered by static defense
+     */
+    public Set<Position> getStaticDefenseCoverage() {
+        Set<Position> coveredPositions = new HashSet<>();
+
+        Map<UnitType, Integer> staticDefenseRanges = new HashMap<>();
+        switch (opponentRace) {
+            case Terran:
+                staticDefenseRanges.put(UnitType.Terran_Missile_Turret, UnitType.Terran_Missile_Turret.airWeapon().maxRange());
+                staticDefenseRanges.put(UnitType.Terran_Bunker, UnitType.Terran_Bunker.groundWeapon().maxRange());
+                break;
+            case Protoss:
+                staticDefenseRanges.put(UnitType.Protoss_Photon_Cannon, UnitType.Protoss_Photon_Cannon.groundWeapon().maxRange());
+                break;
+            case Zerg:
+                staticDefenseRanges.put(UnitType.Zerg_Spore_Colony, UnitType.Zerg_Spore_Colony.airWeapon().maxRange());
+                staticDefenseRanges.put(UnitType.Zerg_Sunken_Colony, UnitType.Zerg_Sunken_Colony.groundWeapon().maxRange());
+                break;
+            default:
+                return coveredPositions;
+        }
+
+        for (Map.Entry<UnitType, Integer> entry : staticDefenseRanges.entrySet()) {
+            UnitType defenseType = entry.getKey();
+            int range = entry.getValue();
+
+            Set<Position> defensePositions = observedUnitTracker.getLastKnownPositionsOfLivingUnits(defenseType);
+
+            for (Position defensePos : defensePositions) {
+                if (defensePos != null) {
+                    for (int x = defensePos.getX() - range; x <= defensePos.getX() + range; x += 8) {
+                        for (int y = defensePos.getY() - range; y <= defensePos.getY() + range; y += 8) {
+                            Position testPos = new Position(x, y);
+
+                            double distance = Math.sqrt(Math.pow(x - defensePos.getX(), 2) + Math.pow(y - defensePos.getY(), 2));
+                            if (distance <= range) {
+                                coveredPositions.add(testPos);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        return coveredPositions;
     }
 }
