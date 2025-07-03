@@ -10,12 +10,24 @@ public class Mutalisk extends ManagedUnit {
 
     @Override
     protected void fight() {
-        if (!this.canFightBack(this.fightTarget)) {
-            Unit dangerousEnemy = this.findThreateningEnemy();
-            if (dangerousEnemy != null) {
-                this.fightTarget = dangerousEnemy;
+        super.fight();
+    }
+
+    @Override
+    protected void rally() {
+        if (rallyPoint == null) return;
+
+        if (role == UnitRole.RALLY) {
+            if (unit.getDistance(rallyPoint) < 16) {
+                return;
             }
         }
-        super.fight();
+
+        if (unit.getDistance(rallyPoint) < 4) {
+            return;
+        }
+
+        setUnready();
+        unit.move(rallyPoint);
     }
 }

@@ -390,6 +390,50 @@ public class GameState {
         }
     }
 
+    public Set<Position> getAerielStaticDefenseCoverage() {
+        Set<Position> coveredPositions = new HashSet<>();
+
+        Map<UnitType, Integer> staticDefenseRanges = new HashMap<>();
+        switch (opponentRace) {
+            case Terran:
+                staticDefenseRanges.put(UnitType.Terran_Missile_Turret, UnitType.Terran_Missile_Turret.airWeapon().maxRange());
+                staticDefenseRanges.put(UnitType.Terran_Bunker, UnitType.Terran_Marine.groundWeapon().maxRange() + 32);
+                break;
+            case Protoss:
+                staticDefenseRanges.put(UnitType.Protoss_Photon_Cannon, UnitType.Protoss_Photon_Cannon.groundWeapon().maxRange());
+                break;
+            case Zerg:
+                staticDefenseRanges.put(UnitType.Zerg_Spore_Colony, UnitType.Zerg_Spore_Colony.airWeapon().maxRange());
+                break;
+            default:
+                return coveredPositions;
+        }
+
+        for (Map.Entry<UnitType, Integer> entry : staticDefenseRanges.entrySet()) {
+            UnitType defenseType = entry.getKey();
+            int range = entry.getValue();
+
+            Set<Position> defensePositions = observedUnitTracker.getLastKnownPositionsOfLivingUnits(defenseType);
+
+            for (Position defensePos : defensePositions) {
+                if (defensePos != null) {
+                    for (int x = defensePos.getX() - range; x <= defensePos.getX() + range; x += 8) {
+                        for (int y = defensePos.getY() - range; y <= defensePos.getY() + range; y += 8) {
+                            Position testPos = new Position(x, y);
+
+                            double distance = Math.sqrt(Math.pow(x - defensePos.getX(), 2) + Math.pow(y - defensePos.getY(), 2));
+                            if (distance <= range) {
+                                coveredPositions.add(testPos);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        return coveredPositions;
+    }
+
     /**
      * Gets all positions that are within range of enemy static defense structures.
      *
@@ -402,7 +446,7 @@ public class GameState {
         switch (opponentRace) {
             case Terran:
                 staticDefenseRanges.put(UnitType.Terran_Missile_Turret, UnitType.Terran_Missile_Turret.airWeapon().maxRange());
-                staticDefenseRanges.put(UnitType.Terran_Bunker, UnitType.Terran_Bunker.groundWeapon().maxRange());
+                staticDefenseRanges.put(UnitType.Terran_Bunker, UnitType.Terran_Marine.groundWeapon().maxRange() + 32);
                 break;
             case Protoss:
                 staticDefenseRanges.put(UnitType.Protoss_Photon_Cannon, UnitType.Protoss_Photon_Cannon.groundWeapon().maxRange());
@@ -438,5 +482,18 @@ public class GameState {
         }
 
         return coveredPositions;
+    }
+
+    public Set<Position> getLastKnownLocationOfEnemyWorkers() {
+        switch (opponentRace) {
+            case Terran:
+                return observedUnitTracker.getLastKnownPositionsOfLivingUnits(UnitType.Terran_SCV);
+            case Zerg:
+                return observedUnitTracker.getLastKnownPositionsOfLivingUnits(UnitType.Zerg_Drone);
+            case Protoss:
+                return observedUnitTracker.getLastKnownPositionsOfLivingUnits(UnitType.Protoss_Probe);
+            default:
+                return new HashSet<>();
+        }
     }
 }
