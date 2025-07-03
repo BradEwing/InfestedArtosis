@@ -14,7 +14,6 @@ import info.map.GroundPath;
 import info.map.MapTile;
 import learning.OpenerRecord;
 import learning.OpponentRecord;
-import learning.StrategyRecord;
 import strategy.buildorder.BuildOrder;
 
 import java.util.HashMap;
@@ -54,6 +53,7 @@ public class Debug {
         //debugGameMap();
         //drawAllBasePaths();
         debugBuildingPlanner();
+        debugStaticDefenseCoverage();
     }
 
     private void drawBases() {
@@ -133,6 +133,12 @@ public class Debug {
                         (mapTile.getTile().add(new TilePosition(1,1)).toPosition()),
                         Color.White);
             }
+        }
+    }
+
+    private void debugStaticDefenseCoverage() {
+        for (Position p: gameState.getStaticDefenseCoverage()) {
+            game.drawCircleMap(p, 1, Color.Red);
         }
     }
 

@@ -1,10 +1,13 @@
 package info.tracking;
 
+import bwapi.Position;
 import bwapi.Unit;
 import bwapi.UnitType;
 import util.Time;
 
 import java.util.HashMap;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 public class ObservedUnitTracker {
     private final HashMap<Unit, ObservedUnit> observedUnits = new HashMap<>();
@@ -20,7 +23,7 @@ public class ObservedUnitTracker {
         } else {
             ObservedUnit u = observedUnits.get(unit);
             u.setLastObservedFrame(t);
-            u.setLastKnownLocation(unit.getTilePosition());
+            u.setLastKnownLocation(unit.getPosition());
         }
     }
 
@@ -30,7 +33,7 @@ public class ObservedUnitTracker {
             ObservedUnit u = observedUnits.get(unit);
             // Update last seen info before unit goes out of vision
             u.setLastObservedFrame(t);
-            u.setLastKnownLocation(unit.getTilePosition());
+            u.setLastKnownLocation(unit.getPosition());
         }
     }
 
@@ -58,8 +61,23 @@ public class ObservedUnitTracker {
     public int getCountOfLivingUnits(UnitType unitType) {
         return (int) observedUnits.values()
                 .stream()
-                .filter(ou -> ou.getUnit().getType() == unitType)
+                .filter(ou -> ou.getUnitType() == unitType)
                 .filter(ou -> ou.getDestroyedFrame() == null)
                 .count();
+    }
+
+    public Set<Position> getLastKnownPositionsOfLivingUnits(UnitType unitType) {
+        return observedUnits.values()
+                .stream()
+                .filter(ou -> ou.getUnitType()  == unitType)
+                .filter(ou -> ou.getDestroyedFrame() == null)
+                .map(ou -> {
+                    if (ou.getUnit().isVisible()) {
+                        return ou.getUnit().getPosition();
+                    } else {
+                        return ou.getLastKnownLocation();
+                    }
+                })
+                .collect(Collectors.toSet());
     }
 }

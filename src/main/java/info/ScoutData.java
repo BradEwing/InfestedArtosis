@@ -2,7 +2,6 @@ package info;
 
 import bwapi.TilePosition;
 import bwem.Base;
-import lombok.Data;
 
 import java.util.HashMap;
 import java.util.HashSet;
@@ -43,7 +42,7 @@ public class ScoutData {
     }
 
     public boolean isEnemyBuildingLocationKnown() {
-        return enemyBuildingPositions.size() > 0;
+        return !enemyBuildingPositions.isEmpty();
     }
 
     public void addEnemyBuildingLocation(TilePosition tp) {
