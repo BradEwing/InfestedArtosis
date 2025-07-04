@@ -3,6 +3,7 @@ package info.map;
 import bwapi.Color;
 import bwapi.Game;
 import bwapi.Position;
+import bwapi.Race;
 import bwapi.TilePosition;
 import bwapi.Unit;
 import bwapi.UnitType;
@@ -11,6 +12,7 @@ import bwem.Base;
 import bwem.ChokePoint;
 import bwem.Geyser;
 import bwem.Mineral;
+import info.BaseData;
 import util.TilePositionComparator;
 
 import java.util.ArrayList;
@@ -99,6 +101,18 @@ public class BuildingPlanner {
                     game.drawBoxMap(tp.toPosition(), tp.add(new TilePosition(1, 1)).toPosition(), Color.Blue);
                 }
             }
+        }
+    }
+
+    public void debugMacroHatcheryLocation(Race opponentRace, BaseData baseData) {
+        TilePosition location = getLocationForMacroHatchery(opponentRace, baseData);
+        if (location != null) {
+            UnitType hatchType = UnitType.Zerg_Hatchery;
+            game.drawBoxMap(
+                    location.toPosition(),
+                    location.add(hatchType.tileSize()).toPosition(),
+                    Color.Green
+            );
         }
     }
 
@@ -414,4 +428,221 @@ public class BuildingPlanner {
         return candidates.isEmpty() ? null : candidates.get(0);
     }
 
+    /**
+     * Finds a location for a macro hatchery based on opponent race and existing macro hatchery count.
+     *
+     * @param opponentRace the race of the opponent
+     * @param baseData BaseData instance to access base information
+     * @return TilePosition for macro hatchery placement, or null if no suitable location found
+     */
+    public TilePosition getLocationForMacroHatchery(Race opponentRace, BaseData baseData) {
+        Base targetBase = determineTargetBaseForMacroHatch(opponentRace, baseData);
+        if (targetBase == null) {
+            return null;
+        }
+
+        return findBuildableLocationNearBase(targetBase);
+    }
+
+    /**
+     * Determines which base should receive the next macro hatchery based on opponent race and count.
+     */
+    private Base determineTargetBaseForMacroHatch(Race opponentRace, BaseData baseData) {
+        Base mainBase = baseData.getMainBase();
+        Base naturalBase = baseData.hasNaturalExpansion() ?
+                baseData.baseAtTilePosition(baseData.naturalExpansionPosition()) : null;
+        Base thirdBase = findThirdBase(baseData);
+        int existingMacroHatchCount = baseData.numMacroHatcheries();;
+
+        if (opponentRace == Race.Terran) {
+            switch (existingMacroHatchCount) {
+                case 0:
+                    return mainBase;
+                case 1:
+                    return naturalBase;
+                default:
+                    return thirdBase;
+            }
+        } else if (opponentRace == Race.Protoss) {
+            switch (existingMacroHatchCount) {
+                case 0:
+                    return naturalBase;
+                case 1:
+                case 2:
+                    return thirdBase;
+                default:
+                    return mainBase;
+            }
+        } else {
+            switch (existingMacroHatchCount) {
+                case 0:
+                    return mainBase;
+                case 1:
+                    return naturalBase;
+                default:
+                    return thirdBase;
+            }
+        }
+    }
+
+    /**
+     * Finds the third base (closest to main base that isn't main or natural).
+     */
+    private Base findThirdBase(BaseData baseData) {
+        Base mainBase = baseData.getMainBase();
+        Base naturalBase = baseData.hasNaturalExpansion() ?
+                baseData.baseAtTilePosition(baseData.naturalExpansionPosition()) : null;
+
+        HashSet<Base> myBases = baseData.getMyBases();
+        Base closestBase = null;
+        double closestDistance = Double.MAX_VALUE;
+
+        for (Base base : myBases) {
+            if (base == mainBase || base == naturalBase) {
+                continue;
+            }
+
+            double distance = mainBase.getLocation().getDistance(base.getLocation());
+            if (distance < closestDistance) {
+                closestDistance = distance;
+                closestBase = base;
+            }
+        }
+
+        return closestBase;
+    }
+
+    /**
+     * Finds a buildable location near the target base for the specified building type.
+     */
+    private TilePosition findBuildableLocationNearBase(Base base) {
+        TilePosition baseLocation = base.getLocation();
+        TilePosition buildingSize = UnitType.Zerg_Hatchery.tileSize();
+
+        // Search in expanding circles around the base location
+        for (int radius = 1; radius <= 10; radius++) {
+            for (int dx = -radius; dx <= radius; dx++) {
+                for (int dy = -radius; dy <= radius; dy++) {
+                    // Only check tiles on the perimeter of the current radius
+                    if (Math.abs(dx) != radius && Math.abs(dy) != radius) {
+                        continue;
+                    }
+
+                    TilePosition candidate = baseLocation.add(new TilePosition(dx, dy));
+
+                    // Check if this location is valid for building
+                    if (isValidMacroHatchLocation(candidate, buildingSize, base)) {
+                        return candidate;
+                    }
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Checks if a location is valid for placing a macro hatchery.
+     */
+    private boolean isValidMacroHatchLocation(TilePosition location, TilePosition buildingSize, Base base) {
+        // Check map bounds
+        if (location.getX() < 0 || location.getY() < 0 ||
+                location.getX() + buildingSize.getX() >= game.mapWidth() ||
+                location.getY() + buildingSize.getY() >= game.mapHeight()) {
+            return false;
+        }
+
+        // Check if all tiles are buildable and not reserved
+        for (int dx = 0; dx < buildingSize.getX(); dx++) {
+            for (int dy = 0; dy < buildingSize.getY(); dy++) {
+                TilePosition currentTile = location.add(new TilePosition(dx, dy));
+
+                if (!game.isBuildable(currentTile) || reservedTiles.contains(currentTile)) {
+                    return false;
+                }
+            }
+        }
+
+        // Check that macro hatchery doesn't overlap with the base hatchery
+        if (!isValidDistanceFromBaseHatchery(location, buildingSize, base)) {
+            return false;
+        }
+
+        // Check distance from minerals and geysers (must be at least 4 tiles away)
+        if (!isValidDistanceFromResources(location, buildingSize, base)) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Checks if the macro hatchery location is at least 5 tiles away from all minerals and geysers.
+     */
+    private boolean isValidDistanceFromResources(TilePosition hatchLocation, TilePosition buildingSize, Base base) {
+        final int MIN_DISTANCE = 5;
+
+        for (Mineral mineral : base.getMinerals()) {
+            TilePosition mineralPos = mineral.getTopLeft();
+            int minDistance = calculateMinManhattanDistance(hatchLocation, buildingSize, mineralPos, new TilePosition(2, 1));
+            if (minDistance < MIN_DISTANCE) {
+                return false;
+            }
+        }
+
+        for (Geyser geyser : base.getGeysers()) {
+            TilePosition geyserPos = geyser.getTopLeft();
+            int minDistance = calculateMinManhattanDistance(hatchLocation, buildingSize, geyserPos, new TilePosition(4, 2));
+            if (minDistance < MIN_DISTANCE) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Checks if the macro hatchery location doesn't overlap with the base hatchery.
+     */
+    private boolean isValidDistanceFromBaseHatchery(TilePosition hatchLocation, TilePosition buildingSize, Base base) {
+        TilePosition baseLocation = base.getLocation();
+        TilePosition baseSize = new TilePosition(4, 3); // Hatchery size is 4x3
+
+        // Check for overlap - if they overlap, the distance will be 0
+        int distance = calculateMinManhattanDistance(hatchLocation, buildingSize, baseLocation, baseSize);
+        return distance > 0; // Must not overlap (distance > 0)
+    }
+
+    /**
+     * Calculates the minimum Manhattan distance between two rectangular areas.
+     */
+    private int calculateMinManhattanDistance(TilePosition pos1, TilePosition size1, TilePosition pos2, TilePosition size2) {
+        // Calculate the closest points between the two rectangles
+        int x1_min = pos1.getX();
+        int x1_max = pos1.getX() + size1.getX() - 1;
+        int y1_min = pos1.getY();
+        int y1_max = pos1.getY() + size1.getY() - 1;
+
+        int x2_min = pos2.getX();
+        int x2_max = pos2.getX() + size2.getX() - 1;
+        int y2_min = pos2.getY();
+        int y2_max = pos2.getY() + size2.getY() - 1;
+
+        // Calculate minimum distance in each dimension
+        int dx = 0;
+        if (x1_max < x2_min) {
+            dx = x2_min - x1_max;
+        } else if (x2_max < x1_min) {
+            dx = x1_min - x2_max;
+        }
+
+        int dy = 0;
+        if (y1_max < y2_min) {
+            dy = y2_min - y1_max;
+        } else if (y2_max < y1_min) {
+            dy = y1_min - y2_max;
+        }
+
+        return dx + dy;
+    }
 }

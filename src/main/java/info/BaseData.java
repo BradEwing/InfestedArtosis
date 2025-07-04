@@ -125,6 +125,8 @@ public class BaseData {
         return extractors.size();
     }
 
+    public int numMacroHatcheries() { return macroHatcheries.size(); }
+
     public Base reserveBase() {
         final Base base = this.findNewBase();
         if (base == null) {
