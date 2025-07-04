@@ -400,7 +400,7 @@ public class GameState {
                 staticDefenseRanges.put(UnitType.Terran_Bunker, UnitType.Terran_Marine.groundWeapon().maxRange() + 32);
                 break;
             case Protoss:
-                staticDefenseRanges.put(UnitType.Protoss_Photon_Cannon, UnitType.Protoss_Photon_Cannon.groundWeapon().maxRange());
+                staticDefenseRanges.put(UnitType.Protoss_Photon_Cannon, UnitType.Protoss_Photon_Cannon.groundWeapon().maxRange()+16);
                 break;
             case Zerg:
                 staticDefenseRanges.put(UnitType.Zerg_Spore_Colony, UnitType.Zerg_Spore_Colony.airWeapon().maxRange());

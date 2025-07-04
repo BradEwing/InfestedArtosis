@@ -32,7 +32,7 @@ public class ManagedUnit {
     protected UnitType unitType;
 
 
-    @Setter
+    @Setter @Getter
     protected Position rallyPoint;
     @Setter @Getter
     protected TilePosition movementTargetPosition;

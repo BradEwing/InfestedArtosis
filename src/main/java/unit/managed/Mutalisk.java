@@ -10,7 +10,22 @@ public class Mutalisk extends ManagedUnit {
 
     @Override
     protected void fight() {
-        super.fight();
+        if (unit.isAttackFrame()) {
+            return;
+        }
+        setUnready(11);
+
+        if (fightTarget != null) {
+            unit.attack(fightTarget);
+            return;
+        }
+
+        if (movementTargetPosition != null) {
+            unit.move(movementTargetPosition.toPosition());
+            return;
+        }
+
+        role = UnitRole.IDLE;
     }
 
     @Override
