@@ -68,6 +68,7 @@ public class SquadManager {
         }
     }
 
+    // Update the updateFightSquads method in SquadManager.java
     public void updateFightSquads() {
         debugPainters();
         removeEmptySquads();
@@ -78,9 +79,12 @@ public class SquadManager {
 
         // TODO: split behavior (if unit exceeds squad radius)
 
-
         for (Squad fightSquad: fightSquads) {
             fightSquad.onFrame();
+
+            // Check if mutalisk squads should transition from rally to fight
+            checkMutaliskRallyTransition(fightSquad);
+
             evaluateSquadRole(fightSquad);
         }
     }
@@ -380,6 +384,18 @@ public class SquadManager {
             return;
         }
 
+        if (squad.getMembers().size() < 2) {
+            squad.setStatus(SquadStatus.RALLY);
+            Position homeBase = getRallyPoint(squad);
+
+            for (ManagedUnit mutalisk : squad.getMembers()) {
+                mutalisk.setRole(UnitRole.RALLY);
+                mutalisk.setReady(true);
+                mutalisk.setRallyPoint(homeBase);
+            }
+            return;
+        }
+
         HashSet<Unit> enemyUnits = informationManager.getVisibleEnemyUnits();
         HashSet<Unit> enemyBuildings = informationManager.getEnemyBuildings();
 
@@ -422,6 +438,23 @@ public class SquadManager {
             return;
         }
 
+        if (canAttackTargetFromSafePosition(priorityTarget, staticDefenseCoverage)) {
+            Position safeAttackPos = findSafeAttackPosition(priorityTarget, staticDefenseCoverage);
+            if (safeAttackPos != null) {
+                squad.setStatus(SquadStatus.RALLY);
+                squad.setTarget(priorityTarget);
+
+                for (ManagedUnit mutalisk : squad.getMembers()) {
+                    mutalisk.setRole(UnitRole.RALLY);
+                    mutalisk.setReady(true);
+                    mutalisk.setRallyPoint(safeAttackPos);
+                    mutalisk.setFightTarget(priorityTarget);
+                }
+                return;
+            }
+        }
+
+        // Default fight behavior if no safe repositioning needed
         squad.setStatus(SquadStatus.FIGHT);
         squad.setTarget(priorityTarget);
 
@@ -1095,6 +1128,114 @@ public class SquadManager {
         }
         List<Squad> sorted = fightSquads.stream().sorted().collect(Collectors.toList());
         return sorted.get(sorted.size()-1);
+    }
+
+    // Add rally transition check method
+    private void checkMutaliskRallyTransition(Squad squad) {
+        if (squad.getType() != UnitType.Zerg_Mutalisk || squad.getStatus() != SquadStatus.RALLY) {
+            return;
+        }
+
+        int mutaliskCount = squad.getMembers().size();
+        int mutaliskAtRally = 0;
+
+        for (ManagedUnit mutalisk : squad.getMembers()) {
+            if (mutalisk.getRallyPoint() != null) {
+                double distanceToRally = mutalisk.getUnit().getPosition().getDistance(mutalisk.getRallyPoint());
+                if (distanceToRally < 64) {
+                    mutaliskAtRally++;
+                }
+            }
+        }
+
+        if (mutaliskCount > 0 && (double)mutaliskAtRally / mutaliskCount >= 0.75) {
+            squad.setStatus(SquadStatus.FIGHT);
+
+            for (ManagedUnit mutalisk : squad.getMembers()) {
+                mutalisk.setRole(UnitRole.FIGHT);
+                mutalisk.setReady(true);
+            }
+        }
+    }
+
+    /**
+     * Calculates a score for a position based on distance from static defenses and terrain type.
+     * Higher score is better.
+     */
+    private double calculatePositionScore(Position pos, Set<Position> staticDefenseCoverage) {
+        double score = 0;
+
+        double minDistanceToStaticDefense = Double.MAX_VALUE;
+        for (Position defensePos : staticDefenseCoverage) {
+            double distance = pos.getDistance(defensePos);
+            if (distance < minDistanceToStaticDefense) {
+                minDistanceToStaticDefense = distance;
+            }
+        }
+
+        if (minDistanceToStaticDefense != Double.MAX_VALUE) {
+            score += Math.min(100, minDistanceToStaticDefense / 3.2);
+        } else {
+            score += 100;
+        }
+
+        if (!game.isBuildable(pos.toTilePosition())) {
+            score += 50;
+        }
+
+        return score;
+    }
+
+    /**
+     * Finds a safe attack position for mutalisks to attack a target from outside static defense coverage.
+     * Prefers positions that are far from static defenses and on unbuildable terrain.
+     */
+    private Position findSafeAttackPosition(Unit target, Set<Position> staticDefenseCoverage) {
+        Position targetPos = target.getPosition();
+        int mutaRange = UnitType.Zerg_Mutalisk.airWeapon().maxRange();
+
+        List<Position> candidatePositions = new ArrayList<>();
+
+        int searchRadius = mutaRange;
+
+        for (int angle = 0; angle < 360; angle += 15) {
+            double radians = Math.toRadians(angle);
+            int x = targetPos.getX() + (int)(searchRadius * Math.cos(radians));
+            int y = targetPos.getY() + (int)(searchRadius * Math.sin(radians));
+
+            x = Math.max(0, Math.min(x, game.mapWidth() * 32 - 1));
+            y = Math.max(0, Math.min(y, game.mapHeight() * 32 - 1));
+
+            Position candidatePos = new Position(x, y);
+
+            if (!isPositionInStaticDefenseCoverage(candidatePos, staticDefenseCoverage)) {
+                candidatePositions.add(candidatePos);
+            }
+        }
+
+        if (candidatePositions.isEmpty()) {
+            return null;
+        }
+
+        candidatePositions.sort((pos1, pos2) -> {
+            double score1 = calculatePositionScore(pos1, staticDefenseCoverage);
+            double score2 = calculatePositionScore(pos2, staticDefenseCoverage);
+            return Double.compare(score2, score1);
+        });
+
+        return candidatePositions.get(0);
+    }
+
+    /**
+     * Checks if a target is within static defense coverage and can be attacked from outside that coverage.
+     */
+    private boolean canAttackTargetFromSafePosition(Unit target, Set<Position> staticDefenseCoverage) {
+        if (!isPositionInStaticDefenseCoverage(target.getPosition(), staticDefenseCoverage)) {
+            return false;
+        }
+
+        Position safePos = findSafeAttackPosition(target, staticDefenseCoverage);
+        return safePos != null;
     }
 }
 
