@@ -6,11 +6,8 @@ import bwapi.UpgradeType;
 import info.BaseData;
 import info.GameState;
 import info.TechProgression;
-import info.map.BuildingPlanner;
-import macro.plan.BuildingPlan;
 import macro.plan.Plan;
 import util.Time;
-import bwapi.TilePosition;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -224,12 +221,6 @@ public class ThreeHatchMuta extends ProtossBase {
             return plans;
         }
 
-        if (plannedFirstMacroHatch && droneCount < 30) {
-            Plan dronePlan = this.planUnit(gameState, UnitType.Zerg_Drone);
-            plans.add(dronePlan);
-            return plans;
-        }
-
         int droneTarget = hatchCount * 7;
         if (macroHatchCount > 0 && droneCount < droneTarget) {
             for (int i = 0; i < droneTarget - droneCount; i++) {
@@ -303,18 +294,6 @@ public class ThreeHatchMuta extends ProtossBase {
         Time gameTime = gameState.getGameTime();
 
         return mutaCount >= 8 || gameTime.greaterThan(new Time(12, 0));
-    }
-
-    private Plan planMacroHatchery(GameState gameState) {
-        BuildingPlanner buildingPlanner = gameState.getBuildingPlanner();
-        BaseData baseData = gameState.getBaseData();
-        TilePosition location = buildingPlanner.getLocationForMacroHatchery(gameState.getOpponentRace(), baseData);
-
-        if (location == null) {
-            return null;
-        }
-
-        return new BuildingPlan(UnitType.Zerg_Hatchery, gameState.getGameTime().getFrames(), true, location);
     }
 
     // Tech building planning methods

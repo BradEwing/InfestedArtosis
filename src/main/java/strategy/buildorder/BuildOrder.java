@@ -163,4 +163,16 @@ public abstract class BuildOrder {
         plan.setBuildPosition(buildPosition);
         return plan;
     }
+
+    protected Plan planMacroHatchery(GameState gameState) {
+        BuildingPlanner buildingPlanner = gameState.getBuildingPlanner();
+        BaseData baseData = gameState.getBaseData();
+        TilePosition location = buildingPlanner.getLocationForMacroHatchery(gameState.getOpponentRace(), baseData);
+
+        if (location == null) {
+            return null;
+        }
+
+        return new BuildingPlan(UnitType.Zerg_Hatchery, gameState.getGameTime().getFrames(), true, location);
+    }
 }
