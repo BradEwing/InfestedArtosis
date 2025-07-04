@@ -600,11 +600,10 @@ public class BuildingPlanner {
      */
     private boolean isValidDistanceFromBaseHatchery(TilePosition hatchLocation, TilePosition buildingSize, Base base) {
         TilePosition baseLocation = base.getLocation();
-        TilePosition baseSize = new TilePosition(4, 3); // Hatchery size is 4x3
+        TilePosition baseSize = new TilePosition(4, 3);
 
-        // Check for overlap - if they overlap, the distance will be 0
         int distance = calculateMinManhattanDistance(hatchLocation, buildingSize, baseLocation, baseSize);
-        return distance > 0; // Must not overlap (distance > 0)
+        return distance > 0;
     }
 
     /**
