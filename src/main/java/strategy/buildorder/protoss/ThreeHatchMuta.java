@@ -23,6 +23,13 @@ import java.util.List;
  */
 public class ThreeHatchMuta extends ProtossBase {
 
+    // TODO: Move to TechProgression or GameState
+    private boolean plannedFirstMacroHatch = false;
+    private boolean plannedSecondMacroHatch = false;
+    private boolean plannedThirdMacroHatch = false;
+    private boolean plannedHydraliskDen = false;
+    private boolean plannedEvolutionChamber = false;
+
     public ThreeHatchMuta() {
         super("3HatchMuta");
     }
@@ -38,6 +45,7 @@ public class ThreeHatchMuta extends ProtossBase {
         int extractorCount = baseData.numExtractor();
         int supply = gameState.getSupply();
         int plannedHatcheries = gameState.getPlannedHatcheries();
+        int macroHatchCount = baseData.numMacroHatcheries();
         int hatchCount        = gameState.ourUnitCount(UnitType.Zerg_Hatchery);
         final int plannedAndCurrentHatcheries = plannedHatcheries + baseCount;
         int lairCount         = gameState.ourUnitCount(UnitType.Zerg_Lair);
@@ -59,13 +67,24 @@ public class ThreeHatchMuta extends ProtossBase {
         boolean wantNatural  = plannedAndCurrentHatcheries < 2 && supply >= 24;
         boolean wantThird    = plannedAndCurrentHatcheries < 3 && droneCount > 13 && techProgression.isSpawningPool();
 
+        // Macro hatchery timing
+        boolean wantFirstMacroHatch = wantFirstMacroHatchery(gameState);
+        boolean wantSecondMacroHatch = wantSecondMacroHatchery(gameState);
+        boolean wantThirdMacroHatch = wantThirdMacroHatchery(gameState);
+
         // Lair timing
         boolean wantLair = gameState.canPlanLair() && lairCount < 1 && time.greaterThan(new Time (2, 30)) && baseCount >= 2;
 
         // Spire timing
-        boolean wantSpire = techProgression.canPlanSpire() && spireCount < 1 && supply >= 64 && lairCount >= 1 && droneCount >= 16;
+        boolean wantSpire = techProgression.canPlanSpire() && spireCount < 1 && supply >= 56 && lairCount >= 1 && droneCount >= 16;
 
+        // Tech building timing
+        boolean wantHydraliskDen = wantHydraliskDen(gameState);
+        boolean wantEvolutionChamber = wantEvolutionChamber(gameState);
+
+        // Upgrade timing
         boolean wantMetabolicBoost = techProgression.canPlanMetabolicBoost() && !techProgression.isMetabolicBoost() && lairCount > 0;
+        boolean wantCarapaceUpgrade = wantCarapaceUpgrade(gameState);
 
         // Plan buildings
 
@@ -80,6 +99,34 @@ public class ThreeHatchMuta extends ProtossBase {
             Plan hatcheryPlan = this.planNewBase(gameState);
             if (hatcheryPlan != null) {
                 plans.add(hatcheryPlan);
+                return plans;
+            }
+        }
+
+        // Macro Hatcheries
+        if (wantFirstMacroHatch) {
+            Plan macroHatchPlan = planMacroHatchery(gameState);
+            if (macroHatchPlan != null) {
+                plannedFirstMacroHatch = true;
+                plans.add(macroHatchPlan);
+                return plans;
+            }
+        }
+
+        if (wantSecondMacroHatch) {
+            Plan macroHatchPlan = planMacroHatchery(gameState);
+            if (macroHatchPlan != null) {
+                plannedSecondMacroHatch = true;
+                plans.add(macroHatchPlan);
+                return plans;
+            }
+        }
+
+        if (wantThirdMacroHatch) {
+            Plan macroHatchPlan = planMacroHatchery(gameState);
+            if (macroHatchPlan != null) {
+                plannedThirdMacroHatch = true;
+                plans.add(macroHatchPlan);
                 return plans;
             }
         }
@@ -107,10 +154,34 @@ public class ThreeHatchMuta extends ProtossBase {
             return plans;
         }
 
+        // Tech Buildings
+        if (wantHydraliskDen) {
+            Plan hydraliskDenPlan = planHydraliskDen(gameState);
+            if (hydraliskDenPlan != null) {
+                plannedHydraliskDen = true;
+                plans.add(hydraliskDenPlan);
+                return plans;
+            }
+        }
+
+        if (wantEvolutionChamber) {
+            Plan evolutionChamberPlan = planEvolutionChamber(gameState);
+            if (evolutionChamberPlan != null) {
+                plannedEvolutionChamber = true;
+                plans.add(evolutionChamberPlan);
+                return plans;
+            }
+        }
+
         // Plan Upgrades
         if (wantMetabolicBoost) {
             Plan metabolicBoostPlan = this.planUpgrade(gameState, UpgradeType.Metabolic_Boost);
             plans.add(metabolicBoostPlan);
+        }
+
+        if (wantCarapaceUpgrade) {
+            Plan carapacePlan = this.planUpgrade(gameState, UpgradeType.Zerg_Carapace);
+            plans.add(carapacePlan);
         }
 
         // Plan Units
@@ -123,11 +194,20 @@ public class ThreeHatchMuta extends ProtossBase {
             return plans;
         }
 
-        final int desiredMutalisks = 9;
+        final int desiredMutalisks = desiredMutalisks(gameState);
         if (techProgression.isSpire() && mutaCount < desiredMutalisks) {
             for (int i = 0; i < desiredMutalisks - mutaCount; i++) {
                 Plan mutaliskPlan = this.planUnit(gameState, UnitType.Zerg_Mutalisk);
                 plans.add(mutaliskPlan);
+            }
+            return plans;
+        }
+
+        final int desiredHydralisks = desiredHydralisks(gameState);
+        if (techProgression.isHydraliskDen() && hydraCount < desiredHydralisks) {
+            for (int i = 0; i < desiredHydralisks - hydraCount; i++) {
+                Plan hydraliskPlan = this.planUnit(gameState, UnitType.Zerg_Hydralisk);
+                plans.add(hydraliskPlan);
             }
             return plans;
         }
@@ -141,6 +221,15 @@ public class ThreeHatchMuta extends ProtossBase {
             return plans;
         }
 
+        int droneTarget = hatchCount * 7;
+        if (macroHatchCount > 0 && droneCount < droneTarget) {
+            for (int i = 0; i < droneTarget - droneCount; i++) {
+                Plan zerglingPlan = this.planUnit(gameState, UnitType.Zerg_Drone);
+                plans.add(zerglingPlan);
+            }
+            return plans;
+        }
+
         if (plans.isEmpty() && gameState.canPlanDrone()) {
             Plan dronePlan = this.planUnit(gameState, UnitType.Zerg_Drone);
             plans.add(dronePlan);
@@ -148,6 +237,117 @@ public class ThreeHatchMuta extends ProtossBase {
         }
 
         return plans;
+    }
+
+    // Macro hatchery planning methods
+    private boolean wantFirstMacroHatchery(GameState gameState) {
+        if (plannedFirstMacroHatch) {
+            return false;
+        }
+
+        int macroHatchCount = gameState.getBaseData().numMacroHatcheries();
+        if (macroHatchCount >= 1) {
+            return false;
+        }
+
+        int mutaCount = gameState.ourUnitCount(UnitType.Zerg_Mutalisk);
+        Time gameTime = gameState.getGameTime();
+
+        return mutaCount > 1 || gameTime.greaterThan(new Time(10, 0));
+    }
+
+    private boolean wantSecondMacroHatchery(GameState gameState) {
+        if (plannedSecondMacroHatch) {
+            return false;
+        }
+
+        if (plannedFirstMacroHatch && gameState.getGameTime().lessThanOrEqual(new Time(8, 0))) {
+            return false;
+        }
+
+        int macroHatchCount = gameState.getBaseData().numMacroHatcheries();
+        if (macroHatchCount >= 2) {
+            return false;
+        }
+
+        int mutaCount = gameState.ourUnitCount(UnitType.Zerg_Mutalisk);
+        Time gameTime = gameState.getGameTime();
+
+        return mutaCount >= 7 || gameTime.greaterThan(new Time(11, 0));
+    }
+
+    private boolean wantThirdMacroHatchery(GameState gameState) {
+        if (plannedThirdMacroHatch) {
+            return false;
+        }
+
+        if (plannedSecondMacroHatch && gameState.getGameTime().lessThanOrEqual(new Time(9, 0))) {
+            return false;
+        }
+
+        int macroHatchCount = gameState.getBaseData().numMacroHatcheries();
+        if (macroHatchCount >= 3) {
+            return false;
+        }
+
+        int mutaCount = gameState.ourUnitCount(UnitType.Zerg_Mutalisk);
+        Time gameTime = gameState.getGameTime();
+
+        return mutaCount >= 8 || gameTime.greaterThan(new Time(12, 0));
+    }
+
+    // Tech building planning methods
+    private boolean wantHydraliskDen(GameState gameState) {
+        if (plannedHydraliskDen) {
+            return false;
+        }
+
+        // Plan after 1st macro hatch is planned
+        if (!plannedFirstMacroHatch) {
+            return false;
+        }
+
+        TechProgression techProgression = gameState.getTechProgression();
+        return techProgression.canPlanHydraliskDen();
+    }
+
+    private boolean wantEvolutionChamber(GameState gameState) {
+        if (plannedEvolutionChamber) {
+            return false;
+        }
+
+        if (!plannedHydraliskDen) {
+            return false;
+        }
+
+        TechProgression techProgression = gameState.getTechProgression();
+        return techProgression.canPlanEvolutionChamber();
+    }
+
+    private boolean wantCarapaceUpgrade(GameState gameState) {
+        TechProgression techProgression = gameState.getTechProgression();
+
+        if (techProgression.getEvolutionChambers() < 1) {
+            return false;
+        }
+
+        return techProgression.canPlanCarapaceUpgrades() &&
+                techProgression.getCarapaceUpgrades() < 1;
+    }
+
+    // Unit production methods
+    private int desiredMutalisks(GameState gameState) {
+        return 9;
+    }
+
+    private int desiredHydralisks(GameState gameState) {
+        TechProgression techProgression = gameState.getTechProgression();
+
+        if (!techProgression.isHydraliskDen()) {
+            return 0;
+        }
+
+        return 25;
     }
 
     @Override

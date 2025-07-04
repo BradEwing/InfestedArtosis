@@ -138,8 +138,41 @@ public abstract class BuildOrder {
             case Zerg_Flyer_Carapace:
                 int flyerCarapace = techProgression.getFlyerDefense();
                 techProgression.setFlyerDefense(flyerCarapace+1);
+            case Zerg_Carapace:
+                int carapace = techProgression.getCarapaceUpgrades();
+                techProgression.setCarapaceUpgrades(carapace+1);
         }
 
         return new UpgradePlan(upgradeType, gameState.getGameTime().getFrames(), false);
+    }
+
+    protected Plan planHydraliskDen(GameState gameState) {
+        TechProgression techProgression = gameState.getTechProgression();
+        techProgression.setPlannedDen(true);
+        Plan plan = new BuildingPlan(UnitType.Zerg_Hydralisk_Den, gameState.getGameTime().getFrames(), true);
+        TilePosition buildPosition = gameState.getTechBuildingLocation(UnitType.Zerg_Hydralisk_Den);
+        plan.setBuildPosition(buildPosition);
+        return plan;
+    }
+
+    protected Plan planEvolutionChamber(GameState gameState) {
+        TechProgression techProgression = gameState.getTechProgression();
+        techProgression.setPlannedEvolutionChambers(techProgression.getPlannedEvolutionChambers() + 1);
+        Plan plan = new BuildingPlan(UnitType.Zerg_Evolution_Chamber, gameState.getGameTime().getFrames(), true);
+        TilePosition buildPosition = gameState.getTechBuildingLocation(UnitType.Zerg_Evolution_Chamber);
+        plan.setBuildPosition(buildPosition);
+        return plan;
+    }
+
+    protected Plan planMacroHatchery(GameState gameState) {
+        BuildingPlanner buildingPlanner = gameState.getBuildingPlanner();
+        BaseData baseData = gameState.getBaseData();
+        TilePosition location = buildingPlanner.getLocationForMacroHatchery(gameState.getOpponentRace(), baseData);
+
+        if (location == null) {
+            return null;
+        }
+
+        return new BuildingPlan(UnitType.Zerg_Hatchery, gameState.getGameTime().getFrames(), true, location);
     }
 }
