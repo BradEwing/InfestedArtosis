@@ -523,14 +523,12 @@ public class BuildingPlanner {
         for (int radius = 1; radius <= 10; radius++) {
             for (int dx = -radius; dx <= radius; dx++) {
                 for (int dy = -radius; dy <= radius; dy++) {
-                    // Only check tiles on the perimeter of the current radius
                     if (Math.abs(dx) != radius && Math.abs(dy) != radius) {
                         continue;
                     }
 
                     TilePosition candidate = baseLocation.add(new TilePosition(dx, dy));
 
-                    // Check if this location is valid for building
                     if (isValidMacroHatchLocation(candidate, buildingSize, base)) {
                         return candidate;
                     }
@@ -545,14 +543,12 @@ public class BuildingPlanner {
      * Checks if a location is valid for placing a macro hatchery.
      */
     private boolean isValidMacroHatchLocation(TilePosition location, TilePosition buildingSize, Base base) {
-        // Check map bounds
         if (location.getX() < 0 || location.getY() < 0 ||
                 location.getX() + buildingSize.getX() >= game.mapWidth() ||
                 location.getY() + buildingSize.getY() >= game.mapHeight()) {
             return false;
         }
 
-        // Check if all tiles are buildable and not reserved
         for (int dx = 0; dx < buildingSize.getX(); dx++) {
             for (int dy = 0; dy < buildingSize.getY(); dy++) {
                 TilePosition currentTile = location.add(new TilePosition(dx, dy));
@@ -563,12 +559,10 @@ public class BuildingPlanner {
             }
         }
 
-        // Check that macro hatchery doesn't overlap with the base hatchery
         if (!isValidDistanceFromBaseHatchery(location, buildingSize, base)) {
             return false;
         }
 
-        // Check distance from minerals and geysers (must be at least 4 tiles away)
         if (!isValidDistanceFromResources(location, buildingSize, base)) {
             return false;
         }
