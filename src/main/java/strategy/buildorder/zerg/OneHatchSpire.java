@@ -28,6 +28,7 @@ public class OneHatchSpire extends ZergBase{
         BaseData baseData = gameState.getBaseData();
 
         int extractorCount = baseData.numExtractor();
+        int hatchCount = gameState.ourUnitCount(UnitType.Zerg_Hatchery) + gameState.ourUnitCount(UnitType.Zerg_Lair);
         int lairCount         = gameState.ourUnitCount(UnitType.Zerg_Lair);
         int spireCount        = gameState.ourUnitCount(UnitType.Zerg_Spire);
         int mutaCount         = gameState.ourUnitCount(UnitType.Zerg_Mutalisk);
@@ -41,6 +42,16 @@ public class OneHatchSpire extends ZergBase{
 
         boolean wantMetabolicBoost = techProgression.canPlanMetabolicBoost() && !techProgression.isMetabolicBoost() && zerglingCount > 5 && lairCount > 0;
         boolean wantFlyingCarapace = mutaCount > 6 && techProgression.canPlanFlyerDefense() && techProgression.getFlyerDefense() < 1;
+
+        boolean wantHatchery = behindOnResourceDepot(gameState);
+
+        if (wantHatchery) {
+            Plan hatcheryPlan = this.planNewBase(gameState);
+            if (hatcheryPlan != null) {
+                plans.add(hatcheryPlan);
+                return plans; // Prioritize catching up on bases
+            }
+        }
 
         if (techProgression.canPlanPool() && droneCount > 8) {
             Plan poolPlan = this.planSpawningPool(gameState);
@@ -102,7 +113,8 @@ public class OneHatchSpire extends ZergBase{
             return plans;
         }
 
-        if (droneCount < 9 && gameState.canPlanDrone()) {
+        int desiredDroneCount = 9 + ((1 - hatchCount) * 6);
+        if (droneCount < desiredDroneCount && gameState.canPlanDrone()) {
             Plan dronePlan = this.planUnit(gameState, UnitType.Zerg_Drone);
             plans.add(dronePlan);
             return plans;

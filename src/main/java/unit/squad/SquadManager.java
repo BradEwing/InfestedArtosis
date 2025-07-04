@@ -1132,7 +1132,8 @@ public class SquadManager {
 
     // Add rally transition check method
     private void checkMutaliskRallyTransition(Squad squad) {
-        if (squad.getType() != UnitType.Zerg_Mutalisk || squad.getStatus() != SquadStatus.RALLY) {
+        boolean isRallyOrRetreat = squad.getStatus() == SquadStatus.RALLY || squad.getStatus() == SquadStatus.RETREAT;
+        if (squad.getType() != UnitType.Zerg_Mutalisk || isRallyOrRetreat) {
             return;
         }
 

@@ -13,7 +13,7 @@ public class ObservedUnit {
     private Time destroyedFrame;
     private Position lastKnownLocation;
     private final Unit unit;
-    private final UnitType unitType;
+    private UnitType unitType;
 
     public ObservedUnit(Unit unit, Time currentFrame) {
         this.unit = unit;

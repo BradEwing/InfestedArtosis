@@ -24,6 +24,7 @@ public class ObservedUnitTracker {
             ObservedUnit u = observedUnits.get(unit);
             u.setLastObservedFrame(t);
             u.setLastKnownLocation(unit.getPosition());
+            updateUnitTypeChange(unit);
         }
     }
 
@@ -64,6 +65,15 @@ public class ObservedUnitTracker {
                 .filter(ou -> ou.getUnitType() == unitType)
                 .filter(ou -> ou.getDestroyedFrame() == null)
                 .count();
+    }
+
+    public void updateUnitTypeChange(Unit unit) {
+        ObservedUnit observedUnit = observedUnits.get(unit);
+        UnitType trackedType = observedUnit.getUnitType();
+        UnitType unitType = unit.getType();
+        if (unitType != trackedType) {
+            observedUnit.setUnitType(unit.getType());
+        }
     }
 
     public Set<Position> getLastKnownPositionsOfLivingUnits(UnitType unitType) {
