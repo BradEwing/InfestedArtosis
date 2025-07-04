@@ -144,10 +144,11 @@ public class Debug {
 
     private void debugBuildingPlanner() {
         BuildingPlanner buildingPlanner = gameState.getBuildingPlanner();
+        BaseData baseData = gameState.getBaseData();
         if (buildingPlanner == null) {
             return;
         }
-        for (Base base: gameState.getBaseData().getMyBases()) {
+        for (Base base: baseData.getMyBases()) {
             buildingPlanner.debugBaseCreepTiles(base);
             //buildingPlanner.debugBaseChoke(base);
             //buildingPlanner.debugLocationForTechBuilding(base, UnitType.Zerg_Spawning_Pool);
@@ -155,6 +156,7 @@ public class Debug {
             //buildingPlanner.debugNextCreepColonyLocation(base);
             //buildingPlanner.debugMineralBoundingBox(base);
             //buildingPlanner.debugGeyserBoundingBox(base);
+            buildingPlanner.debugMacroHatcheryLocation(gameState.getOpponentRace(), baseData);
         }
     }
 }
