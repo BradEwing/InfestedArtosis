@@ -337,8 +337,7 @@ public class ThreeHatchMuta extends ProtossBase {
 
     // Unit production methods
     private int desiredMutalisks(GameState gameState) {
-        int macroHatchCount = gameState.getBaseData().numMacroHatcheries();
-        return 9 + (macroHatchCount * 3);
+        return 9;
     }
 
     private int desiredHydralisks(GameState gameState) {
