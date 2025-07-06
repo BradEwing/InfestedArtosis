@@ -1,6 +1,7 @@
 #  Infested Artosis
 
 ![](https://github.com/BradEwing/InfestedArtosis/actions/workflows/ci.yaml/badge.svg)
+[![BASIL](https://img.shields.io/endpoint?url=https%3A//basil-badge-production.up.railway.app/badge/Infested%2520Artosis)](https://www.basil-ladder.net/ranking.html)
 
 A zerg bot initially cloned from [JavaBWAPI](https://github.com/JavaBWAPI/jbwapi-java-template).
 
