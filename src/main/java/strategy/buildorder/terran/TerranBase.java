@@ -51,10 +51,6 @@ public class TerranBase extends BuildOrder {
 
     /**
      * requiredSunkens per base
-     *
-     * Take a sunken if 2Gate is detected.
-     * Taken a sunken if 6+ zealots are detected
-     * Take a sunken if game time over 10 minutes and drone supply is healthy (20+)
      */
     @Override
     protected int requiredSunkens(GameState gameState) {
@@ -67,23 +63,9 @@ public class TerranBase extends BuildOrder {
         int marineCount = gameState.enemyUnitCount(UnitType.Terran_Firebat);
         int factoryCount = gameState.enemyUnitCount(UnitType.Terran_Factory);
         if (gameTime.lessThanOrEqual(new Time(8, 0))) {
-            if (medicCount >= 2) {
-                sunkens += 1;
+            if (strategyTracker.isDetectedStrategy("2RaxAcademy") && gameTime.greaterThan(new Time(4, 0))) {
+                sunkens += 2;
             }
-            if (firebatCount >= 4) {
-                sunkens += 1;
-            }
-            if (marineCount > 8) {
-                sunkens += 1;
-            }
-        }
-
-        if (gameState.enemyUnitCount(UnitType.Protoss_Zealot) > 5) {
-            sunkens += 1;
-        }
-
-        if (gameState.enemyUnitCount(UnitType.Protoss_Zealot) > 10) {
-            sunkens += 1;
         }
 
         if (gameTime.greaterThan(new Time(8, 0)) && gameState.ourUnitCount(UnitType.Zerg_Drone) > 14) {

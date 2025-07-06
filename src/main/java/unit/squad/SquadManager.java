@@ -384,7 +384,7 @@ public class SquadManager {
             return;
         }
 
-        if (squad.getMembers().size() < 2) {
+        if (squad.getMembers().size() < 3) {
             squad.setStatus(SquadStatus.RALLY);
             Position homeBase = getRallyPoint(squad);
 
@@ -1133,7 +1133,7 @@ public class SquadManager {
     // Add rally transition check method
     private void checkMutaliskRallyTransition(Squad squad) {
         boolean isRallyOrRetreat = squad.getStatus() == SquadStatus.RALLY || squad.getStatus() == SquadStatus.RETREAT;
-        if (squad.getType() != UnitType.Zerg_Mutalisk || isRallyOrRetreat) {
+        if (squad.getType() != UnitType.Zerg_Mutalisk || !isRallyOrRetreat) {
             return;
         }
 
