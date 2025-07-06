@@ -5,6 +5,7 @@ import bwapi.Race;
 import info.tracking.protoss.FFE;
 import info.tracking.protoss.OneGateCore;
 import info.tracking.protoss.TwoGate;
+import info.tracking.terran.TwoRaxAcademy;
 import lombok.Getter;
 import util.Time;
 
@@ -33,6 +34,9 @@ public class StrategyTracker {
             possibleStrategies.add(new FFE());
             possibleStrategies.add(new OneGateCore());
             possibleStrategies.add(new TwoGate());
+        }
+        if (race == Race.Terran || race == Race.Unknown) {
+            possibleStrategies.add(new TwoRaxAcademy());
         }
     }
 
