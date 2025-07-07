@@ -50,6 +50,9 @@ public class ProtossBase extends BuildOrder {
         if (strategyTracker.isDetectedStrategy("NexusFirst")) {
             zerglings = 2;
         }
+        if (strategyTracker.isDetectedStrategy("CannonRush")) {
+            zerglings = 24;
+        }
 
         zerglings += (zealots * 2);
 

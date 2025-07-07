@@ -11,7 +11,7 @@ import java.util.List;
 /**
  * <a href="https://liquipedia.net/starcraft/2_Rax_Academy_(vs._Zerg)">Liquipedia Entry</a>
  */
-public class TwoRaxAcademy extends ObservedStrategy {
+public class TwoRaxAcademy extends TerranBaseStrategy {
 
     public TwoRaxAcademy() { super("2RaxAcademy"); }
 

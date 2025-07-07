@@ -14,13 +14,15 @@ public class ObservedUnit {
     private Position lastKnownLocation;
     private final Unit unit;
     private UnitType unitType;
+    private boolean proxied;
 
-    public ObservedUnit(Unit unit, Time currentFrame) {
+    public ObservedUnit(Unit unit, Time currentFrame, boolean proxied) {
         this.unit = unit;
         this.unitType = unit.getType();
         this.firstObservedFrame = currentFrame;
         this.lastObservedFrame = currentFrame;
         this.lastKnownLocation = unit.getPosition();
+        this.proxied = proxied;
     }
 
     @Override

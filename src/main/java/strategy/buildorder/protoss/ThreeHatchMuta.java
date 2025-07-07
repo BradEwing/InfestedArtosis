@@ -6,6 +6,7 @@ import bwapi.UpgradeType;
 import info.BaseData;
 import info.GameState;
 import info.TechProgression;
+import info.tracking.StrategyTracker;
 import macro.plan.Plan;
 import util.Time;
 
@@ -41,6 +42,8 @@ public class ThreeHatchMuta extends ProtossBase {
         Time time = gameState.getGameTime();
         TechProgression techProgression = gameState.getTechProgression();
         BaseData baseData = gameState.getBaseData();
+        StrategyTracker strategyTracker = gameState.getStrategyTracker();
+        boolean cannonRushed = strategyTracker.isDetectedStrategy("CannonRush");
         int baseCount = baseData.currentBaseCount();
         int extractorCount = baseData.numExtractor();
         int supply = gameState.getSupply();
@@ -60,7 +63,8 @@ public class ThreeHatchMuta extends ProtossBase {
         int enemyObserverCount = gameState.enemyUnitCount(UnitType.Protoss_Observer);
 
         // Gas timing
-        boolean firstGas = gameState.canPlanExtractor() && (time.greaterThan(new Time(2, 32)) || supply > 40) && extractorCount < 1;
+        boolean gasBlocked = cannonRushed && time.lessThanOrEqual(new Time (4, 0));
+        boolean firstGas = !gasBlocked && gameState.canPlanExtractor() && (time.greaterThan(new Time(2, 32)) || supply > 40) && extractorCount < 1;
         boolean secondGas = gameState.canPlanExtractor() && (spireCount > 0 || droneCount >= 20);
 
         // Base timing

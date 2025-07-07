@@ -16,10 +16,10 @@ public class ObservedUnitTracker {
 
     }
 
-    public void onUnitShow(Unit unit, int currentFrame) {
+    public void onUnitShow(Unit unit, int currentFrame, boolean isProxied) {
         Time t = new Time(currentFrame);
         if (!observedUnits.containsKey(unit)) {
-            observedUnits.put(unit, new ObservedUnit(unit, t));
+            observedUnits.put(unit, new ObservedUnit(unit, t, isProxied));
         } else {
             ObservedUnit u = observedUnits.get(unit);
             u.setLastObservedFrame(t);
@@ -89,5 +89,14 @@ public class ObservedUnitTracker {
                     }
                 })
                 .collect(Collectors.toSet());
+    }
+
+    public int getProxiedCountByTypeBeforeTime(UnitType unitType, Time detectedBy) {
+        return (int) observedUnits.values()
+                .stream()
+                .filter(ou -> ou.getUnit().getType() == unitType)
+                .filter(ObservedUnit::isProxied)
+                .filter(ou -> ou.getFirstObservedFrame().lessThanOrEqual(detectedBy))
+                .count();
     }
 }

@@ -56,6 +56,8 @@ public class InformationManager {
     private HashMap<Unit, TilePosition> enemyLastKnownLocations = new HashMap<>();
     private HashMap<TilePosition, Base> tilePositionToBaseLookup = new HashMap<>();
 
+    private static final int DETECTION_DISTANCE = 10;
+
 
     public InformationManager(BWEM bwem, Game game, GameState gameState) {
         this.bwem = bwem;
@@ -171,12 +173,11 @@ public class InformationManager {
         }
 
         ObservedUnitTracker tracker = gameState.getObservedUnitTracker();
-        tracker.onUnitShow(unit, game.getFrameCount());
+        boolean isProxied = isProxiedBuilding(unit);
+        tracker.onUnitShow(unit, game.getFrameCount(), isProxied);
 
 
-        if (enemyLastKnownLocations.containsKey(unit)) {
-            enemyLastKnownLocations.remove(unit);
-        }
+        enemyLastKnownLocations.remove(unit);
     }
 
     public void onUnitMorph(Unit unit) {
@@ -749,5 +750,24 @@ public class InformationManager {
         BuildOrder active = gameState.getActiveBuildOrder();
         Set<BuildOrder> candidates = active.transition(gameState);
         return candidates.stream().findFirst().get();
+    }
+
+    private boolean isProxiedBuilding(Unit unit) {
+        BaseData baseData = gameState.getBaseData();
+        return isNearAnyBase(unit.getTilePosition(), baseData.getMyBases());
+    }
+
+    private boolean isNearAnyBase(TilePosition position, Set<Base> myBases) {
+        for (Base base : myBases) {
+            TilePosition baseLocation = base.getLocation();
+            int manhattanDistance = Math.abs(baseLocation.getX() - position.getX()) +
+                    Math.abs(baseLocation.getY() - position.getY());
+
+            if (manhattanDistance <= DETECTION_DISTANCE) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }
