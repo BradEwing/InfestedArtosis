@@ -638,4 +638,46 @@ public class BuildingPlanner {
 
         return dx + dy;
     }
+
+    /**
+     * Reserves building tiles for a planned building based on position and unit type.
+     * Called when a build position is assigned to a plan to prevent location conflicts.
+     *
+     * @param buildPosition The top-left tile position where the building will be placed
+     * @param unitType The type of building that will be constructed
+     */
+    public void reservePlannedBuildingTiles(TilePosition buildPosition, UnitType unitType) {
+        if (buildPosition == null || unitType == null) {
+            return;
+        }
+
+        TilePosition tileSize = unitType.tileSize();
+        for (int dx = 0; dx < tileSize.getX(); dx++) {
+            for (int dy = 0; dy < tileSize.getY(); dy++) {
+                TilePosition currentTile = buildPosition.add(new TilePosition(dx, dy));
+                reservedTiles.add(currentTile);
+            }
+        }
+    }
+
+    /**
+     * Unreserves building tiles for a planned building based on position and unit type.
+     * Called when a plan is cancelled or reassigned to free up the location.
+     *
+     * @param buildPosition The top-left tile position that was reserved
+     * @param unitType The type of building that was planned
+     */
+    public void unreservePlannedBuildingTiles(TilePosition buildPosition, UnitType unitType) {
+        if (buildPosition == null || unitType == null) {
+            return;
+        }
+
+        TilePosition tileSize = unitType.tileSize();
+        for (int dx = 0; dx < tileSize.getX(); dx++) {
+            for (int dy = 0; dy < tileSize.getY(); dy++) {
+                TilePosition currentTile = buildPosition.add(new TilePosition(dx, dy));
+                reservedTiles.remove(currentTile);
+            }
+        }
+    }
 }
