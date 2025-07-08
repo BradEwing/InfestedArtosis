@@ -110,6 +110,7 @@ public abstract class BuildOrder {
         }
         baseData.reserveSunkenColony(eligibleBase.get());
         TilePosition location = buildingPlanner.getLocationForCreepColony(eligibleBase.get());
+        buildingPlanner.reservePlannedBuildingTiles(location, UnitType.Zerg_Creep_Colony);
         Plan creepColonyPlan = new BuildingPlan(UnitType.Zerg_Creep_Colony, 5, true, location);
         Plan sunkenColonyPlan = new BuildingPlan(UnitType.Zerg_Sunken_Colony, 5, true, location);
         plans.add(creepColonyPlan);
@@ -172,6 +173,8 @@ public abstract class BuildOrder {
         if (location == null) {
             return null;
         }
+
+        buildingPlanner.reservePlannedBuildingTiles(location, UnitType.Zerg_Hatchery);
 
         return new BuildingPlan(UnitType.Zerg_Hatchery, gameState.getGameTime().getFrames(), true, location);
     }

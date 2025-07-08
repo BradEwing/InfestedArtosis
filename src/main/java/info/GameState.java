@@ -182,6 +182,10 @@ public class GameState {
             UnitType type = plan.getPlannedUnit();
             resourceCount.unreserveUnit(type);
 
+            if (plan.getBuildPosition() != null) {
+                buildingPlanner.unreservePlannedBuildingTiles(plan.getBuildPosition(), type);
+            }
+
             TilePosition tp = plan.getBuildPosition();
             if (tp != null && baseData.isBaseTilePosition(tp)) {
                 Base base = baseData.baseAtTilePosition(tp);
@@ -358,7 +362,9 @@ public class GameState {
 
     public TilePosition getTechBuildingLocation(UnitType unitType) {
         Base main = baseData.getMainBase();
-        return buildingPlanner.getLocationForTechBuilding(main, unitType);
+        TilePosition position = buildingPlanner.getLocationForTechBuilding(main, unitType);
+        buildingPlanner.reservePlannedBuildingTiles(position, unitType);
+        return position;
     }
 
     public Set<Base> basesNeedingSunken(int target) {
