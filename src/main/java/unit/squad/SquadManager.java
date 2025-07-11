@@ -8,7 +8,6 @@ import bwapi.Text;
 import bwapi.TilePosition;
 import bwapi.Unit;
 import bwapi.UnitType;
-import bwapi.WeaponType;
 import bwem.Base;
 import info.GameState;
 import info.InformationManager;
@@ -27,7 +26,6 @@ import java.util.stream.Collectors;
 
 import static java.lang.Math.min;
 import static util.Filter.closestHostileUnit;
-import static util.Filter.isHostileBuilding;
 
 public class SquadManager {
 
@@ -44,11 +42,31 @@ public class SquadManager {
 
     private HashMap<Base, Squad> defenseSquads = new HashMap<>();
 
+    private final CombatSimulator defaultCombatSimulator;
+
     public SquadManager(Game game, GameState gameState, InformationManager informationManager) {
         this.game = game;
         this.gameState = gameState;
+        // TODO: Information accessed here should come from GameState
         this.informationManager = informationManager;
         this.agentFactory = new BWMirrorAgentFactory();
+        this.defaultCombatSimulator = new AssCombatSimulator();
+    }
+
+    public void updateFightSquads() {
+        debugPainters();
+        removeEmptySquads();
+
+        // Iterate through squads
+        // Check if squads are can merge
+        mergeSquads();
+
+        // TODO: split behavior (if unit exceeds squad radius)
+
+        for (Squad fightSquad: fightSquads) {
+            fightSquad.onFrame();
+            evaluateSquadRole(fightSquad);
+        }
     }
 
     public void updateOverlordSquad() {
@@ -68,26 +86,7 @@ public class SquadManager {
         }
     }
 
-    // Update the updateFightSquads method in SquadManager.java
-    public void updateFightSquads() {
-        debugPainters();
-        removeEmptySquads();
 
-        // Iterate through squads
-        // Check if squads are can merge
-        mergeSquads();
-
-        // TODO: split behavior (if unit exceeds squad radius)
-
-        for (Squad fightSquad: fightSquads) {
-            fightSquad.onFrame();
-
-            // Check if mutalisk squads should transition from rally to fight
-            checkMutaliskRallyTransition(fightSquad);
-
-            evaluateSquadRole(fightSquad);
-        }
-    }
 
     public void updateDefenseSquads() {
         ensureDefenderSquadsHaveTargets();
@@ -379,558 +378,67 @@ public class SquadManager {
         return moveOutThreshold;
     }
 
-    private void handleMutaliskSquad(Squad squad) {
-        if (squad.getType() != UnitType.Zerg_Mutalisk) {
-            return;
-        }
-
-        if (squad.getMembers().size() < 3) {
-            squad.setStatus(SquadStatus.RALLY);
-            Position homeBase = getRallyPoint(squad);
-
-            for (ManagedUnit mutalisk : squad.getMembers()) {
-                mutalisk.setRole(UnitRole.RALLY);
-                mutalisk.setReady(true);
-                mutalisk.setRallyPoint(homeBase);
-            }
-            return;
-        }
-
-        HashSet<Unit> enemyUnits = informationManager.getVisibleEnemyUnits();
-        HashSet<Unit> enemyBuildings = informationManager.getEnemyBuildings();
-
-        // Get aerial static defense coverage
-        Set<Position> staticDefenseCoverage = gameState.getAerielStaticDefenseCoverage();
-
-        // Get all enemy units and buildings within reasonable range
-        List<Unit> allEnemies = new ArrayList<>();
-        for (Unit enemy : enemyUnits) {
-            if (enemy.isDetected() && !enemy.isInvincible()) {
-                allEnemies.add(enemy);
-            }
-        }
-        for (Unit building : enemyBuildings) {
-            if (building.isDetected() && !building.isInvincible()) {
-                allEnemies.add(building);
-            }
-        }
-
-        if (allEnemies.isEmpty()) {
-            // No enemies visible, continue scouting
-            rallySquad(squad);
-            return;
-        }
-
-        Position squadCenter = squad.getCenter();
-        Position retreatVector = calculateRetreatVector(squadCenter, allEnemies, staticDefenseCoverage);
-
-        Unit priorityTarget = findPriorityTarget(squad, allEnemies, staticDefenseCoverage);
-
-        boolean shouldEngage = evaluateMutaliskEngagement(squad, allEnemies) && priorityTarget != null;
-
-        if (!shouldEngage) {
-            squad.setStatus(SquadStatus.RETREAT);
-            for (ManagedUnit mutalisk : squad.getMembers()) {
-                mutalisk.setRole(UnitRole.RETREAT);
-                mutalisk.setReady(true);
-                mutalisk.setRetreatTarget(retreatVector);
-            }
-            return;
-        }
-
-        if (canAttackTargetFromSafePosition(priorityTarget, staticDefenseCoverage)) {
-            Position safeAttackPos = findSafeAttackPosition(priorityTarget, staticDefenseCoverage);
-            if (safeAttackPos != null) {
-                squad.setStatus(SquadStatus.RALLY);
-                squad.setTarget(priorityTarget);
-
-                for (ManagedUnit mutalisk : squad.getMembers()) {
-                    mutalisk.setRole(UnitRole.RALLY);
-                    mutalisk.setReady(true);
-                    mutalisk.setRallyPoint(safeAttackPos);
-                    mutalisk.setFightTarget(priorityTarget);
-                }
-                return;
-            }
-        }
-
-        // Default fight behavior if no safe repositioning needed
-        squad.setStatus(SquadStatus.FIGHT);
-        squad.setTarget(priorityTarget);
-
-        for (ManagedUnit mutalisk : squad.getMembers()) {
-            mutalisk.setRole(UnitRole.FIGHT);
-            mutalisk.setReady(true);
-            mutalisk.setFightTarget(priorityTarget);
-
-            Position individualRetreat = calculateIndividualRetreat(mutalisk.getUnit(), allEnemies, staticDefenseCoverage);
-            mutalisk.setRetreatTarget(individualRetreat);
-        }
-    }
-
-    private Position calculateRetreatVector(Position squadCenter, List<Unit> enemies, Set<Position> staticDefenseCoverage) {
-        if (enemies.isEmpty()) {
-            return squadCenter;
-        }
-
-        // Calculate weighted vector away from enemies
-        double totalDx = 0;
-        double totalDy = 0;
-        double totalWeight = 0;
-
-        for (Unit enemy : enemies) {
-            Position enemyPos = enemy.getPosition();
-            double distance = squadCenter.getDistance(enemyPos);
-
-            // Weight more dangerous units higher
-            double weight = 1.0;
-            if (isAntiAir(enemy)) {
-                weight = 3.0;
-            } else if (enemy.getType().isBuilding()) {
-                weight = 0.5;
-            }
-
-            // Inverse square law for influence
-            if (distance > 0) {
-                weight = weight / (distance * distance / 10000); // Normalize by 100^2
-
-                double dx = squadCenter.getX() - enemyPos.getX();
-                double dy = squadCenter.getY() - enemyPos.getY();
-
-                totalDx += dx * weight;
-                totalDy += dy * weight;
-                totalWeight += weight;
-            }
-        }
-
-        if (totalWeight == 0) {
-            return squadCenter;
-        }
-
-        // Normalize and scale the retreat vector
-        double normalizedDx = totalDx / totalWeight;
-        double normalizedDy = totalDy / totalWeight;
-
-        double length = Math.sqrt(normalizedDx * normalizedDx + normalizedDy * normalizedDy);
-        if (length > 0) {
-            normalizedDx = (normalizedDx / length) * 256; // Retreat 256 pixels
-            normalizedDy = (normalizedDy / length) * 256;
-        }
-
-        int retreatX = squadCenter.getX() + (int)normalizedDx;
-        int retreatY = squadCenter.getY() + (int)normalizedDy;
-
-        // Ensure retreat position is within map bounds
-        retreatX = Math.max(0, Math.min(retreatX, game.mapWidth() * 32 - 1));
-        retreatY = Math.max(0, Math.min(retreatY, game.mapHeight() * 32 - 1));
-
-        Position retreatPos = new Position(retreatX, retreatY);
-
-        // If retreat position is in static defense coverage, try to find alternative
-        if (isPositionInStaticDefenseCoverage(retreatPos, staticDefenseCoverage)) {
-            Position alternativeRetreat = findSafeRetreatPosition(squadCenter, staticDefenseCoverage);
-            if (alternativeRetreat != null) {
-                retreatPos = alternativeRetreat;
-            }
-        }
-
-        return retreatPos;
-    }
-
-    private Position calculateIndividualRetreat(Unit mutalisk, List<Unit> enemies, Set<Position> staticDefenseCoverage) {
-        Position mutaliskPos = mutalisk.getPosition();
-
-        // Find nearest threatening enemy
-        Unit nearestThreat = null;
-        double nearestDistance = Double.MAX_VALUE;
-
-        for (Unit enemy : enemies) {
-            if (isAntiAir(enemy)) {
-                double distance = mutaliskPos.getDistance(enemy.getPosition());
-                if (distance < nearestDistance) {
-                    nearestThreat = enemy;
-                    nearestDistance = distance;
-                }
-            }
-        }
-
-        if (nearestThreat == null) {
-            // No immediate threats, use squad retreat vector
-            return calculateRetreatVector(mutaliskPos, enemies, staticDefenseCoverage);
-        }
-
-        // Calculate retreat away from nearest threat
-        Position threatPos = nearestThreat.getPosition();
-        double dx = mutaliskPos.getX() - threatPos.getX();
-        double dy = mutaliskPos.getY() - threatPos.getY();
-
-        double length = Math.sqrt(dx * dx + dy * dy);
-        if (length > 0) {
-            dx = (dx / length) * 192; // Individual retreat distance
-            dy = (dy / length) * 192;
-        }
-
-        int retreatX = mutaliskPos.getX() + (int)dx;
-        int retreatY = mutaliskPos.getY() + (int)dy;
-
-        // Ensure within bounds
-        retreatX = Math.max(0, Math.min(retreatX, game.mapWidth() * 32 - 1));
-        retreatY = Math.max(0, Math.min(retreatY, game.mapHeight() * 32 - 1));
-
-        Position retreatPos = new Position(retreatX, retreatY);
-
-        // If retreat position is in static defense coverage, try to find alternative
-        if (isPositionInStaticDefenseCoverage(retreatPos, staticDefenseCoverage)) {
-            Position alternativeRetreat = findSafeRetreatPosition(mutaliskPos, staticDefenseCoverage);
-            if (alternativeRetreat != null) {
-                retreatPos = alternativeRetreat;
-            }
-        }
-
-        return retreatPos;
-    }
-
-    private List<Unit> findWorkers(List<Unit> enemies) {
-        List<Unit> workers = new ArrayList<>();
-
-        for (Unit unit : enemies) {
-            UnitType type = unit.getType();
-            if (type == UnitType.Protoss_Probe ||
-                    type == UnitType.Terran_SCV ||
-                    type == UnitType.Zerg_Drone) {
-                workers.add(unit);
-            }
-        }
-
-        return workers;
-    }
-
-    private boolean isPositionInStaticDefenseCoverage(Position pos, Set<Position> staticDefenseCoverage) {
-        // Check if position is within static defense coverage
-        // Since coverage positions are discretized (every 8 pixels), check nearby positions
-        for (Position coveredPos : staticDefenseCoverage) {
-            if (pos.getDistance(coveredPos) < 16) { // Within 16 pixels tolerance
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private Position findSafeRetreatPosition(Position currentPos, Set<Position> staticDefenseCoverage) {
-        // Try to find a safe retreat position by checking positions in a spiral pattern
-        int maxRadius = 320; // Maximum search radius
-        int step = 32; // Step size for position checking
-
-        for (int radius = step; radius <= maxRadius; radius += step) {
-            for (int angle = 0; angle < 360; angle += 30) {
-                double radians = Math.toRadians(angle);
-                int x = currentPos.getX() + (int)(radius * Math.cos(radians));
-                int y = currentPos.getY() + (int)(radius * Math.sin(radians));
-
-                // Ensure within map bounds
-                x = Math.max(0, Math.min(x, game.mapWidth() * 32 - 1));
-                y = Math.max(0, Math.min(y, game.mapHeight() * 32 - 1));
-
-                Position candidatePos = new Position(x, y);
-
-                if (!isPositionInStaticDefenseCoverage(candidatePos, staticDefenseCoverage)) {
-                    return candidatePos;
-                }
-            }
-        }
-
-        return null;
-    }
-
-    private List<Unit> findCloseAntiAirThreats(Squad squad, List<Unit> enemies) {
-        List<Unit> threats = new ArrayList<>();
-        Position squadCenter = squad.getCenter();
-
-        for (Unit enemy : enemies) {
-            // Check if unit can attack air and is within engagement range
-            if (isAntiAir(enemy) && squadCenter.getDistance(enemy.getPosition()) < 256) {
-                threats.add(enemy);
-            }
-        }
-
-        return threats;
-    }
-
-    private Unit findPriorityTarget(Squad squad, List<Unit> enemies, Set<Position> staticDefenseCoverage) {
-        Position squadCenter = squad.getCenter();
-
-        // Separate enemies by whether they're in static defense coverage
-        List<Unit> safeTargets = new ArrayList<>();
-        List<Unit> dangerousTargets = new ArrayList<>();
-
-        for (Unit enemy : enemies) {
-            if (isPositionInStaticDefenseCoverage(enemy.getPosition(), staticDefenseCoverage)) {
-                dangerousTargets.add(enemy);
-            } else {
-                safeTargets.add(enemy);
-            }
-        }
-
-        boolean safeTargetsOnlyBuildings = safeTargets.stream().allMatch(unit -> unit.getType().isBuilding());
-        List<Unit> preferredTargets = (safeTargets.isEmpty() || safeTargetsOnlyBuildings) ? dangerousTargets : safeTargets;
-
-        List<Unit> workers = findWorkers(preferredTargets);
-        if (!workers.isEmpty()) {
-            return getClosestUnit(squadCenter, workers);
-        }
-
-        List<Unit> closeAntiAirThreats = findCloseAntiAirThreats(squad, preferredTargets);
-        if (!closeAntiAirThreats.isEmpty()) {
-            return getClosestUnit(squadCenter, closeAntiAirThreats);
-        }
-
-        List<Unit> strayUnits = findStrayUnits(preferredTargets);
-        if (!strayUnits.isEmpty()) {
-            return getClosestUnit(squadCenter, strayUnits);
-        }
-
-        List<Unit> staticDefense = findStaticDefense(preferredTargets);
-        if (!staticDefense.isEmpty()) {
-            return getClosestUnit(squadCenter, staticDefense);
-        }
-
-        return getClosestUnit(squadCenter, preferredTargets);
-    }
-
-    private List<Unit> findStrayUnits(List<Unit> enemies) {
-        List<Unit> strayUnits = new ArrayList<>();
-
-        for (Unit unit : enemies) {
-            if (unit.getType().isBuilding()) {
-                continue;
-            }
-
-            // Find distance to nearest ally
-            double nearestAllyDistance = Double.MAX_VALUE;
-            for (Unit other : enemies) {
-                if (other != unit && !other.getType().isBuilding()) {
-                    double distance = unit.getDistance(other);
-                    if (distance < nearestAllyDistance) {
-                        nearestAllyDistance = distance;
-                    }
-                }
-            }
-
-            // Units more than 200 pixels from nearest ally are stray
-            if (nearestAllyDistance > 64) {
-                strayUnits.add(unit);
-            }
-        }
-
-        return strayUnits;
-    }
-
-    private List<Unit> findStaticDefense(List<Unit> enemies) {
-        List<Unit> staticDefense = new ArrayList<>();
-
-        for (Unit unit : enemies) {
-            UnitType type = unit.getType();
-            if (type == UnitType.Terran_Missile_Turret ||
-                    type == UnitType.Terran_Bunker ||
-                    type == UnitType.Protoss_Photon_Cannon) {
-                staticDefense.add(unit);
-            }
-        }
-
-        return staticDefense;
-    }
-
-    private Unit getClosestUnit(Position from, List<Unit> units) {
-        Unit closest = null;
-        double closestDistance = Double.MAX_VALUE;
-
-        for (Unit unit : units) {
-            double distance = from.getDistance(unit.getPosition());
-            if (distance < closestDistance) {
-                closest = unit;
-                closestDistance = distance;
-            }
-        }
-
-        return closest;
-    }
-
-    private boolean evaluateMutaliskEngagement(Squad squad, List<Unit> enemies) {
-        // Count anti-air threats
-        int antiAirThreats = 0;
-        int antiAirDps = 0;
-
-        for (Unit enemy : enemies) {
-            if (isAntiAir(enemy) && squad.getCenter().getDistance(enemy.getPosition()) < 160) {
-                antiAirThreats++;
-                antiAirDps += getAntiAirDps(enemy);
-            }
-        }
-
-        int squadSize = squad.size();
-        int mutaliskHp = squadSize * 120;
-        int expectedDamagePerSecond = antiAirDps;
-
-        if (expectedDamagePerSecond * 5 > mutaliskHp * 0.5) {
-            return false;
-        }
-
-        // Don't engage if heavily outnumbered by anti-air
-        if (antiAirThreats > squadSize * 1.5) {
-            return false;
-        }
-
-        return true;
-    }
-
-    private boolean isAntiAir(Unit unit) {
-        UnitType type = unit.getType();
-
-        // Check if unit can attack air
-        if (type.airWeapon() != WeaponType.None) {
-            return true;
-        }
-
-        // Special cases
-        if (type == UnitType.Terran_Bunker && !unit.getLoadedUnits().isEmpty()) {
-            return true; // Assume bunker has marines
-        }
-
-        return false;
-    }
-
-    private int getAntiAirDps(Unit unit) {
-        UnitType type = unit.getType();
-        WeaponType weapon = type.airWeapon();
-
-        if (weapon == WeaponType.None) {
-            return 0;
-        }
-
-        // Calculate DPS
-        int damage = weapon.damageAmount();
-        int cooldown = weapon.damageCooldown();
-
-        if (cooldown == 0) {
-            return 0;
-        }
-
-        // Account for upgrades if needed
-        int dps = (damage * 24) / cooldown;
-
-        return dps;
-    }
-
     /**
-     * TODO: Decompose and rename
-     *
-     * Responsible for running fight simulation
+     * TODO: All simulation should be handled by a CombatSimulator passed to the squad
      * @param squad
      */
     private void simulateFightSquad(Squad squad) {
-        if (squad.getType() == UnitType.Zerg_Mutalisk) {
-            handleMutaliskSquad(squad);
+        // Skip mutalisk squads as they handle their own tactics
+        if (squad instanceof MutaliskSquad) {
             return;
         }
 
-        // Run ASS every 50 frames
         HashSet<ManagedUnit> managedFighters = squad.getMembers();
 
-        // TODO: Handle Lurker retreat and contain
+        // Handle Lurker retreat and contain (unchanged)
         if (squad.getType() == UnitType.Zerg_Lurker) {
             squad.setStatus(SquadStatus.FIGHT);
-            for (ManagedUnit managedUnit: managedFighters) {
+            for (ManagedUnit managedUnit : managedFighters) {
                 managedUnit.setRole(UnitRole.FIGHT);
                 assignEnemyTarget(managedUnit, squad);
             }
+            return;
         }
 
-        HashSet<Unit> enemyBuildings = informationManager.getEnemyBuildings();
-        Unit closest = closestHostileUnit(squad.getCenter(), new ArrayList<>(enemyBuildings));
+        // Handle building targeting when no visible units
+        Set<Unit> enemyBuildings = gameState.getEnemyBuildings();
+        Set<Unit> enemyUnits = gameState.getVisibleEnemyUnits();
 
-        if (!informationManager.isEnemyUnitVisible() && !enemyBuildings.isEmpty()) {
+        if (enemyUnits.isEmpty() && !enemyBuildings.isEmpty()) {
+            Unit closest = closestHostileUnit(squad.getCenter(), new ArrayList<>(enemyBuildings));
             squad.setStatus(SquadStatus.FIGHT);
-            for (ManagedUnit managedUnit: squad.getMembers()) {
+            for (ManagedUnit managedUnit : squad.getMembers()) {
                 managedUnit.setRole(UnitRole.FIGHT);
                 managedUnit.setMovementTargetPosition(closest.getTilePosition());
-            }
-        }
-
-        HashSet<Unit> enemyUnits = informationManager.getVisibleEnemyUnits();
-        Simulator simulator = new Simulator.Builder().build();
-
-        for (ManagedUnit managedUnit: managedFighters) {
-            simulator.addAgentA(agentFactory.of(managedUnit.getUnit()));
-        }
-
-        for (Unit enemyUnit: enemyUnits) {
-            if (enemyUnit.getType() == UnitType.Unknown) {
-                continue;
-            }
-            if ( (int) enemyUnit.getPosition().getDistance(squad.getCenter()) > 256) {
-                continue;
-            }
-            if (enemyUnit.isBeingConstructed() || enemyUnit.isMorphing()) {
-                continue;
-            }
-            if (enemyUnit.getType().isWorker()) {
-                continue;
-            }
-            try {
-                simulator.addAgentB(agentFactory.of(enemyUnit));
-            } catch (ArithmeticException e) {
-                return;
-            }
-        }
-
-        for (Unit enemyBuilding: enemyBuildings) {
-            if (!isHostileBuilding(enemyBuilding.getType())) {
-                continue;
-            }
-            if ( (int) enemyBuilding.getPosition().getDistance(squad.getCenter()) > 512) {
-                continue;
-            }
-            if (enemyBuilding.isMorphing() || enemyBuilding.isBeingConstructed()) {
-                continue;
-            }
-            try {
-                simulator.addAgentB(agentFactory.of(enemyBuilding));
-            } catch (ArithmeticException e) {
-                return;
-            }
-        }
-
-
-        simulator.simulate(150); // Simulate 15 seconds
-
-        if (simulator.getAgentsA().isEmpty()) {
-            squad.setStatus(SquadStatus.RETREAT);
-            for (ManagedUnit managedUnit: managedFighters) {
-                managedUnit.setRole(UnitRole.RETREAT);
-                Position retreatTarget = this.getRallyPoint(squad);
-                managedUnit.setRetreatTarget(retreatTarget);
             }
             return;
         }
 
-        if (!simulator.getAgentsB().isEmpty()) {
-            // If less than half of units are left, retreat
-            float percentRemaining = (float) simulator.getAgentsA().size() / managedFighters.size();
-            if (percentRemaining < 0.40) {
+        // Use combat simulator for engagement decision
+        CombatSimulator.CombatResult result = defaultCombatSimulator.evaluate(squad, gameState);
+
+        switch (result) {
+            case RETREAT:
                 squad.setStatus(SquadStatus.RETREAT);
-                for (ManagedUnit managedUnit: managedFighters) {
+                for (ManagedUnit managedUnit : managedFighters) {
                     managedUnit.setRole(UnitRole.RETREAT);
                     Position retreatTarget = managedUnit.getRetreatPosition();
                     managedUnit.setRetreatTarget(retreatTarget);
                 }
-                return;
-            }
-        }
+                break;
 
-        squad.setStatus(SquadStatus.FIGHT);
-        for (ManagedUnit managedUnit: managedFighters) {
-            managedUnit.setRole(UnitRole.FIGHT);
-            assignEnemyTarget(managedUnit, squad);
+            case ENGAGE:
+                squad.setStatus(SquadStatus.FIGHT);
+                for (ManagedUnit managedUnit : managedFighters) {
+                    managedUnit.setRole(UnitRole.FIGHT);
+                    assignEnemyTarget(managedUnit, squad);
+                }
+                break;
+
+            case REGROUP:
+                // Handle regroup case if needed
+                squad.setStatus(SquadStatus.REGROUP);
+                break;
         }
     }
 
@@ -1024,10 +532,17 @@ public class SquadManager {
     }
 
     private Squad newFightSquad(UnitType type) {
-        Squad newSquad = new Squad();
+        Squad newSquad;
+
+        if (type == UnitType.Zerg_Mutalisk) {
+            newSquad = new MutaliskSquad();
+        } else {
+            newSquad = new Squad();
+            newSquad.setType(type);
+        }
+
         newSquad.setStatus(SquadStatus.FIGHT);
         newSquad.setRallyPoint(this.getRallyPoint(newSquad));
-        newSquad.setType(type);
         fightSquads.add(newSquad);
         return newSquad;
     }
@@ -1128,115 +643,6 @@ public class SquadManager {
         }
         List<Squad> sorted = fightSquads.stream().sorted().collect(Collectors.toList());
         return sorted.get(sorted.size()-1);
-    }
-
-    // Add rally transition check method
-    private void checkMutaliskRallyTransition(Squad squad) {
-        boolean isRallyOrRetreat = squad.getStatus() == SquadStatus.RALLY || squad.getStatus() == SquadStatus.RETREAT;
-        if (squad.getType() != UnitType.Zerg_Mutalisk || !isRallyOrRetreat) {
-            return;
-        }
-
-        int mutaliskCount = squad.getMembers().size();
-        int mutaliskAtRally = 0;
-
-        for (ManagedUnit mutalisk : squad.getMembers()) {
-            if (mutalisk.getRallyPoint() != null) {
-                double distanceToRally = mutalisk.getUnit().getPosition().getDistance(mutalisk.getRallyPoint());
-                if (distanceToRally < 64) {
-                    mutaliskAtRally++;
-                }
-            }
-        }
-
-        if (mutaliskCount > 0 && (double)mutaliskAtRally / mutaliskCount >= 0.75) {
-            squad.setStatus(SquadStatus.FIGHT);
-
-            for (ManagedUnit mutalisk : squad.getMembers()) {
-                mutalisk.setRole(UnitRole.FIGHT);
-                mutalisk.setReady(true);
-            }
-        }
-    }
-
-    /**
-     * Calculates a score for a position based on distance from static defenses and terrain type.
-     * Higher score is better.
-     */
-    private double calculatePositionScore(Position pos, Set<Position> staticDefenseCoverage) {
-        double score = 0;
-
-        double minDistanceToStaticDefense = Double.MAX_VALUE;
-        for (Position defensePos : staticDefenseCoverage) {
-            double distance = pos.getDistance(defensePos);
-            if (distance < minDistanceToStaticDefense) {
-                minDistanceToStaticDefense = distance;
-            }
-        }
-
-        if (minDistanceToStaticDefense != Double.MAX_VALUE) {
-            score += Math.min(100, minDistanceToStaticDefense / 3.2);
-        } else {
-            score += 100;
-        }
-
-        if (!game.isBuildable(pos.toTilePosition())) {
-            score += 50;
-        }
-
-        return score;
-    }
-
-    /**
-     * Finds a safe attack position for mutalisks to attack a target from outside static defense coverage.
-     * Prefers positions that are far from static defenses and on unbuildable terrain.
-     */
-    private Position findSafeAttackPosition(Unit target, Set<Position> staticDefenseCoverage) {
-        Position targetPos = target.getPosition();
-        int mutaRange = UnitType.Zerg_Mutalisk.airWeapon().maxRange();
-
-        List<Position> candidatePositions = new ArrayList<>();
-
-        int searchRadius = mutaRange;
-
-        for (int angle = 0; angle < 360; angle += 15) {
-            double radians = Math.toRadians(angle);
-            int x = targetPos.getX() + (int)(searchRadius * Math.cos(radians));
-            int y = targetPos.getY() + (int)(searchRadius * Math.sin(radians));
-
-            x = Math.max(0, Math.min(x, game.mapWidth() * 32 - 1));
-            y = Math.max(0, Math.min(y, game.mapHeight() * 32 - 1));
-
-            Position candidatePos = new Position(x, y);
-
-            if (!isPositionInStaticDefenseCoverage(candidatePos, staticDefenseCoverage)) {
-                candidatePositions.add(candidatePos);
-            }
-        }
-
-        if (candidatePositions.isEmpty()) {
-            return null;
-        }
-
-        candidatePositions.sort((pos1, pos2) -> {
-            double score1 = calculatePositionScore(pos1, staticDefenseCoverage);
-            double score2 = calculatePositionScore(pos2, staticDefenseCoverage);
-            return Double.compare(score2, score1);
-        });
-
-        return candidatePositions.get(0);
-    }
-
-    /**
-     * Checks if a target is within static defense coverage and can be attacked from outside that coverage.
-     */
-    private boolean canAttackTargetFromSafePosition(Unit target, Set<Position> staticDefenseCoverage) {
-        if (!isPositionInStaticDefenseCoverage(target.getPosition(), staticDefenseCoverage)) {
-            return false;
-        }
-
-        Position safePos = findSafeAttackPosition(target, staticDefenseCoverage);
-        return safePos != null;
     }
 }
 

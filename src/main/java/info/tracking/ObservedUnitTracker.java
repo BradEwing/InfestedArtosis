@@ -99,4 +99,22 @@ public class ObservedUnitTracker {
                 .filter(ou -> ou.getFirstObservedFrame().lessThanOrEqual(detectedBy))
                 .count();
     }
+
+    public Set<Unit> getVisibleUnits() {
+        return observedUnits.values()
+                .stream()
+                .filter(ou -> ou.getUnit().isVisible())
+                .filter(ou -> ou.getDestroyedFrame() == null)
+                .map(ou -> ou.getUnit())
+                .collect(Collectors.toSet());
+    }
+
+    public Set<Unit> getBuilding() {
+        return observedUnits.values()
+                .stream()
+                .filter(ou -> ou.getUnit().getType().isBuilding())
+                .filter(ou -> ou.getDestroyedFrame() == null)
+                .map(ou -> ou.getUnit())
+                .collect(Collectors.toSet());
+    }
 }

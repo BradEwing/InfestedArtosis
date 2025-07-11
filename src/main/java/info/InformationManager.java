@@ -76,12 +76,9 @@ public class InformationManager {
 
         trackEnemyUnits();
         trackEnemyBuildings();
-        // TODO: do same for unit positions?
         checkEnemyBuildingPositions();
-
         debugEnemyTargets();
         checkScoutTargets();
-
         checkIfEnemyUnitsStillThreatenBase();
         checkBaseThreats();
 
@@ -667,7 +664,6 @@ public class InformationManager {
                 }
                 if (unit.getPlayer() == game.self()) {
                     noLongerThreats.add(unit);
-                    continue;
                 }
             }
 
@@ -678,7 +674,8 @@ public class InformationManager {
     }
 
     private void checkBaseThreats() {
-        if (visibleEnemyUnits.size() < 1) {
+        Set<Unit> visibleUnits = gameState.getVisibleEnemyUnits();
+        if (visibleUnits.isEmpty()) {
             return;
         }
 
@@ -689,7 +686,7 @@ public class InformationManager {
                 baseThreats.put(base, new HashSet<>());
             }
 
-            for (Unit unit: visibleEnemyUnits) {
+            for (Unit unit: visibleUnits) {
                 if (base.getLocation().toPosition().getDistance(unit.getTilePosition().toPosition()) < 256) {
                     baseThreats.get(base).add(unit);
                 }
@@ -721,7 +718,7 @@ public class InformationManager {
         }
 
         ArrayList<MapTile> heatMap = gameState.getGameMap().getHeatMap();
-        if (heatMap.size() > 0) {
+        if (!heatMap.isEmpty()) {
             MapTile scoutTile = heatMap.get(0);
             scoutTile.setScoutImportance(0);
             return scoutTile.getTile();
