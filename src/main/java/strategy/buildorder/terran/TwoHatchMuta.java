@@ -61,6 +61,7 @@ public class TwoHatchMuta extends TerranBase {
         // Base timing
         boolean wantNatural  = plannedAndCurrentHatcheries < 2 && droneCount >= 12;
         boolean wantThird    = plannedAndCurrentHatcheries < 3 && spireCount > 0 && mutaCount > 5;
+        boolean wantBaseAdvantage = behindOnBases(gameState);
 
         // Lair timing
         boolean wantLair = gameState.canPlanLair() && lairCount < 1 && baseCount >= 2;
@@ -80,7 +81,7 @@ public class TwoHatchMuta extends TerranBase {
         }
 
         // Bases
-        if (wantNatural || wantThird) {
+        if (wantNatural || wantThird || wantBaseAdvantage) {
             Plan hatcheryPlan = this.planNewBase(gameState);
             if (hatcheryPlan != null) {
                 plans.add(hatcheryPlan);

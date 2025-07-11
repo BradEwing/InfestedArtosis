@@ -200,6 +200,8 @@ public class BaseData {
 
     public int currentBaseCount() { return baseHatcheries.size(); }
 
+    public int currentAndReservedCount() { return myBases.size() + reservedBases.size(); }
+
     public int numHatcheries() { return myBases.size() + macroHatcheries.size() + reservedBases.size(); }
 
     public TilePosition mainBasePosition() { return mainBase.getLocation(); }

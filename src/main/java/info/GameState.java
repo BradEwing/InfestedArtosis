@@ -530,4 +530,21 @@ public class GameState {
             return baseData.mainBasePosition().toPosition();
         }
     }
+
+    public int enemyResourceDepotCount() {
+        switch (opponentRace) {
+            case Terran:
+                return enemyUnitCount(UnitType.Terran_Command_Center);
+
+            case Protoss:
+                return enemyUnitCount(UnitType.Protoss_Nexus);
+
+            case Zerg:
+                return enemyUnitCount(UnitType.Zerg_Hatchery) +
+                        enemyUnitCount(UnitType.Zerg_Lair) +
+                        enemyUnitCount(UnitType.Zerg_Hive);
+            default:
+                return 0;
+        }
+    }
 }
