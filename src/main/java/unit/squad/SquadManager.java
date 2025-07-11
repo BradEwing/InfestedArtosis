@@ -56,16 +56,17 @@ public class SquadManager {
     public void updateFightSquads() {
         debugPainters();
         removeEmptySquads();
-
-        // Iterate through squads
-        // Check if squads are can merge
         mergeSquads();
-
-        // TODO: split behavior (if unit exceeds squad radius)
 
         for (Squad fightSquad: fightSquads) {
             fightSquad.onFrame();
-            evaluateSquadRole(fightSquad);
+            if (fightSquad instanceof MutaliskSquad) {
+                MutaliskSquad mutaliskSquad = (MutaliskSquad) fightSquad;
+                mutaliskSquad.executeTactics(gameState);
+            } else {
+                // Handle other squad types with general logic
+                evaluateSquadRole(fightSquad);
+            }
         }
     }
 
@@ -232,9 +233,8 @@ public class SquadManager {
         }
 
         for (Set<Squad> mergeSet: toMerge) {
-            Squad newSquad = new Squad();
-            newSquad.setStatus(SquadStatus.FIGHT);
-            newSquad.setRallyPoint(this.getRallyPoint(newSquad));
+            UnitType type = mergeSet.iterator().next().getType();
+            Squad newSquad = newFightSquad(type);
             for (Squad mergingSquad: mergeSet) {
                 if (newSquad.getType() == null) {
                     newSquad.setType(mergingSquad.getType());
@@ -345,7 +345,7 @@ public class SquadManager {
         if (squadStatus == SquadStatus.RETREAT) {
             return;
         }
-        final boolean closeThreats = enemyUnitsNearSquad(squad).size() > 0;
+        final boolean closeThreats = !enemyUnitsNearSquad(squad).isEmpty();
 
         if (!closeThreats && squadStatus == SquadStatus.REGROUP) {
             return;

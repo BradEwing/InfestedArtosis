@@ -26,6 +26,12 @@ public class MutaliskSquad extends Squad {
         this.setType(UnitType.Zerg_Mutalisk);
     }
 
+    @Override
+    public void onFrame() {
+        checkRallyTransition();
+        super.onFrame();
+    }
+
     /**
      * Executes mutalisk-specific squad behavior including target selection,
      * retreat calculations, and engagement decisions.
@@ -51,7 +57,6 @@ public class MutaliskSquad extends Squad {
         }
 
         Set<Position> staticDefenseCoverage = gameState.getAerielStaticDefenseCoverage();
-        Position squadCenter = getCenter();
 
         // Evaluate engagement
         CombatSimulator.CombatResult combatResult = combatSimulator.evaluate(this, gameState);
@@ -301,20 +306,14 @@ public class MutaliskSquad extends Squad {
         boolean safeTargetsOnlyBuildings = safeTargets.stream().allMatch(unit -> unit.getType().isBuilding());
         List<Unit> preferredTargets = (safeTargets.isEmpty() || safeTargetsOnlyBuildings) ? dangerousTargets : safeTargets;
 
-        // Priority: Workers > Anti-air threats > Stray units > Static defense
-        List<Unit> workers = findWorkers(preferredTargets);
-        if (!workers.isEmpty()) {
-            return getClosestUnit(squadCenter, workers);
-        }
-
         List<Unit> antiAirThreats = findAntiAirThreats(preferredTargets);
         if (!antiAirThreats.isEmpty()) {
             return getClosestUnit(squadCenter, antiAirThreats);
         }
 
-        List<Unit> strayUnits = findStrayUnits(preferredTargets);
-        if (!strayUnits.isEmpty()) {
-            return getClosestUnit(squadCenter, strayUnits);
+        List<Unit> workers = findWorkers(preferredTargets);
+        if (!workers.isEmpty()) {
+            return getClosestUnit(squadCenter, workers);
         }
 
         List<Unit> staticDefense = findStaticDefense(preferredTargets);
@@ -491,6 +490,39 @@ public class MutaliskSquad extends Squad {
     }
 
     /**
+     * Checks if mutalisks should transition from rally to fight status.
+     * Called when squad is in RALLY or RETREAT status to determine if ready to engage.
+     */
+    private void checkRallyTransition() {
+        boolean isRallyOrRetreat = getStatus() == SquadStatus.RALLY || getStatus() == SquadStatus.RETREAT;
+        if (!isRallyOrRetreat) {
+            return;
+        }
+
+        int mutaliskCount = getMembers().size();
+        int mutaliskAtRally = 0;
+
+        for (ManagedUnit mutalisk : getMembers()) {
+            if (mutalisk.getRallyPoint() != null) {
+                double distanceToRally = mutalisk.getUnit().getPosition().getDistance(mutalisk.getRallyPoint());
+                if (distanceToRally < 64) {
+                    mutaliskAtRally++;
+                }
+            }
+        }
+
+        // If 75% of mutalisks have reached rally point, transition to fight
+        if (mutaliskCount > 0 && (double)mutaliskAtRally / mutaliskCount >= 0.75) {
+            setStatus(SquadStatus.FIGHT);
+
+            for (ManagedUnit mutalisk : getMembers()) {
+                mutalisk.setRole(UnitRole.FIGHT);
+                mutalisk.setReady(true);
+            }
+        }
+    }
+
+    /**
      * Calculates a score for a position based on distance from static defenses and terrain type.
      * Higher score is better.
      */
@@ -511,7 +543,7 @@ public class MutaliskSquad extends Squad {
             score += 100;
         }
 
-        if (!gameState.getGame().isBuildable(pos.toTilePosition())) {
+        if (gameState != null && !gameState.getGame().isBuildable(pos.toTilePosition())) {
             score += 50;
         }
 
