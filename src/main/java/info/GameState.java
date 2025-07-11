@@ -502,4 +502,32 @@ public class GameState {
                 return new HashSet<>();
         }
     }
+
+    /**
+     * Gets all visible enemy units for squad combat evaluation.
+     * @return HashSet of visible enemy units
+     */
+    public Set<Unit> getVisibleEnemyUnits() {
+        return observedUnitTracker.getVisibleUnits();
+    }
+
+    /**
+     * Gets all known enemy buildings for combat evaluation.
+     * @return HashSet of enemy buildings
+     */
+    public Set<Unit> getEnemyBuildings() {
+        return observedUnitTracker.getBuilding();
+    }
+
+    /**
+     * Gets the rally point for squads that need to regroup.
+     * @return Position for rally point
+     */
+    public Position getSquadRallyPoint() {
+        if (baseData.hasNaturalExpansion()) {
+            return baseData.naturalExpansionPosition().toPosition();
+        } else {
+            return baseData.mainBasePosition().toPosition();
+        }
+    }
 }
