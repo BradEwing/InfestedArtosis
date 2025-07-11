@@ -180,13 +180,13 @@ public abstract class BuildOrder {
     }
 
     /**
-     * Determines if we are behind on resource depots (hatcheries) compared to the enemy.
+     * Determines if we are behind on resource hatcheries compared to the enemy.
      * Only applies to ZvZ matchups to maintain hatchery parity.
      *
      * @param gameState The current game state
      * @return true if enemy has more resource depots than us, false otherwise
      */
-    protected boolean behindOnResourceDepot(GameState gameState) {
+    protected boolean behindOnHatchery(GameState gameState) {
         // Only applies to ZvZ
         if (gameState.getOpponentRace() != Race.Zerg) {
             return false;
@@ -204,5 +204,17 @@ public abstract class BuildOrder {
         int enemyTotal = enemyHatcheries + enemyLairs + enemyHives;
 
         return enemyTotal > ourTotal;
+    }
+
+    protected boolean behindOnBases(GameState gameState) {
+        BaseData baseData = gameState.getBaseData();
+
+        // Only apply after we have our natural expansion
+        if (!baseData.hasNaturalExpansion()) {
+            return false;
+        }
+        int ourBaseCount = baseData.currentAndReservedCount();
+        int enemyTotal = gameState.enemyResourceDepotCount();
+        return ourBaseCount >= enemyTotal + 1;
     }
 }

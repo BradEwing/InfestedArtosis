@@ -70,6 +70,7 @@ public class ThreeHatchMuta extends ProtossBase {
         // Base timing
         boolean wantNatural  = plannedAndCurrentHatcheries < 2 && supply >= 24;
         boolean wantThird    = plannedAndCurrentHatcheries < 3 && droneCount > 13 && techProgression.isSpawningPool();
+        boolean wantBaseAdvantage = behindOnBases(gameState);
 
         // Macro hatchery timing
         boolean wantFirstMacroHatch = wantFirstMacroHatchery(gameState);
@@ -99,7 +100,7 @@ public class ThreeHatchMuta extends ProtossBase {
         }
 
         // Bases
-        if (wantNatural || wantThird) {
+        if (wantNatural || wantThird || wantBaseAdvantage) {
             Plan hatcheryPlan = this.planNewBase(gameState);
             if (hatcheryPlan != null) {
                 plans.add(hatcheryPlan);
