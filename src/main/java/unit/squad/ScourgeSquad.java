@@ -108,9 +108,6 @@ public class ScourgeSquad extends Squad {
 
             double distance = scourgePos.getDistance(target.getPosition());
             double priority = getTargetPriority(target.getType());
-
-            // Score combines priority and proximity (closer is better)
-            // Higher priority and closer distance = higher score
             double score = priority * 1000 - distance;
 
             if (score > bestScore) {
@@ -157,11 +154,11 @@ public class ScourgeSquad extends Squad {
      */
     private double getTargetPriority(UnitType type) {
         if (isLowPriorityTarget(type)) {
-            return 1.0; // Overlords, Interceptors
+            return 2.0;
         } else if (isFloatingBuilding(type)) {
-            return 2.0; // Floating buildings
+            return 1.0;
         } else {
-            return 3.0; // Combat units, transports, detectors
+            return 3.0;
         }
     }
 
@@ -221,7 +218,6 @@ public class ScourgeSquad extends Squad {
             }
         }
 
-        // If 75% of scourge have reached rally point, ready to hunt
         if (scourgeCount > 0 && (double)scourgeAtRally / scourgeCount >= 0.75) {
             setStatus(SquadStatus.FIGHT);
 
@@ -232,22 +228,8 @@ public class ScourgeSquad extends Squad {
         }
     }
 
-    // Helper methods for target classification
     private boolean isFloatingBuilding(UnitType type) {
-        return type == UnitType.Terran_Command_Center ||
-                type == UnitType.Terran_Barracks ||
-                type == UnitType.Terran_Factory ||
-                type == UnitType.Terran_Starport ||
-                type == UnitType.Terran_Science_Facility ||
-                type == UnitType.Terran_Engineering_Bay ||
-                type == UnitType.Terran_Armory ||
-                type == UnitType.Terran_Academy ||
-                type == UnitType.Terran_Comsat_Station ||
-                type == UnitType.Terran_Nuclear_Silo ||
-                type == UnitType.Terran_Machine_Shop ||
-                type == UnitType.Terran_Control_Tower ||
-                type == UnitType.Terran_Physics_Lab ||
-                type == UnitType.Terran_Covert_Ops;
+        return type.isFlyingBuilding();
     }
 
     private boolean isLowPriorityTarget(UnitType type) {
