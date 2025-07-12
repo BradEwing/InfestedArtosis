@@ -215,6 +215,6 @@ public abstract class BuildOrder {
         }
         int ourBaseCount = baseData.currentAndReservedCount();
         int enemyTotal = gameState.enemyResourceDepotCount();
-        return ourBaseCount >= enemyTotal + 1;
+        return ourBaseCount <= enemyTotal + 1;
     }
 }
