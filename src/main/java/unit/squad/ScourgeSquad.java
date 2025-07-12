@@ -1,0 +1,257 @@
+package unit.squad;
+
+import bwapi.Position;
+import bwapi.Unit;
+import bwapi.UnitType;
+import info.GameState;
+import unit.managed.ManagedUnit;
+import unit.managed.UnitRole;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
+
+/**
+ * Specialized squad implementation for Scourge units.
+ * Handles kamikaze tactics against air units with target prioritization.
+ * Scourge will fearlessly engage if they can kill at least one enemy air unit.
+ */
+public class ScourgeSquad extends Squad {
+
+    private final CombatSimulator combatSimulator;
+
+    public ScourgeSquad() {
+        super();
+        this.combatSimulator = new ScourgeCombatSimulator();
+        this.setType(UnitType.Zerg_Scourge);
+    }
+
+    @Override
+    public void onFrame() {
+        checkRallyTransition();
+        super.onFrame();
+    }
+
+    /**
+     * Executes scourge-specific squad behavior including kamikaze attacks.
+     * Scourge will engage if they can kill at least one air target.
+     */
+    public void executeTactics(GameState gameState) {
+        if (getMembers().size() < 2) {
+            setStatus(SquadStatus.RALLY);
+            rallyToSafePosition(gameState);
+            return;
+        }
+
+        Set<Unit> enemyUnits = gameState.getVisibleEnemyUnits();
+        Set<Unit> enemyBuildings = gameState.getEnemyBuildings();
+
+        // Find all air targets
+        List<Unit> airTargets = new ArrayList<>();
+        for (Unit enemy : enemyUnits) {
+            if (enemy.isFlying() && enemy.isDetected() && !enemy.isInvincible()) {
+                airTargets.add(enemy);
+            }
+        }
+        for (Unit building : enemyBuildings) {
+            if (building.isFlying() && building.isDetected() && !building.isInvincible()) {
+                airTargets.add(building);
+            }
+        }
+
+        if (airTargets.isEmpty()) {
+            setStatus(SquadStatus.RALLY);
+            rallyToHuntPosition(gameState);
+            return;
+        }
+
+        // Evaluate engagement using combat simulator
+        CombatSimulator.CombatResult combatResult = combatSimulator.evaluate(this, gameState);
+
+        if (combatResult == CombatSimulator.CombatResult.ENGAGE) {
+            setStatus(SquadStatus.FIGHT);
+            executeKamikazeAttack(airTargets);
+        } else {
+            setStatus(SquadStatus.RALLY);
+            rallyToSafePosition(gameState);
+        }
+    }
+
+    /**
+     * Executes kamikaze attack on prioritized air targets.
+     */
+    private void executeKamikazeAttack(List<Unit> airTargets) {
+        List<Unit> prioritizedTargets = prioritizeTargets(airTargets);
+
+        for (ManagedUnit scourge : getMembers()) {
+            scourge.setRole(UnitRole.FIGHT);
+            scourge.setReady(true);
+
+            // Find best target for this scourge
+            Unit target = findBestTargetForScourge(scourge, prioritizedTargets);
+            if (target != null) {
+                scourge.setFightTarget(target);
+            }
+        }
+    }
+
+    /**
+     * Finds the best air target for an individual scourge.
+     */
+    private Unit findBestTargetForScourge(ManagedUnit scourge, List<Unit> prioritizedTargets) {
+        Position scourgePos = scourge.getUnit().getPosition();
+        Unit bestTarget = null;
+        double bestScore = Double.MIN_VALUE;
+
+        for (Unit target : prioritizedTargets) {
+            if (!target.isFlying()) continue;
+
+            double distance = scourgePos.getDistance(target.getPosition());
+            double priority = getTargetPriority(target.getType());
+
+            // Score combines priority and proximity (closer is better)
+            // Higher priority and closer distance = higher score
+            double score = priority * 1000 - distance;
+
+            if (score > bestScore) {
+                bestScore = score;
+                bestTarget = target;
+            }
+        }
+
+        return bestTarget;
+    }
+
+    /**
+     * Prioritizes air targets for scourge attacks.
+     * Returns higher values for higher priority targets.
+     */
+    private List<Unit> prioritizeTargets(List<Unit> airTargets) {
+        List<Unit> highPriority = new ArrayList<>();
+        List<Unit> mediumPriority = new ArrayList<>();
+        List<Unit> lowPriority = new ArrayList<>();
+
+        for (Unit target : airTargets) {
+            UnitType type = target.getType();
+
+            if (isLowPriorityTarget(type)) {
+                lowPriority.add(target);
+            } else if (isFloatingBuilding(type)) {
+                mediumPriority.add(target);
+            } else {
+                highPriority.add(target);
+            }
+        }
+
+        // Combine lists in priority order
+        List<Unit> prioritized = new ArrayList<>();
+        prioritized.addAll(highPriority);
+        prioritized.addAll(mediumPriority);
+        prioritized.addAll(lowPriority);
+
+        return prioritized;
+    }
+
+    /**
+     * Gets numeric priority for target type (higher = more important).
+     */
+    private double getTargetPriority(UnitType type) {
+        if (isLowPriorityTarget(type)) {
+            return 1.0; // Overlords, Interceptors
+        } else if (isFloatingBuilding(type)) {
+            return 2.0; // Floating buildings
+        } else {
+            return 3.0; // Combat units, transports, detectors
+        }
+    }
+
+    /**
+     * Rally scourge to safe position when not engaging.
+     */
+    private void rallyToSafePosition(GameState gameState) {
+        Position homeBase = gameState.getSquadRallyPoint();
+        rallyToPosition(homeBase);
+    }
+
+    /**
+     * Rally scourge to hunt for air targets.
+     */
+    private void rallyToHuntPosition(GameState gameState) {
+        // Look for likely air unit locations (enemy bases, expansions)
+        Position huntPosition = gameState.getSquadRallyPoint();
+
+        // If we know enemy bases, patrol near them
+        Set<Unit> enemyBuildings = gameState.getEnemyBuildings();
+        if (!enemyBuildings.isEmpty()) {
+            Unit enemyBuilding = enemyBuildings.iterator().next();
+            huntPosition = enemyBuilding.getPosition();
+        }
+
+        rallyToPosition(huntPosition);
+    }
+
+    /**
+     * Rally all scourge to specified position.
+     */
+    private void rallyToPosition(Position position) {
+        for (ManagedUnit scourge : getMembers()) {
+            scourge.setRole(UnitRole.RALLY);
+            scourge.setReady(true);
+            scourge.setRallyPoint(position);
+        }
+    }
+
+    /**
+     * Checks if scourge should transition from rally to fight status.
+     */
+    private void checkRallyTransition() {
+        if (getStatus() != SquadStatus.RALLY) {
+            return;
+        }
+
+        int scourgeCount = getMembers().size();
+        int scourgeAtRally = 0;
+
+        for (ManagedUnit scourge : getMembers()) {
+            if (scourge.getRallyPoint() != null) {
+                double distanceToRally = scourge.getUnit().getPosition().getDistance(scourge.getRallyPoint());
+                if (distanceToRally < 64) {
+                    scourgeAtRally++;
+                }
+            }
+        }
+
+        // If 75% of scourge have reached rally point, ready to hunt
+        if (scourgeCount > 0 && (double)scourgeAtRally / scourgeCount >= 0.75) {
+            setStatus(SquadStatus.FIGHT);
+
+            for (ManagedUnit scourge : getMembers()) {
+                scourge.setRole(UnitRole.FIGHT);
+                scourge.setReady(true);
+            }
+        }
+    }
+
+    // Helper methods for target classification
+    private boolean isFloatingBuilding(UnitType type) {
+        return type == UnitType.Terran_Command_Center ||
+                type == UnitType.Terran_Barracks ||
+                type == UnitType.Terran_Factory ||
+                type == UnitType.Terran_Starport ||
+                type == UnitType.Terran_Science_Facility ||
+                type == UnitType.Terran_Engineering_Bay ||
+                type == UnitType.Terran_Armory ||
+                type == UnitType.Terran_Academy ||
+                type == UnitType.Terran_Comsat_Station ||
+                type == UnitType.Terran_Nuclear_Silo ||
+                type == UnitType.Terran_Machine_Shop ||
+                type == UnitType.Terran_Control_Tower ||
+                type == UnitType.Terran_Physics_Lab ||
+                type == UnitType.Terran_Covert_Ops;
+    }
+
+    private boolean isLowPriorityTarget(UnitType type) {
+        return type == UnitType.Zerg_Overlord ||
+                type == UnitType.Protoss_Interceptor;
+    }
+}

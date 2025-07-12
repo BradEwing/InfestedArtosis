@@ -63,6 +63,9 @@ public class SquadManager {
             if (fightSquad instanceof MutaliskSquad) {
                 MutaliskSquad mutaliskSquad = (MutaliskSquad) fightSquad;
                 mutaliskSquad.executeTactics(gameState);
+            } else if (fightSquad instanceof ScourgeSquad) {
+                ScourgeSquad scourgeSquad = (ScourgeSquad) fightSquad;
+                scourgeSquad.executeTactics(gameState);
             } else {
                 // Handle other squad types with general logic
                 evaluateSquadRole(fightSquad);
@@ -384,7 +387,7 @@ public class SquadManager {
      */
     private void simulateFightSquad(Squad squad) {
         // Skip mutalisk squads as they handle their own tactics
-        if (squad instanceof MutaliskSquad) {
+        if (squad instanceof MutaliskSquad || squad instanceof ScourgeSquad) {
             return;
         }
 
@@ -536,6 +539,8 @@ public class SquadManager {
 
         if (type == UnitType.Zerg_Mutalisk) {
             newSquad = new MutaliskSquad();
+        } else if (type == UnitType.Zerg_Scourge) {
+            newSquad = new ScourgeSquad();
         } else {
             newSquad = new Squad();
             newSquad.setType(type);
