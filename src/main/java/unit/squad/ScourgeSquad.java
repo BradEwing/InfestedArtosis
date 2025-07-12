@@ -108,7 +108,6 @@ public class ScourgeSquad extends Squad {
 
             double distance = scourgePos.getDistance(target.getPosition());
             double priority = getTargetPriority(target.getType());
-
             double score = priority * 1000 - distance;
 
             if (score > bestScore) {
