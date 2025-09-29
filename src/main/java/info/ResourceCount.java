@@ -52,7 +52,7 @@ public class ResourceCount {
 
     public int availableMinerals() { return self.minerals() - reservedMinerals; }
 
-    private int availableGas() { return self.gas() - reservedGas; }
+    public int availableGas() { return self.gas() - reservedGas; }
 
     private boolean canAfford(int mineralPrice, int gasPrice) { return availableMinerals() < mineralPrice || availableGas() < gasPrice; }
 

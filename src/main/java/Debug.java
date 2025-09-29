@@ -152,7 +152,7 @@ public class Debug {
             buildingPlanner.debugBaseCreepTiles(base);
             //buildingPlanner.debugBaseChoke(base);
             //buildingPlanner.debugLocationForTechBuilding(base, UnitType.Zerg_Spawning_Pool);
-            //buildingPlanner.debugReserveTiles();
+            buildingPlanner.debugReserveTiles();
             //buildingPlanner.debugNextCreepColonyLocation(base);
             //buildingPlanner.debugMineralBoundingBox(base);
             //buildingPlanner.debugGeyserBoundingBox(base);
