@@ -32,8 +32,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import static java.lang.Math.min;
-
 /**
  * GameState tracks global state that is shared among agents and managers.
  */
@@ -331,7 +329,7 @@ public class GameState {
         Race race = opponentRace;
         switch (race) {
             case Zerg:
-                return min(expectedMineralWorkers, 7) + expectedGasWorkers;
+                return expectedMineralWorkers + expectedGasWorkers;
             default:
                 return base + expectedMineralWorkers + expectedGasWorkers;
         }

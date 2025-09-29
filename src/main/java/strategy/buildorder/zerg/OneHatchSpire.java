@@ -6,6 +6,7 @@ import info.BaseData;
 import info.GameState;
 import info.TechProgression;
 import macro.plan.Plan;
+import util.Time;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -27,23 +28,28 @@ public class OneHatchSpire extends ZergBase{
         TechProgression techProgression = gameState.getTechProgression();
         BaseData baseData = gameState.getBaseData();
 
-        int extractorCount = baseData.numExtractor();
-        int hatchCount = gameState.ourUnitCount(UnitType.Zerg_Hatchery) + gameState.ourUnitCount(UnitType.Zerg_Lair);
-        int lairCount         = gameState.ourUnitCount(UnitType.Zerg_Lair);
-        int spireCount        = gameState.ourUnitCount(UnitType.Zerg_Spire);
-        int mutaCount         = gameState.ourUnitCount(UnitType.Zerg_Mutalisk);
-        int scourgeCount      = gameState.ourUnitCount(UnitType.Zerg_Scourge);
-        int droneCount        = gameState.ourUnitCount(UnitType.Zerg_Drone);
-        int zerglingCount     = gameState.ourUnitCount(UnitType.Zerg_Zergling);
+        final int gas = gameState.getResourceCount().availableGas();
+        final int plannedHatcheries = gameState.getPlannedHatcheries();
+        final int extractorCount = baseData.numExtractor();
+        final int hatchCount = gameState.ourUnitCount(UnitType.Zerg_Hatchery) + gameState.ourUnitCount(UnitType.Zerg_Lair);
+        final int lairCount         = gameState.ourUnitCount(UnitType.Zerg_Lair);
+        final int spireCount        = gameState.ourUnitCount(UnitType.Zerg_Spire);
+        final int mutaCount         = gameState.ourUnitCount(UnitType.Zerg_Mutalisk);
+        final int scourgeCount      = gameState.ourUnitCount(UnitType.Zerg_Scourge);
+        final int droneCount        = gameState.ourUnitCount(UnitType.Zerg_Drone);
+        final int zerglingCount     = gameState.ourUnitCount(UnitType.Zerg_Zergling);
 
         boolean firstGas = gameState.canPlanExtractor() && techProgression.isSpawningPool() && extractorCount < 1;
+        boolean anotherGas = gameState.canPlanExtractor() && spireCount > 0;
         boolean wantLair = gameState.canPlanLair() && lairCount < 1;
         boolean wantSpire = techProgression.canPlanSpire() && spireCount < 1 && lairCount >= 1;
 
         boolean wantMetabolicBoost = techProgression.canPlanMetabolicBoost() && !techProgression.isMetabolicBoost() && zerglingCount > 5 && lairCount > 0;
         boolean wantFlyingCarapace = mutaCount > 6 && techProgression.canPlanFlyerDefense() && techProgression.getFlyerDefense() < 1;
 
-        boolean wantHatchery = behindOnHatchery(gameState);
+
+        boolean floatingMinerals = gameState.getGameTime().greaterThan(new Time(5, 0)) && gameState.getResourceCount().availableMinerals() > ((plannedHatcheries + 1) * 350);
+        boolean wantHatchery = behindOnHatchery(gameState) || floatingMinerals;
 
         if (wantHatchery) {
             Plan hatcheryPlan = this.planNewBase(gameState);
@@ -82,7 +88,7 @@ public class OneHatchSpire extends ZergBase{
             plans.add(flyingCarapacePlan);
         }
 
-        if (firstGas) {
+        if (firstGas || anotherGas) {
             Plan extractorPlan = this.planExtractor(gameState);
             plans.add(extractorPlan);
         }
@@ -97,7 +103,8 @@ public class OneHatchSpire extends ZergBase{
             return plans;
         }
 
-        final int desiredMutalisks = 11;
+        final int flexibleMutalisks =  Math.max(0, (gas - 300) / 100);
+        final int desiredMutalisks = Math.min(11 + flexibleMutalisks, 40);
         if (techProgression.isSpire() && mutaCount < desiredMutalisks) {
             Plan mutaliskPlan = this.planUnit(gameState, UnitType.Zerg_Mutalisk);
             plans.add(mutaliskPlan);
@@ -113,7 +120,7 @@ public class OneHatchSpire extends ZergBase{
             return plans;
         }
 
-        int desiredDroneCount = 9 + ((1 - hatchCount) * 6);
+        int desiredDroneCount = 10 + ((hatchCount - 1) * 6);
         if (droneCount < desiredDroneCount && gameState.canPlanDrone()) {
             Plan dronePlan = this.planUnit(gameState, UnitType.Zerg_Drone);
             plans.add(dronePlan);

@@ -358,8 +358,12 @@ public class ManagedUnit {
         }
 
         // Check if fightTarget should be set to null
-        if (fightTarget != null && (fightTarget.getType() == UnitType.Unknown || !fightTarget.isTargetable())) {
-            fightTarget = null;
+        if (fightTarget != null) {
+            if (fightTarget.getType() == UnitType.Unknown ||
+                    !fightTarget.isTargetable() ||
+                    fightTarget.getType() == UnitType.Resource_Vespene_Geyser) {
+                fightTarget = null;
+            }
         }
     }
 
