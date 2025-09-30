@@ -19,9 +19,9 @@ public class MapTileFScoreComparator implements Comparator<MapTile> {
         final int fX = fScoreMap.get(x);
         final int fY = fScoreMap.get(y);
         if (fX > fY) {
-            return -1;
-        } else if (fX < fY) {
             return 1;
+        } else if (fX < fY) {
+            return -1;
         }
         return 0;
     }

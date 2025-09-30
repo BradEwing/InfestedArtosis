@@ -16,7 +16,6 @@ import bwem.Geyser;
 import info.map.BuildingPlanner;
 import info.map.GameMap;
 import info.map.MapTile;
-import info.map.MapTileScoutImportanceComparator;
 import info.map.MapTileType;
 import info.tracking.ObservedUnitTracker;
 import lombok.Getter;
@@ -25,7 +24,6 @@ import macro.plan.PlanType;
 import strategy.buildorder.BuildOrder;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -599,26 +597,15 @@ public class InformationManager {
 
     private void ageHeatMap() {
         ScoutData scoutData = gameState.getScoutData();
-        int weight = 1;
         GameMap gameMap = gameState.getGameMap();
         for (MapTile mapTile : gameMap.getHeatMap()) {
             final TilePosition mapTp = mapTile.getTile();
             if (game.isVisible(mapTp)) {
                 mapTile.setScoutImportance(0);
                 scoutData.removeScoutTarget(mapTp);
-            } else {
-                if (mapTile.getType() == MapTileType.BASE_START) {
-                    weight = 3;
-                } else if (mapTile.getType() == MapTileType.BASE_EXPANSION) {
-                    weight = 2;
-                } else if (mapTile.getType() == MapTileType.NORMAL) {
-                    weight = 1;
-                }
-                mapTile.setScoutImportance(mapTile.getScoutImportance()+weight);
             }
-
         }
-        Collections.sort(gameMap.getHeatMap(), new MapTileScoutImportanceComparator());
+        gameMap.ageHeatMap();
     }
 
     private void debugEnemyTargets() {
@@ -717,10 +704,12 @@ public class InformationManager {
             }
         }
 
-        ArrayList<MapTile> heatMap = gameState.getGameMap().getHeatMap();
+        GameMap gameMap = gameState.getGameMap();
+        ArrayList<MapTile> heatMap = gameMap.getHeatMap();
         if (!heatMap.isEmpty()) {
             MapTile scoutTile = heatMap.get(0);
             scoutTile.setScoutImportance(0);
+            gameMap.ageHeatMap();
             return scoutTile.getTile();
         }
 
