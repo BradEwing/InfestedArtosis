@@ -19,6 +19,7 @@ import java.util.Set;
 public class MutaliskSquad extends Squad {
 
     private final CombatSimulator combatSimulator;
+    private boolean shouldDisband = false;
 
     public MutaliskSquad() {
         super();
@@ -33,10 +34,20 @@ public class MutaliskSquad extends Squad {
     }
 
     /**
+     * Returns true if this squad should be disbanded due to lack of targets.
+     */
+    @Override
+    public boolean shouldDisband() {
+        return shouldDisband;
+    }
+
+    /**
      * Executes mutalisk-specific squad behavior including target selection,
      * retreat calculations, and engagement decisions.
      */
     public void executeTactics(GameState gameState) {
+        shouldDisband = false;
+
         if (getMembers().size() < 3) {
             setStatus(SquadStatus.RALLY);
             rallyToSafePosition(gameState);
@@ -50,7 +61,16 @@ public class MutaliskSquad extends Squad {
         allEnemies.addAll(enemyUnits);
         allEnemies.addAll(enemyBuildings);
 
+        // Check if we should disband due to no targets
         if (allEnemies.isEmpty()) {
+            Set<Position> enemyWorkerLocations = gameState.getLastKnownLocationOfEnemyWorkers();
+
+            if (enemyWorkerLocations.isEmpty()) {
+                shouldDisband = true;
+                return;
+            }
+
+            // We have worker locations, rally to harassment position
             setStatus(SquadStatus.RALLY);
             rallyToHarassmentPosition(gameState);
             return;

@@ -34,6 +34,8 @@ public class Squad implements Comparable<Squad> {
     private UnitType type = null;
     private Unit target = null;
 
+    private boolean shouldDisband = false;
+
     private double max_dx = 0;
     private double max_dy = 0;
 
@@ -185,5 +187,12 @@ public class Squad implements Comparable<Squad> {
     @Override
     public int compareTo(@NotNull Squad o) {
         return Integer.compare(this.size(), o.size());
+    }
+
+    /**
+     * Returns true if this squad should be disbanded due to lack of targets.
+     */
+    public boolean shouldDisband() {
+        return shouldDisband;
     }
 }

@@ -21,6 +21,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 public class UnitManager {
 
@@ -91,6 +92,14 @@ public class UnitManager {
         squadManager.updateFightSquads();
         squadManager.updateDefenseSquads();
         scoutManager.onFrame();
+
+        Set<ManagedUnit> disbandedSquadUnits = squadManager.getDisbandedUnits();
+        if (!disbandedSquadUnits.isEmpty()) {
+            for (ManagedUnit managedUnit: disbandedSquadUnits) {
+                squadManager.removeManagedUnit(managedUnit);
+                createScout(managedUnit);
+            }
+        }
 
         for (ManagedUnit managedUnit: managedUnits) {
             // Check if unready units can be ready again
