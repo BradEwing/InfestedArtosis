@@ -2,9 +2,11 @@ package info.map;
 
 import bwapi.TilePosition;
 import info.exception.NoWalkablePathException;
+import lombok.Getter;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -20,6 +22,7 @@ public class GameMap {
 
     private int x;
     private int y;
+    @Getter
     private ArrayList<MapTile> heatMap = new ArrayList<>();
 
     private MapTile[][] mapTiles;
@@ -39,8 +42,19 @@ public class GameMap {
         return mapTiles[x][y];
     }
 
-    public ArrayList<MapTile> getHeatMap() {
-        return heatMap;
+    public void ageHeatMap() {
+        int weight = 1;
+        for (MapTile mapTile : heatMap) {
+            if (mapTile.getType() == MapTileType.BASE_START) {
+                weight = 3;
+            } else if (mapTile.getType() == MapTileType.BASE_EXPANSION) {
+                weight = 2;
+            } else if (mapTile.getType() == MapTileType.NORMAL) {
+                weight = 1;
+            }
+            mapTile.setScoutImportance(mapTile.getScoutImportance()+weight);
+        }
+        Collections.sort(heatMap, new MapTileScoutImportanceComparator());
     }
 
     /**
@@ -223,6 +237,6 @@ public class GameMap {
     }
 
     private boolean isValidTile(int x, int y) {
-        return x > 0 && x < this.x && y > 0 && y < this.y;
+        return x >= 0 && x < this.x && y >= 0 && y < this.y;
     }
 }

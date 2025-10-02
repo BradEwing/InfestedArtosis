@@ -311,7 +311,9 @@ public class GameState {
 
     public boolean canPlanDrone() {
         final int expectedWorkers = expectedWorkers();
-        return plannedWorkers < 3 && numWorkers() < 80 && numWorkers() < expectedWorkers;
+        int hatchCount = ourUnitCount(UnitType.Zerg_Hatchery, UnitType.Zerg_Lair, UnitType.Zerg_Hive);
+        int plannedWorkerConstraint = hatchCount * 3;
+        return plannedWorkers < plannedWorkerConstraint && numWorkers() < 80 && numWorkers() < expectedWorkers;
     }
 
     public int numWorkers() {
@@ -348,6 +350,14 @@ public class GameState {
 
     public int ourUnitCount(UnitType unitType) {
         return unitTypeCount.get(unitType);
+    }
+
+    public int ourUnitCount(UnitType... unitTypes) {
+        int i = 0;
+        for (UnitType unitType: unitTypes) {
+            i += ourUnitCount(unitType);
+        }
+        return i;
     }
 
     public int enemyUnitCount(UnitType unitType) {

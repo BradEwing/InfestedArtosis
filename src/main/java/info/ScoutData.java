@@ -2,6 +2,7 @@ package info;
 
 import bwapi.TilePosition;
 import bwem.Base;
+import lombok.Getter;
 
 import java.util.HashMap;
 import java.util.HashSet;
@@ -9,7 +10,9 @@ import java.util.Set;
 
 public class ScoutData {
     private HashSet<TilePosition> scoutTargets = new HashSet<>();
+    @Getter
     private HashSet<TilePosition> activeScoutTargets = new HashSet<>();
+    @Getter
     private HashSet<TilePosition> enemyBuildingPositions = new HashSet<>();
 
     private HashMap<Base, Integer> baseScoutAssignments = new HashMap<>(); // TODO: Rename to startingBaseScoutAssignments
@@ -34,8 +37,6 @@ public class ScoutData {
         scoutTargets.remove(tp);
     }
 
-    public HashSet<TilePosition> getActiveScoutTargets() { return activeScoutTargets; }
-
     public void setActiveScoutTarget(TilePosition tp) {
         scoutTargets.remove(tp);
         activeScoutTargets.add(tp);
@@ -52,8 +53,6 @@ public class ScoutData {
     public void removeEnemyBuildingLocation(TilePosition tp) {
         enemyBuildingPositions.remove(tp);
     }
-
-    public HashSet<TilePosition> getEnemyBuildingPositions() { return enemyBuildingPositions; }
 
     public int getScoutsAssignedToBase(Base base) { return baseScoutAssignments.get(base); }
 
