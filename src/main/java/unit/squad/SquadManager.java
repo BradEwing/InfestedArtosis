@@ -44,6 +44,8 @@ public class SquadManager {
 
     private final CombatSimulator defaultCombatSimulator;
 
+    private HashSet<ManagedUnit> disbanded = new HashSet<>();
+
     public SquadManager(Game game, GameState gameState, InformationManager informationManager) {
         this.game = game;
         this.gameState = gameState;
@@ -58,11 +60,19 @@ public class SquadManager {
         removeEmptySquads();
         mergeSquads();
 
+        Set<Squad> removed = new HashSet<>();
         for (Squad fightSquad: fightSquads) {
             fightSquad.onFrame();
+            if (fightSquad.shouldDisband()) {
+                disbanded.addAll(disbandSquad(fightSquad));
+                removed.add(fightSquad);
+            }
+
             if (fightSquad instanceof MutaliskSquad) {
                 MutaliskSquad mutaliskSquad = (MutaliskSquad) fightSquad;
                 mutaliskSquad.executeTactics(gameState);
+
+
             } else if (fightSquad instanceof ScourgeSquad) {
                 ScourgeSquad scourgeSquad = (ScourgeSquad) fightSquad;
                 scourgeSquad.executeTactics(gameState);
@@ -71,6 +81,8 @@ public class SquadManager {
                 evaluateSquadRole(fightSquad);
             }
         }
+
+        fightSquads.removeAll(removed);
     }
 
     public void updateOverlordSquad() {
@@ -144,6 +156,23 @@ public class SquadManager {
         }
 
         return reassignedDefenders;
+    }
+
+    /**
+     * Disbands a squad and returns all its members for reassignment.
+     * Removes the squad from the fight squads collection.
+     *
+     * @param squad Squad to disband
+     * @return List of managed units that were in the squad
+     */
+    private List<ManagedUnit> disbandSquad(Squad squad) {
+        List<ManagedUnit> members = new ArrayList<>(squad.getMembers());
+
+        for (ManagedUnit member : members) {
+            squad.removeUnit(member);
+        }
+
+        return members;
     }
 
     private void ensureDefenseSquad(Base base) {
@@ -648,6 +677,10 @@ public class SquadManager {
         }
         List<Squad> sorted = fightSquads.stream().sorted().collect(Collectors.toList());
         return sorted.get(sorted.size()-1);
+    }
+
+    public Set<ManagedUnit> getDisbandedUnits() {
+        return disbanded;
     }
 }
 
