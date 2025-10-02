@@ -76,7 +76,7 @@ public class BuildingPlanner {
     }
 
     public void debugNextCreepColonyLocation(Base base) {
-        TilePosition cc = getLocationForCreepColony(base);
+        TilePosition cc = getLocationForCreepColony(base, game.enemy().getRace());
         if (cc != null) {
             game.drawBoxMap(cc.toPosition(), cc.add(new TilePosition(2, 2)).toPosition(), Color.White);
         }
@@ -393,7 +393,7 @@ public class BuildingPlanner {
      * Pick a TilePosition to place a new creep colony (for later morphing into a Sunken Colony),
      * built toward the base’s closest choke.  If there’s existing reserved structures, attempts to build adjacent.
      */
-    public TilePosition getLocationForCreepColony(Base base) {
+    public TilePosition getLocationForCreepColony(Base base, Race opponentRace) {
         Position chokeCenter = closestChokeToBase(base);
         Set<TilePosition> creepTiles = findSurroundingCreepTiles(base);
         TilePosition colonySize = UnitType.Zerg_Creep_Colony.tileSize();
