@@ -21,6 +21,7 @@ import info.tracking.ObservedUnitTracker;
 import lombok.Getter;
 import macro.plan.Plan;
 import macro.plan.PlanType;
+import org.jetbrains.annotations.Nullable;
 import strategy.buildorder.BuildOrder;
 
 import java.util.ArrayList;
@@ -704,6 +705,14 @@ public class InformationManager {
             }
         }
 
+        TilePosition scoutTile = getHotScoutTile();
+        if (scoutTile != null) return scoutTile;
+
+        return scoutData.findNewActiveScoutTarget();
+    }
+
+    @Nullable
+    private TilePosition getHotScoutTile() {
         GameMap gameMap = gameState.getGameMap();
         ArrayList<MapTile> heatMap = gameMap.getHeatMap();
         if (!heatMap.isEmpty()) {
@@ -712,8 +721,7 @@ public class InformationManager {
             gameMap.ageHeatMap();
             return scoutTile.getTile();
         }
-
-        return scoutData.findNewActiveScoutTarget();
+        return null;
     }
 
     private Base fetchBaseRoundRobin(Set<Base> candidateBases) {
