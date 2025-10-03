@@ -6,6 +6,7 @@ import info.BaseData;
 import info.GameState;
 import macro.plan.Plan;
 import strategy.buildorder.BuildOrder;
+import strategy.buildorder.protoss.ThreeHatchHydra;
 import strategy.buildorder.protoss.ThreeHatchMuta;
 import strategy.buildorder.terran.TwoHatchMuta;
 import strategy.buildorder.zerg.OneHatchSpire;
@@ -80,6 +81,7 @@ public class TwelveHatch extends BuildOrder {
         switch (opponentRace) {
             case Protoss:
                 next.add(new ThreeHatchMuta());
+                next.add(new ThreeHatchHydra());
                 return next;
             case Zerg:
                 next.add(new OneHatchSpire());

@@ -136,12 +136,21 @@ public abstract class BuildOrder {
         switch (upgradeType) {
             case Metabolic_Boost:
                 techProgression.setPlannedMetabolicBoost(true);
+                break;
+            case Muscular_Augments:
+                techProgression.setPlannedMuscularAugments(true);
+                break;
+            case Grooved_Spines:
+                techProgression.setPlannedGroovedSpines(true);
+                break;
             case Zerg_Flyer_Carapace:
                 int flyerCarapace = techProgression.getFlyerDefense();
                 techProgression.setFlyerDefense(flyerCarapace+1);
+                break;
             case Zerg_Carapace:
                 int carapace = techProgression.getCarapaceUpgrades();
                 techProgression.setCarapaceUpgrades(carapace+1);
+                break;
         }
 
         return new UpgradePlan(upgradeType, gameState.getGameTime().getFrames(), false);
