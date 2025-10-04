@@ -143,6 +143,14 @@ public abstract class BuildOrder {
             case Grooved_Spines:
                 techProgression.setPlannedGroovedSpines(true);
                 break;
+            case Zerg_Melee_Attacks:
+                int meleeAttacks = techProgression.getMeleeUpgrades();
+                techProgression.setMeleeUpgrades(meleeAttacks+1);
+                break;
+            case Zerg_Missile_Attacks:
+                int missileAttacks = techProgression.getRangedUpgrades();
+                techProgression.setRangedUpgrades(missileAttacks+1);
+                break;
             case Zerg_Flyer_Carapace:
                 int flyerCarapace = techProgression.getFlyerDefense();
                 techProgression.setFlyerDefense(flyerCarapace+1);

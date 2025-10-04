@@ -75,6 +75,7 @@ public class ThreeHatchHydra extends ProtossBase {
         boolean wantMetabolicBoost = techProgression.canPlanMetabolicBoost() && zerglingCount > 12;
         boolean wantMuscularAugments = techProgression.canPlanMuscularAugments();
         boolean wantGroovedSpines = techProgression.canPlanGroovedSpines();
+        boolean wantRangedUpgrades = wantRangedUpgrade(gameState);
         boolean wantCarapaceUpgrade = wantCarapaceUpgrade(gameState);
 
         // Plan buildings
@@ -170,14 +171,21 @@ public class ThreeHatchHydra extends ProtossBase {
             plans.add(groovedSpinesPlan);
         }
 
-        if (wantCarapaceUpgrade) {
+        boolean plannedRangedUpgradesThisFrame = false;
+        if (wantRangedUpgrades) {
+            Plan rangedPlan = this.planUpgrade(gameState, UpgradeType.Zerg_Missile_Attacks);
+            plans.add(rangedPlan);
+            plannedRangedUpgradesThisFrame = true;
+        }
+
+        if (wantCarapaceUpgrade && !plannedRangedUpgradesThisFrame) {
             Plan carapacePlan = this.planUpgrade(gameState, UpgradeType.Zerg_Carapace);
             plans.add(carapacePlan);
         }
 
         // Plan Units
 
-        if (droneCount < 11) {
+        if (droneCount < 13) {
             Plan dronePlan = this.planUnit(gameState, UnitType.Zerg_Drone);
             plans.add(dronePlan);
             return plans;
@@ -309,6 +317,17 @@ public class ThreeHatchHydra extends ProtossBase {
         return techProgression.canPlanEvolutionChamber() && hydras > 6;
     }
 
+    private boolean wantRangedUpgrade(GameState gameState) {
+        TechProgression techProgression = gameState.getTechProgression();
+
+        if (techProgression.getEvolutionChambers() < 1) {
+            return false;
+        }
+
+        return techProgression.canPlanRangedUpgrades() &&
+                techProgression.getRangedUpgrades() < 1;
+    }
+
     private boolean wantCarapaceUpgrade(GameState gameState) {
         TechProgression techProgression = gameState.getTechProgression();
 
@@ -345,5 +364,16 @@ public class ThreeHatchHydra extends ProtossBase {
     @Override
     public boolean needLair() {
         return false;
+    }
+
+    @Override
+    protected int zerglingsNeeded(GameState gameState) {
+        final boolean den = gameState.ourUnitCount(UnitType.Zerg_Hydralisk_Den) > 0;
+        final int hydras = gameState.ourUnitCount(UnitType.Zerg_Hydralisk);
+        if (den && hydras < 11) {
+            return 0;
+        }
+
+        return super.zerglingsNeeded(gameState);
     }
 }

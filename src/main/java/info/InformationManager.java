@@ -23,7 +23,6 @@ import macro.plan.Plan;
 import macro.plan.PlanType;
 import org.jetbrains.annotations.Nullable;
 import strategy.buildorder.BuildOrder;
-import strategy.buildorder.protoss.ThreeHatchHydra;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -744,10 +743,6 @@ public class InformationManager {
     private BuildOrder transitionBuildOrder() {
         BuildOrder active = gameState.getActiveBuildOrder();
         Set<BuildOrder> candidates = active.transition(gameState);
-        // TODO: Remove before merge
-        if (gameState.getOpponentRace() == Race.Protoss) {
-            return new ThreeHatchHydra();
-        }
         return candidates.stream().findFirst().get();
     }
 
