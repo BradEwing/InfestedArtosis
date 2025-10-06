@@ -17,7 +17,7 @@ public class ScourgeCombatSimulator implements CombatSimulator {
 
     @Override
     public CombatResult evaluate(Squad squad, GameState gameState) {
-        Set<Unit> enemyUnits = gameState.getVisibleEnemyUnits();
+        Set<Unit> enemyUnits = gameState.getDetectedEnemyUnits();
         Set<Unit> enemyBuildings = gameState.getEnemyBuildings();
 
         // Get all enemy air units within reasonable range

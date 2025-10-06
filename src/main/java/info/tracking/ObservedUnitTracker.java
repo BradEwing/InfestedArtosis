@@ -100,10 +100,10 @@ public class ObservedUnitTracker {
                 .count();
     }
 
-    public Set<Unit> getVisibleUnits() {
+    public Set<Unit> getDetectedUnits() {
         return observedUnits.values()
                 .stream()
-                .filter(ou -> ou.getUnit().isVisible())
+                .filter(ou -> ou.getUnit().isDetected())
                 .filter(ou -> ou.getDestroyedFrame() == null)
                 .map(ou -> ou.getUnit())
                 .collect(Collectors.toSet());

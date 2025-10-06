@@ -399,6 +399,8 @@ public class SquadManager {
                 return 2;
             }
             return 4;
+        } else if (type == UnitType.Zerg_Hydralisk) {
+            return 10;
         }
         int staticDefensePenalty = min(informationManager.getEnemyHostileToGroundBuildingsCount(), 5);
         int moveOutThreshold = 5 * (1 + staticDefensePenalty);
@@ -434,7 +436,7 @@ public class SquadManager {
 
         // Handle building targeting when no visible units
         Set<Unit> enemyBuildings = gameState.getEnemyBuildings();
-        Set<Unit> enemyUnits = gameState.getVisibleEnemyUnits();
+        Set<Unit> enemyUnits = gameState.getDetectedEnemyUnits();
 
         if (enemyUnits.isEmpty() && !enemyBuildings.isEmpty()) {
             Unit closest = closestHostileUnit(squad.getCenter(), new ArrayList<>(enemyBuildings));

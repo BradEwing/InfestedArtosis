@@ -43,7 +43,7 @@ public class ScourgeSquad extends Squad {
             return;
         }
 
-        Set<Unit> enemyUnits = gameState.getVisibleEnemyUnits();
+        Set<Unit> enemyUnits = gameState.getDetectedEnemyUnits();
         Set<Unit> enemyBuildings = gameState.getEnemyBuildings();
 
         // Find all air targets

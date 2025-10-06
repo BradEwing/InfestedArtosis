@@ -515,8 +515,8 @@ public class GameState {
      * Gets all visible enemy units for squad combat evaluation.
      * @return HashSet of visible enemy units
      */
-    public Set<Unit> getVisibleEnemyUnits() {
-        return observedUnitTracker.getVisibleUnits();
+    public Set<Unit> getDetectedEnemyUnits() {
+        return observedUnitTracker.getDetectedUnits();
     }
 
     /**
