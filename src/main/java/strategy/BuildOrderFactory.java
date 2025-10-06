@@ -38,6 +38,20 @@ public class BuildOrderFactory {
                 .collect(Collectors.toSet());
     }
 
+    public Set<String> getAllBuildOrderNames() {
+        return allBuildOrders.stream()
+                .map(bo -> bo.getName())
+                .collect(Collectors.toSet());
+    }
+
+    public Set<String> getPlayableNonOpenerNames() {
+        return allBuildOrders.stream()
+                .filter(bo -> !bo.isOpener())
+                .filter(bo -> bo.playsRace(opponentRace))
+                .map(bo -> bo.getName())
+                .collect(Collectors.toSet());
+    }
+
     public BuildOrder getByName(String name) {
         return allBuildOrders.stream()
                 .filter(bo -> Objects.equals(bo.getName(), name))

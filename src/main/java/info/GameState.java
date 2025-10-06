@@ -117,6 +117,24 @@ public class GameState {
 
     public void onFrame() {
         strategyTracker.onFrame();
+        clearVisibleEnemyWorkerLocations();
+    }
+
+    private void clearVisibleEnemyWorkerLocations() {
+        Set<Position> lastKnownWorkerPositions = observedUnitTracker.getLastKnownPositionsOfLivingUnits(
+            UnitType.Terran_SCV,
+            UnitType.Protoss_Probe,
+            UnitType.Zerg_Drone
+        );
+
+        Set<Position> visibleWorkerPositions = lastKnownWorkerPositions.stream()
+            .filter(p -> p != null)
+            .filter(p -> game.isVisible(p.toTilePosition()))
+            .collect(Collectors.toSet());
+
+        if (!visibleWorkerPositions.isEmpty()) {
+            observedUnitTracker.clearLastKnownLocationsAt(visibleWorkerPositions);
+        }
     }
 
     public int numGatherers() {

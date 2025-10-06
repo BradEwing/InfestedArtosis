@@ -9,7 +9,7 @@ import java.util.Objects;
 @Jacksonized
 @Builder
 @Data
-public class OpenerRecord implements UCBRecord {
+public class Record implements UCBRecord {
     private String opener;
     private int wins;
     private int losses;

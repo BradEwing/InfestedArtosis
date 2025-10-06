@@ -6,6 +6,7 @@ import bwapi.UnitType;
 import util.Time;
 
 import java.util.HashMap;
+import java.util.Arrays;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -88,6 +89,23 @@ public class ObservedUnitTracker {
                         return ou.getLastKnownLocation();
                     }
                 })
+                .filter(ou -> ou != null)
+                .collect(Collectors.toSet());
+    }
+
+    public Set<Position> getLastKnownPositionsOfLivingUnits(UnitType... unitTypes) {
+        final Set<UnitType> typeSet = Arrays.stream(unitTypes).collect(Collectors.toSet());
+        return observedUnits.values()
+                .stream()
+                .filter(ou -> typeSet.contains(ou.getUnitType()))
+                .filter(ou -> ou.getDestroyedFrame() == null)
+                .map(ou -> {
+                    if (ou.getUnit().isVisible()) {
+                        return ou.getUnit().getPosition();
+                    } else {
+                        return ou.getLastKnownLocation();
+                    }
+                })
                 .collect(Collectors.toSet());
     }
 
@@ -116,5 +134,18 @@ public class ObservedUnitTracker {
                 .filter(ou -> ou.getDestroyedFrame() == null)
                 .map(ou -> ou.getUnit())
                 .collect(Collectors.toSet());
+    }
+
+    public void clearLastKnownLocationsAt(Set<Position> visibleLocations) {
+        if (visibleLocations == null || visibleLocations.isEmpty()) {
+            return;
+        }
+
+        observedUnits.values()
+                .stream()
+                .filter(ou -> ou.getDestroyedFrame() == null)
+                .filter(ou -> ou.getLastKnownLocation() != null)
+                .filter(ou -> visibleLocations.contains(ou.getLastKnownLocation()))
+                .forEach(ou -> ou.setLastKnownLocation(null));
     }
 }

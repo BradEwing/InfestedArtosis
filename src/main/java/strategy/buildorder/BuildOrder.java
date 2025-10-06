@@ -22,6 +22,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.Objects;
 
 public abstract class BuildOrder {
     @Getter
@@ -233,5 +234,18 @@ public abstract class BuildOrder {
         int ourBaseCount = baseData.currentAndReservedCount();
         int enemyTotal = gameState.enemyResourceDepotCount();
         return ourBaseCount <= enemyTotal + 1;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        BuildOrder that = (BuildOrder) o;
+        return Objects.equals(this.name, that.name);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(getClass(), name);
     }
 }

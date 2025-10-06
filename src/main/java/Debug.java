@@ -12,7 +12,7 @@ import info.UnitTypeCount;
 import info.map.BuildingPlanner;
 import info.map.GroundPath;
 import info.map.MapTile;
-import learning.OpenerRecord;
+import learning.Record;
 import learning.OpponentRecord;
 import strategy.buildorder.BuildOrder;
 
@@ -46,7 +46,7 @@ public class Debug {
         game.drawTextScreen(4, 8, "Opponent: " + opponentRecord.getName() + " " + getOpponentRecord());
         game.drawTextScreen(4, 16, "GameMap: " + game.mapFileName());
         game.drawTextScreen(4, 24, "Opener: " + opener.getName() + " " + getOpenerRecord(), Text.White);
-        game.drawTextScreen(4, 32, "BuildOrder: " + gameState.getActiveBuildOrder().getName(), Text.White);
+        game.drawTextScreen(4, 32, "BuildOrder: " + gameState.getActiveBuildOrder().getName() + " " + getBuildOrderRecord(), Text.White);
         game.drawTextScreen(4, 40, "Frame: " + game.getFrameCount());
 
         drawUnitCount();
@@ -99,12 +99,27 @@ public class Debug {
     }
 
     private String getOpenerRecord() {
-        OpenerRecord openerRecord = opponentRecord.getOpenerRecord().get(opener.getName());
+        Record openerRecord = opponentRecord.getOpenerRecord().get(opener.getName());
         return String.format("%s_%s", openerRecord.getWins(), openerRecord.getLosses());
     }
 
     private String getOpponentRecord() {
         return String.format("%s_%s", opponentRecord.getWins(), opponentRecord.getLosses());
+    }
+
+    private String getBuildOrderRecord() {
+        String activeName = gameState.getActiveBuildOrder().getName();
+        String openerName = opener.getName();
+
+        if (activeName.equals(openerName)) {
+            Map<String, Record> openerMap = opponentRecord.getOpenerRecord();
+            Record rec = (openerMap != null) ? openerMap.get(activeName) : null;
+            return (rec != null) ? String.format("%s_%s", rec.getWins(), rec.getLosses()) : "0_0";
+        }
+
+        Map<String, Record> boMap = opponentRecord.getBuildOrderRecord();
+        Record rec = (boMap != null) ? boMap.get(activeName) : null;
+        return (rec != null) ? String.format("%s_%s", rec.getWins(), rec.getLosses()) : "0_0";
     }
 
     private void drawAllBasePaths() {

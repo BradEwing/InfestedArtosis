@@ -20,7 +20,7 @@ import java.util.stream.Collectors;
 
 public class LearningManager {
     private Config config;
-    final private int recordVersion = 2;
+    final private int recordVersion = 3;
 
     private static String READ_DIR = "bwapi-data/read/";
     private static String WRITE_DIR = "bwapi-data/write/";
@@ -31,7 +31,8 @@ public class LearningManager {
 
     private OpponentRecord opponentRecord;
     private Decisions decisions = new Decisions();
-    private OpenerRecord currentOpener; // Write this at end of game
+    private Record currentOpener; // Write this at end of game
+    private Record activeBuildOrderRecord; // Track current non-opener strategy
 
     private ObjectMapper mapper = new ObjectMapper();
     private BuildOrderFactory buildOrderFactory;
@@ -41,7 +42,7 @@ public class LearningManager {
         this.opponentRace = opponentRace;
         this.opponentName = opponentName;
         this.opponentFileName = opponentName + "_" + opponentRace + ".json";
-        this.opponentRecord = new OpponentRecord(opponentName, opponentRace.toString(), 0, 0, 0, new HashMap<>());
+        this.opponentRecord = new OpponentRecord(opponentName, opponentRace.toString(), 0, 0, 0, new HashMap<>(), new HashMap<>());
         this.buildOrderFactory = new BuildOrderFactory(bwem.getMap().getStartingLocations().size(), opponentRace);
 
         try {
@@ -62,8 +63,20 @@ public class LearningManager {
             currentOpener.setLosses(currentOpener.getLosses()+1);
             opponentRecord.setLosses(opponentRecord.getLosses()+1);
         }
-        Map<String, OpenerRecord> openerRecords = opponentRecord.getOpenerRecord();
+        Map<String, Record> openerRecords = opponentRecord.getOpenerRecord();
         openerRecords.put(currentOpener.getOpener(), currentOpener);
+        
+        // Also track the active BuildOrder if it exists and is different from opener
+        if (activeBuildOrderRecord != null && !activeBuildOrderRecord.getOpener().equals(currentOpener.getOpener())) {
+            if (isWinner) {
+                activeBuildOrderRecord.setWins(activeBuildOrderRecord.getWins()+1);
+            } else {
+                activeBuildOrderRecord.setLosses(activeBuildOrderRecord.getLosses()+1);
+            }
+            Map<String, Record> buildOrderRecords = opponentRecord.getBuildOrderRecord();
+            buildOrderRecords.put(activeBuildOrderRecord.getOpener(), activeBuildOrderRecord);
+        }
+        
         try {
             writeOpponentRecord();
         } catch (IOException e) {
@@ -91,6 +104,7 @@ public class LearningManager {
         // Handle new change to JSON file
         if (opponentRecord.getOpenerRecord() == null || opponentRecord.getVersion() != recordVersion) {
             opponentRecord.setOpenerRecord(new HashMap<>());
+            opponentRecord.setBuildOrderRecord(new HashMap<>());
             opponentRecord.setWins(0);
             opponentRecord.setLosses(0);
         }
@@ -108,16 +122,37 @@ public class LearningManager {
     }
 
     private void ensureOpenersInOpponentRecord() {
-        Map<String, OpenerRecord> openerRecordMap = opponentRecord.getOpenerRecord();
-        List<String> knownOpeners = new ArrayList<>(openerRecordMap
-                .keySet());
+        Map<String, Record> openerRecordMap = opponentRecord.getOpenerRecord();
+        if (openerRecordMap == null) {
+            openerRecordMap = new HashMap<>();
+            opponentRecord.setOpenerRecord(openerRecordMap);
+        }
+        
+        List<String> knownOpeners = new ArrayList<>(openerRecordMap.keySet());
         Set<String> missingOpeners = buildOrderFactory.getOpenerNames()
                 .stream()
                 .filter(s -> !knownOpeners.contains(s))
                 .collect(Collectors.toSet());
 
         for (String opener: missingOpeners) {
-            openerRecordMap.put(opener, new OpenerRecord(opener, 0, 0));
+            openerRecordMap.put(opener, new Record(opener, 0, 0));
+        }
+        
+        // Initialize build order records (race-specific strategies)
+        Map<String, Record> buildOrderRecordMap = opponentRecord.getBuildOrderRecord();
+        if (buildOrderRecordMap == null) {
+            buildOrderRecordMap = new HashMap<>();
+            opponentRecord.setBuildOrderRecord(buildOrderRecordMap);
+        }
+        
+        List<String> knownBuildOrders = new ArrayList<>(buildOrderRecordMap.keySet());
+        Set<String> missingBuildOrders = buildOrderFactory.getPlayableNonOpenerNames()
+                .stream()
+                .filter(s -> !knownBuildOrders.contains(s))
+                .collect(Collectors.toSet());
+
+        for (String buildOrder: missingBuildOrders) {
+            buildOrderRecordMap.put(buildOrder, new Record(buildOrder, 0, 0));
         }
     }
 
@@ -133,7 +168,7 @@ public class LearningManager {
             }
         }
 
-        List<OpenerRecord> allRecords = opponentRecord.getOpenerRecord()
+        List<Record> allRecords = opponentRecord.getOpenerRecord()
                 .values()
                 .stream()
                 .filter(rec -> buildOrderFactory.isPlayableOpener(buildOrderFactory.getByName(rec.getOpener())))
@@ -142,5 +177,41 @@ public class LearningManager {
 
         currentOpener = allRecords.get(0);
         return buildOrderFactory.getByName(currentOpener.getOpener());
+    }
+
+    /**
+     * Determine which BuildOrder to transition to using UCB algorithm.
+     * If only one candidate, return it directly. If multiple candidates, use UCB evaluation.
+     */
+    public BuildOrder determineBuildOrder(Set<BuildOrder> candidates) {
+        if (candidates.size() == 0) {
+            return null;
+        }
+
+        // Ensure records exist for all candidate build orders
+        for (BuildOrder candidate : candidates) {
+            if (!opponentRecord.getBuildOrderRecord().containsKey(candidate.getName())) {
+                opponentRecord.getBuildOrderRecord().put(candidate.getName(), new Record(candidate.getName(), 0, 0));
+            }
+        }
+        
+        if (candidates.size() == 1) {
+            BuildOrder singleCandidate = candidates.iterator().next();
+            activeBuildOrderRecord = opponentRecord.getBuildOrderRecord().get(singleCandidate.getName());
+            return singleCandidate;
+        }
+
+        List<Record> allRecords = opponentRecord.getBuildOrderRecord()
+                .values()
+                .stream()
+                .filter(rec -> {
+                    BuildOrder buildOrder = buildOrderFactory.getByName(rec.getOpener());
+                    return buildOrder != null && candidates.contains(buildOrder);
+                })
+                .sorted(new UCBRecordComparator(this.opponentRecord.totalGames()))
+                .collect(Collectors.toList());
+
+        activeBuildOrderRecord = allRecords.get(0);
+        return buildOrderFactory.getByName(activeBuildOrderRecord.getOpener());
     }
 }

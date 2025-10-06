@@ -62,7 +62,7 @@ public class Bot extends DefaultBWListener {
 
         OpponentRecord opponentRecord = learningManager.getOpponentRecord();
 
-        informationManager = new InformationManager(bwem, game, gameState);
+        informationManager = new InformationManager(bwem, game, gameState, learningManager);
         debugMap = new Debug(bwem, game, decisions.getOpener(), opponentRecord, gameState);
         economyModule = new ProductionManager(game, gameState, decisions.getOpener()); // TODO: reverse
         planManager = new PlanManager(game, gameState);

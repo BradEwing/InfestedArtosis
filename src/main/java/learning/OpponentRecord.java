@@ -17,7 +17,8 @@ public class OpponentRecord {
     private int losses;
     private int version;
 
-    private Map<String, OpenerRecord> openerRecord;
+    private Map<String, Record> openerRecord;
+    private Map<String, Record> buildOrderRecord;
 
     public int totalGames() {
         return this.wins + this.losses;

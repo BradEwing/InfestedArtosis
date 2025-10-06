@@ -18,6 +18,7 @@ import info.map.GameMap;
 import info.map.MapTile;
 import info.map.MapTileType;
 import info.tracking.ObservedUnitTracker;
+import learning.LearningManager;
 import lombok.Getter;
 import macro.plan.Plan;
 import macro.plan.PlanType;
@@ -40,6 +41,7 @@ public class InformationManager {
     private GameState gameState;
 
     private BaseManager baseManager;
+    private LearningManager learningManager;
 
     // TODO: Move to GameState
     private HashSet<Base> startingBasesSet = new HashSet<>();
@@ -58,10 +60,11 @@ public class InformationManager {
     private static final int DETECTION_DISTANCE = 10;
 
 
-    public InformationManager(BWEM bwem, Game game, GameState gameState) {
+    public InformationManager(BWEM bwem, Game game, GameState gameState, LearningManager learningManager) {
         this.bwem = bwem;
         this.game = game;
         this.gameState = gameState;
+        this.learningManager = learningManager;
 
         initBases();
         initializeGameMap();
@@ -739,11 +742,10 @@ public class InformationManager {
         return leastScoutedBase;
     }
 
-    // TODO: Consider learning/record
     private BuildOrder transitionBuildOrder() {
         BuildOrder active = gameState.getActiveBuildOrder();
         Set<BuildOrder> candidates = active.transition(gameState);
-        return candidates.stream().findFirst().get();
+        return learningManager.determineBuildOrder(candidates);
     }
 
     private boolean isProxiedBuilding(Unit unit) {
