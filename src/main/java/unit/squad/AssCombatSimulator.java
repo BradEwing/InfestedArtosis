@@ -25,7 +25,7 @@ public class AssCombatSimulator implements CombatSimulator {
 
     @Override
     public CombatResult evaluate(Squad squad, GameState gameState) {
-        Set<Unit> enemyUnits = gameState.getVisibleEnemyUnits();
+        Set<Unit> enemyUnits = gameState.getDetectedEnemyUnits();
         Set<Unit> enemyBuildings = gameState.getEnemyBuildings();
 
         Simulator simulator = new Simulator.Builder().build();

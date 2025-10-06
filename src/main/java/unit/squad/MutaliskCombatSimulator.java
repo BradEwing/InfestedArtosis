@@ -17,7 +17,7 @@ public class MutaliskCombatSimulator implements CombatSimulator {
 
     @Override
     public CombatResult evaluate(Squad squad, GameState gameState) {
-        Set<Unit> enemyUnits = gameState.getVisibleEnemyUnits();
+        Set<Unit> enemyUnits = gameState.getDetectedEnemyUnits();
         Set<Unit> enemyBuildings = gameState.getEnemyBuildings();
 
         // Get all enemy units and buildings within reasonable range

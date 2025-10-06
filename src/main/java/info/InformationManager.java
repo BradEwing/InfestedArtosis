@@ -662,7 +662,7 @@ public class InformationManager {
     }
 
     private void checkBaseThreats() {
-        Set<Unit> visibleUnits = gameState.getVisibleEnemyUnits();
+        Set<Unit> visibleUnits = gameState.getDetectedEnemyUnits();
         if (visibleUnits.isEmpty()) {
             return;
         }

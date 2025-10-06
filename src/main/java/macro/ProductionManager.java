@@ -158,6 +158,10 @@ public class ProductionManager {
                 addUnitToQueue(UnitType.Zerg_Overlord,1, true);
             }
         }
+        if (supplyRemaining == 0 && self.minerals() > 700 && plannedSupply < 80) {
+            addUnitToQueue(UnitType.Zerg_Overlord, 1, true);
+            gameState.getResourceCount().setPlannedSupply(plannedSupply+16);
+        }
     }
 
     // This is only used for planSupply()
