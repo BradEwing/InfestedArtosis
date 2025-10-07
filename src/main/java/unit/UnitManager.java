@@ -10,6 +10,7 @@ import info.InformationManager;
 import info.ScoutData;
 import info.UnitTypeCount;
 import lombok.Getter;
+import macro.plan.Plan;
 import unit.managed.ManagedUnit;
 import unit.managed.ManagedUnitFactory;
 import unit.managed.UnitRole;
@@ -254,6 +255,13 @@ public class UnitManager {
         ManagedUnit managedUnit = managedUnitLookup.get(unit);
         if (managedUnit == null) {
             return;
+        }
+
+        // Cancel any assigned plans when unit dies
+        HashMap<Unit, Plan> assignedPlannedItems = gameState.getAssignedPlannedItems();
+        Plan assignedPlan = assignedPlannedItems.get(unit);
+        if (assignedPlan != null) {
+            gameState.cancelPlan(unit, assignedPlan);
         }
 
         buildingManager.remove(managedUnit);

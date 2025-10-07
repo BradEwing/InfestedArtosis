@@ -4,6 +4,7 @@ import bwapi.Game;
 import bwapi.Player;
 import bwapi.Position;
 import bwapi.Race;
+import bwapi.TechType;
 import bwapi.TilePosition;
 import bwapi.Unit;
 import bwapi.UnitType;
@@ -194,19 +195,97 @@ public class GameState {
         plan.setState(PlanState.CANCELLED);
         assignedPlannedItems.remove(unit);
 
-        if (plan.getType() == PlanType.BUILDING) {
-            UnitType type = plan.getPlannedUnit();
-            resourceCount.unreserveUnit(type);
+        switch (plan.getType()) {
+            case BUILDING:
+                UnitType buildingType = plan.getPlannedUnit();
+                resourceCount.unreserveUnit(buildingType);
 
-            if (plan.getBuildPosition() != null) {
-                buildingPlanner.unreservePlannedBuildingTiles(plan.getBuildPosition(), type);
-            }
+                if (plan.getBuildPosition() != null) {
+                    buildingPlanner.unreservePlannedBuildingTiles(plan.getBuildPosition(), buildingType);
+                }
 
-            TilePosition tp = plan.getBuildPosition();
-            if (tp != null && baseData.isBaseTilePosition(tp)) {
-                Base base = baseData.baseAtTilePosition(tp);
-                baseData.cancelReserveBase(base);
-            }
+                TilePosition tp = plan.getBuildPosition();
+                if (tp != null && baseData.isBaseTilePosition(tp)) {
+                    Base base = baseData.baseAtTilePosition(tp);
+                    baseData.cancelReserveBase(base);
+                }
+                
+                clearPlannedTechFlags(buildingType);
+                break;
+            case UPGRADE:
+                resourceCount.unreserveUpgrade(plan.getPlannedUpgrade());
+                clearPlannedUpgradeFlags(plan.getPlannedUpgrade());
+                break;
+            case TECH:
+                resourceCount.unreserveTechResearch(plan.getPlannedTechType());
+                clearPlannedTechResearchFlags(plan.getPlannedTechType());
+                break;
+        }
+    }
+
+    private void clearPlannedTechFlags(UnitType buildingType) {
+        switch (buildingType) {
+            case Zerg_Spawning_Pool:
+                techProgression.setPlannedSpawningPool(false);
+                break;
+            case Zerg_Hydralisk_Den:
+                techProgression.setPlannedDen(false);
+                break;
+            case Zerg_Lair:
+                techProgression.setPlannedLair(false);
+                break;
+            case Zerg_Spire:
+                techProgression.setPlannedSpire(false);
+                break;
+            case Zerg_Queens_Nest:
+                techProgression.setPlannedQueensNest(false);
+                break;
+            case Zerg_Hive:
+                techProgression.setPlannedHive(false);
+                break;
+            case Zerg_Evolution_Chamber:
+                techProgression.setPlannedEvolutionChambers(techProgression.getPlannedEvolutionChambers() - 1);
+                break;
+        }
+    }
+
+    private void clearPlannedUpgradeFlags(UpgradeType upgradeType) {
+        switch (upgradeType) {
+            case Metabolic_Boost:
+                techProgression.setPlannedMetabolicBoost(false);
+                break;
+            case Muscular_Augments:
+                techProgression.setPlannedMuscularAugments(false);
+                break;
+            case Grooved_Spines:
+                techProgression.setPlannedGroovedSpines(false);
+                break;
+            case Zerg_Carapace:
+                techProgression.setPlannedCarapaceUpgrades(false);
+                break;
+            case Zerg_Missile_Attacks:
+                techProgression.setPlannedRangedUpgrades(false);
+                break;
+            case Zerg_Melee_Attacks:
+                techProgression.setPlannedMeleeUpgrades(false);
+                break;
+            case Zerg_Flyer_Attacks:
+                techProgression.setPlannedFlyerAttack(false);
+                break;
+            case Zerg_Flyer_Carapace:
+                techProgression.setPlannedFlyerDefense(false);
+                break;
+            case Pneumatized_Carapace:
+                techProgression.setPlannedOverlordSpeed(false);
+                break;
+        }
+    }
+
+    private void clearPlannedTechResearchFlags(TechType techType) {
+        switch (techType) {
+            case Lurker_Aspect:
+                techProgression.setPlannedLurker(false);
+                break;
         }
     }
 

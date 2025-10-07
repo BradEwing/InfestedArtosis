@@ -124,6 +124,7 @@ public class ProductionManager {
 
         transition();
         plan();
+        cancelImpossiblePlans();
         schedulePlannedItems();
         buildUpgrades();
         researchTech();
@@ -138,6 +139,114 @@ public class ProductionManager {
     private void transition() {
         if (gameState.isTransitionBuildOrder()) {
             this.activeBuildOrder = gameState.getActiveBuildOrder();
+        }
+    }
+
+    private void cancelImpossiblePlans() {
+        List<Plan> plansToCancel = new ArrayList<>();
+        
+        for (Plan plan : productionQueue) {
+            if (!canSchedulePlan(plan)) {
+                plansToCancel.add(plan);
+            }
+        }
+        
+        for (Plan plan : plansToCancel) {
+            productionQueue.remove(plan);
+            gameState.setImpossiblePlan(plan);
+        }
+        
+        removePlansWithLaterPrerequisites();
+    }
+
+    private void removePlansWithLaterPrerequisites() {
+        List<Plan> plansToRemove = new ArrayList<>();
+        List<Plan> queueList = new ArrayList<>(productionQueue);
+        
+        for (int i = 0; i < queueList.size(); i++) {
+            Plan currentPlan = queueList.get(i);
+            UnitType prerequisite = null;
+            
+            switch (currentPlan.getType()) {
+                case UNIT:
+                    prerequisite = getPrerequisiteForUnit(currentPlan.getPlannedUnit());
+                    break;
+                case UPGRADE:
+                    prerequisite = getPrerequisiteForUpgrade(currentPlan.getPlannedUpgrade());
+                    break;
+                case TECH:
+                    prerequisite = getPrerequisiteForTech(currentPlan.getPlannedTechType());
+                    break;
+                default:
+                    continue;
+            }
+            
+            if (prerequisite == null) {
+                continue;
+            }
+            
+            for (int j = i + 1; j < queueList.size(); j++) {
+                Plan laterPlan = queueList.get(j);
+                if (laterPlan.getType() == PlanType.BUILDING && 
+                    laterPlan.getPlannedUnit() == prerequisite) {
+                    plansToRemove.add(currentPlan);
+                    break;
+                }
+            }
+        }
+        
+        for (Plan plan : plansToRemove) {
+            productionQueue.remove(plan);
+            gameState.setImpossiblePlan(plan);
+        }
+    }
+
+    private UnitType getPrerequisiteForUnit(UnitType unitType) {
+        switch (unitType) {
+            case Zerg_Zergling:
+            case Zerg_Lair:
+                return UnitType.Zerg_Spawning_Pool;
+            case Zerg_Hydralisk:
+            case Zerg_Lurker:
+                return UnitType.Zerg_Hydralisk_Den;
+            case Zerg_Mutalisk:
+            case Zerg_Scourge:
+                return UnitType.Zerg_Spire;
+            case Zerg_Queen:
+            case Zerg_Hive:
+                return UnitType.Zerg_Queens_Nest;
+            default:
+                return null;
+        }
+    }
+
+    private UnitType getPrerequisiteForUpgrade(UpgradeType upgradeType) {
+        switch (upgradeType) {
+            case Metabolic_Boost:
+                return UnitType.Zerg_Spawning_Pool;
+            case Muscular_Augments:
+            case Grooved_Spines:
+                return UnitType.Zerg_Hydralisk_Den;
+            case Zerg_Carapace:
+            case Zerg_Missile_Attacks:
+            case Zerg_Melee_Attacks:
+                return UnitType.Zerg_Evolution_Chamber;
+            case Zerg_Flyer_Attacks:
+            case Zerg_Flyer_Carapace:
+                return UnitType.Zerg_Spire;
+            case Pneumatized_Carapace:
+                return UnitType.Zerg_Lair;
+            default:
+                return null;
+        }
+    }
+
+    private UnitType getPrerequisiteForTech(TechType techType) {
+        switch (techType) {
+            case Lurker_Aspect:
+                return UnitType.Zerg_Hydralisk_Den;
+            default:
+                return null;
         }
     }
 

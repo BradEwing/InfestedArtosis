@@ -121,6 +121,7 @@ public class Squad implements Comparable<Squad> {
 
         if (members.size() == 0) {
             this.center = new Position(0, 0);
+            this.shouldDisband = true;
             return;
         }
 

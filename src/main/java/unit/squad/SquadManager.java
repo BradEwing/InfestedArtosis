@@ -753,7 +753,8 @@ public class SquadManager {
             }
             
              if (allOverlords && squad.size() > 0) {
-                 for (ManagedUnit overlord : squad.getMembers()) {
+                 List<ManagedUnit> overlordsToRemove = new ArrayList<>(squad.getMembers());
+                 for (ManagedUnit overlord : overlordsToRemove) {
                      squad.removeUnit(overlord);
                      overlords.addUnit(overlord);
                      overlord.setRallyPoint(informationManager.getRallyPoint());
