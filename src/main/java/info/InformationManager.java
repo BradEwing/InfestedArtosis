@@ -227,15 +227,19 @@ public class InformationManager {
         switch(unitType) {
             case Zerg_Spawning_Pool:
                 techProgression.setSpawningPool(false);
+                techProgression.setPlannedSpawningPool(false);
                 break;
             case Zerg_Hydralisk_Den:
                 techProgression.setHydraliskDen(false);
+                techProgression.setPlannedDen(false);
                 break;
             case Zerg_Spire:
                 techProgression.setSpire(false);
+                techProgression.setPlannedSpire(false);
                 break;
             case Zerg_Lair:
                 techProgression.setLair(false);
+                techProgression.setPlannedLair(false);
                 break;
             case Zerg_Evolution_Chamber:
                 final int evolutionChambers = techProgression.getEvolutionChambers();
@@ -243,9 +247,11 @@ public class InformationManager {
                 break;
             case Zerg_Queens_Nest:
                 techProgression.setQueensNest(false);
+                techProgression.setPlannedQueensNest(false);
                 break;
             case Zerg_Hive:
                 techProgression.setHive(false);
+                techProgression.setPlannedHive(false);
                 break;
         }
     }
