@@ -288,6 +288,8 @@ public class ProductionManager {
             case Zerg_Flyer_Attacks:
             case Zerg_Flyer_Carapace:
                 return techProgression.isSpire();
+            case Pneumatized_Carapace:
+                return techProgression.isLair();
             default:
                 return false;
         }

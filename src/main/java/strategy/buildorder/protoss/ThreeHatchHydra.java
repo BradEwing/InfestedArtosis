@@ -77,6 +77,7 @@ public class ThreeHatchHydra extends ProtossBase {
         boolean wantGroovedSpines = techProgression.canPlanGroovedSpines();
         boolean wantRangedUpgrades = wantRangedUpgrade(gameState);
         boolean wantCarapaceUpgrade = wantCarapaceUpgrade(gameState);
+        boolean wantOverlordSpeed = needOverlordSpeed(gameState) && techProgression.canPlanOverlordSpeed();
 
         // Plan buildings
 
@@ -181,6 +182,12 @@ public class ThreeHatchHydra extends ProtossBase {
         if (wantCarapaceUpgrade && !plannedRangedUpgradesThisFrame) {
             Plan carapacePlan = this.planUpgrade(gameState, UpgradeType.Zerg_Carapace);
             plans.add(carapacePlan);
+        }
+
+        // Plan Overlord Speed
+        if (wantOverlordSpeed) {
+            Plan overlordSpeedPlan = this.planUpgrade(gameState, UpgradeType.Pneumatized_Carapace);
+            plans.add(overlordSpeedPlan);
         }
 
         // Plan Units

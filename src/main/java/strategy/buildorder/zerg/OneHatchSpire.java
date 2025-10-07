@@ -46,6 +46,7 @@ public class OneHatchSpire extends ZergBase{
 
         boolean wantMetabolicBoost = techProgression.canPlanMetabolicBoost() && !techProgression.isMetabolicBoost() && zerglingCount > 5 && lairCount > 0;
         boolean wantFlyingCarapace = mutaCount > 6 && techProgression.canPlanFlyerDefense() && techProgression.getFlyerDefense() < 1;
+        boolean wantOverlordSpeed = needOverlordSpeed(gameState) && techProgression.canPlanOverlordSpeed();
 
 
         boolean floatingMinerals = gameState.getGameTime().greaterThan(new Time(5, 0)) && gameState.getResourceCount().availableMinerals() > ((plannedHatcheries + 1) * 350);
@@ -86,6 +87,12 @@ public class OneHatchSpire extends ZergBase{
         if (wantFlyingCarapace) {
             Plan flyingCarapacePlan = this.planUpgrade(gameState, UpgradeType.Zerg_Flyer_Carapace);
             plans.add(flyingCarapacePlan);
+        }
+
+        // Plan Overlord Speed
+        if (wantOverlordSpeed) {
+            Plan overlordSpeedPlan = this.planUpgrade(gameState, UpgradeType.Pneumatized_Carapace);
+            plans.add(overlordSpeedPlan);
         }
 
         if (firstGas || anotherGas) {

@@ -71,6 +71,7 @@ public class TwoHatchMuta extends TerranBase {
 
         boolean wantMetabolicBoost = techProgression.canPlanMetabolicBoost() && !techProgression.isMetabolicBoost() && lairCount > 0;
         boolean wantFlyingAttack = mutaCount > 6 && techProgression.canPlanFlyerAttack() && techProgression.getFlyerAttack() < 1 && !startedFlyerUpgrade;
+        boolean wantOverlordSpeed = needOverlordSpeed(gameState) && techProgression.canPlanOverlordSpeed();
 
         // Plan buildings
 
@@ -130,6 +131,12 @@ public class TwoHatchMuta extends TerranBase {
             startedFlyerUpgrade = true;
             Plan flyingCarapacePlan = this.planUpgrade(gameState, UpgradeType.Zerg_Flyer_Attacks);
             plans.add(flyingCarapacePlan);
+        }
+
+        // Plan Overlord Speed
+        if (wantOverlordSpeed) {
+            Plan overlordSpeedPlan = this.planUpgrade(gameState, UpgradeType.Pneumatized_Carapace);
+            plans.add(overlordSpeedPlan);
         }
 
         // Plan Units
