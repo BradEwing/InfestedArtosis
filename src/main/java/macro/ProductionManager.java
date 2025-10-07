@@ -298,6 +298,8 @@ public class ProductionManager {
             return;
         }
 
+        reprioritizeHatcheriesForLarvaConstraint();
+
         Player self = game.self();
 
         // Loop through items until we exhaust queue, or we break because we can't consume top item
@@ -622,6 +624,43 @@ public class ProductionManager {
         }
 
         return false;
+    }
+
+    /**
+     * Identifies and handles the larva/hatchery constraint scenario:
+     * - Larva count is zero
+     * - Hatchery is in the production queue
+     * - There are enough minerals to build a hatchery
+     * 
+     * If this scenario is detected, finds the highest priority hatchery in the queue
+     * and sets its priority to put it at the top of the queue.
+     */
+    private void reprioritizeHatcheriesForLarvaConstraint() {
+        if (gameState.numLarva() > 0) {
+            return;
+        }
+
+        if (gameState.getResourceCount().availableMinerals() < 300) {
+            return;
+        }
+
+        Plan priorityHatcheryPlan = null;
+        int highestPriority = Integer.MAX_VALUE;
+
+        for (Plan plan : productionQueue) {
+            if (plan.getType() == PlanType.BUILDING && 
+                plan.getPlannedUnit() == UnitType.Zerg_Hatchery) {
+                
+                if (plan.getPriority() < highestPriority) {
+                    highestPriority = plan.getPriority();
+                    priorityHatcheryPlan = plan;
+                }
+            }
+        }
+
+        if (priorityHatcheryPlan != null && highestPriority > 0) {
+            priorityHatcheryPlan.setPriority(0);
+        }
     }
 
     public void onUnitComplete(Unit unit) {
