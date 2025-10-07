@@ -15,7 +15,8 @@
             "name": "Bot",
             "request": "launch",
             "mainClass": "Bot",
-            "projectName": "InfestedArtosis"
+            "projectName": "InfestedArtosis",
+            "preLaunchTask": "Move Learning Files"
         }
     ]
 }

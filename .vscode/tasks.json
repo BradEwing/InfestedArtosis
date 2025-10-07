@@ -1,0 +1,15 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Move Learning Files",
+            "type": "shell",
+            "command": "powershell",
+            "args": [
+                "-ExecutionPolicy", "ByPass",
+                "-File", "${workspaceFolder}/scripts/move-files.ps1"
+            ],
+            "problemMatcher": []
+        }
+    ]
+}
