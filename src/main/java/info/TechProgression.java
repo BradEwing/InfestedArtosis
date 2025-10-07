@@ -35,6 +35,8 @@ public class TechProgression {
     private int meleeUpgrades = 0;
     private int flyerAttack = 0;
     private int flyerDefense = 0;
+    private boolean overlordSpeed = false;
+    private boolean plannedOverlordSpeed = false;
 
     // Planned Upgrades
     private boolean plannedLurker = false;
@@ -204,6 +206,10 @@ public class TechProgression {
         return true;
     }
 
+    public boolean canPlanOverlordSpeed() {
+        return !plannedOverlordSpeed && !overlordSpeed;
+    }
+
     public void upgradeTech(TechType t) {
         if (TechType.Lurker_Aspect == t) {
             plannedLurker = false;
@@ -244,6 +250,12 @@ public class TechProgression {
             case Zerg_Flyer_Carapace:
                 flyerDefense += 1;
                 plannedFlyerDefense = false;
+                break;
+            case Pneumatized_Carapace:
+                overlordSpeed = true;
+                plannedOverlordSpeed = false;
+                break;
+            default:
                 break;
         }
     }

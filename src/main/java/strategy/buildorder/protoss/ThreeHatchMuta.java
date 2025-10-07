@@ -90,6 +90,7 @@ public class ThreeHatchMuta extends ProtossBase {
         // Upgrade timing
         boolean wantMetabolicBoost = techProgression.canPlanMetabolicBoost() && !techProgression.isMetabolicBoost() && lairCount > 0;
         boolean wantCarapaceUpgrade = wantCarapaceUpgrade(gameState);
+        boolean wantOverlordSpeed = needOverlordSpeed(gameState) && techProgression.canPlanOverlordSpeed();
 
         // Plan buildings
 
@@ -187,6 +188,11 @@ public class ThreeHatchMuta extends ProtossBase {
         if (wantCarapaceUpgrade) {
             Plan carapacePlan = this.planUpgrade(gameState, UpgradeType.Zerg_Carapace);
             plans.add(carapacePlan);
+        }
+
+        if (wantOverlordSpeed) {
+            Plan overlordSpeedPlan = this.planUpgrade(gameState, UpgradeType.Pneumatized_Carapace);
+            plans.add(overlordSpeedPlan);
         }
 
         // Plan Units

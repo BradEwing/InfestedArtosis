@@ -49,6 +49,67 @@ public abstract class BuildOrder {
 
     public boolean needLair() { return false; }
 
+    /**
+     * Returns true if Overlord Speed should be researched, based on Lair, game time and unit triggers.
+     */
+    public boolean needOverlordSpeed(GameState gameState) {
+        if (gameState.ourUnitCount(bwapi.UnitType.Zerg_Lair) < 1) {
+            return false;
+        }
+        if (gameState.getGameTime().greaterThan(new util.Time(12, 0))) {
+            return true;
+        }
+        if (gameState.enemyUnitCount(bwapi.UnitType.Zerg_Lurker) > 0) {
+            return true;
+        }
+        if (gameState.enemyUnitCount(bwapi.UnitType.Protoss_Templar_Archives) > 0) {
+            return true;
+        }
+        if (gameState.enemyUnitCount(bwapi.UnitType.Protoss_Fleet_Beacon) > 0) {
+            return true;
+        }
+        if (gameState.enemyUnitCount(bwapi.UnitType.Protoss_Dark_Templar) > 0) {
+            return true;
+        }
+        if (gameState.enemyUnitCount(bwapi.UnitType.Protoss_Observer) > 0) {
+            return true;
+        }
+        if (gameState.enemyUnitCount(bwapi.UnitType.Terran_Vulture_Spider_Mine) > 0) {
+            return true;
+        }
+        if (gameState.enemyUnitCount(bwapi.UnitType.Terran_Science_Vessel) > 0) {
+            return true;
+        }
+        if (gameState.enemyUnitCount(bwapi.UnitType.Protoss_Stargate) > 0) {
+            return true;
+        }
+        if (gameState.enemyUnitCount(bwapi.UnitType.Terran_Starport) > 0) {
+            return true;
+        }
+        if (gameState.enemyUnitCount(bwapi.UnitType.Terran_Valkyrie) > 0) {
+            return true;
+        }
+        if (gameState.enemyUnitCount(bwapi.UnitType.Terran_Wraith) > 0) {
+            return true;
+        }
+        if (gameState.enemyUnitCount(bwapi.UnitType.Protoss_Scout) > 0) {
+            return true;
+        }
+        if (gameState.enemyUnitCount(bwapi.UnitType.Protoss_Corsair) > 0) {
+            return true;
+        }
+        if (gameState.enemyUnitCount(bwapi.UnitType.Zerg_Devourer) > 0) {
+            return true;
+        }
+        if (gameState.enemyUnitCount(bwapi.UnitType.Zerg_Greater_Spire) > 0) {
+            return true;
+        }
+        if (gameState.enemyUnitCount(bwapi.UnitType.Zerg_Hive) > 0) {
+            return true;
+        }
+        return false;
+    }
+
     protected int requiredSunkens(GameState gameState) {
         return 0;
     }
@@ -159,6 +220,9 @@ public abstract class BuildOrder {
             case Zerg_Carapace:
                 int carapace = techProgression.getCarapaceUpgrades();
                 techProgression.setCarapaceUpgrades(carapace+1);
+                break;
+            case Pneumatized_Carapace:
+                techProgression.setPlannedOverlordSpeed(true);
                 break;
         }
 
