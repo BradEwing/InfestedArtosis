@@ -751,7 +751,6 @@ public class SquadManager {
                 squadsToRemove.add(squad);
             }
         }
-        
         fightSquads.removeAll(squadsToRemove);
     }
 

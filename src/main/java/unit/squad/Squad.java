@@ -119,6 +119,11 @@ public class Squad implements Comparable<Squad> {
             y += position.getY();
         }
 
+        if (members.size() == 0) {
+            this.center = new Position(0, 0);
+            return;
+        }
+
         this.center = new Position(x / members.size(), y / members.size());
     }
 
@@ -161,15 +166,6 @@ public class Squad implements Comparable<Squad> {
 
     private void checkRegroup() {
         boolean grouped = true;
-        if (status == SquadStatus.FIGHT && !grouped) {
-            status = SquadStatus.REGROUP;
-            for (ManagedUnit u: members) {
-                u.setRole(UnitRole.REGROUP);
-                u.setRallyPoint(center);
-                u.setMovementTargetPosition(center.toTilePosition());
-            }
-            return;
-        }
         if (status == SquadStatus.REGROUP) {
             if (grouped) {
                 status = SquadStatus.FIGHT;

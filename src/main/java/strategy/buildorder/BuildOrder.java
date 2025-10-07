@@ -195,6 +195,7 @@ public abstract class BuildOrder {
 
     protected Plan planUpgrade(GameState gameState, UpgradeType upgradeType) {
         TechProgression techProgression = gameState.getTechProgression();
+        int priority = gameState.getGameTime().getFrames();
         switch (upgradeType) {
             case Metabolic_Boost:
                 techProgression.setPlannedMetabolicBoost(true);
@@ -223,10 +224,11 @@ public abstract class BuildOrder {
                 break;
             case Pneumatized_Carapace:
                 techProgression.setPlannedOverlordSpeed(true);
+                priority = 100;
                 break;
         }
 
-        return new UpgradePlan(upgradeType, gameState.getGameTime().getFrames(), false);
+        return new UpgradePlan(upgradeType, priority, false);
     }
 
     protected Plan planHydraliskDen(GameState gameState) {
