@@ -162,18 +162,27 @@ public class SquadManager {
     /**
      * Disbands a squad and returns all its members for reassignment.
      * Removes the squad from the fight squads collection.
+     * Overlords are returned to the overlord squad instead of being added to disbanded list.
      *
      * @param squad Squad to disband
-     * @return List of managed units that were in the squad
+     * @return List of managed units that were in the squad (excluding overlords)
      */
     private List<ManagedUnit> disbandSquad(Squad squad) {
         List<ManagedUnit> members = new ArrayList<>(squad.getMembers());
+        List<ManagedUnit> nonOverlordMembers = new ArrayList<>();
 
         for (ManagedUnit member : members) {
             squad.removeUnit(member);
+            
+            if (member.getUnitType() == UnitType.Zerg_Overlord) {
+                overlords.addUnit(member);
+                member.setRole(UnitRole.IDLE);
+            } else {
+                nonOverlordMembers.add(member);
+            }
         }
 
-        return members;
+        return nonOverlordMembers;
     }
 
     private void ensureDefenseSquad(Base base) {
@@ -616,6 +625,7 @@ public class SquadManager {
 
     private void removeManagedOverlord(ManagedUnit overlord) {
         overlords.removeUnit(overlord);
+        overlord.setRole(UnitRole.IDLE);
     }
 
     /**
@@ -742,14 +752,15 @@ public class SquadManager {
                 }
             }
             
-            if (allOverlords && squad.size() > 0) {
-                for (ManagedUnit overlord : squad.getMembers()) {
-                    overlords.addUnit(overlord);
-                    overlord.setRallyPoint(informationManager.getRallyPoint());
-                    overlord.setRole(UnitRole.RETREAT);
-                }
-                squadsToRemove.add(squad);
-            }
+             if (allOverlords && squad.size() > 0) {
+                 for (ManagedUnit overlord : squad.getMembers()) {
+                     squad.removeUnit(overlord);
+                     overlords.addUnit(overlord);
+                     overlord.setRallyPoint(informationManager.getRallyPoint());
+                     overlord.setRole(UnitRole.RETREAT);
+                 }
+                 squadsToRemove.add(squad);
+             }
         }
         fightSquads.removeAll(squadsToRemove);
     }
