@@ -59,6 +59,7 @@ public class SquadManager {
         debugPainters();
         removeEmptySquads();
         mergeSquads();
+        assignOverlordsToSquads();
 
         Set<Squad> removed = new HashSet<>();
         for (Squad fightSquad: fightSquads) {
@@ -161,18 +162,27 @@ public class SquadManager {
     /**
      * Disbands a squad and returns all its members for reassignment.
      * Removes the squad from the fight squads collection.
+     * Overlords are returned to the overlord squad instead of being added to disbanded list.
      *
      * @param squad Squad to disband
-     * @return List of managed units that were in the squad
+     * @return List of managed units that were in the squad (excluding overlords)
      */
     private List<ManagedUnit> disbandSquad(Squad squad) {
         List<ManagedUnit> members = new ArrayList<>(squad.getMembers());
+        List<ManagedUnit> nonOverlordMembers = new ArrayList<>();
 
         for (ManagedUnit member : members) {
             squad.removeUnit(member);
+            
+            if (member.getUnitType() == UnitType.Zerg_Overlord) {
+                overlords.addUnit(member);
+                member.setRole(UnitRole.IDLE);
+            } else {
+                nonOverlordMembers.add(member);
+            }
         }
 
-        return members;
+        return nonOverlordMembers;
     }
 
     private void ensureDefenseSquad(Base base) {
@@ -601,6 +611,9 @@ public class SquadManager {
         for (Squad squad: fightSquads) {
             if (squad.containsManagedUnit(managedUnit)) {
                 squad.removeUnit(managedUnit);
+                if (managedUnit.getUnitType() == UnitType.Zerg_Overlord) {
+                    overlords.addUnit(managedUnit);
+                }
                 return;
             }
         }
@@ -612,6 +625,7 @@ public class SquadManager {
 
     private void removeManagedOverlord(ManagedUnit overlord) {
         overlords.removeUnit(overlord);
+        overlord.setRole(UnitRole.IDLE);
     }
 
     /**
@@ -683,6 +697,95 @@ public class SquadManager {
 
     public Set<ManagedUnit> getDisbandedUnits() {
         return disbanded;
+    }
+
+    /**
+     * Assigns overlords to Hydralisk and Mutalisk squads when overlord speed is researched.
+     * Prioritizes largest squads first and assigns one overlord per squad.
+     * Returns overlords to the main squad if they're the only unit left.
+     */
+    private void assignOverlordsToSquads() {
+        if (!gameState.getTechProgression().isOverlordSpeed()) {
+            return;
+        }
+
+        returnLoneOverlords();
+
+        List<ManagedUnit> availableOverlords = new ArrayList<>(overlords.getMembers());
+        if (availableOverlords.isEmpty()) {
+            return;
+        }
+
+        List<Squad> targetSquads = getHydraliskAndMutaliskSquads();
+        if (targetSquads.isEmpty()) {
+            return;
+        }
+
+        for (Squad squad : targetSquads) {
+            if (availableOverlords.isEmpty()) {
+                break;
+            }
+
+            if (squadHasOverlord(squad)) {
+                continue;
+            }
+
+            ManagedUnit overlord = availableOverlords.remove(0);
+            overlords.removeUnit(overlord);
+            squad.addUnit(overlord);
+            overlord.setRole(UnitRole.FIGHT);
+        }
+    }
+
+    /**
+     * Returns overlords to the main overlord squad if they are the only unit type in the squad.
+     */
+    private void returnLoneOverlords() {
+        List<Squad> squadsToRemove = new ArrayList<>();
+        
+        for (Squad squad : fightSquads) {
+            boolean allOverlords = true;
+            for (ManagedUnit member : squad.getMembers()) {
+                if (member.getUnitType() != UnitType.Zerg_Overlord) {
+                    allOverlords = false;
+                    break;
+                }
+            }
+            
+             if (allOverlords && squad.size() > 0) {
+                 for (ManagedUnit overlord : squad.getMembers()) {
+                     squad.removeUnit(overlord);
+                     overlords.addUnit(overlord);
+                     overlord.setRallyPoint(informationManager.getRallyPoint());
+                     overlord.setRole(UnitRole.RETREAT);
+                 }
+                 squadsToRemove.add(squad);
+             }
+        }
+        fightSquads.removeAll(squadsToRemove);
+    }
+
+    /**
+     * Returns a list of Hydralisk and Mutalisk squads, sorted by size (largest first).
+     */
+    private List<Squad> getHydraliskAndMutaliskSquads() {
+        return fightSquads.stream()
+            .filter(squad -> squad.getType() == UnitType.Zerg_Hydralisk || 
+                           squad.getType() == UnitType.Zerg_Mutalisk)
+            .sorted((s1, s2) -> Integer.compare(s2.size(), s1.size())) // Sort descending by size
+            .collect(Collectors.toList());
+    }
+
+    /**
+     * Checks if a squad already has an overlord assigned to it.
+     */
+    private boolean squadHasOverlord(Squad squad) {
+        for (ManagedUnit member : squad.getMembers()) {
+            if (member.getUnitType() == UnitType.Zerg_Overlord) {
+                return true;
+            }
+        }
+        return false;
     }
 }
 
