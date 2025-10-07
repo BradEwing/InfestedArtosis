@@ -2,7 +2,7 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "Move JSON and CSV files",
+            "label": "Move Learning Files",
             "type": "shell",
             "command": "powershell",
             "args": [

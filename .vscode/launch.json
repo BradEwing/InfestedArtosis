@@ -16,7 +16,7 @@
             "request": "launch",
             "mainClass": "Bot",
             "projectName": "InfestedArtosis",
-            "preLaunchTask": "Move JSON and CSV files"
+            "preLaunchTask": "Move Learning Files"
         }
     ]
 }
