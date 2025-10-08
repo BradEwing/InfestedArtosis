@@ -229,7 +229,10 @@ public class ScoutManager {
         } else {
             target = informationManager.pollScoutTarget(false);
         }
-        scoutData.setActiveScoutTarget(target);
-        managedUnit.setMovementTargetPosition(target);
+        
+        if (target != null) {
+            scoutData.setActiveScoutTarget(target);
+            managedUnit.setMovementTargetPosition(target);
+        }
     }
 }

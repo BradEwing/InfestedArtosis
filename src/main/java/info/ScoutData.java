@@ -1,6 +1,8 @@
 package info;
 
+import bwapi.Race;
 import bwapi.TilePosition;
+import bwapi.Unit;
 import bwem.Base;
 import lombok.Getter;
 
@@ -29,6 +31,10 @@ public class ScoutData {
         return scoutTargets.size() > 0;
     }
 
+    public HashSet<TilePosition> getScoutTargets() {
+        return scoutTargets;
+    }
+
     public void removeActiveScoutTarget(TilePosition tp) {
         activeScoutTargets.remove(tp);
     }
@@ -44,6 +50,67 @@ public class ScoutData {
 
     public boolean isEnemyBuildingLocationKnown() {
         return !enemyBuildingPositions.isEmpty();
+    }
+
+    /**
+     * Determines if overlords should continue scouting based on if specific enemy units/buildings are detected.
+     */
+    public boolean shouldOverlordsContinueScouting(Race enemyRace, Set<Unit> enemies) {
+        switch (enemyRace) {
+            case Terran:
+                return !hasTerranScoutingConditions(enemies);
+            case Protoss:
+                return !hasProtossScoutingConditions(enemies);
+            case Zerg:
+                return !hasZergScoutingConditions(enemies);
+            default:
+                return false;
+        }
+    }
+
+    private boolean hasTerranScoutingConditions(Set<Unit> enemies) {
+        for (Unit unit : enemies) {
+            if (unit.getType() == bwapi.UnitType.Terran_Marine) {
+                return true;
+            }
+            if (unit.getType() == bwapi.UnitType.Terran_Barracks) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean hasProtossScoutingConditions(Set<Unit> enemies) {
+        for (Unit unit : enemies) {
+            if (unit.getType() == bwapi.UnitType.Protoss_Dragoon) {
+                return true;
+            }
+            if (unit.getType() == bwapi.UnitType.Protoss_Corsair) {
+                return true;
+            }
+            if (unit.getType() == bwapi.UnitType.Protoss_Cybernetics_Core) {
+                return true;
+            }
+            if (unit.getType() == bwapi.UnitType.Protoss_Stargate) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean hasZergScoutingConditions(Set<Unit> enemies) {
+        for (Unit unit : enemies) {
+            if (unit.getType() == bwapi.UnitType.Zerg_Spire) {
+                return true;
+            }
+            if (unit.getType() == bwapi.UnitType.Zerg_Mutalisk) {
+                return true;
+            }
+            if (unit.getType() == bwapi.UnitType.Zerg_Hydralisk) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public void addEnemyBuildingLocation(TilePosition tp) {

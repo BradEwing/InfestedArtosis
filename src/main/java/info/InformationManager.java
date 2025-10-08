@@ -461,7 +461,8 @@ public class InformationManager {
 
     private void ensureScoutTargets() {
         ScoutData scoutData = gameState.getScoutData();
-        if (scoutData.hasScoutTargets()) {
+        // Always try to add new targets if we have few available or none at all
+        if (scoutData.hasScoutTargets() && scoutData.getScoutTargets().size() > 2) {
             return;
         }
         // Round robin assign SCOUTs to bases
@@ -692,7 +693,7 @@ public class InformationManager {
     }
 
     // TODO: Determine if ground scout can reach Scout Target
-    public TilePosition pollScoutTarget(boolean allowDuplicateScoutTarget) {
+    public TilePosition pollScoutTarget(boolean _) {
         // Walk through
         BaseData baseData = gameState.getBaseData();
         ScoutData scoutData = gameState.getScoutData();
@@ -708,7 +709,7 @@ public class InformationManager {
 
         if (scoutData.isEnemyBuildingLocationKnown()) {
             for (TilePosition target: scoutData.getEnemyBuildingPositions()) {
-                if (!scoutData.hasScoutTarget(target) || allowDuplicateScoutTarget) {
+                if (!scoutData.hasScoutTarget(target) && !game.isVisible(target)) {
                     return target;
                 }
             }
