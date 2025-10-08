@@ -196,8 +196,13 @@ public class GameState {
         assignedPlannedItems.remove(unit);
 
         switch (plan.getType()) {
+            case UNIT:
+                unitTypeCount.unplanUnit(plan.getPlannedUnit());
+                resourceCount.unreserveUnit(plan.getPlannedUnit());
+                break;
             case BUILDING:
                 UnitType buildingType = plan.getPlannedUnit();
+                unitTypeCount.unplanUnit(buildingType);
                 resourceCount.unreserveUnit(buildingType);
 
                 if (plan.getBuildPosition() != null) {
@@ -299,6 +304,18 @@ public class GameState {
 
     public void setImpossiblePlan(Plan plan) {
         plansImpossible.add(plan);
+        
+        // Unplan the unit when marking plan as impossible
+        switch (plan.getType()) {
+            case UNIT:
+                unitTypeCount.unplanUnit(plan.getPlannedUnit());
+                resourceCount.unreserveUnit(plan.getPlannedUnit());
+                break;
+            case BUILDING:
+                unitTypeCount.unplanUnit(plan.getPlannedUnit());
+                resourceCount.unreserveUnit(plan.getPlannedUnit());
+                break;
+        }
     }
 
     /**
