@@ -359,7 +359,7 @@ public class ManagedUnit {
 
         // Check if fightTarget should be set to null
         if (fightTarget != null) {
-            if (fightTarget.getType() == UnitType.Unknown ||
+            if (!fightTarget.exists() ||
                     !fightTarget.isTargetable() ||
                     fightTarget.getType() == UnitType.Resource_Vespene_Geyser) {
                 fightTarget = null;
@@ -429,7 +429,12 @@ public class ManagedUnit {
             return;
         }
         fightTarget = newFightTarget;
-        movementTargetPosition = newFightTarget.getTilePosition();
+        TilePosition targetTile = newFightTarget.getTilePosition();
+        if (isValidTilePosition(targetTile)) {
+            movementTargetPosition = targetTile;
+        } else {
+            movementTargetPosition = null;
+        }
     }
 
     protected int weaponRange(Unit enemy) {
@@ -504,11 +509,16 @@ public class ManagedUnit {
     }
 
     protected void handleNoTarget() {
-        if (movementTargetPosition != null) {
+        if (movementTargetPosition != null && isValidTilePosition(movementTargetPosition)) {
             unit.move(movementTargetPosition.toPosition());
             return;
         }
         role = UnitRole.IDLE;
+    }
+
+    private boolean isValidTilePosition(TilePosition tp) {
+        return tp.getX() >= 0 && tp.getY() >= 0 && 
+               tp.getX() < game.mapWidth() && tp.getY() < game.mapHeight();
     }
 
     /**

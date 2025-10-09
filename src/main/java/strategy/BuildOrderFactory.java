@@ -7,6 +7,9 @@ import strategy.buildorder.opener.NinePoolSpeed;
 import strategy.buildorder.opener.Overpool;
 import strategy.buildorder.protoss.ThreeHatchHydra;
 import strategy.buildorder.protoss.ThreeHatchMuta;
+import strategy.buildorder.terran.ThreeHatchLurker;
+import strategy.buildorder.terran.TwoHatchMuta;
+import strategy.buildorder.zerg.OneHatchSpire;
 import strategy.buildorder.opener.TwelveHatch;
 import strategy.buildorder.opener.TwelvePool;
 
@@ -64,13 +67,23 @@ public class BuildOrderFactory {
     }
 
     private void initBuildOrders() {
+        // Openers
         allBuildOrders.add(new FourPool());
         allBuildOrders.add(new NinePoolSpeed());
         allBuildOrders.add(new Overpool());
-        allBuildOrders.add(new ThreeHatchHydra());
-        allBuildOrders.add(new ThreeHatchMuta());
         allBuildOrders.add(new TwelveHatch());
         allBuildOrders.add(new TwelvePool());
+
+        // Protoss
+        allBuildOrders.add(new ThreeHatchHydra());
+        allBuildOrders.add(new ThreeHatchMuta());
+
+        // Terran
+        allBuildOrders.add(new ThreeHatchLurker());
+        allBuildOrders.add(new TwoHatchMuta());
+
+        // Zerg
+        allBuildOrders.add(new OneHatchSpire());
     }
 
     private void initOpeners(int numStartingLocations) {

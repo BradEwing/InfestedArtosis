@@ -314,7 +314,14 @@ public class SquadManager {
     }
 
     private void rallySquad(Squad squad) {
-        Position rallyPoint = squad.getType() == UnitType.Zerg_Mutalisk ? getMutaliskRallyPoint(squad) : this.getRallyPoint(squad);
+        Position rallyPoint;
+        if (squad.getType() == UnitType.Zerg_Mutalisk) {
+            rallyPoint = getMutaliskRallyPoint(squad);
+        } else if (squad.getType() == UnitType.Zerg_Lurker) {
+            rallyPoint = getLurkerRallyPoint(squad);
+        } else {
+            rallyPoint = this.getRallyPoint(squad);
+        }
         for (ManagedUnit managedUnit: squad.getMembers()) {
             managedUnit.setRallyPoint(rallyPoint);
             managedUnit.setRole(UnitRole.RALLY);
@@ -340,6 +347,19 @@ public class SquadManager {
         }
 
         return closestWorkerLocation;
+    }
+
+    private Position getLurkerRallyPoint(Squad squad) {
+        Set<Unit> enemyBuildings = gameState.getEnemyBuildings();
+        if (!enemyBuildings.isEmpty()) {
+            Unit closestBuilding = closestHostileUnit(squad.getCenter(), new ArrayList<>(enemyBuildings));
+            if (closestBuilding != null) {
+                Position buildingPos = closestBuilding.getPosition();
+                return buildingPos;
+            }
+        }
+        
+        return informationManager.getRallyPoint();
     }
 
     /**
@@ -647,7 +667,7 @@ public class SquadManager {
         List<Unit> filtered = new ArrayList<>();
         // Attempt to find the closest enemy OUTSIDE fog of war
         for (Unit enemyUnit: enemyUnits) {
-            if (unit.getType() == UnitType.Zerg_Lurker && !enemyUnit.isFlying()) {
+            if (unit.getType() == UnitType.Zerg_Lurker && !enemyUnit.isFlying() && enemyUnit.isDetected()) {
                 filtered.add(enemyUnit);
                 continue;
             }
