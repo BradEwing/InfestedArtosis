@@ -104,6 +104,6 @@ public class Lurker extends ManagedUnit {
     }
 
     private boolean hasNoValidFightTarget() {
-        return fightTarget == null || !fightTarget.exists() || !fightTarget.isVisible();
+        return fightTarget == null || !fightTarget.exists() || !fightTarget.isDetected();
     }
 }

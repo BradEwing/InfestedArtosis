@@ -97,6 +97,17 @@ public class Hydralisk extends ManagedUnit {
     }
 
     @Override
+    public void execute() {
+        if (plan != null && plan.getType() == PlanType.UNIT && plan.getPlannedUnit() == UnitType.Zerg_Lurker) {
+            if (this.role != UnitRole.MORPH) {
+                this.setRole(UnitRole.MORPH);
+            }
+        }
+        
+        super.execute();
+    }
+
+    @Override
     public void setMovementTargetPosition(TilePosition tp) {
         if (plan != null && plan.getType() == PlanType.UNIT && plan.getPlannedUnit() == UnitType.Zerg_Lurker) {
             this.setRole(UnitRole.MORPH);

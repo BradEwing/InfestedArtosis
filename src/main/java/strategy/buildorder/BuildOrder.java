@@ -1,6 +1,7 @@
 package strategy.buildorder;
 
 import bwapi.Race;
+import bwapi.TechType;
 import bwapi.TilePosition;
 import bwapi.Unit;
 import bwapi.UnitType;
@@ -14,6 +15,7 @@ import info.map.BuildingPlanner;
 import lombok.Getter;
 import macro.plan.BuildingPlan;
 import macro.plan.Plan;
+import macro.plan.TechPlan;
 import macro.plan.UnitPlan;
 import macro.plan.UpgradePlan;
 import util.Time;
@@ -249,6 +251,18 @@ public abstract class BuildOrder {
         return plan;
     }
 
+    protected Plan planTech(GameState gameState, TechType techType) {
+        TechProgression techProgression = gameState.getTechProgression();
+        int priority = gameState.getGameTime().getFrames();
+        
+        if (techType == TechType.Lurker_Aspect) {
+            techProgression.setPlannedLurker(true);
+            priority = 100;
+        }
+        
+        return new TechPlan(techType, priority, true);
+    }
+
     protected Plan planMacroHatchery(GameState gameState) {
         BuildingPlanner buildingPlanner = gameState.getBuildingPlanner();
         BaseData baseData = gameState.getBaseData();
@@ -259,7 +273,7 @@ public abstract class BuildOrder {
         }
 
         buildingPlanner.reservePlannedBuildingTiles(location, UnitType.Zerg_Hatchery);
-
+        gameState.addPlannedHatchery(1);
         return new BuildingPlan(UnitType.Zerg_Hatchery, gameState.getGameTime().getFrames(), true, location);
     }
 
@@ -299,7 +313,7 @@ public abstract class BuildOrder {
         }
         int ourBaseCount = baseData.currentAndReservedCount();
         int enemyTotal = gameState.enemyResourceDepotCount();
-        return ourBaseCount <= enemyTotal + 1;
+        return ourBaseCount <= enemyTotal;
     }
 
     @Override

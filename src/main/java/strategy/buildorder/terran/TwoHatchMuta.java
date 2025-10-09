@@ -163,7 +163,7 @@ public class TwoHatchMuta extends TerranBase {
             return plans;
         }
 
-        int desiredDrones = lairCount < 1 ? 12: 20;
+        int desiredDrones = this.dronesNeeded(gameState);
         if (plans.isEmpty() && droneCount < desiredDrones) {
             Plan dronePlan = this.planUnit(gameState, UnitType.Zerg_Drone);
             plans.add(dronePlan);
@@ -171,6 +171,19 @@ public class TwoHatchMuta extends TerranBase {
         }
 
         return plans;
+    }
+
+    protected int dronesNeeded(GameState gameState) {
+        int drones = 12;
+        int lairCount = gameState.ourUnitCount(UnitType.Zerg_Lair);
+        int hatchCount = gameState.ourUnitCount(UnitType.Zerg_Hatchery);
+        if (lairCount > 0) {
+            drones += 6;
+        }
+        if (hatchCount > 2) {
+            drones += 6 * (hatchCount - 1);
+        }
+        return drones;
     }
 
     @Override

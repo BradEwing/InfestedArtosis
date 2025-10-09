@@ -337,7 +337,19 @@ public class ProductionManager {
             case Zerg_Hydralisk:
                 return hasFourOrMoreDrones && (techProgression.isPlannedDen() || techProgression.isHydraliskDen());
             case Zerg_Lurker:
-                return hasFourOrMoreDrones && (techProgression.isPlannedLurker() || techProgression.isLurker());
+                if (!hasFourOrMoreDrones || (!techProgression.isPlannedLurker() && !techProgression.isLurker())) {
+                    return false;
+                }
+                int hydraliskCount = gameState.ourUnitCount(UnitType.Zerg_Hydralisk);
+                int assignedHydralisks = 0;
+                // TODO: Generalize for other unit morphs
+                for (Map.Entry<Unit, Plan> entry : gameState.getAssignedPlannedItems().entrySet()) {
+                    if (entry.getKey().getType() == UnitType.Zerg_Hydralisk && 
+                        entry.getValue().getPlannedUnit() == UnitType.Zerg_Lurker) {
+                        assignedHydralisks++;
+                    }
+                }
+                return hydraliskCount > assignedHydralisks;
             case Zerg_Mutalisk:
             case Zerg_Scourge:
                 return hasFourOrMoreDrones && (techProgression.isPlannedSpire() || techProgression.isSpire());

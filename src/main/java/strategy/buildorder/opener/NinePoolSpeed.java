@@ -9,6 +9,7 @@ import macro.plan.Plan;
 import strategy.buildorder.BuildOrder;
 import strategy.buildorder.protoss.ThreeHatchHydra;
 import strategy.buildorder.protoss.ThreeHatchMuta;
+import strategy.buildorder.terran.ThreeHatchLurker;
 import strategy.buildorder.terran.TwoHatchMuta;
 import strategy.buildorder.zerg.OneHatchSpire;
 import util.Time;
@@ -42,6 +43,7 @@ public class NinePoolSpeed extends BuildOrder {
                 return next;
             case Terran:
                 next.add(new TwoHatchMuta());
+                next.add(new ThreeHatchLurker());
                 return next;
         }
         return next;
