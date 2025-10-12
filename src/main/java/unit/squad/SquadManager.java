@@ -23,6 +23,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
+import bwapi.WalkPosition;
 
 import static java.lang.Math.min;
 import static util.Filter.closestHostileUnit;
@@ -404,7 +405,8 @@ public class SquadManager {
      */
     private void evaluateSquadRole(Squad squad) {
         SquadStatus squadStatus = squad.getStatus();
-        if (squadStatus == SquadStatus.RETREAT) {
+        boolean allowWhileRetreat = squad instanceof ZerglingSquad;
+        if (squadStatus == SquadStatus.RETREAT && !allowWhileRetreat) {
             return;
         }
         final boolean closeThreats = !enemyUnitsNearSquad(squad).isEmpty();
@@ -478,16 +480,54 @@ public class SquadManager {
             return;
         }
 
+        // Zergling hysteresis gate: allow retreat to override fight locks; block fight if retreat-locked
+        int now = game.getFrameCount();
+        boolean zerglingRetreatLocked = false;
+        boolean zerglingFightLocked = false;
+        if (squad instanceof ZerglingSquad) {
+            ZerglingSquad zs = (ZerglingSquad) squad;
+            zerglingRetreatLocked = zs.isRetreatLocked(now);
+            zerglingFightLocked = zs.isFightLocked(now);
+
+            if (squad.getStatus() == SquadStatus.RETREAT && zerglingRetreatLocked) {
+                HashMap<ManagedUnit, Position> retreatTargets = computeZerglingRetreatTargets(squad);
+                for (ManagedUnit managedUnit : managedFighters) {
+                    managedUnit.setRole(UnitRole.RETREAT);
+                    Position rt = retreatTargets.get(managedUnit);
+                    managedUnit.setRetreatTarget(rt);
+                }
+                return;
+            }
+            if (squad.getStatus() == SquadStatus.FIGHT && zerglingFightLocked) {
+                for (ManagedUnit managedUnit : managedFighters) {
+                    managedUnit.setRole(UnitRole.FIGHT);
+                    assignEnemyTarget(managedUnit, squad);
+                }
+                return;
+            }
+        }
+
         // Use combat simulator for engagement decision
         CombatSimulator.CombatResult result = defaultCombatSimulator.evaluate(squad, gameState);
 
         switch (result) {
             case RETREAT:
                 squad.setStatus(SquadStatus.RETREAT);
-                for (ManagedUnit managedUnit : managedFighters) {
-                    managedUnit.setRole(UnitRole.RETREAT);
-                    Position retreatTarget = managedUnit.getRetreatPosition();
-                    managedUnit.setRetreatTarget(retreatTarget);
+                if (squad instanceof ZerglingSquad) {
+                    HashMap<ManagedUnit, Position> retreatTargets = computeZerglingRetreatTargets(squad);
+                    for (ManagedUnit managedUnit : managedFighters) {
+                        managedUnit.setRole(UnitRole.RETREAT);
+                        managedUnit.setRetreatTarget(retreatTargets.get(managedUnit));
+                    }
+                } else {
+                    for (ManagedUnit managedUnit : managedFighters) {
+                        managedUnit.setRole(UnitRole.RETREAT);
+                        Position retreatTarget = managedUnit.getRetreatPosition();
+                        managedUnit.setRetreatTarget(retreatTarget);
+                    }
+                }
+                if (squad instanceof ZerglingSquad) {
+                    ((ZerglingSquad) squad).startRetreatLock(now);
                 }
                 break;
 
@@ -497,6 +537,12 @@ public class SquadManager {
                     managedUnit.setRole(UnitRole.FIGHT);
                     assignEnemyTarget(managedUnit, squad);
                 }
+                if (squad instanceof ZerglingSquad) {
+                    // Only start fight lock if not currently retreat-locked
+                    if (!zerglingRetreatLocked) {
+                        ((ZerglingSquad) squad).startFightLock(now);
+                    }
+                }
                 break;
 
             case REGROUP:
@@ -504,6 +550,105 @@ public class SquadManager {
                 squad.setStatus(SquadStatus.REGROUP);
                 break;
         }
+    }
+
+    /**
+     * Computes a shared retreat anchor for zerglings with perpendicular jitter per unit.
+     * Anchor: vector from squad center away from closest enemy cluster.
+     * Jitter: perpendicular offsets to reduce clumping.
+     */
+    private HashMap<ManagedUnit, Position> computeZerglingRetreatTargets(Squad squad) {
+        HashMap<ManagedUnit, Position> result = new HashMap<>();
+        Position center = squad.getCenter();
+        List<Unit> enemiesNear = enemyUnitsNearSquad(squad);
+        if (enemiesNear.isEmpty()) {
+            for (ManagedUnit mu : squad.getMembers()) {
+                result.put(mu, center);
+            }
+            return result;
+        }
+
+        // Compute average enemy position as threat center
+        double ex = 0, ey = 0;
+        int cnt = 0;
+        for (Unit e : enemiesNear) {
+            Position p = e.getPosition();
+            ex += p.getX();
+            ey += p.getY();
+            cnt++;
+        }
+        ex /= cnt; ey /= cnt;
+
+        // Retreat anchor = center + normalized away vector * 192
+        double dx = center.getX() - ex;
+        double dy = center.getY() - ey;
+        double len = Math.max(1.0, Math.sqrt(dx*dx + dy*dy));
+        double scale = 192.0 / len;
+        double ax = center.getX() + dx * scale;
+        double ay = center.getY() + dy * scale;
+
+        // Clamp anchor to map bounds
+        int maxX = game.mapWidth() * 32 - 1;
+        int maxY = game.mapHeight() * 32 - 1;
+        ax = Math.max(0, Math.min(ax, maxX));
+        ay = Math.max(0, Math.min(ay, maxY));
+
+        // Perpendicular and away unit vectors
+        double px = -dy / len;
+        double py = dx / len;
+        double ux = dx / len;
+        double uy = dy / len;
+
+        int i = 0;
+        for (ManagedUnit mu : squad.getMembers()) {
+            // Alternate offsets left/right and increase magnitude slightly per unit
+            int side = (i % 2 == 0) ? 1 : -1;
+            double mag = 16 + (i / 2) * 8; // 16,24,24,32,...
+            int rx = (int) Math.round(ax + side * px * mag);
+            int ry = (int) Math.round(ay + side * py * mag);
+            // Clamp jittered targets to map bounds
+            rx = Math.max(0, Math.min(rx, maxX));
+            ry = Math.max(0, Math.min(ry, maxY));
+
+            // Ensure walkability: if not walkable, scan along away vector to find a walkable point
+            if (!game.isWalkable(new WalkPosition(rx, ry))) {
+                int bestX = rx;
+                int bestY = ry;
+                boolean found = false;
+                for (int t = 256; t >= 0; t -= 16) {
+                    int cx = (int) Math.round(rx + ux * t);
+                    int cy = (int) Math.round(ry + uy * t);
+                    cx = Math.max(0, Math.min(cx, maxX));
+                    cy = Math.max(0, Math.min(cy, maxY));
+                    if (game.isWalkable(new WalkPosition(cx, cy))) {
+                        bestX = cx;
+                        bestY = cy;
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) {
+                    for (int t = 16; t <= 128; t += 16) {
+                        int cx = (int) Math.round(rx - ux * t);
+                        int cy = (int) Math.round(ry - uy * t);
+                        cx = Math.max(0, Math.min(cx, maxX));
+                        cy = Math.max(0, Math.min(cy, maxY));
+                        if (game.isWalkable(new WalkPosition(cx, cy))) {
+                            bestX = cx;
+                            bestY = cy;
+                            break;
+                        }
+                    }
+                }
+                rx = bestX;
+                ry = bestY;
+            }
+
+            result.put(mu, new Position(rx, ry));
+            i++;
+        }
+
+        return result;
     }
 
     private boolean canDefenseSquadClearThreat(Squad squad, List<Unit> enemyUnits) {
@@ -598,7 +743,10 @@ public class SquadManager {
     private Squad newFightSquad(UnitType type) {
         Squad newSquad;
 
-        if (type == UnitType.Zerg_Mutalisk) {
+        if (type == UnitType.Zerg_Zergling) {
+            newSquad = new ZerglingSquad();
+            newSquad.setType(type);
+        } else if (type == UnitType.Zerg_Mutalisk) {
             newSquad = new MutaliskSquad();
         } else if (type == UnitType.Zerg_Scourge) {
             newSquad = new ScourgeSquad();

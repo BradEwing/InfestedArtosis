@@ -142,7 +142,7 @@ public class ManagedUnit {
     public Position getRetreatPosition() {
         int currentX = unit.getX();
         int currentY = unit.getY();
-        List<Unit> enemies = game.getUnitsInRadius(currentX, currentY, 64)
+        List<Unit> enemies = game.getUnitsInRadius(currentX, currentY, 128)
                 .stream()
                 .filter(u -> u.getPlayer() != game.self())
                 .collect(Collectors.toList());
