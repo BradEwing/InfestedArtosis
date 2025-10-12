@@ -13,6 +13,7 @@ import info.GameState;
 import info.InformationManager;
 import org.bk.ass.sim.BWMirrorAgentFactory;
 import org.bk.ass.sim.Simulator;
+import info.map.BuildingPlanner;
 import unit.managed.ManagedUnit;
 import unit.managed.UnitRole;
 import util.UnitDistanceComparator;
@@ -410,6 +411,12 @@ public class SquadManager {
             return;
         }
         final boolean closeThreats = !enemyUnitsNearSquad(squad).isEmpty();
+
+        if (shouldContain(squad)) {
+            squad.setStatus(SquadStatus.CONTAIN);
+            assignContainment(squad, getAssumedMarineRangePx());
+            return;
+        }
 
         if (!closeThreats && squadStatus == SquadStatus.REGROUP) {
             return;
@@ -849,6 +856,166 @@ public class SquadManager {
             game.drawCircleMap(squad.getCenter(), 256, Color.White);
             game.drawTextMap(squad.getCenter(), String.format("Defenders: %s", squad.size()), Text.White);
         }
+    }
+
+    /**
+     * Determines whether the squad should establish containment based on enemy static defenses and bust threshold.
+     */
+    private boolean shouldContain(Squad squad) {
+        if (squad == null || squad.size() == 0) {
+            return false;
+        }
+
+        UnitType type = squad.getType();
+        if (type != UnitType.Zerg_Hydralisk && type != UnitType.Zerg_Lurker) {
+            return false;
+        }
+
+        int staticDefense = informationManager.getEnemyHostileToGroundBuildingsCount();
+        if (staticDefense <= 0) {
+            return false;
+        }
+
+        int enemyGroundArmy = 0;
+        for (Unit u : informationManager.getVisibleEnemyUnits()) {
+            if (u.getType().isBuilding()) continue;
+            if (u.getType().groundWeapon() == null) continue;
+            if (u.getType().groundWeapon().maxRange() <= 0) continue;
+            if (u.isFlying()) continue;
+            enemyGroundArmy++;
+        }
+
+        int ourRanged = 0;
+        for (ManagedUnit mu : squad.getMembers()) {
+            UnitType ut = mu.getUnitType();
+            if (ut == UnitType.Zerg_Hydralisk || ut == UnitType.Zerg_Lurker) {
+                ourRanged++;
+            }
+        }
+
+        int required = 8 + 3 * staticDefense + (enemyGroundArmy / 2);
+        return ourRanged < required;
+    }
+
+    /**
+     * Assigns containment concave positions around the enemy choke just outside static defense range.
+     */
+    private void assignContainment(Squad squad, int assumedMarineRangePx) {
+        Base enemyMain = gameState.getBaseData().getMainEnemyBase();
+        Position targetCenter = null;
+        if (enemyMain != null) {
+            targetCenter = enemyMain.getCenter();
+        } else if (!gameState.getEnemyBuildings().isEmpty()) {
+            Unit any = gameState.getEnemyBuildings().iterator().next();
+            targetCenter = any.getPosition();
+        }
+        if (targetCenter == null) {
+            rallySquad(squad);
+            return;
+        }
+
+        BuildingPlanner planner = gameState.getBuildingPlanner();
+        Position chokeCenter = planner != null && enemyMain != null ? planner.closestChokeToBase(enemyMain) : null;
+        if (chokeCenter == null) {
+            chokeCenter = targetCenter;
+        }
+
+        List<Unit> enemyStatics = new ArrayList<>();
+        for (Unit b : informationManager.getEnemyBuildings()) {
+            if (b.getType() == UnitType.Terran_Bunker) {
+                enemyStatics.add(b);
+                continue;
+            }
+            if (b.getType().groundWeapon() != null && b.getType().groundWeapon().maxRange() > 0) {
+                enemyStatics.add(b);
+            }
+        }
+
+        int maxRange = 0;
+        for (Unit b : enemyStatics) {
+            int range = (b.getType() == UnitType.Terran_Bunker) ? assumedMarineRangePx : b.getType().groundWeapon().maxRange();
+            if (range > maxRange) maxRange = range;
+        }
+        if (maxRange == 0) {
+            maxRange = 160;
+        }
+
+        int radius = Math.max(192, Math.min(448, maxRange + 80));
+
+        double dirX = chokeCenter.getX() - targetCenter.getX();
+        double dirY = chokeCenter.getY() - targetCenter.getY();
+        double len = Math.max(1.0, Math.sqrt(dirX * dirX + dirY * dirY));
+        dirX /= len;
+        dirY /= len;
+
+        int samples = Math.max(6, Math.min(16, squad.size() + 2));
+        double arc = Math.toRadians(150.0);
+        double centerAngle = Math.atan2(dirY, dirX);
+
+        List<Position> concavePoints = new ArrayList<>();
+        for (int i = 0; i < samples; i++) {
+            double t = (samples == 1) ? 0.0 : ((double) i / (samples - 1) - 0.5);
+            double theta = centerAngle + t * arc;
+            int px = (int) Math.round(chokeCenter.getX() + Math.cos(theta) * radius);
+            int py = (int) Math.round(chokeCenter.getY() + Math.sin(theta) * radius);
+            px = Math.max(0, Math.min(px, game.mapWidth() * 32 - 1));
+            py = Math.max(0, Math.min(py, game.mapHeight() * 32 - 1));
+            Position cand = new Position(px, py);
+            if (!game.isWalkable(cand.toWalkPosition())) {
+                continue;
+            }
+            boolean safe = true;
+            for (Unit b : enemyStatics) {
+                int br = (b.getType() == UnitType.Terran_Bunker) ? assumedMarineRangePx : b.getType().groundWeapon().maxRange();
+                if (cand.getDistance(b.getPosition()) <= br + 16) {
+                    safe = false;
+                    break;
+                }
+            }
+            if (safe) {
+                concavePoints.add(cand);
+            }
+        }
+
+        if (concavePoints.isEmpty()) {
+            int px = (int) Math.round(chokeCenter.getX() + dirX * radius);
+            int py = (int) Math.round(chokeCenter.getY() + dirY * radius);
+            concavePoints.add(new Position(px, py));
+        }
+
+        List<ManagedUnit> candidates = new ArrayList<>();
+        for (ManagedUnit mu : squad.getMembers()) {
+            UnitType ut = mu.getUnitType();
+            if (ut == UnitType.Zerg_Hydralisk || ut == UnitType.Zerg_Lurker) {
+                candidates.add(mu);
+            }
+        }
+
+        List<Position> assigned = new ArrayList<>();
+        for (ManagedUnit mu : candidates) {
+            Position best = null;
+            double bestD = Double.MAX_VALUE;
+            for (Position p : concavePoints) {
+                if (assigned.contains(p)) continue;
+                double d = mu.getUnit().getPosition().getDistance(p);
+                if (d < bestD) {
+                    bestD = d;
+                    best = p;
+                }
+            }
+            if (best != null) {
+                assigned.add(best);
+                mu.setRole(UnitRole.CONTAIN);
+                mu.setMovementTargetPosition(best.toTilePosition());
+            }
+        }
+    }
+
+    /**
+     * Returns assumed upgraded Marine range in pixels for bunker calculation.
+     */
+    private int getAssumedMarineRangePx() {
+        return 160;
     }
 
     /**

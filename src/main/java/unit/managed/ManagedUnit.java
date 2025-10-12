@@ -115,6 +115,9 @@ public class ManagedUnit {
             case FIGHT:
                 fight();
                 break;
+            case CONTAIN:
+                contain();
+                break;
             case GATHER:
                 gather();
                 break;
@@ -417,6 +420,21 @@ public class ManagedUnit {
     }
 
     protected void defend() {}
+
+    protected void contain() {
+        if (movementTargetPosition == null) {
+            role = UnitRole.IDLE;
+            return;
+        }
+        setUnready(6);
+        Position target = movementTargetPosition.toPosition();
+        int dist = unit.getDistance(target);
+        if (dist <= 24) {
+            unit.holdPosition();
+            return;
+        }
+        unit.move(target);
+    }
 
     /**
      * Assigns the closest enemy as a fight target.

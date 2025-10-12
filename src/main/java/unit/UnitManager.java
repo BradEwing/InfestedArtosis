@@ -120,6 +120,7 @@ public class UnitManager {
                 case BUILDING:
                 case RALLY:
                 case REGROUP:
+                case CONTAIN:
                     managedUnit.execute();
                     continue;
             }

@@ -15,4 +15,5 @@ public enum UnitRole {
     BUILDING,
     RALLY,
     REGROUP,
+    CONTAIN,
 }
