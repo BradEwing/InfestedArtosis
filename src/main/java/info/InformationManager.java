@@ -182,7 +182,7 @@ public class InformationManager {
     public void onUnitMorph(Unit unit) {
         HashMap<Unit, Plan> assignedPlannedItems = gameState.getAssignedPlannedItems();
         Plan assignedPlan = assignedPlannedItems.get(unit);
-        // Currently, only do something here if this unit is assigned to a plan.
+        
         if (assignedPlan == null) {
             return;
         }
@@ -200,6 +200,11 @@ public class InformationManager {
             }
 
             updateTechProgression(plannedUnit);
+        } else if (assignedPlan.getType() == PlanType.UNIT) {
+            UnitTypeCount count = gameState.getUnitTypeCount();
+            if (plannedUnit == UnitType.Zerg_Lurker) {
+                count.removeUnit(UnitType.Zerg_Hydralisk);
+            }
         }
     }
 
