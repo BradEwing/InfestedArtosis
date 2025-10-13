@@ -25,6 +25,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.PriorityQueue;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -155,6 +156,8 @@ public class ProductionManager {
             productionQueue.remove(plan);
             gameState.setImpossiblePlan(plan);
         }
+        
+        cancelImpossibleScheduledLurkerPlans();
         
         removePlansWithLaterPrerequisites();
     }
@@ -882,6 +885,22 @@ public class ProductionManager {
                 default:
                     gameState.completePlan(unit, plan);
                     break;
+            }
+        }
+    }
+
+    private void cancelImpossibleScheduledLurkerPlans() {
+        Set<Plan> lurkerPlans = gameState.getPlansScheduled().stream()
+                .filter(plan -> plan.getType() == PlanType.UNIT && plan.getPlannedUnit() == UnitType.Zerg_Lurker)
+                .collect(Collectors.toSet());
+        int hydraliskCount = gameState.ourUnitCount(UnitType.Zerg_Hydralisk);
+        int lurkerPlanCount = lurkerPlans .size();
+
+        
+        if (hydraliskCount == 0 || lurkerPlanCount > hydraliskCount) {
+            for (Plan plan : lurkerPlans) {
+                gameState.getPlansScheduled().remove(plan);
+                gameState.cancelPlan(null, plan);
             }
         }
     }

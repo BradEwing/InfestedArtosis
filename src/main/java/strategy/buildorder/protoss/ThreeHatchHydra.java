@@ -59,7 +59,7 @@ public class ThreeHatchHydra extends ProtossBase {
 
         // Base timing
         boolean wantNatural = plannedAndCurrentHatcheries < 2 && supply >= 24;
-        boolean wantThird = plannedAndCurrentHatcheries < 3 && supply >= 30 && techProgression.isSpawningPool();
+        boolean wantThird = plannedAndCurrentHatcheries < 3 && supply >= 40 && techProgression.isSpawningPool();
         boolean wantBaseAdvantage = behindOnBases(gameState);
 
         // Macro hatchery timing
