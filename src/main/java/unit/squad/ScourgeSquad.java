@@ -49,7 +49,8 @@ public class ScourgeSquad extends Squad {
         // Find all air targets
         List<Unit> airTargets = new ArrayList<>();
         for (Unit enemy : enemyUnits) {
-            if (enemy.isFlying() && enemy.isDetected() && !enemy.isInvincible()) {
+            if (enemy.isFlying() && enemy.isDetected() && !enemy.isInvincible() && 
+                !util.Filter.isLowPriorityCombatTarget(enemy.getType())) {
                 airTargets.add(enemy);
             }
         }

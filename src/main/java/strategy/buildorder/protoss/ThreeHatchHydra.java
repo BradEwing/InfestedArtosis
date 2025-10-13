@@ -215,9 +215,7 @@ public class ThreeHatchHydra extends ProtossBase {
         }
 
         int droneTarget = hatchCount * 7;
-        if (time.lessThanOrEqual(new Time(5, 0))) {
-            droneTarget = Math.min(droneTarget, 19);
-        }
+        droneTarget = Math.min(droneTarget, 19);
         if (macroHatchCount > 0 && droneCount < droneTarget) {
             for (int i = 0; i < droneTarget - droneCount; i++) {
                 Plan dronePlan = this.planUnit(gameState, UnitType.Zerg_Drone);

@@ -60,6 +60,9 @@ public class MutaliskSquad extends Squad {
         List<Unit> allEnemies = new ArrayList<>();
         allEnemies.addAll(enemyUnits);
         allEnemies.addAll(enemyBuildings);
+        
+        // Filter out low priority targets
+        allEnemies.removeIf(enemy -> util.Filter.isLowPriorityCombatTarget(enemy.getType()));
 
         // Check if we should disband due to no targets
         if (allEnemies.isEmpty()) {

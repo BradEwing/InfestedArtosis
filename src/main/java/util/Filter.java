@@ -1,7 +1,6 @@
 package util;
 
 import bwapi.Position;
-import bwapi.TilePosition;
 import bwapi.Unit;
 import bwapi.UnitType;
 
@@ -111,5 +110,15 @@ public final class Filter {
         }
 
         return false;
+    }
+
+    /**
+     * Checks if a unit type should be excluded from combat targeting.
+     */
+    public static boolean isLowPriorityCombatTarget(UnitType unitType) {
+        return unitType == UnitType.Zerg_Larva ||
+               unitType == UnitType.Zerg_Lurker_Egg ||
+               unitType == UnitType.Zerg_Cocoon ||
+               unitType == UnitType.Zerg_Egg;
     }
 }
