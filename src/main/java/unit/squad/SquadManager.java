@@ -819,7 +819,8 @@ public class SquadManager {
                 filtered.add(enemyUnit);
                 continue;
             }
-            if (unit.canAttack(enemyUnit) && enemyUnit.isDetected()) {
+            if (unit.canAttack(enemyUnit) && enemyUnit.isDetected() && 
+                !util.Filter.isLowPriorityCombatTarget(enemyUnit.getType())) {
                 filtered.add(enemyUnit);
             }
         }

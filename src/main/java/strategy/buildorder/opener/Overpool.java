@@ -73,7 +73,8 @@ public class Overpool extends BuildOrder {
             return plans;
         }
 
-        if (techProgression.isPlannedSpawningPool() && droneCount < 10) {
+        boolean pool = techProgression.isPlannedSpawningPool() || techProgression.isSpawningPool();
+        if (pool && droneCount < 10) {
             plans.add(planUnit(gameState, UnitType.Zerg_Drone));
             return plans;
         }

@@ -23,7 +23,8 @@ public class ScourgeCombatSimulator implements CombatSimulator {
         // Get all enemy air units within reasonable range
         List<Unit> airTargets = new ArrayList<>();
         for (Unit enemy : enemyUnits) {
-            if (enemy.isFlying() && enemy.isDetected() && !enemy.isInvincible()) {
+            if (enemy.isFlying() && enemy.isDetected() && !enemy.isInvincible() && 
+                !util.Filter.isLowPriorityCombatTarget(enemy.getType())) {
                 airTargets.add(enemy);
             }
         }

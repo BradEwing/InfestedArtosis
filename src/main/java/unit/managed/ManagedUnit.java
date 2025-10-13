@@ -529,7 +529,8 @@ public class ManagedUnit {
         double closestDistance = Double.MAX_VALUE;
 
         for (Unit enemy : game.getUnitsInRadius(unit.getPosition(), weaponRange(unit))) {
-            if (enemy.getPlayer().isEnemy(game.self()) && enemy.isTargetable()) {
+            if (enemy.getPlayer().isEnemy(game.self()) && enemy.isTargetable() && 
+                !util.Filter.isLowPriorityCombatTarget(enemy.getType())) {
                 double enemyDistance = unit.getDistance(enemy);
                 if (enemyDistance < closestDistance) {
                     closest = enemy;
@@ -550,7 +551,8 @@ public class ManagedUnit {
 
     protected Unit findThreateningEnemy() {
         for (Unit enemy : game.getUnitsInRadius(unit.getPosition(), weaponRange(unit) + 64)) {
-            if (enemy.getPlayer().isEnemy(game.self()) && enemy.isTargetable() && canFightBack(enemy)) {
+            if (enemy.getPlayer().isEnemy(game.self()) && enemy.isTargetable() && canFightBack(enemy) &&
+                !util.Filter.isLowPriorityCombatTarget(enemy.getType())) {
                 return enemy; // Return the first dangerous enemy found
             }
         }
