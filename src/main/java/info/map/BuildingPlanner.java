@@ -182,7 +182,7 @@ public class BuildingPlanner {
         return true;
     }
 
-    private Position closestChokeToBase(Base base) {
+    public Position closestChokeToBase(Base base) {
         Position closestChoke = null;
         for (ChokePoint cp: bwem.getMap().getChokePoints()) {
             Position cpp = cp.getCenter().toPosition();
