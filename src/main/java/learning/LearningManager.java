@@ -194,6 +194,14 @@ public class LearningManager {
                 opponentRecord.getBuildOrderRecord().put(candidate.getName(), new Record(candidate.getName(), 0, 0));
             }
         }
+
+        if (config.strategyOverride != null) {
+            BuildOrder forced = buildOrderFactory.getByName(config.strategyOverride);
+            if (forced != null && candidates.contains(forced)) {
+                activeBuildOrderRecord = opponentRecord.getBuildOrderRecord().get(forced.getName());
+                return forced;
+            }
+        }
         
         if (candidates.size() == 1) {
             BuildOrder singleCandidate = candidates.iterator().next();
