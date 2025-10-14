@@ -172,7 +172,89 @@ public class ManagedUnit {
         int newX = currentX + (int)(retreatDx * scale);
         int newY = currentY + (int)(retreatDy * scale);
 
-        return new Position(newX, newY);
+        Position retreatPos = new Position(newX, newY);
+        
+        // Check if the retreat path intersects any non-walkable terrain
+        if (!isRetreatPathWalkable(new Position(currentX, currentY), retreatPos)) {
+            // Try to find an alternative retreat position that avoids barriers
+            retreatPos = findAlternativeRetreatPosition(new Position(currentX, currentY), retreatPos);
+        }
+
+        return retreatPos;
+    }
+
+    /**
+     * Checks if the direct path from current position to retreat target intersects any non-walkable terrain.
+     */
+    private boolean isRetreatPathWalkable(Position currentPos, Position retreatTarget) {
+        int steps = 8; // Number of points to check along the path
+        double dx = (retreatTarget.getX() - currentPos.getX()) / (double) steps;
+        double dy = (retreatTarget.getY() - currentPos.getY()) / (double) steps;
+        
+        for (int i = 1; i <= steps; i++) {
+            int checkX = currentPos.getX() + (int)(dx * i);
+            int checkY = currentPos.getY() + (int)(dy * i);
+            Position checkPos = new Position(checkX, checkY);
+            
+            if (!game.isWalkable(new WalkPosition(checkPos))) {
+                return false;
+            }
+        }
+        
+        return true;
+    }
+    
+    /**
+     * Finds an alternative retreat position when the direct path is blocked.
+     * Tries positions in a spiral pattern around the original retreat vector.
+     */
+    private Position findAlternativeRetreatPosition(Position currentPos, Position originalRetreat) {
+        // Calculate the original retreat direction
+        double dx = originalRetreat.getX() - currentPos.getX();
+        double dy = originalRetreat.getY() - currentPos.getY();
+        double length = Math.sqrt(dx * dx + dy * dy);
+        
+        if (length == 0) {
+            return currentPos;
+        }
+        
+        // Try shorter distances first (50%, 75%, 100% of original distance)
+        double[] distanceMultipliers = {0.5, 0.75, 1.0};
+        
+        for (double multiplier : distanceMultipliers) {
+            double scaledLength = length * multiplier;
+            double unitDx = dx / length;
+            double unitDy = dy / length;
+            
+            // Try 8 directions around the original retreat vector
+            for (int i = 0; i < 8; i++) {
+                double angle = (i * Math.PI) / 4.0; // 45 degree increments
+                double cos = Math.cos(angle);
+                double sin = Math.sin(angle);
+                
+                // Rotate the retreat vector
+                double rotatedDx = unitDx * cos - unitDy * sin;
+                double rotatedDy = unitDx * sin + unitDy * cos;
+                
+                int newX = currentPos.getX() + (int)(rotatedDx * scaledLength);
+                int newY = currentPos.getY() + (int)(rotatedDy * scaledLength);
+                
+                // Ensure within map bounds
+                newX = Math.max(0, Math.min(newX, game.mapWidth() * 32 - 1));
+                newY = Math.max(0, Math.min(newY, game.mapHeight() * 32 - 1));
+                
+                Position candidatePos = new Position(newX, newY);
+                
+                // Check if this position and its path are walkable
+                if (game.isWalkable(new WalkPosition(candidatePos)) && 
+                    isRetreatPathWalkable(currentPos, candidatePos)) {
+                    return candidatePos;
+                }
+            }
+        }
+        
+        // If no alternative found, return a position close to current position
+        return new Position(currentPos.getX() + 32, currentPos.getY() + 32);
     }
 
     private void debug() {
