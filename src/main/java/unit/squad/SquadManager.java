@@ -433,6 +433,8 @@ public class SquadManager {
             return 4;
         } else if (type == UnitType.Zerg_Hydralisk) {
             return 10;
+        } else if (type == UnitType.Zerg_Lurker) {
+            return 1;
         }
         int staticDefensePenalty = min(informationManager.getEnemyHostileToGroundBuildingsCount(), 5);
         int moveOutThreshold = 5 * (1 + staticDefensePenalty);

@@ -20,6 +20,11 @@ public class UnitTypeCount {
         return unitTypeCount.get(unitType);
     }
 
+    private int safeLivingGet(UnitType unitType) {
+        ensureUnitType(unitType);
+        return unitTypeCount.get(unitType);
+    }
+
     public void addUnit(UnitType unitType) {
         if (!unitTypeCount.containsKey(unitType)) {
             unitTypeCount.put(unitType, 0);
@@ -87,5 +92,9 @@ public class UnitTypeCount {
 
     public int airCount() {
         return safeGet(UnitType.Zerg_Mutalisk) + safeGet(UnitType.Zerg_Guardian) + safeGet(UnitType.Zerg_Devourer);
+    }
+
+    public int livingCount(UnitType unitType) {
+        return safeLivingGet(unitType);
     }
 }

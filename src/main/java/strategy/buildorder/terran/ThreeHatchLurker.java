@@ -50,8 +50,8 @@ public class ThreeHatchLurker extends TerranBase {
         boolean wantEvolutionChamber = wantEvolutionChamber(gameState);
 
         boolean wantLurkerAspect = wantLurkerAspect(gameState);
-        boolean wantMetabolicBoost = techProgression.canPlanMetabolicBoost() && lairCount > 0;
-        boolean wantMuscularAugments = techProgression.canPlanMuscularAugments() && hydraCount > 3;
+        boolean wantMetabolicBoost = techProgression.canPlanMetabolicBoost() && lairCount > 0 && (zerglingCount >= 12 || lurkerCount > 2);
+        boolean wantMuscularAugments = techProgression.canPlanMuscularAugments() && hydraCount > 3 && lurkerCount > 0;
         boolean wantGroovedSpines = techProgression.canPlanGroovedSpines() && hydraCount > 6;
         boolean wantRangedUpgrades = wantRangedUpgrade(gameState);
         boolean wantCarapaceUpgrade = wantCarapaceUpgrade(gameState);
@@ -185,7 +185,7 @@ public class ThreeHatchLurker extends TerranBase {
             return plans;
         }
 
-        int droneTarget = hatchCount * 7;
+        int droneTarget = dronesNeeded(gameState);
         if (macroHatchCount > 0 && droneCount < droneTarget) {
             for (int i = 0; i < droneTarget - droneCount; i++) {
                 Plan dronePlan = this.planUnit(gameState, UnitType.Zerg_Drone);
@@ -208,14 +208,20 @@ public class ThreeHatchLurker extends TerranBase {
         int plannedHatcheries = gameState.getPlannedHatcheries();
         int baseCount = gameState.getBaseData().currentBaseCount();
         int lairCount = gameState.ourUnitCount(UnitType.Zerg_Lair);
+        int lurkerCount = gameState.ourUnitCount(UnitType.Zerg_Lurker);
         
         if (macroHatchCount >= 1 || (plannedHatcheries + baseCount) >= 3) {
             return false;
         }
 
-        int droneCount = gameState.ourUnitCount(UnitType.Zerg_Drone);
+        int droneCount = gameState.ourLivingUnitCount(UnitType.Zerg_Drone);
 
-        return droneCount >= 13 && lairCount > 0;
+        // Third hatch should wait until at least 2 lurkers are out
+        if ((plannedHatcheries + baseCount) >= 2 && lurkerCount < 2) {
+            return false;
+        }
+
+        return droneCount >= 17 && lairCount > 0;
     }
 
     private boolean wantHydraliskDen(GameState gameState) {
@@ -248,13 +254,14 @@ public class ThreeHatchLurker extends TerranBase {
     private boolean wantEvolutionChamber(GameState gameState) {
         TechProgression techProgression = gameState.getTechProgression();
         final boolean haveDen = techProgression.isHydraliskDen();
+        final int droneCount = gameState.ourUnitCount(UnitType.Zerg_Drone);
         if (!haveDen) {
             return false;
         }
 
         final int lurkers = gameState.ourUnitCount(UnitType.Zerg_Lurker);
 
-        return techProgression.canPlanEvolutionChamber() && lurkers > 3;
+        return techProgression.canPlanEvolutionChamber() && lurkers > 3 && droneCount > 18;
     }
 
     private boolean wantRangedUpgrade(GameState gameState) {
@@ -291,10 +298,14 @@ public class ThreeHatchLurker extends TerranBase {
         if (lurkerCount > 0) {
             baseTarget += 3;
         }
+        
+        if (isMechComposition(gameState)) {
+            baseTarget += 6;
+        }
     
         // Increase hydra target when floating minerals (similar to OneHatchSpire mutalisks)
         int availableMinerals = gameState.getResourceCount().availableMinerals();
-        if (availableMinerals > 400) {
+        if (availableMinerals < 400) {
             return baseTarget;
         }
         int extraHydras = availableMinerals / 75;
@@ -347,9 +358,14 @@ public class ThreeHatchLurker extends TerranBase {
 
     protected int dronesNeeded(GameState gameState) {
         int drones = 12;
+        
+        int lurkerCount = gameState.ourUnitCount(UnitType.Zerg_Lurker);
         int lairCount = gameState.ourUnitCount(UnitType.Zerg_Lair);
         int hatchCount = gameState.ourUnitCount(UnitType.Zerg_Hatchery, UnitType.Zerg_Lair, UnitType.Zerg_Hive);
         if (lairCount > 0) {
+            drones += 9;
+        }
+        if (lurkerCount > 2) {
             drones += 6;
         }
         if (hatchCount > 2) {

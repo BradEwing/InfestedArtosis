@@ -83,5 +83,17 @@ public class TerranBase extends BuildOrder {
 
         return sunkens;
     }
+
+    protected boolean isMechComposition(GameState gameState) {
+        int tankCount = gameState.enemyUnitCount(UnitType.Terran_Siege_Tank_Tank_Mode) +
+                        gameState.enemyUnitCount(UnitType.Terran_Siege_Tank_Siege_Mode);
+        int machineShopCount = gameState.enemyUnitCount(UnitType.Terran_Machine_Shop);
+        int spiderMineCount = gameState.enemyUnitCount(UnitType.Terran_Vulture_Spider_Mine);
+        int goliathCount = gameState.enemyUnitCount(UnitType.Terran_Goliath);
+        int factoryCount = gameState.enemyUnitCount(UnitType.Terran_Factory);
+        
+        return tankCount > 0 || machineShopCount > 0 || spiderMineCount > 0 || 
+               goliathCount > 0 || factoryCount >= 2;
+    }
 }
 
