@@ -893,7 +893,7 @@ public class ProductionManager {
         Set<Plan> lurkerPlans = gameState.getPlansScheduled().stream()
                 .filter(plan -> plan.getType() == PlanType.UNIT && plan.getPlannedUnit() == UnitType.Zerg_Lurker)
                 .collect(Collectors.toSet());
-        int hydraliskCount = gameState.ourUnitCount(UnitType.Zerg_Hydralisk);
+        int hydraliskCount = gameState.getUnitTypeCount().livingCount(UnitType.Zerg_Hydralisk);
         int lurkerPlanCount = lurkerPlans.size();
 
         

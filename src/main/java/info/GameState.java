@@ -466,6 +466,10 @@ public class GameState {
         return unitTypeCount.get(unitType);
     }
 
+    public int ourLivingUnitCount(UnitType unitType) {
+        return unitTypeCount.livingCount(unitType);
+    }
+
     public int ourUnitCount(UnitType... unitTypes) {
         int i = 0;
         for (UnitType unitType: unitTypes) {
