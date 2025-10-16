@@ -80,4 +80,10 @@ public class StrategyTracker {
         }
         return false;
     }
+
+    public String getDetectedStrategiesAsString() {
+        return detectedStrategies.stream()
+                .map(ObservedStrategy::getName)
+                .collect(Collectors.joining(";"));
+    }
 }

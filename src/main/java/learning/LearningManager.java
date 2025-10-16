@@ -1,16 +1,17 @@
 package learning;
 
+import bwapi.Game;
 import bwapi.Race;
 import bwem.BWEM;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import config.Config;
+import info.GameState;
 import strategy.BuildOrderFactory;
 import strategy.buildorder.BuildOrder;
 
 import java.io.File;
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.file.Files;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -20,11 +21,13 @@ import java.util.stream.Collectors;
 
 public class LearningManager {
     private Config config;
-    final private int recordVersion = 3;
 
     private static String READ_DIR = "bwapi-data/read/";
     private static String WRITE_DIR = "bwapi-data/write/";
 
+    private Game game;
+    private BWEM bwem;
+    private GameState gameState;
     private Race opponentRace;
     private String opponentName;
     private String opponentFileName;
@@ -34,14 +37,16 @@ public class LearningManager {
     private Record currentOpener; // Write this at end of game
     private Record activeBuildOrderRecord; // Track current non-opener strategy
 
-    private ObjectMapper mapper = new ObjectMapper();
     private BuildOrderFactory buildOrderFactory;
 
-    public LearningManager(Config config, Race opponentRace, String opponentName, BWEM bwem) {
+    public LearningManager(Config config, Game game, BWEM bwem, GameState gameState) {
         this.config = config;
-        this.opponentRace = opponentRace;
-        this.opponentName = opponentName;
-        this.opponentFileName = opponentName + "_" + opponentRace + ".json";
+        this.game = game;
+        this.bwem = bwem;
+        this.gameState = gameState;
+        this.opponentRace = game.enemy().getRace();
+        this.opponentName = game.enemy().getName();
+        this.opponentFileName = opponentName + "_" + opponentRace + ".csv";
         this.opponentRecord = new OpponentRecord(opponentName, opponentRace.toString(), 0, 0, 0, new HashMap<>(), new HashMap<>());
         this.buildOrderFactory = new BuildOrderFactory(bwem.getMap().getStartingLocations().size(), opponentRace);
 
@@ -78,7 +83,7 @@ public class LearningManager {
         }
         
         try {
-            writeOpponentRecord();
+            writeGameRecord(isWinner);
         } catch (IOException e) {
             //System.out.printf("failed to write file! [%s]", e);
         }
@@ -98,27 +103,107 @@ public class LearningManager {
             return;
         }
 
-        InputStream inJson = Files.newInputStream(file.toPath());
-        opponentRecord = mapper.readValue(inJson, OpponentRecord.class);
-
-        // Handle new change to JSON file
-        if (opponentRecord.getOpenerRecord() == null || opponentRecord.getVersion() != recordVersion) {
-            opponentRecord.setOpenerRecord(new HashMap<>());
-            opponentRecord.setBuildOrderRecord(new HashMap<>());
-            opponentRecord.setWins(0);
-            opponentRecord.setLosses(0);
-        }
-    }
-
-    private void writeOpponentRecord() throws IOException {
-        File file = new File(WRITE_DIR + opponentFileName);
-        file.createNewFile();
-        if (!file.isFile()) {
+        // Read CSV file and aggregate stats for UCB algorithm compatibility
+        List<String> lines = Files.readAllLines(file.toPath());
+        if (lines.size() <= 1) { // Only header or empty
+            opponentRecord.setName(opponentName);
+            opponentRecord.setRace(opponentRace.toString());
             return;
         }
 
-        opponentRecord.setVersion(recordVersion);
-        mapper.writeValue(file, opponentRecord);
+        // Skip header line
+        for (int i = 1; i < lines.size(); i++) {
+            GameRecord record = GameRecord.fromCsvRow(lines.get(i));
+            if (record.isWinner()) {
+                opponentRecord.setWins(opponentRecord.getWins() + 1);
+            } else {
+                opponentRecord.setLosses(opponentRecord.getLosses() + 1);
+            }
+            
+            // Aggregate opener stats
+            Map<String, Record> openerRecords = opponentRecord.getOpenerRecord();
+            if (openerRecords == null) {
+                openerRecords = new HashMap<>();
+                opponentRecord.setOpenerRecord(openerRecords);
+            }
+            
+            Record openerRecord = openerRecords.get(record.getOpener());
+            if (openerRecord == null) {
+                openerRecord = new Record(record.getOpener(), 0, 0);
+                openerRecords.put(record.getOpener(), openerRecord);
+            }
+            
+            if (record.isWinner()) {
+                openerRecord.setWins(openerRecord.getWins() + 1);
+            } else {
+                openerRecord.setLosses(openerRecord.getLosses() + 1);
+            }
+            
+            // Aggregate build order stats if different from opener
+            if (record.getBuildOrder() != null && !record.getBuildOrder().equals(record.getOpener())) {
+                Map<String, Record> buildOrderRecords = opponentRecord.getBuildOrderRecord();
+                if (buildOrderRecords == null) {
+                    buildOrderRecords = new HashMap<>();
+                    opponentRecord.setBuildOrderRecord(buildOrderRecords);
+                }
+                
+                Record buildOrderRecord = buildOrderRecords.get(record.getBuildOrder());
+                if (buildOrderRecord == null) {
+                    buildOrderRecord = new Record(record.getBuildOrder(), 0, 0);
+                    buildOrderRecords.put(record.getBuildOrder(), buildOrderRecord);
+                }
+                
+                if (record.isWinner()) {
+                    buildOrderRecord.setWins(buildOrderRecord.getWins() + 1);
+                } else {
+                    buildOrderRecord.setLosses(buildOrderRecord.getLosses() + 1);
+                }
+            }
+        }
+    }
+
+    private void writeGameRecord(boolean isWinner) throws IOException {
+        File readFile = new File(READ_DIR + opponentFileName);
+        File writeFile = new File(WRITE_DIR + opponentFileName);
+        
+        // Create write file and copy existing data from read file if it exists
+        if (!writeFile.exists()) {
+            writeFile.createNewFile();
+            String header = "timestamp,is_winner,num_starting_locations,map_name,opponent_name,opponent_race,opener,build_order,detected_strategies\n";
+            Files.write(writeFile.toPath(), header.getBytes(), StandardOpenOption.APPEND);
+            
+            // Copy all existing records from read file if it exists
+            if (readFile.exists() && readFile.isFile()) {
+                List<String> readLines = Files.readAllLines(readFile.toPath());
+                // Skip header line and copy all data rows
+                for (int i = 1; i < readLines.size(); i++) {
+                    String dataRow = readLines.get(i) + "\n";
+                    Files.write(writeFile.toPath(), dataRow.getBytes(), StandardOpenOption.APPEND);
+                }
+            }
+        }
+        
+        if (!writeFile.isFile()) {
+            return;
+        }
+
+        // Create game record
+        GameRecord gameRecord = GameRecord.builder()
+            .timestamp(System.currentTimeMillis())
+            .numStartingLocations(bwem.getMap().getStartingLocations().size())
+            .mapName(game.mapFileName())
+            .opponentName(opponentName)
+            .opponentRace(opponentRace.toString())
+            .opener(currentOpener.getOpener())
+            .buildOrder(activeBuildOrderRecord != null ? activeBuildOrderRecord.getOpener() : currentOpener.getOpener())
+            .detectedStrategies(gameState.getStrategyTracker() != null ? 
+                gameState.getStrategyTracker().getDetectedStrategiesAsString() : "")
+            .isWinner(isWinner)
+            .build();
+
+        // Append new record
+        String csvRow = gameRecord.toCsvRow() + "\n";
+        Files.write(writeFile.toPath(), csvRow.getBytes(), StandardOpenOption.APPEND);
     }
 
     private void ensureOpenersInOpponentRecord() {
@@ -222,4 +307,5 @@ public class LearningManager {
         activeBuildOrderRecord = allRecords.get(0);
         return buildOrderFactory.getByName(activeBuildOrderRecord.getOpener());
     }
+
 }
