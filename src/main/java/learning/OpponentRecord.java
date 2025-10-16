@@ -2,11 +2,9 @@ package learning;
 
 import lombok.Builder;
 import lombok.Data;
-import lombok.extern.jackson.Jacksonized;
 
 import java.util.Map;
 
-@Jacksonized
 @Builder
 @Data
 public class OpponentRecord {

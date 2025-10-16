@@ -2,11 +2,9 @@ package learning;
 
 import lombok.Builder;
 import lombok.Data;
-import lombok.extern.jackson.Jacksonized;
 
 import java.util.Objects;
 
-@Jacksonized
 @Builder
 @Data
 public class Record implements UCBRecord {
