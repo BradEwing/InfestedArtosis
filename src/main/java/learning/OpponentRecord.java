@@ -3,6 +3,7 @@ package learning;
 import lombok.Builder;
 import lombok.Data;
 
+import java.util.HashMap;
 import java.util.Map;
 
 @Builder
@@ -17,8 +18,20 @@ public class OpponentRecord {
 
     private Map<String, Record> openerRecord;
     private Map<String, Record> buildOrderRecord;
+    
+    private Map<String, MapAwareRecord> mapSpecificOpenerRecord;
+    private Map<String, MapAwareRecord> mapSpecificBuildOrderRecord;
 
     public int totalGames() {
         return this.wins + this.losses;
+    }
+    
+    public void ensureMapSpecificRecords() {
+        if (mapSpecificOpenerRecord == null) {
+            mapSpecificOpenerRecord = new HashMap<>();
+        }
+        if (mapSpecificBuildOrderRecord == null) {
+            mapSpecificBuildOrderRecord = new HashMap<>();
+        }
     }
 }
