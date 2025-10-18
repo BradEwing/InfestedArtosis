@@ -314,6 +314,11 @@ public class GameState {
             case BUILDING:
                 unitTypeCount.unplanUnit(plan.getPlannedUnit());
                 resourceCount.unreserveUnit(plan.getPlannedUnit());
+                
+                UnitType buildingType = plan.getPlannedUnit();
+                if (buildingType == UnitType.Zerg_Hatchery) {
+                    removePlannedHatchery(1);
+                }
                 break;
         }
     }
@@ -464,6 +469,12 @@ public class GameState {
 
     public int ourUnitCount(UnitType unitType) {
         return unitTypeCount.get(unitType);
+    }
+
+    public int ourMorphingCount(UnitType unitType) {
+        return (int) plansMorphing.stream()
+            .filter(plan -> plan.getPlannedUnit() == unitType)
+            .count();
     }
 
     public int ourLivingUnitCount(UnitType unitType) {

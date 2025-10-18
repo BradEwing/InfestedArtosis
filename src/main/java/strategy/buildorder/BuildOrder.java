@@ -294,7 +294,9 @@ public abstract class BuildOrder {
         int ourLairs = gameState.ourUnitCount(UnitType.Zerg_Lair);
         int ourHives = gameState.ourUnitCount(UnitType.Zerg_Hive);
         int ourPlanned = gameState.getPlannedHatcheries();
-        int ourTotal = ourHatcheries + ourLairs + ourHives + ourPlanned;
+        int morphingLairs = (int) gameState.ourMorphingCount(UnitType.Zerg_Lair);
+        
+        int ourTotal = ourHatcheries + ourLairs + ourHives + ourPlanned + morphingLairs;
 
         int enemyHatcheries = gameState.enemyUnitCount(UnitType.Zerg_Hatchery);
         int enemyLairs = gameState.enemyUnitCount(UnitType.Zerg_Lair);
