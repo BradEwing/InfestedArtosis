@@ -47,7 +47,15 @@ public class LearningManager {
         this.opponentRace = game.enemy().getRace();
         this.opponentName = game.enemy().getName();
         this.opponentFileName = opponentName + "_" + opponentRace + ".csv";
-        this.opponentRecord = new OpponentRecord(opponentName, opponentRace.toString(), 0, 0, 0, new HashMap<>(), new HashMap<>());
+        this.opponentRecord = OpponentRecord.builder()
+            .name(opponentName)
+            .race(opponentRace.toString())
+            .wins(0)
+            .losses(0)
+            .version(0)
+            .openerRecord(new HashMap<>())
+            .buildOrderRecord(new HashMap<>())
+            .build();
         this.buildOrderFactory = new BuildOrderFactory(bwem.getMap().getStartingLocations().size(), opponentRace);
 
         try {
@@ -100,18 +108,20 @@ public class LearningManager {
         if (!file.exists()) {
             opponentRecord.setName(opponentName);
             opponentRecord.setRace(opponentRace.toString());
+            opponentRecord.ensureMapSpecificRecords();
             return;
         }
 
-        // Read CSV file and aggregate stats for UCB algorithm compatibility
         List<String> lines = Files.readAllLines(file.toPath());
-        if (lines.size() <= 1) { // Only header or empty
+        if (lines.size() <= 1) {
             opponentRecord.setName(opponentName);
             opponentRecord.setRace(opponentRace.toString());
+            opponentRecord.ensureMapSpecificRecords();
             return;
         }
 
-        // Skip header line
+        opponentRecord.ensureMapSpecificRecords();
+
         for (int i = 1; i < lines.size(); i++) {
             GameRecord record = GameRecord.fromCsvRow(lines.get(i));
             if (record.isWinner()) {
@@ -120,7 +130,6 @@ public class LearningManager {
                 opponentRecord.setLosses(opponentRecord.getLosses() + 1);
             }
             
-            // Aggregate opener stats
             Map<String, Record> openerRecords = opponentRecord.getOpenerRecord();
             if (openerRecords == null) {
                 openerRecords = new HashMap<>();
@@ -139,7 +148,26 @@ public class LearningManager {
                 openerRecord.setLosses(openerRecord.getLosses() + 1);
             }
             
-            // Aggregate build order stats if different from opener
+            String mapOpenerKey = WeightedUCBCalculator.createMapKey(record.getMapName(), record.getOpener());
+            MapAwareRecord mapOpenerRecord = opponentRecord.getMapSpecificOpenerRecord().get(mapOpenerKey);
+            if (mapOpenerRecord == null) {
+                mapOpenerRecord = MapAwareRecord.builder()
+                    .strategy(record.getOpener())
+                    .mapName(record.getMapName())
+                    .opponentName(opponentName)
+                    .opponentRace(opponentRace.toString())
+                    .wins(0)
+                    .losses(0)
+                    .build();
+                opponentRecord.getMapSpecificOpenerRecord().put(mapOpenerKey, mapOpenerRecord);
+            }
+            
+            if (record.isWinner()) {
+                mapOpenerRecord.setWins(mapOpenerRecord.getWins() + 1);
+            } else {
+                mapOpenerRecord.setLosses(mapOpenerRecord.getLosses() + 1);
+            }
+            
             if (record.getBuildOrder() != null && !record.getBuildOrder().equals(record.getOpener())) {
                 Map<String, Record> buildOrderRecords = opponentRecord.getBuildOrderRecord();
                 if (buildOrderRecords == null) {
@@ -158,24 +186,42 @@ public class LearningManager {
                 } else {
                     buildOrderRecord.setLosses(buildOrderRecord.getLosses() + 1);
                 }
+                
+                String mapBuildOrderKey = WeightedUCBCalculator.createMapKey(record.getMapName(), record.getBuildOrder());
+                MapAwareRecord mapBuildOrderRecord = opponentRecord.getMapSpecificBuildOrderRecord().get(mapBuildOrderKey);
+                if (mapBuildOrderRecord == null) {
+                    mapBuildOrderRecord = MapAwareRecord.builder()
+                        .strategy(record.getBuildOrder())
+                        .mapName(record.getMapName())
+                        .opponentName(opponentName)
+                        .opponentRace(opponentRace.toString())
+                        .wins(0)
+                        .losses(0)
+                        .build();
+                    opponentRecord.getMapSpecificBuildOrderRecord().put(mapBuildOrderKey, mapBuildOrderRecord);
+                }
+                
+                if (record.isWinner()) {
+                    mapBuildOrderRecord.setWins(mapBuildOrderRecord.getWins() + 1);
+                } else {
+                    mapBuildOrderRecord.setLosses(mapBuildOrderRecord.getLosses() + 1);
+                }
             }
         }
+        
     }
 
     private void writeGameRecord(boolean isWinner) throws IOException {
         File readFile = new File(READ_DIR + opponentFileName);
         File writeFile = new File(WRITE_DIR + opponentFileName);
         
-        // Create write file and copy existing data from read file if it exists
         if (!writeFile.exists()) {
             writeFile.createNewFile();
             String header = "timestamp,is_winner,num_starting_locations,map_name,opponent_name,opponent_race,opener,build_order,detected_strategies\n";
             Files.write(writeFile.toPath(), header.getBytes(), StandardOpenOption.APPEND);
             
-            // Copy all existing records from read file if it exists
             if (readFile.exists() && readFile.isFile()) {
                 List<String> readLines = Files.readAllLines(readFile.toPath());
-                // Skip header line and copy all data rows
                 for (int i = 1; i < readLines.size(); i++) {
                     String dataRow = readLines.get(i) + "\n";
                     Files.write(writeFile.toPath(), dataRow.getBytes(), StandardOpenOption.APPEND);
@@ -187,7 +233,6 @@ public class LearningManager {
             return;
         }
 
-        // Create game record
         GameRecord gameRecord = GameRecord.builder()
             .timestamp(System.currentTimeMillis())
             .numStartingLocations(bwem.getMap().getStartingLocations().size())
@@ -201,7 +246,6 @@ public class LearningManager {
             .isWinner(isWinner)
             .build();
 
-        // Append new record
         String csvRow = gameRecord.toCsvRow() + "\n";
         Files.write(writeFile.toPath(), csvRow.getBytes(), StandardOpenOption.APPEND);
     }
@@ -223,7 +267,6 @@ public class LearningManager {
             openerRecordMap.put(opener, new Record(opener, 0, 0));
         }
         
-        // Initialize build order records (race-specific strategies)
         Map<String, Record> buildOrderRecordMap = opponentRecord.getBuildOrderRecord();
         if (buildOrderRecordMap == null) {
             buildOrderRecordMap = new HashMap<>();
@@ -253,15 +296,45 @@ public class LearningManager {
             }
         }
 
-        List<Record> allRecords = opponentRecord.getOpenerRecord()
-                .values()
+        String currentMapName = game.mapFileName();
+        
+        List<String> playableOpeners = opponentRecord.getOpenerRecord()
+                .keySet()
                 .stream()
-                .filter(rec -> buildOrderFactory.isPlayableOpener(buildOrderFactory.getByName(rec.getOpener())))
-                .sorted(new UCBRecordComparator(this.opponentRecord.totalGames()))
+                .filter(openerName -> buildOrderFactory.isPlayableOpener(buildOrderFactory.getByName(openerName)))
                 .collect(Collectors.toList());
-
-        currentOpener = allRecords.get(0);
-        return buildOrderFactory.getByName(currentOpener.getOpener());
+        
+        if (playableOpeners.isEmpty()) {
+            List<Record> allRecords = opponentRecord.getOpenerRecord()
+                    .values()
+                    .stream()
+                    .filter(rec -> buildOrderFactory.isPlayableOpener(buildOrderFactory.getByName(rec.getOpener())))
+                    .sorted(new UCBRecordComparator(this.opponentRecord.totalGames()))
+                    .collect(Collectors.toList());
+            
+            if (allRecords.isEmpty()) {
+                return null;
+            }
+            
+            currentOpener = allRecords.get(0);
+            return buildOrderFactory.getByName(currentOpener.getOpener());
+        }
+        
+        String bestOpener = WeightedUCBCalculator.findBestStrategy(
+            playableOpeners,
+            currentMapName,
+            opponentName,
+            opponentRecord.getMapSpecificOpenerRecord(),
+            opponentRecord.getOpenerRecord(),
+            this.opponentRecord.totalGames()
+        );
+        
+        if (bestOpener != null) {
+            currentOpener = opponentRecord.getOpenerRecord().get(bestOpener);
+            return buildOrderFactory.getByName(bestOpener);
+        }
+        
+        return null;
     }
 
     /**
@@ -273,7 +346,6 @@ public class LearningManager {
             return null;
         }
 
-        // Ensure records exist for all candidate build orders
         for (BuildOrder candidate : candidates) {
             if (!opponentRecord.getBuildOrderRecord().containsKey(candidate.getName())) {
                 opponentRecord.getBuildOrderRecord().put(candidate.getName(), new Record(candidate.getName(), 0, 0));
@@ -294,6 +366,26 @@ public class LearningManager {
             return singleCandidate;
         }
 
+        String currentMapName = game.mapFileName();
+        
+        List<String> candidateNames = candidates.stream()
+                .map(BuildOrder::getName)
+                .collect(Collectors.toList());
+        
+        String bestBuildOrder = WeightedUCBCalculator.findBestStrategy(
+            candidateNames,
+            currentMapName,
+            opponentName,
+            opponentRecord.getMapSpecificBuildOrderRecord(),
+            opponentRecord.getBuildOrderRecord(),
+            this.opponentRecord.totalGames()
+        );
+        
+        if (bestBuildOrder != null) {
+            activeBuildOrderRecord = opponentRecord.getBuildOrderRecord().get(bestBuildOrder);
+            return buildOrderFactory.getByName(bestBuildOrder);
+        }
+        
         List<Record> allRecords = opponentRecord.getBuildOrderRecord()
                 .values()
                 .stream()
@@ -304,6 +396,10 @@ public class LearningManager {
                 .sorted(new UCBRecordComparator(this.opponentRecord.totalGames()))
                 .collect(Collectors.toList());
 
+        if (allRecords.isEmpty()) {
+            return null;
+        }
+        
         activeBuildOrderRecord = allRecords.get(0);
         return buildOrderFactory.getByName(activeBuildOrderRecord.getOpener());
     }

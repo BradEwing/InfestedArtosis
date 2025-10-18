@@ -39,7 +39,7 @@ public class Zergling extends ManagedUnit {
     @Override
     protected void retreat() {
         setUnready(4);
-        if (retreatTarget == null || unit.getDistance(retreatTarget) < 16 || unit.isIdle()) {
+        if (retreatTarget == null || unit.getDistance(retreatTarget) < 16) {
             Position next = getRetreatPosition();
             setRetreatTarget(next);
             if (next == null) {
