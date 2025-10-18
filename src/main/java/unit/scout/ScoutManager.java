@@ -114,6 +114,10 @@ public class ScoutManager {
     }
 
     public boolean endDroneScout() {
+        if (gameState.getBaseData().getMainEnemyBase() != null) {
+            return true;
+        }
+
         for (ManagedUnit managedUnit: droneScouts) {
             Unit unit = managedUnit.getUnit();
             if (unit.isUnderAttack()) {
