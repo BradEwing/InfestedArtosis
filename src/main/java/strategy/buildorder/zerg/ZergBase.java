@@ -30,7 +30,7 @@ public class ZergBase extends BuildOrder {
             return 0;
         }
 
-        int zerglings = 6;
+        int zerglings = 10;
         int currentZerglings = gameState.ourUnitCount(UnitType.Zerg_Zergling);
         int enemyZerglings = gameState.enemyUnitCount(UnitType.Zerg_Zergling);
         int lairCount = gameState.ourUnitCount(UnitType.Zerg_Lair);
@@ -43,6 +43,14 @@ public class ZergBase extends BuildOrder {
         if (hasMetabolicBoost) {
             zerglings += 2;
         }
+
+        final int excessMinerals = gameState.getResourceCount().availableMinerals() - 400;
+        if (excessMinerals > 0) {
+            int excessZerglings = excessMinerals / 50;
+            zerglings += (excessZerglings * 2);
+        }
+
+        zerglings = Math.min(zerglings, 40);
 
         if (currentZerglings >= zerglings) {
             return 0;
