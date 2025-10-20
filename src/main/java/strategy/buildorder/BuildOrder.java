@@ -313,6 +313,7 @@ public abstract class BuildOrder {
         if (!baseData.hasNaturalExpansion()) {
             return false;
         }
+        
         int ourBaseCount = baseData.currentAndReservedCount();
         int enemyTotal = gameState.enemyResourceDepotCount();
         return ourBaseCount <= enemyTotal;

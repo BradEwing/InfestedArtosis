@@ -61,6 +61,8 @@ public class ThreeHatchHydra extends ProtossBase {
         boolean wantNatural = plannedAndCurrentHatcheries < 2 && supply >= 24;
         boolean wantThird = plannedAndCurrentHatcheries < 3 && supply >= 40 && techProgression.isSpawningPool();
         boolean wantBaseAdvantage = behindOnBases(gameState);
+        boolean floatingMinerals = gameState.getGameTime().greaterThan(new Time(5, 0)) &&
+                gameState.getResourceCount().availableMinerals() > ((plannedHatcheries + 1) * 350);
 
         // Macro hatchery timing
         boolean wantFirstMacroHatch = wantFirstMacroHatchery(gameState);
@@ -88,7 +90,7 @@ public class ThreeHatchHydra extends ProtossBase {
         }
 
         // Bases
-        if (wantNatural || wantThird || wantBaseAdvantage) {
+        if (wantNatural || wantThird || wantBaseAdvantage || floatingMinerals) {
             Plan hatcheryPlan = this.planNewBase(gameState);
             if (hatcheryPlan != null) {
                 plans.add(hatcheryPlan);
@@ -214,8 +216,8 @@ public class ThreeHatchHydra extends ProtossBase {
             return plans;
         }
 
-        int droneTarget = hatchCount * 7;
-        droneTarget = Math.min(droneTarget, 19);
+        int droneTarget = hatchCount * 9;
+        droneTarget = Math.min(droneTarget, 55);
         if (macroHatchCount > 0 && droneCount < droneTarget) {
             for (int i = 0; i < droneTarget - droneCount; i++) {
                 Plan dronePlan = this.planUnit(gameState, UnitType.Zerg_Drone);
@@ -352,7 +354,16 @@ public class ThreeHatchHydra extends ProtossBase {
             return 0;
         }
 
-        return 25;
+        int baseTarget = 18;
+
+        int availableMinerals = gameState.getResourceCount().availableMinerals();
+        if (availableMinerals < 400) {
+            return baseTarget;
+        }
+        int extraHydras = availableMinerals / 75;
+        baseTarget += Math.min(extraHydras, 50); 
+    
+        return baseTarget;
     }
 
     @Override
