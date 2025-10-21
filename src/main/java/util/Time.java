@@ -2,6 +2,11 @@ package util;
 
 import lombok.Getter;
 
+/**
+ * Represents game time in StarCraft.
+ * StarCraft runs at 24 frames per second (fps).
+ * Conversion: 1 second = 24 frames, 1 minute = 1440 frames.
+ */
 public class Time {
     private int minutes;
     private int seconds;
@@ -36,6 +41,10 @@ public class Time {
     public boolean greaterThan(Time t2) {
         return (this.minutes > t2.minutes) ||
                 (this.minutes == t2.minutes && this.seconds > t2.seconds);
+    }
+
+    public Time add(Time other) {
+        return new Time(this.frames + other.frames);
     }
 
     @Override
