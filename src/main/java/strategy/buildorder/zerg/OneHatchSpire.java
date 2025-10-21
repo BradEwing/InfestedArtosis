@@ -52,6 +52,8 @@ public class OneHatchSpire extends ZergBase{
         boolean floatingMinerals = gameState.getGameTime().greaterThan(new Time(5, 0)) && gameState.getResourceCount().availableMinerals() > ((plannedHatcheries + 1) * 350);
         boolean wantHatchery = behindOnHatchery(gameState) || floatingMinerals;
 
+        boolean enemyHasSpire = gameState.enemyUnitCount(UnitType.Zerg_Spire) > 0;
+
         if (wantHatchery) {
             Plan hatcheryPlan = this.planNewBase(gameState);
             if (hatcheryPlan != null) {
@@ -101,8 +103,8 @@ public class OneHatchSpire extends ZergBase{
         }
 
         // Plan Units
-        final int desiredScourge = 2;
-        if (techProgression.isSpire() && scourgeCount < desiredScourge && mutaCount > 5) {
+        final int desiredScourge = 2;   
+        if (techProgression.isSpire() && scourgeCount < desiredScourge && mutaCount > 5 && enemyHasSpire) {
             for (int i = 0; i < desiredScourge - scourgeCount; i++) {
                 Plan scourgePlan = this.planUnit(gameState, UnitType.Zerg_Scourge);
                 plans.add(scourgePlan);

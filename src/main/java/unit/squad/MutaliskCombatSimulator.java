@@ -59,12 +59,12 @@ public class MutaliskCombatSimulator implements CombatSimulator {
         int mutaliskHp = squadSize * 120;
         int expectedDamagePerSecond = antiAirDps;
 
-        // Don't engage if we'll lose more than 50% HP in 5 seconds
-        if (expectedDamagePerSecond * 5 > mutaliskHp * 0.5) {
+        // Don't engage if we'll lose more than 5% HP in 2 seconds
+        if (expectedDamagePerSecond * 2 > mutaliskHp * 0.05) {
             return false;
         }
 
-        // Don't engage if heavily outnumbered by anti-air
+        // Don't engage if outnumbered by anti-air
         if (antiAirThreats > squadSize * 1.5) {
             return false;
         }

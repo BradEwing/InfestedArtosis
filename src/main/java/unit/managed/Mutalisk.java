@@ -1,9 +1,14 @@
 package unit.managed;
 
 import bwapi.Game;
+import bwapi.Position;
 import bwapi.Unit;
+import util.Time;
 
 public class Mutalisk extends ManagedUnit {
+    private Time retreatUntilFrame = null;
+    private static final int RETREAT_DURATION_FRAMES = 24; // 1 second retreat duration
+    
     public Mutalisk(Game game, Unit unit, UnitRole role) {
         super(game, unit, role);
     }
@@ -11,9 +16,21 @@ public class Mutalisk extends ManagedUnit {
     @Override
     protected void fight() {
         if (unit.isAttackFrame()) {
+            // Set retreat timer when attack frame is detected
+            retreatUntilFrame = new Time(game.getFrameCount() + RETREAT_DURATION_FRAMES);
             return;
         }
-        setUnready(11);
+        setUnready(4);
+
+        if (retreatUntilFrame != null && game.getFrameCount() < retreatUntilFrame.getFrames()) {
+            if (retreatTarget == null) {
+                retreatTarget = getRetreatPosition();
+            } else {
+                retreatUntilFrame = null;
+            }
+            unit.move(retreatTarget);
+            return;
+        } 
 
         if (fightTarget != null) {
             unit.attack(fightTarget);

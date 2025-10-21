@@ -254,12 +254,12 @@ public class ThreeHatchLurker extends TerranBase {
     private boolean wantEvolutionChamber(GameState gameState) {
         TechProgression techProgression = gameState.getTechProgression();
         final boolean haveDen = techProgression.isHydraliskDen();
-        final int droneCount = gameState.ourUnitCount(UnitType.Zerg_Drone);
+        final int droneCount = gameState.ourLivingUnitCount(UnitType.Zerg_Drone);
         if (!haveDen) {
             return false;
         }
 
-        final int lurkers = gameState.ourUnitCount(UnitType.Zerg_Lurker);
+        final int lurkers = gameState.ourLivingUnitCount(UnitType.Zerg_Lurker);
 
         return techProgression.canPlanEvolutionChamber() && lurkers > 3 && droneCount > 18;
     }

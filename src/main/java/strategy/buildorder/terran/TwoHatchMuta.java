@@ -58,10 +58,14 @@ public class TwoHatchMuta extends TerranBase {
         boolean firstGas = gameState.canPlanExtractor() && techProgression.isSpawningPool() && extractorCount < 1;
         boolean secondGas = gameState.canPlanExtractor() && lairCount > 0;
 
+        // Check for floating resources (follows ThreeHatchLurker pattern)
+        boolean floatingMinerals = gameState.getGameTime().greaterThan(new Time(5, 0)) &&
+                gameState.getResourceCount().availableMinerals() > ((plannedHatcheries + 1) * 350);
+
         // Base timing
         boolean wantNatural  = plannedAndCurrentHatcheries < 2 && droneCount >= 12;
         boolean wantThird    = plannedAndCurrentHatcheries < 3 && spireCount > 0 && mutaCount > 5;
-        boolean wantBaseAdvantage = behindOnBases(gameState);
+        boolean wantBaseAdvantage = behindOnBases(gameState) || floatingMinerals;
 
         // Lair timing
         boolean wantLair = gameState.canPlanLair() && lairCount < 1 && baseCount >= 2;
@@ -149,7 +153,7 @@ public class TwoHatchMuta extends TerranBase {
             return plans;
         }
 
-        final int desiredMutalisks = 11;
+        final int desiredMutalisks = desiredMutalisks(gameState);
         if (techProgression.isSpire() && mutaCount < desiredMutalisks) {
             Plan mutaliskPlan = this.planUnit(gameState, UnitType.Zerg_Mutalisk);
             plans.add(mutaliskPlan);
@@ -174,7 +178,7 @@ public class TwoHatchMuta extends TerranBase {
     }
 
     protected int dronesNeeded(GameState gameState) {
-        int drones = 12;
+        int drones = 16;
         int lairCount = gameState.ourUnitCount(UnitType.Zerg_Lair);
         int hatchCount = gameState.ourUnitCount(UnitType.Zerg_Hatchery);
         if (lairCount > 0) {
@@ -184,6 +188,25 @@ public class TwoHatchMuta extends TerranBase {
             drones += 6 * (hatchCount - 1);
         }
         return drones;
+    }
+
+    private int desiredMutalisks(GameState gameState) {
+        TechProgression techProgression = gameState.getTechProgression();
+
+        if (!techProgression.isSpire()) {
+            return 0;
+        }
+
+        int baseTarget = 11;
+        
+        // Increase mutalisk target when floating minerals (similar to ThreeHatchLurker hydralisks)
+        int availableMinerals = gameState.getResourceCount().availableMinerals();
+        if (availableMinerals > 400) {
+            int extraMutalisks = availableMinerals / 100;
+            baseTarget += Math.min(extraMutalisks, 20);
+        }
+
+        return baseTarget;
     }
 
     @Override

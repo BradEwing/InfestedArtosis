@@ -539,14 +539,14 @@ public class GameState {
         Map<UnitType, Integer> staticDefenseRanges = new HashMap<>();
         switch (opponentRace) {
             case Terran:
-                staticDefenseRanges.put(UnitType.Terran_Missile_Turret, UnitType.Terran_Missile_Turret.airWeapon().maxRange());
-                staticDefenseRanges.put(UnitType.Terran_Bunker, UnitType.Terran_Marine.groundWeapon().maxRange() + 32);
+                staticDefenseRanges.put(UnitType.Terran_Missile_Turret, UnitType.Terran_Missile_Turret.airWeapon().maxRange() + 32);
+                staticDefenseRanges.put(UnitType.Terran_Bunker, UnitType.Terran_Marine.groundWeapon().maxRange() + 64);
                 break;
             case Protoss:
-                staticDefenseRanges.put(UnitType.Protoss_Photon_Cannon, UnitType.Protoss_Photon_Cannon.groundWeapon().maxRange()+16);
+                staticDefenseRanges.put(UnitType.Protoss_Photon_Cannon, UnitType.Protoss_Photon_Cannon.groundWeapon().maxRange() + 32);
                 break;
             case Zerg:
-                staticDefenseRanges.put(UnitType.Zerg_Spore_Colony, UnitType.Zerg_Spore_Colony.airWeapon().maxRange());
+                staticDefenseRanges.put(UnitType.Zerg_Spore_Colony, UnitType.Zerg_Spore_Colony.airWeapon().maxRange() + 32);
                 break;
             default:
                 return coveredPositions;

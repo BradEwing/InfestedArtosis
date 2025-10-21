@@ -721,10 +721,18 @@ public class SquadManager {
 
     private void addManagedFighter(ManagedUnit managedUnit) {
         UnitType type = managedUnit.getUnitType();
-        Squad squad = findCloseSquad(managedUnit, type);
+        Squad squad;
+        
+        // Special handling for Mutalisks - rally to closest active squad
+        if (type == UnitType.Zerg_Mutalisk) {
+            squad = findClosestMutaliskSquad(managedUnit);
+        } else {
+            squad = findCloseSquad(managedUnit, type);   
+        }
         if (squad == null) {
             squad = newFightSquad(type);
         }
+        
         squad.addUnit(managedUnit);
         simulateFightSquad(squad);
     }
@@ -740,6 +748,32 @@ public class SquadManager {
         }
 
         return null;
+    }
+
+    /**
+     * Finds the closest Mutalisk squad that is in RALLY or FIGHT status.
+     * Searches globally (no distance limit) to ensure all Mutalisks mass up.
+     */
+    private Squad findClosestMutaliskSquad(ManagedUnit managedUnit) {
+        Squad closestSquad = null;
+        double closestDistance = Double.MAX_VALUE;
+        
+        for (Squad squad : fightSquads) {
+            if (squad.getType() != UnitType.Zerg_Mutalisk) {
+                continue;
+            }
+            
+            // Only consider squads in RALLY or FIGHT status
+            if (squad.getStatus() == SquadStatus.RALLY || squad.getStatus() == SquadStatus.FIGHT) {
+                double distance = squad.distance(managedUnit);
+                if (distance < closestDistance) {
+                    closestDistance = distance;
+                    closestSquad = squad;
+                }
+            }
+        }
+        
+        return closestSquad;
     }
 
     private Squad newFightSquad(UnitType type) {

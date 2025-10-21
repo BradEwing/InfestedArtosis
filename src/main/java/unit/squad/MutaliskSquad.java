@@ -6,6 +6,8 @@ import bwapi.UnitType;
 import info.GameState;
 import unit.managed.ManagedUnit;
 import unit.managed.UnitRole;
+import unit.squad.CombatSimulator.CombatResult;
+import util.Time;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -20,6 +22,12 @@ public class MutaliskSquad extends Squad {
 
     private final CombatSimulator combatSimulator;
     private boolean shouldDisband = false;
+    
+    // Attack and retreat timers for hysteresis behavior
+    private Time attackUntilFrame = null;
+    private Time retreatUntilFrame = null;
+    private static final Time ATTACK_WINDOW = new Time(12); // 0.5 second
+    private static final Time RETREAT_WINDOW = new Time(36); // 1.5 seconds
 
     public MutaliskSquad() {
         super();
@@ -81,13 +89,38 @@ public class MutaliskSquad extends Squad {
 
         Set<Position> staticDefenseCoverage = gameState.getAerielStaticDefenseCoverage();
 
-        // Evaluate engagement
-        CombatSimulator.CombatResult combatResult = combatSimulator.evaluate(this, gameState);
-
-        if (combatResult == CombatSimulator.CombatResult.RETREAT) {
+        Time currentTime = gameState.getGameTime();
+        
+        // Check if timers are active
+        boolean isAttackWindowActive = attackUntilFrame != null && currentTime.lessThanOrEqual(attackUntilFrame);
+        boolean isRetreatWindowActive = retreatUntilFrame != null && currentTime.lessThanOrEqual(retreatUntilFrame);
+        
+        // Only re-evaluate combat when both timers are expired or null
+        if (!isAttackWindowActive && !isRetreatWindowActive) {
+            CombatResult combatResult = combatSimulator.evaluate(this, gameState);
+            
+            // Set appropriate timer based on combat result
+            if (combatResult == CombatResult.RETREAT) {
+                retreatUntilFrame = currentTime.add(RETREAT_WINDOW);
+            } else {
+                attackUntilFrame = currentTime.add(ATTACK_WINDOW);
+            }
+        }
+        
+        // Determine behavior based on active timers
+        if (isRetreatWindowActive) {
             setStatus(SquadStatus.RETREAT);
             executeRetreat(gameState, allEnemies, staticDefenseCoverage);
             return;
+        }
+        
+        if (isAttackWindowActive) {
+            setStatus(SquadStatus.FIGHT);
+            // Attack behavior continues below
+        } else {
+            // If no timer is active, clear both for next evaluation
+            attackUntilFrame = null;
+            retreatUntilFrame = null;
         }
 
         // Find priority target
@@ -104,7 +137,6 @@ public class MutaliskSquad extends Squad {
         }
 
         // Default fight behavior
-        setStatus(SquadStatus.FIGHT);
         if (priorityTarget != null) {
             setTarget(priorityTarget);
         }
@@ -325,9 +357,18 @@ public class MutaliskSquad extends Squad {
             }
         }
 
-        // Prefer safe targets unless they're all buildings
+        // Prefer safe targets, but if only buildings are available, still use them
         boolean safeTargetsOnlyBuildings = safeTargets.stream().allMatch(unit -> unit.getType().isBuilding());
-        List<Unit> preferredTargets = (safeTargets.isEmpty() || safeTargetsOnlyBuildings) ? dangerousTargets : safeTargets;
+        List<Unit> preferredTargets;
+        if (safeTargets.isEmpty()) {
+            preferredTargets = dangerousTargets;
+        } else if (safeTargetsOnlyBuildings && !dangerousTargets.isEmpty()) {
+            // If safe targets are only buildings but we have dangerous non-building targets, prefer those
+            boolean dangerousHasNonBuildings = dangerousTargets.stream().anyMatch(unit -> !unit.getType().isBuilding());
+            preferredTargets = dangerousHasNonBuildings ? dangerousTargets : safeTargets;
+        } else {
+            preferredTargets = safeTargets;
+        }
 
         List<Unit> antiAirThreats = findAntiAirThreats(preferredTargets);
         if (!antiAirThreats.isEmpty()) {
@@ -443,10 +484,9 @@ public class MutaliskSquad extends Squad {
 
     private List<Unit> findAntiAirThreats(List<Unit> enemies) {
         List<Unit> threats = new ArrayList<>();
-        Position squadCenter = getCenter();
 
         for (Unit enemy : enemies) {
-            if (isAntiAir(enemy) && squadCenter.getDistance(enemy.getPosition()) < 256) {
+            if (isAntiAir(enemy)) {
                 threats.add(enemy);
             }
         }
