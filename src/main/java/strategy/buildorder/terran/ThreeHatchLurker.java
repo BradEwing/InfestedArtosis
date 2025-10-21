@@ -6,6 +6,7 @@ import bwapi.UnitType;
 import bwapi.UpgradeType;
 import info.BaseData;
 import info.GameState;
+import info.ResourceCount;
 import info.TechProgression;
 import macro.plan.Plan;
 import util.Time;
@@ -25,6 +26,7 @@ public class ThreeHatchLurker extends TerranBase {
 
         TechProgression techProgression = gameState.getTechProgression();
         BaseData baseData = gameState.getBaseData();
+        ResourceCount resourceCount = gameState.getResourceCount();
         int baseCount = baseData.currentBaseCount();
         int extractorCount = baseData.numExtractor();
         int plannedHatcheries = gameState.getPlannedHatcheries();
@@ -39,6 +41,7 @@ public class ThreeHatchLurker extends TerranBase {
 
         boolean firstGas = gameState.canPlanExtractor() && techProgression.isSpawningPool() && extractorCount < 1;
         boolean secondGas = gameState.canPlanExtractor() && techProgression.isLair() && extractorCount < 2;
+        boolean extraGas = gameState.canPlanExtractor() && baseCount > 2 && resourceCount.availableMinerals() > 400;
 
         boolean wantNatural = plannedAndCurrentHatcheries < 2 && droneCount >= 12;
 
@@ -83,7 +86,7 @@ public class ThreeHatchLurker extends TerranBase {
             }
         }
 
-        if (firstGas || secondGas) {
+        if (firstGas || secondGas || extraGas) {
             Plan extractorPlan = this.planExtractor(gameState);
             plans.add(extractorPlan);
         }

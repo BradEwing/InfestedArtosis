@@ -11,6 +11,7 @@ import bwapi.UnitType;
 import bwem.Base;
 import info.GameState;
 import info.InformationManager;
+import info.ScoutData;
 import org.bk.ass.sim.BWMirrorAgentFactory;
 import org.bk.ass.sim.Simulator;
 import unit.managed.ManagedUnit;
@@ -471,6 +472,15 @@ public class SquadManager {
         // Handle building targeting when no visible units
         Set<Unit> enemyBuildings = gameState.getEnemyBuildings();
         Set<Unit> enemyUnits = gameState.getDetectedEnemyUnits();
+
+        // If no enemy units, buildings, or known building locations exist, disband squad to transition to scout
+        if (enemyUnits.isEmpty() && enemyBuildings.isEmpty()) {
+            ScoutData scoutData = gameState.getScoutData();
+            if (!scoutData.isEnemyBuildingLocationKnown()) {
+                squad.setShouldDisband(true);
+                return;
+            }
+        }
 
         if (enemyUnits.isEmpty() && !enemyBuildings.isEmpty()) {
             Unit closest = closestHostileUnit(squad.getCenter(), new ArrayList<>(enemyBuildings));
