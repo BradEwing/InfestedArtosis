@@ -14,6 +14,7 @@ import lombok.Getter;
 import lombok.Setter;
 import macro.plan.Plan;
 import macro.plan.PlanState;
+import util.Filter;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -145,6 +146,7 @@ public class ManagedUnit {
         List<Unit> enemies = game.getUnitsInRadius(currentX, currentY, 128)
                 .stream()
                 .filter(u -> u.getPlayer() != game.self())
+                .filter(u -> !u.getType().isBuilding() || Filter.isHostileBuildingToGround(u.getType()))
                 .collect(Collectors.toList());
 
 
@@ -185,15 +187,35 @@ public class ManagedUnit {
 
     /**
      * Checks if the direct path from current position to retreat target intersects any non-walkable terrain.
+     * Samples WalkPositions along the path for efficiency while ensuring thorough coverage.
      */
     private boolean isRetreatPathWalkable(Position currentPos, Position retreatTarget) {
-        int steps = 8; // Number of points to check along the path
-        double dx = (retreatTarget.getX() - currentPos.getX()) / (double) steps;
-        double dy = (retreatTarget.getY() - currentPos.getY()) / (double) steps;
+        // Calculate the distance and direction
+        double dx = retreatTarget.getX() - currentPos.getX();
+        double dy = retreatTarget.getY() - currentPos.getY();
+        double distance = Math.sqrt(dx * dx + dy * dy);
         
-        for (int i = 1; i <= steps; i++) {
-            int checkX = currentPos.getX() + (int)(dx * i);
-            int checkY = currentPos.getY() + (int)(dy * i);
+        if (distance == 0) {
+            return true; // Same position, path is valid
+        }
+        
+        // Normalize direction
+        dx /= distance;
+        dy /= distance;
+        
+        // Sample WalkPositions along the path for efficiency
+        // WalkPositions are 8x8 pixels, so we check every 4 pixels (every half WalkPosition)
+        // This ensures we catch most terrain obstacles while maintaining performance
+        double stepSize = 4.0; // Check every 4 pixels
+        int numSteps = (int) Math.ceil(distance / stepSize);
+        
+        // Limit to reasonable number of checks (max 8 for efficiency)
+        numSteps = Math.min(numSteps, 8);
+        
+        for (int i = 1; i <= numSteps; i++) {
+            double progress = (double) i / numSteps;
+            int checkX = currentPos.getX() + (int)(dx * distance * progress);
+            int checkY = currentPos.getY() + (int)(dy * distance * progress);
             Position checkPos = new Position(checkX, checkY);
             
             if (!game.isWalkable(new WalkPosition(checkPos))) {
@@ -206,56 +228,66 @@ public class ManagedUnit {
     
     /**
      * Finds an alternative retreat position when the direct path is blocked.
-     * Tries positions in a spiral pattern around the original retreat vector.
+     * Evaluates positions to find the one farthest from enemies and outside static defense coverage.
      */
     private Position findAlternativeRetreatPosition(Position currentPos, Position originalRetreat) {
-        // Calculate the original retreat direction
-        double dx = originalRetreat.getX() - currentPos.getX();
-        double dy = originalRetreat.getY() - currentPos.getY();
-        double length = Math.sqrt(dx * dx + dy * dy);
+        // Get nearby enemies for distance calculations, excluding non-static defense buildings
+        List<Unit> enemies = game.getUnitsInRadius(currentPos.getX(), currentPos.getY(), 256)
+                .stream()
+                .filter(u -> u.getPlayer() != game.self())
+                .filter(u -> !u.getType().isBuilding() || Filter.isHostileBuildingToGround(u.getType()))
+                .collect(Collectors.toList());
         
-        if (length == 0) {
-            return currentPos;
+        if (enemies.isEmpty()) {
+            return originalRetreat; // No enemies, original retreat is fine
         }
         
-        // Try shorter distances first (50%, 75%, 100% of original distance)
-        double[] distanceMultipliers = {0.5, 0.75, 1.0};
+        Position bestPosition = null;
+        double bestMinEnemyDistance = -1;
         
-        for (double multiplier : distanceMultipliers) {
-            double scaledLength = length * multiplier;
-            double unitDx = dx / length;
-            double unitDy = dy / length;
-            
-            // Try 8 directions around the original retreat vector
-            for (int i = 0; i < 8; i++) {
-                double angle = (i * Math.PI) / 4.0; // 45 degree increments
-                double cos = Math.cos(angle);
-                double sin = Math.sin(angle);
+        // Try multiple distances and angles to find best retreat position
+        int[] distances = {128, 96, 64, 48, 32};
+        for (int distance : distances) {
+            for (int angle = 0; angle < 360; angle += 30) {
+                double rad = Math.toRadians(angle);
+                int testX = currentPos.getX() + (int)(Math.cos(rad) * distance);
+                int testY = currentPos.getY() + (int)(Math.sin(rad) * distance);
                 
-                // Rotate the retreat vector
-                double rotatedDx = unitDx * cos - unitDy * sin;
-                double rotatedDy = unitDx * sin + unitDy * cos;
+                // Clamp to map bounds
+                testX = Math.max(0, Math.min(testX, game.mapWidth() * 32 - 1));
+                testY = Math.max(0, Math.min(testY, game.mapHeight() * 32 - 1));
+                Position candidatePos = new Position(testX, testY);
                 
-                int newX = currentPos.getX() + (int)(rotatedDx * scaledLength);
-                int newY = currentPos.getY() + (int)(rotatedDy * scaledLength);
+                // Check if position and path are walkable
+                if (!game.isWalkable(new WalkPosition(candidatePos)) || 
+                    !isRetreatPathWalkable(currentPos, candidatePos)) {
+                    continue;
+                }
+
+                // Calculate minimum distance to any enemy from this candidate position
+                double minDistToEnemy = Double.MAX_VALUE;
+                for (Unit enemy : enemies) {
+                    double dist = candidatePos.getDistance(enemy.getPosition());
+                    if (dist < minDistToEnemy) {
+                        minDistToEnemy = dist;
+                    }
+                }
                 
-                // Ensure within map bounds
-                newX = Math.max(0, Math.min(newX, game.mapWidth() * 32 - 1));
-                newY = Math.max(0, Math.min(newY, game.mapHeight() * 32 - 1));
-                
-                Position candidatePos = new Position(newX, newY);
-                
-                // Check if this position and its path are walkable
-                if (game.isWalkable(new WalkPosition(candidatePos)) && 
-                    isRetreatPathWalkable(currentPos, candidatePos)) {
-                    return candidatePos;
+                // Keep this position if it's farther from enemies than previous best
+                if (minDistToEnemy > bestMinEnemyDistance) {
+                    bestMinEnemyDistance = minDistToEnemy;
+                    bestPosition = candidatePos;
                 }
             }
         }
         
-        // If no alternative found, return a position close to current position
-        return new Position(currentPos.getX() + 32, currentPos.getY() + 32);
+        // Return best position found, or rally point as last resort
+        if (bestPosition != null) {
+            return bestPosition;
+        }
+        return rallyPoint != null ? rallyPoint : currentPos;
     }
+
 
     private void debug() {
         Position unitPosition = unit.getPosition();
@@ -295,8 +327,6 @@ public class ManagedUnit {
             game.drawTextMap(textPosition, distanceText, Text.Cyan);
 
         }
-
-
     }
 
     protected void rally() {
@@ -495,7 +525,25 @@ public class ManagedUnit {
             return;
         }
 
+        // Recompute retreat position upon arrival or if close to target
+        if (unit.getDistance(retreatTarget) < getRetreatArrivalDistance()) {
+            Position next = getRetreatPosition();
+            setRetreatTarget(next);
+            if (next == null) {
+                role = UnitRole.IDLE;
+                return;
+            }
+        }
+
         unit.move(retreatTarget);
+    }
+
+    /**
+     * Returns the distance threshold for recomputing retreat position.
+     * Override in subclasses to customize behavior.
+     */
+    protected int getRetreatArrivalDistance() {
+        return 16;
     }
 
     protected void defend() {}
