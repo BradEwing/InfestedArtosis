@@ -349,6 +349,7 @@ public class UnitManager {
             if (shouldStopScouting) {
                 squadManager.addManagedUnit(managedUnit);
                 scoutManager.removeScout(managedUnit);
+                return;
             }
         }
 

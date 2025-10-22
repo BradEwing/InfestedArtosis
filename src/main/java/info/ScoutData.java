@@ -63,6 +63,8 @@ public class ScoutData {
                 return !hasProtossScoutingConditions(enemies);
             case Zerg:
                 return !hasZergScoutingConditions(enemies);
+            case Unknown:
+                return true;
             default:
                 return false;
         }
