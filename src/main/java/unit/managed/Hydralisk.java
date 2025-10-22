@@ -118,16 +118,7 @@ public class Hydralisk extends ManagedUnit {
     }
 
     @Override
-    protected void retreat() {
-        setUnready(4);
-        if (retreatTarget == null || unit.getDistance(retreatTarget) < 24) {
-            Position next = getRetreatPosition();
-            setRetreatTarget(next);
-            if (next == null) {
-                role = UnitRole.FIGHT;
-                return;
-            }
-        }
-        unit.move(retreatTarget);
+    protected int getRetreatArrivalDistance() {
+        return 24;
     }
 }

@@ -2,7 +2,6 @@ package unit.managed;
 
 import bwapi.Game;
 import bwapi.Unit;
-import bwapi.Position;
 
 public class Zergling extends ManagedUnit {
     public Zergling(Game game, Unit unit, UnitRole role) {
@@ -33,20 +32,4 @@ public class Zergling extends ManagedUnit {
         role = UnitRole.IDLE;
     }
 
-    /**
-     * Recomputes retreat position upon arrival or idle to avoid stalling.
-     */
-    @Override
-    protected void retreat() {
-        setUnready(4);
-        if (retreatTarget == null || unit.getDistance(retreatTarget) < 16) {
-            Position next = getRetreatPosition();
-            setRetreatTarget(next);
-            if (next == null) {
-                role = UnitRole.IDLE;
-                return;
-            }
-        }
-        unit.move(retreatTarget);
-    }
 }
