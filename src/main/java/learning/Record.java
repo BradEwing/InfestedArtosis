@@ -1,6 +1,7 @@
 package learning;
 
 import lombok.Builder;
+import lombok.Builder.Default;
 import lombok.Data;
 
 import java.util.ArrayList;
@@ -26,12 +27,13 @@ import java.util.Objects;
 @Builder
 @Data
 public class Record implements UCBRecord {
+    private static final double GAMMA = 0.95;
     private String opener;
     private int wins;
     private int losses;
-    @Builder.Default
+    @Default
     private List<Long> winTimestamps = new ArrayList<>();
-    @Builder.Default
+    @Default
     private List<Long> lossTimestamps = new ArrayList<>();
 
     public int netWins() {
@@ -74,14 +76,12 @@ public class Record implements UCBRecord {
         return sampleMean + c;
     }
     
-    private static final double GAMMA = 0.95;
-    
     private double calculateDiscountedWins() {
         // Combine all timestamps and sort by chronological order
         List<Long> allTimestamps = new ArrayList<>();
         allTimestamps.addAll(winTimestamps);
         allTimestamps.addAll(lossTimestamps);
-        allTimestamps.sort(Long::compareTo);
+        allTimestamps.sort((a, b) -> Long.compare(b, a));
         
         double discountedWins = 0.0;
         for (int i = 0; i < allTimestamps.size(); i++) {
