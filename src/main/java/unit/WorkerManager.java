@@ -5,6 +5,7 @@ import bwapi.Player;
 import bwapi.Unit;
 import bwapi.UnitType;
 import bwem.Base;
+import bwem.Mineral;
 import info.GameState;
 import info.ResourceCount;
 import macro.plan.Plan;
@@ -161,55 +162,150 @@ public class WorkerManager {
 
     private void assignToMineral(ManagedUnit managedUnit) {
         Unit unit = managedUnit.getUnit();
-        // Consider how many mineral workers are mining, compare to size of taken mineral patches
-        // Gather all mineral patches, sort by distance
-        // For each, check for patch with the least amount of workers
-        int fewestMineralAssignments;
-        if (gameState.getMineralWorkers() == 0) {
-            fewestMineralAssignments = 0;
-        } else {
-            // NOTE: Assign 1 per patch but buffer with 5 extra
-            fewestMineralAssignments = gameState.getMineralAssignments().size() / gameState.getMineralWorkers() <= 1 ? 1 : 0;
+        
+        // Find the best base for this drone (prioritizing closest with unlocked patches)
+        Base targetBase = findBestBaseForMineralAssignment(unit);
+        if (targetBase == null) {
+            return;
         }
-        List<Unit> claimedMinerals = gameState.getMineralAssignments().keySet().stream().collect(Collectors.toList());
-        claimedMinerals.sort(new UnitDistanceComparator(unit));
+        
+        // Assign to the best available base
+        assignToMineralAtBase(managedUnit, targetBase);
+    }
 
-        for (Unit mineral: claimedMinerals) {
+
+    /**
+     * Assigns a drone to mine minerals at a specific base with per-base locking logic
+     */
+    private boolean assignToMineralAtBase(ManagedUnit managedUnit, Base base) {
+        Unit unit = managedUnit.getUnit();
+        
+        // Get mineral patches for this specific base
+        List<Unit> baseMinerals = new ArrayList<>();
+        for (Mineral mineral : base.getMinerals()) {
+            Unit mineralUnit = mineral.getUnit();
+            if (gameState.getMineralAssignments().containsKey(mineralUnit)) {
+                baseMinerals.add(mineralUnit);
+            }
+        }
+        
+        if (baseMinerals.isEmpty()) {
+            return false;
+        }
+        
+        // Count drones already assigned to this base's minerals
+        int dronesAtBase = 0;
+        for (Unit mineral : baseMinerals) {
             HashSet<ManagedUnit> mineralUnits = gameState.getMineralAssignments().get(mineral);
-            if (mineralUnits.size() <= fewestMineralAssignments) {
+            dronesAtBase += mineralUnits.size();
+        }
+        
+        // Calculate lock threshold: 0 if drones < patches, 1 otherwise
+        int lockThreshold = (dronesAtBase < baseMinerals.size()) ? 0 : 1;
+        
+        // Sort minerals by distance to the drone
+        baseMinerals.sort(new UnitDistanceComparator(unit));
+        
+        // Find the first mineral patch that meets the lock threshold
+        for (Unit mineral : baseMinerals) {
+            HashSet<ManagedUnit> mineralUnits = gameState.getMineralAssignments().get(mineral);
+            if (mineralUnits.size() <= lockThreshold) {
+                // Assign the drone to this mineral patch
                 managedUnit.setRole(UnitRole.GATHER);
                 managedUnit.setGatherTarget(mineral);
                 managedUnit.setNewGatherTarget(true);
                 assignedManagedWorkers.add(managedUnit);
-                gameState.setMineralWorkers(gameState.getMineralWorkers()+1);
+                gameState.setMineralWorkers(gameState.getMineralWorkers() + 1);
                 mineralUnits.add(managedUnit);
                 gatherers.add(managedUnit);
                 mineralGatherers.add(managedUnit);
                 assignToClosestBase(mineral, managedUnit);
-                return;
+                return true;
             }
         }
-
-        return;
+        
+        return false;
     }
 
-    // TODO: Assign closest geyser
+    /**
+     * Finds the best base for mineral assignment, prioritizing closest bases with unlocked patches
+     * 
+     * Sort by bases closest to the drone
+     * Check each base for unlocked mineral patches
+     * Return the base with the closest unlocked mineral patches
+     */
+    private Base findBestBaseForMineralAssignment(Unit drone) {
+        HashMap<Base, HashSet<ManagedUnit>> gatherersAssignedToBase = gameState.getGatherersAssignedToBase();
+        List<Base> bases = new ArrayList<>(gatherersAssignedToBase.keySet());
+        
+        if (bases.isEmpty()) {
+            return null;
+        }
+        
+        bases.sort(new BaseUnitDistanceComparator(drone));
+        
+        // First, look for bases with unlocked patches (prioritizing closest)
+        for (Base base : bases) {
+            if (hasUnlockedMineralPatches(base)) {
+                return base;
+            }
+        }
+        
+        // If no bases have unlocked patches, return the closest base (will be saturated)
+        return bases.get(0);
+    }
+    
+    /**
+     * Checks if a base has any unlocked mineral patches (0 workers assigned)
+     */
+    private boolean hasUnlockedMineralPatches(Base base) {
+        for (Mineral mineral : base.getMinerals()) {
+            Unit mineralUnit = mineral.getUnit();
+            if (gameState.getMineralAssignments().containsKey(mineralUnit)) {
+                HashSet<ManagedUnit> mineralUnits = gameState.getMineralAssignments().get(mineralUnit);
+                if (mineralUnits.size() == 0) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Assigns a drone to the closest available geyser
+     */
     private void assignToGeyser(ManagedUnit managedUnit) {
+        Unit unit = managedUnit.getUnit();
+        
+        // Get all available geysers and sort by distance
+        List<Unit> availableGeysers = new ArrayList<>();
         for (Unit geyser: gameState.getGeyserAssignments().keySet()) {
             HashSet<ManagedUnit> geyserUnits = gameState.getGeyserAssignments().get(geyser);
             if (geyserUnits.size() < 3) {
-                managedUnit.setRole(UnitRole.GATHER);
-                managedUnit.setGatherTarget(geyser);
-                managedUnit.setNewGatherTarget(true);
-                assignedManagedWorkers.add(managedUnit);
-                gameState.setGeyserWorkers(gameState.getGeyserWorkers()+1);
-                geyserUnits.add(managedUnit);
-                gatherers.add(managedUnit);
-                gasGatherers.add(managedUnit);
-                assignToClosestBase(geyser, managedUnit);
-                break;
+                availableGeysers.add(geyser);
             }
         }
+        
+        if (availableGeysers.isEmpty()) {
+            return;
+        }
+        
+        // Sort by distance to the drone
+        availableGeysers.sort(new UnitDistanceComparator(unit));
+        
+        // Assign to the closest available geyser
+        Unit targetGeyser = availableGeysers.get(0);
+        HashSet<ManagedUnit> geyserUnits = gameState.getGeyserAssignments().get(targetGeyser);
+        
+        managedUnit.setRole(UnitRole.GATHER);
+        managedUnit.setGatherTarget(targetGeyser);
+        managedUnit.setNewGatherTarget(true);
+        assignedManagedWorkers.add(managedUnit);
+        gameState.setGeyserWorkers(gameState.getGeyserWorkers()+1);
+        geyserUnits.add(managedUnit);
+        gatherers.add(managedUnit);
+        gasGatherers.add(managedUnit);
+        assignToClosestBase(targetGeyser, managedUnit);
     }
 
     // checksLarvaDeadlock determines if all larva are assigned to morph into non overlords and if we're supply blocked
@@ -360,15 +456,29 @@ public class WorkerManager {
     }
 
     /**
-     * Cuts gas harvesting.
-     *
-     * TODO: Partially cut, set reactions of when to cut.
+     * Cuts gas harvesting when gas is floating.
+     * Only reassigns excess gas workers to maintain balance.
      */
     private void cutGasHarvesting() {
-        List<ManagedUnit> geyserWorkers = new ArrayList<>(gasGatherers);
-        for (ManagedUnit worker: geyserWorkers) {
-            gameState.clearAssignments(worker);
-            assignToMineral(worker);
+        // Only cut gas workers if we have too many relative to mineral workers
+        int gasWorkers = gameState.getGeyserWorkers();
+        
+        // Keep at least 1 gas worker per geyser, but cut excess
+        int minGasWorkers = gameState.getGeyserAssignments().size();
+        int excessGasWorkers = Math.max(0, gasWorkers - minGasWorkers);
+        
+        if (excessGasWorkers > 0) {
+            List<ManagedUnit> geyserWorkers = new ArrayList<>(gasGatherers);
+            int reassigned = 0;
+            
+            for (ManagedUnit worker: geyserWorkers) {
+                if (reassigned >= excessGasWorkers) {
+                    break;
+                }
+                gameState.clearAssignments(worker);
+                assignToMineral(worker);
+                reassigned++;
+            }
         }
     }
 }
