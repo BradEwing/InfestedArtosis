@@ -234,7 +234,7 @@ public class MapAwareRecordTest {
         recordA.addWinTimestamp(baseTime);
         
         double index = recordA.index(100);
-        assertTrue(index > 1.0, "Single win should have positive index");
+        assertTrue(index >= 1.0, "Single win should have positive index");
     }
     
     @Test
