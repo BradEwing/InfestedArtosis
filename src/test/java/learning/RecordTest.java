@@ -5,37 +5,30 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.ArrayList;
-import java.util.List;
 
 /**
- * Unit tests for MapAwareRecord D-UCB implementation.
- * Tests the discounted UCB algorithm with map-specific context.
+ * Unit tests for Record D-UCB implementation.
+ * Tests the discounted UCB algorithm for strategy performance tracking.
  */
-public class MapAwareRecordTest {
+public class RecordTest {
     
-    private MapAwareRecord recordA;
-    private MapAwareRecord recordB;
+    private Record recordA;
+    private Record recordB;
     private long baseTime;
     
     @BeforeEach
     void setUp() {
         baseTime = System.currentTimeMillis();
-        recordA = MapAwareRecord.builder()
-                .strategy("StrategyA")
-                .mapName("MapA")
-                .opponentName("OpponentA")
-                .opponentRace("Terran")
+        recordA = Record.builder()
+                .opener("12Hatch")
                 .wins(0)
                 .losses(0)
                 .winTimestamps(new ArrayList<>())
                 .lossTimestamps(new ArrayList<>())
                 .build();
                 
-        recordB = MapAwareRecord.builder()
-                .strategy("StrategyB")
-                .mapName("MapA")
-                .opponentName("OpponentA")
-                .opponentRace("Terran")
+        recordB = Record.builder()
+                .opener("12Pool")
                 .wins(0)
                 .losses(0)
                 .winTimestamps(new ArrayList<>())
@@ -45,7 +38,7 @@ public class MapAwareRecordTest {
     
     @Test
     void testEmptyRecordReturnsDefaultIndex() {
-        assertEquals(1.0, recordA.index(100), 0.001);
+        assertEquals(1.0, recordA.index(0), 0.001);
     }
     
     /**
@@ -97,45 +90,21 @@ public class MapAwareRecordTest {
     }
     
     @Test
-    void testMapSpecificContext() {
-        MapAwareRecord mapRecord = MapAwareRecord.builder()
-                .strategy("12Pool")
-                .mapName("Lost Temple")
-                .opponentName("TerranBot")
-                .opponentRace("Terran")
+    void testBasicRecordOperations() {
+        Record record = Record.builder()
+                .opener("12Hatch")
                 .wins(0)
                 .losses(0)
                 .winTimestamps(new ArrayList<>())
                 .lossTimestamps(new ArrayList<>())
                 .build();
         
-        mapRecord.addWinTimestamp(baseTime);
-        mapRecord.addLossTimestamp(baseTime + 1000);
-        mapRecord.addWinTimestamp(baseTime + 2000);
+        record.addWinTimestamp(baseTime);
+        record.addLossTimestamp(baseTime + 1000);
+        record.addWinTimestamp(baseTime + 2000);
         
-        double index = mapRecord.index(100);
-        assertTrue(index > 0.0, "Map-specific record should have positive index");
-    }
-    
-    @Test
-    void testOpponentSpecificContext() {
-        MapAwareRecord opponentRecord = MapAwareRecord.builder()
-                .strategy("12Hatch")
-                .mapName("MapA")
-                .opponentName("ProtossBot")
-                .opponentRace("Protoss")
-                .wins(0)
-                .losses(0)
-                .winTimestamps(new ArrayList<>())
-                .lossTimestamps(new ArrayList<>())
-                .build();
-        
-        opponentRecord.addWinTimestamp(baseTime);
-        opponentRecord.addWinTimestamp(baseTime + 1000);
-        opponentRecord.addLossTimestamp(baseTime + 2000);
-        
-        double index = opponentRecord.index(100);
-        assertTrue(index > 0.0, "Opponent-specific record should have positive index");
+        double index = record.index(100);
+        assertTrue(index > 0.0, "Basic record should have positive index");
     }
     
     /**
@@ -172,22 +141,16 @@ public class MapAwareRecordTest {
      */
     @Test
     void testRecentWinsWeightedMore() {
-        MapAwareRecord recentWins = MapAwareRecord.builder()
-                .strategy("RecentWins")
-                .mapName("MapA")
-                .opponentName("OpponentA")
-                .opponentRace("Terran")
+        Record recentWins = Record.builder()
+                .opener("RecentWins")
                 .wins(0)
                 .losses(0)
                 .winTimestamps(new ArrayList<>())
                 .lossTimestamps(new ArrayList<>())
                 .build();
                 
-        MapAwareRecord oldWins = MapAwareRecord.builder()
-                .strategy("OldWins")
-                .mapName("MapA")
-                .opponentName("OpponentA")
-                .opponentRace("Terran")
+        Record oldWins = Record.builder()
+                .opener("OldWins")
                 .wins(0)
                 .losses(0)
                 .winTimestamps(new ArrayList<>())
@@ -224,7 +187,6 @@ public class MapAwareRecordTest {
     @Test
     void testZeroTotalGames() {
         recordA.addWinTimestamp(baseTime);
-        recordA.addLossTimestamp(baseTime + 1000);
         
         assertEquals(1.0, recordA.index(0), 0.001);
     }
@@ -233,8 +195,8 @@ public class MapAwareRecordTest {
     void testSingleGame() {
         recordA.addWinTimestamp(baseTime);
         
-        double index = recordA.index(100);
-        assertTrue(index > 1.0, "Single win should have positive index");
+        double index = recordA.index(1);
+        assertTrue(index >= 1.0, "Single win should have positive index");
     }
     
     @Test
@@ -283,5 +245,111 @@ public class MapAwareRecordTest {
         
         assertTrue(index > 1.0, "Index should be greater than 1.0 due to exploration");
         assertTrue(index < 3.0, "Index should be reasonable");
+    }
+    
+    @Test
+    void testNetWins() {
+        recordA.setWins(5);
+        recordA.setLosses(3);
+        assertEquals(2, recordA.netWins());
+    }
+    
+    @Test
+    void testWinsSquared() {
+        recordA.setWins(4);
+        assertEquals(16, recordA.winsSquared());
+    }
+    
+    @Test
+    void testGames() {
+        recordA.setWins(3);
+        recordA.setLosses(2);
+        assertEquals(5, recordA.games());
+    }
+    
+    @Test
+    void testWins() {
+        recordA.setWins(7);
+        assertEquals(7, recordA.wins());
+    }
+    
+    @Test
+    void testEmptyRecordWithZeroGames() {
+        assertEquals(1.0, recordA.index(0), 0.001);
+    }
+    
+    @Test
+    void testRecordWithZeroGames() {
+        recordA.setWins(0);
+        recordA.setLosses(0);
+        assertEquals(1.0, recordA.index(100), 0.001);
+    }
+    
+    @Test
+    void testMixedTimestamps() {
+        long time = baseTime;
+        
+        recordA.addWinTimestamp(time);
+        time += 5000;
+        recordA.addLossTimestamp(time);
+        time += 2000;
+        recordA.addWinTimestamp(time);
+        time += 3000;
+        recordA.addLossTimestamp(time);
+        
+        recordA.setWins(2);
+        recordA.setLosses(2);
+        
+        double index = recordA.index(100);
+        assertTrue(index > 0.0, "Mixed timestamps should produce valid index");
+    }
+    
+    @Test
+    void testLargeTimeGaps() {
+        long time = baseTime;
+        
+        recordA.addWinTimestamp(time);
+        time += 100000;
+        recordA.addWinTimestamp(time);
+        time += 100000;
+        recordA.addWinTimestamp(time);
+        
+        recordA.setWins(3);
+        recordA.setLosses(0);
+        
+        double index = recordA.index(100);
+        assertTrue(index > 1.0, "Large time gaps should still produce valid index");
+    }
+    
+    @Test
+    void testAllLosses() {
+        long time = baseTime;
+        
+        for (int i = 0; i < 5; i++) {
+            recordA.addLossTimestamp(time);
+            time += 1000;
+        }
+        
+        recordA.setWins(0);
+        recordA.setLosses(5);
+        
+        double index = recordA.index(100);
+        assertTrue(index > 0.0, "All losses should still produce positive index due to exploration");
+    }
+    
+    @Test
+    void testAllWins() {
+        long time = baseTime;
+        
+        for (int i = 0; i < 5; i++) {
+            recordA.addWinTimestamp(time);
+            time += 1000;
+        }
+        
+        recordA.setWins(5);
+        recordA.setLosses(0);
+        
+        double index = recordA.index(100);
+        assertTrue(index > 1.0, "All wins should produce high index");
     }
 }

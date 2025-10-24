@@ -56,12 +56,7 @@ public class Record implements UCBRecord {
 
     public double index(int totalGames) {
         if (totalGames == 0 || this.games() == 0) {
-            // bias for macro play
-            if (Objects.equals(opener, "12Hatch")) {
-                return 2.0;
-            } else {
-                return 1.0;
-            }
+            return 1.0;
         }
         
         double discountedWins = calculateDiscountedWins();
