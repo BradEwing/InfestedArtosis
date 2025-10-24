@@ -69,11 +69,15 @@ public class LearningManager {
     }
 
     public void onEnd(boolean isWinner) {
+        long currentTimestamp = System.currentTimeMillis();
+        
         if (isWinner) {
             currentOpener.setWins(currentOpener.getWins()+1);
+            currentOpener.addWinTimestamp(currentTimestamp);
             opponentRecord.setWins(opponentRecord.getWins()+1);
         } else {
             currentOpener.setLosses(currentOpener.getLosses()+1);
+            currentOpener.addLossTimestamp(currentTimestamp);
             opponentRecord.setLosses(opponentRecord.getLosses()+1);
         }
         Map<String, Record> openerRecords = opponentRecord.getOpenerRecord();
@@ -83,8 +87,10 @@ public class LearningManager {
         if (activeBuildOrderRecord != null && !activeBuildOrderRecord.getOpener().equals(currentOpener.getOpener())) {
             if (isWinner) {
                 activeBuildOrderRecord.setWins(activeBuildOrderRecord.getWins()+1);
+                activeBuildOrderRecord.addWinTimestamp(currentTimestamp);
             } else {
                 activeBuildOrderRecord.setLosses(activeBuildOrderRecord.getLosses()+1);
+                activeBuildOrderRecord.addLossTimestamp(currentTimestamp);
             }
             Map<String, Record> buildOrderRecords = opponentRecord.getBuildOrderRecord();
             buildOrderRecords.put(activeBuildOrderRecord.getOpener(), activeBuildOrderRecord);
@@ -138,14 +144,20 @@ public class LearningManager {
             
             Record openerRecord = openerRecords.get(record.getOpener());
             if (openerRecord == null) {
-                openerRecord = new Record(record.getOpener(), 0, 0);
+                openerRecord = Record.builder()
+                    .opener(record.getOpener())
+                    .wins(0)
+                    .losses(0)
+                    .build();
                 openerRecords.put(record.getOpener(), openerRecord);
             }
             
             if (record.isWinner()) {
                 openerRecord.setWins(openerRecord.getWins() + 1);
+                openerRecord.addWinTimestamp(record.getTimestamp());
             } else {
                 openerRecord.setLosses(openerRecord.getLosses() + 1);
+                openerRecord.addLossTimestamp(record.getTimestamp());
             }
             
             String mapOpenerKey = WeightedUCBCalculator.createMapKey(record.getMapName(), record.getOpener());
@@ -164,8 +176,10 @@ public class LearningManager {
             
             if (record.isWinner()) {
                 mapOpenerRecord.setWins(mapOpenerRecord.getWins() + 1);
+                mapOpenerRecord.addWinTimestamp(record.getTimestamp());
             } else {
                 mapOpenerRecord.setLosses(mapOpenerRecord.getLosses() + 1);
+                mapOpenerRecord.addLossTimestamp(record.getTimestamp());
             }
             
             if (record.getBuildOrder() != null && !record.getBuildOrder().equals(record.getOpener())) {
@@ -177,14 +191,20 @@ public class LearningManager {
                 
                 Record buildOrderRecord = buildOrderRecords.get(record.getBuildOrder());
                 if (buildOrderRecord == null) {
-                    buildOrderRecord = new Record(record.getBuildOrder(), 0, 0);
+                    buildOrderRecord = Record.builder()
+                        .opener(record.getBuildOrder())
+                        .wins(0)
+                        .losses(0)
+                        .build();
                     buildOrderRecords.put(record.getBuildOrder(), buildOrderRecord);
                 }
                 
                 if (record.isWinner()) {
                     buildOrderRecord.setWins(buildOrderRecord.getWins() + 1);
+                    buildOrderRecord.addWinTimestamp(record.getTimestamp());
                 } else {
                     buildOrderRecord.setLosses(buildOrderRecord.getLosses() + 1);
+                    buildOrderRecord.addLossTimestamp(record.getTimestamp());
                 }
                 
                 String mapBuildOrderKey = WeightedUCBCalculator.createMapKey(record.getMapName(), record.getBuildOrder());
@@ -203,8 +223,10 @@ public class LearningManager {
                 
                 if (record.isWinner()) {
                     mapBuildOrderRecord.setWins(mapBuildOrderRecord.getWins() + 1);
+                    mapBuildOrderRecord.addWinTimestamp(record.getTimestamp());
                 } else {
                     mapBuildOrderRecord.setLosses(mapBuildOrderRecord.getLosses() + 1);
+                    mapBuildOrderRecord.addLossTimestamp(record.getTimestamp());
                 }
             }
         }
@@ -264,7 +286,11 @@ public class LearningManager {
                 .collect(Collectors.toSet());
 
         for (String opener: missingOpeners) {
-            openerRecordMap.put(opener, new Record(opener, 0, 0));
+            openerRecordMap.put(opener, Record.builder()
+                .opener(opener)
+                .wins(0)
+                .losses(0)
+                .build());
         }
         
         Map<String, Record> buildOrderRecordMap = opponentRecord.getBuildOrderRecord();
@@ -280,7 +306,11 @@ public class LearningManager {
                 .collect(Collectors.toSet());
 
         for (String buildOrder: missingBuildOrders) {
-            buildOrderRecordMap.put(buildOrder, new Record(buildOrder, 0, 0));
+            buildOrderRecordMap.put(buildOrder, Record.builder()
+                .opener(buildOrder)
+                .wins(0)
+                .losses(0)
+                .build());
         }
     }
 
@@ -348,7 +378,11 @@ public class LearningManager {
 
         for (BuildOrder candidate : candidates) {
             if (!opponentRecord.getBuildOrderRecord().containsKey(candidate.getName())) {
-                opponentRecord.getBuildOrderRecord().put(candidate.getName(), new Record(candidate.getName(), 0, 0));
+                opponentRecord.getBuildOrderRecord().put(candidate.getName(), Record.builder()
+                    .opener(candidate.getName())
+                    .wins(0)
+                    .losses(0)
+                    .build());
             }
         }
 
