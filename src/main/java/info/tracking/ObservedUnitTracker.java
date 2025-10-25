@@ -4,6 +4,7 @@ import bwapi.PlayerType;
 import bwapi.Position;
 import bwapi.Unit;
 import bwapi.UnitType;
+import util.Filter;
 import util.Time;
 
 import java.util.HashMap;
@@ -137,12 +138,31 @@ public class ObservedUnitTracker {
                 .collect(Collectors.toSet());
     }
 
+    public Set<Position> getLastKnownPositionsOfBuildings() {
+        return observedUnits.values()
+                .stream()
+                .filter(ou -> ou.getUnitType().isBuilding())
+                .filter(ou -> ou.getDestroyedFrame() == null)
+                .map(ou -> ou.getLastKnownLocation())
+                .collect(Collectors.toSet());
+    }
+
     public Set<Unit> getVisibleEnemyUnits() {
         return observedUnits.values()
                 .stream()
                 .filter(ou -> ou.getUnit().isVisible())
                 .filter(ou -> ou.getUnit().getPlayer().getType() != PlayerType.None)
                 .filter(ou -> ou.getUnit().getPlayer().getType() != PlayerType.Neutral)
+                .filter(ou -> ou.getDestroyedFrame() == null)
+                .map(ou -> ou.getUnit())
+                .collect(Collectors.toSet());
+    }
+
+    public Set<Unit> getHostileToGroundBuildings() {
+        return observedUnits.values()
+                .stream()
+                .filter(ou -> ou.getUnitType().isBuilding())
+                .filter(ou -> Filter.isHostileBuildingToGround(ou.getUnitType()))
                 .filter(ou -> ou.getDestroyedFrame() == null)
                 .map(ou -> ou.getUnit())
                 .collect(Collectors.toSet());

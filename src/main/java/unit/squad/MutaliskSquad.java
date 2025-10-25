@@ -61,11 +61,9 @@ public class MutaliskSquad extends Squad {
         }
 
         Set<Unit> enemyUnits = gameState.getDetectedEnemyUnits();
-        Set<Unit> enemyBuildings = gameState.getEnemyBuildings();
 
         List<Unit> allEnemies = new ArrayList<>();
         allEnemies.addAll(enemyUnits);
-        allEnemies.addAll(enemyBuildings);
         
         // Filter out low priority targets
         allEnemies.removeIf(enemy -> util.Filter.isLowPriorityCombatTarget(enemy.getType()));
@@ -489,34 +487,6 @@ public class MutaliskSquad extends Squad {
             }
         }
         return threats;
-    }
-
-    private List<Unit> findStrayUnits(List<Unit> enemies) {
-        List<Unit> strayUnits = new ArrayList<>();
-
-        for (Unit unit : enemies) {
-            if (unit.getType().isBuilding()) {
-                continue;
-            }
-
-            // Find distance to nearest ally
-            double nearestAllyDistance = Double.MAX_VALUE;
-            for (Unit other : enemies) {
-                if (other != unit && !other.getType().isBuilding()) {
-                    double distance = unit.getDistance(other);
-                    if (distance < nearestAllyDistance) {
-                        nearestAllyDistance = distance;
-                    }
-                }
-            }
-
-            // Units more than 64 pixels from nearest ally are stray
-            if (nearestAllyDistance > 64) {
-                strayUnits.add(unit);
-            }
-        }
-
-        return strayUnits;
     }
 
     private List<Unit> findStaticDefense(List<Unit> enemies) {

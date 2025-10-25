@@ -657,6 +657,14 @@ public class GameState {
     }
 
     /**
+     * Gets all known enemy building positions for combat evaluation.
+     * @return Set of enemy building positions
+     */
+    public Set<Position> getLastKnownPositionsOfBuildings() {
+        return observedUnitTracker.getLastKnownPositionsOfBuildings();
+    }
+
+    /**
      * Gets all visible enemy units for combat evaluation.
      * @return Set of visible enemy units
      */
