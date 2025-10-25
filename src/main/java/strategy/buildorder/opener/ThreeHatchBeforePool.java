@@ -52,6 +52,9 @@ public class ThreeHatchBeforePool extends BuildOrder {
         int overlordCount = gameState.ourUnitCount(UnitType.Zerg_Overlord);
         int zerglingCount = gameState.ourUnitCount(UnitType.Zerg_Zergling);
 
+        int extractorCount = baseData.numExtractor();
+        boolean wantFirstGas = gameState.canPlanExtractor() && plannedAndCurrentBases > 2 && extractorCount < 1;
+
         if (droneCount < 8) {
             plans.add(planUnit(gameState, UnitType.Zerg_Drone));
             return plans;
@@ -95,6 +98,11 @@ public class ThreeHatchBeforePool extends BuildOrder {
 
         if ((droneCount >= 13 && plannedAndCurrentBases >= 3) && techProgression.canPlanPool()) {
             plans.add(planSpawningPool(gameState));
+            return plans;
+        }
+
+        if (wantFirstGas) {
+            plans.add(planExtractor(gameState));
             return plans;
         }
 
