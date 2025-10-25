@@ -5,6 +5,7 @@ import strategy.buildorder.BuildOrder;
 import strategy.buildorder.opener.FourPool;
 import strategy.buildorder.opener.NinePoolSpeed;
 import strategy.buildorder.opener.Overpool;
+import strategy.buildorder.opener.ThreeHatchBeforePool;
 import strategy.buildorder.protoss.ThreeHatchHydra;
 import strategy.buildorder.protoss.ThreeHatchMuta;
 import strategy.buildorder.terran.ThreeHatchLurker;
@@ -71,6 +72,7 @@ public class BuildOrderFactory {
         allBuildOrders.add(new FourPool());
         allBuildOrders.add(new NinePoolSpeed());
         allBuildOrders.add(new Overpool());
+        allBuildOrders.add(new ThreeHatchBeforePool());
         allBuildOrders.add(new TwelveHatch());
         allBuildOrders.add(new TwelvePool());
 
