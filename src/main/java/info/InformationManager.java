@@ -60,6 +60,12 @@ public class InformationManager {
 
     private static final int DETECTION_DISTANCE = 10;
 
+    private boolean isGasStructure(UnitType unitType) {
+        return unitType == UnitType.Terran_Refinery 
+            || unitType == UnitType.Zerg_Extractor 
+            || unitType == UnitType.Protoss_Assimilator;
+    }
+
 
     public InformationManager(BWEM bwem, Game game, GameState gameState, LearningManager learningManager) {
         this.bwem = bwem;
@@ -159,7 +165,8 @@ public class InformationManager {
             return;
         }
         // Check if the unit should be ignored: resource, powerup, special/unknown
-        if (unitType.isResourceContainer()
+        // Exception: Allow gas structures (Refinery, Extractor, Assimilator) to be tracked
+        if ((unitType.isResourceContainer() && !isGasStructure(unitType))
                 || unitType.isMineralField()
                 || unitType.isNeutral()
                 || unitType.isSpecialBuilding()
@@ -267,6 +274,8 @@ public class InformationManager {
 
         if (enemyBuildings.contains(unit)) {
             enemyBuildings.remove(unit);
+            ScoutData scoutData = gameState.getScoutData();
+            scoutData.removeEnemyBuildingLocation(unit.getTilePosition());
         }
 
         if (enemyHostileToGroundBuildings.contains(unit)) {
@@ -335,6 +344,8 @@ public class InformationManager {
     }
 
     private void trackEnemyUnits() {
+        ObservedUnitTracker tracker = gameState.getObservedUnitTracker();
+
         for (Unit unit: game.getAllUnits()) {
             UnitType unitType = unit.getType();
 
@@ -353,6 +364,10 @@ public class InformationManager {
             if (visibleEnemyUnits.size() > 0 && unitType == UnitType.Zerg_Larva) {
                 continue;
             }
+
+            // Idempotently track enemy unit - only calls onUnitShow if not already tracked
+            boolean isProxied = isProxiedBuilding(unit);
+            tracker.onUnitShow(unit, game.getFrameCount(), isProxied);
 
             visibleEnemyUnits.add(unit);
         }
@@ -404,6 +419,8 @@ public class InformationManager {
     private void trackEnemyBuildings() {
         BaseData baseData = gameState.getBaseData();
         ScoutData scoutData = gameState.getScoutData();
+        ObservedUnitTracker tracker = gameState.getObservedUnitTracker();
+
         for (Unit unit: game.getAllUnits()) {
             if (unit.getPlayer() != game.enemy()) {
                 continue;
@@ -413,6 +430,10 @@ public class InformationManager {
 
 
             if (unit.isVisible() && unitType.isBuilding()) {
+                // Idempotently track enemy building - only calls onUnitShow if not already tracked
+                boolean isProxied = isProxiedBuilding(unit);
+                tracker.onUnitShow(unit, game.getFrameCount(), isProxied);
+
                 enemyBuildings.add(unit);
                 scoutData.addEnemyBuildingLocation(tp);
                 if (isHostileBuildingToGround(unitType)) {
@@ -758,7 +779,8 @@ public class InformationManager {
     private BuildOrder transitionBuildOrder() {
         BuildOrder active = gameState.getActiveBuildOrder();
         Set<BuildOrder> candidates = active.transition(gameState);
-        return learningManager.determineBuildOrder(candidates);
+        return new TwoHatchMuta();
+        //return learningManager.determineBuildOrder(candidates);
     }
 
     private boolean isProxiedBuilding(Unit unit) {

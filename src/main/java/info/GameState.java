@@ -657,6 +657,14 @@ public class GameState {
     }
 
     /**
+     * Gets all visible enemy units for combat evaluation.
+     * @return Set of visible enemy units
+     */
+    public Set<Unit> getVisibleEnemyUnits() {
+        return observedUnitTracker.getVisibleEnemyUnits();
+    }
+
+    /**
      * Gets the rally point for squads that need to regroup.
      * @return Position for rally point
      */
