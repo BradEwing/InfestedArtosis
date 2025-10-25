@@ -1,5 +1,6 @@
 package info.tracking;
 
+import bwapi.PlayerType;
 import bwapi.Position;
 import bwapi.Unit;
 import bwapi.UnitType;
@@ -51,7 +52,7 @@ public class ObservedUnitTracker {
     public int getUnitTypeCountBeforeTime(UnitType type, Time t) {
         return (int) observedUnits.values()
                 .stream()
-                .filter(ou -> ou.getUnit().getType() == type)
+                .filter(ou -> ou.getUnitType() == type)
                 .filter(ou -> ou.getFirstObservedFrame().lessThanOrEqual(t))
                 .count();
     }
@@ -112,7 +113,7 @@ public class ObservedUnitTracker {
     public int getProxiedCountByTypeBeforeTime(UnitType unitType, Time detectedBy) {
         return (int) observedUnits.values()
                 .stream()
-                .filter(ou -> ou.getUnit().getType() == unitType)
+                .filter(ou -> ou.getUnitType() == unitType)
                 .filter(ObservedUnit::isProxied)
                 .filter(ou -> ou.getFirstObservedFrame().lessThanOrEqual(detectedBy))
                 .count();
@@ -130,7 +131,18 @@ public class ObservedUnitTracker {
     public Set<Unit> getBuilding() {
         return observedUnits.values()
                 .stream()
-                .filter(ou -> ou.getUnit().getType().isBuilding())
+                .filter(ou -> ou.getUnitType().isBuilding())
+                .filter(ou -> ou.getDestroyedFrame() == null)
+                .map(ou -> ou.getUnit())
+                .collect(Collectors.toSet());
+    }
+
+    public Set<Unit> getVisibleEnemyUnits() {
+        return observedUnits.values()
+                .stream()
+                .filter(ou -> ou.getUnit().isVisible())
+                .filter(ou -> ou.getUnit().getPlayer().getType() != PlayerType.None)
+                .filter(ou -> ou.getUnit().getPlayer().getType() != PlayerType.Neutral)
                 .filter(ou -> ou.getDestroyedFrame() == null)
                 .map(ou -> ou.getUnit())
                 .collect(Collectors.toSet());

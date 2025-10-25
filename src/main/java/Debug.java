@@ -164,14 +164,14 @@ public class Debug {
             return;
         }
         for (Base base: baseData.getMyBases()) {
-            buildingPlanner.debugBaseCreepTiles(base);
+            //buildingPlanner.debugBaseCreepTiles(base);
             //buildingPlanner.debugBaseChoke(base);
             //buildingPlanner.debugLocationForTechBuilding(base, UnitType.Zerg_Spawning_Pool);
-            buildingPlanner.debugReserveTiles();
+            //buildingPlanner.debugReserveTiles();
             //buildingPlanner.debugNextCreepColonyLocation(base);
             //buildingPlanner.debugMineralBoundingBox(base);
             //buildingPlanner.debugGeyserBoundingBox(base);
-            buildingPlanner.debugMacroHatcheryLocation(gameState.getOpponentRace(), baseData);
+            //buildingPlanner.debugMacroHatcheryLocation(gameState.getOpponentRace(), baseData);
         }
     }
 }

@@ -54,8 +54,6 @@ public class MutaliskSquad extends Squad {
      * retreat calculations, and engagement decisions.
      */
     public void executeTactics(GameState gameState) {
-        shouldDisband = false;
-
         if (getMembers().size() < 3) {
             setStatus(SquadStatus.RALLY);
             rallyToSafePosition(gameState);
