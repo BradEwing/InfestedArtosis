@@ -198,8 +198,7 @@ public class UnitManager {
 
         // Handle Overlords as scouts based on race-specific conditions
         if (unitType == UnitType.Zerg_Overlord) {
-            Set<Unit> enemies = new HashSet<>(informationManager.getVisibleEnemyUnits());
-            enemies.addAll(informationManager.getEnemyBuildings());
+            Set<Unit> enemies = new HashSet<>(gameState.getVisibleEnemyUnits());
             if (!scoutData.shouldOverlordsContinueScouting(game.enemy().getRace(), enemies)) {
                 squadManager.addManagedUnit(managedUnit);
                 scoutManager.removeScout(managedUnit);
@@ -210,7 +209,7 @@ public class UnitManager {
         }
 
         // Scout if enemy presence is unknown
-        if (!informationManager.isEnemyUnitVisible() && informationManager.getEnemyBuildings().isEmpty()) {
+        if (!informationManager.isEnemyUnitVisible() && gameState.getEnemyBuildings().isEmpty()) {
             if (role != UnitRole.SCOUT) {
                 createScout(managedUnit);
                 squadManager.removeManagedUnit(managedUnit);
@@ -339,8 +338,7 @@ public class UnitManager {
             boolean shouldStopScouting = false;
             
             if (managedUnit.getUnitType() == UnitType.Zerg_Overlord) {
-                Set<Unit> enemies = new HashSet<>(informationManager.getVisibleEnemyUnits());
-                enemies.addAll(informationManager.getEnemyBuildings());
+                Set<Unit> enemies = new HashSet<>(gameState.getVisibleEnemyUnits());
                 shouldStopScouting = !scoutData.shouldOverlordsContinueScouting(game.enemy().getRace(), enemies);
             } else {
                 shouldStopScouting = scoutData.isEnemyBuildingLocationKnown() || informationManager.isEnemyUnitVisible();

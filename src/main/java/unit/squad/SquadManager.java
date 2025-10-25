@@ -291,20 +291,11 @@ public class SquadManager {
     }
 
     private List<Unit> enemyUnitsNearSquad(Squad squad) {
-        HashSet<Unit> enemyUnits = informationManager.getVisibleEnemyUnits();
-        HashSet<Unit> enemyBuildings = informationManager.getEnemyBuildings();
+        Set<Unit> enemyUnits = gameState.getVisibleEnemyUnits();
 
         List<Unit> enemies = new ArrayList<>();
 
         for (Unit u: enemyUnits) {
-            final double d = u.getPosition().getDistance(squad.getCenter());
-            if (d > 256.0) {
-                continue;
-            }
-            enemies.add(u);
-        }
-
-        for (Unit u: enemyBuildings) {
             final double d = u.getPosition().getDistance(squad.getCenter());
             if (d > 256.0) {
                 continue;
@@ -470,11 +461,11 @@ public class SquadManager {
         }
 
         // Handle building targeting when no visible units
-        Set<Unit> enemyBuildings = gameState.getEnemyBuildings();
+        Set<Position> enemyBuildingPositions = gameState.getLastKnownPositionsOfBuildings();
         Set<Unit> enemyUnits = gameState.getDetectedEnemyUnits();
 
         // If no enemy units, buildings, or known building locations exist, disband squad to transition to scout
-        if (enemyUnits.isEmpty() && enemyBuildings.isEmpty()) {
+        if (enemyUnits.isEmpty() && enemyBuildingPositions.isEmpty()) {
             ScoutData scoutData = gameState.getScoutData();
             if (!scoutData.isEnemyBuildingLocationKnown()) {
                 squad.setShouldDisband(true);
@@ -482,12 +473,20 @@ public class SquadManager {
             }
         }
 
-        if (enemyUnits.isEmpty() && !enemyBuildings.isEmpty()) {
-            Unit closest = closestHostileUnit(squad.getCenter(), new ArrayList<>(enemyBuildings));
+        if (enemyUnits.isEmpty() && !enemyBuildingPositions.isEmpty()) {
+            double closestDistance = Double.MAX_VALUE;
+            Position closestPosition = null;
+            for (Position position: enemyBuildingPositions) {
+                double distance = squad.getCenter().getDistance(position);
+                if (distance < closestDistance) {
+                    closestDistance = distance;
+                    closestPosition = position;
+                }
+            }
             squad.setStatus(SquadStatus.FIGHT);
             for (ManagedUnit managedUnit : squad.getMembers()) {
                 managedUnit.setRole(UnitRole.FIGHT);
-                managedUnit.setMovementTargetPosition(closest.getTilePosition());
+                managedUnit.setMovementTargetPosition(closestPosition.toTilePosition());
             }
             return;
         }
@@ -855,8 +854,7 @@ public class SquadManager {
     private void assignEnemyTarget(ManagedUnit managedUnit, Squad squad) {
         Unit unit = managedUnit.getUnit();
         List<Unit> enemyUnits = new ArrayList<>();
-        enemyUnits.addAll(informationManager.getVisibleEnemyUnits());
-        enemyUnits.addAll(informationManager.getEnemyBuildings());
+        enemyUnits.addAll(gameState.getVisibleEnemyUnits());
 
         List<Unit> filtered = new ArrayList<>();
         // Attempt to find the closest enemy OUTSIDE fog of war

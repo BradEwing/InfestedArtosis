@@ -19,7 +19,6 @@ import info.map.MapTile;
 import info.map.MapTileType;
 import info.tracking.ObservedUnitTracker;
 import learning.LearningManager;
-import lombok.Getter;
 import macro.plan.Plan;
 import macro.plan.PlanType;
 import org.jetbrains.annotations.Nullable;
@@ -30,8 +29,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-
-import static util.Filter.isHostileBuildingToGround;
 
 
 public class InformationManager {
@@ -47,12 +44,6 @@ public class InformationManager {
     private HashSet<Base> startingBasesSet = new HashSet<>();
     private HashSet<Base> expansionBasesSet = new HashSet<>();
     private HashSet<TilePosition> startingBasesTilePositions = new HashSet<>();
-
-    @Getter
-    private HashSet<Unit> enemyBuildings = new HashSet<>();
-    private HashSet<Unit> enemyHostileToGroundBuildings = new HashSet<>();
-    @Getter
-    private HashSet<Unit> visibleEnemyUnits = new HashSet<>();
 
     private HashMap<Unit, TilePosition> enemyLastKnownLocations = new HashMap<>();
     private HashMap<TilePosition, Base> tilePositionToBaseLookup = new HashMap<>();
@@ -271,18 +262,9 @@ public class InformationManager {
     public void onUnitDestroy(Unit unit) {
         UnitType unitType = unit.getType();
 
-        if (enemyBuildings.contains(unit)) {
-            enemyBuildings.remove(unit);
+        if (unit.getPlayer() == game.enemy() && unitType.isBuilding()) {
             ScoutData scoutData = gameState.getScoutData();
             scoutData.removeEnemyBuildingLocation(unit.getTilePosition());
-        }
-
-        if (enemyHostileToGroundBuildings.contains(unit)) {
-            enemyHostileToGroundBuildings.remove(unit);
-        }
-
-        if (visibleEnemyUnits.contains(unit)) {
-            visibleEnemyUnits.remove(unit);
         }
 
         if (enemyLastKnownLocations.containsKey(unit)) {
@@ -310,12 +292,13 @@ public class InformationManager {
     }
 
     public boolean isEnemyUnitVisible() {
-        for (Unit enemy: visibleEnemyUnits) {
+        ObservedUnitTracker tracker = gameState.getObservedUnitTracker();
+        for (Unit enemy: tracker.getVisibleEnemyUnits()) {
             if (enemy.isDetected()) {
                 return true;
             }
         }
-        for (Unit enemy: enemyBuildings) {
+        for (Unit enemy: tracker.getBuilding()) {
             if (enemy.isVisible()) {
                 return true;
             }
@@ -325,7 +308,8 @@ public class InformationManager {
     }
 
     public int getEnemyHostileToGroundBuildingsCount() {
-        return enemyHostileToGroundBuildings.size();
+        ObservedUnitTracker tracker = gameState.getObservedUnitTracker();
+        return tracker.getHostileToGroundBuildings().size();
     }
 
     /**
@@ -360,28 +344,13 @@ public class InformationManager {
                 continue;
             }
 
-            if (visibleEnemyUnits.size() > 0 && unitType == UnitType.Zerg_Larva) {
+            if (tracker.getVisibleEnemyUnits().size() > 0 && unitType == UnitType.Zerg_Larva) {
                 continue;
             }
 
             // Idempotently track enemy unit - only calls onUnitShow if not already tracked
             boolean isProxied = isProxiedBuilding(unit);
             tracker.onUnitShow(unit, game.getFrameCount(), isProxied);
-
-            visibleEnemyUnits.add(unit);
-        }
-
-        List<Unit> unknownUnits = new ArrayList<>();
-        for (Unit unit: visibleEnemyUnits) {
-            if (!unit.isVisible()) {
-                unknownUnits.add(unit);
-            }
-        }
-
-
-        // Remove units we've lost sight of
-        if (unknownUnits.size() > 1) {
-            unknownUnits.stream().forEach(visibleEnemyUnits::remove);
         }
 
         List<Unit> enemyUnitsNotAtLastKnownLocation = new ArrayList<>();
@@ -433,11 +402,7 @@ public class InformationManager {
                 boolean isProxied = isProxiedBuilding(unit);
                 tracker.onUnitShow(unit, game.getFrameCount(), isProxied);
 
-                enemyBuildings.add(unit);
                 scoutData.addEnemyBuildingLocation(tp);
-                if (isHostileBuildingToGround(unitType)) {
-                    enemyHostileToGroundBuildings.add(unit);
-                }
 
                 // If enemyBase is unknown and this is our first time encountering an enemyUnit, set enemyBase
                 if (baseData.getMainEnemyBase() == null) {
@@ -459,7 +424,8 @@ public class InformationManager {
     }
 
     private boolean canSeeEnemyBuilding() {
-        for (Unit building: enemyBuildings) {
+        ObservedUnitTracker tracker = gameState.getObservedUnitTracker();
+        for (Unit building: tracker.getBuilding()) {
             // BWAPI sets type to unknown when the current player doesn't have visibility
             if (building.getType() != UnitType.Unknown) {
                 return true;
@@ -647,10 +613,11 @@ public class InformationManager {
 
     private void debugEnemyTargets() {
         ScoutData scoutData = gameState.getScoutData();
-        for (Unit target: enemyBuildings) {
+        ObservedUnitTracker tracker = gameState.getObservedUnitTracker();
+        for (Unit target: tracker.getBuilding()) {
             game.drawCircleMap(target.getPosition(), 3, Color.Yellow);
         }
-        for (Unit target: visibleEnemyUnits) {
+        for (Unit target: tracker.getVisibleEnemyUnits()) {
             game.drawCircleMap(target.getPosition(), 3, Color.Red);
         }
         for (TilePosition tilePosition: scoutData.getEnemyBuildingPositions()) {
