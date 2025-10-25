@@ -24,7 +24,6 @@ import macro.plan.Plan;
 import macro.plan.PlanType;
 import org.jetbrains.annotations.Nullable;
 import strategy.buildorder.BuildOrder;
-import strategy.buildorder.terran.TwoHatchMuta;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -779,8 +778,7 @@ public class InformationManager {
     private BuildOrder transitionBuildOrder() {
         BuildOrder active = gameState.getActiveBuildOrder();
         Set<BuildOrder> candidates = active.transition(gameState);
-        return new TwoHatchMuta();
-        //return learningManager.determineBuildOrder(candidates);
+        return learningManager.determineBuildOrder(candidates);
     }
 
     private boolean isProxiedBuilding(Unit unit) {
