@@ -156,4 +156,18 @@ public class ScoutData {
 
         return null;
     }
+
+    /**
+     * Clear all scouting data associated with a base that has been scouted/seen.
+     */
+    public void clearScoutedBase(Base base) {
+        if (base == null) {
+            return;
+        }
+        TilePosition tp = base.getLocation();
+        activeScoutTargets.remove(tp);
+        scoutTargets.remove(tp);
+        enemyBuildingPositions.remove(tp);
+        removeBaseScoutAssignment(base);
+    }
 }

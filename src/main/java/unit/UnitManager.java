@@ -110,6 +110,7 @@ public class UnitManager {
 
             UnitRole role = managedUnit.getRole();
 
+            // TODO: Clean this up, this is really just avoiding special handling of scouting units
             switch(role) {
                 case GATHER:
                 case BUILD:
@@ -120,8 +121,11 @@ public class UnitManager {
                 case BUILDING:
                 case RALLY:
                 case REGROUP:
+                case FIGHT:
                     managedUnit.execute();
                     continue;
+                default:
+                    break;
             }
             UnitType type = managedUnit.getUnitType();
             switch(type) {
@@ -345,6 +349,7 @@ public class UnitManager {
             }
             
             if (shouldStopScouting) {
+                managedUnit.setRole(UnitRole.RALLY);
                 squadManager.addManagedUnit(managedUnit);
                 scoutManager.removeScout(managedUnit);
                 return;
