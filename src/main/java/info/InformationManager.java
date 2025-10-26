@@ -5,7 +5,6 @@ import bwapi.Game;
 import bwapi.PlayerType;
 import bwapi.Position;
 import bwapi.Race;
-import bwapi.Text;
 import bwapi.TilePosition;
 import bwapi.Unit;
 import bwapi.UnitType;
@@ -43,10 +42,7 @@ public class InformationManager {
     // TODO: Move to GameState
     private HashSet<Base> startingBasesSet = new HashSet<>();
     private HashSet<Base> expansionBasesSet = new HashSet<>();
-    private HashSet<TilePosition> startingBasesTilePositions = new HashSet<>();
-
-    private HashMap<Unit, TilePosition> enemyLastKnownLocations = new HashMap<>();
-    private HashMap<TilePosition, Base> tilePositionToBaseLookup = new HashMap<>();
+    
 
     private static final int DETECTION_DISTANCE = 10;
 
@@ -104,8 +100,6 @@ public class InformationManager {
 
         ObservedUnitTracker tracker = gameState.getObservedUnitTracker();
         tracker.onUnitHide(unit, game.getFrameCount());
-
-        enemyLastKnownLocations.put(unit, unit.getTilePosition());
     }
 
     /**
@@ -172,9 +166,6 @@ public class InformationManager {
         ObservedUnitTracker tracker = gameState.getObservedUnitTracker();
         boolean isProxied = isProxiedBuilding(unit);
         tracker.onUnitShow(unit, game.getFrameCount(), isProxied);
-
-
-        enemyLastKnownLocations.remove(unit);
     }
 
     public void onUnitMorph(Unit unit) {
@@ -267,9 +258,7 @@ public class InformationManager {
             scoutData.removeEnemyBuildingLocation(unit.getTilePosition());
         }
 
-        if (enemyLastKnownLocations.containsKey(unit)) {
-            enemyLastKnownLocations.remove(unit);
-        }
+        
 
         // TODO: filter friendly units?
         ensureEnemyUnitRemovedFromBaseThreats(unit);
@@ -353,17 +342,7 @@ public class InformationManager {
             tracker.onUnitShow(unit, game.getFrameCount(), isProxied);
         }
 
-        List<Unit> enemyUnitsNotAtLastKnownLocation = new ArrayList<>();
-        for (Unit unit: enemyLastKnownLocations.keySet()) {
-            TilePosition tp = enemyLastKnownLocations.get(unit);
-            if (game.isVisible(tp)) {
-                enemyUnitsNotAtLastKnownLocation.add(unit);
-            }
-        }
 
-        for (Unit unit: enemyUnitsNotAtLastKnownLocation) {
-            enemyLastKnownLocations.remove(unit);
-        }
     }
 
     // TODO: Refactor into util
@@ -496,21 +475,20 @@ public class InformationManager {
             }
         }
 
-        for (TilePosition target: startingBasesTilePositions) {
-            if (game.isVisible(target)) {
-                foundTargets.add(target);
-            }
-        }
-
         for (TilePosition target: foundTargets) {
             scoutData.removeActiveScoutTarget(target);
             scoutData.removeEnemyBuildingLocation(target);
-            startingBasesTilePositions.remove(target);
-            if (tilePositionToBaseLookup.containsKey(target)) {
-                Base b = tilePositionToBaseLookup.get(target);
-                scoutData.removeBaseScoutAssignment(b);
-                tilePositionToBaseLookup.remove(target);
+        }
+
+        List<Base> foundBases = new ArrayList<>();
+        for (Base base : scoutData.getScoutingBaseSet()) {
+            TilePosition tp = base.getLocation();
+            if (game.isVisible(tp)) {
+                foundBases.add(base);
             }
+        }
+        for (Base base : foundBases) {
+            scoutData.clearScoutedBase(base);
         }
     }
 
@@ -518,13 +496,10 @@ public class InformationManager {
         ScoutData scoutData = gameState.getScoutData();
 
         for (final Base b : bwem.getMap().getBases()) {
-            TilePosition tilePosition = b.getLocation();
             if (b.isStartingLocation()) {
-                startingBasesTilePositions.add(tilePosition);
-                tilePositionToBaseLookup.put(tilePosition, b);
                 scoutData.addBaseScoutAssignment(b);
                 startingBasesSet.add(b);
-                scoutData.addScoutTarget(tilePosition);
+                scoutData.addScoutTarget(b.getLocation());
             } else {
                 expansionBasesSet.add(b);
             }
@@ -624,10 +599,7 @@ public class InformationManager {
             game.drawCircleMap(tilePosition.toPosition(), 2, Color.Orange);
         }
 
-        for (Unit unit: enemyLastKnownLocations.keySet()) {
-            TilePosition tp = enemyLastKnownLocations.get(unit);
-            game.drawTextMap(tp.toPosition(), String.format("%s", unit.getInitialType()), Text.White);
-        }
+        
     }
 
     private void ensureEnemyUnitRemovedFromBaseThreats(Unit unit) {
