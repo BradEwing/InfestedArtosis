@@ -22,7 +22,6 @@ import lombok.Data;
 import macro.plan.Plan;
 import macro.plan.PlanComparator;
 import macro.plan.PlanState;
-import macro.plan.PlanType;
 import strategy.buildorder.BuildOrder;
 import unit.managed.ManagedUnit;
 import util.Time;
@@ -254,6 +253,8 @@ public class GameState {
             case Zerg_Evolution_Chamber:
                 techProgression.setPlannedEvolutionChambers(techProgression.getPlannedEvolutionChambers() - 1);
                 break;
+            default:
+                break;
         }
     }
 
@@ -286,6 +287,8 @@ public class GameState {
             case Pneumatized_Carapace:
                 techProgression.setPlannedOverlordSpeed(false);
                 break;
+            default:
+                break;
         }
     }
 
@@ -293,6 +296,8 @@ public class GameState {
         switch (techType) {
             case Lurker_Aspect:
                 techProgression.setPlannedLurker(false);
+                break;
+            default:
                 break;
         }
     }
@@ -322,6 +327,8 @@ public class GameState {
                 if (buildingType == UnitType.Zerg_Hatchery) {
                     removePlannedHatchery(1);
                 }
+                break;
+            default:
                 break;
         }
     }

@@ -32,18 +32,14 @@ public class TwoHatchMuta extends TerranBase {
     public List<Plan> plan(GameState gameState) {
         List<Plan> plans = new ArrayList<>();
 
-        Time time = gameState.getGameTime();
         TechProgression techProgression = gameState.getTechProgression();
         BaseData baseData = gameState.getBaseData();
         int baseCount = baseData.currentBaseCount();
         int extractorCount = baseData.numExtractor();
-        int supply = gameState.getSupply();
         int plannedHatcheries = gameState.getPlannedHatcheries();
-        int hatchCount        = gameState.ourUnitCount(UnitType.Zerg_Hatchery);
         final int plannedAndCurrentHatcheries = plannedHatcheries + baseCount;
         int lairCount         = gameState.ourUnitCount(UnitType.Zerg_Lair);
         int spireCount        = gameState.ourUnitCount(UnitType.Zerg_Spire);
-        int hydraCount        = gameState.ourUnitCount(UnitType.Zerg_Hydralisk);
         int mutaCount         = gameState.ourUnitCount(UnitType.Zerg_Mutalisk);
         int scourgeCount      = gameState.ourUnitCount(UnitType.Zerg_Scourge);
         int droneCount        = gameState.ourUnitCount(UnitType.Zerg_Drone);

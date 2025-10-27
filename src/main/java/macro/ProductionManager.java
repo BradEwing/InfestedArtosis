@@ -252,13 +252,6 @@ public class ProductionManager {
         gameState.getProductionQueue().addAll(plans);
     }
 
-    private int unitQueueSize() {
-        if (gameState.getBaseData().numHatcheries() > 3) {
-            return 6;
-        } else {
-            return 3;
-        }
-    }
 
     /**
      * Plans that are impossible to schedule can block the queue.
@@ -537,9 +530,13 @@ public class ProductionManager {
             case Zerg_Queens_Nest:
                 techProgression.setQueensNest(true);
                 techProgression.setPlannedQueensNest(false);
+                break;
             case Zerg_Hive:
                 techProgression.setHive(true);
                 techProgression.setPlannedHive(false);
+                break;
+            default:
+                break;
         }
 
         gameState.getPlansBuilding().remove(plan);
@@ -783,7 +780,6 @@ public class ProductionManager {
 
     // Need to handle cancel case (building about to die, extractor trick, etc.)
     public void onUnitMorph(Unit unit) {
-        UnitType unitType = unit.getType();
         HashMap<Unit, Plan> assignedPlannedItems = gameState.getAssignedPlannedItems();
         if (assignedPlannedItems.containsKey(unit)) {
             Plan plan = gameState.getAssignedPlannedItems().get(unit);

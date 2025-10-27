@@ -390,7 +390,6 @@ public class UnitManager {
     }
 
     private void assignDefendersToGather(Base base) {
-        HashSet<ManagedUnit> gatherersAssignedToBase = this.gameState.getGatherersAssignedToBase().get(base);
         List<ManagedUnit> gatherersToReassign = this.squadManager.disbandDefendSquad(base);
 
         for (ManagedUnit managedUnit: gatherersToReassign) {

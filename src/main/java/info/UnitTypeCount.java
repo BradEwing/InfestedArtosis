@@ -6,8 +6,8 @@ import java.util.HashMap;
 
 // UnitTypeCount tracks the number of units per type
 public class UnitTypeCount {
-    private HashMap<UnitType, Integer> unitTypeCount = new HashMap();
-    private HashMap<UnitType, Integer> plannedUnitTypeCount = new HashMap();
+    private HashMap<UnitType, Integer> unitTypeCount = new HashMap<>();
+    private HashMap<UnitType, Integer> plannedUnitTypeCount = new HashMap<>();
 
     public int get(UnitType unitType) {
         ensureUnitType(unitType);

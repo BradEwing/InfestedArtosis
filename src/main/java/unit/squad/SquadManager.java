@@ -1,10 +1,8 @@
 package unit.squad;
 
-import bwapi.Color;
 import bwapi.Game;
 import bwapi.Position;
 import bwapi.Race;
-import bwapi.Text;
 import bwapi.TilePosition;
 import bwapi.Unit;
 import bwapi.UnitType;

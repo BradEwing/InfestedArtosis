@@ -58,7 +58,6 @@ public class ThreeHatchMuta extends ProtossBase {
         int scourgeCount      = gameState.ourUnitCount(UnitType.Zerg_Scourge);
         int droneCount        = gameState.ourUnitCount(UnitType.Zerg_Drone);
         int zerglingCount     = gameState.ourUnitCount(UnitType.Zerg_Zergling);
-        int overlordCount     = gameState.ourUnitCount(UnitType.Zerg_Overlord);
         int enemyCorsairCount = gameState.enemyUnitCount(UnitType.Protoss_Corsair);
         int enemyObserverCount = gameState.enemyUnitCount(UnitType.Protoss_Observer);
 

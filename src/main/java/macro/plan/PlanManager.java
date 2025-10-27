@@ -22,7 +22,6 @@ public class PlanManager {
     private GameState gameState;
 
     private HashSet<ManagedUnit> assignedManagedWorkers;
-    private HashSet<ManagedUnit> gatherers;
     private HashSet<ManagedUnit> gasGatherers;
     private HashSet<ManagedUnit> larva;
     private HashSet<ManagedUnit> scheduledDrones = new HashSet<>();
@@ -31,7 +30,6 @@ public class PlanManager {
     public PlanManager(Game game, GameState gameState) {
         this.game = game;
         this.gameState = gameState;
-        this.gatherers = gameState.getGatherers();
         this.larva = gameState.getLarva();
         this.gasGatherers = gameState.getGasGatherers();
         this.assignedManagedWorkers = gameState.getAssignedManagedWorkers();

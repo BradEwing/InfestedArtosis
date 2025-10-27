@@ -17,7 +17,6 @@ import java.util.List;
  */
 public class CannonRush extends ProtossBaseStrategy {
 
-    private static final int DETECTION_DISTANCE = 10;
 
     public CannonRush() {
         super("CannonRush");

@@ -26,6 +26,14 @@ public class ObservedUnit {
     }
 
     @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        ObservedUnit that = (ObservedUnit) o;
+        return unit.equals(that.unit);
+    }
+
+    @Override
     public int hashCode() {
         return unit.hashCode();
     }

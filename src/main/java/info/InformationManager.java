@@ -1,6 +1,5 @@
 package info;
 
-import bwapi.Color;
 import bwapi.Game;
 import bwapi.PlayerType;
 import bwapi.Position;
@@ -133,6 +132,8 @@ public class InformationManager {
             case Zerg_Hive:
                 techProgression.setHive(true);
                 break;
+            default:
+                break;
         }
     }
 
@@ -246,6 +247,8 @@ public class InformationManager {
             case Zerg_Hive:
                 techProgression.setHive(false);
                 techProgression.setPlannedHive(false);
+                break;
+            default:
                 break;
         }
     }
@@ -651,7 +654,7 @@ public class InformationManager {
     }
 
     // TODO: Determine if ground scout can reach Scout Target
-    public TilePosition pollScoutTarget(boolean _) {
+    public TilePosition pollScoutTarget(boolean unused) {
         // Walk through
         BaseData baseData = gameState.getBaseData();
         ScoutData scoutData = gameState.getScoutData();
