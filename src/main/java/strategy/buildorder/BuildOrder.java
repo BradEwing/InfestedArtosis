@@ -228,6 +228,8 @@ public abstract class BuildOrder {
                 techProgression.setPlannedOverlordSpeed(true);
                 priority = 100;
                 break;
+            default:
+                break;
         }
 
         return new UpgradePlan(upgradeType, priority, false);

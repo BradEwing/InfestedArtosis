@@ -10,9 +10,7 @@ import org.jetbrains.annotations.NotNull;
 import unit.managed.ManagedUnit;
 import unit.managed.UnitRole;
 
-import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.List;
 import java.util.UUID;
 
 @Data
@@ -128,42 +126,6 @@ public class Squad implements Comparable<Squad> {
         this.center = new Position(x / members.size(), y / members.size());
     }
 
-    /*
-     * If 25% of the squad is more than 1.5x the average distance from the center, regroup toward the center.
-     */
-    private boolean grouped() {
-        if (this.size() < 3) {
-            return true;
-        }
-        List<Double> distances = new ArrayList<>();
-        double tot = 0;
-
-        max_dx = 0;
-        max_dy = 0;
-        for (ManagedUnit u: members) {
-            Position p = u.getUnit().getPosition();
-            double d = center.getDistance(p);
-            max_dx = Math.max(max_dx, Math.abs(p.getX() - center.getX()));
-            max_dy = Math.max(max_dy, Math.abs(p.getY() - center.getY()));
-            distances.add(d);
-            tot += d;
-        }
-
-        double avg = tot / this.size();
-        int outliers = 0;
-        for (double d: distances) {
-            if (d >= avg * 1.5) {
-                outliers += 1;
-            }
-        }
-
-        int x_threshold = 100 + (size() * this.getType().width());
-        int y_threshold = 100 + (size() * this.getType().height());
-        final boolean lowOutliers = (double) outliers / this.size() < 0.25;
-        final boolean lowEccentricity = max_dx < x_threshold && max_dy < y_threshold;
-
-        return lowOutliers || lowEccentricity;
-    }
 
     private void checkRegroup() {
         boolean grouped = true;

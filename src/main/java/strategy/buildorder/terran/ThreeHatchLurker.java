@@ -31,7 +31,6 @@ public class ThreeHatchLurker extends TerranBase {
         int extractorCount = baseData.numExtractor();
         int plannedHatcheries = gameState.getPlannedHatcheries();
         int macroHatchCount = baseData.numMacroHatcheries();
-        int hatchCount = gameState.ourUnitCount(UnitType.Zerg_Hatchery);
         final int plannedAndCurrentHatcheries = plannedHatcheries + baseCount;
         int lairCount = gameState.ourUnitCount(UnitType.Zerg_Lair);
         int hydraCount = gameState.ourUnitCount(UnitType.Zerg_Hydralisk);
@@ -349,7 +348,6 @@ public class ThreeHatchLurker extends TerranBase {
     @Override
     protected int zerglingsNeeded(GameState gameState) {
         final boolean den = gameState.ourUnitCount(UnitType.Zerg_Hydralisk_Den) > 0;
-        final boolean hasLurkerTech = gameState.getTechProgression().isLurker();
         final int hydras = gameState.ourUnitCount(UnitType.Zerg_Hydralisk);
         
         if (den && hydras < 3) {

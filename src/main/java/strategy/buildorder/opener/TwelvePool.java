@@ -44,6 +44,8 @@ public class TwelvePool extends BuildOrder {
                 next.add(new TwoHatchMuta());
                 next.add(new ThreeHatchLurker());
                 return next;
+            default:
+                break;
         }
         return next;
     }

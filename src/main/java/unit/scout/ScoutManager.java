@@ -50,7 +50,7 @@ public class ScoutManager {
     }
 
     public boolean isDroneScout(Unit unit) {
-        return droneScouts.contains(unit);
+        return droneScouts.stream().anyMatch(mu -> mu.getUnit().equals(unit));
     }
 
     public void addScout(ManagedUnit managedUnit) {

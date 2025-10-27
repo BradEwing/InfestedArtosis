@@ -9,14 +9,19 @@ import lombok.NonNull;
 public class MapTile {
     @NonNull
     private TilePosition tile;
-    @NonNull
     private int scoutImportance;
-    @NonNull
     private boolean isBuildable;
-    @NonNull
     private boolean isWalkable;
     @NonNull
     private MapTileType type;
+
+    public MapTile(TilePosition tile, int scoutImportance, boolean isBuildable, boolean isWalkable, MapTileType type) {
+        this.tile = tile;
+        this.scoutImportance = scoutImportance;
+        this.isBuildable = isBuildable;
+        this.isWalkable = isWalkable;
+        this.type = type;
+    }
 
     @Override
     public boolean equals(Object o) {

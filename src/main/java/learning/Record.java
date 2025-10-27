@@ -6,7 +6,6 @@ import lombok.Data;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 
 /**
  * Record tracks performance of a single strategy (opener or build order) using Discounted UCB (D-UCB).

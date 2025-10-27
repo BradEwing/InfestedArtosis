@@ -31,7 +31,7 @@ public class BuildingManager {
     private GameState gameState;
 
     private ManagedUnit lair;
-    private HashSet<ManagedUnit> hatcheries = new HashSet();
+    private HashSet<ManagedUnit> hatcheries = new HashSet<>();
     private HashSet<ManagedUnit> colonies = new HashSet<>();
 
     public BuildingManager(Game game, GameState gameState) {
@@ -55,8 +55,11 @@ public class BuildingManager {
                 break;
             case Zerg_Creep_Colony:
                 this.colonies.add(managedUnit);
+                break;
             case Zerg_Sunken_Colony:
                 baseData.addSunkenColony(managedUnit.getUnit());
+                break;
+            default:
                 break;
         }
     }
@@ -80,6 +83,9 @@ public class BuildingManager {
                 break;
             case Zerg_Sunken_Colony:
                 baseData.removeSunkenColony(managedUnit.getUnit());
+                break;
+            default:
+                break;
         }
     }
 
@@ -115,6 +121,8 @@ public class BuildingManager {
                     break;
                 case Zerg_Hive:
                     didAssign = this.assignMorphHive(plan);
+                    break;
+                default:
                     break;
             }
 
