@@ -5,6 +5,7 @@ import bwapi.Race;
 import bwapi.Unit;
 import bwapi.UnitType;
 import bwem.BWEM;
+import debug.Debug;
 import info.GameState;
 import info.InformationManager;
 import learning.Decisions;
@@ -15,18 +16,12 @@ import macro.plan.PlanManager;
 import unit.UnitManager;
 
 /**
- * TODO High Level:
- *
- * - Economy Manager
- * - * Plan extractors with hatch
- * - * Bug: drones assigned to build try in unreachable locations
- * - * Bug: some drones are idling
- * - Unit manager
- * - * Potentially refactor scouting code into unit manager
- * - * Define role enums
- * - Smarter scouting:
- * - * Only sweep info.map if we don't know where any enemies are
- * - * Avoid enemies that are attacking us
+ * Execution flow:
+ * - InformationManager: tracks game state
+ * - ProductionManager: manages production of units, buildings, upgrades and research
+ * - PlanManager: manages plans for units, buildings, upgrades and research
+ * - UnitManager: manages units
+ * - Debug: provides debug information
  */
 public class Bot extends DefaultBWListener {
     private BWEM bwem;
@@ -38,7 +33,7 @@ public class Bot extends DefaultBWListener {
     private Debug debugMap;
     private LearningManager learningManager;
     private PlanManager planManager;
-    private ProductionManager economyModule;
+    private ProductionManager productionManager;
     private InformationManager informationManager;
     private UnitManager unitManager;
 
@@ -63,8 +58,8 @@ public class Bot extends DefaultBWListener {
         OpponentRecord opponentRecord = learningManager.getOpponentRecord();
 
         informationManager = new InformationManager(bwem, game, gameState, learningManager);
-        debugMap = new Debug(bwem, game, decisions.getOpener(), opponentRecord, gameState);
-        economyModule = new ProductionManager(game, gameState, decisions.getOpener()); // TODO: reverse
+        debugMap = new Debug(game, decisions.getOpener(), opponentRecord, gameState, gameState.getConfig());
+        productionManager = new ProductionManager(game, gameState, decisions.getOpener()); // TODO: reverse
         planManager = new PlanManager(game, gameState);
         unitManager = new UnitManager(game, informationManager, bwem, gameState);
 
@@ -76,7 +71,7 @@ public class Bot extends DefaultBWListener {
     @Override
     public void onFrame() {
         informationManager.onFrame();
-        economyModule.onFrame();
+        productionManager.onFrame();
         planManager.onFrame();
         unitManager.onFrame();
         debugMap.onFrame();
@@ -102,27 +97,27 @@ public class Bot extends DefaultBWListener {
         }
 
         informationManager.onUnitComplete(unit);
-        economyModule.onUnitComplete(unit);
+        productionManager.onUnitComplete(unit);
         unitManager.onUnitComplete(unit);
     }
 
     @Override
     public void onUnitDestroy(Unit unit) {
         informationManager.onUnitDestroy(unit);
-        economyModule.onUnitDestroy(unit);
+        productionManager.onUnitDestroy(unit);
         unitManager.onUnitDestroy(unit);
     }
 
     @Override
     public void onUnitRenegade(Unit unit) {
         informationManager.onUnitRenegade(unit);
-        economyModule.onUnitRenegade(unit);
+        productionManager.onUnitRenegade(unit);
     }
 
     @Override
     public void onUnitMorph(Unit unit) {
         informationManager.onUnitMorph(unit);
-        economyModule.onUnitMorph(unit);
+        productionManager.onUnitMorph(unit);
         unitManager.onUnitMorph(unit);
     }
 

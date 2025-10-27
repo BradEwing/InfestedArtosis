@@ -3,7 +3,6 @@ package macro;
 import bwapi.Game;
 import bwapi.Player;
 import bwapi.TechType;
-import bwapi.Text;
 import bwapi.Unit;
 import bwapi.UnitType;
 import bwapi.UpgradeType;
@@ -13,7 +12,6 @@ import info.ResourceCount;
 import info.TechProgression;
 import info.UnitTypeCount;
 import macro.plan.Plan;
-import macro.plan.PlanComparator;
 import macro.plan.PlanState;
 import macro.plan.PlanType;
 import macro.plan.UnitPlan;
@@ -24,7 +22,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.PriorityQueue;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -49,7 +46,6 @@ public class ProductionManager {
 
     private int currentFrame = 5;
 
-    private PriorityQueue<Plan> productionQueue = new PriorityQueue<>(new PlanComparator());
 
     // TODO: Determine if only 1 active strategy, or if multiple can be active at once.
     private BuildOrder activeBuildOrder;
@@ -61,55 +57,13 @@ public class ProductionManager {
         this.activeBuildOrder = opener;
     }
 
-    private void debugProductionQueue() {
-        int numDisplayed = 0;
-        int x = 4;
-        int y = 64;
-        for (Plan plan : productionQueue) {
-            game.drawTextScreen(x, y, plan.getName() + " " + plan.getPriority(), Text.Green);
-            y += 8;
-            numDisplayed += 1;
-            if (numDisplayed == 10) {
-                break;
-            }
-        }
-
-        if (numDisplayed < productionQueue.size()) {
-            game.drawTextScreen(x, y, String.format("... %s more planned items", productionQueue.size() - numDisplayed), Text.GreyGreen);
-        }
-    }
+    private void debugProductionQueue() { }
 
     // TODO: Ensure print out of production queue is displaying how much time is remaining
-    private void debugInProgressQueue() {
-        int numDisplayed = 0;
-        int x = 100;
-        int y = 64;
-        // TODO: Debug production queue in GameState
-        for (Plan plan : gameState.getAssignedPlannedItems().values()) {
-            game.drawTextScreen(x, y, plan.getName() + " " + plan.getPriority(), Text.Green);
-            y += 8;
-            numDisplayed += 1;
-            if (numDisplayed == 10) {
-                break;
-            }
-        }
-    }
+    private void debugInProgressQueue() { }
 
     // TODO: Ensure print out of production queue is displaying how much time is remaining
-    private void debugScheduledPlannedItems() {
-        int numDisplayed = 0;
-        int x = 196;
-        int y = 64;
-        // TODO: Debug production queue in GameState
-        for (Plan plan : gameState.getPlansScheduled()) {
-            game.drawTextScreen(x, y, plan.getName() + " " + plan.getPriority(), Text.Green);
-            y += 8;
-            numDisplayed += 1;
-            if (numDisplayed == 10) {
-                break;
-            }
-        }
-    }
+    private void debugScheduledPlannedItems() { }
 
     // debug console messaging goes here
     private void debug() {
@@ -146,14 +100,14 @@ public class ProductionManager {
     private void cancelImpossiblePlans() {
         List<Plan> plansToCancel = new ArrayList<>();
         
-        for (Plan plan : productionQueue) {
+        for (Plan plan : gameState.getProductionQueue()) {
             if (!canSchedulePlan(plan)) {
                 plansToCancel.add(plan);
             }
         }
         
         for (Plan plan : plansToCancel) {
-            productionQueue.remove(plan);
+            gameState.getProductionQueue().remove(plan);
             gameState.setImpossiblePlan(plan);
         }
         
@@ -164,7 +118,7 @@ public class ProductionManager {
 
     private void removePlansWithLaterPrerequisites() {
         List<Plan> plansToRemove = new ArrayList<>();
-        List<Plan> queueList = new ArrayList<>(productionQueue);
+        List<Plan> queueList = new ArrayList<>(gameState.getProductionQueue());
         
         for (int i = 0; i < queueList.size(); i++) {
             Plan currentPlan = queueList.get(i);
@@ -199,7 +153,7 @@ public class ProductionManager {
         }
         
         for (Plan plan : plansToRemove) {
-            productionQueue.remove(plan);
+            gameState.getProductionQueue().remove(plan);
             gameState.setImpossiblePlan(plan);
         }
     }
@@ -280,12 +234,12 @@ public class ProductionManager {
     // TODO: Move to BuildOrder?
     private void addUnitToQueue(UnitType unitType, int priority, boolean isBlocking) {
         UnitTypeCount unitTypeCount = this.gameState.getUnitTypeCount();
-        productionQueue.add(new UnitPlan(unitType, priority, isBlocking));
+        gameState.getProductionQueue().add(new UnitPlan(unitType, priority, isBlocking));
         unitTypeCount.planUnit(unitType);
     }
 
     private void plan() {
-        if (!isPlanning && !productionQueue.isEmpty()) {
+        if (!isPlanning && !gameState.getProductionQueue().isEmpty()) {
             return;
         }
 
@@ -295,7 +249,7 @@ public class ProductionManager {
         planSupply(gameState.getSelf());
 
         List<Plan> plans = activeBuildOrder.plan(gameState);
-        productionQueue.addAll(plans);
+        gameState.getProductionQueue().addAll(plans);
     }
 
     private int unitQueueSize() {
@@ -420,7 +374,7 @@ public class ProductionManager {
     }
 
     private void schedulePlannedItems() {
-        if (productionQueue.isEmpty()) {
+        if (gameState.getProductionQueue().isEmpty()) {
             return;
         }
 
@@ -436,11 +390,11 @@ public class ProductionManager {
         List<Plan> requeuePlans = new ArrayList<>();
         ResourceCount resourceCount = gameState.getResourceCount();
         int mineralBuffer = resourceCount.availableMinerals();
-        for (int i = 0; i < productionQueue.size(); i++) {
+        for (int i = 0; i < gameState.getProductionQueue().size(); i++) {
 
             boolean canSchedule = false;
             // If we can't plan, we'll put it back on the queue
-            final Plan plan = productionQueue.poll();
+            final Plan plan = gameState.getProductionQueue().poll();
             if (plan == null) {
                 continue;
             }
@@ -479,7 +433,7 @@ public class ProductionManager {
         }
 
         // Requeue
-        productionQueue.addAll(requeuePlans);
+        gameState.getProductionQueue().addAll(requeuePlans);
     }
 
     // TODO: Refactor this into WorkerManager or a Buildingmanager (TechManager)?
@@ -773,7 +727,7 @@ public class ProductionManager {
         Plan priorityHatcheryPlan = null;
         int highestPriority = Integer.MAX_VALUE;
 
-        for (Plan plan : productionQueue) {
+        for (Plan plan : gameState.getProductionQueue()) {
             if (plan.getType() == PlanType.BUILDING && 
                 plan.getPlannedUnit() == UnitType.Zerg_Hatchery) {
                 

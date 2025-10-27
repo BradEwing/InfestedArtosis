@@ -593,21 +593,7 @@ public class InformationManager {
         gameMap.ageHeatMap();
     }
 
-    private void debugEnemyTargets() {
-        ScoutData scoutData = gameState.getScoutData();
-        ObservedUnitTracker tracker = gameState.getObservedUnitTracker();
-        for (Unit target: tracker.getBuilding()) {
-            game.drawCircleMap(target.getPosition(), 3, Color.Yellow);
-        }
-        for (Unit target: tracker.getVisibleEnemyUnits()) {
-            game.drawCircleMap(target.getPosition(), 3, Color.Red);
-        }
-        for (TilePosition tilePosition: scoutData.getEnemyBuildingPositions()) {
-            game.drawCircleMap(tilePosition.toPosition(), 2, Color.Orange);
-        }
-
-        
-    }
+    private void debugEnemyTargets() { }
 
     private void ensureEnemyUnitRemovedFromBaseThreats(Unit unit) {
         for (HashSet<Unit> baseThreat: gameState.getBaseToThreatLookup().values()) {

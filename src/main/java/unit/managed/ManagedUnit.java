@@ -1,9 +1,7 @@
 package unit.managed;
 
-import bwapi.Color;
 import bwapi.Game;
 import bwapi.Position;
-import bwapi.Text;
 import bwapi.TilePosition;
 import bwapi.Unit;
 import bwapi.UnitType;
@@ -40,13 +38,13 @@ public class ManagedUnit {
     protected List<TilePosition> pathToTarget;
 
     @Setter
-    protected Position retreatTarget;
+    public Position retreatTarget;
     private Position lastRetreatPosition;
     private int framesStuck = 0;
 
     @Setter @Getter
     protected Unit defendTarget;
-    protected Unit fightTarget;
+    public Unit fightTarget;
     @Setter
     protected Unit gatherTarget;
 
@@ -101,8 +99,6 @@ public class ManagedUnit {
     public void setNewGatherTarget(boolean hasNewGatherTarget) { this.hasNewGatherTarget = hasNewGatherTarget; }
 
     public void execute() {
-        debug();
-
         updateState();
 
         if (!isReady) {
@@ -286,47 +282,6 @@ public class ManagedUnit {
             return bestPosition;
         }
         return rallyPoint != null ? rallyPoint : currentPos;
-    }
-
-
-    private void debug() {
-        Position unitPosition = unit.getPosition();
-        // Draw role text
-        if (role != null) {
-            game.drawTextMap(unitPosition, role.toString(), Text.Default);
-        }
-        if (role == UnitRole.BUILDING) {
-            return;
-        }
-
-        if (movementTargetPosition != null) {
-            Position movementPos = movementTargetPosition.toPosition();
-            game.drawLineMap(unitPosition, movementPos, Color.White);
-        }
-
-        if (retreatTarget != null) {
-            game.drawLineMap(unitPosition, retreatTarget, Color.Purple);
-        }
-
-        if (fightTarget != null) {
-            Position fightTargetPos = fightTarget.getPosition();
-            if (fightTargetPos != null) {
-                game.drawLineMap(unitPosition, fightTargetPos, Color.Red);
-            }
-        }
-
-        // Draw build lines and text
-        if (plan != null && plan.getBuildPosition() != null ) {
-
-            Position buildPosition = plan.getBuildPosition().toPosition();
-            game.drawLineMap(unitPosition, buildPosition, Color.Cyan);
-
-            int distance = unit.getDistance(buildPosition);
-            String distanceText = String.format("Distance: %d", distance);
-            Position textPosition = unitPosition.add(new Position(8, 8));
-            game.drawTextMap(textPosition, distanceText, Text.Cyan);
-
-        }
     }
 
     protected void rally() {
