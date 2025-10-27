@@ -1,6 +1,8 @@
 package info.map;
 
+import bwapi.Game;
 import bwapi.TilePosition;
+import bwapi.WalkPosition;
 import info.exception.NoWalkablePathException;
 import lombok.Getter;
 
@@ -8,9 +10,11 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.PriorityQueue;
+import java.util.Set;
 
 import static java.lang.Math.max;
 import static java.lang.Math.min;
@@ -24,6 +28,8 @@ public class GameMap {
     private int y;
     @Getter
     private ArrayList<MapTile> heatMap = new ArrayList<>();
+    @Getter
+    private Set<WalkPosition> accessibleWalkPositions = new HashSet<>();
 
     private MapTile[][] mapTiles;
 
@@ -238,5 +244,16 @@ public class GameMap {
 
     private boolean isValidTile(int x, int y) {
         return x >= 0 && x < this.x && y >= 0 && y < this.y;
+    }
+
+    /**
+     * Calculates all accessible WalkPositions from the main base using flood fill algorithm.
+     * 
+     * @param game The BWAPI Game instance
+     * @param mainBasePosition The main base TilePosition
+     */
+    public void calculateAccessibleWalkPositions(Game game, TilePosition mainBasePosition) {
+        WalkPositionFloodFill floodFill = new WalkPositionFloodFill(game);
+        this.accessibleWalkPositions = floodFill.calculateAccessibleWalkPositions(mainBasePosition);
     }
 }
