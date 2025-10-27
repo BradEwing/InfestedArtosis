@@ -40,9 +40,9 @@ public class SquadManager {
 
     private Squad overlords = new Squad();
 
-    private HashSet<Squad> fightSquads = new HashSet<>();
+    public HashSet<Squad> fightSquads = new HashSet<>();
 
-    private HashMap<Base, Squad> defenseSquads = new HashMap<>();
+    public HashMap<Base, Squad> defenseSquads = new HashMap<>();
 
     private final CombatSimulator defaultCombatSimulator;
 
@@ -885,16 +885,7 @@ public class SquadManager {
         managedUnit.setFightTarget(ft);
     }
 
-    private void debugPainters() {
-        for (Squad squad: fightSquads) {
-            game.drawCircleMap(squad.getCenter(), squad.radius(), Color.White);
-            game.drawTextMap(squad.getCenter(), String.format("Radius: %d", squad.radius()), Text.White);
-        }
-        for (Squad squad: defenseSquads.values()) {
-            game.drawCircleMap(squad.getCenter(), 256, Color.White);
-            game.drawTextMap(squad.getCenter(), String.format("Defenders: %s", squad.size()), Text.White);
-        }
-    }
+    private void debugPainters() { }
 
     /**
      * Retrieves the largest fight squad or returns null if no fight squads exist.

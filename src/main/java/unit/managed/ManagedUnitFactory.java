@@ -12,39 +12,57 @@ public class ManagedUnitFactory {
     }
 
     public ManagedUnit create(Unit unit, UnitRole role) {
+        ManagedUnit managedUnit;
         switch(unit.getType()) {
             case Zerg_Larva:
-                return new Larva(game, unit, role);
+                managedUnit = new Larva(game, unit, role);
+                break;
             case Zerg_Drone:
-                return new Drone(game, unit, role);
+                managedUnit = new Drone(game, unit, role);
+                break;
             case Zerg_Overlord:
-                return new Overlord(game, unit, role);
+                managedUnit = new Overlord(game, unit, role);
+                break;
             case Zerg_Zergling:
-                return new Zergling(game, unit, role);
+                managedUnit = new Zergling(game, unit, role);
+                break;
             case Zerg_Hydralisk:
-                return new Hydralisk(game, unit, role);
+                managedUnit = new Hydralisk(game, unit, role);
+                break;
             case Zerg_Mutalisk:
-                return new Mutalisk(game, unit, role);
+                managedUnit = new Mutalisk(game, unit, role);
+                break;
             case Zerg_Scourge:
-                return new Scourge(game, unit, role);
+                managedUnit = new Scourge(game, unit, role);
+                break;
             case Zerg_Queen:
-                return new Queen(game, unit, role);
+                managedUnit = new Queen(game, unit, role);
+                break;
             case Zerg_Ultralisk:
-                return new Ultralisk(game, unit, role);
+                managedUnit = new Ultralisk(game, unit, role);
+                break;
             case Zerg_Guardian:
-                return new Guardian(game, unit, role);
+                managedUnit = new Guardian(game, unit, role);
+                break;
             case Zerg_Devourer:
-                return new Devourer(game, unit, role);
+                managedUnit = new Devourer(game, unit, role);
+                break;
             case Zerg_Lurker:
-                return new Lurker(game, unit, role);
+                managedUnit = new Lurker(game, unit, role);
+                break;
             case Zerg_Defiler:
-                return new Defiler(game, unit, role);
+                managedUnit = new Defiler(game, unit, role);
+                break;
             case Zerg_Broodling:
-                return new Broodling(game, unit, role);
+                managedUnit = new Broodling(game, unit, role);
+                break;
             case Zerg_Infested_Terran:
-                return new InfestedTerran(game, unit, role);
+                managedUnit = new InfestedTerran(game, unit, role);
+                break;
             default:
-                return new ManagedUnit(game, unit, role);
+                managedUnit = new ManagedUnit(game, unit, role);
+                break;
         }
+        return managedUnit;
     }
 }

@@ -1,61 +1,203 @@
+
+
 import bwapi.Color;
 import bwapi.Game;
 import bwapi.Position;
+import bwapi.Race;
 import bwapi.Text;
 import bwapi.TilePosition;
+import bwapi.Unit;
 import bwapi.UnitType;
 import bwapi.WalkPosition;
-import bwem.BWEM;
 import bwem.Base;
+import config.Config;
 import info.BaseData;
 import info.GameState;
+import info.ScoutData;
 import info.UnitTypeCount;
 import info.map.BuildingPlanner;
 import info.map.GroundPath;
 import info.map.MapTile;
+import info.tracking.ObservedUnitTracker;
 import learning.Record;
 import learning.OpponentRecord;
 import strategy.buildorder.BuildOrder;
+import unit.squad.Squad;
+import unit.squad.SquadManager;
+import unit.managed.ManagedUnit;
+import unit.managed.UnitRole;
+import macro.plan.Plan;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
+/**
+ * Debug is responsible for drawing debug information to the in-game screen.
+ * 
+ * Values are controlled by the Config class, which is loaded from the .env file.
+ */
 public class Debug {
 
-    private static int BASE_MINERAL_DISTANCE = 300;
-
-    private BWEM bwem;
     private Game game;
+    private Config config;
 
     private BuildOrder opener;
     private OpponentRecord opponentRecord;
 
     private GameState gameState;
 
-    public Debug(BWEM bwem, Game game, BuildOrder opener, OpponentRecord opponentRecord, GameState gameState) {
-        this.bwem = bwem;
+    public Debug(Game game, BuildOrder opener, OpponentRecord opponentRecord, GameState gameState, Config config) {
         this.game = game;
         this.opener = opener;
         this.opponentRecord = opponentRecord;
         this.gameState = gameState;
+        this.config = config;
     }
 
     public void onFrame() {
-        drawBases();
+        if (config.debugHud) {
+            game.drawTextScreen(4, 8, "Opponent: " + opponentRecord.getName() + " " + getOpponentRecord());
+            game.drawTextScreen(4, 16, "GameMap: " + game.mapFileName());
+            game.drawTextScreen(4, 24, "Opener: " + opener.getName() + " " + getOpenerRecord(), Text.White);
+            game.drawTextScreen(4, 32, "BuildOrder: " + gameState.getActiveBuildOrder().getName() + " " + getBuildOrderRecord(), Text.White);
+            game.drawTextScreen(4, 40, "Frame: " + game.getFrameCount());
+        }
 
-        game.drawTextScreen(4, 8, "Opponent: " + opponentRecord.getName() + " " + getOpponentRecord());
-        game.drawTextScreen(4, 16, "GameMap: " + game.mapFileName());
-        game.drawTextScreen(4, 24, "Opener: " + opener.getName() + " " + getOpenerRecord(), Text.White);
-        game.drawTextScreen(4, 32, "BuildOrder: " + gameState.getActiveBuildOrder().getName() + " " + getBuildOrderRecord(), Text.White);
-        game.drawTextScreen(4, 40, "Frame: " + game.getFrameCount());
+        if (config.debugBases) {
+            drawBases();
+        }
+        if (config.debugUnitCount) {
+            drawUnitCount();
+        }
+        if (config.debugGameMap) {
+            debugGameMap();
+        }
+        if (config.debugBasePaths) {
+            drawAllBasePaths();
+        }
+        if (config.debugStaticDefenseCoverage) {
+            debugStaticDefenseCoverage();
+        }
+        if (config.debugAccessibleWalkPositions) {
+            debugAccessibleWalkPositions();
+        }
+        if (config.debugManagedUnits) {
+            for (ManagedUnit managedUnit : gameState.getManagedUnits()) {
+                debugManagedUnit(managedUnit);
+            }
+        }
 
-        drawUnitCount();
-        //debugGameMap();
-        //drawAllBasePaths();
-        debugBuildingPlanner();
-        debugStaticDefenseCoverage();
-        debugAccessibleWalkPositions();
+        BuildingPlanner buildingPlanner = gameState.getBuildingPlanner();
+        BaseData baseData = gameState.getBaseData();
+        if (buildingPlanner != null && baseData != null) {
+            for (Base base : baseData.getMyBases()) {
+                if (config.debugBaseCreepTiles) {
+                    debugBaseCreepTiles(buildingPlanner, base);
+                }
+                if (config.debugBaseChoke) {
+                    debugBaseChoke(buildingPlanner, base);
+                }
+                if (config.debugLocationForTechBuilding) {
+                    debugLocationForTechBuilding(buildingPlanner, base, UnitType.Zerg_Spawning_Pool);
+                }
+                if (config.debugNextCreepColonyLocation) {
+                    debugNextCreepColonyLocation(buildingPlanner, base);
+                }
+                if (config.debugMineralBoundingBox) {
+                    debugMineralBoundingBox(buildingPlanner, base);
+                }
+                if (config.debugGeyserBoundingBox) {
+                    debugGeyserBoundingBox(buildingPlanner, base);
+                }
+            }
+            if (config.debugReserveTiles) {
+                debugReserveTiles(buildingPlanner);
+            }
+            if (config.debugMacroHatcheryLocation) {
+                debugMacroHatcheryLocation(buildingPlanner, gameState.getOpponentRace(), baseData);
+            }
+        }
+
+        if (config.debugProductionQueue) {
+            debugProductionQueue();
+        }
+        if (config.debugInProgressQueue) {
+            debugInProgressQueue();
+        }
+        if (config.debugScheduledPlannedItems) {
+            debugScheduledPlannedItems();
+        }
+    }
+
+    private void debugBaseCreepTiles(BuildingPlanner buildingPlanner, Base base) {
+        Set<TilePosition> creepTiles = buildingPlanner.findSurroundingCreepTiles(base);
+        for (TilePosition tp: creepTiles) {
+            game.drawBoxMap(tp.toPosition(), tp.add(new TilePosition(1, 1)).toPosition(), Color.Brown);
+        }
+    }
+
+    private void debugBaseChoke(BuildingPlanner buildingPlanner, Base base) {
+        Position closestChoke = buildingPlanner.closestChokeToBase(base);
+        if (closestChoke != null) {
+            game.drawCircleMap(closestChoke, 2, Color.Yellow);
+        }
+    }
+
+    private void debugLocationForTechBuilding(BuildingPlanner buildingPlanner, Base base, UnitType unitType) {
+        TilePosition tp = buildingPlanner.getLocationForTechBuilding(base, unitType);
+        if (tp != null) {
+            game.drawBoxMap(tp.toPosition(), tp.add(unitType.tileSize()).toPosition(), Color.White);
+        }
+    }
+
+    private void debugReserveTiles(BuildingPlanner buildingPlanner) {
+        for (TilePosition tp: buildingPlanner.getReservedTiles()) {
+            game.drawBoxMap(tp.toPosition(), tp.add(new TilePosition(1, 1)).toPosition(), Color.White);
+        }
+    }
+
+    private void debugNextCreepColonyLocation(BuildingPlanner buildingPlanner, Base base) {
+        TilePosition cc = buildingPlanner.getLocationForCreepColony(base, gameState.getOpponentRace());
+        if (cc != null) {
+            game.drawBoxMap(cc.toPosition(), cc.add(new TilePosition(2, 2)).toPosition(), Color.White);
+        }
+    }
+
+    private void debugMineralBoundingBox(BuildingPlanner buildingPlanner, Base base) {
+        HashSet<TilePosition> tiles = buildingPlanner.mineralBoundingBox(base);
+        if (!tiles.isEmpty()) {
+            for (TilePosition tp: tiles) {
+                if (tp != null) {
+                    game.drawBoxMap(tp.toPosition(), tp.add(new TilePosition(1, 1)).toPosition(), Color.Blue);
+                }
+            }
+        }
+    }
+
+    private void debugGeyserBoundingBox(BuildingPlanner buildingPlanner, Base base) {
+        HashSet<TilePosition> tiles = buildingPlanner.geyserBoundingBox(base);
+        if (!tiles.isEmpty()) {
+            for (TilePosition tp: tiles) {
+                if (tp != null) {
+                    game.drawBoxMap(tp.toPosition(), tp.add(new TilePosition(1, 1)).toPosition(), Color.Blue);
+                }
+            }
+        }
+    }
+
+    private void debugMacroHatcheryLocation(BuildingPlanner buildingPlanner, Race opponentRace, BaseData baseData) {
+        TilePosition location = buildingPlanner.getLocationForMacroHatchery(opponentRace, baseData);
+        if (location != null) {
+            UnitType hatchType = UnitType.Zerg_Hatchery;
+            game.drawBoxMap(
+                    location.toPosition(),
+                    location.add(hatchType.tileSize()).toPosition(),
+                    Color.Green
+            );
+        }
     }
 
     private void drawBases() {
@@ -90,7 +232,7 @@ public class Debug {
 
     private void drawUnitCount() {
         int x = 4;
-        int y = 128;
+        int y = 192;
         game.drawTextScreen(x, y, "Unit Count");
 
         UnitTypeCount unitTypeCount = gameState.getUnitTypeCount();
@@ -159,23 +301,6 @@ public class Debug {
         }
     }
 
-    private void debugBuildingPlanner() {
-        BuildingPlanner buildingPlanner = gameState.getBuildingPlanner();
-        BaseData baseData = gameState.getBaseData();
-        if (buildingPlanner == null) {
-            return;
-        }
-        for (Base base: baseData.getMyBases()) {
-            //buildingPlanner.debugBaseCreepTiles(base);
-            //buildingPlanner.debugBaseChoke(base);
-            //buildingPlanner.debugLocationForTechBuilding(base, UnitType.Zerg_Spawning_Pool);
-            //buildingPlanner.debugReserveTiles();
-            //buildingPlanner.debugNextCreepColonyLocation(base);
-            //buildingPlanner.debugMineralBoundingBox(base);
-            //buildingPlanner.debugGeyserBoundingBox(base);
-            //buildingPlanner.debugMacroHatcheryLocation(gameState.getOpponentRace(), baseData);
-        }
-    }
 
     /**
      * Debug visualization for accessible WalkPositions from flood fill algorithm.
@@ -191,7 +316,128 @@ public class Debug {
                 }
             }
         } catch (IllegalStateException e) {
-            //game.drawTextScreen(4, 48, "Error: " + e.getMessage());
         }
     }
+
+    public void debugEnemyTargets() {
+        if (!config.debugEnemyTargets) return;
+        
+        ScoutData scoutData = gameState.getScoutData();
+        ObservedUnitTracker tracker = gameState.getObservedUnitTracker();
+        for (Unit target: tracker.getBuilding()) {
+            game.drawCircleMap(target.getPosition(), 3, Color.Yellow);
+        }
+        for (Unit target: tracker.getVisibleEnemyUnits()) {
+            game.drawCircleMap(target.getPosition(), 3, Color.Red);
+        }
+        for (TilePosition tilePosition: scoutData.getEnemyBuildingPositions()) {
+            game.drawCircleMap(tilePosition.toPosition(), 2, Color.Orange);
+        }
+    }
+
+    public void debugSquads(SquadManager squadManager) {
+        if (!config.debugSquads) return;
+        
+        for (Squad squad: squadManager.fightSquads) {
+            game.drawCircleMap(squad.getCenter(), squad.radius(), Color.White);
+            game.drawTextMap(squad.getCenter(), String.format("Radius: %d", squad.radius()), Text.White);
+        }
+        for (Squad squad: squadManager.defenseSquads.values()) {
+            game.drawCircleMap(squad.getCenter(), 256, Color.White);
+            game.drawTextMap(squad.getCenter(), String.format("Defenders: %s", squad.size()), Text.White);
+        }
+    }
+
+    public void debugManagedUnit(ManagedUnit managedUnit) {
+        if (!config.debugManagedUnits) return;
+        
+        Position unitPosition = managedUnit.getUnit().getPosition();
+        UnitRole role = managedUnit.getRole();
+        
+        if (role != null) {
+            game.drawTextMap(unitPosition, role.toString(), Text.Default);
+        }
+        if (role == UnitRole.BUILDING) {
+            return;
+        }
+
+        if (managedUnit.getMovementTargetPosition() != null) {
+            Position movementPos = managedUnit.getMovementTargetPosition().toPosition();
+            game.drawLineMap(unitPosition, movementPos, Color.White);
+        }
+
+        if (managedUnit.retreatTarget != null) {
+            game.drawLineMap(unitPosition, managedUnit.retreatTarget, Color.Purple);
+        }
+
+        if (managedUnit.fightTarget != null) {
+            Position fightTargetPos = managedUnit.fightTarget.getPosition();
+            if (fightTargetPos != null) {
+                game.drawLineMap(unitPosition, fightTargetPos, Color.Red);
+            }
+        }
+
+        if (managedUnit.getPlan() != null && managedUnit.getPlan().getBuildPosition() != null) {
+            Position buildPosition = managedUnit.getPlan().getBuildPosition().toPosition();
+            game.drawLineMap(unitPosition, buildPosition, Color.Cyan);
+
+            int distance = managedUnit.getUnit().getDistance(buildPosition);
+            String distanceText = String.format("Distance: %d", distance);
+            Position textPosition = unitPosition.add(new Position(8, 8));
+            game.drawTextMap(textPosition, distanceText, Text.Cyan);
+        }
+    }
+
+    public void debugProductionQueue() {
+        if (!config.debugProductionQueue) return;
+        
+        int numDisplayed = 0;
+        int x = 4;
+        int y = 64;
+        for (Plan plan : gameState.getProductionQueue()) {
+            game.drawTextScreen(x, y, plan.getName() + " " + plan.getPriority(), Text.Green);
+            y += 8;
+            numDisplayed += 1;
+            if (numDisplayed == 10) {
+                break;
+            }
+        }
+
+        if (numDisplayed < gameState.getProductionQueue().size()) {
+            game.drawTextScreen(x, y, String.format("... %s more planned items", gameState.getProductionQueue().size() - numDisplayed), Text.GreyGreen);
+        }
+    }
+
+    public void debugInProgressQueue() {
+        if (!config.debugInProgressQueue) return;
+        
+        int numDisplayed = 0;
+        int x = 100;
+        int y = 64;
+        for (Plan plan : gameState.getAssignedPlannedItems().values()) {
+            game.drawTextScreen(x, y, plan.getName() + " " + plan.getPriority(), Text.Green);
+            y += 8;
+            numDisplayed += 1;
+            if (numDisplayed == 10) {
+                break;
+            }
+        }
+    }
+
+    public void debugScheduledPlannedItems() {
+        if (!config.debugScheduledPlannedItems) return;
+        
+        int numDisplayed = 0;
+        int x = 196;
+        int y = 64;
+        for (Plan plan : gameState.getPlansScheduled()) {
+            game.drawTextScreen(x, y, plan.getName() + " " + plan.getPriority(), Text.Green);
+            y += 8;
+            numDisplayed += 1;
+            if (numDisplayed == 10) {
+                break;
+            }
+        }
+    }
+
 }
