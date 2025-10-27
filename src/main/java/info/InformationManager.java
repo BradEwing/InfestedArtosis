@@ -548,6 +548,13 @@ public class InformationManager {
             }
         }
 
+        // Calculate accessible WalkPositions from a main base using flood fill
+        // TODO: This naive approach will not work for island maps.
+        if (!startingPositions.isEmpty()) {
+            TilePosition mainBasePosition = startingPositions.iterator().next();
+            gameMap.calculateAccessibleWalkPositions(game, mainBasePosition);
+        }
+
         gameState.setGameMap(gameMap);
         gameState.setBuildingPlanner(new BuildingPlanner(game, bwem, gameMap));
     }

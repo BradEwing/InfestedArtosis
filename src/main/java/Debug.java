@@ -4,6 +4,7 @@ import bwapi.Position;
 import bwapi.Text;
 import bwapi.TilePosition;
 import bwapi.UnitType;
+import bwapi.WalkPosition;
 import bwem.BWEM;
 import bwem.Base;
 import info.BaseData;
@@ -54,6 +55,7 @@ public class Debug {
         //drawAllBasePaths();
         debugBuildingPlanner();
         debugStaticDefenseCoverage();
+        debugAccessibleWalkPositions();
     }
 
     private void drawBases() {
@@ -172,6 +174,24 @@ public class Debug {
             //buildingPlanner.debugMineralBoundingBox(base);
             //buildingPlanner.debugGeyserBoundingBox(base);
             //buildingPlanner.debugMacroHatcheryLocation(gameState.getOpponentRace(), baseData);
+        }
+    }
+
+    /**
+     * Debug visualization for accessible WalkPositions from flood fill algorithm.
+     * Draws small dots at each accessible WalkPosition.
+     */
+    private void debugAccessibleWalkPositions() {
+        try {
+            if (gameState.getGameMap() != null && gameState.getGameMap().getAccessibleWalkPositions() != null) {
+                for (WalkPosition wp : gameState.getGameMap().getAccessibleWalkPositions()) {
+                    if (Math.random() < 0.01) {
+                        game.drawDotMap(wp.toPosition(), Color.Green);
+                    }
+                }
+            }
+        } catch (IllegalStateException e) {
+            //game.drawTextScreen(4, 48, "Error: " + e.getMessage());
         }
     }
 }
