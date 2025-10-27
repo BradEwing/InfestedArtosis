@@ -9,7 +9,6 @@ import bwapi.TilePosition;
 import bwapi.Unit;
 import bwapi.UnitType;
 import bwapi.WalkPosition;
-import bwem.BWEM;
 import bwem.Base;
 import config.Config;
 import info.BaseData;

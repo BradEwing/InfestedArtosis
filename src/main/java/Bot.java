@@ -5,7 +5,6 @@ import bwapi.Race;
 import bwapi.Unit;
 import bwapi.UnitType;
 import bwem.BWEM;
-import debug.Debug;
 import info.GameState;
 import info.InformationManager;
 import learning.Decisions;
