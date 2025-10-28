@@ -40,3 +40,9 @@ run_proxy.bat
 
 # Environment variables
 .env
+
+# MacOS
+*.DS_Store
+
+# DLLs
+*.dll

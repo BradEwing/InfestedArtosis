@@ -38,7 +38,8 @@ public class RecordTest {
     
     @Test
     void testEmptyRecordReturnsDefaultIndex() {
-        assertEquals(1.0, recordA.index(0), 0.001);
+        double index = recordA.index(0);
+        assertTrue(index >= 0.0 && index <= 1.0, "Empty record with zero totalGames should return random value between 0 and 1");
     }
     
     /**
@@ -188,15 +189,18 @@ public class RecordTest {
     void testZeroTotalGames() {
         recordA.addWinTimestamp(baseTime);
         
-        assertEquals(1.0, recordA.index(0), 0.001);
+        double index = recordA.index(0);
+        assertTrue(index >= 0.0 && index <= 1.0, "Zero totalGames should return random value between 0 and 1");
     }
     
     @Test
     void testSingleGame() {
         recordA.addWinTimestamp(baseTime);
+        recordA.setWins(1);
+        recordA.setLosses(0);
         
         double index = recordA.index(1);
-        assertTrue(index >= 1.0, "Single win should have positive index");
+        assertTrue(index > 0.0, "Single win should have positive index");
     }
     
     @Test
@@ -275,14 +279,19 @@ public class RecordTest {
     
     @Test
     void testEmptyRecordWithZeroGames() {
-        assertEquals(1.0, recordA.index(0), 0.001);
+        double index = recordA.index(0);
+        assertTrue(index >= 0.0 && index <= 1.0, "Empty record with zero totalGames should return random value between 0 and 1");
     }
     
     @Test
     void testRecordWithZeroGames() {
         recordA.setWins(0);
         recordA.setLosses(0);
-        assertEquals(1.0, recordA.index(100), 0.001);
+        double index = recordA.index(100);
+        double expectedMin = Math.sqrt(Math.log(100)) - 0.1;
+        double expectedMax = Math.sqrt(Math.log(100)) + 0.1;
+        assertTrue(index >= expectedMin && index <= expectedMax, 
+            "Unplayed strategy should return sqrt(ln(totalGames)) + random(-0.1, 0.1)");
     }
     
     @Test

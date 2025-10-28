@@ -44,7 +44,11 @@ public class MapAwareRecordTest {
     
     @Test
     void testEmptyRecordReturnsDefaultIndex() {
-        assertEquals(1.0, recordA.index(100), 0.001);
+        double index = recordA.index(100);
+        double expectedMin = Math.sqrt(Math.log(100)) - 0.1;
+        double expectedMax = Math.sqrt(Math.log(100)) + 0.1;
+        assertTrue(index >= expectedMin && index <= expectedMax, 
+            "Empty record should return sqrt(ln(totalGames)) + random(-0.1, 0.1)");
     }
     
     /**
@@ -225,7 +229,8 @@ public class MapAwareRecordTest {
         recordA.addWinTimestamp(baseTime);
         recordA.addLossTimestamp(baseTime + 1000);
         
-        assertEquals(1.0, recordA.index(0), 0.001);
+        double index = recordA.index(0);
+        assertTrue(index >= 0.0 && index <= 1.0, "Zero totalGames should return random value between 0 and 1");
     }
     
     @Test
