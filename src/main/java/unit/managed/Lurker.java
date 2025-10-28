@@ -2,6 +2,7 @@ package unit.managed;
 
 import bwapi.Game;
 import bwapi.Unit;
+import info.map.GameMap;
 
 public class Lurker extends ManagedUnit {
     private int targetOutOfRangeFrames = 0;
@@ -9,8 +10,8 @@ public class Lurker extends ManagedUnit {
     private static final int MAX_TARGET_OUT_OF_RANGE_FRAMES = 20;
     private static final int MAX_NO_ATTACK_FRAMES = 50;
 
-    public Lurker(Game game, Unit unit, UnitRole role) {
-        super(game, unit, role);
+    public Lurker(Game game, Unit unit, UnitRole role, GameMap gameMap) {
+        super(game, unit, role, gameMap);
     }
 
     @Override

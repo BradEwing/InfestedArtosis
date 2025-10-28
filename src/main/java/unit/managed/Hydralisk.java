@@ -7,14 +7,15 @@ import bwapi.Unit;
 import bwapi.UnitType;
 import bwapi.UpgradeType;
 import bwapi.WeaponType;
+import info.map.GameMap;
 import macro.plan.PlanType;
 
 public class Hydralisk extends ManagedUnit {
     private static final int UPGRADED_RANGE_BONUS = 32;
     private static final int MOVE_DISTANCE = 64;
 
-    public Hydralisk(Game game, Unit unit, UnitRole role) {
-        super(game, unit, role);
+    public Hydralisk(Game game, Unit unit, UnitRole role, GameMap gameMap) {
+        super(game, unit, role, gameMap);
     }
 
     @Override

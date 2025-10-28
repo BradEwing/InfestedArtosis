@@ -232,7 +232,7 @@ public class Debug {
 
     private void drawUnitCount() {
         int x = 4;
-        int y = 192;
+        int y = 160;
         game.drawTextScreen(x, y, "Unit Count");
 
         UnitTypeCount unitTypeCount = gameState.getUnitTypeCount();
