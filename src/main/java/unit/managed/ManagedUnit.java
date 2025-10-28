@@ -7,7 +7,7 @@ import bwapi.Unit;
 import bwapi.UnitType;
 import bwapi.WalkPosition;
 import bwapi.WeaponType;
-import info.GameState;
+import info.map.GameMap;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.Setter;
@@ -22,7 +22,7 @@ import java.util.stream.Collectors;
 public class ManagedUnit {
     protected static int LOCK_ENEMY_WITHIN_DISTANCE = 25;
     protected Game game;
-    protected GameState gameState;
+    protected GameMap gameMap;
 
     @Getter
     protected final int unitID; // debug
@@ -64,11 +64,11 @@ public class ManagedUnit {
     protected int unreadyUntilFrame = 0;
     protected boolean isReady = true;
 
-    public ManagedUnit(Game game, Unit unit, UnitRole role, GameState gameState) {
+    public ManagedUnit(Game game, Unit unit, UnitRole role, GameMap gameMap) {
         this.game = game;
         this.unit = unit;
         this.role = role;
-        this.gameState = gameState;
+        this.gameMap = gameMap;
 
         this.unitType = unit.getType();
         this.unitID = unit.getID();
@@ -206,7 +206,7 @@ public class ManagedUnit {
         }
          
         // Get accessible walk positions from GameMap
-        Set<WalkPosition> accessibleWalkPositions = gameState.getAccessibleWalkPositions();
+        Set<WalkPosition> accessibleWalkPositions = gameMap.getAccessibleWalkPositions();
         if (accessibleWalkPositions.isEmpty()) {
             return isBasicPathWalkable(currentPos, retreatTarget, dx, dy, distance);
         }
