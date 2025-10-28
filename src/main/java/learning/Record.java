@@ -54,8 +54,12 @@ public class Record implements UCBRecord {
     }
 
     public double index(int totalGames) {
-        if (totalGames == 0 || this.games() == 0) {
-            return 1.0;
+        if (totalGames == 0) {
+            return Math.random();
+        }
+        
+        if (this.games() == 0) {
+            return Math.sqrt(Math.log(totalGames)) + (Math.random() * 0.2 - 0.1);
         }
         
         double discountedWins = calculateDiscountedWins();

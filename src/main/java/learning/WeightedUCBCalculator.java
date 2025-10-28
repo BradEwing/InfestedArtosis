@@ -49,7 +49,11 @@ public class WeightedUCBCalculator {
             return opponentRecord.index(totalGames);
         }
 
-        return 1.0;
+        if (totalGames == 0) {
+            return Math.random();
+        }
+        
+        return Math.sqrt(Math.log(totalGames)) + (Math.random() * 0.2 - 0.1);
 }
     
     public static String findBestStrategy(List<String> candidates,
