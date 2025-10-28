@@ -2,11 +2,12 @@ package unit.managed;
 
 import bwapi.Game;
 import bwapi.Unit;
+import info.GameState;
 
 public class Drone extends ManagedUnit {
 
-    public Drone(Game game, Unit unit, UnitRole role) {
-        super(game, unit, role);
+    public Drone(Game game, Unit unit, UnitRole role, GameState gameState) {
+        super(game, unit, role, gameState);
     }
 
     @Override

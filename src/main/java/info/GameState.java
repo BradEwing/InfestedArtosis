@@ -9,6 +9,7 @@ import bwapi.TilePosition;
 import bwapi.Unit;
 import bwapi.UnitType;
 import bwapi.UpgradeType;
+import bwapi.WalkPosition;
 import bwem.BWEM;
 import bwem.Base;
 import bwem.Mineral;
@@ -709,5 +710,9 @@ public class GameState {
             default:
                 return 0;
         }
+    }
+
+    public Set<WalkPosition> getAccessibleWalkPositions() {
+        return gameMap.getAccessibleWalkPositions();
     }
 }

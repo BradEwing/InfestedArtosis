@@ -2,14 +2,15 @@ package unit.managed;
 
 import bwapi.Game;
 import bwapi.Unit;
+import info.GameState;
 import util.Time;
 
 public class Mutalisk extends ManagedUnit {
     private Time retreatUntilFrame = null;
     private static final int RETREAT_DURATION_FRAMES = 24; // 1 second retreat duration
     
-    public Mutalisk(Game game, Unit unit, UnitRole role) {
-        super(game, unit, role);
+    public Mutalisk(Game game, Unit unit, UnitRole role, GameState gameState) {
+        super(game, unit, role, gameState);
     }
 
     @Override

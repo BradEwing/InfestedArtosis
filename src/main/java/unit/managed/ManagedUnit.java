@@ -7,6 +7,7 @@ import bwapi.Unit;
 import bwapi.UnitType;
 import bwapi.WalkPosition;
 import bwapi.WeaponType;
+import info.GameState;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.Setter;
@@ -15,11 +16,13 @@ import macro.plan.PlanState;
 import util.Filter;
 
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 public class ManagedUnit {
     protected static int LOCK_ENEMY_WITHIN_DISTANCE = 25;
     protected Game game;
+    protected GameState gameState;
 
     @Getter
     protected final int unitID; // debug
@@ -61,10 +64,11 @@ public class ManagedUnit {
     protected int unreadyUntilFrame = 0;
     protected boolean isReady = true;
 
-    public ManagedUnit(Game game, Unit unit, UnitRole role) {
+    public ManagedUnit(Game game, Unit unit, UnitRole role, GameState gameState) {
         this.game = game;
         this.unit = unit;
         this.role = role;
+        this.gameState = gameState;
 
         this.unitType = unit.getType();
         this.unitID = unit.getID();
@@ -139,11 +143,7 @@ public class ManagedUnit {
     public Position getRetreatPosition() {
         int currentX = unit.getX();
         int currentY = unit.getY();
-        List<Unit> enemies = game.getUnitsInRadius(currentX, currentY, 128)
-                .stream()
-                .filter(u -> u.getPlayer() != game.self())
-                .filter(u -> !u.getType().isBuilding() || Filter.isHostileBuildingToGround(u.getType()))
-                .collect(Collectors.toList());
+        List<Unit> enemies = getEnemiesInRadius(currentX, currentY);
 
 
         if (enemies.isEmpty()) {
@@ -181,8 +181,18 @@ public class ManagedUnit {
         return retreatPos;
     }
 
+    private List<Unit> getEnemiesInRadius(int currentX, int currentY) {
+        List<Unit> enemies = game.getUnitsInRadius(currentX, currentY, 128)
+                .stream()
+                .filter(u -> u.getPlayer() != game.self())
+                .filter(u -> !u.getType().isBuilding() || Filter.isHostileBuildingToGround(u.getType()))
+                .collect(Collectors.toList());
+        return enemies;
+    }
+
     /**
      * Checks if the direct path from current position to retreat target intersects any non-walkable terrain.
+     * Uses GameMap's accessible WalkPositions to account for neutral barriers and terrain obstacles.
      * Samples WalkPositions along the path for efficiency while ensuring thorough coverage.
      */
     private boolean isRetreatPathWalkable(Position currentPos, Position retreatTarget) {
@@ -193,6 +203,12 @@ public class ManagedUnit {
         
         if (distance == 0) {
             return true; // Same position, path is valid
+        }
+         
+        // Get accessible walk positions from GameMap
+        Set<WalkPosition> accessibleWalkPositions = gameState.getAccessibleWalkPositions();
+        if (accessibleWalkPositions.isEmpty()) {
+            return isBasicPathWalkable(currentPos, retreatTarget, dx, dy, distance);
         }
         
         // Normalize direction
@@ -206,6 +222,34 @@ public class ManagedUnit {
         int numSteps = (int) Math.ceil(distance / stepSize);
         
         // Limit to reasonable number of checks (max 8 for efficiency)
+        numSteps = Math.min(numSteps, 8);
+        
+        for (int i = 1; i <= numSteps; i++) {
+            double progress = (double) i / numSteps;
+            int checkX = currentPos.getX() + (int)(dx * distance * progress);
+            int checkY = currentPos.getY() + (int)(dy * distance * progress);
+            Position checkPos = new Position(checkX, checkY);
+            WalkPosition walkPos = new WalkPosition(checkPos);
+            
+            // Check if this WalkPosition is in the accessible set
+            if (!accessibleWalkPositions.contains(walkPos)) {
+                return false;
+            }
+        }
+        
+        return true;
+    }
+    
+    /**
+     * Fallback method for basic walkability.
+     */
+    private boolean isBasicPathWalkable(Position currentPos, Position retreatTarget, double dx, double dy, double distance) {
+        // Normalize direction
+        dx /= distance;
+        dy /= distance;
+        
+        double stepSize = 4.0;
+        int numSteps = (int) Math.ceil(distance / stepSize);
         numSteps = Math.min(numSteps, 8);
         
         for (int i = 1; i <= numSteps; i++) {
@@ -459,8 +503,12 @@ public class ManagedUnit {
 
     protected void retreat() {
         if (retreatTarget == null) {
-            role = UnitRole.IDLE;
-            return;
+            Position next = getRetreatPosition();
+            setRetreatTarget(next);
+            if (next == null) {
+                role = UnitRole.RALLY;
+                return;
+            }
         }
 
         setUnready(4);
@@ -477,6 +525,11 @@ public class ManagedUnit {
         if (framesStuck >= 12) {
             setRetreatTarget(null);
             role = UnitRole.IDLE;
+            return;
+        }
+
+        if (getEnemiesInRadius(unit.getX(), unit.getY()).isEmpty()) {
+            role = UnitRole.RALLY;
             return;
         }
 
