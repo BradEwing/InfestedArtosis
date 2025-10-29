@@ -25,7 +25,7 @@ public class TwelveHatch extends BuildOrder {
 
     @Override
     public boolean playsRace(Race race) {
-        return race != Race.Random;
+        return race != Race.Unknown;
     }
 
     @Override
