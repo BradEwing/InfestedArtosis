@@ -81,6 +81,20 @@ public class SquadManager {
                 // Handle other squad types with general logic
                 evaluateSquadRole(fightSquad);
             }
+
+            for (ManagedUnit mu : fightSquad.getMembers()) {
+                if (mu.getUnitType() == UnitType.Zerg_Overlord) {
+                    if (gameState.getTechProgression().isOverlordSpeed()) {
+                        mu.setRallyPoint(fightSquad.getCenter());
+                        mu.setRole(UnitRole.RALLY);
+                    } else {
+                        // If an Overlord somehow ended up in a fight squad without speed, send it back safely
+                        fightSquad.removeUnit(mu);
+                        overlords.addUnit(mu);
+                        mu.setRole(UnitRole.IDLE);
+                    }
+                }
+            }
         }
 
         fightSquads.removeAll(removed);
@@ -98,8 +112,8 @@ public class SquadManager {
                 continue;
             }
 
-            managedUnit.setRole(UnitRole.RETREAT);
-            managedUnit.setRetreatTarget(mainBaseLocation.toPosition());
+            managedUnit.setRole(UnitRole.RALLY);
+            managedUnit.setRallyPoint(mainBaseLocation.toPosition());
         }
     }
 
@@ -851,6 +865,17 @@ public class SquadManager {
      */
     private void assignEnemyTarget(ManagedUnit managedUnit, Squad squad) {
         Unit unit = managedUnit.getUnit();
+        if (managedUnit.getUnitType() == UnitType.Zerg_Overlord) {
+            if (gameState.getTechProgression().isOverlordSpeed()) {
+                managedUnit.setRallyPoint(squad.getCenter());
+                managedUnit.setRole(UnitRole.RALLY);
+            } else {
+                squad.removeUnit(managedUnit);
+                overlords.addUnit(managedUnit);
+                managedUnit.setRole(UnitRole.IDLE);
+            }
+            return;
+        }
         List<Unit> enemyUnits = new ArrayList<>();
         enemyUnits.addAll(gameState.getVisibleEnemyUnits());
 

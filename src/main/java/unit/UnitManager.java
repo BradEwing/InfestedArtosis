@@ -200,14 +200,22 @@ public class UnitManager {
             return;
         }
 
-        // Handle Overlords as scouts based on race-specific conditions
+        // Handle Overlords: once enemy main/building info known, do not reassign to SCOUT
         if (unitType == UnitType.Zerg_Overlord) {
-            Set<Unit> enemies = new HashSet<>(gameState.getVisibleEnemyUnits());
-            if (!scoutData.shouldOverlordsContinueScouting(game.enemy().getRace(), enemies)) {
+            boolean enemyInfoKnown = gameState.getBaseData().getMainEnemyBase() != null
+                    || scoutData.isEnemyBuildingLocationKnown()
+                    || informationManager.isEnemyUnitVisible();
+            if (enemyInfoKnown) {
                 squadManager.addManagedUnit(managedUnit);
                 scoutManager.removeScout(managedUnit);
             } else {
-                createScout(managedUnit);
+                Set<Unit> enemies = new HashSet<>(gameState.getVisibleEnemyUnits());
+                if (!scoutData.shouldOverlordsContinueScouting(game.enemy().getRace(), enemies)) {
+                    squadManager.addManagedUnit(managedUnit);
+                    scoutManager.removeScout(managedUnit);
+                } else {
+                    createScout(managedUnit);
+                }
             }
             return;
         }
@@ -349,7 +357,12 @@ public class UnitManager {
             }
             
             if (shouldStopScouting) {
-                managedUnit.setRole(UnitRole.RALLY);
+                if (managedUnit.getUnitType() == UnitType.Zerg_Overlord) {
+                    managedUnit.setRole(UnitRole.IDLE);
+                } else {
+                    managedUnit.setRole(UnitRole.RALLY);
+                }
+                managedUnit.setMovementTargetPosition(null);
                 squadManager.addManagedUnit(managedUnit);
                 scoutManager.removeScout(managedUnit);
                 return;

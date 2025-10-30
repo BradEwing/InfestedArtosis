@@ -3,6 +3,7 @@ package util;
 import bwapi.Position;
 import bwapi.Unit;
 import bwapi.UnitType;
+import bwapi.WeaponType;
 
 import java.util.List;
 
@@ -120,5 +121,18 @@ public final class Filter {
                unitType == UnitType.Zerg_Lurker_Egg ||
                unitType == UnitType.Zerg_Cocoon ||
                unitType == UnitType.Zerg_Egg;
+    }
+
+    /**
+     * Returns true if the given type can threaten air (units with an air weapon, or static AA).
+     */
+    public static boolean isAirThreat(UnitType unitType) {
+        if (unitType.isBuilding()) {
+            return unitType == UnitType.Terran_Missile_Turret ||
+                    unitType == UnitType.Zerg_Spore_Colony ||
+                    unitType == UnitType.Protoss_Photon_Cannon;
+        }
+        WeaponType airWeapon = unitType.airWeapon();
+        return airWeapon != null && airWeapon != WeaponType.None;
     }
 }
