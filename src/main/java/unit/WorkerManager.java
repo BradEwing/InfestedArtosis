@@ -20,6 +20,7 @@ import util.UnitDistanceComparator;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -215,7 +216,6 @@ public class WorkerManager {
                 managedUnit.setGatherTarget(mineral);
                 managedUnit.setNewGatherTarget(true);
                 assignedManagedWorkers.add(managedUnit);
-                gameState.setMineralWorkers(gameState.getMineralWorkers() + 1);
                 mineralUnits.add(managedUnit);
                 gatherers.add(managedUnit);
                 mineralGatherers.add(managedUnit);
@@ -274,10 +274,9 @@ public class WorkerManager {
     /**
      * Assigns a drone to the closest available geyser
      */
-    private void assignToGeyser(ManagedUnit managedUnit) {
+    private boolean assignToGeyser(ManagedUnit managedUnit) {
         Unit unit = managedUnit.getUnit();
-        
-        // Get all available geysers and sort by distance
+
         List<Unit> availableGeysers = new ArrayList<>();
         for (Unit geyser: gameState.getGeyserAssignments().keySet()) {
             HashSet<ManagedUnit> geyserUnits = gameState.getGeyserAssignments().get(geyser);
@@ -285,27 +284,37 @@ public class WorkerManager {
                 availableGeysers.add(geyser);
             }
         }
-        
+
         if (availableGeysers.isEmpty()) {
-            return;
+            return false;
         }
-        
-        // Sort by distance to the drone
+
         availableGeysers.sort(new UnitDistanceComparator(unit));
-        
-        // Assign to the closest available geyser
-        Unit targetGeyser = availableGeysers.get(0);
+
+        for (Unit targetGeyser: availableGeysers) {
+            if (assignToGeyser(managedUnit, targetGeyser)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private boolean assignToGeyser(ManagedUnit managedUnit, Unit targetGeyser) {
         HashSet<ManagedUnit> geyserUnits = gameState.getGeyserAssignments().get(targetGeyser);
-        
+        if (geyserUnits == null || geyserUnits.size() >= 3) {
+            return false;
+        }
+
         managedUnit.setRole(UnitRole.GATHER);
         managedUnit.setGatherTarget(targetGeyser);
         managedUnit.setNewGatherTarget(true);
         assignedManagedWorkers.add(managedUnit);
-        gameState.setGeyserWorkers(gameState.getGeyserWorkers()+1);
         geyserUnits.add(managedUnit);
         gatherers.add(managedUnit);
         gasGatherers.add(managedUnit);
         assignToClosestBase(targetGeyser, managedUnit);
+        return true;
     }
 
     // checksLarvaDeadlock determines if all larva are assigned to morph into non overlords and if we're supply blocked
@@ -431,53 +440,125 @@ public class WorkerManager {
     }
 
     /**
-     * Saturate geysers from gatherers
-     *
-     * TODO: Find closest drones
+     * Saturate geysers from gatherers using the closest available drones
      */
     private void saturateGeysers() {
         if (!gameState.needGeyserWorkers()) {
             return;
         }
 
-        List<ManagedUnit> reassignedWorkers = new ArrayList<>();
-        for (ManagedUnit managedUnit: mineralGatherers) {
-            if (reassignedWorkers.size() >= gameState.needGeyserWorkersAmount()) {
+        Map<Unit, HashSet<ManagedUnit>> geyserAssignments = gameState.getGeyserAssignments();
+        Map<Unit, Integer> remainingSlots = new HashMap<>();
+        int totalNeeded = 0;
+        for (Map.Entry<Unit, HashSet<ManagedUnit>> entry: geyserAssignments.entrySet()) {
+            int needed = 3 - entry.getValue().size();
+            if (needed > 0) {
+                remainingSlots.put(entry.getKey(), needed);
+                totalNeeded += needed;
+            }
+        }
+
+        if (remainingSlots.isEmpty()) {
+            return;
+        }
+
+        List<ManagedUnit> availableWorkers = new ArrayList<>(mineralGatherers);
+        if (availableWorkers.isEmpty()) {
+            return;
+        }
+
+        int workerLimit = Math.min(totalNeeded, availableWorkers.size());
+        Map<ManagedUnit, Unit> workerTargets = new LinkedHashMap<>();
+
+        while (!remainingSlots.isEmpty() && !availableWorkers.isEmpty() && workerTargets.size() < workerLimit) {
+            ManagedUnit bestWorker = null;
+            Unit bestGeyser = null;
+            double bestDistance = Double.MAX_VALUE;
+
+            for (ManagedUnit worker: availableWorkers) {
+                Unit workerUnit = worker.getUnit();
+                for (Unit geyser: remainingSlots.keySet()) {
+                    double distance = workerUnit.getDistance(geyser);
+                    if (distance < bestDistance) {
+                        bestDistance = distance;
+                        bestWorker = worker;
+                        bestGeyser = geyser;
+                    }
+                }
+            }
+
+            if (bestWorker == null || bestGeyser == null) {
                 break;
             }
 
-            reassignedWorkers.add(managedUnit);
+            workerTargets.put(bestWorker, bestGeyser);
+            availableWorkers.remove(bestWorker);
+
+            int slotsRemaining = remainingSlots.get(bestGeyser) - 1;
+            if (slotsRemaining <= 0) {
+                remainingSlots.remove(bestGeyser);
+            } else {
+                remainingSlots.put(bestGeyser, slotsRemaining);
+            }
         }
 
-        for (ManagedUnit worker: reassignedWorkers) {
+        for (Map.Entry<ManagedUnit, Unit> assignment: workerTargets.entrySet()) {
+            ManagedUnit worker = assignment.getKey();
+            Unit targetGeyser = assignment.getValue();
             gameState.clearAssignments(worker);
-            assignToGeyser(worker);
+            if (!assignToGeyser(worker, targetGeyser) && !assignToGeyser(worker)) {
+                assignToMineral(worker);
+            }
         }
     }
 
     /**
      * Cuts gas harvesting when gas is floating.
-     * Only reassigns excess gas workers to maintain balance.
+     * Reassigns gas workers to maintain proper mineral/gas balance.
      */
     private void cutGasHarvesting() {
-        // Only cut gas workers if we have too many relative to mineral workers
         int gasWorkers = gameState.getGeyserWorkers();
+        int mineralWorkers = gameState.getMineralWorkers();
         
-        // Keep at least 1 gas worker per geyser, but cut excess
-        int minGasWorkers = gameState.getGeyserAssignments().size();
-        int excessGasWorkers = Math.max(0, gasWorkers - minGasWorkers);
-        
-        if (excessGasWorkers > 0) {
+        // If we have no mineral workers, reassign most gas workers to minerals
+        if ((mineralWorkers == 0 && gasWorkers > 0) || mineralWorkers < 6) {
+            // Keep only 1 gas worker per geyser, move the rest to minerals
+            int minGasWorkers = gameState.getGeyserAssignments().size();
+            int workersToReassign = Math.max(0, gasWorkers - minGasWorkers);
+            
             List<ManagedUnit> geyserWorkers = new ArrayList<>(gasGatherers);
             int reassigned = 0;
             
             for (ManagedUnit worker: geyserWorkers) {
-                if (reassigned >= excessGasWorkers) {
+                if (reassigned >= workersToReassign) {
                     break;
                 }
                 gameState.clearAssignments(worker);
                 assignToMineral(worker);
                 reassigned++;
+            }
+            return;
+        }
+
+        // Normal case: maintain 3:1 mineral to gas ratio when floating gas
+        if (gasWorkers > 0 && mineralWorkers > 0) {
+            double currentRatio = (double) mineralWorkers / gasWorkers;
+            // If ratio is less than 3:1, move some gas workers to minerals
+            if (currentRatio < 3.0) {
+                int targetGasWorkers = Math.max(1, mineralWorkers / 3);
+                int workersToReassign = Math.max(0, gasWorkers - targetGasWorkers);
+                
+                List<ManagedUnit> geyserWorkers = new ArrayList<>(gasGatherers);
+                int reassigned = 0;
+                
+                for (ManagedUnit worker: geyserWorkers) {
+                    if (reassigned >= workersToReassign) {
+                        break;
+                    }
+                    gameState.clearAssignments(worker);
+                    assignToMineral(worker);
+                    reassigned++;
+                }
             }
         }
     }

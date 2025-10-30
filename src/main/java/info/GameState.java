@@ -47,8 +47,6 @@ public class GameState {
 
     private Race opponentRace;
 
-    private int mineralWorkers;
-    private int geyserWorkers;
     private int larvaDeadlockDetectedFrame;
 
     private HashMap<Unit, ManagedUnit> managedUnitLookup = new HashMap<>();
@@ -385,13 +383,11 @@ public class GameState {
         if (assignedManagedWorkers.contains(managedUnit)) {
             for (HashSet<ManagedUnit> mineralWorkers: mineralAssignments.values()) {
                 if (mineralWorkers.contains(managedUnit)) {
-                    this.mineralWorkers -= 1;
                     mineralWorkers.remove(managedUnit);
                 }
             }
             for (HashSet<ManagedUnit> geyserWorkers: geyserAssignments.values()) {
                 if (geyserWorkers.contains(managedUnit)) {
-                    this.geyserWorkers -= 1;
                     geyserWorkers.remove(managedUnit);
                 }
             }
@@ -447,8 +443,16 @@ public class GameState {
     }
 
     public int numWorkers() {
-        return mineralWorkers + geyserWorkers;
+		return mineralGatherers.size() + gasGatherers.size();
     }
+
+	public int getMineralWorkers() {
+		return mineralGatherers.size();
+	}
+
+	public int getGeyserWorkers() {
+		return gasGatherers.size();
+	}
 
     // How many workers we want.
     // This is pulled from the old ProductionManager. Ideally this is something set more so
