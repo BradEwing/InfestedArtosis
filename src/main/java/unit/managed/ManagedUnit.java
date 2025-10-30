@@ -181,7 +181,7 @@ public class ManagedUnit {
         return retreatPos;
     }
 
-    private List<Unit> getEnemiesInRadius(int currentX, int currentY) {
+    protected List<Unit> getEnemiesInRadius(int currentX, int currentY) {
         List<Unit> enemies = game.getUnitsInRadius(currentX, currentY, 128)
                 .stream()
                 .filter(u -> u.getPlayer() != game.self())

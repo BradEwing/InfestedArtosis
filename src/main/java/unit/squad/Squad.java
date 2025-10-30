@@ -63,6 +63,9 @@ public class Squad implements Comparable<Squad> {
     }
 
     public int distance (Squad other) {
+        if (center == null || other == null) {
+            return 0;
+        }
         return (int) center.getDistance(other.getCenter());
     }
 
