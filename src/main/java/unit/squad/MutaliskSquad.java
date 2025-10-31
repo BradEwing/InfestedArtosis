@@ -1,6 +1,7 @@
 package unit.squad;
 
 import bwapi.Position;
+import bwapi.Race;
 import bwapi.Unit;
 import bwapi.UnitType;
 import info.GameState;
@@ -54,7 +55,8 @@ public class MutaliskSquad extends Squad {
      * retreat calculations, and engagement decisions.
      */
     public void executeTactics(GameState gameState) {
-        if (getMembers().size() < 3) {
+        int minSize = (gameState.getOpponentRace() == Race.Zerg) ? 2 : 5;
+        if (getMembers().size() < minSize) {
             setStatus(SquadStatus.RALLY);
             rallyToSafePosition(gameState);
             return;
@@ -122,13 +124,17 @@ public class MutaliskSquad extends Squad {
         // Find priority target
         Unit priorityTarget = findPriorityTarget(allEnemies, staticDefenseCoverage);
 
-        if (priorityTarget != null && canAttackTargetFromSafePosition(priorityTarget, staticDefenseCoverage)) {
+        if (priorityTarget != null) {
             Position safeAttackPos = findSafeAttackPosition(priorityTarget, staticDefenseCoverage);
             if (safeAttackPos != null) {
-                setStatus(SquadStatus.RALLY);
-                setTarget(priorityTarget);
-                rallyToPosition(safeAttackPos, priorityTarget);
-                return;
+                double distanceToSafe = getCenter().getDistance(safeAttackPos);
+                if (!isAttackWindowActive && distanceToSafe > 96) {
+                    setStatus(SquadStatus.RALLY);
+                    setTarget(priorityTarget);
+                    rallyToPosition(safeAttackPos, priorityTarget);
+                    return;
+                }
+                // Close enough to safe ring: proceed to fight below
             }
         }
 
@@ -341,47 +347,126 @@ public class MutaliskSquad extends Squad {
     private Unit findPriorityTarget(List<Unit> enemies, Set<Position> staticDefenseCoverage) {
         Position squadCenter = getCenter();
 
-        // Separate enemies by safety
-        List<Unit> safeTargets = new ArrayList<>();
-        List<Unit> dangerousTargets = new ArrayList<>();
+        // Partition by distance: near first (<256), else far
+        List<Unit> near = new ArrayList<>();
+        List<Unit> far = new ArrayList<>();
+        for (Unit e : enemies) {
+            (squadCenter.getDistance(e.getPosition()) < 256 ? near : far).add(e);
+        }
+        List<Unit> working = !near.isEmpty() ? near : far;
+        if (working.isEmpty()) {
+            return null;
+        }
 
-        for (Unit enemy : enemies) {
-            if (isPositionInStaticDefenseCoverage(enemy.getPosition(), staticDefenseCoverage)) {
-                dangerousTargets.add(enemy);
+        // Prefer targets not covered by static AA
+        List<Unit> safe = new ArrayList<>();
+        List<Unit> unsafe = new ArrayList<>();
+        for (Unit e : working) {
+            if (isPositionInStaticDefenseCoverage(e.getPosition(), staticDefenseCoverage)) unsafe.add(e); else safe.add(e);
+        }
+        List<Unit> preferred = safe.isEmpty() ? unsafe : safe;
+
+        // Edge-aware: compute hull of local cluster and filter to hull units closest to squad
+        List<Position> localPositions = new ArrayList<>();
+        for (Unit e : preferred) {
+            if (squadCenter.getDistance(e.getPosition()) <= 384) {
+                if (!(e.getType().isBuilding() && !isAAStaticDefense(e))) {
+                    localPositions.add(e.getPosition());
+                }
+            }
+        }
+        List<Position> hull = computeConvexHull(localPositions);
+        List<Unit> edgeUnits = unitsOnHull(hull, preferred);
+        List<Unit> candidateEdge = edgeTargetsNearSquad(edgeUnits, squadCenter, 8);
+        List<Unit> candidates = !candidateEdge.isEmpty() ? candidateEdge : preferred;
+
+        // Priority buckets within candidates: anti-air > AA static defense > workers > others
+        List<Unit> aaUnits = new ArrayList<>();
+        List<Unit> aaStatic = new ArrayList<>();
+        List<Unit> workers = new ArrayList<>();
+        List<Unit> others = new ArrayList<>();
+        for (Unit u : candidates) {
+            if (isAntiAir(u) && !u.getType().isBuilding()) {
+                aaUnits.add(u);
+            } else if (isAAStaticDefense(u)) {
+                aaStatic.add(u);
+            } else if (isWorker(u)) {
+                workers.add(u);
             } else {
-                safeTargets.add(enemy);
+                others.add(u);
             }
         }
 
-        // Prefer safe targets, but if only buildings are available, still use them
-        boolean safeTargetsOnlyBuildings = safeTargets.stream().allMatch(unit -> unit.getType().isBuilding());
-        List<Unit> preferredTargets;
-        if (safeTargets.isEmpty()) {
-            preferredTargets = dangerousTargets;
-        } else if (safeTargetsOnlyBuildings && !dangerousTargets.isEmpty()) {
-            // If safe targets are only buildings but we have dangerous non-building targets, prefer those
-            boolean dangerousHasNonBuildings = dangerousTargets.stream().anyMatch(unit -> !unit.getType().isBuilding());
-            preferredTargets = dangerousHasNonBuildings ? dangerousTargets : safeTargets;
-        } else {
-            preferredTargets = safeTargets;
-        }
+        if (!aaUnits.isEmpty()) return getClosestUnit(squadCenter, aaUnits);
+        if (!aaStatic.isEmpty()) return getClosestUnit(squadCenter, aaStatic);
+        if (!workers.isEmpty()) return getClosestUnit(squadCenter, workers);
+        return getClosestUnit(squadCenter, others);
+    }
 
-        List<Unit> antiAirThreats = findAntiAirThreats(preferredTargets);
-        if (!antiAirThreats.isEmpty()) {
-            return getClosestUnit(squadCenter, antiAirThreats);
+    private List<Position> computeConvexHull(List<Position> points) {
+        List<Position> pts = new ArrayList<>(points);
+        if (pts.size() < 3) return pts;
+        pts.sort((a,b) -> a.getX() == b.getX() ? Integer.compare(a.getY(), b.getY()) : Integer.compare(a.getX(), b.getX()));
+        List<Position> lower = new ArrayList<>();
+        for (Position p : pts) {
+            while (lower.size() >= 2 && cross(lower.get(lower.size()-2), lower.get(lower.size()-1), p) <= 0) {
+                lower.remove(lower.size()-1);
+            }
+            lower.add(p);
         }
-
-        List<Unit> workers = findWorkers(preferredTargets);
-        if (!workers.isEmpty()) {
-            return getClosestUnit(squadCenter, workers);
+        List<Position> upper = new ArrayList<>();
+        for (int i = pts.size()-1; i >= 0; i--) {
+            Position p = pts.get(i);
+            while (upper.size() >= 2 && cross(upper.get(upper.size()-2), upper.get(upper.size()-1), p) <= 0) {
+                upper.remove(upper.size()-1);
+            }
+            upper.add(p);
         }
+        lower.remove(lower.size()-1);
+        upper.remove(upper.size()-1);
+        lower.addAll(upper);
+        return lower;
+    }
 
-        List<Unit> staticDefense = findStaticDefense(preferredTargets);
-        if (!staticDefense.isEmpty()) {
-            return getClosestUnit(squadCenter, staticDefense);
+    private long cross(Position a, Position b, Position c) {
+        long x1 = b.getX() - a.getX();
+        long y1 = b.getY() - a.getY();
+        long x2 = c.getX() - b.getX();
+        long y2 = c.getY() - b.getY();
+        return x1 * y2 - y1 * x2;
+    }
+
+    private List<Unit> unitsOnHull(List<Position> hull, List<Unit> enemies) {
+        List<Unit> result = new ArrayList<>();
+        for (Unit e : enemies) {
+            Position p = e.getPosition();
+            for (Position h : hull) {
+                if (p.getX() == h.getX() && p.getY() == h.getY()) {
+                    result.add(e);
+                    break;
+                }
+            }
         }
+        return result;
+    }
 
-        return preferredTargets.isEmpty() ? null : getClosestUnit(squadCenter, preferredTargets);
+    private List<Unit> edgeTargetsNearSquad(List<Unit> edgeUnits, Position squadCenter, int k) {
+        edgeUnits.sort((u1, u2) -> Double.compare(squadCenter.getDistance(u1.getPosition()), squadCenter.getDistance(u2.getPosition())));
+        if (edgeUnits.size() <= k) return edgeUnits;
+        return new ArrayList<>(edgeUnits.subList(0, k));
+    }
+
+    private boolean isAAStaticDefense(Unit unit) {
+        UnitType type = unit.getType();
+        return type == UnitType.Terran_Missile_Turret ||
+               type == UnitType.Terran_Bunker ||
+               type == UnitType.Protoss_Photon_Cannon ||
+               type == UnitType.Zerg_Spore_Colony;
+    }
+
+    private boolean isWorker(Unit unit) {
+        UnitType t = unit.getType();
+        return t == UnitType.Protoss_Probe || t == UnitType.Terran_SCV || t == UnitType.Zerg_Drone;
     }
 
     private boolean canAttackTargetFromSafePosition(Unit target, Set<Position> staticDefenseCoverage) {

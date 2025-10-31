@@ -434,7 +434,7 @@ public class SquadManager {
             if (gameState.getOpponentRace() == Race.Zerg) {
                 return 2;
             }
-            return 4;
+            return 5;
         } else if (type == UnitType.Zerg_Hydralisk) {
             return 10;
         } else if (type == UnitType.Zerg_Lurker) {
