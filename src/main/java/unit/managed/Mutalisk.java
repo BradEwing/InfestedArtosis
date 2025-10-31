@@ -25,8 +25,6 @@ public class Mutalisk extends ManagedUnit {
         if (retreatUntilFrame != null && game.getFrameCount() < retreatUntilFrame.getFrames()) {
             if (retreatTarget == null) {
                 retreatTarget = getRetreatPosition();
-            } else {
-                retreatUntilFrame = null;
             }
             unit.move(retreatTarget);
             return;
