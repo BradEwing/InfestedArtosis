@@ -234,17 +234,12 @@ public class ThreeHatchMuta extends ProtossBase {
         }
 
         int droneTarget = hatchCount * 7;
-        if (macroHatchCount > 0 && droneCount < droneTarget) {
+        droneTarget = Math.min(droneTarget, 65);
+        if (droneCount < droneTarget) {
             for (int i = 0; i < droneTarget - droneCount; i++) {
                 Plan zerglingPlan = this.planUnit(gameState, UnitType.Zerg_Drone);
                 plans.add(zerglingPlan);
             }
-            return plans;
-        }
-
-        if (plans.isEmpty() && gameState.canPlanDrone()) {
-            Plan dronePlan = this.planUnit(gameState, UnitType.Zerg_Drone);
-            plans.add(dronePlan);
             return plans;
         }
 
