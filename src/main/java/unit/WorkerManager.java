@@ -161,6 +161,17 @@ public class WorkerManager {
         assignedManagedUnits.add(gatherer);
     }
 
+    private void assignGatherer(ManagedUnit managedUnit, Unit target, HashSet<ManagedUnit> resourceUnits, HashSet<ManagedUnit> resourceGatherers) {
+        managedUnit.setRole(UnitRole.GATHER);
+        managedUnit.setGatherTarget(target);
+        managedUnit.setNewGatherTarget(true);
+        assignedManagedWorkers.add(managedUnit);
+        resourceUnits.add(managedUnit);
+        gatherers.add(managedUnit);
+        resourceGatherers.add(managedUnit);
+        assignToClosestBase(target, managedUnit);
+    }
+
     private void assignToMineral(ManagedUnit managedUnit) {
         Unit unit = managedUnit.getUnit();
         
@@ -180,12 +191,13 @@ public class WorkerManager {
      */
     private boolean assignToMineralAtBase(ManagedUnit managedUnit, Base base) {
         Unit unit = managedUnit.getUnit();
-        
+
+        HashMap<Unit, HashSet<ManagedUnit>> mineralAssignments = gameState.getMineralAssignments();
         // Get mineral patches for this specific base
         List<Unit> baseMinerals = new ArrayList<>();
         for (Mineral mineral : base.getMinerals()) {
             Unit mineralUnit = mineral.getUnit();
-            if (gameState.getMineralAssignments().containsKey(mineralUnit)) {
+            if (mineralAssignments.containsKey(mineralUnit)) {
                 baseMinerals.add(mineralUnit);
             }
         }
@@ -197,7 +209,7 @@ public class WorkerManager {
         // Count drones already assigned to this base's minerals
         int dronesAtBase = 0;
         for (Unit mineral : baseMinerals) {
-            HashSet<ManagedUnit> mineralUnits = gameState.getMineralAssignments().get(mineral);
+            HashSet<ManagedUnit> mineralUnits = mineralAssignments.get(mineral);
             dronesAtBase += mineralUnits.size();
         }
         
@@ -208,23 +220,25 @@ public class WorkerManager {
         baseMinerals.sort(new UnitDistanceComparator(unit));
         
         // Find the first mineral patch that meets the lock threshold
-        for (Unit mineral : baseMinerals) {
-            HashSet<ManagedUnit> mineralUnits = gameState.getMineralAssignments().get(mineral);
+        Unit mineral = null;
+        for (Unit m : baseMinerals) {
+            HashSet<ManagedUnit> mineralUnits = mineralAssignments.get(m);
             if (mineralUnits.size() <= lockThreshold) {
-                // Assign the drone to this mineral patch
-                managedUnit.setRole(UnitRole.GATHER);
-                managedUnit.setGatherTarget(mineral);
-                managedUnit.setNewGatherTarget(true);
-                assignedManagedWorkers.add(managedUnit);
-                mineralUnits.add(managedUnit);
-                gatherers.add(managedUnit);
-                mineralGatherers.add(managedUnit);
-                assignToClosestBase(mineral, managedUnit);
+                mineral = m;
+                assignGatherer(managedUnit, mineral, mineralUnits, mineralGatherers);
                 return true;
             }
         }
         
-        return false;
+        // Fallback: if no mineral met threshold, assign to first mineral
+        if (mineral == null) {
+            mineral = baseMinerals.get(0);
+        }
+
+        HashSet<ManagedUnit> mineralUnits = mineralAssignments.get(mineral);
+        assignGatherer(managedUnit, mineral, mineralUnits, mineralGatherers);
+            
+        return true;
     }
 
     /**
@@ -306,14 +320,7 @@ public class WorkerManager {
             return false;
         }
 
-        managedUnit.setRole(UnitRole.GATHER);
-        managedUnit.setGatherTarget(targetGeyser);
-        managedUnit.setNewGatherTarget(true);
-        assignedManagedWorkers.add(managedUnit);
-        geyserUnits.add(managedUnit);
-        gatherers.add(managedUnit);
-        gasGatherers.add(managedUnit);
-        assignToClosestBase(targetGeyser, managedUnit);
+        assignGatherer(managedUnit, targetGeyser, geyserUnits, gasGatherers);
         return true;
     }
 

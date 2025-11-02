@@ -5,6 +5,9 @@ import bwapi.Position;
 import bwapi.TilePosition;
 import bwapi.Unit;
 import bwapi.UnitType;
+import bwem.Base;
+import bwem.Mineral;
+import info.BaseData;
 import info.GameState;
 import unit.managed.ManagedUnit;
 import unit.managed.ManagedUnitToPositionComparator;
@@ -12,6 +15,7 @@ import unit.managed.UnitRole;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -191,19 +195,112 @@ public class PlanManager {
     }
 
     private boolean assignMorphLarva(Plan plan) {
+        List<ManagedUnit> availableLarva = new ArrayList<>();
         for (ManagedUnit managedUnit : larva) {
             Unit unit = managedUnit.getUnit();
-            // If larva and not assigned, assign
             if (!gameState.getAssignedPlannedItems().containsKey(unit)) {
-                gameState.clearAssignments(managedUnit);
-                plan.setState(PlanState.BUILDING);
-                managedUnit.setRole(UnitRole.MORPH);
-                managedUnit.setPlan(plan);
-                gameState.getAssignedPlannedItems().put(unit, plan);
-                return true;
+                availableLarva.add(managedUnit);
             }
         }
 
+        if (availableLarva.isEmpty()) {
+            return false;
+        }
+
+        UnitType plannedUnit = plan.getPlannedUnit();
+        ManagedUnit selectedLarva = null;
+
+        if (availableLarva.size() > 1) {
+            if (plannedUnit == UnitType.Zerg_Drone) {
+                List<ManagedUnit> prioritizedLarva = availableLarva.stream()
+                        .filter(l -> {
+                            Base base = getBaseForLarva(l);
+                            return base != null && hasUnderSaturatedResources(base);
+                        })
+                        .collect(Collectors.toList());
+
+                if (!prioritizedLarva.isEmpty()) {
+                    selectedLarva = prioritizedLarva.get(0);
+                }
+            } else if (plannedUnit == UnitType.Zerg_Overlord) {
+                Base naturalBase = getNaturalExpansionBase();
+                if (naturalBase != null) {
+                    List<ManagedUnit> naturalLarva = availableLarva.stream()
+                            .filter(l -> {
+                                Base base = getBaseForLarva(l);
+                                return base != null && base.equals(naturalBase);
+                            })
+                            .collect(Collectors.toList());
+
+                    if (!naturalLarva.isEmpty()) {
+                        selectedLarva = naturalLarva.get(0);
+                    }
+                }
+            }
+        }
+
+        if (selectedLarva == null) {
+            selectedLarva = availableLarva.get(0);
+        }
+
+        Unit unit = selectedLarva.getUnit();
+        gameState.clearAssignments(selectedLarva);
+        plan.setState(PlanState.BUILDING);
+        selectedLarva.setRole(UnitRole.MORPH);
+        selectedLarva.setPlan(plan);
+        gameState.getAssignedPlannedItems().put(unit, plan);
+        return true;
+    }
+
+    private Base getBaseForLarva(ManagedUnit larva) {
+        Unit larvaUnit = larva.getUnit();
+        Unit hatchery = larvaUnit.getHatchery();
+
+        if (hatchery != null) {
+            return gameState.getBaseData().get(hatchery);
+        }
+
+        HashSet<Unit> baseHatcheries = gameState.getBaseData().baseHatcheries();
+        if (baseHatcheries.isEmpty()) {
+            return null;
+        }
+
+        Unit closestHatchery = null;
+        double closestDistance = Double.MAX_VALUE;
+        for (Unit h : baseHatcheries) {
+            double distance = larvaUnit.getDistance(h);
+            if (distance < closestDistance) {
+                closestDistance = distance;
+                closestHatchery = h;
+            }
+        }
+
+        if (closestHatchery != null) {
+            return gameState.getBaseData().get(closestHatchery);
+        }
+
+        return null;
+    }
+
+    private boolean hasUnderSaturatedResources(Base base) {
+        HashMap<Unit, HashSet<ManagedUnit>> mineralAssignments = gameState.getMineralAssignments();
+        for (Mineral mineral : base.getMinerals()) {
+            Unit mineralUnit = mineral.getUnit();
+            if (mineralAssignments.containsKey(mineralUnit)) {
+                HashSet<ManagedUnit> mineralUnits = mineralAssignments.get(mineralUnit);
+                if (mineralUnits.size() < 1) {
+                    return true;
+                }
+            }
+        }
         return false;
+    }
+
+    private Base getNaturalExpansionBase() {
+        BaseData baseData = gameState.getBaseData();
+        if (!baseData.hasNaturalExpansion()) {
+            return null;
+        }
+        return baseData.baseAtTilePosition(baseData.naturalExpansionPosition());
     }
 }
