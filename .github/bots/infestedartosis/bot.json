@@ -1,0 +1,7 @@
+{
+  "name": "InfestedArtosis",
+  "race": "zerg",
+  "botType": "JAVA_MIRROR",
+  "javaOpts": "-Xmx512m"
+}
+

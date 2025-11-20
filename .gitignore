@@ -43,6 +43,3 @@ run_proxy.bat
 
 # MacOS
 *.DS_Store
-
-# DLLs
-*.dll
