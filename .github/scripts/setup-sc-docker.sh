@@ -3,13 +3,12 @@ set -e -x -o pipefail
 
 git clone https://github.com/Bytekeeper/sc-docker.git
 ls -la
-cp it/sc-docker-support/*.dockerfile sc-docker/docker/dockerfiles
-pushd sc-docker
+cd sc-docker
 pip3 install wheel
 python3 setup.py bdist_wheel
 pip3 install dist/scbw*.whl
 cd docker
 ./build_images.sh
-popd
+cd ..
 scbw.play --install
 
