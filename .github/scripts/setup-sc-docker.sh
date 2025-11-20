@@ -2,6 +2,7 @@
 set -e -x -o pipefail
 
 git clone https://github.com/Bytekeeper/sc-docker.git
+ls -la
 cp it/sc-docker-support/*.dockerfile sc-docker/docker/dockerfiles
 pushd sc-docker
 pip3 install wheel
