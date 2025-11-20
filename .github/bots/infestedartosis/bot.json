@@ -1,8 +1,7 @@
 {
   "name": "InfestedArtosis",
   "race": "zerg",
-  "botType": "JNI",
-  "javaOpts": "-Xmx512m",
-  "javaDebugPort": 0
+  "botType": "JAVA_MIRROR",
+  "javaOpts": "-Xmx512m"
 }
 
