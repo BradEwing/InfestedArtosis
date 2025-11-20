@@ -4,7 +4,7 @@ set -e -x -o pipefail
 git clone https://github.com/Bytekeeper/sc-docker.git
 ls -la
 cd sc-docker
-pip3 install wheel
+pip3 install setuptools wheel
 python3 setup.py bdist_wheel
 pip3 install dist/scbw*.whl
 cd docker
