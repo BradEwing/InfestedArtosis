@@ -6,7 +6,7 @@ ls -la
 cd sc-docker
 pip3 install setuptools wheel
 python3 setup.py bdist_wheel
-pip3 install dist/scbw*.whl
+pip3 install dist/basil_scbw-1.1.0-py3-none-any.whl
 cd docker
 ./build_images.sh
 cd ..
