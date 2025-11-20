@@ -18,7 +18,7 @@ jobs:
       with:
         python-version: 3.14
     - name: Cache Docker images
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: /tmp/docker-cache
         key: docker-starcraft-${{ hashFiles('.github/scripts/setup-sc-docker.sh') }}
@@ -46,7 +46,7 @@ jobs:
       run: scbw.play --headless --bots infestedartosis infestedartosis --timeout 300 --docker_image starcraft:game 2>&1 | tee game_output.log || (cat $HOME/.scbw/games/*/logs_*/* && false)
     - name: Upload replay artifacts
       if: always()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: game-replays
         path: ~/.scbw/games/*/player_*.rep
