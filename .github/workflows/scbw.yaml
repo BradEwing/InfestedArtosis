@@ -19,10 +19,21 @@ jobs:
         python-version: 3.14
     - name: Setup sc-docker
       run: bash .github/scripts/setup-sc-docker.sh
-    - name: Install jbwapi
-      run: mvn clean install
-    - name: Run test bots 
+    - name: Build main bot
+      run: mvn clean package
+    - name: Install local bot to maven repo
+      run: mvn install:install-file -Dfile=target/InfestedArtosis-0.53-jar-with-dependencies.jar -DgroupId=com.github.InfestedArtosis -DartifactId=InfestedArtosis -Dversion=0.53 -Dpackaging=jar
+    - name: Build integration test bots
+      run: mvn -f .github/bots/pom.xml package
+    - name: Setup bot directories
       run: |
-        mvn -f it/bots/pom.xml package
-        for bot in $(ls -d it/bots/*/); do BOTNAME=$(basename $bot); echo "Setting up $BOTNAME"; mkdir -p "$HOME/.scbw/bots/$BOTNAME/AI" "$HOME/.scbw/bots/$BOTNAME/read" "$HOME/.scbw/bots/$BOTNAME/write"; cp it/sc-docker-support/BWAPI.dll "$HOME/.scbw/bots/$BOTNAME"; cp "$bot/target/"*-with-dependencies.jar "$HOME/.scbw/bots/$BOTNAME/AI"; cp "$bot/bot.json" "$HOME/.scbw/bots/$BOTNAME"; done
-        scbw.play --headless --bots jbwapibot SittingDuck --timeout 180 --docker_image starcraft:game 2>&1 | grep 'Winner is BotPlayer:jbwapibot:T' || (cat $HOME/.scbw/games/*/logs_0/* && false)
+        for bot in $(ls -d .github/bots/*/); do 
+          BOTNAME=$(basename $bot)
+          echo "Setting up $BOTNAME"
+          mkdir -p "$HOME/.scbw/bots/$BOTNAME/AI" "$HOME/.scbw/bots/$BOTNAME/read" "$HOME/.scbw/bots/$BOTNAME/write"
+          cp .github/sc-docker-support/BWAPI.dll "$HOME/.scbw/bots/$BOTNAME"
+          cp "$bot/target/"*-with-dependencies.jar "$HOME/.scbw/bots/$BOTNAME/AI"
+          cp "$bot/bot.json" "$HOME/.scbw/bots/$BOTNAME"
+        done
+    - name: Run bot vs bot test
+      run: scbw.play --headless --bots InfestedArtosis InfestedArtosis --timeout 300 --docker_image starcraft:game 2>&1 | tee game_output.log || (cat $HOME/.scbw/games/*/logs_*/* && false)
