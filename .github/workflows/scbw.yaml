@@ -36,4 +36,4 @@ jobs:
           cp "$bot/bot.json" "$HOME/.scbw/bots/$BOTNAME"
         done
     - name: Run bot vs bot test
-      run: scbw.play --headless --bots InfestedArtosis InfestedArtosis --timeout 300 --docker_image starcraft:game 2>&1 | tee game_output.log || (cat $HOME/.scbw/games/*/logs_*/* && false)
+      run: scbw.play --headless --bots infestedartosis infestedartosis --timeout 300 --docker_image starcraft:game 2>&1 | tee game_output.log || (cat $HOME/.scbw/games/*/logs_*/* && false)
