@@ -60,7 +60,7 @@ public class Bot extends DefaultBWListener {
         debugMap = new Debug(game, decisions.getOpener(), opponentRecord, gameState, gameState.getConfig());
         productionManager = new ProductionManager(game, gameState, decisions.getOpener()); // TODO: reverse
         planManager = new PlanManager(game, gameState);
-        unitManager = new UnitManager(game, informationManager, bwem, gameState);
+        unitManager = new UnitManager(game, informationManager, gameState);
 
         autoObserver = new AutoObserver(gameState.getConfig(), game, unitManager.getScoutManager(), unitManager.getSquadManager());
     }

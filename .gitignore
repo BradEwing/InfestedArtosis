@@ -43,3 +43,7 @@ run_proxy.bat
 
 # MacOS
 *.DS_Store
+
+# LLM Tooling
+.claude
+.cursor

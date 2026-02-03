@@ -233,7 +233,7 @@ public class ThreeHatchMuta extends ProtossBase {
             return plans;
         }
 
-        int droneTarget = hatchCount * 7;
+        int droneTarget = hatchCount * 8;
         droneTarget = Math.min(droneTarget, 65);
         if (droneCount < droneTarget) {
             for (int i = 0; i < droneTarget - droneCount; i++) {

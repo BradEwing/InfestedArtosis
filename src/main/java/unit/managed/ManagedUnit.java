@@ -44,6 +44,7 @@ public class ManagedUnit {
     public Position retreatTarget;
     private Position lastRetreatPosition;
     private int framesStuck = 0;
+    private int retreatStartFrame = 0;
 
     @Setter @Getter
     protected Unit defendTarget;
@@ -528,11 +529,6 @@ public class ManagedUnit {
             return;
         }
 
-        if (getEnemiesInRadius(unit.getX(), unit.getY()).isEmpty()) {
-            role = UnitRole.RALLY;
-            return;
-        }
-
         // Recompute retreat position upon arrival or if close to target
         if (unit.getDistance(retreatTarget) < getRetreatArrivalDistance()) {
             Position next = getRetreatPosition();
@@ -552,6 +548,20 @@ public class ManagedUnit {
      */
     protected int getRetreatArrivalDistance() {
         return 16;
+    }
+
+    public void markRetreatStart(int frame) {
+        if (retreatStartFrame == 0) {
+            retreatStartFrame = frame;
+        }
+    }
+
+    public Integer getRetreatStartFrame() {
+        return retreatStartFrame;
+    }
+
+    public void clearRetreatStart() {
+        retreatStartFrame = 0;
     }
 
     protected void defend() {}
