@@ -1,0 +1,67 @@
+name: SCBW CI
+
+on: [push]
+
+jobs:
+  scbw:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up JDK 1.8
+      uses: actions/setup-java@v1
+      with:
+        java-version: 1.8
+    - name: Set up Python3.14
+      uses: actions/setup-python@v1
+      with:
+        python-version: 3.14
+    - name: Cache pip packages
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/pip
+        key: pip-${{ runner.os }}-${{ hashFiles('.github/scripts/setup-sc-docker.sh') }}
+        restore-keys: |
+          pip-${{ runner.os }}-
+    - name: Cache scbw data
+      uses: actions/cache@v4
+      with:
+        path: ~/.scbw
+        key: scbw-data-${{ runner.os }}-${{ hashFiles('.github/scripts/setup-sc-docker.sh') }}
+        restore-keys: |
+          scbw-data-${{ runner.os }}-
+    - name: Cache Docker images
+      uses: actions/cache@v4
+      with:
+        path: /tmp/docker-cache
+        key: docker-starcraft-${{ hashFiles('.github/scripts/setup-sc-docker.sh') }}
+        restore-keys: |
+          docker-starcraft-
+    - name: Setup sc-docker
+      run: bash .github/scripts/setup-sc-docker.sh
+    - name: Build main bot
+      run: mvn clean package
+    - name: Install local bot to maven repo
+      run: mvn install:install-file -Dfile=target/InfestedArtosis-0.53-jar-with-dependencies.jar -DgroupId=com.github.InfestedArtosis -DartifactId=InfestedArtosis -Dversion=0.53 -Dpackaging=jar
+    - name: Build integration test bots
+      run: mvn -f .github/bots/pom.xml package
+    - name: Setup bot directories
+      run: |
+        for bot in $(ls -d .github/bots/*/); do 
+          BOTNAME=$(basename $bot)
+          echo "Setting up $BOTNAME"
+          mkdir -p "$HOME/.scbw/bots/$BOTNAME/AI" "$HOME/.scbw/bots/$BOTNAME/read" "$HOME/.scbw/bots/$BOTNAME/write"
+          cp .github/sc-docker-support/BWAPI.dll "$HOME/.scbw/bots/$BOTNAME"
+          cp "$bot/target/"*-with-dependencies.jar "$HOME/.scbw/bots/$BOTNAME/AI"
+          cp "$bot/bot.json" "$HOME/.scbw/bots/$BOTNAME"
+        done
+    - name: Run bot vs bot test
+      run: scbw.play --headless --bots infestedartosis infestedartosis --timeout 300 --docker_image starcraft:game 2>&1 | tee game_output.log || (cat $HOME/.scbw/games/*/logs_*/* && false)
+    - name: Upload replay artifacts
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: game-replays
+        path: ~/.scbw/games/*/player_*.rep
+        retention-days: 7
