@@ -438,9 +438,12 @@ public class SquadManager {
                 return 10;
             case Zerg_Lurker:
                 return 1;
-                default:
-                    break;
+            default:
+                return defaultMoveOutThreshold(squad);
         }
+    }
+
+    private int defaultMoveOutThreshold(Squad squad) {
         int staticDefensePenalty = min(informationManager.getEnemyHostileToGroundBuildingsCount(), 6);
         int moveOutThreshold = 8 * (1 + staticDefensePenalty);
         StrategyTracker strategyTracker = gameState.getStrategyTracker();
