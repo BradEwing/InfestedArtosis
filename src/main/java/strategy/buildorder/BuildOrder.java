@@ -172,8 +172,11 @@ public abstract class BuildOrder {
         if (!eligibleBase.isPresent()) {
             return plans;
         }
-        baseData.reserveSunkenColony(eligibleBase.get());
         TilePosition location = buildingPlanner.getLocationForCreepColony(eligibleBase.get(), gameState.getOpponentRace());
+        if (location == null) {
+            return plans;
+        }
+        baseData.reserveSunkenColony(eligibleBase.get());
         buildingPlanner.reservePlannedBuildingTiles(location, UnitType.Zerg_Creep_Colony);
         Plan creepColonyPlan = new BuildingPlan(UnitType.Zerg_Creep_Colony, 5, true, location);
         Plan sunkenColonyPlan = new BuildingPlan(UnitType.Zerg_Sunken_Colony, 5, true, location);
