@@ -9,14 +9,15 @@ import lombok.Getter;
 import org.jetbrains.annotations.NotNull;
 import unit.managed.ManagedUnit;
 import unit.managed.UnitRole;
+import util.Time;
 
 import java.util.HashSet;
 import java.util.UUID;
 
-@Data
 /**
  * Bundles up managed units that should be functioning together to perform a goal.
  */
+@Data
 public class Squad implements Comparable<Squad> {
 
     private final String id = UUID.randomUUID().toString();
@@ -36,6 +37,11 @@ public class Squad implements Comparable<Squad> {
 
     private double max_dx = 0;
     private double max_dy = 0;
+
+    protected int fightLockedUntilFrame = 0;
+    protected int retreatLockedUntilFrame = 0;
+    protected Time fightHysteresis = new Time(0, 3);  // ~72 frames
+    protected Time retreatHysteresis = new Time(0, 5); // ~120 frames
 
     @Override
     public boolean equals(Object other) {
@@ -156,5 +162,21 @@ public class Squad implements Comparable<Squad> {
      */
     public boolean shouldDisband() {
         return shouldDisband;
+    }
+
+    public boolean isFightLocked(int currentFrame) {
+        return currentFrame < fightLockedUntilFrame;
+    }
+
+    public boolean isRetreatLocked(int currentFrame) {
+        return currentFrame < retreatLockedUntilFrame;
+    }
+
+    public void startFightLock(int currentFrame) {
+        fightLockedUntilFrame = currentFrame + fightHysteresis.getFrames();
+    }
+
+    public void startRetreatLock(int currentFrame) {
+        retreatLockedUntilFrame = currentFrame + retreatHysteresis.getFrames();
     }
 }

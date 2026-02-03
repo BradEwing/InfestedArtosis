@@ -3,7 +3,6 @@ package unit;
 import bwapi.Game;
 import bwapi.Unit;
 import bwapi.UnitType;
-import bwem.BWEM;
 import bwem.Base;
 import info.GameState;
 import info.InformationManager;
@@ -41,7 +40,7 @@ public class UnitManager {
     private HashMap<Unit, ManagedUnit> managedUnitLookup;
     private HashSet<ManagedUnit> managedUnits;
 
-    public UnitManager(Game game, InformationManager informationManager, BWEM bwem, GameState gameState) {
+    public UnitManager(Game game, InformationManager informationManager, GameState gameState) {
         this.game = game;
 
         this.gameState = gameState;

@@ -6,10 +6,12 @@ import bwapi.Race;
 import bwapi.TilePosition;
 import bwapi.Unit;
 import bwapi.UnitType;
+import bwapi.WalkPosition;
 import bwem.Base;
 import info.GameState;
 import info.InformationManager;
 import info.ScoutData;
+import info.tracking.StrategyTracker;
 import org.bk.ass.sim.BWMirrorAgentFactory;
 import org.bk.ass.sim.Simulator;
 import unit.managed.ManagedUnit;
@@ -22,7 +24,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
-import bwapi.WalkPosition;
 
 import static java.lang.Math.min;
 import static util.Filter.closestHostileUnit;
@@ -309,7 +310,7 @@ public class SquadManager {
 
         for (Unit u: enemyUnits) {
             final double d = u.getPosition().getDistance(squad.getCenter());
-            if (d > 256.0) {
+            if (d > 512.0) {
                 continue;
             }
             enemies.add(u);
@@ -408,19 +409,15 @@ public class SquadManager {
      * @param squad Squad to evaluate
      */
     private void evaluateSquadRole(Squad squad) {
-        SquadStatus squadStatus = squad.getStatus();
-        boolean allowWhileRetreat = squad instanceof ZerglingSquad;
-        if (squadStatus == SquadStatus.RETREAT && !allowWhileRetreat) {
-            return;
-        }
         final boolean closeThreats = !enemyUnitsNearSquad(squad).isEmpty();
 
+        SquadStatus squadStatus = squad.getStatus();
         if (!closeThreats && squadStatus == SquadStatus.REGROUP) {
             return;
         }
 
         int moveOutThreshold = calculateMoveOutThreshold(squad);
-        if (closeThreats || squad.size() > moveOutThreshold) {
+        if (closeThreats || squad.size() >= moveOutThreshold) {
             simulateFightSquad(squad);
         } else {
             rallySquad(squad);
@@ -428,26 +425,53 @@ public class SquadManager {
     }
 
     private int calculateMoveOutThreshold(Squad squad) {
-        SquadStatus squadStatus = squad.getStatus();
         UnitType type = squad.getType();
-        if (type == UnitType.Zerg_Mutalisk) {
-            if (gameState.getOpponentRace() == Race.Zerg) {
-                return 2;
-            }
-            return 5;
-        } else if (type == UnitType.Zerg_Hydralisk) {
-            return 10;
-        } else if (type == UnitType.Zerg_Lurker) {
-            return 1;
+        switch (type) {  
+            case Zerg_Zergling:
+                return calculateZerglingMoveOutThreshold(squad);
+            case Zerg_Mutalisk:
+                if (gameState.getOpponentRace() == Race.Zerg) {
+                    return 2;
+                }
+                return 5;
+            case Zerg_Hydralisk:
+                return 10;
+            case Zerg_Lurker:
+                return 1;
+            default:
+                return defaultMoveOutThreshold();
         }
-        int staticDefensePenalty = min(informationManager.getEnemyHostileToGroundBuildingsCount(), 5);
-        int moveOutThreshold = 5 * (1 + staticDefensePenalty);
-        // hysteresis
-        if (squadStatus == SquadStatus.FIGHT) {
-            moveOutThreshold = moveOutThreshold / 2;
+    }
+
+    private int defaultMoveOutThreshold() {
+        int staticDefensePenalty = min(informationManager.getEnemyHostileToGroundBuildingsCount(), 6);
+        int moveOutThreshold = 8 * (1 + staticDefensePenalty);
+        StrategyTracker strategyTracker = gameState.getStrategyTracker();
+        if (strategyTracker.isDetectedStrategy("2Gate")) {
+            final int zealots = gameState.enemyUnitCount(UnitType.Protoss_Zealot);
+            moveOutThreshold += zealots * 2;
         }
 
-        return moveOutThreshold;
+        return Math.min(moveOutThreshold, 40);
+    }
+
+    private int calculateZerglingMoveOutThreshold(Squad squad) {
+        int staticDefensePenalty = Math.min(informationManager.getEnemyHostileToGroundBuildingsCount(), 6);
+        int baseThreshold = gameState.getOpponentRace() == Race.Zerg ? 4 : 12;
+        int threshold = baseThreshold * (1 + staticDefensePenalty);
+
+        StrategyTracker strategyTracker = gameState.getStrategyTracker();
+        if (strategyTracker.isDetectedStrategy("2Gate")) {
+            int zealots = gameState.enemyUnitCount(UnitType.Protoss_Zealot);
+            threshold += zealots * 3;
+        }
+
+        int maxThreshold = gameState.getOpponentRace() == Race.Zerg ? 36 : 48;
+        if (squad.getStatus() == SquadStatus.FIGHT) {
+            maxThreshold = (int) (maxThreshold * 0.75);
+        }
+
+        return Math.min(threshold, maxThreshold);
     }
 
     /**
@@ -503,31 +527,37 @@ public class SquadManager {
             return;
         }
 
-        // Zergling hysteresis gate: allow retreat to override fight locks; block fight if retreat-locked
+        // Hysteresis gate: allow retreat to override fight locks; block fight if retreat-locked
         int now = game.getFrameCount();
-        boolean zerglingRetreatLocked = false;
-        boolean zerglingFightLocked = false;
-        if (squad instanceof ZerglingSquad) {
-            ZerglingSquad zs = (ZerglingSquad) squad;
-            zerglingRetreatLocked = zs.isRetreatLocked(now);
-            zerglingFightLocked = zs.isFightLocked(now);
+        boolean retreatLocked = squad.isRetreatLocked(now);
+        boolean fightLocked = squad.isFightLocked(now);
 
-            if (squad.getStatus() == SquadStatus.RETREAT && zerglingRetreatLocked) {
-                HashMap<ManagedUnit, Position> retreatTargets = computeZerglingRetreatTargets(squad);
-                for (ManagedUnit managedUnit : managedFighters) {
-                    managedUnit.setRole(UnitRole.RETREAT);
+        if (squad.getStatus() == SquadStatus.RETREAT && retreatLocked) {
+            Position naturalRallyPoint = informationManager.getRallyPoint();
+            HashMap<ManagedUnit, Position> retreatTargets = squad instanceof ZerglingSquad
+                    ? computeZerglingRetreatTargets(squad)
+                    : null;
+            for (ManagedUnit managedUnit : managedFighters) {
+                managedUnit.setRole(UnitRole.RETREAT);
+                managedUnit.markRetreatStart(now);
+                Integer retreatStartFrame = managedUnit.getRetreatStartFrame();
+                if (retreatStartFrame != null && now - retreatStartFrame >= 240) {
+                    managedUnit.setRetreatTarget(naturalRallyPoint);
+                } else if (retreatTargets != null) {
                     Position rt = retreatTargets.get(managedUnit);
                     managedUnit.setRetreatTarget(rt);
+                } else {
+                    managedUnit.setRetreatTarget(managedUnit.getRetreatPosition());
                 }
-                return;
             }
-            if (squad.getStatus() == SquadStatus.FIGHT && zerglingFightLocked) {
-                for (ManagedUnit managedUnit : managedFighters) {
-                    managedUnit.setRole(UnitRole.FIGHT);
-                    assignEnemyTarget(managedUnit, squad);
-                }
-                return;
+            return;
+        }
+        if (squad.getStatus() == SquadStatus.FIGHT && fightLocked) {
+            for (ManagedUnit managedUnit : managedFighters) {
+                managedUnit.setRole(UnitRole.FIGHT);
+                assignEnemyTarget(managedUnit, squad);
             }
+            return;
         }
 
         // Use combat simulator for engagement decision
@@ -536,41 +566,43 @@ public class SquadManager {
         switch (result) {
             case RETREAT:
                 squad.setStatus(SquadStatus.RETREAT);
-                if (squad instanceof ZerglingSquad) {
-                    HashMap<ManagedUnit, Position> retreatTargets = computeZerglingRetreatTargets(squad);
-                    for (ManagedUnit managedUnit : managedFighters) {
-                        managedUnit.setRole(UnitRole.RETREAT);
+                Position naturalRallyPoint = informationManager.getRallyPoint();
+                HashMap<ManagedUnit, Position> retreatTargets = squad instanceof ZerglingSquad
+                        ? computeZerglingRetreatTargets(squad)
+                        : null;
+                for (ManagedUnit managedUnit : managedFighters) {
+                    managedUnit.setRole(UnitRole.RETREAT);
+                    managedUnit.markRetreatStart(now);
+                    Integer retreatStartFrame = managedUnit.getRetreatStartFrame();
+                    if (retreatStartFrame != null && now - retreatStartFrame >= 240) {
+                        managedUnit.setRetreatTarget(naturalRallyPoint);
+                    } else if (retreatTargets != null) {
                         managedUnit.setRetreatTarget(retreatTargets.get(managedUnit));
-                    }
-                } else {
-                    for (ManagedUnit managedUnit : managedFighters) {
-                        managedUnit.setRole(UnitRole.RETREAT);
-                        Position retreatTarget = managedUnit.getRetreatPosition();
-                        managedUnit.setRetreatTarget(retreatTarget);
+                    } else {
+                        managedUnit.setRetreatTarget(managedUnit.getRetreatPosition());
                     }
                 }
-                if (squad instanceof ZerglingSquad) {
-                    ((ZerglingSquad) squad).startRetreatLock(now);
-                }
+                squad.startRetreatLock(now);
                 break;
 
             case ENGAGE:
                 squad.setStatus(SquadStatus.FIGHT);
                 for (ManagedUnit managedUnit : managedFighters) {
                     managedUnit.setRole(UnitRole.FIGHT);
+                    managedUnit.clearRetreatStart();
                     assignEnemyTarget(managedUnit, squad);
                 }
-                if (squad instanceof ZerglingSquad) {
-                    // Only start fight lock if not currently retreat-locked
-                    if (!zerglingRetreatLocked) {
-                        ((ZerglingSquad) squad).startFightLock(now);
-                    }
+                // Only start fight lock if not currently retreat-locked
+                if (!retreatLocked) {
+                    squad.startFightLock(now);
                 }
                 break;
 
             case REGROUP:
-                // Handle regroup case if needed
                 squad.setStatus(SquadStatus.REGROUP);
+                for (ManagedUnit managedUnit : managedFighters) {
+                    managedUnit.clearRetreatStart();
+                }
                 break;
         }
     }

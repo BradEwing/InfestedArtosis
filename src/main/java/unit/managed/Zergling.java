@@ -14,15 +14,15 @@ public class Zergling extends ManagedUnit {
         if (unit.isAttackFrame()) {
             return;
         }
-        setUnready(11);
+        setUnready(5);
 
         if (fightTarget != null) {
-            if (unit.getDistance(fightTarget) < 16) {
+            int distanceToTarget = unit.getDistance(fightTarget);
+            if (distanceToTarget < 64) {
                 unit.attack(fightTarget);
                 return;
-            }
-            unit.attack(fightTarget.getTargetPosition());
-            return;
+            } 
+            movementTargetPosition = fightTarget.getTilePosition();
         }
 
         if (movementTargetPosition != null) {

@@ -96,6 +96,9 @@ public class ScoutData {
             if (unit.getType() == bwapi.UnitType.Protoss_Stargate) {
                 return true;
             }
+            if (unit.getType() == bwapi.UnitType.Protoss_Photon_Cannon) {
+                return true;
+            }
         }
         return false;
     }
