@@ -520,7 +520,20 @@ public class GameState {
     }
 
     public Set<Base> basesNeedingSunken(int target) {
+        Time tenMinutes = new Time(10, 0);
+        Time currentTime = getGameTime();
+        int totalSunkens = baseData.getTotalSunkenCount();
+
         Set<Base> neededBases = new HashSet<>();
+        if (currentTime.lessThanOrEqual(tenMinutes) && totalSunkens >= 5) {
+            return neededBases;
+        }
+
+        if (currentTime.greaterThan(tenMinutes)) {
+            target = Math.min(target, 1);
+        }
+
+
         for (Base base: baseData.getMyBases()) {
             if (baseData.isEligibleForSunkenColony(base) && baseData.sunkensPerBase(base) < target) {
                 neededBases.add(base);

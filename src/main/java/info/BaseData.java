@@ -315,7 +315,7 @@ public class BaseData {
     }
 
     public boolean isEligibleForSunkenColony(Base base) {
-        if (base == mainBase && this.currentBaseCount() > 1) {
+        if (base == mainBase) {
             return false;
         }
         if (islands.contains(base)) {
@@ -328,6 +328,17 @@ public class BaseData {
         int reserved = sunkenColonyReserveLookup.getOrDefault(base, 0);
         int sunkens = sunkenColonyLookup.getOrDefault(base, 0);
         return reserved + sunkens;
+    }
+
+    public int getTotalSunkenCount() {
+        int total = 0;
+        for (Integer count : sunkenColonyLookup.values()) {
+            total += count;
+        }
+        for (Integer count : sunkenColonyReserveLookup.values()) {
+            total += count;
+        }
+        return total;
     }
 
     // TODO: Remove main enemy base when area is clear

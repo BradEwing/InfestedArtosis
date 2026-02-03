@@ -9,14 +9,8 @@ Infested Artosis is a StarCraft: Brood War Zerg bot built with JBWAPI. It uses a
 ## Build Commands
 
 ```bash
-# Build (requires Java 1.8 and JAVA_HOME set)
-mvn package
-
 # Run
 java -jar target/InfestedArtosis-{version}-jar-with-dependencies.jar
-
-# Run tests
-mvn test
 ```
 
 ## Architecture
