@@ -48,6 +48,7 @@ public class GameState {
     private Race opponentRace;
 
     private int larvaDeadlockDetectedFrame;
+    private int lastEnemyUnitSeenFrame = 0;
 
     private HashMap<Unit, ManagedUnit> managedUnitLookup = new HashMap<>();
     private HashSet<ManagedUnit> managedUnits = new HashSet<>();

@@ -41,7 +41,6 @@ public class InformationManager {
     // TODO: Move to GameState
     private HashSet<Base> startingBasesSet = new HashSet<>();
     private HashSet<Base> expansionBasesSet = new HashSet<>();
-    
 
     private static final int DETECTION_DISTANCE = 10;
 
@@ -304,6 +303,10 @@ public class InformationManager {
         return tracker.getHostileToGroundBuildings().size();
     }
 
+    public int getLastEnemyUnitSeenFrame() {
+        return gameState.getLastEnemyUnitSeenFrame();
+    }
+
     /**
      * Default rally to main, then natural expansion
      *
@@ -320,6 +323,8 @@ public class InformationManager {
 
     private void trackEnemyUnits() {
         ObservedUnitTracker tracker = gameState.getObservedUnitTracker();
+
+        boolean sawEnemyUnit = false;
 
         for (Unit unit: game.getAllUnits()) {
             UnitType unitType = unit.getType();
@@ -340,11 +345,19 @@ public class InformationManager {
                 continue;
             }
 
+            // Track if we see any non-building enemy unit
+            if (unit.isVisible() && unit.getPlayer() == game.enemy() && !unitType.isBuilding()) {
+                sawEnemyUnit = true;
+            }
+
             // Idempotently track enemy unit - only calls onUnitShow if not already tracked
             boolean isProxied = isProxiedBuilding(unit);
             tracker.onUnitShow(unit, game.getFrameCount(), isProxied);
         }
 
+        if (sawEnemyUnit) {
+            gameState.setLastEnemyUnitSeenFrame(game.getFrameCount());
+        }
 
     }
 
