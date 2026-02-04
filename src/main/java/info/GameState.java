@@ -191,6 +191,10 @@ public class GameState {
     }
 
     public void cancelPlan(Unit unit, Plan plan) {
+        if (plan.getState() == PlanState.CANCELLED) {
+            return;
+        }
+
         plansBuilding.remove(plan);
         plansMorphing.remove(plan);
         plansImpossible.remove(plan);
@@ -311,19 +315,30 @@ public class GameState {
     }
 
     public void setImpossiblePlan(Plan plan) {
+        if (plan.getState() == PlanState.CANCELLED) {
+            return;
+        }
+
         plansImpossible.add(plan);
-        
-        // Unplan the unit when marking plan as impossible
+
+        PlanState currentState = plan.getState();
+        boolean shouldUnreserve = (currentState == PlanState.SCHEDULE ||
+                                   currentState == PlanState.BUILDING ||
+                                   currentState == PlanState.MORPHING);
+
         switch (plan.getType()) {
             case UNIT:
                 unitTypeCount.unplanUnit(plan.getPlannedUnit());
-                resourceCount.unreserveUnit(plan.getPlannedUnit());
+                if (shouldUnreserve) {
+                    resourceCount.unreserveUnit(plan.getPlannedUnit());
+                }
                 break;
             case BUILDING:
-                unitTypeCount.unplanUnit(plan.getPlannedUnit());
-                resourceCount.unreserveUnit(plan.getPlannedUnit());
-                
                 UnitType buildingType = plan.getPlannedUnit();
+                unitTypeCount.unplanUnit(buildingType);
+                if (shouldUnreserve) {
+                    resourceCount.unreserveUnit(buildingType);
+                }
                 if (buildingType == UnitType.Zerg_Hatchery) {
                     removePlannedHatchery(1);
                 }

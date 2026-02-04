@@ -38,11 +38,11 @@ public class ResourceCount {
     }
 
     public void unreserveUnit(UnitType unit) {
-        reservedMinerals -= unit.mineralPrice();
-        reservedGas -= unit.gasPrice();
+        reservedMinerals = Math.max(0, reservedMinerals - unit.mineralPrice());
+        reservedGas = Math.max(0, reservedGas - unit.gasPrice());
 
         if (shouldReserveLarva(unit)) {
-            reservedLarva -= 1;
+            reservedLarva = Math.max(0, reservedLarva - 1);
         }
     }
 
@@ -68,8 +68,8 @@ public class ResourceCount {
     }
 
     public void unreserveUpgrade(UpgradeType upgrade) {
-        reservedMinerals -= upgrade.mineralPrice();
-        reservedGas -= upgrade.gasPrice();
+        this.reservedMinerals = Math.max(0, reservedMinerals - upgrade.mineralPrice());
+        this.reservedGas = Math.max(0, reservedGas - upgrade.gasPrice());
     }
 
     public void reserveTechResearch(TechType techType) {
@@ -78,8 +78,8 @@ public class ResourceCount {
     }
 
     public void unreserveTechResearch(TechType techType) {
-        this.reservedMinerals -= techType.mineralPrice();
-        this.reservedGas -= techType.gasPrice();
+        this.reservedMinerals = Math.max(0, reservedMinerals - techType.mineralPrice());
+        this.reservedGas = Math.max(0, reservedGas - techType.gasPrice());
     }
 
     public boolean canAffordUpgrade(UpgradeType upgrade) {
