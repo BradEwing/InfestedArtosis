@@ -1,6 +1,6 @@
 name: SCBW CI
 
-on: [push]
+on: workflow_dispatch
 
 jobs:
   scbw:
