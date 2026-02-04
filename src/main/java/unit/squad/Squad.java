@@ -43,6 +43,8 @@ public class Squad implements Comparable<Squad> {
     protected Time fightHysteresis = new Time(0, 3);  // ~72 frames
     protected Time retreatHysteresis = new Time(0, 5); // ~120 frames
 
+    private static final double SMOOTHING_ALPHA = 0.85;
+
     @Override
     public boolean equals(Object other) {
         if (other == this) {
@@ -132,7 +134,15 @@ public class Squad implements Comparable<Squad> {
             return;
         }
 
-        this.center = new Position(x / members.size(), y / members.size());
+        Position rawCenter = new Position(x / members.size(), y / members.size());
+
+        if (this.center == null) {
+            this.center = rawCenter;
+        } else {
+            int smoothX = (int)(this.center.getX() * SMOOTHING_ALPHA + rawCenter.getX() * (1 - SMOOTHING_ALPHA));
+            int smoothY = (int)(this.center.getY() * SMOOTHING_ALPHA + rawCenter.getY() * (1 - SMOOTHING_ALPHA));
+            this.center = new Position(smoothX, smoothY);
+        }
     }
 
 
