@@ -16,6 +16,7 @@ import unit.UnitManager;
 
 /**
  * Execution flow:
+ * - LearningManager: analyze past match history to determine build order
  * - InformationManager: tracks game state
  * - ProductionManager: manages production of units, buildings, upgrades and research
  * - PlanManager: manages plans for units, buildings, upgrades and research
@@ -42,7 +43,7 @@ public class Bot extends DefaultBWListener {
     public void onStart() {
         game = bwClient.getGame();
 
-        // Load BWEM and analyze the info.map
+        // Load BWEM and analyze the map
         bwem = new BWEM(game);
         bwem.initialize();
 

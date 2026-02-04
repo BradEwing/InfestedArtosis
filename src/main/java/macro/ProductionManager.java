@@ -12,16 +12,19 @@ import info.ResourceCount;
 import info.TechProgression;
 import info.UnitTypeCount;
 import macro.plan.Plan;
+import macro.plan.PlanComparator;
 import macro.plan.PlanState;
 import macro.plan.PlanType;
 import macro.plan.UnitPlan;
 import strategy.buildorder.BuildOrder;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.PriorityQueue;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -80,6 +83,8 @@ public class ProductionManager {
         transition();
         plan();
         cancelImpossiblePlans();
+        cancelExcessHatcheryPlans();
+        cancelExcessOverlordPlans();
         schedulePlannedItems();
         buildUpgrades();
         researchTech();
@@ -112,8 +117,80 @@ public class ProductionManager {
         }
         
         cancelImpossibleScheduledLurkerPlans();
-        
         removePlansWithLaterPrerequisites();
+    }
+
+    /**
+     * Cancels excess hatchery plans when floating larva.
+     * Conditions: 3+ hatcheries AND 4+ larva.
+     */
+    private void cancelExcessHatcheryPlans() {
+        final int MIN_HATCHERIES = 3;
+        final int MIN_LARVA = 4;
+
+        int numHatcheries = gameState.getBaseData().numHatcheries();
+        int numLarva = gameState.numLarva();
+
+        if (numHatcheries < MIN_HATCHERIES || numLarva < MIN_LARVA) {
+            return;
+        }
+
+        List<Plan> queuePlansToCancel = new ArrayList<>();
+        PriorityQueue<Plan> pq = gameState.getProductionQueue();
+        for (Plan plan : pq) {
+            if (plan.getType() == PlanType.BUILDING &&
+                plan.getPlannedUnit() == UnitType.Zerg_Hatchery) {
+                queuePlansToCancel.add(plan);
+            }
+        }
+
+        for (Plan plan : queuePlansToCancel) {
+            pq.remove(plan);
+            gameState.setImpossiblePlan(plan);
+        }
+
+        Set<Plan> scheduledPlansToCancel = gameState.getPlansScheduled()
+                .stream()
+                .filter(plan -> plan.getType() == PlanType.BUILDING && plan.getPlannedUnit() == UnitType.Zerg_Hatchery)
+                .collect(Collectors.toSet());
+
+        for (Plan plan : scheduledPlansToCancel) {
+            gameState.getPlansScheduled().remove(plan);
+            gameState.cancelPlan(null, plan);
+        }
+    }
+
+    /**
+     * Cancels excess overlord plans when free supply is sufficient.
+     * Example: We queue up 25 hydras but half of them die by the
+     * Condition: free supply > 30.
+     */
+    private void cancelExcessOverlordPlans() {
+        final int MAX_FREE_SUPPLY = 30;
+
+        Player self = game.self();
+        int freeSupply = self.supplyTotal() - self.supplyUsed();
+
+        if (freeSupply <= MAX_FREE_SUPPLY) {
+            return;
+        }
+
+        PriorityQueue<Plan> pq = gameState.getProductionQueue();
+        List<Plan> queuePlansToCancel = new ArrayList<>();
+        for (Plan plan : pq) {
+            if (plan.getType() == PlanType.UNIT &&
+                plan.getPlannedUnit() == UnitType.Zerg_Overlord) {
+                queuePlansToCancel.add(plan);
+            }
+        }
+
+        ResourceCount resourceCount = gameState.getResourceCount();
+        for (Plan plan : queuePlansToCancel) {
+            pq.remove(plan);
+            gameState.setImpossiblePlan(plan);
+            int plannedSupply = resourceCount.getPlannedSupply();
+            resourceCount.setPlannedSupply(Math.max(0, plannedSupply - 16));
+        }
     }
 
     private void removePlansWithLaterPrerequisites() {
@@ -207,26 +284,72 @@ public class ProductionManager {
         }
     }
 
-    // planSupply checks if near supply cap or supply blocked
+    /**
+     * Plan overlords by inserting them at appropriate queue priority.
+     * Walks the queue in priority order and inserts overlords when supply would run out.
+     */
     private void planSupply(Player self) {
         if (self.supplyUsed() >= 400) {
             return;
         }
-        final int supplyRemaining = self.supplyTotal() - self.supplyUsed();
-        int plannedSupply = gameState.getResourceCount().getPlannedSupply();
-        if (supplyRemaining + plannedSupply < 5) {
-            if (gameState.getBaseData().numHatcheries() > 3) {
-                gameState.getResourceCount().setPlannedSupply(plannedSupply+32);
-                addUnitToQueue(UnitType.Zerg_Overlord, 1, true);
-                addUnitToQueue(UnitType.Zerg_Overlord, 1, true);
-            } else {
-                gameState.getResourceCount().setPlannedSupply(plannedSupply+16);
-                addUnitToQueue(UnitType.Zerg_Overlord,1, true);
+
+        List<Plan> sortedQueue = new ArrayList<>(gameState.getProductionQueue());
+        Collections.sort(sortedQueue, new PlanComparator());
+
+        List<Plan> scheduledPlans = new ArrayList<>(gameState.getPlansScheduled());
+        scheduledPlans.sort(new PlanComparator());
+
+        int availableSupply = self.supplyTotal() - self.supplyUsed();
+        availableSupply += gameState.getResourceCount().getPlannedSupply();
+
+        for (Plan plan : scheduledPlans) {
+            if (plan.getType() == PlanType.UNIT) {
+                UnitType unitType = plan.getPlannedUnit();
+                if (unitType == UnitType.Zerg_Overlord) {
+                    availableSupply += 16;
+                } else {
+                    availableSupply -= unitType.supplyRequired();
+                }
             }
         }
+
+        final int SUPPLY_BUFFER = 4;
+
+        List<Integer> overlordInsertPriorities = new ArrayList<>();
+
+        for (Plan plan : sortedQueue) {
+            if (plan.getType() != PlanType.UNIT) {
+                continue;
+            }
+
+            UnitType unitType = plan.getPlannedUnit();
+            if (unitType == UnitType.Zerg_Overlord) {
+                availableSupply += 16;
+                continue;
+            }
+
+            int supplyCost = unitType.supplyRequired();
+            availableSupply -= supplyCost;
+
+            while (availableSupply < SUPPLY_BUFFER && (self.supplyUsed() + gameState.getResourceCount().getPlannedSupply()) < 400) {
+                int insertPriority = Math.max(1, plan.getPriority() - 1);
+                overlordInsertPriorities.add(insertPriority);
+                availableSupply += 16;
+            }
+        }
+
+        for (int priority : overlordInsertPriorities) {
+            addUnitToQueue(UnitType.Zerg_Overlord, priority, true);
+            int plannedSupply = gameState.getResourceCount().getPlannedSupply();
+            gameState.getResourceCount().setPlannedSupply(plannedSupply + 16);
+        }
+
+        // Emergency fallback: supply blocked with high minerals
+        final int supplyRemaining = self.supplyTotal() - self.supplyUsed();
+        int plannedSupply = gameState.getResourceCount().getPlannedSupply();
         if (supplyRemaining == 0 && self.minerals() > 700 && plannedSupply < 80) {
             addUnitToQueue(UnitType.Zerg_Overlord, 1, true);
-            gameState.getResourceCount().setPlannedSupply(plannedSupply+16);
+            gameState.getResourceCount().setPlannedSupply(plannedSupply + 16);
         }
     }
 
