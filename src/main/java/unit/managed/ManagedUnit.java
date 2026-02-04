@@ -33,7 +33,6 @@ public class ManagedUnit {
     @Setter @Getter
     protected UnitType unitType;
 
-
     @Setter @Getter
     protected Position rallyPoint;
     @Setter @Getter
@@ -94,6 +93,8 @@ public class ManagedUnit {
     public int hashCode() {
         return this.unitID;
     }
+
+    public Position getPosition() { return unit.getPosition(); }
 
     public boolean isReady() { return this.isReady; }
 

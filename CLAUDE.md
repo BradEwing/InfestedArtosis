@@ -56,3 +56,6 @@ Types: BuildingPlan, UnitPlan, UpgradePlan, TechPlan.
 - **BWEM** - Map analysis
 - **Lombok** - Reduces boilerplate (@Getter, @Setter, etc.)
 - **dotenv** - Set debug settings in local dev enviornment
+
+## Code Style
+- No comments within a function body. 

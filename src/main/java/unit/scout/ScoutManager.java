@@ -32,6 +32,7 @@ public class ScoutManager {
 
     private HashSet<ManagedUnit> scouts = new HashSet<>();
     private HashSet<ManagedUnit> droneScouts = new HashSet<>();
+    private HashSet<ManagedUnit> zerglingScouts = new HashSet<>();
 
     private ScoutPath enemyMainScoutPath;
 
@@ -59,6 +60,8 @@ public class ScoutManager {
         scouts.add(managedUnit);
         if (managedUnit.getUnitType() == UnitType.Zerg_Drone) {
             droneScouts.add(managedUnit);
+        } else if (managedUnit.getUnitType() == UnitType.Zerg_Zergling) {
+            zerglingScouts.add(managedUnit);
         }
     }
 
@@ -75,6 +78,7 @@ public class ScoutManager {
         }
         scouts.remove(managedUnit);
         droneScouts.remove(managedUnit);
+        zerglingScouts.remove(managedUnit);
     }
 
     /**
@@ -126,6 +130,29 @@ public class ScoutManager {
         }
 
         return false;
+    }
+
+    public int getMaxZerglingScouts() {
+        if (gameState.getEnemyBuildings().isEmpty()) {
+            return 3;
+        }
+
+        return 1;
+    }
+
+    public int needZerglingScouts(int currentFrame, int lastEnemySeenFrame) {
+        if (gameState.getBaseData().getMainEnemyBase() == null) {
+            return 0;
+        }
+
+        int framesSinceLastEnemy = currentFrame - lastEnemySeenFrame;
+        if (framesSinceLastEnemy < 720) {
+            return 0;
+        }
+
+        int maxScouts = getMaxZerglingScouts();
+        int currentScouts = zerglingScouts.size();
+        return Math.max(0, maxScouts - currentScouts);
     }
 
     private TilePosition pollDroneScoutTarget() {

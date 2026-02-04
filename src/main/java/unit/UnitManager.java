@@ -22,6 +22,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 public class UnitManager {
 
@@ -85,6 +86,11 @@ public class UnitManager {
         }
 
         checkBaseThreats();
+
+        // Check every second (24 frames) to minimize overhead
+        if (frameCount % 24 == 0) {
+            checkAndAssignZerglingScouts();
+        }
 
         buildingManager.onFrame();
         workerManager.onFrame();
@@ -347,14 +353,16 @@ public class UnitManager {
         ScoutData scoutData = gameState.getScoutData();
         if (role == UnitRole.SCOUT) {
             boolean shouldStopScouting = false;
-            
+
             if (managedUnit.getUnitType() == UnitType.Zerg_Overlord) {
                 Set<Unit> enemies = new HashSet<>(gameState.getVisibleEnemyUnits());
                 shouldStopScouting = !scoutData.shouldOverlordsContinueScouting(game.enemy().getRace(), enemies);
+            } else if (managedUnit.getUnitType() == UnitType.Zerg_Zergling) {
+                shouldStopScouting = informationManager.isEnemyUnitVisible();
             } else {
                 shouldStopScouting = scoutData.isEnemyBuildingLocationKnown() || informationManager.isEnemyUnitVisible();
             }
-            
+
             if (shouldStopScouting) {
                 if (managedUnit.getUnitType() == UnitType.Zerg_Overlord) {
                     managedUnit.setRole(UnitRole.IDLE);
@@ -379,6 +387,51 @@ public class UnitManager {
             } else {
                 assignDefendersToGather(base);
             }
+        }
+    }
+
+    private void checkAndAssignZerglingScouts() {
+        int currentFrame = game.getFrameCount();
+        int lastEnemySeenFrame = informationManager.getLastEnemyUnitSeenFrame();
+
+        int scoutsNeeded = scoutManager.needZerglingScouts(currentFrame, lastEnemySeenFrame);
+        if (scoutsNeeded == 0) {
+            return;
+        }
+
+        List<ManagedUnit> idleZerglings = managedUnits.stream()
+            .filter(mu -> mu.getUnitType() == UnitType.Zerg_Zergling)
+            .filter(mu -> mu.getRole() != UnitRole.SCOUT)
+            .collect(Collectors.toList());
+
+        Set<ManagedUnit> disbandedZerglings = squadManager.getDisbandedUnits().stream()
+            .filter(mu -> mu.getUnitType() == UnitType.Zerg_Zergling)
+            .collect(Collectors.toSet());
+
+        List<ManagedUnit> availableZerglings = new ArrayList<>();
+        availableZerglings.addAll(idleZerglings);
+        availableZerglings.addAll(disbandedZerglings);
+
+        if (availableZerglings.isEmpty()) {
+            return;
+        }
+
+        Base enemyMainBase = gameState.getBaseData().getMainEnemyBase();
+        if (enemyMainBase == null) {
+            return;
+        }
+
+        availableZerglings.sort((z1, z2) -> {
+            double d1 = z1.getPosition().getDistance(enemyMainBase.getCenter());
+            double d2 = z2.getPosition().getDistance(enemyMainBase.getCenter());
+            return Double.compare(d1, d2);
+        });
+
+        int toAssign = Math.min(scoutsNeeded, availableZerglings.size());
+        for (int i = 0; i < toAssign; i++) {
+            ManagedUnit zergling = availableZerglings.get(i);
+            squadManager.removeManagedUnit(zergling);
+            scoutManager.addScout(zergling);
         }
     }
 
