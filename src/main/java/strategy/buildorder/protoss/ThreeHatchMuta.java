@@ -49,6 +49,7 @@ public class ThreeHatchMuta extends ProtossBase {
         int supply = gameState.getSupply();
         int plannedHatcheries = gameState.getPlannedHatcheries();
         int macroHatchCount = baseData.numMacroHatcheries();
+        int totalHatcheries = baseCount + macroHatchCount;
         int hatchCount        = gameState.ourUnitCount(UnitType.Zerg_Hatchery);
         final int plannedAndCurrentHatcheries = plannedHatcheries + baseCount;
         int lairCount         = gameState.ourUnitCount(UnitType.Zerg_Lair);
@@ -82,7 +83,7 @@ public class ThreeHatchMuta extends ProtossBase {
         boolean wantLair = gameState.canPlanLair() && lairCount < 1 && time.greaterThan(new Time (2, 30)) && baseCount >= 2;
 
         // Spire timing
-        boolean wantSpire = techProgression.canPlanSpire() && spireCount < 1 && supply >= 48 && lairCount >= 1 && droneCount >= 16;
+        boolean wantSpire = techProgression.canPlanSpire() && spireCount < 1 && lairCount >= 1 && droneCount >= 16;
 
         // Tech building timing
         boolean wantHydraliskDen = wantHydraliskDen(gameState);
@@ -233,7 +234,7 @@ public class ThreeHatchMuta extends ProtossBase {
             return plans;
         }
 
-        int droneTarget = hatchCount * 8;
+        int droneTarget = totalHatcheries * 8;
         droneTarget = Math.min(droneTarget, 65);
         if (droneCount < droneTarget) {
             for (int i = 0; i < droneTarget - droneCount; i++) {

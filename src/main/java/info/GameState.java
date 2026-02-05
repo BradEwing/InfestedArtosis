@@ -16,7 +16,9 @@ import bwem.Mineral;
 import config.Config;
 import info.map.BuildingPlanner;
 import info.map.GameMap;
+import info.tracking.ObservedBulletTracker;
 import info.tracking.ObservedUnitTracker;
+import info.tracking.PsiStormTracker;
 import info.tracking.StrategyTracker;
 import learning.Decisions;
 import lombok.Data;
@@ -96,6 +98,8 @@ public class GameState {
     private BaseData baseData;
     private ScoutData scoutData;
     private ObservedUnitTracker observedUnitTracker = new ObservedUnitTracker();
+    private ObservedBulletTracker observedBulletTracker = new ObservedBulletTracker();
+    private PsiStormTracker psiStormTracker = new PsiStormTracker(observedBulletTracker);
     private StrategyTracker strategyTracker;
 
     // Initialized in InformationManager
@@ -619,6 +623,14 @@ public class GameState {
         }
 
         return coveredPositions;
+    }
+
+    public Set<Position> getActiveStormPositions() {
+        return psiStormTracker.getActiveStormPositions();
+    }
+
+    public boolean isPositionInStorm(Position pos, int buffer) {
+        return psiStormTracker.isPositionInStorm(pos, buffer);
     }
 
     /**

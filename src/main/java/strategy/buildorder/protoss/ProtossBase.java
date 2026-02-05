@@ -79,11 +79,11 @@ public class ProtossBase extends BuildOrder {
             sunkens += 1;
         }
 
-        if (gameState.enemyUnitCount(UnitType.Protoss_Zealot) > 5) {
+        if (gameState.enemyUnitCount(UnitType.Protoss_Zealot) > 3) {
             sunkens += 1;
         }
 
-        if (gameState.enemyUnitCount(UnitType.Protoss_Zealot) > 10) {
+        if (gameState.enemyUnitCount(UnitType.Protoss_Zealot) > 6) {
             sunkens += 1;
         }
 

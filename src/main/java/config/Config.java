@@ -39,6 +39,7 @@ public final class Config {
     public boolean debugSquads = false;
     public boolean debugManagedUnits = false;
     public boolean debugStaticDefenseCoverage = false;
+    public boolean debugPsiStorms = false;
     
     // Production and planning
     public boolean debugProductionQueue = false;
@@ -78,6 +79,7 @@ public final class Config {
         this.debugSquads = Boolean.parseBoolean(dotenv.get("IA_DEBUG_SQUADS"));
         this.debugManagedUnits = Boolean.parseBoolean(dotenv.get("IA_DEBUG_MANAGED_UNITS"));
         this.debugStaticDefenseCoverage = Boolean.parseBoolean(dotenv.get("IA_DEBUG_STATIC_DEFENSE_COVERAGE"));
+        this.debugPsiStorms = Boolean.parseBoolean(dotenv.get("IA_DEBUG_PSI_STORMS"));
         
         // Production and planning
         this.debugProductionQueue = Boolean.parseBoolean(dotenv.get("IA_DEBUG_PRODUCTION_QUEUE"));

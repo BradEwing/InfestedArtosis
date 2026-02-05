@@ -15,6 +15,7 @@ import info.map.BuildingPlanner;
 import info.map.GameMap;
 import info.map.MapTile;
 import info.map.MapTileType;
+import info.tracking.ObservedBulletTracker;
 import info.tracking.ObservedUnitTracker;
 import learning.LearningManager;
 import macro.plan.Plan;
@@ -323,7 +324,9 @@ public class InformationManager {
 
     private void trackEnemyUnits() {
         ObservedUnitTracker tracker = gameState.getObservedUnitTracker();
+        ObservedBulletTracker observedBulletTracker = gameState.getObservedBulletTracker();
 
+        observedBulletTracker.onFrame(game, game.getFrameCount());
         boolean sawEnemyUnit = false;
 
         for (Unit unit: game.getAllUnits()) {
