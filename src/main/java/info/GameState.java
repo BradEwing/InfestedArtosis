@@ -330,6 +330,8 @@ public class GameState {
                                    currentState == PlanState.BUILDING ||
                                    currentState == PlanState.MORPHING);
 
+        plan.setState(PlanState.CANCELLED);
+
         switch (plan.getType()) {
             case UNIT:
                 unitTypeCount.unplanUnit(plan.getPlannedUnit());
@@ -345,6 +347,11 @@ public class GameState {
                 }
                 if (buildingType == UnitType.Zerg_Hatchery) {
                     removePlannedHatchery(1);
+                    TilePosition tp = plan.getBuildPosition();
+                    if (tp != null && baseData.isBaseTilePosition(tp)) {
+                        Base base = baseData.baseAtTilePosition(tp);
+                        baseData.cancelReserveBase(base);
+                    }
                 }
                 break;
             default:

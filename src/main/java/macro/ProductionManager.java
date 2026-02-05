@@ -947,11 +947,13 @@ public class ProductionManager {
             Plan plan = gameState.getAssignedPlannedItems().get(unit);
             switch(plan.getState()) {
                 case BUILDING:
+                case MORPHING:
                     if (isDestroyed) {
                         gameState.cancelPlan(unit, plan);
                     } else {
                         gameState.completePlan(unit, plan);
                     }
+                    break;
                 case SCHEDULE:
                     gameState.cancelPlan(unit, plan);
                     break;
