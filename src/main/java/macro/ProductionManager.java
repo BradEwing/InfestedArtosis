@@ -126,12 +126,13 @@ public class ProductionManager {
      */
     private void cancelExcessHatcheryPlans() {
         final int MIN_HATCHERIES = 3;
-        final int MIN_LARVA = 4;
+        final int MIN_LARVA = 5;
 
         int numHatcheries = gameState.getBaseData().numHatcheries();
         int numLarva = gameState.numLarva();
+        boolean isFloatingMinerals = gameState.isFloatingMinerals();
 
-        if (numHatcheries < MIN_HATCHERIES || numLarva < MIN_LARVA) {
+        if (isFloatingMinerals || (numHatcheries < MIN_HATCHERIES || numLarva < MIN_LARVA)) {
             return;
         }
 
@@ -947,11 +948,13 @@ public class ProductionManager {
             Plan plan = gameState.getAssignedPlannedItems().get(unit);
             switch(plan.getState()) {
                 case BUILDING:
+                case MORPHING:
                     if (isDestroyed) {
                         gameState.cancelPlan(unit, plan);
                     } else {
                         gameState.completePlan(unit, plan);
                     }
+                    break;
                 case SCHEDULE:
                     gameState.cancelPlan(unit, plan);
                     break;

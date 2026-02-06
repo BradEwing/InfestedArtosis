@@ -44,11 +44,14 @@ public class ThreeHatchMuta extends ProtossBase {
         BaseData baseData = gameState.getBaseData();
         StrategyTracker strategyTracker = gameState.getStrategyTracker();
         boolean cannonRushed = strategyTracker.isDetectedStrategy("CannonRush");
+        boolean twoGateRushed = strategyTracker.isDetectedStrategy("2Gate");
+        boolean rushed = cannonRushed || twoGateRushed;
         int baseCount = baseData.currentBaseCount();
         int extractorCount = baseData.numExtractor();
         int supply = gameState.getSupply();
         int plannedHatcheries = gameState.getPlannedHatcheries();
         int macroHatchCount = baseData.numMacroHatcheries();
+        int totalHatcheries = baseCount + macroHatchCount;
         int hatchCount        = gameState.ourUnitCount(UnitType.Zerg_Hatchery);
         final int plannedAndCurrentHatcheries = plannedHatcheries + baseCount;
         int lairCount         = gameState.ourUnitCount(UnitType.Zerg_Lair);
@@ -57,6 +60,7 @@ public class ThreeHatchMuta extends ProtossBase {
         int mutaCount         = gameState.ourUnitCount(UnitType.Zerg_Mutalisk);
         int scourgeCount      = gameState.ourUnitCount(UnitType.Zerg_Scourge);
         int droneCount        = gameState.ourUnitCount(UnitType.Zerg_Drone);
+        int livingDroneCount = gameState.ourLivingUnitCount(UnitType.Zerg_Drone);
         int zerglingCount     = gameState.ourUnitCount(UnitType.Zerg_Zergling);
         int enemyCorsairCount = gameState.enemyUnitCount(UnitType.Protoss_Corsair);
         int enemyObserverCount = gameState.enemyUnitCount(UnitType.Protoss_Observer);
@@ -67,11 +71,11 @@ public class ThreeHatchMuta extends ProtossBase {
         boolean secondGas = gameState.canPlanExtractor() && (spireCount > 0 || droneCount >= 20);
 
         // Base timing
-        boolean wantNatural  = plannedAndCurrentHatcheries < 2 && supply >= 24;
+        boolean delayThird = rushed && time.lessThanOrEqual(new Time(6,0));
+        boolean wantNatural  = plannedAndCurrentHatcheries < 2 && supply >= 24 && !delayThird;
         boolean wantThird    = plannedAndCurrentHatcheries < 3 && droneCount > 13 && techProgression.isSpawningPool();
         boolean wantBaseAdvantage = behindOnBases(gameState);
-        boolean floatingMinerals = gameState.getGameTime().greaterThan(new Time(5, 0)) &&
-                gameState.getResourceCount().availableMinerals() > ((plannedHatcheries + 1) * 350);
+        boolean floatingMinerals = gameState.isFloatingMinerals();
 
         // Macro hatchery timing
         boolean wantFirstMacroHatch = wantFirstMacroHatchery(gameState);
@@ -82,7 +86,7 @@ public class ThreeHatchMuta extends ProtossBase {
         boolean wantLair = gameState.canPlanLair() && lairCount < 1 && time.greaterThan(new Time (2, 30)) && baseCount >= 2;
 
         // Spire timing
-        boolean wantSpire = techProgression.canPlanSpire() && spireCount < 1 && supply >= 48 && lairCount >= 1 && droneCount >= 16;
+        boolean wantSpire = techProgression.canPlanSpire() && spireCount < 1 && lairCount >= 1 && livingDroneCount >= 16;
 
         // Tech building timing
         boolean wantHydraliskDen = wantHydraliskDen(gameState);
@@ -233,7 +237,7 @@ public class ThreeHatchMuta extends ProtossBase {
             return plans;
         }
 
-        int droneTarget = hatchCount * 8;
+        int droneTarget = totalHatcheries * 8;
         droneTarget = Math.min(droneTarget, 65);
         if (droneCount < droneTarget) {
             for (int i = 0; i < droneTarget - droneCount; i++) {

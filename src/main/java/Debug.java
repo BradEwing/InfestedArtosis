@@ -1,5 +1,3 @@
-
-
 import bwapi.Color;
 import bwapi.Game;
 import bwapi.Position;
@@ -18,7 +16,9 @@ import info.UnitTypeCount;
 import info.map.BuildingPlanner;
 import info.map.GroundPath;
 import info.map.MapTile;
+import info.tracking.ObservedBullet;
 import info.tracking.ObservedUnitTracker;
+import info.tracking.PsiStormTracker;
 import learning.Record;
 import learning.OpponentRecord;
 import strategy.buildorder.BuildOrder;
@@ -80,6 +80,9 @@ public class Debug {
         }
         if (config.debugStaticDefenseCoverage) {
             debugStaticDefenseCoverage();
+        }
+        if (config.debugPsiStorms) {
+            debugPsiStorms();
         }
         if (config.debugAccessibleWalkPositions) {
             debugAccessibleWalkPositions();
@@ -301,6 +304,19 @@ public class Debug {
         }
     }
 
+    private void debugPsiStorms() {
+        PsiStormTracker tracker = gameState.getPsiStormTracker();
+        Set<ObservedBullet> activeStorms = tracker.getActiveStorms();
+        int currentFrame = game.getFrameCount();
+
+        for (ObservedBullet storm : activeStorms) {
+            game.drawCircleMap(storm.getLastKnownLocation(), PsiStormTracker.STORM_RADIUS, Color.Red, false);
+
+            int remainingFrames = tracker.getRemainingFrames(storm, currentFrame);
+            String timeText = String.format("Storm: %d", remainingFrames);
+            game.drawTextMap(storm.getLastKnownLocation(), timeText, Text.White);
+        }
+    }
 
     /**
      * Debug visualization for accessible WalkPositions from flood fill algorithm.

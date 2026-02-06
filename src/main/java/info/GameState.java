@@ -16,7 +16,9 @@ import bwem.Mineral;
 import config.Config;
 import info.map.BuildingPlanner;
 import info.map.GameMap;
+import info.tracking.ObservedBulletTracker;
 import info.tracking.ObservedUnitTracker;
+import info.tracking.PsiStormTracker;
 import info.tracking.StrategyTracker;
 import learning.Decisions;
 import lombok.Data;
@@ -96,6 +98,8 @@ public class GameState {
     private BaseData baseData;
     private ScoutData scoutData;
     private ObservedUnitTracker observedUnitTracker = new ObservedUnitTracker();
+    private ObservedBulletTracker observedBulletTracker = new ObservedBulletTracker();
+    private PsiStormTracker psiStormTracker = new PsiStormTracker(observedBulletTracker);
     private StrategyTracker strategyTracker;
 
     // Initialized in InformationManager
@@ -326,6 +330,8 @@ public class GameState {
                                    currentState == PlanState.BUILDING ||
                                    currentState == PlanState.MORPHING);
 
+        plan.setState(PlanState.CANCELLED);
+
         switch (plan.getType()) {
             case UNIT:
                 unitTypeCount.unplanUnit(plan.getPlannedUnit());
@@ -341,6 +347,11 @@ public class GameState {
                 }
                 if (buildingType == UnitType.Zerg_Hatchery) {
                     removePlannedHatchery(1);
+                    TilePosition tp = plan.getBuildPosition();
+                    if (tp != null && baseData.isBaseTilePosition(tp)) {
+                        Base base = baseData.baseAtTilePosition(tp);
+                        baseData.cancelReserveBase(base);
+                    }
                 }
                 break;
             default:
@@ -621,6 +632,14 @@ public class GameState {
         return coveredPositions;
     }
 
+    public Set<Position> getActiveStormPositions() {
+        return psiStormTracker.getActiveStormPositions();
+    }
+
+    public boolean isPositionInStorm(Position pos, int buffer) {
+        return psiStormTracker.isPositionInStorm(pos, buffer);
+    }
+
     /**
      * Gets all positions that are within range of enemy static defense structures.
      *
@@ -747,5 +766,10 @@ public class GameState {
 
     public Set<WalkPosition> getAccessibleWalkPositions() {
         return gameMap.getAccessibleWalkPositions();
+    }
+
+    public boolean isFloatingMinerals() {
+        return getGameTime().greaterThan(new Time(5, 0)) &&
+                resourceCount.availableMinerals() > ((plannedHatcheries + 1) * 350);
     }
 }

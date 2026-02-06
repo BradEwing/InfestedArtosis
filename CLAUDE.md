@@ -53,6 +53,8 @@ Types: BuildingPlan, UnitPlan, UpgradePlan, TechPlan.
 ### Key Dependencies
 
 - **JBWAPI** - Java Brood War API bindings
+  - [Java Docs](https://javabwapi.github.io/JBWAPI/overview-summary.html)
+  - [C++ Docs](https://bwapi.github.io/)
 - **BWEM** - Map analysis
 - **Lombok** - Reduces boilerplate (@Getter, @Setter, etc.)
 - **dotenv** - Set debug settings in local dev enviornment

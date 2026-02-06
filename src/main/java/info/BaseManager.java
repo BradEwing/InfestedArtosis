@@ -47,7 +47,9 @@ public class BaseManager {
     }
 
     public void onUnitDestroy(Unit unit) {
-        if (unit.getType() == UnitType.Zerg_Hatchery) {
+        UnitType type = unit.getType();
+        boolean isHatch = type == UnitType.Zerg_Hatchery || type == UnitType.Zerg_Lair || type == UnitType.Zerg_Hive;
+        if (isHatch) {
             gameState.removeHatchery(unit);
         }
     }

@@ -143,13 +143,44 @@ public class ManagedUnit {
     }
 
     public Position getRetreatPosition() {
+        return getRetreatPosition(null);
+    }
+
+    public Position getRetreatPosition(Set<Position> stormPositions) {
         int currentX = unit.getX();
         int currentY = unit.getY();
+        Position currentPos = new Position(currentX, currentY);
+
+        if (stormPositions != null && !stormPositions.isEmpty()) {
+            Position nearestStorm = null;
+            double nearestStormDistance = Double.MAX_VALUE;
+
+            for (Position stormPos : stormPositions) {
+                double distance = currentPos.getDistance(stormPos);
+                if (distance < nearestStormDistance) {
+                    nearestStorm = stormPos;
+                    nearestStormDistance = distance;
+                }
+            }
+
+            if (nearestStorm != null && nearestStormDistance <= 128) {
+                int dx = currentX - nearestStorm.getX();
+                int dy = currentY - nearestStorm.getY();
+
+                double length = Math.sqrt(dx * dx + dy * dy);
+                if (length > 0) {
+                    double scale = 192.0 / length;
+                    int newX = currentX + (int)(dx * scale);
+                    int newY = currentY + (int)(dy * scale);
+                    return new Position(newX, newY);
+                }
+            }
+        }
+
         List<Unit> enemies = getEnemiesInRadius(currentX, currentY);
 
-
         if (enemies.isEmpty()) {
-            return new Position(currentX, currentY);
+            return currentPos;
         }
 
         int sumDx = 0;
@@ -165,7 +196,7 @@ public class ManagedUnit {
 
         double length = Math.sqrt(retreatDx * retreatDx + retreatDy * retreatDy);
         if (length == 0) {
-            return new Position(currentX, currentY);
+            return currentPos;
         }
 
         double scale = 128.0 / length;
@@ -173,11 +204,11 @@ public class ManagedUnit {
         int newY = currentY + (int)(retreatDy * scale);
 
         Position retreatPos = new Position(newX, newY);
-        
+
         // Check if the retreat path intersects any non-walkable terrain
-        if (!isRetreatPathWalkable(new Position(currentX, currentY), retreatPos)) {
+        if (!isRetreatPathWalkable(currentPos, retreatPos)) {
             // Try to find an alternative retreat position that avoids barriers
-            retreatPos = findAlternativeRetreatPosition(new Position(currentX, currentY), retreatPos);
+            retreatPos = findAlternativeRetreatPosition(currentPos, retreatPos);
         }
 
         return retreatPos;
@@ -190,6 +221,42 @@ public class ManagedUnit {
                 .filter(u -> !u.getType().isBuilding() || Filter.isHostileBuildingToGround(u.getType()))
                 .collect(Collectors.toList());
         return enemies;
+    }
+
+    public boolean doesMovementIntersectStorm(Position targetPos, Set<Position> stormPositions) {
+        if (stormPositions == null || stormPositions.isEmpty() || targetPos == null) {
+            return false;
+        }
+
+        Position currentPos = unit.getPosition();
+        double dx = targetPos.getX() - currentPos.getX();
+        double dy = targetPos.getY() - currentPos.getY();
+        double distance = Math.sqrt(dx * dx + dy * dy);
+
+        if (distance == 0) {
+            return false;
+        }
+
+        dx /= distance;
+        dy /= distance;
+
+        int numSamples = Math.min((int)(distance / 16.0), 20);
+
+        for (int i = 0; i <= numSamples; i++) {
+            double progress = numSamples > 0 ? (double)i / numSamples : 0;
+            int checkX = currentPos.getX() + (int)(dx * distance * progress);
+            int checkY = currentPos.getY() + (int)(dy * distance * progress);
+            Position checkPos = new Position(checkX, checkY);
+
+            for (Position stormCenter : stormPositions) {
+                double distToStorm = checkPos.getDistance(stormCenter);
+                if (distToStorm <= 96) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     /**
