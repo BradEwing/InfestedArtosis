@@ -64,7 +64,7 @@ public class TerranBase extends BuildOrder {
         int vultureCount = gameState.enemyUnitCount(UnitType.Terran_Vulture);
         int factoryCount = gameState.enemyUnitCount(UnitType.Terran_Factory);
         int bioCount = marineCount + firebatCount + medicCount;
-        boolean possibleEarlyBioPressire = bioCount > 5 && gameTime.lessThanOrEqual(new Time (5, 0));
+        boolean possibleEarlyBioPressire = bioCount > 5 && gameTime.lessThanOrEqual(new Time(5, 0));
         boolean is2RaxAcademy = strategyTracker.isDetectedStrategy("2RaxAcademy");
         if (gameTime.lessThanOrEqual(new Time(8, 0))) {
             if (is2RaxAcademy && gameTime.greaterThan(new Time(4, 0))) {

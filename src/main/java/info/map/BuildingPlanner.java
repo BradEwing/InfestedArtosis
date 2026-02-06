@@ -28,6 +28,11 @@ import java.util.stream.Collectors;
  */
 public class BuildingPlanner {
 
+    private static final int CREEP_SEARCH_WIDTH = 6;
+    private static final int CREEP_SEARCH_HEIGHT = 5;
+    private static final int ADJACENT_DISTANCE_THRESHOLD = 23;
+    private static final int MACRO_HATCH_SEARCH_RADIUS = 10;
+
     private Game game;
     private BWEM bwem;
 
@@ -238,7 +243,7 @@ public class BuildingPlanner {
             }
         } else {
             if (dy > 0) {
-                 bottomRight = new TilePosition(bottomRight.getX(), baseBottomRight.getY());
+                bottomRight = new TilePosition(bottomRight.getX(), baseBottomRight.getY());
             } else {
                 topLeft = new TilePosition(topLeft.getX(), baseTopLeft.getY());
             }
@@ -260,7 +265,7 @@ public class BuildingPlanner {
         HashSet<TilePosition> mineralExcluded = mineralBoundingBox(base);
         HashSet<TilePosition> geyserExcluded = geyserBoundingBox(base);
         Queue<TilePosition> candidates = new LinkedList<>();
-        TilePosition tileSize = new TilePosition(6, 5);
+        TilePosition tileSize = new TilePosition(CREEP_SEARCH_WIDTH, CREEP_SEARCH_HEIGHT);
         TilePosition baseLocation = base.getLocation();
         for (int x = -1; x < tileSize.getX(); x++) {
             for (int y = -1; y < tileSize.getX(); y++) {
@@ -331,7 +336,7 @@ public class BuildingPlanner {
             List<TilePosition> adjacent = new ArrayList<>();
             for (TilePosition cand : candidates) {
                 for (TilePosition res : existing) {
-                    if (res.getApproxDistance(cand) <= 23) {
+                    if (res.getApproxDistance(cand) <= ADJACENT_DISTANCE_THRESHOLD) {
                         adjacent.add(cand);
                         break;
                     }
@@ -438,7 +443,7 @@ public class BuildingPlanner {
         TilePosition buildingSize = UnitType.Zerg_Hatchery.tileSize();
 
         // Search in expanding circles around the base location
-        for (int radius = 1; radius <= 10; radius++) {
+        for (int radius = 1; radius <= MACRO_HATCH_SEARCH_RADIUS; radius++) {
             for (int dx = -radius; dx <= radius; dx++) {
                 for (int dy = -radius; dy <= radius; dy++) {
                     if (Math.abs(dx) != radius && Math.abs(dy) != radius) {

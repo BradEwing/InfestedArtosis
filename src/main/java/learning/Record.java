@@ -27,6 +27,8 @@ import java.util.List;
 @Data
 public class Record implements UCBRecord {
     private static final double GAMMA = 0.95;
+    private static final double EXPLORATION_NOISE_RANGE = 0.2;
+    private static final double EXPLORATION_NOISE_OFFSET = 0.1;
     private String opener;
     private int wins;
     private int losses;
@@ -39,11 +41,17 @@ public class Record implements UCBRecord {
         return wins - losses;
     }
 
-    public int wins() { return wins; }
+    public int wins() {
+        return wins;
+    }
 
-    public int games() { return wins + losses; }
+    public int games() {
+        return wins + losses;
+    }
 
-    public int winsSquared() { return wins * wins; }
+    public int winsSquared() {
+        return wins * wins;
+    }
     
     public void addWinTimestamp(long timestamp) {
         winTimestamps.add(timestamp);
@@ -59,7 +67,7 @@ public class Record implements UCBRecord {
         }
         
         if (this.games() == 0) {
-            return Math.sqrt(Math.log(totalGames)) + (Math.random() * 0.2 - 0.1);
+            return Math.sqrt(Math.log(totalGames)) + (Math.random() * EXPLORATION_NOISE_RANGE - EXPLORATION_NOISE_OFFSET);
         }
         
         double discountedWins = calculateDiscountedWins();

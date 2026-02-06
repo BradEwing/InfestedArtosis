@@ -24,6 +24,8 @@ import static java.lang.Math.min;
  */
 public class GameMap {
 
+    private static final int SCOUT_PATH_OFFSET = 7;
+
     private int x;
     private int y;
     @Getter
@@ -58,7 +60,7 @@ public class GameMap {
             } else if (mapTile.getType() == MapTileType.NORMAL) {
                 weight = 1;
             }
-            mapTile.setScoutImportance(mapTile.getScoutImportance()+weight);
+            mapTile.setScoutImportance(mapTile.getScoutImportance() + weight);
         }
         Collections.sort(heatMap, new MapTileScoutImportanceComparator());
     }
@@ -124,10 +126,10 @@ public class GameMap {
     public ScoutPath findScoutPath(TilePosition center) {
         List<TilePosition> points = new ArrayList<>();
 
-        TilePosition north = center.add(new TilePosition(0, max(0, center.getY())-7));
-        TilePosition east = center.add(new TilePosition(min(x, center.getX())+7, 0));
-        TilePosition south = center.add(new TilePosition(0, min(y, center.getY())+7));
-        TilePosition west = center.add(new TilePosition(max(0, center.getX())-7, 0));
+        TilePosition north = center.add(new TilePosition(0, max(0, center.getY()) - SCOUT_PATH_OFFSET));
+        TilePosition east = center.add(new TilePosition(min(x, center.getX()) + SCOUT_PATH_OFFSET, 0));
+        TilePosition south = center.add(new TilePosition(0, min(y, center.getY()) + SCOUT_PATH_OFFSET));
+        TilePosition west = center.add(new TilePosition(max(0, center.getX()) - SCOUT_PATH_OFFSET, 0));
 
         points.add(north);
         points.add(east);
@@ -163,6 +165,7 @@ public class GameMap {
      * @param current MapTile to find neighbors for
      * @return valid MapTile neighbors
      */
+    // CHECKSTYLE.OFF: CyclomaticComplexity
     private List<MapTile> getNeighbors(MapTile current) {
         List<MapTile> neighbors = new ArrayList<>();
 
@@ -241,6 +244,7 @@ public class GameMap {
 
         return neighbors;
     }
+    // CHECKSTYLE.ON: CyclomaticComplexity
 
     private boolean isValidTile(int x, int y) {
         return x >= 0 && x < this.x && y >= 0 && y < this.y;

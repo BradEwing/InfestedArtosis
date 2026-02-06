@@ -5,10 +5,12 @@ import bwapi.Unit;
 import info.map.GameMap;
 
 public class Lurker extends ManagedUnit {
-    private int targetOutOfRangeFrames = 0;
-    private int noAttackFrames = 0;
+    private static final int FIGHT_UNREADY_FRAMES = 11;
     private static final int MAX_TARGET_OUT_OF_RANGE_FRAMES = 20;
     private static final int MAX_NO_ATTACK_FRAMES = 50;
+
+    private int targetOutOfRangeFrames = 0;
+    private int noAttackFrames = 0;
 
     public Lurker(Game game, Unit unit, UnitRole role, GameMap gameMap) {
         super(game, unit, role, gameMap);
@@ -19,7 +21,7 @@ public class Lurker extends ManagedUnit {
         if (unit.isAttackFrame()) {
             return;
         }
-        setUnready(11);
+        setUnready(FIGHT_UNREADY_FRAMES);
 
         if (hasNoValidFightTarget()) {
             handleNoTarget();

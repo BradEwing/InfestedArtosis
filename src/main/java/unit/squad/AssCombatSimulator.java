@@ -17,6 +17,11 @@ import static util.Filter.isHostileBuilding;
  */
 public class AssCombatSimulator implements CombatSimulator {
 
+    private static final int ENEMY_UNIT_RANGE = 256;
+    private static final int ENEMY_BUILDING_RANGE = 512;
+    private static final int SIMULATION_FRAMES = 150;
+    private static final double RETREAT_SURVIVAL_THRESHOLD = 0.40;
+
     private final BWMirrorAgentFactory agentFactory;
 
     public AssCombatSimulator() {
@@ -40,7 +45,7 @@ public class AssCombatSimulator implements CombatSimulator {
             if (enemyUnit.getType() == UnitType.Unknown) {
                 continue;
             }
-            if ((int) enemyUnit.getPosition().getDistance(squad.getCenter()) > 256) {
+            if ((int) enemyUnit.getPosition().getDistance(squad.getCenter()) > ENEMY_UNIT_RANGE) {
                 continue;
             }
             if (enemyUnit.isBeingConstructed() || enemyUnit.isMorphing()) {
@@ -61,7 +66,7 @@ public class AssCombatSimulator implements CombatSimulator {
             if (!isHostileBuilding(enemyBuilding.getType())) {
                 continue;
             }
-            if ((int) enemyBuilding.getPosition().getDistance(squad.getCenter()) > 512) {
+            if ((int) enemyBuilding.getPosition().getDistance(squad.getCenter()) > ENEMY_BUILDING_RANGE) {
                 continue;
             }
             if (enemyBuilding.isMorphing() || enemyBuilding.isBeingConstructed()) {
@@ -75,7 +80,7 @@ public class AssCombatSimulator implements CombatSimulator {
         }
 
         // Run simulation (15 seconds)
-        simulator.simulate(150);
+        simulator.simulate(SIMULATION_FRAMES);
 
         // Evaluate results
         if (simulator.getAgentsA().isEmpty()) {
@@ -85,7 +90,7 @@ public class AssCombatSimulator implements CombatSimulator {
         if (!simulator.getAgentsB().isEmpty()) {
             // If less than 40% of units survive, retreat
             float percentRemaining = (float) simulator.getAgentsA().size() / squad.getMembers().size();
-            if (percentRemaining < 0.40) {
+            if (percentRemaining < RETREAT_SURVIVAL_THRESHOLD) {
                 return CombatResult.RETREAT;
             }
         }

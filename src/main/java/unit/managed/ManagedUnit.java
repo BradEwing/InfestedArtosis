@@ -20,6 +20,24 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 public class ManagedUnit {
+    private static final int PSI_STORM_DANGER_DISTANCE = 128;
+    private static final double STORM_RETREAT_SCALE = 192.0;
+    private static final double ENEMY_RETREAT_SCALE = 128.0;
+    private static final int MAX_MOVEMENT_SAMPLES = 20;
+    private static final int STORM_HIT_RADIUS = 96;
+    private static final int ALTERNATIVE_RETREAT_SEARCH_RADIUS = 256;
+    private static final int[] RETREAT_DISTANCES = {128, 96, 64, 48, 32};
+    private static final int RETREAT_ANGLE_TOTAL = 360;
+    private static final int RETREAT_ANGLE_STEP = 30;
+    private static final int BUILD_MOVE_THRESHOLD = 150;
+    private static final int BUILD_ATTEMPT_TIMEOUT = 150;
+    private static final int DEFAULT_UNREADY_FRAMES = 11;
+    private static final int FIGHT_UNREADY_FRAMES = 11;
+    private static final int RETREAT_STUCK_THRESHOLD = 12;
+    private static final double KITE_RANGE_FACTOR = 0.9;
+    private static final int KITE_MOVE_DISTANCE = 64;
+    private static final int THREATENING_ENEMY_RANGE_BUFFER = 64;
+
     protected static int LOCK_ENEMY_WITHIN_DISTANCE = 25;
     protected Game game;
     protected GameMap gameMap;
@@ -94,15 +112,25 @@ public class ManagedUnit {
         return this.unitID;
     }
 
-    public Position getPosition() { return unit.getPosition(); }
+    public Position getPosition() {
+        return unit.getPosition();
+    }
 
-    public boolean isReady() { return this.isReady; }
+    public boolean isReady() {
+        return this.isReady;
+    }
 
-    public void setReady(boolean isReady) { this.isReady = isReady; }
+    public void setReady(boolean isReady) {
+        this.isReady = isReady;
+    }
 
-    public boolean canFight() { return this.canFight; }
+    public boolean canFight() {
+        return this.canFight;
+    }
 
-    public void setNewGatherTarget(boolean hasNewGatherTarget) { this.hasNewGatherTarget = hasNewGatherTarget; }
+    public void setNewGatherTarget(boolean hasNewGatherTarget) {
+        this.hasNewGatherTarget = hasNewGatherTarget;
+    }
 
     public void execute() {
         updateState();
@@ -163,13 +191,13 @@ public class ManagedUnit {
                 }
             }
 
-            if (nearestStorm != null && nearestStormDistance <= 128) {
+            if (nearestStorm != null && nearestStormDistance <= PSI_STORM_DANGER_DISTANCE) {
                 int dx = currentX - nearestStorm.getX();
                 int dy = currentY - nearestStorm.getY();
 
                 double length = Math.sqrt(dx * dx + dy * dy);
                 if (length > 0) {
-                    double scale = 192.0 / length;
+                    double scale = STORM_RETREAT_SCALE / length;
                     int newX = currentX + (int)(dx * scale);
                     int newY = currentY + (int)(dy * scale);
                     return new Position(newX, newY);
@@ -199,7 +227,7 @@ public class ManagedUnit {
             return currentPos;
         }
 
-        double scale = 128.0 / length;
+        double scale = ENEMY_RETREAT_SCALE / length;
         int newX = currentX + (int)(retreatDx * scale);
         int newY = currentY + (int)(retreatDy * scale);
 
@@ -215,7 +243,7 @@ public class ManagedUnit {
     }
 
     protected List<Unit> getEnemiesInRadius(int currentX, int currentY) {
-        List<Unit> enemies = game.getUnitsInRadius(currentX, currentY, 128)
+        List<Unit> enemies = game.getUnitsInRadius(currentX, currentY, PSI_STORM_DANGER_DISTANCE)
                 .stream()
                 .filter(u -> u.getPlayer() != game.self())
                 .filter(u -> !u.getType().isBuilding() || Filter.isHostileBuildingToGround(u.getType()))
@@ -240,7 +268,7 @@ public class ManagedUnit {
         dx /= distance;
         dy /= distance;
 
-        int numSamples = Math.min((int)(distance / 16.0), 20);
+        int numSamples = Math.min((int)(distance / 16.0), MAX_MOVEMENT_SAMPLES);
 
         for (int i = 0; i <= numSamples; i++) {
             double progress = numSamples > 0 ? (double)i / numSamples : 0;
@@ -250,7 +278,7 @@ public class ManagedUnit {
 
             for (Position stormCenter : stormPositions) {
                 double distToStorm = checkPos.getDistance(stormCenter);
-                if (distToStorm <= 96) {
+                if (distToStorm <= STORM_HIT_RADIUS) {
                     return true;
                 }
             }
@@ -341,7 +369,7 @@ public class ManagedUnit {
      */
     private Position findAlternativeRetreatPosition(Position currentPos, Position originalRetreat) {
         // Get nearby enemies for distance calculations, excluding non-static defense buildings
-        List<Unit> enemies = game.getUnitsInRadius(currentPos.getX(), currentPos.getY(), 256)
+        List<Unit> enemies = game.getUnitsInRadius(currentPos.getX(), currentPos.getY(), ALTERNATIVE_RETREAT_SEARCH_RADIUS)
                 .stream()
                 .filter(u -> u.getPlayer() != game.self())
                 .filter(u -> !u.getType().isBuilding() || Filter.isHostileBuildingToGround(u.getType()))
@@ -355,9 +383,8 @@ public class ManagedUnit {
         double bestMinEnemyDistance = -1;
         
         // Try multiple distances and angles to find best retreat position
-        int[] distances = {128, 96, 64, 48, 32};
-        for (int distance : distances) {
-            for (int angle = 0; angle < 360; angle += 30) {
+        for (int distance : RETREAT_DISTANCES) {
+            for (int angle = 0; angle < RETREAT_ANGLE_TOTAL; angle += RETREAT_ANGLE_STEP) {
                 double rad = Math.toRadians(angle);
                 int testX = currentPos.getX() + (int)(Math.cos(rad) * distance);
                 int testY = currentPos.getY() + (int)(Math.sin(rad) * distance);
@@ -436,7 +463,7 @@ public class ManagedUnit {
         }
         UnitType buildingType = plan.getPlannedUnit();
         Position buildTarget = getBuilderMoveLocation(buildingType, plan.getBuildPosition());
-        if (unit.getDistance(buildTarget) > 150 || unit.isGatheringMinerals()) {
+        if (unit.getDistance(buildTarget) > BUILD_MOVE_THRESHOLD || unit.isGatheringMinerals()) {
             setUnready();
             unit.move(buildTarget);
             return;
@@ -465,7 +492,7 @@ public class ManagedUnit {
                 // and can get stuck bouncing around looking for a build location.
                 //
                 // This is a bit hacky but buys 150 frames to attempt to build at the given location before reassigning elsewhere
-                if (buildAttemptFrame + 150 < frameCount) {
+                if (buildAttemptFrame + BUILD_ATTEMPT_TIMEOUT < frameCount) {
                     // Try to get a new building location
                     plan.setBuildPosition(game.getBuildLocation(plannedUnitType, unit.getTilePosition()));
                 }
@@ -500,7 +527,7 @@ public class ManagedUnit {
     }
 
     protected void setUnready() {
-        setUnready(11);
+        setUnready(DEFAULT_UNREADY_FRAMES);
     }
 
     protected void setUnready(int unreadyFrames) {
@@ -530,7 +557,7 @@ public class ManagedUnit {
 
         // Check if retreatTarget should be set to null
         if (retreatTarget != null) {
-            if (unit.getDistance(retreatTarget) < 16 || unit.isIdle() || (!game.isWalkable(new WalkPosition(retreatTarget)))) {
+            if (unit.getDistance(retreatTarget) < 16 || unit.isIdle() || !game.isWalkable(new WalkPosition(retreatTarget))) {
                 retreatTarget = null;
                 lastRetreatPosition = null;
                 framesStuck = 0;
@@ -551,7 +578,7 @@ public class ManagedUnit {
         if (unit.isAttackFrame()) {
             return;
         }
-        setUnready(11);
+        setUnready(FIGHT_UNREADY_FRAMES);
 
         if (fightTarget != null) {
             if (canKite(fightTarget)) {
@@ -591,7 +618,7 @@ public class ManagedUnit {
             framesStuck = 0;
         }
 
-        if (framesStuck >= 12) {
+        if (framesStuck >= RETREAT_STUCK_THRESHOLD) {
             setRetreatTarget(null);
             role = UnitRole.IDLE;
             return;
@@ -678,7 +705,7 @@ public class ManagedUnit {
         Position enemyPos = enemy.getPosition();
         Position myPos = unit.getPosition();
         double distance = myPos.getDistance(enemyPos);
-        double kiteThreshold = this.weaponRange(enemy) * 0.9;
+        double kiteThreshold = this.weaponRange(enemy) * KITE_RANGE_FACTOR;
         if (this.weaponRange(enemy) > enemyWeapon.maxRange()) {
             kiteThreshold = enemyWeapon.maxRange();
         }
@@ -697,7 +724,7 @@ public class ManagedUnit {
                 unit.attack(enemyPos);
             }
         } else {
-            int moveDistance = 64; // Adjust this value as needed
+            int moveDistance = KITE_MOVE_DISTANCE;
             double dx = myPos.x - enemyPos.x;
             double dy = myPos.y - enemyPos.y;
             double length = Math.sqrt(dx * dx + dy * dy);
@@ -766,7 +793,7 @@ public class ManagedUnit {
     }
 
     protected Unit findThreateningEnemy() {
-        for (Unit enemy : game.getUnitsInRadius(unit.getPosition(), weaponRange(unit) + 64)) {
+        for (Unit enemy : game.getUnitsInRadius(unit.getPosition(), weaponRange(unit) + THREATENING_ENEMY_RANGE_BUFFER)) {
             if (enemy.getPlayer().isEnemy(game.self()) && enemy.isTargetable() && canFightBack(enemy) &&
                 !util.Filter.isLowPriorityCombatTarget(enemy.getType())) {
                 return enemy; // Return the first dangerous enemy found

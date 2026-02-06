@@ -10,5 +10,7 @@ public abstract class ProtossBaseStrategy extends ObservedStrategy {
     }
 
     @Override
-    public Race getRace() {return Race.Protoss;}
+    public Race getRace() {
+        return Race.Protoss;
+    }
 }

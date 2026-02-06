@@ -291,8 +291,8 @@ public class Debug {
         for (MapTile mapTile : gameState.getGameMap().getHeatMap()) {
             if (mapTile.isBuildable()) {
                 game.drawBoxMap(
-                        (mapTile.getTile().toPosition()),
-                        (mapTile.getTile().add(new TilePosition(1,1)).toPosition()),
+                        mapTile.getTile().toPosition(),
+                        mapTile.getTile().add(new TilePosition(1, 1)).toPosition(),
                         Color.White);
             }
         }
@@ -420,7 +420,9 @@ public class Debug {
         }
 
         if (numDisplayed < gameState.getProductionQueue().size()) {
-            game.drawTextScreen(x, y, String.format("... %s more planned items", gameState.getProductionQueue().size() - numDisplayed), Text.GreyGreen);
+            game.drawTextScreen(x, y,
+                    String.format("... %s more planned items", gameState.getProductionQueue().size() - numDisplayed),
+                    Text.GreyGreen);
         }
     }
 

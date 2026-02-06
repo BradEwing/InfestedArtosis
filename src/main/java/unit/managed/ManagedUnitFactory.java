@@ -20,7 +20,7 @@ public class ManagedUnitFactory {
 
     public ManagedUnit create(Unit unit, UnitRole role) {
         ManagedUnit managedUnit;
-        switch(unit.getType()) {
+        switch (unit.getType()) {
             case Zerg_Larva:
                 managedUnit = new Larva(game, unit, role, gameMap);
                 break;

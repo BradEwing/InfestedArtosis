@@ -93,5 +93,7 @@ public class TwelvePool extends BuildOrder {
     }
 
     @Override
-    public boolean isOpener() { return true; }
+    public boolean isOpener() { 
+        return true; 
+    }
 }

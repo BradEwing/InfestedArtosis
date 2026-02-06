@@ -17,7 +17,9 @@ import java.util.List;
  *
  * Liquipedia Overview
  * <p>
- * This build opens very similarly to a ZvT 3 Hatch Mutalisk build. It looks to get Scourge and/or Mutalisks out very quickly to control Protoss' early midgame Tech, allowing Zerg the freedom to power Drones through the midgame. It can sometimes be used as an aggressive strategy by catching the Protoss main off guard while it has very few Cannons and minimal air defense.
+ * This build opens very similarly to a ZvT 3 Hatch Mutalisk build. It looks to get Scourge and/or Mutalisks out very quickly to control 
+ * Protoss' early midgame Tech, allowing Zerg the freedom to power Drones through the midgame. 
+ * It can sometimes be used as an aggressive strategy by catching the Protoss main off guard while it has very few Cannons and minimal air defense.
  * <a href="https://github.com/Cmccrave/McRave/blob/699ecf1b0f8581f318b467c74744027f3eb9b852/Source/McRave/Builds/Zerg/ZvP/ZvP.cpp#L245">McRave 3HatchMuta</a>
  * <a href="https://liquipedia.net/starcraft/3_Hatch_Spire_(vs._Protoss)">Liquipedia</a>
  *
@@ -66,7 +68,7 @@ public class ThreeHatchMuta extends ProtossBase {
         int enemyObserverCount = gameState.enemyUnitCount(UnitType.Protoss_Observer);
 
         // Gas timing
-        boolean gasBlocked = cannonRushed && time.lessThanOrEqual(new Time (4, 0));
+        boolean gasBlocked = cannonRushed && time.lessThanOrEqual(new Time(4, 0));
         boolean firstGas = !gasBlocked && gameState.canPlanExtractor() && (time.greaterThan(new Time(2, 32)) || supply > 40) && extractorCount < 1;
         boolean secondGas = gameState.canPlanExtractor() && (spireCount > 0 || droneCount >= 20);
 
@@ -83,7 +85,7 @@ public class ThreeHatchMuta extends ProtossBase {
         boolean wantThirdMacroHatch = wantThirdMacroHatchery(gameState);
 
         // Lair timing
-        boolean wantLair = gameState.canPlanLair() && lairCount < 1 && time.greaterThan(new Time (2, 30)) && baseCount >= 2;
+        boolean wantLair = gameState.canPlanLair() && lairCount < 1 && time.greaterThan(new Time(2, 30)) && baseCount >= 2;
 
         // Spire timing
         boolean wantSpire = techProgression.canPlanSpire() && spireCount < 1 && lairCount >= 1 && livingDroneCount >= 16;
@@ -373,5 +375,7 @@ public class ThreeHatchMuta extends ProtossBase {
     }
 
     @Override
-    public boolean needLair() { return true; }
+    public boolean needLair() { 
+        return true; 
+    }
 }

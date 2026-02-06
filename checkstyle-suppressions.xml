@@ -4,5 +4,16 @@
     "https://checkstyle.org/dtds/suppressions_1_2.dtd">
 
 <suppressions>
-    <!-- Add file-level suppressions here as needed -->
+    <!-- Debug rendering class uses magic numbers for screen coordinates -->
+    <suppress checks="MagicNumber" files="Debug\.java"/>
+    <!-- Debug rendering has complex dispatch logic -->
+    <suppress checks="CyclomaticComplexity" files="Debug\.java"/>
+    <!-- Build order files are declarative with game-specific constants -->
+    <suppress checks="MagicNumber" files="strategy[\\/]buildorder[\\/].*\.java"/>
+    <!-- Build order plan() methods have inherently complex game state branching -->
+    <suppress checks="CyclomaticComplexity" files="strategy[\\/]buildorder[\\/].*\.java"/>
+    <!-- Test files use magic numbers for test data -->
+    <suppress checks="MagicNumber" files="[\\/]test[\\/].*\.java"/>
+    <!-- Test files don't need Javadoc validation -->
+    <suppress checks="JavadocMethod" files="[\\/]test[\\/].*\.java"/>
 </suppressions>

@@ -23,6 +23,7 @@ import java.util.Objects;
 import java.util.Set;
 
 public class ScoutManager {
+    private static final int ENEMY_UNSEEN_SCOUT_THRESHOLD = 720;
 
     final int FRAME_DRONE_SCOUT = 1440; // 1m
     private  InformationManager informationManager;
@@ -146,7 +147,7 @@ public class ScoutManager {
         }
 
         int framesSinceLastEnemy = currentFrame - lastEnemySeenFrame;
-        if (framesSinceLastEnemy < 720) {
+        if (framesSinceLastEnemy < ENEMY_UNSEEN_SCOUT_THRESHOLD) {
             return 0;
         }
 
@@ -232,7 +233,7 @@ public class ScoutManager {
         }
 
         Base farthest = null;
-        for(Map.Entry<Base, Double> entry: baseDistance.entrySet()) {
+        for (Map.Entry<Base, Double> entry: baseDistance.entrySet()) {
             if (farthest == null) {
                 farthest = entry.getKey();
                 continue;

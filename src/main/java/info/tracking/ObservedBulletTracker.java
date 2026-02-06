@@ -16,8 +16,10 @@ public class ObservedBulletTracker {
 
     private static final HashMap<BulletType, Integer> BULLET_DURATIONS = new HashMap<>();
 
+    private static final int PSIONIC_STORM_DURATION = 72;
+
     static {
-        BULLET_DURATIONS.put(BulletType.Psionic_Storm, 72);
+        BULLET_DURATIONS.put(BulletType.Psionic_Storm, PSIONIC_STORM_DURATION);
     }
 
     public ObservedBulletTracker() {

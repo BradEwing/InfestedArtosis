@@ -14,6 +14,11 @@ import java.util.stream.Collectors;
  * Overlord behavior: avoids air threats while scouting/retreating and cannot fight.
  */
 public class Overlord extends ManagedUnit {
+    private static final int AIR_THREAT_DETECTION_RADIUS = 192;
+    private static final double RETREAT_SCALE = 128.0;
+    private static final double SCOUT_TARGET_BLEND_WEIGHT = 0.5;
+    private static final int SCOUT_MOVE_DISTANCE = 128;
+
     public Overlord(Game game, Unit unit, UnitRole role, GameMap gameMap) {
         super(game, unit, role, gameMap);
         this.setCanFight(false);
@@ -24,14 +29,16 @@ public class Overlord extends ManagedUnit {
      */
     @Override
     protected List<Unit> getEnemiesInRadius(int currentX, int currentY) {
-        return game.getUnitsInRadius(currentX, currentY, 192)
+        return game.getUnitsInRadius(currentX, currentY, AIR_THREAT_DETECTION_RADIUS)
                 .stream()
                 .filter(u -> u.getPlayer() != game.self())
                 .filter(u -> isAirThreat(u.getType()))
                 .collect(Collectors.toList());
     }
 
-    private boolean isAirThreat(UnitType type) { return Filter.isAirThreat(type); }
+    private boolean isAirThreat(UnitType type) {
+        return Filter.isAirThreat(type);
+    }
 
     /**
      * Computes an air-safe retreat without ground walkability checks.
@@ -53,7 +60,7 @@ public class Overlord extends ManagedUnit {
         int retreatDx = -sumDx;
         int retreatDy = -sumDy;
         double length = Math.max(1.0, Math.sqrt(retreatDx * retreatDx + retreatDy * retreatDy));
-        double scale = 128.0 / length;
+        double scale = RETREAT_SCALE / length;
         int newX = currentX + (int) (retreatDx * scale);
         int newY = currentY + (int) (retreatDy * scale);
         newX = Math.max(0, Math.min(newX, game.mapWidth() * 32 - 1));
@@ -90,14 +97,14 @@ public class Overlord extends ManagedUnit {
             double bx = ax;
             double by = ay;
             if (dot > 0) {
-                bx = ax + 0.5 * tx;
-                by = ay + 0.5 * ty;
+                bx = ax + SCOUT_TARGET_BLEND_WEIGHT * tx;
+                by = ay + SCOUT_TARGET_BLEND_WEIGHT * ty;
                 double bt = Math.max(1.0, Math.sqrt(bx * bx + by * by));
                 bx /= bt; by /= bt;
             }
 
-            int destX = current.getX() + (int) (bx * 128);
-            int destY = current.getY() + (int) (by * 128);
+            int destX = current.getX() + (int) (bx * SCOUT_MOVE_DISTANCE);
+            int destY = current.getY() + (int) (by * SCOUT_MOVE_DISTANCE);
             destX = Math.max(0, Math.min(destX, game.mapWidth() * 32 - 1));
             destY = Math.max(0, Math.min(destY, game.mapHeight() * 32 - 1));
 

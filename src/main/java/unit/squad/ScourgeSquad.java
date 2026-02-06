@@ -18,6 +18,10 @@ import java.util.Set;
  */
 public class ScourgeSquad extends Squad {
 
+    private static final int PRIORITY_SCORE_MULTIPLIER = 1000;
+    private static final int RALLY_ARRIVAL_DISTANCE = 64;
+    private static final double RALLY_TRANSITION_THRESHOLD = 0.75;
+
     private final CombatSimulator combatSimulator;
 
     public ScourgeSquad() {
@@ -109,7 +113,7 @@ public class ScourgeSquad extends Squad {
 
             double distance = scourgePos.getDistance(target.getPosition());
             double priority = getTargetPriority(target.getType());
-            double score = priority * 1000 - distance;
+            double score = priority * PRIORITY_SCORE_MULTIPLIER - distance;
 
             if (score > bestScore) {
                 bestScore = score;
@@ -213,13 +217,13 @@ public class ScourgeSquad extends Squad {
         for (ManagedUnit scourge : getMembers()) {
             if (scourge.getRallyPoint() != null) {
                 double distanceToRally = scourge.getUnit().getPosition().getDistance(scourge.getRallyPoint());
-                if (distanceToRally < 64) {
+                if (distanceToRally < RALLY_ARRIVAL_DISTANCE) {
                     scourgeAtRally++;
                 }
             }
         }
 
-        if (scourgeCount > 0 && (double)scourgeAtRally / scourgeCount >= 0.75) {
+        if (scourgeCount > 0 && (double) scourgeAtRally / scourgeCount >= RALLY_TRANSITION_THRESHOLD) {
             setStatus(SquadStatus.FIGHT);
 
             for (ManagedUnit scourge : getMembers()) {

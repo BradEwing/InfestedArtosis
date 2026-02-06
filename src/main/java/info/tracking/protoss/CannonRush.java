@@ -17,6 +17,7 @@ import java.util.List;
  */
 public class CannonRush extends ProtossBaseStrategy {
 
+    private static final int DETECTION_SECONDS = 30;
 
     public CannonRush() {
         super("CannonRush");
@@ -24,7 +25,7 @@ public class CannonRush extends ProtossBaseStrategy {
 
     @Override
     public boolean isDetected(ObservedUnitTracker tracker, Time time) {
-        Time detectedBy = new Time(4, 30);
+        Time detectedBy = new Time(4, DETECTION_SECONDS);
         int pylons = tracker.getProxiedCountByTypeBeforeTime(UnitType.Protoss_Pylon, detectedBy);
         int cannons = tracker.getProxiedCountByTypeBeforeTime(UnitType.Protoss_Photon_Cannon, detectedBy);
         return pylons + cannons > 0;

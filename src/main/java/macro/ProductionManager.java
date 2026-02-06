@@ -36,6 +36,12 @@ import java.util.stream.Collectors;
  */
 public class ProductionManager {
 
+    private static final int MAX_SUPPLY = 400;
+    private static final int EMERGENCY_MINERAL_THRESHOLD = 700;
+    private static final int MAX_PLANNED_SUPPLY = 80;
+    private static final int BUILD_LOCATION_SEARCH_RADIUS = 128;
+    private static final int HATCHERY_MINERAL_COST = 300;
+
     final int FRAME_ZVZ_HATCH_RESTRICT = 7200; // 5m
 
     private Game game;
@@ -290,7 +296,7 @@ public class ProductionManager {
      * Walks the queue in priority order and inserts overlords when supply would run out.
      */
     private void planSupply(Player self) {
-        if (self.supplyUsed() >= 400) {
+        if (self.supplyUsed() >= MAX_SUPPLY) {
             return;
         }
 
@@ -332,7 +338,7 @@ public class ProductionManager {
             int supplyCost = unitType.supplyRequired();
             availableSupply -= supplyCost;
 
-            while (availableSupply < SUPPLY_BUFFER && (self.supplyUsed() + gameState.getResourceCount().getPlannedSupply()) < 400) {
+            while (availableSupply < SUPPLY_BUFFER && (self.supplyUsed() + gameState.getResourceCount().getPlannedSupply()) < MAX_SUPPLY) {
                 int insertPriority = Math.max(1, plan.getPriority() - 1);
                 overlordInsertPriorities.add(insertPriority);
                 availableSupply += 16;
@@ -348,7 +354,7 @@ public class ProductionManager {
         // Emergency fallback: supply blocked with high minerals
         final int supplyRemaining = self.supplyTotal() - self.supplyUsed();
         int plannedSupply = gameState.getResourceCount().getPlannedSupply();
-        if (supplyRemaining == 0 && self.minerals() > 700 && plannedSupply < 80) {
+        if (supplyRemaining == 0 && self.minerals() > EMERGENCY_MINERAL_THRESHOLD && plannedSupply < MAX_PLANNED_SUPPLY) {
             addUnitToQueue(UnitType.Zerg_Overlord, 1, true);
             gameState.getResourceCount().setPlannedSupply(plannedSupply + 16);
         }
@@ -402,7 +408,7 @@ public class ProductionManager {
         final boolean hasFourOrMoreDrones = gameState.numGatherers() > 3;
         final int numHatcheries = gameState.getBaseData().numHatcheries();
 
-        switch(unitType) {
+        switch (unitType) {
             case Zerg_Overlord:
             case Zerg_Drone:
                 return numHatcheries > 0;
@@ -411,7 +417,8 @@ public class ProductionManager {
             case Zerg_Hydralisk:
                 return hasFourOrMoreDrones && (techProgression.isPlannedDen() || techProgression.isHydraliskDen());
             case Zerg_Lurker:
-                if (!hasFourOrMoreDrones || (!techProgression.isPlannedLurker() && !techProgression.isLurker())) {
+                final boolean noLurkerTech = !techProgression.isPlannedLurker() && !techProgression.isLurker();
+                if (!hasFourOrMoreDrones || noLurkerTech) {
                     return false;
                 }
                 int hydraliskCount = gameState.ourUnitCount(UnitType.Zerg_Hydralisk);
@@ -435,7 +442,7 @@ public class ProductionManager {
     private boolean canScheduleBuilding(UnitType unitType) {
         TechProgression techProgression = gameState.getTechProgression();
         final int numHatcheries = gameState.getBaseData().numHatcheries();
-        switch(unitType) {
+        switch (unitType) {
             case Zerg_Hatchery:
             case Zerg_Extractor:
             case Zerg_Creep_Colony:
@@ -470,7 +477,7 @@ public class ProductionManager {
 
     private boolean canScheduleUpgrade(UpgradeType upgradeType) {
         TechProgression techProgression = gameState.getTechProgression();
-        switch(upgradeType) {
+        switch (upgradeType) {
             case Metabolic_Boost:
                 return techProgression.isSpawningPool();
             case Muscular_Augments:
@@ -536,6 +543,8 @@ public class ProductionManager {
                     break;
                 case TECH:
                     canSchedule = scheduleResearch(plan);
+                default:
+                    return;
             }
 
             if (canSchedule) {
@@ -635,7 +644,7 @@ public class ProductionManager {
 
         TechProgression techProgression = this.gameState.getTechProgression();
 
-        switch(unitType) {
+        switch (unitType) {
             case Zerg_Hydralisk_Den:
                 techProgression.setHydraliskDen(true);
                 techProgression.setPlannedDen(false);
@@ -717,7 +726,7 @@ public class ProductionManager {
 
         // TODO: Assign building location from building location planner
         if (plan.getBuildPosition() == null) {
-            plan.setBuildPosition(game.getBuildLocation(building, gameState.getBaseData().mainBasePosition(), 128, true));
+            plan.setBuildPosition(game.getBuildLocation(building, gameState.getBaseData().mainBasePosition(), BUILD_LOCATION_SEARCH_RADIUS, true));
         }
 
         scheduledBuildings += 1;
@@ -842,7 +851,7 @@ public class ProductionManager {
             return;
         }
 
-        if (gameState.getResourceCount().availableMinerals() < 300) {
+        if (gameState.getResourceCount().availableMinerals() < UnitType.Zerg_Hatchery.mineralPrice()) {
             return;
         }
 
@@ -947,7 +956,7 @@ public class ProductionManager {
         // Put item back onto the queue with greater importance
         if (gameState.getAssignedPlannedItems().containsKey(unit)) {
             Plan plan = gameState.getAssignedPlannedItems().get(unit);
-            switch(plan.getState()) {
+            switch (plan.getState()) {
                 case BUILDING:
                 case MORPHING:
                     if (isDestroyed) {

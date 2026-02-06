@@ -13,11 +13,17 @@ public class DefensiveSunkRecord implements UCBRecord {
         return wins - losses;
     }
 
-    public int wins() { return wins; }
+    public int wins() {
+        return wins;
+    }
 
-    public int games() { return wins + losses; }
+    public int games() {
+        return wins + losses;
+    }
 
-    public int winsSquared() { return wins * wins; }
+    public int winsSquared() {
+        return wins * wins;
+    }
 
     public double index(int totalGames) {
         if (totalGames == 0 || this.games() == 0) {

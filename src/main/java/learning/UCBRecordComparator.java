@@ -6,7 +6,9 @@ public class UCBRecordComparator implements Comparator<UCBRecord>  {
 
     private int totalGames = 0;
 
-    public UCBRecordComparator(int totalGames) { this.totalGames = totalGames; }
+    public UCBRecordComparator(int totalGames) {
+        this.totalGames = totalGames;
+    }
 
     @Override
     public int compare(UCBRecord x, UCBRecord y) {

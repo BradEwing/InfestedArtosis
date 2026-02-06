@@ -15,6 +15,8 @@ import java.util.Set;
  */
 public class ScourgeCombatSimulator implements CombatSimulator {
 
+    private static final int SCOURGE_DAMAGE = 110;
+
     @Override
     public CombatResult evaluate(Squad squad, GameState gameState) {
         Set<Unit> enemyUnits = gameState.getDetectedEnemyUnits();
@@ -50,8 +52,6 @@ public class ScourgeCombatSimulator implements CombatSimulator {
             return false;
         }
 
-        int scourgeDAMAGE = 110;
-
         List<Unit> prioritizedTargets = prioritizeTargets(airTargets);
 
         int remainingScourge = squadSize;
@@ -62,7 +62,7 @@ public class ScourgeCombatSimulator implements CombatSimulator {
             }
 
             int targetHP = target.getHitPoints() + target.getShields();
-            int scourgeNeeded = (int) Math.ceil((double) targetHP / scourgeDAMAGE);
+            int scourgeNeeded = (int) Math.ceil((double) targetHP / SCOURGE_DAMAGE);
 
             if (scourgeNeeded <= remainingScourge) {
                 return true;

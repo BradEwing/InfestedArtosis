@@ -42,6 +42,12 @@ import java.util.stream.Collectors;
  */
 @Data
 public class GameState {
+    private static final int MAX_DRONE_COUNT = 80;
+    private static final int SUNKEN_TIME_LIMIT_MINUTES = 10;
+    private static final int MAX_SUNKENS_BEFORE_TIME_LIMIT = 5;
+    private static final int BUNKER_RANGE_BUFFER = 64;
+    private static final int FLOATING_MINERALS_CHECK_MINUTES = 5;
+    private static final int FLOATING_MINERALS_HATCH_MULTIPLIER = 350;
     private Game game;
     private Config config;
     private Player self;
@@ -148,7 +154,9 @@ public class GameState {
         return gatherers.size();
     }
 
-    public int numLarva() { return larva.size(); }
+    public int numLarva() {
+        return larva.size();
+    }
 
     public int frameCanAffordUnit(UnitType unit, int currentFrame) {
         return this.resourceCount.frameCanAffordUnit(unit, currentFrame, mineralGatherers.size(), gasGatherers.size());
@@ -167,7 +175,9 @@ public class GameState {
     }
 
     public void addBaseToGameState(Unit hatchery, Base base) {
-        if (base == null) { return; }
+        if (base == null) {
+            return;
+        }
         gatherersAssignedToBase.put(base, new HashSet<>());
         this.baseData.addBase(hatchery, base);
 
@@ -224,7 +234,7 @@ public class GameState {
                     Base base = baseData.baseAtTilePosition(tp);
                     baseData.cancelReserveBase(base);
                 }
-                
+
                 clearPlannedTechFlags(buildingType);
                 break;
             case UPGRADE:
@@ -234,6 +244,8 @@ public class GameState {
             case TECH:
                 resourceCount.unreserveTechResearch(plan.getPlannedTechType());
                 clearPlannedTechResearchFlags(plan.getPlannedTechType());
+                break;
+            default:
                 break;
         }
     }
@@ -326,9 +338,9 @@ public class GameState {
         plansImpossible.add(plan);
 
         PlanState currentState = plan.getState();
-        boolean shouldUnreserve = (currentState == PlanState.SCHEDULE ||
-                                   currentState == PlanState.BUILDING ||
-                                   currentState == PlanState.MORPHING);
+        boolean shouldUnreserve = currentState == PlanState.SCHEDULE
+                                   || currentState == PlanState.BUILDING
+                                   || currentState == PlanState.MORPHING;
 
         plan.setState(PlanState.CANCELLED);
 
@@ -395,9 +407,13 @@ public class GameState {
         }
     }
 
-    public boolean needGeyserWorkers() { return this.getGeyserWorkers() < (3 * this.getGeyserAssignments().size()); }
+    public boolean needGeyserWorkers() {
+        return this.getGeyserWorkers() < 3 * this.getGeyserAssignments().size();
+    }
 
-    public int needGeyserWorkersAmount() { return (3 * this.getGeyserAssignments().size()) - this.getGeyserWorkers(); }
+    public int needGeyserWorkersAmount() {
+        return 3 * this.getGeyserAssignments().size() - this.getGeyserWorkers();
+    }
 
     /**
      * Removes managed unit from all data structures.
@@ -466,7 +482,7 @@ public class GameState {
         final int expectedWorkers = expectedWorkers();
         int hatchCount = ourUnitCount(UnitType.Zerg_Hatchery, UnitType.Zerg_Lair, UnitType.Zerg_Hive);
         int plannedWorkerConstraint = hatchCount * 3;
-        return plannedWorkers < plannedWorkerConstraint && numWorkers() < 80 && numWorkers() < expectedWorkers;
+        return plannedWorkers < plannedWorkerConstraint && numWorkers() < MAX_DRONE_COUNT && numWorkers() < expectedWorkers;
     }
 
     public int numWorkers() {
@@ -547,12 +563,12 @@ public class GameState {
     }
 
     public Set<Base> basesNeedingSunken(int target) {
-        Time tenMinutes = new Time(10, 0);
+        Time tenMinutes = new Time(SUNKEN_TIME_LIMIT_MINUTES, 0);
         Time currentTime = getGameTime();
         int totalSunkens = baseData.getTotalSunkenCount();
 
         Set<Base> neededBases = new HashSet<>();
-        if (currentTime.lessThanOrEqual(tenMinutes) && totalSunkens >= 5) {
+        if (currentTime.lessThanOrEqual(tenMinutes) && totalSunkens >= MAX_SUNKENS_BEFORE_TIME_LIMIT) {
             return neededBases;
         }
 
@@ -571,7 +587,7 @@ public class GameState {
     }
 
     public boolean canPlanUnit(UnitType unitType) {
-        switch(unitType) {
+        switch (unitType) {
             case Zerg_Zergling:
                 return techProgression.isSpawningPool();
             default:
@@ -595,7 +611,7 @@ public class GameState {
         switch (opponentRace) {
             case Terran:
                 staticDefenseRanges.put(UnitType.Terran_Missile_Turret, UnitType.Terran_Missile_Turret.airWeapon().maxRange() + 32);
-                staticDefenseRanges.put(UnitType.Terran_Bunker, UnitType.Terran_Marine.groundWeapon().maxRange() + 64);
+                staticDefenseRanges.put(UnitType.Terran_Bunker, UnitType.Terran_Marine.groundWeapon().maxRange() + BUNKER_RANGE_BUFFER);
                 break;
             case Protoss:
                 staticDefenseRanges.put(UnitType.Protoss_Photon_Cannon, UnitType.Protoss_Photon_Cannon.groundWeapon().maxRange() + 32);
@@ -769,7 +785,7 @@ public class GameState {
     }
 
     public boolean isFloatingMinerals() {
-        return getGameTime().greaterThan(new Time(5, 0)) &&
-                resourceCount.availableMinerals() > ((plannedHatcheries + 1) * 350);
+        return getGameTime().greaterThan(new Time(FLOATING_MINERALS_CHECK_MINUTES, 0)) &&
+                resourceCount.availableMinerals() > (plannedHatcheries + 1) * FLOATING_MINERALS_HATCH_MULTIPLIER;
     }
 }

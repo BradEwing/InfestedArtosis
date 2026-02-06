@@ -15,6 +15,12 @@ import java.util.Set;
  */
 public class MutaliskCombatSimulator implements CombatSimulator {
 
+    private static final int ANTI_AIR_THREAT_RANGE = 160;
+    private static final int MUTALISK_HP = 120;
+    private static final double MAX_HP_LOSS_FRACTION = 0.05;
+    private static final double ANTI_AIR_OUTNUMBER_RATIO = 1.5;
+    private static final int FRAMES_PER_SECOND = 24;
+
     @Override
     public CombatResult evaluate(Squad squad, GameState gameState) {
         Set<Unit> enemyUnits = gameState.getDetectedEnemyUnits();
@@ -49,23 +55,23 @@ public class MutaliskCombatSimulator implements CombatSimulator {
         int antiAirDps = 0;
 
         for (Unit enemy : enemies) {
-            if (isAntiAir(enemy) && squad.getCenter().getDistance(enemy.getPosition()) < 160) {
+            if (isAntiAir(enemy) && squad.getCenter().getDistance(enemy.getPosition()) < ANTI_AIR_THREAT_RANGE) {
                 antiAirThreats++;
                 antiAirDps += getAntiAirDps(enemy);
             }
         }
 
         int squadSize = squad.size();
-        int mutaliskHp = squadSize * 120;
+        int mutaliskHp = squadSize * MUTALISK_HP;
         int expectedDamagePerSecond = antiAirDps;
 
         // Don't engage if we'll lose more than 5% HP in 2 seconds
-        if (expectedDamagePerSecond * 2 > mutaliskHp * 0.05) {
+        if (expectedDamagePerSecond * 2 > mutaliskHp * MAX_HP_LOSS_FRACTION) {
             return false;
         }
 
         // Don't engage if outnumbered by anti-air
-        if (antiAirThreats > squadSize * 1.5) {
+        if (antiAirThreats > squadSize * ANTI_AIR_OUTNUMBER_RATIO) {
             return false;
         }
 
@@ -108,7 +114,7 @@ public class MutaliskCombatSimulator implements CombatSimulator {
             return 0;
         }
 
-        int dps = (damage * 24) / cooldown;
+        int dps = (damage * FRAMES_PER_SECOND) / cooldown;
 
         return dps;
     }

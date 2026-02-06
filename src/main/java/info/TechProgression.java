@@ -49,9 +49,13 @@ public class TechProgression {
     private boolean plannedFlyerAttack = false;
     private boolean plannedFlyerDefense = false;
 
-    public boolean canPlanSunkenColony() { return spawningPool; }
+    public boolean canPlanSunkenColony() {
+        return spawningPool;
+    }
 
-    public boolean canPlanExtractor() { return spawningPool || plannedSpawningPool; }
+    public boolean canPlanExtractor() {
+        return spawningPool || plannedSpawningPool;
+    }
 
     public boolean canPlanPool() {
         return !plannedSpawningPool && !spawningPool;
@@ -73,7 +77,9 @@ public class TechProgression {
         return lair && !plannedSpire && !spire;
     }
 
-    public boolean canPlanQueensNest() { return lair && !plannedQueensNest && !queensNest; }
+    public boolean canPlanQueensNest() {
+        return lair && !plannedQueensNest && !queensNest;
+    }
 
     public boolean canPlanMetabolicBoost() {
         return spawningPool && !plannedMetabolicBoost && !metabolicBoost;
@@ -87,12 +93,18 @@ public class TechProgression {
         return hydraliskDen && !plannedGroovedSpines && !groovedSpines;
     }
 
-    public boolean canPlanLurker() { return hydraliskDen && lair && !plannedLurker && !lurker; }
+    public boolean canPlanLurker() {
+        return hydraliskDen && lair && !plannedLurker && !lurker;
+    }
 
-    public boolean canPlanEvolutionChamber() { return spawningPool && plannedEvolutionChambers + evolutionChambers < 2; }
+    public boolean canPlanEvolutionChamber() {
+        return spawningPool && plannedEvolutionChambers + evolutionChambers < 2;
+    }
 
     // TODO: Code smell, all tech should probably be boolean here, and number of evolution chambers comes from BaseData/BuildingManager
-    public int evolutionChambers() { return plannedEvolutionChambers + evolutionChambers; }
+    public int evolutionChambers() {
+        return plannedEvolutionChambers + evolutionChambers;
+    }
 
     public boolean canPlanCarapaceUpgrades() {
         if (plannedCarapaceUpgrades) {
@@ -218,7 +230,7 @@ public class TechProgression {
     }
 
     public void upgradeTech(UpgradeType u) {
-        switch(u) {
+        switch (u) {
             case Metabolic_Boost:
                 metabolicBoost = true;
                 plannedMetabolicBoost = false;

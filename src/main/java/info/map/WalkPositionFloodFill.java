@@ -131,8 +131,8 @@ public class WalkPositionFloodFill {
     private boolean unitBlocksWalkPosition(Unit unit, WalkPosition walkPosition) {
         WalkPosition unitWalkPos = unit.getPosition().toWalkPosition();
         
-        int unitWidth = (unit.getType().tileWidth() * 4);
-        int unitHeight = (unit.getType().tileHeight() * 4);
+        int unitWidth = unit.getType().tileWidth() * 4;
+        int unitHeight = unit.getType().tileHeight() * 4;
         
         int unitLeft = unitWalkPos.getX();
         int unitRight = unitLeft + unitWidth;

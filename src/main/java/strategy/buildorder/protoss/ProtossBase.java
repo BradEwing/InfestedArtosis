@@ -54,7 +54,7 @@ public class ProtossBase extends BuildOrder {
             zerglings = 24;
         }
 
-        zerglings += (zealots * 2);
+        zerglings += zealots * 2;
 
         if (currentZerglings >= zerglings) {
             return 0;

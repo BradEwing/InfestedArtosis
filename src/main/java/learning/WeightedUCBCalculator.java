@@ -14,9 +14,12 @@ import java.util.Map;
  * </p>
  */
 public class WeightedUCBCalculator {
-    
-    private static final double MAX_MAP_WEIGHT = 0.8; 
+
+    private static final double MAX_MAP_WEIGHT = 0.8;
     private static final int CONFIDENCE_THRESHOLD = 10;
+    private static final double SIGMOID_STEEPNESS = -0.3;
+    private static final double EXPLORATION_NOISE_RANGE = 0.2;
+    private static final double EXPLORATION_NOISE_OFFSET = 0.1;
 
     public static double calculateWeightedScore(String strategy,
             String mapName,
@@ -33,7 +36,7 @@ public class WeightedUCBCalculator {
             int mapGames = mapRecord.games();
 
             
-            double confidence = 1.0 / (1.0 + Math.exp(-0.3 * (mapGames - CONFIDENCE_THRESHOLD)));
+            double confidence = 1.0 / (1.0 + Math.exp(SIGMOID_STEEPNESS * (mapGames - CONFIDENCE_THRESHOLD)));
             double mapWeight = MAX_MAP_WEIGHT * confidence;
             double opponentWeight = 1.0 - mapWeight;
 
@@ -53,8 +56,8 @@ public class WeightedUCBCalculator {
             return Math.random();
         }
         
-        return Math.sqrt(Math.log(totalGames)) + (Math.random() * 0.2 - 0.1);
-}
+        return Math.sqrt(Math.log(totalGames)) + (Math.random() * EXPLORATION_NOISE_RANGE - EXPLORATION_NOISE_OFFSET);
+    }
     
     public static String findBestStrategy(List<String> candidates,
                                         String mapName,

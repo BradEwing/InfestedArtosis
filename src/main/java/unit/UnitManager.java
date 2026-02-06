@@ -25,6 +25,8 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 public class UnitManager {
+    private static final int ZERGLING_SCOUT_CHECK_INTERVAL = 24;
+    private static final int EARLY_GAME_DEFENSE_MINUTES = 5;
 
     private Game game;
     private GameState gameState;
@@ -88,7 +90,7 @@ public class UnitManager {
         checkBaseThreats();
 
         // Check every second (24 frames) to minimize overhead
-        if (frameCount % 24 == 0) {
+        if (frameCount % ZERGLING_SCOUT_CHECK_INTERVAL == 0) {
             checkAndAssignZerglingScouts();
         }
 
@@ -116,7 +118,7 @@ public class UnitManager {
             UnitRole role = managedUnit.getRole();
 
             // TODO: Clean this up, this is really just avoiding special handling of scouting units
-            switch(role) {
+            switch (role) {
                 case GATHER:
                 case BUILD:
                 case MORPH:
@@ -133,7 +135,7 @@ public class UnitManager {
                     break;
             }
             UnitType type = managedUnit.getUnitType();
-            switch(type) {
+            switch (type) {
                 case Zerg_Drone:
                     onFrameDrone(managedUnit, role);
                     break;
@@ -436,7 +438,7 @@ public class UnitManager {
     }
 
     private void assignGatherersToDefense(Base base) {
-        if (gameState.getGameTime().greaterThan(new Time(5, 0))) {
+        if (gameState.getGameTime().greaterThan(new Time(EARLY_GAME_DEFENSE_MINUTES, 0))) {
             return;
         }
         HashSet<ManagedUnit> gatherersAssignedToBase = this.gameState.getGatherersAssignedToBase().get(base);

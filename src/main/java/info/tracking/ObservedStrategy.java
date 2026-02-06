@@ -6,6 +6,9 @@ import util.Time;
 import java.util.List;
 
 public abstract class ObservedStrategy {
+    private static final int LOCK_AFTER_MINUTES = 59;
+    private static final int LOCK_AFTER_SECONDS = 59;
+
     private final String name;
 
     protected ObservedStrategy(String name) {
@@ -34,8 +37,10 @@ public abstract class ObservedStrategy {
     }
 
     public Time lockAfter() {
-        return new Time(59, 59);
+        return new Time(LOCK_AFTER_MINUTES, LOCK_AFTER_SECONDS);
     }
 
-    public Race getRace() {return Race.Unknown;}
+    public Race getRace() {
+        return Race.Unknown;
+    }
 }

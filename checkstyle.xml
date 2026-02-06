@@ -8,6 +8,12 @@
     <property name="severity" value="error"/>
     <property name="fileExtensions" value="java"/>
 
+    <!-- Sizes -->
+    <module name="LineLength">
+        <property name="max" value="150"/>
+        <property name="ignorePattern" value="^package.*|^import.*|a href|href|http://|https://|ftp://"/>
+    </module>
+
     <!-- Whitespace -->
     <module name="FileTabCharacter">
         <property name="eachLine" value="true"/>
@@ -26,11 +32,49 @@
         <module name="TypeName"/>
         <module name="MethodName"/>
         <module name="ConstantName"/>
+        <module name="LambdaParameterName">
+            <property name="format" value="^[a-z][a-zA-Z0-9]*$"/>
+        </module>
+
+        <!-- Sizes -->
+        <module name="ParameterNumber">
+            <property name="max" value="8"/>
+            <property name="ignoreOverriddenMethods" value="true"/>
+        </module>
+        <module name="LambdaBodyLength">
+            <property name="max" value="15"/>
+        </module>
 
         <!-- Whitespace -->
         <module name="GenericWhitespace"/>
         <module name="EmptyLineSeparator">
             <property name="allowNoEmptyLineBetweenFields" value="true"/>
+        </module>
+        <module name="WhitespaceAround">
+            <property name="allowEmptyConstructors" value="true"/>
+            <property name="allowEmptyMethods" value="true"/>
+            <property name="allowEmptyTypes" value="true"/>
+            <property name="allowEmptyLoops" value="true"/>
+            <property name="allowEmptyLambdas" value="true"/>
+        </module>
+        <module name="MethodParamPad"/>
+        <module name="ParenPad"/>
+
+        <!-- Blocks -->
+        <module name="NeedBraces">
+            <property name="allowSingleLineStatement" value="true"/>
+        </module>
+        <module name="LeftCurly"/>
+        <module name="RightCurly"/>
+
+        <!-- Indentation -->
+        <module name="Indentation">
+            <property name="basicOffset" value="4"/>
+            <property name="braceAdjustment" value="0"/>
+            <property name="caseIndent" value="4"/>
+            <property name="throwsIndent" value="4"/>
+            <property name="lineWrappingIndentation" value="4"/>
+            <property name="arrayInitIndent" value="4"/>
         </module>
 
         <!-- Coding Standards -->
@@ -38,6 +82,31 @@
         <module name="EqualsHashCode"/>
         <module name="SimplifyBooleanExpression"/>
         <module name="SimplifyBooleanReturn"/>
+        <module name="MissingSwitchDefault"/>
+        <module name="MultipleVariableDeclarations"/>
+        <module name="OneTopLevelClass"/>
+        <module name="UnnecessaryParentheses"/>
+        <module name="MagicNumber">
+            <property name="ignoreNumbers" value="-1, 0, 1, 2, 3, 4, 8, 16, 32"/>
+            <property name="ignoreHashCodeMethod" value="true"/>
+            <property name="ignoreAnnotation" value="true"/>
+            <property name="ignoreFieldDeclaration" value="true"/>
+        </module>
+        <module name="NestedIfDepth">
+            <property name="max" value="4"/>
+        </module>
+
+        <!-- Metrics -->
+        <module name="CyclomaticComplexity">
+            <property name="max" value="20"/>
+        </module>
+
+        <!-- Javadoc -->
+        <module name="JavadocMethod">
+            <property name="accessModifiers" value="public"/>
+            <property name="allowMissingParamTags" value="true"/>
+            <property name="allowMissingReturnTag" value="true"/>
+        </module>
 
         <!-- Misc -->
         <module name="ArrayTypeStyle"/>

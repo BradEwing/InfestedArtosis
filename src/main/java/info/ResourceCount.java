@@ -13,6 +13,11 @@ import bwapi.UpgradeType;
  */
 public class ResourceCount {
 
+    private static final int HATCHERY_MINERAL_COST = 300;
+    private static final int FRAME_BUFFER = 20;
+    private static final int FLOATING_MINERALS_THRESHOLD = 100;
+    private static final int FLOATING_GAS_THRESHOLD = 150;
+
     // Income prediction constants
     // Adapted from PurpleWave: https://github.com/dgant/PurpleWave/blob/master/src/Information/Counting/Accounting.scala#L12
     final double mineralsPerFramePerWorker = 0.044;
@@ -50,11 +55,17 @@ public class ResourceCount {
         return !unit.isBuilding() && unit != UnitType.Zerg_Lurker;
     }
 
-    public int availableMinerals() { return self.minerals() - reservedMinerals; }
+    public int availableMinerals() {
+        return self.minerals() - reservedMinerals;
+    }
 
-    public int availableGas() { return self.gas() - reservedGas; }
+    public int availableGas() {
+        return self.gas() - reservedGas;
+    }
 
-    private boolean canAfford(int mineralPrice, int gasPrice) { return availableMinerals() < mineralPrice || availableGas() < gasPrice; }
+    private boolean canAfford(int mineralPrice, int gasPrice) {
+        return availableMinerals() < mineralPrice || availableGas() < gasPrice;
+    }
 
     public boolean canAffordUnit(UnitType unit) {
         final int mineralPrice = unit.mineralPrice();
@@ -95,7 +106,7 @@ public class ResourceCount {
     }
 
     public boolean canAffordHatch(int plannedHatcheries) {
-        return availableMinerals() > ((1 + plannedHatcheries) * 300);
+        return availableMinerals() > ((1 + plannedHatcheries) * HATCHERY_MINERAL_COST);
     }
 
     public boolean needExtractor() {
@@ -121,7 +132,9 @@ public class ResourceCount {
 
         int framesToGather = 0;
         if (mineralsNeeded > 0) {
-            if (mineralWorkers == 0) { return Integer.MAX_VALUE; }
+            if (mineralWorkers == 0) {
+                return Integer.MAX_VALUE;
+            }
             double mineralsPerFrame = mineralsPerFramePerWorker * mineralWorkers;
             int neededFrames = (int) Math.round(mineralsNeeded / mineralsPerFrame);
             if (neededFrames > framesToGather) {
@@ -129,7 +142,9 @@ public class ResourceCount {
             }
         }
         if (gasNeeded > 0) {
-            if (gasWorkers == 0) { return Integer.MAX_VALUE; }
+            if (gasWorkers == 0) {
+                return Integer.MAX_VALUE;
+            }
             double gasPerFrame = gasPerFramePerWorker * gasWorkers;
             int neededFrames = (int) Math.round(gasNeeded / gasPerFrame);
             if (neededFrames > framesToGather) {
@@ -138,7 +153,7 @@ public class ResourceCount {
         }
 
         // Buffer by 10 frames
-        return currentFrame + framesToGather + 20;
+        return currentFrame + framesToGather + FRAME_BUFFER;
     }
 
     public boolean canScheduleLarva(int currentLarva) {
@@ -149,9 +164,13 @@ public class ResourceCount {
         return 0;
     }
 
-    public boolean isFloatingMinerals() { return availableMinerals() - availableGas() > 100; }
+    public boolean isFloatingMinerals() {
+        return availableMinerals() - availableGas() > FLOATING_MINERALS_THRESHOLD;
+    }
 
-    public boolean isFloatingGas() { return availableGas() - availableMinerals() > 150; }
+    public boolean isFloatingGas() {
+        return availableGas() - availableMinerals() > FLOATING_GAS_THRESHOLD;
+    }
 
     public int getPlannedSupply() {
         return plannedSupply;

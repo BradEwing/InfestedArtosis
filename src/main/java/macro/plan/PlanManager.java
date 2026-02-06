@@ -22,6 +22,8 @@ import java.util.stream.Collectors;
 
 public class PlanManager {
 
+    private static final int TRAVEL_FRAME_BUFFER = 250;
+
     private Game game;
     private GameState gameState;
 
@@ -98,7 +100,7 @@ public class PlanManager {
     }
 
     private boolean isBuildingMorph(UnitType unitType) {
-        switch(unitType) {
+        switch (unitType) {
             case Zerg_Lair:
             case Zerg_Sunken_Colony:
                 return true;
@@ -132,7 +134,7 @@ public class PlanManager {
         double distance = buildingPosition.getDistance(unitPosition);
         double unitSpeed = unit.getType().topSpeed();
 
-        return (int)( distance / unitSpeed ) + 250;
+        return (int) (distance / unitSpeed) + TRAVEL_FRAME_BUFFER;
     }
 
     /**
@@ -170,7 +172,7 @@ public class PlanManager {
     }
 
     private boolean assignMorphUnit(Plan plan) {
-        switch(plan.getPlannedUnit()) {
+        switch (plan.getPlannedUnit()) {
             case Zerg_Lurker:
                 return assignMorphHydralisk(plan);
             default:

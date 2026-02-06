@@ -6,6 +6,11 @@ import lombok.Data;
 @Data
 @Builder
 public class GameRecord {
+    private static final int CSV_FIELD_COUNT = 9;
+    private static final int FIELD_OPPONENT_RACE = 5;
+    private static final int FIELD_OPENER = 6;
+    private static final int FIELD_BUILD_ORDER = 7;
+    private static final int FIELD_DETECTED_STRATEGIES = 8;
     private long timestamp;
     private int numStartingLocations;
     private String mapName;
@@ -38,10 +43,10 @@ public class GameRecord {
             .numStartingLocations(Integer.parseInt(fields[2]))
             .mapName(fields[3])
             .opponentName(fields[4])
-            .opponentRace(fields[5])
-            .opener(fields[6])
-            .buildOrder(fields[7])
-            .detectedStrategies(fields[8])
+            .opponentRace(fields[FIELD_OPPONENT_RACE])
+            .opener(fields[FIELD_OPENER])
+            .buildOrder(fields[FIELD_BUILD_ORDER])
+            .detectedStrategies(fields[FIELD_DETECTED_STRATEGIES])
             .build();
     }
     
@@ -56,7 +61,7 @@ public class GameRecord {
     }
     
     private static String[] parseCsvRow(String csvRow) {
-        String[] result = new String[9];
+        String[] result = new String[CSV_FIELD_COUNT];
         boolean inQuotes = false;
         StringBuilder currentField = new StringBuilder();
         int fieldIndex = 0;

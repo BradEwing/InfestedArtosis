@@ -13,6 +13,9 @@ import macro.plan.PlanType;
 public class Hydralisk extends ManagedUnit {
     private static final int UPGRADED_RANGE_BONUS = 32;
     private static final int MOVE_DISTANCE = 64;
+    private static final int FIGHT_UNREADY_FRAMES = 11;
+    private static final double KITE_RANGE_FACTOR = 0.9;
+    private static final int RETREAT_ARRIVAL_DISTANCE = 24;
 
     public Hydralisk(Game game, Unit unit, UnitRole role, GameMap gameMap) {
         super(game, unit, role, gameMap);
@@ -59,7 +62,7 @@ public class Hydralisk extends ManagedUnit {
         if (unit.isAttackFrame()) {
             return;
         }
-        setUnready(11);
+        setUnready(FIGHT_UNREADY_FRAMES);
 
         if (hasNoValidFightTarget()) {
             handleNoTarget();
@@ -77,7 +80,7 @@ public class Hydralisk extends ManagedUnit {
         Position enemyPos = fightTarget.getPosition();
         Position myPos = unit.getPosition();
         double distance = myPos.getDistance(enemyPos);
-        double kiteThreshold = this.weaponRange(fightTarget) * 0.9;
+        double kiteThreshold = this.weaponRange(fightTarget) * KITE_RANGE_FACTOR;
         if (this.weaponRange(fightTarget) > enemyWeapon.maxRange()) {
             kiteThreshold = enemyWeapon.maxRange();
         }
@@ -120,6 +123,6 @@ public class Hydralisk extends ManagedUnit {
 
     @Override
     protected int getRetreatArrivalDistance() {
-        return 24;
+        return RETREAT_ARRIVAL_DISTANCE;
     }
 }

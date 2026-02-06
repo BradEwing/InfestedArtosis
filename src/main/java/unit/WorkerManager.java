@@ -26,6 +26,8 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 public class WorkerManager {
+    private static final int MIN_MINERAL_WORKERS_FOR_GAS_CUT = 6;
+
     private Game game;
 
     private GameState gameState;
@@ -153,7 +155,7 @@ public class WorkerManager {
         HashMap<Base, HashSet<ManagedUnit>> gatherersAssignedToBase = gameState.getGatherersAssignedToBase();
         List<Base> bases = new ArrayList<>(gatherersAssignedToBase.keySet());
         if (bases.isEmpty()) {
-             return;
+            return;
         }
 
         bases.sort(new BaseUnitDistanceComparator(gatherTarget));
@@ -528,7 +530,7 @@ public class WorkerManager {
         int mineralWorkers = gameState.getMineralWorkers();
         
         // If we have no mineral workers, reassign most gas workers to minerals
-        if ((mineralWorkers == 0 && gasWorkers > 0) || mineralWorkers < 6) {
+        if (mineralWorkers == 0 && gasWorkers > 0 || mineralWorkers < MIN_MINERAL_WORKERS_FOR_GAS_CUT) {
             // Keep only 1 gas worker per geyser, move the rest to minerals
             int minGasWorkers = gameState.getGeyserAssignments().size();
             int workersToReassign = Math.max(0, gasWorkers - minGasWorkers);

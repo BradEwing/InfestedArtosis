@@ -27,6 +27,8 @@ import java.util.List;
 @Data
 public class MapAwareRecord implements UCBRecord {
     private static final double GAMMA = 0.95;
+    private static final double EXPLORATION_NOISE_RANGE = 0.2;
+    private static final double EXPLORATION_NOISE_OFFSET = 0.1;
 
     private String strategy;
     private String mapName;
@@ -69,7 +71,7 @@ public class MapAwareRecord implements UCBRecord {
         }
         
         if (this.games() == 0) {
-            return Math.sqrt(Math.log(totalGames)) + (Math.random() * 0.2 - 0.1);
+            return Math.sqrt(Math.log(totalGames)) + (Math.random() * EXPLORATION_NOISE_RANGE - EXPLORATION_NOISE_OFFSET);
         }
         
         double discountedWins = calculateDiscountedWins();

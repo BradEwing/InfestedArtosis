@@ -44,6 +44,7 @@ public class InformationManager {
     private HashSet<Base> expansionBasesSet = new HashSet<>();
 
     private static final int DETECTION_DISTANCE = 10;
+    private static final int BASE_THREAT_DISTANCE = 256;
 
     private boolean isGasStructure(UnitType unitType) {
         return unitType == UnitType.Terran_Refinery 
@@ -109,7 +110,7 @@ public class InformationManager {
     public void updateTechProgression(UnitType unitType) {
         TechProgression techProgression = gameState.getTechProgression();
 
-        switch(unitType) {
+        switch (unitType) {
             case Zerg_Spawning_Pool:
                 techProgression.setSpawningPool(true);
                 break;
@@ -123,8 +124,8 @@ public class InformationManager {
                 techProgression.setLair(true);
                 break;
             case Zerg_Evolution_Chamber:
-                techProgression.setPlannedEvolutionChambers(techProgression.getPlannedEvolutionChambers()-1);
-                techProgression.setEvolutionChambers(techProgression.evolutionChambers()+1);
+                techProgression.setPlannedEvolutionChambers(techProgression.getPlannedEvolutionChambers() - 1);
+                techProgression.setEvolutionChambers(techProgression.evolutionChambers() + 1);
                 break;
             case Zerg_Queens_Nest:
                 techProgression.setQueensNest(true);
@@ -151,7 +152,7 @@ public class InformationManager {
         }
         // Check if the unit should be ignored: resource, powerup, special/unknown
         // Exception: Allow gas structures (Refinery, Extractor, Assimilator) to be tracked
-        if ((unitType.isResourceContainer() && !isGasStructure(unitType))
+        if (unitType.isResourceContainer() && !isGasStructure(unitType)
                 || unitType.isMineralField()
                 || unitType.isNeutral()
                 || unitType.isSpecialBuilding()
@@ -219,7 +220,7 @@ public class InformationManager {
     public void updateTechOnDestroy(UnitType unitType) {
         TechProgression techProgression = gameState.getTechProgression();
 
-        switch(unitType) {
+        switch (unitType) {
             case Zerg_Spawning_Pool:
                 techProgression.setSpawningPool(false);
                 techProgression.setPlannedSpawningPool(false);
@@ -238,7 +239,7 @@ public class InformationManager {
                 break;
             case Zerg_Evolution_Chamber:
                 final int evolutionChambers = techProgression.getEvolutionChambers();
-                techProgression.setEvolutionChambers(evolutionChambers-1);
+                techProgression.setEvolutionChambers(evolutionChambers - 1);
                 break;
             case Zerg_Queens_Nest:
                 techProgression.setQueensNest(false);
@@ -633,7 +634,7 @@ public class InformationManager {
                     continue;
                 }
                 int distance = (int) base.getLocation().toPosition().getDistance(unit.getTilePosition().toPosition());
-                if (distance > 256) {
+                if (distance > BASE_THREAT_DISTANCE) {
                     noLongerThreats.add(unit);
                     continue;
                 }
@@ -662,7 +663,7 @@ public class InformationManager {
             }
 
             for (Unit unit: visibleUnits) {
-                if (base.getLocation().toPosition().getDistance(unit.getTilePosition().toPosition()) < 256) {
+                if (base.getLocation().toPosition().getDistance(unit.getTilePosition().toPosition()) < BASE_THREAT_DISTANCE) {
                     baseThreats.get(base).add(unit);
                 }
             }
