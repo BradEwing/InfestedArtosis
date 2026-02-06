@@ -4,14 +4,21 @@ import bwapi.Bullet;
 import bwapi.BulletType;
 import bwapi.Game;
 import bwapi.Position;
+import bwapi.Text;
 import util.Time;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Set;
 import java.util.stream.Collectors;
 
 public class ObservedBulletTracker {
-    private final HashMap<Integer, ObservedBullet> observedBullets = new HashMap<>();
+    private final HashMap<Bullet, ObservedBullet> observedBullets = new HashMap<>();
+
+    private static final HashMap<BulletType, Integer> BULLET_DURATIONS = new HashMap<>();
+    static {
+        BULLET_DURATIONS.put(BulletType.Psionic_Storm, 72);
+    }
 
     public ObservedBulletTracker() {
 
@@ -24,29 +31,44 @@ public class ObservedBulletTracker {
 
         Time t = new Time(currentFrame);
 
+        HashSet<Bullet> activeBullets = new HashSet<>();
         for (Bullet bullet : game.getBullets()) {
-            if (bullet != null && bullet.exists()) {
-                int bulletId = bullet.getID();
-                if (!observedBullets.containsKey(bulletId)) {
-                    observedBullets.put(bulletId, new ObservedBullet(bullet, t));
+            if (bullet == null) {
+                continue;
+            }
+            BulletType type = bullet.getType();
+            if (bullet.exists()) {
+                activeBullets.add(bullet);
+                if (!observedBullets.containsKey(bullet)) {
+                    observedBullets.put(bullet, new ObservedBullet(bullet, t));
                 } else {
-                    ObservedBullet ob = observedBullets.get(bulletId);
+                    ObservedBullet ob = observedBullets.get(bullet);
+                    if (ob.getBulletType() != type) {
+                        observedBullets.put(bullet, new ObservedBullet(bullet, t));
+                        continue;
+                    }
                     ob.setLastObservedFrame(t);
                     ob.setLastKnownLocation(bullet.getPosition());
+                    ob.setDestroyedFrame(null);
                 }
             }
         }
 
-        Set<Integer> activeBulletIds = game.getBullets().stream()
-                .filter(b -> b != null && b.exists())
-                .map(Bullet::getID)
-                .collect(Collectors.toSet());
-
         observedBullets.entrySet()
                 .stream()
                 .filter(entry -> entry.getValue().getDestroyedFrame() == null)
-                .filter(entry -> !activeBulletIds.contains(entry.getKey()))
+                .filter(entry -> !activeBullets.contains(entry.getKey()))
+                .filter(entry -> hasExceededDuration(entry.getValue(), currentFrame))
                 .forEach(entry -> entry.getValue().setDestroyedFrame(t));
+    }
+
+    private boolean hasExceededDuration(ObservedBullet bullet, int currentFrame) {
+        Integer duration = BULLET_DURATIONS.get(bullet.getBulletType());
+        if (duration == null) {
+            return true;
+        }
+        int elapsedFrames = currentFrame - bullet.getFirstObservedFrame().getFrames();
+        return elapsedFrames >= duration;
     }
 
     public int size() {

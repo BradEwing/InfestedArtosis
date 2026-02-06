@@ -1,5 +1,3 @@
-
-
 import bwapi.Color;
 import bwapi.Game;
 import bwapi.Position;

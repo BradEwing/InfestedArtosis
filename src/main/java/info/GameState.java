@@ -767,4 +767,9 @@ public class GameState {
     public Set<WalkPosition> getAccessibleWalkPositions() {
         return gameMap.getAccessibleWalkPositions();
     }
+
+    public boolean isFloatingMinerals() {
+        return getGameTime().greaterThan(new Time(5, 0)) &&
+                resourceCount.availableMinerals() > ((plannedHatcheries + 1) * 350);
+    }
 }

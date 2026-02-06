@@ -11,6 +11,7 @@ import bwem.Base;
 import info.GameState;
 import info.InformationManager;
 import info.ScoutData;
+import info.tracking.PsiStormTracker;
 import info.tracking.StrategyTracker;
 import org.bk.ass.sim.BWMirrorAgentFactory;
 import org.bk.ass.sim.Simulator;
@@ -498,6 +499,34 @@ public class SquadManager {
             return;
         }
 
+        Set<Position> stormPositions = gameState.getActiveStormPositions();
+        if (!stormPositions.isEmpty()) {
+            boolean anyUnitInStorm = false;
+            for (ManagedUnit managedUnit : managedFighters) {
+                Position unitPos = managedUnit.getUnit().getPosition();
+                for (Position stormPos : stormPositions) {
+                    if (unitPos.getDistance(stormPos) <= PsiStormTracker.STORM_RADIUS) {
+                        anyUnitInStorm = true;
+                        break;
+                    }
+                }
+                if (anyUnitInStorm) break;
+            }
+
+            if (anyUnitInStorm) {
+                squad.setStatus(SquadStatus.RETREAT);
+                int now = game.getFrameCount();
+                for (ManagedUnit managedUnit : managedFighters) {
+                    managedUnit.setRole(UnitRole.RETREAT);
+                    managedUnit.markRetreatStart(now);
+                    Position retreatTarget = calculateStormRetreatPosition(managedUnit.getUnit().getPosition(), stormPositions);
+                    managedUnit.setRetreatTarget(retreatTarget);
+                }
+                squad.startRetreatLock(now);
+                return;
+            }
+        }
+
         // Handle building targeting when no visible units
         Set<Position> enemyBuildingPositions = gameState.getLastKnownPositionsOfBuildings();
         Set<Unit> enemyUnits = gameState.getDetectedEnemyUnits();
@@ -706,6 +735,48 @@ public class SquadManager {
         }
 
         return result;
+    }
+
+    private Position calculateStormRetreatPosition(Position unitPos, Set<Position> stormPositions) {
+        double totalDx = 0;
+        double totalDy = 0;
+        double totalWeight = 0;
+
+        for (Position stormPos : stormPositions) {
+            double distance = unitPos.getDistance(stormPos);
+            if (distance > 0) {
+                double weight = 1.0 / (distance * distance / 10000);
+                totalDx += (unitPos.getX() - stormPos.getX()) * weight;
+                totalDy += (unitPos.getY() - stormPos.getY()) * weight;
+                totalWeight += weight;
+            }
+        }
+
+        if (totalWeight == 0) {
+            return unitPos;
+        }
+
+        double normalizedDx = totalDx / totalWeight;
+        double normalizedDy = totalDy / totalWeight;
+
+        double length = Math.sqrt(normalizedDx * normalizedDx + normalizedDy * normalizedDy);
+        if (length > 0) {
+            normalizedDx = (normalizedDx / length) * 192;
+            normalizedDy = (normalizedDy / length) * 192;
+        } else {
+            normalizedDx = 192;
+            normalizedDy = 0;
+        }
+
+        int retreatX = unitPos.getX() + (int) normalizedDx;
+        int retreatY = unitPos.getY() + (int) normalizedDy;
+
+        int maxX = game.mapWidth() * 32 - 1;
+        int maxY = game.mapHeight() * 32 - 1;
+        retreatX = Math.max(0, Math.min(retreatX, maxX));
+        retreatY = Math.max(0, Math.min(retreatY, maxY));
+
+        return new Position(retreatX, retreatY);
     }
 
     private boolean canDefenseSquadClearThreat(Squad squad, List<Unit> enemyUnits) {

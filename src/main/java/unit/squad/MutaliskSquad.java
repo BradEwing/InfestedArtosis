@@ -5,6 +5,7 @@ import bwapi.Race;
 import bwapi.Unit;
 import bwapi.UnitType;
 import info.GameState;
+import info.tracking.PsiStormTracker;
 import unit.managed.ManagedUnit;
 import unit.managed.UnitRole;
 import unit.squad.CombatSimulator.CombatResult;
@@ -160,21 +161,21 @@ public class MutaliskSquad extends Squad {
                 mutalisk.setFightTarget(priorityTarget);
             }
 
-            Position individualRetreat = calculateIndividualRetreat(mutalisk.getUnit(), allEnemies, staticDefenseCoverage, stormPositions);
+            Position individualRetreat = calculateIndividualRetreat(mutalisk.getUnit(), allEnemies, staticDefenseCoverage, stormPositions, gameState);
             mutalisk.setRetreatTarget(individualRetreat);
         }
     }
 
     /**
      * Executes retreat behavior for the entire squad.
+     * Each mutalisk gets an individual retreat vector, prioritizing escape from storms.
      */
     private void executeRetreat(GameState gameState, List<Unit> allEnemies, Set<Position> staticDefenseCoverage, Set<Position> stormPositions) {
-        Position retreatVector = calculateRetreatVector(getCenter(), allEnemies, staticDefenseCoverage, stormPositions, gameState);
-
         for (ManagedUnit mutalisk : getMembers()) {
             mutalisk.setRole(UnitRole.RETREAT);
             mutalisk.setReady(true);
-            mutalisk.setRetreatTarget(retreatVector);
+            Position individualRetreat = calculateIndividualRetreat(mutalisk.getUnit(), allEnemies, staticDefenseCoverage, stormPositions, gameState);
+            mutalisk.setRetreatTarget(individualRetreat);
         }
     }
 
@@ -236,100 +237,13 @@ public class MutaliskSquad extends Squad {
     }
 
     /**
-     * Calculates retreat vector away from enemies, static defenses, and psi storms.
-     */
-    private Position calculateRetreatVector(Position squadCenter, List<Unit> enemies,
-                                            Set<Position> staticDefenseCoverage, Set<Position> stormPositions, GameState gameState) {
-        if (enemies.isEmpty()) {
-            return squadCenter;
-        }
-
-        // Calculate weighted vector away from enemies
-        double totalDx = 0;
-        double totalDy = 0;
-        double totalWeight = 0;
-
-        for (Unit enemy : enemies) {
-            Position enemyPos = enemy.getPosition();
-            double distance = squadCenter.getDistance(enemyPos);
-
-            // Weight more dangerous units higher
-            double weight = 1.0;
-            if (isAntiAir(enemy)) {
-                weight = 3.0;
-            } else if (enemy.getType().isBuilding()) {
-                weight = 0.5;
-            }
-
-            // Inverse square law for influence
-            if (distance > 0) {
-                weight = weight / (distance * distance / 10000);
-
-                double dx = squadCenter.getX() - enemyPos.getX();
-                double dy = squadCenter.getY() - enemyPos.getY();
-
-                totalDx += dx * weight;
-                totalDy += dy * weight;
-                totalWeight += weight;
-            }
-        }
-
-        for (Position stormPos : stormPositions) {
-            double distance = squadCenter.getDistance(stormPos);
-
-            double weight = 5.0;
-
-            if (distance > 0) {
-                weight = weight / (distance * distance / 10000);
-
-                double dx = squadCenter.getX() - stormPos.getX();
-                double dy = squadCenter.getY() - stormPos.getY();
-
-                totalDx += dx * weight;
-                totalDy += dy * weight;
-                totalWeight += weight;
-            }
-        }
-
-        if (totalWeight == 0) {
-            return squadCenter;
-        }
-
-        // Normalize and scale the retreat vector
-        double normalizedDx = totalDx / totalWeight;
-        double normalizedDy = totalDy / totalWeight;
-
-        double length = Math.sqrt(normalizedDx * normalizedDx + normalizedDy * normalizedDy);
-        if (length > 0) {
-            normalizedDx = (normalizedDx / length) * 256;
-            normalizedDy = (normalizedDy / length) * 256;
-        }
-
-        int retreatX = squadCenter.getX() + (int)normalizedDx;
-        int retreatY = squadCenter.getY() + (int)normalizedDy;
-
-        // Ensure retreat position is within map bounds
-        retreatX = Math.max(0, Math.min(retreatX, gameState.getGame().mapWidth() * 32 - 1));
-        retreatY = Math.max(0, Math.min(retreatY, gameState.getGame().mapHeight() * 32 - 1));
-
-        Position retreatPos = new Position(retreatX, retreatY);
-
-        // If retreat position is in static defense coverage, try to find alternative
-        if (isPositionInStaticDefenseCoverage(retreatPos, staticDefenseCoverage)) {
-            Position alternativeRetreat = findSafeRetreatPosition(squadCenter, staticDefenseCoverage, gameState);
-            if (alternativeRetreat != null) {
-                retreatPos = alternativeRetreat;
-            }
-        }
-
-        return retreatPos;
-    }
-
-    /**
      * Calculates individual retreat position for a single mutalisk.
+     * Prioritizes retreating from psi storms if within storm radius.
      */
-    private Position calculateIndividualRetreat(Unit mutalisk, List<Unit> enemies, Set<Position> staticDefenseCoverage, Set<Position> stormPositions) {
+    private Position calculateIndividualRetreat(Unit mutalisk, List<Unit> enemies, Set<Position> staticDefenseCoverage, Set<Position> stormPositions, GameState gameState) {
         Position mutaliskPos = mutalisk.getPosition();
+        int maxX = gameState.getGame().mapWidth() * 32 - 1;
+        int maxY = gameState.getGame().mapHeight() * 32 - 1;
 
         Position nearestStorm = null;
         double nearestStormDistance = Double.MAX_VALUE;
@@ -342,7 +256,7 @@ public class MutaliskSquad extends Squad {
             }
         }
 
-        if (nearestStorm != null && nearestStormDistance <= 128) {
+        if (nearestStorm != null && nearestStormDistance <= PsiStormTracker.STORM_RADIUS) {
             double dx = mutaliskPos.getX() - nearestStorm.getX();
             double dy = mutaliskPos.getY() - nearestStorm.getY();
 
@@ -350,50 +264,61 @@ public class MutaliskSquad extends Squad {
             if (length > 0) {
                 dx = (dx / length) * 256;
                 dy = (dy / length) * 256;
+            } else {
+                dx = 256;
+                dy = 0;
             }
 
-            int retreatX = mutaliskPos.getX() + (int)dx;
-            int retreatY = mutaliskPos.getY() + (int)dy;
+            int retreatX = Math.max(0, Math.min(mutaliskPos.getX() + (int)dx, maxX));
+            int retreatY = Math.max(0, Math.min(mutaliskPos.getY() + (int)dy, maxY));
 
             return new Position(retreatX, retreatY);
         }
 
-        // Find nearest threatening enemy
-        Unit nearestThreat = null;
-        double nearestDistance = Double.MAX_VALUE;
+        double totalDx = 0;
+        double totalDy = 0;
+        double totalWeight = 0;
+
+        for (Position stormPos : stormPositions) {
+            double distance = mutaliskPos.getDistance(stormPos);
+            if (distance > 0 && distance < 256) {
+                double weight = 5.0 / (distance * distance / 10000);
+                totalDx += (mutaliskPos.getX() - stormPos.getX()) * weight;
+                totalDy += (mutaliskPos.getY() - stormPos.getY()) * weight;
+                totalWeight += weight;
+            }
+        }
 
         for (Unit enemy : enemies) {
             if (isAntiAir(enemy)) {
-                double distance = mutaliskPos.getDistance(enemy.getPosition());
-                if (distance < nearestDistance) {
-                    nearestThreat = enemy;
-                    nearestDistance = distance;
+                Position enemyPos = enemy.getPosition();
+                double distance = mutaliskPos.getDistance(enemyPos);
+                if (distance > 0) {
+                    double weight = 3.0 / (distance * distance / 10000);
+                    totalDx += (mutaliskPos.getX() - enemyPos.getX()) * weight;
+                    totalDy += (mutaliskPos.getY() - enemyPos.getY()) * weight;
+                    totalWeight += weight;
                 }
             }
         }
 
-        if (nearestThreat == null) {
+        if (totalWeight == 0) {
             return mutaliskPos;
         }
 
-        // Calculate retreat away from nearest threat
-        Position threatPos = nearestThreat.getPosition();
-        double dx = mutaliskPos.getX() - threatPos.getX();
-        double dy = mutaliskPos.getY() - threatPos.getY();
+        double normalizedDx = totalDx / totalWeight;
+        double normalizedDy = totalDy / totalWeight;
 
-        double length = Math.sqrt(dx * dx + dy * dy);
+        double length = Math.sqrt(normalizedDx * normalizedDx + normalizedDy * normalizedDy);
         if (length > 0) {
-            dx = (dx / length) * 192;
-            dy = (dy / length) * 192;
+            normalizedDx = (normalizedDx / length) * 192;
+            normalizedDy = (normalizedDy / length) * 192;
         }
 
-        int retreatX = mutaliskPos.getX() + (int)dx;
-        int retreatY = mutaliskPos.getY() + (int)dy;
+        int retreatX = Math.max(0, Math.min(mutaliskPos.getX() + (int)normalizedDx, maxX));
+        int retreatY = Math.max(0, Math.min(mutaliskPos.getY() + (int)normalizedDy, maxY));
 
-        // Ensure within bounds (would need gameState for map dimensions)
-        Position retreatPos = new Position(retreatX, retreatY);
-
-        return retreatPos;
+        return new Position(retreatX, retreatY);
     }
 
     // Helper methods (simplified versions of the original SquadManager methods)
