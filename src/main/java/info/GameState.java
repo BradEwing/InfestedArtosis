@@ -470,16 +470,16 @@ public class GameState {
     }
 
     public int numWorkers() {
-		return mineralGatherers.size() + gasGatherers.size();
+        return mineralGatherers.size() + gasGatherers.size();
     }
 
-	public int getMineralWorkers() {
-		return mineralGatherers.size();
-	}
+    public int getMineralWorkers() {
+        return mineralGatherers.size();
+    }
 
-	public int getGeyserWorkers() {
-		return gasGatherers.size();
-	}
+    public int getGeyserWorkers() {
+        return gasGatherers.size();
+    }
 
     // How many workers we want.
     // This is pulled from the old ProductionManager. Ideally this is something set more so

@@ -370,7 +370,7 @@ public class BuildingPlanner {
         Base naturalBase = baseData.hasNaturalExpansion() ?
                 baseData.baseAtTilePosition(baseData.naturalExpansionPosition()) : null;
         Base thirdBase = findThirdBase(baseData);
-        int existingMacroHatchCount = baseData.numMacroHatcheries();;
+        int existingMacroHatchCount = baseData.numMacroHatcheries();
 
         if (opponentRace == Race.Terran) {
             switch (existingMacroHatchCount) {

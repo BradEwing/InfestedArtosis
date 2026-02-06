@@ -4,7 +4,6 @@ import bwapi.Bullet;
 import bwapi.BulletType;
 import bwapi.Game;
 import bwapi.Position;
-import bwapi.Text;
 import util.Time;
 
 import java.util.HashMap;
@@ -16,6 +15,7 @@ public class ObservedBulletTracker {
     private final HashMap<Bullet, ObservedBullet> observedBullets = new HashMap<>();
 
     private static final HashMap<BulletType, Integer> BULLET_DURATIONS = new HashMap<>();
+
     static {
         BULLET_DURATIONS.put(BulletType.Psionic_Storm, 72);
     }

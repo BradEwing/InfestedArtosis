@@ -11,6 +11,7 @@ import java.util.Comparator;
 public class BaseUnitDistanceComparator implements Comparator<Base> {
 
     private Unit target;
+
     public BaseUnitDistanceComparator(Unit target) {
         this.target = target;
     }

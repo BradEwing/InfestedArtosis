@@ -10,6 +10,7 @@ import java.util.Comparator;
 public class ManagedUnitToPositionComparator implements Comparator<ManagedUnit> {
 
     private Position target;
+
     public ManagedUnitToPositionComparator(Position target) {
         this.target = target;
     }

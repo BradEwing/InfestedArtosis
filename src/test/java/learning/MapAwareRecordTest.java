@@ -2,7 +2,7 @@ package learning;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
 
@@ -59,7 +59,7 @@ public class MapAwareRecordTest {
      * Strategy A should score higher due to recent wins being weighted more heavily.
      */
     @Test
-    void testChronologicalScenario_StrategyA_3LossesThen3Wins() {
+    void testChronologicalScenarioStrategyA3LossesThen3Wins() {
         long time = baseTime;
         
         for (int i = 0; i < 3; i++) {
