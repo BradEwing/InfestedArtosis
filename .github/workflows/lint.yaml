@@ -33,7 +33,7 @@ jobs:
 
       - name: Upload Checkstyle report
         if: failure()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: checkstyle-report
           path: target/site/checkstyle.html
