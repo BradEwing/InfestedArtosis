@@ -7,6 +7,7 @@ import java.util.Comparator;
 public class TilePositionComparator implements Comparator<TilePosition> {
 
     private TilePosition target;
+
     public TilePositionComparator(TilePosition target) {
         this.target = target;
     }

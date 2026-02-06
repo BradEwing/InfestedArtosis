@@ -10,6 +10,7 @@ import java.util.Comparator;
 public class UnitDistanceComparator implements Comparator<Unit> {
 
     private Unit target;
+
     public UnitDistanceComparator(Unit target) {
         this.target = target;
     }
