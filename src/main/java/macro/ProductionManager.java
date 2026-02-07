@@ -530,6 +530,7 @@ public class ProductionManager {
                     break;
                 case TECH:
                     canSchedule = scheduleResearch(plan);
+                    break;
                 default:
                     canSchedule = false;
             }
