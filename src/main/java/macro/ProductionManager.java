@@ -404,7 +404,7 @@ public class ProductionManager {
             case Zerg_Hydralisk:
                 return hasFourOrMoreDrones && (techProgression.isPlannedDen() || techProgression.isHydraliskDen());
             case Zerg_Lurker:
-                final boolean canScheduleLurker = techProgression.isPlannedLurker() && techProgression.isLurker();
+                final boolean canScheduleLurker = techProgression.isPlannedLurker() || techProgression.isLurker();
                 if (!hasFourOrMoreDrones || !canScheduleLurker) {
                     return false;
                 }

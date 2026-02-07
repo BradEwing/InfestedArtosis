@@ -136,7 +136,7 @@ public class MutaliskSquad extends Squad {
         Unit priorityTarget = findPriorityTarget(allEnemies, staticDefenseCoverage);
 
         if (priorityTarget != null) {
-            Position safeAttackPos = findSafeAttackPosition(priorityTarget, staticDefenseCoverage);
+            Position safeAttackPos = findSafeAttackPosition(priorityTarget, staticDefenseCoverage, getCenter());
             if (safeAttackPos != null) {
                 double distanceToSafe = getCenter().getDistance(safeAttackPos);
                 if (!isAttackWindowActive && distanceToSafe > 96) {
@@ -271,8 +271,17 @@ public class MutaliskSquad extends Squad {
                 dx = (dx / length) * 256;
                 dy = (dy / length) * 256;
             } else {
-                dx = 256;
-                dy = 0;
+                Position fallback = getCenter();
+                dx = fallback.getX() - mutaliskPos.getX();
+                dy = fallback.getY() - mutaliskPos.getY();
+                double fallbackLength = Math.sqrt(dx * dx + dy * dy);
+                if (fallbackLength > 0) {
+                    dx = (dx / fallbackLength) * 256;
+                    dy = (dy / fallbackLength) * 256;
+                } else {
+                    dx = 0;
+                    dy = 256;
+                }
             }
 
             int retreatX = Math.max(0, Math.min(mutaliskPos.getX() + (int)dx, maxX));
@@ -454,7 +463,7 @@ public class MutaliskSquad extends Squad {
         return t == UnitType.Protoss_Probe || t == UnitType.Terran_SCV || t == UnitType.Zerg_Drone;
     }
 
-    private Position findSafeAttackPosition(Unit target, Set<Position> staticDefenseCoverage) {
+    private Position findSafeAttackPosition(Unit target, Set<Position> staticDefenseCoverage, Position squadCenter) {
         Position targetPos = target.getPosition();
         int mutaRange = UnitType.Zerg_Mutalisk.airWeapon().maxRange();
 
@@ -476,11 +485,14 @@ public class MutaliskSquad extends Squad {
             return null;
         }
 
-        // Sort by position score (higher is better)
         candidatePositions.sort((pos1, pos2) -> {
-            double score1 = calculatePositionScore(pos1, staticDefenseCoverage, null); // GameState not needed for basic scoring
+            double score1 = calculatePositionScore(pos1, staticDefenseCoverage, null);
             double score2 = calculatePositionScore(pos2, staticDefenseCoverage, null);
-            return Double.compare(score2, score1); // Reverse order for highest first
+            int primaryCompare = Double.compare(score2, score1);
+            if (primaryCompare != 0) {
+                return primaryCompare;
+            }
+            return Double.compare(pos1.getDistance(squadCenter), pos2.getDistance(squadCenter));
         });
 
         return candidatePositions.get(0);
