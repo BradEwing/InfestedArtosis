@@ -107,7 +107,9 @@ public class BaseData {
         return availableBases.keySet();
     }
 
-    public boolean canReserveExtractor() { return availableGeysers.size() > 0; }
+    public boolean canReserveExtractor() { 
+        return availableGeysers.size() > 0; 
+    }
 
     public Unit reserveExtractor() {
         Unit candidate = availableGeysers.iterator().next();
@@ -125,7 +127,9 @@ public class BaseData {
         return extractors.size();
     }
 
-    public int numMacroHatcheries() { return macroHatcheries.size(); }
+    public int numMacroHatcheries() {
+        return macroHatcheries.size(); 
+    }
 
     public Base reserveBase() {
         final Base base = this.findNewBase();
@@ -196,15 +200,25 @@ public class BaseData {
         macroHatcheries.remove(hatchery);
     }
 
-    public HashSet<Unit> baseHatcheries() { return baseHatcheries; }
+    public HashSet<Unit> baseHatcheries() { 
+        return baseHatcheries; 
+    }
 
-    public int currentBaseCount() { return baseHatcheries.size(); }
+    public int currentBaseCount() { 
+        return baseHatcheries.size(); 
+    }
 
-    public int currentAndReservedCount() { return myBases.size() + reservedBases.size(); }
+    public int currentAndReservedCount() { 
+        return myBases.size() + reservedBases.size(); 
+    }
 
-    public int numHatcheries() { return myBases.size() + macroHatcheries.size() + reservedBases.size(); }
+    public int numHatcheries() { 
+        return myBases.size() + macroHatcheries.size() + reservedBases.size(); 
+    }
 
-    public TilePosition mainBasePosition() { return mainBase.getLocation(); }
+    public TilePosition mainBasePosition() { 
+        return mainBase.getLocation(); 
+    }
 
     public TilePosition naturalExpansionPosition() {
         return naturalExpansion.getLocation();
@@ -218,7 +232,9 @@ public class BaseData {
         return baseTilePositionSet.contains(tilePosition);
     }
 
-    public Base baseAtTilePosition(TilePosition tilePosition) { return baseTilePositionLookup.get(tilePosition); }
+    public Base baseAtTilePosition(TilePosition tilePosition) { 
+        return baseTilePositionLookup.get(tilePosition); 
+    }
 
     /**
      * Finds a new base.
@@ -254,7 +270,7 @@ public class BaseData {
         // If only one base exists, skip bases with no geysers (mineral-only bases)
         if (this.myBases.size() == 1) {
             potential = potential.stream()
-                    .filter(e -> (!e.getKey().getGeysers().isEmpty()))
+                    .filter(e -> !e.getKey().getGeysers().isEmpty())
                     .collect(Collectors.toList());
         }
 
@@ -279,7 +295,7 @@ public class BaseData {
                         .map(Map.Entry::getKey)
                         .orElse(null);
             } catch (Exception e) {
-               return null;
+                return null;
             }
         } else {
             // Otherwise, sort solely by the ground path distance from our main base.
@@ -380,7 +396,9 @@ public class BaseData {
         }
     }
 
-    public boolean knowEnemyMainBase() { return mainEnemyBase != null; }
+    public boolean knowEnemyMainBase() { 
+        return mainEnemyBase != null; 
+    }
 
     /**
      * Find the farthest starting base
@@ -407,5 +425,7 @@ public class BaseData {
         return best;
     }
 
-    public int numMains() { return mains.size(); }
+    public int numMains() { 
+        return mains.size(); 
+    }
 }

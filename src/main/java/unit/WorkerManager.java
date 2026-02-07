@@ -153,7 +153,7 @@ public class WorkerManager {
         HashMap<Base, HashSet<ManagedUnit>> gatherersAssignedToBase = gameState.getGatherersAssignedToBase();
         List<Base> bases = new ArrayList<>(gatherersAssignedToBase.keySet());
         if (bases.isEmpty()) {
-             return;
+            return;
         }
 
         bases.sort(new BaseUnitDistanceComparator(gatherTarget));
@@ -528,7 +528,7 @@ public class WorkerManager {
         int mineralWorkers = gameState.getMineralWorkers();
         
         // If we have no mineral workers, reassign most gas workers to minerals
-        if ((mineralWorkers == 0 && gasWorkers > 0) || mineralWorkers < 6) {
+        if (mineralWorkers == 0 && gasWorkers > 0 || mineralWorkers < 6) {
             // Keep only 1 gas worker per geyser, move the rest to minerals
             int minGasWorkers = gameState.getGeyserAssignments().size();
             int workersToReassign = Math.max(0, gasWorkers - minGasWorkers);

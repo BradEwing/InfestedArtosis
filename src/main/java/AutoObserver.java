@@ -64,7 +64,7 @@ public class AutoObserver {
     private boolean shouldPickNewUnitToFollow() {
         return m_observerFollowingUnit == null
                 || !m_observerFollowingUnit.exists()
-                || (game.getFrameCount() - m_cameraLastMoved > m_unitFollowFrames);
+                || game.getFrameCount() - m_cameraLastMoved > m_unitFollowFrames;
     }
 
     /**

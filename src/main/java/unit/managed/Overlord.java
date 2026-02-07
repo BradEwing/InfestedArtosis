@@ -31,7 +31,9 @@ public class Overlord extends ManagedUnit {
                 .collect(Collectors.toList());
     }
 
-    private boolean isAirThreat(UnitType type) { return Filter.isAirThreat(type); }
+    private boolean isAirThreat(UnitType type) { 
+        return Filter.isAirThreat(type); 
+    }
 
     /**
      * Computes an air-safe retreat without ground walkability checks.

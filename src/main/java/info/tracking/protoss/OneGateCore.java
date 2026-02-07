@@ -23,7 +23,7 @@ public class OneGateCore extends ProtossBaseStrategy {
         if (tracker.getUnitTypeCountBeforeTime(UnitType.Protoss_Assimilator, new Time(2, 45)) >= 1) {
             return true;
         }
-        if (tracker.getUnitTypeCountBeforeTime(UnitType.Protoss_Cybernetics_Core, new Time(3, 30)) >=1) {
+        if (tracker.getUnitTypeCountBeforeTime(UnitType.Protoss_Cybernetics_Core, new Time(3, 30)) >= 1) {
             return true;
         }
         // Estimate by goon count

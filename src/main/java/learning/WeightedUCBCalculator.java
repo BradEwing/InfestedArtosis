@@ -54,7 +54,7 @@ public class WeightedUCBCalculator {
         }
         
         return Math.sqrt(Math.log(totalGames)) + (Math.random() * 0.2 - 0.1);
-}
+    }
     
     public static String findBestStrategy(List<String> candidates,
                                         String mapName,

@@ -39,11 +39,17 @@ public class Record implements UCBRecord {
         return wins - losses;
     }
 
-    public int wins() { return wins; }
+    public int wins() { 
+        return wins; 
+    }
 
-    public int games() { return wins + losses; }
+    public int games() { 
+        return wins + losses; 
+    }
 
-    public int winsSquared() { return wins * wins; }
+    public int winsSquared() { 
+        return wins * wins; 
+    }
     
     public void addWinTimestamp(long timestamp) {
         winTimestamps.add(timestamp);

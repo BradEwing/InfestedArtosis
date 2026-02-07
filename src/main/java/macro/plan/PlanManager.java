@@ -98,7 +98,7 @@ public class PlanManager {
     }
 
     private boolean isBuildingMorph(UnitType unitType) {
-        switch(unitType) {
+        switch (unitType) {
             case Zerg_Lair:
             case Zerg_Sunken_Colony:
                 return true;
@@ -132,7 +132,7 @@ public class PlanManager {
         double distance = buildingPosition.getDistance(unitPosition);
         double unitSpeed = unit.getType().topSpeed();
 
-        return (int)( distance / unitSpeed ) + 250;
+        return (int)(distance / unitSpeed) + 250;
     }
 
     /**
@@ -170,7 +170,7 @@ public class PlanManager {
     }
 
     private boolean assignMorphUnit(Plan plan) {
-        switch(plan.getPlannedUnit()) {
+        switch (plan.getPlannedUnit()) {
             case Zerg_Lurker:
                 return assignMorphHydralisk(plan);
             default:

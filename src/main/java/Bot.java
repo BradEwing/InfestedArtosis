@@ -79,7 +79,9 @@ public class Bot extends DefaultBWListener {
     }
 
     @Override
-    public void onUnitHide(Unit unit) { informationManager.onUnitHide(unit); }
+    public void onUnitHide(Unit unit) { 
+        informationManager.onUnitHide(unit); 
+    }
 
     @Override
     public void onUnitShow(Unit unit) {

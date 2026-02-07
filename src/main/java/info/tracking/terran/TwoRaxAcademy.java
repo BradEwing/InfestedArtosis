@@ -13,7 +13,9 @@ import java.util.List;
  */
 public class TwoRaxAcademy extends TerranBaseStrategy {
 
-    public TwoRaxAcademy() { super("2RaxAcademy"); }
+    public TwoRaxAcademy() { 
+        super("2RaxAcademy"); 
+    }
 
     @Override
     public boolean isDetected(ObservedUnitTracker tracker, Time time) {

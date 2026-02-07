@@ -126,7 +126,9 @@ public class ScoutData {
         enemyBuildingPositions.remove(tp);
     }
 
-    public int getScoutsAssignedToBase(Base base) { return baseScoutAssignments.get(base); }
+    public int getScoutsAssignedToBase(Base base) { 
+        return baseScoutAssignments.get(base); 
+    }
 
     public void removeBaseScoutAssignment(Base base) {
         baseScoutAssignments.remove(base);
@@ -137,14 +139,16 @@ public class ScoutData {
     }
 
     public void updateBaseScoutAssignment(Base base, int assignments) {
-        baseScoutAssignments.put(base, assignments+1);
+        baseScoutAssignments.put(base, assignments + 1);
     }
 
     /**
      *
      * @return Set<Base> containing main bases that have not been scouted
      */
-    public Set<Base> getScoutingBaseSet() { return baseScoutAssignments.keySet(); }
+    public Set<Base> getScoutingBaseSet() { 
+        return baseScoutAssignments.keySet(); 
+    }
 
     /**
      * Find a new active scout target from unsearched scout target candidates

@@ -16,7 +16,7 @@ import java.util.List;
  * OneHatchSpire, baseline ZvZ build.
  * <a href="https://liquipedia.net/starcraft/9_Pool_Speed_into_1_Hatch_Spire_(vs._Zerg)">Liquipedia</a>
  */
-public class OneHatchSpire extends ZergBase{
+public class OneHatchSpire extends ZergBase {
     public OneHatchSpire() {
         super("1HatchSpire");
     }
@@ -44,12 +44,14 @@ public class OneHatchSpire extends ZergBase{
         boolean wantLair = gameState.canPlanLair() && lairCount < 1;
         boolean wantSpire = techProgression.canPlanSpire() && spireCount < 1 && lairCount >= 1;
 
-        boolean wantMetabolicBoost = techProgression.canPlanMetabolicBoost() && !techProgression.isMetabolicBoost() && zerglingCount > 5 && lairCount > 0;
+        boolean wantMetabolicBoost = techProgression.canPlanMetabolicBoost() && !techProgression.isMetabolicBoost() && 
+                                    zerglingCount > 5 && lairCount > 0;
         boolean wantFlyingCarapace = mutaCount > 6 && techProgression.canPlanFlyerDefense() && techProgression.getFlyerDefense() < 1;
         boolean wantOverlordSpeed = needOverlordSpeed(gameState) && techProgression.canPlanOverlordSpeed();
 
 
-        boolean floatingMinerals = gameState.getGameTime().greaterThan(new Time(5, 0)) && gameState.getResourceCount().availableMinerals() > ((plannedHatcheries + 1) * 350);
+        boolean floatingMinerals = gameState.getGameTime().greaterThan(new Time(5, 0)) && 
+                                    gameState.getResourceCount().availableMinerals() > ((plannedHatcheries + 1) * 350);
         boolean wantHatchery = behindOnHatchery(gameState) || floatingMinerals;
 
         boolean enemyHasSpire = gameState.enemyUnitCount(UnitType.Zerg_Spire) > 0;
@@ -142,5 +144,7 @@ public class OneHatchSpire extends ZergBase{
     }
 
     @Override
-    public boolean needLair() { return true; }
+    public boolean needLair() { 
+        return true; 
+    }
 }

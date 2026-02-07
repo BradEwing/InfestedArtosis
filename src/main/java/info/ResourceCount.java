@@ -50,11 +50,17 @@ public class ResourceCount {
         return !unit.isBuilding() && unit != UnitType.Zerg_Lurker;
     }
 
-    public int availableMinerals() { return self.minerals() - reservedMinerals; }
+    public int availableMinerals() { 
+        return self.minerals() - reservedMinerals; 
+    }
 
-    public int availableGas() { return self.gas() - reservedGas; }
+    public int availableGas() { 
+        return self.gas() - reservedGas; 
+    }
 
-    private boolean canAfford(int mineralPrice, int gasPrice) { return availableMinerals() < mineralPrice || availableGas() < gasPrice; }
+    private boolean canAfford(int mineralPrice, int gasPrice) { 
+        return availableMinerals() < mineralPrice || availableGas() < gasPrice; 
+    }
 
     public boolean canAffordUnit(UnitType unit) {
         final int mineralPrice = unit.mineralPrice();
@@ -121,7 +127,9 @@ public class ResourceCount {
 
         int framesToGather = 0;
         if (mineralsNeeded > 0) {
-            if (mineralWorkers == 0) { return Integer.MAX_VALUE; }
+            if (mineralWorkers == 0) { 
+                return Integer.MAX_VALUE; 
+            }
             double mineralsPerFrame = mineralsPerFramePerWorker * mineralWorkers;
             int neededFrames = (int) Math.round(mineralsNeeded / mineralsPerFrame);
             if (neededFrames > framesToGather) {
@@ -129,7 +137,9 @@ public class ResourceCount {
             }
         }
         if (gasNeeded > 0) {
-            if (gasWorkers == 0) { return Integer.MAX_VALUE; }
+            if (gasWorkers == 0) { 
+                return Integer.MAX_VALUE; 
+            }
             double gasPerFrame = gasPerFramePerWorker * gasWorkers;
             int neededFrames = (int) Math.round(gasNeeded / gasPerFrame);
             if (neededFrames > framesToGather) {
@@ -149,9 +159,13 @@ public class ResourceCount {
         return 0;
     }
 
-    public boolean isFloatingMinerals() { return availableMinerals() - availableGas() > 100; }
+    public boolean isFloatingMinerals() { 
+        return availableMinerals() - availableGas() > 100; 
+    }
 
-    public boolean isFloatingGas() { return availableGas() - availableMinerals() > 150; }
+    public boolean isFloatingGas() { 
+        return availableGas() - availableMinerals() > 150; 
+    }
 
     public int getPlannedSupply() {
         return plannedSupply;

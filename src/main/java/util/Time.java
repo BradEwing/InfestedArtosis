@@ -34,13 +34,11 @@ public class Time {
     }
 
     public boolean lessThanOrEqual(Time t2) {
-        return (this.minutes < t2.minutes) ||
-                (this.minutes == t2.minutes && this.seconds <= t2.seconds);
+        return this.frames <= t2.frames;
     }
 
     public boolean greaterThan(Time t2) {
-        return (this.minutes > t2.minutes) ||
-                (this.minutes == t2.minutes && this.seconds > t2.seconds);
+        return this.frames > t2.frames;
     }
 
     public Time add(Time other) {

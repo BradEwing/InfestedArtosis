@@ -148,7 +148,9 @@ public class GameState {
         return gatherers.size();
     }
 
-    public int numLarva() { return larva.size(); }
+    public int numLarva() { 
+        return larva.size(); 
+    }
 
     public int frameCanAffordUnit(UnitType unit, int currentFrame) {
         return this.resourceCount.frameCanAffordUnit(unit, currentFrame, mineralGatherers.size(), gasGatherers.size());
@@ -167,7 +169,9 @@ public class GameState {
     }
 
     public void addBaseToGameState(Unit hatchery, Base base) {
-        if (base == null) { return; }
+        if (base == null) { 
+            return; 
+        }
         gatherersAssignedToBase.put(base, new HashSet<>());
         this.baseData.addBase(hatchery, base);
 
@@ -235,6 +239,8 @@ public class GameState {
                 resourceCount.unreserveTechResearch(plan.getPlannedTechType());
                 clearPlannedTechResearchFlags(plan.getPlannedTechType());
                 break;
+            default:
+                return;
         }
     }
 
@@ -326,9 +332,9 @@ public class GameState {
         plansImpossible.add(plan);
 
         PlanState currentState = plan.getState();
-        boolean shouldUnreserve = (currentState == PlanState.SCHEDULE ||
+        boolean shouldUnreserve = currentState == PlanState.SCHEDULE ||
                                    currentState == PlanState.BUILDING ||
-                                   currentState == PlanState.MORPHING);
+                                   currentState == PlanState.MORPHING;
 
         plan.setState(PlanState.CANCELLED);
 
@@ -395,9 +401,13 @@ public class GameState {
         }
     }
 
-    public boolean needGeyserWorkers() { return this.getGeyserWorkers() < (3 * this.getGeyserAssignments().size()); }
+    public boolean needGeyserWorkers() { 
+        return this.getGeyserWorkers() < (3 * this.getGeyserAssignments().size()); 
+    }
 
-    public int needGeyserWorkersAmount() { return (3 * this.getGeyserAssignments().size()) - this.getGeyserWorkers(); }
+    public int needGeyserWorkersAmount() { 
+        return (3 * this.getGeyserAssignments().size()) - this.getGeyserWorkers(); 
+    }
 
     /**
      * Removes managed unit from all data structures.
@@ -571,7 +581,7 @@ public class GameState {
     }
 
     public boolean canPlanUnit(UnitType unitType) {
-        switch(unitType) {
+        switch (unitType) {
             case Zerg_Zergling:
                 return techProgression.isSpawningPool();
             default:
