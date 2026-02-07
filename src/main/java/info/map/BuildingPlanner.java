@@ -309,7 +309,7 @@ public class BuildingPlanner {
 
     /**
      * Pick a TilePosition to place a new creep colony (for later morphing into a Sunken Colony),
-     * built toward the baseâ€™s closest choke.  If thereâ€™s existing reserved structures, attempts to build adjacent.
+     * built toward the base's closest choke.  If there's existing reserved structures, attempts to build adjacent.
      */
     public TilePosition getLocationForCreepColony(Base base, Race opponentRace) {
         Position chokeCenter = closestChokeToBase(base);
