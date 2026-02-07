@@ -10,5 +10,7 @@ public abstract class TerranBaseStrategy extends ObservedStrategy {
     }
 
     @Override
-    public Race getRace() { return Race.Terran; }
+    public Race getRace() { 
+        return Race.Terran; 
+    }
 }

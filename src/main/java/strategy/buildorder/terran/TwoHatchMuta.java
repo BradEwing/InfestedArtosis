@@ -70,7 +70,8 @@ public class TwoHatchMuta extends TerranBase {
         boolean wantSpire = techProgression.canPlanSpire() && spireCount < 1 && lairCount >= 1 && droneCount >= 16;
 
         boolean wantMetabolicBoost = techProgression.canPlanMetabolicBoost() && !techProgression.isMetabolicBoost() && lairCount > 0;
-        boolean wantFlyingAttack = mutaCount > 6 && techProgression.canPlanFlyerAttack() && techProgression.getFlyerAttack() < 1 && !startedFlyerUpgrade;
+        boolean wantFlyingAttack = mutaCount > 6 && techProgression.canPlanFlyerAttack() && 
+                                techProgression.getFlyerAttack() < 1 && !startedFlyerUpgrade;
         boolean wantOverlordSpeed = needOverlordSpeed(gameState) && techProgression.canPlanOverlordSpeed();
 
         // Plan buildings
@@ -211,5 +212,7 @@ public class TwoHatchMuta extends TerranBase {
     }
 
     @Override
-    public boolean needLair() { return true; }
+    public boolean needLair() { 
+        return true; 
+    }
 }

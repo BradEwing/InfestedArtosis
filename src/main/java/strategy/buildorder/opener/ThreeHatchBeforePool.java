@@ -96,7 +96,7 @@ public class ThreeHatchBeforePool extends BuildOrder {
             }
         }
 
-        if ((droneCount >= 13 && plannedAndCurrentBases >= 3) && techProgression.canPlanPool()) {
+        if (droneCount >= 13 && plannedAndCurrentBases >= 3 && techProgression.canPlanPool()) {
             plans.add(planSpawningPool(gameState));
             return plans;
         }
@@ -149,6 +149,8 @@ public class ThreeHatchBeforePool extends BuildOrder {
     }
 
     @Override
-    public boolean isOpener() { return true; }
+    public boolean isOpener() { 
+        return true; 
+    }
 }
 

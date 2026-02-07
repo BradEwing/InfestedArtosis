@@ -94,7 +94,7 @@ public final class Filter {
         }
 
         if (unitType == UnitType.Terran_Bunker || unitType == UnitType.Terran_Missile_Turret || unitType == UnitType.Zerg_Sunken_Colony ||
-        unitType == UnitType.Zerg_Spore_Colony || unitType == UnitType.Protoss_Photon_Cannon) {
+                unitType == UnitType.Zerg_Spore_Colony || unitType == UnitType.Protoss_Photon_Cannon) {
             return true;
         }
 

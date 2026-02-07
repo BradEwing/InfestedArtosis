@@ -240,7 +240,13 @@ public class MutaliskSquad extends Squad {
      * Calculates individual retreat position for a single mutalisk.
      * Prioritizes retreating from psi storms if within storm radius.
      */
-    private Position calculateIndividualRetreat(Unit mutalisk, List<Unit> enemies, Set<Position> staticDefenseCoverage, Set<Position> stormPositions, GameState gameState) {
+    private Position calculateIndividualRetreat(
+            Unit mutalisk, 
+            List<Unit> enemies, 
+            Set<Position> staticDefenseCoverage, 
+            Set<Position> stormPositions, 
+            GameState gameState) {
+
         Position mutaliskPos = mutalisk.getPosition();
         int maxX = gameState.getGame().mapWidth() * 32 - 1;
         int maxY = gameState.getGame().mapHeight() * 32 - 1;
@@ -388,21 +394,21 @@ public class MutaliskSquad extends Squad {
         pts.sort((a,b) -> a.getX() == b.getX() ? Integer.compare(a.getY(), b.getY()) : Integer.compare(a.getX(), b.getX()));
         List<Position> lower = new ArrayList<>();
         for (Position p : pts) {
-            while (lower.size() >= 2 && cross(lower.get(lower.size()-2), lower.get(lower.size()-1), p) <= 0) {
-                lower.remove(lower.size()-1);
+            while (lower.size() >= 2 && cross(lower.get(lower.size() - 2), lower.get(lower.size() - 1), p) <= 0) {
+                lower.remove(lower.size() - 1);
             }
             lower.add(p);
         }
         List<Position> upper = new ArrayList<>();
-        for (int i = pts.size()-1; i >= 0; i--) {
+        for (int i = pts.size() - 1; i >= 0; i--) {
             Position p = pts.get(i);
-            while (upper.size() >= 2 && cross(upper.get(upper.size()-2), upper.get(upper.size()-1), p) <= 0) {
-                upper.remove(upper.size()-1);
+            while (upper.size() >= 2 && cross(upper.get(upper.size() - 2), upper.get(upper.size() - 1), p) <= 0) {
+                upper.remove(upper.size() - 1);
             }
             upper.add(p);
         }
-        lower.remove(lower.size()-1);
-        upper.remove(upper.size()-1);
+        lower.remove(lower.size() - 1);
+        upper.remove(upper.size() - 1);
         lower.addAll(upper);
         return lower;
     }
@@ -448,11 +454,6 @@ public class MutaliskSquad extends Squad {
         return t == UnitType.Protoss_Probe || t == UnitType.Terran_SCV || t == UnitType.Zerg_Drone;
     }
 
-    private boolean canAttackTargetFromSafePosition(Unit target, Set<Position> staticDefenseCoverage) {
-        return isPositionInStaticDefenseCoverage(target.getPosition(), staticDefenseCoverage) &&
-                findSafeAttackPosition(target, staticDefenseCoverage) != null;
-    }
-
     private Position findSafeAttackPosition(Unit target, Set<Position> staticDefenseCoverage) {
         Position targetPos = target.getPosition();
         int mutaRange = UnitType.Zerg_Mutalisk.airWeapon().maxRange();
@@ -485,27 +486,6 @@ public class MutaliskSquad extends Squad {
         return candidatePositions.get(0);
     }
 
-    private Position findSafeRetreatPosition(Position currentPos, Set<Position> staticDefenseCoverage, GameState gameState) {
-        int maxRadius = 320;
-        int step = 32;
-
-        for (int radius = step; radius <= maxRadius; radius += step) {
-            for (int angle = 0; angle < 360; angle += 30) {
-                double radians = Math.toRadians(angle);
-                int x = currentPos.getX() + (int)(radius * Math.cos(radians));
-                int y = currentPos.getY() + (int)(radius * Math.sin(radians));
-
-                Position candidatePos = new Position(x, y);
-
-                if (!isPositionInStaticDefenseCoverage(candidatePos, staticDefenseCoverage)) {
-                    return candidatePos;
-                }
-            }
-        }
-
-        return null;
-    }
-
     private boolean isPositionInStaticDefenseCoverage(Position pos, Set<Position> staticDefenseCoverage) {
         for (Position coveredPos : staticDefenseCoverage) {
             if (pos.getDistance(coveredPos) < 16) {
@@ -529,44 +509,6 @@ public class MutaliskSquad extends Squad {
         }
 
         return false;
-    }
-
-    private List<Unit> findWorkers(List<Unit> enemies) {
-        List<Unit> workers = new ArrayList<>();
-        for (Unit unit : enemies) {
-            UnitType type = unit.getType();
-            if (type == UnitType.Protoss_Probe || type == UnitType.Terran_SCV || type == UnitType.Zerg_Drone) {
-                workers.add(unit);
-            }
-        }
-        return workers;
-    }
-
-    private List<Unit> findAntiAirThreats(List<Unit> enemies) {
-        List<Unit> threats = new ArrayList<>();
-
-        for (Unit enemy : enemies) {
-            if (isAntiAir(enemy)) {
-                threats.add(enemy);
-            }
-        }
-        return threats;
-    }
-
-    private List<Unit> findStaticDefense(List<Unit> enemies) {
-        List<Unit> staticDefense = new ArrayList<>();
-
-        for (Unit unit : enemies) {
-            UnitType type = unit.getType();
-            if (type == UnitType.Terran_Missile_Turret ||
-                    type == UnitType.Terran_Bunker ||
-                    type == UnitType.Protoss_Photon_Cannon ||
-                    type == UnitType.Zerg_Spore_Colony) {
-                staticDefense.add(unit);
-            }
-        }
-
-        return staticDefense;
     }
 
     private Unit getClosestUnit(Position from, List<Unit> units) {

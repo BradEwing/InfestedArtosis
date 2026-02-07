@@ -47,7 +47,7 @@ public class ZergBase extends BuildOrder {
         final int excessMinerals = gameState.getResourceCount().availableMinerals() - 400;
         if (excessMinerals > 0) {
             int excessZerglings = excessMinerals / 50;
-            zerglings += (excessZerglings * 2);
+            zerglings += excessZerglings * 2;
         }
 
         zerglings = Math.min(zerglings, 40);

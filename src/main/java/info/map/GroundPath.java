@@ -22,7 +22,7 @@ public class GroundPath {
 
         for (int i = 0; i < path.size() - 1; i++) {
             final TilePosition tpX = path.get(i).getTile();
-            final TilePosition tpY = path.get(i+1).getTile();
+            final TilePosition tpY = path.get(i + 1).getTile();
             final int d = (int) tpX.getDistance(tpY);
             groundDistance += d;
         }

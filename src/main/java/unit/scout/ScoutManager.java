@@ -232,7 +232,7 @@ public class ScoutManager {
         }
 
         Base farthest = null;
-        for(Map.Entry<Base, Double> entry: baseDistance.entrySet()) {
+        for (Map.Entry<Base, Double> entry: baseDistance.entrySet()) {
             if (farthest == null) {
                 farthest = entry.getKey();
                 continue;

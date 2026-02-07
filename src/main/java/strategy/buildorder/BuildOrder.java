@@ -47,9 +47,13 @@ public abstract class BuildOrder {
 
     public abstract boolean playsRace(Race race);
 
-    public boolean isOpener() { return false; }
+    public boolean isOpener() { 
+        return false; 
+    }
 
-    public boolean needLair() { return false; }
+    public boolean needLair() { 
+        return false; 
+    }
 
     /**
      * Returns true if Overlord Speed should be researched, based on Lair, game time and unit triggers.
@@ -116,7 +120,9 @@ public abstract class BuildOrder {
         return 0;
     }
 
-    protected int zerglingsNeeded(GameState gameState) { return 6; }
+    protected int zerglingsNeeded(GameState gameState) { 
+        return 6; 
+    }
 
     protected Plan planNewBase(GameState gameState) {
         Base base = gameState.reserveBase();
@@ -193,7 +199,7 @@ public abstract class BuildOrder {
         }
         if (unitType == UnitType.Zerg_Overlord) {
             int plannedSupply = gameState.getResourceCount().getPlannedSupply();
-            gameState.getResourceCount().setPlannedSupply(plannedSupply+16);
+            gameState.getResourceCount().setPlannedSupply(plannedSupply + 16);
         }
         return new UnitPlan(unitType, gameState.getGameTime().getFrames(), true);
     }
@@ -213,19 +219,19 @@ public abstract class BuildOrder {
                 break;
             case Zerg_Melee_Attacks:
                 int meleeAttacks = techProgression.getMeleeUpgrades();
-                techProgression.setMeleeUpgrades(meleeAttacks+1);
+                techProgression.setMeleeUpgrades(meleeAttacks + 1);
                 break;
             case Zerg_Missile_Attacks:
                 int missileAttacks = techProgression.getRangedUpgrades();
-                techProgression.setRangedUpgrades(missileAttacks+1);
+                techProgression.setRangedUpgrades(missileAttacks + 1);
                 break;
             case Zerg_Flyer_Carapace:
                 int flyerCarapace = techProgression.getFlyerDefense();
-                techProgression.setFlyerDefense(flyerCarapace+1);
+                techProgression.setFlyerDefense(flyerCarapace + 1);
                 break;
             case Zerg_Carapace:
                 int carapace = techProgression.getCarapaceUpgrades();
-                techProgression.setCarapaceUpgrades(carapace+1);
+                techProgression.setCarapaceUpgrades(carapace + 1);
                 break;
             case Pneumatized_Carapace:
                 techProgression.setPlannedOverlordSpeed(true);

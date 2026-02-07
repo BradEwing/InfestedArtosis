@@ -109,7 +109,7 @@ public class InformationManager {
     public void updateTechProgression(UnitType unitType) {
         TechProgression techProgression = gameState.getTechProgression();
 
-        switch(unitType) {
+        switch (unitType) {
             case Zerg_Spawning_Pool:
                 techProgression.setSpawningPool(true);
                 break;
@@ -123,8 +123,8 @@ public class InformationManager {
                 techProgression.setLair(true);
                 break;
             case Zerg_Evolution_Chamber:
-                techProgression.setPlannedEvolutionChambers(techProgression.getPlannedEvolutionChambers()-1);
-                techProgression.setEvolutionChambers(techProgression.evolutionChambers()+1);
+                techProgression.setPlannedEvolutionChambers(techProgression.getPlannedEvolutionChambers() - 1);
+                techProgression.setEvolutionChambers(techProgression.evolutionChambers() + 1);
                 break;
             case Zerg_Queens_Nest:
                 techProgression.setQueensNest(true);
@@ -151,7 +151,7 @@ public class InformationManager {
         }
         // Check if the unit should be ignored: resource, powerup, special/unknown
         // Exception: Allow gas structures (Refinery, Extractor, Assimilator) to be tracked
-        if ((unitType.isResourceContainer() && !isGasStructure(unitType))
+        if (unitType.isResourceContainer() && !isGasStructure(unitType)
                 || unitType.isMineralField()
                 || unitType.isNeutral()
                 || unitType.isSpecialBuilding()
@@ -219,7 +219,7 @@ public class InformationManager {
     public void updateTechOnDestroy(UnitType unitType) {
         TechProgression techProgression = gameState.getTechProgression();
 
-        switch(unitType) {
+        switch (unitType) {
             case Zerg_Spawning_Pool:
                 techProgression.setSpawningPool(false);
                 techProgression.setPlannedSpawningPool(false);
@@ -238,7 +238,7 @@ public class InformationManager {
                 break;
             case Zerg_Evolution_Chamber:
                 final int evolutionChambers = techProgression.getEvolutionChambers();
-                techProgression.setEvolutionChambers(evolutionChambers-1);
+                techProgression.setEvolutionChambers(evolutionChambers - 1);
                 break;
             case Zerg_Queens_Nest:
                 techProgression.setQueensNest(false);

@@ -94,15 +94,25 @@ public class ManagedUnit {
         return this.unitID;
     }
 
-    public Position getPosition() { return unit.getPosition(); }
+    public Position getPosition() { 
+        return unit.getPosition(); 
+    }
 
-    public boolean isReady() { return this.isReady; }
+    public boolean isReady() { 
+        return this.isReady; 
+    }
 
-    public void setReady(boolean isReady) { this.isReady = isReady; }
+    public void setReady(boolean isReady) { 
+        this.isReady = isReady; 
+    }
 
-    public boolean canFight() { return this.canFight; }
+    public boolean canFight() {
+        return this.canFight; 
+    }
 
-    public void setNewGatherTarget(boolean hasNewGatherTarget) { this.hasNewGatherTarget = hasNewGatherTarget; }
+    public void setNewGatherTarget(boolean hasNewGatherTarget) { 
+        this.hasNewGatherTarget = hasNewGatherTarget; 
+    }
 
     public void execute() {
         updateState();
@@ -530,7 +540,7 @@ public class ManagedUnit {
 
         // Check if retreatTarget should be set to null
         if (retreatTarget != null) {
-            if (unit.getDistance(retreatTarget) < 16 || unit.isIdle() || (!game.isWalkable(new WalkPosition(retreatTarget)))) {
+            if (unit.getDistance(retreatTarget) < 16 || unit.isIdle() || !game.isWalkable(new WalkPosition(retreatTarget))) {
                 retreatTarget = null;
                 lastRetreatPosition = null;
                 framesStuck = 0;

@@ -635,6 +635,8 @@ public class SquadManager {
                     managedUnit.clearRetreatStart();
                 }
                 break;
+            default:
+                return;
         }
     }
 
@@ -655,7 +657,8 @@ public class SquadManager {
         }
 
         // Compute average enemy position as threat center
-        double ex = 0, ey = 0;
+        double ex = 0;
+        double ey = 0;
         int cnt = 0;
         for (Unit e : enemiesNear) {
             Position p = e.getPosition();
@@ -668,7 +671,7 @@ public class SquadManager {
         // Retreat anchor = center + normalized away vector * 192
         double dx = center.getX() - ex;
         double dy = center.getY() - ey;
-        double len = Math.max(1.0, Math.sqrt(dx*dx + dy*dy));
+        double len = Math.max(1.0, Math.sqrt(dx * dx + dy * dy));
         double scale = 192.0 / len;
         double ax = center.getX() + dx * scale;
         double ay = center.getY() + dy * scale;
@@ -795,7 +798,7 @@ public class SquadManager {
             if (enemyUnit.getType() == UnitType.Unknown) {
                 continue;
             }
-            if ( (int) enemyUnit.getPosition().getDistance(squad.getCenter()) > 256) {
+            if ((int) enemyUnit.getPosition().getDistance(squad.getCenter()) > 256) {
                 continue;
             }
             try {
@@ -892,8 +895,8 @@ public class SquadManager {
             if (squad.getStatus() == SquadStatus.RALLY || squad.getStatus() == SquadStatus.FIGHT) {
                 double distance = squad.distance(managedUnit);
 
-                boolean canJoin = (squad.getStatus() == SquadStatus.RALLY) ||
-                                (distance < MUTALISK_JOIN_DISTANCE);
+                boolean canJoin = squad.getStatus() == SquadStatus.RALLY ||
+                                distance < MUTALISK_JOIN_DISTANCE;
 
                 if (canJoin && distance < closestDistance) {
                     closestDistance = distance;
@@ -1027,7 +1030,7 @@ public class SquadManager {
             return null;
         }
         List<Squad> sorted = fightSquads.stream().sorted().collect(Collectors.toList());
-        return sorted.get(sorted.size()-1);
+        return sorted.get(sorted.size() - 1);
     }
 
     public Set<ManagedUnit> getDisbandedUnits() {
@@ -1087,16 +1090,16 @@ public class SquadManager {
                 }
             }
             
-             if (allOverlords && squad.size() > 0) {
-                 List<ManagedUnit> overlordsToRemove = new ArrayList<>(squad.getMembers());
-                 for (ManagedUnit overlord : overlordsToRemove) {
-                     squad.removeUnit(overlord);
-                     overlords.addUnit(overlord);
-                     overlord.setRallyPoint(informationManager.getRallyPoint());
-                     overlord.setRole(UnitRole.RETREAT);
-                 }
-                 squadsToRemove.add(squad);
-             }
+            if (allOverlords && squad.size() > 0) {
+                List<ManagedUnit> overlordsToRemove = new ArrayList<>(squad.getMembers());
+                for (ManagedUnit overlord : overlordsToRemove) {
+                    squad.removeUnit(overlord);
+                    overlords.addUnit(overlord);
+                    overlord.setRallyPoint(informationManager.getRallyPoint());
+                    overlord.setRole(UnitRole.RETREAT);
+                }
+                squadsToRemove.add(squad);
+            }
         }
         fightSquads.removeAll(squadsToRemove);
     }

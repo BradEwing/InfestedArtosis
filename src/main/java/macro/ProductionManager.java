@@ -132,7 +132,7 @@ public class ProductionManager {
         int numLarva = gameState.numLarva();
         boolean isFloatingMinerals = gameState.isFloatingMinerals();
 
-        if (isFloatingMinerals || (numHatcheries < MIN_HATCHERIES || numLarva < MIN_LARVA)) {
+        if (isFloatingMinerals || numHatcheries < MIN_HATCHERIES || numLarva < MIN_LARVA) {
             return;
         }
 
@@ -402,7 +402,7 @@ public class ProductionManager {
         final boolean hasFourOrMoreDrones = gameState.numGatherers() > 3;
         final int numHatcheries = gameState.getBaseData().numHatcheries();
 
-        switch(unitType) {
+        switch (unitType) {
             case Zerg_Overlord:
             case Zerg_Drone:
                 return numHatcheries > 0;
@@ -411,7 +411,8 @@ public class ProductionManager {
             case Zerg_Hydralisk:
                 return hasFourOrMoreDrones && (techProgression.isPlannedDen() || techProgression.isHydraliskDen());
             case Zerg_Lurker:
-                if (!hasFourOrMoreDrones || (!techProgression.isPlannedLurker() && !techProgression.isLurker())) {
+                final boolean canScheduleLurker = techProgression.isPlannedLurker() && techProgression.isLurker();
+                if (!hasFourOrMoreDrones || !canScheduleLurker) {
                     return false;
                 }
                 int hydraliskCount = gameState.ourUnitCount(UnitType.Zerg_Hydralisk);
@@ -435,7 +436,7 @@ public class ProductionManager {
     private boolean canScheduleBuilding(UnitType unitType) {
         TechProgression techProgression = gameState.getTechProgression();
         final int numHatcheries = gameState.getBaseData().numHatcheries();
-        switch(unitType) {
+        switch (unitType) {
             case Zerg_Hatchery:
             case Zerg_Extractor:
             case Zerg_Creep_Colony:
@@ -470,7 +471,7 @@ public class ProductionManager {
 
     private boolean canScheduleUpgrade(UpgradeType upgradeType) {
         TechProgression techProgression = gameState.getTechProgression();
-        switch(upgradeType) {
+        switch (upgradeType) {
             case Metabolic_Boost:
                 return techProgression.isSpawningPool();
             case Muscular_Augments:
@@ -536,6 +537,8 @@ public class ProductionManager {
                     break;
                 case TECH:
                     canSchedule = scheduleResearch(plan);
+                default:
+                    canSchedule = false;
             }
 
             if (canSchedule) {
@@ -635,7 +638,7 @@ public class ProductionManager {
 
         TechProgression techProgression = this.gameState.getTechProgression();
 
-        switch(unitType) {
+        switch (unitType) {
             case Zerg_Hydralisk_Den:
                 techProgression.setHydraliskDen(true);
                 techProgression.setPlannedDen(false);
@@ -947,7 +950,7 @@ public class ProductionManager {
         // Put item back onto the queue with greater importance
         if (gameState.getAssignedPlannedItems().containsKey(unit)) {
             Plan plan = gameState.getAssignedPlannedItems().get(unit);
-            switch(plan.getState()) {
+            switch (plan.getState()) {
                 case BUILDING:
                 case MORPHING:
                     if (isDestroyed) {

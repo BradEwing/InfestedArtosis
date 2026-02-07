@@ -116,7 +116,7 @@ public class UnitManager {
             UnitRole role = managedUnit.getRole();
 
             // TODO: Clean this up, this is really just avoiding special handling of scouting units
-            switch(role) {
+            switch (role) {
                 case GATHER:
                 case BUILD:
                 case MORPH:
@@ -133,7 +133,7 @@ public class UnitManager {
                     break;
             }
             UnitType type = managedUnit.getUnitType();
-            switch(type) {
+            switch (type) {
                 case Zerg_Drone:
                     onFrameDrone(managedUnit, role);
                     break;

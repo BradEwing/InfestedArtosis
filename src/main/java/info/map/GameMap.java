@@ -58,7 +58,7 @@ public class GameMap {
             } else if (mapTile.getType() == MapTileType.NORMAL) {
                 weight = 1;
             }
-            mapTile.setScoutImportance(mapTile.getScoutImportance()+weight);
+            mapTile.setScoutImportance(mapTile.getScoutImportance() + weight);
         }
         Collections.sort(heatMap, new MapTileScoutImportanceComparator());
     }
@@ -124,10 +124,10 @@ public class GameMap {
     public ScoutPath findScoutPath(TilePosition center) {
         List<TilePosition> points = new ArrayList<>();
 
-        TilePosition north = center.add(new TilePosition(0, max(0, center.getY())-7));
-        TilePosition east = center.add(new TilePosition(min(x, center.getX())+7, 0));
-        TilePosition south = center.add(new TilePosition(0, min(y, center.getY())+7));
-        TilePosition west = center.add(new TilePosition(max(0, center.getX())-7, 0));
+        TilePosition north = center.add(new TilePosition(0, max(0, center.getY()) - 7));
+        TilePosition east = center.add(new TilePosition(min(x, center.getX()) + 7, 0));
+        TilePosition south = center.add(new TilePosition(0, min(y, center.getY()) + 7));
+        TilePosition west = center.add(new TilePosition(max(0, center.getX()) - 7, 0));
 
         points.add(north);
         points.add(east);

@@ -72,13 +72,13 @@ public class LearningManager {
         long currentTimestamp = System.currentTimeMillis();
         
         if (isWinner) {
-            currentOpener.setWins(currentOpener.getWins()+1);
+            currentOpener.setWins(currentOpener.getWins() + 1);
             currentOpener.addWinTimestamp(currentTimestamp);
-            opponentRecord.setWins(opponentRecord.getWins()+1);
+            opponentRecord.setWins(opponentRecord.getWins() + 1);
         } else {
-            currentOpener.setLosses(currentOpener.getLosses()+1);
+            currentOpener.setLosses(currentOpener.getLosses() + 1);
             currentOpener.addLossTimestamp(currentTimestamp);
-            opponentRecord.setLosses(opponentRecord.getLosses()+1);
+            opponentRecord.setLosses(opponentRecord.getLosses() + 1);
         }
         Map<String, Record> openerRecords = opponentRecord.getOpenerRecord();
         openerRecords.put(currentOpener.getOpener(), currentOpener);
@@ -86,10 +86,10 @@ public class LearningManager {
         // Also track the active BuildOrder if it exists and is different from opener
         if (activeBuildOrderRecord != null && !activeBuildOrderRecord.getOpener().equals(currentOpener.getOpener())) {
             if (isWinner) {
-                activeBuildOrderRecord.setWins(activeBuildOrderRecord.getWins()+1);
+                activeBuildOrderRecord.setWins(activeBuildOrderRecord.getWins() + 1);
                 activeBuildOrderRecord.addWinTimestamp(currentTimestamp);
             } else {
-                activeBuildOrderRecord.setLosses(activeBuildOrderRecord.getLosses()+1);
+                activeBuildOrderRecord.setLosses(activeBuildOrderRecord.getLosses() + 1);
                 activeBuildOrderRecord.addLossTimestamp(currentTimestamp);
             }
             Map<String, Record> buildOrderRecords = opponentRecord.getBuildOrderRecord();
@@ -103,7 +103,9 @@ public class LearningManager {
         }
     }
 
-    public Decisions getDecisions() { return decisions; }
+    public Decisions getDecisions() { 
+        return decisions; 
+    }
 
     public OpponentRecord getOpponentRecord() {
         return this.opponentRecord;
@@ -239,7 +241,8 @@ public class LearningManager {
         
         if (!writeFile.exists()) {
             writeFile.createNewFile();
-            String header = "timestamp,is_winner,num_starting_locations,map_name,opponent_name,opponent_race,opener,build_order,detected_strategies\n";
+            String header = "timestamp,is_winner,num_starting_locations,map_name,opponent_name,opponent_race,opener,build_order,detected_strategies";
+            header += "\n";
             Files.write(writeFile.toPath(), header.getBytes(), StandardOpenOption.APPEND);
             
             if (readFile.exists() && readFile.isFile()) {

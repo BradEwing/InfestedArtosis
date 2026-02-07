@@ -66,18 +66,18 @@ public class Squad implements Comparable<Squad> {
     }
 
     public int radius() {
-        final double d = Math.sqrt((max_dx*max_dx)+(max_dy*max_dy));
+        final double d = Math.sqrt((max_dx * max_dx) + (max_dy * max_dy));
         return (int) d;
     }
 
-    public int distance (Squad other) {
+    public int distance(Squad other) {
         if (center == null || other == null) {
             return 0;
         }
         return (int) center.getDistance(other.getCenter());
     }
 
-    public int distance (ManagedUnit managedUnit) {
+    public int distance(ManagedUnit managedUnit) {
         try {
             return (int) center.getDistance(managedUnit.getUnit().getPosition());
         } catch (Exception e) {
@@ -98,7 +98,9 @@ public class Squad implements Comparable<Squad> {
         members.remove(managedUnit);
     }
 
-    public int size() { return members.size(); }
+    public int size() { 
+        return members.size(); 
+    }
 
     public boolean containsManagedUnit(ManagedUnit managedUnit) {
         return members.contains(managedUnit);
@@ -119,7 +121,8 @@ public class Squad implements Comparable<Squad> {
     }
 
     private void calculateCenter() {
-        int x, y;
+        int x;
+        int y;
         x = y = 0;
 
         for (ManagedUnit managedUnit: members) {

@@ -98,5 +98,7 @@ public class TwelveHatch extends BuildOrder {
     }
 
     @Override
-    public boolean isOpener() { return true; }
+    public boolean isOpener() { 
+        return true; 
+    }
 }

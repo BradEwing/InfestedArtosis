@@ -52,7 +52,7 @@ public class ThreeHatchLurker extends TerranBase {
         boolean wantEvolutionChamber = wantEvolutionChamber(gameState);
 
         boolean wantLurkerAspect = wantLurkerAspect(gameState);
-        boolean wantMetabolicBoost = techProgression.canPlanMetabolicBoost() && lairCount > 0 && (zerglingCount >= 12 && lurkerCount > 2);
+        boolean wantMetabolicBoost = techProgression.canPlanMetabolicBoost() && lairCount > 0 && zerglingCount >= 12 && lurkerCount > 2;
         boolean wantMuscularAugments = techProgression.canPlanMuscularAugments() && hydraCount > 3 && lurkerCount > 0;
         boolean wantGroovedSpines = techProgression.canPlanGroovedSpines() && hydraCount > 6;
         boolean wantRangedUpgrades = wantRangedUpgrade(gameState);

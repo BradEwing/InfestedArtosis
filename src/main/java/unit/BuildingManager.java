@@ -47,7 +47,7 @@ public class BuildingManager {
         buildingPlanner.reserveBuildingTiles(managedUnit.getUnit());
         UnitType unitType = managedUnit.getUnitType();
         BaseData baseData = gameState.getBaseData();
-        switch(unitType) {
+        switch (unitType) {
             case Zerg_Hatchery:
             case Zerg_Lair:
             case Zerg_Hive:
@@ -72,7 +72,7 @@ public class BuildingManager {
             unitType = managedUnit.getUnit().getType();
         }
         BaseData baseData = gameState.getBaseData();
-        switch(unitType) {
+        switch (unitType) {
             case Zerg_Hatchery:
             case Zerg_Lair:
             case Zerg_Hive:
