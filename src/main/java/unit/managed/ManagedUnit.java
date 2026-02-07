@@ -393,7 +393,10 @@ public class ManagedUnit {
                 }
                 
                 // Keep this position if it's farther from enemies than previous best
-                if (minDistToEnemy > bestMinEnemyDistance) {
+                if (minDistToEnemy > bestMinEnemyDistance
+                    || minDistToEnemy == bestMinEnemyDistance
+                     && bestPosition != null
+                     && candidatePos.getDistance(originalRetreat) < bestPosition.getDistance(originalRetreat)) {
                     bestMinEnemyDistance = minDistToEnemy;
                     bestPosition = candidatePos;
                 }
