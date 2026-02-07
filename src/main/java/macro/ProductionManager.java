@@ -6,7 +6,6 @@ import bwapi.TechType;
 import bwapi.Unit;
 import bwapi.UnitType;
 import bwapi.UpgradeType;
-import info.BaseData;
 import info.GameState;
 import info.ResourceCount;
 import info.TechProgression;
@@ -88,12 +87,6 @@ public class ProductionManager {
         schedulePlannedItems();
         buildUpgrades();
         researchTech();
-
-        for (Unit u: game.getAllUnits()) {
-            if (u.getType().isWorker() && u.isIdle()) {
-                assignUnit(u);
-            }
-        }
     }
 
     private void transition() {
@@ -865,44 +858,6 @@ public class ProductionManager {
 
         if (priorityHatcheryPlan != null && highestPriority > 0) {
             priorityHatcheryPlan.setPriority(0);
-        }
-    }
-
-    public void onUnitComplete(Unit unit) {
-        assignUnit(unit);
-    }
-
-
-    private void assignUnit(Unit unit) {
-        Player self = game.self();
-        if (unit.getPlayer() != self) {
-            return;
-        }
-
-        UnitType unitType = unit.getType();
-        // TODO: Move to a building manager or base manager
-        if (unitType == UnitType.Zerg_Extractor) {
-            gameState.getGeyserAssignments().put(unit, new HashSet<>());
-        }
-
-        if (unitType == UnitType.Zerg_Overlord) {
-            gameState.getResourceCount()
-                    .setPlannedSupply(Math.max(0, gameState.getResourceCount().getPlannedSupply() - unitType.supplyProvided()));
-        }
-
-        if (unitType == UnitType.Zerg_Hatchery) {
-            // Account for macro hatch
-            BaseData baseData = gameState.getBaseData();
-            if (baseData.isBaseTilePosition(unit.getTilePosition())) {
-                gameState.claimBase(unit);
-            } else {
-                gameState.addMacroHatchery(unit);
-            }
-
-            gameState.removePlannedHatchery(1);
-            if (gameState.getPlannedHatcheries() < 0) {
-                gameState.setPlannedHatcheries(0);
-            }
         }
     }
 

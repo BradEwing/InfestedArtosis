@@ -99,7 +99,6 @@ public class Bot extends DefaultBWListener {
         }
 
         informationManager.onUnitComplete(unit);
-        productionManager.onUnitComplete(unit);
         unitManager.onUnitComplete(unit);
     }
 
