@@ -27,8 +27,10 @@ public class Drone extends ManagedUnit {
         }
 
         setUnready();
-        unit.gather(gatherTarget);
-        hasNewGatherTarget = false;
+        boolean didGather = unit.gather(gatherTarget);
+        if (didGather) {
+            hasNewGatherTarget = false;
+        }
     }
 
     @Override

@@ -435,6 +435,8 @@ public class GameState {
         mineralGatherers.remove(managedUnit);
         gasGatherers.remove(managedUnit);
         assignedManagedWorkers.remove(managedUnit);
+        managedUnit.setGatherTarget(null);
+        managedUnit.setNewGatherTarget(false);
 
         for (HashSet<ManagedUnit> managedUnitAssignments: gatherersAssignedToBase.values()) {
             managedUnitAssignments.remove(managedUnit);
@@ -781,5 +783,9 @@ public class GameState {
     public boolean isFloatingMinerals() {
         return getGameTime().greaterThan(new Time(5, 0)) &&
                 resourceCount.availableMinerals() > ((plannedHatcheries + 1) * 350);
+    }
+
+    public void setGeyserAssignment(Unit unit) {
+        geyserAssignments.put(unit, new HashSet<>());
     }
 }

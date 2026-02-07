@@ -1,6 +1,7 @@
 package info;
 
 import bwapi.Game;
+import bwapi.Player;
 import bwapi.PlayerType;
 import bwapi.Position;
 import bwapi.Race;
@@ -203,6 +204,37 @@ public class InformationManager {
         UnitTypeCount unitCount = gameState.getUnitTypeCount();
         unitCount.addUnit(unitType);
         unitCount.unplanUnit(unitType);
+
+        Player self = game.self();
+        if (unit.getPlayer() != self) {
+            return;
+        }
+
+        if (unitType == UnitType.Zerg_Extractor) {
+            gameState.setGeyserAssignment(unit);
+        }
+
+        ResourceCount resourceCount = gameState.getResourceCount();
+        final int plannedSupply = resourceCount.getPlannedSupply();
+        if (unitType == UnitType.Zerg_Overlord) {
+            resourceCount.setPlannedSupply(Math.max(0, plannedSupply - unitType.supplyProvided()));
+        }
+
+        if (unitType == UnitType.Zerg_Hatchery) {
+            // Account for macro hatch
+            BaseData baseData = gameState.getBaseData();
+            if (baseData.isBaseTilePosition(unit.getTilePosition())) {
+                gameState.claimBase(unit);
+            } else {
+                gameState.addMacroHatchery(unit);
+            }
+
+            gameState.removePlannedHatchery(1);
+            if (gameState.getPlannedHatcheries() < 0) {
+                gameState.setPlannedHatcheries(0);
+            }
+        }
+
     }
 
     public void onUnitRenegade(Unit unit) {

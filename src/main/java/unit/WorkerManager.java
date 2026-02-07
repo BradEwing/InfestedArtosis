@@ -525,47 +525,12 @@ public class WorkerManager {
      */
     private void cutGasHarvesting() {
         int gasWorkers = gameState.getGeyserWorkers();
-        int mineralWorkers = gameState.getMineralWorkers();
-        
-        // If we have no mineral workers, reassign most gas workers to minerals
-        if (mineralWorkers == 0 && gasWorkers > 0 || mineralWorkers < 6) {
-            // Keep only 1 gas worker per geyser, move the rest to minerals
-            int minGasWorkers = gameState.getGeyserAssignments().size();
-            int workersToReassign = Math.max(0, gasWorkers - minGasWorkers);
-            
+
+        if (gasWorkers > 0) {    
             List<ManagedUnit> geyserWorkers = new ArrayList<>(gasGatherers);
-            int reassigned = 0;
-            
             for (ManagedUnit worker: geyserWorkers) {
-                if (reassigned >= workersToReassign) {
-                    break;
-                }
                 gameState.clearAssignments(worker);
                 assignToMineral(worker);
-                reassigned++;
-            }
-            return;
-        }
-
-        // Normal case: maintain 3:1 mineral to gas ratio when floating gas
-        if (gasWorkers > 0 && mineralWorkers > 0) {
-            double currentRatio = (double) mineralWorkers / gasWorkers;
-            // If ratio is less than 3:1, move some gas workers to minerals
-            if (currentRatio < 3.0) {
-                int targetGasWorkers = Math.max(1, mineralWorkers / 3);
-                int workersToReassign = Math.max(0, gasWorkers - targetGasWorkers);
-                
-                List<ManagedUnit> geyserWorkers = new ArrayList<>(gasGatherers);
-                int reassigned = 0;
-                
-                for (ManagedUnit worker: geyserWorkers) {
-                    if (reassigned >= workersToReassign) {
-                        break;
-                    }
-                    gameState.clearAssignments(worker);
-                    assignToMineral(worker);
-                    reassigned++;
-                }
             }
         }
     }
