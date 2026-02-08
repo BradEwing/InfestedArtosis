@@ -608,7 +608,7 @@ public class InformationManager {
         }
 
         gameState.setGameMap(gameMap);
-        gameState.setBuildingPlanner(new BuildingPlanner(game, bwem, gameMap));
+        gameState.setBuildingPlanner(new BuildingPlanner(game, bwem));
 
         HashSet<Unit> baseMineralUnits = new HashSet<>();
         for (Base base : bwem.getMap().getBases()) {
