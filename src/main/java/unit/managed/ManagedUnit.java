@@ -21,8 +21,8 @@ import java.util.stream.Collectors;
 
 public class ManagedUnit {
     protected static int LOCK_ENEMY_WITHIN_DISTANCE = 25;
-    protected static int THREE_SECONDS_FRAMES = 36;
-    protected static int FIVE_SECONDS_FRAMES = 60;
+    protected static int THREE_SECONDS_FRAMES = 72;
+    protected static int FIVE_SECONDS_FRAMES = 120;
     protected Game game;
     protected GameMap gameMap;
 
