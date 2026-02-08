@@ -87,6 +87,9 @@ public class Debug {
         if (config.debugAccessibleWalkPositions) {
             debugAccessibleWalkPositions();
         }
+        if (config.debugBlockingMinerals) {
+            debugBlockingMinerals();
+        }
         if (config.debugManagedUnits) {
             for (ManagedUnit managedUnit : gameState.getManagedUnits()) {
                 debugManagedUnit(managedUnit);
@@ -332,6 +335,18 @@ public class Debug {
                 }
             }
         } catch (IllegalStateException e) {
+        }
+    }
+
+    private void debugBlockingMinerals() {
+        if (gameState.getGameMap() == null) return;
+        for (Unit mineral : gameState.getGameMap().getBlockingMinerals()) {
+            if (mineral == null) {
+                continue;
+            }
+            Position pos = mineral.getPosition();
+            game.drawCircleMap(pos, 32, Color.Orange, false);
+            game.drawTextMap(pos, "Blocker", Text.Orange);
         }
     }
 

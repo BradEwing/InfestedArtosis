@@ -30,12 +30,14 @@ public class BuildingPlanner {
 
     private Game game;
     private BWEM bwem;
+    private GameMap gameMap;
 
     private HashSet<TilePosition> reservedTiles = new HashSet<>();
 
     public BuildingPlanner(Game game, BWEM bwem, GameMap gameMap) {
         this.game = game;
         this.bwem = bwem;
+        this.gameMap = gameMap;
     }
 
     public Set<TilePosition> getReservedTiles() {

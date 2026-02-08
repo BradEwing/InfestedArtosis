@@ -12,6 +12,7 @@ import bwapi.WalkPosition;
 import bwem.BWEM;
 import bwem.Base;
 import bwem.Geyser;
+import bwem.Mineral;
 import info.map.BuildingPlanner;
 import info.map.GameMap;
 import info.map.MapTile;
@@ -608,6 +609,19 @@ public class InformationManager {
 
         gameState.setGameMap(gameMap);
         gameState.setBuildingPlanner(new BuildingPlanner(game, bwem, gameMap));
+
+        HashSet<Unit> baseMineralUnits = new HashSet<>();
+        for (Base base : bwem.getMap().getBases()) {
+            for (Mineral mineral : base.getMinerals()) {
+                baseMineralUnits.add(mineral.getUnit());
+            }
+        }
+
+        for (Unit unit : game.getStaticNeutralUnits()) {
+            if (unit.getType().isMineralField() && !baseMineralUnits.contains(unit)) {
+                gameMap.addBlockingMineral(unit);
+            }
+        }
     }
 
     private boolean isWalkable(TilePosition tp) {
