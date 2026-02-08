@@ -21,7 +21,8 @@ import java.util.stream.Collectors;
 
 public class ManagedUnit {
     protected static int LOCK_ENEMY_WITHIN_DISTANCE = 25;
-    protected static int FIVE_SECONDS_FRAMES = 120;
+    protected static int THREE_SECONDS_FRAMES = 36;
+    protected static int FIVE_SECONDS_FRAMES = 60;
     protected Game game;
     protected GameMap gameMap;
 
@@ -522,7 +523,7 @@ public class ManagedUnit {
     }
 
     private void gatherBlockerMineral() {
-        setUnready(36);
+        setUnready(THREE_SECONDS_FRAMES);
         unit.gather(blockingMineral);
         return;
     }
