@@ -1,9 +1,6 @@
 package info.tracking.terran;
 
-import java.util.List;
-
 import bwapi.UnitType;
-import info.tracking.ObservedStrategy;
 import info.tracking.ObservedUnitTracker;
 import util.Time;
 
@@ -27,10 +24,4 @@ public class SCVRush extends TerranBaseStrategy {
         } 
         return false;
     }
-
-    @Override
-    public List<ObservedStrategy> potentialTransitions() {
-        return null;
-    }
-    
 }

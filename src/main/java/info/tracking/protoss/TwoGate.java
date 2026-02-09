@@ -5,8 +5,6 @@ import info.tracking.ObservedStrategy;
 import info.tracking.ObservedUnitTracker;
 import util.Time;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Objects;
 
 /**
@@ -29,12 +27,6 @@ public class TwoGate extends ProtossBaseStrategy {
             return true;
         }
         return false;
-    }
-
-    @Override
-    public List<ObservedStrategy> potentialTransitions() {
-        List<ObservedStrategy> potential = new ArrayList<>();
-        return potential;
     }
 
     @Override
