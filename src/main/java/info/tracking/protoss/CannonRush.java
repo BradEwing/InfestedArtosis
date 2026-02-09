@@ -1,12 +1,8 @@
 package info.tracking.protoss;
 
 import bwapi.UnitType;
-import info.tracking.ObservedStrategy;
 import info.tracking.ObservedUnitTracker;
 import util.Time;
-
-import java.util.Collections;
-import java.util.List;
 
 /**
  * Detects cannon rush strategy by identifying pylons or photon cannons
@@ -30,8 +26,4 @@ public class CannonRush extends ProtossBaseStrategy {
         return pylons + cannons > 0;
     }
 
-    @Override
-    public List<ObservedStrategy> potentialTransitions() {
-        return Collections.emptyList();
-    }
 }

@@ -4,8 +4,6 @@ import info.tracking.ObservedStrategy;
 import info.tracking.ObservedUnitTracker;
 import util.Time;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Objects;
 
 /**
@@ -21,12 +19,6 @@ public class FFE extends ProtossBaseStrategy {
     public boolean isDetected(ObservedUnitTracker tracker, Time time) {
         // TODO: implement
         return false;
-    }
-
-    @Override
-    public List<ObservedStrategy> potentialTransitions() {
-        List<ObservedStrategy> potential = new ArrayList<>();
-        return potential;
     }
 
     @Override

@@ -1,0 +1,27 @@
+package info.tracking.terran;
+
+import bwapi.UnitType;
+import info.tracking.ObservedUnitTracker;
+import util.Time;
+
+public class SCVRush extends TerranBaseStrategy {
+
+    public SCVRush() {
+        super("SCVRush");
+    }
+
+    @Override
+    public boolean isDetected(ObservedUnitTracker tracker, Time time) {
+        final int scvCount = tracker.getCountOfLivingUnits(UnitType.Terran_SCV);
+        final Time fortyFiveSeconds = new Time(0,45);
+        final Time oneMinute = new Time(1,0);
+
+        if (scvCount > 1 && time.lessThanOrEqual(fortyFiveSeconds)) {
+            return true;
+        } 
+        if (scvCount > 2 && time.lessThanOrEqual(oneMinute)) {
+            return true;
+        } 
+        return false;
+    }
+}
