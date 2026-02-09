@@ -22,6 +22,7 @@ public final class Config {
     public boolean debugGameMap = false;
     public boolean debugBasePaths = false;
     public boolean debugAccessibleWalkPositions = false;
+    public boolean debugBlockingMinerals = false;
     
     // Bases and buildings
     public boolean debugBases = false;
@@ -62,6 +63,7 @@ public final class Config {
         this.debugGameMap = Boolean.parseBoolean(dotenv.get("IA_DEBUG_GAME_MAP"));
         this.debugBasePaths = Boolean.parseBoolean(dotenv.get("IA_DEBUG_BASE_PATHS"));
         this.debugAccessibleWalkPositions = Boolean.parseBoolean(dotenv.get("IA_DEBUG_ACCESSIBLE_WALK_POSITIONS"));
+        this.debugBlockingMinerals = Boolean.parseBoolean(dotenv.get("IA_DEBUG_BLOCKING_MINERALS"));
         
         // Bases and buildings
         this.debugBases = Boolean.parseBoolean(dotenv.get("IA_DEBUG_BASES"));

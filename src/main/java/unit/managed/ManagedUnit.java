@@ -21,6 +21,8 @@ import java.util.stream.Collectors;
 
 public class ManagedUnit {
     protected static int LOCK_ENEMY_WITHIN_DISTANCE = 25;
+    protected static int THREE_SECONDS = 72;
+    protected static int FIVE_SECONDS = 120;
     protected Game game;
     protected GameMap gameMap;
 
@@ -56,6 +58,7 @@ public class ManagedUnit {
     @Setter @Getter
     protected Plan plan;
     protected int buildAttemptFrame;
+    protected Unit blockingMineral;
 
     @Setter
     protected boolean canFight = true;
@@ -439,6 +442,34 @@ public class ManagedUnit {
             return;
         }
 
+        if (blockingMineral != null) {
+            if (unit.isGatheringMinerals()) {
+                return;
+            }
+            if (blockingMineral.exists()) {
+                gatherBlockerMineral();
+                return;
+            }
+            gameMap.removeBlockingMineral(blockingMineral);
+            Unit nextBlocker = gameMap.findNearbyBlockingMineral(unit.getPosition(), 32);
+            if (nextBlocker != null) {
+                blockingMineral = nextBlocker;
+                gatherBlockerMineral();
+                return;
+            }
+            blockingMineral = null;
+        }
+
+        final int currentFrame = game.getFrameCount();
+        if (plan.getPredictedReadyFrame() > 0 && currentFrame > plan.getPredictedReadyFrame() + FIVE_SECONDS) {
+            Unit nearbyBlocker = gameMap.findNearbyBlockingMineral(unit.getPosition(), 256);
+            if (nearbyBlocker != null) {
+                blockingMineral = nearbyBlocker;
+                gatherBlockerMineral();
+                return;
+            }
+        }
+
         UnitType plannedUnitType = plan.getPlannedUnit();
 
         // TODO: This should be determined with a building location planner
@@ -489,6 +520,12 @@ public class ManagedUnit {
                 plan.setState(PlanState.MORPHING);
             }
         }
+    }
+
+    private void gatherBlockerMineral() {
+        setUnready(THREE_SECONDS);
+        unit.gather(blockingMineral);
+        return;
     }
 
     private Position getBuilderMoveLocation(UnitType building, TilePosition buildTarget) {

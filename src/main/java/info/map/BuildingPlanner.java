@@ -33,7 +33,7 @@ public class BuildingPlanner {
 
     private HashSet<TilePosition> reservedTiles = new HashSet<>();
 
-    public BuildingPlanner(Game game, BWEM bwem, GameMap gameMap) {
+    public BuildingPlanner(Game game, BWEM bwem) {
         this.game = game;
         this.bwem = bwem;
     }

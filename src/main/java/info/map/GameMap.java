@@ -1,7 +1,9 @@
 package info.map;
 
 import bwapi.Game;
+import bwapi.Position;
 import bwapi.TilePosition;
+import bwapi.Unit;
 import bwapi.WalkPosition;
 import info.exception.NoWalkablePathException;
 import lombok.Getter;
@@ -30,6 +32,8 @@ public class GameMap {
     private ArrayList<MapTile> heatMap = new ArrayList<>();
     @Getter
     private Set<WalkPosition> accessibleWalkPositions = new HashSet<>();
+    @Getter
+    private Set<Unit> blockingMinerals = new HashSet<>();
 
     private MapTile[][] mapTiles;
 
@@ -255,5 +259,34 @@ public class GameMap {
     public void calculateAccessibleWalkPositions(Game game, TilePosition mainBasePosition) {
         WalkPositionFloodFill floodFill = new WalkPositionFloodFill(game);
         this.accessibleWalkPositions = floodFill.calculateAccessibleWalkPositions(mainBasePosition);
+    }
+
+    public void addBlockingMineral(Unit mineral) {
+        blockingMinerals.add(mineral);
+    }
+
+    public void removeBlockingMineral(Unit mineral) {
+        blockingMinerals.remove(mineral);
+    }
+
+    /**
+     * Finds the closest blocking mineral within the given pixel radius of a position.
+     *
+     * @param position the center position to search from
+     * @param radius the search radius in pixels
+     * @return the closest blocking mineral Unit, or null if none found
+     */
+    public Unit findNearbyBlockingMineral(Position position, int radius) {
+        Unit closest = null;
+        double closestDistance = Double.MAX_VALUE;
+        for (Unit mineral : blockingMinerals) {
+            if (!mineral.exists()) continue;
+            double distance = position.getDistance(mineral.getPosition());
+            if (distance <= radius && distance < closestDistance) {
+                closestDistance = distance;
+                closest = mineral;
+            }
+        }
+        return closest;
     }
 }
