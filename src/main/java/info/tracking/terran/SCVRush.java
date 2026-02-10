@@ -15,6 +15,7 @@ public class SCVRush extends TerranBaseStrategy {
         final int scvCount = tracker.getCountOfLivingUnits(UnitType.Terran_SCV);
         final Time fortyFiveSeconds = new Time(0,45);
         final Time oneMinute = new Time(1,0);
+        final Time oneMinuteThirty = new Time(1, 30);
 
         if (scvCount > 1 && time.lessThanOrEqual(fortyFiveSeconds)) {
             return true;
@@ -22,6 +23,9 @@ public class SCVRush extends TerranBaseStrategy {
         if (scvCount > 2 && time.lessThanOrEqual(oneMinute)) {
             return true;
         } 
+        if (scvCount > 3 && time.lessThanOrEqual(oneMinuteThirty)) {
+            return true;
+        }
         return false;
     }
 }
