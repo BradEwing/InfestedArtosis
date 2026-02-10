@@ -156,11 +156,10 @@ public class ProductionManager {
 
     /**
      * Cancels excess overlord plans when free supply is sufficient.
-     * Example: We queue up 25 hydras but half of them die by the
-     * Condition: free supply > 30.
+     * Example: We queue up 10 hydras but half of them die by the time the overlord plan is ready to build.
      */
     private void cancelExcessOverlordPlans() {
-        final int MAX_FREE_SUPPLY = 30;
+        final int MAX_FREE_SUPPLY = 17;
 
         Player self = game.self();
         int freeSupply = self.supplyTotal() - self.supplyUsed();
