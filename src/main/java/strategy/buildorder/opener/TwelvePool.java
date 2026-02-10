@@ -59,7 +59,7 @@ public class TwelvePool extends BuildOrder {
         int overlordCount = gameState.ourUnitCount(UnitType.Zerg_Overlord);
         int zerglingCount = gameState.ourUnitCount(UnitType.Zerg_Zergling);
 
-        if (droneCount < 8) {
+        if (droneCount < 9) {
             plans.add(planUnit(gameState, UnitType.Zerg_Drone));
             return plans;
         }
