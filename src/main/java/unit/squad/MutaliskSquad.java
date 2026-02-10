@@ -55,7 +55,15 @@ public class MutaliskSquad extends Squad {
      * Executes mutalisk-specific squad behavior including target selection,
      * retreat calculations, and engagement decisions.
      */
-    public void executeTactics(GameState gameState) {
+    public void executeTactics(GameState gameState, Position rallyPosition) {
+        if (members.isEmpty()) {
+            shouldDisband = true;
+            return;
+        }
+        if (rallyPosition != null && status == SquadStatus.RALLY) {
+            rallyToPosition(rallyPosition, null);
+            return;
+        }
         int minSize = (gameState.getOpponentRace() == Race.Zerg) ? 2 : 5;
         if (getMembers().size() < minSize) {
             setStatus(SquadStatus.RALLY);

@@ -22,18 +22,18 @@ public class Squad implements Comparable<Squad> {
 
     private final String id = UUID.randomUUID().toString();
 
-    private HashSet<ManagedUnit> members = new HashSet<>();
+    protected HashSet<ManagedUnit> members = new HashSet<>();
 
     // TODO: maybe this is consolidated with retreat target
     private Position rallyPoint;
 
     @Getter(AccessLevel.NONE)
     private Position center;
-    private SquadStatus status;
+    protected SquadStatus status;
     private UnitType type = null;
     private Unit target = null;
 
-    private boolean shouldDisband = false;
+    protected boolean shouldDisband = false;
 
     private double max_dx = 0;
     private double max_dy = 0;

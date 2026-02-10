@@ -75,9 +75,12 @@ public class SquadManager {
 
             if (fightSquad instanceof MutaliskSquad) {
                 MutaliskSquad mutaliskSquad = (MutaliskSquad) fightSquad;
-                mutaliskSquad.executeTactics(gameState);
-
-
+                Position rallyPosition = null;
+                Squad rallyToSquad = findBestMutaliskSquadToRallyTo(fightSquad);
+                if (rallyToSquad != null) {
+                    rallyPosition = rallyToSquad.getCenter();
+                }
+                mutaliskSquad.executeTactics(gameState, rallyPosition);
             } else if (fightSquad instanceof ScourgeSquad) {
                 ScourgeSquad scourgeSquad = (ScourgeSquad) fightSquad;
                 scourgeSquad.executeTactics(gameState);
@@ -338,6 +341,11 @@ public class SquadManager {
     }
 
     private Position getMutaliskRallyPoint(Squad squad) {
+        final int moveOutThreshold = calculateMoveOutThreshold(squad);
+        if (squad.size() < moveOutThreshold) {
+            Squad rallyToSquad = findBestMutaliskSquadToRallyTo(squad);
+            return rallyToSquad.getCenter();
+        }
         Set<Position> enemyWorkerLocations = gameState.getLastKnownLocationOfEnemyWorkers();
         if (enemyWorkerLocations.isEmpty()) {
             return getRallyPoint(squad);
@@ -1113,6 +1121,35 @@ public class SquadManager {
                            squad.getType() == UnitType.Zerg_Mutalisk)
             .sorted((s1, s2) -> Integer.compare(s2.size(), s1.size())) // Sort descending by size
             .collect(Collectors.toList());
+    }
+
+    private List<Squad> getSquadsByType(UnitType type) {
+        return fightSquads.stream()
+            .filter(squad -> squad.getType() == type)
+            .collect(Collectors.toList());
+    }
+
+    public Squad findBestMutaliskSquadToRallyTo(Squad currentSquad) {
+        List<Squad> mutaliskSquads = getSquadsByType(UnitType.Zerg_Mutalisk);
+        mutaliskSquads.removeIf(squad -> squad == currentSquad);
+
+        if (mutaliskSquads.isEmpty()) {
+            return null;
+        }
+
+        Position currentCenter = currentSquad.getCenter();
+        mutaliskSquads.sort((s1, s2) -> {
+            int sizeCompare = Integer.compare(s2.size(), s1.size());
+            if (sizeCompare != 0) {
+                return sizeCompare;
+            }
+            return Double.compare(
+                currentCenter.getDistance(s1.getCenter()),
+                currentCenter.getDistance(s2.getCenter())
+            );
+        });
+
+        return mutaliskSquads.get(0);
     }
 
     /**
