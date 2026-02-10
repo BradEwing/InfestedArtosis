@@ -137,19 +137,19 @@ public class SquadManager {
 
     /**
      * Determines the number of workers required to defend, assigns them to the defense squad and
-     * returns the assigned workers, so they can be removed from the WorkerManager.
+     * returns the assigned workers so they can be removed from the WorkerManager.
      *
      * @param base base to defend
      * @param baseUnits gatherers to assign to defense squad
      * @param hostileUnits units threatening this base
      * @return gatherers that have been assigned to defend
      */
-    public List<ManagedUnit> assignGathererDefenders(Base base, HashSet<ManagedUnit> baseUnits, List<Unit> hostileUnits) {
+    public List<ManagedUnit> assignGatherersToDefend(Base base, HashSet<ManagedUnit> baseUnits, List<Unit> hostileUnits) {
         ensureDefenseSquad(base);
         Squad defenseSquad = defenseSquads.get(base);
 
         List<ManagedUnit> reassignedGatherers = new ArrayList<>();
-        if (baseUnits.size() < 3 || baseUnits.size() - reassignedGatherers.size() < 3) {
+        if (baseUnits.size() < 3) {
             return reassignedGatherers;
         }
 
@@ -562,7 +562,6 @@ public class SquadManager {
     }
 
     /**
-     * TODO: All simulation should be handled by a CombatSimulator passed to the squad
      * @param squad
      */
     private void simulateFightSquad(Squad squad) {
@@ -573,7 +572,6 @@ public class SquadManager {
 
         HashSet<ManagedUnit> managedFighters = squad.getMembers();
 
-        // Handle Lurker retreat and contain (unchanged)
         if (squad.getType() == UnitType.Zerg_Lurker) {
             squad.setStatus(SquadStatus.FIGHT);
             for (ManagedUnit managedUnit : managedFighters) {
@@ -611,11 +609,9 @@ public class SquadManager {
             }
         }
 
-        // Handle building targeting when no visible units
         Set<Position> enemyBuildingPositions = gameState.getLastKnownPositionsOfBuildings();
         Set<Unit> enemyUnits = gameState.getDetectedEnemyUnits();
 
-        // If no enemy units, buildings, or known building locations exist, disband squad to transition to scout
         if (enemyUnits.isEmpty() && enemyBuildingPositions.isEmpty()) {
             ScoutData scoutData = gameState.getScoutData();
             if (!scoutData.isEnemyBuildingLocationKnown()) {
@@ -675,7 +671,6 @@ public class SquadManager {
             return;
         }
 
-        // Use combat simulator for engagement decision
         CombatSimulator.CombatResult result = defaultCombatSimulator.evaluate(squad, gameState);
 
         switch (result) {
@@ -862,7 +857,7 @@ public class SquadManager {
             }
         }
 
-        simulator.simulate(150); // Simulate 15 seconds
+        simulator.simulate(120); // Simulate 5 seconds
 
         if (simulator.getAgentsB().isEmpty()) {
             return true;
@@ -872,8 +867,10 @@ public class SquadManager {
             return false;
         }
 
-        float percentRemaining = (float) simulator.getAgentsA().size() / managedDefenders.size();
-        if (percentRemaining >= 0.50) {
+        final boolean isSCVRush = gameState.getStrategyTracker().isDetectedStrategy("SCVRush");
+        final float percentRemaining = (float) simulator.getAgentsA().size() / managedDefenders.size();
+        final float percentTreshold = (float) (isSCVRush ? 0.75 : 0.50);
+        if (percentRemaining >= percentTreshold) {
             return true;
         }
 
