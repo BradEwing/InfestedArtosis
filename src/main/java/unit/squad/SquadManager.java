@@ -48,7 +48,7 @@ public class SquadManager {
 
     private HashSet<ManagedUnit> disbanded = new HashSet<>();
 
-    private static final double MUTALISK_JOIN_DISTANCE = 384.0;
+    private static final double MUTALISK_JOIN_DISTANCE = 128;
 
     public SquadManager(Game game, GameState gameState, InformationManager informationManager) {
         this.game = game;
@@ -889,7 +889,7 @@ public class SquadManager {
 
     /**
      * Finds the closest Mutalisk squad that is in RALLY or FIGHT status.
-     * For FIGHT squads, only join if within 384 pixels to prevent regroup with mutalisks at base.
+     * For FIGHT squads, only join if within 128 pixels to prevent regroup with mutalisks at base.
      */
     private Squad findClosestMutaliskSquad(ManagedUnit managedUnit) {
         Squad closestSquad = null;

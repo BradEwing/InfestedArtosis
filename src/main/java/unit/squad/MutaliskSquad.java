@@ -60,16 +60,18 @@ public class MutaliskSquad extends Squad {
             shouldDisband = true;
             return;
         }
-        if (rallyPosition != null && status == SquadStatus.RALLY) {
-            rallyToPosition(rallyPosition, null);
-            return;
-        }
         int minSize = (gameState.getOpponentRace() == Race.Zerg) ? 2 : 5;
-        if (getMembers().size() < minSize) {
+        final int currentSize = members.size();
+        if (currentSize < minSize) {
+            if (rallyPosition != null && status == SquadStatus.RALLY) {
+                rallyToPosition(rallyPosition, null);
+                return;
+            }
             setStatus(SquadStatus.RALLY);
             rallyToSafePosition(gameState);
             return;
         }
+        
 
         Set<Unit> enemyUnits = gameState.getDetectedEnemyUnits();
 
@@ -147,7 +149,7 @@ public class MutaliskSquad extends Squad {
             Position safeAttackPos = findSafeAttackPosition(priorityTarget, staticDefenseCoverage, getCenter());
             if (safeAttackPos != null) {
                 double distanceToSafe = getCenter().getDistance(safeAttackPos);
-                if (!isAttackWindowActive && distanceToSafe > 96) {
+                if (distanceToSafe > 144) {
                     setStatus(SquadStatus.RALLY);
                     setTarget(priorityTarget);
                     rallyToPosition(safeAttackPos, priorityTarget);
@@ -344,12 +346,21 @@ public class MutaliskSquad extends Squad {
         return new Position(retreatX, retreatY);
     }
 
-    // Helper methods (simplified versions of the original SquadManager methods)
-
+    /**
+    * Determines highest priority target for mutalisk squad applying the following filters:
+    * 1. Prefer near enemies (<256 distance) over far
+    * 2. Prefer targets outside anti-air (AA) static defense coverage
+    * 3. Prefer edge units on convex hull (easier to pick off without diving deep)
+    *   - Exclude buildings except for static AA
+    * 4. Priority: AA units > static AA > workers > others 
+    * 5. Find closest unit to squad center from selected group.
+    * @param enemies
+    * @param staticDefenseCoverage
+    * @return Unit that is the best target
+    */
     private Unit findPriorityTarget(List<Unit> enemies, Set<Position> staticDefenseCoverage) {
         Position squadCenter = getCenter();
 
-        // Partition by distance: near first (<256), else far
         List<Unit> near = new ArrayList<>();
         List<Unit> far = new ArrayList<>();
         for (Unit e : enemies) {
@@ -360,7 +371,6 @@ public class MutaliskSquad extends Squad {
             return null;
         }
 
-        // Prefer targets not covered by static AA
         List<Unit> safe = new ArrayList<>();
         List<Unit> unsafe = new ArrayList<>();
         for (Unit e : working) {
@@ -368,11 +378,10 @@ public class MutaliskSquad extends Squad {
         }
         List<Unit> preferred = safe.isEmpty() ? unsafe : safe;
 
-        // Edge-aware: compute hull of local cluster and filter to hull units closest to squad
         List<Position> localPositions = new ArrayList<>();
         for (Unit e : preferred) {
             if (squadCenter.getDistance(e.getPosition()) <= 384) {
-                if (!(e.getType().isBuilding() && !isAAStaticDefense(e))) {
+                if (!e.getType().isBuilding() || isAAStaticDefense(e)) {
                     localPositions.add(e.getPosition());
                 }
             }
@@ -382,7 +391,6 @@ public class MutaliskSquad extends Squad {
         List<Unit> candidateEdge = edgeTargetsNearSquad(edgeUnits, squadCenter, 8);
         List<Unit> candidates = !candidateEdge.isEmpty() ? candidateEdge : preferred;
 
-        // Priority buckets within candidates: anti-air > AA static defense > workers > others
         List<Unit> aaUnits = new ArrayList<>();
         List<Unit> aaStatic = new ArrayList<>();
         List<Unit> workers = new ArrayList<>();
@@ -399,9 +407,15 @@ public class MutaliskSquad extends Squad {
             }
         }
 
-        if (!aaUnits.isEmpty()) return getClosestUnit(squadCenter, aaUnits);
-        if (!aaStatic.isEmpty()) return getClosestUnit(squadCenter, aaStatic);
-        if (!workers.isEmpty()) return getClosestUnit(squadCenter, workers);
+        if (!aaUnits.isEmpty()) { 
+            return getClosestUnit(squadCenter, aaUnits);
+        }
+        if (!aaStatic.isEmpty()) { 
+            return getClosestUnit(squadCenter, aaStatic);
+        }
+        if (!workers.isEmpty()) {
+            return getClosestUnit(squadCenter, workers);
+        }
         return getClosestUnit(squadCenter, others);
     }
 
@@ -518,12 +532,10 @@ public class MutaliskSquad extends Squad {
     private boolean isAntiAir(Unit unit) {
         UnitType type = unit.getType();
 
-        // Check if unit can attack air
         if (type.airWeapon() != null && type.airWeapon().maxRange() > 0) {
             return true;
         }
 
-        // Special cases
         if (type == UnitType.Terran_Bunker && !unit.getLoadedUnits().isEmpty()) {
             return true; // Assume bunker has marines
         }
