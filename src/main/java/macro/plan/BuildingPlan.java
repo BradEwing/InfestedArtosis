@@ -54,4 +54,9 @@ public class BuildingPlan extends Plan {
         return plannedUnit.mineralPrice();
     }
 
+    @Override
+    public int gasPrice() {
+        return plannedUnit.gasPrice();
+    }
+
 }

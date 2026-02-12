@@ -500,6 +500,7 @@ public class ProductionManager {
         List<Plan> requeuePlans = new ArrayList<>();
         ResourceCount resourceCount = gameState.getResourceCount();
         int mineralBuffer = resourceCount.availableMinerals();
+        int gasBuffer = resourceCount.availableGas();
         for (int i = 0; i < gameState.getProductionQueue().size(); i++) {
 
             boolean canSchedule = false;
@@ -539,7 +540,8 @@ public class ProductionManager {
             } else {
                 requeuePlans.add(plan);
                 mineralBuffer -= plan.mineralPrice();
-                if (plan.isBlockOtherPlans() || mineralBuffer <= 0) {
+                gasBuffer -= plan.gasPrice();
+                if (mineralBuffer <= 0 && gasBuffer <= 0) {
                     break;
                 }
             }

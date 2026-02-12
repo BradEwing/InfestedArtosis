@@ -10,21 +10,19 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.UUID;
 
-// TODO: Refactor with subclasses
 @Data
-public class Plan {
+public abstract class Plan {
     private final String uuid = UUID.randomUUID().toString();
 
     private PlanType type;
     private PlanState state = PlanState.PLANNED;
 
-    // Simple prioritization, will increment elsewhere
+    // Lower values have higher priority, usually corresponds to frame it was planned
     protected int priority;
     private int frameStart;
     private int retries = 0;
     private int predictedReadyFrame = 0;
 
-    // Block other plannedItem types in the queue
     protected boolean blockOtherPlans;
 
     @Nullable
@@ -69,6 +67,10 @@ public class Plan {
     }
 
     public int mineralPrice() {
+        return 0;
+    }
+
+    public int gasPrice() {
         return 0;
     }
 }

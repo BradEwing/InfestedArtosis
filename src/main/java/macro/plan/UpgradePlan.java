@@ -27,4 +27,9 @@ public class UpgradePlan extends Plan {
     public int mineralPrice() {
         return plannedUpgrade.mineralPrice();
     }
+
+    @Override
+    public int gasPrice() {
+        return plannedUpgrade.gasPrice();
+    }
 }

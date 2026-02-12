@@ -27,4 +27,9 @@ public class TechPlan extends Plan {
     public int mineralPrice() {
         return plannedTechType.mineralPrice();
     }
+
+    @Override
+    public int gasPrice() {
+        return plannedTechType.gasPrice();
+    }
 }
