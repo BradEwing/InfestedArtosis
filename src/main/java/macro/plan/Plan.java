@@ -23,8 +23,6 @@ public abstract class Plan {
     private int retries = 0;
     private int predictedReadyFrame = 0;
 
-    protected boolean blockOtherPlans;
-
     @Nullable
     private TilePosition buildPosition;
 
@@ -37,9 +35,8 @@ public abstract class Plan {
     @Nullable
     private TechType plannedTechType;
 
-    public Plan(int priority, boolean isBlocking) {
+    public Plan(int priority) {
         this.priority = priority;
-        this.blockOtherPlans = isBlocking;
     }
 
     @Override

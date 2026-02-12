@@ -9,7 +9,7 @@ public class TechPlan extends Plan {
     private TechType plannedTechType;
 
     public TechPlan(TechType techType, int priority, boolean isBlocking) {
-        super(priority, isBlocking);
+        super(priority);
         this.plannedTechType = techType;
     }
 

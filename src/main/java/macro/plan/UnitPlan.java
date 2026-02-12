@@ -9,7 +9,7 @@ public class UnitPlan extends Plan {
     private UnitType plannedUnit;
 
     public UnitPlan(UnitType unitType, int priority, boolean isBlocking) {
-        super(priority, isBlocking);
+        super(priority);
         this.plannedUnit = unitType;
     }
 
