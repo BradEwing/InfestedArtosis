@@ -15,26 +15,24 @@ public class BuildingPlan extends Plan {
     @Getter @Setter
     private UnitType plannedUnit;
 
-    public BuildingPlan(UnitType unitType, int priority, boolean isBlocking) {
-        super(priority, isBlocking);
+    public BuildingPlan(UnitType unitType, int priority) {
+        super(priority);
         this.plannedUnit = unitType;
-        this.blockOtherPlans = isBlocking;
     }
 
-    public BuildingPlan(UnitType unitType, int priority, boolean isBlocking, TilePosition buildPosition) {
-        super(priority, isBlocking);
+    public BuildingPlan(UnitType unitType, int priority, TilePosition buildPosition) {
+        super(priority);
         this.plannedUnit = unitType;
         this.buildPosition = buildPosition;
     }
 
-    public BuildingPlan(UnitType unitType, Time time, boolean isBlocking) {
-        super(time.getFrames(), isBlocking);
+    public BuildingPlan(UnitType unitType, Time time) {
+        super(time.getFrames());
         this.plannedUnit = unitType;
-        this.blockOtherPlans = isBlocking;
     }
 
-    public BuildingPlan(UnitType unitType, Time time, boolean isBlocking, TilePosition buildPosition) {
-        super(time.getFrames(), isBlocking);
+    public BuildingPlan(UnitType unitType, Time time, TilePosition buildPosition) {
+        super(time.getFrames());
         this.plannedUnit = unitType;
         this.buildPosition = buildPosition;
     }
@@ -52,6 +50,11 @@ public class BuildingPlan extends Plan {
     @Override
     public int mineralPrice() {
         return plannedUnit.mineralPrice();
+    }
+
+    @Override
+    public int gasPrice() {
+        return plannedUnit.gasPrice();
     }
 
 }

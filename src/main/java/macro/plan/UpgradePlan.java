@@ -9,7 +9,7 @@ public class UpgradePlan extends Plan {
     private UpgradeType plannedUpgrade;
 
     public UpgradePlan(UpgradeType upgrade, int priority, boolean isBlocking) {
-        super(priority, isBlocking);
+        super(priority);
         this.plannedUpgrade = upgrade;
     }
 
@@ -26,5 +26,10 @@ public class UpgradePlan extends Plan {
     @Override
     public int mineralPrice() {
         return plannedUpgrade.mineralPrice();
+    }
+
+    @Override
+    public int gasPrice() {
+        return plannedUpgrade.gasPrice();
     }
 }

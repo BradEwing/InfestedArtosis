@@ -132,19 +132,19 @@ public abstract class BuildOrder {
         }
 
         gameState.addPlannedHatchery(1);
-        return new BuildingPlan(UnitType.Zerg_Hatchery, gameState.getGameTime().getFrames(), true, base.getLocation());
+        return new BuildingPlan(UnitType.Zerg_Hatchery, gameState.getGameTime().getFrames(), base.getLocation());
     }
 
     protected Plan planLair(GameState gameState) {
         TechProgression techProgression = gameState.getTechProgression();
         techProgression.setPlannedLair(true);
-        return new BuildingPlan(UnitType.Zerg_Lair, 3, true);
+        return new BuildingPlan(UnitType.Zerg_Lair, 3);
     }
 
     protected Plan planSpawningPool(GameState gameState) {
         TechProgression techProgression = gameState.getTechProgression();
         techProgression.setPlannedSpawningPool(true);
-        Plan plan = new BuildingPlan(UnitType.Zerg_Spawning_Pool, gameState.getGameTime(), true);
+        Plan plan = new BuildingPlan(UnitType.Zerg_Spawning_Pool, gameState.getGameTime());
         TilePosition buildPosition = gameState.getTechBuildingLocation(UnitType.Zerg_Spawning_Pool);
         plan.setBuildPosition(buildPosition);
         return plan;
@@ -153,7 +153,7 @@ public abstract class BuildOrder {
     protected Plan planSpire(GameState gameState) {
         TechProgression techProgression = gameState.getTechProgression();
         techProgression.setSpire(true);
-        Plan plan = new BuildingPlan(UnitType.Zerg_Spire, 4, true);
+        Plan plan = new BuildingPlan(UnitType.Zerg_Spire, 4);
         TilePosition buildPosition = gameState.getTechBuildingLocation(UnitType.Zerg_Spire);
         plan.setBuildPosition(buildPosition);
         return plan;
@@ -161,7 +161,7 @@ public abstract class BuildOrder {
 
     protected Plan planExtractor(GameState gameState) {
         BaseData baseData = gameState.getBaseData();
-        Plan plan = new BuildingPlan(UnitType.Zerg_Extractor, 50, true);
+        Plan plan = new BuildingPlan(UnitType.Zerg_Extractor, 50);
         Unit geyser = baseData.reserveExtractor();
         plan.setBuildPosition(geyser.getTilePosition());
         return plan;
@@ -184,8 +184,8 @@ public abstract class BuildOrder {
         }
         baseData.reserveSunkenColony(eligibleBase.get());
         buildingPlanner.reservePlannedBuildingTiles(location, UnitType.Zerg_Creep_Colony);
-        Plan creepColonyPlan = new BuildingPlan(UnitType.Zerg_Creep_Colony, 5, true, location);
-        Plan sunkenColonyPlan = new BuildingPlan(UnitType.Zerg_Sunken_Colony, 5, true, location);
+        Plan creepColonyPlan = new BuildingPlan(UnitType.Zerg_Creep_Colony, 5, location);
+        Plan sunkenColonyPlan = new BuildingPlan(UnitType.Zerg_Sunken_Colony, 5, location);
         plans.add(creepColonyPlan);
         plans.add(sunkenColonyPlan);
         return plans;
@@ -247,7 +247,7 @@ public abstract class BuildOrder {
     protected Plan planHydraliskDen(GameState gameState) {
         TechProgression techProgression = gameState.getTechProgression();
         techProgression.setPlannedDen(true);
-        Plan plan = new BuildingPlan(UnitType.Zerg_Hydralisk_Den, gameState.getGameTime().getFrames(), true);
+        Plan plan = new BuildingPlan(UnitType.Zerg_Hydralisk_Den, gameState.getGameTime().getFrames());
         TilePosition buildPosition = gameState.getTechBuildingLocation(UnitType.Zerg_Hydralisk_Den);
         plan.setBuildPosition(buildPosition);
         return plan;
@@ -256,7 +256,7 @@ public abstract class BuildOrder {
     protected Plan planEvolutionChamber(GameState gameState) {
         TechProgression techProgression = gameState.getTechProgression();
         techProgression.setPlannedEvolutionChambers(techProgression.getPlannedEvolutionChambers() + 1);
-        Plan plan = new BuildingPlan(UnitType.Zerg_Evolution_Chamber, gameState.getGameTime().getFrames(), true);
+        Plan plan = new BuildingPlan(UnitType.Zerg_Evolution_Chamber, gameState.getGameTime().getFrames());
         TilePosition buildPosition = gameState.getTechBuildingLocation(UnitType.Zerg_Evolution_Chamber);
         plan.setBuildPosition(buildPosition);
         return plan;
@@ -285,7 +285,7 @@ public abstract class BuildOrder {
 
         buildingPlanner.reservePlannedBuildingTiles(location, UnitType.Zerg_Hatchery);
         gameState.addPlannedHatchery(1);
-        return new BuildingPlan(UnitType.Zerg_Hatchery, gameState.getGameTime().getFrames(), true, location);
+        return new BuildingPlan(UnitType.Zerg_Hatchery, gameState.getGameTime().getFrames(), location);
     }
 
     /**

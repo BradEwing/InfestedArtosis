@@ -9,7 +9,7 @@ public class TechPlan extends Plan {
     private TechType plannedTechType;
 
     public TechPlan(TechType techType, int priority, boolean isBlocking) {
-        super(priority, isBlocking);
+        super(priority);
         this.plannedTechType = techType;
     }
 
@@ -26,5 +26,10 @@ public class TechPlan extends Plan {
     @Override
     public int mineralPrice() {
         return plannedTechType.mineralPrice();
+    }
+
+    @Override
+    public int gasPrice() {
+        return plannedTechType.gasPrice();
     }
 }

@@ -9,7 +9,7 @@ public class UnitPlan extends Plan {
     private UnitType plannedUnit;
 
     public UnitPlan(UnitType unitType, int priority, boolean isBlocking) {
-        super(priority, isBlocking);
+        super(priority);
         this.plannedUnit = unitType;
     }
 
@@ -26,5 +26,10 @@ public class UnitPlan extends Plan {
     @Override
     public int mineralPrice() {
         return plannedUnit.mineralPrice();
+    }
+
+    @Override
+    public int gasPrice() {
+        return plannedUnit.gasPrice();
     }
 }
