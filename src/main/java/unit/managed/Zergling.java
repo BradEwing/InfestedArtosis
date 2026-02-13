@@ -3,6 +3,10 @@ package unit.managed;
 import bwapi.Game;
 import bwapi.Unit;
 import info.map.GameMap;
+import util.Filter;
+
+import java.util.List;
+import java.util.stream.Collectors;
 
 public class Zergling extends ManagedUnit {
     public Zergling(Game game, Unit unit, UnitRole role, GameMap gameMap) {
@@ -33,4 +37,12 @@ public class Zergling extends ManagedUnit {
         role = UnitRole.IDLE;
     }
 
+    @Override
+    protected List<Unit> getEnemiesInRadius(int currentX, int currentY) {
+        return game.getUnitsInRadius(currentX, currentY, 128)
+                .stream()
+                .filter(u -> u.getPlayer() != game.self())
+                .filter(u -> Filter.isGroundThreat(u.getType()))
+                .collect(Collectors.toList());
+    }
 }

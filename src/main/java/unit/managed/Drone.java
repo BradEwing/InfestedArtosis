@@ -3,6 +3,10 @@ package unit.managed;
 import bwapi.Game;
 import bwapi.Unit;
 import info.map.GameMap;
+import util.Filter;
+
+import java.util.List;
+import java.util.stream.Collectors;
 
 public class Drone extends ManagedUnit {
 
@@ -46,5 +50,15 @@ public class Drone extends ManagedUnit {
         if (defendTarget != null) {
             unit.attack(defendTarget.getPosition());
         }
+    }
+
+    @Override
+    protected List<Unit> getEnemiesInRadius(int currentX, int currentY) {
+        return game.getUnitsInRadius(currentX, currentY, 128)
+                .stream()
+                .filter(u -> u.getPlayer() != game.self())
+                .filter(u -> Filter.isGroundThreat(u.getType()))
+                .filter(u -> !Filter.isWorkerType(u.getType()) || u.isAttacking())
+                .collect(Collectors.toList());
     }
 }
