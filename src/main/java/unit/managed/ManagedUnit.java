@@ -227,6 +227,34 @@ public class ManagedUnit {
         return retreatPos;
     }
 
+    protected Position getSimpleRetreatPosition() {
+        int currentX = unit.getX();
+        int currentY = unit.getY();
+        List<Unit> enemies = getEnemiesInRadius(currentX, currentY);
+        if (enemies.isEmpty()) {
+            return new Position(currentX, currentY);
+        }
+
+        int sumDx = 0;
+        int sumDy = 0;
+        for (Unit enemy : enemies) {
+            sumDx += enemy.getX() - currentX;
+            sumDy += enemy.getY() - currentY;
+        }
+        int retreatDx = -sumDx;
+        int retreatDy = -sumDy;
+
+        double length = Math.max(1.0, Math.sqrt(retreatDx * retreatDx + retreatDy * retreatDy));
+        double scale = 128.0 / length;
+        int newX = currentX + (int)(retreatDx * scale);
+        int newY = currentY + (int)(retreatDy * scale);
+
+        newX = Math.max(0, Math.min(newX, game.mapWidth() * 32 - 1));
+        newY = Math.max(0, Math.min(newY, game.mapHeight() * 32 - 1));
+
+        return new Position(newX, newY);
+    }
+
     protected List<Unit> getEnemiesInRadius(int currentX, int currentY) {
         List<Unit> enemies = game.getUnitsInRadius(currentX, currentY, 128)
                 .stream()
@@ -559,8 +587,44 @@ public class ManagedUnit {
     }
 
     protected void scout() {
-        // Need to reassign movementTarget
         if (movementTargetPosition == null) {
+            return;
+        }
+
+        Position current = unit.getPosition();
+        List<Unit> threats = getEnemiesInRadius(current.getX(), current.getY());
+
+        if (!threats.isEmpty()) {
+            Position away = getSimpleRetreatPosition();
+            Position target = movementTargetPosition.toPosition();
+
+            double ax = away.getX() - current.getX();
+            double ay = away.getY() - current.getY();
+            double at = Math.max(1.0, Math.sqrt(ax * ax + ay * ay));
+            ax /= at; ay /= at;
+
+            double tx = target.getX() - current.getX();
+            double ty = target.getY() - current.getY();
+            double tt = Math.max(1.0, Math.sqrt(tx * tx + ty * ty));
+            tx /= tt; ty /= tt;
+
+            double dot = ax * tx + ay * ty;
+            double bx = ax;
+            double by = ay;
+            if (dot > 0) {
+                bx = ax + 0.5 * tx;
+                by = ay + 0.5 * ty;
+                double bt = Math.max(1.0, Math.sqrt(bx * bx + by * by));
+                bx /= bt; by /= bt;
+            }
+
+            int destX = current.getX() + (int)(bx * 128);
+            int destY = current.getY() + (int)(by * 128);
+            destX = Math.max(0, Math.min(destX, game.mapWidth() * 32 - 1));
+            destY = Math.max(0, Math.min(destY, game.mapHeight() * 32 - 1));
+
+            setUnready();
+            unit.move(new Position(destX, destY));
             return;
         }
 
@@ -571,8 +635,13 @@ public class ManagedUnit {
     private void updateState() {
         // Check if movementTargetPosition should be set to null
         if (movementTargetPosition != null) {
-            if (role == UnitRole.SCOUT && game.isVisible(movementTargetPosition)) {
-                movementTargetPosition = null;
+            if (role == UnitRole.SCOUT) {
+                TilePosition targetTile = movementTargetPosition;
+                Position targetPos = targetTile.toPosition();
+                double distance = unit.getPosition().getDistance(targetPos);
+                if (distance < 128 || game.isVisible(targetTile)) {
+                    movementTargetPosition = null;
+                }
             } else if (role == UnitRole.FIGHT && game.isVisible(movementTargetPosition)) {
                 movementTargetPosition = null;
             }

@@ -17,9 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.PriorityQueue;
 import java.util.Set;
-
-import static java.lang.Math.max;
-import static java.lang.Math.min;
+import java.util.stream.Collectors;
 
 /**
  * Bundles up information about the game map.
@@ -125,20 +123,108 @@ public class GameMap {
         return aStarSearch(startTile, endTile);
     }
 
-    public ScoutPath findScoutPath(TilePosition center) {
-        List<TilePosition> points = new ArrayList<>();
+    public ScoutPath computeScoutPerimeter(TilePosition center) {
+        final int SCAN_RADIUS = 20;
+        final int MIN_RADIUS = 7;
+        final int WAYPOINT_MIN_SPACING = 100;
 
-        TilePosition north = center.add(new TilePosition(0, max(0, center.getY()) - 7));
-        TilePosition east = center.add(new TilePosition(min(x, center.getX()) + 7, 0));
-        TilePosition south = center.add(new TilePosition(0, min(y, center.getY()) + 7));
-        TilePosition west = center.add(new TilePosition(max(0, center.getX()) - 7, 0));
+        List<Position> unsortedPositions = new ArrayList<>();
+        Position centerPos = center.toPosition();
 
-        points.add(north);
-        points.add(east);
-        points.add(south);
-        points.add(west);
+        for (int dx = -SCAN_RADIUS; dx <= SCAN_RADIUS; dx++) {
+            for (int dy = -SCAN_RADIUS; dy <= SCAN_RADIUS; dy++) {
+                TilePosition tp = center.add(new TilePosition(dx, dy));
 
-        return new ScoutPath(points);
+                if (tp.getX() < 0 || tp.getX() >= x || tp.getY() < 0 || tp.getY() >= y) {
+                    continue;
+                }
+
+                double dist = tp.toPosition().getDistance(centerPos);
+                if (dist < MIN_RADIUS * 32 || dist > SCAN_RADIUS * 32) {
+                    continue;
+                }
+
+                MapTile tile = mapTiles[tp.getX()][tp.getY()];
+                if (!tile.isBuildable() || !tile.isWalkable()) {
+                    continue;
+                }
+
+                boolean isEdge = false;
+                TilePosition[] neighbors = {
+                    tp.add(new TilePosition(1, 0)),
+                    tp.add(new TilePosition(-1, 0)),
+                    tp.add(new TilePosition(0, 1)),
+                    tp.add(new TilePosition(0, -1))
+                };
+
+                for (TilePosition neighbor : neighbors) {
+                    if (neighbor.getX() < 0 || neighbor.getX() >= x ||
+                        neighbor.getY() < 0 || neighbor.getY() >= y) {
+                        isEdge = true;
+                        break;
+                    }
+                    MapTile neighborTile = mapTiles[neighbor.getX()][neighbor.getY()];
+                    if (!neighborTile.isBuildable() || !neighborTile.isWalkable()) {
+                        isEdge = true;
+                        break;
+                    }
+                }
+
+                if (isEdge) {
+                    Position pos = tp.toPosition().add(new Position(16, 16));
+                    unsortedPositions.add(pos);
+                }
+            }
+        }
+
+        if (unsortedPositions.isEmpty()) {
+            List<TilePosition> fallback = new ArrayList<>();
+            fallback.add(center.add(new TilePosition(0, -MIN_RADIUS)));
+            fallback.add(center.add(new TilePosition(MIN_RADIUS, 0)));
+            fallback.add(center.add(new TilePosition(0, MIN_RADIUS)));
+            fallback.add(center.add(new TilePosition(-MIN_RADIUS, 0)));
+            return new ScoutPath(fallback);
+        }
+
+        List<Position> orderedPositions = new ArrayList<>();
+        Position current = unsortedPositions.get(0);
+        unsortedPositions.remove(0);
+        orderedPositions.add(current);
+
+        while (!unsortedPositions.isEmpty()) {
+            Position closest = null;
+            double closestDist = Double.MAX_VALUE;
+
+            for (Position pos : unsortedPositions) {
+                double dist = current.getDistance(pos);
+                if (dist < closestDist) {
+                    closestDist = dist;
+                    closest = pos;
+                }
+            }
+
+            orderedPositions.add(closest);
+            unsortedPositions.remove(closest);
+            current = closest;
+        }
+
+        List<Position> simplifiedPositions = new ArrayList<>();
+        simplifiedPositions.add(orderedPositions.get(0));
+
+        for (int i = 1; i < orderedPositions.size(); i++) {
+            Position last = simplifiedPositions.get(simplifiedPositions.size() - 1);
+            Position currentPos = orderedPositions.get(i);
+
+            if (last.getDistance(currentPos) >= WAYPOINT_MIN_SPACING) {
+                simplifiedPositions.add(currentPos);
+            }
+        }
+
+        List<TilePosition> waypoints = simplifiedPositions.stream()
+            .map(pos -> new TilePosition(pos))
+            .collect(Collectors.toList());
+
+        return new ScoutPath(waypoints);
     }
 
     private int calculateG(MapTile current, MapTile target, int currentG) {

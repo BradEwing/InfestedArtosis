@@ -358,7 +358,7 @@ public class UnitManager {
                 Set<Unit> enemies = new HashSet<>(gameState.getVisibleEnemyUnits());
                 shouldStopScouting = !scoutData.shouldOverlordsContinueScouting(game.enemy().getRace(), enemies);
             } else if (managedUnit.getUnitType() == UnitType.Zerg_Zergling) {
-                shouldStopScouting = informationManager.isEnemyUnitVisible();
+                shouldStopScouting = scoutManager.endZerglingScout();
             } else {
                 shouldStopScouting = scoutData.isEnemyBuildingLocationKnown() || informationManager.isEnemyUnitVisible();
             }

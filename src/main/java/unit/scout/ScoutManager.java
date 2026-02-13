@@ -118,13 +118,20 @@ public class ScoutManager {
     }
 
     public boolean endDroneScout() {
-        if (gameState.getBaseData().getMainEnemyBase() != null) {
-            return true;
-        }
-
         for (ManagedUnit managedUnit: droneScouts) {
             Unit unit = managedUnit.getUnit();
-            if (unit.isUnderAttack()) {
+            if (unit.isUnderAttack() || unit.getHitPoints() < unit.getType().maxHitPoints() * 0.5) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public boolean endZerglingScout() {
+        for (ManagedUnit managedUnit: zerglingScouts) {
+            Unit unit = managedUnit.getUnit();
+            if (unit.getHitPoints() < unit.getType().maxHitPoints() * 0.5) {
                 return true;
             }
         }
@@ -178,7 +185,7 @@ public class ScoutManager {
     private void ensureEnemyMainMovePoints(TilePosition enemyMainTp) {
         GameMap gameMap = gameState.getGameMap();
 
-        this.enemyMainScoutPath = gameMap.findScoutPath(enemyMainTp);
+        this.enemyMainScoutPath = gameMap.computeScoutPerimeter(enemyMainTp);
     }
 
     /**
@@ -255,7 +262,8 @@ public class ScoutManager {
 
         ScoutData scoutData = gameState.getScoutData();
         TilePosition target = null;
-        if (managedUnit.getUnitType() == UnitType.Zerg_Drone) {
+        if (managedUnit.getUnitType() == UnitType.Zerg_Drone ||
+            managedUnit.getUnitType() == UnitType.Zerg_Zergling) {
             target = this.pollDroneScoutTarget();
         } else {
             target = informationManager.pollScoutTarget(false);

@@ -135,4 +135,26 @@ public final class Filter {
         WeaponType airWeapon = unitType.airWeapon();
         return airWeapon != null && airWeapon != WeaponType.None;
     }
+
+    /**
+     * Returns true if the given type can threaten ground (units with a ground weapon, or hostile ground buildings).
+     */
+    public static boolean isGroundThreat(UnitType unitType) {
+        if (unitType.isBuilding()) {
+            return isHostileBuildingToGround(unitType);
+        }
+        WeaponType groundWeapon = unitType.groundWeapon();
+        return groundWeapon != null && groundWeapon != WeaponType.None;
+    }
+
+    public static boolean isWorkerType(UnitType type) {
+        return type == UnitType.Zerg_Drone || type == UnitType.Terran_SCV || type == UnitType.Protoss_Probe;
+    }
+
+    public static boolean isMeanWorker(Unit unit) {
+        if (unit == null) {
+            return false;
+        }
+        return isWorkerType(unit.getType()) && unit.isAttacking();
+    }
 }
