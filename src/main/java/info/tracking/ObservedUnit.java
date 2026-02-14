@@ -15,6 +15,7 @@ public class ObservedUnit {
     private final Unit unit;
     private UnitType unitType;
     private boolean proxied;
+    private boolean completed;
 
     public ObservedUnit(Unit unit, Time currentFrame, boolean proxied) {
         this.unit = unit;

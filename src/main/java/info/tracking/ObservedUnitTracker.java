@@ -22,11 +22,14 @@ public class ObservedUnitTracker {
     public void onUnitShow(Unit unit, int currentFrame, boolean isProxied) {
         Time t = new Time(currentFrame);
         if (!observedUnits.containsKey(unit)) {
-            observedUnits.put(unit, new ObservedUnit(unit, t, isProxied));
+            ObservedUnit ou = new ObservedUnit(unit, t, isProxied);
+            ou.setCompleted(unit.isCompleted());
+            observedUnits.put(unit, ou);
         } else {
             ObservedUnit u = observedUnits.get(unit);
             u.setLastObservedFrame(t);
             u.setLastKnownLocation(unit.getPosition());
+            u.setCompleted(unit.isCompleted());
             updateUnitTypeChange(unit);
         }
     }
@@ -166,6 +169,45 @@ public class ObservedUnitTracker {
                 .filter(ou -> ou.getDestroyedFrame() == null)
                 .map(ou -> ou.getUnit())
                 .collect(Collectors.toSet());
+    }
+
+    public int getCompletedBuildingCountNearPositions(UnitType type, Set<Position> positions, int distance) {
+        return (int) observedUnits.values().stream()
+                .filter(ou -> ou.getUnitType() == type)
+                .filter(ou -> ou.getDestroyedFrame() == null)
+                .filter(ObservedUnit::isCompleted)
+                .filter(ou -> isNearAnyPosition(ou, positions, distance))
+                .count();
+    }
+
+    public int getIncompleteBuildingCountNearPositions(Set<Position> positions, int distance) {
+        return (int) observedUnits.values().stream()
+                .filter(ou -> ou.getUnitType().isBuilding())
+                .filter(ou -> ou.getDestroyedFrame() == null)
+                .filter(ou -> !ou.isCompleted())
+                .filter(ou -> isNearAnyPosition(ou, positions, distance))
+                .count();
+    }
+
+    public int getLivingBuildingCountNearPositions(Set<Position> positions, int distance) {
+        return (int) observedUnits.values().stream()
+                .filter(ou -> ou.getUnitType().isBuilding())
+                .filter(ou -> ou.getDestroyedFrame() == null)
+                .filter(ou -> isNearAnyPosition(ou, positions, distance))
+                .count();
+    }
+
+    private boolean isNearAnyPosition(ObservedUnit ou, Set<Position> positions, int distance) {
+        Position unitPos = ou.getUnit().isVisible() ? ou.getUnit().getPosition() : ou.getLastKnownLocation();
+        if (unitPos == null) { 
+            return false;
+        }
+        for (Position pos : positions) {
+            if (unitPos.getDistance(pos) <= distance) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public void clearLastKnownLocationsAt(Set<Position> visibleLocations) {

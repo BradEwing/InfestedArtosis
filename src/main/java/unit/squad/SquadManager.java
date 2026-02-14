@@ -11,6 +11,7 @@ import bwem.Base;
 import info.GameState;
 import info.InformationManager;
 import info.ScoutData;
+import info.tracking.ObservedUnitTracker;
 import info.tracking.PsiStormTracker;
 import info.tracking.StrategyTracker;
 import org.bk.ass.sim.BWMirrorAgentFactory;
@@ -127,6 +128,12 @@ public class SquadManager {
 
 
     public void updateDefenseSquads() {
+        if (gameState.isCannonRushed() && !gameState.isCannonRushDefend()) {
+            for (Base base : new ArrayList<>(defenseSquads.keySet())) {
+                disbandDefendSquad(base);
+            }
+            return;
+        }
         ensureDefenderSquadsHaveTargets();
     }
 
@@ -231,7 +238,6 @@ public class SquadManager {
                 continue;
             }
 
-            // TODO: NPE here where base is lost
             HashSet<Unit> baseThreats = gameState.getBaseToThreatLookup().get(base);
             if (baseThreats == null || baseThreats.size() == 0) {
                 continue;
@@ -467,11 +473,25 @@ public class SquadManager {
     }
 
     private int calculateZerglingMoveOutThreshold(Squad squad) {
+        StrategyTracker strategyTracker = gameState.getStrategyTracker();
+
+        if (gameState.isCannonRushed()) {
+            Set<Position> basePositions = gameState.getBaseData().getMyBases()
+                .stream()
+                .map(Base::getCenter)
+                .collect(Collectors.toSet());
+            ObservedUnitTracker tracker = gameState.getObservedUnitTracker();
+            int completedCannons = tracker.getCompletedBuildingCountNearPositions(UnitType.Protoss_Photon_Cannon, basePositions, 512);
+            if (completedCannons == 0) {
+                return 1;
+            }
+            return Math.max(6, completedCannons * 3);
+        }
+
         int staticDefensePenalty = Math.min(informationManager.getEnemyHostileToGroundBuildingsCount(), 6);
         int baseThreshold = gameState.getOpponentRace() == Race.Zerg ? 4 : 12;
         int threshold = baseThreshold * (1 + staticDefensePenalty);
 
-        StrategyTracker strategyTracker = gameState.getStrategyTracker();
         if (strategyTracker.isDetectedStrategy("2Gate")) {
             int zealots = gameState.enemyUnitCount(UnitType.Protoss_Zealot);
             threshold += zealots * 3;

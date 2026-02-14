@@ -51,7 +51,9 @@ public class ProtossBase extends BuildOrder {
             zerglings = 2;
         }
         if (strategyTracker.isDetectedStrategy("CannonRush")) {
-            zerglings = 24;
+            int cannons = gameState.getObservedUnitTracker()
+                    .getCountOfLivingUnits(UnitType.Protoss_Photon_Cannon);
+            zerglings = 8 + (cannons * 3);
         }
 
         zerglings += zealots * 2;

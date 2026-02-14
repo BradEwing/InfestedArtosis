@@ -707,8 +707,9 @@ public class InformationManager {
                 baseThreats.put(base, new HashSet<>());
             }
 
+            int baseThreatRadius = gameState.isCannonRushed() ? 512 : 256;
             for (Unit unit: visibleUnits) {
-                if (base.getLocation().toPosition().getDistance(unit.getTilePosition().toPosition()) < 256) {
+                if (base.getLocation().toPosition().getDistance(unit.getTilePosition().toPosition()) < baseThreatRadius) {
                     baseThreats.get(base).add(unit);
                 }
             }
