@@ -12,6 +12,9 @@ import java.util.Collections;
 import java.util.List;
 
 public class ProtossBase extends BuildOrder {
+
+    final int EXCESS_MINERALS = 350;
+    
     protected ProtossBase(String name) {
         super(name);
     }
@@ -35,6 +38,7 @@ public class ProtossBase extends BuildOrder {
         int zerglings = 6;
         int currentZerglings = gameState.getUnitTypeCount().get(UnitType.Zerg_Zergling);
         int zealots = gameState.enemyUnitCount(UnitType.Protoss_Zealot);
+        int availableMinerals = gameState.getResourceCount().availableMinerals();
 
         StrategyTracker strategyTracker = gameState.getStrategyTracker();
 
@@ -54,6 +58,9 @@ public class ProtossBase extends BuildOrder {
             int cannons = gameState.getObservedUnitTracker()
                     .getCountOfLivingUnits(UnitType.Protoss_Photon_Cannon);
             zerglings = 8 + (cannons * 3);
+            if (availableMinerals > EXCESS_MINERALS) {
+                zerglings += availableMinerals % UnitType.Zerg_Zergling.mineralPrice();
+            }
         }
 
         zerglings += zealots * 2;

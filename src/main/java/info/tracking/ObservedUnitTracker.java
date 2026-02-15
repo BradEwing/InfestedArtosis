@@ -19,6 +19,20 @@ public class ObservedUnitTracker {
 
     }
 
+    public void onFrame() {
+        for (ObservedUnit ou : observedUnits.values()) {
+            if (ou.getDestroyedFrame() != null) {
+                continue;
+            }
+            if (!ou.isCompleted()) {
+                Unit unit = ou.getUnit();
+                if (unit.isVisible() && unit.isCompleted()) {
+                    ou.setCompleted(true);
+                }
+            }
+        }
+    }
+
     public void onUnitShow(Unit unit, int currentFrame, boolean isProxied) {
         Time t = new Time(currentFrame);
         if (!observedUnits.containsKey(unit)) {
@@ -208,6 +222,37 @@ public class ObservedUnitTracker {
             }
         }
         return false;
+    }
+
+    public Set<Unit> getProxiedBuildings() {
+        return observedUnits.values()
+                .stream()
+                .filter(ou -> ou.getUnitType().isBuilding())
+                .filter(ObservedUnit::isProxied)
+                .filter(ou -> ou.getDestroyedFrame() == null)
+                .map(ObservedUnit::getUnit)
+                .collect(Collectors.toSet());
+    }
+
+    public Set<Unit> getWorkerUnitsNearPositions(Set<Position> positions, int distance) {
+        return observedUnits.values()
+                .stream()
+                .filter(ou -> Filter.isWorkerType(ou.getUnitType()))
+                .filter(ou -> ou.getDestroyedFrame() == null)
+                .filter(ou -> isNearAnyPosition(ou, positions, distance))
+                .map(ObservedUnit::getUnit)
+                .collect(Collectors.toSet());
+    }
+
+    public Position getLastKnownPosition(Unit unit) {
+        ObservedUnit ou = observedUnits.get(unit);
+        if (ou == null) {
+            return null;
+        }
+        if (ou.getUnit().isVisible()) {
+            return ou.getUnit().getPosition();
+        }
+        return ou.getLastKnownLocation();
     }
 
     public void clearLastKnownLocationsAt(Set<Position> visibleLocations) {

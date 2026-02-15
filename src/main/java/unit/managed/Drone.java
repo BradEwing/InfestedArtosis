@@ -47,6 +47,14 @@ public class Drone extends ManagedUnit {
         }
         setUnready();
 
+        if (defendTarget != null && defendTarget.isVisible()) {
+            unit.attack(defendTarget.getPosition());
+            return;
+        }
+        if (movementTargetPosition != null) {
+            unit.move(movementTargetPosition.toPosition());
+            return;
+        }
         if (defendTarget != null) {
             unit.attack(defendTarget.getPosition());
         }

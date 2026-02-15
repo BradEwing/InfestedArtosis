@@ -45,7 +45,7 @@ public class InformationManager {
     private HashSet<Base> startingBasesSet = new HashSet<>();
     private HashSet<Base> expansionBasesSet = new HashSet<>();
 
-    private static final int DETECTION_DISTANCE = 10;
+    private static final int DETECTION_DISTANCE = 16;
 
     private boolean isGasStructure(UnitType unitType) {
         return unitType == UnitType.Terran_Refinery 
@@ -670,6 +670,7 @@ public class InformationManager {
 
     private void checkIfEnemyUnitsStillThreatenBase() {
         HashMap<Base, HashSet<Unit>> baseThreats = gameState.getBaseToThreatLookup();
+        ObservedUnitTracker tracker = gameState.getObservedUnitTracker();
         for (Base base: baseThreats.keySet()) {
             HashSet<Unit> unitThreats = baseThreats.get(base);
             List<Unit> noLongerThreats = new ArrayList<>();
@@ -678,7 +679,12 @@ public class InformationManager {
                     noLongerThreats.add(unit);
                     continue;
                 }
-                int distance = (int) base.getLocation().toPosition().getDistance(unit.getTilePosition().toPosition());
+                Position unitPos = tracker.getLastKnownPosition(unit);
+                if (unitPos == null) {
+                    noLongerThreats.add(unit);
+                    continue;
+                }
+                int distance = (int) base.getLocation().toPosition().getDistance(unitPos);
                 if (distance > 256) {
                     noLongerThreats.add(unit);
                     continue;
@@ -696,22 +702,40 @@ public class InformationManager {
 
     private void checkBaseThreats() {
         Set<Unit> visibleUnits = gameState.getDetectedEnemyUnits();
-        if (visibleUnits.isEmpty()) {
-            return;
-        }
 
         Set<Base> bases = gameState.getGatherersAssignedToBase().keySet();
         HashMap<Base, HashSet<Unit>> baseThreats = gameState.getBaseToThreatLookup();
+        ObservedUnitTracker tracker = gameState.getObservedUnitTracker();
+
+        boolean isCannonRushed = gameState.isCannonRushed();
+        Set<Unit> proxiedBuildings = isCannonRushed ? tracker.getProxiedBuildings() : null;
+
         for (Base base: bases) {
             if (!baseThreats.containsKey(base)) {
                 baseThreats.put(base, new HashSet<>());
             }
 
-            int baseThreatRadius = gameState.isCannonRushed() ? 512 : 256;
+            int baseThreatRadius = isCannonRushed ? 512 : 256;
+            Position basePos = base.getLocation().toPosition();
+
             for (Unit unit: visibleUnits) {
-                if (base.getLocation().toPosition().getDistance(unit.getTilePosition().toPosition()) < baseThreatRadius) {
+                if (basePos.getDistance(unit.getTilePosition().toPosition()) < baseThreatRadius) {
                     baseThreats.get(base).add(unit);
                 }
+            }
+
+            if (isCannonRushed) {
+                for (Unit building : proxiedBuildings) {
+                    Position buildingPos = tracker.getLastKnownPosition(building);
+                    if (buildingPos != null && basePos.getDistance(buildingPos) < baseThreatRadius) {
+                        baseThreats.get(base).add(building);
+                    }
+                }
+
+                Set<Position> basePosition = new HashSet<>();
+                basePosition.add(base.getCenter());
+                Set<Unit> nearbyWorkers = tracker.getWorkerUnitsNearPositions(basePosition, 512);
+                baseThreats.get(base).addAll(nearbyWorkers);
             }
         }
     }

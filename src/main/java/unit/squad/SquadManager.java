@@ -18,7 +18,6 @@ import org.bk.ass.sim.BWMirrorAgentFactory;
 import org.bk.ass.sim.Simulator;
 import unit.managed.ManagedUnit;
 import unit.managed.UnitRole;
-import util.UnitDistanceComparator;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -155,14 +154,28 @@ public class SquadManager {
             return reassignedGatherers;
         }
 
-        for (ManagedUnit gatherer: baseUnits) {
-            Boolean canClear = canDefenseSquadClearThreat(defenseSquad, hostileUnits);
-            if (canClear) {
-                break;
+        if (gameState.isCannonRushed()) {
+            int halfWorkers = baseUnits.size() / 2;
+            int assigned = 0;
+            for (ManagedUnit gatherer : baseUnits) {
+                if (assigned >= halfWorkers) {
+                    break;
+                }
+                defenseSquad.addUnit(gatherer);
+                reassignedGatherers.add(gatherer);
+                assigned++;
             }
-            defenseSquad.addUnit(gatherer);
-            reassignedGatherers.add(gatherer);
+        } else {
+            for (ManagedUnit gatherer : baseUnits) {
+                Boolean canClear = canDefenseSquadClearThreat(defenseSquad, hostileUnits);
+                if (canClear) {
+                    break;
+                }
+                defenseSquad.addUnit(gatherer);
+                reassignedGatherers.add(gatherer);
+            }
         }
+
         for (ManagedUnit managedUnit: reassignedGatherers) {
             managedUnit.setRole(UnitRole.DEFEND);
             assignDefenderTarget(managedUnit, hostileUnits);
@@ -226,8 +239,30 @@ public class SquadManager {
         if (defender.getDefendTarget() != null) {
             return;
         }
-        threats.sort(new UnitDistanceComparator(defender.getUnit()));
-        defender.setDefendTarget(threats.get(0));
+        ObservedUnitTracker tracker = gameState.getObservedUnitTracker();
+        Position defenderPos = defender.getUnit().getPosition();
+
+        Unit bestTarget = null;
+        double bestDistance = Double.MAX_VALUE;
+        for (Unit threat : threats) {
+            Position threatPos = tracker.getLastKnownPosition(threat);
+            if (threatPos == null) {
+                continue;
+            }
+            double distance = defenderPos.getDistance(threatPos);
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                bestTarget = threat;
+            }
+        }
+
+        if (bestTarget != null) {
+            defender.setDefendTarget(bestTarget);
+            Position lastKnown = tracker.getLastKnownPosition(bestTarget);
+            if (lastKnown != null) {
+                defender.setMovementTargetPosition(lastKnown.toTilePosition());
+            }
+        }
     }
 
     private void ensureDefenderSquadsHaveTargets() {
@@ -253,7 +288,14 @@ public class SquadManager {
             return;
         }
         if (defender.getDefendTarget() != null) {
-            return;
+            ObservedUnitTracker tracker = gameState.getObservedUnitTracker();
+            Position lastKnown = tracker.getLastKnownPosition(defender.getDefendTarget());
+            if (lastKnown == null) {
+                defender.setDefendTarget(null);
+                defender.setMovementTargetPosition(null);
+            } else {
+                return;
+            }
         }
         assignDefenderTarget(defender, baseThreats.stream().collect(Collectors.toList()));
     }

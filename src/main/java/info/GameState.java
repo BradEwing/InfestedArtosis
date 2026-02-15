@@ -125,6 +125,7 @@ public class GameState {
     }
 
     public void onFrame() {
+        observedUnitTracker.onFrame();
         strategyTracker.onFrame();
         clearVisibleEnemyWorkerLocations();
     }
