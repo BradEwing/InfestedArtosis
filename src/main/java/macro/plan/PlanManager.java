@@ -10,8 +10,8 @@ import bwem.Mineral;
 import info.BaseData;
 import info.GameState;
 import unit.managed.ManagedUnit;
-import unit.managed.ManagedUnitToPositionComparator;
 import unit.managed.UnitRole;
+import util.Distance;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -153,7 +153,7 @@ public class PlanManager {
 
         TilePosition buildPosition = plan.getBuildPosition();
         if (buildPosition != null) {
-            eligibleDrones.sort(new ManagedUnitToPositionComparator(buildPosition.toPosition()));
+            eligibleDrones.sort(Distance.closestManagedUnitTo(buildPosition.toPosition()));
         }
 
         if (eligibleDrones.isEmpty()) {

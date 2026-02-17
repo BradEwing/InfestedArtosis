@@ -9,6 +9,7 @@ import bwapi.UpgradeType;
 import bwapi.WeaponType;
 import info.map.GameMap;
 import macro.plan.PlanType;
+import util.Vec2;
 
 public class Hydralisk extends ManagedUnit {
     private static final int UPGRADED_RANGE_BONUS = 32;
@@ -38,18 +39,11 @@ public class Hydralisk extends ManagedUnit {
 
     private void kiteFromTarget() {
         Position myPos = unit.getPosition();
-        Position enemyPos = fightTarget.getPosition();
+        Vec2 away = Vec2.between(fightTarget.getPosition(), myPos);
 
-        double dx = myPos.x - enemyPos.x;
-        double dy = myPos.y - enemyPos.y;
-        double length = Math.sqrt(dx * dx + dy * dy);
-
-        Position kitePosition = (length == 0) ?
+        Position kitePosition = (away.length() == 0) ?
                 new Position(myPos.x + MOVE_DISTANCE, myPos.y) :
-                new Position(
-                        (int) (myPos.x + (dx / length) * MOVE_DISTANCE),
-                        (int) (myPos.y + (dy / length) * MOVE_DISTANCE)
-                );
+                away.normalizeToLength(MOVE_DISTANCE).toPosition(myPos);
 
         unit.move(kitePosition);
     }

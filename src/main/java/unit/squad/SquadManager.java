@@ -20,6 +20,7 @@ import org.bk.ass.sim.BWMirrorAgentFactory;
 import org.bk.ass.sim.Simulator;
 import unit.managed.ManagedUnit;
 import unit.managed.UnitRole;
+import util.Vec2;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -751,45 +752,31 @@ public class SquadManager {
         }
         ex /= cnt; ey /= cnt;
 
-        // Retreat anchor = center + normalized away vector * 192
-        double dx = center.getX() - ex;
-        double dy = center.getY() - ey;
-        double len = Math.max(1.0, Math.sqrt(dx * dx + dy * dy));
-        double scale = 192.0 / len;
-        double ax = center.getX() + dx * scale;
-        double ay = center.getY() + dy * scale;
+        Vec2 away = new Vec2(center.getX() - ex, center.getY() - ey);
+        double len = Math.max(1.0, away.length());
+        Vec2 awayUnit = away.scale(1.0 / len);
+        Vec2 perp = awayUnit.perpendicular();
+        Position anchor = awayUnit.scale(192).clampToMap(game, center);
 
-        // Clamp anchor to map bounds
         int maxX = game.mapWidth() * 32 - 1;
         int maxY = game.mapHeight() * 32 - 1;
-        ax = Math.max(0, Math.min(ax, maxX));
-        ay = Math.max(0, Math.min(ay, maxY));
-
-        // Perpendicular and away unit vectors
-        double px = -dy / len;
-        double py = dx / len;
-        double ux = dx / len;
-        double uy = dy / len;
 
         int i = 0;
         for (ManagedUnit mu : squad.getMembers()) {
-            // Alternate offsets left/right and increase magnitude slightly per unit
             int side = (i % 2 == 0) ? 1 : -1;
-            double mag = 16 + (i / 2) * 8; // 16,24,24,32,...
-            int rx = (int) Math.round(ax + side * px * mag);
-            int ry = (int) Math.round(ay + side * py * mag);
-            // Clamp jittered targets to map bounds
+            double mag = 16 + (i / 2) * 8;
+            int rx = (int) Math.round(anchor.getX() + side * perp.x * mag);
+            int ry = (int) Math.round(anchor.getY() + side * perp.y * mag);
             rx = Math.max(0, Math.min(rx, maxX));
             ry = Math.max(0, Math.min(ry, maxY));
 
-            // Ensure walkability: if not walkable, scan along away vector to find a walkable point
             if (!game.isWalkable(new WalkPosition(rx, ry))) {
                 int bestX = rx;
                 int bestY = ry;
                 boolean found = false;
                 for (int t = 256; t >= 0; t -= 16) {
-                    int cx = (int) Math.round(rx + ux * t);
-                    int cy = (int) Math.round(ry + uy * t);
+                    int cx = (int) Math.round(rx + awayUnit.x * t);
+                    int cy = (int) Math.round(ry + awayUnit.y * t);
                     cx = Math.max(0, Math.min(cx, maxX));
                     cy = Math.max(0, Math.min(cy, maxY));
                     if (game.isWalkable(new WalkPosition(cx, cy))) {
@@ -801,8 +788,8 @@ public class SquadManager {
                 }
                 if (!found) {
                     for (int t = 16; t <= 128; t += 16) {
-                        int cx = (int) Math.round(rx - ux * t);
-                        int cy = (int) Math.round(ry - uy * t);
+                        int cx = (int) Math.round(rx - awayUnit.x * t);
+                        int cy = (int) Math.round(ry - awayUnit.y * t);
                         cx = Math.max(0, Math.min(cx, maxX));
                         cy = Math.max(0, Math.min(cy, maxY));
                         if (game.isWalkable(new WalkPosition(cx, cy))) {
@@ -842,27 +829,11 @@ public class SquadManager {
             return unitPos;
         }
 
-        double normalizedDx = totalDx / totalWeight;
-        double normalizedDy = totalDy / totalWeight;
-
-        double length = Math.sqrt(normalizedDx * normalizedDx + normalizedDy * normalizedDy);
-        if (length > 0) {
-            normalizedDx = (normalizedDx / length) * 192;
-            normalizedDy = (normalizedDy / length) * 192;
-        } else {
-            normalizedDx = 192;
-            normalizedDy = 0;
-        }
-
-        int retreatX = unitPos.getX() + (int) normalizedDx;
-        int retreatY = unitPos.getY() + (int) normalizedDy;
-
-        int maxX = game.mapWidth() * 32 - 1;
-        int maxY = game.mapHeight() * 32 - 1;
-        retreatX = Math.max(0, Math.min(retreatX, maxX));
-        retreatY = Math.max(0, Math.min(retreatY, maxY));
-
-        return new Position(retreatX, retreatY);
+        Vec2 weighted = new Vec2(totalDx / totalWeight, totalDy / totalWeight);
+        Vec2 retreat = weighted.length() > 0
+                ? weighted.normalizeToLength(192)
+                : new Vec2(192, 0);
+        return retreat.clampToMap(game, unitPos);
     }
 
     private boolean canDefenseSquadClearThreat(Squad squad, List<Unit> enemyUnits) {

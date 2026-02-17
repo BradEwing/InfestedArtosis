@@ -824,10 +824,7 @@ public class InformationManager {
     private boolean isNearAnyBase(TilePosition position, Set<Base> myBases) {
         for (Base base : myBases) {
             TilePosition baseLocation = base.getLocation();
-            int manhattanDistance = Math.abs(baseLocation.getX() - position.getX()) +
-                    Math.abs(baseLocation.getY() - position.getY());
-
-            if (manhattanDistance <= PROXY_DETECTION_DISTANCE) {
+            if (manhattanTileDistance(baseLocation, position) <= PROXY_DETECTION_DISTANCE) {
                 return true;
             }
         }

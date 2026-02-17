@@ -10,7 +10,7 @@ import info.map.GameMap;
 import info.map.GroundPath;
 import info.map.GroundPathComparator;
 import lombok.Getter;
-import util.BaseUnitDistanceComparator;
+import util.Distance;
 
 import java.util.HashMap;
 import java.util.HashSet;
@@ -320,7 +320,7 @@ public class BaseData {
             return;
         }
         Base base = myBases.stream()
-                .sorted(new BaseUnitDistanceComparator(sunken))
+                .sorted(Distance.closestBaseTo(sunken))
                 .collect(Collectors.toList())
                 .get(0);
         sunkenColonyLookup.put(base, Math.max(sunkenColonyLookup.getOrDefault(base, 0) - 1, 0));
@@ -329,7 +329,7 @@ public class BaseData {
     // Called for onUnitComplete
     public void addSunkenColony(Unit sunken) {
         Base base = myBases.stream()
-                .sorted(new BaseUnitDistanceComparator(sunken))
+                .sorted(Distance.closestBaseTo(sunken))
                 .collect(Collectors.toList())
                 .get(0);
         sunkenColonyLookup.put(base, sunkenColonyLookup.getOrDefault(base, 0) + 1);

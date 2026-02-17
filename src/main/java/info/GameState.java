@@ -27,6 +27,7 @@ import macro.plan.PlanComparator;
 import macro.plan.PlanState;
 import strategy.buildorder.BuildOrder;
 import unit.managed.ManagedUnit;
+import util.Distance;
 import util.Time;
 
 import java.util.HashMap;
@@ -634,8 +635,7 @@ public class GameState {
                         for (int y = defensePos.getY() - range; y <= defensePos.getY() + range; y += 8) {
                             Position testPos = new Position(x, y);
 
-                            double distance = Math.sqrt(Math.pow(x - defensePos.getX(), 2) + Math.pow(y - defensePos.getY(), 2));
-                            if (distance <= range) {
+                            if (Distance.isWithinRange(x, y, defensePos.getX(), defensePos.getY(), range)) {
                                 coveredPositions.add(testPos);
                             }
                         }
@@ -692,8 +692,7 @@ public class GameState {
                         for (int y = defensePos.getY() - range; y <= defensePos.getY() + range; y += 8) {
                             Position testPos = new Position(x, y);
 
-                            double distance = Math.sqrt(Math.pow(x - defensePos.getX(), 2) + Math.pow(y - defensePos.getY(), 2));
-                            if (distance <= range) {
+                            if (Distance.isWithinRange(x, y, defensePos.getX(), defensePos.getY(), range)) {
                                 coveredPositions.add(testPos);
                             }
                         }

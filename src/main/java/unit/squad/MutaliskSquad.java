@@ -10,6 +10,7 @@ import unit.managed.ManagedUnit;
 import unit.managed.UnitRole;
 import unit.squad.CombatSimulator.CombatResult;
 import util.Time;
+import util.Vec2;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -258,8 +259,6 @@ public class MutaliskSquad extends Squad {
             GameState gameState) {
 
         Position mutaliskPos = mutalisk.getPosition();
-        int maxX = gameState.getGame().mapWidth() * 32 - 1;
-        int maxY = gameState.getGame().mapHeight() * 32 - 1;
 
         Position nearestStorm = null;
         double nearestStormDistance = Double.MAX_VALUE;
@@ -273,31 +272,14 @@ public class MutaliskSquad extends Squad {
         }
 
         if (nearestStorm != null && nearestStormDistance <= PsiStormTracker.STORM_RADIUS) {
-            double dx = mutaliskPos.getX() - nearestStorm.getX();
-            double dy = mutaliskPos.getY() - nearestStorm.getY();
-
-            double length = Math.sqrt(dx * dx + dy * dy);
-            if (length > 0) {
-                dx = (dx / length) * 256;
-                dy = (dy / length) * 256;
-            } else {
-                Position fallback = getCenter();
-                dx = fallback.getX() - mutaliskPos.getX();
-                dy = fallback.getY() - mutaliskPos.getY();
-                double fallbackLength = Math.sqrt(dx * dx + dy * dy);
-                if (fallbackLength > 0) {
-                    dx = (dx / fallbackLength) * 256;
-                    dy = (dy / fallbackLength) * 256;
-                } else {
-                    dx = 0;
-                    dy = 256;
+            Vec2 away = Vec2.between(nearestStorm, mutaliskPos);
+            if (away.length() == 0) {
+                away = Vec2.between(mutaliskPos, getCenter());
+                if (away.length() == 0) {
+                    away = new Vec2(0, 1);
                 }
             }
-
-            int retreatX = Math.max(0, Math.min(mutaliskPos.getX() + (int)dx, maxX));
-            int retreatY = Math.max(0, Math.min(mutaliskPos.getY() + (int)dy, maxY));
-
-            return new Position(retreatX, retreatY);
+            return away.normalizeToLength(256).clampToMap(gameState.getGame(), mutaliskPos);
         }
 
         double totalDx = 0;
@@ -331,19 +313,8 @@ public class MutaliskSquad extends Squad {
             return mutaliskPos;
         }
 
-        double normalizedDx = totalDx / totalWeight;
-        double normalizedDy = totalDy / totalWeight;
-
-        double length = Math.sqrt(normalizedDx * normalizedDx + normalizedDy * normalizedDy);
-        if (length > 0) {
-            normalizedDx = (normalizedDx / length) * 192;
-            normalizedDy = (normalizedDy / length) * 192;
-        }
-
-        int retreatX = Math.max(0, Math.min(mutaliskPos.getX() + (int)normalizedDx, maxX));
-        int retreatY = Math.max(0, Math.min(mutaliskPos.getY() + (int)normalizedDy, maxY));
-
-        return new Position(retreatX, retreatY);
+        Vec2 weighted = new Vec2(totalDx / totalWeight, totalDy / totalWeight);
+        return weighted.normalizeToLength(192).clampToMap(gameState.getGame(), mutaliskPos);
     }
 
     /**
