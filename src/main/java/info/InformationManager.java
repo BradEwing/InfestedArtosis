@@ -47,7 +47,7 @@ public class InformationManager {
     private HashSet<Base> startingBasesSet = new HashSet<>();
     private HashSet<Base> expansionBasesSet = new HashSet<>();
 
-    private static final int DETECTION_DISTANCE = 24;
+    private static final int PROXY_DETECTION_DISTANCE = 24;
 
     private boolean isGasStructure(UnitType unitType) {
         return unitType == UnitType.Terran_Refinery 
@@ -827,7 +827,7 @@ public class InformationManager {
             int manhattanDistance = Math.abs(baseLocation.getX() - position.getX()) +
                     Math.abs(baseLocation.getY() - position.getY());
 
-            if (manhattanDistance <= DETECTION_DISTANCE) {
+            if (manhattanDistance <= PROXY_DETECTION_DISTANCE) {
                 return true;
             }
         }
