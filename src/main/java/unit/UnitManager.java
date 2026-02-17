@@ -96,6 +96,15 @@ public class UnitManager {
         workerManager.onFrame();
         squadManager.updateOverlordSquad();
         squadManager.updateFightSquads();
+        if (gameState.isCannonRushed() && !gameState.isCannonRushDefend()) {
+            for (Base base : new ArrayList<>(squadManager.defenseSquads.keySet())) {
+                List<ManagedUnit> freed = squadManager.disbandDefendSquad(base);
+                for (ManagedUnit mu : freed) {
+                    mu.getUnit().stop();
+                    workerManager.addManagedWorker(mu);
+                }
+            }
+        }
         squadManager.updateDefenseSquads();
         scoutManager.onFrame();
 
@@ -440,13 +449,18 @@ public class UnitManager {
             return;
         }
         HashSet<ManagedUnit> gatherersAssignedToBase = this.gameState.getGatherersAssignedToBase().get(base);
-        if (gatherersAssignedToBase.isEmpty()) {
-            return;
+        if (gatherersAssignedToBase == null || gatherersAssignedToBase.isEmpty()) {
+            Base mainBase = gameState.getBaseData().getMainBase();
+            if (mainBase == null || mainBase.equals(base)) {
+                return;
+            }
+            gatherersAssignedToBase = this.gameState.getGatherersAssignedToBase().get(mainBase);
+            if (gatherersAssignedToBase == null || gatherersAssignedToBase.isEmpty()) {
+                return;
+            }
         }
         List<Unit> threateningUnits = new ArrayList<>(this.gameState.getBaseToThreatLookup()
                 .get(base));
-
-
 
         List<ManagedUnit> gatherersToReassign = this.squadManager.assignGathererDefenders(base, gatherersAssignedToBase, threateningUnits);
         for (ManagedUnit managedUnit: gatherersToReassign) {

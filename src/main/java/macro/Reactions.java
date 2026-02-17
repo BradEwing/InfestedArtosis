@@ -40,6 +40,9 @@ public class Reactions {
         Set<Position> basePositions = gameState.getBaseData().getMyBases().stream()
                 .map(Base::getCenter)
                 .collect(Collectors.toSet());
+        gameState.getBaseData().getReservedBases().stream()
+                .map(Base::getCenter)
+                .forEach(basePositions::add);
 
         ObservedUnitTracker tracker = gameState.getObservedUnitTracker();
         int completedCannons = tracker.getCompletedBuildingCountNearPositions(

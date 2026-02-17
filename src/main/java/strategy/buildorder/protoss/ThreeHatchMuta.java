@@ -317,7 +317,6 @@ public class ThreeHatchMuta extends ProtossBase {
             return false;
         }
 
-        // Plan after 1st macro hatch is planned
         if (!plannedFirstMacroHatch) {
             return false;
         }

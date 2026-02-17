@@ -84,6 +84,10 @@ public class ProtossBase extends BuildOrder {
         StrategyTracker strategyTracker = gameState.getStrategyTracker();
         Time gameTime = gameState.getGameTime();
 
+        if (strategyTracker.isDetectedStrategy("CannonRush")) {
+            return 1;
+        }
+
         if (strategyTracker.isDetectedStrategy("2Gate") && gameTime.greaterThan(new Time(3, 20))) {
             sunkens += 1;
         }

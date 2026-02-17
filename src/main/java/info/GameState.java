@@ -734,6 +734,10 @@ public class GameState {
         return observedUnitTracker.getBuilding();
     }
 
+    public Set<Unit> getCompletedEnemyBuildings() {
+        return observedUnitTracker.getCompletedBuildings();
+    }
+
     /**
      * Gets all known enemy building positions for combat evaluation.
      * @return Set of enemy building positions

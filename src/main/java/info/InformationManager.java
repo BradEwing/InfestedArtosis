@@ -45,7 +45,7 @@ public class InformationManager {
     private HashSet<Base> startingBasesSet = new HashSet<>();
     private HashSet<Base> expansionBasesSet = new HashSet<>();
 
-    private static final int DETECTION_DISTANCE = 16;
+    private static final int DETECTION_DISTANCE = 20;
 
     private boolean isGasStructure(UnitType unitType) {
         return unitType == UnitType.Terran_Refinery 
@@ -671,9 +671,11 @@ public class InformationManager {
     private void checkIfEnemyUnitsStillThreatenBase() {
         HashMap<Base, HashSet<Unit>> baseThreats = gameState.getBaseToThreatLookup();
         ObservedUnitTracker tracker = gameState.getObservedUnitTracker();
+        int threatRadius = gameState.isCannonRushed() ? 20 : 8;
         for (Base base: baseThreats.keySet()) {
             HashSet<Unit> unitThreats = baseThreats.get(base);
             List<Unit> noLongerThreats = new ArrayList<>();
+            TilePosition baseTile = base.getLocation();
             for (Unit unit: unitThreats) {
                 if (unit.getType() == UnitType.Unknown) {
                     noLongerThreats.add(unit);
@@ -684,8 +686,10 @@ public class InformationManager {
                     noLongerThreats.add(unit);
                     continue;
                 }
-                int distance = (int) base.getLocation().toPosition().getDistance(unitPos);
-                if (distance > 256) {
+                TilePosition unitTile = unitPos.toTilePosition();
+                int distance = Math.abs(baseTile.getX() - unitTile.getX())
+                        + Math.abs(baseTile.getY() - unitTile.getY());
+                if (distance > threatRadius) {
                     noLongerThreats.add(unit);
                     continue;
                 }
@@ -703,23 +707,30 @@ public class InformationManager {
     private void checkBaseThreats() {
         Set<Unit> visibleUnits = gameState.getDetectedEnemyUnits();
 
-        Set<Base> bases = gameState.getGatherersAssignedToBase().keySet();
+        Set<Base> bases = new HashSet<>(gameState.getGatherersAssignedToBase().keySet());
         HashMap<Base, HashSet<Unit>> baseThreats = gameState.getBaseToThreatLookup();
         ObservedUnitTracker tracker = gameState.getObservedUnitTracker();
 
         boolean isCannonRushed = gameState.isCannonRushed();
         Set<Unit> proxiedBuildings = isCannonRushed ? tracker.getProxiedBuildings() : null;
 
+        if (isCannonRushed) {
+            bases.addAll(gameState.getBaseData().getReservedBases());
+        }
+
         for (Base base: bases) {
             if (!baseThreats.containsKey(base)) {
                 baseThreats.put(base, new HashSet<>());
             }
 
-            int baseThreatRadius = isCannonRushed ? 512 : 256;
-            Position basePos = base.getLocation().toPosition();
+            int baseThreatRadius = isCannonRushed ? 16 : 8;
+            TilePosition baseTile = base.getLocation();
 
             for (Unit unit: visibleUnits) {
-                if (basePos.getDistance(unit.getTilePosition().toPosition()) < baseThreatRadius) {
+                TilePosition unitTile = unit.getTilePosition();
+                int distance = Math.abs(baseTile.getX() - unitTile.getX())
+                        + Math.abs(baseTile.getY() - unitTile.getY());
+                if (distance < baseThreatRadius) {
                     baseThreats.get(base).add(unit);
                 }
             }
@@ -727,7 +738,13 @@ public class InformationManager {
             if (isCannonRushed) {
                 for (Unit building : proxiedBuildings) {
                     Position buildingPos = tracker.getLastKnownPosition(building);
-                    if (buildingPos != null && basePos.getDistance(buildingPos) < baseThreatRadius) {
+                    if (buildingPos == null) {
+                        continue;
+                    }
+                    TilePosition buildingTile = buildingPos.toTilePosition();
+                    int distance = Math.abs(baseTile.getX() - buildingTile.getX())
+                            + Math.abs(baseTile.getY() - buildingTile.getY());
+                    if (distance < baseThreatRadius) {
                         baseThreats.get(base).add(building);
                     }
                 }

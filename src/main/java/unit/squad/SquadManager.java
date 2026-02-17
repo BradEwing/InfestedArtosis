@@ -127,12 +127,6 @@ public class SquadManager {
 
 
     public void updateDefenseSquads() {
-        if (gameState.isCannonRushed() && !gameState.isCannonRushDefend()) {
-            for (Base base : new ArrayList<>(defenseSquads.keySet())) {
-                disbandDefendSquad(base);
-            }
-            return;
-        }
         ensureDefenderSquadsHaveTargets();
     }
 
@@ -155,10 +149,19 @@ public class SquadManager {
         }
 
         if (gameState.isCannonRushed()) {
-            int halfWorkers = baseUnits.size() / 2;
+            int totalGatherers = gameState.getGatherersAssignedToBase().values().stream()
+                    .mapToInt(HashSet::size)
+                    .sum();
+            int existingDefenders = defenseSquads.values().stream()
+                    .mapToInt(s -> s.getMembers().size())
+                    .sum();
+            int maxToAssign = totalGatherers / 2 - existingDefenders;
+            if (maxToAssign <= 0) {
+                return reassignedGatherers;
+            }
             int assigned = 0;
             for (ManagedUnit gatherer : baseUnits) {
-                if (assigned >= halfWorkers) {
+                if (assigned >= maxToAssign) {
                     break;
                 }
                 defenseSquad.addUnit(gatherer);
@@ -195,6 +198,8 @@ public class SquadManager {
 
         for (ManagedUnit defender: reassignedDefenders) {
             defenseSquad.removeUnit(defender);
+            defender.setDefendTarget(null);
+            defender.setMovementTargetPosition(null);
         }
 
         return reassignedDefenders;
@@ -240,17 +245,22 @@ public class SquadManager {
             return;
         }
         ObservedUnitTracker tracker = gameState.getObservedUnitTracker();
-        Position defenderPos = defender.getUnit().getPosition();
+        TilePosition defenderTile = defender.getUnit().getTilePosition();
 
         Unit bestTarget = null;
-        double bestDistance = Double.MAX_VALUE;
+        int bestHp = Integer.MAX_VALUE;
+        int bestDistance = Integer.MAX_VALUE;
         for (Unit threat : threats) {
             Position threatPos = tracker.getLastKnownPosition(threat);
             if (threatPos == null) {
                 continue;
             }
-            double distance = defenderPos.getDistance(threatPos);
-            if (distance < bestDistance) {
+            int hp = threat.getHitPoints();
+            TilePosition threatTile = threatPos.toTilePosition();
+            int distance = Math.abs(defenderTile.getX() - threatTile.getX())
+                    + Math.abs(defenderTile.getY() - threatTile.getY());
+            if (hp < bestHp || hp == bestHp && distance < bestDistance) {
+                bestHp = hp;
                 bestDistance = distance;
                 bestTarget = threat;
             }
@@ -284,9 +294,6 @@ public class SquadManager {
     }
 
     private void ensureDefenderHasTarget(ManagedUnit defender, HashSet<Unit> baseThreats) {
-        if (!defender.isReady()) {
-            return;
-        }
         if (defender.getDefendTarget() != null) {
             ObservedUnitTracker tracker = gameState.getObservedUnitTracker();
             Position lastKnown = tracker.getLastKnownPosition(defender.getDefendTarget());
@@ -1076,6 +1083,16 @@ public class SquadManager {
         if (filtered.isEmpty()) {
             managedUnit.setMovementTargetPosition(informationManager.pollScoutTarget(false));
             return;
+        }
+
+        if (gameState.isCannonRushed()) {
+            Set<Unit> proxied = gameState.getObservedUnitTracker().getProxiedBuildings();
+            List<Unit> proxiedTargets = filtered.stream()
+                    .filter(proxied::contains)
+                    .collect(Collectors.toList());
+            if (!proxiedTargets.isEmpty()) {
+                filtered = proxiedTargets;
+            }
         }
 
         Unit closestEnemy = closestHostileUnit(unit, filtered);

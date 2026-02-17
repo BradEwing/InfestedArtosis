@@ -155,6 +155,16 @@ public class ObservedUnitTracker {
                 .collect(Collectors.toSet());
     }
 
+    public Set<Unit> getCompletedBuildings() {
+        return observedUnits.values()
+                .stream()
+                .filter(ou -> ou.getUnitType().isBuilding())
+                .filter(ou -> ou.getDestroyedFrame() == null)
+                .filter(ObservedUnit::isCompleted)
+                .map(ou -> ou.getUnit())
+                .collect(Collectors.toSet());
+    }
+
     public Set<Position> getLastKnownPositionsOfBuildings() {
         return observedUnits.values()
                 .stream()

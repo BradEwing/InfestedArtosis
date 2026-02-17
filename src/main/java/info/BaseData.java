@@ -32,6 +32,7 @@ public class BaseData {
     private HashSet<Base> allBases = new HashSet<>();
     @Getter
     private HashSet<Base> myBases = new HashSet<>();
+    @Getter
     private HashSet<Base> reservedBases = new HashSet<>();
     @Getter
     private HashSet<Base> enemyBases = new HashSet<>();
