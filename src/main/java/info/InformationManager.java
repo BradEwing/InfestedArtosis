@@ -18,7 +18,7 @@ import info.map.GameMap;
 import info.map.MapTile;
 import info.map.MapTileType;
 import info.tracking.ObservedBulletTracker;
-import static util.Distance.manhattanTile;
+import static util.Distance.manhattanTileDistance;
 import info.tracking.ObservedUnitTracker;
 import learning.LearningManager;
 import macro.plan.Plan;
@@ -688,7 +688,7 @@ public class InformationManager {
                     noLongerThreats.add(unit);
                     continue;
                 }
-                if (manhattanTile(baseTile, unitPos.toTilePosition()) > threatRadius) {
+                if (manhattanTileDistance(baseTile, unitPos.toTilePosition()) > threatRadius) {
                     noLongerThreats.add(unit);
                     continue;
                 }
@@ -726,7 +726,7 @@ public class InformationManager {
             TilePosition baseTile = base.getLocation();
 
             for (Unit unit: visibleUnits) {
-                if (manhattanTile(baseTile, unit.getTilePosition()) < baseThreatRadius) {
+                if (manhattanTileDistance(baseTile, unit.getTilePosition()) < baseThreatRadius) {
                     baseThreats.get(base).add(unit);
                 }
             }
@@ -737,7 +737,7 @@ public class InformationManager {
                     if (buildingPos == null) {
                         continue;
                     }
-                    if (manhattanTile(baseTile, buildingPos.toTilePosition()) < baseThreatRadius) {
+                    if (manhattanTileDistance(baseTile, buildingPos.toTilePosition()) < baseThreatRadius) {
                         baseThreats.get(base).add(building);
                     }
                 }

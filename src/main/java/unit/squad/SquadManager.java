@@ -29,7 +29,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import static java.lang.Math.min;
-import static util.Distance.manhattanTile;
+import static util.Distance.manhattanTileDistance;
 import static util.Filter.closestHostileUnit;
 
 public class SquadManager {
@@ -261,7 +261,7 @@ public class SquadManager {
                 continue;
             }
             int hp = threat.getHitPoints();
-            int distance = manhattanTile(defenderTile, threatPos.toTilePosition());
+            int distance = manhattanTileDistance(defenderTile, threatPos.toTilePosition());
             if (hp < bestHp || hp == bestHp && distance < bestDistance) {
                 bestHp = hp;
                 bestDistance = distance;
