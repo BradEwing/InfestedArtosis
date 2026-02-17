@@ -14,6 +14,8 @@ import info.ScoutData;
 import info.tracking.ObservedUnitTracker;
 import info.tracking.PsiStormTracker;
 import info.tracking.StrategyTracker;
+import lombok.Getter;
+
 import org.bk.ass.sim.BWMirrorAgentFactory;
 import org.bk.ass.sim.Simulator;
 import unit.managed.ManagedUnit;
@@ -43,7 +45,8 @@ public class SquadManager {
 
     public HashSet<Squad> fightSquads = new HashSet<>();
 
-    HashMap<Base, Squad> defenseSquads = new HashMap<>();
+    @Getter
+    private HashMap<Base, Squad> defenseSquads = new HashMap<>();
 
     private final CombatSimulator defaultCombatSimulator;
 
