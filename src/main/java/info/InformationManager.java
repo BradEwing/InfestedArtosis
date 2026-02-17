@@ -18,6 +18,7 @@ import info.map.GameMap;
 import info.map.MapTile;
 import info.map.MapTileType;
 import info.tracking.ObservedBulletTracker;
+import static util.Distance.manhattanTile;
 import info.tracking.ObservedUnitTracker;
 import learning.LearningManager;
 import macro.plan.Plan;
@@ -26,6 +27,7 @@ import org.jetbrains.annotations.Nullable;
 import strategy.buildorder.BuildOrder;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -686,10 +688,7 @@ public class InformationManager {
                     noLongerThreats.add(unit);
                     continue;
                 }
-                TilePosition unitTile = unitPos.toTilePosition();
-                int distance = Math.abs(baseTile.getX() - unitTile.getX())
-                        + Math.abs(baseTile.getY() - unitTile.getY());
-                if (distance > threatRadius) {
+                if (manhattanTile(baseTile, unitPos.toTilePosition()) > threatRadius) {
                     noLongerThreats.add(unit);
                     continue;
                 }
@@ -727,10 +726,7 @@ public class InformationManager {
             TilePosition baseTile = base.getLocation();
 
             for (Unit unit: visibleUnits) {
-                TilePosition unitTile = unit.getTilePosition();
-                int distance = Math.abs(baseTile.getX() - unitTile.getX())
-                        + Math.abs(baseTile.getY() - unitTile.getY());
-                if (distance < baseThreatRadius) {
+                if (manhattanTile(baseTile, unit.getTilePosition()) < baseThreatRadius) {
                     baseThreats.get(base).add(unit);
                 }
             }
@@ -741,17 +737,12 @@ public class InformationManager {
                     if (buildingPos == null) {
                         continue;
                     }
-                    TilePosition buildingTile = buildingPos.toTilePosition();
-                    int distance = Math.abs(baseTile.getX() - buildingTile.getX())
-                            + Math.abs(baseTile.getY() - buildingTile.getY());
-                    if (distance < baseThreatRadius) {
+                    if (manhattanTile(baseTile, buildingPos.toTilePosition()) < baseThreatRadius) {
                         baseThreats.get(base).add(building);
                     }
                 }
 
-                Set<Position> basePosition = new HashSet<>();
-                basePosition.add(base.getCenter());
-                Set<Unit> nearbyWorkers = tracker.getWorkerUnitsNearPositions(basePosition, 512);
+                Set<Unit> nearbyWorkers = tracker.getWorkerUnitsNearPositions(Collections.singleton(base.getCenter()), 512);
                 baseThreats.get(base).addAll(nearbyWorkers);
             }
         }

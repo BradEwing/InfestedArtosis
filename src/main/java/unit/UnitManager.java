@@ -97,7 +97,7 @@ public class UnitManager {
         squadManager.updateOverlordSquad();
         squadManager.updateFightSquads();
         if (gameState.isCannonRushed() && !gameState.isCannonRushDefend()) {
-            for (Base base : new ArrayList<>(squadManager.defenseSquads.keySet())) {
+            for (Base base : new ArrayList<>(squadManager.getDefenseSquadBases())) {
                 List<ManagedUnit> freed = squadManager.disbandDefendSquad(base);
                 for (ManagedUnit mu : freed) {
                     mu.getUnit().stop();

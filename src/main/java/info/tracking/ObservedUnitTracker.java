@@ -142,7 +142,7 @@ public class ObservedUnitTracker {
                 .stream()
                 .filter(ou -> ou.getUnit().isDetected())
                 .filter(ou -> ou.getDestroyedFrame() == null)
-                .map(ou -> ou.getUnit())
+                .map(ObservedUnit::getUnit)
                 .collect(Collectors.toSet());
     }
 
@@ -151,7 +151,7 @@ public class ObservedUnitTracker {
                 .stream()
                 .filter(ou -> ou.getUnitType().isBuilding())
                 .filter(ou -> ou.getDestroyedFrame() == null)
-                .map(ou -> ou.getUnit())
+                .map(ObservedUnit::getUnit)
                 .collect(Collectors.toSet());
     }
 
@@ -161,7 +161,7 @@ public class ObservedUnitTracker {
                 .filter(ou -> ou.getUnitType().isBuilding())
                 .filter(ou -> ou.getDestroyedFrame() == null)
                 .filter(ObservedUnit::isCompleted)
-                .map(ou -> ou.getUnit())
+                .map(ObservedUnit::getUnit)
                 .collect(Collectors.toSet());
     }
 
@@ -181,7 +181,7 @@ public class ObservedUnitTracker {
                 .filter(ou -> ou.getUnit().getPlayer().getType() != PlayerType.None)
                 .filter(ou -> ou.getUnit().getPlayer().getType() != PlayerType.Neutral)
                 .filter(ou -> ou.getDestroyedFrame() == null)
-                .map(ou -> ou.getUnit())
+                .map(ObservedUnit::getUnit)
                 .collect(Collectors.toSet());
     }
 
@@ -191,7 +191,7 @@ public class ObservedUnitTracker {
                 .filter(ou -> ou.getUnitType().isBuilding())
                 .filter(ou -> Filter.isHostileBuildingToGround(ou.getUnitType()))
                 .filter(ou -> ou.getDestroyedFrame() == null)
-                .map(ou -> ou.getUnit())
+                .map(ObservedUnit::getUnit)
                 .collect(Collectors.toSet());
     }
 
@@ -200,15 +200,6 @@ public class ObservedUnitTracker {
                 .filter(ou -> ou.getUnitType() == type)
                 .filter(ou -> ou.getDestroyedFrame() == null)
                 .filter(ObservedUnit::isCompleted)
-                .filter(ou -> isNearAnyPosition(ou, positions, distance))
-                .count();
-    }
-
-    public int getIncompleteBuildingCountNearPositions(Set<Position> positions, int distance) {
-        return (int) observedUnits.values().stream()
-                .filter(ou -> ou.getUnitType().isBuilding())
-                .filter(ou -> ou.getDestroyedFrame() == null)
-                .filter(ou -> !ou.isCompleted())
                 .filter(ou -> isNearAnyPosition(ou, positions, distance))
                 .count();
     }

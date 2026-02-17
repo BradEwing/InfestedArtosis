@@ -13,7 +13,7 @@ import java.util.List;
 
 public class ProtossBase extends BuildOrder {
 
-    final int EXCESS_MINERALS = 350;
+    private static final int EXCESS_MINERALS = 350;
     
     protected ProtossBase(String name) {
         super(name);

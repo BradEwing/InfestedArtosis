@@ -27,6 +27,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import static java.lang.Math.min;
+import static util.Distance.manhattanTile;
 import static util.Filter.closestHostileUnit;
 
 public class SquadManager {
@@ -42,7 +43,7 @@ public class SquadManager {
 
     public HashSet<Squad> fightSquads = new HashSet<>();
 
-    public HashMap<Base, Squad> defenseSquads = new HashMap<>();
+    HashMap<Base, Squad> defenseSquads = new HashMap<>();
 
     private final CombatSimulator defaultCombatSimulator;
 
@@ -191,10 +192,7 @@ public class SquadManager {
         ensureDefenseSquad(base);
         Squad defenseSquad = defenseSquads.get(base);
 
-        List<ManagedUnit> reassignedDefenders = new ArrayList<>();
-        for (ManagedUnit defender: defenseSquad.getMembers()) {
-            reassignedDefenders.add(defender);
-        }
+        List<ManagedUnit> reassignedDefenders = new ArrayList<>(defenseSquad.getMembers());
 
         for (ManagedUnit defender: reassignedDefenders) {
             defenseSquad.removeUnit(defender);
@@ -231,6 +229,10 @@ public class SquadManager {
         return nonOverlordMembers;
     }
 
+    public Set<Base> getDefenseSquadBases() {
+        return defenseSquads.keySet();
+    }
+
     private void ensureDefenseSquad(Base base) {
         if (!defenseSquads.containsKey(base)) {
             Squad squad = new Squad();
@@ -256,9 +258,7 @@ public class SquadManager {
                 continue;
             }
             int hp = threat.getHitPoints();
-            TilePosition threatTile = threatPos.toTilePosition();
-            int distance = Math.abs(defenderTile.getX() - threatTile.getX())
-                    + Math.abs(defenderTile.getY() - threatTile.getY());
+            int distance = manhattanTile(defenderTile, threatPos.toTilePosition());
             if (hp < bestHp || hp == bestHp && distance < bestDistance) {
                 bestHp = hp;
                 bestDistance = distance;
@@ -304,7 +304,7 @@ public class SquadManager {
                 return;
             }
         }
-        assignDefenderTarget(defender, baseThreats.stream().collect(Collectors.toList()));
+        assignDefenderTarget(defender, new ArrayList<>(baseThreats));
     }
 
     private void removeEmptySquads() {
@@ -525,10 +525,7 @@ public class SquadManager {
         StrategyTracker strategyTracker = gameState.getStrategyTracker();
 
         if (gameState.isCannonRushed()) {
-            Set<Position> basePositions = gameState.getBaseData().getMyBases()
-                .stream()
-                .map(Base::getCenter)
-                .collect(Collectors.toSet());
+            Set<Position> basePositions = gameState.getBaseData().getMyBasePositions();
             ObservedUnitTracker tracker = gameState.getObservedUnitTracker();
             int completedCannons = tracker.getCompletedBuildingCountNearPositions(UnitType.Protoss_Photon_Cannon, basePositions, 512);
             if (completedCannons == 0) {

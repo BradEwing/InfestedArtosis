@@ -2,7 +2,6 @@ package macro;
 
 import bwapi.Position;
 import bwapi.UnitType;
-import bwem.Base;
 import info.GameState;
 import info.tracking.ObservedUnitTracker;
 import info.tracking.StrategyTracker;
@@ -13,7 +12,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.PriorityQueue;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 /**
  * Reactions updates the ProductionQueue when particular enemy strategies are detected.
@@ -37,12 +35,7 @@ public class Reactions {
             return;
         }
 
-        Set<Position> basePositions = gameState.getBaseData().getMyBases().stream()
-                .map(Base::getCenter)
-                .collect(Collectors.toSet());
-        gameState.getBaseData().getReservedBases().stream()
-                .map(Base::getCenter)
-                .forEach(basePositions::add);
+        Set<Position> basePositions = gameState.getBaseData().getMyBasePositions();
 
         ObservedUnitTracker tracker = gameState.getObservedUnitTracker();
         int completedCannons = tracker.getCompletedBuildingCountNearPositions(
