@@ -12,7 +12,7 @@ import bwem.ChokePoint;
 import bwem.Geyser;
 import bwem.Mineral;
 import info.BaseData;
-import util.TilePositionComparator;
+import util.Distance;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -48,7 +48,7 @@ public class BuildingPlanner {
         TilePosition tileSize = unitType.tileSize();
 
         List<TilePosition> farthestFromChoke = new ArrayList<>(creepTiles);
-        farthestFromChoke.sort(new TilePositionComparator(closestChoke.toTilePosition()));
+        farthestFromChoke.sort(Distance.closestTo(closestChoke.toTilePosition()));
 
         TilePosition best = null;
         for (TilePosition northWestCandidate: creepTiles) {
@@ -342,7 +342,7 @@ public class BuildingPlanner {
             }
         }
 
-        candidates.sort(new TilePositionComparator(chokeCenter.toTilePosition()));
+        candidates.sort(Distance.closestTo(chokeCenter.toTilePosition()));
         return candidates.isEmpty() ? null : candidates.get(0);
     }
 

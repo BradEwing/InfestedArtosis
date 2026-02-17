@@ -12,10 +12,8 @@ import macro.plan.Plan;
 import macro.plan.PlanState;
 import macro.plan.PlanType;
 import unit.managed.ManagedUnit;
-import unit.managed.ManagedUnitToPositionComparator;
 import unit.managed.UnitRole;
-import util.BaseUnitDistanceComparator;
-import util.UnitDistanceComparator;
+import util.Distance;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -121,7 +119,7 @@ public class WorkerManager {
         }
 
         List<ManagedUnit> sortedGatherers = mineralGatherers.stream()
-                .sorted(new ManagedUnitToPositionComparator(unit.getPosition()))
+                .sorted(Distance.closestManagedUnitTo(unit.getPosition()))
                 .collect(Collectors.toList());
 
         for (ManagedUnit managedUnit: sortedGatherers) {
@@ -156,7 +154,7 @@ public class WorkerManager {
             return;
         }
 
-        bases.sort(new BaseUnitDistanceComparator(gatherTarget));
+        bases.sort(Distance.closestBaseTo(gatherTarget));
         HashSet<ManagedUnit> assignedManagedUnits = gatherersAssignedToBase.get(bases.get(0));
         assignedManagedUnits.add(gatherer);
     }
@@ -217,7 +215,7 @@ public class WorkerManager {
         int lockThreshold = (dronesAtBase < baseMinerals.size()) ? 0 : 1;
         
         // Sort minerals by distance to the drone
-        baseMinerals.sort(new UnitDistanceComparator(unit));
+        baseMinerals.sort(Distance.closestTo(unit));
         
         // Find the first mineral patch that meets the lock threshold
         Unit mineral = null;
@@ -256,7 +254,7 @@ public class WorkerManager {
             return null;
         }
         
-        bases.sort(new BaseUnitDistanceComparator(drone));
+        bases.sort(Distance.closestBaseTo(drone));
         
         // First, look for bases with unlocked patches (prioritizing closest)
         for (Base base : bases) {
@@ -303,7 +301,7 @@ public class WorkerManager {
             return false;
         }
 
-        availableGeysers.sort(new UnitDistanceComparator(unit));
+        availableGeysers.sort(Distance.closestTo(unit));
 
         for (Unit targetGeyser: availableGeysers) {
             if (assignToGeyser(managedUnit, targetGeyser)) {

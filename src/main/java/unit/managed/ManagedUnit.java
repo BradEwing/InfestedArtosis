@@ -14,6 +14,7 @@ import lombok.Setter;
 import macro.plan.Plan;
 import macro.plan.PlanState;
 import util.Filter;
+import util.Vec2;
 
 import java.util.List;
 import java.util.Set;
@@ -177,15 +178,9 @@ public class ManagedUnit {
             }
 
             if (nearestStorm != null && nearestStormDistance <= 128) {
-                int dx = currentX - nearestStorm.getX();
-                int dy = currentY - nearestStorm.getY();
-
-                double length = Math.sqrt(dx * dx + dy * dy);
-                if (length > 0) {
-                    double scale = 192.0 / length;
-                    int newX = currentX + (int)(dx * scale);
-                    int newY = currentY + (int)(dy * scale);
-                    return new Position(newX, newY);
+                Vec2 away = Vec2.between(nearestStorm, currentPos);
+                if (away.length() > 0) {
+                    return away.normalizeToLength(192).toPosition(currentPos);
                 }
             }
         }
@@ -270,23 +265,20 @@ public class ManagedUnit {
         }
 
         Position currentPos = unit.getPosition();
-        double dx = targetPos.getX() - currentPos.getX();
-        double dy = targetPos.getY() - currentPos.getY();
-        double distance = Math.sqrt(dx * dx + dy * dy);
+        Vec2 dir = Vec2.between(currentPos, targetPos);
+        double distance = dir.length();
 
         if (distance == 0) {
             return false;
         }
 
-        dx /= distance;
-        dy /= distance;
-
+        Vec2 normalized = dir.normalize();
         int numSamples = Math.min((int)(distance / 16.0), 20);
 
         for (int i = 0; i <= numSamples; i++) {
             double progress = numSamples > 0 ? (double)i / numSamples : 0;
-            int checkX = currentPos.getX() + (int)(dx * distance * progress);
-            int checkY = currentPos.getY() + (int)(dy * distance * progress);
+            int checkX = currentPos.getX() + (int)(normalized.x * distance * progress);
+            int checkY = currentPos.getY() + (int)(normalized.y * distance * progress);
             Position checkPos = new Position(checkX, checkY);
 
             for (Position stormCenter : stormPositions) {
@@ -306,73 +298,49 @@ public class ManagedUnit {
      * Samples WalkPositions along the path for efficiency while ensuring thorough coverage.
      */
     private boolean isRetreatPathWalkable(Position currentPos, Position retreatTarget) {
-        // Calculate the distance and direction
-        double dx = retreatTarget.getX() - currentPos.getX();
-        double dy = retreatTarget.getY() - currentPos.getY();
-        double distance = Math.sqrt(dx * dx + dy * dy);
-        
+        Vec2 dir = Vec2.between(currentPos, retreatTarget);
+        double distance = dir.length();
+
         if (distance == 0) {
-            return true; // Same position, path is valid
+            return true;
         }
-         
-        // Get accessible walk positions from GameMap
+
+        Vec2 normalized = dir.normalize();
+
         Set<WalkPosition> accessibleWalkPositions = gameMap.getAccessibleWalkPositions();
         if (accessibleWalkPositions.isEmpty()) {
-            return isBasicPathWalkable(currentPos, retreatTarget, dx, dy, distance);
+            return isBasicPathWalkable(currentPos, normalized, distance);
         }
-        
-        // Normalize direction
-        dx /= distance;
-        dy /= distance;
-        
-        // Sample WalkPositions along the path for efficiency
-        // WalkPositions are 8x8 pixels, so we check every 4 pixels (every half WalkPosition)
-        // This ensures we catch most terrain obstacles while maintaining performance
-        double stepSize = 4.0; // Check every 4 pixels
-        int numSteps = (int) Math.ceil(distance / stepSize);
-        
-        // Limit to reasonable number of checks (max 8 for efficiency)
-        numSteps = Math.min(numSteps, 8);
-        
+
+        int numSteps = Math.min((int) Math.ceil(distance / 4.0), 8);
+
         for (int i = 1; i <= numSteps; i++) {
             double progress = (double) i / numSteps;
-            int checkX = currentPos.getX() + (int)(dx * distance * progress);
-            int checkY = currentPos.getY() + (int)(dy * distance * progress);
-            Position checkPos = new Position(checkX, checkY);
-            WalkPosition walkPos = new WalkPosition(checkPos);
-            
-            // Check if this WalkPosition is in the accessible set
+            int checkX = currentPos.getX() + (int)(normalized.x * distance * progress);
+            int checkY = currentPos.getY() + (int)(normalized.y * distance * progress);
+            WalkPosition walkPos = new WalkPosition(new Position(checkX, checkY));
+
             if (!accessibleWalkPositions.contains(walkPos)) {
                 return false;
             }
         }
-        
+
         return true;
     }
-    
-    /**
-     * Fallback method for basic walkability.
-     */
-    private boolean isBasicPathWalkable(Position currentPos, Position retreatTarget, double dx, double dy, double distance) {
-        // Normalize direction
-        dx /= distance;
-        dy /= distance;
-        
-        double stepSize = 4.0;
-        int numSteps = (int) Math.ceil(distance / stepSize);
-        numSteps = Math.min(numSteps, 8);
-        
+
+    private boolean isBasicPathWalkable(Position currentPos, Vec2 normalized, double distance) {
+        int numSteps = Math.min((int) Math.ceil(distance / 4.0), 8);
+
         for (int i = 1; i <= numSteps; i++) {
             double progress = (double) i / numSteps;
-            int checkX = currentPos.getX() + (int)(dx * distance * progress);
-            int checkY = currentPos.getY() + (int)(dy * distance * progress);
-            Position checkPos = new Position(checkX, checkY);
-            
-            if (!game.isWalkable(new WalkPosition(checkPos))) {
+            int checkX = currentPos.getX() + (int)(normalized.x * distance * progress);
+            int checkY = currentPos.getY() + (int)(normalized.y * distance * progress);
+
+            if (!game.isWalkable(new WalkPosition(new Position(checkX, checkY)))) {
                 return false;
             }
         }
-        
+
         return true;
     }
     
@@ -823,21 +791,13 @@ public class ManagedUnit {
                 unit.attack(enemyPos);
             }
         } else {
-            int moveDistance = 64; // Adjust this value as needed
-            double dx = myPos.x - enemyPos.x;
-            double dy = myPos.y - enemyPos.y;
-            double length = Math.sqrt(dx * dx + dy * dy);
-            if (length == 0) {
+            int moveDistance = 64;
+            Vec2 away = Vec2.between(enemyPos, myPos);
+            if (away.length() == 0) {
                 unit.move(new Position(myPos.x + moveDistance, myPos.y));
                 return;
             }
-            dx /= length;
-            dy /= length;
-            Position kitePosition = new Position(
-                    (int)(myPos.x + dx * moveDistance),
-                    (int)(myPos.y + dy * moveDistance)
-            );
-            unit.move(kitePosition);
+            unit.move(away.normalizeToLength(moveDistance).toPosition(myPos));
         }
     }
 
