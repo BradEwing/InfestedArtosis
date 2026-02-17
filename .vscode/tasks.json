@@ -10,6 +10,16 @@
                 "-File", "${workspaceFolder}/scripts/move-files.ps1"
             ],
             "problemMatcher": []
+        },
+        {
+            "label": "Deploy to SCBW",
+            "type": "shell",
+            "command": "powershell",
+            "args": [
+                "-ExecutionPolicy", "ByPass",
+                "-File", "${workspaceFolder}/scripts/move-jar-for-scbw.ps1"
+            ],
+            "problemMatcher": []
         }
     ]
 }

@@ -47,7 +47,7 @@ public class InformationManager {
     private HashSet<Base> startingBasesSet = new HashSet<>();
     private HashSet<Base> expansionBasesSet = new HashSet<>();
 
-    private static final int DETECTION_DISTANCE = 20;
+    private static final int PROXY_DETECTION_DISTANCE = 24;
 
     private boolean isGasStructure(UnitType unitType) {
         return unitType == UnitType.Terran_Refinery 
@@ -813,7 +813,12 @@ public class InformationManager {
 
     private boolean isProxiedBuilding(Unit unit) {
         BaseData baseData = gameState.getBaseData();
-        return isNearAnyBase(unit.getTilePosition(), baseData.getMyBases());
+        Set<Base> basesToCheck = new HashSet<>(baseData.getMyBases());
+        Base naturalBase = baseData.getInferredNaturalBase();
+        if (naturalBase != null) {
+            basesToCheck.add(naturalBase);
+        }
+        return isNearAnyBase(unit.getTilePosition(), basesToCheck);
     }
 
     private boolean isNearAnyBase(TilePosition position, Set<Base> myBases) {
@@ -822,7 +827,7 @@ public class InformationManager {
             int manhattanDistance = Math.abs(baseLocation.getX() - position.getX()) +
                     Math.abs(baseLocation.getY() - position.getY());
 
-            if (manhattanDistance <= DETECTION_DISTANCE) {
+            if (manhattanDistance <= PROXY_DETECTION_DISTANCE) {
                 return true;
             }
         }
