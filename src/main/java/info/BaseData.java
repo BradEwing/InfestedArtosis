@@ -1,5 +1,6 @@
 package info;
 
+import bwapi.Position;
 import bwapi.TilePosition;
 import bwapi.Unit;
 import bwapi.UnitType;
@@ -32,6 +33,7 @@ public class BaseData {
     private HashSet<Base> allBases = new HashSet<>();
     @Getter
     private HashSet<Base> myBases = new HashSet<>();
+    @Getter
     private HashSet<Base> reservedBases = new HashSet<>();
     @Getter
     private HashSet<Base> enemyBases = new HashSet<>();
@@ -425,7 +427,17 @@ public class BaseData {
         return best;
     }
 
-    public int numMains() { 
-        return mains.size(); 
+    public Set<Position> getMyBasePositions() {
+        Set<Position> positions = myBases.stream()
+                .map(Base::getCenter)
+                .collect(Collectors.toSet());
+        reservedBases.stream()
+                .map(Base::getCenter)
+                .forEach(positions::add);
+        return positions;
+    }
+
+    public int numMains() {
+        return mains.size();
     }
 }

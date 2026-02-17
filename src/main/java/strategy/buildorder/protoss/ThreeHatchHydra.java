@@ -58,16 +58,18 @@ public class ThreeHatchHydra extends ProtossBase {
         boolean secondGas = gameState.canPlanExtractor() && (techProgression.isHydraliskDen() || droneCount >= 20);
 
         // Base timing
-        boolean wantNatural = plannedAndCurrentHatcheries < 2 && supply >= 24;
-        boolean wantThird = plannedAndCurrentHatcheries < 3 && supply >= 40 && techProgression.isSpawningPool();
+        boolean wantNatural = plannedAndCurrentHatcheries < 2 && supply >= 24 && !gameState.isCannonRushed();
+        boolean wantThird = plannedAndCurrentHatcheries < 3 && supply >= 40 && techProgression.isSpawningPool() && !gameState.isCannonRushed();
         boolean wantBaseAdvantage = behindOnBases(gameState);
         boolean floatingMinerals = gameState.getGameTime().greaterThan(new Time(5, 0)) &&
                 gameState.getResourceCount().availableMinerals() > ((plannedHatcheries + 1) * 350);
 
         // Macro hatchery timing
-        boolean wantFirstMacroHatch = wantFirstMacroHatchery(gameState);
-        boolean wantSecondMacroHatch = wantSecondMacroHatchery(gameState);
-        boolean wantThirdMacroHatch = wantThirdMacroHatchery(gameState);
+        boolean cannonRushMacroHatch = gameState.isCannonRushed() && baseCount == 1
+                && gameState.getResourceCount().availableMinerals() >= 300;
+        boolean wantFirstMacroHatch = cannonRushMacroHatch || wantFirstMacroHatchery(gameState);
+        boolean wantSecondMacroHatch = !gameState.isCannonRushed() && wantSecondMacroHatchery(gameState);
+        boolean wantThirdMacroHatch = !gameState.isCannonRushed() && wantThirdMacroHatchery(gameState);
 
         // Tech building timing
         boolean wantHydraliskDen = wantHydraliskDen(gameState);

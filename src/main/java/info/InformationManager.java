@@ -18,6 +18,7 @@ import info.map.GameMap;
 import info.map.MapTile;
 import info.map.MapTileType;
 import info.tracking.ObservedBulletTracker;
+import static util.Distance.manhattanTileDistance;
 import info.tracking.ObservedUnitTracker;
 import learning.LearningManager;
 import macro.plan.Plan;
@@ -26,6 +27,7 @@ import org.jetbrains.annotations.Nullable;
 import strategy.buildorder.BuildOrder;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -45,7 +47,7 @@ public class InformationManager {
     private HashSet<Base> startingBasesSet = new HashSet<>();
     private HashSet<Base> expansionBasesSet = new HashSet<>();
 
-    private static final int DETECTION_DISTANCE = 10;
+    private static final int DETECTION_DISTANCE = 20;
 
     private boolean isGasStructure(UnitType unitType) {
         return unitType == UnitType.Terran_Refinery 
@@ -670,16 +672,23 @@ public class InformationManager {
 
     private void checkIfEnemyUnitsStillThreatenBase() {
         HashMap<Base, HashSet<Unit>> baseThreats = gameState.getBaseToThreatLookup();
+        ObservedUnitTracker tracker = gameState.getObservedUnitTracker();
+        int threatRadius = gameState.isCannonRushed() ? 20 : 8;
         for (Base base: baseThreats.keySet()) {
             HashSet<Unit> unitThreats = baseThreats.get(base);
             List<Unit> noLongerThreats = new ArrayList<>();
+            TilePosition baseTile = base.getLocation();
             for (Unit unit: unitThreats) {
                 if (unit.getType() == UnitType.Unknown) {
                     noLongerThreats.add(unit);
                     continue;
                 }
-                int distance = (int) base.getLocation().toPosition().getDistance(unit.getTilePosition().toPosition());
-                if (distance > 256) {
+                Position unitPos = tracker.getLastKnownPosition(unit);
+                if (unitPos == null) {
+                    noLongerThreats.add(unit);
+                    continue;
+                }
+                if (manhattanTileDistance(baseTile, unitPos.toTilePosition()) > threatRadius) {
                     noLongerThreats.add(unit);
                     continue;
                 }
@@ -696,21 +705,45 @@ public class InformationManager {
 
     private void checkBaseThreats() {
         Set<Unit> visibleUnits = gameState.getDetectedEnemyUnits();
-        if (visibleUnits.isEmpty()) {
-            return;
+
+        Set<Base> bases = new HashSet<>(gameState.getGatherersAssignedToBase().keySet());
+        HashMap<Base, HashSet<Unit>> baseThreats = gameState.getBaseToThreatLookup();
+        ObservedUnitTracker tracker = gameState.getObservedUnitTracker();
+
+        boolean isCannonRushed = gameState.isCannonRushed();
+        Set<Unit> proxiedBuildings = isCannonRushed ? tracker.getProxiedBuildings() : null;
+
+        if (isCannonRushed) {
+            bases.addAll(gameState.getBaseData().getReservedBases());
         }
 
-        Set<Base> bases = gameState.getGatherersAssignedToBase().keySet();
-        HashMap<Base, HashSet<Unit>> baseThreats = gameState.getBaseToThreatLookup();
         for (Base base: bases) {
             if (!baseThreats.containsKey(base)) {
                 baseThreats.put(base, new HashSet<>());
             }
 
+            int baseThreatRadius = isCannonRushed ? 16 : 8;
+            TilePosition baseTile = base.getLocation();
+
             for (Unit unit: visibleUnits) {
-                if (base.getLocation().toPosition().getDistance(unit.getTilePosition().toPosition()) < 256) {
+                if (manhattanTileDistance(baseTile, unit.getTilePosition()) < baseThreatRadius) {
                     baseThreats.get(base).add(unit);
                 }
+            }
+
+            if (isCannonRushed) {
+                for (Unit building : proxiedBuildings) {
+                    Position buildingPos = tracker.getLastKnownPosition(building);
+                    if (buildingPos == null) {
+                        continue;
+                    }
+                    if (manhattanTileDistance(baseTile, buildingPos.toTilePosition()) < baseThreatRadius) {
+                        baseThreats.get(base).add(building);
+                    }
+                }
+
+                Set<Unit> nearbyWorkers = tracker.getWorkerUnitsNearPositions(Collections.singleton(base.getCenter()), 512);
+                baseThreats.get(base).addAll(nearbyWorkers);
             }
         }
     }

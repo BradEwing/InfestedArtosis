@@ -74,15 +74,17 @@ public class ThreeHatchMuta extends ProtossBase {
 
         // Base timing
         boolean delayThird = rushed && time.lessThanOrEqual(new Time(6,0));
-        boolean wantNatural  = plannedAndCurrentHatcheries < 2 && supply >= 24 && !delayThird;
-        boolean wantThird    = plannedAndCurrentHatcheries < 3 && droneCount > 13 && techProgression.isSpawningPool();
+        boolean wantNatural  = plannedAndCurrentHatcheries < 2 && supply >= 24 && !delayThird && !gameState.isCannonRushed();
+        boolean wantThird    = plannedAndCurrentHatcheries < 3 && droneCount > 13 && techProgression.isSpawningPool() && !gameState.isCannonRushed();
         boolean wantBaseAdvantage = behindOnBases(gameState);
         boolean floatingMinerals = gameState.isFloatingMinerals();
 
         // Macro hatchery timing
-        boolean wantFirstMacroHatch = wantFirstMacroHatchery(gameState);
-        boolean wantSecondMacroHatch = wantSecondMacroHatchery(gameState);
-        boolean wantThirdMacroHatch = wantThirdMacroHatchery(gameState);
+        boolean cannonRushMacroHatch = gameState.isCannonRushed() && baseCount == 1
+                && gameState.getResourceCount().availableMinerals() >= 300;
+        boolean wantFirstMacroHatch = cannonRushMacroHatch || wantFirstMacroHatchery(gameState);
+        boolean wantSecondMacroHatch = !gameState.isCannonRushed() && wantSecondMacroHatchery(gameState);
+        boolean wantThirdMacroHatch = !gameState.isCannonRushed() && wantThirdMacroHatchery(gameState);
 
         // Lair timing
         boolean wantLair = gameState.canPlanLair() && lairCount < 1 && time.greaterThan(new Time(2, 30)) && baseCount >= 2;
@@ -315,7 +317,6 @@ public class ThreeHatchMuta extends ProtossBase {
             return false;
         }
 
-        // Plan after 1st macro hatch is planned
         if (!plannedFirstMacroHatch) {
             return false;
         }

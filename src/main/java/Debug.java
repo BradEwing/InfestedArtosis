@@ -373,7 +373,7 @@ public class Debug {
             game.drawCircleMap(squad.getCenter(), squad.radius(), Color.White);
             game.drawTextMap(squad.getCenter(), String.format("Radius: %d", squad.radius()), Text.White);
         }
-        for (Squad squad: squadManager.defenseSquads.values()) {
+        for (Squad squad: squadManager.getDefenseSquads().values()) {
             game.drawCircleMap(squad.getCenter(), 256, Color.White);
             game.drawTextMap(squad.getCenter(), String.format("Defenders: %s", squad.size()), Text.White);
         }

@@ -68,6 +68,8 @@ public class GameState {
     private boolean enemyHasHostileFlyers = false;
     private boolean isLarvaDeadlocked = false;
     private boolean isAllIn = false;
+    private boolean cannonRushed = false;
+    private boolean cannonRushDefend = false;
 
     // TODO: refactor into common data structure, address access throughout bot
     private HashSet<Plan> plansScheduled = new HashSet<>();
@@ -123,6 +125,7 @@ public class GameState {
     }
 
     public void onFrame() {
+        observedUnitTracker.onFrame();
         strategyTracker.onFrame();
         clearVisibleEnemyWorkerLocations();
     }
@@ -729,6 +732,10 @@ public class GameState {
      */
     public Set<Unit> getEnemyBuildings() {
         return observedUnitTracker.getBuilding();
+    }
+
+    public Set<Unit> getCompletedEnemyBuildings() {
+        return observedUnitTracker.getCompletedBuildings();
     }
 
     /**

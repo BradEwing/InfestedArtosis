@@ -36,6 +36,7 @@ public class LearningManager {
     private Decisions decisions = new Decisions();
     private Record currentOpener; // Write this at end of game
     private Record activeBuildOrderRecord; // Track current non-opener strategy
+    private String lastGameDetectedStrategies = "";
 
     private BuildOrderFactory buildOrderFactory;
 
@@ -232,7 +233,9 @@ public class LearningManager {
                 }
             }
         }
-        
+
+        GameRecord lastRecord = GameRecord.fromCsvRow(lines.get(lines.size() - 1));
+        lastGameDetectedStrategies = lastRecord.getDetectedStrategies();
     }
 
     private void writeGameRecord(boolean isWinner) throws IOException {
@@ -326,6 +329,14 @@ public class LearningManager {
             if (forced != null && buildOrderFactory.isPlayableOpener(forced)) {
                 currentOpener = opponentRecord.getOpenerRecord().get(forced.getName());
                 return forced;
+            }
+        }
+
+        if (lastGameDetectedStrategies != null && lastGameDetectedStrategies.contains("CannonRush")) {
+            BuildOrder overpool = buildOrderFactory.getByName("Overpool");
+            if (overpool != null && buildOrderFactory.isPlayableOpener(overpool)) {
+                currentOpener = opponentRecord.getOpenerRecord().get(overpool.getName());
+                return overpool;
             }
         }
 

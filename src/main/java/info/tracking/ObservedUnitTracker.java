@@ -19,14 +19,31 @@ public class ObservedUnitTracker {
 
     }
 
+    public void onFrame() {
+        for (ObservedUnit ou : observedUnits.values()) {
+            if (ou.getDestroyedFrame() != null) {
+                continue;
+            }
+            if (!ou.isCompleted()) {
+                Unit unit = ou.getUnit();
+                if (unit.isVisible() && unit.isCompleted()) {
+                    ou.setCompleted(true);
+                }
+            }
+        }
+    }
+
     public void onUnitShow(Unit unit, int currentFrame, boolean isProxied) {
         Time t = new Time(currentFrame);
         if (!observedUnits.containsKey(unit)) {
-            observedUnits.put(unit, new ObservedUnit(unit, t, isProxied));
+            ObservedUnit ou = new ObservedUnit(unit, t, isProxied);
+            ou.setCompleted(unit.isCompleted());
+            observedUnits.put(unit, ou);
         } else {
             ObservedUnit u = observedUnits.get(unit);
             u.setLastObservedFrame(t);
             u.setLastKnownLocation(unit.getPosition());
+            u.setCompleted(unit.isCompleted());
             updateUnitTypeChange(unit);
         }
     }
@@ -125,7 +142,7 @@ public class ObservedUnitTracker {
                 .stream()
                 .filter(ou -> ou.getUnit().isDetected())
                 .filter(ou -> ou.getDestroyedFrame() == null)
-                .map(ou -> ou.getUnit())
+                .map(ObservedUnit::getUnit)
                 .collect(Collectors.toSet());
     }
 
@@ -134,7 +151,17 @@ public class ObservedUnitTracker {
                 .stream()
                 .filter(ou -> ou.getUnitType().isBuilding())
                 .filter(ou -> ou.getDestroyedFrame() == null)
-                .map(ou -> ou.getUnit())
+                .map(ObservedUnit::getUnit)
+                .collect(Collectors.toSet());
+    }
+
+    public Set<Unit> getCompletedBuildings() {
+        return observedUnits.values()
+                .stream()
+                .filter(ou -> ou.getUnitType().isBuilding())
+                .filter(ou -> ou.getDestroyedFrame() == null)
+                .filter(ObservedUnit::isCompleted)
+                .map(ObservedUnit::getUnit)
                 .collect(Collectors.toSet());
     }
 
@@ -154,7 +181,7 @@ public class ObservedUnitTracker {
                 .filter(ou -> ou.getUnit().getPlayer().getType() != PlayerType.None)
                 .filter(ou -> ou.getUnit().getPlayer().getType() != PlayerType.Neutral)
                 .filter(ou -> ou.getDestroyedFrame() == null)
-                .map(ou -> ou.getUnit())
+                .map(ObservedUnit::getUnit)
                 .collect(Collectors.toSet());
     }
 
@@ -164,8 +191,69 @@ public class ObservedUnitTracker {
                 .filter(ou -> ou.getUnitType().isBuilding())
                 .filter(ou -> Filter.isHostileBuildingToGround(ou.getUnitType()))
                 .filter(ou -> ou.getDestroyedFrame() == null)
-                .map(ou -> ou.getUnit())
+                .map(ObservedUnit::getUnit)
                 .collect(Collectors.toSet());
+    }
+
+    public int getCompletedBuildingCountNearPositions(UnitType type, Set<Position> positions, int distance) {
+        return (int) observedUnits.values().stream()
+                .filter(ou -> ou.getUnitType() == type)
+                .filter(ou -> ou.getDestroyedFrame() == null)
+                .filter(ObservedUnit::isCompleted)
+                .filter(ou -> isNearAnyPosition(ou, positions, distance))
+                .count();
+    }
+
+    public int getLivingBuildingCountNearPositions(Set<Position> positions, int distance) {
+        return (int) observedUnits.values().stream()
+                .filter(ou -> ou.getUnitType().isBuilding())
+                .filter(ou -> ou.getDestroyedFrame() == null)
+                .filter(ou -> isNearAnyPosition(ou, positions, distance))
+                .count();
+    }
+
+    private boolean isNearAnyPosition(ObservedUnit ou, Set<Position> positions, int distance) {
+        Position unitPos = ou.getUnit().isVisible() ? ou.getUnit().getPosition() : ou.getLastKnownLocation();
+        if (unitPos == null) { 
+            return false;
+        }
+        for (Position pos : positions) {
+            if (unitPos.getDistance(pos) <= distance) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public Set<Unit> getProxiedBuildings() {
+        return observedUnits.values()
+                .stream()
+                .filter(ou -> ou.getUnitType().isBuilding())
+                .filter(ObservedUnit::isProxied)
+                .filter(ou -> ou.getDestroyedFrame() == null)
+                .map(ObservedUnit::getUnit)
+                .collect(Collectors.toSet());
+    }
+
+    public Set<Unit> getWorkerUnitsNearPositions(Set<Position> positions, int distance) {
+        return observedUnits.values()
+                .stream()
+                .filter(ou -> Filter.isWorkerType(ou.getUnitType()))
+                .filter(ou -> ou.getDestroyedFrame() == null)
+                .filter(ou -> isNearAnyPosition(ou, positions, distance))
+                .map(ObservedUnit::getUnit)
+                .collect(Collectors.toSet());
+    }
+
+    public Position getLastKnownPosition(Unit unit) {
+        ObservedUnit ou = observedUnits.get(unit);
+        if (ou == null) {
+            return null;
+        }
+        if (ou.getUnit().isVisible()) {
+            return ou.getUnit().getPosition();
+        }
+        return ou.getLastKnownLocation();
     }
 
     public void clearLastKnownLocationsAt(Set<Position> visibleLocations) {

@@ -664,6 +664,13 @@ public class ManagedUnit {
                 fightTarget = null;
             }
         }
+
+        if (defendTarget != null) {
+            if (!defendTarget.exists()) {
+                defendTarget = null;
+                movementTargetPosition = null;
+            }
+        }
     }
 
     protected void fight() {

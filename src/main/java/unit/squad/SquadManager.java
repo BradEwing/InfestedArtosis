@@ -11,13 +11,15 @@ import bwem.Base;
 import info.GameState;
 import info.InformationManager;
 import info.ScoutData;
+import info.tracking.ObservedUnitTracker;
 import info.tracking.PsiStormTracker;
 import info.tracking.StrategyTracker;
+import lombok.Getter;
+
 import org.bk.ass.sim.BWMirrorAgentFactory;
 import org.bk.ass.sim.Simulator;
 import unit.managed.ManagedUnit;
 import unit.managed.UnitRole;
-import util.UnitDistanceComparator;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -27,6 +29,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import static java.lang.Math.min;
+import static util.Distance.manhattanTileDistance;
 import static util.Filter.closestHostileUnit;
 
 public class SquadManager {
@@ -42,7 +45,8 @@ public class SquadManager {
 
     public HashSet<Squad> fightSquads = new HashSet<>();
 
-    public HashMap<Base, Squad> defenseSquads = new HashMap<>();
+    @Getter
+    private HashMap<Base, Squad> defenseSquads = new HashMap<>();
 
     private final CombatSimulator defaultCombatSimulator;
 
@@ -148,14 +152,37 @@ public class SquadManager {
             return reassignedGatherers;
         }
 
-        for (ManagedUnit gatherer: baseUnits) {
-            Boolean canClear = canDefenseSquadClearThreat(defenseSquad, hostileUnits);
-            if (canClear) {
-                break;
+        if (gameState.isCannonRushed()) {
+            int totalGatherers = gameState.getGatherersAssignedToBase().values().stream()
+                    .mapToInt(HashSet::size)
+                    .sum();
+            int existingDefenders = defenseSquads.values().stream()
+                    .mapToInt(s -> s.getMembers().size())
+                    .sum();
+            int maxToAssign = totalGatherers / 2 - existingDefenders;
+            if (maxToAssign <= 0) {
+                return reassignedGatherers;
             }
-            defenseSquad.addUnit(gatherer);
-            reassignedGatherers.add(gatherer);
+            int assigned = 0;
+            for (ManagedUnit gatherer : baseUnits) {
+                if (assigned >= maxToAssign) {
+                    break;
+                }
+                defenseSquad.addUnit(gatherer);
+                reassignedGatherers.add(gatherer);
+                assigned++;
+            }
+        } else {
+            for (ManagedUnit gatherer : baseUnits) {
+                Boolean canClear = canDefenseSquadClearThreat(defenseSquad, hostileUnits);
+                if (canClear) {
+                    break;
+                }
+                defenseSquad.addUnit(gatherer);
+                reassignedGatherers.add(gatherer);
+            }
         }
+
         for (ManagedUnit managedUnit: reassignedGatherers) {
             managedUnit.setRole(UnitRole.DEFEND);
             assignDefenderTarget(managedUnit, hostileUnits);
@@ -168,13 +195,12 @@ public class SquadManager {
         ensureDefenseSquad(base);
         Squad defenseSquad = defenseSquads.get(base);
 
-        List<ManagedUnit> reassignedDefenders = new ArrayList<>();
-        for (ManagedUnit defender: defenseSquad.getMembers()) {
-            reassignedDefenders.add(defender);
-        }
+        List<ManagedUnit> reassignedDefenders = new ArrayList<>(defenseSquad.getMembers());
 
         for (ManagedUnit defender: reassignedDefenders) {
             defenseSquad.removeUnit(defender);
+            defender.setDefendTarget(null);
+            defender.setMovementTargetPosition(null);
         }
 
         return reassignedDefenders;
@@ -206,6 +232,10 @@ public class SquadManager {
         return nonOverlordMembers;
     }
 
+    public Set<Base> getDefenseSquadBases() {
+        return defenseSquads.keySet();
+    }
+
     private void ensureDefenseSquad(Base base) {
         if (!defenseSquads.containsKey(base)) {
             Squad squad = new Squad();
@@ -219,8 +249,33 @@ public class SquadManager {
         if (defender.getDefendTarget() != null) {
             return;
         }
-        threats.sort(new UnitDistanceComparator(defender.getUnit()));
-        defender.setDefendTarget(threats.get(0));
+        ObservedUnitTracker tracker = gameState.getObservedUnitTracker();
+        TilePosition defenderTile = defender.getUnit().getTilePosition();
+
+        Unit bestTarget = null;
+        int bestHp = Integer.MAX_VALUE;
+        int bestDistance = Integer.MAX_VALUE;
+        for (Unit threat : threats) {
+            Position threatPos = tracker.getLastKnownPosition(threat);
+            if (threatPos == null) {
+                continue;
+            }
+            int hp = threat.getHitPoints();
+            int distance = manhattanTileDistance(defenderTile, threatPos.toTilePosition());
+            if (hp < bestHp || hp == bestHp && distance < bestDistance) {
+                bestHp = hp;
+                bestDistance = distance;
+                bestTarget = threat;
+            }
+        }
+
+        if (bestTarget != null) {
+            defender.setDefendTarget(bestTarget);
+            Position lastKnown = tracker.getLastKnownPosition(bestTarget);
+            if (lastKnown != null) {
+                defender.setMovementTargetPosition(lastKnown.toTilePosition());
+            }
+        }
     }
 
     private void ensureDefenderSquadsHaveTargets() {
@@ -231,7 +286,6 @@ public class SquadManager {
                 continue;
             }
 
-            // TODO: NPE here where base is lost
             HashSet<Unit> baseThreats = gameState.getBaseToThreatLookup().get(base);
             if (baseThreats == null || baseThreats.size() == 0) {
                 continue;
@@ -243,13 +297,17 @@ public class SquadManager {
     }
 
     private void ensureDefenderHasTarget(ManagedUnit defender, HashSet<Unit> baseThreats) {
-        if (!defender.isReady()) {
-            return;
-        }
         if (defender.getDefendTarget() != null) {
-            return;
+            ObservedUnitTracker tracker = gameState.getObservedUnitTracker();
+            Position lastKnown = tracker.getLastKnownPosition(defender.getDefendTarget());
+            if (lastKnown == null) {
+                defender.setDefendTarget(null);
+                defender.setMovementTargetPosition(null);
+            } else {
+                return;
+            }
         }
-        assignDefenderTarget(defender, baseThreats.stream().collect(Collectors.toList()));
+        assignDefenderTarget(defender, new ArrayList<>(baseThreats));
     }
 
     private void removeEmptySquads() {
@@ -467,11 +525,22 @@ public class SquadManager {
     }
 
     private int calculateZerglingMoveOutThreshold(Squad squad) {
+        StrategyTracker strategyTracker = gameState.getStrategyTracker();
+
+        if (gameState.isCannonRushed()) {
+            Set<Position> basePositions = gameState.getBaseData().getMyBasePositions();
+            ObservedUnitTracker tracker = gameState.getObservedUnitTracker();
+            int completedCannons = tracker.getCompletedBuildingCountNearPositions(UnitType.Protoss_Photon_Cannon, basePositions, 512);
+            if (completedCannons == 0) {
+                return 1;
+            }
+            return Math.max(6, completedCannons * 3);
+        }
+
         int staticDefensePenalty = Math.min(informationManager.getEnemyHostileToGroundBuildingsCount(), 6);
         int baseThreshold = gameState.getOpponentRace() == Race.Zerg ? 4 : 12;
         int threshold = baseThreshold * (1 + staticDefensePenalty);
 
-        StrategyTracker strategyTracker = gameState.getStrategyTracker();
         if (strategyTracker.isDetectedStrategy("2Gate")) {
             int zealots = gameState.enemyUnitCount(UnitType.Protoss_Zealot);
             threshold += zealots * 3;
@@ -1014,6 +1083,16 @@ public class SquadManager {
         if (filtered.isEmpty()) {
             managedUnit.setMovementTargetPosition(informationManager.pollScoutTarget(false));
             return;
+        }
+
+        if (gameState.isCannonRushed()) {
+            Set<Unit> proxied = gameState.getObservedUnitTracker().getProxiedBuildings();
+            List<Unit> proxiedTargets = filtered.stream()
+                    .filter(proxied::contains)
+                    .collect(Collectors.toList());
+            if (!proxiedTargets.isEmpty()) {
+                filtered = proxiedTargets;
+            }
         }
 
         Unit closestEnemy = closestHostileUnit(unit, filtered);

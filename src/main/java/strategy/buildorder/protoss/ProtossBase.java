@@ -12,6 +12,9 @@ import java.util.Collections;
 import java.util.List;
 
 public class ProtossBase extends BuildOrder {
+
+    private static final int EXCESS_MINERALS = 350;
+    
     protected ProtossBase(String name) {
         super(name);
     }
@@ -35,6 +38,7 @@ public class ProtossBase extends BuildOrder {
         int zerglings = 6;
         int currentZerglings = gameState.getUnitTypeCount().get(UnitType.Zerg_Zergling);
         int zealots = gameState.enemyUnitCount(UnitType.Protoss_Zealot);
+        int availableMinerals = gameState.getResourceCount().availableMinerals();
 
         StrategyTracker strategyTracker = gameState.getStrategyTracker();
 
@@ -51,7 +55,12 @@ public class ProtossBase extends BuildOrder {
             zerglings = 2;
         }
         if (strategyTracker.isDetectedStrategy("CannonRush")) {
-            zerglings = 24;
+            int cannons = gameState.getObservedUnitTracker()
+                    .getCountOfLivingUnits(UnitType.Protoss_Photon_Cannon);
+            zerglings = 8 + (cannons * 3);
+            if (availableMinerals > EXCESS_MINERALS) {
+                zerglings += availableMinerals % UnitType.Zerg_Zergling.mineralPrice();
+            }
         }
 
         zerglings += zealots * 2;
@@ -74,6 +83,10 @@ public class ProtossBase extends BuildOrder {
         int sunkens = 0;
         StrategyTracker strategyTracker = gameState.getStrategyTracker();
         Time gameTime = gameState.getGameTime();
+
+        if (strategyTracker.isDetectedStrategy("CannonRush")) {
+            return 1;
+        }
 
         if (strategyTracker.isDetectedStrategy("2Gate") && gameTime.greaterThan(new Time(3, 20))) {
             sunkens += 1;

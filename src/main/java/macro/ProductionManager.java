@@ -49,12 +49,14 @@ public class ProductionManager {
     private int currentFrame = 5;
 
 
-    // TODO: Determine if only 1 active strategy, or if multiple can be active at once.
     private BuildOrder activeBuildOrder;
+
+    private Reactions reactions;
 
     public ProductionManager(Game game, GameState gameState, BuildOrder opener) {
         this.game = game;
         this.gameState = gameState;
+        this.reactions = new Reactions(gameState);
 
         this.activeBuildOrder = opener;
     }
@@ -64,7 +66,6 @@ public class ProductionManager {
     // TODO: Ensure print out of production queue is displaying how much time is remaining
     private void debugInProgressQueue() { }
 
-    // TODO: Ensure print out of production queue is displaying how much time is remaining
     private void debugScheduledPlannedItems() { }
 
     // debug console messaging goes here
@@ -80,6 +81,7 @@ public class ProductionManager {
         currentFrame = game.getFrameCount();
 
         transition();
+        reactions.onFrame();
         plan();
         cancelImpossiblePlans();
         cancelExcessHatcheryPlans();

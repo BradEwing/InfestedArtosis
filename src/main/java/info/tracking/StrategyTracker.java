@@ -2,6 +2,7 @@ package info.tracking;
 
 import bwapi.Game;
 import bwapi.Race;
+import info.tracking.protoss.CannonRush;
 import info.tracking.protoss.FFE;
 import info.tracking.protoss.OneGateCore;
 import info.tracking.protoss.TwoGate;
@@ -35,6 +36,7 @@ public class StrategyTracker {
             possibleStrategies.add(new FFE());
             possibleStrategies.add(new OneGateCore());
             possibleStrategies.add(new TwoGate());
+            possibleStrategies.add(new CannonRush());
         }
         if (race == Race.Terran || race == Race.Unknown) {
             possibleStrategies.add(new TwoRaxAcademy());

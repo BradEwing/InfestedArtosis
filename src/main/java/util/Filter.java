@@ -155,7 +155,7 @@ public final class Filter {
         if (unit == null) {
             return false;
         }
-        final boolean isMeanWorker = isWorkerType(unit.getType());
-        return isMeanWorker && unit.isAttacking();
+        final boolean isWorker = isWorkerType(unit.getType());
+        return isWorker && unit.isAttacking();
     }
 }
