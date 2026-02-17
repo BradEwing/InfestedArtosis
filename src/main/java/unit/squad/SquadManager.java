@@ -526,15 +526,22 @@ public class SquadManager {
 
     private int calculateZerglingMoveOutThreshold(Squad squad) {
         StrategyTracker strategyTracker = gameState.getStrategyTracker();
+        final boolean isActivelyCannonRushed = gameState.isCannonRushed();
+        final boolean isCannonRushed = strategyTracker.isDetectedStrategy("CannonRush");
+        final int zealots = gameState.enemyUnitCount(UnitType.Protoss_Zealot);
 
-        if (gameState.isCannonRushed()) {
-            Set<Position> basePositions = gameState.getBaseData().getMyBasePositions();
-            ObservedUnitTracker tracker = gameState.getObservedUnitTracker();
-            int completedCannons = tracker.getCompletedBuildingCountNearPositions(UnitType.Protoss_Photon_Cannon, basePositions, 512);
-            if (completedCannons == 0) {
-                return 1;
+        if (isCannonRushed) {
+            if (isActivelyCannonRushed) {
+                Set<Position> basePositions = gameState.getBaseData().getMyBasePositions();
+                ObservedUnitTracker tracker = gameState.getObservedUnitTracker();
+                int completedCannons = tracker.getCompletedBuildingCountNearPositions(UnitType.Protoss_Photon_Cannon, basePositions, 512);
+                if (completedCannons == 0) {
+                    return 1;
+                }
+                return Math.max(6, completedCannons * 3);
+            } else if (zealots < 1) {
+                return 2;
             }
-            return Math.max(6, completedCannons * 3);
         }
 
         int staticDefensePenalty = Math.min(informationManager.getEnemyHostileToGroundBuildingsCount(), 6);
@@ -542,7 +549,6 @@ public class SquadManager {
         int threshold = baseThreshold * (1 + staticDefensePenalty);
 
         if (strategyTracker.isDetectedStrategy("2Gate")) {
-            int zealots = gameState.enemyUnitCount(UnitType.Protoss_Zealot);
             threshold += zealots * 3;
         }
 
