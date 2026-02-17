@@ -71,6 +71,7 @@ public class GameState {
     private boolean isAllIn = false;
     private boolean cannonRushed = false;
     private boolean cannonRushDefend = false;
+    private boolean scvRushed = false;
 
     // TODO: refactor into common data structure, address access throughout bot
     private HashSet<Plan> plansScheduled = new HashSet<>();

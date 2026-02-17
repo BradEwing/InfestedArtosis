@@ -10,6 +10,7 @@ import info.map.GameMap;
 import info.map.GroundPath;
 import info.map.GroundPathComparator;
 import lombok.Getter;
+import lombok.Setter;
 import util.Distance;
 
 import java.util.HashMap;
@@ -51,6 +52,8 @@ public class BaseData {
     private HashSet<Unit> availableGeysers = new HashSet<>();
     private HashMap<Base, Integer> sunkenColonyLookup = new HashMap<>();
     private HashMap<Base, Integer> sunkenColonyReserveLookup = new HashMap<>();
+    @Setter
+    private boolean allowSunkenAtMain = false;
 
     public BaseData(List<Base> allBases) {
         for (Base base: allBases) {
@@ -341,7 +344,7 @@ public class BaseData {
     }
 
     public boolean isEligibleForSunkenColony(Base base) {
-        if (base == mainBase) {
+        if (base == mainBase && !allowSunkenAtMain) {
             return false;
         }
         if (islands.contains(base)) {

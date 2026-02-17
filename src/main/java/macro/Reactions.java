@@ -27,6 +27,61 @@ public class Reactions {
 
     public void onFrame() {
         cannonRushReaction();
+        scvRushReaction();
+    }
+
+    private void scvRushReaction() {
+        StrategyTracker strategyTracker = gameState.getStrategyTracker();
+        if (!strategyTracker.isDetectedStrategy("SCVRush")) {
+            return;
+        }
+
+        int zerglingCount = gameState.getUnitTypeCount().get(UnitType.Zerg_Zergling);
+        if (zerglingCount >= 12) {
+            gameState.setScvRushed(false);
+            return;
+        }
+
+        gameState.setScvRushed(true);
+
+        PriorityQueue<Plan> productionQueue = gameState.getProductionQueue();
+
+        for (Plan plan : productionQueue) {
+            if (plan.getType() == PlanType.BUILDING
+                    && plan.getPlannedUnit() == UnitType.Zerg_Spawning_Pool) {
+                plan.setPriority(0);
+            }
+        }
+
+        List<Plan> hatchPlansToRemove = new ArrayList<>();
+        for (Plan plan : productionQueue) {
+            if (plan.getType() == PlanType.BUILDING
+                    && plan.getPlannedUnit() == UnitType.Zerg_Hatchery) {
+                hatchPlansToRemove.add(plan);
+            }
+        }
+        for (Plan plan : hatchPlansToRemove) {
+            productionQueue.remove(plan);
+            gameState.setImpossiblePlan(plan);
+        }
+
+        if (gameState.getTechProgression().isSpawningPool()) {
+            List<Plan> dronePlansToRemove = new ArrayList<>();
+            for (Plan plan : productionQueue) {
+                if (plan.getType() == PlanType.UNIT
+                        && plan.getPlannedUnit() == UnitType.Zerg_Drone) {
+                    dronePlansToRemove.add(plan);
+                }
+            }
+            for (Plan plan : dronePlansToRemove) {
+                productionQueue.remove(plan);
+                gameState.setImpossiblePlan(plan);
+            }
+        }
+
+        if (gameState.getBaseData().getMyBases().size() == 1) {
+            gameState.getBaseData().setAllowSunkenAtMain(true);
+        }
     }
 
     private void cannonRushReaction() {
