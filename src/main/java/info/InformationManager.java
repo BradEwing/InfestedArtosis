@@ -813,7 +813,12 @@ public class InformationManager {
 
     private boolean isProxiedBuilding(Unit unit) {
         BaseData baseData = gameState.getBaseData();
-        return isNearAnyBase(unit.getTilePosition(), baseData.getMyBases());
+        Set<Base> basesToCheck = new HashSet<>(baseData.getMyBases());
+        Base naturalBase = baseData.getInferredNaturalBase();
+        if (naturalBase != null) {
+            basesToCheck.add(naturalBase);
+        }
+        return isNearAnyBase(unit.getTilePosition(), basesToCheck);
     }
 
     private boolean isNearAnyBase(TilePosition position, Set<Base> myBases) {

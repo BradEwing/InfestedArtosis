@@ -27,6 +27,8 @@ public class BaseData {
 
     private Base mainBase;
     private Base naturalExpansion;
+    @Getter
+    private Base inferredNaturalBase;
     private Base mainEnemyBase;
     private HashSet<Unit> macroHatcheries = new HashSet<>();
     private HashSet<Unit> baseHatcheries = new HashSet<>();
@@ -85,6 +87,12 @@ public class BaseData {
                 this.islands.add(b);
             }
         }
+
+        this.inferredNaturalBase = availableBases.entrySet().stream()
+                .filter(e -> !e.getKey().getGeysers().isEmpty())
+                .min(Map.Entry.comparingByValue(new GroundPathComparator()))
+                .map(Map.Entry::getKey)
+                .orElse(null);
     }
 
     public Base getMainBase() {
