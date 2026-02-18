@@ -2,11 +2,13 @@ package macro;
 
 import bwapi.Position;
 import bwapi.UnitType;
+import bwapi.UpgradeType;
 import info.GameState;
 import info.tracking.ObservedUnitTracker;
 import info.tracking.StrategyTracker;
 import macro.plan.Plan;
 import macro.plan.PlanType;
+import macro.plan.UpgradePlan;
 
 import bwapi.Unit;
 import info.BaseData;
@@ -33,6 +35,7 @@ public class Reactions {
     public void onFrame() {
         cannonRushReaction();
         scvRushReaction();
+        twoGateReaction();
     }
 
     private void scvRushReaction() {
@@ -170,6 +173,30 @@ public class Reactions {
             for (Plan plan : dronePlansToRemove) {
                 productionQueue.remove(plan);
                 gameState.setImpossiblePlan(plan);
+            }
+        }
+    }
+
+    private void twoGateReaction() {
+        StrategyTracker strategyTracker = gameState.getStrategyTracker();
+        if (!strategyTracker.isDetectedStrategy("2Gate")) {
+            return;
+        }
+
+        PriorityQueue<Plan> productionQueue = gameState.getProductionQueue();
+
+        if (gameState.canPlanUpgrade(UpgradeType.Metabolic_Boost)) {
+            gameState.getTechProgression().setPlannedMetabolicBoost(true);
+            UpgradePlan upgradePlan = new UpgradePlan(UpgradeType.Metabolic_Boost, gameState.getGameTime().getFrames());
+            productionQueue.add(upgradePlan);
+        }
+
+        int zerglingCount = gameState.getUnitTypeCount().get(UnitType.Zerg_Zergling);
+        if (zerglingCount > 6) {
+            for (Plan plan : productionQueue) {
+                if (plan.getType() == PlanType.UPGRADE && ((UpgradePlan) plan).getPlannedUpgrade() == UpgradeType.Metabolic_Boost) {
+                    plan.setPriority(0);
+                }
             }
         }
     }

@@ -241,7 +241,7 @@ public abstract class BuildOrder {
                 break;
         }
 
-        return new UpgradePlan(upgradeType, priority, false);
+        return new UpgradePlan(upgradeType, priority);
     }
 
     protected Plan planHydraliskDen(GameState gameState) {
