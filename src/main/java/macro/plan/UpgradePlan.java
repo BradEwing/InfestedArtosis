@@ -8,7 +8,7 @@ public class UpgradePlan extends Plan {
     @Getter @Setter
     private UpgradeType plannedUpgrade;
 
-    public UpgradePlan(UpgradeType upgrade, int priority, boolean isBlocking) {
+    public UpgradePlan(UpgradeType upgrade, int priority) {
         super(priority);
         this.plannedUpgrade = upgrade;
     }
