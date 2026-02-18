@@ -131,9 +131,22 @@ public class BaseData {
         return candidate;
     }
 
-    // TODO: Call when drone scheduled to build extractor dies
     public void addExtractorCandidate(Unit geyser) {
+        extractors.remove(geyser);
+        availableGeysers.add(geyser);
+    }
 
+    public void unreserveExtractor(TilePosition tilePosition) {
+        Unit geyser = null;
+        for (Unit u : extractors) {
+            if (u.getTilePosition().equals(tilePosition)) {
+                geyser = u;
+                break;
+            }
+        }
+        if (geyser != null) {
+            addExtractorCandidate(geyser);
+        }
     }
 
     public int numExtractor() {

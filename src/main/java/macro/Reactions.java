@@ -8,10 +8,15 @@ import info.tracking.StrategyTracker;
 import macro.plan.Plan;
 import macro.plan.PlanType;
 
+import bwapi.Unit;
+import info.BaseData;
+
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.PriorityQueue;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Reactions updates the ProductionQueue when particular enemy strategies are detected.
@@ -65,6 +70,42 @@ public class Reactions {
             gameState.setImpossiblePlan(plan);
         }
 
+        BaseData baseData = gameState.getBaseData();
+
+        List<Plan> extractorPlansToRemove = new ArrayList<>();
+        for (Plan plan : productionQueue) {
+            if (plan.getType() == PlanType.BUILDING
+                    && plan.getPlannedUnit() == UnitType.Zerg_Extractor) {
+                extractorPlansToRemove.add(plan);
+            }
+        }
+        for (Plan plan : extractorPlansToRemove) {
+            productionQueue.remove(plan);
+            gameState.setImpossiblePlan(plan);
+            if (plan.getBuildPosition() != null) {
+                baseData.unreserveExtractor(plan.getBuildPosition());
+            }
+        }
+
+        Set<Plan> scheduledExtractors = gameState.getPlansScheduled()
+                .stream()
+                .filter(p -> p.getType() == PlanType.BUILDING && p.getPlannedUnit() == UnitType.Zerg_Extractor)
+                .collect(Collectors.toSet());
+        for (Plan plan : scheduledExtractors) {
+            Unit assignedDrone = null;
+            for (Map.Entry<Unit, Plan> entry : gameState.getAssignedPlannedItems().entrySet()) {
+                if (entry.getValue() == plan) {
+                    assignedDrone = entry.getKey();
+                    break;
+                }
+            }
+            gameState.getPlansScheduled().remove(plan);
+            gameState.cancelPlan(assignedDrone, plan);
+            if (plan.getBuildPosition() != null) {
+                baseData.unreserveExtractor(plan.getBuildPosition());
+            }
+        }
+
         if (gameState.getTechProgression().isSpawningPool()) {
             List<Plan> dronePlansToRemove = new ArrayList<>();
             for (Plan plan : productionQueue) {
@@ -79,8 +120,8 @@ public class Reactions {
             }
         }
 
-        if (gameState.getBaseData().getMyBases().size() == 1) {
-            gameState.getBaseData().setAllowSunkenAtMain(true);
+        if (baseData.getMyBases().size() == 1) {
+            baseData.setAllowSunkenAtMain(true);
         }
     }
 
