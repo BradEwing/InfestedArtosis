@@ -546,11 +546,11 @@ public class SquadManager {
         }
 
         int staticDefensePenalty = Math.min(informationManager.getEnemyHostileToGroundBuildingsCount(), 6);
-        int baseThreshold = gameState.getOpponentRace() == Race.Zerg ? 4 : 12;
+        int baseThreshold = gameState.getOpponentRace() == Race.Zerg ? 4 : 6;
         int threshold = baseThreshold * (1 + staticDefensePenalty);
 
         if (strategyTracker.isDetectedStrategy("2Gate")) {
-            threshold += zealots * 3;
+            threshold += zealots * 2;
         }
 
         int maxThreshold = gameState.getOpponentRace() == Race.Zerg ? 36 : 48;
@@ -609,6 +609,18 @@ public class SquadManager {
                 squad.startRetreatLock(now);
                 return;
             }
+        }
+
+        if (isSquadNearFriendlySunken(squad)) {
+            int now = game.getFrameCount();
+            squad.setStatus(SquadStatus.FIGHT);
+            for (ManagedUnit managedUnit : managedFighters) {
+                managedUnit.setRole(UnitRole.FIGHT);
+                managedUnit.clearRetreatStart();
+                assignEnemyTarget(managedUnit, squad);
+            }
+            squad.startFightLock(now);
+            return;
         }
 
         // Handle building targeting when no visible units
@@ -722,6 +734,18 @@ public class SquadManager {
             default:
                 return;
         }
+    }
+
+    private boolean isSquadNearFriendlySunken(Squad squad) {
+        TilePosition squadTile = squad.getCenter().toTilePosition();
+        for (Unit unit : game.self().getUnits()) {
+            if (unit.getType() != UnitType.Zerg_Sunken_Colony) continue;
+            if (!unit.isCompleted()) continue;
+            if (manhattanTileDistance(squadTile, unit.getTilePosition()) <= 7) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
