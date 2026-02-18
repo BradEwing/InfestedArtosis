@@ -53,7 +53,11 @@ public class WorkerManager {
         checksLarvaDeadlock();
         handleLarvaDeadlock();
 
-        rebalanceCheck();
+        if (gameState.isScvRushed()) {
+            cutGasHarvesting();
+        } else {
+            rebalanceCheck();
+        }
     }
 
     public void onUnitComplete(ManagedUnit managedUnit) {
@@ -111,6 +115,10 @@ public class WorkerManager {
     // onExtractorComplete is called when an extractor is complete, to immediately pull 3 mineral gathering drones
     // onto the extractor
     public void onExtractorComplete(Unit unit) {
+        if (gameState.isScvRushed()) {
+            return;
+        }
+
         final List<ManagedUnit> newGeyserWorkers = new ArrayList<>();
 
         // If less than 4 mineral workers, there are probably other problems
@@ -139,7 +147,7 @@ public class WorkerManager {
     // Default to mineral
     private void assignWorker(ManagedUnit managedUnit) {
         // Assign 3 per geyser
-        if (gameState.needGeyserWorkers() && gameState.needGeyserWorkersAmount() > 0) {
+        if (!gameState.isScvRushed() && gameState.needGeyserWorkers() && gameState.needGeyserWorkersAmount() > 0) {
             assignToGeyser(managedUnit);
             return;
         }
