@@ -266,7 +266,7 @@ public class ScoutManager {
             managedUnit.getUnitType() == UnitType.Zerg_Zergling) {
             target = this.pollDroneScoutTarget();
         } else {
-            target = gameState.getScoutData().pollScoutTarget(game, gameState);
+            target = gameState.pollScoutTarget();
         }
         
         if (target != null) {

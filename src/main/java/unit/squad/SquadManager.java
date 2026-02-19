@@ -1062,7 +1062,7 @@ public class SquadManager {
         }
 
         if (filtered.isEmpty()) {
-            managedUnit.setMovementTargetPosition(gameState.getScoutData().pollScoutTarget(game, gameState));
+            managedUnit.setMovementTargetPosition(gameState.pollScoutTarget());
             return;
         }
 

@@ -23,7 +23,6 @@ import info.tracking.ObservedUnitTracker;
 import learning.LearningManager;
 import macro.plan.Plan;
 import macro.plan.PlanType;
-import org.jetbrains.annotations.Nullable;
 import strategy.buildorder.BuildOrder;
 
 import java.util.ArrayList;
@@ -746,63 +745,6 @@ public class InformationManager {
                 baseThreats.get(base).addAll(nearbyWorkers);
             }
         }
-    }
-
-    // TODO: Determine if ground scout can reach Scout Target
-    public TilePosition pollScoutTarget(boolean unused) {
-        // Walk through
-        BaseData baseData = gameState.getBaseData();
-        ScoutData scoutData = gameState.getScoutData();
-        if (baseData.getMainEnemyBase() == null && !scoutData.isEnemyBuildingLocationKnown()) {
-            Base baseTarget = fetchBaseRoundRobin(scoutData.getScoutingBaseSet());
-            if (baseTarget != null) {
-                int assignments = scoutData.getScoutsAssignedToBase(baseTarget);
-                scoutData.updateBaseScoutAssignment(baseTarget, assignments);
-                return baseTarget.getLocation();
-            }
-        }
-
-
-        if (scoutData.isEnemyBuildingLocationKnown()) {
-            for (TilePosition target: scoutData.getEnemyBuildingPositions()) {
-                if (!scoutData.hasScoutTarget(target) && !game.isVisible(target)) {
-                    return target;
-                }
-            }
-        }
-
-        TilePosition scoutTile = getHotScoutTile();
-        if (scoutTile != null) return scoutTile;
-
-        return scoutData.findNewActiveScoutTarget();
-    }
-
-    @Nullable
-    private TilePosition getHotScoutTile() {
-        GameMap gameMap = gameState.getGameMap();
-        ArrayList<MapTile> heatMap = gameMap.getHeatMap();
-        if (!heatMap.isEmpty()) {
-            MapTile scoutTile = heatMap.get(0);
-            scoutTile.setScoutImportance(0);
-            gameMap.ageHeatMap();
-            return scoutTile.getTile();
-        }
-        return null;
-    }
-
-    private Base fetchBaseRoundRobin(Set<Base> candidateBases) {
-        Base leastScoutedBase = null;
-        Integer fewestScouts = Integer.MAX_VALUE;
-        ScoutData scoutData = gameState.getScoutData();
-        for (Base base: candidateBases) {
-            Integer assignedScoutsToBase = scoutData.getScoutsAssignedToBase(base);
-            if (assignedScoutsToBase < fewestScouts) {
-                leastScoutedBase = base;
-                fewestScouts = assignedScoutsToBase;
-            }
-
-        }
-        return leastScoutedBase;
     }
 
     private BuildOrder transitionBuildOrder() {
