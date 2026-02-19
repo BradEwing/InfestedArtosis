@@ -17,7 +17,7 @@ public class ScoutData {
     @Getter
     private HashSet<TilePosition> enemyBuildingPositions = new HashSet<>();
 
-    private HashMap<Base, Integer> baseScoutAssignments = new HashMap<>(); // TODO: Rename to startingBaseScoutAssignments
+    private HashMap<Base, Integer> baseScoutAssignments = new HashMap<>();
 
     public void addScoutTarget(TilePosition tp) {
         scoutTargets.add(tp);

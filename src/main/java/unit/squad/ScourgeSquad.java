@@ -18,11 +18,9 @@ import java.util.Set;
  */
 public class ScourgeSquad extends Squad {
 
-    private final CombatSimulator combatSimulator;
-
     public ScourgeSquad() {
         super();
-        this.combatSimulator = new ScourgeCombatSimulator();
+        this.setCombatSimulator(new ScourgeCombatSimulator());
         this.setType(UnitType.Zerg_Scourge);
     }
 
@@ -67,7 +65,7 @@ public class ScourgeSquad extends Squad {
         }
 
         // Evaluate engagement using combat simulator
-        CombatSimulator.CombatResult combatResult = combatSimulator.evaluate(this, gameState);
+        CombatSimulator.CombatResult combatResult = getCombatSimulator().evaluate(this, gameState);
 
         if (combatResult == CombatSimulator.CombatResult.ENGAGE) {
             setStatus(SquadStatus.FIGHT);

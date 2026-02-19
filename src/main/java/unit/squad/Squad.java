@@ -33,6 +33,9 @@ public class Squad implements Comparable<Squad> {
     private UnitType type = null;
     private Unit target = null;
 
+    @Getter
+    private CombatSimulator combatSimulator;
+
     protected boolean shouldDisband = false;
 
     private double max_dx = 0;
