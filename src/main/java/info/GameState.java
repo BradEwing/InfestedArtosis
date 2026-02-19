@@ -16,7 +16,6 @@ import bwem.Mineral;
 import config.Config;
 import info.map.BuildingPlanner;
 import info.map.GameMap;
-import info.map.MapTile;
 import info.tracking.ObservedBulletTracker;
 import info.tracking.ObservedUnitTracker;
 import info.tracking.PsiStormTracker;
@@ -24,7 +23,6 @@ import info.tracking.StrategyTracker;
 import learning.Decisions;
 import lombok.Data;
 import macro.plan.Plan;
-import org.jetbrains.annotations.Nullable;
 import macro.plan.PlanComparator;
 import macro.plan.PlanState;
 import strategy.buildorder.BuildOrder;
@@ -32,7 +30,6 @@ import unit.managed.ManagedUnit;
 import util.Distance;
 import util.Time;
 
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -796,54 +793,5 @@ public class GameState {
 
     public void setGeyserAssignment(Unit unit) {
         geyserAssignments.put(unit, new HashSet<>());
-    }
-
-    public TilePosition pollScoutTarget() {
-        if (baseData.getMainEnemyBase() == null && !scoutData.isEnemyBuildingLocationKnown()) {
-            Base baseTarget = fetchBaseRoundRobin(scoutData.getScoutingBaseSet());
-            if (baseTarget != null) {
-                int assignments = scoutData.getScoutsAssignedToBase(baseTarget);
-                scoutData.updateBaseScoutAssignment(baseTarget, assignments);
-                return baseTarget.getLocation();
-            }
-        }
-
-        if (scoutData.isEnemyBuildingLocationKnown()) {
-            for (TilePosition target: scoutData.getEnemyBuildingPositions()) {
-                if (!scoutData.hasScoutTarget(target) && !game.isVisible(target)) {
-                    return target;
-                }
-            }
-        }
-
-        TilePosition scoutTile = getHotScoutTile();
-        if (scoutTile != null) return scoutTile;
-
-        return scoutData.findNewActiveScoutTarget();
-    }
-
-    @Nullable
-    private TilePosition getHotScoutTile() {
-        ArrayList<MapTile> heatMap = gameMap.getHeatMap();
-        if (!heatMap.isEmpty()) {
-            MapTile scoutTile = heatMap.get(0);
-            scoutTile.setScoutImportance(0);
-            gameMap.ageHeatMap();
-            return scoutTile.getTile();
-        }
-        return null;
-    }
-
-    private Base fetchBaseRoundRobin(Set<Base> candidateBases) {
-        Base leastScoutedBase = null;
-        Integer fewestScouts = Integer.MAX_VALUE;
-        for (Base base: candidateBases) {
-            Integer assignedScoutsToBase = scoutData.getScoutsAssignedToBase(base);
-            if (assignedScoutsToBase < fewestScouts) {
-                leastScoutedBase = base;
-                fewestScouts = assignedScoutsToBase;
-            }
-        }
-        return leastScoutedBase;
     }
 }
