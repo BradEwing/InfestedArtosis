@@ -1,11 +1,16 @@
 package info;
 
+import bwapi.Game;
 import bwapi.Race;
 import bwapi.TilePosition;
 import bwapi.Unit;
 import bwem.Base;
+import info.map.GameMap;
+import info.map.MapTile;
 import lombok.Getter;
+import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Set;
@@ -162,6 +167,57 @@ public class ScoutData {
         }
 
         return null;
+    }
+
+    public TilePosition pollScoutTarget(Game game, GameState gameState) {
+        BaseData baseData = gameState.getBaseData();
+        if (baseData.getMainEnemyBase() == null && !isEnemyBuildingLocationKnown()) {
+            Base baseTarget = fetchBaseRoundRobin(getScoutingBaseSet());
+            if (baseTarget != null) {
+                int assignments = getScoutsAssignedToBase(baseTarget);
+                updateBaseScoutAssignment(baseTarget, assignments);
+                return baseTarget.getLocation();
+            }
+        }
+
+        if (isEnemyBuildingLocationKnown()) {
+            for (TilePosition target: enemyBuildingPositions) {
+                if (!hasScoutTarget(target) && !game.isVisible(target)) {
+                    return target;
+                }
+            }
+        }
+
+        TilePosition scoutTile = getHotScoutTile(gameState);
+        if (scoutTile != null) return scoutTile;
+
+        return findNewActiveScoutTarget();
+    }
+
+    @Nullable
+    private TilePosition getHotScoutTile(GameState gameState) {
+        GameMap gameMap = gameState.getGameMap();
+        ArrayList<MapTile> heatMap = gameMap.getHeatMap();
+        if (!heatMap.isEmpty()) {
+            MapTile scoutTile = heatMap.get(0);
+            scoutTile.setScoutImportance(0);
+            gameMap.ageHeatMap();
+            return scoutTile.getTile();
+        }
+        return null;
+    }
+
+    private Base fetchBaseRoundRobin(Set<Base> candidateBases) {
+        Base leastScoutedBase = null;
+        Integer fewestScouts = Integer.MAX_VALUE;
+        for (Base base: candidateBases) {
+            Integer assignedScoutsToBase = getScoutsAssignedToBase(base);
+            if (assignedScoutsToBase < fewestScouts) {
+                leastScoutedBase = base;
+                fewestScouts = assignedScoutsToBase;
+            }
+        }
+        return leastScoutedBase;
     }
 
     /**

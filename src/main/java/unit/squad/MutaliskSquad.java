@@ -23,9 +23,8 @@ import java.util.Set;
  */
 public class MutaliskSquad extends Squad {
 
-    private final CombatSimulator combatSimulator;
     private boolean shouldDisband = false;
-    
+
     // Attack and retreat timers for hysteresis behavior
     private Time attackUntilFrame = null;
     private Time retreatUntilFrame = null;
@@ -34,7 +33,7 @@ public class MutaliskSquad extends Squad {
 
     public MutaliskSquad() {
         super();
-        this.combatSimulator = new MutaliskCombatSimulator();
+        this.setCombatSimulator(new MutaliskCombatSimulator());
         this.setType(UnitType.Zerg_Mutalisk);
     }
 
@@ -117,7 +116,7 @@ public class MutaliskSquad extends Squad {
 
         // Only re-evaluate combat when both timers are expired or null
         if (!isAttackWindowActive && !isRetreatWindowActive) {
-            CombatResult combatResult = combatSimulator.evaluate(this, gameState);
+            CombatResult combatResult = getCombatSimulator().evaluate(this, gameState);
 
             // Set appropriate timer based on combat result
             if (combatResult == CombatResult.RETREAT) {

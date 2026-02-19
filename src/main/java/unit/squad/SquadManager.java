@@ -9,7 +9,6 @@ import bwapi.UnitType;
 import bwapi.WalkPosition;
 import bwem.Base;
 import info.GameState;
-import info.InformationManager;
 import info.ScoutData;
 import info.tracking.ObservedUnitTracker;
 import info.tracking.PsiStormTracker;
@@ -40,16 +39,12 @@ public class SquadManager {
 
     private BWMirrorAgentFactory agentFactory;
 
-    private InformationManager informationManager;
-
     private Squad overlords = new Squad();
 
     public HashSet<Squad> fightSquads = new HashSet<>();
 
     @Getter
     private HashMap<Base, Squad> defenseSquads = new HashMap<>();
-
-    private final CombatSimulator defaultCombatSimulator;
 
     private HashSet<ManagedUnit> disbanded = new HashSet<>();
 
@@ -64,13 +59,10 @@ public class SquadManager {
     private static final int SUNKEN_MANHATTAN_DISTANCE = 7;
     private static final int DEFENSE_SIM_RANGE = 256;
 
-    public SquadManager(Game game, GameState gameState, InformationManager informationManager) {
+    public SquadManager(Game game, GameState gameState) {
         this.game = game;
         this.gameState = gameState;
-        // TODO: Information accessed here should come from GameState
-        this.informationManager = informationManager;
         this.agentFactory = new BWMirrorAgentFactory();
-        this.defaultCombatSimulator = new AssCombatSimulator();
     }
 
     public void updateFightSquads() {
@@ -443,7 +435,7 @@ public class SquadManager {
             }
         }
         
-        return informationManager.getRallyPoint();
+        return gameState.getSquadRallyPoint();
     }
 
     /**
@@ -479,7 +471,7 @@ public class SquadManager {
             return best.getCenter().toTilePosition().toPosition();
         }
 
-        return informationManager.getRallyPoint();
+        return gameState.getSquadRallyPoint();
     }
 
     /**
@@ -522,7 +514,7 @@ public class SquadManager {
     }
 
     private int defaultMoveOutThreshold() {
-        int staticDefensePenalty = min(informationManager.getEnemyHostileToGroundBuildingsCount(), 6);
+        int staticDefensePenalty = min(gameState.getObservedUnitTracker().getHostileToGroundBuildings().size(), 6);
         int moveOutThreshold = 8 * (1 + staticDefensePenalty);
         StrategyTracker strategyTracker = gameState.getStrategyTracker();
         if (strategyTracker.isDetectedStrategy("2Gate")) {
@@ -553,7 +545,7 @@ public class SquadManager {
             }
         }
 
-        int staticDefensePenalty = Math.min(informationManager.getEnemyHostileToGroundBuildingsCount(), 6);
+        int staticDefensePenalty = Math.min(gameState.getObservedUnitTracker().getHostileToGroundBuildings().size(), 6);
         int baseThreshold = gameState.getOpponentRace() == Race.Zerg ? 4 : 6;
         int threshold = baseThreshold * (1 + staticDefensePenalty);
 
@@ -569,10 +561,6 @@ public class SquadManager {
         return Math.min(threshold, maxThreshold);
     }
 
-    /**
-     * TODO: All simulation should be handled by a CombatSimulator passed to the squad
-     * @param squad
-     */
     private void simulateFightSquad(Squad squad) {
         // Skip mutalisk squads as they handle their own tactics
         if (squad instanceof MutaliskSquad || squad instanceof ScourgeSquad) {
@@ -669,7 +657,7 @@ public class SquadManager {
         }
 
         // Use combat simulator for engagement decision
-        CombatSimulator.CombatResult result = defaultCombatSimulator.evaluate(squad, gameState);
+        CombatSimulator.CombatResult result = squad.getCombatSimulator().evaluate(squad, gameState);
 
         switch (result) {
             case RETREAT:
@@ -982,6 +970,7 @@ public class SquadManager {
         if (type == UnitType.Zerg_Zergling) {
             newSquad = new ZerglingSquad();
             newSquad.setType(type);
+            newSquad.setCombatSimulator(new AssCombatSimulator());
         } else if (type == UnitType.Zerg_Mutalisk) {
             newSquad = new MutaliskSquad();
         } else if (type == UnitType.Zerg_Scourge) {
@@ -989,6 +978,7 @@ public class SquadManager {
         } else {
             newSquad = new Squad();
             newSquad.setType(type);
+            newSquad.setCombatSimulator(new AssCombatSimulator());
         }
 
         newSquad.setStatus(SquadStatus.FIGHT);
@@ -1072,7 +1062,7 @@ public class SquadManager {
         }
 
         if (filtered.isEmpty()) {
-            managedUnit.setMovementTargetPosition(informationManager.pollScoutTarget(false));
+            managedUnit.setMovementTargetPosition(gameState.getScoutData().pollScoutTarget(game, gameState));
             return;
         }
 
@@ -1171,7 +1161,7 @@ public class SquadManager {
                 for (ManagedUnit overlord : overlordsToRemove) {
                     squad.removeUnit(overlord);
                     overlords.addUnit(overlord);
-                    overlord.setRallyPoint(informationManager.getRallyPoint());
+                    overlord.setRallyPoint(gameState.getSquadRallyPoint());
                     overlord.setRole(UnitRole.RETREAT);
                 }
                 squadsToRemove.add(squad);
