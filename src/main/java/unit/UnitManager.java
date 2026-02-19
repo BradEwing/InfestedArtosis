@@ -49,7 +49,7 @@ public class UnitManager {
 
         this.informationManager = informationManager;
         this.workerManager = new WorkerManager(game, gameState);
-        this.squadManager = new SquadManager(game, gameState, informationManager);
+        this.squadManager = new SquadManager(game, gameState);
         this.scoutManager = new ScoutManager(game, gameState, informationManager);
         this.buildingManager = new BuildingManager(game, gameState);
         this.managedUnitLookup = gameState.getManagedUnitLookup();

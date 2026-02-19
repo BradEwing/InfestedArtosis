@@ -9,7 +9,6 @@ import bwapi.UnitType;
 import bwapi.WalkPosition;
 import bwem.Base;
 import info.GameState;
-import info.InformationManager;
 import info.ScoutData;
 import info.tracking.ObservedUnitTracker;
 import info.tracking.PsiStormTracker;
@@ -40,8 +39,6 @@ public class SquadManager {
 
     private BWMirrorAgentFactory agentFactory;
 
-    private InformationManager informationManager;
-
     private Squad overlords = new Squad();
 
     public HashSet<Squad> fightSquads = new HashSet<>();
@@ -49,23 +46,27 @@ public class SquadManager {
     @Getter
     private HashMap<Base, Squad> defenseSquads = new HashMap<>();
 
-    private final CombatSimulator defaultCombatSimulator;
-
     private HashSet<ManagedUnit> disbanded = new HashSet<>();
 
     private static final double MUTALISK_JOIN_DISTANCE = 128;
+    private static final double SQUAD_MERGE_DISTANCE = 256.0;
+    private static final double ENEMY_DETECTION_RADIUS = 512.0;
+    private static final int RETREAT_TIMEOUT_FRAMES = 240;
+    private static final int RETREAT_VECTOR_MAGNITUDE = 192;
+    private static final int COMBAT_SIM_DURATION_FRAMES = 150;
+    private static final double DEFENSE_WIN_THRESHOLD = 0.50;
+    private static final int MERGE_CHECK_INTERVAL = 50;
+    private static final int SUNKEN_MANHATTAN_DISTANCE = 7;
+    private static final int DEFENSE_SIM_RANGE = 256;
 
-    public SquadManager(Game game, GameState gameState, InformationManager informationManager) {
+    public SquadManager(Game game, GameState gameState) {
         this.game = game;
         this.gameState = gameState;
-        // TODO: Information accessed here should come from GameState
-        this.informationManager = informationManager;
         this.agentFactory = new BWMirrorAgentFactory();
-        this.defaultCombatSimulator = new AssCombatSimulator();
     }
 
     public void updateFightSquads() {
-        debugPainters();
+        disbanded.clear();
         removeEmptySquads();
         mergeSquads();
         assignOverlordsToSquads();
@@ -175,7 +176,7 @@ public class SquadManager {
             }
         } else {
             for (ManagedUnit gatherer : baseUnits) {
-                Boolean canClear = canDefenseSquadClearThreat(defenseSquad, hostileUnits);
+                boolean canClear = canDefenseSquadClearThreat(defenseSquad, hostileUnits);
                 if (canClear) {
                     break;
                 }
@@ -283,12 +284,12 @@ public class SquadManager {
         for (Base base: defenseSquads.keySet()) {
             ensureDefenseSquad(base);
             Squad squad = defenseSquads.get(base);
-            if (defenseSquads.size() == 0) {
+            if (squad.size() == 0) {
                 continue;
             }
 
             HashSet<Unit> baseThreats = gameState.getBaseToThreatLookup().get(base);
-            if (baseThreats == null || baseThreats.size() == 0) {
+            if (baseThreats == null || baseThreats.isEmpty()) {
                 continue;
             }
             for (ManagedUnit defender: squad.getMembers()) {
@@ -326,7 +327,7 @@ public class SquadManager {
 
     private void mergeSquads() {
         // Merge every 50 frames
-        if (game.getFrameCount() % 50 != 0) {
+        if (game.getFrameCount() % MERGE_CHECK_INTERVAL != 0) {
             return;
         }
 
@@ -343,7 +344,7 @@ public class SquadManager {
                 if (squad1.getType() != squad2.getType()) {
                     continue;
                 }
-                if (squad1.distance(squad2) < 256) {
+                if (squad1.distance(squad2) < SQUAD_MERGE_DISTANCE) {
                     Set<Squad> mergeSet = new HashSet<>();
                     mergeSet.add(squad1);
                     mergeSet.add(squad2);
@@ -375,7 +376,7 @@ public class SquadManager {
 
         for (Unit u: enemyUnits) {
             final double d = u.getPosition().getDistance(squad.getCenter());
-            if (d > 512.0) {
+            if (d > ENEMY_DETECTION_RADIUS) {
                 continue;
             }
             enemies.add(u);
@@ -430,12 +431,11 @@ public class SquadManager {
         if (!enemyBuildings.isEmpty()) {
             Unit closestBuilding = closestHostileUnit(squad.getCenter(), new ArrayList<>(enemyBuildings));
             if (closestBuilding != null) {
-                Position buildingPos = closestBuilding.getPosition();
-                return buildingPos;
+                return closestBuilding.getPosition();
             }
         }
         
-        return informationManager.getRallyPoint();
+        return gameState.getSquadRallyPoint();
     }
 
     /**
@@ -471,7 +471,7 @@ public class SquadManager {
             return best.getCenter().toTilePosition().toPosition();
         }
 
-        return informationManager.getRallyPoint();
+        return gameState.getSquadRallyPoint();
     }
 
     /**
@@ -514,7 +514,7 @@ public class SquadManager {
     }
 
     private int defaultMoveOutThreshold() {
-        int staticDefensePenalty = min(informationManager.getEnemyHostileToGroundBuildingsCount(), 6);
+        int staticDefensePenalty = min(gameState.getObservedUnitTracker().getHostileToGroundBuildings().size(), 6);
         int moveOutThreshold = 8 * (1 + staticDefensePenalty);
         StrategyTracker strategyTracker = gameState.getStrategyTracker();
         if (strategyTracker.isDetectedStrategy("2Gate")) {
@@ -545,7 +545,7 @@ public class SquadManager {
             }
         }
 
-        int staticDefensePenalty = Math.min(informationManager.getEnemyHostileToGroundBuildingsCount(), 6);
+        int staticDefensePenalty = Math.min(gameState.getObservedUnitTracker().getHostileToGroundBuildings().size(), 6);
         int baseThreshold = gameState.getOpponentRace() == Race.Zerg ? 4 : 6;
         int threshold = baseThreshold * (1 + staticDefensePenalty);
 
@@ -561,9 +561,6 @@ public class SquadManager {
         return Math.min(threshold, maxThreshold);
     }
 
-    /**
-     * @param squad
-     */
     private void simulateFightSquad(Squad squad) {
         // Skip mutalisk squads as they handle their own tactics
         if (squad instanceof MutaliskSquad || squad instanceof ScourgeSquad) {
@@ -574,10 +571,7 @@ public class SquadManager {
 
         if (squad.getType() == UnitType.Zerg_Lurker) {
             squad.setStatus(SquadStatus.FIGHT);
-            for (ManagedUnit managedUnit : managedFighters) {
-                managedUnit.setRole(UnitRole.FIGHT);
-                assignEnemyTarget(managedUnit, squad);
-            }
+            assignFightTargets(squad, managedFighters, false);
             return;
         }
 
@@ -612,11 +606,7 @@ public class SquadManager {
         if (isSquadNearFriendlySunken(squad)) {
             int now = game.getFrameCount();
             squad.setStatus(SquadStatus.FIGHT);
-            for (ManagedUnit managedUnit : managedFighters) {
-                managedUnit.setRole(UnitRole.FIGHT);
-                managedUnit.clearRetreatStart();
-                assignEnemyTarget(managedUnit, squad);
-            }
+            assignFightTargets(squad, managedFighters, true);
             squad.startFightLock(now);
             return;
         }
@@ -656,65 +646,26 @@ public class SquadManager {
         boolean fightLocked = squad.isFightLocked(now);
 
         if (squad.getStatus() == SquadStatus.RETREAT && retreatLocked) {
-            Position naturalRallyPoint = informationManager.getRallyPoint();
-            HashMap<ManagedUnit, Position> retreatTargets = squad instanceof ZerglingSquad
-                    ? computeZerglingRetreatTargets(squad)
-                    : null;
-            for (ManagedUnit managedUnit : managedFighters) {
-                managedUnit.setRole(UnitRole.RETREAT);
-                managedUnit.markRetreatStart(now);
-                Integer retreatStartFrame = managedUnit.getRetreatStartFrame();
-                if (retreatStartFrame != null && now - retreatStartFrame >= 240) {
-                    managedUnit.setRetreatTarget(naturalRallyPoint);
-                } else if (retreatTargets != null) {
-                    Position rt = retreatTargets.get(managedUnit);
-                    managedUnit.setRetreatTarget(rt);
-                } else {
-                    managedUnit.setRetreatTarget(managedUnit.getRetreatPosition());
-                }
-            }
+            assignRetreatTargets(squad, managedFighters, now);
             return;
         }
         if (squad.getStatus() == SquadStatus.FIGHT && fightLocked) {
-            for (ManagedUnit managedUnit : managedFighters) {
-                managedUnit.setRole(UnitRole.FIGHT);
-                assignEnemyTarget(managedUnit, squad);
-            }
+            assignFightTargets(squad, managedFighters, false);
             return;
         }
 
-        CombatSimulator.CombatResult result = defaultCombatSimulator.evaluate(squad, gameState);
+        CombatSimulator.CombatResult result = squad.getCombatSimulator().evaluate(squad, gameState);
 
         switch (result) {
             case RETREAT:
                 squad.setStatus(SquadStatus.RETREAT);
-                Position naturalRallyPoint = informationManager.getRallyPoint();
-                HashMap<ManagedUnit, Position> retreatTargets = squad instanceof ZerglingSquad
-                        ? computeZerglingRetreatTargets(squad)
-                        : null;
-                for (ManagedUnit managedUnit : managedFighters) {
-                    managedUnit.setRole(UnitRole.RETREAT);
-                    managedUnit.markRetreatStart(now);
-                    Integer retreatStartFrame = managedUnit.getRetreatStartFrame();
-                    if (retreatStartFrame != null && now - retreatStartFrame >= 240) {
-                        managedUnit.setRetreatTarget(naturalRallyPoint);
-                    } else if (retreatTargets != null) {
-                        managedUnit.setRetreatTarget(retreatTargets.get(managedUnit));
-                    } else {
-                        managedUnit.setRetreatTarget(managedUnit.getRetreatPosition());
-                    }
-                }
+                assignRetreatTargets(squad, managedFighters, now);
                 squad.startRetreatLock(now);
                 break;
 
             case ENGAGE:
                 squad.setStatus(SquadStatus.FIGHT);
-                for (ManagedUnit managedUnit : managedFighters) {
-                    managedUnit.setRole(UnitRole.FIGHT);
-                    managedUnit.clearRetreatStart();
-                    assignEnemyTarget(managedUnit, squad);
-                }
-                // Only start fight lock if not currently retreat-locked
+                assignFightTargets(squad, managedFighters, true);
                 if (!retreatLocked) {
                     squad.startFightLock(now);
                 }
@@ -731,12 +682,41 @@ public class SquadManager {
         }
     }
 
+    private void assignRetreatTargets(Squad squad, HashSet<ManagedUnit> managedFighters, int currentFrame) {
+        Position rallyPoint = gameState.getSquadRallyPoint();
+        HashMap<ManagedUnit, Position> retreatTargets = squad instanceof ZerglingSquad
+                ? computeZerglingRetreatTargets(squad)
+                : null;
+        for (ManagedUnit managedUnit : managedFighters) {
+            managedUnit.setRole(UnitRole.RETREAT);
+            managedUnit.markRetreatStart(currentFrame);
+            Integer retreatStartFrame = managedUnit.getRetreatStartFrame();
+            if (retreatStartFrame != null && currentFrame - retreatStartFrame >= RETREAT_TIMEOUT_FRAMES) {
+                managedUnit.setRetreatTarget(rallyPoint);
+            } else if (retreatTargets != null) {
+                managedUnit.setRetreatTarget(retreatTargets.get(managedUnit));
+            } else {
+                managedUnit.setRetreatTarget(managedUnit.getRetreatPosition());
+            }
+        }
+    }
+
+    private void assignFightTargets(Squad squad, HashSet<ManagedUnit> managedFighters, boolean clearRetreat) {
+        for (ManagedUnit managedUnit : managedFighters) {
+            managedUnit.setRole(UnitRole.FIGHT);
+            if (clearRetreat) {
+                managedUnit.clearRetreatStart();
+            }
+            assignEnemyTarget(managedUnit, squad);
+        }
+    }
+
     private boolean isSquadNearFriendlySunken(Squad squad) {
         TilePosition squadTile = squad.getCenter().toTilePosition();
         for (Unit unit : game.self().getUnits()) {
             if (unit.getType() != UnitType.Zerg_Sunken_Colony) continue;
             if (!unit.isCompleted()) continue;
-            if (manhattanTileDistance(squadTile, unit.getTilePosition()) <= 7) {
+            if (manhattanTileDistance(squadTile, unit.getTilePosition()) <= SUNKEN_MANHATTAN_DISTANCE) {
                 return true;
             }
         }
@@ -775,7 +755,7 @@ public class SquadManager {
         double len = Math.max(1.0, away.length());
         Vec2 awayUnit = away.scale(1.0 / len);
         Vec2 perp = awayUnit.perpendicular();
-        Position anchor = awayUnit.scale(192).clampToMap(game, center);
+        Position anchor = awayUnit.scale(RETREAT_VECTOR_MAGNITUDE).clampToMap(game, center);
 
         int maxX = game.mapWidth() * 32 - 1;
         int maxY = game.mapHeight() * 32 - 1;
@@ -850,8 +830,8 @@ public class SquadManager {
 
         Vec2 weighted = new Vec2(totalDx / totalWeight, totalDy / totalWeight);
         Vec2 retreat = weighted.length() > 0
-                ? weighted.normalizeToLength(192)
-                : new Vec2(192, 0);
+                ? weighted.normalizeToLength(RETREAT_VECTOR_MAGNITUDE)
+                : new Vec2(RETREAT_VECTOR_MAGNITUDE, 0);
         return retreat.clampToMap(game, unitPos);
     }
 
@@ -871,7 +851,7 @@ public class SquadManager {
             if (enemyUnit.getType() == UnitType.Unknown) {
                 continue;
             }
-            if ((int) enemyUnit.getPosition().getDistance(squad.getCenter()) > 256) {
+            if ((int) enemyUnit.getPosition().getDistance(squad.getCenter()) > DEFENSE_SIM_RANGE) {
                 continue;
             }
             try {
@@ -881,7 +861,7 @@ public class SquadManager {
             }
         }
 
-        simulator.simulate(120); // Simulate 5 seconds
+        simulator.simulate(COMBAT_SIM_DURATION_FRAMES);
 
         if (simulator.getAgentsB().isEmpty()) {
             return true;
@@ -892,9 +872,9 @@ public class SquadManager {
         }
 
         final boolean isSCVRush = gameState.getStrategyTracker().isDetectedStrategy("SCVRush");
-        final float percentRemaining = (float) simulator.getAgentsA().size() / managedDefenders.size();
-        final float percentTreshold = (float) (isSCVRush ? 0.75 : 0.50);
-        if (percentRemaining >= percentTreshold) {
+        float percentRemaining = (float) simulator.getAgentsA().size() / managedDefenders.size();
+        final double percentThreshold = isSCVRush ? 0.75 : DEFENSE_WIN_THRESHOLD;
+        if (percentRemaining >= percentThreshold) {
             return true;
         }
 
@@ -946,7 +926,7 @@ public class SquadManager {
             if (squad.getType() != type) {
                 continue;
             }
-            if (squad.distance(managedUnit) < 256) {
+            if (squad.distance(managedUnit) < SQUAD_MERGE_DISTANCE) {
                 return squad;
             }
         }
@@ -989,6 +969,7 @@ public class SquadManager {
         if (type == UnitType.Zerg_Zergling) {
             newSquad = new ZerglingSquad();
             newSquad.setType(type);
+            newSquad.setCombatSimulator(new AssCombatSimulator());
         } else if (type == UnitType.Zerg_Mutalisk) {
             newSquad = new MutaliskSquad();
         } else if (type == UnitType.Zerg_Scourge) {
@@ -996,6 +977,7 @@ public class SquadManager {
         } else {
             newSquad = new Squad();
             newSquad.setType(type);
+            newSquad.setCombatSimulator(new AssCombatSimulator());
         }
 
         newSquad.setStatus(SquadStatus.FIGHT);
@@ -1079,7 +1061,7 @@ public class SquadManager {
         }
 
         if (filtered.isEmpty()) {
-            managedUnit.setMovementTargetPosition(informationManager.pollScoutTarget(false));
+            managedUnit.setMovementTargetPosition(gameState.pollScoutTarget());
             return;
         }
 
@@ -1103,8 +1085,6 @@ public class SquadManager {
         }
         managedUnit.setFightTarget(ft);
     }
-
-    private void debugPainters() { }
 
     /**
      * Retrieves the largest fight squad or returns null if no fight squads exist.
@@ -1180,7 +1160,7 @@ public class SquadManager {
                 for (ManagedUnit overlord : overlordsToRemove) {
                     squad.removeUnit(overlord);
                     overlords.addUnit(overlord);
-                    overlord.setRallyPoint(informationManager.getRallyPoint());
+                    overlord.setRallyPoint(gameState.getSquadRallyPoint());
                     overlord.setRole(UnitRole.RETREAT);
                 }
                 squadsToRemove.add(squad);
