@@ -90,6 +90,13 @@ public class Bot extends DefaultBWListener {
     }
 
     @Override
+    public void onUnitCreate(Unit unit) {
+        if (unit.getType() == UnitType.Resource_Vespene_Geyser) {
+            gameState.getBaseData().onGeyserComplete(unit);
+        }
+    }
+
+    @Override
     public void onUnitComplete(Unit unit) {
         if (unit.getPlayer() != game.self()) {
             return;

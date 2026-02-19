@@ -22,6 +22,13 @@ public class TerranBase extends BuildOrder {
             return 0;
         }
 
+        if (gameState.isScvRushed()) {
+            int currentZerglings = gameState.getUnitTypeCount().get(UnitType.Zerg_Zergling);
+            if (currentZerglings < 12) {
+                return 12;
+            }
+        }
+
         int zerglings = 4;
         int currentZerglings = gameState.getUnitTypeCount().get(UnitType.Zerg_Zergling);
         int medicCount = gameState.enemyUnitCount(UnitType.Terran_Medic);
@@ -54,13 +61,17 @@ public class TerranBase extends BuildOrder {
      */
     @Override
     protected int requiredSunkens(GameState gameState) {
+        if (gameState.isScvRushed() && gameState.getBaseData().getMyBases().size() == 1) {
+            return 1;
+        }
+
         int sunkens = 0;
         StrategyTracker strategyTracker = gameState.getStrategyTracker();
         Time gameTime = gameState.getGameTime();
 
         int medicCount = gameState.enemyUnitCount(UnitType.Terran_Medic);
         int firebatCount = gameState.enemyUnitCount(UnitType.Terran_Firebat);
-        int marineCount = gameState.enemyUnitCount(UnitType.Terran_Firebat);
+        int marineCount = gameState.enemyUnitCount(UnitType.Terran_Marine);
         int vultureCount = gameState.enemyUnitCount(UnitType.Terran_Vulture);
         int factoryCount = gameState.enemyUnitCount(UnitType.Terran_Factory);
         int bioCount = marineCount + firebatCount + medicCount;

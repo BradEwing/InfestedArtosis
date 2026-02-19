@@ -112,6 +112,10 @@ public class PlanManager {
         List<ManagedUnit> executed = new ArrayList<>();
         for (ManagedUnit managedUnit: scheduledDrones) {
             Plan plan = managedUnit.getPlan();
+            if (plan == null || plan.getState() == PlanState.CANCELLED) {
+                executed.add(managedUnit);
+                continue;
+            }
             // TODO: Set build position for all scheduled build plans
             int travelFrames = this.getTravelFrames(managedUnit.getUnit(), plan.getBuildPosition().toPosition());
             if (currentFrame > plan.getPredictedReadyFrame() - travelFrames) {

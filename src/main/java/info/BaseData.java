@@ -10,6 +10,7 @@ import info.map.GameMap;
 import info.map.GroundPath;
 import info.map.GroundPathComparator;
 import lombok.Getter;
+import lombok.Setter;
 import util.Distance;
 
 import java.util.HashMap;
@@ -51,6 +52,8 @@ public class BaseData {
     private HashSet<Unit> availableGeysers = new HashSet<>();
     private HashMap<Base, Integer> sunkenColonyLookup = new HashMap<>();
     private HashMap<Base, Integer> sunkenColonyReserveLookup = new HashMap<>();
+    @Setter
+    private boolean allowSunkenAtMain = false;
 
     public BaseData(List<Base> allBases) {
         for (Base base: allBases) {
@@ -128,9 +131,44 @@ public class BaseData {
         return candidate;
     }
 
-    // TODO: Call when drone scheduled to build extractor dies
     public void addExtractorCandidate(Unit geyser) {
+        extractors.remove(geyser);
+        availableGeysers.add(geyser);
+    }
 
+    public void unreserveExtractor(TilePosition tilePosition) {
+        Unit geyser = null;
+        for (Unit u : extractors) {
+            if (u.getTilePosition().equals(tilePosition)) {
+                geyser = u;
+                break;
+            }
+        }
+        if (geyser != null) {
+            addExtractorCandidate(geyser);
+        }
+    }
+
+    public void onGeyserComplete(Unit geyser) {
+        TilePosition geyserTp = geyser.getTilePosition();
+        for (Unit existing : availableGeysers) {
+            if (existing.getTilePosition().equals(geyserTp)) {
+                return;
+            }
+        }
+        for (Unit existing : extractors) {
+            if (existing.getTilePosition().equals(geyserTp)) {
+                return;
+            }
+        }
+        for (Base base : myBases) {
+            for (bwem.Geyser baseGeyser : base.getGeysers()) {
+                if (baseGeyser.getUnit().getTilePosition().equals(geyserTp)) {
+                    availableGeysers.add(geyser);
+                    return;
+                }
+            }
+        }
     }
 
     public int numExtractor() {
@@ -341,7 +379,7 @@ public class BaseData {
     }
 
     public boolean isEligibleForSunkenColony(Base base) {
-        if (base == mainBase) {
+        if (base == mainBase && !allowSunkenAtMain) {
             return false;
         }
         if (islands.contains(base)) {

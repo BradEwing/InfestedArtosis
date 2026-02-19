@@ -445,7 +445,8 @@ public class UnitManager {
     }
 
     private void assignGatherersToDefense(Base base) {
-        if (gameState.getGameTime().greaterThan(new Time(5, 0))) {
+        boolean isSCVRush = gameState.getStrategyTracker().isDetectedStrategy("SCVRush");
+        if (gameState.getGameTime().greaterThan(new Time(5, 0)) && !isSCVRush) {
             return;
         }
         HashSet<ManagedUnit> gatherersAssignedToBase = this.gameState.getGatherersAssignedToBase().get(base);
@@ -462,7 +463,9 @@ public class UnitManager {
         List<Unit> threateningUnits = new ArrayList<>(this.gameState.getBaseToThreatLookup()
                 .get(base));
 
-        List<ManagedUnit> gatherersToReassign = this.squadManager.assignGathererDefenders(base, gatherersAssignedToBase, threateningUnits);
+
+
+        List<ManagedUnit> gatherersToReassign = this.squadManager.assignGatherersToDefend(base, gatherersAssignedToBase, threateningUnits);
         for (ManagedUnit managedUnit: gatherersToReassign) {
             this.workerManager.removeManagedWorker(managedUnit);
         }
