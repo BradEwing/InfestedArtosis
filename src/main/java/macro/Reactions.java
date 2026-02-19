@@ -1,5 +1,6 @@
 package macro;
 
+import bwapi.Game;
 import bwapi.Position;
 import bwapi.UnitType;
 import bwapi.UpgradeType;
@@ -95,17 +96,32 @@ public class Reactions {
                 .filter(p -> p.getType() == PlanType.BUILDING && p.getPlannedUnit() == UnitType.Zerg_Extractor)
                 .collect(Collectors.toSet());
         for (Plan plan : scheduledExtractors) {
-            Unit assignedDrone = null;
-            for (Map.Entry<Unit, Plan> entry : gameState.getAssignedPlannedItems().entrySet()) {
-                if (entry.getValue() == plan) {
-                    assignedDrone = entry.getKey();
-                    break;
-                }
-            }
             gameState.getPlansScheduled().remove(plan);
-            gameState.cancelPlan(assignedDrone, plan);
-            if (plan.getBuildPosition() != null) {
-                baseData.unreserveExtractor(plan.getBuildPosition());
+            cancelExtractorPlan(plan, baseData);
+        }
+
+        Set<Plan> buildingExtractors = gameState.getPlansBuilding()
+                .stream()
+                .filter(p -> p.getType() == PlanType.BUILDING && p.getPlannedUnit() == UnitType.Zerg_Extractor)
+                .collect(Collectors.toSet());
+        for (Plan plan : buildingExtractors) {
+            gameState.getPlansBuilding().remove(plan);
+            cancelExtractorPlan(plan, baseData);
+        }
+
+        Set<Plan> morphingExtractors = gameState.getPlansMorphing()
+                .stream()
+                .filter(p -> p.getType() == PlanType.BUILDING && p.getPlannedUnit() == UnitType.Zerg_Extractor)
+                .collect(Collectors.toSet());
+        for (Plan plan : morphingExtractors) {
+            gameState.getPlansMorphing().remove(plan);
+            cancelExtractorPlan(plan, baseData);
+        }
+
+        Game game = gameState.getGame();
+        for (Unit unit : game.self().getUnits()) {
+            if (unit.getType() == UnitType.Zerg_Extractor && !unit.isCompleted()) {
+                unit.cancelMorph();
             }
         }
 
@@ -198,6 +214,20 @@ public class Reactions {
                     plan.setPriority(0);
                 }
             }
+        }
+    }
+
+    private void cancelExtractorPlan(Plan plan, BaseData baseData) {
+        Unit assignedDrone = null;
+        for (Map.Entry<Unit, Plan> entry : gameState.getAssignedPlannedItems().entrySet()) {
+            if (entry.getValue() == plan) {
+                assignedDrone = entry.getKey();
+                break;
+            }
+        }
+        gameState.cancelPlan(assignedDrone, plan);
+        if (plan.getBuildPosition() != null) {
+            baseData.unreserveExtractor(plan.getBuildPosition());
         }
     }
 }

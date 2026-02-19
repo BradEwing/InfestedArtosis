@@ -1,6 +1,7 @@
 package unit.scout;
 
 import bwapi.Game;
+import bwapi.Position;
 import bwapi.Race;
 import bwapi.TilePosition;
 import bwapi.Unit;
@@ -15,7 +16,6 @@ import info.map.ScoutPath;
 import unit.managed.ManagedUnit;
 import unit.managed.UnitRole;
 
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -125,6 +125,13 @@ public class ScoutManager {
             }
         }
 
+        Set<Position> basePositions = gameState.getBaseData().getMyBasePositions();
+        Set<Unit> nearbyWorkers = gameState.getObservedUnitTracker()
+                .getWorkerUnitsNearPositions(basePositions, 512);
+        if (nearbyWorkers.size() >= 3) {
+            return true;
+        }
+
         return false;
     }
 
@@ -212,11 +219,9 @@ public class ScoutManager {
             updateBaseScoutAssignments(farthestBase);
             return farthestBase.getLocation();
         } else {
-            final Base fathestBase = new ArrayList<>(baseSet)
-                    .get(0);
             final Base farthestBase = fetchBaseFarthestFromScouts(baseSet);
             updateBaseScoutAssignments(farthestBase);
-            return fathestBase.getLocation();
+            return farthestBase.getLocation();
         }
     }
 

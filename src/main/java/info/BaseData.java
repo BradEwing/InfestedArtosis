@@ -149,6 +149,28 @@ public class BaseData {
         }
     }
 
+    public void onGeyserComplete(Unit geyser) {
+        TilePosition geyserTp = geyser.getTilePosition();
+        for (Unit existing : availableGeysers) {
+            if (existing.getTilePosition().equals(geyserTp)) {
+                return;
+            }
+        }
+        for (Unit existing : extractors) {
+            if (existing.getTilePosition().equals(geyserTp)) {
+                return;
+            }
+        }
+        for (Base base : myBases) {
+            for (bwem.Geyser baseGeyser : base.getGeysers()) {
+                if (baseGeyser.getUnit().getTilePosition().equals(geyserTp)) {
+                    availableGeysers.add(geyser);
+                    return;
+                }
+            }
+        }
+    }
+
     public int numExtractor() {
         return extractors.size();
     }

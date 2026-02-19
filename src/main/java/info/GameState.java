@@ -27,6 +27,7 @@ import macro.plan.PlanComparator;
 import macro.plan.PlanState;
 import strategy.buildorder.BuildOrder;
 import unit.managed.ManagedUnit;
+import unit.managed.UnitRole;
 import util.Distance;
 import util.Time;
 
@@ -213,6 +214,14 @@ public class GameState {
         plansImpossible.remove(plan);
         plan.setState(PlanState.CANCELLED);
         assignedPlannedItems.remove(unit);
+
+        if (unit != null) {
+            ManagedUnit managedUnit = managedUnitLookup.get(unit);
+            if (managedUnit != null) {
+                managedUnit.setPlan(null);
+                managedUnit.setRole(UnitRole.IDLE);
+            }
+        }
 
         switch (plan.getType()) {
             case UNIT:
@@ -517,6 +526,7 @@ public class GameState {
 
     public boolean canPlanExtractor() {
         return !isAllIn &&
+                !scvRushed &&
                 techProgression.canPlanExtractor() &&
                 baseData.canReserveExtractor() &&
                 (baseData.numExtractor() < 1 || needExtractor());
