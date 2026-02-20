@@ -116,8 +116,10 @@ public class BaseData {
 
         for (bwem.Geyser g : base.getGeysers()) {
             Unit geyserUnit = g.getUnit();
-            availableGeysers.add(geyserUnit);
-            geyserPositionLookup.put(geyserUnit, geyserUnit.getTilePosition());
+            geyserPositionLookup.put(geyserUnit, g.getTopLeft());
+            if (!geyserUnit.getType().isRefinery()) {
+                availableGeysers.add(geyserUnit);
+            }
         }
     }
 
@@ -151,8 +153,20 @@ public class BaseData {
             }
         }
         if (geyser != null) {
-            addExtractorCandidate(geyser);
+            extractors.remove(geyser);
+            if (!geyser.getType().isRefinery()) {
+                availableGeysers.add(geyser);
+            }
         }
+    }
+
+    public boolean isExtractorAtPosition(TilePosition position) {
+        for (Map.Entry<Unit, TilePosition> entry : geyserPositionLookup.entrySet()) {
+            if (entry.getValue().equals(position)) {
+                return entry.getKey().getType().isRefinery();
+            }
+        }
+        return false;
     }
 
     public void onGeyserComplete(Unit geyser) {
@@ -176,6 +190,12 @@ public class BaseData {
                     return;
                 }
             }
+        }
+    }
+
+    public void onGeyserShow(Unit geyser) {
+        if (geyserPositionLookup.containsKey(geyser)) {
+            geyserPositionLookup.put(geyser, geyser.getTilePosition());
         }
     }
 

@@ -240,6 +240,10 @@ public class GameState {
                     buildingPlanner.unreservePlannedBuildingTiles(plan.getBuildPosition(), buildingType);
                 }
 
+                if (buildingType == UnitType.Zerg_Extractor && plan.getBuildPosition() != null) {
+                    baseData.unreserveExtractor(plan.getBuildPosition());
+                }
+
                 TilePosition tp = plan.getBuildPosition();
                 if (tp != null && baseData.isBaseTilePosition(tp)) {
                     Base base = baseData.baseAtTilePosition(tp);
@@ -375,6 +379,9 @@ public class GameState {
                         Base base = baseData.baseAtTilePosition(tp);
                         baseData.cancelReserveBase(base);
                     }
+                }
+                if (buildingType == UnitType.Zerg_Extractor && plan.getBuildPosition() != null) {
+                    baseData.unreserveExtractor(plan.getBuildPosition());
                 }
                 break;
             default:
