@@ -2,6 +2,8 @@ package info.tracking;
 
 import bwapi.Game;
 import bwapi.Race;
+import info.BaseData;
+import info.tracking.any.OneBase;
 import info.tracking.protoss.CannonRush;
 import info.tracking.protoss.FFE;
 import info.tracking.protoss.OneGateCore;
@@ -24,14 +26,17 @@ public class StrategyTracker {
 
     private final Game game;
     private final ObservedUnitTracker tracker;
+    private final BaseData baseData;
 
-    public StrategyTracker(Game game, Race opponentRace, ObservedUnitTracker tracker) {
+    public StrategyTracker(Game game, Race opponentRace, ObservedUnitTracker tracker, BaseData baseData) {
         this.game = game;
         this.tracker = tracker;
+        this.baseData = baseData;
         this.init(opponentRace);
     }
 
     private void init(Race race) {
+        possibleStrategies.add(new OneBase());
         if (race == Race.Protoss || race == Race.Unknown) {
             possibleStrategies.add(new FFE());
             possibleStrategies.add(new OneGateCore());
@@ -46,16 +51,17 @@ public class StrategyTracker {
 
     public void updateRace(Race opponentRace) {
         possibleStrategies = possibleStrategies.stream()
-                .filter(s -> s.getRace() == opponentRace)
+                .filter(s -> s.getRace() == opponentRace || s.getRace() == Race.Unknown)
                 .collect(Collectors.toSet());
     }
 
     public void onFrame() {
         Time currentTime = new Time(game.getFrameCount());
+        StrategyDetectionContext context = new StrategyDetectionContext(tracker, currentTime, baseData);
 
         Set<ObservedStrategy> newlyDetected = new HashSet<>();
         for (ObservedStrategy strategy : possibleStrategies) {
-            if (strategy.isDetected(tracker, currentTime)) {
+            if (strategy.isDetected(context)) {
                 newlyDetected.add(strategy);
             }
         }

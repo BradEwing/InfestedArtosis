@@ -127,7 +127,7 @@ public class GameState {
     public void onStart(Decisions decisions, Race opponentRace) {
         this.activeBuildOrder = decisions.getOpener();
         this.opponentRace = opponentRace;
-        this.strategyTracker = new StrategyTracker(game, opponentRace, this.observedUnitTracker);
+        this.strategyTracker = new StrategyTracker(game, opponentRace, this.observedUnitTracker, this.baseData);
     }
 
     public void onFrame() {

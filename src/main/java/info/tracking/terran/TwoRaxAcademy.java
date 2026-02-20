@@ -2,6 +2,7 @@ package info.tracking.terran;
 
 import bwapi.UnitType;
 import info.tracking.ObservedUnitTracker;
+import info.tracking.StrategyDetectionContext;
 import util.Time;
 
 /**
@@ -14,7 +15,8 @@ public class TwoRaxAcademy extends TerranBaseStrategy {
     }
 
     @Override
-    public boolean isDetected(ObservedUnitTracker tracker, Time time) {
+    public boolean isDetected(StrategyDetectionContext context) {
+        ObservedUnitTracker tracker = context.getTracker();
         boolean detectedAcademy = tracker.getUnitTypeCountBeforeTime(UnitType.Terran_Academy, new Time(5, 0)) > 0;
         boolean detectedMedic = tracker.getUnitTypeCountBeforeTime(UnitType.Terran_Medic, new Time(5, 30)) > 0;
         boolean detectedFirebat = tracker.getUnitTypeCountBeforeTime(UnitType.Terran_Firebat, new Time(5, 30)) > 0;

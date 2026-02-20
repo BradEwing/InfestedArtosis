@@ -3,6 +3,7 @@ package info.tracking.protoss;
 import bwapi.UnitType;
 import info.tracking.ObservedStrategy;
 import info.tracking.ObservedUnitTracker;
+import info.tracking.StrategyDetectionContext;
 import util.Time;
 
 import java.util.Objects;
@@ -17,7 +18,8 @@ public class TwoGate extends ProtossBaseStrategy {
     }
 
     @Override
-    public boolean isDetected(ObservedUnitTracker tracker, Time time) {
+    public boolean isDetected(StrategyDetectionContext context) {
+        ObservedUnitTracker tracker = context.getTracker();
         if (tracker.getUnitTypeCountBeforeTime(UnitType.Protoss_Zealot, new Time(3, 10)) >= 3 ||
                 tracker.getUnitTypeCountBeforeTime(UnitType.Protoss_Zealot, new Time(3, 35)) >= 4 ||
                 tracker.getUnitTypeCountBeforeTime(UnitType.Protoss_Zealot, new Time(4, 0)) >= 5) {
