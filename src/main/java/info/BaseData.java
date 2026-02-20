@@ -114,10 +114,11 @@ public class BaseData {
             naturalExpansion = base;
         }
 
-        base.getGeysers().stream().forEach(g -> {
-            availableGeysers.add(g.getUnit());
-            geyserPositionLookup.put(g.getUnit(), g.getUnit().getTilePosition());
-        });
+        for (bwem.Geyser g : base.getGeysers()) {
+            Unit geyserUnit = g.getUnit();
+            availableGeysers.add(geyserUnit);
+            geyserPositionLookup.put(geyserUnit, geyserUnit.getTilePosition());
+        }
     }
 
     public Set<Base> availableBases() {
@@ -162,7 +163,8 @@ public class BaseData {
             }
         }
         for (Unit existing : extractors) {
-            if (existing.getTilePosition().equals(geyserTp)) {
+            TilePosition storedPos = geyserPositionLookup.get(existing);
+            if (storedPos != null && storedPos.equals(geyserTp)) {
                 return;
             }
         }
@@ -181,7 +183,7 @@ public class BaseData {
         return geyserPositionLookup.get(geyser);
     }
 
-    public TilePosition findReservedGeyserPosition(Set<TilePosition> excludePositions) {
+    public TilePosition findUnassignedExtractorPosition(Set<TilePosition> excludePositions) {
         for (Unit geyser : extractors) {
             TilePosition pos = geyserPositionLookup.get(geyser);
             if (pos != null && !excludePositions.contains(pos)) {

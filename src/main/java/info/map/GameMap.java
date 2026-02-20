@@ -333,7 +333,7 @@ public class GameMap {
     }
 
     public boolean isValidTile(TilePosition tp) {
-        return tp.getX() >= 0 && tp.getX() < this.x && tp.getY() >= 0 && tp.getY() < this.y;
+        return isValidTile(tp.getX(), tp.getY());
     }
 
     private boolean isValidTile(int x, int y) {

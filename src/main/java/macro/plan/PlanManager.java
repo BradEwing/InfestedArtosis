@@ -66,10 +66,12 @@ public class PlanManager {
                 continue;
             }
             if (plan.getPlannedUnit() == UnitType.Zerg_Extractor) {
-                TilePosition fixed = baseData.findReservedGeyserPosition(validExtractorPositions);
+                TilePosition fixed = baseData.findUnassignedExtractorPosition(validExtractorPositions);
                 if (fixed != null) {
                     plan.setBuildPosition(fixed);
                     validExtractorPositions.add(fixed);
+                } else {
+                    gameState.setImpossiblePlan(plan);
                 }
             } else {
                 gameState.setImpossiblePlan(plan);
@@ -159,7 +161,6 @@ public class PlanManager {
                 executed.add(managedUnit);
                 continue;
             }
-            // TODO: Set build position for all scheduled build plans
             int travelFrames = this.getTravelFrames(managedUnit.getUnit(), plan.getBuildPosition().toPosition());
             if (currentFrame > plan.getPredictedReadyFrame() - travelFrames) {
                 plan.setState(PlanState.BUILDING);
@@ -173,7 +174,6 @@ public class PlanManager {
         }
     }
 
-    // TODO: Consider acceleration, more complex paths
     private int getTravelFrames(Unit unit, Position buildingPosition) {
         Position unitPosition = unit.getPosition();
         double distance = buildingPosition.getDistance(unitPosition);
