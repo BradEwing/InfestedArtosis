@@ -3,7 +3,6 @@ package info.tracking;
 import bwapi.Race;
 import util.Time;
 
-
 public abstract class ObservedStrategy {
     private final String name;
 
