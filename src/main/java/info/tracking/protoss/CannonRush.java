@@ -2,6 +2,7 @@ package info.tracking.protoss;
 
 import bwapi.UnitType;
 import info.tracking.ObservedUnitTracker;
+import info.tracking.StrategyDetectionContext;
 import util.Time;
 
 /**
@@ -19,7 +20,8 @@ public class CannonRush extends ProtossBaseStrategy {
     }
 
     @Override
-    public boolean isDetected(ObservedUnitTracker tracker, Time time) {
+    public boolean isDetected(StrategyDetectionContext context) {
+        ObservedUnitTracker tracker = context.getTracker();
         Time detectedBy = new Time(4, 30);
         int pylons = tracker.getProxiedCountByTypeBeforeTime(UnitType.Protoss_Pylon, detectedBy);
         int cannons = tracker.getProxiedCountByTypeBeforeTime(UnitType.Protoss_Photon_Cannon, detectedBy);

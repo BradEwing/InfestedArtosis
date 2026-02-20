@@ -85,6 +85,9 @@ public class Bot extends DefaultBWListener {
 
     @Override
     public void onUnitShow(Unit unit) {
+        if (unit.getType() == UnitType.Resource_Vespene_Geyser) {
+            gameState.getBaseData().onGeyserShow(unit);
+        }
         informationManager.onUnitShow(unit);
         unitManager.onUnitShow(unit);
     }

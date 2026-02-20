@@ -1,8 +1,7 @@
 package info.tracking.protoss;
 
 import info.tracking.ObservedStrategy;
-import info.tracking.ObservedUnitTracker;
-import util.Time;
+import info.tracking.StrategyDetectionContext;
 
 import java.util.Objects;
 
@@ -16,7 +15,7 @@ public class FFE extends ProtossBaseStrategy {
     }
 
     @Override
-    public boolean isDetected(ObservedUnitTracker tracker, Time time) {
+    public boolean isDetected(StrategyDetectionContext context) {
         // TODO: implement
         return false;
     }

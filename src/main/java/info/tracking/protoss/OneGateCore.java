@@ -3,6 +3,7 @@ package info.tracking.protoss;
 import bwapi.UnitType;
 import info.tracking.ObservedStrategy;
 import info.tracking.ObservedUnitTracker;
+import info.tracking.StrategyDetectionContext;
 import util.Time;
 
 import java.util.Objects;
@@ -16,15 +17,14 @@ public class OneGateCore extends ProtossBaseStrategy {
     }
 
     @Override
-    public boolean isDetected(ObservedUnitTracker tracker, Time time) {
-        // TODO: Check against gas steal
+    public boolean isDetected(StrategyDetectionContext context) {
+        ObservedUnitTracker tracker = context.getTracker();
         if (tracker.getUnitTypeCountBeforeTime(UnitType.Protoss_Assimilator, new Time(2, 45)) >= 1) {
             return true;
         }
         if (tracker.getUnitTypeCountBeforeTime(UnitType.Protoss_Cybernetics_Core, new Time(3, 30)) >= 1) {
             return true;
         }
-        // Estimate by goon count
         if (tracker.getUnitTypeCountBeforeTime(UnitType.Protoss_Dragoon, new Time(4, 10)) >= 1 ||
             tracker.getUnitTypeCountBeforeTime(UnitType.Protoss_Dragoon, new Time(4, 30)) >= 2) {
             return true;

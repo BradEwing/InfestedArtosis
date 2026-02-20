@@ -127,7 +127,7 @@ public class GameState {
     public void onStart(Decisions decisions, Race opponentRace) {
         this.activeBuildOrder = decisions.getOpener();
         this.opponentRace = opponentRace;
-        this.strategyTracker = new StrategyTracker(game, opponentRace, this.observedUnitTracker);
+        this.strategyTracker = new StrategyTracker(game, opponentRace, this.observedUnitTracker, this.baseData);
     }
 
     public void onFrame() {
@@ -238,6 +238,10 @@ public class GameState {
 
                 if (plan.getBuildPosition() != null) {
                     buildingPlanner.unreservePlannedBuildingTiles(plan.getBuildPosition(), buildingType);
+                }
+
+                if (buildingType == UnitType.Zerg_Extractor && plan.getBuildPosition() != null) {
+                    baseData.unreserveExtractor(plan.getBuildPosition());
                 }
 
                 TilePosition tp = plan.getBuildPosition();
@@ -375,6 +379,9 @@ public class GameState {
                         Base base = baseData.baseAtTilePosition(tp);
                         baseData.cancelReserveBase(base);
                     }
+                }
+                if (buildingType == UnitType.Zerg_Extractor && plan.getBuildPosition() != null) {
+                    baseData.unreserveExtractor(plan.getBuildPosition());
                 }
                 break;
             default:

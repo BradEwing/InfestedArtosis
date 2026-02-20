@@ -887,7 +887,7 @@ public class ProductionManager {
         if (unitType == UnitType.Zerg_Extractor) {
             ResourceCount resourceCount = gameState.getResourceCount();
             resourceCount.unreserveUnit(unitType);
-            clearAssignments(unit, false);
+            scheduledBuildings -= 1;
         }
     }
 
@@ -913,7 +913,13 @@ public class ProductionManager {
                 case BUILDING:
                 case MORPHING:
                     if (isDestroyed) {
-                        gameState.cancelPlan(unit, plan);
+                        if (plan.getPlannedUnit() == UnitType.Zerg_Extractor
+                                && plan.getBuildPosition() != null
+                                && gameState.getBaseData().isExtractorAtPosition(plan.getBuildPosition())) {
+                            gameState.completePlan(unit, plan);
+                        } else {
+                            gameState.cancelPlan(unit, plan);
+                        }
                     } else {
                         gameState.completePlan(unit, plan);
                     }

@@ -15,10 +15,9 @@ public abstract class ObservedStrategy {
     }
 
     /**
-     * Returns true if the strategy is detected based on the ObservedUnitTracker
-     * data and the current frame.
+     * Returns true if the strategy is detected based on the provided detection context.
      */
-    public abstract boolean isDetected(ObservedUnitTracker tracker, Time time);
+    public abstract boolean isDetected(StrategyDetectionContext context);
 
     public boolean isCompatibleStrategy(ObservedStrategy other) {
         return false;
