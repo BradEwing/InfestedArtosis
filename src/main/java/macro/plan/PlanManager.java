@@ -9,6 +9,7 @@ import bwem.Base;
 import bwem.Mineral;
 import info.BaseData;
 import info.GameState;
+import info.map.GameMap;
 import unit.managed.ManagedUnit;
 import unit.managed.UnitRole;
 import util.Distance;
@@ -18,6 +19,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 public class PlanManager {
@@ -40,9 +42,52 @@ public class PlanManager {
     }
 
     public void onFrame() {
+        fixOutOfBoundsBuildingPlans();
         assignScheduledPlannedItems();
         executeScheduledDrones();
         releaseImpossiblePlans();
+    }
+
+    private void fixOutOfBoundsBuildingPlans() {
+        GameMap gameMap = gameState.getGameMap();
+        BaseData baseData = gameState.getBaseData();
+
+        List<Plan> allActivePlans = new ArrayList<>(gameState.getPlansScheduled());
+        allActivePlans.addAll(gameState.getPlansBuilding());
+
+        Set<TilePosition> validExtractorPositions = collectValidExtractorPositions(allActivePlans, gameMap);
+
+        for (Plan plan : allActivePlans) {
+            if (plan.getType() != PlanType.BUILDING) {
+                continue;
+            }
+            TilePosition bp = plan.getBuildPosition();
+            if (bp == null || gameMap.isValidTile(bp)) {
+                continue;
+            }
+            if (plan.getPlannedUnit() == UnitType.Zerg_Extractor) {
+                TilePosition fixed = baseData.findUnassignedExtractorPosition(validExtractorPositions);
+                if (fixed != null) {
+                    plan.setBuildPosition(fixed);
+                    validExtractorPositions.add(fixed);
+                } else {
+                    gameState.setImpossiblePlan(plan);
+                }
+            } else {
+                gameState.setImpossiblePlan(plan);
+            }
+        }
+    }
+
+    private Set<TilePosition> collectValidExtractorPositions(List<Plan> plans, GameMap gameMap) {
+        Set<TilePosition> positions = new HashSet<>();
+        for (Plan plan : plans) {
+            TilePosition bp = plan.getBuildPosition();
+            if (plan.getPlannedUnit() == UnitType.Zerg_Extractor && bp != null && gameMap.isValidTile(bp)) {
+                positions.add(bp);
+            }
+        }
+        return positions;
     }
 
     private void assignScheduledPlannedItems() {
@@ -116,7 +161,6 @@ public class PlanManager {
                 executed.add(managedUnit);
                 continue;
             }
-            // TODO: Set build position for all scheduled build plans
             int travelFrames = this.getTravelFrames(managedUnit.getUnit(), plan.getBuildPosition().toPosition());
             if (currentFrame > plan.getPredictedReadyFrame() - travelFrames) {
                 plan.setState(PlanState.BUILDING);
@@ -130,7 +174,6 @@ public class PlanManager {
         }
     }
 
-    // TODO: Consider acceleration, more complex paths
     private int getTravelFrames(Unit unit, Position buildingPosition) {
         Position unitPosition = unit.getPosition();
         double distance = buildingPosition.getDistance(unitPosition);

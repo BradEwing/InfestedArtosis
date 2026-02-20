@@ -332,6 +332,10 @@ public class GameMap {
         return neighbors;
     }
 
+    public boolean isValidTile(TilePosition tp) {
+        return isValidTile(tp.getX(), tp.getY());
+    }
+
     private boolean isValidTile(int x, int y) {
         return x >= 0 && x < this.x && y >= 0 && y < this.y;
     }

@@ -50,6 +50,7 @@ public class BaseData {
     private HashMap<Base, GroundPath> availableBases = new HashMap<>();
     private HashSet<Unit> extractors = new HashSet<>();
     private HashSet<Unit> availableGeysers = new HashSet<>();
+    private HashMap<Unit, TilePosition> geyserPositionLookup = new HashMap<>();
     private HashMap<Base, Integer> sunkenColonyLookup = new HashMap<>();
     private HashMap<Base, Integer> sunkenColonyReserveLookup = new HashMap<>();
     @Setter
@@ -113,7 +114,11 @@ public class BaseData {
             naturalExpansion = base;
         }
 
-        base.getGeysers().stream().forEach(g -> availableGeysers.add(g.getUnit()));
+        for (bwem.Geyser g : base.getGeysers()) {
+            Unit geyserUnit = g.getUnit();
+            availableGeysers.add(geyserUnit);
+            geyserPositionLookup.put(geyserUnit, geyserUnit.getTilePosition());
+        }
     }
 
     public Set<Base> availableBases() {
@@ -139,7 +144,8 @@ public class BaseData {
     public void unreserveExtractor(TilePosition tilePosition) {
         Unit geyser = null;
         for (Unit u : extractors) {
-            if (u.getTilePosition().equals(tilePosition)) {
+            TilePosition storedPosition = geyserPositionLookup.get(u);
+            if (storedPosition != null && storedPosition.equals(tilePosition)) {
                 geyser = u;
                 break;
             }
@@ -157,7 +163,8 @@ public class BaseData {
             }
         }
         for (Unit existing : extractors) {
-            if (existing.getTilePosition().equals(geyserTp)) {
+            TilePosition storedPos = geyserPositionLookup.get(existing);
+            if (storedPos != null && storedPos.equals(geyserTp)) {
                 return;
             }
         }
@@ -165,10 +172,25 @@ public class BaseData {
             for (bwem.Geyser baseGeyser : base.getGeysers()) {
                 if (baseGeyser.getUnit().getTilePosition().equals(geyserTp)) {
                     availableGeysers.add(geyser);
+                    geyserPositionLookup.put(geyser, geyserTp);
                     return;
                 }
             }
         }
+    }
+
+    public TilePosition getGeyserPosition(Unit geyser) {
+        return geyserPositionLookup.get(geyser);
+    }
+
+    public TilePosition findUnassignedExtractorPosition(Set<TilePosition> excludePositions) {
+        for (Unit geyser : extractors) {
+            TilePosition pos = geyserPositionLookup.get(geyser);
+            if (pos != null && !excludePositions.contains(pos)) {
+                return pos;
+            }
+        }
+        return null;
     }
 
     public int numExtractor() {

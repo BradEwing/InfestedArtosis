@@ -163,7 +163,7 @@ public abstract class BuildOrder {
         BaseData baseData = gameState.getBaseData();
         Plan plan = new BuildingPlan(UnitType.Zerg_Extractor, 50);
         Unit geyser = baseData.reserveExtractor();
-        plan.setBuildPosition(geyser.getTilePosition());
+        plan.setBuildPosition(baseData.getGeyserPosition(geyser));
         return plan;
     }
 
