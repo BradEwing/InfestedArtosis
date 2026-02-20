@@ -138,11 +138,6 @@ public class BaseData {
         return candidate;
     }
 
-    public void addExtractorCandidate(Unit geyser) {
-        extractors.remove(geyser);
-        availableGeysers.add(geyser);
-    }
-
     public void unreserveExtractor(TilePosition tilePosition) {
         Unit geyser = null;
         for (Unit u : extractors) {
