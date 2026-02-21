@@ -73,6 +73,7 @@ public class InformationManager {
 
         trackEnemyUnits();
         trackEnemyBuildings();
+        checkEnemyBases();
         checkEnemyBuildingPositions();
         debugEnemyTargets();
         checkScoutTargets();
@@ -481,6 +482,24 @@ public class InformationManager {
 
         foundBuildings.stream().forEach(buildingPosition -> scoutData.removeEnemyBuildingLocation(buildingPosition));
         return;
+    }
+
+    private void checkEnemyBases() {
+        BaseData baseData = gameState.getBaseData();
+        List<Base> basesToRemove = new ArrayList<>();
+        for (Base base : baseData.getEnemyBases()) {
+            if (!game.isVisible(base.getLocation())) {
+                continue;
+            }
+            boolean hasEnemyBuildings = game.getUnitsInRadius(base.getCenter(), 256).stream()
+                    .anyMatch(u -> u.getPlayer() == game.enemy() && u.getType().isBuilding());
+            if (!hasEnemyBuildings) {
+                basesToRemove.add(base);
+            }
+        }
+        for (Base base : basesToRemove) {
+            baseData.removeEnemyBase(base);
+        }
     }
 
     private void ensureScoutTargets() {

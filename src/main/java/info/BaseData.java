@@ -442,7 +442,6 @@ public class BaseData {
         return total;
     }
 
-    // TODO: Remove main enemy base when area is clear
     public Base getMainEnemyBase() {
         return mainEnemyBase;
     }
