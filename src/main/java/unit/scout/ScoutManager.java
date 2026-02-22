@@ -171,16 +171,22 @@ public class ScoutManager {
 
     private TilePosition pollDroneScoutTarget() {
         BaseData baseData = gameState.getBaseData();
-        if (!baseData.knowEnemyMainBase()) {
-            return findEnemyMain();
+        if (baseData.knowEnemyMainBase()) {
+            return scoutEnemyMain();
         }
-
-        return scoutEnemyMain();
+        if (baseData.isEnemyMainBaseFound()) {
+            return gameState.pollScoutTarget();
+        }
+        return findEnemyMain();
     }
 
     private TilePosition scoutEnemyMain() {
         BaseData baseData = gameState.getBaseData();
         Base enemyMain = baseData.getMainEnemyBase();
+        if (enemyMain == null) {
+            enemyMainScoutPath = null;
+            return gameState.pollScoutTarget();
+        }
         TilePosition enemyMainTp = enemyMain.getLocation();
         if (enemyMainScoutPath == null) {
             ensureEnemyMainMovePoints(enemyMainTp);

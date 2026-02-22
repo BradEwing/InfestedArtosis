@@ -46,6 +46,7 @@ public class ThreeHatchHydra extends ProtossBase {
         int plannedHatcheries = gameState.getPlannedHatcheries();
         int macroHatchCount = baseData.numMacroHatcheries();
         int hatchCount = gameState.ourUnitCount(UnitType.Zerg_Hatchery);
+        int lairCount = gameState.ourUnitCount(UnitType.Zerg_Lair);
         final int plannedAndCurrentHatcheries = plannedHatcheries + baseCount;
 
         int hydraCount = gameState.ourUnitCount(UnitType.Zerg_Hydralisk);
@@ -74,6 +75,9 @@ public class ThreeHatchHydra extends ProtossBase {
         // Tech building timing
         boolean wantHydraliskDen = wantHydraliskDen(gameState);
         boolean wantEvolutionChamber = wantEvolutionChamber(gameState);
+
+        // Lair timing
+        boolean wantLair = gameState.canPlanLair() && lairCount < 1 && time.greaterThan(new Time(5, 0)) && baseCount >= 3;
 
         // Upgrade timing
         boolean wantMetabolicBoost = techProgression.canPlanMetabolicBoost() && zerglingCount > 12;
@@ -147,6 +151,12 @@ public class ThreeHatchHydra extends ProtossBase {
                 plans.add(hydraliskDenPlan);
                 return plans;
             }
+        }
+
+        if (wantLair) {
+            Plan lairPlan = this.planLair(gameState);
+            plans.add(lairPlan);
+            return plans;
         }
 
         if (wantEvolutionChamber) {
@@ -381,7 +391,7 @@ public class ThreeHatchHydra extends ProtossBase {
 
     @Override
     public boolean needLair() {
-        return false;
+        return true;
     }
 
     @Override

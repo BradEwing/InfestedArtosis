@@ -54,7 +54,6 @@ public class ThreeHatchMuta extends ProtossBase {
         int plannedHatcheries = gameState.getPlannedHatcheries();
         int macroHatchCount = baseData.numMacroHatcheries();
         int totalHatcheries = baseCount + macroHatchCount;
-        int hatchCount        = gameState.ourUnitCount(UnitType.Zerg_Hatchery);
         final int plannedAndCurrentHatcheries = plannedHatcheries + baseCount;
         int lairCount         = gameState.ourUnitCount(UnitType.Zerg_Lair);
         int spireCount        = gameState.ourUnitCount(UnitType.Zerg_Spire);

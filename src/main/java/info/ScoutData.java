@@ -126,8 +126,8 @@ public class ScoutData {
         enemyBuildingPositions.remove(tp);
     }
 
-    public int getScoutsAssignedToBase(Base base) { 
-        return baseScoutAssignments.get(base); 
+    public int getScoutsAssignedToBase(Base base) {
+        return baseScoutAssignments.getOrDefault(base, 0);
     }
 
     public void removeBaseScoutAssignment(Base base) {
