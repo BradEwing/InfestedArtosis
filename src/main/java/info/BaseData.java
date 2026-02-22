@@ -31,6 +31,8 @@ public class BaseData {
     @Getter
     private Base inferredNaturalBase;
     private Base mainEnemyBase;
+    @Getter
+    private boolean enemyMainBaseFound = false;
     private HashSet<Unit> macroHatcheries = new HashSet<>();
     private HashSet<Unit> baseHatcheries = new HashSet<>();
     private HashSet<Base> allBases = new HashSet<>();
@@ -457,6 +459,7 @@ public class BaseData {
             // Automatically set as main enemy base if it's a starting location and not already set
             if (mains.contains(base) && mainEnemyBase == null) {
                 mainEnemyBase = base;
+                enemyMainBaseFound = true;
             }
         }
     }
