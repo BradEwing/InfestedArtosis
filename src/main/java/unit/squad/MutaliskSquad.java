@@ -81,18 +81,22 @@ public class MutaliskSquad extends Squad {
         // Filter out low priority targets
         allEnemies.removeIf(enemy -> util.Filter.isLowPriorityCombatTarget(enemy.getType()));
 
-        // Check if we should disband due to no targets
         if (allEnemies.isEmpty()) {
             Set<Position> enemyWorkerLocations = gameState.getLastKnownLocationOfEnemyWorkers();
-
-            if (enemyWorkerLocations.isEmpty()) {
-                shouldDisband = true;
+            if (!enemyWorkerLocations.isEmpty()) {
+                setStatus(SquadStatus.RALLY);
+                rallyToHarassmentPosition(gameState);
                 return;
             }
 
-            // We have worker locations, rally to harassment position
-            setStatus(SquadStatus.RALLY);
-            rallyToHarassmentPosition(gameState);
+            Set<Position> enemyBuildingPositions = gameState.getLastKnownPositionsOfBuildings();
+            if (!enemyBuildingPositions.isEmpty()) {
+                setStatus(SquadStatus.RALLY);
+                rallyToPosition(findClosestPosition(enemyBuildingPositions), null);
+                return;
+            }
+
+            shouldDisband = true;
             return;
         }
 
@@ -231,15 +235,19 @@ public class MutaliskSquad extends Squad {
      * Finds the closest enemy worker location to the squad.
      */
     private Position findClosestWorkerLocation(Set<Position> workerLocations) {
+        return findClosestPosition(workerLocations);
+    }
+
+    private Position findClosestPosition(Set<Position> positions) {
         Position squadCenter = getCenter();
         Position closest = null;
         double closestDistance = Double.MAX_VALUE;
 
-        for (Position workerLocation : workerLocations) {
-            double distance = squadCenter.getDistance(workerLocation);
+        for (Position position : positions) {
+            double distance = squadCenter.getDistance(position);
             if (distance < closestDistance) {
                 closestDistance = distance;
-                closest = workerLocation;
+                closest = position;
             }
         }
 
