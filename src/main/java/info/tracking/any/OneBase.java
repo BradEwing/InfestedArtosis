@@ -22,4 +22,5 @@ public class OneBase extends ObservedStrategy {
         }
         return baseData.getEnemyBases().size() == 1;
     }
+
 }

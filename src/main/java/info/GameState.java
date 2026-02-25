@@ -864,4 +864,8 @@ public class GameState {
         }
         return leastScoutedBase;
     }
+
+    public int getCountOfAllEnemyUnits() {
+        return observedUnitTracker.getCountOfAllEnemyUnits();
+    }
 }

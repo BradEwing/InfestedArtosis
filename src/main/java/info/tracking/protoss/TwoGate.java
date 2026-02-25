@@ -1,12 +1,9 @@
 package info.tracking.protoss;
 
 import bwapi.UnitType;
-import info.tracking.ObservedStrategy;
 import info.tracking.ObservedUnitTracker;
 import info.tracking.StrategyDetectionContext;
 import util.Time;
-
-import java.util.Objects;
 
 /**
  * https://liquipedia.net/starcraft/2_Gateway_(vs._Zerg)
@@ -31,12 +28,4 @@ public class TwoGate extends ProtossBaseStrategy {
         return false;
     }
 
-    @Override
-    public boolean isCompatibleStrategy(ObservedStrategy strategy) {
-        String name = strategy.getName();
-        if (Objects.equals(name, "FFE") || Objects.equals(name, "1GateCore")) {
-            return false;
-        }
-        return true;
-    }
 }
