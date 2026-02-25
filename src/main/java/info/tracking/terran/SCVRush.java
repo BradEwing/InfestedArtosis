@@ -31,4 +31,5 @@ public class SCVRush extends TerranBaseStrategy {
         }
         return false;
     }
+
 }

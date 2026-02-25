@@ -1,12 +1,9 @@
 package info.tracking.protoss;
 
 import bwapi.UnitType;
-import info.tracking.ObservedStrategy;
 import info.tracking.ObservedUnitTracker;
 import info.tracking.StrategyDetectionContext;
 import util.Time;
-
-import java.util.Objects;
 
 /**
  * Not a standard ZvP opening in bot land, but could augur a DT rush.
@@ -32,12 +29,4 @@ public class OneGateCore extends ProtossBaseStrategy {
         return false;
     }
 
-    @Override
-    public boolean isCompatibleStrategy(ObservedStrategy strategy) {
-        String name = strategy.getName();
-        if (Objects.equals(name, "FFE") || Objects.equals(name, "2Gate")) {
-            return false;
-        }
-        return true;
-    }
 }

@@ -143,6 +143,11 @@ public class ScoutManager {
             }
         }
 
+        final int enemyUnits = gameState.getCountOfAllEnemyUnits();
+        if (enemyUnits > 0 && zerglingScouts.size() >= this.getMaxZerglingScouts()) {
+            return true;
+        }
+
         return false;
     }
 

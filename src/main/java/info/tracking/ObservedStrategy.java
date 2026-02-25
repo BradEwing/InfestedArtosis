@@ -19,10 +19,6 @@ public abstract class ObservedStrategy {
      */
     public abstract boolean isDetected(StrategyDetectionContext context);
 
-    public boolean isCompatibleStrategy(ObservedStrategy other) {
-        return false;
-    }
-
     public Time lockAfter() {
         return new Time(59, 59);
     }

@@ -22,8 +22,6 @@ public class StrategyTracker {
     @Getter
     private Set<ObservedStrategy> detectedStrategies = new HashSet<>();
     private Set<ObservedStrategy> possibleStrategies = new HashSet<>();
-    private Set<ObservedStrategy> discardedStrategies = new HashSet<>();
-
     private final Game game;
     private final ObservedUnitTracker tracker;
     private final BaseData baseData;
@@ -69,17 +67,6 @@ public class StrategyTracker {
         detectedStrategies.addAll(newlyDetected);
         possibleStrategies.removeAll(newlyDetected);
 
-        Set<ObservedStrategy> newlyDiscarded = new HashSet<>();
-        for (ObservedStrategy detected : detectedStrategies) {
-            for (ObservedStrategy possible : possibleStrategies) {
-                if (!detected.isCompatibleStrategy(possible)) {
-                    newlyDiscarded.add(possible);
-                }
-            }
-        }
-
-        possibleStrategies.removeAll(newlyDiscarded);
-        discardedStrategies.addAll(newlyDiscarded);
     }
 
     public boolean isDetectedStrategy(String strategyName) {

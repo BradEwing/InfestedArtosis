@@ -87,6 +87,13 @@ public class ObservedUnitTracker {
                 .count();
     }
 
+    public int getCountOfAllEnemyUnits() {
+        return (int) observedUnits.values()
+                .stream()
+                .filter(ou -> ou.getDestroyedFrame() == null)
+                .count();
+    }
+
     public void updateUnitTypeChange(Unit unit) {
         ObservedUnit observedUnit = observedUnits.get(unit);
         UnitType trackedType = observedUnit.getUnitType();

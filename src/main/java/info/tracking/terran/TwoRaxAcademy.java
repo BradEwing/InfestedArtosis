@@ -22,4 +22,5 @@ public class TwoRaxAcademy extends TerranBaseStrategy {
         boolean detectedFirebat = tracker.getUnitTypeCountBeforeTime(UnitType.Terran_Firebat, new Time(5, 30)) > 0;
         return detectedAcademy || detectedMedic || detectedFirebat;
     }
+
 }
