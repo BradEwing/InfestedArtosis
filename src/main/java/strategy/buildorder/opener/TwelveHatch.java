@@ -39,13 +39,8 @@ public class TwelveHatch extends BuildOrder {
         int droneCount    = gameState.ourUnitCount(UnitType.Zerg_Drone);
         int overlordCount = gameState.ourUnitCount(UnitType.Zerg_Overlord);
 
-        if (droneCount < 8) {
+        if (droneCount < 9) {
             plans.add(planUnit(gameState, UnitType.Zerg_Drone));
-            return plans;
-        }
-
-        if (overlordCount < 2 && droneCount >= 8) {
-            plans.add(planUnit(gameState, UnitType.Zerg_Overlord));
             return plans;
         }
 

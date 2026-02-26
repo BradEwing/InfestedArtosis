@@ -56,18 +56,7 @@ public class TwelvePool extends BuildOrder {
         TechProgression techProgression = gameState.getTechProgression();
 
         int droneCount    = gameState.ourUnitCount(UnitType.Zerg_Drone);
-        int overlordCount = gameState.ourUnitCount(UnitType.Zerg_Overlord);
         int zerglingCount = gameState.ourUnitCount(UnitType.Zerg_Zergling);
-
-        if (droneCount < 9) {
-            plans.add(planUnit(gameState, UnitType.Zerg_Drone));
-            return plans;
-        }
-
-        if (overlordCount < 2) {
-            plans.add(planUnit(gameState, UnitType.Zerg_Overlord));
-            return plans;
-        }
 
         if (droneCount < 12) {
             plans.add(planUnit(gameState, UnitType.Zerg_Drone));

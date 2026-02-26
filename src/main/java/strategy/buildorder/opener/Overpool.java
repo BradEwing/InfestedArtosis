@@ -65,11 +65,6 @@ public class Overpool extends BuildOrder {
             return plans;
         }
 
-        if (droneCount > 8 && overlordCount < 2) {
-            plans.add(planUnit(gameState, UnitType.Zerg_Overlord));
-            return plans;
-        }
-
         if (overlordCount > 1 && techProgression.canPlanPool()) {
             plans.add(planSpawningPool(gameState));
             return plans;

@@ -16,6 +16,7 @@ import macro.plan.PlanState;
 import macro.plan.PlanType;
 import macro.plan.UnitPlan;
 import strategy.buildorder.BuildOrder;
+import util.Time;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -288,6 +289,18 @@ public class ProductionManager {
             return;
         }
 
+        final int overlordCount = gameState.ourLivingUnitCount(UnitType.Zerg_Overlord);
+        final int plannedSupply = gameState.getResourceCount().getPlannedSupply();
+        final boolean isNinePool = activeBuildOrder.getName() == "9PoolSpeed";
+        if (overlordCount < 2 && !isNinePool) {
+            if (self.supplyUsed() >= 18 && overlordCount < 2 && plannedSupply == 0) {
+                addUnitToQueue(UnitType.Zerg_Overlord, 1, true);
+                gameState.getResourceCount().setPlannedSupply(16);
+                return;
+            }
+            return;
+        }
+    
         List<Plan> sortedQueue = new ArrayList<>(gameState.getProductionQueue());
         Collections.sort(sortedQueue, new PlanComparator());
 
@@ -335,13 +348,11 @@ public class ProductionManager {
 
         for (int priority : overlordInsertPriorities) {
             addUnitToQueue(UnitType.Zerg_Overlord, priority, true);
-            int plannedSupply = gameState.getResourceCount().getPlannedSupply();
             gameState.getResourceCount().setPlannedSupply(plannedSupply + 16);
         }
 
         // Emergency fallback: supply blocked with high minerals
         final int supplyRemaining = self.supplyTotal() - self.supplyUsed();
-        int plannedSupply = gameState.getResourceCount().getPlannedSupply();
         if (supplyRemaining == 0 && self.minerals() > 700 && plannedSupply < 80) {
             addUnitToQueue(UnitType.Zerg_Overlord, 1, true);
             gameState.getResourceCount().setPlannedSupply(plannedSupply + 16);
@@ -712,6 +723,17 @@ public class ProductionManager {
         ResourceCount resourceCount = gameState.getResourceCount();
         int predictedReadyFrame = gameState.frameCanAffordUnit(building, currentFrame);
         if (scheduledBuildings > 0 && resourceCount.canAffordUnit(building)) {
+            return false;
+        }
+
+
+        // 12Pool and 12Hatch timing
+        final int supply = game.self().supplyUsed();
+        final Time twoMinutes = new Time(2,0);
+        final String buildOrderName = activeBuildOrder.getName();
+        final boolean poolOrHatch = buildOrderName == "12Pool" || buildOrderName == "12Hatch" || buildOrderName == "3HatchBeforePool";
+        final boolean delayHatchSchedule = poolOrHatch && supply < 24 &&  gameState.getGameTime().lessThanOrEqual(twoMinutes);
+        if (delayHatchSchedule) {
             return false;
         }
 
