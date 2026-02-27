@@ -587,8 +587,6 @@ public class InformationManager {
         startingBasesSet.stream().map(base -> base.getLocation()).forEach(startingPositions::add);
         expansionBasesSet.stream().map(base -> base.getLocation()).forEach(expansionPositions::add);
 
-        // TODO: Add resource locations
-        // TODO: THIS IS BROKEN
         for (Base base: startingBasesSet) {
             for (Geyser geyser: base.getGeysers()) {
                 TilePosition topLeft = geyser.getTopLeft();
@@ -621,7 +619,6 @@ public class InformationManager {
         }
 
         // Calculate accessible WalkPositions from a main base using flood fill
-        // TODO: This naive approach will not work for island maps.
         if (!startingPositions.isEmpty()) {
             TilePosition mainBasePosition = startingPositions.iterator().next();
             gameMap.calculateAccessibleWalkPositions(game, mainBasePosition);
