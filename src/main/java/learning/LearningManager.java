@@ -332,7 +332,9 @@ public class LearningManager {
             }
         }
 
-        if (lastGameDetectedStrategies != null && lastGameDetectedStrategies.contains("CannonRush")) {
+        final boolean isRusher = lastGameDetectedStrategies != null
+                && (lastGameDetectedStrategies.contains("CannonRush") || lastGameDetectedStrategies.contains("SCVRush"));
+        if (isRusher) {
             BuildOrder overpool = buildOrderFactory.getByName("Overpool");
             if (overpool != null && buildOrderFactory.isPlayableOpener(overpool)) {
                 currentOpener = opponentRecord.getOpenerRecord().get(overpool.getName());
