@@ -599,7 +599,7 @@ public class InformationManager {
             }
         }
 
-        GameMap gameMap = new GameMap(game.mapWidth(), game.mapHeight());
+        GameMap gameMap = gameState.getGameMap();
 
         for (int x = 0; x < game.mapWidth(); x++) {
             for (int y = 0; y < game.mapHeight(); y++) {
@@ -624,7 +624,6 @@ public class InformationManager {
             gameMap.calculateAccessibleWalkPositions(game, mainBasePosition);
         }
 
-        gameState.setGameMap(gameMap);
         gameState.setBuildingPlanner(new BuildingPlanner(game, bwem));
 
         HashSet<Unit> baseMineralUnits = new HashSet<>();

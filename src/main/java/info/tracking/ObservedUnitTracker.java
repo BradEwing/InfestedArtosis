@@ -2,6 +2,7 @@ package info.tracking;
 
 import bwapi.PlayerType;
 import bwapi.Position;
+import bwapi.TilePosition;
 import bwapi.Unit;
 import bwapi.UnitType;
 import util.Filter;
@@ -261,6 +262,18 @@ public class ObservedUnitTracker {
             return ou.getUnit().getPosition();
         }
         return ou.getLastKnownLocation();
+    }
+
+    public int getCountOfLivingUnitsOnTiles(UnitType unitType, Set<TilePosition> tiles) {
+        return (int) observedUnits.values()
+                .stream()
+                .filter(ou -> ou.getUnitType() == unitType)
+                .filter(ou -> ou.getDestroyedFrame() == null)
+                .filter(ou -> {
+                    Position pos = ou.getUnit().isVisible() ? ou.getUnit().getPosition() : ou.getLastKnownLocation();
+                    return pos != null && tiles.contains(pos.toTilePosition());
+                })
+                .count();
     }
 
     public void clearLastKnownLocationsAt(Set<Position> visibleLocations) {
