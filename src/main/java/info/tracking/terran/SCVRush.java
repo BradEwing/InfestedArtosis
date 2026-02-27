@@ -2,13 +2,14 @@ package info.tracking.terran;
 
 import bwapi.TilePosition;
 import bwapi.UnitType;
-import info.tracking.ObservedUnitTracker;
 import info.tracking.StrategyDetectionContext;
 import util.Time;
 
 import java.util.Set;
 
 public class SCVRush extends TerranBaseStrategy {
+
+    private static final Time THREE_MINUTES_THIRTY = new Time(3, 30);
 
     public SCVRush() {
         super("SCVRush");
@@ -17,20 +18,15 @@ public class SCVRush extends TerranBaseStrategy {
     @Override
     public boolean isDetected(StrategyDetectionContext context) {
         Set<TilePosition> mainBaseTiles = context.getGameMap().getMainBaseTiles();
-        if (mainBaseTiles == null || mainBaseTiles.isEmpty()) {
+        if (mainBaseTiles.isEmpty()) {
             return false;
         }
 
-        ObservedUnitTracker tracker = context.getTracker();
-        Time time = context.getTime();
-        final Time threeMinuteThirty = new Time(3, 30);
-
-        if (time.greaterThan(threeMinuteThirty)) {
+        if (context.getTime().greaterThan(THREE_MINUTES_THIRTY)) {
             return false;
         }
 
-        int scvsOnBase = tracker.getCountOfLivingUnitsOnTiles(UnitType.Terran_SCV, mainBaseTiles);
-        return scvsOnBase >= 3;
+        return context.getTracker().getCountOfLivingUnitsOnTiles(UnitType.Terran_SCV, mainBaseTiles) >= 3;
     }
 
 }
