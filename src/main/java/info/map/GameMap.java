@@ -32,6 +32,8 @@ public class GameMap {
     private Set<WalkPosition> accessibleWalkPositions = new HashSet<>();
     @Getter
     private Set<Unit> blockingMinerals = new HashSet<>();
+    @Getter
+    private Set<TilePosition> mainBaseTiles = new HashSet<>();
 
     private MapTile[][] mapTiles;
 
@@ -349,6 +351,43 @@ public class GameMap {
     public void calculateAccessibleWalkPositions(Game game, TilePosition mainBasePosition) {
         WalkPositionFloodFill floodFill = new WalkPositionFloodFill(game);
         this.accessibleWalkPositions = floodFill.calculateAccessibleWalkPositions(mainBasePosition);
+    }
+
+    /**
+     * Flood fill to find all contiguous buildable tiles from the main base.
+     * 
+     * This naive approach will add extra tiles on maps like EmpireOfTheSun, but should be sufficient for strategy tracker.
+     *
+     * @param startPosition The main base TilePosition to start the flood fill from
+     */
+    public void calculateMainBaseTiles(TilePosition startPosition) {
+        Set<TilePosition> visited = new HashSet<>();
+        ArrayDeque<TilePosition> queue = new ArrayDeque<>();
+        queue.add(startPosition);
+        visited.add(startPosition);
+
+        while (!queue.isEmpty()) {
+            TilePosition current = queue.poll();
+            mainBaseTiles.add(current);
+
+            TilePosition[] neighbors = {
+                current.add(new TilePosition(1, 0)),
+                current.add(new TilePosition(-1, 0)),
+                current.add(new TilePosition(0, 1)),
+                current.add(new TilePosition(0, -1))
+            };
+
+            for (TilePosition neighbor : neighbors) {
+                if (!isValidTile(neighbor) || visited.contains(neighbor)) {
+                    continue;
+                }
+                visited.add(neighbor);
+                MapTile tile = mapTiles[neighbor.getX()][neighbor.getY()];
+                if (tile.isBuildable()) {
+                    queue.add(neighbor);
+                }
+            }
+        }
     }
 
     public void addBlockingMineral(Unit mineral) {

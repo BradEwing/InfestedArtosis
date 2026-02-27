@@ -90,6 +90,9 @@ public class Debug {
         if (config.debugBlockingMinerals) {
             debugBlockingMinerals();
         }
+        if (config.debugMainBaseTiles) {
+            debugMainBaseTiles();
+        }
         if (config.debugManagedUnits) {
             for (ManagedUnit managedUnit : gameState.getManagedUnits()) {
                 debugManagedUnit(managedUnit);
@@ -335,6 +338,13 @@ public class Debug {
                 }
             }
         } catch (IllegalStateException e) {
+        }
+    }
+
+    private void debugMainBaseTiles() {
+        if (gameState.getGameMap() == null) return;
+        for (TilePosition tp : gameState.getGameMap().getMainBaseTiles()) {
+            game.drawBoxMap(tp.toPosition(), tp.add(new TilePosition(1, 1)).toPosition(), Color.Cyan);
         }
     }
 

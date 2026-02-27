@@ -99,6 +99,8 @@ public class BaseData {
                 .min(Map.Entry.comparingByValue(new GroundPathComparator()))
                 .map(Map.Entry::getKey)
                 .orElse(null);
+
+        map.calculateMainBaseTiles(this.mainBasePosition());
     }
 
     public Base getMainBase() {
