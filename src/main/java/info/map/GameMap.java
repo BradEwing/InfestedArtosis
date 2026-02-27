@@ -356,7 +356,7 @@ public class GameMap {
     /**
      * Flood fill to find all contiguous buildable tiles from the main base.
      * 
-     * This naive approach will add extra tiles on maps like EmpireOfTheSun, but should be sufficent for strategy tracker.
+     * This naive approach will add extra tiles on maps like EmpireOfTheSun, but should be sufficient for strategy tracker.
      *
      * @param startPosition The main base TilePosition to start the flood fill from
      */
@@ -371,10 +371,10 @@ public class GameMap {
             mainBaseTiles.add(current);
 
             TilePosition[] neighbors = {
-                new TilePosition(current.getX() + 1, current.getY()),
-                new TilePosition(current.getX() - 1, current.getY()),
-                new TilePosition(current.getX(), current.getY() + 1),
-                new TilePosition(current.getX(), current.getY() - 1)
+                current.add(new TilePosition(1, 0)),
+                current.add(new TilePosition(-1, 0)),
+                current.add(new TilePosition(0, 1)),
+                current.add(new TilePosition(0, -1))
             };
 
             for (TilePosition neighbor : neighbors) {
