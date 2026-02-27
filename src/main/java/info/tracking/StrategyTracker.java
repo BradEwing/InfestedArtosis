@@ -3,6 +3,7 @@ package info.tracking;
 import bwapi.Game;
 import bwapi.Race;
 import info.BaseData;
+import info.map.GameMap;
 import info.tracking.any.OneBase;
 import info.tracking.protoss.CannonRush;
 import info.tracking.protoss.FFE;
@@ -25,11 +26,13 @@ public class StrategyTracker {
     private final Game game;
     private final ObservedUnitTracker tracker;
     private final BaseData baseData;
+    private final GameMap gameMap;
 
-    public StrategyTracker(Game game, Race opponentRace, ObservedUnitTracker tracker, BaseData baseData) {
+    public StrategyTracker(Game game, Race opponentRace, ObservedUnitTracker tracker, BaseData baseData, GameMap gameMap) {
         this.game = game;
         this.tracker = tracker;
         this.baseData = baseData;
+        this.gameMap = gameMap;
         this.init(opponentRace);
     }
 
@@ -55,7 +58,7 @@ public class StrategyTracker {
 
     public void onFrame() {
         Time currentTime = new Time(game.getFrameCount());
-        StrategyDetectionContext context = new StrategyDetectionContext(tracker, currentTime, baseData);
+        StrategyDetectionContext context = new StrategyDetectionContext(tracker, currentTime, baseData, gameMap);
 
         Set<ObservedStrategy> newlyDetected = new HashSet<>();
         for (ObservedStrategy strategy : possibleStrategies) {
