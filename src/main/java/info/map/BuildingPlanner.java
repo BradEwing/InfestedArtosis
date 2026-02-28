@@ -348,7 +348,8 @@ public class BuildingPlanner {
         List<Mineral> minerals = base.getMinerals();
         if (minerals.isEmpty()) return baseLoc;
 
-        int sumX = 0, sumY = 0;
+        int sumX = 0;
+        int sumY = 0;
         for (Mineral m : minerals) {
             TilePosition tl = m.getTopLeft();
             TilePosition br = m.getBottomRight();
