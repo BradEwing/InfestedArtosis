@@ -25,6 +25,19 @@ public class ZergBase extends BuildOrder {
     }
 
     @Override
+    protected int requiredSunkens(GameState gameState) {
+        int ourBaseCount = gameState.getBaseData().currentBaseCount();
+        int enemyDepots = gameState.enemyResourceDepotCount();
+        int ourZerglings = gameState.ourUnitCount(UnitType.Zerg_Zergling);
+        int enemyZerglings = gameState.enemyUnitCount(UnitType.Zerg_Zergling);
+
+        if (enemyDepots > ourBaseCount || enemyZerglings >= ourZerglings + 3) {
+            return 1;
+        }
+        return 0;
+    }
+
+    @Override
     protected int zerglingsNeeded(GameState gameState) {
         if (gameState.ourUnitCount(UnitType.Zerg_Spawning_Pool) < 1) {
             return 0;

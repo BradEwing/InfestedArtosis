@@ -2,6 +2,7 @@ package macro;
 
 import bwapi.Game;
 import bwapi.Position;
+import bwapi.Race;
 import bwapi.UnitType;
 import bwapi.UpgradeType;
 import info.GameState;
@@ -37,6 +38,7 @@ public class Reactions {
         cannonRushReaction();
         scvRushReaction();
         twoGateReaction();
+        zvzSunkenReaction();
     }
 
     private void scvRushReaction() {
@@ -214,6 +216,25 @@ public class Reactions {
                     plan.setPriority(0);
                 }
             }
+        }
+    }
+
+    private void zvzSunkenReaction() {
+        if (gameState.getOpponentRace() != Race.Zerg) {
+            return;
+        }
+
+        BaseData baseData = gameState.getBaseData();
+        int ourBaseCount = baseData.currentBaseCount();
+        int enemyDepots = gameState.enemyResourceDepotCount();
+        int ourZerglings = gameState.ourUnitCount(UnitType.Zerg_Zergling);
+        int enemyZerglings = gameState.enemyUnitCount(UnitType.Zerg_Zergling);
+
+        boolean enemyUpAHatchery = enemyDepots > ourBaseCount;
+        boolean enemyUpZerglings = enemyZerglings - ourZerglings >= 3;
+
+        if ((enemyUpAHatchery || enemyUpZerglings) && ourBaseCount == 1) {
+            baseData.setAllowSunkenAtMain(true);
         }
     }
 
