@@ -49,8 +49,12 @@ public class TechProgression {
     private boolean plannedFlyerAttack = false;
     private boolean plannedFlyerDefense = false;
 
-    public boolean canPlanSunkenColony() { 
-        return spawningPool; 
+    public boolean canPlanSunkenColony() {
+        return spawningPool;
+    }
+
+    public boolean canPlanSporeColony() {
+        return evolutionChambers > 0;
     }
 
     public boolean canPlanExtractor() { 

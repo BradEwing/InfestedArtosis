@@ -608,6 +608,23 @@ public class GameState {
         return neededBases;
     }
 
+    public Set<Base> basesNeedingSpore(int target) {
+        int totalSpores = baseData.getTotalSporeCount();
+
+        Set<Base> neededBases = new HashSet<>();
+        if (totalSpores >= 5) {
+            return neededBases;
+        }
+
+        for (Base base: baseData.getMyBases()) {
+            if (baseData.isEligibleForSporeColony(base) && baseData.sporesPerBase(base) < target) {
+                neededBases.add(base);
+            }
+        }
+
+        return neededBases;
+    }
+
     public boolean canPlanUnit(UnitType unitType) {
         switch (unitType) {
             case Zerg_Zergling:

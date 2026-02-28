@@ -146,6 +146,7 @@ public class PlanManager {
         switch (unitType) {
             case Zerg_Lair:
             case Zerg_Sunken_Colony:
+            case Zerg_Spore_Colony:
                 return true;
             default:
                 return false;

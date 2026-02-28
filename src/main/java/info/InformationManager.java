@@ -184,8 +184,8 @@ public class InformationManager {
         UnitType plannedUnit = assignedPlan.getPlannedUnit();
         if (assignedPlan.getType() == PlanType.BUILDING) {
             UnitTypeCount count = gameState.getUnitTypeCount();
-            // TODO: Spore Colony, Greater Spire
-            if (plannedUnit == UnitType.Zerg_Sunken_Colony) {
+            // TODO: Greater Spire
+            if (plannedUnit == UnitType.Zerg_Sunken_Colony || plannedUnit == UnitType.Zerg_Spore_Colony) {
                 count.removeUnit(UnitType.Zerg_Creep_Colony);
             } else if (plannedUnit == UnitType.Zerg_Lair) {
                 count.removeUnit(UnitType.Zerg_Hatchery);

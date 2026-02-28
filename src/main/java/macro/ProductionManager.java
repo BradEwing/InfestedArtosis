@@ -452,6 +452,8 @@ public class ProductionManager {
             case Zerg_Sunken_Colony:
             case Zerg_Evolution_Chamber:
                 return techProgression.isSpawningPool();
+            case Zerg_Spore_Colony:
+                return techProgression.getEvolutionChambers() > 0;
             case Zerg_Lair:
                 return numHatcheries > 0 && techProgression.isSpawningPool();
             case Zerg_Spire:
