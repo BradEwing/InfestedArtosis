@@ -311,8 +311,8 @@ public class BuildingPlanner {
     private List<TilePosition> findValidColonyCandidates(Set<TilePosition> creepTiles, TilePosition colonySize) {
         List<TilePosition> candidates = new ArrayList<>();
         for (TilePosition tp : creepTiles) {
-            TilePosition se = tp.add(colonySize);
-            if (!creepTiles.contains(se)) continue;
+            TilePosition southEastCandidate = tp.add(colonySize);
+            if (!creepTiles.contains(southEastCandidate)) continue;
             if (!isValidBuildingLocation(tp, colonySize, creepTiles)) continue;
             candidates.add(tp);
         }
