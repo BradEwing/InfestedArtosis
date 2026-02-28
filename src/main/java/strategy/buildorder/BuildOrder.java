@@ -120,6 +120,10 @@ public abstract class BuildOrder {
         return 0;
     }
 
+    protected int requiredSpores(GameState gameState) {
+        return 0;
+    }
+
     protected int zerglingsNeeded(GameState gameState) { 
         return 6; 
     }
@@ -188,6 +192,27 @@ public abstract class BuildOrder {
         Plan sunkenColonyPlan = new BuildingPlan(UnitType.Zerg_Sunken_Colony, 5, location);
         plans.add(creepColonyPlan);
         plans.add(sunkenColonyPlan);
+        return plans;
+    }
+
+    protected Set<Plan> planSporeColony(GameState gameState) {
+        Set<Plan> plans = new HashSet<>();
+        BaseData baseData = gameState.getBaseData();
+        BuildingPlanner buildingPlanner = gameState.getBuildingPlanner();
+        Optional<Base> eligibleBase = gameState.basesNeedingSpore(this.requiredSpores(gameState)).stream().findFirst();
+        if (!eligibleBase.isPresent()) {
+            return plans;
+        }
+        TilePosition location = buildingPlanner.getLocationForCreepColony(eligibleBase.get(), gameState.getOpponentRace());
+        if (location == null) {
+            return plans;
+        }
+        baseData.reserveSporeColony(eligibleBase.get());
+        buildingPlanner.reservePlannedBuildingTiles(location, UnitType.Zerg_Creep_Colony);
+        Plan creepColonyPlan = new BuildingPlan(UnitType.Zerg_Creep_Colony, 5, location);
+        Plan sporeColonyPlan = new BuildingPlan(UnitType.Zerg_Spore_Colony, 5, location);
+        plans.add(creepColonyPlan);
+        plans.add(sporeColonyPlan);
         return plans;
     }
 

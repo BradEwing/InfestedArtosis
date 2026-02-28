@@ -59,6 +59,9 @@ public class BuildingManager {
             case Zerg_Sunken_Colony:
                 baseData.addSunkenColony(managedUnit.getUnit());
                 break;
+            case Zerg_Spore_Colony:
+                baseData.addSporeColony(managedUnit.getUnit());
+                break;
             default:
                 break;
         }
@@ -83,6 +86,9 @@ public class BuildingManager {
                 break;
             case Zerg_Sunken_Colony:
                 baseData.removeSunkenColony(managedUnit.getUnit());
+                break;
+            case Zerg_Spore_Colony:
+                baseData.removeSporeColony(managedUnit.getUnit());
                 break;
             default:
                 break;
@@ -117,7 +123,8 @@ public class BuildingManager {
                     didAssign = this.assignMorphLair(plan);
                     break;
                 case Zerg_Sunken_Colony:
-                    didAssign = this.assignMorphSunkenColony(plan);
+                case Zerg_Spore_Colony:
+                    didAssign = this.assignMorphColony(plan);
                     break;
                 case Zerg_Hive:
                     didAssign = this.assignMorphHive(plan);
@@ -172,7 +179,7 @@ public class BuildingManager {
         return false;
     }
 
-    private boolean assignMorphSunkenColony(Plan plan) {
+    private boolean assignMorphColony(Plan plan) {
         for (ManagedUnit managedColony : colonies) {
             Unit colony = managedColony.getUnit();
             if (colony.canBuild(plan.getPlannedUnit()) &&

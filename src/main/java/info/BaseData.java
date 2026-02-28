@@ -55,6 +55,8 @@ public class BaseData {
     private HashMap<Unit, TilePosition> geyserPositionLookup = new HashMap<>();
     private HashMap<Base, Integer> sunkenColonyLookup = new HashMap<>();
     private HashMap<Base, Integer> sunkenColonyReserveLookup = new HashMap<>();
+    private HashMap<Base, Integer> sporeColonyLookup = new HashMap<>();
+    private HashMap<Base, Integer> sporeColonyReserveLookup = new HashMap<>();
     @Setter
     private boolean allowSunkenAtMain = false;
 
@@ -441,6 +443,54 @@ public class BaseData {
             total += count;
         }
         for (Integer count : sunkenColonyReserveLookup.values()) {
+            total += count;
+        }
+        return total;
+    }
+
+    public void removeSporeColony(Unit spore) {
+        if (spore.getType() != UnitType.Zerg_Spore_Colony) {
+            return;
+        }
+        Base base = myBases.stream()
+                .sorted(Distance.closestBaseTo(spore))
+                .collect(Collectors.toList())
+                .get(0);
+        sporeColonyLookup.put(base, Math.max(sporeColonyLookup.getOrDefault(base, 0) - 1, 0));
+    }
+
+    public void addSporeColony(Unit spore) {
+        Base base = myBases.stream()
+                .sorted(Distance.closestBaseTo(spore))
+                .collect(Collectors.toList())
+                .get(0);
+        sporeColonyLookup.put(base, sporeColonyLookup.getOrDefault(base, 0) + 1);
+        sporeColonyReserveLookup.put(base, Math.max(sporeColonyReserveLookup.getOrDefault(base, 0) - 1, 0));
+    }
+
+    public void reserveSporeColony(Base base) {
+        sporeColonyReserveLookup.put(base, sporeColonyReserveLookup.getOrDefault(base, 0) + 1);
+    }
+
+    public boolean isEligibleForSporeColony(Base base) {
+        if (islands.contains(base)) {
+            return false;
+        }
+        return true;
+    }
+
+    public int sporesPerBase(Base base) {
+        int reserved = sporeColonyReserveLookup.getOrDefault(base, 0);
+        int spores = sporeColonyLookup.getOrDefault(base, 0);
+        return reserved + spores;
+    }
+
+    public int getTotalSporeCount() {
+        int total = 0;
+        for (Integer count : sporeColonyLookup.values()) {
+            total += count;
+        }
+        for (Integer count : sporeColonyReserveLookup.values()) {
             total += count;
         }
         return total;
