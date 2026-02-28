@@ -312,7 +312,6 @@ public class BuildingPlanner {
      * built toward the base's closest choke.  If there's existing reserved structures, attempts to build adjacent.
      */
     public TilePosition getLocationForCreepColony(Base base, Race opponentRace) {
-        Position chokeCenter = closestChokeToBase(base);
         Set<TilePosition> creepTiles = findSurroundingCreepTiles(base);
         TilePosition colonySize = UnitType.Zerg_Creep_Colony.tileSize();
 
@@ -342,8 +341,30 @@ public class BuildingPlanner {
             }
         }
 
-        candidates.sort(Distance.closestTo(chokeCenter.toTilePosition()));
+        TilePosition sortTarget = creepColonySortTarget(base, opponentRace);
+        candidates.sort(Distance.closestTo(sortTarget));
         return candidates.isEmpty() ? null : candidates.get(0);
+    }
+
+    private TilePosition creepColonySortTarget(Base base, Race opponentRace) {
+        if (opponentRace == Race.Zerg && !base.getGeysers().isEmpty()) {
+            return geyserHatcheryMidpoint(base);
+        }
+        return closestChokeToBase(base).toTilePosition();
+    }
+
+    private TilePosition geyserHatcheryMidpoint(Base base) {
+        TilePosition baseLoc = base.getLocation();
+        int hatchMidX = baseLoc.getX() + 2;
+        int hatchMidY = baseLoc.getY() + 1;
+
+        Geyser geyser = base.getGeysers().get(0);
+        TilePosition geyserTL = geyser.getTopLeft();
+        TilePosition geyserBR = geyser.getBottomRight();
+        int geyserMidX = (geyserTL.getX() + geyserBR.getX()) / 2;
+        int geyserMidY = (geyserTL.getY() + geyserBR.getY()) / 2;
+
+        return new TilePosition((hatchMidX + geyserMidX) / 2, (hatchMidY + geyserMidY) / 2);
     }
 
     /**
