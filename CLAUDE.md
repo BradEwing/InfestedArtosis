@@ -57,4 +57,24 @@ Types: BuildingPlan, UnitPlan, UpgradePlan, TechPlan.
 - **dotenv** - Set debug settings in local dev enviornment
 
 ## Code Style
-- No comments within a function body. 
+- No comments within a function body.
+
+## Commit Messages
+
+Follow [Conventional Commits](https://www.conventionalcommits.org/) with Jira issue keys:
+
+```
+<type>(IA-<number>): <lowercase description>
+```
+
+- **Types:** `feat`, `fix`, `refactor`, `chore`, `build`, `poc`
+- **Scope** is the Jira ticket key (e.g., `IA-34`). Omit scope for trivial changes or dependency bumps handled by Dependabot.
+- **Description** is lowercase, imperative, concise.
+- Release commits use the format: `release X.XX`
+
+Examples:
+- `feat(IA-34): automate release workflow`
+- `fix(IA-60): optimize opening build orders`
+- `chore(IA-38): document learning architecture`
+- `refactor: introduce Vec2 utility class. cleanup distance calculations`
+- `release 0.59`
