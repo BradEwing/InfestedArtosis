@@ -89,11 +89,12 @@ public class ObservedUnitTracker {
     }
 
     public int getCountOfLivingUnits(UnitType... unitTypes) {
-        int count = 0;
-        for (UnitType unitType : unitTypes) {
-            count += getCountOfLivingUnits(unitType);
-        }
-        return count;
+        final Set<UnitType> typeSet = Arrays.stream(unitTypes).collect(Collectors.toSet());
+        return (int) observedUnits.values()
+                .stream()
+                .filter(ou -> typeSet.contains(ou.getUnitType()))
+                .filter(ou -> ou.getDestroyedFrame() == null)
+                .count();
     }
 
     public int getCountOfAllEnemyUnits() {
