@@ -142,7 +142,8 @@ public class Debug {
     }
 
     private void debugBaseCreepTiles(BuildingPlanner buildingPlanner, Base base) {
-        Set<TilePosition> creepTiles = buildingPlanner.findSurroundingCreepTiles(base, true);
+        boolean excludeGeyserTiles = gameState.getOpponentRace() != Race.Zerg;
+        Set<TilePosition> creepTiles = buildingPlanner.findSurroundingCreepTiles(base, excludeGeyserTiles);
         for (TilePosition tp: creepTiles) {
             game.drawBoxMap(tp.toPosition(), tp.add(new TilePosition(1, 1)).toPosition(), Color.Brown);
         }
