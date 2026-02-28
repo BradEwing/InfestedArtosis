@@ -69,6 +69,11 @@ public class ThreeHatchLurker extends TerranBase {
             plans.addAll(this.planSunkenColony(gameState));
         }
 
+        final int desiredSporeColonies = this.requiredSpores(gameState);
+        if (!gameState.basesNeedingSpore(desiredSporeColonies).isEmpty()) {
+            plans.addAll(this.planSporeColony(gameState));
+        }
+
         if (wantNatural || wantExpansion) {
             Plan hatcheryPlan = this.planNewBase(gameState);
             if (hatcheryPlan != null) {

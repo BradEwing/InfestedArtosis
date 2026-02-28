@@ -56,6 +56,11 @@ public class TerranBase extends BuildOrder {
         return race == Race.Terran;
     }
 
+    @Override
+    protected int requiredSpores(GameState gameState) {
+        return 0;
+    }
+
     /**
      * requiredSunkens per base
      */
