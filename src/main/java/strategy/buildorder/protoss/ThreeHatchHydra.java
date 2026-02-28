@@ -24,8 +24,6 @@ public class ThreeHatchHydra extends ProtossBase {
     private boolean plannedFirstMacroHatch = false;
     private boolean plannedSecondMacroHatch = false;
     private boolean plannedThirdMacroHatch = false;
-    private boolean plannedHydraliskDen = false;
-    private boolean plannedEvolutionChamber = false;
 
     public ThreeHatchHydra() {
         super("3HatchHydra");
@@ -152,7 +150,6 @@ public class ThreeHatchHydra extends ProtossBase {
         if (wantHydraliskDen) {
             Plan hydraliskDenPlan = planHydraliskDen(gameState);
             if (hydraliskDenPlan != null) {
-                plannedHydraliskDen = true;
                 plans.add(hydraliskDenPlan);
                 return plans;
             }
@@ -167,7 +164,6 @@ public class ThreeHatchHydra extends ProtossBase {
         if (wantEvolutionChamber) {
             Plan evolutionChamberPlan = planEvolutionChamber(gameState);
             if (evolutionChamberPlan != null) {
-                plannedEvolutionChamber = true;
                 plans.add(evolutionChamberPlan);
                 return plans;
             }
@@ -311,7 +307,7 @@ public class ThreeHatchHydra extends ProtossBase {
 
     // Tech building planning methods
     private boolean wantHydraliskDen(GameState gameState) {
-        if (plannedHydraliskDen || gameState.ourUnitCount(UnitType.Zerg_Extractor) == 0) {
+        if (gameState.ourUnitCount(UnitType.Zerg_Extractor) == 0) {
             return false;
         }
 
@@ -326,19 +322,17 @@ public class ThreeHatchHydra extends ProtossBase {
     }
 
     private boolean wantEvolutionChamber(GameState gameState) {
-        if (plannedEvolutionChamber) {
+        TechProgression techProgression = gameState.getTechProgression();
+        if (!techProgression.canPlanEvolutionChamber()) {
             return false;
         }
 
-        TechProgression techProgression = gameState.getTechProgression();
-        final boolean haveDen = techProgression.isHydraliskDen();
-        if (!haveDen) {
-            return false;
+        if (requiredSpores(gameState) > 0) {
+            return true;
         }
 
         final int hydras = gameState.ourUnitCount(UnitType.Zerg_Hydralisk);
-
-        return techProgression.canPlanEvolutionChamber() && hydras > 6;
+        return techProgression.isHydraliskDen() && hydras > 6;
     }
 
     private boolean wantRangedUpgrade(GameState gameState) {

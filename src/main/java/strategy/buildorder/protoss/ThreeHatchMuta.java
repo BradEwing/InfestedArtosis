@@ -30,8 +30,6 @@ public class ThreeHatchMuta extends ProtossBase {
     private boolean plannedFirstMacroHatch = false;
     private boolean plannedSecondMacroHatch = false;
     private boolean plannedThirdMacroHatch = false;
-    private boolean plannedHydraliskDen = false;
-    private boolean plannedEvolutionChamber = false;
 
     public ThreeHatchMuta() {
         super("3HatchMuta");
@@ -177,7 +175,6 @@ public class ThreeHatchMuta extends ProtossBase {
         if (wantHydraliskDen) {
             Plan hydraliskDenPlan = planHydraliskDen(gameState);
             if (hydraliskDenPlan != null) {
-                plannedHydraliskDen = true;
                 plans.add(hydraliskDenPlan);
                 return plans;
             }
@@ -186,7 +183,6 @@ public class ThreeHatchMuta extends ProtossBase {
         if (wantEvolutionChamber) {
             Plan evolutionChamberPlan = planEvolutionChamber(gameState);
             if (evolutionChamberPlan != null) {
-                plannedEvolutionChamber = true;
                 plans.add(evolutionChamberPlan);
                 return plans;
             }
@@ -317,10 +313,6 @@ public class ThreeHatchMuta extends ProtossBase {
 
     // Tech building planning methods
     private boolean wantHydraliskDen(GameState gameState) {
-        if (plannedHydraliskDen) {
-            return false;
-        }
-
         if (!plannedFirstMacroHatch) {
             return false;
         }
@@ -330,16 +322,16 @@ public class ThreeHatchMuta extends ProtossBase {
     }
 
     private boolean wantEvolutionChamber(GameState gameState) {
-        if (plannedEvolutionChamber) {
-            return false;
-        }
-
-        if (!plannedHydraliskDen) {
-            return false;
-        }
-
         TechProgression techProgression = gameState.getTechProgression();
-        return techProgression.canPlanEvolutionChamber();
+        if (!techProgression.canPlanEvolutionChamber()) {
+            return false;
+        }
+
+        if (requiredSpores(gameState) > 0) {
+            return true;
+        }
+
+        return techProgression.isPlannedDen() || techProgression.isHydraliskDen();
     }
 
     private boolean wantCarapaceUpgrade(GameState gameState) {
