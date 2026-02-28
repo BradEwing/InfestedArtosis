@@ -16,6 +16,7 @@ import info.BaseData;
 import util.Distance;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
@@ -205,7 +206,7 @@ public class BuildingPlanner {
         Set<TilePosition> creepTiles = new HashSet<>();
         HashSet<TilePosition> checked = new HashSet<>();
         HashSet<TilePosition> mineralExcluded = mineralBoundingBox(base);
-        HashSet<TilePosition> geyserExcluded = excludeGeyserTiles ? geyserBoundingBox(base) : new HashSet<>();
+        Set<TilePosition> geyserExcluded = excludeGeyserTiles ? geyserBoundingBox(base) : Collections.emptySet();
         Queue<TilePosition> candidates = new LinkedList<>();
         TilePosition tileSize = new TilePosition(6, 5);
         TilePosition baseLocation = base.getLocation();
@@ -226,7 +227,6 @@ public class BuildingPlanner {
             if (game.hasCreep(current)) {
                 creepTiles.add(current);
 
-                // Enqueue all 8 neighboring tiles
                 for (int dx = -1; dx <= 1; dx++) {
                     for (int dy = -1; dy <= 1; dy++) {
                         if (dx == 0 && dy == 0) {
@@ -235,7 +235,6 @@ public class BuildingPlanner {
                         int newX = current.getX() + dx;
                         int newY = current.getY() + dy;
 
-                        // Check map bounds
                         if (newX >= 0 && newX < game.mapWidth() && newY >= 0 && newY < game.mapHeight()) {
                             TilePosition neighbor = new TilePosition(newX, newY);
                             if (!checked.contains(neighbor)) {
