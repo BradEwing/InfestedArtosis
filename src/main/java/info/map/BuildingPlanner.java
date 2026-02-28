@@ -11,10 +11,12 @@ import bwem.Base;
 import bwem.ChokePoint;
 import bwem.Geyser;
 import bwem.Mineral;
+import bwem.Neutral;
 import info.BaseData;
 import util.Distance;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
@@ -44,7 +46,7 @@ public class BuildingPlanner {
 
     public TilePosition getLocationForTechBuilding(Base base, UnitType unitType) {
         Position closestChoke = this.closestChokeToBase(base);
-        Set<TilePosition> creepTiles = this.findSurroundingCreepTiles(base);
+        Set<TilePosition> creepTiles = this.findSurroundingCreepTiles(base, true);
         TilePosition tileSize = unitType.tileSize();
 
         List<TilePosition> farthestFromChoke = new ArrayList<>(creepTiles);
@@ -125,31 +127,39 @@ public class BuildingPlanner {
     }
 
     public HashSet<TilePosition> geyserBoundingBox(Base base) {
+        return resourceBoundingBox(base, base.getGeysers());
+    }
+
+    public HashSet<TilePosition> mineralBoundingBox(Base base) {
+        return resourceBoundingBox(base, base.getMinerals());
+    }
+
+    private HashSet<TilePosition> resourceBoundingBox(Base base, List<? extends Neutral> resources) {
         TilePosition topLeft = null;
         TilePosition bottomRight = null;
-        for (Geyser geyser : base.getGeysers()) {
-            TilePosition geyserTopLeft = geyser.getTopLeft();
-            TilePosition geyserBottomRight = geyser.getBottomRight();
+        for (Neutral resource : resources) {
+            TilePosition resourceTopLeft = resource.getTopLeft();
+            TilePosition resourceBottomRight = resource.getBottomRight();
 
             if (topLeft == null) {
-                topLeft = geyserTopLeft;
+                topLeft = resourceTopLeft;
             }
             if (bottomRight == null) {
-                bottomRight = geyserBottomRight;
+                bottomRight = resourceBottomRight;
             }
 
-            if (geyserTopLeft.getX() < topLeft.getX()) {
-                topLeft = new TilePosition(geyserTopLeft.getX(), topLeft.getY());
+            if (resourceTopLeft.getX() < topLeft.getX()) {
+                topLeft = new TilePosition(resourceTopLeft.getX(), topLeft.getY());
             }
-            if (geyserTopLeft.getY() > topLeft.getY()) {
-                topLeft = new TilePosition(topLeft.getX(), geyserTopLeft.getY());
+            if (resourceTopLeft.getY() > topLeft.getY()) {
+                topLeft = new TilePosition(topLeft.getX(), resourceTopLeft.getY());
             }
 
-            if (geyserBottomRight.getX() > bottomRight.getX()) {
-                bottomRight = new TilePosition(geyserBottomRight.getX(), bottomRight.getY());
+            if (resourceBottomRight.getX() > bottomRight.getX()) {
+                bottomRight = new TilePosition(resourceBottomRight.getX(), bottomRight.getY());
             }
-            if (geyserBottomRight.getY() < bottomRight.getY()) {
-                bottomRight = new TilePosition(bottomRight.getX(), geyserBottomRight.getY());
+            if (resourceBottomRight.getY() < bottomRight.getY()) {
+                bottomRight = new TilePosition(bottomRight.getX(), resourceBottomRight.getY());
             }
         }
 
@@ -157,78 +167,16 @@ public class BuildingPlanner {
             return new HashSet<>();
         }
 
-        TilePosition baseTopLeft      = base.getLocation();
-        TilePosition baseBottomRight = baseTopLeft.add(new TilePosition(4, 3));
-
-        int geyserMidX = (topLeft.getX()     + bottomRight.getX())     / 2;
-        int geyserMidY = (topLeft.getY()     + bottomRight.getY())     / 2;
-        int baseMidX   = (baseTopLeft.getX() + baseBottomRight.getX()) / 2;
-        int baseMidY   = (baseTopLeft.getY() + baseBottomRight.getY()) / 2;
-
-        int dx = geyserMidX - baseMidX;
-        int dy = geyserMidY - baseMidY;
-
-        if (Math.abs(dx) > Math.abs(dy)) {
-            if (dx > 0) {
-                topLeft    = new TilePosition(baseTopLeft.getX(), topLeft.getY());
-            } else {
-                bottomRight = new TilePosition(baseBottomRight.getX(), bottomRight.getY());
-            }
-        } else {
-            if (dy > 0) {
-                bottomRight = new TilePosition(bottomRight.getX(), baseBottomRight.getY());
-            } else {
-                topLeft     = new TilePosition(topLeft.getX(), baseTopLeft.getY());
-            }
-        }
-
-        HashSet<TilePosition> boundingTiles = new HashSet<>();
-        for (int x = topLeft.getX(); x <= bottomRight.getX(); x++) {
-            for (int y = bottomRight.getY(); y <= topLeft.getY(); y++) {
-                boundingTiles.add(new TilePosition(x, y));
-            }
-        }
-
-        return boundingTiles;
-    }
-
-    public HashSet<TilePosition> mineralBoundingBox(Base base) {
-        TilePosition topLeft = null;
-        TilePosition bottomRight = null;
-        for (Mineral mineral: base.getMinerals()) {
-            TilePosition mineralTopLeft = mineral.getTopLeft();
-            TilePosition mineralBottomRight = mineral.getBottomRight();
-            if (topLeft == null) {
-                topLeft = mineralTopLeft;
-            }
-            if (bottomRight == null) {
-                bottomRight = mineralBottomRight;
-            }
-
-            if (mineralTopLeft.getX() < topLeft.getX()) {
-                topLeft = new TilePosition(mineralTopLeft.getX(), topLeft.getY());
-            }
-            if (mineralTopLeft.getY() > topLeft.getY()) {
-                topLeft = new TilePosition(topLeft.getX(), mineralTopLeft.getY());
-            }
-
-            if (mineralBottomRight.getX() > bottomRight.getX()) {
-                bottomRight = new TilePosition(mineralBottomRight.getX(), bottomRight.getY());
-            }
-            if (mineralBottomRight.getY() < bottomRight.getY()) {
-                bottomRight = new TilePosition(bottomRight.getX(), mineralBottomRight.getY());
-            }
-        }
-
         TilePosition baseTopLeft = base.getLocation();
         TilePosition baseBottomRight = baseTopLeft.add(new TilePosition(4, 3));
 
-        int mineralMidX = (topLeft.getX()     + bottomRight.getX()) / 2;
-        int mineralMidY = (topLeft.getY()     + bottomRight.getY()) / 2;
+        int resourceMidX = (topLeft.getX() + bottomRight.getX()) / 2;
+        int resourceMidY = (topLeft.getY() + bottomRight.getY()) / 2;
         int baseMidX = (baseTopLeft.getX() + baseBottomRight.getX()) / 2;
         int baseMidY = (baseTopLeft.getY() + baseBottomRight.getY()) / 2;
-        int dx = mineralMidX - baseMidX;
-        int dy = mineralMidY - baseMidY;
+
+        int dx = resourceMidX - baseMidX;
+        int dy = resourceMidY - baseMidY;
 
         if (Math.abs(dx) > Math.abs(dy)) {
             if (dx > 0) {
@@ -254,11 +202,11 @@ public class BuildingPlanner {
         return boundingTiles;
     }
 
-    public Set<TilePosition> findSurroundingCreepTiles(Base base) {
+    public Set<TilePosition> findSurroundingCreepTiles(Base base, boolean excludeGeyserTiles) {
         Set<TilePosition> creepTiles = new HashSet<>();
         HashSet<TilePosition> checked = new HashSet<>();
         HashSet<TilePosition> mineralExcluded = mineralBoundingBox(base);
-        HashSet<TilePosition> geyserExcluded = geyserBoundingBox(base);
+        Set<TilePosition> geyserExcluded = excludeGeyserTiles ? geyserBoundingBox(base) : Collections.emptySet();
         Queue<TilePosition> candidates = new LinkedList<>();
         TilePosition tileSize = new TilePosition(6, 5);
         TilePosition baseLocation = base.getLocation();
@@ -279,7 +227,6 @@ public class BuildingPlanner {
             if (game.hasCreep(current)) {
                 creepTiles.add(current);
 
-                // Enqueue all 8 neighboring tiles
                 for (int dx = -1; dx <= 1; dx++) {
                     for (int dy = -1; dy <= 1; dy++) {
                         if (dx == 0 && dy == 0) {
@@ -288,7 +235,6 @@ public class BuildingPlanner {
                         int newX = current.getX() + dx;
                         int newY = current.getY() + dy;
 
-                        // Check map bounds
                         if (newX >= 0 && newX < game.mapWidth() && newY >= 0 && newY < game.mapHeight()) {
                             TilePosition neighbor = new TilePosition(newX, newY);
                             if (!checked.contains(neighbor)) {
@@ -312,8 +258,8 @@ public class BuildingPlanner {
      * built toward the base's closest choke.  If there's existing reserved structures, attempts to build adjacent.
      */
     public TilePosition getLocationForCreepColony(Base base, Race opponentRace) {
-        Position chokeCenter = closestChokeToBase(base);
-        Set<TilePosition> creepTiles = findSurroundingCreepTiles(base);
+        boolean excludeGeyserTiles = opponentRace != Race.Zerg;
+        Set<TilePosition> creepTiles = findSurroundingCreepTiles(base, excludeGeyserTiles);
         TilePosition colonySize = UnitType.Zerg_Creep_Colony.tileSize();
 
         List<TilePosition> candidates = new ArrayList<>();
@@ -342,8 +288,30 @@ public class BuildingPlanner {
             }
         }
 
-        candidates.sort(Distance.closestTo(chokeCenter.toTilePosition()));
+        TilePosition sortTarget = creepColonySortTarget(base, opponentRace);
+        candidates.sort(Distance.closestTo(sortTarget));
         return candidates.isEmpty() ? null : candidates.get(0);
+    }
+
+    private TilePosition creepColonySortTarget(Base base, Race opponentRace) {
+        if (opponentRace == Race.Zerg && !base.getGeysers().isEmpty()) {
+            return geyserHatcheryMidpoint(base);
+        }
+        return closestChokeToBase(base).toTilePosition();
+    }
+
+    private TilePosition geyserHatcheryMidpoint(Base base) {
+        TilePosition baseLoc = base.getLocation();
+        int hatchMidX = baseLoc.getX() + 2;
+        int hatchMidY = baseLoc.getY() + 1;
+
+        Geyser geyser = base.getGeysers().get(0);
+        TilePosition geyserTL = geyser.getTopLeft();
+        TilePosition geyserBR = geyser.getBottomRight();
+        int geyserMidX = (geyserTL.getX() + geyserBR.getX()) / 2;
+        int geyserMidY = (geyserTL.getY() + geyserBR.getY()) / 2;
+
+        return new TilePosition((hatchMidX + geyserMidX) / 2, (hatchMidY + geyserMidY) / 2);
     }
 
     /**
