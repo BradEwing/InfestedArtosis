@@ -32,6 +32,7 @@ public final class Config {
     public boolean debugLocationForTechBuilding = false;
     public boolean debugReserveTiles = false;
     public boolean debugNextCreepColonyLocation = false;
+    public boolean debugNextSporeColonyLocation = false;
     public boolean debugMineralBoundingBox = false;
     public boolean debugGeyserBoundingBox = false;
     public boolean debugMacroHatcheryLocation = false;
@@ -74,6 +75,7 @@ public final class Config {
         this.debugLocationForTechBuilding = Boolean.parseBoolean(dotenv.get("IA_DEBUG_LOCATION_FOR_TECH_BUILDING"));
         this.debugReserveTiles = Boolean.parseBoolean(dotenv.get("IA_DEBUG_RESERVE_TILES"));
         this.debugNextCreepColonyLocation = Boolean.parseBoolean(dotenv.get("IA_DEBUG_NEXT_CREEP_COLONY_LOCATION"));
+        this.debugNextSporeColonyLocation = Boolean.parseBoolean(dotenv.get("IA_DEBUG_NEXT_SPORE_COLONY_LOCATION"));
         this.debugMineralBoundingBox = Boolean.parseBoolean(dotenv.get("IA_DEBUG_MINERAL_BOUNDING_BOX"));
         this.debugGeyserBoundingBox = Boolean.parseBoolean(dotenv.get("IA_DEBUG_GEYSER_BOUNDING_BOX"));
         this.debugMacroHatcheryLocation = Boolean.parseBoolean(dotenv.get("IA_DEBUG_MACRO_HATCHERY_LOCATION"));

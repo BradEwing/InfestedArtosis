@@ -46,7 +46,7 @@ public class BuildingPlanner {
 
     public TilePosition getLocationForTechBuilding(Base base, UnitType unitType) {
         Position closestChoke = this.closestChokeToBase(base);
-        Set<TilePosition> creepTiles = this.findSurroundingCreepTiles(base, true);
+        Set<TilePosition> creepTiles = this.findSurroundingCreepTiles(base, true, true);
         TilePosition tileSize = unitType.tileSize();
 
         List<TilePosition> farthestFromChoke = new ArrayList<>(creepTiles);
@@ -202,7 +202,7 @@ public class BuildingPlanner {
         return boundingTiles;
     }
 
-    public Set<TilePosition> findSurroundingCreepTiles(Base base, boolean excludeGeyserTiles) {
+    public Set<TilePosition> findSurroundingCreepTiles(Base base, boolean excludeGeyserTiles, boolean excludeMineralTiles) {
         Set<TilePosition> creepTiles = new HashSet<>();
         HashSet<TilePosition> checked = new HashSet<>();
         HashSet<TilePosition> mineralExcluded = mineralBoundingBox(base);
@@ -247,7 +247,7 @@ public class BuildingPlanner {
         }
 
         creepTiles = creepTiles.stream()
-                .filter(t -> !mineralExcluded.contains(t) && !geyserExcluded.contains(t))
+                .filter(t -> (!excludeMineralTiles || !mineralExcluded.contains(t)) && !geyserExcluded.contains(t))
                 .collect(Collectors.toSet());
 
         return creepTiles;
@@ -259,16 +259,10 @@ public class BuildingPlanner {
      */
     public TilePosition getLocationForCreepColony(Base base, Race opponentRace) {
         boolean excludeGeyserTiles = opponentRace != Race.Zerg;
-        Set<TilePosition> creepTiles = findSurroundingCreepTiles(base, excludeGeyserTiles);
+        Set<TilePosition> creepTiles = findSurroundingCreepTiles(base, excludeGeyserTiles, true);
         TilePosition colonySize = UnitType.Zerg_Creep_Colony.tileSize();
 
-        List<TilePosition> candidates = new ArrayList<>();
-        for (TilePosition tp : creepTiles) {
-            TilePosition se = tp.add(colonySize);
-            if (!creepTiles.contains(se)) continue;
-            if (!isValidBuildingLocation(tp, colonySize, creepTiles)) continue;
-            candidates.add(tp);
-        }
+        List<TilePosition> candidates = findValidColonyCandidates(creepTiles, colonySize);
 
         Set<TilePosition> existing = new HashSet<>(reservedTiles);
         existing.retainAll(creepTiles);
@@ -293,6 +287,38 @@ public class BuildingPlanner {
         return candidates.isEmpty() ? null : candidates.get(0);
     }
 
+    public TilePosition getLocationForSporeColony(Base base) {
+        TilePosition colonySize = UnitType.Zerg_Creep_Colony.tileSize();
+
+        Set<TilePosition> creepTilesWithMinerals = findSurroundingCreepTiles(base, true, false);
+        List<TilePosition> candidates = findValidColonyCandidates(creepTilesWithMinerals, colonySize);
+        if (!candidates.isEmpty()) {
+            TilePosition sortTarget = mineralHatcheryMidpoint(base);
+            candidates.sort(Distance.closestTo(sortTarget));
+            return candidates.get(0);
+        }
+
+        Set<TilePosition> standardCreepTiles = findSurroundingCreepTiles(base, true, true);
+        candidates = findValidColonyCandidates(standardCreepTiles, colonySize);
+        if (!candidates.isEmpty()) {
+            candidates.sort(Distance.closestTo(base.getLocation()));
+            return candidates.get(0);
+        }
+
+        return null;
+    }
+
+    private List<TilePosition> findValidColonyCandidates(Set<TilePosition> creepTiles, TilePosition colonySize) {
+        List<TilePosition> candidates = new ArrayList<>();
+        for (TilePosition tp : creepTiles) {
+            TilePosition southEastCandidate = tp.add(colonySize);
+            if (!creepTiles.contains(southEastCandidate)) continue;
+            if (!isValidBuildingLocation(tp, colonySize, creepTiles)) continue;
+            candidates.add(tp);
+        }
+        return candidates;
+    }
+
     private TilePosition creepColonySortTarget(Base base, Race opponentRace) {
         if (opponentRace == Race.Zerg && !base.getGeysers().isEmpty()) {
             return geyserHatcheryMidpoint(base);
@@ -312,6 +338,28 @@ public class BuildingPlanner {
         int geyserMidY = (geyserTL.getY() + geyserBR.getY()) / 2;
 
         return new TilePosition((hatchMidX + geyserMidX) / 2, (hatchMidY + geyserMidY) / 2);
+    }
+
+    private TilePosition mineralHatcheryMidpoint(Base base) {
+        TilePosition baseLoc = base.getLocation();
+        int hatchMidX = baseLoc.getX() + 2;
+        int hatchMidY = baseLoc.getY() + 1;
+
+        List<Mineral> minerals = base.getMinerals();
+        if (minerals.isEmpty()) return baseLoc;
+
+        int sumX = 0;
+        int sumY = 0;
+        for (Mineral m : minerals) {
+            TilePosition tl = m.getTopLeft();
+            TilePosition br = m.getBottomRight();
+            sumX += (tl.getX() + br.getX()) / 2;
+            sumY += (tl.getY() + br.getY()) / 2;
+        }
+        int mineralMidX = sumX / minerals.size();
+        int mineralMidY = sumY / minerals.size();
+
+        return new TilePosition((hatchMidX + mineralMidX) / 2, (hatchMidY + mineralMidY) / 2);
     }
 
     /**
