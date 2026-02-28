@@ -142,7 +142,7 @@ public class Debug {
     }
 
     private void debugBaseCreepTiles(BuildingPlanner buildingPlanner, Base base) {
-        Set<TilePosition> creepTiles = buildingPlanner.findSurroundingCreepTiles(base);
+        Set<TilePosition> creepTiles = buildingPlanner.findSurroundingCreepTiles(base, true);
         for (TilePosition tp: creepTiles) {
             game.drawBoxMap(tp.toPosition(), tp.add(new TilePosition(1, 1)).toPosition(), Color.Brown);
         }

@@ -45,7 +45,7 @@ public class BuildingPlanner {
 
     public TilePosition getLocationForTechBuilding(Base base, UnitType unitType) {
         Position closestChoke = this.closestChokeToBase(base);
-        Set<TilePosition> creepTiles = this.findSurroundingCreepTiles(base);
+        Set<TilePosition> creepTiles = this.findSurroundingCreepTiles(base, true);
         TilePosition tileSize = unitType.tileSize();
 
         List<TilePosition> farthestFromChoke = new ArrayList<>(creepTiles);
@@ -201,11 +201,11 @@ public class BuildingPlanner {
         return boundingTiles;
     }
 
-    public Set<TilePosition> findSurroundingCreepTiles(Base base) {
+    public Set<TilePosition> findSurroundingCreepTiles(Base base, boolean excludeGeyserTiles) {
         Set<TilePosition> creepTiles = new HashSet<>();
         HashSet<TilePosition> checked = new HashSet<>();
         HashSet<TilePosition> mineralExcluded = mineralBoundingBox(base);
-        HashSet<TilePosition> geyserExcluded = geyserBoundingBox(base);
+        HashSet<TilePosition> geyserExcluded = excludeGeyserTiles ? geyserBoundingBox(base) : new HashSet<>();
         Queue<TilePosition> candidates = new LinkedList<>();
         TilePosition tileSize = new TilePosition(6, 5);
         TilePosition baseLocation = base.getLocation();
@@ -259,7 +259,8 @@ public class BuildingPlanner {
      * built toward the base's closest choke.  If there's existing reserved structures, attempts to build adjacent.
      */
     public TilePosition getLocationForCreepColony(Base base, Race opponentRace) {
-        Set<TilePosition> creepTiles = findSurroundingCreepTiles(base);
+        boolean excludeGeyserTiles = opponentRace != Race.Zerg;
+        Set<TilePosition> creepTiles = findSurroundingCreepTiles(base, excludeGeyserTiles);
         TilePosition colonySize = UnitType.Zerg_Creep_Colony.tileSize();
 
         List<TilePosition> candidates = new ArrayList<>();
