@@ -73,7 +73,36 @@ public class ProtossBase extends BuildOrder {
 
     @Override
     protected int requiredSpores(GameState gameState) {
-        return 0;
+        int spores = 0;
+
+        if (gameState.enemyUnitCount(UnitType.Protoss_Stargate) > 0) {
+            spores = 1;
+        }
+
+        if (gameState.enemyUnitCount(UnitType.Protoss_Corsair) > 0
+                || gameState.enemyUnitCount(UnitType.Protoss_Scout) > 0) {
+            spores = Math.max(spores, 1);
+        }
+
+        if (gameState.enemyUnitCount(UnitType.Protoss_Fleet_Beacon) > 0) {
+            spores = Math.max(spores, 2);
+        }
+
+        if (gameState.enemyUnitCount(UnitType.Protoss_Dark_Templar) > 0
+                || gameState.enemyUnitCount(UnitType.Protoss_Arbiter) > 0) {
+            spores = Math.max(spores, 1);
+        }
+
+        if (gameState.enemyUnitCount(UnitType.Protoss_Templar_Archives) > 0) {
+            spores = Math.max(spores, 1);
+        }
+
+        if (gameState.enemyUnitCount(UnitType.Protoss_Observer) > 0
+                || gameState.enemyUnitCount(UnitType.Protoss_Shuttle) > 0) {
+            spores = Math.max(spores, 1);
+        }
+
+        return spores;
     }
 
     /**
