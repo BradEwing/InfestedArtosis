@@ -23,7 +23,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
- * Reactions updates the ProductionQueue when particular enemy strategies are detected.
+ * Reactions updates the ProductionQueue and GameState when particular enemy strategies are detected.
  * This may involve removing plans from the queue, or updating priority.
  */
 public class Reactions {
@@ -227,7 +227,7 @@ public class Reactions {
         BaseData baseData = gameState.getBaseData();
         int ourBaseCount = baseData.currentBaseCount();
         int enemyDepots = gameState.enemyResourceDepotCount();
-        int ourZerglings = gameState.ourUnitCount(UnitType.Zerg_Zergling);
+        int ourZerglings = gameState.ourLivingUnitCount(UnitType.Zerg_Zergling);
         int enemyZerglings = gameState.enemyUnitCount(UnitType.Zerg_Zergling);
 
         boolean enemyUpAHatchery = enemyDepots > ourBaseCount;
