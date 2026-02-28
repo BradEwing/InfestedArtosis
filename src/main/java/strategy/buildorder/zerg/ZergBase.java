@@ -25,6 +25,11 @@ public class ZergBase extends BuildOrder {
     }
 
     @Override
+    protected int requiredSpores(GameState gameState) {
+        return 0;
+    }
+
+    @Override
     protected int requiredSunkens(GameState gameState) {
         int ourBaseCount = gameState.getBaseData().currentBaseCount();
         int enemyDepots = gameState.enemyResourceDepotCount();

@@ -71,6 +71,11 @@ public class ProtossBase extends BuildOrder {
         return zerglings;
     }
 
+    @Override
+    protected int requiredSpores(GameState gameState) {
+        return 0;
+    }
+
     /**
      * requiredSunkens per base
      *

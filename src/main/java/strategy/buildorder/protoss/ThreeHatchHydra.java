@@ -95,6 +95,11 @@ public class ThreeHatchHydra extends ProtossBase {
             plans.addAll(this.planSunkenColony(gameState));
         }
 
+        final int desiredSporeColonies = this.requiredSpores(gameState);
+        if (!gameState.basesNeedingSpore(desiredSporeColonies).isEmpty()) {
+            plans.addAll(this.planSporeColony(gameState));
+        }
+
         // Bases
         if (wantNatural || wantThird || wantBaseAdvantage || floatingMinerals) {
             Plan hatcheryPlan = this.planNewBase(gameState);
