@@ -56,6 +56,11 @@ public class OneHatchSpire extends ZergBase {
 
         boolean enemyHasSpire = gameState.enemyUnitCount(UnitType.Zerg_Spire) > 0;
 
+        final int desiredSunkenColonies = this.requiredSunkens(gameState);
+        if (!gameState.basesNeedingSunken(desiredSunkenColonies).isEmpty()) {
+            plans.addAll(this.planSunkenColony(gameState));
+        }
+
         if (wantHatchery) {
             Plan hatcheryPlan = this.planNewBase(gameState);
             if (hatcheryPlan != null) {
