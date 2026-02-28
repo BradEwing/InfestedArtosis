@@ -115,6 +115,9 @@ public class Debug {
                 if (config.debugNextCreepColonyLocation) {
                     debugNextCreepColonyLocation(buildingPlanner, base);
                 }
+                if (config.debugNextSporeColonyLocation) {
+                    debugNextSporeColonyLocation(buildingPlanner, base);
+                }
                 if (config.debugMineralBoundingBox) {
                     debugMineralBoundingBox(buildingPlanner, base);
                 }
@@ -143,7 +146,7 @@ public class Debug {
 
     private void debugBaseCreepTiles(BuildingPlanner buildingPlanner, Base base) {
         boolean excludeGeyserTiles = gameState.getOpponentRace() != Race.Zerg;
-        Set<TilePosition> creepTiles = buildingPlanner.findSurroundingCreepTiles(base, excludeGeyserTiles);
+        Set<TilePosition> creepTiles = buildingPlanner.findSurroundingCreepTiles(base, excludeGeyserTiles, true);
         for (TilePosition tp: creepTiles) {
             game.drawBoxMap(tp.toPosition(), tp.add(new TilePosition(1, 1)).toPosition(), Color.Brown);
         }
@@ -173,6 +176,13 @@ public class Debug {
         TilePosition cc = buildingPlanner.getLocationForCreepColony(base, gameState.getOpponentRace());
         if (cc != null) {
             game.drawBoxMap(cc.toPosition(), cc.add(new TilePosition(2, 2)).toPosition(), Color.White);
+        }
+    }
+
+    private void debugNextSporeColonyLocation(BuildingPlanner buildingPlanner, Base base) {
+        TilePosition sc = buildingPlanner.getLocationForSporeColony(base);
+        if (sc != null) {
+            game.drawBoxMap(sc.toPosition(), sc.add(new TilePosition(2, 2)).toPosition(), Color.Cyan);
         }
     }
 

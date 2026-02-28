@@ -203,7 +203,7 @@ public abstract class BuildOrder {
         if (!eligibleBase.isPresent()) {
             return plans;
         }
-        TilePosition location = buildingPlanner.getLocationForCreepColony(eligibleBase.get(), gameState.getOpponentRace());
+        TilePosition location = buildingPlanner.getLocationForSporeColony(eligibleBase.get());
         if (location == null) {
             return plans;
         }
