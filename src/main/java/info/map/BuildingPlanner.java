@@ -11,6 +11,7 @@ import bwem.Base;
 import bwem.ChokePoint;
 import bwem.Geyser;
 import bwem.Mineral;
+import bwem.Neutral;
 import info.BaseData;
 import util.Distance;
 
@@ -125,31 +126,39 @@ public class BuildingPlanner {
     }
 
     public HashSet<TilePosition> geyserBoundingBox(Base base) {
+        return resourceBoundingBox(base, base.getGeysers());
+    }
+
+    public HashSet<TilePosition> mineralBoundingBox(Base base) {
+        return resourceBoundingBox(base, base.getMinerals());
+    }
+
+    private HashSet<TilePosition> resourceBoundingBox(Base base, List<? extends Neutral> resources) {
         TilePosition topLeft = null;
         TilePosition bottomRight = null;
-        for (Geyser geyser : base.getGeysers()) {
-            TilePosition geyserTopLeft = geyser.getTopLeft();
-            TilePosition geyserBottomRight = geyser.getBottomRight();
+        for (Neutral resource : resources) {
+            TilePosition resourceTopLeft = resource.getTopLeft();
+            TilePosition resourceBottomRight = resource.getBottomRight();
 
             if (topLeft == null) {
-                topLeft = geyserTopLeft;
+                topLeft = resourceTopLeft;
             }
             if (bottomRight == null) {
-                bottomRight = geyserBottomRight;
+                bottomRight = resourceBottomRight;
             }
 
-            if (geyserTopLeft.getX() < topLeft.getX()) {
-                topLeft = new TilePosition(geyserTopLeft.getX(), topLeft.getY());
+            if (resourceTopLeft.getX() < topLeft.getX()) {
+                topLeft = new TilePosition(resourceTopLeft.getX(), topLeft.getY());
             }
-            if (geyserTopLeft.getY() > topLeft.getY()) {
-                topLeft = new TilePosition(topLeft.getX(), geyserTopLeft.getY());
+            if (resourceTopLeft.getY() > topLeft.getY()) {
+                topLeft = new TilePosition(topLeft.getX(), resourceTopLeft.getY());
             }
 
-            if (geyserBottomRight.getX() > bottomRight.getX()) {
-                bottomRight = new TilePosition(geyserBottomRight.getX(), bottomRight.getY());
+            if (resourceBottomRight.getX() > bottomRight.getX()) {
+                bottomRight = new TilePosition(resourceBottomRight.getX(), bottomRight.getY());
             }
-            if (geyserBottomRight.getY() < bottomRight.getY()) {
-                bottomRight = new TilePosition(bottomRight.getX(), geyserBottomRight.getY());
+            if (resourceBottomRight.getY() < bottomRight.getY()) {
+                bottomRight = new TilePosition(bottomRight.getX(), resourceBottomRight.getY());
             }
         }
 
@@ -157,78 +166,16 @@ public class BuildingPlanner {
             return new HashSet<>();
         }
 
-        TilePosition baseTopLeft      = base.getLocation();
-        TilePosition baseBottomRight = baseTopLeft.add(new TilePosition(4, 3));
-
-        int geyserMidX = (topLeft.getX()     + bottomRight.getX())     / 2;
-        int geyserMidY = (topLeft.getY()     + bottomRight.getY())     / 2;
-        int baseMidX   = (baseTopLeft.getX() + baseBottomRight.getX()) / 2;
-        int baseMidY   = (baseTopLeft.getY() + baseBottomRight.getY()) / 2;
-
-        int dx = geyserMidX - baseMidX;
-        int dy = geyserMidY - baseMidY;
-
-        if (Math.abs(dx) > Math.abs(dy)) {
-            if (dx > 0) {
-                topLeft    = new TilePosition(baseTopLeft.getX(), topLeft.getY());
-            } else {
-                bottomRight = new TilePosition(baseBottomRight.getX(), bottomRight.getY());
-            }
-        } else {
-            if (dy > 0) {
-                bottomRight = new TilePosition(bottomRight.getX(), baseBottomRight.getY());
-            } else {
-                topLeft     = new TilePosition(topLeft.getX(), baseTopLeft.getY());
-            }
-        }
-
-        HashSet<TilePosition> boundingTiles = new HashSet<>();
-        for (int x = topLeft.getX(); x <= bottomRight.getX(); x++) {
-            for (int y = bottomRight.getY(); y <= topLeft.getY(); y++) {
-                boundingTiles.add(new TilePosition(x, y));
-            }
-        }
-
-        return boundingTiles;
-    }
-
-    public HashSet<TilePosition> mineralBoundingBox(Base base) {
-        TilePosition topLeft = null;
-        TilePosition bottomRight = null;
-        for (Mineral mineral: base.getMinerals()) {
-            TilePosition mineralTopLeft = mineral.getTopLeft();
-            TilePosition mineralBottomRight = mineral.getBottomRight();
-            if (topLeft == null) {
-                topLeft = mineralTopLeft;
-            }
-            if (bottomRight == null) {
-                bottomRight = mineralBottomRight;
-            }
-
-            if (mineralTopLeft.getX() < topLeft.getX()) {
-                topLeft = new TilePosition(mineralTopLeft.getX(), topLeft.getY());
-            }
-            if (mineralTopLeft.getY() > topLeft.getY()) {
-                topLeft = new TilePosition(topLeft.getX(), mineralTopLeft.getY());
-            }
-
-            if (mineralBottomRight.getX() > bottomRight.getX()) {
-                bottomRight = new TilePosition(mineralBottomRight.getX(), bottomRight.getY());
-            }
-            if (mineralBottomRight.getY() < bottomRight.getY()) {
-                bottomRight = new TilePosition(bottomRight.getX(), mineralBottomRight.getY());
-            }
-        }
-
         TilePosition baseTopLeft = base.getLocation();
         TilePosition baseBottomRight = baseTopLeft.add(new TilePosition(4, 3));
 
-        int mineralMidX = (topLeft.getX()     + bottomRight.getX()) / 2;
-        int mineralMidY = (topLeft.getY()     + bottomRight.getY()) / 2;
+        int resourceMidX = (topLeft.getX() + bottomRight.getX()) / 2;
+        int resourceMidY = (topLeft.getY() + bottomRight.getY()) / 2;
         int baseMidX = (baseTopLeft.getX() + baseBottomRight.getX()) / 2;
         int baseMidY = (baseTopLeft.getY() + baseBottomRight.getY()) / 2;
-        int dx = mineralMidX - baseMidX;
-        int dy = mineralMidY - baseMidY;
+
+        int dx = resourceMidX - baseMidX;
+        int dy = resourceMidY - baseMidY;
 
         if (Math.abs(dx) > Math.abs(dy)) {
             if (dx > 0) {
