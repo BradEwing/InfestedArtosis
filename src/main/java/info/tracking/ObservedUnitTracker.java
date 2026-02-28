@@ -88,6 +88,14 @@ public class ObservedUnitTracker {
                 .count();
     }
 
+    public int getCountOfLivingUnits(UnitType... unitTypes) {
+        int count = 0;
+        for (UnitType unitType : unitTypes) {
+            count += getCountOfLivingUnits(unitType);
+        }
+        return count;
+    }
+
     public int getCountOfAllEnemyUnits() {
         return (int) observedUnits.values()
                 .stream()
