@@ -5,10 +5,10 @@ import bwapi.TilePosition;
 import bwapi.Unit;
 import bwapi.UnitType;
 import bwem.Base;
-import info.exception.NoWalkablePathException;
 import info.map.GameMap;
 import info.map.GroundPath;
 import info.map.GroundPathComparator;
+import info.map.StartingLocationPaths;
 import lombok.Getter;
 import lombok.Setter;
 import util.Distance;
@@ -57,6 +57,9 @@ public class BaseData {
     private HashMap<Base, Integer> sunkenColonyReserveLookup = new HashMap<>();
     private HashMap<Base, Integer> sporeColonyLookup = new HashMap<>();
     private HashMap<Base, Integer> sporeColonyReserveLookup = new HashMap<>();
+    private HashMap<Base, StartingLocationPaths> startingLocationPaths = new HashMap<>();
+    @Getter
+    private Base enemyNaturalBase;
     @Setter
     private boolean allowSunkenAtMain = false;
 
@@ -82,25 +85,21 @@ public class BaseData {
 
         this.mainBase = base;
 
-        HashSet<Base> potentialBases = allBases.stream()
-                .filter(b -> b != base)
-                .collect(Collectors.toCollection(HashSet::new));
-
-        for (Base b: potentialBases) {
-            try {
-                GroundPath path = map.aStarSearch(mainBase.getLocation(), b.getLocation());
-                this.availableBases.put(b, path);
-                this.allBasePaths.put(b, path);
-            } catch (NoWalkablePathException e) {
-                this.islands.add(b);
-            }
+        for (Base main : mains) {
+            startingLocationPaths.put(main, new StartingLocationPaths(main, allBases, map));
         }
 
-        this.inferredNaturalBase = availableBases.entrySet().stream()
-                .filter(e -> !e.getKey().getGeysers().isEmpty())
-                .min(Map.Entry.comparingByValue(new GroundPathComparator()))
-                .map(Map.Entry::getKey)
-                .orElse(null);
+        StartingLocationPaths ourPaths = startingLocationPaths.get(base);
+        this.islands.addAll(ourPaths.getIslands());
+        for (Base b : allBases) {
+            if (b == base) continue;
+            GroundPath path = ourPaths.getPath(b);
+            if (path != null) {
+                this.availableBases.put(b, path);
+                this.allBasePaths.put(b, path);
+            }
+        }
+        this.inferredNaturalBase = ourPaths.getNaturalExpansion();
 
         map.calculateMainBaseTiles(this.mainBasePosition());
     }
@@ -512,6 +511,10 @@ public class BaseData {
             if (mains.contains(base) && mainEnemyBase == null) {
                 mainEnemyBase = base;
                 enemyMainBaseFound = true;
+                StartingLocationPaths paths = startingLocationPaths.get(base);
+                if (paths != null) {
+                    enemyNaturalBase = paths.getNaturalExpansion();
+                }
             }
         }
     }
@@ -524,6 +527,7 @@ public class BaseData {
         if (enemyBases.remove(base)) {
             if (base == mainEnemyBase) {
                 mainEnemyBase = null;
+                enemyNaturalBase = null;
             }
             // Re-add to available bases if not an island
             if (!islands.contains(base)) {
