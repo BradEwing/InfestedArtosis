@@ -527,6 +527,7 @@ public class BaseData {
         if (enemyBases.remove(base)) {
             if (base == mainEnemyBase) {
                 mainEnemyBase = null;
+                enemyNaturalBase = null;
             }
             // Re-add to available bases if not an island
             if (!islands.contains(base)) {

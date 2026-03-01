@@ -10,7 +10,6 @@ import java.util.Map;
 
 public class StartingLocationPaths {
 
-
     private final HashMap<Base, GroundPath> paths = new HashMap<>();
     @Getter
     private final HashSet<Base> islands = new HashSet<>();
@@ -36,9 +35,5 @@ public class StartingLocationPaths {
 
     public GroundPath getPath(Base base) {
         return paths.get(base);
-    }
-
-    public boolean isIsland(Base base) {
-        return islands.contains(base);
     }
 }
