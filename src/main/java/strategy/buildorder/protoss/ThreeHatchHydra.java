@@ -230,6 +230,9 @@ public class ThreeHatchHydra extends ProtossBase {
         }
 
         int droneTarget = hatchCount * 9;
+        if (strategyTracker.isDetectedStrategy("FFE") || strategyTracker.isDetectedStrategy("NexusFirst")) {
+            droneTarget += 8;
+        }
         droneTarget = Math.min(droneTarget, 55);
         if (macroHatchCount > 0 && droneCount < droneTarget) {
             for (int i = 0; i < droneTarget - droneCount; i++) {
