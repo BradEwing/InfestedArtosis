@@ -37,6 +37,7 @@ public class LearningManager {
     private Record currentOpener; // Write this at end of game
     private Record activeBuildOrderRecord; // Track current non-opener strategy
     private String lastGameDetectedStrategies = "";
+    private String lastGameOpener = "";
 
     private BuildOrderFactory buildOrderFactory;
 
@@ -84,7 +85,6 @@ public class LearningManager {
         Map<String, Record> openerRecords = opponentRecord.getOpenerRecord();
         openerRecords.put(currentOpener.getOpener(), currentOpener);
         
-        // Also track the active BuildOrder if it exists and is different from opener
         if (activeBuildOrderRecord != null && !activeBuildOrderRecord.getOpener().equals(currentOpener.getOpener())) {
             if (isWinner) {
                 activeBuildOrderRecord.setWins(activeBuildOrderRecord.getWins() + 1);
@@ -100,7 +100,6 @@ public class LearningManager {
         try {
             writeGameRecord(isWinner);
         } catch (IOException e) {
-            //System.out.printf("failed to write file! [%s]", e);
         }
     }
 
@@ -236,6 +235,7 @@ public class LearningManager {
 
         GameRecord lastRecord = GameRecord.fromCsvRow(lines.get(lines.size() - 1));
         lastGameDetectedStrategies = lastRecord.getDetectedStrategies();
+        lastGameOpener = lastRecord.getOpener() != null ? lastRecord.getOpener() : "";
     }
 
     private void writeGameRecord(boolean isWinner) throws IOException {
@@ -348,6 +348,7 @@ public class LearningManager {
                 .keySet()
                 .stream()
                 .filter(openerName -> buildOrderFactory.isPlayableOpener(buildOrderFactory.getByName(openerName)))
+                .filter(openerName -> !(lastGameOpener.equals("4Pool") && openerName.equals("4Pool")))
                 .collect(Collectors.toList());
         
         if (playableOpeners.isEmpty()) {
