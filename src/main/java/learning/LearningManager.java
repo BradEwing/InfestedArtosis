@@ -37,6 +37,7 @@ public class LearningManager {
     private Record currentOpener; // Write this at end of game
     private Record activeBuildOrderRecord; // Track current non-opener strategy
     private String lastGameDetectedStrategies = "";
+    private String lastGameOpener = "";
 
     private BuildOrderFactory buildOrderFactory;
 
@@ -236,6 +237,7 @@ public class LearningManager {
 
         GameRecord lastRecord = GameRecord.fromCsvRow(lines.get(lines.size() - 1));
         lastGameDetectedStrategies = lastRecord.getDetectedStrategies();
+        lastGameOpener = lastRecord.getOpener() != null ? lastRecord.getOpener() : "";
     }
 
     private void writeGameRecord(boolean isWinner) throws IOException {
@@ -348,6 +350,7 @@ public class LearningManager {
                 .keySet()
                 .stream()
                 .filter(openerName -> buildOrderFactory.isPlayableOpener(buildOrderFactory.getByName(openerName)))
+                .filter(openerName -> !("4Pool".equals(lastGameOpener) && "4Pool".equals(openerName)))
                 .collect(Collectors.toList());
         
         if (playableOpeners.isEmpty()) {
