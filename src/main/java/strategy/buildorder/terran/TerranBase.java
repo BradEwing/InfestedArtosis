@@ -58,7 +58,34 @@ public class TerranBase extends BuildOrder {
 
     @Override
     protected int requiredSpores(GameState gameState) {
-        return 0;
+        int spores = 0;
+
+        if (gameState.enemyUnitCount(UnitType.Terran_Starport) > 0) {
+            spores = 1;
+        }
+
+        if (gameState.enemyUnitCount(UnitType.Terran_Wraith) > 0) {
+            spores = Math.max(spores, 1);
+        }
+
+        if (gameState.enemyUnitCount(UnitType.Terran_Valkyrie) > 0) {
+            spores = Math.max(spores, 1);
+        }
+
+        if (gameState.enemyUnitCount(UnitType.Terran_Science_Vessel) > 0) {
+            spores = Math.max(spores, 1);
+        }
+
+        if (gameState.enemyUnitCount(UnitType.Terran_Ghost) > 0
+                || gameState.enemyUnitCount(UnitType.Terran_Science_Facility) > 0) {
+            spores = Math.max(spores, 1);
+        }
+
+        if (gameState.enemyUnitCount(UnitType.Terran_Battlecruiser) > 0) {
+            spores = Math.max(spores, 2);
+        }
+
+        return spores;
     }
 
     /**
