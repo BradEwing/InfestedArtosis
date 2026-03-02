@@ -265,7 +265,7 @@ public class ProductionManager {
         final boolean isNinePool = activeBuildOrder.getName() == "9PoolSpeed";
         if (overlordCount < 2 && !isNinePool) {
             if (self.supplyUsed() >= 18 && overlordCount < 2 && plannedSupply == 0) {
-                addUnitToQueue(UnitType.Zerg_Overlord, 1, true);
+                addUnitToQueue(UnitType.Zerg_Overlord, 1);
                 gameState.getResourceCount().setPlannedSupply(16);
                 return;
             }
@@ -317,23 +317,23 @@ public class ProductionManager {
         }
 
         for (int priority : overlordInsertPriorities) {
-            addUnitToQueue(UnitType.Zerg_Overlord, priority, true);
+            addUnitToQueue(UnitType.Zerg_Overlord, priority);
             gameState.getResourceCount().setPlannedSupply(plannedSupply + 16);
         }
 
         // Emergency fallback: supply blocked with high minerals
         final int supplyRemaining = self.supplyTotal() - self.supplyUsed();
         if (supplyRemaining == 0 && self.minerals() > 700 && plannedSupply < 80) {
-            addUnitToQueue(UnitType.Zerg_Overlord, 1, true);
+            addUnitToQueue(UnitType.Zerg_Overlord, 1);
             gameState.getResourceCount().setPlannedSupply(plannedSupply + 16);
         }
     }
 
     // This is only used for planSupply()
     // TODO: Move to BuildOrder?
-    private void addUnitToQueue(UnitType unitType, int priority, boolean isBlocking) {
+    private void addUnitToQueue(UnitType unitType, int priority) {
         UnitTypeCount unitTypeCount = this.gameState.getUnitTypeCount();
-        gameState.getProductionQueue().add(new UnitPlan(unitType, priority, isBlocking));
+        gameState.getProductionQueue().add(new UnitPlan(unitType, priority));
         unitTypeCount.planUnit(unitType);
     }
 
