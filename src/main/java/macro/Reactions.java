@@ -8,6 +8,7 @@ import bwapi.UpgradeType;
 import info.GameState;
 import info.tracking.ObservedUnitTracker;
 import info.tracking.StrategyTracker;
+import util.Time;
 import macro.plan.Plan;
 import macro.plan.PlanType;
 import macro.plan.UpgradePlan;
@@ -39,6 +40,7 @@ public class Reactions {
         scvRushReaction();
         twoGateReaction();
         zvzSunkenReaction();
+        ffeReaction();
     }
 
     private void scvRushReaction() {
@@ -240,6 +242,38 @@ public class Reactions {
 
         if ((enemyUpAHatchery || enemyUpZerglings) && ourBaseCount == 1) {
             baseData.setAllowSunkenAtMain(true);
+        }
+    }
+
+    private void ffeReaction() {
+        StrategyTracker strategyTracker = gameState.getStrategyTracker();
+        if (!strategyTracker.isDetectedStrategy("FFE")) {
+            return;
+        }
+
+        Time time = gameState.getGameTime();
+        if (time.greaterThan(new Time(7, 0))) {
+            return;
+        }
+
+        PriorityQueue<Plan> productionQueue = gameState.getProductionQueue();
+
+        int minPriority = Integer.MAX_VALUE;
+        for (Plan plan : productionQueue) {
+            if (plan.getPriority() < minPriority) {
+                minPriority = plan.getPriority();
+            }
+        }
+
+        for (Plan plan : productionQueue) {
+            if (plan.getType() == PlanType.UNIT
+                    && plan.getPlannedUnit() == UnitType.Zerg_Drone) {
+                plan.setPriority(minPriority);
+            }
+            if (plan.getType() == PlanType.BUILDING
+                    && plan.getPlannedUnit() == UnitType.Zerg_Hatchery) {
+                plan.setPriority(minPriority);
+            }
         }
     }
 
