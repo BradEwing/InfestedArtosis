@@ -224,7 +224,7 @@ public class Reactions {
             for (int i = 0; i < FFE_DRONE_BOOST; i++) {
                 unitTypeCount.planUnit(UnitType.Zerg_Drone);
                 gameState.addPlannedWorker(1);
-                productionQueue.add(new UnitPlan(UnitType.Zerg_Drone, priority));
+                productionQueue.add(new UnitPlan(UnitType.Zerg_Drone, priority + i));
             }
         }
 
