@@ -162,7 +162,7 @@ public class ProductionManager {
 
     private void removePlansWithLaterPrerequisites() {
         List<Plan> plansToRemove = new ArrayList<>();
-        List<Plan> queueList = new ArrayList<>(gameState.getProductionQueue());
+        List<Plan> queueList = gameState.getProductionQueue().toSortedList();
         
         for (int i = 0; i < queueList.size(); i++) {
             Plan currentPlan = queueList.get(i);
