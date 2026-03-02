@@ -9,8 +9,10 @@ import info.GameState;
 import info.tracking.ObservedUnitTracker;
 import info.tracking.StrategyTracker;
 import util.Time;
+import info.UnitTypeCount;
 import macro.plan.Plan;
 import macro.plan.PlanType;
+import macro.plan.UnitPlan;
 import macro.plan.UpgradePlan;
 
 import bwapi.Unit;
@@ -39,7 +41,10 @@ public class Reactions {
     private static final Predicate<Plan> IS_DRONE = p ->
             p.getType() == PlanType.UNIT && p.getPlannedUnit() == UnitType.Zerg_Drone;
 
+    private static final int FFE_DRONE_BOOST = 8;
+
     private GameState gameState;
+    private boolean ffeReactionApplied = false;
 
     public Reactions(GameState gameState) {
         this.gameState = gameState;
@@ -209,6 +214,18 @@ public class Reactions {
         StrategyTracker strategyTracker = gameState.getStrategyTracker();
         if (!strategyTracker.isDetectedStrategy("FFE")) {
             return;
+        }
+
+        if (!ffeReactionApplied) {
+            ffeReactionApplied = true;
+            ProductionQueue productionQueue = gameState.getProductionQueue();
+            UnitTypeCount unitTypeCount = gameState.getUnitTypeCount();
+            int priority = gameState.getGameTime().getFrames();
+            for (int i = 0; i < FFE_DRONE_BOOST; i++) {
+                unitTypeCount.planUnit(UnitType.Zerg_Drone);
+                gameState.addPlannedWorker(1);
+                productionQueue.add(new UnitPlan(UnitType.Zerg_Drone, priority));
+            }
         }
 
         Time time = gameState.getGameTime();
