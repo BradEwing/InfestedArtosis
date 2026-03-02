@@ -19,12 +19,10 @@ import strategy.buildorder.BuildOrder;
 import util.Time;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.PriorityQueue;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -99,19 +97,10 @@ public class ProductionManager {
     }
 
     private void cancelImpossiblePlans() {
-        List<Plan> plansToCancel = new ArrayList<>();
-        
-        for (Plan plan : gameState.getProductionQueue()) {
-            if (!canSchedulePlan(plan)) {
-                plansToCancel.add(plan);
-            }
-        }
-        
-        for (Plan plan : plansToCancel) {
-            gameState.getProductionQueue().remove(plan);
-            gameState.setImpossiblePlan(plan);
-        }
-        
+        gameState.getProductionQueue().removeWhere(
+                plan -> !canSchedulePlan(plan),
+                gameState::setImpossiblePlan);
+
         cancelImpossibleScheduledLurkerPlans();
         removePlansWithLaterPrerequisites();
     }
@@ -132,19 +121,9 @@ public class ProductionManager {
             return;
         }
 
-        List<Plan> queuePlansToCancel = new ArrayList<>();
-        PriorityQueue<Plan> pq = gameState.getProductionQueue();
-        for (Plan plan : pq) {
-            if (plan.getType() == PlanType.BUILDING &&
-                plan.getPlannedUnit() == UnitType.Zerg_Hatchery) {
-                queuePlansToCancel.add(plan);
-            }
-        }
-
-        for (Plan plan : queuePlansToCancel) {
-            pq.remove(plan);
-            gameState.setImpossiblePlan(plan);
-        }
+        gameState.getProductionQueue().removeWhere(
+                p -> p.getType() == PlanType.BUILDING && p.getPlannedUnit() == UnitType.Zerg_Hatchery,
+                gameState::setImpossiblePlan);
 
         Set<Plan> scheduledPlansToCancel = gameState.getPlansScheduled()
                 .stream()
@@ -171,22 +150,14 @@ public class ProductionManager {
             return;
         }
 
-        PriorityQueue<Plan> pq = gameState.getProductionQueue();
-        List<Plan> queuePlansToCancel = new ArrayList<>();
-        for (Plan plan : pq) {
-            if (plan.getType() == PlanType.UNIT &&
-                plan.getPlannedUnit() == UnitType.Zerg_Overlord) {
-                queuePlansToCancel.add(plan);
-            }
-        }
-
         ResourceCount resourceCount = gameState.getResourceCount();
-        for (Plan plan : queuePlansToCancel) {
-            pq.remove(plan);
-            gameState.setImpossiblePlan(plan);
-            int plannedSupply = resourceCount.getPlannedSupply();
-            resourceCount.setPlannedSupply(Math.max(0, plannedSupply - 16));
-        }
+        gameState.getProductionQueue().removeWhere(
+                p -> p.getType() == PlanType.UNIT && p.getPlannedUnit() == UnitType.Zerg_Overlord,
+                plan -> {
+                    gameState.setImpossiblePlan(plan);
+                    int plannedSupply = resourceCount.getPlannedSupply();
+                    resourceCount.setPlannedSupply(Math.max(0, plannedSupply - 16));
+                });
     }
 
     private void removePlansWithLaterPrerequisites() {
@@ -301,8 +272,7 @@ public class ProductionManager {
             return;
         }
     
-        List<Plan> sortedQueue = new ArrayList<>(gameState.getProductionQueue());
-        Collections.sort(sortedQueue, new PlanComparator());
+        List<Plan> sortedQueue = gameState.getProductionQueue().toSortedList();
 
         List<Plan> scheduledPlans = new ArrayList<>(gameState.getPlansScheduled());
         scheduledPlans.sort(new PlanComparator());

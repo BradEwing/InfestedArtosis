@@ -25,7 +25,7 @@ import learning.Decisions;
 import lombok.Data;
 import macro.plan.Plan;
 import org.jetbrains.annotations.Nullable;
-import macro.plan.PlanComparator;
+import macro.ProductionQueue;
 import macro.plan.PlanState;
 import strategy.buildorder.BuildOrder;
 import unit.managed.ManagedUnit;
@@ -38,7 +38,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.PriorityQueue;
+
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -83,7 +83,7 @@ public class GameState {
     private HashSet<Plan> plansMorphing = new HashSet<>();
     private HashSet<Plan> plansComplete = new HashSet<>();
     private HashSet<Plan> plansImpossible = new HashSet<>(); // If ProductionManager determines impossible, cancel them in WorkerManager
-    private PriorityQueue<Plan> productionQueue = new PriorityQueue<>(new PlanComparator());
+    private ProductionQueue productionQueue = new ProductionQueue();
     private HashMap<Unit, Plan> assignedPlannedItems = new HashMap<>();
     private int plannedWorkers;
     private int plannedHatcheries = 1; // Start with 1 because we decrement with initial hatch

@@ -16,11 +16,9 @@ import macro.plan.UpgradePlan;
 import bwapi.Unit;
 import info.BaseData;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
-import java.util.PriorityQueue;
 import java.util.Set;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 /**
@@ -28,6 +26,18 @@ import java.util.stream.Collectors;
  * This may involve removing plans from the queue, or updating priority.
  */
 public class Reactions {
+
+    private static final Predicate<Plan> IS_SPAWNING_POOL = p ->
+            p.getType() == PlanType.BUILDING && p.getPlannedUnit() == UnitType.Zerg_Spawning_Pool;
+
+    private static final Predicate<Plan> IS_HATCHERY = p ->
+            p.getType() == PlanType.BUILDING && p.getPlannedUnit() == UnitType.Zerg_Hatchery;
+
+    private static final Predicate<Plan> IS_EXTRACTOR = p ->
+            p.getType() == PlanType.BUILDING && p.getPlannedUnit() == UnitType.Zerg_Extractor;
+
+    private static final Predicate<Plan> IS_DRONE = p ->
+            p.getType() == PlanType.UNIT && p.getPlannedUnit() == UnitType.Zerg_Drone;
 
     private GameState gameState;
 
@@ -57,47 +67,23 @@ public class Reactions {
 
         gameState.setScvRushed(true);
 
-        PriorityQueue<Plan> productionQueue = gameState.getProductionQueue();
+        ProductionQueue productionQueue = gameState.getProductionQueue();
 
-        for (Plan plan : productionQueue) {
-            if (plan.getType() == PlanType.BUILDING
-                    && plan.getPlannedUnit() == UnitType.Zerg_Spawning_Pool) {
-                plan.setPriority(0);
-            }
-        }
-
-        List<Plan> hatchPlansToRemove = new ArrayList<>();
-        for (Plan plan : productionQueue) {
-            if (plan.getType() == PlanType.BUILDING
-                    && plan.getPlannedUnit() == UnitType.Zerg_Hatchery) {
-                hatchPlansToRemove.add(plan);
-            }
-        }
-        for (Plan plan : hatchPlansToRemove) {
-            productionQueue.remove(plan);
-            gameState.setImpossiblePlan(plan);
-        }
+        productionQueue.setPriorityWhere(IS_SPAWNING_POOL, 0);
+        productionQueue.removeWhere(IS_HATCHERY, gameState::setImpossiblePlan);
 
         BaseData baseData = gameState.getBaseData();
 
-        List<Plan> extractorPlansToRemove = new ArrayList<>();
-        for (Plan plan : productionQueue) {
-            if (plan.getType() == PlanType.BUILDING
-                    && plan.getPlannedUnit() == UnitType.Zerg_Extractor) {
-                extractorPlansToRemove.add(plan);
-            }
-        }
-        for (Plan plan : extractorPlansToRemove) {
-            productionQueue.remove(plan);
+        productionQueue.removeWhere(IS_EXTRACTOR, plan -> {
             gameState.setImpossiblePlan(plan);
             if (plan.getBuildPosition() != null) {
                 baseData.unreserveExtractor(plan.getBuildPosition());
             }
-        }
+        });
 
         Set<Plan> scheduledExtractors = gameState.getPlansScheduled()
                 .stream()
-                .filter(p -> p.getType() == PlanType.BUILDING && p.getPlannedUnit() == UnitType.Zerg_Extractor)
+                .filter(IS_EXTRACTOR)
                 .collect(Collectors.toSet());
         for (Plan plan : scheduledExtractors) {
             gameState.getPlansScheduled().remove(plan);
@@ -106,7 +92,7 @@ public class Reactions {
 
         Set<Plan> buildingExtractors = gameState.getPlansBuilding()
                 .stream()
-                .filter(p -> p.getType() == PlanType.BUILDING && p.getPlannedUnit() == UnitType.Zerg_Extractor)
+                .filter(IS_EXTRACTOR)
                 .collect(Collectors.toSet());
         for (Plan plan : buildingExtractors) {
             gameState.getPlansBuilding().remove(plan);
@@ -115,7 +101,7 @@ public class Reactions {
 
         Set<Plan> morphingExtractors = gameState.getPlansMorphing()
                 .stream()
-                .filter(p -> p.getType() == PlanType.BUILDING && p.getPlannedUnit() == UnitType.Zerg_Extractor)
+                .filter(IS_EXTRACTOR)
                 .collect(Collectors.toSet());
         for (Plan plan : morphingExtractors) {
             gameState.getPlansMorphing().remove(plan);
@@ -130,17 +116,7 @@ public class Reactions {
         }
 
         if (gameState.getTechProgression().isSpawningPool()) {
-            List<Plan> dronePlansToRemove = new ArrayList<>();
-            for (Plan plan : productionQueue) {
-                if (plan.getType() == PlanType.UNIT
-                        && plan.getPlannedUnit() == UnitType.Zerg_Drone) {
-                    dronePlansToRemove.add(plan);
-                }
-            }
-            for (Plan plan : dronePlansToRemove) {
-                productionQueue.remove(plan);
-                gameState.setImpossiblePlan(plan);
-            }
+            productionQueue.removeWhere(IS_DRONE, gameState::setImpossiblePlan);
         }
 
         if (baseData.getMyBases().size() == 1) {
@@ -170,30 +146,15 @@ public class Reactions {
         gameState.setCannonRushed(true);
         gameState.setCannonRushDefend(completedCannons < 2);
 
-        PriorityQueue<Plan> productionQueue = gameState.getProductionQueue();
+        ProductionQueue productionQueue = gameState.getProductionQueue();
 
-        for (Plan plan : productionQueue) {
-            if (plan.getType() == PlanType.BUILDING
-                    && plan.getPlannedUnit() == UnitType.Zerg_Spawning_Pool) {
-                plan.setPriority(0);
-            }
-        }
+        productionQueue.setPriorityWhere(IS_SPAWNING_POOL, 0);
 
         int droneCount = gameState.ourUnitCount(UnitType.Zerg_Drone);
         int zerglingCount = gameState.getUnitTypeCount().get(UnitType.Zerg_Zergling);
 
         if (droneCount >= 8 && zerglingCount < 8) {
-            List<Plan> dronePlansToRemove = new ArrayList<>();
-            for (Plan plan : productionQueue) {
-                if (plan.getType() == PlanType.UNIT
-                        && plan.getPlannedUnit() == UnitType.Zerg_Drone) {
-                    dronePlansToRemove.add(plan);
-                }
-            }
-            for (Plan plan : dronePlansToRemove) {
-                productionQueue.remove(plan);
-                gameState.setImpossiblePlan(plan);
-            }
+            productionQueue.removeWhere(IS_DRONE, gameState::setImpossiblePlan);
         }
     }
 
@@ -203,7 +164,7 @@ public class Reactions {
             return;
         }
 
-        PriorityQueue<Plan> productionQueue = gameState.getProductionQueue();
+        ProductionQueue productionQueue = gameState.getProductionQueue();
 
         if (gameState.canPlanUpgrade(UpgradeType.Metabolic_Boost)) {
             gameState.getTechProgression().setPlannedMetabolicBoost(true);
@@ -213,11 +174,10 @@ public class Reactions {
 
         int zerglingCount = gameState.getUnitTypeCount().get(UnitType.Zerg_Zergling);
         if (zerglingCount > 6) {
-            for (Plan plan : productionQueue) {
-                if (plan.getType() == PlanType.UPGRADE && ((UpgradePlan) plan).getPlannedUpgrade() == UpgradeType.Metabolic_Boost) {
-                    plan.setPriority(0);
-                }
-            }
+            productionQueue.setPriorityWhere(
+                    p -> p.getType() == PlanType.UPGRADE
+                            && ((UpgradePlan) p).getPlannedUpgrade() == UpgradeType.Metabolic_Boost,
+                    0);
         }
 
         BaseData baseData = gameState.getBaseData();
@@ -256,25 +216,10 @@ public class Reactions {
             return;
         }
 
-        PriorityQueue<Plan> productionQueue = gameState.getProductionQueue();
+        ProductionQueue productionQueue = gameState.getProductionQueue();
+        int minPriority = productionQueue.minPriority();
 
-        int minPriority = Integer.MAX_VALUE;
-        for (Plan plan : productionQueue) {
-            if (plan.getPriority() < minPriority) {
-                minPriority = plan.getPriority();
-            }
-        }
-
-        for (Plan plan : productionQueue) {
-            if (plan.getType() == PlanType.UNIT
-                    && plan.getPlannedUnit() == UnitType.Zerg_Drone) {
-                plan.setPriority(minPriority);
-            }
-            if (plan.getType() == PlanType.BUILDING
-                    && plan.getPlannedUnit() == UnitType.Zerg_Hatchery) {
-                plan.setPriority(minPriority);
-            }
-        }
+        productionQueue.setPriorityWhere(IS_DRONE.or(IS_HATCHERY), minPriority);
     }
 
     private void cancelExtractorPlan(Plan plan, BaseData baseData) {
