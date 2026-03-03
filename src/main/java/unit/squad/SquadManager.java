@@ -65,7 +65,7 @@ public class SquadManager {
     private static final int SUNKEN_MANHATTAN_DISTANCE = 7;
     private static final int DEFENSE_SIM_RANGE = 256;
     private static final int CONTAINMENT_REEVALUATE_INTERVAL = 48;
-    private static final int CONTAINMENT_TIMEOUT_FRAMES = 4500;
+    private static final int CONTAINMENT_TIMEOUT_FRAMES = 1400;
     private static final int ARC_DEGREES = 150;
     private static final int STATIC_DEFENSE_BUFFER = 64;
 
@@ -764,7 +764,7 @@ public class SquadManager {
         boolean timedOut = squad.getContainStartFrame() > 0
                 && now - squad.getContainStartFrame() >= CONTAINMENT_TIMEOUT_FRAMES;
 
-        if (timedOut || containmentEvaluator.canBreakContainment(squad)) {
+        if (timedOut || containmentEvaluator.canBreakContainment(fightSquads)) {
             breakAllContainment(now);
             return;
         }

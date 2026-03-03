@@ -65,8 +65,11 @@ public class ContainmentEvaluator {
         return true;
     }
 
-    public boolean canBreakContainment(Squad squad) {
-        int ourSupply = estimateSquadSupply(squad);
+    public boolean canBreakContainment(Set<Squad> allSquads) {
+        int ourSupply = 0;
+        for (Squad s : allSquads) {
+            ourSupply += estimateSquadSupply(s);
+        }
         int enemySupply = estimateEnemyArmySupply();
         int staticDefensePenalty = countEnemyStaticDefenseNearBase() * STATIC_DEFENSE_SUPPLY_PENALTY;
         int totalEnemyStrength = enemySupply + staticDefensePenalty;
