@@ -8,7 +8,7 @@ public class UnitPlan extends Plan {
     @Getter @Setter
     private UnitType plannedUnit;
 
-    public UnitPlan(UnitType unitType, int priority, boolean isBlocking) {
+    public UnitPlan(UnitType unitType, int priority) {
         super(priority);
         this.plannedUnit = unitType;
     }

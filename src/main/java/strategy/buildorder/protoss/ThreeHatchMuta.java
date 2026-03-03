@@ -242,6 +242,9 @@ public class ThreeHatchMuta extends ProtossBase {
         }
 
         int droneTarget = totalHatcheries * 8;
+        if (strategyTracker.isDetectedStrategy("FFE") || strategyTracker.isDetectedStrategy("NexusFirst")) {
+            droneTarget += 8;
+        }
         droneTarget = Math.min(droneTarget, 65);
         if (droneCount < droneTarget) {
             for (int i = 0; i < droneTarget - droneCount; i++) {

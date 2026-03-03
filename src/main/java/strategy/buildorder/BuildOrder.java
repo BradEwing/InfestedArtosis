@@ -226,7 +226,7 @@ public abstract class BuildOrder {
             int plannedSupply = gameState.getResourceCount().getPlannedSupply();
             gameState.getResourceCount().setPlannedSupply(plannedSupply + 16);
         }
-        return new UnitPlan(unitType, gameState.getGameTime().getFrames(), true);
+        return new UnitPlan(unitType, gameState.getGameTime().getFrames());
     }
 
     protected Plan planUpgrade(GameState gameState, UpgradeType upgradeType) {
