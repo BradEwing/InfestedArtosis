@@ -8,6 +8,7 @@ import bwapi.Unit;
 import bwapi.UnitType;
 import bwapi.WalkPosition;
 import bwem.Base;
+import bwem.ChokePoint;
 import info.GameState;
 import info.ScoutData;
 import info.tracking.ObservedUnitTracker;
@@ -802,7 +803,7 @@ public class SquadManager {
         if (enemyBases.isEmpty()) return;
 
         Base containBase = closestBaseTo(squad.getCenter(), enemyBases);
-        Position chokePosition = gameState.getBuildingPlanner().closestChokeToBase(containBase);
+        Position chokePosition = findContainmentChoke(containBase);
         if (chokePosition == null) return;
 
         Position enemyBasePosition = containBase.getCenter();
@@ -846,7 +847,7 @@ public class SquadManager {
         return maxDist;
     }
 
-    private Base closestBaseTo(Position pos, HashSet<Base> bases) {
+    private Base closestBaseTo(Position pos, Set<Base> bases) {
         Base closest = null;
         double minDist = Double.MAX_VALUE;
         for (Base base : bases) {
@@ -857,6 +858,26 @@ public class SquadManager {
             }
         }
         return closest;
+    }
+
+    private Position findContainmentChoke(Base base) {
+        Map<TilePosition, Position> chokeTiles = new HashMap<>();
+        for (ChokePoint cp : gameState.getBwem().getMap().getChokePoints()) {
+            Position pos = cp.getCenter().toPosition();
+            chokeTiles.put(pos.toTilePosition(), pos);
+        }
+        Set<TilePosition> blocked = new HashSet<>();
+        for (Unit unit : game.getStaticNeutralUnits()) {
+            UnitType type = unit.getType();
+            if (!type.isMineralField() && !type.isResourceContainer()) continue;
+            TilePosition tp = unit.getTilePosition();
+            for (int dx = 0; dx < type.tileWidth(); dx++) {
+                for (int dy = 0; dy < type.tileHeight(); dy++) {
+                    blocked.add(new TilePosition(tp.getX() + dx, tp.getY() + dy));
+                }
+            }
+        }
+        return gameState.getGameMap().findNearestByGround(base.getLocation(), chokeTiles, blocked);
     }
 
     private boolean isSquadNearFriendlySunken(Squad squad) {

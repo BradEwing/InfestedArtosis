@@ -25,7 +25,6 @@ public class Arc {
 
     private List<Position> positions = new ArrayList<>();
     private List<Integer> originalIndices = new ArrayList<>();
-    private Set<WalkPosition> accessibleWalkPositions = Collections.emptySet();
 
     public Arc(Position center, Position faceTarget, int radius, int arcDegrees, int numPoints) {
         this.center = center;
@@ -39,7 +38,6 @@ public class Arc {
     }
 
     public void compute(Set<WalkPosition> accessibleWalkPositions, Set<Position> staticDefenseCoverage) {
-        this.accessibleWalkPositions = accessibleWalkPositions;
         positions.clear();
         originalIndices.clear();
 
@@ -69,7 +67,7 @@ public class Arc {
             originalIndices.add(i);
         }
 
-        selectLargestSegment();
+        selectLargestSegment(accessibleWalkPositions);
     }
 
     public List<Position> getPositions() {
@@ -164,7 +162,7 @@ public class Arc {
         return null;
     }
 
-    private void selectLargestSegment() {
+    private void selectLargestSegment(Set<WalkPosition> accessible) {
         if (positions.size() <= 1) return;
 
         int bestStart = 0;
@@ -175,7 +173,7 @@ public class Arc {
 
         for (int i = 1; i < originalIndices.size(); i++) {
             if (originalIndices.get(i) == originalIndices.get(i - 1) + 1
-                    && isSegmentWalkable(positions.get(i - 1), positions.get(i))) {
+                    && isSegmentWalkable(positions.get(i - 1), positions.get(i), accessible)) {
                 currentLength++;
             } else {
                 if (isBetterSegment(currentStart, currentLength, bestStart, bestLength, arcCenter)) {
@@ -191,6 +189,7 @@ public class Arc {
             bestLength = currentLength;
         }
 
+        originalIndices = new ArrayList<>(originalIndices.subList(bestStart, bestStart + bestLength));
         positions = new ArrayList<>(positions.subList(bestStart, bestStart + bestLength));
     }
 
@@ -201,19 +200,19 @@ public class Arc {
         return Math.abs(midA - arcCenter) < Math.abs(midB - arcCenter);
     }
 
-    private boolean isSegmentWalkable(Position a, Position b) {
-        if (accessibleWalkPositions.isEmpty()) return true;
+    private boolean isSegmentWalkable(Position a, Position b, Set<WalkPosition> accessible) {
+        if (accessible.isEmpty()) return true;
         double dx = b.getX() - a.getX();
         double dy = b.getY() - a.getY();
         double distance = Math.sqrt(dx * dx + dy * dy);
         if (distance == 0) return true;
         int numSteps = Math.max(1, (int) Math.ceil(distance / 8.0));
-        for (int i = 1; i < numSteps; i++) {
+        for (int i = 1; i <= numSteps; i++) {
             double progress = (double) i / numSteps;
             int checkX = a.getX() + (int)(dx * progress);
             int checkY = a.getY() + (int)(dy * progress);
             WalkPosition wp = new WalkPosition(new Position(checkX, checkY));
-            if (!accessibleWalkPositions.contains(wp)) return false;
+            if (!accessible.contains(wp)) return false;
         }
         return true;
     }
