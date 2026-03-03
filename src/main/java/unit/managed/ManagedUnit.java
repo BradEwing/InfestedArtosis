@@ -507,7 +507,6 @@ public class ManagedUnit {
     private void gatherBlockerMineral() {
         setUnready(THREE_SECONDS);
         unit.gather(blockingMineral);
-        return;
     }
 
     private Position getBuilderMoveLocation(UnitType building, TilePosition buildTarget) {
@@ -814,7 +813,7 @@ public class ManagedUnit {
         for (Unit enemy : game.getUnitsInRadius(unit.getPosition(), weaponRange(unit) + 64)) {
             if (enemy.getPlayer().isEnemy(game.self()) && enemy.isTargetable() && canFightBack(enemy) &&
                 !util.Filter.isLowPriorityCombatTarget(enemy.getType())) {
-                return enemy; // Return the first dangerous enemy found
+                return enemy;
             }
         }
         return null;

@@ -18,7 +18,6 @@ public class ContainmentEvaluator {
     private static final int MIN_HYDRALISK_COUNT = 6;
     private static final int MIN_LURKER_COUNT = 2;
     private static final int MIN_ULTRALISK_COUNT = 2;
-    private static final int MIN_MIXED_SQUAD_COUNT = 6;
 
     private static final UnitType[] ENEMY_GROUND_ARMY_TYPES = {
         UnitType.Terran_Marine,
@@ -70,7 +69,7 @@ public class ContainmentEvaluator {
     public boolean canBreakContainment(Squad squad) {
         int ourSupply = estimateSquadSupply(squad);
         int enemySupply = estimateEnemyArmySupply();
-        int staticDefensePenalty = countEnemyStaticDefense() * STATIC_DEFENSE_SUPPLY_PENALTY;
+        int staticDefensePenalty = countEnemyStaticDefenseNearBase() * STATIC_DEFENSE_SUPPLY_PENALTY;
         int totalEnemyStrength = enemySupply + staticDefensePenalty;
         return ourSupply >= totalEnemyStrength * BREAK_SUPPLY_RATIO;
     }
@@ -81,27 +80,31 @@ public class ContainmentEvaluator {
         if (type == UnitType.Zerg_Zergling) return size >= MIN_ZERGLING_COUNT;
         if (type == UnitType.Zerg_Hydralisk) return size >= MIN_HYDRALISK_COUNT;
         if (type == UnitType.Zerg_Lurker) return size >= MIN_LURKER_COUNT;
-        if (type == UnitType.Zerg_Ultralisk) return size >= MIN_ULTRALISK_COUNT;
-        return size >= MIN_MIXED_SQUAD_COUNT;
+        return size >= MIN_ULTRALISK_COUNT;
     }
 
     private boolean enemyHasStaticDefenseNearBase() {
         ObservedUnitTracker tracker = gameState.getObservedUnitTracker();
-        Base enemyMain = gameState.getBaseData().getMainEnemyBase();
-        if (enemyMain == null) return false;
-
-        Set<Position> basePositions = new HashSet<>();
-        basePositions.add(enemyMain.getCenter());
-        Base enemyNatural = gameState.getBaseData().getEnemyNaturalBase();
-        if (enemyNatural != null) {
-            basePositions.add(enemyNatural.getCenter());
-        }
+        Set<Position> basePositions = getEnemyBasePositions();
+        if (basePositions.isEmpty()) return false;
 
         int defenseCount = 0;
         defenseCount += tracker.getCompletedBuildingCountNearPositions(UnitType.Terran_Bunker, basePositions, 512);
         defenseCount += tracker.getCompletedBuildingCountNearPositions(UnitType.Protoss_Photon_Cannon, basePositions, 512);
         defenseCount += tracker.getCompletedBuildingCountNearPositions(UnitType.Zerg_Sunken_Colony, basePositions, 512);
         return defenseCount > 0;
+    }
+
+    private Set<Position> getEnemyBasePositions() {
+        Set<Position> positions = new HashSet<>();
+        Base enemyMain = gameState.getBaseData().getMainEnemyBase();
+        if (enemyMain == null) return positions;
+        positions.add(enemyMain.getCenter());
+        Base enemyNatural = gameState.getBaseData().getEnemyNaturalBase();
+        if (enemyNatural != null) {
+            positions.add(enemyNatural.getCenter());
+        }
+        return positions;
     }
 
     private int estimateSquadSupply(Squad squad) {
@@ -121,12 +124,14 @@ public class ContainmentEvaluator {
         return supply;
     }
 
-    private int countEnemyStaticDefense() {
+    private int countEnemyStaticDefenseNearBase() {
         ObservedUnitTracker tracker = gameState.getObservedUnitTracker();
+        Set<Position> basePositions = getEnemyBasePositions();
+        if (basePositions.isEmpty()) return 0;
         int count = 0;
-        count += tracker.getCountOfLivingUnits(UnitType.Terran_Bunker);
-        count += tracker.getCountOfLivingUnits(UnitType.Protoss_Photon_Cannon);
-        count += tracker.getCountOfLivingUnits(UnitType.Zerg_Sunken_Colony);
+        count += tracker.getCompletedBuildingCountNearPositions(UnitType.Terran_Bunker, basePositions, 512);
+        count += tracker.getCompletedBuildingCountNearPositions(UnitType.Protoss_Photon_Cannon, basePositions, 512);
+        count += tracker.getCompletedBuildingCountNearPositions(UnitType.Zerg_Sunken_Colony, basePositions, 512);
         return count;
     }
 }

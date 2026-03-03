@@ -138,10 +138,10 @@ public class Debug {
         }
 
         if (config.debugSquads) {
-            debugSquads(squadManager);
+            debugSquads();
         }
         if (config.debugContainment) {
-            debugContainment(squadManager);
+            debugContainment();
         }
         if (config.debugProductionQueue) {
             debugProductionQueue();
@@ -397,7 +397,7 @@ public class Debug {
         }
     }
 
-    private void debugSquads(SquadManager squadManager) {
+    private void debugSquads() {
         for (Squad squad: squadManager.fightSquads) {
             game.drawCircleMap(squad.getCenter(), squad.radius(), Color.White);
             game.drawTextMap(squad.getCenter(), String.format("Radius: %d", squad.radius()), Text.White);
@@ -408,7 +408,7 @@ public class Debug {
         }
     }
 
-    private void debugContainment(SquadManager squadManager) {
+    private void debugContainment() {
         for (Arc arc : squadManager.getActiveContainmentArcs()) {
             List<Position> positions = arc.getPositions();
             game.drawCircleMap(arc.getCenter(), arc.getRadius(), Color.Green, false);

@@ -501,8 +501,14 @@ public class SquadManager {
         }
 
         int moveOutThreshold = calculateMoveOutThreshold(squad);
-        if (closeThreats || squad.size() >= moveOutThreshold) {
+        if (closeThreats) {
             simulateFightSquad(squad);
+        } else if (squad.size() >= moveOutThreshold) {
+            if (containmentEvaluator.shouldContain(squad)) {
+                enterContainment(squad);
+            } else {
+                simulateFightSquad(squad);
+            }
         } else {
             rallySquad(squad);
         }
@@ -819,7 +825,7 @@ public class SquadManager {
         int maxDist = 0;
         for (Position p : coverage) {
             int dist = (int) center.getDistance(p);
-            if (dist > maxDist) {
+            if (dist <= 768 && dist > maxDist) {
                 maxDist = dist;
             }
         }
