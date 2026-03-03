@@ -735,29 +735,30 @@ public class SquadManager {
 
     private void evaluateContainingSquad(Squad squad) {
         int now = game.getFrameCount();
+        HashSet<ManagedUnit> members = squad.getMembers();
 
         List<Unit> closeEnemies = enemyUnitsNearSquad(squad);
         if (!closeEnemies.isEmpty()) {
             squad.setStatus(SquadStatus.FIGHT);
-            assignFightTargets(squad, squad.getMembers(), true);
+            assignFightTargets(squad, members, true);
             squad.startFightLock(now);
             return;
         }
 
-        if (now % CONTAINMENT_REEVALUATE_INTERVAL != 0 && squad.isContainLocked(now)) {
+        if (squad.isContainLocked(now) && now % CONTAINMENT_REEVALUATE_INTERVAL != 0) {
             return;
         }
 
         if (containmentEvaluator.canBreakContainment(squad)) {
             squad.setStatus(SquadStatus.FIGHT);
-            assignFightTargets(squad, squad.getMembers(), true);
+            assignFightTargets(squad, members, true);
             squad.startFightLock(now);
             return;
         }
 
         if (!containmentEvaluator.shouldContain(squad)) {
             squad.setStatus(SquadStatus.RETREAT);
-            assignRetreatTargets(squad, squad.getMembers(), now);
+            assignRetreatTargets(squad, members, now);
             squad.startRetreatLock(now);
             return;
         }
