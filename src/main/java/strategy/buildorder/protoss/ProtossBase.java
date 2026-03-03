@@ -42,18 +42,6 @@ public class ProtossBase extends BuildOrder {
 
         StrategyTracker strategyTracker = gameState.getStrategyTracker();
 
-        if (strategyTracker.isDetectedStrategy("2Gate")) {
-            zerglings = 12;
-        }
-        if (strategyTracker.isDetectedStrategy("1GateCore")) {
-            zerglings = 4;
-        }
-        if (strategyTracker.isDetectedStrategy("FFE")) {
-            zerglings = 2;
-        }
-        if (strategyTracker.isDetectedStrategy("NexusFirst")) {
-            zerglings = 2;
-        }
         if (strategyTracker.isDetectedStrategy("CannonRush")) {
             int cannons = gameState.getObservedUnitTracker()
                     .getCountOfLivingUnits(UnitType.Protoss_Photon_Cannon);
@@ -61,6 +49,12 @@ public class ProtossBase extends BuildOrder {
             if (availableMinerals > EXCESS_MINERALS) {
                 zerglings += availableMinerals % UnitType.Zerg_Zergling.mineralPrice();
             }
+        } else if (strategyTracker.isDetectedStrategy("2Gate")) {
+            zerglings = 12;
+        } else if (strategyTracker.isDetectedStrategy("1GateCore")) {
+            zerglings = 4;
+        } else if (strategyTracker.isDetectedStrategy("FFE")) {
+            zerglings = 2;
         }
 
         zerglings += zealots * 2;

@@ -217,6 +217,11 @@ public class Reactions {
                 }
             }
         }
+
+        BaseData baseData = gameState.getBaseData();
+        if (baseData.getMyBases().size() == 1) {
+            baseData.setAllowSunkenAtMain(true);
+        }
     }
 
     private void zvzSunkenReaction() {
