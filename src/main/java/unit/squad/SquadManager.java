@@ -19,12 +19,14 @@ import org.bk.ass.sim.BWMirrorAgentFactory;
 import org.bk.ass.sim.Simulator;
 import unit.managed.ManagedUnit;
 import unit.managed.UnitRole;
+import util.Arc;
 import util.Vec2;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -38,6 +40,7 @@ public class SquadManager {
     private GameState gameState;
 
     private BWMirrorAgentFactory agentFactory;
+    private ContainmentEvaluator containmentEvaluator;
 
     private Squad overlords = new Squad();
 
@@ -58,11 +61,15 @@ public class SquadManager {
     private static final int MERGE_CHECK_INTERVAL = 50;
     private static final int SUNKEN_MANHATTAN_DISTANCE = 7;
     private static final int DEFENSE_SIM_RANGE = 256;
+    private static final int CONTAINMENT_REEVALUATE_INTERVAL = 48;
+    private static final int ARC_DEGREES = 150;
+    private static final int STATIC_DEFENSE_BUFFER = 64;
 
     public SquadManager(Game game, GameState gameState) {
         this.game = game;
         this.gameState = gameState;
         this.agentFactory = new BWMirrorAgentFactory();
+        this.containmentEvaluator = new ContainmentEvaluator(gameState);
     }
 
     public void updateFightSquads() {
@@ -450,7 +457,7 @@ public class SquadManager {
     private Position getRallyPoint(Squad squad) {
         List<Squad> eligibleSquads = fightSquads.stream()
                 .filter(s -> s != squad)
-                .filter(s -> s.getStatus() == SquadStatus.FIGHT)
+                .filter(s -> s.getStatus() == SquadStatus.FIGHT || s.getStatus() == SquadStatus.CONTAIN)
                 .collect(Collectors.toList());
 
         final Base enemyMainBase = gameState.getBaseData().getMainEnemyBase();
@@ -483,6 +490,11 @@ public class SquadManager {
 
         SquadStatus squadStatus = squad.getStatus();
         if (!closeThreats && squadStatus == SquadStatus.REGROUP) {
+            return;
+        }
+
+        if (squadStatus == SquadStatus.CONTAIN) {
+            evaluateContainingSquad(squad);
             return;
         }
 
@@ -658,9 +670,13 @@ public class SquadManager {
 
         switch (result) {
             case RETREAT:
-                squad.setStatus(SquadStatus.RETREAT);
-                assignRetreatTargets(squad, managedFighters, now);
-                squad.startRetreatLock(now);
+                if (containmentEvaluator.shouldContain(squad)) {
+                    enterContainment(squad);
+                } else {
+                    squad.setStatus(SquadStatus.RETREAT);
+                    assignRetreatTargets(squad, managedFighters, now);
+                    squad.startRetreatLock(now);
+                }
                 break;
 
             case ENGAGE:
@@ -709,6 +725,88 @@ public class SquadManager {
             }
             assignEnemyTarget(managedUnit, squad);
         }
+    }
+
+    private void enterContainment(Squad squad) {
+        squad.setStatus(SquadStatus.CONTAIN);
+        squad.startContainLock(game.getFrameCount());
+        assignContainmentPositions(squad);
+    }
+
+    private void evaluateContainingSquad(Squad squad) {
+        int now = game.getFrameCount();
+
+        List<Unit> closeEnemies = enemyUnitsNearSquad(squad);
+        if (!closeEnemies.isEmpty()) {
+            squad.setStatus(SquadStatus.FIGHT);
+            assignFightTargets(squad, squad.getMembers(), true);
+            squad.startFightLock(now);
+            return;
+        }
+
+        if (now % CONTAINMENT_REEVALUATE_INTERVAL != 0 && squad.isContainLocked(now)) {
+            return;
+        }
+
+        if (containmentEvaluator.canBreakContainment(squad)) {
+            squad.setStatus(SquadStatus.FIGHT);
+            assignFightTargets(squad, squad.getMembers(), true);
+            squad.startFightLock(now);
+            return;
+        }
+
+        if (!containmentEvaluator.shouldContain(squad)) {
+            squad.setStatus(SquadStatus.RETREAT);
+            assignRetreatTargets(squad, squad.getMembers(), now);
+            squad.startRetreatLock(now);
+            return;
+        }
+
+        assignContainmentPositions(squad);
+    }
+
+    private void assignContainmentPositions(Squad squad) {
+        Base enemyNatural = gameState.getBaseData().getEnemyNaturalBase();
+        Base enemyMain = gameState.getBaseData().getMainEnemyBase();
+        if (enemyMain == null) return;
+
+        Base containBase = enemyNatural != null ? enemyNatural : enemyMain;
+        Position chokePosition = gameState.getBuildingPlanner().closestChokeToBase(containBase);
+        if (chokePosition == null) return;
+
+        Position enemyBasePosition = containBase.getCenter();
+
+        Set<Position> coverage = gameState.getStaticDefenseCoverage();
+        int arcRadius = estimateStaticDefenseRadius(coverage, chokePosition) + STATIC_DEFENSE_BUFFER;
+        arcRadius = Math.max(arcRadius, 192);
+
+        int unitCount = squad.size();
+        int numPoints = Math.max(unitCount, 4);
+
+        Arc arc = new Arc(chokePosition, enemyBasePosition, arcRadius, ARC_DEGREES, numPoints);
+        Set<WalkPosition> accessiblePositions = gameState.getGameMap().getAccessibleWalkPositions();
+        arc.compute(accessiblePositions, coverage);
+
+        if (arc.isEmpty()) return;
+
+        List<ManagedUnit> units = new ArrayList<>(squad.getMembers());
+        Map<ManagedUnit, Position> assignments = arc.assignUnits(units);
+        for (Map.Entry<ManagedUnit, Position> entry : assignments.entrySet()) {
+            ManagedUnit mu = entry.getKey();
+            mu.setRole(UnitRole.CONTAIN);
+            mu.setMovementTargetPosition(entry.getValue().toTilePosition());
+        }
+    }
+
+    private int estimateStaticDefenseRadius(Set<Position> coverage, Position center) {
+        int maxDist = 0;
+        for (Position p : coverage) {
+            int dist = (int) center.getDistance(p);
+            if (dist > maxDist) {
+                maxDist = dist;
+            }
+        }
+        return maxDist;
     }
 
     private boolean isSquadNearFriendlySunken(Squad squad) {
