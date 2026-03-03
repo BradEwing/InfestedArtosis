@@ -1,9 +1,8 @@
-package info.map;
+package util;
 
-import bwapi.Color;
-import bwapi.Game;
 import bwapi.Position;
 import bwapi.WalkPosition;
+import lombok.Getter;
 import unit.managed.ManagedUnit;
 
 import java.util.ArrayList;
@@ -20,9 +19,9 @@ public class Arc {
     private static final int COVERAGE_SHIFT_STEP = 32;
     private static final int COVERAGE_SHIFT_MAX = 192;
 
-    private final Position center;
+    @Getter private final Position center;
     private final double centerAngle;
-    private final int radius;
+    @Getter private final int radius;
     private final int arcDegrees;
     private final int numPoints;
 
@@ -106,19 +105,6 @@ public class Arc {
         }
 
         return assignments;
-    }
-
-    public void draw(Game game) {
-        for (Position pos : positions) {
-            game.drawCircleMap(pos, 4, Color.Green, true);
-        }
-
-        for (int i = 0; i < positions.size() - 1; i++) {
-            game.drawLineMap(positions.get(i), positions.get(i + 1), Color.Green);
-        }
-
-        game.drawCircleMap(center, 3, Color.Yellow, true);
-        game.drawCircleMap(center, radius, Color.Yellow, false);
     }
 
     private boolean isInStaticDefenseCoverage(Position pos, Set<Position> coverage) {
