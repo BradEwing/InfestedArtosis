@@ -151,6 +151,9 @@ public class ManagedUnit {
             case REGROUP:
                 rally();
                 break;
+            case CONTAIN:
+                contain();
+                break;
             default:
                 break;
         }
@@ -424,6 +427,30 @@ public class ManagedUnit {
 
         setUnready();
         unit.move(rallyPoint);
+    }
+
+    protected void contain() {
+        if (movementTargetPosition == null) {
+            role = UnitRole.IDLE;
+            return;
+        }
+
+        Unit nearbyEnemy = findClosestEnemyInRange();
+        if (nearbyEnemy != null) {
+            setUnready(6);
+            unit.attack(nearbyEnemy);
+            return;
+        }
+
+        Position target = movementTargetPosition.toPosition();
+        if (unit.getDistance(target) < 24) {
+            setUnready(6);
+            unit.holdPosition();
+            return;
+        }
+
+        setUnready(6);
+        unit.move(target);
     }
 
     protected void gather() {}
