@@ -62,7 +62,6 @@ public class ContainmentEvaluator {
         if (!isEligibleSquad(squad)) return false;
         if (!gameState.getBaseData().knowEnemyMainBase()) return false;
         if (!meetsMinimumSize(squad)) return false;
-        if (!enemyHasStaticDefenseNearBase()) return false;
         return true;
     }
 

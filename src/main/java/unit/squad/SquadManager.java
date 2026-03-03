@@ -459,7 +459,7 @@ public class SquadManager {
     private Position getRallyPoint(Squad squad) {
         List<Squad> eligibleSquads = fightSquads.stream()
                 .filter(s -> s != squad)
-                .filter(s -> s.getStatus() == SquadStatus.FIGHT || s.getStatus() == SquadStatus.CONTAIN)
+                .filter(s -> s.getStatus() == SquadStatus.FIGHT)
                 .collect(Collectors.toList());
 
         final Base enemyMainBase = gameState.getBaseData().getMainEnemyBase();
@@ -525,7 +525,7 @@ public class SquadManager {
                 }
                 return 5;
             case Zerg_Hydralisk:
-                return 10;
+                return 6;
             case Zerg_Lurker:
                 return 1;
             default:
@@ -756,6 +756,11 @@ public class SquadManager {
             return;
         }
 
+        if (basesUnderAttack()) {
+            breakAllContainment(now);
+            return;
+        }
+
         boolean timedOut = squad.getContainStartFrame() > 0
                 && now - squad.getContainStartFrame() >= CONTAINMENT_TIMEOUT_FRAMES;
 
@@ -784,6 +789,13 @@ public class SquadManager {
                 s.startFightLock(now);
             }
         }
+    }
+
+    private boolean basesUnderAttack() {
+        for (HashSet<Unit> threats : gameState.getBaseToThreatLookup().values()) {
+            if (!threats.isEmpty()) return true;
+        }
+        return false;
     }
 
     private void assignContainmentPositions(Squad squad) {
