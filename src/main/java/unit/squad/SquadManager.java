@@ -49,6 +49,9 @@ public class SquadManager {
     @Getter
     private HashMap<Base, Squad> defenseSquads = new HashMap<>();
 
+    @Getter
+    private List<Arc> activeContainmentArcs = new ArrayList<>();
+
     private HashSet<ManagedUnit> disbanded = new HashSet<>();
 
     private static final double MUTALISK_JOIN_DISTANCE = 128;
@@ -62,6 +65,7 @@ public class SquadManager {
     private static final int SUNKEN_MANHATTAN_DISTANCE = 7;
     private static final int DEFENSE_SIM_RANGE = 256;
     private static final int CONTAINMENT_REEVALUATE_INTERVAL = 48;
+    private static final int CONTAINMENT_TIMEOUT_FRAMES = 4500;
     private static final int ARC_DEGREES = 150;
     private static final int STATIC_DEFENSE_BUFFER = 64;
 
@@ -74,6 +78,7 @@ public class SquadManager {
 
     public void updateFightSquads() {
         disbanded.clear();
+        activeContainmentArcs.clear();
         removeEmptySquads();
         mergeSquads();
         assignOverlordsToSquads();
@@ -98,7 +103,6 @@ public class SquadManager {
                 ScourgeSquad scourgeSquad = (ScourgeSquad) fightSquad;
                 scourgeSquad.executeTactics(gameState);
             } else {
-                // Handle other squad types with general logic
                 evaluateSquadRole(fightSquad);
             }
 
@@ -108,7 +112,6 @@ public class SquadManager {
                         mu.setRallyPoint(fightSquad.getCenter());
                         mu.setRole(UnitRole.RALLY);
                     } else {
-                        // If an Overlord somehow ended up in a fight squad without speed, send it back safely
                         fightSquad.removeUnit(mu);
                         overlords.addUnit(mu);
                         mu.setRole(UnitRole.IDLE);
@@ -333,7 +336,6 @@ public class SquadManager {
     }
 
     private void mergeSquads() {
-        // Merge every 50 frames
         if (game.getFrameCount() % MERGE_CHECK_INTERVAL != 0) {
             return;
         }
@@ -574,7 +576,6 @@ public class SquadManager {
     }
 
     private void simulateFightSquad(Squad squad) {
-        // Skip mutalisk squads as they handle their own tactics
         if (squad instanceof MutaliskSquad || squad instanceof ScourgeSquad) {
             return;
         }
@@ -652,7 +653,6 @@ public class SquadManager {
             return;
         }
 
-        // Hysteresis gate: allow retreat to override fight locks; block fight if retreat-locked
         int now = game.getFrameCount();
         boolean retreatLocked = squad.isRetreatLocked(now);
         boolean fightLocked = squad.isFightLocked(now);
@@ -739,6 +739,7 @@ public class SquadManager {
 
         List<Unit> closeEnemies = enemyUnitsNearSquad(squad);
         if (!closeEnemies.isEmpty()) {
+            squad.clearContainStart();
             squad.setStatus(SquadStatus.FIGHT);
             assignFightTargets(squad, members, true);
             squad.startFightLock(now);
@@ -749,14 +750,16 @@ public class SquadManager {
             return;
         }
 
-        if (containmentEvaluator.canBreakContainment(squad)) {
-            squad.setStatus(SquadStatus.FIGHT);
-            assignFightTargets(squad, members, true);
-            squad.startFightLock(now);
+        boolean timedOut = squad.getContainStartFrame() > 0
+                && now - squad.getContainStartFrame() >= CONTAINMENT_TIMEOUT_FRAMES;
+
+        if (timedOut || containmentEvaluator.canBreakContainment(squad)) {
+            breakAllContainment(now);
             return;
         }
 
         if (!containmentEvaluator.shouldContain(squad)) {
+            squad.clearContainStart();
             squad.setStatus(SquadStatus.RETREAT);
             assignRetreatTargets(squad, members, now);
             squad.startRetreatLock(now);
@@ -764,6 +767,17 @@ public class SquadManager {
         }
 
         assignContainmentPositions(squad);
+    }
+
+    private void breakAllContainment(int now) {
+        for (Squad s : fightSquads) {
+            if (s.getStatus() == SquadStatus.CONTAIN) {
+                s.clearContainStart();
+                s.setStatus(SquadStatus.FIGHT);
+                assignFightTargets(s, s.getMembers(), true);
+                s.startFightLock(now);
+            }
+        }
     }
 
     private void assignContainmentPositions(Squad squad) {
@@ -789,6 +803,8 @@ public class SquadManager {
         arc.compute(accessiblePositions, coverage);
 
         if (arc.isEmpty()) return;
+
+        activeContainmentArcs.add(arc);
 
         List<ManagedUnit> units = new ArrayList<>(squad.getMembers());
         Map<ManagedUnit, Position> assignments = arc.assignUnits(units);
@@ -838,7 +854,6 @@ public class SquadManager {
             return result;
         }
 
-        // Compute average enemy position as threat center
         double ex = 0;
         double ey = 0;
         int cnt = 0;
@@ -1005,8 +1020,6 @@ public class SquadManager {
     private void addManagedFighter(ManagedUnit managedUnit) {
         UnitType type = managedUnit.getUnitType();
         Squad squad;
-        
-        // Special handling for Mutalisks - rally to closest active squad
         if (type == UnitType.Zerg_Mutalisk) {
             squad = findClosestMutaliskSquad(managedUnit);
         } else {
@@ -1147,7 +1160,6 @@ public class SquadManager {
         enemyUnits.addAll(gameState.getVisibleEnemyUnits());
 
         List<Unit> filtered = new ArrayList<>();
-        // Attempt to find the closest enemy OUTSIDE fog of war
         for (Unit enemyUnit: enemyUnits) {
             if (unit.getType() == UnitType.Zerg_Lurker && !enemyUnit.isFlying() && enemyUnit.isDetected()) {
                 filtered.add(enemyUnit);
@@ -1273,9 +1285,9 @@ public class SquadManager {
      */
     private List<Squad> getHydraliskAndMutaliskSquads() {
         return fightSquads.stream()
-            .filter(squad -> squad.getType() == UnitType.Zerg_Hydralisk || 
+            .filter(squad -> squad.getType() == UnitType.Zerg_Hydralisk ||
                            squad.getType() == UnitType.Zerg_Mutalisk)
-            .sorted((s1, s2) -> Integer.compare(s2.size(), s1.size())) // Sort descending by size
+            .sorted((s1, s2) -> Integer.compare(s2.size(), s1.size()))
             .collect(Collectors.toList());
     }
 

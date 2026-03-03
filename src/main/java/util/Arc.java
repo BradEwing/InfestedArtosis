@@ -82,7 +82,7 @@ public class Arc {
 
     public Map<ManagedUnit, Position> assignUnits(List<ManagedUnit> units) {
         Map<ManagedUnit, Position> assignments = new LinkedHashMap<>();
-        List<Position> available = new ArrayList<>(positions);
+        List<Position> available = prioritizeCenterPositions(units.size());
 
         for (ManagedUnit unit : units) {
             if (available.isEmpty()) break;
@@ -105,6 +105,22 @@ public class Arc {
         }
 
         return assignments;
+    }
+
+    private List<Position> prioritizeCenterPositions(int unitCount) {
+        if (unitCount >= positions.size()) {
+            return new ArrayList<>(positions);
+        }
+
+        int mid = positions.size() / 2;
+        int half = unitCount / 2;
+        int start = Math.max(0, mid - half);
+        int end = Math.min(positions.size(), start + unitCount);
+        if (end - start < unitCount) {
+            start = Math.max(0, end - unitCount);
+        }
+
+        return new ArrayList<>(positions.subList(start, end));
     }
 
     private boolean isInStaticDefenseCoverage(Position pos, Set<Position> coverage) {

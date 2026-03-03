@@ -22,10 +22,12 @@ import info.tracking.PsiStormTracker;
 import learning.Record;
 import learning.OpponentRecord;
 import strategy.buildorder.BuildOrder;
+import unit.managed.ManagedUnit;
 import unit.squad.Squad;
 import unit.squad.SquadManager;
-import unit.managed.ManagedUnit;
+import unit.squad.SquadStatus;
 import unit.managed.UnitRole;
+import util.Arc;
 import macro.plan.Plan;
 
 import java.util.HashMap;
@@ -48,13 +50,15 @@ public class Debug {
     private OpponentRecord opponentRecord;
 
     private GameState gameState;
+    private SquadManager squadManager;
 
-    public Debug(Game game, BuildOrder opener, OpponentRecord opponentRecord, GameState gameState, Config config) {
+    public Debug(Game game, BuildOrder opener, OpponentRecord opponentRecord, GameState gameState, Config config, SquadManager squadManager) {
         this.game = game;
         this.opener = opener;
         this.opponentRecord = opponentRecord;
         this.gameState = gameState;
         this.config = config;
+        this.squadManager = squadManager;
     }
 
     public void onFrame() {
@@ -133,6 +137,12 @@ public class Debug {
             }
         }
 
+        if (config.debugSquads) {
+            debugSquads(squadManager);
+        }
+        if (config.debugContainment) {
+            debugContainment(squadManager);
+        }
         if (config.debugProductionQueue) {
             debugProductionQueue();
         }
@@ -387,9 +397,7 @@ public class Debug {
         }
     }
 
-    public void debugSquads(SquadManager squadManager) {
-        if (!config.debugSquads) return;
-        
+    private void debugSquads(SquadManager squadManager) {
         for (Squad squad: squadManager.fightSquads) {
             game.drawCircleMap(squad.getCenter(), squad.radius(), Color.White);
             game.drawTextMap(squad.getCenter(), String.format("Radius: %d", squad.radius()), Text.White);
@@ -397,6 +405,26 @@ public class Debug {
         for (Squad squad: squadManager.getDefenseSquads().values()) {
             game.drawCircleMap(squad.getCenter(), 256, Color.White);
             game.drawTextMap(squad.getCenter(), String.format("Defenders: %s", squad.size()), Text.White);
+        }
+    }
+
+    private void debugContainment(SquadManager squadManager) {
+        for (Arc arc : squadManager.getActiveContainmentArcs()) {
+            List<Position> positions = arc.getPositions();
+            game.drawCircleMap(arc.getCenter(), arc.getRadius(), Color.Green, false);
+            for (int i = 0; i < positions.size(); i++) {
+                Position pos = positions.get(i);
+                game.drawCircleMap(pos, 8, Color.Green, true);
+                if (i > 0) {
+                    game.drawLineMap(positions.get(i - 1), pos, Color.Green);
+                }
+            }
+        }
+
+        for (Squad squad : squadManager.fightSquads) {
+            if (squad.getStatus() == SquadStatus.CONTAIN) {
+                game.drawTextMap(squad.getCenter(), String.format("CONTAIN (%d)", squad.size()), Text.Green);
+            }
         }
     }
 
