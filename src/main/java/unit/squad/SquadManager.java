@@ -66,8 +66,8 @@ public class SquadManager {
     private static final int DEFENSE_SIM_RANGE = 256;
     private static final int CONTAINMENT_REEVALUATE_INTERVAL = 48;
     private static final int CONTAINMENT_TIMEOUT_FRAMES = 1400;
-    private static final int ARC_DEGREES = 150;
-    private static final int STATIC_DEFENSE_BUFFER = 64;
+    private static final int ARC_DEGREES = 90;
+    private static final int STATIC_DEFENSE_BUFFER = 32;
 
     public SquadManager(Game game, GameState gameState) {
         this.game = game;
@@ -745,7 +745,6 @@ public class SquadManager {
 
         List<Unit> closeEnemies = enemyUnitsNearSquad(squad);
         if (!closeEnemies.isEmpty()) {
-            squad.clearContainStart();
             squad.setStatus(SquadStatus.FIGHT);
             assignFightTargets(squad, members, true);
             squad.startFightLock(now);
@@ -799,24 +798,27 @@ public class SquadManager {
     }
 
     private void assignContainmentPositions(Squad squad) {
-        Base enemyNatural = gameState.getBaseData().getEnemyNaturalBase();
-        Base enemyMain = gameState.getBaseData().getMainEnemyBase();
-        if (enemyMain == null) return;
+        HashSet<Base> enemyBases = gameState.getBaseData().getEnemyBases();
+        if (enemyBases.isEmpty()) return;
 
-        Base containBase = enemyNatural != null ? enemyNatural : enemyMain;
+        Base containBase = closestBaseTo(squad.getCenter(), enemyBases);
         Position chokePosition = gameState.getBuildingPlanner().closestChokeToBase(containBase);
         if (chokePosition == null) return;
 
         Position enemyBasePosition = containBase.getCenter();
+        Position faceTarget = new Position(
+                2 * chokePosition.getX() - enemyBasePosition.getX(),
+                2 * chokePosition.getY() - enemyBasePosition.getY()
+        );
 
         Set<Position> coverage = gameState.getStaticDefenseCoverage();
         int arcRadius = estimateStaticDefenseRadius(coverage, chokePosition) + STATIC_DEFENSE_BUFFER;
-        arcRadius = Math.max(arcRadius, 192);
+        arcRadius = Math.max(arcRadius, 160);
 
         int unitCount = squad.size();
         int numPoints = Math.max(unitCount, 4);
 
-        Arc arc = new Arc(chokePosition, enemyBasePosition, arcRadius, ARC_DEGREES, numPoints);
+        Arc arc = new Arc(chokePosition, faceTarget, arcRadius, ARC_DEGREES, numPoints);
         Set<WalkPosition> accessiblePositions = gameState.getGameMap().getAccessibleWalkPositions();
         arc.compute(accessiblePositions, coverage);
 
@@ -842,6 +844,19 @@ public class SquadManager {
             }
         }
         return maxDist;
+    }
+
+    private Base closestBaseTo(Position pos, HashSet<Base> bases) {
+        Base closest = null;
+        double minDist = Double.MAX_VALUE;
+        for (Base base : bases) {
+            double dist = pos.getDistance(base.getCenter());
+            if (dist < minDist) {
+                minDist = dist;
+                closest = base;
+            }
+        }
+        return closest;
     }
 
     private boolean isSquadNearFriendlySunken(Squad squad) {

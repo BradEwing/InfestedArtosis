@@ -16,8 +16,6 @@ public class Arc {
     private static final int MIN_RADIUS = 32;
     private static final int WALKABLE_SEARCH_STEP = 32;
     private static final int WALKABLE_SEARCH_MAX = 128;
-    private static final int COVERAGE_SHIFT_STEP = 32;
-    private static final int COVERAGE_SHIFT_MAX = 192;
 
     @Getter private final Position center;
     private final double centerAngle;
@@ -26,6 +24,8 @@ public class Arc {
     private final int numPoints;
 
     private List<Position> positions = new ArrayList<>();
+    private List<Integer> originalIndices = new ArrayList<>();
+    private Set<WalkPosition> accessibleWalkPositions = Collections.emptySet();
 
     public Arc(Position center, Position faceTarget, int radius, int arcDegrees, int numPoints) {
         this.center = center;
@@ -39,7 +39,9 @@ public class Arc {
     }
 
     public void compute(Set<WalkPosition> accessibleWalkPositions, Set<Position> staticDefenseCoverage) {
+        this.accessibleWalkPositions = accessibleWalkPositions;
         positions.clear();
+        originalIndices.clear();
 
         double halfArc = Math.toRadians(arcDegrees / 2.0);
         double startAngle = centerAngle - halfArc;
@@ -60,12 +62,14 @@ public class Arc {
             }
 
             if (isInStaticDefenseCoverage(candidate, staticDefenseCoverage)) {
-                candidate = shiftOutsideCoverage(candidate, angle, accessibleWalkPositions, staticDefenseCoverage);
-                if (candidate == null) continue;
+                continue;
             }
 
             positions.add(candidate);
+            originalIndices.add(i);
         }
+
+        selectLargestSegment();
     }
 
     public List<Position> getPositions() {
@@ -160,22 +164,58 @@ public class Arc {
         return null;
     }
 
-    private Position shiftOutsideCoverage(Position original, double angle, Set<WalkPosition> accessible, Set<Position> coverage) {
-        double reverseAngle = angle + Math.PI;
-        for (int delta = COVERAGE_SHIFT_STEP; delta <= COVERAGE_SHIFT_MAX; delta += COVERAGE_SHIFT_STEP) {
-            int px = original.getX() + (int) (Math.cos(reverseAngle) * delta);
-            int py = original.getY() + (int) (Math.sin(reverseAngle) * delta);
-            Position candidate = clampPosition(px, py);
+    private void selectLargestSegment() {
+        if (positions.size() <= 1) return;
 
-            if (!accessible.isEmpty() && !accessible.contains(new WalkPosition(candidate))) {
-                continue;
-            }
-            if (!isInStaticDefenseCoverage(candidate, coverage)) {
-                return candidate;
+        int bestStart = 0;
+        int bestLength = 1;
+        int currentStart = 0;
+        int currentLength = 1;
+        int arcCenter = numPoints / 2;
+
+        for (int i = 1; i < originalIndices.size(); i++) {
+            if (originalIndices.get(i) == originalIndices.get(i - 1) + 1
+                    && isSegmentWalkable(positions.get(i - 1), positions.get(i))) {
+                currentLength++;
+            } else {
+                if (isBetterSegment(currentStart, currentLength, bestStart, bestLength, arcCenter)) {
+                    bestStart = currentStart;
+                    bestLength = currentLength;
+                }
+                currentStart = i;
+                currentLength = 1;
             }
         }
+        if (isBetterSegment(currentStart, currentLength, bestStart, bestLength, arcCenter)) {
+            bestStart = currentStart;
+            bestLength = currentLength;
+        }
 
-        return null;
+        positions = new ArrayList<>(positions.subList(bestStart, bestStart + bestLength));
+    }
+
+    private boolean isBetterSegment(int startA, int lengthA, int startB, int lengthB, int arcCenter) {
+        if (lengthA != lengthB) return lengthA > lengthB;
+        int midA = originalIndices.get(startA + lengthA / 2);
+        int midB = originalIndices.get(startB + lengthB / 2);
+        return Math.abs(midA - arcCenter) < Math.abs(midB - arcCenter);
+    }
+
+    private boolean isSegmentWalkable(Position a, Position b) {
+        if (accessibleWalkPositions.isEmpty()) return true;
+        double dx = b.getX() - a.getX();
+        double dy = b.getY() - a.getY();
+        double distance = Math.sqrt(dx * dx + dy * dy);
+        if (distance == 0) return true;
+        int numSteps = Math.max(1, (int) Math.ceil(distance / 8.0));
+        for (int i = 1; i < numSteps; i++) {
+            double progress = (double) i / numSteps;
+            int checkX = a.getX() + (int)(dx * progress);
+            int checkY = a.getY() + (int)(dy * progress);
+            WalkPosition wp = new WalkPosition(new Position(checkX, checkY));
+            if (!accessibleWalkPositions.contains(wp)) return false;
+        }
+        return true;
     }
 
     private Position clampPosition(int x, int y) {

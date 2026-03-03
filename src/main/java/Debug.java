@@ -411,7 +411,6 @@ public class Debug {
     private void debugContainment() {
         for (Arc arc : squadManager.getActiveContainmentArcs()) {
             List<Position> positions = arc.getPositions();
-            game.drawCircleMap(arc.getCenter(), arc.getRadius(), Color.Green, false);
             for (int i = 0; i < positions.size(); i++) {
                 Position pos = positions.get(i);
                 game.drawCircleMap(pos, 8, Color.Green, true);

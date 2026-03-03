@@ -60,8 +60,9 @@ public class ContainmentEvaluator {
 
     public boolean shouldContain(Squad squad) {
         if (!isEligibleSquad(squad)) return false;
-        if (!gameState.getBaseData().knowEnemyMainBase()) return false;
+        if (gameState.getBaseData().getEnemyBases().isEmpty()) return false;
         if (!meetsMinimumSize(squad)) return false;
+        if (estimateEnemyArmySupply() == 0) return false;
         return true;
     }
 
@@ -83,18 +84,6 @@ public class ContainmentEvaluator {
         if (type == UnitType.Zerg_Hydralisk) return size >= MIN_HYDRALISK_COUNT;
         if (type == UnitType.Zerg_Lurker) return size >= MIN_LURKER_COUNT;
         return size >= MIN_ULTRALISK_COUNT;
-    }
-
-    private boolean enemyHasStaticDefenseNearBase() {
-        ObservedUnitTracker tracker = gameState.getObservedUnitTracker();
-        Set<Position> basePositions = getEnemyBasePositions();
-        if (basePositions.isEmpty()) return false;
-
-        int defenseCount = 0;
-        defenseCount += tracker.getCompletedBuildingCountNearPositions(UnitType.Terran_Bunker, basePositions, 512);
-        defenseCount += tracker.getCompletedBuildingCountNearPositions(UnitType.Protoss_Photon_Cannon, basePositions, 512);
-        defenseCount += tracker.getCompletedBuildingCountNearPositions(UnitType.Zerg_Sunken_Colony, basePositions, 512);
-        return defenseCount > 0;
     }
 
     private Set<Position> getEnemyBasePositions() {
