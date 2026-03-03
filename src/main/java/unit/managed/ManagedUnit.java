@@ -549,36 +549,16 @@ public class ManagedUnit {
         List<Unit> threats = getEnemiesInRadius(current.getX(), current.getY());
 
         if (!threats.isEmpty()) {
-            Position away = getSimpleRetreatPosition();
-            Position target = movementTargetPosition.toPosition();
+            Vec2 awayDir = Vec2.between(current, getSimpleRetreatPosition()).normalize();
+            Vec2 targetDir = Vec2.between(current, movementTargetPosition.toPosition()).normalize();
 
-            double ax = away.getX() - current.getX();
-            double ay = away.getY() - current.getY();
-            double at = Math.max(1.0, Math.sqrt(ax * ax + ay * ay));
-            ax /= at; ay /= at;
-
-            double tx = target.getX() - current.getX();
-            double ty = target.getY() - current.getY();
-            double tt = Math.max(1.0, Math.sqrt(tx * tx + ty * ty));
-            tx /= tt; ty /= tt;
-
-            double dot = ax * tx + ay * ty;
-            double bx = ax;
-            double by = ay;
-            if (dot > 0) {
-                bx = ax + 0.5 * tx;
-                by = ay + 0.5 * ty;
-                double bt = Math.max(1.0, Math.sqrt(bx * bx + by * by));
-                bx /= bt; by /= bt;
-            }
-
-            int destX = current.getX() + (int)(bx * 128);
-            int destY = current.getY() + (int)(by * 128);
-            destX = Math.max(0, Math.min(destX, game.mapWidth() * 32 - 1));
-            destY = Math.max(0, Math.min(destY, game.mapHeight() * 32 - 1));
+            double dot = awayDir.x * targetDir.x + awayDir.y * targetDir.y;
+            Vec2 blended = dot > 0
+                    ? new Vec2(awayDir.x + 0.5 * targetDir.x, awayDir.y + 0.5 * targetDir.y).normalize()
+                    : awayDir;
 
             setUnready();
-            unit.move(new Position(destX, destY));
+            unit.move(blended.normalizeToLength(128).clampToMap(game, current));
             return;
         }
 
