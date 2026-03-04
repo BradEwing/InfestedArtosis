@@ -452,15 +452,15 @@ public class SquadManager {
      * Rallies to the squad closest to the enemy main base, otherwise
      * defaults to the main or natural expansion.
      *
+     * Squads actively fighting or holding a containment are eligible rally targets.
      * Exempts the given squad as a rally candidate.
      *
-     * Rallys to the closest squad
-     * @return TilePosition to rally squad to
+     * @return Position to rally squad to
      */
     private Position getRallyPoint(Squad squad) {
         List<Squad> eligibleSquads = fightSquads.stream()
                 .filter(s -> s != squad)
-                .filter(s -> s.getStatus() == SquadStatus.FIGHT)
+                .filter(s -> s.getStatus() == SquadStatus.FIGHT || s.getStatus() == SquadStatus.CONTAIN)
                 .collect(Collectors.toList());
 
         final Base enemyMainBase = gameState.getBaseData().getMainEnemyBase();
