@@ -25,6 +25,9 @@ public class Arc {
     private final int arcDegrees;
     private final int numPoints;
 
+    private int mapPixelWidth;
+    private int mapPixelHeight;
+
     private List<Position> positions = new ArrayList<>();
     private List<Integer> originalIndices = new ArrayList<>();
 
@@ -39,7 +42,10 @@ public class Arc {
         this.centerAngle = Math.atan2(dy, dx);
     }
 
-    public void compute(Set<WalkPosition> accessibleWalkPositions, Set<Position> staticDefenseCoverage) {
+    public void compute(Set<WalkPosition> accessibleWalkPositions, Set<Position> staticDefenseCoverage,
+                        int mapPixelWidth, int mapPixelHeight) {
+        this.mapPixelWidth = mapPixelWidth;
+        this.mapPixelHeight = mapPixelHeight;
         positions.clear();
         originalIndices.clear();
 
@@ -236,6 +242,8 @@ public class Arc {
     }
 
     private Position clampPosition(int x, int y) {
-        return new Position(Math.max(0, x), Math.max(0, y));
+        int cx = Math.max(0, Math.min(x, mapPixelWidth - 1));
+        int cy = Math.max(0, Math.min(y, mapPixelHeight - 1));
+        return new Position(cx, cy);
     }
 }
