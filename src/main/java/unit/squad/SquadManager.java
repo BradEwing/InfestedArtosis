@@ -8,7 +8,7 @@ import bwapi.Unit;
 import bwapi.UnitType;
 import bwapi.WalkPosition;
 import bwem.Base;
-import bwem.ChokePoint;
+import bwem.CPPath;
 import info.GameState;
 import info.ScoutData;
 import info.tracking.ObservedUnitTracker;
@@ -24,10 +24,10 @@ import util.Arc;
 import util.Vec2;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Collections;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -507,9 +507,10 @@ public class SquadManager {
         if (closeThreats) {
             simulateFightSquad(squad);
         } else if (squad.size() >= moveOutThreshold) {
-            if (containmentEvaluator.shouldContain(squad)) {
-                enterContainment(squad);
-            } else {
+            boolean contained = containmentEvaluator.shouldContain(squad)
+                    && !containmentEvaluator.canBreakContainment(fightSquads)
+                    && enterContainment(squad);
+            if (!contained) {
                 simulateFightSquad(squad);
             }
         } else {
@@ -679,9 +680,10 @@ public class SquadManager {
 
         switch (result) {
             case RETREAT:
-                if (containmentEvaluator.shouldContain(squad)) {
-                    enterContainment(squad);
-                } else {
+                boolean enteredContain = containmentEvaluator.shouldContain(squad)
+                        && !containmentEvaluator.canBreakContainment(fightSquads)
+                        && enterContainment(squad);
+                if (!enteredContain) {
                     squad.setStatus(SquadStatus.RETREAT);
                     assignRetreatTargets(squad, managedFighters, now);
                     squad.startRetreatLock(now);
@@ -736,10 +738,16 @@ public class SquadManager {
         }
     }
 
-    private void enterContainment(Squad squad) {
+    private boolean enterContainment(Squad squad) {
+        HashSet<Base> enemyBases = gameState.getBaseData().getEnemyBases();
+        if (enemyBases.isEmpty()) return false;
+        Base containBase = closestBaseTo(squad.getCenter(), enemyBases);
+        Position chokePosition = findContainmentChoke(squad.getCenter(), containBase);
+        if (chokePosition == null) return false;
         squad.setStatus(SquadStatus.CONTAIN);
         squad.startContainLock(game.getFrameCount());
         assignContainmentPositions(squad);
+        return true;
     }
 
     private void evaluateContainingSquad(Squad squad) {
@@ -805,7 +813,7 @@ public class SquadManager {
         if (enemyBases.isEmpty()) return;
 
         Base containBase = closestBaseTo(squad.getCenter(), enemyBases);
-        Position chokePosition = findContainmentChoke(containBase);
+        Position chokePosition = findContainmentChoke(squad.getCenter(), containBase);
         if (chokePosition == null) return;
 
         Position enemyBasePosition = containBase.getCenter();
@@ -815,13 +823,11 @@ public class SquadManager {
         );
 
         Set<Position> coverage = gameState.getStaticDefenseCoverage();
-        int arcRadius = estimateStaticDefenseRadius(coverage, chokePosition) + STATIC_DEFENSE_BUFFER;
-        arcRadius = Math.max(arcRadius, 160);
 
         int unitCount = squad.size();
         int numPoints = Math.max(unitCount, 4);
 
-        Arc arc = new Arc(chokePosition, faceTarget, arcRadius, ARC_DEGREES, numPoints);
+        Arc arc = new Arc(chokePosition, faceTarget, STATIC_DEFENSE_BUFFER, ARC_DEGREES, numPoints);
         Set<WalkPosition> accessiblePositions = gameState.getGameMap().getAccessibleWalkPositions();
         arc.compute(accessiblePositions, coverage);
 
@@ -838,28 +844,17 @@ public class SquadManager {
         }
     }
 
-    private int estimateStaticDefenseRadius(Set<Position> coverage, Position center) {
-        int maxDist = 0;
-        for (Position p : coverage) {
-            int dist = (int) center.getDistance(p);
-            if (dist <= 768 && dist > maxDist) {
-                maxDist = dist;
-            }
-        }
-        return maxDist;
-    }
-
     private Base closestBaseTo(Position pos, Set<Base> bases) {
         Map<TilePosition, Position> baseTiles = new HashMap<>();
-        Map<Position, Base> centerToBase = new HashMap<>();
         for (Base base : bases) {
             baseTiles.put(base.getLocation(), base.getCenter());
-            centerToBase.put(base.getCenter(), base);
         }
         Position nearest = gameState.getGameMap().findNearestByGround(
                 pos.toTilePosition(), baseTiles, Collections.emptySet());
         if (nearest != null) {
-            return centerToBase.get(nearest);
+            for (Base base : bases) {
+                if (base.getCenter().equals(nearest)) return base;
+            }
         }
         Base closest = null;
         double minDist = Double.MAX_VALUE;
@@ -873,24 +868,12 @@ public class SquadManager {
         return closest;
     }
 
-    private Position findContainmentChoke(Base base) {
-        Map<TilePosition, Position> chokeTiles = new HashMap<>();
-        for (ChokePoint cp : gameState.getBwem().getMap().getChokePoints()) {
-            Position pos = cp.getCenter().toPosition();
-            chokeTiles.put(pos.toTilePosition(), pos);
+    private Position findContainmentChoke(Position squadPos, Base base) {
+        CPPath path = gameState.getBwem().getMap().getPath(squadPos, base.getCenter());
+        if (!path.isEmpty()) {
+            return path.get(path.size() - 1).getCenter().toPosition();
         }
-        Set<TilePosition> blocked = new HashSet<>();
-        for (Unit unit : game.getStaticNeutralUnits()) {
-            UnitType type = unit.getType();
-            if (!type.isMineralField() && !type.isResourceContainer()) continue;
-            TilePosition tp = unit.getTilePosition();
-            for (int dx = 0; dx < type.tileWidth(); dx++) {
-                for (int dy = 0; dy < type.tileHeight(); dy++) {
-                    blocked.add(new TilePosition(tp.getX() + dx, tp.getY() + dy));
-                }
-            }
-        }
-        return gameState.getGameMap().findNearestByGround(base.getLocation(), chokeTiles, blocked);
+        return null;
     }
 
     private boolean isSquadNearFriendlySunken(Squad squad) {

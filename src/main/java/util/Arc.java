@@ -16,6 +16,8 @@ public class Arc {
     private static final int MIN_RADIUS = 32;
     private static final int WALKABLE_SEARCH_STEP = 32;
     private static final int WALKABLE_SEARCH_MAX = 128;
+    private static final int DEFENSE_PUSH_STEP = 32;
+    private static final int DEFENSE_PUSH_MAX = 256;
 
     @Getter private final Position center;
     private final double centerAngle;
@@ -60,7 +62,8 @@ public class Arc {
             }
 
             if (isInStaticDefenseCoverage(candidate, staticDefenseCoverage)) {
-                continue;
+                candidate = pushOutsideDefenseCoverage(angle, candidate, accessibleWalkPositions, staticDefenseCoverage);
+                if (candidate == null) continue;
             }
 
             positions.add(candidate);
@@ -130,6 +133,21 @@ public class Arc {
         int snappedX = (pos.getX() / 8) * 8;
         int snappedY = (pos.getY() / 8) * 8;
         return coverage.contains(new Position(snappedX, snappedY));
+    }
+
+    private Position pushOutsideDefenseCoverage(double angle, Position original,
+                                                Set<WalkPosition> accessible, Set<Position> coverage) {
+        double baseDist = original.getDistance(center);
+        for (int delta = DEFENSE_PUSH_STEP; delta <= DEFENSE_PUSH_MAX; delta += DEFENSE_PUSH_STEP) {
+            double pushRadius = baseDist + delta;
+            int px = center.getX() + (int) (Math.cos(angle) * pushRadius);
+            int py = center.getY() + (int) (Math.sin(angle) * pushRadius);
+            Position candidate = clampPosition(px, py);
+            if (isInStaticDefenseCoverage(candidate, coverage)) continue;
+            if (!accessible.isEmpty() && !accessible.contains(new WalkPosition(candidate))) continue;
+            return candidate;
+        }
+        return null;
     }
 
     private Position findWalkableAlternative(double angle, Set<WalkPosition> accessible) {
