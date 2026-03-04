@@ -410,7 +410,14 @@ public class Debug {
 
     private void debugContainment() {
         for (Arc arc : squadManager.getActiveContainmentArcs()) {
+            Position choke = arc.getCenter();
+            game.drawCircleMap(choke, 10, Color.Yellow, true);
+            game.drawTextMap(choke.getX() + 12, choke.getY() - 6, "Choke", Text.Yellow);
             List<Position> positions = arc.getPositions();
+            if (!positions.isEmpty()) {
+                Position midPoint = positions.get(positions.size() / 2);
+                game.drawLineMap(choke, midPoint, Color.Yellow);
+            }
             for (int i = 0; i < positions.size(); i++) {
                 Position pos = positions.get(i);
                 game.drawCircleMap(pos, 8, Color.Green, true);

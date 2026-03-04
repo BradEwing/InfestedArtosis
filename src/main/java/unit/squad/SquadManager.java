@@ -27,6 +27,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Collections;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -396,6 +397,7 @@ public class SquadManager {
     }
 
     private void rallySquad(Squad squad) {
+        squad.setStatus(SquadStatus.RALLY);
         Position rallyPoint;
         if (squad.getType() == UnitType.Zerg_Mutalisk) {
             rallyPoint = getMutaliskRallyPoint(squad);
@@ -848,6 +850,17 @@ public class SquadManager {
     }
 
     private Base closestBaseTo(Position pos, Set<Base> bases) {
+        Map<TilePosition, Position> baseTiles = new HashMap<>();
+        Map<Position, Base> centerToBase = new HashMap<>();
+        for (Base base : bases) {
+            baseTiles.put(base.getLocation(), base.getCenter());
+            centerToBase.put(base.getCenter(), base);
+        }
+        Position nearest = gameState.getGameMap().findNearestByGround(
+                pos.toTilePosition(), baseTiles, Collections.emptySet());
+        if (nearest != null) {
+            return centerToBase.get(nearest);
+        }
         Base closest = null;
         double minDist = Double.MAX_VALUE;
         for (Base base : bases) {
