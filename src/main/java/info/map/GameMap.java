@@ -343,6 +343,35 @@ public class GameMap {
     }
 
     /**
+     * BFS from start tile through walkable terrain. Returns the Position value
+     * from the targets map for the first target tile reached by ground.
+     * Tiles in the blocked set are treated as impassable (e.g. mineral/geyser tiles).
+     */
+    public Position findNearestByGround(TilePosition start, Map<TilePosition, Position> targets, Set<TilePosition> blocked) {
+        if (targets.isEmpty() || !isValidTile(start)) return null;
+        if (targets.containsKey(start)) return targets.get(start);
+
+        ArrayDeque<MapTile> queue = new ArrayDeque<>();
+        Set<MapTile> visited = new HashSet<>();
+        MapTile startTile = mapTiles[start.getX()][start.getY()];
+        queue.add(startTile);
+        visited.add(startTile);
+
+        while (!queue.isEmpty()) {
+            MapTile current = queue.poll();
+            for (MapTile neighbor : getNeighbors(current)) {
+                if (visited.contains(neighbor)) continue;
+                visited.add(neighbor);
+                TilePosition tp = neighbor.getTile();
+                if (blocked.contains(tp)) continue;
+                if (targets.containsKey(tp)) return targets.get(tp);
+                queue.add(neighbor);
+            }
+        }
+        return null;
+    }
+
+    /**
      * Calculates all accessible WalkPositions from the main base using flood fill algorithm.
      * 
      * @param game The BWAPI Game instance

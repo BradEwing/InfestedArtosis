@@ -151,6 +151,9 @@ public class ManagedUnit {
             case REGROUP:
                 rally();
                 break;
+            case CONTAIN:
+                contain();
+                break;
             default:
                 break;
         }
@@ -191,31 +194,22 @@ public class ManagedUnit {
             return currentPos;
         }
 
-        int sumDx = 0;
-        int sumDy = 0;
+        double sumDx = 0;
+        double sumDy = 0;
 
         for (Unit enemy : enemies) {
             sumDx += enemy.getX() - currentX;
             sumDy += enemy.getY() - currentY;
         }
 
-        int retreatDx = -sumDx;
-        int retreatDy = -sumDy;
-
-        double length = Math.sqrt(retreatDx * retreatDx + retreatDy * retreatDy);
-        if (length == 0) {
+        Vec2 away = new Vec2(-sumDx, -sumDy);
+        if (away.length() == 0) {
             return currentPos;
         }
 
-        double scale = 128.0 / length;
-        int newX = currentX + (int)(retreatDx * scale);
-        int newY = currentY + (int)(retreatDy * scale);
+        Position retreatPos = away.normalizeToLength(128).toPosition(currentPos);
 
-        Position retreatPos = new Position(newX, newY);
-
-        // Check if the retreat path intersects any non-walkable terrain
         if (!isRetreatPathWalkable(currentPos, retreatPos)) {
-            // Try to find an alternative retreat position that avoids barriers
             retreatPos = findAlternativeRetreatPosition(currentPos, retreatPos);
         }
 
@@ -225,29 +219,25 @@ public class ManagedUnit {
     protected Position getSimpleRetreatPosition() {
         int currentX = unit.getX();
         int currentY = unit.getY();
+        Position currentPos = new Position(currentX, currentY);
         List<Unit> enemies = getEnemiesInRadius(currentX, currentY);
         if (enemies.isEmpty()) {
-            return new Position(currentX, currentY);
+            return currentPos;
         }
 
-        int sumDx = 0;
-        int sumDy = 0;
+        double sumDx = 0;
+        double sumDy = 0;
         for (Unit enemy : enemies) {
             sumDx += enemy.getX() - currentX;
             sumDy += enemy.getY() - currentY;
         }
-        int retreatDx = -sumDx;
-        int retreatDy = -sumDy;
 
-        double length = Math.max(1.0, Math.sqrt(retreatDx * retreatDx + retreatDy * retreatDy));
-        double scale = 128.0 / length;
-        int newX = currentX + (int)(retreatDx * scale);
-        int newY = currentY + (int)(retreatDy * scale);
+        Vec2 away = new Vec2(-sumDx, -sumDy);
+        if (away.length() == 0) {
+            return currentPos;
+        }
 
-        newX = Math.max(0, Math.min(newX, game.mapWidth() * 32 - 1));
-        newY = Math.max(0, Math.min(newY, game.mapHeight() * 32 - 1));
-
-        return new Position(newX, newY);
+        return away.normalizeToLength(128).clampToMap(game, currentPos);
     }
 
     protected List<Unit> getEnemiesInRadius(int currentX, int currentY) {
@@ -344,45 +334,33 @@ public class ManagedUnit {
         return true;
     }
     
-    /**
-     * Finds an alternative retreat position when the direct path is blocked.
-     * Evaluates positions to find the one farthest from enemies and outside static defense coverage.
-     */
     private Position findAlternativeRetreatPosition(Position currentPos, Position originalRetreat) {
-        // Get nearby enemies for distance calculations, excluding non-static defense buildings
         List<Unit> enemies = game.getUnitsInRadius(currentPos.getX(), currentPos.getY(), 256)
                 .stream()
                 .filter(u -> u.getPlayer() != game.self())
                 .filter(u -> !u.getType().isBuilding() || Filter.isHostileBuildingToGround(u.getType()))
                 .collect(Collectors.toList());
-        
+
         if (enemies.isEmpty()) {
-            return originalRetreat; // No enemies, original retreat is fine
+            return originalRetreat;
         }
-        
+
         Position bestPosition = null;
         double bestMinEnemyDistance = -1;
-        
-        // Try multiple distances and angles to find best retreat position
+
         int[] distances = {128, 96, 64, 48, 32};
         for (int distance : distances) {
             for (int angle = 0; angle < 360; angle += 30) {
                 double rad = Math.toRadians(angle);
-                int testX = currentPos.getX() + (int)(Math.cos(rad) * distance);
-                int testY = currentPos.getY() + (int)(Math.sin(rad) * distance);
-                
-                // Clamp to map bounds
-                testX = Math.max(0, Math.min(testX, game.mapWidth() * 32 - 1));
-                testY = Math.max(0, Math.min(testY, game.mapHeight() * 32 - 1));
+                int testX = Math.max(0, Math.min(currentPos.getX() + (int)(Math.cos(rad) * distance), game.mapWidth() * 32 - 1));
+                int testY = Math.max(0, Math.min(currentPos.getY() + (int)(Math.sin(rad) * distance), game.mapHeight() * 32 - 1));
                 Position candidatePos = new Position(testX, testY);
-                
-                // Check if position and path are walkable
-                if (!game.isWalkable(new WalkPosition(candidatePos)) || 
+
+                if (!game.isWalkable(new WalkPosition(candidatePos)) ||
                     !isRetreatPathWalkable(currentPos, candidatePos)) {
                     continue;
                 }
 
-                // Calculate minimum distance to any enemy from this candidate position
                 double minDistToEnemy = Double.MAX_VALUE;
                 for (Unit enemy : enemies) {
                     double dist = candidatePos.getDistance(enemy.getPosition());
@@ -390,8 +368,7 @@ public class ManagedUnit {
                         minDistToEnemy = dist;
                     }
                 }
-                
-                // Keep this position if it's farther from enemies than previous best
+
                 if (minDistToEnemy > bestMinEnemyDistance
                     || minDistToEnemy == bestMinEnemyDistance
                      && bestPosition != null
@@ -401,8 +378,7 @@ public class ManagedUnit {
                 }
             }
         }
-        
-        // Return best position found, or rally point as last resort
+
         if (bestPosition != null) {
             return bestPosition;
         }
@@ -426,9 +402,32 @@ public class ManagedUnit {
         unit.move(rallyPoint);
     }
 
+    protected void contain() {
+        if (movementTargetPosition == null) {
+            role = UnitRole.IDLE;
+            return;
+        }
+
+        Unit nearbyEnemy = findClosestEnemyInRange();
+        if (nearbyEnemy != null) {
+            setUnready(6);
+            unit.attack(nearbyEnemy);
+            return;
+        }
+
+        Position target = movementTargetPosition.toPosition();
+        if (unit.getDistance(target) < 24) {
+            setUnready(6);
+            unit.holdPosition();
+            return;
+        }
+
+        setUnready(6);
+        unit.move(target);
+    }
+
     protected void gather() {}
 
-    // Attempt build or morph
     protected void build() {
         if (unit.isBeingConstructed() || unit.isMorphing()) return;
 
@@ -468,8 +467,6 @@ public class ManagedUnit {
 
         UnitType plannedUnitType = plan.getPlannedUnit();
 
-        // TODO: This should be determined with a building location planner
-        // Should be assigned to the plan before the plan is assigned to the unit
         if (plan.getBuildPosition() == null) {
             TilePosition buildLocation = game.getBuildLocation(plannedUnitType, unit.getTilePosition());
             plan.setBuildPosition(buildLocation);
@@ -483,11 +480,8 @@ public class ManagedUnit {
         }
 
         if (game.canMake(plannedUnitType, unit)) {
-            // Try to build
             setUnready();
             boolean didBuild = unit.build(plannedUnitType, plan.getBuildPosition());
-            // If we failed to build, try to morph
-            // TODO: remove this morph cmd?
             if (!didBuild) {
                 didBuild = unit.morph(plannedUnitType);
             }
@@ -498,18 +492,10 @@ public class ManagedUnit {
                 buildAttemptFrame = frameCount;
             }
 
-
             if (!didBuild) {
-                // There is a race condition where didBuild returns false and a new building location is assigned while
-                // the drone initiates the actual build. If the drone does not start the build animation in time, it's reassigned
-                // and can get stuck bouncing around looking for a build location.
-                //
-                // This is a bit hacky but buys 150 frames to attempt to build at the given location before reassigning elsewhere
                 if (buildAttemptFrame + 150 < frameCount) {
-                    // Try to get a new building location
                     plan.setBuildPosition(game.getBuildLocation(plannedUnitType, unit.getTilePosition()));
                 }
-
             }
 
             if (didBuild) {
@@ -521,7 +507,6 @@ public class ManagedUnit {
     private void gatherBlockerMineral() {
         setUnready(THREE_SECONDS);
         unit.gather(blockingMineral);
-        return;
     }
 
     private Position getBuilderMoveLocation(UnitType building, TilePosition buildTarget) {
@@ -563,36 +548,16 @@ public class ManagedUnit {
         List<Unit> threats = getEnemiesInRadius(current.getX(), current.getY());
 
         if (!threats.isEmpty()) {
-            Position away = getSimpleRetreatPosition();
-            Position target = movementTargetPosition.toPosition();
+            Vec2 awayDir = Vec2.between(current, getSimpleRetreatPosition()).normalize();
+            Vec2 targetDir = Vec2.between(current, movementTargetPosition.toPosition()).normalize();
 
-            double ax = away.getX() - current.getX();
-            double ay = away.getY() - current.getY();
-            double at = Math.max(1.0, Math.sqrt(ax * ax + ay * ay));
-            ax /= at; ay /= at;
-
-            double tx = target.getX() - current.getX();
-            double ty = target.getY() - current.getY();
-            double tt = Math.max(1.0, Math.sqrt(tx * tx + ty * ty));
-            tx /= tt; ty /= tt;
-
-            double dot = ax * tx + ay * ty;
-            double bx = ax;
-            double by = ay;
-            if (dot > 0) {
-                bx = ax + 0.5 * tx;
-                by = ay + 0.5 * ty;
-                double bt = Math.max(1.0, Math.sqrt(bx * bx + by * by));
-                bx /= bt; by /= bt;
-            }
-
-            int destX = current.getX() + (int)(bx * 128);
-            int destY = current.getY() + (int)(by * 128);
-            destX = Math.max(0, Math.min(destX, game.mapWidth() * 32 - 1));
-            destY = Math.max(0, Math.min(destY, game.mapHeight() * 32 - 1));
+            double dot = awayDir.x * targetDir.x + awayDir.y * targetDir.y;
+            Vec2 blended = dot > 0
+                    ? new Vec2(awayDir.x + 0.5 * targetDir.x, awayDir.y + 0.5 * targetDir.y).normalize()
+                    : awayDir;
 
             setUnready();
-            unit.move(new Position(destX, destY));
+            unit.move(blended.normalizeToLength(128).clampToMap(game, current));
             return;
         }
 
@@ -601,7 +566,6 @@ public class ManagedUnit {
     }
 
     private void updateState() {
-        // Check if movementTargetPosition should be set to null
         if (movementTargetPosition != null) {
             if (role == UnitRole.SCOUT) {
                 TilePosition targetTile = movementTargetPosition;
@@ -615,7 +579,6 @@ public class ManagedUnit {
             }
         }
 
-        // Check if retreatTarget should be set to null
         if (retreatTarget != null) {
             if (unit.getDistance(retreatTarget) < 16 || unit.isIdle() || !game.isWalkable(new WalkPosition(retreatTarget))) {
                 retreatTarget = null;
@@ -624,7 +587,6 @@ public class ManagedUnit {
             }
         }
 
-        // Check if fightTarget should be set to null
         if (fightTarget != null) {
             if (!fightTarget.exists() ||
                     !fightTarget.isTargetable() ||
@@ -676,7 +638,6 @@ public class ManagedUnit {
 
         setUnready(4);
 
-        // Detect if unit is stuck
         Position currentPosition = unit.getPosition();
         if (lastRetreatPosition != null && currentPosition.getDistance(lastRetreatPosition) < 1.0) {
             framesStuck++;
@@ -691,7 +652,6 @@ public class ManagedUnit {
             return;
         }
 
-        // Recompute retreat position upon arrival or if close to target
         if (unit.getDistance(retreatTarget) < getRetreatArrivalDistance()) {
             Position next = getRetreatPosition();
             setRetreatTarget(next);
@@ -733,8 +693,6 @@ public class ManagedUnit {
      * @param newFightTarget new target
      */
     public void setFightTarget(Unit newFightTarget) {
-        // We bail out if we're close enough to the unit to avoid deadlocking on weird micro situations
-        // Don't bail if it's a building though
         if (fightTarget != null && !fightTarget.getType().isBuilding() && fightTarget.getDistance(unit) < LOCK_ENEMY_WITHIN_DISTANCE) {
             return;
         }
@@ -855,7 +813,7 @@ public class ManagedUnit {
         for (Unit enemy : game.getUnitsInRadius(unit.getPosition(), weaponRange(unit) + 64)) {
             if (enemy.getPlayer().isEnemy(game.self()) && enemy.isTargetable() && canFightBack(enemy) &&
                 !util.Filter.isLowPriorityCombatTarget(enemy.getType())) {
-                return enemy; // Return the first dangerous enemy found
+                return enemy;
             }
         }
         return null;

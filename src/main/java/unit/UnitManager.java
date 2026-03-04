@@ -136,6 +136,7 @@ public class UnitManager {
                 case RALLY:
                 case REGROUP:
                 case FIGHT:
+                case CONTAIN:
                     managedUnit.execute();
                     continue;
                 default:

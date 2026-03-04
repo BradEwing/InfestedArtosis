@@ -43,8 +43,12 @@ public class Squad implements Comparable<Squad> {
 
     protected int fightLockedUntilFrame = 0;
     protected int retreatLockedUntilFrame = 0;
+    protected int containLockedUntilFrame = 0;
+    @Getter
+    protected int containStartFrame = 0;
     protected Time fightHysteresis = new Time(0, 3);  // ~72 frames
     protected Time retreatHysteresis = new Time(0, 5); // ~120 frames
+    protected Time containHysteresis = new Time(0, 5); // ~120 frames
 
     private static final double SMOOTHING_ALPHA = 0.85;
 
@@ -194,5 +198,20 @@ public class Squad implements Comparable<Squad> {
 
     public void startRetreatLock(int currentFrame) {
         retreatLockedUntilFrame = currentFrame + retreatHysteresis.getFrames();
+    }
+
+    public boolean isContainLocked(int currentFrame) {
+        return currentFrame < containLockedUntilFrame;
+    }
+
+    public void startContainLock(int currentFrame) {
+        containLockedUntilFrame = currentFrame + containHysteresis.getFrames();
+        if (containStartFrame == 0) {
+            containStartFrame = currentFrame;
+        }
+    }
+
+    public void clearContainStart() {
+        containStartFrame = 0;
     }
 }

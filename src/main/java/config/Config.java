@@ -43,6 +43,7 @@ public final class Config {
     public boolean debugManagedUnits = false;
     public boolean debugStaticDefenseCoverage = false;
     public boolean debugPsiStorms = false;
+    public boolean debugContainment = false;
     
     // Production and planning
     public boolean debugProductionQueue = false;
@@ -55,20 +56,13 @@ public final class Config {
         this.enabledAutoObserver = Boolean.parseBoolean(dotenv.get("IA_ENABLE_AUTO_OBSERVER"));
         this.strategyOverride = dotenv.get("IA_STRATEGY_OVERRIDE");
         this.openerOverride = dotenv.get("IA_OPENER_OVERRIDE");
-        
-        // Load debug drawing flags
-        // HUD and general info
         this.debugHud = Boolean.parseBoolean(dotenv.get("IA_DEBUG_HUD"));
         this.debugUnitCount = Boolean.parseBoolean(dotenv.get("IA_DEBUG_UNIT_COUNT"));
-        
-        // Map and pathfinding
         this.debugGameMap = Boolean.parseBoolean(dotenv.get("IA_DEBUG_GAME_MAP"));
         this.debugBasePaths = Boolean.parseBoolean(dotenv.get("IA_DEBUG_BASE_PATHS"));
         this.debugAccessibleWalkPositions = Boolean.parseBoolean(dotenv.get("IA_DEBUG_ACCESSIBLE_WALK_POSITIONS"));
         this.debugBlockingMinerals = Boolean.parseBoolean(dotenv.get("IA_DEBUG_BLOCKING_MINERALS"));
         this.debugMainBaseTiles = Boolean.parseBoolean(dotenv.get("IA_DEBUG_MAIN_BASE_TILES"));
-        
-        // Bases and buildings
         this.debugBases = Boolean.parseBoolean(dotenv.get("IA_DEBUG_BASES"));
         this.debugBaseCreepTiles = Boolean.parseBoolean(dotenv.get("IA_DEBUG_BASE_CREEP_TILES"));
         this.debugBaseChoke = Boolean.parseBoolean(dotenv.get("IA_DEBUG_BASE_CHOKE"));
@@ -79,15 +73,12 @@ public final class Config {
         this.debugMineralBoundingBox = Boolean.parseBoolean(dotenv.get("IA_DEBUG_MINERAL_BOUNDING_BOX"));
         this.debugGeyserBoundingBox = Boolean.parseBoolean(dotenv.get("IA_DEBUG_GEYSER_BOUNDING_BOX"));
         this.debugMacroHatcheryLocation = Boolean.parseBoolean(dotenv.get("IA_DEBUG_MACRO_HATCHERY_LOCATION"));
-        
-        // Combat and units
         this.debugEnemyTargets = Boolean.parseBoolean(dotenv.get("IA_DEBUG_ENEMY_TARGETS"));
         this.debugSquads = Boolean.parseBoolean(dotenv.get("IA_DEBUG_SQUADS"));
         this.debugManagedUnits = Boolean.parseBoolean(dotenv.get("IA_DEBUG_MANAGED_UNITS"));
         this.debugStaticDefenseCoverage = Boolean.parseBoolean(dotenv.get("IA_DEBUG_STATIC_DEFENSE_COVERAGE"));
         this.debugPsiStorms = Boolean.parseBoolean(dotenv.get("IA_DEBUG_PSI_STORMS"));
-        
-        // Production and planning
+        this.debugContainment = Boolean.parseBoolean(dotenv.get("IA_DEBUG_CONTAINMENT"));
         this.debugProductionQueue = Boolean.parseBoolean(dotenv.get("IA_DEBUG_PRODUCTION_QUEUE"));
         this.debugInProgressQueue = Boolean.parseBoolean(dotenv.get("IA_DEBUG_IN_PROGRESS_QUEUE"));
         this.debugScheduledPlannedItems = Boolean.parseBoolean(dotenv.get("IA_DEBUG_SCHEDULED_PLANNED_ITEMS"));
