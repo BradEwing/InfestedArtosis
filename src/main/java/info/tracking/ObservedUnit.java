@@ -16,6 +16,9 @@ public class ObservedUnit {
     private UnitType unitType;
     private boolean proxied;
     private boolean completed;
+    private int lastKnownHitPoints;
+    private int lastKnownShields;
+    private int lastKnownGroundHeight;
 
     public ObservedUnit(Unit unit, Time currentFrame, boolean proxied) {
         this.unit = unit;
@@ -24,6 +27,12 @@ public class ObservedUnit {
         this.lastObservedFrame = currentFrame;
         this.lastKnownLocation = unit.getPosition();
         this.proxied = proxied;
+        this.lastKnownHitPoints = unit.getType().maxHitPoints();
+        this.lastKnownShields = unit.getType().maxShields();
+    }
+
+    public void updateGroundHeight(int groundHeight) {
+        this.lastKnownGroundHeight = groundHeight;
     }
 
     @Override

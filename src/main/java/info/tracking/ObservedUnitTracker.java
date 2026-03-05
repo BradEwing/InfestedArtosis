@@ -26,11 +26,13 @@ public class ObservedUnitTracker {
             if (ou.getDestroyedFrame() != null) {
                 continue;
             }
-            if (!ou.isCompleted()) {
-                Unit unit = ou.getUnit();
-                if (unit.isVisible() && unit.isCompleted()) {
+            Unit unit = ou.getUnit();
+            if (unit.isVisible()) {
+                if (!ou.isCompleted() && unit.isCompleted()) {
                     ou.setCompleted(true);
                 }
+                ou.setLastKnownHitPoints(unit.getHitPoints());
+                ou.setLastKnownShields(unit.getShields());
             }
         }
     }
@@ -103,6 +105,13 @@ public class ObservedUnitTracker {
                 .stream()
                 .filter(ou -> ou.getDestroyedFrame() == null)
                 .count();
+    }
+
+    public void updateGroundHeight(Unit unit, int groundHeight) {
+        ObservedUnit ou = observedUnits.get(unit);
+        if (ou != null) {
+            ou.updateGroundHeight(groundHeight);
+        }
     }
 
     public void updateUnitTypeChange(Unit unit) {
@@ -295,6 +304,13 @@ public class ObservedUnitTracker {
                     Position pos = ou.getUnit().isVisible() ? ou.getUnit().getPosition() : ou.getLastKnownLocation();
                     return pos != null && Distance.manhattanTileDistance(pos.toTilePosition(), tile) <= manhattanDistance;
                 });
+    }
+
+    public Set<ObservedUnit> getLivingObservedUnits() {
+        return observedUnits.values()
+                .stream()
+                .filter(ou -> ou.getDestroyedFrame() == null)
+                .collect(Collectors.toSet());
     }
 
     public void clearLastKnownLocationsAt(Set<Position> visibleLocations) {

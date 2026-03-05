@@ -184,6 +184,10 @@ public class Squad implements Comparable<Squad> {
         return shouldDisband;
     }
 
+    public boolean isGroundSquad() {
+        return false;
+    }
+
     public boolean isFightLocked(int currentFrame) {
         return currentFrame < fightLockedUntilFrame;
     }

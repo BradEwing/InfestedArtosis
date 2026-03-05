@@ -400,7 +400,13 @@ public class Debug {
     private void debugSquads() {
         for (Squad squad: squadManager.fightSquads) {
             game.drawCircleMap(squad.getCenter(), squad.radius(), Color.White);
-            game.drawTextMap(squad.getCenter(), String.format("Radius: %d", squad.radius()), Text.White);
+            String label;
+            if (squad.isGroundSquad()) {
+                label = formatGroundSquadLabel((unit.squad.GroundSquad) squad);
+            } else {
+                label = String.format("Radius: %d", squad.radius());
+            }
+            game.drawTextMap(squad.getCenter(), label, Text.White);
         }
         for (Squad squad: squadManager.getDefenseSquads().values()) {
             game.drawCircleMap(squad.getCenter(), 256, Color.White);
@@ -432,6 +438,16 @@ public class Debug {
                 game.drawTextMap(squad.getCenter(), String.format("CONTAIN (%d)", squad.size()), Text.Green);
             }
         }
+    }
+
+    private String formatGroundSquadLabel(unit.squad.GroundSquad squad) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(squad.getStatus()).append(" sup=").append(squad.getSupply());
+        for (java.util.Map.Entry<bwapi.UnitType, Integer> entry : squad.getComposition().entrySet()) {
+            String shortName = entry.getKey().toString().replace("Zerg_", "");
+            sb.append(" ").append(shortName).append(":").append(entry.getValue());
+        }
+        return sb.toString();
     }
 
     public void debugManagedUnit(ManagedUnit managedUnit) {

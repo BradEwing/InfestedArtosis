@@ -133,8 +133,15 @@ public class GameState {
 
     public void onFrame() {
         observedUnitTracker.onFrame();
+        updateObservedUnitGroundHeights();
         strategyTracker.onFrame();
         clearVisibleEnemyWorkerLocations();
+    }
+
+    private void updateObservedUnitGroundHeights() {
+        for (Unit enemy : observedUnitTracker.getVisibleEnemyUnits()) {
+            observedUnitTracker.updateGroundHeight(enemy, game.getGroundHeight(enemy.getTilePosition()));
+        }
     }
 
     private void clearVisibleEnemyWorkerLocations() {
