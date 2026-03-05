@@ -68,14 +68,12 @@ public class MutaliskCombatSimulator implements CombatSimulator {
             double ratio = Math.min(1.0, (double) groundSupply / antiAirSupply);
             double discountFactor = 1.0 - (ratio * 0.5);
             antiAirDps = (int) (antiAirDps * discountFactor);
-            antiAirThreats = (int) (antiAirThreats * discountFactor);
         }
 
         int squadSize = squad.size();
         int mutaliskHp = squadSize * 120;
-        int expectedDamagePerSecond = antiAirDps;
 
-        if (expectedDamagePerSecond * 2 > mutaliskHp * 0.05) {
+        if (antiAirDps * 2 > mutaliskHp * 0.05) {
             return false;
         }
 
@@ -122,8 +120,6 @@ public class MutaliskCombatSimulator implements CombatSimulator {
             return 0;
         }
 
-        int dps = (damage * 24) / cooldown;
-
-        return dps;
+        return (damage * 24) / cooldown;
     }
 }
