@@ -31,10 +31,15 @@ public final class TerrainModifier {
         int frontHeight = game.getGroundHeight(frontCentroid.toTilePosition());
         int enemyHeight = game.getGroundHeight(enemyVanguard.toTilePosition());
 
-        if (frontHeight > enemyHeight) {
-            adjustedFront = adjustedFront.scale(HIGH_GROUND_MULTIPLIER);
-        } else if (frontHeight < enemyHeight) {
-            adjustedEnemy = adjustedEnemy.scale(LOW_GROUND_MULTIPLIER);
+        if (frontHeight != enemyHeight) {
+            double frontRanged = rangedFraction(frontSupply);
+            double enemyRanged = rangedFraction(enemySupply);
+            double fraction = frontRanged * enemyRanged;
+            if (frontHeight > enemyHeight) {
+                adjustedFront = augmentSupply(adjustedFront, HIGH_GROUND_MULTIPLIER, fraction);
+            } else {
+                adjustedEnemy = augmentSupply(adjustedEnemy, LOW_GROUND_MULTIPLIER, fraction);
+            }
         }
 
         double chokePenalty = calculateChokePenalty(frontCentroid, enemyVanguard, bwem);
@@ -66,6 +71,11 @@ public final class TerrainModifier {
             // BWEM path errors are non-fatal
         }
         return 0;
+    }
+
+    private static SupplyBreakdown augmentSupply(SupplyBreakdown supply, double factor, double fraction) {
+        double scaledFactor = (1.0 - fraction) + fraction * factor;
+        return supply.scale(scaledFactor);
     }
 
     private static double rangedFraction(SupplyBreakdown supply) {

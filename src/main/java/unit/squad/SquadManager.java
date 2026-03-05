@@ -524,69 +524,15 @@ public class SquadManager {
 
     private int calculateMoveOutThreshold(Squad squad) {
         UnitType type = squad.getType();
-        switch (type) {  
-            case Zerg_Zergling:
-                return calculateZerglingMoveOutThreshold(squad);
+        switch (type) {
             case Zerg_Mutalisk:
                 if (gameState.getOpponentRace() == Race.Zerg) {
                     return 2;
                 }
                 return 5;
-            case Zerg_Hydralisk:
-                return 6;
-            case Zerg_Lurker:
-                return 1;
             default:
-                return defaultMoveOutThreshold();
+                return 1;
         }
-    }
-
-    private int defaultMoveOutThreshold() {
-        int staticDefensePenalty = min(gameState.getObservedUnitTracker().getHostileToGroundBuildings().size(), 6);
-        int moveOutThreshold = 8 * (1 + staticDefensePenalty);
-        StrategyTracker strategyTracker = gameState.getStrategyTracker();
-        if (strategyTracker.isDetectedStrategy("2Gate")) {
-            final int zealots = gameState.enemyUnitCount(UnitType.Protoss_Zealot);
-            moveOutThreshold += zealots * 2;
-        }
-
-        return Math.min(moveOutThreshold, 40);
-    }
-
-    private int calculateZerglingMoveOutThreshold(Squad squad) {
-        StrategyTracker strategyTracker = gameState.getStrategyTracker();
-        final boolean isActivelyCannonRushed = gameState.isCannonRushed();
-        final boolean isCannonRushed = strategyTracker.isDetectedStrategy("CannonRush");
-        final int zealots = gameState.enemyUnitCount(UnitType.Protoss_Zealot);
-
-        if (isCannonRushed) {
-            if (isActivelyCannonRushed) {
-                Set<Position> basePositions = gameState.getBaseData().getMyBasePositions();
-                ObservedUnitTracker tracker = gameState.getObservedUnitTracker();
-                int completedCannons = tracker.getCompletedBuildingCountNearPositions(UnitType.Protoss_Photon_Cannon, basePositions, 512);
-                if (completedCannons == 0) {
-                    return 1;
-                }
-                return Math.max(6, completedCannons * 3);
-            } else if (zealots < 1) {
-                return 2;
-            }
-        }
-
-        int staticDefensePenalty = Math.min(gameState.getObservedUnitTracker().getHostileToGroundBuildings().size(), 6);
-        int baseThreshold = gameState.getOpponentRace() == Race.Zerg ? 4 : 6;
-        int threshold = baseThreshold * (1 + staticDefensePenalty);
-
-        if (strategyTracker.isDetectedStrategy("2Gate")) {
-            threshold += zealots * 2;
-        }
-
-        int maxThreshold = gameState.getOpponentRace() == Race.Zerg ? 36 : 48;
-        if (squad.getStatus() == SquadStatus.FIGHT) {
-            maxThreshold = (int) (maxThreshold * 0.75);
-        }
-
-        return Math.min(threshold, maxThreshold);
     }
 
     private void simulateFightSquad(Squad squad) {
@@ -595,12 +541,6 @@ public class SquadManager {
         }
 
         HashSet<ManagedUnit> managedFighters = squad.getMembers();
-
-        if (squad.getType() == UnitType.Zerg_Lurker) {
-            squad.setStatus(SquadStatus.FIGHT);
-            assignFightTargets(squad, managedFighters, false);
-            return;
-        }
 
         Set<Position> stormPositions = gameState.getActiveStormPositions();
         if (!stormPositions.isEmpty()) {
@@ -676,7 +616,13 @@ public class SquadManager {
             return;
         }
         if (squad.getStatus() == SquadStatus.FIGHT && fightLocked) {
-            assignFightTargets(squad, managedFighters, false);
+            CombatSimulator combatSim = squad.getCombatSimulator();
+            if (combatSim instanceof ClusterCombatEvaluator) {
+                combatSim.evaluate(squad, getNearbyReinforcements(squad, REINFORCEMENT_RADIUS), gameState);
+                assignClusterFightTargets(squad, managedFighters, (ClusterCombatEvaluator) combatSim, now);
+            } else {
+                assignFightTargets(squad, managedFighters, false);
+            }
             return;
         }
 
@@ -691,7 +637,12 @@ public class SquadManager {
                         && enterContainment(squad);
                 if (!enteredContain) {
                     squad.setStatus(SquadStatus.RETREAT);
-                    assignRetreatTargets(squad, managedFighters, now);
+                    if (combatSimulator instanceof ClusterCombatEvaluator) {
+                        assignClusterFightTargets(squad, managedFighters,
+                                (ClusterCombatEvaluator) combatSimulator, now);
+                    } else {
+                        assignRetreatTargets(squad, managedFighters, now);
+                    }
                     squad.startRetreatLock(now);
                 }
                 break;
@@ -764,8 +715,7 @@ public class SquadManager {
                     break;
                 case HOLD:
                     managedUnit.setRole(UnitRole.FIGHT);
-                    managedUnit.setFightTarget(null);
-                    managedUnit.setMovementTargetPosition(null);
+                    assignEnemyTargetExcluding(managedUnit, squad, evaluator.getLosingClusterEnemies());
                     break;
                 case RETREAT:
                     managedUnit.setRole(UnitRole.RETREAT);
@@ -1288,6 +1238,34 @@ public class SquadManager {
             ft = squad.getTarget();
         }
         managedUnit.setFightTarget(ft);
+    }
+
+    private void assignEnemyTargetExcluding(ManagedUnit managedUnit, Squad squad, Set<Unit> excludedEnemies) {
+        Unit unit = managedUnit.getUnit();
+        if (managedUnit.getUnitType() == UnitType.Zerg_Overlord) {
+            assignEnemyTarget(managedUnit, squad);
+            return;
+        }
+
+        List<Unit> filtered = new ArrayList<>();
+        for (Unit enemyUnit : gameState.getVisibleEnemyUnits()) {
+            if (excludedEnemies.contains(enemyUnit)) continue;
+            if (unit.getType() == UnitType.Zerg_Lurker && !enemyUnit.isFlying() && enemyUnit.isDetected()) {
+                filtered.add(enemyUnit);
+                continue;
+            }
+            if (unit.canAttack(enemyUnit) && enemyUnit.isDetected()
+                    && !util.Filter.isLowPriorityCombatTarget(enemyUnit.getType())) {
+                filtered.add(enemyUnit);
+            }
+        }
+
+        Unit closestEnemy = filtered.isEmpty() ? null : closestHostileUnit(unit, filtered);
+        if (closestEnemy != null) {
+            managedUnit.setFightTarget(closestEnemy);
+        } else {
+            managedUnit.setMovementTargetPosition(null);
+        }
     }
 
     /**

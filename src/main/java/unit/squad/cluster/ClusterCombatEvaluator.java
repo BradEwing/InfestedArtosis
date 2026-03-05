@@ -84,10 +84,20 @@ public class ClusterCombatEvaluator implements CombatSimulator {
 
             boolean nearlyEngaged = isAnyNearlyEngaged(squad.getMembers(), cluster);
             double threshold = nearlyEngaged ? WIN_THRESHOLD_ENGAGED : WIN_THRESHOLD;
-            boolean expectWin = modified.getFrontSupply().total() > threshold * modified.getEnemySupply().total();
+            double effectiveFront;
+            double effectiveEnemy;
+            if (isAirSquad(squad)) {
+                effectiveFront = modified.getFrontSupply().getAirToGroundSupply()
+                        + modified.getFrontSupply().getAirToAirSupply();
+                effectiveEnemy = modified.getEnemySupply().getAntiAirSupply();
+            } else {
+                effectiveFront = modified.getFrontSupply().total();
+                effectiveEnemy = modified.getEnemySupply().total();
+            }
+            boolean expectWin = effectiveEnemy == 0 || effectiveFront > threshold * effectiveEnemy;
 
             ClusterEvaluation eval = new ClusterEvaluation(cluster, front, expectWin,
-                    modified.getFrontSupply().total(), modified.getEnemySupply().total());
+                    effectiveFront, effectiveEnemy);
             lastEvaluations.add(eval);
 
             if (expectWin) {
@@ -115,6 +125,16 @@ public class ClusterCombatEvaluator implements CombatSimulator {
 
     public List<EnemyCluster> getCachedClusters() {
         return cachedClusters;
+    }
+
+    public Set<Unit> getLosingClusterEnemies() {
+        Set<Unit> result = new HashSet<>();
+        for (ClusterEvaluation eval : lastEvaluations) {
+            if (!eval.isExpectWin()) {
+                result.addAll(eval.getCluster().getMembers());
+            }
+        }
+        return result;
     }
 
     private void assignDispositions(Set<ManagedUnit> squadMembers, EnemyCluster cluster,
@@ -154,17 +174,25 @@ public class ClusterCombatEvaluator implements CombatSimulator {
         WeaponType groundWeapon = type.groundWeapon();
         if (groundWeapon == null || groundWeapon == WeaponType.None) return false;
         boolean isMelee = groundWeapon.maxRange() <= 32;
-        if (!isMelee) return false;
 
-        if (!unit.isAttacking()) return false;
-
-        for (Unit enemy : cluster.getMembers()) {
-            UnitType enemyType = enemy.getType();
-            WeaponType enemyWeapon = enemyType.groundWeapon();
-            if (enemyWeapon != null && enemyWeapon != WeaponType.None && enemyWeapon.maxRange() > 32) {
-                double topSpeed = enemyType.topSpeed();
-                if (topSpeed < type.topSpeed()) {
-                    return true;
+        if (isMelee) {
+            if (!unit.isAttacking()) return false;
+            for (Unit enemy : cluster.getMembers()) {
+                UnitType enemyType = enemy.getType();
+                WeaponType enemyWeapon = enemyType.groundWeapon();
+                if (enemyWeapon != null && enemyWeapon != WeaponType.None && enemyWeapon.maxRange() > 32) {
+                    if (enemyType.topSpeed() < type.topSpeed()) {
+                        return true;
+                    }
+                }
+            }
+        } else {
+            double engDist = EngagementCalculator.engagementDistance(friendly, cluster);
+            if (engDist == 0) {
+                for (Unit enemy : cluster.getMembers()) {
+                    if (enemy.getType() == UnitType.Terran_Siege_Tank_Siege_Mode) {
+                        return true;
+                    }
                 }
             }
         }
@@ -226,6 +254,11 @@ public class ClusterCombatEvaluator implements CombatSimulator {
             y += p.getY();
         }
         return new Position(x / units.size(), y / units.size());
+    }
+
+    private boolean isAirSquad(Squad squad) {
+        UnitType type = squad.getType();
+        return type != null && type.isFlyer();
     }
 
     private Position findVanguard(EnemyCluster cluster, Position frontCentroid) {

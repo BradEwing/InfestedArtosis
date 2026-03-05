@@ -11,8 +11,6 @@ import static util.Filter.isHostileBuilding;
 
 public final class SupplyCalculator {
 
-    private static final int STATIC_DEFENSE_SUPPLY_EQUIVALENT = 6;
-
     private SupplyCalculator() {}
 
     public static SupplyBreakdown calculateEnemy(Collection<Unit> units) {
@@ -20,6 +18,7 @@ public final class SupplyCalculator {
         double rangedGround = 0;
         double airToGround = 0;
         double airToAir = 0;
+        double antiAir = 0;
 
         for (Unit unit : units) {
             UnitType type = unit.getType();
@@ -28,19 +27,27 @@ public final class SupplyCalculator {
 
             if (type.isBuilding()) {
                 if (isHostileBuilding(type)) {
-                    ground += STATIC_DEFENSE_SUPPLY_EQUIVALENT * hpRatio;
+                    double defenseSupply = staticDefenseSupply(type) * hpRatio;
+                    ground += defenseSupply;
+                    WeaponType airWeapon = type.airWeapon();
+                    if (airWeapon != null && airWeapon != WeaponType.None) {
+                        antiAir += defenseSupply;
+                    }
                 }
                 continue;
             }
+
+            WeaponType airWeapon = type.airWeapon();
+            boolean canAttackAir = airWeapon != null && airWeapon != WeaponType.None;
 
             if (type.isFlyer()) {
                 WeaponType groundWeapon = type.groundWeapon();
                 if (groundWeapon != null && groundWeapon != WeaponType.None) {
                     airToGround += supply;
                 }
-                WeaponType airWeapon = type.airWeapon();
-                if (airWeapon != null && airWeapon != WeaponType.None) {
+                if (canAttackAir) {
                     airToAir += supply;
+                    antiAir += supply;
                 }
             } else {
                 ground += supply;
@@ -49,10 +56,13 @@ public final class SupplyCalculator {
                         && groundWeapon.maxRange() > 32) {
                     rangedGround += supply;
                 }
+                if (canAttackAir) {
+                    antiAir += supply;
+                }
             }
         }
 
-        return new SupplyBreakdown(ground, rangedGround, airToGround, airToAir);
+        return new SupplyBreakdown(ground, rangedGround, airToGround, airToAir, antiAir);
     }
 
     public static SupplyBreakdown calculateFriendly(Collection<ManagedUnit> units) {
@@ -90,12 +100,21 @@ public final class SupplyCalculator {
     }
 
     private static double hpRatio(Unit unit) {
-        int maxHp = unit.getType().maxHitPoints() + unit.getType().maxShields();
+        int maxHp = 3 * unit.getType().maxHitPoints() + unit.getType().maxShields();
         if (maxHp == 0) return 0;
-        return (double) (unit.getHitPoints() + unit.getShields()) / maxHp;
+        return (double) (3 * unit.getHitPoints() + unit.getShields()) / maxHp;
     }
 
     private static double effectiveSupply(UnitType type) {
         return type.supplyRequired();
+    }
+
+    private static double staticDefenseSupply(UnitType type) {
+        if (type == UnitType.Terran_Bunker) return 12;
+        if (type == UnitType.Protoss_Photon_Cannon) return 6;
+        if (type == UnitType.Zerg_Sunken_Colony) return 6;
+        if (type == UnitType.Zerg_Spore_Colony) return 2;
+        if (type == UnitType.Terran_Missile_Turret) return 2;
+        return 6;
     }
 }

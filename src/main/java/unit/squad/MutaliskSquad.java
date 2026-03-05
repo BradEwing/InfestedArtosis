@@ -9,6 +9,7 @@ import info.tracking.PsiStormTracker;
 import unit.managed.ManagedUnit;
 import unit.managed.UnitRole;
 import unit.squad.CombatSimulator.CombatResult;
+import unit.squad.cluster.ClusterCombatEvaluator;
 import util.Time;
 import util.Vec2;
 
@@ -33,7 +34,7 @@ public class MutaliskSquad extends Squad {
 
     public MutaliskSquad() {
         super();
-        this.setCombatSimulator(new MutaliskCombatSimulator());
+        this.setCombatSimulator(new ClusterCombatEvaluator());
         this.setType(UnitType.Zerg_Mutalisk);
     }
 
