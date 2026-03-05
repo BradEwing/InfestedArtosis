@@ -70,6 +70,7 @@ public class SquadManager {
     private static final int CONTAINMENT_TIMEOUT_FRAMES = 1400;
     private static final int ARC_DEGREES = 90;
     private static final int ARC_RADIUS = 160;
+    private static final double REINFORCEMENT_RADIUS = 384.0;
 
     public SquadManager(Game game, GameState gameState) {
         this.game = game;
@@ -100,7 +101,8 @@ public class SquadManager {
                 if (rallyToSquad != null) {
                     rallyPosition = rallyToSquad.getCenter();
                 }
-                mutaliskSquad.executeTactics(gameState, rallyPosition);
+                Set<ManagedUnit> reinforcements = getNearbyReinforcements(mutaliskSquad, REINFORCEMENT_RADIUS);
+                mutaliskSquad.executeTactics(gameState, rallyPosition, reinforcements);
             } else if (fightSquad instanceof ScourgeSquad) {
                 ScourgeSquad scourgeSquad = (ScourgeSquad) fightSquad;
                 scourgeSquad.executeTactics(gameState);
@@ -676,7 +678,8 @@ public class SquadManager {
             return;
         }
 
-        CombatSimulator.CombatResult result = squad.getCombatSimulator().evaluate(squad, gameState);
+        Set<ManagedUnit> reinforcements = getNearbyReinforcements(squad, REINFORCEMENT_RADIUS);
+        CombatSimulator.CombatResult result = squad.getCombatSimulator().evaluate(squad, reinforcements, gameState);
 
         switch (result) {
             case RETREAT:
@@ -1364,6 +1367,17 @@ public class SquadManager {
         });
 
         return mutaliskSquads.get(0);
+    }
+
+    private Set<ManagedUnit> getNearbyReinforcements(Squad targetSquad, double radius) {
+        Set<ManagedUnit> reinforcements = new HashSet<>();
+        for (Squad squad : fightSquads) {
+            if (squad == targetSquad) continue;
+            if (squad instanceof ScourgeSquad) continue;
+            if (targetSquad.distance(squad) > radius) continue;
+            reinforcements.addAll(squad.getMembers());
+        }
+        return reinforcements;
     }
 
     /**

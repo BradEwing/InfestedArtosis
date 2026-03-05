@@ -55,7 +55,7 @@ public class MutaliskSquad extends Squad {
      * Executes mutalisk-specific squad behavior including target selection,
      * retreat calculations, and engagement decisions.
      */
-    public void executeTactics(GameState gameState, Position rallyPosition) {
+    public void executeTactics(GameState gameState, Position rallyPosition, Set<ManagedUnit> reinforcements) {
         if (members.isEmpty()) {
             shouldDisband = true;
             return;
@@ -120,7 +120,7 @@ public class MutaliskSquad extends Squad {
 
         // Only re-evaluate combat when both timers are expired or null
         if (!isAttackWindowActive && !isRetreatWindowActive) {
-            CombatResult combatResult = getCombatSimulator().evaluate(this, gameState);
+            CombatResult combatResult = getCombatSimulator().evaluate(this, reinforcements, gameState);
 
             // Set appropriate timer based on combat result
             if (combatResult == CombatResult.RETREAT) {

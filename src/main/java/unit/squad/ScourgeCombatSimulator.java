@@ -4,6 +4,8 @@ import bwapi.Unit;
 import bwapi.UnitType;
 import info.GameState;
 
+import unit.managed.ManagedUnit;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -16,7 +18,7 @@ import java.util.Set;
 public class ScourgeCombatSimulator implements CombatSimulator {
 
     @Override
-    public CombatResult evaluate(Squad squad, GameState gameState) {
+    public CombatResult evaluate(Squad squad, Set<ManagedUnit> reinforcements, GameState gameState) {
         Set<Unit> enemyUnits = gameState.getDetectedEnemyUnits();
         Set<Unit> enemyBuildings = gameState.getEnemyBuildings();
 
