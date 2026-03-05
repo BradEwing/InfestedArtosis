@@ -101,7 +101,7 @@ public class SquadManager {
                 if (rallyToSquad != null) {
                     rallyPosition = rallyToSquad.getCenter();
                 }
-                Set<ManagedUnit> reinforcements = getNearbyReinforcements(mutaliskSquad, ENEMY_DETECTION_RADIUS);
+                Set<ManagedUnit> reinforcements = getNearbyReinforcements(mutaliskSquad, REINFORCEMENT_RADIUS);
                 mutaliskSquad.executeTactics(gameState, rallyPosition, reinforcements);
             } else if (fightSquad instanceof ScourgeSquad) {
                 ScourgeSquad scourgeSquad = (ScourgeSquad) fightSquad;
