@@ -20,6 +20,18 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+/**
+ * Adapted from BananaBrain's implementation, because it's just that good.
+ *
+ * From Dan (@dgant) on the Brood War AI discord:
+ * "i was relating to [Brad] the feelings i went through
+ * when i read Johan's combat sim for the first time:
+ *
+ * what is this used for? this isn't a combat sim.
+ * this can't possibly be the main combat sim. surely this is only used in some specific cases.
+ * this is actually the combat sim. are you shitting me?
+ * what the fuck have i been doing with my life?!"
+ */
 public class ClusterCombatEvaluator implements CombatSimulator {
 
     private static final double WIN_THRESHOLD = 1.0;
