@@ -69,7 +69,7 @@ public class SquadManager {
     private static final int CONTAINMENT_REEVALUATE_INTERVAL = 48;
     private static final int CONTAINMENT_TIMEOUT_FRAMES = 1400;
     private static final int ARC_DEGREES = 90;
-    private static final int STATIC_DEFENSE_BUFFER = 32;
+    private static final int ARC_RADIUS = 160;
 
     public SquadManager(Game game, GameState gameState) {
         this.game = game;
@@ -746,7 +746,7 @@ public class SquadManager {
         if (chokePosition == null) return false;
         squad.setStatus(SquadStatus.CONTAIN);
         squad.startContainLock(game.getFrameCount());
-        assignContainmentPositions(squad);
+        assignContainmentPositions(squad, containBase, chokePosition);
         return true;
     }
 
@@ -811,11 +811,13 @@ public class SquadManager {
     private void assignContainmentPositions(Squad squad) {
         HashSet<Base> enemyBases = gameState.getBaseData().getEnemyBases();
         if (enemyBases.isEmpty()) return;
-
         Base containBase = closestBaseTo(squad.getCenter(), enemyBases);
         Position chokePosition = findContainmentChoke(squad.getCenter(), containBase);
         if (chokePosition == null) return;
+        assignContainmentPositions(squad, containBase, chokePosition);
+    }
 
+    private void assignContainmentPositions(Squad squad, Base containBase, Position chokePosition) {
         Position enemyBasePosition = containBase.getCenter();
         Position faceTarget = new Position(
                 2 * chokePosition.getX() - enemyBasePosition.getX(),
@@ -827,9 +829,11 @@ public class SquadManager {
         int unitCount = squad.size();
         int numPoints = Math.max(unitCount, 4);
 
-        Arc arc = new Arc(chokePosition, faceTarget, STATIC_DEFENSE_BUFFER, ARC_DEGREES, numPoints);
+        int mapPixelWidth = game.mapWidth() * 32;
+        int mapPixelHeight = game.mapHeight() * 32;
+        Arc arc = new Arc(chokePosition, faceTarget, ARC_RADIUS, ARC_DEGREES, numPoints);
         Set<WalkPosition> accessiblePositions = gameState.getGameMap().getAccessibleWalkPositions();
-        arc.compute(accessiblePositions, coverage);
+        arc.compute(accessiblePositions, coverage, mapPixelWidth, mapPixelHeight);
 
         if (arc.isEmpty()) return;
 
@@ -840,7 +844,7 @@ public class SquadManager {
         for (Map.Entry<ManagedUnit, Position> entry : assignments.entrySet()) {
             ManagedUnit mu = entry.getKey();
             mu.setRole(UnitRole.CONTAIN);
-            mu.setMovementTargetPosition(entry.getValue().toTilePosition());
+            mu.setContainPosition(entry.getValue());
         }
     }
 
@@ -1038,11 +1042,7 @@ public class SquadManager {
         final boolean isSCVRush = gameState.getStrategyTracker().isDetectedStrategy("SCVRush");
         float percentRemaining = (float) simulator.getAgentsA().size() / managedDefenders.size();
         final double percentThreshold = isSCVRush ? 0.75 : DEFENSE_WIN_THRESHOLD;
-        if (percentRemaining >= percentThreshold) {
-            return true;
-        }
-
-        return false;
+        return percentRemaining >= percentThreshold;
     }
 
     /**
@@ -1341,15 +1341,11 @@ public class SquadManager {
             .collect(Collectors.toList());
     }
 
-    private List<Squad> getSquadsByType(UnitType type) {
-        return fightSquads.stream()
-            .filter(squad -> squad.getType() == type)
-            .collect(Collectors.toList());
-    }
-
     public Squad findBestMutaliskSquadToRallyTo(Squad currentSquad) {
-        List<Squad> mutaliskSquads = getSquadsByType(UnitType.Zerg_Mutalisk);
-        mutaliskSquads.removeIf(squad -> squad == currentSquad);
+        List<Squad> mutaliskSquads = fightSquads.stream()
+            .filter(squad -> squad.getType() == UnitType.Zerg_Mutalisk)
+            .filter(squad -> squad != currentSquad)
+            .collect(Collectors.toList());
 
         if (mutaliskSquads.isEmpty()) {
             return null;

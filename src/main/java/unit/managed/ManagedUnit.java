@@ -40,6 +40,8 @@ public class ManagedUnit {
     protected Position rallyPoint;
     @Setter @Getter
     protected TilePosition movementTargetPosition;
+    @Setter @Getter
+    protected Position containPosition;
     protected List<TilePosition> pathToTarget;
 
     @Setter
@@ -403,7 +405,7 @@ public class ManagedUnit {
     }
 
     protected void contain() {
-        if (movementTargetPosition == null) {
+        if (containPosition == null) {
             role = UnitRole.IDLE;
             return;
         }
@@ -415,15 +417,14 @@ public class ManagedUnit {
             return;
         }
 
-        Position target = movementTargetPosition.toPosition();
-        if (unit.getDistance(target) < 24) {
+        if (unit.getDistance(containPosition) < 24) {
             setUnready(6);
             unit.holdPosition();
             return;
         }
 
         setUnready(6);
-        unit.move(target);
+        unit.move(containPosition);
     }
 
     protected void gather() {}

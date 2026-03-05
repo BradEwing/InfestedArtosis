@@ -69,6 +69,8 @@ public class ContainmentEvaluator {
     public boolean canBreakContainment(Set<Squad> allSquads) {
         int ourSupply = 0;
         for (Squad s : allSquads) {
+            SquadStatus status = s.getStatus();
+            if (status != SquadStatus.FIGHT && status != SquadStatus.CONTAIN) continue;
             ourSupply += estimateSquadSupply(s);
         }
         int enemySupply = estimateEnemyArmySupply();
