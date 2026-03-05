@@ -31,10 +31,6 @@ public class ObservedUnit {
         this.lastKnownShields = unit.getType().maxShields();
     }
 
-    public void updateGroundHeight(int groundHeight) {
-        this.lastKnownGroundHeight = groundHeight;
-    }
-
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;

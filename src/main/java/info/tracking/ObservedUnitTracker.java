@@ -110,7 +110,7 @@ public class ObservedUnitTracker {
     public void updateGroundHeight(Unit unit, int groundHeight) {
         ObservedUnit ou = observedUnits.get(unit);
         if (ou != null) {
-            ou.updateGroundHeight(groundHeight);
+            ou.setLastKnownGroundHeight(groundHeight);
         }
     }
 

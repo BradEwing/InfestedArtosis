@@ -60,6 +60,15 @@ public class SquadManager {
     private static final double SQUAD_MERGE_DISTANCE = 256.0;
     private static final double ENEMY_DETECTION_RADIUS = 512.0;
     private static final int RETREAT_TIMEOUT_FRAMES = 240;
+
+    private static final Set<UnitType> GROUND_SQUAD_TYPES = new HashSet<>();
+    static {
+        GROUND_SQUAD_TYPES.add(UnitType.Zerg_Zergling);
+        GROUND_SQUAD_TYPES.add(UnitType.Zerg_Hydralisk);
+        GROUND_SQUAD_TYPES.add(UnitType.Zerg_Lurker);
+        GROUND_SQUAD_TYPES.add(UnitType.Zerg_Ultralisk);
+        GROUND_SQUAD_TYPES.add(UnitType.Zerg_Defiler);
+    }
     private static final int RETREAT_VECTOR_MAGNITUDE = 192;
     private static final int COMBAT_SIM_DURATION_FRAMES = 150;
     private static final double DEFENSE_WIN_THRESHOLD = 0.50;
@@ -628,15 +637,9 @@ public class SquadManager {
             return;
         }
 
-        CombatSimulator.CombatResult result;
-        if (squad.isGroundSquad() && squad.getCombatSimulator() instanceof unit.squad.horizon.HorizonCombatSimulator) {
-            Map<Squad, Double> adjacentSquads = getAdjacentSquads(squad, REINFORCEMENT_RADIUS);
-            result = ((unit.squad.horizon.HorizonCombatSimulator) squad.getCombatSimulator())
-                    .evaluateWithAdjacentSquads(squad, adjacentSquads, gameState);
-        } else {
-            Set<ManagedUnit> reinforcements = getNearbyReinforcements(squad, REINFORCEMENT_RADIUS);
-            result = squad.getCombatSimulator().evaluate(squad, reinforcements, gameState);
-        }
+        Map<Squad, Double> adjacentSquads = getAdjacentSquads(squad, REINFORCEMENT_RADIUS);
+        CombatSimulator.CombatResult result = squad.getCombatSimulator()
+                .evaluateWithAdjacentSquads(squad, adjacentSquads, gameState);
 
         switch (result) {
             case RETREAT:
@@ -1084,21 +1087,10 @@ public class SquadManager {
         return closestSquad;
     }
 
-    private static final Set<UnitType> GROUND_SQUAD_TYPES = new HashSet<>();
-    static {
-        GROUND_SQUAD_TYPES.add(UnitType.Zerg_Zergling);
-        GROUND_SQUAD_TYPES.add(UnitType.Zerg_Hydralisk);
-        GROUND_SQUAD_TYPES.add(UnitType.Zerg_Lurker);
-        GROUND_SQUAD_TYPES.add(UnitType.Zerg_Ultralisk);
-        GROUND_SQUAD_TYPES.add(UnitType.Zerg_Defiler);
-    }
-
     private Squad newFightSquad(UnitType type) {
         Squad newSquad;
 
-        if (GROUND_SQUAD_TYPES.contains(type)) {
-            newSquad = new GroundSquad();
-        } else if (type == UnitType.Zerg_Mutalisk) {
+        if (type == UnitType.Zerg_Mutalisk) {
             newSquad = new MutaliskSquad();
         } else if (type == UnitType.Zerg_Scourge) {
             newSquad = new ScourgeSquad();
@@ -1339,17 +1331,6 @@ public class SquadManager {
             }
         }
         return result;
-    }
-
-    private Set<ManagedUnit> getNearbyReinforcements(Squad targetSquad, double radius) {
-        Set<ManagedUnit> reinforcements = new HashSet<>();
-        for (Squad squad : fightSquads) {
-            if (squad == targetSquad) continue;
-            if (squad instanceof ScourgeSquad) continue;
-            if (targetSquad.distance(squad) > radius) continue;
-            reinforcements.addAll(squad.getMembers());
-        }
-        return reinforcements;
     }
 
     /**

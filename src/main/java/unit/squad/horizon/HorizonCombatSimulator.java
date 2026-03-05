@@ -33,6 +33,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
         return evaluateWithAdjacentSquads(squad, null, gameState);
     }
 
+    @Override
     public CombatResult evaluateWithAdjacentSquads(Squad squad, Map<Squad, Double> adjacentSquads, GameState gameState) {
         Position squadCenter = squad.getCenter();
         if (squadCenter == null) return CombatResult.RETREAT;

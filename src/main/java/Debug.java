@@ -23,9 +23,13 @@ import learning.Record;
 import learning.OpponentRecord;
 import strategy.buildorder.BuildOrder;
 import unit.managed.ManagedUnit;
+import unit.squad.CombatSimulator.CombatResult;
 import unit.squad.Squad;
 import unit.squad.SquadManager;
 import unit.squad.SquadStatus;
+import unit.squad.horizon.HorizonCombatSimulator;
+import unit.squad.horizon.HorizonCombatSimulator.DebugSnapshot;
+import unit.squad.horizon.HorizonCombatSimulator.UnitDebugEntry;
 import unit.managed.UnitRole;
 import util.Arc;
 import macro.plan.Plan;
@@ -455,14 +459,13 @@ public class Debug {
 
     private void debugCombatSim() {
         for (Squad squad : squadManager.fightSquads) {
-            if (!(squad.getCombatSimulator() instanceof unit.squad.horizon.HorizonCombatSimulator)) continue;
-            unit.squad.horizon.HorizonCombatSimulator sim =
-                    (unit.squad.horizon.HorizonCombatSimulator) squad.getCombatSimulator();
-            unit.squad.horizon.HorizonCombatSimulator.DebugSnapshot snap = sim.getLastSnapshots().get(squad.getId());
+            if (!(squad.getCombatSimulator() instanceof HorizonCombatSimulator)) continue;
+            HorizonCombatSimulator sim = (HorizonCombatSimulator) squad.getCombatSimulator();
+            DebugSnapshot snap = sim.getLastSnapshots().get(squad.getId());
             if (snap == null) continue;
 
-            Color resultColor = snap.result == unit.squad.CombatSimulator.CombatResult.ENGAGE ? Color.Green
-                    : snap.result == unit.squad.CombatSimulator.CombatResult.RETREAT ? Color.Red : Color.Yellow;
+            Color resultColor = snap.result == CombatResult.ENGAGE ? Color.Green
+                    : snap.result == CombatResult.RETREAT ? Color.Red : Color.Yellow;
 
             game.drawCircleMap(snap.squadCenter, (int) 768, resultColor);
             game.drawTextMap(snap.squadCenter.getX() - 40, snap.squadCenter.getY() - 20,
@@ -471,7 +474,7 @@ public class Debug {
                     String.format("F=%.1f E=%.1f gR=%.2f cR=%.2f",
                             snap.friendlyTotal, snap.enemyTotal, snap.groundRatio, snap.combinedRatio), Text.White);
 
-            for (unit.squad.horizon.HorizonCombatSimulator.UnitDebugEntry entry : snap.friendlyUnits) {
+            for (UnitDebugEntry entry : snap.friendlyUnits) {
                 Color c = entry.isAdjacent ? Color.Cyan : Color.Green;
                 game.drawCircleMap(entry.position, 6, c);
                 String shortName = entry.type.toString().replace("Zerg_", "");
@@ -479,7 +482,7 @@ public class Debug {
                         String.format("%s %.1f", shortName, entry.strength), Text.Green);
             }
 
-            for (unit.squad.horizon.HorizonCombatSimulator.UnitDebugEntry entry : snap.enemyUnits) {
+            for (UnitDebugEntry entry : snap.enemyUnits) {
                 game.drawCircleMap(entry.position, 6, Color.Red);
                 String shortName = entry.type.toString()
                         .replace("Protoss_", "").replace("Terran_", "").replace("Zerg_", "");

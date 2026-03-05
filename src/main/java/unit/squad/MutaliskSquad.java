@@ -67,7 +67,7 @@ public class MutaliskSquad extends Squad {
             shouldDisband = true;
             return;
         }
-        int minSize = (gameState.getOpponentRace() == Race.Zerg) ? 2 : 5;
+        int minSize = (gameState.getOpponentRace() == Race.Zerg) ? 2 : 3;
         final int currentSize = members.size();
         if (currentSize < minSize) {
             if (rallyPosition != null && status == SquadStatus.RALLY) {
@@ -127,7 +127,7 @@ public class MutaliskSquad extends Squad {
 
         // Only re-evaluate combat when both timers are expired or null
         if (!isAttackWindowActive && !isRetreatWindowActive) {
-            CombatResult combatResult = ((HorizonCombatSimulator) getCombatSimulator())
+            CombatResult combatResult = getCombatSimulator()
                     .evaluateWithAdjacentSquads(this, adjacentSquads, gameState);
 
             // Set appropriate timer based on combat result
