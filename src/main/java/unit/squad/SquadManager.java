@@ -677,6 +677,7 @@ public class SquadManager {
                 : null;
         for (ManagedUnit managedUnit : managedFighters) {
             managedUnit.setRole(UnitRole.RETREAT);
+            managedUnit.setRallyPoint(rallyPoint);
             managedUnit.markRetreatStart(currentFrame);
             Integer retreatStartFrame = managedUnit.getRetreatStartFrame();
             if (retreatStartFrame != null && currentFrame - retreatStartFrame >= RETREAT_TIMEOUT_FRAMES) {
@@ -684,7 +685,8 @@ public class SquadManager {
             } else if (retreatTargets != null) {
                 managedUnit.setRetreatTarget(retreatTargets.get(managedUnit));
             } else {
-                managedUnit.setRetreatTarget(managedUnit.getRetreatPosition());
+                Position fleeTarget = managedUnit.getRetreatPosition();
+                managedUnit.setRetreatTarget(fleeTarget != null ? fleeTarget : rallyPoint);
             }
         }
     }
@@ -719,12 +721,16 @@ public class SquadManager {
                     break;
                 case RETREAT:
                     managedUnit.setRole(UnitRole.RETREAT);
+                    managedUnit.setRallyPoint(rallyPoint);
                     managedUnit.markRetreatStart(currentFrame);
                     Integer retreatStartFrame = managedUnit.getRetreatStartFrame();
+                    Position fleeTarget = managedUnit.getRetreatPosition();
                     if (retreatStartFrame != null && currentFrame - retreatStartFrame >= RETREAT_TIMEOUT_FRAMES) {
                         managedUnit.setRetreatTarget(rallyPoint);
+                    } else if (fleeTarget != null) {
+                        managedUnit.setRetreatTarget(fleeTarget);
                     } else {
-                        managedUnit.setRetreatTarget(managedUnit.getRetreatPosition());
+                        managedUnit.setRetreatTarget(rallyPoint);
                     }
                     break;
             }

@@ -193,7 +193,7 @@ public class ManagedUnit {
         List<Unit> enemies = getEnemiesInRadius(currentX, currentY);
 
         if (enemies.isEmpty()) {
-            return currentPos;
+            return null;
         }
 
         double sumDx = 0;
@@ -206,7 +206,7 @@ public class ManagedUnit {
 
         Vec2 away = new Vec2(-sumDx, -sumDy);
         if (away.length() == 0) {
-            return currentPos;
+            return null;
         }
 
         Position retreatPos = away.normalizeToLength(128).toPosition(currentPos);
@@ -224,7 +224,7 @@ public class ManagedUnit {
         Position currentPos = new Position(currentX, currentY);
         List<Unit> enemies = getEnemiesInRadius(currentX, currentY);
         if (enemies.isEmpty()) {
-            return currentPos;
+            return null;
         }
 
         double sumDx = 0;
@@ -236,7 +236,7 @@ public class ManagedUnit {
 
         Vec2 away = new Vec2(-sumDx, -sumDy);
         if (away.length() == 0) {
-            return currentPos;
+            return null;
         }
 
         return away.normalizeToLength(128).clampToMap(game, currentPos);
@@ -548,8 +548,9 @@ public class ManagedUnit {
         Position current = unit.getPosition();
         List<Unit> threats = getEnemiesInRadius(current.getX(), current.getY());
 
-        if (!threats.isEmpty()) {
-            Vec2 awayDir = Vec2.between(current, getSimpleRetreatPosition()).normalize();
+        Position simpleRetreat = getSimpleRetreatPosition();
+        if (!threats.isEmpty() && simpleRetreat != null) {
+            Vec2 awayDir = Vec2.between(current, simpleRetreat).normalize();
             Vec2 targetDir = Vec2.between(current, movementTargetPosition.toPosition()).normalize();
 
             double dot = awayDir.x * targetDir.x + awayDir.y * targetDir.y;
@@ -655,8 +656,11 @@ public class ManagedUnit {
 
         if (unit.getDistance(retreatTarget) < getRetreatArrivalDistance()) {
             Position next = getRetreatPosition();
-            setRetreatTarget(next);
-            if (next == null) {
+            if (next != null) {
+                setRetreatTarget(next);
+            } else if (rallyPoint != null) {
+                setRetreatTarget(rallyPoint);
+            } else {
                 role = UnitRole.IDLE;
                 return;
             }
