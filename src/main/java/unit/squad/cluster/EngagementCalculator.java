@@ -75,14 +75,6 @@ public final class EngagementCalculator {
         return dist >= NEAR_FRONT_MIN && dist < FRONT_DISTANCE_THRESHOLD;
     }
 
-    public static double getFrontDistanceThreshold() {
-        return FRONT_DISTANCE_THRESHOLD;
-    }
-
-    public static double getNearlyEngagedDistance() {
-        return NEARLY_ENGAGED_DISTANCE;
-    }
-
     private static int getRelevantWeaponRange(UnitType enemyType, boolean targetIsFlying) {
         WeaponType weapon;
         if (targetIsFlying) {

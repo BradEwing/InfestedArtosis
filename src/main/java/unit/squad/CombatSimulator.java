@@ -14,7 +14,6 @@ public interface CombatSimulator {
 
     enum CombatResult {
         ENGAGE,
-        RETREAT,
-        REGROUP
+        RETREAT
     }
 }

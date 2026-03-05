@@ -32,7 +32,7 @@ public class ClusterCombatEvaluator implements CombatSimulator {
     @Override
     public CombatResult evaluate(Squad squad, Set<ManagedUnit> reinforcements, GameState gameState) {
         if (gameState.isAllIn()) {
-            setAllAdvance(squad, reinforcements);
+            setAllAdvance(squad);
             return CombatResult.ENGAGE;
         }
 
@@ -52,7 +52,7 @@ public class ClusterCombatEvaluator implements CombatSimulator {
 
         List<EnemyCluster> relevantClusters = findRelevantClusters(squad);
         if (relevantClusters.isEmpty()) {
-            setAllAdvance(squad, reinforcements);
+            setAllAdvance(squad);
             return CombatResult.ENGAGE;
         }
 
@@ -161,6 +161,8 @@ public class ClusterCombatEvaluator implements CombatSimulator {
                     } else {
                         lastDispositions.put(mu, UnitDisposition.RETREAT);
                     }
+                } else {
+                    lastDispositions.putIfAbsent(mu, UnitDisposition.HOLD);
                 }
             } else {
                 lastDispositions.putIfAbsent(mu, UnitDisposition.HOLD);
@@ -216,7 +218,7 @@ public class ClusterCombatEvaluator implements CombatSimulator {
         return false;
     }
 
-    private void setAllAdvance(Squad squad, Set<ManagedUnit> reinforcements) {
+    private void setAllAdvance(Squad squad) {
         lastDispositions.clear();
         for (ManagedUnit mu : squad.getMembers()) {
             lastDispositions.put(mu, UnitDisposition.ADVANCE);

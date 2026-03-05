@@ -2,7 +2,6 @@ package unit.squad;
 
 import bwapi.Game;
 import bwapi.Position;
-import bwapi.Race;
 import bwapi.TilePosition;
 import bwapi.Unit;
 import bwapi.UnitType;
@@ -523,16 +522,7 @@ public class SquadManager {
     }
 
     private int calculateMoveOutThreshold(Squad squad) {
-        UnitType type = squad.getType();
-        switch (type) {
-            case Zerg_Mutalisk:
-                if (gameState.getOpponentRace() == Race.Zerg) {
-                    return 2;
-                }
-                return 5;
-            default:
-                return 1;
-        }
+        return 1;
     }
 
     private void simulateFightSquad(Squad squad) {
@@ -616,19 +606,15 @@ public class SquadManager {
             return;
         }
         if (squad.getStatus() == SquadStatus.FIGHT && fightLocked) {
-            CombatSimulator combatSim = squad.getCombatSimulator();
-            if (combatSim instanceof ClusterCombatEvaluator) {
-                combatSim.evaluate(squad, getNearbyReinforcements(squad, REINFORCEMENT_RADIUS), gameState);
-                assignClusterFightTargets(squad, managedFighters, (ClusterCombatEvaluator) combatSim, now);
-            } else {
-                assignFightTargets(squad, managedFighters, false);
-            }
+            ClusterCombatEvaluator combatSim = (ClusterCombatEvaluator) squad.getCombatSimulator();
+            combatSim.evaluate(squad, getNearbyReinforcements(squad, REINFORCEMENT_RADIUS), gameState);
+            assignClusterFightTargets(squad, managedFighters, combatSim, now);
             return;
         }
 
         Set<ManagedUnit> reinforcements = getNearbyReinforcements(squad, REINFORCEMENT_RADIUS);
-        CombatSimulator combatSimulator = squad.getCombatSimulator();
-        CombatSimulator.CombatResult result = combatSimulator.evaluate(squad, reinforcements, gameState);
+        ClusterCombatEvaluator clusterEvaluator = (ClusterCombatEvaluator) squad.getCombatSimulator();
+        CombatSimulator.CombatResult result = clusterEvaluator.evaluate(squad, reinforcements, gameState);
 
         switch (result) {
             case RETREAT:
@@ -637,32 +623,16 @@ public class SquadManager {
                         && enterContainment(squad);
                 if (!enteredContain) {
                     squad.setStatus(SquadStatus.RETREAT);
-                    if (combatSimulator instanceof ClusterCombatEvaluator) {
-                        assignClusterFightTargets(squad, managedFighters,
-                                (ClusterCombatEvaluator) combatSimulator, now);
-                    } else {
-                        assignRetreatTargets(squad, managedFighters, now);
-                    }
+                    assignClusterFightTargets(squad, managedFighters, clusterEvaluator, now);
                     squad.startRetreatLock(now);
                 }
                 break;
 
             case ENGAGE:
                 squad.setStatus(SquadStatus.FIGHT);
-                if (combatSimulator instanceof ClusterCombatEvaluator) {
-                    assignClusterFightTargets(squad, managedFighters, (ClusterCombatEvaluator) combatSimulator, now);
-                } else {
-                    assignFightTargets(squad, managedFighters, true);
-                }
+                assignClusterFightTargets(squad, managedFighters, clusterEvaluator, now);
                 if (!retreatLocked) {
                     squad.startFightLock(now);
-                }
-                break;
-
-            case REGROUP:
-                squad.setStatus(SquadStatus.REGROUP);
-                for (ManagedUnit managedUnit : managedFighters) {
-                    managedUnit.clearRetreatStart();
                 }
                 break;
             default:
