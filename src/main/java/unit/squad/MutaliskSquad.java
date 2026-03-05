@@ -26,11 +26,10 @@ public class MutaliskSquad extends Squad {
 
     private boolean shouldDisband = false;
 
-    // Attack and retreat timers for hysteresis behavior
     private Time attackUntilFrame = null;
     private Time retreatUntilFrame = null;
-    private static final Time ATTACK_WINDOW = new Time(12); // 0.5 second
-    private static final Time RETREAT_WINDOW = new Time(36); // 1.5 seconds
+    private static final Time ATTACK_WINDOW = new Time(12);
+    private static final Time RETREAT_WINDOW = new Time(36);
 
     public MutaliskSquad() {
         super();
@@ -44,26 +43,18 @@ public class MutaliskSquad extends Squad {
         super.onFrame();
     }
 
-    /**
-     * Returns true if this squad should be disbanded due to lack of targets.
-     */
     @Override
     public boolean shouldDisband() {
         return shouldDisband;
     }
 
-    /**
-     * Executes mutalisk-specific squad behavior including target selection,
-     * retreat calculations, and engagement decisions.
-     */
     public void executeTactics(GameState gameState, Position rallyPosition, Set<ManagedUnit> reinforcements) {
         if (members.isEmpty()) {
             shouldDisband = true;
             return;
         }
         int minSize = (gameState.getOpponentRace() == Race.Zerg) ? 2 : 5;
-        final int currentSize = members.size();
-        if (currentSize < minSize) {
+        if (members.size() < minSize) {
             if (rallyPosition != null && status == SquadStatus.RALLY) {
                 rallyToPosition(rallyPosition, null);
                 return;
@@ -72,14 +63,11 @@ public class MutaliskSquad extends Squad {
             rallyToSafePosition(gameState);
             return;
         }
-        
+
+        Position rallyPoint = rallyPosition != null ? rallyPosition : gameState.getSquadRallyPoint();
 
         Set<Unit> enemyUnits = gameState.getDetectedEnemyUnits();
-
-        List<Unit> allEnemies = new ArrayList<>();
-        allEnemies.addAll(enemyUnits);
-        
-        // Filter out low priority targets
+        List<Unit> allEnemies = new ArrayList<>(enemyUnits);
         allEnemies.removeIf(enemy -> util.Filter.isLowPriorityCombatTarget(enemy.getType()));
 
         if (allEnemies.isEmpty()) {
@@ -103,71 +91,43 @@ public class MutaliskSquad extends Squad {
 
         Set<Position> staticDefenseCoverage = gameState.getAerielStaticDefenseCoverage();
         Set<Position> stormPositions = gameState.getActiveStormPositions();
-
         Time currentTime = gameState.getGameTime();
 
         boolean squadInStorm = !stormPositions.isEmpty() &&
             stormPositions.stream().anyMatch(storm -> getCenter().getDistance(storm) <= 96);
-        
-        // Check if timers are active
+
         boolean isAttackWindowActive = attackUntilFrame != null && currentTime.lessThanOrEqual(attackUntilFrame);
         boolean isRetreatWindowActive = retreatUntilFrame != null && currentTime.lessThanOrEqual(retreatUntilFrame);
-        
+
         if (squadInStorm) {
             setStatus(SquadStatus.RETREAT);
-            executeRetreat(gameState, allEnemies, staticDefenseCoverage, stormPositions);
+            executeRetreat(gameState, stormPositions, rallyPoint);
             return;
         }
 
-        // Only re-evaluate combat when both timers are expired or null
         if (!isAttackWindowActive && !isRetreatWindowActive) {
             CombatResult combatResult = getCombatSimulator().evaluate(this, reinforcements, gameState);
-
-            // Set appropriate timer based on combat result
             if (combatResult == CombatResult.RETREAT) {
                 retreatUntilFrame = currentTime.add(RETREAT_WINDOW);
             } else {
                 attackUntilFrame = currentTime.add(ATTACK_WINDOW);
             }
         }
-        
-        // Determine behavior based on active timers
+
         if (isRetreatWindowActive) {
             setStatus(SquadStatus.RETREAT);
-            executeRetreat(gameState, allEnemies, staticDefenseCoverage, stormPositions);
+            executeRetreat(gameState, stormPositions, rallyPoint);
             return;
         }
-        
+
         if (isAttackWindowActive) {
             setStatus(SquadStatus.FIGHT);
-            // Attack behavior continues below
         } else {
-            // If no timer is active, clear both for next evaluation
             attackUntilFrame = null;
             retreatUntilFrame = null;
         }
 
-        // Find priority target
         Unit priorityTarget = findPriorityTarget(allEnemies, staticDefenseCoverage);
-
-        if (priorityTarget != null) {
-            Position safeAttackPos = findSafeAttackPosition(priorityTarget, staticDefenseCoverage, getCenter());
-            if (safeAttackPos != null) {
-                double distanceToSafe = getCenter().getDistance(safeAttackPos);
-                if (distanceToSafe > 144) {
-                    setStatus(SquadStatus.RALLY);
-                    setTarget(priorityTarget);
-                    rallyToPosition(safeAttackPos, priorityTarget);
-                    return;
-                }
-                // Close enough to safe ring: proceed to fight below
-            }
-        }
-
-        // Default fight behavior
-        if (priorityTarget != null) {
-            setTarget(priorityTarget);
-        }
 
         for (ManagedUnit mutalisk : getMembers()) {
             mutalisk.setRole(UnitRole.FIGHT);
@@ -175,52 +135,38 @@ public class MutaliskSquad extends Squad {
             if (priorityTarget != null) {
                 mutalisk.setFightTarget(priorityTarget);
             }
+            Position stormRetreat = calculateStormRetreat(mutalisk.getUnit(), stormPositions, gameState);
+            mutalisk.setRetreatTarget(stormRetreat != null ? stormRetreat : rallyPoint);
+            mutalisk.setRallyPoint(rallyPoint);
+        }
 
-            Position individualRetreat = calculateIndividualRetreat(mutalisk.getUnit(), allEnemies, staticDefenseCoverage, stormPositions, gameState);
-            mutalisk.setRetreatTarget(individualRetreat);
+        if (priorityTarget != null) {
+            setTarget(priorityTarget);
         }
     }
 
-    /**
-     * Executes retreat behavior for the entire squad.
-     * Each mutalisk gets an individual retreat vector, prioritizing escape from storms.
-     */
-    private void executeRetreat(GameState gameState, List<Unit> allEnemies, Set<Position> staticDefenseCoverage, Set<Position> stormPositions) {
+    private void executeRetreat(GameState gameState, Set<Position> stormPositions, Position rallyPoint) {
         for (ManagedUnit mutalisk : getMembers()) {
             mutalisk.setRole(UnitRole.RETREAT);
             mutalisk.setReady(true);
-            Position individualRetreat = calculateIndividualRetreat(mutalisk.getUnit(), allEnemies, staticDefenseCoverage, stormPositions, gameState);
-            mutalisk.setRetreatTarget(individualRetreat);
+            Position stormRetreat = calculateStormRetreat(mutalisk.getUnit(), stormPositions, gameState);
+            mutalisk.setRetreatTarget(stormRetreat != null ? stormRetreat : rallyPoint);
+            mutalisk.setRallyPoint(rallyPoint);
         }
     }
 
-    /**
-     * Rally squad to harassment position (near enemy workers).
-     */
     private void rallyToHarassmentPosition(GameState gameState) {
         Set<Position> enemyWorkerLocations = gameState.getLastKnownLocationOfEnemyWorkers();
-        Position rallyPoint;
-
-        if (enemyWorkerLocations.isEmpty()) {
-            rallyPoint = gameState.getSquadRallyPoint();
-        } else {
-            rallyPoint = findClosestWorkerLocation(enemyWorkerLocations);
-        }
-
+        Position rallyPoint = enemyWorkerLocations.isEmpty()
+            ? gameState.getSquadRallyPoint()
+            : findClosestPosition(enemyWorkerLocations);
         rallyToPosition(rallyPoint, null);
     }
 
-    /**
-     * Rally squad to safe position away from threats.
-     */
     private void rallyToSafePosition(GameState gameState) {
-        Position homeBase = gameState.getSquadRallyPoint();
-        rallyToPosition(homeBase, null);
+        rallyToPosition(gameState.getSquadRallyPoint(), null);
     }
 
-    /**
-     * Rally all mutalisks to specified position.
-     */
     private void rallyToPosition(Position position, Unit target) {
         for (ManagedUnit mutalisk : getMembers()) {
             mutalisk.setRole(UnitRole.RALLY);
@@ -232,18 +178,10 @@ public class MutaliskSquad extends Squad {
         }
     }
 
-    /**
-     * Finds the closest enemy worker location to the squad.
-     */
-    private Position findClosestWorkerLocation(Set<Position> workerLocations) {
-        return findClosestPosition(workerLocations);
-    }
-
     private Position findClosestPosition(Set<Position> positions) {
         Position squadCenter = getCenter();
         Position closest = null;
         double closestDistance = Double.MAX_VALUE;
-
         for (Position position : positions) {
             double distance = squadCenter.getDistance(position);
             if (distance < closestDistance) {
@@ -251,204 +189,85 @@ public class MutaliskSquad extends Squad {
                 closest = position;
             }
         }
-
         return closest != null ? closest : squadCenter;
     }
 
-    /**
-     * Calculates individual retreat position for a single mutalisk.
-     * Prioritizes retreating from psi storms if within storm radius.
-     */
-    private Position calculateIndividualRetreat(
-            Unit mutalisk, 
-            List<Unit> enemies, 
-            Set<Position> staticDefenseCoverage, 
-            Set<Position> stormPositions, 
-            GameState gameState) {
+    private Position calculateStormRetreat(Unit mutalisk, Set<Position> stormPositions, GameState gameState) {
+        if (stormPositions.isEmpty()) return null;
 
         Position mutaliskPos = mutalisk.getPosition();
-
         Position nearestStorm = null;
-        double nearestStormDistance = Double.MAX_VALUE;
-
+        double nearestDist = Double.MAX_VALUE;
         for (Position stormPos : stormPositions) {
-            double distance = mutaliskPos.getDistance(stormPos);
-            if (distance < nearestStormDistance) {
+            double dist = mutaliskPos.getDistance(stormPos);
+            if (dist < nearestDist) {
                 nearestStorm = stormPos;
-                nearestStormDistance = distance;
+                nearestDist = dist;
             }
         }
 
-        if (nearestStorm != null && nearestStormDistance <= PsiStormTracker.STORM_RADIUS) {
+        if (nearestStorm != null && nearestDist <= PsiStormTracker.STORM_RADIUS) {
             Vec2 away = Vec2.between(nearestStorm, mutaliskPos);
             if (away.length() == 0) {
                 away = Vec2.between(mutaliskPos, getCenter());
-                if (away.length() == 0) {
-                    away = new Vec2(0, 1);
-                }
+                if (away.length() == 0) away = new Vec2(0, 1);
             }
             return away.normalizeToLength(256).clampToMap(gameState.getGame(), mutaliskPos);
         }
 
-        double totalDx = 0;
-        double totalDy = 0;
-        double totalWeight = 0;
-
-        for (Position stormPos : stormPositions) {
-            double distance = mutaliskPos.getDistance(stormPos);
-            if (distance > 0 && distance < 256) {
-                double weight = 5.0 / (distance * distance / 10000);
-                totalDx += (mutaliskPos.getX() - stormPos.getX()) * weight;
-                totalDy += (mutaliskPos.getY() - stormPos.getY()) * weight;
-                totalWeight += weight;
-            }
-        }
-
-        for (Unit enemy : enemies) {
-            if (isAntiAir(enemy)) {
-                Position enemyPos = enemy.getPosition();
-                double distance = mutaliskPos.getDistance(enemyPos);
-                if (distance > 0) {
-                    double weight = 3.0 / (distance * distance / 10000);
-                    totalDx += (mutaliskPos.getX() - enemyPos.getX()) * weight;
-                    totalDy += (mutaliskPos.getY() - enemyPos.getY()) * weight;
-                    totalWeight += weight;
-                }
-            }
-        }
-
-        if (totalWeight == 0) {
-            return mutaliskPos;
-        }
-
-        Vec2 weighted = new Vec2(totalDx / totalWeight, totalDy / totalWeight);
-        return weighted.normalizeToLength(192).clampToMap(gameState.getGame(), mutaliskPos);
+        return null;
     }
 
-    /**
-    * Determines highest priority target for mutalisk squad applying the following filters:
-    * 1. Prefer near enemies (<256 distance) over far
-    * 2. Prefer targets outside anti-air (AA) static defense coverage
-    * 3. Prefer edge units on convex hull (easier to pick off without diving deep)
-    *   - Exclude buildings except for static AA
-    * 4. Priority: AA units > static AA > workers > others 
-    * 5. Find closest unit to squad center from selected group.
-    * @param enemies
-    * @param staticDefenseCoverage
-    * @return Unit that is the best target
-    */
     private Unit findPriorityTarget(List<Unit> enemies, Set<Position> staticDefenseCoverage) {
         Position squadCenter = getCenter();
-
-        List<Unit> near = new ArrayList<>();
-        List<Unit> far = new ArrayList<>();
-        for (Unit e : enemies) {
-            (squadCenter.getDistance(e.getPosition()) < 256 ? near : far).add(e);
-        }
-        List<Unit> working = !near.isEmpty() ? near : far;
-        if (working.isEmpty()) {
-            return null;
-        }
+        if (enemies.isEmpty()) return null;
 
         List<Unit> safe = new ArrayList<>();
         List<Unit> unsafe = new ArrayList<>();
-        for (Unit e : working) {
-            if (isPositionInStaticDefenseCoverage(e.getPosition(), staticDefenseCoverage)) unsafe.add(e); else safe.add(e);
-        }
-        List<Unit> preferred = safe.isEmpty() ? unsafe : safe;
-
-        List<Position> localPositions = new ArrayList<>();
-        for (Unit e : preferred) {
-            if (squadCenter.getDistance(e.getPosition()) <= 384) {
-                if (!e.getType().isBuilding() || isAAStaticDefense(e)) {
-                    localPositions.add(e.getPosition());
-                }
+        for (Unit e : enemies) {
+            if (isPositionInStaticDefenseCoverage(e.getPosition(), staticDefenseCoverage)) {
+                unsafe.add(e);
+            } else {
+                safe.add(e);
             }
         }
-        List<Position> hull = computeConvexHull(localPositions);
-        List<Unit> edgeUnits = unitsOnHull(hull, preferred);
-        List<Unit> candidateEdge = edgeTargetsNearSquad(edgeUnits, squadCenter, 8);
-        List<Unit> candidates = !candidateEdge.isEmpty() ? candidateEdge : preferred;
+        List<Unit> candidates = safe.isEmpty() ? unsafe : safe;
 
         List<Unit> aaUnits = new ArrayList<>();
         List<Unit> aaStatic = new ArrayList<>();
         List<Unit> workers = new ArrayList<>();
         List<Unit> others = new ArrayList<>();
         for (Unit u : candidates) {
-            if (isAntiAir(u) && !u.getType().isBuilding()) {
-                aaUnits.add(u);
-            } else if (isAAStaticDefense(u)) {
-                aaStatic.add(u);
-            } else if (isWorker(u)) {
-                workers.add(u);
-            } else {
-                others.add(u);
-            }
+            if (isAntiAir(u) && !u.getType().isBuilding()) aaUnits.add(u);
+            else if (isAAStaticDefense(u)) aaStatic.add(u);
+            else if (isWorker(u)) workers.add(u);
+            else others.add(u);
         }
 
-        if (!aaUnits.isEmpty()) { 
-            return getClosestUnit(squadCenter, aaUnits);
-        }
-        if (!aaStatic.isEmpty()) { 
-            return getClosestUnit(squadCenter, aaStatic);
-        }
-        if (!workers.isEmpty()) {
-            return getClosestUnit(squadCenter, workers);
-        }
+        if (!aaUnits.isEmpty()) return getClosestUnit(squadCenter, aaUnits);
+        if (!aaStatic.isEmpty()) return getClosestUnit(squadCenter, aaStatic);
+        if (!workers.isEmpty()) return getClosestUnit(squadCenter, workers);
         return getClosestUnit(squadCenter, others);
     }
 
-    private List<Position> computeConvexHull(List<Position> points) {
-        List<Position> pts = new ArrayList<>(points);
-        if (pts.size() < 3) return pts;
-        pts.sort((a,b) -> a.getX() == b.getX() ? Integer.compare(a.getY(), b.getY()) : Integer.compare(a.getX(), b.getX()));
-        List<Position> lower = new ArrayList<>();
-        for (Position p : pts) {
-            while (lower.size() >= 2 && cross(lower.get(lower.size() - 2), lower.get(lower.size() - 1), p) <= 0) {
-                lower.remove(lower.size() - 1);
-            }
-            lower.add(p);
-        }
-        List<Position> upper = new ArrayList<>();
-        for (int i = pts.size() - 1; i >= 0; i--) {
-            Position p = pts.get(i);
-            while (upper.size() >= 2 && cross(upper.get(upper.size() - 2), upper.get(upper.size() - 1), p) <= 0) {
-                upper.remove(upper.size() - 1);
-            }
-            upper.add(p);
-        }
-        lower.remove(lower.size() - 1);
-        upper.remove(upper.size() - 1);
-        lower.addAll(upper);
-        return lower;
-    }
-
-    private long cross(Position a, Position b, Position c) {
-        long x1 = b.getX() - a.getX();
-        long y1 = b.getY() - a.getY();
-        long x2 = c.getX() - b.getX();
-        long y2 = c.getY() - b.getY();
-        return x1 * y2 - y1 * x2;
-    }
-
-    private List<Unit> unitsOnHull(List<Position> hull, List<Unit> enemies) {
-        List<Unit> result = new ArrayList<>();
-        for (Unit e : enemies) {
-            Position p = e.getPosition();
-            for (Position h : hull) {
-                if (p.getX() == h.getX() && p.getY() == h.getY()) {
-                    result.add(e);
-                    break;
-                }
+    private boolean isPositionInStaticDefenseCoverage(Position pos, Set<Position> staticDefenseCoverage) {
+        for (Position coveredPos : staticDefenseCoverage) {
+            if (pos.getDistance(coveredPos) < 16) {
+                return true;
             }
         }
-        return result;
+        return false;
     }
 
-    private List<Unit> edgeTargetsNearSquad(List<Unit> edgeUnits, Position squadCenter, int k) {
-        edgeUnits.sort((u1, u2) -> Double.compare(squadCenter.getDistance(u1.getPosition()), squadCenter.getDistance(u2.getPosition())));
-        if (edgeUnits.size() <= k) return edgeUnits;
-        return new ArrayList<>(edgeUnits.subList(0, k));
+    private boolean isAntiAir(Unit unit) {
+        UnitType type = unit.getType();
+        if (type.airWeapon() != null && type.airWeapon().maxRange() > 0) {
+            return true;
+        }
+        if (type == UnitType.Terran_Bunker && !unit.getLoadedUnits().isEmpty()) {
+            return true;
+        }
+        return false;
     }
 
     private boolean isAAStaticDefense(Unit unit) {
@@ -464,68 +283,9 @@ public class MutaliskSquad extends Squad {
         return t == UnitType.Protoss_Probe || t == UnitType.Terran_SCV || t == UnitType.Zerg_Drone;
     }
 
-    private Position findSafeAttackPosition(Unit target, Set<Position> staticDefenseCoverage, Position squadCenter) {
-        Position targetPos = target.getPosition();
-        int mutaRange = UnitType.Zerg_Mutalisk.airWeapon().maxRange();
-
-        List<Position> candidatePositions = new ArrayList<>();
-
-        for (int angle = 0; angle < 360; angle += 15) {
-            double radians = Math.toRadians(angle);
-            int x = targetPos.getX() + (int)(mutaRange * Math.cos(radians));
-            int y = targetPos.getY() + (int)(mutaRange * Math.sin(radians));
-
-            Position candidatePos = new Position(x, y);
-
-            if (!isPositionInStaticDefenseCoverage(candidatePos, staticDefenseCoverage)) {
-                candidatePositions.add(candidatePos);
-            }
-        }
-
-        if (candidatePositions.isEmpty()) {
-            return null;
-        }
-
-        candidatePositions.sort((pos1, pos2) -> {
-            double score1 = calculatePositionScore(pos1, staticDefenseCoverage, null);
-            double score2 = calculatePositionScore(pos2, staticDefenseCoverage, null);
-            int primaryCompare = Double.compare(score2, score1);
-            if (primaryCompare != 0) {
-                return primaryCompare;
-            }
-            return Double.compare(pos1.getDistance(squadCenter), pos2.getDistance(squadCenter));
-        });
-
-        return candidatePositions.get(0);
-    }
-
-    private boolean isPositionInStaticDefenseCoverage(Position pos, Set<Position> staticDefenseCoverage) {
-        for (Position coveredPos : staticDefenseCoverage) {
-            if (pos.getDistance(coveredPos) < 16) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private boolean isAntiAir(Unit unit) {
-        UnitType type = unit.getType();
-
-        if (type.airWeapon() != null && type.airWeapon().maxRange() > 0) {
-            return true;
-        }
-
-        if (type == UnitType.Terran_Bunker && !unit.getLoadedUnits().isEmpty()) {
-            return true; // Assume bunker has marines
-        }
-
-        return false;
-    }
-
     private Unit getClosestUnit(Position from, List<Unit> units) {
         Unit closest = null;
         double closestDistance = Double.MAX_VALUE;
-
         for (Unit unit : units) {
             double distance = from.getDistance(unit.getPosition());
             if (distance < closestDistance) {
@@ -533,23 +293,15 @@ public class MutaliskSquad extends Squad {
                 closestDistance = distance;
             }
         }
-
         return closest;
     }
 
-    /**
-     * Checks if mutalisks should transition from rally to fight status.
-     * Called when squad is in RALLY or RETREAT status to determine if ready to engage.
-     */
     private void checkRallyTransition() {
         boolean isRallyOrRetreat = getStatus() == SquadStatus.RALLY || getStatus() == SquadStatus.RETREAT;
-        if (!isRallyOrRetreat) {
-            return;
-        }
+        if (!isRallyOrRetreat) return;
 
         int mutaliskCount = getMembers().size();
         int mutaliskAtRally = 0;
-
         for (ManagedUnit mutalisk : getMembers()) {
             if (mutalisk.getRallyPoint() != null) {
                 double distanceToRally = mutalisk.getUnit().getPosition().getDistance(mutalisk.getRallyPoint());
@@ -559,42 +311,12 @@ public class MutaliskSquad extends Squad {
             }
         }
 
-        // If 75% of mutalisks have reached rally point, transition to fight
         if (mutaliskCount > 0 && (double)mutaliskAtRally / mutaliskCount >= 0.75) {
             setStatus(SquadStatus.FIGHT);
-
             for (ManagedUnit mutalisk : getMembers()) {
                 mutalisk.setRole(UnitRole.FIGHT);
                 mutalisk.setReady(true);
             }
         }
-    }
-
-    /**
-     * Calculates a score for a position based on distance from static defenses and terrain type.
-     * Higher score is better.
-     */
-    private double calculatePositionScore(Position pos, Set<Position> staticDefenseCoverage, GameState gameState) {
-        double score = 0;
-
-        double minDistanceToStaticDefense = Double.MAX_VALUE;
-        for (Position defensePos : staticDefenseCoverage) {
-            double distance = pos.getDistance(defensePos);
-            if (distance < minDistanceToStaticDefense) {
-                minDistanceToStaticDefense = distance;
-            }
-        }
-
-        if (minDistanceToStaticDefense != Double.MAX_VALUE) {
-            score += Math.min(100, minDistanceToStaticDefense / 3.2);
-        } else {
-            score += 100;
-        }
-
-        if (gameState != null && !gameState.getGame().isBuildable(pos.toTilePosition())) {
-            score += 50;
-        }
-
-        return score;
     }
 }
