@@ -29,7 +29,11 @@ public final class SupplyCalculator {
             if (type.isBuilding()) {
                 if (isHostileBuilding(type)) {
                     double defenseSupply = staticDefenseSupply(type) * hpRatio;
-                    ground += defenseSupply;
+                    WeaponType groundWeapon = type.groundWeapon();
+                    if (groundWeapon != null && groundWeapon != WeaponType.None) {
+                        ground += defenseSupply;
+                        rangedGround += defenseSupply;
+                    }
                     WeaponType airWeapon = type.airWeapon();
                     if (airWeapon != null && airWeapon != WeaponType.None) {
                         antiAir += defenseSupply;
