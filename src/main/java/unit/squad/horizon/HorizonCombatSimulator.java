@@ -6,10 +6,14 @@ import bwapi.UnitType;
 import info.GameState;
 import info.tracking.ObservedUnit;
 import info.tracking.ObservedUnitTracker;
+import lombok.Getter;
 import unit.managed.ManagedUnit;
 import unit.squad.CombatSimulator;
 import unit.squad.Squad;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -21,6 +25,9 @@ public class HorizonCombatSimulator implements CombatSimulator {
     private static final double ENGAGE_THRESHOLD = 1.0;
     private static final double RETREAT_THRESHOLD = 0.7;
 
+    @Getter
+    private final Map<String, DebugSnapshot> lastSnapshots = new HashMap<>();
+
     @Override
     public CombatResult evaluate(Squad squad, Set<ManagedUnit> reinforcements, GameState gameState) {
         return evaluateWithAdjacentSquads(squad, null, gameState);
@@ -30,6 +37,9 @@ public class HorizonCombatSimulator implements CombatSimulator {
         Position squadCenter = squad.getCenter();
         if (squadCenter == null) return CombatResult.RETREAT;
 
+        DebugSnapshot snapshot = new DebugSnapshot();
+        snapshot.squadCenter = squadCenter;
+
         double friendlyG2G = 0;
         double friendlyTotal = 0;
 
@@ -38,6 +48,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
             double str = computeFriendlyStrength(mu, squadCenter);
             friendlyG2G += groundToGroundStrength(mu);
             friendlyTotal += str;
+            snapshot.friendlyUnits.add(new UnitDebugEntry(mu.getUnit().getPosition(), mu.getUnitType(), str, false));
         }
 
         if (adjacentSquads != null) {
@@ -50,6 +61,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
                     double str = computeFriendlyStrength(mu, squadCenter) * weight;
                     friendlyG2G += groundToGroundStrength(mu) * weight;
                     friendlyTotal += str;
+                    snapshot.friendlyUnits.add(new UnitDebugEntry(mu.getUnit().getPosition(), mu.getUnitType(), str, true));
                 }
             }
         }
@@ -81,15 +93,32 @@ public class HorizonCombatSimulator implements CombatSimulator {
             double str = base * hpWeight * distWeight * heightMod;
             enemyG2G += UnitStrength.groundToGround(type) * hpWeight * distWeight * heightMod;
             enemyTotal += str;
+            snapshot.enemyUnits.add(new UnitDebugEntry(pos, type, str, false));
         }
 
         double groundRatio = friendlyG2G / Math.max(enemyG2G, 0.01);
         double combinedRatio = friendlyTotal / Math.max(enemyTotal, 0.01);
         double overallRatio = Math.max(groundRatio, combinedRatio);
 
-        if (overallRatio >= ENGAGE_THRESHOLD) return CombatResult.ENGAGE;
-        if (overallRatio < RETREAT_THRESHOLD) return CombatResult.RETREAT;
-        return CombatResult.REGROUP;
+        snapshot.friendlyTotal = friendlyTotal;
+        snapshot.enemyTotal = enemyTotal;
+        snapshot.groundRatio = groundRatio;
+        snapshot.combinedRatio = combinedRatio;
+        snapshot.overallRatio = overallRatio;
+
+        CombatResult result;
+        if (overallRatio >= ENGAGE_THRESHOLD) {
+            result = CombatResult.ENGAGE;
+        } else if (overallRatio < RETREAT_THRESHOLD) {
+            result = CombatResult.RETREAT;
+        } else {
+            result = CombatResult.REGROUP;
+        }
+
+        snapshot.result = result;
+        lastSnapshots.put(squad.getId(), snapshot);
+
+        return result;
     }
 
     private double computeFriendlyStrength(ManagedUnit mu, Position engagementCenter) {
@@ -104,11 +133,6 @@ public class HorizonCombatSimulator implements CombatSimulator {
         double dist = unit.getPosition().getDistance(engagementCenter);
         double distWeight = distanceWeight(dist);
 
-        double heightMod = 1.0;
-        if (!type.isFlyer() && isRanged(type)) {
-            // Friendly height advantage not tracked per-unit, skip for now
-        }
-
         double cloak = 1.0;
         if ((type == UnitType.Zerg_Lurker && unit.isBurrowed()) || type == UnitType.Protoss_Dark_Templar) {
             if (!unit.isDetected()) {
@@ -121,7 +145,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
             prepPenalty = 0.3;
         }
 
-        return base * hpWeight * distWeight * heightMod * cloak * prepPenalty;
+        return base * hpWeight * distWeight * cloak * prepPenalty;
     }
 
     private double groundToGroundStrength(ManagedUnit mu) {
@@ -148,5 +172,31 @@ public class HorizonCombatSimulator implements CombatSimulator {
     private boolean isRanged(UnitType type) {
         if (type.groundWeapon() != null && type.groundWeapon().maxRange() > 32) return true;
         return type.airWeapon() != null && type.airWeapon().maxRange() > 32;
+    }
+
+    public static class UnitDebugEntry {
+        public final Position position;
+        public final UnitType type;
+        public final double strength;
+        public final boolean isAdjacent;
+
+        public UnitDebugEntry(Position position, UnitType type, double strength, boolean isAdjacent) {
+            this.position = position;
+            this.type = type;
+            this.strength = strength;
+            this.isAdjacent = isAdjacent;
+        }
+    }
+
+    public static class DebugSnapshot {
+        public Position squadCenter;
+        public final List<UnitDebugEntry> friendlyUnits = new ArrayList<>();
+        public final List<UnitDebugEntry> enemyUnits = new ArrayList<>();
+        public double friendlyTotal;
+        public double enemyTotal;
+        public double groundRatio;
+        public double combinedRatio;
+        public double overallRatio;
+        public CombatResult result;
     }
 }

@@ -143,6 +143,9 @@ public class Debug {
         if (config.debugContainment) {
             debugContainment();
         }
+        if (config.debugCombatSim) {
+            debugCombatSim();
+        }
         if (config.debugProductionQueue) {
             debugProductionQueue();
         }
@@ -448,6 +451,43 @@ public class Debug {
             sb.append(" ").append(shortName).append(":").append(entry.getValue());
         }
         return sb.toString();
+    }
+
+    private void debugCombatSim() {
+        for (Squad squad : squadManager.fightSquads) {
+            if (!squad.isGroundSquad()) continue;
+            if (!(squad.getCombatSimulator() instanceof unit.squad.horizon.HorizonCombatSimulator)) continue;
+            unit.squad.horizon.HorizonCombatSimulator sim =
+                    (unit.squad.horizon.HorizonCombatSimulator) squad.getCombatSimulator();
+            unit.squad.horizon.HorizonCombatSimulator.DebugSnapshot snap = sim.getLastSnapshots().get(squad.getId());
+            if (snap == null) continue;
+
+            Color resultColor = snap.result == unit.squad.CombatSimulator.CombatResult.ENGAGE ? Color.Green
+                    : snap.result == unit.squad.CombatSimulator.CombatResult.RETREAT ? Color.Red : Color.Yellow;
+
+            game.drawCircleMap(snap.squadCenter, (int) 768, resultColor);
+            game.drawTextMap(snap.squadCenter.getX() - 40, snap.squadCenter.getY() - 20,
+                    String.format("%s ratio=%.2f", snap.result, snap.overallRatio), Text.White);
+            game.drawTextMap(snap.squadCenter.getX() - 40, snap.squadCenter.getY() - 10,
+                    String.format("F=%.1f E=%.1f gR=%.2f cR=%.2f",
+                            snap.friendlyTotal, snap.enemyTotal, snap.groundRatio, snap.combinedRatio), Text.White);
+
+            for (unit.squad.horizon.HorizonCombatSimulator.UnitDebugEntry entry : snap.friendlyUnits) {
+                Color c = entry.isAdjacent ? Color.Cyan : Color.Green;
+                game.drawCircleMap(entry.position, 6, c);
+                String shortName = entry.type.toString().replace("Zerg_", "");
+                game.drawTextMap(entry.position.getX() + 8, entry.position.getY() - 4,
+                        String.format("%s %.1f", shortName, entry.strength), Text.Green);
+            }
+
+            for (unit.squad.horizon.HorizonCombatSimulator.UnitDebugEntry entry : snap.enemyUnits) {
+                game.drawCircleMap(entry.position, 6, Color.Red);
+                String shortName = entry.type.toString()
+                        .replace("Protoss_", "").replace("Terran_", "").replace("Zerg_", "");
+                game.drawTextMap(entry.position.getX() + 8, entry.position.getY() - 4,
+                        String.format("%s %.1f", shortName, entry.strength), Text.Red);
+            }
+        }
     }
 
     public void debugManagedUnit(ManagedUnit managedUnit) {
