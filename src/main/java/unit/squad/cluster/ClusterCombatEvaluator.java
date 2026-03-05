@@ -1,0 +1,266 @@
+package unit.squad.cluster;
+
+import bwapi.Game;
+import bwapi.Position;
+import bwapi.Unit;
+import bwapi.UnitType;
+import bwapi.WeaponType;
+import bwem.BWEM;
+import info.GameState;
+import unit.managed.ManagedUnit;
+import unit.squad.CombatSimulator;
+import unit.squad.Squad;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+public class ClusterCombatEvaluator implements CombatSimulator {
+
+    private static final double WIN_THRESHOLD = 1.0;
+    private static final double WIN_THRESHOLD_ENGAGED = 0.8;
+    private static final double CLUSTER_RELEVANCE_RADIUS = 512.0;
+
+    private int lastClusterFrame = -1;
+    private List<EnemyCluster> cachedClusters = new ArrayList<>();
+    private Map<ManagedUnit, UnitDisposition> lastDispositions = new HashMap<>();
+    private List<ClusterEvaluation> lastEvaluations = new ArrayList<>();
+
+    @Override
+    public CombatResult evaluate(Squad squad, Set<ManagedUnit> reinforcements, GameState gameState) {
+        if (gameState.isAllIn()) {
+            setAllAdvance(squad, reinforcements);
+            return CombatResult.ENGAGE;
+        }
+
+        Game game = gameState.getGame();
+        BWEM bwem = gameState.getBwem();
+        int currentFrame = game.getFrameCount();
+
+        if (currentFrame != lastClusterFrame) {
+            cachedClusters = ClusterAnalysis.cluster(
+                    gameState.getDetectedEnemyUnits(),
+                    gameState.getCompletedEnemyBuildings());
+            lastClusterFrame = currentFrame;
+        }
+
+        lastDispositions.clear();
+        lastEvaluations.clear();
+
+        List<EnemyCluster> relevantClusters = findRelevantClusters(squad);
+        if (relevantClusters.isEmpty()) {
+            setAllAdvance(squad, reinforcements);
+            return CombatResult.ENGAGE;
+        }
+
+        Set<ManagedUnit> allFriendlies = new HashSet<>(squad.getMembers());
+        allFriendlies.addAll(reinforcements);
+
+        boolean anyLosing = false;
+        boolean anyWinning = false;
+
+        for (EnemyCluster cluster : relevantClusters) {
+            List<ManagedUnit> front = EngagementCalculator.identifyFront(allFriendlies, cluster);
+            if (front.isEmpty()) continue;
+
+            boolean hasCloakedThreat = hasCloakedWithoutDetection(cluster, squad, gameState);
+
+            SupplyBreakdown frontSupply;
+            if (hasCloakedThreat) {
+                frontSupply = new SupplyBreakdown(0, 0, 0, 0);
+            } else {
+                frontSupply = SupplyCalculator.calculateFriendly(front);
+            }
+            SupplyBreakdown enemySupply = cluster.getSupply();
+
+            Position frontCentroid = computeCentroid(front);
+            Position enemyVanguard = findVanguard(cluster, frontCentroid);
+
+            TerrainModifier.ModifiedSupply modified = TerrainModifier.applyModifiers(
+                    frontSupply, enemySupply, frontCentroid, enemyVanguard, game, bwem);
+
+            boolean nearlyEngaged = isAnyNearlyEngaged(squad.getMembers(), cluster);
+            double threshold = nearlyEngaged ? WIN_THRESHOLD_ENGAGED : WIN_THRESHOLD;
+            boolean expectWin = modified.getFrontSupply().total() > threshold * modified.getEnemySupply().total();
+
+            ClusterEvaluation eval = new ClusterEvaluation(cluster, front, expectWin,
+                    modified.getFrontSupply().total(), modified.getEnemySupply().total());
+            lastEvaluations.add(eval);
+
+            if (expectWin) {
+                anyWinning = true;
+            } else {
+                anyLosing = true;
+            }
+
+            assignDispositions(squad.getMembers(), cluster, front, expectWin);
+        }
+
+        if (anyLosing && !anyWinning) {
+            return CombatResult.RETREAT;
+        }
+        return CombatResult.ENGAGE;
+    }
+
+    public Map<ManagedUnit, UnitDisposition> getLastDispositions() {
+        return lastDispositions;
+    }
+
+    public List<ClusterEvaluation> getLastEvaluations() {
+        return lastEvaluations;
+    }
+
+    public List<EnemyCluster> getCachedClusters() {
+        return cachedClusters;
+    }
+
+    private void assignDispositions(Set<ManagedUnit> squadMembers, EnemyCluster cluster,
+                                    List<ManagedUnit> front, boolean expectWin) {
+        Set<ManagedUnit> frontSet = new HashSet<>(front);
+
+        for (ManagedUnit mu : squadMembers) {
+            if (lastDispositions.containsKey(mu) && lastDispositions.get(mu) == UnitDisposition.RETREAT) {
+                continue;
+            }
+
+            if (expectWin) {
+                lastDispositions.put(mu, UnitDisposition.ADVANCE);
+                continue;
+            }
+
+            if (frontSet.contains(mu)) {
+                boolean nearFront = EngagementCalculator.isNearFront(mu, cluster);
+                if (nearFront) {
+                    lastDispositions.put(mu, UnitDisposition.HOLD);
+                } else if (EngagementCalculator.isInFront(mu, cluster)) {
+                    if (shouldPushThrough(mu, cluster)) {
+                        lastDispositions.put(mu, UnitDisposition.ADVANCE);
+                    } else {
+                        lastDispositions.put(mu, UnitDisposition.RETREAT);
+                    }
+                }
+            } else {
+                lastDispositions.putIfAbsent(mu, UnitDisposition.HOLD);
+            }
+        }
+    }
+
+    private boolean shouldPushThrough(ManagedUnit friendly, EnemyCluster cluster) {
+        Unit unit = friendly.getUnit();
+        UnitType type = unit.getType();
+        WeaponType groundWeapon = type.groundWeapon();
+        if (groundWeapon == null || groundWeapon == WeaponType.None) return false;
+        boolean isMelee = groundWeapon.maxRange() <= 32;
+        if (!isMelee) return false;
+
+        if (!unit.isAttacking()) return false;
+
+        for (Unit enemy : cluster.getMembers()) {
+            UnitType enemyType = enemy.getType();
+            WeaponType enemyWeapon = enemyType.groundWeapon();
+            if (enemyWeapon != null && enemyWeapon != WeaponType.None && enemyWeapon.maxRange() > 32) {
+                double topSpeed = enemyType.topSpeed();
+                if (topSpeed < type.topSpeed()) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private boolean hasCloakedWithoutDetection(EnemyCluster cluster, Squad squad, GameState gameState) {
+        for (Unit enemy : cluster.getMembers()) {
+            if (!enemy.isDetected() && (enemy.isCloaked() || enemy.isBurrowed())) {
+                boolean hasDetection = false;
+                for (ManagedUnit mu : squad.getMembers()) {
+                    if (mu.getUnit().getType() == UnitType.Zerg_Overlord
+                            && mu.getUnit().getPosition().getDistance(enemy.getPosition()) < 384) {
+                        hasDetection = true;
+                        break;
+                    }
+                }
+                if (!hasDetection) return true;
+            }
+        }
+        return false;
+    }
+
+    private void setAllAdvance(Squad squad, Set<ManagedUnit> reinforcements) {
+        lastDispositions.clear();
+        for (ManagedUnit mu : squad.getMembers()) {
+            lastDispositions.put(mu, UnitDisposition.ADVANCE);
+        }
+    }
+
+    private List<EnemyCluster> findRelevantClusters(Squad squad) {
+        List<EnemyCluster> relevant = new ArrayList<>();
+        Position center = squad.getCenter();
+        if (center == null) return relevant;
+
+        for (EnemyCluster cluster : cachedClusters) {
+            if (center.getDistance(cluster.getCentroid()) <= CLUSTER_RELEVANCE_RADIUS + cluster.getRadius()) {
+                relevant.add(cluster);
+            }
+        }
+        return relevant;
+    }
+
+    private boolean isAnyNearlyEngaged(Set<ManagedUnit> units, EnemyCluster cluster) {
+        for (ManagedUnit mu : units) {
+            if (EngagementCalculator.isNearlyEngaged(mu, cluster)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private Position computeCentroid(List<ManagedUnit> units) {
+        if (units.isEmpty()) return new Position(0, 0);
+        int x = 0, y = 0;
+        for (ManagedUnit mu : units) {
+            Position p = mu.getUnit().getPosition();
+            x += p.getX();
+            y += p.getY();
+        }
+        return new Position(x / units.size(), y / units.size());
+    }
+
+    private Position findVanguard(EnemyCluster cluster, Position frontCentroid) {
+        Position closest = cluster.getCentroid();
+        double minDist = Double.MAX_VALUE;
+        for (Unit enemy : cluster.getMembers()) {
+            double dist = frontCentroid.getDistance(enemy.getPosition());
+            if (dist < minDist) {
+                minDist = dist;
+                closest = enemy.getPosition();
+            }
+        }
+        return closest;
+    }
+
+    public static class ClusterEvaluation {
+        private final EnemyCluster cluster;
+        private final List<ManagedUnit> front;
+        private final boolean expectWin;
+        private final double frontSupply;
+        private final double enemySupply;
+
+        public ClusterEvaluation(EnemyCluster cluster, List<ManagedUnit> front, boolean expectWin,
+                                 double frontSupply, double enemySupply) {
+            this.cluster = cluster;
+            this.front = front;
+            this.expectWin = expectWin;
+            this.frontSupply = frontSupply;
+            this.enemySupply = enemySupply;
+        }
+
+        public EnemyCluster getCluster() { return cluster; }
+        public List<ManagedUnit> getFront() { return front; }
+        public boolean isExpectWin() { return expectWin; }
+        public double getFrontSupply() { return frontSupply; }
+        public double getEnemySupply() { return enemySupply; }
+    }
+}

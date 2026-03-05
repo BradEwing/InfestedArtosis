@@ -20,6 +20,8 @@ import org.bk.ass.sim.BWMirrorAgentFactory;
 import org.bk.ass.sim.Simulator;
 import unit.managed.ManagedUnit;
 import unit.managed.UnitRole;
+import unit.squad.cluster.ClusterCombatEvaluator;
+import unit.squad.cluster.UnitDisposition;
 import util.Arc;
 import util.Vec2;
 
@@ -679,7 +681,8 @@ public class SquadManager {
         }
 
         Set<ManagedUnit> reinforcements = getNearbyReinforcements(squad, REINFORCEMENT_RADIUS);
-        CombatSimulator.CombatResult result = squad.getCombatSimulator().evaluate(squad, reinforcements, gameState);
+        CombatSimulator combatSimulator = squad.getCombatSimulator();
+        CombatSimulator.CombatResult result = combatSimulator.evaluate(squad, reinforcements, gameState);
 
         switch (result) {
             case RETREAT:
@@ -695,7 +698,11 @@ public class SquadManager {
 
             case ENGAGE:
                 squad.setStatus(SquadStatus.FIGHT);
-                assignFightTargets(squad, managedFighters, true);
+                if (combatSimulator instanceof ClusterCombatEvaluator) {
+                    assignClusterFightTargets(squad, managedFighters, (ClusterCombatEvaluator) combatSimulator, now);
+                } else {
+                    assignFightTargets(squad, managedFighters, true);
+                }
                 if (!retreatLocked) {
                     squad.startFightLock(now);
                 }
@@ -738,6 +745,39 @@ public class SquadManager {
                 managedUnit.clearRetreatStart();
             }
             assignEnemyTarget(managedUnit, squad);
+        }
+    }
+
+    private void assignClusterFightTargets(Squad squad, HashSet<ManagedUnit> managedFighters,
+                                           ClusterCombatEvaluator evaluator, int currentFrame) {
+        Map<ManagedUnit, UnitDisposition> dispositions = evaluator.getLastDispositions();
+        Position rallyPoint = gameState.getSquadRallyPoint();
+
+        for (ManagedUnit managedUnit : managedFighters) {
+            UnitDisposition disposition = dispositions.getOrDefault(managedUnit, UnitDisposition.ADVANCE);
+
+            switch (disposition) {
+                case ADVANCE:
+                    managedUnit.setRole(UnitRole.FIGHT);
+                    managedUnit.clearRetreatStart();
+                    assignEnemyTarget(managedUnit, squad);
+                    break;
+                case HOLD:
+                    managedUnit.setRole(UnitRole.FIGHT);
+                    managedUnit.setFightTarget(null);
+                    managedUnit.setMovementTargetPosition(null);
+                    break;
+                case RETREAT:
+                    managedUnit.setRole(UnitRole.RETREAT);
+                    managedUnit.markRetreatStart(currentFrame);
+                    Integer retreatStartFrame = managedUnit.getRetreatStartFrame();
+                    if (retreatStartFrame != null && currentFrame - retreatStartFrame >= RETREAT_TIMEOUT_FRAMES) {
+                        managedUnit.setRetreatTarget(rallyPoint);
+                    } else {
+                        managedUnit.setRetreatTarget(managedUnit.getRetreatPosition());
+                    }
+                    break;
+            }
         }
     }
 
@@ -1134,7 +1174,7 @@ public class SquadManager {
         if (type == UnitType.Zerg_Zergling) {
             newSquad = new ZerglingSquad();
             newSquad.setType(type);
-            newSquad.setCombatSimulator(new AssCombatSimulator());
+            newSquad.setCombatSimulator(new ClusterCombatEvaluator());
         } else if (type == UnitType.Zerg_Mutalisk) {
             newSquad = new MutaliskSquad();
         } else if (type == UnitType.Zerg_Scourge) {
@@ -1142,7 +1182,7 @@ public class SquadManager {
         } else {
             newSquad = new Squad();
             newSquad.setType(type);
-            newSquad.setCombatSimulator(new AssCombatSimulator());
+            newSquad.setCombatSimulator(new ClusterCombatEvaluator());
         }
 
         newSquad.setStatus(SquadStatus.FIGHT);

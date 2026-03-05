@@ -44,6 +44,7 @@ public final class Config {
     public boolean debugStaticDefenseCoverage = false;
     public boolean debugPsiStorms = false;
     public boolean debugContainment = false;
+    public boolean debugClusters = false;
     
     // Production and planning
     public boolean debugProductionQueue = false;
@@ -79,6 +80,7 @@ public final class Config {
         this.debugStaticDefenseCoverage = Boolean.parseBoolean(dotenv.get("IA_DEBUG_STATIC_DEFENSE_COVERAGE"));
         this.debugPsiStorms = Boolean.parseBoolean(dotenv.get("IA_DEBUG_PSI_STORMS"));
         this.debugContainment = Boolean.parseBoolean(dotenv.get("IA_DEBUG_CONTAINMENT"));
+        this.debugClusters = Boolean.parseBoolean(dotenv.get("IA_DEBUG_CLUSTERS"));
         this.debugProductionQueue = Boolean.parseBoolean(dotenv.get("IA_DEBUG_PRODUCTION_QUEUE"));
         this.debugInProgressQueue = Boolean.parseBoolean(dotenv.get("IA_DEBUG_IN_PROGRESS_QUEUE"));
         this.debugScheduledPlannedItems = Boolean.parseBoolean(dotenv.get("IA_DEBUG_SCHEDULED_PLANNED_ITEMS"));

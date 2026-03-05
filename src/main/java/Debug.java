@@ -23,9 +23,13 @@ import learning.Record;
 import learning.OpponentRecord;
 import strategy.buildorder.BuildOrder;
 import unit.managed.ManagedUnit;
+import unit.squad.CombatSimulator;
 import unit.squad.Squad;
 import unit.squad.SquadManager;
 import unit.squad.SquadStatus;
+import unit.squad.cluster.ClusterCombatEvaluator;
+import unit.squad.cluster.EnemyCluster;
+import unit.squad.cluster.UnitDisposition;
 import unit.managed.UnitRole;
 import util.Arc;
 import macro.plan.Plan;
@@ -142,6 +146,9 @@ public class Debug {
         }
         if (config.debugContainment) {
             debugContainment();
+        }
+        if (config.debugClusters) {
+            debugClusters();
         }
         if (config.debugProductionQueue) {
             debugProductionQueue();
@@ -430,6 +437,52 @@ public class Debug {
         for (Squad squad : squadManager.fightSquads) {
             if (squad.getStatus() == SquadStatus.CONTAIN) {
                 game.drawTextMap(squad.getCenter(), String.format("CONTAIN (%d)", squad.size()), Text.Green);
+            }
+        }
+    }
+
+    private void debugClusters() {
+        boolean clustersDrawn = false;
+
+        for (Squad squad : squadManager.fightSquads) {
+            CombatSimulator sim = squad.getCombatSimulator();
+            if (!(sim instanceof ClusterCombatEvaluator)) continue;
+            ClusterCombatEvaluator evaluator = (ClusterCombatEvaluator) sim;
+
+            if (!clustersDrawn) {
+                for (EnemyCluster cluster : evaluator.getCachedClusters()) {
+                    Position centroid = cluster.getCentroid();
+                    int radius = Math.max(cluster.getRadius(), 32);
+                    game.drawCircleMap(centroid, radius, Color.Orange, false);
+                    game.drawTextMap(centroid.getX() + 8, centroid.getY() - 8,
+                            String.format("C:%d S:%.0f", cluster.size(), cluster.getSupply().total()), Text.Orange);
+                }
+                clustersDrawn = true;
+            }
+
+            for (ClusterCombatEvaluator.ClusterEvaluation eval : evaluator.getLastEvaluations()) {
+                Position centroid = eval.getCluster().getCentroid();
+                String result = eval.isExpectWin() ? "WIN" : "LOSE";
+                game.drawTextMap(centroid.getX() + 8, centroid.getY() + 2,
+                        String.format("F:%.0f vs E:%.0f = %s", eval.getFrontSupply(), eval.getEnemySupply(), result),
+                        eval.isExpectWin() ? Text.Green : Text.Red);
+            }
+
+            Map<ManagedUnit, UnitDisposition> dispositions = evaluator.getLastDispositions();
+            for (Map.Entry<ManagedUnit, UnitDisposition> entry : dispositions.entrySet()) {
+                ManagedUnit mu = entry.getKey();
+                Position unitPos = mu.getUnit().getPosition();
+                switch (entry.getValue()) {
+                    case ADVANCE:
+                        game.drawCircleMap(unitPos, 6, Color.Green, true);
+                        break;
+                    case HOLD:
+                        game.drawCircleMap(unitPos, 6, Color.Yellow, true);
+                        break;
+                    case RETREAT:
+                        game.drawCircleMap(unitPos, 6, Color.Red, true);
+                        break;
+                }
             }
         }
     }
