@@ -26,6 +26,10 @@ public class ObservedUnit {
         this.proxied = proxied;
     }
 
+    public Position getEffectivePosition() {
+        return unit.isVisible() ? unit.getPosition() : lastKnownLocation;
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;

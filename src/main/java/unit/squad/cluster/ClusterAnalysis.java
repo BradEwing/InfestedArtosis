@@ -1,7 +1,7 @@
 package unit.squad.cluster;
 
-import bwapi.Unit;
 import bwapi.UnitType;
+import info.tracking.ObservedUnit;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -18,41 +18,42 @@ public final class ClusterAnalysis {
 
     private ClusterAnalysis() {}
 
-    public static List<EnemyCluster> cluster(Set<Unit> enemies, Set<Unit> buildings) {
+    public static List<EnemyCluster> cluster(Set<ObservedUnit> enemies, Set<ObservedUnit> buildings) {
         return cluster(enemies, buildings, DEFAULT_CLUSTER_THRESHOLD);
     }
 
-    public static List<EnemyCluster> cluster(Set<Unit> enemies, Set<Unit> buildings, double threshold) {
-        List<Unit> candidates = new ArrayList<>();
-        for (Unit u : enemies) {
-            if (isValidTarget(u)) {
-                candidates.add(u);
+    public static List<EnemyCluster> cluster(Set<ObservedUnit> enemies, Set<ObservedUnit> buildings, double threshold) {
+        List<ObservedUnit> candidates = new ArrayList<>();
+        for (ObservedUnit ou : enemies) {
+            if (isValidTarget(ou)) {
+                candidates.add(ou);
             }
         }
-        for (Unit b : buildings) {
-            if (isHostileBuilding(b.getType()) && !b.isMorphing() && !b.isBeingConstructed()) {
-                candidates.add(b);
+        for (ObservedUnit ou : buildings) {
+            UnitType type = ou.getUnitType();
+            if (isHostileBuilding(type) && !ou.getUnit().isMorphing() && !ou.getUnit().isBeingConstructed()) {
+                candidates.add(ou);
             }
         }
 
-        Set<Unit> assigned = new HashSet<>();
+        Set<ObservedUnit> assigned = new HashSet<>();
         List<EnemyCluster> clusters = new ArrayList<>();
 
-        for (Unit seed : candidates) {
+        for (ObservedUnit seed : candidates) {
             if (assigned.contains(seed)) continue;
 
-            Set<Unit> clusterMembers = new HashSet<>();
-            Queue<Unit> frontier = new LinkedList<>();
+            Set<ObservedUnit> clusterMembers = new HashSet<>();
+            Queue<ObservedUnit> frontier = new LinkedList<>();
             frontier.add(seed);
             assigned.add(seed);
 
             while (!frontier.isEmpty()) {
-                Unit current = frontier.poll();
+                ObservedUnit current = frontier.poll();
                 clusterMembers.add(current);
 
-                for (Unit other : candidates) {
+                for (ObservedUnit other : candidates) {
                     if (assigned.contains(other)) continue;
-                    if (current.getPosition().getDistance(other.getPosition()) <= threshold) {
+                    if (current.getEffectivePosition().getDistance(other.getEffectivePosition()) <= threshold) {
                         assigned.add(other);
                         frontier.add(other);
                     }
@@ -65,12 +66,11 @@ public final class ClusterAnalysis {
         return clusters;
     }
 
-    private static boolean isValidTarget(Unit unit) {
-        UnitType type = unit.getType();
+    private static boolean isValidTarget(ObservedUnit ou) {
+        UnitType type = ou.getUnitType();
         if (type == UnitType.Unknown) return false;
-        if (type.isWorker()) return false;
-        if (unit.isBeingConstructed() || unit.isMorphing()) return false;
-        if (type.isBuilding()) return false;
+        if (type.isWorker() || type.isBuilding()) return false;
+        if (ou.getUnit().isBeingConstructed() || ou.getUnit().isMorphing()) return false;
         return true;
     }
 }

@@ -261,13 +261,8 @@ public class MutaliskSquad extends Squad {
 
     private boolean isAntiAir(Unit unit) {
         UnitType type = unit.getType();
-        if (type.airWeapon() != null && type.airWeapon().maxRange() > 0) {
-            return true;
-        }
-        if (type == UnitType.Terran_Bunker && !unit.getLoadedUnits().isEmpty()) {
-            return true;
-        }
-        return false;
+        return (type.airWeapon() != null && type.airWeapon().maxRange() > 0)
+                || (type == UnitType.Terran_Bunker && !unit.getLoadedUnits().isEmpty());
     }
 
     private boolean isAAStaticDefense(Unit unit) {
@@ -279,8 +274,7 @@ public class MutaliskSquad extends Squad {
     }
 
     private boolean isWorker(Unit unit) {
-        UnitType t = unit.getType();
-        return t == UnitType.Protoss_Probe || t == UnitType.Terran_SCV || t == UnitType.Zerg_Drone;
+        return unit.getType().isWorker();
     }
 
     private Unit getClosestUnit(Position from, List<Unit> units) {

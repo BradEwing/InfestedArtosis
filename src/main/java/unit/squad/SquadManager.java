@@ -634,8 +634,6 @@ public class SquadManager {
                     squad.startFightLock(now);
                 }
                 break;
-            default:
-                return;
         }
     }
 

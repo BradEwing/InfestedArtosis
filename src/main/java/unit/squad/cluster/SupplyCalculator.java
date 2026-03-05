@@ -3,6 +3,7 @@ package unit.squad.cluster;
 import bwapi.Unit;
 import bwapi.UnitType;
 import bwapi.WeaponType;
+import info.tracking.ObservedUnit;
 import unit.managed.ManagedUnit;
 
 import java.util.Collection;
@@ -13,16 +14,16 @@ public final class SupplyCalculator {
 
     private SupplyCalculator() {}
 
-    public static SupplyBreakdown calculateEnemy(Collection<Unit> units) {
+    public static SupplyBreakdown calculateEnemy(Collection<ObservedUnit> units) {
         double ground = 0;
         double rangedGround = 0;
         double airToGround = 0;
         double airToAir = 0;
         double antiAir = 0;
 
-        for (Unit unit : units) {
-            UnitType type = unit.getType();
-            double hpRatio = hpRatio(unit);
+        for (ObservedUnit ou : units) {
+            UnitType type = ou.getUnitType();
+            double hpRatio = hpRatio(ou.getUnit());
             double supply = effectiveSupply(type) * hpRatio;
 
             if (type.isBuilding()) {

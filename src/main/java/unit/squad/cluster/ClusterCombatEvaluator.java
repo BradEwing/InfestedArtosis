@@ -7,6 +7,8 @@ import bwapi.UnitType;
 import bwapi.WeaponType;
 import bwem.BWEM;
 import info.GameState;
+import info.tracking.ObservedUnit;
+import lombok.Getter;
 import unit.managed.ManagedUnit;
 import unit.squad.CombatSimulator;
 import unit.squad.Squad;
@@ -23,6 +25,7 @@ public class ClusterCombatEvaluator implements CombatSimulator {
     private static final double WIN_THRESHOLD = 1.0;
     private static final double WIN_THRESHOLD_ENGAGED = 0.8;
     private static final double CLUSTER_RELEVANCE_RADIUS = 512.0;
+    private static final int FOG_STALENESS_FRAMES = 360;
 
     private int lastClusterFrame = -1;
     private List<EnemyCluster> cachedClusters = new ArrayList<>();
@@ -42,8 +45,8 @@ public class ClusterCombatEvaluator implements CombatSimulator {
 
         if (currentFrame != lastClusterFrame) {
             cachedClusters = ClusterAnalysis.cluster(
-                    gameState.getDetectedEnemyUnits(),
-                    gameState.getCompletedEnemyBuildings());
+                    gameState.getLivingCombatUnits(currentFrame, FOG_STALENESS_FRAMES),
+                    gameState.getCompletedEnemyBuildingsObserved());
             lastClusterFrame = currentFrame;
         }
 
@@ -131,7 +134,7 @@ public class ClusterCombatEvaluator implements CombatSimulator {
         Set<Unit> result = new HashSet<>();
         for (ClusterEvaluation eval : lastEvaluations) {
             if (!eval.isExpectWin()) {
-                result.addAll(eval.getCluster().getMembers());
+                result.addAll(eval.getCluster().getUnits());
             }
         }
         return result;
@@ -179,8 +182,8 @@ public class ClusterCombatEvaluator implements CombatSimulator {
 
         if (isMelee) {
             if (!unit.isAttacking()) return false;
-            for (Unit enemy : cluster.getMembers()) {
-                UnitType enemyType = enemy.getType();
+            for (ObservedUnit ou : cluster.getMembers()) {
+                UnitType enemyType = ou.getUnitType();
                 WeaponType enemyWeapon = enemyType.groundWeapon();
                 if (enemyWeapon != null && enemyWeapon != WeaponType.None && enemyWeapon.maxRange() > 32) {
                     if (enemyType.topSpeed() < type.topSpeed()) {
@@ -191,8 +194,8 @@ public class ClusterCombatEvaluator implements CombatSimulator {
         } else {
             double engDist = EngagementCalculator.engagementDistance(friendly, cluster);
             if (engDist == 0) {
-                for (Unit enemy : cluster.getMembers()) {
-                    if (enemy.getType() == UnitType.Terran_Siege_Tank_Siege_Mode) {
+                for (ObservedUnit ou : cluster.getMembers()) {
+                    if (ou.getUnitType() == UnitType.Terran_Siege_Tank_Siege_Mode) {
                         return true;
                     }
                 }
@@ -202,12 +205,13 @@ public class ClusterCombatEvaluator implements CombatSimulator {
     }
 
     private boolean hasCloakedWithoutDetection(EnemyCluster cluster, Squad squad, GameState gameState) {
-        for (Unit enemy : cluster.getMembers()) {
-            if (!enemy.isDetected() && (enemy.isCloaked() || enemy.isBurrowed())) {
+        for (ObservedUnit ou : cluster.getMembers()) {
+            Unit enemy = ou.getUnit();
+            if (enemy.isVisible() && !enemy.isDetected() && (enemy.isCloaked() || enemy.isBurrowed())) {
                 boolean hasDetection = false;
                 for (ManagedUnit mu : squad.getMembers()) {
                     if (mu.getUnit().getType() == UnitType.Zerg_Overlord
-                            && mu.getUnit().getPosition().getDistance(enemy.getPosition()) < 384) {
+                            && mu.getUnit().getPosition().getDistance(ou.getEffectivePosition()) < 384) {
                         hasDetection = true;
                         break;
                     }
@@ -264,18 +268,22 @@ public class ClusterCombatEvaluator implements CombatSimulator {
     }
 
     private Position findVanguard(EnemyCluster cluster, Position frontCentroid) {
+        if (cluster.getVisibleMembers().isEmpty()) {
+            return cluster.getCentroid();
+        }
         Position closest = cluster.getCentroid();
         double minDist = Double.MAX_VALUE;
-        for (Unit enemy : cluster.getMembers()) {
-            double dist = frontCentroid.getDistance(enemy.getPosition());
+        for (ObservedUnit ou : cluster.getVisibleMembers()) {
+            double dist = frontCentroid.getDistance(ou.getEffectivePosition());
             if (dist < minDist) {
                 minDist = dist;
-                closest = enemy.getPosition();
+                closest = ou.getEffectivePosition();
             }
         }
         return closest;
     }
 
+    @Getter
     public static class ClusterEvaluation {
         private final EnemyCluster cluster;
         private final List<ManagedUnit> front;
@@ -291,11 +299,5 @@ public class ClusterCombatEvaluator implements CombatSimulator {
             this.frontSupply = frontSupply;
             this.enemySupply = enemySupply;
         }
-
-        public EnemyCluster getCluster() { return cluster; }
-        public List<ManagedUnit> getFront() { return front; }
-        public boolean isExpectWin() { return expectWin; }
-        public double getFrontSupply() { return frontSupply; }
-        public double getEnemySupply() { return enemySupply; }
     }
 }

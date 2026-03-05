@@ -18,6 +18,7 @@ import info.map.BuildingPlanner;
 import info.map.GameMap;
 import info.map.MapTile;
 import info.tracking.ObservedBulletTracker;
+import info.tracking.ObservedUnit;
 import info.tracking.ObservedUnitTracker;
 import info.tracking.PsiStormTracker;
 import info.tracking.StrategyTracker;
@@ -134,23 +135,18 @@ public class GameState {
     public void onFrame() {
         observedUnitTracker.onFrame();
         strategyTracker.onFrame();
-        clearVisibleEnemyWorkerLocations();
+        invalidateVisibleFogPositions();
     }
 
-    private void clearVisibleEnemyWorkerLocations() {
-        Set<Position> lastKnownWorkerPositions = observedUnitTracker.getLastKnownPositionsOfLivingUnits(
-            UnitType.Terran_SCV,
-            UnitType.Protoss_Probe,
-            UnitType.Zerg_Drone
-        );
+    private void invalidateVisibleFogPositions() {
+        Set<Position> fogPositions = observedUnitTracker.getLastKnownPositionsOfFogNonBuildingUnits();
 
-        Set<Position> visibleWorkerPositions = lastKnownWorkerPositions.stream()
-            .filter(p -> p != null)
+        Set<Position> visibleEmptyPositions = fogPositions.stream()
             .filter(p -> game.isVisible(p.toTilePosition()))
             .collect(Collectors.toSet());
 
-        if (!visibleWorkerPositions.isEmpty()) {
-            observedUnitTracker.clearLastKnownLocationsAt(visibleWorkerPositions);
+        if (!visibleEmptyPositions.isEmpty()) {
+            observedUnitTracker.clearVisibleEmptyLocations(visibleEmptyPositions);
         }
     }
 
@@ -762,6 +758,14 @@ public class GameState {
      */
     public Set<Unit> getDetectedEnemyUnits() {
         return observedUnitTracker.getDetectedUnits();
+    }
+
+    public Set<ObservedUnit> getLivingCombatUnits(int currentFrame, int maxStalenessFrames) {
+        return observedUnitTracker.getLivingCombatUnits(currentFrame, maxStalenessFrames);
+    }
+
+    public Set<ObservedUnit> getCompletedEnemyBuildingsObserved() {
+        return observedUnitTracker.getCompletedBuildingsObserved();
     }
 
     /**

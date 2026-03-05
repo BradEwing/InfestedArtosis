@@ -5,11 +5,11 @@ import lombok.Getter;
 @Getter
 public class SupplyBreakdown {
 
-    private double groundSupply;
-    private double rangedGroundSupply;
-    private double airToGroundSupply;
-    private double airToAirSupply;
-    private double antiAirSupply;
+    private final double groundSupply;
+    private final double rangedGroundSupply;
+    private final double airToGroundSupply;
+    private final double airToAirSupply;
+    private final double antiAirSupply;
 
     public SupplyBreakdown(double groundSupply, double rangedGroundSupply, double airToGroundSupply, double airToAirSupply) {
         this(groundSupply, rangedGroundSupply, airToGroundSupply, airToAirSupply, 0);

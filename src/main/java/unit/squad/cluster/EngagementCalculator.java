@@ -3,6 +3,7 @@ package unit.squad.cluster;
 import bwapi.Unit;
 import bwapi.UnitType;
 import bwapi.WeaponType;
+import info.tracking.ObservedUnit;
 import unit.managed.ManagedUnit;
 
 import java.util.ArrayList;
@@ -23,10 +24,10 @@ public final class EngagementCalculator {
         double minDist = Double.MAX_VALUE;
         Unit friendlyUnit = friendly.getUnit();
 
-        for (Unit enemy : cluster.getMembers()) {
-            UnitType enemyType = enemy.getType();
+        for (ObservedUnit ou : cluster.getVisibleMembers()) {
+            UnitType enemyType = ou.getUnitType();
             int weaponRange = getRelevantWeaponRange(enemyType, friendlyUnit.isFlying());
-            double pixelDist = friendlyUnit.getPosition().getDistance(enemy.getPosition());
+            double pixelDist = friendlyUnit.getPosition().getDistance(ou.getEffectivePosition());
             double engDist = Math.max(0, pixelDist - weaponRange);
             if (engDist < minDist) {
                 minDist = engDist;

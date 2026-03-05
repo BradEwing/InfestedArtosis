@@ -119,14 +119,8 @@ public class ObservedUnitTracker {
                 .stream()
                 .filter(ou -> ou.getUnitType()  == unitType)
                 .filter(ou -> ou.getDestroyedFrame() == null)
-                .map(ou -> {
-                    if (ou.getUnit().isVisible()) {
-                        return ou.getUnit().getPosition();
-                    } else {
-                        return ou.getLastKnownLocation();
-                    }
-                })
-                .filter(ou -> ou != null)
+                .map(ObservedUnit::getEffectivePosition)
+                .filter(p -> p != null)
                 .collect(Collectors.toSet());
     }
 
@@ -136,13 +130,19 @@ public class ObservedUnitTracker {
                 .stream()
                 .filter(ou -> typeSet.contains(ou.getUnitType()))
                 .filter(ou -> ou.getDestroyedFrame() == null)
-                .map(ou -> {
-                    if (ou.getUnit().isVisible()) {
-                        return ou.getUnit().getPosition();
-                    } else {
-                        return ou.getLastKnownLocation();
-                    }
-                })
+                .map(ObservedUnit::getEffectivePosition)
+                .filter(p -> p != null)
+                .collect(Collectors.toSet());
+    }
+
+    public Set<Position> getLastKnownPositionsOfFogNonBuildingUnits() {
+        return observedUnits.values()
+                .stream()
+                .filter(ou -> ou.getDestroyedFrame() == null)
+                .filter(ou -> !ou.getUnitType().isBuilding())
+                .filter(ou -> !ou.getUnit().isVisible())
+                .filter(ou -> ou.getLastKnownLocation() != null)
+                .map(ObservedUnit::getLastKnownLocation)
                 .collect(Collectors.toSet());
     }
 
@@ -164,6 +164,17 @@ public class ObservedUnitTracker {
                 .collect(Collectors.toSet());
     }
 
+    public Set<ObservedUnit> getLivingCombatUnits(int currentFrame, int maxStalenessFrames) {
+        return observedUnits.values()
+                .stream()
+                .filter(ou -> ou.getDestroyedFrame() == null)
+                .filter(ou -> !ou.getUnitType().isBuilding())
+                .filter(ou -> ou.getEffectivePosition() != null)
+                .filter(ou -> ou.getUnit().isVisible()
+                        || (currentFrame - ou.getLastObservedFrame().getFrames()) <= maxStalenessFrames)
+                .collect(Collectors.toSet());
+    }
+
     public Set<Unit> getBuilding() {
         return observedUnits.values()
                 .stream()
@@ -180,6 +191,15 @@ public class ObservedUnitTracker {
                 .filter(ou -> ou.getDestroyedFrame() == null)
                 .filter(ObservedUnit::isCompleted)
                 .map(ObservedUnit::getUnit)
+                .collect(Collectors.toSet());
+    }
+
+    public Set<ObservedUnit> getCompletedBuildingsObserved() {
+        return observedUnits.values()
+                .stream()
+                .filter(ou -> ou.getUnitType().isBuilding())
+                .filter(ou -> ou.getDestroyedFrame() == null)
+                .filter(ObservedUnit::isCompleted)
                 .collect(Collectors.toSet());
     }
 
@@ -231,7 +251,7 @@ public class ObservedUnitTracker {
     }
 
     private boolean isNearAnyPosition(ObservedUnit ou, Set<Position> positions, int distance) {
-        Position unitPos = ou.getUnit().isVisible() ? ou.getUnit().getPosition() : ou.getLastKnownLocation();
+        Position unitPos = ou.getEffectivePosition();
         if (unitPos == null) { 
             return false;
         }
@@ -280,7 +300,7 @@ public class ObservedUnitTracker {
                 .filter(ou -> ou.getUnitType() == unitType)
                 .filter(ou -> ou.getDestroyedFrame() == null)
                 .filter(ou -> {
-                    Position pos = ou.getUnit().isVisible() ? ou.getUnit().getPosition() : ou.getLastKnownLocation();
+                    Position pos = ou.getEffectivePosition();
                     return pos != null && tiles.contains(pos.toTilePosition());
                 })
                 .count();
@@ -292,7 +312,7 @@ public class ObservedUnitTracker {
                 .filter(ou -> ou.getUnitType() == unitType)
                 .filter(ou -> ou.getDestroyedFrame() == null)
                 .anyMatch(ou -> {
-                    Position pos = ou.getUnit().isVisible() ? ou.getUnit().getPosition() : ou.getLastKnownLocation();
+                    Position pos = ou.getEffectivePosition();
                     return pos != null && Distance.manhattanTileDistance(pos.toTilePosition(), tile) <= manhattanDistance;
                 });
     }
@@ -307,6 +327,20 @@ public class ObservedUnitTracker {
                 .filter(ou -> ou.getDestroyedFrame() == null)
                 .filter(ou -> ou.getLastKnownLocation() != null)
                 .filter(ou -> visibleLocations.contains(ou.getLastKnownLocation()))
+                .forEach(ou -> ou.setLastKnownLocation(null));
+    }
+
+    public void clearVisibleEmptyLocations(Set<Position> visibleEmptyPositions) {
+        if (visibleEmptyPositions == null || visibleEmptyPositions.isEmpty()) {
+            return;
+        }
+
+        observedUnits.values()
+                .stream()
+                .filter(ou -> ou.getDestroyedFrame() == null)
+                .filter(ou -> !ou.getUnit().isVisible())
+                .filter(ou -> ou.getLastKnownLocation() != null)
+                .filter(ou -> visibleEmptyPositions.contains(ou.getLastKnownLocation()))
                 .forEach(ou -> ou.setLastKnownLocation(null));
     }
 }

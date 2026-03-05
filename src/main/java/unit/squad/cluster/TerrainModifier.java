@@ -6,6 +6,7 @@ import bwapi.WalkPosition;
 import bwem.BWEM;
 import bwem.ChokePoint;
 import bwem.CPPath;
+import lombok.Getter;
 
 public final class TerrainModifier {
 
@@ -68,7 +69,6 @@ public final class TerrainModifier {
                 }
             }
         } catch (Exception e) {
-            // BWEM path errors are non-fatal
         }
         return 0;
     }
@@ -84,6 +84,7 @@ public final class TerrainModifier {
         return supply.getRangedGroundSupply() / total;
     }
 
+    @Getter
     public static class ModifiedSupply {
         private final SupplyBreakdown frontSupply;
         private final SupplyBreakdown enemySupply;
@@ -92,8 +93,5 @@ public final class TerrainModifier {
             this.frontSupply = frontSupply;
             this.enemySupply = enemySupply;
         }
-
-        public SupplyBreakdown getFrontSupply() { return frontSupply; }
-        public SupplyBreakdown getEnemySupply() { return enemySupply; }
     }
 }
