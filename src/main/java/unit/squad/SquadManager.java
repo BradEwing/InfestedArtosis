@@ -60,7 +60,7 @@ public class SquadManager {
     private static final double MUTALISK_JOIN_DISTANCE = 128;
     private static final double SQUAD_MERGE_DISTANCE = 256.0;
     private static final double ENEMY_DETECTION_RADIUS = 512.0;
-    private static final int RETREAT_TIMEOUT_FRAMES = 240;
+
     private static final int RETREAT_VECTOR_MAGNITUDE = 192;
     private static final int COMBAT_SIM_DURATION_FRAMES = 150;
     private static final double DEFENSE_WIN_THRESHOLD = 0.50;
@@ -551,7 +551,6 @@ public class SquadManager {
                 int now = game.getFrameCount();
                 for (ManagedUnit managedUnit : managedFighters) {
                     managedUnit.setRole(UnitRole.RETREAT);
-                    managedUnit.markRetreatStart(now);
                     Position retreatTarget = calculateStormRetreatPosition(managedUnit.getUnit().getPosition(), stormPositions);
                     managedUnit.setRetreatTarget(retreatTarget);
                 }
@@ -563,7 +562,7 @@ public class SquadManager {
         if (isSquadNearFriendlySunken(squad)) {
             int now = game.getFrameCount();
             squad.setStatus(SquadStatus.FIGHT);
-            assignFightTargets(squad, managedFighters, true);
+            assignFightTargets(squad, managedFighters);
             squad.startFightLock(now);
             return;
         }
@@ -602,13 +601,13 @@ public class SquadManager {
         boolean fightLocked = squad.isFightLocked(now);
 
         if (squad.getStatus() == SquadStatus.RETREAT && retreatLocked) {
-            assignRetreatTargets(squad, managedFighters, now);
+            assignRetreatTargets(squad, managedFighters);
             return;
         }
         if (squad.getStatus() == SquadStatus.FIGHT && fightLocked) {
             ClusterCombatEvaluator combatSim = (ClusterCombatEvaluator) squad.getCombatSimulator();
             combatSim.evaluate(squad, getNearbyReinforcements(squad, REINFORCEMENT_RADIUS), gameState);
-            assignClusterFightTargets(squad, managedFighters, combatSim, now);
+            assignClusterFightTargets(squad, managedFighters, combatSim);
             return;
         }
 
@@ -623,14 +622,14 @@ public class SquadManager {
                         && enterContainment(squad);
                 if (!enteredContain) {
                     squad.setStatus(SquadStatus.RETREAT);
-                    assignClusterFightTargets(squad, managedFighters, clusterEvaluator, now);
+                    assignClusterFightTargets(squad, managedFighters, clusterEvaluator);
                     squad.startRetreatLock(now);
                 }
                 break;
 
             case ENGAGE:
                 squad.setStatus(SquadStatus.FIGHT);
-                assignClusterFightTargets(squad, managedFighters, clusterEvaluator, now);
+                assignClusterFightTargets(squad, managedFighters, clusterEvaluator);
                 if (!retreatLocked) {
                     squad.startFightLock(now);
                 }
@@ -640,7 +639,7 @@ public class SquadManager {
         }
     }
 
-    private void assignRetreatTargets(Squad squad, HashSet<ManagedUnit> managedFighters, int currentFrame) {
+    private void assignRetreatTargets(Squad squad, HashSet<ManagedUnit> managedFighters) {
         Position rallyPoint = gameState.getSquadRallyPoint();
         HashMap<ManagedUnit, Position> retreatTargets = squad instanceof ZerglingSquad
                 ? computeZerglingRetreatTargets(squad)
@@ -648,11 +647,7 @@ public class SquadManager {
         for (ManagedUnit managedUnit : managedFighters) {
             managedUnit.setRole(UnitRole.RETREAT);
             managedUnit.setRallyPoint(rallyPoint);
-            managedUnit.markRetreatStart(currentFrame);
-            Integer retreatStartFrame = managedUnit.getRetreatStartFrame();
-            if (retreatStartFrame != null && currentFrame - retreatStartFrame >= RETREAT_TIMEOUT_FRAMES) {
-                managedUnit.setRetreatTarget(rallyPoint);
-            } else if (retreatTargets != null) {
+            if (retreatTargets != null) {
                 managedUnit.setRetreatTarget(retreatTargets.get(managedUnit));
             } else {
                 Position fleeTarget = managedUnit.getRetreatPosition();
@@ -661,18 +656,15 @@ public class SquadManager {
         }
     }
 
-    private void assignFightTargets(Squad squad, HashSet<ManagedUnit> managedFighters, boolean clearRetreat) {
+    private void assignFightTargets(Squad squad, HashSet<ManagedUnit> managedFighters) {
         for (ManagedUnit managedUnit : managedFighters) {
             managedUnit.setRole(UnitRole.FIGHT);
-            if (clearRetreat) {
-                managedUnit.clearRetreatStart();
-            }
             assignEnemyTarget(managedUnit, squad);
         }
     }
 
     private void assignClusterFightTargets(Squad squad, HashSet<ManagedUnit> managedFighters,
-                                           ClusterCombatEvaluator evaluator, int currentFrame) {
+                                           ClusterCombatEvaluator evaluator) {
         Map<ManagedUnit, UnitDisposition> dispositions = evaluator.getLastDispositions();
         Position rallyPoint = gameState.getSquadRallyPoint();
 
@@ -682,7 +674,6 @@ public class SquadManager {
             switch (disposition) {
                 case ADVANCE:
                     managedUnit.setRole(UnitRole.FIGHT);
-                    managedUnit.clearRetreatStart();
                     assignEnemyTarget(managedUnit, squad);
                     break;
                 case HOLD:
@@ -692,16 +683,8 @@ public class SquadManager {
                 case RETREAT:
                     managedUnit.setRole(UnitRole.RETREAT);
                     managedUnit.setRallyPoint(rallyPoint);
-                    managedUnit.markRetreatStart(currentFrame);
-                    Integer retreatStartFrame = managedUnit.getRetreatStartFrame();
                     Position fleeTarget = managedUnit.getRetreatPosition();
-                    if (retreatStartFrame != null && currentFrame - retreatStartFrame >= RETREAT_TIMEOUT_FRAMES) {
-                        managedUnit.setRetreatTarget(rallyPoint);
-                    } else if (fleeTarget != null) {
-                        managedUnit.setRetreatTarget(fleeTarget);
-                    } else {
-                        managedUnit.setRetreatTarget(rallyPoint);
-                    }
+                    managedUnit.setRetreatTarget(fleeTarget != null ? fleeTarget : rallyPoint);
                     break;
             }
         }
@@ -726,7 +709,7 @@ public class SquadManager {
         List<Unit> closeEnemies = enemyUnitsNearSquad(squad);
         if (!closeEnemies.isEmpty()) {
             squad.setStatus(SquadStatus.FIGHT);
-            assignFightTargets(squad, members, true);
+            assignFightTargets(squad, members);
             squad.startFightLock(now);
             return;
         }
@@ -751,7 +734,7 @@ public class SquadManager {
         if (!containmentEvaluator.shouldContain(squad)) {
             squad.clearContainStart();
             squad.setStatus(SquadStatus.RETREAT);
-            assignRetreatTargets(squad, members, now);
+            assignRetreatTargets(squad, members);
             squad.startRetreatLock(now);
             return;
         }
@@ -764,7 +747,7 @@ public class SquadManager {
             if (s.getStatus() == SquadStatus.CONTAIN) {
                 s.clearContainStart();
                 s.setStatus(SquadStatus.FIGHT);
-                assignFightTargets(s, s.getMembers(), true);
+                assignFightTargets(s, s.getMembers());
                 s.startFightLock(now);
             }
         }
