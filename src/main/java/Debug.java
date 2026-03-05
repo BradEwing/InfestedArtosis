@@ -480,6 +480,8 @@ public class Debug {
                     case RETREAT:
                         game.drawCircleMap(unitPos, 6, Color.Red, true);
                         break;
+                    default:
+                        break;
                 }
             }
         }

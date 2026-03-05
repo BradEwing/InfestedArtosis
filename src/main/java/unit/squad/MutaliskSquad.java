@@ -240,10 +240,15 @@ public class MutaliskSquad extends Squad {
         List<Unit> workers = new ArrayList<>();
         List<Unit> others = new ArrayList<>();
         for (Unit u : candidates) {
-            if (isAntiAir(u) && !u.getType().isBuilding()) aaUnits.add(u);
-            else if (isAAStaticDefense(u)) aaStatic.add(u);
-            else if (isWorker(u)) workers.add(u);
-            else others.add(u);
+            if (isAntiAir(u) && !u.getType().isBuilding()) {
+                aaUnits.add(u);
+            } else if (isAAStaticDefense(u)) {
+                aaStatic.add(u);
+            } else if (isWorker(u)) {
+                workers.add(u);
+            } else {
+                others.add(u);
+            }
         }
 
         if (!aaUnits.isEmpty()) return getClosestUnit(squadCenter, aaUnits);
@@ -263,8 +268,8 @@ public class MutaliskSquad extends Squad {
 
     private boolean isAntiAir(Unit unit) {
         UnitType type = unit.getType();
-        return (type.airWeapon() != null && type.airWeapon().maxRange() > 0)
-                || (type == UnitType.Terran_Bunker && !unit.getLoadedUnits().isEmpty());
+        return type.airWeapon() != null && type.airWeapon().maxRange() > 0
+                || type == UnitType.Terran_Bunker && !unit.getLoadedUnits().isEmpty();
     }
 
     private boolean isAAStaticDefense(Unit unit) {

@@ -12,7 +12,6 @@ import info.GameState;
 import info.ScoutData;
 import info.tracking.ObservedUnitTracker;
 import info.tracking.PsiStormTracker;
-import info.tracking.StrategyTracker;
 import lombok.Getter;
 
 import org.bk.ass.sim.BWMirrorAgentFactory;
@@ -35,7 +34,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import static java.lang.Math.min;
 import static util.Distance.manhattanTileDistance;
 import static util.Filter.closestHostileUnit;
 
@@ -648,6 +646,8 @@ public class SquadManager {
                     squad.startFightLock(now);
                 }
                 break;
+            default:
+                break;
         }
     }
 
@@ -697,6 +697,8 @@ public class SquadManager {
                     managedUnit.setRallyPoint(rallyPoint);
                     Position fleeTarget = managedUnit.getRetreatPosition();
                     managedUnit.setRetreatTarget(fleeTarget != null ? fleeTarget : rallyPoint);
+                    break;
+                default:
                     break;
             }
         }

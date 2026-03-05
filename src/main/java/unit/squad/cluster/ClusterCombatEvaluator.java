@@ -248,7 +248,8 @@ public class ClusterCombatEvaluator implements CombatSimulator {
 
     private Position computeCentroid(List<ManagedUnit> units) {
         if (units.isEmpty()) return new Position(0, 0);
-        int x = 0, y = 0;
+        int x = 0;
+        int y = 0;
         for (ManagedUnit mu : units) {
             Position p = mu.getUnit().getPosition();
             x += p.getX();
