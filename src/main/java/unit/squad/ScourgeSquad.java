@@ -8,6 +8,7 @@ import unit.managed.ManagedUnit;
 import unit.managed.UnitRole;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 
@@ -65,7 +66,7 @@ public class ScourgeSquad extends Squad {
         }
 
         // Evaluate engagement using combat simulator
-        CombatSimulator.CombatResult combatResult = getCombatSimulator().evaluate(this, gameState);
+        CombatSimulator.CombatResult combatResult = getCombatSimulator().evaluate(this, Collections.emptySet(), gameState);
 
         if (combatResult == CombatSimulator.CombatResult.ENGAGE) {
             setStatus(SquadStatus.FIGHT);

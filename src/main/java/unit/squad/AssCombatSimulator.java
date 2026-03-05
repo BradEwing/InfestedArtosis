@@ -24,7 +24,7 @@ public class AssCombatSimulator implements CombatSimulator {
     }
 
     @Override
-    public CombatResult evaluate(Squad squad, GameState gameState) {
+    public CombatResult evaluate(Squad squad, Set<ManagedUnit> reinforcements, GameState gameState) {
         Set<Unit> enemyUnits = gameState.getDetectedEnemyUnits();
         Set<Unit> enemyBuildings = gameState.getCompletedEnemyBuildings();
 
@@ -33,6 +33,10 @@ public class AssCombatSimulator implements CombatSimulator {
         // Add squad units to simulation
         for (ManagedUnit managedUnit : squad.getMembers()) {
             simulator.addAgentA(agentFactory.of(managedUnit.getUnit()));
+        }
+
+        for (ManagedUnit reinforcement : reinforcements) {
+            simulator.addAgentA(agentFactory.of(reinforcement.getUnit()));
         }
 
         // Add nearby enemy units
@@ -78,13 +82,15 @@ public class AssCombatSimulator implements CombatSimulator {
         simulator.simulate(150);
 
         // Evaluate results
-        if (simulator.getAgentsA().isEmpty()) {
+        int totalSurvived = simulator.getAgentsA().size();
+        int estimatedSquadSurvivors = Math.max(0, totalSurvived - reinforcements.size());
+
+        if (estimatedSquadSurvivors == 0) {
             return CombatResult.RETREAT;
         }
 
         if (!simulator.getAgentsB().isEmpty()) {
-            // If less than 40% of units survive, retreat
-            float percentRemaining = (float) simulator.getAgentsA().size() / squad.getMembers().size();
+            float percentRemaining = (float) estimatedSquadSurvivors / squad.getMembers().size();
             if (percentRemaining < 0.40) {
                 return CombatResult.RETREAT;
             }

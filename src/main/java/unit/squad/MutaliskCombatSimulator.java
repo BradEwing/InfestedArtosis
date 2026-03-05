@@ -5,6 +5,8 @@ import bwapi.UnitType;
 import bwapi.WeaponType;
 import info.GameState;
 
+import unit.managed.ManagedUnit;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -16,7 +18,7 @@ import java.util.Set;
 public class MutaliskCombatSimulator implements CombatSimulator {
 
     @Override
-    public CombatResult evaluate(Squad squad, GameState gameState) {
+    public CombatResult evaluate(Squad squad, Set<ManagedUnit> reinforcements, GameState gameState) {
         Set<Unit> enemyUnits = gameState.getDetectedEnemyUnits();
         Set<Unit> enemyBuildings = gameState.getEnemyBuildings();
 
@@ -37,14 +39,13 @@ public class MutaliskCombatSimulator implements CombatSimulator {
             return CombatResult.ENGAGE;
         }
 
-        return evaluateMutaliskEngagement(squad, allEnemies) ? CombatResult.ENGAGE : CombatResult.RETREAT;
+        return evaluateMutaliskEngagement(squad, allEnemies, reinforcements) ? CombatResult.ENGAGE : CombatResult.RETREAT;
     }
 
     /**
      * Evaluates whether mutalisks should engage based on anti-air threats and squad composition.
      */
-    private boolean evaluateMutaliskEngagement(Squad squad, List<Unit> enemies) {
-        // Count anti-air threats
+    private boolean evaluateMutaliskEngagement(Squad squad, List<Unit> enemies, Set<ManagedUnit> reinforcements) {
         int antiAirThreats = 0;
         int antiAirDps = 0;
 
@@ -55,16 +56,29 @@ public class MutaliskCombatSimulator implements CombatSimulator {
             }
         }
 
+        int groundSupply = 0;
+        for (ManagedUnit mu : reinforcements) {
+            if (!mu.getUnit().getType().isFlyer()) {
+                groundSupply += mu.getUnit().getType().supplyRequired();
+            }
+        }
+
+        int antiAirSupply = antiAirThreats * 4;
+        if (antiAirSupply > 0 && groundSupply > 0) {
+            double ratio = Math.min(1.0, (double) groundSupply / antiAirSupply);
+            double discountFactor = 1.0 - (ratio * 0.5);
+            antiAirDps = (int) (antiAirDps * discountFactor);
+            antiAirThreats = (int) (antiAirThreats * discountFactor);
+        }
+
         int squadSize = squad.size();
         int mutaliskHp = squadSize * 120;
         int expectedDamagePerSecond = antiAirDps;
 
-        // Don't engage if we'll lose more than 5% HP in 2 seconds
         if (expectedDamagePerSecond * 2 > mutaliskHp * 0.05) {
             return false;
         }
 
-        // Don't engage if outnumbered by anti-air
         if (antiAirThreats > squadSize * 1.5) {
             return false;
         }
