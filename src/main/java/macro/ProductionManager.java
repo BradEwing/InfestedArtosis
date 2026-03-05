@@ -264,12 +264,10 @@ public class ProductionManager {
         final int plannedSupply = gameState.getResourceCount().getPlannedSupply();
         final boolean isNinePool = activeBuildOrder.getName() == "9PoolSpeed";
         if (overlordCount < 2 && !isNinePool) {
-            if (self.supplyUsed() >= 18 && overlordCount < 2 && plannedSupply == 0) {
+            if (self.supplyUsed() >= 18 && plannedSupply == 0) {
                 addUnitToQueue(UnitType.Zerg_Overlord, 1);
                 gameState.getResourceCount().setPlannedSupply(16);
-                return;
             }
-            return;
         }
     
         List<Plan> sortedQueue = gameState.getProductionQueue().toSortedList();
@@ -323,7 +321,7 @@ public class ProductionManager {
 
         // Emergency fallback: supply blocked with high minerals
         final int supplyRemaining = self.supplyTotal() - self.supplyUsed();
-        if (supplyRemaining == 0 && self.minerals() > 700 && plannedSupply < 80) {
+        if (supplyRemaining <= 0 && self.minerals() > 700 && plannedSupply < 80) {
             addUnitToQueue(UnitType.Zerg_Overlord, 1);
             gameState.getResourceCount().setPlannedSupply(plannedSupply + 16);
         }
