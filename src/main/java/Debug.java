@@ -23,7 +23,6 @@ import learning.Record;
 import learning.OpponentRecord;
 import strategy.buildorder.BuildOrder;
 import unit.managed.ManagedUnit;
-import unit.squad.CombatSimulator;
 import unit.squad.Squad;
 import unit.squad.SquadManager;
 import unit.squad.SquadStatus;
@@ -445,17 +444,16 @@ public class Debug {
         boolean clustersDrawn = false;
 
         for (Squad squad : squadManager.fightSquads) {
-            CombatSimulator sim = squad.getCombatSimulator();
-            if (!(sim instanceof ClusterCombatEvaluator)) continue;
-            ClusterCombatEvaluator evaluator = (ClusterCombatEvaluator) sim;
+            ClusterCombatEvaluator evaluator = squad.getClusterEvaluator();
+            if (evaluator == null) continue;
 
             if (!clustersDrawn) {
-                for (EnemyCluster cluster : evaluator.getCachedClusters()) {
+                for (EnemyCluster cluster : evaluator.getClusters()) {
                     Position centroid = cluster.getCentroid();
                     int radius = Math.max(cluster.getRadius(), 32);
                     game.drawCircleMap(centroid, radius, Color.Orange, false);
                     game.drawTextMap(centroid.getX() + 8, centroid.getY() - 8,
-                            String.format("C:%d S:%.0f", cluster.size(), cluster.getSupply().total()), Text.Orange);
+                            String.format("C:%d S:%.0f", cluster.size(), cluster.getSupply().combatSupply()), Text.Orange);
                 }
                 clustersDrawn = true;
             }

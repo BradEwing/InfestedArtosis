@@ -25,10 +25,8 @@ public class ClusterCombatEvaluator implements CombatSimulator {
     private static final double WIN_THRESHOLD = 1.0;
     private static final double WIN_THRESHOLD_ENGAGED = 0.8;
     private static final double CLUSTER_RELEVANCE_RADIUS = 512.0;
-    private static final int FOG_STALENESS_FRAMES = 360;
 
-    private int lastClusterFrame = -1;
-    private List<EnemyCluster> cachedClusters = new ArrayList<>();
+    private List<EnemyCluster> clusters = new ArrayList<>();
     private Map<ManagedUnit, UnitDisposition> lastDispositions = new HashMap<>();
     private List<ClusterEvaluation> lastEvaluations = new ArrayList<>();
 
@@ -41,14 +39,6 @@ public class ClusterCombatEvaluator implements CombatSimulator {
 
         Game game = gameState.getGame();
         BWEM bwem = gameState.getBwem();
-        int currentFrame = game.getFrameCount();
-
-        if (currentFrame != lastClusterFrame) {
-            cachedClusters = ClusterAnalysis.cluster(
-                    gameState.getLivingCombatUnits(currentFrame, FOG_STALENESS_FRAMES),
-                    gameState.getCompletedEnemyBuildingsObserved());
-            lastClusterFrame = currentFrame;
-        }
 
         lastDispositions.clear();
         lastEvaluations.clear();
@@ -94,8 +84,8 @@ public class ClusterCombatEvaluator implements CombatSimulator {
                         + modified.getFrontSupply().getAirToAirSupply();
                 effectiveEnemy = modified.getEnemySupply().getAntiAirSupply();
             } else {
-                effectiveFront = modified.getFrontSupply().total();
-                effectiveEnemy = modified.getEnemySupply().total();
+                effectiveFront = modified.getFrontSupply().combatSupply();
+                effectiveEnemy = modified.getEnemySupply().combatSupply();
             }
             boolean expectWin = effectiveEnemy == 0 || effectiveFront > threshold * effectiveEnemy;
 
@@ -126,8 +116,12 @@ public class ClusterCombatEvaluator implements CombatSimulator {
         return lastEvaluations;
     }
 
-    public List<EnemyCluster> getCachedClusters() {
-        return cachedClusters;
+    public List<EnemyCluster> getClusters() {
+        return clusters;
+    }
+
+    public void setClusters(List<EnemyCluster> clusters) {
+        this.clusters = clusters;
     }
 
     public Set<Unit> getLosingClusterEnemies() {
@@ -234,7 +228,8 @@ public class ClusterCombatEvaluator implements CombatSimulator {
         Position center = squad.getCenter();
         if (center == null) return relevant;
 
-        for (EnemyCluster cluster : cachedClusters) {
+        for (EnemyCluster cluster : clusters) {
+            if (cluster.getVisibleMembers().isEmpty()) continue;
             if (center.getDistance(cluster.getCentroid()) <= CLUSTER_RELEVANCE_RADIUS + cluster.getRadius()) {
                 relevant.add(cluster);
             }

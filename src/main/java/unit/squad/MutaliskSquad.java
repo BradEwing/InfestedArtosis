@@ -33,7 +33,9 @@ public class MutaliskSquad extends Squad {
 
     public MutaliskSquad() {
         super();
-        this.setCombatSimulator(new ClusterCombatEvaluator());
+        ClusterCombatEvaluator evaluator = new ClusterCombatEvaluator();
+        this.setCombatSimulator(evaluator);
+        this.setClusterEvaluator(evaluator);
         this.setType(UnitType.Zerg_Mutalisk);
     }
 

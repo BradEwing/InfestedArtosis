@@ -79,7 +79,7 @@ public final class TerrainModifier {
     }
 
     private static double rangedFraction(SupplyBreakdown supply) {
-        double total = supply.total();
+        double total = supply.combatSupply();
         if (total == 0) return 0;
         return supply.getRangedGroundSupply() / total;
     }

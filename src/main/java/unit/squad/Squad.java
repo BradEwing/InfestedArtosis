@@ -9,6 +9,7 @@ import lombok.Getter;
 import org.jetbrains.annotations.NotNull;
 import unit.managed.ManagedUnit;
 import unit.managed.UnitRole;
+import unit.squad.cluster.ClusterCombatEvaluator;
 import util.Time;
 
 import java.util.HashSet;
@@ -35,6 +36,9 @@ public class Squad implements Comparable<Squad> {
 
     @Getter
     private CombatSimulator combatSimulator;
+
+    @Getter
+    private ClusterCombatEvaluator clusterEvaluator;
 
     protected boolean shouldDisband = false;
 

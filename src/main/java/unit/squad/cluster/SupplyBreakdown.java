@@ -23,7 +23,7 @@ public class SupplyBreakdown {
         this.antiAirSupply = antiAirSupply;
     }
 
-    public double total() {
+    public double combatSupply() {
         return groundSupply + airToGroundSupply + airToAirSupply;
     }
 

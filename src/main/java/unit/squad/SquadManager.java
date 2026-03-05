@@ -19,7 +19,9 @@ import org.bk.ass.sim.BWMirrorAgentFactory;
 import org.bk.ass.sim.Simulator;
 import unit.managed.ManagedUnit;
 import unit.managed.UnitRole;
+import unit.squad.cluster.ClusterAnalysis;
 import unit.squad.cluster.ClusterCombatEvaluator;
+import unit.squad.cluster.EnemyCluster;
 import unit.squad.cluster.UnitDisposition;
 import util.Arc;
 import util.Vec2;
@@ -72,6 +74,7 @@ public class SquadManager {
     private static final int ARC_DEGREES = 90;
     private static final int ARC_RADIUS = 160;
     private static final double REINFORCEMENT_RADIUS = 384.0;
+    private static final int FOG_STALENESS_FRAMES = 360;
 
     public SquadManager(Game game, GameState gameState) {
         this.game = game;
@@ -87,12 +90,21 @@ public class SquadManager {
         mergeSquads();
         assignOverlordsToSquads();
 
+        int currentFrame = game.getFrameCount();
+        List<EnemyCluster> clusters = ClusterAnalysis.cluster(
+                gameState.getLivingCombatUnits(currentFrame, FOG_STALENESS_FRAMES),
+                gameState.getCompletedEnemyBuildingsObserved());
+
         Set<Squad> removed = new HashSet<>();
         for (Squad fightSquad: fightSquads) {
             fightSquad.onFrame();
             if (fightSquad.shouldDisband()) {
                 disbanded.addAll(disbandSquad(fightSquad));
                 removed.add(fightSquad);
+            }
+
+            if (fightSquad.getClusterEvaluator() != null) {
+                fightSquad.getClusterEvaluator().setClusters(clusters);
             }
 
             if (fightSquad instanceof MutaliskSquad) {
@@ -601,18 +613,20 @@ public class SquadManager {
         boolean fightLocked = squad.isFightLocked(now);
 
         if (squad.getStatus() == SquadStatus.RETREAT && retreatLocked) {
-            assignRetreatTargets(squad, managedFighters);
+            ClusterCombatEvaluator clusterEval = squad.getClusterEvaluator();
+            clusterEval.evaluate(squad, getNearbyReinforcements(squad, REINFORCEMENT_RADIUS), gameState);
+            assignClusterFightTargets(squad, managedFighters, clusterEval);
             return;
         }
         if (squad.getStatus() == SquadStatus.FIGHT && fightLocked) {
-            ClusterCombatEvaluator combatSim = (ClusterCombatEvaluator) squad.getCombatSimulator();
-            combatSim.evaluate(squad, getNearbyReinforcements(squad, REINFORCEMENT_RADIUS), gameState);
-            assignClusterFightTargets(squad, managedFighters, combatSim);
+            ClusterCombatEvaluator clusterEval = squad.getClusterEvaluator();
+            clusterEval.evaluate(squad, getNearbyReinforcements(squad, REINFORCEMENT_RADIUS), gameState);
+            assignClusterFightTargets(squad, managedFighters, clusterEval);
             return;
         }
 
         Set<ManagedUnit> reinforcements = getNearbyReinforcements(squad, REINFORCEMENT_RADIUS);
-        ClusterCombatEvaluator clusterEvaluator = (ClusterCombatEvaluator) squad.getCombatSimulator();
+        ClusterCombatEvaluator clusterEvaluator = squad.getClusterEvaluator();
         CombatSimulator.CombatResult result = clusterEvaluator.evaluate(squad, reinforcements, gameState);
 
         switch (result) {
@@ -1081,7 +1095,9 @@ public class SquadManager {
         if (type == UnitType.Zerg_Zergling) {
             newSquad = new ZerglingSquad();
             newSquad.setType(type);
-            newSquad.setCombatSimulator(new ClusterCombatEvaluator());
+            ClusterCombatEvaluator evaluator = new ClusterCombatEvaluator();
+            newSquad.setCombatSimulator(evaluator);
+            newSquad.setClusterEvaluator(evaluator);
         } else if (type == UnitType.Zerg_Mutalisk) {
             newSquad = new MutaliskSquad();
         } else if (type == UnitType.Zerg_Scourge) {
@@ -1089,7 +1105,9 @@ public class SquadManager {
         } else {
             newSquad = new Squad();
             newSquad.setType(type);
-            newSquad.setCombatSimulator(new ClusterCombatEvaluator());
+            ClusterCombatEvaluator evaluator = new ClusterCombatEvaluator();
+            newSquad.setCombatSimulator(evaluator);
+            newSquad.setClusterEvaluator(evaluator);
         }
 
         newSquad.setStatus(SquadStatus.FIGHT);
