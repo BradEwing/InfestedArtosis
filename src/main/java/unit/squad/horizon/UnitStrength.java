@@ -66,6 +66,11 @@ public class UnitStrength {
         return s != null ? s[3] : 0;
     }
 
+    public static double antiAirStrength(UnitType type) {
+        double[] s = STRENGTH_TABLE.get(type);
+        return s != null ? s[1] + s[3] : 0;
+    }
+
     public static double totalStrength(UnitType type) {
         double[] s = STRENGTH_TABLE.get(type);
         return s != null ? s[0] + s[1] + s[2] + s[3] : 0;

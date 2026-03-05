@@ -188,6 +188,10 @@ public class Squad implements Comparable<Squad> {
         return false;
     }
 
+    public boolean isAirSquad() {
+        return false;
+    }
+
     public boolean isFightLocked(int currentFrame) {
         return currentFrame < fightLockedUntilFrame;
     }

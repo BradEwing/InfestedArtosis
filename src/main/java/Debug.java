@@ -455,7 +455,6 @@ public class Debug {
 
     private void debugCombatSim() {
         for (Squad squad : squadManager.fightSquads) {
-            if (!squad.isGroundSquad()) continue;
             if (!(squad.getCombatSimulator() instanceof unit.squad.horizon.HorizonCombatSimulator)) continue;
             unit.squad.horizon.HorizonCombatSimulator sim =
                     (unit.squad.horizon.HorizonCombatSimulator) squad.getCombatSimulator();

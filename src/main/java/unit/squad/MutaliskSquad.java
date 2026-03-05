@@ -9,11 +9,13 @@ import info.tracking.PsiStormTracker;
 import unit.managed.ManagedUnit;
 import unit.managed.UnitRole;
 import unit.squad.CombatSimulator.CombatResult;
+import unit.squad.horizon.HorizonCombatSimulator;
 import util.Time;
 import util.Vec2;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -33,8 +35,13 @@ public class MutaliskSquad extends Squad {
 
     public MutaliskSquad() {
         super();
-        this.setCombatSimulator(new MutaliskCombatSimulator());
+        this.setCombatSimulator(new HorizonCombatSimulator());
         this.setType(UnitType.Zerg_Mutalisk);
+    }
+
+    @Override
+    public boolean isAirSquad() {
+        return true;
     }
 
     @Override
@@ -55,7 +62,7 @@ public class MutaliskSquad extends Squad {
      * Executes mutalisk-specific squad behavior including target selection,
      * retreat calculations, and engagement decisions.
      */
-    public void executeTactics(GameState gameState, Position rallyPosition, Set<ManagedUnit> reinforcements) {
+    public void executeTactics(GameState gameState, Position rallyPosition, Map<Squad, Double> adjacentSquads) {
         if (members.isEmpty()) {
             shouldDisband = true;
             return;
@@ -120,7 +127,8 @@ public class MutaliskSquad extends Squad {
 
         // Only re-evaluate combat when both timers are expired or null
         if (!isAttackWindowActive && !isRetreatWindowActive) {
-            CombatResult combatResult = getCombatSimulator().evaluate(this, reinforcements, gameState);
+            CombatResult combatResult = ((HorizonCombatSimulator) getCombatSimulator())
+                    .evaluateWithAdjacentSquads(this, adjacentSquads, gameState);
 
             // Set appropriate timer based on combat result
             if (combatResult == CombatResult.RETREAT) {

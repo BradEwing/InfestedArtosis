@@ -101,8 +101,8 @@ public class SquadManager {
                 if (rallyToSquad != null) {
                     rallyPosition = rallyToSquad.getCenter();
                 }
-                Set<ManagedUnit> reinforcements = getNearbyReinforcements(mutaliskSquad, REINFORCEMENT_RADIUS);
-                mutaliskSquad.executeTactics(gameState, rallyPosition, reinforcements);
+                Map<Squad, Double> adjacentSquads = getAdjacentSquads(mutaliskSquad, REINFORCEMENT_RADIUS);
+                mutaliskSquad.executeTactics(gameState, rallyPosition, adjacentSquads);
             } else if (fightSquad instanceof ScourgeSquad) {
                 ScourgeSquad scourgeSquad = (ScourgeSquad) fightSquad;
                 scourgeSquad.executeTactics(gameState);
@@ -480,7 +480,7 @@ public class SquadManager {
             if (gameState.getOpponentRace() == Race.Zerg) {
                 return 2;
             }
-            return 5;
+            return 3;
         }
 
         if (squad.isGroundSquad()) {
@@ -527,21 +527,14 @@ public class SquadManager {
             return 1;
         }
 
-        int staticDefensePenalty = Math.min(gameState.getObservedUnitTracker().getHostileToGroundBuildings().size(), 6);
-        int baseSupply = 8;
-        int threshold = baseSupply + staticDefensePenalty * 8;
+        int threshold = 4;
 
         if (strategyTracker.isDetectedStrategy("2Gate")) {
             final int zealots = gameState.enemyUnitCount(UnitType.Protoss_Zealot);
             threshold += zealots * 2;
         }
 
-        int maxThreshold = gameState.getOpponentRace() == Race.Zerg ? 36 : 48;
-        if (squad.getStatus() == SquadStatus.FIGHT) {
-            maxThreshold = (int) (maxThreshold * 0.75);
-        }
-
-        return Math.min(threshold, maxThreshold);
+        return threshold;
     }
 
     private void simulateFightSquad(Squad squad) {

@@ -37,18 +37,22 @@ public class HorizonCombatSimulator implements CombatSimulator {
         Position squadCenter = squad.getCenter();
         if (squadCenter == null) return CombatResult.RETREAT;
 
+        boolean airSquad = squad.isAirSquad();
         DebugSnapshot snapshot = new DebugSnapshot();
         snapshot.squadCenter = squadCenter;
 
-        double friendlyG2G = 0;
-        double friendlyTotal = 0;
+        double friendlyGroundStr = 0;
+        double friendlyAirStr = 0;
 
         for (ManagedUnit mu : squad.getMembers()) {
             if (mu.getUnitType() == UnitType.Zerg_Overlord) continue;
             double str = computeFriendlyStrength(mu, squadCenter);
-            friendlyG2G += groundToGroundStrength(mu);
-            friendlyTotal += str;
             snapshot.friendlyUnits.add(new UnitDebugEntry(mu.getUnit().getPosition(), mu.getUnitType(), str, false));
+            if (mu.getUnitType().isFlyer()) {
+                friendlyAirStr += str;
+            } else {
+                friendlyGroundStr += str;
+            }
         }
 
         if (adjacentSquads != null) {
@@ -59,15 +63,18 @@ public class HorizonCombatSimulator implements CombatSimulator {
                 for (ManagedUnit mu : adjSquad.getMembers()) {
                     if (mu.getUnitType() == UnitType.Zerg_Overlord) continue;
                     double str = computeFriendlyStrength(mu, squadCenter) * weight;
-                    friendlyG2G += groundToGroundStrength(mu) * weight;
-                    friendlyTotal += str;
                     snapshot.friendlyUnits.add(new UnitDebugEntry(mu.getUnit().getPosition(), mu.getUnitType(), str, true));
+                    if (mu.getUnitType().isFlyer()) {
+                        friendlyAirStr += str;
+                    } else {
+                        friendlyGroundStr += str;
+                    }
                 }
             }
         }
 
-        double enemyG2G = 0;
-        double enemyTotal = 0;
+        double enemyGroundStr = 0;
+        double enemyAntiAirStr = 0;
 
         ObservedUnitTracker tracker = gameState.getObservedUnitTracker();
         for (ObservedUnit ou : tracker.getLivingObservedUnits()) {
@@ -77,11 +84,6 @@ public class HorizonCombatSimulator implements CombatSimulator {
             if (dist > MAX_ENGAGEMENT_RADIUS) continue;
 
             UnitType type = ou.getUnitType();
-            double base = UnitStrength.totalStrength(type);
-            if (type.isWorker()) {
-                base /= WORKER_STRENGTH_DIVISOR;
-            }
-
             double hpWeight = hpWeighting(ou.getLastKnownHitPoints(), ou.getLastKnownShields(),
                     type.maxHitPoints(), type.maxShields());
             double distWeight = distanceWeight(dist);
@@ -90,20 +92,39 @@ public class HorizonCombatSimulator implements CombatSimulator {
                 heightMod = HEIGHT_BONUS;
             }
 
-            double str = base * hpWeight * distWeight * heightMod;
-            enemyG2G += UnitStrength.groundToGround(type) * hpWeight * distWeight * heightMod;
-            enemyTotal += str;
-            snapshot.enemyUnits.add(new UnitDebugEntry(pos, type, str, false));
+            double groundBase = UnitStrength.groundToGround(type) + UnitStrength.airToGround(type);
+            double antiAirBase = UnitStrength.antiAirStrength(type);
+            if (type.isWorker()) {
+                groundBase /= WORKER_STRENGTH_DIVISOR;
+                antiAirBase /= WORKER_STRENGTH_DIVISOR;
+            }
+
+            double groundEnemyStr = groundBase * hpWeight * distWeight * heightMod;
+            double aaEnemyStr = antiAirBase * hpWeight * distWeight * heightMod;
+            enemyGroundStr += groundEnemyStr;
+            enemyAntiAirStr += aaEnemyStr;
+
+            double displayStr = airSquad ? aaEnemyStr : groundEnemyStr;
+            snapshot.enemyUnits.add(new UnitDebugEntry(pos, type, displayStr, false));
         }
 
-        double groundRatio = friendlyG2G / Math.max(enemyG2G, 0.01);
-        double combinedRatio = friendlyTotal / Math.max(enemyTotal, 0.01);
-        double overallRatio = Math.max(groundRatio, combinedRatio);
+        double overallRatio;
+        if (airSquad) {
+            overallRatio = friendlyAirStr / Math.max(enemyAntiAirStr, 0.01);
+            snapshot.groundRatio = 0;
+            snapshot.combinedRatio = overallRatio;
+        } else {
+            double groundRatio = friendlyGroundStr / Math.max(enemyGroundStr, 0.01);
+            double totalFriendly = friendlyGroundStr + friendlyAirStr;
+            double totalEnemy = enemyGroundStr + enemyAntiAirStr;
+            double combinedRatio = totalFriendly / Math.max(totalEnemy, 0.01);
+            overallRatio = Math.max(groundRatio, combinedRatio);
+            snapshot.groundRatio = groundRatio;
+            snapshot.combinedRatio = combinedRatio;
+        }
 
-        snapshot.friendlyTotal = friendlyTotal;
-        snapshot.enemyTotal = enemyTotal;
-        snapshot.groundRatio = groundRatio;
-        snapshot.combinedRatio = combinedRatio;
+        snapshot.friendlyTotal = friendlyGroundStr + friendlyAirStr;
+        snapshot.enemyTotal = airSquad ? enemyAntiAirStr : enemyGroundStr;
         snapshot.overallRatio = overallRatio;
 
         CombatResult result;
@@ -146,14 +167,6 @@ public class HorizonCombatSimulator implements CombatSimulator {
         }
 
         return base * hpWeight * distWeight * cloak * prepPenalty;
-    }
-
-    private double groundToGroundStrength(ManagedUnit mu) {
-        UnitType type = mu.getUnit().getType();
-        double base = UnitStrength.groundToGround(type);
-        double hpWeight = hpWeighting(mu.getUnit().getHitPoints(), mu.getUnit().getShields(),
-                type.maxHitPoints(), type.maxShields());
-        return base * hpWeight;
     }
 
     private double hpWeighting(int hp, int shields, int maxHp, int maxShields) {
