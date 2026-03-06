@@ -23,9 +23,13 @@ import learning.Record;
 import learning.OpponentRecord;
 import strategy.buildorder.BuildOrder;
 import unit.managed.ManagedUnit;
+import unit.squad.CombatSimulator.CombatResult;
 import unit.squad.Squad;
 import unit.squad.SquadManager;
 import unit.squad.SquadStatus;
+import unit.squad.horizon.HorizonCombatSimulator;
+import unit.squad.horizon.HorizonCombatSimulator.DebugSnapshot;
+import unit.squad.horizon.HorizonCombatSimulator.UnitDebugEntry;
 import unit.managed.UnitRole;
 import util.Arc;
 import macro.plan.Plan;
@@ -142,6 +146,9 @@ public class Debug {
         }
         if (config.debugContainment) {
             debugContainment();
+        }
+        if (config.debugCombatSim) {
+            debugCombatSim();
         }
         if (config.debugProductionQueue) {
             debugProductionQueue();
@@ -399,12 +406,19 @@ public class Debug {
 
     private void debugSquads() {
         for (Squad squad: squadManager.fightSquads) {
-            game.drawCircleMap(squad.getCenter(), squad.radius(), Color.White);
-            game.drawTextMap(squad.getCenter(), String.format("Radius: %d", squad.radius()), Text.White);
+            Position center = squad.getCenter();
+            for (ManagedUnit mu : squad.getMembers()) {
+                game.drawLineMap(center, mu.getUnit().getPosition(), Color.White);
+            }
+            String label = formatCompositionSquadLabel(squad.getStatus(), squad.getSupply(), squad.getComposition());
+            game.drawTextMap(center, label, Text.White);
         }
         for (Squad squad: squadManager.getDefenseSquads().values()) {
-            game.drawCircleMap(squad.getCenter(), 256, Color.White);
-            game.drawTextMap(squad.getCenter(), String.format("Defenders: %s", squad.size()), Text.White);
+            Position center = squad.getCenter();
+            for (ManagedUnit mu : squad.getMembers()) {
+                game.drawLineMap(center, mu.getUnit().getPosition(), Color.White);
+            }
+            game.drawTextMap(center, String.format("Defenders: %s", squad.size()), Text.White);
         }
     }
 
@@ -430,6 +444,56 @@ public class Debug {
         for (Squad squad : squadManager.fightSquads) {
             if (squad.getStatus() == SquadStatus.CONTAIN) {
                 game.drawTextMap(squad.getCenter(), String.format("CONTAIN (%d)", squad.size()), Text.Green);
+            }
+        }
+    }
+
+    private String formatCompositionSquadLabel(SquadStatus status, int supply, Map<UnitType, Integer> composition) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(status).append(" sup=").append(supply);
+        for (Map.Entry<UnitType, Integer> entry : composition.entrySet()) {
+            String shortName = entry.getKey().toString().replace("Zerg_", "");
+            sb.append(" ").append(shortName).append(":").append(entry.getValue());
+        }
+        return sb.toString();
+    }
+
+    private void debugCombatSim() {
+        for (Squad squad : squadManager.fightSquads) {
+            if (!(squad.getCombatSimulator() instanceof HorizonCombatSimulator)) continue;
+            HorizonCombatSimulator sim = (HorizonCombatSimulator) squad.getCombatSimulator();
+            DebugSnapshot snap = sim.getLastSnapshots().get(squad.getId());
+            if (snap == null) continue;
+
+            Color resultColor = snap.getResult() == CombatResult.ENGAGE ? Color.Green
+                    : snap.getResult() == CombatResult.RETREAT ? Color.Red : Color.Yellow;
+
+            game.drawCircleMap(snap.getSquadCenter(), (int) 256, resultColor);
+            game.drawTextMap(snap.getSquadCenter().getX() - 40, snap.getSquadCenter().getY() - 20,
+                    String.format("%s ratio=%.2f", snap.getResult(), snap.getOverallRatio()), Text.White);
+            game.drawTextMap(snap.getSquadCenter().getX() - 40, snap.getSquadCenter().getY() - 10,
+                    String.format("F=%.1f E=%.1f gR=%.2f cR=%.2f",
+                            snap.getFriendlyTotal(), snap.getEnemyTotal(), snap.getGroundRatio(), snap.getCombinedRatio()), Text.White);
+
+            for (UnitDebugEntry entry : snap.getFriendlyUnits()) {
+                Color c = entry.isAdjacent() ? Color.Cyan : Color.Green;
+                game.drawCircleMap(entry.getPosition(), 6, c);
+                game.drawLineMap(entry.getPosition(), snap.getSquadCenter(), c);
+                String shortName = entry.getType().toString().replace("Zerg_", "");
+                game.drawTextMap(entry.getPosition().getX() + 8, entry.getPosition().getY() - 4,
+                        String.format("%s %.1f", shortName, entry.getStrength()), Text.Green);
+            }
+
+            Position enemyCenter = snap.getEnemyCenter();
+            for (UnitDebugEntry entry : snap.getEnemyUnits()) {
+                game.drawCircleMap(entry.getPosition(), 6, Color.Red);
+                if (enemyCenter != null) {
+                    game.drawLineMap(entry.getPosition(), enemyCenter, Color.Red);
+                }
+                String shortName = entry.getType().toString()
+                        .replace("Protoss_", "").replace("Terran_", "").replace("Zerg_", "");
+                game.drawTextMap(entry.getPosition().getX() + 8, entry.getPosition().getY() - 4,
+                        String.format("%s %.1f", shortName, entry.getStrength()), Text.Red);
             }
         }
     }

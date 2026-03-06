@@ -1,16 +1,15 @@
 package unit.squad;
 
 import info.GameState;
-import unit.managed.ManagedUnit;
 
-import java.util.Set;
+import java.util.Map;
 
 /**
  * CombatSimulator interface for combat simulation and engagement evaluation.
  */
 public interface CombatSimulator {
 
-    CombatResult evaluate(Squad squad, Set<ManagedUnit> reinforcements, GameState gameState);
+    CombatResult evaluate(Squad squad, Map<Squad, Double> adjacentSquads, GameState gameState);
 
     enum CombatResult {
         ENGAGE,

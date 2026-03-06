@@ -11,7 +11,9 @@ import unit.managed.ManagedUnit;
 import unit.managed.UnitRole;
 import util.Time;
 
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -23,6 +25,10 @@ public class Squad implements Comparable<Squad> {
     private final String id = UUID.randomUUID().toString();
 
     protected HashSet<ManagedUnit> members = new HashSet<>();
+    @Getter(AccessLevel.NONE)
+    private final Map<UnitType, Integer> composition = new HashMap<>();
+    @Getter(AccessLevel.NONE)
+    private int cachedSupply = 0;
 
     // TODO: maybe this is consolidated with retreat target
     private Position rallyPoint;
@@ -30,7 +36,6 @@ public class Squad implements Comparable<Squad> {
     @Getter(AccessLevel.NONE)
     private Position center;
     protected SquadStatus status;
-    private UnitType type = null;
     private Unit target = null;
 
     @Getter
@@ -99,10 +104,21 @@ public class Squad implements Comparable<Squad> {
 
     public void addUnit(ManagedUnit managedUnit) {
         members.add(managedUnit);
+        UnitType type = managedUnit.getUnitType();
+        composition.merge(type, 1, Integer::sum);
+        cachedSupply += type.supplyRequired();
     }
 
     public void removeUnit(ManagedUnit managedUnit) {
         members.remove(managedUnit);
+        UnitType type = managedUnit.getUnitType();
+        int count = composition.getOrDefault(type, 0) - 1;
+        if (count <= 0) {
+            composition.remove(type);
+        } else {
+            composition.put(type, count);
+        }
+        cachedSupply = Math.max(0, cachedSupply - type.supplyRequired());
     }
 
     public int size() { 
@@ -115,7 +131,7 @@ public class Squad implements Comparable<Squad> {
 
     public void merge(Squad other) {
         for (ManagedUnit managedUnit: other.getMembers()) {
-            members.add(managedUnit);
+            addUnit(managedUnit);
         }
     }
 
@@ -182,6 +198,30 @@ public class Squad implements Comparable<Squad> {
      */
     public boolean shouldDisband() {
         return shouldDisband;
+    }
+
+    public int getSupply() {
+        return cachedSupply;
+    }
+
+    public Map<UnitType, Integer> getComposition() {
+        return composition;
+    }
+
+    public int getCountOf(UnitType type) {
+        return composition.getOrDefault(type, 0);
+    }
+
+    public boolean hasOnly(UnitType type) {
+        return composition.size() == 1 && composition.containsKey(type);
+    }
+
+    public boolean isGroundSquad() {
+        return false;
+    }
+
+    public boolean isAirSquad() {
+        return false;
     }
 
     public boolean isFightLocked(int currentFrame) {

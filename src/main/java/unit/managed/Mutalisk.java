@@ -26,9 +26,13 @@ public class Mutalisk extends ManagedUnit {
             if (retreatTarget == null) {
                 retreatTarget = getRetreatPosition();
             }
-            unit.move(retreatTarget);
+            if (retreatTarget != null) {
+                unit.move(retreatTarget);
+            } else if (rallyPoint != null) {
+                unit.move(rallyPoint);
+            }
             return;
-        } 
+        }
 
         if (fightTarget != null) {
             unit.attack(fightTarget);

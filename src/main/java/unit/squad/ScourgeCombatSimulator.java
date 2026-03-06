@@ -4,10 +4,9 @@ import bwapi.Unit;
 import bwapi.UnitType;
 import info.GameState;
 
-import unit.managed.ManagedUnit;
-
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -18,11 +17,10 @@ import java.util.Set;
 public class ScourgeCombatSimulator implements CombatSimulator {
 
     @Override
-    public CombatResult evaluate(Squad squad, Set<ManagedUnit> reinforcements, GameState gameState) {
+    public CombatResult evaluate(Squad squad, Map<Squad, Double> adjacentSquads, GameState gameState) {
         Set<Unit> enemyUnits = gameState.getDetectedEnemyUnits();
         Set<Unit> enemyBuildings = gameState.getEnemyBuildings();
 
-        // Get all enemy air units within reasonable range
         List<Unit> airTargets = new ArrayList<>();
         for (Unit enemy : enemyUnits) {
             if (enemy.isFlying() && enemy.isDetected() && !enemy.isInvincible() && 
@@ -52,7 +50,7 @@ public class ScourgeCombatSimulator implements CombatSimulator {
             return false;
         }
 
-        int scourgeDAMAGE = 110;
+        int scourgeDamage = 110;
 
         List<Unit> prioritizedTargets = prioritizeTargets(airTargets);
 
@@ -64,7 +62,7 @@ public class ScourgeCombatSimulator implements CombatSimulator {
             }
 
             int targetHP = target.getHitPoints() + target.getShields();
-            int scourgeNeeded = (int) Math.ceil((double) targetHP / scourgeDAMAGE);
+            int scourgeNeeded = (int) Math.ceil((double) targetHP / scourgeDamage);
 
             if (scourgeNeeded <= remainingScourge) {
                 return true;
@@ -95,7 +93,6 @@ public class ScourgeCombatSimulator implements CombatSimulator {
             }
         }
 
-        // Combine lists in priority order
         List<Unit> prioritized = new ArrayList<>();
         prioritized.addAll(highPriority);
         prioritized.addAll(mediumPriority);

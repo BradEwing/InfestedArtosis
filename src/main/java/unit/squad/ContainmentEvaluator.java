@@ -10,14 +10,12 @@ import unit.managed.ManagedUnit;
 import java.util.HashSet;
 import java.util.Set;
 
+
 public class ContainmentEvaluator {
 
     private static final int STATIC_DEFENSE_SUPPLY_PENALTY = 6;
     private static final double BREAK_SUPPLY_RATIO = 1.5;
-    private static final int MIN_ZERGLING_COUNT = 8;
-    private static final int MIN_HYDRALISK_COUNT = 6;
-    private static final int MIN_LURKER_COUNT = 2;
-    private static final int MIN_ULTRALISK_COUNT = 2;
+    private static final int MIN_SUPPLY_THRESHOLD = 8;
 
     private static final UnitType[] ENEMY_GROUND_ARMY_TYPES = {
         UnitType.Terran_Marine,
@@ -47,15 +45,7 @@ public class ContainmentEvaluator {
     }
 
     public boolean isEligibleSquad(Squad squad) {
-        if (squad instanceof MutaliskSquad || squad instanceof ScourgeSquad) {
-            return false;
-        }
-        UnitType type = squad.getType();
-        if (type == null) return false;
-        return type == UnitType.Zerg_Zergling
-                || type == UnitType.Zerg_Hydralisk
-                || type == UnitType.Zerg_Lurker
-                || type == UnitType.Zerg_Ultralisk;
+        return squad.isGroundSquad();
     }
 
     public boolean shouldContain(Squad squad) {
@@ -80,12 +70,7 @@ public class ContainmentEvaluator {
     }
 
     private boolean meetsMinimumSize(Squad squad) {
-        UnitType type = squad.getType();
-        int size = squad.size();
-        if (type == UnitType.Zerg_Zergling) return size >= MIN_ZERGLING_COUNT;
-        if (type == UnitType.Zerg_Hydralisk) return size >= MIN_HYDRALISK_COUNT;
-        if (type == UnitType.Zerg_Lurker) return size >= MIN_LURKER_COUNT;
-        return size >= MIN_ULTRALISK_COUNT;
+        return squad.getSupply() >= MIN_SUPPLY_THRESHOLD;
     }
 
     private Set<Position> getEnemyBasePositions() {
