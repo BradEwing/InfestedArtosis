@@ -17,6 +17,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+/**
+ * Combat simulator inspired by McRave's Horizon.
+ * https://github.com/Cmccrave/Horizon
+ */
 public class HorizonCombatSimulator implements CombatSimulator {
 
     private static final double MAX_ENGAGEMENT_RADIUS = 768.0;
