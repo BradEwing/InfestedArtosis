@@ -18,7 +18,7 @@ import java.util.Map;
 
 /**
  * Combat simulator inspired by McRave's Horizon.
- * https://github.com/Cmccrave/Horizon
+ * https://github.com/Cmccrave/McRave/tree/bfbce3c74d240f4a2cbfe6767c8172af842049be/Source/Horizon
  */
 public class HorizonCombatSimulator implements CombatSimulator {
 

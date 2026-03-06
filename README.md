@@ -40,3 +40,8 @@ Feel free to open up a GitHub issue or ping me on the [SSCAIT discord](https://d
 - Update version tag in `pom.xml`
 - Navigate to Maven tab in Intellij, run compile then package
 - Move new jar file from `target` into `sscait` dir
+
+## Thank You
+
+- **Christian McCrave** ([McRave](https://github.com/Cmccrave)) — for providing excellent advice and code for build order, combat simulation, and micro adoption.
+- **Dan Gant** ([PurpleWave](https://github.com/dgant)) — for being a great mentor on strategy, architecture, and where to go next.
