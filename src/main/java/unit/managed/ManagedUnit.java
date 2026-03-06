@@ -193,7 +193,7 @@ public class ManagedUnit {
         List<Unit> enemies = getEnemiesInRadius(currentX, currentY);
 
         if (enemies.isEmpty()) {
-            return currentPos;
+            return null;
         }
 
         double sumDx = 0;
@@ -206,7 +206,7 @@ public class ManagedUnit {
 
         Vec2 away = new Vec2(-sumDx, -sumDy);
         if (away.length() == 0) {
-            return currentPos;
+            return null;
         }
 
         Position retreatPos = away.normalizeToLength(128).toPosition(currentPos);
@@ -224,7 +224,7 @@ public class ManagedUnit {
         Position currentPos = new Position(currentX, currentY);
         List<Unit> enemies = getEnemiesInRadius(currentX, currentY);
         if (enemies.isEmpty()) {
-            return currentPos;
+            return null;
         }
 
         double sumDx = 0;
@@ -236,7 +236,7 @@ public class ManagedUnit {
 
         Vec2 away = new Vec2(-sumDx, -sumDy);
         if (away.length() == 0) {
-            return currentPos;
+            return null;
         }
 
         return away.normalizeToLength(128).clampToMap(game, currentPos);
@@ -549,7 +549,9 @@ public class ManagedUnit {
         List<Unit> threats = getEnemiesInRadius(current.getX(), current.getY());
 
         if (!threats.isEmpty()) {
-            Vec2 awayDir = Vec2.between(current, getSimpleRetreatPosition()).normalize();
+            Position retreatPos = getSimpleRetreatPosition();
+            if (retreatPos == null) retreatPos = current;
+            Vec2 awayDir = Vec2.between(current, retreatPos).normalize();
             Vec2 targetDir = Vec2.between(current, movementTargetPosition.toPosition()).normalize();
 
             double dot = awayDir.x * targetDir.x + awayDir.y * targetDir.y;
@@ -630,9 +632,10 @@ public class ManagedUnit {
     protected void retreat() {
         if (retreatTarget == null) {
             Position next = getRetreatPosition();
-            setRetreatTarget(next);
-            if (next == null) {
-                role = UnitRole.RALLY;
+            if (next != null) {
+                setRetreatTarget(next);
+            } else {
+                fallbackToRally();
                 return;
             }
         }
@@ -649,20 +652,29 @@ public class ManagedUnit {
 
         if (framesStuck >= 12) {
             setRetreatTarget(null);
-            role = UnitRole.IDLE;
+            fallbackToRally();
             return;
         }
 
         if (unit.getDistance(retreatTarget) < getRetreatArrivalDistance()) {
             Position next = getRetreatPosition();
-            setRetreatTarget(next);
-            if (next == null) {
-                role = UnitRole.IDLE;
+            if (next != null) {
+                setRetreatTarget(next);
+            } else {
+                fallbackToRally();
                 return;
             }
         }
 
         unit.move(retreatTarget);
+    }
+
+    private void fallbackToRally() {
+        if (rallyPoint != null) {
+            role = UnitRole.RALLY;
+        } else {
+            role = UnitRole.IDLE;
+        }
     }
 
     /**

@@ -109,6 +109,17 @@ public class HorizonCombatSimulator implements CombatSimulator {
             snapshot.getEnemyUnits().add(new UnitDebugEntry(pos, type, displayStr, false));
         }
 
+        if (!snapshot.getEnemyUnits().isEmpty()) {
+            double ex = 0; 
+            double ey = 0;
+            for (UnitDebugEntry e : snapshot.getEnemyUnits()) {
+                ex += e.getPosition().getX();
+                ey += e.getPosition().getY();
+            }
+            int count = snapshot.getEnemyUnits().size();
+            snapshot.setEnemyCenter(new Position((int)(ex / count), (int)(ey / count)));
+        }
+
         double overallRatio;
         if (airSquad) {
             overallRatio = friendlyAirStr / Math.max(enemyAntiAirStr, 0.01);
@@ -156,7 +167,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
         double distWeight = distanceWeight(dist);
 
         double cloak = 1.0;
-        if ((type == UnitType.Zerg_Lurker && unit.isBurrowed()) || type == UnitType.Protoss_Dark_Templar) {
+        if (type == UnitType.Zerg_Lurker && unit.isBurrowed() || type == UnitType.Protoss_Dark_Templar) {
             if (!enemyHasDetection) {
                 cloak = 2.0;
             }
@@ -212,6 +223,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
     @lombok.Setter
     public static class DebugSnapshot {
         private Position squadCenter;
+        private Position enemyCenter;
         private final List<UnitDebugEntry> friendlyUnits = new ArrayList<>();
         private final List<UnitDebugEntry> enemyUnits = new ArrayList<>();
         private double friendlyTotal;

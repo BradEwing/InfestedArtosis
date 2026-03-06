@@ -478,13 +478,18 @@ public class Debug {
             for (UnitDebugEntry entry : snap.getFriendlyUnits()) {
                 Color c = entry.isAdjacent() ? Color.Cyan : Color.Green;
                 game.drawCircleMap(entry.getPosition(), 6, c);
+                game.drawLineMap(entry.getPosition(), snap.getSquadCenter(), c);
                 String shortName = entry.getType().toString().replace("Zerg_", "");
                 game.drawTextMap(entry.getPosition().getX() + 8, entry.getPosition().getY() - 4,
                         String.format("%s %.1f", shortName, entry.getStrength()), Text.Green);
             }
 
+            Position enemyCenter = snap.getEnemyCenter();
             for (UnitDebugEntry entry : snap.getEnemyUnits()) {
                 game.drawCircleMap(entry.getPosition(), 6, Color.Red);
+                if (enemyCenter != null) {
+                    game.drawLineMap(entry.getPosition(), enemyCenter, Color.Red);
+                }
                 String shortName = entry.getType().toString()
                         .replace("Protoss_", "").replace("Terran_", "").replace("Zerg_", "");
                 game.drawTextMap(entry.getPosition().getX() + 8, entry.getPosition().getY() - 4,

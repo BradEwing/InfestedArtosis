@@ -19,6 +19,7 @@ import lombok.Getter;
 import org.bk.ass.sim.BWMirrorAgentFactory;
 import org.bk.ass.sim.Simulator;
 import unit.managed.ManagedUnit;
+import unit.squad.horizon.HorizonCombatSimulator;
 import unit.managed.UnitRole;
 import util.Arc;
 import util.Vec2;
@@ -61,6 +62,7 @@ public class SquadManager {
     private static final double ENEMY_DETECTION_RADIUS = 512.0;
 
     private static final Set<UnitType> GROUND_SQUAD_TYPES = new HashSet<>();
+
     static {
         GROUND_SQUAD_TYPES.add(UnitType.Zerg_Zergling);
         GROUND_SQUAD_TYPES.add(UnitType.Zerg_Hydralisk);
@@ -70,12 +72,14 @@ public class SquadManager {
     }
 
     private static final Set<UnitType> AIR_SQUAD_TYPES = new HashSet<>();
+
     static {
         AIR_SQUAD_TYPES.add(UnitType.Zerg_Mutalisk);
         AIR_SQUAD_TYPES.add(UnitType.Zerg_Scourge);
         AIR_SQUAD_TYPES.add(UnitType.Zerg_Guardian);
         AIR_SQUAD_TYPES.add(UnitType.Zerg_Devourer);
     }
+
     private static final int RETREAT_VECTOR_MAGNITUDE = 192;
     private static final int COMBAT_SIM_DURATION_FRAMES = 150;
     private static final double DEFENSE_WIN_THRESHOLD = 0.50;
@@ -454,10 +458,12 @@ public class SquadManager {
 
         SquadStatus squadStatus = squad.getStatus();
         if (!closeThreats && squadStatus == SquadStatus.REGROUP) {
+            clearCombatSimSnapshot(squad);
             return;
         }
 
         if (squadStatus == SquadStatus.CONTAIN) {
+            clearCombatSimSnapshot(squad);
             evaluateContainingSquad(squad);
             return;
         }
@@ -479,6 +485,7 @@ public class SquadManager {
                 simulateFightSquad(squad);
             }
         } else {
+            clearCombatSimSnapshot(squad);
             rallySquad(squad);
         }
     }
@@ -630,6 +637,10 @@ public class SquadManager {
         boolean retreatLocked = squad.isRetreatLocked(now);
         boolean fightLocked = squad.isFightLocked(now);
 
+        Map<Squad, Double> adjacentSquads = getAdjacentSquads(squad, REINFORCEMENT_RADIUS);
+        CombatSimulator.CombatResult result = squad.getCombatSimulator()
+                .evaluate(squad, adjacentSquads, gameState);
+
         if (squad.getStatus() == SquadStatus.RETREAT && retreatLocked) {
             assignRetreatTargets(squad, managedFighters);
             return;
@@ -638,10 +649,6 @@ public class SquadManager {
             assignFightTargets(squad, managedFighters, false);
             return;
         }
-
-        Map<Squad, Double> adjacentSquads = getAdjacentSquads(squad, REINFORCEMENT_RADIUS);
-        CombatSimulator.CombatResult result = squad.getCombatSimulator()
-                .evaluate(squad, adjacentSquads, gameState);
 
         switch (result) {
             case RETREAT:
@@ -669,6 +676,15 @@ public class SquadManager {
                     managedUnit.clearRetreatStart();
                 }
                 break;
+            default:
+                break;
+        }
+    }
+
+    private void clearCombatSimSnapshot(Squad squad) {
+        CombatSimulator sim = squad.getCombatSimulator();
+        if (sim instanceof HorizonCombatSimulator) {
+            ((HorizonCombatSimulator) sim).getLastSnapshots().remove(squad.getId());
         }
     }
 
