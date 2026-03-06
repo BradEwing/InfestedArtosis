@@ -115,7 +115,7 @@ public class Squad implements Comparable<Squad> {
 
     public void merge(Squad other) {
         for (ManagedUnit managedUnit: other.getMembers()) {
-            members.add(managedUnit);
+            addUnit(managedUnit);
         }
     }
 

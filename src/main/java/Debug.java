@@ -410,6 +410,8 @@ public class Debug {
             String label;
             if (squad.isGroundSquad()) {
                 label = formatGroundSquadLabel((unit.squad.GroundSquad) squad);
+            } else if (squad.isAirSquad()) {
+                label = formatAirSquadLabel((unit.squad.AirSquad) squad);
             } else {
                 label = String.format("Radius: %d", squad.radius());
             }
@@ -448,6 +450,16 @@ public class Debug {
     }
 
     private String formatGroundSquadLabel(unit.squad.GroundSquad squad) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(squad.getStatus()).append(" sup=").append(squad.getSupply());
+        for (java.util.Map.Entry<bwapi.UnitType, Integer> entry : squad.getComposition().entrySet()) {
+            String shortName = entry.getKey().toString().replace("Zerg_", "");
+            sb.append(" ").append(shortName).append(":").append(entry.getValue());
+        }
+        return sb.toString();
+    }
+
+    private String formatAirSquadLabel(unit.squad.AirSquad squad) {
         StringBuilder sb = new StringBuilder();
         sb.append(squad.getStatus()).append(" sup=").append(squad.getSupply());
         for (java.util.Map.Entry<bwapi.UnitType, Integer> entry : squad.getComposition().entrySet()) {
