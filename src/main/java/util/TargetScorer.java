@@ -42,7 +42,7 @@ public final class TargetScorer {
 
             if (bestPriority == null
                     || priority.ordinal() > bestPriority.ordinal()
-                    || (priority == bestPriority && score > bestScore)) {
+                    || priority == bestPriority && score > bestScore) {
                 bestTarget = candidate;
                 bestPriority = priority;
                 bestScore = score;
