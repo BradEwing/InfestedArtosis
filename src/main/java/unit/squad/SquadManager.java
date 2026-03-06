@@ -695,6 +695,7 @@ public class SquadManager {
                 : null;
         for (ManagedUnit managedUnit : managedFighters) {
             managedUnit.setRole(UnitRole.RETREAT);
+            managedUnit.setReady(true);
             managedUnit.setRallyPoint(rallyPoint);
             if (retreatTargets != null) {
                 managedUnit.setRetreatTarget(retreatTargets.get(managedUnit));

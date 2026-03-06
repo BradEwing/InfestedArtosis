@@ -189,7 +189,12 @@ public class ManagedUnit {
             }
         }
 
-        List<Unit> enemies = getEnemiesInRadius(currentX, currentY);
+        int scanRadius = retreatScanRadius();
+        List<Unit> enemies = game.getUnitsInRadius(currentX, currentY, scanRadius)
+                .stream()
+                .filter(u -> u.getPlayer() != game.self())
+                .filter(u -> !u.getType().isBuilding() || Filter.isHostileBuildingToGround(u.getType()))
+                .collect(Collectors.toList());
 
         if (enemies.isEmpty()) {
             return null;
@@ -208,7 +213,7 @@ public class ManagedUnit {
             return null;
         }
 
-        Position retreatPos = away.normalizeToLength(128).toPosition(currentPos);
+        Position retreatPos = away.normalizeToLength(retreatFleeDistance()).toPosition(currentPos);
 
         if (!isRetreatPathWalkable(currentPos, retreatPos)) {
             retreatPos = findAlternativeRetreatPosition(currentPos, retreatPos);
@@ -682,6 +687,14 @@ public class ManagedUnit {
      */
     protected int getRetreatArrivalDistance() {
         return 16;
+    }
+
+    protected int retreatScanRadius() {
+        return 128;
+    }
+
+    protected int retreatFleeDistance() {
+        return 128;
     }
 
     public void markRetreatStart(int frame) {
