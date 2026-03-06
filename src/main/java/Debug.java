@@ -406,13 +406,19 @@ public class Debug {
 
     private void debugSquads() {
         for (Squad squad: squadManager.fightSquads) {
-            game.drawCircleMap(squad.getCenter(), squad.radius(), Color.White);
+            Position center = squad.getCenter();
+            for (ManagedUnit mu : squad.getMembers()) {
+                game.drawLineMap(center, mu.getUnit().getPosition(), Color.White);
+            }
             String label = formatCompositionSquadLabel(squad.getStatus(), squad.getSupply(), squad.getComposition());
-            game.drawTextMap(squad.getCenter(), label, Text.White);
+            game.drawTextMap(center, label, Text.White);
         }
         for (Squad squad: squadManager.getDefenseSquads().values()) {
-            game.drawCircleMap(squad.getCenter(), 256, Color.White);
-            game.drawTextMap(squad.getCenter(), String.format("Defenders: %s", squad.size()), Text.White);
+            Position center = squad.getCenter();
+            for (ManagedUnit mu : squad.getMembers()) {
+                game.drawLineMap(center, mu.getUnit().getPosition(), Color.White);
+            }
+            game.drawTextMap(center, String.format("Defenders: %s", squad.size()), Text.White);
         }
     }
 
@@ -462,7 +468,7 @@ public class Debug {
             Color resultColor = snap.getResult() == CombatResult.ENGAGE ? Color.Green
                     : snap.getResult() == CombatResult.RETREAT ? Color.Red : Color.Yellow;
 
-            game.drawCircleMap(snap.getSquadCenter(), (int) 768, resultColor);
+            game.drawCircleMap(snap.getSquadCenter(), (int) 256, resultColor);
             game.drawTextMap(snap.getSquadCenter().getX() - 40, snap.getSquadCenter().getY() - 20,
                     String.format("%s ratio=%.2f", snap.getResult(), snap.getOverallRatio()), Text.White);
             game.drawTextMap(snap.getSquadCenter().getX() - 40, snap.getSquadCenter().getY() - 10,

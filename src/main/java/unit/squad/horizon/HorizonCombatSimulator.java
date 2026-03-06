@@ -22,7 +22,7 @@ import java.util.Map;
  */
 public class HorizonCombatSimulator implements CombatSimulator {
 
-    private static final double MAX_ENGAGEMENT_RADIUS = 768.0;
+    private static final double MAX_ENGAGEMENT_RADIUS = 320;
     private static final double WORKER_STRENGTH_DIVISOR = 10.0;
     private static final double HEIGHT_BONUS = 1.15;
     private static final double ENGAGE_THRESHOLD = 1.0;
