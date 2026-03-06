@@ -35,7 +35,7 @@ import java.util.stream.Collectors;
 
 import static java.lang.Math.min;
 import static util.Distance.manhattanTileDistance;
-import static util.Filter.closestHostileUnit;
+import util.TargetScorer;
 
 public class SquadManager {
 
@@ -1191,9 +1191,10 @@ public class SquadManager {
             }
         }
 
-        Unit closestEnemy = closestHostileUnit(unit, filtered);
-        if (closestEnemy != null) {
-            managedUnit.setFightTarget(closestEnemy);
+        Set<Position> basePositions = gameState.getBaseData().getMyBasePositions();
+        Unit bestTarget = TargetScorer.selectTarget(unit, filtered, managedUnit.fightTarget, basePositions);
+        if (bestTarget != null) {
+            managedUnit.setFightTarget(bestTarget);
         }
     }
 
