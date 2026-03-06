@@ -66,11 +66,11 @@ public class AirSquad extends Squad {
 
     private void updateCombatSimulator() {
         if (hasOnly(UnitType.Zerg_Scourge)) {
-            this.setCombatSimulator(new ScourgeCombatSimulator());
-        } else {
-            if (!(getCombatSimulator() instanceof HorizonCombatSimulator)) {
-                this.setCombatSimulator(new HorizonCombatSimulator());
+            if (!(getCombatSimulator() instanceof ScourgeCombatSimulator)) {
+                this.setCombatSimulator(new ScourgeCombatSimulator());
             }
+        } else if (!(getCombatSimulator() instanceof HorizonCombatSimulator)) {
+            this.setCombatSimulator(new HorizonCombatSimulator());
         }
     }
 }

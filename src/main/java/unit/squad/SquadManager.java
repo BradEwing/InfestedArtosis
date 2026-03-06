@@ -687,6 +687,7 @@ public class SquadManager {
                 : null;
         for (ManagedUnit managedUnit : managedFighters) {
             managedUnit.setRole(UnitRole.RETREAT);
+            managedUnit.setRallyPoint(rallyPoint);
             managedUnit.markRetreatStart(currentFrame);
             Integer retreatStartFrame = managedUnit.getRetreatStartFrame();
             if (retreatStartFrame != null && currentFrame - retreatStartFrame >= RETREAT_TIMEOUT_FRAMES) {
@@ -1041,9 +1042,7 @@ public class SquadManager {
     private void addManagedFighter(ManagedUnit managedUnit) {
         UnitType type = managedUnit.getUnitType();
         Squad squad;
-        if (GROUND_SQUAD_TYPES.contains(type)) {
-            squad = findCloseGroundSquad(managedUnit);
-        } else if (AIR_SQUAD_TYPES.contains(type)) {
+        if (AIR_SQUAD_TYPES.contains(type)) {
             squad = findCloseAirSquad(managedUnit);
         } else {
             squad = findCloseGroundSquad(managedUnit);
@@ -1189,7 +1188,9 @@ public class SquadManager {
         }
 
         Unit closestEnemy = closestHostileUnit(unit, filtered);
-        managedUnit.setFightTarget(closestEnemy);
+        if (closestEnemy != null) {
+            managedUnit.setFightTarget(closestEnemy);
+        }
     }
 
     /**
@@ -1315,5 +1316,3 @@ public class SquadManager {
         return false;
     }
 }
-
-

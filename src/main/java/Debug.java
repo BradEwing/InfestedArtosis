@@ -409,9 +409,11 @@ public class Debug {
             game.drawCircleMap(squad.getCenter(), squad.radius(), Color.White);
             String label;
             if (squad.isGroundSquad()) {
-                label = formatGroundSquadLabel((unit.squad.GroundSquad) squad);
+                unit.squad.GroundSquad gs = (unit.squad.GroundSquad) squad;
+                label = formatCompositionSquadLabel(squad.getStatus(), gs.getSupply(), gs.getComposition());
             } else if (squad.isAirSquad()) {
-                label = formatAirSquadLabel((unit.squad.AirSquad) squad);
+                unit.squad.AirSquad as = (unit.squad.AirSquad) squad;
+                label = formatCompositionSquadLabel(squad.getStatus(), as.getSupply(), as.getComposition());
             } else {
                 label = String.format("Radius: %d", squad.radius());
             }
@@ -449,20 +451,10 @@ public class Debug {
         }
     }
 
-    private String formatGroundSquadLabel(unit.squad.GroundSquad squad) {
+    private String formatCompositionSquadLabel(unit.squad.SquadStatus status, int supply, java.util.Map<bwapi.UnitType, Integer> composition) {
         StringBuilder sb = new StringBuilder();
-        sb.append(squad.getStatus()).append(" sup=").append(squad.getSupply());
-        for (java.util.Map.Entry<bwapi.UnitType, Integer> entry : squad.getComposition().entrySet()) {
-            String shortName = entry.getKey().toString().replace("Zerg_", "");
-            sb.append(" ").append(shortName).append(":").append(entry.getValue());
-        }
-        return sb.toString();
-    }
-
-    private String formatAirSquadLabel(unit.squad.AirSquad squad) {
-        StringBuilder sb = new StringBuilder();
-        sb.append(squad.getStatus()).append(" sup=").append(squad.getSupply());
-        for (java.util.Map.Entry<bwapi.UnitType, Integer> entry : squad.getComposition().entrySet()) {
+        sb.append(status).append(" sup=").append(supply);
+        for (java.util.Map.Entry<bwapi.UnitType, Integer> entry : composition.entrySet()) {
             String shortName = entry.getKey().toString().replace("Zerg_", "");
             sb.append(" ").append(shortName).append(":").append(entry.getValue());
         }
