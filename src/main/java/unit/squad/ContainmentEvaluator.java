@@ -70,7 +70,7 @@ public class ContainmentEvaluator {
     }
 
     private boolean meetsMinimumSize(Squad squad) {
-        return ((GroundSquad) squad).getSupply() >= MIN_SUPPLY_THRESHOLD;
+        return squad.getSupply() >= MIN_SUPPLY_THRESHOLD;
     }
 
     private Set<Position> getEnemyBasePositions() {

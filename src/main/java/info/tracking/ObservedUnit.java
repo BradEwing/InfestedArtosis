@@ -18,7 +18,7 @@ public class ObservedUnit {
     private boolean completed;
     private int lastKnownHitPoints;
     private int lastKnownShields;
-    private int lastKnownGroundHeight;
+    private int lastKnownGroundHeight = -1;
 
     public ObservedUnit(Unit unit, Time currentFrame, boolean proxied) {
         this.unit = unit;

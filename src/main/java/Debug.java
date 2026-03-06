@@ -407,16 +407,7 @@ public class Debug {
     private void debugSquads() {
         for (Squad squad: squadManager.fightSquads) {
             game.drawCircleMap(squad.getCenter(), squad.radius(), Color.White);
-            String label;
-            if (squad.isGroundSquad()) {
-                unit.squad.GroundSquad gs = (unit.squad.GroundSquad) squad;
-                label = formatCompositionSquadLabel(squad.getStatus(), gs.getSupply(), gs.getComposition());
-            } else if (squad.isAirSquad()) {
-                unit.squad.AirSquad as = (unit.squad.AirSquad) squad;
-                label = formatCompositionSquadLabel(squad.getStatus(), as.getSupply(), as.getComposition());
-            } else {
-                label = String.format("Radius: %d", squad.radius());
-            }
+            String label = formatCompositionSquadLabel(squad.getStatus(), squad.getSupply(), squad.getComposition());
             game.drawTextMap(squad.getCenter(), label, Text.White);
         }
         for (Squad squad: squadManager.getDefenseSquads().values()) {
@@ -451,10 +442,10 @@ public class Debug {
         }
     }
 
-    private String formatCompositionSquadLabel(unit.squad.SquadStatus status, int supply, java.util.Map<bwapi.UnitType, Integer> composition) {
+    private String formatCompositionSquadLabel(SquadStatus status, int supply, Map<UnitType, Integer> composition) {
         StringBuilder sb = new StringBuilder();
         sb.append(status).append(" sup=").append(supply);
-        for (java.util.Map.Entry<bwapi.UnitType, Integer> entry : composition.entrySet()) {
+        for (Map.Entry<UnitType, Integer> entry : composition.entrySet()) {
             String shortName = entry.getKey().toString().replace("Zerg_", "");
             sb.append(" ").append(shortName).append(":").append(entry.getValue());
         }
@@ -468,30 +459,30 @@ public class Debug {
             DebugSnapshot snap = sim.getLastSnapshots().get(squad.getId());
             if (snap == null) continue;
 
-            Color resultColor = snap.result == CombatResult.ENGAGE ? Color.Green
-                    : snap.result == CombatResult.RETREAT ? Color.Red : Color.Yellow;
+            Color resultColor = snap.getResult() == CombatResult.ENGAGE ? Color.Green
+                    : snap.getResult() == CombatResult.RETREAT ? Color.Red : Color.Yellow;
 
-            game.drawCircleMap(snap.squadCenter, (int) 768, resultColor);
-            game.drawTextMap(snap.squadCenter.getX() - 40, snap.squadCenter.getY() - 20,
-                    String.format("%s ratio=%.2f", snap.result, snap.overallRatio), Text.White);
-            game.drawTextMap(snap.squadCenter.getX() - 40, snap.squadCenter.getY() - 10,
+            game.drawCircleMap(snap.getSquadCenter(), (int) 768, resultColor);
+            game.drawTextMap(snap.getSquadCenter().getX() - 40, snap.getSquadCenter().getY() - 20,
+                    String.format("%s ratio=%.2f", snap.getResult(), snap.getOverallRatio()), Text.White);
+            game.drawTextMap(snap.getSquadCenter().getX() - 40, snap.getSquadCenter().getY() - 10,
                     String.format("F=%.1f E=%.1f gR=%.2f cR=%.2f",
-                            snap.friendlyTotal, snap.enemyTotal, snap.groundRatio, snap.combinedRatio), Text.White);
+                            snap.getFriendlyTotal(), snap.getEnemyTotal(), snap.getGroundRatio(), snap.getCombinedRatio()), Text.White);
 
-            for (UnitDebugEntry entry : snap.friendlyUnits) {
-                Color c = entry.isAdjacent ? Color.Cyan : Color.Green;
-                game.drawCircleMap(entry.position, 6, c);
-                String shortName = entry.type.toString().replace("Zerg_", "");
-                game.drawTextMap(entry.position.getX() + 8, entry.position.getY() - 4,
-                        String.format("%s %.1f", shortName, entry.strength), Text.Green);
+            for (UnitDebugEntry entry : snap.getFriendlyUnits()) {
+                Color c = entry.isAdjacent() ? Color.Cyan : Color.Green;
+                game.drawCircleMap(entry.getPosition(), 6, c);
+                String shortName = entry.getType().toString().replace("Zerg_", "");
+                game.drawTextMap(entry.getPosition().getX() + 8, entry.getPosition().getY() - 4,
+                        String.format("%s %.1f", shortName, entry.getStrength()), Text.Green);
             }
 
-            for (UnitDebugEntry entry : snap.enemyUnits) {
-                game.drawCircleMap(entry.position, 6, Color.Red);
-                String shortName = entry.type.toString()
+            for (UnitDebugEntry entry : snap.getEnemyUnits()) {
+                game.drawCircleMap(entry.getPosition(), 6, Color.Red);
+                String shortName = entry.getType().toString()
                         .replace("Protoss_", "").replace("Terran_", "").replace("Zerg_", "");
-                game.drawTextMap(entry.position.getX() + 8, entry.position.getY() - 4,
-                        String.format("%s %.1f", shortName, entry.strength), Text.Red);
+                game.drawTextMap(entry.getPosition().getX() + 8, entry.getPosition().getY() - 4,
+                        String.format("%s %.1f", shortName, entry.getStrength()), Text.Red);
             }
         }
     }

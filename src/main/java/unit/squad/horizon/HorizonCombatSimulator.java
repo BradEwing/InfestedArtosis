@@ -15,7 +15,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 /**
  * Combat simulator inspired by McRave's Horizon.
@@ -33,26 +32,23 @@ public class HorizonCombatSimulator implements CombatSimulator {
     private final Map<String, DebugSnapshot> lastSnapshots = new HashMap<>();
 
     @Override
-    public CombatResult evaluate(Squad squad, Set<ManagedUnit> reinforcements, GameState gameState) {
-        return evaluateWithAdjacentSquads(squad, null, gameState);
-    }
-
-    @Override
-    public CombatResult evaluateWithAdjacentSquads(Squad squad, Map<Squad, Double> adjacentSquads, GameState gameState) {
+    public CombatResult evaluate(Squad squad, Map<Squad, Double> adjacentSquads, GameState gameState) {
         Position squadCenter = squad.getCenter();
         if (squadCenter == null) return CombatResult.RETREAT;
 
         boolean airSquad = squad.isAirSquad();
+        ObservedUnitTracker tracker = gameState.getObservedUnitTracker();
+        boolean enemyHasDetection = enemyHasNearbyDetection(tracker, squadCenter);
         DebugSnapshot snapshot = new DebugSnapshot();
-        snapshot.squadCenter = squadCenter;
+        snapshot.setSquadCenter(squadCenter);
 
         double friendlyGroundStr = 0;
         double friendlyAirStr = 0;
 
         for (ManagedUnit mu : squad.getMembers()) {
             if (mu.getUnitType() == UnitType.Zerg_Overlord) continue;
-            double str = computeFriendlyStrength(mu, squadCenter);
-            snapshot.friendlyUnits.add(new UnitDebugEntry(mu.getUnit().getPosition(), mu.getUnitType(), str, false));
+            double str = computeFriendlyStrength(mu, squadCenter, enemyHasDetection);
+            snapshot.getFriendlyUnits().add(new UnitDebugEntry(mu.getUnit().getPosition(), mu.getUnitType(), str, false));
             if (mu.getUnitType().isFlyer()) {
                 friendlyAirStr += str;
             } else {
@@ -67,8 +63,8 @@ public class HorizonCombatSimulator implements CombatSimulator {
                 double weight = distanceWeight(distance);
                 for (ManagedUnit mu : adjSquad.getMembers()) {
                     if (mu.getUnitType() == UnitType.Zerg_Overlord) continue;
-                    double str = computeFriendlyStrength(mu, squadCenter) * weight;
-                    snapshot.friendlyUnits.add(new UnitDebugEntry(mu.getUnit().getPosition(), mu.getUnitType(), str, true));
+                    double str = computeFriendlyStrength(mu, squadCenter, enemyHasDetection) * weight;
+                    snapshot.getFriendlyUnits().add(new UnitDebugEntry(mu.getUnit().getPosition(), mu.getUnitType(), str, true));
                     if (mu.getUnitType().isFlyer()) {
                         friendlyAirStr += str;
                     } else {
@@ -81,7 +77,6 @@ public class HorizonCombatSimulator implements CombatSimulator {
         double enemyGroundStr = 0;
         double enemyAntiAirStr = 0;
 
-        ObservedUnitTracker tracker = gameState.getObservedUnitTracker();
         for (ObservedUnit ou : tracker.getLivingObservedUnits()) {
             Position pos = ou.getUnit().isVisible() ? ou.getUnit().getPosition() : ou.getLastKnownLocation();
             if (pos == null) continue;
@@ -110,27 +105,27 @@ public class HorizonCombatSimulator implements CombatSimulator {
             enemyAntiAirStr += aaEnemyStr;
 
             double displayStr = airSquad ? aaEnemyStr : groundEnemyStr;
-            snapshot.enemyUnits.add(new UnitDebugEntry(pos, type, displayStr, false));
+            snapshot.getEnemyUnits().add(new UnitDebugEntry(pos, type, displayStr, false));
         }
 
         double overallRatio;
         if (airSquad) {
             overallRatio = friendlyAirStr / Math.max(enemyAntiAirStr, 0.01);
-            snapshot.groundRatio = 0;
-            snapshot.combinedRatio = overallRatio;
+            snapshot.setGroundRatio(0);
+            snapshot.setCombinedRatio(overallRatio);
         } else {
             double groundRatio = friendlyGroundStr / Math.max(enemyGroundStr, 0.01);
             double totalFriendly = friendlyGroundStr + friendlyAirStr;
             double totalEnemy = enemyGroundStr + enemyAntiAirStr;
             double combinedRatio = totalFriendly / Math.max(totalEnemy, 0.01);
             overallRatio = Math.max(groundRatio, combinedRatio);
-            snapshot.groundRatio = groundRatio;
-            snapshot.combinedRatio = combinedRatio;
+            snapshot.setGroundRatio(groundRatio);
+            snapshot.setCombinedRatio(combinedRatio);
         }
 
-        snapshot.friendlyTotal = friendlyGroundStr + friendlyAirStr;
-        snapshot.enemyTotal = airSquad ? enemyAntiAirStr : enemyGroundStr;
-        snapshot.overallRatio = overallRatio;
+        snapshot.setFriendlyTotal(friendlyGroundStr + friendlyAirStr);
+        snapshot.setEnemyTotal(airSquad ? enemyAntiAirStr : enemyGroundStr);
+        snapshot.setOverallRatio(overallRatio);
 
         CombatResult result;
         if (overallRatio >= ENGAGE_THRESHOLD) {
@@ -141,13 +136,13 @@ public class HorizonCombatSimulator implements CombatSimulator {
             result = CombatResult.REGROUP;
         }
 
-        snapshot.result = result;
+        snapshot.setResult(result);
         lastSnapshots.put(squad.getId(), snapshot);
 
         return result;
     }
 
-    private double computeFriendlyStrength(ManagedUnit mu, Position engagementCenter) {
+    private double computeFriendlyStrength(ManagedUnit mu, Position engagementCenter, boolean enemyHasDetection) {
         Unit unit = mu.getUnit();
         UnitType type = unit.getType();
         double base = UnitStrength.totalStrength(type);
@@ -161,7 +156,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
 
         double cloak = 1.0;
         if ((type == UnitType.Zerg_Lurker && unit.isBurrowed()) || type == UnitType.Protoss_Dark_Templar) {
-            if (!unit.isDetected()) {
+            if (!enemyHasDetection) {
                 cloak = 2.0;
             }
         }
@@ -172,6 +167,17 @@ public class HorizonCombatSimulator implements CombatSimulator {
         }
 
         return base * hpWeight * distWeight * cloak * prepPenalty;
+    }
+
+    private boolean enemyHasNearbyDetection(ObservedUnitTracker tracker, Position center) {
+        for (ObservedUnit ou : tracker.getLivingObservedUnits()) {
+            if (!ou.getUnitType().isDetector()) continue;
+            Position pos = ou.getUnit().isVisible() ? ou.getUnit().getPosition() : ou.getLastKnownLocation();
+            if (pos != null && center.getDistance(pos) <= MAX_ENGAGEMENT_RADIUS) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private double hpWeighting(int hp, int shields, int maxHp, int maxShields) {
@@ -192,29 +198,26 @@ public class HorizonCombatSimulator implements CombatSimulator {
         return type.airWeapon() != null && type.airWeapon().maxRange() > 32;
     }
 
+    @Getter
+    @lombok.RequiredArgsConstructor
     public static class UnitDebugEntry {
-        public final Position position;
-        public final UnitType type;
-        public final double strength;
-        public final boolean isAdjacent;
-
-        public UnitDebugEntry(Position position, UnitType type, double strength, boolean isAdjacent) {
-            this.position = position;
-            this.type = type;
-            this.strength = strength;
-            this.isAdjacent = isAdjacent;
-        }
+        private final Position position;
+        private final UnitType type;
+        private final double strength;
+        private final boolean adjacent;
     }
 
+    @Getter
+    @lombok.Setter
     public static class DebugSnapshot {
-        public Position squadCenter;
-        public final List<UnitDebugEntry> friendlyUnits = new ArrayList<>();
-        public final List<UnitDebugEntry> enemyUnits = new ArrayList<>();
-        public double friendlyTotal;
-        public double enemyTotal;
-        public double groundRatio;
-        public double combinedRatio;
-        public double overallRatio;
-        public CombatResult result;
+        private Position squadCenter;
+        private final List<UnitDebugEntry> friendlyUnits = new ArrayList<>();
+        private final List<UnitDebugEntry> enemyUnits = new ArrayList<>();
+        private double friendlyTotal;
+        private double enemyTotal;
+        private double groundRatio;
+        private double combinedRatio;
+        private double overallRatio;
+        private CombatResult result;
     }
 }

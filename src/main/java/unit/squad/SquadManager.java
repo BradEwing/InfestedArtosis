@@ -354,7 +354,7 @@ public class SquadManager {
                 if (considered.contains(squad1) || considered.contains(squad2)) continue;
                 boolean bothGround = squad1.isGroundSquad() && squad2.isGroundSquad();
                 boolean bothAir = squad1.isAirSquad() && squad2.isAirSquad();
-                if (!bothGround && !bothAir && squad1.getType() != squad2.getType()) continue;
+                if (!bothGround && !bothAir) continue;
                 if (squad1.distance(squad2) < SQUAD_MERGE_DISTANCE) {
                     Set<Squad> mergeSet = new HashSet<>();
                     mergeSet.add(squad1);
@@ -371,10 +371,8 @@ public class SquadManager {
             Squad newSquad;
             if (first.isGroundSquad()) {
                 newSquad = newFightSquad(UnitType.Zerg_Zergling);
-            } else if (first.isAirSquad()) {
-                newSquad = newFightSquad(UnitType.Zerg_Mutalisk);
             } else {
-                newSquad = newFightSquad(first.getType());
+                newSquad = newFightSquad(UnitType.Zerg_Mutalisk);
             }
             for (Squad mergingSquad: mergeSet) {
                 for (ManagedUnit mu : new ArrayList<>(mergingSquad.getMembers())) {
@@ -466,13 +464,10 @@ public class SquadManager {
 
         int moveOutThreshold = calculateMoveOutThreshold(squad);
         int squadStrength;
-        if (squad.isGroundSquad()) {
-            squadStrength = ((GroundSquad) squad).getSupply();
-        } else if (squad.isAirSquad()) {
-            AirSquad airSquad = (AirSquad) squad;
-            squadStrength = airSquad.hasOnly(UnitType.Zerg_Scourge) ? squad.size() : airSquad.getSupply();
-        } else {
+        if (squad.isAirSquad() && squad.hasOnly(UnitType.Zerg_Scourge)) {
             squadStrength = squad.size();
+        } else {
+            squadStrength = squad.getSupply();
         }
         if (closeThreats) {
             simulateFightSquad(squad);
@@ -490,17 +485,17 @@ public class SquadManager {
 
     private int calculateMoveOutThreshold(Squad squad) {
         if (squad.isAirSquad()) {
-            return calculateAirSquadMoveOutThreshold((AirSquad) squad);
+            return calculateAirSquadMoveOutThreshold(squad);
         }
 
         if (squad.isGroundSquad()) {
-            return calculateGroundSquadMoveOutThreshold((GroundSquad) squad);
+            return calculateGroundSquadMoveOutThreshold(squad);
         }
 
         return defaultMoveOutThreshold();
     }
 
-    private int calculateAirSquadMoveOutThreshold(AirSquad squad) {
+    private int calculateAirSquadMoveOutThreshold(Squad squad) {
         if (squad.hasOnly(UnitType.Zerg_Scourge)) {
             return 2;
         }
@@ -522,7 +517,7 @@ public class SquadManager {
         return Math.min(moveOutThreshold, 40);
     }
 
-    private int calculateGroundSquadMoveOutThreshold(GroundSquad squad) {
+    private int calculateGroundSquadMoveOutThreshold(Squad squad) {
         StrategyTracker strategyTracker = gameState.getStrategyTracker();
         final boolean isActivelyCannonRushed = gameState.isCannonRushed();
         final boolean isCannonRushed = strategyTracker.isDetectedStrategy("CannonRush");
@@ -560,7 +555,7 @@ public class SquadManager {
     private void simulateFightSquad(Squad squad) {
         HashSet<ManagedUnit> managedFighters = squad.getMembers();
 
-        if (squad.isGroundSquad() && ((GroundSquad) squad).hasOnly(UnitType.Zerg_Lurker)) {
+        if (squad.isGroundSquad() && squad.hasOnly(UnitType.Zerg_Lurker)) {
             squad.setStatus(SquadStatus.FIGHT);
             assignFightTargets(squad, managedFighters, false);
             return;
@@ -646,7 +641,7 @@ public class SquadManager {
 
         Map<Squad, Double> adjacentSquads = getAdjacentSquads(squad, REINFORCEMENT_RADIUS);
         CombatSimulator.CombatResult result = squad.getCombatSimulator()
-                .evaluateWithAdjacentSquads(squad, adjacentSquads, gameState);
+                .evaluate(squad, adjacentSquads, gameState);
 
         switch (result) {
             case RETREAT:
@@ -674,8 +669,6 @@ public class SquadManager {
                     managedUnit.clearRetreatStart();
                 }
                 break;
-            default:
-                return;
         }
     }
 
@@ -1277,11 +1270,8 @@ public class SquadManager {
     private List<Squad> getHydraliskAndMutaliskSquads() {
         return fightSquads.stream()
             .filter(squad -> {
-                if (squad.isAirSquad() && ((AirSquad) squad).getCountOf(UnitType.Zerg_Mutalisk) > 0) return true;
-                if (squad.isGroundSquad()) {
-                    return ((GroundSquad) squad).getCountOf(UnitType.Zerg_Hydralisk) > 0;
-                }
-                return false;
+                return squad.getCountOf(UnitType.Zerg_Mutalisk) > 0
+                        || squad.getCountOf(UnitType.Zerg_Hydralisk) > 0;
             })
             .sorted((s1, s2) -> Integer.compare(s2.size(), s1.size()))
             .collect(Collectors.toList());
