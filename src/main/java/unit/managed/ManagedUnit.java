@@ -21,7 +21,6 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 public class ManagedUnit {
-    protected static int LOCK_ENEMY_WITHIN_DISTANCE = 25;
     protected static int THREE_SECONDS = 72;
     protected static int FIVE_SECONDS = 120;
     protected Game game;
@@ -701,15 +700,12 @@ public class ManagedUnit {
 
     protected void defend() {}
 
-    /**
-     * Assigns the closest enemy as a fight target.
-     * @param newFightTarget new target
-     */
     public void setFightTarget(Unit newFightTarget) {
-        if (fightTarget != null && !fightTarget.getType().isBuilding() && fightTarget.getDistance(unit) < LOCK_ENEMY_WITHIN_DISTANCE) {
+        fightTarget = newFightTarget;
+        if (newFightTarget == null) {
+            movementTargetPosition = null;
             return;
         }
-        fightTarget = newFightTarget;
         TilePosition targetTile = newFightTarget.getTilePosition();
         if (isValidTilePosition(targetTile)) {
             movementTargetPosition = targetTile;
@@ -802,8 +798,10 @@ public class ManagedUnit {
         double closestDistance = Double.MAX_VALUE;
 
         for (Unit enemy : game.getUnitsInRadius(unit.getPosition(), weaponRange(unit))) {
-            if (enemy.getPlayer().isEnemy(game.self()) && enemy.isTargetable() && 
-                !util.Filter.isLowPriorityCombatTarget(enemy.getType())) {
+            UnitType enemyType = enemy.getType();
+            if (enemy.getPlayer().isEnemy(game.self()) && enemy.isTargetable() &&
+                !util.Filter.isLowPriorityCombatTarget(enemyType) &&
+                (!enemyType.isBuilding() || util.Filter.isHostileBuilding(enemyType))) {
                 double enemyDistance = unit.getDistance(enemy);
                 if (enemyDistance < closestDistance) {
                     closest = enemy;
