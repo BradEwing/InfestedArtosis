@@ -84,6 +84,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
             if (dist > MAX_ENGAGEMENT_RADIUS) continue;
 
             UnitType type = ou.getUnitType();
+            if (type.isBuilding() && !ou.isCompleted()) continue;
             double hpWeight = hpWeighting(ou.getLastKnownHitPoints(), ou.getLastKnownShields(),
                     type.maxHitPoints(), type.maxShields());
             double distWeight = distanceWeight(dist);
