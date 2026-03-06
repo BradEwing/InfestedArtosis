@@ -83,6 +83,42 @@ public class Lurker extends ManagedUnit {
     }
 
     @Override
+    protected void contain() {
+        if (containPosition == null) {
+            role = UnitRole.IDLE;
+            return;
+        }
+
+        Unit nearbyEnemy = findClosestEnemyInRange();
+        if (nearbyEnemy != null) {
+            setUnready(11);
+            if (unit.isBurrowed()) {
+                unit.attack(nearbyEnemy);
+            } else if (unit.getDistance(nearbyEnemy) <= weaponRange(nearbyEnemy) && unit.canBurrow()) {
+                unit.burrow();
+            } else {
+                unit.move(nearbyEnemy.getPosition());
+            }
+            return;
+        }
+
+        if (unit.getDistance(containPosition) < 24) {
+            setUnready(11);
+            if (!unit.isBurrowed() && unit.canBurrow()) {
+                unit.burrow();
+            }
+            return;
+        }
+
+        setUnready(6);
+        if (unit.isBurrowed()) {
+            unburrowAndReset();
+            return;
+        }
+        unit.move(containPosition);
+    }
+
+    @Override
     protected void rally() {
         if (unit.isBurrowed()) {
             this.setUnready();
