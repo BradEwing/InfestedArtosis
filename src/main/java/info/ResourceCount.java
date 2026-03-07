@@ -58,14 +58,14 @@ public class ResourceCount {
         return self.gas() - reservedGas; 
     }
 
-    private boolean canAfford(int mineralPrice, int gasPrice) { 
+    private boolean cannotAfford(int mineralPrice, int gasPrice) { 
         return availableMinerals() < mineralPrice || availableGas() < gasPrice; 
     }
 
-    public boolean canAffordUnit(UnitType unit) {
+    public boolean cannotAffordUnit(UnitType unit) {
         final int mineralPrice = unit.mineralPrice();
         final int gasPrice = unit.gasPrice();
-        return canAfford(mineralPrice, gasPrice);
+        return cannotAfford(mineralPrice, gasPrice);
     }
 
     public void reserveUpgrade(UpgradeType upgrade) {
@@ -88,20 +88,16 @@ public class ResourceCount {
         this.reservedGas = Math.max(0, reservedGas - techType.gasPrice());
     }
 
-    public boolean canAffordUpgrade(UpgradeType upgrade) {
+    public boolean cannotAffordUpgrade(UpgradeType upgrade) {
         final int mineralPrice = upgrade.mineralPrice();
         final int gasPrice = upgrade.gasPrice();
-        return canAfford(mineralPrice, gasPrice);
+        return cannotAfford(mineralPrice, gasPrice);
     }
 
-    public boolean canAffordResearch(TechType techType) {
+    public boolean cannotAffordResearch(TechType techType) {
         final int mineralPrice = techType.mineralPrice();
         final int gasPrice = techType.gasPrice();
-        return canAfford(mineralPrice, gasPrice);
-    }
-
-    public boolean canAffordHatch(int plannedHatcheries) {
-        return availableMinerals() > ((1 + plannedHatcheries) * 300);
+        return cannotAfford(mineralPrice, gasPrice);
     }
 
     public boolean needExtractor() {
@@ -120,7 +116,7 @@ public class ResourceCount {
      * @return frame when all resources will be available
      */
     public int frameCanAffordUnit(UnitType unit, int currentFrame, int mineralWorkers, int gasWorkers) {
-        //if (this.canAffordUnit(unit)) { return currentFrame; }
+        //if (this.cannotAffordUnit(unit)) { return currentFrame; }
 
         final int mineralsNeeded = unit.mineralPrice() + reservedMinerals - self.minerals();
         final int gasNeeded = unit.gasPrice() + reservedGas - self.gas();
@@ -153,10 +149,6 @@ public class ResourceCount {
 
     public boolean canScheduleLarva(int currentLarva) {
         return currentLarva > reservedLarva;
-    }
-
-    public int frameCanAffordUpgrade() {
-        return 0;
     }
 
     public boolean isFloatingMinerals() { 

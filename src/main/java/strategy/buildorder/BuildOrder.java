@@ -20,6 +20,7 @@ import macro.plan.UnitPlan;
 import macro.plan.UpgradePlan;
 import util.Time;
 
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
@@ -213,6 +214,16 @@ public abstract class BuildOrder {
         Plan sporeColonyPlan = new BuildingPlan(UnitType.Zerg_Spore_Colony, 5, location);
         plans.add(creepColonyPlan);
         plans.add(sporeColonyPlan);
+        return plans;
+    }
+
+    protected List<Plan> planUnits(GameState gameState, UnitType unitType, int desired, int current) {
+        int maxPerFrame = 3;
+        int count = Math.min(desired - current, maxPerFrame);
+        List<Plan> plans = new ArrayList<>();
+        for (int i = 0; i < count; i++) {
+            plans.add(planUnit(gameState, unitType));
+        }
         return plans;
     }
 

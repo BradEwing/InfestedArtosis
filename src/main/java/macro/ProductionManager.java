@@ -34,8 +34,6 @@ import java.util.stream.Collectors;
  */
 public class ProductionManager {
 
-    final int FRAME_ZVZ_HATCH_RESTRICT = 7200; // 5m
-
     private Game game;
 
     private GameState gameState;
@@ -131,6 +129,7 @@ public class ProductionManager {
                 .collect(Collectors.toSet());
 
         for (Plan plan : scheduledPlansToCancel) {
+            scheduledBuildings = Math.max(0, scheduledBuildings - 1);
             gameState.getPlansScheduled().remove(plan);
             gameState.cancelPlan(null, plan);
         }
@@ -262,7 +261,7 @@ public class ProductionManager {
 
         final int overlordCount = gameState.ourLivingUnitCount(UnitType.Zerg_Overlord);
         final int plannedSupply = gameState.getResourceCount().getPlannedSupply();
-        final boolean isNinePool = activeBuildOrder.getName() == "9PoolSpeed";
+        final boolean isNinePool = "9PoolSpeed".equals(activeBuildOrder.getName());
         if (overlordCount < 2 && !isNinePool) {
             if (self.supplyUsed() >= 18 && overlordCount < 2 && plannedSupply == 0) {
                 addUnitToQueue(UnitType.Zerg_Overlord, 1);
@@ -486,7 +485,8 @@ public class ProductionManager {
         ResourceCount resourceCount = gameState.getResourceCount();
         int mineralBuffer = resourceCount.availableMinerals();
         int gasBuffer = resourceCount.availableGas();
-        for (int i = 0; i < gameState.getProductionQueue().size(); i++) {
+        int queueSize = gameState.getProductionQueue().size();
+        for (int i = 0; i < queueSize; i++) {
 
             boolean canSchedule = false;
             // If we can't plan, we'll put it back on the queue
@@ -694,7 +694,7 @@ public class ProductionManager {
         UnitType building = plan.getPlannedUnit();
         ResourceCount resourceCount = gameState.getResourceCount();
         int predictedReadyFrame = gameState.frameCanAffordUnit(building, currentFrame);
-        if (scheduledBuildings > 0 && resourceCount.canAffordUnit(building)) {
+        if (scheduledBuildings > 0 && resourceCount.cannotAffordUnit(building)) {
             return false;
         }
 
@@ -703,7 +703,7 @@ public class ProductionManager {
         final int supply = game.self().supplyUsed();
         final Time twoMinutes = new Time(2,0);
         final String buildOrderName = activeBuildOrder.getName();
-        final boolean poolOrHatch = buildOrderName == "12Pool" || buildOrderName == "12Hatch" || buildOrderName == "3HatchBeforePool";
+        final boolean poolOrHatch = "12Pool".equals(buildOrderName) || "12Hatch".equals(buildOrderName) || "3HatchBeforePool".equals(buildOrderName);
         final boolean delayHatchSchedule = poolOrHatch && supply < 24 &&  gameState.getGameTime().lessThanOrEqual(twoMinutes);
         if (delayHatchSchedule) {
             return false;
@@ -724,7 +724,7 @@ public class ProductionManager {
     private boolean scheduleUnitItem(Plan plan) {
         UnitType unit = plan.getPlannedUnit();
         ResourceCount resourceCount = gameState.getResourceCount();
-        if (resourceCount.canAffordUnit(unit)) {
+        if (resourceCount.cannotAffordUnit(unit)) {
             return false;
         }
 
@@ -741,7 +741,7 @@ public class ProductionManager {
         final UpgradeType upgrade = plan.getPlannedUpgrade();
         ResourceCount resourceCount = gameState.getResourceCount();
 
-        if (resourceCount.canAffordUpgrade(upgrade)) {
+        if (resourceCount.cannotAffordUpgrade(upgrade)) {
             return false;
         }
 
@@ -784,7 +784,7 @@ public class ProductionManager {
         final TechType techType = plan.getPlannedTechType();
         ResourceCount resourceCount = gameState.getResourceCount();
 
-        if (resourceCount.canAffordResearch(techType)) {
+        if (resourceCount.cannotAffordResearch(techType)) {
             return false;
         }
 
@@ -919,6 +919,9 @@ public class ProductionManager {
                     }
                     break;
                 case SCHEDULE:
+                    if (plan.getType() == PlanType.BUILDING) {
+                        scheduledBuildings = Math.max(0, scheduledBuildings - 1);
+                    }
                     gameState.cancelPlan(unit, plan);
                     break;
                 default:
