@@ -207,25 +207,25 @@ public class ThreeHatchMuta extends ProtossBase {
         // Plan Units
         final int desiredScourge = enemyCorsairCount + enemyObserverCount;
         if (techProgression.isSpire() && scourgeCount < desiredScourge) {
-            plans.addAll(planUnits(gameState, UnitType.Zerg_Scourge, desiredScourge, scourgeCount));
+            plans.add(this.planUnit(gameState, UnitType.Zerg_Scourge));
             return plans;
         }
 
         final int desiredMutalisks = desiredMutalisks(gameState);
         if (techProgression.isSpire() && mutaCount < desiredMutalisks) {
-            plans.addAll(planUnits(gameState, UnitType.Zerg_Mutalisk, desiredMutalisks, mutaCount));
+            plans.add(this.planUnit(gameState, UnitType.Zerg_Mutalisk));
             return plans;
         }
 
         final int desiredHydralisks = desiredHydralisks(gameState);
         if (techProgression.isHydraliskDen() && hydraCount < desiredHydralisks) {
-            plans.addAll(planUnits(gameState, UnitType.Zerg_Hydralisk, desiredHydralisks, hydraCount));
+            plans.add(this.planUnit(gameState, UnitType.Zerg_Hydralisk));
             return plans;
         }
 
         final int desiredZerglings = this.zerglingsNeeded(gameState);
         if (zerglingCount < desiredZerglings) {
-            plans.addAll(planUnits(gameState, UnitType.Zerg_Zergling, desiredZerglings, zerglingCount));
+            plans.add(this.planUnit(gameState, UnitType.Zerg_Zergling));
             return plans;
         }
 
@@ -235,7 +235,7 @@ public class ThreeHatchMuta extends ProtossBase {
         }
         droneTarget = Math.min(droneTarget, 65);
         if (droneCount < droneTarget) {
-            plans.addAll(planUnits(gameState, UnitType.Zerg_Drone, droneTarget, droneCount));
+            plans.add(this.planUnit(gameState, UnitType.Zerg_Drone));
             return plans;
         }
 

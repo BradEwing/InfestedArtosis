@@ -117,7 +117,7 @@ public class OneHatchSpire extends ZergBase {
         // Plan Units
         final int desiredScourge = 2;   
         if (techProgression.isSpire() && scourgeCount < desiredScourge && mutaCount > 5 && enemyHasSpire) {
-            plans.addAll(planUnits(gameState, UnitType.Zerg_Scourge, desiredScourge, scourgeCount));
+            plans.add(this.planUnit(gameState, UnitType.Zerg_Scourge));
             return plans;
         }
 
@@ -131,7 +131,7 @@ public class OneHatchSpire extends ZergBase {
 
         final int desiredZerglings = this.zerglingsNeeded(gameState);
         if (zerglingCount < desiredZerglings) {
-            plans.addAll(planUnits(gameState, UnitType.Zerg_Zergling, desiredZerglings, zerglingCount));
+            plans.add(this.planUnit(gameState, UnitType.Zerg_Zergling));
             return plans;
         }
 

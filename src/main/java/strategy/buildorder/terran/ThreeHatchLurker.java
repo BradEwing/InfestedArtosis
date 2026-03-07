@@ -185,13 +185,13 @@ public class ThreeHatchLurker extends TerranBase {
 
         final int desiredZerglings = this.zerglingsNeeded(gameState);
         if (zerglingCount < desiredZerglings) {
-            plans.addAll(planUnits(gameState, UnitType.Zerg_Zergling, desiredZerglings, zerglingCount));
+            plans.add(this.planUnit(gameState, UnitType.Zerg_Zergling));
             return plans;
         }
 
         int droneTarget = dronesNeeded(gameState);
         if (macroHatchCount > 0 && droneCount < droneTarget) {
-            plans.addAll(planUnits(gameState, UnitType.Zerg_Drone, droneTarget, droneCount));
+            plans.add(this.planUnit(gameState, UnitType.Zerg_Drone));
             return plans;
         }
 
