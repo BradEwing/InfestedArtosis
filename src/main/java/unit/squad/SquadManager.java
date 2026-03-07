@@ -484,6 +484,8 @@ public class SquadManager {
             if (!contained) {
                 simulateFightSquad(squad);
             }
+        } else if (squadStatus == SquadStatus.FIGHT) {
+            simulateFightSquad(squad);
         } else {
             clearCombatSimSnapshot(squad);
             rallySquad(squad);
