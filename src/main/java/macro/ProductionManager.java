@@ -524,6 +524,9 @@ public class ProductionManager {
                 scheduledPlans.add(plan);
             } else {
                 requeuePlans.add(plan);
+                if (gameState.getActiveBuildOrder().isOpener()) {
+                    break;
+                }
                 mineralBuffer -= plan.mineralPrice();
                 gasBuffer -= plan.gasPrice();
                 if (mineralBuffer <= 0 && gasBuffer <= 0) {
