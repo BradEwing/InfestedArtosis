@@ -207,37 +207,25 @@ public class ThreeHatchMuta extends ProtossBase {
         // Plan Units
         final int desiredScourge = enemyCorsairCount + enemyObserverCount;
         if (techProgression.isSpire() && scourgeCount < desiredScourge) {
-            for (int i = 0; i < desiredScourge - scourgeCount; i++) {
-                Plan scourgePlan = this.planUnit(gameState, UnitType.Zerg_Scourge);
-                plans.add(scourgePlan);
-            }
+            plans.add(this.planUnit(gameState, UnitType.Zerg_Scourge));
             return plans;
         }
 
         final int desiredMutalisks = desiredMutalisks(gameState);
         if (techProgression.isSpire() && mutaCount < desiredMutalisks) {
-            for (int i = 0; i < desiredMutalisks - mutaCount; i++) {
-                Plan mutaliskPlan = this.planUnit(gameState, UnitType.Zerg_Mutalisk);
-                plans.add(mutaliskPlan);
-            }
+            plans.add(this.planUnit(gameState, UnitType.Zerg_Mutalisk));
             return plans;
         }
 
         final int desiredHydralisks = desiredHydralisks(gameState);
         if (techProgression.isHydraliskDen() && hydraCount < desiredHydralisks) {
-            for (int i = 0; i < desiredHydralisks - hydraCount; i++) {
-                Plan hydraliskPlan = this.planUnit(gameState, UnitType.Zerg_Hydralisk);
-                plans.add(hydraliskPlan);
-            }
+            plans.add(this.planUnit(gameState, UnitType.Zerg_Hydralisk));
             return plans;
         }
 
         final int desiredZerglings = this.zerglingsNeeded(gameState);
         if (zerglingCount < desiredZerglings) {
-            for (int i = 0; i < desiredZerglings - zerglingCount; i++) {
-                Plan zerglingPlan = this.planUnit(gameState, UnitType.Zerg_Zergling);
-                plans.add(zerglingPlan);
-            }
+            plans.add(this.planUnit(gameState, UnitType.Zerg_Zergling));
             return plans;
         }
 
@@ -247,10 +235,7 @@ public class ThreeHatchMuta extends ProtossBase {
         }
         droneTarget = Math.min(droneTarget, 65);
         if (droneCount < droneTarget) {
-            for (int i = 0; i < droneTarget - droneCount; i++) {
-                Plan zerglingPlan = this.planUnit(gameState, UnitType.Zerg_Drone);
-                plans.add(zerglingPlan);
-            }
+            plans.add(this.planUnit(gameState, UnitType.Zerg_Drone));
             return plans;
         }
 

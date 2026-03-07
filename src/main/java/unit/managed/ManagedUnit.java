@@ -21,7 +21,6 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 public class ManagedUnit {
-    protected static int LOCK_ENEMY_WITHIN_DISTANCE = 25;
     protected static int THREE_SECONDS = 72;
     protected static int FIVE_SECONDS = 120;
     protected Game game;
@@ -190,7 +189,12 @@ public class ManagedUnit {
             }
         }
 
-        List<Unit> enemies = getEnemiesInRadius(currentX, currentY);
+        int scanRadius = retreatScanRadius();
+        List<Unit> enemies = game.getUnitsInRadius(currentX, currentY, scanRadius)
+                .stream()
+                .filter(u -> u.getPlayer() != game.self())
+                .filter(u -> !u.getType().isBuilding() || Filter.isHostileBuildingToGround(u.getType()))
+                .collect(Collectors.toList());
 
         if (enemies.isEmpty()) {
             return null;
@@ -209,7 +213,7 @@ public class ManagedUnit {
             return null;
         }
 
-        Position retreatPos = away.normalizeToLength(128).toPosition(currentPos);
+        Position retreatPos = away.normalizeToLength(retreatFleeDistance()).toPosition(currentPos);
 
         if (!isRetreatPathWalkable(currentPos, retreatPos)) {
             retreatPos = findAlternativeRetreatPosition(currentPos, retreatPos);
@@ -685,6 +689,14 @@ public class ManagedUnit {
         return 16;
     }
 
+    protected int retreatScanRadius() {
+        return 128;
+    }
+
+    protected int retreatFleeDistance() {
+        return 128;
+    }
+
     public void markRetreatStart(int frame) {
         if (retreatStartFrame == 0) {
             retreatStartFrame = frame;
@@ -701,15 +713,12 @@ public class ManagedUnit {
 
     protected void defend() {}
 
-    /**
-     * Assigns the closest enemy as a fight target.
-     * @param newFightTarget new target
-     */
     public void setFightTarget(Unit newFightTarget) {
-        if (fightTarget != null && !fightTarget.getType().isBuilding() && fightTarget.getDistance(unit) < LOCK_ENEMY_WITHIN_DISTANCE) {
+        fightTarget = newFightTarget;
+        if (newFightTarget == null) {
+            movementTargetPosition = null;
             return;
         }
-        fightTarget = newFightTarget;
         TilePosition targetTile = newFightTarget.getTilePosition();
         if (isValidTilePosition(targetTile)) {
             movementTargetPosition = targetTile;
@@ -802,8 +811,10 @@ public class ManagedUnit {
         double closestDistance = Double.MAX_VALUE;
 
         for (Unit enemy : game.getUnitsInRadius(unit.getPosition(), weaponRange(unit))) {
-            if (enemy.getPlayer().isEnemy(game.self()) && enemy.isTargetable() && 
-                !util.Filter.isLowPriorityCombatTarget(enemy.getType())) {
+            UnitType enemyType = enemy.getType();
+            if (enemy.getPlayer().isEnemy(game.self()) && enemy.isTargetable() &&
+                !util.Filter.isLowPriorityCombatTarget(enemyType) &&
+                (!enemyType.isBuilding() || util.Filter.isHostileBuilding(enemyType))) {
                 double enemyDistance = unit.getDistance(enemy);
                 if (enemyDistance < closestDistance) {
                     closest = enemy;

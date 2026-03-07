@@ -392,6 +392,18 @@ public class GameState {
                     baseData.unreserveExtractor(plan.getBuildPosition());
                 }
                 break;
+            case UPGRADE:
+                if (shouldUnreserve) {
+                    resourceCount.unreserveUpgrade(plan.getPlannedUpgrade());
+                }
+                clearPlannedUpgradeFlags(plan.getPlannedUpgrade());
+                break;
+            case TECH:
+                if (shouldUnreserve) {
+                    resourceCount.unreserveTechResearch(plan.getPlannedTechType());
+                }
+                clearPlannedTechResearchFlags(plan.getPlannedTechType());
+                break;
             default:
                 break;
         }

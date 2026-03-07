@@ -222,10 +222,7 @@ public class ThreeHatchHydra extends ProtossBase {
 
         final int desiredZerglings = this.zerglingsNeeded(gameState);
         if (zerglingCount < desiredZerglings) {
-            for (int i = 0; i < desiredZerglings - zerglingCount; i++) {
-                Plan zerglingPlan = this.planUnit(gameState, UnitType.Zerg_Zergling);
-                plans.add(zerglingPlan);
-            }
+            plans.add(this.planUnit(gameState, UnitType.Zerg_Zergling));
             return plans;
         }
 
@@ -235,10 +232,7 @@ public class ThreeHatchHydra extends ProtossBase {
         }
         droneTarget = Math.min(droneTarget, 55);
         if (macroHatchCount > 0 && droneCount < droneTarget) {
-            for (int i = 0; i < droneTarget - droneCount; i++) {
-                Plan dronePlan = this.planUnit(gameState, UnitType.Zerg_Drone);
-                plans.add(dronePlan);
-            }
+            plans.add(this.planUnit(gameState, UnitType.Zerg_Drone));
             return plans;
         }
 

@@ -7,7 +7,7 @@ import util.Time;
 
 public class Mutalisk extends ManagedUnit {
     private Time retreatUntilFrame = null;
-    private static final int RETREAT_DURATION_FRAMES = 24; // 1 second retreat duration
+    private static final int RETREAT_DURATION_FRAMES = 30;
     
     public Mutalisk(Game game, Unit unit, UnitRole role, GameMap gameMap) {
         super(game, unit, role, gameMap);
@@ -45,6 +45,16 @@ public class Mutalisk extends ManagedUnit {
         }
 
         role = UnitRole.IDLE;
+    }
+
+    @Override
+    protected int retreatScanRadius() {
+        return 256;
+    }
+
+    @Override
+    protected int retreatFleeDistance() {
+        return 256;
     }
 
     @Override

@@ -1,6 +1,5 @@
 package util;
 
-import bwapi.Position;
 import bwapi.Unit;
 import bwapi.UnitType;
 import bwapi.WeaponType;
@@ -31,61 +30,28 @@ public final class Filter {
             return unitList.get(0);
         }
 
-        boolean hasSeenEnemyOrHostileBuilding = false;
-        Unit closestUnit = null;
-        int closestDistance = Integer.MAX_VALUE;
+        Unit closestCombat = null;
+        int closestCombatDistance = Integer.MAX_VALUE;
+        Unit closestBuilding = null;
+        int closestBuildingDistance = Integer.MAX_VALUE;
+
         for (Unit u : unitList) {
             UnitType type = u.getType();
-            boolean isHostileBuilding = isHostileBuilding(type);
-            if (!hasSeenEnemyOrHostileBuilding && (!type.isBuilding() || isHostileBuilding)) {
-                hasSeenEnemyOrHostileBuilding = true;
-            }
-            if (hasSeenEnemyOrHostileBuilding && type.isBuilding() && !isHostileBuilding) {
-                continue;
-            }
             int distance = unit.getDistance(u.getPosition());
-            if (distance < closestDistance) {
-                closestUnit = u;
-                closestDistance = distance;
+            if (!type.isBuilding() || isHostileBuilding(type)) {
+                if (distance < closestCombatDistance) {
+                    closestCombat = u;
+                    closestCombatDistance = distance;
+                }
+            } else {
+                if (distance < closestBuildingDistance) {
+                    closestBuilding = u;
+                    closestBuildingDistance = distance;
+                }
             }
         }
 
-        if (closestUnit == null) {
-            return null;
-        }
-
-        return closestUnit;
-    }
-
-    public static Unit closestHostileUnit(Position p, List<Unit> unitList) {
-        if (unitList.size() == 1) {
-            return unitList.get(0);
-        }
-
-        boolean hasSeenEnemyOrHostileBuilding = false;
-        Unit closestUnit = null;
-        double closestDistance = Double.MAX_VALUE;
-        for (Unit u : unitList) {
-            UnitType type = u.getType();
-            boolean isHostileBuilding = isHostileBuilding(type);
-            if (!hasSeenEnemyOrHostileBuilding && (!type.isBuilding() || isHostileBuilding)) {
-                hasSeenEnemyOrHostileBuilding = true;
-            }
-            if (hasSeenEnemyOrHostileBuilding && type.isBuilding() && !isHostileBuilding) {
-                continue;
-            }
-            double distance = p.getDistance(u.getPosition());
-            if (distance < closestDistance) {
-                closestUnit = u;
-                closestDistance = distance;
-            }
-        }
-
-        if (closestUnit == null) {
-            return null;
-        }
-
-        return closestUnit;
+        return closestCombat != null ? closestCombat : closestBuilding;
     }
 
     public static boolean isHostileBuilding(UnitType unitType) {

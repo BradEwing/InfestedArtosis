@@ -148,10 +148,7 @@ public class TwoHatchMuta extends TerranBase {
         // Plan Units
         final int desiredScourge = enemyVessel + enemyDropship + enemyValkyrie + enemyWraith;
         if (techProgression.isSpire() && scourgeCount < desiredScourge) {
-            for (int i = 0; i < desiredScourge - scourgeCount; i++) {
-                Plan scourgePlan = this.planUnit(gameState, UnitType.Zerg_Scourge);
-                plans.add(scourgePlan);
-            }
+            plans.add(this.planUnit(gameState, UnitType.Zerg_Scourge));
             return plans;
         }
 
