@@ -44,6 +44,17 @@ public class BuildingPlanner {
         return new HashSet<>(reservedTiles);
     }
 
+    public TilePosition getLocationForBuilding(Base base, UnitType unitType) {
+        TilePosition position = getLocationForTechBuilding(base, unitType);
+        if (position == null) {
+            position = game.getBuildLocation(unitType, base.getLocation(), 128, true);
+        }
+        if (position != null) {
+            reservePlannedBuildingTiles(position, unitType);
+        }
+        return position;
+    }
+
     public TilePosition getLocationForTechBuilding(Base base, UnitType unitType) {
         Position closestChoke = this.closestChokeToBase(base);
         Set<TilePosition> creepTiles = this.findSurroundingCreepTiles(base, true, true);
