@@ -481,6 +481,7 @@ public class ProductionManager {
         HashSet<Plan> scheduledPlans = gameState.getPlansScheduled();
 
         List<Plan> requeuePlans = new ArrayList<>();
+        boolean hasRequeuedPlans = false;
         ResourceCount resourceCount = gameState.getResourceCount();
         int mineralBuffer = resourceCount.availableMinerals();
         int gasBuffer = resourceCount.availableGas();
@@ -504,7 +505,7 @@ public class ProductionManager {
 
             switch (planType) {
                 case BUILDING:
-                    canSchedule = scheduleBuildingItem(plan);
+                    canSchedule = scheduleBuildingItem(plan, hasRequeuedPlans);
                     break;
                 case UNIT:
                     canSchedule = scheduleUnitItem(plan);
@@ -523,6 +524,7 @@ public class ProductionManager {
                 scheduledPlans.add(plan);
             } else {
                 requeuePlans.add(plan);
+                hasRequeuedPlans = true;
                 mineralBuffer -= plan.mineralPrice();
                 gasBuffer -= plan.gasPrice();
                 if (mineralBuffer <= 0 && gasBuffer <= 0) {
@@ -688,17 +690,14 @@ public class ProductionManager {
 
     // PLANNED -> SCHEDULED
     // Allow one building to be scheduled if resources aren't available, unless in an opener
-    private boolean scheduleBuildingItem(Plan plan) {
-        // Can we afford this unit?
+    private boolean scheduleBuildingItem(Plan plan, boolean hasHigherPriorityPending) {
         UnitType building = plan.getPlannedUnit();
         ResourceCount resourceCount = gameState.getResourceCount();
         int predictedReadyFrame = gameState.frameCanAffordUnit(building, currentFrame);
-        if (scheduledBuildings > 0 && resourceCount.cannotAffordUnit(building)) {
-            return false;
-        }
-
-        if (activeBuildOrder.isOpener() && resourceCount.cannotAffordUnit(building)) {
-            return false;
+        if (resourceCount.cannotAffordUnit(building)) {
+            if (hasHigherPriorityPending || scheduledBuildings > 0 || activeBuildOrder.isOpener()) {
+                return false;
+            }
         }
 
         if (plan.getBuildPosition() == null) {
