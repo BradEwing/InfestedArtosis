@@ -25,7 +25,7 @@ public class TwelvePool extends BuildOrder {
     @Override
     public boolean shouldTransition(GameState gameState) {
         return gameState.getOpponentRace() != Race.Unknown &&
-                (gameState.ourUnitCount(UnitType.Zerg_Spawning_Pool) > 0 || gameState.ourUnitCount(UnitType.Zerg_Drone) >= 12);
+                (gameState.ourUnitCount(UnitType.Zerg_Spawning_Pool) > 0 || gameState.ourLivingUnitCount(UnitType.Zerg_Drone) >= 12);
     }
 
     @Override
@@ -56,6 +56,7 @@ public class TwelvePool extends BuildOrder {
         TechProgression techProgression = gameState.getTechProgression();
 
         int droneCount    = gameState.ourUnitCount(UnitType.Zerg_Drone);
+        int supplyUsed = gameState.getSupply();
         int zerglingCount = gameState.ourUnitCount(UnitType.Zerg_Zergling);
 
         if (droneCount < 12) {
@@ -63,7 +64,7 @@ public class TwelvePool extends BuildOrder {
             return plans;
         }
 
-        if (techProgression.canPlanPool()) {
+        if (supplyUsed >= 24 && techProgression.canPlanPool()) {
             plans.add(planSpawningPool(gameState));
             return plans;
         }
