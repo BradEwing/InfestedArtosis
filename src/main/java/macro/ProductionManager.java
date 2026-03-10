@@ -16,7 +16,6 @@ import macro.plan.PlanState;
 import macro.plan.PlanType;
 import macro.plan.UnitPlan;
 import strategy.buildorder.BuildOrder;
-import util.Time;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -482,6 +481,7 @@ public class ProductionManager {
         HashSet<Plan> scheduledPlans = gameState.getPlansScheduled();
 
         List<Plan> requeuePlans = new ArrayList<>();
+        boolean hasRequeuedPlans = false;
         ResourceCount resourceCount = gameState.getResourceCount();
         int mineralBuffer = resourceCount.availableMinerals();
         int gasBuffer = resourceCount.availableGas();
@@ -505,7 +505,7 @@ public class ProductionManager {
 
             switch (planType) {
                 case BUILDING:
-                    canSchedule = scheduleBuildingItem(plan);
+                    canSchedule = scheduleBuildingItem(plan, hasRequeuedPlans);
                     break;
                 case UNIT:
                     canSchedule = scheduleUnitItem(plan);
@@ -524,6 +524,7 @@ public class ProductionManager {
                 scheduledPlans.add(plan);
             } else {
                 requeuePlans.add(plan);
+                hasRequeuedPlans = true;
                 mineralBuffer -= plan.mineralPrice();
                 gasBuffer -= plan.gasPrice();
                 if (mineralBuffer <= 0 && gasBuffer <= 0) {
@@ -688,30 +689,19 @@ public class ProductionManager {
     }
 
     // PLANNED -> SCHEDULED
-    // Allow one building to be scheduled if resources aren't available.
-    private boolean scheduleBuildingItem(Plan plan) {
-        // Can we afford this unit?
+    // Allow one building to be scheduled if resources aren't available, unless in an opener
+    private boolean scheduleBuildingItem(Plan plan, boolean hasHigherPriorityPending) {
         UnitType building = plan.getPlannedUnit();
         ResourceCount resourceCount = gameState.getResourceCount();
         int predictedReadyFrame = gameState.frameCanAffordUnit(building, currentFrame);
-        if (scheduledBuildings > 0 && resourceCount.cannotAffordUnit(building)) {
-            return false;
+        if (resourceCount.cannotAffordUnit(building)) {
+            if (hasHigherPriorityPending || scheduledBuildings > 0) {
+                return false;
+            }
         }
 
-
-        // 12Pool and 12Hatch timing
-        final int supply = game.self().supplyUsed();
-        final Time twoMinutes = new Time(2,0);
-        final String buildOrderName = activeBuildOrder.getName();
-        final boolean poolOrHatch = "12Pool".equals(buildOrderName) || "12Hatch".equals(buildOrderName) || "3HatchBeforePool".equals(buildOrderName);
-        final boolean delayHatchSchedule = poolOrHatch && supply < 24 &&  gameState.getGameTime().lessThanOrEqual(twoMinutes);
-        if (delayHatchSchedule) {
-            return false;
-        }
-
-        // TODO: Assign building location from building location planner
         if (plan.getBuildPosition() == null) {
-            plan.setBuildPosition(game.getBuildLocation(building, gameState.getBaseData().mainBasePosition(), 128, true));
+            plan.setBuildPosition(gameState.getBuildingPlanner().getLocationForBuilding(gameState.getBaseData().getMainBase(), building));
         }
 
         scheduledBuildings += 1;
