@@ -695,7 +695,7 @@ public class ProductionManager {
         ResourceCount resourceCount = gameState.getResourceCount();
         int predictedReadyFrame = gameState.frameCanAffordUnit(building, currentFrame);
         if (resourceCount.cannotAffordUnit(building)) {
-            if (hasHigherPriorityPending || scheduledBuildings > 0 || activeBuildOrder.isOpener()) {
+            if (hasHigherPriorityPending || scheduledBuildings > 0) {
                 return false;
             }
         }
