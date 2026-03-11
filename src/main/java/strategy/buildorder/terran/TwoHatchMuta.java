@@ -177,7 +177,7 @@ public class TwoHatchMuta extends TerranBase {
     }
 
     protected int dronesNeeded(GameState gameState) {
-        int drones = 16;
+        int drones = 17;
         int lairCount = gameState.ourUnitCount(UnitType.Zerg_Lair);
         int hatchCount = gameState.ourUnitCount(UnitType.Zerg_Hatchery);
         if (lairCount > 0) {

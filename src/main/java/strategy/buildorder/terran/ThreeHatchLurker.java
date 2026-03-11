@@ -163,7 +163,7 @@ public class ThreeHatchLurker extends TerranBase {
             plans.add(overlordSpeedPlan);
         }
 
-        if (droneCount < 13) {
+        if (droneCount < 15) {
             Plan dronePlan = this.planUnit(gameState, UnitType.Zerg_Drone);
             plans.add(dronePlan);
             return plans;
