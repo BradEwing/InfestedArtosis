@@ -5,6 +5,10 @@ import bwapi.TechType;
 import bwapi.UnitType;
 import bwapi.UpgradeType;
 
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 /**
  * Tracks resources: minerals, gas and supply
  *
@@ -24,6 +28,9 @@ public class ResourceCount {
     private int reservedLarva = 0;
     private int plannedSupply;
 
+    private final Map<String, int[]> reservationLedger = new LinkedHashMap<>();
+    private String lastClampWarning = null;
+
     public ResourceCount(Player self) {
         this.self = self;
     }
@@ -31,6 +38,7 @@ public class ResourceCount {
     public void reserveUnit(UnitType unit) {
         this.reservedMinerals += unit.mineralPrice();
         this.reservedGas += unit.gasPrice();
+        addToLedger(unit.toString(), unit.mineralPrice(), unit.gasPrice());
 
         if (shouldReserveLarva(unit)) {
             reservedLarva += 1;
@@ -38,8 +46,12 @@ public class ResourceCount {
     }
 
     public void unreserveUnit(UnitType unit) {
+        int prevMinerals = reservedMinerals;
+        int prevGas = reservedGas;
         reservedMinerals = Math.max(0, reservedMinerals - unit.mineralPrice());
         reservedGas = Math.max(0, reservedGas - unit.gasPrice());
+        boolean clamped = prevMinerals - unit.mineralPrice() < 0 || prevGas - unit.gasPrice() < 0;
+        removeFromLedger(unit.toString(), unit.mineralPrice(), unit.gasPrice(), clamped);
 
         if (shouldReserveLarva(unit)) {
             reservedLarva = Math.max(0, reservedLarva - 1);
@@ -71,21 +83,31 @@ public class ResourceCount {
     public void reserveUpgrade(UpgradeType upgrade) {
         this.reservedMinerals += upgrade.mineralPrice();
         this.reservedGas += upgrade.gasPrice();
+        addToLedger(upgrade.toString(), upgrade.mineralPrice(), upgrade.gasPrice());
     }
 
     public void unreserveUpgrade(UpgradeType upgrade) {
+        int prevMinerals = reservedMinerals;
+        int prevGas = reservedGas;
         this.reservedMinerals = Math.max(0, reservedMinerals - upgrade.mineralPrice());
         this.reservedGas = Math.max(0, reservedGas - upgrade.gasPrice());
+        boolean clamped = prevMinerals - upgrade.mineralPrice() < 0 || prevGas - upgrade.gasPrice() < 0;
+        removeFromLedger(upgrade.toString(), upgrade.mineralPrice(), upgrade.gasPrice(), clamped);
     }
 
     public void reserveTechResearch(TechType techType) {
         this.reservedMinerals += techType.mineralPrice();
         this.reservedGas += techType.gasPrice();
+        addToLedger(techType.toString(), techType.mineralPrice(), techType.gasPrice());
     }
 
     public void unreserveTechResearch(TechType techType) {
+        int prevMinerals = reservedMinerals;
+        int prevGas = reservedGas;
         this.reservedMinerals = Math.max(0, reservedMinerals - techType.mineralPrice());
         this.reservedGas = Math.max(0, reservedGas - techType.gasPrice());
+        boolean clamped = prevMinerals - techType.mineralPrice() < 0 || prevGas - techType.gasPrice() < 0;
+        removeFromLedger(techType.toString(), techType.mineralPrice(), techType.gasPrice(), clamped);
     }
 
     public boolean cannotAffordUpgrade(UpgradeType upgrade) {
@@ -165,5 +187,56 @@ public class ResourceCount {
 
     public void setPlannedSupply(int s) {
         plannedSupply = s;
+    }
+
+    public int getReservedMinerals() {
+        return reservedMinerals;
+    }
+
+    public int getReservedGas() {
+        return reservedGas;
+    }
+
+    public Map<String, int[]> getReservationLedger() {
+        return Collections.unmodifiableMap(reservationLedger);
+    }
+
+    public String getLastClampWarning() {
+        return lastClampWarning;
+    }
+
+    private void addToLedger(String name, int minerals, int gas) {
+        int[] entry = reservationLedger.get(name);
+        if (entry == null) {
+            reservationLedger.put(name, new int[]{minerals, gas});
+        } else {
+            entry[0] += minerals;
+            entry[1] += gas;
+        }
+    }
+
+    private void removeFromLedger(String name, int minerals, int gas, boolean clamped) {
+        int[] entry = reservationLedger.get(name);
+        if (entry == null) {
+            if (minerals > 0 || gas > 0) {
+                setClampWarning("Double unreserve (no entry): " + name);
+            }
+            return;
+        }
+        entry[0] -= minerals;
+        entry[1] -= gas;
+        if (entry[0] <= 0 && entry[1] <= 0) {
+            reservationLedger.remove(name);
+        } else {
+            entry[0] = Math.max(0, entry[0]);
+            entry[1] = Math.max(0, entry[1]);
+        }
+        if (clamped) {
+            setClampWarning("Double unreserve: " + name);
+        }
+    }
+
+    private void setClampWarning(String warning) {
+        lastClampWarning = warning;
     }
 }

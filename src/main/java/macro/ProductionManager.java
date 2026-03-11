@@ -3,6 +3,7 @@ package macro;
 import bwapi.Game;
 import bwapi.Player;
 import bwapi.TechType;
+import bwapi.TilePosition;
 import bwapi.Unit;
 import bwapi.UnitType;
 import bwapi.UpgradeType;
@@ -692,6 +693,15 @@ public class ProductionManager {
     // Allow one building to be scheduled if resources aren't available, unless in an opener
     private boolean scheduleBuildingItem(Plan plan, boolean hasHigherPriorityPending) {
         UnitType building = plan.getPlannedUnit();
+
+        if (isColonyMorph(building) && !hasCreepColonyAtPosition(plan.getBuildPosition())) {
+            Unit unassignedColony = findUnassignedCreepColony();
+            if (unassignedColony == null) {
+                return false;
+            }
+            plan.setBuildPosition(unassignedColony.getTilePosition());
+        }
+
         ResourceCount resourceCount = gameState.getResourceCount();
         int predictedReadyFrame = gameState.frameCanAffordUnit(building, currentFrame);
         if (resourceCount.cannotAffordUnit(building)) {
@@ -709,6 +719,35 @@ public class ProductionManager {
         plan.setPredictedReadyFrame(predictedReadyFrame);
         plan.setState(PlanState.SCHEDULE);
         return true;
+    }
+
+    private boolean isColonyMorph(UnitType type) {
+        return type == UnitType.Zerg_Sunken_Colony || type == UnitType.Zerg_Spore_Colony;
+    }
+
+    private boolean hasCreepColonyAtPosition(TilePosition tp) {
+        if (tp == null) {
+            return false;
+        }
+        for (Unit unit : gameState.getSelf().getUnits()) {
+            if (unit.getType() == UnitType.Zerg_Creep_Colony
+                    && unit.isCompleted()
+                    && unit.getTilePosition().equals(tp)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private Unit findUnassignedCreepColony() {
+        for (Unit unit : gameState.getSelf().getUnits()) {
+            if (unit.getType() == UnitType.Zerg_Creep_Colony
+                    && unit.isCompleted()
+                    && !gameState.getAssignedPlannedItems().containsKey(unit)) {
+                return unit;
+            }
+        }
+        return null;
     }
 
     private boolean scheduleUnitItem(Plan plan) {

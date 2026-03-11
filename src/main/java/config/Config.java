@@ -50,6 +50,7 @@ public final class Config {
     public boolean debugProductionQueue = false;
     public boolean debugInProgressQueue = false;
     public boolean debugScheduledPlannedItems = false;
+    public boolean debugResourceReservations = false;
 
     public Config() {
 
@@ -84,5 +85,6 @@ public final class Config {
         this.debugProductionQueue = Boolean.parseBoolean(dotenv.get("IA_DEBUG_PRODUCTION_QUEUE"));
         this.debugInProgressQueue = Boolean.parseBoolean(dotenv.get("IA_DEBUG_IN_PROGRESS_QUEUE"));
         this.debugScheduledPlannedItems = Boolean.parseBoolean(dotenv.get("IA_DEBUG_SCHEDULED_PLANNED_ITEMS"));
+        this.debugResourceReservations = Boolean.parseBoolean(dotenv.get("IA_DEBUG_RESOURCE_RESERVATIONS"));
     }
 }

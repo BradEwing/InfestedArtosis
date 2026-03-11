@@ -109,7 +109,7 @@ public class BuildingManager {
 
         for (Plan plan : scheduledPlans) {
             if (plan.getType() != PlanType.BUILDING) {
-                return;
+                continue;
             }
 
             if (plan.getState() == PlanState.COMPLETE) {
@@ -136,7 +136,6 @@ public class BuildingManager {
 
             if (didAssign) {
                 assignedPlans.add(plan);
-                break;
             }
         }
 
@@ -187,13 +186,28 @@ public class BuildingManager {
             if (colony.canBuild(plan.getPlannedUnit()) &&
                     !gameState.getAssignedPlannedItems().containsKey(colony) &&
                     (planPosition == null || colony.getTilePosition().equals(planPosition))) {
-                managedColony.setRole(UnitRole.MORPH);
-                gameState.getAssignedPlannedItems().put(colony, plan);
-                managedColony.setPlan(plan);
-                return true;
+                return doAssignMorphColony(managedColony, colony, plan);
+            }
+        }
+
+        if (planPosition != null) {
+            for (ManagedUnit managedColony : colonies) {
+                Unit colony = managedColony.getUnit();
+                if (colony.canBuild(plan.getPlannedUnit()) &&
+                        !gameState.getAssignedPlannedItems().containsKey(colony)) {
+                    plan.setBuildPosition(colony.getTilePosition());
+                    return doAssignMorphColony(managedColony, colony, plan);
+                }
             }
         }
 
         return false;
+    }
+
+    private boolean doAssignMorphColony(ManagedUnit managedColony, Unit colony, Plan plan) {
+        managedColony.setRole(UnitRole.MORPH);
+        gameState.getAssignedPlannedItems().put(colony, plan);
+        managedColony.setPlan(plan);
+        return true;
     }
 }
