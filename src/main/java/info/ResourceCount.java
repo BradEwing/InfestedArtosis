@@ -50,7 +50,7 @@ public class ResourceCount {
         int prevGas = reservedGas;
         reservedMinerals = Math.max(0, reservedMinerals - unit.mineralPrice());
         reservedGas = Math.max(0, reservedGas - unit.gasPrice());
-        boolean clamped = (prevMinerals - unit.mineralPrice() < 0) || (prevGas - unit.gasPrice() < 0);
+        boolean clamped = prevMinerals - unit.mineralPrice() < 0 || prevGas - unit.gasPrice() < 0;
         removeFromLedger(unit.toString(), unit.mineralPrice(), unit.gasPrice(), clamped);
 
         if (shouldReserveLarva(unit)) {
@@ -91,7 +91,7 @@ public class ResourceCount {
         int prevGas = reservedGas;
         this.reservedMinerals = Math.max(0, reservedMinerals - upgrade.mineralPrice());
         this.reservedGas = Math.max(0, reservedGas - upgrade.gasPrice());
-        boolean clamped = (prevMinerals - upgrade.mineralPrice() < 0) || (prevGas - upgrade.gasPrice() < 0);
+        boolean clamped = prevMinerals - upgrade.mineralPrice() < 0 || prevGas - upgrade.gasPrice() < 0;
         removeFromLedger(upgrade.toString(), upgrade.mineralPrice(), upgrade.gasPrice(), clamped);
     }
 
@@ -106,7 +106,7 @@ public class ResourceCount {
         int prevGas = reservedGas;
         this.reservedMinerals = Math.max(0, reservedMinerals - techType.mineralPrice());
         this.reservedGas = Math.max(0, reservedGas - techType.gasPrice());
-        boolean clamped = (prevMinerals - techType.mineralPrice() < 0) || (prevGas - techType.gasPrice() < 0);
+        boolean clamped = prevMinerals - techType.mineralPrice() < 0 || prevGas - techType.gasPrice() < 0;
         removeFromLedger(techType.toString(), techType.mineralPrice(), techType.gasPrice(), clamped);
     }
 
