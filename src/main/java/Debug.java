@@ -11,6 +11,7 @@ import bwem.Base;
 import config.Config;
 import info.BaseData;
 import info.GameState;
+import info.ResourceCount;
 import info.ScoutData;
 import info.UnitTypeCount;
 import info.map.BuildingPlanner;
@@ -158,6 +159,9 @@ public class Debug {
         }
         if (config.debugScheduledPlannedItems) {
             debugScheduledPlannedItems();
+        }
+        if (config.debugResourceReservations) {
+            debugResourceReservations();
         }
     }
 
@@ -576,7 +580,7 @@ public class Debug {
 
     public void debugScheduledPlannedItems() {
         if (!config.debugScheduledPlannedItems) return;
-        
+
         int numDisplayed = 0;
         int x = 196;
         int y = 64;
@@ -587,6 +591,40 @@ public class Debug {
             if (numDisplayed == 10) {
                 break;
             }
+        }
+    }
+
+    private void debugResourceReservations() {
+        ResourceCount rc = gameState.getResourceCount();
+        int x = 292;
+        int y = 64;
+
+        int ledgerMinerals = 0;
+        int ledgerGas = 0;
+        for (int[] entry : rc.getReservationLedger().values()) {
+            ledgerMinerals += entry[0];
+            ledgerGas += entry[1];
+        }
+
+        boolean drifted = ledgerMinerals != rc.getReservedMinerals() || ledgerGas != rc.getReservedGas();
+        Text headerColor = drifted ? Text.Red : Text.White;
+        game.drawTextScreen(x, y, String.format("Reserved: %dm %dg (ledger: %dm %dg)",
+                rc.getReservedMinerals(), rc.getReservedGas(), ledgerMinerals, ledgerGas), headerColor);
+        y += 8;
+
+        int numDisplayed = 0;
+        for (Map.Entry<String, int[]> entry : rc.getReservationLedger().entrySet()) {
+            game.drawTextScreen(x, y, String.format("  %s: %dm %dg", entry.getKey(), entry.getValue()[0], entry.getValue()[1]), Text.GreyGreen);
+            y += 8;
+            numDisplayed += 1;
+            if (numDisplayed == 10) {
+                break;
+            }
+        }
+
+        String warning = rc.getLastClampWarning();
+        if (warning != null) {
+            game.drawTextScreen(x, y, "[WARN: " + warning + "]", Text.Red);
         }
     }
 
