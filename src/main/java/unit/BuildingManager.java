@@ -1,6 +1,7 @@
 package unit;
 
 import bwapi.Game;
+import bwapi.TilePosition;
 import bwapi.Unit;
 import bwapi.UnitType;
 import info.BaseData;
@@ -180,10 +181,12 @@ public class BuildingManager {
     }
 
     private boolean assignMorphColony(Plan plan) {
+        TilePosition planPosition = plan.getBuildPosition();
         for (ManagedUnit managedColony : colonies) {
             Unit colony = managedColony.getUnit();
             if (colony.canBuild(plan.getPlannedUnit()) &&
-                    !gameState.getAssignedPlannedItems().containsKey(colony)) {
+                    !gameState.getAssignedPlannedItems().containsKey(colony) &&
+                    (planPosition == null || colony.getTilePosition().equals(planPosition))) {
                 managedColony.setRole(UnitRole.MORPH);
                 gameState.getAssignedPlannedItems().put(colony, plan);
                 managedColony.setPlan(plan);
