@@ -45,9 +45,6 @@ public class Reactions {
     private static final Predicate<Plan> IS_CREEP_COLONY = p ->
             p.getType() == PlanType.BUILDING && p.getPlannedUnit() == UnitType.Zerg_Creep_Colony;
 
-    private static final Predicate<Plan> IS_SUNKEN_COLONY = p ->
-            p.getType() == PlanType.BUILDING && p.getPlannedUnit() == UnitType.Zerg_Sunken_Colony;
-
     private GameState gameState;
 
     public Reactions(GameState gameState) {
@@ -253,15 +250,12 @@ public class Reactions {
         };
 
         Predicate<Plan> isMainCreepColony = IS_CREEP_COLONY.and(isAtMain);
-        Predicate<Plan> isMainSunkenColony = IS_SUNKEN_COLONY.and(isAtMain);
 
         ProductionQueue productionQueue = gameState.getProductionQueue();
         productionQueue.removeWhere(isMainCreepColony, plan -> {
             gameState.setImpossiblePlan(plan);
             buildingPlanner.unreservePlannedBuildingTiles(plan.getBuildPosition(), UnitType.Zerg_Creep_Colony);
-            baseData.unreserveSunkenColony(mainBase);
         });
-        productionQueue.removeWhere(isMainSunkenColony, gameState::setImpossiblePlan);
     }
 
     private void cancelExtractorPlan(Plan plan, BaseData baseData) {

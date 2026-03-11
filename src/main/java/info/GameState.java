@@ -258,6 +258,10 @@ public class GameState {
                     baseData.cancelReserveBase(base);
                 }
                 
+                if (buildingType == UnitType.Zerg_Creep_Colony) {
+                    cancelPairedColonyPlan(plan);
+                }
+
                 clearPlannedTechFlags(buildingType);
                 break;
             case UPGRADE:
@@ -271,6 +275,49 @@ public class GameState {
             default:
                 return;
         }
+    }
+
+    private void cancelPairedColonyPlan(Plan creepColonyPlan) {
+        TilePosition tp = creepColonyPlan.getBuildPosition();
+        if (tp == null) {
+            return;
+        }
+
+        UnitType[] foundMorphType = {null};
+
+        productionQueue.removeWhere(
+                p -> isColonyMorphAtPosition(p, tp),
+                p -> {
+                    foundMorphType[0] = p.getPlannedUnit();
+                    setImpossiblePlan(p);
+                }
+        );
+
+        if (foundMorphType[0] == null) {
+            for (Plan p : plansScheduled) {
+                if (isColonyMorphAtPosition(p, tp)) {
+                    foundMorphType[0] = p.getPlannedUnit();
+                    plansScheduled.remove(p);
+                    cancelPlan(null, p);
+                    break;
+                }
+            }
+        }
+
+        Base base = baseData.nearestBase(tp);
+        if (base != null && foundMorphType[0] != null) {
+            if (foundMorphType[0] == UnitType.Zerg_Sunken_Colony) {
+                baseData.unreserveSunkenColony(base);
+            } else {
+                baseData.unreserveSporeColony(base);
+            }
+        }
+    }
+
+    private boolean isColonyMorphAtPosition(Plan p, TilePosition tp) {
+        UnitType type = p.getPlannedUnit();
+        return (type == UnitType.Zerg_Sunken_Colony || type == UnitType.Zerg_Spore_Colony)
+                && tp.equals(p.getBuildPosition());
     }
 
     private void clearPlannedTechFlags(UnitType buildingType) {
@@ -390,6 +437,9 @@ public class GameState {
                 }
                 if (buildingType == UnitType.Zerg_Extractor && plan.getBuildPosition() != null) {
                     baseData.unreserveExtractor(plan.getBuildPosition());
+                }
+                if (buildingType == UnitType.Zerg_Creep_Colony) {
+                    cancelPairedColonyPlan(plan);
                 }
                 break;
             case UPGRADE:

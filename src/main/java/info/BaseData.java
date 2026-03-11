@@ -424,6 +424,20 @@ public class BaseData {
         sunkenColonyReserveLookup.put(base, Math.max(sunkenColonyReserveLookup.getOrDefault(base, 0) - 1, 0));
     }
 
+    public Base nearestBase(TilePosition tp) {
+        Position pos = tp.toPosition();
+        Base nearest = null;
+        double bestDist = Double.MAX_VALUE;
+        for (Base base : myBases) {
+            double dist = pos.getDistance(base.getLocation().toPosition());
+            if (dist < bestDist) {
+                bestDist = dist;
+                nearest = base;
+            }
+        }
+        return nearest;
+    }
+
     public boolean isEligibleForSunkenColony(Base base) {
         if (base == mainBase && !allowSunkenAtMain) {
             return false;
@@ -473,6 +487,10 @@ public class BaseData {
 
     public void reserveSporeColony(Base base) {
         sporeColonyReserveLookup.put(base, sporeColonyReserveLookup.getOrDefault(base, 0) + 1);
+    }
+
+    public void unreserveSporeColony(Base base) {
+        sporeColonyReserveLookup.put(base, Math.max(sporeColonyReserveLookup.getOrDefault(base, 0) - 1, 0));
     }
 
     public boolean isEligibleForSporeColony(Base base) {
