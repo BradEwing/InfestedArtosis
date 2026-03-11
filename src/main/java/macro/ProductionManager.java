@@ -695,7 +695,11 @@ public class ProductionManager {
         UnitType building = plan.getPlannedUnit();
 
         if (isColonyMorph(building) && !hasCreepColonyAtPosition(plan.getBuildPosition())) {
-            return false;
+            Unit unassignedColony = findUnassignedCreepColony();
+            if (unassignedColony == null) {
+                return false;
+            }
+            plan.setBuildPosition(unassignedColony.getTilePosition());
         }
 
         ResourceCount resourceCount = gameState.getResourceCount();
@@ -733,6 +737,17 @@ public class ProductionManager {
             }
         }
         return false;
+    }
+
+    private Unit findUnassignedCreepColony() {
+        for (Unit unit : gameState.getSelf().getUnits()) {
+            if (unit.getType() == UnitType.Zerg_Creep_Colony
+                    && unit.isCompleted()
+                    && !gameState.getAssignedPlannedItems().containsKey(unit)) {
+                return unit;
+            }
+        }
+        return null;
     }
 
     private boolean scheduleUnitItem(Plan plan) {
