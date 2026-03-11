@@ -695,9 +695,11 @@ public class ProductionManager {
         UnitType building = plan.getPlannedUnit();
 
         if (isColonyMorph(building) && !hasCreepColonyAtPosition(plan.getBuildPosition())) {
-            if (findUnassignedCreepColony() == null) {
+            Unit unassignedColony = findUnassignedCreepColony();
+            if (unassignedColony == null) {
                 return false;
             }
+            plan.setBuildPosition(unassignedColony.getTilePosition());
         }
 
         ResourceCount resourceCount = gameState.getResourceCount();

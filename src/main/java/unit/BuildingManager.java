@@ -109,7 +109,7 @@ public class BuildingManager {
 
         for (Plan plan : scheduledPlans) {
             if (plan.getType() != PlanType.BUILDING) {
-                return;
+                continue;
             }
 
             if (plan.getState() == PlanState.COMPLETE) {
@@ -136,7 +136,6 @@ public class BuildingManager {
 
             if (didAssign) {
                 assignedPlans.add(plan);
-                break;
             }
         }
 
