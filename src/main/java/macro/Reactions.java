@@ -3,9 +3,12 @@ package macro;
 import bwapi.Game;
 import bwapi.Position;
 import bwapi.Race;
+import bwapi.TilePosition;
 import bwapi.UnitType;
 import bwapi.UpgradeType;
+import bwem.Base;
 import info.GameState;
+import info.map.BuildingPlanner;
 import info.tracking.ObservedUnitTracker;
 import info.tracking.StrategyTracker;
 import util.Time;
@@ -39,6 +42,12 @@ public class Reactions {
     private static final Predicate<Plan> IS_DRONE = p ->
             p.getType() == PlanType.UNIT && p.getPlannedUnit() == UnitType.Zerg_Drone;
 
+    private static final Predicate<Plan> IS_CREEP_COLONY = p ->
+            p.getType() == PlanType.BUILDING && p.getPlannedUnit() == UnitType.Zerg_Creep_Colony;
+
+    private static final Predicate<Plan> IS_SUNKEN_COLONY = p ->
+            p.getType() == PlanType.BUILDING && p.getPlannedUnit() == UnitType.Zerg_Sunken_Colony;
+
     private GameState gameState;
 
     public Reactions(GameState gameState) {
@@ -51,6 +60,7 @@ public class Reactions {
         twoGateReaction();
         zvzSunkenReaction();
         ffeReaction();
+        clearMainSunkenOnExpansion();
     }
 
     private void scvRushReaction() {
@@ -220,6 +230,38 @@ public class Reactions {
         int minPriority = productionQueue.minPriority();
 
         productionQueue.setPriorityWhere(IS_DRONE.or(IS_HATCHERY), minPriority);
+    }
+
+    private void clearMainSunkenOnExpansion() {
+        BaseData baseData = gameState.getBaseData();
+        if (!baseData.isAllowSunkenAtMain()) {
+            return;
+        }
+        if (baseData.currentBaseCount() < 2) {
+            return;
+        }
+
+        baseData.setAllowSunkenAtMain(false);
+
+        Base mainBase = baseData.getMainBase();
+        BuildingPlanner buildingPlanner = gameState.getBuildingPlanner();
+        Set<TilePosition> mainCreepTiles = buildingPlanner.findSurroundingCreepTiles(mainBase, false, true);
+
+        Predicate<Plan> isAtMain = p -> {
+            TilePosition pos = p.getBuildPosition();
+            return pos != null && mainCreepTiles.contains(pos);
+        };
+
+        Predicate<Plan> isMainCreepColony = IS_CREEP_COLONY.and(isAtMain);
+        Predicate<Plan> isMainSunkenColony = IS_SUNKEN_COLONY.and(isAtMain);
+
+        ProductionQueue productionQueue = gameState.getProductionQueue();
+        productionQueue.removeWhere(isMainCreepColony, plan -> {
+            gameState.setImpossiblePlan(plan);
+            buildingPlanner.unreservePlannedBuildingTiles(plan.getBuildPosition(), UnitType.Zerg_Creep_Colony);
+            baseData.unreserveSunkenColony(mainBase);
+        });
+        productionQueue.removeWhere(isMainSunkenColony, gameState::setImpossiblePlan);
     }
 
     private void cancelExtractorPlan(Plan plan, BaseData baseData) {

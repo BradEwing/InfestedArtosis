@@ -60,7 +60,7 @@ public class BaseData {
     private HashMap<Base, StartingLocationPaths> startingLocationPaths = new HashMap<>();
     @Getter
     private Base enemyNaturalBase;
-    @Setter
+    @Getter @Setter
     private boolean allowSunkenAtMain = false;
 
     public BaseData(List<Base> allBases) {
@@ -418,6 +418,10 @@ public class BaseData {
 
     public void reserveSunkenColony(Base base) {
         sunkenColonyReserveLookup.put(base, sunkenColonyReserveLookup.getOrDefault(base, 0) + 1);
+    }
+
+    public void unreserveSunkenColony(Base base) {
+        sunkenColonyReserveLookup.put(base, Math.max(sunkenColonyReserveLookup.getOrDefault(base, 0) - 1, 0));
     }
 
     public boolean isEligibleForSunkenColony(Base base) {
