@@ -57,8 +57,8 @@ public class SquadManager {
 
     private HashSet<ManagedUnit> disbanded = new HashSet<>();
 
-    private static final double AIR_JOIN_DISTANCE = 128;
-    private static final double SQUAD_MERGE_DISTANCE = 256.0;
+    public static final double AIR_JOIN_DISTANCE = 128;
+    public static final double SQUAD_MERGE_DISTANCE = 256.0;
     private static final double ENEMY_DETECTION_RADIUS = 512.0;
 
     private static final Set<UnitType> GROUND_SQUAD_TYPES = new HashSet<>();
@@ -91,6 +91,8 @@ public class SquadManager {
     private static final int ARC_DEGREES = 90;
     private static final int ARC_RADIUS = 160;
     private static final double REINFORCEMENT_RADIUS = 384.0;
+    public static final int GROUND_SPLIT_DISTANCE = 256;
+    public static final int AIR_SPLIT_DISTANCE = 768;
 
     public SquadManager(Game game, GameState gameState) {
         this.game = game;
@@ -104,6 +106,7 @@ public class SquadManager {
         activeContainmentArcs.clear();
         removeEmptySquads();
         mergeSquads();
+        splitSquads();
         assignOverlordsToSquads();
 
         Set<Squad> removed = new HashSet<>();
@@ -350,12 +353,14 @@ public class SquadManager {
             return;
         }
 
+        int currentFrame = game.getFrameCount();
         List<Set<Squad>> toMerge = new ArrayList<>();
         Set<Squad> considered = new HashSet<>();
         for (Squad squad1: fightSquads) {
             for (Squad squad2: fightSquads) {
                 if (squad1 == squad2) continue;
                 if (considered.contains(squad1) || considered.contains(squad2)) continue;
+                if (!squad1.isMergeEligible(currentFrame) || !squad2.isMergeEligible(currentFrame)) continue;
                 boolean bothGround = squad1.isGroundSquad() && squad2.isGroundSquad();
                 boolean bothAir = squad1.isAirSquad() && squad2.isAirSquad();
                 if (!bothGround && !bothAir) continue;
@@ -379,13 +384,48 @@ public class SquadManager {
                 newSquad = newFightSquad(UnitType.Zerg_Mutalisk);
             }
             for (Squad mergingSquad: mergeSet) {
+                newSquad.inheritStateFrom(mergingSquad);
                 for (ManagedUnit mu : new ArrayList<>(mergingSquad.getMembers())) {
                     newSquad.addUnit(mu);
                 }
                 fightSquads.remove(mergingSquad);
             }
+            newSquad.setSplitFrame(currentFrame);
             fightSquads.add(newSquad);
         }
+    }
+
+    private void splitSquads() {
+        if (game.getFrameCount() % MERGE_CHECK_INTERVAL != 0) {
+            return;
+        }
+
+        int currentFrame = game.getFrameCount();
+        List<Squad> toAdd = new ArrayList<>();
+
+        for (Squad squad : fightSquads) {
+            if (squad.getStatus() == SquadStatus.CONTAIN) continue;
+            if (squad.getStatus() == SquadStatus.RALLY) continue;
+            if (squad.getStatus() == SquadStatus.REGROUP) continue;
+            if (squad.getStatus() == SquadStatus.RETREAT) continue;
+            if (squad.size() < 4) continue;
+
+            int threshold = squad.isAirSquad() ? AIR_SPLIT_DISTANCE : GROUND_SPLIT_DISTANCE;
+            List<ManagedUnit> outliers = squad.findOutliers(threshold);
+            if (outliers.isEmpty()) continue;
+
+            Squad child = squad.createSibling();
+            child.inheritStateFrom(squad);
+            child.setSplitFrame(currentFrame);
+            squad.setSplitFrame(currentFrame);
+            for (ManagedUnit mu : outliers) {
+                squad.removeUnit(mu);
+                child.addUnit(mu);
+            }
+            toAdd.add(child);
+        }
+
+        fightSquads.addAll(toAdd);
     }
 
     private List<Unit> enemyUnitsNearSquad(Squad squad) {

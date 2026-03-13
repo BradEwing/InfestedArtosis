@@ -9,10 +9,13 @@ import lombok.Getter;
 import org.jetbrains.annotations.NotNull;
 import unit.managed.ManagedUnit;
 import unit.managed.UnitRole;
+import util.Distance;
 import util.Time;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -56,6 +59,10 @@ public class Squad implements Comparable<Squad> {
     protected Time containHysteresis = new Time(0, 5);
 
     private static final double SMOOTHING_ALPHA = 0.85;
+    private static final int SPLIT_MERGE_COOLDOWN = 100;
+
+    @Getter
+    private int splitFrame = 0;
 
     @Override
     public boolean equals(Object other) {
@@ -191,6 +198,43 @@ public class Squad implements Comparable<Squad> {
     @Override
     public int compareTo(@NotNull Squad o) {
         return Integer.compare(this.size(), o.size());
+    }
+
+    public List<ManagedUnit> findOutliers(int maxDistance) {
+        Position c = getCenter();
+        if (c == null) return new ArrayList<>();
+        int cx = c.getX();
+        int cy = c.getY();
+        List<ManagedUnit> outliers = new ArrayList<>();
+        for (ManagedUnit mu : members) {
+            Position pos = mu.getUnit().getPosition();
+            if (!Distance.isWithinRange(cx, cy, pos.getX(), pos.getY(), maxDistance)) {
+                outliers.add(mu);
+            }
+        }
+        return outliers;
+    }
+
+    public void inheritStateFrom(Squad source) {
+        this.status = source.status;
+        this.rallyPoint = source.rallyPoint;
+        this.fightLockedUntilFrame = Math.max(this.fightLockedUntilFrame, source.fightLockedUntilFrame);
+        this.retreatLockedUntilFrame = Math.max(this.retreatLockedUntilFrame, source.retreatLockedUntilFrame);
+        this.containLockedUntilFrame = Math.max(this.containLockedUntilFrame, source.containLockedUntilFrame);
+    }
+
+    public boolean isMergeEligible(int currentFrame) {
+        return splitFrame == 0 || currentFrame - splitFrame > SPLIT_MERGE_COOLDOWN;
+    }
+
+    public Squad createSibling() {
+        if (isGroundSquad()) {
+            return new GroundSquad();
+        }
+        if (isAirSquad()) {
+            return new AirSquad();
+        }
+        return new Squad();
     }
 
     /**
