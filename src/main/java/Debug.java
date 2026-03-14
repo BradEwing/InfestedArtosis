@@ -409,12 +409,27 @@ public class Debug {
     }
 
     private void debugSquads() {
+        int currentFrame = game.getFrameCount();
         for (Squad squad: squadManager.fightSquads) {
             Position center = squad.getCenter();
             for (ManagedUnit mu : squad.getMembers()) {
                 game.drawLineMap(center, mu.getUnit().getPosition(), Color.White);
             }
+
+            int mergeRadius = squad.isAirSquad()
+                    ? (int) SquadManager.AIR_JOIN_DISTANCE
+                    : (int) SquadManager.SQUAD_MERGE_DISTANCE;
+            int splitRadius = squad.isAirSquad()
+                    ? SquadManager.AIR_SPLIT_DISTANCE
+                    : SquadManager.GROUND_SPLIT_DISTANCE;
+            game.drawCircleMap(center, mergeRadius, Color.Green);
+            game.drawCircleMap(center, splitRadius, Color.Red);
+
             String label = formatCompositionSquadLabel(squad.getStatus(), squad.getSupply(), squad.getComposition());
+            if (!squad.isMergeEligible(currentFrame)) {
+                int lockFramesLeft = squad.getSplitFrame() + 100 - currentFrame;
+                label += " lock=" + lockFramesLeft;
+            }
             game.drawTextMap(center, label, Text.White);
         }
         for (Squad squad: squadManager.getDefenseSquads().values()) {
