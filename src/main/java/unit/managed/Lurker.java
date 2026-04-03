@@ -128,6 +128,16 @@ public class Lurker extends ManagedUnit {
         super.rally();
     }
 
+    @Override
+    protected void scout() {
+        if (unit.isBurrowed()) {
+            this.setUnready();
+            unburrowAndReset();
+            return;
+        }
+        super.scout();
+    }
+
     private void unburrowAndReset() {
         if (unit.canUnburrow()) {
             unit.unburrow();
