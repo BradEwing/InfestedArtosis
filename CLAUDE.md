@@ -58,6 +58,17 @@ Types: BuildingPlan, UnitPlan, UpgradePlan, TechPlan.
 
 ## Code Style
 - No comments within a function body.
+- For varargs utility methods, prefer simple single varargs `(T... items)` over `(T first, T second, T... rest)` unless explicitly asked otherwise.
+
+## Domain Knowledge
+- When referencing Brood War game mechanics (damage types, unit stats, pathfinding), do NOT guess. Ask the user or search the codebase for existing constants/enums rather than stating facts that may be wrong.
+
+## Workflow
+- When implementing from a plan or Jira ticket, always re-read the current state of files before editing. Files may have changed between planning and implementation.
+
+## Git Conventions
+- Do NOT prefix git commands with `cd <project-dir> &&` when already in the project root. Just run the git command directly.
+- Stage only files related to the current change. Run `git diff --cached` before committing to verify no unrelated changes leak in.
 
 ## Commit Messages
 
