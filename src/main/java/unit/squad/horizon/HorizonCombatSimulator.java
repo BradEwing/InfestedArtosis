@@ -3,6 +3,7 @@ package unit.squad.horizon;
 import bwapi.Position;
 import bwapi.Unit;
 import bwapi.UnitType;
+import bwapi.WeaponType;
 import info.GameState;
 import info.tracking.ObservedUnit;
 import info.tracking.ObservedUnitTracker;
@@ -178,7 +179,19 @@ public class HorizonCombatSimulator implements CombatSimulator {
             prepPenalty = 0.3;
         }
 
-        return base * hpWeight * distWeight * cloak * prepPenalty;
+        double rangeUpgrade = rangeUpgradeCorrection(unit, type);
+
+        return base * hpWeight * distWeight * cloak * prepPenalty * rangeUpgrade;
+    }
+
+    private double rangeUpgradeCorrection(Unit unit, UnitType type) {
+        WeaponType weapon = type.isFlyer() ? type.airWeapon() : type.groundWeapon();
+        if (weapon == null || weapon == WeaponType.None) return 1.0;
+        int baseRange = weapon.maxRange();
+        if (baseRange <= 0) return 1.0;
+        int upgradedRange = unit.getPlayer().weaponMaxRange(weapon);
+        if (upgradedRange == baseRange) return 1.0;
+        return Math.log(upgradedRange / 4.0 + 16.0) / Math.log(baseRange / 4.0 + 16.0);
     }
 
     private boolean enemyHasNearbyDetection(ObservedUnitTracker tracker, Position center) {
@@ -201,7 +214,6 @@ public class HorizonCombatSimulator implements CombatSimulator {
     private double distanceWeight(double distance) {
         if (distance <= 256) return 1.0;
         if (distance <= 512) return 1.0 - 0.5 * (distance - 256) / 256;
-        if (distance <= MAX_ENGAGEMENT_RADIUS) return 0.5 - 0.25 * (distance - 512) / 256;
         return 0;
     }
 
