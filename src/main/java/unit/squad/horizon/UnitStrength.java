@@ -1,5 +1,7 @@
 package unit.squad.horizon;
 
+import bwapi.DamageType;
+import bwapi.UnitSizeType;
 import bwapi.UnitType;
 import bwapi.WeaponType;
 
@@ -80,5 +82,16 @@ public class UnitStrength {
     public static double totalStrength(UnitType type) {
         double[] s = STRENGTH_TABLE.get(type);
         return s != null ? s[0] + s[1] + s[2] + s[3] : 0;
+    }
+
+    public static double effectiveness(DamageType damageType, UnitSizeType targetSize) {
+        if (damageType == DamageType.Explosive) {
+            if (targetSize == UnitSizeType.Small) return 0.5;
+            if (targetSize == UnitSizeType.Medium) return 0.75;
+        } else if (damageType == DamageType.Concussive) {
+            if (targetSize == UnitSizeType.Medium) return 0.5;
+            if (targetSize == UnitSizeType.Large) return 0.25;
+        }
+        return 1.0;
     }
 }

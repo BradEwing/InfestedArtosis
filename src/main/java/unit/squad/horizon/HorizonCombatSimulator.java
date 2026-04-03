@@ -1,7 +1,9 @@
 package unit.squad.horizon;
 
+import bwapi.DamageType;
 import bwapi.Position;
 import bwapi.Unit;
+import bwapi.UnitSizeType;
 import bwapi.UnitType;
 import bwapi.WeaponType;
 import info.GameState;
@@ -78,6 +80,8 @@ public class HorizonCombatSimulator implements CombatSimulator {
         double enemyGroundStr = 0;
         double enemyAntiAirStr = 0;
 
+        Map<UnitSizeType, Double> friendlySizeProportions = sizeProportions(squad, adjacentSquads);
+
         for (ObservedUnit ou : tracker.getLivingObservedUnits()) {
             Position pos = ou.getUnit().isVisible() ? ou.getUnit().getPosition() : ou.getLastKnownLocation();
             if (pos == null) continue;
@@ -100,6 +104,9 @@ public class HorizonCombatSimulator implements CombatSimulator {
                 groundBase /= WORKER_STRENGTH_DIVISOR;
                 antiAirBase /= WORKER_STRENGTH_DIVISOR;
             }
+
+            groundBase *= weightedEffectiveness(groundDamageType(type), friendlySizeProportions);
+            antiAirBase *= weightedEffectiveness(airDamageType(type), friendlySizeProportions);
 
             double groundEnemyStr = groundBase * hpWeight * distWeight * heightMod;
             double aaEnemyStr = antiAirBase * hpWeight * distWeight * heightMod;
@@ -220,6 +227,56 @@ public class HorizonCombatSimulator implements CombatSimulator {
     private boolean isRanged(UnitType type) {
         if (type.groundWeapon() != null && type.groundWeapon().maxRange() > 32) return true;
         return type.airWeapon() != null && type.airWeapon().maxRange() > 32;
+    }
+
+    private Map<UnitSizeType, Double> sizeProportions(Squad squad, Map<Squad, Double> adjacentSquads) {
+        Map<UnitSizeType, Double> proportions = new HashMap<>();
+        double total = addSquadSizes(squad, 1.0, proportions);
+        if (adjacentSquads != null) {
+            for (Map.Entry<Squad, Double> adj : adjacentSquads.entrySet()) {
+                double weight = distanceWeight(adj.getValue());
+                total += addSquadSizes(adj.getKey(), weight, proportions);
+            }
+        }
+        if (total == 0) return proportions;
+        for (Map.Entry<UnitSizeType, Double> entry : proportions.entrySet()) {
+            entry.setValue(entry.getValue() / total);
+        }
+        return proportions;
+    }
+
+    private double addSquadSizes(Squad squad, double weight, Map<UnitSizeType, Double> proportions) {
+        double total = 0;
+        for (Map.Entry<UnitType, Integer> entry : squad.getComposition().entrySet()) {
+            UnitType type = entry.getKey();
+            if (type == UnitType.Zerg_Overlord) continue;
+            double s = Math.max(type.supplyRequired(), 1) * entry.getValue() * weight;
+            proportions.merge(type.size(), s, Double::sum);
+            total += s;
+        }
+        return total;
+    }
+
+    private double weightedEffectiveness(DamageType damageType, Map<UnitSizeType, Double> sizeProportions) {
+        if (damageType == DamageType.Normal || sizeProportions.isEmpty()) return 1.0;
+        double effectiveness = 0;
+        for (Map.Entry<UnitSizeType, Double> entry : sizeProportions.entrySet()) {
+            effectiveness += entry.getValue() * UnitStrength.effectiveness(damageType, entry.getKey());
+        }
+        return effectiveness;
+    }
+
+    private DamageType groundDamageType(UnitType type) {
+        if (type == UnitType.Zerg_Sunken_Colony) return DamageType.Explosive;
+        WeaponType weapon = type.groundWeapon();
+        if (weapon == null || weapon == WeaponType.None) return DamageType.Normal;
+        return weapon.damageType();
+    }
+
+    private DamageType airDamageType(UnitType type) {
+        WeaponType weapon = type.airWeapon();
+        if (weapon == null || weapon == WeaponType.None) return DamageType.Normal;
+        return weapon.damageType();
     }
 
     @Getter
