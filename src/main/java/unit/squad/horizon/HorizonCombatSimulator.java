@@ -13,6 +13,7 @@ import lombok.Getter;
 import unit.managed.ManagedUnit;
 import unit.squad.CombatSimulator;
 import unit.squad.Squad;
+import util.Time;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -28,6 +29,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
     private static final double MAX_ENGAGEMENT_RADIUS = 320;
     private static final double WORKER_STRENGTH_DIVISOR = 10.0;
     private static final double HEIGHT_BONUS = 1.15;
+    private static final Time RECENTLY_SEEN_THRESHOLD = new Time(0, 5);
     private static final double ENGAGE_THRESHOLD = 1.0;
     private static final double RETREAT_THRESHOLD = 0.7;
 
@@ -40,8 +42,9 @@ public class HorizonCombatSimulator implements CombatSimulator {
         if (squadCenter == null) return CombatResult.RETREAT;
 
         boolean airSquad = squad.isAirSquad();
+        int currentFrame = gameState.getGame().getFrameCount();
         ObservedUnitTracker tracker = gameState.getObservedUnitTracker();
-        boolean enemyHasDetection = enemyHasNearbyDetection(tracker, squadCenter);
+        boolean enemyHasDetection = enemyHasNearbyDetection(tracker, squadCenter, currentFrame);
         DebugSnapshot snapshot = new DebugSnapshot();
         snapshot.setSquadCenter(squadCenter);
 
@@ -51,7 +54,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
         for (ManagedUnit mu : squad.getMembers()) {
             if (mu.getUnitType() == UnitType.Zerg_Overlord) continue;
             double str = computeFriendlyStrength(mu, squadCenter, enemyHasDetection);
-            snapshot.getFriendlyUnits().add(new UnitDebugEntry(mu.getUnit().getPosition(), mu.getUnitType(), str, false));
+            snapshot.getFriendlyUnits().add(new UnitDebugEntry(mu.getUnit().getPosition(), mu.getUnitType(), str, false, false));
             if (mu.getUnitType().isFlyer()) {
                 friendlyAirStr += str;
             } else {
@@ -67,7 +70,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
                 for (ManagedUnit mu : adjSquad.getMembers()) {
                     if (mu.getUnitType() == UnitType.Zerg_Overlord) continue;
                     double str = computeFriendlyStrength(mu, squadCenter, enemyHasDetection) * weight;
-                    snapshot.getFriendlyUnits().add(new UnitDebugEntry(mu.getUnit().getPosition(), mu.getUnitType(), str, true));
+                    snapshot.getFriendlyUnits().add(new UnitDebugEntry(mu.getUnit().getPosition(), mu.getUnitType(), str, true, false));
                     if (mu.getUnitType().isFlyer()) {
                         friendlyAirStr += str;
                     } else {
@@ -83,12 +86,18 @@ public class HorizonCombatSimulator implements CombatSimulator {
         Map<UnitSizeType, Double> friendlySizeProportions = sizeProportions(squad, adjacentSquads);
 
         for (ObservedUnit ou : tracker.getLivingObservedUnits()) {
-            Position pos = ou.getUnit().isVisible() ? ou.getUnit().getPosition() : ou.getLastKnownLocation();
+            UnitType type = ou.getUnitType();
+            boolean visible = ou.getUnit().isVisible();
+            if (!visible && !isPositionalUnit(type)) {
+                int framesSinceObserved = currentFrame - ou.getLastObservedFrame().getFrames();
+                if (framesSinceObserved > RECENTLY_SEEN_THRESHOLD.getFrames()) continue;
+            }
+
+            Position pos = visible ? ou.getUnit().getPosition() : ou.getLastKnownLocation();
             if (pos == null) continue;
             double dist = squadCenter.getDistance(pos);
             if (dist > MAX_ENGAGEMENT_RADIUS) continue;
 
-            UnitType type = ou.getUnitType();
             if (type.isBuilding() && !ou.isCompleted()) continue;
             double hpWeight = hpWeighting(ou.getLastKnownHitPoints(), ou.getLastKnownShields(),
                     type.maxHitPoints(), type.maxShields());
@@ -114,7 +123,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
             enemyAntiAirStr += aaEnemyStr;
 
             double displayStr = airSquad ? aaEnemyStr : groundEnemyStr;
-            snapshot.getEnemyUnits().add(new UnitDebugEntry(pos, type, displayStr, false));
+            snapshot.getEnemyUnits().add(new UnitDebugEntry(pos, type, displayStr, false, !visible));
         }
 
         if (!snapshot.getEnemyUnits().isEmpty()) {
@@ -201,15 +210,27 @@ public class HorizonCombatSimulator implements CombatSimulator {
         return Math.log(upgradedRange / 4.0 + 16.0) / Math.log(baseRange / 4.0 + 16.0);
     }
 
-    private boolean enemyHasNearbyDetection(ObservedUnitTracker tracker, Position center) {
+    private boolean enemyHasNearbyDetection(ObservedUnitTracker tracker, Position center, int currentFrame) {
         for (ObservedUnit ou : tracker.getLivingObservedUnits()) {
             if (!ou.getUnitType().isDetector()) continue;
-            Position pos = ou.getUnit().isVisible() ? ou.getUnit().getPosition() : ou.getLastKnownLocation();
+            boolean visible = ou.getUnit().isVisible();
+            if (!visible && !isPositionalUnit(ou.getUnitType())) {
+                int framesSinceObserved = currentFrame - ou.getLastObservedFrame().getFrames();
+                if (framesSinceObserved > RECENTLY_SEEN_THRESHOLD.getFrames()) continue;
+            }
+            Position pos = visible ? ou.getUnit().getPosition() : ou.getLastKnownLocation();
             if (pos != null && center.getDistance(pos) <= MAX_ENGAGEMENT_RADIUS) {
                 return true;
             }
         }
         return false;
+    }
+
+    private boolean isPositionalUnit(UnitType type) {
+        return type.isBuilding()
+                || type == UnitType.Terran_Siege_Tank_Siege_Mode
+                || type == UnitType.Terran_Siege_Tank_Tank_Mode
+                || type == UnitType.Zerg_Lurker;
     }
 
     private double hpWeighting(int hp, int shields, int maxHp, int maxShields) {
@@ -286,6 +307,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
         private final UnitType type;
         private final double strength;
         private final boolean adjacent;
+        private final boolean fogOfWar;
     }
 
     @Getter

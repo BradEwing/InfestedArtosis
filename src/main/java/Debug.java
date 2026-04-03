@@ -505,14 +505,16 @@ public class Debug {
 
             Position enemyCenter = snap.getEnemyCenter();
             for (UnitDebugEntry entry : snap.getEnemyUnits()) {
-                game.drawCircleMap(entry.getPosition(), 6, Color.Red);
+                Color enemyColor = entry.isFogOfWar() ? Color.Orange : Color.Red;
+                game.drawCircleMap(entry.getPosition(), 6, enemyColor);
                 if (enemyCenter != null) {
-                    game.drawLineMap(entry.getPosition(), enemyCenter, Color.Red);
+                    game.drawLineMap(entry.getPosition(), enemyCenter, enemyColor);
                 }
                 String shortName = entry.getType().toString()
                         .replace("Protoss_", "").replace("Terran_", "").replace("Zerg_", "");
+                Text textColor = entry.isFogOfWar() ? Text.Orange : Text.Red;
                 game.drawTextMap(entry.getPosition().getX() + 8, entry.getPosition().getY() - 4,
-                        String.format("%s %.1f", shortName, entry.getStrength()), Text.Red);
+                        String.format("%s %.1f", shortName, entry.getStrength()), textColor);
             }
         }
     }
