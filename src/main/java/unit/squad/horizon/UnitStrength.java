@@ -15,6 +15,12 @@ public class UnitStrength {
             if (type == UnitType.Unknown || type == UnitType.None) continue;
             double g2g = computeWeaponDps(type.groundWeapon(), type.maxGroundHits());
             double g2a = computeWeaponDps(type.airWeapon(), type.maxAirHits());
+            double groundRange = type.groundWeapon() != null ? type.groundWeapon().maxRange() : 0;
+            double airRange = type.airWeapon() != null ? type.airWeapon().maxRange() : 0;
+            double groundRangeFactor = groundRange > 0 ? Math.log(groundRange / 4.0 + 16.0) : 1.0;
+            double airRangeFactor = airRange > 0 ? Math.log(airRange / 4.0 + 16.0) : 1.0;
+            g2g *= groundRangeFactor;
+            g2a *= airRangeFactor;
             double a2g = 0;
             double a2a = 0;
             if (type.isFlyer()) {
