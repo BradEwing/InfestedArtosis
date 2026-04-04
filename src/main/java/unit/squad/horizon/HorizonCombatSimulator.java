@@ -28,6 +28,7 @@ import java.util.Map;
 public class HorizonCombatSimulator implements CombatSimulator {
 
     private static final double MAX_ENGAGEMENT_RADIUS = 320;
+    private static final double APPROACH_BUFFER = 64;
     private static final double WORKER_STRENGTH_DIVISOR = 10.0;
     private static final double HEIGHT_BONUS = 1.15;
     private static final Time RECENTLY_SEEN_THRESHOLD = new Time(0, 5);
@@ -100,12 +101,12 @@ public class HorizonCombatSimulator implements CombatSimulator {
             Position pos = visible ? ou.getUnit().getPosition() : ou.getLastKnownLocation();
             if (pos == null) continue;
             double dist = squadCenter.getDistance(pos);
-            if (dist > MAX_ENGAGEMENT_RADIUS) continue;
+            if (dist > engagementRadius(type)) continue;
 
             if (type.isBuilding() && !ou.isCompleted()) continue;
             double hpWeight = hpWeighting(ou.getLastKnownHitPoints(), ou.getLastKnownShields(),
                     type.maxHitPoints(), type.maxShields());
-            double distWeight = distanceWeight(dist);
+            double distWeight = type.isBuilding() ? 1.0 : distanceWeight(dist);
             double heightMod = 1.0;
             if (!type.isFlyer() && isRanged(type) && ou.getLastKnownGroundHeight() > 0) {
                 heightMod = HEIGHT_BONUS;
@@ -229,7 +230,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
                 if (framesSinceObserved > RECENTLY_SEEN_THRESHOLD.getFrames()) continue;
             }
             Position pos = visible ? ou.getUnit().getPosition() : ou.getLastKnownLocation();
-            if (pos != null && center.getDistance(pos) <= MAX_ENGAGEMENT_RADIUS) {
+            if (pos != null && center.getDistance(pos) <= engagementRadius(ou.getUnitType())) {
                 return true;
             }
         }
@@ -239,8 +240,16 @@ public class HorizonCombatSimulator implements CombatSimulator {
     private boolean isPositionalUnit(UnitType type) {
         return type.isBuilding()
                 || type == UnitType.Terran_Siege_Tank_Siege_Mode
-                || type == UnitType.Terran_Siege_Tank_Tank_Mode
                 || type == UnitType.Zerg_Lurker;
+    }
+
+    private double engagementRadius(UnitType type) {
+        if (!isPositionalUnit(type)) return MAX_ENGAGEMENT_RADIUS;
+        int groundRange = type.groundWeapon() != null && type.groundWeapon() != WeaponType.None
+                ? type.groundWeapon().maxRange() : 0;
+        int airRange = type.airWeapon() != null && type.airWeapon() != WeaponType.None
+                ? type.airWeapon().maxRange() : 0;
+        return Math.max(MAX_ENGAGEMENT_RADIUS, Math.max(groundRange, airRange) + APPROACH_BUFFER);
     }
 
     private double hpWeighting(int hp, int shields, int maxHp, int maxShields) {
