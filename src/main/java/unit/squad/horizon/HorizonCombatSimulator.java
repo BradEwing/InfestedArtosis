@@ -46,6 +46,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
         ObservedUnitTracker tracker = gameState.getObservedUnitTracker();
         boolean enemyHasDetection = enemyHasNearbyDetection(tracker, squadCenter, currentFrame);
         DebugSnapshot snapshot = new DebugSnapshot();
+        snapshot.setCapturedFrame(currentFrame);
         snapshot.setSquadCenter(squadCenter);
 
         double friendlyGroundStr = 0;
@@ -313,6 +314,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
     @Getter
     @lombok.Setter
     public static class DebugSnapshot {
+        private int capturedFrame;
         private Position squadCenter;
         private Position enemyCenter;
         private final List<UnitDebugEntry> friendlyUnits = new ArrayList<>();

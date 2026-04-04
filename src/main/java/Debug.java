@@ -483,6 +483,7 @@ public class Debug {
             HorizonCombatSimulator sim = (HorizonCombatSimulator) squad.getCombatSimulator();
             DebugSnapshot snap = sim.getLastSnapshots().get(squad.getId());
             if (snap == null) continue;
+            if (game.getFrameCount() - snap.getCapturedFrame() > 24) continue;
 
             Color resultColor = snap.getResult() == CombatResult.ENGAGE ? Color.Green
                     : snap.getResult() == CombatResult.RETREAT ? Color.Red : Color.Yellow;
