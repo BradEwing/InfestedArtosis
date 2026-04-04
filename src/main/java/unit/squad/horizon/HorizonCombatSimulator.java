@@ -7,6 +7,7 @@ import bwapi.UnitSizeType;
 import bwapi.UnitType;
 import bwapi.WeaponType;
 import info.GameState;
+import info.TechProgression;
 import info.tracking.ObservedUnit;
 import info.tracking.ObservedUnitTracker;
 import lombok.Getter;
@@ -32,6 +33,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
     private static final Time RECENTLY_SEEN_THRESHOLD = new Time(0, 5);
     private static final double ENGAGE_THRESHOLD = 1.0;
     private static final double RETREAT_THRESHOLD = 0.7;
+    private static final double SPEED_UPGRADE_PENALTY = 0.75;
 
     @Getter
     private final Map<String, DebugSnapshot> lastSnapshots = new HashMap<>();
@@ -45,6 +47,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
         int currentFrame = gameState.getGame().getFrameCount();
         ObservedUnitTracker tracker = gameState.getObservedUnitTracker();
         boolean enemyHasDetection = enemyHasNearbyDetection(tracker, squadCenter, currentFrame);
+        TechProgression techProgression = gameState.getTechProgression();
         DebugSnapshot snapshot = new DebugSnapshot();
         snapshot.setCapturedFrame(currentFrame);
         snapshot.setSquadCenter(squadCenter);
@@ -54,7 +57,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
 
         for (ManagedUnit mu : squad.getMembers()) {
             if (mu.getUnitType() == UnitType.Zerg_Overlord) continue;
-            double str = computeFriendlyStrength(mu, squadCenter, enemyHasDetection);
+            double str = computeFriendlyStrength(mu, squadCenter, enemyHasDetection, techProgression);
             snapshot.getFriendlyUnits().add(new UnitDebugEntry(mu.getUnit().getPosition(), mu.getUnitType(), str, false, false));
             if (mu.getUnitType().isFlyer()) {
                 friendlyAirStr += str;
@@ -70,7 +73,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
                 double weight = distanceWeight(distance);
                 for (ManagedUnit mu : adjSquad.getMembers()) {
                     if (mu.getUnitType() == UnitType.Zerg_Overlord) continue;
-                    double str = computeFriendlyStrength(mu, squadCenter, enemyHasDetection) * weight;
+                    double str = computeFriendlyStrength(mu, squadCenter, enemyHasDetection, techProgression) * weight;
                     snapshot.getFriendlyUnits().add(new UnitDebugEntry(mu.getUnit().getPosition(), mu.getUnitType(), str, true, false));
                     if (mu.getUnitType().isFlyer()) {
                         friendlyAirStr += str;
@@ -172,7 +175,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
         return result;
     }
 
-    private double computeFriendlyStrength(ManagedUnit mu, Position engagementCenter, boolean enemyHasDetection) {
+    private double computeFriendlyStrength(ManagedUnit mu, Position engagementCenter, boolean enemyHasDetection, TechProgression techProgression) {
         Unit unit = mu.getUnit();
         UnitType type = unit.getType();
         double base = UnitStrength.totalStrength(type);
@@ -198,7 +201,13 @@ public class HorizonCombatSimulator implements CombatSimulator {
 
         double rangeUpgrade = rangeUpgradeCorrection(unit, type);
 
-        return base * hpWeight * distWeight * cloak * prepPenalty * rangeUpgrade;
+        double speedPenalty = 1.0;
+        if ((type == UnitType.Zerg_Zergling && !techProgression.isMetabolicBoost())
+                || (type == UnitType.Zerg_Hydralisk && !techProgression.isMuscularAugments())) {
+            speedPenalty = SPEED_UPGRADE_PENALTY;
+        }
+
+        return base * hpWeight * distWeight * cloak * prepPenalty * rangeUpgrade * speedPenalty;
     }
 
     private double rangeUpgradeCorrection(Unit unit, UnitType type) {
