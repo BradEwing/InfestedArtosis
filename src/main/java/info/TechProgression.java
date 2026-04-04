@@ -1,6 +1,5 @@
 package info;
 
-import bwapi.TechType;
 import bwapi.UpgradeType;
 import lombok.Data;
 
@@ -224,56 +223,6 @@ public class TechProgression {
 
     public boolean canPlanOverlordSpeed() {
         return !plannedOverlordSpeed && !overlordSpeed;
-    }
-
-    public void upgradeTech(TechType t) {
-        if (TechType.Lurker_Aspect == t) {
-            plannedLurker = false;
-            lurker = true;
-        }
-    }
-
-    public void upgradeTech(UpgradeType u) {
-        switch (u) {
-            case Metabolic_Boost:
-                metabolicBoost = true;
-                plannedMetabolicBoost = false;
-                break;
-            case Muscular_Augments:
-                muscularAugments = true;
-                plannedMuscularAugments = false;
-                break;
-            case Grooved_Spines:
-                groovedSpines = true;
-                plannedGroovedSpines = false;
-                break;
-            case Zerg_Carapace:
-                carapaceUpgrades += 1;
-                plannedCarapaceUpgrades = false;
-                break;
-            case Zerg_Melee_Attacks:
-                meleeUpgrades += 1;
-                plannedMeleeUpgrades = false;
-                break;
-            case Zerg_Missile_Attacks:
-                rangedUpgrades += 1;
-                plannedRangedUpgrades = false;
-                break;
-            case Zerg_Flyer_Attacks:
-                flyerAttack += 1;
-                plannedFlyerAttack = false;
-                break;
-            case Zerg_Flyer_Carapace:
-                flyerDefense += 1;
-                plannedFlyerDefense = false;
-                break;
-            case Pneumatized_Carapace:
-                overlordSpeed = true;
-                plannedOverlordSpeed = false;
-                break;
-            default:
-                break;
-        }
     }
 
     public int evolutionChamberBuffer() {

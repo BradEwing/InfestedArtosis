@@ -13,6 +13,12 @@ public class UpgradePlan extends Plan {
         this.plannedUpgrade = upgrade;
     }
 
+    public UpgradePlan(UpgradeType upgrade, int priority, int currentLevel) {
+        super(priority);
+        this.plannedUpgrade = upgrade;
+        this.setPlannedUpgradeLevel(currentLevel);
+    }
+
     @Override
     public PlanType getType() {
         return PlanType.UPGRADE;

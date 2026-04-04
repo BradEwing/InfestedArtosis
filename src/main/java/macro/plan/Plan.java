@@ -32,6 +32,8 @@ public abstract class Plan {
     @Nullable
     private UpgradeType plannedUpgrade;
 
+    private int plannedUpgradeLevel;
+
     @Nullable
     private TechType plannedTechType;
 

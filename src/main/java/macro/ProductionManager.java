@@ -661,12 +661,8 @@ public class ProductionManager {
             unit.upgrade(upgradeType);
         }
 
-        ResourceCount resourceCount = gameState.getResourceCount();
-        TechProgression techProgression = gameState.getTechProgression();
-
         if (unit.isUpgrading()) {
-            resourceCount.unreserveUpgrade(upgradeType);
-            techProgression.upgradeTech(upgradeType);
+            gameState.getResourceCount().unreserveUpgrade(upgradeType);
             return true;
         }
         return false;
@@ -678,12 +674,8 @@ public class ProductionManager {
             unit.research(techType);
         }
 
-        ResourceCount resourceCount = gameState.getResourceCount();
-        TechProgression techProgression = gameState.getTechProgression();
-
         if (unit.isResearching()) {
-            resourceCount.unreserveTechResearch(techType);
-            techProgression.upgradeTech(techType);
+            gameState.getResourceCount().unreserveTechResearch(techType);
             return true;
         }
         return false;

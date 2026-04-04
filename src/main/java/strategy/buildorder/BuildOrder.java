@@ -243,20 +243,19 @@ public abstract class BuildOrder {
                 techProgression.setPlannedGroovedSpines(true);
                 break;
             case Zerg_Melee_Attacks:
-                int meleeAttacks = techProgression.getMeleeUpgrades();
-                techProgression.setMeleeUpgrades(meleeAttacks + 1);
+                techProgression.setPlannedMeleeUpgrades(true);
                 break;
             case Zerg_Missile_Attacks:
-                int missileAttacks = techProgression.getRangedUpgrades();
-                techProgression.setRangedUpgrades(missileAttacks + 1);
+                techProgression.setPlannedRangedUpgrades(true);
+                break;
+            case Zerg_Flyer_Attacks:
+                techProgression.setPlannedFlyerAttack(true);
                 break;
             case Zerg_Flyer_Carapace:
-                int flyerCarapace = techProgression.getFlyerDefense();
-                techProgression.setFlyerDefense(flyerCarapace + 1);
+                techProgression.setPlannedFlyerDefense(true);
                 break;
             case Zerg_Carapace:
-                int carapace = techProgression.getCarapaceUpgrades();
-                techProgression.setCarapaceUpgrades(carapace + 1);
+                techProgression.setPlannedCarapaceUpgrades(true);
                 break;
             case Pneumatized_Carapace:
                 techProgression.setPlannedOverlordSpeed(true);
@@ -266,7 +265,19 @@ public abstract class BuildOrder {
                 break;
         }
 
-        return new UpgradePlan(upgradeType, priority);
+        int currentLevel = getCurrentUpgradeLevel(techProgression, upgradeType);
+        return new UpgradePlan(upgradeType, priority, currentLevel);
+    }
+
+    private int getCurrentUpgradeLevel(TechProgression tp, UpgradeType type) {
+        switch (type) {
+            case Zerg_Carapace: return tp.getCarapaceUpgrades();
+            case Zerg_Melee_Attacks: return tp.getMeleeUpgrades();
+            case Zerg_Missile_Attacks: return tp.getRangedUpgrades();
+            case Zerg_Flyer_Attacks: return tp.getFlyerAttack();
+            case Zerg_Flyer_Carapace: return tp.getFlyerDefense();
+            default: return 0;
+        }
     }
 
     protected Plan planHydraliskDen(GameState gameState) {
