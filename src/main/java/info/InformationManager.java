@@ -24,7 +24,6 @@ import static util.Distance.manhattanTileDistance;
 import info.tracking.ObservedUnitTracker;
 import learning.LearningManager;
 import macro.plan.Plan;
-import macro.plan.PlanState;
 import macro.plan.PlanType;
 import strategy.buildorder.BuildOrder;
 
