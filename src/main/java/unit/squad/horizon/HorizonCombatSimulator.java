@@ -32,6 +32,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
     private static final double WORKER_STRENGTH_DIVISOR = 10.0;
     private static final double HEIGHT_BONUS = 1.15;
     private static final Time RECENTLY_SEEN_THRESHOLD = new Time(0, 5);
+    private static final Time BUILDING_SEEN_THRESHOLD = new Time(0, 45);
     private static final double ENGAGE_THRESHOLD = 1.0;
     private static final double RETREAT_THRESHOLD = 0.7;
     private static final double SPEED_UPGRADE_PENALTY = 0.75;
@@ -93,9 +94,9 @@ public class HorizonCombatSimulator implements CombatSimulator {
         for (ObservedUnit ou : tracker.getLivingObservedUnits()) {
             UnitType type = ou.getUnitType();
             boolean visible = ou.getUnit().isVisible();
-            if (!visible && !isPositionalUnit(type)) {
+            if (!visible) {
                 int framesSinceObserved = currentFrame - ou.getLastObservedFrame().getFrames();
-                if (framesSinceObserved > RECENTLY_SEEN_THRESHOLD.getFrames()) continue;
+                if (framesSinceObserved > freshnessThreshold(type)) continue;
             }
 
             Position pos = visible ? ou.getUnit().getPosition() : ou.getLastKnownLocation();
@@ -225,9 +226,9 @@ public class HorizonCombatSimulator implements CombatSimulator {
         for (ObservedUnit ou : tracker.getLivingObservedUnits()) {
             if (!ou.getUnitType().isDetector()) continue;
             boolean visible = ou.getUnit().isVisible();
-            if (!visible && !isPositionalUnit(ou.getUnitType())) {
+            if (!visible) {
                 int framesSinceObserved = currentFrame - ou.getLastObservedFrame().getFrames();
-                if (framesSinceObserved > RECENTLY_SEEN_THRESHOLD.getFrames()) continue;
+                if (framesSinceObserved > freshnessThreshold(ou.getUnitType())) continue;
             }
             Position pos = visible ? ou.getUnit().getPosition() : ou.getLastKnownLocation();
             if (pos != null && center.getDistance(pos) <= engagementRadius(ou.getUnitType())) {
@@ -235,6 +236,12 @@ public class HorizonCombatSimulator implements CombatSimulator {
             }
         }
         return false;
+    }
+
+    private int freshnessThreshold(UnitType type) {
+        if (type.isBuilding()) return BUILDING_SEEN_THRESHOLD.getFrames();
+        if (isPositionalUnit(type)) return Integer.MAX_VALUE;
+        return RECENTLY_SEEN_THRESHOLD.getFrames();
     }
 
     private boolean isPositionalUnit(UnitType type) {
