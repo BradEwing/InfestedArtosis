@@ -202,8 +202,8 @@ public class HorizonCombatSimulator implements CombatSimulator {
         double rangeUpgrade = rangeUpgradeCorrection(unit, type);
 
         double speedPenalty = 1.0;
-        if ((type == UnitType.Zerg_Zergling && !techProgression.isMetabolicBoost())
-                || (type == UnitType.Zerg_Hydralisk && !techProgression.isMuscularAugments())) {
+        if (type == UnitType.Zerg_Zergling && !techProgression.isMetabolicBoost()
+                || type == UnitType.Zerg_Hydralisk && !techProgression.isMuscularAugments()) {
             speedPenalty = SPEED_UPGRADE_PENALTY;
         }
 
