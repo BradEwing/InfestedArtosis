@@ -5,9 +5,11 @@ import bwapi.Player;
 import bwapi.PlayerType;
 import bwapi.Position;
 import bwapi.Race;
+import bwapi.TechType;
 import bwapi.TilePosition;
 import bwapi.Unit;
 import bwapi.UnitType;
+import bwapi.UpgradeType;
 import bwapi.WalkPosition;
 import bwem.BWEM;
 import bwem.Base;
@@ -29,6 +31,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 
@@ -69,6 +72,7 @@ public class InformationManager {
 
     public void onFrame() {
         gameState.onFrame();
+        updateUpgradeCompletion();
         ageHeatMap();
 
         trackEnemyUnits();
@@ -139,6 +143,70 @@ public class InformationManager {
             default:
                 break;
         }
+    }
+
+    private void updateUpgradeCompletion() {
+        TechProgression tp = gameState.getTechProgression();
+        Player self = game.self();
+
+        tp.setMetabolicBoost(self.getUpgradeLevel(UpgradeType.Metabolic_Boost) > 0);
+        tp.setMuscularAugments(self.getUpgradeLevel(UpgradeType.Muscular_Augments) > 0);
+        tp.setGroovedSpines(self.getUpgradeLevel(UpgradeType.Grooved_Spines) > 0);
+        tp.setOverlordSpeed(self.getUpgradeLevel(UpgradeType.Pneumatized_Carapace) > 0);
+        tp.setLurker(self.hasResearched(TechType.Lurker_Aspect));
+
+        tp.setCarapaceUpgrades(self.getUpgradeLevel(UpgradeType.Zerg_Carapace));
+        tp.setMeleeUpgrades(self.getUpgradeLevel(UpgradeType.Zerg_Melee_Attacks));
+        tp.setRangedUpgrades(self.getUpgradeLevel(UpgradeType.Zerg_Missile_Attacks));
+        tp.setFlyerAttack(self.getUpgradeLevel(UpgradeType.Zerg_Flyer_Attacks));
+        tp.setFlyerDefense(self.getUpgradeLevel(UpgradeType.Zerg_Flyer_Carapace));
+
+        completeFinishedResearchPlans();
+    }
+
+    private void completeFinishedResearchPlans() {
+        Player self = game.self();
+        Iterator<Plan> it = gameState.getPlansBuilding().iterator();
+        while (it.hasNext()) {
+            Plan plan = it.next();
+            if (plan.getType() == PlanType.UPGRADE) {
+                UpgradeType upgradeType = plan.getPlannedUpgrade();
+                if (self.getUpgradeLevel(upgradeType) > plan.getPlannedUpgradeLevel()) {
+                    it.remove();
+                    gameState.completePlan(null, plan);
+                } else if (!isUpgradeInProgress(upgradeType)) {
+                    it.remove();
+                    gameState.cancelPlan(null, plan);
+                }
+            } else if (plan.getType() == PlanType.TECH) {
+                TechType techType = plan.getPlannedTechType();
+                if (self.hasResearched(techType)) {
+                    it.remove();
+                    gameState.completePlan(null, plan);
+                } else if (!isTechInProgress(techType)) {
+                    it.remove();
+                    gameState.cancelPlan(null, plan);
+                }
+            }
+        }
+    }
+
+    private boolean isUpgradeInProgress(UpgradeType type) {
+        for (Unit unit : game.self().getUnits()) {
+            if (unit.isUpgrading() && unit.getUpgrade() == type) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean isTechInProgress(TechType type) {
+        for (Unit unit : game.self().getUnits()) {
+            if (unit.isResearching() && unit.getTech() == type) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public void onUnitShow(Unit unit) {
