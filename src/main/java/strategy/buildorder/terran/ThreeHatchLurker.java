@@ -55,8 +55,8 @@ public class ThreeHatchLurker extends TerranBase {
         boolean wantMetabolicBoost = techProgression.canPlanMetabolicBoost() && lairCount > 0 && zerglingCount >= 12 && lurkerCount > 2;
         boolean wantMuscularAugments = techProgression.canPlanMuscularAugments() && hydraCount > 3 && lurkerCount > 0;
         boolean wantGroovedSpines = techProgression.canPlanGroovedSpines() && hydraCount > 6;
-        boolean wantRangedUpgrades = wantRangedUpgrade(gameState);
-        boolean wantCarapaceUpgrade = wantCarapaceUpgrade(gameState);
+        boolean wantRangedUpgrades = techProgression.canPlanRangedUpgrades();
+        boolean wantCarapaceUpgrade = techProgression.canPlanCarapaceUpgrades();
         boolean wantOverlordSpeed = needOverlordSpeed(gameState) && techProgression.canPlanOverlordSpeed();
 
         // Check for floating resources (follows OneHatchSpire pattern)
@@ -263,28 +263,6 @@ public class ThreeHatchLurker extends TerranBase {
         final int lurkers = gameState.ourLivingUnitCount(UnitType.Zerg_Lurker);
 
         return techProgression.canPlanEvolutionChamber() && lurkers > 3 && droneCount > 18;
-    }
-
-    private boolean wantRangedUpgrade(GameState gameState) {
-        TechProgression techProgression = gameState.getTechProgression();
-
-        if (techProgression.getEvolutionChambers() < 1) {
-            return false;
-        }
-
-        return techProgression.canPlanRangedUpgrades() &&
-                techProgression.getRangedUpgrades() < 1;
-    }
-
-    private boolean wantCarapaceUpgrade(GameState gameState) {
-        TechProgression techProgression = gameState.getTechProgression();
-
-        if (techProgression.getEvolutionChambers() < 1) {
-            return false;
-        }
-
-        return techProgression.canPlanCarapaceUpgrades() &&
-                techProgression.getCarapaceUpgrades() < 1;
     }
 
     private int desiredHydralisks(GameState gameState) {

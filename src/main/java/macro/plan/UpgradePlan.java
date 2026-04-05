@@ -31,11 +31,11 @@ public class UpgradePlan extends Plan {
 
     @Override
     public int mineralPrice() {
-        return plannedUpgrade.mineralPrice();
+        return plannedUpgrade.mineralPrice(getPlannedUpgradeLevel() + 1);
     }
 
     @Override
     public int gasPrice() {
-        return plannedUpgrade.gasPrice();
+        return plannedUpgrade.gasPrice(getPlannedUpgradeLevel() + 1);
     }
 }

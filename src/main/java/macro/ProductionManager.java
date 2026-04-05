@@ -662,7 +662,7 @@ public class ProductionManager {
         }
 
         if (unit.isUpgrading()) {
-            gameState.getResourceCount().unreserveUpgrade(upgradeType);
+            gameState.getResourceCount().unreserveUpgrade(plan);
             return true;
         }
         return false;
@@ -762,7 +762,7 @@ public class ProductionManager {
         final UpgradeType upgrade = plan.getPlannedUpgrade();
         ResourceCount resourceCount = gameState.getResourceCount();
 
-        if (resourceCount.cannotAffordUpgrade(upgrade)) {
+        if (resourceCount.cannotAffordUpgrade(plan)) {
             return false;
         }
 
@@ -783,7 +783,7 @@ public class ProductionManager {
             if (!unit.isUpgrading() && !gameState.getAssignedPlannedItems().containsKey(unit)) {
                 gameState.getAssignedPlannedItems().put(unit, plan);
                 plan.setState(PlanState.SCHEDULE);
-                resourceCount.reserveUpgrade(upgrade);
+                resourceCount.reserveUpgrade(plan);
                 return true;
             }
 
