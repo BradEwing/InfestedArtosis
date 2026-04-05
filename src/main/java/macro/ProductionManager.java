@@ -215,6 +215,10 @@ public class ProductionManager {
             case Zerg_Queen:
             case Zerg_Hive:
                 return UnitType.Zerg_Queens_Nest;
+            case Zerg_Ultralisk:
+                return UnitType.Zerg_Ultralisk_Cavern;
+            case Zerg_Defiler:
+                return UnitType.Zerg_Defiler_Mound;
             default:
                 return null;
         }
@@ -236,6 +240,10 @@ public class ProductionManager {
                 return UnitType.Zerg_Spire;
             case Pneumatized_Carapace:
                 return UnitType.Zerg_Lair;
+            case Chitinous_Plating:
+                return UnitType.Zerg_Ultralisk_Cavern;
+            case Adrenal_Glands:
+                return UnitType.Zerg_Spawning_Pool;
             default:
                 return null;
         }
@@ -245,6 +253,8 @@ public class ProductionManager {
         switch (techType) {
             case Lurker_Aspect:
                 return UnitType.Zerg_Hydralisk_Den;
+            case Consume:
+                return UnitType.Zerg_Defiler_Mound;
             default:
                 return null;
         }
@@ -402,6 +412,10 @@ public class ProductionManager {
             case Zerg_Mutalisk:
             case Zerg_Scourge:
                 return hasFourOrMoreDrones && (techProgression.isPlannedSpire() || techProgression.isSpire());
+            case Zerg_Ultralisk:
+                return hasFourOrMoreDrones && (techProgression.isPlannedUltraliskCavern() || techProgression.isUltraliskCavern());
+            case Zerg_Defiler:
+                return hasFourOrMoreDrones && (techProgression.isPlannedDefilerMound() || techProgression.isDefilerMound());
             default:
                 return false;
         }
@@ -430,6 +444,9 @@ public class ProductionManager {
                 return techProgression.isLair();
             case Zerg_Hive:
                 return techProgression.isLair() && techProgression.isQueensNest();
+            case Zerg_Ultralisk_Cavern:
+            case Zerg_Defiler_Mound:
+                return techProgression.isHive();
             default:
                 return false;
         }
@@ -440,6 +457,8 @@ public class ProductionManager {
         switch (techType) {
             case Lurker_Aspect:
                 return techProgression.isHydraliskDen();
+            case Consume:
+                return techProgression.isDefilerMound();
             default:
                 return false;
         }
@@ -462,6 +481,10 @@ public class ProductionManager {
                 return techProgression.isSpire();
             case Pneumatized_Carapace:
                 return techProgression.isLair();
+            case Chitinous_Plating:
+                return techProgression.isUltraliskCavern();
+            case Adrenal_Glands:
+                return techProgression.isSpawningPool() && techProgression.isHive();
             default:
                 return false;
         }
@@ -644,6 +667,14 @@ public class ProductionManager {
             case Zerg_Hive:
                 techProgression.setHive(true);
                 techProgression.setPlannedHive(false);
+                break;
+            case Zerg_Ultralisk_Cavern:
+                techProgression.setUltraliskCavern(true);
+                techProgression.setPlannedUltraliskCavern(false);
+                break;
+            case Zerg_Defiler_Mound:
+                techProgression.setDefilerMound(true);
+                techProgression.setPlannedDefilerMound(false);
                 break;
             default:
                 break;

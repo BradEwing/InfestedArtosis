@@ -168,6 +168,7 @@ public class BuildingManager {
     }
 
     private boolean assignMorphHive(Plan plan) {
+        if (lair == null) return false;
         Unit lairUnit = lair.getUnit();
         if (lairUnit.canBuild(plan.getPlannedUnit()) && !gameState.getAssignedPlannedItems().containsKey(lairUnit)) {
             lair.setRole(UnitRole.MORPH);

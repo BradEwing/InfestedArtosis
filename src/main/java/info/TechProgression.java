@@ -13,6 +13,8 @@ public class TechProgression {
     private boolean spire = false;
     private boolean queensNest = false;
     private boolean hive = false;
+    private boolean ultraliskCavern = false;
+    private boolean defilerMound = false;
     private int evolutionChambers = 0;
 
     // Planned Buildings
@@ -22,6 +24,8 @@ public class TechProgression {
     private boolean plannedSpire = false;
     private boolean plannedQueensNest = false;
     private boolean plannedHive = false;
+    private boolean plannedUltraliskCavern = false;
+    private boolean plannedDefilerMound = false;
     private int plannedEvolutionChambers = 0;
 
     // Upgrades
@@ -35,6 +39,9 @@ public class TechProgression {
     private int flyerAttack = 0;
     private int flyerDefense = 0;
     private boolean overlordSpeed = false;
+    private boolean chitinousPlating = false;
+    private boolean adrenalGlands = false;
+    private boolean consume = false;
     private boolean plannedOverlordSpeed = false;
 
     // Planned Upgrades
@@ -47,6 +54,9 @@ public class TechProgression {
     private boolean plannedMeleeUpgrades = false;
     private boolean plannedFlyerAttack = false;
     private boolean plannedFlyerDefense = false;
+    private boolean plannedChitinousPlating = false;
+    private boolean plannedAdrenalGlands = false;
+    private boolean plannedConsume = false;
 
     public boolean canPlanSunkenColony() {
         return spawningPool;
@@ -82,6 +92,26 @@ public class TechProgression {
 
     public boolean canPlanQueensNest() { 
         return lair && !plannedQueensNest && !queensNest; 
+    }
+
+    public boolean canPlanUltraliskCavern() {
+        return hive && !plannedUltraliskCavern && !ultraliskCavern;
+    }
+
+    public boolean canPlanDefilerMound() {
+        return hive && !plannedDefilerMound && !defilerMound;
+    }
+
+    public boolean canPlanChitinousPlating() {
+        return ultraliskCavern && !plannedChitinousPlating && !chitinousPlating;
+    }
+
+    public boolean canPlanAdrenalGlands() {
+        return spawningPool && hive && !plannedAdrenalGlands && !adrenalGlands;
+    }
+
+    public boolean canPlanConsume() {
+        return defilerMound && !plannedConsume && !consume;
     }
 
     public boolean canPlanMetabolicBoost() {
