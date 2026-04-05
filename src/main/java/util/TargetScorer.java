@@ -68,6 +68,9 @@ public final class TargetScorer {
             if (isNearFriendlyBase(candidate, friendlyBasePositions)) {
                 return Priority.ELEVATED;
             }
+            if (attackerIsFlying) {
+                return Priority.ELEVATED;
+            }
             return Priority.NORMAL;
         }
 
@@ -92,6 +95,8 @@ public final class TargetScorer {
     }
 
     private static boolean canAttackType(UnitType unitType, boolean targetIsFlying) {
+        if (unitType == UnitType.Terran_Bunker) return true;
+        if (unitType == UnitType.Protoss_Carrier) return true;
         WeaponType weapon = targetIsFlying ? unitType.airWeapon() : unitType.groundWeapon();
         return weapon != null && weapon != WeaponType.None;
     }
