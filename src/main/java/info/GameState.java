@@ -24,6 +24,7 @@ import info.tracking.StrategyTracker;
 import learning.Decisions;
 import lombok.Data;
 import macro.plan.Plan;
+import macro.plan.PlanType;
 import org.jetbrains.annotations.Nullable;
 import macro.ProductionQueue;
 import macro.plan.PlanState;
