@@ -72,15 +72,15 @@ public class CrazyZerg extends TerranBase {
         boolean wantBaseAdvantage = behindOnBases(gameState) || floatingMinerals;
 
         boolean wantLair = gameState.canPlanLair() && lairCount < 1 && hiveCount < 1 && baseCount >= 2;
-        boolean wantEvoChamber = techProgression.canPlanEvolutionChamber() && hasLairOrHive && techProgression.getEvolutionChambers() + techProgression.getPlannedEvolutionChambers() < 1;
-        boolean wantSecondEvoChamber = techProgression.canPlanEvolutionChamber() && hasHive && techProgression.getEvolutionChambers() + techProgression.getPlannedEvolutionChambers() >= 1;
+        int totalEvoChambers = techProgression.getEvolutionChambers() + techProgression.getPlannedEvolutionChambers();
+        boolean wantEvoChamber = techProgression.canPlanEvolutionChamber() && hasLairOrHive && totalEvoChambers < 1;
+        boolean wantSecondEvoChamber = techProgression.canPlanEvolutionChamber() && hasHive && totalEvoChambers >= 1;
         boolean wantSpire = techProgression.canPlanSpire() && spireCount < 1 && hasLairOrHive && droneCount >= 16;
 
         boolean wantQueensNest = gameState.canPlanQueensNest() && mutaCount >= DESIRED_MUTALISKS && extractorCount >= 3;
         boolean wantHive = gameState.canPlanHive();
         boolean wantUltraliskCavern = gameState.canPlanUltraliskCavern();
-        boolean wantDefilerMound = gameState.canPlanDefilerMound() && techProgression.isUltraliskCavern()
-                && (extractorCount >= 4 || gameState.getGameTime().greaterThan(new Time(12, 0)));
+        boolean wantDefilerMound = false;
 
         boolean wantMetabolicBoost = techProgression.canPlanMetabolicBoost() && hasLairOrHive && mutaCount >= 5;
         boolean wantCarapace = techProgression.canPlanCarapaceUpgrades() && techProgression.getEvolutionChambers() > 0;
@@ -90,7 +90,7 @@ public class CrazyZerg extends TerranBase {
                 && gameState.getGameTime().greaterThan(new Time(10, 0))
                 && techProgression.canPlanFlyerAttack();
         boolean wantChitinousPlating = techProgression.canPlanChitinousPlating();
-        boolean wantConsume = techProgression.canPlanConsume();
+        boolean wantConsume = false;
         boolean wantAdrenalGlands = techProgression.canPlanAdrenalGlands();
         boolean wantOverlordSpeed = needOverlordSpeed(gameState) && techProgression.canPlanOverlordSpeed();
 
