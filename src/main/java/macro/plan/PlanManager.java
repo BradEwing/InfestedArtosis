@@ -145,6 +145,7 @@ public class PlanManager {
     private boolean isBuildingMorph(UnitType unitType) {
         switch (unitType) {
             case Zerg_Lair:
+            case Zerg_Hive:
             case Zerg_Sunken_Colony:
             case Zerg_Spore_Colony:
                 return true;

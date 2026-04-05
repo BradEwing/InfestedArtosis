@@ -13,9 +13,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * CrazyZerg (미친저그) - A variant of 3 Hatch Muta that skips Lurker tech entirely,
+ * A variant of 3 Hatch Muta that skips Lurker tech entirely,
  * transitioning directly from Mutalisks into Hive tech with Ultralisks and Defilers.
- * Popularized by Kwanro, Luxury, and YellOw[ArnC].
  *
  * Key divergence: Evolution Chamber built simultaneously with Lair, immediately starting
  * +1 Carapace. All gas goes into early carapace upgrades and fast Hive tech.
@@ -73,20 +72,23 @@ public class CrazyZerg extends TerranBase {
         boolean wantBaseAdvantage = behindOnBases(gameState) || floatingMinerals;
 
         boolean wantLair = gameState.canPlanLair() && lairCount < 1 && hiveCount < 1 && baseCount >= 2;
-        boolean wantEvoChamber = techProgression.canPlanEvolutionChamber() && hasLairOrHive;
-        boolean wantSecondEvoChamber = techProgression.canPlanEvolutionChamber() && hasHive;
+        boolean wantEvoChamber = techProgression.canPlanEvolutionChamber() && hasLairOrHive && techProgression.getEvolutionChambers() + techProgression.getPlannedEvolutionChambers() < 1;
+        boolean wantSecondEvoChamber = techProgression.canPlanEvolutionChamber() && hasHive && techProgression.getEvolutionChambers() + techProgression.getPlannedEvolutionChambers() >= 1;
         boolean wantSpire = techProgression.canPlanSpire() && spireCount < 1 && hasLairOrHive && droneCount >= 16;
 
         boolean wantQueensNest = gameState.canPlanQueensNest() && mutaCount >= DESIRED_MUTALISKS && extractorCount >= 3;
         boolean wantHive = gameState.canPlanHive();
         boolean wantUltraliskCavern = gameState.canPlanUltraliskCavern();
-        boolean wantDefilerMound = gameState.canPlanDefilerMound()
+        boolean wantDefilerMound = gameState.canPlanDefilerMound() && techProgression.isUltraliskCavern()
                 && (extractorCount >= 4 || gameState.getGameTime().greaterThan(new Time(12, 0)));
 
         boolean wantMetabolicBoost = techProgression.canPlanMetabolicBoost() && hasLairOrHive && mutaCount >= 5;
-        boolean wantCarapace = techProgression.canPlanCarapaceUpgrades();
-        boolean wantMelee = techProgression.canPlanMeleeUpgrades() && techProgression.evolutionChambers() >= 2;
-        boolean wantFlyerAttack = mutaCount > 6 && techProgression.canPlanFlyerAttack();
+        boolean wantCarapace = techProgression.canPlanCarapaceUpgrades() && techProgression.getEvolutionChambers() > 0;
+        boolean wantMelee = techProgression.canPlanMeleeUpgrades() && techProgression.evolutionChambers() >= 2
+                && gameState.getGameTime().greaterThan(new Time(10, 0));
+        boolean wantFlyerAttack = mutaCount >= DESIRED_MUTALISKS
+                && gameState.getGameTime().greaterThan(new Time(10, 0))
+                && techProgression.canPlanFlyerAttack();
         boolean wantChitinousPlating = techProgression.canPlanChitinousPlating();
         boolean wantConsume = techProgression.canPlanConsume();
         boolean wantAdrenalGlands = techProgression.canPlanAdrenalGlands();
@@ -170,7 +172,6 @@ public class CrazyZerg extends TerranBase {
         if (wantDefilerMound) {
             Plan defilerMoundPlan = this.planDefilerMound(gameState);
             plans.add(defilerMoundPlan);
-            return plans;
         }
 
         if (droneCount < 15) {
@@ -303,7 +304,11 @@ public class CrazyZerg extends TerranBase {
             }
         }
 
-        return Math.min(base, 60);
+        if (gameState.getTechProgression().isAdrenalGlands()) {
+            base = Math.max(base, 36);
+        }
+
+        return Math.min(base, 80);
     }
 
     @Override
