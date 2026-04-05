@@ -81,8 +81,8 @@ public class ThreeHatchHydra extends ProtossBase {
         boolean wantMetabolicBoost = techProgression.canPlanMetabolicBoost() && zerglingCount > 12;
         boolean wantMuscularAugments = techProgression.canPlanMuscularAugments();
         boolean wantGroovedSpines = techProgression.canPlanGroovedSpines();
-        boolean wantRangedUpgrades = wantRangedUpgrade(gameState);
-        boolean wantCarapaceUpgrade = wantCarapaceUpgrade(gameState);
+        boolean wantRangedUpgrades = techProgression.canPlanRangedUpgrades();
+        boolean wantCarapaceUpgrade = techProgression.canPlanCarapaceUpgrades();
         boolean wantOverlordSpeed = needOverlordSpeed(gameState) && techProgression.canPlanOverlordSpeed();
 
         // Plan buildings
@@ -330,28 +330,6 @@ public class ThreeHatchHydra extends ProtossBase {
 
         final int hydras = gameState.ourUnitCount(UnitType.Zerg_Hydralisk);
         return techProgression.isHydraliskDen() && hydras > 6;
-    }
-
-    private boolean wantRangedUpgrade(GameState gameState) {
-        TechProgression techProgression = gameState.getTechProgression();
-
-        if (techProgression.getEvolutionChambers() < 1) {
-            return false;
-        }
-
-        return techProgression.canPlanRangedUpgrades() &&
-                techProgression.getRangedUpgrades() < 1;
-    }
-
-    private boolean wantCarapaceUpgrade(GameState gameState) {
-        TechProgression techProgression = gameState.getTechProgression();
-
-        if (techProgression.getEvolutionChambers() < 1) {
-            return false;
-        }
-
-        return techProgression.canPlanCarapaceUpgrades() &&
-                techProgression.getCarapaceUpgrades() < 1;
     }
 
     // Unit production methods

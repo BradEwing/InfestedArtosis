@@ -24,6 +24,7 @@ import info.tracking.StrategyTracker;
 import learning.Decisions;
 import lombok.Data;
 import macro.plan.Plan;
+import macro.plan.PlanType;
 import org.jetbrains.annotations.Nullable;
 import macro.ProductionQueue;
 import macro.plan.PlanState;
@@ -265,7 +266,7 @@ public class GameState {
                 clearPlannedTechFlags(buildingType);
                 break;
             case UPGRADE:
-                resourceCount.unreserveUpgrade(plan.getPlannedUpgrade());
+                resourceCount.unreserveUpgrade(plan);
                 clearPlannedUpgradeFlags(plan.getPlannedUpgrade());
                 break;
             case TECH:
@@ -398,6 +399,9 @@ public class GameState {
         plan.setState(PlanState.COMPLETE);
         plansComplete.add(plan);
         assignedPlannedItems.remove(unit);
+        if (plan.getType() == PlanType.UPGRADE) {
+            clearPlannedUpgradeFlags(plan.getPlannedUpgrade());
+        }
     }
 
     public void setImpossiblePlan(Plan plan) {
@@ -444,7 +448,7 @@ public class GameState {
                 break;
             case UPGRADE:
                 if (shouldUnreserve) {
-                    resourceCount.unreserveUpgrade(plan.getPlannedUpgrade());
+                    resourceCount.unreserveUpgrade(plan);
                 }
                 clearPlannedUpgradeFlags(plan.getPlannedUpgrade());
                 break;
@@ -707,6 +711,16 @@ public class GameState {
         switch (upgradeType) {
             case Metabolic_Boost:
                 return ourUnitCount(UnitType.Zerg_Extractor) > 0 && techProgression.isSpawningPool() && techProgression.canPlanMetabolicBoost();
+            case Zerg_Carapace:
+                return techProgression.canPlanCarapaceUpgrades();
+            case Zerg_Melee_Attacks:
+                return techProgression.canPlanMeleeUpgrades();
+            case Zerg_Missile_Attacks:
+                return techProgression.canPlanRangedUpgrades();
+            case Zerg_Flyer_Attacks:
+                return techProgression.canPlanFlyerAttack();
+            case Zerg_Flyer_Carapace:
+                return techProgression.canPlanFlyerDefense();
             default:
                 return false;
         }

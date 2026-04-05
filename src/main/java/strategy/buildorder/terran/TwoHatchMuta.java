@@ -26,8 +26,6 @@ public class TwoHatchMuta extends TerranBase {
         super("2HatchMuta");
     }
 
-    private boolean startedFlyerUpgrade = false;
-
     @Override
     public List<Plan> plan(GameState gameState) {
         List<Plan> plans = new ArrayList<>();
@@ -70,8 +68,7 @@ public class TwoHatchMuta extends TerranBase {
         boolean wantSpire = techProgression.canPlanSpire() && spireCount < 1 && lairCount >= 1 && droneCount >= 16;
 
         boolean wantMetabolicBoost = techProgression.canPlanMetabolicBoost() && !techProgression.isMetabolicBoost() && lairCount > 0;
-        boolean wantFlyingAttack = mutaCount > 6 && techProgression.canPlanFlyerAttack() && 
-                                techProgression.getFlyerAttack() < 1 && !startedFlyerUpgrade;
+        boolean wantFlyingAttack = mutaCount > 6 && techProgression.canPlanFlyerAttack();
         boolean wantOverlordSpeed = needOverlordSpeed(gameState) && techProgression.canPlanOverlordSpeed();
 
         // Plan buildings
@@ -133,8 +130,6 @@ public class TwoHatchMuta extends TerranBase {
         }
 
         if (wantFlyingAttack) {
-            // TODO: Generalize for all +3 unit upgrades
-            startedFlyerUpgrade = true;
             Plan flyingCarapacePlan = this.planUpgrade(gameState, UpgradeType.Zerg_Flyer_Attacks);
             plans.add(flyingCarapacePlan);
         }

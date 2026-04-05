@@ -3,7 +3,7 @@ package info;
 import bwapi.Player;
 import bwapi.TechType;
 import bwapi.UnitType;
-import bwapi.UpgradeType;
+import macro.plan.Plan;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -80,19 +80,19 @@ public class ResourceCount {
         return cannotAfford(mineralPrice, gasPrice);
     }
 
-    public void reserveUpgrade(UpgradeType upgrade) {
-        this.reservedMinerals += upgrade.mineralPrice();
-        this.reservedGas += upgrade.gasPrice();
-        addToLedger(upgrade.toString(), upgrade.mineralPrice(), upgrade.gasPrice());
+    public void reserveUpgrade(Plan plan) {
+        this.reservedMinerals += plan.mineralPrice();
+        this.reservedGas += plan.gasPrice();
+        addToLedger(plan.getName(), plan.mineralPrice(), plan.gasPrice());
     }
 
-    public void unreserveUpgrade(UpgradeType upgrade) {
+    public void unreserveUpgrade(Plan plan) {
         int prevMinerals = reservedMinerals;
         int prevGas = reservedGas;
-        this.reservedMinerals = Math.max(0, reservedMinerals - upgrade.mineralPrice());
-        this.reservedGas = Math.max(0, reservedGas - upgrade.gasPrice());
-        boolean clamped = prevMinerals - upgrade.mineralPrice() < 0 || prevGas - upgrade.gasPrice() < 0;
-        removeFromLedger(upgrade.toString(), upgrade.mineralPrice(), upgrade.gasPrice(), clamped);
+        this.reservedMinerals = Math.max(0, reservedMinerals - plan.mineralPrice());
+        this.reservedGas = Math.max(0, reservedGas - plan.gasPrice());
+        boolean clamped = prevMinerals - plan.mineralPrice() < 0 || prevGas - plan.gasPrice() < 0;
+        removeFromLedger(plan.getName(), plan.mineralPrice(), plan.gasPrice(), clamped);
     }
 
     public void reserveTechResearch(TechType techType) {
@@ -110,10 +110,8 @@ public class ResourceCount {
         removeFromLedger(techType.toString(), techType.mineralPrice(), techType.gasPrice(), clamped);
     }
 
-    public boolean cannotAffordUpgrade(UpgradeType upgrade) {
-        final int mineralPrice = upgrade.mineralPrice();
-        final int gasPrice = upgrade.gasPrice();
-        return cannotAfford(mineralPrice, gasPrice);
+    public boolean cannotAffordUpgrade(Plan plan) {
+        return cannotAfford(plan.mineralPrice(), plan.gasPrice());
     }
 
     public boolean cannotAffordResearch(TechType techType) {
