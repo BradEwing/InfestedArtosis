@@ -56,6 +56,7 @@ public class SquadManager {
     private List<Arc> activeContainmentArcs = new ArrayList<>();
 
     private HashSet<ManagedUnit> disbanded = new HashSet<>();
+    private HashSet<ManagedUnit> irradiatedUnits = new HashSet<>();
 
     public static final double AIR_JOIN_DISTANCE = 128;
     public static final double SQUAD_MERGE_DISTANCE = 256.0;
@@ -107,6 +108,8 @@ public class SquadManager {
         removeEmptySquads();
         mergeSquads();
         splitSquads();
+        evictIrradiatedUnits();
+        updateIrradiatedUnits();
         assignOverlordsToSquads();
 
         Set<Squad> removed = new HashSet<>();
@@ -157,6 +160,78 @@ public class SquadManager {
 
     public void updateDefenseSquads() {
         ensureDefenderSquadsHaveTargets();
+    }
+
+    private void evictIrradiatedUnits() {
+        for (Squad squad : fightSquads) {
+            evictIrradiatedFromSquad(squad);
+        }
+        for (Squad defenseSquad : defenseSquads.values()) {
+            evictIrradiatedFromSquad(defenseSquad);
+        }
+    }
+
+    private void evictIrradiatedFromSquad(Squad squad) {
+        List<ManagedUnit> toEvict = new ArrayList<>();
+        for (ManagedUnit mu : squad.getMembers()) {
+            if (mu.isIrradiated() && !irradiatedUnits.contains(mu)) {
+                toEvict.add(mu);
+            }
+        }
+        for (ManagedUnit mu : toEvict) {
+            squad.removeUnit(mu);
+            mu.setRole(UnitRole.FIGHT);
+            mu.setDefendTarget(null);
+            mu.setRallyPoint(gameState.getBaseData().mainBasePosition().toPosition());
+            irradiatedUnits.add(mu);
+            assignIrradiatedTarget(mu);
+        }
+    }
+
+    private void updateIrradiatedUnits() {
+        List<ManagedUnit> recovered = new ArrayList<>();
+        for (ManagedUnit mu : irradiatedUnits) {
+            if (!mu.isIrradiated()) {
+                recovered.add(mu);
+                continue;
+            }
+            assignIrradiatedTarget(mu);
+        }
+        for (ManagedUnit mu : recovered) {
+            irradiatedUnits.remove(mu);
+            addManagedFighter(mu);
+        }
+    }
+
+    private void assignIrradiatedTarget(ManagedUnit managedUnit) {
+        Unit unit = managedUnit.getUnit();
+        List<Unit> enemyUnits = new ArrayList<>(gameState.getVisibleEnemyUnits());
+
+        List<Unit> filtered = new ArrayList<>();
+        for (Unit enemyUnit : enemyUnits) {
+            if (unit.getType() == UnitType.Zerg_Lurker && !enemyUnit.isFlying() && enemyUnit.isDetected()) {
+                filtered.add(enemyUnit);
+                continue;
+            }
+            if (unit.canAttack(enemyUnit) && enemyUnit.isDetected()
+                    && !util.Filter.isLowPriorityCombatTarget(enemyUnit.getType())) {
+                filtered.add(enemyUnit);
+            }
+        }
+
+        if (filtered.isEmpty()) {
+            Base enemyBase = gameState.getBaseData().getMainEnemyBase();
+            if (enemyBase != null) {
+                managedUnit.setMovementTargetPosition(enemyBase.getLocation());
+            }
+            return;
+        }
+
+        Set<Position> basePositions = gameState.getBaseData().getMyBasePositions();
+        Unit bestTarget = TargetScorer.selectTarget(unit, filtered, managedUnit.fightTarget, basePositions);
+        if (bestTarget != null) {
+            managedUnit.setFightTarget(bestTarget);
+        }
     }
 
     /**
@@ -1086,9 +1161,17 @@ public class SquadManager {
                 squad.setTarget(null);
             }
         }
+        irradiatedUnits.removeIf(mu -> mu.getUnit() == unit);
     }
 
     private void addManagedFighter(ManagedUnit managedUnit) {
+        if (managedUnit.isIrradiated()) {
+            managedUnit.setRole(UnitRole.FIGHT);
+            managedUnit.setRallyPoint(gameState.getBaseData().mainBasePosition().toPosition());
+            irradiatedUnits.add(managedUnit);
+            assignIrradiatedTarget(managedUnit);
+            return;
+        }
         UnitType type = managedUnit.getUnitType();
         Squad squad;
         if (AIR_SQUAD_TYPES.contains(type)) {
@@ -1157,6 +1240,7 @@ public class SquadManager {
     }
 
     public void removeManagedUnit(ManagedUnit managedUnit) {
+        irradiatedUnits.remove(managedUnit);
         UnitType unitType = managedUnit.getUnitType();
         if (unitType != null && unitType == UnitType.Zerg_Overlord) {
             removeManagedOverlord(managedUnit);

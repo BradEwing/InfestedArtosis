@@ -112,7 +112,11 @@ public class ManagedUnit {
     }
 
     public boolean canFight() {
-        return this.canFight; 
+        return this.canFight;
+    }
+
+    public boolean isIrradiated() {
+        return unit.isIrradiated();
     }
 
     public void setNewGatherTarget(boolean hasNewGatherTarget) { 
