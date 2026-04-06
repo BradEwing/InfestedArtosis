@@ -301,6 +301,9 @@ public abstract class BuildOrder {
             case Chitinous_Plating:
                 techProgression.setPlannedChitinousPlating(true);
                 break;
+            case Anabolic_Synthesis:
+                techProgression.setPlannedAnabolicSynthesis(true);
+                break;
             case Adrenal_Glands:
                 techProgression.setPlannedAdrenalGlands(true);
                 break;

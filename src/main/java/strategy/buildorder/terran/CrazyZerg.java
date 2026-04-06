@@ -24,8 +24,9 @@ import java.util.List;
  */
 public class CrazyZerg extends TerranBase {
 
-    private static final int DESIRED_MUTALISKS = 9;
+    private static final int MUTALISK_CAP = 9;
     private static final int DESIRED_DEFILERS = 3;
+    private static final int ULTRALISK_THRESHOLD_FOR_MUTA_REPLENISH = 2;
 
     public CrazyZerg() {
         super("CrazyZerg");
@@ -77,7 +78,7 @@ public class CrazyZerg extends TerranBase {
         boolean wantSecondEvoChamber = techProgression.canPlanEvolutionChamber() && hasHive && totalEvoChambers >= 1;
         boolean wantSpire = techProgression.canPlanSpire() && spireCount < 1 && hasLairOrHive && droneCount >= 16;
 
-        boolean wantQueensNest = gameState.canPlanQueensNest() && mutaCount >= DESIRED_MUTALISKS && extractorCount >= 3;
+        boolean wantQueensNest = gameState.canPlanQueensNest() && extractorCount >= 3;
         boolean wantHive = gameState.canPlanHive();
         boolean wantUltraliskCavern = gameState.canPlanUltraliskCavern();
         boolean wantDefilerMound = false;
@@ -86,10 +87,12 @@ public class CrazyZerg extends TerranBase {
         boolean wantCarapace = techProgression.canPlanCarapaceUpgrades() && techProgression.getEvolutionChambers() > 0;
         boolean wantMelee = techProgression.canPlanMeleeUpgrades() && techProgression.evolutionChambers() >= 2
                 && gameState.getGameTime().greaterThan(new Time(10, 0));
-        boolean wantFlyerAttack = mutaCount >= DESIRED_MUTALISKS
+        boolean wantFlyerAttack = mutaCount >= MUTALISK_CAP
                 && gameState.getGameTime().greaterThan(new Time(10, 0))
                 && techProgression.canPlanFlyerAttack();
         boolean wantChitinousPlating = techProgression.canPlanChitinousPlating();
+        boolean wantAnabolicSynthesis = techProgression.canPlanAnabolicSynthesis()
+                && techProgression.isChitinousPlating();
         boolean wantConsume = false;
         boolean wantAdrenalGlands = techProgression.canPlanAdrenalGlands();
         boolean wantOverlordSpeed = needOverlordSpeed(gameState) && techProgression.canPlanOverlordSpeed();
@@ -205,6 +208,11 @@ public class CrazyZerg extends TerranBase {
             plans.add(chitinousPlan);
         }
 
+        if (wantAnabolicSynthesis) {
+            Plan anabolicPlan = this.planUpgrade(gameState, UpgradeType.Anabolic_Synthesis);
+            plans.add(anabolicPlan);
+        }
+
         if (wantConsume) {
             Plan consumePlan = this.planTech(gameState, TechType.Consume);
             plans.add(consumePlan);
@@ -226,7 +234,12 @@ public class CrazyZerg extends TerranBase {
             return plans;
         }
 
-        if (techProgression.isSpire() && mutaCount < DESIRED_MUTALISKS) {
+        int totalMutasProduced = gameState.totalProduced(UnitType.Zerg_Mutalisk);
+        int livingUltralisks = gameState.ourLivingUnitCount(UnitType.Zerg_Ultralisk);
+        boolean reachedMutaCap = totalMutasProduced >= MUTALISK_CAP;
+        boolean canReplenishMutas = livingUltralisks >= ULTRALISK_THRESHOLD_FOR_MUTA_REPLENISH;
+        boolean wantMoreMutas = mutaCount < MUTALISK_CAP && (!reachedMutaCap || canReplenishMutas);
+        if (techProgression.isSpire() && wantMoreMutas) {
             Plan mutaliskPlan = this.planUnit(gameState, UnitType.Zerg_Mutalisk);
             plans.add(mutaliskPlan);
             return plans;
@@ -290,7 +303,7 @@ public class CrazyZerg extends TerranBase {
         boolean hasHive = gameState.ourUnitCount(UnitType.Zerg_Hive) > 0;
         int mutaCount = gameState.ourUnitCount(UnitType.Zerg_Mutalisk);
 
-        if (mutaCount < DESIRED_MUTALISKS) {
+        if (mutaCount < MUTALISK_CAP) {
             return super.zerglingsNeeded(gameState);
         }
 

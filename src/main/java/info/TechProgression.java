@@ -40,6 +40,7 @@ public class TechProgression {
     private int flyerDefense = 0;
     private boolean overlordSpeed = false;
     private boolean chitinousPlating = false;
+    private boolean anabolicSynthesis = false;
     private boolean adrenalGlands = false;
     private boolean consume = false;
     private boolean plannedOverlordSpeed = false;
@@ -55,6 +56,7 @@ public class TechProgression {
     private boolean plannedFlyerAttack = false;
     private boolean plannedFlyerDefense = false;
     private boolean plannedChitinousPlating = false;
+    private boolean plannedAnabolicSynthesis = false;
     private boolean plannedAdrenalGlands = false;
     private boolean plannedConsume = false;
 
@@ -104,6 +106,10 @@ public class TechProgression {
 
     public boolean canPlanChitinousPlating() {
         return ultraliskCavern && !plannedChitinousPlating && !chitinousPlating;
+    }
+
+    public boolean canPlanAnabolicSynthesis() {
+        return ultraliskCavern && !plannedAnabolicSynthesis && !anabolicSynthesis;
     }
 
     public boolean canPlanAdrenalGlands() {

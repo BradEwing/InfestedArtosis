@@ -161,6 +161,7 @@ public class InformationManager {
         tp.setOverlordSpeed(self.getUpgradeLevel(UpgradeType.Pneumatized_Carapace) > 0);
         tp.setLurker(self.hasResearched(TechType.Lurker_Aspect));
         tp.setChitinousPlating(self.getUpgradeLevel(UpgradeType.Chitinous_Plating) > 0);
+        tp.setAnabolicSynthesis(self.getUpgradeLevel(UpgradeType.Anabolic_Synthesis) > 0);
         tp.setAdrenalGlands(self.getUpgradeLevel(UpgradeType.Adrenal_Glands) > 0);
         tp.setConsume(self.hasResearched(TechType.Consume));
 

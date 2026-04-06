@@ -387,6 +387,9 @@ public class GameState {
             case Chitinous_Plating:
                 techProgression.setPlannedChitinousPlating(false);
                 break;
+            case Anabolic_Synthesis:
+                techProgression.setPlannedAnabolicSynthesis(false);
+                break;
             case Adrenal_Glands:
                 techProgression.setPlannedAdrenalGlands(false);
                 break;
@@ -655,6 +658,10 @@ public class GameState {
 
     public int ourLivingUnitCount(UnitType unitType) {
         return unitTypeCount.livingCount(unitType);
+    }
+
+    public int totalProduced(UnitType unitType) {
+        return unitTypeCount.getTotalProduced(unitType);
     }
 
     public int ourUnitCount(UnitType... unitTypes) {

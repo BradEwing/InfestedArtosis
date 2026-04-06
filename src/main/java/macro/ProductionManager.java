@@ -241,6 +241,7 @@ public class ProductionManager {
             case Pneumatized_Carapace:
                 return UnitType.Zerg_Lair;
             case Chitinous_Plating:
+            case Anabolic_Synthesis:
                 return UnitType.Zerg_Ultralisk_Cavern;
             case Adrenal_Glands:
                 return UnitType.Zerg_Spawning_Pool;
@@ -480,8 +481,9 @@ public class ProductionManager {
             case Zerg_Flyer_Carapace:
                 return techProgression.isSpire();
             case Pneumatized_Carapace:
-                return techProgression.isLair();
+                return techProgression.isLair() || techProgression.isHive();
             case Chitinous_Plating:
+            case Anabolic_Synthesis:
                 return techProgression.isUltraliskCavern();
             case Adrenal_Glands:
                 return techProgression.isSpawningPool() && techProgression.isHive();
@@ -801,7 +803,7 @@ public class ProductionManager {
         for (Unit unit : self.getUnits()) {
             UnitType unitType = unit.getType();
 
-            if (unitType != upgrade.whatUpgrades()) {
+            if (unitType != upgrade.whatUpgrades() && !isUpgradedForm(unitType, upgrade.whatUpgrades())) {
                 continue;
             }
 
@@ -830,6 +832,11 @@ public class ProductionManager {
         }
 
         return false;
+    }
+
+    private boolean isUpgradedForm(UnitType actual, UnitType required) {
+        return (required == UnitType.Zerg_Lair && actual == UnitType.Zerg_Hive)
+                || (required == UnitType.Zerg_Spire && actual == UnitType.Zerg_Greater_Spire);
     }
 
     private boolean scheduleResearch(Plan plan) {
