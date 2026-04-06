@@ -835,8 +835,8 @@ public class ProductionManager {
     }
 
     private boolean isUpgradedForm(UnitType actual, UnitType required) {
-        return (required == UnitType.Zerg_Lair && actual == UnitType.Zerg_Hive)
-                || (required == UnitType.Zerg_Spire && actual == UnitType.Zerg_Greater_Spire);
+        return required == UnitType.Zerg_Lair && actual == UnitType.Zerg_Hive
+                || required == UnitType.Zerg_Spire && actual == UnitType.Zerg_Greater_Spire;
     }
 
     private boolean scheduleResearch(Plan plan) {
