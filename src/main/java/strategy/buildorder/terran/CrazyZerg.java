@@ -69,7 +69,7 @@ public class CrazyZerg extends TerranBase {
                 gameState.getResourceCount().availableMinerals() > ((plannedHatcheries + 1) * 350);
 
         boolean wantNatural = plannedAndCurrentHatcheries < 2 && droneCount >= 12;
-        boolean wantThird   = plannedAndCurrentHatcheries < 3 && hasLairOrHive;
+        boolean wantThird   = plannedAndCurrentHatcheries < 3 && droneCount >= 14 && (hasLairOrHive || gameState.getResourceCount().availableMinerals() >= 350);
         boolean wantBaseAdvantage = behindOnBases(gameState) || floatingMinerals;
 
         boolean wantLair = gameState.canPlanLair() && lairCount < 1 && hiveCount < 1 && baseCount >= 2;
