@@ -145,6 +145,7 @@ public class PlanManager {
     private boolean isBuildingMorph(UnitType unitType) {
         switch (unitType) {
             case Zerg_Lair:
+            case Zerg_Hive:
             case Zerg_Sunken_Colony:
             case Zerg_Spore_Colony:
                 return true;
@@ -164,6 +165,7 @@ public class PlanManager {
             }
             int travelFrames = this.getTravelFrames(managedUnit.getUnit(), plan.getBuildPosition().toPosition());
             if (currentFrame > plan.getPredictedReadyFrame() - travelFrames) {
+                gameState.clearAssignments(managedUnit);
                 plan.setState(PlanState.BUILDING);
                 managedUnit.setRole(UnitRole.BUILD);
                 executed.add(managedUnit);
@@ -210,7 +212,6 @@ public class PlanManager {
 
         ManagedUnit managedUnit = eligibleDrones.get(0);
         Unit unit = managedUnit.getUnit();
-        gameState.clearAssignments(managedUnit);
         scheduledDrones.add(managedUnit);
         managedUnit.setPlan(plan);
         gameState.getAssignedPlannedItems().put(unit, plan);

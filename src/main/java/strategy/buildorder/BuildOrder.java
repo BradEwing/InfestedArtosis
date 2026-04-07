@@ -51,8 +51,12 @@ public abstract class BuildOrder {
         return false; 
     }
 
-    public boolean needLair() { 
-        return false; 
+    public boolean needLair() {
+        return false;
+    }
+
+    public boolean needHive() {
+        return false;
     }
 
     /**
@@ -145,6 +149,39 @@ public abstract class BuildOrder {
         return new BuildingPlan(UnitType.Zerg_Lair, 3);
     }
 
+    protected Plan planQueensNest(GameState gameState) {
+        TechProgression techProgression = gameState.getTechProgression();
+        techProgression.setPlannedQueensNest(true);
+        Plan plan = new BuildingPlan(UnitType.Zerg_Queens_Nest, 4);
+        TilePosition buildPosition = gameState.getTechBuildingLocation(UnitType.Zerg_Queens_Nest);
+        plan.setBuildPosition(buildPosition);
+        return plan;
+    }
+
+    protected Plan planHive(GameState gameState) {
+        TechProgression techProgression = gameState.getTechProgression();
+        techProgression.setPlannedHive(true);
+        return new BuildingPlan(UnitType.Zerg_Hive, 3);
+    }
+
+    protected Plan planUltraliskCavern(GameState gameState) {
+        TechProgression techProgression = gameState.getTechProgression();
+        techProgression.setPlannedUltraliskCavern(true);
+        Plan plan = new BuildingPlan(UnitType.Zerg_Ultralisk_Cavern, 4);
+        TilePosition buildPosition = gameState.getTechBuildingLocation(UnitType.Zerg_Ultralisk_Cavern);
+        plan.setBuildPosition(buildPosition);
+        return plan;
+    }
+
+    protected Plan planDefilerMound(GameState gameState) {
+        TechProgression techProgression = gameState.getTechProgression();
+        techProgression.setPlannedDefilerMound(true);
+        Plan plan = new BuildingPlan(UnitType.Zerg_Defiler_Mound, 4);
+        TilePosition buildPosition = gameState.getTechBuildingLocation(UnitType.Zerg_Defiler_Mound);
+        plan.setBuildPosition(buildPosition);
+        return plan;
+    }
+
     protected Plan planSpawningPool(GameState gameState) {
         TechProgression techProgression = gameState.getTechProgression();
         techProgression.setPlannedSpawningPool(true);
@@ -156,7 +193,7 @@ public abstract class BuildOrder {
 
     protected Plan planSpire(GameState gameState) {
         TechProgression techProgression = gameState.getTechProgression();
-        techProgression.setSpire(true);
+        techProgression.setPlannedSpire(true);
         Plan plan = new BuildingPlan(UnitType.Zerg_Spire, 4);
         TilePosition buildPosition = gameState.getTechBuildingLocation(UnitType.Zerg_Spire);
         plan.setBuildPosition(buildPosition);
@@ -261,6 +298,15 @@ public abstract class BuildOrder {
                 techProgression.setPlannedOverlordSpeed(true);
                 priority = 100;
                 break;
+            case Chitinous_Plating:
+                techProgression.setPlannedChitinousPlating(true);
+                break;
+            case Anabolic_Synthesis:
+                techProgression.setPlannedAnabolicSynthesis(true);
+                break;
+            case Adrenal_Glands:
+                techProgression.setPlannedAdrenalGlands(true);
+                break;
             default:
                 break;
         }
@@ -306,7 +352,11 @@ public abstract class BuildOrder {
             techProgression.setPlannedLurker(true);
             priority = 100;
         }
-        
+
+        if (techType == TechType.Consume) {
+            techProgression.setPlannedConsume(true);
+        }
+
         return new TechPlan(techType, priority, true);
     }
 

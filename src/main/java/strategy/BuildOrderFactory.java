@@ -8,6 +8,7 @@ import strategy.buildorder.opener.Overpool;
 import strategy.buildorder.opener.ThreeHatchBeforePool;
 import strategy.buildorder.protoss.ThreeHatchHydra;
 import strategy.buildorder.protoss.ThreeHatchMuta;
+import strategy.buildorder.terran.CrazyZerg;
 import strategy.buildorder.terran.ThreeHatchLurker;
 import strategy.buildorder.terran.TwoHatchMuta;
 import strategy.buildorder.zerg.OneHatchSpire;
@@ -81,6 +82,7 @@ public class BuildOrderFactory {
         allBuildOrders.add(new ThreeHatchMuta());
 
         // Terran
+        allBuildOrders.add(new CrazyZerg());
         allBuildOrders.add(new ThreeHatchLurker());
         allBuildOrders.add(new TwoHatchMuta());
 

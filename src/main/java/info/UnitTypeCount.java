@@ -8,6 +8,7 @@ import java.util.HashMap;
 public class UnitTypeCount {
     private HashMap<UnitType, Integer> unitTypeCount = new HashMap<>();
     private HashMap<UnitType, Integer> plannedUnitTypeCount = new HashMap<>();
+    private HashMap<UnitType, Integer> totalProduced = new HashMap<>();
 
     public int get(UnitType unitType) {
         ensureUnitType(unitType);
@@ -31,6 +32,11 @@ public class UnitTypeCount {
         }
         final int newCount = unitTypeCount.get(unitType) + 1;
         unitTypeCount.put(unitType, newCount);
+        totalProduced.merge(unitType, 1, Integer::sum);
+    }
+
+    public int getTotalProduced(UnitType unitType) {
+        return totalProduced.getOrDefault(unitType, 0);
     }
 
     public void removeUnit(UnitType unitType) {

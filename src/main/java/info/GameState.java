@@ -341,6 +341,12 @@ public class GameState {
             case Zerg_Hive:
                 techProgression.setPlannedHive(false);
                 break;
+            case Zerg_Ultralisk_Cavern:
+                techProgression.setPlannedUltraliskCavern(false);
+                break;
+            case Zerg_Defiler_Mound:
+                techProgression.setPlannedDefilerMound(false);
+                break;
             case Zerg_Evolution_Chamber:
                 techProgression.setPlannedEvolutionChambers(techProgression.getPlannedEvolutionChambers() - 1);
                 break;
@@ -378,6 +384,15 @@ public class GameState {
             case Pneumatized_Carapace:
                 techProgression.setPlannedOverlordSpeed(false);
                 break;
+            case Chitinous_Plating:
+                techProgression.setPlannedChitinousPlating(false);
+                break;
+            case Anabolic_Synthesis:
+                techProgression.setPlannedAnabolicSynthesis(false);
+                break;
+            case Adrenal_Glands:
+                techProgression.setPlannedAdrenalGlands(false);
+                break;
             default:
                 break;
         }
@@ -387,6 +402,9 @@ public class GameState {
         switch (techType) {
             case Lurker_Aspect:
                 techProgression.setPlannedLurker(false);
+                break;
+            case Consume:
+                techProgression.setPlannedConsume(false);
                 break;
             default:
                 break;
@@ -485,7 +503,15 @@ public class GameState {
     }
 
     private boolean needHive() {
-        return techProgression.needHiveForUpgrades();
+        return activeBuildOrder.needHive() || techProgression.needHiveForUpgrades();
+    }
+
+    public boolean canPlanUltraliskCavern() {
+        return needHive() && techProgression.canPlanUltraliskCavern();
+    }
+
+    public boolean canPlanDefilerMound() {
+        return needHive() && techProgression.canPlanDefilerMound();
     }
 
     // Only take 1 hatch -> lair against zerg
@@ -632,6 +658,10 @@ public class GameState {
 
     public int ourLivingUnitCount(UnitType unitType) {
         return unitTypeCount.livingCount(unitType);
+    }
+
+    public int totalProduced(UnitType unitType) {
+        return unitTypeCount.getTotalProduced(unitType);
     }
 
     public int ourUnitCount(UnitType... unitTypes) {

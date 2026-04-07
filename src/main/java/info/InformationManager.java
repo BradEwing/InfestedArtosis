@@ -140,6 +140,12 @@ public class InformationManager {
             case Zerg_Hive:
                 techProgression.setHive(true);
                 break;
+            case Zerg_Ultralisk_Cavern:
+                techProgression.setUltraliskCavern(true);
+                break;
+            case Zerg_Defiler_Mound:
+                techProgression.setDefilerMound(true);
+                break;
             default:
                 break;
         }
@@ -154,6 +160,10 @@ public class InformationManager {
         tp.setGroovedSpines(self.getUpgradeLevel(UpgradeType.Grooved_Spines) > 0);
         tp.setOverlordSpeed(self.getUpgradeLevel(UpgradeType.Pneumatized_Carapace) > 0);
         tp.setLurker(self.hasResearched(TechType.Lurker_Aspect));
+        tp.setChitinousPlating(self.getUpgradeLevel(UpgradeType.Chitinous_Plating) > 0);
+        tp.setAnabolicSynthesis(self.getUpgradeLevel(UpgradeType.Anabolic_Synthesis) > 0);
+        tp.setAdrenalGlands(self.getUpgradeLevel(UpgradeType.Adrenal_Glands) > 0);
+        tp.setConsume(self.hasResearched(TechType.Consume));
 
         tp.setCarapaceUpgrades(self.getUpgradeLevel(UpgradeType.Zerg_Carapace));
         tp.setMeleeUpgrades(self.getUpgradeLevel(UpgradeType.Zerg_Melee_Attacks));
@@ -350,6 +360,14 @@ public class InformationManager {
             case Zerg_Hive:
                 techProgression.setHive(false);
                 techProgression.setPlannedHive(false);
+                break;
+            case Zerg_Ultralisk_Cavern:
+                techProgression.setUltraliskCavern(false);
+                techProgression.setPlannedUltraliskCavern(false);
+                break;
+            case Zerg_Defiler_Mound:
+                techProgression.setDefilerMound(false);
+                techProgression.setPlannedDefilerMound(false);
                 break;
             default:
                 break;
