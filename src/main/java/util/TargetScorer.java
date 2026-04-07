@@ -75,7 +75,7 @@ public final class TargetScorer {
         }
 
         boolean canHitMe = canAttackType(candidateType, attackerIsFlying);
-        return canHitMe ? Priority.HIGH : Priority.NORMAL;
+        return canHitMe ? Priority.CRITICAL : Priority.NORMAL;
     }
 
     private static double scoreWithinTier(Unit attacker, Unit candidate, Unit currentTarget) {
