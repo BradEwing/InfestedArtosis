@@ -165,6 +165,7 @@ public class PlanManager {
             }
             int travelFrames = this.getTravelFrames(managedUnit.getUnit(), plan.getBuildPosition().toPosition());
             if (currentFrame > plan.getPredictedReadyFrame() - travelFrames) {
+                gameState.clearAssignments(managedUnit);
                 plan.setState(PlanState.BUILDING);
                 managedUnit.setRole(UnitRole.BUILD);
                 executed.add(managedUnit);
@@ -211,7 +212,6 @@ public class PlanManager {
 
         ManagedUnit managedUnit = eligibleDrones.get(0);
         Unit unit = managedUnit.getUnit();
-        gameState.clearAssignments(managedUnit);
         scheduledDrones.add(managedUnit);
         managedUnit.setPlan(plan);
         gameState.getAssignedPlannedItems().put(unit, plan);
