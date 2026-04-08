@@ -106,7 +106,6 @@ public class Squad implements Comparable<Squad> {
 
     public void onFrame() {
         calculateCenter();
-        checkRegroup();
     }
 
     public void addUnit(ManagedUnit managedUnit) {
@@ -178,23 +177,6 @@ public class Squad implements Comparable<Squad> {
         }
     }
 
-
-    private static final int REGROUP_DISTANCE = 256;
-
-    private void checkRegroup() {
-        if (status == SquadStatus.REGROUP) {
-            if (findOutliers(REGROUP_DISTANCE).isEmpty()) {
-                status = SquadStatus.FIGHT;
-                for (ManagedUnit u: members) {
-                    u.setRole(UnitRole.FIGHT);
-                }
-                return;
-            }
-            for (ManagedUnit u: members) {
-                u.setRallyPoint(center);
-            }
-        }
-    }
 
     @Override
     public int compareTo(@NotNull Squad o) {

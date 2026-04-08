@@ -485,7 +485,6 @@ public class SquadManager {
         for (Squad squad : fightSquads) {
             if (squad.getStatus() == SquadStatus.CONTAIN) continue;
             if (squad.getStatus() == SquadStatus.RALLY) continue;
-            if (squad.getStatus() == SquadStatus.REGROUP) continue;
             if (squad.getStatus() == SquadStatus.RETREAT) continue;
             if (squad.size() < 4) continue;
 
@@ -576,10 +575,6 @@ public class SquadManager {
         final boolean closeThreats = !enemyUnitsNearSquad(squad).isEmpty();
 
         SquadStatus squadStatus = squad.getStatus();
-        if (!closeThreats && squadStatus == SquadStatus.REGROUP) {
-            clearCombatSimSnapshot(squad);
-            return;
-        }
 
         if (squadStatus == SquadStatus.CONTAIN) {
             clearCombatSimSnapshot(squad);
@@ -762,7 +757,7 @@ public class SquadManager {
         CombatSimulator.CombatResult result = squad.getCombatSimulator()
                 .evaluate(squad, adjacentSquads, gameState);
 
-        if (squad.isAirSquad() && result == CombatSimulator.CombatResult.REGROUP) {
+        if (result == CombatSimulator.CombatResult.REGROUP) {
             result = CombatSimulator.CombatResult.RETREAT;
         }
 
@@ -795,12 +790,6 @@ public class SquadManager {
                 }
                 break;
 
-            case REGROUP:
-                squad.setStatus(SquadStatus.REGROUP);
-                for (ManagedUnit managedUnit : managedFighters) {
-                    managedUnit.clearRetreatStart();
-                }
-                break;
             default:
                 break;
         }
