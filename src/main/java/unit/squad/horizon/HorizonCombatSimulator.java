@@ -217,7 +217,12 @@ public class HorizonCombatSimulator implements CombatSimulator {
             speedPenalty = SPEED_UPGRADE_PENALTY;
         }
 
-        return base * hpWeight * distWeight * cloak * prepPenalty * rangeUpgrade * speedPenalty;
+        double attackUpgrade = attackUpgradeCorrection(unit, type);
+        double adrenalGlands = adrenalGlandsCorrection(unit, type, techProgression);
+        double armorUpgrade = armorUpgradeCorrection(unit, type);
+
+        return base * hpWeight * distWeight * cloak * prepPenalty * rangeUpgrade * speedPenalty
+                * attackUpgrade * adrenalGlands * armorUpgrade;
     }
 
     private double rangeUpgradeCorrection(Unit unit, UnitType type) {
@@ -228,6 +233,32 @@ public class HorizonCombatSimulator implements CombatSimulator {
         int upgradedRange = unit.getPlayer().weaponMaxRange(weapon);
         if (upgradedRange == baseRange) return 1.0;
         return Math.log(upgradedRange / 4.0 + 16.0) / Math.log(baseRange / 4.0 + 16.0);
+    }
+
+    private double attackUpgradeCorrection(Unit unit, UnitType type) {
+        WeaponType weapon = type.isFlyer() ? type.airWeapon() : type.groundWeapon();
+        if (weapon == null || weapon == WeaponType.None) return 1.0;
+        int baseDamage = weapon.damageAmount() * weapon.damageFactor();
+        if (baseDamage <= 0) return 1.0;
+        int upgradedDamage = unit.getPlayer().damage(weapon);
+        if (upgradedDamage == baseDamage) return 1.0;
+        return (double) upgradedDamage / baseDamage;
+    }
+
+    private double adrenalGlandsCorrection(Unit unit, UnitType type, TechProgression techProgression) {
+        if (type != UnitType.Zerg_Zergling || !techProgression.isAdrenalGlands()) return 1.0;
+        int baseCooldown = type.groundWeapon().damageCooldown();
+        int upgradedCooldown = unit.getPlayer().weaponDamageCooldown(type);
+        if (upgradedCooldown >= baseCooldown || upgradedCooldown <= 0) return 1.0;
+        return (double) baseCooldown / upgradedCooldown;
+    }
+
+    private double armorUpgradeCorrection(Unit unit, UnitType type) {
+        int baseArmor = type.armor();
+        int currentArmor = unit.getPlayer().armor(type);
+        int armorBonus = currentArmor - baseArmor;
+        if (armorBonus <= 0) return 1.0;
+        return 1.0 + armorBonus * 0.06;
     }
 
     private boolean enemyHasNearbyDetection(ObservedUnitTracker tracker, Position center, int currentFrame) {

@@ -50,7 +50,7 @@ public class ScourgeCombatSimulator implements CombatSimulator {
             return false;
         }
 
-        int scourgeDamage = 110;
+        int scourgeDamage = squad.getMembers().iterator().next().getUnit().getPlayer().damage(UnitType.Zerg_Scourge.airWeapon());
 
         List<Unit> prioritizedTargets = prioritizeTargets(airTargets);
 
