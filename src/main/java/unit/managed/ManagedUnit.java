@@ -216,6 +216,10 @@ public class ManagedUnit {
             return null;
         }
 
+        if (unit.isFlying()) {
+            away = applyBorderRepulsion(away, currentX, currentY);
+        }
+
         Position retreatPos = away.normalizeToLength(retreatFleeDistance()).clampToMap(game, currentPos);
 
         if (!unit.isFlying() && !isRetreatPathWalkable(currentPos, retreatPos)) {
@@ -256,6 +260,31 @@ public class ManagedUnit {
                 .filter(u -> !u.getType().isBuilding() || Filter.isHostileBuilding(u.getType()))
                 .collect(Collectors.toList());
         return enemies;
+    }
+
+    private static final int BORDER_REPULSION_DISTANCE = 64;
+
+    private Vec2 applyBorderRepulsion(Vec2 flee, int currentX, int currentY) {
+        int mapWidth = game.mapWidth() * 32;
+        int mapHeight = game.mapHeight() * 32;
+        double bx = 0;
+        double by = 0;
+        if (currentX < BORDER_REPULSION_DISTANCE) {
+            bx = BORDER_REPULSION_DISTANCE - currentX;
+        } else if (currentX > mapWidth - BORDER_REPULSION_DISTANCE) {
+            bx = (mapWidth - BORDER_REPULSION_DISTANCE) - currentX;
+        }
+        if (currentY < BORDER_REPULSION_DISTANCE) {
+            by = BORDER_REPULSION_DISTANCE - currentY;
+        } else if (currentY > mapHeight - BORDER_REPULSION_DISTANCE) {
+            by = (mapHeight - BORDER_REPULSION_DISTANCE) - currentY;
+        }
+        if (bx == 0 && by == 0) {
+            return flee;
+        }
+        Vec2 border = new Vec2(bx, by).normalize();
+        Vec2 fleeNorm = flee.normalize();
+        return new Vec2(fleeNorm.x + border.x, fleeNorm.y + border.y);
     }
 
     public boolean doesMovementIntersectStorm(Position targetPos, Set<Position> stormPositions) {
