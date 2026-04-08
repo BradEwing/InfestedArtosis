@@ -15,13 +15,15 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 public class ObservedUnitTracker {
+    private static final int MARINE_COOLDOWN = 15;
+
     private final HashMap<Unit, ObservedUnit> observedUnits = new HashMap<>();
 
     public ObservedUnitTracker() {
 
     }
 
-    public void onFrame() {
+    public void onFrame(int currentFrame) {
         for (ObservedUnit ou : observedUnits.values()) {
             if (ou.getDestroyedFrame() != null) {
                 continue;
@@ -33,6 +35,9 @@ public class ObservedUnitTracker {
                 }
                 ou.setLastKnownHitPoints(unit.getHitPoints());
                 ou.setLastKnownShields(unit.getShields());
+                if (ou.getUnitType() == UnitType.Terran_Bunker && ou.isCompleted()) {
+                    ou.setLastLoadedCheckFrame(currentFrame);
+                }
             }
         }
     }
@@ -56,7 +61,6 @@ public class ObservedUnitTracker {
         Time t = new Time(currentFrame);
         if (observedUnits.containsKey(unit)) {
             ObservedUnit u = observedUnits.get(unit);
-            // Update last seen info before unit goes out of vision
             u.setLastObservedFrame(t);
             u.setLastKnownLocation(unit.getPosition());
         }
@@ -105,6 +109,28 @@ public class ObservedUnitTracker {
                 .stream()
                 .filter(ou -> ou.getDestroyedFrame() == null)
                 .count();
+    }
+
+    public void updateBunkerGarrison(Unit bunker, int bulletsThisFrame, int currentFrame) {
+        ObservedUnit ou = observedUnits.get(bunker);
+        if (ou == null) return;
+        if (bulletsThisFrame > 0) {
+            int sinceLastBullet = ou.getLastBunkerBulletFrame() >= 0
+                    ? currentFrame - ou.getLastBunkerBulletFrame() : Integer.MAX_VALUE;
+            if (sinceLastBullet > MARINE_COOLDOWN * 2) {
+                ou.setLastKnownLoadedCount(bulletsThisFrame);
+            } else if (bulletsThisFrame > ou.getLastKnownLoadedCount()) {
+                ou.setLastKnownLoadedCount(bulletsThisFrame);
+            }
+            ou.setLastBunkerBulletFrame(currentFrame);
+        } else if (ou.getLastBunkerBulletFrame() >= 0
+                && currentFrame - ou.getLastBunkerBulletFrame() > MARINE_COOLDOWN * 2) {
+            ou.setLastKnownLoadedCount(0);
+        } else if (ou.getLastBunkerBulletFrame() < 0
+                && ou.getLastLoadedCheckFrame() >= 0
+                && currentFrame - ou.getLastLoadedCheckFrame() > MARINE_COOLDOWN * 2) {
+            ou.setLastKnownLoadedCount(0);
+        }
     }
 
     public void updateGroundHeight(Unit unit, int groundHeight) {

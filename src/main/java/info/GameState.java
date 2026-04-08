@@ -1,5 +1,7 @@
 package info;
 
+import bwapi.Bullet;
+import bwapi.BulletType;
 import bwapi.Game;
 import bwapi.Player;
 import bwapi.Position;
@@ -48,6 +50,8 @@ import java.util.stream.Collectors;
  */
 @Data
 public class GameState {
+    private static final int BUNKER_BULLET_RADIUS = 224;
+
     private Game game;
     private Config config;
     private Player self;
@@ -133,10 +137,47 @@ public class GameState {
     }
 
     public void onFrame() {
-        observedUnitTracker.onFrame();
+        observedUnitTracker.onFrame(game.getFrameCount());
         updateObservedUnitGroundHeights();
+        updateBunkerGarrisonCounts();
         strategyTracker.onFrame();
         clearVisibleEnemyWorkerLocations();
+    }
+
+    private void updateBunkerGarrisonCounts() {
+        int currentFrame = game.getFrameCount();
+
+        Map<Unit, Integer> bunkerBulletCounts = new HashMap<>();
+        for (Unit enemy : observedUnitTracker.getVisibleEnemyUnits()) {
+            if (enemy.getType() == UnitType.Terran_Bunker) {
+                bunkerBulletCounts.put(enemy, 0);
+            }
+        }
+        if (bunkerBulletCounts.isEmpty()) return;
+
+        for (Bullet bullet : game.getBullets()) {
+            if (bullet == null || !bullet.exists()) continue;
+            if (bullet.getType() != BulletType.Gauss_Rifle_Hit) continue;
+            if (bullet.getSource() != null) continue;
+            Position bulletPos = bullet.getPosition();
+            Unit closestBunker = null;
+            double closestDist = BUNKER_BULLET_RADIUS;
+            for (Unit bunker : bunkerBulletCounts.keySet()) {
+                double dist = bunker.getPosition().getDistance(bulletPos);
+                if (dist <= closestDist) {
+                    closestDist = dist;
+                    closestBunker = bunker;
+                }
+            }
+            if (closestBunker != null) {
+                bunkerBulletCounts.merge(closestBunker, 1, Integer::sum);
+            }
+        }
+
+        for (Map.Entry<Unit, Integer> entry : bunkerBulletCounts.entrySet()) {
+            int bulletsThisFrame = Math.min(entry.getValue(), 4);
+            observedUnitTracker.updateBunkerGarrison(entry.getKey(), bulletsThisFrame, currentFrame);
+        }
     }
 
     private void updateObservedUnitGroundHeights() {

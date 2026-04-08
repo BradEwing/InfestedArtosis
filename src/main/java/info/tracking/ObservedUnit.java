@@ -19,6 +19,9 @@ public class ObservedUnit {
     private int lastKnownHitPoints;
     private int lastKnownShields;
     private int lastKnownGroundHeight = -1;
+    private int lastKnownLoadedCount = -1;
+    private int lastLoadedCheckFrame = -1;
+    private int lastBunkerBulletFrame = -1;
 
     public ObservedUnit(Unit unit, Time currentFrame, boolean proxied) {
         this.unit = unit;
