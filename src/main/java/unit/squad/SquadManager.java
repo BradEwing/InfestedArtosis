@@ -22,6 +22,7 @@ import unit.managed.ManagedUnit;
 import unit.squad.horizon.HorizonCombatSimulator;
 import unit.managed.UnitRole;
 import util.Arc;
+import util.Filter;
 import util.Vec2;
 
 import java.util.ArrayList;
@@ -92,6 +93,7 @@ public class SquadManager {
     private static final int ARC_DEGREES = 90;
     private static final int ARC_RADIUS = 160;
     private static final double REINFORCEMENT_RADIUS = 384.0;
+    private static final int TARGETING_RADIUS = 256;
     public static final int GROUND_SPLIT_DISTANCE = 256;
     public static final int AIR_SPLIT_DISTANCE = 768;
 
@@ -214,7 +216,7 @@ public class SquadManager {
                 continue;
             }
             if (unit.canAttack(enemyUnit) && enemyUnit.isDetected()
-                    && !util.Filter.isLowPriorityCombatTarget(enemyUnit.getType())) {
+                    && !Filter.isLowPriorityCombatTarget(enemyUnit.getType())) {
                 filtered.add(enemyUnit);
             }
         }
@@ -226,6 +228,8 @@ public class SquadManager {
             }
             return;
         }
+
+        filtered = filterByProximity(filtered, unit);
 
         Set<Position> basePositions = gameState.getBaseData().getMyBasePositions();
         Unit bestTarget = TargetScorer.selectTarget(unit, filtered, managedUnit.fightTarget, basePositions);
@@ -1300,7 +1304,7 @@ public class SquadManager {
                 continue;
             }
             if (unit.canAttack(enemyUnit) && enemyUnit.isDetected() && 
-                !util.Filter.isLowPriorityCombatTarget(enemyUnit.getType())) {
+                !Filter.isLowPriorityCombatTarget(enemyUnit.getType())) {
                 filtered.add(enemyUnit);
             }
         }
@@ -1309,6 +1313,8 @@ public class SquadManager {
             managedUnit.setMovementTargetPosition(gameState.pollScoutTarget());
             return;
         }
+
+        filtered = filterByProximity(filtered, unit);
 
         if (gameState.isCannonRushed()) {
             Set<Unit> proxied = gameState.getObservedUnitTracker().getProxiedBuildings();
@@ -1325,6 +1331,16 @@ public class SquadManager {
         if (bestTarget != null) {
             managedUnit.setFightTarget(bestTarget);
         }
+    }
+
+    private List<Unit> filterByProximity(List<Unit> candidates, Unit attacker) {
+        List<Unit> nearby = new ArrayList<>();
+        for (Unit enemy : candidates) {
+            if (attacker.getDistance(enemy) <= TARGETING_RADIUS) {
+                nearby.add(enemy);
+            }
+        }
+        return nearby.isEmpty() ? candidates : nearby;
     }
 
     /**
