@@ -36,6 +36,9 @@ public class HorizonCombatSimulator implements CombatSimulator {
     private static final double ENGAGE_THRESHOLD = 1.0;
     private static final double RETREAT_THRESHOLD = 0.7;
     private static final double SPEED_UPGRADE_PENALTY = 0.75;
+    private static final int BUNKER_TRUST_FRAMES = 48;
+    private static final int BUNKER_DECAY_FRAMES = 72;
+    private static final int BUNKER_MAX_GARRISON = 4;
 
     @Getter
     private final Map<String, DebugSnapshot> lastSnapshots = new HashMap<>();
@@ -115,6 +118,11 @@ public class HorizonCombatSimulator implements CombatSimulator {
 
             double groundBase = UnitStrength.groundToGround(type) + UnitStrength.airToGround(type);
             double antiAirBase = UnitStrength.antiAirStrength(type);
+            if (type == UnitType.Terran_Bunker) {
+                double garrisonMod = bunkerGarrisonModifier(ou, currentFrame);
+                groundBase *= garrisonMod;
+                antiAirBase *= garrisonMod;
+            }
             if (type.isWorker()) {
                 groundBase /= WORKER_STRENGTH_DIVISOR;
                 antiAirBase /= WORKER_STRENGTH_DIVISOR;
@@ -318,6 +326,17 @@ public class HorizonCombatSimulator implements CombatSimulator {
         WeaponType weapon = type.groundWeapon();
         if (weapon == null || weapon == WeaponType.None) return DamageType.Normal;
         return weapon.damageType();
+    }
+
+    private double bunkerGarrisonModifier(ObservedUnit ou, int currentFrame) {
+        int loadedCount = ou.getLastKnownLoadedCount();
+        if (loadedCount < 0) return 1.0;
+        double baseModifier = (double) loadedCount / BUNKER_MAX_GARRISON;
+        int elapsed = currentFrame - ou.getLastLoadedCheckFrame();
+        if (elapsed <= BUNKER_TRUST_FRAMES) return baseModifier;
+        if (elapsed >= BUNKER_TRUST_FRAMES + BUNKER_DECAY_FRAMES) return 1.0;
+        double decayProgress = (double) (elapsed - BUNKER_TRUST_FRAMES) / BUNKER_DECAY_FRAMES;
+        return baseModifier + (1.0 - baseModifier) * decayProgress;
     }
 
     private DamageType airDamageType(UnitType type) {
