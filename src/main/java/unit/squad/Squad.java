@@ -179,10 +179,11 @@ public class Squad implements Comparable<Squad> {
     }
 
 
+    private static final int REGROUP_DISTANCE = 256;
+
     private void checkRegroup() {
-        boolean grouped = true;
         if (status == SquadStatus.REGROUP) {
-            if (grouped) {
+            if (findOutliers(REGROUP_DISTANCE).isEmpty()) {
                 status = SquadStatus.FIGHT;
                 for (ManagedUnit u: members) {
                     u.setRole(UnitRole.FIGHT);
