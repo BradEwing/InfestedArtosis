@@ -197,7 +197,7 @@ public class ManagedUnit {
         List<Unit> enemies = game.getUnitsInRadius(currentX, currentY, scanRadius)
                 .stream()
                 .filter(u -> u.getPlayer() != game.self())
-                .filter(u -> !u.getType().isBuilding() || Filter.isHostileBuildingToGround(u.getType()))
+                .filter(u -> !u.getType().isBuilding() || Filter.isHostileBuilding(u.getType()))
                 .collect(Collectors.toList());
 
         if (enemies.isEmpty()) {
@@ -217,9 +217,9 @@ public class ManagedUnit {
             return null;
         }
 
-        Position retreatPos = away.normalizeToLength(retreatFleeDistance()).toPosition(currentPos);
+        Position retreatPos = away.normalizeToLength(retreatFleeDistance()).clampToMap(game, currentPos);
 
-        if (!isRetreatPathWalkable(currentPos, retreatPos)) {
+        if (!unit.isFlying() && !isRetreatPathWalkable(currentPos, retreatPos)) {
             retreatPos = findAlternativeRetreatPosition(currentPos, retreatPos);
         }
 
@@ -254,7 +254,7 @@ public class ManagedUnit {
         List<Unit> enemies = game.getUnitsInRadius(currentX, currentY, 128)
                 .stream()
                 .filter(u -> u.getPlayer() != game.self())
-                .filter(u -> !u.getType().isBuilding() || Filter.isHostileBuildingToGround(u.getType()))
+                .filter(u -> !u.getType().isBuilding() || Filter.isHostileBuilding(u.getType()))
                 .collect(Collectors.toList());
         return enemies;
     }
@@ -348,7 +348,7 @@ public class ManagedUnit {
         List<Unit> enemies = game.getUnitsInRadius(currentPos.getX(), currentPos.getY(), 256)
                 .stream()
                 .filter(u -> u.getPlayer() != game.self())
-                .filter(u -> !u.getType().isBuilding() || Filter.isHostileBuildingToGround(u.getType()))
+                .filter(u -> !u.getType().isBuilding() || Filter.isHostileBuilding(u.getType()))
                 .collect(Collectors.toList());
 
         if (enemies.isEmpty()) {
@@ -591,7 +591,11 @@ public class ManagedUnit {
         }
 
         if (retreatTarget != null) {
-            if (unit.getDistance(retreatTarget) < 16 || unit.isIdle() || !game.isWalkable(new WalkPosition(retreatTarget))) {
+            boolean invalidTarget = unit.getDistance(retreatTarget) < 16 || unit.isIdle();
+            if (!unit.isFlying()) {
+                invalidTarget = invalidTarget || !game.isWalkable(new WalkPosition(retreatTarget));
+            }
+            if (invalidTarget) {
                 retreatTarget = null;
                 lastRetreatPosition = null;
                 framesStuck = 0;

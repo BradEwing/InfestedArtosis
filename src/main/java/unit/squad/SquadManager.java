@@ -762,6 +762,10 @@ public class SquadManager {
         CombatSimulator.CombatResult result = squad.getCombatSimulator()
                 .evaluate(squad, adjacentSquads, gameState);
 
+        if (squad.isAirSquad() && result == CombatSimulator.CombatResult.REGROUP) {
+            result = CombatSimulator.CombatResult.RETREAT;
+        }
+
         if (squad.getStatus() == SquadStatus.RETREAT && retreatLocked) {
             assignRetreatTargets(squad, managedFighters);
             return;
