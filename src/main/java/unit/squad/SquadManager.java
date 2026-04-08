@@ -575,7 +575,6 @@ public class SquadManager {
         final boolean closeThreats = !enemyUnitsNearSquad(squad).isEmpty();
 
         SquadStatus squadStatus = squad.getStatus();
-
         if (squadStatus == SquadStatus.CONTAIN) {
             clearCombatSimSnapshot(squad);
             evaluateContainingSquad(squad);
@@ -756,10 +755,6 @@ public class SquadManager {
         Map<Squad, Double> adjacentSquads = getAdjacentSquads(squad, REINFORCEMENT_RADIUS);
         CombatSimulator.CombatResult result = squad.getCombatSimulator()
                 .evaluate(squad, adjacentSquads, gameState);
-
-        if (result == CombatSimulator.CombatResult.REGROUP) {
-            result = CombatSimulator.CombatResult.RETREAT;
-        }
 
         if (squad.getStatus() == SquadStatus.RETREAT && retreatLocked) {
             assignRetreatTargets(squad, managedFighters);

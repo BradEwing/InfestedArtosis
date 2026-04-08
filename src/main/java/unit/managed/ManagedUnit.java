@@ -153,7 +153,6 @@ public class ManagedUnit {
                 defend();
                 break;
             case RALLY:
-            case REGROUP:
                 rally();
                 break;
             case CONTAIN:
