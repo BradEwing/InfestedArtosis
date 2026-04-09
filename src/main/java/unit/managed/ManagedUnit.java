@@ -153,7 +153,6 @@ public class ManagedUnit {
                 defend();
                 break;
             case RALLY:
-            case REGROUP:
                 rally();
                 break;
             case CONTAIN:
@@ -197,7 +196,7 @@ public class ManagedUnit {
         List<Unit> enemies = game.getUnitsInRadius(currentX, currentY, scanRadius)
                 .stream()
                 .filter(u -> u.getPlayer() != game.self())
-                .filter(u -> !u.getType().isBuilding() || Filter.isHostileBuildingToGround(u.getType()))
+                .filter(u -> !u.getType().isBuilding() || Filter.isHostileBuilding(u.getType()))
                 .collect(Collectors.toList());
 
         if (enemies.isEmpty()) {
@@ -217,9 +216,13 @@ public class ManagedUnit {
             return null;
         }
 
-        Position retreatPos = away.normalizeToLength(retreatFleeDistance()).toPosition(currentPos);
+        if (unit.isFlying()) {
+            away = applyBorderRepulsion(away, currentX, currentY);
+        }
 
-        if (!isRetreatPathWalkable(currentPos, retreatPos)) {
+        Position retreatPos = away.normalizeToLength(retreatFleeDistance()).clampToMap(game, currentPos);
+
+        if (!unit.isFlying() && !isRetreatPathWalkable(currentPos, retreatPos)) {
             retreatPos = findAlternativeRetreatPosition(currentPos, retreatPos);
         }
 
@@ -254,9 +257,34 @@ public class ManagedUnit {
         List<Unit> enemies = game.getUnitsInRadius(currentX, currentY, 128)
                 .stream()
                 .filter(u -> u.getPlayer() != game.self())
-                .filter(u -> !u.getType().isBuilding() || Filter.isHostileBuildingToGround(u.getType()))
+                .filter(u -> !u.getType().isBuilding() || Filter.isHostileBuilding(u.getType()))
                 .collect(Collectors.toList());
         return enemies;
+    }
+
+    private static final int BORDER_REPULSION_DISTANCE = 64;
+
+    private Vec2 applyBorderRepulsion(Vec2 flee, int currentX, int currentY) {
+        int mapWidth = game.mapWidth() * 32;
+        int mapHeight = game.mapHeight() * 32;
+        double bx = 0;
+        double by = 0;
+        if (currentX < BORDER_REPULSION_DISTANCE) {
+            bx = BORDER_REPULSION_DISTANCE - currentX;
+        } else if (currentX > mapWidth - BORDER_REPULSION_DISTANCE) {
+            bx = (mapWidth - BORDER_REPULSION_DISTANCE) - currentX;
+        }
+        if (currentY < BORDER_REPULSION_DISTANCE) {
+            by = BORDER_REPULSION_DISTANCE - currentY;
+        } else if (currentY > mapHeight - BORDER_REPULSION_DISTANCE) {
+            by = (mapHeight - BORDER_REPULSION_DISTANCE) - currentY;
+        }
+        if (bx == 0 && by == 0) {
+            return flee;
+        }
+        Vec2 border = new Vec2(bx / BORDER_REPULSION_DISTANCE, by / BORDER_REPULSION_DISTANCE);
+        Vec2 fleeNorm = flee.normalize();
+        return new Vec2(fleeNorm.x + border.x, fleeNorm.y + border.y);
     }
 
     public boolean doesMovementIntersectStorm(Position targetPos, Set<Position> stormPositions) {
@@ -348,7 +376,7 @@ public class ManagedUnit {
         List<Unit> enemies = game.getUnitsInRadius(currentPos.getX(), currentPos.getY(), 256)
                 .stream()
                 .filter(u -> u.getPlayer() != game.self())
-                .filter(u -> !u.getType().isBuilding() || Filter.isHostileBuildingToGround(u.getType()))
+                .filter(u -> !u.getType().isBuilding() || Filter.isHostileBuilding(u.getType()))
                 .collect(Collectors.toList());
 
         if (enemies.isEmpty()) {
@@ -591,7 +619,11 @@ public class ManagedUnit {
         }
 
         if (retreatTarget != null) {
-            if (unit.getDistance(retreatTarget) < 16 || unit.isIdle() || !game.isWalkable(new WalkPosition(retreatTarget))) {
+            boolean invalidTarget = unit.getDistance(retreatTarget) < 16 || unit.isIdle();
+            if (!unit.isFlying()) {
+                invalidTarget = invalidTarget || !game.isWalkable(new WalkPosition(retreatTarget));
+            }
+            if (invalidTarget) {
                 retreatTarget = null;
                 lastRetreatPosition = null;
                 framesStuck = 0;

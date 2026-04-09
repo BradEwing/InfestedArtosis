@@ -134,7 +134,6 @@ public class UnitManager {
                 case DEFEND:
                 case BUILDING:
                 case RALLY:
-                case REGROUP:
                 case FIGHT:
                 case CONTAIN:
                     managedUnit.execute();

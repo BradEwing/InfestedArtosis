@@ -8,7 +8,6 @@ import lombok.Data;
 import lombok.Getter;
 import org.jetbrains.annotations.NotNull;
 import unit.managed.ManagedUnit;
-import unit.managed.UnitRole;
 import util.Distance;
 import util.Time;
 
@@ -106,7 +105,6 @@ public class Squad implements Comparable<Squad> {
 
     public void onFrame() {
         calculateCenter();
-        checkRegroup();
     }
 
     public void addUnit(ManagedUnit managedUnit) {
@@ -178,22 +176,6 @@ public class Squad implements Comparable<Squad> {
         }
     }
 
-
-    private void checkRegroup() {
-        boolean grouped = true;
-        if (status == SquadStatus.REGROUP) {
-            if (grouped) {
-                status = SquadStatus.FIGHT;
-                for (ManagedUnit u: members) {
-                    u.setRole(UnitRole.FIGHT);
-                }
-                return;
-            }
-            for (ManagedUnit u: members) {
-                u.setRallyPoint(center);
-            }
-        }
-    }
 
     @Override
     public int compareTo(@NotNull Squad o) {

@@ -14,7 +14,7 @@ import java.util.List;
 
 /**
  * A variant of 3 Hatch Muta that skips Lurker tech entirely,
- * transitioning directly from Mutalisks into Hive tech with Ultralisks and Defilers.
+ * transitioning directly from Mutalisks into Hive tech with Ultralisks.
  *
  * Key divergence: Evolution Chamber built simultaneously with Lair, immediately starting
  * +1 Carapace. All gas goes into early carapace upgrades and fast Hive tech.
