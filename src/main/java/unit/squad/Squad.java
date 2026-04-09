@@ -8,7 +8,6 @@ import lombok.Data;
 import lombok.Getter;
 import org.jetbrains.annotations.NotNull;
 import unit.managed.ManagedUnit;
-import unit.managed.UnitRole;
 import util.Distance;
 import util.Time;
 
