@@ -544,7 +544,7 @@ public class SquadManager {
         List<Squad> eligibleSquads = fightSquads.stream()
                 .filter(s -> s != squad)
                 .filter(s -> s.getStatus() == SquadStatus.FIGHT || s.getStatus() == SquadStatus.CONTAIN)
-                .filter(s -> squad.isGroundSquad() && s.isGroundSquad() || squad.isAirSquad() && s.isAirSquad())
+                .filter(s -> (squad.isGroundSquad() && s.isGroundSquad()) || (squad.isAirSquad() && s.isAirSquad()))
                 .collect(Collectors.toList());
 
         if (!eligibleSquads.isEmpty() && squad.getCenter() != null) {
