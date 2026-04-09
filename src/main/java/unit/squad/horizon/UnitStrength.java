@@ -33,6 +33,8 @@ public class UnitStrength {
             }
             if (type == UnitType.Zerg_Lurker) {
                 g2g *= 2.5;
+            } else if (type == UnitType.Zerg_Ultralisk) {
+                g2g *= 2.0;
             } else if (type == UnitType.Zerg_Mutalisk) {
                 a2g *= 1.5;
                 a2a *= 1.5;
