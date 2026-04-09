@@ -216,8 +216,6 @@ public class ManagedUnit {
             return null;
         }
 
-        away = applyRallyPull(away, currentX, currentY);
-
         if (unit.isFlying()) {
             away = applyBorderRepulsion(away, currentX, currentY);
         }
@@ -262,22 +260,6 @@ public class ManagedUnit {
                 .filter(u -> !u.getType().isBuilding() || Filter.isHostileBuilding(u.getType()))
                 .collect(Collectors.toList());
         return enemies;
-    }
-
-    private static final double RALLY_PULL_WEIGHT = 0.3;
-
-    private Vec2 applyRallyPull(Vec2 flee, int currentX, int currentY) {
-        if (rallyPoint == null) {
-            return flee;
-        }
-        double dx = rallyPoint.getX() - currentX;
-        double dy = rallyPoint.getY() - currentY;
-        if (dx == 0 && dy == 0) {
-            return flee;
-        }
-        Vec2 pull = new Vec2(dx, dy).normalize().scale(RALLY_PULL_WEIGHT);
-        Vec2 fleeNorm = flee.normalize();
-        return new Vec2(fleeNorm.x + pull.x, fleeNorm.y + pull.y);
     }
 
     private static final int BORDER_REPULSION_DISTANCE = 64;
