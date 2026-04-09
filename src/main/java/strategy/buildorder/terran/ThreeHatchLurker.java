@@ -324,7 +324,7 @@ public class ThreeHatchLurker extends TerranBase {
 
     @Override
     protected int zerglingsNeeded(GameState gameState) {
-        final boolean den = gameState.ourUnitCount(UnitType.Zerg_Hydralisk_Den) > 0;
+        final boolean den = gameState.getTechProgression().isHydraliskDen();
         final int hydras = gameState.ourUnitCount(UnitType.Zerg_Hydralisk);
         
         if (den && hydras < 3) {
