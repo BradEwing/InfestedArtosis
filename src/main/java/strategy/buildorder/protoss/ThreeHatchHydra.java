@@ -370,7 +370,7 @@ public class ThreeHatchHydra extends ProtossBase {
 
     @Override
     protected int zerglingsNeeded(GameState gameState) {
-        final boolean den = gameState.ourUnitCount(UnitType.Zerg_Hydralisk_Den) > 0;
+        final boolean den = gameState.getTechProgression().isHydraliskDen();
         final int hydras = gameState.ourUnitCount(UnitType.Zerg_Hydralisk);
         if (den && hydras < 11) {
             return 0;
