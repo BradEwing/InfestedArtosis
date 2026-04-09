@@ -176,7 +176,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
         } else if (overallRatio < RETREAT_THRESHOLD) {
             result = CombatResult.RETREAT;
         } else {
-            result = CombatResult.RETREAT;
+            result = airSquad ? CombatResult.RETREAT : CombatResult.ENGAGE;
         }
 
         snapshot.setResult(result);
