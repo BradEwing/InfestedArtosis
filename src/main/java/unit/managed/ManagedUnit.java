@@ -282,7 +282,7 @@ public class ManagedUnit {
         if (bx == 0 && by == 0) {
             return flee;
         }
-        Vec2 border = new Vec2(bx, by).normalize();
+        Vec2 border = new Vec2(bx / BORDER_REPULSION_DISTANCE, by / BORDER_REPULSION_DISTANCE);
         Vec2 fleeNorm = flee.normalize();
         return new Vec2(fleeNorm.x + border.x, fleeNorm.y + border.y);
     }
