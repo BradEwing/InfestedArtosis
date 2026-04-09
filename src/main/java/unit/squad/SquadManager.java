@@ -544,24 +544,23 @@ public class SquadManager {
         List<Squad> eligibleSquads = fightSquads.stream()
                 .filter(s -> s != squad)
                 .filter(s -> s.getStatus() == SquadStatus.FIGHT || s.getStatus() == SquadStatus.CONTAIN)
+                .filter(s -> (squad.isGroundSquad() && s.isGroundSquad()) || (squad.isAirSquad() && s.isAirSquad()))
                 .collect(Collectors.toList());
 
-        final Base enemyMainBase = gameState.getBaseData().getMainEnemyBase();
-        if (!eligibleSquads.isEmpty() && enemyMainBase != null) {
+        if (!eligibleSquads.isEmpty() && squad.getCenter() != null) {
             Squad best = null;
-            for (Squad s: eligibleSquads) {
-                if (best == null) {
-                    best = s;
-                    continue;
-                }
-                final double bestDistance = best.getCenter().getDistance(enemyMainBase.getCenter());
-                final double candidateDistance = s.getCenter().getDistance(enemyMainBase.getCenter());
-                if (candidateDistance < bestDistance) {
+            double bestDistance = Double.MAX_VALUE;
+            for (Squad s : eligibleSquads) {
+                if (s.getCenter() == null) continue;
+                double distance = squad.getCenter().getDistance(s.getCenter());
+                if (distance < bestDistance) {
+                    bestDistance = distance;
                     best = s;
                 }
             }
-
-            return best.getCenter().toTilePosition().toPosition();
+            if (best != null) {
+                return best.getCenter().toTilePosition().toPosition();
+            }
         }
 
         return gameState.getSquadRallyPoint();
