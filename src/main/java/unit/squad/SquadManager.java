@@ -683,6 +683,11 @@ public class SquadManager {
             return;
         }
 
+        if (squad.isGroundSquad() && squad.hasOnly(UnitType.Zerg_Defiler)) {
+            rallySquad(squad);
+            return;
+        }
+
         Set<Position> stormPositions = gameState.getActiveStormPositions();
         if (!stormPositions.isEmpty()) {
             boolean anyUnitInStorm = false;
@@ -1279,6 +1284,27 @@ public class SquadManager {
                 squad.removeUnit(managedUnit);
                 overlords.addUnit(managedUnit);
                 managedUnit.setRole(UnitRole.IDLE);
+            }
+            return;
+        }
+        if (managedUnit.getUnitType() == UnitType.Zerg_Defiler) {
+            Set<Unit> enemies = gameState.getVisibleEnemyUnits();
+            Unit nearestEnemy = null;
+            double nearestDistance = Double.MAX_VALUE;
+            for (Unit enemyUnit : enemies) {
+                if (!enemyUnit.isDetected()) continue;
+                double d = unit.getDistance(enemyUnit);
+                if (d < nearestDistance) {
+                    nearestDistance = d;
+                    nearestEnemy = enemyUnit;
+                }
+            }
+            if (nearestEnemy != null) {
+                managedUnit.setFightTarget(nearestEnemy);
+            } else {
+                managedUnit.setFightTarget(null);
+                managedUnit.setRallyPoint(squad.getCenter());
+                managedUnit.setRole(UnitRole.RALLY);
             }
             return;
         }

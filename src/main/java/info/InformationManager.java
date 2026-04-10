@@ -164,6 +164,7 @@ public class InformationManager {
         tp.setAnabolicSynthesis(self.getUpgradeLevel(UpgradeType.Anabolic_Synthesis) > 0);
         tp.setAdrenalGlands(self.getUpgradeLevel(UpgradeType.Adrenal_Glands) > 0);
         tp.setConsume(self.hasResearched(TechType.Consume));
+        tp.setPlague(self.hasResearched(TechType.Plague));
 
         tp.setCarapaceUpgrades(self.getUpgradeLevel(UpgradeType.Zerg_Carapace));
         tp.setMeleeUpgrades(self.getUpgradeLevel(UpgradeType.Zerg_Melee_Attacks));
