@@ -66,9 +66,9 @@ public class Defiler extends ManagedUnit {
         Race enemyRace = game.enemy().getRace();
 
         if (enemyRace == Race.Protoss) {
+            if (energy < PLAGUE_ENERGY && tryConsume()) return true;
             if (energy >= PLAGUE_ENERGY && tryPlague()) return true;
             if (energy >= DARK_SWARM_ENERGY && tryDarkSwarm()) return true;
-            if (energy < PLAGUE_ENERGY && tryConsume()) return true;
         } else {
             if (energy < DARK_SWARM_ENERGY && tryConsume()) return true;
             if (energy >= DARK_SWARM_ENERGY && tryDarkSwarm()) return true;
@@ -129,14 +129,16 @@ public class Defiler extends ManagedUnit {
 
         for (Unit candidate : enemies) {
             int nearbyCount = 0;
+            int splashHp = 0;
             for (Unit other : enemies) {
                 if (candidate.getDistance(other) <= PLAGUE_SPLASH_RADIUS) {
                     nearbyCount++;
+                    splashHp += other.getHitPoints();
                 }
             }
 
             boolean highValue = isHighValuePlagueTarget(candidate.getType());
-            int score = nearbyCount;
+            int score = splashHp / 50 + nearbyCount;
             if (highValue) score += 3;
 
             if (nearbyCount >= 2 || highValue) {
@@ -156,11 +158,13 @@ public class Defiler extends ManagedUnit {
     }
 
     private boolean isHighValuePlagueTarget(UnitType type) {
-        return type == UnitType.Protoss_Carrier
+        return type == UnitType.Terran_Marine
                 || type == UnitType.Terran_Battlecruiser
-                || type == UnitType.Terran_Siege_Tank_Siege_Mode
-                || type == UnitType.Terran_Siege_Tank_Tank_Mode
-                || type == UnitType.Protoss_Archon;
+                || type == UnitType.Terran_Science_Vessel
+                || type == UnitType.Zerg_Mutalisk
+                || type == UnitType.Protoss_Carrier
+                || type == UnitType.Protoss_Reaver
+                || type == UnitType.Protoss_Dragoon;
     }
 
     private boolean tryDarkSwarm() {
