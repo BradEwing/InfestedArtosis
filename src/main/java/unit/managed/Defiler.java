@@ -78,7 +78,6 @@ public class Defiler extends ManagedUnit {
                 .stream()
                 .filter(u -> u.getPlayer() == game.self())
                 .filter(u -> u.getType() == UnitType.Zerg_Zergling)
-                .filter(Unit::exists)
                 .collect(Collectors.toList());
 
         if (candidates.isEmpty()) return false;
@@ -113,6 +112,7 @@ public class Defiler extends ManagedUnit {
                 .stream()
                 .filter(u -> u.getPlayer().isEnemy(game.self()))
                 .filter(u -> u.isDetected() && !u.isPlagued())
+                .filter(u -> !u.getType().isBuilding() || util.Filter.isHostileBuilding(u.getType()))
                 .collect(Collectors.toList());
 
         if (enemies.isEmpty()) return false;
@@ -143,7 +143,7 @@ public class Defiler extends ManagedUnit {
         }
 
         if (bestTarget != null) {
-            unit.useTech(TechType.Plague, bestTarget.getPosition());
+            unit.useTech(TechType.Plague, bestTarget);
             castLockoutUntilFrame = game.getFrameCount() + CAST_LOCKOUT_FRAMES;
             return true;
         }
@@ -184,11 +184,9 @@ public class Defiler extends ManagedUnit {
 
         Position castPosition = centroid(nearbyEnemies);
 
-        for (Unit existing : game.getAllUnits()) {
+        for (Unit existing : game.getUnitsInRadius(castPosition, DARK_SWARM_RADIUS)) {
             if (existing.getType() == UnitType.Spell_Dark_Swarm) {
-                if (castPosition.getDistance(existing.getPosition()) < DARK_SWARM_RADIUS) {
-                    return false;
-                }
+                return false;
             }
         }
         unit.useTech(TechType.Dark_Swarm, castPosition);
@@ -211,13 +209,10 @@ public class Defiler extends ManagedUnit {
     }
 
     private void moveToSafePosition() {
-        List<Unit> nearbyEnemies = getEnemiesInRadius(unit.getX(), unit.getY());
-        if (!nearbyEnemies.isEmpty()) {
-            Position retreatPos = getSimpleRetreatPosition();
-            if (retreatPos != null) {
-                unit.move(retreatPos);
-                return;
-            }
+        Position retreatPos = getSimpleRetreatPosition();
+        if (retreatPos != null) {
+            unit.move(retreatPos);
+            return;
         }
 
         if (fightTarget != null && fightTarget.exists()) {
