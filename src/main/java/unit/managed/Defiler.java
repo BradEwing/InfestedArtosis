@@ -184,13 +184,12 @@ public class Defiler extends ManagedUnit {
 
         if (nearbyEnemies.isEmpty()) return false;
 
-        List<Unit> engagedMelee = friendlyMelee.stream()
-                .filter(m -> nearbyEnemies.stream().anyMatch(e -> m.getDistance(e) <= SAFE_DISTANCE))
-                .collect(Collectors.toList());
+        boolean meleeEngaged = friendlyMelee.stream()
+                .anyMatch(m -> nearbyEnemies.stream().anyMatch(e -> m.getDistance(e) <= SAFE_DISTANCE));
 
-        if (engagedMelee.isEmpty()) return false;
+        if (!meleeEngaged) return false;
 
-        Position castPosition = centroid(engagedMelee);
+        Position castPosition = centroid(nearbyEnemies);
 
         for (Unit existing : game.getAllUnits()) {
             if (existing.getType() == UnitType.Spell_Dark_Swarm) {
