@@ -16,7 +16,8 @@ public class Defiler extends ManagedUnit {
     private static final int PLAGUE_ENERGY = 150;
     private static final int SAFE_DISTANCE = 256;
     private static final int SPELL_RANGE = 288;
-    private static final int CONSUME_RANGE = 64;
+    private static final int CONSUME_CAST_RANGE = 32;
+    private static final int CONSUME_SEARCH_RANGE = 256;
     private static final int CAST_LOCKOUT_FRAMES = 36;
     private static final int PLAGUE_SPLASH_RADIUS = 64;
     private static final int DARK_SWARM_RADIUS = 192;
@@ -80,7 +81,7 @@ public class Defiler extends ManagedUnit {
     private boolean tryConsume() {
         if (!game.self().hasResearched(TechType.Consume)) return false;
 
-        List<Unit> candidates = game.getUnitsInRadius(unit.getPosition(), CONSUME_RANGE)
+        List<Unit> candidates = game.getUnitsInRadius(unit.getPosition(), CONSUME_SEARCH_RANGE)
                 .stream()
                 .filter(u -> u.getPlayer() == game.self())
                 .filter(u -> u.getType() == UnitType.Zerg_Zergling)
@@ -99,8 +100,16 @@ public class Defiler extends ManagedUnit {
             }
         }
 
-        unit.useTech(TechType.Consume, closest);
-        castLockoutUntilFrame = game.getFrameCount() + CAST_LOCKOUT_FRAMES;
+        if (closestDist <= CONSUME_CAST_RANGE) {
+            unit.useTech(TechType.Consume, closest);
+            castLockoutUntilFrame = game.getFrameCount() + CAST_LOCKOUT_FRAMES;
+            return true;
+        }
+
+        List<Unit> nearbyEnemies = getEnemiesInRadius(unit.getX(), unit.getY());
+        if (!nearbyEnemies.isEmpty()) return false;
+
+        unit.move(closest.getPosition());
         return true;
     }
 
