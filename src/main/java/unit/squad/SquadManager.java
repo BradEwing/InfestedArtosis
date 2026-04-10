@@ -683,6 +683,11 @@ public class SquadManager {
             return;
         }
 
+        if (squad.isGroundSquad() && squad.hasOnly(UnitType.Zerg_Defiler)) {
+            rallySquad(squad);
+            return;
+        }
+
         Set<Position> stormPositions = gameState.getActiveStormPositions();
         if (!stormPositions.isEmpty()) {
             boolean anyUnitInStorm = false;

@@ -2,7 +2,6 @@ package unit.managed;
 
 import bwapi.Game;
 import bwapi.Position;
-import bwapi.Race;
 import bwapi.TechType;
 import bwapi.Unit;
 import bwapi.UnitType;
@@ -63,17 +62,11 @@ public class Defiler extends ManagedUnit {
         if (unit.getSpellCooldown() > 0) return false;
 
         int energy = unit.getEnergy();
-        Race enemyRace = game.enemy().getRace();
+        int consumeThreshold = game.self().hasResearched(TechType.Plague) ? PLAGUE_ENERGY : DARK_SWARM_ENERGY;
 
-        if (enemyRace == Race.Protoss) {
-            if (energy < PLAGUE_ENERGY && tryConsume()) return true;
-            if (energy >= PLAGUE_ENERGY && tryPlague()) return true;
-            if (energy >= DARK_SWARM_ENERGY && tryDarkSwarm()) return true;
-        } else {
-            if (energy < DARK_SWARM_ENERGY && tryConsume()) return true;
-            if (energy >= DARK_SWARM_ENERGY && tryDarkSwarm()) return true;
-            if (energy >= PLAGUE_ENERGY && tryPlague()) return true;
-        }
+        if (energy < consumeThreshold && tryConsume()) return true;
+        if (energy >= PLAGUE_ENERGY && tryPlague()) return true;
+        if (energy >= DARK_SWARM_ENERGY && tryDarkSwarm()) return true;
 
         return false;
     }
