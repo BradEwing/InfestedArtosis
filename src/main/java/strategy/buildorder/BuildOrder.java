@@ -357,6 +357,10 @@ public abstract class BuildOrder {
             techProgression.setPlannedConsume(true);
         }
 
+        if (techType == TechType.Plague) {
+            techProgression.setPlannedPlague(true);
+        }
+
         return new TechPlan(techType, priority, true);
     }
 

@@ -43,6 +43,7 @@ public class TechProgression {
     private boolean anabolicSynthesis = false;
     private boolean adrenalGlands = false;
     private boolean consume = false;
+    private boolean plague = false;
     private boolean plannedOverlordSpeed = false;
 
     // Planned Upgrades
@@ -59,6 +60,7 @@ public class TechProgression {
     private boolean plannedAnabolicSynthesis = false;
     private boolean plannedAdrenalGlands = false;
     private boolean plannedConsume = false;
+    private boolean plannedPlague = false;
 
     public boolean canPlanSunkenColony() {
         return spawningPool;
@@ -118,6 +120,10 @@ public class TechProgression {
 
     public boolean canPlanConsume() {
         return defilerMound && !plannedConsume && !consume;
+    }
+
+    public boolean canPlanPlague() {
+        return defilerMound && !plannedPlague && !plague;
     }
 
     public boolean canPlanMetabolicBoost() {

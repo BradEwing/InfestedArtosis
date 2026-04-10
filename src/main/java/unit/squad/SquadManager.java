@@ -1282,6 +1282,25 @@ public class SquadManager {
             }
             return;
         }
+        if (managedUnit.getUnitType() == UnitType.Zerg_Defiler) {
+            Set<Unit> enemies = gameState.getVisibleEnemyUnits();
+            Unit nearestEnemy = null;
+            double nearestDistance = Double.MAX_VALUE;
+            for (Unit enemyUnit : enemies) {
+                if (!enemyUnit.isDetected()) continue;
+                double d = unit.getDistance(enemyUnit);
+                if (d < nearestDistance) {
+                    nearestDistance = d;
+                    nearestEnemy = enemyUnit;
+                }
+            }
+            if (nearestEnemy != null) {
+                managedUnit.setFightTarget(nearestEnemy);
+            } else {
+                managedUnit.setMovementTargetPosition(gameState.pollScoutTarget());
+            }
+            return;
+        }
         List<Unit> enemyUnits = new ArrayList<>();
         enemyUnits.addAll(gameState.getVisibleEnemyUnits());
 

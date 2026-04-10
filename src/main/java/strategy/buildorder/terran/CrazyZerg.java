@@ -82,7 +82,7 @@ public class CrazyZerg extends TerranBase {
         boolean wantQueensNest = gameState.canPlanQueensNest() && extractorCount >= 3;
         boolean wantHive = gameState.canPlanHive();
         boolean wantUltraliskCavern = gameState.canPlanUltraliskCavern();
-        boolean wantDefilerMound = false;
+        boolean wantDefilerMound = techProgression.canPlanDefilerMound() && extractorCount >= 4;
 
         boolean wantMetabolicBoost = techProgression.canPlanMetabolicBoost() && hasLairOrHive;
         boolean wantCarapace = techProgression.canPlanCarapaceUpgrades() && techProgression.getEvolutionChambers() > 0;
@@ -94,7 +94,8 @@ public class CrazyZerg extends TerranBase {
         boolean wantChitinousPlating = techProgression.canPlanChitinousPlating();
         boolean wantAnabolicSynthesis = techProgression.canPlanAnabolicSynthesis()
                 && techProgression.isChitinousPlating();
-        boolean wantConsume = false;
+        boolean wantConsume = techProgression.canPlanConsume();
+        boolean wantPlague = techProgression.canPlanPlague();
         boolean wantAdrenalGlands = techProgression.canPlanAdrenalGlands();
         boolean wantOverlordSpeed = needOverlordSpeed(gameState) && techProgression.canPlanOverlordSpeed();
 
@@ -217,6 +218,11 @@ public class CrazyZerg extends TerranBase {
         if (wantConsume) {
             Plan consumePlan = this.planTech(gameState, TechType.Consume);
             plans.add(consumePlan);
+        }
+
+        if (wantPlague) {
+            Plan plaguePlan = this.planTech(gameState, TechType.Plague);
+            plans.add(plaguePlan);
         }
 
         if (wantAdrenalGlands) {

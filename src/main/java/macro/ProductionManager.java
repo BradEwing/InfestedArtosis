@@ -255,6 +255,7 @@ public class ProductionManager {
             case Lurker_Aspect:
                 return UnitType.Zerg_Hydralisk_Den;
             case Consume:
+            case Plague:
                 return UnitType.Zerg_Defiler_Mound;
             default:
                 return null;
@@ -459,6 +460,7 @@ public class ProductionManager {
             case Lurker_Aspect:
                 return techProgression.isHydraliskDen();
             case Consume:
+            case Plague:
                 return techProgression.isDefilerMound();
             default:
                 return false;
