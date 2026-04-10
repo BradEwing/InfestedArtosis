@@ -58,11 +58,6 @@ public class Defiler extends ManagedUnit {
         unit.move(containPosition);
     }
 
-    @Override
-    protected void retreat() {
-        super.retreat();
-    }
-
     private boolean tryCastSpells() {
         if (unit.getSpellCooldown() > 0) return false;
 
@@ -72,7 +67,7 @@ public class Defiler extends ManagedUnit {
         if (enemyRace == Race.Protoss) {
             if (energy >= PLAGUE_ENERGY && tryPlague()) return true;
             if (energy >= DARK_SWARM_ENERGY && tryDarkSwarm()) return true;
-            if (energy < DARK_SWARM_ENERGY && tryConsume()) return true;
+            if (energy < PLAGUE_ENERGY && tryConsume()) return true;
         } else {
             if (energy < DARK_SWARM_ENERGY && tryConsume()) return true;
             if (energy >= DARK_SWARM_ENERGY && tryDarkSwarm()) return true;
@@ -104,12 +99,9 @@ public class Defiler extends ManagedUnit {
             }
         }
 
-        if (closest != null) {
-            unit.useTech(TechType.Consume, closest);
-            castLockoutUntilFrame = game.getFrameCount() + CAST_LOCKOUT_FRAMES;
-            return true;
-        }
-        return false;
+        unit.useTech(TechType.Consume, closest);
+        castLockoutUntilFrame = game.getFrameCount() + CAST_LOCKOUT_FRAMES;
+        return true;
     }
 
     private boolean tryPlague() {
@@ -185,17 +177,15 @@ public class Defiler extends ManagedUnit {
 
         if (engagedMelee.isEmpty()) return false;
 
+        Position castPosition = centroid(engagedMelee);
+
         for (Unit existing : game.getAllUnits()) {
             if (existing.getType() == UnitType.Spell_Dark_Swarm) {
-                Position swarmPos = existing.getPosition();
-                Position candidatePos = centroid(engagedMelee);
-                if (candidatePos.getDistance(swarmPos) < DARK_SWARM_RADIUS) {
+                if (castPosition.getDistance(existing.getPosition()) < DARK_SWARM_RADIUS) {
                     return false;
                 }
             }
         }
-
-        Position castPosition = centroid(engagedMelee);
         unit.useTech(TechType.Dark_Swarm, castPosition);
         castLockoutUntilFrame = game.getFrameCount() + CAST_LOCKOUT_FRAMES;
         return true;

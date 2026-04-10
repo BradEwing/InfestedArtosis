@@ -1297,7 +1297,9 @@ public class SquadManager {
             if (nearestEnemy != null) {
                 managedUnit.setFightTarget(nearestEnemy);
             } else {
-                managedUnit.setMovementTargetPosition(gameState.pollScoutTarget());
+                managedUnit.setFightTarget(null);
+                managedUnit.setRallyPoint(squad.getCenter());
+                managedUnit.setRole(UnitRole.RALLY);
             }
             return;
         }
