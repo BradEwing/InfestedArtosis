@@ -34,7 +34,7 @@ public final class TargetScorer {
 
         for (Unit candidate : candidates) {
             UnitType candidateType = candidate.getType();
-            Priority priority = assignPriority(candidateType, attackerIsFlying);
+            Priority priority = assignPriority(candidateType, attackerIsFlying, candidate);
             double score = scoreWithinTier(attacker, candidate, currentTarget);
 
             if (bestPriority == null
@@ -49,7 +49,7 @@ public final class TargetScorer {
         return bestTarget;
     }
 
-    private static Priority assignPriority(UnitType candidateType, boolean attackerIsFlying) {
+    private static Priority assignPriority(UnitType candidateType, boolean attackerIsFlying, Unit candidate) {
         if (candidateType.isBuilding()) {
             if (Filter.isHostileBuilding(candidateType)) {
                 boolean canHitMe = canAttackType(candidateType, attackerIsFlying);
@@ -59,6 +59,9 @@ public final class TargetScorer {
         }
 
         if (Filter.isWorkerType(candidateType)) {
+            if (Filter.isMeanWorker(candidate)) {
+                return Priority.CRITICAL;
+            }
             return Priority.ELEVATED;
         }
 
