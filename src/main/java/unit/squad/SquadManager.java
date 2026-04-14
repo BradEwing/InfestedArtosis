@@ -231,8 +231,7 @@ public class SquadManager {
 
         filtered = filterByProximity(filtered, unit);
 
-        Set<Position> basePositions = gameState.getBaseData().getMyBasePositions();
-        Unit bestTarget = TargetScorer.selectTarget(unit, filtered, managedUnit.fightTarget, basePositions);
+        Unit bestTarget = TargetScorer.selectTarget(unit, filtered, managedUnit.fightTarget);
         if (bestTarget != null) {
             managedUnit.setFightTarget(bestTarget);
         }
@@ -1340,8 +1339,7 @@ public class SquadManager {
             }
         }
 
-        Set<Position> basePositions = gameState.getBaseData().getMyBasePositions();
-        Unit bestTarget = TargetScorer.selectTarget(unit, filtered, managedUnit.fightTarget, basePositions);
+        Unit bestTarget = TargetScorer.selectTarget(unit, filtered, managedUnit.fightTarget);
         if (bestTarget != null) {
             managedUnit.setFightTarget(bestTarget);
         }
