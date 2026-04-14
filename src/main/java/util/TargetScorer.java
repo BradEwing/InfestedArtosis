@@ -14,7 +14,6 @@ public final class TargetScorer {
         LOW,
         NORMAL,
         ELEVATED,
-        HIGH,
         CRITICAL
     }
 
