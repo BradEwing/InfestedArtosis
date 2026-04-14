@@ -34,9 +34,10 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import util.TargetScorer;
+
 import static java.lang.Math.min;
 import static util.Distance.manhattanTileDistance;
-import util.TargetScorer;
 
 public class SquadManager {
 
@@ -231,8 +232,7 @@ public class SquadManager {
 
         filtered = filterByProximity(filtered, unit);
 
-        Set<Position> basePositions = gameState.getBaseData().getMyBasePositions();
-        Unit bestTarget = TargetScorer.selectTarget(unit, filtered, managedUnit.fightTarget, basePositions);
+        Unit bestTarget = TargetScorer.selectTarget(unit, filtered, managedUnit.fightTarget);
         if (bestTarget != null) {
             managedUnit.setFightTarget(bestTarget);
         }
@@ -1308,8 +1308,7 @@ public class SquadManager {
             }
             return;
         }
-        List<Unit> enemyUnits = new ArrayList<>();
-        enemyUnits.addAll(gameState.getVisibleEnemyUnits());
+        List<Unit> enemyUnits = new ArrayList<>(gameState.getVisibleEnemyUnits());
 
         List<Unit> filtered = new ArrayList<>();
         for (Unit enemyUnit: enemyUnits) {
@@ -1340,8 +1339,7 @@ public class SquadManager {
             }
         }
 
-        Set<Position> basePositions = gameState.getBaseData().getMyBasePositions();
-        Unit bestTarget = TargetScorer.selectTarget(unit, filtered, managedUnit.fightTarget, basePositions);
+        Unit bestTarget = TargetScorer.selectTarget(unit, filtered, managedUnit.fightTarget);
         if (bestTarget != null) {
             managedUnit.setFightTarget(bestTarget);
         }

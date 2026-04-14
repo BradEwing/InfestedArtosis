@@ -25,35 +25,6 @@ public final class Filter {
         return closestUnit;
     }
 
-    public static Unit closestHostileUnit(Unit unit, List<Unit> unitList) {
-        if (unitList.size() == 1) {
-            return unitList.get(0);
-        }
-
-        Unit closestCombat = null;
-        int closestCombatDistance = Integer.MAX_VALUE;
-        Unit closestBuilding = null;
-        int closestBuildingDistance = Integer.MAX_VALUE;
-
-        for (Unit u : unitList) {
-            UnitType type = u.getType();
-            int distance = unit.getDistance(u.getPosition());
-            if (!type.isBuilding() || isHostileBuilding(type)) {
-                if (distance < closestCombatDistance) {
-                    closestCombat = u;
-                    closestCombatDistance = distance;
-                }
-            } else {
-                if (distance < closestBuildingDistance) {
-                    closestBuilding = u;
-                    closestBuildingDistance = distance;
-                }
-            }
-        }
-
-        return closestCombat != null ? closestCombat : closestBuilding;
-    }
-
     public static boolean isHostileBuilding(UnitType unitType) {
         if (!unitType.isBuilding()) {
             return false;

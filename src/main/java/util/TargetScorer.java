@@ -1,27 +1,23 @@
 package util;
 
-import bwapi.Position;
 import bwapi.Unit;
 import bwapi.UnitType;
 import bwapi.WeaponType;
 
 import java.util.List;
-import java.util.Set;
 
 public final class TargetScorer {
 
     private static final double CURRENT_TARGET_BONUS = 1.2;
-    private static final int WORKER_NEAR_BASE_RADIUS = 512;
 
     private enum Priority {
         LOW,
         NORMAL,
         ELEVATED,
-        HIGH,
         CRITICAL
     }
 
-    public static Unit selectTarget(Unit attacker, List<Unit> candidates, Unit currentTarget, Set<Position> friendlyBasePositions) {
+    public static Unit selectTarget(Unit attacker, List<Unit> candidates, Unit currentTarget) {
         if (candidates.isEmpty()) {
             return null;
         }
@@ -37,7 +33,7 @@ public final class TargetScorer {
 
         for (Unit candidate : candidates) {
             UnitType candidateType = candidate.getType();
-            Priority priority = assignPriority(candidateType, attackerIsFlying, candidate, friendlyBasePositions);
+            Priority priority = assignPriority(candidateType, attackerIsFlying, candidate);
             double score = scoreWithinTier(attacker, candidate, currentTarget);
 
             if (bestPriority == null
@@ -52,26 +48,20 @@ public final class TargetScorer {
         return bestTarget;
     }
 
-    private static Priority assignPriority(UnitType candidateType, boolean attackerIsFlying, Unit candidate, Set<Position> friendlyBasePositions) {
+    private static Priority assignPriority(UnitType candidateType, boolean attackerIsFlying, Unit candidate) {
         if (candidateType.isBuilding()) {
             if (Filter.isHostileBuilding(candidateType)) {
                 boolean canHitMe = canAttackType(candidateType, attackerIsFlying);
-                return canHitMe ? Priority.CRITICAL : Priority.ELEVATED;
+                return canHitMe ? Priority.CRITICAL : Priority.NORMAL;
             }
             return Priority.LOW;
         }
 
         if (Filter.isWorkerType(candidateType)) {
             if (Filter.isMeanWorker(candidate)) {
-                return Priority.ELEVATED;
+                return Priority.CRITICAL;
             }
-            if (isNearFriendlyBase(candidate, friendlyBasePositions)) {
-                return Priority.ELEVATED;
-            }
-            if (attackerIsFlying) {
-                return Priority.ELEVATED;
-            }
-            return Priority.NORMAL;
+            return Priority.ELEVATED;
         }
 
         boolean canHitMe = canAttackType(candidateType, attackerIsFlying);
@@ -99,18 +89,5 @@ public final class TargetScorer {
         if (unitType == UnitType.Protoss_Carrier) return true;
         WeaponType weapon = targetIsFlying ? unitType.airWeapon() : unitType.groundWeapon();
         return weapon != null && weapon != WeaponType.None;
-    }
-
-    private static boolean isNearFriendlyBase(Unit unit, Set<Position> basePositions) {
-        if (basePositions == null || basePositions.isEmpty()) {
-            return false;
-        }
-        Position unitPos = unit.getPosition();
-        for (Position basePos : basePositions) {
-            if (unitPos.getDistance(basePos) <= WORKER_NEAR_BASE_RADIUS) {
-                return true;
-            }
-        }
-        return false;
     }
 }
