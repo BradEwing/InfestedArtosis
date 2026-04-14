@@ -56,7 +56,7 @@ public final class TargetScorer {
         if (candidateType.isBuilding()) {
             if (Filter.isHostileBuilding(candidateType)) {
                 boolean canHitMe = canAttackType(candidateType, attackerIsFlying);
-                return canHitMe ? Priority.CRITICAL : Priority.ELEVATED;
+                return canHitMe ? Priority.CRITICAL : Priority.NORMAL;
             }
             return Priority.LOW;
         }
