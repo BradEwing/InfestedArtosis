@@ -45,5 +45,7 @@ run_proxy.bat
 *.DS_Store
 
 # LLM Tooling
-.claude
+.claude/agent-memory/
+.claude/settings.json
+.claude/settings.local.json
 .cursor
