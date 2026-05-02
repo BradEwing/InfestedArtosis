@@ -490,7 +490,8 @@ public class Debug {
 
             game.drawCircleMap(snap.getSquadCenter(), (int) 256, resultColor);
             game.drawTextMap(snap.getSquadCenter().getX() - 40, snap.getSquadCenter().getY() - 20,
-                    String.format("%s ratio=%.2f", snap.getResult(), snap.getOverallRatio()), Text.White);
+                    String.format("%s ratio=%.2f [%.2f/%.2f]", snap.getResult(), snap.getOverallRatio(),
+                            snap.getRetreatThreshold(), snap.getEngageThreshold()), Text.White);
             game.drawTextMap(snap.getSquadCenter().getX() - 40, snap.getSquadCenter().getY() - 10,
                     String.format("F=%.1f E=%.1f gR=%.2f cR=%.2f",
                             snap.getFriendlyTotal(), snap.getEnemyTotal(), snap.getGroundRatio(), snap.getCombinedRatio()), Text.White);
