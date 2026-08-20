@@ -2,6 +2,7 @@ package unit.squad.horizon;
 
 import bwapi.DamageType;
 import bwapi.Position;
+import bwapi.Race;
 import bwapi.Unit;
 import bwapi.UnitSizeType;
 import bwapi.UnitType;
@@ -33,8 +34,8 @@ public class HorizonCombatSimulator implements CombatSimulator {
     private static final double HEIGHT_BONUS = 1.15;
     private static final Time RECENTLY_SEEN_THRESHOLD = new Time(0, 5);
     private static final Time BUILDING_SEEN_THRESHOLD = new Time(0, 45);
-    private static final double ENGAGE_THRESHOLD = 1.0;
-    private static final double RETREAT_THRESHOLD = 0.7;
+    private static final double DEFAULT_ENGAGE_THRESHOLD = 1.0;
+    private static final double DEFAULT_RETREAT_THRESHOLD = 0.7;
     private static final double SPEED_UPGRADE_PENALTY = 0.75;
     private static final int BUNKER_TRUST_FRAMES = 48;
     private static final int BUNKER_DECAY_FRAMES = 72;
@@ -170,15 +171,18 @@ public class HorizonCombatSimulator implements CombatSimulator {
         snapshot.setEnemyTotal(airSquad ? enemyAntiAirStr : enemyGroundStr);
         snapshot.setOverallRatio(overallRatio);
 
+        double engageThresh = engageThreshold(gameState.getOpponentRace());
+        double retreatThresh = retreatThreshold(gameState.getOpponentRace());
+
         CombatResult result;
-        if (overallRatio >= ENGAGE_THRESHOLD) {
+        if (overallRatio >= engageThresh) {
             result = CombatResult.ENGAGE;
-        } else if (overallRatio < RETREAT_THRESHOLD) {
-            result = CombatResult.RETREAT;
         } else {
             result = CombatResult.RETREAT;
         }
 
+        snapshot.setEngageThreshold(engageThresh);
+        snapshot.setRetreatThreshold(retreatThresh);
         snapshot.setResult(result);
         lastSnapshots.put(squad.getId(), snapshot);
 
@@ -370,6 +374,24 @@ public class HorizonCombatSimulator implements CombatSimulator {
         return baseModifier + (1.0 - baseModifier) * decayProgress;
     }
 
+    private double engageThreshold(Race opponentRace) {
+        switch (opponentRace) {
+            case Terran:  return 1.4;
+            case Protoss: return 1.4;
+            case Zerg:    return 1.3;
+            default:      return DEFAULT_ENGAGE_THRESHOLD;
+        }
+    }
+
+    private double retreatThreshold(Race opponentRace) {
+        switch (opponentRace) {
+            case Terran:  return 1.0;
+            case Protoss: return 0.8;
+            case Zerg:    return 0.7;
+            default:      return DEFAULT_RETREAT_THRESHOLD;
+        }
+    }
+
     private DamageType airDamageType(UnitType type) {
         WeaponType weapon = type.airWeapon();
         if (weapon == null || weapon == WeaponType.None) return DamageType.Normal;
@@ -399,6 +421,8 @@ public class HorizonCombatSimulator implements CombatSimulator {
         private double groundRatio;
         private double combinedRatio;
         private double overallRatio;
+        private double engageThreshold;
+        private double retreatThreshold;
         private CombatResult result;
     }
 }
