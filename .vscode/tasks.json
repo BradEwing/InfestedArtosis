@@ -20,6 +20,40 @@
                 "-File", "${workspaceFolder}/scripts/move-jar-for-scbw.ps1"
             ],
             "problemMatcher": []
+        },
+        {
+            "label": "Batch Games",
+            "type": "shell",
+            "command": "py",
+            "args": [
+                "${workspaceFolder}/scripts/batch/run.py",
+                "${input:opponent}",
+                "-n", "${input:games}"
+            ],
+            "problemMatcher": []
+        },
+        {
+            "label": "Batch Report",
+            "type": "shell",
+            "command": "py",
+            "args": [
+                "${workspaceFolder}/scripts/batch/report.py",
+                "--run", "latest"
+            ],
+            "problemMatcher": []
+        }
+    ],
+    "inputs": [
+        {
+            "id": "opponent",
+            "type": "promptString",
+            "description": "Opponent bot name"
+        },
+        {
+            "id": "games",
+            "type": "promptString",
+            "description": "Games per opponent",
+            "default": "100"
         }
     ]
 }

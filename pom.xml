@@ -66,6 +66,7 @@
                 <configuration>
                     <source>8</source>
                     <target>8</target>
+                    <proc>full</proc>
                 </configuration>
             </plugin>
             <plugin>
