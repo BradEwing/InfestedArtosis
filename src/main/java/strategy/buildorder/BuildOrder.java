@@ -148,9 +148,8 @@ public abstract class BuildOrder {
     }
 
     /**
-     * Emergency defense reachable from every build order, including openers whose plan()
-     * bodies never plan static defense. Composes the early rush floor with the build order's
-     * own requiredSunkens/zerglingsNeeded so race-specific logic is never lowered.
+     * Emergency defense reachable from every build order, including openers that
+     * never plan static defense. 
      * Returned plans carry reservations (sunken base, build tiles, planned unit counts) and
      * must be added to the production queue by the caller.
      */
