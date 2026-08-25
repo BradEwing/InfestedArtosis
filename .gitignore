@@ -48,4 +48,5 @@ run_proxy.bat
 .claude/agent-memory/
 .claude/settings.json
 .claude/settings.local.json
-.cursor
+.cursor__pycache__/
+*.pyc
