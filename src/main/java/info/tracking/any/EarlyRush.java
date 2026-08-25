@@ -14,7 +14,6 @@ import java.util.Set;
  * Race-agnostic early rush detector. Fires on arrival of enemy combat units at our
  * main or natural before the rush window closes, or on a scouted rush-oriented
  * build.
- * <p>
  */
 public class EarlyRush extends ObservedStrategy {
 
