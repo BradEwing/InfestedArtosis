@@ -25,6 +25,7 @@ import java.util.stream.Collectors;
  *
  */
 public class BaseData {
+    public static final int NATURAL_DEFENSE_TILE_RADIUS = 10;
 
     private Base mainBase;
     private Base naturalExpansion;
@@ -79,6 +80,15 @@ public class BaseData {
 
     public HashMap<Base, GroundPath> getBasePaths() {
         return this.allBasePaths;
+    }
+
+    public Set<TilePosition> ourBaseTiles(GameMap gameMap, int naturalTileRadius) {
+        Set<TilePosition> tiles = new HashSet<>(gameMap.getMainBaseTiles());
+        Base natural = getInferredNaturalBase();
+        if (natural != null) {
+            tiles.addAll(Distance.tilesWithinManhattanDistance(natural.getLocation(), naturalTileRadius));
+        }
+        return tiles;
     }
 
     public void initializeMainBase(Base base, GameMap map) {

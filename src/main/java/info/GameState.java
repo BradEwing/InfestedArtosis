@@ -34,6 +34,7 @@ import strategy.buildorder.BuildOrder;
 import unit.managed.ManagedUnit;
 import unit.managed.UnitRole;
 import util.Distance;
+import util.Filter;
 import util.Time;
 
 import java.util.ArrayList;
@@ -81,6 +82,7 @@ public class GameState {
     private boolean cannonRushed = false;
     private boolean cannonRushDefend = false;
     private boolean scvRushed = false;
+    private boolean earlyRushed = false;
 
     // TODO: refactor into common data structure, address access throughout bot
     private HashSet<Plan> plansScheduled = new HashSet<>();
@@ -678,6 +680,7 @@ public class GameState {
     public boolean canPlanExtractor() {
         return !isAllIn &&
                 !scvRushed &&
+                !earlyRushed &&
                 techProgression.canPlanExtractor() &&
                 baseData.canReserveExtractor() &&
                 (baseData.numExtractor() < 1 || needExtractor());
@@ -711,6 +714,15 @@ public class GameState {
             i += ourUnitCount(unitType);
         }
         return i;
+    }
+
+    public int enemyMobileGroundCombatUnitCount() {
+        return observedUnitTracker.getCountOfLivingUnits(Filter::isMobileGroundCombatUnit);
+    }
+
+    public int visibleEnemyMobileGroundCombatUnitsAtOurBases() {
+        Set<TilePosition> tiles = baseData.ourBaseTiles(gameMap, BaseData.NATURAL_DEFENSE_TILE_RADIUS);
+        return observedUnitTracker.getCountOfVisibleUnitsOnTiles(Filter::isMobileGroundCombatUnit, tiles);
     }
 
     public int enemyUnitCount(UnitType unitType) {

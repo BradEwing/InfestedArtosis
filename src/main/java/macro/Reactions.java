@@ -45,6 +45,10 @@ public class Reactions {
     private static final Predicate<Plan> IS_CREEP_COLONY = p ->
             p.getType() == PlanType.BUILDING && p.getPlannedUnit() == UnitType.Zerg_Creep_Colony;
 
+    private static final Time EARLY_RUSH_WINDOW = new Time(5, 0);
+    private static final Time EARLY_RUSH_HARD_DEADLINE = new Time(8, 0);
+    private static final int EARLY_RUSH_SAFE_ZERGLINGS = 12;
+
     private GameState gameState;
 
     public Reactions(GameState gameState) {
@@ -54,6 +58,7 @@ public class Reactions {
     public void onFrame() {
         cannonRushReaction();
         scvRushReaction();
+        earlyRushReaction();
         twoGateReaction();
         zvzSunkenReaction();
         ffeReaction();
@@ -80,7 +85,58 @@ public class Reactions {
         productionQueue.removeWhere(IS_HATCHERY, gameState::setImpossiblePlan);
 
         BaseData baseData = gameState.getBaseData();
+        cancelAllExtractors(baseData);
 
+        if (gameState.getTechProgression().isSpawningPool()) {
+            productionQueue.removeWhere(IS_DRONE, gameState::setImpossiblePlan);
+        }
+
+        if (baseData.getMyBases().size() == 1) {
+            baseData.setAllowSunkenAtMain(true);
+        }
+    }
+
+    private void earlyRushReaction() {
+        StrategyTracker strategyTracker = gameState.getStrategyTracker();
+        if (!strategyTracker.isDetectedStrategy("EarlyRush")) {
+            return;
+        }
+
+        if (gameState.getGameTime().greaterThan(EARLY_RUSH_HARD_DEADLINE)) {
+            gameState.setEarlyRushed(false);
+            return;
+        }
+
+        int attackersAtBase = gameState.visibleEnemyMobileGroundCombatUnitsAtOurBases();
+        int zerglingCount = gameState.ourUnitCount(UnitType.Zerg_Zergling);
+        boolean withinRushWindow = gameState.getGameTime().lessThanOrEqual(EARLY_RUSH_WINDOW);
+        boolean preparing = withinRushWindow && zerglingCount < EARLY_RUSH_SAFE_ZERGLINGS;
+        if (attackersAtBase == 0 && !preparing) {
+            gameState.setEarlyRushed(false);
+            return;
+        }
+
+        gameState.setEarlyRushed(true);
+
+        ProductionQueue productionQueue = gameState.getProductionQueue();
+        productionQueue.setPriorityWhere(IS_SPAWNING_POOL, 0);
+        productionQueue.removeWhere(IS_HATCHERY, gameState::setImpossiblePlan);
+
+        BaseData baseData = gameState.getBaseData();
+        cancelAllExtractors(baseData);
+
+        int droneCount = gameState.ourUnitCount(UnitType.Zerg_Drone);
+        if (droneCount >= 8 && zerglingCount < 8) {
+            productionQueue.removeWhere(IS_DRONE, gameState::setImpossiblePlan);
+        }
+
+        if (baseData.getMyBases().size() == 1) {
+            baseData.setAllowSunkenAtMain(true);
+        }
+    }
+
+    private void cancelAllExtractors(BaseData baseData) {
+        ProductionQueue productionQueue = gameState.getProductionQueue();
         productionQueue.removeWhere(IS_EXTRACTOR, plan -> {
             gameState.setImpossiblePlan(plan);
             if (plan.getBuildPosition() != null) {
@@ -120,14 +176,6 @@ public class Reactions {
             if (unit.getType() == UnitType.Zerg_Extractor && !unit.isCompleted()) {
                 unit.cancelMorph();
             }
-        }
-
-        if (gameState.getTechProgression().isSpawningPool()) {
-            productionQueue.removeWhere(IS_DRONE, gameState::setImpossiblePlan);
-        }
-
-        if (baseData.getMyBases().size() == 1) {
-            baseData.setAllowSunkenAtMain(true);
         }
     }
 

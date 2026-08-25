@@ -2,6 +2,7 @@ package info.tracking.any;
 
 import bwapi.TilePosition;
 import bwapi.UnitType;
+import info.BaseData;
 import info.tracking.ObservedStrategy;
 import info.tracking.ObservedUnitTracker;
 import info.tracking.StrategyDetectionContext;
@@ -22,7 +23,6 @@ public class EarlyRush extends ObservedStrategy {
     private static final Time FAST_POOL_COMPLETED_BY = new Time(1, 52);
     private static final int MIN_ARRIVING_COMBAT_UNITS = 2;
     private static final int MIN_PRODUCTION_BUILDINGS = 2;
-    private static final int NATURAL_TILE_RADIUS = 10;
 
     public EarlyRush() {
         super("EarlyRush");
@@ -38,7 +38,7 @@ public class EarlyRush extends ObservedStrategy {
     }
 
     private boolean combatUnitsArrived(StrategyDetectionContext context) {
-        Set<TilePosition> tiles = context.ourBaseTiles(NATURAL_TILE_RADIUS);
+        Set<TilePosition> tiles = context.ourBaseTiles(BaseData.NATURAL_DEFENSE_TILE_RADIUS);
         int arrived = context.getTracker().getCountOfVisibleUnitsOnTiles(Filter::isMobileGroundCombatUnit, tiles);
         return arrived >= MIN_ARRIVING_COMBAT_UNITS;
     }
