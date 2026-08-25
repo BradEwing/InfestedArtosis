@@ -334,7 +334,8 @@ public class LearningManager {
         }
 
         boolean isRusher = lastGameDetectedStrategies.contains("CannonRush")
-                || lastGameDetectedStrategies.contains("SCVRush");
+                || lastGameDetectedStrategies.contains("SCVRush")
+                || lastGameDetectedStrategies.contains("EarlyRush");
         if (isRusher) {
             BuildOrder overpool = buildOrderFactory.getByName("Overpool");
             if (overpool != null && buildOrderFactory.isPlayableOpener(overpool)) {

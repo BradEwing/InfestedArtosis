@@ -635,6 +635,9 @@ public class SquadManager {
             final int zealots = gameState.enemyUnitCount(UnitType.Protoss_Zealot);
             moveOutThreshold += zealots * 2;
         }
+        if (gameState.isEarlyRushed()) {
+            moveOutThreshold += gameState.enemyMobileGroundCombatUnitCount() * 2;
+        }
 
         return Math.min(moveOutThreshold, 40);
     }
@@ -669,6 +672,9 @@ public class SquadManager {
         if (strategyTracker.isDetectedStrategy("2Gate")) {
             final int zealots = gameState.enemyUnitCount(UnitType.Protoss_Zealot);
             threshold += zealots * 2;
+        }
+        if (gameState.isEarlyRushed()) {
+            threshold += gameState.enemyMobileGroundCombatUnitCount() * 2;
         }
 
         return threshold;

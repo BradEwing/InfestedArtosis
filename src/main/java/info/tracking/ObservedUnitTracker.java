@@ -118,6 +118,14 @@ public class ObservedUnitTracker {
                 .count();
     }
 
+    public int getCountOfLivingUnits(Predicate<UnitType> typeFilter) {
+        return (int) observedUnits.values()
+                .stream()
+                .filter(ou -> typeFilter.test(ou.getUnitType()))
+                .filter(ou -> ou.getDestroyedFrame() == null)
+                .count();
+    }
+
     public boolean hasLivingGasBuilding() {
         return getCountOfLivingUnits(UnitType.Protoss_Assimilator, UnitType.Terran_Refinery, UnitType.Zerg_Extractor) > 0;
     }

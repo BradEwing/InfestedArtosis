@@ -20,6 +20,7 @@ import macro.plan.UnitPlan;
 import macro.plan.UpgradePlan;
 import util.Time;
 
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
@@ -27,6 +28,8 @@ import java.util.Set;
 import java.util.Objects;
 
 public abstract class BuildOrder {
+    private static final int EARLY_RUSH_SECOND_SUNKEN_ATTACKERS = 4;
+
     @Getter
     private final String name;
     protected Time activatedAt;
@@ -121,15 +124,43 @@ public abstract class BuildOrder {
     }
 
     protected int requiredSunkens(GameState gameState) {
-        return 0;
+        if (!gameState.isEarlyRushed()) {
+            return 0;
+        }
+        int attackers = gameState.enemyMobileGroundCombatUnitsAtOurBases();
+        return attackers >= EARLY_RUSH_SECOND_SUNKEN_ATTACKERS ? 2 : 1;
     }
 
     protected int requiredSpores(GameState gameState) {
         return 0;
     }
 
-    protected int zerglingsNeeded(GameState gameState) { 
-        return 6; 
+    protected int zerglingsNeeded(GameState gameState) {
+        if (!gameState.isEarlyRushed()) {
+            return 6;
+        }
+        return Math.max(6, 2 * gameState.enemyMobileGroundCombatUnitCount());
+    }
+
+    /**
+     * Emergency defense reachable from every build order, including openers whose plan()
+     * bodies never plan static defense. Returns an empty list unless an early rush is active.
+     */
+    public List<Plan> planEmergencyDefense(GameState gameState) {
+        List<Plan> plans = new ArrayList<>();
+        if (!gameState.isEarlyRushed()) {
+            return plans;
+        }
+        if (!gameState.basesNeedingSunken(this.requiredSunkens(gameState)).isEmpty()) {
+            plans.addAll(this.planSunkenColony(gameState, 0));
+        }
+        int zerglingCount = gameState.ourUnitCount(UnitType.Zerg_Zergling);
+        if (zerglingCount < this.zerglingsNeeded(gameState) && gameState.canPlanUnit(UnitType.Zerg_Zergling)) {
+            Plan zerglingPlan = this.planUnit(gameState, UnitType.Zerg_Zergling);
+            zerglingPlan.setPriority(0);
+            plans.add(zerglingPlan);
+        }
+        return plans;
     }
 
     protected Plan planNewBase(GameState gameState) {
@@ -212,6 +243,10 @@ public abstract class BuildOrder {
     // Subtracks 500 from priority as a stop gap to prioritize over existing items in queue.
     // TODO: Clear queue if defensive structure enters queue?
     protected Set<Plan> planSunkenColony(GameState gameState) {
+        return planSunkenColony(gameState, 5);
+    }
+
+    protected Set<Plan> planSunkenColony(GameState gameState, int priority) {
         Set<Plan> plans = new HashSet<>();
         BaseData baseData = gameState.getBaseData();
         BuildingPlanner buildingPlanner = gameState.getBuildingPlanner();
@@ -225,8 +260,8 @@ public abstract class BuildOrder {
         }
         baseData.reserveSunkenColony(eligibleBase.get());
         buildingPlanner.reservePlannedBuildingTiles(location, UnitType.Zerg_Creep_Colony);
-        Plan creepColonyPlan = new BuildingPlan(UnitType.Zerg_Creep_Colony, 5, location);
-        Plan sunkenColonyPlan = new BuildingPlan(UnitType.Zerg_Sunken_Colony, 5, location);
+        Plan creepColonyPlan = new BuildingPlan(UnitType.Zerg_Creep_Colony, priority, location);
+        Plan sunkenColonyPlan = new BuildingPlan(UnitType.Zerg_Sunken_Colony, priority, location);
         plans.add(creepColonyPlan);
         plans.add(sunkenColonyPlan);
         return plans;
