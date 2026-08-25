@@ -25,14 +25,15 @@ public class ObservedUnitTracker {
     }
 
     public void onFrame(int currentFrame) {
+        Time t = new Time(currentFrame);
         for (ObservedUnit ou : observedUnits.values()) {
             if (ou.getDestroyedFrame() != null) {
                 continue;
             }
             Unit unit = ou.getUnit();
             if (unit.isVisible()) {
-                if (!ou.isCompleted() && unit.isCompleted()) {
-                    ou.setCompleted(true);
+                if (unit.isCompleted()) {
+                    ou.markCompleted(t);
                 }
                 ou.setLastKnownHitPoints(unit.getHitPoints());
                 ou.setLastKnownShields(unit.getShields());
@@ -47,13 +48,17 @@ public class ObservedUnitTracker {
         Time t = new Time(currentFrame);
         if (!observedUnits.containsKey(unit)) {
             ObservedUnit ou = new ObservedUnit(unit, t, isProxied);
-            ou.setCompleted(unit.isCompleted());
+            if (unit.isCompleted()) {
+                ou.markCompleted(t);
+            }
             observedUnits.put(unit, ou);
         } else {
             ObservedUnit u = observedUnits.get(unit);
             u.setLastObservedFrame(t);
             u.setLastKnownLocation(unit.getPosition());
-            u.setCompleted(unit.isCompleted());
+            if (unit.isCompleted()) {
+                u.markCompleted(t);
+            }
             updateUnitTypeChange(unit);
         }
     }
@@ -81,6 +86,14 @@ public class ObservedUnitTracker {
                 .stream()
                 .filter(ou -> ou.getUnitType() == type)
                 .filter(ou -> ou.getFirstObservedFrame().lessThanOrEqual(t))
+                .count();
+    }
+
+    public int getUnitTypeCountCompletedBeforeTime(UnitType type, Time t) {
+        return (int) observedUnits.values()
+                .stream()
+                .filter(ou -> ou.getUnitType() == type)
+                .filter(ou -> ou.getCompletedFrame() != null && ou.getCompletedFrame().lessThanOrEqual(t))
                 .count();
     }
 
