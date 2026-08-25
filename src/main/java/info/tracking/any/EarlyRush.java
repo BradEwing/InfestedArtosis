@@ -22,6 +22,7 @@ public class EarlyRush extends ObservedStrategy {
     private static final Time SCOUT_DEADLINE = new Time(2, 30);
     private static final int MIN_ARRIVING_COMBAT_UNITS = 2;
     private static final int MIN_PRODUCTION_BUILDINGS = 2;
+    private static final int NATURAL_TILE_RADIUS = 10;
 
     public EarlyRush() {
         super("EarlyRush");
@@ -37,11 +38,8 @@ public class EarlyRush extends ObservedStrategy {
     }
 
     private boolean combatUnitsArrived(StrategyDetectionContext context) {
-        Set<TilePosition> tiles = ourBaseTiles(context);
-        if (tiles.isEmpty()) {
-            return false;
-        }
-        int arrived = context.getTracker().getCountOfLivingUnitsOnTiles(Filter::isMobileGroundCombatUnit, tiles);
+        Set<TilePosition> tiles = context.ourBaseTiles(NATURAL_TILE_RADIUS);
+        int arrived = context.getTracker().getCountOfVisibleUnitsOnTiles(Filter::isMobileGroundCombatUnit, tiles);
         return arrived >= MIN_ARRIVING_COMBAT_UNITS;
     }
 
@@ -53,11 +51,10 @@ public class EarlyRush extends ObservedStrategy {
         if (tracker.hasLivingGasBuilding()) {
             return false;
         }
-        int productionBuildings = tracker.getUnitTypeCountBeforeTime(UnitType.Protoss_Gateway, SCOUT_DEADLINE)
-                + tracker.getUnitTypeCountBeforeTime(UnitType.Terran_Barracks, SCOUT_DEADLINE);
+        int productionBuildings = tracker.getCountOfLivingUnits(UnitType.Protoss_Gateway, UnitType.Terran_Barracks);
         if (productionBuildings >= MIN_PRODUCTION_BUILDINGS) {
             return true;
         }
-        return tracker.getUnitTypeCountBeforeTime(UnitType.Zerg_Spawning_Pool, SCOUT_DEADLINE) > 0;
+        return tracker.getCountOfLivingUnits(UnitType.Zerg_Spawning_Pool) > 0;
     }
 }

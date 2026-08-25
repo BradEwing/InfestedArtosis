@@ -330,6 +330,16 @@ public class ObservedUnitTracker {
                 .count();
     }
 
+    public int getCountOfVisibleUnitsOnTiles(Predicate<UnitType> typeFilter, Set<TilePosition> tiles) {
+        return (int) observedUnits.values()
+                .stream()
+                .filter(ou -> typeFilter.test(ou.getUnitType()))
+                .filter(ou -> ou.getDestroyedFrame() == null)
+                .filter(ou -> ou.getUnit().isVisible())
+                .filter(ou -> tiles.contains(ou.getUnit().getPosition().toTilePosition()))
+                .count();
+    }
+
     public boolean hasLivingUnitNearTile(UnitType unitType, TilePosition tile, int manhattanDistance) {
         return observedUnits.values()
                 .stream()
