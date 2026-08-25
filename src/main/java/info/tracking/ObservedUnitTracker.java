@@ -12,6 +12,7 @@ import util.Time;
 import java.util.HashMap;
 import java.util.Arrays;
 import java.util.Set;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 public class ObservedUnitTracker {
@@ -310,9 +311,13 @@ public class ObservedUnitTracker {
     }
 
     public int getCountOfLivingUnitsOnTiles(UnitType unitType, Set<TilePosition> tiles) {
+        return getCountOfLivingUnitsOnTiles(type -> type == unitType, tiles);
+    }
+
+    public int getCountOfLivingUnitsOnTiles(Predicate<UnitType> typeFilter, Set<TilePosition> tiles) {
         return (int) observedUnits.values()
                 .stream()
-                .filter(ou -> ou.getUnitType() == unitType)
+                .filter(ou -> typeFilter.test(ou.getUnitType()))
                 .filter(ou -> ou.getDestroyedFrame() == null)
                 .filter(ou -> {
                     Position pos = ou.getUnit().isVisible() ? ou.getUnit().getPosition() : ou.getLastKnownLocation();
