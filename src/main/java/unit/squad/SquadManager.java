@@ -90,6 +90,7 @@ public class SquadManager {
     private static final int SUNKEN_MANHATTAN_DISTANCE = 7;
     private static final int DEFENSE_SIM_RANGE = 256;
     private static final int CONTAINMENT_REEVALUATE_INTERVAL = 48;
+    private static final int MAX_MOVE_OUT_THRESHOLD = 40;
     private static final int CONTAINMENT_TIMEOUT_FRAMES = 1400;
     private static final int ARC_DEGREES = 90;
     private static final int ARC_RADIUS = 160;
@@ -635,11 +636,8 @@ public class SquadManager {
             final int zealots = gameState.enemyUnitCount(UnitType.Protoss_Zealot);
             moveOutThreshold += zealots * 2;
         }
-        if (gameState.isEarlyRushed()) {
-            moveOutThreshold += gameState.enemyMobileGroundCombatUnitCount() * 2;
-        }
 
-        return Math.min(moveOutThreshold, 40);
+        return Math.min(moveOutThreshold, MAX_MOVE_OUT_THRESHOLD);
     }
 
     private int calculateGroundSquadMoveOutThreshold(Squad squad) {
@@ -669,15 +667,14 @@ public class SquadManager {
 
         int threshold = 4;
 
-        if (strategyTracker.isDetectedStrategy("2Gate")) {
+        if (gameState.isEarlyRushed()) {
+            threshold += gameState.visibleEnemyMobileGroundCombatUnitsAtOurBases() * 2;
+        } else if (strategyTracker.isDetectedStrategy("2Gate")) {
             final int zealots = gameState.enemyUnitCount(UnitType.Protoss_Zealot);
             threshold += zealots * 2;
         }
-        if (gameState.isEarlyRushed()) {
-            threshold += gameState.enemyMobileGroundCombatUnitCount() * 2;
-        }
 
-        return threshold;
+        return Math.min(threshold, MAX_MOVE_OUT_THRESHOLD);
     }
 
     private void simulateFightSquad(Squad squad) {

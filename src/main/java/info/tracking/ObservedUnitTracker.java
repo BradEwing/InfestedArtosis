@@ -102,20 +102,12 @@ public class ObservedUnitTracker {
     }
 
     public int getCountOfLivingUnits(UnitType unitType) {
-        return (int) observedUnits.values()
-                .stream()
-                .filter(ou -> ou.getUnitType() == unitType)
-                .filter(ou -> ou.getDestroyedFrame() == null)
-                .count();
+        return getCountOfLivingUnits(type -> type == unitType);
     }
 
     public int getCountOfLivingUnits(UnitType... unitTypes) {
         final Set<UnitType> typeSet = Arrays.stream(unitTypes).collect(Collectors.toSet());
-        return (int) observedUnits.values()
-                .stream()
-                .filter(ou -> typeSet.contains(ou.getUnitType()))
-                .filter(ou -> ou.getDestroyedFrame() == null)
-                .count();
+        return getCountOfLivingUnits(typeSet::contains);
     }
 
     public int getCountOfLivingUnits(Predicate<UnitType> typeFilter) {

@@ -59,10 +59,6 @@ public class ProtossBase extends BuildOrder {
 
         zerglings += zealots * 2;
 
-        if (gameState.isEarlyRushed()) {
-            zerglings = Math.max(zerglings, super.zerglingsNeeded(gameState));
-        }
-
         if (currentZerglings >= zerglings) {
             return 0;
         }
@@ -112,9 +108,6 @@ public class ProtossBase extends BuildOrder {
      */
     @Override
     protected int requiredSunkens(GameState gameState) {
-        if (gameState.isEarlyRushed()) {
-            return super.requiredSunkens(gameState);
-        }
         int sunkens = 0;
         StrategyTracker strategyTracker = gameState.getStrategyTracker();
         Time gameTime = gameState.getGameTime();

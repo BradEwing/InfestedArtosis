@@ -31,9 +31,6 @@ public class ZergBase extends BuildOrder {
 
     @Override
     protected int requiredSunkens(GameState gameState) {
-        if (gameState.isEarlyRushed()) {
-            return super.requiredSunkens(gameState);
-        }
         int ourBaseCount = gameState.getBaseData().currentBaseCount();
         int enemyDepots = gameState.enemyResourceDepotCount();
         int ourZerglings = gameState.ourLivingUnitCount(UnitType.Zerg_Zergling);

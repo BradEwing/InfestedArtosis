@@ -93,9 +93,6 @@ public class TerranBase extends BuildOrder {
      */
     @Override
     protected int requiredSunkens(GameState gameState) {
-        if (gameState.isEarlyRushed()) {
-            return super.requiredSunkens(gameState);
-        }
         if (gameState.isScvRushed() && gameState.getBaseData().getMyBases().size() == 1) {
             return 1;
         }

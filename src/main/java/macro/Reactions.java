@@ -46,6 +46,7 @@ public class Reactions {
             p.getType() == PlanType.BUILDING && p.getPlannedUnit() == UnitType.Zerg_Creep_Colony;
 
     private static final Time EARLY_RUSH_WINDOW = new Time(5, 0);
+    private static final Time EARLY_RUSH_HARD_DEADLINE = new Time(8, 0);
     private static final int EARLY_RUSH_SAFE_ZERGLINGS = 12;
 
     private GameState gameState;
@@ -101,8 +102,13 @@ public class Reactions {
             return;
         }
 
-        int attackersAtBase = gameState.enemyMobileGroundCombatUnitsAtOurBases();
-        int zerglingCount = gameState.getUnitTypeCount().get(UnitType.Zerg_Zergling);
+        if (gameState.getGameTime().greaterThan(EARLY_RUSH_HARD_DEADLINE)) {
+            gameState.setEarlyRushed(false);
+            return;
+        }
+
+        int attackersAtBase = gameState.visibleEnemyMobileGroundCombatUnitsAtOurBases();
+        int zerglingCount = gameState.ourUnitCount(UnitType.Zerg_Zergling);
         boolean withinRushWindow = gameState.getGameTime().lessThanOrEqual(EARLY_RUSH_WINDOW);
         boolean preparing = withinRushWindow && zerglingCount < EARLY_RUSH_SAFE_ZERGLINGS;
         if (attackersAtBase == 0 && !preparing) {

@@ -29,6 +29,9 @@ import java.util.Objects;
 
 public abstract class BuildOrder {
     private static final int EARLY_RUSH_SECOND_SUNKEN_ATTACKERS = 4;
+    private static final int EARLY_RUSH_MIN_ZERGLINGS = 6;
+    private static final int EMERGENCY_DEFENSE_PRIORITY = 1;
+    private static final int DEFAULT_COLONY_PRIORITY = 5;
 
     @Getter
     private final String name;
@@ -124,11 +127,7 @@ public abstract class BuildOrder {
     }
 
     protected int requiredSunkens(GameState gameState) {
-        if (!gameState.isEarlyRushed()) {
-            return 0;
-        }
-        int attackers = gameState.enemyMobileGroundCombatUnitsAtOurBases();
-        return attackers >= EARLY_RUSH_SECOND_SUNKEN_ATTACKERS ? 2 : 1;
+        return 0;
     }
 
     protected int requiredSpores(GameState gameState) {
@@ -136,28 +135,40 @@ public abstract class BuildOrder {
     }
 
     protected int zerglingsNeeded(GameState gameState) {
-        if (!gameState.isEarlyRushed()) {
-            return 6;
-        }
-        return Math.max(6, 2 * gameState.enemyMobileGroundCombatUnitCount());
+        return 6;
+    }
+
+    private int earlyRushSunkens(GameState gameState) {
+        int attackers = gameState.visibleEnemyMobileGroundCombatUnitsAtOurBases();
+        return attackers >= EARLY_RUSH_SECOND_SUNKEN_ATTACKERS ? 2 : 1;
+    }
+
+    private int earlyRushZerglings(GameState gameState) {
+        return Math.max(EARLY_RUSH_MIN_ZERGLINGS, 2 * gameState.enemyMobileGroundCombatUnitCount());
     }
 
     /**
      * Emergency defense reachable from every build order, including openers whose plan()
-     * bodies never plan static defense. Returns an empty list unless an early rush is active.
+     * bodies never plan static defense. Composes the early rush floor with the build order's
+     * own requiredSunkens/zerglingsNeeded so race-specific logic is never lowered.
+     * Returned plans carry reservations (sunken base, build tiles, planned unit counts) and
+     * must be added to the production queue by the caller.
      */
     public List<Plan> planEmergencyDefense(GameState gameState) {
         List<Plan> plans = new ArrayList<>();
         if (!gameState.isEarlyRushed()) {
             return plans;
         }
-        if (!gameState.basesNeedingSunken(this.requiredSunkens(gameState)).isEmpty()) {
-            plans.addAll(this.planSunkenColony(gameState, 0));
+        int sunkenTarget = Math.max(this.requiredSunkens(gameState), earlyRushSunkens(gameState));
+        boolean poolComplete = gameState.getTechProgression().isSpawningPool();
+        if (poolComplete && !gameState.basesNeedingSunken(sunkenTarget).isEmpty()) {
+            plans.addAll(this.planSunkenColony(gameState, EMERGENCY_DEFENSE_PRIORITY, sunkenTarget));
         }
+        int zerglingTarget = Math.max(this.zerglingsNeeded(gameState), earlyRushZerglings(gameState));
         int zerglingCount = gameState.ourUnitCount(UnitType.Zerg_Zergling);
-        if (zerglingCount < this.zerglingsNeeded(gameState) && gameState.canPlanUnit(UnitType.Zerg_Zergling)) {
+        if (zerglingCount < zerglingTarget && gameState.canPlanUnit(UnitType.Zerg_Zergling)) {
             Plan zerglingPlan = this.planUnit(gameState, UnitType.Zerg_Zergling);
-            zerglingPlan.setPriority(0);
+            zerglingPlan.setPriority(EMERGENCY_DEFENSE_PRIORITY);
             plans.add(zerglingPlan);
         }
         return plans;
@@ -243,14 +254,14 @@ public abstract class BuildOrder {
     // Subtracks 500 from priority as a stop gap to prioritize over existing items in queue.
     // TODO: Clear queue if defensive structure enters queue?
     protected Set<Plan> planSunkenColony(GameState gameState) {
-        return planSunkenColony(gameState, 5);
+        return planSunkenColony(gameState, DEFAULT_COLONY_PRIORITY, this.requiredSunkens(gameState));
     }
 
-    protected Set<Plan> planSunkenColony(GameState gameState, int priority) {
+    protected Set<Plan> planSunkenColony(GameState gameState, int priority, int target) {
         Set<Plan> plans = new HashSet<>();
         BaseData baseData = gameState.getBaseData();
         BuildingPlanner buildingPlanner = gameState.getBuildingPlanner();
-        Optional<Base> eligibleBase = gameState.basesNeedingSunken(this.requiredSunkens(gameState)).stream().findFirst();
+        Optional<Base> eligibleBase = gameState.basesNeedingSunken(target).stream().findFirst();
         if (!eligibleBase.isPresent()) {
             return plans;
         }

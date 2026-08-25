@@ -52,7 +52,6 @@ import java.util.stream.Collectors;
 @Data
 public class GameState {
     private static final int BUNKER_BULLET_RADIUS = 224;
-    private static final int EARLY_RUSH_NATURAL_TILE_RADIUS = 10;
 
     private Game game;
     private Config config;
@@ -721,13 +720,9 @@ public class GameState {
         return observedUnitTracker.getCountOfLivingUnits(Filter::isMobileGroundCombatUnit);
     }
 
-    public int enemyMobileGroundCombatUnitsAtOurBases() {
-        Set<TilePosition> tiles = new HashSet<>(gameMap.getMainBaseTiles());
-        Base natural = baseData.getInferredNaturalBase();
-        if (natural != null) {
-            tiles.addAll(Distance.tilesWithinManhattanDistance(natural.getLocation(), EARLY_RUSH_NATURAL_TILE_RADIUS));
-        }
-        return observedUnitTracker.getCountOfLivingUnitsOnTiles(Filter::isMobileGroundCombatUnit, tiles);
+    public int visibleEnemyMobileGroundCombatUnitsAtOurBases() {
+        Set<TilePosition> tiles = baseData.ourBaseTiles(gameMap, BaseData.NATURAL_DEFENSE_TILE_RADIUS);
+        return observedUnitTracker.getCountOfVisibleUnitsOnTiles(Filter::isMobileGroundCombatUnit, tiles);
     }
 
     public int enemyUnitCount(UnitType unitType) {
