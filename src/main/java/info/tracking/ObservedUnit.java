@@ -11,6 +11,7 @@ public class ObservedUnit {
     private Time firstObservedFrame;
     private Time lastObservedFrame;
     private Time destroyedFrame;
+    private Time completedFrame;
     private Position lastKnownLocation;
     private final Unit unit;
     private UnitType unitType;
@@ -32,6 +33,14 @@ public class ObservedUnit {
         this.proxied = proxied;
         this.lastKnownHitPoints = unit.getType().maxHitPoints();
         this.lastKnownShields = unit.getType().maxShields();
+    }
+
+    public void markCompleted(Time currentFrame) {
+        if (completed) {
+            return;
+        }
+        completed = true;
+        completedFrame = currentFrame;
     }
 
     @Override

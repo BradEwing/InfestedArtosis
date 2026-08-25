@@ -4,6 +4,7 @@ import bwapi.Game;
 import bwapi.Race;
 import info.BaseData;
 import info.map.GameMap;
+import info.tracking.any.EarlyRush;
 import info.tracking.any.OneBase;
 import info.tracking.protoss.CannonRush;
 import info.tracking.protoss.FFE;
@@ -39,6 +40,7 @@ public class StrategyTracker {
 
     private void init(Race race) {
         possibleStrategies.add(new OneBase());
+        possibleStrategies.add(new EarlyRush());
         if (race == Race.Protoss || race == Race.Unknown) {
             possibleStrategies.add(new FFE());
             possibleStrategies.add(new OneGateCore());

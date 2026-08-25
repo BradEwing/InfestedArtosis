@@ -12,6 +12,7 @@ import util.Time;
 import java.util.HashMap;
 import java.util.Arrays;
 import java.util.Set;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 public class ObservedUnitTracker {
@@ -24,14 +25,15 @@ public class ObservedUnitTracker {
     }
 
     public void onFrame(int currentFrame) {
+        Time t = new Time(currentFrame);
         for (ObservedUnit ou : observedUnits.values()) {
             if (ou.getDestroyedFrame() != null) {
                 continue;
             }
             Unit unit = ou.getUnit();
             if (unit.isVisible()) {
-                if (!ou.isCompleted() && unit.isCompleted()) {
-                    ou.setCompleted(true);
+                if (unit.isCompleted()) {
+                    ou.markCompleted(t);
                 }
                 ou.setLastKnownHitPoints(unit.getHitPoints());
                 ou.setLastKnownShields(unit.getShields());
@@ -46,13 +48,17 @@ public class ObservedUnitTracker {
         Time t = new Time(currentFrame);
         if (!observedUnits.containsKey(unit)) {
             ObservedUnit ou = new ObservedUnit(unit, t, isProxied);
-            ou.setCompleted(unit.isCompleted());
+            if (unit.isCompleted()) {
+                ou.markCompleted(t);
+            }
             observedUnits.put(unit, ou);
         } else {
             ObservedUnit u = observedUnits.get(unit);
             u.setLastObservedFrame(t);
             u.setLastKnownLocation(unit.getPosition());
-            u.setCompleted(unit.isCompleted());
+            if (unit.isCompleted()) {
+                u.markCompleted(t);
+            }
             updateUnitTypeChange(unit);
         }
     }
@@ -83,6 +89,14 @@ public class ObservedUnitTracker {
                 .count();
     }
 
+    public int getUnitTypeCountCompletedBeforeTime(UnitType type, Time t) {
+        return (int) observedUnits.values()
+                .stream()
+                .filter(ou -> ou.getUnitType() == type)
+                .filter(ou -> ou.getCompletedFrame() != null && ou.getCompletedFrame().lessThanOrEqual(t))
+                .count();
+    }
+
     public int size() {
         return observedUnits.size();
     }
@@ -102,6 +116,10 @@ public class ObservedUnitTracker {
                 .filter(ou -> typeSet.contains(ou.getUnitType()))
                 .filter(ou -> ou.getDestroyedFrame() == null)
                 .count();
+    }
+
+    public boolean hasLivingGasBuilding() {
+        return getCountOfLivingUnits(UnitType.Protoss_Assimilator, UnitType.Terran_Refinery, UnitType.Zerg_Extractor) > 0;
     }
 
     public int getCountOfAllEnemyUnits() {
@@ -310,14 +328,28 @@ public class ObservedUnitTracker {
     }
 
     public int getCountOfLivingUnitsOnTiles(UnitType unitType, Set<TilePosition> tiles) {
+        return getCountOfLivingUnitsOnTiles(type -> type == unitType, tiles);
+    }
+
+    public int getCountOfLivingUnitsOnTiles(Predicate<UnitType> typeFilter, Set<TilePosition> tiles) {
         return (int) observedUnits.values()
                 .stream()
-                .filter(ou -> ou.getUnitType() == unitType)
+                .filter(ou -> typeFilter.test(ou.getUnitType()))
                 .filter(ou -> ou.getDestroyedFrame() == null)
                 .filter(ou -> {
                     Position pos = ou.getUnit().isVisible() ? ou.getUnit().getPosition() : ou.getLastKnownLocation();
                     return pos != null && tiles.contains(pos.toTilePosition());
                 })
+                .count();
+    }
+
+    public int getCountOfVisibleUnitsOnTiles(Predicate<UnitType> typeFilter, Set<TilePosition> tiles) {
+        return (int) observedUnits.values()
+                .stream()
+                .filter(ou -> typeFilter.test(ou.getUnitType()))
+                .filter(ou -> ou.getDestroyedFrame() == null)
+                .filter(ou -> ou.getUnit().isVisible())
+                .filter(ou -> tiles.contains(ou.getUnit().getPosition().toTilePosition()))
                 .count();
     }
 

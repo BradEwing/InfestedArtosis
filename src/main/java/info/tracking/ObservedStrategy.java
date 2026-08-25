@@ -23,7 +23,7 @@ public abstract class ObservedStrategy {
         return new Time(59, 59);
     }
 
-    public Race getRace() { 
+    public Race getRace() {
         return Race.Unknown;
     }
 }

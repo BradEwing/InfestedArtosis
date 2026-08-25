@@ -7,6 +7,8 @@ import bwem.Base;
 import unit.managed.ManagedUnit;
 
 import java.util.Comparator;
+import java.util.HashSet;
+import java.util.Set;
 
 public final class Distance {
 
@@ -14,6 +16,17 @@ public final class Distance {
 
     public static int manhattanTileDistance(TilePosition a, TilePosition b) {
         return Math.abs(a.getX() - b.getX()) + Math.abs(a.getY() - b.getY());
+    }
+
+    public static Set<TilePosition> tilesWithinManhattanDistance(TilePosition center, int radius) {
+        Set<TilePosition> tiles = new HashSet<>();
+        for (int dx = -radius; dx <= radius; dx++) {
+            int remaining = radius - Math.abs(dx);
+            for (int dy = -remaining; dy <= remaining; dy++) {
+                tiles.add(new TilePosition(center.getX() + dx, center.getY() + dy));
+            }
+        }
+        return tiles;
     }
 
     public static double euclidean(Position a, Position b) {
