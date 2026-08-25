@@ -244,8 +244,8 @@ public class LearningManager {
         
         if (!writeFile.exists()) {
             writeFile.createNewFile();
-            String header = "timestamp,is_winner,num_starting_locations,map_name,opponent_name,opponent_race,opener,build_order,detected_strategies,frame_count";
-            header += "\n";
+            String header = "timestamp,is_winner,num_starting_locations,map_name,opponent_name,opponent_race,"
+                + "opener,build_order,detected_strategies,frame_count\n";
             Files.write(writeFile.toPath(), header.getBytes(), StandardOpenOption.APPEND);
             
             if (readFile.exists() && readFile.isFile()) {
