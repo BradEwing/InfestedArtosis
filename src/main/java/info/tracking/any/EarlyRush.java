@@ -13,15 +13,8 @@ import java.util.Set;
 /**
  * Race-agnostic early rush detector. Fires on arrival of enemy combat units at our
  * main or natural before the rush window closes, or on a scouted rush-oriented
- * production setup. Arrival-based detection is immune to scouting failure
- * and works while the opponent race is still Unknown.
+ * build.
  * <p>
- * The Zerg scout rule keys on Spawning Pool completion time rather than presence:
- * a 4/5 Pool finishes its pool around 1:30 while a 9 Pool is still morphing through
- * the 1:30-2:05 scout window. The 1:52 cutoff follows Steamhammer's
- * {@code OpponentPlan::rushBuilding} (2675 frames, "probably 8 pool or earlier") and
- * sits between PurpleWave (~1:55) and McRave (1:40). No gas veto applies to Zerg since
- * a 5 Pool takes its Extractor before its first zerglings hatch.
  */
 public class EarlyRush extends ObservedStrategy {
 
