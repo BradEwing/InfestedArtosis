@@ -84,6 +84,13 @@ public final class Filter {
         return groundWeapon != null && groundWeapon != WeaponType.None;
     }
 
+    /**
+     * Returns true for non-worker, non-building ground units that can attack ground.
+     */
+    public static boolean isMobileGroundCombatUnit(UnitType unitType) {
+        return !unitType.isBuilding() && !unitType.isFlyer() && !isWorkerType(unitType) && isGroundThreat(unitType);
+    }
+
     public static boolean isWorkerType(UnitType type) {
         return type == UnitType.Zerg_Drone || type == UnitType.Terran_SCV || type == UnitType.Protoss_Probe;
     }

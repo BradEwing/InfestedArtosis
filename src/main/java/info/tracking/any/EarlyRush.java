@@ -2,15 +2,12 @@ package info.tracking.any;
 
 import bwapi.TilePosition;
 import bwapi.UnitType;
-import bwem.Base;
-import info.BaseData;
 import info.tracking.ObservedStrategy;
 import info.tracking.ObservedUnitTracker;
 import info.tracking.StrategyDetectionContext;
 import util.Filter;
 import util.Time;
 
-import java.util.HashSet;
 import java.util.Set;
 
 /**
@@ -25,7 +22,6 @@ public class EarlyRush extends ObservedStrategy {
     private static final Time SCOUT_DEADLINE = new Time(2, 30);
     private static final int MIN_ARRIVING_COMBAT_UNITS = 2;
     private static final int MIN_PRODUCTION_BUILDINGS = 2;
-    private static final int NATURAL_TILE_RADIUS = 10;
 
     public EarlyRush() {
         super("EarlyRush");
@@ -41,11 +37,11 @@ public class EarlyRush extends ObservedStrategy {
     }
 
     private boolean combatUnitsArrived(StrategyDetectionContext context) {
-        Set<TilePosition> tiles = defendedTiles(context);
+        Set<TilePosition> tiles = ourBaseTiles(context);
         if (tiles.isEmpty()) {
             return false;
         }
-        int arrived = context.getTracker().getCountOfLivingUnitsOnTiles(EarlyRush::isMobileGroundCombatUnit, tiles);
+        int arrived = context.getTracker().getCountOfLivingUnitsOnTiles(Filter::isMobileGroundCombatUnit, tiles);
         return arrived >= MIN_ARRIVING_COMBAT_UNITS;
     }
 
@@ -54,7 +50,7 @@ public class EarlyRush extends ObservedStrategy {
             return false;
         }
         ObservedUnitTracker tracker = context.getTracker();
-        if (hasGasBuilding(tracker)) {
+        if (tracker.hasLivingGasBuilding()) {
             return false;
         }
         int productionBuildings = tracker.getUnitTypeCountBeforeTime(UnitType.Protoss_Gateway, SCOUT_DEADLINE)
@@ -63,34 +59,5 @@ public class EarlyRush extends ObservedStrategy {
             return true;
         }
         return tracker.getUnitTypeCountBeforeTime(UnitType.Zerg_Spawning_Pool, SCOUT_DEADLINE) > 0;
-    }
-
-    private static boolean hasGasBuilding(ObservedUnitTracker tracker) {
-        return tracker.getCountOfLivingUnits(UnitType.Protoss_Assimilator, UnitType.Terran_Refinery, UnitType.Zerg_Extractor) > 0;
-    }
-
-    private static Set<TilePosition> defendedTiles(StrategyDetectionContext context) {
-        Set<TilePosition> tiles = new HashSet<>(context.getGameMap().getMainBaseTiles());
-        BaseData baseData = context.getBaseData();
-        Base natural = baseData.getInferredNaturalBase();
-        if (natural != null) {
-            tiles.addAll(tilesWithinManhattanDistance(natural.getLocation(), NATURAL_TILE_RADIUS));
-        }
-        return tiles;
-    }
-
-    private static Set<TilePosition> tilesWithinManhattanDistance(TilePosition center, int radius) {
-        Set<TilePosition> tiles = new HashSet<>();
-        for (int dx = -radius; dx <= radius; dx++) {
-            int remaining = radius - Math.abs(dx);
-            for (int dy = -remaining; dy <= remaining; dy++) {
-                tiles.add(new TilePosition(center.getX() + dx, center.getY() + dy));
-            }
-        }
-        return tiles;
-    }
-
-    private static boolean isMobileGroundCombatUnit(UnitType type) {
-        return !type.isBuilding() && !type.isFlyer() && !Filter.isWorkerType(type) && Filter.isGroundThreat(type);
     }
 }

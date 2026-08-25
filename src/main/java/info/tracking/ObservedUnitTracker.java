@@ -105,6 +105,10 @@ public class ObservedUnitTracker {
                 .count();
     }
 
+    public boolean hasLivingGasBuilding() {
+        return getCountOfLivingUnits(UnitType.Protoss_Assimilator, UnitType.Terran_Refinery, UnitType.Zerg_Extractor) > 0;
+    }
+
     public int getCountOfAllEnemyUnits() {
         return (int) observedUnits.values()
                 .stream()
