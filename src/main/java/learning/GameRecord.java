@@ -3,6 +3,9 @@ package learning;
 import lombok.Builder;
 import lombok.Data;
 
+import java.util.ArrayList;
+import java.util.List;
+
 @Data
 @Builder
 public class GameRecord {
@@ -15,9 +18,10 @@ public class GameRecord {
     private String buildOrder;
     private String detectedStrategies;
     private boolean isWinner;
+    private int frameCount;
     
     public String toCsvRow() {
-        return String.format("%d,%s,%d,%s,%s,%s,%s,%s,%s",
+        return String.format("%d,%s,%d,%s,%s,%s,%s,%s,%s,%d",
             timestamp,
             isWinner,
             numStartingLocations,
@@ -26,7 +30,8 @@ public class GameRecord {
             escapeCsvField(opponentRace),
             escapeCsvField(opener),
             escapeCsvField(buildOrder),
-            escapeCsvField(detectedStrategies)
+            escapeCsvField(detectedStrategies),
+            frameCount
         );
     }
     
@@ -42,6 +47,7 @@ public class GameRecord {
             .opener(fields[6])
             .buildOrder(fields[7])
             .detectedStrategies(fields[8])
+            .frameCount(fields.length > 9 && !fields[9].isEmpty() ? Integer.parseInt(fields[9]) : 0)
             .build();
     }
     
@@ -56,10 +62,9 @@ public class GameRecord {
     }
     
     private static String[] parseCsvRow(String csvRow) {
-        String[] result = new String[9];
+        List<String> result = new ArrayList<>();
         boolean inQuotes = false;
         StringBuilder currentField = new StringBuilder();
-        int fieldIndex = 0;
         
         for (int i = 0; i < csvRow.length(); i++) {
             char c = csvRow.charAt(i);
@@ -72,14 +77,14 @@ public class GameRecord {
                     inQuotes = !inQuotes;
                 }
             } else if (c == ',' && !inQuotes) {
-                result[fieldIndex++] = currentField.toString();
+                result.add(currentField.toString());
                 currentField = new StringBuilder();
             } else {
                 currentField.append(c);
             }
         }
-        result[fieldIndex] = currentField.toString();
-        
-        return result;
+        result.add(currentField.toString());
+
+        return result.toArray(new String[0]);
     }
 }

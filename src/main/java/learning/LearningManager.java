@@ -244,7 +244,7 @@ public class LearningManager {
         
         if (!writeFile.exists()) {
             writeFile.createNewFile();
-            String header = "timestamp,is_winner,num_starting_locations,map_name,opponent_name,opponent_race,opener,build_order,detected_strategies";
+            String header = "timestamp,is_winner,num_starting_locations,map_name,opponent_name,opponent_race,opener,build_order,detected_strategies,frame_count";
             header += "\n";
             Files.write(writeFile.toPath(), header.getBytes(), StandardOpenOption.APPEND);
             
@@ -266,12 +266,13 @@ public class LearningManager {
             .numStartingLocations(bwem.getMap().getStartingLocations().size())
             .mapName(game.mapFileName())
             .opponentName(opponentName)
-            .opponentRace(opponentRace.toString())
+            .opponentRace(gameState.getOpponentRace().toString())
             .opener(currentOpener.getOpener())
             .buildOrder(activeBuildOrderRecord != null ? activeBuildOrderRecord.getOpener() : currentOpener.getOpener())
-            .detectedStrategies(gameState.getStrategyTracker() != null ? 
+            .detectedStrategies(gameState.getStrategyTracker() != null ?
                 gameState.getStrategyTracker().getDetectedStrategiesAsString() : "")
             .isWinner(isWinner)
+            .frameCount(game.getFrameCount())
             .build();
 
         String csvRow = gameRecord.toCsvRow() + "\n";

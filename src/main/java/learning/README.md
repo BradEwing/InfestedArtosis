@@ -163,7 +163,7 @@ Files are named `{opponentName}_{opponentRace}.csv`. On first write, the system 
 
 **Header:**
 ```
-timestamp,is_winner,num_starting_locations,map_name,opponent_name,opponent_race,opener,build_order,detected_strategies
+timestamp,is_winner,num_starting_locations,map_name,opponent_name,opponent_race,opener,build_order,detected_strategies,frame_count
 ```
 
 **Fields:**
@@ -175,15 +175,16 @@ timestamp,is_winner,num_starting_locations,map_name,opponent_name,opponent_race,
 | `num_starting_locations` | int | Number of starting positions on the map |
 | `map_name` | string | Map filename (e.g., `(4)Polypoid_1.65.scx`) |
 | `opponent_name` | string | Enemy player name |
-| `opponent_race` | string | `Protoss`, `Terran`, or `Zerg` |
+| `opponent_race` | string | Race resolved by game end: `Protoss`, `Terran`, or `Zerg`. `Unknown` only if a Random opponent's race was never scouted. The filename still uses the race known at game start, so Random opponents live in `{name}_Unknown.csv` |
 | `opener` | string | Opening strategy used (e.g., `Overpool`, `12Hatch`) |
 | `build_order` | string | Mid-game strategy used (e.g., `3HatchMuta`). Same as opener if no transition. |
 | `detected_strategies` | string | Enemy strategies detected during the game, multiple strategies are semicolon separated (e.g., `2Gate;1Base`) |
+| `frame_count` | int | Game frame count at game end. Absent in legacy rows, which parse as `0` |
 
 **Example rows:**
 ```
-1761107433421,true,4,(4)Polypoid_1.65.scx,Akilae Tribe,Protoss,Overpool,3HatchMuta,2Gate
-1761282554674,false,3,(3)PowerBond_1.00.scx,Akilae Tribe,Protoss,Overpool,3HatchMuta,2Gate;1Base
+1761107433421,true,4,(4)Polypoid_1.65.scx,Akilae Tribe,Protoss,Overpool,3HatchMuta,2Gate,18432
+1761282554674,false,3,(3)PowerBond_1.00.scx,Akilae Tribe,Protoss,Overpool,3HatchMuta,2Gate;1Base,9120
 ```
 
 ### How Records Are Reconstructed
