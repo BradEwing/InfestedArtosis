@@ -701,6 +701,18 @@ public class GameState {
             .count();
     }
 
+    /**
+     * Counts unit plans of this type still waiting in the production queue. Unlike the planned
+     * unit counts, this is derived from the live queue, so it cannot drift when a plan is
+     * cancelled or an egg is destroyed.
+     */
+    public int queuedUnitPlanCount(UnitType unitType) {
+        return (int) productionQueue.stream()
+            .filter(plan -> plan.getType() == PlanType.UNIT)
+            .filter(plan -> plan.getPlannedUnit() == unitType)
+            .count();
+    }
+
     public int ourLivingUnitCount(UnitType unitType) {
         return unitTypeCount.livingCount(unitType);
     }

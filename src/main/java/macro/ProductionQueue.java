@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.PriorityQueue;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
+import java.util.stream.Stream;
 
 public class ProductionQueue implements Iterable<Plan> {
 
@@ -37,6 +38,14 @@ public class ProductionQueue implements Iterable<Plan> {
 
     public int size() {
         return queue.size();
+    }
+
+    /**
+     * Streams the queued plans. The queue is Iterable rather than a Collection, so callers that
+     * want to aggregate over it cannot call stream() on it directly.
+     */
+    public Stream<Plan> stream() {
+        return queue.stream();
     }
 
     @Override
