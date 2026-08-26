@@ -81,6 +81,7 @@ public class ProductionManager {
         reactions.onFrame();
         plan();
         cancelImpossiblePlans();
+        cancelDelayedLairPlans();
         cancelExcessHatcheryPlans();
         cancelExcessOverlordPlans();
         schedulePlannedItems();
@@ -139,6 +140,29 @@ public class ProductionManager {
      * Cancels excess overlord plans when free supply is sufficient.
      * Example: We queue up 10 hydras but half of them die by the time the overlord plan is ready to build.
      */
+    /**
+     * Drops scheduled Lair plans while an early rush delays the Lair. The queued plans are
+     * removed by the reaction; this sweep owns the scheduled ones because cancelling a scheduled
+     * building must also release the scheduledBuildings slot, which otherwise stays claimed for
+     * the rest of the game and blocks every later build-ahead.
+     */
+    private void cancelDelayedLairPlans() {
+        if (!gameState.isEarlyRushDelayLair()) {
+            return;
+        }
+
+        Set<Plan> scheduledLairs = gameState.getPlansScheduled()
+                .stream()
+                .filter(plan -> plan.getType() == PlanType.BUILDING && plan.getPlannedUnit() == UnitType.Zerg_Lair)
+                .collect(Collectors.toSet());
+
+        for (Plan plan : scheduledLairs) {
+            scheduledBuildings = Math.max(0, scheduledBuildings - 1);
+            gameState.getPlansScheduled().remove(plan);
+            gameState.cancelPlan(null, plan);
+        }
+    }
+
     private void cancelExcessOverlordPlans() {
         final int MAX_FREE_SUPPLY = 17;
 
