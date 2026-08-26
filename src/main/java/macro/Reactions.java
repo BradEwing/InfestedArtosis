@@ -45,6 +45,13 @@ public class Reactions {
     private static final Predicate<Plan> IS_CREEP_COLONY = p ->
             p.getType() == PlanType.BUILDING && p.getPlannedUnit() == UnitType.Zerg_Creep_Colony;
 
+    /**
+     * Sits behind emergency defense so an unaffordable upgrade can never tie with, and so deny a
+     * schedule slot to, the emergency creep colony, while still jumping ahead of tech and normal
+     * production. Priority 0 stays reserved for emergency reactions.
+     */
+    private static final int SPEED_UPGRADE_PRIORITY = 2;
+
     private static final Time EARLY_RUSH_WINDOW = new Time(5, 0);
     private static final Time EARLY_RUSH_HARD_DEADLINE = new Time(8, 0);
     private static final int EARLY_RUSH_SAFE_ZERGLINGS = 12;
@@ -236,13 +243,10 @@ public class Reactions {
             productionQueue.add(upgradePlan);
         }
 
-        int zerglingCount = gameState.getUnitTypeCount().get(UnitType.Zerg_Zergling);
-        if (zerglingCount > 6) {
-            productionQueue.setPriorityWhere(
-                    p -> p.getType() == PlanType.UPGRADE
-                            && ((UpgradePlan) p).getPlannedUpgrade() == UpgradeType.Metabolic_Boost,
-                    0);
-        }
+        productionQueue.setPriorityWhere(
+                p -> p.getType() == PlanType.UPGRADE
+                        && ((UpgradePlan) p).getPlannedUpgrade() == UpgradeType.Metabolic_Boost,
+                SPEED_UPGRADE_PRIORITY);
 
         BaseData baseData = gameState.getBaseData();
         if (baseData.getMyBases().size() == 1) {

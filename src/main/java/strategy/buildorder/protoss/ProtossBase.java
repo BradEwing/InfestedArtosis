@@ -116,7 +116,8 @@ public class ProtossBase extends BuildOrder {
             return 1;
         }
 
-        if (strategyTracker.isDetectedStrategy("2Gate") && gameTime.greaterThan(new Time(3, 20))) {
+        boolean zealotsObserved = gameState.enemyUnitCount(UnitType.Protoss_Zealot) > 0;
+        if (strategyTracker.isDetectedStrategy("2Gate") && (zealotsObserved || gameTime.greaterThan(new Time(3, 20)))) {
             sunkens += 1;
         }
 
