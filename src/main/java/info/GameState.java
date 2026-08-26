@@ -85,6 +85,7 @@ public class GameState {
     private boolean earlyRushed = false;
     private boolean earlyRushDenyGas = false;
     private boolean earlyRushDelayLair = false;
+    private boolean earlyRushMacroHatch = false;
 
     // TODO: refactor into common data structure, address access throughout bot
     private HashSet<Plan> plansScheduled = new HashSet<>();
@@ -497,7 +498,11 @@ public class GameState {
                 if (buildingType == UnitType.Zerg_Hatchery) {
                     removePlannedHatchery(1);
                     TilePosition tp = plan.getBuildPosition();
-                    if (tp != null && baseData.isBaseTilePosition(tp)) {
+                    if (plan.isMacroHatchery()) {
+                        if (tp != null) {
+                            buildingPlanner.unreservePlannedBuildingTiles(tp, buildingType);
+                        }
+                    } else if (tp != null && baseData.isBaseTilePosition(tp)) {
                         Base base = baseData.baseAtTilePosition(tp);
                         baseData.cancelReserveBase(base);
                     }

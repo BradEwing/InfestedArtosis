@@ -24,6 +24,7 @@ public class ThreeHatchHydra extends ProtossBase {
     private boolean plannedFirstMacroHatch = false;
     private boolean plannedSecondMacroHatch = false;
     private boolean plannedThirdMacroHatch = false;
+    private boolean plannedEarlyRushMacroHatch = false;
 
     public ThreeHatchHydra() {
         super("3HatchHydra");
@@ -66,6 +67,9 @@ public class ThreeHatchHydra extends ProtossBase {
         // Macro hatchery timing
         boolean cannonRushMacroHatch = gameState.isCannonRushed() && baseCount == 1
                 && gameState.getResourceCount().availableMinerals() >= 300;
+        boolean earlyRushMacroHatch = gameState.isEarlyRushMacroHatch() && baseCount == 1
+                && !plannedEarlyRushMacroHatch
+                && gameState.getResourceCount().availableMinerals() >= 300;
         boolean wantFirstMacroHatch = cannonRushMacroHatch || wantFirstMacroHatchery(gameState);
         boolean wantSecondMacroHatch = !gameState.isCannonRushed() && wantSecondMacroHatchery(gameState);
         boolean wantThirdMacroHatch = !gameState.isCannonRushed() && wantThirdMacroHatchery(gameState);
@@ -99,7 +103,9 @@ public class ThreeHatchHydra extends ProtossBase {
         }
 
         // Bases
-        if (wantNatural || wantThird || wantBaseAdvantage || floatingMinerals) {
+        boolean wantExpansion = !gameState.isEarlyRushMacroHatch()
+                && (wantNatural || wantThird || wantBaseAdvantage || floatingMinerals);
+        if (wantExpansion) {
             Plan hatcheryPlan = this.planNewBase(gameState);
             if (hatcheryPlan != null) {
                 plans.add(hatcheryPlan);
@@ -108,6 +114,16 @@ public class ThreeHatchHydra extends ProtossBase {
         }
 
         // Macro Hatcheries
+        if (earlyRushMacroHatch) {
+            Plan mainHatchPlan = planMacroHatcheryAt(gameState, gameState.getBaseData().getMainBase());
+            if (mainHatchPlan != null) {
+                plannedEarlyRushMacroHatch = true;
+                plannedFirstMacroHatch = true;
+                plans.add(mainHatchPlan);
+                return plans;
+            }
+        }
+
         if (wantFirstMacroHatch) {
             Plan macroHatchPlan = planMacroHatchery(gameState);
             if (macroHatchPlan != null) {
