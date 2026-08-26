@@ -412,15 +412,27 @@ public abstract class BuildOrder {
     protected Plan planMacroHatchery(GameState gameState) {
         BuildingPlanner buildingPlanner = gameState.getBuildingPlanner();
         BaseData baseData = gameState.getBaseData();
-        TilePosition location = buildingPlanner.getLocationForMacroHatchery(gameState.getOpponentRace(), baseData);
+        return macroHatcheryAt(gameState, buildingPlanner.getLocationForMacroHatchery(gameState.getOpponentRace(), baseData));
+    }
 
+    /**
+     * Plans a macro hatchery at an explicitly chosen base rather than the race-keyed rotation.
+     */
+    protected Plan planMacroHatcheryAt(GameState gameState, Base base) {
+        BuildingPlanner buildingPlanner = gameState.getBuildingPlanner();
+        return macroHatcheryAt(gameState, buildingPlanner.getLocationForMacroHatchery(base));
+    }
+
+    private Plan macroHatcheryAt(GameState gameState, TilePosition location) {
         if (location == null) {
             return null;
         }
 
-        buildingPlanner.reservePlannedBuildingTiles(location, UnitType.Zerg_Hatchery);
+        gameState.getBuildingPlanner().reservePlannedBuildingTiles(location, UnitType.Zerg_Hatchery);
         gameState.addPlannedHatchery(1);
-        return new BuildingPlan(UnitType.Zerg_Hatchery, gameState.getGameTime().getFrames(), location);
+        Plan plan = new BuildingPlan(UnitType.Zerg_Hatchery, gameState.getGameTime().getFrames(), location);
+        plan.setMacroHatchery(true);
+        return plan;
     }
 
     /**

@@ -37,6 +37,14 @@ public abstract class Plan {
     @Nullable
     private TechType plannedTechType;
 
+    /**
+     * Marks a hatchery planned for production rather than to claim a base. The planned unit type
+     * is Zerg_Hatchery either way, so consumers that must treat an expansion differently from a
+     * macro hatchery have no other signal. Rides on the plan, so it survives the late relocation
+     * in ManagedUnit that can move a build position away from its intended base.
+     */
+    private boolean macroHatchery;
+
     public Plan(int priority) {
         this.priority = priority;
     }

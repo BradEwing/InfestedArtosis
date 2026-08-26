@@ -48,6 +48,8 @@ public class Reactions {
     private static final Predicate<Plan> IS_LAIR = p ->
             p.getType() == PlanType.BUILDING && p.getPlannedUnit() == UnitType.Zerg_Lair;
 
+    private static final Predicate<Plan> IS_EXPANSION_HATCHERY = IS_HATCHERY.and(p -> !p.isMacroHatchery());
+
     /**
      * Sits behind emergency defense so an unaffordable upgrade can never tie with, and so deny a
      * schedule slot to, the emergency creep colony, while still jumping ahead of tech and normal
@@ -116,6 +118,7 @@ public class Reactions {
             gameState.setEarlyRushed(false);
             gameState.setEarlyRushDenyGas(false);
             gameState.setEarlyRushDelayLair(false);
+            gameState.setEarlyRushMacroHatch(false);
             return;
         }
 
@@ -127,6 +130,7 @@ public class Reactions {
             gameState.setEarlyRushed(false);
             gameState.setEarlyRushDenyGas(false);
             gameState.setEarlyRushDelayLair(false);
+            gameState.setEarlyRushMacroHatch(false);
             return;
         }
 
@@ -137,10 +141,11 @@ public class Reactions {
         boolean preserveGasForSpeed = gameState.getOpponentRace() == Race.Protoss && !speedResearched && committedGas;
         gameState.setEarlyRushDenyGas(!preserveGasForSpeed);
         gameState.setEarlyRushDelayLair(gameState.getOpponentRace() == Race.Protoss);
+        gameState.setEarlyRushMacroHatch(gameState.getOpponentRace() == Race.Protoss);
 
         ProductionQueue productionQueue = gameState.getProductionQueue();
         productionQueue.setPriorityWhere(IS_SPAWNING_POOL, 0);
-        productionQueue.removeWhere(IS_HATCHERY, gameState::setImpossiblePlan);
+        productionQueue.removeWhere(IS_EXPANSION_HATCHERY, gameState::setImpossiblePlan);
 
         if (gameState.isEarlyRushDelayLair()) {
             cancelQueuedLairs();

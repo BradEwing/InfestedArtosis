@@ -381,7 +381,15 @@ public class BuildingPlanner {
      * @return TilePosition for macro hatchery placement, or null if no suitable location found
      */
     public TilePosition getLocationForMacroHatchery(Race opponentRace, BaseData baseData) {
-        Base targetBase = determineTargetBaseForMacroHatch(opponentRace, baseData);
+        return getLocationForMacroHatchery(determineTargetBaseForMacroHatch(opponentRace, baseData));
+    }
+
+    /**
+     * Finds a macro hatchery location at an explicitly chosen base, bypassing the race-keyed
+     * rotation. Callers that must place a hatchery somewhere specific - a production hatchery in
+     * the main while the natural is unsafe - use this rather than depending on the rotation index.
+     */
+    public TilePosition getLocationForMacroHatchery(Base targetBase) {
         if (targetBase == null) {
             return null;
         }
@@ -411,10 +419,10 @@ public class BuildingPlanner {
         } else if (opponentRace == Race.Protoss) {
             switch (existingMacroHatchCount) {
                 case 0:
-                    return naturalBase;
+                    return orMain(naturalBase, mainBase);
                 case 1:
                 case 2:
-                    return thirdBase;
+                    return orMain(thirdBase, mainBase);
                 default:
                     return mainBase;
             }
@@ -428,6 +436,17 @@ public class BuildingPlanner {
                     return thirdBase;
             }
         }
+    }
+
+    /**
+     * Falls back to the main base when the rotation's preferred base does not exist yet. Without
+     * this, findThirdBase returns null while we hold only main and natural, so the macro hatchery
+     * location is null and the caller silently drops the plan and retries every frame. Applied to
+     * the Protoss rotation only - this ticket is deliberately Protoss-scoped, and changing the
+     * Terran rotation would move macro hatchery placement in the strongest matchup.
+     */
+    private Base orMain(Base preferred, Base mainBase) {
+        return preferred != null ? preferred : mainBase;
     }
 
     /**
