@@ -706,13 +706,10 @@ public class GameState {
      * cancelled or an egg is destroyed.
      */
     public int queuedUnitPlanCount(UnitType unitType) {
-        int queued = 0;
-        for (Plan plan : productionQueue) {
-            if (plan.getType() == PlanType.UNIT && plan.getPlannedUnit() == unitType) {
-                queued += 1;
-            }
-        }
-        return queued;
+        return (int) productionQueue.stream()
+            .filter(plan -> plan.getType() == PlanType.UNIT)
+            .filter(plan -> plan.getPlannedUnit() == unitType)
+            .count();
     }
 
     public int ourLivingUnitCount(UnitType unitType) {
