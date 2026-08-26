@@ -76,6 +76,33 @@ public class StrategyTracker {
         detectedStrategies.addAll(newlyDetected);
         possibleStrategies.removeAll(newlyDetected);
 
+        applyStrategyImplications();
+    }
+
+    /**
+     * 2Gate is a strictly more reliable signal of an early zealot rush than EarlyRush's own
+     * evidence, which stops looking at ARRIVAL_DEADLINE and so misses rushes that land later.
+     * The existing EarlyRush instance is promoted rather than a new one constructed, because
+     * ObservedStrategy defines no equals/hashCode: a fresh instance would be a distinct member
+     * of the identity-based set and getDetectedStrategiesAsString() would emit EarlyRush twice.
+     */
+    private void applyStrategyImplications() {
+        if (!isDetectedStrategy("2Gate") || isDetectedStrategy("EarlyRush")) {
+            return;
+        }
+
+        ObservedStrategy earlyRush = null;
+        for (ObservedStrategy strategy : possibleStrategies) {
+            if (strategy.getName().equals("EarlyRush")) {
+                earlyRush = strategy;
+                break;
+            }
+        }
+
+        if (earlyRush != null) {
+            detectedStrategies.add(earlyRush);
+            possibleStrategies.remove(earlyRush);
+        }
     }
 
     public boolean isDetectedStrategy(String strategyName) {

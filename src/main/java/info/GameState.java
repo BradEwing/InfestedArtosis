@@ -83,6 +83,7 @@ public class GameState {
     private boolean cannonRushDefend = false;
     private boolean scvRushed = false;
     private boolean earlyRushed = false;
+    private boolean earlyRushDenyGas = false;
 
     // TODO: refactor into common data structure, address access throughout bot
     private HashSet<Plan> plansScheduled = new HashSet<>();
@@ -680,7 +681,7 @@ public class GameState {
     public boolean canPlanExtractor() {
         return !isAllIn &&
                 !scvRushed &&
-                !earlyRushed &&
+                !earlyRushDenyGas &&
                 techProgression.canPlanExtractor() &&
                 baseData.canReserveExtractor() &&
                 (baseData.numExtractor() < 1 || needExtractor());

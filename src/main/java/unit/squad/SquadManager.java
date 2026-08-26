@@ -667,12 +667,15 @@ public class SquadManager {
 
         int threshold = 4;
 
+        int rushThresholdIncrease = 0;
         if (gameState.isEarlyRushed()) {
-            threshold += gameState.visibleEnemyMobileGroundCombatUnitsAtOurBases() * 2;
-        } else if (strategyTracker.isDetectedStrategy("2Gate")) {
-            final int zealots = gameState.enemyUnitCount(UnitType.Protoss_Zealot);
-            threshold += zealots * 2;
+            rushThresholdIncrease = gameState.visibleEnemyMobileGroundCombatUnitsAtOurBases() * 2;
         }
+        if (strategyTracker.isDetectedStrategy("2Gate")) {
+            final int zealots = gameState.enemyUnitCount(UnitType.Protoss_Zealot);
+            rushThresholdIncrease = Math.max(rushThresholdIncrease, zealots * 2);
+        }
+        threshold += rushThresholdIncrease;
 
         return Math.min(threshold, MAX_MOVE_OUT_THRESHOLD);
     }
