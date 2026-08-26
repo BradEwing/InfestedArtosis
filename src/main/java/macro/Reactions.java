@@ -104,6 +104,7 @@ public class Reactions {
 
         if (gameState.getGameTime().greaterThan(EARLY_RUSH_HARD_DEADLINE)) {
             gameState.setEarlyRushed(false);
+            gameState.setEarlyRushDenyGas(false);
             return;
         }
 
@@ -113,17 +114,25 @@ public class Reactions {
         boolean preparing = withinRushWindow && zerglingCount < EARLY_RUSH_SAFE_ZERGLINGS;
         if (attackersAtBase == 0 && !preparing) {
             gameState.setEarlyRushed(false);
+            gameState.setEarlyRushDenyGas(false);
             return;
         }
 
         gameState.setEarlyRushed(true);
+
+        boolean speedResearched = gameState.getTechProgression().isMetabolicBoost();
+        boolean committedGas = gameState.getBaseData().numExtractor() > 0;
+        boolean preserveGasForSpeed = gameState.getOpponentRace() == Race.Protoss && !speedResearched && committedGas;
+        gameState.setEarlyRushDenyGas(!preserveGasForSpeed);
 
         ProductionQueue productionQueue = gameState.getProductionQueue();
         productionQueue.setPriorityWhere(IS_SPAWNING_POOL, 0);
         productionQueue.removeWhere(IS_HATCHERY, gameState::setImpossiblePlan);
 
         BaseData baseData = gameState.getBaseData();
-        cancelAllExtractors(baseData);
+        if (gameState.isEarlyRushDenyGas()) {
+            cancelAllExtractors(baseData);
+        }
 
         int droneCount = gameState.ourUnitCount(UnitType.Zerg_Drone);
         if (droneCount >= 8 && zerglingCount < 8) {
