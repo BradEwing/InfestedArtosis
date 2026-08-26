@@ -45,6 +45,9 @@ public class Reactions {
     private static final Predicate<Plan> IS_CREEP_COLONY = p ->
             p.getType() == PlanType.BUILDING && p.getPlannedUnit() == UnitType.Zerg_Creep_Colony;
 
+    private static final Predicate<Plan> IS_LAIR = p ->
+            p.getType() == PlanType.BUILDING && p.getPlannedUnit() == UnitType.Zerg_Lair;
+
     /**
      * Sits behind emergency defense so an unaffordable upgrade can never tie with, and so deny a
      * schedule slot to, the emergency creep colony, while still jumping ahead of tech and normal
@@ -112,6 +115,7 @@ public class Reactions {
         if (gameState.getGameTime().greaterThan(EARLY_RUSH_HARD_DEADLINE)) {
             gameState.setEarlyRushed(false);
             gameState.setEarlyRushDenyGas(false);
+            gameState.setEarlyRushDelayLair(false);
             return;
         }
 
@@ -122,6 +126,7 @@ public class Reactions {
         if (attackersAtBase == 0 && !preparing) {
             gameState.setEarlyRushed(false);
             gameState.setEarlyRushDenyGas(false);
+            gameState.setEarlyRushDelayLair(false);
             return;
         }
 
@@ -131,14 +136,21 @@ public class Reactions {
         boolean committedGas = gameState.getBaseData().numExtractor() > 0;
         boolean preserveGasForSpeed = gameState.getOpponentRace() == Race.Protoss && !speedResearched && committedGas;
         gameState.setEarlyRushDenyGas(!preserveGasForSpeed);
+        gameState.setEarlyRushDelayLair(gameState.getOpponentRace() == Race.Protoss);
 
         ProductionQueue productionQueue = gameState.getProductionQueue();
         productionQueue.setPriorityWhere(IS_SPAWNING_POOL, 0);
         productionQueue.removeWhere(IS_HATCHERY, gameState::setImpossiblePlan);
 
+        if (gameState.isEarlyRushDelayLair()) {
+            cancelQueuedLairs();
+        }
+
         BaseData baseData = gameState.getBaseData();
         if (gameState.isEarlyRushDenyGas()) {
             cancelAllExtractors(baseData);
+        } else {
+            planSpeedUpgrade(productionQueue);
         }
 
         int droneCount = gameState.ourUnitCount(UnitType.Zerg_Drone);
@@ -149,6 +161,33 @@ public class Reactions {
         if (baseData.getMyBases().size() == 1) {
             baseData.setAllowSunkenAtMain(true);
         }
+    }
+
+    /**
+     * Drops Lair plans still waiting in the production queue. Cancelling rather than demoting is
+     * required: plan priority controls only the order the queue is drained, not whether a plan is
+     * eligible, so a demoted Lair is still built as soon as it is affordable. Scheduled Lairs are
+     * cancelled by ProductionManager, which owns the scheduledBuildings slot they hold.
+     */
+    private void cancelQueuedLairs() {
+        gameState.getProductionQueue().removeWhere(IS_LAIR, gameState::setImpossiblePlan);
+    }
+
+    /**
+     * Queues Metabolic Boost and pulls it ahead of normal production. Shared by the 2Gate and the
+     * early-rush paths so gas preserved for speed is actually spent on it.
+     */
+    private void planSpeedUpgrade(ProductionQueue productionQueue) {
+        if (gameState.canPlanUpgrade(UpgradeType.Metabolic_Boost)) {
+            gameState.getTechProgression().setPlannedMetabolicBoost(true);
+            UpgradePlan upgradePlan = new UpgradePlan(UpgradeType.Metabolic_Boost, gameState.getGameTime().getFrames());
+            productionQueue.add(upgradePlan);
+        }
+
+        productionQueue.setPriorityWhere(
+                p -> p.getType() == PlanType.UPGRADE
+                        && ((UpgradePlan) p).getPlannedUpgrade() == UpgradeType.Metabolic_Boost,
+                SPEED_UPGRADE_PRIORITY);
     }
 
     private void cancelAllExtractors(BaseData baseData) {
@@ -237,16 +276,7 @@ public class Reactions {
 
         ProductionQueue productionQueue = gameState.getProductionQueue();
 
-        if (gameState.canPlanUpgrade(UpgradeType.Metabolic_Boost)) {
-            gameState.getTechProgression().setPlannedMetabolicBoost(true);
-            UpgradePlan upgradePlan = new UpgradePlan(UpgradeType.Metabolic_Boost, gameState.getGameTime().getFrames());
-            productionQueue.add(upgradePlan);
-        }
-
-        productionQueue.setPriorityWhere(
-                p -> p.getType() == PlanType.UPGRADE
-                        && ((UpgradePlan) p).getPlannedUpgrade() == UpgradeType.Metabolic_Boost,
-                SPEED_UPGRADE_PRIORITY);
+        planSpeedUpgrade(productionQueue);
 
         BaseData baseData = gameState.getBaseData();
         if (baseData.getMyBases().size() == 1) {

@@ -84,6 +84,7 @@ public class GameState {
     private boolean scvRushed = false;
     private boolean earlyRushed = false;
     private boolean earlyRushDenyGas = false;
+    private boolean earlyRushDelayLair = false;
 
     // TODO: refactor into common data structure, address access throughout bot
     private HashSet<Plan> plansScheduled = new HashSet<>();
@@ -507,6 +508,7 @@ public class GameState {
                 if (buildingType == UnitType.Zerg_Creep_Colony) {
                     cancelPairedColonyPlan(plan);
                 }
+                clearPlannedTechFlags(buildingType);
                 break;
             case UPGRADE:
                 if (shouldUnreserve) {
@@ -531,7 +533,8 @@ public class GameState {
      * @return boolean
      */
     public boolean canPlanLair() {
-        return needLair() && techProgression.canPlanLair() && hasMinHatchForLair() && ourUnitCount(UnitType.Zerg_Extractor) > 0;
+        return !earlyRushDelayLair && needLair() && techProgression.canPlanLair()
+                && hasMinHatchForLair() && ourUnitCount(UnitType.Zerg_Extractor) > 0;
     }
 
     public boolean canPlanHive() {
