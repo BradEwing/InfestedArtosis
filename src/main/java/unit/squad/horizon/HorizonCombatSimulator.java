@@ -95,6 +95,8 @@ public class HorizonCombatSimulator implements CombatSimulator {
 
         Map<UnitSizeType, Double> friendlySizeProportions = sizeProportions(squad, adjacentSquads);
 
+        List<Position> engagedGroundEnemies = new ArrayList<>();
+
         for (ObservedUnit ou : tracker.getLivingObservedUnits()) {
             UnitType type = ou.getUnitType();
             boolean visible = ou.getUnit().isVisible();
@@ -107,6 +109,10 @@ public class HorizonCombatSimulator implements CombatSimulator {
             if (pos == null) continue;
             double dist = squadCenter.getDistance(pos);
             if (dist > engagementRadius(type)) continue;
+
+            if (!type.isFlyer() && !type.isBuilding() && !type.isWorker()) {
+                engagedGroundEnemies.add(pos);
+            }
 
             if (type.isBuilding() && !ou.isCompleted()) continue;
             double hpWeight = hpWeighting(ou.getLastKnownHitPoints(), ou.getLastKnownShields(),
@@ -139,6 +145,10 @@ public class HorizonCombatSimulator implements CombatSimulator {
 
             double displayStr = airSquad ? aaEnemyStr : groundEnemyStr;
             snapshot.getEnemyUnits().add(new UnitDebugEntry(pos, type, displayStr, false, !visible));
+        }
+
+        if (!squad.isAirSquad()) {
+            friendlyGroundStr += friendlyStaticDefenseStrength(gameState, engagedGroundEnemies, squadCenter, snapshot);
         }
 
         if (!snapshot.getEnemyUnits().isEmpty()) {
@@ -291,6 +301,50 @@ public class HorizonCombatSimulator implements CombatSimulator {
         return type.isBuilding()
                 || type == UnitType.Terran_Siege_Tank_Siege_Mode
                 || type == UnitType.Zerg_Lurker;
+    }
+
+    /**
+     * Own completed sunken colonies contribute ground strength only while an enemy ground unit is
+     * already engaging that sunken. This mirrors McRave's Horizon, which admits a
+     * building to the strength sum only once it has a target. The candidate enemies are the ones
+     * the main enemy loop already accepted, so they carry its freshness and engagement-radius
+     * filters: a squad marching away from a sunken banks nothing from it. The same engagement
+     * radius bounds both the squad-to-sunken and enemy-to-sunken tests, so a sunken counts while
+     * an enemy is closing on it rather than only once it is already in weapon range. Positional
+     * units (lurkers, sieged tanks) have an unbounded freshness threshold in that loop, so a
+     * stale sighting of one can still hold the contribution open.
+     */
+    private double friendlyStaticDefenseStrength(GameState gameState, List<Position> engagedGroundEnemies,
+                                                 Position squadCenter, DebugSnapshot snapshot) {
+        if (engagedGroundEnemies.isEmpty()) return 0;
+
+        UnitType sunkenType = UnitType.Zerg_Sunken_Colony;
+        double radius = engagementRadius(sunkenType);
+        double total = 0;
+
+        for (Unit unit : gameState.getSelf().getUnits()) {
+            if (unit.getType() != sunkenType) continue;
+            if (!unit.isCompleted()) continue;
+
+            Position sunkenPosition = unit.getPosition();
+            if (sunkenPosition == null) continue;
+            if (squadCenter.getDistance(sunkenPosition) > radius) continue;
+            if (!anyWithinRange(engagedGroundEnemies, sunkenPosition, radius)) continue;
+
+            double hpWeight = hpWeighting(unit.getHitPoints(), 0, sunkenType.maxHitPoints(), 0);
+            double str = UnitStrength.groundToGround(sunkenType) * hpWeight;
+            snapshot.getFriendlyUnits().add(new UnitDebugEntry(sunkenPosition, sunkenType, str, true, false));
+            total += str;
+        }
+
+        return total;
+    }
+
+    private boolean anyWithinRange(List<Position> positions, Position origin, double range) {
+        for (Position pos : positions) {
+            if (pos.getDistance(origin) <= range) return true;
+        }
+        return false;
     }
 
     private double engagementRadius(UnitType type) {

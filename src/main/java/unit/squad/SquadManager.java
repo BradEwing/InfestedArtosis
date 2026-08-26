@@ -87,7 +87,6 @@ public class SquadManager {
     private static final int COMBAT_SIM_DURATION_FRAMES = 150;
     private static final double DEFENSE_WIN_THRESHOLD = 0.50;
     private static final int MERGE_CHECK_INTERVAL = 50;
-    private static final int SUNKEN_MANHATTAN_DISTANCE = 7;
     private static final int DEFENSE_SIM_RANGE = 256;
     private static final int CONTAINMENT_REEVALUATE_INTERVAL = 48;
     private static final int MAX_MOVE_OUT_THRESHOLD = 40;
@@ -722,14 +721,6 @@ public class SquadManager {
             }
         }
 
-        if (squad.isGroundSquad() && isSquadNearFriendlySunken(squad)) {
-            int now = game.getFrameCount();
-            squad.setStatus(SquadStatus.FIGHT);
-            assignFightTargets(squad, managedFighters, true);
-            squad.startFightLock(now);
-            return;
-        }
-
         Set<Position> enemyBuildingPositions = gameState.getLastKnownPositionsOfBuildings();
         Set<Unit> enemyUnits = gameState.getDetectedEnemyUnits();
 
@@ -977,18 +968,6 @@ public class SquadManager {
             return path.get(path.size() - 1).getCenter().toPosition();
         }
         return null;
-    }
-
-    private boolean isSquadNearFriendlySunken(Squad squad) {
-        TilePosition squadTile = squad.getCenter().toTilePosition();
-        for (Unit unit : game.self().getUnits()) {
-            if (unit.getType() != UnitType.Zerg_Sunken_Colony) continue;
-            if (!unit.isCompleted()) continue;
-            if (manhattanTileDistance(squadTile, unit.getTilePosition()) <= SUNKEN_MANHATTAN_DISTANCE) {
-                return true;
-            }
-        }
-        return false;
     }
 
     /**
