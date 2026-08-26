@@ -8,7 +8,16 @@ Infested Artosis is a StarCraft: Brood War Zerg bot built with JBWAPI. It uses a
 
 ## Build Commands
 
-Do not run `mvn` build commands because claude-code cannot pull maven dependencies. [GH Issue](https://github.com/anthropics/claude-code/issues/13372)
+Always run maven in **offline** mode with `-o`. Dependencies are already in the local repository;
+without `-o`, maven attempts network fetches that claude-code cannot complete.
+[GH Issue](https://github.com/anthropics/claude-code/issues/13372)
+
+- `mvn -o package` — compiles, runs the unit tests, builds the jar (~5s)
+- `mvn -o checkstyle:check` — matches the `Checkstyle` check required by branch protection on `main`
+
+Both must exit 0 before opening a PR; `main` requires the `build` and `Checkstyle` CI checks to pass.
+After changing `pom.xml`, verify with `mvn -o clean package` (plain `package` may report "Nothing to
+compile" and prove nothing).
 
 ## Architecture
 
