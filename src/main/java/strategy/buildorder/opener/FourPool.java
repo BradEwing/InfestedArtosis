@@ -12,6 +12,17 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class FourPool extends BuildOrder {
+
+    /**
+     * Zergling plans this build order will leave waiting in the production queue at once. It
+     * never transitions, so it must keep queueing zerglings for the whole game; the bound comes
+     * from queue depth rather than from any total zergling count, which cannot dead-end.
+     * Unschedulable plans are requeued rather than dropped, so a larva or mineral shortage holds
+     * the queue at this depth instead of growing it. Emergency defense plans zerglings on its
+     * own path and may briefly push the queue above this depth.
+     */
+    private static final int MAX_QUEUED_ZERGLING_PLANS = 6;
+
     public FourPool() {
         super("4Pool");
     }
@@ -41,10 +52,10 @@ public class FourPool extends BuildOrder {
             return list;
         }
 
-        final int neededZerglings = 24 - gameState.ourUnitCount(UnitType.Zerg_Zergling);
-        if (techProgression.isSpawningPool() && neededZerglings > 0) { 
+        final int queuedZerglings = gameState.queuedUnitPlanCount(UnitType.Zerg_Zergling);
+        if (techProgression.isSpawningPool() && queuedZerglings < MAX_QUEUED_ZERGLING_PLANS) {
             Plan zerglingPlan = this.planUnit(gameState, UnitType.Zerg_Zergling);
-            list.add(zerglingPlan);   
+            list.add(zerglingPlan);
         }
 
         return list;
@@ -56,7 +67,7 @@ public class FourPool extends BuildOrder {
     }
 
     @Override
-    public boolean isOpener() { 
-        return true; 
+    public boolean isOpener() {
+        return true;
     }
 }
