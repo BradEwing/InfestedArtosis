@@ -12,6 +12,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class FourPool extends BuildOrder {
+
+    private static final int MAX_QUEUED_ZERGLING_PLANS = 6;
+
     public FourPool() {
         super("4Pool");
     }
@@ -41,10 +44,10 @@ public class FourPool extends BuildOrder {
             return list;
         }
 
-        final int neededZerglings = 24 - gameState.ourUnitCount(UnitType.Zerg_Zergling);
-        if (techProgression.isSpawningPool() && neededZerglings > 0) { 
+        final int queuedZerglings = gameState.queuedUnitPlanCount(UnitType.Zerg_Zergling);
+        if (techProgression.isSpawningPool() && queuedZerglings < MAX_QUEUED_ZERGLING_PLANS) {
             Plan zerglingPlan = this.planUnit(gameState, UnitType.Zerg_Zergling);
-            list.add(zerglingPlan);   
+            list.add(zerglingPlan);
         }
 
         return list;
@@ -56,7 +59,7 @@ public class FourPool extends BuildOrder {
     }
 
     @Override
-    public boolean isOpener() { 
-        return true; 
+    public boolean isOpener() {
+        return true;
     }
 }
