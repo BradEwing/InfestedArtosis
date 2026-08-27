@@ -2,13 +2,23 @@ name: Release
 
 on:
   workflow_dispatch:
+    inputs:
+      republish_version:
+        description: "Skip the release and re-publish this existing release tag to BASIL (e.g. 0.61). Leave blank for a normal release."
+        required: false
+        default: ""
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   release:
+    if: inputs.republish_version == ''
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.version.outputs.next }}
 
     steps:
       - uses: actions/checkout@v4
@@ -56,3 +66,80 @@ jobs:
           name: ${{ steps.version.outputs.next }}
           generate_release_notes: true
           files: target/InfestedArtosis-${{ steps.version.outputs.next }}-jar-with-dependencies.jar
+
+  publish-basil:
+    needs: release
+    if: ${{ !cancelled() && (needs.release.result == 'success' || inputs.republish_version != '') }}
+    runs-on: ubuntu-latest
+    environment: basil
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      VERSION: ${{ inputs.republish_version || needs.release.outputs.version }}
+      # The organizer's link points at a single Drive file whose name must stay 0.38.zip.
+      # Its content is replaced in place so the file ID, name and link never change.
+      DRIVE_FILE_ID: ${{ vars.BASIL_DRIVE_FILE_ID }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.VERSION }}
+          sparse-checkout: BWAPI.dll
+          sparse-checkout-cone-mode: false
+
+      - name: Download release JAR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "$VERSION" --repo "$GITHUB_REPOSITORY" --pattern '*-jar-with-dependencies.jar' --dir dist
+          ls -l dist
+
+      - name: Build BASIL zip
+        run: |
+          cp BWAPI.dll dist/
+          cd dist
+          zip -X basil.zip "InfestedArtosis-${VERSION}-jar-with-dependencies.jar" BWAPI.dll
+          unzip -l basil.zip
+
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+          token_format: access_token
+          access_token_lifetime: 300s
+          access_token_scopes: https://www.googleapis.com/auth/drive
+          create_credentials_file: false
+          export_environment_variables: false
+
+      - name: Upload zip to Google Drive
+        env:
+          ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
+        run: |
+          set -euo pipefail
+          umask 077
+          printf 'Authorization: Bearer %s\n' "$ACCESS_TOKEN" > auth.header
+          trap 'rm -f auth.header' EXIT
+
+          BEFORE=$(curl -sSf -H @auth.header \
+            "https://www.googleapis.com/drive/v3/files/${DRIVE_FILE_ID}?fields=name,md5Checksum,size")
+          echo "Before: $BEFORE"
+
+          curl -sSf -o /dev/null -H @auth.header -X PATCH \
+            -H 'Content-Type: application/zip' \
+            --data-binary @dist/basil.zip \
+            "https://www.googleapis.com/upload/drive/v3/files/${DRIVE_FILE_ID}?uploadType=media"
+
+          AFTER=$(curl -sSf -H @auth.header \
+            "https://www.googleapis.com/drive/v3/files/${DRIVE_FILE_ID}?fields=name,md5Checksum,size")
+          echo "After:  $AFTER"
+
+          EXPECTED=$(md5sum dist/basil.zip | cut -d' ' -f1)
+          ACTUAL=$(echo "$AFTER" | sed -n 's/.*"md5Checksum": *"\([^"]*\)".*/\1/p')
+          if [ "$EXPECTED" != "$ACTUAL" ]; then
+            echo "::error::Drive md5 ($ACTUAL) does not match uploaded zip ($EXPECTED)"
+            exit 1
+          fi
+          echo "Published $VERSION to BASIL Drive file ${DRIVE_FILE_ID}"
