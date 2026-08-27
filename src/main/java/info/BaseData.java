@@ -11,6 +11,7 @@ import info.map.GroundPathComparator;
 import info.map.StartingLocationPaths;
 import lombok.Getter;
 import lombok.Setter;
+import util.BotLogger;
 import util.Distance;
 
 import java.util.HashMap;
@@ -242,7 +243,9 @@ public class BaseData {
 
     public void cancelReserveBase(Base base) {
         GroundPath oldPath = allBasePaths.get(base);
-        availableBases.put(base, oldPath);
+        if (oldPath != null) {
+            availableBases.put(base, oldPath);
+        }
         reservedBases.remove(base);
     }
 
@@ -287,13 +290,22 @@ public class BaseData {
     }
 
 
+    /**
+     * Releases a destroyed base back to the expansion pool.
+     *
+     * <p>Our own main base has no entry in {@code allBasePaths} (paths are measured from it), so it is
+     * never re-offered as an expansion target. Re-adding it with a null path would make {@link #findNewBase()}
+     * sort a null {@link GroundPath} and throw.
+     */
     private void removeBase(Unit hatchery) {
         Base base = baseLookup.get(hatchery);
         baseHatcheries.remove(hatchery);
         myBases.remove(base);
 
         GroundPath pathToRemovedBase = this.allBasePaths.get(base);
-        this.availableBases.put(base, pathToRemovedBase);
+        if (pathToRemovedBase != null) {
+            this.availableBases.put(base, pathToRemovedBase);
+        }
     }
 
     private void removeMacroHatchery(Unit hatchery) {
@@ -358,12 +370,15 @@ public class BaseData {
      *
      * <p>Islands (bases with no walkable ground path) are excluded since they are not present in availableBases.
      *
+     * <p>Candidates without a known ground path are excluded; their distance cannot be scored.
+     *
      * @return the best candidate base according to the criteria, or null if no valid base is available.
      */
     public Base findNewBase() {
         // Build a list of candidate bases that are not already reserved.
         List<Map.Entry<Base, GroundPath>> potential = this.availableBases.entrySet()
                 .stream()
+                .filter(p -> p.getValue() != null)
                 .filter(p -> !reservedBases.contains(p.getKey()))
                 .collect(Collectors.toList());
 
@@ -395,6 +410,7 @@ public class BaseData {
                         .map(Map.Entry::getKey)
                         .orElse(null);
             } catch (Exception e) {
+                BotLogger.error("BaseData.findNewBase", e);
                 return null;
             }
         } else {
@@ -404,24 +420,36 @@ public class BaseData {
         }
     }
 
+    /**
+     * Finds the base closest to a unit among the bases we currently own.
+     *
+     * @param unit the unit to measure from.
+     * @return the closest owned base, or null when we own no bases.
+     */
+    private Base nearestOwnedBase(Unit unit) {
+        return myBases.stream()
+                .min(Distance.closestBaseTo(unit))
+                .orElse(null);
+    }
+
     // Called on onUnitDestroy
     public void removeSunkenColony(Unit sunken) {
         if (sunken.getType() != UnitType.Zerg_Sunken_Colony) {
             return;
         }
-        Base base = myBases.stream()
-                .sorted(Distance.closestBaseTo(sunken))
-                .collect(Collectors.toList())
-                .get(0);
+        Base base = nearestOwnedBase(sunken);
+        if (base == null) {
+            return;
+        }
         sunkenColonyLookup.put(base, Math.max(sunkenColonyLookup.getOrDefault(base, 0) - 1, 0));
     }
 
     // Called for onUnitComplete
     public void addSunkenColony(Unit sunken) {
-        Base base = myBases.stream()
-                .sorted(Distance.closestBaseTo(sunken))
-                .collect(Collectors.toList())
-                .get(0);
+        Base base = nearestOwnedBase(sunken);
+        if (base == null) {
+            return;
+        }
         sunkenColonyLookup.put(base, sunkenColonyLookup.getOrDefault(base, 0) + 1);
         sunkenColonyReserveLookup.put(base, Math.max(sunkenColonyReserveLookup.getOrDefault(base, 0) - 1, 0));
     }
@@ -479,18 +507,18 @@ public class BaseData {
         if (spore.getType() != UnitType.Zerg_Spore_Colony) {
             return;
         }
-        Base base = myBases.stream()
-                .sorted(Distance.closestBaseTo(spore))
-                .collect(Collectors.toList())
-                .get(0);
+        Base base = nearestOwnedBase(spore);
+        if (base == null) {
+            return;
+        }
         sporeColonyLookup.put(base, Math.max(sporeColonyLookup.getOrDefault(base, 0) - 1, 0));
     }
 
     public void addSporeColony(Unit spore) {
-        Base base = myBases.stream()
-                .sorted(Distance.closestBaseTo(spore))
-                .collect(Collectors.toList())
-                .get(0);
+        Base base = nearestOwnedBase(spore);
+        if (base == null) {
+            return;
+        }
         sporeColonyLookup.put(base, sporeColonyLookup.getOrDefault(base, 0) + 1);
         sporeColonyReserveLookup.put(base, Math.max(sporeColonyReserveLookup.getOrDefault(base, 0) - 1, 0));
     }
@@ -592,7 +620,10 @@ public class BaseData {
             }
             GroundPath bestPath = allBasePaths.get(best);
             GroundPath candidatePath = allBasePaths.get(b);
-            if (candidatePath.getGroundDistance() > bestPath.getGroundDistance()) {
+            if (candidatePath == null) {
+                continue;
+            }
+            if (bestPath == null || candidatePath.getGroundDistance() > bestPath.getGroundDistance()) {
                 best = b;
             }
         }

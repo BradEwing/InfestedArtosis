@@ -7,6 +7,7 @@ import config.Config;
 import info.GameState;
 import strategy.BuildOrderFactory;
 import strategy.buildorder.BuildOrder;
+import util.BotLogger;
 
 import java.io.File;
 import java.io.IOException;
@@ -63,29 +64,41 @@ public class LearningManager {
         try {
             readOpponentRecord();
         } catch (IOException e) {
-            // Default to empty record
+            BotLogger.error("LearningManager.readOpponentRecord", e);
         }
 
         ensureOpenersInOpponentRecord();
         decisions.setOpener(determineOpener());
     }
 
+    /**
+     * Records the result of the finished game.
+     *
+     * <p>The per-game CSV row is the only durable record of the match, so the bookkeeping above it is guarded: a
+     * missing {@code currentOpener} must degrade the row, not prevent it from being written.
+     *
+     * @param isWinner whether we won.
+     */
     public void onEnd(boolean isWinner) {
         long currentTimestamp = System.currentTimeMillis();
-        
-        if (isWinner) {
-            currentOpener.setWins(currentOpener.getWins() + 1);
-            currentOpener.addWinTimestamp(currentTimestamp);
-            opponentRecord.setWins(opponentRecord.getWins() + 1);
+
+        if (currentOpener == null) {
+            BotLogger.error("LearningManager.onEnd", "no opener selected; recording result without opener attribution");
         } else {
-            currentOpener.setLosses(currentOpener.getLosses() + 1);
-            currentOpener.addLossTimestamp(currentTimestamp);
-            opponentRecord.setLosses(opponentRecord.getLosses() + 1);
+            if (isWinner) {
+                currentOpener.setWins(currentOpener.getWins() + 1);
+                currentOpener.addWinTimestamp(currentTimestamp);
+                opponentRecord.setWins(opponentRecord.getWins() + 1);
+            } else {
+                currentOpener.setLosses(currentOpener.getLosses() + 1);
+                currentOpener.addLossTimestamp(currentTimestamp);
+                opponentRecord.setLosses(opponentRecord.getLosses() + 1);
+            }
+            Map<String, Record> openerRecords = opponentRecord.getOpenerRecord();
+            openerRecords.put(currentOpener.getOpener(), currentOpener);
         }
-        Map<String, Record> openerRecords = opponentRecord.getOpenerRecord();
-        openerRecords.put(currentOpener.getOpener(), currentOpener);
-        
-        if (activeBuildOrderRecord != null && !activeBuildOrderRecord.getOpener().equals(currentOpener.getOpener())) {
+
+        if (activeBuildOrderRecord != null && !activeBuildOrderRecord.getOpener().equals(openerName())) {
             if (isWinner) {
                 activeBuildOrderRecord.setWins(activeBuildOrderRecord.getWins() + 1);
                 activeBuildOrderRecord.addWinTimestamp(currentTimestamp);
@@ -100,10 +113,18 @@ public class LearningManager {
         try {
             writeGameRecord(isWinner);
         } catch (IOException e) {
+            BotLogger.error("LearningManager.writeGameRecord", e);
         }
     }
 
-    public Decisions getDecisions() { 
+    /**
+     * @return the name of the opener we played, or an empty string when no opener was ever selected.
+     */
+    private String openerName() {
+        return currentOpener != null ? currentOpener.getOpener() : "";
+    }
+
+    public Decisions getDecisions() {
         return decisions; 
     }
 
@@ -267,8 +288,8 @@ public class LearningManager {
             .mapName(game.mapFileName())
             .opponentName(opponentName)
             .opponentRace(gameState.getOpponentRace().toString())
-            .opener(currentOpener.getOpener())
-            .buildOrder(activeBuildOrderRecord != null ? activeBuildOrderRecord.getOpener() : currentOpener.getOpener())
+            .opener(openerName())
+            .buildOrder(activeBuildOrderRecord != null ? activeBuildOrderRecord.getOpener() : openerName())
             .detectedStrategies(gameState.getStrategyTracker() != null ?
                 gameState.getStrategyTracker().getDetectedStrategiesAsString() : "")
             .isWinner(isWinner)

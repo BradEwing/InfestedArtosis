@@ -38,6 +38,11 @@ def scbw_play_command():
 OUTCOMES = ("WIN", "LOSS", "DRAW", "CRASH", "TIMEOUT", "STALL", "NO_RESULT")
 CONCLUSIVE = ("WIN", "LOSS")
 
+# Written by the JVM's default handler when an exception escapes a thread: the bot process died mid-game.
+JVM_DEATH_MARKER = "Exception in thread"
+# Written by util.BotLogger for a failure the bot caught and survived.
+SUPPRESSED_ERROR_MARKER = "[BOT-ERROR]"
+
 
 def now_id():
     return datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -209,6 +214,33 @@ def deploy_jar(jar):
     return ai_dir / jar.name
 
 
+def scan_bot_log(gdir):
+    """Scan the bot's stderr log for failure markers. Returns (jvm_died, suppressed_error_count).
+
+    A JVM death is invisible in result.json: StarCraft itself exits normally, so the game is scored as
+    an ordinary loss even though the bot stopped playing partway through and never wrote a learning row.
+    crashes_0/ stays empty because the watchdog follows the StarCraft process, not the JVM.
+    """
+    log = gdir / "logs_0" / "bot.log"
+    jvm_died = False
+    suppressed = 0
+    try:
+        with open(log, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                if JVM_DEATH_MARKER in line:
+                    jvm_died = True
+                elif SUPPRESSED_ERROR_MARKER in line:
+                    suppressed += 1
+    except OSError:
+        return False, 0
+    return jvm_died, suppressed
+
+
+def bot_error_count(game):
+    """Failures the bot caught, logged and survived during one game."""
+    return scan_bot_log(game_dir(game["game_name"]))[1]
+
+
 def classify(game):
     """Return (outcome, game_time, learning_row) for one manifest game entry."""
     gdir = game_dir(game["game_name"])
@@ -230,6 +262,9 @@ def classify(game):
     if result.get("is_crashed"):
         if scores and not scores.get("is_crashed") and not scores.get("is_nostart"):
             return "DRAW", game_time, learning_row
+        return "CRASH", game_time, learning_row
+
+    if scan_bot_log(gdir)[0]:
         return "CRASH", game_time, learning_row
 
     winner = (result.get("winner") or "").lower()
