@@ -338,21 +338,6 @@ public class LearningManager {
     /**
      * Selects this game's opener by precedence: the configured override, then the hard-coded rush response,
      * then weighted D-UCB over the opponent's opener history.
-     *
-     * <p>The rush response is deliberately limited to CannonRush and SCVRush, where forcing Overpool is
-     * strongly supported (96.5% over n=114 and 88.7% over n=62 respectively). EarlyRush was removed from the
-     * trigger in IA-240: 2Gate implies EarlyRush, so the override fired in nearly every game against a
-     * 2-gating Protoss and forced Overpool, the worst measured anti-2Gate opener (17.5% over n=166 against
-     * 4Pool's 44.1%), while also locking the bandit out of exploring.
-     *
-     * <p>Extracted from {@link #determineOpener()} as a pure function so the selection precedence can be
-     * unit tested without a live {@link Game}; it is package-private for that reason and should stay that way.
-     * Returning a name rather than a {@link BuildOrder} keeps the {@code currentOpener} write in the caller.
-     * That relies on the invariant maintained everywhere in this class: every {@link Record} is stored in
-     * {@code openerRecord} under a key equal to its own {@code opener} field, so re-resolving a name yields
-     * the identical record instance that {@link #onEnd(boolean)} later mutates.
-     *
-     * @return the name of the chosen opener, or null when no playable opener could be resolved
      */
     static String selectOpenerName(String openerOverride,
                                    BuildOrderFactory buildOrderFactory,
