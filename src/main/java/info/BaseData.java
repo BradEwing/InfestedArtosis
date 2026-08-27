@@ -11,7 +11,6 @@ import info.map.GroundPathComparator;
 import info.map.StartingLocationPaths;
 import lombok.Getter;
 import lombok.Setter;
-import util.BotLogger;
 import util.Distance;
 
 import java.util.HashMap;
@@ -410,7 +409,6 @@ public class BaseData {
                         .map(Map.Entry::getKey)
                         .orElse(null);
             } catch (Exception e) {
-                BotLogger.error("BaseData.findNewBase", e);
                 return null;
             }
         } else {

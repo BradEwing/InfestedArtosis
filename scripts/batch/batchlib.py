@@ -40,8 +40,6 @@ CONCLUSIVE = ("WIN", "LOSS")
 
 # Written by the JVM's default handler when an exception escapes a thread: the bot process died mid-game.
 JVM_DEATH_MARKER = "Exception in thread"
-# Written by util.BotLogger for a failure the bot caught and survived.
-SUPPRESSED_ERROR_MARKER = "[BOT-ERROR]"
 
 
 def now_id():
@@ -214,31 +212,19 @@ def deploy_jar(jar):
     return ai_dir / jar.name
 
 
-def scan_bot_log(gdir):
-    """Scan the bot's stderr log for failure markers. Returns (jvm_died, suppressed_error_count).
+def jvm_died(gdir):
+    """True when the bot's log shows the JVM died mid-game.
 
     A JVM death is invisible in result.json: StarCraft itself exits normally, so the game is scored as
     an ordinary loss even though the bot stopped playing partway through and never wrote a learning row.
     crashes_0/ stays empty because the watchdog follows the StarCraft process, not the JVM.
     """
     log = gdir / "logs_0" / "bot.log"
-    jvm_died = False
-    suppressed = 0
     try:
         with open(log, encoding="utf-8", errors="replace") as f:
-            for line in f:
-                if JVM_DEATH_MARKER in line:
-                    jvm_died = True
-                elif SUPPRESSED_ERROR_MARKER in line:
-                    suppressed += 1
+            return any(JVM_DEATH_MARKER in line for line in f)
     except OSError:
-        return False, 0
-    return jvm_died, suppressed
-
-
-def bot_error_count(game):
-    """Failures the bot caught, logged and survived during one game."""
-    return scan_bot_log(game_dir(game["game_name"]))[1]
+        return False
 
 
 def classify(game):
@@ -264,7 +250,7 @@ def classify(game):
             return "DRAW", game_time, learning_row
         return "CRASH", game_time, learning_row
 
-    if scan_bot_log(gdir)[0]:
+    if jvm_died(gdir):
         return "CRASH", game_time, learning_row
 
     winner = (result.get("winner") or "").lower()

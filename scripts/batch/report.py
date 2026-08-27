@@ -82,23 +82,20 @@ def print_field_table(label, rows, field):
 
 
 def print_bot_errors(results):
-    """Report games where the bot logged failures.
+    """Report games the JVM did not survive.
 
-    A CRASH game is one the JVM did not survive. A degraded game is one it did survive: the top-level guard caught
-    the failure, so the game plays out and scores as an ordinary win or loss even though the bot may have been
-    partly or wholly inert. That is the failure mode the guard trades the crash for, so it is reported up front
-    rather than left to be noticed in the win rate.
+    These are invisible in result.json: StarCraft exits normally, so the game scores as an ordinary loss even
+    though the bot stopped playing partway through and never wrote a learning row.
+
+    A failure the bot catches and survives is not reported here. The guard suppresses it silently, because the
+    bot must not write to stdout or stderr, so nothing distinguishes a degraded game from a clean one.
     """
     crashed = [r for r in results if r["outcome"] == "CRASH"]
-    scored = [r for r in results if r["outcome"] not in ("NO_RESULT", "RUNNING", "CRASH")]
-    degraded = [(r, n) for r, n in ((r, bl.bot_error_count(r)) for r in scored) if n]
-    if not crashed and not degraded:
+    if not crashed:
         return
-    print(f"\nBot failures (logs_0/bot.log): {len(crashed)} crashed, {len(degraded)} degraded but scored")
+    print(f"\nBot failures (logs_0/bot.log): {len(crashed)} crashed")
     for r in crashed:
         print(f"  {r['game_name']:<18} vs {r['opponent']:<20} JVM died mid-game (scored {r['outcome']})")
-    for r, n in degraded:
-        print(f"  {r['game_name']:<18} vs {r['opponent']:<20} {n} error log line(s), scored {r['outcome']}")
 
 
 def print_learning(manifest, results, tail):

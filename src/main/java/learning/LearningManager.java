@@ -7,7 +7,6 @@ import config.Config;
 import info.GameState;
 import strategy.BuildOrderFactory;
 import strategy.buildorder.BuildOrder;
-import util.BotLogger;
 
 import java.io.File;
 import java.io.IOException;
@@ -64,7 +63,6 @@ public class LearningManager {
         try {
             readOpponentRecord();
         } catch (IOException e) {
-            BotLogger.error("LearningManager.readOpponentRecord", e);
         }
 
         ensureOpenersInOpponentRecord();
@@ -82,9 +80,7 @@ public class LearningManager {
     public void onEnd(boolean isWinner) {
         long currentTimestamp = System.currentTimeMillis();
 
-        if (currentOpener == null) {
-            BotLogger.error("LearningManager.onEnd", "no opener selected; recording result without opener attribution");
-        } else {
+        if (currentOpener != null) {
             if (isWinner) {
                 currentOpener.setWins(currentOpener.getWins() + 1);
                 currentOpener.addWinTimestamp(currentTimestamp);
@@ -113,7 +109,6 @@ public class LearningManager {
         try {
             writeGameRecord(isWinner);
         } catch (IOException e) {
-            BotLogger.error("LearningManager.writeGameRecord", e);
         }
     }
 
