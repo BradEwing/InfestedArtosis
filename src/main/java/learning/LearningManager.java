@@ -72,9 +72,6 @@ public class LearningManager {
     /**
      * Records the result of the finished game.
      *
-     * <p>The per-game CSV row is the only durable record of the match, so the bookkeeping above it is guarded: a
-     * missing {@code currentOpener} must degrade the row, not prevent it from being written.
-     *
      * @param isWinner whether we won.
      */
     public void onEnd(boolean isWinner) {
