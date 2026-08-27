@@ -325,65 +325,88 @@ public class LearningManager {
      * Determine which opener we should pick using a UCB algorithm.
      */
     private BuildOrder determineOpener() {
-        if (config.openerOverride != null) {
-            BuildOrder forced = buildOrderFactory.getByName(config.openerOverride);
+        String openerName = selectOpenerName(config.openerOverride, buildOrderFactory, opponentRecord,
+                lastGameDetectedStrategies, lastGameOpener, opponentName, game.mapFileName());
+        if (openerName == null) {
+            return null;
+        }
+
+        currentOpener = opponentRecord.getOpenerRecord().get(openerName);
+        return buildOrderFactory.getByName(openerName);
+    }
+
+    /**
+     * Selects this game's opener by precedence: the configured override, then the hard-coded rush response,
+     * then weighted D-UCB over the opponent's opener history.
+     *
+     * <p>The rush response is deliberately limited to CannonRush and SCVRush, where forcing Overpool is
+     * strongly supported (96.5% over n=114 and 88.7% over n=62 respectively). EarlyRush was removed from the
+     * trigger in IA-240: 2Gate implies EarlyRush, so the override fired in nearly every game against a
+     * 2-gating Protoss and forced Overpool, the worst measured anti-2Gate opener (17.5% over n=166 against
+     * 4Pool's 44.1%), while also locking the bandit out of exploring.
+     *
+     * <p>Extracted from {@link #determineOpener()} as a pure function so the selection precedence can be
+     * unit tested without a live {@link Game}; it is package-private for that reason and should stay that way.
+     * Returning a name rather than a {@link BuildOrder} keeps the {@code currentOpener} write in the caller.
+     * That relies on the invariant maintained everywhere in this class: every {@link Record} is stored in
+     * {@code openerRecord} under a key equal to its own {@code opener} field, so re-resolving a name yields
+     * the identical record instance that {@link #onEnd(boolean)} later mutates.
+     *
+     * @return the name of the chosen opener, or null when no playable opener could be resolved
+     */
+    static String selectOpenerName(String openerOverride,
+                                   BuildOrderFactory buildOrderFactory,
+                                   OpponentRecord opponentRecord,
+                                   String lastGameDetectedStrategies,
+                                   String lastGameOpener,
+                                   String opponentName,
+                                   String mapName) {
+        if (openerOverride != null) {
+            BuildOrder forced = buildOrderFactory.getByName(openerOverride);
             if (forced != null && buildOrderFactory.isPlayableOpener(forced)) {
-                currentOpener = opponentRecord.getOpenerRecord().get(forced.getName());
-                return forced;
+                return forced.getName();
             }
         }
 
         boolean isRusher = lastGameDetectedStrategies.contains("CannonRush")
-                || lastGameDetectedStrategies.contains("SCVRush")
-                || lastGameDetectedStrategies.contains("EarlyRush");
+                || lastGameDetectedStrategies.contains("SCVRush");
         if (isRusher) {
             BuildOrder overpool = buildOrderFactory.getByName("Overpool");
             if (overpool != null && buildOrderFactory.isPlayableOpener(overpool)) {
-                currentOpener = opponentRecord.getOpenerRecord().get(overpool.getName());
-                return overpool;
+                return overpool.getName();
             }
         }
 
-        String currentMapName = game.mapFileName();
-        
         List<String> playableOpeners = opponentRecord.getOpenerRecord()
                 .keySet()
                 .stream()
                 .filter(openerName -> buildOrderFactory.isPlayableOpener(buildOrderFactory.getByName(openerName)))
                 .filter(openerName -> !(lastGameOpener.equals("4Pool") && openerName.equals("4Pool")))
                 .collect(Collectors.toList());
-        
+
         if (playableOpeners.isEmpty()) {
             List<Record> allRecords = opponentRecord.getOpenerRecord()
                     .values()
                     .stream()
                     .filter(rec -> buildOrderFactory.isPlayableOpener(buildOrderFactory.getByName(rec.getOpener())))
-                    .sorted(new UCBRecordComparator(this.opponentRecord.totalGames()))
+                    .sorted(new UCBRecordComparator(opponentRecord.totalGames()))
                     .collect(Collectors.toList());
-            
+
             if (allRecords.isEmpty()) {
                 return null;
             }
-            
-            currentOpener = allRecords.get(0);
-            return buildOrderFactory.getByName(currentOpener.getOpener());
+
+            return allRecords.get(0).getOpener();
         }
-        
-        String bestOpener = WeightedUCBCalculator.findBestStrategy(
+
+        return WeightedUCBCalculator.findBestStrategy(
             playableOpeners,
-            currentMapName,
+            mapName,
             opponentName,
             opponentRecord.getMapSpecificOpenerRecord(),
             opponentRecord.getOpenerRecord(),
-            this.opponentRecord.totalGames()
+            opponentRecord.totalGames()
         );
-        
-        if (bestOpener != null) {
-            currentOpener = opponentRecord.getOpenerRecord().get(bestOpener);
-            return buildOrderFactory.getByName(bestOpener);
-        }
-        
-        return null;
     }
 
     /**
