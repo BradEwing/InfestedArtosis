@@ -63,29 +63,35 @@ public class LearningManager {
         try {
             readOpponentRecord();
         } catch (IOException e) {
-            // Default to empty record
         }
 
         ensureOpenersInOpponentRecord();
         decisions.setOpener(determineOpener());
     }
 
+    /**
+     * Records the result of the finished game.
+     *
+     * @param isWinner whether we won.
+     */
     public void onEnd(boolean isWinner) {
         long currentTimestamp = System.currentTimeMillis();
-        
-        if (isWinner) {
-            currentOpener.setWins(currentOpener.getWins() + 1);
-            currentOpener.addWinTimestamp(currentTimestamp);
-            opponentRecord.setWins(opponentRecord.getWins() + 1);
-        } else {
-            currentOpener.setLosses(currentOpener.getLosses() + 1);
-            currentOpener.addLossTimestamp(currentTimestamp);
-            opponentRecord.setLosses(opponentRecord.getLosses() + 1);
+
+        if (currentOpener != null) {
+            if (isWinner) {
+                currentOpener.setWins(currentOpener.getWins() + 1);
+                currentOpener.addWinTimestamp(currentTimestamp);
+                opponentRecord.setWins(opponentRecord.getWins() + 1);
+            } else {
+                currentOpener.setLosses(currentOpener.getLosses() + 1);
+                currentOpener.addLossTimestamp(currentTimestamp);
+                opponentRecord.setLosses(opponentRecord.getLosses() + 1);
+            }
+            Map<String, Record> openerRecords = opponentRecord.getOpenerRecord();
+            openerRecords.put(currentOpener.getOpener(), currentOpener);
         }
-        Map<String, Record> openerRecords = opponentRecord.getOpenerRecord();
-        openerRecords.put(currentOpener.getOpener(), currentOpener);
-        
-        if (activeBuildOrderRecord != null && !activeBuildOrderRecord.getOpener().equals(currentOpener.getOpener())) {
+
+        if (activeBuildOrderRecord != null && !activeBuildOrderRecord.getOpener().equals(openerName())) {
             if (isWinner) {
                 activeBuildOrderRecord.setWins(activeBuildOrderRecord.getWins() + 1);
                 activeBuildOrderRecord.addWinTimestamp(currentTimestamp);
@@ -103,7 +109,14 @@ public class LearningManager {
         }
     }
 
-    public Decisions getDecisions() { 
+    /**
+     * @return the name of the opener we played, or an empty string when no opener was ever selected.
+     */
+    private String openerName() {
+        return currentOpener != null ? currentOpener.getOpener() : "";
+    }
+
+    public Decisions getDecisions() {
         return decisions; 
     }
 
@@ -267,8 +280,8 @@ public class LearningManager {
             .mapName(game.mapFileName())
             .opponentName(opponentName)
             .opponentRace(gameState.getOpponentRace().toString())
-            .opener(currentOpener.getOpener())
-            .buildOrder(activeBuildOrderRecord != null ? activeBuildOrderRecord.getOpener() : currentOpener.getOpener())
+            .opener(openerName())
+            .buildOrder(activeBuildOrderRecord != null ? activeBuildOrderRecord.getOpener() : openerName())
             .detectedStrategies(gameState.getStrategyTracker() != null ?
                 gameState.getStrategyTracker().getDetectedStrategiesAsString() : "")
             .isWinner(isWinner)
@@ -325,65 +338,73 @@ public class LearningManager {
      * Determine which opener we should pick using a UCB algorithm.
      */
     private BuildOrder determineOpener() {
-        if (config.openerOverride != null) {
-            BuildOrder forced = buildOrderFactory.getByName(config.openerOverride);
+        String openerName = selectOpenerName(config.openerOverride, buildOrderFactory, opponentRecord,
+                lastGameDetectedStrategies, lastGameOpener, opponentName, game.mapFileName());
+        if (openerName == null) {
+            return null;
+        }
+
+        currentOpener = opponentRecord.getOpenerRecord().get(openerName);
+        return buildOrderFactory.getByName(openerName);
+    }
+
+    /**
+     * Selects this game's opener by precedence: the configured override, then the hard-coded rush response,
+     * then weighted D-UCB over the opponent's opener history.
+     */
+    static String selectOpenerName(String openerOverride,
+                                   BuildOrderFactory buildOrderFactory,
+                                   OpponentRecord opponentRecord,
+                                   String lastGameDetectedStrategies,
+                                   String lastGameOpener,
+                                   String opponentName,
+                                   String mapName) {
+        if (openerOverride != null) {
+            BuildOrder forced = buildOrderFactory.getByName(openerOverride);
             if (forced != null && buildOrderFactory.isPlayableOpener(forced)) {
-                currentOpener = opponentRecord.getOpenerRecord().get(forced.getName());
-                return forced;
+                return forced.getName();
             }
         }
 
         boolean isRusher = lastGameDetectedStrategies.contains("CannonRush")
-                || lastGameDetectedStrategies.contains("SCVRush")
-                || lastGameDetectedStrategies.contains("EarlyRush");
+                || lastGameDetectedStrategies.contains("SCVRush");
         if (isRusher) {
             BuildOrder overpool = buildOrderFactory.getByName("Overpool");
             if (overpool != null && buildOrderFactory.isPlayableOpener(overpool)) {
-                currentOpener = opponentRecord.getOpenerRecord().get(overpool.getName());
-                return overpool;
+                return overpool.getName();
             }
         }
 
-        String currentMapName = game.mapFileName();
-        
         List<String> playableOpeners = opponentRecord.getOpenerRecord()
                 .keySet()
                 .stream()
                 .filter(openerName -> buildOrderFactory.isPlayableOpener(buildOrderFactory.getByName(openerName)))
                 .filter(openerName -> !(lastGameOpener.equals("4Pool") && openerName.equals("4Pool")))
                 .collect(Collectors.toList());
-        
+
         if (playableOpeners.isEmpty()) {
             List<Record> allRecords = opponentRecord.getOpenerRecord()
                     .values()
                     .stream()
                     .filter(rec -> buildOrderFactory.isPlayableOpener(buildOrderFactory.getByName(rec.getOpener())))
-                    .sorted(new UCBRecordComparator(this.opponentRecord.totalGames()))
+                    .sorted(new UCBRecordComparator(opponentRecord.totalGames()))
                     .collect(Collectors.toList());
-            
+
             if (allRecords.isEmpty()) {
                 return null;
             }
-            
-            currentOpener = allRecords.get(0);
-            return buildOrderFactory.getByName(currentOpener.getOpener());
+
+            return allRecords.get(0).getOpener();
         }
-        
-        String bestOpener = WeightedUCBCalculator.findBestStrategy(
+
+        return WeightedUCBCalculator.findBestStrategy(
             playableOpeners,
-            currentMapName,
+            mapName,
             opponentName,
             opponentRecord.getMapSpecificOpenerRecord(),
             opponentRecord.getOpenerRecord(),
-            this.opponentRecord.totalGames()
+            opponentRecord.totalGames()
         );
-        
-        if (bestOpener != null) {
-            currentOpener = opponentRecord.getOpenerRecord().get(bestOpener);
-            return buildOrderFactory.getByName(bestOpener);
-        }
-        
-        return null;
     }
 
     /**

@@ -81,6 +81,23 @@ def print_field_table(label, rows, field):
         print(f"      {name:<24} {c['WIN']:>3}W {c['LOSS']:>3}L  {c['WIN'] / total:>5.0%}")
 
 
+def print_bot_errors(results):
+    """Report games the JVM did not survive.
+
+    These are invisible in result.json: StarCraft exits normally, so the game scores as an ordinary loss even
+    though the bot stopped playing partway through and never wrote a learning row.
+
+    A failure the bot catches and survives is not reported here. The guard suppresses it silently, because the
+    bot must not write to stdout or stderr, so nothing distinguishes a degraded game from a clean one.
+    """
+    crashed = [r for r in results if r["outcome"] == "CRASH"]
+    if not crashed:
+        return
+    print(f"\nBot failures (logs_0/bot.log): {len(crashed)} crashed")
+    for r in crashed:
+        print(f"  {r['game_name']:<18} vs {r['opponent']:<20} JVM died mid-game (scored {r['outcome']})")
+
+
 def print_learning(manifest, results, tail):
     print("\nLearning slice (per-game write_0 rows, race-immune)")
     for opp in manifest["opponents"]:
@@ -160,6 +177,7 @@ def report(run_id, tail=10, archive_mode="none"):
     if not results:
         print("  No games launched yet.")
         return
+    print_bot_errors(results)
     print_table("By opponent", tally(results, "opponent"))
     print_table("By map", tally(results, "map"))
     print_learning(manifest, results, tail)
