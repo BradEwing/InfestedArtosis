@@ -39,9 +39,6 @@ public class Bot extends DefaultBWListener {
 
     private AutoObserver autoObserver;
 
-    /** False until {@link #initialize()} completes, so a failed start does not become a per-frame NPE storm. */
-    private boolean started;
-
     /**
      * Runs an event handler body, suppressing anything it throws.
      *
@@ -60,22 +57,6 @@ public class Bot extends DefaultBWListener {
             handler.run();
         } catch (Throwable t) {
         }
-    }
-
-    /**
-     * Runs a guarded event handler body only once the managers exist.
-     *
-     * <p>If {@link #onStart()} failed, every manager field is still null and an unguarded handler would throw a
-     * {@link NullPointerException} on every event for the rest of the game. Skipping is quieter and equivalent: a bot
-     * that never started has nothing to do.
-     *
-     * @param handler the handler body.
-     */
-    private void safelyWhenStarted(Runnable handler) {
-        if (!started) {
-            return;
-        }
-        safely(handler);
     }
 
     @Override
@@ -110,8 +91,6 @@ public class Bot extends DefaultBWListener {
         debugMap = new Debug(game, decisions.getOpener(), opponentRecord, gameState, gameState.getConfig(), unitManager.getSquadManager());
 
         autoObserver = new AutoObserver(gameState.getConfig(), game, unitManager.getScoutManager(), unitManager.getSquadManager());
-
-        started = true;
     }
 
     /**
@@ -124,13 +103,13 @@ public class Bot extends DefaultBWListener {
      */
     @Override
     public void onFrame() {
-        safelyWhenStarted(() -> {
+        safely(() -> {
             informationManager.onFrame();
             productionManager.onFrame();
             planManager.onFrame();
             unitManager.onFrame();
         });
-        safelyWhenStarted(() -> {
+        safely(() -> {
             debugMap.onFrame();
             autoObserver.onFrame();
         });
@@ -138,12 +117,12 @@ public class Bot extends DefaultBWListener {
 
     @Override
     public void onUnitHide(Unit unit) {
-        safelyWhenStarted(() -> informationManager.onUnitHide(unit));
+        safely(() -> informationManager.onUnitHide(unit));
     }
 
     @Override
     public void onUnitShow(Unit unit) {
-        safelyWhenStarted(() -> {
+        safely(() -> {
             if (unit.getType() == UnitType.Resource_Vespene_Geyser) {
                 gameState.getBaseData().onGeyserShow(unit);
             }
@@ -154,7 +133,7 @@ public class Bot extends DefaultBWListener {
 
     @Override
     public void onUnitCreate(Unit unit) {
-        safelyWhenStarted(() -> {
+        safely(() -> {
             if (unit.getType() == UnitType.Resource_Vespene_Geyser) {
                 gameState.getBaseData().onGeyserComplete(unit);
             }
@@ -163,7 +142,7 @@ public class Bot extends DefaultBWListener {
 
     @Override
     public void onUnitComplete(Unit unit) {
-        safelyWhenStarted(() -> {
+        safely(() -> {
             if (unit.getPlayer() != game.self()) {
                 return;
             }
@@ -178,7 +157,7 @@ public class Bot extends DefaultBWListener {
 
     @Override
     public void onUnitDestroy(Unit unit) {
-        safelyWhenStarted(() -> {
+        safely(() -> {
             informationManager.onUnitDestroy(unit);
             productionManager.onUnitDestroy(unit);
             unitManager.onUnitDestroy(unit);
@@ -187,7 +166,7 @@ public class Bot extends DefaultBWListener {
 
     @Override
     public void onUnitRenegade(Unit unit) {
-        safelyWhenStarted(() -> {
+        safely(() -> {
             informationManager.onUnitRenegade(unit);
             productionManager.onUnitRenegade(unit);
         });
@@ -195,7 +174,7 @@ public class Bot extends DefaultBWListener {
 
     @Override
     public void onUnitMorph(Unit unit) {
-        safelyWhenStarted(() -> {
+        safely(() -> {
             informationManager.onUnitMorph(unit);
             productionManager.onUnitMorph(unit);
             unitManager.onUnitMorph(unit);
@@ -204,9 +183,6 @@ public class Bot extends DefaultBWListener {
 
     @Override
     public void onEnd(boolean isWinner) {
-        if (learningManager == null) {
-            return;
-        }
         safely(() -> learningManager.onEnd(isWinner));
     }
 
