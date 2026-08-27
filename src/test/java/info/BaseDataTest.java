@@ -16,8 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * Unit tests for BaseData expansion selection.
  *
  * <p>bwem.Base is final with a package-private constructor and bwapi.Unit cannot be instantiated outside its own
- * package, so BaseData is exercised with no bases at all. That is exactly the state IA-239 crashed in: every base of
- * ours was destroyed, or the only entry left in the expansion pool had no known ground path.
+ * package, so BaseData is exercised with no bases at all.
  */
 public class BaseDataTest {
 
@@ -41,9 +40,7 @@ public class BaseDataTest {
     }
 
     /**
-     * Reproduces the IA-239 crash: after our main hatchery died, removeBase put the main into the expansion pool with
-     * a null GroundPath. Sorting that pool threw an NPE that killed the client. A candidate with no known ground path
-     * is not a viable expansion and must simply be skipped.
+     * A candidate with no known ground path is not a viable expansion and must simply be skipped.
      */
     @Test
     void testFindNewBaseSkipsCandidatesWithoutAGroundPath() throws ReflectiveOperationException {
