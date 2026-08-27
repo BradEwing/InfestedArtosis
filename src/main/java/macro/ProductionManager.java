@@ -520,16 +520,6 @@ public class ProductionManager {
         }
     }
 
-    /**
-     * Drains the production queue, scheduling what it can and requeueing the rest.
-     *
-     * <p>The drain is destructive: every plan is polled off the queue before any is put back. The requeue therefore
-     * runs in a finally block — an exception escaping mid-drain would otherwise discard every plan polled so far,
-     * leaking the minerals, gas and building tiles they had reserved for the rest of the game.
-     *
-     * <p>The one plan in flight when such an exception is thrown is deliberately not requeued. It is the likeliest
-     * cause of the failure, so putting it back would reproduce the throw on every following frame.
-     */
     private void schedulePlannedItems() {
         if (gameState.getProductionQueue().isEmpty()) {
             return;
@@ -550,56 +540,55 @@ public class ProductionManager {
         int mineralBuffer = resourceCount.availableMinerals();
         int gasBuffer = resourceCount.availableGas();
         int queueSize = gameState.getProductionQueue().size();
-        try {
-            for (int i = 0; i < queueSize; i++) {
+        for (int i = 0; i < queueSize; i++) {
 
-                boolean canSchedule = false;
-                // If we can't plan, we'll put it back on the queue
-                final Plan plan = gameState.getProductionQueue().poll();
-                if (plan == null) {
-                    continue;
-                }
+            boolean canSchedule = false;
+            // If we can't plan, we'll put it back on the queue
+            final Plan plan = gameState.getProductionQueue().poll();
+            if (plan == null) {
+                continue;
+            }
 
-                // Don't block the queue if the plan cannot be executed
-                if (!canSchedulePlan(plan)) {
-                    gameState.setImpossiblePlan(plan);
-                    continue;
-                }
+            // Don't block the queue if the plan cannot be executed
+            if (!canSchedulePlan(plan)) {
+                gameState.setImpossiblePlan(plan);
+                continue;
+            }
 
-                PlanType planType = plan.getType();
+            PlanType planType = plan.getType();
 
-                switch (planType) {
-                    case BUILDING:
-                        canSchedule = scheduleBuildingItem(plan, hasRequeuedPlans);
-                        break;
-                    case UNIT:
-                        canSchedule = scheduleUnitItem(plan);
-                        break;
-                    case UPGRADE:
-                        canSchedule = scheduleUpgradeItem(self, plan);
-                        break;
-                    case TECH:
-                        canSchedule = scheduleResearch(plan);
-                        break;
-                    default:
-                        canSchedule = false;
-                }
+            switch (planType) {
+                case BUILDING:
+                    canSchedule = scheduleBuildingItem(plan, hasRequeuedPlans);
+                    break;
+                case UNIT:
+                    canSchedule = scheduleUnitItem(plan);
+                    break;
+                case UPGRADE:
+                    canSchedule = scheduleUpgradeItem(self, plan);
+                    break;
+                case TECH:
+                    canSchedule = scheduleResearch(plan);
+                    break;
+                default:
+                    canSchedule = false;
+            }
 
-                if (canSchedule) {
-                    scheduledPlans.add(plan);
-                } else {
-                    requeuePlans.add(plan);
-                    hasRequeuedPlans = true;
-                    mineralBuffer -= plan.mineralPrice();
-                    gasBuffer -= plan.gasPrice();
-                    if (mineralBuffer <= 0 && gasBuffer <= 0) {
-                        break;
-                    }
+            if (canSchedule) {
+                scheduledPlans.add(plan);
+            } else {
+                requeuePlans.add(plan);
+                hasRequeuedPlans = true;
+                mineralBuffer -= plan.mineralPrice();
+                gasBuffer -= plan.gasPrice();
+                if (mineralBuffer <= 0 && gasBuffer <= 0) {
+                    break;
                 }
             }
-        } finally {
-            gameState.getProductionQueue().addAll(requeuePlans);
         }
+
+        // Requeue
+        gameState.getProductionQueue().addAll(requeuePlans);
     }
 
     // TODO: Refactor this into WorkerManager or a Buildingmanager (TechManager)?
