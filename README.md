@@ -37,9 +37,9 @@ Feel free to open up a GitHub issue or ping me on the [SSCAIT discord](https://d
 
 ### Release
 
-- Update version tag in `pom.xml`
-- Navigate to Maven tab in Intellij, run compile then package
-- Move new jar file from `target` into `sscait` dir
+Run the **Release** workflow in GitHub Actions. It bumps the version in `pom.xml`, builds the jar,
+creates a GitHub Release, and pushes the jar + `BWAPI.dll` zip to the BASIL ladder's Google Drive
+file.
 
 ## Thank You
 
