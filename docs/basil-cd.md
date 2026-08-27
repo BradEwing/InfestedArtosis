@@ -8,11 +8,14 @@
 
 The organizer's link points at a single Drive **file** and their side does an exact-name match on
 `0.38.zip`, so the job never creates or renames anything: it overwrites the content of that one file
-in place via `PATCH /upload/drive/v3/files/{id}?uploadType=media`. The file ID, name and link never
-change; only the bytes do.
+in place via a Drive resumable upload (`uploadType=resumable`, no 5 MB simple-upload cap). The file
+ID, name and link never change; only the bytes do. Before uploading the job asserts that the Drive
+file is still named `0.38.zip` and that the zip contains the jar and `BWAPI.dll`; the built zip is
+also kept as a 7-day workflow artifact for post-hoc inspection.
 
 To re-push an existing release without cutting a new one, run the workflow with `republish_version`
-set to an existing tag (e.g. `0.61`).
+set to an existing tag (e.g. `0.61`). Both jobs only run when dispatched from `main`; a `concurrency`
+group serialises overlapping runs.
 
 ## Security model
 
@@ -21,13 +24,15 @@ set to an existing tag (e.g. `0.61`).
 - The service account has **no IAM roles** in the GCP project. Its only capability is whatever is
   shared with it in Drive: exactly one file, as Editor. It cannot list, read or write anything else
   in your Drive.
-- The Workload Identity Pool only accepts tokens from this repository on `refs/heads/main`.
+- The Workload Identity Pool only accepts tokens from this repository on `refs/heads/main`. Note the
+  binding is repository-wide: any workflow in this repo running on `main` with `id-token: write`
+  could impersonate the service account. Narrow to `attribute.job_workflow_ref` if that ever matters.
 - The `publish-basil` job runs in the `basil` GitHub environment; add required reviewers there if
   you want a manual approval gate before each upload.
 - `google-github-actions/auth` is pinned to a commit SHA. The upload itself is plain `curl`, so no
   third-party action ever holds the token. The token is passed to curl via a header file, not argv.
-- After upload the job re-reads the file's `md5Checksum` from Drive and fails if it does not match
-  the zip it built.
+- After upload the job compares Drive's reported `md5Checksum` against the zip it built and fails on
+  mismatch.
 
 ## One-time setup
 
@@ -40,7 +45,7 @@ Create a project (e.g. `infested-artosis-cd`) in the Google account that owns th
 
 ```sh
 gcloud config set project infested-artosis-cd
-gcloud services enable iamcredentials.googleapis.com sts.googleapis.com drive.googleapis.com
+gcloud services enable iam.googleapis.com iamcredentials.googleapis.com sts.googleapis.com drive.googleapis.com
 ```
 
 ### 2. Service account (no roles)

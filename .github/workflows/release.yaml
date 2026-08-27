@@ -11,9 +11,13 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
   release:
-    if: inputs.republish_version == ''
+    if: github.ref == 'refs/heads/main' && inputs.republish_version == ''
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -69,7 +73,7 @@ jobs:
 
   publish-basil:
     needs: release
-    if: ${{ !cancelled() && (needs.release.result == 'success' || inputs.republish_version != '') }}
+    if: ${{ !cancelled() && github.ref == 'refs/heads/main' && (needs.release.result == 'success' || inputs.republish_version != '') }}
     runs-on: ubuntu-latest
     environment: basil
     permissions:
@@ -80,27 +84,46 @@ jobs:
       # The organizer's link points at a single Drive file whose name must stay 0.38.zip.
       # Its content is replaced in place so the file ID, name and link never change.
       DRIVE_FILE_ID: ${{ vars.BASIL_DRIVE_FILE_ID }}
+      DRIVE_FILE_NAME: 0.38.zip
 
     steps:
+      - name: Validate inputs
+        run: |
+          set -euo pipefail
+          : "${VERSION:?release version is empty}"
+          : "${DRIVE_FILE_ID:?BASIL_DRIVE_FILE_ID repository variable is not set}"
+
       - uses: actions/checkout@v4
         with:
           ref: ${{ env.VERSION }}
-          sparse-checkout: BWAPI.dll
+          sparse-checkout: /BWAPI.dll
           sparse-checkout-cone-mode: false
 
       - name: Download release JAR
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           gh release download "$VERSION" --repo "$GITHUB_REPOSITORY" --pattern '*-jar-with-dependencies.jar' --dir dist
           ls -l dist
 
       - name: Build BASIL zip
         run: |
+          set -euo pipefail
           cp BWAPI.dll dist/
           cd dist
-          zip -X basil.zip "InfestedArtosis-${VERSION}-jar-with-dependencies.jar" BWAPI.dll
+          JAR=$(ls ./*-jar-with-dependencies.jar)
+          zip -X basil.zip "$(basename "$JAR")" BWAPI.dll
           unzip -l basil.zip
+          unzip -l basil.zip | grep -q " BWAPI.dll$"
+          unzip -l basil.zip | grep -q " $(basename "$JAR")$"
+
+      - name: Upload zip as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: basil-${{ env.VERSION }}
+          path: dist/basil.zip
+          retention-days: 7
 
       - name: Authenticate to Google Cloud
         id: auth
@@ -122,24 +145,33 @@ jobs:
           umask 077
           printf 'Authorization: Bearer %s\n' "$ACCESS_TOKEN" > auth.header
           trap 'rm -f auth.header' EXIT
+          CURL="curl -sS --fail-with-body --retry 3 --retry-all-errors --max-time 300 -H @auth.header"
 
-          BEFORE=$(curl -sSf -H @auth.header \
-            "https://www.googleapis.com/drive/v3/files/${DRIVE_FILE_ID}?fields=name,md5Checksum,size")
+          BEFORE=$($CURL "https://www.googleapis.com/drive/v3/files/${DRIVE_FILE_ID}?fields=name,md5Checksum,size")
           echo "Before: $BEFORE"
+          NAME=$(jq -r '.name // empty' <<<"$BEFORE")
+          if [ "$NAME" != "$DRIVE_FILE_NAME" ]; then
+            echo "::error::Drive file ${DRIVE_FILE_ID} is named '${NAME}', expected '${DRIVE_FILE_NAME}'"
+            exit 1
+          fi
 
-          curl -sSf -o /dev/null -H @auth.header -X PATCH \
-            -H 'Content-Type: application/zip' \
-            --data-binary @dist/basil.zip \
-            "https://www.googleapis.com/upload/drive/v3/files/${DRIVE_FILE_ID}?uploadType=media"
+          SESSION=$($CURL -X PATCH -D - -o /dev/null \
+            -H 'Content-Type: application/json' -H 'X-Upload-Content-Type: application/zip' -d '{}' \
+            "https://www.googleapis.com/upload/drive/v3/files/${DRIVE_FILE_ID}?uploadType=resumable&fields=name,md5Checksum,size" \
+            | tr -d '\r' | sed -n 's/^[Ll]ocation: //p')
+          : "${SESSION:?Drive did not return a resumable upload session}"
 
-          AFTER=$(curl -sSf -H @auth.header \
-            "https://www.googleapis.com/drive/v3/files/${DRIVE_FILE_ID}?fields=name,md5Checksum,size")
+          AFTER=$(curl -sS --fail-with-body --max-time 600 -H @auth.header -X PUT -H 'Content-Type: application/zip' --data-binary @dist/basil.zip "$SESSION")
           echo "After:  $AFTER"
 
           EXPECTED=$(md5sum dist/basil.zip | cut -d' ' -f1)
-          ACTUAL=$(echo "$AFTER" | sed -n 's/.*"md5Checksum": *"\([^"]*\)".*/\1/p')
+          ACTUAL=$(jq -r '.md5Checksum // empty' <<<"$AFTER")
+          if [ -z "$ACTUAL" ]; then
+            echo "::error::Drive response contained no md5Checksum"
+            exit 1
+          fi
           if [ "$EXPECTED" != "$ACTUAL" ]; then
             echo "::error::Drive md5 ($ACTUAL) does not match uploaded zip ($EXPECTED)"
             exit 1
           fi
-          echo "Published $VERSION to BASIL Drive file ${DRIVE_FILE_ID}"
+          echo "Published $VERSION to BASIL Drive file ${DRIVE_FILE_ID} (${DRIVE_FILE_NAME})"
