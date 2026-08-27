@@ -39,7 +39,7 @@ Feel free to open up a GitHub issue or ping me on the [SSCAIT discord](https://d
 
 Run the **Release** workflow in GitHub Actions. It bumps the version in `pom.xml`, builds the jar,
 creates a GitHub Release, and pushes the jar + `BWAPI.dll` zip to the BASIL ladder's Google Drive
-file. See [docs/basil-cd.md](docs/basil-cd.md) for the pipeline, its security model and one-time setup.
+file.
 
 ## Thank You
 
