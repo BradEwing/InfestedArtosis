@@ -153,12 +153,12 @@ def archive(manifest, results, mode):
         rep = gdir / "player_0.rep"
         if rep.is_file():
             shutil.copyfile(rep, dest / f"{base}.rep")
-        for sub in ("write_0", "logs_0"):
+        for sub in ("write_0", "logs_0", "logs_1"):
             d = gdir / sub
             if d.is_dir():
                 for f in d.iterdir():
                     if f.is_file():
-                        shutil.copyfile(f, dest / f"{base}.{f.name}")
+                        shutil.copyfile(f, dest / f"{base}.{sub}.{f.name}")
     print(f"\nArchived {mode} to {bl.BATCHES_DIR / manifest['run_id']}")
 
 
