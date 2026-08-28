@@ -187,33 +187,11 @@ public abstract class BuildOrder {
     }
 
     /**
-     * Race agnostic macro continuation for an opener that has finished its script but cannot hand
-     * off, because every opener transition is keyed on the enemy race and no enemy unit has been
-     * seen yet. Without it the production queue drains and stays empty, floating minerals for as
-     * long as the opponent goes unscouted.
-     *
-     * The trigger is opener completion rather than a clock or a floating minerals floor: it fires
-     * at exactly the moment the known race path would have transitioned, so it can never open
-     * earlier or more greedily than normal, and there is no threshold to tune. Overlords need no
-     * tier of their own - queuing drones re-primes ProductionManager.planSupply, which owns supply.
-     *
-     * A planned spawning pool is required on top of opener completion, and the first tier buys a
-     * floor of zerglings whenever none are alive or queued. A real transition hands army production
-     * to the successor build order, but here there is no successor, so expanding with nothing on
-     * the field would leave the natural undefended. Two plans are queued rather than one because a
-     * larva morphs into a pair of zerglings, and ourUnitCount already counts planned units, so a
-     * single plan would satisfy the check at two.
-     *
-     * Four zerglings rather than the six zerglingsNeeded returns: these are insurance zerglings to
-     * deny scouting, punish a greedy expansion or defend an early rush, not the full pack a
-     * scouted opener commits to once it knows what it is up against.
-     *
-     * The early rush check is belt and braces: today a rush can only be detected from observed
-     * enemy units, and seeing any enemy unit also reveals the race and closes this path. It is kept
-     * so the guarantee stays explicit if rush detection ever becomes race agnostic.
-     *
-     * Returned plans carry reservations (base, planned worker and hatchery counts, geyser) and
-     * must be added to the production queue by the caller.
+     * Race agnostic macro continuation for an opener that has finished its build order but cannot
+     * transition, because a random opponent's race is still unknown.
+     * <p>
+     * Ensures defensive zerglings, a natural expansion, drones and finally gas if they were not
+     * covered by the initial opener.
      */
     protected List<Plan> planUnknownRaceMacro(GameState gameState) {
         List<Plan> plans = new ArrayList<>();
