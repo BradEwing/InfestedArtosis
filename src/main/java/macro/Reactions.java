@@ -50,6 +50,9 @@ public class Reactions {
 
     private static final Predicate<Plan> IS_EXPANSION_HATCHERY = IS_HATCHERY.and(p -> !p.isMacroHatchery());
 
+    private static final Predicate<Plan> IS_SPEED_UPGRADE = p ->
+            p.getType() == PlanType.UPGRADE && ((UpgradePlan) p).getPlannedUpgrade() == UpgradeType.Metabolic_Boost;
+
     /**
      * Sits behind emergency defense so an unaffordable upgrade can never tie with, and so deny a
      * schedule slot to, the emergency creep colony, while still jumping ahead of tech and normal
@@ -134,10 +137,7 @@ public class Reactions {
 
         gameState.setEarlyRushed(true);
 
-        boolean speedResearched = gameState.getTechProgression().isMetabolicBoost();
-        boolean committedGas = gameState.getBaseData().numExtractor() > 0;
-        boolean preserveGasForSpeed = gameState.getOpponentRace() == Race.Protoss && !speedResearched && committedGas;
-        gameState.setEarlyRushDenyGas(!preserveGasForSpeed);
+        gameState.setEarlyRushDenyGas(!preserveGasForSpeed());
         gameState.setEarlyRushDelayLair(gameState.getOpponentRace() == Race.Protoss);
         gameState.setEarlyRushMacroHatch(gameState.getOpponentRace() == Race.Protoss);
 
@@ -176,11 +176,6 @@ public class Reactions {
 
     /**
      * Relaxes the main-base sunken restriction only while the main is genuinely our sole base.
-     * Reserved and morphing expansions count against that: a base joins myBases when its hatchery
-     * completes, so a count of completed bases alone treats a natural that is queued or still
-     * morphing as if it did not exist, and sites the sunken at the main. The clear path stays on
-     * completed bases so a committed but not yet online expansion cannot tear down defense that
-     * has already been planned at the main.
      */
     private void allowSunkenAtMainIfSingleBase(BaseData baseData) {
         if (baseData.currentAndReservedCount() == 1) {
@@ -188,21 +183,29 @@ public class Reactions {
         }
     }
 
+    private boolean preserveGasForSpeed() {
+        if (gameState.getOpponentRace() != Race.Protoss || gameState.getTechProgression().isMetabolicBoost()) {
+            return false;
+        }
+
+        return gameState.getBaseData().numExtractor() > 0 || gameState.getStrategyTracker().isDetectedStrategy("2Gate");
+    }
+
     /**
-     * Queues Metabolic Boost and pulls it ahead of normal production. Shared by the 2Gate and the
-     * early-rush paths so gas preserved for speed is actually spent on it.
+     * Queues Metabolic Boost and pulls it ahead of normal production.
      */
     private void planSpeedUpgrade(ProductionQueue productionQueue) {
+        if (gameState.ourUnitCount(UnitType.Zerg_Extractor) < 1) {
+            return;
+        }
+
         if (gameState.canPlanUpgrade(UpgradeType.Metabolic_Boost)) {
             gameState.getTechProgression().setPlannedMetabolicBoost(true);
             UpgradePlan upgradePlan = new UpgradePlan(UpgradeType.Metabolic_Boost, gameState.getGameTime().getFrames());
             productionQueue.add(upgradePlan);
         }
 
-        productionQueue.setPriorityWhere(
-                p -> p.getType() == PlanType.UPGRADE
-                        && ((UpgradePlan) p).getPlannedUpgrade() == UpgradeType.Metabolic_Boost,
-                SPEED_UPGRADE_PRIORITY);
+        productionQueue.setPriorityWhere(IS_SPEED_UPGRADE, SPEED_UPGRADE_PRIORITY);
     }
 
     private void cancelAllExtractors(BaseData baseData) {
