@@ -176,11 +176,6 @@ public class Reactions {
 
     /**
      * Relaxes the main-base sunken restriction only while the main is genuinely our sole base.
-     * Reserved and morphing expansions count against that: a base joins myBases when its hatchery
-     * completes, so a count of completed bases alone treats a natural that is queued or still
-     * morphing as if it did not exist, and sites the sunken at the main. The clear path stays on
-     * completed bases so a committed but not yet online expansion cannot tear down defense that
-     * has already been planned at the main.
      */
     private void allowSunkenAtMainIfSingleBase(BaseData baseData) {
         if (baseData.currentAndReservedCount() == 1) {
@@ -188,14 +183,6 @@ public class Reactions {
         }
     }
 
-    /**
-     * Decides whether the early-rush gas cut spares Metabolic Boost. Yes against Protoss: the rush is zealots,
-     * earlyRushDelayLair already holds the Lair so the gas buys nothing else, and emergency defense outranks
-     * SPEED_UPGRADE_PRIORITY. No against Terran and Zerg, where the minerals belong in zerglings instead.
-     *
-     * <p>A detected 2Gate qualifies on its own. Requiring committed gas made the test read its own result: denying gas
-     * blocks canPlanExtractor(), the only path by which an Extractor is ever planned.
-     */
     private boolean preserveGasForSpeed() {
         if (gameState.getOpponentRace() != Race.Protoss || gameState.getTechProgression().isMetabolicBoost()) {
             return false;
@@ -205,11 +192,7 @@ public class Reactions {
     }
 
     /**
-     * Queues Metabolic Boost and pulls it ahead of normal production. Shared by the 2Gate and the
-     * early-rush paths so gas preserved for speed is actually spent on it.
-     *
-     * <p>Guarded on a standing Extractor, the same count canPlanUpgrade reads, so this cannot reprioritise a
-     * Metabolic Boost it did not queue after gas was denied earlier in the same frame.
+     * Queues Metabolic Boost and pulls it ahead of normal production.
      */
     private void planSpeedUpgrade(ProductionQueue productionQueue) {
         if (gameState.ourUnitCount(UnitType.Zerg_Extractor) < 1) {
