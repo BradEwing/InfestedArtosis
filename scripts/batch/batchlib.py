@@ -222,6 +222,18 @@ def deploy_jar(jar):
     return ai_dir / jar.name
 
 
+def set_java_opts(opts):
+    """Patch the deployed bot.json. sc-docker forwards javaOpts as JAVA_OPTS, the only route for -D flags
+    into a container game: the bot's .env lives on the host and is never mounted."""
+    path = BOTS_DIR / BOT_NAME / "bot.json"
+    with open(path, encoding="utf-8") as f:
+        meta = json.load(f)
+    meta["javaOpts"] = opts
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(meta, f)
+    return path
+
+
 def jvm_died(gdir):
     """True when the bot's log shows the JVM died mid-game.
 

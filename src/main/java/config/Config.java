@@ -3,7 +3,7 @@ package config;
 import io.github.cdimascio.dotenv.Dotenv;
 
 /**
- * Configuration settings loaded from environment variables via .env file.
+ * Configuration settings loaded from a .env file, falling back to JVM system properties.
  * Includes feature flags and override settings for testing and development.
  */
 public final class Config {
@@ -58,37 +58,46 @@ public final class Config {
     public Config() {
 
         Dotenv dotenv = Dotenv.configure().ignoreIfMissing().load();
-        this.enabledAutoObserver = Boolean.parseBoolean(dotenv.get("IA_ENABLE_AUTO_OBSERVER"));
-        this.strategyOverride = dotenv.get("IA_STRATEGY_OVERRIDE");
-        this.openerOverride = dotenv.get("IA_OPENER_OVERRIDE");
-        this.debugHud = Boolean.parseBoolean(dotenv.get("IA_DEBUG_HUD"));
-        this.debugUnitCount = Boolean.parseBoolean(dotenv.get("IA_DEBUG_UNIT_COUNT"));
-        this.debugGameMap = Boolean.parseBoolean(dotenv.get("IA_DEBUG_GAME_MAP"));
-        this.debugBasePaths = Boolean.parseBoolean(dotenv.get("IA_DEBUG_BASE_PATHS"));
-        this.debugAccessibleWalkPositions = Boolean.parseBoolean(dotenv.get("IA_DEBUG_ACCESSIBLE_WALK_POSITIONS"));
-        this.debugBlockingMinerals = Boolean.parseBoolean(dotenv.get("IA_DEBUG_BLOCKING_MINERALS"));
-        this.debugMainBaseTiles = Boolean.parseBoolean(dotenv.get("IA_DEBUG_MAIN_BASE_TILES"));
-        this.debugBases = Boolean.parseBoolean(dotenv.get("IA_DEBUG_BASES"));
-        this.debugBaseCreepTiles = Boolean.parseBoolean(dotenv.get("IA_DEBUG_BASE_CREEP_TILES"));
-        this.debugBaseChoke = Boolean.parseBoolean(dotenv.get("IA_DEBUG_BASE_CHOKE"));
-        this.debugLocationForTechBuilding = Boolean.parseBoolean(dotenv.get("IA_DEBUG_LOCATION_FOR_TECH_BUILDING"));
-        this.debugReserveTiles = Boolean.parseBoolean(dotenv.get("IA_DEBUG_RESERVE_TILES"));
-        this.debugNextCreepColonyLocation = Boolean.parseBoolean(dotenv.get("IA_DEBUG_NEXT_CREEP_COLONY_LOCATION"));
-        this.debugNextSporeColonyLocation = Boolean.parseBoolean(dotenv.get("IA_DEBUG_NEXT_SPORE_COLONY_LOCATION"));
-        this.debugMineralBoundingBox = Boolean.parseBoolean(dotenv.get("IA_DEBUG_MINERAL_BOUNDING_BOX"));
-        this.debugGeyserBoundingBox = Boolean.parseBoolean(dotenv.get("IA_DEBUG_GEYSER_BOUNDING_BOX"));
-        this.debugMacroHatcheryLocation = Boolean.parseBoolean(dotenv.get("IA_DEBUG_MACRO_HATCHERY_LOCATION"));
-        this.debugEnemyTargets = Boolean.parseBoolean(dotenv.get("IA_DEBUG_ENEMY_TARGETS"));
-        this.debugSquads = Boolean.parseBoolean(dotenv.get("IA_DEBUG_SQUADS"));
-        this.debugManagedUnits = Boolean.parseBoolean(dotenv.get("IA_DEBUG_MANAGED_UNITS"));
-        this.debugStaticDefenseCoverage = Boolean.parseBoolean(dotenv.get("IA_DEBUG_STATIC_DEFENSE_COVERAGE"));
-        this.debugPsiStorms = Boolean.parseBoolean(dotenv.get("IA_DEBUG_PSI_STORMS"));
-        this.debugContainment = Boolean.parseBoolean(dotenv.get("IA_DEBUG_CONTAINMENT"));
-        this.debugCombatSim = Boolean.parseBoolean(dotenv.get("IA_DEBUG_COMBAT_SIM"));
-        this.debugProductionQueue = Boolean.parseBoolean(dotenv.get("IA_DEBUG_PRODUCTION_QUEUE"));
-        this.debugInProgressQueue = Boolean.parseBoolean(dotenv.get("IA_DEBUG_IN_PROGRESS_QUEUE"));
-        this.debugScheduledPlannedItems = Boolean.parseBoolean(dotenv.get("IA_DEBUG_SCHEDULED_PLANNED_ITEMS"));
-        this.debugResourceReservations = Boolean.parseBoolean(dotenv.get("IA_DEBUG_RESOURCE_RESERVATIONS"));
-        this.logPlanEvents = Boolean.parseBoolean(dotenv.get("IA_LOG_PLAN_EVENTS"));
+        this.enabledAutoObserver = Boolean.parseBoolean(setting(dotenv, "IA_ENABLE_AUTO_OBSERVER"));
+        this.strategyOverride = setting(dotenv, "IA_STRATEGY_OVERRIDE");
+        this.openerOverride = setting(dotenv, "IA_OPENER_OVERRIDE");
+        this.debugHud = Boolean.parseBoolean(setting(dotenv, "IA_DEBUG_HUD"));
+        this.debugUnitCount = Boolean.parseBoolean(setting(dotenv, "IA_DEBUG_UNIT_COUNT"));
+        this.debugGameMap = Boolean.parseBoolean(setting(dotenv, "IA_DEBUG_GAME_MAP"));
+        this.debugBasePaths = Boolean.parseBoolean(setting(dotenv, "IA_DEBUG_BASE_PATHS"));
+        this.debugAccessibleWalkPositions = Boolean.parseBoolean(setting(dotenv, "IA_DEBUG_ACCESSIBLE_WALK_POSITIONS"));
+        this.debugBlockingMinerals = Boolean.parseBoolean(setting(dotenv, "IA_DEBUG_BLOCKING_MINERALS"));
+        this.debugMainBaseTiles = Boolean.parseBoolean(setting(dotenv, "IA_DEBUG_MAIN_BASE_TILES"));
+        this.debugBases = Boolean.parseBoolean(setting(dotenv, "IA_DEBUG_BASES"));
+        this.debugBaseCreepTiles = Boolean.parseBoolean(setting(dotenv, "IA_DEBUG_BASE_CREEP_TILES"));
+        this.debugBaseChoke = Boolean.parseBoolean(setting(dotenv, "IA_DEBUG_BASE_CHOKE"));
+        this.debugLocationForTechBuilding = Boolean.parseBoolean(setting(dotenv, "IA_DEBUG_LOCATION_FOR_TECH_BUILDING"));
+        this.debugReserveTiles = Boolean.parseBoolean(setting(dotenv, "IA_DEBUG_RESERVE_TILES"));
+        this.debugNextCreepColonyLocation = Boolean.parseBoolean(setting(dotenv, "IA_DEBUG_NEXT_CREEP_COLONY_LOCATION"));
+        this.debugNextSporeColonyLocation = Boolean.parseBoolean(setting(dotenv, "IA_DEBUG_NEXT_SPORE_COLONY_LOCATION"));
+        this.debugMineralBoundingBox = Boolean.parseBoolean(setting(dotenv, "IA_DEBUG_MINERAL_BOUNDING_BOX"));
+        this.debugGeyserBoundingBox = Boolean.parseBoolean(setting(dotenv, "IA_DEBUG_GEYSER_BOUNDING_BOX"));
+        this.debugMacroHatcheryLocation = Boolean.parseBoolean(setting(dotenv, "IA_DEBUG_MACRO_HATCHERY_LOCATION"));
+        this.debugEnemyTargets = Boolean.parseBoolean(setting(dotenv, "IA_DEBUG_ENEMY_TARGETS"));
+        this.debugSquads = Boolean.parseBoolean(setting(dotenv, "IA_DEBUG_SQUADS"));
+        this.debugManagedUnits = Boolean.parseBoolean(setting(dotenv, "IA_DEBUG_MANAGED_UNITS"));
+        this.debugStaticDefenseCoverage = Boolean.parseBoolean(setting(dotenv, "IA_DEBUG_STATIC_DEFENSE_COVERAGE"));
+        this.debugPsiStorms = Boolean.parseBoolean(setting(dotenv, "IA_DEBUG_PSI_STORMS"));
+        this.debugContainment = Boolean.parseBoolean(setting(dotenv, "IA_DEBUG_CONTAINMENT"));
+        this.debugCombatSim = Boolean.parseBoolean(setting(dotenv, "IA_DEBUG_COMBAT_SIM"));
+        this.debugProductionQueue = Boolean.parseBoolean(setting(dotenv, "IA_DEBUG_PRODUCTION_QUEUE"));
+        this.debugInProgressQueue = Boolean.parseBoolean(setting(dotenv, "IA_DEBUG_IN_PROGRESS_QUEUE"));
+        this.debugScheduledPlannedItems = Boolean.parseBoolean(setting(dotenv, "IA_DEBUG_SCHEDULED_PLANNED_ITEMS"));
+        this.debugResourceReservations = Boolean.parseBoolean(setting(dotenv, "IA_DEBUG_RESOURCE_RESERVATIONS"));
+        this.logPlanEvents = Boolean.parseBoolean(setting(dotenv, "IA_LOG_PLAN_EVENTS"));
+    }
+
+    /**
+     * Reads a setting from .env, falling back to a JVM system property. Dotenv does not consult system
+     * properties itself, and under sc-docker the .env file is unreachable: -D flags are the only way in.
+     */
+    private static String setting(Dotenv dotenv, String key) {
+        String value = dotenv.get(key);
+        return value != null ? value : System.getProperty(key);
     }
 }
