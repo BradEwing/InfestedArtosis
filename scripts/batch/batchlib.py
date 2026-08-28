@@ -18,6 +18,9 @@ from pathlib import Path
 BOT_NAME = "Infested Artosis"
 DOCKER_IMAGE = "starcraft:game"
 
+# Every telemetry file the bot writes carries this prefix, so one rule keeps them all out of the learning glob.
+TELEMETRY_PREFIX = "telemetry_"
+
 SCBW_ROOT = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming")) / "scbw"
 BOTS_DIR = SCBW_ROOT / "bots"
 GAMES_DIR = SCBW_ROOT / "games"
@@ -190,6 +193,13 @@ def read_csv_rows(path):
         return []
 
 
+def learning_csvs(write_dir):
+    """Learning CSVs in a game's write dir. The bot's telemetry files share the dir and are excluded by prefix."""
+    if not write_dir.is_dir():
+        return []
+    return sorted(p for p in write_dir.glob("*.csv") if not p.name.startswith(TELEMETRY_PREFIX))
+
+
 def read_dir_csvs(opponent):
     """Learning CSVs for an opponent in the bot's read dir. Random opponents get one file per race seen."""
     return sorted((BOTS_DIR / BOT_NAME / "read").glob(f"{opponent}_*.csv"))
@@ -234,8 +244,7 @@ def classify(game):
     if result is None:
         return "NO_RESULT", None, None
 
-    write_dir = gdir / "write_0"
-    csvs = sorted(write_dir.glob("*.csv")) if write_dir.is_dir() else []
+    csvs = learning_csvs(gdir / "write_0")
     rows = read_csv_rows(csvs[0]) if csvs else []
     learning_row = rows[-1] if rows else None
 
