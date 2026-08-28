@@ -50,6 +50,9 @@ public class Reactions {
 
     private static final Predicate<Plan> IS_EXPANSION_HATCHERY = IS_HATCHERY.and(p -> !p.isMacroHatchery());
 
+    private static final Predicate<Plan> IS_SPEED_UPGRADE = p ->
+            p.getType() == PlanType.UPGRADE && ((UpgradePlan) p).getPlannedUpgrade() == UpgradeType.Metabolic_Boost;
+
     /**
      * Sits behind emergency defense so an unaffordable upgrade can never tie with, and so deny a
      * schedule slot to, the emergency creep colony, while still jumping ahead of tech and normal
@@ -134,10 +137,7 @@ public class Reactions {
 
         gameState.setEarlyRushed(true);
 
-        boolean speedResearched = gameState.getTechProgression().isMetabolicBoost();
-        boolean committedGas = gameState.getBaseData().numExtractor() > 0;
-        boolean preserveGasForSpeed = gameState.getOpponentRace() == Race.Protoss && !speedResearched && committedGas;
-        gameState.setEarlyRushDenyGas(!preserveGasForSpeed);
+        gameState.setEarlyRushDenyGas(!preserveGasForSpeed());
         gameState.setEarlyRushDelayLair(gameState.getOpponentRace() == Race.Protoss);
         gameState.setEarlyRushMacroHatch(gameState.getOpponentRace() == Race.Protoss);
 
@@ -189,20 +189,40 @@ public class Reactions {
     }
 
     /**
+     * Decides whether the early-rush gas cut spares Metabolic Boost. Yes against Protoss: the rush is zealots,
+     * earlyRushDelayLair already holds the Lair so the gas buys nothing else, and emergency defense outranks
+     * SPEED_UPGRADE_PRIORITY. No against Terran and Zerg, where the minerals belong in zerglings instead.
+     *
+     * <p>A detected 2Gate qualifies on its own. Requiring committed gas made the test read its own result: denying gas
+     * blocks canPlanExtractor(), the only path by which an Extractor is ever planned.
+     */
+    private boolean preserveGasForSpeed() {
+        if (gameState.getOpponentRace() != Race.Protoss || gameState.getTechProgression().isMetabolicBoost()) {
+            return false;
+        }
+
+        return gameState.getBaseData().numExtractor() > 0 || gameState.getStrategyTracker().isDetectedStrategy("2Gate");
+    }
+
+    /**
      * Queues Metabolic Boost and pulls it ahead of normal production. Shared by the 2Gate and the
      * early-rush paths so gas preserved for speed is actually spent on it.
+     *
+     * <p>Guarded on a standing Extractor, the same count canPlanUpgrade reads, so this cannot reprioritise a
+     * Metabolic Boost it did not queue after gas was denied earlier in the same frame.
      */
     private void planSpeedUpgrade(ProductionQueue productionQueue) {
+        if (gameState.ourUnitCount(UnitType.Zerg_Extractor) < 1) {
+            return;
+        }
+
         if (gameState.canPlanUpgrade(UpgradeType.Metabolic_Boost)) {
             gameState.getTechProgression().setPlannedMetabolicBoost(true);
             UpgradePlan upgradePlan = new UpgradePlan(UpgradeType.Metabolic_Boost, gameState.getGameTime().getFrames());
             productionQueue.add(upgradePlan);
         }
 
-        productionQueue.setPriorityWhere(
-                p -> p.getType() == PlanType.UPGRADE
-                        && ((UpgradePlan) p).getPlannedUpgrade() == UpgradeType.Metabolic_Boost,
-                SPEED_UPGRADE_PRIORITY);
+        productionQueue.setPriorityWhere(IS_SPEED_UPGRADE, SPEED_UPGRADE_PRIORITY);
     }
 
     private void cancelAllExtractors(BaseData baseData) {
