@@ -18,9 +18,12 @@ import unit.squad.Squad;
 import util.Time;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Combat simulator inspired by McRave's Horizon.
@@ -40,6 +43,9 @@ public class HorizonCombatSimulator implements CombatSimulator {
     private static final int BUNKER_TRUST_FRAMES = 48;
     private static final int BUNKER_DECAY_FRAMES = 72;
     private static final int BUNKER_MAX_GARRISON = 4;
+    private static final double STATIC_DEFENSE_COVER_BUFFER = 64;
+    private static final Set<UnitType> OWN_STATIC_DEFENSE =
+            EnumSet.of(UnitType.Zerg_Sunken_Colony, UnitType.Zerg_Spore_Colony);
 
     @Getter
     private final Map<String, DebugSnapshot> lastSnapshots = new HashMap<>();
@@ -96,6 +102,8 @@ public class HorizonCombatSimulator implements CombatSimulator {
         Map<UnitSizeType, Double> friendlySizeProportions = sizeProportions(squad, adjacentSquads);
 
         List<Position> engagedGroundEnemies = new ArrayList<>();
+        List<Position> coveredGroundThreats = new ArrayList<>();
+        List<Position> coveredAirThreats = new ArrayList<>();
 
         for (ObservedUnit ou : tracker.getLivingObservedUnits()) {
             UnitType type = ou.getUnitType();
@@ -110,8 +118,17 @@ public class HorizonCombatSimulator implements CombatSimulator {
             double dist = squadCenter.getDistance(pos);
             if (dist > engagementRadius(type)) continue;
 
-            if (!type.isFlyer() && !type.isBuilding() && !type.isWorker()) {
-                engagedGroundEnemies.add(pos);
+            if (!type.isBuilding() && !type.isWorker()) {
+                if (!type.isFlyer()) {
+                    engagedGroundEnemies.add(pos);
+                }
+                if (visible && type.canAttack()) {
+                    if (type.isFlyer()) {
+                        coveredAirThreats.add(pos);
+                    } else {
+                        coveredGroundThreats.add(pos);
+                    }
+                }
             }
 
             if (type.isBuilding() && !ou.isCompleted()) continue;
@@ -147,9 +164,9 @@ public class HorizonCombatSimulator implements CombatSimulator {
             snapshot.getEnemyUnits().add(new UnitDebugEntry(pos, type, displayStr, false, !visible));
         }
 
-        if (!squad.isAirSquad()) {
-            friendlyGroundStr += friendlyStaticDefenseStrength(gameState, engagedGroundEnemies, squadCenter, snapshot);
-        }
+        StaticDefenseSupport ownStaticDefense = evaluateOwnStaticDefense(gameState, squadCenter,
+                engagedGroundEnemies, coveredGroundThreats, coveredAirThreats, !airSquad, snapshot);
+        friendlyGroundStr += ownStaticDefense.strength;
 
         if (!snapshot.getEnemyUnits().isEmpty()) {
             double ex = 0; 
@@ -183,6 +200,9 @@ public class HorizonCombatSimulator implements CombatSimulator {
 
         double engageThresh = engageThreshold(gameState.getOpponentRace());
         double retreatThresh = retreatThreshold(gameState.getOpponentRace());
+        if (ownStaticDefense.coversThreat) {
+            engageThresh = Math.min(engageThresh, DEFAULT_ENGAGE_THRESHOLD);
+        }
 
         CombatResult result;
         if (overallRatio >= engageThresh) {
@@ -193,6 +213,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
 
         snapshot.setEngageThreshold(engageThresh);
         snapshot.setRetreatThreshold(retreatThresh);
+        snapshot.setStaticDefenseCover(ownStaticDefense.coversThreat);
         snapshot.setResult(result);
         lastSnapshots.put(squad.getId(), snapshot);
 
@@ -304,7 +325,10 @@ public class HorizonCombatSimulator implements CombatSimulator {
     }
 
     /**
-     * Own completed sunken colonies contribute ground strength only while an enemy ground unit is
+     * Scans our own completed static defense once, producing both the ground strength contribution
+     * and whether any colony currently covers a threat it is able to shoot.
+     *
+     * <p>Own completed sunken colonies contribute ground strength only while an enemy ground unit is
      * already engaging that sunken. This mirrors McRave's Horizon, which admits a
      * building to the strength sum only once it has a target. The candidate enemies are the ones
      * the main enemy loop already accepted, so they carry its freshness and engagement-radius
@@ -313,38 +337,91 @@ public class HorizonCombatSimulator implements CombatSimulator {
      * an enemy is closing on it rather than only once it is already in weapon range. Positional
      * units (lurkers, sieged tanks) have an unbounded freshness threshold in that loop, so a
      * stale sighting of one can still hold the contribution open.
+     *
+     * <p>The coverage flag drives the engage-threshold floor and is deliberately stricter than the
+     * strength test on three counts. It uses the colony's real weapon range rather than the generous
+     * engagement radius, because relaxing a tuned threshold should require the fight to be genuinely
+     * under the guns. It only counts threats that are currently visible, so a stale lurker or sieged
+     * tank sighting - which the strength term deliberately honours forever - cannot pin the relaxed
+     * threshold on for the rest of the game. And it only counts threats that can attack, so a
+     * transport or an overlord drifting over a spore colony never relaxes anything.
+     *
+     * <p>Coverage is scoped to the domains that feed the squad's own ratio. An air squad is judged
+     * purely on {@code friendlyAirStr / enemyAntiAirStr}, so a sunken shooting ground units is
+     * irrelevant to it and {@code groundDomain} withholds the ground threats; a ground squad is
+     * judged on a ratio that folds in enemy air, so both domains count for it.
+     *
+     * @param groundDomain whether the ground domain feeds this squad's ratio, gating both the
+     *                     sunken strength term and ground-based coverage
      */
-    private double friendlyStaticDefenseStrength(GameState gameState, List<Position> engagedGroundEnemies,
-                                                 Position squadCenter, DebugSnapshot snapshot) {
-        if (engagedGroundEnemies.isEmpty()) return 0;
-
-        UnitType sunkenType = UnitType.Zerg_Sunken_Colony;
-        double radius = engagementRadius(sunkenType);
-        double total = 0;
+    private StaticDefenseSupport evaluateOwnStaticDefense(GameState gameState, Position squadCenter,
+                                                          List<Position> engagedGroundEnemies,
+                                                          List<Position> coveredGroundThreats,
+                                                          List<Position> coveredAirThreats,
+                                                          boolean groundDomain, DebugSnapshot snapshot) {
+        StaticDefenseSupport support = new StaticDefenseSupport();
+        List<Position> groundCover = groundDomain ? coveredGroundThreats : Collections.<Position>emptyList();
+        if (engagedGroundEnemies.isEmpty() && groundCover.isEmpty() && coveredAirThreats.isEmpty()) return support;
 
         for (Unit unit : gameState.getSelf().getUnits()) {
-            if (unit.getType() != sunkenType) continue;
+            UnitType type = unit.getType();
+            if (!OWN_STATIC_DEFENSE.contains(type)) continue;
             if (!unit.isCompleted()) continue;
 
-            Position sunkenPosition = unit.getPosition();
-            if (sunkenPosition == null) continue;
-            if (squadCenter.getDistance(sunkenPosition) > radius) continue;
-            if (!anyWithinRange(engagedGroundEnemies, sunkenPosition, radius)) continue;
+            Position colonyPosition = unit.getPosition();
+            if (colonyPosition == null) continue;
+            double radius = engagementRadius(type);
+            if (squadCenter.getDistance(colonyPosition) > radius) continue;
 
-            double hpWeight = hpWeighting(unit.getHitPoints(), 0, sunkenType.maxHitPoints(), 0);
-            double str = UnitStrength.groundToGround(sunkenType) * hpWeight;
-            snapshot.getFriendlyUnits().add(new UnitDebugEntry(sunkenPosition, sunkenType, str, true, false));
-            total += str;
+            boolean covers = coversThreat(type, colonyPosition, groundCover, coveredAirThreats);
+            if (covers) {
+                support.coversThreat = true;
+            }
+
+            double str = 0;
+            if (groundDomain && type == UnitType.Zerg_Sunken_Colony
+                    && anyWithinRange(engagedGroundEnemies, colonyPosition, radius)) {
+                double hpWeight = hpWeighting(unit.getHitPoints(), 0, type.maxHitPoints(), 0);
+                str = UnitStrength.groundToGround(type) * hpWeight;
+                support.strength += str;
+            }
+
+            if (covers || str > 0) {
+                snapshot.getFriendlyUnits().add(new UnitDebugEntry(colonyPosition, type, str, true, false));
+            }
         }
 
-        return total;
+        return support;
     }
 
-    private boolean anyWithinRange(List<Position> positions, Position origin, double range) {
+    /**
+     * Whether a static defense structure is in weapon range of a threat it can actually shoot.
+     * The ground and air threat lists are matched against the matching weapon, so a structure
+     * without a weapon in that domain never covers threats there: a Sunken Colony has no air
+     * weapon and therefore cannot be triggered by an air threat, and a Spore Colony likewise
+     * cannot be triggered by a ground threat.
+     */
+    static boolean coversThreat(UnitType defenseType, Position defensePosition,
+                                List<Position> groundThreats, List<Position> airThreats) {
+        return weaponCovers(defenseType.groundWeapon(), defensePosition, groundThreats)
+                || weaponCovers(defenseType.airWeapon(), defensePosition, airThreats);
+    }
+
+    private static boolean weaponCovers(WeaponType weapon, Position origin, List<Position> threats) {
+        if (weapon == null || weapon == WeaponType.None) return false;
+        return anyWithinRange(threats, origin, weapon.maxRange() + STATIC_DEFENSE_COVER_BUFFER);
+    }
+
+    private static boolean anyWithinRange(List<Position> positions, Position origin, double range) {
         for (Position pos : positions) {
             if (pos.getDistance(origin) <= range) return true;
         }
         return false;
+    }
+
+    private static final class StaticDefenseSupport {
+        private double strength;
+        private boolean coversThreat;
     }
 
     private double engagementRadius(UnitType type) {
@@ -477,6 +554,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
         private double overallRatio;
         private double engageThreshold;
         private double retreatThreshold;
+        private boolean staticDefenseCover;
         private CombatResult result;
     }
 }
