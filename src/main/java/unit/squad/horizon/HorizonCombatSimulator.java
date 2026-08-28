@@ -328,29 +328,6 @@ public class HorizonCombatSimulator implements CombatSimulator {
      * Scans our own completed static defense once, producing both the ground strength contribution
      * and whether any colony currently covers a threat it is able to shoot.
      *
-     * <p>Own completed sunken colonies contribute ground strength only while an enemy ground unit is
-     * already engaging that sunken. This mirrors McRave's Horizon, which admits a
-     * building to the strength sum only once it has a target. The candidate enemies are the ones
-     * the main enemy loop already accepted, so they carry its freshness and engagement-radius
-     * filters: a squad marching away from a sunken banks nothing from it. The same engagement
-     * radius bounds both the squad-to-sunken and enemy-to-sunken tests, so a sunken counts while
-     * an enemy is closing on it rather than only once it is already in weapon range. Positional
-     * units (lurkers, sieged tanks) have an unbounded freshness threshold in that loop, so a
-     * stale sighting of one can still hold the contribution open.
-     *
-     * <p>The coverage flag drives the engage-threshold floor and is deliberately stricter than the
-     * strength test on three counts. It uses the colony's real weapon range rather than the generous
-     * engagement radius, because relaxing a tuned threshold should require the fight to be genuinely
-     * under the guns. It only counts threats that are currently visible, so a stale lurker or sieged
-     * tank sighting - which the strength term deliberately honours forever - cannot pin the relaxed
-     * threshold on for the rest of the game. And it only counts threats that can attack, so a
-     * transport or an overlord drifting over a spore colony never relaxes anything.
-     *
-     * <p>Coverage is scoped to the domains that feed the squad's own ratio. An air squad is judged
-     * purely on {@code friendlyAirStr / enemyAntiAirStr}, so a sunken shooting ground units is
-     * irrelevant to it and {@code groundDomain} withholds the ground threats; a ground squad is
-     * judged on a ratio that folds in enemy air, so both domains count for it.
-     *
      * @param groundDomain whether the ground domain feeds this squad's ratio, gating both the
      *                     sunken strength term and ground-based coverage
      */
