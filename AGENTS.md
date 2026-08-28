@@ -96,3 +96,31 @@ Examples:
 - `chore(IA-38): document learning architecture`
 - `refactor: introduce Vec2 utility class. cleanup distance calculations`
 - `release 0.59`
+
+## Pull Request Descriptions
+
+The PR body defaults to **empty**. Across 2022-2026, ~80% of hand-written PRs on this repo have no body at all, including changes over 1000 lines. The title carries the change; the body carries only what the title could not.
+
+- **Write a body only to name changes the title does not cover.** The house form is a bare list of the branch's secondary commit subjects, one per line:
+  ```
+  refactor: move GameState updates in ProductionManager to InformationManager
+  feat: simplify gas rebalance to be all workers
+  ```
+  Plain `-` bullets are the only accepted alternative. One coherent change means no body.
+- **Hard cap: 50 words and 5 lines.** The longest hand-written body in the last two years is 51 words. Length does not scale with diff size - the two largest PRs of 2026 (1054 and 838 lines) both shipped with empty bodies.
+- **No markdown headings, ever.** Zero appear in roughly 370 hand-written PRs. If the content seems to need a heading, it is too long.
+- **State WHAT changed, present tense, with the code as the subject.** `Replace naive time-based SCV count heuristic with tile intersection check.` Never "This PR...", never first person, never future tense.
+- **Clip the WHY onto the same clause or drop it** - "...to prevent units getting stuck". Never a separate rationale paragraph.
+- **Rationale, investigation notes, rejected alternatives, deferred defects, and follow-up work belong in the Jira ticket**, not the PR. The body describes the merge, not the work that produced it.
+- No bold, tables, code fences, or emoji. Class and method names are written bare - ObservedUnitTracker, not `ObservedUnitTracker`.
+
+### Never put in a PR body
+
+- **`claude.ai` session URLs**, or any AI attribution or co-author trailer.
+- **Replay filenames (`*.rep`), batch-run IDs, log directories, or local paths.** None are tracked in this repo, so they resolve for nobody. Replays are discarded over time and the bot changes continuously, so a replay reference is stale on arrival.
+- `## Summary`, `## Test plan`, `## Validation status`, `## Assumptions`, `## Known review findings`, or severity labels (CRITICAL/HIGH/MEDIUM/LOW/NITPICK).
+- Checkboxes. CI reports `build` and `Checkstyle` status; restating it is noise.
+- Corrections to, or arguments with, the Jira ticket. Comment on the ticket instead.
+- Citations of other bots (McRave, PurpleWave, BananaBrain) as justification.
+- Stacked-PR banners. GitHub already shows the base branch.
+- A restatement of the title. If that is all there is, the body is empty.
