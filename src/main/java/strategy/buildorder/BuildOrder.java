@@ -32,6 +32,8 @@ public abstract class BuildOrder {
     private static final int EARLY_RUSH_MIN_ZERGLINGS = 6;
     private static final int EMERGENCY_DEFENSE_PRIORITY = 1;
     private static final int DEFAULT_COLONY_PRIORITY = 5;
+    private static final int UNKNOWN_RACE_BASE_TARGET = 2;
+    private static final int UNKNOWN_RACE_ZERGLING_PLANS = 2;
 
     @Getter
     private final String name;
@@ -42,6 +44,17 @@ public abstract class BuildOrder {
     }
 
     public boolean shouldTransition(GameState gameState) {
+        return gameState.getOpponentRace() != Race.Unknown && openerComplete(gameState);
+    }
+
+    /**
+     * The race-independent half of an opener's hand off condition: the scripted build has produced
+     * everything it was going to produce. Kept separate from shouldTransition so the same condition
+     * can gate the unknown race fallback, which must fire at exactly the moment the opener would
+     * otherwise have transitioned. Build orders that are not openers leave this false and override
+     * shouldTransition directly.
+     */
+    protected boolean openerComplete(GameState gameState) {
         return false;
     }
 
@@ -170,6 +183,50 @@ public abstract class BuildOrder {
             zerglingPlan.setPriority(EMERGENCY_DEFENSE_PRIORITY);
             plans.add(zerglingPlan);
         }
+        return plans;
+    }
+
+    /**
+     * Race agnostic macro continuation for an opener that has finished its build order but cannot
+     * transition, because a random opponent's race is still unknown.
+     * <p>
+     * Ensures defensive zerglings, a natural expansion, drones and finally gas if they were not
+     * covered by the initial opener.
+     */
+    protected List<Plan> planUnknownRaceMacro(GameState gameState) {
+        List<Plan> plans = new ArrayList<>();
+        TechProgression techProgression = gameState.getTechProgression();
+        boolean raceUnknown = gameState.getOpponentRace() == Race.Unknown;
+        boolean poolPlanned = techProgression.isPlannedSpawningPool() || techProgression.isSpawningPool();
+        if (!raceUnknown || !openerComplete(gameState) || !poolPlanned || gameState.isEarlyRushed()) {
+            return plans;
+        }
+
+        if (gameState.ourUnitCount(UnitType.Zerg_Zergling) == 0) {
+            for (int i = 0; i < UNKNOWN_RACE_ZERGLING_PLANS; i++) {
+                plans.add(this.planUnit(gameState, UnitType.Zerg_Zergling));
+            }
+            return plans;
+        }
+
+        int plannedAndCurrentBases = gameState.getPlannedHatcheries() + gameState.getBaseData().currentBaseCount();
+        if (plannedAndCurrentBases < UNKNOWN_RACE_BASE_TARGET) {
+            Plan hatcheryPlan = this.planNewBase(gameState);
+            if (hatcheryPlan != null) {
+                plans.add(hatcheryPlan);
+                return plans;
+            }
+        }
+
+        if (gameState.canPlanDrone()) {
+            plans.add(this.planUnit(gameState, UnitType.Zerg_Drone));
+            return plans;
+        }
+
+        if (gameState.canPlanExtractor()) {
+            plans.add(this.planExtractor(gameState));
+        }
+
         return plans;
     }
 

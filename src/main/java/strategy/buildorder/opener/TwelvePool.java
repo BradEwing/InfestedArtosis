@@ -24,9 +24,8 @@ public class TwelvePool extends BuildOrder {
     }
 
     @Override
-    public boolean shouldTransition(GameState gameState) {
-        return gameState.getOpponentRace() != Race.Unknown &&
-                (gameState.ourUnitCount(UnitType.Zerg_Spawning_Pool) > 0 || gameState.ourLivingUnitCount(UnitType.Zerg_Drone) >= 12);
+    protected boolean openerComplete(GameState gameState) {
+        return gameState.ourUnitCount(UnitType.Zerg_Spawning_Pool) > 0 || gameState.ourLivingUnitCount(UnitType.Zerg_Drone) >= 12;
     }
 
     @Override
@@ -76,6 +75,7 @@ public class TwelvePool extends BuildOrder {
             return plans;
         }
 
+        plans.addAll(planUnknownRaceMacro(gameState));
         return plans;
     }
 
