@@ -204,6 +204,10 @@ public abstract class BuildOrder {
      * larva morphs into a pair of zerglings, and ourUnitCount already counts planned units, so a
      * single plan would satisfy the check at two.
      *
+     * Four zerglings rather than the six zerglingsNeeded returns: these are insurance zerglings to
+     * deny scouting, punish a greedy expansion or defend an early rush, not the full pack a
+     * scouted opener commits to once it knows what it is up against.
+     *
      * The early rush check is belt and braces: today a rush can only be detected from observed
      * enemy units, and seeing any enemy unit also reveals the race and closes this path. It is kept
      * so the guarantee stays explicit if rush detection ever becomes race agnostic.
