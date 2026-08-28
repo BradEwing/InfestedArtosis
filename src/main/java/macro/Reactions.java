@@ -103,9 +103,7 @@ public class Reactions {
             productionQueue.removeWhere(IS_DRONE, gameState::setImpossiblePlan);
         }
 
-        if (baseData.getMyBases().size() == 1) {
-            baseData.setAllowSunkenAtMain(true);
-        }
+        allowSunkenAtMainIfSingleBase(baseData);
     }
 
     private void earlyRushReaction() {
@@ -163,9 +161,7 @@ public class Reactions {
             productionQueue.removeWhere(IS_DRONE, gameState::setImpossiblePlan);
         }
 
-        if (baseData.getMyBases().size() == 1) {
-            baseData.setAllowSunkenAtMain(true);
-        }
+        allowSunkenAtMainIfSingleBase(baseData);
     }
 
     /**
@@ -176,6 +172,20 @@ public class Reactions {
      */
     private void cancelQueuedLairs() {
         gameState.getProductionQueue().removeWhere(IS_LAIR, gameState::setImpossiblePlan);
+    }
+
+    /**
+     * Relaxes the main-base sunken restriction only while the main is genuinely our sole base.
+     * Reserved and morphing expansions count against that: a base joins myBases when its hatchery
+     * completes, so a count of completed bases alone treats a natural that is queued or still
+     * morphing as if it did not exist, and sites the sunken at the main. The clear path stays on
+     * completed bases so a committed but not yet online expansion cannot tear down defense that
+     * has already been planned at the main.
+     */
+    private void allowSunkenAtMainIfSingleBase(BaseData baseData) {
+        if (baseData.currentAndReservedCount() == 1) {
+            baseData.setAllowSunkenAtMain(true);
+        }
     }
 
     /**
@@ -284,9 +294,7 @@ public class Reactions {
         planSpeedUpgrade(productionQueue);
 
         BaseData baseData = gameState.getBaseData();
-        if (baseData.getMyBases().size() == 1) {
-            baseData.setAllowSunkenAtMain(true);
-        }
+        allowSunkenAtMainIfSingleBase(baseData);
     }
 
     private void zvzSunkenReaction() {
@@ -303,8 +311,8 @@ public class Reactions {
         boolean enemyUpAHatchery = enemyDepots > ourBaseCount;
         boolean enemyUpZerglings = enemyZerglings - ourZerglings >= 3;
 
-        if ((enemyUpAHatchery || enemyUpZerglings) && ourBaseCount == 1) {
-            baseData.setAllowSunkenAtMain(true);
+        if (enemyUpAHatchery || enemyUpZerglings) {
+            allowSunkenAtMainIfSingleBase(baseData);
         }
     }
 
