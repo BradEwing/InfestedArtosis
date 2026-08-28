@@ -33,6 +33,7 @@ public abstract class BuildOrder {
     private static final int EMERGENCY_DEFENSE_PRIORITY = 1;
     private static final int DEFAULT_COLONY_PRIORITY = 5;
     private static final int UNKNOWN_RACE_BASE_TARGET = 2;
+    private static final int UNKNOWN_RACE_ZERGLING_PLANS = 2;
 
     @Getter
     private final String name;
@@ -196,11 +197,12 @@ public abstract class BuildOrder {
      * earlier or more greedily than normal, and there is no threshold to tune. Overlords need no
      * tier of their own - queuing drones re-primes ProductionManager.planSupply, which owns supply.
      *
-     * A finished spawning pool is required on top of opener completion. A real transition hands
-     * army production to the successor build order, but here there is no successor, so committing
-     * to an expansion before the opener can produce a single zergling would leave the natural
-     * undefended. Note that ourUnitCount counts a pool from the moment it starts morphing, which is
-     * why the completed-pool flag is read instead.
+     * A planned spawning pool is required on top of opener completion, and the first tier buys a
+     * floor of zerglings whenever none are alive or queued. A real transition hands army production
+     * to the successor build order, but here there is no successor, so expanding with nothing on
+     * the field would leave the natural undefended. Two plans are queued rather than one because a
+     * larva morphs into a pair of zerglings, and ourUnitCount already counts planned units, so a
+     * single plan would satisfy the check at two.
      *
      * The early rush check is belt and braces: today a rush can only be detected from observed
      * enemy units, and seeing any enemy unit also reveals the race and closes this path. It is kept
@@ -211,9 +213,17 @@ public abstract class BuildOrder {
      */
     protected List<Plan> planUnknownRaceMacro(GameState gameState) {
         List<Plan> plans = new ArrayList<>();
+        TechProgression techProgression = gameState.getTechProgression();
         boolean raceUnknown = gameState.getOpponentRace() == Race.Unknown;
-        boolean poolComplete = gameState.getTechProgression().isSpawningPool();
-        if (!raceUnknown || !openerComplete(gameState) || !poolComplete || gameState.isEarlyRushed()) {
+        boolean poolPlanned = techProgression.isPlannedSpawningPool() || techProgression.isSpawningPool();
+        if (!raceUnknown || !openerComplete(gameState) || !poolPlanned || gameState.isEarlyRushed()) {
+            return plans;
+        }
+
+        if (gameState.ourUnitCount(UnitType.Zerg_Zergling) == 0) {
+            for (int i = 0; i < UNKNOWN_RACE_ZERGLING_PLANS; i++) {
+                plans.add(this.planUnit(gameState, UnitType.Zerg_Zergling));
+            }
             return plans;
         }
 
