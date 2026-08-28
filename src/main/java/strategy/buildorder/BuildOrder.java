@@ -32,6 +32,7 @@ public abstract class BuildOrder {
     private static final int EARLY_RUSH_MIN_ZERGLINGS = 6;
     private static final int EMERGENCY_DEFENSE_PRIORITY = 1;
     private static final int DEFAULT_COLONY_PRIORITY = 5;
+    private static final int UNKNOWN_RACE_BASE_TARGET = 2;
 
     @Getter
     private final String name;
@@ -42,6 +43,17 @@ public abstract class BuildOrder {
     }
 
     public boolean shouldTransition(GameState gameState) {
+        return gameState.getOpponentRace() != Race.Unknown && openerComplete(gameState);
+    }
+
+    /**
+     * The race-independent half of an opener's hand off condition: the scripted build has produced
+     * everything it was going to produce. Kept separate from shouldTransition so the same condition
+     * can gate the unknown race fallback, which must fire at exactly the moment the opener would
+     * otherwise have transitioned. Build orders that are not openers leave this false and override
+     * shouldTransition directly.
+     */
+    protected boolean openerComplete(GameState gameState) {
         return false;
     }
 
@@ -170,6 +182,59 @@ public abstract class BuildOrder {
             zerglingPlan.setPriority(EMERGENCY_DEFENSE_PRIORITY);
             plans.add(zerglingPlan);
         }
+        return plans;
+    }
+
+    /**
+     * Race agnostic macro continuation for an opener that has finished its script but cannot hand
+     * off, because every opener transition is keyed on the enemy race and no enemy unit has been
+     * seen yet. Without it the production queue drains and stays empty, floating minerals for as
+     * long as the opponent goes unscouted.
+     *
+     * The trigger is opener completion rather than a clock or a floating minerals floor: it fires
+     * at exactly the moment the known race path would have transitioned, so it can never open
+     * earlier or more greedily than normal, and there is no threshold to tune. Overlords need no
+     * tier of their own - queuing drones re-primes ProductionManager.planSupply, which owns supply.
+     *
+     * A finished spawning pool is required on top of opener completion. A real transition hands
+     * army production to the successor build order, but here there is no successor, so committing
+     * to an expansion before the opener can produce a single zergling would leave the natural
+     * undefended. Note that ourUnitCount counts a pool from the moment it starts morphing, which is
+     * why the completed-pool flag is read instead.
+     *
+     * The early rush check is belt and braces: today a rush can only be detected from observed
+     * enemy units, and seeing any enemy unit also reveals the race and closes this path. It is kept
+     * so the guarantee stays explicit if rush detection ever becomes race agnostic.
+     *
+     * Returned plans carry reservations (base, planned worker and hatchery counts, geyser) and
+     * must be added to the production queue by the caller.
+     */
+    protected List<Plan> planUnknownRaceMacro(GameState gameState) {
+        List<Plan> plans = new ArrayList<>();
+        boolean raceUnknown = gameState.getOpponentRace() == Race.Unknown;
+        boolean poolComplete = gameState.getTechProgression().isSpawningPool();
+        if (!raceUnknown || !openerComplete(gameState) || !poolComplete || gameState.isEarlyRushed()) {
+            return plans;
+        }
+
+        int plannedAndCurrentBases = gameState.getPlannedHatcheries() + gameState.getBaseData().currentBaseCount();
+        if (plannedAndCurrentBases < UNKNOWN_RACE_BASE_TARGET) {
+            Plan hatcheryPlan = this.planNewBase(gameState);
+            if (hatcheryPlan != null) {
+                plans.add(hatcheryPlan);
+                return plans;
+            }
+        }
+
+        if (gameState.canPlanDrone()) {
+            plans.add(this.planUnit(gameState, UnitType.Zerg_Drone));
+            return plans;
+        }
+
+        if (gameState.canPlanExtractor()) {
+            plans.add(this.planExtractor(gameState));
+        }
+
         return plans;
     }
 
