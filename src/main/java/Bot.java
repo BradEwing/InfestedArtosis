@@ -12,6 +12,9 @@ import learning.LearningManager;
 import learning.OpponentRecord;
 import macro.ProductionManager;
 import macro.plan.PlanManager;
+import strategy.buildorder.BuildOrder;
+import telemetry.PlanEventLogger;
+import telemetry.PlanEvents;
 import unit.UnitManager;
 
 /**
@@ -39,6 +42,8 @@ public class Bot extends DefaultBWListener {
 
     private AutoObserver autoObserver;
 
+    private PlanEventLogger planEventLogger;
+
     @Override
     public void onStart() {
         game = bwClient.getGame();
@@ -64,12 +69,27 @@ public class Bot extends DefaultBWListener {
         debugMap = new Debug(game, decisions.getOpener(), opponentRecord, gameState, gameState.getConfig(), unitManager.getSquadManager());
 
         autoObserver = new AutoObserver(gameState.getConfig(), game, unitManager.getScoutManager(), unitManager.getSquadManager());
+
+        startPlanEventLogging(decisions.getOpener());
+    }
+
+    private void startPlanEventLogging(BuildOrder opener) {
+        if (!gameState.getConfig().logPlanEvents) {
+            return;
+        }
+
+        planEventLogger = new PlanEventLogger(game, gameState, opener == null ? "" : opener.getName(),
+                bwem.getMap().getStartingLocations().size());
+        PlanEvents.register(planEventLogger);
     }
 
 
 
     @Override
     public void onFrame() {
+        if (planEventLogger != null) {
+            planEventLogger.onFrame();
+        }
         informationManager.onFrame();
         productionManager.onFrame();
         planManager.onFrame();
@@ -135,6 +155,9 @@ public class Bot extends DefaultBWListener {
     @Override
     public void onEnd(boolean isWinner) {
         learningManager.onEnd(isWinner);
+        if (planEventLogger != null) {
+            planEventLogger.onEnd(isWinner);
+        }
     }
 
     public static void main(String[] args) {
