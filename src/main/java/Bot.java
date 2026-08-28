@@ -13,6 +13,7 @@ import learning.OpponentRecord;
 import macro.ProductionManager;
 import macro.plan.PlanManager;
 import strategy.buildorder.BuildOrder;
+import telemetry.CombatTelemetry;
 import telemetry.PlanEventLogger;
 import telemetry.PlanEvents;
 import unit.UnitManager;
@@ -39,6 +40,7 @@ public class Bot extends DefaultBWListener {
     private ProductionManager productionManager;
     private InformationManager informationManager;
     private UnitManager unitManager;
+    private CombatTelemetry combatTelemetry;
 
     private AutoObserver autoObserver;
 
@@ -70,6 +72,7 @@ public class Bot extends DefaultBWListener {
 
         autoObserver = new AutoObserver(gameState.getConfig(), game, unitManager.getScoutManager(), unitManager.getSquadManager());
 
+        combatTelemetry = new CombatTelemetry(game, gameState, unitManager.getSquadManager());
         startPlanEventLogging(decisions.getOpener());
     }
 
@@ -94,6 +97,7 @@ public class Bot extends DefaultBWListener {
         productionManager.onFrame();
         planManager.onFrame();
         unitManager.onFrame();
+        combatTelemetry.onFrame();
         debugMap.onFrame();
         autoObserver.onFrame();
     }
@@ -134,6 +138,7 @@ public class Bot extends DefaultBWListener {
 
     @Override
     public void onUnitDestroy(Unit unit) {
+        combatTelemetry.onUnitDestroy(unit);
         informationManager.onUnitDestroy(unit);
         productionManager.onUnitDestroy(unit);
         unitManager.onUnitDestroy(unit);
@@ -158,6 +163,7 @@ public class Bot extends DefaultBWListener {
         if (planEventLogger != null) {
             planEventLogger.onEnd(isWinner);
         }
+        combatTelemetry.onEnd(isWinner);
     }
 
     public static void main(String[] args) {
