@@ -13,6 +13,7 @@ import info.tracking.ObservedUnitTracker;
 import info.tracking.StrategyTracker;
 import util.Time;
 import macro.plan.Plan;
+import macro.plan.PlanCancelSite;
 import macro.plan.PlanType;
 import macro.plan.UpgradePlan;
 
@@ -97,13 +98,13 @@ public class Reactions {
         ProductionQueue productionQueue = gameState.getProductionQueue();
 
         productionQueue.setPriorityWhere(IS_SPAWNING_POOL, 0);
-        productionQueue.removeWhere(IS_HATCHERY, gameState::setImpossiblePlan);
+        productionQueue.removeWhere(IS_HATCHERY, PlanCancelSite.REACTION_SCV_RUSH_HATCHERY, gameState::setImpossiblePlan);
 
         BaseData baseData = gameState.getBaseData();
         cancelAllExtractors(baseData);
 
         if (gameState.getTechProgression().isSpawningPool()) {
-            productionQueue.removeWhere(IS_DRONE, gameState::setImpossiblePlan);
+            productionQueue.removeWhere(IS_DRONE, PlanCancelSite.REACTION_SCV_RUSH_DRONE, gameState::setImpossiblePlan);
         }
 
         allowSunkenAtMainIfSingleBase(baseData);
@@ -143,7 +144,8 @@ public class Reactions {
 
         ProductionQueue productionQueue = gameState.getProductionQueue();
         productionQueue.setPriorityWhere(IS_SPAWNING_POOL, 0);
-        productionQueue.removeWhere(IS_EXPANSION_HATCHERY, gameState::setImpossiblePlan);
+        productionQueue.removeWhere(IS_EXPANSION_HATCHERY, PlanCancelSite.REACTION_EARLY_RUSH_EXPANSION,
+                gameState::setImpossiblePlan);
 
         if (gameState.isEarlyRushDelayLair()) {
             cancelQueuedLairs();
@@ -158,7 +160,7 @@ public class Reactions {
 
         int droneCount = gameState.ourUnitCount(UnitType.Zerg_Drone);
         if (droneCount >= 8 && zerglingCount < 8) {
-            productionQueue.removeWhere(IS_DRONE, gameState::setImpossiblePlan);
+            productionQueue.removeWhere(IS_DRONE, PlanCancelSite.REACTION_EARLY_RUSH_DRONE, gameState::setImpossiblePlan);
         }
 
         allowSunkenAtMainIfSingleBase(baseData);
@@ -171,7 +173,7 @@ public class Reactions {
      * cancelled by ProductionManager, which owns the scheduledBuildings slot they hold.
      */
     private void cancelQueuedLairs() {
-        gameState.getProductionQueue().removeWhere(IS_LAIR, gameState::setImpossiblePlan);
+        gameState.getProductionQueue().removeWhere(IS_LAIR, PlanCancelSite.REACTION_EARLY_RUSH_LAIR, gameState::setImpossiblePlan);
     }
 
     /**
@@ -210,7 +212,7 @@ public class Reactions {
 
     private void cancelAllExtractors(BaseData baseData) {
         ProductionQueue productionQueue = gameState.getProductionQueue();
-        productionQueue.removeWhere(IS_EXTRACTOR, plan -> {
+        productionQueue.removeWhere(IS_EXTRACTOR, PlanCancelSite.REACTION_GAS_DENIED_QUEUED, plan -> {
             gameState.setImpossiblePlan(plan);
             if (plan.getBuildPosition() != null) {
                 baseData.unreserveExtractor(plan.getBuildPosition());
@@ -282,7 +284,7 @@ public class Reactions {
         int zerglingCount = gameState.getUnitTypeCount().get(UnitType.Zerg_Zergling);
 
         if (droneCount >= 8 && zerglingCount < 8) {
-            productionQueue.removeWhere(IS_DRONE, gameState::setImpossiblePlan);
+            productionQueue.removeWhere(IS_DRONE, PlanCancelSite.REACTION_CANNON_RUSH_DRONE, gameState::setImpossiblePlan);
         }
     }
 
@@ -359,7 +361,7 @@ public class Reactions {
         Predicate<Plan> isMainCreepColony = IS_CREEP_COLONY.and(isAtMain);
 
         ProductionQueue productionQueue = gameState.getProductionQueue();
-        productionQueue.removeWhere(isMainCreepColony, plan -> {
+        productionQueue.removeWhere(isMainCreepColony, PlanCancelSite.REACTION_MAIN_SUNKEN_CLEARED, plan -> {
             gameState.setImpossiblePlan(plan);
             buildingPlanner.unreservePlannedBuildingTiles(plan.getBuildPosition(), UnitType.Zerg_Creep_Colony);
         });
@@ -373,7 +375,7 @@ public class Reactions {
                 break;
             }
         }
-        gameState.cancelPlan(assignedDrone, plan);
+        gameState.cancelPlan(assignedDrone, plan, PlanCancelSite.REACTION_GAS_DENIED_IN_PROGRESS);
         if (plan.getBuildPosition() != null) {
             baseData.unreserveExtractor(plan.getBuildPosition());
         }

@@ -1,6 +1,7 @@
 package macro;
 
 import macro.plan.Plan;
+import macro.plan.PlanCancelSite;
 import macro.plan.PlanComparator;
 import telemetry.PlanEvents;
 
@@ -92,8 +93,11 @@ public class ProductionQueue implements Iterable<Plan> {
 
     /**
      * Removes all plans matching the predicate and invokes the callback on each removed plan.
+     *
+     * <p>Every removed plan is stamped with the site before the callback runs, so a sweep names
+     * the predicate that destroyed the plan without each callback having to repeat it.
      */
-    public void removeWhere(Predicate<Plan> predicate, Consumer<Plan> onRemoved) {
+    public void removeWhere(Predicate<Plan> predicate, PlanCancelSite site, Consumer<Plan> onRemoved) {
         List<Plan> matched = new ArrayList<>();
         for (Plan plan : queue) {
             if (predicate.test(plan)) {
@@ -102,6 +106,7 @@ public class ProductionQueue implements Iterable<Plan> {
         }
         for (Plan plan : matched) {
             queue.remove(plan);
+            plan.setCancelSite(site);
             onRemoved.accept(plan);
         }
     }

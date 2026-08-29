@@ -26,6 +26,7 @@ import info.tracking.StrategyTracker;
 import learning.Decisions;
 import lombok.Data;
 import macro.plan.Plan;
+import macro.plan.PlanCancelSite;
 import macro.plan.PlanType;
 import org.jetbrains.annotations.Nullable;
 import macro.ProductionQueue;
@@ -262,11 +263,16 @@ public class GameState {
         this.baseData.removeHatchery(hatchery);
     }
 
-    public void cancelPlan(Unit unit, Plan plan) {
+    /**
+     * Cancels a plan on behalf of the named call site. The site is stamped before the state
+     * change so the cancellation event carries its reason.
+     */
+    public void cancelPlan(Unit unit, Plan plan, PlanCancelSite site) {
         if (plan.getState() == PlanState.CANCELLED) {
             return;
         }
 
+        plan.setCancelSite(site);
         plansBuilding.remove(plan);
         plansMorphing.remove(plan);
         plansImpossible.remove(plan);
@@ -334,6 +340,7 @@ public class GameState {
 
         productionQueue.removeWhere(
                 p -> isColonyMorphAtPosition(p, tp),
+                PlanCancelSite.GAME_STATE_PAIRED_COLONY,
                 p -> {
                     foundMorphType[0] = p.getPlannedUnit();
                     setImpossiblePlan(p);
@@ -345,7 +352,7 @@ public class GameState {
                 if (isColonyMorphAtPosition(p, tp)) {
                     foundMorphType[0] = p.getPlannedUnit();
                     plansScheduled.remove(p);
-                    cancelPlan(null, p);
+                    cancelPlan(null, p, PlanCancelSite.GAME_STATE_PAIRED_COLONY);
                     break;
                 }
             }
@@ -468,6 +475,12 @@ public class GameState {
         }
     }
 
+    /**
+     * Cancels a plan that can no longer be executed, keeping it in the impossible set so the
+     * executor holding it can release it. Callers reach this through
+     * {@link macro.ProductionQueue#removeWhere} or after stamping the site themselves, so the
+     * signature stays a Consumer.
+     */
     public void setImpossiblePlan(Plan plan) {
         if (plan.getState() == PlanState.CANCELLED) {
             return;

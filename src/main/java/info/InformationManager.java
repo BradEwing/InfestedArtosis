@@ -24,6 +24,7 @@ import static util.Distance.manhattanTileDistance;
 import info.tracking.ObservedUnitTracker;
 import learning.LearningManager;
 import macro.plan.Plan;
+import macro.plan.PlanCancelSite;
 import macro.plan.PlanType;
 import strategy.buildorder.BuildOrder;
 
@@ -187,7 +188,7 @@ public class InformationManager {
                     gameState.completePlan(null, plan);
                 } else if (!isUpgradeInProgress(upgradeType)) {
                     it.remove();
-                    gameState.cancelPlan(null, plan);
+                    gameState.cancelPlan(null, plan, PlanCancelSite.INFORMATION_UPGRADE_STOPPED);
                 }
             } else if (plan.getType() == PlanType.TECH) {
                 TechType techType = plan.getPlannedTechType();
@@ -196,7 +197,7 @@ public class InformationManager {
                     gameState.completePlan(null, plan);
                 } else if (!isTechInProgress(techType)) {
                     it.remove();
-                    gameState.cancelPlan(null, plan);
+                    gameState.cancelPlan(null, plan, PlanCancelSite.INFORMATION_RESEARCH_STOPPED);
                 }
             }
         }

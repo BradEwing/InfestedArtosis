@@ -1,6 +1,7 @@
 package telemetry;
 
 import macro.plan.Plan;
+import macro.plan.PlanBlocker;
 import macro.plan.PlanState;
 
 import java.util.List;
@@ -50,5 +51,13 @@ public final class PlanEvents {
             return;
         }
         current.onStateChange(plan, from, to);
+    }
+
+    public static void blocked(Plan plan, PlanBlocker blocker) {
+        PlanEventSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onBlocked(plan, blocker);
     }
 }

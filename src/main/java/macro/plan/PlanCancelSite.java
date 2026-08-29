@@ -1,0 +1,58 @@
+package macro.plan;
+
+/**
+ * The code path that cancelled a plan.
+ *
+ * <p>One constant per predicate that can destroy a plan, each declaring the {@link
+ * PlanCancelReason} it cancels for. Call sites pass only the site; the reason is read back from
+ * it, so a site can never be logged against the wrong reason and the whole site-to-reason mapping
+ * is readable in one table.
+ *
+ * <p>Constants are named owner-then-predicate so a log grouped by site points straight at the
+ * method to read.
+ */
+public enum PlanCancelSite {
+
+    PRODUCTION_IMPOSSIBLE_SWEEP(PlanCancelReason.PREREQUISITE_MISSING),
+    PRODUCTION_SCHEDULE_GATE(PlanCancelReason.PREREQUISITE_MISSING),
+    PRODUCTION_LATER_PREREQUISITE(PlanCancelReason.PREREQUISITE_QUEUED_LATER),
+    PRODUCTION_EXCESS_OVERLORD(PlanCancelReason.EXCESS_SUPPLY),
+    PRODUCTION_EXCESS_HATCHERY_QUEUED(PlanCancelReason.EXCESS_HATCHERY),
+    PRODUCTION_EXCESS_HATCHERY_SCHEDULED(PlanCancelReason.EXCESS_HATCHERY),
+    PRODUCTION_DELAYED_LAIR_SCHEDULED(PlanCancelReason.REACTION_TECH_DELAYED),
+    PRODUCTION_SCHEDULED_LURKER(PlanCancelReason.NO_MORPH_SOURCE),
+    PRODUCTION_EXECUTOR_LOST(PlanCancelReason.EXECUTOR_LOST),
+
+    REACTION_SCV_RUSH_HATCHERY(PlanCancelReason.REACTION_DEFENSE),
+    REACTION_SCV_RUSH_DRONE(PlanCancelReason.REACTION_DEFENSE),
+    REACTION_EARLY_RUSH_EXPANSION(PlanCancelReason.REACTION_DEFENSE),
+    REACTION_EARLY_RUSH_DRONE(PlanCancelReason.REACTION_DEFENSE),
+    REACTION_EARLY_RUSH_LAIR(PlanCancelReason.REACTION_TECH_DELAYED),
+    REACTION_CANNON_RUSH_DRONE(PlanCancelReason.REACTION_DEFENSE),
+    REACTION_GAS_DENIED_QUEUED(PlanCancelReason.REACTION_GAS_DENIED),
+    REACTION_GAS_DENIED_IN_PROGRESS(PlanCancelReason.REACTION_GAS_DENIED),
+    REACTION_MAIN_SUNKEN_CLEARED(PlanCancelReason.POSITION_INVALID),
+
+    GAME_STATE_PAIRED_COLONY(PlanCancelReason.PAIRED_PLAN_CANCELLED),
+
+    PLAN_MANAGER_INVALID_BUILD_POSITION(PlanCancelReason.POSITION_INVALID),
+    PLAN_MANAGER_RELEASE_IMPOSSIBLE(PlanCancelReason.ALREADY_IMPOSSIBLE),
+
+    INFORMATION_UPGRADE_STOPPED(PlanCancelReason.RESEARCH_INTERRUPTED),
+    INFORMATION_RESEARCH_STOPPED(PlanCancelReason.RESEARCH_INTERRUPTED),
+
+    UNIT_MANAGER_EXECUTOR_LOST(PlanCancelReason.EXECUTOR_LOST),
+    WORKER_MANAGER_LARVA_DEADLOCK(PlanCancelReason.LARVA_DEADLOCK),
+
+    UNKNOWN(PlanCancelReason.UNKNOWN);
+
+    private final PlanCancelReason reason;
+
+    PlanCancelSite(PlanCancelReason reason) {
+        this.reason = reason;
+    }
+
+    public PlanCancelReason getReason() {
+        return reason;
+    }
+}
