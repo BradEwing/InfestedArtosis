@@ -54,6 +54,7 @@ public final class Config {
 
     // Telemetry
     public boolean logPlanEvents = false;
+    public boolean telemetryCombat = false;
 
     public Config() {
 
@@ -90,6 +91,7 @@ public final class Config {
         this.debugScheduledPlannedItems = Boolean.parseBoolean(setting(dotenv, "IA_DEBUG_SCHEDULED_PLANNED_ITEMS"));
         this.debugResourceReservations = Boolean.parseBoolean(setting(dotenv, "IA_DEBUG_RESOURCE_RESERVATIONS"));
         this.logPlanEvents = Boolean.parseBoolean(setting(dotenv, "IA_LOG_PLAN_EVENTS"));
+        this.telemetryCombat = Boolean.parseBoolean(setting(dotenv, "IA_TELEMETRY_COMBAT"));
     }
 
     /**
