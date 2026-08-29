@@ -63,7 +63,7 @@ final class TelemetryWriter {
 
         try {
             Path parent = path.getParent();
-            if (parent != null) {
+            if (parent != null && !Files.isDirectory(parent)) {
                 Files.createDirectories(parent);
             }
 
