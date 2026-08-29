@@ -162,6 +162,15 @@ def archive(manifest, results, mode):
     print(f"\nArchived {mode} to {bl.BATCHES_DIR / manifest['run_id']}")
 
 
+def describe_flags(manifest):
+    """The runtime flags the batch was launched with. Batches launched before run.py recorded them leave
+    nothing on disk saying whether telemetry was enabled."""
+    flags = manifest.get("runtime_flags")
+    if flags is None:
+        return "unrecorded (batch predates flag capture)"
+    return ", ".join(f"{k}={v}" for k, v in flags.items()) or "none"
+
+
 def report(run_id, tail=10, archive_mode="none"):
     manifest = bl.load_manifest(run_id)
     results = collect(manifest)
@@ -174,6 +183,7 @@ def report(run_id, tail=10, archive_mode="none"):
     print(f"  jar {manifest.get('jar_version')} ({(manifest.get('jar_sha256') or '')[:12]}) | "
           f"git {manifest.get('git_rev')} | mode {mode} | jobs {manifest.get('jobs')} | "
           f"{len(results)}/{len(manifest['opponents']) * manifest['games_per_opponent']} launched")
+    print(f"  flags {describe_flags(manifest)}")
     if not results:
         print("  No games launched yet.")
         return
