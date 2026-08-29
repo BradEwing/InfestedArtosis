@@ -71,9 +71,11 @@ public class PlanManager {
                     plan.setBuildPosition(fixed);
                     validExtractorPositions.add(fixed);
                 } else {
+                    plan.setCancelSource(PlanCancelSource.PLAN_MANAGER_INVALID_BUILD_POSITION);
                     gameState.setImpossiblePlan(plan);
                 }
             } else {
+                plan.setCancelSource(PlanCancelSource.PLAN_MANAGER_INVALID_BUILD_POSITION);
                 gameState.setImpossiblePlan(plan);
             }
         }
@@ -130,14 +132,14 @@ public class PlanManager {
         for (ManagedUnit larva: larva) {
             Plan currentPlan = larva.getPlan();
             if (currentPlan != null && impossiblePlans.contains(currentPlan)) {
-                gameState.cancelPlan(larva.getUnit(), currentPlan);
+                gameState.cancelPlan(larva.getUnit(), currentPlan, PlanCancelSource.PLAN_MANAGER_RELEASE_IMPOSSIBLE);
             }
         }
 
         for (ManagedUnit drone: scheduledDrones) {
             Plan currentPlan = drone.getPlan();
             if (currentPlan != null && impossiblePlans.contains(currentPlan)) {
-                gameState.cancelPlan(drone.getUnit(), currentPlan);
+                gameState.cancelPlan(drone.getUnit(), currentPlan, PlanCancelSource.PLAN_MANAGER_RELEASE_IMPOSSIBLE);
             }
         }
     }

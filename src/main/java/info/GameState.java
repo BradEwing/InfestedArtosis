@@ -26,6 +26,7 @@ import info.tracking.StrategyTracker;
 import learning.Decisions;
 import lombok.Data;
 import macro.plan.Plan;
+import macro.plan.PlanCancelSource;
 import macro.plan.PlanType;
 import org.jetbrains.annotations.Nullable;
 import macro.ProductionQueue;
@@ -262,11 +263,12 @@ public class GameState {
         this.baseData.removeHatchery(hatchery);
     }
 
-    public void cancelPlan(Unit unit, Plan plan) {
+    public void cancelPlan(Unit unit, Plan plan, PlanCancelSource source) {
         if (plan.getState() == PlanState.CANCELLED) {
             return;
         }
 
+        plan.setCancelSource(source);
         plansBuilding.remove(plan);
         plansMorphing.remove(plan);
         plansImpossible.remove(plan);
@@ -334,6 +336,7 @@ public class GameState {
 
         productionQueue.removeWhere(
                 p -> isColonyMorphAtPosition(p, tp),
+                PlanCancelSource.GAME_STATE_PAIRED_COLONY,
                 p -> {
                     foundMorphType[0] = p.getPlannedUnit();
                     setImpossiblePlan(p);
@@ -345,7 +348,7 @@ public class GameState {
                 if (isColonyMorphAtPosition(p, tp)) {
                     foundMorphType[0] = p.getPlannedUnit();
                     plansScheduled.remove(p);
-                    cancelPlan(null, p);
+                    cancelPlan(null, p, PlanCancelSource.GAME_STATE_PAIRED_COLONY);
                     break;
                 }
             }
@@ -468,6 +471,11 @@ public class GameState {
         }
     }
 
+    /**
+     * Cancels an unexecutable plan and retains it until its executor releases it.
+     *
+     * @param plan plan that can no longer be executed
+     */
     public void setImpossiblePlan(Plan plan) {
         if (plan.getState() == PlanState.CANCELLED) {
             return;

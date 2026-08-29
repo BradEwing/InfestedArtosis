@@ -25,7 +25,16 @@ class CsvTest {
         assertEquals("Fastest 1.16 (4)", Csv.sanitize("Fastest 1.16 (4)"));
         assertEquals("a b", Csv.sanitize("a,b"));
         assertEquals("a b c", Csv.sanitize("a\nb\rc"));
+        assertEquals("'quoted' text", Csv.sanitize("\"quoted\" text"));
         assertEquals("", Csv.sanitize(null));
+    }
+
+    @Test
+    void halfSupplyKeepsTheHalf() {
+        assertEquals("0", Csv.halfSupply(0));
+        assertEquals("4", Csv.halfSupply(8));
+        assertEquals("4.5", Csv.halfSupply(9));
+        assertEquals("199.5", Csv.halfSupply(399));
     }
 
     @Test

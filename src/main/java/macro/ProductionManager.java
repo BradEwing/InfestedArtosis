@@ -12,11 +12,14 @@ import info.ResourceCount;
 import info.TechProgression;
 import info.UnitTypeCount;
 import macro.plan.Plan;
+import macro.plan.PlanBlocker;
+import macro.plan.PlanCancelSource;
 import macro.plan.PlanComparator;
 import macro.plan.PlanState;
 import macro.plan.PlanType;
 import macro.plan.UnitPlan;
 import strategy.buildorder.BuildOrder;
+import telemetry.PlanEvents;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -98,6 +101,7 @@ public class ProductionManager {
     private void cancelImpossiblePlans() {
         gameState.getProductionQueue().removeWhere(
                 plan -> !canSchedulePlan(plan),
+                PlanCancelSource.PRODUCTION_IMPOSSIBLE_SWEEP,
                 gameState::setImpossiblePlan);
 
         cancelImpossibleScheduledLurkerPlans();
@@ -122,6 +126,7 @@ public class ProductionManager {
 
         gameState.getProductionQueue().removeWhere(
                 p -> p.getType() == PlanType.BUILDING && p.getPlannedUnit() == UnitType.Zerg_Hatchery,
+                PlanCancelSource.PRODUCTION_EXCESS_HATCHERY_QUEUED,
                 gameState::setImpossiblePlan);
 
         Set<Plan> scheduledPlansToCancel = gameState.getPlansScheduled()
@@ -132,7 +137,7 @@ public class ProductionManager {
         for (Plan plan : scheduledPlansToCancel) {
             scheduledBuildings = Math.max(0, scheduledBuildings - 1);
             gameState.getPlansScheduled().remove(plan);
-            gameState.cancelPlan(null, plan);
+            gameState.cancelPlan(null, plan, PlanCancelSource.PRODUCTION_EXCESS_HATCHERY_SCHEDULED);
         }
     }
 
@@ -159,7 +164,7 @@ public class ProductionManager {
         for (Plan plan : scheduledLairs) {
             scheduledBuildings = Math.max(0, scheduledBuildings - 1);
             gameState.getPlansScheduled().remove(plan);
-            gameState.cancelPlan(null, plan);
+            gameState.cancelPlan(null, plan, PlanCancelSource.PRODUCTION_DELAYED_LAIR_SCHEDULED);
         }
     }
 
@@ -176,6 +181,7 @@ public class ProductionManager {
         ResourceCount resourceCount = gameState.getResourceCount();
         gameState.getProductionQueue().removeWhere(
                 p -> p.getType() == PlanType.UNIT && p.getPlannedUnit() == UnitType.Zerg_Overlord,
+                PlanCancelSource.PRODUCTION_EXCESS_OVERLORD,
                 plan -> {
                     gameState.setImpossiblePlan(plan);
                     int plannedSupply = resourceCount.getPlannedSupply();
@@ -221,6 +227,7 @@ public class ProductionManager {
         
         for (Plan plan : plansToRemove) {
             gameState.getProductionQueue().remove(plan);
+            plan.setCancelSource(PlanCancelSource.PRODUCTION_LATER_PREREQUISITE);
             gameState.setImpossiblePlan(plan);
         }
     }
@@ -542,7 +549,7 @@ public class ProductionManager {
         int queueSize = gameState.getProductionQueue().size();
         for (int i = 0; i < queueSize; i++) {
 
-            boolean canSchedule = false;
+            PlanBlocker blocker;
             // If we can't plan, we'll put it back on the queue
             final Plan plan = gameState.getProductionQueue().poll();
             if (plan == null) {
@@ -551,6 +558,7 @@ public class ProductionManager {
 
             // Don't block the queue if the plan cannot be executed
             if (!canSchedulePlan(plan)) {
+                plan.setCancelSource(PlanCancelSource.PRODUCTION_SCHEDULE_GATE);
                 gameState.setImpossiblePlan(plan);
                 continue;
             }
@@ -559,24 +567,25 @@ public class ProductionManager {
 
             switch (planType) {
                 case BUILDING:
-                    canSchedule = scheduleBuildingItem(plan, hasRequeuedPlans);
+                    blocker = scheduleBuildingItem(plan, hasRequeuedPlans);
                     break;
                 case UNIT:
-                    canSchedule = scheduleUnitItem(plan);
+                    blocker = scheduleUnitItem(plan);
                     break;
                 case UPGRADE:
-                    canSchedule = scheduleUpgradeItem(self, plan);
+                    blocker = scheduleUpgradeItem(self, plan);
                     break;
                 case TECH:
-                    canSchedule = scheduleResearch(plan);
+                    blocker = scheduleResearch(plan);
                     break;
                 default:
-                    canSchedule = false;
+                    blocker = PlanBlocker.UNSUPPORTED_PLAN_TYPE;
             }
 
-            if (canSchedule) {
+            if (blocker == PlanBlocker.NONE) {
                 scheduledPlans.add(plan);
             } else {
+                PlanEvents.blocked(plan, blocker);
                 requeuePlans.add(plan);
                 hasRequeuedPlans = true;
                 mineralBuffer -= plan.mineralPrice();
@@ -744,13 +753,13 @@ public class ProductionManager {
 
     // PLANNED -> SCHEDULED
     // Allow one building to be scheduled if resources aren't available, unless in an opener
-    private boolean scheduleBuildingItem(Plan plan, boolean hasHigherPriorityPending) {
+    private PlanBlocker scheduleBuildingItem(Plan plan, boolean hasHigherPriorityPending) {
         UnitType building = plan.getPlannedUnit();
 
         if (isColonyMorph(building) && !hasCreepColonyAtPosition(plan.getBuildPosition())) {
             Unit unassignedColony = findUnassignedCreepColony();
             if (unassignedColony == null) {
-                return false;
+                return PlanBlocker.NO_CREEP_COLONY;
             }
             plan.setBuildPosition(unassignedColony.getTilePosition());
         }
@@ -759,7 +768,7 @@ public class ProductionManager {
         int predictedReadyFrame = gameState.frameCanAffordUnit(building, currentFrame);
         if (resourceCount.cannotAffordUnit(building)) {
             if (hasHigherPriorityPending || scheduledBuildings > 0) {
-                return false;
+                return PlanBlocker.BUILD_AHEAD_SLOT_TAKEN;
             }
         }
 
@@ -771,7 +780,7 @@ public class ProductionManager {
         resourceCount.reserveUnit(building);
         plan.setPredictedReadyFrame(predictedReadyFrame);
         plan.setState(PlanState.SCHEDULE);
-        return true;
+        return PlanBlocker.NONE;
     }
 
     private boolean isColonyMorph(UnitType type) {
@@ -803,28 +812,28 @@ public class ProductionManager {
         return null;
     }
 
-    private boolean scheduleUnitItem(Plan plan) {
+    private PlanBlocker scheduleUnitItem(Plan plan) {
         UnitType unit = plan.getPlannedUnit();
         ResourceCount resourceCount = gameState.getResourceCount();
         if (resourceCount.cannotAffordUnit(unit)) {
-            return false;
+            return PlanBlocker.RESOURCES;
         }
 
         if (!resourceCount.canScheduleLarva(gameState.numLarva())) {
-            return false;
+            return PlanBlocker.NO_LARVA;
         }
 
         resourceCount.reserveUnit(unit);
         plan.setState(PlanState.SCHEDULE);
-        return true;
+        return PlanBlocker.NONE;
     }
 
-    private boolean scheduleUpgradeItem(Player self, Plan plan) {
+    private PlanBlocker scheduleUpgradeItem(Player self, Plan plan) {
         final UpgradeType upgrade = plan.getPlannedUpgrade();
         ResourceCount resourceCount = gameState.getResourceCount();
 
         if (resourceCount.cannotAffordUpgrade(plan)) {
-            return false;
+            return PlanBlocker.RESOURCES;
         }
 
         Unit nextAvailable = null;
@@ -845,7 +854,7 @@ public class ProductionManager {
                 gameState.getAssignedPlannedItems().put(unit, plan);
                 plan.setState(PlanState.SCHEDULE);
                 resourceCount.reserveUpgrade(plan);
-                return true;
+                return PlanBlocker.NONE;
             }
 
             // If no assignment, see if this unit will be available before other buildings
@@ -859,7 +868,7 @@ public class ProductionManager {
             plan.setPriority(priority + nextAvailable.getRemainingUpgradeTime());
         }
 
-        return false;
+        return PlanBlocker.NO_PRODUCER;
     }
 
     private boolean isUpgradedForm(UnitType actual, UnitType required) {
@@ -867,12 +876,12 @@ public class ProductionManager {
                 || required == UnitType.Zerg_Spire && actual == UnitType.Zerg_Greater_Spire;
     }
 
-    private boolean scheduleResearch(Plan plan) {
+    private PlanBlocker scheduleResearch(Plan plan) {
         final TechType techType = plan.getPlannedTechType();
         ResourceCount resourceCount = gameState.getResourceCount();
 
         if (resourceCount.cannotAffordResearch(techType)) {
-            return false;
+            return PlanBlocker.RESOURCES;
         }
 
         Unit nextAvailable = null;
@@ -892,7 +901,7 @@ public class ProductionManager {
                 gameState.getAssignedPlannedItems().put(unit, plan);
                 plan.setState(PlanState.SCHEDULE);
                 resourceCount.reserveTechResearch(techType);
-                return true;
+                return PlanBlocker.NONE;
             }
 
             // If no assignment, see if this unit will be available before other buildings
@@ -906,7 +915,7 @@ public class ProductionManager {
             plan.setPriority(priority + nextAvailable.getRemainingUpgradeTime());
         }
 
-        return false;
+        return PlanBlocker.NO_PRODUCER;
     }
 
     /**
@@ -999,7 +1008,7 @@ public class ProductionManager {
                                 && gameState.getBaseData().isExtractorAtPosition(plan.getBuildPosition())) {
                             gameState.completePlan(unit, plan);
                         } else {
-                            gameState.cancelPlan(unit, plan);
+                            gameState.cancelPlan(unit, plan, PlanCancelSource.PRODUCTION_EXECUTOR_LOST);
                         }
                     } else {
                         gameState.completePlan(unit, plan);
@@ -1009,7 +1018,7 @@ public class ProductionManager {
                     if (plan.getType() == PlanType.BUILDING) {
                         scheduledBuildings = Math.max(0, scheduledBuildings - 1);
                     }
-                    gameState.cancelPlan(unit, plan);
+                    gameState.cancelPlan(unit, plan, PlanCancelSource.PRODUCTION_EXECUTOR_LOST);
                     break;
                 default:
                     gameState.completePlan(unit, plan);
@@ -1029,7 +1038,7 @@ public class ProductionManager {
         if (hydraliskCount == 0 || lurkerPlanCount > hydraliskCount) {
             for (Plan plan : lurkerPlans) {
                 gameState.getPlansScheduled().remove(plan);
-                gameState.cancelPlan(null, plan);
+                gameState.cancelPlan(null, plan, PlanCancelSource.PRODUCTION_SCHEDULED_LURKER);
             }
         }
     }

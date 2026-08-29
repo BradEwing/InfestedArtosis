@@ -1,6 +1,7 @@
 package telemetry;
 
 import macro.plan.Plan;
+import macro.plan.PlanBlocker;
 import macro.plan.PlanState;
 
 import java.util.List;
@@ -14,6 +15,8 @@ public interface PlanEventSink {
     void onEnqueue(Plan plan);
 
     void onStateChange(Plan plan, PlanState from, PlanState to);
+
+    void onBlocked(Plan plan, PlanBlocker blocker);
 
     default void onEnqueueAll(List<Plan> plans) {
         for (Plan plan : plans) {

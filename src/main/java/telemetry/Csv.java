@@ -16,14 +16,20 @@ final class Csv {
         return String.format(Locale.ROOT, "%.4f", value);
     }
 
-    /**
-     * Strips the characters that would break a quote-free CSV.
-     */
     static String sanitize(String value) {
         if (value == null) {
             return "";
         }
-        return value.replace(',', ' ').replace('\n', ' ').replace('\r', ' ');
+        return value.replace(',', ' ').replace('\n', ' ').replace('\r', ' ').replace('"', '\'');
+    }
+
+    /** Converts BWAPI half-supply units to real supply without rounding. */
+    static String halfSupply(int halfUnits) {
+        int whole = halfUnits / 2;
+        if (halfUnits % 2 == 0) {
+            return Integer.toString(whole);
+        }
+        return whole + ".5";
     }
 
     static String name(Object value) {
