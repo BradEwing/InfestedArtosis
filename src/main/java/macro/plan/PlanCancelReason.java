@@ -1,13 +1,7 @@
 package macro.plan;
 
 /**
- * Canonical reasons a plan is cancelled.
- *
- * <p>The set is deliberately small and closed: a cancellation row is only queryable if every row
- * draws from the same vocabulary, so new cancellation code must map onto an existing reason or
- * add one here rather than inventing free text. The predicate that issued the cancellation is
- * carried separately by {@link PlanCancelSite}, because several call sites legitimately share a
- * reason.
+ * Canonical reasons a plan is cancelled, shared by the call sites in {@link PlanCancelSite}.
  */
 public enum PlanCancelReason {
 

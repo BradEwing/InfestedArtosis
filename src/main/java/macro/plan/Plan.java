@@ -19,11 +19,7 @@ public abstract class Plan {
 
     private final String uuid = UUID.randomUUID().toString();
 
-    /**
-     * Short monotonic identity, assigned at construction and never reassigned. Held on the plan
-     * rather than derived by a consumer so it survives every lifecycle transition and is the same
-     * value whether or not telemetry is running.
-     */
+    /** Monotonic identity retained across every lifecycle transition. */
     private final int planId = NEXT_PLAN_ID.incrementAndGet();
 
     private PlanType type;
@@ -69,7 +65,7 @@ public abstract class Plan {
      * the bot goes through here, which makes this the one place telemetry can observe the plan
      * lifecycle without touching a call site.
      *
-     * <p>Re-assigning the state a plan already holds is not a transition and emits nothing.
+     * <p>Assigning the current state emits no transition.
      */
     public void setState(PlanState state) {
         PlanState previous = this.state;
@@ -80,11 +76,7 @@ public abstract class Plan {
         PlanEvents.stateChanged(this, previous, state);
     }
 
-    /**
-     * Hand-written so Lombok skips generating the setter. The first cancellation owns the reason:
-     * once a plan is cancelled a later sweep that touches it again must not overwrite the site
-     * that actually destroyed it.
-     */
+    /** Records the first call site responsible for cancelling this plan. */
     public void setCancelSite(PlanCancelSite cancelSite) {
         if (this.state == PlanState.CANCELLED) {
             return;
@@ -93,8 +85,7 @@ public abstract class Plan {
     }
 
     /**
-     * The canonical reason this plan was cancelled, or UNKNOWN while it is alive or when a call
-     * site failed to name itself.
+     * @return the canonical cancellation reason, or UNKNOWN when no site is recorded
      */
     public PlanCancelReason getCancelReason() {
         return cancelSite == null ? PlanCancelReason.UNKNOWN : cancelSite.getReason();

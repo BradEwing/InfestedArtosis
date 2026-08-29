@@ -25,24 +25,18 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * Writes one CSV row per plan lifecycle event to bwapi-data/write, so a game's build execution can
- * be reconstructed after the fact from files alone.
+ * Writes plan lifecycle events and a game summary to CSV files under bwapi-data/write.
  *
  * <p>Two files are produced per game, both prefixed telemetry_ so the batch harness excludes them
  * from its learning-row glob: telemetry_plans_&lt;stamp&gt;.csv holds the events and
  * telemetry_game_&lt;stamp&gt;.csv holds a single {@link GameRecord} row describing the game. The
  * summary is written at onEnd only, so its absence marks a game the bot did not survive.
  *
- * <p>Four events are emitted. ENQUEUE when a plan first reaches the production queue; TRANSITION
- * on every real state change; BLOCKED when a wait ends, naming the blocker that just ended and how
- * long it lasted; and OPEN_AT_GAME_END for every plan still alive when the game stops, so an open
- * plan is never mistaken for a lost row.
+ * <p>ENQUEUE records queue entry, TRANSITION records state changes, BLOCKED records completed
+ * waits, and OPEN_AT_GAME_END records plans still alive when the game ends.
  *
- * <p>A cancellation row carries cancel_reason and cancel_site. The site is the predicate that
- * destroyed the plan and the reason is the canonical category it cancels for, so grouping by
- * either answers a different question about the same row. Both are empty on non-cancellation
- * rows. UNKNOWN means a cancelling call site failed to name itself, not that the cause is
- * mysterious.
+ * <p>Cancellation rows carry both a canonical cancel_reason and the exact cancel_site. These
+ * fields are empty on other rows.
  *
  * <p>Supply is reported in real supply, halves included. BWAPI counts supply in half units; build
  * orders are named by real supply, hence the supply_used_real and supply_total_real column names.
@@ -50,13 +44,8 @@ import java.util.Map;
  * <p>The bank and the available figures are both recorded because scheduling gates on available
  * resources, and only the pair distinguishes a broke bot from an over-reserved one.
  *
- * <p><b>Snapshot semantics.</b> Every count on a row (larva, gatherers, queue_depth,
- * plans_scheduled, plans_building, plans_morphing, minerals, gas) is read at the instant the hook
- * fires, not before the event. On an ENQUEUE row the plan is already in the queue, so queue_depth
- * includes it. On a TRANSITION row the plan is mid-move: the manager removes it from the old
- * collection and adds it to the new one around the state assignment, so the plan is typically
- * counted in neither plans_scheduled nor plans_building for that one row. Read the counts as the
- * state of the rest of the bot, not as a consistent before or after picture of this plan.
+ * <p>Counts are snapshots taken when the hook fires. ENQUEUE includes the new plan in queue_depth;
+ * TRANSITION can observe the plan between its old and new collections.
  */
 public class PlanEventLogger implements PlanEventSink {
 
@@ -187,10 +176,7 @@ public class PlanEventLogger implements PlanEventSink {
         }
     }
 
-    /**
-     * Emits a BLOCKED row for the wait that is ending and returns the trace to unblocked. A wait
-     * is only measurable once it is over, so nothing is written while it is still running.
-     */
+    /** Emits a BLOCKED row for a completed wait and clears the trace's blocker. */
     private void endBlocker(Plan plan, PlanTrace trace) {
         PlanBlocker blocker = trace.getBlocker();
         if (blocker == PlanBlocker.NONE) {
@@ -201,10 +187,7 @@ public class PlanEventLogger implements PlanEventSink {
         trace.clearBlocker(currentFrame);
     }
 
-    /**
-     * Marks every plan still alive at the final frame, so a plan with no terminal row is a genuine
-     * gap in the log rather than a game that simply ended first.
-     */
+    /** Emits an OPEN_AT_GAME_END row for every plan still alive. */
     private void closeOpenPlans() {
         for (Map.Entry<String, Plan> entry : openPlans.entrySet()) {
             Plan plan = entry.getValue();

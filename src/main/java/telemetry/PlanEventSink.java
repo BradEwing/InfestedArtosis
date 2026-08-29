@@ -17,8 +17,10 @@ public interface PlanEventSink {
     void onStateChange(Plan plan, PlanState from, PlanState to);
 
     /**
-     * Reports the condition that stopped a plan being scheduled this frame. Called every frame the
-     * plan is passed over, so implementations are responsible for collapsing the repeats.
+     * Reports the condition that prevented a plan from being scheduled this frame.
+     *
+     * @param plan blocked plan
+     * @param blocker condition preventing scheduling
      */
     void onBlocked(Plan plan, PlanBlocker blocker);
 

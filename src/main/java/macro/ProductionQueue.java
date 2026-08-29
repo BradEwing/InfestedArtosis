@@ -92,10 +92,11 @@ public class ProductionQueue implements Iterable<Plan> {
     }
 
     /**
-     * Removes all plans matching the predicate and invokes the callback on each removed plan.
+     * Removes matching plans, records the cancellation site, and invokes the callback for each.
      *
-     * <p>Every removed plan is stamped with the site before the callback runs, so a sweep names
-     * the predicate that destroyed the plan without each callback having to repeat it.
+     * @param predicate selects plans to remove
+     * @param site call site responsible for the removal
+     * @param onRemoved callback invoked after removing and stamping each plan
      */
     public void removeWhere(Predicate<Plan> predicate, PlanCancelSite site, Consumer<Plan> onRemoved) {
         List<Plan> matched = new ArrayList<>();

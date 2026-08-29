@@ -1,10 +1,7 @@
 package macro.plan;
 
 /**
- * The single condition that stopped a plan being scheduled on the frame it was examined.
- *
- * <p>Returned by the scheduling attempt itself rather than recomputed afterwards, so the recorded
- * blocker cannot drift away from the check that actually rejected the plan.
+ * Conditions that can prevent a plan from being scheduled.
  */
 public enum PlanBlocker {
 

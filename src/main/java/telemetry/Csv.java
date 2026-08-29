@@ -17,9 +17,7 @@ final class Csv {
     }
 
     /**
-     * Strips the characters that would break a quote-free CSV. The double quote is included
-     * because a field that opens with one puts a reader into quoted mode and swallows the rest of
-     * the row.
+     * Strips characters that would break a quote-free CSV field.
      */
     static String sanitize(String value) {
         if (value == null) {
@@ -29,9 +27,10 @@ final class Csv {
     }
 
     /**
-     * Formats a BWAPI half-supply count as real supply. BWAPI counts supply in half units, so
-     * integer division silently rounds a zergling pair down and loses the half a lone zergling
-     * costs.
+     * Formats a BWAPI half-supply count as real supply without rounding.
+     *
+     * @param halfUnits supply measured in BWAPI half units
+     * @return real supply with a .5 suffix when needed
      */
     static String halfSupply(int halfUnits) {
         int whole = halfUnits / 2;

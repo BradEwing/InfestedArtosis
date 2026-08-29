@@ -1,15 +1,7 @@
 package macro.plan;
 
 /**
- * The code path that cancelled a plan.
- *
- * <p>One constant per predicate that can destroy a plan, each declaring the {@link
- * PlanCancelReason} it cancels for. Call sites pass only the site; the reason is read back from
- * it, so a site can never be logged against the wrong reason and the whole site-to-reason mapping
- * is readable in one table.
- *
- * <p>Constants are named owner-then-predicate so a log grouped by site points straight at the
- * method to read.
+ * Call sites that cancel plans and their canonical {@link PlanCancelReason}.
  */
 public enum PlanCancelSite {
 

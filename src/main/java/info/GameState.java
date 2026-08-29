@@ -264,8 +264,11 @@ public class GameState {
     }
 
     /**
-     * Cancels a plan on behalf of the named call site. The site is stamped before the state
-     * change so the cancellation event carries its reason.
+     * Cancels a plan and records the call site before emitting the state change.
+     *
+     * @param unit unit assigned to the plan, if any
+     * @param plan plan to cancel
+     * @param site call site responsible for the cancellation
      */
     public void cancelPlan(Unit unit, Plan plan, PlanCancelSite site) {
         if (plan.getState() == PlanState.CANCELLED) {
@@ -476,10 +479,9 @@ public class GameState {
     }
 
     /**
-     * Cancels a plan that can no longer be executed, keeping it in the impossible set so the
-     * executor holding it can release it. Callers reach this through
-     * {@link macro.ProductionQueue#removeWhere} or after stamping the site themselves, so the
-     * signature stays a Consumer.
+     * Cancels an unexecutable plan and retains it until its executor releases it.
+     *
+     * @param plan plan that can no longer be executed
      */
     public void setImpossiblePlan(Plan plan) {
         if (plan.getState() == PlanState.CANCELLED) {
