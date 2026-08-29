@@ -49,6 +49,7 @@ def parse_args():
     p.add_argument("--no-report", action="store_true", help="skip report at end")
     p.add_argument("--skip-jar-check", action="store_true", help="do not verify deployed jar matches target/")
     p.add_argument("--deploy-jar", action="store_true", help="replace the deployed jar with target/*-jar-with-dependencies.jar")
+    p.add_argument("--java-opts", help="JVM options for the deployed bot.json, written as --java-opts=-DIA_DEBUG_HUD=true")
     return p.parse_args()
 
 
@@ -134,6 +135,8 @@ def preflight(args, opponents, maps):
         print(f"Removed exited game containers: {' '.join(exited)}")
     if args.deploy_jar:
         deploy_jar()
+    if args.java_opts is not None:
+        print(f"Setting javaOpts to '{args.java_opts}' in {bl.set_java_opts(args.java_opts)}")
     return check_jar(args.skip_jar_check)
 
 
