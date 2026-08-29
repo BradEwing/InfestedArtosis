@@ -5,7 +5,7 @@ import macro.ProductionQueue;
 import macro.plan.Plan;
 import macro.plan.PlanBlocker;
 import macro.plan.PlanCancelReason;
-import macro.plan.PlanCancelSite;
+import macro.plan.PlanCancelSource;
 import macro.plan.PlanState;
 import macro.plan.UnitPlan;
 import org.junit.jupiter.api.AfterEach;
@@ -124,29 +124,29 @@ class PlanEventsTest {
     }
 
     @Test
-    void removeWhereStampsTheCancelSite() {
+    void removeWhereStampsTheCancelSource() {
         ProductionQueue queue = new ProductionQueue();
         Plan plan = new UnitPlan(UnitType.Zerg_Drone, 1);
         queue.add(plan);
 
-        queue.removeWhere(p -> true, PlanCancelSite.REACTION_CANNON_RUSH_DRONE, p -> { });
+        queue.removeWhere(p -> true, PlanCancelSource.REACTION_CANNON_RUSH_DRONE, p -> { });
 
-        assertEquals(PlanCancelSite.REACTION_CANNON_RUSH_DRONE, plan.getCancelSite());
+        assertEquals(PlanCancelSource.REACTION_CANNON_RUSH_DRONE, plan.getCancelSource());
         assertEquals(PlanCancelReason.REACTION_DEFENSE, plan.getCancelReason());
     }
 
     @Test
     void theFirstCancellationOwnsTheReason() {
         Plan plan = new UnitPlan(UnitType.Zerg_Drone, 1);
-        plan.setCancelSite(PlanCancelSite.REACTION_CANNON_RUSH_DRONE);
+        plan.setCancelSource(PlanCancelSource.REACTION_CANNON_RUSH_DRONE);
         plan.setState(PlanState.CANCELLED);
-        plan.setCancelSite(PlanCancelSite.PRODUCTION_EXCESS_OVERLORD);
+        plan.setCancelSource(PlanCancelSource.PRODUCTION_EXCESS_OVERLORD);
 
-        assertEquals(PlanCancelSite.REACTION_CANNON_RUSH_DRONE, plan.getCancelSite());
+        assertEquals(PlanCancelSource.REACTION_CANNON_RUSH_DRONE, plan.getCancelSource());
     }
 
     @Test
-    void aLivePlanHasNoCancelReason() {
+    void aMissingCancelSourceHasUnknownReason() {
         Plan plan = new UnitPlan(UnitType.Zerg_Drone, 1);
 
         assertEquals(PlanCancelReason.UNKNOWN, plan.getCancelReason());

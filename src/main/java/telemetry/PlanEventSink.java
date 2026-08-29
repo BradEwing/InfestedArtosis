@@ -16,12 +16,6 @@ public interface PlanEventSink {
 
     void onStateChange(Plan plan, PlanState from, PlanState to);
 
-    /**
-     * Reports the condition that prevented a plan from being scheduled this frame.
-     *
-     * @param plan blocked plan
-     * @param blocker condition preventing scheduling
-     */
     void onBlocked(Plan plan, PlanBlocker blocker);
 
     default void onEnqueueAll(List<Plan> plans) {

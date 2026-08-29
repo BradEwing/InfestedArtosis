@@ -16,9 +16,6 @@ final class Csv {
         return String.format(Locale.ROOT, "%.4f", value);
     }
 
-    /**
-     * Strips characters that would break a quote-free CSV field.
-     */
     static String sanitize(String value) {
         if (value == null) {
             return "";
@@ -26,12 +23,7 @@ final class Csv {
         return value.replace(',', ' ').replace('\n', ' ').replace('\r', ' ').replace('"', '\'');
     }
 
-    /**
-     * Formats a BWAPI half-supply count as real supply without rounding.
-     *
-     * @param halfUnits supply measured in BWAPI half units
-     * @return real supply with a .5 suffix when needed
-     */
+    /** Converts BWAPI half-supply units to real supply without rounding. */
     static String halfSupply(int halfUnits) {
         int whole = halfUnits / 2;
         if (halfUnits % 2 == 0) {

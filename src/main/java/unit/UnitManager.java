@@ -10,7 +10,7 @@ import info.ScoutData;
 import info.UnitTypeCount;
 import lombok.Getter;
 import macro.plan.Plan;
-import macro.plan.PlanCancelSite;
+import macro.plan.PlanCancelSource;
 import unit.managed.ManagedUnit;
 import unit.managed.ManagedUnitFactory;
 import unit.managed.UnitRole;
@@ -289,7 +289,7 @@ public class UnitManager {
         HashMap<Unit, Plan> assignedPlannedItems = gameState.getAssignedPlannedItems();
         Plan assignedPlan = assignedPlannedItems.get(unit);
         if (assignedPlan != null) {
-            gameState.cancelPlan(unit, assignedPlan, PlanCancelSite.UNIT_MANAGER_EXECUTOR_LOST);
+            gameState.cancelPlan(unit, assignedPlan, PlanCancelSource.UNIT_MANAGER_EXECUTOR_LOST);
         }
 
         buildingManager.remove(managedUnit);

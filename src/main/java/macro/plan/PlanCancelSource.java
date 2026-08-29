@@ -1,9 +1,7 @@
 package macro.plan;
 
-/**
- * Call sites that cancel plans and their canonical {@link PlanCancelReason}.
- */
-public enum PlanCancelSite {
+/** Cancellation sources and their associated reasons. */
+public enum PlanCancelSource {
 
     PRODUCTION_IMPOSSIBLE_SWEEP(PlanCancelReason.PREREQUISITE_MISSING),
     PRODUCTION_SCHEDULE_GATE(PlanCancelReason.PREREQUISITE_MISSING),
@@ -34,13 +32,11 @@ public enum PlanCancelSite {
     INFORMATION_RESEARCH_STOPPED(PlanCancelReason.RESEARCH_INTERRUPTED),
 
     UNIT_MANAGER_EXECUTOR_LOST(PlanCancelReason.EXECUTOR_LOST),
-    WORKER_MANAGER_LARVA_DEADLOCK(PlanCancelReason.LARVA_DEADLOCK),
-
-    UNKNOWN(PlanCancelReason.UNKNOWN);
+    WORKER_MANAGER_LARVA_DEADLOCK(PlanCancelReason.LARVA_DEADLOCK);
 
     private final PlanCancelReason reason;
 
-    PlanCancelSite(PlanCancelReason reason) {
+    PlanCancelSource(PlanCancelReason reason) {
         this.reason = reason;
     }
 

@@ -9,7 +9,7 @@ import bwem.Mineral;
 import info.GameState;
 import info.ResourceCount;
 import macro.plan.Plan;
-import macro.plan.PlanCancelSite;
+import macro.plan.PlanCancelSource;
 import macro.plan.PlanState;
 import macro.plan.PlanType;
 import unit.managed.ManagedUnit;
@@ -433,7 +433,7 @@ public class WorkerManager {
             Plan plan = managedUnit.getPlan();
             // TODO: Handle cancelled items. Are they requeued?
             if (plan != null) {
-                plan.setCancelSite(PlanCancelSite.WORKER_MANAGER_LARVA_DEADLOCK);
+                plan.setCancelSource(PlanCancelSource.WORKER_MANAGER_LARVA_DEADLOCK);
                 plan.setState(PlanState.CANCELLED);
                 managedUnit.setPlan(null);
             }

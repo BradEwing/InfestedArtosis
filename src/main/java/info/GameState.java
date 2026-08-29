@@ -26,7 +26,7 @@ import info.tracking.StrategyTracker;
 import learning.Decisions;
 import lombok.Data;
 import macro.plan.Plan;
-import macro.plan.PlanCancelSite;
+import macro.plan.PlanCancelSource;
 import macro.plan.PlanType;
 import org.jetbrains.annotations.Nullable;
 import macro.ProductionQueue;
@@ -263,19 +263,12 @@ public class GameState {
         this.baseData.removeHatchery(hatchery);
     }
 
-    /**
-     * Cancels a plan and records the call site before emitting the state change.
-     *
-     * @param unit unit assigned to the plan, if any
-     * @param plan plan to cancel
-     * @param site call site responsible for the cancellation
-     */
-    public void cancelPlan(Unit unit, Plan plan, PlanCancelSite site) {
+    public void cancelPlan(Unit unit, Plan plan, PlanCancelSource source) {
         if (plan.getState() == PlanState.CANCELLED) {
             return;
         }
 
-        plan.setCancelSite(site);
+        plan.setCancelSource(source);
         plansBuilding.remove(plan);
         plansMorphing.remove(plan);
         plansImpossible.remove(plan);
@@ -343,7 +336,7 @@ public class GameState {
 
         productionQueue.removeWhere(
                 p -> isColonyMorphAtPosition(p, tp),
-                PlanCancelSite.GAME_STATE_PAIRED_COLONY,
+                PlanCancelSource.GAME_STATE_PAIRED_COLONY,
                 p -> {
                     foundMorphType[0] = p.getPlannedUnit();
                     setImpossiblePlan(p);
@@ -355,7 +348,7 @@ public class GameState {
                 if (isColonyMorphAtPosition(p, tp)) {
                     foundMorphType[0] = p.getPlannedUnit();
                     plansScheduled.remove(p);
-                    cancelPlan(null, p, PlanCancelSite.GAME_STATE_PAIRED_COLONY);
+                    cancelPlan(null, p, PlanCancelSource.GAME_STATE_PAIRED_COLONY);
                     break;
                 }
             }

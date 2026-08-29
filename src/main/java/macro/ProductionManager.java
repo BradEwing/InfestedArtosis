@@ -13,7 +13,7 @@ import info.TechProgression;
 import info.UnitTypeCount;
 import macro.plan.Plan;
 import macro.plan.PlanBlocker;
-import macro.plan.PlanCancelSite;
+import macro.plan.PlanCancelSource;
 import macro.plan.PlanComparator;
 import macro.plan.PlanState;
 import macro.plan.PlanType;
@@ -101,7 +101,7 @@ public class ProductionManager {
     private void cancelImpossiblePlans() {
         gameState.getProductionQueue().removeWhere(
                 plan -> !canSchedulePlan(plan),
-                PlanCancelSite.PRODUCTION_IMPOSSIBLE_SWEEP,
+                PlanCancelSource.PRODUCTION_IMPOSSIBLE_SWEEP,
                 gameState::setImpossiblePlan);
 
         cancelImpossibleScheduledLurkerPlans();
@@ -126,7 +126,7 @@ public class ProductionManager {
 
         gameState.getProductionQueue().removeWhere(
                 p -> p.getType() == PlanType.BUILDING && p.getPlannedUnit() == UnitType.Zerg_Hatchery,
-                PlanCancelSite.PRODUCTION_EXCESS_HATCHERY_QUEUED,
+                PlanCancelSource.PRODUCTION_EXCESS_HATCHERY_QUEUED,
                 gameState::setImpossiblePlan);
 
         Set<Plan> scheduledPlansToCancel = gameState.getPlansScheduled()
@@ -137,7 +137,7 @@ public class ProductionManager {
         for (Plan plan : scheduledPlansToCancel) {
             scheduledBuildings = Math.max(0, scheduledBuildings - 1);
             gameState.getPlansScheduled().remove(plan);
-            gameState.cancelPlan(null, plan, PlanCancelSite.PRODUCTION_EXCESS_HATCHERY_SCHEDULED);
+            gameState.cancelPlan(null, plan, PlanCancelSource.PRODUCTION_EXCESS_HATCHERY_SCHEDULED);
         }
     }
 
@@ -164,7 +164,7 @@ public class ProductionManager {
         for (Plan plan : scheduledLairs) {
             scheduledBuildings = Math.max(0, scheduledBuildings - 1);
             gameState.getPlansScheduled().remove(plan);
-            gameState.cancelPlan(null, plan, PlanCancelSite.PRODUCTION_DELAYED_LAIR_SCHEDULED);
+            gameState.cancelPlan(null, plan, PlanCancelSource.PRODUCTION_DELAYED_LAIR_SCHEDULED);
         }
     }
 
@@ -181,7 +181,7 @@ public class ProductionManager {
         ResourceCount resourceCount = gameState.getResourceCount();
         gameState.getProductionQueue().removeWhere(
                 p -> p.getType() == PlanType.UNIT && p.getPlannedUnit() == UnitType.Zerg_Overlord,
-                PlanCancelSite.PRODUCTION_EXCESS_OVERLORD,
+                PlanCancelSource.PRODUCTION_EXCESS_OVERLORD,
                 plan -> {
                     gameState.setImpossiblePlan(plan);
                     int plannedSupply = resourceCount.getPlannedSupply();
@@ -227,7 +227,7 @@ public class ProductionManager {
         
         for (Plan plan : plansToRemove) {
             gameState.getProductionQueue().remove(plan);
-            plan.setCancelSite(PlanCancelSite.PRODUCTION_LATER_PREREQUISITE);
+            plan.setCancelSource(PlanCancelSource.PRODUCTION_LATER_PREREQUISITE);
             gameState.setImpossiblePlan(plan);
         }
     }
@@ -558,7 +558,7 @@ public class ProductionManager {
 
             // Don't block the queue if the plan cannot be executed
             if (!canSchedulePlan(plan)) {
-                plan.setCancelSite(PlanCancelSite.PRODUCTION_SCHEDULE_GATE);
+                plan.setCancelSource(PlanCancelSource.PRODUCTION_SCHEDULE_GATE);
                 gameState.setImpossiblePlan(plan);
                 continue;
             }
@@ -1008,7 +1008,7 @@ public class ProductionManager {
                                 && gameState.getBaseData().isExtractorAtPosition(plan.getBuildPosition())) {
                             gameState.completePlan(unit, plan);
                         } else {
-                            gameState.cancelPlan(unit, plan, PlanCancelSite.PRODUCTION_EXECUTOR_LOST);
+                            gameState.cancelPlan(unit, plan, PlanCancelSource.PRODUCTION_EXECUTOR_LOST);
                         }
                     } else {
                         gameState.completePlan(unit, plan);
@@ -1018,7 +1018,7 @@ public class ProductionManager {
                     if (plan.getType() == PlanType.BUILDING) {
                         scheduledBuildings = Math.max(0, scheduledBuildings - 1);
                     }
-                    gameState.cancelPlan(unit, plan, PlanCancelSite.PRODUCTION_EXECUTOR_LOST);
+                    gameState.cancelPlan(unit, plan, PlanCancelSource.PRODUCTION_EXECUTOR_LOST);
                     break;
                 default:
                     gameState.completePlan(unit, plan);
@@ -1038,7 +1038,7 @@ public class ProductionManager {
         if (hydraliskCount == 0 || lurkerPlanCount > hydraliskCount) {
             for (Plan plan : lurkerPlans) {
                 gameState.getPlansScheduled().remove(plan);
-                gameState.cancelPlan(null, plan, PlanCancelSite.PRODUCTION_SCHEDULED_LURKER);
+                gameState.cancelPlan(null, plan, PlanCancelSource.PRODUCTION_SCHEDULED_LURKER);
             }
         }
     }

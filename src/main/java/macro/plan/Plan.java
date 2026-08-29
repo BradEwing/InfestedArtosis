@@ -19,14 +19,13 @@ public abstract class Plan {
 
     private final String uuid = UUID.randomUUID().toString();
 
-    /** Monotonic identity retained across every lifecycle transition. */
     private final int planId = NEXT_PLAN_ID.incrementAndGet();
 
     private PlanType type;
     private PlanState state = PlanState.PLANNED;
 
     @Nullable
-    private PlanCancelSite cancelSite;
+    private PlanCancelSource cancelSource;
 
     // Lower values have higher priority, usually corresponds to frame it was planned
     protected int priority;
@@ -76,19 +75,15 @@ public abstract class Plan {
         PlanEvents.stateChanged(this, previous, state);
     }
 
-    /** Records the first call site responsible for cancelling this plan. */
-    public void setCancelSite(PlanCancelSite cancelSite) {
+    public void setCancelSource(PlanCancelSource cancelSource) {
         if (this.state == PlanState.CANCELLED) {
             return;
         }
-        this.cancelSite = cancelSite;
+        this.cancelSource = cancelSource;
     }
 
-    /**
-     * @return the canonical cancellation reason, or UNKNOWN when no site is recorded
-     */
     public PlanCancelReason getCancelReason() {
-        return cancelSite == null ? PlanCancelReason.UNKNOWN : cancelSite.getReason();
+        return cancelSource == null ? PlanCancelReason.UNKNOWN : cancelSource.getReason();
     }
 
     @Override

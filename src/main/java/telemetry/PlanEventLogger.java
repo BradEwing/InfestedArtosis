@@ -8,7 +8,7 @@ import info.ResourceCount;
 import learning.GameRecord;
 import macro.plan.Plan;
 import macro.plan.PlanBlocker;
-import macro.plan.PlanCancelSite;
+import macro.plan.PlanCancelSource;
 import macro.plan.PlanState;
 import macro.plan.PlanType;
 import strategy.buildorder.BuildOrder;
@@ -24,29 +24,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-/**
- * Writes plan lifecycle events and a game summary to CSV files under bwapi-data/write.
- *
- * <p>Two files are produced per game, both prefixed telemetry_ so the batch harness excludes them
- * from its learning-row glob: telemetry_plans_&lt;stamp&gt;.csv holds the events and
- * telemetry_game_&lt;stamp&gt;.csv holds a single {@link GameRecord} row describing the game. The
- * summary is written at onEnd only, so its absence marks a game the bot did not survive.
- *
- * <p>ENQUEUE records queue entry, TRANSITION records state changes, BLOCKED records completed
- * waits, and OPEN_AT_GAME_END records plans still alive when the game ends.
- *
- * <p>Cancellation rows carry both a canonical cancel_reason and the exact cancel_site. These
- * fields are empty on other rows.
- *
- * <p>Supply is reported in real supply, halves included. BWAPI counts supply in half units; build
- * orders are named by real supply, hence the supply_used_real and supply_total_real column names.
- *
- * <p>The bank and the available figures are both recorded because scheduling gates on available
- * resources, and only the pair distinguishes a broke bot from an over-reserved one.
- *
- * <p>Counts are snapshots taken when the hook fires. ENQUEUE includes the new plan in queue_depth;
- * TRANSITION can observe the plan between its old and new collections.
- */
+/** Writes plan lifecycle events and a game summary to CSV files. */
 public class PlanEventLogger implements PlanEventSink {
 
     private static final int FLUSH_INTERVAL_FRAMES = 480;
@@ -57,7 +35,7 @@ public class PlanEventLogger implements PlanEventSink {
     private static final String EVENT_OPEN_AT_GAME_END = "OPEN_AT_GAME_END";
 
     private static final String PLAN_HEADER = "frame,time,event,plan_id,plan_type,item,from_state,to_state,"
-            + "cancel_reason,cancel_site,blocker,blocked_frames,priority,frames_in_state,age_frames,minerals,gas,"
+            + "cancel_reason,cancel_source,blocker,blocked_frames,priority,frames_in_state,age_frames,minerals,gas,"
             + "available_minerals,available_gas,supply_used_real,supply_total_real,larva,gatherers,queue_depth,"
             + "plans_scheduled,plans_building,plans_morphing,build_tile_x,build_tile_y,macro_hatchery,build_order";
 
@@ -176,7 +154,6 @@ public class PlanEventLogger implements PlanEventSink {
         }
     }
 
-    /** Emits a BLOCKED row for a completed wait and clears the trace's blocker. */
     private void endBlocker(Plan plan, PlanTrace trace) {
         PlanBlocker blocker = trace.getBlocker();
         if (blocker == PlanBlocker.NONE) {
@@ -187,7 +164,6 @@ public class PlanEventLogger implements PlanEventSink {
         trace.clearBlocker(currentFrame);
     }
 
-    /** Emits an OPEN_AT_GAME_END row for every plan still alive. */
     private void closeOpenPlans() {
         for (Map.Entry<String, Plan> entry : openPlans.entrySet()) {
             Plan plan = entry.getValue();
@@ -233,7 +209,7 @@ public class PlanEventLogger implements PlanEventSink {
         ResourceCount resourceCount = gameState.getResourceCount();
         TilePosition buildPosition = plan.getBuildPosition();
         boolean cancelled = to == PlanState.CANCELLED;
-        PlanCancelSite cancelSite = plan.getCancelSite();
+        PlanCancelSource cancelSource = plan.getCancelSource();
 
         StringBuilder sb = new StringBuilder();
         sb.append(currentFrame).append(',');
@@ -245,7 +221,7 @@ public class PlanEventLogger implements PlanEventSink {
         sb.append(from == null ? "" : from.toString()).append(',');
         sb.append(to == null ? "" : to.toString()).append(',');
         sb.append(cancelled ? plan.getCancelReason().toString() : "").append(',');
-        sb.append(cancelled && cancelSite != null ? cancelSite.toString() : "").append(',');
+        sb.append(cancelled && cancelSource != null ? cancelSource.toString() : "").append(',');
         sb.append(blocker == PlanBlocker.NONE ? "" : blocker.toString()).append(',');
         sb.append(blocker == PlanBlocker.NONE ? "" : String.valueOf(blockedFrames)).append(',');
         sb.append(plan.getPriority()).append(',');
