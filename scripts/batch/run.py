@@ -272,6 +272,7 @@ def main():
     jar_ver, jar_sha = preflight(args, opponents, maps)
     run_id = bl.now_id()
     games = build_games(run_id, opponents, args.games, maps)
+    java_opts = bl.deployed_java_opts()
     manifest = {
         "run_id": run_id,
         "started_at": datetime.now().isoformat(timespec="seconds"),
@@ -284,13 +285,17 @@ def main():
         "jar_version": jar_ver,
         "jar_sha256": jar_sha,
         "git_rev": bl.git_rev(),
+        "java_opts": java_opts,
+        "runtime_flags": bl.parse_runtime_flags(java_opts),
         "maps": maps,
         "read_rows_before": {opp: bl.read_dir_row_count(opp) for opp in opponents},
         "games": [],
     }
     bl.save_manifest(manifest)
     mode = "frozen (no learning writes)" if args.frozen else "accumulate (--read_overwrite)"
+    flags = ", ".join(f"{k}={v}" for k, v in manifest["runtime_flags"].items()) or "none"
     print(f"Batch {run_id}: {len(games)} games vs {', '.join(opponents)} | jobs={args.jobs} | {mode}")
+    print(f"Runtime flags: {flags}")
     print(f"Manifest: {bl.manifest_path(run_id)}")
     print(f"Log:      {bl.log_path(run_id)}\n")
     with open(bl.log_path(run_id), "a", encoding="utf-8") as log_file:
