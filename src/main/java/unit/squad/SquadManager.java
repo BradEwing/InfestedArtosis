@@ -545,9 +545,15 @@ public class SquadManager {
      * Squads actively fighting or holding a containment are eligible rally targets.
      * Exempts the given squad as a rally candidate.
      *
+     * <p>With reinforcement staging enabled, every rallying squad is sent to the staging point.
+     *
      * @return Position to rally squad to
      */
     private Position getRallyPoint(Squad squad) {
+        if (gameState.getConfig().stageReinforcements) {
+            return gameState.getSquadRallyPoint();
+        }
+
         List<Squad> eligibleSquads = fightSquads.stream()
                 .filter(s -> s != squad)
                 .filter(s -> s.getStatus() == SquadStatus.FIGHT || s.getStatus() == SquadStatus.CONTAIN)
@@ -1173,6 +1179,11 @@ public class SquadManager {
         }
 
         squad.addUnit(managedUnit);
+        if (shouldStageSquad(squad)) {
+            rallySquad(squad);
+            return;
+        }
+
         simulateFightSquad(squad);
     }
 
@@ -1218,10 +1229,35 @@ public class SquadManager {
             newSquad = new GroundSquad();
         }
 
-        newSquad.setStatus(SquadStatus.FIGHT);
+        newSquad.setStatus(stagingStatus());
         newSquad.setRallyPoint(this.getRallyPoint(newSquad));
         fightSquads.add(newSquad);
         return newSquad;
+    }
+
+    /**
+     * Returns RALLY when reinforcement staging is enabled, otherwise FIGHT.
+     *
+     * @return status to seed a new fight squad with
+     */
+    private SquadStatus stagingStatus() {
+        return gameState.getConfig().stageReinforcements ? SquadStatus.RALLY : SquadStatus.FIGHT;
+    }
+
+    /**
+     * Returns true when a rallying squad has no enemies within detection range and should stage.
+     *
+     * @param squad squad the reinforcement was added to
+     * @return true if the squad should rally to the staging point
+     */
+    private boolean shouldStageSquad(Squad squad) {
+        if (!gameState.getConfig().stageReinforcements) {
+            return false;
+        }
+        if (squad.getStatus() != SquadStatus.RALLY) {
+            return false;
+        }
+        return enemyUnitsNearSquad(squad).isEmpty();
     }
 
     private void addManagedOverlord(ManagedUnit overlord) {
