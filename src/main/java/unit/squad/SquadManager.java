@@ -545,9 +545,17 @@ public class SquadManager {
      * Squads actively fighting or holding a containment are eligible rally targets.
      * Exempts the given squad as a rally candidate.
      *
+     * <p>With reinforcement staging enabled the forward squads are skipped entirely and every rallying squad is sent
+     * to the staging point. Routing a reinforcement to the squad closest to the enemy walks it into the fight it was
+     * meant to wait behind, which is why staging only takes effect once this target changes too.
+     *
      * @return Position to rally squad to
      */
     private Position getRallyPoint(Squad squad) {
+        if (gameState.getConfig().stageReinforcements) {
+            return gameState.getSquadRallyPoint();
+        }
+
         List<Squad> eligibleSquads = fightSquads.stream()
                 .filter(s -> s != squad)
                 .filter(s -> s.getStatus() == SquadStatus.FIGHT || s.getStatus() == SquadStatus.CONTAIN)
@@ -1173,6 +1181,11 @@ public class SquadManager {
         }
 
         squad.addUnit(managedUnit);
+        if (shouldStageSquad(squad)) {
+            rallySquad(squad);
+            return;
+        }
+
         simulateFightSquad(squad);
     }
 
@@ -1218,10 +1231,49 @@ public class SquadManager {
             newSquad = new GroundSquad();
         }
 
-        newSquad.setStatus(SquadStatus.FIGHT);
+        newSquad.setStatus(stagingStatus());
         newSquad.setRallyPoint(this.getRallyPoint(newSquad));
         fightSquads.add(newSquad);
         return newSquad;
+    }
+
+    /**
+     * Status a freshly created fight squad is seeded with.
+     *
+     * <p>With reinforcement staging enabled a new squad starts in RALLY, so a unit that finished production while the
+     * army was already away pools at the staging point instead of walking across the map alone and arriving into a
+     * fight that is already underway. Without it a new squad starts in FIGHT and immediately makes its own engage
+     * decisions.
+     *
+     * <p>Merge products are unaffected either way: {@link Squad#inheritStateFrom(java.util.Collection)} discards the
+     * seeded status and folds the status of the merging squads by precedence instead.
+     *
+     * @return status to seed a new fight squad with
+     */
+    private SquadStatus stagingStatus() {
+        return gameState.getConfig().stageReinforcements ? SquadStatus.RALLY : SquadStatus.FIGHT;
+    }
+
+    /**
+     * Returns true when a squad a reinforcement has just joined should stage rather than immediately run the combat
+     * simulation.
+     *
+     * <p>Only a squad already gathering stages. A squad that is fighting, containing or retreating keeps evaluating as
+     * it does today, which preserves the case where a reinforcement close enough to an existing squad simply joins it.
+     * A squad with enemies within detection range is never staged, so a unit under immediate local threat still
+     * defends itself.
+     *
+     * @param squad squad the reinforcement was added to
+     * @return true if the squad should rally to the staging point
+     */
+    private boolean shouldStageSquad(Squad squad) {
+        if (!gameState.getConfig().stageReinforcements) {
+            return false;
+        }
+        if (squad.getStatus() != SquadStatus.RALLY) {
+            return false;
+        }
+        return enemyUnitsNearSquad(squad).isEmpty();
     }
 
     private void addManagedOverlord(ManagedUnit overlord) {
