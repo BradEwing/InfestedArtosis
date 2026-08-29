@@ -215,22 +215,7 @@ public class Squad implements Comparable<Squad> {
     /**
      * Folds the state of every squad taking part in a merge into this squad.
      *
-     * <p>The result is a function of the sources alone, so merging the same squads in either order produces the same
-     * squad. The status this squad already holds is discarded rather than folded in, because a merge product is
-     * defined by what it absorbs and not by whatever it was seeded with.
-     *
-     * <p>Status follows the precedence documented on {@link SquadStatus}: FIGHT, then CONTAIN, then RETREAT, then
-     * RALLY, then DEFENSE. The highest precedence among the sources wins.
-     *
-     * <p>The containment start frame is carried only when the merged status is CONTAIN, taking the earliest start
-     * among the sources so the containment timeout keeps running across a merge instead of restarting. A merged squad
-     * that comes out in any other status starts from zero rather than holding a stale frame.
-     *
-     * <p>Hysteresis locks take the later of the deadlines, so a merge cannot shorten a lock either squad was holding.
-     *
-     * <p>The rally point is left alone. A merge product is given a freshly resolved rally point when it is created,
-     * and the sources carry no better answer.
-     *
+     * <p>Status follows the precedence documented on {@link SquadStatus}:
      * @param sources squads being merged into this one
      */
     public void inheritStateFrom(Collection<Squad> sources) {
