@@ -52,6 +52,9 @@ public final class Config {
     public boolean debugScheduledPlannedItems = false;
     public boolean debugResourceReservations = false;
 
+    // Telemetry
+    public boolean logPlanEvents = false;
+
     public Config() {
 
         Dotenv dotenv = Dotenv.configure().ignoreIfMissing().load();
@@ -86,5 +89,6 @@ public final class Config {
         this.debugInProgressQueue = Boolean.parseBoolean(dotenv.get("IA_DEBUG_IN_PROGRESS_QUEUE"));
         this.debugScheduledPlannedItems = Boolean.parseBoolean(dotenv.get("IA_DEBUG_SCHEDULED_PLANNED_ITEMS"));
         this.debugResourceReservations = Boolean.parseBoolean(dotenv.get("IA_DEBUG_RESOURCE_RESERVATIONS"));
+        this.logPlanEvents = Boolean.parseBoolean(dotenv.get("IA_LOG_PLAN_EVENTS"));
     }
 }

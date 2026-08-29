@@ -2,6 +2,7 @@ package macro;
 
 import macro.plan.Plan;
 import macro.plan.PlanComparator;
+import telemetry.PlanEvents;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -18,10 +19,12 @@ public class ProductionQueue implements Iterable<Plan> {
 
     public void add(Plan plan) {
         queue.add(plan);
+        PlanEvents.enqueued(plan);
     }
 
     public void addAll(List<Plan> plans) {
         queue.addAll(plans);
+        PlanEvents.enqueued(plans);
     }
 
     public Plan poll() {

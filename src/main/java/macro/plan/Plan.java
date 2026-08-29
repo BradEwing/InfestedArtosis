@@ -7,6 +7,7 @@ import bwapi.UpgradeType;
 
 import lombok.Data;
 import org.jetbrains.annotations.Nullable;
+import telemetry.PlanEvents;
 
 import java.util.UUID;
 
@@ -47,6 +48,17 @@ public abstract class Plan {
 
     public Plan(int priority) {
         this.priority = priority;
+    }
+
+    /**
+     * Hand-written so Lombok skips generating the setter for state. Every plan state mutation in
+     * the bot goes through here, which makes this the one place telemetry can observe the plan
+     * lifecycle without touching a call site.
+     */
+    public void setState(PlanState state) {
+        PlanState previous = this.state;
+        this.state = state;
+        PlanEvents.stateChanged(this, previous, state);
     }
 
     @Override
