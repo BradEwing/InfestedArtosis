@@ -12,6 +12,8 @@ import util.Distance;
 import util.Time;
 
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -197,12 +199,40 @@ public class Squad implements Comparable<Squad> {
         return outliers;
     }
 
+    /**
+     * Adopts the state of a single source squad, as when a squad splits a sibling off itself.
+     *
+     * <p>The sibling also takes the rally point of the squad it came from. Everything else is folded by
+     * {@link #inheritStateFrom(Collection)}.
+     *
+     * @param source squad this squad is derived from
+     */
     public void inheritStateFrom(Squad source) {
-        this.status = source.status;
         this.rallyPoint = source.rallyPoint;
-        this.fightLockedUntilFrame = Math.max(this.fightLockedUntilFrame, source.fightLockedUntilFrame);
-        this.retreatLockedUntilFrame = Math.max(this.retreatLockedUntilFrame, source.retreatLockedUntilFrame);
-        this.containLockedUntilFrame = Math.max(this.containLockedUntilFrame, source.containLockedUntilFrame);
+        inheritStateFrom(Collections.singletonList(source));
+    }
+
+    /**
+     * Folds the state of every squad taking part in a merge into this squad.
+     *
+     * <p>Status follows the precedence documented on {@link SquadStatus}:
+     * @param sources squads being merged into this one
+     */
+    public void inheritStateFrom(Collection<Squad> sources) {
+        SquadStatus mergedStatus = null;
+        int earliestContainStart = 0;
+        for (Squad source: sources) {
+            mergedStatus = SquadStatus.dominant(mergedStatus, source.status);
+            if (source.containStartFrame > 0 && (earliestContainStart == 0 || source.containStartFrame < earliestContainStart)) {
+                earliestContainStart = source.containStartFrame;
+            }
+            this.fightLockedUntilFrame = Math.max(this.fightLockedUntilFrame, source.fightLockedUntilFrame);
+            this.retreatLockedUntilFrame = Math.max(this.retreatLockedUntilFrame, source.retreatLockedUntilFrame);
+            this.containLockedUntilFrame = Math.max(this.containLockedUntilFrame, source.containLockedUntilFrame);
+        }
+
+        this.status = mergedStatus;
+        this.containStartFrame = mergedStatus == SquadStatus.CONTAIN ? earliestContainStart : 0;
     }
 
     public boolean isMergeEligible(int currentFrame) {

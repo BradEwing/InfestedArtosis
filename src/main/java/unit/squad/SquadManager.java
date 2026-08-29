@@ -427,6 +427,13 @@ public class SquadManager {
         }
     }
 
+    /**
+     * Combines pairs of nearby fight squads into a single squad.
+     *
+     * <p>Merge sets are unordered, so the surviving state is folded by precedence in
+     * {@link Squad#inheritStateFrom(java.util.Collection)} rather than being taken from whichever squad happens to be
+     * iterated last.
+     */
     private void mergeSquads() {
         if (game.getFrameCount() % MERGE_CHECK_INTERVAL != 0) {
             return;
@@ -462,8 +469,8 @@ public class SquadManager {
             } else {
                 newSquad = newFightSquad(UnitType.Zerg_Mutalisk);
             }
+            newSquad.inheritStateFrom(mergeSet);
             for (Squad mergingSquad: mergeSet) {
-                newSquad.inheritStateFrom(mergingSquad);
                 for (ManagedUnit mu : new ArrayList<>(mergingSquad.getMembers())) {
                     newSquad.addUnit(mu);
                 }
