@@ -21,6 +21,16 @@ DOCKER_IMAGE = "starcraft:game"
 # Every telemetry file the bot writes carries this prefix, so one rule keeps them all out of the learning glob.
 TELEMETRY_PREFIX = "telemetry_"
 
+# Names come from the writers: TelemetryLog for the combat files, PlanEventLogger for the stamped ones.
+TELEMETRY_COMBAT_GAME = TELEMETRY_PREFIX + "combat_game.csv"
+TELEMETRY_ENGAGEMENTS = TELEMETRY_PREFIX + "engagements.csv"
+TELEMETRY_ENGAGEMENT_UNITS = TELEMETRY_PREFIX + "engagement_units.csv"
+TELEMETRY_GAME_GLOB = TELEMETRY_PREFIX + "game_*.csv"
+TELEMETRY_PLANS_GLOB = TELEMETRY_PREFIX + "plans_*.csv"
+
+TELEMETRY_COMBAT_FLAG = "IA_TELEMETRY_COMBAT"
+PLAN_EVENT_FLAG = "IA_LOG_PLAN_EVENTS"
+
 SCBW_ROOT = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming")) / "scbw"
 BOTS_DIR = SCBW_ROOT / "bots"
 GAMES_DIR = SCBW_ROOT / "games"
@@ -185,12 +195,19 @@ def read_json(path):
         return None
 
 
-def read_csv_rows(path):
+def iter_csv_rows(path):
+    """Stream a CSV as dicts. A missing, truncated or malformed file yields nothing rather than raising:
+    a batch is full of games the bot did not survive, and one of them must not abort a whole collection."""
     try:
-        with open(path, newline="", encoding="utf-8") as f:
-            return list(csv.DictReader(f))
-    except OSError:
-        return []
+        with open(path, newline="", encoding="utf-8", errors="replace") as f:
+            for row in csv.DictReader(f):
+                yield row
+    except (OSError, csv.Error):
+        return
+
+
+def read_csv_rows(path):
+    return list(iter_csv_rows(path))
 
 
 def learning_csvs(write_dir):
@@ -198,6 +215,21 @@ def learning_csvs(write_dir):
     if not write_dir.is_dir():
         return []
     return sorted(p for p in write_dir.glob("*.csv") if not p.name.startswith(TELEMETRY_PREFIX))
+
+
+def telemetry_file(write_dir, name):
+    """Path to one telemetry file, or None when it was never written.
+
+    PlanEventLogger stamps its file names with a wall-clock time, so those are matched by glob and the
+    newest wins. A stamped name sorts by its own timestamp.
+    """
+    if not write_dir.is_dir():
+        return None
+    if "*" in name:
+        matches = sorted(write_dir.glob(name))
+        return matches[-1] if matches else None
+    path = write_dir / name
+    return path if path.is_file() else None
 
 
 def read_dir_csvs(opponent):
@@ -232,6 +264,26 @@ def set_java_opts(opts):
     with open(path, "w", encoding="utf-8") as f:
         json.dump(meta, f)
     return path
+
+
+def deployed_java_opts():
+    """javaOpts from the deployed bot.json, the only route for -D flags into a container game."""
+    meta = read_json(BOTS_DIR / BOT_NAME / "bot.json") or {}
+    return meta.get("javaOpts") or ""
+
+
+def parse_runtime_flags(java_opts):
+    """The bot's IA_ settings from a javaOpts string, so a manifest records what a batch actually ran with."""
+    return dict(re.findall(r"-D(IA_[A-Z0-9_]+)=(\S+)", java_opts or ""))
+
+
+def runtime_flag(manifest, name):
+    """Tri-state: True or False once a manifest records its runtime flags, None for a batch launched before
+    they were recorded, where nothing on disk says whether the flag was set."""
+    flags = manifest.get("runtime_flags")
+    if flags is None:
+        return None
+    return str(flags.get(name, "")).strip().lower() == "true"
 
 
 def jvm_died(gdir):
