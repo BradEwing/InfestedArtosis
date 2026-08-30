@@ -68,11 +68,11 @@ where:
 
 ### Exponential Decay
 
-Games are sorted newest-first and weighted by `gamma^age`:
+Games are positioned in the opponent's complete history and weighted by `gamma^age`:
 
 ```
 gamma = 0.95
-age   = position in reverse chronological order (0 = most recent)
+age   = number of opponent games played since the observation (0 = most recent)
 
 weight(game_i) = 0.95^i
 ```
@@ -196,4 +196,5 @@ On startup, `LearningManager.readOpponentRecord()` parses the CSV and builds fou
 3. **`mapSpecificOpenerRecord`** - `Map<String, MapAwareRecord>` keyed by `{mapName}_{openerName}`
 4. **`mapSpecificBuildOrderRecord`** - `Map<String, MapAwareRecord>` keyed by `{mapName}_{buildOrderName}`
 
-Each row's win/loss and timestamp are added to the appropriate `Record` and `MapAwareRecord` objects, which then use the D-UCB algorithm for scoring during strategy selection.
+Each row's timestamp is also added to the opponent's global game order. `Record` and `MapAwareRecord`
+use that order to age observations even when their strategy was not selected in later games.

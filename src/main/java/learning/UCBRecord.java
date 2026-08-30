@@ -1,5 +1,7 @@
 package learning;
 
+import java.util.List;
+
 /**
  * UCBRecord describes an opener or strategy record that implements UCB algorithms
  */
@@ -13,4 +15,6 @@ public interface UCBRecord {
 
     // Bandit Index
     double index(int totalGames);
+
+    double index(int totalGames, List<Long> gameTimestamps);
 }

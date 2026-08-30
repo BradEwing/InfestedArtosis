@@ -5,6 +5,8 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 
 /**
  * Unit tests for MapAwareRecord D-UCB implementation.
@@ -287,5 +289,27 @@ public class MapAwareRecordTest {
         
         assertTrue(index > 1.0, "Index should be greater than 1.0 due to exploration");
         assertTrue(index < 3.0, "Index should be reasonable");
+    }
+
+    @Test
+    void testIdleArmRecoversRelativeToSelectedLeader() {
+        MapAwareRecord idle = MapAwareRecord.builder()
+                .strategy("Idle").mapName("MapA").wins(0).losses(1).build();
+        MapAwareRecord leader = MapAwareRecord.builder()
+                .strategy("Leader").mapName("MapA").wins(1).losses(0).build();
+        idle.addLossTimestamp(1L);
+        leader.addWinTimestamp(2L);
+
+        List<Long> gameTimestamps = new ArrayList<>(Arrays.asList(1L, 2L));
+        double initialGap = idle.index(2, gameTimestamps) - leader.index(2, gameTimestamps);
+
+        for (long timestamp = 3; timestamp <= 20; timestamp++) {
+            gameTimestamps.add(timestamp);
+            leader.addWinTimestamp(timestamp);
+            leader.setWins(leader.getWins() + 1);
+        }
+
+        double laterGap = idle.index(20, gameTimestamps) - leader.index(20, gameTimestamps);
+        assertTrue(laterGap > initialGap, "An idle map arm should gain index relative to a selected leader");
     }
 }
