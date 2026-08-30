@@ -746,15 +746,7 @@ public class SquadManager {
         }
 
         if (enemyUnits.isEmpty() && !enemyBuildingPositions.isEmpty()) {
-            double closestDistance = Double.MAX_VALUE;
-            Position closestPosition = null;
-            for (Position position: enemyBuildingPositions) {
-                double distance = squad.getCenter().getDistance(position);
-                if (distance < closestDistance) {
-                    closestDistance = distance;
-                    closestPosition = position;
-                }
-            }
+            Position closestPosition = closestKnownEnemyBuilding(squad.getCenter());
             squad.setStatus(SquadStatus.FIGHT);
             for (ManagedUnit managedUnit : squad.getMembers()) {
                 managedUnit.setRole(UnitRole.FIGHT);
@@ -1351,7 +1343,7 @@ public class SquadManager {
         }
 
         if (filtered.isEmpty()) {
-            managedUnit.setMovementTargetPosition(gameState.pollScoutTarget());
+            assignFallbackMovementTarget(managedUnit, squad);
             return;
         }
 
@@ -1371,6 +1363,49 @@ public class SquadManager {
         if (bestTarget != null) {
             managedUnit.setFightTarget(bestTarget);
         }
+    }
+
+    /**
+     * Keeps a fighter that has no attackable target moving toward the enemy.
+     *
+     * <p>The current movement target is held until it is reached; ManagedUnit clears it once the tile
+     * is visible. pollScoutTarget() mutates scout assignment accounting and returns a different base
+     * on every call, so polling it per frame makes fighters thrash between map corners.
+     */
+    private void assignFallbackMovementTarget(ManagedUnit managedUnit, Squad squad) {
+        if (managedUnit.getMovementTargetPosition() != null) {
+            return;
+        }
+
+        Position closestBuilding = closestKnownEnemyBuilding(squad.getCenter());
+        if (closestBuilding != null) {
+            managedUnit.setMovementTargetPosition(closestBuilding.toTilePosition());
+            return;
+        }
+
+        Base enemyMain = gameState.getBaseData().getMainEnemyBase();
+        if (enemyMain != null) {
+            managedUnit.setMovementTargetPosition(enemyMain.getLocation());
+            return;
+        }
+
+        managedUnit.setMovementTargetPosition(gameState.pollScoutTarget());
+    }
+
+    /**
+     * @return closest last known enemy building position to the given position, or null if none are known
+     */
+    private Position closestKnownEnemyBuilding(Position from) {
+        double closestDistance = Double.MAX_VALUE;
+        Position closest = null;
+        for (Position position: gameState.getLastKnownPositionsOfBuildings()) {
+            double distance = from.getDistance(position);
+            if (distance < closestDistance) {
+                closestDistance = distance;
+                closest = position;
+            }
+        }
+        return closest;
     }
 
     private List<Unit> filterByProximity(List<Unit> candidates, Unit attacker) {

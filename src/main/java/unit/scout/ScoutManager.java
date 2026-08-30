@@ -135,6 +135,11 @@ public class ScoutManager {
         return false;
     }
 
+    /**
+     * Zergling scouts are looking for the enemy base, so they are only recalled once it has been
+     * located. Sighting an enemy unit is not enough: an enemy Overlord crossing the map on its own
+     * scout says nothing about where the enemy lives.
+     */
     public boolean endZerglingScout() {
         for (ManagedUnit managedUnit: zerglingScouts) {
             Unit unit = managedUnit.getUnit();
@@ -143,12 +148,16 @@ public class ScoutManager {
             }
         }
 
-        final int enemyUnits = gameState.getCountOfAllEnemyUnits();
-        if (enemyUnits > 0 && zerglingScouts.size() >= this.getMaxZerglingScouts()) {
+        if (isEnemyBaseLocated() && zerglingScouts.size() >= this.getMaxZerglingScouts()) {
             return true;
         }
 
         return false;
+    }
+
+    private boolean isEnemyBaseLocated() {
+        return gameState.getBaseData().knowEnemyMainBase()
+                || gameState.getScoutData().isEnemyBuildingLocationKnown();
     }
 
     public int getMaxZerglingScouts() {
