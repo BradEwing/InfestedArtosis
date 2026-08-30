@@ -384,4 +384,37 @@ public class RecordTest {
         double laterGap = idle.index(20, gameTimestamps) - leader.index(20, gameTimestamps);
         assertTrue(laterGap > initialGap, "An idle arm should gain index relative to a selected leader");
     }
+
+    @Test
+    void testWinningOpenerRanksFirstWithTomasCereHistory() {
+        String history = "NNNNNNNNNNNNNNNNNNNNppOoOOoFHFHFhFhFttFpFhFtFOFnFOOFOFoFhFoFnFTFtFNFNFnFpFoFNFNFn"
+                + "FtFHFhFNFNFNFNFNFNFNFNFNFNFNFNFNFNFNFNFNFNFNFNFNFNFNFNFNFNFNFNFNFnFNFNFNFn";
+        List<Long> gameTimestamps = new ArrayList<>();
+        Record fourPool = recordFromHistory('F', history, gameTimestamps);
+
+        for (char opener : new char[] {'N', 'P', 'O', 'H', 'T'}) {
+            assertTrue(fourPool.index(history.length(), gameTimestamps)
+                    > recordFromHistory(opener, history, new ArrayList<>()).index(history.length(), gameTimestamps),
+                    "4Pool should rank ahead of " + opener);
+        }
+    }
+
+    private Record recordFromHistory(char opener, String history, List<Long> gameTimestamps) {
+        Record record = Record.builder().opener(String.valueOf(opener)).build();
+        for (int i = 0; i < history.length(); i++) {
+            char result = history.charAt(i);
+            long timestamp = i + 1L;
+            gameTimestamps.add(timestamp);
+            if (Character.toUpperCase(result) == opener) {
+                if (Character.isUpperCase(result)) {
+                    record.addWinTimestamp(timestamp);
+                    record.setWins(record.getWins() + 1);
+                } else {
+                    record.addLossTimestamp(timestamp);
+                    record.setLosses(record.getLosses() + 1);
+                }
+            }
+        }
+        return record;
+    }
 }

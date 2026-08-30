@@ -312,4 +312,37 @@ public class MapAwareRecordTest {
         double laterGap = idle.index(20, gameTimestamps) - leader.index(20, gameTimestamps);
         assertTrue(laterGap > initialGap, "An idle map arm should gain index relative to a selected leader");
     }
+
+    @Test
+    void testWinningStrategyRanksFirstWithTomasCereHistory() {
+        String history = "NNNNNNNNNNNNNNNNNNNNppOoOOoFHFHFhFhFttFpFhFtFOFnFOOFOFoFhFoFnFTFtFNFNFnFpFoFNFNFn"
+                + "FtFHFhFNFNFNFNFNFNFNFNFNFNFNFNFNFNFNFNFNFNFNFNFNFNFNFNFNFNFNFNFNFnFNFNFNFn";
+        List<Long> gameTimestamps = new ArrayList<>();
+        MapAwareRecord fourPool = recordFromHistory('F', history, gameTimestamps);
+
+        for (char strategy : new char[] {'N', 'P', 'O', 'H', 'T'}) {
+            assertTrue(fourPool.index(history.length(), gameTimestamps)
+                    > recordFromHistory(strategy, history, new ArrayList<>()).index(history.length(), gameTimestamps),
+                    "4Pool should rank ahead of " + strategy);
+        }
+    }
+
+    private MapAwareRecord recordFromHistory(char strategy, String history, List<Long> gameTimestamps) {
+        MapAwareRecord record = MapAwareRecord.builder().strategy(String.valueOf(strategy)).mapName("MapA").build();
+        for (int i = 0; i < history.length(); i++) {
+            char result = history.charAt(i);
+            long timestamp = i + 1L;
+            gameTimestamps.add(timestamp);
+            if (Character.toUpperCase(result) == strategy) {
+                if (Character.isUpperCase(result)) {
+                    record.addWinTimestamp(timestamp);
+                    record.setWins(record.getWins() + 1);
+                } else {
+                    record.addLossTimestamp(timestamp);
+                    record.setLosses(record.getLosses() + 1);
+                }
+            }
+        }
+        return record;
+    }
 }

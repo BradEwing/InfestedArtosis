@@ -88,7 +88,7 @@ public class MapAwareRecord implements UCBRecord {
         }
         
         double sampleMean = discountedWins / discountedGames;
-        double c = Math.sqrt(2 * Math.log(totalGames) / discountedGames);
+        double c = GlobalGameOrder.explorationTerm(totalGames, discountedGames);
         return sampleMean + c;
     }
     

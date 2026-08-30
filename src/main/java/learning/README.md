@@ -60,11 +60,13 @@ index = sampleMean + explorationTerm
 
 where:
   sampleMean    = discountedWins / discountedGames
-  explorationTerm = sqrt(2 * ln(totalGames) / discountedGames)
+  explorationTerm = sqrt(2 * ln(totalGames) / max(discountedGames, 10))
 ```
 
 - `totalGames` = total games played against this opponent (raw count, not discounted)
 - `discountedWins` and `discountedGames` use exponential decay (see below)
+- The exploration denominator has a minimum effective count of 10 so globally old observations cannot swamp the
+  0..1 reward signal
 
 ### Exponential Decay
 
