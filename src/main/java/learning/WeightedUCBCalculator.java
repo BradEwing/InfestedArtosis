@@ -23,7 +23,8 @@ public class WeightedUCBCalculator {
             String opponentName,
             Map<String, MapAwareRecord> mapSpecificRecords,
             Map<String, Record> opponentRecords,
-            int totalGames) {
+            int totalGames,
+            List<Long> gameTimestamps) {
 
         String mapKey = createMapKey(mapName, strategy);
         MapAwareRecord mapRecord = mapSpecificRecords.get(mapKey);
@@ -37,16 +38,16 @@ public class WeightedUCBCalculator {
             double mapWeight = MAX_MAP_WEIGHT * confidence;
             double opponentWeight = 1.0 - mapWeight;
 
-            double mapScore = mapRecord.index(totalGames);
+            double mapScore = mapRecord.index(totalGames, gameTimestamps);
             double opponentScore = (opponentRecord != null && opponentRecord.games() > 0)
-                    ? opponentRecord.index(totalGames)
+                    ? opponentRecord.index(totalGames, gameTimestamps)
                     : 0.0;
 
             return mapWeight * mapScore + opponentWeight * opponentScore;
         }
 
         if (opponentRecord != null && opponentRecord.games() > 0) {
-            return opponentRecord.index(totalGames);
+            return opponentRecord.index(totalGames, gameTimestamps);
         }
 
         if (totalGames == 0) {
@@ -61,7 +62,8 @@ public class WeightedUCBCalculator {
                                         String opponentName,
                                         Map<String, MapAwareRecord> mapSpecificRecords,
                                         Map<String, Record> opponentRecords,
-                                        int totalGames) {
+                                        int totalGames,
+                                        List<Long> gameTimestamps) {
         
         if (candidates.isEmpty()) {
             return null;
@@ -76,7 +78,7 @@ public class WeightedUCBCalculator {
         
         for (String strategy : candidates) {
             double score = calculateWeightedScore(strategy, mapName, opponentName,
-                                               mapSpecificRecords, opponentRecords, totalGames);
+                    mapSpecificRecords, opponentRecords, totalGames, gameTimestamps);
             
             if (score > bestScore) {
                 bestScore = score;

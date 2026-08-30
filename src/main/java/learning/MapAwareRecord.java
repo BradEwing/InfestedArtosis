@@ -21,7 +21,7 @@ import java.util.List;
  * on specific maps while maintaining the theoretical guarantees of UCB for exploration/exploitation balance.
  * 
  * <p>Historical games are stored with timestamps and weighted by γ^(age) where age
- * is the number of games since that observation (most recent = 0, next oldest = 1, etc.).
+ * is the number of opponent games across all strategies since that observation.
  */
 @Builder
 @Data
@@ -64,6 +64,13 @@ public class MapAwareRecord implements UCBRecord {
     }
 
     public double index(int totalGames) {
+        List<Long> gameTimestamps = new ArrayList<>();
+        gameTimestamps.addAll(winTimestamps);
+        gameTimestamps.addAll(lossTimestamps);
+        return index(totalGames, gameTimestamps);
+    }
+
+    public double index(int totalGames, List<Long> gameTimestamps) {
         if (totalGames == 0) {
             return Math.random();
         }
@@ -72,8 +79,9 @@ public class MapAwareRecord implements UCBRecord {
             return Math.sqrt(Math.log(totalGames)) + (Math.random() * 0.2 - 0.1);
         }
         
-        double discountedWins = calculateDiscountedWins();
-        double discountedGames = calculateDiscountedGames();
+        List<Long> sortedGameTimestamps = GlobalGameOrder.sortedAscending(gameTimestamps);
+        double discountedWins = calculateDiscountedWins(sortedGameTimestamps);
+        double discountedGames = calculateDiscountedGames(sortedGameTimestamps);
         
         if (discountedGames == 0) {
             return 1.0;
@@ -84,33 +92,22 @@ public class MapAwareRecord implements UCBRecord {
         return sampleMean + c;
     }
     
-    private double calculateDiscountedWins() {
-        // Combine all timestamps and sort by chronological order
-        List<Long> allTimestamps = new ArrayList<>();
-        allTimestamps.addAll(winTimestamps);
-        allTimestamps.addAll(lossTimestamps);
-        allTimestamps.sort((a, b) -> Long.compare(b, a));
-        
+    private double calculateDiscountedWins(List<Long> sortedGameTimestamps) {
         double discountedWins = 0.0;
-        for (int i = 0; i < allTimestamps.size(); i++) {
-            Long t = allTimestamps.get(i);
-            if (winTimestamps.contains(t)) {
-                double weight = Math.pow(GAMMA, i);
-                discountedWins += weight;
-            }
+        for (Long timestamp : winTimestamps) {
+            discountedWins += GlobalGameOrder.weight(GAMMA, timestamp, sortedGameTimestamps);
         }
         return discountedWins;
     }
     
-    private double calculateDiscountedGames() {
+    private double calculateDiscountedGames(List<Long> sortedGameTimestamps) {
         List<Long> allTimestamps = new ArrayList<>();
         allTimestamps.addAll(winTimestamps);
         allTimestamps.addAll(lossTimestamps);
         
         double discountedGames = 0.0;
-        for (int i = 0; i < allTimestamps.size(); i++) {
-            double weight = Math.pow(GAMMA, i);
-            discountedGames += weight;
+        for (Long timestamp : allTimestamps) {
+            discountedGames += GlobalGameOrder.weight(GAMMA, timestamp, sortedGameTimestamps);
         }
         return discountedGames;
     }

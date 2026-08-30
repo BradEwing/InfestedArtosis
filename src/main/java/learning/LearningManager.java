@@ -89,6 +89,7 @@ public class LearningManager {
             }
             Map<String, Record> openerRecords = opponentRecord.getOpenerRecord();
             openerRecords.put(currentOpener.getOpener(), currentOpener);
+            opponentRecord.getGameTimestamps().add(currentTimestamp);
         }
 
         if (activeBuildOrderRecord != null && !activeBuildOrderRecord.getOpener().equals(openerName())) {
@@ -145,6 +146,7 @@ public class LearningManager {
 
         for (int i = 1; i < lines.size(); i++) {
             GameRecord record = GameRecord.fromCsvRow(lines.get(i));
+            opponentRecord.getGameTimestamps().add(record.getTimestamp());
             if (record.isWinner()) {
                 opponentRecord.setWins(opponentRecord.getWins() + 1);
             } else {
@@ -387,7 +389,7 @@ public class LearningManager {
                     .values()
                     .stream()
                     .filter(rec -> buildOrderFactory.isPlayableOpener(buildOrderFactory.getByName(rec.getOpener())))
-                    .sorted(new UCBRecordComparator(opponentRecord.totalGames()))
+                    .sorted(new UCBRecordComparator(opponentRecord.totalGames(), opponentRecord.getGameTimestamps()))
                     .collect(Collectors.toList());
 
             if (allRecords.isEmpty()) {
@@ -403,7 +405,8 @@ public class LearningManager {
             opponentName,
             opponentRecord.getMapSpecificOpenerRecord(),
             opponentRecord.getOpenerRecord(),
-            opponentRecord.totalGames()
+            opponentRecord.totalGames(),
+            opponentRecord.getGameTimestamps()
         );
     }
 
@@ -452,7 +455,8 @@ public class LearningManager {
             opponentName,
             opponentRecord.getMapSpecificBuildOrderRecord(),
             opponentRecord.getBuildOrderRecord(),
-            this.opponentRecord.totalGames()
+            this.opponentRecord.totalGames(),
+            opponentRecord.getGameTimestamps()
         );
         
         if (bestBuildOrder != null) {
@@ -467,7 +471,8 @@ public class LearningManager {
                     BuildOrder buildOrder = buildOrderFactory.getByName(rec.getOpener());
                     return buildOrder != null && candidates.contains(buildOrder);
                 })
-                .sorted(new UCBRecordComparator(this.opponentRecord.totalGames()))
+                .sorted(new UCBRecordComparator(this.opponentRecord.totalGames(),
+                        opponentRecord.getGameTimestamps()))
                 .collect(Collectors.toList());
 
         if (allRecords.isEmpty()) {
