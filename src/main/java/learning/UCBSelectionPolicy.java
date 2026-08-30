@@ -1,7 +1,9 @@
 package learning;
 
 /**
- * Shared discounted-UCB policy whose idle-arm index rises relative to a selected leader without requiring overtake.
+ * Shared exploration-bonus math for the discounted UCB bandit. An opener that has not
+ * been picked lately earns a small curiosity bonus so it is eventually retried, but the
+ * bonus is capped: it can never outweigh a clearly better win rate.
  */
 final class UCBSelectionPolicy {
 
