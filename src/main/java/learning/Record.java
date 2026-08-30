@@ -26,7 +26,6 @@ import java.util.List;
 @Builder
 @Data
 public class Record implements UCBRecord {
-    private static final double GAMMA = 0.95;
     private String opener;
     private int wins;
     private int losses;
@@ -84,14 +83,14 @@ public class Record implements UCBRecord {
         }
         
         double sampleMean = discountedWins / discountedGames;
-        double c = GlobalGameOrder.explorationTerm(totalGames, discountedGames);
+        double c = UCBSelectionPolicy.explorationTerm(totalGames, discountedGames);
         return sampleMean + c;
     }
     
     private double calculateDiscountedWins(List<Long> sortedGameTimestamps) {
         double discountedWins = 0.0;
         for (Long timestamp : winTimestamps) {
-            discountedWins += GlobalGameOrder.weight(GAMMA, timestamp, sortedGameTimestamps);
+            discountedWins += GlobalGameOrder.weight(UCBSelectionPolicy.GAMMA, timestamp, sortedGameTimestamps);
         }
         return discountedWins;
     }
@@ -103,7 +102,7 @@ public class Record implements UCBRecord {
         
         double discountedGames = 0.0;
         for (Long timestamp : allTimestamps) {
-            discountedGames += GlobalGameOrder.weight(GAMMA, timestamp, sortedGameTimestamps);
+            discountedGames += GlobalGameOrder.weight(UCBSelectionPolicy.GAMMA, timestamp, sortedGameTimestamps);
         }
         return discountedGames;
     }

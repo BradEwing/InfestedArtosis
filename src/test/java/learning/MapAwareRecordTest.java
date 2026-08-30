@@ -2,6 +2,7 @@ package learning;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
@@ -296,21 +297,81 @@ public class MapAwareRecordTest {
         MapAwareRecord idle = MapAwareRecord.builder()
                 .strategy("Idle").mapName("MapA").wins(0).losses(1).build();
         MapAwareRecord leader = MapAwareRecord.builder()
-                .strategy("Leader").mapName("MapA").wins(1).losses(0).build();
+                .strategy("Leader").mapName("MapA").wins(14).losses(0).build();
         idle.addLossTimestamp(1L);
-        leader.addWinTimestamp(2L);
+        List<Long> gameTimestamps = new ArrayList<>();
+        gameTimestamps.add(1L);
+        for (long timestamp = 2; timestamp <= 15; timestamp++) {
+            leader.addWinTimestamp(timestamp);
+            gameTimestamps.add(timestamp);
+        }
+        double previousGap = idle.index(15, gameTimestamps) - leader.index(15, gameTimestamps);
 
-        List<Long> gameTimestamps = new ArrayList<>(Arrays.asList(1L, 2L));
-        double initialGap = idle.index(2, gameTimestamps) - leader.index(2, gameTimestamps);
-
-        for (long timestamp = 3; timestamp <= 20; timestamp++) {
+        for (long timestamp = 16; timestamp <= 30; timestamp++) {
             gameTimestamps.add(timestamp);
             leader.addWinTimestamp(timestamp);
             leader.setWins(leader.getWins() + 1);
+            double gap = idle.index((int) timestamp, gameTimestamps)
+                    - leader.index((int) timestamp, gameTimestamps);
+            assertTrue(gap > previousGap, "The idle map arm gap should rise after every selected-leader game");
+            previousGap = gap;
+        }
+    }
+
+    @Test
+    void testIdleArmGapIsFrozenWhileBothArmsAreFloored() {
+        MapAwareRecord idle = MapAwareRecord.builder()
+                .strategy("Idle").mapName("MapA").wins(0).losses(1).build();
+        MapAwareRecord leader = MapAwareRecord.builder()
+                .strategy("Leader").mapName("MapA").wins(1).losses(0).build();
+        idle.addLossTimestamp(1L);
+        leader.addWinTimestamp(2L);
+        List<Long> gameTimestamps = new ArrayList<>(Arrays.asList(1L, 2L));
+        double initialGap = idle.index(2, gameTimestamps) - leader.index(2, gameTimestamps);
+
+        for (long timestamp = 3; timestamp <= 8; timestamp++) {
+            gameTimestamps.add(timestamp);
+            leader.addWinTimestamp(timestamp);
+            leader.setWins(leader.getWins() + 1);
+            double gap = idle.index((int) timestamp, gameTimestamps)
+                    - leader.index((int) timestamp, gameTimestamps);
+            assertEquals(initialGap, gap, 0.0000000001,
+                    "The map-arm gap should stay frozen while both arms are floored");
+        }
+    }
+
+    @Test
+    void testExplorationBonusIsBoundedAtRepresentativeCounts() {
+        double[] discountedGames = {0.0000001, 1.0, 5.0, 10.0};
+        int[] totalGames = {153, 10000};
+        double[] bonusBounds = {1.01, 1.36};
+        for (int i = 0; i < totalGames.length; i++) {
+            for (double discounted : discountedGames) {
+                double sampleMean = 0.4;
+                double index = sampleMean + UCBSelectionPolicy.explorationTerm(totalGames[i], discounted);
+                assertTrue(index - sampleMean <= bonusBounds[i],
+                        "The exploration bonus should stay within the floor-derived bound");
+            }
+        }
+    }
+
+    /** IA-269 deliberately guarantees relative recovery, not eventual overtake. */
+    @Test
+    void testDormantArmDoesNotOvertakePerfectLeader() {
+        MapAwareRecord idle = MapAwareRecord.builder()
+                .strategy("Idle").mapName("MapA").wins(0).losses(1).build();
+        MapAwareRecord leader = MapAwareRecord.builder()
+                .strategy("Leader").mapName("MapA").wins(500).losses(0).build();
+        idle.addLossTimestamp(1L);
+        List<Long> gameTimestamps = new ArrayList<>();
+        gameTimestamps.add(1L);
+        for (long timestamp = 2; timestamp <= 501; timestamp++) {
+            leader.addWinTimestamp(timestamp);
+            gameTimestamps.add(timestamp);
         }
 
-        double laterGap = idle.index(20, gameTimestamps) - leader.index(20, gameTimestamps);
-        assertTrue(laterGap > initialGap, "An idle map arm should gain index relative to a selected leader");
+        assertTrue(idle.index(500, gameTimestamps) < leader.index(500, gameTimestamps),
+                "A dormant losing map arm should not overtake a perfect leader");
     }
 
     @Test
