@@ -680,45 +680,6 @@ public class ProductionManager {
             scheduledBuildings -= 1;
         }
 
-        TechProgression techProgression = this.gameState.getTechProgression();
-
-        switch (unitType) {
-            case Zerg_Hydralisk_Den:
-                techProgression.setHydraliskDen(true);
-                techProgression.setPlannedDen(false);
-                break;
-            case Zerg_Spawning_Pool:
-                techProgression.setSpawningPool(true);
-                techProgression.setPlannedSpawningPool(false);
-                break;
-            case Zerg_Lair:
-                techProgression.setLair(true);
-                techProgression.setPlannedLair(false);
-                break;
-            case Zerg_Spire:
-                techProgression.setSpire(true);
-                techProgression.setPlannedSpire(false);
-                break;
-            case Zerg_Queens_Nest:
-                techProgression.setQueensNest(true);
-                techProgression.setPlannedQueensNest(false);
-                break;
-            case Zerg_Hive:
-                techProgression.setHive(true);
-                techProgression.setPlannedHive(false);
-                break;
-            case Zerg_Ultralisk_Cavern:
-                techProgression.setUltraliskCavern(true);
-                techProgression.setPlannedUltraliskCavern(false);
-                break;
-            case Zerg_Defiler_Mound:
-                techProgression.setDefilerMound(true);
-                techProgression.setPlannedDefilerMound(false);
-                break;
-            default:
-                break;
-        }
-
         gameState.getPlansBuilding().remove(plan);
         plan.setState(PlanState.MORPHING);
         gameState.getPlansMorphing().add(plan);
