@@ -523,6 +523,11 @@ public class SquadManager {
             if (d > ENEMY_DETECTION_RADIUS) {
                 continue;
             }
+            boolean relevant = squad.getMembers().stream()
+                    .anyMatch(member -> member.getUnit().canAttack(u) || u.canAttack(member.getUnit()));
+            if (!relevant) {
+                continue;
+            }
             enemies.add(u);
         }
 
