@@ -26,8 +26,6 @@ import java.util.List;
 @Builder
 @Data
 public class MapAwareRecord implements UCBRecord {
-    private static final double GAMMA = 0.95;
-
     private String strategy;
     private String mapName;
     private String opponentName;
@@ -88,14 +86,14 @@ public class MapAwareRecord implements UCBRecord {
         }
         
         double sampleMean = discountedWins / discountedGames;
-        double c = Math.sqrt(2 * Math.log(totalGames) / discountedGames);
+        double c = UCBSelectionPolicy.explorationTerm(totalGames, discountedGames);
         return sampleMean + c;
     }
     
     private double calculateDiscountedWins(List<Long> sortedGameTimestamps) {
         double discountedWins = 0.0;
         for (Long timestamp : winTimestamps) {
-            discountedWins += GlobalGameOrder.weight(GAMMA, timestamp, sortedGameTimestamps);
+            discountedWins += GlobalGameOrder.weight(UCBSelectionPolicy.GAMMA, timestamp, sortedGameTimestamps);
         }
         return discountedWins;
     }
@@ -107,7 +105,7 @@ public class MapAwareRecord implements UCBRecord {
         
         double discountedGames = 0.0;
         for (Long timestamp : allTimestamps) {
-            discountedGames += GlobalGameOrder.weight(GAMMA, timestamp, sortedGameTimestamps);
+            discountedGames += GlobalGameOrder.weight(UCBSelectionPolicy.GAMMA, timestamp, sortedGameTimestamps);
         }
         return discountedGames;
     }

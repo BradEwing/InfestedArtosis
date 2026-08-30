@@ -60,11 +60,14 @@ index = sampleMean + explorationTerm
 
 where:
   sampleMean    = discountedWins / discountedGames
-  explorationTerm = sqrt(2 * ln(totalGames) / discountedGames)
+  explorationTerm = sqrt(2 * ln(totalGames) / max(discountedGames, 10))
 ```
 
 - `totalGames` = total games played against this opponent (raw count, not discounted)
 - `discountedWins` and `discountedGames` use exponential decay (see below)
+- The exploration denominator floor is half the theoretical `1 / (1 - gamma)` discounted-game ceiling. Arms below
+  the floor receive the same exploration bonus, so discounted win rate decides among them. The bonus exceeds the
+  full 0..1 reward range again at roughly 100,000 total games.
 
 ### Exponential Decay
 
