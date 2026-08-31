@@ -81,6 +81,11 @@ public class CombatTelemetry {
         this.killCandidates = enabled ? killCandidates(gameState.getOpponentRace()) : Collections.<UnitType>emptyList();
     }
 
+    /** Joins the other telemetry files for this game to the combat game row. Empty when disabled. */
+    public String getGameId() {
+        return gameId;
+    }
+
     public void onFrame() {
         if (!enabled || failed) {
             return;
