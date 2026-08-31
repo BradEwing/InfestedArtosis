@@ -112,6 +112,9 @@ public class InformationManager {
 
     /**
      * Update GameState's tech progression to enable new units, tech or upgrades.
+     * <p>
+     * Called on unit completion. Availability flags must not be set while a structure is still
+     * morphing, so the matching planned flag is cleared here rather than at morph start.
      *
      * @param unitType tech building
      */
@@ -121,15 +124,19 @@ public class InformationManager {
         switch (unitType) {
             case Zerg_Spawning_Pool:
                 techProgression.setSpawningPool(true);
+                techProgression.setPlannedSpawningPool(false);
                 break;
             case Zerg_Hydralisk_Den:
                 techProgression.setHydraliskDen(true);
+                techProgression.setPlannedDen(false);
                 break;
             case Zerg_Spire:
                 techProgression.setSpire(true);
+                techProgression.setPlannedSpire(false);
                 break;
             case Zerg_Lair:
                 techProgression.setLair(true);
+                techProgression.setPlannedLair(false);
                 break;
             case Zerg_Evolution_Chamber:
                 techProgression.setPlannedEvolutionChambers(techProgression.getPlannedEvolutionChambers() - 1);
@@ -137,15 +144,19 @@ public class InformationManager {
                 break;
             case Zerg_Queens_Nest:
                 techProgression.setQueensNest(true);
+                techProgression.setPlannedQueensNest(false);
                 break;
             case Zerg_Hive:
                 techProgression.setHive(true);
+                techProgression.setPlannedHive(false);
                 break;
             case Zerg_Ultralisk_Cavern:
                 techProgression.setUltraliskCavern(true);
+                techProgression.setPlannedUltraliskCavern(false);
                 break;
             case Zerg_Defiler_Mound:
                 techProgression.setDefilerMound(true);
+                techProgression.setPlannedDefilerMound(false);
                 break;
             default:
                 break;
@@ -230,7 +241,6 @@ public class InformationManager {
         }
 
         if (unit.getPlayer() == game.self()) {
-            updateTechProgression(unitType);
             return;
         }
         // Check if the unit should be ignored: resource, powerup, special/unknown
@@ -272,8 +282,6 @@ public class InformationManager {
             } else {
                 count.removeUnit(UnitType.Zerg_Drone);
             }
-
-            updateTechProgression(plannedUnit);
         } else if (assignedPlan.getType() == PlanType.UNIT) {
             UnitTypeCount count = gameState.getUnitTypeCount();
             if (plannedUnit == UnitType.Zerg_Lurker) {
@@ -292,6 +300,8 @@ public class InformationManager {
         if (unit.getPlayer() != self) {
             return;
         }
+
+        updateTechProgression(unitType);
 
         if (unitType == UnitType.Zerg_Extractor) {
             gameState.setGeyserAssignment(unit);
