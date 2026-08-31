@@ -75,7 +75,7 @@ public class NinePoolSpeed extends BuildOrder {
             return plans;
         }
 
-        if (droneCount > 8 && overlordCount < 2) {
+        if (shouldPlanOverlord(droneCount, overlordCount, gameState.hasExcessSupply())) {
             plans.add(planUnit(gameState, UnitType.Zerg_Overlord));
             return plans;
         }
@@ -117,5 +117,9 @@ public class NinePoolSpeed extends BuildOrder {
     @Override
     public boolean isOpener() { 
         return true; 
+    }
+
+    static boolean shouldPlanOverlord(int droneCount, int overlordCount, boolean excessSupply) {
+        return droneCount > 8 && overlordCount < 2 && !excessSupply;
     }
 }

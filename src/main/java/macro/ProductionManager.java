@@ -37,8 +37,6 @@ import java.util.stream.Collectors;
  */
 public class ProductionManager {
 
-    private static final int MAX_FREE_SUPPLY = 17;
-
     private Game game;
 
     private GameState gameState;
@@ -160,11 +158,7 @@ public class ProductionManager {
     }
 
     private boolean hasExcessSupply(Player self) {
-        return hasExcessSupply(self.supplyTotal(), self.supplyUsed());
-    }
-
-    static boolean hasExcessSupply(int supplyTotal, int supplyUsed) {
-        return supplyTotal - supplyUsed > MAX_FREE_SUPPLY;
+        return SupplyCapacity.isExcess(self.supplyTotal(), self.supplyUsed());
     }
 
     private void cancelExcessOverlordPlans() {
