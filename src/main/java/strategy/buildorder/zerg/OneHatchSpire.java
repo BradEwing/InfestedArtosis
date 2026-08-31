@@ -112,15 +112,14 @@ public class OneHatchSpire extends ZergBase {
         // Plan Units
         final int desiredScourge = 2;   
         if (techProgression.isSpire() && scourgeCount < desiredScourge && mutaCount > 5 && enemyHasSpire) {
-            plans.add(this.planUnit(gameState, UnitType.Zerg_Scourge));
+            plans.addAll(this.planAdvancedUnit(gameState, UnitType.Zerg_Scourge));
             return plans;
         }
 
         final int flexibleMutalisks =  Math.max(0, (gas - 300) / 100);
         final int desiredMutalisks = Math.min(11 + flexibleMutalisks, 40);
         if (techProgression.isSpire() && mutaCount < desiredMutalisks) {
-            Plan mutaliskPlan = this.planUnit(gameState, UnitType.Zerg_Mutalisk);
-            plans.add(mutaliskPlan);
+            plans.addAll(this.planAdvancedUnit(gameState, UnitType.Zerg_Mutalisk));
             return plans;
         }
 

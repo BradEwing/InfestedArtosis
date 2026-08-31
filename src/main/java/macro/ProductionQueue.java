@@ -1,8 +1,10 @@
 package macro;
 
+import bwapi.UnitType;
 import macro.plan.Plan;
 import macro.plan.PlanCancelSource;
 import macro.plan.PlanComparator;
+import macro.plan.PlanType;
 import telemetry.PlanEvents;
 
 import java.util.ArrayList;
@@ -12,7 +14,6 @@ import java.util.List;
 import java.util.PriorityQueue;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
-import java.util.stream.Stream;
 
 public class ProductionQueue implements Iterable<Plan> {
 
@@ -44,17 +45,19 @@ public class ProductionQueue implements Iterable<Plan> {
         return queue.size();
     }
 
-    /**
-     * Streams the queued plans. The queue is Iterable rather than a Collection, so callers that
-     * want to aggregate over it cannot call stream() on it directly.
-     */
-    public Stream<Plan> stream() {
-        return queue.stream();
-    }
-
     @Override
     public Iterator<Plan> iterator() {
         return queue.iterator();
+    }
+
+    public int unitPlanCount(UnitType unitType) {
+        int count = 0;
+        for (Plan plan : queue) {
+            if (plan.getType() == PlanType.UNIT && plan.getPlannedUnit() == unitType) {
+                count += 1;
+            }
+        }
+        return count;
     }
 
     public int minPriority() {
