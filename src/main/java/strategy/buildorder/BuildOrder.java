@@ -357,6 +357,10 @@ public abstract class BuildOrder {
     }
 
     protected Plan planUnit(GameState gameState, UnitType unitType) {
+        return planUnit(gameState, unitType, gameState.getGameTime().getFrames());
+    }
+
+    protected Plan planUnit(GameState gameState, UnitType unitType, int priority) {
         UnitTypeCount count = gameState.getUnitTypeCount();
         count.planUnit(unitType);
         if (unitType == UnitType.Zerg_Drone) {
@@ -366,7 +370,24 @@ public abstract class BuildOrder {
             int plannedSupply = gameState.getResourceCount().getPlannedSupply();
             gameState.getResourceCount().setPlannedSupply(plannedSupply + 16);
         }
-        return new UnitPlan(unitType, gameState.getGameTime().getFrames());
+        return new UnitPlan(unitType, priority);
+    }
+
+    /**
+     * Plans a unit that a tech building unlocked, ahead of the backlog derived while it was
+     * waiting.
+     *
+     * <p>The method queues one plan per unit type. A second plan only subtracts its price from
+     * the resource buffer, and an empty buffer ends the scheduling pass early. The build order
+     * derives every frame, so the next plan is never more than one frame away.
+     */
+    protected List<Plan> planAdvancedUnit(GameState gameState, UnitType unitType) {
+        List<Plan> plans = new ArrayList<>();
+        if (gameState.queuedUnitPlanCount(unitType) > 0) {
+            return plans;
+        }
+        plans.add(planUnit(gameState, unitType, UnitPlan.ADVANCED_UNIT_PRIORITY));
+        return plans;
     }
 
     protected Plan planUpgrade(GameState gameState, UpgradeType upgradeType) {
