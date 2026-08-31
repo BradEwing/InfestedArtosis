@@ -37,6 +37,8 @@ import java.util.stream.Collectors;
  */
 public class ProductionManager {
 
+    private static final int MAX_FREE_SUPPLY = 17;
+
     private Game game;
 
     private GameState gameState;
@@ -168,13 +170,16 @@ public class ProductionManager {
         }
     }
 
+    private boolean hasExcessSupply(Player self) {
+        return hasExcessSupply(self.supplyTotal(), self.supplyUsed());
+    }
+
+    static boolean hasExcessSupply(int supplyTotal, int supplyUsed) {
+        return supplyTotal - supplyUsed > MAX_FREE_SUPPLY;
+    }
+
     private void cancelExcessOverlordPlans() {
-        final int MAX_FREE_SUPPLY = 17;
-
-        Player self = game.self();
-        int freeSupply = self.supplyTotal() - self.supplyUsed();
-
-        if (freeSupply <= MAX_FREE_SUPPLY) {
+        if (!hasExcessSupply(game.self())) {
             return;
         }
 
@@ -299,6 +304,10 @@ public class ProductionManager {
      */
     private void planSupply(Player self) {
         if (self.supplyUsed() >= 400) {
+            return;
+        }
+
+        if (hasExcessSupply(self)) {
             return;
         }
 
