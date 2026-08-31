@@ -16,6 +16,8 @@ import strategy.buildorder.BuildOrder;
 import telemetry.CombatTelemetry;
 import telemetry.PlanEventLogger;
 import telemetry.PlanEvents;
+import telemetry.SquadDecisionLogger;
+import telemetry.SquadDecisions;
 import unit.UnitManager;
 
 /**
@@ -45,6 +47,7 @@ public class Bot extends DefaultBWListener {
     private AutoObserver autoObserver;
 
     private PlanEventLogger planEventLogger;
+    private SquadDecisionLogger squadDecisionLogger;
 
     @Override
     public void onStart() {
@@ -73,7 +76,18 @@ public class Bot extends DefaultBWListener {
         autoObserver = new AutoObserver(gameState.getConfig(), game, unitManager.getScoutManager(), unitManager.getSquadManager());
 
         combatTelemetry = new CombatTelemetry(game, gameState, unitManager.getSquadManager());
+        startSquadDecisionLogging();
         startPlanEventLogging(decisions.getOpener());
+    }
+
+    private void startSquadDecisionLogging() {
+        if (!gameState.getConfig().telemetryCombat) {
+            return;
+        }
+
+        squadDecisionLogger = new SquadDecisionLogger(game, gameState, unitManager.getSquadManager(),
+                combatTelemetry.getGameId());
+        SquadDecisions.register(squadDecisionLogger);
     }
 
     private void startPlanEventLogging(BuildOrder opener) {
@@ -97,6 +111,9 @@ public class Bot extends DefaultBWListener {
         productionManager.onFrame();
         planManager.onFrame();
         unitManager.onFrame();
+        if (squadDecisionLogger != null) {
+            squadDecisionLogger.onFrame();
+        }
         combatTelemetry.onFrame();
         debugMap.onFrame();
         autoObserver.onFrame();
@@ -162,6 +179,9 @@ public class Bot extends DefaultBWListener {
         learningManager.onEnd(isWinner);
         if (planEventLogger != null) {
             planEventLogger.onEnd(isWinner);
+        }
+        if (squadDecisionLogger != null) {
+            squadDecisionLogger.onEnd();
         }
         combatTelemetry.onEnd(isWinner);
     }

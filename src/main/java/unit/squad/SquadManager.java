@@ -18,6 +18,8 @@ import lombok.Getter;
 
 import org.bk.ass.sim.BWMirrorAgentFactory;
 import org.bk.ass.sim.Simulator;
+import telemetry.SquadDecisions;
+import telemetry.SquadLock;
 import unit.managed.ManagedUnit;
 import unit.squad.horizon.HorizonCombatSimulator;
 import unit.managed.UnitRole;
@@ -609,10 +611,7 @@ public class SquadManager {
         if (closeThreats) {
             simulateFightSquad(squad);
         } else if (squadStrength >= moveOutThreshold) {
-            boolean contained = containmentEvaluator.shouldContain(squad)
-                    && !containmentEvaluator.canBreakContainment(fightSquads)
-                    && enterContainment(squad);
-            if (!contained) {
+            if (!tryEnterContainment(squad)) {
                 simulateFightSquad(squad);
             }
         } else if (squadStatus == SquadStatus.FIGHT) {
@@ -767,21 +766,22 @@ public class SquadManager {
         Map<Squad, Double> adjacentSquads = getAdjacentSquads(squad, REINFORCEMENT_RADIUS);
         CombatSimulator.CombatResult result = squad.getCombatSimulator()
                 .evaluate(squad, adjacentSquads, gameState);
+        SquadDecisions.simEvaluated(squad, result, retreatLocked, fightLocked);
 
         if (squad.getStatus() == SquadStatus.RETREAT && retreatLocked) {
+            SquadDecisions.lockSuppressed(squad, SquadLock.RETREAT);
             assignRetreatTargets(squad, managedFighters);
             return;
         }
         if (squad.getStatus() == SquadStatus.FIGHT && fightLocked) {
+            SquadDecisions.lockSuppressed(squad, SquadLock.FIGHT);
             assignFightTargets(squad, managedFighters, false);
             return;
         }
 
         switch (result) {
             case RETREAT:
-                boolean enteredContain = containmentEvaluator.shouldContain(squad)
-                        && !containmentEvaluator.canBreakContainment(fightSquads)
-                        && enterContainment(squad);
+                boolean enteredContain = tryEnterContainment(squad);
                 if (!enteredContain) {
                     squad.setStatus(SquadStatus.RETREAT);
                     assignRetreatTargets(squad, managedFighters);
@@ -836,6 +836,23 @@ public class SquadManager {
             }
             assignEnemyTarget(managedUnit, squad);
         }
+    }
+
+    /**
+     * Runs the containment entry decision and reports the verdict that produced it.
+     *
+     * <p>The evaluator calls stay short circuited in their original order: canBreakContainment is
+     * consulted only when shouldContain holds, and enterContainment only when both allow it.
+     *
+     * @param squad squad offered an arc
+     * @return true if the squad took the arc and is now containing
+     */
+    private boolean tryEnterContainment(Squad squad) {
+        boolean shouldContain = containmentEvaluator.shouldContain(squad);
+        boolean canBreak = shouldContain && containmentEvaluator.canBreakContainment(fightSquads);
+        boolean entered = shouldContain && !canBreak && enterContainment(squad);
+        SquadDecisions.containmentEvaluated(squad, shouldContain, canBreak, entered);
+        return entered;
     }
 
     private boolean enterContainment(Squad squad) {
