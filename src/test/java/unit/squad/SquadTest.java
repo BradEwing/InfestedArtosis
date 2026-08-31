@@ -103,4 +103,14 @@ class SquadTest {
         assertEquals(merged.getRetreatLockedUntilFrame(), reversed.getRetreatLockedUntilFrame());
         assertEquals(merged.getContainLockedUntilFrame(), reversed.getContainLockedUntilFrame());
     }
+
+    @Test
+    void advanceDoesNotArmOrExtendFightLock() {
+        Squad squad = squad(SquadStatus.FIGHT);
+        squad.setFightLockedUntilFrame(100);
+
+        SquadManager.updateFightLock(squad, CombatSimulator.CombatResult.ADVANCE, false, 200);
+
+        assertEquals(100, squad.getFightLockedUntilFrame());
+    }
 }

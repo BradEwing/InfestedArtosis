@@ -210,14 +210,8 @@ public class HorizonCombatSimulator implements CombatSimulator {
             engageThresh = Math.min(engageThresh, DEFAULT_ENGAGE_THRESHOLD);
         }
 
-        CombatResult result;
-        if (!enemyMeasured) {
-            result = CombatResult.ADVANCE;
-        } else if (overallRatio >= engageThresh) {
-            result = CombatResult.ENGAGE;
-        } else {
-            result = CombatResult.RETREAT;
-        }
+        CombatResult result = selectResult(friendlyGroundStr, friendlyAirStr, enemyGroundStr,
+                enemyAntiAirStr, airSquad, engageThresh);
 
         snapshot.setEngageThreshold(engageThresh);
         snapshot.setRetreatThreshold(retreatThresh);
@@ -226,6 +220,24 @@ public class HorizonCombatSimulator implements CombatSimulator {
         lastSnapshots.put(squad.getId(), snapshot);
 
         return result;
+    }
+
+    static CombatResult selectResult(double friendlyGroundStr, double friendlyAirStr,
+                                     double enemyGroundStr, double enemyAntiAirStr,
+                                     boolean airSquad, double engageThresh) {
+        double relevantEnemyStr = airSquad ? enemyAntiAirStr : enemyGroundStr;
+        double ratio;
+        if (airSquad) {
+            ratio = friendlyAirStr / Math.max(enemyAntiAirStr, MIN_ENEMY_STRENGTH);
+        } else {
+            double groundRatio = friendlyGroundStr / Math.max(enemyGroundStr, MIN_ENEMY_STRENGTH);
+            double totalFriendly = friendlyGroundStr + friendlyAirStr;
+            double totalEnemy = enemyGroundStr + enemyAntiAirStr;
+            double combinedRatio = totalFriendly / Math.max(totalEnemy, MIN_ENEMY_STRENGTH);
+            ratio = Math.max(groundRatio, combinedRatio);
+        }
+        if (ratio < engageThresh) return CombatResult.RETREAT;
+        return relevantEnemyStr > MIN_ENEMY_STRENGTH ? CombatResult.ENGAGE : CombatResult.ADVANCE;
     }
 
     private double computeFriendlyStrength(ManagedUnit mu, Position engagementCenter, boolean enemyHasDetection, TechProgression techProgression) {

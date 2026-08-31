@@ -797,13 +797,18 @@ public class SquadManager {
             case ENGAGE:
                 squad.setStatus(SquadStatus.FIGHT);
                 assignFightTargets(squad, managedFighters, true);
-                if (!retreatLocked) {
-                    squad.startFightLock(now);
-                }
+                updateFightLock(squad, result, retreatLocked, now);
                 break;
 
             default:
                 break;
+        }
+    }
+
+    static void updateFightLock(Squad squad, CombatSimulator.CombatResult result,
+                                boolean retreatLocked, int currentFrame) {
+        if (result == CombatSimulator.CombatResult.ENGAGE && !retreatLocked) {
+            squad.startFightLock(currentFrame);
         }
     }
 
