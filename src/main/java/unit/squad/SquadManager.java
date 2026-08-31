@@ -780,6 +780,11 @@ public class SquadManager {
         }
 
         switch (result) {
+            case ADVANCE:
+                squad.setStatus(SquadStatus.FIGHT);
+                assignFightTargets(squad, managedFighters, true);
+                break;
+
             case RETREAT:
                 boolean enteredContain = tryEnterContainment(squad);
                 if (!enteredContain) {

@@ -39,6 +39,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
     private static final Time BUILDING_SEEN_THRESHOLD = new Time(0, 45);
     private static final double DEFAULT_ENGAGE_THRESHOLD = 1.0;
     private static final double DEFAULT_RETREAT_THRESHOLD = 0.7;
+    private static final double MIN_ENEMY_STRENGTH = 0.01;
     private static final double SPEED_UPGRADE_PENALTY = 0.75;
     private static final int BUNKER_TRUST_FRAMES = 48;
     private static final int BUNKER_DECAY_FRAMES = 72;
@@ -179,16 +180,21 @@ public class HorizonCombatSimulator implements CombatSimulator {
             snapshot.setEnemyCenter(new Position((int)(ex / count), (int)(ey / count)));
         }
 
-        double overallRatio;
-        if (airSquad) {
-            overallRatio = friendlyAirStr / Math.max(enemyAntiAirStr, 0.01);
+        double relevantEnemyStr = airSquad ? enemyAntiAirStr : enemyGroundStr;
+        boolean enemyMeasured = relevantEnemyStr > MIN_ENEMY_STRENGTH;
+        double overallRatio = 0;
+        if (!enemyMeasured) {
+            snapshot.setGroundRatio(0);
+            snapshot.setCombinedRatio(0);
+        } else if (airSquad) {
+            overallRatio = friendlyAirStr / enemyAntiAirStr;
             snapshot.setGroundRatio(0);
             snapshot.setCombinedRatio(overallRatio);
         } else {
-            double groundRatio = friendlyGroundStr / Math.max(enemyGroundStr, 0.01);
+            double groundRatio = friendlyGroundStr / enemyGroundStr;
             double totalFriendly = friendlyGroundStr + friendlyAirStr;
             double totalEnemy = enemyGroundStr + enemyAntiAirStr;
-            double combinedRatio = totalFriendly / Math.max(totalEnemy, 0.01);
+            double combinedRatio = totalFriendly / totalEnemy;
             overallRatio = Math.max(groundRatio, combinedRatio);
             snapshot.setGroundRatio(groundRatio);
             snapshot.setCombinedRatio(combinedRatio);
@@ -205,7 +211,9 @@ public class HorizonCombatSimulator implements CombatSimulator {
         }
 
         CombatResult result;
-        if (overallRatio >= engageThresh) {
+        if (!enemyMeasured) {
+            result = CombatResult.ADVANCE;
+        } else if (overallRatio >= engageThresh) {
             result = CombatResult.ENGAGE;
         } else {
             result = CombatResult.RETREAT;

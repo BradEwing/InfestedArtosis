@@ -486,7 +486,7 @@ public class Debug {
             if (game.getFrameCount() - snap.getCapturedFrame() > 24) continue;
 
             Color resultColor = snap.getResult() == CombatResult.ENGAGE ? Color.Green
-                    : snap.getResult() == CombatResult.RETREAT ? Color.Red : Color.Yellow;
+                    : snap.getResult() == CombatResult.RETREAT ? Color.Red : Color.Blue;
 
             game.drawCircleMap(snap.getSquadCenter(), (int) 256, resultColor);
             game.drawTextMap(snap.getSquadCenter().getX() - 40, snap.getSquadCenter().getY() - 20,

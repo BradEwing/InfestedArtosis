@@ -84,6 +84,8 @@ class SquadDecisionsTest {
     void aLockOnlySuppressesWhenTheVerdictAsksForTheOtherStatus() {
         assertTrue(SquadDecisionLogger.overridesVerdict(SquadStatus.RETREAT, SquadLock.RETREAT,
                 CombatSimulator.CombatResult.ENGAGE));
+        assertTrue(SquadDecisionLogger.overridesVerdict(SquadStatus.RETREAT, SquadLock.RETREAT,
+                CombatSimulator.CombatResult.ADVANCE));
         assertTrue(SquadDecisionLogger.overridesVerdict(SquadStatus.FIGHT, SquadLock.FIGHT,
                 CombatSimulator.CombatResult.RETREAT));
 
@@ -91,6 +93,8 @@ class SquadDecisionsTest {
                 CombatSimulator.CombatResult.RETREAT));
         assertFalse(SquadDecisionLogger.overridesVerdict(SquadStatus.FIGHT, SquadLock.FIGHT,
                 CombatSimulator.CombatResult.ENGAGE));
+        assertFalse(SquadDecisionLogger.overridesVerdict(SquadStatus.FIGHT, SquadLock.FIGHT,
+                CombatSimulator.CombatResult.ADVANCE));
     }
 
     @Test

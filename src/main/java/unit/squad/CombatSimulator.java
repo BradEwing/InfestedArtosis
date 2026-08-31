@@ -12,6 +12,7 @@ public interface CombatSimulator {
     CombatResult evaluate(Squad squad, Map<Squad, Double> adjacentSquads, GameState gameState);
 
     enum CombatResult {
+        ADVANCE,
         ENGAGE,
         RETREAT
     }
