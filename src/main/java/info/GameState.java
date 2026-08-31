@@ -25,6 +25,7 @@ import info.tracking.PsiStormTracker;
 import info.tracking.StrategyTracker;
 import learning.Decisions;
 import lombok.Data;
+import macro.HatcheryCapacity;
 import macro.plan.Plan;
 import macro.plan.PlanCancelSource;
 import macro.plan.PlanType;
@@ -1023,6 +1024,10 @@ public class GameState {
     public boolean isFloatingMinerals() {
         return getGameTime().greaterThan(new Time(5, 0)) &&
                 resourceCount.availableMinerals() > ((plannedHatcheries + 1) * 350);
+    }
+
+    public boolean hasExcessHatchery() {
+        return HatcheryCapacity.isExcess(baseData.numHatcheries(), numLarva(), isFloatingMinerals());
     }
 
     public void setGeyserAssignment(Unit unit) {

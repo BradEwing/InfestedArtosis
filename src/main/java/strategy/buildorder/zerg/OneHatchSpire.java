@@ -6,7 +6,6 @@ import info.BaseData;
 import info.GameState;
 import info.TechProgression;
 import macro.plan.Plan;
-import util.Time;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -29,7 +28,6 @@ public class OneHatchSpire extends ZergBase {
         BaseData baseData = gameState.getBaseData();
 
         final int gas = gameState.getResourceCount().availableGas();
-        final int plannedHatcheries = gameState.getPlannedHatcheries();
         final int extractorCount = baseData.numExtractor();
         final int hatchCount = gameState.ourUnitCount(UnitType.Zerg_Hatchery) + gameState.ourUnitCount(UnitType.Zerg_Lair);
         final int lairCount         = gameState.ourUnitCount(UnitType.Zerg_Lair);
@@ -50,9 +48,7 @@ public class OneHatchSpire extends ZergBase {
         boolean wantOverlordSpeed = needOverlordSpeed(gameState) && techProgression.canPlanOverlordSpeed();
 
 
-        boolean floatingMinerals = gameState.getGameTime().greaterThan(new Time(5, 0)) && 
-                                    gameState.getResourceCount().availableMinerals() > ((plannedHatcheries + 1) * 350);
-        boolean wantHatchery = behindOnHatchery(gameState) || floatingMinerals;
+        boolean wantHatchery = behindOnHatchery(gameState) || gameState.isFloatingMinerals();
 
         boolean enemyHasSpire = gameState.enemyUnitCount(UnitType.Zerg_Spire) > 0;
 
@@ -70,7 +66,6 @@ public class OneHatchSpire extends ZergBase {
             Plan hatcheryPlan = this.planNewBase(gameState);
             if (hatcheryPlan != null) {
                 plans.add(hatcheryPlan);
-                return plans; // Prioritize catching up on bases
             }
         }
 

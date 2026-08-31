@@ -13,6 +13,7 @@ import info.TechProgression;
 import info.UnitTypeCount;
 import info.map.BuildingPlanner;
 import lombok.Getter;
+import macro.HatcheryCapacity;
 import macro.plan.BuildingPlan;
 import macro.plan.Plan;
 import macro.plan.TechPlan;
@@ -493,14 +494,12 @@ public abstract class BuildOrder {
     }
 
     /**
-     * Determines if we are behind on resource hatcheries compared to the enemy.
-     * Only applies to ZvZ matchups to maintain hatchery parity.
+     * Reports if we must add a hatchery to keep parity with the enemy. Only the ZvZ build orders
+     * use this rule.
      *
-     * @param gameState The current game state
-     * @return true if enemy has more resource depots than us, false otherwise
+     * @return true when the enemy has more resource depots and our hatcheries are not excess
      */
     protected boolean behindOnHatchery(GameState gameState) {
-        // Only applies to ZvZ
         if (gameState.getOpponentRace() != Race.Zerg) {
             return false;
         }
@@ -518,7 +517,7 @@ public abstract class BuildOrder {
         int enemyHives = gameState.enemyUnitCount(UnitType.Zerg_Hive);
         int enemyTotal = enemyHatcheries + enemyLairs + enemyHives;
 
-        return enemyTotal > ourTotal;
+        return HatcheryCapacity.isBehind(ourTotal, enemyTotal, gameState.hasExcessHatchery());
     }
 
     protected boolean behindOnBases(GameState gameState) {
