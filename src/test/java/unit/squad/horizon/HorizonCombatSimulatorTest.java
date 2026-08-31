@@ -8,7 +8,11 @@ import java.util.Collections;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static unit.squad.CombatSimulator.CombatResult.ADVANCE;
+import static unit.squad.CombatSimulator.CombatResult.ENGAGE;
+import static unit.squad.CombatSimulator.CombatResult.RETREAT;
 
 class HorizonCombatSimulatorTest {
 
@@ -22,6 +26,27 @@ class HorizonCombatSimulatorTest {
 
     private static List<Position> none() {
         return Collections.emptyList();
+    }
+
+    @Test
+    void friendlyStrengthWithoutRelevantEnemyAdvances() {
+        assertEquals(ADVANCE, HorizonCombatSimulator.selectResult(1, 0, 0, 0, false, 1.3));
+    }
+
+    @Test
+    void noStrengthOnEitherSideRetreats() {
+        assertEquals(RETREAT, HorizonCombatSimulator.selectResult(0, 0, 0, 0, false, 1.3));
+    }
+
+    @Test
+    void enemyStrengthAtMinimumStillAdvances() {
+        assertEquals(ADVANCE, HorizonCombatSimulator.selectResult(1, 0, 0.01, 0, false, 1.3));
+    }
+
+    @Test
+    void enemyStrengthAboveMinimumUsesMeasuredVerdict() {
+        assertEquals(RETREAT, HorizonCombatSimulator.selectResult(0.001, 0, 0.0101, 0, false, 1.3));
+        assertEquals(ENGAGE, HorizonCombatSimulator.selectResult(1, 0, 0.0101, 0, false, 1.3));
     }
 
     @Test

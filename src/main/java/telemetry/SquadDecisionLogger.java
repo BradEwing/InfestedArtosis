@@ -252,7 +252,8 @@ public class SquadDecisionLogger implements SquadDecisionSink {
     static boolean overridesVerdict(SquadStatus status, SquadLock lock,
                                     CombatSimulator.CombatResult result) {
         if (lock == SquadLock.RETREAT) {
-            return status == SquadStatus.RETREAT && result == CombatSimulator.CombatResult.ENGAGE;
+            return status == SquadStatus.RETREAT && result != null
+                    && result != CombatSimulator.CombatResult.RETREAT;
         }
         return status == SquadStatus.FIGHT && result == CombatSimulator.CombatResult.RETREAT;
     }

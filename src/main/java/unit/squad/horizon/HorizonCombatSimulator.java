@@ -39,6 +39,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
     private static final Time BUILDING_SEEN_THRESHOLD = new Time(0, 45);
     private static final double DEFAULT_ENGAGE_THRESHOLD = 1.0;
     private static final double DEFAULT_RETREAT_THRESHOLD = 0.7;
+    private static final double MIN_ENEMY_STRENGTH = 0.01;
     private static final double SPEED_UPGRADE_PENALTY = 0.75;
     private static final int BUNKER_TRUST_FRAMES = 48;
     private static final int BUNKER_DECAY_FRAMES = 72;
@@ -179,16 +180,21 @@ public class HorizonCombatSimulator implements CombatSimulator {
             snapshot.setEnemyCenter(new Position((int)(ex / count), (int)(ey / count)));
         }
 
-        double overallRatio;
-        if (airSquad) {
-            overallRatio = friendlyAirStr / Math.max(enemyAntiAirStr, 0.01);
+        double relevantEnemyStr = airSquad ? enemyAntiAirStr : enemyGroundStr;
+        boolean enemyMeasured = relevantEnemyStr > MIN_ENEMY_STRENGTH;
+        double overallRatio = 0;
+        if (!enemyMeasured) {
+            snapshot.setGroundRatio(0);
+            snapshot.setCombinedRatio(0);
+        } else if (airSquad) {
+            overallRatio = friendlyAirStr / enemyAntiAirStr;
             snapshot.setGroundRatio(0);
             snapshot.setCombinedRatio(overallRatio);
         } else {
-            double groundRatio = friendlyGroundStr / Math.max(enemyGroundStr, 0.01);
+            double groundRatio = friendlyGroundStr / enemyGroundStr;
             double totalFriendly = friendlyGroundStr + friendlyAirStr;
             double totalEnemy = enemyGroundStr + enemyAntiAirStr;
-            double combinedRatio = totalFriendly / Math.max(totalEnemy, 0.01);
+            double combinedRatio = totalFriendly / totalEnemy;
             overallRatio = Math.max(groundRatio, combinedRatio);
             snapshot.setGroundRatio(groundRatio);
             snapshot.setCombinedRatio(combinedRatio);
@@ -204,12 +210,8 @@ public class HorizonCombatSimulator implements CombatSimulator {
             engageThresh = Math.min(engageThresh, DEFAULT_ENGAGE_THRESHOLD);
         }
 
-        CombatResult result;
-        if (overallRatio >= engageThresh) {
-            result = CombatResult.ENGAGE;
-        } else {
-            result = CombatResult.RETREAT;
-        }
+        CombatResult result = selectResult(friendlyGroundStr, friendlyAirStr, enemyGroundStr,
+                enemyAntiAirStr, airSquad, engageThresh);
 
         snapshot.setEngageThreshold(engageThresh);
         snapshot.setRetreatThreshold(retreatThresh);
@@ -218,6 +220,24 @@ public class HorizonCombatSimulator implements CombatSimulator {
         lastSnapshots.put(squad.getId(), snapshot);
 
         return result;
+    }
+
+    static CombatResult selectResult(double friendlyGroundStr, double friendlyAirStr,
+                                     double enemyGroundStr, double enemyAntiAirStr,
+                                     boolean airSquad, double engageThresh) {
+        double relevantEnemyStr = airSquad ? enemyAntiAirStr : enemyGroundStr;
+        double ratio;
+        if (airSquad) {
+            ratio = friendlyAirStr / Math.max(enemyAntiAirStr, MIN_ENEMY_STRENGTH);
+        } else {
+            double groundRatio = friendlyGroundStr / Math.max(enemyGroundStr, MIN_ENEMY_STRENGTH);
+            double totalFriendly = friendlyGroundStr + friendlyAirStr;
+            double totalEnemy = enemyGroundStr + enemyAntiAirStr;
+            double combinedRatio = totalFriendly / Math.max(totalEnemy, MIN_ENEMY_STRENGTH);
+            ratio = Math.max(groundRatio, combinedRatio);
+        }
+        if (ratio < engageThresh) return CombatResult.RETREAT;
+        return relevantEnemyStr > MIN_ENEMY_STRENGTH ? CombatResult.ENGAGE : CombatResult.ADVANCE;
     }
 
     private double computeFriendlyStrength(ManagedUnit mu, Position engagementCenter, boolean enemyHasDetection, TechProgression techProgression) {
