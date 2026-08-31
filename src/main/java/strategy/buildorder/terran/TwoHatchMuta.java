@@ -99,7 +99,7 @@ public class TwoHatchMuta extends TerranBase {
         }
 
 
-        if (spireCount > 1 && overlordCount < 4) {
+        if (shouldPlanOverlord(spireCount, overlordCount, gameState.hasExcessSupply())) {
             Plan overlordPlan = this.planUnit(gameState, UnitType.Zerg_Overlord);
             plans.add(overlordPlan);
             return plans;
@@ -211,5 +211,9 @@ public class TwoHatchMuta extends TerranBase {
     @Override
     public boolean needLair() { 
         return true; 
+    }
+
+    static boolean shouldPlanOverlord(int spireCount, int overlordCount, boolean excessSupply) {
+        return spireCount > 1 && overlordCount < 4 && !excessSupply;
     }
 }

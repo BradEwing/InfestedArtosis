@@ -26,6 +26,7 @@ import info.tracking.StrategyTracker;
 import learning.Decisions;
 import lombok.Data;
 import macro.HatcheryCapacity;
+import macro.SupplyCapacity;
 import macro.plan.Plan;
 import macro.plan.PlanCancelSource;
 import macro.plan.PlanType;
@@ -761,6 +762,10 @@ public class GameState {
 
     public int getSupply() {
         return game.self().supplyUsed();
+    }
+
+    public boolean hasExcessSupply() {
+        return SupplyCapacity.isExcess(self.supplyTotal(), self.supplyUsed());
     }
 
     public TilePosition getTechBuildingLocation(UnitType unitType) {

@@ -122,7 +122,7 @@ public class CrazyZerg extends TerranBase {
             plans.add(extractorPlan);
         }
 
-        if (spireCount > 0 && overlordCount < 4) {
+        if (shouldPlanOverlord(spireCount, overlordCount, gameState.hasExcessSupply())) {
             Plan overlordPlan = this.planUnit(gameState, UnitType.Zerg_Overlord);
             plans.add(overlordPlan);
             return plans;
@@ -334,5 +334,9 @@ public class CrazyZerg extends TerranBase {
     @Override
     public boolean needHive() {
         return true;
+    }
+
+    static boolean shouldPlanOverlord(int spireCount, int overlordCount, boolean excessSupply) {
+        return spireCount > 0 && overlordCount < 4 && !excessSupply;
     }
 }
