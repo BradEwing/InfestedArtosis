@@ -1,15 +1,10 @@
 package macro;
 
 /**
- * The two rules that decide if we want another hatchery.
+ * Rules that decide if the bot wants another hatchery.
  *
- * <p>Production cancels a queued hatchery when we do not spend the larva we have. A ZvZ build
- * order asks for a hatchery when the enemy has more resource depots than we do. Our count
- * includes the hatcheries that we queued.
- *
- * <p>The two rules stay in this class because they must agree. If they disagree, the build order
- * adds the hatchery plan and production cancels it on the next frame. The bot repeats this every
- * frame and never starts its unit production.
+ * <p>The rules must agree on the same hatchery count. Both read
+ * {@link info.GameState#hatcheryCount()}.
  */
 public final class HatcheryCapacity {
 
@@ -23,12 +18,27 @@ public final class HatcheryCapacity {
     /**
      * Floating minerals override the larva count. Minerals that we cannot spend are worth a new
      * hatchery, even when our larva are already idle.
+     *
+     * @param hatcheryCount larva-producing hatcheries we control; queued and morphing plans are
+     *     excluded
      */
     public static boolean isExcess(int hatcheryCount, int larvaCount, boolean floatingMinerals) {
         return !floatingMinerals && hatcheryCount >= EXCESS_HATCHERIES && larvaCount >= EXCESS_LARVA;
     }
 
-    public static boolean isBehind(int ourTotal, int enemyTotal, boolean excess) {
-        return !excess && enemyTotal > ourTotal;
+    /**
+     * @param ourTotal hatchery count plus hatcheries already queued
+     * @param expansionSuppressed true while a reaction deletes queued expansion hatcheries every
+     *     frame
+     */
+    public static boolean isBehind(int ourTotal, int enemyTotal, boolean excess, boolean expansionSuppressed) {
+        return !expansionSuppressed && !excess && enemyTotal > ourTotal;
+    }
+
+    /**
+     * The floating-minerals hatchery request, under the same suppression as the parity request.
+     */
+    public static boolean isFloatingExpansion(boolean floatingMinerals, boolean expansionSuppressed) {
+        return !expansionSuppressed && floatingMinerals;
     }
 }

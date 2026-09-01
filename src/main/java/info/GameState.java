@@ -90,16 +90,15 @@ public class GameState {
     private boolean earlyRushDelayLair = false;
     private boolean earlyRushMacroHatch = false;
 
-    // TODO: refactor into common data structure, address access throughout bot
     private HashSet<Plan> plansScheduled = new HashSet<>();
     private HashSet<Plan> plansBuilding = new HashSet<>();
     private HashSet<Plan> plansMorphing = new HashSet<>();
     private HashSet<Plan> plansComplete = new HashSet<>();
-    private HashSet<Plan> plansImpossible = new HashSet<>(); // If ProductionManager determines impossible, cancel them in WorkerManager
+    private HashSet<Plan> plansImpossible = new HashSet<>();
     private ProductionQueue productionQueue = new ProductionQueue();
     private HashMap<Unit, Plan> assignedPlannedItems = new HashMap<>();
     private int plannedWorkers;
-    private int plannedHatcheries = 1; // Start with 1 because we decrement with initial hatch
+    private int plannedHatcheries = 1;
 
     private HashMap<Base, HashSet<ManagedUnit>> gatherersAssignedToBase = new HashMap<>();
 
@@ -475,8 +474,6 @@ public class GameState {
 
     /**
      * Cancels an unexecutable plan and retains it until its executor releases it.
-     *
-     * @param plan plan that can no longer be executed
      */
     public void setImpossiblePlan(Plan plan) {
         if (plan.getState() == PlanState.CANCELLED) {
@@ -543,9 +540,7 @@ public class GameState {
     }
 
     /**
-     * Checks tech progression, build order and base data to determine if a lair can be planned.
-     *
-     * @return boolean
+     * Checks tech progression, build order and base data to decide if a lair can be planned.
      */
     public boolean canPlanLair() {
         return !earlyRushDelayLair && needLair() && techProgression.canPlanLair()
@@ -596,11 +591,7 @@ public class GameState {
     }
 
     /**
-     * Removes managed unit from all data structures.
-     *
-     * This is typically done before assigning it to a new role. This code was
-     * initially lifted from WorkerManager.
-     * @param managedUnit to wipe clean
+     * Removes a managed unit from all data structures, before assigning it a new role.
      */
     public void clearAssignments(ManagedUnit managedUnit) {
         if (assignedManagedWorkers.contains(managedUnit)) {
@@ -679,9 +670,6 @@ public class GameState {
         return gasGatherers.size();
     }
 
-    // How many workers we want.
-    // This is pulled from the old ProductionManager. Ideally this is something set more so
-    // by the active strategies.
     private int expectedWorkers() {
         final int base = 5;
         final int expectedMineralWorkers = baseData.currentBaseCount() * 7;
@@ -713,16 +701,9 @@ public class GameState {
         return unitTypeCount.get(unitType);
     }
 
-    public int ourMorphingCount(UnitType unitType) {
-        return (int) plansMorphing.stream()
-            .filter(plan -> plan.getPlannedUnit() == unitType)
-            .count();
-    }
-
     /**
-     * Counts unit plans of this type still waiting in the production queue. Unlike the planned
-     * unit counts, this is derived from the live queue, so it cannot drift when a plan is
-     * cancelled or an egg is destroyed.
+     * Counts unit plans of this type still waiting in the production queue. Derived from the
+     * live queue, unlike the planned unit counts.
      */
     public int queuedUnitPlanCount(UnitType unitType) {
         return productionQueue.unitPlanCount(unitType);
@@ -892,11 +873,6 @@ public class GameState {
         return psiStormTracker.isPositionInStorm(pos, buffer);
     }
 
-    /**
-     * Gets all positions that are within range of enemy static defense structures.
-     *
-     * @return Set of positions that are covered by static defense
-     */
     public Set<Position> getStaticDefenseCoverage() {
         Set<Position> coveredPositions = new HashSet<>();
 
@@ -954,18 +930,10 @@ public class GameState {
         }
     }
 
-    /**
-     * Gets all visible enemy units for squad combat evaluation.
-     * @return HashSet of visible enemy units
-     */
     public Set<Unit> getDetectedEnemyUnits() {
         return observedUnitTracker.getDetectedUnits();
     }
 
-    /**
-     * Gets all known enemy buildings for combat evaluation.
-     * @return HashSet of enemy buildings
-     */
     public Set<Unit> getEnemyBuildings() {
         return observedUnitTracker.getBuilding();
     }
@@ -974,26 +942,14 @@ public class GameState {
         return observedUnitTracker.getCompletedBuildings();
     }
 
-    /**
-     * Gets all known enemy building positions for combat evaluation.
-     * @return Set of enemy building positions
-     */
     public Set<Position> getLastKnownPositionsOfBuildings() {
         return observedUnitTracker.getLastKnownPositionsOfBuildings();
     }
 
-    /**
-     * Gets all visible enemy units for combat evaluation.
-     * @return Set of visible enemy units
-     */
     public Set<Unit> getVisibleEnemyUnits() {
         return observedUnitTracker.getVisibleEnemyUnits();
     }
 
-    /**
-     * Gets the rally point for squads that need to regroup.
-     * @return Position for rally point
-     */
     public Position getSquadRallyPoint() {
         if (baseData.hasNaturalExpansion()) {
             return baseData.naturalExpansionPosition().toPosition();
@@ -1028,8 +984,17 @@ public class GameState {
                 resourceCount.availableMinerals() > ((plannedHatcheries + 1) * 350);
     }
 
+    /**
+     * Counts larva-producing hatcheries under our control: completed Hatcheries, Lairs and
+     * Hives. A hatchery morphing into a Lair or Hive still counts. Excludes queued, scheduled
+     * and morphing plans.
+     */
+    public int hatcheryCount() {
+        return ourUnitCount(UnitType.Zerg_Hatchery, UnitType.Zerg_Lair, UnitType.Zerg_Hive);
+    }
+
     public boolean hasExcessHatchery() {
-        return HatcheryCapacity.isExcess(baseData.numHatcheries(), numLarva(), isFloatingMinerals());
+        return HatcheryCapacity.isExcess(hatcheryCount(), numLarva(), isFloatingMinerals());
     }
 
     public void setGeyserAssignment(Unit unit) {

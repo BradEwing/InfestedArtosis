@@ -5,13 +5,13 @@ import bwapi.UpgradeType;
 import info.BaseData;
 import info.GameState;
 import info.TechProgression;
+import macro.HatcheryCapacity;
 import macro.plan.Plan;
 
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- *
  * OneHatchSpire, baseline ZvZ build.
  * <a href="https://liquipedia.net/starcraft/9_Pool_Speed_into_1_Hatch_Spire_(vs._Zerg)">Liquipedia</a>
  */
@@ -48,7 +48,8 @@ public class OneHatchSpire extends ZergBase {
         boolean wantOverlordSpeed = needOverlordSpeed(gameState) && techProgression.canPlanOverlordSpeed();
 
 
-        boolean wantHatchery = behindOnHatchery(gameState) || gameState.isFloatingMinerals();
+        boolean wantHatchery = behindOnHatchery(gameState)
+                || HatcheryCapacity.isFloatingExpansion(gameState.isFloatingMinerals(), gameState.isEarlyRushed());
 
         boolean enemyHasSpire = gameState.enemyUnitCount(UnitType.Zerg_Spire) > 0;
 
@@ -87,7 +88,6 @@ public class OneHatchSpire extends ZergBase {
             return plans;
         }
 
-        // Plan Upgrades
         if (wantMetabolicBoost) {
             Plan metabolicBoostPlan = this.planUpgrade(gameState, UpgradeType.Metabolic_Boost);
             plans.add(metabolicBoostPlan);
@@ -98,7 +98,6 @@ public class OneHatchSpire extends ZergBase {
             plans.add(flyingCarapacePlan);
         }
 
-        // Plan Overlord Speed
         if (wantOverlordSpeed) {
             Plan overlordSpeedPlan = this.planUpgrade(gameState, UpgradeType.Pneumatized_Carapace);
             plans.add(overlordSpeedPlan);
@@ -109,8 +108,7 @@ public class OneHatchSpire extends ZergBase {
             plans.add(extractorPlan);
         }
 
-        // Plan Units
-        final int desiredScourge = 2;   
+        final int desiredScourge = 2;
         if (techProgression.isSpire() && scourgeCount < desiredScourge && mutaCount > 5 && enemyHasSpire) {
             plans.addAll(this.planAdvancedUnit(gameState, UnitType.Zerg_Scourge));
             return plans;

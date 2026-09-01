@@ -49,11 +49,8 @@ public abstract class BuildOrder {
     }
 
     /**
-     * The race-independent half of an opener's hand off condition: the scripted build has produced
-     * everything it was going to produce. Kept separate from shouldTransition so the same condition
-     * can gate the unknown race fallback, which must fire at exactly the moment the opener would
-     * otherwise have transitioned. Build orders that are not openers leave this false and override
-     * shouldTransition directly.
+     * True when the opener's scripted build has produced everything it will produce. Build
+     * orders that are not openers leave this false.
      */
     protected boolean openerComplete(GameState gameState) {
         return false;
@@ -233,7 +230,6 @@ public abstract class BuildOrder {
 
     protected Plan planNewBase(GameState gameState) {
         Base base = gameState.reserveBase();
-        // all possible bases are taken!
         if (base == null) {
             return null;
         }
@@ -307,9 +303,9 @@ public abstract class BuildOrder {
         return plan;
     }
 
-    // planSunkenColony returns a set of Creep+Sunken plans
-    // Subtracks 500 from priority as a stop gap to prioritize over existing items in queue.
-    // TODO: Clear queue if defensive structure enters queue?
+    /**
+     * Returns a set of Creep and Sunken Colony plans.
+     */
     protected Set<Plan> planSunkenColony(GameState gameState) {
         return planSunkenColony(gameState, DEFAULT_COLONY_PRIORITY, this.requiredSunkens(gameState));
     }
@@ -374,12 +370,8 @@ public abstract class BuildOrder {
     }
 
     /**
-     * Plans a unit that a tech building unlocked, ahead of the backlog derived while it was
-     * waiting.
-     *
-     * <p>The method queues one plan per unit type. A second plan only subtracts its price from
-     * the resource buffer, and an empty buffer ends the scheduling pass early. The build order
-     * derives every frame, so the next plan is never more than one frame away.
+     * Plans a unit that a tech building unlocked, ahead of the backlog. Queues at most one plan
+     * per call.
      */
     protected List<Plan> planAdvancedUnit(GameState gameState, UnitType unitType) {
         List<Plan> plans = new ArrayList<>();
@@ -518,33 +510,27 @@ public abstract class BuildOrder {
      * Reports if we must add a hatchery to keep parity with the enemy. Only the ZvZ build orders
      * use this rule.
      *
-     * @return true when the enemy has more resource depots and our hatcheries are not excess
+     * <p>Our total is {@link GameState#hatcheryCount()} plus the hatcheries already queued.
+     *
+     * @return true when the enemy has more resource depots, our hatcheries are not excess, and
+     *     no reaction deletes expansions this frame
      */
     protected boolean behindOnHatchery(GameState gameState) {
         if (gameState.getOpponentRace() != Race.Zerg) {
             return false;
         }
 
-        int ourHatcheries = gameState.ourUnitCount(UnitType.Zerg_Hatchery);
-        int ourLairs = gameState.ourUnitCount(UnitType.Zerg_Lair);
-        int ourHives = gameState.ourUnitCount(UnitType.Zerg_Hive);
-        int ourPlanned = gameState.getPlannedHatcheries();
-        int morphingLairs = (int) gameState.ourMorphingCount(UnitType.Zerg_Lair);
-        
-        int ourTotal = ourHatcheries + ourLairs + ourHives + ourPlanned + morphingLairs;
+        int ourTotal = gameState.hatcheryCount() + Math.max(0, gameState.getPlannedHatcheries());
 
-        int enemyHatcheries = gameState.enemyUnitCount(UnitType.Zerg_Hatchery);
-        int enemyLairs = gameState.enemyUnitCount(UnitType.Zerg_Lair);
-        int enemyHives = gameState.enemyUnitCount(UnitType.Zerg_Hive);
-        int enemyTotal = enemyHatcheries + enemyLairs + enemyHives;
+        int enemyTotal = gameState.enemyResourceDepotCount();
 
-        return HatcheryCapacity.isBehind(ourTotal, enemyTotal, gameState.hasExcessHatchery());
+        return HatcheryCapacity.isBehind(ourTotal, enemyTotal, gameState.hasExcessHatchery(),
+                gameState.isEarlyRushed());
     }
 
     protected boolean behindOnBases(GameState gameState) {
         BaseData baseData = gameState.getBaseData();
 
-        // Only apply after we have our natural expansion
         if (!baseData.hasNaturalExpansion()) {
             return false;
         }
