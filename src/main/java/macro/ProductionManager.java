@@ -135,16 +135,7 @@ public class ProductionManager {
         }
     }
 
-    /**
-     * Cancels excess overlord plans when free supply is sufficient.
-     * Example: We queue up 10 hydras but half of them die by the time the overlord plan is ready to build.
-     */
-    /**
-     * Drops scheduled Lair plans while an early rush delays the Lair. The queued plans are
-     * removed by the reaction; this sweep owns the scheduled ones because cancelling a scheduled
-     * building must also release the build-ahead slot, which otherwise stays claimed for the rest
-     * of the game and blocks every later build-ahead.
-     */
+    /** Drops scheduled Lair plans while an early rush delays the Lair; the reaction removes only queued ones. */
     private void cancelDelayedLairPlans() {
         if (!gameState.isEarlyRushDelayLair()) {
             return;
@@ -182,15 +173,7 @@ public class ProductionManager {
                 });
     }
 
-    /**
-     * Bounds how long a building plan holds the build-ahead slot.
-     *
-     * <p>Reconciliation first drops claims whose plan left the pipeline elsewhere, so a slot is
-     * never held by a plan that no longer exists. A claim that outlives the income prediction that
-     * justified it is evicted: its reservation returns to the bank and the plan re-enters the queue
-     * behind the work it was starving. A scheduled building whose prerequisite is gone is cancelled
-     * here rather than waiting on the late sweep that only reads the queue.
-     */
+    /** Bounds how long a building plan holds the build-ahead slot. */
     private void enforceBuildAheadSlot() {
         buildAheadSlot.reconcile(activeBuildingPlans());
 
@@ -218,10 +201,6 @@ public class ProductionManager {
         return active;
     }
 
-    /**
-     * Plans the queue cannot pay for at this moment. The count is the cost of a held slot: every
-     * one of these is waiting on resources a stalled reservation is holding.
-     */
     private int starvedQueuedPlans() {
         ResourceCount resourceCount = gameState.getResourceCount();
         int starved = 0;
@@ -234,11 +213,7 @@ public class ProductionManager {
         return starved;
     }
 
-    /**
-     * Returns an evicted plan to the queue with its reservation released and its executor freed.
-     * The plan keeps its build position, so the tiles it already reserved are not reserved twice
-     * when it schedules again.
-     */
+    /** Requeues an evicted plan; it keeps its build position, so its tiles are not reserved twice. */
     private void requeueStalledPlan(Plan plan) {
         buildAheadSlot.releaseWithBackoff(plan, currentFrame);
         removeFromActivePlans(plan);
@@ -897,11 +872,7 @@ public class ProductionManager {
         return PlanBlocker.NONE;
     }
 
-    /**
-     * A plan with nowhere to build must not reserve its cost. The tiles the planner reserved for a
-     * position it then rejects are handed back here, so a retry on a later frame does not reserve
-     * the same ground twice.
-     */
+    /** A plan with nowhere to build must not reserve its cost. */
     private boolean resolveBuildPosition(Plan plan, UnitType building) {
         if (plan.getBuildPosition() != null) {
             return true;

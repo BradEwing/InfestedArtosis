@@ -105,10 +105,6 @@ class BuildAheadSlotTest {
         assertTrue(slot.stalled(deadline - 1).isEmpty());
     }
 
-    /**
-     * The Spire of the evidence: 200 minerals and 150 gas reserved at frame 5806, still scheduled
-     * 4277 frames later. The claim now expires inside a minute.
-     */
     @Test
     void aClaimIsStalledOnceItsDeadlinePasses() {
         BuildAheadSlot slot = new BuildAheadSlot();
@@ -141,10 +137,6 @@ class BuildAheadSlotTest {
         assertTrue(slot.isInBackoff(UnitType.Zerg_Spire, CLAIM_FRAME));
     }
 
-    /**
-     * A plan cancelled and immediately re-derived is a new plan of the same type. The backoff is
-     * what stops it reserving the same 200 and 150 on the next frame.
-     */
     @Test
     void aRederivedPlanOfTheSameTypeIsStillInBackoff() {
         BuildAheadSlot slot = new BuildAheadSlot();
@@ -184,11 +176,6 @@ class BuildAheadSlotTest {
         assertFalse(slot.isInBackoff(UnitType.Zerg_Spire, CLAIM_FRAME));
     }
 
-    /**
-     * A cancellation elsewhere in the bot can drop a plan without telling the slot. Reconciliation
-     * against the plans production still owns is what keeps a leaked claim from blocking every
-     * later build-ahead.
-     */
     @Test
     void reconcileDropsAClaimWhosePlanLeftThePipeline() {
         BuildAheadSlot slot = new BuildAheadSlot();

@@ -24,7 +24,7 @@ public interface PlanEventSink {
         }
     }
 
-    /** A building plan still holds the build-ahead slot, starving the plans queued behind it. */
+    /** A building plan still holds the build-ahead slot. */
     default void onBuildAheadHold(Plan holder, int heldFrames, int starvedBehind) {
     }
 
