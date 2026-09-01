@@ -64,10 +64,6 @@ class GasBalanceTest {
         assertEquals(expected, GasBalance.gasDemand(Arrays.asList(upgrade, research)));
     }
 
-    /**
-     * Game K: 440 gas banked, minerals spent, a Spire waiting in the queue with mutalisks behind
-     * it. The waiting plans need more gas than is banked, so the geyser keeps its workers.
-     */
     @Test
     void gasWorkersStayWhileQueuedPlansNeedMoreGasThanIsBanked() {
         List<Plan> queued = Arrays.asList(spire(), mutalisk(), mutalisk(), mutalisk());
@@ -89,10 +85,6 @@ class GasBalanceTest {
         assertFalse(GasBalance.isGasIdle(gas, minerals, demand(Collections.singletonList(spire()), NOTHING)));
     }
 
-    /**
-     * Scheduling moves a plan from the queue to the scheduled set and reserves its cost. The
-     * rules read banked totals and count both sets, so nothing they read changes.
-     */
     @Test
     void schedulingAMineralOnlyBuildingNeverReleasesAGasWorker() {
         Plan hatchery = hatchery();
@@ -155,10 +147,6 @@ class GasBalanceTest {
         }
     }
 
-    /**
-     * Gas stays idle for a thousand frames with three drones on the geyser. The interval spaces
-     * the releases out; the geyser is never emptied in one frame.
-     */
     @Test
     void atMostOneWorkerIsReleasedPerInterval() {
         int gasWorkers = 3;

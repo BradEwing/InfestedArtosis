@@ -460,9 +460,6 @@ public class WorkerManager {
         }
     }
 
-    /**
-     * Moves one gas worker back to minerals, at most once per release interval.
-     */
     private void releaseGasWorker() {
         int frame = game.getFrameCount();
         if (gasGatherers.isEmpty() || !GasBalance.isReleaseDue(frame, lastGasReleaseFrame)) {
@@ -548,10 +545,7 @@ public class WorkerManager {
         }
     }
 
-    /**
-     * Pulls every gas worker onto minerals. Only the SCV rush reaction cuts gas outright;
-     * ordinary rebalancing releases one worker per interval through releaseGasWorker.
-     */
+    /** Pulls every gas worker onto minerals; only the SCV rush reaction cuts gas outright. */
     private void cutGasHarvesting() {
         int gasWorkers = gameState.getGeyserWorkers();
 

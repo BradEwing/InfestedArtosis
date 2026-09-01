@@ -79,10 +79,6 @@ public class ResourceCount {
         return self.minerals();
     }
 
-    /**
-     * Gas mined and unspent, ignoring reservations. Read alongside minedMinerals when a rule
-     * must not move on the frame a plan is scheduled.
-     */
     public int minedGas() {
         return self.gas();
     }
