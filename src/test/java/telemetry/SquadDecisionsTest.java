@@ -32,11 +32,40 @@ class SquadDecisionsTest {
             }
 
             @Override
+            public void onSplitSuppressed(Squad squad, int moveOutThreshold, int squadStrength,
+                                          int outlierStrength) {
+                events.add("SPLIT:" + squad.getId() + ":" + moveOutThreshold + ":" + squadStrength + ":"
+                        + outlierStrength);
+            }
+
+            @Override
             public void onContainmentEvaluated(Squad squad, boolean shouldContain, boolean canBreakContainment,
                                                boolean entered) {
                 events.add("CONTAIN:" + shouldContain + ":" + canBreakContainment + ":" + entered);
             }
         };
+    }
+
+    private static String[] rowFor(Squad squad) {
+        return rowFor(squad, "NONE");
+    }
+
+    private static String[] rowFor(Squad squad, String suppressedBy) {
+        SquadDecision context = new SquadDecision();
+        String row = String.join(",", SquadDecisionLogger.identityCells("game-1", 1000, squad, "STATUS_CHANGE",
+                SquadStatus.RETREAT, SquadStatus.FIGHT, context, suppressedBy))
+                + "," + String.join(",", SquadDecisionLogger.squadCells(squad, context, false, -1));
+        return row.split(",", -1);
+    }
+
+    private static int columnIndex(String column) {
+        String[] columns = SquadDecisionLogger.HEADER.split(",", -1);
+        for (int i = 0; i < columns.length; i++) {
+            if (columns[i].equals(column)) {
+                return i;
+            }
+        }
+        return -1;
     }
 
     @AfterEach
@@ -51,6 +80,7 @@ class SquadDecisionsTest {
         SquadDecisions.simEvaluated(squad, CombatSimulator.CombatResult.ENGAGE, false, false);
         SquadDecisions.lockSuppressed(squad, SquadLock.FIGHT);
         SquadDecisions.containmentEvaluated(squad, true, false, true);
+        SquadDecisions.splitSuppressed(squad, 8, 12, 2);
 
         assertTrue(events.isEmpty());
     }
@@ -63,11 +93,13 @@ class SquadDecisionsTest {
         SquadDecisions.simEvaluated(squad, CombatSimulator.CombatResult.RETREAT, true, false);
         SquadDecisions.lockSuppressed(squad, SquadLock.RETREAT);
         SquadDecisions.containmentEvaluated(squad, true, false, true);
+        SquadDecisions.splitSuppressed(squad, 8, 12, 2);
 
-        assertEquals(3, events.size());
+        assertEquals(4, events.size());
         assertEquals("SIM:RETREAT:true:false", events.get(0));
         assertEquals("LOCK:RETREAT", events.get(1));
         assertEquals("CONTAIN:true:false:true", events.get(2));
+        assertEquals("SPLIT:" + squad.getId() + ":8:12:2", events.get(3));
     }
 
     @Test
@@ -101,5 +133,65 @@ class SquadDecisionsTest {
     void anUnevaluatedVerdictNeverCountsAsSuppression() {
         assertFalse(SquadDecisionLogger.overridesVerdict(SquadStatus.RETREAT, SquadLock.RETREAT, null));
         assertFalse(SquadDecisionLogger.overridesVerdict(SquadStatus.FIGHT, SquadLock.FIGHT, null));
+    }
+
+    @Test
+    void commitmentColumnsHoldFixedPositionsAfterTheLockColumns() {
+        assertEquals(21, columnIndex("committed"));
+        assertEquals(22, columnIndex("commit_frame"));
+
+        assertEquals(columnIndex("fight_lock_until_frame") + 1, columnIndex("committed"));
+        assertEquals(columnIndex("commit_frame") + 1, columnIndex("should_contain"));
+    }
+
+    @Test
+    void everyRowCarriesExactlyTheHeaderColumnCount() {
+        String[] fields = rowFor(new GroundSquad());
+
+        assertEquals(SquadDecisionLogger.HEADER.split(",", -1).length, fields.length);
+    }
+
+    @Test
+    void splitSuppressedRowsCarryTheMoveOutFloorInSuppressedBy() {
+        String[] fields = rowFor(new GroundSquad(), "MOVE_OUT_FLOOR");
+
+        assertEquals("MOVE_OUT_FLOOR", fields[columnIndex("suppressed_by")]);
+    }
+
+    @Test
+    void committedSquadCarriesItsCommitFrame() {
+        Squad squad = new GroundSquad();
+        squad.commit(4321);
+
+        String[] fields = rowFor(squad);
+
+        assertEquals("1", fields[columnIndex("committed")]);
+        assertEquals("4321", fields[columnIndex("commit_frame")]);
+    }
+
+    @Test
+    void uncommittedSquadCarriesTheNotEvaluatedSentinel() {
+        String[] fields = rowFor(new GroundSquad());
+
+        assertEquals("0", fields[columnIndex("committed")]);
+        assertEquals("-1", fields[columnIndex("commit_frame")]);
+    }
+
+    @Test
+    void commitFrameIsNegativeOneExactlyWhenTheSquadIsNotCommitted() {
+        Squad committed = new GroundSquad();
+        committed.commit(500);
+
+        Squad recalled = new GroundSquad();
+        recalled.commit(500);
+        recalled.clearCommitment();
+
+        String[] committedFields = rowFor(committed);
+        String[] recalledFields = rowFor(recalled);
+
+        assertEquals("1", committedFields[columnIndex("committed")]);
+        assertFalse("-1".equals(committedFields[columnIndex("commit_frame")]));
+        assertEquals("0", recalledFields[columnIndex("committed")]);
+        assertEquals("-1", recalledFields[columnIndex("commit_frame")]);
     }
 }
