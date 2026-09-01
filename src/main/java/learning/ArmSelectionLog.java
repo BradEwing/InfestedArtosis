@@ -7,10 +7,9 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * The selection history of one opener expressed in game ages: how many games ago it was last
- * selected, how many games ago it last re-entered after a dormant spell, and how many games it
- * has played and won since that re-entry. The forced re-probe policy and its trial burst cap
- * are defined over these values, all derived from the persisted record without extra state.
+ * Selection history of one opener, expressed in games: games since it was last selected,
+ * games since it last re-entered after a dormant stretch, and games played and won since
+ * that re-entry.
  */
 final class ArmSelectionLog {
 
@@ -29,9 +28,9 @@ final class ArmSelectionLog {
     }
 
     /**
-     * Derives the log from a Record's win and loss timestamps against the global game order.
-     * A re-entry is a selection preceded by a personal gap of at least dormantGames; the trial
-     * is everything from the most recent re-entry onward.
+     * Builds the log from a Record's win and loss timestamps against the global game order.
+     * A re-entry is a selection preceded by a gap of at least dormantGames games. The trial
+     * is every selection from the most recent re-entry onward.
      */
     static ArmSelectionLog from(Record record, List<Long> gameTimestamps, int dormantGames) {
         List<Long> selectionTimestamps = new ArrayList<>(record.getWinTimestamps());

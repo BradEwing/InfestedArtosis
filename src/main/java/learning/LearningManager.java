@@ -22,25 +22,17 @@ import java.util.stream.Collectors;
 public class LearningManager {
     /**
      * Discounted win rate at or below which the incumbent opener counts as failing and a forced
-     * re-probe of a dormant opener becomes allowed. Deliberately far below 50%: a leader winning
-     * 40-50% of its games is still earning its slot, while the incumbents that motivated this
-     * mechanism sit at 12-21%. 30% separates those regimes.
+     * re-probe of a dormant opener becomes allowed.
      */
     static final double PROBE_GATE_WIN_RATE = 0.30;
 
     /**
-     * Games an opener must go unselected before it counts as dormant. This one horizon serves
-     * three roles: the staleness required to be probed, the dormancy that lifts a demoted
-     * trial's block, and the personal gap that starts a fresh trial. At gamma 0.95 an
-     * observation 30 games old keeps roughly 21% of its weight, so a re-probe after this long
-     * measures essentially fresh behaviour.
+     * Games an opener must go unselected before it counts as dormant.
      */
     static final int PROBE_DORMANT_GAMES = 30;
 
     /**
      * Minimum age of the most recent dormant re-entry before another forced probe may start.
-     * Caps forced probes at one start per 20 games, a 5% ceiling even in a permanent all-loss
-     * regime.
      */
     static final int PROBE_COOLDOWN_GAMES = 20;
 
@@ -51,8 +43,6 @@ public class LearningManager {
 
     /**
      * Trial wins that promote a re-entered opener back to unrestricted argmax eligibility.
-     * Fewer wins demote it: it is blocked until it goes dormant again, so a single lucky win
-     * buys a 3-game burst instead of the 5-7 consecutive games the raw index would grant it.
      */
     static final int PROBE_PROMOTION_WINS = 2;
 
@@ -70,8 +60,8 @@ public class LearningManager {
 
     private OpponentRecord opponentRecord;
     private Decisions decisions = new Decisions();
-    private Record currentOpener; // Write this at end of game
-    private Record activeBuildOrderRecord; // Track current non-opener strategy
+    private Record currentOpener;
+    private Record activeBuildOrderRecord;
     private String lastGameDetectedStrategies = "";
     private String lastGameOpener = "";
 
@@ -107,8 +97,6 @@ public class LearningManager {
 
     /**
      * Records the result of the finished game.
-     *
-     * @param isWinner whether we won.
      */
     public void onEnd(boolean isWinner) {
         long currentTimestamp = System.currentTimeMillis();
@@ -147,7 +135,7 @@ public class LearningManager {
     }
 
     /**
-     * @return the name of the opener we played, or an empty string when no opener was ever selected.
+     * Returns the played opener's name, or an empty string if none was selected.
      */
     private String openerName() {
         return currentOpener != null ? currentOpener.getOpener() : "";
@@ -372,9 +360,6 @@ public class LearningManager {
         }
     }
 
-    /**
-     * Determine which opener we should pick using a UCB algorithm.
-     */
     private BuildOrder determineOpener() {
         String openerName = selectOpenerName(config.openerOverride, buildOrderFactory, opponentRecord,
                 lastGameDetectedStrategies, lastGameOpener, opponentName, game.mapFileName());
@@ -387,8 +372,8 @@ public class LearningManager {
     }
 
     /**
-     * Selects this game's opener by precedence: the configured override, then the hard-coded rush response,
-     * then weighted D-UCB over the opponent's opener history.
+     * Selects the opener by precedence: configured override, then the rush response, then
+     * weighted D-UCB over the opponent's opener history.
      */
     static String selectOpenerName(String openerOverride,
                                    BuildOrderFactory buildOrderFactory,
@@ -448,9 +433,9 @@ public class LearningManager {
     }
 
     /**
-     * Applies the dormant re-probe policy to the argmax winner: first enforces the trial burst
-     * cap by replacing a demoted winner with the best non-demoted candidate, then optionally
-     * overrides the winner with a forced probe of a dormant opener.
+     * Applies the dormant re-probe policy to the argmax winner: replaces a demoted winner with
+     * the best non-demoted candidate, then may override the winner with a forced probe of a
+     * dormant opener.
      */
     static String applyDormantReprobePolicy(String winner,
                                             List<String> playableOpeners,
@@ -483,10 +468,9 @@ public class LearningManager {
     }
 
     /**
-     * Decides whether to override the argmax winner with a forced probe of a dormant opener:
-     * only when the winner's discounted win rate is below the gate, no dormant re-entry is
-     * recent enough to count against the cooldown, and some candidate has been unselected for
-     * at least the dormancy horizon. Returns the opener to probe, or null to keep the winner.
+     * Returns an opener to force-probe, or null to keep the winner. Probes only when the
+     * winner's discounted win rate is below the gate, no dormant re-entry is within the
+     * cooldown, and some candidate has been unselected for at least the dormancy horizon.
      */
     static String selectForcedReprobe(String winner,
                                       List<String> playableOpeners,
@@ -542,9 +526,9 @@ public class LearningManager {
     }
 
     /**
-     * Whether the opener has exhausted a failing trial and is still live: it re-entered from
-     * dormancy, played at least the trial allowance without earning the promotion wins, and has
-     * not since gone dormant long enough for the trial to be forgotten.
+     * Returns whether the opener is blocked after a failed trial: it re-entered from dormancy,
+     * played at least PROBE_TRIAL_GAMES without earning PROBE_PROMOTION_WINS, and has not gone
+     * dormant again since.
      */
     static boolean isDemotedBlocked(String opener, OpponentRecord opponentRecord) {
         Record record = opponentRecord.getOpenerRecord().get(opener);
@@ -559,8 +543,7 @@ public class LearningManager {
     }
 
     /**
-     * Determine which BuildOrder to transition to using UCB algorithm.
-     * If only one candidate, return it directly. If multiple candidates, use UCB evaluation.
+     * Selects the build order to transition to from the given candidates using UCB.
      */
     public BuildOrder determineBuildOrder(Set<BuildOrder> candidates) {
         if (candidates.size() == 0) {

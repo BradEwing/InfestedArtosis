@@ -21,8 +21,7 @@ final class GlobalGameOrder {
     }
 
     /**
-     * Number of recorded games that fall strictly after the given selection timestamp: the age,
-     * in games, of that selection.
+     * Returns the number of recorded games played after the given timestamp.
      */
     static int gamesSinceLastSelection(List<Long> gameTimestamps, long lastSelectionTimestamp) {
         List<Long> sorted = sortedAscending(gameTimestamps);

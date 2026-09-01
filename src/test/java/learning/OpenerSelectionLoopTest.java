@@ -17,11 +17,9 @@ import java.util.stream.Collectors;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Closed-loop harness for opener selection: drives LearningManager.selectOpenerName repeatedly
- * from a synthetic liongis-shaped state (two losing incumbents alternating over a 611-game
- * history, three dormant openers last played 306-390 games ago), threading lastGameOpener and
- * a 14-map rotation, and appending each result back into the record under deterministic
- * outcome models. All expected numbers were reproduced by an offline mirror of the same math.
+ * Closed-loop harness that repeatedly drives LearningManager.selectOpenerName against a
+ * synthetic opener history, threading lastGameOpener and a map rotation, and appends each
+ * result back into the record under deterministic outcome models.
  */
 public class OpenerSelectionLoopTest {
 
@@ -41,10 +39,8 @@ public class OpenerSelectionLoopTest {
     private static final OutcomeModel ALWAYS_WIN = (opener, gamesSince) -> true;
 
     /**
-     * AC1: from the locked-in state the policy must put a dormant opener into play within 20
-     * games. With the policy disabled the same harness reproduces the status quo lock-in
-     * (measured at 28 games on this synthetic state, ~33 on the real 611-row history per the
-     * ticket review), so the improvement is measured against the status quo, not against zero.
+     * From the locked-in state the policy must put a dormant opener into play within 20 games.
+     * With the policy disabled the same harness must not.
      */
     @Test
     void dormantOpenerIsProbedWithinTwentyGamesWhenLeaderIsLosing() {
@@ -60,9 +56,8 @@ public class OpenerSelectionLoopTest {
     }
 
     /**
-     * AC2: while the leader's discounted win rate is above the gate no probe may fire and no
-     * dormant opener may take the slot. The 63-0 Tomas Cere ranking itself stays pinned by
-     * WeightedUCBCalculatorTest.
+     * While the leader's discounted win rate is above the gate, no probe may fire and no
+     * dormant opener may take the slot.
      */
     @Test
     void winningLeaderIsNeverForcedToProbe() {
@@ -79,9 +74,8 @@ public class OpenerSelectionLoopTest {
     }
 
     /**
-     * AC3 and the sustained-failure half of AC5: over a long all-loss run, probe starts stay
-     * within the cooldown budget of one per PROBE_COOLDOWN_GAMES (measured 8 in 200 games),
-     * and the mechanism keeps re-firing rather than unlocking only once.
+     * Over a long all-loss run, probe starts stay within the cooldown budget of one per
+     * PROBE_COOLDOWN_GAMES, and the mechanism keeps re-firing rather than unlocking only once.
      */
     @Test
     void probeStartsRespectCooldownBudgetAndKeepFiring() {
@@ -94,10 +88,8 @@ public class OpenerSelectionLoopTest {
     }
 
     /**
-     * AC4: a probed opener that wins its re-entry game gets a PROBE_TRIAL_GAMES trial, then is
-     * demoted and blocked until it goes dormant again. Incumbents are exempt from the cap:
-     * a promoted incumbent may cover the slot while demoted trials cycle, even in this
-     * adversarial model where every dormant re-entry wins.
+     * A probed opener that wins its re-entry game gets a PROBE_TRIAL_GAMES trial, then is
+     * demoted and blocked until it goes dormant again. Incumbents are exempt from the cap.
      */
     @Test
     void probedOpenerThatWinsOnceIsCappedAtTrialGames() {
@@ -113,9 +105,8 @@ public class OpenerSelectionLoopTest {
     }
 
     /**
-     * AC5: a probed opener that wins promotion becomes the new incumbent; once it declines
-     * back below the gate, probes must fire again against the other dormant openers. The
-     * unlock is perpetual, not one-time.
+     * A probed opener that wins promotion becomes the new incumbent. Once it declines back
+     * below the gate, probes must fire again against the other dormant openers.
      */
     @Test
     void gateRefiresAfterPromotedOpenerDeclines() {
