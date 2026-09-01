@@ -12,7 +12,6 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- *
  * OneHatchSpire, baseline ZvZ build.
  * <a href="https://liquipedia.net/starcraft/9_Pool_Speed_into_1_Hatch_Spire_(vs._Zerg)">Liquipedia</a>
  */
@@ -89,7 +88,6 @@ public class OneHatchSpire extends ZergBase {
             return plans;
         }
 
-        // Plan Upgrades
         if (wantMetabolicBoost) {
             Plan metabolicBoostPlan = this.planUpgrade(gameState, UpgradeType.Metabolic_Boost);
             plans.add(metabolicBoostPlan);
@@ -100,7 +98,6 @@ public class OneHatchSpire extends ZergBase {
             plans.add(flyingCarapacePlan);
         }
 
-        // Plan Overlord Speed
         if (wantOverlordSpeed) {
             Plan overlordSpeedPlan = this.planUpgrade(gameState, UpgradeType.Pneumatized_Carapace);
             plans.add(overlordSpeedPlan);
@@ -111,8 +108,7 @@ public class OneHatchSpire extends ZergBase {
             plans.add(extractorPlan);
         }
 
-        // Plan Units
-        final int desiredScourge = 2;   
+        final int desiredScourge = 2;
         if (techProgression.isSpire() && scourgeCount < desiredScourge && mutaCount > 5 && enemyHasSpire) {
             plans.addAll(this.planAdvancedUnit(gameState, UnitType.Zerg_Scourge));
             return plans;

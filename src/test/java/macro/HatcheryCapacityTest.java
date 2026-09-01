@@ -118,9 +118,8 @@ class HatcheryCapacityTest {
     }
 
     /**
-     * The exact shape of the IA-286 loop: two larva-producing hatcheries, five idle larva, an
-     * enemy one depot ahead. The producer wants a hatchery and the excess canceller is armed.
-     * The request must commit once and survive, not be re-created every frame.
+     * Two larva-producing hatcheries, five idle larva, an enemy one depot ahead. The request
+     * must commit once and survive, not be re-created every frame.
      */
     @Test
     void aHatcheryRequestSurvivesTheFrameThatUsedToCancelIt() {

@@ -2,15 +2,6 @@ package telemetry;
 
 /**
  * Counts repeated cancellations of one plan item inside a rolling window.
- *
- * <p>An enqueue/cancel disagreement used to recur silently for thousands of frames (IA-286):
- * a build order queued a hatchery and a canceller removed it every frame, so the bot never
- * started its unit production. The plan event log now surfaces that shape: when the same item
- * is cancelled by the same source often enough inside a short window, the logger emits a
- * RECURRING_CANCEL row alongside the ordinary transition. Each counted cancellation stands for
- * one enqueue/cancel cycle, because every cancelled plan was queued first. No new persisted
- * column is needed; the existing event row carries the item, the cancel source and the age of
- * the plan at cancellation.
  */
 public final class PlanRecurrence {
 
@@ -25,10 +16,7 @@ public final class PlanRecurrence {
     /**
      * Records one cancellation and reports whether the window filled up.
      *
-     * @param frame the frame the cancellation happened on
-     * @return true when this cancellation is the THRESHOLD-th inside the current window; the
-     *     counter resets on reporting, so a sustained loop re-reports at every multiple of
-     *     THRESHOLD instead of every cancellation
+     * @return true on the THRESHOLD-th cancellation inside the window; the counter then resets
      */
     public boolean record(int frame) {
         if (windowStartFrame < 0 || frame - windowStartFrame >= WINDOW_FRAMES) {

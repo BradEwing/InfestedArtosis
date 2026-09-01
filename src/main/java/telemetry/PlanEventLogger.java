@@ -162,8 +162,8 @@ public class PlanEventLogger implements PlanEventSink {
     }
 
     /**
-     * Counts the cancellation against its item and cancel source inside a rolling window, so a
-     * repeated enqueue/cancel loop surfaces as its own event instead of recurring silently.
+     * Records a cancellation for this plan's item and cancel source, and reports whether the
+     * count crossed the recurrence threshold.
      */
     private boolean recordRecurrence(Plan plan) {
         String key = plan.getName() + "|" + plan.getCancelSource();
