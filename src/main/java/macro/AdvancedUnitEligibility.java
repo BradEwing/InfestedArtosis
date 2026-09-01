@@ -10,7 +10,7 @@ import macro.plan.PlanBlocker;
  */
 public final class AdvancedUnitEligibility {
 
-    static final int MIN_GATHERERS = 4;
+    public static final int MIN_GATHERERS = 4;
 
     private AdvancedUnitEligibility() {
     }

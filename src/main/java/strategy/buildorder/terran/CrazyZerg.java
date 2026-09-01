@@ -235,7 +235,7 @@ public class CrazyZerg extends TerranBase {
         }
 
         final int desiredScourge = enemyVessel + enemyDropship + enemyValkyrie + enemyWraith;
-        if (techProgression.isSpire() && scourgeCount < desiredScourge) {
+        if (techProgression.isSpire() && scourgeCount < desiredScourge && canPlanAdvancedUnit(gameState, UnitType.Zerg_Scourge)) {
             plans.add(this.planUnit(gameState, UnitType.Zerg_Scourge));
             return plans;
         }
@@ -246,19 +246,20 @@ public class CrazyZerg extends TerranBase {
         boolean reachedMutaCap = totalMutasProduced >= MUTALISK_CAP;
         boolean canReplenishMutas = livingUltralisks >= ULTRALISK_THRESHOLD_FOR_MUTA_REPLENISH;
         boolean wantMoreMutas = mutaCount < MUTALISK_CAP && (!reachedMutaCap || canReplenishMutas);
-        if (techProgression.isSpire() && wantMoreMutas) {
+        if (shouldPlanMutalisk(techProgression, wantMoreMutas, gameState.numGatherers())) {
             Plan mutaliskPlan = this.planUnit(gameState, UnitType.Zerg_Mutalisk);
             plans.add(mutaliskPlan);
             return plans;
         }
 
-        if (techProgression.isUltraliskCavern() && ultraliskCount < desiredUltralisks(gameState)) {
+        if (techProgression.isUltraliskCavern() && ultraliskCount < desiredUltralisks(gameState)
+                && canPlanAdvancedUnit(gameState, UnitType.Zerg_Ultralisk)) {
             Plan ultraliskPlan = this.planUnit(gameState, UnitType.Zerg_Ultralisk);
             plans.add(ultraliskPlan);
             return plans;
         }
 
-        if (techProgression.isDefilerMound() && defilerCount < DESIRED_DEFILERS) {
+        if (techProgression.isDefilerMound() && defilerCount < DESIRED_DEFILERS && canPlanAdvancedUnit(gameState, UnitType.Zerg_Defiler)) {
             Plan defilerPlan = this.planUnit(gameState, UnitType.Zerg_Defiler);
             plans.add(defilerPlan);
             return plans;
@@ -337,5 +338,9 @@ public class CrazyZerg extends TerranBase {
 
     static boolean shouldPlanOverlord(int spireCount, int overlordCount, boolean excessSupply) {
         return spireCount > 0 && overlordCount < 4 && !excessSupply;
+    }
+
+    static boolean shouldPlanMutalisk(TechProgression techProgression, boolean wantMoreMutas, int gatherers) {
+        return techProgression.isSpire() && wantMoreMutas && canPlanAdvancedUnit(UnitType.Zerg_Mutalisk, techProgression, gatherers);
     }
 }

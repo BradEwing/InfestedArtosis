@@ -1,11 +1,41 @@
 package strategy.buildorder.terran;
 
+import info.TechProgression;
+import macro.AdvancedUnitEligibility;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TwoHatchMutaTest {
+
+    private static final int GATHERER_FLOOR = AdvancedUnitEligibility.MIN_GATHERERS;
+
+    private static TechProgression withSpire() {
+        TechProgression techProgression = new TechProgression();
+        techProgression.setSpire(true);
+        return techProgression;
+    }
+
+    @Test
+    void derivesTheMutaliskWithASpireAndTheGathererFloor() {
+        assertTrue(TwoHatchMuta.shouldPlanMutalisk(withSpire(), 0, 9, GATHERER_FLOOR));
+    }
+
+    @Test
+    void withholdsTheMutaliskBelowTheGathererFloor() {
+        assertFalse(TwoHatchMuta.shouldPlanMutalisk(withSpire(), 0, 9, GATHERER_FLOOR - 1));
+    }
+
+    @Test
+    void withholdsTheMutaliskWithoutASpire() {
+        assertFalse(TwoHatchMuta.shouldPlanMutalisk(new TechProgression(), 0, 9, GATHERER_FLOOR));
+    }
+
+    @Test
+    void withholdsTheMutaliskOnceTheCountIsMet() {
+        assertFalse(TwoHatchMuta.shouldPlanMutalisk(withSpire(), 9, 9, GATHERER_FLOOR));
+    }
 
     @Test
     void derivesTheOverlordWhileSupplyIsTight() {

@@ -389,14 +389,28 @@ public abstract class BuildOrder {
         if (gameState.queuedUnitPlanCount(unitType) > 0) {
             return plans;
         }
-        PlanBlocker blocker = AdvancedUnitEligibility.blocker(
-                unitType, gameState.getTechProgression(), gameState.numGatherers());
-        if (blocker != PlanBlocker.NONE) {
-            PlanEvents.withheld(unitType, blocker);
+        if (!canPlanAdvancedUnit(gameState, unitType)) {
             return plans;
         }
         plans.add(planUnit(gameState, unitType, UnitPlan.ADVANCED_UNIT_PRIORITY));
         return plans;
+    }
+
+    /**
+     * True when a unit a tech building unlocks passes the gate the production sweep applies, so a
+     * plan created now survives the frame. Reports the failing term when it does not.
+     */
+    protected boolean canPlanAdvancedUnit(GameState gameState, UnitType unitType) {
+        return canPlanAdvancedUnit(unitType, gameState.getTechProgression(), gameState.numGatherers());
+    }
+
+    protected static boolean canPlanAdvancedUnit(UnitType unitType, TechProgression techProgression, int gatherers) {
+        PlanBlocker blocker = AdvancedUnitEligibility.blocker(unitType, techProgression, gatherers);
+        if (blocker == PlanBlocker.NONE) {
+            return true;
+        }
+        PlanEvents.withheld(unitType, blocker);
+        return false;
     }
 
     protected Plan planUpgrade(GameState gameState, UpgradeType upgradeType) {
