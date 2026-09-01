@@ -8,20 +8,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Record tracks performance of a single strategy (opener or build order) using Discounted UCB (D-UCB).
- * 
- * <p>This implementation uses a hybrid D-UCB approach:
- * <ul>
- * <li>Exponential decay (γ=0.95) is applied to strategy-specific observations</li>
- * <li>Raw total games count is used for the exploration term</li>
- * <li>This provides more aggressive exploration when strategies have old data</li>
- * </ul>
- * 
- * <p>The decay makes the system more responsive to recent shifts in opponent behavior
- * while maintaining the theoretical guarantees of UCB for exploration/exploitation balance.
- * 
- * <p>Historical games are stored with timestamps and weighted by γ^(age) where age
- * is the number of opponent games across all strategies since that observation.
+ * Tracks win/loss performance of one strategy (opener or build order) for Discounted UCB
+ * selection. Wins and losses are stored with timestamps and weighted by gamma to the power
+ * of games elapsed since each observation.
  */
 @Builder
 @Data
@@ -63,6 +52,22 @@ public class Record implements UCBRecord {
         gameTimestamps.addAll(winTimestamps);
         gameTimestamps.addAll(lossTimestamps);
         return index(totalGames, gameTimestamps);
+    }
+
+    /**
+     * Returns the discounted win rate, weighted by recency against the global game order.
+     */
+    public double discountedMean(List<Long> gameTimestamps) {
+        if (this.games() == 0) {
+            return 0.0;
+        }
+        List<Long> sortedGameTimestamps = GlobalGameOrder.sortedAscending(gameTimestamps);
+        double discountedGames = calculateDiscountedGames(sortedGameTimestamps);
+        if (discountedGames == 0) {
+            return 0.0;
+        }
+        double discountedWins = calculateDiscountedWins(sortedGameTimestamps);
+        return discountedWins / discountedGames;
     }
 
     public double index(int totalGames, List<Long> gameTimestamps) {

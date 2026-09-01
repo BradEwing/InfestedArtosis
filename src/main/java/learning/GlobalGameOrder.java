@@ -20,7 +20,15 @@ final class GlobalGameOrder {
         return Math.pow(gamma, gamesAfter);
     }
 
-    private static int upperBound(List<Long> sortedGameTimestamps, long timestamp) {
+    /**
+     * Returns the number of recorded games played after the given timestamp.
+     */
+    static int gamesSinceLastSelection(List<Long> gameTimestamps, long lastSelectionTimestamp) {
+        List<Long> sorted = sortedAscending(gameTimestamps);
+        return sorted.size() - upperBound(sorted, lastSelectionTimestamp);
+    }
+
+    static int upperBound(List<Long> sortedGameTimestamps, long timestamp) {
         int low = 0;
         int high = sortedGameTimestamps.size();
         while (low < high) {
