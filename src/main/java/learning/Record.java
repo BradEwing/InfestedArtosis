@@ -70,6 +70,13 @@ public class Record implements UCBRecord {
         return discountedWins / discountedGames;
     }
 
+    /**
+     * Returns the discounted game count over the opener's full history as of the latest game.
+     */
+    double discountedGames(List<Long> gameTimestamps) {
+        return calculateDiscountedGames(GlobalGameOrder.sortedAscending(gameTimestamps));
+    }
+
     double discountedGamesBefore(long timestamp, List<Long> gameTimestamps) {
         List<Long> priorGames = gameTimestamps.stream()
                 .filter(gameTimestamp -> gameTimestamp < timestamp)

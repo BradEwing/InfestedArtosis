@@ -8,8 +8,9 @@ import java.util.Set;
 
 /**
  * Selection history of one opener, expressed in games: games since it was last selected,
- * games since it last re-entered after a dormant stretch, and games played and won since
- * that re-entry.
+ * games since it last re-entered after a dormant stretch, the games played and won since
+ * that re-entry, whether that trial began with low evidence, and how many of its games
+ * fall inside the exposure window.
  */
 final class OpenerSelectionLog {
 
@@ -19,17 +20,17 @@ final class OpenerSelectionLog {
     private final int reEntryAge;
     private final int trialCount;
     private final int trialWins;
-    private final boolean lowEvidenceTrial;
-    private final int recentTrialGames;
+    private final boolean unprovenTrial;
+    private final int trialGamesInExposureWindow;
 
     private OpenerSelectionLog(int gamesSinceLastSelection, int reEntryAge, int trialCount, int trialWins,
-                               boolean lowEvidenceTrial, int recentTrialGames) {
+                               boolean unprovenTrial, int trialGamesInExposureWindow) {
         this.gamesSinceLastSelection = gamesSinceLastSelection;
         this.reEntryAge = reEntryAge;
         this.trialCount = trialCount;
         this.trialWins = trialWins;
-        this.lowEvidenceTrial = lowEvidenceTrial;
-        this.recentTrialGames = recentTrialGames;
+        this.unprovenTrial = unprovenTrial;
+        this.trialGamesInExposureWindow = trialGamesInExposureWindow;
     }
 
     /**
@@ -67,17 +68,17 @@ final class OpenerSelectionLog {
         int reEntryAge = age(selectionTimestamps.get(reEntryIndex), sortedGameTimestamps);
         int trialCount = selectionTimestamps.size() - reEntryIndex;
         long reEntryTimestamp = selectionTimestamps.get(reEntryIndex);
-        boolean lowEvidenceTrial = (reEntryIndex > 0 || selectionTimestamps.size() <= LearningManager.PROBE_BURST_GAMES)
+        boolean unprovenTrial = (reEntryIndex > 0 || selectionTimestamps.size() <= LearningManager.PROBE_TRIAL_GAMES)
                 && record.discountedGamesBefore(reEntryTimestamp, gameTimestamps)
                 < LearningManager.PROBE_LOW_EVIDENCE_GAMES;
-        int recentTrialGames = 0;
+        int trialGamesInExposureWindow = 0;
         for (int i = reEntryIndex; i < selectionTimestamps.size(); i++) {
             if (age(selectionTimestamps.get(i), sortedGameTimestamps) < LearningManager.PROBE_EXPOSURE_WINDOW_GAMES) {
-                recentTrialGames++;
+                trialGamesInExposureWindow++;
             }
         }
         return new OpenerSelectionLog(newestAge, reEntryAge, trialCount, trialWins,
-                lowEvidenceTrial, recentTrialGames);
+                unprovenTrial, trialGamesInExposureWindow);
     }
 
     private static int age(long timestamp, List<Long> sortedGameTimestamps) {
@@ -100,11 +101,11 @@ final class OpenerSelectionLog {
         return trialWins;
     }
 
-    boolean lowEvidenceTrial() {
-        return lowEvidenceTrial;
+    boolean isUnprovenTrial() {
+        return unprovenTrial;
     }
 
-    int recentTrialGames() {
-        return recentTrialGames;
+    int trialGamesInExposureWindow() {
+        return trialGamesInExposureWindow;
     }
 }

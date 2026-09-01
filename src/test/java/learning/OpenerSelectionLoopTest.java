@@ -74,11 +74,11 @@ public class OpenerSelectionLoopTest {
     }
 
     /**
-     * Over a long all-loss run, probe starts stay within the cooldown budget of one per
-     * PROBE_COOLDOWN_GAMES, and the mechanism keeps re-firing rather than unlocking only once.
+     * Over a long all-loss run, probe starts stay at most one per PROBE_COOLDOWN_GAMES, and
+     * the mechanism keeps re-firing rather than unlocking only once.
      */
     @Test
-    void probeStartsRespectCooldownBudgetAndKeepFiring() {
+    void probeStartsRespectCooldownAndKeepFiring() {
         BuildOrderFactory factory = new BuildOrderFactory(4, Race.Zerg);
         List<GameResult> results = runLoop(factory, buildSyntheticLiongisShape(), "4Pool", 200, ALWAYS_LOSS, true);
         long probes = results.stream().filter(result -> result.probe).count();
@@ -88,20 +88,21 @@ public class OpenerSelectionLoopTest {
     }
 
     @Test
-    void lowEvidenceExposureStaysWithinBudget() {
+    void lowEvidenceExposureStaysWithinCap() {
         BuildOrderFactory factory = new BuildOrderFactory(4, Race.Zerg);
         int games = 400;
         List<GameResult> results = runLoop(factory, buildSyntheticLiongisShape(), "4Pool", games,
                 ALWAYS_LOSS, true);
         long exposure = results.stream().filter(result -> DORMANT.contains(result.opener)).count();
         assertTrue(exposure <= games * LearningManager.PROBE_EXPOSURE_FRACTION,
-                "low-evidence exposure exceeded its budget: " + exposure + " in " + games + " games");
-        assertTrue(exposure > 0, "the exposure budget must still allow dormant probes");
+                "low-evidence exposure exceeded its cap: " + exposure + " in " + games + " games");
+        assertTrue(exposure > 0, "the exposure cap must still allow dormant probes");
     }
 
     /**
      * A probed opener that wins its re-entry game gets a PROBE_TRIAL_GAMES trial, then is
-     * demoted and blocked until it goes dormant again. Incumbents are exempt from the cap.
+     * benched until a forced probe re-enters it after another dormant stretch. Incumbents
+     * are exempt from the cap.
      */
     @Test
     void probedOpenerThatWinsOnceIsCappedAtTrialGames() {
@@ -117,7 +118,7 @@ public class OpenerSelectionLoopTest {
     }
 
     @Test
-    void singleProbeWinCannotResumeAfterDemotion() {
+    void singleProbeWinCannotResumeOnceBenched() {
         BuildOrderFactory factory = new BuildOrderFactory(4, Race.Zerg);
         OutcomeModel firstDormantWin = new OutcomeModel() {
             private boolean won;
@@ -139,8 +140,8 @@ public class OpenerSelectionLoopTest {
                 .get()
                 .opener;
         long selections = results.stream().filter(result -> result.opener.equals(probed)).count();
-        assertTrue(selections <= LearningManager.PROBE_BURST_GAMES,
-                probed + " resumed after demotion and reached " + selections + " selections");
+        assertTrue(selections <= LearningManager.PROBE_TRIAL_GAMES,
+                probed + " resumed after being benched and reached " + selections + " selections");
     }
 
     @Test
@@ -283,11 +284,11 @@ public class OpenerSelectionLoopTest {
         List<GameResult> results = new ArrayList<>();
         for (int i = 0; i < games; i++) {
             String mapName = MAPS[record.getGameTimestamps().size() % MAPS.length];
-            String natural = naturalWinner(factory, record, lastGameOpener, mapName);
+            String natural = naturalUcbWinner(factory, record, lastGameOpener, mapName);
             String selected = policyEnabled
                     ? LearningManager.selectOpenerName(null, factory, record, "", lastGameOpener, OPPONENT, mapName)
                     : natural;
-            boolean probe = !selected.equals(natural) && !LearningManager.isDemotedBlocked(natural, record);
+            boolean probe = !selected.equals(natural) && !LearningManager.isBenched(natural, record);
             boolean won = outcome.isWin(selected, gamesSinceSelection(record, selected));
             lastGameOpener = appendGame(record, selected, won, mapName);
             results.add(new GameResult(selected, probe, won));
@@ -295,7 +296,7 @@ public class OpenerSelectionLoopTest {
         return results;
     }
 
-    private static String naturalWinner(BuildOrderFactory factory,
+    private static String naturalUcbWinner(BuildOrderFactory factory,
                                         OpponentRecord record,
                                         String lastGameOpener,
                                         String mapName) {
