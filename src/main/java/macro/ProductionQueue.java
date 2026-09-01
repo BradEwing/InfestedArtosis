@@ -60,6 +60,19 @@ public class ProductionQueue implements Iterable<Plan> {
         return count;
     }
 
+    /**
+     * Counts building plans of one type still waiting to be scheduled.
+     */
+    public int buildingPlanCount(UnitType unitType) {
+        int count = 0;
+        for (Plan plan : queue) {
+            if (plan.getType() == PlanType.BUILDING && plan.getPlannedUnit() == unitType) {
+                count += 1;
+            }
+        }
+        return count;
+    }
+
     public int minPriority() {
         int min = Integer.MAX_VALUE;
         for (Plan plan : queue) {

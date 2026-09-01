@@ -70,6 +70,15 @@ public class ResourceCount {
         return self.gas() - reservedGas; 
     }
 
+    /**
+     * Minerals mined and unspent, ignoring reservations. Reserved totals move when a plan is
+     * scheduled or a cancelled plan hands them back, so callers that must not oscillate read
+     * this instead.
+     */
+    public int minedMinerals() {
+        return self.minerals();
+    }
+
     private boolean cannotAfford(int mineralPrice, int gasPrice) { 
         return availableMinerals() < mineralPrice || availableGas() < gasPrice; 
     }

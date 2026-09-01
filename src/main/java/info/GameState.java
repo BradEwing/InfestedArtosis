@@ -979,9 +979,18 @@ public class GameState {
         return gameMap.getAccessibleWalkPositions();
     }
 
+    /**
+     * True when mined minerals outstrip what our larva-producing hatcheries can spend.
+     *
+     * <p>Reads completed hatcheries and unreserved minerals. Neither moves when a hatchery plan
+     * is queued or cancelled, so the value holds across the enqueue and the cancel that used to
+     * toggle it.
+     */
     public boolean isFloatingMinerals() {
-        return getGameTime().greaterThan(new Time(5, 0)) &&
-                resourceCount.availableMinerals() > ((plannedHatcheries + 1) * 350);
+        return HatcheryCapacity.isFloatingMinerals(
+                resourceCount.minedMinerals(),
+                hatcheryCount(),
+                getGameTime().greaterThan(new Time(5, 0)));
     }
 
     /**
@@ -995,6 +1004,37 @@ public class GameState {
 
     public boolean hasExcessHatchery() {
         return HatcheryCapacity.isExcess(hatcheryCount(), numLarva(), isFloatingMinerals());
+    }
+
+    /**
+     * True when an expansion hatchery queued now survives the frame and none is already waiting.
+     *
+     * <p>Every rule that deletes a queued hatchery plan contributes a term: the excess rule, the
+     * early rush reaction and the SCV rush reaction. No term depends on the opponent's race. The
+     * waiting count keeps a request that holds for many frames, such as floating minerals, from
+     * stacking a hatchery every frame.
+     */
+    public boolean mayQueueExpansionHatchery() {
+        return queuedHatcheryPlans() == 0
+                && HatcheryCapacity.isQueueable(hasExcessHatchery(), isEarlyRushed() || isScvRushed());
+    }
+
+    /**
+     * True when a macro hatchery queued now survives the frame and none is already waiting.
+     *
+     * <p>The early rush reaction deletes only expansion hatcheries, so it does not suppress this.
+     * The excess rule and the SCV rush reaction delete both kinds.
+     */
+    public boolean mayQueueMacroHatchery() {
+        return queuedHatcheryPlans() == 0
+                && HatcheryCapacity.isQueueable(hasExcessHatchery(), isScvRushed());
+    }
+
+    /**
+     * Hatchery building plans still waiting in the production queue.
+     */
+    public int queuedHatcheryPlans() {
+        return productionQueue.buildingPlanCount(UnitType.Zerg_Hatchery);
     }
 
     public void setGeyserAssignment(Unit unit) {

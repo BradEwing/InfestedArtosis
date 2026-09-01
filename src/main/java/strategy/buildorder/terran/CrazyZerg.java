@@ -65,8 +65,7 @@ public class CrazyZerg extends TerranBase {
         boolean thirdGas = gameState.canPlanExtractor() && baseCount >= 3 && hasLairOrHive && extractorCount < 3;
         boolean extraGas = gameState.canPlanExtractor() && baseCount > 3 && extractorCount < baseCount;
 
-        boolean floatingMinerals = gameState.getGameTime().greaterThan(new Time(5, 0)) &&
-                gameState.getResourceCount().availableMinerals() > ((plannedHatcheries + 1) * 350);
+        boolean floatingMinerals = gameState.isFloatingMinerals();
 
         boolean wantNatural = plannedAndCurrentHatcheries < 2 && droneCount >= 12;
         boolean wantThird   = plannedAndCurrentHatcheries < 3 && droneCount >= 14
