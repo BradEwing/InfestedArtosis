@@ -87,6 +87,18 @@ public class OpenerSelectionLoopTest {
         assertTrue(probes >= 2, "the gate must re-fire under sustained failure, measured " + probes + " probes");
     }
 
+    @Test
+    void lowEvidenceExposureStaysWithinBudget() {
+        BuildOrderFactory factory = new BuildOrderFactory(4, Race.Zerg);
+        int games = 400;
+        List<GameResult> results = runLoop(factory, buildSyntheticLiongisShape(), "4Pool", games,
+                ALWAYS_LOSS, true);
+        long exposure = results.stream().filter(result -> DORMANT.contains(result.opener)).count();
+        assertTrue(exposure <= games * LearningManager.PROBE_EXPOSURE_FRACTION,
+                "low-evidence exposure exceeded its budget: " + exposure + " in " + games + " games");
+        assertTrue(exposure > 0, "the exposure budget must still allow dormant probes");
+    }
+
     /**
      * A probed opener that wins its re-entry game gets a PROBE_TRIAL_GAMES trial, then is
      * demoted and blocked until it goes dormant again. Incumbents are exempt from the cap.
@@ -102,6 +114,43 @@ public class OpenerSelectionLoopTest {
             assertTrue(!DORMANT.contains(opener) || longestStreak <= LearningManager.PROBE_TRIAL_GAMES,
                     opener + " held the slot for " + longestStreak + " consecutive games after re-entry");
         }
+    }
+
+    @Test
+    void singleProbeWinCannotResumeAfterDemotion() {
+        BuildOrderFactory factory = new BuildOrderFactory(4, Race.Zerg);
+        OutcomeModel firstDormantWin = new OutcomeModel() {
+            private boolean won;
+
+            @Override
+            public boolean isWin(String opener, int gamesSinceLastSelection) {
+                if (!won && DORMANT.contains(opener)) {
+                    won = true;
+                    return true;
+                }
+                return false;
+            }
+        };
+        List<GameResult> results = runLoop(factory, buildSyntheticLiongisShape(), "4Pool",
+                LearningManager.PROBE_DORMANT_GAMES - 1, firstDormantWin, true);
+        String probed = results.stream()
+                .filter(result -> result.won)
+                .findFirst()
+                .get()
+                .opener;
+        long selections = results.stream().filter(result -> result.opener.equals(probed)).count();
+        assertTrue(selections <= LearningManager.PROBE_BURST_GAMES,
+                probed + " resumed after demotion and reached " + selections + " selections");
+    }
+
+    @Test
+    void organicReentryDoesNotStarveAnotherDormantOpener() {
+        BuildOrderFactory factory = new BuildOrderFactory(4, Race.Zerg);
+        OpponentRecord record = buildSyntheticLiongisShape();
+        appendGame(record, "12Pool", false, MAPS[record.getGameTimestamps().size() % MAPS.length]);
+        List<GameResult> results = runLoop(factory, record, "12Pool", 60, ALWAYS_LOSS, true);
+        assertTrue(results.stream().anyMatch(result -> result.opener.equals("12Hatch")),
+                "an organic 12Pool re-entry must not starve 12Hatch");
     }
 
     /**

@@ -19,12 +19,17 @@ final class ArmSelectionLog {
     private final int reEntryAge;
     private final int trialCount;
     private final int trialWins;
+    private final boolean lowEvidenceTrial;
+    private final int recentTrialGames;
 
-    private ArmSelectionLog(int gamesSinceLastSelection, int reEntryAge, int trialCount, int trialWins) {
+    private ArmSelectionLog(int gamesSinceLastSelection, int reEntryAge, int trialCount, int trialWins,
+                            boolean lowEvidenceTrial, int recentTrialGames) {
         this.gamesSinceLastSelection = gamesSinceLastSelection;
         this.reEntryAge = reEntryAge;
         this.trialCount = trialCount;
         this.trialWins = trialWins;
+        this.lowEvidenceTrial = lowEvidenceTrial;
+        this.recentTrialGames = recentTrialGames;
     }
 
     /**
@@ -36,7 +41,7 @@ final class ArmSelectionLog {
         List<Long> selectionTimestamps = new ArrayList<>(record.getWinTimestamps());
         selectionTimestamps.addAll(record.getLossTimestamps());
         if (selectionTimestamps.isEmpty()) {
-            return new ArmSelectionLog(NEVER_SELECTED, NEVER_SELECTED, 0, 0);
+            return new ArmSelectionLog(NEVER_SELECTED, NEVER_SELECTED, 0, 0, true, 0);
         }
         Collections.sort(selectionTimestamps);
         Set<Long> winTimestamps = new HashSet<>(record.getWinTimestamps());
@@ -61,7 +66,18 @@ final class ArmSelectionLog {
         int newestAge = age(selectionTimestamps.get(selectionTimestamps.size() - 1), sortedGameTimestamps);
         int reEntryAge = age(selectionTimestamps.get(reEntryIndex), sortedGameTimestamps);
         int trialCount = selectionTimestamps.size() - reEntryIndex;
-        return new ArmSelectionLog(newestAge, reEntryAge, trialCount, trialWins);
+        long reEntryTimestamp = selectionTimestamps.get(reEntryIndex);
+        boolean lowEvidenceTrial = (reEntryIndex > 0 || selectionTimestamps.size() <= LearningManager.PROBE_BURST_GAMES)
+                && record.discountedGamesBefore(reEntryTimestamp, gameTimestamps)
+                < LearningManager.PROBE_LOW_EVIDENCE_GAMES;
+        int recentTrialGames = 0;
+        for (int i = reEntryIndex; i < selectionTimestamps.size(); i++) {
+            if (age(selectionTimestamps.get(i), sortedGameTimestamps) < LearningManager.PROBE_EXPOSURE_WINDOW_GAMES) {
+                recentTrialGames++;
+            }
+        }
+        return new ArmSelectionLog(newestAge, reEntryAge, trialCount, trialWins,
+                lowEvidenceTrial, recentTrialGames);
     }
 
     private static int age(long timestamp, List<Long> sortedGameTimestamps) {
@@ -82,5 +98,13 @@ final class ArmSelectionLog {
 
     int trialWins() {
         return trialWins;
+    }
+
+    boolean lowEvidenceTrial() {
+        return lowEvidenceTrial;
+    }
+
+    int recentTrialGames() {
+        return recentTrialGames;
     }
 }

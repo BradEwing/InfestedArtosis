@@ -70,6 +70,27 @@ public class Record implements UCBRecord {
         return discountedWins / discountedGames;
     }
 
+    double discountedGamesBefore(long timestamp, List<Long> gameTimestamps) {
+        List<Long> priorGames = gameTimestamps.stream()
+                .filter(gameTimestamp -> gameTimestamp < timestamp)
+                .collect(java.util.stream.Collectors.toList());
+        List<Long> sortedPriorGames = GlobalGameOrder.sortedAscending(priorGames);
+        double discountedGames = 0.0;
+        for (Long winTimestamp : winTimestamps) {
+            if (winTimestamp < timestamp) {
+                discountedGames += GlobalGameOrder.weight(UCBSelectionPolicy.GAMMA,
+                        winTimestamp, sortedPriorGames);
+            }
+        }
+        for (Long lossTimestamp : lossTimestamps) {
+            if (lossTimestamp < timestamp) {
+                discountedGames += GlobalGameOrder.weight(UCBSelectionPolicy.GAMMA,
+                        lossTimestamp, sortedPriorGames);
+            }
+        }
+        return discountedGames;
+    }
+
     public double index(int totalGames, List<Long> gameTimestamps) {
         if (totalGames == 0) {
             return Math.random();

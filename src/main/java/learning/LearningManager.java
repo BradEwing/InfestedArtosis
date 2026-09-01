@@ -46,6 +46,14 @@ public class LearningManager {
      */
     static final int PROBE_PROMOTION_WINS = 2;
 
+    static final double PROBE_LOW_EVIDENCE_GAMES = 3.0;
+
+    static final double PROBE_EXPOSURE_FRACTION = 0.15;
+
+    static final int PROBE_EXPOSURE_WINDOW_GAMES = 20;
+
+    static final int PROBE_BURST_GAMES = 3;
+
     private Config config;
 
     private static String READ_DIR = "bwapi-data/read/";
@@ -445,10 +453,11 @@ public class LearningManager {
         if (winner == null) {
             return null;
         }
-        if (isDemotedBlocked(winner, opponentRecord)) {
+        if (isDemotedBlocked(winner, opponentRecord) || isExposureBlocked(winner, opponentRecord)) {
             List<String> unblocked = playableOpeners
                     .stream()
                     .filter(opener -> !isDemotedBlocked(opener, opponentRecord))
+                    .filter(opener -> !isExposureBlocked(opener, opponentRecord))
                     .collect(Collectors.toList());
             if (unblocked.isEmpty()) {
                 return winner;
@@ -489,9 +498,14 @@ public class LearningManager {
                 continue;
             }
             ArmSelectionLog log = ArmSelectionLog.from(record, gameTimestamps, PROBE_DORMANT_GAMES);
-            if (log.reEntryAge() < PROBE_COOLDOWN_GAMES) {
+            if (log.lowEvidenceTrial() && log.trialWins() < PROBE_PROMOTION_WINS
+                    && log.reEntryAge() < PROBE_COOLDOWN_GAMES) {
                 return null;
             }
+        }
+        if (recentLowEvidenceExposure(opponentRecord)
+                >= Math.floor(PROBE_EXPOSURE_FRACTION * PROBE_EXPOSURE_WINDOW_GAMES)) {
+            return null;
         }
         List<String> eligible = new ArrayList<>();
         for (String opener : playableOpeners) {
@@ -526,9 +540,8 @@ public class LearningManager {
     }
 
     /**
-     * Returns whether the opener is blocked after a failed trial: it re-entered from dormancy,
-     * played at least PROBE_TRIAL_GAMES without earning PROBE_PROMOTION_WINS, and has not gone
-     * dormant again since.
+     * Returns whether a low-evidence opener is blocked after reaching the burst limit without
+     * earning enough wins for promotion.
      */
     static boolean isDemotedBlocked(String opener, OpponentRecord opponentRecord) {
         Record record = opponentRecord.getOpenerRecord().get(opener);
@@ -536,10 +549,37 @@ public class LearningManager {
             return false;
         }
         ArmSelectionLog log = ArmSelectionLog.from(record, opponentRecord.getGameTimestamps(), PROBE_DORMANT_GAMES);
-        if (log.gamesSinceLastSelection() >= PROBE_DORMANT_GAMES) {
+        return log.lowEvidenceTrial()
+                && log.trialCount() >= PROBE_BURST_GAMES
+                && log.trialWins() < PROBE_PROMOTION_WINS;
+    }
+
+    private static boolean isExposureBlocked(String opener, OpponentRecord opponentRecord) {
+        Record record = opponentRecord.getOpenerRecord().get(opener);
+        if (record == null || record.games() == 0) {
             return false;
         }
-        return log.trialCount() >= PROBE_TRIAL_GAMES && log.trialWins() < PROBE_PROMOTION_WINS;
+        ArmSelectionLog log = ArmSelectionLog.from(record, opponentRecord.getGameTimestamps(), PROBE_DORMANT_GAMES);
+        boolean enteringWithLowEvidence = log.gamesSinceLastSelection() >= PROBE_DORMANT_GAMES
+                && record.discountedGamesBefore(Long.MAX_VALUE, opponentRecord.getGameTimestamps())
+                < PROBE_LOW_EVIDENCE_GAMES;
+        return enteringWithLowEvidence && recentLowEvidenceExposure(opponentRecord)
+                >= Math.floor(PROBE_EXPOSURE_FRACTION * PROBE_EXPOSURE_WINDOW_GAMES);
+    }
+
+    private static int recentLowEvidenceExposure(OpponentRecord opponentRecord) {
+        int recentExposure = 0;
+        for (Record record : opponentRecord.getOpenerRecord().values()) {
+            if (record.games() == 0) {
+                continue;
+            }
+            ArmSelectionLog log = ArmSelectionLog.from(record, opponentRecord.getGameTimestamps(),
+                    PROBE_DORMANT_GAMES);
+            if (log.lowEvidenceTrial() && log.trialWins() < PROBE_PROMOTION_WINS) {
+                recentExposure += log.recentTrialGames();
+            }
+        }
+        return recentExposure;
     }
 
     /**
