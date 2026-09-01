@@ -48,7 +48,6 @@ class ProductionManagerTest {
         return new UnitPlan(UnitType.Zerg_Zergling, FRAME);
     }
 
-    /** Blocks the plans it was told to and records what the scan asked of it. */
     private static final class Recorder implements PlanScheduler {
 
         private final Map<Plan, PlanBlocker> blockers = new HashMap<>();

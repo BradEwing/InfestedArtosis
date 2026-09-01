@@ -197,7 +197,6 @@ public class ProductionManager {
         }
     }
 
-    /** Bounds how long a unit plan holds its cost ahead of income while its larva waits. */
     private void enforceUnitAheadSlot() {
         unitAheadSlot.reconcile(activeUnitPlans());
 
@@ -697,13 +696,11 @@ public class ProductionManager {
         }
     }
 
-    /** Places one plan, told whether a higher-priority plan is already waiting on the bank. */
     @FunctionalInterface
     interface PlanScheduler {
         PlanBlocker schedule(Plan plan, boolean bankClaimedAhead);
     }
 
-    /** What one scan did with the plans it examined, each list in priority order. */
     static final class ScanOutcome {
 
         final List<Plan> scheduled = new ArrayList<>();
@@ -711,11 +708,7 @@ public class ProductionManager {
         final List<Plan> requeued = new ArrayList<>();
     }
 
-    /**
-     * Examines every plan in priority order. A blocked plan never ends the scan, so an affordable
-     * plan behind it is placed the same frame; only a plan short of the bank counts against those
-     * behind it.
-     */
+    /** Scans every plan in priority order without stopping at blockers. */
     static ScanOutcome scanPlans(List<Plan> plansInPriorityOrder, PlanScheduler scheduler) {
         ScanOutcome outcome = new ScanOutcome();
         boolean bankClaimedAhead = false;
@@ -732,7 +725,6 @@ public class ProductionManager {
         return outcome;
     }
 
-    /** Only a plan short of minerals or gas would have spent the bank; every other blocker leaves it open. */
     static boolean claimsBank(PlanBlocker blocker) {
         return blocker == PlanBlocker.RESOURCES;
     }
@@ -963,7 +955,6 @@ public class ProductionManager {
         return null;
     }
 
-    // Allow the head-of-queue unit to hold its cost when income covers the shortfall within one build cycle
     private PlanBlocker scheduleUnitItem(Plan plan, boolean bankClaimedAhead) {
         UnitType unit = plan.getPlannedUnit();
         ResourceCount resourceCount = gameState.getResourceCount();
