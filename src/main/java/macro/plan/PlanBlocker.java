@@ -11,5 +11,24 @@ public enum PlanBlocker {
     NO_LARVA,
     NO_CREEP_COLONY,
     NO_PRODUCER,
-    UNSUPPORTED_PLAN_TYPE,
+    INSUFFICIENT_GATHERERS,
+    TECH_MISSING,
+    UNSUPPORTED_PLAN_TYPE;
+
+    /**
+     * The reason recorded when a sweep cancels a plan this blocker holds. Blockers without a
+     * reason of their own report the prerequisite as missing.
+     */
+    public PlanCancelReason cancelReason() {
+        switch (this) {
+            case INSUFFICIENT_GATHERERS:
+                return PlanCancelReason.INSUFFICIENT_GATHERERS;
+            case TECH_MISSING:
+                return PlanCancelReason.TECH_MISSING;
+            case NO_LARVA:
+                return PlanCancelReason.NO_LARVA;
+            default:
+                return PlanCancelReason.PREREQUISITE_MISSING;
+        }
+    }
 }

@@ -107,10 +107,19 @@ public class ProductionManager {
         gameState.getProductionQueue().removeWhere(
                 plan -> !canSchedulePlan(plan),
                 PlanCancelSource.PRODUCTION_IMPOSSIBLE_SWEEP,
-                gameState::setImpossiblePlan);
+                this::cancelSweptPlan);
 
         cancelImpossibleScheduledLurkerPlans();
         removePlansWithLaterPrerequisites();
+    }
+
+    /** Records the predicate the sweep failed on before the plan is retired. */
+    private void cancelSweptPlan(Plan plan) {
+        if (plan.getType() == PlanType.UNIT) {
+            PlanBlocker blocker = unitScheduleBlocker(plan.getPlannedUnit());
+            plan.setCancelSource(PlanCancelSource.PRODUCTION_IMPOSSIBLE_SWEEP, blocker.cancelReason());
+        }
+        gameState.setImpossiblePlan(plan);
     }
 
     private void cancelExcessHatcheryPlans() {
@@ -517,44 +526,55 @@ public class ProductionManager {
     }
 
     private boolean canScheduleUnit(UnitType unitType) {
-        TechProgression techProgression = gameState.getTechProgression();
+        return unitScheduleBlocker(unitType) == PlanBlocker.NONE;
+    }
 
-        final boolean hasFourOrMoreDrones = gameState.numGatherers() > 3;
+    /**
+     * The first gate a unit plan fails, or NONE. Units a tech building unlocks share their gate
+     * with the build order through AdvancedUnitEligibility, so a plan the sweep would cancel is
+     * never created.
+     */
+    private PlanBlocker unitScheduleBlocker(UnitType unitType) {
+        TechProgression techProgression = gameState.getTechProgression();
         final int numHatcheries = gameState.getBaseData().numHatcheries();
 
         switch (unitType) {
             case Zerg_Overlord:
             case Zerg_Drone:
-                return numHatcheries > 0;
+                return numHatcheries > 0 ? PlanBlocker.NONE : PlanBlocker.NO_PRODUCER;
             case Zerg_Zergling:
-                return techProgression.isPlannedSpawningPool() || techProgression.isSpawningPool();
-            case Zerg_Hydralisk:
-                return hasFourOrMoreDrones && (techProgression.isPlannedDen() || techProgression.isHydraliskDen());
+                if (techProgression.isPlannedSpawningPool() || techProgression.isSpawningPool()) {
+                    return PlanBlocker.NONE;
+                }
+                return PlanBlocker.TECH_MISSING;
             case Zerg_Lurker:
-                final boolean canScheduleLurker = techProgression.isPlannedLurker() || techProgression.isLurker();
-                if (!hasFourOrMoreDrones || !canScheduleLurker) {
-                    return false;
+                PlanBlocker lurkerBlocker = advancedUnitBlocker(unitType);
+                if (lurkerBlocker != PlanBlocker.NONE) {
+                    return lurkerBlocker;
                 }
                 int hydraliskCount = gameState.ourUnitCount(UnitType.Zerg_Hydralisk);
                 int assignedHydralisks = 0;
                 // TODO: Generalize for other unit morphs
                 for (Map.Entry<Unit, Plan> entry : gameState.getAssignedPlannedItems().entrySet()) {
-                    if (entry.getKey().getType() == UnitType.Zerg_Hydralisk && 
+                    if (entry.getKey().getType() == UnitType.Zerg_Hydralisk &&
                         entry.getValue().getPlannedUnit() == UnitType.Zerg_Lurker) {
                         assignedHydralisks++;
                     }
                 }
-                return hydraliskCount > assignedHydralisks;
+                return hydraliskCount > assignedHydralisks ? PlanBlocker.NONE : PlanBlocker.NO_PRODUCER;
+            case Zerg_Hydralisk:
             case Zerg_Mutalisk:
             case Zerg_Scourge:
-                return hasFourOrMoreDrones && (techProgression.isPlannedSpire() || techProgression.isSpire());
             case Zerg_Ultralisk:
-                return hasFourOrMoreDrones && (techProgression.isPlannedUltraliskCavern() || techProgression.isUltraliskCavern());
             case Zerg_Defiler:
-                return hasFourOrMoreDrones && (techProgression.isPlannedDefilerMound() || techProgression.isDefilerMound());
+                return advancedUnitBlocker(unitType);
             default:
-                return false;
+                return PlanBlocker.NO_PRODUCER;
         }
+    }
+
+    private PlanBlocker advancedUnitBlocker(UnitType unitType) {
+        return AdvancedUnitEligibility.blocker(unitType, gameState.getTechProgression(), gameState.numGatherers());
     }
 
     private boolean canScheduleBuilding(UnitType unitType) {

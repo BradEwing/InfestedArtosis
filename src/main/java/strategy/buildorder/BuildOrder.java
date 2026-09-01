@@ -13,12 +13,15 @@ import info.TechProgression;
 import info.UnitTypeCount;
 import info.map.BuildingPlanner;
 import lombok.Getter;
+import macro.AdvancedUnitEligibility;
 import macro.HatcheryCapacity;
 import macro.plan.BuildingPlan;
 import macro.plan.Plan;
+import macro.plan.PlanBlocker;
 import macro.plan.TechPlan;
 import macro.plan.UnitPlan;
 import macro.plan.UpgradePlan;
+import telemetry.PlanEvents;
 import util.Time;
 
 import java.util.ArrayList;
@@ -379,11 +382,17 @@ public abstract class BuildOrder {
 
     /**
      * Plans a unit that a tech building unlocked, ahead of the backlog. Queues at most one plan
-     * per call.
+     * per call, and none while the production sweep would cancel it the same frame.
      */
     protected List<Plan> planAdvancedUnit(GameState gameState, UnitType unitType) {
         List<Plan> plans = new ArrayList<>();
         if (gameState.queuedUnitPlanCount(unitType) > 0) {
+            return plans;
+        }
+        PlanBlocker blocker = AdvancedUnitEligibility.blocker(
+                unitType, gameState.getTechProgression(), gameState.numGatherers());
+        if (blocker != PlanBlocker.NONE) {
+            PlanEvents.withheld(unitType, blocker);
             return plans;
         }
         plans.add(planUnit(gameState, unitType, UnitPlan.ADVANCED_UNIT_PRIORITY));

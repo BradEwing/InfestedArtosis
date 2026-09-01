@@ -1,5 +1,6 @@
 package telemetry;
 
+import bwapi.UnitType;
 import macro.plan.Plan;
 import macro.plan.PlanBlocker;
 import macro.plan.PlanState;
@@ -75,5 +76,13 @@ public final class PlanEvents {
             return;
         }
         current.onBuildAheadEvict(holder, heldFrames, starvedBehind);
+    }
+
+    public static void withheld(UnitType unitType, PlanBlocker blocker) {
+        PlanEventSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onWithheld(unitType, blocker);
     }
 }
