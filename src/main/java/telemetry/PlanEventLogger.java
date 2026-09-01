@@ -34,6 +34,8 @@ public class PlanEventLogger implements PlanEventSink {
     private static final String EVENT_BLOCKED = "BLOCKED";
     private static final String EVENT_OPEN_AT_GAME_END = "OPEN_AT_GAME_END";
 
+    private static final String EVENT_RECURRING_CANCEL = "RECURRING_CANCEL";
+
     private static final String PLAN_HEADER = "frame,time,event,plan_id,plan_type,item,from_state,to_state,"
             + "cancel_reason,cancel_source,blocker,blocked_frames,priority,frames_in_state,age_frames,minerals,gas,"
             + "available_minerals,available_gas,supply_used_real,supply_total_real,larva,gatherers,queue_depth,"
@@ -53,6 +55,8 @@ public class PlanEventLogger implements PlanEventSink {
     private final Map<String, PlanTrace> traces = new HashMap<>();
     private final Map<String, Plan> openPlans = new LinkedHashMap<>();
     private final List<String> buffer = new ArrayList<>();
+
+    private final Map<String, PlanRecurrence> recurrences = new HashMap<>();
 
     private boolean disabled;
     private int currentFrame;
@@ -131,6 +135,9 @@ public class PlanEventLogger implements PlanEventSink {
             if (to == PlanState.COMPLETE || to == PlanState.CANCELLED) {
                 openPlans.remove(plan.getUuid());
             }
+            if (to == PlanState.CANCELLED && plan.getCancelSource() != null && recordRecurrence(plan)) {
+                buffer.add(row(plan, trace, EVENT_RECURRING_CANCEL, from, to, PlanBlocker.NONE, 0));
+            }
         } catch (Exception e) {
             disabled = true;
         }
@@ -152,6 +159,16 @@ public class PlanEventLogger implements PlanEventSink {
         } catch (Exception e) {
             disabled = true;
         }
+    }
+
+    /**
+     * Counts the cancellation against its item and cancel source inside a rolling window, so a
+     * repeated enqueue/cancel loop surfaces as its own event instead of recurring silently.
+     */
+    private boolean recordRecurrence(Plan plan) {
+        String key = plan.getName() + "|" + plan.getCancelSource();
+        PlanRecurrence recurrence = recurrences.computeIfAbsent(key, any -> new PlanRecurrence());
+        return recurrence.record(currentFrame);
     }
 
     private void endBlocker(Plan plan, PlanTrace trace) {

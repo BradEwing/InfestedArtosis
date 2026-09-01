@@ -5,6 +5,7 @@ import bwapi.UpgradeType;
 import info.BaseData;
 import info.GameState;
 import info.TechProgression;
+import macro.HatcheryCapacity;
 import macro.plan.Plan;
 
 import java.util.ArrayList;
@@ -48,7 +49,8 @@ public class OneHatchSpire extends ZergBase {
         boolean wantOverlordSpeed = needOverlordSpeed(gameState) && techProgression.canPlanOverlordSpeed();
 
 
-        boolean wantHatchery = behindOnHatchery(gameState) || gameState.isFloatingMinerals();
+        boolean wantHatchery = behindOnHatchery(gameState)
+                || HatcheryCapacity.isFloatingExpansion(gameState.isFloatingMinerals(), gameState.isEarlyRushed());
 
         boolean enemyHasSpire = gameState.enemyUnitCount(UnitType.Zerg_Spire) > 0;
 

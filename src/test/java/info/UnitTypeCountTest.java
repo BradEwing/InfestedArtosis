@@ -136,6 +136,6 @@ class UnitTypeCountTest {
 
         count.startBuildingMorph(UnitType.Zerg_Lair);
 
-        assertFalse(HatcheryCapacity.isBehind(depotCount(count), 1, false));
+        assertFalse(HatcheryCapacity.isBehind(depotCount(count), 1, false, false));
     }
 }

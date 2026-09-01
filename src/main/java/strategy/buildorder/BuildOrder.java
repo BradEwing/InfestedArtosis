@@ -518,27 +518,25 @@ public abstract class BuildOrder {
      * Reports if we must add a hatchery to keep parity with the enemy. Only the ZvZ build orders
      * use this rule.
      *
-     * @return true when the enemy has more resource depots and our hatcheries are not excess
+     * <p>Our total is the shared {@link GameState#hatcheryCount()} plus the hatcheries already
+     * queued, so one queued plan holds the request down instead of being re-requested every
+     * frame. No morphing term is needed: a morphing Lair keeps its Hatchery predecessor counted
+     * until the morph finishes.
+     *
+     * @return true when the enemy has more resource depots, our hatcheries are not excess, and
+     *     no reaction deletes expansions this frame
      */
     protected boolean behindOnHatchery(GameState gameState) {
         if (gameState.getOpponentRace() != Race.Zerg) {
             return false;
         }
 
-        int ourHatcheries = gameState.ourUnitCount(UnitType.Zerg_Hatchery);
-        int ourLairs = gameState.ourUnitCount(UnitType.Zerg_Lair);
-        int ourHives = gameState.ourUnitCount(UnitType.Zerg_Hive);
-        int ourPlanned = gameState.getPlannedHatcheries();
-        int morphingLairs = (int) gameState.ourMorphingCount(UnitType.Zerg_Lair);
-        
-        int ourTotal = ourHatcheries + ourLairs + ourHives + ourPlanned + morphingLairs;
+        int ourTotal = gameState.hatcheryCount() + Math.max(0, gameState.getPlannedHatcheries());
 
-        int enemyHatcheries = gameState.enemyUnitCount(UnitType.Zerg_Hatchery);
-        int enemyLairs = gameState.enemyUnitCount(UnitType.Zerg_Lair);
-        int enemyHives = gameState.enemyUnitCount(UnitType.Zerg_Hive);
-        int enemyTotal = enemyHatcheries + enemyLairs + enemyHives;
+        int enemyTotal = gameState.enemyResourceDepotCount();
 
-        return HatcheryCapacity.isBehind(ourTotal, enemyTotal, gameState.hasExcessHatchery());
+        return HatcheryCapacity.isBehind(ourTotal, enemyTotal, gameState.hasExcessHatchery(),
+                gameState.isEarlyRushed());
     }
 
     protected boolean behindOnBases(GameState gameState) {

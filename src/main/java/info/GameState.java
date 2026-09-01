@@ -713,12 +713,6 @@ public class GameState {
         return unitTypeCount.get(unitType);
     }
 
-    public int ourMorphingCount(UnitType unitType) {
-        return (int) plansMorphing.stream()
-            .filter(plan -> plan.getPlannedUnit() == unitType)
-            .count();
-    }
-
     /**
      * Counts unit plans of this type still waiting in the production queue. Unlike the planned
      * unit counts, this is derived from the live queue, so it cannot drift when a plan is
@@ -1028,8 +1022,20 @@ public class GameState {
                 resourceCount.availableMinerals() > ((plannedHatcheries + 1) * 350);
     }
 
+    /**
+     * Larva-producing hatcheries we control, counted once each: completed Hatcheries plus Lairs
+     * and Hives, whose morphing predecessor stays counted until the morph finishes. A base
+     * upgrading to a Lair still produces larva and still counts. Queued, scheduled and morphing
+     * plans are excluded: they produce no larva yet, and counting a queued plan here is what let
+     * an enqueue and the excess cancel disagree every frame. Both hatchery rules read this one
+     * accessor so the producer and the canceller cannot count differently again.
+     */
+    public int hatcheryCount() {
+        return ourUnitCount(UnitType.Zerg_Hatchery, UnitType.Zerg_Lair, UnitType.Zerg_Hive);
+    }
+
     public boolean hasExcessHatchery() {
-        return HatcheryCapacity.isExcess(baseData.numHatcheries(), numLarva(), isFloatingMinerals());
+        return HatcheryCapacity.isExcess(hatcheryCount(), numLarva(), isFloatingMinerals());
     }
 
     public void setGeyserAssignment(Unit unit) {
