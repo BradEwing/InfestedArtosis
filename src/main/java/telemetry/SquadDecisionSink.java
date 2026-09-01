@@ -29,6 +29,19 @@ public interface SquadDecisionSink {
     void onLockSuppressed(Squad squad, SquadLock lock);
 
     /**
+     * A split that commitment rules would have fragmented below the move out floor.
+     *
+     * <p>Fires on every declined split, committed squad or not: the gate applies unconditionally, and
+     * the {@code committed} column on the resulting row separates the two populations.
+     *
+     * @param squad squad whose split was declined
+     * @param moveOutThreshold strength each side needs to stay cleared to move out
+     * @param squadStrength strength of the squad before the split
+     * @param outlierStrength strength of the units that would have left for the sibling
+     */
+    void onSplitSuppressed(Squad squad, int moveOutThreshold, int squadStrength, int outlierStrength);
+
+    /**
      * The containment verdict for a squad that was eligible to enter an arc this frame.
      *
      * <p>canBreakContainment is only meaningful when shouldContain holds: the production expression

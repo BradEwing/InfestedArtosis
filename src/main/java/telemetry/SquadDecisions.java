@@ -51,4 +51,12 @@ public final class SquadDecisions {
         }
         current.onContainmentEvaluated(squad, shouldContain, canBreakContainment, entered);
     }
+
+    public static void splitSuppressed(Squad squad, int moveOutThreshold, int squadStrength, int outlierStrength) {
+        SquadDecisionSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onSplitSuppressed(squad, moveOutThreshold, squadStrength, outlierStrength);
+    }
 }
