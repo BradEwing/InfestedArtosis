@@ -86,6 +86,10 @@ public class BuildAheadSlot {
         return claims.size();
     }
 
+    public List<Plan> claimedPlans() {
+        return new ArrayList<>(claims.keySet());
+    }
+
     public void claim(Plan plan, int currentFrame, int predictedReadyFrame) {
         claims.put(plan, new Claim(currentFrame, deadline(currentFrame, predictedReadyFrame)));
     }

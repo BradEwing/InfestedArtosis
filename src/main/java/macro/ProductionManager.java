@@ -194,6 +194,8 @@ public class ProductionManager {
     private void enforceBuildAheadSlot() {
         buildAheadSlot.reconcile(activeBuildingPlans());
 
+        cancelUnexecutableBuildingClaims();
+
         for (Plan plan : buildAheadSlot.stalled(currentFrame)) {
             PlanState state = plan.getState();
             if (state != PlanState.SCHEDULE && state != PlanState.BUILDING) {
@@ -203,8 +205,6 @@ public class ProductionManager {
             PlanEvents.buildAheadEvicted(plan, buildAheadSlot.heldFrames(plan, currentFrame), starvedQueuedPlans());
             requeueStalledPlan(plan);
         }
-
-        cancelScheduledBuildingsMissingPrerequisites();
 
         for (Plan plan : buildAheadSlot.holdReportsDue(currentFrame)) {
             PlanEvents.buildAheadHold(plan, buildAheadSlot.heldFrames(plan, currentFrame), starvedQueuedPlans());
@@ -249,26 +249,37 @@ public class ProductionManager {
         gameState.getProductionQueue().add(plan);
     }
 
-    private void cancelScheduledBuildingsMissingPrerequisites() {
-        List<Plan> unexecutable = new ArrayList<>();
-        for (Plan plan : activeBuildingPlans()) {
-            if (plan.getType() != PlanType.BUILDING) {
-                continue;
-            }
-            PlanState state = plan.getState();
-            if (state != PlanState.SCHEDULE && state != PlanState.BUILDING) {
-                continue;
-            }
-            if (!canSchedulePlan(plan)) {
-                unexecutable.add(plan);
+    private void cancelUnexecutableBuildingClaims() {
+        Map<Plan, PlanCancelSource> unexecutable = new HashMap<>();
+        for (Plan plan : buildAheadSlot.claimedPlans()) {
+            PlanCancelSource source = buildAheadCancellationSource(
+                    plan,
+                    canSchedulePlan(plan),
+                    executorOf(plan) != null);
+            if (source != null) {
+                unexecutable.put(plan, source);
             }
         }
 
-        for (Plan plan : unexecutable) {
-            buildAheadSlot.release(plan);
+        for (Map.Entry<Plan, PlanCancelSource> entry : unexecutable.entrySet()) {
+            Plan plan = entry.getKey();
+            buildAheadSlot.releaseWithBackoff(plan, currentFrame);
             removeFromActivePlans(plan);
-            gameState.cancelPlan(executorOf(plan), plan, PlanCancelSource.PRODUCTION_SCHEDULED_PREREQUISITE_LOST);
+            gameState.cancelPlan(executorOf(plan), plan, entry.getValue());
         }
+    }
+
+    static PlanCancelSource buildAheadCancellationSource(
+            Plan plan,
+            boolean prerequisitesAvailable,
+            boolean executorAssigned) {
+        if (!prerequisitesAvailable) {
+            return PlanCancelSource.PRODUCTION_SCHEDULED_PREREQUISITE_LOST;
+        }
+        if (plan.getState() == PlanState.BUILDING && !executorAssigned) {
+            return PlanCancelSource.PRODUCTION_EXECUTOR_LOST;
+        }
+        return null;
     }
 
     private void removeFromActivePlans(Plan plan) {
@@ -842,16 +853,15 @@ public class ProductionManager {
 
         ResourceCount resourceCount = gameState.getResourceCount();
         int predictedReadyFrame = gameState.frameCanAffordUnit(building, currentFrame);
-        if (resourceCount.cannotAffordUnit(building)) {
-            if (hasHigherPriorityPending || buildAheadSlot.isOccupied()) {
-                return PlanBlocker.BUILD_AHEAD_SLOT_TAKEN;
-            }
-            if (BuildAheadSlot.isUnreachable(predictedReadyFrame)) {
-                return PlanBlocker.NO_INCOME;
-            }
-            if (buildAheadSlot.isInBackoff(building, currentFrame)) {
-                return PlanBlocker.BUILD_AHEAD_BACKOFF;
-            }
+        PlanBlocker buildAheadBlocker = buildAheadBlocker(
+                buildAheadSlot,
+                building,
+                currentFrame,
+                resourceCount.cannotAffordUnit(building),
+                hasHigherPriorityPending,
+                predictedReadyFrame);
+        if (buildAheadBlocker != PlanBlocker.NONE) {
+            return buildAheadBlocker;
         }
 
         if (!resolveBuildPosition(plan, building)) {
@@ -862,6 +872,28 @@ public class ProductionManager {
         resourceCount.reserveUnit(building);
         plan.setPredictedReadyFrame(predictedReadyFrame);
         plan.setState(PlanState.SCHEDULE);
+        return PlanBlocker.NONE;
+    }
+
+    static PlanBlocker buildAheadBlocker(
+            BuildAheadSlot slot,
+            UnitType building,
+            int frame,
+            boolean cannotAfford,
+            boolean hasHigherPriorityPending,
+            int predictedReadyFrame) {
+        if (slot.isInBackoff(building, frame)) {
+            return PlanBlocker.BUILD_AHEAD_BACKOFF;
+        }
+        if (!cannotAfford) {
+            return PlanBlocker.NONE;
+        }
+        if (hasHigherPriorityPending || slot.isOccupied()) {
+            return PlanBlocker.BUILD_AHEAD_SLOT_TAKEN;
+        }
+        if (BuildAheadSlot.isUnreachable(predictedReadyFrame)) {
+            return PlanBlocker.NO_INCOME;
+        }
         return PlanBlocker.NONE;
     }
 
@@ -1120,6 +1152,10 @@ public class ProductionManager {
                                 && gameState.getBaseData().isExtractorAtPosition(plan.getBuildPosition())) {
                             gameState.completePlan(unit, plan);
                         } else {
+                            if (plan.getState() == PlanState.BUILDING
+                                    && plan.getType() == PlanType.BUILDING) {
+                                buildAheadSlot.releaseWithBackoff(plan, currentFrame);
+                            }
                             gameState.cancelPlan(unit, plan, PlanCancelSource.PRODUCTION_EXECUTOR_LOST);
                         }
                     } else {
