@@ -79,6 +79,14 @@ public class ResourceCount {
         return self.minerals();
     }
 
+    /**
+     * Gas mined and unspent, ignoring reservations. Read alongside minedMinerals when a rule
+     * must not move on the frame a plan is scheduled.
+     */
+    public int minedGas() {
+        return self.gas();
+    }
+
     private boolean cannotAfford(int mineralPrice, int gasPrice) { 
         return availableMinerals() < mineralPrice || availableGas() < gasPrice; 
     }
@@ -182,10 +190,6 @@ public class ResourceCount {
 
     public boolean isFloatingMinerals() { 
         return availableMinerals() - availableGas() > 100; 
-    }
-
-    public boolean isFloatingGas() { 
-        return availableGas() - availableMinerals() > 150; 
     }
 
     public int getPlannedSupply() {

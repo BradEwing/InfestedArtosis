@@ -8,6 +8,7 @@ import bwem.Base;
 import bwem.Mineral;
 import info.GameState;
 import info.ResourceCount;
+import macro.GasBalance;
 import macro.plan.Plan;
 import macro.plan.PlanCancelSource;
 import macro.plan.PlanState;
@@ -35,6 +36,7 @@ public class WorkerManager {
     private HashSet<ManagedUnit> gasGatherers;
     private HashSet<ManagedUnit> larva;
     private HashSet<ManagedUnit> eggs = new HashSet<>();
+    private int lastGasReleaseFrame = 0;
 
     // Overlord takes 16 frames to hatch from egg
     // Buffered w/ 10 additional frames
@@ -446,12 +448,31 @@ public class WorkerManager {
 
     private void rebalanceCheck() {
         ResourceCount resourceCount = gameState.getResourceCount();
+        int gas = resourceCount.minedGas();
+        int minerals = resourceCount.minedMinerals();
+        int gasDemand = GasBalance.gasDemand(gameState.getProductionQueue())
+                + GasBalance.gasDemand(gameState.getPlansScheduled());
 
-        if (resourceCount.isFloatingGas()) {
-            cutGasHarvesting();
-        } else if (resourceCount.isFloatingMinerals()) {
+        if (GasBalance.isGasIdle(gas, minerals, gasDemand)) {
+            releaseGasWorker();
+        } else if (GasBalance.wantsGasWorkers(gas, minerals, gasDemand)) {
             saturateGeysers();
         }
+    }
+
+    /**
+     * Moves one gas worker back to minerals, at most once per release interval.
+     */
+    private void releaseGasWorker() {
+        int frame = game.getFrameCount();
+        if (gasGatherers.isEmpty() || !GasBalance.isReleaseDue(frame, lastGasReleaseFrame)) {
+            return;
+        }
+
+        ManagedUnit worker = gasGatherers.iterator().next();
+        gameState.clearAssignments(worker);
+        assignToMineral(worker);
+        lastGasReleaseFrame = frame;
     }
 
     /**
@@ -528,8 +549,8 @@ public class WorkerManager {
     }
 
     /**
-     * Cuts gas harvesting when gas is floating.
-     * Reassigns gas workers to maintain proper mineral/gas balance.
+     * Pulls every gas worker onto minerals. Only the SCV rush reaction cuts gas outright;
+     * ordinary rebalancing releases one worker per interval through releaseGasWorker.
      */
     private void cutGasHarvesting() {
         int gasWorkers = gameState.getGeyserWorkers();
