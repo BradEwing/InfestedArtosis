@@ -25,6 +25,7 @@ public class OpenerSelectionLoopTest {
 
     private static final String OPPONENT = "liongis";
     private static final int HISTORY_GAMES = 611;
+    private static final int SHAPE_GAMES = 200;
     private static final List<String> OPENERS = Arrays.asList("12Hatch", "12Pool", "4Pool", "9PoolSpeed", "Overpool");
     private static final Set<String> DORMANT = new HashSet<>(Arrays.asList("12Hatch", "12Pool", "9PoolSpeed"));
     private static final String[] MAPS = new String[14];
@@ -188,6 +189,64 @@ public class OpenerSelectionLoopTest {
         boolean isWin(String opener, int gamesSinceLastSelection);
     }
 
+    /**
+     * Against an opponent where 4Pool is clearly the best arm and the runner-up is close to
+     * worthless, the runner-up must stop receiving roughly half the games.
+     */
+    @Test
+    void nearWorthlessRunnerUpStopsReceivingHalfTheGames() {
+        BuildOrderFactory factory = new BuildOrderFactory(4, Race.Zerg);
+        List<GameResult> before = runLoop(factory, buildLiongisShapedRecord(), "4Pool", SHAPE_GAMES,
+                liongisSchedule(), LEGACY_EXCLUSION);
+        List<GameResult> after = runLoop(factory, buildLiongisShapedRecord(), "4Pool", SHAPE_GAMES,
+                liongisSchedule(), CURRENT_POLICY);
+        assertTrue(selectionCount(before, "Overpool") >= SHAPE_GAMES * 0.4,
+                "the legacy bar donates roughly half the games to the runner-up, measured "
+                        + selectionCount(before, "Overpool"));
+        assertTrue(selectionCount(after, "Overpool") <= SHAPE_GAMES * 0.25,
+                "the runner-up still receives close to half the games, measured "
+                        + selectionCount(after, "Overpool"));
+        assertTrue(maxConsecutiveGames(after, "4Pool") >= 2,
+                "4Pool must be allowed to repeat immediately so the repeat gets measured");
+    }
+
+    /**
+     * Against an opponent where 4Pool is clearly the worst arm, 4Pool gains no games and never
+     * repeats immediately.
+     */
+    @Test
+    void worstArmGainsNoGamesAndNeverRepeats() {
+        BuildOrderFactory factory = new BuildOrderFactory(4, Race.Zerg);
+        List<GameResult> before = runLoop(factory, buildDaveChurchillShapedRecord(), "4Pool", SHAPE_GAMES,
+                daveChurchillSchedule(), LEGACY_EXCLUSION);
+        List<GameResult> after = runLoop(factory, buildDaveChurchillShapedRecord(), "4Pool", SHAPE_GAMES,
+                daveChurchillSchedule(), CURRENT_POLICY);
+        assertTrue(selectionCount(after, "4Pool") <= selectionCount(before, "4Pool"),
+                "4Pool takes games it did not take under the legacy bar, measured " + selectionCount(after, "4Pool")
+                        + " after against " + selectionCount(before, "4Pool") + " before");
+        assertTrue(maxConsecutiveGames(after, "4Pool") <= 1,
+                "4Pool repeats immediately against an opponent where it is the worst arm");
+    }
+
+    /**
+     * Against an opponent where 4Pool never loses and the runner-up is respectable, 4Pool's
+     * share rises past the half the unconditional bar caps it at.
+     */
+    @Test
+    void dominantArmShareRisesPastHalfTheGames() {
+        BuildOrderFactory factory = new BuildOrderFactory(4, Race.Zerg);
+        List<GameResult> before = runLoop(factory, buildTomasCereShapedRecord(), "4Pool", SHAPE_GAMES,
+                tomasCereSchedule(), LEGACY_EXCLUSION);
+        List<GameResult> after = runLoop(factory, buildTomasCereShapedRecord(), "4Pool", SHAPE_GAMES,
+                tomasCereSchedule(), CURRENT_POLICY);
+        assertTrue(selectionCount(before, "4Pool") <= SHAPE_GAMES / 2,
+                "the legacy bar caps 4Pool at half the games, measured "
+                        + selectionCount(before, "4Pool"));
+        assertTrue(selectionCount(after, "4Pool") > SHAPE_GAMES / 2,
+                "4Pool keeps less than half the games against an opponent it never loses to, measured "
+                        + selectionCount(after, "4Pool"));
+    }
+
     private static final class GameResult {
         private final String opener;
         private final boolean probe;
@@ -275,19 +334,63 @@ public class OpenerSelectionLoopTest {
         return opener;
     }
 
+    private interface OpenerSelector {
+        String select(BuildOrderFactory factory, OpponentRecord record, String lastGameOpener, String mapName);
+    }
+
+    private static final OpenerSelector CURRENT_POLICY = (factory, record, lastGameOpener, mapName) ->
+        LearningManager.selectOpenerName(null, factory, record, "", lastGameOpener, OPPONENT, mapName);
+
+    private static final OpenerSelector LEGACY_EXCLUSION = OpenerSelectionLoopTest::legacyExclusionSelect;
+
+    private static final OpenerSelector NATURAL_ONLY = (factory, record, lastGameOpener, mapName) ->
+        naturalUcbWinner(factory, record, lastGameOpener, mapName);
+
+    /**
+     * Selection as it stood while the back-to-back 4Pool exclusion was unconditional: 4Pool is
+     * removed from the candidates whenever the previous game was 4Pool, then the dormant
+     * re-probe policy applies.
+     */
+    private static String legacyExclusionSelect(BuildOrderFactory factory,
+                                                OpponentRecord record,
+                                                String lastGameOpener,
+                                                String mapName) {
+        List<String> playable = record.getOpenerRecord()
+                .keySet()
+                .stream()
+                .filter(opener -> factory.isPlayableOpener(factory.getByName(opener)))
+                .filter(opener -> !(lastGameOpener.equals("4Pool") && opener.equals("4Pool")))
+                .collect(Collectors.toList());
+        if (playable.isEmpty()) {
+            return null;
+        }
+        String ucbWinner = WeightedUCBCalculator.findBestStrategy(playable, mapName, OPPONENT,
+                record.getMapSpecificOpenerRecord(), record.getOpenerRecord(),
+                record.totalGames(), record.getGameTimestamps());
+        return LearningManager.applyDormantReprobePolicy(ucbWinner, playable, record, mapName, OPPONENT);
+    }
+
     private static List<GameResult> runLoop(BuildOrderFactory factory,
                                             OpponentRecord record,
                                             String lastGameOpener,
                                             int games,
                                             OutcomeModel outcome,
                                             boolean policyEnabled) {
+        return runLoop(factory, record, lastGameOpener, games, outcome,
+                policyEnabled ? CURRENT_POLICY : NATURAL_ONLY);
+    }
+
+    private static List<GameResult> runLoop(BuildOrderFactory factory,
+                                            OpponentRecord record,
+                                            String lastGameOpener,
+                                            int games,
+                                            OutcomeModel outcome,
+                                            OpenerSelector selector) {
         List<GameResult> results = new ArrayList<>();
         for (int i = 0; i < games; i++) {
             String mapName = MAPS[record.getGameTimestamps().size() % MAPS.length];
             String natural = naturalUcbWinner(factory, record, lastGameOpener, mapName);
-            String selected = policyEnabled
-                    ? LearningManager.selectOpenerName(null, factory, record, "", lastGameOpener, OPPONENT, mapName)
-                    : natural;
+            String selected = selector.select(factory, record, lastGameOpener, mapName);
             boolean probe = !selected.equals(natural) && !LearningManager.isBenched(natural, record);
             boolean won = outcome.isWin(selected, gamesSinceSelection(record, selected));
             lastGameOpener = appendGame(record, selected, won, mapName);
@@ -337,5 +440,132 @@ public class OpenerSelectionLoopTest {
             longest = Math.max(longest, current);
         }
         return longest;
+    }
+
+    private static int selectionCount(List<GameResult> results, String opener) {
+        return (int) results.stream().filter(result -> result.opener.equals(opener)).count();
+    }
+
+    /**
+     * Deterministic outcome model that gives each opener a fixed win rate: the j-th game an
+     * opener plays is a win when j modulo its period falls inside its win count.
+     */
+    private static final class WinSchedule implements OutcomeModel {
+        private final Map<String, Integer> wins = new HashMap<>();
+        private final Map<String, Integer> period = new HashMap<>();
+        private final Map<String, Integer> played = new HashMap<>();
+
+        private void rate(String opener, int winCount, int periodGames) {
+            wins.put(opener, winCount);
+            period.put(opener, periodGames);
+        }
+
+        @Override
+        public boolean isWin(String opener, int gamesSinceLastSelection) {
+            int game = played.merge(opener, 1, Integer::sum);
+            return game % period.get(opener) < wins.get(opener);
+        }
+    }
+
+    private static OpponentRecord buildShapedHistory(List<String> rotation,
+                                                     Map<Integer, String> placements,
+                                                     int games,
+                                                     WinSchedule schedule) {
+        Map<String, Record> openerRecords = new HashMap<>();
+        for (String opener : OPENERS) {
+            openerRecords.put(opener, Record.builder().opener(opener).wins(0).losses(0).build());
+        }
+        OpponentRecord record = OpponentRecord.builder()
+                .name(OPPONENT)
+                .race(Race.Zerg.toString())
+                .wins(0)
+                .losses(0)
+                .openerRecord(openerRecords)
+                .buildOrderRecord(new HashMap<>())
+                .mapSpecificOpenerRecord(new HashMap<>())
+                .mapSpecificBuildOrderRecord(new HashMap<>())
+                .build();
+        for (int game = 1; game <= games; game++) {
+            String opener = placements.containsKey(game)
+                    ? placements.get(game)
+                    : rotation.get((game - 1) % rotation.size());
+            appendGame(record, opener, schedule.isWin(opener, 0), MAPS[game % MAPS.length]);
+        }
+        return record;
+    }
+
+    /**
+     * Liongis shape: 4Pool wins three games in eight, Overpool one in twenty-five, every other
+     * opener loses always.
+     */
+    private static OpponentRecord buildLiongisShapedRecord() {
+        Map<Integer, String> placements = new HashMap<>();
+        placements.put(40, "12Pool");
+        placements.put(200, "12Pool");
+        placements.put(360, "12Pool");
+        placements.put(70, "9PoolSpeed");
+        placements.put(110, "12Hatch");
+        placements.put(500, "12Hatch");
+        return buildShapedHistory(Arrays.asList("4Pool", "Overpool"), placements, HISTORY_GAMES,
+                liongisSchedule());
+    }
+
+    private static WinSchedule liongisSchedule() {
+        WinSchedule schedule = new WinSchedule();
+        schedule.rate("4Pool", 3, 8);
+        schedule.rate("Overpool", 1, 25);
+        schedule.rate("12Pool", 0, 8);
+        schedule.rate("9PoolSpeed", 0, 8);
+        schedule.rate("12Hatch", 0, 8);
+        return schedule;
+    }
+
+    /**
+     * Dave Churchill shape: every opener is weak, 12Pool and 9PoolSpeed are the least weak, and
+     * 4Pool wins one game in sixteen.
+     */
+    private static OpponentRecord buildDaveChurchillShapedRecord() {
+        Map<Integer, String> placements = new HashMap<>();
+        placements.put(25, "12Hatch");
+        placements.put(150, "12Hatch");
+        placements.put(275, "12Hatch");
+        return buildShapedHistory(Arrays.asList("12Pool", "Overpool", "12Pool", "4Pool", "12Pool",
+                "Overpool", "12Pool", "4Pool", "12Pool", "9PoolSpeed"), placements, 300,
+                daveChurchillSchedule());
+    }
+
+    private static WinSchedule daveChurchillSchedule() {
+        WinSchedule schedule = new WinSchedule();
+        schedule.rate("4Pool", 1, 16);
+        schedule.rate("12Pool", 1, 8);
+        schedule.rate("Overpool", 1, 6);
+        schedule.rate("9PoolSpeed", 1, 9);
+        schedule.rate("12Hatch", 0, 8);
+        return schedule;
+    }
+
+    /**
+     * Tomas Cere shape: 4Pool never loses, 9PoolSpeed wins seven games in ten, every other
+     * opener loses always.
+     */
+    private static OpponentRecord buildTomasCereShapedRecord() {
+        Map<Integer, String> placements = new HashMap<>();
+        placements.put(3, "Overpool");
+        placements.put(30, "12Pool");
+        placements.put(60, "12Hatch");
+        placements.put(90, "12Pool");
+        placements.put(140, "12Hatch");
+        return buildShapedHistory(Arrays.asList("4Pool", "9PoolSpeed"), placements, 170,
+                tomasCereSchedule());
+    }
+
+    private static WinSchedule tomasCereSchedule() {
+        WinSchedule schedule = new WinSchedule();
+        schedule.rate("4Pool", 1, 1);
+        schedule.rate("9PoolSpeed", 7, 10);
+        schedule.rate("Overpool", 0, 8);
+        schedule.rate("12Pool", 0, 8);
+        schedule.rate("12Hatch", 0, 8);
+        return schedule;
     }
 }

@@ -52,6 +52,17 @@ public class LearningManager {
 
     static final int PROBE_EXPOSURE_WINDOW_GAMES = 20;
 
+    /**
+     * Discounted win rate 4Pool must hold over the best alternative opener before it keeps the
+     * slot instead of donating it to the bandit's next choice.
+     */
+    static final double REPEAT_DONATION_WIN_RATE = 0.25;
+
+    /**
+     * Discounted games 4Pool must hold before its lead over the best alternative opener counts.
+     */
+    static final double REPEAT_MIN_DISCOUNTED_GAMES = 5.0;
+
     private Config config;
 
     private static String READ_DIR = "bwapi-data/read/";
@@ -408,8 +419,11 @@ public class LearningManager {
                 .keySet()
                 .stream()
                 .filter(openerName -> buildOrderFactory.isPlayableOpener(buildOrderFactory.getByName(openerName)))
-                .filter(openerName -> !(lastGameOpener.equals("4Pool") && openerName.equals("4Pool")))
                 .collect(Collectors.toList());
+
+        if (isBarredFromImmediateRepeat(lastGameOpener, playableOpeners, opponentRecord)) {
+            playableOpeners.removeIf(openerName -> openerName.equals(lastGameOpener));
+        }
 
         if (playableOpeners.isEmpty()) {
             List<Record> allRecords = opponentRecord.getOpenerRecord()
@@ -436,6 +450,39 @@ public class LearningManager {
             opponentRecord.getGameTimestamps()
         );
         return applyDormantReprobePolicy(ucbWinner, playableOpeners, opponentRecord, mapName, opponentName);
+    }
+
+    /**
+     * Returns whether 4Pool is barred from re-selection this game. The bar holds while 4Pool's
+     * discounted record is too thin to trust, and while donating the slot is cheap: the best
+     * alternative opener's discounted win rate stays within the repeat donation margin of
+     * 4Pool's.
+     */
+    static boolean isBarredFromImmediateRepeat(String lastGameOpener,
+                                               List<String> playableOpeners,
+                                               OpponentRecord opponentRecord) {
+        if (!"4Pool".equals(lastGameOpener) || !playableOpeners.contains(lastGameOpener)) {
+            return false;
+        }
+        List<Long> gameTimestamps = opponentRecord.getGameTimestamps();
+        Map<String, Record> openerRecords = opponentRecord.getOpenerRecord();
+        Record fourPool = openerRecords.get(lastGameOpener);
+        if (fourPool == null
+                || fourPool.discountedGames(gameTimestamps) < REPEAT_MIN_DISCOUNTED_GAMES) {
+            return true;
+        }
+        double fourPoolMean = fourPool.discountedMean(gameTimestamps);
+        double bestAlternativeMean = 0.0;
+        for (String opener : playableOpeners) {
+            if (opener.equals(lastGameOpener)) {
+                continue;
+            }
+            Record record = openerRecords.get(opener);
+            if (record != null) {
+                bestAlternativeMean = Math.max(bestAlternativeMean, record.discountedMean(gameTimestamps));
+            }
+        }
+        return fourPoolMean - bestAlternativeMean <= REPEAT_DONATION_WIN_RATE;
     }
 
     /**
