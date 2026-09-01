@@ -128,10 +128,6 @@ public class OneHatchSpire extends ZergBase {
         return plans;
     }
 
-    /**
-     * Orders the units this frame derives. Spire units never displace the zergling and drone
-     * backlog: a queued Spire unit yields no plan, and ending the pass there stalled the backlog.
-     */
     static List<UnitType> unitsToPlan(boolean wantScourge, boolean wantMutalisk, boolean wantZergling, boolean wantDrone) {
         List<UnitType> unitTypes = new ArrayList<>();
         if (wantScourge) {
