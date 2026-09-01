@@ -99,6 +99,7 @@ public class SquadManager {
     private static final int TARGETING_RADIUS = 256;
     public static final int GROUND_SPLIT_DISTANCE = 256;
     public static final int AIR_SPLIT_DISTANCE = 768;
+    private static final int COMMITMENT_RELEASE_DISTANCE = 512;
 
     public SquadManager(Game game, GameState gameState) {
         this.game = game;
@@ -501,6 +502,11 @@ public class SquadManager {
             List<ManagedUnit> outliers = squad.findOutliers(threshold);
             if (outliers.isEmpty()) continue;
 
+            int moveOutThreshold = calculateMoveOutThreshold(squad);
+            if (!splitKeepsBothSidesCommittable(squadStrength(squad), strengthOf(squad, outliers), moveOutThreshold)) {
+                continue;
+            }
+
             Squad child = squad.createSibling();
             child.inheritStateFrom(squad);
             child.setSplitFrame(currentFrame);
@@ -513,6 +519,41 @@ public class SquadManager {
         }
 
         fightSquads.addAll(toAdd);
+    }
+
+    /**
+     * Returns true when both sides of a proposed split would still clear the move out threshold.
+     *
+     * <p>splitSquads runs before evaluateSquadRole in the same frame, so a split that drops either side under
+     * the threshold hands both fragments to the launch gate on the tick they are created and abandons an attack
+     * the whole squad was cleared to make. Splitting is a formation fix, not a reason to give up ground.
+     *
+     * @param squadStrength strength of the squad before the split
+     * @param outlierStrength strength of the units leaving for the sibling squad
+     * @param moveOutThreshold strength each side needs to stay cleared to move out
+     * @return true if the split is safe to perform
+     */
+    static boolean splitKeepsBothSidesCommittable(int squadStrength, int outlierStrength, int moveOutThreshold) {
+        return outlierStrength >= moveOutThreshold && squadStrength - outlierStrength >= moveOutThreshold;
+    }
+
+    private int strengthOf(Squad squad, List<ManagedUnit> units) {
+        if (squad.isAirSquad() && squad.hasOnly(UnitType.Zerg_Scourge)) {
+            return units.size();
+        }
+
+        int supply = 0;
+        for (ManagedUnit managedUnit : units) {
+            supply += managedUnit.getUnitType().supplyRequired();
+        }
+        return supply;
+    }
+
+    private int squadStrength(Squad squad) {
+        if (squad.isAirSquad() && squad.hasOnly(UnitType.Zerg_Scourge)) {
+            return squad.size();
+        }
+        return squad.getSupply();
     }
 
     private List<Unit> enemyUnitsNearSquad(Squad squad) {
@@ -538,6 +579,7 @@ public class SquadManager {
 
     private void rallySquad(Squad squad) {
         squad.setStatus(SquadStatus.RALLY);
+        squad.clearCommitment();
         Position rallyPoint = this.getRallyPoint(squad);
         for (ManagedUnit managedUnit: squad.getMembers()) {
             managedUnit.setRallyPoint(rallyPoint);
@@ -601,25 +643,72 @@ public class SquadManager {
             return;
         }
 
-        int moveOutThreshold = calculateMoveOutThreshold(squad);
-        int squadStrength;
-        if (squad.isAirSquad() && squad.hasOnly(UnitType.Zerg_Scourge)) {
-            squadStrength = squad.size();
-        } else {
-            squadStrength = squad.getSupply();
-        }
-        if (closeThreats) {
-            simulateFightSquad(squad);
-        } else if (squadStrength >= moveOutThreshold) {
-            if (!tryEnterContainment(squad)) {
-                simulateFightSquad(squad);
-            }
-        } else if (squadStatus == SquadStatus.FIGHT) {
-            simulateFightSquad(squad);
-        } else {
+        SquadAction action = chooseSquadAction(closeThreats, squadStrength(squad), calculateMoveOutThreshold(squad),
+                squadStatus, squad.isCommitted(), distanceFromRallyPoint(squad));
+
+        if (action == SquadAction.RALLY) {
             clearCombatSimSnapshot(squad);
             rallySquad(squad);
+            return;
         }
+
+        squad.commit(game.getFrameCount());
+        if (action == SquadAction.LAUNCH && tryEnterContainment(squad)) {
+            return;
+        }
+
+        simulateFightSquad(squad);
+    }
+
+    /**
+     * Branch {@link #evaluateSquadRole} takes for a fight squad that is not already containing.
+     */
+    enum SquadAction {
+        SIMULATE,
+        LAUNCH,
+        RALLY
+    }
+
+    /**
+     * Picks the branch for a fight squad that is not already containing.
+     *
+     * <p>The move out threshold is a launch permission, not a recall rule. A squad already cleared to move out
+     * keeps acting while it is committed and still out on the map, so losses or a split dropping it under the
+     * threshold do not send it back to the global rally point with no enemy anywhere near it. Commitment is
+     * released by {@link #rallySquad} and, for a squad that has walked itself home, by the release distance.
+     *
+     * @param closeThreats true when enemies sit inside the squad detection radius
+     * @param squadStrength supply of the squad, or unit count for a Scourge only squad
+     * @param moveOutThreshold strength the squad needs to be cleared to move out
+     * @param status status the squad held entering the tick
+     * @param committed true when the squad has been cleared to act and has not been recalled since
+     * @param distanceFromRallyPoint pixels between the squad center and the global rally point
+     * @return branch to take
+     */
+    static SquadAction chooseSquadAction(boolean closeThreats, int squadStrength, int moveOutThreshold,
+                                         SquadStatus status, boolean committed, double distanceFromRallyPoint) {
+        if (closeThreats) {
+            return SquadAction.SIMULATE;
+        }
+        if (squadStrength >= moveOutThreshold) {
+            return SquadAction.LAUNCH;
+        }
+        if (status == SquadStatus.FIGHT) {
+            return SquadAction.SIMULATE;
+        }
+        if (committed && distanceFromRallyPoint > COMMITMENT_RELEASE_DISTANCE) {
+            return SquadAction.SIMULATE;
+        }
+        return SquadAction.RALLY;
+    }
+
+    private double distanceFromRallyPoint(Squad squad) {
+        Position rallyPoint = gameState.getSquadRallyPoint();
+        Position center = squad.getCenter();
+        if (rallyPoint == null || center == null) {
+            return 0;
+        }
+        return center.getDistance(rallyPoint);
     }
 
     private int calculateMoveOutThreshold(Squad squad) {
