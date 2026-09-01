@@ -85,10 +85,7 @@ public abstract class Plan {
         setCancelSource(cancelSource, cancelSource.getReason());
     }
 
-    /**
-     * Stamps the source with a reason more specific than the source's default, so a sweep that
-     * checks several predicates records the one that failed. The first cancellation owns both.
-     */
+    /** Records a reason more specific than the source's default; the first cancellation wins. */
     public void setCancelSource(PlanCancelSource cancelSource, PlanCancelReason cancelReason) {
         if (this.state == PlanState.CANCELLED) {
             return;

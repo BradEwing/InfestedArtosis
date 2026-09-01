@@ -5,12 +5,8 @@ import info.TechProgression;
 import macro.plan.PlanBlocker;
 
 /**
- * The one rule that decides whether a unit a tech building unlocks may be planned this frame.
- *
- * <p>The build order asks before creating the plan and the impossible-plan sweep asks before
- * deleting it, so a plan is never created on a frame the sweep would end. Every input is
- * invariant under queueing or cancelling a unit plan: the tech flags move with building plans and
- * the gatherer count moves with drones, so neither side can switch the other on.
+ * Decides whether a unit a tech building unlocks may be planned this frame. The build order
+ * asks before creating the plan and the sweep asks before deleting it, so both agree.
  */
 public final class AdvancedUnitEligibility {
 
@@ -19,10 +15,6 @@ public final class AdvancedUnitEligibility {
     private AdvancedUnitEligibility() {
     }
 
-    /**
-     * @param gatherers drones assigned to gather this frame
-     * @return the first failing term, or NONE when the unit may be planned and scheduled
-     */
     public static PlanBlocker blocker(UnitType unitType, TechProgression techProgression, int gatherers) {
         if (!hasTech(unitType, techProgression)) {
             return PlanBlocker.TECH_MISSING;
@@ -33,9 +25,6 @@ public final class AdvancedUnitEligibility {
         return PlanBlocker.NONE;
     }
 
-    /**
-     * True once the tech building or research that unlocks the unit is planned or complete.
-     */
     static boolean hasTech(UnitType unitType, TechProgression techProgression) {
         switch (unitType) {
             case Zerg_Hydralisk:

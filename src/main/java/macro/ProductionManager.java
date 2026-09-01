@@ -529,11 +529,7 @@ public class ProductionManager {
         return unitScheduleBlocker(unitType) == PlanBlocker.NONE;
     }
 
-    /**
-     * The first gate a unit plan fails, or NONE. Units a tech building unlocks share their gate
-     * with the build order through AdvancedUnitEligibility, so a plan the sweep would cancel is
-     * never created.
-     */
+    /** The first gate a unit plan fails, or NONE; tech units share the gate with the build order. */
     private PlanBlocker unitScheduleBlocker(UnitType unitType) {
         TechProgression techProgression = gameState.getTechProgression();
         final int numHatcheries = gameState.getBaseData().numHatcheries();

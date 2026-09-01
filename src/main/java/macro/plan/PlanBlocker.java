@@ -15,10 +15,7 @@ public enum PlanBlocker {
     TECH_MISSING,
     UNSUPPORTED_PLAN_TYPE;
 
-    /**
-     * The reason recorded when a sweep cancels a plan this blocker holds. Blockers without a
-     * reason of their own report the prerequisite as missing.
-     */
+    /** The cancel reason a sweep records for a plan this blocker holds. */
     public PlanCancelReason cancelReason() {
         switch (this) {
             case INSUFFICIENT_GATHERERS:

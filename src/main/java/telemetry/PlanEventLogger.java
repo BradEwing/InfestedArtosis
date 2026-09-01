@@ -130,11 +130,7 @@ public class PlanEventLogger implements PlanEventSink {
         }
     }
 
-    /**
-     * Opens a withheld interval per unit type, closing it when the blocker changes. The interval
-     * ends when a plan for that unit is enqueued or the game ends, and writes a single row with
-     * its length, so a build order asking every frame produces one row per state change.
-     */
+    /** Opens a withheld interval per unit type and writes one row when it closes. */
     @Override
     public void onWithheld(UnitType unitType, PlanBlocker blocker) {
         if (disabled) {

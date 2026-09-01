@@ -15,13 +15,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Replays the frame order ProductionManager runs for a unit a tech building unlocks: the build
- * order asks for the unit, then the impossible-plan sweep deletes what it cannot schedule.
- *
- * <p>The producer modelled is BuildOrder.planAdvancedUnit and the canceller is the sweep behind
- * canScheduleUnit. Both read AdvancedUnitEligibility, so every rule that deletes the plan has the
- * same term in the producer's guard. The four games that logged 845 mutalisk cancels held a
- * complete Spire with three or fewer gatherers for the whole window.
+ * Replays the build order then sweep frame order for a tech unit and asserts every rule the
+ * sweep applies has the same term in the producer guard.
  */
 class AdvancedUnitQueueContractTest {
 
@@ -31,10 +26,6 @@ class AdvancedUnitQueueContractTest {
 
     private static final int GATHERER_FLOOR = AdvancedUnitEligibility.MIN_GATHERERS;
 
-    /**
-     * One game's mutalisk bookkeeping. Holds the quantities the game moves, the waiting plan the
-     * plan system moves, and the lifetime and reason of each cancelled plan.
-     */
     private static final class Board {
         private final TechProgression techProgression = new TechProgression();
         private final List<Integer> enqueuedAt = new ArrayList<>();
@@ -100,11 +91,6 @@ class AdvancedUnitQueueContractTest {
         return board;
     }
 
-    /**
-     * The measured loop: the Spire is complete and the gatherers sit at or below the floor. The
-     * old producer read only the Spire, so it enqueued, the sweep cancelled on the gatherer term
-     * the same frame, and the next frame repeated it.
-     */
     @Test
     void aCompleteSpireBelowTheGathererFloorCreatesNoPlan() {
         Board board = spireComplete(GATHERER_FLOOR - 1);
@@ -130,11 +116,6 @@ class AdvancedUnitQueueContractTest {
         assertEquals(0, board.lifetimes.size());
     }
 
-    /**
-     * The gatherers drop after the plan is queued. The sweep cancels it once, records the
-     * gatherer term rather than a missing prerequisite, and the producer stays quiet while the
-     * state holds.
-     */
     @Test
     void aSweptPlanIsNotRecreatedWhileTheStateHolds() {
         Board board = spireComplete(GATHERER_FLOOR);
@@ -164,11 +145,6 @@ class AdvancedUnitQueueContractTest {
         assertTrue(board.withheldBy.contains(PlanBlocker.TECH_MISSING));
     }
 
-    /**
-     * A full game at 24 frames per second with the gatherer count crossing the floor every 100
-     * frames. Each crossing below the floor costs one cancel and each crossing above costs one
-     * enqueue, so the totals follow the state changes and not the frame count.
-     */
     @Test
     void cancelsFollowStateChangesNotFrames() {
         Board board = spireComplete(GATHERER_FLOOR);
