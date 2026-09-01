@@ -7,7 +7,6 @@ import info.BaseData;
 import info.GameState;
 import info.TechProgression;
 import macro.plan.Plan;
-import util.Time;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -52,9 +51,8 @@ public class TwoHatchMuta extends TerranBase {
         boolean firstGas = gameState.canPlanExtractor() && techProgression.isSpawningPool() && extractorCount < 1;
         boolean secondGas = gameState.canPlanExtractor() && lairCount > 0;
 
-        // Check for floating resources (follows ThreeHatchLurker pattern)
-        boolean floatingMinerals = gameState.getGameTime().greaterThan(new Time(5, 0)) &&
-                gameState.getResourceCount().availableMinerals() > ((plannedHatcheries + 1) * 350);
+        // Check for floating resources
+        boolean floatingMinerals = gameState.isFloatingMinerals();
 
         // Base timing
         boolean wantNatural  = plannedAndCurrentHatcheries < 2 && droneCount >= 12;

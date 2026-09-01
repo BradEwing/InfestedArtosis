@@ -61,8 +61,7 @@ public class ThreeHatchHydra extends ProtossBase {
         boolean wantNatural = plannedAndCurrentHatcheries < 2 && supply >= 24 && !gameState.isCannonRushed();
         boolean wantThird = plannedAndCurrentHatcheries < 3 && supply >= 40 && techProgression.isSpawningPool() && !gameState.isCannonRushed();
         boolean wantBaseAdvantage = behindOnBases(gameState);
-        boolean floatingMinerals = gameState.getGameTime().greaterThan(new Time(5, 0)) &&
-                gameState.getResourceCount().availableMinerals() > ((plannedHatcheries + 1) * 350);
+        boolean floatingMinerals = gameState.isFloatingMinerals();
 
         // Macro hatchery timing
         boolean cannonRushMacroHatch = gameState.isCannonRushed() && baseCount == 1

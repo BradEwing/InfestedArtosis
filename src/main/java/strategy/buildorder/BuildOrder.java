@@ -228,7 +228,15 @@ public abstract class BuildOrder {
         return plans;
     }
 
+    /**
+     * Plans a hatchery that claims a base. Returns null while any rule deletes a queued hatchery
+     * this frame, so a cancelled expansion is not re-created on the following frame.
+     */
     protected Plan planNewBase(GameState gameState) {
+        if (!gameState.mayQueueExpansionHatchery()) {
+            return null;
+        }
+
         Base base = gameState.reserveBase();
         if (base == null) {
             return null;
@@ -495,7 +503,7 @@ public abstract class BuildOrder {
     }
 
     private Plan macroHatcheryAt(GameState gameState, TilePosition location) {
-        if (location == null) {
+        if (location == null || !gameState.mayQueueMacroHatchery()) {
             return null;
         }
 
@@ -507,8 +515,8 @@ public abstract class BuildOrder {
     }
 
     /**
-     * Reports if we must add a hatchery to keep parity with the enemy. Only the ZvZ build orders
-     * use this rule.
+     * Reports if we must add a hatchery to keep parity with the enemy resource depot count,
+     * whatever the opponent's race.
      *
      * <p>Our total is {@link GameState#hatcheryCount()} plus the hatcheries already queued.
      *
@@ -516,10 +524,6 @@ public abstract class BuildOrder {
      *     no reaction deletes expansions this frame
      */
     protected boolean behindOnHatchery(GameState gameState) {
-        if (gameState.getOpponentRace() != Race.Zerg) {
-            return false;
-        }
-
         int ourTotal = gameState.hatcheryCount() + Math.max(0, gameState.getPlannedHatcheries());
 
         int enemyTotal = gameState.enemyResourceDepotCount();

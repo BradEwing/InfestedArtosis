@@ -164,4 +164,61 @@ class HatcheryCapacityTest {
 
         assertEquals(0, enqueues);
     }
+
+    @Test
+    void theQueueGateOpensWhenNoRuleDeletesAHatchery() {
+        assertTrue(HatcheryCapacity.isQueueable(false, false));
+    }
+
+    @Test
+    void theQueueGateClosesOnExcessHatcheries() {
+        assertFalse(HatcheryCapacity.isQueueable(true, false));
+    }
+
+    @Test
+    void theQueueGateClosesWhileAReactionDeletesHatcheries() {
+        assertFalse(HatcheryCapacity.isQueueable(false, true));
+    }
+
+    /**
+     * The gate and the excess sweep run in one frame, the gate before the sweep. A state that
+     * opens the gate never also satisfies the sweep, whatever the matchup.
+     */
+    @Test
+    void aStateThatOpensTheQueueGateNeverSatisfiesTheExcessSweep() {
+        for (int hatcheries = 0; hatcheries <= 6; hatcheries++) {
+            for (int larva = 0; larva <= 12; larva++) {
+                for (int minerals = 0; minerals <= 2800; minerals += 50) {
+                    boolean floating = HatcheryCapacity.isFloatingMinerals(minerals, hatcheries, true);
+                    boolean excess = HatcheryCapacity.isExcess(hatcheries, larva, floating);
+                    boolean queueable = HatcheryCapacity.isQueueable(excess, false);
+
+                    assertFalse(excess && queueable);
+                }
+            }
+        }
+    }
+
+    @Test
+    void mineralsAtTheBarAreNotFloating() {
+        int bar = HatcheryCapacity.MINERALS_PER_HATCHERY * 4;
+
+        assertFalse(HatcheryCapacity.isFloatingMinerals(bar, 3, true));
+        assertTrue(HatcheryCapacity.isFloatingMinerals(bar + 1, 3, true));
+    }
+
+    @Test
+    void eachCompletedHatcheryRaisesTheFloatingBar() {
+        int oneHatcheryBar = HatcheryCapacity.MINERALS_PER_HATCHERY * 2;
+        int twoHatcheryBar = HatcheryCapacity.MINERALS_PER_HATCHERY * 3;
+
+        assertTrue(HatcheryCapacity.isFloatingMinerals(oneHatcheryBar + 1, 1, true));
+        assertFalse(HatcheryCapacity.isFloatingMinerals(oneHatcheryBar + 1, 2, true));
+        assertTrue(HatcheryCapacity.isFloatingMinerals(twoHatcheryBar + 1, 2, true));
+    }
+
+    @Test
+    void mineralsAreNotFloatingBeforeTheWindowOpens() {
+        assertFalse(HatcheryCapacity.isFloatingMinerals(5000, 1, false));
+    }
 }

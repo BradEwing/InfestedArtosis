@@ -9,7 +9,6 @@ import info.GameState;
 import info.ResourceCount;
 import info.TechProgression;
 import macro.plan.Plan;
-import util.Time;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -60,8 +59,7 @@ public class ThreeHatchLurker extends TerranBase {
         boolean wantOverlordSpeed = needOverlordSpeed(gameState) && techProgression.canPlanOverlordSpeed();
 
         // Check for floating resources (follows OneHatchSpire pattern)
-        boolean floatingMinerals = gameState.getGameTime().greaterThan(new Time(5, 0)) &&
-                gameState.getResourceCount().availableMinerals() > ((plannedHatcheries + 1) * 350);
+        boolean floatingMinerals = gameState.isFloatingMinerals();
         boolean wantExpansion = behindOnBases(gameState) || floatingMinerals;
 
         final int desiredSunkenColonies = this.requiredSunkens(gameState);

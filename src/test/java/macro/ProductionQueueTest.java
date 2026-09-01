@@ -117,4 +117,29 @@ class ProductionQueueTest {
 
         assertEquals(0, queue.unitPlanCount(UnitType.Zerg_Mutalisk));
     }
+
+    @Test
+    void buildingPlanCountCountsQueuedHatcheriesOnly() {
+        ProductionQueue queue = new ProductionQueue();
+        queue.add(new BuildingPlan(UnitType.Zerg_Hatchery, 6275));
+        queue.add(new BuildingPlan(UnitType.Zerg_Hatchery, 6300));
+        queue.add(new BuildingPlan(UnitType.Zerg_Extractor, EXTRACTOR_PRIORITY));
+        queue.add(new UnitPlan(UnitType.Zerg_Drone, 6400));
+
+        assertEquals(2, queue.buildingPlanCount(UnitType.Zerg_Hatchery));
+        assertEquals(1, queue.buildingPlanCount(UnitType.Zerg_Extractor));
+        assertEquals(0, queue.buildingPlanCount(UnitType.Zerg_Lair));
+    }
+
+    @Test
+    void buildingPlanCountDropsToZeroOnceTheQueueDrains() {
+        ProductionQueue queue = new ProductionQueue();
+        queue.add(new BuildingPlan(UnitType.Zerg_Hatchery, 6275));
+
+        assertEquals(1, queue.buildingPlanCount(UnitType.Zerg_Hatchery));
+
+        queue.poll();
+
+        assertEquals(0, queue.buildingPlanCount(UnitType.Zerg_Hatchery));
+    }
 }
