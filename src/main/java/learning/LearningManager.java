@@ -20,6 +20,42 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 public class LearningManager {
+    /**
+     * Discounted win rate at or below which the incumbent opener counts as failing and a forced
+     * re-probe of a dormant opener becomes allowed. Deliberately far below 50%: a leader winning
+     * 40-50% of its games is still earning its slot, while the incumbents that motivated this
+     * mechanism sit at 12-21%. 30% separates those regimes.
+     */
+    static final double PROBE_GATE_WIN_RATE = 0.30;
+
+    /**
+     * Games an opener must go unselected before it counts as dormant. This one horizon serves
+     * three roles: the staleness required to be probed, the dormancy that lifts a demoted
+     * trial's block, and the personal gap that starts a fresh trial. At gamma 0.95 an
+     * observation 30 games old keeps roughly 21% of its weight, so a re-probe after this long
+     * measures essentially fresh behaviour.
+     */
+    static final int PROBE_DORMANT_GAMES = 30;
+
+    /**
+     * Minimum age of the most recent dormant re-entry before another forced probe may start.
+     * Caps forced probes at one start per 20 games, a 5% ceiling even in a permanent all-loss
+     * regime.
+     */
+    static final int PROBE_COOLDOWN_GAMES = 20;
+
+    /**
+     * Games a re-entered opener may play before its trial is judged.
+     */
+    static final int PROBE_TRIAL_GAMES = 3;
+
+    /**
+     * Trial wins that promote a re-entered opener back to unrestricted argmax eligibility.
+     * Fewer wins demote it: it is blocked until it goes dormant again, so a single lucky win
+     * buys a 3-game burst instead of the 5-7 consecutive games the raw index would grant it.
+     */
+    static final int PROBE_PROMOTION_WINS = 2;
+
     private Config config;
 
     private static String READ_DIR = "bwapi-data/read/";
@@ -399,7 +435,7 @@ public class LearningManager {
             return allRecords.get(0).getOpener();
         }
 
-        return WeightedUCBCalculator.findBestStrategy(
+        String winner = WeightedUCBCalculator.findBestStrategy(
             playableOpeners,
             mapName,
             opponentName,
@@ -408,6 +444,118 @@ public class LearningManager {
             opponentRecord.totalGames(),
             opponentRecord.getGameTimestamps()
         );
+        return applyDormantReprobePolicy(winner, playableOpeners, opponentRecord, mapName, opponentName);
+    }
+
+    /**
+     * Applies the dormant re-probe policy to the argmax winner: first enforces the trial burst
+     * cap by replacing a demoted winner with the best non-demoted candidate, then optionally
+     * overrides the winner with a forced probe of a dormant opener.
+     */
+    static String applyDormantReprobePolicy(String winner,
+                                            List<String> playableOpeners,
+                                            OpponentRecord opponentRecord,
+                                            String mapName,
+                                            String opponentName) {
+        if (winner == null) {
+            return null;
+        }
+        if (isDemotedBlocked(winner, opponentRecord)) {
+            List<String> unblocked = playableOpeners
+                    .stream()
+                    .filter(opener -> !isDemotedBlocked(opener, opponentRecord))
+                    .collect(Collectors.toList());
+            if (unblocked.isEmpty()) {
+                return winner;
+            }
+            return WeightedUCBCalculator.findBestStrategy(
+                unblocked,
+                mapName,
+                opponentName,
+                opponentRecord.getMapSpecificOpenerRecord(),
+                opponentRecord.getOpenerRecord(),
+                opponentRecord.totalGames(),
+                opponentRecord.getGameTimestamps()
+            );
+        }
+        String probe = selectForcedReprobe(winner, playableOpeners, opponentRecord, mapName, opponentName);
+        return probe != null ? probe : winner;
+    }
+
+    /**
+     * Decides whether to override the argmax winner with a forced probe of a dormant opener:
+     * only when the winner's discounted win rate is below the gate, no dormant re-entry is
+     * recent enough to count against the cooldown, and some candidate has been unselected for
+     * at least the dormancy horizon. Returns the opener to probe, or null to keep the winner.
+     */
+    static String selectForcedReprobe(String winner,
+                                      List<String> playableOpeners,
+                                      OpponentRecord opponentRecord,
+                                      String mapName,
+                                      String opponentName) {
+        Map<String, Record> openerRecords = opponentRecord.getOpenerRecord();
+        List<Long> gameTimestamps = opponentRecord.getGameTimestamps();
+        Record leader = openerRecords.get(winner);
+        if (leader == null || leader.discountedMean(gameTimestamps) >= PROBE_GATE_WIN_RATE) {
+            return null;
+        }
+        for (String opener : playableOpeners) {
+            Record record = openerRecords.get(opener);
+            if (record == null || record.games() == 0) {
+                continue;
+            }
+            ArmSelectionLog log = ArmSelectionLog.from(record, gameTimestamps, PROBE_DORMANT_GAMES);
+            if (log.reEntryAge() < PROBE_COOLDOWN_GAMES) {
+                return null;
+            }
+        }
+        List<String> eligible = new ArrayList<>();
+        for (String opener : playableOpeners) {
+            if (opener.equals(winner)) {
+                continue;
+            }
+            Record record = openerRecords.get(opener);
+            if (record == null || record.games() == 0) {
+                eligible.add(opener);
+                continue;
+            }
+            ArmSelectionLog log = ArmSelectionLog.from(record, gameTimestamps, PROBE_DORMANT_GAMES);
+            if (log.gamesSinceLastSelection() >= PROBE_DORMANT_GAMES) {
+                eligible.add(opener);
+            }
+        }
+        if (eligible.isEmpty()) {
+            return null;
+        }
+        String best = null;
+        double bestScore = Double.NEGATIVE_INFINITY;
+        for (String opener : eligible) {
+            double score = WeightedUCBCalculator.calculateWeightedScore(opener, mapName, opponentName,
+                    opponentRecord.getMapSpecificOpenerRecord(), openerRecords,
+                    opponentRecord.totalGames(), gameTimestamps);
+            if (score > bestScore) {
+                bestScore = score;
+                best = opener;
+            }
+        }
+        return best;
+    }
+
+    /**
+     * Whether the opener has exhausted a failing trial and is still live: it re-entered from
+     * dormancy, played at least the trial allowance without earning the promotion wins, and has
+     * not since gone dormant long enough for the trial to be forgotten.
+     */
+    static boolean isDemotedBlocked(String opener, OpponentRecord opponentRecord) {
+        Record record = opponentRecord.getOpenerRecord().get(opener);
+        if (record == null || record.games() == 0) {
+            return false;
+        }
+        ArmSelectionLog log = ArmSelectionLog.from(record, opponentRecord.getGameTimestamps(), PROBE_DORMANT_GAMES);
+        if (log.gamesSinceLastSelection() >= PROBE_DORMANT_GAMES) {
+            return false;
+        }
+        return log.trialCount() >= PROBE_TRIAL_GAMES && log.trialWins() < PROBE_PROMOTION_WINS;
     }
 
     /**
