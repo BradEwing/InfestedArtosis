@@ -313,9 +313,9 @@ public class OpenerSelectionLoopTest {
     private static int gamesSinceSelection(OpponentRecord record, String opener) {
         Record openerRecord = record.getOpenerRecord().get(opener);
         if (openerRecord == null || openerRecord.games() == 0) {
-            return ArmSelectionLog.NEVER_SELECTED;
+            return OpenerSelectionLog.NEVER_SELECTED;
         }
-        return ArmSelectionLog.from(openerRecord, record.getGameTimestamps(), LearningManager.PROBE_DORMANT_GAMES)
+        return OpenerSelectionLog.from(openerRecord, record.getGameTimestamps(), LearningManager.PROBE_DORMANT_GAMES)
                 .gamesSinceLastSelection();
     }
 

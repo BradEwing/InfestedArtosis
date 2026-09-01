@@ -497,7 +497,7 @@ public class LearningManager {
             if (record == null || record.games() == 0) {
                 continue;
             }
-            ArmSelectionLog log = ArmSelectionLog.from(record, gameTimestamps, PROBE_DORMANT_GAMES);
+            OpenerSelectionLog log = OpenerSelectionLog.from(record, gameTimestamps, PROBE_DORMANT_GAMES);
             if (log.lowEvidenceTrial() && log.trialWins() < PROBE_PROMOTION_WINS
                     && log.reEntryAge() < PROBE_COOLDOWN_GAMES) {
                 return null;
@@ -517,7 +517,7 @@ public class LearningManager {
                 eligible.add(opener);
                 continue;
             }
-            ArmSelectionLog log = ArmSelectionLog.from(record, gameTimestamps, PROBE_DORMANT_GAMES);
+            OpenerSelectionLog log = OpenerSelectionLog.from(record, gameTimestamps, PROBE_DORMANT_GAMES);
             if (log.gamesSinceLastSelection() >= PROBE_DORMANT_GAMES) {
                 eligible.add(opener);
             }
@@ -548,7 +548,8 @@ public class LearningManager {
         if (record == null || record.games() == 0) {
             return false;
         }
-        ArmSelectionLog log = ArmSelectionLog.from(record, opponentRecord.getGameTimestamps(), PROBE_DORMANT_GAMES);
+        OpenerSelectionLog log = OpenerSelectionLog.from(record,
+                opponentRecord.getGameTimestamps(), PROBE_DORMANT_GAMES);
         return log.lowEvidenceTrial()
                 && log.trialCount() >= PROBE_BURST_GAMES
                 && log.trialWins() < PROBE_PROMOTION_WINS;
@@ -559,7 +560,8 @@ public class LearningManager {
         if (record == null || record.games() == 0) {
             return false;
         }
-        ArmSelectionLog log = ArmSelectionLog.from(record, opponentRecord.getGameTimestamps(), PROBE_DORMANT_GAMES);
+        OpenerSelectionLog log = OpenerSelectionLog.from(record,
+                opponentRecord.getGameTimestamps(), PROBE_DORMANT_GAMES);
         boolean enteringWithLowEvidence = log.gamesSinceLastSelection() >= PROBE_DORMANT_GAMES
                 && record.discountedGamesBefore(Long.MAX_VALUE, opponentRecord.getGameTimestamps())
                 < PROBE_LOW_EVIDENCE_GAMES;
@@ -573,7 +575,7 @@ public class LearningManager {
             if (record.games() == 0) {
                 continue;
             }
-            ArmSelectionLog log = ArmSelectionLog.from(record, opponentRecord.getGameTimestamps(),
+            OpenerSelectionLog log = OpenerSelectionLog.from(record, opponentRecord.getGameTimestamps(),
                     PROBE_DORMANT_GAMES);
             if (log.lowEvidenceTrial() && log.trialWins() < PROBE_PROMOTION_WINS) {
                 recentExposure += log.recentTrialGames();

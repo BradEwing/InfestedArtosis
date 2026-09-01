@@ -11,7 +11,7 @@ import java.util.Set;
  * games since it last re-entered after a dormant stretch, and games played and won since
  * that re-entry.
  */
-final class ArmSelectionLog {
+final class OpenerSelectionLog {
 
     static final int NEVER_SELECTED = Integer.MAX_VALUE;
 
@@ -22,8 +22,8 @@ final class ArmSelectionLog {
     private final boolean lowEvidenceTrial;
     private final int recentTrialGames;
 
-    private ArmSelectionLog(int gamesSinceLastSelection, int reEntryAge, int trialCount, int trialWins,
-                            boolean lowEvidenceTrial, int recentTrialGames) {
+    private OpenerSelectionLog(int gamesSinceLastSelection, int reEntryAge, int trialCount, int trialWins,
+                               boolean lowEvidenceTrial, int recentTrialGames) {
         this.gamesSinceLastSelection = gamesSinceLastSelection;
         this.reEntryAge = reEntryAge;
         this.trialCount = trialCount;
@@ -37,11 +37,11 @@ final class ArmSelectionLog {
      * A re-entry is a selection preceded by a gap of at least dormantGames games. The trial
      * is every selection from the most recent re-entry onward.
      */
-    static ArmSelectionLog from(Record record, List<Long> gameTimestamps, int dormantGames) {
+    static OpenerSelectionLog from(Record record, List<Long> gameTimestamps, int dormantGames) {
         List<Long> selectionTimestamps = new ArrayList<>(record.getWinTimestamps());
         selectionTimestamps.addAll(record.getLossTimestamps());
         if (selectionTimestamps.isEmpty()) {
-            return new ArmSelectionLog(NEVER_SELECTED, NEVER_SELECTED, 0, 0, true, 0);
+            return new OpenerSelectionLog(NEVER_SELECTED, NEVER_SELECTED, 0, 0, true, 0);
         }
         Collections.sort(selectionTimestamps);
         Set<Long> winTimestamps = new HashSet<>(record.getWinTimestamps());
@@ -76,7 +76,7 @@ final class ArmSelectionLog {
                 recentTrialGames++;
             }
         }
-        return new ArmSelectionLog(newestAge, reEntryAge, trialCount, trialWins,
+        return new OpenerSelectionLog(newestAge, reEntryAge, trialCount, trialWins,
                 lowEvidenceTrial, recentTrialGames);
     }
 
