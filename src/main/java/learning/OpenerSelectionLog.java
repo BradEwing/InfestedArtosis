@@ -8,10 +8,11 @@ import java.util.Set;
 
 /**
  * Selection history of one opener, expressed in games: games since it was last selected,
- * games since it last re-entered after a dormant stretch, and games played and won since
- * that re-entry.
+ * games since it last re-entered after a dormant stretch, the games played and won since
+ * that re-entry, whether that trial began with low evidence, and how many of its games
+ * fall inside the exposure window.
  */
-final class ArmSelectionLog {
+final class OpenerSelectionLog {
 
     static final int NEVER_SELECTED = Integer.MAX_VALUE;
 
@@ -19,12 +20,17 @@ final class ArmSelectionLog {
     private final int reEntryAge;
     private final int trialCount;
     private final int trialWins;
+    private final boolean unprovenTrial;
+    private final int trialGamesInExposureWindow;
 
-    private ArmSelectionLog(int gamesSinceLastSelection, int reEntryAge, int trialCount, int trialWins) {
+    private OpenerSelectionLog(int gamesSinceLastSelection, int reEntryAge, int trialCount, int trialWins,
+                               boolean unprovenTrial, int trialGamesInExposureWindow) {
         this.gamesSinceLastSelection = gamesSinceLastSelection;
         this.reEntryAge = reEntryAge;
         this.trialCount = trialCount;
         this.trialWins = trialWins;
+        this.unprovenTrial = unprovenTrial;
+        this.trialGamesInExposureWindow = trialGamesInExposureWindow;
     }
 
     /**
@@ -32,11 +38,11 @@ final class ArmSelectionLog {
      * A re-entry is a selection preceded by a gap of at least dormantGames games. The trial
      * is every selection from the most recent re-entry onward.
      */
-    static ArmSelectionLog from(Record record, List<Long> gameTimestamps, int dormantGames) {
+    static OpenerSelectionLog from(Record record, List<Long> gameTimestamps, int dormantGames) {
         List<Long> selectionTimestamps = new ArrayList<>(record.getWinTimestamps());
         selectionTimestamps.addAll(record.getLossTimestamps());
         if (selectionTimestamps.isEmpty()) {
-            return new ArmSelectionLog(NEVER_SELECTED, NEVER_SELECTED, 0, 0);
+            return new OpenerSelectionLog(NEVER_SELECTED, NEVER_SELECTED, 0, 0, true, 0);
         }
         Collections.sort(selectionTimestamps);
         Set<Long> winTimestamps = new HashSet<>(record.getWinTimestamps());
@@ -61,7 +67,18 @@ final class ArmSelectionLog {
         int newestAge = age(selectionTimestamps.get(selectionTimestamps.size() - 1), sortedGameTimestamps);
         int reEntryAge = age(selectionTimestamps.get(reEntryIndex), sortedGameTimestamps);
         int trialCount = selectionTimestamps.size() - reEntryIndex;
-        return new ArmSelectionLog(newestAge, reEntryAge, trialCount, trialWins);
+        long reEntryTimestamp = selectionTimestamps.get(reEntryIndex);
+        boolean unprovenTrial = (reEntryIndex > 0 || selectionTimestamps.size() <= LearningManager.PROBE_TRIAL_GAMES)
+                && record.discountedGamesBefore(reEntryTimestamp, gameTimestamps)
+                < LearningManager.PROBE_LOW_EVIDENCE_GAMES;
+        int trialGamesInExposureWindow = 0;
+        for (int i = reEntryIndex; i < selectionTimestamps.size(); i++) {
+            if (age(selectionTimestamps.get(i), sortedGameTimestamps) < LearningManager.PROBE_EXPOSURE_WINDOW_GAMES) {
+                trialGamesInExposureWindow++;
+            }
+        }
+        return new OpenerSelectionLog(newestAge, reEntryAge, trialCount, trialWins,
+                unprovenTrial, trialGamesInExposureWindow);
     }
 
     private static int age(long timestamp, List<Long> sortedGameTimestamps) {
@@ -82,5 +99,13 @@ final class ArmSelectionLog {
 
     int trialWins() {
         return trialWins;
+    }
+
+    boolean isUnprovenTrial() {
+        return unprovenTrial;
+    }
+
+    int trialGamesInExposureWindow() {
+        return trialGamesInExposureWindow;
     }
 }

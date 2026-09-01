@@ -46,6 +46,12 @@ public class LearningManager {
      */
     static final int PROBE_PROMOTION_WINS = 2;
 
+    static final double PROBE_LOW_EVIDENCE_GAMES = 3.0;
+
+    static final double PROBE_EXPOSURE_FRACTION = 0.15;
+
+    static final int PROBE_EXPOSURE_WINDOW_GAMES = 20;
+
     private Config config;
 
     private static String READ_DIR = "bwapi-data/read/";
@@ -420,7 +426,7 @@ public class LearningManager {
             return allRecords.get(0).getOpener();
         }
 
-        String winner = WeightedUCBCalculator.findBestStrategy(
+        String ucbWinner = WeightedUCBCalculator.findBestStrategy(
             playableOpeners,
             mapName,
             opponentName,
@@ -429,32 +435,33 @@ public class LearningManager {
             opponentRecord.totalGames(),
             opponentRecord.getGameTimestamps()
         );
-        return applyDormantReprobePolicy(winner, playableOpeners, opponentRecord, mapName, opponentName);
+        return applyDormantReprobePolicy(ucbWinner, playableOpeners, opponentRecord, mapName, opponentName);
     }
 
     /**
-     * Applies the dormant re-probe policy to the argmax winner: replaces a demoted winner with
-     * the best non-demoted candidate, then may override the winner with a forced probe of a
+     * Applies the dormant re-probe policy to the UCB winner: replaces a benched winner with
+     * the best selectable candidate, then may override the winner with a forced probe of a
      * dormant opener.
      */
-    static String applyDormantReprobePolicy(String winner,
+    static String applyDormantReprobePolicy(String ucbWinner,
                                             List<String> playableOpeners,
                                             OpponentRecord opponentRecord,
                                             String mapName,
                                             String opponentName) {
-        if (winner == null) {
+        if (ucbWinner == null) {
             return null;
         }
-        if (isDemotedBlocked(winner, opponentRecord)) {
-            List<String> unblocked = playableOpeners
+        if (isBenched(ucbWinner, opponentRecord) || isExposureCapped(ucbWinner, opponentRecord)) {
+            List<String> selectable = playableOpeners
                     .stream()
-                    .filter(opener -> !isDemotedBlocked(opener, opponentRecord))
+                    .filter(opener -> !isBenched(opener, opponentRecord))
+                    .filter(opener -> !isExposureCapped(opener, opponentRecord))
                     .collect(Collectors.toList());
-            if (unblocked.isEmpty()) {
-                return winner;
+            if (selectable.isEmpty()) {
+                return ucbWinner;
             }
             return WeightedUCBCalculator.findBestStrategy(
-                unblocked,
+                selectable,
                 mapName,
                 opponentName,
                 opponentRecord.getMapSpecificOpenerRecord(),
@@ -463,23 +470,24 @@ public class LearningManager {
                 opponentRecord.getGameTimestamps()
             );
         }
-        String probe = selectForcedReprobe(winner, playableOpeners, opponentRecord, mapName, opponentName);
-        return probe != null ? probe : winner;
+        String probe = selectForcedReprobe(ucbWinner, playableOpeners, opponentRecord, mapName, opponentName);
+        return probe != null ? probe : ucbWinner;
     }
 
     /**
-     * Returns an opener to force-probe, or null to keep the winner. Probes only when the
-     * winner's discounted win rate is below the gate, no dormant re-entry is within the
-     * cooldown, and some candidate has been unselected for at least the dormancy horizon.
+     * Returns an opener to force-probe, or null to keep the UCB winner. Probes only when the
+     * UCB winner's discounted win rate is below the gate, no unproven trial is within the
+     * re-entry cooldown, and some candidate has been unselected for at least the dormancy
+     * horizon.
      */
-    static String selectForcedReprobe(String winner,
+    static String selectForcedReprobe(String ucbWinner,
                                       List<String> playableOpeners,
                                       OpponentRecord opponentRecord,
                                       String mapName,
                                       String opponentName) {
         Map<String, Record> openerRecords = opponentRecord.getOpenerRecord();
         List<Long> gameTimestamps = opponentRecord.getGameTimestamps();
-        Record leader = openerRecords.get(winner);
+        Record leader = openerRecords.get(ucbWinner);
         if (leader == null || leader.discountedMean(gameTimestamps) >= PROBE_GATE_WIN_RATE) {
             return null;
         }
@@ -488,14 +496,19 @@ public class LearningManager {
             if (record == null || record.games() == 0) {
                 continue;
             }
-            ArmSelectionLog log = ArmSelectionLog.from(record, gameTimestamps, PROBE_DORMANT_GAMES);
-            if (log.reEntryAge() < PROBE_COOLDOWN_GAMES) {
+            OpenerSelectionLog log = OpenerSelectionLog.from(record, gameTimestamps, PROBE_DORMANT_GAMES);
+            if (log.isUnprovenTrial() && log.trialWins() < PROBE_PROMOTION_WINS
+                    && log.reEntryAge() < PROBE_COOLDOWN_GAMES) {
                 return null;
             }
         }
+        if (recentUnprovenExposure(opponentRecord)
+                >= Math.floor(PROBE_EXPOSURE_FRACTION * PROBE_EXPOSURE_WINDOW_GAMES)) {
+            return null;
+        }
         List<String> eligible = new ArrayList<>();
         for (String opener : playableOpeners) {
-            if (opener.equals(winner)) {
+            if (opener.equals(ucbWinner)) {
                 continue;
             }
             Record record = openerRecords.get(opener);
@@ -503,7 +516,7 @@ public class LearningManager {
                 eligible.add(opener);
                 continue;
             }
-            ArmSelectionLog log = ArmSelectionLog.from(record, gameTimestamps, PROBE_DORMANT_GAMES);
+            OpenerSelectionLog log = OpenerSelectionLog.from(record, gameTimestamps, PROBE_DORMANT_GAMES);
             if (log.gamesSinceLastSelection() >= PROBE_DORMANT_GAMES) {
                 eligible.add(opener);
             }
@@ -526,20 +539,56 @@ public class LearningManager {
     }
 
     /**
-     * Returns whether the opener is blocked after a failed trial: it re-entered from dormancy,
-     * played at least PROBE_TRIAL_GAMES without earning PROBE_PROMOTION_WINS, and has not gone
-     * dormant again since.
+     * Returns whether an unproven opener is benched after playing its full trial without
+     * earning promotion.
      */
-    static boolean isDemotedBlocked(String opener, OpponentRecord opponentRecord) {
+    static boolean isBenched(String opener, OpponentRecord opponentRecord) {
         Record record = opponentRecord.getOpenerRecord().get(opener);
         if (record == null || record.games() == 0) {
             return false;
         }
-        ArmSelectionLog log = ArmSelectionLog.from(record, opponentRecord.getGameTimestamps(), PROBE_DORMANT_GAMES);
-        if (log.gamesSinceLastSelection() >= PROBE_DORMANT_GAMES) {
+        OpenerSelectionLog log = OpenerSelectionLog.from(record,
+                opponentRecord.getGameTimestamps(), PROBE_DORMANT_GAMES);
+        return log.isUnprovenTrial()
+                && log.trialCount() >= PROBE_TRIAL_GAMES
+                && log.trialWins() < PROBE_PROMOTION_WINS;
+    }
+
+    /**
+     * Returns whether an opener that would re-enter with low evidence is barred because the
+     * recent window already holds the capped share of unproven trial games.
+     */
+    private static boolean isExposureCapped(String opener, OpponentRecord opponentRecord) {
+        Record record = opponentRecord.getOpenerRecord().get(opener);
+        if (record == null || record.games() == 0) {
             return false;
         }
-        return log.trialCount() >= PROBE_TRIAL_GAMES && log.trialWins() < PROBE_PROMOTION_WINS;
+        OpenerSelectionLog log = OpenerSelectionLog.from(record,
+                opponentRecord.getGameTimestamps(), PROBE_DORMANT_GAMES);
+        boolean wouldReenterWithLowEvidence = log.gamesSinceLastSelection() >= PROBE_DORMANT_GAMES
+                && record.discountedGames(opponentRecord.getGameTimestamps())
+                < PROBE_LOW_EVIDENCE_GAMES;
+        return wouldReenterWithLowEvidence && recentUnprovenExposure(opponentRecord)
+                >= Math.floor(PROBE_EXPOSURE_FRACTION * PROBE_EXPOSURE_WINDOW_GAMES);
+    }
+
+    /**
+     * Returns how many games inside the exposure window were played by unproven trials that
+     * have not yet earned promotion.
+     */
+    private static int recentUnprovenExposure(OpponentRecord opponentRecord) {
+        int unprovenExposure = 0;
+        for (Record record : opponentRecord.getOpenerRecord().values()) {
+            if (record.games() == 0) {
+                continue;
+            }
+            OpenerSelectionLog log = OpenerSelectionLog.from(record, opponentRecord.getGameTimestamps(),
+                    PROBE_DORMANT_GAMES);
+            if (log.isUnprovenTrial() && log.trialWins() < PROBE_PROMOTION_WINS) {
+                unprovenExposure += log.trialGamesInExposureWindow();
+            }
+        }
+        return unprovenExposure;
     }
 
     /**

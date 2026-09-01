@@ -74,11 +74,11 @@ public class OpenerSelectionLoopTest {
     }
 
     /**
-     * Over a long all-loss run, probe starts stay within the cooldown budget of one per
-     * PROBE_COOLDOWN_GAMES, and the mechanism keeps re-firing rather than unlocking only once.
+     * Over a long all-loss run, probe starts stay at most one per PROBE_COOLDOWN_GAMES, and
+     * the mechanism keeps re-firing rather than unlocking only once.
      */
     @Test
-    void probeStartsRespectCooldownBudgetAndKeepFiring() {
+    void probeStartsRespectCooldownAndKeepFiring() {
         BuildOrderFactory factory = new BuildOrderFactory(4, Race.Zerg);
         List<GameResult> results = runLoop(factory, buildSyntheticLiongisShape(), "4Pool", 200, ALWAYS_LOSS, true);
         long probes = results.stream().filter(result -> result.probe).count();
@@ -87,9 +87,22 @@ public class OpenerSelectionLoopTest {
         assertTrue(probes >= 2, "the gate must re-fire under sustained failure, measured " + probes + " probes");
     }
 
+    @Test
+    void lowEvidenceExposureStaysWithinCap() {
+        BuildOrderFactory factory = new BuildOrderFactory(4, Race.Zerg);
+        int games = 400;
+        List<GameResult> results = runLoop(factory, buildSyntheticLiongisShape(), "4Pool", games,
+                ALWAYS_LOSS, true);
+        long exposure = results.stream().filter(result -> DORMANT.contains(result.opener)).count();
+        assertTrue(exposure <= games * LearningManager.PROBE_EXPOSURE_FRACTION,
+                "low-evidence exposure exceeded its cap: " + exposure + " in " + games + " games");
+        assertTrue(exposure > 0, "the exposure cap must still allow dormant probes");
+    }
+
     /**
      * A probed opener that wins its re-entry game gets a PROBE_TRIAL_GAMES trial, then is
-     * demoted and blocked until it goes dormant again. Incumbents are exempt from the cap.
+     * benched until a forced probe re-enters it after another dormant stretch. Incumbents
+     * are exempt from the cap.
      */
     @Test
     void probedOpenerThatWinsOnceIsCappedAtTrialGames() {
@@ -102,6 +115,43 @@ public class OpenerSelectionLoopTest {
             assertTrue(!DORMANT.contains(opener) || longestStreak <= LearningManager.PROBE_TRIAL_GAMES,
                     opener + " held the slot for " + longestStreak + " consecutive games after re-entry");
         }
+    }
+
+    @Test
+    void singleProbeWinCannotResumeOnceBenched() {
+        BuildOrderFactory factory = new BuildOrderFactory(4, Race.Zerg);
+        OutcomeModel firstDormantWin = new OutcomeModel() {
+            private boolean won;
+
+            @Override
+            public boolean isWin(String opener, int gamesSinceLastSelection) {
+                if (!won && DORMANT.contains(opener)) {
+                    won = true;
+                    return true;
+                }
+                return false;
+            }
+        };
+        List<GameResult> results = runLoop(factory, buildSyntheticLiongisShape(), "4Pool",
+                LearningManager.PROBE_DORMANT_GAMES - 1, firstDormantWin, true);
+        String probed = results.stream()
+                .filter(result -> result.won)
+                .findFirst()
+                .get()
+                .opener;
+        long selections = results.stream().filter(result -> result.opener.equals(probed)).count();
+        assertTrue(selections <= LearningManager.PROBE_TRIAL_GAMES,
+                probed + " resumed after being benched and reached " + selections + " selections");
+    }
+
+    @Test
+    void organicReentryDoesNotStarveAnotherDormantOpener() {
+        BuildOrderFactory factory = new BuildOrderFactory(4, Race.Zerg);
+        OpponentRecord record = buildSyntheticLiongisShape();
+        appendGame(record, "12Pool", false, MAPS[record.getGameTimestamps().size() % MAPS.length]);
+        List<GameResult> results = runLoop(factory, record, "12Pool", 60, ALWAYS_LOSS, true);
+        assertTrue(results.stream().anyMatch(result -> result.opener.equals("12Hatch")),
+                "an organic 12Pool re-entry must not starve 12Hatch");
     }
 
     /**
@@ -234,11 +284,11 @@ public class OpenerSelectionLoopTest {
         List<GameResult> results = new ArrayList<>();
         for (int i = 0; i < games; i++) {
             String mapName = MAPS[record.getGameTimestamps().size() % MAPS.length];
-            String natural = naturalWinner(factory, record, lastGameOpener, mapName);
+            String natural = naturalUcbWinner(factory, record, lastGameOpener, mapName);
             String selected = policyEnabled
                     ? LearningManager.selectOpenerName(null, factory, record, "", lastGameOpener, OPPONENT, mapName)
                     : natural;
-            boolean probe = !selected.equals(natural) && !LearningManager.isDemotedBlocked(natural, record);
+            boolean probe = !selected.equals(natural) && !LearningManager.isBenched(natural, record);
             boolean won = outcome.isWin(selected, gamesSinceSelection(record, selected));
             lastGameOpener = appendGame(record, selected, won, mapName);
             results.add(new GameResult(selected, probe, won));
@@ -246,7 +296,7 @@ public class OpenerSelectionLoopTest {
         return results;
     }
 
-    private static String naturalWinner(BuildOrderFactory factory,
+    private static String naturalUcbWinner(BuildOrderFactory factory,
                                         OpponentRecord record,
                                         String lastGameOpener,
                                         String mapName) {
@@ -264,9 +314,9 @@ public class OpenerSelectionLoopTest {
     private static int gamesSinceSelection(OpponentRecord record, String opener) {
         Record openerRecord = record.getOpenerRecord().get(opener);
         if (openerRecord == null || openerRecord.games() == 0) {
-            return ArmSelectionLog.NEVER_SELECTED;
+            return OpenerSelectionLog.NEVER_SELECTED;
         }
-        return ArmSelectionLog.from(openerRecord, record.getGameTimestamps(), LearningManager.PROBE_DORMANT_GAMES)
+        return OpenerSelectionLog.from(openerRecord, record.getGameTimestamps(), LearningManager.PROBE_DORMANT_GAMES)
                 .gamesSinceLastSelection();
     }
 
