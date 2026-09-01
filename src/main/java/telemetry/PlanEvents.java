@@ -60,4 +60,20 @@ public final class PlanEvents {
         }
         current.onBlocked(plan, blocker);
     }
+
+    public static void buildAheadHold(Plan holder, int heldFrames, int starvedBehind) {
+        PlanEventSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onBuildAheadHold(holder, heldFrames, starvedBehind);
+    }
+
+    public static void buildAheadEvicted(Plan holder, int heldFrames, int starvedBehind) {
+        PlanEventSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onBuildAheadEvict(holder, heldFrames, starvedBehind);
+    }
 }
