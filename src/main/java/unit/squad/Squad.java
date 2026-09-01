@@ -65,6 +65,9 @@ public class Squad implements Comparable<Squad> {
     @Getter
     private int splitFrame = 0;
 
+    @Getter
+    private int commitFrame = 0;
+
     @Override
     public boolean equals(Object other) {
         if (other == this) {
@@ -202,13 +205,15 @@ public class Squad implements Comparable<Squad> {
     /**
      * Adopts the state of a single source squad, as when a squad splits a sibling off itself.
      *
-     * <p>The sibling also takes the rally point of the squad it came from. Everything else is folded by
+     * <p>The sibling also takes the rally point and the objective of the squad it came from, so a fragment
+     * carved off a committed squad keeps chasing what the parent was chasing. Everything else is folded by
      * {@link #inheritStateFrom(Collection)}.
      *
      * @param source squad this squad is derived from
      */
     public void inheritStateFrom(Squad source) {
         this.rallyPoint = source.rallyPoint;
+        this.target = source.target;
         inheritStateFrom(Collections.singletonList(source));
     }
 
@@ -221,10 +226,14 @@ public class Squad implements Comparable<Squad> {
     public void inheritStateFrom(Collection<Squad> sources) {
         SquadStatus mergedStatus = null;
         int earliestContainStart = 0;
+        int earliestCommit = 0;
         for (Squad source: sources) {
             mergedStatus = SquadStatus.dominant(mergedStatus, source.status);
             if (source.containStartFrame > 0 && (earliestContainStart == 0 || source.containStartFrame < earliestContainStart)) {
                 earliestContainStart = source.containStartFrame;
+            }
+            if (source.commitFrame > 0 && (earliestCommit == 0 || source.commitFrame < earliestCommit)) {
+                earliestCommit = source.commitFrame;
             }
             this.fightLockedUntilFrame = Math.max(this.fightLockedUntilFrame, source.fightLockedUntilFrame);
             this.retreatLockedUntilFrame = Math.max(this.retreatLockedUntilFrame, source.retreatLockedUntilFrame);
@@ -233,6 +242,7 @@ public class Squad implements Comparable<Squad> {
 
         this.status = mergedStatus;
         this.containStartFrame = mergedStatus == SquadStatus.CONTAIN ? earliestContainStart : 0;
+        this.commitFrame = earliestCommit;
     }
 
     public boolean isMergeEligible(int currentFrame) {
@@ -310,5 +320,27 @@ public class Squad implements Comparable<Squad> {
     public void clearContainStart() {
         containStartFrame = 0;
         containLockedUntilFrame = 0;
+    }
+
+    /**
+     * Records that this squad has been cleared to act away from the rally point.
+     *
+     * <p>Commitment is sticky: the frame of the first clearance is kept, so a squad that later drops under the
+     * move out threshold through losses or a split is not read as a squad that never left home.
+     *
+     * @param currentFrame frame the squad was cleared on
+     */
+    public void commit(int currentFrame) {
+        if (commitFrame == 0) {
+            commitFrame = currentFrame;
+        }
+    }
+
+    public void clearCommitment() {
+        commitFrame = 0;
+    }
+
+    public boolean isCommitted() {
+        return commitFrame > 0;
     }
 }
