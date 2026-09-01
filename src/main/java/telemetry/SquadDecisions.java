@@ -4,12 +4,8 @@ import unit.squad.CombatSimulator;
 import unit.squad.Squad;
 
 /**
- * Static dispatch point for squad status decision events.
- *
- * <p>SquadManager has no telemetry dependency of its own, so the hooks reach the logger through
- * this holder rather than through a constructor argument, mirroring {@link PlanEvents}. With no
- * sink registered every entry point is a single null check: no allocation, no BWAPI call, no file
- * handle.
+ * Static dispatch point for squad status decision events. With no sink registered, every method
+ * is a no-op.
  */
 public final class SquadDecisions {
 

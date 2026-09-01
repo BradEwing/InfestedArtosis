@@ -17,30 +17,18 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Records why a squad changed status, not just that it did.
+ * Records squad status changes and the decisions behind them.
  *
- * <p>Three events reach the file. A STATUS_CHANGE row is emitted by the end of frame sweep whenever a
- * fight squad holds a different {@link SquadStatus} than it did on the previous sweep, which covers
- * every path that can move a squad - the combat sim, containment entry and exit, rallying, merges
- * and splits - without instrumenting each setter. A LOCK_SUPPRESSED row is emitted when a
- * hysteresis lock held a squad on its current status after the simulator asked for the other one.
- * A SPLIT_SUPPRESSED row is emitted when splitSquads found stragglers but kept the squad together
- * because one side of the split would have fallen under the move out floor; suppressed_by carries
- * MOVE_OUT_FLOOR on those rows. The gate runs on the merge interval and fires on every declined
- * split, committed squad or not, so the committed column separates declines that protected a
- * committed squad from declines of the floor in general. Each row is a fresh decline rather than
- * one decision observed many times, so they are not deduplicated.
+ * <p>Writes three event types. STATUS_CHANGE is emitted when a fight squad's {@link SquadStatus}
+ * differs from the previous frame sweep. LOCK_SUPPRESSED is emitted when a hysteresis lock holds a
+ * squad on its current status after the simulator asks for the other one. SPLIT_SUPPRESSED is
+ * emitted when splitSquads keeps a squad together because a split would drop a side below the move
+ * out floor; suppressed_by carries MOVE_OUT_FLOOR on those rows.
  *
- * <p>Locks are held for whole seconds, so an unfiltered suppression row would repeat every frame
- * for the life of the lock. Rows are deduplicated on the lock, its expiry frame and the overridden
- * verdict: one row per suppression episode, which is the unit a batch counts.
+ * <p>LOCK_SUPPRESSED rows are deduplicated per suppression episode, keyed on the lock, its expiry
+ * frame, and the overridden verdict.
  *
- * <p>Read-only against combat code. Everything carried here is state the bot already computed;
- * HorizonCombatSimulator stashes its snapshot on every evaluate call regardless of any debug flag,
- * so reading it costs nothing and changes no decision.
- *
- * <p>Constructed only when combat telemetry is enabled, so the disabled bot allocates no writer,
- * registers no sink and opens no file handle.
+ * <p>Constructed only when combat telemetry is enabled.
  */
 public class SquadDecisionLogger implements SquadDecisionSink {
 
@@ -183,9 +171,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
     }
 
     /**
-     * Telemetry never gets to end a game. An exception escaping onFrame kills the JVM and the batch
-     * harness scores that as a crash, so a broken logger stops logging instead of propagating, and
-     * unregisters itself so the hot path drops back to a single null check.
+     * Disables the logger and clears its state after an error, so a telemetry failure cannot crash the game.
      */
     private void disable() {
         disabled = true;
@@ -205,9 +191,9 @@ public class SquadDecisionLogger implements SquadDecisionSink {
     }
 
     /**
-     * Emits a row for every fight squad whose status moved since the last sweep, then drops the
-     * bookkeeping for squads that no longer exist. Merges and splits mint fresh squad ids, so a
-     * squad appearing for the first time is reported as a transition out of NONE.
+     * Emits a row for every fight squad whose status changed since the last sweep, then drops
+     * bookkeeping for squads that no longer exist. A squad's first appearance is reported as a
+     * transition from NONE.
      */
     private void sweepStatuses(int frame) {
         Set<String> present = new HashSet<>();
@@ -249,9 +235,8 @@ public class SquadDecisionLogger implements SquadDecisionSink {
     }
 
     /**
-     * Supply of the enemy units the simulator counted, fog of war entries included. Paired with
-     * sim_enemy_strength this separates a real unfavourable ratio from the divide by near zero an
-     * unscouted enemy produces.
+     * Returns the total supply of enemy units the simulator counted, including units known only
+     * from fog of war.
      */
     private int believedEnemySupply(HorizonCombatSimulator.DebugSnapshot snapshot) {
         int supply = 0;
@@ -262,14 +247,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
     }
 
     /**
-     * Whether the lock actually held back a transition. A lock that pins the status the simulator
-     * already wants suppressed nothing, and would otherwise flood the file with rows that answer
-     * no question.
-     *
-     * @param status status the squad currently holds
-     * @param lock lock that took the early return
-     * @param result verdict the simulator returned this frame
-     * @return true if the verdict asked for the other status
+     * Returns true if the lock held back a transition the simulator's verdict asked for.
      */
     static boolean overridesVerdict(SquadStatus status, SquadLock lock,
                                     CombatSimulator.CombatResult result) {
@@ -306,9 +284,8 @@ public class SquadDecisionLogger implements SquadDecisionSink {
     }
 
     /**
-     * The cells that identify the decision rather than measure the squad: game, frame, squad and
-     * event, the statuses either side of the transition, the simulator verdict in force and what
-     * suppressed the action, NONE when nothing did.
+     * Builds the identity cells: game, frame, squad, event, the statuses before and after the
+     * transition, the simulator verdict, and what suppressed the action (NONE if nothing did).
      */
     static List<String> identityCells(String gameId, int frame, Squad squad, String event, SquadStatus from,
                                       SquadStatus to, SquadDecision context, String suppressedBy) {
@@ -326,12 +303,9 @@ public class SquadDecisionLogger implements SquadDecisionSink {
     }
 
     /**
-     * The cells that measure the squad at decision time, from our_supply_real through
-     * ground_distance_to_base.
-     *
-     * <p>Commitment is read from the squad rather than stashed on the decision, matching the lock
-     * expiry columns beside it. commit_frame follows the file wide {@link SquadDecision#NOT_EVALUATED}
-     * convention instead of the internal 0, so downstream filters that select on -1 keep working.
+     * Builds the cells that measure the squad at decision time, from our_supply_real through
+     * ground_distance_to_base. commit_frame is -1 when the squad is not committed, matching the
+     * {@link SquadDecision#NOT_EVALUATED} sentinel used by the sim columns.
      */
     static List<String> squadCells(Squad squad, SquadDecision context, boolean enemyScouted,
                                    int groundDistanceToBase) {
@@ -363,9 +337,9 @@ public class SquadDecisionLogger implements SquadDecisionSink {
     }
 
     /**
-     * Ground path length from the squad centroid to the closest base we hold, so home defence and
-     * away offence separate without joining rows against build tiles. Negative when no base is
-     * reachable on the ground, which is the normal answer for an air squad over unwalkable terrain.
+     * Returns the ground path length from the squad centroid to the closest base held. Returns a
+     * negative value when no base is reachable on the ground, for example for an air squad over
+     * unwalkable terrain.
      */
     private int groundDistanceToNearestBase(Position center) {
         if (center == null) {
