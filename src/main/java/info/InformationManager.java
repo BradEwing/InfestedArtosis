@@ -274,14 +274,7 @@ public class InformationManager {
         UnitType plannedUnit = assignedPlan.getPlannedUnit();
         if (assignedPlan.getType() == PlanType.BUILDING) {
             UnitTypeCount count = gameState.getUnitTypeCount();
-            // TODO: Greater Spire
-            if (plannedUnit == UnitType.Zerg_Sunken_Colony || plannedUnit == UnitType.Zerg_Spore_Colony) {
-                count.removeUnit(UnitType.Zerg_Creep_Colony);
-            } else if (plannedUnit == UnitType.Zerg_Lair) {
-                count.removeUnit(UnitType.Zerg_Hatchery);
-            } else {
-                count.removeUnit(UnitType.Zerg_Drone);
-            }
+            count.startBuildingMorph(plannedUnit);
         } else if (assignedPlan.getType() == PlanType.UNIT) {
             UnitTypeCount count = gameState.getUnitTypeCount();
             if (plannedUnit == UnitType.Zerg_Lurker) {
@@ -301,6 +294,7 @@ public class InformationManager {
             return;
         }
 
+        unitCount.completeMorph(unitType);
         updateTechProgression(unitType);
 
         if (unitType == UnitType.Zerg_Extractor) {
@@ -403,7 +397,7 @@ public class InformationManager {
             baseManager.onUnitDestroy(unit);
             updateTechOnDestroy(unitType);
             UnitTypeCount unitCount = gameState.getUnitTypeCount();
-            unitCount.removeUnit(unitType);
+            unitCount.removeDestroyedUnit(unitType, unit.isCompleted());
         } else {
             BaseData baseData = gameState.getBaseData();
             TilePosition tp = unit.getTilePosition();

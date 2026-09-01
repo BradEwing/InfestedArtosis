@@ -47,6 +47,75 @@ public class UnitTypeCount {
         unitTypeCount.put(unitType, newCount);
     }
 
+    /**
+     * Structures that morph in place from a finished structure of another type.
+     *
+     * @param unitType the structure the morph produces
+     * @return the structure the morph upgrades, or null when the morph does not upgrade one
+     */
+    public static UnitType morphPredecessor(UnitType unitType) {
+        switch (unitType) {
+            case Zerg_Lair:
+                return UnitType.Zerg_Hatchery;
+            case Zerg_Hive:
+                return UnitType.Zerg_Lair;
+            case Zerg_Greater_Spire:
+                return UnitType.Zerg_Spire;
+            default:
+                return null;
+        }
+    }
+
+    /**
+     * Applies the cost of a building morph when the morph is assigned.
+     * <p>
+     * A Creep Colony or a Drone is consumed the moment the morph starts. An in-place structure
+     * upgrade is not: a morphing Lair, Hive or Greater Spire still occupies the map and still
+     * counts as a resource depot or tech building, so its predecessor stays counted until
+     * {@link #completeMorph} runs.
+     *
+     * @param plannedUnit the structure the morph produces
+     */
+    public void startBuildingMorph(UnitType plannedUnit) {
+        if (plannedUnit == UnitType.Zerg_Sunken_Colony || plannedUnit == UnitType.Zerg_Spore_Colony) {
+            removeUnit(UnitType.Zerg_Creep_Colony);
+            return;
+        }
+
+        if (morphPredecessor(plannedUnit) == null) {
+            removeUnit(UnitType.Zerg_Drone);
+        }
+    }
+
+    /**
+     * Drops the predecessor of a finished in-place structure upgrade.
+     *
+     * @param unitType the structure that completed
+     */
+    public void completeMorph(UnitType unitType) {
+        UnitType predecessor = morphPredecessor(unitType);
+        if (predecessor != null) {
+            removeUnit(predecessor);
+        }
+    }
+
+    /**
+     * Removes a destroyed unit. An in-place structure upgrade that dies before it completes was
+     * never added under its own type, so its predecessor is what must be removed.
+     *
+     * @param unitType the destroyed unit
+     * @param isCompleted whether the destroyed unit had finished morphing
+     */
+    public void removeDestroyedUnit(UnitType unitType, boolean isCompleted) {
+        UnitType predecessor = morphPredecessor(unitType);
+        if (!isCompleted && predecessor != null) {
+            removeUnit(predecessor);
+            return;
+        }
+
+        removeUnit(unitType);
+    }
+
     public void planUnit(UnitType unitType) {
         if (!plannedUnitTypeCount.containsKey(unitType)) {
             plannedUnitTypeCount.put(unitType, 0);
