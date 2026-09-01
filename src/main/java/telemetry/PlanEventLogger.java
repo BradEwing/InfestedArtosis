@@ -33,13 +33,18 @@ public class PlanEventLogger implements PlanEventSink {
     private static final String EVENT_TRANSITION = "TRANSITION";
     private static final String EVENT_BLOCKED = "BLOCKED";
     private static final String EVENT_OPEN_AT_GAME_END = "OPEN_AT_GAME_END";
+    private static final String EVENT_BUILD_AHEAD_HOLD = "BUILD_AHEAD_HOLD";
+    private static final String EVENT_BUILD_AHEAD_EVICT = "BUILD_AHEAD_EVICT";
+
+    private static final int NO_STARVED_COUNT = -1;
 
     private static final String EVENT_RECURRING_CANCEL = "RECURRING_CANCEL";
 
     private static final String PLAN_HEADER = "frame,time,event,plan_id,plan_type,item,from_state,to_state,"
             + "cancel_reason,cancel_source,blocker,blocked_frames,priority,frames_in_state,age_frames,minerals,gas,"
             + "available_minerals,available_gas,supply_used_real,supply_total_real,larva,gatherers,queue_depth,"
-            + "plans_scheduled,plans_building,plans_morphing,build_tile_x,build_tile_y,macro_hatchery,build_order";
+            + "plans_scheduled,plans_building,plans_morphing,build_tile_x,build_tile_y,macro_hatchery,build_order,"
+            + "starved_behind";
 
     private static final String GAME_HEADER = "timestamp,is_winner,num_starting_locations,map_name,opponent_name,"
             + "opponent_race,opener,build_order,detected_strategies,frame_count";
@@ -115,7 +120,7 @@ public class PlanEventLogger implements PlanEventSink {
                 return;
             }
             PlanTrace trace = newTrace(plan);
-            buffer.add(row(plan, trace, EVENT_ENQUEUE, null, plan.getState(), PlanBlocker.NONE, 0));
+            buffer.add(row(plan, trace, EVENT_ENQUEUE, null, plan.getState(), PlanBlocker.NONE, 0, NO_STARVED_COUNT));
         } catch (Exception e) {
             disabled = true;
         }
@@ -130,13 +135,13 @@ public class PlanEventLogger implements PlanEventSink {
         try {
             PlanTrace trace = trace(plan);
             endBlocker(plan, trace);
-            buffer.add(row(plan, trace, EVENT_TRANSITION, from, to, PlanBlocker.NONE, 0));
+            buffer.add(row(plan, trace, EVENT_TRANSITION, from, to, PlanBlocker.NONE, 0, NO_STARVED_COUNT));
             trace.setLastStateFrame(currentFrame);
             if (to == PlanState.COMPLETE || to == PlanState.CANCELLED) {
                 openPlans.remove(plan.getUuid());
             }
             if (to == PlanState.CANCELLED && plan.getCancelSource() != null && recordRecurrence(plan)) {
-                buffer.add(row(plan, trace, EVENT_RECURRING_CANCEL, from, to, PlanBlocker.NONE, 0));
+                buffer.add(row(plan, trace, EVENT_RECURRING_CANCEL, from, to, PlanBlocker.NONE, 0, NO_STARVED_COUNT));
             }
         } catch (Exception e) {
             disabled = true;
@@ -161,6 +166,31 @@ public class PlanEventLogger implements PlanEventSink {
         }
     }
 
+
+    @Override
+    public void onBuildAheadHold(Plan holder, int heldFrames, int starvedBehind) {
+        buildAheadRow(EVENT_BUILD_AHEAD_HOLD, holder, heldFrames, starvedBehind);
+    }
+
+    @Override
+    public void onBuildAheadEvict(Plan holder, int heldFrames, int starvedBehind) {
+        buildAheadRow(EVENT_BUILD_AHEAD_EVICT, holder, heldFrames, starvedBehind);
+    }
+
+    private void buildAheadRow(String event, Plan holder, int heldFrames, int starvedBehind) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            PlanTrace trace = trace(holder);
+            buffer.add(row(holder, trace, event, null, holder.getState(),
+                    PlanBlocker.BUILD_AHEAD_SLOT_TAKEN, heldFrames, starvedBehind));
+        } catch (Exception e) {
+            disabled = true;
+        }
+    }
+
     /**
      * Records a cancellation for this plan's item and cancel source, and reports whether the
      * count crossed the recurrence threshold.
@@ -177,7 +207,7 @@ public class PlanEventLogger implements PlanEventSink {
             return;
         }
         int waited = currentFrame - trace.getBlockerSinceFrame();
-        buffer.add(row(plan, trace, EVENT_BLOCKED, null, null, blocker, waited));
+        buffer.add(row(plan, trace, EVENT_BLOCKED, null, null, blocker, waited, NO_STARVED_COUNT));
         trace.clearBlocker(currentFrame);
     }
 
@@ -189,7 +219,7 @@ public class PlanEventLogger implements PlanEventSink {
                 continue;
             }
             endBlocker(plan, trace);
-            buffer.add(row(plan, trace, EVENT_OPEN_AT_GAME_END, null, plan.getState(), PlanBlocker.NONE, 0));
+            buffer.add(row(plan, trace, EVENT_OPEN_AT_GAME_END, null, plan.getState(), PlanBlocker.NONE, 0, NO_STARVED_COUNT));
         }
         openPlans.clear();
     }
@@ -221,7 +251,7 @@ public class PlanEventLogger implements PlanEventSink {
     }
 
     private String row(Plan plan, PlanTrace trace, String event, PlanState from, PlanState to,
-                       PlanBlocker blocker, int blockedFrames) {
+                       PlanBlocker blocker, int blockedFrames, int starvedBehind) {
         Player self = gameState.getSelf();
         ResourceCount resourceCount = gameState.getResourceCount();
         TilePosition buildPosition = plan.getBuildPosition();
@@ -259,7 +289,8 @@ public class PlanEventLogger implements PlanEventSink {
         sb.append(buildPosition == null ? "" : String.valueOf(buildPosition.getX())).append(',');
         sb.append(buildPosition == null ? "" : String.valueOf(buildPosition.getY())).append(',');
         sb.append(plan.isMacroHatchery()).append(',');
-        sb.append(Csv.sanitize(activeBuildOrderName()));
+        sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
+        sb.append(starvedBehind == NO_STARVED_COUNT ? "" : String.valueOf(starvedBehind));
         return sb.toString();
     }
 

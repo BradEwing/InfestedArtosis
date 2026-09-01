@@ -503,7 +503,10 @@ public class SquadManager {
             if (outliers.isEmpty()) continue;
 
             int moveOutThreshold = calculateMoveOutThreshold(squad);
-            if (!splitKeepsBothSidesCommittable(squadStrength(squad), strengthOf(squad, outliers), moveOutThreshold)) {
+            int totalStrength = squadStrength(squad);
+            int outlierStrength = strengthOf(squad, outliers);
+            if (!splitKeepsBothSidesCommittable(totalStrength, outlierStrength, moveOutThreshold)) {
+                SquadDecisions.splitSuppressed(squad, moveOutThreshold, totalStrength, outlierStrength);
                 continue;
             }
 

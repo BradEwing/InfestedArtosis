@@ -7,10 +7,12 @@ import bwapi.TilePosition;
 import bwapi.Unit;
 import bwapi.UnitType;
 import bwapi.UpgradeType;
+import bwem.Base;
 import info.GameState;
 import info.ResourceCount;
 import info.TechProgression;
 import info.UnitTypeCount;
+import info.map.BuildingPlanner;
 import macro.plan.Plan;
 import macro.plan.PlanBlocker;
 import macro.plan.PlanCancelSource;
@@ -20,6 +22,8 @@ import macro.plan.PlanType;
 import macro.plan.UnitPlan;
 import strategy.buildorder.BuildOrder;
 import telemetry.PlanEvents;
+import unit.managed.ManagedUnit;
+import unit.managed.UnitRole;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -44,7 +48,7 @@ public class ProductionManager {
     // isPlanning contingent on -> hitting min supply set by build order OR queue exhaust
     private boolean isPlanning = false;
 
-    private int scheduledBuildings = 0;
+    private final BuildAheadSlot buildAheadSlot = new BuildAheadSlot();
 
     private int currentFrame = 5;
 
@@ -87,6 +91,7 @@ public class ProductionManager {
         cancelDelayedLairPlans();
         cancelExcessHatcheryPlans();
         cancelExcessOverlordPlans();
+        enforceBuildAheadSlot();
         schedulePlannedItems();
         buildUpgrades();
         researchTech();
@@ -124,22 +129,13 @@ public class ProductionManager {
                 .collect(Collectors.toSet());
 
         for (Plan plan : scheduledPlansToCancel) {
-            scheduledBuildings = Math.max(0, scheduledBuildings - 1);
+            buildAheadSlot.release(plan);
             gameState.getPlansScheduled().remove(plan);
             gameState.cancelPlan(null, plan, PlanCancelSource.PRODUCTION_EXCESS_HATCHERY_SCHEDULED);
         }
     }
 
-    /**
-     * Cancels excess overlord plans when free supply is sufficient.
-     * Example: We queue up 10 hydras but half of them die by the time the overlord plan is ready to build.
-     */
-    /**
-     * Drops scheduled Lair plans while an early rush delays the Lair. The queued plans are
-     * removed by the reaction; this sweep owns the scheduled ones because cancelling a scheduled
-     * building must also release the scheduledBuildings slot, which otherwise stays claimed for
-     * the rest of the game and blocks every later build-ahead.
-     */
+    /** Drops scheduled Lair plans while an early rush delays the Lair; the reaction removes only queued ones. */
     private void cancelDelayedLairPlans() {
         if (!gameState.isEarlyRushDelayLair()) {
             return;
@@ -151,7 +147,7 @@ public class ProductionManager {
                 .collect(Collectors.toSet());
 
         for (Plan plan : scheduledLairs) {
-            scheduledBuildings = Math.max(0, scheduledBuildings - 1);
+            buildAheadSlot.release(plan);
             gameState.getPlansScheduled().remove(plan);
             gameState.cancelPlan(null, plan, PlanCancelSource.PRODUCTION_DELAYED_LAIR_SCHEDULED);
         }
@@ -175,6 +171,119 @@ public class ProductionManager {
                     int plannedSupply = resourceCount.getPlannedSupply();
                     resourceCount.setPlannedSupply(Math.max(0, plannedSupply - 16));
                 });
+    }
+
+    /** Bounds how long a building plan holds the build-ahead slot. */
+    private void enforceBuildAheadSlot() {
+        buildAheadSlot.reconcile(activeBuildingPlans());
+
+        cancelUnexecutableBuildingClaims();
+
+        for (Plan plan : buildAheadSlot.stalled(currentFrame)) {
+            PlanState state = plan.getState();
+            if (state != PlanState.SCHEDULE && state != PlanState.BUILDING) {
+                buildAheadSlot.release(plan);
+                continue;
+            }
+            PlanEvents.buildAheadEvicted(plan, buildAheadSlot.heldFrames(plan, currentFrame), starvedQueuedPlans());
+            requeueStalledPlan(plan);
+        }
+
+        for (Plan plan : buildAheadSlot.holdReportsDue(currentFrame)) {
+            PlanEvents.buildAheadHold(plan, buildAheadSlot.heldFrames(plan, currentFrame), starvedQueuedPlans());
+        }
+    }
+
+    private Set<Plan> activeBuildingPlans() {
+        Set<Plan> active = new HashSet<>(gameState.getPlansScheduled());
+        active.addAll(gameState.getPlansBuilding());
+        active.addAll(gameState.getPlansMorphing());
+        return active;
+    }
+
+    private int starvedQueuedPlans() {
+        ResourceCount resourceCount = gameState.getResourceCount();
+        int starved = 0;
+        for (Plan plan : gameState.getProductionQueue()) {
+            if (resourceCount.availableMinerals() < plan.mineralPrice()
+                    || resourceCount.availableGas() < plan.gasPrice()) {
+                starved += 1;
+            }
+        }
+        return starved;
+    }
+
+    /** Requeues an evicted plan; it keeps its build position, so its tiles are not reserved twice. */
+    private void requeueStalledPlan(Plan plan) {
+        buildAheadSlot.releaseWithBackoff(plan, currentFrame);
+        removeFromActivePlans(plan);
+        releaseExecutor(plan);
+        gameState.getResourceCount().unreserveUnit(plan.getPlannedUnit());
+        plan.setPriority(BuildAheadSlot.requeuePriority(plan.getPriority()));
+        plan.setState(PlanState.PLANNED);
+        gameState.getProductionQueue().add(plan);
+    }
+
+    private void cancelUnexecutableBuildingClaims() {
+        Map<Plan, PlanCancelSource> unexecutable = new HashMap<>();
+        for (Plan plan : buildAheadSlot.claimedPlans()) {
+            PlanCancelSource source = buildAheadCancellationSource(
+                    plan,
+                    canSchedulePlan(plan),
+                    executorOf(plan) != null);
+            if (source != null) {
+                unexecutable.put(plan, source);
+            }
+        }
+
+        for (Map.Entry<Plan, PlanCancelSource> entry : unexecutable.entrySet()) {
+            Plan plan = entry.getKey();
+            buildAheadSlot.releaseWithBackoff(plan, currentFrame);
+            removeFromActivePlans(plan);
+            gameState.cancelPlan(executorOf(plan), plan, entry.getValue());
+        }
+    }
+
+    static PlanCancelSource buildAheadCancellationSource(
+            Plan plan,
+            boolean prerequisitesAvailable,
+            boolean executorAssigned) {
+        if (!prerequisitesAvailable) {
+            return PlanCancelSource.PRODUCTION_SCHEDULED_PREREQUISITE_LOST;
+        }
+        if (plan.getState() == PlanState.BUILDING && !executorAssigned) {
+            return PlanCancelSource.PRODUCTION_EXECUTOR_LOST;
+        }
+        return null;
+    }
+
+    private void removeFromActivePlans(Plan plan) {
+        gameState.getPlansScheduled().remove(plan);
+        gameState.getPlansBuilding().remove(plan);
+        gameState.getPlansMorphing().remove(plan);
+    }
+
+    private Unit executorOf(Plan plan) {
+        for (Map.Entry<Unit, Plan> entry : gameState.getAssignedPlannedItems().entrySet()) {
+            if (plan.equals(entry.getValue())) {
+                return entry.getKey();
+            }
+        }
+        return null;
+    }
+
+    private void releaseExecutor(Plan plan) {
+        Unit executor = executorOf(plan);
+        if (executor == null) {
+            return;
+        }
+
+        gameState.getAssignedPlannedItems().remove(executor);
+        ManagedUnit managedUnit = gameState.getManagedUnitLookup().get(executor);
+        if (managedUnit != null) {
+            managedUnit.setPlan(null);
+            managedUnit.setRole(UnitRole.IDLE);
+        }
     }
 
     private void removePlansWithLaterPrerequisites() {
@@ -669,7 +778,7 @@ public class ProductionManager {
         }
 
         if (unitType.isBuilding()) {
-            scheduledBuildings -= 1;
+            buildAheadSlot.release(plan);
         }
 
         gameState.getPlansBuilding().remove(plan);
@@ -719,21 +828,74 @@ public class ProductionManager {
 
         ResourceCount resourceCount = gameState.getResourceCount();
         int predictedReadyFrame = gameState.frameCanAffordUnit(building, currentFrame);
-        if (resourceCount.cannotAffordUnit(building)) {
-            if (hasHigherPriorityPending || scheduledBuildings > 0) {
-                return PlanBlocker.BUILD_AHEAD_SLOT_TAKEN;
-            }
+        PlanBlocker buildAheadBlocker = buildAheadBlocker(
+                buildAheadSlot,
+                building,
+                currentFrame,
+                resourceCount.cannotAffordUnit(building),
+                hasHigherPriorityPending,
+                predictedReadyFrame);
+        if (buildAheadBlocker != PlanBlocker.NONE) {
+            return buildAheadBlocker;
         }
 
-        if (plan.getBuildPosition() == null) {
-            plan.setBuildPosition(gameState.getBuildingPlanner().getLocationForBuilding(gameState.getBaseData().getMainBase(), building));
+        if (!resolveBuildPosition(plan, building)) {
+            return PlanBlocker.NO_BUILD_POSITION;
         }
 
-        scheduledBuildings += 1;
+        buildAheadSlot.claim(plan, currentFrame, predictedReadyFrame);
         resourceCount.reserveUnit(building);
         plan.setPredictedReadyFrame(predictedReadyFrame);
         plan.setState(PlanState.SCHEDULE);
         return PlanBlocker.NONE;
+    }
+
+    static PlanBlocker buildAheadBlocker(
+            BuildAheadSlot slot,
+            UnitType building,
+            int frame,
+            boolean cannotAfford,
+            boolean hasHigherPriorityPending,
+            int predictedReadyFrame) {
+        if (slot.isInBackoff(building, frame)) {
+            return PlanBlocker.BUILD_AHEAD_BACKOFF;
+        }
+        if (!cannotAfford) {
+            return PlanBlocker.NONE;
+        }
+        if (hasHigherPriorityPending || slot.isOccupied()) {
+            return PlanBlocker.BUILD_AHEAD_SLOT_TAKEN;
+        }
+        if (BuildAheadSlot.isUnreachable(predictedReadyFrame)) {
+            return PlanBlocker.NO_INCOME;
+        }
+        return PlanBlocker.NONE;
+    }
+
+    /** A plan with nowhere to build must not reserve its cost. */
+    private boolean resolveBuildPosition(Plan plan, UnitType building) {
+        if (plan.getBuildPosition() != null) {
+            return true;
+        }
+
+        Base mainBase = gameState.getBaseData().getMainBase();
+        if (mainBase == null) {
+            return false;
+        }
+
+        BuildingPlanner buildingPlanner = gameState.getBuildingPlanner();
+        TilePosition buildPosition = buildingPlanner.getLocationForBuilding(mainBase, building);
+        if (buildPosition == null) {
+            return false;
+        }
+
+        if (!gameState.getGameMap().isValidTile(buildPosition)) {
+            buildingPlanner.unreservePlannedBuildingTiles(buildPosition, building);
+            return false;
+        }
+
+        plan.setBuildPosition(buildPosition);
+        return true;
     }
 
     private boolean isColonyMorph(UnitType type) {
@@ -930,7 +1092,7 @@ public class ProductionManager {
         if (unitType == UnitType.Zerg_Extractor) {
             ResourceCount resourceCount = gameState.getResourceCount();
             resourceCount.unreserveUnit(unitType);
-            scheduledBuildings -= 1;
+            buildAheadSlot.releaseFirst(unitType);
         }
     }
 
@@ -961,6 +1123,10 @@ public class ProductionManager {
                                 && gameState.getBaseData().isExtractorAtPosition(plan.getBuildPosition())) {
                             gameState.completePlan(unit, plan);
                         } else {
+                            if (plan.getState() == PlanState.BUILDING
+                                    && plan.getType() == PlanType.BUILDING) {
+                                buildAheadSlot.releaseWithBackoff(plan, currentFrame);
+                            }
                             gameState.cancelPlan(unit, plan, PlanCancelSource.PRODUCTION_EXECUTOR_LOST);
                         }
                     } else {
@@ -969,7 +1135,7 @@ public class ProductionManager {
                     break;
                 case SCHEDULE:
                     if (plan.getType() == PlanType.BUILDING) {
-                        scheduledBuildings = Math.max(0, scheduledBuildings - 1);
+                        buildAheadSlot.releaseWithBackoff(plan, currentFrame);
                     }
                     gameState.cancelPlan(unit, plan, PlanCancelSource.PRODUCTION_EXECUTOR_LOST);
                     break;
