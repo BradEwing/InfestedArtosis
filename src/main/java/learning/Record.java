@@ -9,9 +9,10 @@ import java.util.List;
 
 /**
  * Tracks win/loss performance of one strategy (opener or build order) for Discounted UCB
- * selection. Wins and losses are stored with timestamps and weighted by gamma to the power
- * of games elapsed since each observation. Losses decay more slowly than wins, so a recent
- * loss keeps pressuring the discounted win rate long after the arm stops being picked.
+ * selection. Wins and losses are stored with timestamps and weighted by
+ * {@link UCBSelectionPolicy#GAMMA} to the power of games elapsed since each observation. Both
+ * outcomes decay at that one rate, so the discounted mean is a recency-weighted win rate and the
+ * win-rate gates in {@link LearningManager} read against it in win-rate points.
  */
 @Builder
 @Data
@@ -79,43 +80,41 @@ public class Record implements UCBRecord {
         double discountedGames = 0.0;
         for (Long winTimestamp : winTimestamps) {
             if (winTimestamp < timestamp) {
-                discountedGames += GlobalGameOrder.weight(UCBSelectionPolicy.GAMMA_WIN, winTimestamp, sortedPriorGames);
+                discountedGames += GlobalGameOrder.weight(UCBSelectionPolicy.GAMMA, winTimestamp, sortedPriorGames);
             }
         }
         for (Long lossTimestamp : lossTimestamps) {
             if (lossTimestamp < timestamp) {
-                discountedGames += GlobalGameOrder.weight(UCBSelectionPolicy.GAMMA_LOSS, lossTimestamp, sortedPriorGames);
+                discountedGames += GlobalGameOrder.weight(UCBSelectionPolicy.GAMMA, lossTimestamp, sortedPriorGames);
             }
         }
         return discountedGames;
     }
 
+    /**
+     * Bandit index: the discounted win rate plus a curiosity bonus that fades as discounted
+     * evidence accumulates. An arm with no record scores {@link UCBSelectionPolicy#CURIOSITY_CAP}
+     * under the same formula, so it competes with a recorded arm instead of outranking it, and the
+     * index does not depend on how long the opponent has been played.
+     */
     public double index(int totalGames, List<Long> gameTimestamps) {
         if (totalGames == 0) {
             return Math.random();
         }
 
-        if (this.games() == 0) {
-            return Math.sqrt(Math.log(totalGames)) + (Math.random() * 0.2 - 0.1);
-        }
-
         List<Long> sortedGameTimestamps = GlobalGameOrder.sortedAscending(gameTimestamps);
-        double discountedWins = calculateDiscountedWins(sortedGameTimestamps);
         double discountedGames = calculateDiscountedGames(sortedGameTimestamps);
-
-        if (discountedGames == 0) {
-            return 1.0;
+        double sampleMean = 0.0;
+        if (discountedGames > 0) {
+            sampleMean = calculateDiscountedWins(sortedGameTimestamps) / discountedGames;
         }
-
-        double sampleMean = discountedWins / discountedGames;
-        double c = UCBSelectionPolicy.explorationTerm(totalGames, discountedGames);
-        return sampleMean + c;
+        return sampleMean + UCBSelectionPolicy.curiosity(discountedGames);
     }
 
     private double calculateDiscountedWins(List<Long> sortedGameTimestamps) {
         double discountedWins = 0.0;
         for (Long timestamp : winTimestamps) {
-            discountedWins += GlobalGameOrder.weight(UCBSelectionPolicy.GAMMA_WIN, timestamp, sortedGameTimestamps);
+            discountedWins += GlobalGameOrder.weight(UCBSelectionPolicy.GAMMA, timestamp, sortedGameTimestamps);
         }
         return discountedWins;
     }
@@ -123,7 +122,7 @@ public class Record implements UCBRecord {
     private double calculateDiscountedGames(List<Long> sortedGameTimestamps) {
         double discountedGames = calculateDiscountedWins(sortedGameTimestamps);
         for (Long timestamp : lossTimestamps) {
-            discountedGames += GlobalGameOrder.weight(UCBSelectionPolicy.GAMMA_LOSS, timestamp, sortedGameTimestamps);
+            discountedGames += GlobalGameOrder.weight(UCBSelectionPolicy.GAMMA, timestamp, sortedGameTimestamps);
         }
         return discountedGames;
     }

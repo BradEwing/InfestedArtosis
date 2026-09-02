@@ -6,7 +6,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -114,7 +113,7 @@ public class RecordTest {
     /**
      * Tests exponential decay in the D-UCB algorithm by adding games with increasing time gaps.
      * The algorithm should apply gamma^age weighting where older games have less influence.
-     * With 3 wins and exploration term, the index should be greater than 1.0.
+     * With 3 wins and the curiosity bonus, the index should be greater than 1.0.
      */
     @Test
     void testExponentialDecay() {
@@ -133,7 +132,7 @@ public class RecordTest {
         double index = recordA.index(100, ownClock(recordA));
 
         assertTrue(index > 0.0, "Index should be positive");
-        assertTrue(index > 1.0, "Index should be greater than 1.0 due to exploration term");
+        assertTrue(index > 1.0, "Index should be greater than 1.0 due to the curiosity bonus");
     }
 
     /**
@@ -217,28 +216,33 @@ public class RecordTest {
         assertTrue(index > 0.5, "Recent wins should give positive index");
     }
 
+    /**
+     * The index carries no dependence on how many games the opponent has been played, so a
+     * strategy scores the same on its 53rd game as on its 1324th.
+     */
     @Test
-    void testExplorationTerm() {
+    void testIndexIsInvariantInLifetimeLength() {
         recordA.addWinTimestamp(baseTime);
         recordA.addLossTimestamp(baseTime + 1000);
         recordA.setWins(1);
         recordA.setLosses(1);
 
-        double indexLow = recordA.index(10, ownClock(recordA));
-        double indexHigh = recordA.index(1000, ownClock(recordA));
+        double atFiftyThree = recordA.index(53, ownClock(recordA));
 
-        assertTrue(indexHigh > indexLow,
-            "Higher totalGames should increase exploration term");
+        assertEquals(atFiftyThree, recordA.index(339, ownClock(recordA)), 0.0000000001,
+            "The index should not grow with the opponent's lifetime");
+        assertEquals(atFiftyThree, recordA.index(1324, ownClock(recordA)), 0.0000000001,
+            "The index should not grow with the opponent's lifetime");
     }
 
     /**
      * Tests the gamma decay constant (0.95) is applied correctly in the D-UCB algorithm.
-     * With 3 wins and GAMMA_WIN = 0.95:
+     * With 3 wins and GAMMA = 0.95:
      * - discountedWins = 1.0 + 0.95 + 0.95^2 = 2.8525
      * - discountedGames = 1.0 + 0.95 + 0.95^2 = 2.8525
      * - sampleMean = 2.8525 / 2.8525 = 1.0
-     * - exploration = sqrt(2 * ln(100) / 2.8525) ≈ 1.8
-     * The index should be greater than 1.0 due to exploration term.
+     * - curiosity = 0.15 * (1 - 2.8525 / 10) ≈ 0.107
+     * The index should be greater than 1.0 due to the curiosity bonus.
      */
     @Test
     void testGammaConstant() {
@@ -250,17 +254,16 @@ public class RecordTest {
 
         double index = recordA.index(100, ownClock(recordA));
 
-        assertTrue(index > 1.0, "Index should be greater than 1.0 due to exploration");
+        assertTrue(index > 1.0, "Index should be greater than 1.0 due to the curiosity bonus");
         assertTrue(index < 3.0, "Index should be reasonable");
     }
 
     /**
-     * Asymmetric decay: twenty games after a loss, the loss still drags the discounted
-     * win rate below what symmetric decay would give. The four wins fade at GAMMA_WIN
-     * while the loss is weighted by GAMMA_LOSS^20 instead of GAMMA_WIN^20.
+     * One discount: a twenty-game-old loss carries exactly the weight a win of the same age
+     * carries, so the discounted mean stays a win rate.
      */
     @Test
-    void testLossStaysHeavyTwentyGamesLater() {
+    void testWinsAndLossesDecayAtTheSameRate() {
         Record record = Record.builder().opener("12Hatch").wins(4).losses(1).build();
         List<Long> gameTimestamps = new ArrayList<>();
         for (long timestamp = 1L; timestamp <= 25L; timestamp++) {
@@ -271,18 +274,59 @@ public class RecordTest {
         }
         record.addLossTimestamp(5L);
 
-        double mean = record.discountedMean(gameTimestamps);
-        double discountedWins = Math.pow(UCBSelectionPolicy.GAMMA_WIN, 24)
-                + Math.pow(UCBSelectionPolicy.GAMMA_WIN, 23)
-                + Math.pow(UCBSelectionPolicy.GAMMA_WIN, 22)
-                + Math.pow(UCBSelectionPolicy.GAMMA_WIN, 21);
-        double asymmetricMean = discountedWins
-                / (discountedWins + Math.pow(UCBSelectionPolicy.GAMMA_LOSS, 20));
+        double discountedWins = Math.pow(UCBSelectionPolicy.GAMMA, 24)
+                + Math.pow(UCBSelectionPolicy.GAMMA, 23)
+                + Math.pow(UCBSelectionPolicy.GAMMA, 22)
+                + Math.pow(UCBSelectionPolicy.GAMMA, 21);
         double symmetricMean = discountedWins
-                / (discountedWins + Math.pow(UCBSelectionPolicy.GAMMA_WIN, 20));
+                / (discountedWins + Math.pow(UCBSelectionPolicy.GAMMA, 20));
 
-        assertEquals(asymmetricMean, mean, 0.0000000001, "The loss weight should use GAMMA_LOSS");
-        assertTrue(mean < symmetricMean, "The loss should decay slower than the wins");
+        assertEquals(symmetricMean, record.discountedMean(gameTimestamps), 0.0000000001,
+                "The loss should be weighted by the same gamma as the wins");
+    }
+
+    /**
+     * The win-rate gates elsewhere read this mean in win-rate points, so a steady 30% history
+     * has to report about 30%. The split discount reported roughly 0.15 here.
+     */
+    @Test
+    void testThirtyGamesAtThirtyPercentReadsAsThirtyPercent() {
+        List<Long> gameTimestamps = new ArrayList<>();
+        Record record = evenlySpacedThirtyPercentRecord(30, gameTimestamps);
+
+        double mean = record.discountedMean(gameTimestamps);
+
+        assertEquals(9, record.wins(), "The fixture should be exactly 30% of 30 games");
+        assertEquals(30, record.games(), "The fixture should be exactly 30 games");
+        assertTrue(mean >= 0.27 && mean <= 0.33,
+                "A steady 30% history should read near 0.30, measured " + mean);
+    }
+
+    /**
+     * The displacement guarantee: an arm with a zero discounted mean cannot outrank an incumbent
+     * whose discounted mean clears the curiosity cap, however long the history and however
+     * dormant the challenger.
+     */
+    @Test
+    void testZeroMeanArmNeverOutranksAnIncumbentAboveTheCuriosityCap() {
+        for (int historyLength : new int[] {30, 53, 339, 1324}) {
+            List<Long> gameTimestamps = new ArrayList<>();
+            Record incumbent = evenlySpacedThirtyPercentRecord(historyLength, gameTimestamps);
+            double incumbentIndex = incumbent.index(historyLength, gameTimestamps);
+            assertTrue(incumbent.discountedMean(gameTimestamps) > UCBSelectionPolicy.CURIOSITY_CAP,
+                    "The fixture incumbent should lead by more than the cap at " + historyLength);
+
+            for (int gamesSincePlayed : new int[] {0, 1, 10, 50, historyLength}) {
+                Record challenger = Record.builder().opener("Challenger").build();
+                if (gamesSincePlayed > 0) {
+                    challenger.addLossTimestamp(historyLength - gamesSincePlayed + 1L);
+                    challenger.setLosses(1);
+                }
+                assertTrue(challenger.index(historyLength, gameTimestamps) < incumbentIndex,
+                        "A zero-mean arm dormant for " + gamesSincePlayed + " games displaced the "
+                                + "incumbent at a lifetime of " + historyLength);
+            }
+        }
     }
 
     /**
@@ -345,10 +389,8 @@ public class RecordTest {
         recordA.setWins(0);
         recordA.setLosses(0);
         double index = recordA.index(100, ownClock(recordA));
-        double expectedMin = Math.sqrt(Math.log(100)) - 0.1;
-        double expectedMax = Math.sqrt(Math.log(100)) + 0.1;
-        assertTrue(index >= expectedMin && index <= expectedMax,
-            "Unplayed strategy should return sqrt(ln(totalGames)) + random(-0.1, 0.1)");
+        assertEquals(UCBSelectionPolicy.CURIOSITY_CAP, index, 0.0000000001,
+            "An unplayed strategy should score the full curiosity bonus and nothing more");
     }
 
     @Test
@@ -400,7 +442,7 @@ public class RecordTest {
         recordA.setLosses(5);
 
         double index = recordA.index(100, ownClock(recordA));
-        assertTrue(index > 0.0, "All losses should still produce positive index due to exploration");
+        assertTrue(index > 0.0, "All losses should still produce positive index due to curiosity");
     }
 
     @Test
@@ -443,38 +485,46 @@ public class RecordTest {
         }
     }
 
+    /**
+     * Three arms with no discounted wins and different discounted evidence must separate. The
+     * old floor tied them, which made the pick among them a coin flip.
+     */
     @Test
-    void testIdleArmGapIsFrozenWhileBothArmsAreFloored() {
-        Record idle = Record.builder().opener("Idle").wins(0).losses(1).build();
-        Record leader = Record.builder().opener("Leader").wins(1).losses(0).build();
-        idle.addLossTimestamp(1L);
-        leader.addWinTimestamp(2L);
-        List<Long> gameTimestamps = new ArrayList<>(Arrays.asList(1L, 2L));
-        double initialGap = idle.index(2, gameTimestamps) - leader.index(2, gameTimestamps);
-
-        for (long timestamp = 3; timestamp <= 8; timestamp++) {
+    void testThinLosingArmsDoNotTie() {
+        List<Long> gameTimestamps = new ArrayList<>();
+        for (long timestamp = 1L; timestamp <= 40L; timestamp++) {
             gameTimestamps.add(timestamp);
-            leader.addWinTimestamp(timestamp);
-            leader.setWins(leader.getWins() + 1);
-            double gap = idle.index((int) timestamp, gameTimestamps)
-                    - leader.index((int) timestamp, gameTimestamps);
-            assertEquals(initialGap, gap, 0.0000000001, "The gap should stay frozen while both arms are floored");
         }
+        Record heaviest = lossesAt(33L, 34L, 35L, 36L, 37L, 38L, 39L, 40L);
+        Record middling = lossesAt(30L, 31L);
+        Record thinnest = lossesAt(20L);
+
+        double heaviestIndex = heaviest.index(40, gameTimestamps);
+        double middlingIndex = middling.index(40, gameTimestamps);
+        double thinnestIndex = thinnest.index(40, gameTimestamps);
+
+        assertTrue(heaviestIndex < middlingIndex,
+                "Arms with equal means and different evidence must not tie, measured "
+                        + heaviestIndex + " and " + middlingIndex);
+        assertTrue(middlingIndex < thinnestIndex,
+                "Arms with equal means and different evidence must not tie, measured "
+                        + middlingIndex + " and " + thinnestIndex);
     }
 
     @Test
-    void testExplorationBonusIsBoundedAtRepresentativeCounts() {
-        double[] discountedGames = {0.0000001, 1.0, 5.0, 10.0};
-        int[] totalGames = {153, 10000};
-        double[] bonusBounds = {1.01, 1.36};
-        for (int i = 0; i < totalGames.length; i++) {
-            for (double discounted : discountedGames) {
-                double sampleMean = 0.4;
-                double index = sampleMean + UCBSelectionPolicy.explorationTerm(totalGames[i], discounted);
-                assertTrue(index - sampleMean <= bonusBounds[i],
-                        "The exploration bonus should stay within the floor-derived bound");
-            }
+    void testCuriosityIsBoundedAndFadesWithEvidence() {
+        double previous = Double.MAX_VALUE;
+        for (double discountedGames : new double[] {0.0, 1.0, 5.0, 10.0, 20.0, 50.0}) {
+            double curiosity = UCBSelectionPolicy.curiosity(discountedGames);
+            assertTrue(curiosity >= 0.0 && curiosity <= UCBSelectionPolicy.CURIOSITY_CAP,
+                    "Curiosity should stay within the cap, measured " + curiosity);
+            assertTrue(curiosity <= previous, "Curiosity should never grow with evidence");
+            previous = curiosity;
         }
+        assertEquals(UCBSelectionPolicy.CURIOSITY_CAP, UCBSelectionPolicy.curiosity(0.0), 0.0000000001,
+                "An arm with no evidence should earn the full bonus");
+        assertEquals(0.0, UCBSelectionPolicy.curiosity(UCBSelectionPolicy.CURIOSITY_HORIZON), 0.0000000001,
+                "The bonus should reach zero at the horizon");
     }
 
     /** IA-269 deliberately guarantees relative recovery, not eventual overtake. */
@@ -522,6 +572,34 @@ public class RecordTest {
                     record.addLossTimestamp(timestamp);
                     record.setLosses(record.getLosses() + 1);
                 }
+            }
+        }
+        return record;
+    }
+
+    private Record lossesAt(long... timestamps) {
+        Record record = Record.builder().opener("Thin").build();
+        for (long timestamp : timestamps) {
+            record.addLossTimestamp(timestamp);
+            record.setLosses(record.getLosses() + 1);
+        }
+        return record;
+    }
+
+    /**
+     * A record that wins three of every ten games, spaced evenly, and the matching game clock.
+     * The most recent game is a loss, so the fixture does not flatter the discounted mean.
+     */
+    private Record evenlySpacedThirtyPercentRecord(int games, List<Long> gameTimestamps) {
+        Record record = Record.builder().opener("Incumbent").build();
+        for (long timestamp = 1L; timestamp <= games; timestamp++) {
+            gameTimestamps.add(timestamp);
+            if (timestamp % 10 == 3 || timestamp % 10 == 6 || timestamp % 10 == 9) {
+                record.addWinTimestamp(timestamp);
+                record.setWins(record.getWins() + 1);
+            } else {
+                record.addLossTimestamp(timestamp);
+                record.setLosses(record.getLosses() + 1);
             }
         }
         return record;

@@ -10,16 +10,18 @@ import java.util.List;
 /**
  * MapAwareRecord represents a map-specific strategy record using Discounted UCB (D-UCB).
  *
- * <p>This implementation uses a hybrid D-UCB approach:
+ * <p>The index is scored the same way an opponent record is:
  * <ul>
- * <li>Asymmetric exponential decay is applied to strategy-specific observations: wins fade
- * at GAMMA_WIN while losses fade at the slower GAMMA_LOSS</li>
- * <li>The discounted game count drives the exploration term, floored by
- * {@link UCBSelectionPolicy#EFFECTIVE_GAMES_FLOOR} for thin records</li>
+ * <li>Wins and losses decay alike at {@link UCBSelectionPolicy#GAMMA}, so the discounted mean is
+ * a recency-weighted win rate</li>
+ * <li>A thin record earns a curiosity bonus that fades to zero by
+ * {@link UCBSelectionPolicy#CURIOSITY_HORIZON} discounted games and is bounded by
+ * {@link UCBSelectionPolicy#CURIOSITY_CAP}</li>
  * </ul>
  *
  * <p>The decay makes the system more responsive to recent shifts in opponent behavior
- * on specific maps while maintaining the theoretical guarantees of UCB for exploration/exploitation balance.
+ * on specific maps, and the bounded bonus keeps an untried strategy competing for the slot without
+ * displacing one whose map win rate leads by more than the cap.
  *
  * <p>Historical games are stored with timestamps and weighted by γ^(age). Age is measured on the
  * clock the caller supplies. Production passes the games played on this record's own map, so a
@@ -64,26 +66,19 @@ public class MapAwareRecord implements UCBRecord {
         lossTimestamps.add(timestamp);
     }
 
+    /** Discounted map win rate plus the bounded curiosity bonus for thin map evidence. */
     public double index(int totalGames, List<Long> gameTimestamps) {
         if (totalGames == 0) {
             return Math.random();
         }
 
-        if (this.games() == 0) {
-            return Math.sqrt(Math.log(totalGames)) + (Math.random() * 0.2 - 0.1);
-        }
-
         List<Long> sortedGameTimestamps = GlobalGameOrder.sortedAscending(gameTimestamps);
-        double discountedWins = calculateDiscountedWins(sortedGameTimestamps);
         double discountedGames = calculateDiscountedGames(sortedGameTimestamps);
-
-        if (discountedGames == 0) {
-            return 1.0;
+        double sampleMean = 0.0;
+        if (discountedGames > 0) {
+            sampleMean = calculateDiscountedWins(sortedGameTimestamps) / discountedGames;
         }
-
-        double sampleMean = discountedWins / discountedGames;
-        double c = UCBSelectionPolicy.explorationTerm(totalGames, discountedGames);
-        return sampleMean + c;
+        return sampleMean + UCBSelectionPolicy.curiosity(discountedGames);
     }
 
     /** Discounted games on the supplied clock; the same quantity the index scores. */
@@ -97,7 +92,7 @@ public class MapAwareRecord implements UCBRecord {
     private double calculateDiscountedWins(List<Long> sortedGameTimestamps) {
         double discountedWins = 0.0;
         for (Long timestamp : winTimestamps) {
-            discountedWins += GlobalGameOrder.weight(UCBSelectionPolicy.GAMMA_WIN, timestamp, sortedGameTimestamps);
+            discountedWins += GlobalGameOrder.weight(UCBSelectionPolicy.GAMMA, timestamp, sortedGameTimestamps);
         }
         return discountedWins;
     }
@@ -105,7 +100,7 @@ public class MapAwareRecord implements UCBRecord {
     private double calculateDiscountedGames(List<Long> sortedGameTimestamps) {
         double discountedGames = calculateDiscountedWins(sortedGameTimestamps);
         for (Long timestamp : lossTimestamps) {
-            discountedGames += GlobalGameOrder.weight(UCBSelectionPolicy.GAMMA_LOSS, timestamp, sortedGameTimestamps);
+            discountedGames += GlobalGameOrder.weight(UCBSelectionPolicy.GAMMA, timestamp, sortedGameTimestamps);
         }
         return discountedGames;
     }

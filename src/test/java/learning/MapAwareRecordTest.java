@@ -6,7 +6,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -48,10 +47,8 @@ public class MapAwareRecordTest {
     @Test
     void testEmptyRecordReturnsDefaultIndex() {
         double index = recordA.index(100, ownClock(recordA));
-        double expectedMin = Math.sqrt(Math.log(100)) - 0.1;
-        double expectedMax = Math.sqrt(Math.log(100)) + 0.1;
-        assertTrue(index >= expectedMin && index <= expectedMax,
-            "Empty record should return sqrt(ln(totalGames)) + random(-0.1, 0.1)");
+        assertEquals(UCBSelectionPolicy.CURIOSITY_CAP, index, 0.0000000001,
+            "An empty map record should score the full curiosity bonus and nothing more");
     }
 
     /**
@@ -147,7 +144,7 @@ public class MapAwareRecordTest {
     /**
      * Tests exponential decay in the D-UCB algorithm by adding games with increasing time gaps.
      * The algorithm should apply gamma^age weighting where older games have less influence.
-     * With 3 wins and exploration term, the index should be greater than 1.0.
+     * With 3 wins and the curiosity bonus, the index should be greater than 1.0.
      */
     @Test
     void testExponentialDecay() {
@@ -166,7 +163,7 @@ public class MapAwareRecordTest {
         double index = recordA.index(100, ownClock(recordA));
 
         assertTrue(index > 0.0, "Index should be positive");
-        assertTrue(index > 1.0, "Index should be greater than 1.0 due to exploration term");
+        assertTrue(index > 1.0, "Index should be greater than 1.0 due to the curiosity bonus");
     }
 
     /**
@@ -255,28 +252,33 @@ public class MapAwareRecordTest {
         assertTrue(index > 0.5, "Recent wins should give positive index");
     }
 
+    /**
+     * A map record scores the same however many games the opponent has been played, so map
+     * evidence never wins the blend on lifetime length alone.
+     */
     @Test
-    void testExplorationTerm() {
+    void testIndexIsInvariantInLifetimeLength() {
         recordA.addWinTimestamp(baseTime);
         recordA.addLossTimestamp(baseTime + 1000);
         recordA.setWins(1);
         recordA.setLosses(1);
 
-        double indexLow = recordA.index(10, ownClock(recordA));
-        double indexHigh = recordA.index(1000, ownClock(recordA));
+        double atFiftyThree = recordA.index(53, ownClock(recordA));
 
-        assertTrue(indexHigh > indexLow,
-            "Higher totalGames should increase exploration term");
+        assertEquals(atFiftyThree, recordA.index(339, ownClock(recordA)), 0.0000000001,
+            "The map index should not grow with the opponent's lifetime");
+        assertEquals(atFiftyThree, recordA.index(1324, ownClock(recordA)), 0.0000000001,
+            "The map index should not grow with the opponent's lifetime");
     }
 
     /**
      * Tests the gamma decay constant (0.95) is applied correctly in the D-UCB algorithm.
-     * With 3 wins and GAMMA_WIN = 0.95:
+     * With 3 wins and GAMMA = 0.95:
      * - discountedWins = 1.0 + 0.95 + 0.95^2 = 2.8525
      * - discountedGames = 1.0 + 0.95 + 0.95^2 = 2.8525
      * - sampleMean = 2.8525 / 2.8525 = 1.0
-     * - exploration = sqrt(2 * ln(100) / 2.8525) ≈ 1.8
-     * The index should be greater than 1.0 due to exploration term.
+     * - curiosity = 0.15 * (1 - 2.8525 / 10) ≈ 0.107
+     * The index should be greater than 1.0 due to the curiosity bonus.
      */
     @Test
     void testGammaConstant() {
@@ -288,7 +290,7 @@ public class MapAwareRecordTest {
 
         double index = recordA.index(100, ownClock(recordA));
 
-        assertTrue(index > 1.0, "Index should be greater than 1.0 due to exploration");
+        assertTrue(index > 1.0, "Index should be greater than 1.0 due to the curiosity bonus");
         assertTrue(index < 3.0, "Index should be reasonable");
     }
 
@@ -344,39 +346,63 @@ public class MapAwareRecordTest {
         }
     }
 
+    /** Map arms with equal means and different discounted evidence must separate, not tie. */
     @Test
-    void testIdleArmGapIsFrozenWhileBothArmsAreFloored() {
-        MapAwareRecord idle = MapAwareRecord.builder()
-                .strategy("Idle").mapName("MapA").wins(0).losses(1).build();
-        MapAwareRecord leader = MapAwareRecord.builder()
-                .strategy("Leader").mapName("MapA").wins(1).losses(0).build();
-        idle.addLossTimestamp(1L);
-        leader.addWinTimestamp(2L);
-        List<Long> gameTimestamps = new ArrayList<>(Arrays.asList(1L, 2L));
-        double initialGap = idle.index(2, gameTimestamps) - leader.index(2, gameTimestamps);
-
-        for (long timestamp = 3; timestamp <= 8; timestamp++) {
+    void testThinLosingMapArmsDoNotTie() {
+        List<Long> gameTimestamps = new ArrayList<>();
+        for (long timestamp = 1L; timestamp <= 40L; timestamp++) {
             gameTimestamps.add(timestamp);
-            leader.addWinTimestamp(timestamp);
-            leader.setWins(leader.getWins() + 1);
-            double gap = idle.index((int) timestamp, gameTimestamps)
-                    - leader.index((int) timestamp, gameTimestamps);
-            assertEquals(initialGap, gap, 0.0000000001,
-                    "The map-arm gap should stay frozen while both arms are floored");
         }
+        MapAwareRecord heaviest = mapLossesAt(33L, 34L, 35L, 36L, 37L, 38L, 39L, 40L);
+        MapAwareRecord middling = mapLossesAt(30L, 31L);
+        MapAwareRecord thinnest = mapLossesAt(20L);
+
+        double heaviestIndex = heaviest.index(40, gameTimestamps);
+        double middlingIndex = middling.index(40, gameTimestamps);
+        double thinnestIndex = thinnest.index(40, gameTimestamps);
+
+        assertTrue(heaviestIndex < middlingIndex,
+                "Map arms with equal means and different evidence must not tie, measured "
+                        + heaviestIndex + " and " + middlingIndex);
+        assertTrue(middlingIndex < thinnestIndex,
+                "Map arms with equal means and different evidence must not tie, measured "
+                        + middlingIndex + " and " + thinnestIndex);
     }
 
+    /**
+     * The displacement guarantee on the map clock: a zero-mean map arm cannot outrank one whose
+     * discounted map win rate clears the curiosity cap, at any history length.
+     */
     @Test
-    void testExplorationBonusIsBoundedAtRepresentativeCounts() {
-        double[] discountedGames = {0.0000001, 1.0, 5.0, 10.0};
-        int[] totalGames = {153, 10000};
-        double[] bonusBounds = {1.01, 1.36};
-        for (int i = 0; i < totalGames.length; i++) {
-            for (double discounted : discountedGames) {
-                double sampleMean = 0.4;
-                double index = sampleMean + UCBSelectionPolicy.explorationTerm(totalGames[i], discounted);
-                assertTrue(index - sampleMean <= bonusBounds[i],
-                        "The exploration bonus should stay within the floor-derived bound");
+    void testZeroMeanMapArmNeverOutranksAnIncumbentAboveTheCuriosityCap() {
+        for (int historyLength : new int[] {30, 53, 339, 1324}) {
+            List<Long> gameTimestamps = new ArrayList<>();
+            MapAwareRecord incumbent = MapAwareRecord.builder()
+                    .strategy("Incumbent").mapName("MapA").build();
+            for (long timestamp = 1L; timestamp <= historyLength; timestamp++) {
+                gameTimestamps.add(timestamp);
+                if (timestamp % 10 == 3 || timestamp % 10 == 6 || timestamp % 10 == 9) {
+                    incumbent.addWinTimestamp(timestamp);
+                    incumbent.setWins(incumbent.getWins() + 1);
+                } else {
+                    incumbent.addLossTimestamp(timestamp);
+                    incumbent.setLosses(incumbent.getLosses() + 1);
+                }
+            }
+            double incumbentIndex = incumbent.index(historyLength, gameTimestamps);
+            assertTrue(incumbentIndex > UCBSelectionPolicy.CURIOSITY_CAP,
+                    "The fixture incumbent should lead by more than the cap at " + historyLength);
+
+            for (int gamesSincePlayed : new int[] {0, 1, 10, 50, historyLength}) {
+                MapAwareRecord challenger = MapAwareRecord.builder()
+                        .strategy("Challenger").mapName("MapA").build();
+                if (gamesSincePlayed > 0) {
+                    challenger.addLossTimestamp(historyLength - gamesSincePlayed + 1L);
+                    challenger.setLosses(1);
+                }
+                assertTrue(challenger.index(historyLength, gameTimestamps) < incumbentIndex,
+                        "A zero-mean map arm dormant for " + gamesSincePlayed + " games displaced "
+                                + "the incumbent at a lifetime of " + historyLength);
             }
         }
     }
@@ -412,6 +438,15 @@ public class MapAwareRecordTest {
                     > recordFromHistory(strategy, history, new ArrayList<>()).index(history.length(), gameTimestamps),
                     "4Pool should rank ahead of " + strategy);
         }
+    }
+
+    private MapAwareRecord mapLossesAt(long... timestamps) {
+        MapAwareRecord record = MapAwareRecord.builder().strategy("Thin").mapName("MapA").build();
+        for (long timestamp : timestamps) {
+            record.addLossTimestamp(timestamp);
+            record.setLosses(record.getLosses() + 1);
+        }
+        return record;
     }
 
     private MapAwareRecord recordFromHistory(char strategy, String history, List<Long> gameTimestamps) {

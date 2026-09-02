@@ -56,18 +56,31 @@ Each strategy is an arm in a multi-armed bandit.
 For a strategy with game history, the D-UCB index is:
 
 ```
-index = sampleMean + explorationTerm
+index = discountedMean + curiosity
 
 where:
-  sampleMean    = discountedWins / discountedGames
-  explorationTerm = sqrt(2 * ln(totalGames) / max(discountedGames, 10))
+  discountedMean = discountedWins / discountedGames
+  curiosity      = CURIOSITY_CAP * max(0, 1 - discountedGames / CURIOSITY_HORIZON)
+
+  CURIOSITY_CAP     = 0.15
+  CURIOSITY_HORIZON = 10.0
 ```
 
-- `totalGames` = total games played against this opponent (raw count, not discounted)
-- `discountedWins` and `discountedGames` use exponential decay (see below)
-- The exploration denominator floor is half the theoretical `1 / (1 - gamma)` discounted-game ceiling. Arms below
-  the floor receive the same exploration bonus, so discounted win rate decides among them. The bonus exceeds the
-  full 0..1 reward range again at roughly 100,000 total games.
+- `discountedWins` and `discountedGames` use exponential decay (see below), and both outcomes decay at the same
+  gamma, so `discountedMean` is a win rate.
+- Curiosity is bounded by the cap and reaches zero at the horizon. Two consequences the bandit depends on:
+  an arm with a zero mean can never displace an incumbent whose discounted mean exceeds 0.15, and the index is
+  invariant in how long the opponent has been played -- an opponent met 1324 times scores its arms exactly as one
+  met 53 times does.
+- `totalGames` (total games played against this opponent, raw count) no longer enters the score. It survives in the
+  signature only to detect the cold start, where every arm ties and the pick is randomized.
+
+| Discounted games | Curiosity |
+|---|---|
+| 0 | 0.150 |
+| 1 | 0.135 |
+| 5 | 0.075 |
+| 10 or more | 0.000 |
 
 ### Exponential Decay
 
@@ -90,6 +103,9 @@ weight(game_i) = 0.95^i
 | 20 | 0.358 |
 | 50 | 0.077 |
 
+Wins and losses use the same gamma. That keeps `discountedMean` a win rate, which is what the win-rate gates in
+`LearningManager` -- `PROBE_GATE_WIN_RATE` and `REPEAT_DONATION_WIN_RATE` -- are calibrated against.
+
 This makes the system responsive to shifts in opponent behavior. A strategy that won 3 recent games scores higher than one that won 3 games long ago.
 
 ### Worked Example
@@ -110,15 +126,20 @@ discountedGames = 1.132
 sampleMean      = 1.0
 ```
 
-Both have the same sample mean, but Strategy B has a lower `discountedGames` denominator in the exploration term, giving it a *larger* exploration bonus -- encouraging the system to re-test old strategies.
+Both have the same sample mean, but Strategy B holds less discounted evidence, so it earns curiosity of
+`0.15 * (1 - 1.132 / 10) = 0.133` against Strategy A's `0.15 * (1 - 2.852 / 10) = 0.107` -- a nudge to re-test the
+old strategy, worth 2.6 win-rate points and no more.
 
 ### Edge Cases
 
 | Condition | Behavior |
 |---|---|
-| Zero total games | Return `Math.random()`  |
-| Unplayed strategy | Return `sqrt(ln(totalGames)) + noise`  |
-| Zero discounted games | Return `1.0` |
+| Zero total games | Return `Math.random()` |
+| Unplayed strategy | Scored by the same formula: mean 0, evidence 0, so `CURIOSITY_CAP` |
+| Zero discounted games | Same as unplayed: `CURIOSITY_CAP` |
+
+An unplayed arm competes with a recorded one instead of outranking it. Every unplayed arm scores identically, so
+`findBestStrategy` takes them in candidate order; each one played gains a record, and the next is picked in turn.
 
 ### Map-Aware Weighted Scoring
 
@@ -140,7 +161,8 @@ The sigmoid gradually increases trust in map-specific data as sample size grows:
 | 15 | 0.82 | 0.65 |
 | 20+ | ~1.0 | ~0.80 |
 
-Falls back to opponent-only data if no map-specific history exists, then to pure exploration if no data at all.
+Falls back to opponent-only data if no map-specific history exists, then to the bare curiosity bonus if there is no
+data at all.
 
 ### Special Cases
 

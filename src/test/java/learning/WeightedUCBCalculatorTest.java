@@ -44,6 +44,76 @@ public class WeightedUCBCalculatorTest {
         assertEquals("4Pool", selected);
     }
 
+    /**
+     * The same fixture history picks the same opener whether it is the opponent's 53rd game or
+     * its 1324th. The old ln(totalGames) term grew the score with lifetime, so a long-played
+     * opponent explored hardest of all.
+     */
+    @Test
+    void theSelectionDoesNotDependOnHowLongTheOpponentHasBeenPlayed() {
+        String history = "NNNNNNNNNNNNNNNNNNNNppOoOOoFHFHFhFhFttFpFhFtFOFnFOOFOFoFhFoFnFTFtFNFNFnFpFoFNFNFn"
+                + "FtFHFhFNFNFNFNFNFNFNFNFNFNFNFNFNFNFNFNFNFNFNFNFNFNFNFNFNFNFNFNFNFnFNFNFNFn";
+        Map<String, Record> opponentRecords = new HashMap<>();
+        Map<String, MapAwareRecord> mapRecords = new HashMap<>();
+        Map<Character, String> openerNames = new HashMap<>();
+        openerNames.put('F', "4Pool");
+        openerNames.put('N', "9PoolSpeed");
+        openerNames.put('P', "12Pool");
+        openerNames.put('O', "Overpool");
+        openerNames.put('H', "12Hatch");
+        openerNames.put('T', "3HatchBeforePool");
+        for (Map.Entry<Character, String> opener : openerNames.entrySet()) {
+            opponentRecords.put(opener.getValue(), recordFromHistory(opener.getKey(), opener.getValue(), history));
+            mapRecords.put(WeightedUCBCalculator.createMapKey("MapA", opener.getValue()),
+                    mapRecordFromHistory(opener.getKey(), opener.getValue(), history));
+        }
+        List<Long> gameTimestamps = new ArrayList<>();
+        for (long timestamp = 1; timestamp <= history.length(); timestamp++) {
+            gameTimestamps.add(timestamp);
+        }
+        List<String> candidates = Arrays.asList(
+                "12Pool", "3HatchBeforePool", "Overpool", "12Hatch", "4Pool", "9PoolSpeed");
+
+        String atFiftyThree = WeightedUCBCalculator.findBestStrategy(candidates, "MapA", "Tomas Cere",
+                mapRecords, opponentRecords, 53, gameTimestamps);
+        String atThreeThirtyNine = WeightedUCBCalculator.findBestStrategy(candidates, "MapA", "Tomas Cere",
+                mapRecords, opponentRecords, 339, gameTimestamps);
+        String atThirteenTwentyFour = WeightedUCBCalculator.findBestStrategy(candidates, "MapA", "Tomas Cere",
+                mapRecords, opponentRecords, 1324, gameTimestamps);
+
+        assertEquals(atFiftyThree, atThreeThirtyNine, "The pick should not move with lifetime length");
+        assertEquals(atFiftyThree, atThirteenTwentyFour, "The pick should not move with lifetime length");
+    }
+
+    /**
+     * A strategy with no record at all scores the curiosity cap, so it cannot claim the slot from
+     * a strategy whose discounted win rate leads by more than that.
+     */
+    @Test
+    void anUnplayedStrategyDoesNotDisplaceAWinningIncumbent() {
+        Map<String, Record> opponentRecords = new HashMap<>();
+        Map<String, MapAwareRecord> mapRecords = new HashMap<>();
+        Record incumbent = Record.builder().opener("4Pool").build();
+        List<Long> gameTimestamps = new ArrayList<>();
+        for (long timestamp = 1; timestamp <= 30; timestamp++) {
+            gameTimestamps.add(timestamp);
+            if (timestamp % 10 == 3 || timestamp % 10 == 6 || timestamp % 10 == 9) {
+                incumbent.addWinTimestamp(timestamp);
+                incumbent.setWins(incumbent.getWins() + 1);
+            } else {
+                incumbent.addLossTimestamp(timestamp);
+                incumbent.setLosses(incumbent.getLosses() + 1);
+            }
+        }
+        opponentRecords.put("4Pool", incumbent);
+        List<String> candidates = Arrays.asList("12Pool", "Overpool", "4Pool", "9PoolSpeed");
+
+        for (int lifetime : new int[] {30, 53, 339, 1324}) {
+            assertEquals("4Pool", WeightedUCBCalculator.findBestStrategy(candidates, "MapA", "WillBot",
+                    mapRecords, opponentRecords, lifetime, gameTimestamps),
+                    "An unplayed arm displaced a 30% incumbent at a lifetime of " + lifetime);
+        }
+    }
 
     @Test
     void theMapClockCountsOnlyGamesPlayedOnThatMap() {

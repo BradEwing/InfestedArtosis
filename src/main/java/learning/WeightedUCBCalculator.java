@@ -13,7 +13,9 @@ import java.util.Map;
  * sigmoid reads the same discounted evidence the map score is built from, so a record cannot draw
  * blend weight from games its own discount has already forgotten.
  * 
- * Defaults to opponent-only data if no map-specific data is available, final fallback is pure exploration.
+ * Defaults to opponent-only data if no map-specific data is available. A strategy with neither
+ * record scores the full curiosity bonus, the same score {@link Record#index} gives an arm whose
+ * discounted evidence has decayed away, so it competes for the slot rather than claiming it.
  * </p>
  */
 public class WeightedUCBCalculator {
@@ -56,8 +58,8 @@ public class WeightedUCBCalculator {
         if (totalGames == 0) {
             return Math.random();
         }
-        
-        return Math.sqrt(Math.log(totalGames)) + (Math.random() * 0.2 - 0.1);
+
+        return UCBSelectionPolicy.curiosity(0.0);
     }
     
     public static String findBestStrategy(List<String> candidates,
