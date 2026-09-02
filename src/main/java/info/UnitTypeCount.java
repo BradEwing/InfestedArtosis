@@ -172,4 +172,15 @@ public class UnitTypeCount {
     public int livingCount(UnitType unitType) {
         return safeLivingGet(unitType);
     }
+
+    /**
+     * Units of this type that are queued or in an egg and have not completed yet.
+     *
+     * @param unitType the unit type
+     * @return the planned count
+     */
+    public int plannedCount(UnitType unitType) {
+        ensureUnitType(unitType);
+        return plannedUnitTypeCount.get(unitType);
+    }
 }

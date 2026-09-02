@@ -99,6 +99,7 @@ public class GameState {
     private HashMap<Unit, Plan> assignedPlannedItems = new HashMap<>();
     private int plannedWorkers;
     private int plannedHatcheries = 1;
+    private int idleDroneReclaims;
 
     private HashMap<Base, HashSet<ManagedUnit>> gatherersAssignedToBase = new HashMap<>();
 
@@ -214,8 +215,31 @@ public class GameState {
         return gatherers.size();
     }
 
+    /**
+     * Drone count the production gates read: drones on a resource plus drones already queued
+     * or in an egg.
+     * <p>
+     * A drone that is parked, scouting, defending or walking to a build site gathers nothing,
+     * so it does not hold the drone target up. Queued drones stay counted because the build
+     * order plans every frame and would otherwise refill the queue until the first egg hatched.
+     *
+     * @return gathering plus queued drones
+     */
+    public int numEconomyDrones() {
+        return gatherers.size() + unitTypeCount.plannedCount(UnitType.Zerg_Drone);
+    }
+
     public int numLarva() { 
         return larva.size(); 
+    }
+
+    /**
+     * Records a drone that was parked in {@link UnitRole#IDLE} and put back to gathering.
+     * Before the reclaim existed such a drone stood still until it died, so a rising count
+     * points at whichever caller idled it.
+     */
+    public void incrementIdleDroneReclaims() {
+        idleDroneReclaims += 1;
     }
 
     public int frameCanAffordUnit(UnitType unit, int currentFrame) {

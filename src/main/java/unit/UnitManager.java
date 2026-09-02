@@ -346,6 +346,9 @@ public class UnitManager {
     /**
      * Handle drone transitions to other Managers
      *
+     * Drones are dispatched here instead of onFrameDefault, so this is the only place an idle
+     * drone can be reclaimed.
+     *
      * TODO: Scout harass
      * TODO: Scout until danger / suicide scout
      *
@@ -356,6 +359,11 @@ public class UnitManager {
         if (role == UnitRole.SCOUT && scoutManager.endDroneScout()) {
             scoutManager.removeScout(unit);
             workerManager.addManagedWorker(unit);
+            return;
+        }
+
+        if (role == UnitRole.IDLE) {
+            workerManager.reclaimIdleWorker(unit);
         }
     }
 
