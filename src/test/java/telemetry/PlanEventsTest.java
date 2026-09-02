@@ -23,6 +23,7 @@ class PlanEventsTest {
     private final List<String> transitions = new ArrayList<>();
     private final List<Plan> enqueued = new ArrayList<>();
     private final List<PlanBlocker> blockers = new ArrayList<>();
+    private final List<String> withheld = new ArrayList<>();
 
     private PlanEventSink recorder() {
         return new PlanEventSink() {
@@ -39,6 +40,11 @@ class PlanEventsTest {
             @Override
             public void onBlocked(Plan plan, PlanBlocker blocker) {
                 blockers.add(blocker);
+            }
+
+            @Override
+            public void onWithheld(UnitType unitType, PlanBlocker blocker) {
+                withheld.add(unitType + ":" + blocker);
             }
         };
     }
@@ -150,5 +156,51 @@ class PlanEventsTest {
         Plan plan = new UnitPlan(UnitType.Zerg_Drone, 1);
 
         assertEquals(PlanCancelReason.UNKNOWN, plan.getCancelReason());
+    }
+
+    @Test
+    void withheldHookCarriesTheUnitAndTheBlocker() {
+        PlanEvents.register(recorder());
+
+        PlanEvents.withheld(UnitType.Zerg_Mutalisk, PlanBlocker.INSUFFICIENT_GATHERERS);
+
+        assertEquals(1, withheld.size());
+        assertEquals("Zerg_Mutalisk:INSUFFICIENT_GATHERERS", withheld.get(0));
+        assertTrue(enqueued.isEmpty());
+    }
+
+    @Test
+    void withheldWithNoSinkRegisteredIsANoOp() {
+        PlanEvents.withheld(UnitType.Zerg_Mutalisk, PlanBlocker.TECH_MISSING);
+
+        assertTrue(withheld.isEmpty());
+    }
+
+    @Test
+    void aSpecificReasonOverridesTheSourceDefault() {
+        Plan plan = new UnitPlan(UnitType.Zerg_Mutalisk, 1);
+
+        plan.setCancelSource(PlanCancelSource.PRODUCTION_IMPOSSIBLE_SWEEP, PlanCancelReason.INSUFFICIENT_GATHERERS);
+
+        assertEquals(PlanCancelSource.PRODUCTION_IMPOSSIBLE_SWEEP, plan.getCancelSource());
+        assertEquals(PlanCancelReason.INSUFFICIENT_GATHERERS, plan.getCancelReason());
+    }
+
+    @Test
+    void theFirstCancellationOwnsTheSpecificReasonToo() {
+        Plan plan = new UnitPlan(UnitType.Zerg_Mutalisk, 1);
+        plan.setCancelSource(PlanCancelSource.PRODUCTION_IMPOSSIBLE_SWEEP, PlanCancelReason.TECH_MISSING);
+        plan.setState(PlanState.CANCELLED);
+        plan.setCancelSource(PlanCancelSource.PRODUCTION_IMPOSSIBLE_SWEEP, PlanCancelReason.INSUFFICIENT_GATHERERS);
+
+        assertEquals(PlanCancelReason.TECH_MISSING, plan.getCancelReason());
+    }
+
+    @Test
+    void sweepBlockersMapToTheirOwnCancelReason() {
+        assertEquals(PlanCancelReason.INSUFFICIENT_GATHERERS, PlanBlocker.INSUFFICIENT_GATHERERS.cancelReason());
+        assertEquals(PlanCancelReason.TECH_MISSING, PlanBlocker.TECH_MISSING.cancelReason());
+        assertEquals(PlanCancelReason.NO_LARVA, PlanBlocker.NO_LARVA.cancelReason());
+        assertEquals(PlanCancelReason.PREREQUISITE_MISSING, PlanBlocker.NO_PRODUCER.cancelReason());
     }
 }

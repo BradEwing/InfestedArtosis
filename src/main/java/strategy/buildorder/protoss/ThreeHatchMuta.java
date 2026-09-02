@@ -222,19 +222,19 @@ public class ThreeHatchMuta extends ProtossBase {
 
         // Plan Units
         final int desiredScourge = enemyCorsairCount + enemyObserverCount;
-        if (techProgression.isSpire() && scourgeCount < desiredScourge) {
+        if (techProgression.isSpire() && scourgeCount < desiredScourge && canPlanAdvancedUnit(gameState, UnitType.Zerg_Scourge)) {
             plans.add(this.planUnit(gameState, UnitType.Zerg_Scourge));
             return plans;
         }
 
         final int desiredMutalisks = desiredMutalisks(gameState);
-        if (techProgression.isSpire() && mutaCount < desiredMutalisks) {
+        if (techProgression.isSpire() && mutaCount < desiredMutalisks && canPlanAdvancedUnit(gameState, UnitType.Zerg_Mutalisk)) {
             plans.add(this.planUnit(gameState, UnitType.Zerg_Mutalisk));
             return plans;
         }
 
         final int desiredHydralisks = desiredHydralisks(gameState);
-        if (techProgression.isHydraliskDen() && hydraCount < desiredHydralisks) {
+        if (techProgression.isHydraliskDen() && hydraCount < desiredHydralisks && canPlanAdvancedUnit(gameState, UnitType.Zerg_Hydralisk)) {
             plans.add(this.planUnit(gameState, UnitType.Zerg_Hydralisk));
             return plans;
         }

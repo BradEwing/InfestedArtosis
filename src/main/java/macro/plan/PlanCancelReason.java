@@ -4,6 +4,9 @@ package macro.plan;
 public enum PlanCancelReason {
     PREREQUISITE_MISSING,
     PREREQUISITE_QUEUED_LATER,
+    INSUFFICIENT_GATHERERS,
+    TECH_MISSING,
+    NO_LARVA,
     EXCESS_SUPPLY,
     EXCESS_HATCHERY,
     NO_MORPH_SOURCE,

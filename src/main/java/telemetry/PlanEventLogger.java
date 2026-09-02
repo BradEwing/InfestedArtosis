@@ -3,6 +3,7 @@ package telemetry;
 import bwapi.Game;
 import bwapi.Player;
 import bwapi.TilePosition;
+import bwapi.UnitType;
 import info.GameState;
 import info.ResourceCount;
 import learning.GameRecord;
@@ -35,6 +36,7 @@ public class PlanEventLogger implements PlanEventSink {
     private static final String EVENT_OPEN_AT_GAME_END = "OPEN_AT_GAME_END";
     private static final String EVENT_BUILD_AHEAD_HOLD = "BUILD_AHEAD_HOLD";
     private static final String EVENT_BUILD_AHEAD_EVICT = "BUILD_AHEAD_EVICT";
+    private static final String EVENT_WITHHELD = "WITHHELD";
 
     private static final int NO_STARVED_COUNT = -1;
 
@@ -59,6 +61,7 @@ public class PlanEventLogger implements PlanEventSink {
 
     private final Map<String, PlanTrace> traces = new HashMap<>();
     private final Map<String, Plan> openPlans = new LinkedHashMap<>();
+    private final Map<String, PlanTrace> withheld = new LinkedHashMap<>();
     private final List<String> buffer = new ArrayList<>();
 
     private final Map<String, PlanRecurrence> recurrences = new HashMap<>();
@@ -119,8 +122,31 @@ public class PlanEventLogger implements PlanEventSink {
             if (traces.containsKey(plan.getUuid())) {
                 return;
             }
+            endWithheld(plan.getName());
             PlanTrace trace = newTrace(plan);
             buffer.add(row(plan, trace, EVENT_ENQUEUE, null, plan.getState(), PlanBlocker.NONE, 0, NO_STARVED_COUNT));
+        } catch (Exception e) {
+            disabled = true;
+        }
+    }
+
+    /** Opens a withheld interval per unit type and writes one row when it closes. */
+    @Override
+    public void onWithheld(UnitType unitType, PlanBlocker blocker) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            String item = unitType.toString();
+            PlanTrace trace = withheld.get(item);
+            if (trace != null && trace.getBlocker() == blocker) {
+                return;
+            }
+            endWithheld(item);
+            PlanTrace opened = new PlanTrace(currentFrame);
+            opened.startBlocker(blocker, currentFrame);
+            withheld.put(item, opened);
         } catch (Exception e) {
             disabled = true;
         }
@@ -211,6 +237,15 @@ public class PlanEventLogger implements PlanEventSink {
         trace.clearBlocker(currentFrame);
     }
 
+    private void endWithheld(String item) {
+        PlanTrace trace = withheld.remove(item);
+        if (trace == null) {
+            return;
+        }
+        int waited = currentFrame - trace.getBlockerSinceFrame();
+        buffer.add(withheldRow(item, trace.getBlocker(), waited));
+    }
+
     private void closeOpenPlans() {
         for (Map.Entry<String, Plan> entry : openPlans.entrySet()) {
             Plan plan = entry.getValue();
@@ -222,6 +257,9 @@ public class PlanEventLogger implements PlanEventSink {
             buffer.add(row(plan, trace, EVENT_OPEN_AT_GAME_END, null, plan.getState(), PlanBlocker.NONE, 0, NO_STARVED_COUNT));
         }
         openPlans.clear();
+        for (String item : new ArrayList<>(withheld.keySet())) {
+            endWithheld(item);
+        }
     }
 
     private PlanTrace trace(Plan plan) {
@@ -252,16 +290,12 @@ public class PlanEventLogger implements PlanEventSink {
 
     private String row(Plan plan, PlanTrace trace, String event, PlanState from, PlanState to,
                        PlanBlocker blocker, int blockedFrames, int starvedBehind) {
-        Player self = gameState.getSelf();
-        ResourceCount resourceCount = gameState.getResourceCount();
         TilePosition buildPosition = plan.getBuildPosition();
         boolean cancelled = to == PlanState.CANCELLED;
         PlanCancelSource cancelSource = plan.getCancelSource();
 
         StringBuilder sb = new StringBuilder();
-        sb.append(currentFrame).append(',');
-        sb.append(new Time(currentFrame)).append(',');
-        sb.append(event).append(',');
+        appendEvent(sb, event);
         sb.append(plan.getPlanId()).append(',');
         sb.append(planType(plan)).append(',');
         sb.append(Csv.sanitize(plan.getName())).append(',');
@@ -269,11 +303,49 @@ public class PlanEventLogger implements PlanEventSink {
         sb.append(to == null ? "" : to.toString()).append(',');
         sb.append(cancelled ? plan.getCancelReason().toString() : "").append(',');
         sb.append(cancelled && cancelSource != null ? cancelSource.toString() : "").append(',');
-        sb.append(blocker == PlanBlocker.NONE ? "" : blocker.toString()).append(',');
-        sb.append(blocker == PlanBlocker.NONE ? "" : String.valueOf(blockedFrames)).append(',');
+        appendBlocker(sb, blocker, blockedFrames);
         sb.append(plan.getPriority()).append(',');
         sb.append(currentFrame - trace.getLastStateFrame()).append(',');
         sb.append(currentFrame - trace.getEnqueueFrame()).append(',');
+        appendGameState(sb);
+        sb.append(buildPosition == null ? "" : String.valueOf(buildPosition.getX())).append(',');
+        sb.append(buildPosition == null ? "" : String.valueOf(buildPosition.getY())).append(',');
+        sb.append(plan.isMacroHatchery()).append(',');
+        sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
+        sb.append(starvedBehind == NO_STARVED_COUNT ? "" : String.valueOf(starvedBehind));
+        return sb.toString();
+    }
+
+    /** A row for a unit the build order wanted but never planned, so the plan columns are empty. */
+    private String withheldRow(String item, PlanBlocker blocker, int withheldFrames) {
+        StringBuilder sb = new StringBuilder();
+        appendEvent(sb, EVENT_WITHHELD);
+        appendEmpty(sb, 1);
+        sb.append(PlanType.UNIT).append(',');
+        sb.append(Csv.sanitize(item)).append(',');
+        appendEmpty(sb, 4);
+        appendBlocker(sb, blocker, withheldFrames);
+        appendEmpty(sb, 3);
+        appendGameState(sb);
+        appendEmpty(sb, 3);
+        sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
+        return sb.toString();
+    }
+
+    private void appendEvent(StringBuilder sb, String event) {
+        sb.append(currentFrame).append(',');
+        sb.append(new Time(currentFrame)).append(',');
+        sb.append(event).append(',');
+    }
+
+    private void appendBlocker(StringBuilder sb, PlanBlocker blocker, int blockedFrames) {
+        sb.append(blocker == PlanBlocker.NONE ? "" : blocker.toString()).append(',');
+        sb.append(blocker == PlanBlocker.NONE ? "" : String.valueOf(blockedFrames)).append(',');
+    }
+
+    private void appendGameState(StringBuilder sb) {
+        Player self = gameState.getSelf();
+        ResourceCount resourceCount = gameState.getResourceCount();
         sb.append(self.minerals()).append(',');
         sb.append(self.gas()).append(',');
         sb.append(resourceCount.availableMinerals()).append(',');
@@ -286,12 +358,12 @@ public class PlanEventLogger implements PlanEventSink {
         sb.append(gameState.getPlansScheduled().size()).append(',');
         sb.append(gameState.getPlansBuilding().size()).append(',');
         sb.append(gameState.getPlansMorphing().size()).append(',');
-        sb.append(buildPosition == null ? "" : String.valueOf(buildPosition.getX())).append(',');
-        sb.append(buildPosition == null ? "" : String.valueOf(buildPosition.getY())).append(',');
-        sb.append(plan.isMacroHatchery()).append(',');
-        sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
-        sb.append(starvedBehind == NO_STARVED_COUNT ? "" : String.valueOf(starvedBehind));
-        return sb.toString();
+    }
+
+    private void appendEmpty(StringBuilder sb, int columns) {
+        for (int i = 0; i < columns; i++) {
+            sb.append(',');
+        }
     }
 
     private String planType(Plan plan) {

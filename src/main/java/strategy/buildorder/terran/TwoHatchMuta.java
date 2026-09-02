@@ -140,13 +140,13 @@ public class TwoHatchMuta extends TerranBase {
 
         // Plan Units
         final int desiredScourge = enemyVessel + enemyDropship + enemyValkyrie + enemyWraith;
-        if (techProgression.isSpire() && scourgeCount < desiredScourge) {
+        if (techProgression.isSpire() && scourgeCount < desiredScourge && canPlanAdvancedUnit(gameState, UnitType.Zerg_Scourge)) {
             plans.add(this.planUnit(gameState, UnitType.Zerg_Scourge));
             return plans;
         }
 
         final int desiredMutalisks = desiredMutalisks(gameState);
-        if (techProgression.isSpire() && mutaCount < desiredMutalisks) {
+        if (shouldPlanMutalisk(techProgression, mutaCount, desiredMutalisks, gameState.numGatherers())) {
             Plan mutaliskPlan = this.planUnit(gameState, UnitType.Zerg_Mutalisk);
             plans.add(mutaliskPlan);
             return plans;
@@ -213,5 +213,10 @@ public class TwoHatchMuta extends TerranBase {
 
     static boolean shouldPlanOverlord(int spireCount, int overlordCount, boolean excessSupply) {
         return spireCount > 1 && overlordCount < 4 && !excessSupply;
+    }
+
+    static boolean shouldPlanMutalisk(TechProgression techProgression, int mutaCount, int desiredMutalisks, int gatherers) {
+        return techProgression.isSpire() && mutaCount < desiredMutalisks
+                && canPlanAdvancedUnit(UnitType.Zerg_Mutalisk, techProgression, gatherers);
     }
 }

@@ -5,7 +5,9 @@ import bwapi.TilePosition;
 import bwapi.UnitType;
 import bwapi.UpgradeType;
 
+import lombok.AccessLevel;
 import lombok.Data;
+import lombok.Setter;
 import org.jetbrains.annotations.Nullable;
 import telemetry.PlanEvents;
 
@@ -26,6 +28,10 @@ public abstract class Plan {
 
     @Nullable
     private PlanCancelSource cancelSource;
+
+    @Nullable
+    @Setter(AccessLevel.NONE)
+    private PlanCancelReason cancelReason;
 
     // Lower values have higher priority, usually corresponds to frame it was planned
     protected int priority;
@@ -76,14 +82,20 @@ public abstract class Plan {
     }
 
     public void setCancelSource(PlanCancelSource cancelSource) {
+        setCancelSource(cancelSource, cancelSource.getReason());
+    }
+
+    /** Records a reason more specific than the source's default; the first cancellation wins. */
+    public void setCancelSource(PlanCancelSource cancelSource, PlanCancelReason cancelReason) {
         if (this.state == PlanState.CANCELLED) {
             return;
         }
         this.cancelSource = cancelSource;
+        this.cancelReason = cancelReason;
     }
 
     public PlanCancelReason getCancelReason() {
-        return cancelSource == null ? PlanCancelReason.UNKNOWN : cancelSource.getReason();
+        return cancelReason == null ? PlanCancelReason.UNKNOWN : cancelReason;
     }
 
     @Override

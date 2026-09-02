@@ -1,5 +1,6 @@
 package telemetry;
 
+import bwapi.UnitType;
 import macro.plan.Plan;
 import macro.plan.PlanBlocker;
 import macro.plan.PlanState;
@@ -30,5 +31,9 @@ public interface PlanEventSink {
 
     /** A building plan lost the build-ahead slot without placing its building. */
     default void onBuildAheadEvict(Plan holder, int heldFrames, int starvedBehind) {
+    }
+
+    /** A build order wanted a unit but created no plan because the blocker would sweep it. */
+    default void onWithheld(UnitType unitType, PlanBlocker blocker) {
     }
 }

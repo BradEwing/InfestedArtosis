@@ -229,7 +229,7 @@ public class ThreeHatchHydra extends ProtossBase {
         }
 
         final int desiredHydralisks = desiredHydralisks(gameState);
-        if (techProgression.isHydraliskDen() && hydraCount < desiredHydralisks) {
+        if (techProgression.isHydraliskDen() && hydraCount < desiredHydralisks && canPlanAdvancedUnit(gameState, UnitType.Zerg_Hydralisk)) {
             Plan hydraliskPlan = this.planUnit(gameState, UnitType.Zerg_Hydralisk);
             plans.add(hydraliskPlan);
             return plans;
