@@ -345,7 +345,7 @@ public class OpenerSelectionLoopTest {
     }
 
     private static final OpenerSelector CURRENT_POLICY = (factory, record, lastGameOpener, mapName) ->
-        LearningManager.selectOpenerName(null, factory, record, "", lastGameOpener, OPPONENT, mapName);
+        LearningManager.selectOpenerName(null, factory, record, "", lastGameOpener, mapName);
 
     private static final OpenerSelector LEGACY_EXCLUSION = OpenerSelectionLoopTest::legacyExclusionSelect;
 
@@ -370,10 +370,10 @@ public class OpenerSelectionLoopTest {
         if (playable.isEmpty()) {
             return null;
         }
-        String ucbWinner = WeightedUCBCalculator.findBestStrategy(playable, mapName, OPPONENT,
+        String ucbWinner = WeightedUCBCalculator.findBestStrategy(playable, mapName,
                 record.getMapSpecificOpenerRecord(), record.getOpenerRecord(),
                 record.totalGames(), record.getGameTimestamps());
-        return LearningManager.applyDormantReprobePolicy(ucbWinner, playable, record, mapName, OPPONENT);
+        return LearningManager.applyDormantReprobePolicy(ucbWinner, playable, record, mapName);
     }
 
     private static List<GameResult> runLoop(BuildOrderFactory factory,
@@ -415,7 +415,7 @@ public class OpenerSelectionLoopTest {
                 .filter(opener -> factory.isPlayableOpener(factory.getByName(opener)))
                 .filter(opener -> !(lastGameOpener.equals("4Pool") && opener.equals("4Pool")))
                 .collect(Collectors.toList());
-        return WeightedUCBCalculator.findBestStrategy(playable, mapName, OPPONENT,
+        return WeightedUCBCalculator.findBestStrategy(playable, mapName,
                 record.getMapSpecificOpenerRecord(), record.getOpenerRecord(),
                 record.totalGames(), record.getGameTimestamps());
     }
