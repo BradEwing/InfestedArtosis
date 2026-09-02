@@ -974,7 +974,7 @@ public class ProductionManager {
     private PlanBlocker scheduleUnitItem(Plan plan, boolean bankClaimedAhead) {
         UnitType unit = plan.getPlannedUnit();
         ResourceCount resourceCount = gameState.getResourceCount();
-        if (!resourceCount.canScheduleLarva(gameState.numLarva())) {
+        if (!resourceCount.canScheduleLarva(gameState.numLarva(), gameState.larvaAssignedToPlans())) {
             return PlanBlocker.NO_LARVA;
         }
 

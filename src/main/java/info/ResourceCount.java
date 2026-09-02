@@ -59,7 +59,10 @@ public class ResourceCount {
     }
 
     private boolean shouldReserveLarva(UnitType unit) {
-        return !unit.isBuilding() && unit != UnitType.Zerg_Lurker;
+        return !unit.isBuilding()
+                && unit != UnitType.Zerg_Lurker
+                && unit != UnitType.Zerg_Guardian
+                && unit != UnitType.Zerg_Devourer;
     }
 
     public int availableMinerals() { 
@@ -176,8 +179,18 @@ public class ResourceCount {
         return currentFrame + framesToGather + 20;
     }
 
-    public boolean canScheduleLarva(int currentLarva) {
-        return currentLarva > reservedLarva;
+    /**
+     * True when a larva is free for another unit plan.
+     *
+     * A larva already handed to a plan has left {@code currentLarva} but keeps its reservation
+     * until the egg appears, so it is added back rather than counted against the plan twice.
+     *
+     * @param currentLarva unassigned larva
+     * @param larvaHeldByPlans larva already assigned to a plan that has not morphed yet
+     * @return true when a plan can take a larva
+     */
+    public boolean canScheduleLarva(int currentLarva, int larvaHeldByPlans) {
+        return currentLarva + larvaHeldByPlans > reservedLarva;
     }
 
     public boolean isFloatingMinerals() { 
