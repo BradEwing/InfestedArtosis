@@ -22,7 +22,7 @@ public class LearningManagerTest {
         OpponentRecord opponentRecord = opponentRecordFavouring(factory, Race.Protoss, "4Pool");
 
         String selected = LearningManager.selectOpenerName(null, factory, opponentRecord,
-                "2Gate;EarlyRush", "Overpool", OPPONENT_NAME, MAP_NAME);
+                "2Gate;EarlyRush", "Overpool", MAP_NAME);
 
         assertNotEquals("Overpool", selected);
         assertEquals("4Pool", selected);
@@ -34,7 +34,7 @@ public class LearningManagerTest {
         OpponentRecord opponentRecord = opponentRecordFavouring(factory, Race.Protoss, "4Pool", "12Pool");
 
         String selected = LearningManager.selectOpenerName(null, factory, opponentRecord,
-                "2Gate;EarlyRush", "4Pool", OPPONENT_NAME, MAP_NAME);
+                "2Gate;EarlyRush", "4Pool", MAP_NAME);
 
         assertNotEquals("4Pool", selected);
         assertEquals("12Pool", selected);
@@ -46,7 +46,7 @@ public class LearningManagerTest {
         OpponentRecord opponentRecord = opponentRecordFavouring(factory, Race.Protoss, "4Pool");
 
         String selected = LearningManager.selectOpenerName(null, factory, opponentRecord,
-                "CannonRush", "4Pool", OPPONENT_NAME, MAP_NAME);
+                "CannonRush", "4Pool", MAP_NAME);
 
         assertEquals("Overpool", selected);
     }
@@ -57,7 +57,7 @@ public class LearningManagerTest {
         OpponentRecord opponentRecord = opponentRecordFavouring(factory, Race.Protoss, "4Pool");
 
         String selected = LearningManager.selectOpenerName(null, factory, opponentRecord,
-                "2Gate;CannonRush;EarlyRush", "Overpool", OPPONENT_NAME, MAP_NAME);
+                "2Gate;CannonRush;EarlyRush", "Overpool", MAP_NAME);
 
         assertEquals("Overpool", selected);
     }
@@ -68,7 +68,7 @@ public class LearningManagerTest {
         OpponentRecord opponentRecord = opponentRecordFavouring(factory, Race.Terran, "4Pool");
 
         String selected = LearningManager.selectOpenerName(null, factory, opponentRecord,
-                "SCVRush", "4Pool", OPPONENT_NAME, MAP_NAME);
+                "SCVRush", "4Pool", MAP_NAME);
 
         assertEquals("Overpool", selected);
     }
@@ -79,7 +79,7 @@ public class LearningManagerTest {
         OpponentRecord opponentRecord = opponentRecordFavouring(factory, Race.Protoss, "4Pool");
 
         String selected = LearningManager.selectOpenerName("12Hatch", factory, opponentRecord,
-                "CannonRush", "Overpool", OPPONENT_NAME, MAP_NAME);
+                "CannonRush", "Overpool", MAP_NAME);
 
         assertEquals("12Hatch", selected);
     }
@@ -90,7 +90,7 @@ public class LearningManagerTest {
         OpponentRecord opponentRecord = opponentRecordFavouring(factory, Race.Protoss, "4Pool");
 
         String selected = LearningManager.selectOpenerName("12Pool", factory, opponentRecord,
-                "2Gate;EarlyRush", "Overpool", OPPONENT_NAME, MAP_NAME);
+                "2Gate;EarlyRush", "Overpool", MAP_NAME);
 
         assertEquals("12Pool", selected);
     }
@@ -101,7 +101,7 @@ public class LearningManagerTest {
         OpponentRecord opponentRecord = opponentRecordFavouring(factory, Race.Protoss, "4Pool");
 
         String selected = LearningManager.selectOpenerName("NotAnOpener", factory, opponentRecord,
-                "CannonRush", "Overpool", OPPONENT_NAME, MAP_NAME);
+                "CannonRush", "Overpool", MAP_NAME);
 
         assertEquals("Overpool", selected);
     }

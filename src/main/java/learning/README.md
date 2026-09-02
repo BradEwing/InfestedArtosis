@@ -12,15 +12,15 @@ Adaptive build order selection using a Discounted Upper Confidence Bound (D-UCB)
                     | LearningManager |-----> Decisions (opener)
                     +-------+--------+       passed to GameState
                             |
-              +-------------+-------------+
-              |                           |
-     determineOpener()          determineBuildOrder()
-              |                           |
-              +-------------+-------------+
-                            |
-                  +---------v----------+
-                  | WeightedUCBCalculator |
-                  +---------+----------+
+              +-------------+------------------------+
+              |             |                        |
+     HistoryRepository  RecordAccumulator   OpenerSelectionPolicy
+              |             |                        |
+              +-------------+------------+-----------+
+                                         |
+                               +---------v-----------+
+                               | WeightedUCBCalculator |
+                               +---------+-----------+
                             |
               +-------------+-------------+
               |                           |
@@ -43,9 +43,9 @@ Adaptive build order selection using a Discounted Upper Confidence Bound (D-UCB)
 
 ### Execution Flow
 
-1. **Game start** - `Bot.onStart()` creates `LearningManager`, which reads opponent CSV history and calls `determineOpener()` to select the opening strategy via D-UCB.
+1. **Game start** - `Bot.onStart()` creates `LearningManager`. `LearningHistoryRepository` reads the opponent CSV, `LearningRecordAccumulator` reconstructs the record, and `OpenerSelectionPolicy` selects the opening strategy via D-UCB.
 2. **Mid-game transition** - `ProductionManager` calls `determineBuildOrder(candidates)` when the opener signals a transition, selecting the mid-game strategy via D-UCB.
-3. **Game end** - `Bot.onEnd()` calls `LearningManager.onEnd(isWinner)`, which updates win/loss records for both the opener and active build order, then appends a new row to the CSV file.
+3. **Game end** - `Bot.onEnd()` calls `LearningManager.onEnd(isWinner)`, which creates one timestamped game record, applies it through `LearningRecordAccumulator`, then appends that same record through `LearningHistoryRepository`.
 
 ## D-UCB Algorithm
 
@@ -214,7 +214,7 @@ timestamp,is_winner,num_starting_locations,map_name,opponent_name,opponent_race,
 
 ### How Records Are Reconstructed
 
-On startup, `LearningManager.readOpponentRecord()` parses the CSV and builds four maps in `OpponentRecord`:
+On startup, `LearningHistoryRepository` parses the CSV and `LearningRecordAccumulator` builds four maps in `OpponentRecord`:
 
 1. **`openerRecord`** - `Map<String, Record>` keyed by opener name
 2. **`buildOrderRecord`** - `Map<String, Record>` keyed by build order name (only for rows where build order differs from opener)

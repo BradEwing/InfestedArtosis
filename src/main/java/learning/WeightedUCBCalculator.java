@@ -25,7 +25,6 @@ public class WeightedUCBCalculator {
 
     public static double calculateWeightedScore(String strategy,
             String mapName,
-            String opponentName,
             Map<String, MapAwareRecord> mapSpecificRecords,
             Map<String, Record> opponentRecords,
             int totalGames,
@@ -64,7 +63,6 @@ public class WeightedUCBCalculator {
     
     public static String findBestStrategy(List<String> candidates,
                                         String mapName,
-                                        String opponentName,
                                         Map<String, MapAwareRecord> mapSpecificRecords,
                                         Map<String, Record> opponentRecords,
                                         int totalGames,
@@ -82,7 +80,7 @@ public class WeightedUCBCalculator {
         double bestScore = Double.NEGATIVE_INFINITY;
         
         for (String strategy : candidates) {
-            double score = calculateWeightedScore(strategy, mapName, opponentName,
+            double score = calculateWeightedScore(strategy, mapName,
                     mapSpecificRecords, opponentRecords, totalGames, gameTimestamps);
             
             if (score > bestScore) {

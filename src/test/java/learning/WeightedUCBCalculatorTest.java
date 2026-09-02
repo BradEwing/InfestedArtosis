@@ -38,7 +38,7 @@ public class WeightedUCBCalculatorTest {
         List<String> candidates = Arrays.asList(
                 "12Pool", "3HatchBeforePool", "Overpool", "12Hatch", "4Pool", "9PoolSpeed");
 
-        String selected = WeightedUCBCalculator.findBestStrategy(candidates, "MapA", "Tomas Cere",
+        String selected = WeightedUCBCalculator.findBestStrategy(candidates, "MapA",
                 mapRecords, opponentRecords, history.length(), gameTimestamps);
 
         assertEquals("4Pool", selected);
@@ -74,11 +74,11 @@ public class WeightedUCBCalculatorTest {
         List<String> candidates = Arrays.asList(
                 "12Pool", "3HatchBeforePool", "Overpool", "12Hatch", "4Pool", "9PoolSpeed");
 
-        String atFiftyThree = WeightedUCBCalculator.findBestStrategy(candidates, "MapA", "Tomas Cere",
+        String atFiftyThree = WeightedUCBCalculator.findBestStrategy(candidates, "MapA",
                 mapRecords, opponentRecords, 53, gameTimestamps);
-        String atThreeThirtyNine = WeightedUCBCalculator.findBestStrategy(candidates, "MapA", "Tomas Cere",
+        String atThreeThirtyNine = WeightedUCBCalculator.findBestStrategy(candidates, "MapA",
                 mapRecords, opponentRecords, 339, gameTimestamps);
-        String atThirteenTwentyFour = WeightedUCBCalculator.findBestStrategy(candidates, "MapA", "Tomas Cere",
+        String atThirteenTwentyFour = WeightedUCBCalculator.findBestStrategy(candidates, "MapA",
                 mapRecords, opponentRecords, 1324, gameTimestamps);
 
         assertEquals(atFiftyThree, atThreeThirtyNine, "The pick should not move with lifetime length");
@@ -109,7 +109,7 @@ public class WeightedUCBCalculatorTest {
         List<String> candidates = Arrays.asList("12Pool", "Overpool", "4Pool", "9PoolSpeed");
 
         for (int lifetime : new int[] {30, 53, 339, 1324}) {
-            assertEquals("4Pool", WeightedUCBCalculator.findBestStrategy(candidates, "MapA", "WillBot",
+            assertEquals("4Pool", WeightedUCBCalculator.findBestStrategy(candidates, "MapA",
                     mapRecords, opponentRecords, lifetime, gameTimestamps),
                     "An unplayed arm displaced a 30% incumbent at a lifetime of " + lifetime);
         }
