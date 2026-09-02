@@ -138,4 +138,18 @@ class UnitTypeCountTest {
 
         assertFalse(HatcheryCapacity.isBehind(depotCount(count), 1, false, false));
     }
+
+    @Test
+    void plannedCountHoldsQueuedDronesUntilTheyHatch() {
+        UnitTypeCount count = new UnitTypeCount();
+
+        count.planUnit(UnitType.Zerg_Drone);
+        count.planUnit(UnitType.Zerg_Drone);
+        assertEquals(2, count.plannedCount(UnitType.Zerg_Drone));
+
+        count.addUnit(UnitType.Zerg_Drone);
+        count.unplanUnit(UnitType.Zerg_Drone);
+        assertEquals(1, count.plannedCount(UnitType.Zerg_Drone));
+        assertEquals(1, count.livingCount(UnitType.Zerg_Drone));
+    }
 }

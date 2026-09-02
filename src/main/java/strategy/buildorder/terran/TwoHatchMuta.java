@@ -39,7 +39,7 @@ public class TwoHatchMuta extends TerranBase {
         int spireCount        = gameState.ourUnitCount(UnitType.Zerg_Spire);
         int mutaCount         = gameState.ourUnitCount(UnitType.Zerg_Mutalisk);
         int scourgeCount      = gameState.ourUnitCount(UnitType.Zerg_Scourge);
-        int droneCount        = gameState.ourUnitCount(UnitType.Zerg_Drone);
+        int droneCount        = gameState.numEconomyDrones();
         int zerglingCount     = gameState.ourUnitCount(UnitType.Zerg_Zergling);
         int overlordCount     = gameState.ourUnitCount(UnitType.Zerg_Overlord);
         int enemyVessel = gameState.enemyUnitCount(UnitType.Terran_Science_Vessel);
