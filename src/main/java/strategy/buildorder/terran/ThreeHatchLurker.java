@@ -161,7 +161,8 @@ public class ThreeHatchLurker extends TerranBase {
             plans.add(overlordSpeedPlan);
         }
 
-        if (droneCount < 15) {
+        final int desiredZerglings = this.zerglingsNeeded(gameState);
+        if (shouldDroneBeforeZerglings(droneCount, zerglingCount, desiredZerglings)) {
             Plan dronePlan = this.planUnit(gameState, UnitType.Zerg_Drone);
             plans.add(dronePlan);
             return plans;
@@ -181,7 +182,6 @@ public class ThreeHatchLurker extends TerranBase {
             return plans;
         }
 
-        final int desiredZerglings = this.zerglingsNeeded(gameState);
         if (zerglingCount < desiredZerglings) {
             plans.add(this.planUnit(gameState, UnitType.Zerg_Zergling));
             return plans;
