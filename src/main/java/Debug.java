@@ -73,6 +73,7 @@ public class Debug {
             game.drawTextScreen(4, 24, "Opener: " + opener.getName() + " " + getOpenerRecord(), Text.White);
             game.drawTextScreen(4, 32, "BuildOrder: " + gameState.getActiveBuildOrder().getName() + " " + getBuildOrderRecord(), Text.White);
             game.drawTextScreen(4, 40, "Frame: " + game.getFrameCount());
+            game.drawTextScreen(4, 48, drones(), Text.White);
         }
 
         if (config.debugBases) {
@@ -239,6 +240,12 @@ public class Debug {
                     Color.Green
             );
         }
+    }
+
+    private String drones() {
+        int living = gameState.ourLivingUnitCount(UnitType.Zerg_Drone);
+        return String.format("Drones: %d living, %d gathering, %d idle reclaims",
+                living, gameState.numGatherers(), gameState.getIdleDroneReclaims());
     }
 
     private void drawBases() {

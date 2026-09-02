@@ -99,6 +99,7 @@ public class GameState {
     private HashMap<Unit, Plan> assignedPlannedItems = new HashMap<>();
     private int plannedWorkers;
     private int plannedHatcheries = 1;
+    private int idleDroneReclaims;
 
     private HashMap<Base, HashSet<ManagedUnit>> gatherersAssignedToBase = new HashMap<>();
 
@@ -216,6 +217,15 @@ public class GameState {
 
     public int numLarva() { 
         return larva.size(); 
+    }
+
+    /**
+     * Records a drone that was parked in {@link UnitRole#IDLE} and put back to gathering.
+     * Before the reclaim existed such a drone stood still until it died, so a rising count
+     * points at whichever caller idled it.
+     */
+    public void incrementIdleDroneReclaims() {
+        idleDroneReclaims += 1;
     }
 
     public int frameCanAffordUnit(UnitType unit, int currentFrame) {
