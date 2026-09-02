@@ -41,6 +41,13 @@ import java.util.stream.Collectors;
  */
 public class ProductionManager {
 
+    private static final int OVERLORD_SUPPLY = UnitType.Zerg_Overlord.supplyProvided();
+
+    /** Raw supply headroom the overlord planner keeps ahead of the queue it is walking. */
+    private static final int SUPPLY_BUFFER = 4;
+
+    private static final int MAX_SUPPLY = 400;
+
     private Game game;
 
     private GameState gameState;
@@ -181,7 +188,7 @@ public class ProductionManager {
                 plan -> {
                     gameState.setImpossiblePlan(plan);
                     int plannedSupply = resourceCount.getPlannedSupply();
-                    resourceCount.setPlannedSupply(Math.max(0, plannedSupply - 16));
+                    resourceCount.setPlannedSupply(Math.max(0, plannedSupply - OVERLORD_SUPPLY));
                 });
     }
 
@@ -430,7 +437,7 @@ public class ProductionManager {
      * Walks the queue in priority order and inserts overlords when supply would run out.
      */
     private void planSupply(Player self) {
-        if (self.supplyUsed() >= 400) {
+        if (self.supplyUsed() >= MAX_SUPPLY) {
             return;
         }
 
@@ -444,7 +451,7 @@ public class ProductionManager {
         if (overlordCount < 2 && !isNinePool) {
             if (self.supplyUsed() >= 18 && overlordCount < 2 && plannedSupply == 0) {
                 addUnitToQueue(UnitType.Zerg_Overlord, 1);
-                gameState.getResourceCount().setPlannedSupply(16);
+                gameState.getResourceCount().setPlannedSupply(OVERLORD_SUPPLY);
                 return;
             }
             return;
@@ -455,56 +462,80 @@ public class ProductionManager {
         List<Plan> scheduledPlans = new ArrayList<>(gameState.getPlansScheduled());
         scheduledPlans.sort(new PlanComparator());
 
-        int availableSupply = self.supplyTotal() - self.supplyUsed();
-        availableSupply += gameState.getResourceCount().getPlannedSupply();
+        List<Integer> insertPriorities = overlordInsertPriorities(
+                scheduledPlans,
+                sortedQueue,
+                self.supplyTotal() - self.supplyUsed(),
+                plannedSupply,
+                self.supplyUsed());
+
+        final int supplyAfterInserts = plannedSupply + OVERLORD_SUPPLY * insertPriorities.size();
+        for (int priority : insertPriorities) {
+            addUnitToQueue(UnitType.Zerg_Overlord, priority);
+        }
+        gameState.getResourceCount().setPlannedSupply(supplyAfterInserts);
+
+        // Emergency fallback: nothing waiting can fit in the remaining supply, with high minerals
+        int cheapestWaitingUnit = Math.min(
+                SupplyCapacity.cheapestUnitSupply(sortedQueue),
+                SupplyCapacity.cheapestUnitSupply(scheduledPlans));
+        boolean supplyBlocked = SupplyCapacity.isBlocked(
+                self.supplyTotal(), self.supplyUsed(), cheapestWaitingUnit);
+        if (supplyBlocked && self.minerals() > 700 && supplyAfterInserts < 80) {
+            addUnitToQueue(UnitType.Zerg_Overlord, 1);
+            gameState.getResourceCount().setPlannedSupply(supplyAfterInserts + OVERLORD_SUPPLY);
+        }
+    }
+
+    /**
+     * Walks the scheduled plans and then the production queue, returning the priority at which an
+     * overlord has to be inserted every time the running supply headroom falls under the buffer.
+     *
+     * <p>A scheduled overlord earns headroom because it holds a larva and will morph. A queued
+     * overlord earns none: the production queue holds PLANNED plans only, every one of them is
+     * already counted in plannedSupply, and a plan blocked on larva may never be schedulable at
+     * all. Crediting those was what let four deadlocked overlords report supply as solved.
+     */
+    static List<Integer> overlordInsertPriorities(
+            List<Plan> scheduledPlans,
+            List<Plan> queuedPlans,
+            int freeSupply,
+            int plannedSupply,
+            int supplyUsed) {
+        int availableSupply = freeSupply + plannedSupply;
 
         for (Plan plan : scheduledPlans) {
-            if (plan.getType() == PlanType.UNIT) {
-                UnitType unitType = plan.getPlannedUnit();
-                if (unitType == UnitType.Zerg_Overlord) {
-                    availableSupply += 16;
-                } else {
-                    availableSupply -= unitType.supplyRequired();
-                }
+            if (plan.getType() != PlanType.UNIT) {
+                continue;
+            }
+            UnitType unitType = plan.getPlannedUnit();
+            if (unitType == UnitType.Zerg_Overlord) {
+                availableSupply += OVERLORD_SUPPLY;
+            } else {
+                availableSupply -= unitType.supplyRequired();
             }
         }
 
-        final int SUPPLY_BUFFER = 4;
-
-        List<Integer> overlordInsertPriorities = new ArrayList<>();
-
-        for (Plan plan : sortedQueue) {
+        List<Integer> insertPriorities = new ArrayList<>();
+        for (Plan plan : queuedPlans) {
             if (plan.getType() != PlanType.UNIT) {
                 continue;
             }
 
             UnitType unitType = plan.getPlannedUnit();
             if (unitType == UnitType.Zerg_Overlord) {
-                availableSupply += 16;
                 continue;
             }
 
-            int supplyCost = unitType.supplyRequired();
-            availableSupply -= supplyCost;
+            availableSupply -= unitType.supplyRequired();
 
-            while (availableSupply < SUPPLY_BUFFER && (self.supplyUsed() + gameState.getResourceCount().getPlannedSupply()) < 400) {
-                int insertPriority = Math.max(1, plan.getPriority() - 1);
-                overlordInsertPriorities.add(insertPriority);
-                availableSupply += 16;
+            while (availableSupply < SUPPLY_BUFFER
+                    && supplyUsed + plannedSupply + OVERLORD_SUPPLY * insertPriorities.size() < MAX_SUPPLY) {
+                insertPriorities.add(Math.max(1, plan.getPriority() - 1));
+                availableSupply += OVERLORD_SUPPLY;
             }
         }
-
-        for (int priority : overlordInsertPriorities) {
-            addUnitToQueue(UnitType.Zerg_Overlord, priority);
-            gameState.getResourceCount().setPlannedSupply(plannedSupply + 16);
-        }
-
-        // Emergency fallback: supply blocked with high minerals
-        final int supplyRemaining = self.supplyTotal() - self.supplyUsed();
-        if (supplyRemaining == 0 && self.minerals() > 700 && plannedSupply < 80) {
-            addUnitToQueue(UnitType.Zerg_Overlord, 1);
-            gameState.getResourceCount().setPlannedSupply(plannedSupply + 16);
-        }
+        return insertPriorities;
     }
 
     // This is only used for planSupply()
