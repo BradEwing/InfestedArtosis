@@ -1,5 +1,6 @@
 package learning;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -8,9 +9,13 @@ import java.util.Map;
  * Utility class for calculating weighted UCB scores that prioritize more granular data.
  * Handles the logic for combining map-specific and opponent-specific build order history.
  * 
- * Uses a sigmoid curve to dynamically weight the map-specific and opponent-specific data.
+ * Uses a sigmoid curve to dynamically weight the map-specific and opponent-specific data. The
+ * sigmoid reads the same discounted evidence the map score is built from, so a record cannot draw
+ * blend weight from games its own discount has already forgotten.
  * 
- * Defaults to opponent-only data if no map-specific data is available, final fallback is pure exploration.
+ * Defaults to opponent-only data if no map-specific data is available. A strategy with neither
+ * record scores the full curiosity bonus, the same score {@link Record#index} gives an arm whose
+ * discounted evidence has decayed away, so it competes for the slot rather than claiming it.
  * </p>
  */
 public class WeightedUCBCalculator {
@@ -31,14 +36,14 @@ public class WeightedUCBCalculator {
         Record opponentRecord = opponentRecords.get(strategy);
 
         if (mapRecord != null && mapRecord.games() > 0) {
-            int mapGames = mapRecord.games();
+            List<Long> mapClock = mapClock(mapSpecificRecords, mapName);
+            double mapGames = mapRecord.discountedGames(mapClock);
 
-            
             double confidence = 1.0 / (1.0 + Math.exp(-0.3 * (mapGames - CONFIDENCE_THRESHOLD)));
             double mapWeight = MAX_MAP_WEIGHT * confidence;
             double opponentWeight = 1.0 - mapWeight;
 
-            double mapScore = mapRecord.index(totalGames, gameTimestamps);
+            double mapScore = mapRecord.index(totalGames, mapClock);
             double opponentScore = (opponentRecord != null && opponentRecord.games() > 0)
                     ? opponentRecord.index(totalGames, gameTimestamps)
                     : 0.0;
@@ -53,8 +58,8 @@ public class WeightedUCBCalculator {
         if (totalGames == 0) {
             return Math.random();
         }
-        
-        return Math.sqrt(Math.log(totalGames)) + (Math.random() * 0.2 - 0.1);
+
+        return UCBSelectionPolicy.curiosity(0.0);
     }
     
     public static String findBestStrategy(List<String> candidates,
@@ -89,6 +94,25 @@ public class WeightedUCBCalculator {
         return bestStrategy;
     }
     
+    /**
+     * Every game played on this map, across all strategies. A map record ages on this clock rather
+     * than the opponent's, so one appearance of the map costs one game of decay instead of the
+     * fourteen or so opponent games that separate two visits.
+     */
+    static List<Long> mapClock(Map<String, MapAwareRecord> mapSpecificRecords, String mapName) {
+        List<Long> clock = new ArrayList<>();
+        if (mapSpecificRecords == null) {
+            return clock;
+        }
+        for (MapAwareRecord record : mapSpecificRecords.values()) {
+            if (mapName != null && mapName.equals(record.getMapName())) {
+                clock.addAll(record.getWinTimestamps());
+                clock.addAll(record.getLossTimestamps());
+            }
+        }
+        return clock;
+    }
+
     public static String createMapKey(String mapName, String strategy) {
         return mapName + "_" + strategy;
     }
