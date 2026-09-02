@@ -50,6 +50,8 @@ public class ProductionManager {
 
     private final BuildAheadSlot buildAheadSlot = new BuildAheadSlot();
 
+    private final BuildAheadSlot unitAheadSlot = new BuildAheadSlot();
+
     private int currentFrame = 5;
 
 
@@ -92,6 +94,7 @@ public class ProductionManager {
         cancelExcessHatcheryPlans();
         cancelExcessOverlordPlans();
         enforceBuildAheadSlot();
+        enforceUnitAheadSlot();
         schedulePlannedItems();
         buildUpgrades();
         researchTech();
@@ -195,7 +198,7 @@ public class ProductionManager {
                 continue;
             }
             PlanEvents.buildAheadEvicted(plan, buildAheadSlot.heldFrames(plan, currentFrame), starvedQueuedPlans());
-            requeueStalledPlan(plan);
+            requeueStalledPlan(plan, buildAheadSlot);
         }
 
         for (Plan plan : buildAheadSlot.holdReportsDue(currentFrame)) {
@@ -203,10 +206,33 @@ public class ProductionManager {
         }
     }
 
+    private void enforceUnitAheadSlot() {
+        unitAheadSlot.reconcile(activeUnitPlans());
+
+        for (Plan plan : unitAheadSlot.stalled(currentFrame)) {
+            PlanState state = plan.getState();
+            if (state != PlanState.SCHEDULE && state != PlanState.BUILDING) {
+                unitAheadSlot.release(plan);
+                continue;
+            }
+            PlanEvents.buildAheadEvicted(plan, unitAheadSlot.heldFrames(plan, currentFrame), starvedQueuedPlans());
+            requeueStalledPlan(plan, unitAheadSlot);
+        }
+
+        for (Plan plan : unitAheadSlot.holdReportsDue(currentFrame)) {
+            PlanEvents.buildAheadHold(plan, unitAheadSlot.heldFrames(plan, currentFrame), starvedQueuedPlans());
+        }
+    }
+
     private Set<Plan> activeBuildingPlans() {
+        Set<Plan> active = activeUnitPlans();
+        active.addAll(gameState.getPlansMorphing());
+        return active;
+    }
+
+    private Set<Plan> activeUnitPlans() {
         Set<Plan> active = new HashSet<>(gameState.getPlansScheduled());
         active.addAll(gameState.getPlansBuilding());
-        active.addAll(gameState.getPlansMorphing());
         return active;
     }
 
@@ -223,8 +249,8 @@ public class ProductionManager {
     }
 
     /** Requeues an evicted plan; it keeps its build position, so its tiles are not reserved twice. */
-    private void requeueStalledPlan(Plan plan) {
-        buildAheadSlot.releaseWithBackoff(plan, currentFrame);
+    private void requeueStalledPlan(Plan plan, BuildAheadSlot slot) {
+        slot.releaseWithBackoff(plan, currentFrame);
         removeFromActivePlans(plan);
         releaseExecutor(plan);
         gameState.getResourceCount().unreserveUnit(plan.getPlannedUnit());
@@ -651,70 +677,72 @@ public class ProductionManager {
 
         reprioritizeHatcheriesForLarvaConstraint();
 
-        Player self = game.self();
-
-        // Loop through items until we exhaust queue, or we break because we can't consume top item
-        // Call method to attempt to build that type, if we can't build return false and break the loop
-
-        HashSet<Plan> scheduledPlans = gameState.getPlansScheduled();
-
-        List<Plan> requeuePlans = new ArrayList<>();
-        boolean hasRequeuedPlans = false;
-        ResourceCount resourceCount = gameState.getResourceCount();
-        int mineralBuffer = resourceCount.availableMinerals();
-        int gasBuffer = resourceCount.availableGas();
+        List<Plan> schedulable = new ArrayList<>();
         int queueSize = gameState.getProductionQueue().size();
         for (int i = 0; i < queueSize; i++) {
-
-            PlanBlocker blocker;
-            // If we can't plan, we'll put it back on the queue
             final Plan plan = gameState.getProductionQueue().poll();
             if (plan == null) {
                 continue;
             }
-
-            // Don't block the queue if the plan cannot be executed
             if (!canSchedulePlan(plan)) {
                 plan.setCancelSource(PlanCancelSource.PRODUCTION_SCHEDULE_GATE);
                 gameState.setImpossiblePlan(plan);
                 continue;
             }
-
-            PlanType planType = plan.getType();
-
-            switch (planType) {
-                case BUILDING:
-                    blocker = scheduleBuildingItem(plan, hasRequeuedPlans);
-                    break;
-                case UNIT:
-                    blocker = scheduleUnitItem(plan);
-                    break;
-                case UPGRADE:
-                    blocker = scheduleUpgradeItem(self, plan);
-                    break;
-                case TECH:
-                    blocker = scheduleResearch(plan);
-                    break;
-                default:
-                    blocker = PlanBlocker.UNSUPPORTED_PLAN_TYPE;
-            }
-
-            if (blocker == PlanBlocker.NONE) {
-                scheduledPlans.add(plan);
-            } else {
-                PlanEvents.blocked(plan, blocker);
-                requeuePlans.add(plan);
-                hasRequeuedPlans = true;
-                mineralBuffer -= plan.mineralPrice();
-                gasBuffer -= plan.gasPrice();
-                if (mineralBuffer <= 0 && gasBuffer <= 0) {
-                    break;
-                }
-            }
+            schedulable.add(plan);
         }
 
-        // Requeue
-        gameState.getProductionQueue().addAll(requeuePlans);
+        ScanOutcome outcome = scanPlans(schedulable, this::schedulePlan);
+        gameState.getPlansScheduled().addAll(outcome.scheduled);
+        gameState.getProductionQueue().addAll(outcome.requeued);
+    }
+
+    private PlanBlocker schedulePlan(Plan plan, boolean bankClaimedAhead) {
+        switch (plan.getType()) {
+            case BUILDING:
+                return scheduleBuildingItem(plan, bankClaimedAhead);
+            case UNIT:
+                return scheduleUnitItem(plan, bankClaimedAhead);
+            case UPGRADE:
+                return scheduleUpgradeItem(game.self(), plan);
+            case TECH:
+                return scheduleResearch(plan);
+            default:
+                return PlanBlocker.UNSUPPORTED_PLAN_TYPE;
+        }
+    }
+
+    @FunctionalInterface
+    interface PlanScheduler {
+        PlanBlocker schedule(Plan plan, boolean bankClaimedAhead);
+    }
+
+    static final class ScanOutcome {
+
+        final List<Plan> scheduled = new ArrayList<>();
+
+        final List<Plan> requeued = new ArrayList<>();
+    }
+
+    /** Scans every plan in priority order without stopping at blockers. */
+    static ScanOutcome scanPlans(List<Plan> plansInPriorityOrder, PlanScheduler scheduler) {
+        ScanOutcome outcome = new ScanOutcome();
+        boolean bankClaimedAhead = false;
+        for (Plan plan : plansInPriorityOrder) {
+            PlanBlocker blocker = scheduler.schedule(plan, bankClaimedAhead);
+            if (blocker == PlanBlocker.NONE) {
+                outcome.scheduled.add(plan);
+                continue;
+            }
+            PlanEvents.blocked(plan, blocker);
+            outcome.requeued.add(plan);
+            bankClaimedAhead = bankClaimedAhead || claimsBank(blocker);
+        }
+        return outcome;
+    }
+
+    static boolean claimsBank(PlanBlocker blocker) {
+        return blocker == PlanBlocker.RESOURCES;
     }
 
     // TODO: Refactor this into WorkerManager or a Buildingmanager (TechManager)?
@@ -943,19 +971,56 @@ public class ProductionManager {
         return null;
     }
 
-    private PlanBlocker scheduleUnitItem(Plan plan) {
+    private PlanBlocker scheduleUnitItem(Plan plan, boolean bankClaimedAhead) {
         UnitType unit = plan.getPlannedUnit();
         ResourceCount resourceCount = gameState.getResourceCount();
-        if (resourceCount.cannotAffordUnit(unit)) {
-            return PlanBlocker.RESOURCES;
-        }
-
         if (!resourceCount.canScheduleLarva(gameState.numLarva())) {
             return PlanBlocker.NO_LARVA;
         }
 
+        boolean cannotAfford = resourceCount.cannotAffordUnit(unit);
+        int predictedReadyFrame = gameState.frameCanAffordUnit(unit, currentFrame);
+        PlanBlocker unitAheadBlocker = unitAheadBlocker(
+                unitAheadSlot,
+                unit,
+                currentFrame,
+                cannotAfford,
+                bankClaimedAhead,
+                predictedReadyFrame);
+        if (unitAheadBlocker != PlanBlocker.NONE) {
+            return unitAheadBlocker;
+        }
+
+        if (cannotAfford) {
+            unitAheadSlot.claim(plan, currentFrame, predictedReadyFrame);
+        }
         resourceCount.reserveUnit(unit);
         plan.setState(PlanState.SCHEDULE);
+        return PlanBlocker.NONE;
+    }
+
+    static PlanBlocker unitAheadBlocker(
+            BuildAheadSlot slot,
+            UnitType unit,
+            int frame,
+            boolean cannotAfford,
+            boolean bankClaimedAhead,
+            int predictedReadyFrame) {
+        if (!cannotAfford) {
+            return PlanBlocker.NONE;
+        }
+        if (bankClaimedAhead || slot.isOccupied()) {
+            return PlanBlocker.BUILD_AHEAD_SLOT_TAKEN;
+        }
+        if (slot.isInBackoff(unit, frame)) {
+            return PlanBlocker.BUILD_AHEAD_BACKOFF;
+        }
+        if (BuildAheadSlot.isUnreachable(predictedReadyFrame)) {
+            return PlanBlocker.NO_INCOME;
+        }
+        if (predictedReadyFrame - frame > unit.buildTime()) {
+            return PlanBlocker.RESOURCES;
+        }
         return PlanBlocker.NONE;
     }
 
