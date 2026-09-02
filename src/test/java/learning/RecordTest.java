@@ -41,7 +41,7 @@ public class RecordTest {
 
     @Test
     void testEmptyRecordReturnsDefaultIndex() {
-        double index = recordA.index(0);
+        double index = recordA.index(0, ownClock(recordA));
         assertTrue(index >= 0.0 && index <= 1.0, "Empty record with zero totalGames should return random value between 0 and 1");
     }
 
@@ -82,8 +82,8 @@ public class RecordTest {
         recordB.setWins(3);
         recordB.setLosses(3);
 
-        double indexA = recordA.index(6);
-        double indexB = recordB.index(6);
+        double indexA = recordA.index(6, ownClock(recordA));
+        double indexB = recordB.index(6, ownClock(recordB));
 
         assertTrue(indexA > indexB,
             String.format("Strategy A (recent wins) should score higher than Strategy B (recent losses). A: %.4f, B: %.4f",
@@ -107,7 +107,7 @@ public class RecordTest {
         record.addLossTimestamp(baseTime + 1000);
         record.addWinTimestamp(baseTime + 2000);
 
-        double index = record.index(100);
+        double index = record.index(100, ownClock(record));
         assertTrue(index > 0.0, "Basic record should have positive index");
     }
 
@@ -130,7 +130,7 @@ public class RecordTest {
         recordA.setWins(3);
         recordA.setLosses(0);
 
-        double index = recordA.index(100);
+        double index = recordA.index(100, ownClock(recordA));
 
         assertTrue(index > 0.0, "Index should be positive");
         assertTrue(index > 1.0, "Index should be greater than 1.0 due to exploration term");
@@ -181,8 +181,8 @@ public class RecordTest {
         oldWins.setWins(2);
         oldWins.setLosses(1);
 
-        double recentIndex = recentWins.index(100);
-        double oldIndex = oldWins.index(100);
+        double recentIndex = recentWins.index(100, ownClock(recentWins));
+        double oldIndex = oldWins.index(100, ownClock(oldWins));
 
         assertTrue(recentIndex > oldIndex,
             "Recent wins should score higher than old wins");
@@ -192,7 +192,7 @@ public class RecordTest {
     void testZeroTotalGames() {
         recordA.addWinTimestamp(baseTime);
 
-        double index = recordA.index(0);
+        double index = recordA.index(0, ownClock(recordA));
         assertTrue(index >= 0.0 && index <= 1.0, "Zero totalGames should return random value between 0 and 1");
     }
 
@@ -202,7 +202,7 @@ public class RecordTest {
         recordA.setWins(1);
         recordA.setLosses(0);
 
-        double index = recordA.index(1);
+        double index = recordA.index(1, ownClock(recordA));
         assertTrue(index > 0.0, "Single win should have positive index");
     }
 
@@ -212,7 +212,7 @@ public class RecordTest {
         recordA.addLossTimestamp(baseTime + 1000);
         recordA.addWinTimestamp(baseTime + 2000);
 
-        double index = recordA.index(100);
+        double index = recordA.index(100, ownClock(recordA));
 
         assertTrue(index > 0.5, "Recent wins should give positive index");
     }
@@ -224,8 +224,8 @@ public class RecordTest {
         recordA.setWins(1);
         recordA.setLosses(1);
 
-        double indexLow = recordA.index(10);
-        double indexHigh = recordA.index(1000);
+        double indexLow = recordA.index(10, ownClock(recordA));
+        double indexHigh = recordA.index(1000, ownClock(recordA));
 
         assertTrue(indexHigh > indexLow,
             "Higher totalGames should increase exploration term");
@@ -248,7 +248,7 @@ public class RecordTest {
         recordA.setWins(3);
         recordA.setLosses(0);
 
-        double index = recordA.index(100);
+        double index = recordA.index(100, ownClock(recordA));
 
         assertTrue(index > 1.0, "Index should be greater than 1.0 due to exploration");
         assertTrue(index < 3.0, "Index should be reasonable");
@@ -336,7 +336,7 @@ public class RecordTest {
 
     @Test
     void testEmptyRecordWithZeroGames() {
-        double index = recordA.index(0);
+        double index = recordA.index(0, ownClock(recordA));
         assertTrue(index >= 0.0 && index <= 1.0, "Empty record with zero totalGames should return random value between 0 and 1");
     }
 
@@ -344,7 +344,7 @@ public class RecordTest {
     void testRecordWithZeroGames() {
         recordA.setWins(0);
         recordA.setLosses(0);
-        double index = recordA.index(100);
+        double index = recordA.index(100, ownClock(recordA));
         double expectedMin = Math.sqrt(Math.log(100)) - 0.1;
         double expectedMax = Math.sqrt(Math.log(100)) + 0.1;
         assertTrue(index >= expectedMin && index <= expectedMax,
@@ -366,7 +366,7 @@ public class RecordTest {
         recordA.setWins(2);
         recordA.setLosses(2);
 
-        double index = recordA.index(100);
+        double index = recordA.index(100, ownClock(recordA));
         assertTrue(index > 0.0, "Mixed timestamps should produce valid index");
     }
 
@@ -383,7 +383,7 @@ public class RecordTest {
         recordA.setWins(3);
         recordA.setLosses(0);
 
-        double index = recordA.index(100);
+        double index = recordA.index(100, ownClock(recordA));
         assertTrue(index > 1.0, "Large time gaps should still produce valid index");
     }
 
@@ -399,7 +399,7 @@ public class RecordTest {
         recordA.setWins(0);
         recordA.setLosses(5);
 
-        double index = recordA.index(100);
+        double index = recordA.index(100, ownClock(recordA));
         assertTrue(index > 0.0, "All losses should still produce positive index due to exploration");
     }
 
@@ -415,7 +415,7 @@ public class RecordTest {
         recordA.setWins(5);
         recordA.setLosses(0);
 
-        double index = recordA.index(100);
+        double index = recordA.index(100, ownClock(recordA));
         assertTrue(index > 1.0, "All wins should produce high index");
     }
 
@@ -525,5 +525,13 @@ public class RecordTest {
             }
         }
         return record;
+    }
+
+    /** The clock these cases were written against: the record's own games. */
+    private static List<Long> ownClock(Record record) {
+        List<Long> clock = new ArrayList<>();
+        clock.addAll(record.getWinTimestamps());
+        clock.addAll(record.getLossTimestamps());
+        return clock;
     }
 }

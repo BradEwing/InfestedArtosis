@@ -47,7 +47,7 @@ public class MapAwareRecordTest {
 
     @Test
     void testEmptyRecordReturnsDefaultIndex() {
-        double index = recordA.index(100);
+        double index = recordA.index(100, ownClock(recordA));
         double expectedMin = Math.sqrt(Math.log(100)) - 0.1;
         double expectedMax = Math.sqrt(Math.log(100)) + 0.1;
         assertTrue(index >= expectedMin && index <= expectedMax,
@@ -91,8 +91,8 @@ public class MapAwareRecordTest {
         recordB.setWins(3);
         recordB.setLosses(3);
 
-        double indexA = recordA.index(6);
-        double indexB = recordB.index(6);
+        double indexA = recordA.index(6, ownClock(recordA));
+        double indexB = recordB.index(6, ownClock(recordB));
 
         assertTrue(indexA > indexB,
             String.format("Strategy A (recent wins) should score higher than Strategy B (recent losses). A: %.4f, B: %.4f",
@@ -119,7 +119,7 @@ public class MapAwareRecordTest {
         mapRecord.addLossTimestamp(baseTime + 1000);
         mapRecord.addWinTimestamp(baseTime + 2000);
 
-        double index = mapRecord.index(100);
+        double index = mapRecord.index(100, ownClock(mapRecord));
         assertTrue(index > 0.0, "Map-specific record should have positive index");
     }
 
@@ -140,7 +140,7 @@ public class MapAwareRecordTest {
         opponentRecord.addWinTimestamp(baseTime + 1000);
         opponentRecord.addLossTimestamp(baseTime + 2000);
 
-        double index = opponentRecord.index(100);
+        double index = opponentRecord.index(100, ownClock(opponentRecord));
         assertTrue(index > 0.0, "Opponent-specific record should have positive index");
     }
 
@@ -163,7 +163,7 @@ public class MapAwareRecordTest {
         recordA.setWins(3);
         recordA.setLosses(0);
 
-        double index = recordA.index(100);
+        double index = recordA.index(100, ownClock(recordA));
 
         assertTrue(index > 0.0, "Index should be positive");
         assertTrue(index > 1.0, "Index should be greater than 1.0 due to exploration term");
@@ -220,8 +220,8 @@ public class MapAwareRecordTest {
         oldWins.setWins(2);
         oldWins.setLosses(1);
 
-        double recentIndex = recentWins.index(100);
-        double oldIndex = oldWins.index(100);
+        double recentIndex = recentWins.index(100, ownClock(recentWins));
+        double oldIndex = oldWins.index(100, ownClock(oldWins));
 
         assertTrue(recentIndex > oldIndex,
             "Recent wins should score higher than old wins");
@@ -232,7 +232,7 @@ public class MapAwareRecordTest {
         recordA.addWinTimestamp(baseTime);
         recordA.addLossTimestamp(baseTime + 1000);
 
-        double index = recordA.index(0);
+        double index = recordA.index(0, ownClock(recordA));
         assertTrue(index >= 0.0 && index <= 1.0, "Zero totalGames should return random value between 0 and 1");
     }
 
@@ -240,7 +240,7 @@ public class MapAwareRecordTest {
     void testSingleGame() {
         recordA.addWinTimestamp(baseTime);
 
-        double index = recordA.index(100);
+        double index = recordA.index(100, ownClock(recordA));
         assertTrue(index >= 1.0, "Single win should have positive index");
     }
 
@@ -250,7 +250,7 @@ public class MapAwareRecordTest {
         recordA.addLossTimestamp(baseTime + 1000);
         recordA.addWinTimestamp(baseTime + 2000);
 
-        double index = recordA.index(100);
+        double index = recordA.index(100, ownClock(recordA));
 
         assertTrue(index > 0.5, "Recent wins should give positive index");
     }
@@ -262,8 +262,8 @@ public class MapAwareRecordTest {
         recordA.setWins(1);
         recordA.setLosses(1);
 
-        double indexLow = recordA.index(10);
-        double indexHigh = recordA.index(1000);
+        double indexLow = recordA.index(10, ownClock(recordA));
+        double indexHigh = recordA.index(1000, ownClock(recordA));
 
         assertTrue(indexHigh > indexLow,
             "Higher totalGames should increase exploration term");
@@ -286,7 +286,7 @@ public class MapAwareRecordTest {
         recordA.setWins(3);
         recordA.setLosses(0);
 
-        double index = recordA.index(100);
+        double index = recordA.index(100, ownClock(recordA));
 
         assertTrue(index > 1.0, "Index should be greater than 1.0 due to exploration");
         assertTrue(index < 3.0, "Index should be reasonable");
@@ -431,5 +431,17 @@ public class MapAwareRecordTest {
             }
         }
         return record;
+    }
+
+    /**
+     * The clock these cases were written against: the record's own games. Production instead ages a
+     * map record on that map's games, so a test using this helper is exercising decay mechanics, not
+     * the production clock.
+     */
+    private static List<Long> ownClock(MapAwareRecord record) {
+        List<Long> clock = new ArrayList<>();
+        clock.addAll(record.getWinTimestamps());
+        clock.addAll(record.getLossTimestamps());
+        return clock;
     }
 }

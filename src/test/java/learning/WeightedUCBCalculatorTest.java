@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class WeightedUCBCalculatorTest {
 
@@ -41,6 +42,61 @@ public class WeightedUCBCalculatorTest {
                 mapRecords, opponentRecords, history.length(), gameTimestamps);
 
         assertEquals("4Pool", selected);
+    }
+
+
+    @Test
+    void theMapClockCountsOnlyGamesPlayedOnThatMap() {
+        Map<String, MapAwareRecord> records = new HashMap<>();
+        records.put(WeightedUCBCalculator.createMapKey("MapA", "4Pool"), mapRecord("MapA", "4Pool", 1L, 2L));
+        records.put(WeightedUCBCalculator.createMapKey("MapA", "Overpool"), mapRecord("MapA", "Overpool", 3L));
+        records.put(WeightedUCBCalculator.createMapKey("MapB", "4Pool"), mapRecord("MapB", "4Pool", 4L, 5L, 6L));
+
+        assertEquals(3, WeightedUCBCalculator.mapClock(records, "MapA").size());
+        assertEquals(3, WeightedUCBCalculator.mapClock(records, "MapB").size());
+        assertEquals(0, WeightedUCBCalculator.mapClock(records, "MapC").size());
+    }
+
+    @Test
+    void aMapRecordAgesOnItsOwnMapNotOnEveryOpponentGame() {
+        MapAwareRecord record = mapRecord("MapA", "4Pool", 1L, 15L, 29L);
+        Map<String, MapAwareRecord> records = new HashMap<>();
+        records.put(WeightedUCBCalculator.createMapKey("MapA", "4Pool"), record);
+
+        List<Long> opponentClock = new ArrayList<>();
+        for (long timestamp = 1; timestamp <= 42; timestamp++) {
+            opponentClock.add(timestamp);
+        }
+
+        double onMapClock = record.discountedGames(WeightedUCBCalculator.mapClock(records, "MapA"));
+        double onOpponentClock = record.discountedGames(opponentClock);
+
+        assertTrue(onMapClock > onOpponentClock * 3,
+                "three visits spread over 42 opponent games must retain far more weight on the map's own "
+                        + "clock, measured " + onMapClock + " against " + onOpponentClock);
+    }
+
+    @Test
+    void theBlendWeighsEvidenceItActuallyScored() {
+        MapAwareRecord stale = mapRecord("MapA", "4Pool", 1L, 2L, 3L, 4L, 5L, 6L, 7L, 8L, 9L, 10L);
+        Map<String, MapAwareRecord> records = new HashMap<>();
+        records.put(WeightedUCBCalculator.createMapKey("MapA", "4Pool"), stale);
+
+        double discounted = stale.discountedGames(WeightedUCBCalculator.mapClock(records, "MapA"));
+
+        assertTrue(discounted < stale.games(),
+                "discounted evidence must be no larger than the raw count it replaces in the sigmoid");
+        assertTrue(discounted > 0.0, "a record with games must carry some discounted weight");
+    }
+
+    /** Wins, so the fixture decays at GAMMA_WIN and the clock difference is not muffled by the slower loss decay. */
+    private MapAwareRecord mapRecord(String mapName, String strategy, long... winTimestamps) {
+        MapAwareRecord record = MapAwareRecord.builder().strategy(strategy).mapName(mapName).build();
+        for (long timestamp : winTimestamps) {
+            record.addWinTimestamp(timestamp);
+            record.setWins(record.getWins() + 1);
+        }
+        return record;
     }
 
     private Record recordFromHistory(char code, String opener, String history) {

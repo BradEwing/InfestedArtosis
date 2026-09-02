@@ -14,15 +14,17 @@ import java.util.List;
  * <ul>
  * <li>Asymmetric exponential decay is applied to strategy-specific observations: wins fade
  * at GAMMA_WIN while losses fade at the slower GAMMA_LOSS</li>
- * <li>Raw total games count is used for the exploration term</li>
- * <li>This provides more aggressive exploration when strategies have old data</li>
+ * <li>The discounted game count drives the exploration term, floored by
+ * {@link UCBSelectionPolicy#EFFECTIVE_GAMES_FLOOR} for thin records</li>
  * </ul>
  *
  * <p>The decay makes the system more responsive to recent shifts in opponent behavior
  * on specific maps while maintaining the theoretical guarantees of UCB for exploration/exploitation balance.
  *
- * <p>Historical games are stored with timestamps and weighted by γ^(age) where age
- * is the number of opponent games across all strategies since that observation.
+ * <p>Historical games are stored with timestamps and weighted by γ^(age). Age is measured on the
+ * clock the caller supplies. Production passes the games played on this record's own map, so a
+ * map record ages once per appearance of that map rather than once per opponent game; with a
+ * fourteen-map pool the two differ by roughly fourteen times.
  */
 @Builder
 @Data
@@ -62,13 +64,6 @@ public class MapAwareRecord implements UCBRecord {
         lossTimestamps.add(timestamp);
     }
 
-    public double index(int totalGames) {
-        List<Long> gameTimestamps = new ArrayList<>();
-        gameTimestamps.addAll(winTimestamps);
-        gameTimestamps.addAll(lossTimestamps);
-        return index(totalGames, gameTimestamps);
-    }
-
     public double index(int totalGames, List<Long> gameTimestamps) {
         if (totalGames == 0) {
             return Math.random();
@@ -89,6 +84,14 @@ public class MapAwareRecord implements UCBRecord {
         double sampleMean = discountedWins / discountedGames;
         double c = UCBSelectionPolicy.explorationTerm(totalGames, discountedGames);
         return sampleMean + c;
+    }
+
+    /** Discounted games on the supplied clock; the same quantity the index scores. */
+    public double discountedGames(List<Long> gameTimestamps) {
+        if (this.games() == 0) {
+            return 0.0;
+        }
+        return calculateDiscountedGames(GlobalGameOrder.sortedAscending(gameTimestamps));
     }
 
     private double calculateDiscountedWins(List<Long> sortedGameTimestamps) {

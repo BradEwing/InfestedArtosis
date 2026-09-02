@@ -48,13 +48,6 @@ public class Record implements UCBRecord {
         lossTimestamps.add(timestamp);
     }
 
-    public double index(int totalGames) {
-        List<Long> gameTimestamps = new ArrayList<>();
-        gameTimestamps.addAll(winTimestamps);
-        gameTimestamps.addAll(lossTimestamps);
-        return index(totalGames, gameTimestamps);
-    }
-
     /**
      * Returns the discounted win rate, weighted by recency against the global game order.
      */
