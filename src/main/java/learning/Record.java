@@ -10,7 +10,8 @@ import java.util.List;
 /**
  * Tracks win/loss performance of one strategy (opener or build order) for Discounted UCB
  * selection. Wins and losses are stored with timestamps and weighted by gamma to the power
- * of games elapsed since each observation.
+ * of games elapsed since each observation. Losses decay more slowly than wins, so a recent
+ * loss keeps pressuring the discounted win rate long after the arm stops being picked.
  */
 @Builder
 @Data
@@ -27,22 +28,22 @@ public class Record implements UCBRecord {
         return wins - losses;
     }
 
-    public int wins() { 
-        return wins; 
+    public int wins() {
+        return wins;
     }
 
-    public int games() { 
-        return wins + losses; 
+    public int games() {
+        return wins + losses;
     }
 
-    public int winsSquared() { 
-        return wins * wins; 
+    public int winsSquared() {
+        return wins * wins;
     }
-    
+
     public void addWinTimestamp(long timestamp) {
         winTimestamps.add(timestamp);
     }
-    
+
     public void addLossTimestamp(long timestamp) {
         lossTimestamps.add(timestamp);
     }
@@ -85,14 +86,12 @@ public class Record implements UCBRecord {
         double discountedGames = 0.0;
         for (Long winTimestamp : winTimestamps) {
             if (winTimestamp < timestamp) {
-                discountedGames += GlobalGameOrder.weight(UCBSelectionPolicy.GAMMA,
-                        winTimestamp, sortedPriorGames);
+                discountedGames += GlobalGameOrder.weight(UCBSelectionPolicy.GAMMA_WIN, winTimestamp, sortedPriorGames);
             }
         }
         for (Long lossTimestamp : lossTimestamps) {
             if (lossTimestamp < timestamp) {
-                discountedGames += GlobalGameOrder.weight(UCBSelectionPolicy.GAMMA,
-                        lossTimestamp, sortedPriorGames);
+                discountedGames += GlobalGameOrder.weight(UCBSelectionPolicy.GAMMA_LOSS, lossTimestamp, sortedPriorGames);
             }
         }
         return discountedGames;
@@ -102,40 +101,36 @@ public class Record implements UCBRecord {
         if (totalGames == 0) {
             return Math.random();
         }
-        
+
         if (this.games() == 0) {
             return Math.sqrt(Math.log(totalGames)) + (Math.random() * 0.2 - 0.1);
         }
-        
+
         List<Long> sortedGameTimestamps = GlobalGameOrder.sortedAscending(gameTimestamps);
         double discountedWins = calculateDiscountedWins(sortedGameTimestamps);
         double discountedGames = calculateDiscountedGames(sortedGameTimestamps);
-        
+
         if (discountedGames == 0) {
             return 1.0;
         }
-        
+
         double sampleMean = discountedWins / discountedGames;
         double c = UCBSelectionPolicy.explorationTerm(totalGames, discountedGames);
         return sampleMean + c;
     }
-    
+
     private double calculateDiscountedWins(List<Long> sortedGameTimestamps) {
         double discountedWins = 0.0;
         for (Long timestamp : winTimestamps) {
-            discountedWins += GlobalGameOrder.weight(UCBSelectionPolicy.GAMMA, timestamp, sortedGameTimestamps);
+            discountedWins += GlobalGameOrder.weight(UCBSelectionPolicy.GAMMA_WIN, timestamp, sortedGameTimestamps);
         }
         return discountedWins;
     }
-    
+
     private double calculateDiscountedGames(List<Long> sortedGameTimestamps) {
-        List<Long> allTimestamps = new ArrayList<>();
-        allTimestamps.addAll(winTimestamps);
-        allTimestamps.addAll(lossTimestamps);
-        
-        double discountedGames = 0.0;
-        for (Long timestamp : allTimestamps) {
-            discountedGames += GlobalGameOrder.weight(UCBSelectionPolicy.GAMMA, timestamp, sortedGameTimestamps);
+        double discountedGames = calculateDiscountedWins(sortedGameTimestamps);
+        for (Long timestamp : lossTimestamps) {
+            discountedGames += GlobalGameOrder.weight(UCBSelectionPolicy.GAMMA_LOSS, timestamp, sortedGameTimestamps);
         }
         return discountedGames;
     }
