@@ -9,6 +9,7 @@ import macro.HatcheryCapacity;
 import macro.plan.Plan;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -109,34 +110,45 @@ public class OneHatchSpire extends ZergBase {
         }
 
         final int desiredScourge = 2;
-        if (techProgression.isSpire() && scourgeCount < desiredScourge && mutaCount > 5 && enemyHasSpire) {
-            plans.addAll(this.planAdvancedUnit(gameState, UnitType.Zerg_Scourge));
-            return plans;
-        }
+        boolean wantScourge = techProgression.isSpire() && scourgeCount < desiredScourge && mutaCount > 5 && enemyHasSpire;
 
         final int flexibleMutalisks =  Math.max(0, (gas - 300) / 100);
         final int desiredMutalisks = Math.min(11 + flexibleMutalisks, 40);
-        if (techProgression.isSpire() && mutaCount < desiredMutalisks) {
-            plans.addAll(this.planAdvancedUnit(gameState, UnitType.Zerg_Mutalisk));
-            return plans;
+        boolean wantMutalisk = techProgression.isSpire() && mutaCount < desiredMutalisks;
+
+        boolean wantZergling = zerglingCount < this.zerglingsNeeded(gameState);
+
+        final int desiredDroneCount = 10 + ((hatchCount - 1) * 6);
+        boolean wantDrone = droneCount < desiredDroneCount && gameState.canPlanDrone();
+
+        for (UnitType unitType : unitsToPlan(wantScourge, wantMutalisk, wantZergling, wantDrone)) {
+            plans.addAll(this.planUnits(gameState, unitType));
         }
-
-        final int desiredZerglings = this.zerglingsNeeded(gameState);
-        if (zerglingCount < desiredZerglings) {
-            plans.add(this.planUnit(gameState, UnitType.Zerg_Zergling));
-            return plans;
-        }
-
-        int desiredDroneCount = 10 + ((hatchCount - 1) * 6);
-        if (droneCount < desiredDroneCount && gameState.canPlanDrone()) {
-            Plan dronePlan = this.planUnit(gameState, UnitType.Zerg_Drone);
-            plans.add(dronePlan);
-            return plans;
-        }
-
-
 
         return plans;
+    }
+
+    static List<UnitType> unitsToPlan(boolean wantScourge, boolean wantMutalisk, boolean wantZergling, boolean wantDrone) {
+        List<UnitType> unitTypes = new ArrayList<>();
+        if (wantScourge) {
+            unitTypes.add(UnitType.Zerg_Scourge);
+        }
+        if (wantMutalisk) {
+            unitTypes.add(UnitType.Zerg_Mutalisk);
+        }
+        if (wantZergling) {
+            unitTypes.add(UnitType.Zerg_Zergling);
+        } else if (wantDrone) {
+            unitTypes.add(UnitType.Zerg_Drone);
+        }
+        return unitTypes;
+    }
+
+    private List<Plan> planUnits(GameState gameState, UnitType unitType) {
+        if (unitType == UnitType.Zerg_Scourge || unitType == UnitType.Zerg_Mutalisk) {
+            return this.planAdvancedUnit(gameState, unitType);
+        }
+        return Collections.singletonList(this.planUnit(gameState, unitType));
     }
 
     @Override
