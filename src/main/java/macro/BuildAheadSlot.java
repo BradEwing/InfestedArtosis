@@ -33,7 +33,7 @@ public class BuildAheadSlot {
 
     private final Map<Plan, Claim> claims = new LinkedHashMap<>();
 
-    private final Map<UnitType, Integer> backoffUntil = new HashMap<>();
+    private final Map<Plan, Integer> backoffUntil = new HashMap<>();
 
     /** ResourceCount returns end-of-time when no worker gathers the resource the cost needs. */
     public static boolean isUnreachable(int predictedReadyFrame) {
@@ -41,7 +41,20 @@ public class BuildAheadSlot {
     }
 
     public static int deadline(int claimFrame, int predictedReadyFrame) {
+        return deadline(claimFrame, predictedReadyFrame, 0);
+    }
+
+    /**
+     * The hold never expires before the builder's own travel estimate plus the prediction grace.
+     * An affordable plan predicts ready in 20 frames, so without that floor the deadline lands
+     * inside the walk it is timing and evicts a builder that is still on its way.
+     */
+    public static int deadline(int claimFrame, int predictedReadyFrame, int travelFrames) {
+        int travel = Math.max(0, Math.min(MAX_HOLD_FRAMES, travelFrames));
         int floor = claimFrame + MIN_HOLD_FRAMES;
+        if (travel > 0) {
+            floor = Math.max(floor, claimFrame + Math.min(MAX_HOLD_FRAMES, travel + PREDICTION_GRACE_FRAMES));
+        }
         if (isUnreachable(predictedReadyFrame)) {
             return floor;
         }
@@ -69,7 +82,11 @@ public class BuildAheadSlot {
     }
 
     public void claim(Plan plan, int currentFrame, int predictedReadyFrame) {
-        claims.put(plan, new Claim(currentFrame, deadline(currentFrame, predictedReadyFrame)));
+        claim(plan, currentFrame, predictedReadyFrame, 0);
+    }
+
+    public void claim(Plan plan, int currentFrame, int predictedReadyFrame, int travelFrames) {
+        claims.put(plan, new Claim(currentFrame, deadline(currentFrame, predictedReadyFrame, travelFrames)));
     }
 
     public void release(Plan plan) {
@@ -80,7 +97,8 @@ public class BuildAheadSlot {
         if (claims.remove(plan) == null) {
             return;
         }
-        backoffUntil.put(plan.getPlannedUnit(), currentFrame + BACKOFF_FRAMES);
+        backoffUntil.values().removeIf(until -> currentFrame >= until);
+        backoffUntil.put(plan, currentFrame + BACKOFF_FRAMES);
     }
 
     /** Releases the oldest claim of a building type, where the executor is known but the plan is not. */
@@ -112,8 +130,9 @@ public class BuildAheadSlot {
         return stalled;
     }
 
-    public boolean isInBackoff(UnitType unitType, int currentFrame) {
-        Integer until = backoffUntil.get(unitType);
+    /** Keyed on the plan, so an eviction bars only the offender and not every plan of its type. */
+    public boolean isInBackoff(Plan plan, int currentFrame) {
+        Integer until = backoffUntil.get(plan);
         return until != null && currentFrame < until;
     }
 
