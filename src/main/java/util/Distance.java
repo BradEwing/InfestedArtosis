@@ -6,6 +6,7 @@ import bwapi.Unit;
 import bwem.Base;
 import unit.managed.ManagedUnit;
 
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.Set;
@@ -43,6 +44,26 @@ public final class Distance {
         long dx = x1 - x2;
         long dy = y1 - y2;
         return dx * dx + dy * dy <= (long) range * range;
+    }
+
+    /**
+     * @return the candidate nearest to from, skipping unknown positions, or null when no candidate has a
+     *     known position
+     */
+    public static Position closestPosition(Position from, Collection<Position> candidates) {
+        Position closest = null;
+        double closestDistance = Double.MAX_VALUE;
+        for (Position candidate : candidates) {
+            if (candidate == null) {
+                continue;
+            }
+            double distance = from.getDistance(candidate);
+            if (distance < closestDistance) {
+                closestDistance = distance;
+                closest = candidate;
+            }
+        }
+        return closest;
     }
 
     public static Comparator<Unit> closestTo(Unit target) {

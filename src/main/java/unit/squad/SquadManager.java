@@ -39,6 +39,7 @@ import java.util.stream.Collectors;
 import util.TargetScorer;
 
 import static java.lang.Math.min;
+import static util.Distance.closestPosition;
 import static util.Distance.manhattanTileDistance;
 
 public class SquadManager {
@@ -843,12 +844,14 @@ public class SquadManager {
 
         if (enemyUnits.isEmpty() && !enemyBuildingPositions.isEmpty()) {
             Position closestPosition = closestKnownEnemyBuilding(squad.getCenter());
-            squad.setStatus(SquadStatus.FIGHT);
-            for (ManagedUnit managedUnit : squad.getMembers()) {
-                managedUnit.setRole(UnitRole.FIGHT);
-                managedUnit.setMovementTargetPosition(closestPosition.toTilePosition());
+            if (closestPosition != null) {
+                squad.setStatus(SquadStatus.FIGHT);
+                for (ManagedUnit managedUnit : squad.getMembers()) {
+                    managedUnit.setRole(UnitRole.FIGHT);
+                    managedUnit.setMovementTargetPosition(closestPosition.toTilePosition());
+                }
+                return;
             }
-            return;
         }
 
         int now = game.getFrameCount();
@@ -1520,16 +1523,7 @@ public class SquadManager {
      * @return closest last known enemy building position to the given position, or null if none are known
      */
     private Position closestKnownEnemyBuilding(Position from) {
-        double closestDistance = Double.MAX_VALUE;
-        Position closest = null;
-        for (Position position: gameState.getLastKnownPositionsOfBuildings()) {
-            double distance = from.getDistance(position);
-            if (distance < closestDistance) {
-                closestDistance = distance;
-                closest = position;
-            }
-        }
-        return closest;
+        return closestPosition(from, gameState.getLastKnownPositionsOfBuildings());
     }
 
     private List<Unit> filterByProximity(List<Unit> candidates, Unit attacker) {
