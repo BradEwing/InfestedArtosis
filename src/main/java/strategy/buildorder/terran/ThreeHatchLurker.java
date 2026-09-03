@@ -34,7 +34,7 @@ public class ThreeHatchLurker extends TerranBase {
         int lairCount = gameState.ourUnitCount(UnitType.Zerg_Lair);
         int hydraCount = gameState.ourUnitCount(UnitType.Zerg_Hydralisk);
         int lurkerCount = gameState.ourUnitCount(UnitType.Zerg_Lurker);
-        int droneCount = gameState.ourUnitCount(UnitType.Zerg_Drone);
+        int droneCount = gameState.numEconomyDrones();
         int zerglingCount = gameState.ourUnitCount(UnitType.Zerg_Zergling);
 
         boolean firstGas = gameState.canPlanExtractor() && techProgression.isSpawningPool() && extractorCount < 1;
@@ -213,7 +213,7 @@ public class ThreeHatchLurker extends TerranBase {
             return false;
         }
 
-        int droneCount = gameState.ourLivingUnitCount(UnitType.Zerg_Drone);
+        int droneCount = gameState.numGatherers();
 
         // Third hatch should wait until at least 2 lurkers are out
         if ((plannedHatcheries + baseCount) >= 2 && lurkerCount < 2) {
@@ -253,7 +253,7 @@ public class ThreeHatchLurker extends TerranBase {
     private boolean wantEvolutionChamber(GameState gameState) {
         TechProgression techProgression = gameState.getTechProgression();
         final boolean haveDen = techProgression.isHydraliskDen();
-        final int droneCount = gameState.ourLivingUnitCount(UnitType.Zerg_Drone);
+        final int droneCount = gameState.numGatherers();
         if (!haveDen) {
             return false;
         }

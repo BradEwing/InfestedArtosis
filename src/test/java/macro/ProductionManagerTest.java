@@ -48,6 +48,22 @@ class ProductionManagerTest {
         return new UnitPlan(UnitType.Zerg_Zergling, FRAME);
     }
 
+    private Plan overlord(int priority) {
+        return new UnitPlan(UnitType.Zerg_Overlord, priority);
+    }
+
+    private List<Plan> hydralisks(int count, int firstPriority) {
+        List<Plan> plans = new ArrayList<>();
+        for (int i = 0; i < count; i++) {
+            plans.add(new UnitPlan(UnitType.Zerg_Hydralisk, firstPriority + i));
+        }
+        return plans;
+    }
+
+    private List<Plan> blockedOverlordBacklog() {
+        return Arrays.asList(overlord(6708), overlord(6716), overlord(8031), overlord(9903));
+    }
+
     private static final class Recorder implements PlanScheduler {
 
         private final Map<Plan, PlanBlocker> blockers = new HashMap<>();
@@ -119,22 +135,72 @@ class ProductionManagerTest {
     }
 
     @Test
-    void affordableRederivedPlanIsBlockedDuringBackoff() {
+    void aQueuedOverlordBacklogEarnsNoSupplyHeadroom() {
+        List<Plan> hydralisks = hydralisks(7, 11000);
+        List<Plan> withBacklog = new ArrayList<>(blockedOverlordBacklog());
+        withBacklog.addAll(hydralisks);
+
+        List<Integer> withoutBacklog = ProductionManager.overlordInsertPriorities(
+                Collections.<Plan>emptyList(), hydralisks, 1, 16, 53);
+        List<Integer> withQueuedBacklog = ProductionManager.overlordInsertPriorities(
+                Collections.<Plan>emptyList(), withBacklog, 1, 16, 53);
+
+        assertEquals(Collections.singletonList(11005), withoutBacklog);
+        assertEquals(withoutBacklog, withQueuedBacklog);
+    }
+
+    @Test
+    void aScheduledOverlordCreditsTheHeadroomItWillProvide() {
+        List<Integer> priorities = ProductionManager.overlordInsertPriorities(
+                Collections.singletonList(overlord(6708)), hydralisks(7, 11000), 1, 16, 53);
+
+        assertTrue(priorities.isEmpty());
+    }
+
+    @Test
+    void eachInsertOnlyPaysForItsOwnOverlord() {
+        List<Integer> priorities = ProductionManager.overlordInsertPriorities(
+                Collections.<Plan>emptyList(), hydralisks(23, 11000), 1, 16, 53);
+
+        assertEquals(Arrays.asList(11005, 11013, 11021), priorities);
+    }
+
+    @Test
+    void anEvictedPlanIsBlockedDuringItsBackoff() {
         int frame = 1000;
         BuildAheadSlot slot = new BuildAheadSlot();
-        Plan original = spire(PlanState.SCHEDULE);
-        slot.claim(original, frame, frame + 100);
-        slot.releaseWithBackoff(original, frame);
+        Plan evicted = spire(PlanState.SCHEDULE);
+        slot.claim(evicted, frame, frame + 100);
+        slot.releaseWithBackoff(evicted, frame);
 
         PlanBlocker blocker = ProductionManager.buildAheadBlocker(
                 slot,
-                UnitType.Zerg_Spire,
+                evicted,
                 frame + 1,
                 false,
                 false,
                 frame + 1);
 
         assertEquals(PlanBlocker.BUILD_AHEAD_BACKOFF, blocker);
+    }
+
+    @Test
+    void anEvictionDoesNotBlockAnotherPlanOfTheSameBuilding() {
+        int frame = 1000;
+        BuildAheadSlot slot = new BuildAheadSlot();
+        Plan evicted = spire(PlanState.SCHEDULE);
+        slot.claim(evicted, frame, frame + 100);
+        slot.releaseWithBackoff(evicted, frame);
+
+        PlanBlocker blocker = ProductionManager.buildAheadBlocker(
+                slot,
+                spire(PlanState.PLANNED),
+                frame + 1,
+                false,
+                false,
+                frame + 1);
+
+        assertEquals(PlanBlocker.NONE, blocker);
     }
 
     @Test
@@ -237,20 +303,20 @@ class ProductionManagerTest {
         slot.claim(mutalisk(), FRAME, FRAME + 100);
 
         PlanBlocker blocker = ProductionManager.unitAheadBlocker(
-                slot, UnitType.Zerg_Zergling, FRAME, false, true, Integer.MAX_VALUE);
+                slot, zergling(), FRAME, false, true, Integer.MAX_VALUE);
 
         assertEquals(PlanBlocker.NONE, blocker);
     }
 
     @Test
-    void anAffordableUnitSchedulesDuringItsTypeBackoff() {
+    void anAffordableUnitSchedulesDuringItsBackoff() {
         BuildAheadSlot slot = new BuildAheadSlot();
         Plan evicted = mutalisk();
         slot.claim(evicted, FRAME, FRAME + 100);
         slot.releaseWithBackoff(evicted, FRAME);
 
         PlanBlocker blocker = ProductionManager.unitAheadBlocker(
-                slot, UnitType.Zerg_Mutalisk, FRAME + 1, false, false, FRAME + 1);
+                slot, evicted, FRAME + 1, false, false, FRAME + 1);
 
         assertEquals(PlanBlocker.NONE, blocker);
     }
@@ -258,7 +324,7 @@ class ProductionManagerTest {
     @Test
     void aUnitBehindABankClaimCannotHoldItsCost() {
         PlanBlocker blocker = ProductionManager.unitAheadBlocker(
-                new BuildAheadSlot(), UnitType.Zerg_Mutalisk, FRAME, true, true, FRAME + 100);
+                new BuildAheadSlot(), mutalisk(), FRAME, true, true, FRAME + 100);
 
         assertEquals(PlanBlocker.BUILD_AHEAD_SLOT_TAKEN, blocker);
     }
@@ -269,20 +335,20 @@ class ProductionManagerTest {
         slot.claim(mutalisk(), FRAME, FRAME + 100);
 
         PlanBlocker blocker = ProductionManager.unitAheadBlocker(
-                slot, UnitType.Zerg_Zergling, FRAME, true, false, FRAME + 100);
+                slot, zergling(), FRAME, true, false, FRAME + 100);
 
         assertEquals(PlanBlocker.BUILD_AHEAD_SLOT_TAKEN, blocker);
     }
 
     @Test
-    void anEvictedUnitTypeWaitsOutItsBackoffBeforeHoldingAgain() {
+    void anEvictedUnitWaitsOutItsBackoffBeforeHoldingAgain() {
         BuildAheadSlot slot = new BuildAheadSlot();
         Plan evicted = mutalisk();
         slot.claim(evicted, FRAME, FRAME + 100);
         slot.releaseWithBackoff(evicted, FRAME);
 
         PlanBlocker blocker = ProductionManager.unitAheadBlocker(
-                slot, UnitType.Zerg_Mutalisk, FRAME + 1, true, false, FRAME + 100);
+                slot, evicted, FRAME + 1, true, false, FRAME + 100);
 
         assertEquals(PlanBlocker.BUILD_AHEAD_BACKOFF, blocker);
     }
@@ -290,7 +356,7 @@ class ProductionManagerTest {
     @Test
     void aUnitWithNoIncomeTowardsItsCostIsNotHeld() {
         PlanBlocker blocker = ProductionManager.unitAheadBlocker(
-                new BuildAheadSlot(), UnitType.Zerg_Mutalisk, FRAME, true, false, Integer.MAX_VALUE);
+                new BuildAheadSlot(), mutalisk(), FRAME, true, false, Integer.MAX_VALUE);
 
         assertEquals(PlanBlocker.NO_INCOME, blocker);
     }
@@ -300,7 +366,7 @@ class ProductionManagerTest {
         int predicted = FRAME + UnitType.Zerg_Mutalisk.buildTime() + 1;
 
         PlanBlocker blocker = ProductionManager.unitAheadBlocker(
-                new BuildAheadSlot(), UnitType.Zerg_Mutalisk, FRAME, true, false, predicted);
+                new BuildAheadSlot(), mutalisk(), FRAME, true, false, predicted);
 
         assertEquals(PlanBlocker.RESOURCES, blocker);
     }
@@ -310,7 +376,7 @@ class ProductionManagerTest {
         int predicted = FRAME + UnitType.Zerg_Mutalisk.buildTime();
 
         PlanBlocker blocker = ProductionManager.unitAheadBlocker(
-                new BuildAheadSlot(), UnitType.Zerg_Mutalisk, FRAME, true, false, predicted);
+                new BuildAheadSlot(), mutalisk(), FRAME, true, false, predicted);
 
         assertEquals(PlanBlocker.NONE, blocker);
     }
@@ -323,7 +389,7 @@ class ProductionManagerTest {
             UnitType unit = plan.getPlannedUnit();
             boolean cannotAfford = bank[0] < unit.mineralPrice();
             PlanBlocker blocker = ProductionManager.unitAheadBlocker(
-                    slot, unit, FRAME, cannotAfford, claimedAhead, FRAME + 100);
+                    slot, plan, FRAME, cannotAfford, claimedAhead, FRAME + 100);
             if (blocker != PlanBlocker.NONE) {
                 return blocker;
             }
