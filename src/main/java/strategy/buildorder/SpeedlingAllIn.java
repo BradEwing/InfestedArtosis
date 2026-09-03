@@ -21,6 +21,11 @@ import java.util.List;
  * The target is a floor as well as a ceiling: dead drones are replaced every frame, so the economy
  * is never cut to zero.
  *
+ * <p>It plans its own Spawning Pool when it does not already have one, so it is reachable from an
+ * opener that transitions before building one. 12Hatch is the case that matters: it hands over at
+ * two hatcheries and 12 drones with no pool, and without this the build would hold 11 drones and
+ * never morph a zergling.
+ *
  * <p><b>Exit decision: deliberate no-exit.</b> {@link #shouldTransition(GameState)} is overridden to
  * return false rather than inheriting it. An army-count or economy gate would hand the game back to
  * the Lair builds, and those are the arms that never win: across the 29 Aug - 3 Sep batches
@@ -74,6 +79,11 @@ public class SpeedlingAllIn extends BuildOrder {
     public List<Plan> plan(GameState gameState) {
         List<Plan> plans = new ArrayList<>();
         TechProgression techProgression = gameState.getTechProgression();
+
+        if (techProgression.canPlanPool()) {
+            plans.add(this.planSpawningPool(gameState));
+            return plans;
+        }
 
         int hatcheryTotal = gameState.hatcheryCount() + Math.max(0, gameState.getPlannedHatcheries());
         if (shouldPlanHatchery(hatcheryTotal, gameState.isFloatingMinerals())) {
