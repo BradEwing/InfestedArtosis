@@ -3,8 +3,11 @@ package strategy.buildorder;
 import bwapi.Race;
 import org.junit.jupiter.api.Test;
 import strategy.BuildOrderFactory;
+import strategy.buildorder.SpeedlingAllIn.StallStep;
+import strategy.buildorder.SpeedlingAllIn.Step;
 import util.Time;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -15,6 +18,16 @@ class SpeedlingAllInTest {
 
     private static final Time EARLY = new Time(6, 0);
 
+    private static boolean[] gatesFor(Step... openSteps) {
+        boolean[] gates = new boolean[SpeedlingAllIn.STEP_COUNT];
+        for (Step step : openSteps) {
+            if (step != Step.NONE) {
+                gates[step.ordinal()] = true;
+            }
+        }
+        return gates;
+    }
+
     @Test
     void derivesTheDroneBelowTheTarget() {
         assertTrue(SpeedlingAllIn.shouldPlanDrone(SpeedlingAllIn.DRONE_TARGET - 1, true));
@@ -23,6 +36,7 @@ class SpeedlingAllInTest {
     @Test
     void withholdsTheDroneOnceTheTargetIsMet() {
         assertFalse(SpeedlingAllIn.shouldPlanDrone(SpeedlingAllIn.DRONE_TARGET, true));
+        assertFalse(SpeedlingAllIn.shouldPlanDrone(SpeedlingAllIn.DRONE_TARGET + 1, true));
     }
 
     @Test
@@ -44,6 +58,7 @@ class SpeedlingAllInTest {
     @Test
     void withholdsTheZerglingOnlyWhileTheQueueIsFull() {
         assertFalse(SpeedlingAllIn.shouldPlanZergling(SpeedlingAllIn.MAX_QUEUED_ZERGLING_PLANS, true));
+        assertFalse(SpeedlingAllIn.shouldPlanZergling(SpeedlingAllIn.MAX_QUEUED_ZERGLING_PLANS + 1, true));
     }
 
     @Test
@@ -53,6 +68,7 @@ class SpeedlingAllInTest {
 
     @Test
     void derivesTheSecondHatchery() {
+        assertTrue(SpeedlingAllIn.shouldPlanHatchery(0, false));
         assertTrue(SpeedlingAllIn.shouldPlanHatchery(1, false));
     }
 
@@ -62,23 +78,32 @@ class SpeedlingAllInTest {
     }
 
     @Test
-    void derivesAThirdHatcheryWhileMineralsFloat() {
-        assertTrue(SpeedlingAllIn.shouldPlanHatchery(SpeedlingAllIn.HATCHERY_TARGET, true));
+    void derivesAFurtherHatcheryWhileMineralsFloat() {
+        for (int total = SpeedlingAllIn.HATCHERY_TARGET; total < SpeedlingAllIn.MAX_HATCHERIES; total++) {
+            assertTrue(SpeedlingAllIn.shouldPlanHatchery(total, true));
+        }
     }
 
     @Test
-    void withholdsTheHatcheryAtTheCeiling() {
+    void withholdsTheHatcheryAtAndAboveTheCeiling() {
         assertFalse(SpeedlingAllIn.shouldPlanHatchery(SpeedlingAllIn.MAX_HATCHERIES, true));
+        assertFalse(SpeedlingAllIn.shouldPlanHatchery(SpeedlingAllIn.MAX_HATCHERIES + 1, true));
     }
 
     @Test
     void reportsTheStallPastTheDeadlineWithAnArmyAndSpeed() {
         assertTrue(SpeedlingAllIn.allInStalled(STALLED, SpeedlingAllIn.STALL_ZERGLINGS, true));
+        assertTrue(SpeedlingAllIn.allInStalled(STALLED, SpeedlingAllIn.STALL_ZERGLINGS + 1, true));
     }
 
     @Test
     void reportsNoStallBeforeTheDeadline() {
         assertFalse(SpeedlingAllIn.allInStalled(EARLY, SpeedlingAllIn.STALL_ZERGLINGS, true));
+    }
+
+    @Test
+    void reportsNoStallExactlyOnTheDeadline() {
+        assertFalse(SpeedlingAllIn.allInStalled(SpeedlingAllIn.STALL_TIME, SpeedlingAllIn.STALL_ZERGLINGS, true));
     }
 
     @Test
@@ -89,6 +114,74 @@ class SpeedlingAllInTest {
     @Test
     void reportsNoStallWhileSpeedStillOwesGas() {
         assertFalse(SpeedlingAllIn.allInStalled(STALLED, SpeedlingAllIn.STALL_ZERGLINGS, false));
+    }
+
+    @Test
+    void takesTheSpawningPoolAheadOfEverythingElse() {
+        assertEquals(Step.SPAWNING_POOL, SpeedlingAllIn.nextStep(gatesFor(Step.values())));
+    }
+
+    @Test
+    void takesTheHatcheryAheadOfGasAndArmy() {
+        assertEquals(Step.MACRO_HATCHERY,
+                SpeedlingAllIn.nextStep(gatesFor(Step.MACRO_HATCHERY, Step.EXTRACTOR, Step.ZERGLING)));
+    }
+
+    @Test
+    void takesGasAheadOfSpeed() {
+        assertEquals(Step.EXTRACTOR,
+                SpeedlingAllIn.nextStep(gatesFor(Step.EXTRACTOR, Step.METABOLIC_BOOST, Step.ZERGLING)));
+    }
+
+    @Test
+    void takesSpeedAheadOfDrones() {
+        assertEquals(Step.METABOLIC_BOOST,
+                SpeedlingAllIn.nextStep(gatesFor(Step.METABOLIC_BOOST, Step.DRONE, Step.ZERGLING)));
+    }
+
+    @Test
+    void replacesDronesAheadOfStallUpgradesAndArmy() {
+        assertEquals(Step.DRONE,
+                SpeedlingAllIn.nextStep(gatesFor(Step.DRONE, Step.STALL_UPGRADE, Step.ZERGLING)));
+    }
+
+    @Test
+    void takesStallUpgradesAheadOfArmy() {
+        assertEquals(Step.STALL_UPGRADE,
+                SpeedlingAllIn.nextStep(gatesFor(Step.STALL_UPGRADE, Step.ZERGLING)));
+    }
+
+    @Test
+    void fallsBackToTheZerglingWhenNothingElseIsOwed() {
+        assertEquals(Step.ZERGLING, SpeedlingAllIn.nextStep(gatesFor(Step.ZERGLING)));
+    }
+
+    @Test
+    void ownsNoStepWhenEveryGateIsClosed() {
+        assertEquals(Step.NONE, SpeedlingAllIn.nextStep(gatesFor()));
+    }
+
+    @Test
+    void fallsThroughToTheNextStepWhenAStepProducesNothing() {
+        boolean[] gates = gatesFor(Step.MACRO_HATCHERY, Step.ZERGLING);
+        assertEquals(Step.MACRO_HATCHERY, SpeedlingAllIn.nextStep(gates));
+        gates[Step.MACRO_HATCHERY.ordinal()] = false;
+        assertEquals(Step.ZERGLING, SpeedlingAllIn.nextStep(gates));
+    }
+
+    @Test
+    void takesTheEvolutionChamberBeforeMeleeAttacks() {
+        assertEquals(StallStep.EVOLUTION_CHAMBER, SpeedlingAllIn.nextStallStep(true, true));
+    }
+
+    @Test
+    void takesMeleeAttacksOnceTheEvolutionChamberStands() {
+        assertEquals(StallStep.MELEE_ATTACKS, SpeedlingAllIn.nextStallStep(false, true));
+    }
+
+    @Test
+    void ownsNoStallStepOnceMeleeAttacksAreUnderway() {
+        assertEquals(StallStep.NONE, SpeedlingAllIn.nextStallStep(false, false));
     }
 
     @Test
@@ -104,20 +197,22 @@ class SpeedlingAllInTest {
     }
 
     @Test
-    void playsEveryMatchupAsANonOpener() {
+    void playsEveryRaceAsANonOpener() {
         SpeedlingAllIn buildOrder = new SpeedlingAllIn();
-        assertTrue(buildOrder.playsRace(Race.Protoss));
-        assertTrue(buildOrder.playsRace(Race.Terran));
-        assertTrue(buildOrder.playsRace(Race.Zerg));
+        for (Race race : Race.values()) {
+            assertTrue(buildOrder.playsRace(race), "should play " + race);
+        }
         assertFalse(buildOrder.isOpener());
     }
 
     @Test
     void isRegisteredAgainstEveryRace() {
         for (Race race : new Race[]{Race.Protoss, Race.Terran, Race.Zerg}) {
-            BuildOrderFactory factory = new BuildOrderFactory(2, race);
-            assertNotNull(factory.getByName("SpeedlingAllIn"));
-            assertTrue(factory.getPlayableNonOpenerNames().contains("SpeedlingAllIn"));
+            for (int startingLocations = 2; startingLocations <= 4; startingLocations++) {
+                BuildOrderFactory factory = new BuildOrderFactory(startingLocations, race);
+                assertNotNull(factory.getByName("SpeedlingAllIn"));
+                assertTrue(factory.getPlayableNonOpenerNames().contains("SpeedlingAllIn"));
+            }
         }
     }
 }
