@@ -1026,8 +1026,13 @@ public class ProductionManager {
     private PlanBlocker scheduleUnitItem(Plan plan, boolean bankClaimedAhead) {
         UnitType unit = plan.getPlannedUnit();
         ResourceCount resourceCount = gameState.getResourceCount();
-        if (!resourceCount.canScheduleLarva(gameState.numLarva())) {
+        if (!resourceCount.canScheduleLarva(gameState.numLarva(), gameState.larvaAssignedToPlans())) {
             return PlanBlocker.NO_LARVA;
+        }
+
+        Player self = gameState.getSelf();
+        if (isSupplyBlocked(unit, self.supplyTotal() - self.supplyUsed())) {
+            return PlanBlocker.SUPPLY;
         }
 
         boolean cannotAfford = resourceCount.cannotAffordUnit(unit);
@@ -1049,6 +1054,28 @@ public class ProductionManager {
         resourceCount.reserveUnit(unit);
         plan.setState(PlanState.SCHEDULE);
         return PlanBlocker.NONE;
+    }
+
+    /**
+     * True when a larva morph cannot start for lack of free supply.
+     *
+     * Overlords are exempt; blocking them is what turns a supply block into a deadlock. Units that
+     * morph from an existing unit carry their own supply across the morph, so only larva morphs
+     * are gated. Zerglings and scourge hatch in pairs and cost supply for both.
+     *
+     * @param unit the planned unit
+     * @param freeSupply raw supply total less raw supply used
+     * @return true when the morph cannot be issued yet
+     */
+    static boolean isSupplyBlocked(UnitType unit, int freeSupply) {
+        if (unit == UnitType.Zerg_Overlord) {
+            return false;
+        }
+        if (unit.whatBuilds().getKey() != UnitType.Zerg_Larva) {
+            return false;
+        }
+        int supplyCost = unit.supplyRequired() * (unit.isTwoUnitsInOneEgg() ? 2 : 1);
+        return freeSupply < supplyCost;
     }
 
     static PlanBlocker unitAheadBlocker(

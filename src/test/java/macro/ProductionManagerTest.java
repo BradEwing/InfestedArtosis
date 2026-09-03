@@ -409,4 +409,28 @@ class ProductionManagerTest {
         assertEquals(Arrays.asList(firstLing, secondLing), outcome.requeued);
         assertTrue(bank[0] < 0);
     }
+
+    @Test
+    void anOverlordIsNeverSupplyBlocked() {
+        assertFalse(ProductionManager.isSupplyBlocked(UnitType.Zerg_Overlord, 0));
+    }
+
+    @Test
+    void aLarvaMorphIsBlockedBelowItsOwnSupplyCost() {
+        assertTrue(ProductionManager.isSupplyBlocked(UnitType.Zerg_Hydralisk, 1));
+        assertFalse(ProductionManager.isSupplyBlocked(UnitType.Zerg_Hydralisk, 2));
+    }
+
+    @Test
+    void aPairHatchedMorphCostsSupplyForBothUnits() {
+        assertTrue(ProductionManager.isSupplyBlocked(UnitType.Zerg_Zergling, 1));
+        assertFalse(ProductionManager.isSupplyBlocked(UnitType.Zerg_Zergling, 2));
+    }
+
+    @Test
+    void aMorphFromAnExistingUnitIsNotSupplyBlocked() {
+        assertFalse(ProductionManager.isSupplyBlocked(UnitType.Zerg_Lurker, 0));
+        assertFalse(ProductionManager.isSupplyBlocked(UnitType.Zerg_Guardian, 0));
+        assertFalse(ProductionManager.isSupplyBlocked(UnitType.Zerg_Devourer, 0));
+    }
 }

@@ -9,6 +9,7 @@ public enum PlanBlocker {
     NO_INCOME,
     NO_BUILD_POSITION,
     NO_LARVA,
+    SUPPLY,
     NO_CREEP_COLONY,
     NO_PRODUCER,
     INSUFFICIENT_GATHERERS,
@@ -24,6 +25,8 @@ public enum PlanBlocker {
                 return PlanCancelReason.TECH_MISSING;
             case NO_LARVA:
                 return PlanCancelReason.NO_LARVA;
+            case SUPPLY:
+                return PlanCancelReason.SUPPLY_BLOCKED;
             default:
                 return PlanCancelReason.PREREQUISITE_MISSING;
         }

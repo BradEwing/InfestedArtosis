@@ -242,6 +242,22 @@ public class GameState {
         idleDroneReclaims += 1;
     }
 
+    /**
+     * Larva already handed to a plan. The assignment removes them from the larva set while their
+     * reservation stands, so the larva check adds them back to avoid counting them twice.
+     *
+     * @return count of assigned larva that have not become eggs yet
+     */
+    public int larvaAssignedToPlans() {
+        int assigned = 0;
+        for (Unit unit : assignedPlannedItems.keySet()) {
+            if (unit.getType() == UnitType.Zerg_Larva) {
+                assigned += 1;
+            }
+        }
+        return assigned;
+    }
+
     public int frameCanAffordUnit(UnitType unit, int currentFrame) {
         return this.resourceCount.frameCanAffordUnit(unit, currentFrame, mineralGatherers.size(), gasGatherers.size());
     }
