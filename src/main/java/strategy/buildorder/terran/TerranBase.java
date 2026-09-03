@@ -12,7 +12,12 @@ import java.util.Collections;
 import java.util.List;
 
 public class TerranBase extends BuildOrder {
-    static final int EARLY_DRONE_TARGET = 15;
+    /**
+     * Drones the opening pushes to before the build order moves on. Counted as gatherers rather
+     * than as living drones, so it is one lower than the count it replaced: a drone scouting or
+     * walking to a build site no longer fills the target.
+     */
+    static final int EARLY_DRONE_TARGET = 14;
 
     protected TerranBase(String name) {
         super(name);
@@ -22,6 +27,11 @@ public class TerranBase extends BuildOrder {
      * True while the opening drone-up should take the next larva. Zerglings owed by
      * {@link #zerglingsNeeded(GameState)} come first, so the transition frame after the pool
      * finishes does not spend every larva on drones.
+     *
+     * @param droneCount gathering plus queued drones, from {@link GameState#numEconomyDrones()}
+     * @param zerglingCount zerglings owned and queued
+     * @param desiredZerglings zerglings the matchup still owes
+     * @return true when the next larva should morph a drone
      */
     static boolean shouldDroneBeforeZerglings(int droneCount, int zerglingCount, int desiredZerglings) {
         return droneCount < EARLY_DRONE_TARGET && zerglingCount >= desiredZerglings;
@@ -128,7 +138,7 @@ public class TerranBase extends BuildOrder {
             }
         }
 
-        if (gameTime.greaterThan(new Time(8, 0)) && gameState.ourUnitCount(UnitType.Zerg_Drone) > 14) {
+        if (gameTime.greaterThan(new Time(8, 0)) && gameState.numEconomyDrones() > 14) {
             sunkens += 1;
         }
         if (factoryCount > 0 || vultureCount > 1) {

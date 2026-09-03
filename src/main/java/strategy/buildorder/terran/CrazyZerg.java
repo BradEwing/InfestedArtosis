@@ -49,7 +49,7 @@ public class CrazyZerg extends TerranBase {
         int scourgeCount      = gameState.ourUnitCount(UnitType.Zerg_Scourge);
         int ultraliskCount    = gameState.ourUnitCount(UnitType.Zerg_Ultralisk);
         int defilerCount      = gameState.ourUnitCount(UnitType.Zerg_Defiler);
-        int droneCount        = gameState.ourUnitCount(UnitType.Zerg_Drone);
+        int droneCount        = gameState.numEconomyDrones();
         int zerglingCount     = gameState.ourUnitCount(UnitType.Zerg_Zergling);
         int overlordCount     = gameState.ourUnitCount(UnitType.Zerg_Overlord);
         int enemyVessel       = gameState.enemyUnitCount(UnitType.Terran_Science_Vessel);

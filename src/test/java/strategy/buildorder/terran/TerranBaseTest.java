@@ -34,4 +34,13 @@ class TerranBaseTest {
     void stopsTheEarlyDroneGateAtTheTarget() {
         assertFalse(TerranBase.shouldDroneBeforeZerglings(TerranBase.EARLY_DRONE_TARGET, UNSCOUTED_ZERGLING_FLOOR, UNSCOUTED_ZERGLING_FLOOR));
     }
+
+    @Test
+    void keepsDroningWhenParkedDronesInflateTheLivingCount() {
+        int gatheringDrones = TerranBase.EARLY_DRONE_TARGET - 1;
+        int livingDrones = gatheringDrones + 6;
+
+        assertFalse(TerranBase.shouldDroneBeforeZerglings(livingDrones, UNSCOUTED_ZERGLING_FLOOR, UNSCOUTED_ZERGLING_FLOOR));
+        assertTrue(TerranBase.shouldDroneBeforeZerglings(gatheringDrones, UNSCOUTED_ZERGLING_FLOOR, UNSCOUTED_ZERGLING_FLOOR));
+    }
 }
