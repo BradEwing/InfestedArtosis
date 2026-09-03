@@ -8,6 +8,7 @@ import bwem.Base;
 import bwem.Mineral;
 import info.GameState;
 import info.ResourceCount;
+import macro.SupplyCapacity;
 import macro.plan.Plan;
 import macro.plan.PlanCancelSource;
 import macro.plan.PlanState;
@@ -359,7 +360,10 @@ public class WorkerManager {
 
         int curFrame = game.getFrameCount();
 
-        if (supplyTotal - supplyUsed + gameState.getResourceCount().getPlannedSupply() > 0) {
+        int cheapestWaitingUnit = Math.min(
+                SupplyCapacity.cheapestUnitSupply(gameState.getProductionQueue()),
+                SupplyCapacity.cheapestUnitSupply(gameState.getPlansScheduled()));
+        if (!SupplyCapacity.isBlocked(supplyTotal, supplyUsed, cheapestWaitingUnit)) {
             gameState.setLarvaDeadlocked(false);
             return;
         }
