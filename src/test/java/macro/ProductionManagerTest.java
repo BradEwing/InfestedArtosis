@@ -48,6 +48,22 @@ class ProductionManagerTest {
         return new UnitPlan(UnitType.Zerg_Zergling, FRAME);
     }
 
+    private Plan overlord(int priority) {
+        return new UnitPlan(UnitType.Zerg_Overlord, priority);
+    }
+
+    private List<Plan> hydralisks(int count, int firstPriority) {
+        List<Plan> plans = new ArrayList<>();
+        for (int i = 0; i < count; i++) {
+            plans.add(new UnitPlan(UnitType.Zerg_Hydralisk, firstPriority + i));
+        }
+        return plans;
+    }
+
+    private List<Plan> blockedOverlordBacklog() {
+        return Arrays.asList(overlord(6708), overlord(6716), overlord(8031), overlord(9903));
+    }
+
     private static final class Recorder implements PlanScheduler {
 
         private final Map<Plan, PlanBlocker> blockers = new HashMap<>();
@@ -116,6 +132,37 @@ class ProductionManagerTest {
         assertEquals(
                 PlanCancelSource.PRODUCTION_SCHEDULED_PREREQUISITE_LOST,
                 ProductionManager.buildAheadCancellationSource(spire(PlanState.SCHEDULE), false, false));
+    }
+
+    @Test
+    void aQueuedOverlordBacklogEarnsNoSupplyHeadroom() {
+        List<Plan> hydralisks = hydralisks(7, 11000);
+        List<Plan> withBacklog = new ArrayList<>(blockedOverlordBacklog());
+        withBacklog.addAll(hydralisks);
+
+        List<Integer> withoutBacklog = ProductionManager.overlordInsertPriorities(
+                Collections.<Plan>emptyList(), hydralisks, 1, 16, 53);
+        List<Integer> withQueuedBacklog = ProductionManager.overlordInsertPriorities(
+                Collections.<Plan>emptyList(), withBacklog, 1, 16, 53);
+
+        assertEquals(Collections.singletonList(11005), withoutBacklog);
+        assertEquals(withoutBacklog, withQueuedBacklog);
+    }
+
+    @Test
+    void aScheduledOverlordCreditsTheHeadroomItWillProvide() {
+        List<Integer> priorities = ProductionManager.overlordInsertPriorities(
+                Collections.singletonList(overlord(6708)), hydralisks(7, 11000), 1, 16, 53);
+
+        assertTrue(priorities.isEmpty());
+    }
+
+    @Test
+    void eachInsertOnlyPaysForItsOwnOverlord() {
+        List<Integer> priorities = ProductionManager.overlordInsertPriorities(
+                Collections.<Plan>emptyList(), hydralisks(23, 11000), 1, 16, 53);
+
+        assertEquals(Arrays.asList(11005, 11013, 11021), priorities);
     }
 
     @Test
