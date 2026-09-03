@@ -107,6 +107,7 @@ public class GameState {
 
     private boolean defensiveSunk = false;
     private BuildOrder activeBuildOrder;
+    private final BuildOrderChain buildOrderChain = new BuildOrderChain();
 
     private boolean transitionBuildOrder = false;
 

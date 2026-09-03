@@ -857,7 +857,11 @@ public class InformationManager {
     private BuildOrder transitionBuildOrder() {
         BuildOrder active = gameState.getActiveBuildOrder();
         Set<BuildOrder> candidates = active.transition(gameState);
-        return learningManager.determineBuildOrder(candidates);
+        BuildOrder transition = learningManager.determineBuildOrder(candidates);
+        if (transition != null) {
+            gameState.getBuildOrderChain().add(transition.getName());
+        }
+        return transition;
     }
 
     private boolean isProxiedBuilding(Unit unit) {

@@ -3,7 +3,9 @@ package learning;
 import bwapi.Race;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 final class LearningRecordAccumulator {
     private final String opponentName;
@@ -36,9 +38,26 @@ final class LearningRecordAccumulator {
         incrementOpponent(opponent, game.isWinner());
         incrementRecord(opponent.getOpenerRecord(), game.getOpener(), game);
         incrementMapRecord(opponent.getMapSpecificOpenerRecord(), game.getOpener(), game);
-        if (game.getBuildOrder() != null && !game.getBuildOrder().equals(game.getOpener())) {
-            incrementRecord(opponent.getBuildOrderRecord(), game.getBuildOrder(), game);
-            incrementMapRecord(opponent.getMapSpecificBuildOrderRecord(), game.getBuildOrder(), game);
+        creditBuildOrders(opponent, game);
+    }
+
+    /**
+     * Credits the game result to every distinct build order in the row's semicolon separated
+     * chain, skipping blank segments and values equal to the opener, so one game contributes at
+     * most one observation per build order.
+     */
+    private void creditBuildOrders(OpponentRecord opponent, GameRecord game) {
+        if (game.getBuildOrder() == null) {
+            return;
+        }
+        Set<String> credited = new HashSet<>();
+        for (String segment : game.getBuildOrder().split(";")) {
+            String name = segment.trim();
+            if (name.isEmpty() || name.equals(game.getOpener()) || !credited.add(name)) {
+                continue;
+            }
+            incrementRecord(opponent.getBuildOrderRecord(), name, game);
+            incrementMapRecord(opponent.getMapSpecificBuildOrderRecord(), name, game);
         }
     }
 

@@ -403,6 +403,10 @@ public class PlanEventLogger implements PlanEventSink {
         return buildOrder == null ? "" : buildOrder.getName();
     }
 
+    private String learningBuildOrderName() {
+        return gameState.getBuildOrderChain().joinOrElse(openerName);
+    }
+
     private GameRecord gameRecord(boolean isWinner) {
         return GameRecord.builder()
                 .timestamp(System.currentTimeMillis())
@@ -411,7 +415,7 @@ public class PlanEventLogger implements PlanEventSink {
                 .opponentName(game.enemy().getName())
                 .opponentRace(gameState.getOpponentRace() == null ? "" : gameState.getOpponentRace().toString())
                 .opener(openerName)
-                .buildOrder(activeBuildOrderName())
+                .buildOrder(learningBuildOrderName())
                 .detectedStrategies(gameState.getStrategyTracker() == null
                         ? "" : gameState.getStrategyTracker().getDetectedStrategiesAsString())
                 .isWinner(isWinner)
