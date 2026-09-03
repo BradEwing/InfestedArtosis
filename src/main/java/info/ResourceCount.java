@@ -180,6 +180,10 @@ public class ResourceCount {
         return currentLarva > reservedLarva;
     }
 
+    public int getReservedLarva() {
+        return reservedLarva;
+    }
+
     public boolean isFloatingMinerals() { 
         return availableMinerals() - availableGas() > 100; 
     }

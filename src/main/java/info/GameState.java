@@ -659,6 +659,17 @@ public class GameState {
         return new Time(game.getFrameCount());
     }
 
+    /** The unit executing a plan, or null while the plan has no executor assigned. */
+    @Nullable
+    public Unit executorOf(Plan plan) {
+        for (Map.Entry<Unit, Plan> entry : assignedPlannedItems.entrySet()) {
+            if (plan.equals(entry.getValue())) {
+                return entry.getKey();
+            }
+        }
+        return null;
+    }
+
     public void addPlannedWorker(int numWorkers) {
         plannedWorkers += numWorkers;
     }

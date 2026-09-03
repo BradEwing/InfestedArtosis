@@ -3,6 +3,7 @@ package telemetry;
 import bwapi.Game;
 import bwapi.Player;
 import bwapi.TilePosition;
+import bwapi.Unit;
 import bwapi.UnitType;
 import info.GameState;
 import info.ResourceCount;
@@ -42,11 +43,15 @@ public class PlanEventLogger implements PlanEventSink {
 
     private static final String EVENT_RECURRING_CANCEL = "RECURRING_CANCEL";
 
-    private static final String PLAN_HEADER = "frame,time,event,plan_id,plan_type,item,from_state,to_state,"
-            + "cancel_reason,cancel_source,blocker,blocked_frames,priority,frames_in_state,age_frames,minerals,gas,"
-            + "available_minerals,available_gas,supply_used_real,supply_total_real,larva,gatherers,queue_depth,"
-            + "plans_scheduled,plans_building,plans_morphing,build_tile_x,build_tile_y,macro_hatchery,build_order,"
-            + "starved_behind";
+    /**
+     * 35 columns. Was 32 before executor_unit_id, reserved_larva and builder_distance_px were
+     * added; readers that index by position rather than by name need updating.
+     */
+    private static final String PLAN_HEADER = "frame,time,event,plan_id,executor_unit_id,plan_type,item,from_state,"
+            + "to_state,cancel_reason,cancel_source,blocker,blocked_frames,priority,frames_in_state,age_frames,"
+            + "minerals,gas,available_minerals,available_gas,supply_used_real,supply_total_real,larva,reserved_larva,"
+            + "gatherers,queue_depth,plans_scheduled,plans_building,plans_morphing,build_tile_x,build_tile_y,"
+            + "macro_hatchery,build_order,starved_behind,builder_distance_px";
 
     private static final String GAME_HEADER = "timestamp,is_winner,num_starting_locations,map_name,opponent_name,"
             + "opponent_race,opener,build_order,detected_strategies,frame_count";
@@ -174,6 +179,11 @@ public class PlanEventLogger implements PlanEventSink {
         }
     }
 
+    /**
+     * Writes a BLOCKED row only when the blocker changes, so one row covers the whole interval the
+     * plan spent on the previous blocker. Its frame and every game state column are therefore the
+     * <em>end</em> of that interval, not its start; subtract blocked_frames to reach the start.
+     */
     @Override
     public void onBlocked(Plan plan, PlanBlocker blocker) {
         if (disabled) {
@@ -293,10 +303,12 @@ public class PlanEventLogger implements PlanEventSink {
         TilePosition buildPosition = plan.getBuildPosition();
         boolean cancelled = to == PlanState.CANCELLED;
         PlanCancelSource cancelSource = plan.getCancelSource();
+        Unit executor = gameState.executorOf(plan);
 
         StringBuilder sb = new StringBuilder();
         appendEvent(sb, event);
         sb.append(plan.getPlanId()).append(',');
+        sb.append(executor == null ? "" : String.valueOf(executor.getID())).append(',');
         sb.append(planType(plan)).append(',');
         sb.append(Csv.sanitize(plan.getName())).append(',');
         sb.append(from == null ? "" : from.toString()).append(',');
@@ -312,15 +324,28 @@ public class PlanEventLogger implements PlanEventSink {
         sb.append(buildPosition == null ? "" : String.valueOf(buildPosition.getY())).append(',');
         sb.append(plan.isMacroHatchery()).append(',');
         sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
-        sb.append(starvedBehind == NO_STARVED_COUNT ? "" : String.valueOf(starvedBehind));
+        sb.append(starvedBehind == NO_STARVED_COUNT ? "" : String.valueOf(starvedBehind)).append(',');
+        sb.append(builderDistance(executor, buildPosition));
         return sb.toString();
+    }
+
+    /**
+     * How far the executor still is from the tile it was sent to, in pixels. Blank until both the
+     * executor and the build position are known, which is what separates a builder still walking
+     * from one that arrived and could not place.
+     */
+    private String builderDistance(Unit executor, TilePosition buildPosition) {
+        if (executor == null || buildPosition == null) {
+            return "";
+        }
+        return String.valueOf(executor.getDistance(buildPosition.toPosition()));
     }
 
     /** A row for a unit the build order wanted but never planned, so the plan columns are empty. */
     private String withheldRow(String item, PlanBlocker blocker, int withheldFrames) {
         StringBuilder sb = new StringBuilder();
         appendEvent(sb, EVENT_WITHHELD);
-        appendEmpty(sb, 1);
+        appendEmpty(sb, 2);
         sb.append(PlanType.UNIT).append(',');
         sb.append(Csv.sanitize(item)).append(',');
         appendEmpty(sb, 4);
@@ -329,6 +354,7 @@ public class PlanEventLogger implements PlanEventSink {
         appendGameState(sb);
         appendEmpty(sb, 3);
         sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
+        appendEmpty(sb, 1);
         return sb.toString();
     }
 
@@ -353,6 +379,7 @@ public class PlanEventLogger implements PlanEventSink {
         sb.append(Csv.halfSupply(self.supplyUsed())).append(',');
         sb.append(Csv.halfSupply(self.supplyTotal())).append(',');
         sb.append(gameState.numLarva()).append(',');
+        sb.append(resourceCount.getReservedLarva()).append(',');
         sb.append(gameState.numGatherers()).append(',');
         sb.append(gameState.getProductionQueue().size()).append(',');
         sb.append(gameState.getPlansScheduled().size()).append(',');
