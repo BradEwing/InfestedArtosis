@@ -3,6 +3,7 @@ package strategy.buildorder;
 import bwapi.Race;
 import bwapi.UnitType;
 import bwapi.UpgradeType;
+import info.BaseData;
 import info.GameState;
 import info.TechProgression;
 import macro.plan.Plan;
@@ -57,33 +58,6 @@ public class SpeedlingAllIn extends BuildOrder {
 
     static final Time STALL_TIME = new Time(8, 0);
 
-    /**
-     * What the build owes next, in the order it owes it. A step that produces no plan falls through
-     * to the one after it.
-     */
-    enum Step {
-        SPAWNING_POOL,
-        EXPANSION,
-        MACRO_HATCHERY,
-        EXTRACTOR,
-        METABOLIC_BOOST,
-        DRONE,
-        STALL_UPGRADE,
-        ZERGLING,
-        NONE
-    }
-
-    /**
-     * What the stall response owes next, once {@link #allInStalled} holds.
-     */
-    enum StallStep {
-        EVOLUTION_CHAMBER,
-        MELEE_ATTACKS,
-        NONE
-    }
-
-    static final int STEP_COUNT = Step.NONE.ordinal();
-
     public SpeedlingAllIn() {
         super("SpeedlingAllIn");
     }
@@ -95,91 +69,79 @@ public class SpeedlingAllIn extends BuildOrder {
 
     @Override
     public List<Plan> plan(GameState gameState) {
-        boolean[] gates = gates(gameState);
-        for (Step step = nextStep(gates); step != Step.NONE; step = nextStep(gates)) {
-            List<Plan> plans = attempt(gameState, step);
+        List<Plan> plans = new ArrayList<>();
+        TechProgression techProgression = gameState.getTechProgression();
+        BaseData baseData = gameState.getBaseData();
+
+        if (techProgression.canPlanPool()) {
+            plans.add(this.planSpawningPool(gameState));
+            return plans;
+        }
+
+        int hatcheryTotal = gameState.hatcheryCount() + Math.max(0, gameState.getPlannedHatcheries());
+        boolean wantHatchery = shouldPlanHatchery(hatcheryTotal, gameState.getResourceCount().availableMinerals());
+
+        if (shouldExpand(wantHatchery, baseData.currentAndReservedCount())) {
+            Plan expansionPlan = this.planNewBase(gameState);
+            if (expansionPlan != null) {
+                plans.add(expansionPlan);
+                return plans;
+            }
+        }
+
+        if (wantHatchery) {
+            Plan hatcheryPlan = this.planMacroHatchery(gameState);
+            if (hatcheryPlan != null) {
+                plans.add(hatcheryPlan);
+                return plans;
+            }
+        }
+
+        if (baseData.numExtractor() < 1 && gameState.canPlanExtractor()) {
+            plans.add(this.planExtractor(gameState));
+            return plans;
+        }
+
+        if (gameState.canPlanUpgrade(UpgradeType.Metabolic_Boost)) {
+            plans.add(this.planUpgrade(gameState, UpgradeType.Metabolic_Boost));
+            return plans;
+        }
+
+        if (shouldPlanDrone(gameState.numEconomyDrones(), gameState.canPlanDrone())) {
+            plans.add(this.planUnit(gameState, UnitType.Zerg_Drone));
+            return plans;
+        }
+
+        int zerglingCount = gameState.ourUnitCount(UnitType.Zerg_Zergling);
+        if (allInStalled(gameState.getGameTime(), zerglingCount, techProgression.isMetabolicBoost())) {
+            plans.addAll(this.planStallUpgrades(gameState));
             if (!plans.isEmpty()) {
                 return plans;
             }
-            gates[step.ordinal()] = false;
         }
-        return new ArrayList<>();
-    }
 
-    private boolean[] gates(GameState gameState) {
-        TechProgression techProgression = gameState.getTechProgression();
-        int hatcheryTotal = gameState.hatcheryCount() + Math.max(0, gameState.getPlannedHatcheries());
-        int zerglingCount = gameState.ourUnitCount(UnitType.Zerg_Zergling);
         int queuedZerglings = gameState.queuedUnitPlanCount(UnitType.Zerg_Zergling);
-
-        boolean wantHatchery = shouldPlanHatchery(hatcheryTotal, gameState.getResourceCount().availableMinerals());
-
-        boolean[] gates = new boolean[STEP_COUNT];
-        gates[Step.SPAWNING_POOL.ordinal()] = techProgression.canPlanPool();
-        gates[Step.EXPANSION.ordinal()] = shouldExpand(wantHatchery, gameState.getBaseData().currentAndReservedCount());
-        gates[Step.MACRO_HATCHERY.ordinal()] = wantHatchery;
-        gates[Step.EXTRACTOR.ordinal()] = gameState.getBaseData().numExtractor() < 1 && gameState.canPlanExtractor();
-        gates[Step.METABOLIC_BOOST.ordinal()] = gameState.canPlanUpgrade(UpgradeType.Metabolic_Boost);
-        gates[Step.DRONE.ordinal()] = shouldPlanDrone(gameState.numEconomyDrones(), gameState.canPlanDrone());
-        gates[Step.STALL_UPGRADE.ordinal()] = allInStalled(gameState.getGameTime(), zerglingCount,
-                techProgression.isMetabolicBoost());
-        gates[Step.ZERGLING.ordinal()] = shouldPlanZergling(queuedZerglings, techProgression.isSpawningPool());
-        return gates;
-    }
-
-    private List<Plan> attempt(GameState gameState, Step step) {
-        List<Plan> plans = new ArrayList<>();
-        switch (step) {
-            case SPAWNING_POOL:
-                plans.add(this.planSpawningPool(gameState));
-                return plans;
-            case EXPANSION:
-                Plan expansionPlan = this.planNewBase(gameState);
-                if (expansionPlan != null) {
-                    plans.add(expansionPlan);
-                }
-                return plans;
-            case MACRO_HATCHERY:
-                Plan hatcheryPlan = this.planMacroHatchery(gameState);
-                if (hatcheryPlan != null) {
-                    plans.add(hatcheryPlan);
-                }
-                return plans;
-            case EXTRACTOR:
-                plans.add(this.planExtractor(gameState));
-                return plans;
-            case METABOLIC_BOOST:
-                plans.add(this.planUpgrade(gameState, UpgradeType.Metabolic_Boost));
-                return plans;
-            case DRONE:
-                plans.add(this.planUnit(gameState, UnitType.Zerg_Drone));
-                return plans;
-            case STALL_UPGRADE:
-                return this.planStallUpgrades(gameState);
-            case ZERGLING:
-                plans.add(this.planUnit(gameState, UnitType.Zerg_Zergling));
-                return plans;
-            default:
-                return plans;
+        if (shouldPlanZergling(queuedZerglings, techProgression.isSpawningPool())) {
+            plans.add(this.planUnit(gameState, UnitType.Zerg_Zergling));
         }
+
+        return plans;
     }
 
     private List<Plan> planStallUpgrades(GameState gameState) {
         List<Plan> plans = new ArrayList<>();
         TechProgression techProgression = gameState.getTechProgression();
-        boolean wantEvolutionChamber = techProgression.evolutionChambers() < 1
-                && techProgression.canPlanEvolutionChamber();
 
-        switch (nextStallStep(wantEvolutionChamber, gameState.canPlanUpgrade(UpgradeType.Zerg_Melee_Attacks))) {
-            case EVOLUTION_CHAMBER:
-                plans.add(this.planEvolutionChamber(gameState));
-                return plans;
-            case MELEE_ATTACKS:
-                plans.add(this.planUpgrade(gameState, UpgradeType.Zerg_Melee_Attacks));
-                return plans;
-            default:
-                return plans;
+        if (techProgression.evolutionChambers() < 1 && techProgression.canPlanEvolutionChamber()) {
+            plans.add(this.planEvolutionChamber(gameState));
+            return plans;
         }
+
+        if (gameState.canPlanUpgrade(UpgradeType.Zerg_Melee_Attacks)) {
+            plans.add(this.planUpgrade(gameState, UpgradeType.Zerg_Melee_Attacks));
+        }
+
+        return plans;
     }
 
     @Override
@@ -188,29 +150,20 @@ public class SpeedlingAllIn extends BuildOrder {
     }
 
     /**
-     * The first step whose gate is open, or {@link Step#NONE}.
-     */
-    static Step nextStep(boolean[] gates) {
-        for (int i = 0; i < STEP_COUNT; i++) {
-            if (gates[i]) {
-                return Step.values()[i];
-            }
-        }
-        return Step.NONE;
-    }
-
-    static StallStep nextStallStep(boolean wantEvolutionChamber, boolean canPlanMeleeAttacks) {
-        if (wantEvolutionChamber) {
-            return StallStep.EVOLUTION_CHAMBER;
-        }
-        return canPlanMeleeAttacks ? StallStep.MELEE_ATTACKS : StallStep.NONE;
-    }
-
-    /**
      * @param economyDrones gathering plus queued drones, from {@link GameState#numEconomyDrones()}
      */
     static boolean shouldPlanDrone(int economyDrones, boolean canPlanDrone) {
         return economyDrones < DRONE_TARGET && canPlanDrone;
+    }
+
+    /**
+     * The hatchery we owe is the natural until we hold a second base, and a macro hatchery after
+     * that. Expanding first also lifts the worker ceiling in {@link GameState#canPlanDrone()}.
+     *
+     * @param baseCount bases owned plus bases reserved by a queued expansion
+     */
+    static boolean shouldExpand(boolean wantHatchery, int baseCount) {
+        return wantHatchery && baseCount < BASE_TARGET;
     }
 
     /**
@@ -222,17 +175,6 @@ public class SpeedlingAllIn extends BuildOrder {
      * @param hatcheryTotal completed hatcheries plus hatcheries already queued
      * @param availableMinerals minerals mined and not reserved by a queued plan
      */
-    /**
-     * The hatchery we owe is the natural until we hold a second base, and a macro hatchery after
-     * that. Expanding first also lifts {@link GameState#canPlanDrone()}, whose ceiling is
-     * {@code bases * 7 + geysers * 3} against Zerg, from 10 workers to 17.
-     *
-     * @param baseCount bases owned plus bases reserved by a queued expansion
-     */
-    static boolean shouldExpand(boolean wantHatchery, int baseCount) {
-        return wantHatchery && baseCount < BASE_TARGET;
-    }
-
     static boolean shouldPlanHatchery(int hatcheryTotal, int availableMinerals) {
         if (hatcheryTotal < HATCHERY_TARGET) {
             return true;

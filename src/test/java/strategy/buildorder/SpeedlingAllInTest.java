@@ -3,11 +3,8 @@ package strategy.buildorder;
 import bwapi.Race;
 import org.junit.jupiter.api.Test;
 import strategy.BuildOrderFactory;
-import strategy.buildorder.SpeedlingAllIn.StallStep;
-import strategy.buildorder.SpeedlingAllIn.Step;
 import util.Time;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -17,16 +14,6 @@ class SpeedlingAllInTest {
     private static final Time STALLED = new Time(9, 0);
 
     private static final Time EARLY = new Time(6, 0);
-
-    private static boolean[] gatesFor(Step... openSteps) {
-        boolean[] gates = new boolean[SpeedlingAllIn.STEP_COUNT];
-        for (Step step : openSteps) {
-            if (step != Step.NONE) {
-                gates[step.ordinal()] = true;
-            }
-        }
-        return gates;
-    }
 
     @Test
     void derivesTheDroneBelowTheTarget() {
@@ -98,6 +85,23 @@ class SpeedlingAllInTest {
     }
 
     @Test
+    void expandsWhileOwedAHatcheryAndShortOfTheSecondBase() {
+        assertTrue(SpeedlingAllIn.shouldExpand(true, 0));
+        assertTrue(SpeedlingAllIn.shouldExpand(true, SpeedlingAllIn.BASE_TARGET - 1));
+    }
+
+    @Test
+    void withholdsTheExpansionOnceTheSecondBaseIsHeldOrReserved() {
+        assertFalse(SpeedlingAllIn.shouldExpand(true, SpeedlingAllIn.BASE_TARGET));
+        assertFalse(SpeedlingAllIn.shouldExpand(true, SpeedlingAllIn.BASE_TARGET + 1));
+    }
+
+    @Test
+    void withholdsTheExpansionWhileNoHatcheryIsOwed() {
+        assertFalse(SpeedlingAllIn.shouldExpand(false, 0));
+    }
+
+    @Test
     void reportsTheStallPastTheDeadlineWithAnArmyAndSpeed() {
         assertTrue(SpeedlingAllIn.allInStalled(STALLED, SpeedlingAllIn.STALL_ZERGLINGS, true));
         assertTrue(SpeedlingAllIn.allInStalled(STALLED, SpeedlingAllIn.STALL_ZERGLINGS + 1, true));
@@ -121,105 +125,6 @@ class SpeedlingAllInTest {
     @Test
     void reportsNoStallWhileSpeedStillOwesGas() {
         assertFalse(SpeedlingAllIn.allInStalled(STALLED, SpeedlingAllIn.STALL_ZERGLINGS, false));
-    }
-
-    @Test
-    void takesTheSpawningPoolAheadOfEverythingElse() {
-        assertEquals(Step.SPAWNING_POOL, SpeedlingAllIn.nextStep(gatesFor(Step.values())));
-    }
-
-    @Test
-    void takesTheHatcheryAheadOfGasAndArmy() {
-        assertEquals(Step.MACRO_HATCHERY,
-                SpeedlingAllIn.nextStep(gatesFor(Step.MACRO_HATCHERY, Step.EXTRACTOR, Step.ZERGLING)));
-    }
-
-    @Test
-    void takesTheNaturalAheadOfAMacroHatchery() {
-        assertEquals(Step.EXPANSION,
-                SpeedlingAllIn.nextStep(gatesFor(Step.EXPANSION, Step.MACRO_HATCHERY, Step.ZERGLING)));
-    }
-
-    @Test
-    void expandsWhileOwedAHatcheryAndShortOfTheSecondBase() {
-        assertTrue(SpeedlingAllIn.shouldExpand(true, 0));
-        assertTrue(SpeedlingAllIn.shouldExpand(true, SpeedlingAllIn.BASE_TARGET - 1));
-    }
-
-    @Test
-    void withholdsTheExpansionOnceTheSecondBaseIsHeldOrReserved() {
-        assertFalse(SpeedlingAllIn.shouldExpand(true, SpeedlingAllIn.BASE_TARGET));
-        assertFalse(SpeedlingAllIn.shouldExpand(true, SpeedlingAllIn.BASE_TARGET + 1));
-    }
-
-    @Test
-    void withholdsTheExpansionWhileNoHatcheryIsOwed() {
-        assertFalse(SpeedlingAllIn.shouldExpand(false, 0));
-    }
-
-    @Test
-    void fallsBackToAMacroHatcheryWhenTheExpansionIsDenied() {
-        boolean[] gates = gatesFor(Step.EXPANSION, Step.MACRO_HATCHERY, Step.ZERGLING);
-        assertEquals(Step.EXPANSION, SpeedlingAllIn.nextStep(gates));
-        gates[Step.EXPANSION.ordinal()] = false;
-        assertEquals(Step.MACRO_HATCHERY, SpeedlingAllIn.nextStep(gates));
-    }
-
-    @Test
-    void takesGasAheadOfSpeed() {
-        assertEquals(Step.EXTRACTOR,
-                SpeedlingAllIn.nextStep(gatesFor(Step.EXTRACTOR, Step.METABOLIC_BOOST, Step.ZERGLING)));
-    }
-
-    @Test
-    void takesSpeedAheadOfDrones() {
-        assertEquals(Step.METABOLIC_BOOST,
-                SpeedlingAllIn.nextStep(gatesFor(Step.METABOLIC_BOOST, Step.DRONE, Step.ZERGLING)));
-    }
-
-    @Test
-    void replacesDronesAheadOfStallUpgradesAndArmy() {
-        assertEquals(Step.DRONE,
-                SpeedlingAllIn.nextStep(gatesFor(Step.DRONE, Step.STALL_UPGRADE, Step.ZERGLING)));
-    }
-
-    @Test
-    void takesStallUpgradesAheadOfArmy() {
-        assertEquals(Step.STALL_UPGRADE,
-                SpeedlingAllIn.nextStep(gatesFor(Step.STALL_UPGRADE, Step.ZERGLING)));
-    }
-
-    @Test
-    void fallsBackToTheZerglingWhenNothingElseIsOwed() {
-        assertEquals(Step.ZERGLING, SpeedlingAllIn.nextStep(gatesFor(Step.ZERGLING)));
-    }
-
-    @Test
-    void ownsNoStepWhenEveryGateIsClosed() {
-        assertEquals(Step.NONE, SpeedlingAllIn.nextStep(gatesFor()));
-    }
-
-    @Test
-    void fallsThroughToTheNextStepWhenAStepProducesNothing() {
-        boolean[] gates = gatesFor(Step.MACRO_HATCHERY, Step.ZERGLING);
-        assertEquals(Step.MACRO_HATCHERY, SpeedlingAllIn.nextStep(gates));
-        gates[Step.MACRO_HATCHERY.ordinal()] = false;
-        assertEquals(Step.ZERGLING, SpeedlingAllIn.nextStep(gates));
-    }
-
-    @Test
-    void takesTheEvolutionChamberBeforeMeleeAttacks() {
-        assertEquals(StallStep.EVOLUTION_CHAMBER, SpeedlingAllIn.nextStallStep(true, true));
-    }
-
-    @Test
-    void takesMeleeAttacksOnceTheEvolutionChamberStands() {
-        assertEquals(StallStep.MELEE_ATTACKS, SpeedlingAllIn.nextStallStep(false, true));
-    }
-
-    @Test
-    void ownsNoStallStepOnceMeleeAttacksAreUnderway() {
-        assertEquals(StallStep.NONE, SpeedlingAllIn.nextStallStep(false, false));
     }
 
     @Test
