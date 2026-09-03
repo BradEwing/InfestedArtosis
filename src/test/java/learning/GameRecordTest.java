@@ -62,4 +62,41 @@ public class GameRecordTest {
 
         assertEquals(0, parsed.getFrameCount());
     }
+
+    @Test
+    void toCsvRowWritesChainedBuildOrderVerbatim() {
+        GameRecord record = GameRecord.builder()
+                .timestamp(1761399150203L)
+                .isWinner(true)
+                .numStartingLocations(4)
+                .mapName("(4)Polypoid_1.65.scx")
+                .opponentName("Akilae Tribe")
+                .opponentRace("Protoss")
+                .opener("Overpool")
+                .buildOrder("2HatchMuta;3HatchLurker")
+                .detectedStrategies("2Gate")
+                .frameCount(20480)
+                .build();
+
+        assertEquals("1761399150203,true,4,(4)Polypoid_1.65.scx,Akilae Tribe,Protoss,Overpool,2HatchMuta;3HatchLurker,2Gate,20480",
+                record.toCsvRow());
+    }
+
+    @Test
+    void fromCsvRowRoundTripsChainedBuildOrder() {
+        GameRecord original = GameRecord.builder()
+                .timestamp(2L)
+                .isWinner(true)
+                .numStartingLocations(4)
+                .mapName("Map")
+                .opponentName("Opp")
+                .opponentRace("Terran")
+                .opener("Overpool")
+                .buildOrder("2HatchMuta;3HatchLurker")
+                .detectedStrategies("")
+                .frameCount(100)
+                .build();
+
+        assertEquals(original, GameRecord.fromCsvRow(original.toCsvRow()));
+    }
 }

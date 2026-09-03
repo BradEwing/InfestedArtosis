@@ -29,6 +29,41 @@ class LearningRecordAccumulatorTest {
         assertFalse(record.getBuildOrderRecord().containsKey("4Pool"));
     }
 
+    @Test
+    void creditsEachDistinctBuildOrderInAChainOnce() {
+        GameRecord chained = game(30L, true, "12Pool", "2HatchMuta;3HatchLurker", "MapC");
+
+        OpponentRecord record = new LearningRecordAccumulator("Opponent", Race.Terran)
+                .reconstruct(new LearningHistory(Arrays.asList(chained)));
+
+        assertEquals(1, record.getBuildOrderRecord().get("2HatchMuta").getWins());
+        assertEquals(1, record.getBuildOrderRecord().get("3HatchLurker").getWins());
+        assertTrue(record.getMapSpecificBuildOrderRecord().containsKey("MapC_2HatchMuta"));
+        assertTrue(record.getMapSpecificBuildOrderRecord().containsKey("MapC_3HatchLurker"));
+    }
+
+    @Test
+    void chainValuesEqualToOpenerAndDuplicatesAreSkipped() {
+        GameRecord chained = game(40L, false, "Overpool", "Overpool;2HatchMuta;2HatchMuta; 2HatchMuta", "MapD");
+
+        OpponentRecord record = new LearningRecordAccumulator("Opponent", Race.Terran)
+                .reconstruct(new LearningHistory(Arrays.asList(chained)));
+
+        assertFalse(record.getBuildOrderRecord().containsKey("Overpool"));
+        assertEquals(1, record.getBuildOrderRecord().get("2HatchMuta").getLosses());
+    }
+
+    @Test
+    void blankChainSegmentsAreIgnored() {
+        GameRecord ragged = game(50L, true, "4Pool", ";2HatchMuta;", "MapE");
+
+        OpponentRecord record = new LearningRecordAccumulator("Opponent", Race.Terran)
+                .reconstruct(new LearningHistory(Arrays.asList(ragged)));
+
+        assertEquals(1, record.getBuildOrderRecord().get("2HatchMuta").getWins());
+        assertFalse(record.getBuildOrderRecord().containsKey(""));
+    }
+
     private GameRecord game(long timestamp, boolean winner, String opener, String buildOrder, String mapName) {
         return GameRecord.builder()
                 .timestamp(timestamp)

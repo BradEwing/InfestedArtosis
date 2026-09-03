@@ -66,12 +66,15 @@ def print_table(title, groups):
           "? launched but no result.json, ~ running)")
 
 
-def print_field_table(label, rows, field):
+def print_field_table(label, rows, field, sep=None):
     stats = defaultdict(Counter)
     for r in rows:
-        value = (r.get(field) or "").strip()
-        if value:
-            stats[value]["WIN" if r.get("is_winner", "").lower() == "true" else "LOSS"] += 1
+        outcome = "WIN" if r.get("is_winner", "").lower() == "true" else "LOSS"
+        values = (r.get(field) or "").split(sep) if sep else [(r.get(field) or "")]
+        for value in values:
+            value = value.strip()
+            if value:
+                stats[value][outcome] += 1
     if not stats:
         return
     print(f"    {label}")
@@ -107,7 +110,7 @@ def print_learning(manifest, results, tail):
         if not rows:
             continue
         print_field_table("Opener", rows, "opener")
-        print_field_table("Build order", rows, "build_order")
+        print_field_table("Build order (chain-split: a game counts once per build order played)", rows, "build_order", ";")
         strategies = Counter()
         for r in rows:
             for s in (r.get("detected_strategies") or "").split(";"):

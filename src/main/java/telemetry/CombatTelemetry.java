@@ -443,7 +443,9 @@ public class CombatTelemetry {
         fields.add(Csv.sanitize(game.mapFileName()));
         fields.add(Csv.sanitize(game.enemy().getName()));
         fields.add(Csv.name(gameState.getOpponentRace()));
-        fields.add(buildOrder != null ? Csv.sanitize(buildOrder.getName()) : "NONE");
+        String buildOrderName = gameState.getBuildOrderChain()
+                .joinOrElse(buildOrder != null ? buildOrder.getName() : "");
+        fields.add(buildOrderName.isEmpty() ? "NONE" : Csv.sanitize(buildOrderName));
         fields.add(isWinner ? "1" : "0");
         fields.add(String.valueOf(endFrame));
         fields.add(Csv.format(game.getAverageFPS()));

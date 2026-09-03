@@ -72,7 +72,6 @@ public class LearningManager {
     private OpponentRecord opponentRecord;
     private Decisions decisions = new Decisions();
     private Record currentOpener;
-    private Record activeBuildOrderRecord;
     private String lastGameDetectedStrategies = "";
     private String lastGameOpener = "";
 
@@ -145,7 +144,7 @@ public class LearningManager {
             .opponentName(opponentName)
             .opponentRace(gameState.getOpponentRace().toString())
             .opener(openerName())
-            .buildOrder(activeBuildOrderRecord != null ? activeBuildOrderRecord.getOpener() : openerName())
+            .buildOrder(gameState.getBuildOrderChain().joinOrElse(openerName()))
             .detectedStrategies(gameState.getStrategyTracker() != null ?
                 gameState.getStrategyTracker().getDetectedStrategiesAsString() : "")
             .isWinner(isWinner)
@@ -412,14 +411,12 @@ public class LearningManager {
         if (config.strategyOverride != null) {
             BuildOrder forced = buildOrderFactory.getByName(config.strategyOverride);
             if (forced != null && candidates.contains(forced)) {
-                activeBuildOrderRecord = opponentRecord.getBuildOrderRecord().get(forced.getName());
                 return forced;
             }
         }
         
         if (candidates.size() == 1) {
             BuildOrder singleCandidate = candidates.iterator().next();
-            activeBuildOrderRecord = opponentRecord.getBuildOrderRecord().get(singleCandidate.getName());
             return singleCandidate;
         }
 
@@ -438,7 +435,6 @@ public class LearningManager {
             opponentRecord.getGameTimestamps()
         );
         
-        activeBuildOrderRecord = opponentRecord.getBuildOrderRecord().get(bestBuildOrder);
         return buildOrderFactory.getByName(bestBuildOrder);
     }
 

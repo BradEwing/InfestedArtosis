@@ -202,7 +202,7 @@ timestamp,is_winner,num_starting_locations,map_name,opponent_name,opponent_race,
 | `opponent_name` | string | Enemy player name |
 | `opponent_race` | string | Race resolved by game end: `Protoss`, `Terran`, or `Zerg`. `Unknown` only if a Random opponent's race was never scouted. The filename still uses the race known at game start, so Random opponents live in `{name}_Unknown.csv` |
 | `opener` | string | Opening strategy used (e.g., `Overpool`, `12Hatch`) |
-| `build_order` | string | Mid-game strategy used (e.g., `3HatchMuta`). Same as opener if no transition. |
+| `build_order` | string | Build orders transitioned into after the opener, in game order, semicolon separated (e.g., `2HatchMuta;3HatchLurker`). Same as opener if no transition. Every distinct value is credited the game result when rebuilding the opponent record; values equal to the opener are skipped. Build order names never contain `,`, `;`, or `"` |
 | `detected_strategies` | string | Enemy strategies detected during the game, multiple strategies are semicolon separated (e.g., `2Gate;1Base`) |
 | `frame_count` | int | Game frame count at game end. Absent in legacy rows, which parse as `0` |
 
@@ -210,6 +210,7 @@ timestamp,is_winner,num_starting_locations,map_name,opponent_name,opponent_race,
 ```
 1761107433421,true,4,(4)Polypoid_1.65.scx,Akilae Tribe,Protoss,Overpool,3HatchMuta,2Gate,18432
 1761282554674,false,3,(3)PowerBond_1.00.scx,Akilae Tribe,Protoss,Overpool,3HatchMuta,2Gate;1Base,9120
+1761399150203,true,4,(4)Polypoid_1.65.scx,Akilae Tribe,Protoss,Overpool,2HatchMuta;3HatchLurker,2Gate,20480
 ```
 
 ### How Records Are Reconstructed
@@ -217,9 +218,15 @@ timestamp,is_winner,num_starting_locations,map_name,opponent_name,opponent_race,
 On startup, `LearningHistoryRepository` parses the CSV and `LearningRecordAccumulator` builds four maps in `OpponentRecord`:
 
 1. **`openerRecord`** - `Map<String, Record>` keyed by opener name
-2. **`buildOrderRecord`** - `Map<String, Record>` keyed by build order name (only for rows where build order differs from opener)
+2. **`buildOrderRecord`** - `Map<String, Record>` keyed by build order name. Each distinct semicolon separated value in `build_order` is credited once per game, skipping values equal to the opener
 3. **`mapSpecificOpenerRecord`** - `Map<String, MapAwareRecord>` keyed by `{mapName}_{openerName}`
 4. **`mapSpecificBuildOrderRecord`** - `Map<String, MapAwareRecord>` keyed by `{mapName}_{buildOrderName}`
 
 Each row's timestamp is also added to the opponent's global game order. `Record` and `MapAwareRecord`
 use that order to age observations even when their strategy was not selected in later games.
+
+Chained rows record every build order the game transitioned through, and each distinct build order
+receives the game result once, so one game stays one observation per arm and build orders reachable
+only at later transitions still accumulate record. If a future change makes one build order
+reachable at more than one transition stage, the shared name-keyed maps will need stage- or
+predecessor-keyed records to avoid mixing game states.
