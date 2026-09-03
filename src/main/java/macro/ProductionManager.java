@@ -2,6 +2,7 @@ package macro;
 
 import bwapi.Game;
 import bwapi.Player;
+import bwapi.Position;
 import bwapi.TechType;
 import bwapi.TilePosition;
 import bwapi.Unit;
@@ -24,6 +25,7 @@ import strategy.buildorder.BuildOrder;
 import telemetry.PlanEvents;
 import unit.managed.ManagedUnit;
 import unit.managed.UnitRole;
+import util.TravelTime;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -306,12 +308,7 @@ public class ProductionManager {
     }
 
     private Unit executorOf(Plan plan) {
-        for (Map.Entry<Unit, Plan> entry : gameState.getAssignedPlannedItems().entrySet()) {
-            if (plan.equals(entry.getValue())) {
-                return entry.getKey();
-            }
-        }
-        return null;
+        return gameState.executorOf(plan);
     }
 
     private void releaseExecutor(Plan plan) {
@@ -905,7 +902,7 @@ public class ProductionManager {
         int predictedReadyFrame = gameState.frameCanAffordUnit(building, currentFrame);
         PlanBlocker buildAheadBlocker = buildAheadBlocker(
                 buildAheadSlot,
-                building,
+                plan,
                 currentFrame,
                 resourceCount.cannotAffordUnit(building),
                 hasHigherPriorityPending,
@@ -918,21 +915,45 @@ public class ProductionManager {
             return PlanBlocker.NO_BUILD_POSITION;
         }
 
-        buildAheadSlot.claim(plan, currentFrame, predictedReadyFrame);
+        buildAheadSlot.claim(plan, currentFrame, predictedReadyFrame, builderTravelFrames(building, plan.getBuildPosition()));
         resourceCount.reserveUnit(building);
         plan.setPredictedReadyFrame(predictedReadyFrame);
         plan.setState(PlanState.SCHEDULE);
         return PlanBlocker.NONE;
     }
 
+    /**
+     * The walk the eviction deadline has to cover, measured on the worker closest to the tile.
+     * That is the drone PlanManager hands the plan, so the estimate matches the builder it times.
+     * A building that morphs from another building has no walk, and earns no extra hold.
+     */
+    private int builderTravelFrames(UnitType building, TilePosition buildPosition) {
+        if (buildPosition == null || building.whatBuilds().getFirst() != UnitType.Zerg_Drone) {
+            return 0;
+        }
+
+        Position target = buildPosition.toPosition();
+        int travelFrames = 0;
+        double closest = Double.MAX_VALUE;
+        for (ManagedUnit worker : gameState.getAssignedManagedWorkers()) {
+            Unit unit = worker.getUnit();
+            double distance = target.getDistance(unit.getPosition());
+            if (distance < closest) {
+                closest = distance;
+                travelFrames = TravelTime.framesToReach(unit, target);
+            }
+        }
+        return travelFrames;
+    }
+
     static PlanBlocker buildAheadBlocker(
             BuildAheadSlot slot,
-            UnitType building,
+            Plan plan,
             int frame,
             boolean cannotAfford,
             boolean hasHigherPriorityPending,
             int predictedReadyFrame) {
-        if (slot.isInBackoff(building, frame)) {
+        if (slot.isInBackoff(plan, frame)) {
             return PlanBlocker.BUILD_AHEAD_BACKOFF;
         }
         if (!cannotAfford) {
@@ -1013,7 +1034,7 @@ public class ProductionManager {
         int predictedReadyFrame = gameState.frameCanAffordUnit(unit, currentFrame);
         PlanBlocker unitAheadBlocker = unitAheadBlocker(
                 unitAheadSlot,
-                unit,
+                plan,
                 currentFrame,
                 cannotAfford,
                 bankClaimedAhead,
@@ -1032,7 +1053,7 @@ public class ProductionManager {
 
     static PlanBlocker unitAheadBlocker(
             BuildAheadSlot slot,
-            UnitType unit,
+            Plan plan,
             int frame,
             boolean cannotAfford,
             boolean bankClaimedAhead,
@@ -1043,13 +1064,13 @@ public class ProductionManager {
         if (bankClaimedAhead || slot.isOccupied()) {
             return PlanBlocker.BUILD_AHEAD_SLOT_TAKEN;
         }
-        if (slot.isInBackoff(unit, frame)) {
+        if (slot.isInBackoff(plan, frame)) {
             return PlanBlocker.BUILD_AHEAD_BACKOFF;
         }
         if (BuildAheadSlot.isUnreachable(predictedReadyFrame)) {
             return PlanBlocker.NO_INCOME;
         }
-        if (predictedReadyFrame - frame > unit.buildTime()) {
+        if (predictedReadyFrame - frame > plan.getPlannedUnit().buildTime()) {
             return PlanBlocker.RESOURCES;
         }
         return PlanBlocker.NONE;

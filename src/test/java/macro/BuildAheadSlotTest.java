@@ -20,6 +20,9 @@ class BuildAheadSlotTest {
 
     private static final int AFFORDABLE_SOON = CLAIM_FRAME + 200;
 
+    /** A drone walking the ~1120 px from the main hatchery to the natural. */
+    private static final int NATURAL_TRAVEL_FRAMES = 478;
+
     private Plan spire() {
         return new BuildingPlan(UnitType.Zerg_Spire, CLAIM_FRAME);
     }
@@ -62,6 +65,50 @@ class BuildAheadSlotTest {
 
         assertEquals(CLAIM_FRAME + BuildAheadSlot.MAX_HOLD_FRAMES,
                 BuildAheadSlot.deadline(CLAIM_FRAME, predicted));
+    }
+
+    @Test
+    void anAffordablePlanOutlivesItsBuildersWalk() {
+        int affordableNow = CLAIM_FRAME + 20;
+        int travelFrames = NATURAL_TRAVEL_FRAMES;
+
+        int deadline = BuildAheadSlot.deadline(CLAIM_FRAME, affordableNow, travelFrames);
+
+        assertEquals(CLAIM_FRAME + travelFrames + BuildAheadSlot.PREDICTION_GRACE_FRAMES, deadline);
+        assertTrue(deadline - CLAIM_FRAME > travelFrames);
+    }
+
+    @Test
+    void aTravelEstimateNeverShortensTheDeadline() {
+        int predicted = CLAIM_FRAME + BuildAheadSlot.MAX_HOLD_FRAMES;
+
+        assertEquals(BuildAheadSlot.deadline(CLAIM_FRAME, predicted),
+                BuildAheadSlot.deadline(CLAIM_FRAME, predicted, NATURAL_TRAVEL_FRAMES));
+    }
+
+    @Test
+    void anUnreachablePredictionStillCoversTheWalk() {
+        int deadline = BuildAheadSlot.deadline(CLAIM_FRAME, Integer.MAX_VALUE, NATURAL_TRAVEL_FRAMES);
+
+        assertEquals(CLAIM_FRAME + NATURAL_TRAVEL_FRAMES + BuildAheadSlot.PREDICTION_GRACE_FRAMES, deadline);
+    }
+
+    @Test
+    void aClaimHoldsUntilItsBuilderCouldHaveArrived() {
+        BuildAheadSlot slot = new BuildAheadSlot();
+        slot.claim(spire(), CLAIM_FRAME, CLAIM_FRAME + 20, NATURAL_TRAVEL_FRAMES);
+
+        assertTrue(slot.stalled(CLAIM_FRAME + NATURAL_TRAVEL_FRAMES).isEmpty());
+    }
+
+    @Test
+    void everyTravelEstimateYieldsABoundedHold() {
+        for (int travelFrames = -600; travelFrames < BuildAheadSlot.MAX_HOLD_FRAMES * 4; travelFrames += 97) {
+            int deadline = BuildAheadSlot.deadline(CLAIM_FRAME, CLAIM_FRAME + 20, travelFrames);
+
+            assertTrue(deadline >= CLAIM_FRAME + BuildAheadSlot.MIN_HOLD_FRAMES);
+            assertTrue(deadline <= CLAIM_FRAME + BuildAheadSlot.MAX_HOLD_FRAMES);
+        }
     }
 
     @Test
@@ -126,7 +173,7 @@ class BuildAheadSlotTest {
     }
 
     @Test
-    void anAbnormalReleaseBarsTheBuildingFromTheSlot() {
+    void anAbnormalReleaseBarsThePlanFromTheSlot() {
         BuildAheadSlot slot = new BuildAheadSlot();
         Plan plan = spire();
         slot.claim(plan, CLAIM_FRAME, AFFORDABLE_SOON);
@@ -134,17 +181,17 @@ class BuildAheadSlotTest {
         slot.releaseWithBackoff(plan, CLAIM_FRAME);
 
         assertFalse(slot.isOccupied());
-        assertTrue(slot.isInBackoff(UnitType.Zerg_Spire, CLAIM_FRAME));
+        assertTrue(slot.isInBackoff(plan, CLAIM_FRAME));
     }
 
     @Test
-    void aRederivedPlanOfTheSameTypeIsStillInBackoff() {
+    void aRederivedPlanOfTheSameTypeIsNotInBackoff() {
         BuildAheadSlot slot = new BuildAheadSlot();
         Plan plan = spire();
         slot.claim(plan, CLAIM_FRAME, AFFORDABLE_SOON);
         slot.releaseWithBackoff(plan, CLAIM_FRAME);
 
-        assertTrue(slot.isInBackoff(spire().getPlannedUnit(), CLAIM_FRAME + 1));
+        assertFalse(slot.isInBackoff(spire(), CLAIM_FRAME + 1));
     }
 
     @Test
@@ -154,7 +201,7 @@ class BuildAheadSlotTest {
         slot.claim(plan, CLAIM_FRAME, AFFORDABLE_SOON);
         slot.releaseWithBackoff(plan, CLAIM_FRAME);
 
-        assertFalse(slot.isInBackoff(UnitType.Zerg_Spire, CLAIM_FRAME + BuildAheadSlot.BACKOFF_FRAMES));
+        assertFalse(slot.isInBackoff(plan, CLAIM_FRAME + BuildAheadSlot.BACKOFF_FRAMES));
     }
 
     @Test
@@ -164,16 +211,33 @@ class BuildAheadSlotTest {
         slot.claim(plan, CLAIM_FRAME, AFFORDABLE_SOON);
         slot.releaseWithBackoff(plan, CLAIM_FRAME);
 
-        assertFalse(slot.isInBackoff(UnitType.Zerg_Creep_Colony, CLAIM_FRAME));
+        assertFalse(slot.isInBackoff(new BuildingPlan(UnitType.Zerg_Creep_Colony, CLAIM_FRAME), CLAIM_FRAME));
     }
 
     @Test
     void aReleaseThatFreedNoClaimStartsNoBackoff() {
         BuildAheadSlot slot = new BuildAheadSlot();
+        Plan plan = spire();
 
-        slot.releaseWithBackoff(spire(), CLAIM_FRAME);
+        slot.releaseWithBackoff(plan, CLAIM_FRAME);
 
-        assertFalse(slot.isInBackoff(UnitType.Zerg_Spire, CLAIM_FRAME));
+        assertFalse(slot.isInBackoff(plan, CLAIM_FRAME));
+    }
+
+    @Test
+    void aLaterEvictionLeavesAnEarlierPlansBackoffExpired() {
+        BuildAheadSlot slot = new BuildAheadSlot();
+        Plan first = spire();
+        Plan second = spire();
+        int laterFrame = CLAIM_FRAME + BuildAheadSlot.BACKOFF_FRAMES;
+        slot.claim(first, CLAIM_FRAME, AFFORDABLE_SOON);
+        slot.releaseWithBackoff(first, CLAIM_FRAME);
+        slot.claim(second, laterFrame, AFFORDABLE_SOON);
+
+        slot.releaseWithBackoff(second, laterFrame);
+
+        assertFalse(slot.isInBackoff(first, laterFrame));
+        assertTrue(slot.isInBackoff(second, laterFrame));
     }
 
     @Test

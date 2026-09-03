@@ -79,6 +79,24 @@ public class WorkerManager {
         assignWorker(managedUnit);
     }
 
+    /**
+     * Puts a drone left in {@link UnitRole#IDLE} back on a resource.
+     * <p>
+     * A drone is idled by a stalled plan being requeued, by a cancelled plan and by a gather
+     * order with no target left. None of those callers reassign it, and the drone role has no
+     * IDLE branch, so the drone stands still until it dies. Assignments are cleared first
+     * because an eviction before the plan reached BUILDING leaves the drone on its old patch.
+     *
+     * @param managedUnit the idle drone
+     */
+    public void reclaimIdleWorker(ManagedUnit managedUnit) {
+        gameState.clearAssignments(managedUnit);
+        assignWorker(managedUnit);
+        if (managedUnit.getRole() == UnitRole.GATHER) {
+            gameState.incrementIdleDroneReclaims();
+        }
+    }
+
     // onUnitDestroy OR worker is being reassigned to non-worker role
     public void removeManagedWorker(ManagedUnit managedUnit) {
         gameState.clearAssignments(managedUnit);

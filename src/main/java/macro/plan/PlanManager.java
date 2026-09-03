@@ -13,6 +13,7 @@ import info.map.GameMap;
 import unit.managed.ManagedUnit;
 import unit.managed.UnitRole;
 import util.Distance;
+import util.TravelTime;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -180,11 +181,7 @@ public class PlanManager {
     }
 
     private int getTravelFrames(Unit unit, Position buildingPosition) {
-        Position unitPosition = unit.getPosition();
-        double distance = buildingPosition.getDistance(unitPosition);
-        double unitSpeed = unit.getType().topSpeed();
-
-        return (int)(distance / unitSpeed) + 250;
+        return TravelTime.framesToReach(unit, buildingPosition);
     }
 
     /**
