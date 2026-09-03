@@ -90,7 +90,6 @@ public class BuildOrderFactory {
         // Zerg
         allBuildOrders.add(new OneHatchSpire());
 
-        // Any race
         allBuildOrders.add(new SpeedlingAllIn());
     }
 

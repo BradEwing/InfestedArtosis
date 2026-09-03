@@ -16,14 +16,16 @@ import java.util.List;
  *
  * <p>Hatchery tech by definition: it never plans a Lair and never reports {@link #needLair()} or
  * {@link #needHive()}. Zergling production is continuous and uncapped; the cap is on drones, at 11,
- * split roughly 8 on minerals and 3 on the single Extractor that funds Metabolic Boost. The target
- * is a floor as well as a ceiling, so dead drones are replaced and the economy is never cut to zero.
+ * split 8 on minerals and 3 on the single Extractor that funds Metabolic Boost once the natural is
+ * up. The target is a floor as well as a ceiling, so dead drones are replaced and the economy is
+ * never cut to zero. An opener that hands over above the target keeps its drones; nothing is cut.
  * It plans its own Spawning Pool when it does not have one, so it is reachable from an opener that
  * transitions before building one.
  *
- * <p>Past two hatcheries the build is larva limited rather than mineral limited, so surplus minerals
- * buy macro hatcheries up to {@link #MAX_HATCHERIES} rather than banking. It takes no expansions: the
- * surplus is larva, not income, and a second base is one this drone count cannot defend.
+ * <p>The second hatchery is the natural expansion; only once a second base is held do surplus
+ * minerals buy macro hatcheries, up to {@link #MAX_HATCHERIES}, rather than banking. Expanding first
+ * is what makes the drone target reachable: {@link GameState#canPlanDrone()} ceilings workers at
+ * {@code bases * 7 + geysers * 3} against Zerg, which is 10 on one base and 17 on two.
  *
  * <p>Exit decision: this build deliberately does not transition out, so {@link #shouldTransition}
  * returns false rather than inheriting it. Leaving hatchery tech is the failure this build exists to
@@ -43,6 +45,8 @@ public class SpeedlingAllIn extends BuildOrder {
 
     static final int HATCHERY_TARGET = 2;
 
+    static final int BASE_TARGET = 2;
+
     static final int MAX_HATCHERIES = 5;
 
     static final int SURPLUS_MINERALS = 300;
@@ -59,6 +63,7 @@ public class SpeedlingAllIn extends BuildOrder {
      */
     enum Step {
         SPAWNING_POOL,
+        EXPANSION,
         MACRO_HATCHERY,
         EXTRACTOR,
         METABOLIC_BOOST,
@@ -107,10 +112,12 @@ public class SpeedlingAllIn extends BuildOrder {
         int zerglingCount = gameState.ourUnitCount(UnitType.Zerg_Zergling);
         int queuedZerglings = gameState.queuedUnitPlanCount(UnitType.Zerg_Zergling);
 
+        boolean wantHatchery = shouldPlanHatchery(hatcheryTotal, gameState.getResourceCount().availableMinerals());
+
         boolean[] gates = new boolean[STEP_COUNT];
         gates[Step.SPAWNING_POOL.ordinal()] = techProgression.canPlanPool();
-        gates[Step.MACRO_HATCHERY.ordinal()] = shouldPlanHatchery(hatcheryTotal,
-                gameState.getResourceCount().availableMinerals());
+        gates[Step.EXPANSION.ordinal()] = shouldExpand(wantHatchery, gameState.getBaseData().currentAndReservedCount());
+        gates[Step.MACRO_HATCHERY.ordinal()] = wantHatchery;
         gates[Step.EXTRACTOR.ordinal()] = gameState.getBaseData().numExtractor() < 1 && gameState.canPlanExtractor();
         gates[Step.METABOLIC_BOOST.ordinal()] = gameState.canPlanUpgrade(UpgradeType.Metabolic_Boost);
         gates[Step.DRONE.ordinal()] = shouldPlanDrone(gameState.numEconomyDrones(), gameState.canPlanDrone());
@@ -125,6 +132,12 @@ public class SpeedlingAllIn extends BuildOrder {
         switch (step) {
             case SPAWNING_POOL:
                 plans.add(this.planSpawningPool(gameState));
+                return plans;
+            case EXPANSION:
+                Plan expansionPlan = this.planNewBase(gameState);
+                if (expansionPlan != null) {
+                    plans.add(expansionPlan);
+                }
                 return plans;
             case MACRO_HATCHERY:
                 Plan hatcheryPlan = this.planMacroHatchery(gameState);
@@ -209,6 +222,17 @@ public class SpeedlingAllIn extends BuildOrder {
      * @param hatcheryTotal completed hatcheries plus hatcheries already queued
      * @param availableMinerals minerals mined and not reserved by a queued plan
      */
+    /**
+     * The hatchery we owe is the natural until we hold a second base, and a macro hatchery after
+     * that. Expanding first also lifts {@link GameState#canPlanDrone()}, whose ceiling is
+     * {@code bases * 7 + geysers * 3} against Zerg, from 10 workers to 17.
+     *
+     * @param baseCount bases owned plus bases reserved by a queued expansion
+     */
+    static boolean shouldExpand(boolean wantHatchery, int baseCount) {
+        return wantHatchery && baseCount < BASE_TARGET;
+    }
+
     static boolean shouldPlanHatchery(int hatcheryTotal, int availableMinerals) {
         if (hatcheryTotal < HATCHERY_TARGET) {
             return true;

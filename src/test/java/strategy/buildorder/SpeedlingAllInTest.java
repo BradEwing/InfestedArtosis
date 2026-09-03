@@ -135,6 +135,37 @@ class SpeedlingAllInTest {
     }
 
     @Test
+    void takesTheNaturalAheadOfAMacroHatchery() {
+        assertEquals(Step.EXPANSION,
+                SpeedlingAllIn.nextStep(gatesFor(Step.EXPANSION, Step.MACRO_HATCHERY, Step.ZERGLING)));
+    }
+
+    @Test
+    void expandsWhileOwedAHatcheryAndShortOfTheSecondBase() {
+        assertTrue(SpeedlingAllIn.shouldExpand(true, 0));
+        assertTrue(SpeedlingAllIn.shouldExpand(true, SpeedlingAllIn.BASE_TARGET - 1));
+    }
+
+    @Test
+    void withholdsTheExpansionOnceTheSecondBaseIsHeldOrReserved() {
+        assertFalse(SpeedlingAllIn.shouldExpand(true, SpeedlingAllIn.BASE_TARGET));
+        assertFalse(SpeedlingAllIn.shouldExpand(true, SpeedlingAllIn.BASE_TARGET + 1));
+    }
+
+    @Test
+    void withholdsTheExpansionWhileNoHatcheryIsOwed() {
+        assertFalse(SpeedlingAllIn.shouldExpand(false, 0));
+    }
+
+    @Test
+    void fallsBackToAMacroHatcheryWhenTheExpansionIsDenied() {
+        boolean[] gates = gatesFor(Step.EXPANSION, Step.MACRO_HATCHERY, Step.ZERGLING);
+        assertEquals(Step.EXPANSION, SpeedlingAllIn.nextStep(gates));
+        gates[Step.EXPANSION.ordinal()] = false;
+        assertEquals(Step.MACRO_HATCHERY, SpeedlingAllIn.nextStep(gates));
+    }
+
+    @Test
     void takesGasAheadOfSpeed() {
         assertEquals(Step.EXTRACTOR,
                 SpeedlingAllIn.nextStep(gatesFor(Step.EXTRACTOR, Step.METABOLIC_BOOST, Step.ZERGLING)));
