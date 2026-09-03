@@ -201,6 +201,7 @@ class PlanEventsTest {
         assertEquals(PlanCancelReason.INSUFFICIENT_GATHERERS, PlanBlocker.INSUFFICIENT_GATHERERS.cancelReason());
         assertEquals(PlanCancelReason.TECH_MISSING, PlanBlocker.TECH_MISSING.cancelReason());
         assertEquals(PlanCancelReason.NO_LARVA, PlanBlocker.NO_LARVA.cancelReason());
+        assertEquals(PlanCancelReason.SUPPLY_BLOCKED, PlanBlocker.SUPPLY.cancelReason());
         assertEquals(PlanCancelReason.PREREQUISITE_MISSING, PlanBlocker.NO_PRODUCER.cancelReason());
     }
 }
