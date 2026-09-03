@@ -35,6 +35,17 @@ public class ObservedUnit {
         this.lastKnownShields = unit.getType().maxShields();
     }
 
+    /**
+     * @return the unit's live position while it is visible, otherwise the last position it was seen at,
+     *     or null when the last known position has been ruled out by observation
+     */
+    public Position getCurrentOrLastKnownPosition() {
+        if (unit.isVisible()) {
+            return unit.getPosition();
+        }
+        return lastKnownLocation;
+    }
+
     public void markCompleted(Time currentFrame) {
         if (completed) {
             return;
