@@ -6,6 +6,7 @@ import info.GameState;
 import info.TechProgression;
 import macro.plan.Plan;
 import strategy.buildorder.BuildOrder;
+import strategy.buildorder.SpeedlingAllIn;
 import strategy.buildorder.protoss.ThreeHatchHydra;
 import strategy.buildorder.protoss.ThreeHatchMuta;
 import strategy.buildorder.terran.CrazyZerg;
@@ -36,14 +37,17 @@ public class TwelvePool extends BuildOrder {
             case Protoss:
                 next.add(new ThreeHatchMuta());
                 next.add(new ThreeHatchHydra());
+                next.add(new SpeedlingAllIn());
                 return next;
             case Zerg:
                 next.add(new OneHatchSpire());
+                next.add(new SpeedlingAllIn());
                 return next;
             case Terran:
                 next.add(new CrazyZerg());
                 next.add(new TwoHatchMuta());
                 next.add(new ThreeHatchLurker());
+                next.add(new SpeedlingAllIn());
                 return next;
             default:
                 break;
