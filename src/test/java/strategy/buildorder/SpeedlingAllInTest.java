@@ -67,27 +67,34 @@ class SpeedlingAllInTest {
     }
 
     @Test
-    void derivesTheSecondHatchery() {
-        assertTrue(SpeedlingAllIn.shouldPlanHatchery(0, false));
-        assertTrue(SpeedlingAllIn.shouldPlanHatchery(1, false));
+    void derivesTheSecondHatcheryWithoutWaitingOnASurplus() {
+        assertTrue(SpeedlingAllIn.shouldPlanHatchery(0, 0));
+        assertTrue(SpeedlingAllIn.shouldPlanHatchery(1, 0));
     }
 
     @Test
     void withholdsAThirdHatcheryWhileMineralsAreSpent() {
-        assertFalse(SpeedlingAllIn.shouldPlanHatchery(SpeedlingAllIn.HATCHERY_TARGET, false));
+        assertFalse(SpeedlingAllIn.shouldPlanHatchery(SpeedlingAllIn.HATCHERY_TARGET, 0));
+        assertFalse(SpeedlingAllIn.shouldPlanHatchery(SpeedlingAllIn.HATCHERY_TARGET,
+                SpeedlingAllIn.SURPLUS_MINERALS - 1));
     }
 
     @Test
-    void derivesAFurtherHatcheryWhileMineralsFloat() {
+    void derivesAFurtherHatcheryOnceMineralsGoUnspent() {
         for (int total = SpeedlingAllIn.HATCHERY_TARGET; total < SpeedlingAllIn.MAX_HATCHERIES; total++) {
-            assertTrue(SpeedlingAllIn.shouldPlanHatchery(total, true));
+            assertTrue(SpeedlingAllIn.shouldPlanHatchery(total, SpeedlingAllIn.SURPLUS_MINERALS));
         }
     }
 
     @Test
     void withholdsTheHatcheryAtAndAboveTheCeiling() {
-        assertFalse(SpeedlingAllIn.shouldPlanHatchery(SpeedlingAllIn.MAX_HATCHERIES, true));
-        assertFalse(SpeedlingAllIn.shouldPlanHatchery(SpeedlingAllIn.MAX_HATCHERIES + 1, true));
+        assertFalse(SpeedlingAllIn.shouldPlanHatchery(SpeedlingAllIn.MAX_HATCHERIES, 5000));
+        assertFalse(SpeedlingAllIn.shouldPlanHatchery(SpeedlingAllIn.MAX_HATCHERIES + 1, 5000));
+    }
+
+    @Test
+    void reactsToASurplusWellBelowTheMacroFloatingBar() {
+        assertTrue(SpeedlingAllIn.shouldPlanHatchery(SpeedlingAllIn.HATCHERY_TARGET, 350));
     }
 
     @Test

@@ -21,6 +21,10 @@ import java.util.List;
  * It plans its own Spawning Pool when it does not have one, so it is reachable from an opener that
  * transitions before building one.
  *
+ * <p>Past two hatcheries the build is larva limited rather than mineral limited, so surplus minerals
+ * buy macro hatcheries up to {@link #MAX_HATCHERIES} rather than banking. It takes no expansions: the
+ * surplus is larva, not income, and a second base is one this drone count cannot defend.
+ *
  * <p>Exit decision: this build deliberately does not transition out, so {@link #shouldTransition}
  * returns false rather than inheriting it. Leaving hatchery tech is the failure this build exists to
  * avoid; reacting to a hard counter belongs to the build order switching mechanism in IA-251.
@@ -39,7 +43,9 @@ public class SpeedlingAllIn extends BuildOrder {
 
     static final int HATCHERY_TARGET = 2;
 
-    static final int MAX_HATCHERIES = 4;
+    static final int MAX_HATCHERIES = 5;
+
+    static final int SURPLUS_MINERALS = 300;
 
     static final int MAX_QUEUED_ZERGLING_PLANS = 6;
 
@@ -103,7 +109,8 @@ public class SpeedlingAllIn extends BuildOrder {
 
         boolean[] gates = new boolean[STEP_COUNT];
         gates[Step.SPAWNING_POOL.ordinal()] = techProgression.canPlanPool();
-        gates[Step.MACRO_HATCHERY.ordinal()] = shouldPlanHatchery(hatcheryTotal, gameState.isFloatingMinerals());
+        gates[Step.MACRO_HATCHERY.ordinal()] = shouldPlanHatchery(hatcheryTotal,
+                gameState.getResourceCount().availableMinerals());
         gates[Step.EXTRACTOR.ordinal()] = gameState.getBaseData().numExtractor() < 1 && gameState.canPlanExtractor();
         gates[Step.METABOLIC_BOOST.ordinal()] = gameState.canPlanUpgrade(UpgradeType.Metabolic_Boost);
         gates[Step.DRONE.ordinal()] = shouldPlanDrone(gameState.numEconomyDrones(), gameState.canPlanDrone());
@@ -193,11 +200,20 @@ public class SpeedlingAllIn extends BuildOrder {
         return economyDrones < DRONE_TARGET && canPlanDrone;
     }
 
-    static boolean shouldPlanHatchery(int hatcheryTotal, boolean floatingMinerals) {
+    /**
+     * Beyond the second hatchery the build is larva limited, not mineral limited, so unreserved
+     * minerals are the signal to add one. {@link GameState#isFloatingMinerals()} is not that signal:
+     * it wants more than 1050 banked at two hatcheries, a bar tuned for a macro economy that this
+     * build banks its way to long before reacting.
+     *
+     * @param hatcheryTotal completed hatcheries plus hatcheries already queued
+     * @param availableMinerals minerals mined and not reserved by a queued plan
+     */
+    static boolean shouldPlanHatchery(int hatcheryTotal, int availableMinerals) {
         if (hatcheryTotal < HATCHERY_TARGET) {
             return true;
         }
-        return floatingMinerals && hatcheryTotal < MAX_HATCHERIES;
+        return hatcheryTotal < MAX_HATCHERIES && availableMinerals >= SURPLUS_MINERALS;
     }
 
     /**
