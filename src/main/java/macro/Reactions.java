@@ -178,9 +178,14 @@ public class Reactions {
 
     /**
      * Relaxes the main-base sunken restriction only while the main is genuinely our sole base.
+     *
+     * <p>Reserved bases are excluded. A queued expansion is not somewhere a colony can be built, and
+     * counting one leaves no base eligible for static defense between the natural being queued and its
+     * hatchery completing. This is the inverse of {@link #clearMainSunkenOnExpansion}, which reads the
+     * same count so the two halves of the rule agree on what a single base means.
      */
-    private void allowSunkenAtMainIfSingleBase(BaseData baseData) {
-        if (baseData.currentAndReservedCount() == 1) {
+    static void allowSunkenAtMainIfSingleBase(BaseData baseData) {
+        if (baseData.currentBaseCount() < 2) {
             baseData.setAllowSunkenAtMain(true);
         }
     }
