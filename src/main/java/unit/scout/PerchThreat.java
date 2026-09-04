@@ -26,7 +26,8 @@ public final class PerchThreat {
         if (type.isFlyer() && Filter.isAirThreat(type)) {
             return true;
         }
-        if (type == UnitType.Zerg_Spire || type == UnitType.Protoss_Stargate || type == UnitType.Terran_Starport) {
+        if (type == UnitType.Zerg_Spire || type == UnitType.Zerg_Hydralisk_Den
+                || type == UnitType.Protoss_Stargate || type == UnitType.Terran_Starport) {
             return true;
         }
         return Filter.isAirThreat(type) && distancePixels <= PerchCalculator.reachPixels(type);

@@ -90,29 +90,30 @@ public class ScoutManager {
     }
 
     /**
-     * Attempts to move an overlord scout to a perch watching the best-known enemy location.
+     * Moves an overlord scout to a perch watching the best-known enemy location. Against Zerg, whose
+     * early units cannot shoot up, or on a map with no perch, the overlord holds over the watch
+     * target itself instead of falling back into map scouting; the perch leave predicate still
+     * recalls it when air or hydralisk tech appears.
      *
      * @param overlord the overlord to perch
-     * @return true if a perch was found and assigned
+     * @return true if a watch target exists and the overlord was assigned to hold there
      */
     public boolean tryPerch(ManagedUnit overlord) {
-        if (gameState.getOpponentRace() == Race.Zerg) {
-            return false;
-        }
-
         Position watchTarget = perchWatchTarget(overlord);
         if (watchTarget == null) {
             return false;
         }
 
-        GameMap gameMap = gameState.getGameMap();
-        MapTile perch = gameMap.findPerchNear(watchTarget);
-        if (perch == null) {
-            return false;
+        Position perchPosition = watchTarget;
+        if (gameState.getOpponentRace() != Race.Zerg) {
+            MapTile perch = gameState.getGameMap().findPerchNear(watchTarget);
+            if (perch != null) {
+                perchPosition = perch.getTile().toPosition().add(new Position(16, 16));
+            }
         }
 
         releaseActiveScoutTarget(overlord);
-        overlord.setPerchPosition(perch.getTile().toPosition().add(new Position(16, 16)));
+        overlord.setPerchPosition(perchPosition);
         overlord.setMovementTargetPosition(null);
         overlord.setRole(UnitRole.PERCH);
         return true;
@@ -121,7 +122,7 @@ public class ScoutManager {
     private Position perchWatchTarget(ManagedUnit overlord) {
         BaseData baseData = gameState.getBaseData();
         if (baseData.knowEnemyMainBase()) {
-            return baseData.getMainEnemyBase().getLocation().toPosition();
+            return baseData.getMainEnemyBase().getCenter();
         }
 
         ScoutData scoutData = gameState.getScoutData();

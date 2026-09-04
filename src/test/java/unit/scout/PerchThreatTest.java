@@ -20,6 +20,7 @@ class PerchThreatTest {
     @Test
     void airTechBuildingsAlwaysThreaten() {
         assertTrue(PerchThreat.threatens(UnitType.Zerg_Spire, 10000));
+        assertTrue(PerchThreat.threatens(UnitType.Zerg_Hydralisk_Den, 10000));
         assertTrue(PerchThreat.threatens(UnitType.Protoss_Stargate, 10000));
         assertTrue(PerchThreat.threatens(UnitType.Terran_Starport, 10000));
     }
