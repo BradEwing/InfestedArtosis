@@ -863,12 +863,19 @@ public class SquadManager {
                 .evaluate(squad, adjacentSquads, gameState);
         SquadDecisions.simEvaluated(squad, result, retreatLocked, fightLocked);
 
+        HorizonCombatSimulator.DebugSnapshot snapshot = lastSnapshot(squad);
+        boolean enemyMeasured = snapshot == null || snapshot.isEnemyMeasured();
+        boolean threatBeyondRadius = snapshot != null && snapshot.isThreatBeyondRadius();
+        double ratio = snapshot != null ? snapshot.getOverallRatio() : 0;
+        double retreatThreshold = snapshot != null ? snapshot.getRetreatThreshold() : 0;
+
         if (squad.getStatus() == SquadStatus.RETREAT && retreatLocked) {
             SquadDecisions.lockSuppressed(squad, SquadLock.RETREAT);
             assignRetreatTargets(squad, managedFighters);
             return;
         }
-        if (squad.getStatus() == SquadStatus.FIGHT && fightLocked) {
+        if (squad.getStatus() == SquadStatus.FIGHT
+                && fightLockHolds(fightLocked, result, enemyMeasured, ratio, retreatThreshold)) {
             SquadDecisions.lockSuppressed(squad, SquadLock.FIGHT);
             assignFightTargets(squad, managedFighters, false);
             return;
@@ -876,6 +883,11 @@ public class SquadManager {
 
         switch (result) {
             case ADVANCE:
+                boolean baseThreatened = squad.getStatus() != SquadStatus.FIGHT && baseThreatened();
+                if (blindAdvanceHeld(squad.getStatus(), enemyMeasured, threatBeyondRadius, baseThreatened)) {
+                    holdSquad(squad, managedFighters);
+                    break;
+                }
                 squad.setStatus(SquadStatus.FIGHT);
                 assignFightTargets(squad, managedFighters, true);
                 break;
@@ -904,6 +916,70 @@ public class SquadManager {
                                 boolean retreatLocked, int currentFrame) {
         if (result == CombatSimulator.CombatResult.ENGAGE && !retreatLocked) {
             squad.startFightLock(currentFrame);
+        }
+    }
+
+    /**
+     * Whether an active fight lock still holds against this frame's verdict.
+     *
+     * <p>Every RETREAT is "measured" by construction: an unmeasured enemy yields a ratio of
+     * friendly strength over the minimum enemy floor, which clears every threshold on its own.
+     * So the lock only breaks for a RETREAT that was measured against a real enemy and still
+     * fell below the matchup's retreat threshold; an in-band RETREAT (below the engage threshold
+     * but at or above the retreat threshold) stays suppressed.
+     *
+     * @param fightLocked whether the squad's fight lock is currently active
+     * @param result this frame's combat sim verdict
+     * @param enemyMeasured whether the sim measured a real enemy this frame
+     * @param ratio the sim's overall strength ratio this frame
+     * @param retreatThreshold the matchup's retreat threshold
+     * @return true if the lock should still suppress this frame's verdict
+     */
+    static boolean fightLockHolds(boolean fightLocked, CombatSimulator.CombatResult result,
+                                  boolean enemyMeasured, double ratio, double retreatThreshold) {
+        if (!fightLocked) return false;
+        if (result != CombatSimulator.CombatResult.RETREAT) return true;
+        return !enemyMeasured || ratio >= retreatThreshold;
+    }
+
+    /**
+     * Whether a blind ADVANCE verdict should be held rather than committed as a transition into FIGHT.
+     *
+     * <p>A squad already in FIGHT is mid-approach and must keep going so the sim can measure the
+     * enemy at close range and return a real verdict; only a transition into FIGHT is blocked.
+     * An unmeasured ADVANCE is held when the sim itself saw a fresh, attack-capable, non-worker
+     * enemy just beyond its engagement radius, or when a mobile ground combat unit is standing on
+     * one of our bases.
+     *
+     * @param status the squad's status entering this tick
+     * @param enemyMeasured whether the sim measured a real enemy this frame
+     * @param threatBeyondRadius whether the sim saw a nearby but unmeasured threat this frame
+     * @param baseThreatened whether a mobile ground combat unit is on one of our bases
+     * @return true if the blind ADVANCE should be held rather than acted on
+     */
+    static boolean blindAdvanceHeld(SquadStatus status, boolean enemyMeasured,
+                                    boolean threatBeyondRadius, boolean baseThreatened) {
+        if (status == SquadStatus.FIGHT || enemyMeasured) return false;
+        return threatBeyondRadius || baseThreatened;
+    }
+
+    private HorizonCombatSimulator.DebugSnapshot lastSnapshot(Squad squad) {
+        CombatSimulator sim = squad.getCombatSimulator();
+        if (!(sim instanceof HorizonCombatSimulator)) {
+            return null;
+        }
+        return ((HorizonCombatSimulator) sim).getLastSnapshots().get(squad.getId());
+    }
+
+    private boolean baseThreatened() {
+        return gameState.visibleEnemyMobileGroundCombatUnitsAtOurBases() > 0;
+    }
+
+    private void holdSquad(Squad squad, HashSet<ManagedUnit> managedFighters) {
+        if (squad.getStatus() == SquadStatus.RETREAT) {
+            assignRetreatTargets(squad, managedFighters);
+        } else {
+            rallySquad(squad);
         }
     }
 
