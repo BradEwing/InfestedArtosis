@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import strategy.BuildOrderFactory;
 import util.Time;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -17,23 +18,65 @@ class SpeedlingAllInTest {
 
     @Test
     void derivesTheDroneBelowTheTarget() {
-        assertTrue(SpeedlingAllIn.shouldPlanDrone(SpeedlingAllIn.DRONE_TARGET - 1, true));
+        assertTrue(SpeedlingAllIn.shouldPlanDrone(SpeedlingAllIn.DRONE_TARGET - 1, true, false));
     }
 
     @Test
     void withholdsTheDroneOnceTheTargetIsMet() {
-        assertFalse(SpeedlingAllIn.shouldPlanDrone(SpeedlingAllIn.DRONE_TARGET, true));
-        assertFalse(SpeedlingAllIn.shouldPlanDrone(SpeedlingAllIn.DRONE_TARGET + 1, true));
+        assertFalse(SpeedlingAllIn.shouldPlanDrone(SpeedlingAllIn.DRONE_TARGET, true, false));
+        assertFalse(SpeedlingAllIn.shouldPlanDrone(SpeedlingAllIn.DRONE_TARGET + 1, true, false));
     }
 
     @Test
     void withholdsTheDroneWhileTheEconomicGateIsClosed() {
-        assertFalse(SpeedlingAllIn.shouldPlanDrone(0, false));
+        assertFalse(SpeedlingAllIn.shouldPlanDrone(0, false, false));
     }
 
     @Test
     void derivesTheDroneReplacementAfterLosingTheEconomy() {
-        assertTrue(SpeedlingAllIn.shouldPlanDrone(1, true));
+        assertTrue(SpeedlingAllIn.shouldPlanDrone(1, true, false));
+    }
+
+    @Test
+    void withholdsTheDroneWhileAZerglingIsOwed() {
+        assertFalse(SpeedlingAllIn.shouldPlanDrone(0, true, true));
+        assertFalse(SpeedlingAllIn.shouldPlanDrone(SpeedlingAllIn.DRONE_TARGET - 1, true, true));
+    }
+
+    @Test
+    void owesTheOpeningLarvaToAZerglingRatherThanTheDroneFloor() {
+        boolean owesZergling = SpeedlingAllIn.shouldPlanZergling(0, true);
+
+        assertTrue(owesZergling);
+        assertFalse(SpeedlingAllIn.shouldPlanDrone(0, true, owesZergling));
+    }
+
+    @Test
+    void derivesTheDroneOnceTheZerglingQueueIsFull() {
+        boolean owesZergling = SpeedlingAllIn.shouldPlanZergling(SpeedlingAllIn.MAX_QUEUED_ZERGLING_PLANS, true);
+
+        assertFalse(owesZergling);
+        assertTrue(SpeedlingAllIn.shouldPlanDrone(0, true, owesZergling));
+    }
+
+    @Test
+    void derivesTheDroneBeforeTheSpawningPoolFinishes() {
+        boolean owesZergling = SpeedlingAllIn.shouldPlanZergling(0, false);
+
+        assertFalse(owesZergling);
+        assertTrue(SpeedlingAllIn.shouldPlanDrone(0, true, owesZergling));
+    }
+
+    @Test
+    void reachesTheDroneTargetOnceTheZerglingQueueIsSaturated() {
+        int queuedZerglings = SpeedlingAllIn.MAX_QUEUED_ZERGLING_PLANS;
+        int economyDrones = 0;
+        while (SpeedlingAllIn.shouldPlanDrone(economyDrones, true,
+                SpeedlingAllIn.shouldPlanZergling(queuedZerglings, true))) {
+            economyDrones++;
+        }
+
+        assertEquals(SpeedlingAllIn.DRONE_TARGET, economyDrones);
     }
 
     @Test
