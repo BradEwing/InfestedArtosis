@@ -78,9 +78,28 @@ class ScoutDataTest {
     }
 
     @Test
+    void zergStopsOnHydraliskDen() {
+        ScoutData scoutData = new ScoutData();
+        assertFalse(scoutData.shouldOverlordsContinueScouting(Race.Zerg, of(UnitType.Zerg_Hydralisk_Den)));
+    }
+
+    @Test
+    void zergStopsOnScourgeAndLurker() {
+        ScoutData scoutData = new ScoutData();
+        assertFalse(scoutData.shouldOverlordsContinueScouting(Race.Zerg, of(UnitType.Zerg_Scourge)));
+        assertFalse(scoutData.shouldOverlordsContinueScouting(Race.Zerg, of(UnitType.Zerg_Lurker)));
+    }
+
+    @Test
     void zergContinuesOnZergling() {
         ScoutData scoutData = new ScoutData();
         assertTrue(scoutData.shouldOverlordsContinueScouting(Race.Zerg, of(UnitType.Zerg_Zergling)));
+    }
+
+    @Test
+    void zergContinuesOnOverlordAndDrone() {
+        ScoutData scoutData = new ScoutData();
+        assertTrue(scoutData.shouldOverlordsContinueScouting(Race.Zerg, of(UnitType.Zerg_Overlord, UnitType.Zerg_Drone)));
     }
 
     @Test

@@ -56,25 +56,33 @@ public class ScoutData {
 
     /**
      * Determines if overlords should continue scouting based on if specific enemy units/buildings are detected.
+     *
+     * Against Terran, Protoss and an unknown race any visible air threat ends scouting. Against Zerg the
+     * overlord stays over the enemy base, since zerglings and drones cannot shoot up, until air or
+     * hydralisk tech or a unit that depends on it is seen.
      */
     public boolean shouldOverlordsContinueScouting(Race enemyRace, Collection<UnitType> enemyTypes) {
-        for (UnitType type : enemyTypes) {
-            if (Filter.isAirThreat(type)) {
-                return false;
-            }
-        }
         switch (enemyRace) {
             case Terran:
-                return !hasTerranScoutingConditions(enemyTypes);
+                return !hasAirThreat(enemyTypes) && !hasTerranScoutingConditions(enemyTypes);
             case Protoss:
-                return !hasProtossScoutingConditions(enemyTypes);
+                return !hasAirThreat(enemyTypes) && !hasProtossScoutingConditions(enemyTypes);
             case Zerg:
                 return !hasZergScoutingConditions(enemyTypes);
             case Unknown:
-                return true;
+                return !hasAirThreat(enemyTypes);
             default:
                 return false;
         }
+    }
+
+    private boolean hasAirThreat(Collection<UnitType> enemyTypes) {
+        for (UnitType type : enemyTypes) {
+            if (Filter.isAirThreat(type)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private boolean hasTerranScoutingConditions(Collection<UnitType> enemyTypes) {
@@ -115,10 +123,22 @@ public class ScoutData {
             if (type == UnitType.Zerg_Spire) {
                 return true;
             }
+            if (type == UnitType.Zerg_Hydralisk_Den) {
+                return true;
+            }
+            if (type == UnitType.Zerg_Spore_Colony) {
+                return true;
+            }
             if (type == UnitType.Zerg_Mutalisk) {
                 return true;
             }
+            if (type == UnitType.Zerg_Scourge) {
+                return true;
+            }
             if (type == UnitType.Zerg_Hydralisk) {
+                return true;
+            }
+            if (type == UnitType.Zerg_Lurker) {
                 return true;
             }
         }

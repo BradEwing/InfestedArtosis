@@ -96,6 +96,10 @@ public class ScoutManager {
      * @return true if a perch was found and assigned
      */
     public boolean tryPerch(ManagedUnit overlord) {
+        if (gameState.getOpponentRace() == Race.Zerg) {
+            return false;
+        }
+
         Position watchTarget = perchWatchTarget(overlord);
         if (watchTarget == null) {
             return false;
