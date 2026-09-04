@@ -15,6 +15,7 @@ import info.ResourceCount;
 import info.ScoutData;
 import info.UnitTypeCount;
 import info.map.BuildingPlanner;
+import info.map.GameMap;
 import info.map.GroundPath;
 import info.map.MapTile;
 import info.tracking.ObservedBullet;
@@ -35,6 +36,7 @@ import unit.managed.UnitRole;
 import util.Arc;
 import macro.plan.Plan;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -56,6 +58,8 @@ public class Debug {
 
     private GameState gameState;
     private SquadManager squadManager;
+
+    private static final int PERCH_OVERLAY_SHAPE_BUDGET = 19999;
 
     public Debug(Game game, BuildOrder opener, OpponentRecord opponentRecord, GameState gameState, Config config, SquadManager squadManager) {
         this.game = game;
@@ -391,31 +395,39 @@ public class Debug {
     }
 
     /**
-     * Debug visualization for computed overlord perch tiles. Draws cyan boxes over each perch tile
-     * visible on screen with its ground height label, plus one screen-space summary line.
+     * Debug visualization for the overlord perch field. Every non-ground tile within two tiles of the
+     * clearance is boxed: cyan when it qualifies as a perch, yellow one tile short, orange two tiles
+     * short, with its ground distance drawn inside while the shape budget allows. Deeper perch tiles
+     * are boxed without a label. BWAPI clips off-screen shapes itself and accepts up to 19999 per frame.
      */
     private void debugOverlordPerches() {
         try {
-            if (gameState.getGameMap() == null) return;
+            GameMap gameMap = gameState.getGameMap();
+            if (gameMap == null) return;
 
-            Position screen = game.getScreenPosition();
-            int minX = screen.getX() - 32;
-            int maxX = screen.getX() + 640 + 32;
-            int minY = screen.getY() - 32;
-            int maxY = screen.getY() + 480 + 32;
-
-            for (MapTile tile : gameState.getGameMap().getPerchTiles()) {
-                Position pos = tile.getTile().toPosition();
-                if (pos.getX() < minX || pos.getX() > maxX || pos.getY() < minY || pos.getY() > maxY) {
+            int clearance = gameMap.getPerchClearanceTiles();
+            List<MapTile> banded = new ArrayList<>();
+            for (MapTile tile : gameMap.getHeatMap()) {
+                if (tile.isGroundOccupiable() || tile.getGroundDistance() < clearance - 2) {
                     continue;
                 }
-                game.drawBoxMap(pos, tile.getTile().add(new TilePosition(1, 1)).toPosition(), Color.Cyan);
-                game.drawTextMap(pos.add(new Position(8, 8)), String.valueOf(tile.getGroundHeight()), Text.Cyan);
+                banded.add(tile);
             }
 
-            long computedMs = gameState.getGameMap().getPerchComputeNanos() / 1_000_000;
+            boolean drawDistances = banded.size() + gameMap.getPerchTiles().size() < PERCH_OVERLAY_SHAPE_BUDGET;
+            for (MapTile tile : banded) {
+                int distance = tile.getGroundDistance();
+                Color color = distance >= clearance ? Color.Cyan : distance == clearance - 1 ? Color.Yellow : Color.Orange;
+                Position pos = tile.getTile().toPosition();
+                game.drawBoxMap(pos, tile.getTile().add(new TilePosition(1, 1)).toPosition(), color);
+                if (drawDistances && distance <= clearance) {
+                    game.drawTextMap(pos.add(new Position(8, 8)), String.valueOf(distance), Text.White);
+                }
+            }
+
+            long computedMs = gameMap.getPerchComputeNanos() / 1_000_000;
             String summary = String.format("Perches: %d  clearance: %d tiles  computed: %d ms",
-                    gameState.getGameMap().getPerchTiles().size(), gameState.getGameMap().getPerchClearanceTiles(), computedMs);
+                    gameMap.getPerchTiles().size(), clearance, computedMs);
             game.drawTextScreen(4, 56, summary, Text.Cyan);
         } catch (IllegalStateException e) {
         }

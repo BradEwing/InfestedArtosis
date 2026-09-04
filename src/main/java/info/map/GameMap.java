@@ -456,7 +456,7 @@ public class GameMap {
     }
 
     /**
-     * Computes the ground distance field for the whole map and records every tile at exactly
+     * Computes the ground distance field for the whole map and records every tile at least
      * {@code clearanceTiles} away from the nearest ground-occupiable tile as a perch. Writes the
      * ground distance back onto each tile and records the compute time.
      *
@@ -480,7 +480,7 @@ public class GameMap {
             for (int j = 0; j < y; j++) {
                 MapTile tile = mapTiles[i][j];
                 tile.setGroundDistance(distances[i][j]);
-                if (distances[i][j] == clearanceTiles) {
+                if (distances[i][j] >= clearanceTiles) {
                     newPerchTiles.add(tile);
                 }
             }
