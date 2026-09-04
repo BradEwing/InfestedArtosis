@@ -57,6 +57,10 @@ public class ScoutManager {
             }
 
             if (managedUnit.getUnitType() == UnitType.Zerg_Overlord && isEnemyBaseLocated()) {
+                if (hasPerchedOverlord()) {
+                    recalledOverlords.add(managedUnit);
+                    continue;
+                }
                 if (tryPerch(managedUnit)) {
                     continue;
                 }
@@ -68,9 +72,19 @@ public class ScoutManager {
         }
     }
 
+    private boolean hasPerchedOverlord() {
+        for (ManagedUnit scout : scouts) {
+            if (scout.getRole() == UnitRole.PERCH) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /**
-     * Drains and returns the overlords recalled off their perch this frame because an enemy
-     * unit came within threatening range.
+     * Drains and returns the overlords sent home this frame: perched overlords an enemy unit
+     * came within threatening range of, and scouting overlords no longer needed because another
+     * overlord already watches the located enemy base.
      */
     public List<ManagedUnit> drainRecalledOverlords() {
         List<ManagedUnit> drained = new ArrayList<>(recalledOverlords);

@@ -581,7 +581,11 @@ public class Debug {
         UnitRole role = managedUnit.getRole();
         
         if (role != null) {
-            game.drawTextMap(unitPosition, role.toString(), Text.Default);
+            String label = role.toString();
+            if (managedUnit.getUnitType() != managedUnit.getUnit().getType()) {
+                label += " " + managedUnit.getUnitType();
+            }
+            game.drawTextMap(unitPosition, label, Text.Default);
         }
         if (role == UnitRole.BUILDING) {
             return;
