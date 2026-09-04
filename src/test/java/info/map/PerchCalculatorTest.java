@@ -113,7 +113,15 @@ class PerchCalculatorTest {
 
         assertFalse(PerchCalculator.contributesToClearance(UnitType.Terran_Missile_Turret, Race.Terran));
         assertFalse(PerchCalculator.contributesToClearance(UnitType.Terran_Wraith, Race.Terran));
+        assertFalse(PerchCalculator.contributesToClearance(UnitType.Terran_Goliath_Turret, Race.Terran));
         assertFalse(PerchCalculator.contributesToClearance(UnitType.Unknown, Race.Unknown));
+    }
+
+    @Test
+    void techDepthOrdersFirstTierAntiAirBeforeLaterTiers() {
+        assertTrue(PerchCalculator.techDepth(UnitType.Terran_Marine) < PerchCalculator.techDepth(UnitType.Terran_Goliath));
+        assertTrue(PerchCalculator.techDepth(UnitType.Terran_Goliath) < PerchCalculator.techDepth(UnitType.Terran_Ghost));
+        assertTrue(PerchCalculator.techDepth(UnitType.Protoss_Dragoon) < PerchCalculator.techDepth(UnitType.Protoss_Archon));
     }
 
     @Test
@@ -124,11 +132,9 @@ class PerchCalculatorTest {
         int unknownClearance = PerchCalculator.clearanceTiles(Race.Unknown);
 
         assertEquals((int) Math.ceil(PerchCalculator.reachPixels(UnitType.Protoss_Dragoon) / 32.0), protossClearance);
-        assertEquals((int) Math.ceil(PerchCalculator.reachPixels(UnitType.Terran_Goliath) / 32.0), terranClearance);
-
-        assertTrue(unknownClearance >= protossClearance);
-        assertTrue(unknownClearance >= terranClearance);
-        assertTrue(unknownClearance >= zergClearance);
+        assertEquals((int) Math.ceil(PerchCalculator.reachPixels(UnitType.Terran_Marine) / 32.0), terranClearance);
+        assertEquals((int) Math.ceil(PerchCalculator.reachPixels(UnitType.Zerg_Hydralisk) / 32.0), zergClearance);
+        assertEquals((int) Math.ceil(PerchCalculator.reachPixels(UnitType.Terran_Marine) / 32.0), unknownClearance);
 
         assertTrue(protossClearance * 32 < UnitType.Zerg_Overlord.sightRange());
         assertTrue(terranClearance * 32 < UnitType.Zerg_Overlord.sightRange());

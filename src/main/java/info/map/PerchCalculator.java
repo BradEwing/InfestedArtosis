@@ -8,6 +8,8 @@ import util.Filter;
 import java.util.ArrayDeque;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.HashSet;
+import java.util.Set;
 
 /**
  * Pure, static helpers for computing overlord perch positions: a ground distance field over the map,
@@ -93,9 +95,10 @@ public final class PerchCalculator {
 
     /**
      * Whether a unit type should be considered when computing the safe perch clearance against a given
-     * opponent race: a non-flying, non-building, non-hero air threat belonging to that race (or any race
-     * when the opponent race is unknown) whose reach still leaves at least one tile of visible ground
-     * for a perched overlord.
+     * opponent race: a non-flying, non-building, non-hero air threat that something can build,
+     * belonging to that race (or any race when the opponent race is unknown), whose reach still leaves
+     * at least one tile of visible ground for a perched overlord. Sub-units such as the Goliath turret
+     * are excluded because nothing builds them.
      *
      * @param type unit type under consideration
      * @param opponentRace the opponent's race, or {@code Race.Unknown} before it is scouted
@@ -111,6 +114,9 @@ public final class PerchCalculator {
         if (type.airWeapon().maxRange() <= 0) {
             return false;
         }
+        if (type.whatBuilds().getLeft() == UnitType.None) {
+            return false;
+        }
         if (opponentRace != Race.Unknown && type.getRace() != opponentRace) {
             return false;
         }
@@ -119,21 +125,52 @@ public final class PerchCalculator {
 
     /**
      * The safe clearance, in tiles, for perching an overlord against the given opponent race: the
-     * ceiling of the largest reach (in pixels) among every type satisfying
-     * {@link #contributesToClearance(UnitType, Race)}, divided by tile size.
+     * ceiling of the largest reach (in pixels) among the shallowest-tech types satisfying
+     * {@link #contributesToClearance(UnitType, Race)}, divided by tile size. Deeper-tech anti-air
+     * (Goliath, Archon) arrives later and is handled by the perch leave predicate instead, so the
+     * perch guards against the anti-air the opponent can field first.
      *
      * @param opponentRace the opponent's race, or {@code Race.Unknown} before it is scouted
      * @return clearance in tiles
      */
     public static int clearanceTiles(Race opponentRace) {
+        int shallowestDepth = Integer.MAX_VALUE;
+        for (UnitType type : UnitType.values()) {
+            if (contributesToClearance(type, opponentRace)) {
+                shallowestDepth = Math.min(shallowestDepth, techDepth(type));
+            }
+        }
         int maxReach = 0;
         for (UnitType type : UnitType.values()) {
-            if (!contributesToClearance(type, opponentRace)) {
+            if (!contributesToClearance(type, opponentRace) || techDepth(type) != shallowestDepth) {
                 continue;
             }
             maxReach = Math.max(maxReach, reachPixels(type));
         }
         return (int) Math.ceil(maxReach / 32.0);
+    }
+
+    /**
+     * Depth of a unit type in its race's tech tree: the longest chain of {@code requiredUnits}
+     * beneath it. Only the ordering between types matters.
+     *
+     * @param type unit type
+     * @return tech depth, 0 for a type with no requirements
+     */
+    public static int techDepth(UnitType type) {
+        return techDepth(type, new HashSet<>());
+    }
+
+    private static int techDepth(UnitType type, Set<UnitType> visiting) {
+        if (!visiting.add(type)) {
+            return 0;
+        }
+        int depth = 0;
+        for (UnitType required : type.requiredUnits().keySet()) {
+            depth = Math.max(depth, techDepth(required, visiting) + 1);
+        }
+        visiting.remove(type);
+        return depth;
     }
 
     /**

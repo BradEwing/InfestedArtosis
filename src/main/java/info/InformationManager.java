@@ -716,7 +716,7 @@ public class InformationManager {
             }
         }
 
-        gameMap.computePerches(PerchCalculator.clearanceTiles(gameState.getOpponentRace()));
+        gameMap.computePerches(PerchCalculator.clearanceTiles(gameState.getOpponentRace()), startingPositions);
 
         // Calculate accessible WalkPositions from a main base using flood fill
         if (!startingPositions.isEmpty()) {
