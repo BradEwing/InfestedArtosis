@@ -10,6 +10,14 @@ import java.util.Map;
 
 public class UnitStrength {
 
+    /**
+     * Durability anchor for the effective hit point term, in hit points. Dividing by it before the
+     * square root leaves a light ground unit close to the value it carried before the term existed,
+     * so the absolute static defense entries below and the simulator's engage thresholds stay on
+     * the scale they were tuned against.
+     */
+    private static final double EHP_REFERENCE = 40.0;
+
     private static final Map<UnitType, double[]> STRENGTH_TABLE = new HashMap<>();
 
     static {
@@ -33,13 +41,12 @@ public class UnitStrength {
             }
             if (type == UnitType.Zerg_Lurker) {
                 g2g *= 2.5;
-            } else if (type == UnitType.Zerg_Ultralisk) {
-                g2g *= 2.0;
             } else if (type == UnitType.Zerg_Mutalisk) {
                 a2g *= 1.5;
                 a2a *= 1.5;
             }
-            STRENGTH_TABLE.put(type, new double[]{g2g, g2a, a2g, a2a});
+            double ehp = effectiveHitPointFactor(type);
+            STRENGTH_TABLE.put(type, new double[]{g2g * ehp, g2a * ehp, a2g * ehp, a2a * ehp});
         }
 
         STRENGTH_TABLE.put(UnitType.Zerg_Sunken_Colony, new double[]{6, 0, 0, 0});
@@ -54,6 +61,24 @@ public class UnitStrength {
         int cooldown = weapon.damageCooldown();
         if (cooldown == 0) return 0;
         return (double) weapon.damageAmount() * weapon.damageFactor() * maxHits / cooldown;
+    }
+
+    /**
+     * Durability multiplier for a unit type: the square root of its maximum hit points plus shields,
+     * relative to {@link #EHP_REFERENCE}.
+     *
+     * <p>Two forces trade evenly under Lanchester's square law when their sums of
+     * {@code sqrt(dps * effectiveHitPoints)} match, so durability belongs in a per-unit strength
+     * under a square root rather than as a straight product. The damage half is deliberately left
+     * linear: every correction the simulator layers on top of this table - attack upgrades, Adrenal
+     * Glands, the current-health weighting, the worker divisor - is linear in damage, and taking the
+     * root of that half as well would misprice all of them. Shields count towards the pool at face
+     * value because they must be removed before hit points can be.
+     */
+    private static double effectiveHitPointFactor(UnitType type) {
+        double effectiveHitPoints = type.maxHitPoints() + type.maxShields();
+        if (effectiveHitPoints <= 0) return 1.0;
+        return Math.sqrt(effectiveHitPoints / EHP_REFERENCE);
     }
 
     public static double groundToGround(UnitType type) {
