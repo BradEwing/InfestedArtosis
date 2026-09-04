@@ -134,4 +134,59 @@ class HorizonCombatSimulatorTest {
         assertTrue(UnitType.Protoss_Carrier.canAttack());
         assertTrue(UnitType.Zerg_Mutalisk.canAttack());
     }
+
+    @Test
+    void attackerJustBeyondRadiusIsAThreatBeyondRadius() {
+        assertTrue(HorizonCombatSimulator.isThreatBeyondRadius(UnitType.Protoss_Zealot, 400, 320));
+    }
+
+    @Test
+    void attackerInsideRadiusIsMeasuredInsteadOfBeyond() {
+        assertFalse(HorizonCombatSimulator.isThreatBeyondRadius(UnitType.Protoss_Zealot, 300, 320));
+    }
+
+    @Test
+    void attackerPastTheNearbyThreatRadiusIsNotBeyondRadius() {
+        assertFalse(HorizonCombatSimulator.isThreatBeyondRadius(UnitType.Protoss_Zealot, 600, 320));
+    }
+
+    @Test
+    void workerJustBeyondRadiusIsNotAThreatBeyondRadius() {
+        assertFalse(HorizonCombatSimulator.isThreatBeyondRadius(UnitType.Protoss_Probe, 400, 320));
+    }
+
+    @Test
+    void nonAttackerJustBeyondRadiusIsNotAThreatBeyondRadius() {
+        assertFalse(HorizonCombatSimulator.isThreatBeyondRadius(UnitType.Zerg_Overlord, 400, 320));
+    }
+
+    @Test
+    void attackerAtTheNearbyThreatRadiusIsAThreatBeyondRadius() {
+        assertTrue(HorizonCombatSimulator.isThreatBeyondRadius(UnitType.Terran_Marine, 512, 320));
+    }
+
+    @Test
+    void attackerAtItsOwnEngagementRadiusIsNotBeyondRadius() {
+        assertFalse(HorizonCombatSimulator.isThreatBeyondRadius(UnitType.Protoss_Zealot, 320, 320));
+    }
+
+    @Test
+    void unmeasuredEnemyNeverEngagesHoweverStrongTheSquad() {
+        assertEquals(ADVANCE, HorizonCombatSimulator.selectResult(1000, 0, 0, 0, false, 1.3));
+    }
+
+    @Test
+    void measuredEnemyBelowThresholdRetreats() {
+        assertEquals(RETREAT, HorizonCombatSimulator.selectResult(1.3, 0, 1, 0, false, 1.4));
+    }
+
+    @Test
+    void airSquadIgnoresGroundOnlyEnemyStrength() {
+        assertEquals(ADVANCE, HorizonCombatSimulator.selectResult(0, 5, 100, 0, true, 1.3));
+    }
+
+    @Test
+    void airSquadRetreatsAgainstMeasuredAntiAir() {
+        assertEquals(RETREAT, HorizonCombatSimulator.selectResult(0, 5, 0, 10, true, 1.3));
+    }
 }

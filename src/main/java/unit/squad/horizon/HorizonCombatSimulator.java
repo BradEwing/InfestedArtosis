@@ -32,6 +32,7 @@ import java.util.Set;
 public class HorizonCombatSimulator implements CombatSimulator {
 
     private static final double MAX_ENGAGEMENT_RADIUS = 320;
+    private static final double NEARBY_THREAT_RADIUS = 512;
     private static final double APPROACH_BUFFER = 64;
     private static final double WORKER_STRENGTH_DIVISOR = 10.0;
     private static final double HEIGHT_BONUS = 1.15;
@@ -117,7 +118,13 @@ public class HorizonCombatSimulator implements CombatSimulator {
             Position pos = visible ? ou.getUnit().getPosition() : ou.getLastKnownLocation();
             if (pos == null) continue;
             double dist = squadCenter.getDistance(pos);
-            if (dist > engagementRadius(type)) continue;
+            double radius = engagementRadius(type);
+            if (dist > radius) {
+                if (isThreatBeyondRadius(type, dist, radius)) {
+                    snapshot.setThreatBeyondRadius(true);
+                }
+                continue;
+            }
 
             if (!type.isBuilding() && !type.isWorker()) {
                 if (!type.isFlyer()) {
@@ -182,6 +189,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
 
         double relevantEnemyStr = airSquad ? enemyAntiAirStr : enemyGroundStr;
         boolean enemyMeasured = relevantEnemyStr > MIN_ENEMY_STRENGTH;
+        snapshot.setEnemyMeasured(enemyMeasured);
         double overallRatio = 0;
         if (!enemyMeasured) {
             snapshot.setGroundRatio(0);
@@ -238,6 +246,20 @@ public class HorizonCombatSimulator implements CombatSimulator {
         }
         if (ratio < engageThresh) return CombatResult.RETREAT;
         return relevantEnemyStr > MIN_ENEMY_STRENGTH ? CombatResult.ENGAGE : CombatResult.ADVANCE;
+    }
+
+    /**
+     * Whether a fresh, attack-capable, non-worker enemy sits outside its type's engagement radius
+     * but close enough to matter, i.e. within {@link #NEARBY_THREAT_RADIUS}.
+     *
+     * @param type enemy unit type
+     * @param distance distance from the squad center to the enemy
+     * @param engagementRadius the type's own engagement radius, already excluded by the caller
+     * @return true if the enemy is a nearby but unmeasured threat
+     */
+    static boolean isThreatBeyondRadius(UnitType type, double distance, double engagementRadius) {
+        if (distance <= engagementRadius || distance > NEARBY_THREAT_RADIUS) return false;
+        return type.canAttack() && !type.isWorker();
     }
 
     private double computeFriendlyStrength(ManagedUnit mu, Position engagementCenter, boolean enemyHasDetection, TechProgression techProgression) {
@@ -553,5 +575,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
         private double retreatThreshold;
         private boolean staticDefenseCover;
         private CombatResult result;
+        private boolean enemyMeasured;
+        private boolean threatBeyondRadius;
     }
 }
