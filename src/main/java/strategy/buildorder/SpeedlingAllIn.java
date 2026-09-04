@@ -23,6 +23,13 @@ import java.util.List;
  * It plans its own Spawning Pool when it does not have one, so it is reachable from an opener that
  * transitions before building one.
  *
+ * <p>Zerglings are owed before drones. Plan priority is the frame a plan was queued on, so whatever
+ * this build enqueues first holds the earlier claim on a scarce one hatchery larva supply, and
+ * planning the drone floor first spent the opening larva on economy while a rush was already
+ * walking over. The drone branch stands down while a zergling is owed, and the zergling queue is
+ * bounded at {@link #MAX_QUEUED_ZERGLING_PLANS}, so the eleven drones still arrive, behind the
+ * opening zerglings rather than ahead of them.
+ *
  * <p>The second hatchery is the natural expansion; only once a second base is held do surplus
  * minerals buy macro hatcheries, up to {@link #MAX_HATCHERIES}, rather than banking. Expanding first
  * is what makes the drone target reachable: {@link GameState#canPlanDrone()} ceilings workers at
@@ -107,12 +114,15 @@ public class SpeedlingAllIn extends BuildOrder {
             return plans;
         }
 
-        if (shouldPlanDrone(gameState.numEconomyDrones(), gameState.canPlanDrone())) {
+        int queuedZerglings = gameState.queuedUnitPlanCount(UnitType.Zerg_Zergling);
+        boolean owesZergling = shouldPlanZergling(queuedZerglings, techProgression.isSpawningPool());
+
+        if (shouldPlanDrone(gameState.numEconomyDrones(), gameState.canPlanDrone(), owesZergling)) {
             plans.add(this.planUnit(gameState, UnitType.Zerg_Drone));
             return plans;
         }
 
-        int zerglingCount = gameState.ourUnitCount(UnitType.Zerg_Zergling);
+        int zerglingCount = gameState.ourLivingUnitCount(UnitType.Zerg_Zergling);
         if (allInStalled(gameState.getGameTime(), zerglingCount, techProgression.isMetabolicBoost())) {
             plans.addAll(this.planStallUpgrades(gameState));
             if (!plans.isEmpty()) {
@@ -120,8 +130,7 @@ public class SpeedlingAllIn extends BuildOrder {
             }
         }
 
-        int queuedZerglings = gameState.queuedUnitPlanCount(UnitType.Zerg_Zergling);
-        if (shouldPlanZergling(queuedZerglings, techProgression.isSpawningPool())) {
+        if (owesZergling) {
             plans.add(this.planUnit(gameState, UnitType.Zerg_Zergling));
         }
 
@@ -150,10 +159,16 @@ public class SpeedlingAllIn extends BuildOrder {
     }
 
     /**
+     * The drone floor waits on the zergling queue. A larva that frees up while a zergling is still
+     * owed belongs to that zergling, and because the queue is bounded the wait is short: drones
+     * resume the moment it fills. Before the pool finishes no zergling is owed at all, so the
+     * opening economy is untouched.
+     *
      * @param economyDrones gathering plus queued drones, from {@link GameState#numEconomyDrones()}
+     * @param owesZergling whether {@link #shouldPlanZergling} wants a zergling this frame
      */
-    static boolean shouldPlanDrone(int economyDrones, boolean canPlanDrone) {
-        return economyDrones < DRONE_TARGET && canPlanDrone;
+    static boolean shouldPlanDrone(int economyDrones, boolean canPlanDrone, boolean owesZergling) {
+        return !owesZergling && economyDrones < DRONE_TARGET && canPlanDrone;
     }
 
     /**
