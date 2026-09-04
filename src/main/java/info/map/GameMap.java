@@ -4,6 +4,7 @@ import bwapi.Game;
 import bwapi.Position;
 import bwapi.TilePosition;
 import bwapi.Unit;
+import bwapi.UnitType;
 import bwapi.WalkPosition;
 import info.exception.NoWalkablePathException;
 import lombok.Getter;
@@ -34,6 +35,12 @@ public class GameMap {
     private Set<Unit> blockingMinerals = new HashSet<>();
     @Getter
     private Set<TilePosition> mainBaseTiles = new HashSet<>();
+    @Getter
+    private List<MapTile> perchTiles = new ArrayList<>();
+    @Getter
+    private int perchClearanceTiles;
+    @Getter
+    private long perchComputeNanos;
 
     private MapTile[][] mapTiles;
 
@@ -446,5 +453,51 @@ public class GameMap {
             }
         }
         return closest;
+    }
+
+    /**
+     * Computes the ground distance field for the whole map and records every tile at exactly
+     * {@code clearanceTiles} away from the nearest ground-occupiable tile as a perch. Writes the
+     * ground distance back onto each tile and records the compute time.
+     *
+     * @param clearanceTiles the safe clearance in tiles, from {@link PerchCalculator#clearanceTiles}
+     */
+    public void computePerches(int clearanceTiles) {
+        long start = System.nanoTime();
+        this.perchClearanceTiles = clearanceTiles;
+
+        boolean[][] groundOccupiable = new boolean[x][y];
+        for (int i = 0; i < x; i++) {
+            for (int j = 0; j < y; j++) {
+                groundOccupiable[i][j] = mapTiles[i][j].isGroundOccupiable();
+            }
+        }
+
+        int[][] distances = PerchCalculator.groundDistances(groundOccupiable);
+
+        List<MapTile> newPerchTiles = new ArrayList<>();
+        for (int i = 0; i < x; i++) {
+            for (int j = 0; j < y; j++) {
+                MapTile tile = mapTiles[i][j];
+                tile.setGroundDistance(distances[i][j]);
+                if (distances[i][j] == clearanceTiles) {
+                    newPerchTiles.add(tile);
+                }
+            }
+        }
+        this.perchTiles = newPerchTiles;
+
+        this.perchComputeNanos = System.nanoTime() - start;
+    }
+
+    /**
+     * Finds the best perch tile for watching the given target position, using an overlord's sight
+     * range to decide between highest-ground and nearest-perch selection.
+     *
+     * @param target the position being watched
+     * @return the selected perch tile, or null if no perches were computed
+     */
+    public MapTile findPerchNear(Position target) {
+        return PerchCalculator.selectPerch(perchTiles, target, UnitType.Zerg_Overlord.sightRange());
     }
 }

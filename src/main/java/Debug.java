@@ -103,6 +103,9 @@ public class Debug {
         if (config.debugMainBaseTiles) {
             debugMainBaseTiles();
         }
+        if (config.debugOverlordPerches) {
+            debugOverlordPerches();
+        }
         if (config.debugManagedUnits) {
             for (ManagedUnit managedUnit : gameState.getManagedUnits()) {
                 debugManagedUnit(managedUnit);
@@ -384,6 +387,37 @@ public class Debug {
         if (gameState.getGameMap() == null) return;
         for (TilePosition tp : gameState.getGameMap().getMainBaseTiles()) {
             game.drawBoxMap(tp.toPosition(), tp.add(new TilePosition(1, 1)).toPosition(), Color.Cyan);
+        }
+    }
+
+    /**
+     * Debug visualization for computed overlord perch tiles. Draws cyan boxes over each perch tile
+     * visible on screen with its ground height label, plus one screen-space summary line.
+     */
+    private void debugOverlordPerches() {
+        try {
+            if (gameState.getGameMap() == null) return;
+
+            Position screen = game.getScreenPosition();
+            int minX = screen.getX() - 32;
+            int maxX = screen.getX() + 640 + 32;
+            int minY = screen.getY() - 32;
+            int maxY = screen.getY() + 480 + 32;
+
+            for (MapTile tile : gameState.getGameMap().getPerchTiles()) {
+                Position pos = tile.getTile().toPosition();
+                if (pos.getX() < minX || pos.getX() > maxX || pos.getY() < minY || pos.getY() > maxY) {
+                    continue;
+                }
+                game.drawBoxMap(pos, tile.getTile().add(new TilePosition(1, 1)).toPosition(), Color.Cyan);
+                game.drawTextMap(pos.add(new Position(8, 8)), String.valueOf(tile.getGroundHeight()), Text.Cyan);
+            }
+
+            long computedMs = gameState.getGameMap().getPerchComputeNanos() / 1_000_000;
+            String summary = String.format("Perches: %d  clearance: %d tiles  computed: %d ms",
+                    gameState.getGameMap().getPerchTiles().size(), gameState.getGameMap().getPerchClearanceTiles(), computedMs);
+            game.drawTextScreen(4, 56, summary, Text.Cyan);
+        } catch (IllegalStateException e) {
         }
     }
 

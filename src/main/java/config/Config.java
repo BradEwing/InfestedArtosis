@@ -24,6 +24,7 @@ public final class Config {
     public boolean debugAccessibleWalkPositions = false;
     public boolean debugBlockingMinerals = false;
     public boolean debugMainBaseTiles = false;
+    public boolean debugOverlordPerches = false;
     
     // Bases and buildings
     public boolean debugBases = false;
@@ -72,6 +73,7 @@ public final class Config {
         this.debugAccessibleWalkPositions = Boolean.parseBoolean(setting(dotenv, "IA_DEBUG_ACCESSIBLE_WALK_POSITIONS"));
         this.debugBlockingMinerals = Boolean.parseBoolean(setting(dotenv, "IA_DEBUG_BLOCKING_MINERALS"));
         this.debugMainBaseTiles = Boolean.parseBoolean(setting(dotenv, "IA_DEBUG_MAIN_BASE_TILES"));
+        this.debugOverlordPerches = Boolean.parseBoolean(setting(dotenv, "IA_DEBUG_OVERLORD_PERCHES"));
         this.debugBases = Boolean.parseBoolean(setting(dotenv, "IA_DEBUG_BASES"));
         this.debugBaseCreepTiles = Boolean.parseBoolean(setting(dotenv, "IA_DEBUG_BASE_CREEP_TILES"));
         this.debugBaseChoke = Boolean.parseBoolean(setting(dotenv, "IA_DEBUG_BASE_CHOKE"));
