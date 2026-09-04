@@ -553,7 +553,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
     private double engageThreshold(Race opponentRace) {
         switch (opponentRace) {
             case Terran:  return 1.4;
-            case Protoss: return 1.4;
+            case Protoss: return 0.9;
             case Zerg:    return 1.3;
             default:      return DEFAULT_ENGAGE_THRESHOLD;
         }
@@ -562,7 +562,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
     private double retreatThreshold(Race opponentRace) {
         switch (opponentRace) {
             case Terran:  return 1.0;
-            case Protoss: return 0.8;
+            case Protoss: return 0.5;
             case Zerg:    return 0.7;
             default:      return DEFAULT_RETREAT_THRESHOLD;
         }
