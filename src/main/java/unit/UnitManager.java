@@ -19,6 +19,7 @@ import unit.squad.SquadManager;
 import util.Time;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -109,6 +110,13 @@ public class UnitManager {
         squadManager.updateDefenseSquads();
         scoutManager.onFrame();
 
+        for (ManagedUnit managedUnit : scoutManager.drainRecalledOverlords()) {
+            scoutManager.removeScout(managedUnit);
+            managedUnit.setRole(UnitRole.RALLY);
+            managedUnit.setRallyPoint(gameState.getBaseData().mainBasePosition().toPosition());
+            squadManager.addManagedUnit(managedUnit);
+        }
+
         Set<ManagedUnit> disbandedSquadUnits = squadManager.getDisbandedUnits();
         if (!disbandedSquadUnits.isEmpty()) {
             for (ManagedUnit managedUnit: disbandedSquadUnits) {
@@ -137,6 +145,7 @@ public class UnitManager {
                 case RALLY:
                 case FIGHT:
                 case CONTAIN:
+                case PERCH:
                     managedUnit.execute();
                     continue;
                 default:
@@ -193,6 +202,12 @@ public class UnitManager {
         assignManagedUnit(managedUnit);
     }
 
+    private Collection<UnitType> visibleEnemyTypes() {
+        return gameState.getVisibleEnemyUnits().stream()
+                .map(Unit::getType)
+                .collect(Collectors.toList());
+    }
+
     private void assignManagedUnit(ManagedUnit managedUnit) {
         ScoutData scoutData = gameState.getScoutData();
         UnitType unitType = managedUnit.getUnitType();
@@ -224,8 +239,7 @@ public class UnitManager {
                 squadManager.addManagedUnit(managedUnit);
                 scoutManager.removeScout(managedUnit);
             } else {
-                Set<Unit> enemies = new HashSet<>(gameState.getVisibleEnemyUnits());
-                if (!scoutData.shouldOverlordsContinueScouting(game.enemy().getRace(), enemies)) {
+                if (!scoutData.shouldOverlordsContinueScouting(gameState.getOpponentRace(), visibleEnemyTypes())) {
                     squadManager.addManagedUnit(managedUnit);
                     scoutManager.removeScout(managedUnit);
                 } else {
@@ -373,8 +387,7 @@ public class UnitManager {
             boolean shouldStopScouting = false;
 
             if (managedUnit.getUnitType() == UnitType.Zerg_Overlord) {
-                Set<Unit> enemies = new HashSet<>(gameState.getVisibleEnemyUnits());
-                shouldStopScouting = !scoutData.shouldOverlordsContinueScouting(game.enemy().getRace(), enemies);
+                shouldStopScouting = !scoutData.shouldOverlordsContinueScouting(gameState.getOpponentRace(), visibleEnemyTypes());
             } else if (managedUnit.getUnitType() == UnitType.Zerg_Zergling) {
                 shouldStopScouting = scoutManager.endZerglingScout();
             } else {
@@ -383,6 +396,9 @@ public class UnitManager {
 
             if (shouldStopScouting) {
                 if (managedUnit.getUnitType() == UnitType.Zerg_Overlord) {
+                    if (scoutManager.tryPerch(managedUnit)) {
+                        return;
+                    }
                     managedUnit.setRole(UnitRole.IDLE);
                 } else {
                     managedUnit.setRole(UnitRole.RALLY);

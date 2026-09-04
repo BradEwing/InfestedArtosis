@@ -41,6 +41,8 @@ public class ManagedUnit {
     protected TilePosition movementTargetPosition;
     @Setter @Getter
     protected Position containPosition;
+    @Setter @Getter
+    protected Position perchPosition;
     protected List<TilePosition> pathToTarget;
 
     @Setter
@@ -157,6 +159,9 @@ public class ManagedUnit {
                 break;
             case CONTAIN:
                 contain();
+                break;
+            case PERCH:
+                perch();
                 break;
             default:
                 break;
@@ -461,6 +466,35 @@ public class ManagedUnit {
 
         setUnready(6);
         unit.move(containPosition);
+    }
+
+    protected void perch() {
+        if (perchPosition == null) {
+            role = UnitRole.IDLE;
+            return;
+        }
+
+        Position current = unit.getPosition();
+        List<Unit> threats = getEnemiesInRadius(current.getX(), current.getY());
+        if (!threats.isEmpty()) {
+            Position flee = getSimpleRetreatPosition();
+            if (flee != null) {
+                setUnready();
+                unit.move(flee);
+                return;
+            }
+        }
+
+        if (unit.getDistance(perchPosition) < 24) {
+            if (!unit.isHoldingPosition()) {
+                setUnready(6);
+                unit.holdPosition();
+            }
+            return;
+        }
+
+        setUnready();
+        unit.move(perchPosition);
     }
 
     protected void gather() {}

@@ -19,6 +19,7 @@ import info.map.BuildingPlanner;
 import info.map.GameMap;
 import info.map.MapTile;
 import info.map.MapTileType;
+import info.map.PerchCalculator;
 import info.tracking.ObservedBulletTracker;
 import static util.Distance.manhattanTileDistance;
 import info.tracking.ObservedUnitTracker;
@@ -696,6 +697,7 @@ public class InformationManager {
         for (int x = 0; x < game.mapWidth(); x++) {
             for (int y = 0; y < game.mapHeight(); y++) {
                 TilePosition tp = new TilePosition(x,y);
+                int walkableMiniTiles = walkableMiniTiles(tp);
                 MapTile mapTile;
                 if (startingPositions.contains(tp)) {
                     mapTile = new MapTile(tp, 2, true, true, MapTileType.BASE_START);
@@ -704,11 +706,17 @@ public class InformationManager {
                 } else if (resourcePositions.contains(tp)) {
                     mapTile = new MapTile(tp, 0, false, false, MapTileType.NORMAL);
                 } else {
-                    mapTile = new MapTile(tp, 0, this.isBuildable(tp), this.isWalkable(tp), MapTileType.NORMAL);
+                    boolean walkable = walkableMiniTiles == 16;
+                    boolean buildable = walkable && game.isBuildable(tp);
+                    mapTile = new MapTile(tp, 0, buildable, walkable, MapTileType.NORMAL);
                 }
+                mapTile.setGroundOccupiable(walkableMiniTiles > 0);
+                mapTile.setGroundHeight(game.getGroundHeight(tp));
                 gameMap.addTile(mapTile, x, y);
             }
         }
+
+        gameMap.computePerches(PerchCalculator.clearanceTiles(gameState.getOpponentRace()), startingPositions);
 
         // Calculate accessible WalkPositions from a main base using flood fill
         if (!startingPositions.isEmpty()) {
@@ -732,25 +740,24 @@ public class InformationManager {
         }
     }
 
-    private boolean isWalkable(TilePosition tp) {
+    /**
+     * Counts how many of a tile's 16 walk positions are walkable.
+     *
+     * @param tp tile to inspect
+     * @return a count from 0 (fully blocked) to 16 (fully walkable)
+     */
+    private int walkableMiniTiles(TilePosition tp) {
         WalkPosition wp = tp.toWalkPosition();
+        int count = 0;
         for (int x = 0; x < 4; x++) {
             for (int y = 0; y < 4; y++) {
-                if (!game.isWalkable(wp.add(new WalkPosition(x, y)))) {
-                    return false;
+                if (game.isWalkable(wp.add(new WalkPosition(x, y)))) {
+                    count++;
                 }
             }
         }
 
-        return true;
-    }
-
-    // Iterates over all walk positions in a tile
-    private boolean isBuildable(TilePosition tp) {
-        if (!this.isWalkable(tp)) {
-            return false;
-        }
-        return game.isBuildable(tp);
+        return count;
     }
 
     private void ageHeatMap() {
