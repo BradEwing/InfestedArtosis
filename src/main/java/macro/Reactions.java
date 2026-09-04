@@ -63,7 +63,9 @@ public class Reactions {
 
     private static final Time EARLY_RUSH_WINDOW = new Time(5, 0);
     private static final Time EARLY_RUSH_HARD_DEADLINE = new Time(8, 0);
-    private static final int EARLY_RUSH_SAFE_ZERGLINGS = 12;
+    static final int EARLY_RUSH_SAFE_ZERGLINGS = 12;
+    static final int EARLY_RUSH_DRONE_FLOOR = 8;
+    static final int EARLY_RUSH_CUT_ZERGLINGS = 8;
 
     private GameState gameState;
 
@@ -125,9 +127,9 @@ public class Reactions {
         }
 
         int attackersAtBase = gameState.visibleEnemyMobileGroundCombatUnitsAtOurBases();
-        int zerglingCount = gameState.ourUnitCount(UnitType.Zerg_Zergling);
+        int zerglingCount = gameState.ourLivingUnitCount(UnitType.Zerg_Zergling);
         boolean withinRushWindow = gameState.getGameTime().lessThanOrEqual(EARLY_RUSH_WINDOW);
-        boolean preparing = withinRushWindow && zerglingCount < EARLY_RUSH_SAFE_ZERGLINGS;
+        boolean preparing = isPreparingForEarlyRush(withinRushWindow, zerglingCount);
         if (attackersAtBase == 0 && !preparing) {
             gameState.setEarlyRushed(false);
             gameState.setEarlyRushDenyGas(false);
@@ -158,12 +160,43 @@ public class Reactions {
             planSpeedUpgrade(productionQueue);
         }
 
-        int droneCount = gameState.ourUnitCount(UnitType.Zerg_Drone);
-        if (droneCount >= 8 && zerglingCount < 8) {
+        int droneCount = gameState.ourLivingUnitCount(UnitType.Zerg_Drone);
+        if (shouldCutDrones(droneCount, zerglingCount)) {
             productionQueue.removeWhere(IS_DRONE, PlanCancelSource.REACTION_EARLY_RUSH_DRONE, gameState::setImpossiblePlan);
         }
 
         allowSunkenAtMainIfSingleBase(baseData);
+    }
+
+    /**
+     * Whether the bot is still short of the army an early rush demands, and so must stay in the
+     * reaction even with nothing standing in its bases.
+     * <p>
+     * Counts living zerglings. A queued zergling plan raises the planned count by two, so the
+     * forward looking count reports an army the bot cannot fight with yet, and a build order that
+     * keeps zergling plans queued holds this predicate false for the whole rush window.
+     *
+     * @param withinRushWindow whether the game is still inside the early rush window
+     * @param livingZerglings zerglings that have hatched
+     * @return true while the reaction should stay armed
+     */
+    static boolean isPreparingForEarlyRush(boolean withinRushWindow, int livingZerglings) {
+        return withinRushWindow && livingZerglings < EARLY_RUSH_SAFE_ZERGLINGS;
+    }
+
+    /**
+     * Whether queued drone plans should be dropped so larva goes to zerglings instead.
+     * <p>
+     * Both counts are living units. The drone floor is only a floor when it counts drones that
+     * exist, and the zergling side asks what the bot can defend with now rather than what its
+     * queue will eventually hatch.
+     *
+     * @param livingDrones drones that have hatched
+     * @param livingZerglings zerglings that have hatched
+     * @return true when drone production should stop
+     */
+    static boolean shouldCutDrones(int livingDrones, int livingZerglings) {
+        return livingDrones >= EARLY_RUSH_DRONE_FLOOR && livingZerglings < EARLY_RUSH_CUT_ZERGLINGS;
     }
 
     /**
