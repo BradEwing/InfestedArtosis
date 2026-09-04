@@ -2,6 +2,7 @@ package strategy.buildorder;
 
 import bwapi.UnitType;
 import info.TechProgression;
+import info.UnitTypeCount;
 import macro.AdvancedUnitEligibility;
 import macro.plan.Plan;
 import macro.plan.PlanBlocker;
@@ -21,6 +22,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class BuildOrderTest {
 
     private static final int GATHERER_FLOOR = AdvancedUnitEligibility.MIN_GATHERERS;
+
+    private static final int EMERGENCY_ZERGLING_TARGET = 6;
+
+    private static final int FRAMES = 30;
 
     private final List<String> withheld = new ArrayList<>();
 
@@ -79,5 +84,36 @@ class BuildOrderTest {
 
         assertTrue(BuildOrder.canPlanAdvancedUnit(UnitType.Zerg_Mutalisk, withSpire(), GATHERER_FLOOR));
         assertTrue(withheld.isEmpty());
+    }
+
+    private int emergencyZerglingPlansOverFrames(boolean readLivingOnly) {
+        UnitTypeCount count = new UnitTypeCount();
+        int plans = 0;
+        for (int frame = 0; frame < FRAMES; frame++) {
+            int zerglings = readLivingOnly
+                    ? count.livingCount(UnitType.Zerg_Zergling)
+                    : count.get(UnitType.Zerg_Zergling);
+            if (BuildOrder.shouldPlanEmergencyZergling(zerglings, EMERGENCY_ZERGLING_TARGET)) {
+                count.planUnit(UnitType.Zerg_Zergling);
+                plans++;
+            }
+        }
+        return plans;
+    }
+
+    @Test
+    void theEmergencyQueuesOnePlanPerPairAndThenStops() {
+        assertEquals(EMERGENCY_ZERGLING_TARGET / 2, emergencyZerglingPlansOverFrames(false));
+    }
+
+    @Test
+    void theEmergencyWouldFloodTheQueueIfItCountedOnlyHatchedZerglings() {
+        assertEquals(FRAMES, emergencyZerglingPlansOverFrames(true));
+    }
+
+    @Test
+    void theEmergencyStopsAtTheTargetItIsGiven() {
+        assertFalse(BuildOrder.shouldPlanEmergencyZergling(EMERGENCY_ZERGLING_TARGET, EMERGENCY_ZERGLING_TARGET));
+        assertTrue(BuildOrder.shouldPlanEmergencyZergling(EMERGENCY_ZERGLING_TARGET - 1, EMERGENCY_ZERGLING_TARGET));
     }
 }

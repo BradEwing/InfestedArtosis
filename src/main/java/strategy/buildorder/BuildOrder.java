@@ -162,6 +162,24 @@ public abstract class BuildOrder {
     }
 
     /**
+     * Whether the emergency owes another zergling plan.
+     * <p>
+     * committedZerglings is living plus planned, not living alone. This runs on every frame that
+     * the bot is rushed, so a plan that has already left the queue for an egg has to count: reading
+     * living units would queue a fresh zergling every frame until the first egg hatched. The
+     * planned count moves in twos because one plan hatches a pair, which is the number a target for
+     * future zerglings wants. The guards that ask what the bot can fight with now read living
+     * units instead.
+     *
+     * @param committedZerglings zerglings alive or already planned
+     * @param zerglingTarget zerglings the emergency demands
+     * @return true when one more zergling plan should be queued
+     */
+    static boolean shouldPlanEmergencyZergling(int committedZerglings, int zerglingTarget) {
+        return committedZerglings < zerglingTarget;
+    }
+
+    /**
      * Emergency defense reachable from every build order, including openers that
      * never plan static defense. 
      * Returned plans carry reservations (sunken base, build tiles, planned unit counts) and
@@ -179,7 +197,7 @@ public abstract class BuildOrder {
         }
         int zerglingTarget = Math.max(this.zerglingsNeeded(gameState), earlyRushZerglings(gameState));
         int zerglingCount = gameState.ourUnitCount(UnitType.Zerg_Zergling);
-        if (zerglingCount < zerglingTarget && gameState.canPlanUnit(UnitType.Zerg_Zergling)) {
+        if (shouldPlanEmergencyZergling(zerglingCount, zerglingTarget) && gameState.canPlanUnit(UnitType.Zerg_Zergling)) {
             Plan zerglingPlan = this.planUnit(gameState, UnitType.Zerg_Zergling);
             zerglingPlan.setPriority(EMERGENCY_DEFENSE_PRIORITY);
             plans.add(zerglingPlan);
