@@ -32,12 +32,15 @@ import java.util.Set;
 public class HorizonCombatSimulator implements CombatSimulator {
 
     private static final double MAX_ENGAGEMENT_RADIUS = 320;
-    private static final double NEARBY_THREAT_RADIUS = 512;
+    private static final double MIDDLE_HORIZON_RADIUS = 480;
+    private static final double OUTER_HORIZON_RADIUS = 640;
+    private static final double NEARBY_THREAT_RADIUS = OUTER_HORIZON_RADIUS + 192;
     private static final double APPROACH_BUFFER = 64;
     private static final double WORKER_STRENGTH_DIVISOR = 10.0;
     private static final double HEIGHT_BONUS = 1.15;
     private static final Time RECENTLY_SEEN_THRESHOLD = new Time(0, 5);
     private static final Time BUILDING_SEEN_THRESHOLD = new Time(0, 45);
+    private static final Time MAX_TIME_TO_CONTACT = new Time(0, 10);
     private static final double DEFAULT_ENGAGE_THRESHOLD = 1.0;
     private static final double DEFAULT_RETREAT_THRESHOLD = 0.7;
     private static final double MIN_ENEMY_STRENGTH = 0.01;
@@ -110,39 +113,25 @@ public class HorizonCombatSimulator implements CombatSimulator {
         for (ObservedUnit ou : tracker.getLivingObservedUnits()) {
             UnitType type = ou.getUnitType();
             boolean visible = ou.getUnit().isVisible();
+            boolean fresh = true;
             if (!visible) {
                 int framesSinceObserved = currentFrame - ou.getLastObservedFrame().getFrames();
-                if (framesSinceObserved > freshnessThreshold(type)) continue;
+                fresh = framesSinceObserved <= freshnessThreshold(type);
             }
 
             Position pos = visible ? ou.getUnit().getPosition() : ou.getLastKnownLocation();
             if (pos == null) continue;
             double dist = squadCenter.getDistance(pos);
             double radius = engagementRadius(type);
-            if (dist > radius) {
-                if (isThreatBeyondRadius(type, dist, radius)) {
-                    snapshot.setThreatBeyondRadius(true);
-                }
-                continue;
-            }
-
-            if (!type.isBuilding() && !type.isWorker()) {
-                if (!type.isFlyer()) {
-                    engagedGroundEnemies.add(pos);
-                }
-                if (visible && type.canAttack()) {
-                    if (type.isFlyer()) {
-                        coveredAirThreats.add(pos);
-                    } else {
-                        coveredGroundThreats.add(pos);
-                    }
-                }
+            double evaluationRadius = enemyEvaluationRadius(type, radius);
+            boolean included = fresh && dist <= evaluationRadius;
+            if (fresh && !included && isThreatBeyondRadius(type, dist, evaluationRadius)) {
+                snapshot.setThreatBeyondRadius(true);
             }
 
             if (type.isBuilding() && !ou.isCompleted()) continue;
             double hpWeight = hpWeighting(ou.getLastKnownHitPoints(), ou.getLastKnownShields(),
                     type.maxHitPoints(), type.maxShields());
-            double distWeight = type.isBuilding() ? 1.0 : distanceWeight(dist);
             double heightMod = 1.0;
             if (!type.isFlyer() && isRanged(type) && ou.getLastKnownGroundHeight() > 0) {
                 heightMod = HEIGHT_BONUS;
@@ -163,12 +152,34 @@ public class HorizonCombatSimulator implements CombatSimulator {
             groundBase *= weightedEffectiveness(groundDamageType(type), friendlySizeProportions);
             antiAirBase *= weightedEffectiveness(airDamageType(type), friendlySizeProportions);
 
+            double unweightedGroundStr = groundBase * hpWeight * heightMod;
+            double unweightedAaStr = antiAirBase * hpWeight * heightMod;
+            if (!included) {
+                snapshot.addExcludedEnemyStrength(dist, airSquad ? unweightedAaStr : unweightedGroundStr);
+                continue;
+            }
+
+            if (!type.isBuilding() && !type.isWorker()) {
+                if (!type.isFlyer()) {
+                    engagedGroundEnemies.add(pos);
+                }
+                if (visible && type.canAttack()) {
+                    if (type.isFlyer()) {
+                        coveredAirThreats.add(pos);
+                    } else {
+                        coveredGroundThreats.add(pos);
+                    }
+                }
+            }
+
+            double distWeight = type.isBuilding() ? 1.0 : enemyDistanceWeight(type, dist, radius);
             double groundEnemyStr = groundBase * hpWeight * distWeight * heightMod;
             double aaEnemyStr = antiAirBase * hpWeight * distWeight * heightMod;
             enemyGroundStr += groundEnemyStr;
             enemyAntiAirStr += aaEnemyStr;
 
             double displayStr = airSquad ? aaEnemyStr : groundEnemyStr;
+            snapshot.addEnemyStrength(dist, displayStr);
             snapshot.getEnemyUnits().add(new UnitDebugEntry(pos, type, displayStr, false, !visible));
         }
 
@@ -360,7 +371,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
         return RECENTLY_SEEN_THRESHOLD.getFrames();
     }
 
-    private boolean isPositionalUnit(UnitType type) {
+    private static boolean isPositionalUnit(UnitType type) {
         return type.isBuilding()
                 || type == UnitType.Terran_Siege_Tank_Siege_Mode
                 || type == UnitType.Zerg_Lurker;
@@ -452,16 +463,31 @@ public class HorizonCombatSimulator implements CombatSimulator {
         return Math.max(MAX_ENGAGEMENT_RADIUS, Math.max(groundRange, airRange) + APPROACH_BUFFER);
     }
 
+    static double enemyEvaluationRadius(UnitType type, double engagementRadius) {
+        return isPositionalUnit(type) ? engagementRadius : OUTER_HORIZON_RADIUS;
+    }
+
     private double hpWeighting(int hp, int shields, int maxHp, int maxShields) {
         int denominator = 3 * maxHp + maxShields;
         if (denominator == 0) return 1.0;
         return (double) (3 * hp + shields) / denominator;
     }
 
-    private double distanceWeight(double distance) {
+    private static double distanceWeight(double distance) {
         if (distance <= 256) return 1.0;
         if (distance <= 512) return 1.0 - 0.5 * (distance - 256) / 256;
         return 0;
+    }
+
+    static double enemyDistanceWeight(UnitType type, double distance, double engagementRadius) {
+        if (distance <= engagementRadius) {
+            return distanceWeight(Math.min(distance, MAX_ENGAGEMENT_RADIUS));
+        }
+        if (distance > enemyEvaluationRadius(type, engagementRadius) || type.topSpeed() <= 0) return 0;
+        double framesToContact = (distance - engagementRadius) / type.topSpeed();
+        double contactWeight = 1.0 - framesToContact / MAX_TIME_TO_CONTACT.getFrames();
+        return distanceWeight(Math.min(engagementRadius, MAX_ENGAGEMENT_RADIUS))
+                * Math.max(0, contactWeight);
     }
 
     private boolean isRanged(UnitType type) {
@@ -568,6 +594,13 @@ public class HorizonCombatSimulator implements CombatSimulator {
         private final List<UnitDebugEntry> enemyUnits = new ArrayList<>();
         private double friendlyTotal;
         private double enemyTotal;
+        private double enemyStrengthInner;
+        private double enemyStrengthMiddle;
+        private double enemyStrengthOuter;
+        private double excludedEnemyStrengthInner;
+        private double excludedEnemyStrengthMiddle;
+        private double excludedEnemyStrengthOuter;
+        private double excludedEnemyStrengthBeyond;
         private double groundRatio;
         private double combinedRatio;
         private double overallRatio;
@@ -577,5 +610,27 @@ public class HorizonCombatSimulator implements CombatSimulator {
         private CombatResult result;
         private boolean enemyMeasured;
         private boolean threatBeyondRadius;
+
+        void addEnemyStrength(double distance, double strength) {
+            if (distance <= MAX_ENGAGEMENT_RADIUS) {
+                enemyStrengthInner += strength;
+            } else if (distance <= MIDDLE_HORIZON_RADIUS) {
+                enemyStrengthMiddle += strength;
+            } else {
+                enemyStrengthOuter += strength;
+            }
+        }
+
+        void addExcludedEnemyStrength(double distance, double strength) {
+            if (distance <= MAX_ENGAGEMENT_RADIUS) {
+                excludedEnemyStrengthInner += strength;
+            } else if (distance <= MIDDLE_HORIZON_RADIUS) {
+                excludedEnemyStrengthMiddle += strength;
+            } else if (distance <= OUTER_HORIZON_RADIUS) {
+                excludedEnemyStrengthOuter += strength;
+            } else {
+                excludedEnemyStrengthBeyond += strength;
+            }
+        }
     }
 }

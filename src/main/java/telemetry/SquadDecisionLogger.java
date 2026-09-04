@@ -36,7 +36,11 @@ public class SquadDecisionLogger implements SquadDecisionSink {
 
     static final String HEADER = "game_id,frame,squad_id,squad_type,event,old_status,new_status,sim_result,"
             + "suppressed_by,our_supply_real,squad_size,enemy_supply_believed_real,enemy_scouted,sim_our_strength,"
-            + "sim_enemy_strength,sim_ratio,sim_engage_threshold,retreat_locked,fight_locked,"
+            + "sim_enemy_strength,sim_enemy_strength_0_320,sim_enemy_strength_321_480,"
+            + "sim_enemy_strength_481_640,sim_enemy_strength_excluded_0_320,"
+            + "sim_enemy_strength_excluded_321_480,sim_enemy_strength_excluded_481_640,"
+            + "sim_enemy_strength_excluded_gt_640,sim_ratio,sim_engage_threshold,"
+            + "retreat_locked,fight_locked,"
             + "retreat_lock_until_frame,fight_lock_until_frame,committed,commit_frame,should_contain,"
             + "can_break_containment,containment_entered,centroid_x,centroid_y,ground_distance_to_base";
 
@@ -229,6 +233,13 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         decision.setSimSampled(true);
         decision.setOurStrength(snapshot.getFriendlyTotal());
         decision.setEnemyStrength(snapshot.getEnemyTotal());
+        decision.setEnemyStrengthInner(snapshot.getEnemyStrengthInner());
+        decision.setEnemyStrengthMiddle(snapshot.getEnemyStrengthMiddle());
+        decision.setEnemyStrengthOuter(snapshot.getEnemyStrengthOuter());
+        decision.setExcludedEnemyStrengthInner(snapshot.getExcludedEnemyStrengthInner());
+        decision.setExcludedEnemyStrengthMiddle(snapshot.getExcludedEnemyStrengthMiddle());
+        decision.setExcludedEnemyStrengthOuter(snapshot.getExcludedEnemyStrengthOuter());
+        decision.setExcludedEnemyStrengthBeyond(snapshot.getExcludedEnemyStrengthBeyond());
         decision.setRatio(snapshot.getOverallRatio());
         decision.setEngageThreshold(snapshot.getEngageThreshold());
         decision.setEnemySupplyBelieved(believedEnemySupply(snapshot));
@@ -319,6 +330,13 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         fields.add(String.valueOf(SquadDecision.tristate(enemyScouted)));
         fields.add(Csv.format(context.getOurStrength()));
         fields.add(Csv.format(context.getEnemyStrength()));
+        fields.add(Csv.format(context.getEnemyStrengthInner()));
+        fields.add(Csv.format(context.getEnemyStrengthMiddle()));
+        fields.add(Csv.format(context.getEnemyStrengthOuter()));
+        fields.add(Csv.format(context.getExcludedEnemyStrengthInner()));
+        fields.add(Csv.format(context.getExcludedEnemyStrengthMiddle()));
+        fields.add(Csv.format(context.getExcludedEnemyStrengthOuter()));
+        fields.add(Csv.format(context.getExcludedEnemyStrengthBeyond()));
         fields.add(Csv.format(context.getRatio()));
         fields.add(Csv.format(context.getEngageThreshold()));
         fields.add(String.valueOf(SquadDecision.tristate(context.isRetreatLocked())));

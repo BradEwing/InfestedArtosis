@@ -136,38 +136,92 @@ class HorizonCombatSimulatorTest {
     }
 
     @Test
-    void attackerJustBeyondRadiusIsAThreatBeyondRadius() {
-        assertTrue(HorizonCombatSimulator.isThreatBeyondRadius(UnitType.Protoss_Zealot, 400, 320));
+    void attackerJustBeyondEvaluationRadiusIsAThreatBeyondRadius() {
+        assertTrue(HorizonCombatSimulator.isThreatBeyondRadius(UnitType.Protoss_Zealot, 700, 640));
     }
 
     @Test
-    void attackerInsideRadiusIsMeasuredInsteadOfBeyond() {
-        assertFalse(HorizonCombatSimulator.isThreatBeyondRadius(UnitType.Protoss_Zealot, 300, 320));
+    void attackerInsideEvaluationRadiusIsMeasuredInsteadOfBeyond() {
+        assertFalse(HorizonCombatSimulator.isThreatBeyondRadius(UnitType.Protoss_Zealot, 600, 640));
     }
 
     @Test
     void attackerPastTheNearbyThreatRadiusIsNotBeyondRadius() {
-        assertFalse(HorizonCombatSimulator.isThreatBeyondRadius(UnitType.Protoss_Zealot, 600, 320));
+        assertFalse(HorizonCombatSimulator.isThreatBeyondRadius(UnitType.Protoss_Zealot, 900, 640));
     }
 
     @Test
     void workerJustBeyondRadiusIsNotAThreatBeyondRadius() {
-        assertFalse(HorizonCombatSimulator.isThreatBeyondRadius(UnitType.Protoss_Probe, 400, 320));
+        assertFalse(HorizonCombatSimulator.isThreatBeyondRadius(UnitType.Protoss_Probe, 700, 640));
     }
 
     @Test
     void nonAttackerJustBeyondRadiusIsNotAThreatBeyondRadius() {
-        assertFalse(HorizonCombatSimulator.isThreatBeyondRadius(UnitType.Zerg_Overlord, 400, 320));
+        assertFalse(HorizonCombatSimulator.isThreatBeyondRadius(UnitType.Zerg_Overlord, 700, 640));
     }
 
     @Test
     void attackerAtTheNearbyThreatRadiusIsAThreatBeyondRadius() {
-        assertTrue(HorizonCombatSimulator.isThreatBeyondRadius(UnitType.Terran_Marine, 512, 320));
+        assertTrue(HorizonCombatSimulator.isThreatBeyondRadius(UnitType.Terran_Marine, 832, 640));
     }
 
     @Test
-    void attackerAtItsOwnEngagementRadiusIsNotBeyondRadius() {
-        assertFalse(HorizonCombatSimulator.isThreatBeyondRadius(UnitType.Protoss_Zealot, 320, 320));
+    void attackerAtTheEvaluationRadiusIsNotBeyondRadius() {
+        assertFalse(HorizonCombatSimulator.isThreatBeyondRadius(UnitType.Protoss_Zealot, 640, 640));
+    }
+
+    @Test
+    void mobileEnemiesAreEvaluatedThroughTheOuterBand() {
+        assertEquals(640, HorizonCombatSimulator.enemyEvaluationRadius(UnitType.Protoss_Zealot, 320));
+    }
+
+    @Test
+    void positionalEnemiesKeepTheirRangeBasedEvaluationRadius() {
+        assertEquals(448, HorizonCombatSimulator.enemyEvaluationRadius(
+                UnitType.Terran_Siege_Tank_Siege_Mode, 448));
+    }
+
+    @Test
+    void enemyInsideTheOuterBandContributesByTimeToContact() {
+        double weight = HorizonCombatSimulator.enemyDistanceWeight(UnitType.Protoss_Zealot, 600, 320);
+
+        assertTrue(weight > 0);
+        assertTrue(weight < HorizonCombatSimulator.enemyDistanceWeight(UnitType.Protoss_Zealot, 320, 320));
+    }
+
+    @Test
+    void fasterEnemyAtTheSameDistanceContributesMore() {
+        double zerglingWeight = HorizonCombatSimulator.enemyDistanceWeight(UnitType.Zerg_Zergling, 600, 320);
+        double zealotWeight = HorizonCombatSimulator.enemyDistanceWeight(UnitType.Protoss_Zealot, 600, 320);
+
+        assertTrue(UnitType.Zerg_Zergling.topSpeed() > UnitType.Protoss_Zealot.topSpeed());
+        assertTrue(zerglingWeight > zealotWeight);
+    }
+
+    @Test
+    void enemyBeyondTheOuterBandContributesNothing() {
+        assertEquals(0, HorizonCombatSimulator.enemyDistanceWeight(UnitType.Protoss_Zealot, 641, 320));
+    }
+
+    @Test
+    void snapshotAttributesEnemyStrengthToEachDistanceBand() {
+        HorizonCombatSimulator.DebugSnapshot snapshot = new HorizonCombatSimulator.DebugSnapshot();
+
+        snapshot.addEnemyStrength(320, 1);
+        snapshot.addEnemyStrength(480, 2);
+        snapshot.addEnemyStrength(640, 3);
+        snapshot.addExcludedEnemyStrength(200, 4);
+        snapshot.addExcludedEnemyStrength(400, 5);
+        snapshot.addExcludedEnemyStrength(600, 6);
+        snapshot.addExcludedEnemyStrength(800, 7);
+
+        assertEquals(1, snapshot.getEnemyStrengthInner());
+        assertEquals(2, snapshot.getEnemyStrengthMiddle());
+        assertEquals(3, snapshot.getEnemyStrengthOuter());
+        assertEquals(4, snapshot.getExcludedEnemyStrengthInner());
+        assertEquals(5, snapshot.getExcludedEnemyStrengthMiddle());
+        assertEquals(6, snapshot.getExcludedEnemyStrengthOuter());
+        assertEquals(7, snapshot.getExcludedEnemyStrengthBeyond());
     }
 
     @Test
