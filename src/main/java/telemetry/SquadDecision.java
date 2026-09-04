@@ -24,6 +24,13 @@ final class SquadDecision {
 
     private double ourStrength = NOT_EVALUATED;
     private double enemyStrength = NOT_EVALUATED;
+    private double enemyStrengthInner = NOT_EVALUATED;
+    private double enemyStrengthMiddle = NOT_EVALUATED;
+    private double enemyStrengthOuter = NOT_EVALUATED;
+    private double excludedEnemyStrengthInner = NOT_EVALUATED;
+    private double excludedEnemyStrengthMiddle = NOT_EVALUATED;
+    private double excludedEnemyStrengthOuter = NOT_EVALUATED;
+    private double excludedEnemyStrengthBeyond = NOT_EVALUATED;
     private double ratio = NOT_EVALUATED;
     private double engageThreshold = NOT_EVALUATED;
     private int enemySupplyBelieved = NOT_EVALUATED;

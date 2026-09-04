@@ -137,8 +137,8 @@ class SquadDecisionsTest {
 
     @Test
     void commitmentColumnsHoldFixedPositionsAfterTheLockColumns() {
-        assertEquals(21, columnIndex("committed"));
-        assertEquals(22, columnIndex("commit_frame"));
+        assertEquals(28, columnIndex("committed"));
+        assertEquals(29, columnIndex("commit_frame"));
 
         assertEquals(columnIndex("fight_lock_until_frame") + 1, columnIndex("committed"));
         assertEquals(columnIndex("commit_frame") + 1, columnIndex("should_contain"));
@@ -149,6 +149,42 @@ class SquadDecisionsTest {
         String[] fields = rowFor(new GroundSquad());
 
         assertEquals(SquadDecisionLogger.HEADER.split(",", -1).length, fields.length);
+    }
+
+    @Test
+    void unevaluatedBandStrengthsUseTheNegativeOneSentinel() {
+        String[] fields = rowFor(new GroundSquad());
+
+        assertEquals("-1.0000", fields[columnIndex("sim_enemy_strength_0_320")]);
+        assertEquals("-1.0000", fields[columnIndex("sim_enemy_strength_321_480")]);
+        assertEquals("-1.0000", fields[columnIndex("sim_enemy_strength_481_640")]);
+        assertEquals("-1.0000", fields[columnIndex("sim_enemy_strength_excluded_0_320")]);
+        assertEquals("-1.0000", fields[columnIndex("sim_enemy_strength_excluded_321_480")]);
+        assertEquals("-1.0000", fields[columnIndex("sim_enemy_strength_excluded_481_640")]);
+        assertEquals("-1.0000", fields[columnIndex("sim_enemy_strength_excluded_gt_640")]);
+    }
+
+    @Test
+    void computedEmptyBandsRemainDistinctFromUnevaluatedBands() {
+        SquadDecision context = new SquadDecision();
+        context.setEnemyStrengthInner(0);
+        context.setEnemyStrengthMiddle(0);
+        context.setEnemyStrengthOuter(0);
+        context.setExcludedEnemyStrengthInner(0);
+        context.setExcludedEnemyStrengthMiddle(0);
+        context.setExcludedEnemyStrengthOuter(0);
+        context.setExcludedEnemyStrengthBeyond(0);
+        List<String> fields = SquadDecisionLogger.squadCells(new GroundSquad(), context, false, -1);
+        int identityColumns = SquadDecisionLogger.identityCells("game-1", 1000, new GroundSquad(),
+                "STATUS_CHANGE", SquadStatus.RETREAT, SquadStatus.FIGHT, context, "NONE").size();
+
+        assertEquals("0.0000", fields.get(columnIndex("sim_enemy_strength_0_320") - identityColumns));
+        assertEquals("0.0000", fields.get(columnIndex("sim_enemy_strength_321_480") - identityColumns));
+        assertEquals("0.0000", fields.get(columnIndex("sim_enemy_strength_481_640") - identityColumns));
+        assertEquals("0.0000", fields.get(columnIndex("sim_enemy_strength_excluded_0_320") - identityColumns));
+        assertEquals("0.0000", fields.get(columnIndex("sim_enemy_strength_excluded_321_480") - identityColumns));
+        assertEquals("0.0000", fields.get(columnIndex("sim_enemy_strength_excluded_481_640") - identityColumns));
+        assertEquals("0.0000", fields.get(columnIndex("sim_enemy_strength_excluded_gt_640") - identityColumns));
     }
 
     @Test
