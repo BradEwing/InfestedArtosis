@@ -110,6 +110,13 @@ public class UnitManager {
         squadManager.updateDefenseSquads();
         scoutManager.onFrame();
 
+        for (ManagedUnit managedUnit : scoutManager.drainRecalledOverlords()) {
+            scoutManager.removeScout(managedUnit);
+            managedUnit.setRole(UnitRole.RALLY);
+            managedUnit.setRallyPoint(gameState.getBaseData().mainBasePosition().toPosition());
+            squadManager.addManagedUnit(managedUnit);
+        }
+
         Set<ManagedUnit> disbandedSquadUnits = squadManager.getDisbandedUnits();
         if (!disbandedSquadUnits.isEmpty()) {
             for (ManagedUnit managedUnit: disbandedSquadUnits) {
@@ -138,6 +145,7 @@ public class UnitManager {
                 case RALLY:
                 case FIGHT:
                 case CONTAIN:
+                case PERCH:
                     managedUnit.execute();
                     continue;
                 default:
@@ -388,6 +396,9 @@ public class UnitManager {
 
             if (shouldStopScouting) {
                 if (managedUnit.getUnitType() == UnitType.Zerg_Overlord) {
+                    if (scoutManager.tryPerch(managedUnit)) {
+                        return;
+                    }
                     managedUnit.setRole(UnitRole.IDLE);
                 } else {
                     managedUnit.setRole(UnitRole.RALLY);

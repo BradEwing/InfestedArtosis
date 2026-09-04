@@ -580,6 +580,10 @@ public class Debug {
             game.drawLineMap(unitPosition, movementPos, Color.White);
         }
 
+        if (managedUnit.getPerchPosition() != null) {
+            game.drawLineMap(unitPosition, managedUnit.getPerchPosition(), Color.Cyan);
+        }
+
         if (managedUnit.retreatTarget != null) {
             game.drawLineMap(unitPosition, managedUnit.retreatTarget, Color.Purple);
         }

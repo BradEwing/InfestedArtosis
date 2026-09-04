@@ -12,12 +12,15 @@ import info.GameState;
 import info.InformationManager;
 import info.ScoutData;
 import info.map.GameMap;
+import info.map.MapTile;
 import info.map.ScoutPath;
 import unit.managed.ManagedUnit;
 import unit.managed.UnitRole;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -36,6 +39,8 @@ public class ScoutManager {
 
     private ScoutPath enemyMainScoutPath;
 
+    private List<ManagedUnit> recalledOverlords = new ArrayList<>();
+
     public ScoutManager(Game game, GameState gameState, InformationManager informationManager) {
         this.game = game;
         this.gameState = gameState;
@@ -44,9 +49,96 @@ public class ScoutManager {
 
     public void onFrame() {
         for (ManagedUnit managedUnit: scouts) {
+            if (managedUnit.getRole() == UnitRole.PERCH) {
+                if (isPerchThreatened(managedUnit)) {
+                    recalledOverlords.add(managedUnit);
+                }
+                continue;
+            }
+
+            if (managedUnit.getUnitType() == UnitType.Zerg_Overlord && isEnemyBaseLocated()) {
+                if (tryPerch(managedUnit)) {
+                    continue;
+                }
+            }
+
             if (managedUnit.getMovementTargetPosition() == null) {
                 assignScoutMovementTarget(managedUnit);
             }
+        }
+    }
+
+    /**
+     * Drains and returns the overlords recalled off their perch this frame because an enemy
+     * unit came within threatening range.
+     */
+    public List<ManagedUnit> drainRecalledOverlords() {
+        List<ManagedUnit> drained = new ArrayList<>(recalledOverlords);
+        recalledOverlords.clear();
+        return drained;
+    }
+
+    private boolean isPerchThreatened(ManagedUnit overlord) {
+        Position overlordPosition = overlord.getPosition();
+        for (Unit enemy : gameState.getVisibleEnemyUnits()) {
+            double distance = enemy.getPosition().getDistance(overlordPosition);
+            if (PerchThreat.threatens(enemy.getType(), distance)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Attempts to move an overlord scout to a perch watching the best-known enemy location.
+     *
+     * @param overlord the overlord to perch
+     * @return true if a perch was found and assigned
+     */
+    public boolean tryPerch(ManagedUnit overlord) {
+        Position watchTarget = perchWatchTarget(overlord);
+        if (watchTarget == null) {
+            return false;
+        }
+
+        GameMap gameMap = gameState.getGameMap();
+        MapTile perch = gameMap.findPerchNear(watchTarget);
+        if (perch == null) {
+            return false;
+        }
+
+        releaseActiveScoutTarget(overlord);
+        overlord.setPerchPosition(perch.getTile().toPosition().add(new Position(16, 16)));
+        overlord.setMovementTargetPosition(null);
+        overlord.setRole(UnitRole.PERCH);
+        return true;
+    }
+
+    private Position perchWatchTarget(ManagedUnit overlord) {
+        BaseData baseData = gameState.getBaseData();
+        if (baseData.knowEnemyMainBase()) {
+            return baseData.getMainEnemyBase().getLocation().toPosition();
+        }
+
+        ScoutData scoutData = gameState.getScoutData();
+        HashSet<TilePosition> enemyBuildingPositions = scoutData.getEnemyBuildingPositions();
+        if (!enemyBuildingPositions.isEmpty()) {
+            return enemyBuildingPositions.iterator().next().toPosition();
+        }
+
+        TilePosition movementTarget = overlord.getMovementTargetPosition();
+        if (movementTarget != null) {
+            return movementTarget.toPosition();
+        }
+
+        return null;
+    }
+
+    private void releaseActiveScoutTarget(ManagedUnit managedUnit) {
+        TilePosition movementTarget = managedUnit.getMovementTargetPosition();
+        HashSet<TilePosition> activeScoutTargets = gameState.getScoutData().getActiveScoutTargets();
+        if (movementTarget != null && activeScoutTargets.contains(movementTarget)) {
+            activeScoutTargets.remove(movementTarget);
         }
     }
 
@@ -69,13 +161,9 @@ public class ScoutManager {
         if (managedUnit == null) {
             return;
         }
-        ScoutData scoutData = gameState.getScoutData();
 
-        TilePosition movementTarget = managedUnit.getMovementTargetPosition();
-        HashSet<TilePosition> activeScoutTargets =  scoutData.getActiveScoutTargets();
-        if (movementTarget != null && activeScoutTargets.contains(managedUnit.getMovementTargetPosition())) {
-            activeScoutTargets.remove(movementTarget);
-        }
+        releaseActiveScoutTarget(managedUnit);
+        managedUnit.setPerchPosition(null);
         scouts.remove(managedUnit);
         droneScouts.remove(managedUnit);
         zerglingScouts.remove(managedUnit);
@@ -293,7 +381,11 @@ public class ScoutManager {
         } else {
             target = gameState.pollScoutTarget();
         }
-        
+
+        if (managedUnit.getUnitType() == UnitType.Zerg_Overlord && isEnemyBaseLocated() && tryPerch(managedUnit)) {
+            return;
+        }
+
         if (target != null) {
             scoutData.setActiveScoutTarget(target);
             managedUnit.setMovementTargetPosition(target);
