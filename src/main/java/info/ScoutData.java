@@ -2,10 +2,12 @@ package info;
 
 import bwapi.Race;
 import bwapi.TilePosition;
-import bwapi.Unit;
+import bwapi.UnitType;
 import bwem.Base;
 import lombok.Getter;
+import util.Filter;
 
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Set;
@@ -54,64 +56,89 @@ public class ScoutData {
 
     /**
      * Determines if overlords should continue scouting based on if specific enemy units/buildings are detected.
+     *
+     * Against Terran, Protoss and an unknown race any visible air threat ends scouting. Against Zerg the
+     * overlord stays over the enemy base, since zerglings and drones cannot shoot up, until air or
+     * hydralisk tech or a unit that depends on it is seen.
      */
-    public boolean shouldOverlordsContinueScouting(Race enemyRace, Set<Unit> enemies) {
+    public boolean shouldOverlordsContinueScouting(Race enemyRace, Collection<UnitType> enemyTypes) {
         switch (enemyRace) {
             case Terran:
-                return !hasTerranScoutingConditions(enemies);
+                return !hasAirThreat(enemyTypes) && !hasTerranScoutingConditions(enemyTypes);
             case Protoss:
-                return !hasProtossScoutingConditions(enemies);
+                return !hasAirThreat(enemyTypes) && !hasProtossScoutingConditions(enemyTypes);
             case Zerg:
-                return !hasZergScoutingConditions(enemies);
+                return !hasZergScoutingConditions(enemyTypes);
             case Unknown:
-                return true;
+                return !hasAirThreat(enemyTypes);
             default:
                 return false;
         }
     }
 
-    private boolean hasTerranScoutingConditions(Set<Unit> enemies) {
-        for (Unit unit : enemies) {
-            if (unit.getType() == bwapi.UnitType.Terran_Marine) {
-                return true;
-            }
-            if (unit.getType() == bwapi.UnitType.Terran_Barracks) {
+    private boolean hasAirThreat(Collection<UnitType> enemyTypes) {
+        for (UnitType type : enemyTypes) {
+            if (Filter.isAirThreat(type)) {
                 return true;
             }
         }
         return false;
     }
 
-    private boolean hasProtossScoutingConditions(Set<Unit> enemies) {
-        for (Unit unit : enemies) {
-            if (unit.getType() == bwapi.UnitType.Protoss_Dragoon) {
+    private boolean hasTerranScoutingConditions(Collection<UnitType> enemyTypes) {
+        for (UnitType type : enemyTypes) {
+            if (type == UnitType.Terran_Marine) {
                 return true;
             }
-            if (unit.getType() == bwapi.UnitType.Protoss_Corsair) {
-                return true;
-            }
-            if (unit.getType() == bwapi.UnitType.Protoss_Cybernetics_Core) {
-                return true;
-            }
-            if (unit.getType() == bwapi.UnitType.Protoss_Stargate) {
-                return true;
-            }
-            if (unit.getType() == bwapi.UnitType.Protoss_Photon_Cannon) {
+            if (type == UnitType.Terran_Barracks) {
                 return true;
             }
         }
         return false;
     }
 
-    private boolean hasZergScoutingConditions(Set<Unit> enemies) {
-        for (Unit unit : enemies) {
-            if (unit.getType() == bwapi.UnitType.Zerg_Spire) {
+    private boolean hasProtossScoutingConditions(Collection<UnitType> enemyTypes) {
+        for (UnitType type : enemyTypes) {
+            if (type == UnitType.Protoss_Dragoon) {
                 return true;
             }
-            if (unit.getType() == bwapi.UnitType.Zerg_Mutalisk) {
+            if (type == UnitType.Protoss_Corsair) {
                 return true;
             }
-            if (unit.getType() == bwapi.UnitType.Zerg_Hydralisk) {
+            if (type == UnitType.Protoss_Cybernetics_Core) {
+                return true;
+            }
+            if (type == UnitType.Protoss_Stargate) {
+                return true;
+            }
+            if (type == UnitType.Protoss_Photon_Cannon) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean hasZergScoutingConditions(Collection<UnitType> enemyTypes) {
+        for (UnitType type : enemyTypes) {
+            if (type == UnitType.Zerg_Spire) {
+                return true;
+            }
+            if (type == UnitType.Zerg_Hydralisk_Den) {
+                return true;
+            }
+            if (type == UnitType.Zerg_Spore_Colony) {
+                return true;
+            }
+            if (type == UnitType.Zerg_Mutalisk) {
+                return true;
+            }
+            if (type == UnitType.Zerg_Scourge) {
+                return true;
+            }
+            if (type == UnitType.Zerg_Hydralisk) {
+                return true;
+            }
+            if (type == UnitType.Zerg_Lurker) {
                 return true;
             }
         }

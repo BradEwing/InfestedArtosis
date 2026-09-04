@@ -14,6 +14,9 @@ public class MapTile {
     private boolean isWalkable;
     @NonNull
     private MapTileType type;
+    private int groundHeight;
+    private boolean groundOccupiable;
+    private int groundDistance;
 
     public MapTile(TilePosition tile, int scoutImportance, boolean isBuildable, boolean isWalkable, MapTileType type) {
         this.tile = tile;
