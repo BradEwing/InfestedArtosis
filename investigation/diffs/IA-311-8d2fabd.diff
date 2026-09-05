@@ -1,0 +1,217 @@
+commit 8d2fabdd82ae9846f0b3105504f4a6f636b7d0f4
+Author: Brad Ewing <bradleywewing@gmail.com>
+Date:   Fri Sep 4 03:09:58 2026 -0700
+
+    feat(IA-311): add an effective hit point term to unit strength
+    
+    Scale every entry in the strength table by the square root of maximum hit
+    points plus shields, so a Zealot prices at 2.49 Zerglings instead of 1.16.
+    Drop the Ultralisk multiplier, which was standing in for the missing
+    durability term.
+
+diff --git a/src/main/java/unit/squad/horizon/UnitStrength.java b/src/main/java/unit/squad/horizon/UnitStrength.java
+index 62c7d52..27b8e3f 100644
+--- a/src/main/java/unit/squad/horizon/UnitStrength.java
++++ b/src/main/java/unit/squad/horizon/UnitStrength.java
+@@ -10,6 +10,14 @@ import java.util.Map;
+ 
+ public class UnitStrength {
+ 
++    /**
++     * Durability anchor for the effective hit point term, in hit points. Dividing by it before the
++     * square root leaves a light ground unit close to the value it carried before the term existed,
++     * so the absolute static defense entries below and the simulator's engage thresholds stay on
++     * the scale they were tuned against.
++     */
++    private static final double EHP_REFERENCE = 40.0;
++
+     private static final Map<UnitType, double[]> STRENGTH_TABLE = new HashMap<>();
+ 
+     static {
+@@ -33,13 +41,12 @@ public class UnitStrength {
+             }
+             if (type == UnitType.Zerg_Lurker) {
+                 g2g *= 2.5;
+-            } else if (type == UnitType.Zerg_Ultralisk) {
+-                g2g *= 2.0;
+             } else if (type == UnitType.Zerg_Mutalisk) {
+                 a2g *= 1.5;
+                 a2a *= 1.5;
+             }
+-            STRENGTH_TABLE.put(type, new double[]{g2g, g2a, a2g, a2a});
++            double ehp = effectiveHitPointFactor(type);
++            STRENGTH_TABLE.put(type, new double[]{g2g * ehp, g2a * ehp, a2g * ehp, a2a * ehp});
+         }
+ 
+         STRENGTH_TABLE.put(UnitType.Zerg_Sunken_Colony, new double[]{6, 0, 0, 0});
+@@ -56,6 +63,24 @@ public class UnitStrength {
+         return (double) weapon.damageAmount() * weapon.damageFactor() * maxHits / cooldown;
+     }
+ 
++    /**
++     * Durability multiplier for a unit type: the square root of its maximum hit points plus shields,
++     * relative to {@link #EHP_REFERENCE}.
++     *
++     * <p>Two forces trade evenly under Lanchester's square law when their sums of
++     * {@code sqrt(dps * effectiveHitPoints)} match, so durability belongs in a per-unit strength
++     * under a square root rather than as a straight product. The damage half is deliberately left
++     * linear: every correction the simulator layers on top of this table - attack upgrades, Adrenal
++     * Glands, the current-health weighting, the worker divisor - is linear in damage, and taking the
++     * root of that half as well would misprice all of them. Shields count towards the pool at face
++     * value because they must be removed before hit points can be.
++     */
++    private static double effectiveHitPointFactor(UnitType type) {
++        double effectiveHitPoints = type.maxHitPoints() + type.maxShields();
++        if (effectiveHitPoints <= 0) return 1.0;
++        return Math.sqrt(effectiveHitPoints / EHP_REFERENCE);
++    }
++
+     public static double groundToGround(UnitType type) {
+         double[] s = STRENGTH_TABLE.get(type);
+         return s != null ? s[0] : 0;
+diff --git a/src/test/java/unit/squad/horizon/UnitStrengthTest.java b/src/test/java/unit/squad/horizon/UnitStrengthTest.java
+new file mode 100644
+index 0000000..191b83f
+--- /dev/null
++++ b/src/test/java/unit/squad/horizon/UnitStrengthTest.java
+@@ -0,0 +1,140 @@
++package unit.squad.horizon;
++
++import bwapi.UnitType;
++import bwapi.WeaponType;
++import org.junit.jupiter.api.Test;
++import unit.squad.CombatSimulator;
++
++import static org.junit.jupiter.api.Assertions.assertEquals;
++import static org.junit.jupiter.api.Assertions.assertTrue;
++
++class UnitStrengthTest {
++
++    private static final double EPSILON = 1e-9;
++    private static final double PROTOSS_ENGAGE_THRESHOLD = 1.4;
++    private static final double[] ENGAGE_THRESHOLDS = {1.0, 1.3, 1.4};
++
++    /**
++     * The ground strength a type carried before the effective hit point term existed: weapon damage
++     * per frame scaled by the log-of-range factor, with no durability anywhere in it.
++     */
++    private static double damageOnlyStrength(UnitType type) {
++        WeaponType weapon = type.groundWeapon();
++        double dps = (double) weapon.damageAmount() * weapon.damageFactor() * type.maxGroundHits()
++                / weapon.damageCooldown();
++        return dps * Math.log(weapon.maxRange() / 4.0 + 16.0);
++    }
++
++    private static double effectiveHitPoints(UnitType type) {
++        return type.maxHitPoints() + type.maxShields();
++    }
++
++    private static double damageOnlyRatioToZergling(UnitType type) {
++        return damageOnlyStrength(type) / damageOnlyStrength(UnitType.Zerg_Zergling);
++    }
++
++    private static double durabilityRatioToZergling(UnitType type) {
++        return effectiveHitPoints(type) / effectiveHitPoints(UnitType.Zerg_Zergling);
++    }
++
++    private static double strengthRatioToZergling(UnitType type) {
++        return UnitStrength.groundToGround(type) / UnitStrength.groundToGround(UnitType.Zerg_Zergling);
++    }
++
++    @Test
++    void zealotOutweighsZerglingByItsDurabilityGap() {
++        double ratio = strengthRatioToZergling(UnitType.Protoss_Zealot);
++        double damageOnly = damageOnlyRatioToZergling(UnitType.Protoss_Zealot);
++        double durability = durabilityRatioToZergling(UnitType.Protoss_Zealot);
++
++        assertTrue(ratio > 2.0 * damageOnly,
++                "expected the Zealot to gain most of its durability advantage, got " + ratio);
++        assertTrue(ratio >= damageOnly * Math.sqrt(durability) - EPSILON,
++                "expected at least the root of the durability gap, got " + ratio);
++        assertTrue(ratio < damageOnly * durability,
++                "expected less than the full durability product, got " + ratio);
++    }
++
++    @Test
++    void dragoonOutweighsZerglingByItsDurabilityGap() {
++        double ratio = strengthRatioToZergling(UnitType.Protoss_Dragoon);
++        double damageOnly = damageOnlyRatioToZergling(UnitType.Protoss_Dragoon);
++
++        assertTrue(ratio > 2.0 * damageOnly,
++                "expected the Dragoon to gain most of its durability advantage, got " + ratio);
++    }
++
++    @Test
++    void zerglingMirrorRatiosAndVerdictsAreUnchanged() {
++        double before = damageOnlyStrength(UnitType.Zerg_Zergling);
++        double after = UnitStrength.groundToGround(UnitType.Zerg_Zergling);
++
++        for (int ours = 1; ours <= 12; ours++) {
++            for (int theirs = 1; theirs <= 12; theirs++) {
++                assertEquals((double) ours / theirs, ours * after / (theirs * after), EPSILON);
++                for (double threshold : ENGAGE_THRESHOLDS) {
++                    CombatSimulator.CombatResult expected = HorizonCombatSimulator.selectResult(
++                            ours * before, 0, theirs * before, 0, false, threshold);
++                    CombatSimulator.CombatResult actual = HorizonCombatSimulator.selectResult(
++                            ours * after, 0, theirs * after, 0, false, threshold);
++                    assertEquals(expected, actual,
++                            "mirror verdict moved at " + ours + " vs " + theirs + " at " + threshold);
++                }
++            }
++        }
++    }
++
++    @Test
++    void marineToZerglingRatioBarelyMoves() {
++        double moved = strengthRatioToZergling(UnitType.Terran_Marine)
++                / damageOnlyRatioToZergling(UnitType.Terran_Marine);
++
++        assertTrue(Math.abs(moved - 1.0) < 0.15,
++                "expected the Marine to move within variance, moved by " + (moved - 1.0));
++    }
++
++    @Test
++    void threeZerglingsNoLongerEngageALoneZealot() {
++        double zergling = UnitStrength.groundToGround(UnitType.Zerg_Zergling);
++        double zealot = UnitStrength.groundToGround(UnitType.Protoss_Zealot);
++
++        assertEquals(CombatSimulator.CombatResult.RETREAT, HorizonCombatSimulator.selectResult(
++                3 * zergling, 0, zealot, 0, false, PROTOSS_ENGAGE_THRESHOLD));
++        assertEquals(CombatSimulator.CombatResult.ENGAGE, HorizonCombatSimulator.selectResult(
++                4 * zergling, 0, zealot, 0, false, PROTOSS_ENGAGE_THRESHOLD));
++    }
++
++    @Test
++    void ultraliskNoLongerCarriesAHardcodedDurabilityMultiplier() {
++        UnitType ultralisk = UnitType.Zerg_Ultralisk;
++        double expected = damageOnlyRatioToZergling(ultralisk)
++                * Math.sqrt(durabilityRatioToZergling(ultralisk));
++
++        assertEquals(expected, strengthRatioToZergling(ultralisk), EPSILON);
++    }
++
++    @Test
++    void lurkerAndMutaliskKeepTheirDamageShapeMultipliers() {
++        UnitType lurker = UnitType.Zerg_Lurker;
++        double expectedLurker = 2.5 * damageOnlyRatioToZergling(lurker)
++                * Math.sqrt(durabilityRatioToZergling(lurker));
++        assertEquals(expectedLurker, strengthRatioToZergling(lurker), EPSILON);
++
++        UnitType mutalisk = UnitType.Zerg_Mutalisk;
++        double expectedMutalisk = 1.5 * damageOnlyRatioToZergling(mutalisk)
++                * Math.sqrt(durabilityRatioToZergling(mutalisk));
++        double actualMutalisk = UnitStrength.airToGround(mutalisk)
++                / UnitStrength.groundToGround(UnitType.Zerg_Zergling);
++        assertEquals(expectedMutalisk, actualMutalisk, EPSILON);
++    }
++
++    @Test
++    void staticDefenseOverridesKeepTheirZerglingEquivalence() {
++        double before = 6.0 / damageOnlyStrength(UnitType.Zerg_Zergling);
++        double after = UnitStrength.groundToGround(UnitType.Zerg_Sunken_Colony)
++                / UnitStrength.groundToGround(UnitType.Zerg_Zergling);
++
++        assertTrue(Math.abs(after / before - 1.0) < 0.10,
++                "expected the Sunken override to stay on its tuned scale, moved to " + after);
++    }
++}

@@ -1,0 +1,8 @@
+6e32a9d Merge remote-tracking branch 'origin/BradEwing/IA-281-sim-horizon' into BradEwing/batch-ia311-ia281
+d9f4355 feat(IA-281): evaluate approaching enemies before squad commit
+8d2fabd feat(IA-311): add an effective hit point term to unit strength
+aea84b3 release 0.63
+f6aafce fix(IA-309): count living zerglings in early rush guards (#466)
+539230c fix(IA-307): allow a main sunken while the natural is only reserved (#465)
+95df450 feat(IA-65): hold overlord scouts at a perch (#468)
+f9c91cc fix(IA-308): stop treating an unmeasured combat sim as permission to attack (#467)

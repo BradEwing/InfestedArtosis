@@ -1,0 +1,422 @@
+commit d9f4355e0bf6c831fa7cb8051681494ba0e826c1
+Author: Brad Ewing <bradleywewing@gmail.com>
+Date:   Fri Sep 4 03:10:59 2026 -0700
+
+    feat(IA-281): evaluate approaching enemies before squad commit
+
+diff --git a/src/main/java/telemetry/SquadDecision.java b/src/main/java/telemetry/SquadDecision.java
+index 57e26eb..ec236ae 100644
+--- a/src/main/java/telemetry/SquadDecision.java
++++ b/src/main/java/telemetry/SquadDecision.java
+@@ -24,6 +24,13 @@ final class SquadDecision {
+ 
+     private double ourStrength = NOT_EVALUATED;
+     private double enemyStrength = NOT_EVALUATED;
++    private double enemyStrengthInner = NOT_EVALUATED;
++    private double enemyStrengthMiddle = NOT_EVALUATED;
++    private double enemyStrengthOuter = NOT_EVALUATED;
++    private double excludedEnemyStrengthInner = NOT_EVALUATED;
++    private double excludedEnemyStrengthMiddle = NOT_EVALUATED;
++    private double excludedEnemyStrengthOuter = NOT_EVALUATED;
++    private double excludedEnemyStrengthBeyond = NOT_EVALUATED;
+     private double ratio = NOT_EVALUATED;
+     private double engageThreshold = NOT_EVALUATED;
+     private int enemySupplyBelieved = NOT_EVALUATED;
+diff --git a/src/main/java/telemetry/SquadDecisionLogger.java b/src/main/java/telemetry/SquadDecisionLogger.java
+index d478eb7..7b062a3 100644
+--- a/src/main/java/telemetry/SquadDecisionLogger.java
++++ b/src/main/java/telemetry/SquadDecisionLogger.java
+@@ -36,7 +36,11 @@ public class SquadDecisionLogger implements SquadDecisionSink {
+ 
+     static final String HEADER = "game_id,frame,squad_id,squad_type,event,old_status,new_status,sim_result,"
+             + "suppressed_by,our_supply_real,squad_size,enemy_supply_believed_real,enemy_scouted,sim_our_strength,"
+-            + "sim_enemy_strength,sim_ratio,sim_engage_threshold,retreat_locked,fight_locked,"
++            + "sim_enemy_strength,sim_enemy_strength_0_320,sim_enemy_strength_321_480,"
++            + "sim_enemy_strength_481_640,sim_enemy_strength_excluded_0_320,"
++            + "sim_enemy_strength_excluded_321_480,sim_enemy_strength_excluded_481_640,"
++            + "sim_enemy_strength_excluded_gt_640,sim_ratio,sim_engage_threshold,"
++            + "retreat_locked,fight_locked,"
+             + "retreat_lock_until_frame,fight_lock_until_frame,committed,commit_frame,should_contain,"
+             + "can_break_containment,containment_entered,centroid_x,centroid_y,ground_distance_to_base";
+ 
+@@ -229,6 +233,13 @@ public class SquadDecisionLogger implements SquadDecisionSink {
+         decision.setSimSampled(true);
+         decision.setOurStrength(snapshot.getFriendlyTotal());
+         decision.setEnemyStrength(snapshot.getEnemyTotal());
++        decision.setEnemyStrengthInner(snapshot.getEnemyStrengthInner());
++        decision.setEnemyStrengthMiddle(snapshot.getEnemyStrengthMiddle());
++        decision.setEnemyStrengthOuter(snapshot.getEnemyStrengthOuter());
++        decision.setExcludedEnemyStrengthInner(snapshot.getExcludedEnemyStrengthInner());
++        decision.setExcludedEnemyStrengthMiddle(snapshot.getExcludedEnemyStrengthMiddle());
++        decision.setExcludedEnemyStrengthOuter(snapshot.getExcludedEnemyStrengthOuter());
++        decision.setExcludedEnemyStrengthBeyond(snapshot.getExcludedEnemyStrengthBeyond());
+         decision.setRatio(snapshot.getOverallRatio());
+         decision.setEngageThreshold(snapshot.getEngageThreshold());
+         decision.setEnemySupplyBelieved(believedEnemySupply(snapshot));
+@@ -319,6 +330,13 @@ public class SquadDecisionLogger implements SquadDecisionSink {
+         fields.add(String.valueOf(SquadDecision.tristate(enemyScouted)));
+         fields.add(Csv.format(context.getOurStrength()));
+         fields.add(Csv.format(context.getEnemyStrength()));
++        fields.add(Csv.format(context.getEnemyStrengthInner()));
++        fields.add(Csv.format(context.getEnemyStrengthMiddle()));
++        fields.add(Csv.format(context.getEnemyStrengthOuter()));
++        fields.add(Csv.format(context.getExcludedEnemyStrengthInner()));
++        fields.add(Csv.format(context.getExcludedEnemyStrengthMiddle()));
++        fields.add(Csv.format(context.getExcludedEnemyStrengthOuter()));
++        fields.add(Csv.format(context.getExcludedEnemyStrengthBeyond()));
+         fields.add(Csv.format(context.getRatio()));
+         fields.add(Csv.format(context.getEngageThreshold()));
+         fields.add(String.valueOf(SquadDecision.tristate(context.isRetreatLocked())));
+diff --git a/src/main/java/unit/squad/horizon/HorizonCombatSimulator.java b/src/main/java/unit/squad/horizon/HorizonCombatSimulator.java
+index 4913d7c..67d83cd 100644
+--- a/src/main/java/unit/squad/horizon/HorizonCombatSimulator.java
++++ b/src/main/java/unit/squad/horizon/HorizonCombatSimulator.java
+@@ -32,12 +32,15 @@ import java.util.Set;
+ public class HorizonCombatSimulator implements CombatSimulator {
+ 
+     private static final double MAX_ENGAGEMENT_RADIUS = 320;
+-    private static final double NEARBY_THREAT_RADIUS = 512;
++    private static final double MIDDLE_HORIZON_RADIUS = 480;
++    private static final double OUTER_HORIZON_RADIUS = 640;
++    private static final double NEARBY_THREAT_RADIUS = OUTER_HORIZON_RADIUS + 192;
+     private static final double APPROACH_BUFFER = 64;
+     private static final double WORKER_STRENGTH_DIVISOR = 10.0;
+     private static final double HEIGHT_BONUS = 1.15;
+     private static final Time RECENTLY_SEEN_THRESHOLD = new Time(0, 5);
+     private static final Time BUILDING_SEEN_THRESHOLD = new Time(0, 45);
++    private static final Time MAX_TIME_TO_CONTACT = new Time(0, 10);
+     private static final double DEFAULT_ENGAGE_THRESHOLD = 1.0;
+     private static final double DEFAULT_RETREAT_THRESHOLD = 0.7;
+     private static final double MIN_ENEMY_STRENGTH = 0.01;
+@@ -110,39 +113,25 @@ public class HorizonCombatSimulator implements CombatSimulator {
+         for (ObservedUnit ou : tracker.getLivingObservedUnits()) {
+             UnitType type = ou.getUnitType();
+             boolean visible = ou.getUnit().isVisible();
++            boolean fresh = true;
+             if (!visible) {
+                 int framesSinceObserved = currentFrame - ou.getLastObservedFrame().getFrames();
+-                if (framesSinceObserved > freshnessThreshold(type)) continue;
++                fresh = framesSinceObserved <= freshnessThreshold(type);
+             }
+ 
+             Position pos = visible ? ou.getUnit().getPosition() : ou.getLastKnownLocation();
+             if (pos == null) continue;
+             double dist = squadCenter.getDistance(pos);
+             double radius = engagementRadius(type);
+-            if (dist > radius) {
+-                if (isThreatBeyondRadius(type, dist, radius)) {
+-                    snapshot.setThreatBeyondRadius(true);
+-                }
+-                continue;
+-            }
+-
+-            if (!type.isBuilding() && !type.isWorker()) {
+-                if (!type.isFlyer()) {
+-                    engagedGroundEnemies.add(pos);
+-                }
+-                if (visible && type.canAttack()) {
+-                    if (type.isFlyer()) {
+-                        coveredAirThreats.add(pos);
+-                    } else {
+-                        coveredGroundThreats.add(pos);
+-                    }
+-                }
++            double evaluationRadius = enemyEvaluationRadius(type, radius);
++            boolean included = fresh && dist <= evaluationRadius;
++            if (fresh && !included && isThreatBeyondRadius(type, dist, evaluationRadius)) {
++                snapshot.setThreatBeyondRadius(true);
+             }
+ 
+             if (type.isBuilding() && !ou.isCompleted()) continue;
+             double hpWeight = hpWeighting(ou.getLastKnownHitPoints(), ou.getLastKnownShields(),
+                     type.maxHitPoints(), type.maxShields());
+-            double distWeight = type.isBuilding() ? 1.0 : distanceWeight(dist);
+             double heightMod = 1.0;
+             if (!type.isFlyer() && isRanged(type) && ou.getLastKnownGroundHeight() > 0) {
+                 heightMod = HEIGHT_BONUS;
+@@ -163,12 +152,34 @@ public class HorizonCombatSimulator implements CombatSimulator {
+             groundBase *= weightedEffectiveness(groundDamageType(type), friendlySizeProportions);
+             antiAirBase *= weightedEffectiveness(airDamageType(type), friendlySizeProportions);
+ 
++            double unweightedGroundStr = groundBase * hpWeight * heightMod;
++            double unweightedAaStr = antiAirBase * hpWeight * heightMod;
++            if (!included) {
++                snapshot.addExcludedEnemyStrength(dist, airSquad ? unweightedAaStr : unweightedGroundStr);
++                continue;
++            }
++
++            if (!type.isBuilding() && !type.isWorker()) {
++                if (!type.isFlyer()) {
++                    engagedGroundEnemies.add(pos);
++                }
++                if (visible && type.canAttack()) {
++                    if (type.isFlyer()) {
++                        coveredAirThreats.add(pos);
++                    } else {
++                        coveredGroundThreats.add(pos);
++                    }
++                }
++            }
++
++            double distWeight = type.isBuilding() ? 1.0 : enemyDistanceWeight(type, dist, radius);
+             double groundEnemyStr = groundBase * hpWeight * distWeight * heightMod;
+             double aaEnemyStr = antiAirBase * hpWeight * distWeight * heightMod;
+             enemyGroundStr += groundEnemyStr;
+             enemyAntiAirStr += aaEnemyStr;
+ 
+             double displayStr = airSquad ? aaEnemyStr : groundEnemyStr;
++            snapshot.addEnemyStrength(dist, displayStr);
+             snapshot.getEnemyUnits().add(new UnitDebugEntry(pos, type, displayStr, false, !visible));
+         }
+ 
+@@ -360,7 +371,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
+         return RECENTLY_SEEN_THRESHOLD.getFrames();
+     }
+ 
+-    private boolean isPositionalUnit(UnitType type) {
++    private static boolean isPositionalUnit(UnitType type) {
+         return type.isBuilding()
+                 || type == UnitType.Terran_Siege_Tank_Siege_Mode
+                 || type == UnitType.Zerg_Lurker;
+@@ -452,18 +463,33 @@ public class HorizonCombatSimulator implements CombatSimulator {
+         return Math.max(MAX_ENGAGEMENT_RADIUS, Math.max(groundRange, airRange) + APPROACH_BUFFER);
+     }
+ 
++    static double enemyEvaluationRadius(UnitType type, double engagementRadius) {
++        return isPositionalUnit(type) ? engagementRadius : OUTER_HORIZON_RADIUS;
++    }
++
+     private double hpWeighting(int hp, int shields, int maxHp, int maxShields) {
+         int denominator = 3 * maxHp + maxShields;
+         if (denominator == 0) return 1.0;
+         return (double) (3 * hp + shields) / denominator;
+     }
+ 
+-    private double distanceWeight(double distance) {
++    private static double distanceWeight(double distance) {
+         if (distance <= 256) return 1.0;
+         if (distance <= 512) return 1.0 - 0.5 * (distance - 256) / 256;
+         return 0;
+     }
+ 
++    static double enemyDistanceWeight(UnitType type, double distance, double engagementRadius) {
++        if (distance <= engagementRadius) {
++            return distanceWeight(Math.min(distance, MAX_ENGAGEMENT_RADIUS));
++        }
++        if (distance > enemyEvaluationRadius(type, engagementRadius) || type.topSpeed() <= 0) return 0;
++        double framesToContact = (distance - engagementRadius) / type.topSpeed();
++        double contactWeight = 1.0 - framesToContact / MAX_TIME_TO_CONTACT.getFrames();
++        return distanceWeight(Math.min(engagementRadius, MAX_ENGAGEMENT_RADIUS))
++                * Math.max(0, contactWeight);
++    }
++
+     private boolean isRanged(UnitType type) {
+         if (type.groundWeapon() != null && type.groundWeapon().maxRange() > 32) return true;
+         return type.airWeapon() != null && type.airWeapon().maxRange() > 32;
+@@ -568,6 +594,13 @@ public class HorizonCombatSimulator implements CombatSimulator {
+         private final List<UnitDebugEntry> enemyUnits = new ArrayList<>();
+         private double friendlyTotal;
+         private double enemyTotal;
++        private double enemyStrengthInner;
++        private double enemyStrengthMiddle;
++        private double enemyStrengthOuter;
++        private double excludedEnemyStrengthInner;
++        private double excludedEnemyStrengthMiddle;
++        private double excludedEnemyStrengthOuter;
++        private double excludedEnemyStrengthBeyond;
+         private double groundRatio;
+         private double combinedRatio;
+         private double overallRatio;
+@@ -577,5 +610,27 @@ public class HorizonCombatSimulator implements CombatSimulator {
+         private CombatResult result;
+         private boolean enemyMeasured;
+         private boolean threatBeyondRadius;
++
++        void addEnemyStrength(double distance, double strength) {
++            if (distance <= MAX_ENGAGEMENT_RADIUS) {
++                enemyStrengthInner += strength;
++            } else if (distance <= MIDDLE_HORIZON_RADIUS) {
++                enemyStrengthMiddle += strength;
++            } else {
++                enemyStrengthOuter += strength;
++            }
++        }
++
++        void addExcludedEnemyStrength(double distance, double strength) {
++            if (distance <= MAX_ENGAGEMENT_RADIUS) {
++                excludedEnemyStrengthInner += strength;
++            } else if (distance <= MIDDLE_HORIZON_RADIUS) {
++                excludedEnemyStrengthMiddle += strength;
++            } else if (distance <= OUTER_HORIZON_RADIUS) {
++                excludedEnemyStrengthOuter += strength;
++            } else {
++                excludedEnemyStrengthBeyond += strength;
++            }
++        }
+     }
+ }
+diff --git a/src/test/java/telemetry/SquadDecisionsTest.java b/src/test/java/telemetry/SquadDecisionsTest.java
+index 2f3bfd1..85db195 100644
+--- a/src/test/java/telemetry/SquadDecisionsTest.java
++++ b/src/test/java/telemetry/SquadDecisionsTest.java
+@@ -137,8 +137,8 @@ class SquadDecisionsTest {
+ 
+     @Test
+     void commitmentColumnsHoldFixedPositionsAfterTheLockColumns() {
+-        assertEquals(21, columnIndex("committed"));
+-        assertEquals(22, columnIndex("commit_frame"));
++        assertEquals(28, columnIndex("committed"));
++        assertEquals(29, columnIndex("commit_frame"));
+ 
+         assertEquals(columnIndex("fight_lock_until_frame") + 1, columnIndex("committed"));
+         assertEquals(columnIndex("commit_frame") + 1, columnIndex("should_contain"));
+@@ -151,6 +151,42 @@ class SquadDecisionsTest {
+         assertEquals(SquadDecisionLogger.HEADER.split(",", -1).length, fields.length);
+     }
+ 
++    @Test
++    void unevaluatedBandStrengthsUseTheNegativeOneSentinel() {
++        String[] fields = rowFor(new GroundSquad());
++
++        assertEquals("-1.0000", fields[columnIndex("sim_enemy_strength_0_320")]);
++        assertEquals("-1.0000", fields[columnIndex("sim_enemy_strength_321_480")]);
++        assertEquals("-1.0000", fields[columnIndex("sim_enemy_strength_481_640")]);
++        assertEquals("-1.0000", fields[columnIndex("sim_enemy_strength_excluded_0_320")]);
++        assertEquals("-1.0000", fields[columnIndex("sim_enemy_strength_excluded_321_480")]);
++        assertEquals("-1.0000", fields[columnIndex("sim_enemy_strength_excluded_481_640")]);
++        assertEquals("-1.0000", fields[columnIndex("sim_enemy_strength_excluded_gt_640")]);
++    }
++
++    @Test
++    void computedEmptyBandsRemainDistinctFromUnevaluatedBands() {
++        SquadDecision context = new SquadDecision();
++        context.setEnemyStrengthInner(0);
++        context.setEnemyStrengthMiddle(0);
++        context.setEnemyStrengthOuter(0);
++        context.setExcludedEnemyStrengthInner(0);
++        context.setExcludedEnemyStrengthMiddle(0);
++        context.setExcludedEnemyStrengthOuter(0);
++        context.setExcludedEnemyStrengthBeyond(0);
++        List<String> fields = SquadDecisionLogger.squadCells(new GroundSquad(), context, false, -1);
++        int identityColumns = SquadDecisionLogger.identityCells("game-1", 1000, new GroundSquad(),
++                "STATUS_CHANGE", SquadStatus.RETREAT, SquadStatus.FIGHT, context, "NONE").size();
++
++        assertEquals("0.0000", fields.get(columnIndex("sim_enemy_strength_0_320") - identityColumns));
++        assertEquals("0.0000", fields.get(columnIndex("sim_enemy_strength_321_480") - identityColumns));
++        assertEquals("0.0000", fields.get(columnIndex("sim_enemy_strength_481_640") - identityColumns));
++        assertEquals("0.0000", fields.get(columnIndex("sim_enemy_strength_excluded_0_320") - identityColumns));
++        assertEquals("0.0000", fields.get(columnIndex("sim_enemy_strength_excluded_321_480") - identityColumns));
++        assertEquals("0.0000", fields.get(columnIndex("sim_enemy_strength_excluded_481_640") - identityColumns));
++        assertEquals("0.0000", fields.get(columnIndex("sim_enemy_strength_excluded_gt_640") - identityColumns));
++    }
++
+     @Test
+     void splitSuppressedRowsCarryTheMoveOutFloorInSuppressedBy() {
+         String[] fields = rowFor(new GroundSquad(), "MOVE_OUT_FLOOR");
+diff --git a/src/test/java/unit/squad/horizon/HorizonCombatSimulatorTest.java b/src/test/java/unit/squad/horizon/HorizonCombatSimulatorTest.java
+index 99ee610..c653342 100644
+--- a/src/test/java/unit/squad/horizon/HorizonCombatSimulatorTest.java
++++ b/src/test/java/unit/squad/horizon/HorizonCombatSimulatorTest.java
+@@ -136,38 +136,92 @@ class HorizonCombatSimulatorTest {
+     }
+ 
+     @Test
+-    void attackerJustBeyondRadiusIsAThreatBeyondRadius() {
+-        assertTrue(HorizonCombatSimulator.isThreatBeyondRadius(UnitType.Protoss_Zealot, 400, 320));
++    void attackerJustBeyondEvaluationRadiusIsAThreatBeyondRadius() {
++        assertTrue(HorizonCombatSimulator.isThreatBeyondRadius(UnitType.Protoss_Zealot, 700, 640));
+     }
+ 
+     @Test
+-    void attackerInsideRadiusIsMeasuredInsteadOfBeyond() {
+-        assertFalse(HorizonCombatSimulator.isThreatBeyondRadius(UnitType.Protoss_Zealot, 300, 320));
++    void attackerInsideEvaluationRadiusIsMeasuredInsteadOfBeyond() {
++        assertFalse(HorizonCombatSimulator.isThreatBeyondRadius(UnitType.Protoss_Zealot, 600, 640));
+     }
+ 
+     @Test
+     void attackerPastTheNearbyThreatRadiusIsNotBeyondRadius() {
+-        assertFalse(HorizonCombatSimulator.isThreatBeyondRadius(UnitType.Protoss_Zealot, 600, 320));
++        assertFalse(HorizonCombatSimulator.isThreatBeyondRadius(UnitType.Protoss_Zealot, 900, 640));
+     }
+ 
+     @Test
+     void workerJustBeyondRadiusIsNotAThreatBeyondRadius() {
+-        assertFalse(HorizonCombatSimulator.isThreatBeyondRadius(UnitType.Protoss_Probe, 400, 320));
++        assertFalse(HorizonCombatSimulator.isThreatBeyondRadius(UnitType.Protoss_Probe, 700, 640));
+     }
+ 
+     @Test
+     void nonAttackerJustBeyondRadiusIsNotAThreatBeyondRadius() {
+-        assertFalse(HorizonCombatSimulator.isThreatBeyondRadius(UnitType.Zerg_Overlord, 400, 320));
++        assertFalse(HorizonCombatSimulator.isThreatBeyondRadius(UnitType.Zerg_Overlord, 700, 640));
+     }
+ 
+     @Test
+     void attackerAtTheNearbyThreatRadiusIsAThreatBeyondRadius() {
+-        assertTrue(HorizonCombatSimulator.isThreatBeyondRadius(UnitType.Terran_Marine, 512, 320));
++        assertTrue(HorizonCombatSimulator.isThreatBeyondRadius(UnitType.Terran_Marine, 832, 640));
+     }
+ 
+     @Test
+-    void attackerAtItsOwnEngagementRadiusIsNotBeyondRadius() {
+-        assertFalse(HorizonCombatSimulator.isThreatBeyondRadius(UnitType.Protoss_Zealot, 320, 320));
++    void attackerAtTheEvaluationRadiusIsNotBeyondRadius() {
++        assertFalse(HorizonCombatSimulator.isThreatBeyondRadius(UnitType.Protoss_Zealot, 640, 640));
++    }
++
++    @Test
++    void mobileEnemiesAreEvaluatedThroughTheOuterBand() {
++        assertEquals(640, HorizonCombatSimulator.enemyEvaluationRadius(UnitType.Protoss_Zealot, 320));
++    }
++
++    @Test
++    void positionalEnemiesKeepTheirRangeBasedEvaluationRadius() {
++        assertEquals(448, HorizonCombatSimulator.enemyEvaluationRadius(
++                UnitType.Terran_Siege_Tank_Siege_Mode, 448));
++    }
++
++    @Test
++    void enemyInsideTheOuterBandContributesByTimeToContact() {
++        double weight = HorizonCombatSimulator.enemyDistanceWeight(UnitType.Protoss_Zealot, 600, 320);
++
++        assertTrue(weight > 0);
++        assertTrue(weight < HorizonCombatSimulator.enemyDistanceWeight(UnitType.Protoss_Zealot, 320, 320));
++    }
++
++    @Test
++    void fasterEnemyAtTheSameDistanceContributesMore() {
++        double zerglingWeight = HorizonCombatSimulator.enemyDistanceWeight(UnitType.Zerg_Zergling, 600, 320);
++        double zealotWeight = HorizonCombatSimulator.enemyDistanceWeight(UnitType.Protoss_Zealot, 600, 320);
++
++        assertTrue(UnitType.Zerg_Zergling.topSpeed() > UnitType.Protoss_Zealot.topSpeed());
++        assertTrue(zerglingWeight > zealotWeight);
++    }
++
++    @Test
++    void enemyBeyondTheOuterBandContributesNothing() {
++        assertEquals(0, HorizonCombatSimulator.enemyDistanceWeight(UnitType.Protoss_Zealot, 641, 320));
++    }
++
++    @Test
++    void snapshotAttributesEnemyStrengthToEachDistanceBand() {
++        HorizonCombatSimulator.DebugSnapshot snapshot = new HorizonCombatSimulator.DebugSnapshot();
++
++        snapshot.addEnemyStrength(320, 1);
++        snapshot.addEnemyStrength(480, 2);
++        snapshot.addEnemyStrength(640, 3);
++        snapshot.addExcludedEnemyStrength(200, 4);
++        snapshot.addExcludedEnemyStrength(400, 5);
++        snapshot.addExcludedEnemyStrength(600, 6);
++        snapshot.addExcludedEnemyStrength(800, 7);
++
++        assertEquals(1, snapshot.getEnemyStrengthInner());
++        assertEquals(2, snapshot.getEnemyStrengthMiddle());
++        assertEquals(3, snapshot.getEnemyStrengthOuter());
++        assertEquals(4, snapshot.getExcludedEnemyStrengthInner());
++        assertEquals(5, snapshot.getExcludedEnemyStrengthMiddle());
++        assertEquals(6, snapshot.getExcludedEnemyStrengthOuter());
++        assertEquals(7, snapshot.getExcludedEnemyStrengthBeyond());
+     }
+ 
+     @Test
