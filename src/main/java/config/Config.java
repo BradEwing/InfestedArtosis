@@ -57,9 +57,6 @@ public final class Config {
     public boolean logPlanEvents = false;
     public boolean telemetryCombat = false;
 
-    // Combat behavior
-    public boolean stageReinforcements = false;
-
     public Config() {
 
         Dotenv dotenv = Dotenv.configure().ignoreIfMissing().load();
@@ -97,7 +94,6 @@ public final class Config {
         this.debugResourceReservations = Boolean.parseBoolean(setting(dotenv, "IA_DEBUG_RESOURCE_RESERVATIONS"));
         this.logPlanEvents = Boolean.parseBoolean(setting(dotenv, "IA_LOG_PLAN_EVENTS"));
         this.telemetryCombat = Boolean.parseBoolean(setting(dotenv, "IA_TELEMETRY_COMBAT"));
-        this.stageReinforcements = Boolean.parseBoolean(setting(dotenv, "IA_STAGE_REINFORCEMENTS"));
     }
 
     /**
