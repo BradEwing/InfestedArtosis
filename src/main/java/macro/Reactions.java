@@ -11,6 +11,7 @@ import info.GameState;
 import info.map.BuildingPlanner;
 import info.tracking.ObservedUnitTracker;
 import info.tracking.StrategyTracker;
+import util.OneShotGate;
 import util.Time;
 import macro.plan.Plan;
 import macro.plan.PlanCancelSource;
@@ -69,6 +70,10 @@ public class Reactions {
 
     private GameState gameState;
 
+    private final OneShotGate expansionCancel = new OneShotGate();
+    private final OneShotGate lairCancel = new OneShotGate();
+    private final OneShotGate droneCut = new OneShotGate();
+
     public Reactions(GameState gameState) {
         this.gameState = gameState;
     }
@@ -119,10 +124,7 @@ public class Reactions {
         }
 
         if (gameState.getGameTime().greaterThan(EARLY_RUSH_HARD_DEADLINE)) {
-            gameState.setEarlyRushed(false);
-            gameState.setEarlyRushDenyGas(false);
-            gameState.setEarlyRushDelayLair(false);
-            gameState.setEarlyRushMacroHatch(false);
+            standDownFromEarlyRush();
             return;
         }
 
@@ -131,10 +133,7 @@ public class Reactions {
         boolean withinRushWindow = gameState.getGameTime().lessThanOrEqual(EARLY_RUSH_WINDOW);
         boolean preparing = isPreparingForEarlyRush(withinRushWindow, zerglingCount);
         if (attackersAtBase == 0 && !preparing) {
-            gameState.setEarlyRushed(false);
-            gameState.setEarlyRushDenyGas(false);
-            gameState.setEarlyRushDelayLair(false);
-            gameState.setEarlyRushMacroHatch(false);
+            standDownFromEarlyRush();
             return;
         }
 
@@ -146,10 +145,12 @@ public class Reactions {
 
         ProductionQueue productionQueue = gameState.getProductionQueue();
         productionQueue.setPriorityWhere(IS_SPAWNING_POOL, 0);
-        productionQueue.removeWhere(IS_EXPANSION_HATCHERY, PlanCancelSource.REACTION_EARLY_RUSH_EXPANSION,
-                gameState::setImpossiblePlan);
+        if (expansionCancel.fire()) {
+            productionQueue.removeWhere(IS_EXPANSION_HATCHERY, PlanCancelSource.REACTION_EARLY_RUSH_EXPANSION,
+                    gameState::setImpossiblePlan);
+        }
 
-        if (gameState.isEarlyRushDelayLair()) {
+        if (gameState.isEarlyRushDelayLair() && lairCancel.fire()) {
             cancelQueuedLairs();
         }
 
@@ -161,11 +162,30 @@ public class Reactions {
         }
 
         int droneCount = gameState.ourLivingUnitCount(UnitType.Zerg_Drone);
-        if (shouldCutDrones(droneCount, zerglingCount)) {
+        if (shouldCutDrones(droneCount, zerglingCount) && droneCut.fire()) {
             productionQueue.removeWhere(IS_DRONE, PlanCancelSource.REACTION_EARLY_RUSH_DRONE, gameState::setImpossiblePlan);
         }
 
         allowSunkenAtMainIfSingleBase(baseData);
+    }
+
+    /**
+     * Releases the reaction and re-arms its cancels.
+     * <p>
+     * The cancels fire on the detection edge rather than every frame the detection holds, so the
+     * stand down is the only thing that makes a later detection a new one. Without it the drone cut
+     * re-arms from its own after-effects: cancelling drone production leaves the drone floor
+     * satisfied and the zerglings that would clear the cut unbuilt, so the cut fires again on every
+     * frame of the rush and the economy never recovers.
+     */
+    private void standDownFromEarlyRush() {
+        gameState.setEarlyRushed(false);
+        gameState.setEarlyRushDenyGas(false);
+        gameState.setEarlyRushDelayLair(false);
+        gameState.setEarlyRushMacroHatch(false);
+        expansionCancel.rearm();
+        lairCancel.rearm();
+        droneCut.rearm();
     }
 
     /**
@@ -190,6 +210,10 @@ public class Reactions {
      * Both counts are living units. The drone floor is only a floor when it counts drones that
      * exist, and the zergling side asks what the bot can defend with now rather than what its
      * queue will eventually hatch.
+     *
+     * <p>
+     * This is the trigger, not the schedule. The cut it gates fires once per detection, because a
+     * cut that removes drone production holds this predicate true by itself.
      *
      * @param livingDrones drones that have hatched
      * @param livingZerglings zerglings that have hatched
