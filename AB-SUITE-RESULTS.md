@@ -195,6 +195,60 @@ Two things this suite promotes in priority:
 - **The ADVANCE collapse (IA-281).** Unrecovered in both ZvP populations by any threshold value.
   Worth its own single-change arm.
 
+## Agent enrichment — containment flap (Pi)
+
+Pi was dispatched to verify the flap mechanism in code and test whether it costs anything. It parsed
+538 of the 540 games (the two symmetric crashes have no combat telemetry). Findings, with my
+verification status:
+
+**Corrections to the mechanism story — accepted.**
+- Containment entry on a RETREAT *verdict* is at **`SquadManager.java:896`** (not :895); the forced
+  FIGHT inside `evaluateContainingSquad` is at **:1055-1061** (not :1051-1058), and it runs **every
+  frame**, ahead of the 48-frame re-evaluation gate at :1063. `enterContainment` sets a 120-frame
+  lock at :1045-46.
+- **The oscillation is CONTAIN→FIGHT→CONTAIN, not CONTAIN→FIGHT→RETREAT.** Squad *status* RETREAT is
+  almost never entered, because :896 intercepts the verdict first — one sample game shows 1,155
+  FIGHT→CONTAIN against 10 RETREAT→CONTAIN. This corrects both my description above and the original
+  investigation's. The sim *verdict* RETREAT is still the trigger, so the causal chain I described
+  holds; the status-level wording did not.
+- `fightLockHolds` (:938-943) does not damp the cycle — it yields exactly when the enemy is measured
+  and the ratio is below the retreat threshold.
+
+**New quantification.**
+- Dwell is degenerate: median and p90 are **1 frame** in every arm, 95-98% of episodes last exactly
+  one frame, and there are **zero episodes longer than 1400 frames** — the containment timeout path
+  is unreachable. Containment as a *stance* effectively does not exist in this build.
+- 98.5-99.6% of CONTAIN→FIGHT transitions occur **inside** engagement windows. Only 0.5-1.3% are
+  "orphan" flaps between fights. This is decision thrashing during combat, not idle churn.
+- CONTAIN→FIGHT totals (ZvP): BASELINE 36, CONTROL 1,749, ARM A 458.
+
+**On cost — suggestive, explicitly not causal.** Within-arm per-game Spearman of flap rate against
+exchange is −0.81 / −0.68 / −0.80 (n=53/59/71, permutation p≈2e-4). Won vs lost mean flap per 1k
+frames is 0.86 vs 14.82 (Cere CONTROL). Unit death rate rises 17.7% → 85.2% across
+`status_change_count` buckets. Pi is appropriately careful that losing produces longer, more
+pressured games which produce more flap, so the arrow may run either way; controlling for engagement
+duration drops the churn coefficient from 0.83 to 0.44. **The damage remains inference.**
+
+**Why non-Cere is ~6x worse.** Mostly game state — the bot wins 80% of Cere games at a median 9,566
+frames but 3.4% of non-Cere ZvP at 22,167. But a residual survives normalisation: per 1k *combat*
+frames the gap is still 50.0 vs 11.7, tracking a **2.8x larger enemy force at the containment point**
+(enemy supply believed at entry 30.2 vs 10.9). More enemies inside the 512 detection radius means the
+forced FIGHT fires on essentially every contain.
+
+**One non-reproduction, resolved in my favour.** Pi could not reproduce my `RETREAT closes` figures
+under any squad-decision transition convention. That is a source mismatch: the metric comes from
+`telemetry_engagements.csv`'s `squad_status_close` column, not from transitions in
+`telemetry_squad_decisions.csv`. I re-verified it independently — 0.431 / 0.203 / 0.119 per 1k
+frames for CONTROL / ARM A / BASELINE against Cere, exactly as tabulated above. The numbers stand.
+Pi also confirmed my rates are pooled (Σ/Σ) rather than mean-of-games, and reproduced every other
+figure exactly, including all four exchange values.
+
+**Pi's recommendation:** prioritise the guard at medium-high, targeting the cycle rather than the
+stance. Cheapest correct shape is to refuse containment entry at :896 when close enemies are already
+present, or to require K consecutive frames of close enemies before the forced FIGHT while the
+containment lock is fresh. It also recommends adding close-enemy-count-at-entry telemetry and
+re-running behind a runtime flag, since the correlations bound the upside without proving it.
+
 ## What this suite could not determine
 
 - **Whether arm A helps non-Cere ZvP at all.** 1-28 → 5-36 is p=0.389 on a base rate near 3-12%.
