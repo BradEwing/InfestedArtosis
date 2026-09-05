@@ -14,9 +14,41 @@ import java.util.List;
 public class ProtossBase extends BuildOrder {
 
     private static final int EXCESS_MINERALS = 350;
-    
+
+    /**
+     * Ceiling on the zerglings the enemy's zealots may add to the per-strategy base. A bot that
+     * masses zealots indefinitely would otherwise scale the demand forever and crowd every tech
+     * unit out of the production queue.
+     */
+    static final int MAX_ZEALOT_DEMAND = 25;
+
+    /**
+     * Zerglings a single enemy Gateway justifies, the cap once Gateways are observed.
+     */
+    static final int ZERGLINGS_PER_GATEWAY = 6;
+
     protected ProtossBase(String name) {
         super(name);
+    }
+
+    /**
+     * Zerglings owed for the enemy's zealots, on top of the per-strategy base.
+     *
+     * A visible zealot count measures the army that has already been produced and survived, is
+     * censored by fog, and spikes exactly when over-committing is most expensive. Gateway count
+     * predicts sustained production better, so once Gateways are observed they tighten the cap to
+     * the production capacity they represent.
+     *
+     * @param zealots living enemy zealots observed
+     * @param gateways living enemy Gateways observed
+     * @return zerglings to add, never more than {@link #MAX_ZEALOT_DEMAND}
+     */
+    static int zealotDrivenZerglings(int zealots, int gateways) {
+        int cap = MAX_ZEALOT_DEMAND;
+        if (gateways > 0) {
+            cap = Math.min(ZERGLINGS_PER_GATEWAY * gateways, MAX_ZEALOT_DEMAND);
+        }
+        return Math.min(zealots * 2, cap);
     }
 
     @Override
@@ -57,7 +89,9 @@ public class ProtossBase extends BuildOrder {
             zerglings = 2;
         }
 
-        zerglings += zealots * 2;
+        int gateways = gameState.getObservedUnitTracker()
+                .getCountOfLivingUnits(UnitType.Protoss_Gateway);
+        zerglings += zealotDrivenZerglings(zealots, gateways);
 
         if (currentZerglings >= zerglings) {
             return 0;
