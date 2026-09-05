@@ -195,6 +195,39 @@ Two things this suite promotes in priority:
 - **The ADVANCE collapse (IA-281).** Unrecovered in both ZvP populations by any threshold value.
   Worth its own single-change arm.
 
+## Correction — what the "retreat threshold" arm actually tested
+
+Found 2026-09-05 by a Pi agent investigating Lukas Moravec, and **verified independently in the source
+at `e5ed047`**. It changes the mechanism attribution in both this document and `AB-RESULTS.md`.
+
+`retreatThreshold(Race)` does **not** gate the RETREAT verdict. In `HorizonCombatSimulator`:
+
+```
+227:  double retreatThresh = retreatThreshold(...)
+236:  snapshot.setRetreatThreshold(retreatThresh)   // stored for telemetry only
+233:  selectResult(..., engageThresh)               // retreatThresh is NOT passed in
+258:  if (ratio < engageThresh) return CombatResult.RETREAT;
+```
+
+The verdict comes from `ratio < engageThreshold`. The retreat value has exactly one behavioural
+consumer, `SquadManager.fightLockHolds` (`:938-943`), which decides whether a squad that is *already
+fight-locked* may break that lock on a RETREAT verdict — the lock holds unless `ratio <
+retreatThreshold`. This is consistent with IA-308 and with project memory: documented behaviour, not
+a defect.
+
+Consequences for the experiment:
+
+1. **Both arms were effectively single-variable tests of `engageThreshold`** — 1.4 → 0.9 (A) and
+   1.4 → 0.655 (B). The paired second number changed only how hard an already-engaged squad commits.
+2. Lowering retreat 0.8 → 0.5 makes the fight lock **harder** to break: a squad already fighting stays
+   in the fight down to ratio 0.5 instead of 0.8. That is "commit harder once engaged", not "retreat
+   later" — the opposite of how the brief and my earlier write-ups framed it.
+3. **The measured results are unaffected.** Arm A still beat CONTROL and matched BASELINE, and the
+   RETREAT verdict counts still fell, because the engage threshold is what produces those verdicts.
+   What was wrong was the causal story, not the numbers.
+4. A future retune should treat these as two independent knobs with different jobs, and stop
+   describing them as an engage/retreat pair.
+
 ## Agent enrichment — containment flap (Pi)
 
 Pi was dispatched to verify the flap mechanism in code and test whether it costs anything. It parsed
