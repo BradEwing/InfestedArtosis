@@ -249,6 +249,71 @@ present, or to require K consecutive frames of close enemies before the forced F
 containment lock is fresh. It also recommends adding close-enemy-count-at-entry telemetry and
 re-running behind a runtime flag, since the correlations bound the upside without proving it.
 
+## Agent enrichment — why non-Cere ZvP loses (Codex)
+
+Codex was dispatched to find why non-Cere ZvP loses at ~13% even on BASELINE, and was stopped early
+with a forced report-out, so section 4 below is genuinely unfinished work rather than a conclusion.
+It analysed 183 ZvP games (93 non-Cere, 90 Cere) across all three arms.
+
+**It refutes one load-bearing claim of the original investigation.** That investigation asserted
+non-Cere ZvP games are not lost on engage decisions, partly on the reasoning that losses occur
+outside engagements. The opposite is true: of 11,495 combat-unit deaths in the 84 non-Cere losses,
+**11,448 (99.6%) occurred inside a logged engagement** — 99.6% of destroyed combat supply and combat
+resource value alike (82.8% if Drones are included). Where units die is *inside* fights.
+
+**But the divergence still starts before the fighting.** Median supply is level at frame 24 (10-10),
+then trails 20-26 by frame 3,000 and 34.5-80 by frame 7,000, while the **median first engagement
+does not begin until frame 4,124** (IQR 3,592-4,770, n=84). So combat behaviour cannot be the
+initiating cause, even though it is where the losses are realised. Both things are true, and the
+investigation collapsed them into one claim.
+
+**The 1:8 army deficit is an outcome, not a starting condition.** Median paired army-value ratio:
+
+| frame | games alive | ours | opponent | ratio |
+|---|---|---|---|---|
+| 5,000 | 84 | 225 | 550 | 0.417 |
+| 9,000 | 83 | 450 | 1,600 | 0.317 |
+| 15,000 | 66 | 475 | 3,212 | 0.166 |
+| 21,000 | 38 | 712 | 6,675 | 0.112 (~1:8.9) |
+
+The investigation quoted 1:8 as though it described the matchup. It describes frame 21,000.
+
+**The economy never arrives.** Across the 84 losses, median peak supply 56 vs 290, peak workers
+**12 Drones vs 53 Probes**, gas gathered 360 vs 2,200 — on the *same* median base count (3 vs 3). At
+frame 18,000 the median army is 22.5 Zerglings, **zero Hydralisks, zero Mutalisks**, against 21
+Zealots and 10.5 Dragoons.
+
+**Build-order breakdown (non-Cere ZvP):**
+
+| build | record | median peak Drones | median tech unit |
+|---|---|---|---|
+| SpeedlingAllIn | 7-45 (n=52) | 12 | 31 Zerglings |
+| 4Pool | 1-14 (n=15) | 4 | 43 Zerglings |
+| 3HatchHydra | 1-13 (n=14) | 13 | 8.5 Hydralisks |
+| 3HatchMuta | 0-12 (n=12) | 15 | **0 Mutalisks** |
+
+**Why Cere is different:** every Cere ZvP game used 4Pool, going 81-9. The same build against the
+other three Protoss opponents goes 1-14. At frame 7,000 surviving Cere wins face a median opponent
+supply/value of 17/0; non-Cere 4Pool losses face 72/900. Cere collapses to the rush; the others
+survive it and then scale. This is why threshold tuning transforms Cere and does nothing elsewhere —
+against Cere the engagement *is* the game, and against the others it is a footnote to an economic
+loss already in progress.
+
+**Codex's recommendation (medium-high confidence): give `SpeedlingAllIn` a failed-rush transition.**
+`strategy/buildorder/SpeedlingAllIn.java` hard-caps the economy at `DRONE_TARGET = 11` and returns
+`false` unconditionally from `shouldTransition()`. **I verified both in the source.** The class
+already defines `STALL_TIME = 8:00` and `STALL_ZERGLINGS = 12`, so the hook for a transition exists
+and is unused. This build accounts for 52 of the 93 non-Cere ZvP games and 45 of the losses. Note
+this is the same defect class already recorded for `FourPool` — an opener that overrides neither
+`openerComplete()` nor `transition()` runs all game.
+
+**Explicitly incomplete** (agent stopped early): no replay-level validation of individual
+engage/retreat decisions; no experimental isolation of the Zergling-debt mechanism suppressing
+economy; army valuation excludes upgrades, HP, positioning and static defence, undercounts Zerg Eggs
+by a median 3.5-4 supply, and prices Archons at zero via JBWAPI. No per-map or per-opponent
+divergence tables. The `3HatchMuta` result of zero Mutalisks in twelve games is reported but not
+diagnosed.
+
 ## What this suite could not determine
 
 - **Whether arm A helps non-Cere ZvP at all.** 1-28 → 5-36 is p=0.389 on a base rate near 3-12%.
