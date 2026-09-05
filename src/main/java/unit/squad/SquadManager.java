@@ -584,53 +584,11 @@ public class SquadManager {
     private void rallySquad(Squad squad) {
         squad.setStatus(SquadStatus.RALLY);
         squad.clearCommitment();
-        Position rallyPoint = this.getRallyPoint(squad);
+        Position rallyPoint = gameState.getSquadRallyPoint();
         for (ManagedUnit managedUnit: squad.getMembers()) {
             managedUnit.setRallyPoint(rallyPoint);
             managedUnit.setRole(UnitRole.RALLY);
         }
-    }
-
-    /**
-     * Rallies to the squad closest to the enemy main base, otherwise
-     * defaults to the main or natural expansion.
-     *
-     * Squads actively fighting or holding a containment are eligible rally targets.
-     * Exempts the given squad as a rally candidate.
-     *
-     * <p>With reinforcement staging enabled, every rallying squad is sent to the staging point.
-     *
-     * @return Position to rally squad to
-     */
-    private Position getRallyPoint(Squad squad) {
-        if (gameState.getConfig().stageReinforcements) {
-            return gameState.getSquadRallyPoint();
-        }
-
-        List<Squad> eligibleSquads = fightSquads.stream()
-                .filter(s -> s != squad)
-                .filter(s -> s.getStatus() == SquadStatus.FIGHT || s.getStatus() == SquadStatus.CONTAIN)
-                .collect(Collectors.toList());
-
-        final Base enemyMainBase = gameState.getBaseData().getMainEnemyBase();
-        if (!eligibleSquads.isEmpty() && enemyMainBase != null) {
-            Squad best = null;
-            for (Squad s: eligibleSquads) {
-                if (best == null) {
-                    best = s;
-                    continue;
-                }
-                final double bestDistance = best.getCenter().getDistance(enemyMainBase.getCenter());
-                final double candidateDistance = s.getCenter().getDistance(enemyMainBase.getCenter());
-                if (candidateDistance < bestDistance) {
-                    best = s;
-                }
-            }
-
-            return best.getCenter().toTilePosition().toPosition();
-        }
-
-        return gameState.getSquadRallyPoint();
     }
 
     /**
@@ -1424,19 +1382,10 @@ public class SquadManager {
             newSquad = new GroundSquad();
         }
 
-        newSquad.setStatus(stagingStatus());
-        newSquad.setRallyPoint(this.getRallyPoint(newSquad));
+        newSquad.setStatus(SquadStatus.RALLY);
+        newSquad.setRallyPoint(gameState.getSquadRallyPoint());
         fightSquads.add(newSquad);
         return newSquad;
-    }
-
-    /**
-     * Returns RALLY when reinforcement staging is enabled, otherwise FIGHT.
-     *
-     * @return status to seed a new fight squad with
-     */
-    private SquadStatus stagingStatus() {
-        return gameState.getConfig().stageReinforcements ? SquadStatus.RALLY : SquadStatus.FIGHT;
     }
 
     /**
@@ -1446,9 +1395,6 @@ public class SquadManager {
      * @return true if the squad should rally to the staging point
      */
     private boolean shouldStageSquad(Squad squad) {
-        if (!gameState.getConfig().stageReinforcements) {
-            return false;
-        }
         if (squad.getStatus() != SquadStatus.RALLY) {
             return false;
         }
