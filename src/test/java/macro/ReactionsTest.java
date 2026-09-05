@@ -6,6 +6,7 @@ import info.BaseData;
 import info.UnitTypeCount;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import util.OneShotGate;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
@@ -26,6 +27,8 @@ public class ReactionsTest {
     private static final boolean WITHIN_RUSH_WINDOW = true;
 
     private static final int QUEUED_ZERGLING_PLANS = 6;
+
+    private static final int SUSTAINED_RUSH_FRAMES = 2000;
 
     private BaseData baseData;
 
@@ -178,5 +181,34 @@ public class ReactionsTest {
         UnitTypeCount count = withLivingZerglings(Reactions.EARLY_RUSH_CUT_ZERGLINGS);
 
         assertFalse(Reactions.shouldCutDrones(Reactions.EARLY_RUSH_DRONE_FLOOR, count.livingCount(UnitType.Zerg_Zergling)));
+    }
+
+    /**
+     * The IA-313 livelock: the cut removes the drone production that would clear its own trigger, so
+     * every frame of a sustained rush cancelled the queue again. One detection is one cut.
+     */
+    @Test
+    void cutsDronesOnceForOneSustainedDetection() {
+        OneShotGate droneCut = new OneShotGate();
+
+        int cuts = 0;
+        for (int frame = 0; frame < SUSTAINED_RUSH_FRAMES; frame++) {
+            if (Reactions.shouldCutDrones(Reactions.EARLY_RUSH_DRONE_FLOOR, 0) && droneCut.fire()) {
+                cuts++;
+            }
+        }
+
+        assertEquals(1, cuts);
+    }
+
+    @Test
+    void cutsDronesAgainForTheNextDetection() {
+        OneShotGate droneCut = new OneShotGate();
+        assertTrue(droneCut.fire());
+        assertFalse(droneCut.fire());
+
+        droneCut.rearm();
+
+        assertTrue(droneCut.fire());
     }
 }
