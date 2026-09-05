@@ -1,5 +1,15 @@
 # A/B test — ZvP engage/retreat thresholds vs Tomas Cere
 
+> **Superseded in two places by `AB-SUITE-RESULTS.md`** (6-bot bench, 540 games). Read that first.
+> 1. This document concludes there is no statistically demonstrated regression. That was true of
+>    Cere alone at n=100. Across four ZvP opponents, stratified by opponent, CONTROL vs BASELINE is
+>    **p=0.036** — the regression is real and this document simply lacked the power to see it.
+> 2. This document attributes the 40-10 vs 93-7 Cere gap to **accumulate mode**. That is wrong. A
+>    frozen mixed-bench run also scored 24-6 (80%), matching accumulate exactly. Neither CPU load
+>    nor map allocation explains it; it is sampling variance at n=30-50.
+>
+> Everything else below stands, including the recommendation.
+
 Four arms, 100 games each, all `--frozen --jobs 7 --timeout 1500` vs Tomas Cere, identical learning
 snapshot (`read_rows_before` = 1107 every run). 400 games, 0 crashes, 0 NO_RESULT, 400/400 scored.
 Opener was 4Pool in 100/100 games in every arm, so no strategy confound anywhere.
