@@ -183,10 +183,6 @@ public class ReactionsTest {
         assertFalse(Reactions.shouldCutDrones(Reactions.EARLY_RUSH_DRONE_FLOOR, count.livingCount(UnitType.Zerg_Zergling)));
     }
 
-    /**
-     * The IA-313 livelock: nothing the cut does clears its own trigger, so before the gate every
-     * frame of a sustained rush cancelled the queue again. One rush is one cut.
-     */
     @Test
     void cutsDronesOnceForOneSustainedRush() {
         Reactions reactions = new Reactions(null);
