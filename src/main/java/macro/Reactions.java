@@ -188,9 +188,6 @@ public class Reactions {
 
     /**
      * Whether this is the one frame of the current rush that drops queued drone plans.
-     * <p>
-     * The trigger comes first so the gate is spent only on a frame the cut would actually run on:
-     * a rush detected before the drone floor is reached still gets its cut once the floor arrives.
      *
      * @param livingDrones drones that have hatched
      * @param livingZerglings zerglings that have hatched
@@ -244,11 +241,6 @@ public class Reactions {
      * Both counts are living units. The drone floor is only a floor when it counts drones that
      * exist, and the zergling side asks what the bot can defend with now rather than what its
      * queue will eventually hatch.
-     *
-     * <p>
-     * This is the trigger, not the schedule. Nothing the cut does clears it: both counts are
-     * hatched units and cancelling a queued plan hatches nothing, so it holds for as long as the
-     * enemy keeps zerglings under the bar. The cut it gates fires once per rush instead.
      *
      * @param livingDrones drones that have hatched
      * @param livingZerglings zerglings that have hatched
