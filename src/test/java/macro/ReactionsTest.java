@@ -19,13 +19,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * Unit tests for the main-base sunken gate and the early rush guards.
  *
  * <p>bwem.Base is final with a package-private constructor and bwapi.Unit cannot be instantiated outside its own
- * package, so base counts are simulated by swapping in sets that report a fixed size.
+ * package, so base counts are simulated by swapping in sets that report a fixed size. For the same reason the gate
+ * tests construct Reactions on a null GameState: the seam they drive never reads it.
  */
 public class ReactionsTest {
 
     private static final boolean WITHIN_RUSH_WINDOW = true;
 
     private static final int QUEUED_ZERGLING_PLANS = 6;
+
+    private static final int SUSTAINED_RUSH_FRAMES = 2000;
 
     private BaseData baseData;
 
@@ -178,5 +181,42 @@ public class ReactionsTest {
         UnitTypeCount count = withLivingZerglings(Reactions.EARLY_RUSH_CUT_ZERGLINGS);
 
         assertFalse(Reactions.shouldCutDrones(Reactions.EARLY_RUSH_DRONE_FLOOR, count.livingCount(UnitType.Zerg_Zergling)));
+    }
+
+    @Test
+    void cutsDronesOnceForOneSustainedRush() {
+        Reactions reactions = new Reactions(null);
+
+        int cuts = 0;
+        for (int frame = 0; frame < SUSTAINED_RUSH_FRAMES; frame++) {
+            if (reactions.shouldFireDroneCut(Reactions.EARLY_RUSH_DRONE_FLOOR, 0)) {
+                cuts++;
+            }
+        }
+
+        assertEquals(1, cuts);
+    }
+
+    @Test
+    void cutsDronesAgainAfterTheReactionStandsDown() {
+        Reactions reactions = new Reactions(null);
+        assertTrue(reactions.shouldFireDroneCut(Reactions.EARLY_RUSH_DRONE_FLOOR, 0));
+        assertFalse(reactions.shouldFireDroneCut(Reactions.EARLY_RUSH_DRONE_FLOOR, 0));
+
+        reactions.rearmEarlyRushCuts();
+
+        assertTrue(reactions.shouldFireDroneCut(Reactions.EARLY_RUSH_DRONE_FLOOR, 0));
+    }
+
+    /**
+     * The trigger is evaluated before the gate, so frames below the drone floor leave the cut
+     * available. Reversing the two would spend it on a frame that cancels nothing.
+     */
+    @Test
+    void holdsTheCutAvailableWhileTheTriggerIsFalse() {
+        Reactions reactions = new Reactions(null);
+
+        assertFalse(reactions.shouldFireDroneCut(Reactions.EARLY_RUSH_DRONE_FLOOR - 1, 0));
+        assertTrue(reactions.shouldFireDroneCut(Reactions.EARLY_RUSH_DRONE_FLOOR, 0));
     }
 }

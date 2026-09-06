@@ -11,6 +11,7 @@ import info.GameState;
 import info.map.BuildingPlanner;
 import info.tracking.ObservedUnitTracker;
 import info.tracking.StrategyTracker;
+import util.OneShotGate;
 import util.Time;
 import macro.plan.Plan;
 import macro.plan.PlanCancelSource;
@@ -66,8 +67,15 @@ public class Reactions {
     static final int EARLY_RUSH_SAFE_ZERGLINGS = 12;
     static final int EARLY_RUSH_DRONE_FLOOR = 8;
     static final int EARLY_RUSH_CUT_ZERGLINGS = 8;
+    static final int EARLY_RUSH_QUIET_FRAMES = 24 * 3;
 
     private GameState gameState;
+
+    private final OneShotGate expansionCancel = new OneShotGate();
+    private final OneShotGate lairCancel = new OneShotGate();
+    private final OneShotGate droneCut = new OneShotGate();
+
+    private int quietFrames;
 
     public Reactions(GameState gameState) {
         this.gameState = gameState;
@@ -119,10 +127,7 @@ public class Reactions {
         }
 
         if (gameState.getGameTime().greaterThan(EARLY_RUSH_HARD_DEADLINE)) {
-            gameState.setEarlyRushed(false);
-            gameState.setEarlyRushDenyGas(false);
-            gameState.setEarlyRushDelayLair(false);
-            gameState.setEarlyRushMacroHatch(false);
+            standDownFromEarlyRush();
             return;
         }
 
@@ -131,11 +136,13 @@ public class Reactions {
         boolean withinRushWindow = gameState.getGameTime().lessThanOrEqual(EARLY_RUSH_WINDOW);
         boolean preparing = isPreparingForEarlyRush(withinRushWindow, zerglingCount);
         if (attackersAtBase == 0 && !preparing) {
-            gameState.setEarlyRushed(false);
-            gameState.setEarlyRushDenyGas(false);
-            gameState.setEarlyRushDelayLair(false);
-            gameState.setEarlyRushMacroHatch(false);
-            return;
+            quietFrames++;
+            if (quietFrames >= EARLY_RUSH_QUIET_FRAMES) {
+                standDownFromEarlyRush();
+                return;
+            }
+        } else {
+            quietFrames = 0;
         }
 
         gameState.setEarlyRushed(true);
@@ -146,10 +153,12 @@ public class Reactions {
 
         ProductionQueue productionQueue = gameState.getProductionQueue();
         productionQueue.setPriorityWhere(IS_SPAWNING_POOL, 0);
-        productionQueue.removeWhere(IS_EXPANSION_HATCHERY, PlanCancelSource.REACTION_EARLY_RUSH_EXPANSION,
-                gameState::setImpossiblePlan);
+        if (expansionCancel.fire()) {
+            productionQueue.removeWhere(IS_EXPANSION_HATCHERY, PlanCancelSource.REACTION_EARLY_RUSH_EXPANSION,
+                    gameState::setImpossiblePlan);
+        }
 
-        if (gameState.isEarlyRushDelayLair()) {
+        if (gameState.isEarlyRushDelayLair() && lairCancel.fire()) {
             cancelQueuedLairs();
         }
 
@@ -161,11 +170,29 @@ public class Reactions {
         }
 
         int droneCount = gameState.ourLivingUnitCount(UnitType.Zerg_Drone);
-        if (shouldCutDrones(droneCount, zerglingCount)) {
+        if (shouldFireDroneCut(droneCount, zerglingCount)) {
             productionQueue.removeWhere(IS_DRONE, PlanCancelSource.REACTION_EARLY_RUSH_DRONE, gameState::setImpossiblePlan);
         }
 
         allowSunkenAtMainIfSingleBase(baseData);
+    }
+
+    boolean shouldFireDroneCut(int livingDrones, int livingZerglings) {
+        return shouldCutDrones(livingDrones, livingZerglings) && droneCut.fire();
+    }
+
+    private void standDownFromEarlyRush() {
+        gameState.setEarlyRushed(false);
+        gameState.setEarlyRushDenyGas(false);
+        gameState.setEarlyRushDelayLair(false);
+        gameState.setEarlyRushMacroHatch(false);
+        rearmEarlyRushCuts();
+    }
+
+    void rearmEarlyRushCuts() {
+        expansionCancel.rearm();
+        lairCancel.rearm();
+        droneCut.rearm();
     }
 
     /**

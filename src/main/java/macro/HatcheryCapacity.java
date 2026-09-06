@@ -37,8 +37,8 @@ public final class HatcheryCapacity {
 
     /**
      * @param ourTotal hatchery count plus hatcheries already queued
-     * @param expansionSuppressed true while a reaction deletes queued expansion hatcheries every
-     *     frame
+     * @param expansionSuppressed true while a reaction is holding expansion hatcheries out of the
+     *     queue
      */
     public static boolean isBehind(int ourTotal, int enemyTotal, boolean excess, boolean expansionSuppressed) {
         return !expansionSuppressed && !excess && enemyTotal > ourTotal;
