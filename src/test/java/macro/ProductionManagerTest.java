@@ -433,4 +433,23 @@ class ProductionManagerTest {
         assertFalse(ProductionManager.isSupplyBlocked(UnitType.Zerg_Guardian, 0));
         assertFalse(ProductionManager.isSupplyBlocked(UnitType.Zerg_Devourer, 0));
     }
+
+    @Test
+    void aMorphFromAnExistingUnitIsNotLarvaBlocked() {
+        assertFalse(ProductionManager.isLarvaBlocked(UnitType.Zerg_Lurker, false));
+        assertFalse(ProductionManager.isLarvaBlocked(UnitType.Zerg_Guardian, false));
+        assertFalse(ProductionManager.isLarvaBlocked(UnitType.Zerg_Devourer, false));
+    }
+
+    @Test
+    void aLarvaMorphIsBlockedWithoutFreeLarva() {
+        assertTrue(ProductionManager.isLarvaBlocked(UnitType.Zerg_Zergling, false));
+        assertTrue(ProductionManager.isLarvaBlocked(UnitType.Zerg_Hydralisk, false));
+        assertTrue(ProductionManager.isLarvaBlocked(UnitType.Zerg_Overlord, false));
+    }
+
+    @Test
+    void aLarvaMorphSchedulesWithFreeLarva() {
+        assertFalse(ProductionManager.isLarvaBlocked(UnitType.Zerg_Zergling, true));
+    }
 }
