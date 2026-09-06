@@ -14,9 +14,21 @@ import java.util.List;
 public class ProtossBase extends BuildOrder {
 
     private static final int EXCESS_MINERALS = 350;
-    
+
+    static final int MAX_ZEALOT_DEMAND = 25;
+
+    static final int ZERGLINGS_PER_GATEWAY = 6;
+
     protected ProtossBase(String name) {
         super(name);
+    }
+
+    static int zealotDrivenZerglings(int zealots, int gateways) {
+        int cap = MAX_ZEALOT_DEMAND;
+        if (gateways > 0) {
+            cap = Math.min(ZERGLINGS_PER_GATEWAY * gateways, MAX_ZEALOT_DEMAND);
+        }
+        return Math.min(zealots * 2, cap);
     }
 
     @Override
@@ -57,7 +69,9 @@ public class ProtossBase extends BuildOrder {
             zerglings = 2;
         }
 
-        zerglings += zealots * 2;
+        int gateways = gameState.getObservedUnitTracker()
+                .getCountOfLivingUnits(UnitType.Protoss_Gateway);
+        zerglings += zealotDrivenZerglings(zealots, gateways);
 
         if (currentZerglings >= zerglings) {
             return 0;
