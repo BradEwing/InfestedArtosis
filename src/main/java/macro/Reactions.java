@@ -68,11 +68,23 @@ public class Reactions {
     static final int EARLY_RUSH_DRONE_FLOOR = 8;
     static final int EARLY_RUSH_CUT_ZERGLINGS = 8;
 
+    /**
+     * How long our bases must stay clear of attackers before the reaction stands down.
+     * <p>
+     * The attacker count is live visibility inside a tile radius, so it reads zero for a frame when
+     * a unit steps outside the radius or the last unit watching it dies. Standing down on one such
+     * frame re-arms the cancels, and the attackers returning fires all three again, which is the
+     * per-frame cancelling this reaction is meant to be rid of.
+     */
+    static final int EARLY_RUSH_QUIET_FRAMES = 24 * 3;
+
     private GameState gameState;
 
     private final OneShotGate expansionCancel = new OneShotGate();
     private final OneShotGate lairCancel = new OneShotGate();
     private final OneShotGate droneCut = new OneShotGate();
+
+    private int quietFrames;
 
     public Reactions(GameState gameState) {
         this.gameState = gameState;
@@ -133,8 +145,13 @@ public class Reactions {
         boolean withinRushWindow = gameState.getGameTime().lessThanOrEqual(EARLY_RUSH_WINDOW);
         boolean preparing = isPreparingForEarlyRush(withinRushWindow, zerglingCount);
         if (attackersAtBase == 0 && !preparing) {
-            standDownFromEarlyRush();
-            return;
+            quietFrames++;
+            if (quietFrames >= EARLY_RUSH_QUIET_FRAMES) {
+                standDownFromEarlyRush();
+                return;
+            }
+        } else {
+            quietFrames = 0;
         }
 
         gameState.setEarlyRushed(true);
@@ -162,7 +179,7 @@ public class Reactions {
         }
 
         int droneCount = gameState.ourLivingUnitCount(UnitType.Zerg_Drone);
-        if (shouldCutDrones(droneCount, zerglingCount) && droneCut.fire()) {
+        if (shouldFireDroneCut(droneCount, zerglingCount)) {
             productionQueue.removeWhere(IS_DRONE, PlanCancelSource.REACTION_EARLY_RUSH_DRONE, gameState::setImpossiblePlan);
         }
 
@@ -170,19 +187,36 @@ public class Reactions {
     }
 
     /**
-     * Releases the reaction and re-arms its cancels.
+     * Whether this is the one frame of the current rush that drops queued drone plans.
      * <p>
-     * The cancels fire on the detection edge rather than every frame the detection holds, so the
-     * stand down is the only thing that makes a later detection a new one. Without it the drone cut
-     * re-arms from its own after-effects: cancelling drone production leaves the drone floor
-     * satisfied and the zerglings that would clear the cut unbuilt, so the cut fires again on every
-     * frame of the rush and the economy never recovers.
+     * The trigger comes first so the gate is spent only on a frame the cut would actually run on:
+     * a rush detected before the drone floor is reached still gets its cut once the floor arrives.
+     *
+     * @param livingDrones drones that have hatched
+     * @param livingZerglings zerglings that have hatched
+     * @return true on the first frame of the rush where the cut applies, false on every later one
+     */
+    boolean shouldFireDroneCut(int livingDrones, int livingZerglings) {
+        return shouldCutDrones(livingDrones, livingZerglings) && droneCut.fire();
+    }
+
+    /**
+     * Releases the reaction and re-arms its cancels, so the next rush is an episode of its own
+     * rather than one the gates have already fired on.
      */
     private void standDownFromEarlyRush() {
         gameState.setEarlyRushed(false);
         gameState.setEarlyRushDenyGas(false);
         gameState.setEarlyRushDelayLair(false);
         gameState.setEarlyRushMacroHatch(false);
+        rearmEarlyRushCuts();
+    }
+
+    /**
+     * Re-arms the three cancels. Drop this and each one fires at most once per game; it is the
+     * gates, not the stand down, that stop the per-frame cancelling IA-313 measured.
+     */
+    void rearmEarlyRushCuts() {
         expansionCancel.rearm();
         lairCancel.rearm();
         droneCut.rearm();
@@ -212,8 +246,9 @@ public class Reactions {
      * queue will eventually hatch.
      *
      * <p>
-     * This is the trigger, not the schedule. The cut it gates fires once per detection, because a
-     * cut that removes drone production holds this predicate true by itself.
+     * This is the trigger, not the schedule. Nothing the cut does clears it: both counts are
+     * hatched units and cancelling a queued plan hatches nothing, so it holds for as long as the
+     * enemy keeps zerglings under the bar. The cut it gates fires once per rush instead.
      *
      * @param livingDrones drones that have hatched
      * @param livingZerglings zerglings that have hatched
