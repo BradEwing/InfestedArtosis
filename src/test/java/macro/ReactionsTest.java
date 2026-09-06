@@ -6,7 +6,6 @@ import info.BaseData;
 import info.UnitTypeCount;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import util.OneShotGate;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
@@ -20,7 +19,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * Unit tests for the main-base sunken gate and the early rush guards.
  *
  * <p>bwem.Base is final with a package-private constructor and bwapi.Unit cannot be instantiated outside its own
- * package, so base counts are simulated by swapping in sets that report a fixed size.
+ * package, so base counts are simulated by swapping in sets that report a fixed size. For the same reason the gate
+ * tests construct Reactions on a null GameState: the seam they drive never reads it.
  */
 public class ReactionsTest {
 
@@ -184,16 +184,16 @@ public class ReactionsTest {
     }
 
     /**
-     * The IA-313 livelock: the cut removes the drone production that would clear its own trigger, so
-     * every frame of a sustained rush cancelled the queue again. One detection is one cut.
+     * The IA-313 livelock: nothing the cut does clears its own trigger, so before the gate every
+     * frame of a sustained rush cancelled the queue again. One rush is one cut.
      */
     @Test
-    void cutsDronesOnceForOneSustainedDetection() {
-        OneShotGate droneCut = new OneShotGate();
+    void cutsDronesOnceForOneSustainedRush() {
+        Reactions reactions = new Reactions(null);
 
         int cuts = 0;
         for (int frame = 0; frame < SUSTAINED_RUSH_FRAMES; frame++) {
-            if (Reactions.shouldCutDrones(Reactions.EARLY_RUSH_DRONE_FLOOR, 0) && droneCut.fire()) {
+            if (reactions.shouldFireDroneCut(Reactions.EARLY_RUSH_DRONE_FLOOR, 0)) {
                 cuts++;
             }
         }
@@ -202,13 +202,25 @@ public class ReactionsTest {
     }
 
     @Test
-    void cutsDronesAgainForTheNextDetection() {
-        OneShotGate droneCut = new OneShotGate();
-        assertTrue(droneCut.fire());
-        assertFalse(droneCut.fire());
+    void cutsDronesAgainAfterTheReactionStandsDown() {
+        Reactions reactions = new Reactions(null);
+        assertTrue(reactions.shouldFireDroneCut(Reactions.EARLY_RUSH_DRONE_FLOOR, 0));
+        assertFalse(reactions.shouldFireDroneCut(Reactions.EARLY_RUSH_DRONE_FLOOR, 0));
 
-        droneCut.rearm();
+        reactions.rearmEarlyRushCuts();
 
-        assertTrue(droneCut.fire());
+        assertTrue(reactions.shouldFireDroneCut(Reactions.EARLY_RUSH_DRONE_FLOOR, 0));
+    }
+
+    /**
+     * The trigger is evaluated before the gate, so frames below the drone floor leave the cut
+     * available. Reversing the two would spend it on a frame that cancels nothing.
+     */
+    @Test
+    void holdsTheCutAvailableWhileTheTriggerIsFalse() {
+        Reactions reactions = new Reactions(null);
+
+        assertFalse(reactions.shouldFireDroneCut(Reactions.EARLY_RUSH_DRONE_FLOOR - 1, 0));
+        assertTrue(reactions.shouldFireDroneCut(Reactions.EARLY_RUSH_DRONE_FLOOR, 0));
     }
 }

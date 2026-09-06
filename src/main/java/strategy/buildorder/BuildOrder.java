@@ -561,8 +561,8 @@ public abstract class BuildOrder {
      *
      * <p>Our total is {@link GameState#hatcheryCount()} plus the hatcheries already queued.
      *
-     * @return true when the enemy has more resource depots, our hatcheries are not excess, and
-     *     no reaction deletes expansions this frame
+     * @return true when the enemy has more resource depots, our hatcheries are not excess, and no
+     *     reaction is holding expansions out of the queue
      */
     protected boolean behindOnHatchery(GameState gameState) {
         int ourTotal = gameState.hatcheryCount() + Math.max(0, gameState.getPlannedHatcheries());
