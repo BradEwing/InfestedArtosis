@@ -67,15 +67,6 @@ public class Reactions {
     static final int EARLY_RUSH_SAFE_ZERGLINGS = 12;
     static final int EARLY_RUSH_DRONE_FLOOR = 8;
     static final int EARLY_RUSH_CUT_ZERGLINGS = 8;
-
-    /**
-     * How long our bases must stay clear of attackers before the reaction stands down.
-     * <p>
-     * The attacker count is live visibility inside a tile radius, so it reads zero for a frame when
-     * a unit steps outside the radius or the last unit watching it dies. Standing down on one such
-     * frame re-arms the cancels, and the attackers returning fires all three again, which is the
-     * per-frame cancelling this reaction is meant to be rid of.
-     */
     static final int EARLY_RUSH_QUIET_FRAMES = 24 * 3;
 
     private GameState gameState;
@@ -186,21 +177,10 @@ public class Reactions {
         allowSunkenAtMainIfSingleBase(baseData);
     }
 
-    /**
-     * Whether this is the one frame of the current rush that drops queued drone plans.
-     *
-     * @param livingDrones drones that have hatched
-     * @param livingZerglings zerglings that have hatched
-     * @return true on the first frame of the rush where the cut applies, false on every later one
-     */
     boolean shouldFireDroneCut(int livingDrones, int livingZerglings) {
         return shouldCutDrones(livingDrones, livingZerglings) && droneCut.fire();
     }
 
-    /**
-     * Releases the reaction and re-arms its cancels, so the next rush is an episode of its own
-     * rather than one the gates have already fired on.
-     */
     private void standDownFromEarlyRush() {
         gameState.setEarlyRushed(false);
         gameState.setEarlyRushDenyGas(false);
@@ -209,10 +189,6 @@ public class Reactions {
         rearmEarlyRushCuts();
     }
 
-    /**
-     * Re-arms the three cancels. Drop this and each one fires at most once per game; it is the
-     * gates, not the stand down, that stop the per-frame cancelling IA-313 measured.
-     */
     void rearmEarlyRushCuts() {
         expansionCancel.rearm();
         lairCancel.rearm();
