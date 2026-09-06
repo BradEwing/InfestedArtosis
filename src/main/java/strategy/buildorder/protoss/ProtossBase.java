@@ -16,14 +16,15 @@ public class ProtossBase extends BuildOrder {
     private static final int EXCESS_MINERALS = 350;
 
     /**
-     * Ceiling on the zerglings the enemy's zealots may add to the per-strategy base. A bot that
-     * masses zealots indefinitely would otherwise scale the demand forever and crowd every tech
-     * unit out of the production queue.
+     * Ceiling on the zerglings the enemy's zealots may add to the per-strategy base: the zealot
+     * term only, not the {@link #zerglingsNeeded(GameState)} total. Uncapped, a bot that masses
+     * zealots scales the demand forever and crowds tech units out of the production queue.
      */
     static final int MAX_ZEALOT_DEMAND = 25;
 
     /**
-     * Zerglings a single enemy Gateway justifies, the cap once Gateways are observed.
+     * Zerglings a single observed enemy Gateway justifies; once Gateways are observed the cap is
+     * this per Gateway, still bounded by {@link #MAX_ZEALOT_DEMAND}.
      */
     static final int ZERGLINGS_PER_GATEWAY = 6;
 
@@ -32,16 +33,18 @@ public class ProtossBase extends BuildOrder {
     }
 
     /**
-     * Zerglings owed for the enemy's zealots, on top of the per-strategy base.
+     * Zerglings owed for the enemy's zealots, on top of the per-strategy base, counted as
+     * individual zerglings rather than morphs (a morph hatches a pair).
      *
-     * A visible zealot count measures the army that has already been produced and survived, is
-     * censored by fog, and spikes exactly when over-committing is most expensive. Gateway count
-     * predicts sustained production better, so once Gateways are observed they tighten the cap to
-     * the production capacity they represent.
+     * Observed zealot count is a lagging, fog-censored measure of the army already produced, while
+     * Gateway count predicts sustained production, so once a Gateway is observed the cap becomes
+     * {@link #ZERGLINGS_PER_GATEWAY} per Gateway. That lowers the cap while the product stays under
+     * {@link #MAX_ZEALOT_DEMAND} and stops mattering once it reaches it. Both constants are
+     * hand-tuned in IA-314, not derived.
      *
-     * @param zealots living enemy zealots observed
-     * @param gateways living enemy Gateways observed
-     * @return zerglings to add, never more than {@link #MAX_ZEALOT_DEMAND}
+     * @param zealots living enemy zealots observed, from {@link GameState#enemyUnitCount(UnitType)}
+     * @param gateways living enemy Gateways observed, from the ObservedUnitTracker
+     * @return individual zerglings to add, never more than {@link #MAX_ZEALOT_DEMAND}
      */
     static int zealotDrivenZerglings(int zealots, int gateways) {
         int cap = MAX_ZEALOT_DEMAND;
