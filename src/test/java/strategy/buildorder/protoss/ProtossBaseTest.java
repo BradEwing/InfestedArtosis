@@ -9,10 +9,10 @@ class ProtossBaseTest {
 
     @Test
     void neverExceedsTheCapAcrossEveryZealotCount() {
-        for (int zealots = 0; zealots <= 60; zealots++) {
+        for (int zealots = 0; zealots <= 200; zealots++) {
             for (int gateways = 0; gateways <= 12; gateways++) {
                 int demand = ProtossBase.zealotDrivenZerglings(zealots, gateways);
-                assertTrue(demand <= ProtossBase.MAX_ZEALOT_DEMAND,
+                assertTrue(demand <= 25,
                         "zealots=" + zealots + " gateways=" + gateways + " demanded " + demand);
             }
         }
@@ -27,9 +27,10 @@ class ProtossBaseTest {
 
     @Test
     void capsTheUnscoutedDemandAtTwentyFive() {
-        assertEquals(ProtossBase.MAX_ZEALOT_DEMAND, ProtossBase.zealotDrivenZerglings(13, 0));
-        assertEquals(ProtossBase.MAX_ZEALOT_DEMAND, ProtossBase.zealotDrivenZerglings(32, 0));
-        assertEquals(ProtossBase.MAX_ZEALOT_DEMAND, ProtossBase.zealotDrivenZerglings(55, 0));
+        assertEquals(25, ProtossBase.zealotDrivenZerglings(13, 0));
+        assertEquals(25, ProtossBase.zealotDrivenZerglings(32, 0));
+        assertEquals(25, ProtossBase.zealotDrivenZerglings(55, 0));
+        assertEquals(25, ProtossBase.zealotDrivenZerglings(200, 0));
     }
 
     @Test
@@ -41,9 +42,11 @@ class ProtossBaseTest {
     }
 
     @Test
-    void holdsTheOverallCapWhenGatewaysAreNumerous() {
-        assertEquals(ProtossBase.MAX_ZEALOT_DEMAND, ProtossBase.zealotDrivenZerglings(60, 5));
-        assertEquals(ProtossBase.MAX_ZEALOT_DEMAND, ProtossBase.zealotDrivenZerglings(60, 12));
+    void everyGatewayBandAboveFourHoldsTheOverallCap() {
+        for (int gateways = 5; gateways <= 12; gateways++) {
+            assertEquals(25, ProtossBase.zealotDrivenZerglings(60, gateways),
+                    "gateways=" + gateways);
+        }
     }
 
     @Test
