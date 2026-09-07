@@ -761,6 +761,31 @@ public class GameState {
         return productionQueue.unitPlanCount(unitType);
     }
 
+    /**
+     * Counts every unit plan of this type that has not finished yet, across each stage it can sit
+     * in: waiting in the queue, scheduled, or assigned to a producer. A build order comparing its
+     * target against living units alone cannot see what it has already asked for.
+     *
+     * @param unitType the planned unit
+     * @return count of plans for that unit still in flight
+     */
+    public int outstandingUnitPlanCount(UnitType unitType) {
+        int outstanding = productionQueue.unitPlanCount(unitType);
+        for (Plan plan : plansScheduled) {
+            if (plan.getType() == PlanType.UNIT && plan.getPlannedUnit() == unitType) {
+                outstanding += 1;
+            }
+        }
+        for (Plan plan : assignedPlannedItems.values()) {
+            if (plan.getType() == PlanType.UNIT
+                    && plan.getPlannedUnit() == unitType
+                    && !plansScheduled.contains(plan)) {
+                outstanding += 1;
+            }
+        }
+        return outstanding;
+    }
+
     public int ourLivingUnitCount(UnitType unitType) {
         return unitTypeCount.livingCount(unitType);
     }
