@@ -116,4 +116,19 @@ class BuildOrderTest {
         assertFalse(BuildOrder.shouldPlanEmergencyZergling(EMERGENCY_ZERGLING_TARGET, EMERGENCY_ZERGLING_TARGET));
         assertTrue(BuildOrder.shouldPlanEmergencyZergling(EMERGENCY_ZERGLING_TARGET - 1, EMERGENCY_ZERGLING_TARGET));
     }
+
+    @Test
+    void theHashDoesNotDependOnTheClassObjectIdentity() {
+        BuildOrder order = new SpeedlingAllIn();
+        assertEquals(java.util.Objects.hash(SpeedlingAllIn.class.getName(), order.getName()), order.hashCode());
+    }
+
+    @Test
+    void twoInstancesOfOneBuildOrderAgreeOnHashAndEquality() {
+        BuildOrder first = new SpeedlingAllIn();
+        BuildOrder second = new SpeedlingAllIn();
+        assertEquals(first, second);
+        assertEquals(first.hashCode(), second.hashCode());
+    }
+
 }

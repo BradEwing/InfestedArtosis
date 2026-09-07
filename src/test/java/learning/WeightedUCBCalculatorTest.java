@@ -14,6 +14,23 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class WeightedUCBCalculatorTest {
 
     @Test
+    void unplayedCandidatesTieBreakOnNameWhateverOrderTheyArriveIn() {
+        Map<String, Record> noRecords = new HashMap<>();
+        Map<String, MapAwareRecord> noMapRecords = new HashMap<>();
+        List<Long> noTimestamps = new ArrayList<>();
+
+        String forward = WeightedUCBCalculator.findBestStrategy(
+                Arrays.asList("SpeedlingAllIn", "1HatchSpire", "3HatchMuta"),
+                "(4)Python.scx", noMapRecords, noRecords, 7, noTimestamps);
+        String reversed = WeightedUCBCalculator.findBestStrategy(
+                Arrays.asList("3HatchMuta", "1HatchSpire", "SpeedlingAllIn"),
+                "(4)Python.scx", noMapRecords, noRecords, 7, noTimestamps);
+
+        assertEquals("1HatchSpire", forward);
+        assertEquals(forward, reversed);
+    }
+
+    @Test
     void testFindBestStrategySelectsFourPoolWithTomasCereHistory() {
         String history = "NNNNNNNNNNNNNNNNNNNNppOoOOoFHFHFhFhFttFpFhFtFOFnFOOFOFoFhFoFnFTFtFNFNFnFpFoFNFNFn"
                 + "FtFHFhFNFNFNFNFNFNFNFNFNFNFNFNFNFNFNFNFNFNFNFNFNFNFNFNFNFNFNFNFNFnFNFNFNFn";
