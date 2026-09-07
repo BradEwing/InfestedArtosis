@@ -618,6 +618,9 @@ public class ProductionManager {
     /**
      * Blocks a morph from an existing unit when every producer of its type is already spoken for.
      *
+     * Only living producers count: a planned producer cannot be assigned to the morph, and a
+     * producer already claimed by a scheduled or assigned plan of this type is spoken for.
+     *
      * @param unitType the planned morph, for example a Lurker
      * @return NONE while a free producer remains, otherwise NO_PRODUCER
      */
@@ -636,7 +639,7 @@ public class ProductionManager {
                 claimedProducers++;
             }
         }
-        return gameState.ourUnitCount(producer) > claimedProducers ? PlanBlocker.NONE : PlanBlocker.NO_PRODUCER;
+        return gameState.ourLivingUnitCount(producer) > claimedProducers ? PlanBlocker.NONE : PlanBlocker.NO_PRODUCER;
     }
 
     private PlanBlocker advancedUnitBlocker(UnitType unitType) {

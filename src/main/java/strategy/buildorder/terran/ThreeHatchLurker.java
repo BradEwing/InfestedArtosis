@@ -170,9 +170,11 @@ public class ThreeHatchLurker extends TerranBase {
 
         final int desiredLurkers = desiredLurkers(gameState);
         final int outstandingLurkers = gameState.outstandingUnitPlanCount(UnitType.Zerg_Lurker);
+        final int lurkerPipeline = gameState.ourLivingUnitCount(UnitType.Zerg_Lurker) + outstandingLurkers;
+        final int livingHydralisks = gameState.ourLivingUnitCount(UnitType.Zerg_Hydralisk);
         if (techProgression.isLurker()
-                && lurkerCount + outstandingLurkers < desiredLurkers
-                && hydraCount > outstandingLurkers
+                && lurkerPipeline < desiredLurkers
+                && livingHydralisks > outstandingLurkers
                 && canPlanAdvancedUnit(gameState, UnitType.Zerg_Lurker)) {
             Plan lurkerPlan = this.planUnit(gameState, UnitType.Zerg_Lurker);
             plans.add(lurkerPlan);
