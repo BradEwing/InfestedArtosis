@@ -52,7 +52,8 @@ public class ThreeHatchLurker extends TerranBase {
 
         boolean wantLurkerAspect = wantLurkerAspect(gameState);
         boolean wantMetabolicBoost = techProgression.canPlanMetabolicBoost() && lairCount > 0 && zerglingCount >= 12 && lurkerCount > 2;
-        boolean wantMuscularAugments = techProgression.canPlanMuscularAugments() && hydraCount > 3 && lurkerCount > 0;
+        int livingLurkerCount = gameState.ourLivingUnitCount(UnitType.Zerg_Lurker);
+        boolean wantMuscularAugments = techProgression.canPlanMuscularAugments() && hydraCount > 3 && livingLurkerCount >= 2;
         boolean wantGroovedSpines = techProgression.canPlanGroovedSpines() && hydraCount > 6;
         boolean wantRangedUpgrades = techProgression.canPlanRangedUpgrades();
         boolean wantCarapaceUpgrade = techProgression.canPlanCarapaceUpgrades();
@@ -168,17 +169,14 @@ public class ThreeHatchLurker extends TerranBase {
             return plans;
         }
 
-        final int desiredLurkers = desiredLurkers(gameState);
         final int outstandingLurkers = gameState.outstandingUnitPlanCount(UnitType.Zerg_Lurker);
         final int lurkerPipeline = gameState.ourLivingUnitCount(UnitType.Zerg_Lurker) + outstandingLurkers;
         final int livingHydralisks = gameState.ourLivingUnitCount(UnitType.Zerg_Hydralisk);
+        final int desiredLurkers = desiredLurkers(gameState, livingHydralisks);
         if (techProgression.isLurker()
                 && lurkerPipeline < desiredLurkers
-                && livingHydralisks > outstandingLurkers
-                && canPlanAdvancedUnit(gameState, UnitType.Zerg_Lurker)) {
-            Plan lurkerPlan = this.planUnit(gameState, UnitType.Zerg_Lurker);
-            plans.add(lurkerPlan);
-            return plans;
+                && livingHydralisks > outstandingLurkers) {
+            plans.addAll(this.planAdvancedUnit(gameState, UnitType.Zerg_Lurker));
         }
 
         final int desiredHydralisks = desiredHydralisks(gameState);
@@ -297,7 +295,15 @@ public class ThreeHatchLurker extends TerranBase {
         return baseTarget;
     }
 
-    private int desiredLurkers(GameState gameState) {
+    /**
+     * Lurkers to aim for, never more than the hydralisks that could morph into them plus the ones
+     * already on the field. Asking past the producer pool queues plans nothing can execute.
+     *
+     * @param gameState current game state
+     * @param livingHydralisks hydralisks alive now, the only units that can morph
+     * @return the Lurker target for this frame
+     */
+    private int desiredLurkers(GameState gameState, int livingHydralisks) {
         TechProgression techProgression = gameState.getTechProgression();
 
         if (!techProgression.isLurker()) {
@@ -313,7 +319,19 @@ public class ThreeHatchLurker extends TerranBase {
             baseTarget += Math.min(extraLurkers, 30);
         }
 
-        return baseTarget;
+        return reachableLurkerTarget(baseTarget, gameState.ourLivingUnitCount(UnitType.Zerg_Lurker), livingHydralisks);
+    }
+
+    /**
+     * Trims a Lurker target to what the units on the field could actually reach.
+     *
+     * @param baseTarget the strategic target before any producer limit
+     * @param livingLurkers Lurkers already on the field
+     * @param livingHydralisks hydralisks that could still morph
+     * @return the target the build order should ask for
+     */
+    static int reachableLurkerTarget(int baseTarget, int livingLurkers, int livingHydralisks) {
+        return Math.min(baseTarget, livingLurkers + livingHydralisks);
     }
     
     @Override
