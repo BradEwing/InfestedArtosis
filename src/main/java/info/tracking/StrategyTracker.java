@@ -2,6 +2,7 @@ package info.tracking;
 
 import bwapi.Game;
 import bwapi.Race;
+import bwem.BWMap;
 import info.BaseData;
 import info.map.GameMap;
 import info.tracking.any.EarlyRush;
@@ -29,12 +30,14 @@ public class StrategyTracker {
     private final ObservedUnitTracker tracker;
     private final BaseData baseData;
     private final GameMap gameMap;
+    private final BWMap bwMap;
 
-    public StrategyTracker(Game game, Race opponentRace, ObservedUnitTracker tracker, BaseData baseData, GameMap gameMap) {
+    public StrategyTracker(Game game, Race opponentRace, ObservedUnitTracker tracker, BaseData baseData, GameMap gameMap, BWMap bwMap) {
         this.game = game;
         this.tracker = tracker;
         this.baseData = baseData;
         this.gameMap = gameMap;
+        this.bwMap = bwMap;
         this.init(opponentRace);
     }
 
@@ -64,7 +67,7 @@ public class StrategyTracker {
 
     public void onFrame() {
         Time currentTime = new Time(game.getFrameCount());
-        StrategyDetectionContext context = new StrategyDetectionContext(tracker, currentTime, baseData, gameMap);
+        StrategyDetectionContext context = new StrategyDetectionContext(tracker, currentTime, baseData, gameMap, bwMap);
 
         Set<ObservedStrategy> newlyDetected = new HashSet<>();
         for (ObservedStrategy strategy : possibleStrategies) {
