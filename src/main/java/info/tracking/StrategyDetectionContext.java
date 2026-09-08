@@ -27,7 +27,6 @@ public class StrategyDetectionContext {
     private final BWMap bwMap;
 
     private final Map<Integer, Set<TilePosition>> ourBaseTilesByNaturalRadius = new HashMap<>();
-    private final Map<Integer, BaseArea> enemyNaturalAreaByRadius = new HashMap<>();
 
     /**
      * Tiles of our main base plus a manhattan radius around our inferred natural.
@@ -38,16 +37,16 @@ public class StrategyDetectionContext {
     }
 
     /**
-     * Ground belonging to the inferred enemy natural, widened by a manhattan radius around its depot tile
-     * and around the chokepoints of its area. Null while the enemy natural is unknown.
-     * Cached per context instance so detectors sharing a frame do not recompute it.
+     * Ground belonging to the inferred enemy natural: its depot tile and the chokepoints of its area
+     * widened by proximityTileRadius, plus tiles BWEM places in that area within areaTileRadius of the
+     * depot. Null while the enemy natural is unknown.
      */
-    public BaseArea enemyNaturalArea(int manhattanRadius) {
+    public BaseArea enemyNaturalArea(int proximityTileRadius, int areaTileRadius) {
         Base enemyNatural = baseData.getEnemyNaturalBase();
         if (enemyNatural == null) {
             return null;
         }
-        return enemyNaturalAreaByRadius.computeIfAbsent(manhattanRadius, radius -> BaseArea.from(enemyNatural, bwMap, radius));
+        return BaseArea.from(enemyNatural, bwMap, proximityTileRadius, areaTileRadius);
     }
 
     private Set<TilePosition> computeOurBaseTiles(int naturalTileRadius) {

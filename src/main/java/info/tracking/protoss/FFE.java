@@ -11,7 +11,8 @@ import util.Time;
 public class FFE extends ProtossBaseStrategy {
 
     private static final Time DETECTION_CUTOFF = new Time(4, 30);
-    private static final int MANHATTAN_RADIUS = 8;
+    private static final int PROXIMITY_TILE_RADIUS = 8;
+    private static final int AREA_TILE_RADIUS = 20;
 
     public FFE() {
         super("FFE");
@@ -23,7 +24,7 @@ public class FFE extends ProtossBaseStrategy {
             return false;
         }
 
-        BaseArea enemyNatural = context.enemyNaturalArea(MANHATTAN_RADIUS);
+        BaseArea enemyNatural = context.enemyNaturalArea(PROXIMITY_TILE_RADIUS, AREA_TILE_RADIUS);
         if (enemyNatural == null) {
             return false;
         }
