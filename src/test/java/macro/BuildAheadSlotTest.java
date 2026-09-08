@@ -318,12 +318,40 @@ class BuildAheadSlotTest {
     }
 
     @Test
-    void anEvictedPlanReentersTheQueueDeprioritised() {
-        assertTrue(BuildAheadSlot.requeuePriority(CLAIM_FRAME) > CLAIM_FRAME);
+    void aClaimThatCouldDispatchInsideTheMaximumHoldIsTaken() {
+        int predicted = CLAIM_FRAME + BuildAheadSlot.MAX_HOLD_FRAMES + NATURAL_TRAVEL_FRAMES;
+
+        assertFalse(BuildAheadSlot.dispatchOutlastsHold(CLAIM_FRAME, predicted, NATURAL_TRAVEL_FRAMES));
     }
 
     @Test
-    void deprioritisingAPlanNeverOverflows() {
-        assertEquals(Integer.MAX_VALUE, BuildAheadSlot.requeuePriority(Integer.MAX_VALUE));
+    void aClaimWhoseBuilderCouldNotLaunchInsideTheMaximumHoldIsRefused() {
+        int predicted = CLAIM_FRAME + BuildAheadSlot.MAX_HOLD_FRAMES + NATURAL_TRAVEL_FRAMES + 1;
+
+        assertTrue(BuildAheadSlot.dispatchOutlastsHold(CLAIM_FRAME, predicted, NATURAL_TRAVEL_FRAMES));
+    }
+
+    @Test
+    void anUnreachablePredictionIsRefusedTheSlot() {
+        assertTrue(BuildAheadSlot.dispatchOutlastsHold(CLAIM_FRAME, Integer.MAX_VALUE, NATURAL_TRAVEL_FRAMES));
+    }
+
+    @Test
+    void anAffordablePlanIsNeverRefusedTheSlot() {
+        assertFalse(BuildAheadSlot.dispatchOutlastsHold(CLAIM_FRAME, CLAIM_FRAME + 20, 0));
+    }
+
+    @Test
+    void everyAcceptedClaimOutlivesItsOwnDispatchFrame() {
+        for (int travelFrames = 0; travelFrames < BuildAheadSlot.MAX_HOLD_FRAMES * 3; travelFrames += 61) {
+            for (int ahead = 0; ahead < BuildAheadSlot.MAX_HOLD_FRAMES * 4; ahead += 53) {
+                int predicted = CLAIM_FRAME + ahead;
+                if (BuildAheadSlot.dispatchOutlastsHold(CLAIM_FRAME, predicted, travelFrames)) {
+                    continue;
+                }
+                assertTrue(BuildAheadSlot.deadline(CLAIM_FRAME, predicted, travelFrames)
+                        >= predicted - travelFrames);
+            }
+        }
     }
 }

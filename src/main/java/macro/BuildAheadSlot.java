@@ -25,8 +25,6 @@ public class BuildAheadSlot {
 
     static final int BACKOFF_FRAMES = 24 * 15;
 
-    static final int REQUEUE_PENALTY_FRAMES = 24 * 15;
-
     static final int HOLD_REPORT_INTERVAL_FRAMES = 24 * 10;
 
     private static final int UNREACHABLE_FRAME = Integer.MAX_VALUE - (MAX_HOLD_FRAMES + PREDICTION_GRACE_FRAMES);
@@ -62,11 +60,19 @@ public class BuildAheadSlot {
         return Math.max(floor, Math.min(claimFrame + MAX_HOLD_FRAMES, predicted));
     }
 
-    public static int requeuePriority(int priority) {
-        if (priority > Integer.MAX_VALUE - REQUEUE_PENALTY_FRAMES) {
-            return Integer.MAX_VALUE;
+    /**
+     * True when the builder could not be dispatched before the longest hold the slot grants.
+     *
+     * <p>PlanManager releases the builder at {@code predictedReadyFrame - travelFrames}. A claim
+     * that cannot reach that frame within {@code MAX_HOLD_FRAMES} is evicted before its drone ever
+     * moves, so the claim is refused rather than taken.
+     */
+    public static boolean dispatchOutlastsHold(int claimFrame, int predictedReadyFrame, int travelFrames) {
+        if (isUnreachable(predictedReadyFrame)) {
+            return true;
         }
-        return priority + REQUEUE_PENALTY_FRAMES;
+        int travel = Math.max(0, Math.min(MAX_HOLD_FRAMES, travelFrames));
+        return predictedReadyFrame - travel > claimFrame + MAX_HOLD_FRAMES;
     }
 
     public boolean isOccupied() {
