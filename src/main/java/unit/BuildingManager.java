@@ -7,6 +7,7 @@ import bwapi.UnitType;
 import info.BaseData;
 import info.GameState;
 import info.map.BuildingPlanner;
+import macro.plan.ColonyClaims;
 import macro.plan.Plan;
 import macro.plan.PlanState;
 import macro.plan.PlanType;
@@ -18,6 +19,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -180,25 +182,39 @@ public class BuildingManager {
         return false;
     }
 
+    /**
+     * Morphs the creep colony the plan's pair built. A colony standing on that tile is the only
+     * one the plan may take; the plan adopts another colony only once its own tile is empty, and
+     * then only one no other morph plan is waiting for.
+     */
     private boolean assignMorphColony(Plan plan) {
-        TilePosition planPosition = plan.getBuildPosition();
+        TilePosition planPosition = plan.claimedColonyTile();
         for (ManagedUnit managedColony : colonies) {
             Unit colony = managedColony.getUnit();
             if (colony.canBuild(plan.getPlannedUnit()) &&
                     !gameState.getAssignedPlannedItems().containsKey(colony) &&
                     (planPosition == null || colony.getTilePosition().equals(planPosition))) {
+                plan.setBuildPosition(colony.getTilePosition());
                 return doAssignMorphColony(managedColony, colony, plan);
             }
         }
 
-        if (planPosition != null) {
-            for (ManagedUnit managedColony : colonies) {
-                Unit colony = managedColony.getUnit();
-                if (colony.canBuild(plan.getPlannedUnit()) &&
-                        !gameState.getAssignedPlannedItems().containsKey(colony)) {
-                    plan.setBuildPosition(colony.getTilePosition());
-                    return doAssignMorphColony(managedColony, colony, plan);
-                }
+        if (planPosition == null || gameState.creepColonyAt(planPosition) != null) {
+            return false;
+        }
+
+        Map<TilePosition, Plan> claims = ColonyClaims.collect(
+                gameState.getProductionQueue(),
+                gameState.getPlansScheduled(),
+                gameState.getPlansBuilding());
+        for (ManagedUnit managedColony : colonies) {
+            Unit colony = managedColony.getUnit();
+            if (colony.canBuild(plan.getPlannedUnit()) &&
+                    !gameState.getAssignedPlannedItems().containsKey(colony) &&
+                    !ColonyClaims.isClaimedByOther(claims, colony.getTilePosition(), plan)) {
+                plan.setPairedColonyPlan(null);
+                plan.setBuildPosition(colony.getTilePosition());
+                return doAssignMorphColony(managedColony, colony, plan);
             }
         }
 

@@ -14,6 +14,7 @@ import info.ResourceCount;
 import info.TechProgression;
 import info.UnitTypeCount;
 import info.map.BuildingPlanner;
+import macro.plan.ColonyClaims;
 import macro.plan.Plan;
 import macro.plan.PlanBlocker;
 import macro.plan.PlanCancelSource;
@@ -63,6 +64,9 @@ public class ProductionManager {
     private final BuildAheadSlot unitAheadSlot = new BuildAheadSlot();
 
     private int currentFrame = 5;
+
+    /** Plans the current schedule pass pulled out of the queue; they still hold their colony claims. */
+    private List<Plan> schedulingBatch = new ArrayList<>();
 
 
     private BuildOrder activeBuildOrder;
@@ -739,7 +743,9 @@ public class ProductionManager {
             schedulable.add(plan);
         }
 
+        schedulingBatch = schedulable;
         ScanOutcome outcome = scanPlans(schedulable, this::schedulePlan);
+        schedulingBatch = new ArrayList<>();
         gameState.getPlansScheduled().addAll(outcome.scheduled);
         gameState.getProductionQueue().addAll(outcome.requeued);
     }
@@ -909,12 +915,11 @@ public class ProductionManager {
     private PlanBlocker scheduleBuildingItem(Plan plan, boolean hasHigherPriorityPending) {
         UnitType building = plan.getPlannedUnit();
 
-        if (isColonyMorph(building) && !hasCreepColonyAtPosition(plan.getBuildPosition())) {
-            Unit unassignedColony = findUnassignedCreepColony();
-            if (unassignedColony == null) {
-                return PlanBlocker.NO_CREEP_COLONY;
+        if (ColonyClaims.isColonyMorph(building)) {
+            PlanBlocker colonyBlocker = resolveColonyMorph(plan);
+            if (colonyBlocker != PlanBlocker.NONE) {
+                return colonyBlocker;
             }
-            plan.setBuildPosition(unassignedColony.getTilePosition());
         }
 
         ResourceCount resourceCount = gameState.getResourceCount();
@@ -1013,31 +1018,50 @@ public class ProductionManager {
         return true;
     }
 
-    private boolean isColonyMorph(UnitType type) {
-        return type == UnitType.Zerg_Sunken_Colony || type == UnitType.Zerg_Spore_Colony;
-    }
-
-    private boolean hasCreepColonyAtPosition(TilePosition tp) {
-        if (tp == null) {
-            return false;
-        }
-        for (Unit unit : gameState.getSelf().getUnits()) {
-            if (unit.getType() == UnitType.Zerg_Creep_Colony
-                    && unit.isCompleted()
-                    && unit.getTilePosition().equals(tp)) {
-                return true;
+    /**
+     * Points a Sunken or Spore plan at the creep colony its pair is building. While a colony
+     * stands on that tile the plan takes it once complete and waits while it is not; only when the
+     * tile is empty does the plan adopt a colony, and then only one no other morph plan claims.
+     */
+    private PlanBlocker resolveColonyMorph(Plan plan) {
+        TilePosition claim = plan.claimedColonyTile();
+        if (claim != null) {
+            plan.setBuildPosition(claim);
+            Unit pairedColony = gameState.creepColonyAt(claim);
+            if (pairedColony != null) {
+                return pairedColony.isCompleted() ? PlanBlocker.NONE : PlanBlocker.NO_CREEP_COLONY;
             }
         }
-        return false;
+
+        Unit adoptedColony = findAdoptableCreepColony(plan);
+        if (adoptedColony == null) {
+            return PlanBlocker.NO_CREEP_COLONY;
+        }
+
+        plan.setPairedColonyPlan(null);
+        plan.setBuildPosition(adoptedColony.getTilePosition());
+        return PlanBlocker.NONE;
     }
 
-    private Unit findUnassignedCreepColony() {
+    /** A completed creep colony no plan is executing on and no other morph plan is waiting for. */
+    private Unit findAdoptableCreepColony(Plan plan) {
+        Map<TilePosition, Plan> claims = ColonyClaims.collect(
+                schedulingBatch,
+                gameState.getProductionQueue(),
+                gameState.getPlansScheduled(),
+                gameState.getPlansBuilding());
+
         for (Unit unit : gameState.getSelf().getUnits()) {
-            if (unit.getType() == UnitType.Zerg_Creep_Colony
-                    && unit.isCompleted()
-                    && !gameState.getAssignedPlannedItems().containsKey(unit)) {
-                return unit;
+            if (unit.getType() != UnitType.Zerg_Creep_Colony || !unit.isCompleted()) {
+                continue;
             }
+            if (gameState.getAssignedPlannedItems().containsKey(unit)) {
+                continue;
+            }
+            if (ColonyClaims.isClaimedByOther(claims, unit.getTilePosition(), plan)) {
+                continue;
+            }
+            return unit;
         }
         return null;
     }
