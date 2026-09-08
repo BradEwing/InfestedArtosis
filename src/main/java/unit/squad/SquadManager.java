@@ -1013,7 +1013,6 @@ public class SquadManager {
      */
     enum ContainmentVerdict {
         BREAK_ALL,
-        ENGAGE,
         RETREAT,
         HOLD,
         REPOSITION
@@ -1023,10 +1022,10 @@ public class SquadManager {
      * Picks what a squad holding a containment arc does this frame.
      *
      * <p>A containing squad always sits within the squad detection radius of the units it contains, so mere
-     * proximity carries no information and never ends an episode. The strength gate and the timeout are read
-     * first and release every containing squad together. A mobile enemy that has reached the arc ends this
-     * squad's episode on its own, whatever the strength gate said, because the arc is no longer a line the
-     * squad is holding once the enemy is fighting on it.
+     * proximity carries no information and never ends an episode. Only the strength gate, the timeout, a base
+     * under attack, or containment ceasing to apply end one. An enemy that has reached the arc holds the squad
+     * in place instead of moving it: each unit already returns fire inside its own weapon range, so the squad
+     * trades on the line rather than charging a position it has been measured as unable to break.
      *
      * <p>Bases under attack outrank the re-evaluation throttle and are the only verdict reachable on a throttled
      * frame, so every episode survives at least one throttle interval.
@@ -1054,7 +1053,7 @@ public class SquadManager {
             return ContainmentVerdict.RETREAT;
         }
         if (engaged) {
-            return ContainmentVerdict.ENGAGE;
+            return ContainmentVerdict.HOLD;
         }
         return ContainmentVerdict.REPOSITION;
     }
@@ -1077,12 +1076,6 @@ public class SquadManager {
         switch (verdict) {
             case BREAK_ALL:
                 breakAllContainment(now);
-                break;
-            case ENGAGE:
-                squad.clearContainStart();
-                squad.setStatus(SquadStatus.FIGHT);
-                assignFightTargets(squad, members, true);
-                squad.startFightLock(now);
                 break;
             case RETREAT:
                 squad.clearContainStart();

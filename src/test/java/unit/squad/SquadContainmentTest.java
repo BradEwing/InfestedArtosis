@@ -22,11 +22,21 @@ class SquadContainmentTest {
 
     @Test
     void enemiesOnTheArcBelowTheBreakRatioKeepTheContainment() {
-        assertEquals(ContainmentVerdict.ENGAGE,
+        assertEquals(ContainmentVerdict.HOLD,
                 containmentVerdict(BASES_SAFE, UNTHROTTLED, ENEMIES_ON_ARC, IN_TIME, BELOW_BREAK_RATIO,
                         SHOULD_CONTAIN));
         assertEquals(ContainmentVerdict.HOLD,
                 containmentVerdict(BASES_SAFE, THROTTLED, ENEMIES_ON_ARC, IN_TIME, BELOW_BREAK_RATIO,
+                        SHOULD_CONTAIN));
+    }
+
+    @Test
+    void anEnemyOnTheArcHoldsThePositionRatherThanRepositioning() {
+        assertEquals(ContainmentVerdict.HOLD,
+                containmentVerdict(BASES_SAFE, UNTHROTTLED, ENEMIES_ON_ARC, IN_TIME, BELOW_BREAK_RATIO,
+                        SHOULD_CONTAIN));
+        assertEquals(ContainmentVerdict.REPOSITION,
+                containmentVerdict(BASES_SAFE, UNTHROTTLED, ARC_CLEAR, IN_TIME, BELOW_BREAK_RATIO,
                         SHOULD_CONTAIN));
     }
 
@@ -45,7 +55,7 @@ class SquadContainmentTest {
     }
 
     @Test
-    void theStrengthGateOutranksTheArcEscapeHatch() {
+    void onlyTheStrengthGateCommitsTheSquad() {
         assertEquals(ContainmentVerdict.BREAK_ALL,
                 containmentVerdict(BASES_SAFE, UNTHROTTLED, ENEMIES_ON_ARC, IN_TIME, CAN_BREAK, SHOULD_CONTAIN));
         assertEquals(ContainmentVerdict.RETREAT,
