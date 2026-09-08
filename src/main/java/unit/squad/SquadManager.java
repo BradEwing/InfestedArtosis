@@ -94,7 +94,7 @@ public class SquadManager {
     private static final int CONTAINMENT_REEVALUATE_INTERVAL = 48;
     private static final int MAX_MOVE_OUT_THRESHOLD = 40;
     private static final int CONTAINMENT_TIMEOUT_FRAMES = 1400;
-    private static final int CONTAINMENT_ENGAGE_RADIUS = 128;
+    private static final int CONTAINMENT_ENGAGE_RADIUS = 256;
     private static final int ARC_DEGREES = 90;
     private static final int ARC_RADIUS = 160;
     private static final double REINFORCEMENT_RADIUS = 384.0;
@@ -1122,9 +1122,9 @@ public class SquadManager {
     /**
      * Reports whether an enemy has closed onto the arc the squad is holding.
      *
-     * <p>Distance is measured from each member rather than from the squad center, and against a radius well
-     * inside the arc standoff, so an enemy holding the contained choke does not count while one that walks into
-     * the arc does.
+     * <p>Distance is measured from each member rather than from the squad center, so an enemy near one flank
+     * reads the same as one in the middle of the squad. The radius reaches past the arc standoff, so an enemy
+     * holding the contained choke counts as engaged.
      *
      * @param squad containing squad
      * @return true when a mutually engageable enemy is within contact range of any member
