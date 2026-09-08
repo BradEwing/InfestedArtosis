@@ -202,6 +202,7 @@ public class ProductionManager {
         buildAheadSlot.reconcile(activeBuildingPlans());
 
         cancelUnexecutableBuildingClaims();
+        refreshBuildAheadPredictions();
 
         for (Plan plan : buildAheadSlot.stalled(currentFrame)) {
             PlanState state = plan.getState();
@@ -258,6 +259,24 @@ public class ProductionManager {
             }
         }
         return starved;
+    }
+
+    /**
+     * Re-times every hold whose builder has not launched yet against current income.
+     *
+     * <p>The prediction a claim was taken on is what PlanManager reads each frame to decide when to
+     * release the builder, and it decays when gatherers die or are reassigned. Left stale, the plan
+     * rides to the claim-time cap and is evicted with its drone still on minerals.
+     */
+    private void refreshBuildAheadPredictions() {
+        for (Plan plan : buildAheadSlot.claimedPlans()) {
+            if (plan.getState() != PlanState.SCHEDULE) {
+                continue;
+            }
+            int predictedReadyFrame = gameState.frameCanAffordReserved(currentFrame);
+            plan.setPredictedReadyFrame(predictedReadyFrame);
+            buildAheadSlot.extend(plan, predictedReadyFrame, builderTravelFrames(plan));
+        }
     }
 
     /**
@@ -939,7 +958,7 @@ public class ProductionManager {
             return PlanBlocker.NO_BUILD_POSITION;
         }
 
-        int travelFrames = builderTravelFrames(building, plan.getBuildPosition());
+        int travelFrames = builderTravelFrames(plan);
         if (BuildAheadSlot.dispatchOutlastsHold(currentFrame, predictedReadyFrame, travelFrames)) {
             return PlanBlocker.BUILD_AHEAD_TOO_FAR;
         }
@@ -952,16 +971,26 @@ public class ProductionManager {
     }
 
     /**
-     * The walk the eviction deadline has to cover, measured on the worker closest to the tile.
-     * That is the drone PlanManager hands the plan, so the estimate matches the builder it times.
-     * A building that morphs from another building has no walk, and earns no extra hold.
+     * The walk the eviction deadline has to cover.
+     *
+     * <p>Measured on the assigned builder once PlanManager has handed the plan one, which is the
+     * same unit and the same formula the dispatch gate reads, and on the worker closest to the tile
+     * before then. A building that morphs from another building has no walk, and earns no extra
+     * hold.
      */
-    private int builderTravelFrames(UnitType building, TilePosition buildPosition) {
+    private int builderTravelFrames(Plan plan) {
+        UnitType building = plan.getPlannedUnit();
+        TilePosition buildPosition = plan.getBuildPosition();
         if (buildPosition == null || building.whatBuilds().getFirst() != UnitType.Zerg_Drone) {
             return 0;
         }
 
         Position target = buildPosition.toPosition();
+        Unit executor = executorOf(plan);
+        if (executor != null) {
+            return TravelTime.framesToReach(executor, target);
+        }
+
         int travelFrames = 0;
         double closest = Double.MAX_VALUE;
         for (ManagedUnit worker : gameState.getAssignedManagedWorkers()) {

@@ -21,13 +21,20 @@ public class BuildAheadSlot {
 
     static final int MAX_HOLD_FRAMES = 24 * 60;
 
+    /**
+     * The ceiling a refreshed hold can never pass, however far the income prediction slides.
+     * Twice the hold a claim is granted: a plan whose income recovers is carried to its builder's
+     * launch, and one whose income is gone is still evicted.
+     */
+    static final int TOTAL_HOLD_FRAMES = 24 * 120;
+
     static final int PREDICTION_GRACE_FRAMES = 24 * 15;
 
     static final int BACKOFF_FRAMES = 24 * 15;
 
     static final int HOLD_REPORT_INTERVAL_FRAMES = 24 * 10;
 
-    private static final int UNREACHABLE_FRAME = Integer.MAX_VALUE - (MAX_HOLD_FRAMES + PREDICTION_GRACE_FRAMES);
+    private static final int UNREACHABLE_FRAME = Integer.MAX_VALUE - (TOTAL_HOLD_FRAMES + PREDICTION_GRACE_FRAMES);
 
     private final Map<Plan, Claim> claims = new LinkedHashMap<>();
 
@@ -48,31 +55,53 @@ public class BuildAheadSlot {
      * inside the walk it is timing and evicts a builder that is still on its way.
      */
     public static int deadline(int claimFrame, int predictedReadyFrame, int travelFrames) {
-        int travel = Math.max(0, Math.min(MAX_HOLD_FRAMES, travelFrames));
+        return deadline(claimFrame, predictedReadyFrame, travelFrames, MAX_HOLD_FRAMES);
+    }
+
+    private static int deadline(int claimFrame, int predictedReadyFrame, int travelFrames, int cap) {
+        int travel = Math.max(0, Math.min(cap, travelFrames));
         int floor = claimFrame + MIN_HOLD_FRAMES;
         if (travel > 0) {
-            floor = Math.max(floor, claimFrame + Math.min(MAX_HOLD_FRAMES, travel + PREDICTION_GRACE_FRAMES));
+            floor = Math.max(floor, claimFrame + Math.min(cap, travel + PREDICTION_GRACE_FRAMES));
         }
         if (isUnreachable(predictedReadyFrame)) {
             return floor;
         }
         int predicted = predictedReadyFrame + PREDICTION_GRACE_FRAMES;
-        return Math.max(floor, Math.min(claimFrame + MAX_HOLD_FRAMES, predicted));
+        return Math.max(floor, Math.min(claimFrame + cap, predicted));
     }
 
     /**
-     * True when the builder could not be dispatched before the longest hold the slot grants.
+     * True when the builder could not be dispatched before the longest hold the slot can reach.
      *
-     * <p>PlanManager releases the builder at {@code predictedReadyFrame - travelFrames}. A claim
-     * that cannot reach that frame within {@code MAX_HOLD_FRAMES} is evicted before its drone ever
-     * moves, so the claim is refused rather than taken.
+     * <p>PlanManager releases the builder on the first frame past
+     * {@code predictedReadyFrame - travelFrames}. A claim that only reaches that frame as its hold
+     * expires is evicted on the very frame its dispatch gate opens, so it is refused instead.
      */
     public static boolean dispatchOutlastsHold(int claimFrame, int predictedReadyFrame, int travelFrames) {
         if (isUnreachable(predictedReadyFrame)) {
             return true;
         }
-        int travel = Math.max(0, Math.min(MAX_HOLD_FRAMES, travelFrames));
-        return predictedReadyFrame - travel > claimFrame + MAX_HOLD_FRAMES;
+        int travel = Math.max(0, Math.min(TOTAL_HOLD_FRAMES, travelFrames));
+        return predictedReadyFrame - travel >= claimFrame + TOTAL_HOLD_FRAMES;
+    }
+
+    /**
+     * Re-times a hold against a refreshed income prediction.
+     *
+     * <p>A claim is timed on the income the bot had when it was taken. Gatherers die and drones are
+     * reassigned, so that estimate decays under a plan still waiting for its builder to launch, and
+     * the plan rides to the claim-time cap and is evicted with its drone parked on minerals. The
+     * deadline follows the refreshed estimate but never shortens and never passes
+     * {@code claimFrame + TOTAL_HOLD_FRAMES}.
+     */
+    public void extend(Plan plan, int predictedReadyFrame, int travelFrames) {
+        Claim claim = claims.get(plan);
+        if (claim == null) {
+            return;
+        }
+        int refreshed = deadline(claim.claimFrame, predictedReadyFrame, travelFrames, TOTAL_HOLD_FRAMES);
+        claim.deadline = Math.min(claim.claimFrame + TOTAL_HOLD_FRAMES, Math.max(claim.deadline, refreshed));
     }
 
     public boolean isOccupied() {
@@ -164,7 +193,7 @@ public class BuildAheadSlot {
     private static final class Claim {
 
         private final int claimFrame;
-        private final int deadline;
+        private int deadline;
         private int lastReportFrame;
 
         private Claim(int claimFrame, int deadline) {

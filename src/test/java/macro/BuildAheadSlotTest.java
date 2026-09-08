@@ -318,15 +318,15 @@ class BuildAheadSlotTest {
     }
 
     @Test
-    void aClaimThatCouldDispatchInsideTheMaximumHoldIsTaken() {
-        int predicted = CLAIM_FRAME + BuildAheadSlot.MAX_HOLD_FRAMES + NATURAL_TRAVEL_FRAMES;
+    void aClaimThatCouldDispatchInsideTheTotalHoldIsTaken() {
+        int predicted = CLAIM_FRAME + BuildAheadSlot.TOTAL_HOLD_FRAMES + NATURAL_TRAVEL_FRAMES - 1;
 
         assertFalse(BuildAheadSlot.dispatchOutlastsHold(CLAIM_FRAME, predicted, NATURAL_TRAVEL_FRAMES));
     }
 
     @Test
-    void aClaimWhoseBuilderCouldNotLaunchInsideTheMaximumHoldIsRefused() {
-        int predicted = CLAIM_FRAME + BuildAheadSlot.MAX_HOLD_FRAMES + NATURAL_TRAVEL_FRAMES + 1;
+    void aClaimThatCouldOnlyDispatchAsTheHoldExpiresIsRefused() {
+        int predicted = CLAIM_FRAME + BuildAheadSlot.TOTAL_HOLD_FRAMES + NATURAL_TRAVEL_FRAMES;
 
         assertTrue(BuildAheadSlot.dispatchOutlastsHold(CLAIM_FRAME, predicted, NATURAL_TRAVEL_FRAMES));
     }
@@ -342,16 +342,87 @@ class BuildAheadSlotTest {
     }
 
     @Test
-    void everyAcceptedClaimOutlivesItsOwnDispatchFrame() {
-        for (int travelFrames = 0; travelFrames < BuildAheadSlot.MAX_HOLD_FRAMES * 3; travelFrames += 61) {
-            for (int ahead = 0; ahead < BuildAheadSlot.MAX_HOLD_FRAMES * 4; ahead += 53) {
+    void aRefreshedClaimOutlivesTheFrameItsDispatchGateOpens() {
+        for (int travelFrames = 0; travelFrames < BuildAheadSlot.TOTAL_HOLD_FRAMES; travelFrames += 61) {
+            for (int ahead = 0; ahead < BuildAheadSlot.TOTAL_HOLD_FRAMES * 2; ahead += 53) {
                 int predicted = CLAIM_FRAME + ahead;
                 if (BuildAheadSlot.dispatchOutlastsHold(CLAIM_FRAME, predicted, travelFrames)) {
                     continue;
                 }
-                assertTrue(BuildAheadSlot.deadline(CLAIM_FRAME, predicted, travelFrames)
-                        >= predicted - travelFrames);
+                BuildAheadSlot slot = new BuildAheadSlot();
+                Plan plan = spire();
+                slot.claim(plan, CLAIM_FRAME, predicted, travelFrames);
+                slot.extend(plan, predicted, travelFrames);
+
+                assertTrue(slot.stalled(predicted - travelFrames).isEmpty());
             }
         }
+    }
+
+    @Test
+    void aParkedBuilderIsNotEvictedOnTheFrameItsDispatchGateOpens() {
+        int claimFrame = 194;
+        int travelFrames = 380;
+        int predicted = 2014;
+        int dispatchGate = predicted - travelFrames;
+        BuildAheadSlot slot = new BuildAheadSlot();
+        Plan plan = spire();
+        slot.claim(plan, claimFrame, predicted, travelFrames);
+        assertFalse(slot.stalled(dispatchGate).isEmpty());
+
+        slot.extend(plan, predicted, travelFrames);
+
+        assertTrue(slot.stalled(dispatchGate).isEmpty());
+    }
+
+    @Test
+    void incomeDecayingAfterTheClaimDoesNotEvictAParkedBuilder() {
+        int travelFrames = 380;
+        int claimed = CLAIM_FRAME + 600;
+        int decayed = CLAIM_FRAME + 1800;
+        BuildAheadSlot slot = new BuildAheadSlot();
+        Plan plan = spire();
+        slot.claim(plan, CLAIM_FRAME, claimed, travelFrames);
+        assertFalse(slot.stalled(decayed - travelFrames).isEmpty());
+
+        slot.extend(plan, decayed, travelFrames);
+
+        assertTrue(slot.stalled(decayed - travelFrames).isEmpty());
+    }
+
+    @Test
+    void aDecayingPredictionStillHitsTheTotalHoldCap() {
+        BuildAheadSlot slot = new BuildAheadSlot();
+        Plan plan = spire();
+        slot.claim(plan, CLAIM_FRAME, CLAIM_FRAME + 600, NATURAL_TRAVEL_FRAMES);
+
+        for (int decay = 300; decay <= 12000; decay += 300) {
+            slot.extend(plan, CLAIM_FRAME + 600 + decay, NATURAL_TRAVEL_FRAMES);
+        }
+
+        assertTrue(slot.stalled(CLAIM_FRAME + BuildAheadSlot.TOTAL_HOLD_FRAMES - 1).isEmpty());
+        assertFalse(slot.stalled(CLAIM_FRAME + BuildAheadSlot.TOTAL_HOLD_FRAMES).isEmpty());
+    }
+
+    @Test
+    void aRefreshNeverShortensAHold() {
+        BuildAheadSlot slot = new BuildAheadSlot();
+        Plan plan = spire();
+        slot.claim(plan, CLAIM_FRAME, CLAIM_FRAME + 1000, NATURAL_TRAVEL_FRAMES);
+        int granted = BuildAheadSlot.deadline(CLAIM_FRAME, CLAIM_FRAME + 1000, NATURAL_TRAVEL_FRAMES);
+
+        slot.extend(plan, CLAIM_FRAME + 20, NATURAL_TRAVEL_FRAMES);
+
+        assertTrue(slot.stalled(granted - 1).isEmpty());
+        assertFalse(slot.stalled(granted).isEmpty());
+    }
+
+    @Test
+    void refreshingAPlanThatHoldsNoClaimDoesNothing() {
+        BuildAheadSlot slot = new BuildAheadSlot();
+
+        slot.extend(spire(), CLAIM_FRAME, NATURAL_TRAVEL_FRAMES);
+
+        assertFalse(slot.isOccupied());
     }
 }

@@ -148,11 +148,41 @@ public class ResourceCount {
      * @return frame when all resources will be available
      */
     public int frameCanAffordUnit(UnitType unit, int currentFrame, int mineralWorkers, int gasWorkers) {
-        //if (this.cannotAffordUnit(unit)) { return currentFrame; }
+        return frameCanGather(
+                unit.mineralPrice() + reservedMinerals - self.minerals(),
+                unit.gasPrice() + reservedGas - self.gas(),
+                currentFrame,
+                mineralWorkers,
+                gasWorkers);
+    }
 
-        final int mineralsNeeded = unit.mineralPrice() + reservedMinerals - self.minerals();
-        final int gasNeeded = unit.gasPrice() + reservedGas - self.gas();
+    /**
+     * Predict the frame when a cost already standing in the reservation ledger can be paid.
+     *
+     * <p>{@link #frameCanAffordUnit} adds the price on top of the ledger, which counts a plan that
+     * has already reserved twice. The ledger on its own is the quantity the claim was made on, so a
+     * plan still holding its reservation reads its refreshed prediction from here.
+     *
+     * @param currentFrame game's current frame
+     * @param mineralWorkers number of workers on minerals
+     * @param gasWorkers number of workers on gas
+     * @return frame when every reserved cost is covered
+     */
+    public int frameCanAffordReserved(int currentFrame, int mineralWorkers, int gasWorkers) {
+        return frameCanGather(
+                reservedMinerals - self.minerals(),
+                reservedGas - self.gas(),
+                currentFrame,
+                mineralWorkers,
+                gasWorkers);
+    }
 
+    private int frameCanGather(
+            int mineralsNeeded,
+            int gasNeeded,
+            int currentFrame,
+            int mineralWorkers,
+            int gasWorkers) {
         int framesToGather = 0;
         if (mineralsNeeded > 0) {
             if (mineralWorkers == 0) { 
