@@ -5,7 +5,6 @@ import bwapi.Position;
 import bwapi.TilePosition;
 import bwapi.Unit;
 import bwapi.UnitType;
-import util.Distance;
 import util.Filter;
 import util.Time;
 
@@ -342,14 +341,14 @@ public class ObservedUnitTracker {
                 .count();
     }
 
-    public boolean hasLivingUnitNearTile(UnitType unitType, TilePosition tile, int manhattanDistance) {
+    public boolean hasLivingUnitAt(Predicate<UnitType> typeFilter, Predicate<TilePosition> tileFilter) {
         return observedUnits.values()
                 .stream()
-                .filter(ou -> ou.getUnitType() == unitType)
+                .filter(ou -> typeFilter.test(ou.getUnitType()))
                 .filter(ou -> ou.getDestroyedFrame() == null)
                 .anyMatch(ou -> {
                     Position pos = ou.getCurrentOrLastKnownPosition();
-                    return pos != null && Distance.manhattanTileDistance(pos.toTilePosition(), tile) <= manhattanDistance;
+                    return pos != null && tileFilter.test(pos.toTilePosition());
                 });
     }
 
