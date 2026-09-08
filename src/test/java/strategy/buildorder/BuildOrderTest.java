@@ -11,10 +11,16 @@ import macro.plan.PlanComparator;
 import macro.plan.PlanState;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import strategy.buildorder.opener.FourPool;
+import strategy.buildorder.opener.NinePoolSpeed;
+import strategy.buildorder.opener.Overpool;
+import strategy.buildorder.opener.ThreeHatchBeforePool;
+import strategy.buildorder.opener.TwelvePool;
 import telemetry.PlanEventSink;
 import telemetry.PlanEvents;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -36,6 +42,10 @@ class BuildOrderTest {
     private static final int SPIRE_PRIORITY = 4;
 
     private static final int EXTRACTOR_PRIORITY = 50;
+
+    private static final int HATCHERY_FRAME = 203;
+
+    private static final int POOL_FRAME = 204;
 
     private final List<String> withheld = new ArrayList<>();
 
@@ -127,22 +137,43 @@ class BuildOrderTest {
         assertTrue(BuildOrder.shouldPlanEmergencyZergling(EMERGENCY_ZERGLING_TARGET - 1, EMERGENCY_ZERGLING_TARGET));
     }
 
-    @Test
-    void theSpawningPoolOutranksTheBuildingsItCompetesWith() {
-        PlanComparator comparator = new PlanComparator();
-        Plan pool = new BuildingPlan(UnitType.Zerg_Spawning_Pool, BuildOrder.SPAWNING_POOL_PRIORITY);
+    private static Plan poolPlanFor(BuildOrder buildOrder) {
+        return new BuildingPlan(UnitType.Zerg_Spawning_Pool, buildOrder.poolPriority(POOL_FRAME));
+    }
 
-        assertTrue(comparator.compare(pool, new BuildingPlan(UnitType.Zerg_Extractor, EXTRACTOR_PRIORITY)) < 0);
-        assertTrue(comparator.compare(pool, new BuildingPlan(UnitType.Zerg_Lair, LAIR_PRIORITY)) < 0);
-        assertTrue(comparator.compare(pool, new BuildingPlan(UnitType.Zerg_Spire, SPIRE_PRIORITY)) < 0);
+    private static List<BuildOrder> poolFirstOpeners() {
+        return Arrays.asList(new FourPool(), new NinePoolSpeed(), new TwelvePool(), new Overpool());
     }
 
     @Test
-    void theSpawningPoolYieldsToTheReservedEmergencyPriority() {
-        Plan pool = new BuildingPlan(UnitType.Zerg_Spawning_Pool, BuildOrder.SPAWNING_POOL_PRIORITY);
+    void aPoolFirstOpenerOutranksTheBuildingsItCompetesWith() {
+        PlanComparator comparator = new PlanComparator();
+
+        for (BuildOrder opener : poolFirstOpeners()) {
+            Plan pool = poolPlanFor(opener);
+            assertEquals(BuildOrder.SPAWNING_POOL_PRIORITY, pool.getPriority(), opener.getName());
+            assertTrue(comparator.compare(pool, new BuildingPlan(UnitType.Zerg_Extractor, EXTRACTOR_PRIORITY)) < 0, opener.getName());
+            assertTrue(comparator.compare(pool, new BuildingPlan(UnitType.Zerg_Lair, LAIR_PRIORITY)) < 0, opener.getName());
+            assertTrue(comparator.compare(pool, new BuildingPlan(UnitType.Zerg_Spire, SPIRE_PRIORITY)) < 0, opener.getName());
+        }
+    }
+
+    @Test
+    void aPoolFirstOpenerYieldsToTheReservedEmergencyPriority() {
         Plan emergency = new BuildingPlan(UnitType.Zerg_Sunken_Colony, EMERGENCY_PRIORITY);
 
-        assertTrue(new PlanComparator().compare(emergency, pool) < 0);
+        for (BuildOrder opener : poolFirstOpeners()) {
+            assertTrue(new PlanComparator().compare(emergency, poolPlanFor(opener)) < 0, opener.getName());
+        }
+    }
+
+    @Test
+    void aHatchFirstOpenerKeepsThePoolBehindTheHatcheriesQueuedBeforeIt() {
+        BuildOrder opener = new ThreeHatchBeforePool();
+        Plan hatchery = new BuildingPlan(UnitType.Zerg_Hatchery, HATCHERY_FRAME);
+
+        assertEquals(POOL_FRAME, opener.poolPriority(POOL_FRAME));
+        assertTrue(new PlanComparator().compare(hatchery, poolPlanFor(opener)) < 0);
     }
 
     @Test

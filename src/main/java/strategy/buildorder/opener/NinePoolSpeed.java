@@ -125,6 +125,11 @@ public class NinePoolSpeed extends BuildOrder {
         return true; 
     }
 
+    @Override
+    protected int poolPriority(int enqueueFrame) {
+        return SPAWNING_POOL_PRIORITY;
+    }
+
     static boolean shouldPlanOverlord(int droneCount, int overlordCount, boolean excessSupply) {
         return droneCount > 8 && overlordCount < 2 && !excessSupply;
     }
