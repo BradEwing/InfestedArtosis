@@ -263,6 +263,11 @@ public class GameState {
         return this.resourceCount.frameCanAffordUnit(unit, currentFrame, mineralGatherers.size(), gasGatherers.size());
     }
 
+    /** Refreshed prediction for a plan whose cost already stands in the reservation ledger. */
+    public int frameCanAffordReserved(int currentFrame) {
+        return this.resourceCount.frameCanAffordReserved(currentFrame, mineralGatherers.size(), gasGatherers.size());
+    }
+
     public Base reserveBase() {
         return baseData.reserveBase();
     }

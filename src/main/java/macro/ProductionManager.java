@@ -51,6 +51,8 @@ public class ProductionManager {
 
     private static final int MAX_SUPPLY = 400;
 
+    private static final int HATCHERY_MINERAL_PRICE = UnitType.Zerg_Hatchery.mineralPrice();
+
     private Game game;
 
     private GameState gameState;
@@ -200,6 +202,7 @@ public class ProductionManager {
         buildAheadSlot.reconcile(activeBuildingPlans());
 
         cancelUnexecutableBuildingClaims();
+        refreshBuildAheadPredictions();
 
         for (Plan plan : buildAheadSlot.stalled(currentFrame)) {
             PlanState state = plan.getState();
@@ -258,13 +261,34 @@ public class ProductionManager {
         return starved;
     }
 
-    /** Requeues an evicted plan; it keeps its build position, so its tiles are not reserved twice. */
+    /**
+     * Re-times every hold whose builder has not launched yet against current income.
+     *
+     * <p>The prediction a claim was taken on is what PlanManager reads each frame to decide when to
+     * release the builder, and it decays when gatherers die or are reassigned. Left stale, the plan
+     * rides to the claim-time cap and is evicted with its drone still on minerals.
+     */
+    private void refreshBuildAheadPredictions() {
+        for (Plan plan : buildAheadSlot.claimedPlans()) {
+            if (plan.getState() != PlanState.SCHEDULE) {
+                continue;
+            }
+            int predictedReadyFrame = gameState.frameCanAffordReserved(currentFrame);
+            plan.setPredictedReadyFrame(predictedReadyFrame);
+            buildAheadSlot.extend(plan, predictedReadyFrame, builderTravelFrames(plan));
+        }
+    }
+
+    /**
+     * Requeues an evicted plan. It keeps its build position, so its tiles are not reserved twice,
+     * and its priority, so an eviction cannot reorder it behind plans queued after it. The per-plan
+     * backoff is what stops it reclaiming the slot on the next frame.
+     */
     private void requeueStalledPlan(Plan plan, BuildAheadSlot slot) {
         slot.releaseWithBackoff(plan, currentFrame);
         removeFromActivePlans(plan);
         releaseExecutor(plan);
         gameState.getResourceCount().unreserveUnit(plan.getPlannedUnit());
-        plan.setPriority(BuildAheadSlot.requeuePriority(plan.getPriority()));
         plan.setState(PlanState.PLANNED);
         gameState.getProductionQueue().add(plan);
     }
@@ -917,6 +941,11 @@ public class ProductionManager {
             plan.setBuildPosition(unassignedColony.getTilePosition());
         }
 
+        PlanBlocker producerBlocker = buildingMorphBlocker(building, hasFreeMorphProducer(building));
+        if (producerBlocker != PlanBlocker.NONE) {
+            return producerBlocker;
+        }
+
         ResourceCount resourceCount = gameState.getResourceCount();
         int predictedReadyFrame = gameState.frameCanAffordUnit(building, currentFrame);
         PlanBlocker buildAheadBlocker = buildAheadBlocker(
@@ -934,7 +963,12 @@ public class ProductionManager {
             return PlanBlocker.NO_BUILD_POSITION;
         }
 
-        buildAheadSlot.claim(plan, currentFrame, predictedReadyFrame, builderTravelFrames(building, plan.getBuildPosition()));
+        int travelFrames = builderTravelFrames(plan);
+        if (BuildAheadSlot.dispatchOutlastsHold(currentFrame, predictedReadyFrame, travelFrames)) {
+            return PlanBlocker.BUILD_AHEAD_TOO_FAR;
+        }
+
+        buildAheadSlot.claim(plan, currentFrame, predictedReadyFrame, travelFrames);
         resourceCount.reserveUnit(building);
         plan.setPredictedReadyFrame(predictedReadyFrame);
         plan.setState(PlanState.SCHEDULE);
@@ -942,16 +976,62 @@ public class ProductionManager {
     }
 
     /**
-     * The walk the eviction deadline has to cover, measured on the worker closest to the tile.
-     * That is the drone PlanManager hands the plan, so the estimate matches the builder it times.
-     * A building that morphs from another building has no walk, and earns no extra hold.
+     * Blocks a building morph while BuildingManager has no producer free to take it.
+     *
+     * <p>A morph from another building has no drone to walk, so nothing downstream notices the
+     * missing producer. The plan takes the build-ahead slot, holds its reservation for the whole
+     * minimum hold, is evicted without ever having been assigned, and claims again on the next
+     * scan. Refusing it before the claim leaves it in the queue at no cost until a producer frees
+     * up.
+     *
+     * @param building the planned morph, for example a Lair
+     * @param freeProducerAvailable whether a completed producer of its type carries no plan yet
+     * @return NONE while the morph can be handed to a producer, otherwise NO_PRODUCER
      */
-    private int builderTravelFrames(UnitType building, TilePosition buildPosition) {
+    static PlanBlocker buildingMorphBlocker(UnitType building, boolean freeProducerAvailable) {
+        if (building.whatBuilds().getFirst() == UnitType.Zerg_Drone) {
+            return PlanBlocker.NONE;
+        }
+        return freeProducerAvailable ? PlanBlocker.NONE : PlanBlocker.NO_PRODUCER;
+    }
+
+    /** Matches what BuildingManager looks for: a completed producer that carries no plan yet. */
+    private boolean hasFreeMorphProducer(UnitType building) {
+        UnitType producer = building.whatBuilds().getFirst();
+        if (producer == UnitType.Zerg_Drone) {
+            return true;
+        }
+        for (Unit unit : gameState.getSelf().getUnits()) {
+            if (unit.getType() == producer
+                    && unit.isCompleted()
+                    && !gameState.getAssignedPlannedItems().containsKey(unit)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * The walk the eviction deadline has to cover.
+     *
+     * <p>Measured on the assigned builder once PlanManager has handed the plan one, which is the
+     * same unit and the same formula the dispatch gate reads, and on the worker closest to the tile
+     * before then. A building that morphs from another building has no walk, and earns no extra
+     * hold.
+     */
+    private int builderTravelFrames(Plan plan) {
+        UnitType building = plan.getPlannedUnit();
+        TilePosition buildPosition = plan.getBuildPosition();
         if (buildPosition == null || building.whatBuilds().getFirst() != UnitType.Zerg_Drone) {
             return 0;
         }
 
         Position target = buildPosition.toPosition();
+        Unit executor = executorOf(plan);
+        if (executor != null) {
+            return TravelTime.framesToReach(executor, target);
+        }
+
         int travelFrames = 0;
         double closest = Double.MAX_VALUE;
         for (ManagedUnit worker : gameState.getAssignedManagedWorkers()) {
@@ -965,6 +1045,12 @@ public class ProductionManager {
         return travelFrames;
     }
 
+    /**
+     * Why a building plan cannot take the build-ahead slot this frame.
+     *
+     * <p>Affordability is answered first: an eviction bars a plan from holding the slot again,
+     * never from being scheduled with minerals it can already pay for.
+     */
     static PlanBlocker buildAheadBlocker(
             BuildAheadSlot slot,
             Plan plan,
@@ -972,14 +1058,14 @@ public class ProductionManager {
             boolean cannotAfford,
             boolean hasHigherPriorityPending,
             int predictedReadyFrame) {
-        if (slot.isInBackoff(plan, frame)) {
-            return PlanBlocker.BUILD_AHEAD_BACKOFF;
-        }
         if (!cannotAfford) {
             return PlanBlocker.NONE;
         }
         if (hasHigherPriorityPending || slot.isOccupied()) {
             return PlanBlocker.BUILD_AHEAD_SLOT_TAKEN;
+        }
+        if (slot.isInBackoff(plan, frame)) {
+            return PlanBlocker.BUILD_AHEAD_BACKOFF;
         }
         if (BuildAheadSlot.isUnreachable(predictedReadyFrame)) {
             return PlanBlocker.NO_INCOME;
@@ -1063,6 +1149,7 @@ public class ProductionManager {
                 currentFrame,
                 cannotAfford,
                 bankClaimedAhead,
+                buildAheadSlot.isOccupied(),
                 predictedReadyFrame);
         if (unitAheadBlocker != PlanBlocker.NONE) {
             return unitAheadBlocker;
@@ -1114,17 +1201,41 @@ public class ProductionManager {
         return freeSupply < supplyCost;
     }
 
+    /**
+     * True when a building already holding the bank bars this unit from spending against it.
+     *
+     * <p>Overlords are exempt. A building that cannot be funded yet is funded by the income the
+     * bot is still gathering, and holding supply down stops the drones that gather it.
+     *
+     * @param unit the planned unit
+     * @param buildingHoldsBank whether a building plan holds the build-ahead slot
+     * @return true when the unit must wait for the building to be funded
+     */
+    static boolean isBarredByBuildingReservation(UnitType unit, boolean buildingHoldsBank) {
+        return buildingHoldsBank && unit != UnitType.Zerg_Overlord;
+    }
+
+    /**
+     * Why a unit plan cannot be scheduled against a bank it cannot yet cover.
+     *
+     * <p>A building holding the build-ahead slot has reserved its cost out of the same bank, so
+     * its hold bars unit plans exactly as a resource-blocked plan ahead of them in the scan does.
+     */
     static PlanBlocker unitAheadBlocker(
             BuildAheadSlot slot,
             Plan plan,
             int frame,
             boolean cannotAfford,
             boolean bankClaimedAhead,
+            boolean buildingHoldsBank,
             int predictedReadyFrame) {
         if (!cannotAfford) {
             return PlanBlocker.NONE;
         }
         if (bankClaimedAhead || slot.isOccupied()) {
+            return PlanBlocker.BUILD_AHEAD_SLOT_TAKEN;
+        }
+        if (isBarredByBuildingReservation(plan.getPlannedUnit(), buildingHoldsBank)) {
             return PlanBlocker.BUILD_AHEAD_SLOT_TAKEN;
         }
         if (slot.isInBackoff(plan, frame)) {
@@ -1234,16 +1345,19 @@ public class ProductionManager {
      * - Larva count is zero
      * - Hatchery is in the production queue
      * - There are enough minerals to build a hatchery
-     * 
+     *
      * If this scenario is detected, finds the highest priority hatchery in the queue
      * and sets its priority to put it at the top of the queue.
+     *
+     * <p>Reads the mined bank rather than the available one. A hatchery already holding its own
+     * 300-mineral reservation would otherwise suppress the rule that exists to rescue it.
      */
     private void reprioritizeHatcheriesForLarvaConstraint() {
         if (gameState.numLarva() > 0) {
             return;
         }
 
-        if (gameState.getResourceCount().availableMinerals() < 300) {
+        if (gameState.getResourceCount().minedMinerals() < HATCHERY_MINERAL_PRICE) {
             return;
         }
 
@@ -1262,7 +1376,8 @@ public class ProductionManager {
         }
 
         if (priorityHatcheryPlan != null && highestPriority > 0) {
-            priorityHatcheryPlan.setPriority(0);
+            Plan target = priorityHatcheryPlan;
+            gameState.getProductionQueue().setPriorityWhere(plan -> plan == target, 0);
         }
     }
 

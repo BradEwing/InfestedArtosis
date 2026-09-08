@@ -31,7 +31,6 @@ import java.util.stream.Collectors;
 public class BuildingManager {
     private GameState gameState;
 
-    private ManagedUnit lair;
     private HashSet<ManagedUnit> hatcheries = new HashSet<>();
     private HashSet<ManagedUnit> colonies = new HashSet<>();
 
@@ -159,7 +158,6 @@ public class BuildingManager {
                 managedHatchery.setRole(UnitRole.MORPH);
                 gameState.getAssignedPlannedItems().put(hatchery, plan);
                 managedHatchery.setPlan(plan);
-                lair = managedHatchery;
                 return true;
             }
         }
@@ -167,14 +165,21 @@ public class BuildingManager {
         return false;
     }
 
+    /**
+     * Hands a Hive plan to any completed Lair that carries no plan yet.
+     *
+     * <p>Reads the hatchery set, which tracks every Lair through add and remove. Only a completed
+     * Lair answers canBuild for a Hive, so a plain Hatchery in the same set is skipped.
+     */
     private boolean assignMorphHive(Plan plan) {
-        if (lair == null) return false;
-        Unit lairUnit = lair.getUnit();
-        if (lairUnit.canBuild(plan.getPlannedUnit()) && !gameState.getAssignedPlannedItems().containsKey(lairUnit)) {
-            lair.setRole(UnitRole.MORPH);
-            gameState.getAssignedPlannedItems().put(lairUnit, plan);
-            lair.setPlan(plan);
-            return true;
+        for (ManagedUnit managedLair : hatcheries) {
+            Unit lairUnit = managedLair.getUnit();
+            if (lairUnit.canBuild(plan.getPlannedUnit()) && !gameState.getAssignedPlannedItems().containsKey(lairUnit)) {
+                managedLair.setRole(UnitRole.MORPH);
+                gameState.getAssignedPlannedItems().put(lairUnit, plan);
+                managedLair.setPlan(plan);
+                return true;
+            }
         }
 
         return false;
