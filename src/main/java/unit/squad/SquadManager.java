@@ -1030,6 +1030,10 @@ public class SquadManager {
      * <p>Bases under attack outrank the re-evaluation throttle and are the only verdict reachable on a throttled
      * frame, so every episode survives at least one throttle interval.
      *
+     * <p>Only a base under attack and the strength gate move the whole army; they are the two signals that are
+     * true for every squad at once. A squad that has run out its own containment clock disengages by itself
+     * rather than committing squads whose gate has not fired.
+     *
      * @param basesUnderAttack true when any of our bases has a tracked threat
      * @param throttled true when the contain lock holds and this frame is not a re-evaluation tick
      * @param engaged true when a mobile enemy is within contact range of a member
@@ -1046,8 +1050,11 @@ public class SquadManager {
         if (throttled) {
             return ContainmentVerdict.HOLD;
         }
-        if (timedOut || canBreak) {
+        if (canBreak) {
             return ContainmentVerdict.BREAK_ALL;
+        }
+        if (timedOut) {
+            return ContainmentVerdict.RETREAT;
         }
         if (!shouldContain) {
             return ContainmentVerdict.RETREAT;
@@ -1206,10 +1213,16 @@ public class SquadManager {
 
         List<ManagedUnit> units = new ArrayList<>(squad.getMembers());
         Map<ManagedUnit, Position> assignments = arc.assignUnits(units);
-        for (Map.Entry<ManagedUnit, Position> entry : assignments.entrySet()) {
-            ManagedUnit mu = entry.getKey();
+        for (ManagedUnit mu : units) {
+            Position assigned = assignments.get(mu);
+            if (assigned == null) {
+                assigned = arc.closestPosition(mu.getPosition());
+            }
+            if (assigned == null) {
+                continue;
+            }
             mu.setRole(UnitRole.CONTAIN);
-            mu.setContainPosition(entry.getValue());
+            mu.setContainPosition(assigned);
         }
     }
 

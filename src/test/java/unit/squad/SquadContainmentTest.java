@@ -63,9 +63,11 @@ class SquadContainmentTest {
     }
 
     @Test
-    void theTimeoutStillBreaksContainment() {
-        assertEquals(ContainmentVerdict.BREAK_ALL,
+    void theTimeoutDisengagesOnlyTheSquadThatRanOut() {
+        assertEquals(ContainmentVerdict.RETREAT,
                 containmentVerdict(BASES_SAFE, UNTHROTTLED, ARC_CLEAR, TIMED_OUT, BELOW_BREAK_RATIO, SHOULD_CONTAIN));
+        assertEquals(ContainmentVerdict.BREAK_ALL,
+                containmentVerdict(BASES_SAFE, UNTHROTTLED, ARC_CLEAR, TIMED_OUT, CAN_BREAK, SHOULD_CONTAIN));
     }
 
     @Test
