@@ -1019,18 +1019,23 @@ public class ProductionManager {
     }
 
     /**
-     * Points a Sunken or Spore plan at the creep colony its pair is building. While a colony
-     * stands on that tile the plan takes it once complete and waits while it is not; only when the
-     * tile is empty does the plan adopt a colony, and then only one no other morph plan claims.
+     * Points a Sunken or Spore plan at the creep colony its pair is building. The plan morphs that
+     * colony and nothing else for as long as the pair can deliver one, waiting while the colony is
+     * queued, under construction or not yet complete. Only a broken pair adopts another colony, and
+     * then only one no other morph plan is claiming.
      */
     private PlanBlocker resolveColonyMorph(Plan plan) {
         TilePosition claim = plan.claimedColonyTile();
         if (claim != null) {
             plan.setBuildPosition(claim);
-            Unit pairedColony = gameState.creepColonyAt(claim);
-            if (pairedColony != null) {
-                return pairedColony.isCompleted() ? PlanBlocker.NONE : PlanBlocker.NO_CREEP_COLONY;
+        }
+
+        Unit pairedColony = gameState.creepColonyAt(claim);
+        if (!ColonyClaims.mayAdoptAnotherColony(plan, pairedColony != null)) {
+            if (pairedColony != null && pairedColony.isCompleted()) {
+                return PlanBlocker.NONE;
             }
+            return PlanBlocker.NO_CREEP_COLONY;
         }
 
         Unit adoptedColony = findAdoptableCreepColony(plan);

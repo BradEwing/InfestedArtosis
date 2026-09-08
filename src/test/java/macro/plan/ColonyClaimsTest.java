@@ -129,6 +129,68 @@ class ColonyClaimsTest {
     }
 
     @Test
+    void aSunkenLeavesTheColonyOfAPairThatFinishedFirst() {
+        Plan firstCreepColony = creepColony(FIRST_TILE);
+        Plan firstSunken = sunkenPairedWith(firstCreepColony, 5);
+        Plan secondCreepColony = creepColony(SECOND_TILE);
+        Plan secondSunken = sunkenPairedWith(secondCreepColony, 1);
+
+        firstCreepColony.setState(PlanState.BUILDING);
+        secondCreepColony.setState(PlanState.COMPLETE);
+        Map<TilePosition, Plan> claims = ColonyClaims.collect(Arrays.asList(firstSunken, secondSunken));
+
+        assertFalse(ColonyClaims.mayAdoptAnotherColony(firstSunken, false));
+        assertTrue(ColonyClaims.isClaimedByOther(claims, SECOND_TILE, firstSunken));
+    }
+
+    @Test
+    void aSunkenWaitsForItsOwnColonyRatherThanTakingAnOrphan() {
+        Plan creepColonyPlan = creepColony(FIRST_TILE);
+        Plan sunken = sunkenPairedWith(creepColonyPlan, 5);
+        creepColonyPlan.setState(PlanState.BUILDING);
+
+        Map<TilePosition, Plan> claims = ColonyClaims.collect(Collections.singletonList(sunken));
+
+        assertFalse(ColonyClaims.isClaimedByOther(claims, SECOND_TILE, sunken));
+        assertFalse(ColonyClaims.mayAdoptAnotherColony(sunken, false));
+    }
+
+    @Test
+    void aSunkenWaitsWhileItsPairedColonyIsStillUnderConstruction() {
+        Plan creepColonyPlan = creepColony(FIRST_TILE);
+        Plan sunken = sunkenPairedWith(creepColonyPlan, 5);
+        creepColonyPlan.setState(PlanState.COMPLETE);
+
+        assertFalse(ColonyClaims.mayAdoptAnotherColony(sunken, true));
+    }
+
+    @Test
+    void aSunkenRePairsOnceItsBuiltColonyIsGone() {
+        Plan creepColonyPlan = creepColony(FIRST_TILE);
+        Plan sunken = sunkenPairedWith(creepColonyPlan, 5);
+        creepColonyPlan.setState(PlanState.COMPLETE);
+
+        assertTrue(ColonyClaims.mayAdoptAnotherColony(sunken, false));
+    }
+
+    @Test
+    void aSunkenRePairsWhenItsColonyPlanIsCancelled() {
+        Plan creepColonyPlan = creepColony(FIRST_TILE);
+        Plan sunken = sunkenPairedWith(creepColonyPlan, 5);
+        creepColonyPlan.setState(PlanState.CANCELLED);
+
+        assertTrue(ColonyClaims.mayAdoptAnotherColony(sunken, false));
+    }
+
+    @Test
+    void anUnpairedSunkenAdoptsOnlyWhenItsTileIsEmpty() {
+        Plan sunken = new BuildingPlan(UnitType.Zerg_Sunken_Colony, 5, FIRST_TILE);
+
+        assertTrue(ColonyClaims.mayAdoptAnotherColony(sunken, false));
+        assertFalse(ColonyClaims.mayAdoptAnotherColony(sunken, true));
+    }
+
+    @Test
     void isColonyMorphCoversSunkenAndSpore() {
         assertTrue(ColonyClaims.isColonyMorph(UnitType.Zerg_Sunken_Colony));
         assertTrue(ColonyClaims.isColonyMorph(UnitType.Zerg_Spore_Colony));

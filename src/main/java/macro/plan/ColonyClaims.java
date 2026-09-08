@@ -47,4 +47,29 @@ public final class ColonyClaims {
         Plan claimant = claims.get(colonyTile);
         return claimant != null && !claimant.equals(plan);
     }
+
+    /**
+     * Whether a morph plan may take a colony other than the one its pair is building.
+     *
+     * <p>A pair breaks only when it can no longer deliver: its colony plan was cancelled, or the
+     * plan issued its morph and nothing stands on the tile any more because the colony died. While
+     * the colony plan is still queued, scheduled or building, the morph waits for it however long
+     * that takes; a free colony elsewhere belongs to whichever pair paid for it.
+     *
+     * @param plan the Sunken or Spore plan asking
+     * @param colonyAtClaimedTile whether a creep colony of ours stands on the plan's claimed tile,
+     *     complete or still under construction
+     */
+    public static boolean mayAdoptAnotherColony(Plan plan, boolean colonyAtClaimedTile) {
+        Plan pairedColonyPlan = plan.getPairedColonyPlan();
+        if (pairedColonyPlan == null) {
+            return !colonyAtClaimedTile;
+        }
+
+        PlanState pairedState = pairedColonyPlan.getState();
+        if (pairedState == PlanState.CANCELLED) {
+            return true;
+        }
+        return pairedState == PlanState.COMPLETE && !colonyAtClaimedTile;
+    }
 }

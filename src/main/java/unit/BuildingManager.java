@@ -183,9 +183,9 @@ public class BuildingManager {
     }
 
     /**
-     * Morphs the creep colony the plan's pair built. A colony standing on that tile is the only
-     * one the plan may take; the plan adopts another colony only once its own tile is empty, and
-     * then only one no other morph plan is waiting for.
+     * Morphs the creep colony the plan's pair built, and only that colony for as long as the pair
+     * can still deliver one. A plan whose pair is cancelled, or whose colony was destroyed after
+     * the morph was issued, adopts a colony no other morph plan is waiting for.
      */
     private boolean assignMorphColony(Plan plan) {
         TilePosition planPosition = plan.claimedColonyTile();
@@ -199,7 +199,7 @@ public class BuildingManager {
             }
         }
 
-        if (planPosition == null || gameState.creepColonyAt(planPosition) != null) {
+        if (!ColonyClaims.mayAdoptAnotherColony(plan, gameState.creepColonyAt(planPosition) != null)) {
             return false;
         }
 
