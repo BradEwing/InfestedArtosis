@@ -41,11 +41,11 @@ class BuildOrderTest {
 
     private static final int SPIRE_PRIORITY = 4;
 
-    private static final int EXTRACTOR_PRIORITY = 50;
-
     private static final int HATCHERY_FRAME = 203;
 
     private static final int POOL_FRAME = 204;
+
+    private static final int EXTRACTOR_FRAME = 205;
 
     private final List<String> withheld = new ArrayList<>();
 
@@ -152,7 +152,7 @@ class BuildOrderTest {
         for (BuildOrder opener : poolFirstOpeners()) {
             Plan pool = poolPlanFor(opener);
             assertEquals(BuildOrder.SPAWNING_POOL_PRIORITY, pool.getPriority(), opener.getName());
-            assertTrue(comparator.compare(pool, new BuildingPlan(UnitType.Zerg_Extractor, EXTRACTOR_PRIORITY)) < 0, opener.getName());
+            assertTrue(comparator.compare(pool, new BuildingPlan(UnitType.Zerg_Extractor, EXTRACTOR_FRAME)) < 0, opener.getName());
             assertTrue(comparator.compare(pool, new BuildingPlan(UnitType.Zerg_Lair, LAIR_PRIORITY)) < 0, opener.getName());
             assertTrue(comparator.compare(pool, new BuildingPlan(UnitType.Zerg_Spire, SPIRE_PRIORITY)) < 0, opener.getName());
         }
@@ -174,6 +174,25 @@ class BuildOrderTest {
 
         assertEquals(POOL_FRAME, opener.poolPriority(POOL_FRAME));
         assertTrue(new PlanComparator().compare(hatchery, poolPlanFor(opener)) < 0);
+    }
+
+    @Test
+    void anExtractorQueuedAfterThePoolSortsBehindIt() {
+        PlanComparator comparator = new PlanComparator();
+        Plan extractor = new BuildingPlan(UnitType.Zerg_Extractor, EXTRACTOR_FRAME);
+
+        assertTrue(comparator.compare(poolPlanFor(new ThreeHatchBeforePool()), extractor) < 0);
+        for (BuildOrder opener : poolFirstOpeners()) {
+            assertTrue(comparator.compare(poolPlanFor(opener), extractor) < 0, opener.getName());
+        }
+    }
+
+    @Test
+    void anExtractorQueuedAfterAHatcherySortsBehindIt() {
+        Plan hatchery = new BuildingPlan(UnitType.Zerg_Hatchery, HATCHERY_FRAME);
+        Plan extractor = new BuildingPlan(UnitType.Zerg_Extractor, EXTRACTOR_FRAME);
+
+        assertTrue(new PlanComparator().compare(hatchery, extractor) < 0);
     }
 
     @Test
