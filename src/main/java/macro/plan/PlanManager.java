@@ -232,7 +232,7 @@ public class PlanManager {
             Unit unit = managedUnit.getUnit();
             if (!gameState.getAssignedPlannedItems().containsKey(unit)) {
                 gameState.clearAssignments(managedUnit);
-                plan.setState(PlanState.MORPHING);
+                plan.setState(PlanState.BUILDING);
                 managedUnit.setRole(UnitRole.MORPH);
                 managedUnit.setPlan(plan);
                 gameState.getAssignedPlannedItems().put(unit, plan);

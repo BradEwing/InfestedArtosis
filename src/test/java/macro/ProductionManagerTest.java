@@ -452,4 +452,23 @@ class ProductionManagerTest {
     void aLarvaMorphSchedulesWithFreeLarva() {
         assertFalse(ProductionManager.isLarvaBlocked(UnitType.Zerg_Zergling, true));
     }
+
+    @Test
+    void everyScheduledLurkerWithAHydraliskSurvives() {
+        assertEquals(0, ProductionManager.excessLurkerPlans(4, 4, 0));
+        assertEquals(0, ProductionManager.excessLurkerPlans(1, 6, 0));
+    }
+
+    @Test
+    void onlyTheOversubscribedLurkerPlansAreCancelled() {
+        assertEquals(1, ProductionManager.excessLurkerPlans(4, 3, 0));
+        assertEquals(3, ProductionManager.excessLurkerPlans(3, 0, 0));
+    }
+
+    @Test
+    void aMorphingHydraliskStillCountsAsItsPlansProducer() {
+        assertEquals(0, ProductionManager.excessLurkerPlans(2, 0, 2));
+        assertEquals(0, ProductionManager.excessLurkerPlans(3, 1, 2));
+        assertEquals(1, ProductionManager.excessLurkerPlans(3, 0, 2));
+    }
 }

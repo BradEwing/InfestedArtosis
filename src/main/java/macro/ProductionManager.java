@@ -28,6 +28,7 @@ import unit.managed.UnitRole;
 import util.TravelTime;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -617,18 +618,28 @@ public class ProductionManager {
     /**
      * Blocks a morph from an existing unit when every producer of its type is already spoken for.
      *
+     * Only living producers count: a planned producer cannot be assigned to the morph, and a
+     * producer already claimed by a scheduled or assigned plan of this type is spoken for.
+     *
      * @param unitType the planned morph, for example a Lurker
      * @return NONE while a free producer remains, otherwise NO_PRODUCER
      */
     private PlanBlocker morphProducerBlocker(UnitType unitType) {
         UnitType producer = unitType.whatBuilds().getKey();
-        int assignedProducers = 0;
+        int claimedProducers = 0;
         for (Map.Entry<Unit, Plan> entry : gameState.getAssignedPlannedItems().entrySet()) {
             if (entry.getKey().getType() == producer && entry.getValue().getPlannedUnit() == unitType) {
-                assignedProducers++;
+                claimedProducers++;
             }
         }
-        return gameState.ourUnitCount(producer) > assignedProducers ? PlanBlocker.NONE : PlanBlocker.NO_PRODUCER;
+        for (Plan plan : gameState.getPlansScheduled()) {
+            if (plan.getType() == PlanType.UNIT
+                    && plan.getPlannedUnit() == unitType
+                    && !gameState.getAssignedPlannedItems().containsValue(plan)) {
+                claimedProducers++;
+            }
+        }
+        return gameState.ourLivingUnitCount(producer) > claimedProducers ? PlanBlocker.NONE : PlanBlocker.NO_PRODUCER;
     }
 
     private PlanBlocker advancedUnitBlocker(UnitType unitType) {
@@ -1331,19 +1342,40 @@ public class ProductionManager {
         }
     }
 
-    private void cancelImpossibleScheduledLurkerPlans() {
-        Set<Plan> lurkerPlans = gameState.getPlansScheduled().stream()
-                .filter(plan -> plan.getType() == PlanType.UNIT && plan.getPlannedUnit() == UnitType.Zerg_Lurker)
-                .collect(Collectors.toSet());
-        int hydraliskCount = gameState.getUnitTypeCount().livingCount(UnitType.Zerg_Hydralisk);
-        int lurkerPlanCount = lurkerPlans.size();
+    /**
+     * How many scheduled Lurker plans have no producer left to morph them.
+     *
+     * @param scheduledPlans scheduled Lurker plans
+     * @param hydralisks living hydralisks, the producer type
+     * @param lurkerEggs hydralisks already morphing, which count as producers already spoken for
+     * @return plans to cancel, never negative
+     */
+    static int excessLurkerPlans(int scheduledPlans, int hydralisks, int lurkerEggs) {
+        return Math.max(0, scheduledPlans - hydralisks - lurkerEggs);
+    }
 
-        
-        if (hydraliskCount == 0 || lurkerPlanCount > hydraliskCount) {
-            for (Plan plan : lurkerPlans) {
-                gameState.getPlansScheduled().remove(plan);
-                gameState.cancelPlan(null, plan, PlanCancelSource.PRODUCTION_SCHEDULED_LURKER);
+    /**
+     * Retires the scheduled Lurker plans that have no hydralisk left to morph, and only those.
+     * Hydralisks already morphing count as producers: the morph turns the unit into a Lurker Egg,
+     * which is neither a hydralisk nor a Lurker.
+     */
+    private void cancelImpossibleScheduledLurkerPlans() {
+        List<Plan> lurkerPlans = gameState.getPlansScheduled().stream()
+                .filter(plan -> plan.getType() == PlanType.UNIT && plan.getPlannedUnit() == UnitType.Zerg_Lurker)
+                .sorted(Comparator.comparingInt(Plan::getPriority).reversed())
+                .collect(Collectors.toList());
+        int excess = excessLurkerPlans(
+                lurkerPlans.size(),
+                gameState.getUnitTypeCount().livingCount(UnitType.Zerg_Hydralisk),
+                gameState.getUnitTypeCount().livingCount(UnitType.Zerg_Lurker_Egg));
+
+        for (Plan plan : lurkerPlans) {
+            if (excess <= 0) {
+                break;
             }
+            gameState.getPlansScheduled().remove(plan);
+            gameState.cancelPlan(null, plan, PlanCancelSource.PRODUCTION_SCHEDULED_LURKER);
+            excess -= 1;
         }
     }
 }
