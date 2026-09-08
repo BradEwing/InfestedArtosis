@@ -6,6 +6,7 @@ import bwapi.Race;
 import bwapi.TilePosition;
 import bwapi.Unit;
 import bwapi.UnitType;
+import bwapi.WeaponType;
 import bwapi.WalkPosition;
 import bwem.Base;
 import bwem.CPPath;
@@ -1129,11 +1130,11 @@ public class SquadManager {
      * into the position it is holding a line against.
      *
      * @param squad containing squad
-     * @return true when a mutually engageable enemy is within contact range of any member
+     * @return true when an enemy that could contest the arc is within contact range of any member
      */
     private boolean enemiesOnContainmentArc(Squad squad) {
         for (Unit enemy : gameState.getVisibleEnemyUnits()) {
-            if (!enemy.getType().canMove()) {
+            if (!canPressTheArc(enemy)) {
                 continue;
             }
             for (ManagedUnit member : squad.getMembers()) {
@@ -1141,12 +1142,24 @@ public class SquadManager {
                 if (memberUnit.getDistance(enemy) > CONTAINMENT_ENGAGE_RADIUS) {
                     continue;
                 }
-                if (memberUnit.canAttack(enemy) || enemy.canAttack(memberUnit)) {
+                if (memberUnit.canAttack(enemy)) {
                     return true;
                 }
             }
         }
         return false;
+    }
+
+    /**
+     * Whether an enemy is the kind of unit that takes ground away from a containment arc: one that can move to
+     * it and shoot the ground squad holding it. A drifting overlord or a passing worker is neither.
+     *
+     * @param enemy visible enemy unit
+     * @return true when the unit could contest the arc
+     */
+    private boolean canPressTheArc(Unit enemy) {
+        UnitType type = enemy.getType();
+        return type.canMove() && type.groundWeapon() != WeaponType.None;
     }
 
     private void breakAllContainment(int now) {
