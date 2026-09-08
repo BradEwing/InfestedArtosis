@@ -4,8 +4,10 @@ import bwapi.UnitType;
 import info.TechProgression;
 import info.UnitTypeCount;
 import macro.AdvancedUnitEligibility;
+import macro.plan.BuildingPlan;
 import macro.plan.Plan;
 import macro.plan.PlanBlocker;
+import macro.plan.PlanComparator;
 import macro.plan.PlanState;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -26,6 +28,14 @@ class BuildOrderTest {
     private static final int EMERGENCY_ZERGLING_TARGET = 6;
 
     private static final int FRAMES = 30;
+
+    private static final int EMERGENCY_PRIORITY = 0;
+
+    private static final int LAIR_PRIORITY = 3;
+
+    private static final int SPIRE_PRIORITY = 4;
+
+    private static final int EXTRACTOR_PRIORITY = 50;
 
     private final List<String> withheld = new ArrayList<>();
 
@@ -115,6 +125,24 @@ class BuildOrderTest {
     void theEmergencyStopsAtTheTargetItIsGiven() {
         assertFalse(BuildOrder.shouldPlanEmergencyZergling(EMERGENCY_ZERGLING_TARGET, EMERGENCY_ZERGLING_TARGET));
         assertTrue(BuildOrder.shouldPlanEmergencyZergling(EMERGENCY_ZERGLING_TARGET - 1, EMERGENCY_ZERGLING_TARGET));
+    }
+
+    @Test
+    void theSpawningPoolOutranksTheBuildingsItCompetesWith() {
+        PlanComparator comparator = new PlanComparator();
+        Plan pool = new BuildingPlan(UnitType.Zerg_Spawning_Pool, BuildOrder.SPAWNING_POOL_PRIORITY);
+
+        assertTrue(comparator.compare(pool, new BuildingPlan(UnitType.Zerg_Extractor, EXTRACTOR_PRIORITY)) < 0);
+        assertTrue(comparator.compare(pool, new BuildingPlan(UnitType.Zerg_Lair, LAIR_PRIORITY)) < 0);
+        assertTrue(comparator.compare(pool, new BuildingPlan(UnitType.Zerg_Spire, SPIRE_PRIORITY)) < 0);
+    }
+
+    @Test
+    void theSpawningPoolYieldsToTheReservedEmergencyPriority() {
+        Plan pool = new BuildingPlan(UnitType.Zerg_Spawning_Pool, BuildOrder.SPAWNING_POOL_PRIORITY);
+        Plan emergency = new BuildingPlan(UnitType.Zerg_Sunken_Colony, EMERGENCY_PRIORITY);
+
+        assertTrue(new PlanComparator().compare(emergency, pool) < 0);
     }
 
     @Test
