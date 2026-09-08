@@ -602,16 +602,7 @@ public class ProductionManager {
                 if (lurkerBlocker != PlanBlocker.NONE) {
                     return lurkerBlocker;
                 }
-                int hydraliskCount = gameState.ourUnitCount(UnitType.Zerg_Hydralisk);
-                int assignedHydralisks = 0;
-                // TODO: Generalize for other unit morphs
-                for (Map.Entry<Unit, Plan> entry : gameState.getAssignedPlannedItems().entrySet()) {
-                    if (entry.getKey().getType() == UnitType.Zerg_Hydralisk &&
-                        entry.getValue().getPlannedUnit() == UnitType.Zerg_Lurker) {
-                        assignedHydralisks++;
-                    }
-                }
-                return hydraliskCount > assignedHydralisks ? PlanBlocker.NONE : PlanBlocker.NO_PRODUCER;
+                return morphProducerBlocker(unitType);
             case Zerg_Hydralisk:
             case Zerg_Mutalisk:
             case Zerg_Scourge:
@@ -621,6 +612,23 @@ public class ProductionManager {
             default:
                 return PlanBlocker.NO_PRODUCER;
         }
+    }
+
+    /**
+     * Blocks a morph from an existing unit when every producer of its type is already spoken for.
+     *
+     * @param unitType the planned morph, for example a Lurker
+     * @return NONE while a free producer remains, otherwise NO_PRODUCER
+     */
+    private PlanBlocker morphProducerBlocker(UnitType unitType) {
+        UnitType producer = unitType.whatBuilds().getKey();
+        int assignedProducers = 0;
+        for (Map.Entry<Unit, Plan> entry : gameState.getAssignedPlannedItems().entrySet()) {
+            if (entry.getKey().getType() == producer && entry.getValue().getPlannedUnit() == unitType) {
+                assignedProducers++;
+            }
+        }
+        return gameState.ourUnitCount(producer) > assignedProducers ? PlanBlocker.NONE : PlanBlocker.NO_PRODUCER;
     }
 
     private PlanBlocker advancedUnitBlocker(UnitType unitType) {
@@ -1026,7 +1034,8 @@ public class ProductionManager {
     private PlanBlocker scheduleUnitItem(Plan plan, boolean bankClaimedAhead) {
         UnitType unit = plan.getPlannedUnit();
         ResourceCount resourceCount = gameState.getResourceCount();
-        if (!resourceCount.canScheduleLarva(gameState.numLarva(), gameState.larvaAssignedToPlans())) {
+        boolean larvaAvailable = resourceCount.canScheduleLarva(gameState.numLarva(), gameState.larvaAssignedToPlans());
+        if (isLarvaBlocked(unit, larvaAvailable)) {
             return PlanBlocker.NO_LARVA;
         }
 
@@ -1054,6 +1063,22 @@ public class ProductionManager {
         resourceCount.reserveUnit(unit);
         plan.setState(PlanState.SCHEDULE);
         return PlanBlocker.NONE;
+    }
+
+    /**
+     * True when a larva morph cannot start for lack of free larva.
+     *
+     * Units that morph from an existing unit consume no larva, so only larva morphs are gated.
+     *
+     * @param unit the planned unit
+     * @param larvaAvailable whether unreserved larva is on hand
+     * @return true when the morph cannot be issued yet
+     */
+    static boolean isLarvaBlocked(UnitType unit, boolean larvaAvailable) {
+        if (unit.whatBuilds().getKey() != UnitType.Zerg_Larva) {
+            return false;
+        }
+        return !larvaAvailable;
     }
 
     /**
