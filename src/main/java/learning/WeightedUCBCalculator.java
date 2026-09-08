@@ -84,10 +84,10 @@ public class WeightedUCBCalculator {
                     mapSpecificRecords, opponentRecords, totalGames, gameTimestamps);
 
             boolean ranksHigher = score > bestScore;
-            boolean breaksTieByName = score == bestScore
+            boolean winsTie = score == bestScore
                     && bestStrategy != null
-                    && strategy.compareTo(bestStrategy) < 0;
-            if (ranksHigher || breaksTieByName) {
+                    && winsTieBreak(strategy, bestStrategy, mapName, totalGames);
+            if (ranksHigher || winsTie) {
                 bestScore = score;
                 bestStrategy = strategy;
             }
@@ -95,7 +95,36 @@ public class WeightedUCBCalculator {
         
         return bestStrategy;
     }
-    
+
+    /**
+     * Orders two equally scored candidates by a hash of the map, the games played so far and the
+     * candidate name.
+     * <p>
+     * Scores tie while candidates are unplayed, which is the window that decides what a cold start
+     * commits to. Keying on the game count rotates which candidate takes the tie, so the untried
+     * ones get sampled instead of one winning every time; keying on names or on the map alone gives
+     * a fixed winner. Every term is derived from the history, so a run still reproduces its own
+     * choices exactly.
+     *
+     * @param challenger the candidate being considered
+     * @param incumbent the candidate currently holding the best score
+     * @param mapName map the game is on
+     * @param totalGames games played against this opponent
+     * @return true when the challenger should take the tie
+     */
+    static boolean winsTieBreak(String challenger, String incumbent, String mapName, int totalGames) {
+        int challengerKey = tieBreakKey(challenger, mapName, totalGames);
+        int incumbentKey = tieBreakKey(incumbent, mapName, totalGames);
+        if (challengerKey != incumbentKey) {
+            return challengerKey < incumbentKey;
+        }
+        return challenger.compareTo(incumbent) < 0;
+    }
+
+    private static int tieBreakKey(String strategy, String mapName, int totalGames) {
+        return (mapName + '|' + totalGames + '|' + strategy).hashCode();
+    }
+
     /**
      * Every game played on this map, across all strategies. A map record ages on this clock rather
      * than the opponent's, so one appearance of the map costs one game of decay instead of the

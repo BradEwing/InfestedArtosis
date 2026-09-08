@@ -14,7 +14,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class WeightedUCBCalculatorTest {
 
     @Test
-    void unplayedCandidatesTieBreakOnNameWhateverOrderTheyArriveIn() {
+    void unplayedCandidatesTieBreakTheSameWhateverOrderTheyArriveIn() {
         Map<String, Record> noRecords = new HashMap<>();
         Map<String, MapAwareRecord> noMapRecords = new HashMap<>();
         List<Long> noTimestamps = new ArrayList<>();
@@ -26,8 +26,39 @@ public class WeightedUCBCalculatorTest {
                 Arrays.asList("3HatchMuta", "1HatchSpire", "SpeedlingAllIn"),
                 "(4)Python.scx", noMapRecords, noRecords, 7, noTimestamps);
 
-        assertEquals("1HatchSpire", forward);
         assertEquals(forward, reversed);
+    }
+
+    @Test
+    void theTieBreakIsAStableTotalOrder() {
+        assertTrue(WeightedUCBCalculator.winsTieBreak("Overpool", "12Hatch", "(4)Python.scx", 3)
+                != WeightedUCBCalculator.winsTieBreak("12Hatch", "Overpool", "(4)Python.scx", 3));
+        assertEquals(
+                WeightedUCBCalculator.winsTieBreak("Overpool", "12Hatch", "(4)Python.scx", 3),
+                WeightedUCBCalculator.winsTieBreak("Overpool", "12Hatch", "(4)Python.scx", 3));
+    }
+
+    @Test
+    void everyCandidateTakesSomeOfTheTiesOverAColdStart() {
+        List<String> openers = Arrays.asList(
+                "12Hatch", "12Pool", "3HatchBeforePool", "4Pool", "9PoolSpeed", "Overpool");
+        List<String> maps = Arrays.asList(
+                "(4)Python.scx", "(3)TauCross.scx", "(2)Destination.scx", "(4)Andromeda.scx",
+                "(4)FightingSpirit.scx", "(2)Benzene.scx", "(4)Jade.scx", "(4)Icarus.scm");
+
+        Map<String, Integer> wins = new HashMap<>();
+        for (int game = 0; game < 60; game++) {
+            String map = maps.get(game % maps.size());
+            String best = openers.get(0);
+            for (String candidate : openers) {
+                if (WeightedUCBCalculator.winsTieBreak(candidate, best, map, game)) {
+                    best = candidate;
+                }
+            }
+            wins.merge(best, 1, Integer::sum);
+        }
+
+        assertEquals(openers.size(), wins.size(), "some opener never took a tie: " + wins);
     }
 
     @Test
