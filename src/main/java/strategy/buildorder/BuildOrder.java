@@ -593,8 +593,13 @@ public abstract class BuildOrder {
         return Objects.equals(this.name, that.name);
     }
 
+    /**
+     * Hashes the class by name rather than by the {@link Class} object, whose hash is a JVM
+     * identity hash and differs on every process start. Build orders live in hash sets, so the
+     * hash has to be stable across runs for their iteration order to be.
+     */
     @Override
     public int hashCode() {
-        return Objects.hash(getClass(), name);
+        return Objects.hash(getClass().getName(), name);
     }
 }

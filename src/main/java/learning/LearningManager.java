@@ -424,6 +424,7 @@ public class LearningManager {
         
         List<String> candidateNames = candidates.stream()
                 .map(BuildOrder::getName)
+                .sorted()
                 .collect(Collectors.toList());
         
         String bestBuildOrder = WeightedUCBCalculator.findBestStrategy(

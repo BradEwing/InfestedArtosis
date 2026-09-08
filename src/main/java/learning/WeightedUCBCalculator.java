@@ -82,8 +82,12 @@ public class WeightedUCBCalculator {
         for (String strategy : candidates) {
             double score = calculateWeightedScore(strategy, mapName,
                     mapSpecificRecords, opponentRecords, totalGames, gameTimestamps);
-            
-            if (score > bestScore) {
+
+            boolean ranksHigher = score > bestScore;
+            boolean breaksTieByName = score == bestScore
+                    && bestStrategy != null
+                    && strategy.compareTo(bestStrategy) < 0;
+            if (ranksHigher || breaksTieByName) {
                 bestScore = score;
                 bestStrategy = strategy;
             }
