@@ -8,6 +8,7 @@ import bwapi.UpgradeType;
 import lombok.AccessLevel;
 import lombok.Data;
 import lombok.Setter;
+import lombok.ToString;
 import org.jetbrains.annotations.Nullable;
 import telemetry.PlanEvents;
 
@@ -61,8 +62,28 @@ public abstract class Plan {
      */
     private boolean macroHatchery;
 
+    /**
+     * The creep colony plan a Sunken or Spore plan morphs. The pair is formed when both plans are
+     * queued and carries through fulfilment, so the morph follows the colony its pair paid for
+     * rather than whichever colony happens to be free. Null once the morph adopts another colony.
+     */
+    @Nullable
+    @ToString.Exclude
+    private Plan pairedColonyPlan;
+
     public Plan(int priority) {
         this.priority = priority;
+    }
+
+    /**
+     * The tile this plan expects to find its creep colony on. A paired plan's build position can
+     * move after the pair is formed, so the morph reads the pair's position rather than its own copy.
+     */
+    public TilePosition claimedColonyTile() {
+        if (pairedColonyPlan != null && pairedColonyPlan.getBuildPosition() != null) {
+            return pairedColonyPlan.getBuildPosition();
+        }
+        return getBuildPosition();
     }
 
     /**
