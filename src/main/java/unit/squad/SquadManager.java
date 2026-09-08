@@ -1123,14 +1123,18 @@ public class SquadManager {
      * Reports whether an enemy has closed onto the arc the squad is holding.
      *
      * <p>Distance is measured from each member rather than from the squad center, so an enemy near one flank
-     * reads the same as one in the middle of the squad. The radius reaches past the arc standoff, so an enemy
-     * holding the contained choke counts as engaged.
+     * reads the same as one in the middle of the squad. Only enemies that can move count: a sieged tank or a
+     * static defence emplacement never closed onto anything, and treating one as contact would send the squad
+     * into the position it is holding a line against.
      *
      * @param squad containing squad
      * @return true when a mutually engageable enemy is within contact range of any member
      */
     private boolean enemiesOnContainmentArc(Squad squad) {
         for (Unit enemy : gameState.getVisibleEnemyUnits()) {
+            if (!enemy.getType().canMove()) {
+                continue;
+            }
             for (ManagedUnit member : squad.getMembers()) {
                 Unit memberUnit = member.getUnit();
                 if (memberUnit.getDistance(enemy) > CONTAINMENT_ENGAGE_RADIUS) {
