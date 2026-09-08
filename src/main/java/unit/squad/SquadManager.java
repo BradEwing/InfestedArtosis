@@ -1022,16 +1022,17 @@ public class SquadManager {
      * Picks what a squad holding a containment arc does this frame.
      *
      * <p>A containing squad always sits within the squad detection radius of the units it contains, so mere
-     * proximity carries no information and never ends an episode. The strength gate is the primary exit: while
-     * the army cannot break the containment the arc is kept. Enemies that have closed onto the arc itself are
-     * read only after the strength gate, so a squad that would lose the fight holds instead of charging.
+     * proximity carries no information and never ends an episode. The strength gate and the timeout are read
+     * first and release every containing squad together. A mobile enemy that has reached the arc ends this
+     * squad's episode on its own, whatever the strength gate said, because the arc is no longer a line the
+     * squad is holding once the enemy is fighting on it.
      *
      * <p>Bases under attack outrank the re-evaluation throttle and are the only verdict reachable on a throttled
      * frame, so every episode survives at least one throttle interval.
      *
      * @param basesUnderAttack true when any of our bases has a tracked threat
      * @param throttled true when the contain lock holds and this frame is not a re-evaluation tick
-     * @param engaged true when an enemy has closed onto the arc, as opposed to sitting inside the contained area
+     * @param engaged true when a mobile enemy is within contact range of a member
      * @param timedOut true when the episode has run past the containment timeout
      * @param canBreak true when the strength gate clears the army to push in
      * @param shouldContain true when containment still applies to this squad
