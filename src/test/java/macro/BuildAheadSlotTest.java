@@ -79,6 +79,13 @@ class BuildAheadSlotTest {
     }
 
     @Test
+    void anAffordableMorphWithNoWalkEarnsOnlyTheGracePeriod() {
+        int affordableNow = CLAIM_FRAME + 20;
+
+        assertEquals(CLAIM_FRAME + 380, BuildAheadSlot.deadline(CLAIM_FRAME, affordableNow, 0));
+    }
+
+    @Test
     void aTravelEstimateNeverShortensTheDeadline() {
         int predicted = CLAIM_FRAME + BuildAheadSlot.MAX_HOLD_FRAMES;
 

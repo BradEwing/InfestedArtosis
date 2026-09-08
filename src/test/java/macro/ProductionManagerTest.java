@@ -430,6 +430,38 @@ class ProductionManagerTest {
     }
 
     @Test
+    void aBuildingMorphWithNoFreeProducerNeverTakesTheSlot() {
+        assertEquals(PlanBlocker.NO_PRODUCER,
+                ProductionManager.buildingMorphBlocker(UnitType.Zerg_Lair, false));
+        assertEquals(PlanBlocker.NO_PRODUCER,
+                ProductionManager.buildingMorphBlocker(UnitType.Zerg_Hive, false));
+        assertEquals(PlanBlocker.NO_PRODUCER,
+                ProductionManager.buildingMorphBlocker(UnitType.Zerg_Sunken_Colony, false));
+        assertEquals(PlanBlocker.NO_PRODUCER,
+                ProductionManager.buildingMorphBlocker(UnitType.Zerg_Spore_Colony, false));
+    }
+
+    @Test
+    void aBuildingMorphSchedulesOnceAProducerIsFree() {
+        assertEquals(PlanBlocker.NONE,
+                ProductionManager.buildingMorphBlocker(UnitType.Zerg_Lair, true));
+        assertEquals(PlanBlocker.NONE,
+                ProductionManager.buildingMorphBlocker(UnitType.Zerg_Hive, true));
+    }
+
+    @Test
+    void aDroneBuiltBuildingIsNotGatedOnAMorphProducer() {
+        assertEquals(PlanBlocker.NONE,
+                ProductionManager.buildingMorphBlocker(UnitType.Zerg_Hatchery, false));
+        assertEquals(PlanBlocker.NONE,
+                ProductionManager.buildingMorphBlocker(UnitType.Zerg_Spawning_Pool, false));
+        assertEquals(PlanBlocker.NONE,
+                ProductionManager.buildingMorphBlocker(UnitType.Zerg_Extractor, false));
+        assertEquals(PlanBlocker.NONE,
+                ProductionManager.buildingMorphBlocker(UnitType.Zerg_Spire, false));
+    }
+
+    @Test
     void aUnitCannotSpendAgainstAScheduledBuildingsReservation() {
         Plan drone = new UnitPlan(UnitType.Zerg_Drone, 1);
         int predicted = FRAME + UnitType.Zerg_Drone.buildTime() - 1;

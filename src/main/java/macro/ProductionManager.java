@@ -941,6 +941,11 @@ public class ProductionManager {
             plan.setBuildPosition(unassignedColony.getTilePosition());
         }
 
+        PlanBlocker producerBlocker = buildingMorphBlocker(building, hasFreeMorphProducer(building));
+        if (producerBlocker != PlanBlocker.NONE) {
+            return producerBlocker;
+        }
+
         ResourceCount resourceCount = gameState.getResourceCount();
         int predictedReadyFrame = gameState.frameCanAffordUnit(building, currentFrame);
         PlanBlocker buildAheadBlocker = buildAheadBlocker(
@@ -968,6 +973,42 @@ public class ProductionManager {
         plan.setPredictedReadyFrame(predictedReadyFrame);
         plan.setState(PlanState.SCHEDULE);
         return PlanBlocker.NONE;
+    }
+
+    /**
+     * Blocks a building morph while BuildingManager has no producer free to take it.
+     *
+     * <p>A morph from another building has no drone to walk, so nothing downstream notices the
+     * missing producer. The plan takes the build-ahead slot, holds its reservation for the whole
+     * minimum hold, is evicted without ever having been assigned, and claims again on the next
+     * scan. Refusing it before the claim leaves it in the queue at no cost until a producer frees
+     * up.
+     *
+     * @param building the planned morph, for example a Lair
+     * @param freeProducerAvailable whether a completed producer of its type carries no plan yet
+     * @return NONE while the morph can be handed to a producer, otherwise NO_PRODUCER
+     */
+    static PlanBlocker buildingMorphBlocker(UnitType building, boolean freeProducerAvailable) {
+        if (building.whatBuilds().getFirst() == UnitType.Zerg_Drone) {
+            return PlanBlocker.NONE;
+        }
+        return freeProducerAvailable ? PlanBlocker.NONE : PlanBlocker.NO_PRODUCER;
+    }
+
+    /** Matches what BuildingManager looks for: a completed producer that carries no plan yet. */
+    private boolean hasFreeMorphProducer(UnitType building) {
+        UnitType producer = building.whatBuilds().getFirst();
+        if (producer == UnitType.Zerg_Drone) {
+            return true;
+        }
+        for (Unit unit : gameState.getSelf().getUnits()) {
+            if (unit.getType() == producer
+                    && unit.isCompleted()
+                    && !gameState.getAssignedPlannedItems().containsKey(unit)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
