@@ -91,6 +91,26 @@ public class Arc {
         return positions.size();
     }
 
+    /**
+     * Nearest computed arc point to a position, or null when the arc holds none. Squads can outnumber the
+     * points the arc yields, and a member with no point of its own still has to stand on the line.
+     *
+     * @param from position to measure from
+     * @return closest arc position, or null when the arc is empty
+     */
+    public Position closestPosition(Position from) {
+        Position closest = null;
+        double closestDist = Double.MAX_VALUE;
+        for (Position pos : positions) {
+            double dist = from.getDistance(pos);
+            if (dist < closestDist) {
+                closestDist = dist;
+                closest = pos;
+            }
+        }
+        return closest;
+    }
+
     public Map<ManagedUnit, Position> assignUnits(List<ManagedUnit> units) {
         Map<ManagedUnit, Position> assignments = new LinkedHashMap<>();
         List<Position> available = prioritizeCenterPositions(units.size());

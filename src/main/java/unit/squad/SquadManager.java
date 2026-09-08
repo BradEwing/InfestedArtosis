@@ -6,6 +6,7 @@ import bwapi.Race;
 import bwapi.TilePosition;
 import bwapi.Unit;
 import bwapi.UnitType;
+import bwapi.WeaponType;
 import bwapi.WalkPosition;
 import bwem.Base;
 import bwem.CPPath;
@@ -94,6 +95,7 @@ public class SquadManager {
     private static final int CONTAINMENT_REEVALUATE_INTERVAL = 48;
     private static final int MAX_MOVE_OUT_THRESHOLD = 40;
     private static final int CONTAINMENT_TIMEOUT_FRAMES = 1400;
+    private static final int CONTAINMENT_ENGAGE_RADIUS = 256;
     private static final int ARC_DEGREES = 90;
     private static final int ARC_RADIUS = 160;
     private static final double REINFORCEMENT_RADIUS = 384.0;
@@ -1006,44 +1008,158 @@ public class SquadManager {
         return true;
     }
 
+    /**
+     * Verdicts available to a squad that is already holding a containment arc.
+     */
+    enum ContainmentVerdict {
+        BREAK_ALL,
+        RETREAT,
+        HOLD,
+        REPOSITION
+    }
+
+    /**
+     * Picks what a squad holding a containment arc does this frame.
+     *
+     * <p>A containing squad always sits within the squad detection radius of the units it contains, so mere
+     * proximity carries no information and never ends an episode. Only the strength gate, the timeout, a base
+     * under attack, or containment ceasing to apply end one. An enemy that has reached the arc holds the squad
+     * in place instead of moving it: each unit already returns fire inside its own weapon range, so the squad
+     * trades on the line rather than charging a position it has been measured as unable to break.
+     *
+     * <p>Bases under attack outrank the re-evaluation throttle and are the only verdict reachable on a throttled
+     * frame, so every episode survives at least one throttle interval.
+     *
+     * <p>Only a base under attack and the strength gate move the whole army; they are the two signals that are
+     * true for every squad at once. A squad that has run out its own containment clock disengages by itself
+     * rather than committing squads whose gate has not fired.
+     *
+     * @param basesUnderAttack true when any of our bases has a tracked threat
+     * @param throttled true when the contain lock holds and this frame is not a re-evaluation tick
+     * @param engaged true when a mobile enemy is within contact range of a member
+     * @param timedOut true when the episode has run past the containment timeout
+     * @param canBreak true when the strength gate clears the army to push in
+     * @param shouldContain true when containment still applies to this squad
+     * @return verdict for this frame
+     */
+    static ContainmentVerdict containmentVerdict(boolean basesUnderAttack, boolean throttled, boolean engaged,
+                                                 boolean timedOut, boolean canBreak, boolean shouldContain) {
+        if (basesUnderAttack) {
+            return ContainmentVerdict.BREAK_ALL;
+        }
+        if (throttled) {
+            return ContainmentVerdict.HOLD;
+        }
+        if (canBreak) {
+            return ContainmentVerdict.BREAK_ALL;
+        }
+        if (timedOut) {
+            return ContainmentVerdict.RETREAT;
+        }
+        if (!shouldContain) {
+            return ContainmentVerdict.RETREAT;
+        }
+        if (engaged) {
+            return ContainmentVerdict.HOLD;
+        }
+        return ContainmentVerdict.REPOSITION;
+    }
+
     private void evaluateContainingSquad(Squad squad) {
         int now = game.getFrameCount();
         HashSet<ManagedUnit> members = squad.getMembers();
 
-        List<Unit> closeEnemies = enemyUnitsNearSquad(squad);
-        if (!closeEnemies.isEmpty()) {
-            squad.setStatus(SquadStatus.FIGHT);
-            assignFightTargets(squad, members, true);
-            squad.startFightLock(now);
-            return;
-        }
+        boolean basesUnderAttack = basesUnderAttack();
+        boolean throttled = isContainmentThrottled(squad, now);
+        boolean evaluate = !basesUnderAttack && !throttled;
+        boolean timedOut = evaluate && containmentTimedOut(squad, now);
+        boolean canBreak = evaluate && containmentEvaluator.canBreakContainment(fightSquads);
+        boolean shouldContain = !evaluate || containmentEvaluator.shouldContain(squad);
+        boolean engaged = evaluate && enemiesOnContainmentArc(squad);
 
-        if (squad.isContainLocked(now) && now % CONTAINMENT_REEVALUATE_INTERVAL != 0) {
-            return;
-        }
+        ContainmentVerdict verdict = containmentVerdict(basesUnderAttack, throttled, engaged, timedOut, canBreak,
+                shouldContain);
 
-        if (basesUnderAttack()) {
-            breakAllContainment(now);
-            return;
+        switch (verdict) {
+            case BREAK_ALL:
+                breakAllContainment(now);
+                break;
+            case RETREAT:
+                squad.clearContainStart();
+                squad.setStatus(SquadStatus.RETREAT);
+                assignRetreatTargets(squad, members);
+                squad.startRetreatLock(now);
+                break;
+            case REPOSITION:
+                assignContainmentPositions(squad);
+                break;
+            default:
+                break;
         }
+    }
 
-        boolean timedOut = squad.getContainStartFrame() > 0
+    /**
+     * Reports whether the contain lock suppresses re-evaluation this frame.
+     *
+     * <p>The re-evaluation phase is anchored to the frame the episode started rather than to the global frame
+     * count, so a squad that takes an arc is throttled for a full interval whatever frame it entered on.
+     *
+     * @param squad containing squad
+     * @param now current frame
+     * @return true when the squad keeps its arc without further checks
+     */
+    private boolean isContainmentThrottled(Squad squad, int now) {
+        if (!squad.isContainLocked(now)) {
+            return false;
+        }
+        int elapsed = now - squad.getContainStartFrame();
+        return elapsed <= 0 || elapsed % CONTAINMENT_REEVALUATE_INTERVAL != 0;
+    }
+
+    private boolean containmentTimedOut(Squad squad, int now) {
+        return squad.getContainStartFrame() > 0
                 && now - squad.getContainStartFrame() >= CONTAINMENT_TIMEOUT_FRAMES;
+    }
 
-        if (timedOut || containmentEvaluator.canBreakContainment(fightSquads)) {
-            breakAllContainment(now);
-            return;
+    /**
+     * Reports whether an enemy has closed onto the arc the squad is holding.
+     *
+     * <p>Distance is measured from each member rather than from the squad center, so an enemy near one flank
+     * reads the same as one in the middle of the squad. Only enemies that can move count: a sieged tank or a
+     * static defence emplacement never closed onto anything, and treating one as contact would send the squad
+     * into the position it is holding a line against.
+     *
+     * @param squad containing squad
+     * @return true when an enemy that could contest the arc is within contact range of any member
+     */
+    private boolean enemiesOnContainmentArc(Squad squad) {
+        for (Unit enemy : gameState.getVisibleEnemyUnits()) {
+            if (!canPressTheArc(enemy)) {
+                continue;
+            }
+            for (ManagedUnit member : squad.getMembers()) {
+                Unit memberUnit = member.getUnit();
+                if (memberUnit.getDistance(enemy) > CONTAINMENT_ENGAGE_RADIUS) {
+                    continue;
+                }
+                if (memberUnit.canAttack(enemy)) {
+                    return true;
+                }
+            }
         }
+        return false;
+    }
 
-        if (!containmentEvaluator.shouldContain(squad)) {
-            squad.clearContainStart();
-            squad.setStatus(SquadStatus.RETREAT);
-            assignRetreatTargets(squad, members);
-            squad.startRetreatLock(now);
-            return;
-        }
-
-        assignContainmentPositions(squad);
+    /**
+     * Whether an enemy is the kind of unit that takes ground away from a containment arc: one that can move to
+     * it and shoot the ground squad holding it. A drifting overlord or a passing worker is neither.
+     *
+     * @param enemy visible enemy unit
+     * @return true when the unit could contest the arc
+     */
+    private boolean canPressTheArc(Unit enemy) {
+        UnitType type = enemy.getType();
+        return type.canMove() && type.groundWeapon() != WeaponType.None;
     }
 
     private void breakAllContainment(int now) {
@@ -1097,10 +1213,16 @@ public class SquadManager {
 
         List<ManagedUnit> units = new ArrayList<>(squad.getMembers());
         Map<ManagedUnit, Position> assignments = arc.assignUnits(units);
-        for (Map.Entry<ManagedUnit, Position> entry : assignments.entrySet()) {
-            ManagedUnit mu = entry.getKey();
+        for (ManagedUnit mu : units) {
+            Position assigned = assignments.get(mu);
+            if (assigned == null) {
+                assigned = arc.closestPosition(mu.getPosition());
+            }
+            if (assigned == null) {
+                continue;
+            }
             mu.setRole(UnitRole.CONTAIN);
-            mu.setContainPosition(entry.getValue());
+            mu.setContainPosition(assigned);
         }
     }
 
