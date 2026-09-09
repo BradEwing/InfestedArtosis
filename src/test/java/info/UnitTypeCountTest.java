@@ -152,4 +152,55 @@ class UnitTypeCountTest {
         assertEquals(1, count.plannedCount(UnitType.Zerg_Drone));
         assertEquals(1, count.livingCount(UnitType.Zerg_Drone));
     }
+
+    @Test
+    void cancellingAPairedUnitPlanRemovesBothPlannedUnits() {
+        UnitTypeCount count = new UnitTypeCount();
+
+        count.planUnit(UnitType.Zerg_Zergling);
+        count.cancelUnitPlan(UnitType.Zerg_Zergling);
+
+        assertEquals(0, count.plannedCount(UnitType.Zerg_Zergling));
+    }
+
+    @Test
+    void cancellingASingleUnitPlanRemovesOnePlannedUnit() {
+        UnitTypeCount count = new UnitTypeCount();
+
+        count.planUnit(UnitType.Zerg_Drone);
+        count.cancelUnitPlan(UnitType.Zerg_Drone);
+
+        assertEquals(0, count.plannedCount(UnitType.Zerg_Drone));
+    }
+
+    @Test
+    void cancellingAScourgePlanRemovesBothPlannedUnits() {
+        UnitTypeCount count = new UnitTypeCount();
+
+        count.planUnit(UnitType.Zerg_Scourge);
+        count.planUnit(UnitType.Zerg_Scourge);
+        count.cancelUnitPlan(UnitType.Zerg_Scourge);
+
+        assertEquals(2, count.plannedCount(UnitType.Zerg_Scourge));
+    }
+
+    @Test
+    void eachHatchedPairedUnitClearsHalfOfItsPlan() {
+        UnitTypeCount count = new UnitTypeCount();
+
+        count.planUnit(UnitType.Zerg_Zergling);
+        count.unplanUnit(UnitType.Zerg_Zergling);
+        count.unplanUnit(UnitType.Zerg_Zergling);
+
+        assertEquals(0, count.plannedCount(UnitType.Zerg_Zergling));
+    }
+
+    @Test
+    void cancellingAPlanThatWasNeverMadeLeavesTheCountAtZero() {
+        UnitTypeCount count = new UnitTypeCount();
+
+        count.cancelUnitPlan(UnitType.Zerg_Zergling);
+
+        assertEquals(0, count.plannedCount(UnitType.Zerg_Zergling));
+    }
 }

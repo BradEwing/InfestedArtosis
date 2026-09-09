@@ -20,6 +20,8 @@ import java.util.List;
 import java.util.Set;
 
 public class TwelvePool extends BuildOrder {
+    private static final int POOL_SUPPLY = 24;
+
     public TwelvePool() {
         super("12Pool");
     }
@@ -69,7 +71,7 @@ public class TwelvePool extends BuildOrder {
             return plans;
         }
 
-        if (supplyUsed >= 24 && techProgression.canPlanPool()) {
+        if (shouldPlanPool(supplyUsed) && techProgression.canPlanPool()) {
             plans.add(planSpawningPool(gameState));
             return plans;
         }
@@ -96,5 +98,9 @@ public class TwelvePool extends BuildOrder {
     @Override
     protected int poolPriority(int enqueueFrame) {
         return SPAWNING_POOL_PRIORITY;
+    }
+
+    static boolean shouldPlanPool(int supplyUsed) {
+        return supplyUsed >= POOL_SUPPLY;
     }
 }

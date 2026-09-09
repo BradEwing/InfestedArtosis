@@ -11,7 +11,6 @@ import info.ResourceCount;
 import macro.SupplyCapacity;
 import macro.plan.Plan;
 import macro.plan.PlanCancelSource;
-import macro.plan.PlanState;
 import macro.plan.PlanType;
 import unit.managed.ManagedUnit;
 import unit.managed.UnitRole;
@@ -434,6 +433,12 @@ public class WorkerManager {
         gameState.setLarvaDeadlockDetectedFrame(curFrame);
     }
 
+    /**
+     * Frees every deadlocked larva once the overlord that would break the deadlock has had time to
+     * hatch. Cancellation runs through {@link info.GameState#cancelPlan} so the plan's counters and
+     * reservations roll back, and the executor is released unconditionally afterwards: a larva that
+     * keeps an assignment entry is never offered to another plan.
+     */
     private void handleLarvaDeadlock() {
         if (!gameState.isLarvaDeadlocked()) {
             return;
@@ -448,19 +453,15 @@ public class WorkerManager {
         List<ManagedUnit> larvaCopy = larva.stream().collect(Collectors.toList());
         for (ManagedUnit managedUnit : larvaCopy) {
             Unit unit = managedUnit.getUnit();
+            Plan plan = managedUnit.getPlan();
             gameState.clearAssignments(managedUnit);
+            if (plan != null) {
+                gameState.cancelPlan(unit, plan, PlanCancelSource.WORKER_MANAGER_LARVA_DEADLOCK);
+            }
+            gameState.getAssignedPlannedItems().remove(unit);
+            managedUnit.setPlan(null);
             managedUnit.setRole(UnitRole.LARVA);
             larva.add(managedUnit);
-
-            Plan plan = managedUnit.getPlan();
-            // TODO: Handle cancelled items. Are they requeued?
-            if (plan != null) {
-                plan.setCancelSource(PlanCancelSource.WORKER_MANAGER_LARVA_DEADLOCK);
-                plan.setState(PlanState.CANCELLED);
-                managedUnit.setPlan(null);
-            }
-
-            gameState.getAssignedPlannedItems().remove(unit);
         }
 
         gameState.setLarvaDeadlocked(false);

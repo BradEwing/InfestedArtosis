@@ -32,6 +32,10 @@ import java.util.Set;
  */
 public class ThreeHatchBeforePool extends BuildOrder {
 
+    private static final int FIRST_HATCHERY_SUPPLY = 24;
+
+    private static final int SECOND_HATCHERY_SUPPLY = 28;
+
     public ThreeHatchBeforePool() {
         super("3HatchBeforePool");
     }
@@ -51,6 +55,7 @@ public class ThreeHatchBeforePool extends BuildOrder {
         int plannedHatcheries = gameState.getPlannedHatcheries();
         final int plannedAndCurrentBases = plannedHatcheries + baseCount;
         int droneCount = gameState.ourUnitCount(UnitType.Zerg_Drone);
+        int supplyUsed = gameState.getSupply();
         int zerglingCount = gameState.ourUnitCount(UnitType.Zerg_Zergling);
 
         int extractorCount = baseData.numExtractor();
@@ -66,7 +71,7 @@ public class ThreeHatchBeforePool extends BuildOrder {
             return plans;
         }
 
-        if (droneCount >= 12 && plannedAndCurrentBases < 2) {
+        if (shouldPlanFirstHatchery(supplyUsed, plannedAndCurrentBases)) {
             Plan hatcheryPlan = this.planNewBase(gameState);
             if (hatcheryPlan != null) {
                 plans.add(hatcheryPlan);
@@ -84,7 +89,7 @@ public class ThreeHatchBeforePool extends BuildOrder {
             return plans;
         }
 
-        if (droneCount >= 14 && plannedAndCurrentBases < 3) {
+        if (shouldPlanSecondHatchery(supplyUsed, plannedAndCurrentBases)) {
             Plan hatcheryPlan = this.planNewBase(gameState);
             if (hatcheryPlan != null) {
                 plans.add(hatcheryPlan);
@@ -113,6 +118,14 @@ public class ThreeHatchBeforePool extends BuildOrder {
         }
 
         return plans;
+    }
+
+    static boolean shouldPlanFirstHatchery(int supplyUsed, int plannedAndCurrentBases) {
+        return supplyUsed >= FIRST_HATCHERY_SUPPLY && plannedAndCurrentBases < 2;
+    }
+
+    static boolean shouldPlanSecondHatchery(int supplyUsed, int plannedAndCurrentBases) {
+        return supplyUsed >= SECOND_HATCHERY_SUPPLY && plannedAndCurrentBases < 3;
     }
 
     @Override

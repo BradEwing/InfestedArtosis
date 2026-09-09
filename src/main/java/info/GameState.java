@@ -316,6 +316,7 @@ public class GameState {
             return;
         }
 
+        final PlanState priorState = plan.getState();
         plan.setCancelSource(source);
         plansBuilding.remove(plan);
         plansMorphing.remove(plan);
@@ -333,7 +334,7 @@ public class GameState {
 
         switch (plan.getType()) {
             case UNIT:
-                unitTypeCount.unplanUnit(plan.getPlannedUnit());
+                cancelUnitPlanAccounting(plan.getPlannedUnit(), priorState);
                 resourceCount.unreserveUnit(plan.getPlannedUnit());
                 break;
             case BUILDING:
@@ -347,6 +348,10 @@ public class GameState {
 
                 if (buildingType == UnitType.Zerg_Extractor && plan.getBuildPosition() != null) {
                     baseData.unreserveExtractor(plan.getBuildPosition());
+                }
+
+                if (buildingType == UnitType.Zerg_Hatchery) {
+                    removePlannedHatchery(1);
                 }
 
                 TilePosition tp = plan.getBuildPosition();
@@ -553,7 +558,7 @@ public class GameState {
 
         switch (plan.getType()) {
             case UNIT:
-                unitTypeCount.unplanUnit(plan.getPlannedUnit());
+                cancelUnitPlanAccounting(plan.getPlannedUnit(), currentState);
                 if (shouldUnreserve) {
                     resourceCount.unreserveUnit(plan.getPlannedUnit());
                 }
@@ -564,14 +569,13 @@ public class GameState {
                 if (shouldUnreserve) {
                     resourceCount.unreserveUnit(buildingType);
                 }
+                if (plan.getBuildPosition() != null) {
+                    buildingPlanner.unreservePlannedBuildingTiles(plan.getBuildPosition(), buildingType);
+                }
                 if (buildingType == UnitType.Zerg_Hatchery) {
                     removePlannedHatchery(1);
                     TilePosition tp = plan.getBuildPosition();
-                    if (plan.isMacroHatchery()) {
-                        if (tp != null) {
-                            buildingPlanner.unreservePlannedBuildingTiles(tp, buildingType);
-                        }
-                    } else if (tp != null && baseData.isBaseTilePosition(tp)) {
+                    if (!plan.isMacroHatchery() && tp != null && baseData.isBaseTilePosition(tp)) {
                         Base base = baseData.baseAtTilePosition(tp);
                         baseData.cancelReserveBase(base);
                     }
@@ -598,6 +602,25 @@ public class GameState {
                 break;
             default:
                 break;
+        }
+    }
+
+    /**
+     * Rolls back what planning a unit reserved. A drone plan releases its planned worker when the
+     * morph starts, so a plan cancelled out of {@link PlanState#MORPHING} has already paid that
+     * back and must not pay it twice.
+     *
+     * @param unitType the planned unit
+     * @param priorState the plan's state before it was cancelled
+     */
+    private void cancelUnitPlanAccounting(UnitType unitType, PlanState priorState) {
+        unitTypeCount.cancelUnitPlan(unitType);
+        if (unitType == UnitType.Zerg_Drone && priorState != PlanState.MORPHING) {
+            removePlannedWorker(1);
+        }
+        if (unitType == UnitType.Zerg_Overlord) {
+            int plannedSupply = resourceCount.getPlannedSupply();
+            resourceCount.setPlannedSupply(Math.max(0, plannedSupply - unitType.supplyProvided()));
         }
     }
 
