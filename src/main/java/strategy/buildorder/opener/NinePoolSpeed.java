@@ -22,6 +22,8 @@ import java.util.List;
 import java.util.Set;
 
 public class NinePoolSpeed extends BuildOrder {
+    private static final int POOL_SUPPLY = 18;
+
     private static final Time GAS_TIME = new Time(1, 4);
 
     public NinePoolSpeed() {
@@ -66,6 +68,7 @@ public class NinePoolSpeed extends BuildOrder {
         Time gameTime = gameState.getGameTime();
 
         int droneCount     = gameState.ourUnitCount(UnitType.Zerg_Drone);
+        int supplyUsed     = gameState.getSupply();
         int overlordCount  = gameState.ourUnitCount(UnitType.Zerg_Overlord);
         int poolCount      = gameState.ourUnitCount(UnitType.Zerg_Spawning_Pool);
         int extractorCount = gameState.ourUnitCount(UnitType.Zerg_Extractor);
@@ -76,7 +79,7 @@ public class NinePoolSpeed extends BuildOrder {
             return plans;
         }
 
-        if (droneCount >=  9 && poolCount < 1 && techProgression.canPlanPool()) {
+        if (shouldPlanPool(supplyUsed) && poolCount < 1 && techProgression.canPlanPool()) {
             plans.add(planSpawningPool(gameState));
             return plans;
         }
@@ -132,6 +135,10 @@ public class NinePoolSpeed extends BuildOrder {
 
     static boolean shouldPlanOverlord(int droneCount, int overlordCount, boolean excessSupply) {
         return droneCount > 8 && overlordCount < 2 && !excessSupply;
+    }
+
+    static boolean shouldPlanPool(int supplyUsed) {
+        return supplyUsed >= POOL_SUPPLY;
     }
 
     static boolean shouldPlanExtractor(int poolCount, int extractorCount, boolean canPlanExtractor, boolean pastGasTime) {

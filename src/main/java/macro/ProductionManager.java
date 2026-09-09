@@ -190,15 +190,10 @@ public class ProductionManager {
             return;
         }
 
-        ResourceCount resourceCount = gameState.getResourceCount();
         gameState.getProductionQueue().removeWhere(
                 p -> p.getType() == PlanType.UNIT && p.getPlannedUnit() == UnitType.Zerg_Overlord,
                 PlanCancelSource.PRODUCTION_EXCESS_OVERLORD,
-                plan -> {
-                    gameState.setImpossiblePlan(plan);
-                    int plannedSupply = resourceCount.getPlannedSupply();
-                    resourceCount.setPlannedSupply(Math.max(0, plannedSupply - OVERLORD_SUPPLY));
-                });
+                gameState::setImpossiblePlan);
     }
 
     /** Bounds how long a building plan holds the build-ahead slot. */

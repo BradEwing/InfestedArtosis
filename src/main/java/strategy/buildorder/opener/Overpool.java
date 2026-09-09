@@ -20,6 +20,8 @@ import java.util.List;
 import java.util.Set;
 
 public class Overpool extends BuildOrder {
+    private static final int POOL_SUPPLY = 18;
+
     public Overpool() {
         super("Overpool");
     }
@@ -62,6 +64,7 @@ public class Overpool extends BuildOrder {
 
         // Count existing units/buildings
         int droneCount    = gameState.ourUnitCount(UnitType.Zerg_Drone);
+        int supplyUsed    = gameState.getSupply();
         int overlordCount = gameState.ourUnitCount(UnitType.Zerg_Overlord);
         int zerglingCount     = gameState.ourUnitCount(UnitType.Zerg_Zergling);
 
@@ -70,7 +73,7 @@ public class Overpool extends BuildOrder {
             return plans;
         }
 
-        if (overlordCount > 1 && techProgression.canPlanPool()) {
+        if (shouldPlanPool(supplyUsed, overlordCount) && techProgression.canPlanPool()) {
             plans.add(planSpawningPool(gameState));
             return plans;
         }
@@ -103,5 +106,9 @@ public class Overpool extends BuildOrder {
     @Override
     protected int poolPriority(int enqueueFrame) {
         return SPAWNING_POOL_PRIORITY;
+    }
+
+    static boolean shouldPlanPool(int supplyUsed, int overlordCount) {
+        return supplyUsed >= POOL_SUPPLY && overlordCount > 1;
     }
 }

@@ -33,7 +33,6 @@ public class ThreeHatchLurker extends TerranBase {
         final int plannedAndCurrentHatcheries = plannedHatcheries + baseCount;
         int lairCount = gameState.ourUnitCount(UnitType.Zerg_Lair);
         int hydraCount = gameState.ourUnitCount(UnitType.Zerg_Hydralisk);
-        int lurkerCount = gameState.ourUnitCount(UnitType.Zerg_Lurker);
         int droneCount = gameState.numEconomyDrones();
         int zerglingCount = gameState.ourUnitCount(UnitType.Zerg_Zergling);
 
@@ -51,8 +50,9 @@ public class ThreeHatchLurker extends TerranBase {
         boolean wantEvolutionChamber = wantEvolutionChamber(gameState);
 
         boolean wantLurkerAspect = wantLurkerAspect(gameState);
-        boolean wantMetabolicBoost = techProgression.canPlanMetabolicBoost() && lairCount > 0 && zerglingCount >= 12 && lurkerCount > 2;
         int livingLurkerCount = gameState.ourLivingUnitCount(UnitType.Zerg_Lurker);
+        boolean wantMetabolicBoost = techProgression.canPlanMetabolicBoost() && lairCount > 0
+                && shouldPlanMetabolicBoost(zerglingCount, livingLurkerCount);
         boolean wantMuscularAugments = techProgression.canPlanMuscularAugments() && hydraCount > 3 && livingLurkerCount >= 2;
         boolean wantGroovedSpines = techProgression.canPlanGroovedSpines() && hydraCount > 6;
         boolean wantRangedUpgrades = techProgression.canPlanRangedUpgrades();
@@ -211,7 +211,7 @@ public class ThreeHatchLurker extends TerranBase {
         int plannedHatcheries = gameState.getPlannedHatcheries();
         int baseCount = gameState.getBaseData().currentBaseCount();
         int lairCount = gameState.ourUnitCount(UnitType.Zerg_Lair);
-        int lurkerCount = gameState.ourUnitCount(UnitType.Zerg_Lurker);
+        int livingLurkerCount = gameState.ourLivingUnitCount(UnitType.Zerg_Lurker);
         
         if (macroHatchCount >= 1 || (plannedHatcheries + baseCount) >= 3) {
             return false;
@@ -220,11 +220,26 @@ public class ThreeHatchLurker extends TerranBase {
         int droneCount = gameState.numGatherers();
 
         // Third hatch should wait until at least 2 lurkers are out
-        if ((plannedHatcheries + baseCount) >= 2 && lurkerCount < 2) {
+        if ((plannedHatcheries + baseCount) >= 2 && !hasFieldedLurkersForThirdHatch(livingLurkerCount)) {
             return false;
         }
 
         return droneCount >= 17 && lairCount > 0;
+    }
+
+    static boolean hasFieldedLurkersForThirdHatch(int livingLurkerCount) {
+        return livingLurkerCount >= 2;
+    }
+
+    /**
+     * Metabolic Boost waits until the lurkers it complements are fielded, not merely queued.
+     *
+     * @param zerglingCount zerglings the build has committed to
+     * @param livingLurkerCount lurkers already on the field
+     * @return whether the upgrade may be planned
+     */
+    static boolean shouldPlanMetabolicBoost(int zerglingCount, int livingLurkerCount) {
+        return zerglingCount >= 12 && livingLurkerCount > 2;
     }
 
     private boolean wantHydraliskDen(GameState gameState) {

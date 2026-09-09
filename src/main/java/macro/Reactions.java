@@ -97,7 +97,7 @@ public class Reactions {
             return;
         }
 
-        int zerglingCount = gameState.getUnitTypeCount().get(UnitType.Zerg_Zergling);
+        int zerglingCount = gameState.ourLivingUnitCount(UnitType.Zerg_Zergling);
         if (zerglingCount >= 12) {
             gameState.setScvRushed(false);
             return;
@@ -345,8 +345,8 @@ public class Reactions {
 
         productionQueue.setPriorityWhere(IS_SPAWNING_POOL, 0);
 
-        int droneCount = gameState.ourUnitCount(UnitType.Zerg_Drone);
-        int zerglingCount = gameState.getUnitTypeCount().get(UnitType.Zerg_Zergling);
+        int droneCount = gameState.ourLivingUnitCount(UnitType.Zerg_Drone);
+        int zerglingCount = gameState.ourLivingUnitCount(UnitType.Zerg_Zergling);
 
         if (droneCount >= 8 && zerglingCount < 8) {
             productionQueue.removeWhere(IS_DRONE, PlanCancelSource.REACTION_CANNON_RUSH_DRONE, gameState::setImpossiblePlan);

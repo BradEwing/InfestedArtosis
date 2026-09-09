@@ -120,12 +120,14 @@ public class UnitTypeCount {
         if (!plannedUnitTypeCount.containsKey(unitType)) {
             plannedUnitTypeCount.put(unitType, 0);
         }
-        int newCount = plannedUnitTypeCount.get(unitType) + 1;
-        if (unitType == UnitType.Zerg_Zergling || unitType == UnitType.Zerg_Scourge) {
-            newCount += 1;
-        }
-
+        int newCount = plannedUnitTypeCount.get(unitType) + unitsPerPlan(unitType);
         plannedUnitTypeCount.put(unitType, newCount);
+    }
+
+    public void cancelUnitPlan(UnitType unitType) {
+        ensureUnitType(unitType);
+        int newCount = plannedUnitTypeCount.get(unitType) - unitsPerPlan(unitType);
+        plannedUnitTypeCount.put(unitType, Math.max(0, newCount));
     }
 
     public void unplanUnit(UnitType unitType) {
@@ -182,5 +184,9 @@ public class UnitTypeCount {
     public int plannedCount(UnitType unitType) {
         ensureUnitType(unitType);
         return plannedUnitTypeCount.get(unitType);
+    }
+
+    private static int unitsPerPlan(UnitType unitType) {
+        return unitType == UnitType.Zerg_Zergling || unitType == UnitType.Zerg_Scourge ? 2 : 1;
     }
 }

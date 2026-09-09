@@ -333,7 +333,7 @@ public class GameState {
 
         switch (plan.getType()) {
             case UNIT:
-                unitTypeCount.unplanUnit(plan.getPlannedUnit());
+                cancelUnitPlanAccounting(plan.getPlannedUnit());
                 resourceCount.unreserveUnit(plan.getPlannedUnit());
                 break;
             case BUILDING:
@@ -347,6 +347,10 @@ public class GameState {
 
                 if (buildingType == UnitType.Zerg_Extractor && plan.getBuildPosition() != null) {
                     baseData.unreserveExtractor(plan.getBuildPosition());
+                }
+
+                if (buildingType == UnitType.Zerg_Hatchery) {
+                    removePlannedHatchery(1);
                 }
 
                 TilePosition tp = plan.getBuildPosition();
@@ -553,7 +557,7 @@ public class GameState {
 
         switch (plan.getType()) {
             case UNIT:
-                unitTypeCount.unplanUnit(plan.getPlannedUnit());
+                cancelUnitPlanAccounting(plan.getPlannedUnit());
                 if (shouldUnreserve) {
                     resourceCount.unreserveUnit(plan.getPlannedUnit());
                 }
@@ -564,14 +568,13 @@ public class GameState {
                 if (shouldUnreserve) {
                     resourceCount.unreserveUnit(buildingType);
                 }
+                if (plan.getBuildPosition() != null) {
+                    buildingPlanner.unreservePlannedBuildingTiles(plan.getBuildPosition(), buildingType);
+                }
                 if (buildingType == UnitType.Zerg_Hatchery) {
                     removePlannedHatchery(1);
                     TilePosition tp = plan.getBuildPosition();
-                    if (plan.isMacroHatchery()) {
-                        if (tp != null) {
-                            buildingPlanner.unreservePlannedBuildingTiles(tp, buildingType);
-                        }
-                    } else if (tp != null && baseData.isBaseTilePosition(tp)) {
+                    if (!plan.isMacroHatchery() && tp != null && baseData.isBaseTilePosition(tp)) {
                         Base base = baseData.baseAtTilePosition(tp);
                         baseData.cancelReserveBase(base);
                     }
@@ -598,6 +601,17 @@ public class GameState {
                 break;
             default:
                 break;
+        }
+    }
+
+    private void cancelUnitPlanAccounting(UnitType unitType) {
+        unitTypeCount.cancelUnitPlan(unitType);
+        if (unitType == UnitType.Zerg_Drone) {
+            removePlannedWorker(1);
+        }
+        if (unitType == UnitType.Zerg_Overlord) {
+            int plannedSupply = resourceCount.getPlannedSupply();
+            resourceCount.setPlannedSupply(Math.max(0, plannedSupply - unitType.supplyProvided()));
         }
     }
 
