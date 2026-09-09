@@ -99,4 +99,9 @@ public class Overpool extends BuildOrder {
     public boolean isOpener() { 
         return true; 
     }
+
+    @Override
+    protected int poolPriority(int enqueueFrame) {
+        return SPAWNING_POOL_PRIORITY;
+    }
 }

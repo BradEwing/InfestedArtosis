@@ -22,6 +22,8 @@ import java.util.List;
 import java.util.Set;
 
 public class NinePoolSpeed extends BuildOrder {
+    private static final Time GAS_TIME = new Time(1, 4);
+
     public NinePoolSpeed() {
         super("9PoolSpeed");
     }
@@ -94,7 +96,7 @@ public class NinePoolSpeed extends BuildOrder {
             return plans;
         }
 
-        if (extractorCount < 1 && gameState.canPlanExtractor() && gameTime.greaterThan(new Time(1, 4))) {
+        if (shouldPlanExtractor(poolCount, extractorCount, gameState.canPlanExtractor(), gameTime.greaterThan(GAS_TIME))) {
             plans.add(planExtractor(gameState));
             return plans;
         }
@@ -123,7 +125,16 @@ public class NinePoolSpeed extends BuildOrder {
         return true; 
     }
 
+    @Override
+    protected int poolPriority(int enqueueFrame) {
+        return SPAWNING_POOL_PRIORITY;
+    }
+
     static boolean shouldPlanOverlord(int droneCount, int overlordCount, boolean excessSupply) {
         return droneCount > 8 && overlordCount < 2 && !excessSupply;
+    }
+
+    static boolean shouldPlanExtractor(int poolCount, int extractorCount, boolean canPlanExtractor, boolean pastGasTime) {
+        return poolCount > 0 && extractorCount < 1 && canPlanExtractor && pastGasTime;
     }
 }

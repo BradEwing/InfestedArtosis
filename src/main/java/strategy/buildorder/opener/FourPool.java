@@ -62,4 +62,9 @@ public class FourPool extends BuildOrder {
     public boolean isOpener() {
         return true;
     }
+
+    @Override
+    protected int poolPriority(int enqueueFrame) {
+        return SPAWNING_POOL_PRIORITY;
+    }
 }

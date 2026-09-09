@@ -35,6 +35,7 @@ public abstract class BuildOrder {
     private static final int EARLY_RUSH_SECOND_SUNKEN_ATTACKERS = 4;
     private static final int EARLY_RUSH_MIN_ZERGLINGS = 6;
     private static final int EMERGENCY_DEFENSE_PRIORITY = 1;
+    protected static final int SPAWNING_POOL_PRIORITY = 2;
     private static final int DEFAULT_COLONY_PRIORITY = 5;
     private static final int UNKNOWN_RACE_BASE_TARGET = 2;
     private static final int UNKNOWN_RACE_ZERGLING_PLANS = 2;
@@ -306,10 +307,22 @@ public abstract class BuildOrder {
         return plan;
     }
 
+    /**
+     * Priority for this build order's Spawning Pool plan. Defaults to the enqueue frame, which sorts the
+     * pool behind every building already queued. Openers that open on the pool override it with a small
+     * constant so nothing queued after the pool outranks it.
+     *
+     * @param enqueueFrame the frame the plan is created on
+     * @return the plan priority
+     */
+    protected int poolPriority(int enqueueFrame) {
+        return enqueueFrame;
+    }
+
     protected Plan planSpawningPool(GameState gameState) {
         TechProgression techProgression = gameState.getTechProgression();
         techProgression.setPlannedSpawningPool(true);
-        Plan plan = new BuildingPlan(UnitType.Zerg_Spawning_Pool, gameState.getGameTime());
+        Plan plan = new BuildingPlan(UnitType.Zerg_Spawning_Pool, poolPriority(gameState.getGameTime().getFrames()));
         TilePosition buildPosition = gameState.getTechBuildingLocation(UnitType.Zerg_Spawning_Pool);
         plan.setBuildPosition(buildPosition);
         return plan;
@@ -326,7 +339,7 @@ public abstract class BuildOrder {
 
     protected Plan planExtractor(GameState gameState) {
         BaseData baseData = gameState.getBaseData();
-        Plan plan = new BuildingPlan(UnitType.Zerg_Extractor, 50);
+        Plan plan = new BuildingPlan(UnitType.Zerg_Extractor, gameState.getGameTime().getFrames());
         Unit geyser = baseData.reserveExtractor();
         plan.setBuildPosition(baseData.getGeyserPosition(geyser));
         return plan;

@@ -26,4 +26,24 @@ class NinePoolSpeedTest {
     void withholdsTheOverlordBelowNineDrones() {
         assertFalse(NinePoolSpeed.shouldPlanOverlord(8, 1, false));
     }
+
+    @Test
+    void withholdsGasUntilTheSpawningPoolIsPlanned() {
+        assertFalse(NinePoolSpeed.shouldPlanExtractor(0, 0, true, true));
+    }
+
+    @Test
+    void takesGasOnceTheSpawningPoolIsPlanned() {
+        assertTrue(NinePoolSpeed.shouldPlanExtractor(1, 0, true, true));
+    }
+
+    @Test
+    void withholdsGasBeforeTheGasTime() {
+        assertFalse(NinePoolSpeed.shouldPlanExtractor(1, 0, true, false));
+    }
+
+    @Test
+    void withholdsGasOnceAnExtractorExists() {
+        assertFalse(NinePoolSpeed.shouldPlanExtractor(1, 1, true, true));
+    }
 }
