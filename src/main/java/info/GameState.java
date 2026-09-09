@@ -316,6 +316,7 @@ public class GameState {
             return;
         }
 
+        final PlanState priorState = plan.getState();
         plan.setCancelSource(source);
         plansBuilding.remove(plan);
         plansMorphing.remove(plan);
@@ -333,7 +334,7 @@ public class GameState {
 
         switch (plan.getType()) {
             case UNIT:
-                cancelUnitPlanAccounting(plan.getPlannedUnit());
+                cancelUnitPlanAccounting(plan.getPlannedUnit(), priorState);
                 resourceCount.unreserveUnit(plan.getPlannedUnit());
                 break;
             case BUILDING:
@@ -557,7 +558,7 @@ public class GameState {
 
         switch (plan.getType()) {
             case UNIT:
-                cancelUnitPlanAccounting(plan.getPlannedUnit());
+                cancelUnitPlanAccounting(plan.getPlannedUnit(), currentState);
                 if (shouldUnreserve) {
                     resourceCount.unreserveUnit(plan.getPlannedUnit());
                 }
@@ -604,9 +605,17 @@ public class GameState {
         }
     }
 
-    private void cancelUnitPlanAccounting(UnitType unitType) {
+    /**
+     * Rolls back what planning a unit reserved. A drone plan releases its planned worker when the
+     * morph starts, so a plan cancelled out of {@link PlanState#MORPHING} has already paid that
+     * back and must not pay it twice.
+     *
+     * @param unitType the planned unit
+     * @param priorState the plan's state before it was cancelled
+     */
+    private void cancelUnitPlanAccounting(UnitType unitType, PlanState priorState) {
         unitTypeCount.cancelUnitPlan(unitType);
-        if (unitType == UnitType.Zerg_Drone) {
+        if (unitType == UnitType.Zerg_Drone && priorState != PlanState.MORPHING) {
             removePlannedWorker(1);
         }
         if (unitType == UnitType.Zerg_Overlord) {
