@@ -6,6 +6,7 @@ public enum PlanBlocker {
     RESOURCES,
     BUILD_AHEAD_SLOT_TAKEN,
     BUILD_AHEAD_BACKOFF,
+    BUILD_AHEAD_TOO_FAR,
     NO_INCOME,
     NO_BUILD_POSITION,
     NO_LARVA,
