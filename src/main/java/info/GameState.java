@@ -27,6 +27,7 @@ import learning.Decisions;
 import lombok.Data;
 import macro.HatcheryCapacity;
 import macro.SupplyCapacity;
+import macro.plan.ColonyClaims;
 import macro.plan.Plan;
 import macro.plan.PlanCancelSource;
 import macro.plan.PlanType;
@@ -412,9 +413,24 @@ public class GameState {
     }
 
     private boolean isColonyMorphAtPosition(Plan p, TilePosition tp) {
-        UnitType type = p.getPlannedUnit();
-        return (type == UnitType.Zerg_Sunken_Colony || type == UnitType.Zerg_Spore_Colony)
-                && tp.equals(p.getBuildPosition());
+        return ColonyClaims.isColonyMorph(p.getPlannedUnit()) && tp.equals(p.claimedColonyTile());
+    }
+
+    /**
+     * The creep colony standing on a tile, whether still under construction or complete, or null
+     * if no colony of ours is there.
+     */
+    public Unit creepColonyAt(TilePosition tilePosition) {
+        if (tilePosition == null) {
+            return null;
+        }
+
+        for (Unit unit : self.getUnits()) {
+            if (unit.getType() == UnitType.Zerg_Creep_Colony && unit.getTilePosition().equals(tilePosition)) {
+                return unit;
+            }
+        }
+        return null;
     }
 
     private void clearPlannedTechFlags(UnitType buildingType) {
