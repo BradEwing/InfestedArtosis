@@ -1,10 +1,7 @@
 package info.tracking.protoss;
 
-import bwapi.TilePosition;
 import bwapi.UnitType;
-import bwem.Base;
-import info.BaseData;
-import info.tracking.ObservedUnitTracker;
+import info.map.BaseArea;
 import info.tracking.StrategyDetectionContext;
 import util.Time;
 
@@ -14,7 +11,8 @@ import util.Time;
 public class FFE extends ProtossBaseStrategy {
 
     private static final Time DETECTION_CUTOFF = new Time(4, 30);
-    private static final int MANHATTAN_THRESHOLD = 8;
+    private static final int PROXIMITY_TILE_RADIUS = 8;
+    private static final int AREA_TILE_RADIUS = 20;
 
     public FFE() {
         super("FFE");
@@ -26,16 +24,15 @@ public class FFE extends ProtossBaseStrategy {
             return false;
         }
 
-        BaseData baseData = context.getBaseData();
-        Base enemyNatural = baseData.getEnemyNaturalBase();
+        BaseArea enemyNatural = context.enemyNaturalArea(PROXIMITY_TILE_RADIUS, AREA_TILE_RADIUS);
         if (enemyNatural == null) {
             return false;
         }
 
-        TilePosition naturalTile = enemyNatural.getLocation();
-        ObservedUnitTracker tracker = context.getTracker();
+        return context.getTracker().hasLivingUnitAt(FFE::isWallBuilding, enemyNatural::contains);
+    }
 
-        return tracker.hasLivingUnitNearTile(UnitType.Protoss_Forge, naturalTile, MANHATTAN_THRESHOLD)
-                || tracker.hasLivingUnitNearTile(UnitType.Protoss_Photon_Cannon, naturalTile, MANHATTAN_THRESHOLD);
+    private static boolean isWallBuilding(UnitType unitType) {
+        return unitType == UnitType.Protoss_Forge || unitType == UnitType.Protoss_Photon_Cannon;
     }
 }

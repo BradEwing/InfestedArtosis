@@ -143,7 +143,7 @@ public class GameState {
         this.activeBuildOrder = decisions.getOpener();
         this.opponentRace = opponentRace;
         this.gameMap = new GameMap(game.mapWidth(), game.mapHeight());
-        this.strategyTracker = new StrategyTracker(game, opponentRace, this.observedUnitTracker, this.baseData, this.gameMap);
+        this.strategyTracker = new StrategyTracker(game, opponentRace, this.observedUnitTracker, this.baseData, this.gameMap, bwem.getMap());
     }
 
     public void onFrame() {

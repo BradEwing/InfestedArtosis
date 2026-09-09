@@ -1,7 +1,10 @@
 package info.tracking;
 
 import bwapi.TilePosition;
+import bwem.BWMap;
+import bwem.Base;
 import info.BaseData;
+import info.map.BaseArea;
 import info.map.GameMap;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
@@ -21,6 +24,7 @@ public class StrategyDetectionContext {
     private final BaseData baseData;
     @Getter
     private final GameMap gameMap;
+    private final BWMap bwMap;
 
     private final Map<Integer, Set<TilePosition>> ourBaseTilesByNaturalRadius = new HashMap<>();
 
@@ -30,6 +34,19 @@ public class StrategyDetectionContext {
      */
     public Set<TilePosition> ourBaseTiles(int naturalTileRadius) {
         return ourBaseTilesByNaturalRadius.computeIfAbsent(naturalTileRadius, this::computeOurBaseTiles);
+    }
+
+    /**
+     * Ground belonging to the inferred enemy natural: its depot tile and the chokepoints of its area
+     * widened by proximityTileRadius, plus tiles BWEM places in that area within areaTileRadius of the
+     * depot. Null while the enemy natural is unknown.
+     */
+    public BaseArea enemyNaturalArea(int proximityTileRadius, int areaTileRadius) {
+        Base enemyNatural = baseData.getEnemyNaturalBase();
+        if (enemyNatural == null) {
+            return null;
+        }
+        return BaseArea.from(enemyNatural, bwMap, proximityTileRadius, areaTileRadius);
     }
 
     private Set<TilePosition> computeOurBaseTiles(int naturalTileRadius) {
