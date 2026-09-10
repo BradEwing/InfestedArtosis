@@ -46,8 +46,11 @@ public class WorkerManager {
     // Unreserved minerals above unreserved gas that marks minerals as floating
     static final int MINERAL_SURPLUS = 100;
 
-    // Mineral drones needed before any of them may be moved onto a geyser
+    // Mineral drones needed before gas demand alone may move one onto a geyser
     static final int MIN_MINERAL_GATHERERS = 4;
+
+    // Floor applied on the mineral surplus path, which mineral income already vouches for
+    static final int NO_MINERAL_FLOOR = 0;
 
     public WorkerManager(Game game, GameState gameState) {
         this.game = game;
@@ -483,8 +486,10 @@ public class WorkerManager {
 
         if (shouldCutGasHarvesting(availableMinerals, availableGas)) {
             cutGasHarvesting();
-        } else if (shouldSaturateGeysers(availableMinerals, availableGas)) {
-            saturateGeysers();
+        } else if (shouldSaturateOnMineralSurplus(availableMinerals, availableGas)) {
+            saturateGeysers(NO_MINERAL_FLOOR);
+        } else if (shouldSaturateOnGasDemand(availableGas)) {
+            saturateGeysers(MIN_MINERAL_GATHERERS);
         }
     }
 
@@ -507,35 +512,48 @@ public class WorkerManager {
     }
 
     /**
-     * True when mineral drones should be moved onto an under-manned geyser.
-     *
-     * <p>Two states qualify: minerals floating clear of gas, and no unreserved gas left at all.
-     * The second is what undoes a cut. A mineral surplus large enough to satisfy the first is rare
-     * while reservations hold the bank down, so without it the geysers a cut emptied stay empty
-     * for the rest of the game.
+     * True when minerals float clear of gas, the long-standing signal to man a geyser.
      *
      * @param availableMinerals minerals mined and unreserved, which may be negative
      * @param availableGas gas mined and unreserved, which may be negative
-     * @return true when geysers should be saturated
+     * @return true when geysers should be saturated off a mineral surplus
      */
-    static boolean shouldSaturateGeysers(int availableMinerals, int availableGas) {
-        return availableGas <= 0 || availableMinerals - availableGas > MINERAL_SURPLUS;
+    static boolean shouldSaturateOnMineralSurplus(int availableMinerals, int availableGas) {
+        return availableMinerals - availableGas > MINERAL_SURPLUS;
+    }
+
+    /**
+     * True when no unreserved gas is left, so a plan is already waiting on gas the bot is not
+     * mining.
+     *
+     * <p>This is what undoes a cut. The mineral surplus
+     * {@link #shouldSaturateOnMineralSurplus} needs is rare while reservations hold the bank down,
+     * so without this the geysers a cut emptied stay empty for the rest of the game. It runs only
+     * where the mineral-surplus rule already declined, so that path keeps its behaviour.
+     *
+     * @param availableGas gas mined and unreserved, which may be negative
+     * @return true when geysers should be saturated off gas demand
+     */
+    static boolean shouldSaturateOnGasDemand(int availableGas) {
+        return availableGas <= 0;
     }
 
     /**
      * Number of mineral drones that may move onto a geyser this frame.
      *
-     * <p>Applies the floor {@link #onExtractorComplete} already uses. It matters here because a
-     * saturation now also runs when gas has merely been spent, not only when minerals float, so
-     * the path is reachable at drone counts where taking the last gatherers would stop mineral
-     * income outright.
+     * <p>The floor guards the gas-demand path, which is reachable at drone counts the
+     * mineral-surplus path never saw: a mineral surplus implies mineral income, an empty gas bank
+     * implies nothing, so without a floor a rush that leaves two drones alive would put both on
+     * the geyser and end mineral income outright. {@link #NO_MINERAL_FLOOR} keeps the
+     * mineral-surplus path exactly as it was.
      *
      * @param mineralGatherers drones currently on minerals
      * @param openSlots unfilled geyser slots
+     * @param mineralFloor drones that must stay available to minerals
      * @return how many drones may be moved
      */
-    static int spareGeyserWorkers(int mineralGatherers, int openSlots) {
-        if (mineralGatherers < MIN_MINERAL_GATHERERS) {
+    static int spareGeyserWorkers(int mineralGatherers, int openSlots, int mineralFloor) {
+        if (mineralGatherers < mineralFloor) {
             return 0;
         }
         return Math.min(openSlots, mineralGatherers);
@@ -543,8 +561,10 @@ public class WorkerManager {
 
     /**
      * Saturate geysers from gatherers using the closest available drones
+     *
+     * @param mineralFloor drones that must stay available to minerals
      */
-    private void saturateGeysers() {
+    private void saturateGeysers(int mineralFloor) {
         if (!gameState.needGeyserWorkers()) {
             return;
         }
@@ -569,7 +589,7 @@ public class WorkerManager {
             return;
         }
 
-        int workerLimit = spareGeyserWorkers(availableWorkers.size(), totalNeeded);
+        int workerLimit = spareGeyserWorkers(availableWorkers.size(), totalNeeded, mineralFloor);
         if (workerLimit < 1) {
             return;
         }

@@ -33,47 +33,58 @@ class WorkerManagerTest {
     }
 
     @Test
-    void geysersAreSaturatedWhenNoUnreservedGasIsLeft() {
-        assertTrue(WorkerManager.shouldSaturateGeysers(-75, 0));
-        assertTrue(WorkerManager.shouldSaturateGeysers(-75, -100));
+    void gasDemandSaturatesWhenNoUnreservedGasIsLeft() {
+        assertTrue(WorkerManager.shouldSaturateOnGasDemand(0));
+        assertTrue(WorkerManager.shouldSaturateOnGasDemand(-100));
+        assertFalse(WorkerManager.shouldSaturateOnGasDemand(1));
     }
 
     @Test
     void geysersAreSaturatedWhenMineralsFloat() {
-        assertTrue(WorkerManager.shouldSaturateGeysers(WorkerManager.MINERAL_SURPLUS + 101, 100));
-        assertFalse(WorkerManager.shouldSaturateGeysers(WorkerManager.MINERAL_SURPLUS + 100, 100));
+        assertTrue(WorkerManager.shouldSaturateOnMineralSurplus(WorkerManager.MINERAL_SURPLUS + 101, 100));
+        assertFalse(WorkerManager.shouldSaturateOnMineralSurplus(WorkerManager.MINERAL_SURPLUS + 100, 100));
     }
 
     @Test
     void aStandingGasSurplusIsNotSaturated() {
-        assertFalse(WorkerManager.shouldSaturateGeysers(0, 400));
-        assertFalse(WorkerManager.shouldSaturateGeysers(-75, 116));
+        assertFalse(WorkerManager.shouldSaturateOnMineralSurplus(0, 400));
+        assertFalse(WorkerManager.shouldSaturateOnGasDemand(400));
+        assertFalse(WorkerManager.shouldSaturateOnMineralSurplus(-75, 116));
+        assertFalse(WorkerManager.shouldSaturateOnGasDemand(116));
     }
 
     @Test
     void noDroneLeavesMineralsBelowTheGathererFloor() {
-        assertEquals(0, WorkerManager.spareGeyserWorkers(WorkerManager.MIN_MINERAL_GATHERERS - 1, 3));
-        assertEquals(0, WorkerManager.spareGeyserWorkers(0, 3));
+        assertEquals(0, WorkerManager.spareGeyserWorkers(
+                WorkerManager.MIN_MINERAL_GATHERERS - 1, 3, WorkerManager.MIN_MINERAL_GATHERERS));
+        assertEquals(0, WorkerManager.spareGeyserWorkers(0, 3, WorkerManager.MIN_MINERAL_GATHERERS));
+    }
+
+    @Test
+    void theMineralSurplusPathKeepsItsUnflooredBehaviour() {
+        assertEquals(3, WorkerManager.spareGeyserWorkers(3, 3, WorkerManager.NO_MINERAL_FLOOR));
+        assertEquals(1, WorkerManager.spareGeyserWorkers(1, 3, WorkerManager.NO_MINERAL_FLOOR));
     }
 
     @Test
     void theOpenSlotsCapTheDronesMoved() {
-        assertEquals(3, WorkerManager.spareGeyserWorkers(12, 3));
-        assertEquals(1, WorkerManager.spareGeyserWorkers(12, 1));
-        assertEquals(0, WorkerManager.spareGeyserWorkers(12, 0));
+        assertEquals(3, WorkerManager.spareGeyserWorkers(12, 3, WorkerManager.MIN_MINERAL_GATHERERS));
+        assertEquals(1, WorkerManager.spareGeyserWorkers(12, 1, WorkerManager.MIN_MINERAL_GATHERERS));
+        assertEquals(0, WorkerManager.spareGeyserWorkers(12, 0, WorkerManager.MIN_MINERAL_GATHERERS));
     }
 
     @Test
     void theGathererCountCapsTheDronesMoved() {
-        assertEquals(4, WorkerManager.spareGeyserWorkers(4, 6));
+        assertEquals(4, WorkerManager.spareGeyserWorkers(4, 6, WorkerManager.MIN_MINERAL_GATHERERS));
     }
 
     @Test
     void theCutAndTheSaturationNeverBothFire() {
         for (int minerals = -600; minerals <= 600; minerals += 25) {
             for (int gas = -600; gas <= 600; gas += 25) {
-                assertFalse(WorkerManager.shouldCutGasHarvesting(minerals, gas)
-                        && WorkerManager.shouldSaturateGeysers(minerals, gas));
+                boolean cut = WorkerManager.shouldCutGasHarvesting(minerals, gas);
+                assertFalse(cut && WorkerManager.shouldSaturateOnMineralSurplus(minerals, gas));
+                assertFalse(cut && WorkerManager.shouldSaturateOnGasDemand(gas));
             }
         }
     }
