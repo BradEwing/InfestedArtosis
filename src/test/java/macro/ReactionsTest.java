@@ -1,5 +1,7 @@
 package macro;
 
+import bwapi.TilePosition;
+import bwapi.Unit;
 import bwapi.UnitType;
 import bwem.Base;
 import info.BaseData;
@@ -9,6 +11,7 @@ import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -16,11 +19,14 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Unit tests for the main-base sunken gate and the early rush guards.
+ * Unit tests for the main-base sunken gate, the early rush guards and the raw extractor cancel loop.
  *
  * <p>bwem.Base is final with a package-private constructor and bwapi.Unit cannot be instantiated outside its own
  * package, so base counts are simulated by swapping in sets that report a fixed size. For the same reason the gate
  * tests construct Reactions on a null GameState: the seam they drive never reads it.
+ *
+ * <p>The geyser reservation tests stand a null in for the geyser unit. Every method they exercise identifies a
+ * reservation by its stored tile position and calls nothing on the unit itself, so the null never resolves.
  */
 public class ReactionsTest {
 
@@ -29,6 +35,12 @@ public class ReactionsTest {
     private static final int QUEUED_ZERGLING_PLANS = 6;
 
     private static final int SUSTAINED_RUSH_FRAMES = 2000;
+
+    private static final TilePosition GEYSER_TILE = new TilePosition(20, 30);
+
+    private static final boolean COMPLETE = true;
+
+    private static final boolean INCOMPLETE = false;
 
     private BaseData baseData;
 
@@ -218,5 +230,83 @@ public class ReactionsTest {
 
         assertFalse(reactions.shouldFireDroneCut(Reactions.EARLY_RUSH_DRONE_FLOOR - 1, 0));
         assertTrue(reactions.shouldFireDroneCut(Reactions.EARLY_RUSH_DRONE_FLOOR, 0));
+    }
+
+    /**
+     * IA-328: an extractor whose plan already reached COMPLETE, which for a building means the morph
+     * was issued rather than finished, is in none of the plan sets cancelAllExtractors sweeps. Only
+     * the raw cancelMorph loop reaches it, so that loop is what has to release the geyser.
+     */
+    @Test
+    void theRawCancelLoopReturnsTheGeyserToItsPrePlanState() throws ReflectiveOperationException {
+        BaseData withGeyser = baseDataWithOneGeyser(GEYSER_TILE);
+        withGeyser.reserveExtractor();
+        assertEquals(1, withGeyser.numExtractor());
+
+        cancelExtractorMorph(withGeyser, UnitType.Zerg_Extractor, INCOMPLETE, GEYSER_TILE);
+
+        assertEquals(0, withGeyser.numExtractor());
+        assertTrue(withGeyser.canReserveExtractor());
+    }
+
+    /**
+     * The loop runs every frame while the reaction holds, so releasing twice must not hand the same
+     * geyser out as two reservations.
+     */
+    @Test
+    void repeatingTheRawCancelLoopReleasesTheGeyserOnlyOnce() throws ReflectiveOperationException {
+        BaseData withGeyser = baseDataWithOneGeyser(GEYSER_TILE);
+        withGeyser.reserveExtractor();
+
+        assertTrue(withGeyser.releaseExtractor(GEYSER_TILE));
+        assertFalse(withGeyser.releaseExtractor(GEYSER_TILE));
+        assertEquals(0, withGeyser.numExtractor());
+    }
+
+    /**
+     * A finished extractor is not cancelled, so its geyser stays reserved and no second extractor is
+     * planned onto it.
+     */
+    @Test
+    void aCompletedExtractorKeepsItsReservation() throws ReflectiveOperationException {
+        BaseData withGeyser = baseDataWithOneGeyser(GEYSER_TILE);
+        withGeyser.reserveExtractor();
+
+        cancelExtractorMorph(withGeyser, UnitType.Zerg_Extractor, COMPLETE, GEYSER_TILE);
+
+        assertEquals(1, withGeyser.numExtractor());
+        assertFalse(withGeyser.canReserveExtractor());
+    }
+
+    @Test
+    void onlyAnUnfinishedExtractorIsCancellable() {
+        assertTrue(Reactions.isCancellableExtractorMorph(UnitType.Zerg_Extractor, INCOMPLETE));
+        assertFalse(Reactions.isCancellableExtractorMorph(UnitType.Zerg_Extractor, COMPLETE));
+        assertFalse(Reactions.isCancellableExtractorMorph(UnitType.Zerg_Drone, INCOMPLETE));
+        assertFalse(Reactions.isCancellableExtractorMorph(UnitType.Zerg_Hatchery, INCOMPLETE));
+    }
+
+    private static void cancelExtractorMorph(BaseData baseData, UnitType unitType, boolean completed, TilePosition tile) {
+        if (!Reactions.isCancellableExtractorMorph(unitType, completed)) {
+            return;
+        }
+        baseData.releaseExtractor(tile);
+    }
+
+    private static BaseData baseDataWithOneGeyser(TilePosition tile) throws ReflectiveOperationException {
+        BaseData baseData = new BaseData(new ArrayList<>());
+        HashSet<Unit> available = new HashSet<>();
+        available.add(null);
+        HashMap<Unit, TilePosition> positions = new HashMap<>();
+        positions.put(null, tile);
+        setField(baseData, "availableGeysers", available);
+        setField(baseData, "geyserPositionLookup", positions);
+        return baseData;
+    }
+
+    private static void setField(BaseData baseData, String fieldName, Object value) throws ReflectiveOperationException {
+        Field field = BaseData.class.getDeclaredField(fieldName);
+        field.setAccessible(true);
+        field.set(baseData, value);
     }
 }

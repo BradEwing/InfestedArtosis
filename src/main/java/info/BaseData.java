@@ -15,6 +15,7 @@ import util.Distance;
 
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -170,6 +171,38 @@ public class BaseData {
         }
     }
 
+    /**
+     * Releases the geyser held by an extractor that is going away, either cancelled mid-morph or
+     * destroyed, and returns whether a reservation was actually held.
+     *
+     * <p>Distinct from {@link #unreserveExtractor(TilePosition)}, which serves plan cancellation and
+     * refuses to return a geyser whose unit still reports a refinery type. A cancelled or dying
+     * extractor is in exactly that state at the moment it is released, so this path returns the
+     * geyser to the available pool unconditionally.
+     *
+     * <p>Idempotent: a second call for the same tile finds no reservation and reports false.
+     */
+    public boolean releaseExtractor(TilePosition tilePosition) {
+        return releaseReservedGeyser(extractors, availableGeysers, geyserPositionLookup, tilePosition);
+    }
+
+    static boolean releaseReservedGeyser(Set<Unit> reserved, Set<Unit> available,
+                                         Map<Unit, TilePosition> positions, TilePosition tilePosition) {
+        if (tilePosition == null) {
+            return false;
+        }
+        Iterator<Unit> iterator = reserved.iterator();
+        while (iterator.hasNext()) {
+            Unit candidate = iterator.next();
+            if (tilePosition.equals(positions.get(candidate))) {
+                iterator.remove();
+                available.add(candidate);
+                return true;
+            }
+        }
+        return false;
+    }
+
     public boolean isExtractorAtPosition(TilePosition position) {
         for (Map.Entry<Unit, TilePosition> entry : geyserPositionLookup.entrySet()) {
             if (entry.getValue().equals(position)) {
@@ -223,6 +256,12 @@ public class BaseData {
         return null;
     }
 
+    /**
+     * Counts reserved geysers rather than living extractors, so a geyser already claimed by an
+     * in-flight plan is not handed to a second plan. Every path that ends a reservation therefore has
+     * to release it: plan cancellation through {@link #unreserveExtractor(TilePosition)}, and a
+     * cancelled or destroyed extractor through {@link #releaseExtractor(TilePosition)}.
+     */
     public int numExtractor() {
         return extractors.size();
     }

@@ -17,6 +17,7 @@ import macro.plan.Plan;
 import macro.plan.PlanCancelSource;
 import macro.plan.PlanType;
 import macro.plan.UpgradePlan;
+import telemetry.PlanEvents;
 
 import bwapi.Unit;
 import info.BaseData;
@@ -313,10 +314,23 @@ public class Reactions {
 
         Game game = gameState.getGame();
         for (Unit unit : game.self().getUnits()) {
-            if (unit.getType() == UnitType.Zerg_Extractor && !unit.isCompleted()) {
-                unit.cancelMorph();
+            if (!isCancellableExtractorMorph(unit.getType(), unit.isCompleted())) {
+                continue;
             }
+            if (baseData.releaseExtractor(unit.getTilePosition())) {
+                PlanEvents.unplannedCancel(UnitType.Zerg_Extractor, PlanCancelSource.REACTION_GAS_DENIED_IN_PROGRESS);
+            }
+            unit.cancelMorph();
         }
+    }
+
+    /**
+     * Selects the extractors the raw cancel loop reaches. A plan that has already transitioned to
+     * COMPLETE, which for a building means the morph was issued rather than finished, sits in none of
+     * the plan sets swept above, so this loop is the only thing holding its geyser reservation.
+     */
+    static boolean isCancellableExtractorMorph(UnitType unitType, boolean completed) {
+        return unitType == UnitType.Zerg_Extractor && !completed;
     }
 
     private void cannonRushReaction() {

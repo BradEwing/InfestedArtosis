@@ -24,6 +24,7 @@ class PlanEventsTest {
     private final List<Plan> enqueued = new ArrayList<>();
     private final List<PlanBlocker> blockers = new ArrayList<>();
     private final List<String> withheld = new ArrayList<>();
+    private final List<String> unplannedCancels = new ArrayList<>();
 
     private PlanEventSink recorder() {
         return new PlanEventSink() {
@@ -45,6 +46,11 @@ class PlanEventsTest {
             @Override
             public void onWithheld(UnitType unitType, PlanBlocker blocker) {
                 withheld.add(unitType + ":" + blocker);
+            }
+
+            @Override
+            public void onUnplannedCancel(UnitType unitType, PlanCancelSource cancelSource) {
+                unplannedCancels.add(unitType + ":" + cancelSource);
             }
         };
     }
@@ -167,6 +173,27 @@ class PlanEventsTest {
         assertEquals(1, withheld.size());
         assertEquals("Zerg_Mutalisk:INSUFFICIENT_GATHERERS", withheld.get(0));
         assertTrue(enqueued.isEmpty());
+    }
+
+    /**
+     * The raw extractor cancel has no plan behind it, so this hook is the only record that the
+     * cancellation happened at all.
+     */
+    @Test
+    void unplannedCancelHookCarriesTheUnitAndTheCancelSource() {
+        PlanEvents.register(recorder());
+
+        PlanEvents.unplannedCancel(UnitType.Zerg_Extractor, PlanCancelSource.REACTION_GAS_DENIED_IN_PROGRESS);
+
+        assertEquals(1, unplannedCancels.size());
+        assertEquals("Zerg_Extractor:REACTION_GAS_DENIED_IN_PROGRESS", unplannedCancels.get(0));
+    }
+
+    @Test
+    void unplannedCancelWithNoSinkRegisteredIsANoOp() {
+        PlanEvents.unplannedCancel(UnitType.Zerg_Extractor, PlanCancelSource.REACTION_GAS_DENIED_IN_PROGRESS);
+
+        assertTrue(unplannedCancels.isEmpty());
     }
 
     @Test
