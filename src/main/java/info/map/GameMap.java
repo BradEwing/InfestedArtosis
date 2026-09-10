@@ -534,13 +534,14 @@ public class GameMap {
     }
 
     /**
-     * Finds the best perch tile for watching the given target position, using an overlord's sight
-     * range to decide between highest-ground and nearest-perch selection.
+     * Finds the best perch tile for an overlord watching the given target position, preferring a perch
+     * that sees the target and, among perches that tie on that, the one nearest the overlord.
      *
      * @param target the position being watched
+     * @param scout the overlord's current position
      * @return the selected perch tile, or null if no perches were computed
      */
-    public MapTile findPerchNear(Position target) {
-        return PerchCalculator.selectPerch(perchTiles, target, UnitType.Zerg_Overlord.sightRange());
+    public MapTile findPerchNear(Position target, Position scout) {
+        return PerchCalculator.selectPerch(perchTiles, target, scout, UnitType.Zerg_Overlord.sightRange());
     }
 }

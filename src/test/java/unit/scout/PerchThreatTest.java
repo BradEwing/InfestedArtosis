@@ -4,6 +4,7 @@ import bwapi.UnitType;
 import info.map.PerchCalculator;
 import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -26,17 +27,35 @@ class PerchThreatTest {
     }
 
     @Test
-    void groundUnitThreatensWithinReachOnly() {
-        int reach = PerchCalculator.reachPixels(UnitType.Terran_Marine);
-        assertTrue(PerchThreat.threatens(UnitType.Terran_Marine, reach));
-        assertFalse(PerchThreat.threatens(UnitType.Terran_Marine, reach + 1));
+    void fasterGroundUnitThreatensBeyondItsReachByTheGroundItClosesWhileFleeing() {
+        double closingSpeed = UnitType.Terran_Marine.topSpeed() - UnitType.Zerg_Overlord.topSpeed();
+        double expected = PerchCalculator.reachPixels(UnitType.Terran_Marine)
+                + closingSpeed * PerchThreat.REACTION_FRAMES;
+
+        assertEquals(expected, PerchThreat.leaveDistancePixels(UnitType.Terran_Marine), 1e-9);
+        assertTrue(PerchThreat.threatens(UnitType.Terran_Marine, expected));
+        assertFalse(PerchThreat.threatens(UnitType.Terran_Marine, expected + 1));
+        assertTrue(PerchThreat.threatens(UnitType.Terran_Marine,
+                PerchCalculator.reachPixels(UnitType.Terran_Marine) + 1));
     }
 
     @Test
     void staticDefenseThreatensWithinReachOnly() {
         int reach = PerchCalculator.reachPixels(UnitType.Terran_Missile_Turret);
+        assertEquals(reach, PerchThreat.leaveDistancePixels(UnitType.Terran_Missile_Turret), 1e-9);
         assertTrue(PerchThreat.threatens(UnitType.Terran_Missile_Turret, reach));
         assertFalse(PerchThreat.threatens(UnitType.Terran_Missile_Turret, reach + 1));
+    }
+
+    @Test
+    void leaveDistanceGrowsWithTheAttackerSpeedAdvantage() {
+        double marineMargin = PerchThreat.leaveDistancePixels(UnitType.Terran_Marine)
+                - PerchCalculator.reachPixels(UnitType.Terran_Marine);
+        double hydraliskMargin = PerchThreat.leaveDistancePixels(UnitType.Zerg_Hydralisk)
+                - PerchCalculator.reachPixels(UnitType.Zerg_Hydralisk);
+
+        assertTrue(hydraliskMargin > 0);
+        assertTrue(marineMargin > hydraliskMargin);
     }
 
     @Test
