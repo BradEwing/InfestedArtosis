@@ -114,14 +114,14 @@ public class ProtossBase extends BuildOrder {
     }
 
     /**
-     * requiredSunkens per base
+     * Sunkens per base the Protoss matchup asks for.
      *
      * Take a sunken if 2Gate is detected.
      * Taken a sunken if 6+ zealots are detected
      * Take a sunken if game time over 10 minutes and drone supply is healthy (20+)
      */
     @Override
-    protected int requiredSunkens(GameState gameState) {
+    protected int matchupSunkens(GameState gameState) {
         int sunkens = 0;
         StrategyTracker strategyTracker = gameState.getStrategyTracker();
         Time gameTime = gameState.getGameTime();

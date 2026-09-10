@@ -17,6 +17,7 @@ import macro.plan.Plan;
 import macro.plan.PlanCancelSource;
 import macro.plan.PlanType;
 import macro.plan.UpgradePlan;
+import strategy.buildorder.SunkenTargets;
 import telemetry.PlanEvents;
 
 import bwapi.Unit;
@@ -89,6 +90,7 @@ public class Reactions {
         twoGateReaction();
         zvzSunkenReaction();
         ffeReaction();
+        barracksPressureReaction();
         clearMainSunkenOnExpansion();
     }
 
@@ -432,12 +434,45 @@ public class Reactions {
         productionQueue.setPriorityWhere(IS_DRONE.or(IS_HATCHERY), minPriority);
     }
 
-    private void clearMainSunkenOnExpansion() {
-        BaseData baseData = gameState.getBaseData();
-        if (!baseData.isAllowSunkenAtMain()) {
+    /**
+     * Opens the main to static defense while the enemy is fielding committed bio production.
+     *
+     * <p>The count a build order asks for at the main is only reachable once BaseData calls the
+     * main eligible, so the same Barracks threshold gates both halves. It holds the main open past
+     * the natural because a bio push of this size arrives at whichever base is closest to the
+     * enemy, and the main is where the drones are.
+     */
+    private void barracksPressureReaction() {
+        if (!isUnderBarracksPressure()) {
             return;
         }
-        if (baseData.currentBaseCount() < 2) {
+
+        gameState.getBaseData().setAllowSunkenAtMain(true);
+    }
+
+    private boolean isUnderBarracksPressure() {
+        return SunkenTargets.isBarracksPressure(gameState.enemyUnitCount(UnitType.Terran_Barracks));
+    }
+
+    /**
+     * Whether the main should be closed to static defense again.
+     *
+     * <p>Reads the same base count as {@link #allowSunkenAtMainIfSingleBase}, so the two halves of
+     * the rule agree on what a single base means, and the same Barracks threshold the build orders
+     * raise their sunken count on. Pressure holds the main open past the natural: closing it would
+     * cancel the colonies the raised count had just asked for there.
+     *
+     * @param baseData our bases and the current main sunken gate
+     * @param underBarracksPressure whether the enemy's observed Barracks read as a bio push
+     * @return true when the gate should close and the main's queued colonies be dropped
+     */
+    static boolean shouldClearMainSunken(BaseData baseData, boolean underBarracksPressure) {
+        return baseData.isAllowSunkenAtMain() && !underBarracksPressure && baseData.currentBaseCount() >= 2;
+    }
+
+    private void clearMainSunkenOnExpansion() {
+        BaseData baseData = gameState.getBaseData();
+        if (!shouldClearMainSunken(baseData, isUnderBarracksPressure())) {
             return;
         }
 
