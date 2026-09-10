@@ -170,13 +170,19 @@ public class BaseData {
     }
 
     /**
-     * Drops the reservation behind an Extractor plan that has died, and holds the next request off
-     * that geyser for {@link #EXTRACTOR_REPLAN_BACKOFF_FRAMES}.
+     * Drops the reservation behind an Extractor plan that has died, and holds the next Extractor
+     * request off for {@link #EXTRACTOR_REPLAN_BACKOFF_FRAMES}.
      *
      * <p>Every caller is a cancellation, so releasing the reservation on its own re-opens the very
      * gate that produced the cancelled plan and the request lands again the following frame. A
      * geyser lost to a destroyed extractor is a different event and goes through
      * {@link #releaseExtractor(TilePosition)}, which does not arm the hold.
+     *
+     * <p>The hold is one deadline for the whole bot, not one per geyser: a cancellation at the
+     * natural also holds off a request for an untouched geyser at a third base. Extractor requests
+     * are already serialized by {@link GameState#canPlanExtractor()}, which will not claim a second
+     * geyser while the first claim is unfinished, so a per-geyser deadline would gate nothing the
+     * bot could otherwise act on.
      *
      * @param tilePosition the geyser tile the cancelled plan claimed
      * @param currentFrame frame the cancellation is seen on, which the hold runs from

@@ -833,15 +833,18 @@ public class GameState {
     }
 
     public boolean canPlanExtractor() {
+        final int reservedGeysers = baseData.numExtractor();
+        final int completedExtractors = geyserAssignments.size();
+        final int gasWorkers = getGeyserWorkers();
         return !isAllIn &&
                 !scvRushed &&
                 !earlyRushDenyGas &&
                 techProgression.canPlanExtractor() &&
                 baseData.canReserveExtractor() &&
                 shouldRequestExtractor(
-                        baseData.numExtractor(),
-                        geyserAssignments.size(),
-                        getGeyserWorkers(),
+                        reservedGeysers,
+                        completedExtractors,
+                        gasWorkers,
                         getGameTime().getFrames(),
                         baseData.getExtractorReplanBackoffUntil());
     }
@@ -864,7 +867,9 @@ public class GameState {
      * @param completedExtractors extractors finished and open to gatherers
      * @param gasWorkers drones assigned to gas
      * @param currentFrame current frame
-     * @param replanBackoffUntil frame the hold after a cancelled Extractor plan expires
+     * @param replanBackoffUntil frame the hold after a cancelled Extractor plan expires, from
+     *     {@link BaseData#backoffExtractor(int)}. One deadline for the whole bot, not one per
+     *     geyser, and it outranks every other term including the first-extractor branch
      * @return true when a geyser should be claimed
      */
     static boolean shouldRequestExtractor(int reservedGeysers, int completedExtractors, int gasWorkers,
