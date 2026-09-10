@@ -281,28 +281,48 @@ public abstract class BuildOrder {
     }
 
     /**
+     * Whether the race agnostic macro continuation may run this frame.
+     *
+     * <p>canPlanZergling is what the army branch needs and therefore what the whole method opens
+     * on. Opening the method on a merely planned Spawning Pool while the army branch still waited
+     * on a finished one left the economy branches as the only reachable ones for the pool's entire
+     * build time, and {@link macro.plan.PlanComparator} sorts on the enqueue frame, so the drones,
+     * natural and extractor queued in that window outranked forever every zergling the same method
+     * would later be allowed to create.
+     *
+     * @param raceUnknown whether the opponent's race is still unresolved
+     * @param openerComplete whether the opener has produced everything it will produce
+     * @param canPlanZergling whether a zergling plan is legal now, per {@link GameState#canPlanUnit}
+     * @param earlyRushed whether the emergency owns production instead
+     * @return true when the continuation should plan this frame
+     */
+    static boolean unknownRaceMacroOpen(boolean raceUnknown, boolean openerComplete, boolean canPlanZergling,
+                                        boolean earlyRushed) {
+        return raceUnknown && openerComplete && canPlanZergling && !earlyRushed;
+    }
+
+    /**
      * Race agnostic macro continuation for an opener that has finished its build order but cannot
      * transition, because a random opponent's race is still unknown.
      * <p>
      * Ensures defensive zerglings, a natural expansion, drones and finally gas if they were not
      * covered by the initial opener.
      * <p>
-     * The zergling branch waits on a finished Spawning Pool. {@link GameState#canPlanUnit} is the
-     * same gate the openers' own zergling branches use: a zergling plan created before the pool
-     * finishes still takes a larva and holds it in BUILDING, because
-     * {@code ManagedUnit.morph} no-ops until the morph is buildable. Until then the branches
-     * below run instead, so the natural and its drones are not held up by a pool still building.
+     * Every branch waits on a finished Spawning Pool, because the army branch has to: a zergling
+     * plan created before the pool finishes still takes a larva and holds it in BUILDING, because
+     * {@code ManagedUnit.morph} no-ops until the morph is buildable. The zergling branch runs
+     * first once the method opens, so the natural and its drones are queued behind army rather
+     * than ahead of it.
      */
     protected List<Plan> planUnknownRaceMacro(GameState gameState) {
         List<Plan> plans = new ArrayList<>();
-        TechProgression techProgression = gameState.getTechProgression();
         boolean raceUnknown = gameState.getOpponentRace() == Race.Unknown;
-        boolean poolPlanned = techProgression.isPlannedSpawningPool() || techProgression.isSpawningPool();
-        if (!raceUnknown || !openerComplete(gameState) || !poolPlanned || gameState.isEarlyRushed()) {
+        boolean canPlanZergling = gameState.canPlanUnit(UnitType.Zerg_Zergling);
+        if (!unknownRaceMacroOpen(raceUnknown, openerComplete(gameState), canPlanZergling, gameState.isEarlyRushed())) {
             return plans;
         }
 
-        if (gameState.ourUnitCount(UnitType.Zerg_Zergling) == 0 && gameState.canPlanUnit(UnitType.Zerg_Zergling)) {
+        if (gameState.ourUnitCount(UnitType.Zerg_Zergling) == 0) {
             for (int i = 0; i < UNKNOWN_RACE_ZERGLING_PLANS; i++) {
                 plans.add(this.planUnit(gameState, UnitType.Zerg_Zergling));
             }
