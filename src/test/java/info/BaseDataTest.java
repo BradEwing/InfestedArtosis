@@ -9,6 +9,7 @@ import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.HashMap;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -31,6 +32,30 @@ public class BaseDataTest {
         Field field = BaseData.class.getDeclaredField("availableBases");
         field.setAccessible(true);
         field.set(baseData, bases);
+    }
+
+    /**
+     * bwem.Base cannot be constructed here, so the reservation counters are exercised on a null
+     * key. The lookups are plain maps and treat it as they would any other base.
+     */
+    @Test
+    void releasingASporeReservationReturnsTheTotalToItsPrePlanValue() {
+        int before = baseData.getTotalSporeCount();
+
+        baseData.reserveSporeColony(null);
+        assertEquals(before + 1, baseData.getTotalSporeCount());
+
+        baseData.unreserveSporeColony(null);
+        assertEquals(before, baseData.getTotalSporeCount());
+    }
+
+    @Test
+    void aSporeReservationReleasedTwiceCannotDriveTheTotalBelowZero() {
+        baseData.reserveSporeColony(null);
+        baseData.unreserveSporeColony(null);
+        baseData.unreserveSporeColony(null);
+
+        assertEquals(0, baseData.getTotalSporeCount());
     }
 
     @Test

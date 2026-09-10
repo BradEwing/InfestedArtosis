@@ -374,12 +374,27 @@ public abstract class BuildOrder {
         return plans;
     }
 
+    /**
+     * Returns a set of Creep and Spore Colony plans, or the Evolution Chamber the Spore needs
+     * before either of them can be queued.
+     *
+     * <p>Nothing is reserved until the prerequisite stands. A Spore queued without an Evolution
+     * Chamber is cancelled by the production sweep on the frame it is queued, while its paired
+     * Creep Colony survives and is built, so the pair is formed only once the morph can follow.
+     */
     protected Set<Plan> planSporeColony(GameState gameState) {
         Set<Plan> plans = new HashSet<>();
         BaseData baseData = gameState.getBaseData();
+        TechProgression techProgression = gameState.getTechProgression();
         BuildingPlanner buildingPlanner = gameState.getBuildingPlanner();
         Optional<Base> eligibleBase = gameState.basesNeedingSpore(this.requiredSpores(gameState)).stream().findFirst();
         if (!eligibleBase.isPresent()) {
+            return plans;
+        }
+        if (!techProgression.canPlanSporeColony()) {
+            if (shouldPlanSporePrerequisite(techProgression)) {
+                plans.add(planEvolutionChamber(gameState));
+            }
             return plans;
         }
         TilePosition location = buildingPlanner.getLocationForSporeColony(eligibleBase.get());
@@ -394,6 +409,21 @@ public abstract class BuildOrder {
         plans.add(creepColonyPlan);
         plans.add(sporeColonyPlan);
         return plans;
+    }
+
+    /**
+     * Whether the Evolution Chamber a Spore Colony needs should be planned now.
+     *
+     * <p>Chambers already planned count alongside those standing, so a chamber on the way is waited
+     * on rather than duplicated, and the Spawning Pool the chamber itself needs is left to
+     * {@link TechProgression#canPlanEvolutionChamber()}. A build order that plans its own chamber
+     * for upgrades reaches the same gate, so the anti-air route never adds a second one.
+     *
+     * @param techProgression the bot's tech state
+     * @return true when the Spore's missing prerequisite should be queued
+     */
+    static boolean shouldPlanSporePrerequisite(TechProgression techProgression) {
+        return techProgression.evolutionChambers() == 0 && techProgression.canPlanEvolutionChamber();
     }
 
     protected Plan planUnit(GameState gameState, UnitType unitType) {
