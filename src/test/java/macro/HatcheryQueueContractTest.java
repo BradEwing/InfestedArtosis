@@ -10,11 +10,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Replays the frame order ProductionManager runs: the reactions, then the build order, then the
- * excess sweep.
+ * excess sweep, then the schedule pass.
  *
  * <p>The board models what the plan system does with a hatchery plan, not what the production
- * queue holds: a plan moves out of the queue and into the scheduled, building or morphing set on
- * the frame it is created, and stays in flight there until it completes or a canceller takes it.
+ * queue holds. A plan is created into the queue and moves into the scheduled, building or
+ * morphing set on the same frame, and stays outstanding there until it completes or a canceller
+ * takes it. The two stages are modelled separately because the rush reactions delete hatchery
+ * plans out of the queue only, so a plan that has already left the queue survives them.
  *
  * <p>The producers modelled are the non-Zerg ones, which ask for hatcheries off base counts, base
  * parity and floating minerals. Zerg parity is covered by HatcheryCapacityTest. The games that
@@ -29,17 +31,33 @@ class HatcheryQueueContractTest {
 
     private static final int ENQUEUE_LIMIT_PER_GAME = 50;
 
+    /** Far longer than the cooldown, so only the outstanding count can hold the request. */
+    private static final int A_LONG_HOLD = 1800;
+
     private static final int SATURATED_HATCHERIES = HatcheryCapacity.EXCESS_HATCHERIES;
 
     private static final int IDLE_LARVA = HatcheryCapacity.EXCESS_LARVA;
 
     /**
-     * One game's hatchery bookkeeping. Holds the quantities the game moves, the in-flight plans
-     * the plan system moves, and the lifetime each cancelled plan achieved.
+     * The plans of one hatchery kind. Queued plans are what a rush reaction can delete; active
+     * plans have left the queue for the scheduled, building or morphing set.
+     */
+    private static final class Kind {
+        private final List<Integer> queued = new ArrayList<>();
+        private final List<Integer> active = new ArrayList<>();
+
+        private int outstanding() {
+            return queued.size() + active.size();
+        }
+    }
+
+    /**
+     * One game's hatchery bookkeeping. Holds the quantities the game moves, the plans the plan
+     * system moves, and the lifetime each cancelled plan achieved.
      */
     private static final class Board {
-        private final List<Integer> expansionInFlight = new ArrayList<>();
-        private final List<Integer> macroInFlight = new ArrayList<>();
+        private final Kind expansion = new Kind();
+        private final Kind macro = new Kind();
         private final List<Integer> enqueueFrames = new ArrayList<>();
         private final List<Integer> completionFrames = new ArrayList<>();
         private final List<Integer> lifetimes = new ArrayList<>();
@@ -50,7 +68,6 @@ class HatcheryQueueContractTest {
         private boolean earlyRushed;
         private boolean scvRushed;
         private int lastEnqueueFrame = -HatcheryCapacity.ENQUEUE_COOLDOWN_FRAMES;
-        private int hatcheriesAtLastEnqueue;
 
         private boolean floatingMinerals() {
             return HatcheryCapacity.isFloatingMinerals(minerals, completedHatcheries, true);
@@ -60,30 +77,51 @@ class HatcheryQueueContractTest {
             return HatcheryCapacity.isExcess(completedHatcheries, larva);
         }
 
-        private int inFlightPlans() {
-            return expansionInFlight.size() + macroInFlight.size();
-        }
-
-        private boolean rearmed() {
-            return HatcheryCapacity.isEnqueueRearmed(
-                    inFlightPlans(),
-                    frame - lastEnqueueFrame,
-                    completedHatcheries - hatcheriesAtLastEnqueue);
+        private boolean rearmed(Kind kind) {
+            return HatcheryCapacity.isEnqueueRearmed(kind.outstanding(), frame - lastEnqueueFrame);
         }
 
         private boolean mayQueueExpansion() {
-            return rearmed() && HatcheryCapacity.isQueueable(excess(), earlyRushed || scvRushed);
+            return rearmed(expansion)
+                    && HatcheryCapacity.isQueueable(excess(), earlyRushed || scvRushed);
         }
 
         private boolean mayQueueMacroHatchery() {
-            return rearmed() && HatcheryCapacity.isQueueable(excess(), scvRushed);
+            return rearmed(macro) && HatcheryCapacity.isQueueable(excess(), scvRushed);
         }
 
-        private void enqueue(List<Integer> inFlight) {
-            inFlight.add(frame);
+        private void enqueue(Kind kind) {
+            kind.queued.add(frame);
             enqueueFrames.add(frame);
             lastEnqueueFrame = frame;
-            hatcheriesAtLastEnqueue = completedHatcheries;
+        }
+
+        private void schedule() {
+            expansion.active.addAll(expansion.queued);
+            expansion.queued.clear();
+            macro.active.addAll(macro.queued);
+            macro.queued.clear();
+        }
+
+        private void cancel(List<Integer> plans) {
+            for (int enqueueFrame : plans) {
+                lifetimes.add(frame - enqueueFrame);
+            }
+            plans.clear();
+        }
+
+        private void cancelEverything(Kind kind) {
+            cancel(kind.queued);
+            cancel(kind.active);
+        }
+
+        private void completeOldestExpansion() {
+            if (expansion.active.isEmpty()) {
+                return;
+            }
+            expansion.active.remove(0);
+            completedHatcheries++;
+            completionFrames.add(frame);
         }
 
         private int totalEnqueues() {
@@ -96,22 +134,6 @@ class HatcheryQueueContractTest {
                 shortest = Math.min(shortest, lifetime);
             }
             return shortest;
-        }
-
-        private void cancelInFlight(List<Integer> inFlight) {
-            for (int enqueueFrame : inFlight) {
-                lifetimes.add(frame - enqueueFrame);
-            }
-            inFlight.clear();
-        }
-
-        private void completeOldestExpansion() {
-            if (expansionInFlight.isEmpty()) {
-                return;
-            }
-            expansionInFlight.remove(0);
-            completedHatcheries++;
-            completionFrames.add(frame);
         }
 
         private int shortestGapWithoutACompletion() {
@@ -142,6 +164,7 @@ class HatcheryQueueContractTest {
             runReactions(board);
             runBuildOrder(board, wantsExpansion, wantsMacro);
             runExcessSweep(board);
+            board.schedule();
         }
     }
 
@@ -155,33 +178,38 @@ class HatcheryQueueContractTest {
             runReactions(board);
             runBuildOrder(board, HatcheryCapacity.isFloatingExpansion(board.floatingMinerals(), board.earlyRushed), false);
             runExcessSweep(board);
+            board.schedule();
         }
     }
 
+    /**
+     * Both rush reactions call removeWhere on the production queue, so they reach queued plans
+     * only. A plan a drone is already walking to survives.
+     */
     private static void runReactions(Board board) {
         if (board.scvRushed) {
-            board.cancelInFlight(board.macroInFlight);
-            board.cancelInFlight(board.expansionInFlight);
+            board.cancel(board.macro.queued);
+            board.cancel(board.expansion.queued);
         } else if (board.earlyRushed) {
-            board.cancelInFlight(board.expansionInFlight);
+            board.cancel(board.expansion.queued);
         }
     }
 
     private static void runBuildOrder(Board board, boolean wantsExpansion, boolean wantsMacro) {
         if (wantsExpansion && board.mayQueueExpansion()) {
-            board.enqueue(board.expansionInFlight);
+            board.enqueue(board.expansion);
             return;
         }
 
         if (wantsMacro && board.mayQueueMacroHatchery()) {
-            board.enqueue(board.macroInFlight);
+            board.enqueue(board.macro);
         }
     }
 
     private static void runExcessSweep(Board board) {
         if (board.excess()) {
-            board.cancelInFlight(board.macroInFlight);
-            board.cancelInFlight(board.expansionInFlight);
+            board.cancelEverything(board.macro);
+            board.cancelEverything(board.expansion);
         }
     }
 
@@ -224,17 +252,36 @@ class HatcheryQueueContractTest {
         board.larva = 0;
         board.minerals = 2000;
 
-        runFrames(board, true, true, FRAMES_PER_100_SECONDS);
+        runFrames(board, true, false, FRAMES_PER_100_SECONDS);
 
         assertEquals(1, board.totalEnqueues());
-        assertEquals(1, board.expansionInFlight.size());
+        assertEquals(1, board.expansion.outstanding());
         assertEquals(0, board.lifetimes.size());
     }
 
     /**
+     * The outstanding count is per kind, so a build order holding both requests true commits to
+     * one of each rather than one per frame. The shared cooldown is what keeps them apart.
+     */
+    @Test
+    void bothRequestsHeldTrueCommitOncePerKind() {
+        Board board = new Board();
+        board.completedHatcheries = SATURATED_HATCHERIES;
+        board.larva = 0;
+        board.minerals = 2000;
+
+        runFrames(board, true, true, FRAMES_PER_100_SECONDS);
+
+        assertEquals(2, board.totalEnqueues());
+        assertEquals(1, board.expansion.outstanding());
+        assertEquals(1, board.macro.outstanding());
+        assertTrue(board.shortestGapWithoutACompletion() >= HatcheryCapacity.ENQUEUE_COOLDOWN_FRAMES);
+    }
+
+    /**
      * Game L4KVD0CN. One hatchery, 706 minerals against a 700 bar and no larva to spend, held
-     * for the whole window the expansion took to finish. It queued three hatcheries in three
-     * frames; the in-flight count now holds the request to one.
+     * while the expansion it asked for was built. It queued three hatcheries in three frames;
+     * the outstanding count now holds the request to one.
      */
     @Test
     void theFloatingRequestThatQueuedThreeHatcheriesInThreeFramesQueuesOne() {
@@ -243,15 +290,15 @@ class HatcheryQueueContractTest {
         board.larva = 0;
         board.minerals = 706;
 
-        runFloatingFrames(board, 1800);
+        runFloatingFrames(board, A_LONG_HOLD);
 
         assertEquals(1, board.totalEnqueues());
-        assertEquals(1, board.expansionInFlight.size());
+        assertEquals(1, board.expansion.outstanding());
     }
 
     /**
      * The hatchery the request asked for completes, which raises the floating bar past the
-     * mineral pile and ends the request. Nothing waits out a cooldown to notice.
+     * mineral pile and ends the request.
      */
     @Test
     void aCompletedHatcheryEndsTheRequestThatAskedForIt() {
@@ -283,11 +330,35 @@ class HatcheryQueueContractTest {
         for (int i = 0; i < FRAMES_PER_GAME; i++) {
             board.frame++;
             runBuildOrder(board, true, false);
-            board.cancelInFlight(board.expansionInFlight);
+            board.cancelEverything(board.expansion);
         }
 
         assertTrue(board.totalEnqueues() > 1);
         assertTrue(board.shortestGapWithoutACompletion() >= HatcheryCapacity.ENQUEUE_COOLDOWN_FRAMES);
+    }
+
+    /**
+     * A rush reaction reaches queued plans only, so an expansion a drone is already walking to
+     * survives it. The macro hatchery the reaction asks for must not wait on that expansion;
+     * only the shared cooldown may delay it.
+     */
+    @Test
+    void aSurvivingExpansionDoesNotStarveTheMacroHatcheryARushAsksFor() {
+        Board board = new Board();
+        board.completedHatcheries = 1;
+        board.larva = 0;
+        board.minerals = 1200;
+
+        runFrames(board, true, false, 1);
+        assertEquals(1, board.expansion.outstanding());
+
+        board.earlyRushed = true;
+        runFrames(board, false, true, FRAMES_PER_100_SECONDS);
+
+        assertEquals(1, board.macro.outstanding());
+        assertEquals(1, board.expansion.outstanding());
+        assertTrue(board.enqueueFrames.get(1) - board.enqueueFrames.get(0)
+                <= HatcheryCapacity.ENQUEUE_COOLDOWN_FRAMES);
     }
 
     /**
@@ -304,7 +375,7 @@ class HatcheryQueueContractTest {
 
         runFrames(board, true, true, FRAMES_PER_100_SECONDS);
 
-        assertEquals(0, board.expansionInFlight.size());
+        assertEquals(0, board.expansion.outstanding());
         assertEquals(0, board.lifetimes.size());
     }
 
@@ -322,7 +393,7 @@ class HatcheryQueueContractTest {
 
         runFrames(board, false, true, FRAMES_PER_100_SECONDS);
 
-        assertEquals(1, board.macroInFlight.size());
+        assertEquals(1, board.macro.outstanding());
         assertEquals(0, board.lifetimes.size());
     }
 
@@ -359,7 +430,7 @@ class HatcheryQueueContractTest {
         runFrames(board, true, false, 10);
         board.earlyRushed = false;
         runFrames(board, true, false, 10);
-        assertEquals(1, board.expansionInFlight.size());
+        assertEquals(1, board.expansion.outstanding());
 
         board.minerals = 500;
         board.larva = IDLE_LARVA;

@@ -81,18 +81,18 @@ public final class HatcheryCapacity {
      * when the plan it produced is created, so the request re-arms every frame on its own. A
      * hatchery plan leaves the production queue on the frame it is created, so counting the
      * queue alone does not see it either. This holds the request until the plan it produced has
-     * left the production system and the cooldown has run, or until a hatchery has completed.
+     * left the production system and the cooldown has run.
      *
-     * @param inFlightPlans hatchery plans the production system still carries, at any stage
-     * @param framesSinceLastEnqueue frames since the last hatchery plan was created
-     * @param hatcheriesSinceLastEnqueue hatcheries completed since the last hatchery plan was created
+     * <p>There is no exception for a hatchery finishing. A hatchery takes far longer to build
+     * than the cooldown lasts, so the request the finished hatchery answers is already off
+     * cooldown, and an exception keyed on a completed building would be one no plan telemetry
+     * column can measure.
+     *
+     * @param inFlightPlans hatcheries of this kind the bot has committed to and not finished
+     * @param framesSinceLastEnqueue frames since any hatchery plan was created
      */
-    public static boolean isEnqueueRearmed(int inFlightPlans, int framesSinceLastEnqueue, int hatcheriesSinceLastEnqueue) {
-        if (inFlightPlans > 0) {
-            return false;
-        }
-
-        return framesSinceLastEnqueue >= ENQUEUE_COOLDOWN_FRAMES || hatcheriesSinceLastEnqueue > 0;
+    public static boolean isEnqueueRearmed(int inFlightPlans, int framesSinceLastEnqueue) {
+        return inFlightPlans == 0 && framesSinceLastEnqueue >= ENQUEUE_COOLDOWN_FRAMES;
     }
 
     /**

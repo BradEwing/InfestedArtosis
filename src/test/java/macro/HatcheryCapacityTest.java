@@ -12,6 +12,9 @@ class HatcheryCapacityTest {
 
     private static final int IDLE_LARVA = HatcheryCapacity.EXCESS_LARVA;
 
+    /** Far longer than the cooldown, so only the outstanding count can hold the request. */
+    private static final int A_LONG_HOLD = 1800;
+
     @Test
     void hatcheriesAreExcessOnceTheirLarvaGoUnspent() {
         assertTrue(HatcheryCapacity.isExcess(SATURATED_HATCHERIES, IDLE_LARVA));
@@ -236,56 +239,44 @@ class HatcheryCapacityTest {
     /**
      * The floating-minerals request holds for many frames and nothing it reads moves when it is
      * answered. The plan it produced leaves the queue on its enqueue frame and lands in the
-     * building set, so the in-flight count is what holds the request until the hatchery is up.
+     * building set, so the outstanding count is what holds the request until the hatchery is up.
      */
     @Test
     void aRequestThatHoldsForManyFramesProducesOnePlan() {
-        int inFlight = 0;
+        int outstanding = 0;
         int lastEnqueueFrame = -HatcheryCapacity.ENQUEUE_COOLDOWN_FRAMES;
-        int hatcheriesAtLastEnqueue = 1;
         int hatcheries = 1;
         int enqueues = 0;
 
-        for (int frame = 0; frame < 1800; frame++) {
+        for (int frame = 0; frame < A_LONG_HOLD; frame++) {
             boolean floating = HatcheryCapacity.isFloatingMinerals(706, hatcheries, true);
             boolean excess = HatcheryCapacity.isExcess(hatcheries, 0);
-            boolean rearmed = HatcheryCapacity.isEnqueueRearmed(
-                    inFlight, frame - lastEnqueueFrame, hatcheries - hatcheriesAtLastEnqueue);
+            boolean rearmed = HatcheryCapacity.isEnqueueRearmed(outstanding, frame - lastEnqueueFrame);
 
             if (HatcheryCapacity.isFloatingExpansion(floating, false)
                     && rearmed
                     && HatcheryCapacity.isQueueable(excess, false)) {
                 enqueues++;
-                inFlight++;
+                outstanding++;
                 lastEnqueueFrame = frame;
-                hatcheriesAtLastEnqueue = hatcheries;
             }
         }
 
         assertEquals(1, enqueues);
-        assertEquals(1, inFlight);
+        assertEquals(1, outstanding);
     }
 
     @Test
-    void anInFlightPlanHoldsTheRequestHoweverLongTheCooldownHasRun() {
-        assertFalse(HatcheryCapacity.isEnqueueRearmed(1, HatcheryCapacity.ENQUEUE_COOLDOWN_FRAMES * 10, 0));
-        assertFalse(HatcheryCapacity.isEnqueueRearmed(1, HatcheryCapacity.ENQUEUE_COOLDOWN_FRAMES * 10, 2));
+    void anOutstandingHatcheryHoldsTheRequestHoweverLongTheCooldownHasRun() {
+        assertFalse(HatcheryCapacity.isEnqueueRearmed(1, HatcheryCapacity.ENQUEUE_COOLDOWN_FRAMES * 10));
+        assertFalse(HatcheryCapacity.isEnqueueRearmed(2, HatcheryCapacity.ENQUEUE_COOLDOWN_FRAMES * 10));
     }
 
     @Test
     void theCooldownHoldsTheRequestAfterAPlanLeavesTheSystem() {
-        assertFalse(HatcheryCapacity.isEnqueueRearmed(0, 0, 0));
-        assertFalse(HatcheryCapacity.isEnqueueRearmed(0, HatcheryCapacity.ENQUEUE_COOLDOWN_FRAMES - 1, 0));
-        assertTrue(HatcheryCapacity.isEnqueueRearmed(0, HatcheryCapacity.ENQUEUE_COOLDOWN_FRAMES, 0));
-    }
-
-    /**
-     * A completed hatchery is the answer the request was waiting for, so the next one may be
-     * asked for without serving the cooldown.
-     */
-    @Test
-    void aCompletedHatcheryRearmsTheRequestImmediately() {
-        assertTrue(HatcheryCapacity.isEnqueueRearmed(0, 1, 1));
+        assertFalse(HatcheryCapacity.isEnqueueRearmed(0, 0));
+        assertFalse(HatcheryCapacity.isEnqueueRearmed(0, HatcheryCapacity.ENQUEUE_COOLDOWN_FRAMES - 1));
+        assertTrue(HatcheryCapacity.isEnqueueRearmed(0, HatcheryCapacity.ENQUEUE_COOLDOWN_FRAMES));
     }
 
     /**
@@ -297,6 +288,6 @@ class HatcheryCapacityTest {
         int lastEnqueueFrame = 100;
         int cancelFrame = 105;
 
-        assertFalse(HatcheryCapacity.isEnqueueRearmed(0, cancelFrame + 1 - lastEnqueueFrame, 0));
+        assertFalse(HatcheryCapacity.isEnqueueRearmed(0, cancelFrame + 1 - lastEnqueueFrame));
     }
 }
