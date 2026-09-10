@@ -1,6 +1,7 @@
 package strategy.buildorder;
 
 import bwapi.UnitType;
+import info.ResourceCount;
 import info.TechProgression;
 import info.UnitTypeCount;
 import macro.AdvancedUnitEligibility;
@@ -48,8 +49,6 @@ class BuildOrderTest {
     private static final int EXTRACTOR_FRAME = 205;
 
     private static final int SURPLUS_BANK = 900;
-
-    private static final int LARVA = 2;
 
     private static final int IDLE_BANK = 2000;
 
@@ -232,27 +231,26 @@ class BuildOrderTest {
 
     @Test
     void mineralsAndLarvaTogetherBuyASurplusUnit() {
-        assertTrue(BuildOrder.shouldSpendMineralSurplus(BuildOrder.MINERAL_SURPLUS, 1, true, 0));
-        assertTrue(BuildOrder.shouldSpendMineralSurplus(SURPLUS_BANK, LARVA, true, 0));
+        assertTrue(BuildOrder.shouldSpendMineralSurplus(BuildOrder.MINERAL_SURPLUS, true, true, 0));
+        assertTrue(BuildOrder.shouldSpendMineralSurplus(SURPLUS_BANK, true, true, 0));
     }
 
     @Test
     void aBankUnderTheBarIsNotASurplus() {
-        assertFalse(BuildOrder.shouldSpendMineralSurplus(BuildOrder.MINERAL_SURPLUS - 1, LARVA, true, 0));
+        assertFalse(BuildOrder.shouldSpendMineralSurplus(BuildOrder.MINERAL_SURPLUS - 1, true, true, 0));
     }
 
     /**
-     * Larva that a queued plan already claimed cannot morph anything, so a surplus unit planned
-     * against them would sit behind the plan that owns them.
+     * With no larva free to take, a surplus unit would sit behind the plans that own them.
      */
     @Test
-    void surplusUnitsWaitForUnreservedLarva() {
-        assertFalse(BuildOrder.shouldSpendMineralSurplus(SURPLUS_BANK, 0, true, 0));
+    void surplusUnitsWaitForAFreeLarva() {
+        assertFalse(BuildOrder.shouldSpendMineralSurplus(SURPLUS_BANK, false, true, 0));
     }
 
     @Test
     void surplusUnitsWaitForTheSpawningPool() {
-        assertFalse(BuildOrder.shouldSpendMineralSurplus(SURPLUS_BANK, LARVA, false, 0));
+        assertFalse(BuildOrder.shouldSpendMineralSurplus(SURPLUS_BANK, true, false, 0));
     }
 
     /**
@@ -263,9 +261,9 @@ class BuildOrderTest {
     @Test
     void theSurplusQueueIsBounded() {
         assertTrue(BuildOrder.shouldSpendMineralSurplus(
-                SURPLUS_BANK, LARVA, true, BuildOrder.MAX_QUEUED_SURPLUS_PLANS - 1));
+                SURPLUS_BANK, true, true, BuildOrder.MAX_QUEUED_SURPLUS_PLANS - 1));
         assertFalse(BuildOrder.shouldSpendMineralSurplus(
-                SURPLUS_BANK, LARVA, true, BuildOrder.MAX_QUEUED_SURPLUS_PLANS));
+                SURPLUS_BANK, true, true, BuildOrder.MAX_QUEUED_SURPLUS_PLANS));
     }
 
     /**
@@ -274,7 +272,30 @@ class BuildOrderTest {
      */
     @Test
     void theRichAndIdleSignatureBuysAUnit() {
-        assertTrue(BuildOrder.shouldSpendMineralSurplus(IDLE_BANK, IDLE_LARVA, true, IDLE_QUEUE_DEPTH));
+        ResourceCount resourceCount = new ResourceCount(null);
+        boolean larvaAvailable = resourceCount.canScheduleLarva(IDLE_LARVA, 0);
+
+        assertTrue(BuildOrder.shouldSpendMineralSurplus(IDLE_BANK, larvaAvailable, true, IDLE_QUEUE_DEPTH));
+    }
+
+    /**
+     * The larva gate reads {@link ResourceCount#canScheduleLarva}, the same authority the
+     * scheduler uses, which adds back the larva a plan is already holding: assigning one removes
+     * it from the larva set while its reservation still stands. Subtracting the reservation from
+     * the set alone counts that larva twice, so a second larva that is genuinely free reads as
+     * none and the surplus declines to drain.
+     */
+    @Test
+    void aLarvaHeldByAPlanIsNotCountedAgainstTheSurplusTwice() {
+        ResourceCount resourceCount = new ResourceCount(null);
+        resourceCount.reserveUnit(UnitType.Zerg_Zergling);
+        int freeLarva = 1;
+        int larvaHeldByPlans = 1;
+
+        assertTrue(resourceCount.canScheduleLarva(freeLarva, larvaHeldByPlans));
+        assertTrue(BuildOrder.shouldSpendMineralSurplus(
+                SURPLUS_BANK, resourceCount.canScheduleLarva(freeLarva, larvaHeldByPlans), true, 0));
+        assertFalse(freeLarva - resourceCount.getReservedLarva() > 0);
     }
 
 }

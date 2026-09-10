@@ -245,7 +245,6 @@ public abstract class BuildOrder {
             Plan hatcheryPlan = this.planNewBase(gameState);
             if (hatcheryPlan != null) {
                 plans.add(hatcheryPlan);
-                return plans;
             }
         }
 
@@ -416,10 +415,11 @@ public abstract class BuildOrder {
      */
     protected Plan planMineralSurplusUnit(GameState gameState) {
         ResourceCount resourceCount = gameState.getResourceCount();
-        int unreservedLarva = gameState.numLarva() - resourceCount.getReservedLarva();
+        boolean larvaAvailable = resourceCount.canScheduleLarva(
+                gameState.numLarva(), gameState.larvaAssignedToPlans());
         boolean poolComplete = gameState.getTechProgression().isSpawningPool();
         int queuedPlans = gameState.queuedUnitPlanCount(MINERAL_SURPLUS_UNIT);
-        if (!shouldSpendMineralSurplus(resourceCount.availableMinerals(), unreservedLarva, poolComplete, queuedPlans)) {
+        if (!shouldSpendMineralSurplus(resourceCount.availableMinerals(), larvaAvailable, poolComplete, queuedPlans)) {
             return null;
         }
         return this.planUnit(gameState, MINERAL_SURPLUS_UNIT);
@@ -436,14 +436,15 @@ public abstract class BuildOrder {
      * surplus drains at a fixed rate instead of stacking a plan every frame it stays true.
      *
      * @param availableMinerals minerals mined and not reserved by a queued plan
-     * @param unreservedLarva living larva that no queued plan has claimed
+     * @param larvaAvailable whether a larva is free to morph, from
+     *     {@link ResourceCount#canScheduleLarva}, which is the same authority the scheduler uses
      * @param poolComplete a Spawning Pool has finished, so the unit can be morphed
      * @param queuedPlans plans for the surplus unit already waiting in the queue
      */
-    static boolean shouldSpendMineralSurplus(int availableMinerals, int unreservedLarva,
+    static boolean shouldSpendMineralSurplus(int availableMinerals, boolean larvaAvailable,
                                              boolean poolComplete, int queuedPlans) {
         return poolComplete
-                && unreservedLarva > 0
+                && larvaAvailable
                 && queuedPlans < MAX_QUEUED_SURPLUS_PLANS
                 && availableMinerals >= MINERAL_SURPLUS;
     }
