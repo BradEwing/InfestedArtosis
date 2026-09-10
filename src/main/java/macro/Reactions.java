@@ -280,10 +280,11 @@ public class Reactions {
 
     private void cancelAllExtractors(BaseData baseData) {
         ProductionQueue productionQueue = gameState.getProductionQueue();
+        int currentFrame = gameState.getGameTime().getFrames();
         productionQueue.removeWhere(IS_EXTRACTOR, PlanCancelSource.REACTION_GAS_DENIED_QUEUED, plan -> {
             gameState.setImpossiblePlan(plan);
             if (plan.getBuildPosition() != null) {
-                baseData.unreserveExtractor(plan.getBuildPosition());
+                baseData.unreserveExtractor(plan.getBuildPosition(), currentFrame);
             }
         });
 
@@ -321,7 +322,7 @@ public class Reactions {
             }
             TilePosition geyserTile = unit.getTilePosition();
             if (unit.cancelMorph()) {
-                reclaimCancelledExtractor(baseData, geyserTile);
+                reclaimCancelledExtractor(baseData, geyserTile, currentFrame);
             }
         }
     }
@@ -341,11 +342,16 @@ public class Reactions {
      * command has been accepted, so an extractor that finishes before the command lands keeps its
      * geyser marked as ours. Emitting on the reclaim rather than on every pass keeps one row per
      * reclaim while the reaction fires each frame.
+     *
+     * <p>Arms the replan hold alongside the reclaim. This path is the one that repeats: the plan
+     * behind a morph already in flight has left every plan set, so nothing else records that the
+     * geyser it just handed back came from a cancellation rather than from a lost extractor.
      */
-    static boolean reclaimCancelledExtractor(BaseData baseData, TilePosition geyserTile) {
+    static boolean reclaimCancelledExtractor(BaseData baseData, TilePosition geyserTile, int currentFrame) {
         if (!baseData.releaseExtractor(geyserTile)) {
             return false;
         }
+        baseData.backoffExtractor(currentFrame);
         PlanEvents.unplannedCancel(UnitType.Zerg_Extractor, PlanCancelSource.REACTION_GAS_DENIED_IN_PROGRESS);
         return true;
     }
@@ -522,7 +528,7 @@ public class Reactions {
         }
         gameState.cancelPlan(assignedDrone, plan, PlanCancelSource.REACTION_GAS_DENIED_IN_PROGRESS);
         if (plan.getBuildPosition() != null) {
-            baseData.unreserveExtractor(plan.getBuildPosition());
+            baseData.unreserveExtractor(plan.getBuildPosition(), gameState.getGameTime().getFrames());
         }
     }
 }
