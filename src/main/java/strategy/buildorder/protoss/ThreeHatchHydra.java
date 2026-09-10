@@ -21,6 +21,8 @@ import java.util.List;
  */
 public class ThreeHatchHydra extends ProtossBase {
 
+    static final int HYDRALISKS_BEFORE_ZERGLINGS = 11;
+
     private boolean plannedFirstMacroHatch = false;
     private boolean plannedSecondMacroHatch = false;
     private boolean plannedThirdMacroHatch = false;
@@ -387,10 +389,9 @@ public class ThreeHatchHydra extends ProtossBase {
     protected int zerglingsNeeded(GameState gameState) {
         final boolean den = gameState.getTechProgression().isHydraliskDen();
         final int hydras = gameState.ourUnitCount(UnitType.Zerg_Hydralisk);
-        if (den && hydras < 11) {
-            return 0;
-        }
+        final boolean miningGas = gameState.getGeyserWorkers() > 0;
 
-        return super.zerglingsNeeded(gameState);
+        return gasUnitFocusZerglingTarget(super.zerglingsNeeded(gameState), den, hydras,
+                HYDRALISKS_BEFORE_ZERGLINGS, miningGas);
     }
 }

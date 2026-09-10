@@ -15,6 +15,8 @@ import java.util.List;
 
 public class ThreeHatchLurker extends TerranBase {
 
+    static final int HYDRALISKS_BEFORE_ZERGLINGS = 3;
+
     public ThreeHatchLurker() {
         super("3HatchLurker");
     }
@@ -363,12 +365,10 @@ public class ThreeHatchLurker extends TerranBase {
     protected int zerglingsNeeded(GameState gameState) {
         final boolean den = gameState.getTechProgression().isHydraliskDen();
         final int hydras = gameState.ourUnitCount(UnitType.Zerg_Hydralisk);
-        
-        if (den && hydras < 3) {
-            return 0;
-        }
+        final boolean miningGas = gameState.getGeyserWorkers() > 0;
 
-        return super.zerglingsNeeded(gameState);
+        return gasUnitFocusZerglingTarget(super.zerglingsNeeded(gameState), den, hydras,
+                HYDRALISKS_BEFORE_ZERGLINGS, miningGas);
     }
 
     protected int dronesNeeded(GameState gameState) {

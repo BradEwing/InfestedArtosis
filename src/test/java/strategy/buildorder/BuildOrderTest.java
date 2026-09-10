@@ -47,6 +47,10 @@ class BuildOrderTest {
 
     private static final int EXTRACTOR_FRAME = 205;
 
+    private static final int MATCHUP_TARGET = 24;
+
+    private static final int HYDRALISKS_WANTED = 11;
+
     private final List<String> withheld = new ArrayList<>();
 
     private PlanEventSink recorder() {
@@ -193,6 +197,46 @@ class BuildOrderTest {
         Plan extractor = new BuildingPlan(UnitType.Zerg_Extractor, EXTRACTOR_FRAME);
 
         assertTrue(new PlanComparator().compare(hatchery, extractor) < 0);
+    }
+
+    @Test
+    void aGasFocusedBuildStillKeepsAScreeningForceWhileItSavesLarva() {
+        int target = BuildOrder.gasUnitFocusZerglingTarget(MATCHUP_TARGET, true, 0, HYDRALISKS_WANTED, true);
+
+        assertEquals(BuildOrder.GAS_UNIT_FOCUS_ZERGLING_FLOOR, target);
+        assertTrue(target > 0);
+    }
+
+    @Test
+    void theHoldLiftsWhenTheGasThatWouldPayForTheUnitIsNotBeingMined() {
+        assertEquals(MATCHUP_TARGET, BuildOrder.gasUnitFocusZerglingTarget(MATCHUP_TARGET, true, 0, HYDRALISKS_WANTED, false));
+    }
+
+    @Test
+    void theHoldLiftsOnceTheGasUnitsAreFielded() {
+        assertEquals(MATCHUP_TARGET,
+                BuildOrder.gasUnitFocusZerglingTarget(MATCHUP_TARGET, true, HYDRALISKS_WANTED, HYDRALISKS_WANTED, true));
+    }
+
+    @Test
+    void theHoldNeverAppliesBeforeTheTechBuildingFinishes() {
+        assertEquals(MATCHUP_TARGET, BuildOrder.gasUnitFocusZerglingTarget(MATCHUP_TARGET, false, 0, HYDRALISKS_WANTED, true));
+    }
+
+    @Test
+    void anUnreachableGasUnitCannotPinTheTargetAtZero() {
+        int targetOverTime = 0;
+        for (int frame = 0; frame < FRAMES; frame++) {
+            targetOverTime += BuildOrder.gasUnitFocusZerglingTarget(MATCHUP_TARGET, true, 0, HYDRALISKS_WANTED, false);
+        }
+
+        assertEquals(FRAMES * MATCHUP_TARGET, targetOverTime);
+        assertTrue(BuildOrder.gasUnitFocusZerglingTarget(MATCHUP_TARGET, true, 0, HYDRALISKS_WANTED, true) > 0);
+    }
+
+    @Test
+    void aSatisfiedMatchupTargetIsNotRaisedByTheFloor() {
+        assertEquals(0, BuildOrder.gasUnitFocusZerglingTarget(0, true, 0, HYDRALISKS_WANTED, true));
     }
 
     @Test
