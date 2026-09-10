@@ -148,8 +148,8 @@ public class HorizonCombatSimulator implements CombatSimulator {
                 heightMod = HEIGHT_BONUS;
             }
 
-            double groundBase = UnitStrength.groundToGround(type) + UnitStrength.airToGround(type);
-            double antiAirBase = UnitStrength.antiAirStrength(type);
+            double groundBase = weightedGroundStrength(type, friendlySizeProportions);
+            double antiAirBase = weightedAntiAirStrength(type, friendlySizeProportions);
             if (type == UnitType.Terran_Bunker) {
                 double garrisonMod = bunkerGarrisonModifier(ou, currentFrame);
                 groundBase *= garrisonMod;
@@ -159,9 +159,6 @@ public class HorizonCombatSimulator implements CombatSimulator {
                 groundBase /= WORKER_STRENGTH_DIVISOR;
                 antiAirBase /= WORKER_STRENGTH_DIVISOR;
             }
-
-            groundBase *= weightedEffectiveness(groundDamageType(type), friendlySizeProportions);
-            antiAirBase *= weightedEffectiveness(airDamageType(type), friendlySizeProportions);
 
             double groundEnemyStr = groundBase * hpWeight * distWeight * heightMod;
             double aaEnemyStr = antiAirBase * hpWeight * distWeight * heightMod;
@@ -497,7 +494,34 @@ public class HorizonCombatSimulator implements CombatSimulator {
         return total;
     }
 
-    private double weightedEffectiveness(DamageType damageType, Map<UnitSizeType, Double> sizeProportions) {
+    /**
+     * Ground strength one enemy contributes, discounted once for what its ground weapon's damage
+     * type does to the size mix it is shooting at.
+     *
+     * @param type enemy unit type
+     * @param friendlySizeProportions supply weighted share of each friendly unit size
+     * @return the damage type weighted ground strength, before hit point and distance weighting
+     */
+    static double weightedGroundStrength(UnitType type, Map<UnitSizeType, Double> friendlySizeProportions) {
+        double base = UnitStrength.groundToGround(type) + UnitStrength.airToGround(type);
+        return base * weightedEffectiveness(groundDamageType(type), friendlySizeProportions);
+    }
+
+    /**
+     * Anti-air strength one enemy contributes, discounted once for what its air weapon's damage
+     * type does to the size mix it is shooting at. The strength table is damage type blind, so
+     * this is the only place damage type reaches an anti-air score.
+     *
+     * @param type enemy unit type
+     * @param friendlySizeProportions supply weighted share of each friendly unit size
+     * @return the damage type weighted anti-air strength, before hit point and distance weighting
+     */
+    static double weightedAntiAirStrength(UnitType type, Map<UnitSizeType, Double> friendlySizeProportions) {
+        return UnitStrength.antiAirStrength(type)
+                * weightedEffectiveness(airDamageType(type), friendlySizeProportions);
+    }
+
+    private static double weightedEffectiveness(DamageType damageType, Map<UnitSizeType, Double> sizeProportions) {
         if (damageType == DamageType.Normal || sizeProportions.isEmpty()) return 1.0;
         double effectiveness = 0;
         for (Map.Entry<UnitSizeType, Double> entry : sizeProportions.entrySet()) {
@@ -506,8 +530,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
         return effectiveness;
     }
 
-    private DamageType groundDamageType(UnitType type) {
-        if (type == UnitType.Zerg_Sunken_Colony) return DamageType.Explosive;
+    private static DamageType groundDamageType(UnitType type) {
         WeaponType weapon = type.groundWeapon();
         if (weapon == null || weapon == WeaponType.None) return DamageType.Normal;
         return weapon.damageType();
@@ -542,7 +565,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
         }
     }
 
-    private DamageType airDamageType(UnitType type) {
+    private static DamageType airDamageType(UnitType type) {
         WeaponType weapon = type.airWeapon();
         if (weapon == null || weapon == WeaponType.None) return DamageType.Normal;
         return weapon.damageType();
