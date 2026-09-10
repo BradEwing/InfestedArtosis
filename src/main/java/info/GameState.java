@@ -264,6 +264,11 @@ public class GameState {
         return this.resourceCount.frameCanAffordUnit(unit, currentFrame, mineralGatherers.size(), gasGatherers.size());
     }
 
+    /** Projection for a plan's own cost, including an upgrade or a research plan. */
+    public int frameCanAffordPlan(Plan plan, int currentFrame) {
+        return this.resourceCount.frameCanAffordPlan(plan, currentFrame, mineralGatherers.size(), gasGatherers.size());
+    }
+
     /** Refreshed prediction for a plan whose cost already stands in the reservation ledger. */
     public int frameCanAffordReserved(int currentFrame) {
         return this.resourceCount.frameCanAffordReserved(currentFrame, mineralGatherers.size(), gasGatherers.size());

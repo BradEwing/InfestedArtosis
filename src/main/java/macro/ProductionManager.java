@@ -35,6 +35,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.ToIntFunction;
 import java.util.stream.Collectors;
 
 /**
@@ -763,7 +764,7 @@ public class ProductionManager {
         }
 
         schedulingBatch = schedulable;
-        ScanOutcome outcome = scanPlans(schedulable, this::schedulePlan);
+        ScanOutcome outcome = scanPlans(schedulable, this::schedulePlan, this::predictedReadyFrame);
         schedulingBatch = new ArrayList<>();
         gameState.getPlansScheduled().addAll(outcome.scheduled);
         gameState.getProductionQueue().addAll(outcome.requeued);
@@ -784,6 +785,11 @@ public class ProductionManager {
         }
     }
 
+    /** Projects the frame a queued plan can pay its own cost, at this frame's worker counts. */
+    private int predictedReadyFrame(Plan plan) {
+        return gameState.frameCanAffordPlan(plan, currentFrame);
+    }
+
     @FunctionalInterface
     interface PlanScheduler {
         PlanBlocker schedule(Plan plan, boolean bankClaimedAhead);
@@ -796,8 +802,16 @@ public class ProductionManager {
         final List<Plan> requeued = new ArrayList<>();
     }
 
-    /** Scans every plan in priority order without stopping at blockers. */
-    static ScanOutcome scanPlans(List<Plan> plansInPriorityOrder, PlanScheduler scheduler) {
+    /**
+     * Scans every plan in priority order without stopping at blockers.
+     *
+     * @param plansInPriorityOrder the queue, highest priority first
+     * @param scheduler schedules one plan and reports what blocked it
+     * @param readyFrame projects the frame a plan can pay its own cost
+     * @return the plans scheduled this scan and the plans returned to the queue
+     */
+    static ScanOutcome scanPlans(
+            List<Plan> plansInPriorityOrder, PlanScheduler scheduler, ToIntFunction<Plan> readyFrame) {
         ScanOutcome outcome = new ScanOutcome();
         boolean bankClaimedAhead = false;
         for (Plan plan : plansInPriorityOrder) {
@@ -808,13 +822,24 @@ public class ProductionManager {
             }
             PlanEvents.blocked(plan, blocker);
             outcome.requeued.add(plan);
-            bankClaimedAhead = bankClaimedAhead || claimsBank(blocker);
+            bankClaimedAhead = bankClaimedAhead || claimsBank(blocker, readyFrame.applyAsInt(plan));
         }
         return outcome;
     }
 
-    static boolean claimsBank(PlanBlocker blocker) {
-        return blocker == PlanBlocker.RESOURCES;
+    /**
+     * Whether a blocked plan holds the bank against everything queued behind it.
+     *
+     * <p>A shortfall only claims the bank while it can still be gathered. An upgrade that needs
+     * gas nobody is mining never becomes affordable, so holding the bank on it starves the
+     * Extractor queued behind it and the gas it is waiting on never arrives.
+     *
+     * @param blocker why the plan was not scheduled
+     * @param predictedReadyFrame the frame the plan can pay its own cost
+     * @return true while the plan should reserve the bank for itself
+     */
+    static boolean claimsBank(PlanBlocker blocker, int predictedReadyFrame) {
+        return blocker == PlanBlocker.RESOURCES && !BuildAheadSlot.isUnreachable(predictedReadyFrame);
     }
 
     // TODO: Refactor this into WorkerManager or a Buildingmanager (TechManager)?

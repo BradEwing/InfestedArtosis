@@ -99,7 +99,7 @@ public class NinePoolSpeed extends BuildOrder {
             return plans;
         }
 
-        if (shouldPlanExtractor(poolCount, extractorCount, gameState.canPlanExtractor(), gameTime.greaterThan(GAS_TIME))) {
+        if (shouldPlanExtractor(extractorCount, gameState.canPlanExtractor(), gameTime.greaterThan(GAS_TIME))) {
             plans.add(planExtractor(gameState));
             return plans;
         }
@@ -141,7 +141,19 @@ public class NinePoolSpeed extends BuildOrder {
         return supplyUsed >= POOL_SUPPLY;
     }
 
-    static boolean shouldPlanExtractor(int poolCount, int extractorCount, boolean canPlanExtractor, boolean pastGasTime) {
-        return poolCount > 0 && extractorCount < 1 && canPlanExtractor && pastGasTime;
+    /**
+     * Whether the opener takes its gas yet.
+     *
+     * <p>Reads the pool through canPlanExtractor, which opens once the pool is planned. A gate on
+     * a completed pool is the same expression as openerComplete, so the opener would hand off on
+     * the frame its own gas branch first became true and never build the Extractor itself.
+     *
+     * @param extractorCount Extractors owned
+     * @param canPlanExtractor whether a geyser is free and the pool is planned or standing
+     * @param pastGasTime whether the game is past GAS_TIME
+     * @return true while the Extractor should be queued
+     */
+    static boolean shouldPlanExtractor(int extractorCount, boolean canPlanExtractor, boolean pastGasTime) {
+        return extractorCount < 1 && canPlanExtractor && pastGasTime;
     }
 }

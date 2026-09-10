@@ -1,6 +1,7 @@
 package macro;
 
 import bwapi.UnitType;
+import bwapi.UpgradeType;
 import macro.ProductionManager.PlanScheduler;
 import macro.ProductionManager.ScanOutcome;
 import macro.plan.BuildingPlan;
@@ -9,6 +10,7 @@ import macro.plan.PlanBlocker;
 import macro.plan.PlanCancelSource;
 import macro.plan.PlanState;
 import macro.plan.UnitPlan;
+import macro.plan.UpgradePlan;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import telemetry.PlanEventSink;
@@ -30,10 +32,24 @@ class ProductionManagerTest {
 
     private static final int FRAME = 6253;
 
+    private static final int REACHABLE_FRAME = FRAME + 100;
+
+    private static int unreachableWithoutGas(Plan plan) {
+        return plan.gasPrice() > 0 ? Integer.MAX_VALUE : REACHABLE_FRAME;
+    }
+
     private Plan spire(PlanState state) {
         Plan plan = new BuildingPlan(UnitType.Zerg_Spire, 1000);
         plan.setState(state);
         return plan;
+    }
+
+    private Plan metabolicBoost() {
+        return new UpgradePlan(UpgradeType.Metabolic_Boost, 3330);
+    }
+
+    private Plan extractor() {
+        return new BuildingPlan(UnitType.Zerg_Extractor, 3649);
     }
 
     private Plan hatchery() {
@@ -225,8 +241,40 @@ class ProductionManagerTest {
     @Test
     void onlyAResourceShortfallClaimsTheBank() {
         for (PlanBlocker blocker : PlanBlocker.values()) {
-            assertEquals(blocker == PlanBlocker.RESOURCES, ProductionManager.claimsBank(blocker), blocker.name());
+            assertEquals(
+                    blocker == PlanBlocker.RESOURCES,
+                    ProductionManager.claimsBank(blocker, REACHABLE_FRAME),
+                    blocker.name());
         }
+    }
+
+    @Test
+    void aShortfallNoWorkerCanGatherLeavesTheBankToThePlansBehindIt() {
+        assertFalse(ProductionManager.claimsBank(PlanBlocker.RESOURCES, Integer.MAX_VALUE));
+    }
+
+    @Test
+    void aGasUpgradeWithNoGasIncomeDoesNotHoldTheBankAgainstTheExtractor() {
+        Plan speed = metabolicBoost();
+        Plan extractor = extractor();
+        Recorder scheduler = new Recorder().block(speed, PlanBlocker.RESOURCES);
+
+        ProductionManager.scanPlans(
+                Arrays.asList(speed, extractor), scheduler, ProductionManagerTest::unreachableWithoutGas);
+
+        assertFalse(scheduler.bankClaimedAhead.get(extractor));
+    }
+
+    @Test
+    void aGasUpgradeTheBankAlreadyCoversStillHoldsTheBank() {
+        Plan speed = metabolicBoost();
+        Plan extractor = extractor();
+        Recorder scheduler = new Recorder().block(speed, PlanBlocker.RESOURCES);
+
+        ProductionManager.scanPlans(
+                Arrays.asList(speed, extractor), scheduler, plan -> REACHABLE_FRAME);
+
+        assertTrue(scheduler.bankClaimedAhead.get(extractor));
     }
 
     @Test
@@ -235,7 +283,7 @@ class ProductionManagerTest {
         Plan ling = zergling();
         Recorder scheduler = new Recorder().block(drone, PlanBlocker.NO_LARVA);
 
-        ScanOutcome outcome = ProductionManager.scanPlans(Arrays.asList(drone, ling), scheduler);
+        ScanOutcome outcome = ProductionManager.scanPlans(Arrays.asList(drone, ling), scheduler, plan -> REACHABLE_FRAME);
 
         assertEquals(Collections.singletonList(ling), outcome.scheduled);
         assertEquals(Collections.singletonList(drone), outcome.requeued);
@@ -247,7 +295,7 @@ class ProductionManagerTest {
         Plan ling = zergling();
         Recorder scheduler = new Recorder().block(hatchery, PlanBlocker.NO_BUILD_POSITION);
 
-        ScanOutcome outcome = ProductionManager.scanPlans(Arrays.asList(hatchery, ling), scheduler);
+        ScanOutcome outcome = ProductionManager.scanPlans(Arrays.asList(hatchery, ling), scheduler, plan -> REACHABLE_FRAME);
 
         assertEquals(Collections.singletonList(ling), outcome.scheduled);
         assertEquals(Collections.singletonList(hatchery), outcome.requeued);
@@ -264,7 +312,7 @@ class ProductionManagerTest {
             Plan ling = zergling();
             Recorder scheduler = new Recorder().block(hatchery, blocker).block(muta, blocker);
 
-            ProductionManager.scanPlans(Arrays.asList(hatchery, muta, ling), scheduler);
+            ProductionManager.scanPlans(Arrays.asList(hatchery, muta, ling), scheduler, plan -> REACHABLE_FRAME);
 
             assertEquals(Arrays.asList(hatchery, muta, ling), scheduler.examined, blocker.name());
         }
@@ -280,7 +328,7 @@ class ProductionManagerTest {
             Plan muta = mutalisk();
             Recorder scheduler = new Recorder().block(hatchery, blocker);
 
-            ProductionManager.scanPlans(Arrays.asList(hatchery, muta), scheduler);
+            ProductionManager.scanPlans(Arrays.asList(hatchery, muta), scheduler, plan -> REACHABLE_FRAME);
 
             assertFalse(scheduler.bankClaimedAhead.get(muta), blocker.name());
         }
@@ -293,7 +341,7 @@ class ProductionManagerTest {
         Plan ling = zergling();
         Recorder scheduler = new Recorder().block(hatchery, PlanBlocker.RESOURCES);
 
-        ProductionManager.scanPlans(Arrays.asList(hatchery, muta, ling), scheduler);
+        ProductionManager.scanPlans(Arrays.asList(hatchery, muta, ling), scheduler, plan -> REACHABLE_FRAME);
 
         assertFalse(scheduler.bankClaimedAhead.get(hatchery));
         assertTrue(scheduler.bankClaimedAhead.get(muta));
@@ -310,7 +358,7 @@ class ProductionManagerTest {
                 .block(hatchery, PlanBlocker.NO_BUILD_POSITION)
                 .block(muta, PlanBlocker.RESOURCES);
 
-        ProductionManager.scanPlans(Arrays.asList(hatchery, muta, ling), scheduler);
+        ProductionManager.scanPlans(Arrays.asList(hatchery, muta, ling), scheduler, plan -> REACHABLE_FRAME);
 
         assertEquals(Arrays.asList(hatchery, muta), reportedPlans);
         assertEquals(Arrays.asList(PlanBlocker.NO_BUILD_POSITION, PlanBlocker.RESOURCES), reportedBlockers);
@@ -422,7 +470,7 @@ class ProductionManagerTest {
         Plan firstLing = zergling();
         Plan secondLing = zergling();
 
-        ScanOutcome outcome = ProductionManager.scanPlans(Arrays.asList(muta, firstLing, secondLing), scheduler);
+        ScanOutcome outcome = ProductionManager.scanPlans(Arrays.asList(muta, firstLing, secondLing), scheduler, plan -> REACHABLE_FRAME);
 
         assertEquals(Collections.singletonList(muta), outcome.scheduled);
         assertEquals(Arrays.asList(firstLing, secondLing), outcome.requeued);
