@@ -568,7 +568,7 @@ public class ProductionManager {
     }
 
     private void plan() {
-        gameState.getProductionQueue().addAll(activeBuildOrder.planEmergencyDefense(gameState));
+        gameState.getProductionQueue().addAll(activeBuildOrder.planDefense(gameState));
 
         if (!isPlanning && !gameState.getProductionQueue().isEmpty()) {
             return;

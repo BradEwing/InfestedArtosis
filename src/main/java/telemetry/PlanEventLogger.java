@@ -45,10 +45,15 @@ public class PlanEventLogger implements PlanEventSink {
     private static final String EVENT_RECURRING_CANCEL = "RECURRING_CANCEL";
 
     /**
-     * 38 columns. Was 32 before executor_unit_id, reserved_larva and builder_distance_px were
-     * added, 35 before assigned_larva, 36 before enemy_air and 37 before gas_gathered; readers that
-     * index by position rather than by name need updating. enemy_air and gas_gathered are trailing
-     * cumulative columns written by {@link #appendGameTotals}, so every row shape keeps one width.
+     * 39 columns. Was 32 before executor_unit_id, reserved_larva and builder_distance_px were
+     * added, 35 before assigned_larva, 36 before enemy_air, 37 before gas_gathered and 38 before
+     * enemy_barracks; readers that index by position rather than by name need updating. enemy_air,
+     * gas_gathered and enemy_barracks are trailing columns written by {@link #appendGameTotals},
+     * so every row shape keeps one width.
+     * <p>
+     * enemy_barracks is the living observed count the sunken floors read, on the plan row rather
+     * than the game summary, so a batch can date a colony plan against the Barracks known at the
+     * frame it was queued.
      * <p>
      * larva, assigned_larva and reserved_larva are three terms of one sum, not three views of it.
      * A larva handed to a plan leaves the larva set while its reservation stands, so larva free
@@ -59,7 +64,8 @@ public class PlanEventLogger implements PlanEventSink {
             + "to_state,cancel_reason,cancel_source,blocker,blocked_frames,priority,frames_in_state,age_frames,"
             + "minerals,gas,available_minerals,available_gas,supply_used_real,supply_total_real,larva,assigned_larva,"
             + "reserved_larva,gatherers,queue_depth,plans_scheduled,plans_building,plans_morphing,build_tile_x,"
-            + "build_tile_y,macro_hatchery,build_order,starved_behind,builder_distance_px,enemy_air,gas_gathered";
+            + "build_tile_y,macro_hatchery,build_order,starved_behind,builder_distance_px,enemy_air,gas_gathered,"
+            + "enemy_barracks";
 
     private static final String GAME_HEADER = "timestamp,is_winner,num_starting_locations,map_name,opponent_name,"
             + "opponent_race,opener,build_order,detected_strategies,frame_count";
@@ -419,7 +425,8 @@ public class PlanEventLogger implements PlanEventSink {
      */
     private void appendGameTotals(StringBuilder sb) {
         sb.append(gameState.observedEnemyAirCombatUnitCount()).append(',');
-        sb.append(gameState.getSelf().gatheredGas());
+        sb.append(gameState.getSelf().gatheredGas()).append(',');
+        sb.append(gameState.enemyUnitCount(UnitType.Terran_Barracks));
     }
 
     private void appendEvent(StringBuilder sb, String event) {

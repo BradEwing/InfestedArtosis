@@ -6,7 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class PlanEventLoggerTest {
 
-    private static final int PLAN_COLUMNS = 38;
+    private static final int PLAN_COLUMNS = 39;
 
     @Test
     void thePlanRowCarriesEveryColumnItsReadersIndexBy() {
@@ -14,8 +14,8 @@ class PlanEventLoggerTest {
     }
 
     @Test
-    void theCumulativeGasTotalIsTheLastColumn() {
+    void theEnemyBarracksCountIsTheLastColumn() {
         String[] columns = PlanEventLogger.PLAN_HEADER.split(",", -1);
-        assertEquals("gas_gathered", columns[columns.length - 1]);
+        assertEquals("enemy_barracks", columns[columns.length - 1]);
     }
 }

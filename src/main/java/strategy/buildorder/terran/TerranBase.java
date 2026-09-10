@@ -6,6 +6,7 @@ import info.GameState;
 import info.tracking.StrategyTracker;
 import macro.plan.Plan;
 import strategy.buildorder.BuildOrder;
+import strategy.buildorder.SunkenTargets;
 import util.Time;
 
 import java.util.Collections;
@@ -34,6 +35,20 @@ public class TerranBase extends BuildOrder {
     static final int ZERGLINGS_PER_GOLIATH = 2;
 
     static final int ZERGLINGS_PER_FACTORY = 6;
+
+    static final int TWO_RAX_ACADEMY_SUNKENS = 3;
+
+    static final int EARLY_BIO_PRESSURE_BIO = 5;
+
+    static final int EARLY_BIO_PRESSURE_SUNKENS = 1;
+
+    private static final int MIDGAME_SUNKEN_DRONES = 14;
+
+    private static final Time TWO_RAX_ACADEMY_OPENS = new Time(4, 0);
+
+    private static final Time TWO_RAX_ACADEMY_CLOSES = new Time(8, 0);
+
+    private static final Time MIDGAME_SUNKEN_OPENS = new Time(8, 0);
 
     protected TerranBase(String name) {
         super(name);
@@ -185,15 +200,47 @@ public class TerranBase extends BuildOrder {
     }
 
     /**
-     * requiredSunkens per base
+     * Sunkens per base the enemy's bio reads as owing.
+     * <p>
+     * The branches are ordered by threat and exactly one fires. Detected strategies accumulate in
+     * a set and are never retracted, so an enemy matching several of these matches them all, and
+     * a lower branch running afterwards would lower an answer a higher one had already given.
+     * <p>
+     * The Barracks and bio terms carry no expiry. Both read living observed units, so they fall
+     * when the production and the army behind them fall, which is the only thing that should lower
+     * a defensive target; a clock lets the target reach zero while the army it answers is still
+     * growing. The 2RaxAcademy branch keeps its window because it reads a timing commitment rather
+     * than an army: it prices the push that build makes, and past the window the Barracks and bio
+     * terms are what still describe what is on the field.
+     *
+     * @param enemyBarracks living enemy Barracks we have observed
+     * @param bioCount living enemy marines, firebats and medics
+     * @param twoRaxAcademy whether StrategyTracker has detected 2RaxAcademy
+     * @param gameTime current game time
+     * @return sunkens per base the bio read asks for
+     */
+    static int bioPressureSunkens(int enemyBarracks, int bioCount, boolean twoRaxAcademy, Time gameTime) {
+        if (SunkenTargets.isBarracksPressure(enemyBarracks)) {
+            return SunkenTargets.BARRACKS_PRESSURE_SUNKENS;
+        } else if (twoRaxAcademy && gameTime.greaterThan(TWO_RAX_ACADEMY_OPENS)
+                && gameTime.lessThanOrEqual(TWO_RAX_ACADEMY_CLOSES)) {
+            return TWO_RAX_ACADEMY_SUNKENS;
+        } else if (bioCount > EARLY_BIO_PRESSURE_BIO) {
+            return EARLY_BIO_PRESSURE_SUNKENS;
+        }
+        return 0;
+    }
+
+    /**
+     * Sunkens per base the Terran matchup asks for: the bio read, plus the terms a mech opponent
+     * and a grown economy add on top of it.
      */
     @Override
-    protected int requiredSunkens(GameState gameState) {
+    protected int matchupSunkens(GameState gameState) {
         if (gameState.isScvRushed() && gameState.getBaseData().getMyBases().size() == 1) {
             return 1;
         }
 
-        int sunkens = 0;
         StrategyTracker strategyTracker = gameState.getStrategyTracker();
         Time gameTime = gameState.getGameTime();
 
@@ -202,18 +249,14 @@ public class TerranBase extends BuildOrder {
         int marineCount = gameState.enemyUnitCount(UnitType.Terran_Marine);
         int vultureCount = gameState.enemyUnitCount(UnitType.Terran_Vulture);
         int factoryCount = gameState.enemyUnitCount(UnitType.Terran_Factory);
-        int bioCount = marineCount + firebatCount + medicCount;
-        boolean possibleEarlyBioPressire = bioCount > 5 && gameTime.lessThanOrEqual(new Time(5, 0));
-        boolean is2RaxAcademy = strategyTracker.isDetectedStrategy("2RaxAcademy");
-        if (gameTime.lessThanOrEqual(new Time(8, 0))) {
-            if (is2RaxAcademy && gameTime.greaterThan(new Time(4, 0))) {
-                sunkens = 3;
-            } else if (possibleEarlyBioPressire) {
-                sunkens += 1;
-            }
-        }
 
-        if (gameTime.greaterThan(new Time(8, 0)) && gameState.numEconomyDrones() > 14) {
+        int sunkens = bioPressureSunkens(
+                gameState.enemyUnitCount(UnitType.Terran_Barracks),
+                marineCount + firebatCount + medicCount,
+                strategyTracker.isDetectedStrategy("2RaxAcademy"),
+                gameTime);
+
+        if (gameTime.greaterThan(MIDGAME_SUNKEN_OPENS) && gameState.numEconomyDrones() > MIDGAME_SUNKEN_DRONES) {
             sunkens += 1;
         }
         if (factoryCount > 0 || vultureCount > 1) {
