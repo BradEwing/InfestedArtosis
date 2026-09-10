@@ -892,26 +892,58 @@ public class GameState {
     }
 
     /**
-     * Structures of this type standing or on their way: completed structures plus every building
-     * plan of that type still in flight.
+     * Structures of this type we have committed to, whether or not they can be used yet:
+     * completed structures, structures standing on the map but still under construction, and
+     * building plans that have not produced a structure yet.
      *
-     * <p>{@link #ourUnitCount} sees only the completed half. The planned count it adds is
+     * <p>{@link #ourUnitCount} sees only the first of the three. The planned count it adds is
      * incremented by unit plans alone, so a structure reads zero from the frame its plan is
      * created to the frame it finishes, and a caller gating on a structure it has already
      * committed to waits out the whole build time. A caller that needs the structure to be
      * usable, rather than committed to, wants {@link #ourUnitCount} instead.
      *
+     * <p>The three terms hand over without a gap and without overlapping. A building plan retires
+     * on the frame its builder morphs, which is the frame the structure appears on the map, so
+     * {@link #incompleteBuildingCount} takes over from
+     * {@link #outstandingBuildingPlanCount} there; {@link #ourUnitCount} takes over when
+     * construction finishes.
+     *
      * @param unitType the structure to count
-     * @return standing structures plus building plans in flight
+     * @return structures standing, under construction, or claimed by a plan in flight
      */
     public int ourBuildingOrPlannedCount(UnitType unitType) {
-        return ourUnitCount(unitType) + outstandingBuildingPlanCount(unitType);
+        return ourUnitCount(unitType) + incompleteBuildingCount(unitType) + outstandingBuildingPlanCount(unitType);
     }
 
     /**
-     * Building plans of this type that have not completed, across every stage one can sit in:
-     * waiting in the production queue, scheduled, dispatched to a builder, or morphing. Cancelled
-     * plans are excluded, because a cancelled plan produces nothing.
+     * Structures of this type standing on the map that have not finished constructing.
+     *
+     * <p>Neither {@link #ourUnitCount} nor {@link #outstandingBuildingPlanCount} covers this
+     * interval. A Zerg structure exists from the frame its builder morphs, and that same frame
+     * retires its building plan, while the unit type count is not incremented until the structure
+     * completes. Without this term a structure is invisible for its whole construction.
+     *
+     * @param unitType the structure to count
+     * @return structures of that type under construction
+     */
+    public int incompleteBuildingCount(UnitType unitType) {
+        int count = 0;
+        for (Unit unit : self.getUnits()) {
+            if (unit.getType() == unitType && !unit.isCompleted()) {
+                count += 1;
+            }
+        }
+        return count;
+    }
+
+    /**
+     * Building plans of this type that have not produced a structure yet, across every stage one
+     * can sit in: waiting in the production queue, scheduled, dispatched to a builder, or
+     * morphing.
+     *
+     * <p>Cancelled plans are excluded because they produce nothing, and completed plans because
+     * the structure they produced is counted by {@link #ourUnitCount} or
+     * {@link #incompleteBuildingCount} instead.
      *
      * @param unitType the planned structure
      * @return count of building plans for that structure still in flight
@@ -929,7 +961,8 @@ public class GameState {
         for (Plan plan : plans) {
             if (plan.getType() == PlanType.BUILDING
                     && plan.getPlannedUnit() == unitType
-                    && plan.getState() != PlanState.CANCELLED) {
+                    && plan.getState() != PlanState.CANCELLED
+                    && plan.getState() != PlanState.COMPLETE) {
                 count += 1;
             }
         }
