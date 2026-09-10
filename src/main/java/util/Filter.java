@@ -85,8 +85,9 @@ public final class Filter {
     }
 
     /**
-     * Returns true for flying units that carry a weapon. Overlords, Observers and transports are
-     * excluded, as are the buildings that shoot air.
+     * Returns true for flying units that carry a weapon. Overlords, Observers, Shuttles,
+     * Dropships and the Science Vessel are excluded because they carry none, as are the buildings
+     * that shoot air and the air-tech buildings that only promise a flyer later.
      */
     public static boolean isAirCombatUnit(UnitType unitType) {
         if (unitType.isBuilding() || !unitType.isFlyer()) {

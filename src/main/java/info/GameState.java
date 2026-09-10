@@ -425,19 +425,7 @@ public class GameState {
      * game once enough of them have leaked.
      */
     private void cancelPairedCreepColonyPlan(Plan morphPlan) {
-        TilePosition tp = morphPlan.claimedColonyTile();
-        if (tp == null) {
-            return;
-        }
-
-        Base base = baseData.nearestBase(tp);
-        if (base != null) {
-            if (morphPlan.getPlannedUnit() == UnitType.Zerg_Sunken_Colony) {
-                baseData.unreserveSunkenColony(base);
-            } else {
-                baseData.unreserveSporeColony(base);
-            }
-        }
+        releaseColonyReservation(morphPlan);
 
         Plan pairedColonyPlan = morphPlan.getPairedColonyPlan();
         if (!ColonyClaims.pairedColonyDiesWithMorph(pairedColonyPlan)) {
@@ -449,6 +437,24 @@ public class GameState {
                 PlanCancelSource.GAME_STATE_PAIRED_COLONY,
                 this::setImpossiblePlan
         );
+    }
+
+    /**
+     * Hands back the colony slot a Sunken or Spore plan reserved, at the base it was reserved at.
+     * The plan drops its hold as it does so, so a second release cannot reach the counters.
+     */
+    private void releaseColonyReservation(Plan morphPlan) {
+        Base reservedBase = morphPlan.getReservedColonyBase();
+        if (reservedBase == null) {
+            return;
+        }
+
+        morphPlan.setReservedColonyBase(null);
+        if (morphPlan.getPlannedUnit() == UnitType.Zerg_Sunken_Colony) {
+            baseData.unreserveSunkenColony(reservedBase);
+        } else {
+            baseData.unreserveSporeColony(reservedBase);
+        }
     }
 
     private boolean isColonyMorphAtPosition(Plan p, TilePosition tp) {
@@ -565,6 +571,7 @@ public class GameState {
     public void completePlan(Unit unit, Plan plan) {
         plansBuilding.remove(plan);
         plansMorphing.remove(plan);
+        plan.setReservedColonyBase(null);
         plan.setState(PlanState.COMPLETE);
         plansComplete.add(plan);
         assignedPlannedItems.remove(unit);
@@ -897,8 +904,13 @@ public class GameState {
     }
 
     /**
-     * Living enemy air units we have observed that carry a weapon. Overlords, Observers and
-     * transports are excluded: a Spore Colony is not an answer to them.
+     * Living enemy air units we have observed that carry a weapon.
+     *
+     * <p>Narrower than the set of sightings that make {@code requiredSpores} ask for a Spore
+     * Colony. Air-tech buildings, unarmed flyers and the cloaked ground units a Spore is wanted
+     * as a detector against all raise that target while leaving this count at zero, so a reader
+     * asking "did we face air" from this column undercounts. What it does guarantee is the
+     * converse: a non-zero count means an armed enemy flyer is alive.
      */
     public int observedEnemyAirCombatUnitCount() {
         return observedUnitTracker.getCountOfLivingUnits(Filter::isAirCombatUnit);

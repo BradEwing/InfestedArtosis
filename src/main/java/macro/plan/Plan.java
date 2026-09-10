@@ -4,6 +4,7 @@ import bwapi.TechType;
 import bwapi.TilePosition;
 import bwapi.UnitType;
 import bwapi.UpgradeType;
+import bwem.Base;
 
 import lombok.AccessLevel;
 import lombok.Data;
@@ -70,6 +71,18 @@ public abstract class Plan {
     @Nullable
     @ToString.Exclude
     private Plan pairedColonyPlan;
+
+    /**
+     * The base a Sunken or Spore plan reserved a colony slot at when it was planned. Captured at
+     * reserve time rather than derived from the build position: a morph that adopts another
+     * colony has its build position rewritten to the adopted tile, so the position no longer
+     * names the base holding the reservation. Cleared once the reservation is released or
+     * consumed, which makes releasing it twice a no-op rather than a silent decrement of some
+     * other pair's reservation.
+     */
+    @Nullable
+    @ToString.Exclude
+    private Base reservedColonyBase;
 
     public Plan(int priority) {
         this.priority = priority;
