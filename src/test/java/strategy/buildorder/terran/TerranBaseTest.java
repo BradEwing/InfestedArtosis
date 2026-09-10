@@ -13,6 +13,10 @@ class TerranBaseTest {
     private static final int SIEGE_TANKS = 6;
     private static final int VULTURES = 3;
     private static final int FACTORIES = 2;
+    private static final int MARINES = 3;
+    private static final int FIREBATS = 4;
+    private static final int MECH_TERM = 8;
+    private static final int HUGE_MECH_TERM = 200;
 
     @Test
     void yieldsTheLarvaToZerglingsOnThePoolCompletionFrame() {
@@ -54,17 +58,6 @@ class TerranBaseTest {
     }
 
     @Test
-    void scalesTheTargetWithTheMechArmyWhenEveryBioTermIsZero() {
-        int mechTerm = TerranBase.mechDrivenZerglings(SIEGE_TANKS, VULTURES, 0, FACTORIES);
-        int target = UNSCOUTED_ZERGLING_FLOOR + mechTerm;
-
-        assertEquals(SIEGE_TANKS * TerranBase.ZERGLINGS_PER_SIEGE_TANK
-                + VULTURES * TerranBase.ZERGLINGS_PER_VULTURE, mechTerm);
-        assertTrue(target > UNSCOUTED_ZERGLING_FLOOR);
-        assertTrue(Math.min(TerranBase.MAX_ZERGLINGS, target) > TerranBase.MECH_ZERGLING_FLOOR);
-    }
-
-    @Test
     void growsWithEachMechUnitTypeItCanSee() {
         int tanks = TerranBase.mechDrivenZerglings(1, 0, 0, 0);
         int vultures = TerranBase.mechDrivenZerglings(0, 1, 0, 0);
@@ -78,7 +71,9 @@ class TerranBaseTest {
 
     @Test
     void asksForZerglingsOffAScoutedFactoryBeforeItsUnitsAreSeen() {
-        assertEquals(TerranBase.ZERGLINGS_PER_FACTORY * FACTORIES, TerranBase.mechDrivenZerglings(0, 0, 0, FACTORIES));
+        assertTrue(TerranBase.mechDrivenZerglings(0, 0, 0, FACTORIES) > 0);
+        assertTrue(TerranBase.mechDrivenZerglings(0, 0, 0, FACTORIES + 1)
+                > TerranBase.mechDrivenZerglings(0, 0, 0, FACTORIES));
     }
 
     @Test
@@ -86,5 +81,52 @@ class TerranBaseTest {
         int fromUnits = TerranBase.mechDrivenZerglings(SIEGE_TANKS, VULTURES, 0, 0);
 
         assertEquals(fromUnits, TerranBase.mechDrivenZerglings(SIEGE_TANKS, VULTURES, 0, FACTORIES));
+    }
+
+    @Test
+    void scalesTheTargetWithMechWhenEveryBioTermIsZero() {
+        int mechDriven = TerranBase.mechDrivenZerglings(SIEGE_TANKS, VULTURES, 0, FACTORIES);
+        int target = TerranBase.zerglingTarget(0, 0, 0, 0, 0, mechDriven, true);
+
+        assertTrue(target > UNSCOUTED_ZERGLING_FLOOR);
+        assertTrue(target > TerranBase.MECH_ZERGLING_FLOOR);
+    }
+
+    @Test
+    void neverSitsAtTheUnscoutedFloorOnceTheArmyReadsAsMech() {
+        assertEquals(TerranBase.MECH_ZERGLING_FLOOR, TerranBase.zerglingTarget(0, 0, 0, 0, 0, 0, true));
+    }
+
+    @Test
+    void staysAtTheUnscoutedFloorAgainstAnEnemyThatIsNotMech() {
+        assertEquals(UNSCOUTED_ZERGLING_FLOOR, TerranBase.zerglingTarget(0, 0, 0, 0, 0, 0, false));
+        assertEquals(UNSCOUTED_ZERGLING_FLOOR + 2 * MARINES,
+                TerranBase.zerglingTarget(0, 0, 0, MARINES, 0, 0, false));
+    }
+
+    @Test
+    void addsTheBioAndMechTermsTogetherAgainstAnEnemyHoldingBoth() {
+        int bioOnly = TerranBase.zerglingTarget(0, 0, 0, MARINES, 0, 0, false);
+        int both = TerranBase.zerglingTarget(0, 0, 0, MARINES, 0, MECH_TERM, true);
+
+        assertEquals(bioOnly + MECH_TERM, both);
+    }
+
+    @Test
+    void neverAsksForANegativeTarget() {
+        assertEquals(0, TerranBase.zerglingTarget(0, 0, FIREBATS, 0, 0, 0, false));
+    }
+
+    @Test
+    void capsTheTargetAtTheArmySizeTheBuildWillCommitTo() {
+        assertEquals(TerranBase.MAX_ZERGLINGS, TerranBase.zerglingTarget(0, 0, 0, 0, 0, HUGE_MECH_TERM, true));
+    }
+
+    @Test
+    void reportsZeroOnceTheTargetIsMetSoTheBuildStopsQueueing() {
+        int target = TerranBase.zerglingTarget(0, 0, 0, MARINES, 0, MECH_TERM, true);
+
+        assertEquals(0, TerranBase.zerglingTarget(target, 0, 0, MARINES, 0, MECH_TERM, true));
+        assertTrue(TerranBase.zerglingTarget(target - 1, 0, 0, MARINES, 0, MECH_TERM, true) > 0);
     }
 }

@@ -21,6 +21,8 @@ public class TerranBase extends BuildOrder {
 
     static final int UNSCOUTED_ZERGLINGS = 4;
 
+    static final int SCV_RUSH_ZERGLINGS = 12;
+
     static final int MAX_ZERGLINGS = 40;
 
     static final int MECH_ZERGLING_FLOOR = 12;
@@ -74,45 +76,70 @@ public class TerranBase extends BuildOrder {
         return Math.max(fromUnits, fromProduction);
     }
 
+    /**
+     * The zergling count the matchup asks the build order to reach, or zero once it is reached.
+     * <p>
+     * committedZerglings is living plus planned rather than living alone, because this answers how
+     * many more to queue: a plan that has left the queue for an egg still counts against the
+     * target. The bio terms and the mech term are added together, so a Terran holding both is
+     * priced for both; the mech floor then covers the compositions the additive terms cannot see,
+     * such as a scouted machine shop or a spider mine with no factory behind it yet. The sum is
+     * clamped non-negative because firebats subtract, and capped at {@link #MAX_ZERGLINGS}.
+     *
+     * @param committedZerglings zerglings alive or already planned
+     * @param medics living enemy medics
+     * @param firebats living enemy firebats
+     * @param marines living enemy marines
+     * @param bunkers living enemy bunkers
+     * @param mechDrivenZerglings zerglings the mech army asks for, from {@link #mechDrivenZerglings}
+     * @param mechComposition whether the enemy army reads as mech at all
+     * @return the target, or zero when it is already met
+     */
+    static int zerglingTarget(int committedZerglings, int medics, int firebats, int marines, int bunkers,
+                              int mechDrivenZerglings, boolean mechComposition) {
+        int zerglings = UNSCOUTED_ZERGLINGS;
+
+        zerglings += medics;
+        zerglings -= firebats * 2;
+        zerglings += marines * 2;
+        zerglings += bunkers * 4;
+        zerglings += mechDrivenZerglings;
+        if (mechComposition) {
+            zerglings = Math.max(zerglings, MECH_ZERGLING_FLOOR);
+        }
+        zerglings = Math.max(0, zerglings);
+
+        if (committedZerglings >= zerglings) {
+            return 0;
+        }
+        return Math.min(MAX_ZERGLINGS, zerglings);
+    }
+
     @Override
     protected int zerglingsNeeded(GameState gameState) {
         if (gameState.ourUnitCount(UnitType.Zerg_Spawning_Pool) < 1) {
             return 0;
         }
 
-        if (gameState.isScvRushed()) {
-            int currentZerglings = gameState.getUnitTypeCount().get(UnitType.Zerg_Zergling);
-            if (currentZerglings < 12) {
-                return 12;
-            }
+        int committedZerglings = gameState.getUnitTypeCount().get(UnitType.Zerg_Zergling);
+        if (gameState.isScvRushed() && committedZerglings < SCV_RUSH_ZERGLINGS) {
+            return SCV_RUSH_ZERGLINGS;
         }
 
-        int zerglings = UNSCOUTED_ZERGLINGS;
-        int currentZerglings = gameState.getUnitTypeCount().get(UnitType.Zerg_Zergling);
-        int medicCount = gameState.enemyUnitCount(UnitType.Terran_Medic);
-        int firebatCount = gameState.enemyUnitCount(UnitType.Terran_Firebat);
-        int marineCount = gameState.enemyUnitCount(UnitType.Terran_Marine);
-        int bunkerCount = gameState.enemyUnitCount(UnitType.Terran_Bunker);
+        int mechDriven = mechDrivenZerglings(
+                gameState.enemyUnitCount(UnitType.Terran_Siege_Tank_Tank_Mode)
+                        + gameState.enemyUnitCount(UnitType.Terran_Siege_Tank_Siege_Mode),
+                gameState.enemyUnitCount(UnitType.Terran_Vulture),
+                gameState.enemyUnitCount(UnitType.Terran_Goliath),
+                gameState.enemyUnitCount(UnitType.Terran_Factory));
 
-        int siegeTankCount = gameState.enemyUnitCount(UnitType.Terran_Siege_Tank_Tank_Mode)
-                + gameState.enemyUnitCount(UnitType.Terran_Siege_Tank_Siege_Mode);
-        int vultureCount = gameState.enemyUnitCount(UnitType.Terran_Vulture);
-        int goliathCount = gameState.enemyUnitCount(UnitType.Terran_Goliath);
-        int factoryCount = gameState.enemyUnitCount(UnitType.Terran_Factory);
-
-        zerglings += medicCount;
-        zerglings -= firebatCount * 2;
-        zerglings += marineCount * 2;
-        zerglings += bunkerCount * 4;
-        zerglings += mechDrivenZerglings(siegeTankCount, vultureCount, goliathCount, factoryCount);
-        if (isMechComposition(gameState)) {
-            zerglings = Math.max(zerglings, MECH_ZERGLING_FLOOR);
-        }
-        zerglings = Math.max(0, zerglings);
-        if (currentZerglings >= zerglings) {
-            return 0;
-        }
-        return Math.min(MAX_ZERGLINGS, zerglings);
+        return zerglingTarget(committedZerglings,
+                gameState.enemyUnitCount(UnitType.Terran_Medic),
+                gameState.enemyUnitCount(UnitType.Terran_Firebat),
+                gameState.enemyUnitCount(UnitType.Terran_Marine),
+                gameState.enemyUnitCount(UnitType.Terran_Bunker),
+                mechDriven,
+                isMechComposition(gameState));
     }
 
     @Override

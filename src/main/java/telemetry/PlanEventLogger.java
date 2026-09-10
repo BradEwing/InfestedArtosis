@@ -44,14 +44,20 @@ public class PlanEventLogger implements PlanEventSink {
     private static final String EVENT_RECURRING_CANCEL = "RECURRING_CANCEL";
 
     /**
-     * 35 columns. Was 32 before executor_unit_id, reserved_larva and builder_distance_px were
-     * added; readers that index by position rather than by name need updating.
+     * 36 columns. Was 32 before executor_unit_id, reserved_larva and builder_distance_px were
+     * added, and 35 before assigned_larva; readers that index by position rather than by name need
+     * updating.
+     * <p>
+     * larva, assigned_larva and reserved_larva are three terms of one sum, not three views of it.
+     * A larva handed to a plan leaves the larva set while its reservation stands, so larva free
+     * for another plan is {@code larva + assigned_larva - reserved_larva}, which is the arithmetic
+     * {@link info.ResourceCount#canScheduleLarva} applies.
      */
     private static final String PLAN_HEADER = "frame,time,event,plan_id,executor_unit_id,plan_type,item,from_state,"
             + "to_state,cancel_reason,cancel_source,blocker,blocked_frames,priority,frames_in_state,age_frames,"
-            + "minerals,gas,available_minerals,available_gas,supply_used_real,supply_total_real,larva,reserved_larva,"
-            + "gatherers,queue_depth,plans_scheduled,plans_building,plans_morphing,build_tile_x,build_tile_y,"
-            + "macro_hatchery,build_order,starved_behind,builder_distance_px";
+            + "minerals,gas,available_minerals,available_gas,supply_used_real,supply_total_real,larva,assigned_larva,"
+            + "reserved_larva,gatherers,queue_depth,plans_scheduled,plans_building,plans_morphing,build_tile_x,"
+            + "build_tile_y,macro_hatchery,build_order,starved_behind,builder_distance_px";
 
     private static final String GAME_HEADER = "timestamp,is_winner,num_starting_locations,map_name,opponent_name,"
             + "opponent_race,opener,build_order,detected_strategies,frame_count";
@@ -379,6 +385,7 @@ public class PlanEventLogger implements PlanEventSink {
         sb.append(Csv.halfSupply(self.supplyUsed())).append(',');
         sb.append(Csv.halfSupply(self.supplyTotal())).append(',');
         sb.append(gameState.numLarva()).append(',');
+        sb.append(gameState.larvaAssignedToPlans()).append(',');
         sb.append(resourceCount.getReservedLarva()).append(',');
         sb.append(gameState.numGatherers()).append(',');
         sb.append(gameState.getProductionQueue().size()).append(',');

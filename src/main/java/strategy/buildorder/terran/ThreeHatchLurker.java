@@ -9,6 +9,7 @@ import info.GameState;
 import info.ResourceCount;
 import info.TechProgression;
 import macro.plan.Plan;
+import strategy.buildorder.ZerglingTargets;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -365,10 +366,11 @@ public class ThreeHatchLurker extends TerranBase {
     protected int zerglingsNeeded(GameState gameState) {
         final boolean den = gameState.getTechProgression().isHydraliskDen();
         final int hydras = gameState.ourUnitCount(UnitType.Zerg_Hydralisk);
-        final boolean miningGas = gameState.getGeyserWorkers() > 0;
+        final boolean gasReachable = ZerglingTargets.gasUnitReachable(gameState.getGeyserWorkers(),
+                gameState.getResourceCount().availableGas(), UnitType.Zerg_Hydralisk.gasPrice());
 
-        return gasUnitFocusZerglingTarget(super.zerglingsNeeded(gameState), den, hydras,
-                HYDRALISKS_BEFORE_ZERGLINGS, miningGas);
+        return ZerglingTargets.gasUnitFocus(super.zerglingsNeeded(gameState), den, hydras,
+                HYDRALISKS_BEFORE_ZERGLINGS, gasReachable);
     }
 
     protected int dronesNeeded(GameState gameState) {

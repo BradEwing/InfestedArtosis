@@ -39,7 +39,6 @@ public abstract class BuildOrder {
     private static final int DEFAULT_COLONY_PRIORITY = 5;
     private static final int UNKNOWN_RACE_BASE_TARGET = 2;
     private static final int UNKNOWN_RACE_ZERGLING_PLANS = 2;
-    static final int GAS_UNIT_FOCUS_ZERGLING_FLOOR = 6;
 
     @Getter
     private final String name;
@@ -152,33 +151,6 @@ public abstract class BuildOrder {
 
     protected int zerglingsNeeded(GameState gameState) {
         return 6;
-    }
-
-    /**
-     * The zergling target a build keeps while it is saving larva for a gas unit.
-     * <p>
-     * A build that answers zero here stops making army entirely, and the condition that lifts it
-     * is a count of units it may never be able to pay for: a den or a spire with no gas behind it
-     * never reaches its count, and the zero then stands for the rest of the game. Two things
-     * bound it. The hold only applies while the bot is actually mining gas, so a denied, lost or
-     * never-taken geyser hands the matchup target straight back. While it does apply the target
-     * falls to {@link #GAS_UNIT_FOCUS_ZERGLING_FLOOR} rather than to zero, so the larva go to the
-     * gas unit without the build fielding nothing. The floor is a target like any other, so it
-     * costs nothing once those zerglings are alive.
-     *
-     * @param matchupTarget the target the matchup asks for, before the gas unit takes priority
-     * @param techComplete whether the building that unlocks the gas unit finished
-     * @param unitsFielded gas units owned and planned
-     * @param unitsWanted gas units the build wants before it spends larva on zerglings
-     * @param miningGas whether any drone is on a geyser
-     * @return the zergling target the build order should ask for
-     */
-    protected static int gasUnitFocusZerglingTarget(int matchupTarget, boolean techComplete, int unitsFielded,
-                                                    int unitsWanted, boolean miningGas) {
-        if (techComplete && unitsFielded < unitsWanted && miningGas) {
-            return Math.min(matchupTarget, GAS_UNIT_FOCUS_ZERGLING_FLOOR);
-        }
-        return matchupTarget;
     }
 
     private int earlyRushSunkens(GameState gameState) {
