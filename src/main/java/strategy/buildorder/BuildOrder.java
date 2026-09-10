@@ -93,6 +93,10 @@ public abstract class BuildOrder {
 
     /**
      * Returns true if Overlord Speed should be researched, based on Lair, game time and unit triggers.
+     *
+     * <p>The Lair term reads {@link GameState#ourUnitCount}, which counts only finished Lairs.
+     * That is what it wants: the upgrade is researched at the Lair, so a Lair still morphing
+     * cannot start it.
      */
     public boolean needOverlordSpeed(GameState gameState) {
         if (gameState.ourUnitCount(bwapi.UnitType.Zerg_Lair) < 1) {
@@ -223,6 +227,12 @@ public abstract class BuildOrder {
      * <p>
      * Ensures defensive zerglings, a natural expansion, drones and finally gas if they were not
      * covered by the initial opener.
+     * <p>
+     * The zergling branch waits on a finished Spawning Pool. {@link GameState#canPlanUnit} is the
+     * same gate the openers' own zergling branches use: a zergling plan created before the pool
+     * finishes still takes a larva and holds it in BUILDING, because
+     * {@code ManagedUnit.morph} no-ops until the morph is buildable. Until then the branches
+     * below run instead, so the natural and its drones are not held up by a pool still building.
      */
     protected List<Plan> planUnknownRaceMacro(GameState gameState) {
         List<Plan> plans = new ArrayList<>();
@@ -233,7 +243,7 @@ public abstract class BuildOrder {
             return plans;
         }
 
-        if (gameState.ourUnitCount(UnitType.Zerg_Zergling) == 0) {
+        if (gameState.ourUnitCount(UnitType.Zerg_Zergling) == 0 && gameState.canPlanUnit(UnitType.Zerg_Zergling)) {
             for (int i = 0; i < UNKNOWN_RACE_ZERGLING_PLANS; i++) {
                 plans.add(this.planUnit(gameState, UnitType.Zerg_Zergling));
             }

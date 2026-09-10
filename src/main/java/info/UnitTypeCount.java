@@ -39,12 +39,21 @@ public class UnitTypeCount {
         return totalProduced.getOrDefault(unitType, 0);
     }
 
+    /**
+     * Removes one unit of a type, flooring the count at zero.
+     * <p>
+     * A structure is counted by {@link #addUnit} only once it completes, but is removed whenever
+     * it dies, so a structure destroyed while it is still constructing would otherwise leave the
+     * count negative and hide its replacement from every caller.
+     *
+     * @param unitType the unit to remove
+     */
     public void removeUnit(UnitType unitType) {
         if (!unitTypeCount.containsKey(unitType)) {
             return;
         }
         final int newCount = unitTypeCount.get(unitType) - 1;
-        unitTypeCount.put(unitType, newCount);
+        unitTypeCount.put(unitType, Math.max(0, newCount));
     }
 
     /**

@@ -678,6 +678,11 @@ public class GameState {
 
     /**
      * Checks tech progression, build order and base data to decide if a lair can be planned.
+     *
+     * <p>The Extractor term reads {@link #ourUnitCount}, which sees only finished Extractors,
+     * and that is what it wants: it stands for gas income, and an Extractor under construction
+     * earns none. Reading {@link #ourBuildingOrPlannedCount} here would queue a Lair and its
+     * 100 gas against a bank that cannot grow until the Extractor finishes.
      */
     public boolean canPlanLair() {
         return !earlyRushDelayLair && needLair() && techProgression.canPlanLair()
@@ -886,6 +891,86 @@ public class GameState {
         return unitTypeCount.livingCount(unitType);
     }
 
+    /**
+     * Structures of this type we have committed to, whether or not they can be used yet:
+     * completed structures, structures standing on the map but still under construction, and
+     * building plans that have not produced a structure yet.
+     *
+     * <p>{@link #ourUnitCount} sees only the first of the three. The planned count it adds is
+     * incremented by unit plans alone, so a structure reads zero from the frame its plan is
+     * created to the frame it finishes, and a caller gating on a structure it has already
+     * committed to waits out the whole build time. A caller that needs the structure to be
+     * usable, rather than committed to, wants {@link #ourUnitCount} instead.
+     *
+     * <p>The three terms hand over without a gap and without overlapping. A building plan retires
+     * on the frame its builder morphs, which is the frame the structure appears on the map, so
+     * {@link #incompleteBuildingCount} takes over from
+     * {@link #outstandingBuildingPlanCount} there; {@link #ourUnitCount} takes over when
+     * construction finishes. A structure destroyed mid-construction is removed from a count it
+     * was never added to, so {@link UnitTypeCount#removeUnit} floors at zero to keep the
+     * completed term from going negative and hiding the replacement.
+     *
+     * @param unitType the structure to count
+     * @return structures standing, under construction, or claimed by a plan in flight
+     */
+    public int ourBuildingOrPlannedCount(UnitType unitType) {
+        return ourUnitCount(unitType) + incompleteBuildingCount(unitType) + outstandingBuildingPlanCount(unitType);
+    }
+
+    /**
+     * Structures of this type standing on the map that have not finished constructing.
+     *
+     * <p>Neither {@link #ourUnitCount} nor {@link #outstandingBuildingPlanCount} covers this
+     * interval. A Zerg structure exists from the frame its builder morphs, and that same frame
+     * retires its building plan, while the unit type count is not incremented until the structure
+     * completes. Without this term a structure is invisible for its whole construction.
+     *
+     * @param unitType the structure to count
+     * @return structures of that type under construction
+     */
+    public int incompleteBuildingCount(UnitType unitType) {
+        int count = 0;
+        for (Unit unit : self.getUnits()) {
+            if (unit.getType() == unitType && !unit.isCompleted()) {
+                count += 1;
+            }
+        }
+        return count;
+    }
+
+    /**
+     * Building plans of this type that have not produced a structure yet, across every stage one
+     * can sit in: waiting in the production queue, scheduled, dispatched to a builder, or
+     * morphing.
+     *
+     * <p>Cancelled plans are excluded because they produce nothing, and completed plans because
+     * the structure they produced is counted by {@link #ourUnitCount} or
+     * {@link #incompleteBuildingCount} instead.
+     *
+     * @param unitType the planned structure
+     * @return count of building plans for that structure still in flight
+     */
+    public int outstandingBuildingPlanCount(UnitType unitType) {
+        int outstanding = productionQueue.buildingPlanCount(unitType);
+        outstanding += buildingPlanCount(plansScheduled, unitType);
+        outstanding += buildingPlanCount(plansBuilding, unitType);
+        outstanding += buildingPlanCount(plansMorphing, unitType);
+        return outstanding;
+    }
+
+    static int buildingPlanCount(Set<Plan> plans, UnitType unitType) {
+        int count = 0;
+        for (Plan plan : plans) {
+            if (plan.getType() == PlanType.BUILDING
+                    && plan.getPlannedUnit() == unitType
+                    && plan.getState() != PlanState.CANCELLED
+                    && plan.getState() != PlanState.COMPLETE) {
+                count += 1;
+            }
+        }
+        return count;
+    }
+
     public int totalProduced(UnitType unitType) {
         return unitTypeCount.getTotalProduced(unitType);
     }
@@ -989,6 +1074,13 @@ public class GameState {
         }
     }
 
+    /**
+     * Whether an upgrade's prerequisites are met and it is not already researched or queued.
+     *
+     * <p>Metabolic Boost costs gas, so its Extractor term reads {@link #ourUnitCount} and waits
+     * for a finished Extractor rather than one under construction. Every term here names a
+     * structure the upgrade needs standing, not one it has merely been committed to.
+     */
     public boolean canPlanUpgrade(UpgradeType upgradeType) {
         switch (upgradeType) {
             case Metabolic_Boost:
