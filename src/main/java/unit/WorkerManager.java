@@ -472,7 +472,7 @@ public class WorkerManager {
 
         if (resourceCount.isFloatingGas()) {
             cutGasHarvesting();
-        } else if (resourceCount.isFloatingMinerals()) {
+        } else if (resourceCount.mineralsOutpaceGas()) {
             saturateGeysers();
         }
     }

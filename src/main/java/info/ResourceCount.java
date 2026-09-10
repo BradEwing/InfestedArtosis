@@ -22,6 +22,8 @@ public class ResourceCount {
     final double mineralsPerFramePerWorker = 0.044;
     final double gasPerFramePerWorker = 0.069;
 
+    static final int MINERAL_GAS_IMBALANCE = 100;
+
     private Player self;
     private int reservedMinerals = 0;
     private int reservedGas = 0;
@@ -130,10 +132,6 @@ public class ResourceCount {
         final int mineralPrice = techType.mineralPrice();
         final int gasPrice = techType.gasPrice();
         return cannotAfford(mineralPrice, gasPrice);
-    }
-
-    public boolean needExtractor() {
-        return this.isFloatingMinerals();
     }
 
     /**
@@ -249,8 +247,26 @@ public class ResourceCount {
         return reservedLarva;
     }
 
-    public boolean isFloatingMinerals() { 
-        return availableMinerals() - availableGas() > 100; 
+    /**
+     * True when the unreserved mineral bank runs ahead of the unreserved gas bank.
+     *
+     * <p>A bank imbalance says which resource the worker split is short of. It says nothing about
+     * whether the bot is short of larva-producing hatcheries, which is
+     * {@link GameState#isFloatingMinerals()}, or short of geysers, which is
+     * {@link GameState#canPlanExtractor()}. Neither of those reads this.
+     */
+    public boolean mineralsOutpaceGas() {
+        return mineralsOutpaceGas(availableMinerals(), availableGas());
+    }
+
+    /**
+     * @param availableMinerals minerals mined and not reserved by a queued plan
+     * @param availableGas gas mined and not reserved by a queued plan, which goes negative once
+     *     reservations outrun the bank
+     * @return true when minerals lead gas by more than {@link #MINERAL_GAS_IMBALANCE}
+     */
+    static boolean mineralsOutpaceGas(int availableMinerals, int availableGas) {
+        return availableMinerals - availableGas > MINERAL_GAS_IMBALANCE;
     }
 
     public boolean isFloatingGas() { 

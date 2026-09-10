@@ -40,6 +40,8 @@ public class ReactionsTest {
 
     private static final TilePosition OTHER_TILE = new TilePosition(44, 12);
 
+    private static final int CANCEL_FRAME = 5000;
+
     private static final boolean COMPLETE = true;
 
     private static final boolean INCOMPLETE = false;
@@ -245,7 +247,7 @@ public class ReactionsTest {
         withGeyser.reserveExtractor();
         assertEquals(1, withGeyser.numExtractor());
 
-        assertTrue(Reactions.reclaimCancelledExtractor(withGeyser, GEYSER_TILE));
+        assertTrue(Reactions.reclaimCancelledExtractor(withGeyser, GEYSER_TILE, CANCEL_FRAME));
 
         assertEquals(0, withGeyser.numExtractor());
         assertTrue(withGeyser.canReserveExtractor());
@@ -264,7 +266,7 @@ public class ReactionsTest {
         assertEquals(0, withGeyser.numExtractor());
         assertFalse(withGeyser.canReserveExtractor());
 
-        assertTrue(Reactions.reclaimCancelledExtractor(withGeyser, GEYSER_TILE));
+        assertTrue(Reactions.reclaimCancelledExtractor(withGeyser, GEYSER_TILE, CANCEL_FRAME));
 
         assertTrue(withGeyser.canReserveExtractor());
     }
@@ -278,9 +280,38 @@ public class ReactionsTest {
         BaseData withGeyser = baseDataWithOneGeyser(GEYSER_TILE);
         withGeyser.reserveExtractor();
 
-        assertTrue(Reactions.reclaimCancelledExtractor(withGeyser, GEYSER_TILE));
-        assertFalse(Reactions.reclaimCancelledExtractor(withGeyser, GEYSER_TILE));
+        assertTrue(Reactions.reclaimCancelledExtractor(withGeyser, GEYSER_TILE, CANCEL_FRAME));
+        assertFalse(Reactions.reclaimCancelledExtractor(withGeyser, GEYSER_TILE, CANCEL_FRAME));
         assertEquals(0, withGeyser.numExtractor());
+    }
+
+    /**
+     * IA-338: the raw cancel is the path that repeats. It hands the geyser back with nothing
+     * recording that the release came from a cancellation, so the first-extractor branch re-opens
+     * and the request lands again within a few hundred frames. Arming the hold is what stops it.
+     */
+    @Test
+    void theRawCancelHoldsTheGeyserAgainstAnImmediateReplan() throws ReflectiveOperationException {
+        BaseData withGeyser = baseDataWithOneGeyser(GEYSER_TILE);
+        withGeyser.reserveExtractor();
+
+        assertTrue(Reactions.reclaimCancelledExtractor(withGeyser, GEYSER_TILE, CANCEL_FRAME));
+
+        assertTrue(withGeyser.getExtractorReplanBackoffUntil() > CANCEL_FRAME);
+    }
+
+    /**
+     * A tile the reclaim tracks no geyser for is not a cancellation, so it must not push the hold
+     * out. The reaction fires every frame while it holds and sweeps tiles it has already released.
+     */
+    @Test
+    void aReclaimThatFindsNothingDoesNotArmTheHold() throws ReflectiveOperationException {
+        BaseData withGeyser = baseDataWithOneGeyser(GEYSER_TILE);
+        withGeyser.reserveExtractor();
+
+        assertFalse(Reactions.reclaimCancelledExtractor(withGeyser, OTHER_TILE, CANCEL_FRAME));
+
+        assertEquals(0, withGeyser.getExtractorReplanBackoffUntil());
     }
 
     @Test
@@ -288,7 +319,7 @@ public class ReactionsTest {
         BaseData withGeyser = baseDataWithOneGeyser(GEYSER_TILE);
         withGeyser.reserveExtractor();
 
-        assertFalse(Reactions.reclaimCancelledExtractor(withGeyser, OTHER_TILE));
+        assertFalse(Reactions.reclaimCancelledExtractor(withGeyser, OTHER_TILE, CANCEL_FRAME));
 
         assertEquals(1, withGeyser.numExtractor());
     }
@@ -303,7 +334,7 @@ public class ReactionsTest {
         withGeyser.reserveExtractor();
 
         if (Reactions.isCancellableExtractorMorph(UnitType.Zerg_Extractor, COMPLETE)) {
-            Reactions.reclaimCancelledExtractor(withGeyser, GEYSER_TILE);
+            Reactions.reclaimCancelledExtractor(withGeyser, GEYSER_TILE, CANCEL_FRAME);
         }
 
         assertEquals(1, withGeyser.numExtractor());
