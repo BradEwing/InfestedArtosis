@@ -21,6 +21,12 @@ public final class SunkenTargets {
 
     public static final int ONE_BASE_SUNKENS = 2;
 
+    /**
+     * StrategyTracker's name for the one base detection, read by both layers so the count and the
+     * eligibility that lets it land cannot key off different detections.
+     */
+    public static final String ONE_BASE_STRATEGY = "1Base";
+
     private static final Time ONE_BASE_RESPONSE_OPENS = new Time(5, 0);
 
     private SunkenTargets() {
@@ -60,16 +66,27 @@ public final class SunkenTargets {
      * Sunkens per base an enemy still on one base asks for, in every matchup.
      * <p>
      * An opponent who has not expanded by the time this opens is spending on army instead, which
-     * every race answers the same way. The time term is a lower bound rather than a window: 1Base
-     * stays in the detected set once it fires, so this holds a floor while the rest of the target
-     * moves with what is actually on the field.
+     * every race answers the same way.
+     * <p>
+     * The detection alone is not the predicate. 1Base fires on the enemy base count observed at
+     * the first frame past 4:00, and StrategyTracker never retracts a detection, so a macro
+     * opponent whose natural was simply not scouted in time latches it for the rest of the game.
+     * Taking the detection as the whole answer would put a two per base floor on the majority of
+     * games, in every matchup, against opponents that did expand. The observed count is read again
+     * here, so the floor holds while the detection has fired and nothing seen since has
+     * contradicted it, and recedes on the frame the expansion is scouted. A bot that never scouts
+     * again keeps the floor, because a base it has not seen is a base it cannot price.
      *
      * @param oneBaseDetected whether StrategyTracker has detected 1Base
+     * @param observedEnemyBases enemy bases we have seen and not seen destroyed
      * @param gameTime current game time
      * @return the floor the detection sets, or zero
      */
-    public static int oneBaseSunkens(boolean oneBaseDetected, Time gameTime) {
+    public static int oneBaseSunkens(boolean oneBaseDetected, int observedEnemyBases, Time gameTime) {
         if (!oneBaseDetected || gameTime.lessThanOrEqual(ONE_BASE_RESPONSE_OPENS)) {
+            return 0;
+        }
+        if (observedEnemyBases > 1) {
             return 0;
         }
         return ONE_BASE_SUNKENS;
@@ -85,12 +102,15 @@ public final class SunkenTargets {
      *
      * @param matchupSunkens the sunkens the matchup asks for
      * @param oneBaseDetected whether StrategyTracker has detected 1Base
+     * @param observedEnemyBases enemy bases we have seen and not seen destroyed
      * @param enemyBarracks living enemy Barracks we have observed
      * @param gameTime current game time
      * @return sunkens per base
      */
-    public static int sunkenTarget(int matchupSunkens, boolean oneBaseDetected, int enemyBarracks, Time gameTime) {
-        int floor = Math.max(oneBaseSunkens(oneBaseDetected, gameTime), barracksPressureSunkens(enemyBarracks));
+    public static int sunkenTarget(int matchupSunkens, boolean oneBaseDetected, int observedEnemyBases,
+                                   int enemyBarracks, Time gameTime) {
+        int oneBase = oneBaseSunkens(oneBaseDetected, observedEnemyBases, gameTime);
+        int floor = Math.max(oneBase, barracksPressureSunkens(enemyBarracks));
         return Math.max(matchupSunkens, floor);
     }
 }

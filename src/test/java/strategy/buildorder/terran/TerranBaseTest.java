@@ -27,6 +27,8 @@ class TerranBaseTest {
     private static final boolean TWO_RAX_ACADEMY = true;
     private static final boolean NO_TWO_RAX_ACADEMY = false;
     private static final boolean ONE_BASE = true;
+
+    private static final int ENEMY_STILL_ON_ONE_BASE = 1;
     private static final Time BEFORE_THE_OLD_BIO_CLIFF = new Time(4, 30);
     private static final Time AFTER_THE_OLD_BIO_CLIFF = new Time(5, 1);
     private static final Time AFTER_THE_TWO_RAX_WINDOW = new Time(8, 1);
@@ -200,7 +202,7 @@ class TerranBaseTest {
         int matchup = TerranBase.bioPressureSunkens(THREE_RAX, BIO_BALL, NO_TWO_RAX_ACADEMY, AFTER_THE_OLD_BIO_CLIFF);
 
         assertEquals(SunkenTargets.BARRACKS_PRESSURE_SUNKENS,
-                SunkenTargets.sunkenTarget(matchup, ONE_BASE, THREE_RAX, AFTER_THE_OLD_BIO_CLIFF));
+                SunkenTargets.sunkenTarget(matchup, ONE_BASE, ENEMY_STILL_ON_ONE_BASE, THREE_RAX, AFTER_THE_OLD_BIO_CLIFF));
     }
 
     @Test
@@ -208,6 +210,6 @@ class TerranBaseTest {
         int matchup = TerranBase.bioPressureSunkens(TWO_RAX, 0, NO_TWO_RAX_ACADEMY, AFTER_THE_OLD_BIO_CLIFF);
 
         assertEquals(0, matchup);
-        assertTrue(SunkenTargets.sunkenTarget(matchup, ONE_BASE, TWO_RAX, AFTER_THE_OLD_BIO_CLIFF) >= 2);
+        assertTrue(SunkenTargets.sunkenTarget(matchup, ONE_BASE, ENEMY_STILL_ON_ONE_BASE, TWO_RAX, AFTER_THE_OLD_BIO_CLIFF) >= 2);
     }
 }

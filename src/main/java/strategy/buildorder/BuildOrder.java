@@ -33,6 +33,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.Objects;
+import java.util.function.ToLongFunction;
 
 public abstract class BuildOrder {
     private static final int EARLY_RUSH_SECOND_SUNKEN_ATTACKERS = 4;
@@ -42,7 +43,6 @@ public abstract class BuildOrder {
     private static final int DEFAULT_COLONY_PRIORITY = 5;
     private static final int UNKNOWN_RACE_BASE_TARGET = 2;
     private static final int UNKNOWN_RACE_ZERGLING_PLANS = 2;
-    private static final String ONE_BASE_STRATEGY = "1Base";
 
     /**
      * Multiplier that lets a base tile collapse to one sortable number. Larger than any Brood War
@@ -179,7 +179,8 @@ public abstract class BuildOrder {
      */
     protected final int requiredSunkens(GameState gameState) {
         return SunkenTargets.sunkenTarget(matchupSunkens(gameState),
-                gameState.getStrategyTracker().isDetectedStrategy(ONE_BASE_STRATEGY),
+                gameState.getStrategyTracker().isDetectedStrategy(SunkenTargets.ONE_BASE_STRATEGY),
+                gameState.getBaseData().getEnemyBases().size(),
                 gameState.enemyUnitCount(UnitType.Terran_Barracks),
                 gameState.getGameTime());
     }
@@ -447,27 +448,34 @@ public abstract class BuildOrder {
      * <p>Each pair reserves its base and its build tiles before the next base is chosen, so the
      * loop sees the bases it has already served and stops on the caps a single pair would also
      * have stopped on: the per base target and the five colony ceiling inside
-     * {@link GameState#basesNeedingSunken(int)}. Filling in one call matters because the build
-     * order path that reaches here runs only on frames where the production queue has drained, so
-     * a pair per call spreads a three sunken answer over three drains. The bound is the target
-     * itself, which keeps a target of one behaving exactly as a single pair did and stops a
-     * multi base fan out from pulling the whole mining line off minerals in one frame.
+     * {@link GameState#basesNeedingSunken(int)}. Filling in one call matters because a pair per
+     * call answers a three sunken deficit one pair per frame, which spreads the reservations, the
+     * builder assignments and the mineral draw across frames the threat is already using. The
+     * bound is the target itself, which keeps a target of one behaving exactly as a single pair
+     * did and stops a multi base fan out from pulling the whole mining line off minerals at once.
+     *
+     * <p>A base with no placeable creep tile is skipped rather than ending the call. The ranking
+     * puts the main first whenever it is eligible, so ending on the first null location would let
+     * a main that is short of target and out of tiles starve every other base for the rest of the
+     * game.
      */
     protected Set<Plan> planSunkenColony(GameState gameState, int priority, int target) {
         Set<Plan> plans = new HashSet<>();
         BaseData baseData = gameState.getBaseData();
         BuildingPlanner buildingPlanner = gameState.getBuildingPlanner();
         Base mainBase = baseData.getMainBase();
-        for (int planned = 0; planned < target; planned++) {
-            Optional<Base> eligibleBase = gameState.basesNeedingSunken(target).stream()
-                    .min(Comparator.comparingLong(base -> sunkenBaseRank(base == mainBase,
-                            base.getLocation().getX(), base.getLocation().getY())));
+        Set<Base> unplaceable = new HashSet<>();
+        int planned = 0;
+        while (planned < target) {
+            Optional<Base> eligibleBase = nextSunkenBase(gameState.basesNeedingSunken(target), unplaceable,
+                    base -> sunkenBaseRank(base == mainBase, base.getLocation().getX(), base.getLocation().getY()));
             if (!eligibleBase.isPresent()) {
                 break;
             }
             TilePosition location = buildingPlanner.getLocationForCreepColony(eligibleBase.get(), gameState.getOpponentRace());
             if (location == null) {
-                break;
+                unplaceable.add(eligibleBase.get());
+                continue;
             }
             baseData.reserveSunkenColony(eligibleBase.get());
             buildingPlanner.reservePlannedBuildingTiles(location, UnitType.Zerg_Creep_Colony);
@@ -477,8 +485,29 @@ public abstract class BuildOrder {
             sunkenColonyPlan.setReservedColonyBase(eligibleBase.get());
             plans.add(creepColonyPlan);
             plans.add(sunkenColonyPlan);
+            planned++;
         }
         return plans;
+    }
+
+    /**
+     * The next base to serve: the lowest ranked candidate that this call has not already found
+     * unplaceable.
+     * <p>
+     * Separate from the reservation loop so the skip rule can be tested. bwem Base is final with a
+     * package private constructor and cannot be built in a test, so the seam is generic over the
+     * candidate type and the loop supplies the rank.
+     *
+     * @param candidates bases short of their sunken target this pass
+     * @param skipped bases this call has already found no creep tile for
+     * @param rank the ordering to serve candidates in, ascending
+     * @param <T> the candidate type
+     * @return the base to serve, or empty when every candidate is skipped
+     */
+    static <T> Optional<T> nextSunkenBase(Set<T> candidates, Set<T> skipped, ToLongFunction<T> rank) {
+        return candidates.stream()
+                .filter(candidate -> !skipped.contains(candidate))
+                .min(Comparator.comparingLong(rank));
     }
 
     /**

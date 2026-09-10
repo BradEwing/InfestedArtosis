@@ -90,7 +90,7 @@ public class Reactions {
         twoGateReaction();
         zvzSunkenReaction();
         ffeReaction();
-        barracksPressureReaction();
+        openMainForStaticDefense();
         clearMainSunkenOnExpansion();
     }
 
@@ -435,23 +435,39 @@ public class Reactions {
     }
 
     /**
-     * Opens the main to static defense while the enemy is fielding committed bio production.
+     * Opens the main to static defense while a race agnostic sunken floor is asking for one.
      *
      * <p>The count a build order asks for at the main is only reachable once BaseData calls the
-     * main eligible, so the same Barracks threshold gates both halves. It holds the main open past
-     * the natural because a bio push of this size arrives at whichever base is closest to the
-     * enemy, and the main is where the drones are.
+     * main eligible, so the reaction layer reads the same {@link SunkenTargets} predicates the
+     * build order layer raises its count on. Without this the floors produce a target no base can
+     * satisfy: allowSunkenAtMain defaults false and is otherwise granted only by the rush and
+     * 2Gate reactions.
+     *
+     * <p>Barracks pressure holds the main open past the natural, because a bio push of that size
+     * arrives at whichever base is closest to the enemy and the main is where the drones are. The
+     * 1Base floor only opens a main that is still our sole base, which is the case its own floor
+     * could not otherwise reach; once the natural is up that base carries the floor instead.
      */
-    private void barracksPressureReaction() {
-        if (!isUnderBarracksPressure()) {
+    private void openMainForStaticDefense() {
+        BaseData baseData = gameState.getBaseData();
+        if (isUnderBarracksPressure()) {
+            baseData.setAllowSunkenAtMain(true);
             return;
         }
 
-        gameState.getBaseData().setAllowSunkenAtMain(true);
+        if (isUnderOneBaseFloor()) {
+            allowSunkenAtMainIfSingleBase(baseData);
+        }
     }
 
     private boolean isUnderBarracksPressure() {
         return SunkenTargets.isBarracksPressure(gameState.enemyUnitCount(UnitType.Terran_Barracks));
+    }
+
+    private boolean isUnderOneBaseFloor() {
+        return SunkenTargets.oneBaseSunkens(gameState.getStrategyTracker().isDetectedStrategy(SunkenTargets.ONE_BASE_STRATEGY),
+                gameState.getBaseData().getEnemyBases().size(),
+                gameState.getGameTime()) > 0;
     }
 
     /**

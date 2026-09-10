@@ -22,7 +22,10 @@ import telemetry.PlanEvents;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.function.ToLongFunction;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -378,5 +381,41 @@ class BuildOrderTest {
                 < BuildOrder.sunkenBaseRank(EXPANSION, NEAR_TILE_X, NEAR_TILE_Y + 1));
         assertTrue(BuildOrder.sunkenBaseRank(EXPANSION, NEAR_TILE_X, MAP_EDGE_TILE)
                 < BuildOrder.sunkenBaseRank(EXPANSION, NEAR_TILE_X + 1, 0));
+    }
+
+    /**
+     * The main outranks every expansion, so ending the reservation loop on the first base with no
+     * creep tile would starve every other base for as long as the main stayed short of target.
+     */
+    @Test
+    void servesTheNextBaseWhenTheHighestRankedOneHasNowhereToPutAColony() {
+        Set<String> candidates = new HashSet<>(Arrays.asList("main", "natural", "third"));
+        Set<String> unplaceable = new HashSet<>();
+        ToLongFunction<String> rank = base -> BuildOrder.sunkenBaseRank("main".equals(base),
+                "third".equals(base) ? MAP_EDGE_TILE : NEAR_TILE_X, NEAR_TILE_Y);
+
+        assertEquals("main", BuildOrder.nextSunkenBase(candidates, unplaceable, rank).get());
+
+        unplaceable.add("main");
+        assertEquals("natural", BuildOrder.nextSunkenBase(candidates, unplaceable, rank).get());
+
+        unplaceable.add("natural");
+        assertEquals("third", BuildOrder.nextSunkenBase(candidates, unplaceable, rank).get());
+    }
+
+    @Test
+    void stopsTheReservationLoopOnceEveryCandidateIsOutOfCreepTiles() {
+        Set<String> candidates = new HashSet<>(Arrays.asList("main", "natural"));
+        ToLongFunction<String> rank = base -> BuildOrder.sunkenBaseRank("main".equals(base),
+                NEAR_TILE_X, NEAR_TILE_Y);
+
+        assertFalse(BuildOrder.nextSunkenBase(candidates, new HashSet<>(candidates), rank).isPresent());
+    }
+
+    @Test
+    void hasNoBaseToServeWhenNothingIsShortOfTarget() {
+        ToLongFunction<String> rank = base -> BuildOrder.sunkenBaseRank(false, NEAR_TILE_X, NEAR_TILE_Y);
+
+        assertFalse(BuildOrder.nextSunkenBase(new HashSet<String>(), new HashSet<String>(), rank).isPresent());
     }
 }
