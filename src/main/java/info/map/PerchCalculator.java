@@ -30,6 +30,13 @@ public final class PerchCalculator {
      */
     public static final int TRANSIT_BUDGET_FRAMES = new Time(0, 30).getFrames();
 
+    /**
+     * The granularity at which {@link #selectPerch} compares scout distance before ground height
+     * decides. Perch candidates are tiles, so distances that agree to within a tile are treated as
+     * equal; without a band the height term would need exact distance equality and could never fire.
+     */
+    private static final int SCOUT_DISTANCE_BAND_PIXELS = 32;
+
     private PerchCalculator() {
     }
 
@@ -201,7 +208,9 @@ public final class PerchCalculator {
      * <p>
      * Vision leads because a perch that watches nothing is worth little wherever it sits. Distance is
      * measured from the scout rather than from the target, so when no perch sees the target the scout
-     * takes the nearest safe perch instead of the one closest to the enemy.
+     * takes the nearest safe perch instead of the one closest to the enemy. Distance is compared in
+     * whole tiles of {@link #SCOUT_DISTANCE_BAND_PIXELS}, so the height preference decides between
+     * perches the scout reaches equally soon rather than needing an exact distance tie.
      *
      * @param perches candidate perch tiles
      * @param target the position being watched
@@ -213,23 +222,23 @@ public final class PerchCalculator {
                                       int sightRangePixels) {
         MapTile best = null;
         boolean bestWatching = false;
-        double bestScoutDistance = Double.MAX_VALUE;
+        int bestScoutBand = Integer.MAX_VALUE;
         int bestHeight = Integer.MIN_VALUE;
 
         for (MapTile perch : perches) {
             Position center = perch.getTile().toPosition().add(new Position(16, 16));
-            double scoutDistance = center.getDistance(scout);
+            int scoutBand = (int) (center.getDistance(scout) / SCOUT_DISTANCE_BAND_PIXELS);
             boolean watching = center.getDistance(target) <= sightRangePixels;
             int height = perch.getGroundHeight();
 
-            if (best != null && !improves(watching, scoutDistance, height,
-                    bestWatching, bestScoutDistance, bestHeight)) {
+            if (best != null && !improves(watching, scoutBand, height,
+                    bestWatching, bestScoutBand, bestHeight)) {
                 continue;
             }
 
             best = perch;
             bestWatching = watching;
-            bestScoutDistance = scoutDistance;
+            bestScoutBand = scoutBand;
             bestHeight = height;
         }
 
@@ -240,13 +249,13 @@ public final class PerchCalculator {
      * Whether a candidate outranks the incumbent on the perch ordering: watching the target first,
      * nearest the scout second, highest ground last.
      */
-    private static boolean improves(boolean watching, double scoutDistance, int height,
-                                    boolean bestWatching, double bestScoutDistance, int bestHeight) {
+    private static boolean improves(boolean watching, int scoutBand, int height,
+                                    boolean bestWatching, int bestScoutBand, int bestHeight) {
         if (watching != bestWatching) {
             return watching;
         }
-        if (scoutDistance != bestScoutDistance) {
-            return scoutDistance < bestScoutDistance;
+        if (scoutBand != bestScoutBand) {
+            return scoutBand < bestScoutBand;
         }
         return height > bestHeight;
     }

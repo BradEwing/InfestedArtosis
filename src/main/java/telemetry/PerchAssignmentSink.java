@@ -15,6 +15,8 @@ public interface PerchAssignmentSink {
      * @param scout the unit being perched, still at the position it was assigned from
      * @param perch the perch position it was given
      * @param watchTarget the position the perch is meant to watch
+     * @param usedPerchTile true when {@code perch} is a computed perch tile, false when the scout
+     *     holds over the watch target itself because no perch tile was selected
      */
-    void onPerchAssigned(ManagedUnit scout, Position perch, Position watchTarget);
+    void onPerchAssigned(ManagedUnit scout, Position perch, Position watchTarget, boolean usedPerchTile);
 }

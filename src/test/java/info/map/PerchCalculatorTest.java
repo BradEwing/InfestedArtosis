@@ -27,6 +27,10 @@ class PerchCalculatorTest {
         return new MapTile(new TilePosition(x, y), 0, true, true, MapTileType.NORMAL);
     }
 
+    private static Position centerOf(MapTile tile) {
+        return tile.getTile().toPosition().add(new Position(16, 16));
+    }
+
     @Test
     void singleGroundTileProducesChebyshevRing() {
         boolean[][] groundOccupiable = new boolean[7][7];
@@ -205,8 +209,8 @@ class PerchCalculatorTest {
 
         MapTile selected = PerchCalculator.selectPerch(perches, target, scout, 288);
 
-        assertTrue(nearScout.getTile().toPosition().getDistance(scout) < budget);
-        assertTrue(watching.getTile().toPosition().getDistance(scout) > budget);
+        assertTrue(centerOf(nearScout).getDistance(scout) < budget);
+        assertTrue(centerOf(watching).getDistance(scout) > budget);
         assertSame(watching, selected);
     }
 
@@ -243,6 +247,30 @@ class PerchCalculatorTest {
 
         MapTile selected = PerchCalculator.selectPerch(perches, target, scout, 0);
 
+        assertSame(high, selected);
+    }
+
+    /**
+     * The two perches are not equidistant from the scout, but they are within one tile of each other,
+     * which is the granularity selection compares at. Height decides.
+     */
+    @Test
+    void selectPerchPrefersHigherGroundWithinTheSameTileOfScoutDistance() {
+        MapTile low = tileAt(10, 0);
+        low.setGroundHeight(0);
+        MapTile high = tileAt(10, 1);
+        high.setGroundHeight(2);
+
+        List<MapTile> perches = new ArrayList<>();
+        perches.add(low);
+        perches.add(high);
+
+        Position scout = new Position(16, 16);
+        Position target = new Position(3856, 16);
+
+        MapTile selected = PerchCalculator.selectPerch(perches, target, scout, 288);
+
+        assertTrue(centerOf(low).getDistance(scout) < centerOf(high).getDistance(scout));
         assertSame(high, selected);
     }
 

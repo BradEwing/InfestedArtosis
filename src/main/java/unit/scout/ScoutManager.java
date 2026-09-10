@@ -121,14 +121,16 @@ public class ScoutManager {
         }
 
         Position perchPosition = watchTarget;
+        boolean usedPerchTile = false;
         if (gameState.getOpponentRace() != Race.Zerg) {
             MapTile perch = gameState.getGameMap().findPerchNear(watchTarget, overlord.getPosition());
             if (perch != null) {
                 perchPosition = perch.getTile().toPosition().add(new Position(16, 16));
+                usedPerchTile = true;
             }
         }
 
-        PerchAssignments.assigned(overlord, perchPosition, watchTarget);
+        PerchAssignments.assigned(overlord, perchPosition, watchTarget, usedPerchTile);
         releaseActiveScoutTarget(overlord);
         overlord.setPerchPosition(perchPosition);
         overlord.setMovementTargetPosition(null);

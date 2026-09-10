@@ -21,11 +21,11 @@ public final class PerchAssignments {
         sink = null;
     }
 
-    public static void assigned(ManagedUnit scout, Position perch, Position watchTarget) {
+    public static void assigned(ManagedUnit scout, Position perch, Position watchTarget, boolean usedPerchTile) {
         PerchAssignmentSink current = sink;
         if (current == null) {
             return;
         }
-        current.onPerchAssigned(scout, perch, watchTarget);
+        current.onPerchAssigned(scout, perch, watchTarget, usedPerchTile);
     }
 }

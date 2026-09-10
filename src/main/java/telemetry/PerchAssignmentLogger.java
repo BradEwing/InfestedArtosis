@@ -18,6 +18,11 @@ import java.util.List;
  * perch selection is sending overlords across the map, so it is written straight rather than derived
  * downstream from the coordinates.
  *
+ * <p>used_perch_tile separates the two kinds of row. A scout that gets no perch tile - against Zerg,
+ * or on a map with no perch - is held over the watch target itself, which makes transit_px the
+ * distance to the target and watches_target trivially 1. Only used_perch_tile=1 rows measure perch
+ * selection.
+ *
  * <p>Constructed only when combat telemetry is enabled.
  */
 public class PerchAssignmentLogger implements PerchAssignmentSink {
@@ -25,7 +30,8 @@ public class PerchAssignmentLogger implements PerchAssignmentSink {
     static final String FILE = "telemetry_perch_assignments.csv";
 
     static final String HEADER = "game_id,frame,unit_id,unit_type,scout_x,scout_y,perch_x,perch_y,transit_px,"
-            + "transit_budget_px,watch_x,watch_y,watch_distance_px,watches_target,perch_tiles,perch_clearance_tiles";
+            + "transit_budget_px,watch_x,watch_y,watch_distance_px,watches_target,used_perch_tile,perch_tiles,"
+            + "perch_clearance_tiles";
 
     private static final int FLUSH_INTERVAL_FRAMES = 480;
 
@@ -70,19 +76,19 @@ public class PerchAssignmentLogger implements PerchAssignmentSink {
     }
 
     @Override
-    public void onPerchAssigned(ManagedUnit scout, Position perch, Position watchTarget) {
+    public void onPerchAssigned(ManagedUnit scout, Position perch, Position watchTarget, boolean usedPerchTile) {
         if (disabled) {
             return;
         }
 
         try {
-            writer.append(row(scout, perch, watchTarget));
+            writer.append(row(scout, perch, watchTarget, usedPerchTile));
         } catch (Exception e) {
             disabled = true;
         }
     }
 
-    private String row(ManagedUnit scout, Position perch, Position watchTarget) {
+    private String row(ManagedUnit scout, Position perch, Position watchTarget, boolean usedPerchTile) {
         Position from = scout.getPosition();
         double watchDistance = perch.getDistance(watchTarget);
         List<String> fields = new ArrayList<>();
@@ -100,6 +106,7 @@ public class PerchAssignmentLogger implements PerchAssignmentSink {
         fields.add(String.valueOf(watchTarget.getY()));
         fields.add(Csv.format(watchDistance));
         fields.add(watchDistance <= UnitType.Zerg_Overlord.sightRange() ? "1" : "0");
+        fields.add(usedPerchTile ? "1" : "0");
         fields.add(String.valueOf(gameState.getGameMap().getPerchTiles().size()));
         fields.add(String.valueOf(gameState.getGameMap().getPerchClearanceTiles()));
         return String.join(",", fields);
