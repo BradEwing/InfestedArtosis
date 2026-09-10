@@ -534,16 +534,14 @@ public class GameMap {
     }
 
     /**
-     * Finds the best perch tile for an overlord watching the given target position, ranking candidates
-     * by whether the overlord can reach them inside its transit budget before ranking them by the view
-     * they give of the target.
+     * Finds the best perch tile for an overlord watching the given target position, preferring a perch
+     * that sees the target and, among perches that tie on that, the one nearest the overlord.
      *
      * @param target the position being watched
      * @param scout the overlord's current position
      * @return the selected perch tile, or null if no perches were computed
      */
     public MapTile findPerchNear(Position target, Position scout) {
-        return PerchCalculator.selectPerch(perchTiles, target, scout, UnitType.Zerg_Overlord.sightRange(),
-                PerchCalculator.transitPixels(UnitType.Zerg_Overlord));
+        return PerchCalculator.selectPerch(perchTiles, target, scout, UnitType.Zerg_Overlord.sightRange());
     }
 }

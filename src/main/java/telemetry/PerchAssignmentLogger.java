@@ -52,7 +52,7 @@ public class PerchAssignmentLogger implements PerchAssignmentSink {
             if (game.getFrameCount() % FLUSH_INTERVAL_FRAMES == 0) {
                 writer.flush();
             }
-        } catch (RuntimeException e) {
+        } catch (Exception e) {
             disabled = true;
         }
     }
@@ -64,7 +64,7 @@ public class PerchAssignmentLogger implements PerchAssignmentSink {
 
         try {
             writer.flush();
-        } catch (RuntimeException e) {
+        } catch (Exception e) {
             disabled = true;
         }
     }
@@ -77,7 +77,7 @@ public class PerchAssignmentLogger implements PerchAssignmentSink {
 
         try {
             writer.append(row(scout, perch, watchTarget));
-        } catch (RuntimeException e) {
+        } catch (Exception e) {
             disabled = true;
         }
     }
