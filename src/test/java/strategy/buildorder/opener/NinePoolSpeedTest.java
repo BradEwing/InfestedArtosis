@@ -46,4 +46,14 @@ class NinePoolSpeedTest {
     void withholdsGasOnceAnExtractorExists() {
         assertFalse(NinePoolSpeed.shouldPlanExtractor(1, true, true));
     }
+
+    @Test
+    void handsOffOnASpawningPoolUnderConstruction() {
+        assertTrue(NinePoolSpeed.openerComplete(1));
+    }
+
+    @Test
+    void holdsWhileNoSpawningPoolIsCommittedTo() {
+        assertFalse(NinePoolSpeed.openerComplete(0));
+    }
 }

@@ -93,6 +93,10 @@ public abstract class BuildOrder {
 
     /**
      * Returns true if Overlord Speed should be researched, based on Lair, game time and unit triggers.
+     *
+     * <p>The Lair term reads {@link GameState#ourUnitCount}, which counts only finished Lairs.
+     * That is what it wants: the upgrade is researched at the Lair, so a Lair still morphing
+     * cannot start it.
      */
     public boolean needOverlordSpeed(GameState gameState) {
         if (gameState.ourUnitCount(bwapi.UnitType.Zerg_Lair) < 1) {
