@@ -124,4 +124,28 @@ public class BaseDataTest {
 
         assertNull(baseData.findNewBase());
     }
+
+    /**
+     * bwem.Base cannot be constructed here, so the reservation counters are exercised on a null
+     * key. The lookups are plain maps and treat it as they would any other base.
+     */
+    @Test
+    void releasingASporeReservationReturnsTheTotalToItsPrePlanValue() {
+        int before = baseData.getTotalSporeCount();
+
+        baseData.reserveSporeColony(null);
+        assertEquals(before + 1, baseData.getTotalSporeCount());
+
+        baseData.unreserveSporeColony(null);
+        assertEquals(before, baseData.getTotalSporeCount());
+    }
+
+    @Test
+    void aSporeReservationReleasedTwiceCannotDriveTheTotalBelowZero() {
+        baseData.reserveSporeColony(null);
+        baseData.unreserveSporeColony(null);
+        baseData.unreserveSporeColony(null);
+
+        assertEquals(0, baseData.getTotalSporeCount());
+    }
 }

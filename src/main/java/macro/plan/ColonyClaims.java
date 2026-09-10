@@ -49,6 +49,22 @@ public final class ColonyClaims {
     }
 
     /**
+     * Whether the Creep Colony a cancelled Sunken or Spore plan was paired with should be
+     * cancelled with it.
+     *
+     * <p>A colony still waiting in the queue has lost the only plan that would morph it, and
+     * building it leaves 75 minerals standing as an orphan. A colony that has already been
+     * scheduled holds a builder, and one already standing can be adopted by another pair, so both
+     * are left alone.
+     *
+     * @param pairedColonyPlan the Creep Colony plan the morph was queued with, or null
+     * @return true when the colony plan should be cancelled alongside its morph
+     */
+    public static boolean pairedColonyDiesWithMorph(Plan pairedColonyPlan) {
+        return pairedColonyPlan != null && pairedColonyPlan.getState() == PlanState.PLANNED;
+    }
+
+    /**
      * Whether a morph plan may take a colony other than the one its pair is building.
      *
      * <p>A pair breaks only when it can no longer deliver: its colony plan was cancelled, or the

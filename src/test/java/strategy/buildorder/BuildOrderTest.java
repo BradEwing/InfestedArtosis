@@ -195,6 +195,44 @@ class BuildOrderTest {
         assertTrue(new PlanComparator().compare(hatchery, extractor) < 0);
     }
 
+    private static TechProgression withPool() {
+        TechProgression techProgression = new TechProgression();
+        techProgression.setSpawningPool(true);
+        return techProgression;
+    }
+
+    @Test
+    void aSporeWithoutAChamberPlansTheChamberItNeeds() {
+        assertTrue(BuildOrder.shouldPlanSporePrerequisite(withPool()));
+    }
+
+    @Test
+    void theChamberWaitsOnTheSpawningPoolItNeeds() {
+        assertFalse(BuildOrder.shouldPlanSporePrerequisite(new TechProgression()));
+    }
+
+    @Test
+    void aChamberAlreadyStandingIsNotPlannedAgain() {
+        TechProgression techProgression = withPool();
+        techProgression.setEvolutionChambers(1);
+
+        assertFalse(BuildOrder.shouldPlanSporePrerequisite(techProgression));
+    }
+
+    @Test
+    void aChamberOnTheWayIsWaitedOnRatherThanDuplicated() {
+        TechProgression techProgression = withPool();
+        int chambers = 0;
+        for (int frame = 0; frame < FRAMES; frame++) {
+            if (BuildOrder.shouldPlanSporePrerequisite(techProgression)) {
+                techProgression.setPlannedEvolutionChambers(techProgression.getPlannedEvolutionChambers() + 1);
+                chambers++;
+            }
+        }
+
+        assertEquals(1, chambers);
+    }
+
     @Test
     void theHashDoesNotDependOnTheClassObjectIdentity() {
         BuildOrder order = new SpeedlingAllIn();

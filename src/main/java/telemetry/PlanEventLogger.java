@@ -45,14 +45,14 @@ public class PlanEventLogger implements PlanEventSink {
     private static final String EVENT_RECURRING_CANCEL = "RECURRING_CANCEL";
 
     /**
-     * 35 columns. Was 32 before executor_unit_id, reserved_larva and builder_distance_px were
-     * added; readers that index by position rather than by name need updating.
+     * 36 columns. Was 32 before executor_unit_id, reserved_larva, builder_distance_px and
+     * enemy_air were added; readers that index by position rather than by name need updating.
      */
     private static final String PLAN_HEADER = "frame,time,event,plan_id,executor_unit_id,plan_type,item,from_state,"
             + "to_state,cancel_reason,cancel_source,blocker,blocked_frames,priority,frames_in_state,age_frames,"
             + "minerals,gas,available_minerals,available_gas,supply_used_real,supply_total_real,larva,reserved_larva,"
             + "gatherers,queue_depth,plans_scheduled,plans_building,plans_morphing,build_tile_x,build_tile_y,"
-            + "macro_hatchery,build_order,starved_behind,builder_distance_px";
+            + "macro_hatchery,build_order,starved_behind,builder_distance_px,enemy_air";
 
     private static final String GAME_HEADER = "timestamp,is_winner,num_starting_locations,map_name,opponent_name,"
             + "opponent_race,opener,build_order,detected_strategies,frame_count";
@@ -344,7 +344,8 @@ public class PlanEventLogger implements PlanEventSink {
         sb.append(plan.isMacroHatchery()).append(',');
         sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
         sb.append(starvedBehind == NO_STARVED_COUNT ? "" : String.valueOf(starvedBehind)).append(',');
-        sb.append(builderDistance(executor, buildPosition));
+        sb.append(builderDistance(executor, buildPosition)).append(',');
+        sb.append(gameState.observedEnemyAirCombatUnitCount());
         return sb.toString();
     }
 
@@ -373,7 +374,8 @@ public class PlanEventLogger implements PlanEventSink {
         appendGameState(sb);
         appendEmpty(sb, 3);
         sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
-        appendEmpty(sb, 1);
+        appendEmpty(sb, 2);
+        sb.append(gameState.observedEnemyAirCombatUnitCount());
         return sb.toString();
     }
 
