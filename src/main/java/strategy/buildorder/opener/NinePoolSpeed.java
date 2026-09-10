@@ -71,7 +71,7 @@ public class NinePoolSpeed extends BuildOrder {
         int supplyUsed     = gameState.getSupply();
         int overlordCount  = gameState.ourUnitCount(UnitType.Zerg_Overlord);
         int poolCount      = gameState.ourUnitCount(UnitType.Zerg_Spawning_Pool);
-        int extractorCount = gameState.ourUnitCount(UnitType.Zerg_Extractor);
+        int extractorCount = gameState.getBaseData().numExtractor();
         int zerglingCount  = gameState.ourUnitCount(UnitType.Zerg_Zergling);
 
         if (droneCount < 9 && gameState.canPlanDrone()) {
@@ -145,10 +145,10 @@ public class NinePoolSpeed extends BuildOrder {
      * Whether the opener takes its gas yet.
      *
      * <p>Reads the pool through canPlanExtractor, which opens once the pool is planned. A gate on
-     * a completed pool is the same expression as openerComplete, so the opener would hand off on
-     * the frame its own gas branch first became true and never build the Extractor itself.
+     * a completed pool is the same expression as openerComplete, so against a known opponent race
+     * the opener handed off on the frame its own gas branch first became true.
      *
-     * @param extractorCount Extractors owned
+     * @param extractorCount Extractors standing or reserved by a queued plan
      * @param canPlanExtractor whether a geyser is free and the pool is planned or standing
      * @param pastGasTime whether the game is past GAS_TIME
      * @return true while the Extractor should be queued

@@ -48,7 +48,7 @@ public class PlanEventLogger implements PlanEventSink {
      * added, and 35 before gas_gathered; readers that index by position rather than by name need
      * updating. gas_gathered is cumulative, so the last row of a game carries the game total.
      */
-    private static final String PLAN_HEADER = "frame,time,event,plan_id,executor_unit_id,plan_type,item,from_state,"
+    static final String PLAN_HEADER = "frame,time,event,plan_id,executor_unit_id,plan_type,item,from_state,"
             + "to_state,cancel_reason,cancel_source,blocker,blocked_frames,priority,frames_in_state,age_frames,"
             + "minerals,gas,available_minerals,available_gas,supply_used_real,supply_total_real,larva,reserved_larva,"
             + "gatherers,queue_depth,plans_scheduled,plans_building,plans_morphing,build_tile_x,build_tile_y,"
@@ -327,7 +327,7 @@ public class PlanEventLogger implements PlanEventSink {
         sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
         sb.append(starvedBehind == NO_STARVED_COUNT ? "" : String.valueOf(starvedBehind)).append(',');
         sb.append(builderDistance(executor, buildPosition)).append(',');
-        sb.append(gameState.getSelf().gatheredGas());
+        appendGameTotals(sb);
         return sb.toString();
     }
 
@@ -357,8 +357,21 @@ public class PlanEventLogger implements PlanEventSink {
         appendEmpty(sb, 3);
         sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
         appendEmpty(sb, 2);
-        sb.append(gameState.getSelf().gatheredGas());
+        appendGameTotals(sb);
         return sb.toString();
+    }
+
+    /**
+     * The trailing cumulative columns, written by every row shape.
+     *
+     * <p>row and withheldRow build their middles independently, so a trailing column added to one
+     * of them alone changes what a reader indexing by position finds in the other. Every trailing
+     * column belongs here so both shapes keep the same width.
+     *
+     * @param sb the row being built
+     */
+    private void appendGameTotals(StringBuilder sb) {
+        sb.append(gameState.getSelf().gatheredGas());
     }
 
     private void appendEvent(StringBuilder sb, String event) {
