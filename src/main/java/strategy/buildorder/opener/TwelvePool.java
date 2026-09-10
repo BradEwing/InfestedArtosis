@@ -22,13 +22,17 @@ import java.util.Set;
 public class TwelvePool extends BuildOrder {
     private static final int POOL_SUPPLY = 24;
 
+    private static final int DRONE_TARGET = 12;
+
     public TwelvePool() {
         super("12Pool");
     }
 
     @Override
     protected boolean openerComplete(GameState gameState) {
-        return gameState.ourUnitCount(UnitType.Zerg_Spawning_Pool) > 0 || gameState.ourLivingUnitCount(UnitType.Zerg_Drone) >= 12;
+        return openerComplete(
+                gameState.ourBuildingOrPlannedCount(UnitType.Zerg_Spawning_Pool),
+                gameState.ourLivingUnitCount(UnitType.Zerg_Drone));
     }
 
     @Override
@@ -66,7 +70,7 @@ public class TwelvePool extends BuildOrder {
         int supplyUsed = gameState.getSupply();
         int zerglingCount = gameState.ourUnitCount(UnitType.Zerg_Zergling);
 
-        if (droneCount < 12) {
+        if (droneCount < DRONE_TARGET) {
             plans.add(planUnit(gameState, UnitType.Zerg_Drone));
             return plans;
         }
@@ -102,5 +106,27 @@ public class TwelvePool extends BuildOrder {
 
     static boolean shouldPlanPool(int supplyUsed) {
         return supplyUsed >= POOL_SUPPLY;
+    }
+
+    /**
+     * Whether the opener has produced everything it will produce, so the terminal build order can
+     * take over.
+     *
+     * <p>The pool term counts a Spawning Pool under construction, not only a finished one: the
+     * opener's last scripted act is committing to the pool, and everything the terminal build
+     * order would queue next, the natural hatchery above all, is unreachable until this fires.
+     *
+     * <p>The drone term no longer decides the normal game. The opener queues its pool the frame
+     * the drone count reaches its target, which is no later than the frame the twelfth drone is
+     * alive, so the pool term is already true by then. It survives as the escape hatch for a pool
+     * plan that never reaches the queue or is cancelled out of it, which would otherwise leave the
+     * opener driving for the rest of the game.
+     *
+     * @param poolCount Spawning Pools standing or claimed by a building plan in flight
+     * @param livingDrones drones alive now, excluding those still planned or in an egg
+     * @return true once the opener should hand off
+     */
+    static boolean openerComplete(int poolCount, int livingDrones) {
+        return poolCount > 0 || livingDrones >= DRONE_TARGET;
     }
 }
