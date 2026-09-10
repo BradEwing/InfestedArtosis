@@ -317,10 +317,10 @@ public class Reactions {
             if (!isCancellableExtractorMorph(unit.getType(), unit.isCompleted())) {
                 continue;
             }
-            if (baseData.releaseExtractor(unit.getTilePosition())) {
-                PlanEvents.unplannedCancel(UnitType.Zerg_Extractor, PlanCancelSource.REACTION_GAS_DENIED_IN_PROGRESS);
+            TilePosition geyserTile = unit.getTilePosition();
+            if (unit.cancelMorph()) {
+                reclaimCancelledExtractor(baseData, geyserTile);
             }
-            unit.cancelMorph();
         }
     }
 
@@ -331,6 +331,21 @@ public class Reactions {
      */
     static boolean isCancellableExtractorMorph(UnitType unitType, boolean completed) {
         return unitType == UnitType.Zerg_Extractor && !completed;
+    }
+
+    /**
+     * Returns the geyser under a cancelled extractor morph and records the cancellation, which no plan
+     * transition covers because the raw loop cancels the unit directly. Runs only once the cancel
+     * command has been accepted, so an extractor that finishes before the command lands keeps its
+     * geyser marked as ours. Emitting on the reclaim rather than on every pass keeps one row per
+     * reclaim while the reaction fires each frame.
+     */
+    static boolean reclaimCancelledExtractor(BaseData baseData, TilePosition geyserTile) {
+        if (!baseData.releaseExtractor(geyserTile)) {
+            return false;
+        }
+        PlanEvents.unplannedCancel(UnitType.Zerg_Extractor, PlanCancelSource.REACTION_GAS_DENIED_IN_PROGRESS);
+        return true;
     }
 
     private void cannonRushReaction() {

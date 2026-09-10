@@ -61,8 +61,35 @@ public class BaseDataTest {
         assertEquals(1, available.size());
     }
 
+    /**
+     * The plan sweep drops the reservation without making the geyser available again, so a release
+     * keyed off the reservation set would find nothing and strand the geyser in neither set.
+     */
     @Test
-    void releaseReservedGeyserIgnoresATileItHoldsNoReservationFor() {
+    void releaseReservedGeyserRecoversAGeyserThatIsNoLongerReserved() {
+        HashSet<Unit> available = new HashSet<>();
+        HashMap<Unit, TilePosition> positions = new HashMap<>();
+        positions.put(null, GEYSER_TILE);
+
+        assertTrue(BaseData.releaseReservedGeyser(new HashSet<>(), available, positions, GEYSER_TILE));
+
+        assertEquals(1, available.size());
+    }
+
+    @Test
+    void releaseReservedGeyserReportsNothingNewWhenTheGeyserIsAlreadyAvailable() {
+        HashSet<Unit> available = new HashSet<>();
+        available.add(null);
+        HashMap<Unit, TilePosition> positions = new HashMap<>();
+        positions.put(null, GEYSER_TILE);
+
+        assertFalse(BaseData.releaseReservedGeyser(new HashSet<>(), available, positions, GEYSER_TILE));
+
+        assertEquals(1, available.size());
+    }
+
+    @Test
+    void releaseReservedGeyserIgnoresATileItTracksNoGeyserFor() {
         HashSet<Unit> reserved = new HashSet<>();
         reserved.add(null);
         HashSet<Unit> available = new HashSet<>();

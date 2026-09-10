@@ -38,6 +38,8 @@ public class ReactionsTest {
 
     private static final TilePosition GEYSER_TILE = new TilePosition(20, 30);
 
+    private static final TilePosition OTHER_TILE = new TilePosition(44, 12);
+
     private static final boolean COMPLETE = true;
 
     private static final boolean INCOMPLETE = false;
@@ -238,29 +240,57 @@ public class ReactionsTest {
      * the raw cancelMorph loop reaches it, so that loop is what has to release the geyser.
      */
     @Test
-    void theRawCancelLoopReturnsTheGeyserToItsPrePlanState() throws ReflectiveOperationException {
+    void theRawCancelReturnsTheGeyserToItsPrePlanState() throws ReflectiveOperationException {
         BaseData withGeyser = baseDataWithOneGeyser(GEYSER_TILE);
         withGeyser.reserveExtractor();
         assertEquals(1, withGeyser.numExtractor());
 
-        cancelExtractorMorph(withGeyser, UnitType.Zerg_Extractor, INCOMPLETE, GEYSER_TILE);
+        assertTrue(Reactions.reclaimCancelledExtractor(withGeyser, GEYSER_TILE));
 
         assertEquals(0, withGeyser.numExtractor());
         assertTrue(withGeyser.canReserveExtractor());
     }
 
     /**
-     * The loop runs every frame while the reaction holds, so releasing twice must not hand the same
-     * geyser out as two reservations.
+     * The plan sweep that runs first drops the reservation but leaves the geyser unavailable, because
+     * unreserveExtractor will not re-add a geyser whose unit still reports a refinery type. The raw
+     * cancel is what has to finish the job, so it must not key off the reservation being present.
      */
     @Test
-    void repeatingTheRawCancelLoopReleasesTheGeyserOnlyOnce() throws ReflectiveOperationException {
+    void theRawCancelReclaimsAGeyserTheSweepAlreadyUnreserved() throws ReflectiveOperationException {
+        BaseData withGeyser = baseDataWithOneGeyser(GEYSER_TILE);
+        withGeyser.reserveExtractor();
+        dropReservationWithoutReleasing(withGeyser);
+        assertEquals(0, withGeyser.numExtractor());
+        assertFalse(withGeyser.canReserveExtractor());
+
+        assertTrue(Reactions.reclaimCancelledExtractor(withGeyser, GEYSER_TILE));
+
+        assertTrue(withGeyser.canReserveExtractor());
+    }
+
+    /**
+     * The reaction fires every frame while it holds, so reclaiming twice must not hand the same geyser
+     * out as two reservations, and must not write a second telemetry row.
+     */
+    @Test
+    void repeatingTheRawCancelReclaimsTheGeyserOnlyOnce() throws ReflectiveOperationException {
         BaseData withGeyser = baseDataWithOneGeyser(GEYSER_TILE);
         withGeyser.reserveExtractor();
 
-        assertTrue(withGeyser.releaseExtractor(GEYSER_TILE));
-        assertFalse(withGeyser.releaseExtractor(GEYSER_TILE));
+        assertTrue(Reactions.reclaimCancelledExtractor(withGeyser, GEYSER_TILE));
+        assertFalse(Reactions.reclaimCancelledExtractor(withGeyser, GEYSER_TILE));
         assertEquals(0, withGeyser.numExtractor());
+    }
+
+    @Test
+    void theRawCancelIgnoresATileItTracksNoGeyserFor() throws ReflectiveOperationException {
+        BaseData withGeyser = baseDataWithOneGeyser(GEYSER_TILE);
+        withGeyser.reserveExtractor();
+
+        assertFalse(Reactions.reclaimCancelledExtractor(withGeyser, OTHER_TILE));
+
+        assertEquals(1, withGeyser.numExtractor());
     }
 
     /**
@@ -268,11 +298,13 @@ public class ReactionsTest {
      * planned onto it.
      */
     @Test
-    void aCompletedExtractorKeepsItsReservation() throws ReflectiveOperationException {
+    void aCompletedExtractorIsNotReached() throws ReflectiveOperationException {
         BaseData withGeyser = baseDataWithOneGeyser(GEYSER_TILE);
         withGeyser.reserveExtractor();
 
-        cancelExtractorMorph(withGeyser, UnitType.Zerg_Extractor, COMPLETE, GEYSER_TILE);
+        if (Reactions.isCancellableExtractorMorph(UnitType.Zerg_Extractor, COMPLETE)) {
+            Reactions.reclaimCancelledExtractor(withGeyser, GEYSER_TILE);
+        }
 
         assertEquals(1, withGeyser.numExtractor());
         assertFalse(withGeyser.canReserveExtractor());
@@ -286,13 +318,6 @@ public class ReactionsTest {
         assertFalse(Reactions.isCancellableExtractorMorph(UnitType.Zerg_Hatchery, INCOMPLETE));
     }
 
-    private static void cancelExtractorMorph(BaseData baseData, UnitType unitType, boolean completed, TilePosition tile) {
-        if (!Reactions.isCancellableExtractorMorph(unitType, completed)) {
-            return;
-        }
-        baseData.releaseExtractor(tile);
-    }
-
     private static BaseData baseDataWithOneGeyser(TilePosition tile) throws ReflectiveOperationException {
         BaseData baseData = new BaseData(new ArrayList<>());
         HashSet<Unit> available = new HashSet<>();
@@ -302,6 +327,10 @@ public class ReactionsTest {
         setField(baseData, "availableGeysers", available);
         setField(baseData, "geyserPositionLookup", positions);
         return baseData;
+    }
+
+    private static void dropReservationWithoutReleasing(BaseData baseData) throws ReflectiveOperationException {
+        setField(baseData, "extractors", new HashSet<Unit>());
     }
 
     private static void setField(BaseData baseData, String fieldName, Object value) throws ReflectiveOperationException {

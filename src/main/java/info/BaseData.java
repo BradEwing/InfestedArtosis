@@ -15,7 +15,6 @@ import util.Distance;
 
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -172,15 +171,17 @@ public class BaseData {
     }
 
     /**
-     * Releases the geyser held by an extractor that is going away, either cancelled mid-morph or
-     * destroyed, and returns whether a reservation was actually held.
+     * Returns the geyser under an extractor that is going away, either cancelled mid-morph or
+     * destroyed, to the available pool, and reports whether that made it newly available.
      *
-     * <p>Distinct from {@link #unreserveExtractor(TilePosition)}, which serves plan cancellation and
-     * refuses to return a geyser whose unit still reports a refinery type. A cancelled or dying
-     * extractor is in exactly that state at the moment it is released, so this path returns the
-     * geyser to the available pool unconditionally.
+     * <p>Keyed off the geyser position lookup rather than the reservation set, because the two halves
+     * of a cancellation can arrive separately: {@link #unreserveExtractor(TilePosition)} on the plan
+     * sweep drops the reservation but declines to re-add a geyser whose unit still reports a refinery
+     * type, which is exactly the state an in-flight morph is in. Releasing only what is still reserved
+     * would leave that geyser in neither set and permanently unavailable.
      *
-     * <p>Idempotent: a second call for the same tile finds no reservation and reports false.
+     * <p>Idempotent: a second call for the same tile finds the geyser already available and reports
+     * false, so a reaction firing every frame reclaims once.
      */
     public boolean releaseExtractor(TilePosition tilePosition) {
         return releaseReservedGeyser(extractors, availableGeysers, geyserPositionLookup, tilePosition);
@@ -191,13 +192,11 @@ public class BaseData {
         if (tilePosition == null) {
             return false;
         }
-        Iterator<Unit> iterator = reserved.iterator();
-        while (iterator.hasNext()) {
-            Unit candidate = iterator.next();
-            if (tilePosition.equals(positions.get(candidate))) {
-                iterator.remove();
-                available.add(candidate);
-                return true;
+        for (Map.Entry<Unit, TilePosition> entry : positions.entrySet()) {
+            if (tilePosition.equals(entry.getValue())) {
+                Unit geyser = entry.getKey();
+                reserved.remove(geyser);
+                return available.add(geyser);
             }
         }
         return false;
@@ -212,12 +211,21 @@ public class BaseData {
         return false;
     }
 
+    /**
+     * Registers a geyser that has appeared at one of our bases, replacing whatever unit we last
+     * tracked at that tile. Matching on the stored position rather than on the tracked unit's own
+     * getTilePosition keeps the match working when that unit is the extractor that just died, and
+     * swapping it out leaves exactly one entry per tile.
+     */
     public void onGeyserComplete(Unit geyser) {
         TilePosition geyserTp = geyser.getTilePosition();
-        for (Unit existing : availableGeysers) {
-            if (existing.getTilePosition().equals(geyserTp)) {
-                return;
-            }
+        Unit tracked = availableGeyserAt(geyserTp);
+        if (tracked != null) {
+            availableGeysers.remove(tracked);
+            geyserPositionLookup.remove(tracked);
+            availableGeysers.add(geyser);
+            geyserPositionLookup.put(geyser, geyserTp);
+            return;
         }
         for (Unit existing : extractors) {
             TilePosition storedPos = geyserPositionLookup.get(existing);
@@ -234,6 +242,16 @@ public class BaseData {
                 }
             }
         }
+    }
+
+    private Unit availableGeyserAt(TilePosition tilePosition) {
+        for (Unit existing : availableGeysers) {
+            TilePosition storedPosition = geyserPositionLookup.get(existing);
+            if (storedPosition != null && storedPosition.equals(tilePosition)) {
+                return existing;
+            }
+        }
+        return null;
     }
 
     public void onGeyserShow(Unit geyser) {
@@ -261,6 +279,12 @@ public class BaseData {
      * in-flight plan is not handed to a second plan. Every path that ends a reservation therefore has
      * to release it: plan cancellation through {@link #unreserveExtractor(TilePosition)}, and a
      * cancelled or destroyed extractor through {@link #releaseExtractor(TilePosition)}.
+     *
+     * <p>Dropping the reservation is only half of it. Availability is a separate question, and
+     * {@link #unreserveExtractor(TilePosition)} deliberately answers it with no: a plan cancelled while
+     * its morph is already in flight leaves a refinery-typed unit standing on the geyser, and that
+     * geyser only becomes available again through {@link #releaseExtractor(TilePosition)} or
+     * {@link #onGeyserComplete(Unit)}.
      */
     public int numExtractor() {
         return extractors.size();
