@@ -73,15 +73,15 @@ public class ThreeHatchLurker extends TerranBase {
             plans.addAll(this.planSporeColony(gameState));
         }
 
+        Plan expansionPlan = null;
         if (wantNatural || wantExpansion) {
-            Plan hatcheryPlan = this.planNewBase(gameState);
-            if (hatcheryPlan != null) {
-                plans.add(hatcheryPlan);
-                return plans;
+            expansionPlan = this.planNewBase(gameState);
+            if (expansionPlan != null) {
+                plans.add(expansionPlan);
             }
         }
 
-        if (wantFirstMacroHatch) {
+        if (expansionPlan == null && wantFirstMacroHatch) {
             Plan macroHatchPlan = planMacroHatchery(gameState);
             if (macroHatchPlan != null) {
                 plans.add(macroHatchPlan);
@@ -201,6 +201,11 @@ public class ThreeHatchLurker extends TerranBase {
             Plan dronePlan = this.planUnit(gameState, UnitType.Zerg_Drone);
             plans.add(dronePlan);
             return plans;
+        }
+
+        Plan surplusPlan = this.planMineralSurplusUnit(gameState);
+        if (surplusPlan != null) {
+            plans.add(surplusPlan);
         }
 
         return plans;

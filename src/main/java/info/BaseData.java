@@ -11,8 +11,10 @@ import info.map.GroundPathComparator;
 import info.map.StartingLocationPaths;
 import lombok.Getter;
 import lombok.Setter;
+import macro.plan.PlanCancelReason;
 import util.Distance;
 
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -26,6 +28,10 @@ import java.util.stream.Collectors;
  */
 public class BaseData {
     public static final int NATURAL_DEFENSE_TILE_RADIUS = 10;
+
+    static final int EXPANSION_BACKOFF_FRAMES = 1200;
+
+    static final int MAX_EXPANSION_BACKOFF_STEPS = 6;
 
     private Base mainBase;
     private Base naturalExpansion;
@@ -51,6 +57,9 @@ public class BaseData {
     private HashMap<TilePosition, Base> baseTilePositionLookup = new HashMap<>();
     private HashMap<Base, GroundPath> allBasePaths = new HashMap<>();
     private HashMap<Base, GroundPath> availableBases = new HashMap<>();
+    private HashMap<Base, Integer> expansionBackoffUntil = new HashMap<>();
+    private int lostExpansionBuilders = 0;
+    private int expansionHeldUntil = 0;
     private HashSet<Unit> extractors = new HashSet<>();
     private HashSet<Unit> availableGeysers = new HashSet<>();
     private HashMap<Unit, TilePosition> geyserPositionLookup = new HashMap<>();
@@ -124,6 +133,9 @@ public class BaseData {
         baseLookup.put(hatchery, base);
         availableBases.remove(base);
         reservedBases.remove(base);
+        lostExpansionBuilders = 0;
+        expansionHeldUntil = 0;
+        expansionBackoffUntil.remove(base);
 
         if (naturalExpansion == null && myBases.size() > 1) {
             naturalExpansion = base;
@@ -231,13 +243,80 @@ public class BaseData {
         return macroHatcheries.size(); 
     }
 
-    public Base reserveBase() {
-        final Base base = this.findNewBase();
+    /**
+     * Reserves the next expansion, unless a builder was recently lost on the way to one.
+     *
+     * <p>Two gates, because a lost builder says two different things. The hold is on expanding at
+     * all: a drone that died walking says the ground is contested, and the answer to that is to
+     * wait, not to send the next drone the same instant. The per-base backoff is on the base it
+     * died reaching, so when the hold does lift the bot picks somewhere else.
+     *
+     * @param currentFrame frame the reservation is made on, which expires stale backoffs
+     */
+    public Base reserveBase(int currentFrame) {
+        if (!isExpansionAvailable(expansionHeldUntil, currentFrame)) {
+            return null;
+        }
+
+        expansionBackoffUntil.values().removeIf(until -> isExpansionAvailable(until, currentFrame));
+        final Base base = this.findNewBase(expansionBackoffUntil.keySet());
         if (base == null) {
             return null;
         }
         reservedBases.add(base);
         return base;
+    }
+
+    /**
+     * Records a builder lost on the way to an expansion, and holds expansions for a window that
+     * grows with how many have been lost since the last one that landed.
+     *
+     * <p>Cancelling the hatchery plan frees its base reservation, so without a hold the same base
+     * scores best again on the very next frame and another lone drone walks the same ground. A
+     * flat window still lets a permanently true expansion request burn a drone every window for
+     * the rest of the game; escalating it means a bot being farmed stops asking.
+     *
+     * <p>The base that killed the builder is held for the longest window the hold can reach, which
+     * outlasts the first few holds on purpose: the point of coming back is to try somewhere else.
+     *
+     * @param base the base the lost builder was sent to, or null when it is not known
+     * @param currentFrame frame the builder was lost on
+     */
+    public void backoffExpansion(Base base, int currentFrame) {
+        lostExpansionBuilders += 1;
+        expansionHeldUntil = currentFrame + expansionHold(lostExpansionBuilders);
+        if (base != null) {
+            expansionBackoffUntil.put(base, currentFrame + expansionHold(MAX_EXPANSION_BACKOFF_STEPS));
+        }
+    }
+
+    /**
+     * @param backoffUntilFrame frame expansion becomes available again
+     */
+    static boolean isExpansionAvailable(int backoffUntilFrame, int currentFrame) {
+        return currentFrame >= backoffUntilFrame;
+    }
+
+    /**
+     * How long expansions are held after a builder was lost. Capped so the hold stays a hold and
+     * never becomes a permanent stop: an expansion that lands clears the count anyway.
+     *
+     * @param lostBuilders builders lost since the last expansion that completed
+     */
+    static int expansionHold(int lostBuilders) {
+        return EXPANSION_BACKOFF_FRAMES * Math.min(lostBuilders, MAX_EXPANSION_BACKOFF_STEPS);
+    }
+
+    /**
+     * Only a lost builder earns a backoff. Every other cancellation says the bot changed its mind
+     * about the hatchery, not that the ground between here and the base killed the drone sent
+     * across it, and holding the base back for those would stall expansions the bot can reach.
+     *
+     * @param buildingType type of the cancelled building plan
+     * @param cancelReason why the plan was cancelled
+     */
+    static boolean shouldBackoffExpansion(UnitType buildingType, PlanCancelReason cancelReason) {
+        return buildingType == UnitType.Zerg_Hatchery && cancelReason == PlanCancelReason.EXECUTOR_LOST;
     }
 
     public void cancelReserveBase(Base base) {
@@ -374,11 +453,19 @@ public class BaseData {
      * @return the best candidate base according to the criteria, or null if no valid base is available.
      */
     public Base findNewBase() {
+        return findNewBase(Collections.emptySet());
+    }
+
+    /**
+     * @param excluded bases held out of selection, such as those in expansion backoff
+     */
+    private Base findNewBase(Set<Base> excluded) {
         // Build a list of candidate bases that are not already reserved.
         List<Map.Entry<Base, GroundPath>> potential = this.availableBases.entrySet()
                 .stream()
                 .filter(p -> p.getValue() != null)
                 .filter(p -> !reservedBases.contains(p.getKey()))
+                .filter(p -> !excluded.contains(p.getKey()))
                 .collect(Collectors.toList());
 
         // If only one base exists, skip bases with no geysers (mineral-only bases)

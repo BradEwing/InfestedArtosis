@@ -125,6 +125,11 @@ public class OneHatchSpire extends ZergBase {
             plans.addAll(this.planUnits(gameState, unitType));
         }
 
+        Plan surplusPlan = this.planMineralSurplusUnit(gameState);
+        if (surplusPlan != null) {
+            plans.add(surplusPlan);
+        }
+
         return plans;
     }
 

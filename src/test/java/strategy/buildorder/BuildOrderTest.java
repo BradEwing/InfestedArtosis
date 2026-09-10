@@ -47,6 +47,16 @@ class BuildOrderTest {
 
     private static final int EXTRACTOR_FRAME = 205;
 
+    private static final int SURPLUS_BANK = 900;
+
+    private static final int LARVA = 2;
+
+    private static final int IDLE_BANK = 2000;
+
+    private static final int IDLE_LARVA = 4;
+
+    private static final int IDLE_QUEUE_DEPTH = 1;
+
     private final List<String> withheld = new ArrayList<>();
 
     private PlanEventSink recorder() {
@@ -207,6 +217,64 @@ class BuildOrderTest {
         BuildOrder second = new SpeedlingAllIn();
         assertEquals(first, second);
         assertEquals(first.hashCode(), second.hashCode());
+    }
+
+    /**
+     * The surplus sink has to be buyable with the resource that is in surplus. Read off the unit
+     * type rather than asserted from memory, since gas would make it useless to a build that is
+     * floating minerals precisely because its gas is spoken for.
+     */
+    @Test
+    void theSurplusUnitCostsMineralsAndNoGas() {
+        assertEquals(0, BuildOrder.MINERAL_SURPLUS_UNIT.gasPrice());
+        assertTrue(BuildOrder.MINERAL_SURPLUS_UNIT.mineralPrice() > 0);
+    }
+
+    @Test
+    void mineralsAndLarvaTogetherBuyASurplusUnit() {
+        assertTrue(BuildOrder.shouldSpendMineralSurplus(BuildOrder.MINERAL_SURPLUS, 1, true, 0));
+        assertTrue(BuildOrder.shouldSpendMineralSurplus(SURPLUS_BANK, LARVA, true, 0));
+    }
+
+    @Test
+    void aBankUnderTheBarIsNotASurplus() {
+        assertFalse(BuildOrder.shouldSpendMineralSurplus(BuildOrder.MINERAL_SURPLUS - 1, LARVA, true, 0));
+    }
+
+    /**
+     * Larva that a queued plan already claimed cannot morph anything, so a surplus unit planned
+     * against them would sit behind the plan that owns them.
+     */
+    @Test
+    void surplusUnitsWaitForUnreservedLarva() {
+        assertFalse(BuildOrder.shouldSpendMineralSurplus(SURPLUS_BANK, 0, true, 0));
+    }
+
+    @Test
+    void surplusUnitsWaitForTheSpawningPool() {
+        assertFalse(BuildOrder.shouldSpendMineralSurplus(SURPLUS_BANK, LARVA, false, 0));
+    }
+
+    /**
+     * IA-331 acceptance criterion 1 asks for units, not for a plan every frame the bank stays
+     * high. The bound is on plans still waiting, so the surplus drains at the rate the queue
+     * clears.
+     */
+    @Test
+    void theSurplusQueueIsBounded() {
+        assertTrue(BuildOrder.shouldSpendMineralSurplus(
+                SURPLUS_BANK, LARVA, true, BuildOrder.MAX_QUEUED_SURPLUS_PLANS - 1));
+        assertFalse(BuildOrder.shouldSpendMineralSurplus(
+                SURPLUS_BANK, LARVA, true, BuildOrder.MAX_QUEUED_SURPLUS_PLANS));
+    }
+
+    /**
+     * IA-331 acceptance criterion 5: available_minerals above 2,000 while larva exceed 3 and the
+     * queue is nearly empty is the rich-and-idle signature, and it has to resolve into a plan.
+     */
+    @Test
+    void theRichAndIdleSignatureBuysAUnit() {
+        assertTrue(BuildOrder.shouldSpendMineralSurplus(IDLE_BANK, IDLE_LARVA, true, IDLE_QUEUE_DEPTH));
     }
 
 }

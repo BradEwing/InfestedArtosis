@@ -270,7 +270,7 @@ public class GameState {
     }
 
     public Base reserveBase() {
-        return baseData.reserveBase();
+        return baseData.reserveBase(getGameTime().getFrames());
     }
 
     public void claimBase(Unit hatchery) {
@@ -358,6 +358,9 @@ public class GameState {
                 if (tp != null && baseData.isBaseTilePosition(tp)) {
                     Base base = baseData.baseAtTilePosition(tp);
                     baseData.cancelReserveBase(base);
+                    if (BaseData.shouldBackoffExpansion(buildingType, plan.getCancelReason())) {
+                        baseData.backoffExpansion(base, getGameTime().getFrames());
+                    }
                 }
                 
                 if (buildingType == UnitType.Zerg_Creep_Colony) {
