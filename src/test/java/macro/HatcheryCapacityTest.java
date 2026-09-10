@@ -14,34 +14,39 @@ class HatcheryCapacityTest {
 
     @Test
     void hatcheriesAreExcessOnceTheirLarvaGoUnspent() {
-        assertTrue(HatcheryCapacity.isExcess(SATURATED_HATCHERIES, IDLE_LARVA, false));
+        assertTrue(HatcheryCapacity.isExcess(SATURATED_HATCHERIES, IDLE_LARVA));
     }
 
     @Test
     void hatcheriesAreNotExcessWhileLarvaAreSpent() {
-        assertFalse(HatcheryCapacity.isExcess(SATURATED_HATCHERIES, IDLE_LARVA - 1, false));
+        assertFalse(HatcheryCapacity.isExcess(SATURATED_HATCHERIES, IDLE_LARVA - 1));
     }
 
     @Test
     void hatcheriesAreNotExcessBelowTheHatcheryFloor() {
-        assertFalse(HatcheryCapacity.isExcess(SATURATED_HATCHERIES - 1, IDLE_LARVA * 2, false));
+        assertFalse(HatcheryCapacity.isExcess(SATURATED_HATCHERIES - 1, IDLE_LARVA * 2));
     }
 
+    /**
+     * The excess rule reads capacity alone, so a mineral pile that asks for an expansion cannot
+     * switch off the rule that cancels the expansion it asked for.
+     */
     @Test
-    void floatingMineralsOverrideIdleLarva() {
-        assertFalse(HatcheryCapacity.isExcess(SATURATED_HATCHERIES, IDLE_LARVA, true));
+    void theExcessRuleFiresWhileMineralsFloat() {
+        assertTrue(HatcheryCapacity.isFloatingMinerals(2000, SATURATED_HATCHERIES, true));
+        assertTrue(HatcheryCapacity.isExcess(SATURATED_HATCHERIES, IDLE_LARVA));
     }
 
     @Test
     void weAreNotBehindOnHatcheriesWeCannotKeepBusy() {
-        boolean excess = HatcheryCapacity.isExcess(SATURATED_HATCHERIES, IDLE_LARVA, false);
+        boolean excess = HatcheryCapacity.isExcess(SATURATED_HATCHERIES, IDLE_LARVA);
 
         assertFalse(HatcheryCapacity.isBehind(SATURATED_HATCHERIES, SATURATED_HATCHERIES + 1, excess, false));
     }
 
     @Test
     void weAreBehindWhenTheEnemyOutExpandsUsAndOurLarvaAreSpent() {
-        boolean excess = HatcheryCapacity.isExcess(SATURATED_HATCHERIES, IDLE_LARVA - 1, false);
+        boolean excess = HatcheryCapacity.isExcess(SATURATED_HATCHERIES, IDLE_LARVA - 1);
 
         assertTrue(HatcheryCapacity.isBehind(SATURATED_HATCHERIES, SATURATED_HATCHERIES + 1, excess, false));
     }
@@ -53,7 +58,7 @@ class HatcheryCapacityTest {
     @Test
     void parityStillExpandsFromOneAndTwoBases() {
         for (int ourTotal = 1; ourTotal < SATURATED_HATCHERIES; ourTotal++) {
-            boolean excess = HatcheryCapacity.isExcess(ourTotal, IDLE_LARVA * 2, false);
+            boolean excess = HatcheryCapacity.isExcess(ourTotal, IDLE_LARVA * 2);
 
             assertTrue(HatcheryCapacity.isBehind(ourTotal, ourTotal + 1, excess, false));
         }
@@ -64,18 +69,23 @@ class HatcheryCapacityTest {
         assertFalse(HatcheryCapacity.isBehind(2, 2, false, false));
     }
 
+    /**
+     * Saturated hatcheries with idle larva stop the parity request and the floating-minerals
+     * request alike, however large the mineral pile is.
+     */
     @Test
-    void floatingMineralsStillExpandAtSaturation() {
-        boolean excess = HatcheryCapacity.isExcess(SATURATED_HATCHERIES, IDLE_LARVA, true);
+    void floatingMineralsDoNotExpandAtSaturation() {
+        boolean excess = HatcheryCapacity.isExcess(SATURATED_HATCHERIES, IDLE_LARVA);
 
-        assertTrue(HatcheryCapacity.isBehind(SATURATED_HATCHERIES, SATURATED_HATCHERIES + 1, excess, false));
+        assertFalse(HatcheryCapacity.isBehind(SATURATED_HATCHERIES, SATURATED_HATCHERIES + 1, excess, false));
+        assertFalse(HatcheryCapacity.isQueueable(excess, false));
     }
 
     @Test
     void theTwoRulesNeverDisagree() {
         for (int hatcheries = 0; hatcheries <= 6; hatcheries++) {
             for (int larva = 0; larva <= 12; larva++) {
-                boolean excess = HatcheryCapacity.isExcess(hatcheries, larva, false);
+                boolean excess = HatcheryCapacity.isExcess(hatcheries, larva);
                 boolean behind = HatcheryCapacity.isBehind(hatcheries, hatcheries + 1, excess, false);
 
                 assertFalse(excess && behind);
@@ -85,7 +95,7 @@ class HatcheryCapacityTest {
 
     @Test
     void noParityRequestWhileTheEarlyRushReactionDeletesExpansions() {
-        boolean excess = HatcheryCapacity.isExcess(SATURATED_HATCHERIES - 1, IDLE_LARVA - 1, false);
+        boolean excess = HatcheryCapacity.isExcess(SATURATED_HATCHERIES - 1, IDLE_LARVA - 1);
 
         assertTrue(HatcheryCapacity.isBehind(SATURATED_HATCHERIES - 1, SATURATED_HATCHERIES, excess, false));
         assertFalse(HatcheryCapacity.isBehind(SATURATED_HATCHERIES - 1, SATURATED_HATCHERIES, excess, true));
@@ -108,7 +118,7 @@ class HatcheryCapacityTest {
         for (int hatcheries = 0; hatcheries <= 6; hatcheries++) {
             for (int queued = 0; queued <= 3; queued++) {
                 for (int larva = 0; larva <= 12; larva++) {
-                    boolean excess = HatcheryCapacity.isExcess(hatcheries, larva, false);
+                    boolean excess = HatcheryCapacity.isExcess(hatcheries, larva);
                     boolean behind = HatcheryCapacity.isBehind(hatcheries + queued, hatcheries + queued + 1, excess, false);
 
                     assertFalse(excess && behind);
@@ -129,7 +139,7 @@ class HatcheryCapacityTest {
         int enqueues = 0;
 
         for (int frame = 0; frame < 120; frame++) {
-            boolean excess = HatcheryCapacity.isExcess(completedHatcheries, IDLE_LARVA, false);
+            boolean excess = HatcheryCapacity.isExcess(completedHatcheries, IDLE_LARVA);
             if (excess && queuedHatcheries > 0) {
                 queuedHatcheries--;
             }
@@ -153,7 +163,7 @@ class HatcheryCapacityTest {
         int enqueues = 0;
 
         for (int frame = 0; frame < 120; frame++) {
-            boolean excess = HatcheryCapacity.isExcess(SATURATED_HATCHERIES - 1, IDLE_LARVA - 1, false);
+            boolean excess = HatcheryCapacity.isExcess(SATURATED_HATCHERIES - 1, IDLE_LARVA - 1);
             if (HatcheryCapacity.isBehind(SATURATED_HATCHERIES - 1, SATURATED_HATCHERIES, excess, true)) {
                 enqueues++;
             }
@@ -190,10 +200,11 @@ class HatcheryCapacityTest {
             for (int larva = 0; larva <= 12; larva++) {
                 for (int minerals = 0; minerals <= 2800; minerals += 50) {
                     boolean floating = HatcheryCapacity.isFloatingMinerals(minerals, hatcheries, true);
-                    boolean excess = HatcheryCapacity.isExcess(hatcheries, larva, floating);
+                    boolean excess = HatcheryCapacity.isExcess(hatcheries, larva);
                     boolean queueable = HatcheryCapacity.isQueueable(excess, false);
 
                     assertFalse(excess && queueable);
+                    assertFalse(excess && HatcheryCapacity.isFloatingExpansion(floating, false) && queueable);
                 }
             }
         }
@@ -220,5 +231,72 @@ class HatcheryCapacityTest {
     @Test
     void mineralsAreNotFloatingBeforeTheWindowOpens() {
         assertFalse(HatcheryCapacity.isFloatingMinerals(5000, 1, false));
+    }
+
+    /**
+     * The floating-minerals request holds for many frames and nothing it reads moves when it is
+     * answered. The plan it produced leaves the queue on its enqueue frame and lands in the
+     * building set, so the in-flight count is what holds the request until the hatchery is up.
+     */
+    @Test
+    void aRequestThatHoldsForManyFramesProducesOnePlan() {
+        int inFlight = 0;
+        int lastEnqueueFrame = -HatcheryCapacity.ENQUEUE_COOLDOWN_FRAMES;
+        int hatcheriesAtLastEnqueue = 1;
+        int hatcheries = 1;
+        int enqueues = 0;
+
+        for (int frame = 0; frame < 1800; frame++) {
+            boolean floating = HatcheryCapacity.isFloatingMinerals(706, hatcheries, true);
+            boolean excess = HatcheryCapacity.isExcess(hatcheries, 0);
+            boolean rearmed = HatcheryCapacity.isEnqueueRearmed(
+                    inFlight, frame - lastEnqueueFrame, hatcheries - hatcheriesAtLastEnqueue);
+
+            if (HatcheryCapacity.isFloatingExpansion(floating, false)
+                    && rearmed
+                    && HatcheryCapacity.isQueueable(excess, false)) {
+                enqueues++;
+                inFlight++;
+                lastEnqueueFrame = frame;
+                hatcheriesAtLastEnqueue = hatcheries;
+            }
+        }
+
+        assertEquals(1, enqueues);
+        assertEquals(1, inFlight);
+    }
+
+    @Test
+    void anInFlightPlanHoldsTheRequestHoweverLongTheCooldownHasRun() {
+        assertFalse(HatcheryCapacity.isEnqueueRearmed(1, HatcheryCapacity.ENQUEUE_COOLDOWN_FRAMES * 10, 0));
+        assertFalse(HatcheryCapacity.isEnqueueRearmed(1, HatcheryCapacity.ENQUEUE_COOLDOWN_FRAMES * 10, 2));
+    }
+
+    @Test
+    void theCooldownHoldsTheRequestAfterAPlanLeavesTheSystem() {
+        assertFalse(HatcheryCapacity.isEnqueueRearmed(0, 0, 0));
+        assertFalse(HatcheryCapacity.isEnqueueRearmed(0, HatcheryCapacity.ENQUEUE_COOLDOWN_FRAMES - 1, 0));
+        assertTrue(HatcheryCapacity.isEnqueueRearmed(0, HatcheryCapacity.ENQUEUE_COOLDOWN_FRAMES, 0));
+    }
+
+    /**
+     * A completed hatchery is the answer the request was waiting for, so the next one may be
+     * asked for without serving the cooldown.
+     */
+    @Test
+    void aCompletedHatcheryRearmsTheRequestImmediately() {
+        assertTrue(HatcheryCapacity.isEnqueueRearmed(0, 1, 1));
+    }
+
+    /**
+     * A cancel does not touch the cooldown, so the request cannot answer itself on the frame
+     * after a canceller took its plan away.
+     */
+    @Test
+    void aCancelDoesNotRearmTheRequest() {
+        int lastEnqueueFrame = 100;
+        int cancelFrame = 105;
+
+        assertFalse(HatcheryCapacity.isEnqueueRearmed(0, cancelFrame + 1 - lastEnqueueFrame, 0));
     }
 }
