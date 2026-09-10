@@ -17,7 +17,9 @@ public final class SunkenTargets {
      */
     public static final int BARRACKS_PRESSURE_COUNT = 3;
 
-    static final int ONE_BASE_SUNKENS = 2;
+    public static final int BARRACKS_PRESSURE_SUNKENS = 3;
+
+    public static final int ONE_BASE_SUNKENS = 2;
 
     private static final Time ONE_BASE_RESPONSE_OPENS = new Time(5, 0);
 
@@ -36,6 +38,22 @@ public final class SunkenTargets {
      */
     public static boolean isBarracksPressure(int enemyBarracks) {
         return enemyBarracks >= BARRACKS_PRESSURE_COUNT;
+    }
+
+    /**
+     * Sunkens per base the enemy's Barracks count asks for, in every matchup.
+     * <p>
+     * Race agnostic on purpose. The Terran matchup prices Barracks inside its own threat ordered
+     * chain, but the build orders that never reach a matchup class - SpeedlingAllIn, which plays
+     * every race, and every opener - would otherwise see nothing at all off three Barracks. The
+     * count is zero against a non Terran opponent, so this is inert in the matchups it does not
+     * describe, and it reads before the opponent's race is even revealed.
+     *
+     * @param enemyBarracks living enemy Barracks we have observed
+     * @return the floor the Barracks count sets, or zero
+     */
+    public static int barracksPressureSunkens(int enemyBarracks) {
+        return isBarracksPressure(enemyBarracks) ? BARRACKS_PRESSURE_SUNKENS : 0;
     }
 
     /**
@@ -58,19 +76,21 @@ public final class SunkenTargets {
     }
 
     /**
-     * The sunkens per base a build order asks for: its matchup term under the race agnostic 1Base
-     * floor.
+     * The sunkens per base a build order asks for: its matchup term under the race agnostic
+     * floors.
      * <p>
-     * The floor is taken as a maximum, not added on. Detections accumulate and are never
-     * retracted, so an enemy that is both on one base and pushing reads both, and adding would
-     * price the same army twice.
+     * The floors are taken as maxima, not added on. Detections accumulate and are never retracted,
+     * so an enemy that is both on one base and pushing reads both, and adding would price the same
+     * army twice. A matchup that already prices one of these higher keeps its own answer.
      *
      * @param matchupSunkens the sunkens the matchup asks for
      * @param oneBaseDetected whether StrategyTracker has detected 1Base
+     * @param enemyBarracks living enemy Barracks we have observed
      * @param gameTime current game time
      * @return sunkens per base
      */
-    public static int sunkenTarget(int matchupSunkens, boolean oneBaseDetected, Time gameTime) {
-        return Math.max(matchupSunkens, oneBaseSunkens(oneBaseDetected, gameTime));
+    public static int sunkenTarget(int matchupSunkens, boolean oneBaseDetected, int enemyBarracks, Time gameTime) {
+        int floor = Math.max(oneBaseSunkens(oneBaseDetected, gameTime), barracksPressureSunkens(enemyBarracks));
+        return Math.max(matchupSunkens, floor);
     }
 }

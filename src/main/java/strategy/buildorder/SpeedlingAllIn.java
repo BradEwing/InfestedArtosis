@@ -44,8 +44,9 @@ import java.util.List;
  * level 1 and carapace is skipped, because a second Evolution Chamber upgrade would make
  * {@link TechProgression#needLairForNextEvolutionChamberUpgrades()} true and pull in a Lair.
  *
- * <p>Static defense and rush zerglings are left to {@link #planEmergencyDefense(GameState)} with the
- * base class defaults.
+ * <p>Static defense and rush zerglings are left to {@link #planDefense(GameState)} with the base
+ * class defaults. Static defense reaches this build through the race agnostic floors in
+ * {@link #requiredSunkens(GameState)}, because it overrides no matchup class of its own.
  */
 public class SpeedlingAllIn extends BuildOrder {
 

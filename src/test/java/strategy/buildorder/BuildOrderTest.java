@@ -44,6 +44,20 @@ class BuildOrderTest {
 
     private static final int HATCHERY_FRAME = 203;
 
+    private static final boolean MAIN = true;
+
+    private static final boolean EXPANSION = false;
+
+    private static final int MAIN_TILE_X = 117;
+
+    private static final int MAIN_TILE_Y = 119;
+
+    private static final int NEAR_TILE_X = 7;
+
+    private static final int NEAR_TILE_Y = 9;
+
+    private static final int MAP_EDGE_TILE = 255;
+
     private static final int POOL_FRAME = 204;
 
     private static final int EXTRACTOR_FRAME = 205;
@@ -336,4 +350,33 @@ class BuildOrderTest {
         assertFalse(freeLarva - resourceCount.getReservedLarva() > 0);
     }
 
+    /**
+     * The set of bases needing a sunken is a HashSet, so the choice used to follow hash order and
+     * the main could be left under its target while the natural took the whole deficit.
+     */
+    @Test
+    void ranksTheMainAheadOfEveryExpansionWhateverTheirTiles() {
+        long main = BuildOrder.sunkenBaseRank(MAIN, MAIN_TILE_X, MAIN_TILE_Y);
+        long nearExpansion = BuildOrder.sunkenBaseRank(EXPANSION, NEAR_TILE_X, NEAR_TILE_Y);
+        long farExpansion = BuildOrder.sunkenBaseRank(EXPANSION, MAP_EDGE_TILE, MAP_EDGE_TILE);
+
+        assertTrue(main < nearExpansion);
+        assertTrue(main < farExpansion);
+    }
+
+    @Test
+    void ranksTheMainFirstEvenFromTheFarCornerOfTheMap() {
+        assertTrue(BuildOrder.sunkenBaseRank(MAIN, MAP_EDGE_TILE, MAP_EDGE_TILE)
+                < BuildOrder.sunkenBaseRank(EXPANSION, 0, 0));
+    }
+
+    @Test
+    void givesEveryDistinctTileADistinctRankSoTheChoiceIsStable() {
+        assertEquals(BuildOrder.sunkenBaseRank(EXPANSION, NEAR_TILE_X, NEAR_TILE_Y),
+                BuildOrder.sunkenBaseRank(EXPANSION, NEAR_TILE_X, NEAR_TILE_Y));
+        assertTrue(BuildOrder.sunkenBaseRank(EXPANSION, NEAR_TILE_X, NEAR_TILE_Y)
+                < BuildOrder.sunkenBaseRank(EXPANSION, NEAR_TILE_X, NEAR_TILE_Y + 1));
+        assertTrue(BuildOrder.sunkenBaseRank(EXPANSION, NEAR_TILE_X, MAP_EDGE_TILE)
+                < BuildOrder.sunkenBaseRank(EXPANSION, NEAR_TILE_X + 1, 0));
+    }
 }
