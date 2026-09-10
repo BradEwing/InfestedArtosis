@@ -147,19 +147,19 @@ class TerranBaseTest {
 
     @Test
     void asksForThreeSunkensOffThreeObservedBarracks() {
-        assertEquals(TerranBase.BARRACKS_PRESSURE_SUNKENS,
+        assertEquals(SunkenTargets.BARRACKS_PRESSURE_SUNKENS,
                 TerranBase.bioPressureSunkens(THREE_RAX, 0, NO_TWO_RAX_ACADEMY, AFTER_THE_OLD_BIO_CLIFF));
     }
 
     @Test
     void keepsTheBarracksAnswerForAsLongAsTheBarracksStand() {
-        assertEquals(TerranBase.BARRACKS_PRESSURE_SUNKENS,
+        assertEquals(SunkenTargets.BARRACKS_PRESSURE_SUNKENS,
                 TerranBase.bioPressureSunkens(THREE_RAX, BIO_BALL, NO_TWO_RAX_ACADEMY, AFTER_THE_TWO_RAX_WINDOW));
     }
 
     @Test
     void lowersTheBarracksAnswerOnlyWhenTheBarracksThemselvesAreGone() {
-        assertEquals(TerranBase.BARRACKS_PRESSURE_SUNKENS,
+        assertEquals(SunkenTargets.BARRACKS_PRESSURE_SUNKENS,
                 TerranBase.bioPressureSunkens(THREE_RAX, 0, NO_TWO_RAX_ACADEMY, AFTER_THE_OLD_BIO_CLIFF));
         assertEquals(0, TerranBase.bioPressureSunkens(TWO_RAX, 0, NO_TWO_RAX_ACADEMY, AFTER_THE_OLD_BIO_CLIFF));
     }
@@ -169,7 +169,7 @@ class TerranBaseTest {
         int barracksAndBio = TerranBase.bioPressureSunkens(THREE_RAX, BIO_BALL, NO_TWO_RAX_ACADEMY, AFTER_THE_OLD_BIO_CLIFF);
         int bioAlone = TerranBase.bioPressureSunkens(NO_BARRACKS_SEEN, BIO_BALL, NO_TWO_RAX_ACADEMY, AFTER_THE_OLD_BIO_CLIFF);
 
-        assertEquals(TerranBase.BARRACKS_PRESSURE_SUNKENS, barracksAndBio);
+        assertEquals(SunkenTargets.BARRACKS_PRESSURE_SUNKENS, barracksAndBio);
         assertTrue(barracksAndBio > bioAlone);
     }
 
@@ -199,8 +199,8 @@ class TerranBaseTest {
     void holdsTheBarracksAnswerAboveTheOneBaseFloorWhenBothFire() {
         int matchup = TerranBase.bioPressureSunkens(THREE_RAX, BIO_BALL, NO_TWO_RAX_ACADEMY, AFTER_THE_OLD_BIO_CLIFF);
 
-        assertEquals(TerranBase.BARRACKS_PRESSURE_SUNKENS,
-                SunkenTargets.sunkenTarget(matchup, ONE_BASE, AFTER_THE_OLD_BIO_CLIFF));
+        assertEquals(SunkenTargets.BARRACKS_PRESSURE_SUNKENS,
+                SunkenTargets.sunkenTarget(matchup, ONE_BASE, THREE_RAX, AFTER_THE_OLD_BIO_CLIFF));
     }
 
     @Test
@@ -208,6 +208,6 @@ class TerranBaseTest {
         int matchup = TerranBase.bioPressureSunkens(TWO_RAX, 0, NO_TWO_RAX_ACADEMY, AFTER_THE_OLD_BIO_CLIFF);
 
         assertEquals(0, matchup);
-        assertTrue(SunkenTargets.sunkenTarget(matchup, ONE_BASE, AFTER_THE_OLD_BIO_CLIFF) >= 2);
+        assertTrue(SunkenTargets.sunkenTarget(matchup, ONE_BASE, TWO_RAX, AFTER_THE_OLD_BIO_CLIFF) >= 2);
     }
 }

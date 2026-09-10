@@ -28,6 +28,16 @@ class SunkenTargetsTest {
 
     private static final int MATCHUP_ABOVE_FLOOR = 3;
 
+    private static final int THREE_RAX = 3;
+
+    private static final int TWO_RAX = 2;
+
+    private static final int NO_BARRACKS = 0;
+
+    private static final int MATCHUP_SILENT = 0;
+
+    private static final int MATCHUP_ABOVE_BARRACKS_FLOOR = 4;
+
     @Test
     void readsASingleEarlyRaxAsNoPressure() {
         assertFalse(SunkenTargets.isBarracksPressure(0));
@@ -75,19 +85,66 @@ class SunkenTargetsTest {
 
     @Test
     void leavesAMatchupTargetAloneWhenTheFloorIsNotOwed() {
-        assertEquals(MATCHUP_BELOW_FLOOR, SunkenTargets.sunkenTarget(MATCHUP_BELOW_FLOOR, EXPANDED, LATE));
-        assertEquals(0, SunkenTargets.sunkenTarget(0, ONE_BASE, BEFORE_ONE_BASE_RESPONSE));
+        assertEquals(MATCHUP_BELOW_FLOOR, SunkenTargets.sunkenTarget(MATCHUP_BELOW_FLOOR, EXPANDED, NO_BARRACKS, LATE));
+        assertEquals(0, SunkenTargets.sunkenTarget(0, ONE_BASE, NO_BARRACKS, BEFORE_ONE_BASE_RESPONSE));
     }
 
     @Test
     void raisesAMatchupTargetThatSitsUnderTheOneBaseFloor() {
         assertEquals(SunkenTargets.ONE_BASE_SUNKENS,
-                SunkenTargets.sunkenTarget(MATCHUP_BELOW_FLOOR, ONE_BASE, AFTER_ONE_BASE_RESPONSE));
+                SunkenTargets.sunkenTarget(MATCHUP_BELOW_FLOOR, ONE_BASE, NO_BARRACKS, AFTER_ONE_BASE_RESPONSE));
     }
 
     @Test
     void keepsTheHigherMatchupTargetWhenBothRulesFire() {
         assertEquals(MATCHUP_ABOVE_FLOOR,
-                SunkenTargets.sunkenTarget(MATCHUP_ABOVE_FLOOR, ONE_BASE, AFTER_ONE_BASE_RESPONSE));
+                SunkenTargets.sunkenTarget(MATCHUP_ABOVE_FLOOR, ONE_BASE, NO_BARRACKS, AFTER_ONE_BASE_RESPONSE));
+    }
+
+    @Test
+    void pinsTheThresholdsThemselvesAndNotOnlyTheirRelationships() {
+        assertEquals(3, SunkenTargets.BARRACKS_PRESSURE_COUNT);
+        assertEquals(3, SunkenTargets.BARRACKS_PRESSURE_SUNKENS);
+        assertEquals(2, SunkenTargets.ONE_BASE_SUNKENS);
+    }
+
+    @Test
+    void asksForThreeSunkensOffThreeBarracksWithNoMatchupClassInPlay() {
+        assertEquals(SunkenTargets.BARRACKS_PRESSURE_SUNKENS, SunkenTargets.barracksPressureSunkens(THREE_RAX));
+    }
+
+    @Test
+    void asksForNothingOffFewerBarracksThanThePressureCount() {
+        assertEquals(0, SunkenTargets.barracksPressureSunkens(NO_BARRACKS));
+        assertEquals(0, SunkenTargets.barracksPressureSunkens(TWO_RAX));
+    }
+
+    @Test
+    void isInertAgainstAnOpponentWithNoBarracksAtAll() {
+        assertEquals(MATCHUP_SILENT, SunkenTargets.sunkenTarget(MATCHUP_SILENT, EXPANDED, NO_BARRACKS, LATE));
+    }
+
+    /**
+     * SpeedlingAllIn and every opener extend BuildOrder directly, so matchupSunkens is the zero
+     * default and this floor is the only thing that can answer three Barracks on those builds.
+     */
+    @Test
+    void raisesASilentMatchupToTheBarracksFloor() {
+        assertEquals(SunkenTargets.BARRACKS_PRESSURE_SUNKENS,
+                SunkenTargets.sunkenTarget(MATCHUP_SILENT, EXPANDED, THREE_RAX, BEFORE_ONE_BASE_RESPONSE));
+    }
+
+    @Test
+    void keepsAMatchupTargetThatAlreadyOutbidsBothFloors() {
+        assertEquals(MATCHUP_ABOVE_BARRACKS_FLOOR,
+                SunkenTargets.sunkenTarget(MATCHUP_ABOVE_BARRACKS_FLOOR, ONE_BASE, THREE_RAX, AFTER_ONE_BASE_RESPONSE));
+    }
+
+    @Test
+    void takesTheHigherOfTheTwoFloorsWhenBothApply() {
+        assertEquals(SunkenTargets.BARRACKS_PRESSURE_SUNKENS,
+                SunkenTargets.sunkenTarget(MATCHUP_SILENT, ONE_BASE, THREE_RAX, AFTER_ONE_BASE_RESPONSE));
+        assertEquals(SunkenTargets.ONE_BASE_SUNKENS,
+                SunkenTargets.sunkenTarget(MATCHUP_SILENT, ONE_BASE, TWO_RAX, AFTER_ONE_BASE_RESPONSE));
     }
 }

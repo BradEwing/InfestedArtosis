@@ -26,6 +26,8 @@ import telemetry.PlanEvents;
 import util.Time;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
@@ -41,6 +43,18 @@ public abstract class BuildOrder {
     private static final int UNKNOWN_RACE_BASE_TARGET = 2;
     private static final int UNKNOWN_RACE_ZERGLING_PLANS = 2;
     private static final String ONE_BASE_STRATEGY = "1Base";
+
+    /**
+     * Multiplier that lets a base tile collapse to one sortable number. Larger than any Brood War
+     * map dimension, so no two tiles can share a rank.
+     */
+    private static final long TILE_RANK_STRIDE = 1024;
+
+    /**
+     * Rank added to every base that is not the main, above anything {@link #TILE_RANK_STRIDE} can
+     * produce, so the main always sorts first when it is a candidate.
+     */
+    private static final long NON_MAIN_BASE_RANK = 1L << 32;
 
     /**
      * The only unit every terminal build can morph without gas once its Spawning Pool is up, which
@@ -154,15 +168,19 @@ public abstract class BuildOrder {
     }
 
     /**
-     * Sunkens per base the bot wants: the matchup term under the race agnostic 1Base floor.
+     * Sunkens per base the bot wants: the matchup term under the race agnostic floors.
      * <p>
-     * The floor is applied here rather than in each matchup because the detection behind it is
-     * race agnostic, and because every reader of this number - the emergency defense path, the
-     * default colony helper and each build order's own plan loop - has to see the same target.
+     * The floors are applied here rather than in each matchup because a matchup class is not
+     * always in play. SpeedlingAllIn plays every race and every opener extends this class
+     * directly, so for those builds {@link #matchupSunkens(GameState)} is the zero default and a
+     * floor is the only thing that can answer a threat. Applying them once here also means every
+     * reader of this number - the defense path, the default colony helper and each build order's
+     * own plan loop - sees the same target.
      */
     protected final int requiredSunkens(GameState gameState) {
         return SunkenTargets.sunkenTarget(matchupSunkens(gameState),
                 gameState.getStrategyTracker().isDetectedStrategy(ONE_BASE_STRATEGY),
+                gameState.enemyUnitCount(UnitType.Terran_Barracks),
                 gameState.getGameTime());
     }
 
@@ -210,20 +228,25 @@ public abstract class BuildOrder {
     }
 
     /**
-     * Emergency defense reachable from every build order, including openers that
-     * never plan static defense. 
-     * Returned plans carry reservations (sunken base, build tiles, planned unit counts) and
+     * Defense reachable from every build order, including the openers and SpeedlingAllIn that
+     * never plan colonies of their own.
+     *
+     * <p>The static defense half runs on any frame the target is unmet, not only while the bot is
+     * rushed. A build order that never calls {@link #planSunkenColony(GameState)} has no other way
+     * to spend a target, so gating this on {@link GameState#isEarlyRushed()} left every such build
+     * with nothing at all against a push that arrives after EarlyRush stops looking. The emergency
+     * priority and the rushed sunken floor still apply only while rushed, so a target the build
+     * order would have reached on its own does not jump the queue ahead of the spawning pool.
+     *
+     * <p>The zergling half stays emergency only: it is a response to units already at our bases.
+     *
+     * <p>Returned plans carry reservations (sunken base, build tiles, planned unit counts) and
      * must be added to the production queue by the caller.
      */
-    public List<Plan> planEmergencyDefense(GameState gameState) {
-        List<Plan> plans = new ArrayList<>();
+    public List<Plan> planDefense(GameState gameState) {
+        List<Plan> plans = new ArrayList<>(planStaticDefense(gameState));
         if (!gameState.isEarlyRushed()) {
             return plans;
-        }
-        int sunkenTarget = Math.max(this.requiredSunkens(gameState), earlyRushSunkens(gameState));
-        boolean poolComplete = gameState.getTechProgression().isSpawningPool();
-        if (poolComplete && !gameState.basesNeedingSunken(sunkenTarget).isEmpty()) {
-            plans.addAll(this.planSunkenColony(gameState, EMERGENCY_DEFENSE_PRIORITY, sunkenTarget));
         }
         int zerglingTarget = Math.max(this.zerglingsNeeded(gameState), earlyRushZerglings(gameState));
         int zerglingCount = gameState.ourUnitCount(UnitType.Zerg_Zergling);
@@ -233,6 +256,23 @@ public abstract class BuildOrder {
             plans.add(zerglingPlan);
         }
         return plans;
+    }
+
+    private Set<Plan> planStaticDefense(GameState gameState) {
+        if (!gameState.getTechProgression().isSpawningPool()) {
+            return Collections.emptySet();
+        }
+        boolean earlyRushed = gameState.isEarlyRushed();
+        int sunkenTarget = this.requiredSunkens(gameState);
+        int priority = DEFAULT_COLONY_PRIORITY;
+        if (earlyRushed) {
+            sunkenTarget = Math.max(sunkenTarget, earlyRushSunkens(gameState));
+            priority = EMERGENCY_DEFENSE_PRIORITY;
+        }
+        if (gameState.basesNeedingSunken(sunkenTarget).isEmpty()) {
+            return Collections.emptySet();
+        }
+        return this.planSunkenColony(gameState, priority, sunkenTarget);
     }
 
     /**
@@ -381,6 +421,27 @@ public abstract class BuildOrder {
     }
 
     /**
+     * Sorts a base for static defense, main first and every other base by its tile.
+     * <p>
+     * The set of bases needing a sunken is a HashSet, so taking the first element made the choice
+     * depend on hash order: with the main and the natural both short of the target, whichever
+     * hashed first took the whole deficit and the main could be left under its target. The main
+     * wins whenever it is a candidate at all, because it is only eligible while a reaction has
+     * decided the main needs defending. The tile term is a tie break that only has to be stable,
+     * not meaningful; which of two equally eligible expansions is served first is placement
+     * policy, which this does not try to decide.
+     *
+     * @param isMainBase whether the base is our main
+     * @param tileX base tile x
+     * @param tileY base tile y
+     * @return a rank that sorts ascending, main first
+     */
+    static long sunkenBaseRank(boolean isMainBase, int tileX, int tileY) {
+        long tieBreak = tileX * TILE_RANK_STRIDE + tileY;
+        return isMainBase ? tieBreak : NON_MAIN_BASE_RANK + tieBreak;
+    }
+
+    /**
      * Returns Creep and Sunken Colony plan pairs, up to the deficit one base can be short of.
      *
      * <p>Each pair reserves its base and its build tiles before the next base is chosen, so the
@@ -396,8 +457,11 @@ public abstract class BuildOrder {
         Set<Plan> plans = new HashSet<>();
         BaseData baseData = gameState.getBaseData();
         BuildingPlanner buildingPlanner = gameState.getBuildingPlanner();
+        Base mainBase = baseData.getMainBase();
         for (int planned = 0; planned < target; planned++) {
-            Optional<Base> eligibleBase = gameState.basesNeedingSunken(target).stream().findFirst();
+            Optional<Base> eligibleBase = gameState.basesNeedingSunken(target).stream()
+                    .min(Comparator.comparingLong(base -> sunkenBaseRank(base == mainBase,
+                            base.getLocation().getX(), base.getLocation().getY())));
             if (!eligibleBase.isPresent()) {
                 break;
             }

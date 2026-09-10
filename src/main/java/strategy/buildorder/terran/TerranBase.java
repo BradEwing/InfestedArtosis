@@ -36,8 +36,6 @@ public class TerranBase extends BuildOrder {
 
     static final int ZERGLINGS_PER_FACTORY = 6;
 
-    static final int BARRACKS_PRESSURE_SUNKENS = 3;
-
     static final int TWO_RAX_ACADEMY_SUNKENS = 3;
 
     static final int EARLY_BIO_PRESSURE_BIO = 5;
@@ -223,7 +221,7 @@ public class TerranBase extends BuildOrder {
      */
     static int bioPressureSunkens(int enemyBarracks, int bioCount, boolean twoRaxAcademy, Time gameTime) {
         if (SunkenTargets.isBarracksPressure(enemyBarracks)) {
-            return BARRACKS_PRESSURE_SUNKENS;
+            return SunkenTargets.BARRACKS_PRESSURE_SUNKENS;
         } else if (twoRaxAcademy && gameTime.greaterThan(TWO_RAX_ACADEMY_OPENS)
                 && gameTime.lessThanOrEqual(TWO_RAX_ACADEMY_CLOSES)) {
             return TWO_RAX_ACADEMY_SUNKENS;
