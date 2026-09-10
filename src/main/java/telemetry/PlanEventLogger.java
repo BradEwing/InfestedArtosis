@@ -38,6 +38,7 @@ public class PlanEventLogger implements PlanEventSink {
     private static final String EVENT_BUILD_AHEAD_HOLD = "BUILD_AHEAD_HOLD";
     private static final String EVENT_BUILD_AHEAD_EVICT = "BUILD_AHEAD_EVICT";
     private static final String EVENT_WITHHELD = "WITHHELD";
+    private static final String EVENT_UNPLANNED_CANCEL = "UNPLANNED_CANCEL";
 
     private static final int NO_STARVED_COUNT = -1;
 
@@ -152,6 +153,24 @@ public class PlanEventLogger implements PlanEventSink {
             PlanTrace opened = new PlanTrace(currentFrame);
             opened.startBlocker(blocker, currentFrame);
             withheld.put(item, opened);
+        } catch (Exception e) {
+            disabled = true;
+        }
+    }
+
+    /**
+     * Records a cancellation issued straight at a unit, with no plan behind it. Without this the
+     * reaction that cancels an extractor morph after its plan has already left every plan set leaves
+     * no trace at all in the plan log.
+     */
+    @Override
+    public void onUnplannedCancel(UnitType unitType, PlanCancelSource cancelSource) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            buffer.add(unplannedCancelRow(unitType.toString(), cancelSource));
         } catch (Exception e) {
             disabled = true;
         }
@@ -350,6 +369,26 @@ public class PlanEventLogger implements PlanEventSink {
         sb.append(Csv.sanitize(item)).append(',');
         appendEmpty(sb, 4);
         appendBlocker(sb, blocker, withheldFrames);
+        appendEmpty(sb, 3);
+        appendGameState(sb);
+        appendEmpty(sb, 3);
+        sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
+        appendEmpty(sb, 1);
+        return sb.toString();
+    }
+
+    /** A row for a unit cancelled outside the plan system, so the plan columns are empty. */
+    private String unplannedCancelRow(String item, PlanCancelSource cancelSource) {
+        StringBuilder sb = new StringBuilder();
+        appendEvent(sb, EVENT_UNPLANNED_CANCEL);
+        appendEmpty(sb, 2);
+        sb.append(PlanType.BUILDING).append(',');
+        sb.append(Csv.sanitize(item)).append(',');
+        appendEmpty(sb, 1);
+        sb.append(PlanState.CANCELLED).append(',');
+        sb.append(cancelSource.getReason()).append(',');
+        sb.append(cancelSource).append(',');
+        appendBlocker(sb, PlanBlocker.NONE, 0);
         appendEmpty(sb, 3);
         appendGameState(sb);
         appendEmpty(sb, 3);

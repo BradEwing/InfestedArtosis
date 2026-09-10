@@ -3,6 +3,7 @@ package telemetry;
 import bwapi.UnitType;
 import macro.plan.Plan;
 import macro.plan.PlanBlocker;
+import macro.plan.PlanCancelSource;
 import macro.plan.PlanState;
 
 import java.util.List;
@@ -35,5 +36,9 @@ public interface PlanEventSink {
 
     /** A build order wanted a unit but created no plan because the blocker would sweep it. */
     default void onWithheld(UnitType unitType, PlanBlocker blocker) {
+    }
+
+    /** A unit was cancelled outside the plan system, so no plan transition records the cancellation. */
+    default void onUnplannedCancel(UnitType unitType, PlanCancelSource cancelSource) {
     }
 }
