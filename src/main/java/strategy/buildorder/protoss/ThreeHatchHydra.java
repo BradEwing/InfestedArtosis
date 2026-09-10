@@ -8,6 +8,7 @@ import info.GameState;
 import info.TechProgression;
 import info.tracking.StrategyTracker;
 import macro.plan.Plan;
+import strategy.buildorder.ZerglingTargets;
 import util.Time;
 
 import java.util.ArrayList;
@@ -20,6 +21,8 @@ import java.util.List;
  * instead of Mutalisks. Focuses on ground army composition.
  */
 public class ThreeHatchHydra extends ProtossBase {
+
+    static final int HYDRALISKS_BEFORE_ZERGLINGS = 11;
 
     private boolean plannedFirstMacroHatch = false;
     private boolean plannedSecondMacroHatch = false;
@@ -387,10 +390,10 @@ public class ThreeHatchHydra extends ProtossBase {
     protected int zerglingsNeeded(GameState gameState) {
         final boolean den = gameState.getTechProgression().isHydraliskDen();
         final int hydras = gameState.ourUnitCount(UnitType.Zerg_Hydralisk);
-        if (den && hydras < 11) {
-            return 0;
-        }
+        final boolean gasReachable = ZerglingTargets.gasUnitReachable(gameState.getGeyserWorkers(),
+                gameState.getResourceCount().availableGas(), UnitType.Zerg_Hydralisk.gasPrice());
 
-        return super.zerglingsNeeded(gameState);
+        return ZerglingTargets.gasUnitFocus(super.zerglingsNeeded(gameState), den, hydras,
+                HYDRALISKS_BEFORE_ZERGLINGS, gasReachable);
     }
 }
