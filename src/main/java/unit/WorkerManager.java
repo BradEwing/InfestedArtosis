@@ -40,6 +40,15 @@ public class WorkerManager {
     // Buffered w/ 10 additional frames
     final int OVERLORD_HATCH_ANIMATION_FRAMES = 26;
 
+    // Unreserved gas above unreserved minerals that marks gas as floating
+    static final int GAS_SURPLUS = 150;
+
+    // Unreserved minerals above unreserved gas that marks minerals as floating
+    static final int MINERAL_SURPLUS = 100;
+
+    // Mineral drones needed before any of them may be moved onto a geyser
+    static final int MIN_MINERAL_GATHERERS = 4;
+
     public WorkerManager(Game game, GameState gameState) {
         this.game = game;
         this.gameState = gameState;
@@ -141,7 +150,7 @@ public class WorkerManager {
         final List<ManagedUnit> newGeyserWorkers = new ArrayList<>();
 
         // If less than 4 mineral workers, there are probably other problems
-        if (mineralGatherers.size() < 4) {
+        if (mineralGatherers.size() < MIN_MINERAL_GATHERERS) {
             return;
         }
 
@@ -469,12 +478,67 @@ public class WorkerManager {
 
     private void rebalanceCheck() {
         ResourceCount resourceCount = gameState.getResourceCount();
+        final int availableMinerals = resourceCount.availableMinerals();
+        final int availableGas = resourceCount.availableGas();
 
-        if (resourceCount.isFloatingGas()) {
+        if (shouldCutGasHarvesting(availableMinerals, availableGas)) {
             cutGasHarvesting();
-        } else if (resourceCount.isFloatingMinerals()) {
+        } else if (shouldSaturateGeysers(availableMinerals, availableGas)) {
             saturateGeysers();
         }
+    }
+
+    /**
+     * True when unreserved gas has outrun unreserved minerals far enough that the drones on the
+     * geyser are worth more on a mineral patch.
+     *
+     * <p>A mineral deficit is not a gas surplus. {@link ResourceCount#availableMinerals()} goes
+     * negative whenever reservations outrun the bank, which is the normal state of a Zerg bank,
+     * and subtracting a negative read as floating gas while holding well under
+     * {@link #GAS_SURPLUS} gas. The mineral side is floored at zero so only gas the bot actually
+     * holds and has not already claimed can trigger the cut.
+     *
+     * @param availableMinerals minerals mined and unreserved, which may be negative
+     * @param availableGas gas mined and unreserved, which may be negative
+     * @return true when every drone should come off gas
+     */
+    static boolean shouldCutGasHarvesting(int availableMinerals, int availableGas) {
+        return availableGas - Math.max(0, availableMinerals) > GAS_SURPLUS;
+    }
+
+    /**
+     * True when mineral drones should be moved onto an under-manned geyser.
+     *
+     * <p>Two states qualify: minerals floating clear of gas, and no unreserved gas left at all.
+     * The second is what undoes a cut. A mineral surplus large enough to satisfy the first is rare
+     * while reservations hold the bank down, so without it the geysers a cut emptied stay empty
+     * for the rest of the game.
+     *
+     * @param availableMinerals minerals mined and unreserved, which may be negative
+     * @param availableGas gas mined and unreserved, which may be negative
+     * @return true when geysers should be saturated
+     */
+    static boolean shouldSaturateGeysers(int availableMinerals, int availableGas) {
+        return availableGas <= 0 || availableMinerals - availableGas > MINERAL_SURPLUS;
+    }
+
+    /**
+     * Number of mineral drones that may move onto a geyser this frame.
+     *
+     * <p>Applies the floor {@link #onExtractorComplete} already uses. It matters here because a
+     * saturation now also runs when gas has merely been spent, not only when minerals float, so
+     * the path is reachable at drone counts where taking the last gatherers would stop mineral
+     * income outright.
+     *
+     * @param mineralGatherers drones currently on minerals
+     * @param openSlots unfilled geyser slots
+     * @return how many drones may be moved
+     */
+    static int spareGeyserWorkers(int mineralGatherers, int openSlots) {
+        if (mineralGatherers < MIN_MINERAL_GATHERERS) {
+            return 0;
+        }
+        return Math.min(openSlots, mineralGatherers);
     }
 
     /**
@@ -505,7 +569,11 @@ public class WorkerManager {
             return;
         }
 
-        int workerLimit = Math.min(totalNeeded, availableWorkers.size());
+        int workerLimit = spareGeyserWorkers(availableWorkers.size(), totalNeeded);
+        if (workerLimit < 1) {
+            return;
+        }
+
         Map<ManagedUnit, Unit> workerTargets = new LinkedHashMap<>();
 
         while (!remainingSlots.isEmpty() && !availableWorkers.isEmpty() && workerTargets.size() < workerLimit) {

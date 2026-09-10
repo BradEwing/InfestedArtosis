@@ -253,10 +253,6 @@ public class ResourceCount {
         return availableMinerals() - availableGas() > 100; 
     }
 
-    public boolean isFloatingGas() { 
-        return availableGas() - availableMinerals() > 150; 
-    }
-
     public int getPlannedSupply() {
         return plannedSupply;
     }
