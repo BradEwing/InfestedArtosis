@@ -813,6 +813,21 @@ public class ProductionManager {
         return outcome;
     }
 
+    /**
+     * Separates a shortfall that income will cover from one that no worker is gathering for.
+     *
+     * <p>An upgrade or a research plan reports its own affordability, unlike a building or a unit,
+     * whose build-ahead gates already convert an unreachable projection to NO_INCOME. Reporting
+     * RESOURCES for a cost nobody is mining hands the plan the bank through claimsBank, and it
+     * holds it against the Extractor that would have started the income.
+     *
+     * @param predictedReadyFrame the frame the plan can pay its own cost
+     * @return RESOURCES while the shortfall can still be gathered, otherwise NO_INCOME
+     */
+    static PlanBlocker shortfallBlocker(int predictedReadyFrame) {
+        return BuildAheadSlot.isUnreachable(predictedReadyFrame) ? PlanBlocker.NO_INCOME : PlanBlocker.RESOURCES;
+    }
+
     static boolean claimsBank(PlanBlocker blocker) {
         return blocker == PlanBlocker.RESOURCES;
     }
@@ -1279,7 +1294,7 @@ public class ProductionManager {
         ResourceCount resourceCount = gameState.getResourceCount();
 
         if (resourceCount.cannotAffordUpgrade(plan)) {
-            return PlanBlocker.RESOURCES;
+            return shortfallBlocker(gameState.frameCanAffordPlan(plan, currentFrame));
         }
 
         Unit nextAvailable = null;
@@ -1327,7 +1342,7 @@ public class ProductionManager {
         ResourceCount resourceCount = gameState.getResourceCount();
 
         if (resourceCount.cannotAffordResearch(techType)) {
-            return PlanBlocker.RESOURCES;
+            return shortfallBlocker(gameState.frameCanAffordPlan(plan, currentFrame));
         }
 
         Unit nextAvailable = null;

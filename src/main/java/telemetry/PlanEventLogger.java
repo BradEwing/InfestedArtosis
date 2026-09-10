@@ -45,20 +45,21 @@ public class PlanEventLogger implements PlanEventSink {
     private static final String EVENT_RECURRING_CANCEL = "RECURRING_CANCEL";
 
     /**
-     * 37 columns. Was 32 before executor_unit_id, reserved_larva and builder_distance_px were
-     * added, 35 before assigned_larva and 36 before enemy_air; readers that index by position
-     * rather than by name need updating.
+     * 38 columns. Was 32 before executor_unit_id, reserved_larva and builder_distance_px were
+     * added, 35 before assigned_larva, 36 before enemy_air and 37 before gas_gathered; readers that
+     * index by position rather than by name need updating. enemy_air and gas_gathered are trailing
+     * cumulative columns written by {@link #appendGameTotals}, so every row shape keeps one width.
      * <p>
      * larva, assigned_larva and reserved_larva are three terms of one sum, not three views of it.
      * A larva handed to a plan leaves the larva set while its reservation stands, so larva free
      * for another plan is {@code larva + assigned_larva - reserved_larva}, which is the arithmetic
      * {@link info.ResourceCount#canScheduleLarva} applies.
      */
-    private static final String PLAN_HEADER = "frame,time,event,plan_id,executor_unit_id,plan_type,item,from_state,"
+    static final String PLAN_HEADER = "frame,time,event,plan_id,executor_unit_id,plan_type,item,from_state,"
             + "to_state,cancel_reason,cancel_source,blocker,blocked_frames,priority,frames_in_state,age_frames,"
             + "minerals,gas,available_minerals,available_gas,supply_used_real,supply_total_real,larva,assigned_larva,"
             + "reserved_larva,gatherers,queue_depth,plans_scheduled,plans_building,plans_morphing,build_tile_x,"
-            + "build_tile_y,macro_hatchery,build_order,starved_behind,builder_distance_px,enemy_air";
+            + "build_tile_y,macro_hatchery,build_order,starved_behind,builder_distance_px,enemy_air,gas_gathered";
 
     private static final String GAME_HEADER = "timestamp,is_winner,num_starting_locations,map_name,opponent_name,"
             + "opponent_race,opener,build_order,detected_strategies,frame_count";
@@ -351,7 +352,7 @@ public class PlanEventLogger implements PlanEventSink {
         sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
         sb.append(starvedBehind == NO_STARVED_COUNT ? "" : String.valueOf(starvedBehind)).append(',');
         sb.append(builderDistance(executor, buildPosition)).append(',');
-        sb.append(gameState.observedEnemyAirCombatUnitCount());
+        appendGameTotals(sb);
         return sb.toString();
     }
 
@@ -381,7 +382,7 @@ public class PlanEventLogger implements PlanEventSink {
         appendEmpty(sb, 3);
         sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
         appendEmpty(sb, 2);
-        sb.append(gameState.observedEnemyAirCombatUnitCount());
+        appendGameTotals(sb);
         return sb.toString();
     }
 
@@ -402,7 +403,23 @@ public class PlanEventLogger implements PlanEventSink {
         appendEmpty(sb, 3);
         sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
         appendEmpty(sb, 1);
+        appendEmpty(sb, 1);
+        appendGameTotals(sb);
         return sb.toString();
+    }
+
+    /**
+     * The trailing cumulative columns, written by every row shape.
+     *
+     * <p>row and withheldRow build their middles independently, so a trailing column added to one
+     * of them alone changes what a reader indexing by position finds in the other. Every trailing
+     * column belongs here so both shapes keep the same width.
+     *
+     * @param sb the row being built
+     */
+    private void appendGameTotals(StringBuilder sb) {
+        sb.append(gameState.observedEnemyAirCombatUnitCount()).append(',');
+        sb.append(gameState.getSelf().gatheredGas());
     }
 
     private void appendEvent(StringBuilder sb, String event) {

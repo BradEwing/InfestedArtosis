@@ -157,6 +157,28 @@ public class ResourceCount {
     }
 
     /**
+     * Predict the frame when a plan's own cost can be paid.
+     *
+     * <p>Reads the plan's price rather than a UnitType, so an upgrade or a research plan gets the
+     * same projection a building does. Returns a frame in the infinite future when a resource the
+     * plan needs has no worker gathering it.
+     *
+     * @param plan the plan whose cost is projected
+     * @param currentFrame game's current frame
+     * @param mineralWorkers number of workers on minerals
+     * @param gasWorkers number of workers on gas
+     * @return frame when all resources will be available
+     */
+    public int frameCanAffordPlan(Plan plan, int currentFrame, int mineralWorkers, int gasWorkers) {
+        return frameCanGather(
+                plan.mineralPrice() + reservedMinerals - self.minerals(),
+                plan.gasPrice() + reservedGas - self.gas(),
+                currentFrame,
+                mineralWorkers,
+                gasWorkers);
+    }
+
+    /**
      * Predict the frame when a cost already standing in the reservation ledger can be paid.
      *
      * <p>{@link #frameCanAffordUnit} adds the price on top of the ledger, which counts a plan that

@@ -24,6 +24,8 @@ public class ThreeHatchHydra extends ProtossBase {
 
     static final int HYDRALISKS_BEFORE_ZERGLINGS = 11;
 
+    private static final int METABOLIC_BOOST_ZERGLINGS = 12;
+
     private boolean plannedFirstMacroHatch = false;
     private boolean plannedSecondMacroHatch = false;
     private boolean plannedThirdMacroHatch = false;
@@ -54,6 +56,7 @@ public class ThreeHatchHydra extends ProtossBase {
         int hydraCount = gameState.ourUnitCount(UnitType.Zerg_Hydralisk);
         int droneCount = gameState.ourUnitCount(UnitType.Zerg_Drone);
         int zerglingCount = gameState.ourUnitCount(UnitType.Zerg_Zergling);
+        int livingZerglings = gameState.ourLivingUnitCount(UnitType.Zerg_Zergling);
 
         // Gas timing
         boolean gasBlocked = cannonRushed && time.lessThanOrEqual(new Time(4, 0));
@@ -84,7 +87,8 @@ public class ThreeHatchHydra extends ProtossBase {
         boolean wantLair = gameState.canPlanLair() && lairCount < 1 && time.greaterThan(new Time(5, 0)) && baseCount >= 3;
 
         // Upgrade timing
-        boolean wantMetabolicBoost = techProgression.canPlanMetabolicBoost() && zerglingCount > 12;
+        boolean wantMetabolicBoost = shouldPlanMetabolicBoost(
+                gameState.canPlanUpgrade(UpgradeType.Metabolic_Boost), livingZerglings);
         boolean wantMuscularAugments = techProgression.canPlanMuscularAugments();
         boolean wantGroovedSpines = techProgression.canPlanGroovedSpines();
         boolean wantRangedUpgrades = techProgression.canPlanRangedUpgrades();
@@ -389,6 +393,20 @@ public class ThreeHatchHydra extends ProtossBase {
     @Override
     public boolean needLair() {
         return true;
+    }
+
+    /**
+     * Whether Metabolic Boost is worth its gas yet.
+     *
+     * <p>Counted on living Zerglings. A queued Zergling plan adds two to the planned count, so a
+     * milestone read off planned units clears a twelve Zergling gate on seven eggs and no army.
+     *
+     * @param canPlanMetabolicBoost whether the Extractor, the pool and the upgrade state allow it
+     * @param livingZerglings Zerglings alive on the map
+     * @return true while the upgrade should be queued
+     */
+    static boolean shouldPlanMetabolicBoost(boolean canPlanMetabolicBoost, int livingZerglings) {
+        return canPlanMetabolicBoost && livingZerglings > METABOLIC_BOOST_ZERGLINGS;
     }
 
     @Override

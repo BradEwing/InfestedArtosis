@@ -71,7 +71,7 @@ public class NinePoolSpeed extends BuildOrder {
         int supplyUsed     = gameState.getSupply();
         int overlordCount  = gameState.ourUnitCount(UnitType.Zerg_Overlord);
         int poolCount      = gameState.ourUnitCount(UnitType.Zerg_Spawning_Pool);
-        int extractorCount = gameState.ourUnitCount(UnitType.Zerg_Extractor);
+        int extractorCount = gameState.getBaseData().numExtractor();
         int zerglingCount  = gameState.ourUnitCount(UnitType.Zerg_Zergling);
 
         if (droneCount < 9 && gameState.canPlanDrone()) {
@@ -99,7 +99,7 @@ public class NinePoolSpeed extends BuildOrder {
             return plans;
         }
 
-        if (shouldPlanExtractor(poolCount, extractorCount, gameState.canPlanExtractor(), gameTime.greaterThan(GAS_TIME))) {
+        if (shouldPlanExtractor(extractorCount, gameState.canPlanExtractor(), gameTime.greaterThan(GAS_TIME))) {
             plans.add(planExtractor(gameState));
             return plans;
         }
@@ -141,7 +141,19 @@ public class NinePoolSpeed extends BuildOrder {
         return supplyUsed >= POOL_SUPPLY;
     }
 
-    static boolean shouldPlanExtractor(int poolCount, int extractorCount, boolean canPlanExtractor, boolean pastGasTime) {
-        return poolCount > 0 && extractorCount < 1 && canPlanExtractor && pastGasTime;
+    /**
+     * Whether the opener takes its gas yet.
+     *
+     * <p>Reads the pool through canPlanExtractor, which opens once the pool is planned. A gate on
+     * a completed pool is the same expression as openerComplete, so against a known opponent race
+     * the opener handed off on the frame its own gas branch first became true.
+     *
+     * @param extractorCount Extractors standing or reserved by a queued plan
+     * @param canPlanExtractor whether a geyser is free and the pool is planned or standing
+     * @param pastGasTime whether the game is past GAS_TIME
+     * @return true while the Extractor should be queued
+     */
+    static boolean shouldPlanExtractor(int extractorCount, boolean canPlanExtractor, boolean pastGasTime) {
+        return extractorCount < 1 && canPlanExtractor && pastGasTime;
     }
 }
