@@ -8,6 +8,7 @@ import info.BaseData;
 import info.UnitTypeCount;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import strategy.buildorder.SunkenTargets;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
@@ -43,6 +44,10 @@ public class ReactionsTest {
     private static final boolean COMPLETE = true;
 
     private static final boolean INCOMPLETE = false;
+
+    private static final boolean UNDER_BARRACKS_PRESSURE = true;
+
+    private static final boolean NO_BARRACKS_PRESSURE = false;
 
     private BaseData baseData;
 
@@ -136,6 +141,40 @@ public class ReactionsTest {
         Reactions.allowSunkenAtMainIfSingleBase(baseData);
 
         assertTrue(baseData.isAllowSunkenAtMain());
+    }
+
+    @Test
+    void testMainIsClearedOnceTheNaturalIsUpAndNothingIsPushing() throws ReflectiveOperationException {
+        setBaseCounts(2, 0);
+        baseData.setAllowSunkenAtMain(true);
+
+        assertTrue(Reactions.shouldClearMainSunken(baseData, NO_BARRACKS_PRESSURE));
+    }
+
+    /**
+     * Closing the gate cancels the main's queued creep colonies, so the reaction that raised the
+     * sunken count on three Barracks must hold it open on the same threshold.
+     */
+    @Test
+    void testMainStaysOpenUnderBarracksPressureWithTheNaturalUp() throws ReflectiveOperationException {
+        setBaseCounts(2, 0);
+        baseData.setAllowSunkenAtMain(true);
+
+        assertFalse(Reactions.shouldClearMainSunken(baseData, UNDER_BARRACKS_PRESSURE));
+    }
+
+    @Test
+    void testBarracksPressureGateMatchesTheCountTheBuildOrdersAskFor() {
+        assertFalse(SunkenTargets.isBarracksPressure(SunkenTargets.BARRACKS_PRESSURE_COUNT - 1));
+        assertTrue(SunkenTargets.isBarracksPressure(SunkenTargets.BARRACKS_PRESSURE_COUNT));
+    }
+
+    @Test
+    void testNothingIsClearedWhileTheMainIsOurOnlyBase() throws ReflectiveOperationException {
+        setBaseCounts(1, 1);
+        baseData.setAllowSunkenAtMain(true);
+
+        assertFalse(Reactions.shouldClearMainSunken(baseData, NO_BARRACKS_PRESSURE));
     }
 
     @Test

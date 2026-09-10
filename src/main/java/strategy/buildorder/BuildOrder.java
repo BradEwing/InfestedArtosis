@@ -40,6 +40,7 @@ public abstract class BuildOrder {
     private static final int DEFAULT_COLONY_PRIORITY = 5;
     private static final int UNKNOWN_RACE_BASE_TARGET = 2;
     private static final int UNKNOWN_RACE_ZERGLING_PLANS = 2;
+    private static final String ONE_BASE_STRATEGY = "1Base";
 
     /**
      * The only unit every terminal build can morph without gas once its Spawning Pool is up, which
@@ -152,7 +153,24 @@ public abstract class BuildOrder {
         return false;
     }
 
-    protected int requiredSunkens(GameState gameState) {
+    /**
+     * Sunkens per base the bot wants: the matchup term under the race agnostic 1Base floor.
+     * <p>
+     * The floor is applied here rather than in each matchup because the detection behind it is
+     * race agnostic, and because every reader of this number - the emergency defense path, the
+     * default colony helper and each build order's own plan loop - has to see the same target.
+     */
+    protected final int requiredSunkens(GameState gameState) {
+        return SunkenTargets.sunkenTarget(matchupSunkens(gameState),
+                gameState.getStrategyTracker().isDetectedStrategy(ONE_BASE_STRATEGY),
+                gameState.getGameTime());
+    }
+
+    /**
+     * Sunkens per base the matchup asks for, before any race agnostic floor. Each race's base
+     * class overrides this; {@link #requiredSunkens(GameState)} is what callers read.
+     */
+    protected int matchupSunkens(GameState gameState) {
         return 0;
     }
 
@@ -362,26 +380,40 @@ public abstract class BuildOrder {
         return planSunkenColony(gameState, DEFAULT_COLONY_PRIORITY, this.requiredSunkens(gameState));
     }
 
+    /**
+     * Returns Creep and Sunken Colony plan pairs, up to the deficit one base can be short of.
+     *
+     * <p>Each pair reserves its base and its build tiles before the next base is chosen, so the
+     * loop sees the bases it has already served and stops on the caps a single pair would also
+     * have stopped on: the per base target and the five colony ceiling inside
+     * {@link GameState#basesNeedingSunken(int)}. Filling in one call matters because the build
+     * order path that reaches here runs only on frames where the production queue has drained, so
+     * a pair per call spreads a three sunken answer over three drains. The bound is the target
+     * itself, which keeps a target of one behaving exactly as a single pair did and stops a
+     * multi base fan out from pulling the whole mining line off minerals in one frame.
+     */
     protected Set<Plan> planSunkenColony(GameState gameState, int priority, int target) {
         Set<Plan> plans = new HashSet<>();
         BaseData baseData = gameState.getBaseData();
         BuildingPlanner buildingPlanner = gameState.getBuildingPlanner();
-        Optional<Base> eligibleBase = gameState.basesNeedingSunken(target).stream().findFirst();
-        if (!eligibleBase.isPresent()) {
-            return plans;
+        for (int planned = 0; planned < target; planned++) {
+            Optional<Base> eligibleBase = gameState.basesNeedingSunken(target).stream().findFirst();
+            if (!eligibleBase.isPresent()) {
+                break;
+            }
+            TilePosition location = buildingPlanner.getLocationForCreepColony(eligibleBase.get(), gameState.getOpponentRace());
+            if (location == null) {
+                break;
+            }
+            baseData.reserveSunkenColony(eligibleBase.get());
+            buildingPlanner.reservePlannedBuildingTiles(location, UnitType.Zerg_Creep_Colony);
+            Plan creepColonyPlan = new BuildingPlan(UnitType.Zerg_Creep_Colony, priority, location);
+            Plan sunkenColonyPlan = new BuildingPlan(UnitType.Zerg_Sunken_Colony, priority, location);
+            sunkenColonyPlan.setPairedColonyPlan(creepColonyPlan);
+            sunkenColonyPlan.setReservedColonyBase(eligibleBase.get());
+            plans.add(creepColonyPlan);
+            plans.add(sunkenColonyPlan);
         }
-        TilePosition location = buildingPlanner.getLocationForCreepColony(eligibleBase.get(), gameState.getOpponentRace());
-        if (location == null) {
-            return plans;
-        }
-        baseData.reserveSunkenColony(eligibleBase.get());
-        buildingPlanner.reservePlannedBuildingTiles(location, UnitType.Zerg_Creep_Colony);
-        Plan creepColonyPlan = new BuildingPlan(UnitType.Zerg_Creep_Colony, priority, location);
-        Plan sunkenColonyPlan = new BuildingPlan(UnitType.Zerg_Sunken_Colony, priority, location);
-        sunkenColonyPlan.setPairedColonyPlan(creepColonyPlan);
-        sunkenColonyPlan.setReservedColonyBase(eligibleBase.get());
-        plans.add(creepColonyPlan);
-        plans.add(sunkenColonyPlan);
         return plans;
     }
 
