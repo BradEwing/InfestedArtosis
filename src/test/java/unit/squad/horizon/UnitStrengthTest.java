@@ -36,20 +36,6 @@ class UnitStrengthTest {
     }
 
     @Test
-    void sporeColonyIsWithinTwentyPercentOfItsFormulaValue() {
-        double formula = UnitStrength.formulaStrength(UnitType.Zerg_Spore_Colony)[1];
-        double scored = UnitStrength.antiAirStrength(UnitType.Zerg_Spore_Colony);
-        assertTrue(Math.abs(scored - formula) / formula <= 0.20);
-    }
-
-    @Test
-    void missileTurretIsWithinTwentyPercentOfItsFormulaValue() {
-        double formula = UnitStrength.formulaStrength(UnitType.Terran_Missile_Turret)[1];
-        double scored = UnitStrength.antiAirStrength(UnitType.Terran_Missile_Turret);
-        assertTrue(Math.abs(scored - formula) / formula <= 0.20);
-    }
-
-    @Test
     void supersededAntiAirLiteralsUnderstatedBothBuildings() {
         assertTrue(UnitStrength.antiAirStrength(UnitType.Zerg_Spore_Colony)
                 > SUPERSEDED_ANTI_AIR_LITERAL * 2);

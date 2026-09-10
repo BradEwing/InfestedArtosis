@@ -547,7 +547,13 @@ public class HorizonCombatSimulator implements CombatSimulator {
         return baseModifier + (1.0 - baseModifier) * decayProgress;
     }
 
-    private double engageThreshold(Race opponentRace) {
+    /**
+     * Strength ratio a squad must beat before it commits to a fight.
+     *
+     * @param opponentRace race of the opponent
+     * @return the engage threshold for that matchup
+     */
+    static double engageThreshold(Race opponentRace) {
         switch (opponentRace) {
             case Terran:  return 1.4;
             case Protoss: return 1.4;

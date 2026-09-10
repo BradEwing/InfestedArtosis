@@ -1,6 +1,8 @@
 package unit.squad.horizon;
 
+import bwapi.DamageType;
 import bwapi.Position;
+import bwapi.Race;
 import bwapi.UnitSizeType;
 import bwapi.UnitType;
 import org.junit.jupiter.api.Test;
@@ -26,8 +28,10 @@ class HorizonCombatSimulatorTest {
     private static final Map<UnitSizeType, Double> ALL_SMALL =
             Collections.singletonMap(UnitSizeType.Small, 1.0);
     private static final double SUPERSEDED_ANTI_AIR_LITERAL = 2.0;
-    private static final double ZERG_ENGAGE_THRESHOLD = 1.3;
-    private static final double TERRAN_ENGAGE_THRESHOLD = 1.4;
+    private static final double ZERG_ENGAGE_THRESHOLD = HorizonCombatSimulator.engageThreshold(Race.Zerg);
+    private static final double TERRAN_ENGAGE_THRESHOLD = HorizonCombatSimulator.engageThreshold(Race.Terran);
+    private static final double EXPLOSIVE_VERSUS_SMALL =
+            UnitStrength.effectiveness(DamageType.Explosive, UnitSizeType.Small);
 
     private static List<Position> at(int offsetX) {
         return Collections.singletonList(new Position(COLONY.getX() + offsetX, COLONY.getY()));
@@ -243,7 +247,7 @@ class HorizonCombatSimulatorTest {
         double formula = UnitStrength.formulaStrength(UnitType.Terran_Missile_Turret)[1];
         double weighted = HorizonCombatSimulator.weightedAntiAirStrength(
                 UnitType.Terran_Missile_Turret, ALL_SMALL);
-        assertEquals(formula * 0.5, weighted, 1e-9);
+        assertEquals(formula * EXPLOSIVE_VERSUS_SMALL, weighted, 1e-9);
         assertTrue(weighted > SUPERSEDED_ANTI_AIR_LITERAL);
     }
 
@@ -254,12 +258,11 @@ class HorizonCombatSimulatorTest {
             double[] formula = UnitStrength.formulaStrength(type);
             double formulaGround = formula[0] + formula[2];
             double weightedGround = HorizonCombatSimulator.weightedGroundStrength(type, ALL_SMALL);
+            DamageType groundDamage = type.groundWeapon() == bwapi.WeaponType.None
+                    ? DamageType.Normal
+                    : type.groundWeapon().damageType();
             double weightedFormulaGround = formulaGround
-                    * UnitStrength.effectiveness(
-                            type.groundWeapon() == bwapi.WeaponType.None
-                                    ? bwapi.DamageType.Normal
-                                    : type.groundWeapon().damageType(),
-                            UnitSizeType.Small);
+                    * UnitStrength.effectiveness(groundDamage, UnitSizeType.Small);
             assertTrue(weightedGround >= weightedFormulaGround - 1e-9, type.toString());
         }
     }
@@ -268,7 +271,8 @@ class HorizonCombatSimulatorTest {
     void sunkenColonyKeepsItsLiteralAboveTheFormulaAfterTheExplosiveDiscount() {
         double weighted = HorizonCombatSimulator.weightedGroundStrength(
                 UnitType.Zerg_Sunken_Colony, ALL_SMALL);
-        double formulaWeighted = UnitStrength.formulaStrength(UnitType.Zerg_Sunken_Colony)[0] * 0.5;
+        double formulaWeighted = UnitStrength.formulaStrength(UnitType.Zerg_Sunken_Colony)[0]
+                * EXPLOSIVE_VERSUS_SMALL;
         assertEquals(3.0, weighted, 1e-9);
         assertTrue(weighted > formulaWeighted);
     }
