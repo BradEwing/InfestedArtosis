@@ -144,8 +144,7 @@ class PerchCalculatorTest {
 
     @Test
     void selectPerchReturnsNullOnEmptyInput() {
-        assertNull(PerchCalculator.selectPerch(Collections.emptyList(), new Position(0, 0), new Position(0, 0),
-                288, 2000));
+        assertNull(PerchCalculator.selectPerch(Collections.emptyList(), new Position(0, 0), new Position(0, 0), 288));
     }
 
     @Test
@@ -162,7 +161,7 @@ class PerchCalculatorTest {
         Position scout = new Position(0, 16);
         Position target = new Position(1296, 16);
 
-        MapTile selected = PerchCalculator.selectPerch(perches, target, scout, 1000, 2000);
+        MapTile selected = PerchCalculator.selectPerch(perches, target, scout, 1000);
 
         assertSame(nearScout, selected);
     }
@@ -181,14 +180,20 @@ class PerchCalculatorTest {
         Position scout = new Position(0, 16);
         Position target = new Position(1296, 16);
 
-        MapTile selected = PerchCalculator.selectPerch(perches, target, scout, 288, 2000);
+        MapTile selected = PerchCalculator.selectPerch(perches, target, scout, 288);
 
         assertSame(watching, selected);
     }
 
+    /**
+     * The watching perch here is farther from the scout than an overlord covers in
+     * {@link PerchCalculator#TRANSIT_BUDGET_FRAMES}, the regime production actually reaches. Vision
+     * still wins: nothing in the ranking caps how far the scout may be sent.
+     */
     @Test
-    void selectPerchIgnoresVisionOnAPerchBeyondTheTransitBudget() {
-        MapTile nearScout = tileAt(10, 0);
+    void selectPerchStillPrefersVisionBeyondTheTransitBudget() {
+        int budget = PerchCalculator.transitPixels(UnitType.Zerg_Overlord);
+        MapTile nearScout = tileAt(2, 0);
         MapTile watching = tileAt(120, 0);
 
         List<MapTile> perches = new ArrayList<>();
@@ -198,24 +203,26 @@ class PerchCalculatorTest {
         Position scout = new Position(0, 16);
         Position target = new Position(3856, 16);
 
-        MapTile selected = PerchCalculator.selectPerch(perches, target, scout, 288, 600);
+        MapTile selected = PerchCalculator.selectPerch(perches, target, scout, 288);
 
-        assertSame(nearScout, selected);
+        assertTrue(nearScout.getTile().toPosition().getDistance(scout) < budget);
+        assertTrue(watching.getTile().toPosition().getDistance(scout) > budget);
+        assertSame(watching, selected);
     }
 
     @Test
-    void selectPerchTakesTheNearestToTheScoutWhenNothingIsWithinTheTransitBudget() {
+    void selectPerchTakesTheNearestToTheScoutWhenNoPerchSeesTheTarget() {
         MapTile near = tileAt(60, 0);
-        MapTile besideTarget = tileAt(120, 0);
+        MapTile nearerTheTarget = tileAt(100, 0);
 
         List<MapTile> perches = new ArrayList<>();
-        perches.add(besideTarget);
+        perches.add(nearerTheTarget);
         perches.add(near);
 
         Position scout = new Position(0, 16);
         Position target = new Position(3856, 16);
 
-        MapTile selected = PerchCalculator.selectPerch(perches, target, scout, 288, 600);
+        MapTile selected = PerchCalculator.selectPerch(perches, target, scout, 288);
 
         assertSame(near, selected);
     }
@@ -234,7 +241,7 @@ class PerchCalculatorTest {
         Position scout = new Position(16, 336);
         Position target = new Position(16, 336);
 
-        MapTile selected = PerchCalculator.selectPerch(perches, target, scout, 0, 2000);
+        MapTile selected = PerchCalculator.selectPerch(perches, target, scout, 0);
 
         assertSame(high, selected);
     }
