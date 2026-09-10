@@ -15,6 +15,8 @@ import macro.plan.PlanManager;
 import strategy.buildorder.BuildOrder;
 import telemetry.CombatTelemetry;
 import telemetry.PlanEventLogger;
+import telemetry.PerchAssignmentLogger;
+import telemetry.PerchAssignments;
 import telemetry.PlanEvents;
 import telemetry.SquadDecisionLogger;
 import telemetry.SquadDecisions;
@@ -48,6 +50,7 @@ public class Bot extends DefaultBWListener {
 
     private PlanEventLogger planEventLogger;
     private SquadDecisionLogger squadDecisionLogger;
+    private PerchAssignmentLogger perchAssignmentLogger;
 
     @Override
     public void onStart() {
@@ -77,6 +80,7 @@ public class Bot extends DefaultBWListener {
 
         combatTelemetry = new CombatTelemetry(game, gameState, unitManager.getSquadManager());
         startSquadDecisionLogging();
+        startPerchAssignmentLogging();
         startPlanEventLogging(decisions.getOpener());
     }
 
@@ -88,6 +92,15 @@ public class Bot extends DefaultBWListener {
         squadDecisionLogger = new SquadDecisionLogger(game, gameState, unitManager.getSquadManager(),
                 combatTelemetry.getGameId());
         SquadDecisions.register(squadDecisionLogger);
+    }
+
+    private void startPerchAssignmentLogging() {
+        if (!gameState.getConfig().telemetryCombat) {
+            return;
+        }
+
+        perchAssignmentLogger = new PerchAssignmentLogger(game, gameState, combatTelemetry.getGameId());
+        PerchAssignments.register(perchAssignmentLogger);
     }
 
     private void startPlanEventLogging(BuildOrder opener) {
@@ -113,6 +126,9 @@ public class Bot extends DefaultBWListener {
         unitManager.onFrame();
         if (squadDecisionLogger != null) {
             squadDecisionLogger.onFrame();
+        }
+        if (perchAssignmentLogger != null) {
+            perchAssignmentLogger.onFrame();
         }
         combatTelemetry.onFrame();
         debugMap.onFrame();
@@ -182,6 +198,9 @@ public class Bot extends DefaultBWListener {
         }
         if (squadDecisionLogger != null) {
             squadDecisionLogger.onEnd();
+        }
+        if (perchAssignmentLogger != null) {
+            perchAssignmentLogger.onEnd();
         }
         combatTelemetry.onEnd(isWinner);
     }

@@ -4,6 +4,7 @@ import bwapi.Position;
 import bwapi.Race;
 import bwapi.UnitType;
 import util.Filter;
+import util.Time;
 
 import java.util.ArrayDeque;
 import java.util.Arrays;
@@ -20,6 +21,13 @@ import java.util.Set;
  * {@code UnitType}/{@code WeaponType} accessors, so this class is directly testable.
  */
 public final class PerchCalculator {
+
+    /**
+     * How long a scout may spend flying to a perch. A transit budget, not a game constant: it is the
+     * span an unescorted scout is allowed to be in the open for, and it bounds how far the perch
+     * search will send one.
+     */
+    public static final int TRANSIT_BUDGET_FRAMES = new Time(0, 30).getFrames();
 
     private PerchCalculator() {
     }
@@ -174,58 +182,78 @@ public final class PerchCalculator {
     }
 
     /**
-     * Picks the best perch tile for watching a target position: among perches within the given sight
-     * range of the target, the highest ground, tiebroken by nearest; if none are within sight, the
-     * nearest perch, tiebroken by highest ground.
+     * How far a scouting unit may fly to reach a perch: its top speed over {@link #TRANSIT_BUDGET_FRAMES}.
+     * A perch beyond that is treated as out of reach rather than as a candidate, however good a view it
+     * has, because the flight there is unescorted.
+     *
+     * @param scout the scouting unit's type
+     * @return the transit budget in pixels
+     */
+    public static int transitPixels(UnitType scout) {
+        return (int) (scout.topSpeed() * TRANSIT_BUDGET_FRAMES);
+    }
+
+    /**
+     * Picks the best perch tile for a scout watching a target position. Perches within the scout's
+     * transit budget beat those outside it, a perch that sees the target beats one that does not, and
+     * the remaining ties go to the perch nearest the scout, then to the highest ground.
+     * <p>
+     * Ordering distance from the scout above vision is what keeps an overlord off a perch on the far
+     * side of the map: only once a reachable perch exists does the view from it decide between them.
      *
      * @param perches candidate perch tiles
      * @param target the position being watched
-     * @param sightRangePixels the watching unit's sight range in pixels
+     * @param scout the scouting unit's current position
+     * @param sightRangePixels the scouting unit's sight range in pixels
+     * @param transitPixels how far the scout may fly to reach a perch, from {@link #transitPixels}
      * @return the selected perch, or null if perches is empty
      */
-    public static MapTile selectPerch(Collection<MapTile> perches, Position target, int sightRangePixels) {
+    public static MapTile selectPerch(Collection<MapTile> perches, Position target, Position scout,
+                                      int sightRangePixels, int transitPixels) {
         MapTile best = null;
-        boolean bestWithinSight = false;
+        boolean bestWithinTransit = false;
+        boolean bestWatching = false;
+        double bestScoutDistance = Double.MAX_VALUE;
         int bestHeight = Integer.MIN_VALUE;
-        double bestDistance = Double.MAX_VALUE;
 
         for (MapTile perch : perches) {
             Position center = perch.getTile().toPosition().add(new Position(16, 16));
-            double distance = center.getDistance(target);
-            boolean withinSight = distance <= sightRangePixels;
+            double scoutDistance = center.getDistance(scout);
+            boolean withinTransit = scoutDistance <= transitPixels;
+            boolean watching = withinTransit && center.getDistance(target) <= sightRangePixels;
             int height = perch.getGroundHeight();
 
-            if (best == null) {
-                best = perch;
-                bestWithinSight = withinSight;
-                bestHeight = height;
-                bestDistance = distance;
+            if (best != null && !improves(withinTransit, watching, scoutDistance, height,
+                    bestWithinTransit, bestWatching, bestScoutDistance, bestHeight)) {
                 continue;
             }
 
-            if (withinSight != bestWithinSight) {
-                if (withinSight) {
-                    best = perch;
-                    bestWithinSight = true;
-                    bestHeight = height;
-                    bestDistance = distance;
-                }
-                continue;
-            }
-
-            if (withinSight) {
-                if (height > bestHeight || height == bestHeight && distance < bestDistance) {
-                    best = perch;
-                    bestHeight = height;
-                    bestDistance = distance;
-                }
-            } else if (distance < bestDistance || distance == bestDistance && height > bestHeight) {
-                best = perch;
-                bestHeight = height;
-                bestDistance = distance;
-            }
+            best = perch;
+            bestWithinTransit = withinTransit;
+            bestWatching = watching;
+            bestScoutDistance = scoutDistance;
+            bestHeight = height;
         }
 
         return best;
+    }
+
+    /**
+     * Whether a candidate outranks the incumbent on the perch ordering: reachable first, watching the
+     * target second, nearest the scout third, highest ground last.
+     */
+    private static boolean improves(boolean withinTransit, boolean watching, double scoutDistance, int height,
+                                    boolean bestWithinTransit, boolean bestWatching, double bestScoutDistance,
+                                    int bestHeight) {
+        if (withinTransit != bestWithinTransit) {
+            return withinTransit;
+        }
+        if (watching != bestWatching) {
+            return watching;
+        }
+        if (scoutDistance != bestScoutDistance) {
+            return scoutDistance < bestScoutDistance;
+        }
+        return height > bestHeight;
     }
 }
