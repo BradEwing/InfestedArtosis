@@ -149,7 +149,7 @@ public class NinePoolSpeed extends BuildOrder {
      * scripted act is committing to the pool, and everything the terminal build order would queue
      * next, the natural hatchery above all, is unreachable until this fires.
      *
-     * @param poolCount Spawning Pools standing or claimed by a building plan in flight
+     * @param poolCount Spawning Pools standing, under construction, or claimed by a plan in flight
      * @return true once the opener should hand off
      */
     static boolean openerComplete(int poolCount) {

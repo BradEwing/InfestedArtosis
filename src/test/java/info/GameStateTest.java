@@ -56,6 +56,13 @@ class GameStateTest {
     }
 
     @Test
+    void skipsACompletedBuildingPlan() {
+        Set<Plan> plans = setOf(buildingPlan(UnitType.Zerg_Spawning_Pool, PlanState.COMPLETE));
+
+        assertEquals(0, GameState.buildingPlanCount(plans, UnitType.Zerg_Spawning_Pool));
+    }
+
+    @Test
     void skipsABuildingPlanOfAnotherType() {
         Set<Plan> plans = setOf(buildingPlan(UnitType.Zerg_Hatchery, PlanState.BUILDING));
 

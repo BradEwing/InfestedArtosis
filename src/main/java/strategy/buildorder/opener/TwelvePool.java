@@ -116,13 +116,13 @@ public class TwelvePool extends BuildOrder {
      * opener's last scripted act is committing to the pool, and everything the terminal build
      * order would queue next, the natural hatchery above all, is unreachable until this fires.
      *
-     * <p>The drone term no longer decides the normal game. The opener queues its pool the frame
-     * the drone count reaches its target, which is no later than the frame the twelfth drone is
-     * alive, so the pool term is already true by then. It survives as the escape hatch for a pool
-     * plan that never reaches the queue or is cancelled out of it, which would otherwise leave the
-     * opener driving for the rest of the game.
+     * <p>The drone term is an escape hatch, not a second trigger. The opener queues its pool the
+     * frame its drone count reaches the target, and twelve living drones is the pool's supply, so
+     * the pool term is already true whenever the drone term is. It carries the game only where no
+     * pool plan survives to be counted, which would otherwise leave the opener driving for the
+     * rest of the game.
      *
-     * @param poolCount Spawning Pools standing or claimed by a building plan in flight
+     * @param poolCount Spawning Pools standing, under construction, or claimed by a plan in flight
      * @param livingDrones drones alive now, excluding those still planned or in an egg
      * @return true once the opener should hand off
      */
