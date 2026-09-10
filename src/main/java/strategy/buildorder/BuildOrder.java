@@ -9,6 +9,7 @@ import bwapi.UpgradeType;
 import bwem.Base;
 import info.BaseData;
 import info.GameState;
+import info.ResourceCount;
 import info.TechProgression;
 import info.UnitTypeCount;
 import info.map.BuildingPlanner;
@@ -39,6 +40,16 @@ public abstract class BuildOrder {
     private static final int DEFAULT_COLONY_PRIORITY = 5;
     private static final int UNKNOWN_RACE_BASE_TARGET = 2;
     private static final int UNKNOWN_RACE_ZERGLING_PLANS = 2;
+
+    /**
+     * The only unit every terminal build can morph without gas once its Spawning Pool is up, which
+     * is what makes it the sink for minerals a gas-hungry composition cannot spend.
+     */
+    static final UnitType MINERAL_SURPLUS_UNIT = UnitType.Zerg_Zergling;
+
+    static final int MINERAL_SURPLUS = 400;
+
+    static final int MAX_QUEUED_SURPLUS_PLANS = 4;
 
     @Getter
     private final String name;
@@ -234,7 +245,6 @@ public abstract class BuildOrder {
             Plan hatcheryPlan = this.planNewBase(gameState);
             if (hatcheryPlan != null) {
                 plans.add(hatcheryPlan);
-                return plans;
             }
         }
 
@@ -426,6 +436,49 @@ public abstract class BuildOrder {
      */
     static boolean shouldPlanSporePrerequisite(TechProgression techProgression) {
         return techProgression.evolutionChambers() == 0 && techProgression.canPlanEvolutionChamber();
+    }
+
+    /**
+     * Buys a mineral-only unit with minerals the build's own unit targets have stopped spending.
+     * Sits at the end of the plan chain, so it only fires once every branch above it declined:
+     * the build gets what it asked for first and the leftovers become zerglings rather than bank.
+     *
+     * <p>Returns null when there is nothing to buy, which is the caller's signal to add nothing.
+     */
+    protected Plan planMineralSurplusUnit(GameState gameState) {
+        ResourceCount resourceCount = gameState.getResourceCount();
+        boolean larvaAvailable = resourceCount.canScheduleLarva(
+                gameState.numLarva(), gameState.larvaAssignedToPlans());
+        boolean poolComplete = gameState.getTechProgression().isSpawningPool();
+        int queuedPlans = gameState.queuedUnitPlanCount(MINERAL_SURPLUS_UNIT);
+        if (!shouldSpendMineralSurplus(resourceCount.availableMinerals(), larvaAvailable, poolComplete, queuedPlans)) {
+            return null;
+        }
+        return this.planUnit(gameState, MINERAL_SURPLUS_UNIT);
+    }
+
+    /**
+     * Unreserved minerals are the surplus signal, not {@link GameState#isFloatingMinerals()},
+     * whose bar is scaled to hatchery count because it exists to decide expansions. A build that
+     * has met every unit target it knows how to ask for is not short of hatcheries, it is short of
+     * things to spend on, and the same reasoning is written out at
+     * {@link SpeedlingAllIn#shouldPlanHatchery}.
+     *
+     * <p>The bound is on plans already waiting in the queue rather than on army size, so the
+     * surplus drains at a fixed rate instead of stacking a plan every frame it stays true.
+     *
+     * @param availableMinerals minerals mined and not reserved by a queued plan
+     * @param larvaAvailable whether a larva is free to morph, from
+     *     {@link ResourceCount#canScheduleLarva}, which is the same authority the scheduler uses
+     * @param poolComplete a Spawning Pool has finished, so the unit can be morphed
+     * @param queuedPlans plans for the surplus unit already waiting in the queue
+     */
+    static boolean shouldSpendMineralSurplus(int availableMinerals, boolean larvaAvailable,
+                                             boolean poolComplete, int queuedPlans) {
+        return poolComplete
+                && larvaAvailable
+                && queuedPlans < MAX_QUEUED_SURPLUS_PLANS
+                && availableMinerals >= MINERAL_SURPLUS;
     }
 
     protected Plan planUnit(GameState gameState, UnitType unitType) {

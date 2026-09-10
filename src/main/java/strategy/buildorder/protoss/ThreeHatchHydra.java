@@ -107,16 +107,16 @@ public class ThreeHatchHydra extends ProtossBase {
         // Bases
         boolean wantExpansion = !gameState.isEarlyRushMacroHatch()
                 && (wantNatural || wantThird || wantBaseAdvantage || floatingMinerals);
+        Plan expansionPlan = null;
         if (wantExpansion) {
-            Plan hatcheryPlan = this.planNewBase(gameState);
-            if (hatcheryPlan != null) {
-                plans.add(hatcheryPlan);
-                return plans;
+            expansionPlan = this.planNewBase(gameState);
+            if (expansionPlan != null) {
+                plans.add(expansionPlan);
             }
         }
 
         // Macro Hatcheries
-        if (earlyRushMacroHatch) {
+        if (expansionPlan == null && earlyRushMacroHatch) {
             Plan mainHatchPlan = planMacroHatcheryAt(gameState, gameState.getBaseData().getMainBase());
             if (mainHatchPlan != null) {
                 plannedEarlyRushMacroHatch = true;
@@ -126,7 +126,7 @@ public class ThreeHatchHydra extends ProtossBase {
             }
         }
 
-        if (wantFirstMacroHatch) {
+        if (expansionPlan == null && wantFirstMacroHatch) {
             Plan macroHatchPlan = planMacroHatchery(gameState);
             if (macroHatchPlan != null) {
                 plannedFirstMacroHatch = true;
@@ -135,7 +135,7 @@ public class ThreeHatchHydra extends ProtossBase {
             }
         }
 
-        if (wantSecondMacroHatch) {
+        if (expansionPlan == null && wantSecondMacroHatch) {
             Plan macroHatchPlan = planMacroHatchery(gameState);
             if (macroHatchPlan != null) {
                 plannedSecondMacroHatch = true;
@@ -144,7 +144,7 @@ public class ThreeHatchHydra extends ProtossBase {
             }
         }
 
-        if (wantThirdMacroHatch) {
+        if (expansionPlan == null && wantThirdMacroHatch) {
             Plan macroHatchPlan = planMacroHatchery(gameState);
             if (macroHatchPlan != null) {
                 plannedThirdMacroHatch = true;
@@ -258,6 +258,11 @@ public class ThreeHatchHydra extends ProtossBase {
             Plan dronePlan = this.planUnit(gameState, UnitType.Zerg_Drone);
             plans.add(dronePlan);
             return plans;
+        }
+
+        Plan surplusPlan = this.planMineralSurplusUnit(gameState);
+        if (surplusPlan != null) {
+            plans.add(surplusPlan);
         }
 
         return plans;

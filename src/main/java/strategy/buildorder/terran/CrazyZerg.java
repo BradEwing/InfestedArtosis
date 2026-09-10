@@ -112,7 +112,6 @@ public class CrazyZerg extends TerranBase {
             Plan hatcheryPlan = this.planNewBase(gameState);
             if (hatcheryPlan != null) {
                 plans.add(hatcheryPlan);
-                return plans;
             }
         }
 
@@ -277,6 +276,11 @@ public class CrazyZerg extends TerranBase {
             Plan dronePlan = this.planUnit(gameState, UnitType.Zerg_Drone);
             plans.add(dronePlan);
             return plans;
+        }
+
+        Plan surplusPlan = this.planMineralSurplusUnit(gameState);
+        if (surplusPlan != null) {
+            plans.add(surplusPlan);
         }
 
         return plans;
