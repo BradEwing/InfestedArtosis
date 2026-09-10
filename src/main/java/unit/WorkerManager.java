@@ -40,6 +40,18 @@ public class WorkerManager {
     // Buffered w/ 10 additional frames
     final int OVERLORD_HATCH_ANIMATION_FRAMES = 26;
 
+    // Unreserved gas above unreserved minerals that marks gas as floating
+    static final int GAS_SURPLUS = 150;
+
+    // Unreserved minerals above unreserved gas that marks minerals as floating
+    static final int MINERAL_SURPLUS = 100;
+
+    // Mineral drones needed before gas demand alone may move one onto a geyser
+    static final int MIN_MINERAL_GATHERERS = 4;
+
+    // Floor applied on the mineral surplus path, which mineral income already vouches for
+    static final int NO_MINERAL_FLOOR = 0;
+
     public WorkerManager(Game game, GameState gameState) {
         this.game = game;
         this.gameState = gameState;
@@ -141,7 +153,7 @@ public class WorkerManager {
         final List<ManagedUnit> newGeyserWorkers = new ArrayList<>();
 
         // If less than 4 mineral workers, there are probably other problems
-        if (mineralGatherers.size() < 4) {
+        if (mineralGatherers.size() < MIN_MINERAL_GATHERERS) {
             return;
         }
 
@@ -469,18 +481,90 @@ public class WorkerManager {
 
     private void rebalanceCheck() {
         ResourceCount resourceCount = gameState.getResourceCount();
+        final int availableMinerals = resourceCount.availableMinerals();
+        final int availableGas = resourceCount.availableGas();
 
-        if (resourceCount.isFloatingGas()) {
+        if (shouldCutGasHarvesting(availableMinerals, availableGas)) {
             cutGasHarvesting();
-        } else if (resourceCount.isFloatingMinerals()) {
-            saturateGeysers();
+        } else if (shouldSaturateOnMineralSurplus(availableMinerals, availableGas)) {
+            saturateGeysers(NO_MINERAL_FLOOR);
+        } else if (shouldSaturateOnGasDemand(availableGas)) {
+            saturateGeysers(MIN_MINERAL_GATHERERS);
         }
     }
 
     /**
-     * Saturate geysers from gatherers using the closest available drones
+     * True when unreserved gas has outrun unreserved minerals far enough that the drones on the
+     * geyser are worth more on a mineral patch.
+     *
+     * <p>A mineral deficit is not a gas surplus. {@link ResourceCount#availableMinerals()} goes
+     * negative whenever reservations outrun the bank, which is the normal state of a Zerg bank,
+     * and subtracting a negative read as floating gas while holding well under
+     * {@link #GAS_SURPLUS} gas. The mineral side is floored at zero so only gas the bot actually
+     * holds and has not already claimed can trigger the cut.
+     *
+     * @param availableMinerals minerals mined and unreserved, which may be negative
+     * @param availableGas gas mined and unreserved, which may be negative
+     * @return true when every drone should come off gas
      */
-    private void saturateGeysers() {
+    static boolean shouldCutGasHarvesting(int availableMinerals, int availableGas) {
+        return availableGas - Math.max(0, availableMinerals) > GAS_SURPLUS;
+    }
+
+    /**
+     * True when minerals float clear of gas, the long-standing signal to man a geyser.
+     *
+     * @param availableMinerals minerals mined and unreserved, which may be negative
+     * @param availableGas gas mined and unreserved, which may be negative
+     * @return true when geysers should be saturated off a mineral surplus
+     */
+    static boolean shouldSaturateOnMineralSurplus(int availableMinerals, int availableGas) {
+        return availableMinerals - availableGas > MINERAL_SURPLUS;
+    }
+
+    /**
+     * True when no unreserved gas is left, so a plan is already waiting on gas the bot is not
+     * mining.
+     *
+     * <p>This is what undoes a cut. The mineral surplus
+     * {@link #shouldSaturateOnMineralSurplus} needs is rare while reservations hold the bank down,
+     * so without this the geysers a cut emptied stay empty for the rest of the game. It runs only
+     * where the mineral-surplus rule already declined, so that path keeps its behaviour.
+     *
+     * @param availableGas gas mined and unreserved, which may be negative
+     * @return true when geysers should be saturated off gas demand
+     */
+    static boolean shouldSaturateOnGasDemand(int availableGas) {
+        return availableGas <= 0;
+    }
+
+    /**
+     * Number of mineral drones that may move onto a geyser this frame.
+     *
+     * <p>The floor guards the gas-demand path, which is reachable at drone counts the
+     * mineral-surplus path never saw: a mineral surplus implies mineral income, an empty gas bank
+     * implies nothing, so without a floor a rush that leaves two drones alive would put both on
+     * the geyser and end mineral income outright. {@link #NO_MINERAL_FLOOR} keeps the
+     * mineral-surplus path exactly as it was.
+     *
+     * @param mineralGatherers drones currently on minerals
+     * @param openSlots unfilled geyser slots
+     * @param mineralFloor drones that must stay available to minerals
+     * @return how many drones may be moved
+     */
+    static int spareGeyserWorkers(int mineralGatherers, int openSlots, int mineralFloor) {
+        if (mineralGatherers < mineralFloor) {
+            return 0;
+        }
+        return Math.min(openSlots, mineralGatherers);
+    }
+
+    /**
+     * Saturate geysers from gatherers using the closest available drones
+     *
+     * @param mineralFloor drones that must stay available to minerals
+     */
+    private void saturateGeysers(int mineralFloor) {
         if (!gameState.needGeyserWorkers()) {
             return;
         }
@@ -505,7 +589,11 @@ public class WorkerManager {
             return;
         }
 
-        int workerLimit = Math.min(totalNeeded, availableWorkers.size());
+        int workerLimit = spareGeyserWorkers(availableWorkers.size(), totalNeeded, mineralFloor);
+        if (workerLimit < 1) {
+            return;
+        }
+
         Map<ManagedUnit, Unit> workerTargets = new LinkedHashMap<>();
 
         while (!remainingSlots.isEmpty() && !availableWorkers.isEmpty() && workerTargets.size() < workerLimit) {
