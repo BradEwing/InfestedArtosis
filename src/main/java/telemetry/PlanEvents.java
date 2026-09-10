@@ -3,6 +3,7 @@ package telemetry;
 import bwapi.UnitType;
 import macro.plan.Plan;
 import macro.plan.PlanBlocker;
+import macro.plan.PlanCancelSource;
 import macro.plan.PlanState;
 
 import java.util.List;
@@ -84,5 +85,13 @@ public final class PlanEvents {
             return;
         }
         current.onWithheld(unitType, blocker);
+    }
+
+    public static void unplannedCancel(UnitType unitType, PlanCancelSource cancelSource) {
+        PlanEventSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onUnplannedCancel(unitType, cancelSource);
     }
 }

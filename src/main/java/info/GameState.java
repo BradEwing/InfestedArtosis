@@ -80,7 +80,6 @@ public class GameState {
     private HashSet<ManagedUnit> larva = new HashSet<>();
 
     private boolean enemyHasCloakedUnits = false;
-    private boolean enemyHasHostileFlyers = false;
     private boolean isLarvaDeadlocked = false;
     private boolean isAllIn = false;
     private boolean cannonRushed = false;
@@ -264,13 +263,18 @@ public class GameState {
         return this.resourceCount.frameCanAffordUnit(unit, currentFrame, mineralGatherers.size(), gasGatherers.size());
     }
 
+    /** Projection for a plan's own cost, including an upgrade or a research plan. */
+    public int frameCanAffordPlan(Plan plan, int currentFrame) {
+        return this.resourceCount.frameCanAffordPlan(plan, currentFrame, mineralGatherers.size(), gasGatherers.size());
+    }
+
     /** Refreshed prediction for a plan whose cost already stands in the reservation ledger. */
     public int frameCanAffordReserved(int currentFrame) {
         return this.resourceCount.frameCanAffordReserved(currentFrame, mineralGatherers.size(), gasGatherers.size());
     }
 
     public Base reserveBase() {
-        return baseData.reserveBase();
+        return baseData.reserveBase(getGameTime().getFrames());
     }
 
     public void claimBase(Unit hatchery) {
@@ -358,10 +362,17 @@ public class GameState {
                 if (tp != null && baseData.isBaseTilePosition(tp)) {
                     Base base = baseData.baseAtTilePosition(tp);
                     baseData.cancelReserveBase(base);
+                    if (BaseData.shouldBackoffExpansion(buildingType, plan.getCancelReason())) {
+                        baseData.backoffExpansion(base, getGameTime().getFrames());
+                    }
                 }
                 
                 if (buildingType == UnitType.Zerg_Creep_Colony) {
                     cancelPairedColonyPlan(plan);
+                }
+
+                if (ColonyClaims.isColonyMorph(buildingType)) {
+                    cancelPairedCreepColonyPlan(plan);
                 }
 
                 clearPlannedTechFlags(buildingType);
@@ -379,41 +390,78 @@ public class GameState {
         }
     }
 
+    /**
+     * Cancels the Sunken or Spore plan waiting on a cancelled Creep Colony. The morph releases the
+     * colony reservation as it is cancelled, so this side never touches it.
+     */
     private void cancelPairedColonyPlan(Plan creepColonyPlan) {
         TilePosition tp = creepColonyPlan.getBuildPosition();
         if (tp == null) {
             return;
         }
 
-        UnitType[] foundMorphType = {null};
+        boolean[] foundInQueue = {false};
 
         productionQueue.removeWhere(
                 p -> isColonyMorphAtPosition(p, tp),
                 PlanCancelSource.GAME_STATE_PAIRED_COLONY,
                 p -> {
-                    foundMorphType[0] = p.getPlannedUnit();
+                    foundInQueue[0] = true;
                     setImpossiblePlan(p);
                 }
         );
 
-        if (foundMorphType[0] == null) {
-            for (Plan p : plansScheduled) {
-                if (isColonyMorphAtPosition(p, tp)) {
-                    foundMorphType[0] = p.getPlannedUnit();
-                    plansScheduled.remove(p);
-                    cancelPlan(null, p, PlanCancelSource.GAME_STATE_PAIRED_COLONY);
-                    break;
-                }
-            }
+        if (foundInQueue[0]) {
+            return;
         }
 
-        Base base = baseData.nearestBase(tp);
-        if (base != null && foundMorphType[0] != null) {
-            if (foundMorphType[0] == UnitType.Zerg_Sunken_Colony) {
-                baseData.unreserveSunkenColony(base);
-            } else {
-                baseData.unreserveSporeColony(base);
+        for (Plan p : plansScheduled) {
+            if (isColonyMorphAtPosition(p, tp)) {
+                plansScheduled.remove(p);
+                cancelPlan(null, p, PlanCancelSource.GAME_STATE_PAIRED_COLONY);
+                break;
             }
+        }
+    }
+
+    /**
+     * Releases what a cancelled Sunken or Spore plan reserved, and takes down the Creep Colony
+     * queued to feed it.
+     *
+     * <p>The reservation counts towards the colony targets that decide whether another colony is
+     * wanted, so a morph cancelled without releasing it silences the reaction for the rest of the
+     * game once enough of them have leaked.
+     */
+    private void cancelPairedCreepColonyPlan(Plan morphPlan) {
+        releaseColonyReservation(morphPlan);
+
+        Plan pairedColonyPlan = morphPlan.getPairedColonyPlan();
+        if (!ColonyClaims.pairedColonyDiesWithMorph(pairedColonyPlan)) {
+            return;
+        }
+
+        productionQueue.removeWhere(
+                p -> p.equals(pairedColonyPlan),
+                PlanCancelSource.GAME_STATE_PAIRED_COLONY,
+                this::setImpossiblePlan
+        );
+    }
+
+    /**
+     * Hands back the colony slot a Sunken or Spore plan reserved, at the base it was reserved at.
+     * The plan drops its hold as it does so, so a second release cannot reach the counters.
+     */
+    private void releaseColonyReservation(Plan morphPlan) {
+        Base reservedBase = morphPlan.getReservedColonyBase();
+        if (reservedBase == null) {
+            return;
+        }
+
+        morphPlan.setReservedColonyBase(null);
+        if (morphPlan.getPlannedUnit() == UnitType.Zerg_Sunken_Colony) {
+            baseData.unreserveSunkenColony(reservedBase);
+        } else {
+            baseData.unreserveSporeColony(reservedBase);
         }
     }
 
@@ -531,6 +579,7 @@ public class GameState {
     public void completePlan(Unit unit, Plan plan) {
         plansBuilding.remove(plan);
         plansMorphing.remove(plan);
+        plan.setReservedColonyBase(null);
         plan.setState(PlanState.COMPLETE);
         plansComplete.add(plan);
         assignedPlannedItems.remove(unit);
@@ -585,6 +634,9 @@ public class GameState {
                 }
                 if (buildingType == UnitType.Zerg_Creep_Colony) {
                     cancelPairedColonyPlan(plan);
+                }
+                if (ColonyClaims.isColonyMorph(buildingType)) {
+                    cancelPairedCreepColonyPlan(plan);
                 }
                 clearPlannedTechFlags(buildingType);
                 break;
@@ -857,6 +909,19 @@ public class GameState {
 
     public int enemyUnitCount(UnitType unitType) {
         return observedUnitTracker.getCountOfLivingUnits(unitType);
+    }
+
+    /**
+     * Living enemy air units we have observed that carry a weapon.
+     *
+     * <p>Narrower than the set of sightings that make {@code requiredSpores} ask for a Spore
+     * Colony. Air-tech buildings, unarmed flyers and the cloaked ground units a Spore is wanted
+     * as a detector against all raise that target while leaving this count at zero, so a reader
+     * asking "did we face air" from this column undercounts. What it does guarantee is the
+     * converse: a non-zero count means an armed enemy flyer is alive.
+     */
+    public int observedEnemyAirCombatUnitCount() {
+        return observedUnitTracker.getCountOfLivingUnits(Filter::isAirCombatUnit);
     }
 
     public int getSupply() {

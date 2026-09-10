@@ -1,6 +1,7 @@
 package macro;
 
 import bwapi.UnitType;
+import bwapi.UpgradeType;
 import macro.ProductionManager.PlanScheduler;
 import macro.ProductionManager.ScanOutcome;
 import macro.plan.BuildingPlan;
@@ -9,6 +10,7 @@ import macro.plan.PlanBlocker;
 import macro.plan.PlanCancelSource;
 import macro.plan.PlanState;
 import macro.plan.UnitPlan;
+import macro.plan.UpgradePlan;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import telemetry.PlanEventSink;
@@ -34,6 +36,14 @@ class ProductionManagerTest {
         Plan plan = new BuildingPlan(UnitType.Zerg_Spire, 1000);
         plan.setState(state);
         return plan;
+    }
+
+    private Plan metabolicBoost() {
+        return new UpgradePlan(UpgradeType.Metabolic_Boost, 3330);
+    }
+
+    private Plan extractor() {
+        return new BuildingPlan(UnitType.Zerg_Extractor, 3649);
     }
 
     private Plan hatchery() {
@@ -220,6 +230,40 @@ class ProductionManagerTest {
                 frame + 1);
 
         assertEquals(PlanBlocker.NONE, blocker);
+    }
+
+    @Test
+    void anUpgradeNoWorkerCanGatherForReportsNoIncome() {
+        assertEquals(PlanBlocker.NO_INCOME, ProductionManager.shortfallBlocker(Integer.MAX_VALUE));
+    }
+
+    @Test
+    void anUpgradeIncomeWillCoverReportsAResourceShortfall() {
+        assertEquals(PlanBlocker.RESOURCES, ProductionManager.shortfallBlocker(FRAME + 100));
+    }
+
+    @Test
+    void aGasUpgradeWithNoGasIncomeLeavesTheBankToTheExtractorBehindIt() {
+        Plan speed = metabolicBoost();
+        Plan extractor = extractor();
+        Recorder scheduler = new Recorder()
+                .block(speed, ProductionManager.shortfallBlocker(Integer.MAX_VALUE));
+
+        ProductionManager.scanPlans(Arrays.asList(speed, extractor), scheduler);
+
+        assertFalse(scheduler.bankClaimedAhead.get(extractor));
+    }
+
+    @Test
+    void aGasUpgradeTheBankAlreadyCoversStillHoldsTheBank() {
+        Plan speed = metabolicBoost();
+        Plan extractor = extractor();
+        Recorder scheduler = new Recorder()
+                .block(speed, ProductionManager.shortfallBlocker(FRAME + 100));
+
+        ProductionManager.scanPlans(Arrays.asList(speed, extractor), scheduler);
+
+        assertTrue(scheduler.bankClaimedAhead.get(extractor));
     }
 
     @Test

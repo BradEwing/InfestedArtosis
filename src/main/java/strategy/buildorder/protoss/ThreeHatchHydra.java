@@ -8,6 +8,7 @@ import info.GameState;
 import info.TechProgression;
 import info.tracking.StrategyTracker;
 import macro.plan.Plan;
+import strategy.buildorder.ZerglingTargets;
 import util.Time;
 
 import java.util.ArrayList;
@@ -20,6 +21,10 @@ import java.util.List;
  * instead of Mutalisks. Focuses on ground army composition.
  */
 public class ThreeHatchHydra extends ProtossBase {
+
+    static final int HYDRALISKS_BEFORE_ZERGLINGS = 11;
+
+    private static final int METABOLIC_BOOST_ZERGLINGS = 12;
 
     private boolean plannedFirstMacroHatch = false;
     private boolean plannedSecondMacroHatch = false;
@@ -51,6 +56,7 @@ public class ThreeHatchHydra extends ProtossBase {
         int hydraCount = gameState.ourUnitCount(UnitType.Zerg_Hydralisk);
         int droneCount = gameState.ourUnitCount(UnitType.Zerg_Drone);
         int zerglingCount = gameState.ourUnitCount(UnitType.Zerg_Zergling);
+        int livingZerglings = gameState.ourLivingUnitCount(UnitType.Zerg_Zergling);
 
         // Gas timing
         boolean gasBlocked = cannonRushed && time.lessThanOrEqual(new Time(4, 0));
@@ -81,7 +87,8 @@ public class ThreeHatchHydra extends ProtossBase {
         boolean wantLair = gameState.canPlanLair() && lairCount < 1 && time.greaterThan(new Time(5, 0)) && baseCount >= 3;
 
         // Upgrade timing
-        boolean wantMetabolicBoost = techProgression.canPlanMetabolicBoost() && zerglingCount > 12;
+        boolean wantMetabolicBoost = shouldPlanMetabolicBoost(
+                gameState.canPlanUpgrade(UpgradeType.Metabolic_Boost), livingZerglings);
         boolean wantMuscularAugments = techProgression.canPlanMuscularAugments();
         boolean wantGroovedSpines = techProgression.canPlanGroovedSpines();
         boolean wantRangedUpgrades = techProgression.canPlanRangedUpgrades();
@@ -104,16 +111,16 @@ public class ThreeHatchHydra extends ProtossBase {
         // Bases
         boolean wantExpansion = !gameState.isEarlyRushMacroHatch()
                 && (wantNatural || wantThird || wantBaseAdvantage || floatingMinerals);
+        Plan expansionPlan = null;
         if (wantExpansion) {
-            Plan hatcheryPlan = this.planNewBase(gameState);
-            if (hatcheryPlan != null) {
-                plans.add(hatcheryPlan);
-                return plans;
+            expansionPlan = this.planNewBase(gameState);
+            if (expansionPlan != null) {
+                plans.add(expansionPlan);
             }
         }
 
         // Macro Hatcheries
-        if (earlyRushMacroHatch) {
+        if (expansionPlan == null && earlyRushMacroHatch) {
             Plan mainHatchPlan = planMacroHatcheryAt(gameState, gameState.getBaseData().getMainBase());
             if (mainHatchPlan != null) {
                 plannedEarlyRushMacroHatch = true;
@@ -123,7 +130,7 @@ public class ThreeHatchHydra extends ProtossBase {
             }
         }
 
-        if (wantFirstMacroHatch) {
+        if (expansionPlan == null && wantFirstMacroHatch) {
             Plan macroHatchPlan = planMacroHatchery(gameState);
             if (macroHatchPlan != null) {
                 plannedFirstMacroHatch = true;
@@ -132,7 +139,7 @@ public class ThreeHatchHydra extends ProtossBase {
             }
         }
 
-        if (wantSecondMacroHatch) {
+        if (expansionPlan == null && wantSecondMacroHatch) {
             Plan macroHatchPlan = planMacroHatchery(gameState);
             if (macroHatchPlan != null) {
                 plannedSecondMacroHatch = true;
@@ -141,7 +148,7 @@ public class ThreeHatchHydra extends ProtossBase {
             }
         }
 
-        if (wantThirdMacroHatch) {
+        if (expansionPlan == null && wantThirdMacroHatch) {
             Plan macroHatchPlan = planMacroHatchery(gameState);
             if (macroHatchPlan != null) {
                 plannedThirdMacroHatch = true;
@@ -255,6 +262,11 @@ public class ThreeHatchHydra extends ProtossBase {
             Plan dronePlan = this.planUnit(gameState, UnitType.Zerg_Drone);
             plans.add(dronePlan);
             return plans;
+        }
+
+        Plan surplusPlan = this.planMineralSurplusUnit(gameState);
+        if (surplusPlan != null) {
+            plans.add(surplusPlan);
         }
 
         return plans;
@@ -383,14 +395,28 @@ public class ThreeHatchHydra extends ProtossBase {
         return true;
     }
 
+    /**
+     * Whether Metabolic Boost is worth its gas yet.
+     *
+     * <p>Counted on living Zerglings. A queued Zergling plan adds two to the planned count, so a
+     * milestone read off planned units clears a twelve Zergling gate on seven eggs and no army.
+     *
+     * @param canPlanMetabolicBoost whether the Extractor, the pool and the upgrade state allow it
+     * @param livingZerglings Zerglings alive on the map
+     * @return true while the upgrade should be queued
+     */
+    static boolean shouldPlanMetabolicBoost(boolean canPlanMetabolicBoost, int livingZerglings) {
+        return canPlanMetabolicBoost && livingZerglings > METABOLIC_BOOST_ZERGLINGS;
+    }
+
     @Override
     protected int zerglingsNeeded(GameState gameState) {
         final boolean den = gameState.getTechProgression().isHydraliskDen();
         final int hydras = gameState.ourUnitCount(UnitType.Zerg_Hydralisk);
-        if (den && hydras < 11) {
-            return 0;
-        }
+        final boolean gasReachable = ZerglingTargets.gasUnitReachable(gameState.getGeyserWorkers(),
+                gameState.getResourceCount().availableGas(), UnitType.Zerg_Hydralisk.gasPrice());
 
-        return super.zerglingsNeeded(gameState);
+        return ZerglingTargets.gasUnitFocus(super.zerglingsNeeded(gameState), den, hydras,
+                HYDRALISKS_BEFORE_ZERGLINGS, gasReachable);
     }
 }

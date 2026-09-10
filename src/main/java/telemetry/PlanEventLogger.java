@@ -38,20 +38,28 @@ public class PlanEventLogger implements PlanEventSink {
     private static final String EVENT_BUILD_AHEAD_HOLD = "BUILD_AHEAD_HOLD";
     private static final String EVENT_BUILD_AHEAD_EVICT = "BUILD_AHEAD_EVICT";
     private static final String EVENT_WITHHELD = "WITHHELD";
+    private static final String EVENT_UNPLANNED_CANCEL = "UNPLANNED_CANCEL";
 
     private static final int NO_STARVED_COUNT = -1;
 
     private static final String EVENT_RECURRING_CANCEL = "RECURRING_CANCEL";
 
     /**
-     * 35 columns. Was 32 before executor_unit_id, reserved_larva and builder_distance_px were
-     * added; readers that index by position rather than by name need updating.
+     * 38 columns. Was 32 before executor_unit_id, reserved_larva and builder_distance_px were
+     * added, 35 before assigned_larva, 36 before enemy_air and 37 before gas_gathered; readers that
+     * index by position rather than by name need updating. enemy_air and gas_gathered are trailing
+     * cumulative columns written by {@link #appendGameTotals}, so every row shape keeps one width.
+     * <p>
+     * larva, assigned_larva and reserved_larva are three terms of one sum, not three views of it.
+     * A larva handed to a plan leaves the larva set while its reservation stands, so larva free
+     * for another plan is {@code larva + assigned_larva - reserved_larva}, which is the arithmetic
+     * {@link info.ResourceCount#canScheduleLarva} applies.
      */
-    private static final String PLAN_HEADER = "frame,time,event,plan_id,executor_unit_id,plan_type,item,from_state,"
+    static final String PLAN_HEADER = "frame,time,event,plan_id,executor_unit_id,plan_type,item,from_state,"
             + "to_state,cancel_reason,cancel_source,blocker,blocked_frames,priority,frames_in_state,age_frames,"
-            + "minerals,gas,available_minerals,available_gas,supply_used_real,supply_total_real,larva,reserved_larva,"
-            + "gatherers,queue_depth,plans_scheduled,plans_building,plans_morphing,build_tile_x,build_tile_y,"
-            + "macro_hatchery,build_order,starved_behind,builder_distance_px";
+            + "minerals,gas,available_minerals,available_gas,supply_used_real,supply_total_real,larva,assigned_larva,"
+            + "reserved_larva,gatherers,queue_depth,plans_scheduled,plans_building,plans_morphing,build_tile_x,"
+            + "build_tile_y,macro_hatchery,build_order,starved_behind,builder_distance_px,enemy_air,gas_gathered";
 
     private static final String GAME_HEADER = "timestamp,is_winner,num_starting_locations,map_name,opponent_name,"
             + "opponent_race,opener,build_order,detected_strategies,frame_count";
@@ -152,6 +160,24 @@ public class PlanEventLogger implements PlanEventSink {
             PlanTrace opened = new PlanTrace(currentFrame);
             opened.startBlocker(blocker, currentFrame);
             withheld.put(item, opened);
+        } catch (Exception e) {
+            disabled = true;
+        }
+    }
+
+    /**
+     * Records a cancellation issued straight at a unit, with no plan behind it. Without this the
+     * reaction that cancels an extractor morph after its plan has already left every plan set leaves
+     * no trace at all in the plan log.
+     */
+    @Override
+    public void onUnplannedCancel(UnitType unitType, PlanCancelSource cancelSource) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            buffer.add(unplannedCancelRow(unitType.toString(), cancelSource));
         } catch (Exception e) {
             disabled = true;
         }
@@ -325,7 +351,8 @@ public class PlanEventLogger implements PlanEventSink {
         sb.append(plan.isMacroHatchery()).append(',');
         sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
         sb.append(starvedBehind == NO_STARVED_COUNT ? "" : String.valueOf(starvedBehind)).append(',');
-        sb.append(builderDistance(executor, buildPosition));
+        sb.append(builderDistance(executor, buildPosition)).append(',');
+        appendGameTotals(sb);
         return sb.toString();
     }
 
@@ -354,8 +381,45 @@ public class PlanEventLogger implements PlanEventSink {
         appendGameState(sb);
         appendEmpty(sb, 3);
         sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
-        appendEmpty(sb, 1);
+        appendEmpty(sb, 2);
+        appendGameTotals(sb);
         return sb.toString();
+    }
+
+    /** A row for a unit cancelled outside the plan system, so the plan columns are empty. */
+    private String unplannedCancelRow(String item, PlanCancelSource cancelSource) {
+        StringBuilder sb = new StringBuilder();
+        appendEvent(sb, EVENT_UNPLANNED_CANCEL);
+        appendEmpty(sb, 2);
+        sb.append(PlanType.BUILDING).append(',');
+        sb.append(Csv.sanitize(item)).append(',');
+        appendEmpty(sb, 1);
+        sb.append(PlanState.CANCELLED).append(',');
+        sb.append(cancelSource.getReason()).append(',');
+        sb.append(cancelSource).append(',');
+        appendBlocker(sb, PlanBlocker.NONE, 0);
+        appendEmpty(sb, 3);
+        appendGameState(sb);
+        appendEmpty(sb, 3);
+        sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
+        appendEmpty(sb, 1);
+        appendEmpty(sb, 1);
+        appendGameTotals(sb);
+        return sb.toString();
+    }
+
+    /**
+     * The trailing cumulative columns, written by every row shape.
+     *
+     * <p>row and withheldRow build their middles independently, so a trailing column added to one
+     * of them alone changes what a reader indexing by position finds in the other. Every trailing
+     * column belongs here so both shapes keep the same width.
+     *
+     * @param sb the row being built
+     */
+    private void appendGameTotals(StringBuilder sb) {
+        sb.append(gameState.observedEnemyAirCombatUnitCount()).append(',');
+        sb.append(gameState.getSelf().gatheredGas());
     }
 
     private void appendEvent(StringBuilder sb, String event) {
@@ -379,6 +443,7 @@ public class PlanEventLogger implements PlanEventSink {
         sb.append(Csv.halfSupply(self.supplyUsed())).append(',');
         sb.append(Csv.halfSupply(self.supplyTotal())).append(',');
         sb.append(gameState.numLarva()).append(',');
+        sb.append(gameState.larvaAssignedToPlans()).append(',');
         sb.append(resourceCount.getReservedLarva()).append(',');
         sb.append(gameState.numGatherers()).append(',');
         sb.append(gameState.getProductionQueue().size()).append(',');

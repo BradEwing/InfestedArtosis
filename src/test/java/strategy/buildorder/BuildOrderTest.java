@@ -1,6 +1,7 @@
 package strategy.buildorder;
 
 import bwapi.UnitType;
+import info.ResourceCount;
 import info.TechProgression;
 import info.UnitTypeCount;
 import macro.AdvancedUnitEligibility;
@@ -46,6 +47,14 @@ class BuildOrderTest {
     private static final int POOL_FRAME = 204;
 
     private static final int EXTRACTOR_FRAME = 205;
+
+    private static final int SURPLUS_BANK = 900;
+
+    private static final int IDLE_BANK = 2000;
+
+    private static final int IDLE_LARVA = 4;
+
+    private static final int IDLE_QUEUE_DEPTH = 1;
 
     private final List<String> withheld = new ArrayList<>();
 
@@ -195,6 +204,44 @@ class BuildOrderTest {
         assertTrue(new PlanComparator().compare(hatchery, extractor) < 0);
     }
 
+    private static TechProgression withPool() {
+        TechProgression techProgression = new TechProgression();
+        techProgression.setSpawningPool(true);
+        return techProgression;
+    }
+
+    @Test
+    void aSporeWithoutAChamberPlansTheChamberItNeeds() {
+        assertTrue(BuildOrder.shouldPlanSporePrerequisite(withPool()));
+    }
+
+    @Test
+    void theChamberWaitsOnTheSpawningPoolItNeeds() {
+        assertFalse(BuildOrder.shouldPlanSporePrerequisite(new TechProgression()));
+    }
+
+    @Test
+    void aChamberAlreadyStandingIsNotPlannedAgain() {
+        TechProgression techProgression = withPool();
+        techProgression.setEvolutionChambers(1);
+
+        assertFalse(BuildOrder.shouldPlanSporePrerequisite(techProgression));
+    }
+
+    @Test
+    void aChamberOnTheWayIsWaitedOnRatherThanDuplicated() {
+        TechProgression techProgression = withPool();
+        int chambers = 0;
+        for (int frame = 0; frame < FRAMES; frame++) {
+            if (BuildOrder.shouldPlanSporePrerequisite(techProgression)) {
+                techProgression.setPlannedEvolutionChambers(techProgression.getPlannedEvolutionChambers() + 1);
+                chambers++;
+            }
+        }
+
+        assertEquals(1, chambers);
+    }
+
     @Test
     void theHashDoesNotDependOnTheClassObjectIdentity() {
         BuildOrder order = new SpeedlingAllIn();
@@ -207,6 +254,86 @@ class BuildOrderTest {
         BuildOrder second = new SpeedlingAllIn();
         assertEquals(first, second);
         assertEquals(first.hashCode(), second.hashCode());
+    }
+
+    /**
+     * The surplus sink has to be buyable with the resource that is in surplus. Read off the unit
+     * type rather than asserted from memory, since gas would make it useless to a build that is
+     * floating minerals precisely because its gas is spoken for.
+     */
+    @Test
+    void theSurplusUnitCostsMineralsAndNoGas() {
+        assertEquals(0, BuildOrder.MINERAL_SURPLUS_UNIT.gasPrice());
+        assertTrue(BuildOrder.MINERAL_SURPLUS_UNIT.mineralPrice() > 0);
+    }
+
+    @Test
+    void mineralsAndLarvaTogetherBuyASurplusUnit() {
+        assertTrue(BuildOrder.shouldSpendMineralSurplus(BuildOrder.MINERAL_SURPLUS, true, true, 0));
+        assertTrue(BuildOrder.shouldSpendMineralSurplus(SURPLUS_BANK, true, true, 0));
+    }
+
+    @Test
+    void aBankUnderTheBarIsNotASurplus() {
+        assertFalse(BuildOrder.shouldSpendMineralSurplus(BuildOrder.MINERAL_SURPLUS - 1, true, true, 0));
+    }
+
+    /**
+     * With no larva free to take, a surplus unit would sit behind the plans that own them.
+     */
+    @Test
+    void surplusUnitsWaitForAFreeLarva() {
+        assertFalse(BuildOrder.shouldSpendMineralSurplus(SURPLUS_BANK, false, true, 0));
+    }
+
+    @Test
+    void surplusUnitsWaitForTheSpawningPool() {
+        assertFalse(BuildOrder.shouldSpendMineralSurplus(SURPLUS_BANK, true, false, 0));
+    }
+
+    /**
+     * IA-331 acceptance criterion 1 asks for units, not for a plan every frame the bank stays
+     * high. The bound is on plans still waiting, so the surplus drains at the rate the queue
+     * clears.
+     */
+    @Test
+    void theSurplusQueueIsBounded() {
+        assertTrue(BuildOrder.shouldSpendMineralSurplus(
+                SURPLUS_BANK, true, true, BuildOrder.MAX_QUEUED_SURPLUS_PLANS - 1));
+        assertFalse(BuildOrder.shouldSpendMineralSurplus(
+                SURPLUS_BANK, true, true, BuildOrder.MAX_QUEUED_SURPLUS_PLANS));
+    }
+
+    /**
+     * IA-331 acceptance criterion 5: available_minerals above 2,000 while larva exceed 3 and the
+     * queue is nearly empty is the rich-and-idle signature, and it has to resolve into a plan.
+     */
+    @Test
+    void theRichAndIdleSignatureBuysAUnit() {
+        ResourceCount resourceCount = new ResourceCount(null);
+        boolean larvaAvailable = resourceCount.canScheduleLarva(IDLE_LARVA, 0);
+
+        assertTrue(BuildOrder.shouldSpendMineralSurplus(IDLE_BANK, larvaAvailable, true, IDLE_QUEUE_DEPTH));
+    }
+
+    /**
+     * The larva gate reads {@link ResourceCount#canScheduleLarva}, the same authority the
+     * scheduler uses, which adds back the larva a plan is already holding: assigning one removes
+     * it from the larva set while its reservation still stands. Subtracting the reservation from
+     * the set alone counts that larva twice, so a second larva that is genuinely free reads as
+     * none and the surplus declines to drain.
+     */
+    @Test
+    void aLarvaHeldByAPlanIsNotCountedAgainstTheSurplusTwice() {
+        ResourceCount resourceCount = new ResourceCount(null);
+        resourceCount.reserveUnit(UnitType.Zerg_Zergling);
+        int freeLarva = 1;
+        int larvaHeldByPlans = 1;
+
+        assertTrue(resourceCount.canScheduleLarva(freeLarva, larvaHeldByPlans));
+        assertTrue(BuildOrder.shouldSpendMineralSurplus(
+                SURPLUS_BANK, resourceCount.canScheduleLarva(freeLarva, larvaHeldByPlans), true, 0));
+        assertFalse(freeLarva - resourceCount.getReservedLarva() > 0);
     }
 
 }

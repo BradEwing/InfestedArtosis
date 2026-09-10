@@ -46,11 +46,19 @@ public class BaseManager {
         gameState.addMainBase(initialHatch, mainBase);
     }
 
+    /**
+     * Drops a lost hatchery and reclaims the geyser behind a lost extractor. BaseData counts reserved
+     * geysers, so without the reclaim the gas gates read a geyser we no longer own and no further
+     * extractor is ever planned.
+     */
     public void onUnitDestroy(Unit unit) {
         UnitType type = unit.getType();
         boolean isHatch = type == UnitType.Zerg_Hatchery || type == UnitType.Zerg_Lair || type == UnitType.Zerg_Hive;
         if (isHatch) {
             gameState.removeHatchery(unit);
+        }
+        if (type == UnitType.Zerg_Extractor) {
+            gameState.getBaseData().releaseExtractor(unit.getTilePosition());
         }
     }
 

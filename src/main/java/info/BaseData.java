@@ -11,8 +11,10 @@ import info.map.GroundPathComparator;
 import info.map.StartingLocationPaths;
 import lombok.Getter;
 import lombok.Setter;
+import macro.plan.PlanCancelReason;
 import util.Distance;
 
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -26,6 +28,10 @@ import java.util.stream.Collectors;
  */
 public class BaseData {
     public static final int NATURAL_DEFENSE_TILE_RADIUS = 10;
+
+    static final int EXPANSION_BACKOFF_FRAMES = 1200;
+
+    static final int MAX_EXPANSION_BACKOFF_STEPS = 6;
 
     private Base mainBase;
     private Base naturalExpansion;
@@ -51,6 +57,9 @@ public class BaseData {
     private HashMap<TilePosition, Base> baseTilePositionLookup = new HashMap<>();
     private HashMap<Base, GroundPath> allBasePaths = new HashMap<>();
     private HashMap<Base, GroundPath> availableBases = new HashMap<>();
+    private HashMap<Base, Integer> expansionBackoffUntil = new HashMap<>();
+    private int lostExpansionBuilders = 0;
+    private int expansionHeldUntil = 0;
     private HashSet<Unit> extractors = new HashSet<>();
     private HashSet<Unit> availableGeysers = new HashSet<>();
     private HashMap<Unit, TilePosition> geyserPositionLookup = new HashMap<>();
@@ -124,6 +133,9 @@ public class BaseData {
         baseLookup.put(hatchery, base);
         availableBases.remove(base);
         reservedBases.remove(base);
+        lostExpansionBuilders = 0;
+        expansionHeldUntil = 0;
+        expansionBackoffUntil.remove(base);
 
         if (naturalExpansion == null && myBases.size() > 1) {
             naturalExpansion = base;
@@ -170,6 +182,38 @@ public class BaseData {
         }
     }
 
+    /**
+     * Returns the geyser under an extractor that is going away, either cancelled mid-morph or
+     * destroyed, to the available pool, and reports whether that made it newly available.
+     *
+     * <p>Keyed off the geyser position lookup rather than the reservation set, because the two halves
+     * of a cancellation can arrive separately: {@link #unreserveExtractor(TilePosition)} on the plan
+     * sweep drops the reservation but declines to re-add a geyser whose unit still reports a refinery
+     * type, which is exactly the state an in-flight morph is in. Releasing only what is still reserved
+     * would leave that geyser in neither set and permanently unavailable.
+     *
+     * <p>Idempotent: a second call for the same tile finds the geyser already available and reports
+     * false, so a reaction firing every frame reclaims once.
+     */
+    public boolean releaseExtractor(TilePosition tilePosition) {
+        return releaseReservedGeyser(extractors, availableGeysers, geyserPositionLookup, tilePosition);
+    }
+
+    static boolean releaseReservedGeyser(Set<Unit> reserved, Set<Unit> available,
+                                         Map<Unit, TilePosition> positions, TilePosition tilePosition) {
+        if (tilePosition == null) {
+            return false;
+        }
+        for (Map.Entry<Unit, TilePosition> entry : positions.entrySet()) {
+            if (tilePosition.equals(entry.getValue())) {
+                Unit geyser = entry.getKey();
+                reserved.remove(geyser);
+                return available.add(geyser);
+            }
+        }
+        return false;
+    }
+
     public boolean isExtractorAtPosition(TilePosition position) {
         for (Map.Entry<Unit, TilePosition> entry : geyserPositionLookup.entrySet()) {
             if (entry.getValue().equals(position)) {
@@ -179,12 +223,21 @@ public class BaseData {
         return false;
     }
 
+    /**
+     * Registers a geyser that has appeared at one of our bases, replacing whatever unit we last
+     * tracked at that tile. Matching on the stored position rather than on the tracked unit's own
+     * getTilePosition keeps the match working when that unit is the extractor that just died, and
+     * swapping it out leaves exactly one entry per tile.
+     */
     public void onGeyserComplete(Unit geyser) {
         TilePosition geyserTp = geyser.getTilePosition();
-        for (Unit existing : availableGeysers) {
-            if (existing.getTilePosition().equals(geyserTp)) {
-                return;
-            }
+        Unit tracked = availableGeyserAt(geyserTp);
+        if (tracked != null) {
+            availableGeysers.remove(tracked);
+            geyserPositionLookup.remove(tracked);
+            availableGeysers.add(geyser);
+            geyserPositionLookup.put(geyser, geyserTp);
+            return;
         }
         for (Unit existing : extractors) {
             TilePosition storedPos = geyserPositionLookup.get(existing);
@@ -201,6 +254,16 @@ public class BaseData {
                 }
             }
         }
+    }
+
+    private Unit availableGeyserAt(TilePosition tilePosition) {
+        for (Unit existing : availableGeysers) {
+            TilePosition storedPosition = geyserPositionLookup.get(existing);
+            if (storedPosition != null && storedPosition.equals(tilePosition)) {
+                return existing;
+            }
+        }
+        return null;
     }
 
     public void onGeyserShow(Unit geyser) {
@@ -223,6 +286,18 @@ public class BaseData {
         return null;
     }
 
+    /**
+     * Counts reserved geysers rather than living extractors, so a geyser already claimed by an
+     * in-flight plan is not handed to a second plan. Every path that ends a reservation therefore has
+     * to release it: plan cancellation through {@link #unreserveExtractor(TilePosition)}, and a
+     * cancelled or destroyed extractor through {@link #releaseExtractor(TilePosition)}.
+     *
+     * <p>Dropping the reservation is only half of it. Availability is a separate question, and
+     * {@link #unreserveExtractor(TilePosition)} deliberately answers it with no: a plan cancelled while
+     * its morph is already in flight leaves a refinery-typed unit standing on the geyser, and that
+     * geyser only becomes available again through {@link #releaseExtractor(TilePosition)} or
+     * {@link #onGeyserComplete(Unit)}.
+     */
     public int numExtractor() {
         return extractors.size();
     }
@@ -231,13 +306,80 @@ public class BaseData {
         return macroHatcheries.size(); 
     }
 
-    public Base reserveBase() {
-        final Base base = this.findNewBase();
+    /**
+     * Reserves the next expansion, unless a builder was recently lost on the way to one.
+     *
+     * <p>Two gates, because a lost builder says two different things. The hold is on expanding at
+     * all: a drone that died walking says the ground is contested, and the answer to that is to
+     * wait, not to send the next drone the same instant. The per-base backoff is on the base it
+     * died reaching, so when the hold does lift the bot picks somewhere else.
+     *
+     * @param currentFrame frame the reservation is made on, which expires stale backoffs
+     */
+    public Base reserveBase(int currentFrame) {
+        if (!isExpansionAvailable(expansionHeldUntil, currentFrame)) {
+            return null;
+        }
+
+        expansionBackoffUntil.values().removeIf(until -> isExpansionAvailable(until, currentFrame));
+        final Base base = this.findNewBase(expansionBackoffUntil.keySet());
         if (base == null) {
             return null;
         }
         reservedBases.add(base);
         return base;
+    }
+
+    /**
+     * Records a builder lost on the way to an expansion, and holds expansions for a window that
+     * grows with how many have been lost since the last one that landed.
+     *
+     * <p>Cancelling the hatchery plan frees its base reservation, so without a hold the same base
+     * scores best again on the very next frame and another lone drone walks the same ground. A
+     * flat window still lets a permanently true expansion request burn a drone every window for
+     * the rest of the game; escalating it means a bot being farmed stops asking.
+     *
+     * <p>The base that killed the builder is held for the longest window the hold can reach, which
+     * outlasts the first few holds on purpose: the point of coming back is to try somewhere else.
+     *
+     * @param base the base the lost builder was sent to, or null when it is not known
+     * @param currentFrame frame the builder was lost on
+     */
+    public void backoffExpansion(Base base, int currentFrame) {
+        lostExpansionBuilders += 1;
+        expansionHeldUntil = currentFrame + expansionHold(lostExpansionBuilders);
+        if (base != null) {
+            expansionBackoffUntil.put(base, currentFrame + expansionHold(MAX_EXPANSION_BACKOFF_STEPS));
+        }
+    }
+
+    /**
+     * @param backoffUntilFrame frame expansion becomes available again
+     */
+    static boolean isExpansionAvailable(int backoffUntilFrame, int currentFrame) {
+        return currentFrame >= backoffUntilFrame;
+    }
+
+    /**
+     * How long expansions are held after a builder was lost. Capped so the hold stays a hold and
+     * never becomes a permanent stop: an expansion that lands clears the count anyway.
+     *
+     * @param lostBuilders builders lost since the last expansion that completed
+     */
+    static int expansionHold(int lostBuilders) {
+        return EXPANSION_BACKOFF_FRAMES * Math.min(lostBuilders, MAX_EXPANSION_BACKOFF_STEPS);
+    }
+
+    /**
+     * Only a lost builder earns a backoff. Every other cancellation says the bot changed its mind
+     * about the hatchery, not that the ground between here and the base killed the drone sent
+     * across it, and holding the base back for those would stall expansions the bot can reach.
+     *
+     * @param buildingType type of the cancelled building plan
+     * @param cancelReason why the plan was cancelled
+     */
+    static boolean shouldBackoffExpansion(UnitType buildingType, PlanCancelReason cancelReason) {
+        return buildingType == UnitType.Zerg_Hatchery && cancelReason == PlanCancelReason.EXECUTOR_LOST;
     }
 
     public void cancelReserveBase(Base base) {
@@ -374,11 +516,19 @@ public class BaseData {
      * @return the best candidate base according to the criteria, or null if no valid base is available.
      */
     public Base findNewBase() {
+        return findNewBase(Collections.emptySet());
+    }
+
+    /**
+     * @param excluded bases held out of selection, such as those in expansion backoff
+     */
+    private Base findNewBase(Set<Base> excluded) {
         // Build a list of candidate bases that are not already reserved.
         List<Map.Entry<Base, GroundPath>> potential = this.availableBases.entrySet()
                 .stream()
                 .filter(p -> p.getValue() != null)
                 .filter(p -> !reservedBases.contains(p.getKey()))
+                .filter(p -> !excluded.contains(p.getKey()))
                 .collect(Collectors.toList());
 
         // If only one base exists, skip bases with no geysers (mineral-only bases)

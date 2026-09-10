@@ -30,6 +30,12 @@ class ColonyClaimsTest {
         return sunken;
     }
 
+    private Plan sporePairedWith(Plan creepColonyPlan) {
+        Plan spore = new BuildingPlan(UnitType.Zerg_Spore_Colony, 5, creepColonyPlan.getBuildPosition());
+        spore.setPairedColonyPlan(creepColonyPlan);
+        return spore;
+    }
+
     @Test
     void claimedColonyTileFollowsThePairedPlan() {
         Plan creepColonyPlan = creepColony(FIRST_TILE);
@@ -188,6 +194,33 @@ class ColonyClaimsTest {
 
         assertTrue(ColonyClaims.mayAdoptAnotherColony(sunken, false));
         assertFalse(ColonyClaims.mayAdoptAnotherColony(sunken, true));
+    }
+
+    @Test
+    void aQueuedColonyIsCancelledWithTheMorphThatWouldHaveTakenIt() {
+        Plan creepColonyPlan = creepColony(FIRST_TILE);
+        Plan spore = sporePairedWith(creepColonyPlan);
+
+        assertEquals(PlanState.PLANNED, creepColonyPlan.getState());
+        assertTrue(ColonyClaims.pairedColonyDiesWithMorph(spore.getPairedColonyPlan()));
+    }
+
+    @Test
+    void aColonyThatLeftTheQueueOutlivesItsMorph() {
+        List<PlanState> departed = Arrays.asList(PlanState.SCHEDULE, PlanState.BUILDING, PlanState.MORPHING,
+                PlanState.COMPLETE, PlanState.CANCELLED);
+
+        for (PlanState state : departed) {
+            Plan creepColonyPlan = creepColony(FIRST_TILE);
+            creepColonyPlan.setState(state);
+
+            assertFalse(ColonyClaims.pairedColonyDiesWithMorph(creepColonyPlan), state.toString());
+        }
+    }
+
+    @Test
+    void anUnpairedMorphTakesNoColonyDownWithIt() {
+        assertFalse(ColonyClaims.pairedColonyDiesWithMorph(null));
     }
 
     @Test

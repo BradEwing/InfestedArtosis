@@ -9,11 +9,14 @@ import info.GameState;
 import info.ResourceCount;
 import info.TechProgression;
 import macro.plan.Plan;
+import strategy.buildorder.ZerglingTargets;
 
 import java.util.ArrayList;
 import java.util.List;
 
 public class ThreeHatchLurker extends TerranBase {
+
+    static final int HYDRALISKS_BEFORE_ZERGLINGS = 3;
 
     public ThreeHatchLurker() {
         super("3HatchLurker");
@@ -73,15 +76,15 @@ public class ThreeHatchLurker extends TerranBase {
             plans.addAll(this.planSporeColony(gameState));
         }
 
+        Plan expansionPlan = null;
         if (wantNatural || wantExpansion) {
-            Plan hatcheryPlan = this.planNewBase(gameState);
-            if (hatcheryPlan != null) {
-                plans.add(hatcheryPlan);
-                return plans;
+            expansionPlan = this.planNewBase(gameState);
+            if (expansionPlan != null) {
+                plans.add(expansionPlan);
             }
         }
 
-        if (wantFirstMacroHatch) {
+        if (expansionPlan == null && wantFirstMacroHatch) {
             Plan macroHatchPlan = planMacroHatchery(gameState);
             if (macroHatchPlan != null) {
                 plans.add(macroHatchPlan);
@@ -201,6 +204,11 @@ public class ThreeHatchLurker extends TerranBase {
             Plan dronePlan = this.planUnit(gameState, UnitType.Zerg_Drone);
             plans.add(dronePlan);
             return plans;
+        }
+
+        Plan surplusPlan = this.planMineralSurplusUnit(gameState);
+        if (surplusPlan != null) {
+            plans.add(surplusPlan);
         }
 
         return plans;
@@ -363,12 +371,11 @@ public class ThreeHatchLurker extends TerranBase {
     protected int zerglingsNeeded(GameState gameState) {
         final boolean den = gameState.getTechProgression().isHydraliskDen();
         final int hydras = gameState.ourUnitCount(UnitType.Zerg_Hydralisk);
-        
-        if (den && hydras < 3) {
-            return 0;
-        }
+        final boolean gasReachable = ZerglingTargets.gasUnitReachable(gameState.getGeyserWorkers(),
+                gameState.getResourceCount().availableGas(), UnitType.Zerg_Hydralisk.gasPrice());
 
-        return super.zerglingsNeeded(gameState);
+        return ZerglingTargets.gasUnitFocus(super.zerglingsNeeded(gameState), den, hydras,
+                HYDRALISKS_BEFORE_ZERGLINGS, gasReachable);
     }
 
     protected int dronesNeeded(GameState gameState) {
