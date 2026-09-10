@@ -203,4 +203,25 @@ class UnitTypeCountTest {
 
         assertEquals(0, count.plannedCount(UnitType.Zerg_Zergling));
     }
+
+    @Test
+    void aStructureDestroyedWhileConstructingLeavesTheCountAtZero() {
+        UnitTypeCount count = new UnitTypeCount();
+        count.get(UnitType.Zerg_Spawning_Pool);
+
+        count.removeDestroyedUnit(UnitType.Zerg_Spawning_Pool, false);
+
+        assertEquals(0, count.get(UnitType.Zerg_Spawning_Pool));
+    }
+
+    @Test
+    void aReplacementStructureIsCountedAfterTheFirstDiesUnderConstruction() {
+        UnitTypeCount count = new UnitTypeCount();
+        count.get(UnitType.Zerg_Spawning_Pool);
+
+        count.removeDestroyedUnit(UnitType.Zerg_Spawning_Pool, false);
+        count.addUnit(UnitType.Zerg_Spawning_Pool);
+
+        assertEquals(1, count.get(UnitType.Zerg_Spawning_Pool));
+    }
 }

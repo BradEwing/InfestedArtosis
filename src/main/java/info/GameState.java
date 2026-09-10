@@ -906,7 +906,9 @@ public class GameState {
      * on the frame its builder morphs, which is the frame the structure appears on the map, so
      * {@link #incompleteBuildingCount} takes over from
      * {@link #outstandingBuildingPlanCount} there; {@link #ourUnitCount} takes over when
-     * construction finishes.
+     * construction finishes. A structure destroyed mid-construction is removed from a count it
+     * was never added to, so {@link UnitTypeCount#removeUnit} floors at zero to keep the
+     * completed term from going negative and hiding the replacement.
      *
      * @param unitType the structure to count
      * @return structures standing, under construction, or claimed by a plan in flight
