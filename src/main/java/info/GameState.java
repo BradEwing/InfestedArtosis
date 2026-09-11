@@ -1052,49 +1052,6 @@ public class GameState {
         }
     }
 
-    public Set<Position> getAerielStaticDefenseCoverage() {
-        Set<Position> coveredPositions = new HashSet<>();
-
-        Map<UnitType, Integer> staticDefenseRanges = new HashMap<>();
-        switch (opponentRace) {
-            case Terran:
-                staticDefenseRanges.put(UnitType.Terran_Missile_Turret, UnitType.Terran_Missile_Turret.airWeapon().maxRange() + 32);
-                staticDefenseRanges.put(UnitType.Terran_Bunker, UnitType.Terran_Marine.groundWeapon().maxRange() + 64);
-                break;
-            case Protoss:
-                staticDefenseRanges.put(UnitType.Protoss_Photon_Cannon, UnitType.Protoss_Photon_Cannon.groundWeapon().maxRange() + 32);
-                break;
-            case Zerg:
-                staticDefenseRanges.put(UnitType.Zerg_Spore_Colony, UnitType.Zerg_Spore_Colony.airWeapon().maxRange() + 32);
-                break;
-            default:
-                return coveredPositions;
-        }
-
-        for (Map.Entry<UnitType, Integer> entry : staticDefenseRanges.entrySet()) {
-            UnitType defenseType = entry.getKey();
-            int range = entry.getValue();
-
-            Set<Position> defensePositions = observedUnitTracker.getLastKnownPositionsOfLivingUnits(defenseType);
-
-            for (Position defensePos : defensePositions) {
-                if (defensePos != null) {
-                    for (int x = defensePos.getX() - range; x <= defensePos.getX() + range; x += 8) {
-                        for (int y = defensePos.getY() - range; y <= defensePos.getY() + range; y += 8) {
-                            Position testPos = new Position(x, y);
-
-                            if (Distance.isWithinRange(x, y, defensePos.getX(), defensePos.getY(), range)) {
-                                coveredPositions.add(testPos);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        return coveredPositions;
-    }
-
     public Set<Position> getActiveStormPositions() {
         return psiStormTracker.getActiveStormPositions();
     }
