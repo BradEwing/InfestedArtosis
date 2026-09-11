@@ -50,6 +50,25 @@ class ResourceCountTest {
         assertTrue(resourceCount.canScheduleLarva(1, 0));
     }
 
+    /**
+     * IA-338: the rule is a bank imbalance and nothing else. It reads unreserved totals, so a
+     * reservation the gas bank cannot yet cover pushes available gas negative and widens the gap
+     * rather than closing it.
+     */
+    @Test
+    void mineralsLeadingGasByMoreThanTheBarIsAnImbalance() {
+        assertFalse(ResourceCount.mineralsOutpaceGas(100, 0));
+        assertTrue(ResourceCount.mineralsOutpaceGas(101, 0));
+        assertFalse(ResourceCount.mineralsOutpaceGas(300, 200));
+        assertTrue(ResourceCount.mineralsOutpaceGas(43, -68));
+    }
+
+    @Test
+    void gasLeadingMineralsIsNotAnImbalance() {
+        assertFalse(ResourceCount.mineralsOutpaceGas(0, 0));
+        assertFalse(ResourceCount.mineralsOutpaceGas(0, 500));
+    }
+
     @Test
     void unreservingAMorphFromAnExistingUnitDoesNotFreeALarva() {
         ResourceCount resourceCount = resourceCount();

@@ -33,6 +33,8 @@ public class BaseData {
 
     static final int MAX_EXPANSION_BACKOFF_STEPS = 6;
 
+    static final int EXTRACTOR_REPLAN_BACKOFF_FRAMES = 500;
+
     private Base mainBase;
     private Base naturalExpansion;
     @Getter
@@ -60,6 +62,8 @@ public class BaseData {
     private HashMap<Base, Integer> expansionBackoffUntil = new HashMap<>();
     private int lostExpansionBuilders = 0;
     private int expansionHeldUntil = 0;
+    @Getter
+    private int extractorReplanBackoffUntil = 0;
     private HashSet<Unit> extractors = new HashSet<>();
     private HashSet<Unit> availableGeysers = new HashSet<>();
     private HashMap<Unit, TilePosition> geyserPositionLookup = new HashMap<>();
@@ -165,7 +169,25 @@ public class BaseData {
         return candidate;
     }
 
-    public void unreserveExtractor(TilePosition tilePosition) {
+    /**
+     * Drops the reservation behind an Extractor plan that has died, and holds the next Extractor
+     * request off for {@link #EXTRACTOR_REPLAN_BACKOFF_FRAMES}.
+     *
+     * <p>Every caller is a cancellation, so releasing the reservation on its own re-opens the very
+     * gate that produced the cancelled plan and the request lands again the following frame. A
+     * geyser lost to a destroyed extractor is a different event and goes through
+     * {@link #releaseExtractor(TilePosition)}, which does not arm the hold.
+     *
+     * <p>The hold is one deadline for the whole bot, not one per geyser: a cancellation at the
+     * natural also holds off a request for an untouched geyser at a third base. Extractor requests
+     * are already serialized by {@link GameState#canPlanExtractor()}, which will not claim a second
+     * geyser while the first claim is unfinished, so a per-geyser deadline would gate nothing the
+     * bot could otherwise act on.
+     *
+     * @param tilePosition the geyser tile the cancelled plan claimed
+     * @param currentFrame frame the cancellation is seen on, which the hold runs from
+     */
+    public void unreserveExtractor(TilePosition tilePosition, int currentFrame) {
         Unit geyser = null;
         for (Unit u : extractors) {
             TilePosition storedPosition = geyserPositionLookup.get(u);
@@ -179,7 +201,12 @@ public class BaseData {
             if (!geyser.getType().isRefinery()) {
                 availableGeysers.add(geyser);
             }
+            backoffExtractor(currentFrame);
         }
+    }
+
+    public void backoffExtractor(int currentFrame) {
+        extractorReplanBackoffUntil = currentFrame + EXTRACTOR_REPLAN_BACKOFF_FRAMES;
     }
 
     /**
@@ -187,7 +214,7 @@ public class BaseData {
      * destroyed, to the available pool, and reports whether that made it newly available.
      *
      * <p>Keyed off the geyser position lookup rather than the reservation set, because the two halves
-     * of a cancellation can arrive separately: {@link #unreserveExtractor(TilePosition)} on the plan
+     * of a cancellation can arrive separately: {@link #unreserveExtractor(TilePosition, int)} on the plan
      * sweep drops the reservation but declines to re-add a geyser whose unit still reports a refinery
      * type, which is exactly the state an in-flight morph is in. Releasing only what is still reserved
      * would leave that geyser in neither set and permanently unavailable.
@@ -289,11 +316,11 @@ public class BaseData {
     /**
      * Counts reserved geysers rather than living extractors, so a geyser already claimed by an
      * in-flight plan is not handed to a second plan. Every path that ends a reservation therefore has
-     * to release it: plan cancellation through {@link #unreserveExtractor(TilePosition)}, and a
+     * to release it: plan cancellation through {@link #unreserveExtractor(TilePosition, int)}, and a
      * cancelled or destroyed extractor through {@link #releaseExtractor(TilePosition)}.
      *
      * <p>Dropping the reservation is only half of it. Availability is a separate question, and
-     * {@link #unreserveExtractor(TilePosition)} deliberately answers it with no: a plan cancelled while
+     * {@link #unreserveExtractor(TilePosition, int)} deliberately answers it with no: a plan cancelled while
      * its morph is already in flight leaves a refinery-typed unit standing on the geyser, and that
      * geyser only becomes available again through {@link #releaseExtractor(TilePosition)} or
      * {@link #onGeyserComplete(Unit)}.

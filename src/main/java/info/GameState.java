@@ -352,7 +352,7 @@ public class GameState {
                 }
 
                 if (buildingType == UnitType.Zerg_Extractor && plan.getBuildPosition() != null) {
-                    baseData.unreserveExtractor(plan.getBuildPosition());
+                    baseData.unreserveExtractor(plan.getBuildPosition(), getGameTime().getFrames());
                 }
 
                 if (buildingType == UnitType.Zerg_Hatchery) {
@@ -631,7 +631,7 @@ public class GameState {
                     }
                 }
                 if (buildingType == UnitType.Zerg_Extractor && plan.getBuildPosition() != null) {
-                    baseData.unreserveExtractor(plan.getBuildPosition());
+                    baseData.unreserveExtractor(plan.getBuildPosition(), getGameTime().getFrames());
                 }
                 if (buildingType == UnitType.Zerg_Creep_Colony) {
                     cancelPairedColonyPlan(plan);
@@ -839,16 +839,54 @@ public class GameState {
     }
 
     public boolean canPlanExtractor() {
+        final int reservedGeysers = baseData.numExtractor();
+        final int completedExtractors = geyserAssignments.size();
+        final int gasWorkers = getGeyserWorkers();
         return !isAllIn &&
                 !scvRushed &&
                 !earlyRushDenyGas &&
                 techProgression.canPlanExtractor() &&
                 baseData.canReserveExtractor() &&
-                (baseData.numExtractor() < 1 || needExtractor());
+                shouldRequestExtractor(
+                        reservedGeysers,
+                        completedExtractors,
+                        gasWorkers,
+                        getGameTime().getFrames(),
+                        baseData.getExtractorReplanBackoffUntil());
     }
 
-    private boolean needExtractor() {
-        return baseData.numExtractor() < 1 || resourceCount.needExtractor();
+    /**
+     * Whether another Extractor is worth asking for.
+     *
+     * <p>Past the first one the gate is gas actually being mined, not a bank imbalance. Minerals
+     * lead gas for most of a Zerg game by construction, so a bank rule asks for a geyser on almost
+     * every frame it is consulted, including while the extractor it already owns stands empty.
+     * Requiring every claimed geyser to be standing also serializes the requests: a plan holds its
+     * reservation from the frame it is created, so a second one cannot be queued behind the first.
+     *
+     * <p>Gatherers are counted across all geysers rather than per geyser, which the drone
+     * distribution spreads out anyway, so a single saturated geyser can stand in for an empty
+     * second one for as long as the split takes to even out.
+     *
+     * @param reservedGeysers geysers claimed by a standing extractor or an in-flight plan, from
+     *     {@link BaseData#numExtractor()}
+     * @param completedExtractors extractors finished and open to gatherers
+     * @param gasWorkers drones assigned to gas
+     * @param currentFrame current frame
+     * @param replanBackoffUntil frame the hold after a cancelled Extractor plan expires, from
+     *     {@link BaseData#backoffExtractor(int)}. One deadline for the whole bot, not one per
+     *     geyser, and it outranks every other term including the first-extractor branch
+     * @return true when a geyser should be claimed
+     */
+    static boolean shouldRequestExtractor(int reservedGeysers, int completedExtractors, int gasWorkers,
+                                          int currentFrame, int replanBackoffUntil) {
+        if (currentFrame < replanBackoffUntil) {
+            return false;
+        }
+        if (reservedGeysers < 1) {
+            return true;
+        }
+        return completedExtractors >= reservedGeysers && gasWorkers >= completedExtractors;
     }
 
     public int ourUnitCount(UnitType unitType) {
