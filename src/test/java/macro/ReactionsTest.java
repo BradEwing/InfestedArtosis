@@ -3,9 +3,15 @@ package macro;
 import bwapi.TilePosition;
 import bwapi.Unit;
 import bwapi.UnitType;
+import bwapi.UpgradeType;
 import bwem.Base;
 import info.BaseData;
+import info.TechProgression;
 import info.UnitTypeCount;
+import macro.plan.BuildingPlan;
+import macro.plan.Plan;
+import macro.plan.PlanType;
+import macro.plan.UpgradePlan;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import strategy.buildorder.SunkenTargets;
@@ -17,6 +23,7 @@ import java.util.HashSet;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -50,6 +57,10 @@ public class ReactionsTest {
     private static final boolean UNDER_BARRACKS_PRESSURE = true;
 
     private static final boolean NO_BARRACKS_PRESSURE = false;
+
+    private static final boolean HAVE_EXTRACTOR = true;
+
+    private static final boolean NO_EXTRACTOR = false;
 
     private BaseData baseData;
 
@@ -386,6 +397,82 @@ public class ReactionsTest {
         assertFalse(Reactions.isCancellableExtractorMorph(UnitType.Zerg_Extractor, COMPLETE));
         assertFalse(Reactions.isCancellableExtractorMorph(UnitType.Zerg_Drone, INCOMPLETE));
         assertFalse(Reactions.isCancellableExtractorMorph(UnitType.Zerg_Hatchery, INCOMPLETE));
+    }
+
+    /**
+     * IA-341: the early rush reaction plans speed in every matchup instead of cancelling gas, so an
+     * Extractor already in the queue is still there after the reaction has run.
+     */
+    @Test
+    void theEarlyRushQueuesSpeedAheadOfProductionAndKeepsTheExtractor() {
+        ProductionQueue queue = new ProductionQueue();
+        Plan extractor = new BuildingPlan(UnitType.Zerg_Extractor, CANCEL_FRAME);
+        queue.add(extractor);
+        TechProgression techProgression = withSpawningPool();
+
+        Reactions.planSpeedUpgrade(queue, techProgression, HAVE_EXTRACTOR, techProgression.canPlanMetabolicBoost(), CANCEL_FRAME);
+
+        assertTrue(queue.toSortedList().contains(extractor));
+        assertNull(extractor.getCancelSource());
+        assertEquals(1, speedPlans(queue));
+        assertEquals(Reactions.SPEED_UPGRADE_PRIORITY, queue.toSortedList().get(0).getPriority());
+        assertTrue(techProgression.isPlannedMetabolicBoost());
+    }
+
+    /**
+     * The reaction fires every frame while it holds, so the upgrade it plans must be queued once.
+     */
+    @Test
+    void theEarlyRushQueuesSpeedOnceWhileItHolds() {
+        ProductionQueue queue = new ProductionQueue();
+        TechProgression techProgression = withSpawningPool();
+
+        for (int frame = CANCEL_FRAME; frame < CANCEL_FRAME + SUSTAINED_RUSH_FRAMES; frame++) {
+            Reactions.planSpeedUpgrade(queue, techProgression, HAVE_EXTRACTOR, techProgression.canPlanMetabolicBoost(), frame);
+        }
+
+        assertEquals(1, speedPlans(queue));
+    }
+
+    @Test
+    void theEarlyRushPullsAnAlreadyQueuedSpeedUpgradeForward() {
+        ProductionQueue queue = new ProductionQueue();
+        queue.add(new UpgradePlan(UpgradeType.Metabolic_Boost, CANCEL_FRAME));
+        TechProgression techProgression = withSpawningPool();
+        techProgression.setPlannedMetabolicBoost(true);
+
+        Reactions.planSpeedUpgrade(queue, techProgression, HAVE_EXTRACTOR, techProgression.canPlanMetabolicBoost(), CANCEL_FRAME);
+
+        assertEquals(1, speedPlans(queue));
+        assertEquals(Reactions.SPEED_UPGRADE_PRIORITY, queue.toSortedList().get(0).getPriority());
+    }
+
+    @Test
+    void theEarlyRushWaitsForAnExtractorBeforePlanningSpeed() {
+        ProductionQueue queue = new ProductionQueue();
+        Plan extractor = new BuildingPlan(UnitType.Zerg_Extractor, CANCEL_FRAME);
+        queue.add(extractor);
+        TechProgression techProgression = withSpawningPool();
+
+        Reactions.planSpeedUpgrade(queue, techProgression, NO_EXTRACTOR, techProgression.canPlanMetabolicBoost(), CANCEL_FRAME);
+
+        assertEquals(0, speedPlans(queue));
+        assertTrue(queue.toSortedList().contains(extractor));
+        assertFalse(techProgression.isPlannedMetabolicBoost());
+    }
+
+    private static TechProgression withSpawningPool() {
+        TechProgression techProgression = new TechProgression();
+        techProgression.setSpawningPool(true);
+        return techProgression;
+    }
+
+    private static long speedPlans(ProductionQueue queue) {
+        return queue.toSortedList()
+                .stream()
+                .filter(p -> p.getType() == PlanType.UPGRADE)
+                .filter(p -> ((UpgradePlan) p).getPlannedUpgrade() == UpgradeType.Metabolic_Boost)
+                .count();
     }
 
     private static BaseData baseDataWithOneGeyser(TilePosition tile) throws ReflectiveOperationException {

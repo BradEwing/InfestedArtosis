@@ -8,6 +8,7 @@ import bwapi.UnitType;
 import bwapi.UpgradeType;
 import bwem.Base;
 import info.GameState;
+import info.TechProgression;
 import info.map.BuildingPlanner;
 import info.tracking.ObservedUnitTracker;
 import info.tracking.StrategyTracker;
@@ -62,7 +63,7 @@ public class Reactions {
      * schedule slot to, the emergency creep colony, while still jumping ahead of tech and normal
      * production. Priority 0 stays reserved for emergency reactions.
      */
-    private static final int SPEED_UPGRADE_PRIORITY = 2;
+    static final int SPEED_UPGRADE_PRIORITY = 2;
 
     private static final Time EARLY_RUSH_WINDOW = new Time(5, 0);
     private static final Time EARLY_RUSH_HARD_DEADLINE = new Time(8, 0);
@@ -150,7 +151,6 @@ public class Reactions {
 
         gameState.setEarlyRushed(true);
 
-        gameState.setEarlyRushDenyGas(!preserveGasForSpeed());
         gameState.setEarlyRushDelayLair(gameState.getOpponentRace() == Race.Protoss);
         gameState.setEarlyRushMacroHatch(gameState.getOpponentRace() == Race.Protoss);
 
@@ -165,19 +165,14 @@ public class Reactions {
             cancelQueuedLairs();
         }
 
-        BaseData baseData = gameState.getBaseData();
-        if (gameState.isEarlyRushDenyGas()) {
-            cancelAllExtractors(baseData);
-        } else {
-            planSpeedUpgrade(productionQueue);
-        }
+        planSpeedUpgrade(productionQueue);
 
         int droneCount = gameState.ourLivingUnitCount(UnitType.Zerg_Drone);
         if (shouldFireDroneCut(droneCount, zerglingCount)) {
             productionQueue.removeWhere(IS_DRONE, PlanCancelSource.REACTION_EARLY_RUSH_DRONE, gameState::setImpossiblePlan);
         }
 
-        allowSunkenAtMainIfSingleBase(baseData);
+        allowSunkenAtMainIfSingleBase(gameState.getBaseData());
     }
 
     boolean shouldFireDroneCut(int livingDrones, int livingZerglings) {
@@ -186,7 +181,6 @@ public class Reactions {
 
     private void standDownFromEarlyRush() {
         gameState.setEarlyRushed(false);
-        gameState.setEarlyRushDenyGas(false);
         gameState.setEarlyRushDelayLair(false);
         gameState.setEarlyRushMacroHatch(false);
         rearmEarlyRushCuts();
@@ -253,26 +247,36 @@ public class Reactions {
         }
     }
 
-    private boolean preserveGasForSpeed() {
-        if (gameState.getOpponentRace() != Race.Protoss || gameState.getTechProgression().isMetabolicBoost()) {
-            return false;
-        }
-
-        return gameState.getBaseData().numExtractor() > 0 || gameState.getStrategyTracker().isDetectedStrategy("2Gate");
+    private void planSpeedUpgrade(ProductionQueue productionQueue) {
+        planSpeedUpgrade(productionQueue,
+                gameState.getTechProgression(),
+                gameState.ourUnitCount(UnitType.Zerg_Extractor) > 0,
+                gameState.canPlanUpgrade(UpgradeType.Metabolic_Boost),
+                gameState.getGameTime().getFrames());
     }
 
     /**
      * Queues Metabolic Boost and pulls it ahead of normal production.
+     *
+     * <p>The early rush reaction runs this in every matchup and leaves every Extractor standing,
+     * since Metabolic Boost cannot be planned without one. Only the SCV rush reaction cancels
+     * Extractors.
+     *
+     * @param productionQueue the queue the upgrade is added to and reprioritized in
+     * @param techProgression marks the upgrade planned so it is queued once
+     * @param haveExtractor whether an Extractor exists or is morphing
+     * @param canPlanSpeed whether Metabolic Boost may be queued now
+     * @param currentFrame the frame the plan is created on
      */
-    private void planSpeedUpgrade(ProductionQueue productionQueue) {
-        if (gameState.ourUnitCount(UnitType.Zerg_Extractor) < 1) {
+    static void planSpeedUpgrade(ProductionQueue productionQueue, TechProgression techProgression,
+                                 boolean haveExtractor, boolean canPlanSpeed, int currentFrame) {
+        if (!haveExtractor) {
             return;
         }
 
-        if (gameState.canPlanUpgrade(UpgradeType.Metabolic_Boost)) {
-            gameState.getTechProgression().setPlannedMetabolicBoost(true);
-            UpgradePlan upgradePlan = new UpgradePlan(UpgradeType.Metabolic_Boost, gameState.getGameTime().getFrames());
-            productionQueue.add(upgradePlan);
+        if (canPlanSpeed) {
+            techProgression.setPlannedMetabolicBoost(true);
+            productionQueue.add(new UpgradePlan(UpgradeType.Metabolic_Boost, currentFrame));
         }
 
         productionQueue.setPriorityWhere(IS_SPEED_UPGRADE, SPEED_UPGRADE_PRIORITY);
