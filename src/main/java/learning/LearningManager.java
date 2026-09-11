@@ -34,12 +34,14 @@ public class LearningManager {
     static final int PROBE_COOLDOWN_GAMES = 20;
 
     /**
-     * Games a re-entered opener may play before its trial is judged.
+     * Games an unproven opener's trial runs before it is judged. Against the two-win promotion
+     * bar, a 60% opener fails a four-game trial about 18% of the time, and an opener that opens
+     * 0-3 is benched without a fourth game.
      */
-    static final int PROBE_TRIAL_GAMES = 3;
+    static final int PROBE_TRIAL_GAMES = 4;
 
     /**
-     * Trial wins that promote a re-entered opener back to unrestricted argmax eligibility.
+     * Trial wins that promote an unproven opener to unrestricted argmax eligibility.
      */
     static final int PROBE_PROMOTION_WINS = 2;
 
@@ -241,9 +243,8 @@ public class LearningManager {
     }
 
     /**
-     * Applies the dormant re-probe policy to the UCB winner: replaces a benched winner with
-     * the best selectable candidate, then may override the winner with a forced probe of a
-     * dormant opener.
+     * Applies the dormant re-probe policy to the UCB winner: settles the leader, then may
+     * override that leader with a forced probe of a dormant opener.
      */
     static String applyDormantReprobePolicy(String ucbWinner,
                                             List<String> playableOpeners,
@@ -252,26 +253,39 @@ public class LearningManager {
         if (ucbWinner == null) {
             return null;
         }
-        if (isBenched(ucbWinner, opponentRecord) || isExposureCapped(ucbWinner, opponentRecord)) {
-            List<String> selectable = playableOpeners
-                    .stream()
-                    .filter(opener -> !isBenched(opener, opponentRecord))
-                    .filter(opener -> !isExposureCapped(opener, opponentRecord))
-                    .collect(Collectors.toList());
-            if (selectable.isEmpty()) {
-                return ucbWinner;
-            }
-            return WeightedUCBCalculator.findBestStrategy(
-                selectable,
-                mapName,
-                opponentRecord.getMapSpecificOpenerRecord(),
-                opponentRecord.getOpenerRecord(),
-                opponentRecord.totalGames(),
-                opponentRecord.getGameTimestamps()
-            );
+        String leader = selectableLeader(ucbWinner, playableOpeners, opponentRecord, mapName);
+        String probe = selectForcedReprobe(leader, playableOpeners, opponentRecord, mapName);
+        return probe != null ? probe : leader;
+    }
+
+    /**
+     * Returns the UCB winner when it is neither benched nor exposure-capped, otherwise the best
+     * candidate that is neither. When no candidate is selectable the winner stands, so a record
+     * where every opener is benched falls back to plain UCB over all of them.
+     */
+    private static String selectableLeader(String ucbWinner,
+                                           List<String> playableOpeners,
+                                           OpponentRecord opponentRecord,
+                                           String mapName) {
+        if (!isBenched(ucbWinner, opponentRecord) && !isExposureCapped(ucbWinner, opponentRecord)) {
+            return ucbWinner;
         }
-        String probe = selectForcedReprobe(ucbWinner, playableOpeners, opponentRecord, mapName);
-        return probe != null ? probe : ucbWinner;
+        List<String> selectable = playableOpeners
+                .stream()
+                .filter(opener -> !isBenched(opener, opponentRecord))
+                .filter(opener -> !isExposureCapped(opener, opponentRecord))
+                .collect(Collectors.toList());
+        if (selectable.isEmpty()) {
+            return ucbWinner;
+        }
+        return WeightedUCBCalculator.findBestStrategy(
+            selectable,
+            mapName,
+            opponentRecord.getMapSpecificOpenerRecord(),
+            opponentRecord.getOpenerRecord(),
+            opponentRecord.totalGames(),
+            opponentRecord.getGameTimestamps()
+        );
     }
 
     /**
@@ -338,8 +352,8 @@ public class LearningManager {
     }
 
     /**
-     * Returns whether an unproven opener is benched after playing its full trial without
-     * earning promotion.
+     * Returns whether an unproven opener is benched: its trial can no longer earn promotion
+     * within the trial games that remain.
      */
     static boolean isBenched(String opener, OpponentRecord opponentRecord) {
         Record record = opponentRecord.getOpenerRecord().get(opener);
@@ -348,9 +362,9 @@ public class LearningManager {
         }
         OpenerSelectionLog log = OpenerSelectionLog.from(record,
                 opponentRecord.getGameTimestamps(), PROBE_DORMANT_GAMES);
+        int remainingTrialGames = Math.max(0, PROBE_TRIAL_GAMES - log.trialCount());
         return log.isUnprovenTrial()
-                && log.trialCount() >= PROBE_TRIAL_GAMES
-                && log.trialWins() < PROBE_PROMOTION_WINS;
+                && log.trialWins() + remainingTrialGames < PROBE_PROMOTION_WINS;
     }
 
     /**

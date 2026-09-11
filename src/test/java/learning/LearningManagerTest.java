@@ -4,11 +4,15 @@ import bwapi.Race;
 import org.junit.jupiter.api.Test;
 import strategy.BuildOrderFactory;
 
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class LearningManagerTest {
 
@@ -104,6 +108,55 @@ public class LearningManagerTest {
                 "CannonRush", "Overpool", MAP_NAME);
 
         assertEquals("Overpool", selected);
+    }
+
+    /**
+     * 12Pool is benched and stands as the UCB winner. Overpool is the promoted incumbent, losing
+     * below the probe gate, and 12Hatch is benched but dormant, so the forced re-probe must still
+     * run against the incumbent and select 12Hatch.
+     */
+    @Test
+    void benchedUcbWinnerStillReachesForcedReprobe() {
+        OpponentRecord opponentRecord = OpponentRecord.builder()
+                .name(OPPONENT_NAME)
+                .race(Race.Zerg.toString())
+                .wins(0)
+                .losses(0)
+                .openerRecord(new HashMap<>())
+                .buildOrderRecord(new HashMap<>())
+                .mapSpecificOpenerRecord(new HashMap<>())
+                .mapSpecificBuildOrderRecord(new HashMap<>())
+                .build();
+        appendGames(opponentRecord, "12Hatch", false, LearningManager.PROBE_TRIAL_GAMES);
+        appendGames(opponentRecord, "Overpool", true, LearningManager.PROBE_PROMOTION_WINS);
+        appendGames(opponentRecord, "Overpool", false, 10);
+        appendGames(opponentRecord, "12Pool", false, LearningManager.PROBE_TRIAL_GAMES);
+        appendGames(opponentRecord, "Overpool", false, LearningManager.PROBE_EXPOSURE_WINDOW_GAMES);
+        List<String> playableOpeners = Arrays.asList("12Hatch", "12Pool", "Overpool");
+
+        assertTrue(LearningManager.isBenched("12Pool", opponentRecord));
+        assertTrue(LearningManager.isBenched("12Hatch", opponentRecord));
+        assertFalse(LearningManager.isBenched("Overpool", opponentRecord));
+        assertEquals("12Hatch", LearningManager.applyDormantReprobePolicy("12Pool", playableOpeners,
+                opponentRecord, MAP_NAME));
+    }
+
+    private static void appendGames(OpponentRecord opponentRecord, String opener, boolean won, int games) {
+        Record record = opponentRecord.getOpenerRecord()
+                .computeIfAbsent(opener, name -> Record.builder().opener(name).wins(0).losses(0).build());
+        for (int i = 0; i < games; i++) {
+            long timestamp = opponentRecord.getGameTimestamps().size() + 1;
+            if (won) {
+                record.setWins(record.getWins() + 1);
+                record.addWinTimestamp(timestamp);
+                opponentRecord.setWins(opponentRecord.getWins() + 1);
+            } else {
+                record.setLosses(record.getLosses() + 1);
+                record.addLossTimestamp(timestamp);
+                opponentRecord.setLosses(opponentRecord.getLosses() + 1);
+            }
+            opponentRecord.getGameTimestamps().add(timestamp);
+        }
     }
 
     private static OpponentRecord opponentRecordFavouring(BuildOrderFactory factory, Race opponentRace, String favouredOpener) {

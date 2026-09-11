@@ -190,6 +190,49 @@ public class OpenerSelectionLoopTest {
                 "after 12Pool's promotion and decline the gate must re-fire against other dormant openers");
     }
 
+    /**
+     * Every opener fails its cold-start trial, then one keeps losing in the slot until the rest
+     * are dormant. With every arm benched, each dormant opener must be re-probed within
+     * PROBE_DORMANT_GAMES games.
+     */
+    @Test
+    void dormantOpenersAreReprobedWhenEveryArmIsBenched() {
+        BuildOrderFactory factory = new BuildOrderFactory(4, Race.Zerg);
+        OpponentRecord record = OpponentRecord.builder()
+                .name(OPPONENT)
+                .race(Race.Zerg.toString())
+                .wins(0)
+                .losses(0)
+                .openerRecord(new HashMap<>())
+                .buildOrderRecord(new HashMap<>())
+                .mapSpecificOpenerRecord(new HashMap<>())
+                .mapSpecificBuildOrderRecord(new HashMap<>())
+                .build();
+        for (String opener : OPENERS) {
+            record.getOpenerRecord().put(opener, Record.builder().opener(opener).wins(0).losses(0).build());
+        }
+        for (int round = 0; round < LearningManager.PROBE_TRIAL_GAMES; round++) {
+            for (String opener : OPENERS) {
+                appendGame(record, opener, false, MAPS[record.getGameTimestamps().size() % MAPS.length]);
+            }
+        }
+        String incumbent = "Overpool";
+        for (int game = 0; game < LearningManager.PROBE_DORMANT_GAMES; game++) {
+            appendGame(record, incumbent, false, MAPS[record.getGameTimestamps().size() % MAPS.length]);
+        }
+        for (String opener : OPENERS) {
+            assertTrue(LearningManager.isBenched(opener, record), opener + " must be benched");
+        }
+
+        List<GameResult> results = runLoop(factory, record, incumbent, LearningManager.PROBE_DORMANT_GAMES,
+                ALWAYS_LOSS, true);
+        for (String opener : OPENERS) {
+            assertTrue(opener.equals(incumbent) || selectionCount(results, opener) > 0,
+                    opener + " was not re-probed within " + LearningManager.PROBE_DORMANT_GAMES
+                            + " games with every arm benched");
+        }
+    }
+
     private interface OutcomeModel {
         boolean isWin(String opener, int gamesSinceLastSelection);
     }
