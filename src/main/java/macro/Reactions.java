@@ -218,8 +218,19 @@ public class Reactions {
     }
 
     private boolean isSpeedStarted() {
-        return gameState.getTechProgression().isMetabolicBoost()
-                || gameState.getPlansBuilding().stream().anyMatch(IS_SPEED_UPGRADE);
+        return isSpeedStarted(gameState.getTechProgression().isMetabolicBoost(), gameState.getPlansBuilding());
+    }
+
+    /**
+     * Whether Metabolic Boost research has started or finished. A speed plan joins the building set
+     * on the frame research begins; a scheduled one still only holds its claim, so it does not count.
+     *
+     * @param metabolicBoostResearched whether the upgrade has finished
+     * @param plansBuilding plans whose research or construction has begun
+     * @return true once research has begun
+     */
+    static boolean isSpeedStarted(boolean metabolicBoostResearched, Set<Plan> plansBuilding) {
+        return metabolicBoostResearched || plansBuilding.stream().anyMatch(IS_SPEED_UPGRADE);
     }
 
     private void standDownFromEarlyRush() {

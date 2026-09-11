@@ -13,6 +13,7 @@ import info.UnitTypeCount;
 import macro.plan.BuildingPlan;
 import macro.plan.Plan;
 import macro.plan.PlanCancelSource;
+import macro.plan.PlanState;
 import macro.plan.PlanType;
 import macro.plan.UpgradePlan;
 import org.junit.jupiter.api.BeforeEach;
@@ -25,6 +26,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -76,6 +78,10 @@ public class ReactionsTest {
     private static final boolean SPEED_NOT_STARTED = false;
 
     private static final int FREE_MINERALS_AFTER_LAIR_CLAIM = 43;
+
+    private static final boolean RESEARCHED = true;
+
+    private static final boolean NOT_RESEARCHED = false;
 
     private BaseData baseData;
 
@@ -479,49 +485,82 @@ public class ReactionsTest {
     /**
      * A scheduled Lair's claim leaves too few free minerals for Metabolic Boost, so the upgrade is
      * swept for want of income. While speed is pending against Zerg the reaction drops the queued
-     * Lair, and ProductionManager cancels the scheduled one through GameState.cancelPlan, which
-     * hands its claim back; the bank then covers the upgrade.
+     * Lair, and ProductionManager selects the scheduled one and cancels it through
+     * GameState.cancelPlan, which hands its claim back; the bank then covers the upgrade.
      */
     @Test
     void theZvZEarlyRushCancelsLairSoMetabolicBoostSchedulesFirst() {
         ProductionQueue queue = new ProductionQueue();
         Plan queuedLair = new BuildingPlan(UnitType.Zerg_Lair, CANCEL_FRAME);
         queue.add(queuedLair);
+        Plan scheduledLair = new BuildingPlan(UnitType.Zerg_Lair, CANCEL_FRAME);
+        scheduledLair.setState(PlanState.SCHEDULE);
+        Set<Plan> plansScheduled = new HashSet<>(Collections.singletonList(scheduledLair));
         TechProgression techProgression = withSpawningPool();
         Reactions.planSpeedUpgrade(queue, techProgression, HAVE_EXTRACTOR, techProgression.canPlanMetabolicBoost(), CANCEL_FRAME);
         Plan speed = speedPlan(queue);
 
         ResourceCount resourceCount = new ResourceCount(null);
-        resourceCount.reserveUnit(UnitType.Zerg_Lair);
+        resourceCount.reserveUnit(scheduledLair.getPlannedUnit());
         int bankMinerals = UnitType.Zerg_Lair.mineralPrice() + FREE_MINERALS_AFTER_LAIR_CLAIM;
         int bankGas = UnitType.Zerg_Lair.gasPrice() + speed.gasPrice();
         assertFalse(canAfford(speed, bankMinerals, bankGas, resourceCount));
 
-        boolean delayLair = Reactions.shouldDelayLair(Race.Zerg, techProgression.isPlannedMetabolicBoost(), SPEED_NOT_STARTED);
+        boolean speedStarted = Reactions.isSpeedStarted(NOT_RESEARCHED, new HashSet<>());
+        boolean delayLair = Reactions.shouldDelayLair(Race.Zerg, techProgression.isPlannedMetabolicBoost(), speedStarted);
         assertTrue(delayLair);
         assertTrue(new Reactions(null).shouldFireLairCancel(delayLair));
 
         List<Plan> cancelled = new ArrayList<>();
         Reactions.cancelQueuedLairs(queue, cancelled::add);
-        resourceCount.unreserveUnit(UnitType.Zerg_Lair);
+        Set<Plan> scheduledCancels = ProductionManager.delayedLairPlans(delayLair, plansScheduled);
+        for (Plan plan : scheduledCancels) {
+            resourceCount.unreserveUnit(plan.getPlannedUnit());
+        }
 
         assertEquals(Collections.singletonList(queuedLair), cancelled);
         assertEquals(PlanCancelSource.REACTION_EARLY_RUSH_LAIR, queuedLair.getCancelSource());
+        assertEquals(Collections.singleton(scheduledLair), scheduledCancels);
         assertEquals(Collections.singletonList(speed), queue.toSortedList());
         assertTrue(canAfford(speed, bankMinerals, bankGas, resourceCount));
     }
 
     @Test
     void theZvZEarlyRushAllowsTheLairOnceSpeedHasStarted() {
+        Plan speed = new UpgradePlan(UpgradeType.Metabolic_Boost, CANCEL_FRAME);
+        Set<Plan> plansBuilding = new HashSet<>();
         Reactions reactions = new Reactions(null);
-        assertTrue(reactions.shouldFireLairCancel(Reactions.shouldDelayLair(Race.Zerg, SPEED_PLANNED, SPEED_NOT_STARTED)));
+        boolean pending = Reactions.shouldDelayLair(Race.Zerg, SPEED_PLANNED, Reactions.isSpeedStarted(NOT_RESEARCHED, plansBuilding));
+        assertTrue(reactions.shouldFireLairCancel(pending));
 
-        boolean researching = Reactions.shouldDelayLair(Race.Zerg, SPEED_PLANNED, SPEED_STARTED);
-        boolean researched = Reactions.shouldDelayLair(Race.Zerg, SPEED_NOT_PLANNED, SPEED_STARTED);
+        plansBuilding.add(speed);
+        boolean researching = Reactions.shouldDelayLair(Race.Zerg, SPEED_PLANNED, Reactions.isSpeedStarted(NOT_RESEARCHED, plansBuilding));
+        boolean researched = Reactions.shouldDelayLair(Race.Zerg, SPEED_NOT_PLANNED, Reactions.isSpeedStarted(RESEARCHED, new HashSet<>()));
 
         assertFalse(researching);
         assertFalse(researched);
         assertFalse(reactions.shouldFireLairCancel(researching));
+        assertTrue(ProductionManager.delayedLairPlans(researching, new HashSet<>(Collections.singletonList(lair(PlanState.SCHEDULE)))).isEmpty());
+    }
+
+    /**
+     * Only a plan in the building set has begun research. A scheduled speed plan still holds its
+     * claim, so reading it as started would free the Lair while the upgrade is unpaid.
+     */
+    @Test
+    void speedCountsAsStartedOnlyOnceResearchBegins() {
+        Plan speed = new UpgradePlan(UpgradeType.Metabolic_Boost, CANCEL_FRAME);
+
+        assertFalse(Reactions.isSpeedStarted(NOT_RESEARCHED, new HashSet<>()));
+        assertFalse(Reactions.isSpeedStarted(NOT_RESEARCHED, new HashSet<>(Collections.singletonList(lair(PlanState.BUILDING)))));
+        assertTrue(Reactions.isSpeedStarted(NOT_RESEARCHED, new HashSet<>(Collections.singletonList(speed))));
+        assertTrue(Reactions.isSpeedStarted(RESEARCHED, new HashSet<>()));
+    }
+
+    private static Plan lair(PlanState state) {
+        Plan plan = new BuildingPlan(UnitType.Zerg_Lair, CANCEL_FRAME);
+        plan.setState(state);
+        return plan;
     }
 
     @Test

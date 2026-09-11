@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 
@@ -35,6 +36,12 @@ class ProductionManagerTest {
     private Plan spire(PlanState state) {
         Plan plan = new BuildingPlan(UnitType.Zerg_Spire, 1000);
         plan.setState(state);
+        return plan;
+    }
+
+    private Plan lair() {
+        Plan plan = new BuildingPlan(UnitType.Zerg_Lair, 1000);
+        plan.setState(PlanState.SCHEDULE);
         return plan;
     }
 
@@ -135,6 +142,20 @@ class ProductionManagerTest {
     @Test
     void buildingClaimWithExecutorRemainsActive() {
         assertNull(ProductionManager.buildAheadCancellationSource(spire(PlanState.BUILDING), true, true));
+    }
+
+    @Test
+    void anEarlyRushDelayDropsOnlyTheScheduledLair() {
+        Plan lair = lair();
+        Plan scheduledSpire = spire(PlanState.SCHEDULE);
+
+        assertEquals(Collections.singleton(lair),
+                ProductionManager.delayedLairPlans(true, new HashSet<>(Arrays.asList(lair, scheduledSpire, extractor()))));
+    }
+
+    @Test
+    void noScheduledLairIsDroppedWhileTheLairIsNotDelayed() {
+        assertTrue(ProductionManager.delayedLairPlans(false, new HashSet<>(Collections.singletonList(lair()))).isEmpty());
     }
 
     @Test
