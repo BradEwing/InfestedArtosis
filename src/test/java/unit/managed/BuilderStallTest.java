@@ -92,20 +92,32 @@ class BuilderStallTest {
     }
 
     @Test
-    void aStalledBuilderSearchesAroundItselfNotItsSite() {
+    void aStalledBackBaseBuilderSearches256PixelsAroundItself() {
         BuilderStall<String> stall = new BuilderStall<>();
-        RecordingLookup lookup = new RecordingLookup(WALL_FIELD);
+        RecordingLookup lookup = new RecordingLookup(WALL_FIELD, 250);
         Position drone = new Position(1200, 1200);
         for (int frame = 0; frame < BuilderStall.STALL_FRAMES; frame++) {
-            assertNull(stall.divertIfStalled(drone, SITE, 600, false, frame, lookup));
+            assertNull(stall.divertIfStalled(drone, SITE, 900, false, frame, lookup));
         }
         assertTrue(lookup.positions.isEmpty());
 
-        assertEquals(WALL_FIELD, stall.divertIfStalled(drone, SITE, 600, false, BuilderStall.STALL_FRAMES, lookup));
+        assertEquals(WALL_FIELD, stall.divertIfStalled(drone, SITE, 900, false, BuilderStall.STALL_FRAMES, lookup));
 
         assertEquals(Collections.singletonList(drone), lookup.positions);
-        assertEquals(Collections.singletonList(96), lookup.radii);
+        assertEquals(Collections.singletonList(256), lookup.radii);
         assertEquals(WALL_FIELD, stall.getBlocker());
+    }
+
+    @Test
+    void aBuilderClosingPastAWallNeverSearchesForIt() {
+        BuilderStall<String> stall = new BuilderStall<>();
+        RecordingLookup lookup = new RecordingLookup(WALL_FIELD);
+        Position drone = new Position(1200, 1200);
+        for (int frame = 0; 2000 - DRONE_SPEED * frame > BuilderStall.ARRIVAL_DISTANCE; frame++) {
+            assertNull(stall.divertIfStalled(drone, SITE, 2000 - DRONE_SPEED * frame, false, frame, lookup));
+        }
+        assertTrue(lookup.positions.isEmpty());
+        assertNull(stall.getBlocker());
     }
 
     @Test
@@ -187,18 +199,24 @@ class BuilderStallTest {
 
     private static final class RecordingLookup implements BiFunction<Position, Integer, String> {
         private final String blocker;
+        private final int blockerDistance;
         private final List<Position> positions = new ArrayList<>();
         private final List<Integer> radii = new ArrayList<>();
 
         RecordingLookup(String blocker) {
+            this(blocker, 0);
+        }
+
+        RecordingLookup(String blocker, int blockerDistance) {
             this.blocker = blocker;
+            this.blockerDistance = blockerDistance;
         }
 
         @Override
         public String apply(Position position, Integer radius) {
             positions.add(position);
             radii.add(radius);
-            return blocker;
+            return radius >= blockerDistance ? blocker : null;
         }
     }
 }

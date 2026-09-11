@@ -13,6 +13,7 @@ import lombok.Getter;
 import lombok.Setter;
 import macro.plan.Plan;
 import macro.plan.PlanState;
+import telemetry.PlanEvents;
 import util.Filter;
 import util.Vec2;
 
@@ -548,6 +549,7 @@ public class ManagedUnit {
         Unit stallBlocker = builderStall.divertIfStalled(unit.getPosition(), buildTarget, distanceToTarget, harvesting,
                 game.getFrameCount(), gameMap::findNearbyBlockingMineral);
         if (stallBlocker != null) {
+            PlanEvents.blockerDiverted(plan, stallBlocker.getPosition());
             gatherBlockerMineral();
             return;
         }

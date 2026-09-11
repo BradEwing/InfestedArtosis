@@ -1,5 +1,6 @@
 package telemetry;
 
+import bwapi.Position;
 import bwapi.UnitType;
 import macro.plan.Plan;
 import macro.plan.PlanBlocker;
@@ -40,5 +41,9 @@ public interface PlanEventSink {
 
     /** A unit was cancelled outside the plan system, so no plan transition records the cancellation. */
     default void onUnplannedCancel(UnitType unitType, PlanCancelSource cancelSource) {
+    }
+
+    /** A stalled builder was sent to mine the blocking mineral at this position. */
+    default void onBlockerDivert(Plan plan, Position mineral) {
     }
 }

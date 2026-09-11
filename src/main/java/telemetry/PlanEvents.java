@@ -1,5 +1,6 @@
 package telemetry;
 
+import bwapi.Position;
 import bwapi.UnitType;
 import macro.plan.Plan;
 import macro.plan.PlanBlocker;
@@ -93,5 +94,13 @@ public final class PlanEvents {
             return;
         }
         current.onUnplannedCancel(unitType, cancelSource);
+    }
+
+    public static void blockerDiverted(Plan plan, Position mineral) {
+        PlanEventSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onBlockerDivert(plan, mineral);
     }
 }
