@@ -14,6 +14,7 @@ import info.ScoutData;
 import info.map.GameMap;
 import info.map.MapTile;
 import info.map.ScoutPath;
+import telemetry.PerchAssignments;
 import unit.managed.ManagedUnit;
 import unit.managed.UnitRole;
 
@@ -104,10 +105,11 @@ public class ScoutManager {
     }
 
     /**
-     * Moves an overlord scout to a perch watching the best-known enemy location. Against Zerg, whose
-     * early units cannot shoot up, or on a map with no perch, the overlord holds over the watch
-     * target itself instead of falling back into map scouting; the perch leave predicate still
-     * recalls it when air or hydralisk tech appears.
+     * Moves an overlord scout to a perch watching the best-known enemy location. The perch is ranked
+     * from where the overlord stands, so it takes the nearest safe perch rather than the one closest
+     * to the enemy. Against Zerg, whose early units cannot shoot up, or on a map with no perch, the
+     * overlord holds over the watch target itself instead of falling back into map scouting; the
+     * perch leave predicate still recalls it when air or hydralisk tech appears.
      *
      * @param overlord the overlord to perch
      * @return true if a watch target exists and the overlord was assigned to hold there
@@ -119,13 +121,16 @@ public class ScoutManager {
         }
 
         Position perchPosition = watchTarget;
+        boolean usedPerchTile = false;
         if (gameState.getOpponentRace() != Race.Zerg) {
-            MapTile perch = gameState.getGameMap().findPerchNear(watchTarget);
+            MapTile perch = gameState.getGameMap().findPerchNear(watchTarget, overlord.getPosition());
             if (perch != null) {
                 perchPosition = perch.getTile().toPosition().add(new Position(16, 16));
+                usedPerchTile = true;
             }
         }
 
+        PerchAssignments.assigned(overlord, perchPosition, watchTarget, usedPerchTile);
         releaseActiveScoutTarget(overlord);
         overlord.setPerchPosition(perchPosition);
         overlord.setMovementTargetPosition(null);
