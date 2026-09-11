@@ -418,4 +418,35 @@ class BuildOrderTest {
 
         assertFalse(BuildOrder.nextSunkenBase(new HashSet<String>(), new HashSet<String>(), rank).isPresent());
     }
+
+    /**
+     * The regression IA-334 introduced: openerComplete goes true on a planned Spawning Pool, but a
+     * zergling plan is only legal on a finished one. Opening the continuation here left drones, a
+     * natural and an extractor as its only reachable branches for the pool's whole build time, at
+     * enqueue-frame priorities no later zergling could outrank.
+     */
+    @Test
+    void keepsTheUnknownRaceContinuationClosedWhileTheSpawningPoolIsStillBuilding() {
+        assertFalse(BuildOrder.unknownRaceMacroOpen(true, true, false, false));
+    }
+
+    @Test
+    void opensTheUnknownRaceContinuationOnceAZerglingIsLegal() {
+        assertTrue(BuildOrder.unknownRaceMacroOpen(true, true, true, false));
+    }
+
+    @Test
+    void keepsTheUnknownRaceContinuationClosedOnceTheOpponentRaceIsKnown() {
+        assertFalse(BuildOrder.unknownRaceMacroOpen(false, true, true, false));
+    }
+
+    @Test
+    void keepsTheUnknownRaceContinuationClosedBeforeTheOpenerFinishes() {
+        assertFalse(BuildOrder.unknownRaceMacroOpen(true, false, true, false));
+    }
+
+    @Test
+    void keepsTheUnknownRaceContinuationClosedWhileTheEmergencyOwnsProduction() {
+        assertFalse(BuildOrder.unknownRaceMacroOpen(true, true, true, true));
+    }
 }
