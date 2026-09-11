@@ -17,6 +17,7 @@ import macro.plan.Plan;
 import macro.plan.PlanCancelSource;
 import macro.plan.PlanType;
 import macro.plan.UpgradePlan;
+import strategy.buildorder.SunkenTargets;
 import telemetry.PlanEvents;
 
 import bwapi.Unit;
@@ -89,6 +90,7 @@ public class Reactions {
         twoGateReaction();
         zvzSunkenReaction();
         ffeReaction();
+        openMainForStaticDefense();
         clearMainSunkenOnExpansion();
     }
 
@@ -438,12 +440,61 @@ public class Reactions {
         productionQueue.setPriorityWhere(IS_DRONE.or(IS_HATCHERY), minPriority);
     }
 
-    private void clearMainSunkenOnExpansion() {
+    /**
+     * Opens the main to static defense while a race agnostic sunken floor is asking for one.
+     *
+     * <p>The count a build order asks for at the main is only reachable once BaseData calls the
+     * main eligible, so the reaction layer reads the same {@link SunkenTargets} predicates the
+     * build order layer raises its count on. Without this the floors produce a target no base can
+     * satisfy: allowSunkenAtMain defaults false and is otherwise granted only by the rush and
+     * 2Gate reactions.
+     *
+     * <p>Barracks pressure holds the main open past the natural, because a bio push of that size
+     * arrives at whichever base is closest to the enemy and the main is where the drones are. The
+     * 1Base floor only opens a main that is still our sole base, which is the case its own floor
+     * could not otherwise reach; once the natural is up that base carries the floor instead.
+     */
+    private void openMainForStaticDefense() {
         BaseData baseData = gameState.getBaseData();
-        if (!baseData.isAllowSunkenAtMain()) {
+        if (isUnderBarracksPressure()) {
+            baseData.setAllowSunkenAtMain(true);
             return;
         }
-        if (baseData.currentBaseCount() < 2) {
+
+        if (isUnderOneBaseFloor()) {
+            allowSunkenAtMainIfSingleBase(baseData);
+        }
+    }
+
+    private boolean isUnderBarracksPressure() {
+        return SunkenTargets.isBarracksPressure(gameState.enemyUnitCount(UnitType.Terran_Barracks));
+    }
+
+    private boolean isUnderOneBaseFloor() {
+        return SunkenTargets.oneBaseSunkens(gameState.getStrategyTracker().isDetectedStrategy(SunkenTargets.ONE_BASE_STRATEGY),
+                gameState.getBaseData().getEnemyBases().size(),
+                gameState.getGameTime()) > 0;
+    }
+
+    /**
+     * Whether the main should be closed to static defense again.
+     *
+     * <p>Reads the same base count as {@link #allowSunkenAtMainIfSingleBase}, so the two halves of
+     * the rule agree on what a single base means, and the same Barracks threshold the build orders
+     * raise their sunken count on. Pressure holds the main open past the natural: closing it would
+     * cancel the colonies the raised count had just asked for there.
+     *
+     * @param baseData our bases and the current main sunken gate
+     * @param underBarracksPressure whether the enemy's observed Barracks read as a bio push
+     * @return true when the gate should close and the main's queued colonies be dropped
+     */
+    static boolean shouldClearMainSunken(BaseData baseData, boolean underBarracksPressure) {
+        return baseData.isAllowSunkenAtMain() && !underBarracksPressure && baseData.currentBaseCount() >= 2;
+    }
+
+    private void clearMainSunkenOnExpansion() {
+        BaseData baseData = gameState.getBaseData();
+        if (!shouldClearMainSunken(baseData, isUnderBarracksPressure())) {
             return;
         }
 
