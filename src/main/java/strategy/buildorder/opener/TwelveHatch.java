@@ -6,16 +6,8 @@ import info.BaseData;
 import info.GameState;
 import macro.plan.Plan;
 import strategy.buildorder.BuildOrder;
-import strategy.buildorder.SpeedlingAllIn;
-import strategy.buildorder.protoss.ThreeHatchHydra;
-import strategy.buildorder.protoss.ThreeHatchMuta;
-import strategy.buildorder.terran.CrazyZerg;
-import strategy.buildorder.terran.ThreeHatchLurker;
-import strategy.buildorder.terran.TwoHatchMuta;
-import strategy.buildorder.zerg.OneHatchSpire;
 
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
@@ -81,28 +73,7 @@ public class TwelveHatch extends BuildOrder {
 
     @Override
     public Set<BuildOrder> transition(GameState gameState) {
-        Set<BuildOrder> next = new HashSet<>();
-        Race opponentRace = gameState.getOpponentRace();
-        switch (opponentRace) {
-            case Protoss:
-                next.add(new ThreeHatchMuta());
-                next.add(new ThreeHatchHydra());
-                next.add(new SpeedlingAllIn());
-                return next;
-            case Zerg:
-                next.add(new OneHatchSpire());
-                next.add(new SpeedlingAllIn());
-                return next;
-            case Terran:
-                next.add(new CrazyZerg());
-                next.add(new TwoHatchMuta());
-                next.add(new ThreeHatchLurker());
-                next.add(new SpeedlingAllIn());
-                return next;
-            default:
-                break;
-        }
-        return next;
+        return OpenerTransitions.forRace(gameState.getOpponentRace());
     }
 
     @Override

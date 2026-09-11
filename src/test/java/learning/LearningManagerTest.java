@@ -160,29 +160,29 @@ public class LearningManagerTest {
     }
 
     /**
-     * Overpool's Protoss transitions: 3HatchMuta has been played to a 40% win rate, while
-     * SpeedlingAllIn and 3HatchHydra have never been played. Both untried candidates take their
-     * first exposure before 3HatchMuta is chosen again.
+     * Overpool's Terran transitions: 3HatchLurker has been played to a 40% win rate, while
+     * CrazyZerg and SpeedlingAllIn have never been played. Both untried candidates take their
+     * first exposure before 3HatchLurker is chosen again.
      */
     @Test
     void anUntriedBuildOrderCandidateIsChosenBeforeATriedOne() {
         OpponentRecord opponentRecord = emptyOpponentRecord();
         Map<String, Record> buildOrders = opponentRecord.getBuildOrderRecord();
-        appendGames(opponentRecord, buildOrders, "3HatchMuta", false, 3);
-        appendGames(opponentRecord, buildOrders, "3HatchMuta", true, 2);
+        appendGames(opponentRecord, buildOrders, "3HatchLurker", false, 3);
+        appendGames(opponentRecord, buildOrders, "3HatchLurker", true, 2);
+        appendGames(opponentRecord, buildOrders, "CrazyZerg", false, 0);
         appendGames(opponentRecord, buildOrders, "SpeedlingAllIn", false, 0);
-        appendGames(opponentRecord, buildOrders, "3HatchHydra", false, 0);
-        List<String> candidates = Arrays.asList("3HatchHydra", "3HatchMuta", "SpeedlingAllIn");
+        List<String> candidates = Arrays.asList("3HatchLurker", "CrazyZerg", "SpeedlingAllIn");
 
         String first = LearningManager.selectBuildOrderName(candidates, opponentRecord, MAP_NAME);
         appendGames(opponentRecord, buildOrders, first, false, 1);
         String second = LearningManager.selectBuildOrderName(candidates, opponentRecord, MAP_NAME);
         appendGames(opponentRecord, buildOrders, second, false, 1);
 
-        assertNotEquals("3HatchMuta", first);
-        assertNotEquals("3HatchMuta", second);
+        assertNotEquals("3HatchLurker", first);
+        assertNotEquals("3HatchLurker", second);
         assertNotEquals(first, second);
-        assertEquals("3HatchMuta", LearningManager.selectBuildOrderName(candidates, opponentRecord, MAP_NAME));
+        assertEquals("3HatchLurker", LearningManager.selectBuildOrderName(candidates, opponentRecord, MAP_NAME));
     }
 
     private static OpponentRecord emptyOpponentRecord() {
