@@ -269,10 +269,6 @@ public class ResourceCount {
         return availableMinerals - availableGas > MINERAL_GAS_IMBALANCE;
     }
 
-    public boolean isFloatingGas() { 
-        return availableGas() - availableMinerals() > 150; 
-    }
-
     public int getPlannedSupply() {
         return plannedSupply;
     }
