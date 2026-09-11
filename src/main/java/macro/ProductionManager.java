@@ -35,6 +35,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.ToIntFunction;
 import java.util.stream.Collectors;
 
 /**
@@ -260,28 +261,43 @@ public class ProductionManager {
         return starved;
     }
 
-    /**
-     * Re-times every hold whose builder has not launched yet against current income.
-     *
-     * <p>The prediction a claim was taken on is what PlanManager reads each frame to decide when to
-     * release the builder, and it decays when gatherers die or are reassigned. Left stale, the plan
-     * rides to the claim-time cap and is evicted with its drone still on minerals.
-     */
     private void refreshBuildAheadPredictions() {
-        for (Plan plan : buildAheadSlot.claimedPlans()) {
-            if (plan.getState() != PlanState.SCHEDULE) {
+        refreshBuildAheadPredictions(
+                buildAheadSlot,
+                gameState.frameCanAffordReserved(currentFrame),
+                this::builderTravelFrames);
+    }
+
+    /**
+     * Re-times every hold whose plan still waits on its builder, parked or launched, against
+     * current income.
+     *
+     * <p>The prediction a claim was taken on decays when gatherers die or are reassigned, and a
+     * launched builder is still walking, or clearing its path, when the claim-time deadline lands.
+     * Left stale, the plan rides to the claim-time cap and is evicted with its builder mid-walk.
+     * Only a parked plan's predictedReadyFrame is rewritten, since PlanManager releases the builder
+     * on it; a launched builder reads it to decide when to clear a blocking mineral.
+     */
+    static void refreshBuildAheadPredictions(
+            BuildAheadSlot slot,
+            int predictedReadyFrame,
+            ToIntFunction<Plan> travelFrames) {
+        for (Plan plan : slot.claimedPlans()) {
+            PlanState state = plan.getState();
+            if (state == PlanState.SCHEDULE) {
+                plan.setPredictedReadyFrame(predictedReadyFrame);
+            } else if (state != PlanState.BUILDING) {
                 continue;
             }
-            int predictedReadyFrame = gameState.frameCanAffordReserved(currentFrame);
-            plan.setPredictedReadyFrame(predictedReadyFrame);
-            buildAheadSlot.extend(plan, predictedReadyFrame, builderTravelFrames(plan));
+            slot.extend(plan, predictedReadyFrame, travelFrames.applyAsInt(plan));
         }
     }
 
     /**
      * Requeues an evicted plan. It keeps its build position, so its tiles are not reserved twice,
      * and its priority, so an eviction cannot reorder it behind plans queued after it. The per-plan
-     * backoff is what stops it reclaiming the slot on the next frame.
+     * backoff bars it from a fresh hold: a plan that can pay resumes the hold it was evicted from,
+     * and one that cannot waits the backoff out.
      */
     private void requeueStalledPlan(Plan plan, BuildAheadSlot slot) {
         slot.releaseWithBackoff(plan, currentFrame);
@@ -1063,8 +1079,9 @@ public class ProductionManager {
     /**
      * Why a building plan cannot take the build-ahead slot this frame.
      *
-     * <p>Affordability is answered first: an eviction bars a plan from holding the slot again,
-     * never from being scheduled with minerals it can already pay for.
+     * <p>Affordability is answered first: an eviction bars a plan from a fresh hold, never from
+     * being scheduled with minerals it can already pay for. A plan that can pay resumes the hold it
+     * was evicted from, so it waits out its backoff only once that hold has run out.
      */
     static PlanBlocker buildAheadBlocker(
             BuildAheadSlot slot,
@@ -1074,7 +1091,7 @@ public class ProductionManager {
             boolean hasHigherPriorityPending,
             int predictedReadyFrame) {
         if (!cannotAfford) {
-            return PlanBlocker.NONE;
+            return slot.isHoldSpent(plan, frame) ? PlanBlocker.BUILD_AHEAD_BACKOFF : PlanBlocker.NONE;
         }
         if (hasHigherPriorityPending || slot.isOccupied()) {
             return PlanBlocker.BUILD_AHEAD_SLOT_TAKEN;
