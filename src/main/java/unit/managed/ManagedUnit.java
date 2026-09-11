@@ -545,13 +545,11 @@ public class ManagedUnit {
         Position buildTarget = getBuilderMoveLocation(buildingType, plan.getBuildPosition());
         int distanceToTarget = unit.getDistance(buildTarget);
         boolean harvesting = unit.isGatheringMinerals() || unit.isGatheringGas();
-        if (builderStall.isStalled(buildTarget, distanceToTarget, harvesting, game.getFrameCount())) {
-            Unit nearbyBlocker = gameMap.findNearbyBlockingMineral(unit.getPosition(), BuilderStall.BLOCKER_SEARCH_RADIUS);
-            if (nearbyBlocker != null) {
-                builderStall.divertTo(nearbyBlocker);
-                gatherBlockerMineral();
-                return;
-            }
+        Unit stallBlocker = builderStall.divertIfStalled(unit.getPosition(), buildTarget, distanceToTarget, harvesting,
+                game.getFrameCount(), gameMap::findNearbyBlockingMineral);
+        if (stallBlocker != null) {
+            gatherBlockerMineral();
+            return;
         }
         if (distanceToTarget > BuilderStall.ARRIVAL_DISTANCE || unit.isGatheringMinerals()) {
             setUnready();

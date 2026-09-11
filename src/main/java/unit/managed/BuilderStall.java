@@ -3,6 +3,8 @@ package unit.managed;
 import bwapi.Position;
 import macro.plan.Plan;
 
+import java.util.function.BiFunction;
+
 /**
  * Tracks a builder's walk to its move target and the neutral blocker it diverts to. A builder is
  * stalled when it is more than {@link #ARRIVAL_DISTANCE} from its move target, is not harvesting,
@@ -34,6 +36,7 @@ public class BuilderStall<B> {
 
     public void clearBlocker() {
         blocker = null;
+        resetProgress();
     }
 
     public void onPlanChange(Plan previous, Plan next) {
@@ -42,6 +45,30 @@ public class BuilderStall<B> {
         }
         blocker = null;
         resetProgress();
+    }
+
+    /**
+     * Diverts a stalled builder to the closest blocker within {@link #BLOCKER_SEARCH_RADIUS} of the
+     * builder itself, never of its build site.
+     *
+     * @param builder the builder's position
+     * @param target the builder's move target
+     * @param distance the builder's distance to its move target, in pixels
+     * @param harvesting whether the builder is gathering or carrying
+     * @param frame the current frame
+     * @param lookup finds the closest blocker within a pixel radius of a position
+     * @return the blocker diverted to, or null when the builder is not stalled or no blocker is in range
+     */
+    public B divertIfStalled(Position builder, Position target, double distance, boolean harvesting, int frame,
+            BiFunction<Position, Integer, B> lookup) {
+        if (!isStalled(target, distance, harvesting, frame)) {
+            return null;
+        }
+        B nearby = lookup.apply(builder, BLOCKER_SEARCH_RADIUS);
+        if (nearby != null) {
+            divertTo(nearby);
+        }
+        return nearby;
     }
 
     /**
