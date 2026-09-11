@@ -264,9 +264,10 @@ public class Reactions {
      *
      * @param productionQueue the queue the upgrade is added to and reprioritized in
      * @param techProgression marks the upgrade planned so it is queued once
-     * @param haveExtractor whether an Extractor exists or is morphing
+     * @param haveExtractor whether a finished Extractor exists
      * @param canPlanSpeed whether Metabolic Boost may be queued now
-     * @param currentFrame the frame the plan is created on
+     * @param currentFrame the current frame, which the new plan takes as its initial priority before
+     *     being pulled forward to {@link #SPEED_UPGRADE_PRIORITY}
      */
     static void planSpeedUpgrade(ProductionQueue productionQueue, TechProgression techProgression,
                                  boolean haveExtractor, boolean canPlanSpeed, int currentFrame) {
