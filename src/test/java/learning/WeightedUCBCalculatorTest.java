@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 
@@ -134,15 +135,63 @@ public class WeightedUCBCalculatorTest {
     }
 
     /**
-     * A strategy with no record at all scores the curiosity cap, so it cannot claim the slot from
-     * a strategy whose discounted win rate leads by more than that.
+     * A strategy the opponent record has never played is chosen before a winning incumbent, and
+     * the untried strategies take their first exposures one after another.
      */
     @Test
-    void anUnplayedStrategyDoesNotDisplaceAWinningIncumbent() {
+    void anUnplayedStrategyIsChosenBeforeAWinningIncumbent() {
         Map<String, Record> opponentRecords = new HashMap<>();
         Map<String, MapAwareRecord> mapRecords = new HashMap<>();
-        Record incumbent = Record.builder().opener("4Pool").build();
         List<Long> gameTimestamps = new ArrayList<>();
+        opponentRecords.put("4Pool", thirtyPercentIncumbent(gameTimestamps));
+        opponentRecords.put("Overpool", Record.builder().opener("Overpool").build());
+        List<String> candidates = Arrays.asList("12Pool", "Overpool", "4Pool", "9PoolSpeed");
+
+        List<String> firstExposures = new ArrayList<>();
+        for (int game = 0; game < 3; game++) {
+            String selected = WeightedUCBCalculator.findBestStrategy(candidates, "MapA",
+                    mapRecords, opponentRecords, gameTimestamps.size(), gameTimestamps);
+            firstExposures.add(selected);
+            long timestamp = gameTimestamps.size() + 1L;
+            gameTimestamps.add(timestamp);
+            Record record = opponentRecords.computeIfAbsent(selected, name -> Record.builder().opener(name).build());
+            record.addLossTimestamp(timestamp);
+            record.setLosses(record.getLosses() + 1);
+        }
+
+        assertEquals(new HashSet<>(Arrays.asList("12Pool", "Overpool", "9PoolSpeed")), new HashSet<>(firstExposures),
+                "every untried strategy must be chosen before the incumbent, measured " + firstExposures);
+    }
+
+    /**
+     * Once every strategy has been played, a thin arm earns at most the curiosity cap, so it
+     * cannot claim the slot from a strategy whose discounted win rate leads by more than that.
+     */
+    @Test
+    void aThinlyPlayedStrategyDoesNotDisplaceAWinningIncumbent() {
+        Map<String, Record> opponentRecords = new HashMap<>();
+        Map<String, MapAwareRecord> mapRecords = new HashMap<>();
+        List<Long> gameTimestamps = new ArrayList<>();
+        opponentRecords.put("4Pool", thirtyPercentIncumbent(gameTimestamps));
+        List<String> candidates = Arrays.asList("12Pool", "Overpool", "4Pool", "9PoolSpeed");
+        long timestamp = gameTimestamps.size();
+        for (String thin : Arrays.asList("12Pool", "Overpool", "9PoolSpeed")) {
+            Record record = Record.builder().opener(thin).build();
+            record.addLossTimestamp(++timestamp);
+            record.setLosses(1);
+            opponentRecords.put(thin, record);
+            gameTimestamps.add(timestamp);
+        }
+
+        for (int lifetime : new int[] {33, 53, 339, 1324}) {
+            assertEquals("4Pool", WeightedUCBCalculator.findBestStrategy(candidates, "MapA",
+                    mapRecords, opponentRecords, lifetime, gameTimestamps),
+                    "A thinly played arm displaced a 30% incumbent at a lifetime of " + lifetime);
+        }
+    }
+
+    private static Record thirtyPercentIncumbent(List<Long> gameTimestamps) {
+        Record incumbent = Record.builder().opener("4Pool").build();
         for (long timestamp = 1; timestamp <= 30; timestamp++) {
             gameTimestamps.add(timestamp);
             if (timestamp % 10 == 3 || timestamp % 10 == 6 || timestamp % 10 == 9) {
@@ -153,14 +202,7 @@ public class WeightedUCBCalculatorTest {
                 incumbent.setLosses(incumbent.getLosses() + 1);
             }
         }
-        opponentRecords.put("4Pool", incumbent);
-        List<String> candidates = Arrays.asList("12Pool", "Overpool", "4Pool", "9PoolSpeed");
-
-        for (int lifetime : new int[] {30, 53, 339, 1324}) {
-            assertEquals("4Pool", WeightedUCBCalculator.findBestStrategy(candidates, "MapA",
-                    mapRecords, opponentRecords, lifetime, gameTimestamps),
-                    "An unplayed arm displaced a 30% incumbent at a lifetime of " + lifetime);
-        }
+        return incumbent;
     }
 
     @Test

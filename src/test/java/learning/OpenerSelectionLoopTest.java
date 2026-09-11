@@ -14,6 +14,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -230,6 +231,36 @@ public class OpenerSelectionLoopTest {
             assertTrue(opener.equals(incumbent) || selectionCount(results, opener) > 0,
                     opener + " did not re-enter within " + LearningManager.PROBE_DORMANT_GAMES
                             + " games of the benched lock-in");
+        }
+    }
+
+    /**
+     * A cold record gives every playable opener its first exposure within as many games as there
+     * are playable openers, even when the first opener played wins every game.
+     */
+    @Test
+    void everyPlayableOpenerIsTriedWithinTheFirstGamesOfAColdRecord() {
+        for (Race race : new Race[] {Race.Protoss, Race.Terran, Race.Zerg, Race.Unknown}) {
+            BuildOrderFactory factory = new BuildOrderFactory(4, race);
+            Set<String> playable = factory.getOpenerNames();
+            OpponentRecord record = OpponentRecord.builder()
+                    .name(OPPONENT)
+                    .race(race.toString())
+                    .wins(0)
+                    .losses(0)
+                    .openerRecord(new HashMap<>())
+                    .buildOrderRecord(new HashMap<>())
+                    .mapSpecificOpenerRecord(new HashMap<>())
+                    .mapSpecificBuildOrderRecord(new HashMap<>())
+                    .build();
+            for (String opener : playable) {
+                record.getOpenerRecord().put(opener, Record.builder().opener(opener).wins(0).losses(0).build());
+            }
+
+            List<GameResult> results = runLoop(factory, record, "", playable.size(), ALWAYS_WIN, true);
+            Set<String> tried = results.stream().map(result -> result.opener).collect(Collectors.toSet());
+            assertEquals(playable, tried, race + " left an opener untried in the first " + playable.size()
+                    + " games of a cold record");
         }
     }
 

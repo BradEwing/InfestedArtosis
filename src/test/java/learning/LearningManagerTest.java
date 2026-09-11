@@ -159,6 +159,32 @@ public class LearningManagerTest {
                 "", "Overpool", MAP_NAME));
     }
 
+    /**
+     * Overpool's Protoss transitions: 3HatchMuta has been played to a 40% win rate, while
+     * SpeedlingAllIn and 3HatchHydra have never been played. Both untried candidates take their
+     * first exposure before 3HatchMuta is chosen again.
+     */
+    @Test
+    void anUntriedBuildOrderCandidateIsChosenBeforeATriedOne() {
+        OpponentRecord opponentRecord = emptyOpponentRecord();
+        Map<String, Record> buildOrders = opponentRecord.getBuildOrderRecord();
+        appendGames(opponentRecord, buildOrders, "3HatchMuta", false, 3);
+        appendGames(opponentRecord, buildOrders, "3HatchMuta", true, 2);
+        appendGames(opponentRecord, buildOrders, "SpeedlingAllIn", false, 0);
+        appendGames(opponentRecord, buildOrders, "3HatchHydra", false, 0);
+        List<String> candidates = Arrays.asList("3HatchHydra", "3HatchMuta", "SpeedlingAllIn");
+
+        String first = LearningManager.selectBuildOrderName(candidates, opponentRecord, MAP_NAME);
+        appendGames(opponentRecord, buildOrders, first, false, 1);
+        String second = LearningManager.selectBuildOrderName(candidates, opponentRecord, MAP_NAME);
+        appendGames(opponentRecord, buildOrders, second, false, 1);
+
+        assertNotEquals("3HatchMuta", first);
+        assertNotEquals("3HatchMuta", second);
+        assertNotEquals(first, second);
+        assertEquals("3HatchMuta", LearningManager.selectBuildOrderName(candidates, opponentRecord, MAP_NAME));
+    }
+
     private static OpponentRecord emptyOpponentRecord() {
         return OpponentRecord.builder()
                 .name(OPPONENT_NAME)
@@ -173,8 +199,13 @@ public class LearningManagerTest {
     }
 
     private static void appendGames(OpponentRecord opponentRecord, String opener, boolean won, int games) {
-        Record record = opponentRecord.getOpenerRecord()
-                .computeIfAbsent(opener, name -> Record.builder().opener(name).wins(0).losses(0).build());
+        appendGames(opponentRecord, opponentRecord.getOpenerRecord(), opener, won, games);
+    }
+
+    private static void appendGames(OpponentRecord opponentRecord, Map<String, Record> records, String strategy,
+                                    boolean won, int games) {
+        Record record = records
+                .computeIfAbsent(strategy, name -> Record.builder().opener(name).wins(0).losses(0).build());
         for (int i = 0; i < games; i++) {
             long timestamp = opponentRecord.getGameTimestamps().size() + 1;
             if (won) {

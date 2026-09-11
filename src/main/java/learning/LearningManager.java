@@ -289,7 +289,8 @@ public class LearningManager {
     }
 
     /**
-     * Returns an opener to force-probe, or null to keep the given leader. Probes only when the
+     * Returns an opener to force-probe, or null to keep the given leader. An untried leader is
+     * its own first exposure and is never overridden. Otherwise probes only when the
      * leader's discounted win rate is below the gate, no unproven trial is within the re-entry
      * cooldown, recent unproven exposure is under its cap, and some candidate has been
      * unselected for at least the dormancy horizon. The exposure cap is waived when every
@@ -302,7 +303,8 @@ public class LearningManager {
         Map<String, Record> openerRecords = opponentRecord.getOpenerRecord();
         List<Long> gameTimestamps = opponentRecord.getGameTimestamps();
         Record leader = openerRecords.get(ucbWinner);
-        if (leader == null || leader.discountedMean(gameTimestamps) >= PROBE_GATE_WIN_RATE) {
+        if (leader == null || leader.games() == 0
+                || leader.discountedMean(gameTimestamps) >= PROBE_GATE_WIN_RATE) {
             return null;
         }
         for (String opener : playableOpeners) {
@@ -411,6 +413,23 @@ public class LearningManager {
     }
 
     /**
+     * Selects the transition build order by weighted D-UCB over the opponent's build-order
+     * history; a candidate the opponent record has never played is chosen first.
+     */
+    static String selectBuildOrderName(List<String> candidateNames,
+                                       OpponentRecord opponentRecord,
+                                       String mapName) {
+        return WeightedUCBCalculator.findBestStrategy(
+            candidateNames,
+            mapName,
+            opponentRecord.getMapSpecificBuildOrderRecord(),
+            opponentRecord.getBuildOrderRecord(),
+            opponentRecord.totalGames(),
+            opponentRecord.getGameTimestamps()
+        );
+    }
+
+    /**
      * Selects the build order to transition to from the given candidates using UCB.
      */
     public BuildOrder determineBuildOrder(Set<BuildOrder> candidates) {
@@ -447,14 +466,7 @@ public class LearningManager {
                 .sorted()
                 .collect(Collectors.toList());
         
-        String bestBuildOrder = WeightedUCBCalculator.findBestStrategy(
-            candidateNames,
-            currentMapName,
-            opponentRecord.getMapSpecificBuildOrderRecord(),
-            opponentRecord.getBuildOrderRecord(),
-            this.opponentRecord.totalGames(),
-            opponentRecord.getGameTimestamps()
-        );
+        String bestBuildOrder = selectBuildOrderName(candidateNames, opponentRecord, currentMapName);
         
         return buildOrderFactory.getByName(bestBuildOrder);
     }

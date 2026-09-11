@@ -135,11 +135,13 @@ old strategy, worth 2.6 win-rate points and no more.
 | Condition | Behavior |
 |---|---|
 | Zero total games | Return `Math.random()` |
-| Unplayed strategy | Scored by the same formula: mean 0, evidence 0, so `CURIOSITY_CAP` |
-| Zero discounted games | Same as unplayed: `CURIOSITY_CAP` |
+| Unplayed strategy | Chosen by `findBestStrategy` before any played one; its index would be `CURIOSITY_CAP` |
+| Zero discounted games | Scored by the same formula: mean 0, evidence 0, so `CURIOSITY_CAP` |
 
-An unplayed arm competes with a recorded one instead of outranking it. Every unplayed arm scores identically, so
-`findBestStrategy` takes them in candidate order; each one played gains a record, and the next is picked in turn.
+`findBestStrategy` gives every candidate the opponent record has never played a first exposure before it exploits:
+untried candidates are taken in tie-break order (a hash of map, game count and name), each one played gains a
+record, and the next is picked in turn. Once every candidate has a record, the index decides, and an arm whose
+evidence has decayed earns at most `CURIOSITY_CAP` of curiosity.
 
 ### Map-Aware Weighted Scoring
 
