@@ -26,6 +26,7 @@ import info.BaseData;
 
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Consumer;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
@@ -151,21 +152,23 @@ public class Reactions {
 
         gameState.setEarlyRushed(true);
 
-        gameState.setEarlyRushDelayLair(gameState.getOpponentRace() == Race.Protoss);
-        gameState.setEarlyRushMacroHatch(gameState.getOpponentRace() == Race.Protoss);
-
         ProductionQueue productionQueue = gameState.getProductionQueue();
+        planSpeedUpgrade(productionQueue);
+
+        Race opponentRace = gameState.getOpponentRace();
+        boolean delayLair = shouldDelayLair(opponentRace, gameState.getTechProgression().isPlannedMetabolicBoost(), isSpeedStarted());
+        gameState.setEarlyRushDelayLair(delayLair);
+        gameState.setEarlyRushMacroHatch(opponentRace == Race.Protoss);
+
         productionQueue.setPriorityWhere(IS_SPAWNING_POOL, 0);
         if (expansionCancel.fire()) {
             productionQueue.removeWhere(IS_EXPANSION_HATCHERY, PlanCancelSource.REACTION_EARLY_RUSH_EXPANSION,
                     gameState::setImpossiblePlan);
         }
 
-        if (gameState.isEarlyRushDelayLair() && lairCancel.fire()) {
-            cancelQueuedLairs();
+        if (shouldFireLairCancel(delayLair)) {
+            cancelQueuedLairs(productionQueue, gameState::setImpossiblePlan);
         }
-
-        planSpeedUpgrade(productionQueue);
 
         int droneCount = gameState.ourLivingUnitCount(UnitType.Zerg_Drone);
         if (shouldFireDroneCut(droneCount, zerglingCount)) {
@@ -177,6 +180,46 @@ public class Reactions {
 
     boolean shouldFireDroneCut(int livingDrones, int livingZerglings) {
         return shouldCutDrones(livingDrones, livingZerglings) && droneCut.fire();
+    }
+
+    /**
+     * Whether queued Lairs should be dropped this frame. The cancel runs once per delay window and
+     * rearms whenever the delay lifts, so a window that reopens drops a Lair queued while it was shut.
+     *
+     * @param delayLair whether the early rush reaction holds the Lair back this frame
+     * @return true on the first frame of each delay window
+     */
+    boolean shouldFireLairCancel(boolean delayLair) {
+        if (!delayLair) {
+            lairCancel.rearm();
+            return false;
+        }
+        return lairCancel.fire();
+    }
+
+    /**
+     * Whether the early rush reaction holds the Lair back, blocking new Lair plans through
+     * {@link GameState#canPlanLair()} and dropping queued and scheduled ones.
+     *
+     * <p>Against Protoss the Lair waits for the whole reaction. Against Zerg it waits only while
+     * Metabolic Boost is planned and not yet started, so a Lair claim cannot take the minerals the
+     * upgrade is waiting on; it is released as soon as research starts. No other race delays it.
+     *
+     * @param opponentRace the opponent's race as currently resolved
+     * @param speedPlanned whether a Metabolic Boost plan is outstanding
+     * @param speedStarted whether Metabolic Boost research has started or finished
+     * @return true while the Lair is held back
+     */
+    static boolean shouldDelayLair(Race opponentRace, boolean speedPlanned, boolean speedStarted) {
+        if (opponentRace == Race.Protoss) {
+            return true;
+        }
+        return opponentRace == Race.Zerg && speedPlanned && !speedStarted;
+    }
+
+    private boolean isSpeedStarted() {
+        return gameState.getTechProgression().isMetabolicBoost()
+                || gameState.getPlansBuilding().stream().anyMatch(IS_SPEED_UPGRADE);
     }
 
     private void standDownFromEarlyRush() {
@@ -228,9 +271,12 @@ public class Reactions {
      * required: plan priority controls only the order the queue is drained, not whether a plan is
      * eligible, so a demoted Lair is still built as soon as it is affordable. Scheduled Lairs are
      * cancelled by ProductionManager, which owns the scheduledBuildings slot they hold.
+     *
+     * @param productionQueue the queue the Lairs are removed from
+     * @param onCancelled retires each removed plan
      */
-    private void cancelQueuedLairs() {
-        gameState.getProductionQueue().removeWhere(IS_LAIR, PlanCancelSource.REACTION_EARLY_RUSH_LAIR, gameState::setImpossiblePlan);
+    static void cancelQueuedLairs(ProductionQueue productionQueue, Consumer<Plan> onCancelled) {
+        productionQueue.removeWhere(IS_LAIR, PlanCancelSource.REACTION_EARLY_RUSH_LAIR, onCancelled);
     }
 
     /**

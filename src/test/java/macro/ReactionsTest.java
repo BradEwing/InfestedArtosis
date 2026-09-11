@@ -1,15 +1,18 @@
 package macro;
 
+import bwapi.Race;
 import bwapi.TilePosition;
 import bwapi.Unit;
 import bwapi.UnitType;
 import bwapi.UpgradeType;
 import bwem.Base;
 import info.BaseData;
+import info.ResourceCount;
 import info.TechProgression;
 import info.UnitTypeCount;
 import macro.plan.BuildingPlan;
 import macro.plan.Plan;
+import macro.plan.PlanCancelSource;
 import macro.plan.PlanType;
 import macro.plan.UpgradePlan;
 import org.junit.jupiter.api.BeforeEach;
@@ -18,8 +21,10 @@ import strategy.buildorder.SunkenTargets;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -61,6 +66,16 @@ public class ReactionsTest {
     private static final boolean HAVE_EXTRACTOR = true;
 
     private static final boolean NO_EXTRACTOR = false;
+
+    private static final boolean SPEED_PLANNED = true;
+
+    private static final boolean SPEED_NOT_PLANNED = false;
+
+    private static final boolean SPEED_STARTED = true;
+
+    private static final boolean SPEED_NOT_STARTED = false;
+
+    private static final int FREE_MINERALS_AFTER_LAIR_CLAIM = 43;
 
     private BaseData baseData;
 
@@ -459,6 +474,116 @@ public class ReactionsTest {
         assertEquals(0, speedPlans(queue));
         assertTrue(queue.toSortedList().contains(extractor));
         assertFalse(techProgression.isPlannedMetabolicBoost());
+    }
+
+    /**
+     * A scheduled Lair's claim leaves too few free minerals for Metabolic Boost, so the upgrade is
+     * swept for want of income. While speed is pending against Zerg the reaction drops the queued
+     * Lair, and ProductionManager cancels the scheduled one through GameState.cancelPlan, which
+     * hands its claim back; the bank then covers the upgrade.
+     */
+    @Test
+    void theZvZEarlyRushCancelsLairSoMetabolicBoostSchedulesFirst() {
+        ProductionQueue queue = new ProductionQueue();
+        Plan queuedLair = new BuildingPlan(UnitType.Zerg_Lair, CANCEL_FRAME);
+        queue.add(queuedLair);
+        TechProgression techProgression = withSpawningPool();
+        Reactions.planSpeedUpgrade(queue, techProgression, HAVE_EXTRACTOR, techProgression.canPlanMetabolicBoost(), CANCEL_FRAME);
+        Plan speed = speedPlan(queue);
+
+        ResourceCount resourceCount = new ResourceCount(null);
+        resourceCount.reserveUnit(UnitType.Zerg_Lair);
+        int bankMinerals = UnitType.Zerg_Lair.mineralPrice() + FREE_MINERALS_AFTER_LAIR_CLAIM;
+        int bankGas = UnitType.Zerg_Lair.gasPrice() + speed.gasPrice();
+        assertFalse(canAfford(speed, bankMinerals, bankGas, resourceCount));
+
+        boolean delayLair = Reactions.shouldDelayLair(Race.Zerg, techProgression.isPlannedMetabolicBoost(), SPEED_NOT_STARTED);
+        assertTrue(delayLair);
+        assertTrue(new Reactions(null).shouldFireLairCancel(delayLair));
+
+        List<Plan> cancelled = new ArrayList<>();
+        Reactions.cancelQueuedLairs(queue, cancelled::add);
+        resourceCount.unreserveUnit(UnitType.Zerg_Lair);
+
+        assertEquals(Collections.singletonList(queuedLair), cancelled);
+        assertEquals(PlanCancelSource.REACTION_EARLY_RUSH_LAIR, queuedLair.getCancelSource());
+        assertEquals(Collections.singletonList(speed), queue.toSortedList());
+        assertTrue(canAfford(speed, bankMinerals, bankGas, resourceCount));
+    }
+
+    @Test
+    void theZvZEarlyRushAllowsTheLairOnceSpeedHasStarted() {
+        Reactions reactions = new Reactions(null);
+        assertTrue(reactions.shouldFireLairCancel(Reactions.shouldDelayLair(Race.Zerg, SPEED_PLANNED, SPEED_NOT_STARTED)));
+
+        boolean researching = Reactions.shouldDelayLair(Race.Zerg, SPEED_PLANNED, SPEED_STARTED);
+        boolean researched = Reactions.shouldDelayLair(Race.Zerg, SPEED_NOT_PLANNED, SPEED_STARTED);
+
+        assertFalse(researching);
+        assertFalse(researched);
+        assertFalse(reactions.shouldFireLairCancel(researching));
+    }
+
+    @Test
+    void theZvZEarlyRushDoesNotDelayTheLairBeforeSpeedIsPlanned() {
+        assertFalse(Reactions.shouldDelayLair(Race.Zerg, SPEED_NOT_PLANNED, SPEED_NOT_STARTED));
+    }
+
+    @Test
+    void theEarlyRushDelaysTheLairAgainstProtossWhateverTheSpeedState() {
+        assertTrue(Reactions.shouldDelayLair(Race.Protoss, SPEED_NOT_PLANNED, SPEED_NOT_STARTED));
+        assertTrue(Reactions.shouldDelayLair(Race.Protoss, SPEED_PLANNED, SPEED_NOT_STARTED));
+        assertTrue(Reactions.shouldDelayLair(Race.Protoss, SPEED_PLANNED, SPEED_STARTED));
+        assertTrue(Reactions.shouldDelayLair(Race.Protoss, SPEED_NOT_PLANNED, SPEED_STARTED));
+    }
+
+    @Test
+    void theEarlyRushDoesNotDelayTheLairAgainstTerranOrAnUnresolvedRace() {
+        assertFalse(Reactions.shouldDelayLair(Race.Terran, SPEED_PLANNED, SPEED_NOT_STARTED));
+        assertFalse(Reactions.shouldDelayLair(Race.Unknown, SPEED_PLANNED, SPEED_NOT_STARTED));
+    }
+
+    @Test
+    void cancelsQueuedLairsOncePerDelayWindow() {
+        Reactions reactions = new Reactions(null);
+
+        int cancels = 0;
+        for (int frame = 0; frame < SUSTAINED_RUSH_FRAMES; frame++) {
+            if (reactions.shouldFireLairCancel(true)) {
+                cancels++;
+            }
+        }
+
+        assertEquals(1, cancels);
+    }
+
+    /**
+     * A speed plan swept and planned again reopens the window, and a Lair queued while it was shut
+     * must be dropped again.
+     */
+    @Test
+    void cancelsQueuedLairsAgainWhenTheDelayReopens() {
+        Reactions reactions = new Reactions(null);
+        assertTrue(reactions.shouldFireLairCancel(true));
+        assertFalse(reactions.shouldFireLairCancel(true));
+
+        assertFalse(reactions.shouldFireLairCancel(false));
+
+        assertTrue(reactions.shouldFireLairCancel(true));
+    }
+
+    private static boolean canAfford(Plan plan, int bankMinerals, int bankGas, ResourceCount resourceCount) {
+        return bankMinerals - resourceCount.getReservedMinerals() >= plan.mineralPrice()
+                && bankGas - resourceCount.getReservedGas() >= plan.gasPrice();
+    }
+
+    private static Plan speedPlan(ProductionQueue queue) {
+        return queue.toSortedList()
+                .stream()
+                .filter(p -> p.getType() == PlanType.UPGRADE)
+                .filter(p -> ((UpgradePlan) p).getPlannedUpgrade() == UpgradeType.Metabolic_Boost)
+                .findFirst()
+                .orElseThrow(IllegalStateException::new);
     }
 
     private static TechProgression withSpawningPool() {
