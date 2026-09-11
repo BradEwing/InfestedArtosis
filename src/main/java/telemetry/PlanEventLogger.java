@@ -47,12 +47,9 @@ public class PlanEventLogger implements PlanEventSink {
     private static final String EVENT_RECURRING_CANCEL = "RECURRING_CANCEL";
 
     /**
-     * 41 columns. Was 32 before executor_unit_id, reserved_larva and builder_distance_px were
-     * added, 35 before assigned_larva, 36 before enemy_air, 37 before gas_gathered, 38 before
-     * enemy_barracks and 39 before blocker_mineral_x and blocker_mineral_y; readers that index by
-     * position rather than by name need updating. enemy_air, gas_gathered, enemy_barracks and the
-     * blocker mineral pair are trailing columns written by {@link #appendTrailing}, so every row
-     * shape keeps one width.
+     * 41 columns; readers that index by position rather than by name must match this order.
+     * enemy_air, gas_gathered, enemy_barracks and the blocker mineral pair are trailing columns
+     * written by {@link #appendTrailing}, so every row shape keeps one width.
      * <p>
      * blocker_mineral_x and blocker_mineral_y are the pixel position of the mineral a stalled
      * builder was sent to mine, set only on BLOCKER_DIVERT rows.
