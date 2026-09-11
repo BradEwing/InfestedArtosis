@@ -51,7 +51,7 @@ public class OpenerSelectionReplayTest {
                     .opponentName(game.getOpponentName())
                     .opponentRace(game.getOpponentRace())
                     .opener(opener)
-                    .buildOrder(opener)
+                    .buildOrder(game.getBuildOrder())
                     .detectedStrategies(game.getDetectedStrategies())
                     .isWinner(game.isWinner())
                     .frameCount(game.getFrameCount())

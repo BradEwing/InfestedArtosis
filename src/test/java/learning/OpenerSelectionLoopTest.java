@@ -192,11 +192,11 @@ public class OpenerSelectionLoopTest {
 
     /**
      * Every opener fails its cold-start trial, then one keeps losing in the slot until the rest
-     * are dormant. With every arm benched, each dormant opener must be re-probed within
-     * PROBE_DORMANT_GAMES games.
+     * are dormant. The losing slot holder must count as benched rather than proven, so the
+     * lock-in releases and every dormant opener re-enters within PROBE_DORMANT_GAMES games.
      */
     @Test
-    void dormantOpenersAreReprobedWhenEveryArmIsBenched() {
+    void benchedLockInReleasesEveryDormantOpener() {
         BuildOrderFactory factory = new BuildOrderFactory(4, Race.Zerg);
         OpponentRecord record = OpponentRecord.builder()
                 .name(OPPONENT)
@@ -228,8 +228,8 @@ public class OpenerSelectionLoopTest {
                 ALWAYS_LOSS, true);
         for (String opener : OPENERS) {
             assertTrue(opener.equals(incumbent) || selectionCount(results, opener) > 0,
-                    opener + " was not re-probed within " + LearningManager.PROBE_DORMANT_GAMES
-                            + " games with every arm benched");
+                    opener + " did not re-enter within " + LearningManager.PROBE_DORMANT_GAMES
+                            + " games of the benched lock-in");
         }
     }
 

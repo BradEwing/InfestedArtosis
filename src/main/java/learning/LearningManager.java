@@ -289,10 +289,11 @@ public class LearningManager {
     }
 
     /**
-     * Returns an opener to force-probe, or null to keep the UCB winner. Probes only when the
-     * UCB winner's discounted win rate is below the gate, no unproven trial is within the
-     * re-entry cooldown, and some candidate has been unselected for at least the dormancy
-     * horizon.
+     * Returns an opener to force-probe, or null to keep the given leader. Probes only when the
+     * leader's discounted win rate is below the gate, no unproven trial is within the re-entry
+     * cooldown, recent unproven exposure is under its cap, and some candidate has been
+     * unselected for at least the dormancy horizon. The exposure cap is waived when every
+     * opener is benched, since no proven opener then holds a share for it to protect.
      */
     static String selectForcedReprobe(String ucbWinner,
                                       List<String> playableOpeners,
@@ -315,7 +316,8 @@ public class LearningManager {
                 return null;
             }
         }
-        if (recentUnprovenExposure(opponentRecord)
+        if (!isEveryOpenerBenched(playableOpeners, opponentRecord)
+                && recentUnprovenExposure(opponentRecord)
                 >= Math.floor(PROBE_EXPOSURE_FRACTION * PROBE_EXPOSURE_WINDOW_GAMES)) {
             return null;
         }
@@ -365,6 +367,10 @@ public class LearningManager {
         int remainingTrialGames = Math.max(0, PROBE_TRIAL_GAMES - log.trialCount());
         return log.isUnprovenTrial()
                 && log.trialWins() + remainingTrialGames < PROBE_PROMOTION_WINS;
+    }
+
+    private static boolean isEveryOpenerBenched(List<String> playableOpeners, OpponentRecord opponentRecord) {
+        return playableOpeners.stream().allMatch(opener -> isBenched(opener, opponentRecord));
     }
 
     /**

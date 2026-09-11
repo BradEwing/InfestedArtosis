@@ -117,16 +117,7 @@ public class LearningManagerTest {
      */
     @Test
     void benchedUcbWinnerStillReachesForcedReprobe() {
-        OpponentRecord opponentRecord = OpponentRecord.builder()
-                .name(OPPONENT_NAME)
-                .race(Race.Zerg.toString())
-                .wins(0)
-                .losses(0)
-                .openerRecord(new HashMap<>())
-                .buildOrderRecord(new HashMap<>())
-                .mapSpecificOpenerRecord(new HashMap<>())
-                .mapSpecificBuildOrderRecord(new HashMap<>())
-                .build();
+        OpponentRecord opponentRecord = emptyOpponentRecord();
         appendGames(opponentRecord, "12Hatch", false, LearningManager.PROBE_TRIAL_GAMES);
         appendGames(opponentRecord, "Overpool", true, LearningManager.PROBE_PROMOTION_WINS);
         appendGames(opponentRecord, "Overpool", false, 10);
@@ -139,6 +130,46 @@ public class LearningManagerTest {
         assertFalse(LearningManager.isBenched("Overpool", opponentRecord));
         assertEquals("12Hatch", LearningManager.applyDormantReprobePolicy("12Pool", playableOpeners,
                 opponentRecord, MAP_NAME));
+    }
+
+    /**
+     * Every opener is benched: Overpool holds the slot losing, 12Pool has one win in its failed
+     * trial, and 12Hatch is dormant. 12Pool is the UCB winner and the failing trials fill the
+     * exposure window, yet the forced re-probe must still fire and select the dormant 12Hatch.
+     */
+    @Test
+    void everyArmBenchedStillForcesDormantReprobe() {
+        OpponentRecord opponentRecord = emptyOpponentRecord();
+        appendGames(opponentRecord, "12Hatch", false, LearningManager.PROBE_TRIAL_GAMES);
+        appendGames(opponentRecord, "12Pool", false, 3);
+        appendGames(opponentRecord, "Overpool", false, 20);
+        appendGames(opponentRecord, "12Pool", true, 1);
+        appendGames(opponentRecord, "12Pool", false, 3);
+        appendGames(opponentRecord, "Overpool", false, 4);
+        BuildOrderFactory factory = new BuildOrderFactory(4, Race.Zerg);
+        List<String> playableOpeners = Arrays.asList("12Hatch", "12Pool", "Overpool");
+
+        for (String opener : playableOpeners) {
+            assertTrue(LearningManager.isBenched(opener, opponentRecord), opener + " must be benched");
+        }
+        assertEquals("12Pool", WeightedUCBCalculator.findBestStrategy(playableOpeners, MAP_NAME,
+                opponentRecord.getMapSpecificOpenerRecord(), opponentRecord.getOpenerRecord(),
+                opponentRecord.totalGames(), opponentRecord.getGameTimestamps()));
+        assertEquals("12Hatch", LearningManager.selectOpenerName(null, factory, opponentRecord,
+                "", "Overpool", MAP_NAME));
+    }
+
+    private static OpponentRecord emptyOpponentRecord() {
+        return OpponentRecord.builder()
+                .name(OPPONENT_NAME)
+                .race(Race.Zerg.toString())
+                .wins(0)
+                .losses(0)
+                .openerRecord(new HashMap<>())
+                .buildOrderRecord(new HashMap<>())
+                .mapSpecificOpenerRecord(new HashMap<>())
+                .mapSpecificBuildOrderRecord(new HashMap<>())
+                .build();
     }
 
     private static void appendGames(OpponentRecord opponentRecord, String opener, boolean won, int games) {
