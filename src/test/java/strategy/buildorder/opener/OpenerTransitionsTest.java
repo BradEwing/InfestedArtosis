@@ -41,7 +41,17 @@ class OpenerTransitionsTest {
     void retiredBuildOrdersStillResolveByName() {
         BuildOrderFactory factory = new BuildOrderFactory(4, Race.Protoss);
         for (String retired : RETIRED) {
-            assertNotNull(factory.getByName(retired), retired + " must still resolve for old learning rows");
+            BuildOrder buildOrder = factory.getByName(retired);
+            assertNotNull(buildOrder, retired + " must still resolve for old learning rows");
+            assertTrue(buildOrder.isRetired(), retired + " must be flagged retired");
+        }
+    }
+
+    @Test
+    void retiredBuildOrdersAreNotSeededAsPlayable() {
+        for (Race race : Race.values()) {
+            Set<String> seeded = new BuildOrderFactory(4, race).getPlayableNonOpenerNames();
+            assertTrue(Collections.disjoint(RETIRED, seeded), race + " seeds a retired build order: " + seeded);
         }
     }
 }

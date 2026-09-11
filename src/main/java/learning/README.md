@@ -73,7 +73,8 @@ where:
   invariant in how long the opponent has been played -- an opponent met 1324 times scores its arms exactly as one
   met 53 times does.
 - `totalGames` (total games played against this opponent, raw count) no longer enters the score. It survives in the
-  signature only to detect the cold start, where every arm ties and the pick is randomized.
+  signature only to detect a record with no games, where the index is `Math.random()`. `findBestStrategy` never
+  scores that case: it takes untried candidates in tie-break order first, so a cold start is deterministic.
 
 | Discounted games | Curiosity |
 |---|---|
@@ -134,9 +135,9 @@ old strategy, worth 2.6 win-rate points and no more.
 
 | Condition | Behavior |
 |---|---|
-| Zero total games | Return `Math.random()` |
-| Unplayed strategy | Chosen by `findBestStrategy` before any played one; its index would be `CURIOSITY_CAP` |
-| Zero discounted games | Scored by the same formula: mean 0, evidence 0, so `CURIOSITY_CAP` |
+| Zero total games | The index returns `Math.random()`; `findBestStrategy` never reaches it, since every candidate is untried |
+| Unplayed strategy | Chosen by `findBestStrategy` before any played one, in tie-break order |
+| Zero discounted games | A played arm whose evidence has decayed away scores `CURIOSITY_CAP`, but is not chosen first |
 
 `findBestStrategy` gives every candidate the opponent record has never played a first exposure before it exploits:
 untried candidates are taken in tie-break order (a hash of map, game count and name), each one played gains a

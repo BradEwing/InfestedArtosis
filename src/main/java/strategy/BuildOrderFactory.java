@@ -53,6 +53,7 @@ public class BuildOrderFactory {
     public Set<String> getPlayableNonOpenerNames() {
         return allBuildOrders.stream()
                 .filter(bo -> !bo.isOpener())
+                .filter(bo -> !bo.isRetired())
                 .filter(bo -> bo.playsRace(opponentRace))
                 .map(bo -> bo.getName())
                 .collect(Collectors.toSet());

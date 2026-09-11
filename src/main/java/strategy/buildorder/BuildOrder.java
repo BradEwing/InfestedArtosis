@@ -94,8 +94,16 @@ public abstract class BuildOrder {
 
     public abstract boolean playsRace(Race race);
 
-    public boolean isOpener() { 
-        return false; 
+    public boolean isOpener() {
+        return false;
+    }
+
+    /**
+     * Whether no opener offers this build order any more. A retired build order stays registered so
+     * learning rows that name it still resolve, but it is not seeded as a playable arm.
+     */
+    public boolean isRetired() {
+        return false;
     }
 
     public boolean needLair() {

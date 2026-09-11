@@ -93,9 +93,11 @@ public class Record implements UCBRecord {
 
     /**
      * Bandit index: the discounted win rate plus a curiosity bonus that fades as discounted
-     * evidence accumulates. An arm with no record scores {@link UCBSelectionPolicy#CURIOSITY_CAP}
-     * under the same formula, so it competes with a recorded arm instead of outranking it, and the
-     * index does not depend on how long the opponent has been played.
+     * evidence accumulates. An arm whose evidence has decayed away scores
+     * {@link UCBSelectionPolicy#CURIOSITY_CAP}, so curiosity alone cannot displace an arm leading by
+     * more than that, and the index does not depend on how long the opponent has been played. An arm
+     * with no games is not ranked by this index: {@link WeightedUCBCalculator#findBestStrategy}
+     * chooses it before any played arm.
      */
     public double index(int totalGames, List<Long> gameTimestamps) {
         if (totalGames == 0) {
