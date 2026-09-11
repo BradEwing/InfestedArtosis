@@ -28,7 +28,7 @@ public class Overpool extends BuildOrder {
 
     @Override
     protected boolean openerComplete(GameState gameState) {
-        return gameState.ourUnitCount(UnitType.Zerg_Spawning_Pool) > 0;
+        return openerComplete(gameState.ourBuildingOrPlannedCount(UnitType.Zerg_Spawning_Pool));
     }
 
     @Override
@@ -110,5 +110,20 @@ public class Overpool extends BuildOrder {
 
     static boolean shouldPlanPool(int supplyUsed, int overlordCount) {
         return supplyUsed >= POOL_SUPPLY && overlordCount > 1;
+    }
+
+    /**
+     * Whether the opener has produced everything it will produce, so the terminal build order can
+     * take over.
+     *
+     * <p>Counts a Spawning Pool under construction, not only a finished one: the opener's last
+     * scripted act is committing to the pool, and everything the terminal build order would queue
+     * next, the natural hatchery above all, is unreachable until this fires.
+     *
+     * @param poolCount Spawning Pools standing, under construction, or claimed by a plan in flight
+     * @return true once the opener should hand off
+     */
+    static boolean openerComplete(int poolCount) {
+        return poolCount > 0;
     }
 }
