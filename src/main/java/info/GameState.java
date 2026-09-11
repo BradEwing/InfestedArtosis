@@ -99,6 +99,7 @@ public class GameState {
     private HashMap<Unit, Plan> assignedPlannedItems = new HashMap<>();
     private int plannedWorkers;
     private int plannedHatcheries = 1;
+    private int lastHatcheryEnqueueFrame = -HatcheryCapacity.ENQUEUE_COOLDOWN_FRAMES;
     private int idleDroneReclaims;
 
     private HashMap<Base, HashSet<ManagedUnit>> gatherersAssignedToBase = new HashMap<>();
@@ -791,8 +792,13 @@ public class GameState {
         plannedWorkers -= numWorkers;
     }
 
+    /**
+     * Records a hatchery plan the build order has just created. Every hatchery plan the bot
+     * creates passes through here, so this is where the request that produced it re-arms from.
+     */
     public void addPlannedHatchery(int numHatcheries) {
         plannedHatcheries += numHatcheries;
+        lastHatcheryEnqueueFrame = getGameTime().getFrames();
     }
 
     public void removePlannedHatchery(int numHatcheries) {
@@ -1189,38 +1195,120 @@ public class GameState {
     }
 
     public boolean hasExcessHatchery() {
-        return HatcheryCapacity.isExcess(hatcheryCount(), numLarva(), isFloatingMinerals());
+        return HatcheryCapacity.isExcess(hatcheryCount(), numLarva());
     }
 
     /**
-     * True when an expansion hatchery queued now survives the frame and none is already waiting.
+     * True when an expansion hatchery queued now survives the frame and the request that asks
+     * for it has re-armed.
      *
      * <p>Every rule that deletes a queued hatchery plan contributes a term: the excess rule, the
-     * early rush reaction and the SCV rush reaction. No term depends on the opponent's race. The
-     * waiting count keeps a request that holds for many frames, such as floating minerals, from
-     * stacking a hatchery every frame.
+     * early rush reaction and the SCV rush reaction. No term depends on the opponent's race.
      */
     public boolean mayQueueExpansionHatchery() {
-        return queuedHatcheryPlans() == 0
+        return isHatcheryEnqueueRearmed(false)
                 && HatcheryCapacity.isQueueable(hasExcessHatchery(), isEarlyRushed() || isScvRushed());
     }
 
     /**
-     * True when a macro hatchery queued now survives the frame and none is already waiting.
+     * True when a macro hatchery queued now survives the frame and the request that asks for it
+     * has re-armed.
      *
      * <p>The early rush reaction deletes only expansion hatcheries, so it does not suppress this.
      * The excess rule and the SCV rush reaction delete both kinds.
      */
     public boolean mayQueueMacroHatchery() {
-        return queuedHatcheryPlans() == 0
+        return isHatcheryEnqueueRearmed(true)
                 && HatcheryCapacity.isQueueable(hasExcessHatchery(), isScvRushed());
     }
 
     /**
-     * Hatchery building plans still waiting in the production queue.
+     * True when the hatchery request of this kind may create another plan.
+     *
+     * <p>The outstanding count is per kind, so an expansion a drone is still walking to does not
+     * hold back the macro hatchery a rush reaction asks for. The cooldown is shared, because
+     * both kinds create the same plan and commit the same minerals.
+     *
+     * @param macroHatchery true for the macro hatchery request, false for the expansion request
      */
-    public int queuedHatcheryPlans() {
-        return productionQueue.buildingPlanCount(UnitType.Zerg_Hatchery);
+    private boolean isHatcheryEnqueueRearmed(boolean macroHatchery) {
+        return HatcheryCapacity.isEnqueueRearmed(
+                inFlightHatcheryPlans(macroHatchery) + hatcheriesUnderConstruction(macroHatchery),
+                getGameTime().getFrames() - lastHatcheryEnqueueFrame);
+    }
+
+    /**
+     * Hatchery building plans of one kind that the production system still carries.
+     *
+     * <p>A hatchery plan moves out of the queue and into the scheduled, building or morphing set
+     * on the frame it is created, so the queue count alone reads zero while the plan it counted
+     * is still in flight.
+     *
+     * @param macroHatchery true to count macro hatcheries, false to count expansions
+     */
+    public int inFlightHatcheryPlans(boolean macroHatchery) {
+        return countHatcheryPlans(macroHatchery, productionQueue, plansScheduled, plansBuilding, plansMorphing);
+    }
+
+    /**
+     * Counts hatchery plans of one kind across every stage the production system holds them in.
+     *
+     * <p>A cancelled plan is not carried, and its set membership does not say so:
+     * {@link #cancelPlan} removes a plan from plansBuilding and plansMorphing but not from
+     * plansScheduled, and {@link #setImpossiblePlan} removes it from none of them. Both set the
+     * plan state, so the state is what this reads.
+     */
+    static int countHatcheryPlans(boolean macroHatchery, Iterable<Plan> queued, Iterable<Plan> scheduled,
+            Iterable<Plan> building, Iterable<Plan> morphing) {
+        return countHatcheryPlansIn(macroHatchery, queued)
+                + countHatcheryPlansIn(macroHatchery, scheduled)
+                + countHatcheryPlansIn(macroHatchery, building)
+                + countHatcheryPlansIn(macroHatchery, morphing);
+    }
+
+    private static int countHatcheryPlansIn(boolean macroHatchery, Iterable<Plan> plans) {
+        int count = 0;
+        for (Plan plan : plans) {
+            if (isOutstandingHatcheryPlan(plan, macroHatchery)) {
+                count += 1;
+            }
+        }
+        return count;
+    }
+
+    /**
+     * True when this plan is a hatchery of the given kind that the bot is still committed to.
+     */
+    static boolean isOutstandingHatcheryPlan(Plan plan, boolean macroHatchery) {
+        return plan.getState() != PlanState.CANCELLED
+                && plan.getType() == PlanType.BUILDING
+                && plan.getPlannedUnit() == UnitType.Zerg_Hatchery
+                && plan.isMacroHatchery() == macroHatchery;
+    }
+
+    /**
+     * Hatcheries of one kind we have started and not finished. The plan that produced one is
+     * complete the moment the drone morphs, and {@link #hatcheryCount} does not count the
+     * building until it finishes, so neither side sees it while it is going up.
+     *
+     * <p>A hatchery on a base tile is an expansion and any other is a macro hatchery, the same
+     * split InformationManager applies when the building completes.
+     *
+     * @param macroHatchery true to count macro hatcheries, false to count expansions
+     */
+    public int hatcheriesUnderConstruction(boolean macroHatchery) {
+        int count = 0;
+        for (Unit unit : self.getUnits()) {
+            if (unit.getType() != UnitType.Zerg_Hatchery || unit.isCompleted()) {
+                continue;
+            }
+
+            boolean isMacro = !baseData.isBaseTilePosition(unit.getTilePosition());
+            if (isMacro == macroHatchery) {
+                count += 1;
+            }
+        }
+        return count;
     }
 
     public void setGeyserAssignment(Unit unit) {
