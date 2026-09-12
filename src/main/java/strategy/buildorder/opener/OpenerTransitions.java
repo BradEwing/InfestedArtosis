@@ -7,15 +7,14 @@ import strategy.buildorder.protoss.ThreeHatchHydra;
 import strategy.buildorder.protoss.ThreeHatchMuta;
 import strategy.buildorder.terran.CrazyZerg;
 import strategy.buildorder.terran.ThreeHatchLurker;
+import strategy.buildorder.terran.TwoHatchMuta;
 import strategy.buildorder.zerg.OneHatchSpire;
 
 import java.util.HashSet;
 import java.util.Set;
 
 /**
- * Terminal build orders an opener may transition into, by opponent race. 2HatchMuta is retired:
- * its class stays registered so learning rows that name it still resolve, but no opener offers
- * it.
+ * Terminal build orders an opener may transition into, by opponent race.
  */
 final class OpenerTransitions {
     private OpenerTransitions() {
@@ -36,6 +35,7 @@ final class OpenerTransitions {
             case Terran:
                 next.add(new CrazyZerg());
                 next.add(new ThreeHatchLurker());
+                next.add(new TwoHatchMuta());
                 next.add(new SpeedlingAllIn());
                 break;
             default:

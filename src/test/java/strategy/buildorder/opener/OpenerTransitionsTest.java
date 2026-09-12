@@ -5,7 +5,7 @@ import org.junit.jupiter.api.Test;
 import strategy.BuildOrderFactory;
 import strategy.buildorder.BuildOrder;
 
-import java.util.Collections;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -16,8 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class OpenerTransitionsTest {
 
-    private static final Set<String> RETIRED = new HashSet<>(Collections.singletonList("2HatchMuta"));
-    private static final Set<String> REENABLED = new HashSet<>(Collections.singletonList("3HatchHydra"));
+    private static final Set<String> REENABLED = new HashSet<>(Arrays.asList("3HatchHydra", "2HatchMuta"));
 
     @Test
     void noOpenerTransitionOffersARetiredBuildOrder() {
@@ -42,13 +41,9 @@ class OpenerTransitionsTest {
     }
 
     @Test
-    void retiredBuildOrdersStillResolveByName() {
-        BuildOrderFactory factory = new BuildOrderFactory(4, Race.Protoss);
-        for (String retired : RETIRED) {
-            BuildOrder buildOrder = factory.getByName(retired);
-            assertNotNull(buildOrder, retired + " must still resolve for old learning rows");
-            assertTrue(buildOrder.isRetired(), retired + " must be flagged retired");
-        }
+    void terranTransitionsOfferTwoHatchMuta() {
+        Set<String> names = transitionNames(Race.Terran);
+        assertTrue(names.contains("2HatchMuta"), "Terran must offer 2HatchMuta: " + names);
     }
 
     @Test
@@ -56,7 +51,7 @@ class OpenerTransitionsTest {
         BuildOrderFactory factory = new BuildOrderFactory(4, Race.Protoss);
         for (String reEnabled : REENABLED) {
             BuildOrder buildOrder = factory.getByName(reEnabled);
-            assertNotNull(buildOrder, reEnabled + " must resolve by name");
+            assertNotNull(buildOrder, reEnabled + " must resolve for old learning rows");
             assertFalse(buildOrder.isRetired(), reEnabled + " must not be flagged retired");
         }
     }
@@ -72,9 +67,12 @@ class OpenerTransitionsTest {
     }
 
     @Test
-    void threeHatchHydraIsSeededAgainstProtoss() {
-        Set<String> seeded = new BuildOrderFactory(4, Race.Protoss).getPlayableNonOpenerNames();
-        assertTrue(seeded.contains("3HatchHydra"), "3HatchHydra must be seeded against Protoss: " + seeded);
+    void reEnabledBuildOrdersAreSeededForTheirMatchup() {
+        Set<String> protoss = new BuildOrderFactory(4, Race.Protoss).getPlayableNonOpenerNames();
+        assertTrue(protoss.contains("3HatchHydra"), "3HatchHydra must be seeded against Protoss: " + protoss);
+
+        Set<String> terran = new BuildOrderFactory(4, Race.Terran).getPlayableNonOpenerNames();
+        assertTrue(terran.contains("2HatchMuta"), "2HatchMuta must be seeded against Terran: " + terran);
     }
 
     private static Set<String> transitionNames(Race race) {
