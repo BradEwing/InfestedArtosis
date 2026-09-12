@@ -1,7 +1,9 @@
 package telemetry;
 
+import bwapi.Position;
 import bwapi.UnitType;
 import macro.ProductionQueue;
+import macro.plan.BuildingPlan;
 import macro.plan.Plan;
 import macro.plan.PlanBlocker;
 import macro.plan.PlanCancelReason;
@@ -25,6 +27,8 @@ class PlanEventsTest {
     private final List<PlanBlocker> blockers = new ArrayList<>();
     private final List<String> withheld = new ArrayList<>();
     private final List<String> unplannedCancels = new ArrayList<>();
+    private final List<Plan> diverted = new ArrayList<>();
+    private final List<Position> divertMinerals = new ArrayList<>();
 
     private PlanEventSink recorder() {
         return new PlanEventSink() {
@@ -51,6 +55,12 @@ class PlanEventsTest {
             @Override
             public void onUnplannedCancel(UnitType unitType, PlanCancelSource cancelSource) {
                 unplannedCancels.add(unitType + ":" + cancelSource);
+            }
+
+            @Override
+            public void onBlockerDivert(Plan plan, Position mineral) {
+                diverted.add(plan);
+                divertMinerals.add(mineral);
             }
         };
     }
@@ -194,6 +204,25 @@ class PlanEventsTest {
         PlanEvents.unplannedCancel(UnitType.Zerg_Extractor, PlanCancelSource.REACTION_GAS_DENIED_IN_PROGRESS);
 
         assertTrue(unplannedCancels.isEmpty());
+    }
+
+    @Test
+    void blockerDivertHookCarriesThePlanAndTheMineralPosition() {
+        PlanEvents.register(recorder());
+
+        Plan plan = new BuildingPlan(UnitType.Zerg_Hatchery, 1);
+        Position wallField = new Position(1760, 208);
+        PlanEvents.blockerDiverted(plan, wallField);
+
+        assertEquals(Collections.singletonList(plan), diverted);
+        assertEquals(Collections.singletonList(wallField), divertMinerals);
+    }
+
+    @Test
+    void blockerDivertWithNoSinkRegisteredIsANoOp() {
+        PlanEvents.blockerDiverted(new BuildingPlan(UnitType.Zerg_Hatchery, 1), new Position(1760, 208));
+
+        assertTrue(diverted.isEmpty());
     }
 
     @Test

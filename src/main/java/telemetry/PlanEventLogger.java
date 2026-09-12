@@ -2,6 +2,7 @@ package telemetry;
 
 import bwapi.Game;
 import bwapi.Player;
+import bwapi.Position;
 import bwapi.TilePosition;
 import bwapi.Unit;
 import bwapi.UnitType;
@@ -39,17 +40,19 @@ public class PlanEventLogger implements PlanEventSink {
     private static final String EVENT_BUILD_AHEAD_EVICT = "BUILD_AHEAD_EVICT";
     private static final String EVENT_WITHHELD = "WITHHELD";
     private static final String EVENT_UNPLANNED_CANCEL = "UNPLANNED_CANCEL";
+    private static final String EVENT_BLOCKER_DIVERT = "BLOCKER_DIVERT";
 
     private static final int NO_STARVED_COUNT = -1;
 
     private static final String EVENT_RECURRING_CANCEL = "RECURRING_CANCEL";
 
     /**
-     * 39 columns. Was 32 before executor_unit_id, reserved_larva and builder_distance_px were
-     * added, 35 before assigned_larva, 36 before enemy_air, 37 before gas_gathered and 38 before
-     * enemy_barracks; readers that index by position rather than by name need updating. enemy_air,
-     * gas_gathered and enemy_barracks are trailing columns written by {@link #appendGameTotals},
-     * so every row shape keeps one width.
+     * 41 columns; readers that index by position rather than by name must match this order.
+     * enemy_air, gas_gathered, enemy_barracks and the blocker mineral pair are trailing columns
+     * written by {@link #appendTrailing}, so every row shape keeps one width.
+     * <p>
+     * blocker_mineral_x and blocker_mineral_y are the pixel position of the mineral a stalled
+     * builder was sent to mine, set only on BLOCKER_DIVERT rows.
      * <p>
      * enemy_barracks is the living observed count the sunken floors read, on the plan row rather
      * than the game summary, so a batch can date a colony plan against the Barracks known at the
@@ -65,7 +68,7 @@ public class PlanEventLogger implements PlanEventSink {
             + "minerals,gas,available_minerals,available_gas,supply_used_real,supply_total_real,larva,assigned_larva,"
             + "reserved_larva,gatherers,queue_depth,plans_scheduled,plans_building,plans_morphing,build_tile_x,"
             + "build_tile_y,macro_hatchery,build_order,starved_behind,builder_distance_px,enemy_air,gas_gathered,"
-            + "enemy_barracks";
+            + "enemy_barracks,blocker_mineral_x,blocker_mineral_y";
 
     private static final String GAME_HEADER = "timestamp,is_winner,num_starting_locations,map_name,opponent_name,"
             + "opponent_race,opener,build_order,detected_strategies,frame_count";
@@ -245,6 +248,27 @@ public class PlanEventLogger implements PlanEventSink {
         buildAheadRow(EVENT_BUILD_AHEAD_EVICT, holder, heldFrames, starvedBehind);
     }
 
+    /**
+     * Writes one row per divert, so a batch can tell a wall clear the stall started from one it
+     * did not. builder_distance_px is the builder's distance to its site at the divert frame.
+     */
+    @Override
+    public void onBlockerDivert(Plan plan, Position mineral) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            PlanTrace trace = trace(plan);
+            StringBuilder sb = planColumns(plan, trace, EVENT_BLOCKER_DIVERT, null, plan.getState(),
+                    PlanBlocker.NONE, 0, NO_STARVED_COUNT);
+            appendTrailing(sb, mineral);
+            buffer.add(sb.toString());
+        } catch (Exception e) {
+            disabled = true;
+        }
+    }
+
     private void buildAheadRow(String event, Plan holder, int heldFrames, int starvedBehind) {
         if (disabled) {
             return;
@@ -332,6 +356,14 @@ public class PlanEventLogger implements PlanEventSink {
 
     private String row(Plan plan, PlanTrace trace, String event, PlanState from, PlanState to,
                        PlanBlocker blocker, int blockedFrames, int starvedBehind) {
+        StringBuilder sb = planColumns(plan, trace, event, from, to, blocker, blockedFrames, starvedBehind);
+        appendTrailing(sb, null);
+        return sb.toString();
+    }
+
+    /** Every plan-row column up to and including builder_distance_px. */
+    private StringBuilder planColumns(Plan plan, PlanTrace trace, String event, PlanState from, PlanState to,
+                                      PlanBlocker blocker, int blockedFrames, int starvedBehind) {
         TilePosition buildPosition = plan.getBuildPosition();
         boolean cancelled = to == PlanState.CANCELLED;
         PlanCancelSource cancelSource = plan.getCancelSource();
@@ -358,8 +390,7 @@ public class PlanEventLogger implements PlanEventSink {
         sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
         sb.append(starvedBehind == NO_STARVED_COUNT ? "" : String.valueOf(starvedBehind)).append(',');
         sb.append(builderDistance(executor, buildPosition)).append(',');
-        appendGameTotals(sb);
-        return sb.toString();
+        return sb;
     }
 
     /**
@@ -388,7 +419,7 @@ public class PlanEventLogger implements PlanEventSink {
         appendEmpty(sb, 3);
         sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
         appendEmpty(sb, 2);
-        appendGameTotals(sb);
+        appendTrailing(sb, null);
         return sb.toString();
     }
 
@@ -410,19 +441,28 @@ public class PlanEventLogger implements PlanEventSink {
         sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
         appendEmpty(sb, 1);
         appendEmpty(sb, 1);
-        appendGameTotals(sb);
+        appendTrailing(sb, null);
         return sb.toString();
     }
 
     /**
-     * The trailing cumulative columns, written by every row shape.
+     * The trailing columns, written by every row shape.
      *
-     * <p>row and withheldRow build their middles independently, so a trailing column added to one
-     * of them alone changes what a reader indexing by position finds in the other. Every trailing
-     * column belongs here so both shapes keep the same width.
+     * <p>row, withheldRow and unplannedCancelRow build their middles independently, so a trailing
+     * column added to one of them alone changes what a reader indexing by position finds in the
+     * others. Every trailing column belongs here so all shapes keep the same width.
      *
      * @param sb the row being built
+     * @param blockerMineral the diverted-to mineral's position, or null on every row but BLOCKER_DIVERT
      */
+    private void appendTrailing(StringBuilder sb, Position blockerMineral) {
+        appendGameTotals(sb);
+        sb.append(',');
+        sb.append(blockerMineral == null ? "" : String.valueOf(blockerMineral.getX())).append(',');
+        sb.append(blockerMineral == null ? "" : String.valueOf(blockerMineral.getY()));
+    }
+
+    /** The trailing cumulative columns. */
     private void appendGameTotals(StringBuilder sb) {
         sb.append(gameState.observedEnemyAirCombatUnitCount()).append(',');
         sb.append(gameState.getSelf().gatheredGas()).append(',');

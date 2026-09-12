@@ -13,6 +13,7 @@ import lombok.Getter;
 import lombok.Setter;
 import macro.plan.Plan;
 import macro.plan.PlanState;
+import telemetry.PlanEvents;
 import util.Filter;
 import util.Vec2;
 
@@ -22,7 +23,6 @@ import java.util.stream.Collectors;
 
 public class ManagedUnit {
     protected static int THREE_SECONDS = 72;
-    protected static int FIVE_SECONDS = 120;
     protected Game game;
     protected GameMap gameMap;
 
@@ -59,10 +59,10 @@ public class ManagedUnit {
 
     protected boolean hasNewGatherTarget;
 
-    @Setter @Getter
+    @Getter
     protected Plan plan;
     protected int buildAttemptFrame;
-    protected Unit blockingMineral;
+    private final BuilderStall<Unit> builderStall = new BuilderStall<>();
 
     @Setter
     protected boolean canFight = true;
@@ -115,6 +115,15 @@ public class ManagedUnit {
 
     public boolean canFight() {
         return this.canFight;
+    }
+
+    /**
+     * Assigns the plan. A change of plan, including eviction to null, clears the builder's blocker
+     * and walk progress so the next plan does not resume the old one's wall.
+     */
+    public void setPlan(Plan plan) {
+        builderStall.onPlanChange(this.plan, plan);
+        this.plan = plan;
     }
 
     public boolean isIrradiated() {
@@ -508,6 +517,7 @@ public class ManagedUnit {
             return;
         }
 
+        Unit blockingMineral = builderStall.getBlocker();
         if (blockingMineral != null) {
             if (unit.isGatheringMinerals()) {
                 return;
@@ -519,21 +529,11 @@ public class ManagedUnit {
             gameMap.removeBlockingMineral(blockingMineral);
             Unit nextBlocker = gameMap.findNearbyBlockingMineral(unit.getPosition(), 32);
             if (nextBlocker != null) {
-                blockingMineral = nextBlocker;
+                builderStall.divertTo(nextBlocker);
                 gatherBlockerMineral();
                 return;
             }
-            blockingMineral = null;
-        }
-
-        final int currentFrame = game.getFrameCount();
-        if (plan.getPredictedReadyFrame() > 0 && currentFrame > plan.getPredictedReadyFrame() + FIVE_SECONDS) {
-            Unit nearbyBlocker = gameMap.findNearbyBlockingMineral(unit.getPosition(), 256);
-            if (nearbyBlocker != null) {
-                blockingMineral = nearbyBlocker;
-                gatherBlockerMineral();
-                return;
-            }
+            builderStall.clearBlocker();
         }
 
         UnitType plannedUnitType = plan.getPlannedUnit();
@@ -544,7 +544,16 @@ public class ManagedUnit {
         }
         UnitType buildingType = plan.getPlannedUnit();
         Position buildTarget = getBuilderMoveLocation(buildingType, plan.getBuildPosition());
-        if (unit.getDistance(buildTarget) > 150 || unit.isGatheringMinerals()) {
+        int distanceToTarget = unit.getDistance(buildTarget);
+        boolean harvesting = unit.isGatheringMinerals() || unit.isGatheringGas();
+        Unit stallBlocker = builderStall.divertIfStalled(unit.getPosition(), buildTarget, distanceToTarget, harvesting,
+                game.getFrameCount(), gameMap::findNearbyBlockingMineral);
+        if (stallBlocker != null) {
+            PlanEvents.blockerDiverted(plan, stallBlocker.getPosition());
+            gatherBlockerMineral();
+            return;
+        }
+        if (distanceToTarget > BuilderStall.ARRIVAL_DISTANCE || unit.isGatheringMinerals()) {
             setUnready();
             unit.move(buildTarget);
             return;
@@ -577,7 +586,7 @@ public class ManagedUnit {
 
     private void gatherBlockerMineral() {
         setUnready(THREE_SECONDS);
-        unit.gather(blockingMineral);
+        unit.gather(builderStall.getBlocker());
     }
 
     private Position getBuilderMoveLocation(UnitType building, TilePosition buildTarget) {
