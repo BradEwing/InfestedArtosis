@@ -27,9 +27,9 @@ public enum Readiness {
      * Finished structures, structures under construction, and building plans still in flight.
      *
      * <p>What a gate wants when the decision follows from having chosen the structure rather than
-     * from the structure working yet. Reading {@link #USABLE} in that position makes the gate
-     * wait out a build time it has already paid for: a second Extractor gated on a usable Spire
-     * is withheld for the whole 1,800-frame Spire build, long after the Spire is a settled fact.
+     * from the structure working yet. Reading {@link #USABLE} in that position makes the gate wait
+     * out a build time it has already paid for: a second Extractor gated on a usable Spire stays
+     * withheld for the whole Spire build, long after the Spire is a settled fact.
      */
     COMMITTED
 }
