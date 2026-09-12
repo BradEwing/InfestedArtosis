@@ -142,7 +142,8 @@ public class OneHatchSpire extends ZergBase {
      * plan carries the frame it was enqueued on as its priority.
      *
      * @param extractorCount Extractors standing or reserved by a queued plan
-     * @param canPlanExtractor whether a geyser is free and the pool is planned or standing
+     * @param canPlanExtractor GameState's verdict: a geyser is free, the pool is planned or
+     *     standing, and no all-in, rush or replan hold bars the request
      * @return true while the first Extractor should be queued
      */
     static boolean shouldPlanFirstGas(int extractorCount, boolean canPlanExtractor) {
