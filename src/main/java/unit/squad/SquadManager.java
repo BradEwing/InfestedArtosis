@@ -19,6 +19,8 @@ import lombok.Getter;
 
 import org.bk.ass.sim.BWMirrorAgentFactory;
 import org.bk.ass.sim.Simulator;
+import telemetry.RallyReason;
+import telemetry.RallyRelease;
 import telemetry.SquadDecisions;
 import telemetry.SquadLock;
 import unit.managed.ManagedUnit;
@@ -583,7 +585,9 @@ public class SquadManager {
         return enemies;
     }
 
-    private void rallySquad(Squad squad) {
+    private void rallySquad(Squad squad, RallyReason reason) {
+        boolean defilersOnly = squad.isGroundSquad() && squad.hasOnly(UnitType.Zerg_Defiler);
+        SquadDecisions.rallied(squad, rallyReasonFor(defilersOnly, reason));
         squad.setStatus(SquadStatus.RALLY);
         squad.clearCommitment();
         Position rallyPoint = gameState.getSquadRallyPoint();
@@ -591,6 +595,29 @@ public class SquadManager {
             managedUnit.setRallyPoint(rallyPoint);
             managedUnit.setRole(UnitRole.RALLY);
         }
+    }
+
+    /**
+     * Names why a squad is at the rally point, from the composition rather than the branch alone.
+     *
+     * <p>A ground squad of Defilers only reaches the rally point two ways. SquadManager has a
+     * branch that rallies it instead of simulating a fight, but that branch sits inside
+     * {@link #simulateFightSquad}, which a squad under the move out threshold never reaches:
+     * {@link #chooseSquadAction} returns RALLY first and {@link #evaluateSquadRole} returns. The
+     * ground threshold carries a Lurker term and no Defiler term, so which of the two fires is a
+     * question of the squad's supply against a threshold that moves with the matchup.
+     *
+     * <p>Reading the branch alone therefore filed the same squad under BELOW_MOVE_OUT on most
+     * frames, which is the bucket an analyst keeps. Composing the reason from the composition keeps
+     * the Defiler episodes separable however they were rallied, which is the whole point of
+     * recording the reason.
+     *
+     * @param defilersOnly true for a ground squad whose composition is Defilers and nothing else
+     * @param branchReason reason the calling branch would have recorded
+     * @return the reason to log
+     */
+    static RallyReason rallyReasonFor(boolean defilersOnly, RallyReason branchReason) {
+        return defilersOnly ? RallyReason.DEFILER_ONLY : branchReason;
     }
 
     /**
@@ -610,9 +637,13 @@ public class SquadManager {
         SquadAction action = chooseSquadAction(closeThreats, squadStrength(squad), calculateMoveOutThreshold(squad),
                 squadStatus, squad.isCommitted(), distanceFromRallyPoint(squad));
 
+        if (squadStatus == SquadStatus.RALLY) {
+            SquadDecisions.rallyReleased(squad, releaseFor(action, closeThreats));
+        }
+
         if (action == SquadAction.RALLY) {
             clearCombatSimSnapshot(squad);
-            rallySquad(squad);
+            rallySquad(squad, RallyReason.BELOW_MOVE_OUT);
             return;
         }
 
@@ -664,6 +695,31 @@ public class SquadManager {
             return SquadAction.SIMULATE;
         }
         return SquadAction.RALLY;
+    }
+
+    /**
+     * Names the term that let a rallying squad stop rallying, for the row that closes the episode.
+     *
+     * <p>Reads the branch {@link #chooseSquadAction} already picked rather than re-testing its
+     * thresholds, so the two cannot drift apart. Only three of its branches are reachable from
+     * RALLY: the FIGHT branch requires the squad to already be fighting, which leaves close threats,
+     * the move out threshold, and a committed squad that has walked past the release distance.
+     *
+     * @param action branch chooseSquadAction returned this frame
+     * @param closeThreats true when enemies sit inside the squad detection radius
+     * @return the release, or NONE while the squad keeps rallying
+     */
+    static RallyRelease releaseFor(SquadAction action, boolean closeThreats) {
+        if (action == SquadAction.RALLY) {
+            return RallyRelease.NONE;
+        }
+        if (closeThreats) {
+            return RallyRelease.CLOSE_THREATS;
+        }
+        if (action == SquadAction.LAUNCH) {
+            return RallyRelease.MOVE_OUT_THRESHOLD;
+        }
+        return RallyRelease.COMMITTED_DOWNFIELD;
     }
 
     private double distanceFromRallyPoint(Squad squad) {
@@ -759,7 +815,7 @@ public class SquadManager {
         }
 
         if (squad.isGroundSquad() && squad.hasOnly(UnitType.Zerg_Defiler)) {
-            rallySquad(squad);
+            rallySquad(squad, RallyReason.DEFILER_ONLY);
             return;
         }
 
@@ -938,7 +994,7 @@ public class SquadManager {
         if (squad.getStatus() == SquadStatus.RETREAT) {
             assignRetreatTargets(squad, managedFighters);
         } else {
-            rallySquad(squad);
+            rallySquad(squad, RallyReason.HOLD);
         }
     }
 
@@ -1454,11 +1510,36 @@ public class SquadManager {
 
         squad.addUnit(managedUnit);
         if (shouldStageSquad(squad)) {
-            rallySquad(squad);
+            rallySquad(squad, RallyReason.STAGING);
             return;
         }
 
+        RallyRelease release = reinforcementRelease(squad.getStatus());
+        if (release != RallyRelease.NONE) {
+            SquadDecisions.rallyReleased(squad, release);
+        }
+
         simulateFightSquad(squad);
+    }
+
+    /**
+     * Names the release for a squad a reinforcement joins outside the staging path.
+     *
+     * <p>A unit completing runs before the frame's squad loop, so this is the one place a squad can
+     * leave RALLY without {@link #evaluateSquadRole} seeing it: {@link #simulateFightSquad} is
+     * called here directly and can set FIGHT, RETREAT or CONTAIN before the release hook there ever
+     * reads the status. The episode's closing row would carry NONE, which by contract says the row
+     * closes nothing.
+     *
+     * <p>The release is always close threats. Reaching this call at all means
+     * {@link #shouldStageSquad} was false, and for a squad already rallying the only term that can
+     * make it false is an enemy inside the detection radius.
+     *
+     * @param status status the squad held as the reinforcement joined
+     * @return CLOSE_THREATS for a rallying squad, NONE for any other, which closes no episode
+     */
+    static RallyRelease reinforcementRelease(SquadStatus status) {
+        return status == SquadStatus.RALLY ? RallyRelease.CLOSE_THREATS : RallyRelease.NONE;
     }
 
     private Squad findCloseGroundSquad(ManagedUnit managedUnit) {

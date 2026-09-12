@@ -39,6 +39,16 @@ class SquadDecisionsTest {
             }
 
             @Override
+            public void onRallied(Squad squad, RallyReason reason) {
+                events.add("RALLY:" + reason);
+            }
+
+            @Override
+            public void onRallyReleased(Squad squad, RallyRelease release) {
+                events.add("RELEASE:" + release);
+            }
+
+            @Override
             public void onContainmentEvaluated(Squad squad, boolean shouldContain, boolean canBreakContainment,
                                                boolean entered) {
                 events.add("CONTAIN:" + shouldContain + ":" + canBreakContainment + ":" + entered);
@@ -51,10 +61,15 @@ class SquadDecisionsTest {
     }
 
     private static String[] rowFor(Squad squad, String suppressedBy) {
+        return rowFor(squad, suppressedBy, RallyReason.NONE, RallyRelease.NONE);
+    }
+
+    private static String[] rowFor(Squad squad, String suppressedBy, RallyReason reason, RallyRelease release) {
         SquadDecision context = new SquadDecision();
         String row = String.join(",", SquadDecisionLogger.identityCells("game-1", 1000, squad, "STATUS_CHANGE",
                 SquadStatus.RETREAT, SquadStatus.FIGHT, context, suppressedBy))
-                + "," + String.join(",", SquadDecisionLogger.squadCells(squad, context, false, -1));
+                + "," + String.join(",", SquadDecisionLogger.squadCells(squad, context, false, -1))
+                + "," + String.join(",", SquadDecisionLogger.rallyCells(reason, release));
         return row.split(",", -1);
     }
 
@@ -193,5 +208,49 @@ class SquadDecisionsTest {
         assertFalse("-1".equals(committedFields[columnIndex("commit_frame")]));
         assertEquals("0", recalledFields[columnIndex("committed")]);
         assertEquals("-1", recalledFields[columnIndex("commit_frame")]);
+    }
+
+    @Test
+    void registeredSinkReceivesTheRallyEntryAndItsRelease() {
+        SquadDecisions.register(recorder());
+        Squad squad = new GroundSquad();
+
+        SquadDecisions.rallied(squad, RallyReason.DEFILER_ONLY);
+        SquadDecisions.rallyReleased(squad, RallyRelease.CLOSE_THREATS);
+
+        assertEquals(2, events.size());
+        assertEquals("RALLY:DEFILER_ONLY", events.get(0));
+        assertEquals("RELEASE:CLOSE_THREATS", events.get(1));
+    }
+
+    @Test
+    void rallyDispatchIsANoOpWithoutASink() {
+        Squad squad = new GroundSquad();
+
+        SquadDecisions.rallied(squad, RallyReason.STAGING);
+        SquadDecisions.rallyReleased(squad, RallyRelease.MOVE_OUT_THRESHOLD);
+
+        assertTrue(events.isEmpty());
+    }
+
+    @Test
+    void everyRowCarriesTheRallyReasonAndRelease() {
+        String[] fields = rowFor(new GroundSquad(), "NONE", RallyReason.DEFILER_ONLY, RallyRelease.DISBANDED);
+
+        assertEquals("DEFILER_ONLY", fields[columnIndex("rally_reason")]);
+        assertEquals("DISBANDED", fields[columnIndex("rally_release")]);
+    }
+
+    @Test
+    void aSquadThatVanishesWhileRallyingClosesItsEpisode() {
+        assertEquals(RallyRelease.DISBANDED, SquadDecisionLogger.releaseOnDisband(SquadStatus.RALLY));
+    }
+
+    @Test
+    void aSquadThatVanishesInAnyOtherStatusClosesNoRallyEpisode() {
+        assertEquals(RallyRelease.NONE, SquadDecisionLogger.releaseOnDisband(SquadStatus.FIGHT));
+        assertEquals(RallyRelease.NONE, SquadDecisionLogger.releaseOnDisband(SquadStatus.RETREAT));
+        assertEquals(RallyRelease.NONE, SquadDecisionLogger.releaseOnDisband(SquadStatus.CONTAIN));
+        assertEquals(RallyRelease.NONE, SquadDecisionLogger.releaseOnDisband(null));
     }
 }

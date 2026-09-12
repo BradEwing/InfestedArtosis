@@ -40,6 +40,7 @@ public class TwelvePool extends BuildOrder {
 
         int droneCount    = gameState.ourUnitCount(UnitType.Zerg_Drone);
         int supplyUsed = gameState.getSupply();
+        int poolCount = gameState.structureCount(Readiness.USABLE, UnitType.Zerg_Spawning_Pool);
         int zerglingCount = gameState.ourUnitCount(UnitType.Zerg_Zergling);
 
         if (droneCount < DRONE_TARGET) {
@@ -52,7 +53,7 @@ public class TwelvePool extends BuildOrder {
             return plans;
         }
 
-        if (zerglingCount <= this.zerglingsNeeded(gameState)) {
+        if (shouldPlanZergling(poolCount, zerglingCount, this.zerglingsNeeded(gameState))) {
             plans.add(planUnit(gameState, UnitType.Zerg_Zergling));
             return plans;
         }
@@ -100,5 +101,26 @@ public class TwelvePool extends BuildOrder {
      */
     static boolean openerComplete(int poolCount, int livingDrones) {
         return poolCount > 0 || livingDrones >= DRONE_TARGET;
+    }
+
+    /**
+     * Whether the opener queues another zergling.
+     *
+     * <p>The pool term counts finished pools. Without it the branch is true from the frame the
+     * drone target is met, well before a pool is planned, and queues a zergling every frame against
+     * a tech requirement nothing can satisfy. While no pool plan exists each of those plans is
+     * enqueued and swept on the same frame; once one exists the plan survives the sweep and takes a
+     * larva it holds for the rest of the pool build, because the morph no-ops until the pool stands.
+     *
+     * <p>The count it is compared against includes planned zerglings, two per plan, so the branch
+     * would otherwise run away while the pool was still going up.
+     *
+     * @param poolCount Spawning Pools that have finished building
+     * @param zerglingCount zerglings living and planned, two per plan
+     * @param zerglingsNeeded the target the build order asks for
+     * @return true while another zergling should be queued
+     */
+    static boolean shouldPlanZergling(int poolCount, int zerglingCount, int zerglingsNeeded) {
+        return poolCount > 0 && zerglingCount <= zerglingsNeeded;
     }
 }
