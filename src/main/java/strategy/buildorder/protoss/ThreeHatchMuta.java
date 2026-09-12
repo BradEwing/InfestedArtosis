@@ -5,6 +5,7 @@ import bwapi.UnitType;
 import bwapi.UpgradeType;
 import info.BaseData;
 import info.GameState;
+import info.Readiness;
 import info.TechProgression;
 import info.tracking.StrategyTracker;
 import macro.plan.Plan;
@@ -54,8 +55,9 @@ public class ThreeHatchMuta extends ProtossBase {
         int macroHatchCount = baseData.numMacroHatcheries();
         int totalHatcheries = baseCount + macroHatchCount;
         final int plannedAndCurrentHatcheries = plannedHatcheries + baseCount;
-        int lairCount         = gameState.ourUnitCount(UnitType.Zerg_Lair);
-        int spireCount        = gameState.ourUnitCount(UnitType.Zerg_Spire);
+        int lairCount         = gameState.structureCount(Readiness.USABLE, UnitType.Zerg_Lair);
+        int spireCount        = gameState.structureCount(Readiness.USABLE, UnitType.Zerg_Spire);
+        int committedSpires   = gameState.structureCount(Readiness.COMMITTED, UnitType.Zerg_Spire);
         int hydraCount        = gameState.ourUnitCount(UnitType.Zerg_Hydralisk);
         int mutaCount         = gameState.ourUnitCount(UnitType.Zerg_Mutalisk);
         int scourgeCount      = gameState.ourUnitCount(UnitType.Zerg_Scourge);
@@ -68,7 +70,7 @@ public class ThreeHatchMuta extends ProtossBase {
         // Gas timing
         boolean gasBlocked = cannonRushed && time.lessThanOrEqual(new Time(4, 0));
         boolean firstGas = !gasBlocked && gameState.canPlanExtractor() && (time.greaterThan(new Time(2, 32)) || supply > 40) && extractorCount < 1;
-        boolean secondGas = gameState.canPlanExtractor() && (spireCount > 0 || droneCount >= 20);
+        boolean secondGas = gameState.canPlanExtractor() && (committedSpires > 0 || droneCount >= 20);
 
         // Base timing
         boolean delayThird = rushed && time.lessThanOrEqual(new Time(6,0));

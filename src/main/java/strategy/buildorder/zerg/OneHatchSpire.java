@@ -4,6 +4,7 @@ import bwapi.UnitType;
 import bwapi.UpgradeType;
 import info.BaseData;
 import info.GameState;
+import info.Readiness;
 import info.TechProgression;
 import macro.HatcheryCapacity;
 import macro.plan.Plan;
@@ -30,16 +31,17 @@ public class OneHatchSpire extends ZergBase {
 
         final int gas = gameState.getResourceCount().availableGas();
         final int extractorCount = baseData.numExtractor();
-        final int hatchCount = gameState.ourUnitCount(UnitType.Zerg_Hatchery) + gameState.ourUnitCount(UnitType.Zerg_Lair);
-        final int lairCount         = gameState.ourUnitCount(UnitType.Zerg_Lair);
-        final int spireCount        = gameState.ourUnitCount(UnitType.Zerg_Spire);
+        final int hatchCount = gameState.structureCount(Readiness.USABLE, UnitType.Zerg_Hatchery, UnitType.Zerg_Lair);
+        final int lairCount         = gameState.structureCount(Readiness.USABLE, UnitType.Zerg_Lair);
+        final int spireCount        = gameState.structureCount(Readiness.USABLE, UnitType.Zerg_Spire);
+        final int committedSpires   = gameState.structureCount(Readiness.COMMITTED, UnitType.Zerg_Spire);
         final int mutaCount         = gameState.ourUnitCount(UnitType.Zerg_Mutalisk);
         final int scourgeCount      = gameState.ourUnitCount(UnitType.Zerg_Scourge);
         final int droneCount        = gameState.ourUnitCount(UnitType.Zerg_Drone);
         final int zerglingCount     = gameState.ourUnitCount(UnitType.Zerg_Zergling);
 
         boolean firstGas = shouldPlanFirstGas(extractorCount, gameState.canPlanExtractor());
-        boolean anotherGas = gameState.canPlanExtractor() && spireCount > 0;
+        boolean anotherGas = shouldPlanAnotherGas(committedSpires, gameState.canPlanExtractor());
         boolean wantLair = gameState.canPlanLair() && lairCount < 1;
         boolean wantSpire = techProgression.canPlanSpire() && spireCount < 1 && lairCount >= 1;
 
@@ -148,6 +150,24 @@ public class OneHatchSpire extends ZergBase {
      */
     static boolean shouldPlanFirstGas(int extractorCount, boolean canPlanExtractor) {
         return extractorCount < 1 && canPlanExtractor;
+    }
+
+    /**
+     * Whether another Extractor should be queued.
+     *
+     * <p>The Spire term is {@link info.Readiness#COMMITTED} because the question it answers is
+     * whether the build has turned towards Mutalisks, not whether it can morph one yet. The Spire
+     * is what the gas is for, and a Spire standing part-built settles that as firmly as a finished
+     * one does. Reading finished Spires instead withholds the geyser for the whole Spire build,
+     * which is the stretch the gas is meant to cover.
+     *
+     * @param committedSpires Spires standing, under construction, or claimed by a plan in flight
+     * @param canPlanExtractor GameState's verdict: a geyser is free, the pool is planned or
+     *     standing, and no all-in, rush or replan hold bars the request
+     * @return true while another Extractor should be queued
+     */
+    static boolean shouldPlanAnotherGas(int committedSpires, boolean canPlanExtractor) {
+        return committedSpires > 0 && canPlanExtractor;
     }
 
     static List<UnitType> unitsToPlan(boolean wantScourge, boolean wantMutalisk, boolean wantZergling, boolean wantDrone) {

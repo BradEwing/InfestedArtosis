@@ -4,6 +4,7 @@ import bwapi.Race;
 import bwapi.UnitType;
 import bwapi.UpgradeType;
 import info.GameState;
+import info.Readiness;
 import info.TechProgression;
 import macro.plan.Plan;
 import strategy.buildorder.BuildOrder;
@@ -24,7 +25,7 @@ public class NinePoolSpeed extends BuildOrder {
 
     @Override
     protected boolean openerComplete(GameState gameState) {
-        return openerComplete(gameState.ourBuildingOrPlannedCount(UnitType.Zerg_Spawning_Pool));
+        return openerComplete(gameState.structureCount(Readiness.COMMITTED, UnitType.Zerg_Spawning_Pool));
     }
 
     @Override
@@ -41,7 +42,7 @@ public class NinePoolSpeed extends BuildOrder {
         int droneCount     = gameState.ourUnitCount(UnitType.Zerg_Drone);
         int supplyUsed     = gameState.getSupply();
         int overlordCount  = gameState.ourUnitCount(UnitType.Zerg_Overlord);
-        int poolCount      = gameState.ourUnitCount(UnitType.Zerg_Spawning_Pool);
+        int poolCount      = gameState.structureCount(Readiness.COMMITTED, UnitType.Zerg_Spawning_Pool);
         int extractorCount = gameState.getBaseData().numExtractor();
         int zerglingCount  = gameState.ourUnitCount(UnitType.Zerg_Zergling);
 

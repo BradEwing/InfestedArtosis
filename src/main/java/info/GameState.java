@@ -681,12 +681,31 @@ public class GameState {
      *
      * <p>The Extractor term reads {@link #ourUnitCount}, which sees only finished Extractors,
      * and that is what it wants: it stands for gas income, and an Extractor under construction
-     * earns none. Reading {@link #ourBuildingOrPlannedCount} here would queue a Lair and its
+     * earns none. Reading it at {@link Readiness#COMMITTED} here would queue a Lair and its
      * 100 gas against a bank that cannot grow until the Extractor finishes.
      */
     public boolean canPlanLair() {
-        return !earlyRushDelayLair && needLair() && techProgression.canPlanLair()
-                && hasMinHatchForLair() && ourUnitCount(UnitType.Zerg_Extractor) > 0;
+        return canPlanLair(
+                earlyRushDelayLair,
+                needLair(),
+                techProgression.canPlanLair(),
+                hasMinHatchForLair(),
+                structureCount(Readiness.USABLE, UnitType.Zerg_Extractor));
+    }
+
+    /**
+     * Decides whether a Lair can be planned from the terms the caller has already read.
+     *
+     * @param earlyRushDelayLair whether the early rush reaction is holding the Lair back
+     * @param needLair whether the build order or a pending upgrade wants one
+     * @param techCanPlanLair whether tech progression allows another Lair plan
+     * @param hasMinHatchForLair whether enough hatcheries stand for the matchup
+     * @param usableExtractors Extractors that have finished building
+     * @return true while a Lair should be planned
+     */
+    static boolean canPlanLair(boolean earlyRushDelayLair, boolean needLair, boolean techCanPlanLair,
+            boolean hasMinHatchForLair, int usableExtractors) {
+        return !earlyRushDelayLair && needLair && techCanPlanLair && hasMinHatchForLair && usableExtractors > 0;
     }
 
     public boolean canPlanHive() {
@@ -811,7 +830,7 @@ public class GameState {
 
     public boolean canPlanDrone() {
         final int expectedWorkers = expectedWorkers();
-        int hatchCount = ourUnitCount(UnitType.Zerg_Hatchery, UnitType.Zerg_Lair, UnitType.Zerg_Hive);
+        int hatchCount = structureCount(Readiness.USABLE, UnitType.Zerg_Hatchery, UnitType.Zerg_Lair, UnitType.Zerg_Hive);
         int plannedWorkerConstraint = hatchCount * 3;
         return plannedWorkers < plannedWorkerConstraint && numWorkers() < 80 && numWorkers() < expectedWorkers;
     }
@@ -934,29 +953,59 @@ public class GameState {
     }
 
     /**
-     * Structures of this type we have committed to, whether or not they can be used yet:
-     * completed structures, structures standing on the map but still under construction, and
-     * building plans that have not produced a structure yet.
+     * Structures of these types, counted at the readiness the caller names.
      *
-     * <p>{@link #ourUnitCount} sees only the first of the three. The planned count it adds is
-     * incremented by unit plans alone, so a structure reads zero from the frame its plan is
-     * created to the frame it finishes, and a caller gating on a structure it has already
-     * committed to waits out the whole build time. A caller that needs the structure to be
-     * usable, rather than committed to, wants {@link #ourUnitCount} instead.
+     * <p>Every structure passes through a plan in flight, a shell under construction, and a
+     * finished building. {@link Readiness#USABLE} counts only the last of the three;
+     * {@link Readiness#COMMITTED} counts all three. A gate that reads the wrong one either acts
+     * on a structure that cannot do its job yet, or waits out a build time it has already
+     * committed to. Which one it means is not recoverable from the call, so it has to say.
      *
      * <p>The three terms hand over without a gap and without overlapping. A building plan retires
      * on the frame its builder morphs, which is the frame the structure appears on the map, so
-     * {@link #incompleteBuildingCount} takes over from
-     * {@link #outstandingBuildingPlanCount} there; {@link #ourUnitCount} takes over when
-     * construction finishes. A structure destroyed mid-construction is removed from a count it
-     * was never added to, so {@link UnitTypeCount#removeUnit} floors at zero to keep the
-     * completed term from going negative and hiding the replacement.
+     * {@link #incompleteBuildingCount} takes over from {@link #outstandingBuildingPlanCount}
+     * there; {@link #ourUnitCount} takes over when construction finishes. A structure destroyed
+     * mid-construction is removed from a count it was never added to, so
+     * {@link UnitTypeCount#removeUnit} floors at zero to keep the completed term from going
+     * negative and hiding the replacement.
      *
-     * @param unitType the structure to count
-     * @return structures standing, under construction, or claimed by a plan in flight
+     * <p>Structures only. A mobile unit's count already folds in the plans and eggs in flight, so
+     * {@link #ourUnitCount} and {@link #ourLivingUnitCount} already answer these two questions for
+     * units and this method has nothing to add there.
+     *
+     * @param readiness which question the caller is asking
+     * @param structureTypes the structures to count
+     * @return structures of those types at that readiness
      */
-    public int ourBuildingOrPlannedCount(UnitType unitType) {
-        return ourUnitCount(unitType) + incompleteBuildingCount(unitType) + outstandingBuildingPlanCount(unitType);
+    public int structureCount(Readiness readiness, UnitType... structureTypes) {
+        int count = 0;
+        for (UnitType structureType : structureTypes) {
+            count += structureCount(
+                    readiness,
+                    ourUnitCount(structureType),
+                    incompleteBuildingCount(structureType),
+                    outstandingBuildingPlanCount(structureType));
+        }
+        return count;
+    }
+
+    /**
+     * Picks the terms a readiness includes.
+     *
+     * @param readiness which question the caller is asking
+     * @param completed structures of the type that have finished building
+     * @param underConstruction structures of the type standing on the map part-built
+     * @param planned building plans for the type still in flight
+     * @return structures at that readiness
+     */
+    static int structureCount(Readiness readiness, int completed, int underConstruction, int planned) {
+        switch (readiness) {
+            case COMMITTED:
+                return completed + underConstruction + planned;
+            case USABLE:
+            default:
+                return completed;
+        }
     }
 
     /**
@@ -970,7 +1019,7 @@ public class GameState {
      * @param unitType the structure to count
      * @return structures of that type under construction
      */
-    public int incompleteBuildingCount(UnitType unitType) {
+    int incompleteBuildingCount(UnitType unitType) {
         int count = 0;
         for (Unit unit : self.getUnits()) {
             if (unit.getType() == unitType && !unit.isCompleted()) {
@@ -992,7 +1041,7 @@ public class GameState {
      * @param unitType the planned structure
      * @return count of building plans for that structure still in flight
      */
-    public int outstandingBuildingPlanCount(UnitType unitType) {
+    int outstandingBuildingPlanCount(UnitType unitType) {
         int outstanding = productionQueue.buildingPlanCount(unitType);
         outstanding += buildingPlanCount(plansScheduled, unitType);
         outstanding += buildingPlanCount(plansBuilding, unitType);
@@ -1140,7 +1189,9 @@ public class GameState {
     public boolean canPlanUpgrade(UpgradeType upgradeType) {
         switch (upgradeType) {
             case Metabolic_Boost:
-                return ourUnitCount(UnitType.Zerg_Extractor) > 0 && techProgression.isSpawningPool() && techProgression.canPlanMetabolicBoost();
+                return structureCount(Readiness.USABLE, UnitType.Zerg_Extractor) > 0
+                        && techProgression.isSpawningPool()
+                        && techProgression.canPlanMetabolicBoost();
             case Zerg_Carapace:
                 return techProgression.canPlanCarapaceUpgrades();
             case Zerg_Melee_Attacks:
@@ -1290,7 +1341,7 @@ public class GameState {
      * and morphing plans.
      */
     public int hatcheryCount() {
-        return ourUnitCount(UnitType.Zerg_Hatchery, UnitType.Zerg_Lair, UnitType.Zerg_Hive);
+        return structureCount(Readiness.USABLE, UnitType.Zerg_Hatchery, UnitType.Zerg_Lair, UnitType.Zerg_Hive);
     }
 
     public boolean hasExcessHatchery() {

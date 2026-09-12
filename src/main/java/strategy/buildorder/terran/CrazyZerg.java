@@ -5,6 +5,7 @@ import bwapi.UnitType;
 import bwapi.UpgradeType;
 import info.BaseData;
 import info.GameState;
+import info.Readiness;
 import info.TechProgression;
 import macro.plan.Plan;
 import util.Time;
@@ -42,9 +43,10 @@ public class CrazyZerg extends TerranBase {
         int extractorCount = baseData.numExtractor();
         int plannedHatcheries = gameState.getPlannedHatcheries();
         final int plannedAndCurrentHatcheries = plannedHatcheries + baseCount;
-        int lairCount         = gameState.ourUnitCount(UnitType.Zerg_Lair);
-        int hiveCount         = gameState.ourUnitCount(UnitType.Zerg_Hive);
-        int spireCount        = gameState.ourUnitCount(UnitType.Zerg_Spire);
+        int lairCount         = gameState.structureCount(Readiness.USABLE, UnitType.Zerg_Lair);
+        int hiveCount         = gameState.structureCount(Readiness.USABLE, UnitType.Zerg_Hive);
+        int spireCount        = gameState.structureCount(Readiness.USABLE, UnitType.Zerg_Spire);
+        int committedLairOrHiveCount = gameState.structureCount(Readiness.COMMITTED, UnitType.Zerg_Lair, UnitType.Zerg_Hive);
         int mutaCountLiving         = gameState.ourLivingUnitCount(UnitType.Zerg_Mutalisk);
         int scourgeCount      = gameState.ourUnitCount(UnitType.Zerg_Scourge);
         int ultraliskCount    = gameState.ourUnitCount(UnitType.Zerg_Ultralisk);
@@ -58,11 +60,12 @@ public class CrazyZerg extends TerranBase {
         int enemyWraith       = gameState.enemyUnitCount(UnitType.Terran_Wraith);
 
         boolean hasLairOrHive = lairCount > 0 || hiveCount > 0;
+        boolean committedLairOrHive = committedLairOrHiveCount > 0;
         boolean hasHive = hiveCount > 0;
 
         boolean firstGas = gameState.canPlanExtractor() && techProgression.isSpawningPool() && extractorCount < 1;
-        boolean secondGas = gameState.canPlanExtractor() && hasLairOrHive && extractorCount < 2;
-        boolean thirdGas = gameState.canPlanExtractor() && baseCount >= 3 && hasLairOrHive && extractorCount < 3;
+        boolean secondGas = gameState.canPlanExtractor() && committedLairOrHive && extractorCount < 2;
+        boolean thirdGas = gameState.canPlanExtractor() && baseCount >= 3 && committedLairOrHive && extractorCount < 3;
         boolean extraGas = gameState.canPlanExtractor() && baseCount > 3 && extractorCount < baseCount;
 
         boolean floatingMinerals = gameState.isFloatingMinerals();
@@ -297,9 +300,8 @@ public class CrazyZerg extends TerranBase {
 
     private int dronesNeeded(GameState gameState) {
         int drones = 17;
-        boolean hasLairOrHive = gameState.ourUnitCount(UnitType.Zerg_Lair) > 0
-                || gameState.ourUnitCount(UnitType.Zerg_Hive) > 0;
-        int hatchCount = gameState.ourUnitCount(UnitType.Zerg_Hatchery, UnitType.Zerg_Lair, UnitType.Zerg_Hive);
+        boolean hasLairOrHive = gameState.structureCount(Readiness.USABLE, UnitType.Zerg_Lair, UnitType.Zerg_Hive) > 0;
+        int hatchCount = gameState.structureCount(Readiness.USABLE, UnitType.Zerg_Hatchery, UnitType.Zerg_Lair, UnitType.Zerg_Hive);
 
         if (hasLairOrHive) {
             drones += 6;
@@ -312,7 +314,7 @@ public class CrazyZerg extends TerranBase {
 
     @Override
     protected int zerglingsNeeded(GameState gameState) {
-        boolean hasHive = gameState.ourUnitCount(UnitType.Zerg_Hive) > 0;
+        boolean hasHive = gameState.structureCount(Readiness.USABLE, UnitType.Zerg_Hive) > 0;
         int base = super.zerglingsNeeded(gameState);
 
         if (hasHive) {

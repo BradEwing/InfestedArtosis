@@ -3,6 +3,7 @@ package strategy.buildorder.protoss;
 import bwapi.Race;
 import bwapi.UnitType;
 import info.GameState;
+import info.Readiness;
 import info.tracking.StrategyTracker;
 import macro.plan.Plan;
 import strategy.buildorder.BuildOrder;
@@ -43,7 +44,7 @@ public class ProtossBase extends BuildOrder {
 
     @Override
     protected int zerglingsNeeded(GameState gameState) {
-        if (gameState.ourUnitCount(UnitType.Zerg_Spawning_Pool) < 1) {
+        if (gameState.structureCount(Readiness.USABLE, UnitType.Zerg_Spawning_Pool) < 1) {
             return 0;
         }
 

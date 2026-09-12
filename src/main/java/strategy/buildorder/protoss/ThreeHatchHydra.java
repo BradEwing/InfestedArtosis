@@ -5,6 +5,7 @@ import bwapi.UnitType;
 import bwapi.UpgradeType;
 import info.BaseData;
 import info.GameState;
+import info.Readiness;
 import info.TechProgression;
 import info.tracking.StrategyTracker;
 import macro.plan.Plan;
@@ -49,8 +50,8 @@ public class ThreeHatchHydra extends ProtossBase {
         int supply = gameState.getSupply();
         int plannedHatcheries = gameState.getPlannedHatcheries();
         int macroHatchCount = baseData.numMacroHatcheries();
-        int hatchCount = gameState.ourUnitCount(UnitType.Zerg_Hatchery);
-        int lairCount = gameState.ourUnitCount(UnitType.Zerg_Lair);
+        int hatchCount = gameState.structureCount(Readiness.USABLE, UnitType.Zerg_Hatchery);
+        int lairCount = gameState.structureCount(Readiness.USABLE, UnitType.Zerg_Lair);
         final int plannedAndCurrentHatcheries = plannedHatcheries + baseCount;
 
         int hydraCount = gameState.ourUnitCount(UnitType.Zerg_Hydralisk);
@@ -331,7 +332,7 @@ public class ThreeHatchHydra extends ProtossBase {
 
     // Tech building planning methods
     private boolean wantHydraliskDen(GameState gameState) {
-        if (gameState.ourUnitCount(UnitType.Zerg_Extractor) == 0) {
+        if (gameState.structureCount(Readiness.USABLE, UnitType.Zerg_Extractor) == 0) {
             return false;
         }
 
