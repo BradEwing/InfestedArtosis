@@ -4,6 +4,7 @@ import bwapi.Race;
 import bwapi.UnitType;
 import bwapi.UpgradeType;
 import info.GameState;
+import info.Readiness;
 import info.TechProgression;
 import macro.plan.Plan;
 import strategy.buildorder.BuildOrder;
@@ -24,7 +25,7 @@ public class NinePoolSpeed extends BuildOrder {
 
     @Override
     protected boolean openerComplete(GameState gameState) {
-        return openerComplete(gameState.ourBuildingOrPlannedCount(UnitType.Zerg_Spawning_Pool));
+        return openerComplete(gameState.structureCount(Readiness.COMMITTED, UnitType.Zerg_Spawning_Pool));
     }
 
     @Override
@@ -41,7 +42,8 @@ public class NinePoolSpeed extends BuildOrder {
         int droneCount     = gameState.ourUnitCount(UnitType.Zerg_Drone);
         int supplyUsed     = gameState.getSupply();
         int overlordCount  = gameState.ourUnitCount(UnitType.Zerg_Overlord);
-        int poolCount      = gameState.ourUnitCount(UnitType.Zerg_Spawning_Pool);
+        int poolCount      = gameState.structureCount(Readiness.USABLE, UnitType.Zerg_Spawning_Pool);
+        int committedPools = gameState.structureCount(Readiness.COMMITTED, UnitType.Zerg_Spawning_Pool);
         int extractorCount = gameState.getBaseData().numExtractor();
         int zerglingCount  = gameState.ourUnitCount(UnitType.Zerg_Zergling);
 
@@ -50,7 +52,7 @@ public class NinePoolSpeed extends BuildOrder {
             return plans;
         }
 
-        if (shouldPlanPool(supplyUsed) && poolCount < 1 && techProgression.canPlanPool()) {
+        if (shouldPlanPool(supplyUsed) && committedPools < 1 && techProgression.canPlanPool()) {
             plans.add(planSpawningPool(gameState));
             return plans;
         }
@@ -80,7 +82,7 @@ public class NinePoolSpeed extends BuildOrder {
             return plans;
         }
 
-        if (poolCount > 0 && zerglingCount <= this.zerglingsNeeded(gameState)) {
+        if (shouldPlanZergling(poolCount, zerglingCount, this.zerglingsNeeded(gameState))) {
             plans.add(planUnit(gameState, UnitType.Zerg_Zergling));
             return plans;
         }
@@ -141,5 +143,23 @@ public class NinePoolSpeed extends BuildOrder {
      */
     static boolean shouldPlanExtractor(int extractorCount, boolean canPlanExtractor, boolean pastGasTime) {
         return extractorCount < 1 && canPlanExtractor && pastGasTime;
+    }
+
+    /**
+     * Whether the opener queues another zergling.
+     *
+     * <p>The pool term counts finished pools. A zergling plan created against a pool that is only
+     * committed to still takes a larva and holds it in BUILDING, because the morph no-ops until it
+     * is buildable, so the plan buys nothing and costs the larva and the minerals it reserves for
+     * the rest of the pool build. The count it is compared against includes planned zerglings, two
+     * per plan, so the branch would otherwise run away while the pool was still going up.
+     *
+     * @param poolCount Spawning Pools that have finished building
+     * @param zerglingCount zerglings living and planned, two per plan
+     * @param zerglingsNeeded the target the build order asks for
+     * @return true while another zergling should be queued
+     */
+    static boolean shouldPlanZergling(int poolCount, int zerglingCount, int zerglingsNeeded) {
+        return poolCount > 0 && zerglingCount <= zerglingsNeeded;
     }
 }

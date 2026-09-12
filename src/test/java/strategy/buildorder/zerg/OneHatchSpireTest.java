@@ -20,6 +20,12 @@ class OneHatchSpireTest {
 
     private static final int NO_EXTRACTOR = 0;
 
+    private static final int NO_SPIRE = 0;
+
+    private static final int ONE_SPIRE = 1;
+
+    private static final boolean CAN_PLAN_EXTRACTOR = true;
+
     private static final int POOL_FRAME = 2300;
 
     private static final int GAS_FRAME = POOL_FRAME + 1;
@@ -99,5 +105,25 @@ class OneHatchSpireTest {
         queue.add(pool);
 
         assertSame(pool, queue.poll());
+    }
+
+    /**
+     * The second gas follows the decision to build a Spire, not the Spire finishing. A Spire
+     * claimed by a plan in flight, or standing part-built, already commits the build to
+     * Mutalisks and to the gas they cost.
+     */
+    @Test
+    void takesAnotherGasOnceTheSpireIsCommitted() {
+        assertTrue(OneHatchSpire.shouldPlanAnotherGas(ONE_SPIRE, CAN_PLAN_EXTRACTOR));
+    }
+
+    @Test
+    void withholdsAnotherGasUntilASpireIsCommitted() {
+        assertFalse(OneHatchSpire.shouldPlanAnotherGas(NO_SPIRE, CAN_PLAN_EXTRACTOR));
+    }
+
+    @Test
+    void withholdsAnotherGasWhileTheExtractorRequestIsBarred() {
+        assertFalse(OneHatchSpire.shouldPlanAnotherGas(ONE_SPIRE, !CAN_PLAN_EXTRACTOR));
     }
 }

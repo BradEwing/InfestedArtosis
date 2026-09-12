@@ -4,6 +4,7 @@ import bwapi.Race;
 import bwapi.UnitType;
 import info.BaseData;
 import info.GameState;
+import info.Readiness;
 import info.TechProgression;
 import macro.plan.Plan;
 import strategy.buildorder.BuildOrder;
@@ -99,7 +100,7 @@ public class ThreeHatchBeforePool extends BuildOrder {
             return plans;
         }
 
-        if (gameState.ourUnitCount(UnitType.Zerg_Spawning_Pool) > 0 && zerglingCount < 4) {
+        if (gameState.structureCount(Readiness.USABLE, UnitType.Zerg_Spawning_Pool) > 0 && zerglingCount < 4) {
             plans.add(planUnit(gameState, UnitType.Zerg_Zergling));
             return plans;
         }
@@ -137,7 +138,7 @@ public class ThreeHatchBeforePool extends BuildOrder {
 
     @Override
     public boolean shouldTransition(GameState gameState) {
-        int poolCount = gameState.ourUnitCount(UnitType.Zerg_Spawning_Pool);
+        int poolCount = gameState.structureCount(Readiness.USABLE, UnitType.Zerg_Spawning_Pool);
         int zerglingCount = gameState.ourUnitCount(UnitType.Zerg_Zergling);
         return poolCount > 0 && zerglingCount >= 4;
     }

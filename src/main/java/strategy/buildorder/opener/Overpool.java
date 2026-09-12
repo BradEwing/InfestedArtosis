@@ -3,6 +3,7 @@ package strategy.buildorder.opener;
 import bwapi.Race;
 import bwapi.UnitType;
 import info.GameState;
+import info.Readiness;
 import info.TechProgression;
 import macro.plan.Plan;
 import strategy.buildorder.BuildOrder;
@@ -20,7 +21,7 @@ public class Overpool extends BuildOrder {
 
     @Override
     protected boolean openerComplete(GameState gameState) {
-        return openerComplete(gameState.ourBuildingOrPlannedCount(UnitType.Zerg_Spawning_Pool));
+        return openerComplete(gameState.structureCount(Readiness.COMMITTED, UnitType.Zerg_Spawning_Pool));
     }
 
     @Override

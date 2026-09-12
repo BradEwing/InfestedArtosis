@@ -5,6 +5,7 @@ import bwapi.UnitType;
 import bwapi.UpgradeType;
 import info.BaseData;
 import info.GameState;
+import info.Readiness;
 import info.TechProgression;
 import macro.plan.Plan;
 
@@ -35,8 +36,9 @@ public class TwoHatchMuta extends TerranBase {
         int extractorCount = baseData.numExtractor();
         int plannedHatcheries = gameState.getPlannedHatcheries();
         final int plannedAndCurrentHatcheries = plannedHatcheries + baseCount;
-        int lairCount         = gameState.ourUnitCount(UnitType.Zerg_Lair);
-        int spireCount        = gameState.ourUnitCount(UnitType.Zerg_Spire);
+        int lairCount         = gameState.structureCount(Readiness.USABLE, UnitType.Zerg_Lair);
+        int committedLairs    = gameState.structureCount(Readiness.COMMITTED, UnitType.Zerg_Lair);
+        int spireCount        = gameState.structureCount(Readiness.USABLE, UnitType.Zerg_Spire);
         int mutaCount         = gameState.ourUnitCount(UnitType.Zerg_Mutalisk);
         int scourgeCount      = gameState.ourUnitCount(UnitType.Zerg_Scourge);
         int droneCount        = gameState.numEconomyDrones();
@@ -49,7 +51,7 @@ public class TwoHatchMuta extends TerranBase {
 
         // Gas timing
         boolean firstGas = gameState.canPlanExtractor() && techProgression.isSpawningPool() && extractorCount < 1;
-        boolean secondGas = gameState.canPlanExtractor() && lairCount > 0;
+        boolean secondGas = gameState.canPlanExtractor() && committedLairs > 0;
 
         // Check for floating resources
         boolean floatingMinerals = gameState.isFloatingMinerals();
@@ -175,8 +177,8 @@ public class TwoHatchMuta extends TerranBase {
 
     protected int dronesNeeded(GameState gameState) {
         int drones = 17;
-        int lairCount = gameState.ourUnitCount(UnitType.Zerg_Lair);
-        int hatchCount = gameState.ourUnitCount(UnitType.Zerg_Hatchery);
+        int lairCount = gameState.structureCount(Readiness.USABLE, UnitType.Zerg_Lair);
+        int hatchCount = gameState.structureCount(Readiness.USABLE, UnitType.Zerg_Hatchery);
         if (lairCount > 0) {
             drones += 6;
         }

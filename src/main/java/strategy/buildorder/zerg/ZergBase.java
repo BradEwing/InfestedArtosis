@@ -3,6 +3,7 @@ package strategy.buildorder.zerg;
 import bwapi.Race;
 import bwapi.UnitType;
 import info.GameState;
+import info.Readiness;
 import macro.plan.Plan;
 import strategy.buildorder.BuildOrder;
 
@@ -48,14 +49,14 @@ public class ZergBase extends BuildOrder {
 
     @Override
     protected int zerglingsNeeded(GameState gameState) {
-        if (gameState.ourUnitCount(UnitType.Zerg_Spawning_Pool) < 1) {
+        if (gameState.structureCount(Readiness.USABLE, UnitType.Zerg_Spawning_Pool) < 1) {
             return 0;
         }
 
         return zerglingTarget(
                 gameState.ourUnitCount(UnitType.Zerg_Zergling),
                 gameState.enemyUnitCount(UnitType.Zerg_Zergling),
-                gameState.ourUnitCount(UnitType.Zerg_Lair),
+                gameState.structureCount(Readiness.USABLE, UnitType.Zerg_Lair),
                 gameState.getTechProgression().isMetabolicBoost(),
                 gameState.getResourceCount().availableMinerals());
     }

@@ -6,6 +6,7 @@ import bwapi.UnitType;
 import bwapi.UpgradeType;
 import info.BaseData;
 import info.GameState;
+import info.Readiness;
 import info.ResourceCount;
 import info.TechProgression;
 import macro.plan.Plan;
@@ -34,13 +35,14 @@ public class ThreeHatchLurker extends TerranBase {
         int plannedHatcheries = gameState.getPlannedHatcheries();
         int macroHatchCount = baseData.numMacroHatcheries();
         final int plannedAndCurrentHatcheries = plannedHatcheries + baseCount;
-        int lairCount = gameState.ourUnitCount(UnitType.Zerg_Lair);
+        int lairCount = gameState.structureCount(Readiness.USABLE, UnitType.Zerg_Lair);
+        int committedLairs = gameState.structureCount(Readiness.COMMITTED, UnitType.Zerg_Lair);
         int hydraCount = gameState.ourUnitCount(UnitType.Zerg_Hydralisk);
         int droneCount = gameState.numEconomyDrones();
         int zerglingCount = gameState.ourUnitCount(UnitType.Zerg_Zergling);
 
         boolean firstGas = gameState.canPlanExtractor() && techProgression.isSpawningPool() && extractorCount < 1;
-        boolean secondGas = gameState.canPlanExtractor() && techProgression.isLair() && extractorCount < 2;
+        boolean secondGas = gameState.canPlanExtractor() && committedLairs > 0 && extractorCount < 2;
         boolean extraGas = gameState.canPlanExtractor() && baseCount > 2 && resourceCount.availableMinerals() > 400;
 
         boolean wantNatural = plannedAndCurrentHatcheries < 2 && droneCount >= 12;
@@ -218,7 +220,7 @@ public class ThreeHatchLurker extends TerranBase {
         int macroHatchCount = gameState.getBaseData().numMacroHatcheries();
         int plannedHatcheries = gameState.getPlannedHatcheries();
         int baseCount = gameState.getBaseData().currentBaseCount();
-        int lairCount = gameState.ourUnitCount(UnitType.Zerg_Lair);
+        int lairCount = gameState.structureCount(Readiness.USABLE, UnitType.Zerg_Lair);
         int livingLurkerCount = gameState.ourLivingUnitCount(UnitType.Zerg_Lurker);
         
         if (macroHatchCount >= 1 || (plannedHatcheries + baseCount) >= 3) {
@@ -251,7 +253,7 @@ public class ThreeHatchLurker extends TerranBase {
     }
 
     private boolean wantHydraliskDen(GameState gameState) {
-        if (gameState.ourUnitCount(UnitType.Zerg_Extractor) == 0) {
+        if (gameState.structureCount(Readiness.USABLE, UnitType.Zerg_Extractor) == 0) {
             return false;
         }
 
@@ -382,8 +384,8 @@ public class ThreeHatchLurker extends TerranBase {
         int drones = 12;
         
         int lurkerCount = gameState.ourUnitCount(UnitType.Zerg_Lurker);
-        int lairCount = gameState.ourUnitCount(UnitType.Zerg_Lair);
-        int hatchCount = gameState.ourUnitCount(UnitType.Zerg_Hatchery, UnitType.Zerg_Lair, UnitType.Zerg_Hive);
+        int lairCount = gameState.structureCount(Readiness.USABLE, UnitType.Zerg_Lair);
+        int hatchCount = gameState.structureCount(Readiness.USABLE, UnitType.Zerg_Hatchery, UnitType.Zerg_Lair, UnitType.Zerg_Hive);
         if (lairCount > 0) {
             drones += 9;
         }

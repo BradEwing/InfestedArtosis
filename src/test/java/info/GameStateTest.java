@@ -11,10 +11,24 @@ import java.util.HashSet;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class GameStateTest {
 
     private static final int PRIORITY = 2;
+
+    private static final int NONE = 0;
+
+    private static final int ONE = 1;
+
+    private static final boolean NO_RUSH_DELAY = false;
+
+    private static final boolean NEEDS_LAIR = true;
+
+    private static final boolean TECH_ALLOWS_LAIR = true;
+
+    private static final boolean ENOUGH_HATCHERIES = true;
 
     private static Plan buildingPlan(UnitType unitType, PlanState state) {
         Plan plan = new BuildingPlan(unitType, PRIORITY);
@@ -75,5 +89,52 @@ class GameStateTest {
         dronePlan.setState(PlanState.BUILDING);
 
         assertEquals(0, GameState.buildingPlanCount(setOf(dronePlan), UnitType.Zerg_Drone));
+    }
+
+    @Test
+    void countsAStructureUnderConstructionAsCommitted() {
+        assertEquals(1, GameState.structureCount(Readiness.COMMITTED, NONE, ONE, NONE));
+    }
+
+    @Test
+    void countsAStructureWithOnlyAPlanInFlightAsCommitted() {
+        assertEquals(1, GameState.structureCount(Readiness.COMMITTED, NONE, NONE, ONE));
+    }
+
+    @Test
+    void countsEveryStageOfAStructureAsCommitted() {
+        assertEquals(3, GameState.structureCount(Readiness.COMMITTED, ONE, ONE, ONE));
+    }
+
+    @Test
+    void countsNeitherAStructureUnderConstructionNorAPlanAsUsable() {
+        assertEquals(0, GameState.structureCount(Readiness.USABLE, NONE, ONE, NONE));
+        assertEquals(0, GameState.structureCount(Readiness.USABLE, NONE, NONE, ONE));
+        assertEquals(0, GameState.structureCount(Readiness.USABLE, NONE, ONE, ONE));
+    }
+
+    @Test
+    void countsAFinishedStructureAtEitherReadiness() {
+        assertEquals(1, GameState.structureCount(Readiness.USABLE, ONE, NONE, NONE));
+        assertEquals(1, GameState.structureCount(Readiness.COMMITTED, ONE, NONE, NONE));
+    }
+
+    /**
+     * The Lair's Extractor term stands for gas income, so it stays on finished Extractors. An
+     * Extractor under construction or still in a plan mines nothing, and a Lair queued against it
+     * reserves 100 gas from a bank that cannot grow until the Extractor stands.
+     */
+    @Test
+    void withholdsTheLairWhileTheExtractorIsStillBuilding() {
+        int usableExtractors = GameState.structureCount(Readiness.USABLE, NONE, ONE, ONE);
+
+        assertFalse(GameState.canPlanLair(NO_RUSH_DELAY, NEEDS_LAIR, TECH_ALLOWS_LAIR, ENOUGH_HATCHERIES, usableExtractors));
+    }
+
+    @Test
+    void takesTheLairOnceTheExtractorStands() {
+        int usableExtractors = GameState.structureCount(Readiness.USABLE, ONE, NONE, NONE);
+
+        assertTrue(GameState.canPlanLair(NO_RUSH_DELAY, NEEDS_LAIR, TECH_ALLOWS_LAIR, ENOUGH_HATCHERIES, usableExtractors));
     }
 }

@@ -8,6 +8,7 @@ import bwapi.UnitType;
 import bwapi.UpgradeType;
 import bwem.Base;
 import info.GameState;
+import info.Readiness;
 import info.TechProgression;
 import info.map.BuildingPlanner;
 import info.tracking.ObservedUnitTracker;
@@ -307,7 +308,7 @@ public class Reactions {
     private void planSpeedUpgrade(ProductionQueue productionQueue) {
         planSpeedUpgrade(productionQueue,
                 gameState.getTechProgression(),
-                gameState.ourUnitCount(UnitType.Zerg_Extractor) > 0,
+                gameState.structureCount(Readiness.USABLE, UnitType.Zerg_Extractor) > 0,
                 gameState.canPlanUpgrade(UpgradeType.Metabolic_Boost),
                 gameState.getGameTime().getFrames());
     }
