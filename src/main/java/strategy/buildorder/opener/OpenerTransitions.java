@@ -3,6 +3,7 @@ package strategy.buildorder.opener;
 import bwapi.Race;
 import strategy.buildorder.BuildOrder;
 import strategy.buildorder.SpeedlingAllIn;
+import strategy.buildorder.protoss.ThreeHatchHydra;
 import strategy.buildorder.protoss.ThreeHatchMuta;
 import strategy.buildorder.terran.CrazyZerg;
 import strategy.buildorder.terran.ThreeHatchLurker;
@@ -12,9 +13,9 @@ import java.util.HashSet;
 import java.util.Set;
 
 /**
- * Terminal build orders an opener may transition into, by opponent race. 3HatchHydra and
- * 2HatchMuta are retired: their classes stay registered so learning rows that name them still
- * resolve, but no opener offers them.
+ * Terminal build orders an opener may transition into, by opponent race. 2HatchMuta is retired:
+ * its class stays registered so learning rows that name it still resolve, but no opener offers
+ * it.
  */
 final class OpenerTransitions {
     private OpenerTransitions() {
@@ -24,6 +25,7 @@ final class OpenerTransitions {
         Set<BuildOrder> next = new HashSet<>();
         switch (opponentRace) {
             case Protoss:
+                next.add(new ThreeHatchHydra());
                 next.add(new ThreeHatchMuta());
                 next.add(new SpeedlingAllIn());
                 break;
