@@ -89,7 +89,7 @@ public class ThreeHatchBeforePool extends BuildOrder {
             }
         }
 
-        if (droneCount >= 13 && plannedAndCurrentBases >= 3 && techProgression.canPlanPool()) {
+        if (shouldPlanPool(droneCount, plannedAndCurrentBases, techProgression.canPlanPool())) {
             plans.add(planSpawningPool(gameState));
             return plans;
         }
@@ -118,6 +118,21 @@ public class ThreeHatchBeforePool extends BuildOrder {
 
     static boolean shouldPlanSecondHatchery(int supplyUsed, int plannedAndCurrentBases) {
         return supplyUsed >= SECOND_HATCHERY_SUPPLY && plannedAndCurrentBases < 3;
+    }
+
+    /**
+     * Whether the opener queues its Spawning Pool.
+     *
+     * <p>This build deliberately defers the pool behind its third hatchery: the base count term
+     * holds the request until every hatchery the opener wants is standing or claimed by a plan.
+     *
+     * @param droneCount drones standing or claimed by a plan in flight
+     * @param plannedAndCurrentBases bases standing or claimed by a plan in flight
+     * @param canPlanPool whether no Spawning Pool is standing or already claimed by a plan
+     * @return true while the Spawning Pool should be queued
+     */
+    static boolean shouldPlanPool(int droneCount, int plannedAndCurrentBases, boolean canPlanPool) {
+        return droneCount >= 13 && plannedAndCurrentBases >= 3 && canPlanPool;
     }
 
     @Override
