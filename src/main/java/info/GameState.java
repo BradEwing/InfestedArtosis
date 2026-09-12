@@ -1036,6 +1036,20 @@ public class GameState {
         return observedUnitTracker.getCountOfVisibleUnitsOnTiles(Filter::isMobileGroundCombatUnit, tiles);
     }
 
+    /**
+     * Enemy mobile ground combat units last known to be at our bases, whether or not we can see them now.
+     *
+     * <p>Counts last known positions rather than the visible ones
+     * {@link #visibleEnemyMobileGroundCombatUnitsAtOurBases} reads, so an army that has crossed into
+     * the fog still reads as present at the base it was last seen approaching.
+     *
+     * @return the number of living observed enemy ground combat units whose last known tile is at one of our bases
+     */
+    public int knownEnemyMobileGroundCombatUnitsAtOurBases() {
+        Set<TilePosition> tiles = baseData.ourBaseTiles(gameMap, BaseData.NATURAL_DEFENSE_TILE_RADIUS);
+        return observedUnitTracker.getCountOfLivingUnitsOnTiles(Filter::isMobileGroundCombatUnit, tiles);
+    }
+
     public int enemyUnitCount(UnitType unitType) {
         return observedUnitTracker.getCountOfLivingUnits(unitType);
     }

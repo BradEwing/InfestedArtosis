@@ -51,6 +51,18 @@ public class ReactionsTest {
 
     private static final boolean NO_BARRACKS_PRESSURE = false;
 
+    private static final boolean ENEMY_AHEAD = true;
+
+    private static final boolean ENEMY_LEVEL = false;
+
+    private static final int MAIN_ONLY = 1;
+
+    private static final int NATURAL_STILL_MORPHING = 1;
+
+    private static final int NO_ENEMY_GROUND_UNITS_AT_OUR_BASES = 0;
+
+    private static final int ONE_ENEMY_GROUND_UNIT_AT_OUR_BASES = 1;
+
     private BaseData baseData;
 
     @BeforeEach
@@ -75,6 +87,15 @@ public class ReactionsTest {
         setSetSize("baseHatcheries", completed);
         setSetSize("myBases", completed);
         setSetSize("reservedBases", reserved);
+    }
+
+    /**
+     * Runs the gate the ZvZ reaction runs, so the tests assert on the flag the reaction would leave behind.
+     */
+    private void openMainOnZvZPressure(boolean enemyAhead, int knownEnemyGroundUnitsAtOurBases) {
+        if (Reactions.shouldOpenMainForZvZPressure(enemyAhead, knownEnemyGroundUnitsAtOurBases)) {
+            Reactions.allowSunkenAtMainIfSingleBase(baseData);
+        }
     }
 
     private void setSetSize(String fieldName, int size) throws ReflectiveOperationException {
@@ -143,6 +164,57 @@ public class ReactionsTest {
         Reactions.allowSunkenAtMainIfSingleBase(baseData);
 
         assertTrue(baseData.isAllowSunkenAtMain());
+    }
+
+    /**
+     * IA-347: a morphing natural is not a completed base, so the main reads as our sole base for the
+     * whole span of the morph. A hatchery or zergling deficit is a count comparison that says nothing
+     * about where the enemy army is, so on its own it must not spend a drone and 125 minerals on a
+     * colony at a main no enemy has approached.
+     */
+    @Test
+    void testTheZvZDeficitDoesNotOpenAQuietMainWhileTheNaturalMorphs() throws ReflectiveOperationException {
+        setBaseCounts(MAIN_ONLY, NATURAL_STILL_MORPHING);
+
+        openMainOnZvZPressure(ENEMY_AHEAD, NO_ENEMY_GROUND_UNITS_AT_OUR_BASES);
+
+        assertFalse(baseData.isAllowSunkenAtMain());
+    }
+
+    @Test
+    void testTheZvZDeficitOpensTheMainWhenAnEnemyGroundUnitIsKnownAtOurBases() throws ReflectiveOperationException {
+        setBaseCounts(MAIN_ONLY, NATURAL_STILL_MORPHING);
+
+        openMainOnZvZPressure(ENEMY_AHEAD, ONE_ENEMY_GROUND_UNIT_AT_OUR_BASES);
+
+        assertTrue(baseData.isAllowSunkenAtMain());
+    }
+
+    /**
+     * The threat is the second half of the gate, not a replacement for the first. Zerglings crossing
+     * our base while we are level or ahead are not a reason to put a colony in the main.
+     */
+    @Test
+    void testEnemyGroundUnitsAtOurBasesDoNotOpenTheMainWithoutTheZvZDeficit() throws ReflectiveOperationException {
+        setBaseCounts(MAIN_ONLY, NATURAL_STILL_MORPHING);
+
+        openMainOnZvZPressure(ENEMY_LEVEL, ONE_ENEMY_GROUND_UNIT_AT_OUR_BASES);
+
+        assertFalse(baseData.isAllowSunkenAtMain());
+    }
+
+    /**
+     * The threat gate is the ZvZ reaction's alone. The SCV rush, early rush and 2Gate reactions call
+     * the shared helper directly, so a main no enemy has reached still opens for them.
+     */
+    @Test
+    void testTheRushPathsOpenAQuietMainWhileTheNaturalMorphs() throws ReflectiveOperationException {
+        setBaseCounts(MAIN_ONLY, NATURAL_STILL_MORPHING);
+
+        Reactions.allowSunkenAtMainIfSingleBase(baseData);
+
+        assertTrue(baseData.isAllowSunkenAtMain());
+        assertFalse(Reactions.shouldOpenMainForZvZPressure(ENEMY_AHEAD, NO_ENEMY_GROUND_UNITS_AT_OUR_BASES));
     }
 
     @Test
