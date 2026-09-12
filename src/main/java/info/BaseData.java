@@ -67,9 +67,9 @@ public class BaseData {
     private HashSet<Unit> extractors = new HashSet<>();
     private HashSet<Unit> availableGeysers = new HashSet<>();
     private HashMap<Unit, TilePosition> geyserPositionLookup = new HashMap<>();
-    private HashMap<Base, Integer> sunkenColonyLookup = new HashMap<>();
+    private HashMap<Base, Set<Integer>> sunkenColonyLookup = new HashMap<>();
     private HashMap<Base, Integer> sunkenColonyReserveLookup = new HashMap<>();
-    private HashMap<Base, Integer> sporeColonyLookup = new HashMap<>();
+    private HashMap<Base, Set<Integer>> sporeColonyLookup = new HashMap<>();
     private HashMap<Base, Integer> sporeColonyReserveLookup = new HashMap<>();
     private HashMap<Base, StartingLocationPaths> startingLocationPaths = new HashMap<>();
     @Getter
@@ -607,26 +607,42 @@ public class BaseData {
                 .orElse(null);
     }
 
-    // Called on onUnitDestroy
+    /**
+     * Drops a Sunken Colony from the per-base bookkeeping.
+     *
+     * <p>Called from onUnitDestroy. The colony is forgotten by unit ID at whichever base holds it, so a
+     * base lookup that has drifted since the colony was registered cannot strand it.
+     *
+     * @param sunken the destroyed Sunken Colony.
+     */
     public void removeSunkenColony(Unit sunken) {
-        if (sunken.getType() != UnitType.Zerg_Sunken_Colony) {
-            return;
-        }
-        Base base = nearestOwnedBase(sunken);
-        if (base == null) {
-            return;
-        }
-        sunkenColonyLookup.put(base, Math.max(sunkenColonyLookup.getOrDefault(base, 0) - 1, 0));
+        forgetColony(sunkenColonyLookup, sunken.getID());
     }
 
-    // Called for onUnitComplete
+    /**
+     * Records a Sunken Colony against the base nearest to it.
+     *
+     * <p>Called from both onUnitMorph and onUnitComplete, which fire for the same unit, and reached again
+     * whenever a colony is re-registered. Registration is keyed by unit ID so those repeats are no-ops
+     * rather than double counts, and the reservation is only consumed by the registration that first
+     * records the unit.
+     *
+     * @param sunken the Sunken Colony to record.
+     */
     public void addSunkenColony(Unit sunken) {
         Base base = nearestOwnedBase(sunken);
         if (base == null) {
             return;
         }
-        sunkenColonyLookup.put(base, sunkenColonyLookup.getOrDefault(base, 0) + 1);
-        sunkenColonyReserveLookup.put(base, Math.max(sunkenColonyReserveLookup.getOrDefault(base, 0) - 1, 0));
+        registerSunkenColony(base, sunken.getID());
+    }
+
+    void registerSunkenColony(Base base, int unitId) {
+        registerColony(sunkenColonyLookup, sunkenColonyReserveLookup, base, unitId);
+    }
+
+    void forgetSunkenColony(int unitId) {
+        forgetColony(sunkenColonyLookup, unitId);
     }
 
     public void reserveSunkenColony(Base base) {
@@ -635,6 +651,57 @@ public class BaseData {
 
     public void unreserveSunkenColony(Base base) {
         sunkenColonyReserveLookup.put(base, Math.max(sunkenColonyReserveLookup.getOrDefault(base, 0) - 1, 0));
+    }
+
+    /**
+     * Records a colony against a base unless its unit ID is already held by some base.
+     *
+     * <p>The reservation that paid for the colony is consumed only by the registration that first records
+     * the unit, so the repeated registrations the morph and complete hooks produce leave the reserve alone.
+     *
+     * @param lookup the per-base set of registered colony unit IDs.
+     * @param reserveLookup the per-base count of colonies planned but not yet standing.
+     * @param base the base to record the colony against.
+     * @param unitId the colony's unit ID, which a morph preserves.
+     */
+    private static void registerColony(Map<Base, Set<Integer>> lookup, Map<Base, Integer> reserveLookup, Base base, int unitId) {
+        for (Set<Integer> colonies : lookup.values()) {
+            if (colonies.contains(unitId)) {
+                return;
+            }
+        }
+        lookup.computeIfAbsent(base, registeredBase -> new HashSet<>()).add(unitId);
+        reserveLookup.put(base, Math.max(reserveLookup.getOrDefault(base, 0) - 1, 0));
+    }
+
+    /**
+     * Drops a colony unit ID from whichever base holds it.
+     *
+     * @param lookup the per-base set of registered colony unit IDs.
+     * @param unitId the colony's unit ID.
+     */
+    private static void forgetColony(Map<Base, Set<Integer>> lookup, int unitId) {
+        for (Set<Integer> colonies : lookup.values()) {
+            colonies.remove(unitId);
+        }
+    }
+
+    /**
+     * Totals the colonies registered and reserved across every base.
+     *
+     * @param lookup the per-base set of registered colony unit IDs.
+     * @param reserveLookup the per-base count of colonies planned but not yet standing.
+     * @return the number of colonies standing plus the number still planned.
+     */
+    private static int totalColonyCount(Map<Base, Set<Integer>> lookup, Map<Base, Integer> reserveLookup) {
+        int total = 0;
+        for (Set<Integer> colonies : lookup.values()) {
+            total += colonies.size();
+        }
+        for (Integer count : reserveLookup.values()) {
+            total += count;
+        }
+        return total;
     }
 
     public Base nearestBase(TilePosition tp) {
@@ -663,39 +730,48 @@ public class BaseData {
 
     public int sunkensPerBase(Base base) {
         int reserved = sunkenColonyReserveLookup.getOrDefault(base, 0);
-        int sunkens = sunkenColonyLookup.getOrDefault(base, 0);
+        int sunkens = sunkenColonyLookup.getOrDefault(base, Collections.emptySet()).size();
         return reserved + sunkens;
     }
 
     public int getTotalSunkenCount() {
-        int total = 0;
-        for (Integer count : sunkenColonyLookup.values()) {
-            total += count;
-        }
-        for (Integer count : sunkenColonyReserveLookup.values()) {
-            total += count;
-        }
-        return total;
+        return totalColonyCount(sunkenColonyLookup, sunkenColonyReserveLookup);
     }
 
+    /**
+     * Drops a Spore Colony from the per-base bookkeeping.
+     *
+     * <p>Shares the mechanism {@link #removeSunkenColony} uses, and is forgotten by unit ID for the same
+     * reason.
+     *
+     * @param spore the destroyed Spore Colony.
+     */
     public void removeSporeColony(Unit spore) {
-        if (spore.getType() != UnitType.Zerg_Spore_Colony) {
-            return;
-        }
-        Base base = nearestOwnedBase(spore);
-        if (base == null) {
-            return;
-        }
-        sporeColonyLookup.put(base, Math.max(sporeColonyLookup.getOrDefault(base, 0) - 1, 0));
+        forgetColony(sporeColonyLookup, spore.getID());
     }
 
+    /**
+     * Records a Spore Colony against the base nearest to it.
+     *
+     * <p>Shares the mechanism {@link #addSunkenColony} uses, so the repeated registrations the morph and
+     * complete hooks produce are no-ops rather than double counts.
+     *
+     * @param spore the Spore Colony to record.
+     */
     public void addSporeColony(Unit spore) {
         Base base = nearestOwnedBase(spore);
         if (base == null) {
             return;
         }
-        sporeColonyLookup.put(base, sporeColonyLookup.getOrDefault(base, 0) + 1);
-        sporeColonyReserveLookup.put(base, Math.max(sporeColonyReserveLookup.getOrDefault(base, 0) - 1, 0));
+        registerSporeColony(base, spore.getID());
+    }
+
+    void registerSporeColony(Base base, int unitId) {
+        registerColony(sporeColonyLookup, sporeColonyReserveLookup, base, unitId);
+    }
+
+    void forgetSporeColony(int unitId) {
+        forgetColony(sporeColonyLookup, unitId);
     }
 
     public void reserveSporeColony(Base base) {
@@ -715,19 +791,12 @@ public class BaseData {
 
     public int sporesPerBase(Base base) {
         int reserved = sporeColonyReserveLookup.getOrDefault(base, 0);
-        int spores = sporeColonyLookup.getOrDefault(base, 0);
+        int spores = sporeColonyLookup.getOrDefault(base, Collections.emptySet()).size();
         return reserved + spores;
     }
 
     public int getTotalSporeCount() {
-        int total = 0;
-        for (Integer count : sporeColonyLookup.values()) {
-            total += count;
-        }
-        for (Integer count : sporeColonyReserveLookup.values()) {
-            total += count;
-        }
-        return total;
+        return totalColonyCount(sporeColonyLookup, sporeColonyReserveLookup);
     }
 
     public Base getMainEnemyBase() {

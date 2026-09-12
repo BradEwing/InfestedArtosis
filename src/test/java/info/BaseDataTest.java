@@ -38,6 +38,14 @@ public class BaseDataTest {
 
     private static final TilePosition OTHER_TILE = new TilePosition(44, 12);
 
+    private static final int SUNKEN_ID = 42;
+
+    private static final int OTHER_SUNKEN_ID = 43;
+
+    private static final int SPORE_ID = 51;
+
+    private static final int OTHER_SPORE_ID = 52;
+
     private BaseData baseData;
 
     @BeforeEach
@@ -155,6 +163,158 @@ public class BaseDataTest {
         baseData.unreserveSporeColony(null);
 
         assertEquals(0, baseData.getTotalSporeCount());
+    }
+
+    /**
+     * Replays the two registrations a Creep Colony morph produces. onUnitMorph retypes the ManagedUnit to
+     * Zerg_Sunken_Colony before removing it, so BuildingManager.remove reaches the forget path, and the
+     * re-add and the later onUnitComplete both reach the register path for the same unit.
+     */
+    private void morphSunken(int unitId) {
+        baseData.forgetSunkenColony(unitId);
+        baseData.registerSunkenColony(null, unitId);
+    }
+
+    private void morphSpore(int unitId) {
+        baseData.forgetSporeColony(unitId);
+        baseData.registerSporeColony(null, unitId);
+    }
+
+    /**
+     * IA-351: the forget that onUnitMorph drives is a re-registration of the same unit, not a loss. A
+     * count that dips to 0 for even one frame is a deficit planSunkenColony fills with a colony nobody
+     * asked for.
+     */
+    @Test
+    void aSunkenMorphNeverDipsTheCountBelowTheColonyItRegisters() {
+        baseData.reserveSunkenColony(null);
+        assertEquals(1, baseData.sunkensPerBase(null));
+
+        baseData.forgetSunkenColony(SUNKEN_ID);
+        assertEquals(1, baseData.sunkensPerBase(null));
+
+        baseData.registerSunkenColony(null, SUNKEN_ID);
+        assertEquals(1, baseData.sunkensPerBase(null));
+    }
+
+    /**
+     * The second morph's forget is the one that took the count belonging to the first, already standing
+     * Sunken. Registering by unit ID means it can only ever drop the unit it names.
+     */
+    @Test
+    void twoSunkensMorphingInSequenceHoldTheCountAtTwoOnEveryFrame() {
+        baseData.reserveSunkenColony(null);
+        baseData.reserveSunkenColony(null);
+        assertEquals(2, baseData.sunkensPerBase(null));
+
+        baseData.forgetSunkenColony(SUNKEN_ID);
+        assertEquals(2, baseData.sunkensPerBase(null));
+        baseData.registerSunkenColony(null, SUNKEN_ID);
+        assertEquals(2, baseData.sunkensPerBase(null));
+
+        baseData.forgetSunkenColony(OTHER_SUNKEN_ID);
+        assertEquals(2, baseData.sunkensPerBase(null));
+        baseData.registerSunkenColony(null, OTHER_SUNKEN_ID);
+        assertEquals(2, baseData.sunkensPerBase(null));
+    }
+
+    /**
+     * onUnitComplete calls createBuilding a second time for a building onUnitMorph already registered.
+     * The repeat must not count the unit twice, and must not consume a second reservation.
+     */
+    @Test
+    void twoSunkensCompletingAfterTheirMorphsLeaveTheCountAtTwo() {
+        baseData.reserveSunkenColony(null);
+        baseData.reserveSunkenColony(null);
+
+        morphSunken(SUNKEN_ID);
+        morphSunken(OTHER_SUNKEN_ID);
+
+        baseData.registerSunkenColony(null, SUNKEN_ID);
+        baseData.registerSunkenColony(null, OTHER_SUNKEN_ID);
+
+        assertEquals(2, baseData.sunkensPerBase(null));
+        assertEquals(2, baseData.getTotalSunkenCount());
+    }
+
+    /**
+     * The forget path still has to work for the case it was written for.
+     */
+    @Test
+    void aDestroyedSunkenDropsOutOfTheCount() {
+        baseData.reserveSunkenColony(null);
+        baseData.reserveSunkenColony(null);
+        morphSunken(SUNKEN_ID);
+        morphSunken(OTHER_SUNKEN_ID);
+
+        baseData.forgetSunkenColony(SUNKEN_ID);
+
+        assertEquals(1, baseData.sunkensPerBase(null));
+    }
+
+    /**
+     * Spore Colonies are registered through the same helper, so the morph, the completion and the
+     * destroy have to read the same way.
+     */
+    @Test
+    void aSporeMorphNeverDipsTheCountBelowTheColonyItRegisters() {
+        baseData.reserveSporeColony(null);
+        assertEquals(1, baseData.sporesPerBase(null));
+
+        baseData.forgetSporeColony(SPORE_ID);
+        assertEquals(1, baseData.sporesPerBase(null));
+
+        baseData.registerSporeColony(null, SPORE_ID);
+        assertEquals(1, baseData.sporesPerBase(null));
+    }
+
+    /**
+     * The second morph's forget names a colony that is already registered at the same base, which is the
+     * frame the count used to drop on. Asserted per step on the spore side too, so the sunken tests are
+     * not the only place that frame is pinned.
+     */
+    @Test
+    void twoSporesMorphingInSequenceHoldTheCountAtTwoOnEveryFrame() {
+        baseData.reserveSporeColony(null);
+        baseData.reserveSporeColony(null);
+        assertEquals(2, baseData.sporesPerBase(null));
+
+        baseData.forgetSporeColony(SPORE_ID);
+        assertEquals(2, baseData.sporesPerBase(null));
+        baseData.registerSporeColony(null, SPORE_ID);
+        assertEquals(2, baseData.sporesPerBase(null));
+
+        baseData.forgetSporeColony(OTHER_SPORE_ID);
+        assertEquals(2, baseData.sporesPerBase(null));
+        baseData.registerSporeColony(null, OTHER_SPORE_ID);
+        assertEquals(2, baseData.sporesPerBase(null));
+    }
+
+    @Test
+    void twoSporesCompletingAfterTheirMorphsLeaveTheCountAtTwo() {
+        baseData.reserveSporeColony(null);
+        baseData.reserveSporeColony(null);
+
+        morphSpore(SPORE_ID);
+        morphSpore(OTHER_SPORE_ID);
+
+        baseData.registerSporeColony(null, SPORE_ID);
+        baseData.registerSporeColony(null, OTHER_SPORE_ID);
+
+        assertEquals(2, baseData.sporesPerBase(null));
+        assertEquals(2, baseData.getTotalSporeCount());
+    }
+
+    @Test
+    void aDestroyedSporeDropsOutOfTheCount() {
+        baseData.reserveSporeColony(null);
+        baseData.reserveSporeColony(null);
+        morphSpore(SPORE_ID);
+        morphSpore(OTHER_SPORE_ID);
+
+        baseData.forgetSporeColony(SPORE_ID);
+
+        assertEquals(1, baseData.sporesPerBase(null));
     }
 
     @Test
