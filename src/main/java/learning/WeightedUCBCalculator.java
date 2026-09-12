@@ -13,9 +13,10 @@ import java.util.Map;
  * sigmoid reads the same discounted evidence the map score is built from, so a record cannot draw
  * blend weight from games its own discount has already forgotten.
  * 
- * Defaults to opponent-only data if no map-specific data is available. A strategy with neither
- * record scores the full curiosity bonus, the same score {@link Record#index} gives an arm whose
- * discounted evidence has decayed away, so it competes for the slot rather than claiming it.
+ * Defaults to opponent-only data if no map-specific data is available. A candidate the opponent
+ * record has never played is chosen before any played one, so every candidate gets a first
+ * exposure before the curiosity-bounded index starts exploiting. Untried candidates are taken in
+ * {@link #winsTieBreak} order.
  * </p>
  */
 public class WeightedUCBCalculator {
@@ -61,6 +62,10 @@ public class WeightedUCBCalculator {
         return UCBSelectionPolicy.curiosity(0.0);
     }
     
+    /**
+     * Returns the candidate to play: the first untried candidate in tie-break order when the
+     * opponent record has not played every candidate, otherwise the highest weighted score.
+     */
     public static String findBestStrategy(List<String> candidates,
                                         String mapName,
                                         Map<String, MapAwareRecord> mapSpecificRecords,
@@ -74,6 +79,17 @@ public class WeightedUCBCalculator {
         
         if (candidates.size() == 1) {
             return candidates.get(0);
+        }
+
+        List<String> untried = new ArrayList<>();
+        for (String strategy : candidates) {
+            Record record = opponentRecords.get(strategy);
+            if (record == null || record.games() == 0) {
+                untried.add(strategy);
+            }
+        }
+        if (!untried.isEmpty()) {
+            return firstByTieBreak(untried, mapName, totalGames);
         }
         
         String bestStrategy = null;
@@ -119,6 +135,16 @@ public class WeightedUCBCalculator {
             return challengerKey < incumbentKey;
         }
         return challenger.compareTo(incumbent) < 0;
+    }
+
+    private static String firstByTieBreak(List<String> candidates, String mapName, int totalGames) {
+        String first = candidates.get(0);
+        for (String candidate : candidates) {
+            if (winsTieBreak(candidate, first, mapName, totalGames)) {
+                first = candidate;
+            }
+        }
+        return first;
     }
 
     private static int tieBreakKey(String strategy, String mapName, int totalGames) {

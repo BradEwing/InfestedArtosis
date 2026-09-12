@@ -14,6 +14,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -188,6 +189,112 @@ public class OpenerSelectionLoopTest {
         }
         assertTrue(refired,
                 "after 12Pool's promotion and decline the gate must re-fire against other dormant openers");
+    }
+
+    /**
+     * Every opener fails its cold-start trial, then one keeps losing in the slot until the rest
+     * are dormant. The losing slot holder must count as benched rather than proven, so the
+     * lock-in releases and every dormant opener re-enters within PROBE_DORMANT_GAMES games.
+     */
+    @Test
+    void benchedLockInReleasesEveryDormantOpener() {
+        BuildOrderFactory factory = new BuildOrderFactory(4, Race.Zerg);
+        OpponentRecord record = OpponentRecord.builder()
+                .name(OPPONENT)
+                .race(Race.Zerg.toString())
+                .wins(0)
+                .losses(0)
+                .openerRecord(new HashMap<>())
+                .buildOrderRecord(new HashMap<>())
+                .mapSpecificOpenerRecord(new HashMap<>())
+                .mapSpecificBuildOrderRecord(new HashMap<>())
+                .build();
+        for (String opener : OPENERS) {
+            record.getOpenerRecord().put(opener, Record.builder().opener(opener).wins(0).losses(0).build());
+        }
+        for (int round = 0; round < LearningManager.PROBE_TRIAL_GAMES; round++) {
+            for (String opener : OPENERS) {
+                appendGame(record, opener, false, MAPS[record.getGameTimestamps().size() % MAPS.length]);
+            }
+        }
+        String incumbent = "Overpool";
+        for (int game = 0; game < LearningManager.PROBE_DORMANT_GAMES; game++) {
+            appendGame(record, incumbent, false, MAPS[record.getGameTimestamps().size() % MAPS.length]);
+        }
+        for (String opener : OPENERS) {
+            assertTrue(LearningManager.isBenched(opener, record), opener + " must be benched");
+        }
+
+        List<GameResult> results = runLoop(factory, record, incumbent, LearningManager.PROBE_DORMANT_GAMES,
+                ALWAYS_LOSS, true);
+        for (String opener : OPENERS) {
+            assertTrue(opener.equals(incumbent) || selectionCount(results, opener) > 0,
+                    opener + " did not re-enter within " + LearningManager.PROBE_DORMANT_GAMES
+                            + " games of the benched lock-in");
+        }
+    }
+
+    /**
+     * A cold record gives every playable opener its first exposure within as many games as there
+     * are playable openers, even when the first opener played wins every game.
+     */
+    @Test
+    void everyPlayableOpenerIsTriedWithinTheFirstGamesOfAColdRecord() {
+        for (Race race : new Race[] {Race.Protoss, Race.Terran, Race.Zerg, Race.Unknown}) {
+            BuildOrderFactory factory = new BuildOrderFactory(4, race);
+            Set<String> playable = factory.getOpenerNames();
+            OpponentRecord record = coldRecord(race, playable);
+
+            List<GameResult> results = runLoop(factory, record, "", playable.size(), ALWAYS_WIN, true);
+            Set<String> tried = results.stream().map(result -> result.opener).collect(Collectors.toSet());
+            assertEquals(playable, tried, race + " left an opener untried in the first " + playable.size()
+                    + " games of a cold record");
+        }
+    }
+
+    /**
+     * ZurZurZur shape: 12Hatch is the only strong opener and wins two games in three, but opens
+     * 1-2; every other opener wins one game in ten. From a cold record 12Hatch must survive its
+     * noisy trial and hold most of the next hundred games.
+     */
+    @Test
+    void noisyBestOpenerIsFoundAndHeldFromAColdRecord() {
+        BuildOrderFactory factory = new BuildOrderFactory(4, Race.Zerg);
+        OpponentRecord record = coldRecord(Race.Zerg, factory.getOpenerNames());
+        OutcomeModel zurZurZur = new OutcomeModel() {
+            private final Map<String, Integer> played = new HashMap<>();
+
+            @Override
+            public boolean isWin(String opener, int gamesSinceLastSelection) {
+                int game = played.merge(opener, 1, Integer::sum);
+                if ("12Hatch".equals(opener)) {
+                    return game == 2 || game > 3 && game % 3 != 0;
+                }
+                return game % 10 == 0;
+            }
+        };
+
+        List<GameResult> results = runLoop(factory, record, "", 100, zurZurZur, true);
+        assertTrue(selectionCount(results, "12Hatch") >= 60,
+                "12Hatch was not held after its noisy trial, measured " + selectionCount(results, "12Hatch")
+                        + " of 100 games");
+    }
+
+    private static OpponentRecord coldRecord(Race race, Set<String> openers) {
+        OpponentRecord record = OpponentRecord.builder()
+                .name(OPPONENT)
+                .race(race.toString())
+                .wins(0)
+                .losses(0)
+                .openerRecord(new HashMap<>())
+                .buildOrderRecord(new HashMap<>())
+                .mapSpecificOpenerRecord(new HashMap<>())
+                .mapSpecificBuildOrderRecord(new HashMap<>())
+                .build();
+        for (String opener : openers) {
+            record.getOpenerRecord().put(opener, Record.builder().opener(opener).wins(0).losses(0).build());
+        }
+        return record;
     }
 
     private interface OutcomeModel {

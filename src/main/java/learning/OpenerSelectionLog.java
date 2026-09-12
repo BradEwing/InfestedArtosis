@@ -68,8 +68,7 @@ final class OpenerSelectionLog {
         int reEntryAge = age(selectionTimestamps.get(reEntryIndex), sortedGameTimestamps);
         int trialCount = selectionTimestamps.size() - reEntryIndex;
         long reEntryTimestamp = selectionTimestamps.get(reEntryIndex);
-        boolean unprovenTrial = (reEntryIndex > 0 || selectionTimestamps.size() <= LearningManager.PROBE_TRIAL_GAMES)
-                && record.discountedGamesBefore(reEntryTimestamp, gameTimestamps)
+        boolean unprovenTrial = record.discountedGamesBefore(reEntryTimestamp, gameTimestamps)
                 < LearningManager.PROBE_LOW_EVIDENCE_GAMES;
         int trialGamesInExposureWindow = 0;
         for (int i = reEntryIndex; i < selectionTimestamps.size(); i++) {

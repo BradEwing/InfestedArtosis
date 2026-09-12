@@ -4,11 +4,15 @@ import bwapi.Race;
 import org.junit.jupiter.api.Test;
 import strategy.BuildOrderFactory;
 
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class LearningManagerTest {
 
@@ -104,6 +108,117 @@ public class LearningManagerTest {
                 "CannonRush", "Overpool", MAP_NAME);
 
         assertEquals("Overpool", selected);
+    }
+
+    /**
+     * 12Pool is benched and stands as the UCB winner. Overpool is the promoted incumbent, losing
+     * below the probe gate, and 12Hatch is benched but dormant, so the forced re-probe must still
+     * run against the incumbent and select 12Hatch.
+     */
+    @Test
+    void benchedUcbWinnerStillReachesForcedReprobe() {
+        OpponentRecord opponentRecord = emptyOpponentRecord();
+        appendGames(opponentRecord, "12Hatch", false, LearningManager.PROBE_TRIAL_GAMES);
+        appendGames(opponentRecord, "Overpool", true, LearningManager.PROBE_PROMOTION_WINS);
+        appendGames(opponentRecord, "Overpool", false, 10);
+        appendGames(opponentRecord, "12Pool", false, LearningManager.PROBE_TRIAL_GAMES);
+        appendGames(opponentRecord, "Overpool", false, LearningManager.PROBE_EXPOSURE_WINDOW_GAMES);
+        List<String> playableOpeners = Arrays.asList("12Hatch", "12Pool", "Overpool");
+
+        assertTrue(LearningManager.isBenched("12Pool", opponentRecord));
+        assertTrue(LearningManager.isBenched("12Hatch", opponentRecord));
+        assertFalse(LearningManager.isBenched("Overpool", opponentRecord));
+        assertEquals("12Hatch", LearningManager.applyDormantReprobePolicy("12Pool", playableOpeners,
+                opponentRecord, MAP_NAME));
+    }
+
+    /**
+     * Every opener is benched: Overpool holds the slot losing, 12Pool has one win in its failed
+     * trial, and 12Hatch is dormant. 12Pool is the UCB winner and the failing trials fill the
+     * exposure window, yet the forced re-probe must still fire and select the dormant 12Hatch.
+     */
+    @Test
+    void everyArmBenchedStillForcesDormantReprobe() {
+        OpponentRecord opponentRecord = emptyOpponentRecord();
+        appendGames(opponentRecord, "12Hatch", false, LearningManager.PROBE_TRIAL_GAMES);
+        appendGames(opponentRecord, "12Pool", false, 3);
+        appendGames(opponentRecord, "Overpool", false, 20);
+        appendGames(opponentRecord, "12Pool", true, 1);
+        appendGames(opponentRecord, "12Pool", false, 3);
+        appendGames(opponentRecord, "Overpool", false, 4);
+        BuildOrderFactory factory = new BuildOrderFactory(4, Race.Zerg);
+        List<String> playableOpeners = Arrays.asList("12Hatch", "12Pool", "Overpool");
+
+        for (String opener : playableOpeners) {
+            assertTrue(LearningManager.isBenched(opener, opponentRecord), opener + " must be benched");
+        }
+        assertEquals("12Pool", WeightedUCBCalculator.findBestStrategy(playableOpeners, MAP_NAME,
+                opponentRecord.getMapSpecificOpenerRecord(), opponentRecord.getOpenerRecord(),
+                opponentRecord.totalGames(), opponentRecord.getGameTimestamps()));
+        assertEquals("12Hatch", LearningManager.selectOpenerName(null, factory, opponentRecord,
+                "", "Overpool", MAP_NAME));
+    }
+
+    /**
+     * Overpool's Terran transitions: 3HatchLurker has been played to a 40% win rate, while
+     * CrazyZerg and SpeedlingAllIn have never been played. Both untried candidates take their
+     * first exposure before 3HatchLurker is chosen again.
+     */
+    @Test
+    void anUntriedBuildOrderCandidateIsChosenBeforeATriedOne() {
+        OpponentRecord opponentRecord = emptyOpponentRecord();
+        Map<String, Record> buildOrders = opponentRecord.getBuildOrderRecord();
+        appendGames(opponentRecord, buildOrders, "3HatchLurker", false, 3);
+        appendGames(opponentRecord, buildOrders, "3HatchLurker", true, 2);
+        appendGames(opponentRecord, buildOrders, "CrazyZerg", false, 0);
+        appendGames(opponentRecord, buildOrders, "SpeedlingAllIn", false, 0);
+        List<String> candidates = Arrays.asList("3HatchLurker", "CrazyZerg", "SpeedlingAllIn");
+
+        String first = LearningManager.selectBuildOrderName(candidates, opponentRecord, MAP_NAME);
+        appendGames(opponentRecord, buildOrders, first, false, 1);
+        String second = LearningManager.selectBuildOrderName(candidates, opponentRecord, MAP_NAME);
+        appendGames(opponentRecord, buildOrders, second, false, 1);
+
+        assertNotEquals("3HatchLurker", first);
+        assertNotEquals("3HatchLurker", second);
+        assertNotEquals(first, second);
+        assertEquals("3HatchLurker", LearningManager.selectBuildOrderName(candidates, opponentRecord, MAP_NAME));
+    }
+
+    private static OpponentRecord emptyOpponentRecord() {
+        return OpponentRecord.builder()
+                .name(OPPONENT_NAME)
+                .race(Race.Zerg.toString())
+                .wins(0)
+                .losses(0)
+                .openerRecord(new HashMap<>())
+                .buildOrderRecord(new HashMap<>())
+                .mapSpecificOpenerRecord(new HashMap<>())
+                .mapSpecificBuildOrderRecord(new HashMap<>())
+                .build();
+    }
+
+    private static void appendGames(OpponentRecord opponentRecord, String opener, boolean won, int games) {
+        appendGames(opponentRecord, opponentRecord.getOpenerRecord(), opener, won, games);
+    }
+
+    private static void appendGames(OpponentRecord opponentRecord, Map<String, Record> records, String strategy,
+                                    boolean won, int games) {
+        Record record = records
+                .computeIfAbsent(strategy, name -> Record.builder().opener(name).wins(0).losses(0).build());
+        for (int i = 0; i < games; i++) {
+            long timestamp = opponentRecord.getGameTimestamps().size() + 1;
+            if (won) {
+                record.setWins(record.getWins() + 1);
+                record.addWinTimestamp(timestamp);
+                opponentRecord.setWins(opponentRecord.getWins() + 1);
+            } else {
+                record.setLosses(record.getLosses() + 1);
+                record.addLossTimestamp(timestamp);
+                opponentRecord.setLosses(opponentRecord.getLosses() + 1);
+            }
+            opponentRecord.getGameTimestamps().add(timestamp);
+        }
     }
 
     private static OpponentRecord opponentRecordFavouring(BuildOrderFactory factory, Race opponentRace, String favouredOpener) {
