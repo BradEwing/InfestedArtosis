@@ -52,6 +52,7 @@ public class ThreeHatchHydra extends ProtossBase {
         int macroHatchCount = baseData.numMacroHatcheries();
         int hatchCount = gameState.structureCount(Readiness.USABLE, UnitType.Zerg_Hatchery);
         int lairCount = gameState.structureCount(Readiness.USABLE, UnitType.Zerg_Lair);
+        int committedDens = gameState.structureCount(Readiness.COMMITTED, UnitType.Zerg_Hydralisk_Den);
         final int plannedAndCurrentHatcheries = plannedHatcheries + baseCount;
 
         int hydraCount = gameState.ourUnitCount(UnitType.Zerg_Hydralisk);
@@ -62,7 +63,7 @@ public class ThreeHatchHydra extends ProtossBase {
         // Gas timing
         boolean gasBlocked = cannonRushed && time.lessThanOrEqual(new Time(4, 0));
         boolean firstGas = !gasBlocked && gameState.canPlanExtractor() && (time.greaterThan(new Time(2, 32)) || supply > 40) && extractorCount < 1;
-        boolean secondGas = gameState.canPlanExtractor() && (techProgression.isHydraliskDen() || droneCount >= 20);
+        boolean secondGas = gameState.canPlanExtractor() && (committedDens > 0 || droneCount >= 20);
 
         // Base timing
         boolean wantNatural = plannedAndCurrentHatcheries < 2 && supply >= 24 && !gameState.isCannonRushed();
