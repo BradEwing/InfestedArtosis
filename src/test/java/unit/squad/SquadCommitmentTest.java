@@ -2,6 +2,7 @@ package unit.squad;
 
 import bwapi.Position;
 import org.junit.jupiter.api.Test;
+import telemetry.RallyReason;
 import telemetry.RallyRelease;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -175,5 +176,49 @@ class SquadCommitmentTest {
                 SquadManager.releaseFor(
                         SquadManager.chooseSquadAction(false, 2, GROUND_FLOOR, SquadStatus.RALLY, false, AT_HOME),
                         false));
+    }
+
+    /**
+     * A Defiler only ground squad under the move out threshold is rallied by the ordinary branch,
+     * which never reaches simulateFightSquad's Defiler branch. Reading the branch alone filed it as
+     * BELOW_MOVE_OUT and buried the confound the reason exists to keep separable.
+     */
+    @Test
+    void defilerOnlySquadsKeepTheirReasonWhicheverBranchRalliedThem() {
+        assertEquals(RallyReason.DEFILER_ONLY,
+                SquadManager.rallyReasonFor(true, RallyReason.BELOW_MOVE_OUT));
+        assertEquals(RallyReason.DEFILER_ONLY,
+                SquadManager.rallyReasonFor(true, RallyReason.DEFILER_ONLY));
+        assertEquals(RallyReason.DEFILER_ONLY,
+                SquadManager.rallyReasonFor(true, RallyReason.HOLD));
+        assertEquals(RallyReason.DEFILER_ONLY,
+                SquadManager.rallyReasonFor(true, RallyReason.STAGING));
+    }
+
+    @Test
+    void everyOtherSquadKeepsTheBranchReason() {
+        assertEquals(RallyReason.BELOW_MOVE_OUT,
+                SquadManager.rallyReasonFor(false, RallyReason.BELOW_MOVE_OUT));
+        assertEquals(RallyReason.HOLD,
+                SquadManager.rallyReasonFor(false, RallyReason.HOLD));
+        assertEquals(RallyReason.STAGING,
+                SquadManager.rallyReasonFor(false, RallyReason.STAGING));
+    }
+
+    /**
+     * A reinforcement joining a rallying squad with enemies inside the detection radius skips
+     * evaluateSquadRole's release hook entirely, because unit completion runs before the squad loop.
+     */
+    @Test
+    void aReinforcementJoiningARallyingSquadClosesTheEpisode() {
+        assertEquals(RallyRelease.CLOSE_THREATS,
+                SquadManager.reinforcementRelease(SquadStatus.RALLY));
+    }
+
+    @Test
+    void aReinforcementJoiningAnySquadThatIsNotRallyingClosesNoEpisode() {
+        assertEquals(RallyRelease.NONE, SquadManager.reinforcementRelease(SquadStatus.FIGHT));
+        assertEquals(RallyRelease.NONE, SquadManager.reinforcementRelease(SquadStatus.RETREAT));
+        assertEquals(RallyRelease.NONE, SquadManager.reinforcementRelease(SquadStatus.CONTAIN));
     }
 }

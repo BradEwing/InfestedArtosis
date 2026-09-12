@@ -586,7 +586,8 @@ public class SquadManager {
     }
 
     private void rallySquad(Squad squad, RallyReason reason) {
-        SquadDecisions.rallied(squad, reason);
+        boolean defilersOnly = squad.isGroundSquad() && squad.hasOnly(UnitType.Zerg_Defiler);
+        SquadDecisions.rallied(squad, rallyReasonFor(defilersOnly, reason));
         squad.setStatus(SquadStatus.RALLY);
         squad.clearCommitment();
         Position rallyPoint = gameState.getSquadRallyPoint();
@@ -594,6 +595,29 @@ public class SquadManager {
             managedUnit.setRallyPoint(rallyPoint);
             managedUnit.setRole(UnitRole.RALLY);
         }
+    }
+
+    /**
+     * Names why a squad is at the rally point, from the composition rather than the branch alone.
+     *
+     * <p>A ground squad of Defilers only reaches the rally point two ways. SquadManager has a
+     * branch that rallies it instead of simulating a fight, but that branch sits inside
+     * {@link #simulateFightSquad}, which a squad under the move out threshold never reaches:
+     * {@link #chooseSquadAction} returns RALLY first and {@link #evaluateSquadRole} returns. The
+     * ground threshold carries a Lurker term and no Defiler term, so which of the two fires is a
+     * question of the squad's supply against a threshold that moves with the matchup.
+     *
+     * <p>Reading the branch alone therefore filed the same squad under BELOW_MOVE_OUT on most
+     * frames, which is the bucket an analyst keeps. Composing the reason from the composition keeps
+     * the Defiler episodes separable however they were rallied, which is the whole point of
+     * recording the reason.
+     *
+     * @param defilersOnly true for a ground squad whose composition is Defilers and nothing else
+     * @param branchReason reason the calling branch would have recorded
+     * @return the reason to log
+     */
+    static RallyReason rallyReasonFor(boolean defilersOnly, RallyReason branchReason) {
+        return defilersOnly ? RallyReason.DEFILER_ONLY : branchReason;
     }
 
     /**
@@ -1490,7 +1514,32 @@ public class SquadManager {
             return;
         }
 
+        RallyRelease release = reinforcementRelease(squad.getStatus());
+        if (release != RallyRelease.NONE) {
+            SquadDecisions.rallyReleased(squad, release);
+        }
+
         simulateFightSquad(squad);
+    }
+
+    /**
+     * Names the release for a squad a reinforcement joins outside the staging path.
+     *
+     * <p>A unit completing runs before the frame's squad loop, so this is the one place a squad can
+     * leave RALLY without {@link #evaluateSquadRole} seeing it: {@link #simulateFightSquad} is
+     * called here directly and can set FIGHT, RETREAT or CONTAIN before the release hook there ever
+     * reads the status. The episode's closing row would carry NONE, which by contract says the row
+     * closes nothing.
+     *
+     * <p>The release is always close threats. Reaching this call at all means
+     * {@link #shouldStageSquad} was false, and for a squad already rallying the only term that can
+     * make it false is an enemy inside the detection radius.
+     *
+     * @param status status the squad held as the reinforcement joined
+     * @return CLOSE_THREATS for a rallying squad, NONE for any other, which closes no episode
+     */
+    static RallyRelease reinforcementRelease(SquadStatus status) {
+        return status == SquadStatus.RALLY ? RallyRelease.CLOSE_THREATS : RallyRelease.NONE;
     }
 
     private Squad findCloseGroundSquad(ManagedUnit managedUnit) {

@@ -10,13 +10,17 @@ package telemetry;
 public enum RallyReason {
     /**
      * No enemy is close and the squad is under the move out threshold: the ordinary case, a squad
-     * batching reinforcements until it is strong enough to launch.
+     * batching reinforcements until it is strong enough to launch. A Defiler only ground squad that
+     * takes this branch is recorded as DEFILER_ONLY, not here.
      */
     BELOW_MOVE_OUT,
 
     /**
-     * A ground squad of Defilers only. SquadManager rallies these on every frame by design, with
-     * no release condition at all, so their episodes must be excluded from any dwell metric.
+     * A ground squad of Defilers only, whichever branch rallied it. SquadManager has a branch that
+     * rallies such a squad rather than simulating a fight, and the ground move out threshold carries
+     * no Defiler term, so one below it is rallied by the ordinary branch instead. Either way the
+     * squad has no release it can reach on its own, so these episodes must be excluded from any
+     * dwell metric. Taking precedence over the branch reason is what keeps them separable.
      */
     DEFILER_ONLY,
 
