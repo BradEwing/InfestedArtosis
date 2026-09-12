@@ -51,7 +51,7 @@ public class EarlyRush extends ObservedStrategy {
         return fastPoolScouted(tracker) || gaslessProductionScouted(tracker);
     }
 
-    private boolean fastPoolScouted(ObservedUnitTracker tracker) {
+    static boolean fastPoolScouted(ObservedUnitTracker tracker) {
         return tracker.getUnitTypeCountCompletedBeforeTime(UnitType.Zerg_Spawning_Pool, FAST_POOL_COMPLETED_BY) > 0;
     }
 

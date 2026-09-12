@@ -25,14 +25,18 @@ public class ObservedUnit {
     private int lastBunkerBulletFrame = -1;
 
     public ObservedUnit(Unit unit, Time currentFrame, boolean proxied) {
+        this(unit, unit.getType(), unit.getPosition(), currentFrame, proxied);
+    }
+
+    ObservedUnit(Unit unit, UnitType unitType, Position lastKnownLocation, Time currentFrame, boolean proxied) {
         this.unit = unit;
-        this.unitType = unit.getType();
+        this.unitType = unitType;
         this.firstObservedFrame = currentFrame;
         this.lastObservedFrame = currentFrame;
-        this.lastKnownLocation = unit.getPosition();
+        this.lastKnownLocation = lastKnownLocation;
         this.proxied = proxied;
-        this.lastKnownHitPoints = unit.getType().maxHitPoints();
-        this.lastKnownShields = unit.getType().maxShields();
+        this.lastKnownHitPoints = unitType.maxHitPoints();
+        this.lastKnownShields = unitType.maxShields();
     }
 
     /**
@@ -52,6 +56,15 @@ public class ObservedUnit {
         }
         completed = true;
         completedFrame = currentFrame;
+    }
+
+    /**
+     * Drops the completion stamp. The stamp belongs to the type that carried it, so a unit that changes type
+     * is unstamped until it is next observed complete as its new type.
+     */
+    public void resetCompletion() {
+        completed = false;
+        completedFrame = null;
     }
 
     @Override
