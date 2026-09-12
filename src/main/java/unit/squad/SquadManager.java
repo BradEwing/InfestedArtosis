@@ -882,11 +882,10 @@ public class SquadManager {
     /**
      * Whether an active fight lock still holds against this frame's verdict.
      *
-     * <p>Every RETREAT is "measured" by construction: an unmeasured enemy yields a ratio of
-     * friendly strength over the minimum enemy floor, which clears every threshold on its own.
-     * So the lock only breaks for a RETREAT that was measured against a real enemy and still
-     * fell below the matchup's retreat threshold; an in-band RETREAT (below the engage threshold
-     * but at or above the retreat threshold) stays suppressed.
+     * <p>Every RETREAT is measured by construction: the combat sim answers an unmeasured enemy
+     * with ADVANCE, never RETREAT. So the lock only breaks for a RETREAT that was measured against
+     * a real enemy and still fell below the matchup's retreat threshold; an in-band RETREAT (below
+     * the engage threshold but at or above the retreat threshold) stays suppressed.
      *
      * @param fightLocked whether the squad's fight lock is currently active
      * @param result this frame's combat sim verdict

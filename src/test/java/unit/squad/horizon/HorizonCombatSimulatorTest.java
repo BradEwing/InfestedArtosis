@@ -14,6 +14,7 @@ import java.util.Map;
 import unit.squad.CombatSimulator.CombatResult;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static unit.squad.CombatSimulator.CombatResult.ADVANCE;
@@ -30,6 +31,7 @@ class HorizonCombatSimulatorTest {
     private static final double SUPERSEDED_ANTI_AIR_LITERAL = 2.0;
     private static final double ZERG_ENGAGE_THRESHOLD = HorizonCombatSimulator.engageThreshold(Race.Zerg);
     private static final double TERRAN_ENGAGE_THRESHOLD = HorizonCombatSimulator.engageThreshold(Race.Terran);
+    private static final double DISPERSED_SQUAD_STRENGTH = 0;
     private static final double EXPLOSIVE_VERSUS_SMALL =
             UnitStrength.effectiveness(DamageType.Explosive, UnitSizeType.Small);
 
@@ -47,8 +49,39 @@ class HorizonCombatSimulatorTest {
     }
 
     @Test
-    void noStrengthOnEitherSideRetreats() {
-        assertEquals(RETREAT, HorizonCombatSimulator.selectResult(0, 0, 0, 0, false, 1.3));
+    void noBelievedEnemyAndNoFriendlyStrengthDoesNotRetreat() {
+        CombatResult result = HorizonCombatSimulator.selectResult(0, 0, 0, 0, false, ZERG_ENGAGE_THRESHOLD);
+        assertNotEquals(RETREAT, result);
+        assertEquals(ADVANCE, result);
+    }
+
+    @Test
+    void aDispersedSquadWithNoBelievedEnemyAdvances() {
+        assertEquals(ADVANCE, HorizonCombatSimulator.selectResult(
+                DISPERSED_SQUAD_STRENGTH, 0, 0, 0, false, ZERG_ENGAGE_THRESHOLD));
+    }
+
+    @Test
+    void aDispersedSquadAgainstAMeasuredEnemyStillRetreats() {
+        assertEquals(RETREAT, HorizonCombatSimulator.selectResult(
+                DISPERSED_SQUAD_STRENGTH, 0, zerglingStrength(4), 0, false, ZERG_ENGAGE_THRESHOLD));
+    }
+
+    @Test
+    void aMemberBeyondTheFalloffContributesNothing() {
+        assertEquals(0.0, HorizonCombatSimulator.distanceWeight(513));
+    }
+
+    @Test
+    void aMemberInsideTheFalloffStillContributes() {
+        assertEquals(1.0, HorizonCombatSimulator.distanceWeight(256));
+        assertTrue(HorizonCombatSimulator.distanceWeight(512) > 0);
+    }
+
+    @Test
+    void anOutnumberedSquadAgainstARealEnemyStillRetreats() {
+        assertEquals(RETREAT, HorizonCombatSimulator.selectResult(
+                zerglingStrength(2), 0, zerglingStrength(6), 0, false, ZERG_ENGAGE_THRESHOLD));
     }
 
     @Test
@@ -201,6 +234,10 @@ class HorizonCombatSimulatorTest {
     @Test
     void airSquadRetreatsAgainstMeasuredAntiAir() {
         assertEquals(RETREAT, HorizonCombatSimulator.selectResult(0, 5, 0, 10, true, 1.3));
+    }
+
+    private static double zerglingStrength(int zerglings) {
+        return zerglings * UnitStrength.totalStrength(UnitType.Zerg_Zergling);
     }
 
     private static double mutaliskAirStrength(int mutalisks) {
