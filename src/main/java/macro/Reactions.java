@@ -479,10 +479,30 @@ public class Reactions {
 
         boolean enemyUpAHatchery = enemyDepots > ourBaseCount;
         boolean enemyUpZerglings = enemyZerglings - ourZerglings >= 3;
+        boolean enemyAhead = enemyUpAHatchery || enemyUpZerglings;
 
-        if (enemyUpAHatchery || enemyUpZerglings) {
+        if (shouldOpenMainForZvZPressure(enemyAhead, gameState.knownEnemyMobileGroundCombatUnitsAtOurBases())) {
             allowSunkenAtMainIfSingleBase(baseData);
         }
+    }
+
+    /**
+     * Whether a ZvZ hatchery or zergling deficit should open the main to static defense.
+     *
+     * <p>The deficit alone is a count comparison that says nothing about where the enemy army is, and
+     * the main counts as our sole base for the whole span between the natural starting its morph and
+     * completing. A colony at the main is only worth its drone and minerals once an enemy ground unit
+     * is known to be at one of our bases.
+     *
+     * <p>Last known positions are read rather than visible ones, because an army crossing the fog is
+     * the case the colony has to be standing for.
+     *
+     * @param enemyAhead whether the enemy leads on hatcheries or zerglings
+     * @param knownEnemyGroundUnitsAtOurBases living enemy ground combat units last known to be at our bases
+     * @return true when the ZvZ reaction should open the main to static defense
+     */
+    static boolean shouldOpenMainForZvZPressure(boolean enemyAhead, int knownEnemyGroundUnitsAtOurBases) {
+        return enemyAhead && knownEnemyGroundUnitsAtOurBases > 0;
     }
 
     private void ffeReaction() {
