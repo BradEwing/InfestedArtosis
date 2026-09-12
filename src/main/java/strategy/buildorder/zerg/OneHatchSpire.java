@@ -38,7 +38,7 @@ public class OneHatchSpire extends ZergBase {
         final int droneCount        = gameState.ourUnitCount(UnitType.Zerg_Drone);
         final int zerglingCount     = gameState.ourUnitCount(UnitType.Zerg_Zergling);
 
-        boolean firstGas = gameState.canPlanExtractor() && techProgression.isSpawningPool() && extractorCount < 1;
+        boolean firstGas = shouldPlanFirstGas(extractorCount, gameState.canPlanExtractor());
         boolean anotherGas = gameState.canPlanExtractor() && spireCount > 0;
         boolean wantLair = gameState.canPlanLair() && lairCount < 1;
         boolean wantSpire = techProgression.canPlanSpire() && spireCount < 1 && lairCount >= 1;
@@ -131,6 +131,22 @@ public class OneHatchSpire extends ZergBase {
         }
 
         return plans;
+    }
+
+    /**
+     * Whether the build takes its first gas yet.
+     *
+     * <p>Reads the pool through canPlanExtractor, which opens once the pool is planned rather than
+     * once it stands. The Lair needs a finished Extractor, so the gas sits on the Spire critical
+     * path. The pool is still built first: the gate cannot open before the pool is planned, and a
+     * plan carries the frame it was enqueued on as its priority.
+     *
+     * @param extractorCount Extractors standing or reserved by a queued plan
+     * @param canPlanExtractor whether a geyser is free and the pool is planned or standing
+     * @return true while the first Extractor should be queued
+     */
+    static boolean shouldPlanFirstGas(int extractorCount, boolean canPlanExtractor) {
+        return extractorCount < 1 && canPlanExtractor;
     }
 
     static List<UnitType> unitsToPlan(boolean wantScourge, boolean wantMutalisk, boolean wantZergling, boolean wantDrone) {
