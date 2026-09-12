@@ -227,22 +227,39 @@ public class HorizonCombatSimulator implements CombatSimulator {
         return result;
     }
 
+    /**
+     * The squad verdict for one frame of measured strengths.
+     *
+     * <p>Enemy existence is resolved before the ratio: with no enemy above
+     * {@link #MIN_ENEMY_STRENGTH} there is nothing to weigh our strength against, so the squad
+     * advances regardless of what its own strength reports. Only a measured enemy can produce a
+     * retreat.
+     *
+     * @param friendlyGroundStr our ground strength at the engagement
+     * @param friendlyAirStr our air strength at the engagement
+     * @param enemyGroundStr enemy ground strength at the engagement
+     * @param enemyAntiAirStr enemy anti-air strength at the engagement
+     * @param airSquad whether the squad is judged on its air arm
+     * @param engageThresh the matchup engage threshold the ratio must clear
+     * @return the combat verdict for this frame
+     */
     static CombatResult selectResult(double friendlyGroundStr, double friendlyAirStr,
                                      double enemyGroundStr, double enemyAntiAirStr,
                                      boolean airSquad, double engageThresh) {
         double relevantEnemyStr = airSquad ? enemyAntiAirStr : enemyGroundStr;
+        if (relevantEnemyStr <= MIN_ENEMY_STRENGTH) return CombatResult.ADVANCE;
         double ratio;
         if (airSquad) {
-            ratio = friendlyAirStr / Math.max(enemyAntiAirStr, MIN_ENEMY_STRENGTH);
+            ratio = friendlyAirStr / enemyAntiAirStr;
         } else {
-            double groundRatio = friendlyGroundStr / Math.max(enemyGroundStr, MIN_ENEMY_STRENGTH);
+            double groundRatio = friendlyGroundStr / enemyGroundStr;
             double totalFriendly = friendlyGroundStr + friendlyAirStr;
             double totalEnemy = enemyGroundStr + enemyAntiAirStr;
-            double combinedRatio = totalFriendly / Math.max(totalEnemy, MIN_ENEMY_STRENGTH);
+            double combinedRatio = totalFriendly / totalEnemy;
             ratio = Math.max(groundRatio, combinedRatio);
         }
         if (ratio < engageThresh) return CombatResult.RETREAT;
-        return relevantEnemyStr > MIN_ENEMY_STRENGTH ? CombatResult.ENGAGE : CombatResult.ADVANCE;
+        return CombatResult.ENGAGE;
     }
 
     /**
@@ -455,7 +472,18 @@ public class HorizonCombatSimulator implements CombatSimulator {
         return (double) (3 * hp + shields) / denominator;
     }
 
-    private double distanceWeight(double distance) {
+    /**
+     * How much a unit at the given distance from the engagement centre contributes to the fight.
+     *
+     * <p>Contribution falls off linearly from full weight at 256 px to nothing beyond 512 px: a unit
+     * that far from the engagement cannot influence it. This answers only "how much of this unit
+     * bears on the fight", never "does this squad have an army" -- a squad whose members all sit
+     * beyond the falloff weighs zero, so callers must not read a zero here as an absence of units.
+     *
+     * @param distance pixels from the engagement centre
+     * @return the contribution weight, between 0 and 1
+     */
+    static double distanceWeight(double distance) {
         if (distance <= 256) return 1.0;
         if (distance <= 512) return 1.0 - 0.5 * (distance - 256) / 256;
         return 0;
