@@ -8,6 +8,7 @@ import bwapi.UnitType;
 import bwapi.UpgradeType;
 import bwem.Base;
 import info.GameState;
+import info.TechProgression;
 import info.map.BuildingPlanner;
 import info.tracking.ObservedUnitTracker;
 import info.tracking.StrategyTracker;
@@ -25,6 +26,7 @@ import info.BaseData;
 
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Consumer;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
@@ -62,7 +64,7 @@ public class Reactions {
      * schedule slot to, the emergency creep colony, while still jumping ahead of tech and normal
      * production. Priority 0 stays reserved for emergency reactions.
      */
-    private static final int SPEED_UPGRADE_PRIORITY = 2;
+    static final int SPEED_UPGRADE_PRIORITY = 2;
 
     private static final Time EARLY_RUSH_WINDOW = new Time(5, 0);
     private static final Time EARLY_RUSH_HARD_DEADLINE = new Time(8, 0);
@@ -150,26 +152,22 @@ public class Reactions {
 
         gameState.setEarlyRushed(true);
 
-        gameState.setEarlyRushDenyGas(!preserveGasForSpeed());
-        gameState.setEarlyRushDelayLair(gameState.getOpponentRace() == Race.Protoss);
-        gameState.setEarlyRushMacroHatch(gameState.getOpponentRace() == Race.Protoss);
-
         ProductionQueue productionQueue = gameState.getProductionQueue();
+        planSpeedUpgrade(productionQueue);
+
+        Race opponentRace = gameState.getOpponentRace();
+        boolean delayLair = shouldDelayLair(opponentRace, gameState.getTechProgression().isPlannedMetabolicBoost(), isSpeedStarted());
+        gameState.setEarlyRushDelayLair(delayLair);
+        gameState.setEarlyRushMacroHatch(opponentRace == Race.Protoss);
+
         productionQueue.setPriorityWhere(IS_SPAWNING_POOL, 0);
         if (expansionCancel.fire()) {
             productionQueue.removeWhere(IS_EXPANSION_HATCHERY, PlanCancelSource.REACTION_EARLY_RUSH_EXPANSION,
                     gameState::setImpossiblePlan);
         }
 
-        if (gameState.isEarlyRushDelayLair() && lairCancel.fire()) {
-            cancelQueuedLairs();
-        }
-
-        BaseData baseData = gameState.getBaseData();
-        if (gameState.isEarlyRushDenyGas()) {
-            cancelAllExtractors(baseData);
-        } else {
-            planSpeedUpgrade(productionQueue);
+        if (shouldFireLairCancel(delayLair)) {
+            cancelQueuedLairs(productionQueue, gameState::setImpossiblePlan);
         }
 
         int droneCount = gameState.ourLivingUnitCount(UnitType.Zerg_Drone);
@@ -177,16 +175,66 @@ public class Reactions {
             productionQueue.removeWhere(IS_DRONE, PlanCancelSource.REACTION_EARLY_RUSH_DRONE, gameState::setImpossiblePlan);
         }
 
-        allowSunkenAtMainIfSingleBase(baseData);
+        allowSunkenAtMainIfSingleBase(gameState.getBaseData());
     }
 
     boolean shouldFireDroneCut(int livingDrones, int livingZerglings) {
         return shouldCutDrones(livingDrones, livingZerglings) && droneCut.fire();
     }
 
+    /**
+     * Whether queued Lairs should be dropped this frame. The cancel runs once per delay window and
+     * rearms whenever the delay lifts, so a window that reopens drops a Lair queued while it was shut.
+     *
+     * @param delayLair whether the early rush reaction holds the Lair back this frame
+     * @return true on the first frame of each delay window
+     */
+    boolean shouldFireLairCancel(boolean delayLair) {
+        if (!delayLair) {
+            lairCancel.rearm();
+            return false;
+        }
+        return lairCancel.fire();
+    }
+
+    /**
+     * Whether the early rush reaction holds the Lair back, blocking new Lair plans through
+     * {@link GameState#canPlanLair()} and dropping queued and scheduled ones.
+     *
+     * <p>Against Protoss the Lair waits for the whole reaction. Against Zerg it waits only while
+     * Metabolic Boost is planned and not yet started, so a Lair claim cannot take the minerals the
+     * upgrade is waiting on; it is released as soon as research starts. No other race delays it.
+     *
+     * @param opponentRace the opponent's race as currently resolved
+     * @param speedPlanned whether a Metabolic Boost plan is outstanding
+     * @param speedStarted whether Metabolic Boost research has started or finished
+     * @return true while the Lair is held back
+     */
+    static boolean shouldDelayLair(Race opponentRace, boolean speedPlanned, boolean speedStarted) {
+        if (opponentRace == Race.Protoss) {
+            return true;
+        }
+        return opponentRace == Race.Zerg && speedPlanned && !speedStarted;
+    }
+
+    private boolean isSpeedStarted() {
+        return isSpeedStarted(gameState.getTechProgression().isMetabolicBoost(), gameState.getPlansBuilding());
+    }
+
+    /**
+     * Whether Metabolic Boost research has started or finished. A speed plan joins the building set
+     * on the frame research begins; a scheduled one still only holds its claim, so it does not count.
+     *
+     * @param metabolicBoostResearched whether the upgrade has finished
+     * @param plansBuilding plans whose research or construction has begun
+     * @return true once research has begun
+     */
+    static boolean isSpeedStarted(boolean metabolicBoostResearched, Set<Plan> plansBuilding) {
+        return metabolicBoostResearched || plansBuilding.stream().anyMatch(IS_SPEED_UPGRADE);
+    }
+
     private void standDownFromEarlyRush() {
         gameState.setEarlyRushed(false);
-        gameState.setEarlyRushDenyGas(false);
         gameState.setEarlyRushDelayLair(false);
         gameState.setEarlyRushMacroHatch(false);
         rearmEarlyRushCuts();
@@ -234,9 +282,12 @@ public class Reactions {
      * required: plan priority controls only the order the queue is drained, not whether a plan is
      * eligible, so a demoted Lair is still built as soon as it is affordable. Scheduled Lairs are
      * cancelled by ProductionManager, which owns the scheduledBuildings slot they hold.
+     *
+     * @param productionQueue the queue the Lairs are removed from
+     * @param onCancelled retires each removed plan
      */
-    private void cancelQueuedLairs() {
-        gameState.getProductionQueue().removeWhere(IS_LAIR, PlanCancelSource.REACTION_EARLY_RUSH_LAIR, gameState::setImpossiblePlan);
+    static void cancelQueuedLairs(ProductionQueue productionQueue, Consumer<Plan> onCancelled) {
+        productionQueue.removeWhere(IS_LAIR, PlanCancelSource.REACTION_EARLY_RUSH_LAIR, onCancelled);
     }
 
     /**
@@ -253,26 +304,37 @@ public class Reactions {
         }
     }
 
-    private boolean preserveGasForSpeed() {
-        if (gameState.getOpponentRace() != Race.Protoss || gameState.getTechProgression().isMetabolicBoost()) {
-            return false;
-        }
-
-        return gameState.getBaseData().numExtractor() > 0 || gameState.getStrategyTracker().isDetectedStrategy("2Gate");
+    private void planSpeedUpgrade(ProductionQueue productionQueue) {
+        planSpeedUpgrade(productionQueue,
+                gameState.getTechProgression(),
+                gameState.ourUnitCount(UnitType.Zerg_Extractor) > 0,
+                gameState.canPlanUpgrade(UpgradeType.Metabolic_Boost),
+                gameState.getGameTime().getFrames());
     }
 
     /**
      * Queues Metabolic Boost and pulls it ahead of normal production.
+     *
+     * <p>The early rush reaction runs this in every matchup and leaves every Extractor standing,
+     * since Metabolic Boost cannot be planned without one. Only the SCV rush reaction cancels
+     * Extractors.
+     *
+     * @param productionQueue the queue the upgrade is added to and reprioritized in
+     * @param techProgression marks the upgrade planned so it is queued once
+     * @param haveExtractor whether a finished Extractor exists
+     * @param canPlanSpeed whether Metabolic Boost may be queued now
+     * @param currentFrame the current frame, which the new plan takes as its initial priority before
+     *     being pulled forward to {@link #SPEED_UPGRADE_PRIORITY}
      */
-    private void planSpeedUpgrade(ProductionQueue productionQueue) {
-        if (gameState.ourUnitCount(UnitType.Zerg_Extractor) < 1) {
+    static void planSpeedUpgrade(ProductionQueue productionQueue, TechProgression techProgression,
+                                 boolean haveExtractor, boolean canPlanSpeed, int currentFrame) {
+        if (!haveExtractor) {
             return;
         }
 
-        if (gameState.canPlanUpgrade(UpgradeType.Metabolic_Boost)) {
-            gameState.getTechProgression().setPlannedMetabolicBoost(true);
-            UpgradePlan upgradePlan = new UpgradePlan(UpgradeType.Metabolic_Boost, gameState.getGameTime().getFrames());
-            productionQueue.add(upgradePlan);
+        if (canPlanSpeed) {
+            techProgression.setPlannedMetabolicBoost(true);
+            productionQueue.add(new UpgradePlan(UpgradeType.Metabolic_Boost, currentFrame));
         }
 
         productionQueue.setPriorityWhere(IS_SPEED_UPGRADE, SPEED_UPGRADE_PRIORITY);

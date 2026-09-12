@@ -166,20 +166,29 @@ public class ProductionManager {
 
     /** Drops scheduled Lair plans while an early rush delays the Lair; the reaction removes only queued ones. */
     private void cancelDelayedLairPlans() {
-        if (!gameState.isEarlyRushDelayLair()) {
-            return;
-        }
-
-        Set<Plan> scheduledLairs = gameState.getPlansScheduled()
-                .stream()
-                .filter(plan -> plan.getType() == PlanType.BUILDING && plan.getPlannedUnit() == UnitType.Zerg_Lair)
-                .collect(Collectors.toSet());
-
-        for (Plan plan : scheduledLairs) {
+        for (Plan plan : delayedLairPlans(gameState.isEarlyRushDelayLair(), gameState.getPlansScheduled())) {
             buildAheadSlot.release(plan);
             gameState.getPlansScheduled().remove(plan);
             gameState.cancelPlan(null, plan, PlanCancelSource.PRODUCTION_DELAYED_LAIR_SCHEDULED);
         }
+    }
+
+    /**
+     * The scheduled Lair plans an early rush delay cancels, collected apart from the scheduled set
+     * so the caller can remove them from it.
+     *
+     * @param delayLair whether the early rush reaction holds the Lair back
+     * @param plansScheduled plans holding a schedule claim
+     * @return the Lair plans to cancel, empty while the Lair is not delayed
+     */
+    static Set<Plan> delayedLairPlans(boolean delayLair, Set<Plan> plansScheduled) {
+        if (!delayLair) {
+            return new HashSet<>();
+        }
+
+        return plansScheduled.stream()
+                .filter(plan -> plan.getType() == PlanType.BUILDING && plan.getPlannedUnit() == UnitType.Zerg_Lair)
+                .collect(Collectors.toSet());
     }
 
     private boolean hasExcessSupply(Player self) {

@@ -86,7 +86,6 @@ public class GameState {
     private boolean cannonRushDefend = false;
     private boolean scvRushed = false;
     private boolean earlyRushed = false;
-    private boolean earlyRushDenyGas = false;
     private boolean earlyRushDelayLair = false;
     private boolean earlyRushMacroHatch = false;
 
@@ -849,7 +848,6 @@ public class GameState {
         final int gasWorkers = getGeyserWorkers();
         return !isAllIn &&
                 !scvRushed &&
-                !earlyRushDenyGas &&
                 techProgression.canPlanExtractor() &&
                 baseData.canReserveExtractor() &&
                 shouldRequestExtractor(

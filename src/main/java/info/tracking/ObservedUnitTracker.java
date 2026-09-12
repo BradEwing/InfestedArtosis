@@ -57,10 +57,10 @@ public class ObservedUnitTracker {
             ObservedUnit u = observedUnits.get(unit);
             u.setLastObservedFrame(t);
             u.setLastKnownLocation(unit.getPosition());
+            updateUnitTypeChange(u, unit.getType());
             if (unit.isCompleted()) {
                 u.markCompleted(t);
             }
-            updateUnitTypeChange(unit);
         }
     }
 
@@ -159,13 +159,28 @@ public class ObservedUnitTracker {
         }
     }
 
-    public void updateUnitTypeChange(Unit unit) {
-        ObservedUnit observedUnit = observedUnits.get(unit);
-        UnitType trackedType = observedUnit.getUnitType();
-        UnitType unitType = unit.getType();
-        if (unitType != trackedType) {
-            observedUnit.setUnitType(unit.getType());
+    /**
+     * Tracks an ObservedUnit built outside onUnitShow(), keyed on the unit it wraps.
+     *
+     * @param observedUnit the unit to track
+     */
+    void track(ObservedUnit observedUnit) {
+        observedUnits.put(observedUnit.getUnit(), observedUnit);
+    }
+
+    /**
+     * Retypes a tracked unit after a morph. The completion stamp describes the type that carried it, so a
+     * change drops it and the unit is stamped again the next time it is observed complete.
+     *
+     * @param observedUnit the tracked unit
+     * @param unitType the type the unit now has
+     */
+    static void updateUnitTypeChange(ObservedUnit observedUnit, UnitType unitType) {
+        if (unitType == observedUnit.getUnitType()) {
+            return;
         }
+        observedUnit.setUnitType(unitType);
+        observedUnit.resetCompletion();
     }
 
     public Set<Position> getLastKnownPositionsOfLivingUnits(UnitType unitType) {
