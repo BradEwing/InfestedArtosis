@@ -48,6 +48,22 @@ public final class SquadDecisions {
         current.onContainmentEvaluated(squad, shouldContain, canBreakContainment, entered);
     }
 
+    public static void rallied(Squad squad, RallyReason reason) {
+        SquadDecisionSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onRallied(squad, reason);
+    }
+
+    public static void rallyReleased(Squad squad, RallyRelease release) {
+        SquadDecisionSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onRallyReleased(squad, release);
+    }
+
     public static void splitSuppressed(Squad squad, int moveOutThreshold, int squadStrength, int outlierStrength) {
         SquadDecisionSink current = sink;
         if (current == null) {

@@ -19,6 +19,8 @@ import lombok.Getter;
 
 import org.bk.ass.sim.BWMirrorAgentFactory;
 import org.bk.ass.sim.Simulator;
+import telemetry.RallyReason;
+import telemetry.RallyRelease;
 import telemetry.SquadDecisions;
 import telemetry.SquadLock;
 import unit.managed.ManagedUnit;
@@ -583,7 +585,8 @@ public class SquadManager {
         return enemies;
     }
 
-    private void rallySquad(Squad squad) {
+    private void rallySquad(Squad squad, RallyReason reason) {
+        SquadDecisions.rallied(squad, reason);
         squad.setStatus(SquadStatus.RALLY);
         squad.clearCommitment();
         Position rallyPoint = gameState.getSquadRallyPoint();
@@ -610,9 +613,13 @@ public class SquadManager {
         SquadAction action = chooseSquadAction(closeThreats, squadStrength(squad), calculateMoveOutThreshold(squad),
                 squadStatus, squad.isCommitted(), distanceFromRallyPoint(squad));
 
+        if (squadStatus == SquadStatus.RALLY) {
+            SquadDecisions.rallyReleased(squad, releaseFor(action, closeThreats));
+        }
+
         if (action == SquadAction.RALLY) {
             clearCombatSimSnapshot(squad);
-            rallySquad(squad);
+            rallySquad(squad, RallyReason.BELOW_MOVE_OUT);
             return;
         }
 
@@ -664,6 +671,31 @@ public class SquadManager {
             return SquadAction.SIMULATE;
         }
         return SquadAction.RALLY;
+    }
+
+    /**
+     * Names the term that let a rallying squad stop rallying, for the row that closes the episode.
+     *
+     * <p>Reads the branch {@link #chooseSquadAction} already picked rather than re-testing its
+     * thresholds, so the two cannot drift apart. Only three of its branches are reachable from
+     * RALLY: the FIGHT branch requires the squad to already be fighting, which leaves close threats,
+     * the move out threshold, and a committed squad that has walked past the release distance.
+     *
+     * @param action branch chooseSquadAction returned this frame
+     * @param closeThreats true when enemies sit inside the squad detection radius
+     * @return the release, or NONE while the squad keeps rallying
+     */
+    static RallyRelease releaseFor(SquadAction action, boolean closeThreats) {
+        if (action == SquadAction.RALLY) {
+            return RallyRelease.NONE;
+        }
+        if (closeThreats) {
+            return RallyRelease.CLOSE_THREATS;
+        }
+        if (action == SquadAction.LAUNCH) {
+            return RallyRelease.MOVE_OUT_THRESHOLD;
+        }
+        return RallyRelease.COMMITTED_DOWNFIELD;
     }
 
     private double distanceFromRallyPoint(Squad squad) {
@@ -759,7 +791,7 @@ public class SquadManager {
         }
 
         if (squad.isGroundSquad() && squad.hasOnly(UnitType.Zerg_Defiler)) {
-            rallySquad(squad);
+            rallySquad(squad, RallyReason.DEFILER_ONLY);
             return;
         }
 
@@ -938,7 +970,7 @@ public class SquadManager {
         if (squad.getStatus() == SquadStatus.RETREAT) {
             assignRetreatTargets(squad, managedFighters);
         } else {
-            rallySquad(squad);
+            rallySquad(squad, RallyReason.HOLD);
         }
     }
 
@@ -1454,7 +1486,7 @@ public class SquadManager {
 
         squad.addUnit(managedUnit);
         if (shouldStageSquad(squad)) {
-            rallySquad(squad);
+            rallySquad(squad, RallyReason.STAGING);
             return;
         }
 

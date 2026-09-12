@@ -2,6 +2,7 @@ package unit.squad;
 
 import bwapi.Position;
 import org.junit.jupiter.api.Test;
+import telemetry.RallyRelease;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -127,5 +128,52 @@ class SquadCommitmentTest {
                             child.isCommitted(), FAR_FROM_HOME),
                     "a fragment of " + fragmentStrength + " supply must not be recalled on the tick it is created");
         }
+    }
+
+    @Test
+    void aRallyingSquadThatKeepsRallyingClosesNoEpisode() {
+        assertEquals(RallyRelease.NONE,
+                SquadManager.releaseFor(SquadManager.SquadAction.RALLY, false));
+    }
+
+    @Test
+    void closeThreatsReleaseARallyingSquadBeforeTheThreshold() {
+        assertEquals(RallyRelease.CLOSE_THREATS,
+                SquadManager.releaseFor(SquadManager.SquadAction.SIMULATE, true));
+        assertEquals(RallyRelease.CLOSE_THREATS,
+                SquadManager.releaseFor(SquadManager.SquadAction.LAUNCH, true));
+    }
+
+    @Test
+    void theMoveOutThresholdReleasesARallyingSquadWithNoEnemyNear() {
+        assertEquals(RallyRelease.MOVE_OUT_THRESHOLD,
+                SquadManager.releaseFor(SquadManager.SquadAction.LAUNCH, false));
+    }
+
+    @Test
+    void aCommittedSquadDownfieldIsTheOnlyOtherWayOutOfRally() {
+        assertEquals(RallyRelease.COMMITTED_DOWNFIELD,
+                SquadManager.releaseFor(SquadManager.SquadAction.SIMULATE, false));
+    }
+
+    @Test
+    void everyBranchReachableFromRallyNamesItsRelease() {
+        assertEquals(RallyRelease.MOVE_OUT_THRESHOLD,
+                SquadManager.releaseFor(
+                        SquadManager.chooseSquadAction(false, 6, GROUND_FLOOR, SquadStatus.RALLY, false, AT_HOME),
+                        false));
+        assertEquals(RallyRelease.CLOSE_THREATS,
+                SquadManager.releaseFor(
+                        SquadManager.chooseSquadAction(true, 1, 40, SquadStatus.RALLY, false, AT_HOME),
+                        true));
+        assertEquals(RallyRelease.COMMITTED_DOWNFIELD,
+                SquadManager.releaseFor(
+                        SquadManager.chooseSquadAction(false, 2, GROUND_FLOOR, SquadStatus.RALLY, true,
+                                FAR_FROM_HOME),
+                        false));
+        assertEquals(RallyRelease.NONE,
+                SquadManager.releaseFor(
+                        SquadManager.chooseSquadAction(false, 2, GROUND_FLOOR, SquadStatus.RALLY, false, AT_HOME),
+                        false));
     }
 }
