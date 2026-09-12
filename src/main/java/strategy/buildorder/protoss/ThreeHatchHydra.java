@@ -382,11 +382,6 @@ public class ThreeHatchHydra extends ProtossBase {
     }
 
     @Override
-    public boolean isRetired() {
-        return true;
-    }
-
-    @Override
     public boolean playsRace(Race race) {
         switch (race) {
             case Protoss:

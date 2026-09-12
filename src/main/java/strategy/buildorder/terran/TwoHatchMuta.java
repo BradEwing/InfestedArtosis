@@ -208,11 +208,6 @@ public class TwoHatchMuta extends TerranBase {
     }
 
     @Override
-    public boolean isRetired() {
-        return true;
-    }
-
-    @Override
     public boolean playsRace(Race race) {
         return race == Race.Terran;
     }
