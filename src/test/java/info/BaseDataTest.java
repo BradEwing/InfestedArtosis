@@ -268,6 +268,28 @@ public class BaseDataTest {
         assertEquals(1, baseData.sporesPerBase(null));
     }
 
+    /**
+     * The second morph's forget names a colony that is already registered at the same base, which is the
+     * frame the count used to drop on. Asserted per step on the spore side too, so the sunken tests are
+     * not the only place that frame is pinned.
+     */
+    @Test
+    void twoSporesMorphingInSequenceHoldTheCountAtTwoOnEveryFrame() {
+        baseData.reserveSporeColony(null);
+        baseData.reserveSporeColony(null);
+        assertEquals(2, baseData.sporesPerBase(null));
+
+        baseData.forgetSporeColony(SPORE_ID);
+        assertEquals(2, baseData.sporesPerBase(null));
+        baseData.registerSporeColony(null, SPORE_ID);
+        assertEquals(2, baseData.sporesPerBase(null));
+
+        baseData.forgetSporeColony(OTHER_SPORE_ID);
+        assertEquals(2, baseData.sporesPerBase(null));
+        baseData.registerSporeColony(null, OTHER_SPORE_ID);
+        assertEquals(2, baseData.sporesPerBase(null));
+    }
+
     @Test
     void twoSporesCompletingAfterTheirMorphsLeaveTheCountAtTwo() {
         baseData.reserveSporeColony(null);
