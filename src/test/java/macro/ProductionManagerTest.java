@@ -103,6 +103,39 @@ class ProductionManagerTest {
         }
     }
 
+    /**
+     * The building path of the scheduler over a mineral bank. A plan that clears buildAheadBlocker
+     * takes the slot and reserves its cost, leaving the bank short for everything behind it.
+     */
+    private static final class Bank implements PlanScheduler {
+
+        private final BuildAheadSlot slot = new BuildAheadSlot();
+
+        private int minerals;
+
+        private Bank(int minerals) {
+            this.minerals = minerals;
+        }
+
+        @Override
+        public PlanBlocker schedule(Plan plan, boolean bankClaimedAhead) {
+            UnitType building = plan.getPlannedUnit();
+            PlanBlocker blocker = ProductionManager.buildAheadBlocker(
+                    slot,
+                    plan,
+                    FRAME,
+                    minerals < building.mineralPrice(),
+                    bankClaimedAhead,
+                    FRAME + 100);
+            if (blocker != PlanBlocker.NONE) {
+                return blocker;
+            }
+            slot.claim(plan, FRAME, FRAME + 100);
+            minerals -= building.mineralPrice();
+            return PlanBlocker.NONE;
+        }
+    }
+
     private final List<PlanBlocker> reportedBlockers = new ArrayList<>();
 
     private final List<Plan> reportedPlans = new ArrayList<>();
@@ -728,5 +761,27 @@ class ProductionManagerTest {
         assertEquals(0, ProductionManager.excessLurkerPlans(2, 0, 2));
         assertEquals(0, ProductionManager.excessLurkerPlans(3, 1, 2));
         assertEquals(1, ProductionManager.excessLurkerPlans(3, 0, 2));
+    }
+
+    @Test
+    void aBankThatOnlyCoversTheGasStillSchedulesTheSpawningPoolFirst() {
+        Plan pool = new BuildingPlan(UnitType.Zerg_Spawning_Pool, FRAME);
+        Plan extractor = new BuildingPlan(UnitType.Zerg_Extractor, FRAME + 1);
+        Bank bank = new Bank(UnitType.Zerg_Extractor.mineralPrice());
+
+        ScanOutcome outcome = ProductionManager.scanPlans(Arrays.asList(pool, extractor), bank);
+
+        assertEquals(Collections.singletonList(pool), outcome.scheduled);
+        assertEquals(Collections.singletonList(extractor), outcome.requeued);
+    }
+
+    @Test
+    void theSameBankCoversTheGasWithNoSpawningPoolAheadOfIt() {
+        Plan extractor = new BuildingPlan(UnitType.Zerg_Extractor, FRAME + 1);
+        Bank bank = new Bank(UnitType.Zerg_Extractor.mineralPrice());
+
+        ScanOutcome outcome = ProductionManager.scanPlans(Collections.singletonList(extractor), bank);
+
+        assertEquals(Collections.singletonList(extractor), outcome.scheduled);
     }
 }
