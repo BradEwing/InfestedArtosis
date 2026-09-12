@@ -32,6 +32,9 @@ class ProductionManagerTest {
 
     private static final int FRAME = 6253;
 
+    /** A drone walking to a far expansion; its claim-time hold ends near 815 frames. */
+    private static final int HATCHERY_TRAVEL_FRAMES = 455;
+
     private Plan spire(PlanState state) {
         Plan plan = new BuildingPlan(UnitType.Zerg_Spire, 1000);
         plan.setState(state);
@@ -230,6 +233,106 @@ class ProductionManagerTest {
                 frame + 1);
 
         assertEquals(PlanBlocker.NONE, blocker);
+    }
+
+    @Test
+    void anEvictedPlanCannotRestartItsHoldOnTheEvictionFrame() {
+        BuildAheadSlot slot = new BuildAheadSlot();
+        Plan plan = hatchery();
+        slot.claim(plan, FRAME, FRAME + 20, HATCHERY_TRAVEL_FRAMES);
+        int evictionFrame = BuildAheadSlot.deadline(FRAME, FRAME + 20, HATCHERY_TRAVEL_FRAMES);
+        slot.releaseWithBackoff(plan, evictionFrame);
+
+        PlanBlocker blocker = ProductionManager.buildAheadBlocker(
+                slot, plan, evictionFrame, false, false, evictionFrame + 20);
+        slot.claim(plan, evictionFrame, evictionFrame + 20, HATCHERY_TRAVEL_FRAMES);
+
+        assertEquals(PlanBlocker.NONE, blocker);
+        assertEquals(evictionFrame - FRAME, slot.heldFrames(plan, evictionFrame));
+    }
+
+    @Test
+    void anEvictedPlanWithNoHoldLeftWaitsOutItsBackoff() {
+        BuildAheadSlot slot = new BuildAheadSlot();
+        Plan plan = hatchery();
+        slot.claim(plan, FRAME, FRAME + 20, HATCHERY_TRAVEL_FRAMES);
+        int evictionFrame = FRAME + BuildAheadSlot.TOTAL_HOLD_FRAMES;
+        slot.releaseWithBackoff(plan, evictionFrame);
+
+        PlanBlocker blocker = ProductionManager.buildAheadBlocker(
+                slot, plan, evictionFrame, false, false, evictionFrame + 20);
+
+        assertEquals(PlanBlocker.BUILD_AHEAD_BACKOFF, blocker);
+    }
+
+    @Test
+    void aSpentHoldClaimsAfreshOnceItsBackoffExpires() {
+        BuildAheadSlot slot = new BuildAheadSlot();
+        Plan plan = hatchery();
+        slot.claim(plan, FRAME, FRAME + 20, HATCHERY_TRAVEL_FRAMES);
+        int evictionFrame = FRAME + BuildAheadSlot.TOTAL_HOLD_FRAMES;
+        slot.releaseWithBackoff(plan, evictionFrame);
+        int retryFrame = evictionFrame + BuildAheadSlot.BACKOFF_FRAMES;
+
+        PlanBlocker blocker = ProductionManager.buildAheadBlocker(
+                slot, plan, retryFrame, false, false, retryFrame + 20);
+        slot.claim(plan, retryFrame, retryFrame + 20, HATCHERY_TRAVEL_FRAMES);
+
+        assertEquals(PlanBlocker.NONE, blocker);
+        assertEquals(0, slot.heldFrames(plan, retryFrame));
+    }
+
+    @Test
+    void aBuildingClaimIsRefreshedAfterItsBuilderLaunches() {
+        BuildAheadSlot slot = new BuildAheadSlot();
+        Plan plan = hatchery();
+        slot.claim(plan, FRAME, FRAME + 20, HATCHERY_TRAVEL_FRAMES);
+        plan.setState(PlanState.BUILDING);
+        int claimDeadline = BuildAheadSlot.deadline(FRAME, FRAME + 20, HATCHERY_TRAVEL_FRAMES);
+        int frame = claimDeadline - 1;
+
+        ProductionManager.refreshBuildAheadPredictions(slot, frame + 20, p -> HATCHERY_TRAVEL_FRAMES);
+
+        assertTrue(slot.stalled(claimDeadline).isEmpty());
+    }
+
+    @Test
+    void refreshingALaunchedBuilderLeavesThePredictionItClearsMineralsBy() {
+        BuildAheadSlot slot = new BuildAheadSlot();
+        Plan plan = hatchery();
+        plan.setPredictedReadyFrame(FRAME + 20);
+        slot.claim(plan, FRAME, FRAME + 20, HATCHERY_TRAVEL_FRAMES);
+        plan.setState(PlanState.BUILDING);
+
+        ProductionManager.refreshBuildAheadPredictions(slot, FRAME + 800, p -> HATCHERY_TRAVEL_FRAMES);
+
+        assertEquals(FRAME + 20, plan.getPredictedReadyFrame());
+    }
+
+    @Test
+    void refreshingAParkedBuilderRetimesItsDispatch() {
+        BuildAheadSlot slot = new BuildAheadSlot();
+        Plan plan = hatchery();
+        plan.setPredictedReadyFrame(FRAME + 20);
+        slot.claim(plan, FRAME, FRAME + 20, HATCHERY_TRAVEL_FRAMES);
+        plan.setState(PlanState.SCHEDULE);
+
+        ProductionManager.refreshBuildAheadPredictions(slot, FRAME + 800, p -> HATCHERY_TRAVEL_FRAMES);
+
+        assertEquals(FRAME + 800, plan.getPredictedReadyFrame());
+    }
+
+    @Test
+    void aClaimOutsideTheBuilderPipelineIsNotRefreshed() {
+        BuildAheadSlot slot = new BuildAheadSlot();
+        Plan plan = hatchery();
+        slot.claim(plan, FRAME, FRAME + 20, HATCHERY_TRAVEL_FRAMES);
+        plan.setState(PlanState.MORPHING);
+        int claimDeadline = BuildAheadSlot.deadline(FRAME, FRAME + 20, HATCHERY_TRAVEL_FRAMES);
+
+        ProductionManager.refreshBuildAheadPredictions(slot, claimDeadline + 19, p -> HATCHERY_TRAVEL_FRAMES);
+
+        assertFalse(slot.stalled(claimDeadline).isEmpty());
     }
 
     @Test

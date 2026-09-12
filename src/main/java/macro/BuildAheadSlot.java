@@ -38,7 +38,7 @@ public class BuildAheadSlot {
 
     private final Map<Plan, Claim> claims = new LinkedHashMap<>();
 
-    private final Map<Plan, Integer> backoffUntil = new HashMap<>();
+    private final Map<Plan, Backoff> backoffs = new HashMap<>();
 
     /** ResourceCount returns end-of-time when no worker gathers the resource the cost needs. */
     public static boolean isUnreachable(int predictedReadyFrame) {
@@ -120,8 +120,19 @@ public class BuildAheadSlot {
         claim(plan, currentFrame, predictedReadyFrame, 0);
     }
 
+    /**
+     * A plan claiming during its backoff resumes the hold it was released from rather than starting
+     * a new one, so an eviction cannot restart the hold clock of a plan that re-claims at once.
+     */
     public void claim(Plan plan, int currentFrame, int predictedReadyFrame, int travelFrames) {
-        claims.put(plan, new Claim(currentFrame, deadline(currentFrame, predictedReadyFrame, travelFrames)));
+        Backoff backoff = activeBackoff(plan, currentFrame);
+        if (backoff == null) {
+            int deadline = deadline(currentFrame, predictedReadyFrame, travelFrames);
+            claims.put(plan, new Claim(currentFrame, deadline, currentFrame));
+            return;
+        }
+        int deadline = deadline(backoff.claimFrame, predictedReadyFrame, travelFrames, TOTAL_HOLD_FRAMES);
+        claims.put(plan, new Claim(backoff.claimFrame, deadline, currentFrame));
     }
 
     public void release(Plan plan) {
@@ -129,11 +140,12 @@ public class BuildAheadSlot {
     }
 
     public void releaseWithBackoff(Plan plan, int currentFrame) {
-        if (claims.remove(plan) == null) {
+        Claim claim = claims.remove(plan);
+        if (claim == null) {
             return;
         }
-        backoffUntil.values().removeIf(until -> currentFrame >= until);
-        backoffUntil.put(plan, currentFrame + BACKOFF_FRAMES);
+        backoffs.values().removeIf(backoff -> currentFrame >= backoff.until);
+        backoffs.put(plan, new Backoff(claim.claimFrame, currentFrame + BACKOFF_FRAMES));
     }
 
     /** Releases the oldest claim of a building type, where the executor is known but the plan is not. */
@@ -167,8 +179,22 @@ public class BuildAheadSlot {
 
     /** Keyed on the plan, so an eviction bars only the offender and not every plan of its type. */
     public boolean isInBackoff(Plan plan, int currentFrame) {
-        Integer until = backoffUntil.get(plan);
-        return until != null && currentFrame < until;
+        return activeBackoff(plan, currentFrame) != null;
+    }
+
+    /**
+     * True while a plan in backoff has no hold left to resume. Its released hold already reached
+     * {@code claimFrame + TOTAL_HOLD_FRAMES}, so a resumed claim would expire on the frame it was
+     * taken; the plan waits out its backoff and then claims afresh.
+     */
+    public boolean isHoldSpent(Plan plan, int currentFrame) {
+        Backoff backoff = activeBackoff(plan, currentFrame);
+        return backoff != null && currentFrame >= backoff.claimFrame + TOTAL_HOLD_FRAMES;
+    }
+
+    private Backoff activeBackoff(Plan plan, int currentFrame) {
+        Backoff backoff = backoffs.get(plan);
+        return backoff != null && currentFrame < backoff.until ? backoff : null;
     }
 
     public int heldFrames(Plan plan, int currentFrame) {
@@ -196,10 +222,21 @@ public class BuildAheadSlot {
         private int deadline;
         private int lastReportFrame;
 
-        private Claim(int claimFrame, int deadline) {
+        private Claim(int claimFrame, int deadline, int lastReportFrame) {
             this.claimFrame = claimFrame;
             this.deadline = deadline;
-            this.lastReportFrame = claimFrame;
+            this.lastReportFrame = lastReportFrame;
+        }
+    }
+
+    private static final class Backoff {
+
+        private final int claimFrame;
+        private final int until;
+
+        private Backoff(int claimFrame, int until) {
+            this.claimFrame = claimFrame;
+            this.until = until;
         }
     }
 }

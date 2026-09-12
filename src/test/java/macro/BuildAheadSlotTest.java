@@ -248,6 +248,91 @@ class BuildAheadSlotTest {
     }
 
     @Test
+    void aClaimDuringItsBackoffResumesTheEvictedHold() {
+        BuildAheadSlot slot = new BuildAheadSlot();
+        Plan plan = spire();
+        slot.claim(plan, CLAIM_FRAME, CLAIM_FRAME + 20, NATURAL_TRAVEL_FRAMES);
+        int evictionFrame = CLAIM_FRAME + 1000;
+        slot.releaseWithBackoff(plan, evictionFrame);
+
+        slot.claim(plan, evictionFrame, evictionFrame + 20, NATURAL_TRAVEL_FRAMES);
+
+        assertEquals(1000, slot.heldFrames(plan, evictionFrame));
+    }
+
+    @Test
+    void aResumedHoldEndsWhereTheEvictedHoldWould() {
+        BuildAheadSlot slot = new BuildAheadSlot();
+        Plan plan = spire();
+        slot.claim(plan, CLAIM_FRAME, CLAIM_FRAME + 20, NATURAL_TRAVEL_FRAMES);
+        int evictionFrame = CLAIM_FRAME + 1000;
+        slot.releaseWithBackoff(plan, evictionFrame);
+        slot.claim(plan, evictionFrame, evictionFrame + 20, NATURAL_TRAVEL_FRAMES);
+
+        for (int frame = evictionFrame; frame < CLAIM_FRAME + BuildAheadSlot.TOTAL_HOLD_FRAMES; frame += 100) {
+            slot.extend(plan, frame + 20, NATURAL_TRAVEL_FRAMES);
+        }
+
+        assertTrue(slot.stalled(CLAIM_FRAME + BuildAheadSlot.TOTAL_HOLD_FRAMES - 1).isEmpty());
+        assertFalse(slot.stalled(CLAIM_FRAME + BuildAheadSlot.TOTAL_HOLD_FRAMES).isEmpty());
+    }
+
+    @Test
+    void aResumedHoldWithTimeLeftOutlivesTheFrameItIsTaken() {
+        for (int held = 0; held < BuildAheadSlot.TOTAL_HOLD_FRAMES; held += 37) {
+            BuildAheadSlot slot = new BuildAheadSlot();
+            Plan plan = spire();
+            slot.claim(plan, CLAIM_FRAME, CLAIM_FRAME + 20, NATURAL_TRAVEL_FRAMES);
+            int evictionFrame = CLAIM_FRAME + held;
+            slot.releaseWithBackoff(plan, evictionFrame);
+            assertFalse(slot.isHoldSpent(plan, evictionFrame));
+
+            slot.claim(plan, evictionFrame, evictionFrame + 20, NATURAL_TRAVEL_FRAMES);
+
+            assertTrue(slot.stalled(evictionFrame).isEmpty());
+        }
+    }
+
+    @Test
+    void aHoldIsSpentOnceItHasRunTheTotalHold() {
+        BuildAheadSlot slot = new BuildAheadSlot();
+        Plan plan = spire();
+        slot.claim(plan, CLAIM_FRAME, AFFORDABLE_SOON);
+        int evictionFrame = CLAIM_FRAME + BuildAheadSlot.TOTAL_HOLD_FRAMES - 1;
+        slot.releaseWithBackoff(plan, evictionFrame);
+
+        assertFalse(slot.isHoldSpent(plan, evictionFrame));
+        assertTrue(slot.isHoldSpent(plan, evictionFrame + 1));
+        assertFalse(slot.isHoldSpent(plan, evictionFrame + BuildAheadSlot.BACKOFF_FRAMES));
+    }
+
+    @Test
+    void aClaimAfterItsBackoffStartsAFreshHold() {
+        BuildAheadSlot slot = new BuildAheadSlot();
+        Plan plan = spire();
+        slot.claim(plan, CLAIM_FRAME, AFFORDABLE_SOON);
+        int evictionFrame = CLAIM_FRAME + 1000;
+        slot.releaseWithBackoff(plan, evictionFrame);
+        int retryFrame = evictionFrame + BuildAheadSlot.BACKOFF_FRAMES;
+
+        slot.claim(plan, retryFrame, retryFrame + 20, NATURAL_TRAVEL_FRAMES);
+
+        assertEquals(0, slot.heldFrames(plan, retryFrame));
+    }
+
+    @Test
+    void aResumedHoldIsNotReportedTheFrameAfterItIsTaken() {
+        BuildAheadSlot slot = new BuildAheadSlot();
+        Plan plan = spire();
+        slot.claim(plan, CLAIM_FRAME, AFFORDABLE_SOON);
+        int evictionFrame = CLAIM_FRAME + 1000;
+        slot.releaseWithBackoff(plan, evictionFrame);
+        slot.claim(plan, evictionFrame, evictionFrame + 20, NATURAL_TRAVEL_FRAMES);
+
+        assertTrue(slot.holdReportsDue(evictionFrame + 1).isEmpty());
+    }
+
+    @Test
     void reconcileDropsAClaimWhosePlanLeftThePipeline() {
         BuildAheadSlot slot = new BuildAheadSlot();
         Plan plan = spire();
