@@ -168,10 +168,6 @@ public class ObservedUnitTracker {
         observedUnits.put(observedUnit.getUnit(), observedUnit);
     }
 
-    public void updateUnitTypeChange(Unit unit) {
-        updateUnitTypeChange(observedUnits.get(unit), unit.getType());
-    }
-
     /**
      * Retypes a tracked unit after a morph. The completion stamp describes the type that carried it, so a
      * change drops it and the unit is stamped again the next time it is observed complete.
