@@ -1098,6 +1098,37 @@ class ProductionManagerTest {
         assertEquals(Collections.singletonList(overlord), outcome.scheduled);
     }
 
+    /**
+     * Game LBIDH0GO: a Drone derived before the Spire finished and a Mutalisk derived after it.
+     * With no larva the Mutalisk waits on NO_LARVA, and the next larva goes to it rather than to
+     * the Drone queued first.
+     */
+    @Test
+    void aMutaliskWaitingOnLarvaClaimsTheNextLarvaOverALaterPriorityDrone() {
+        ProductionQueue queue = new ProductionQueue();
+        Plan drone = drone(8178);
+        Plan muta = mutalisk();
+        queue.add(drone);
+        queue.add(muta);
+        Larva scheduler = new Larva(0, 1000, 20, false);
+
+        PlanEvents.register(blockerRecorder());
+
+        ScanOutcome waiting = ProductionManager.scanPlans(queue.toSortedList(), scheduler);
+
+        assertTrue(waiting.scheduled.isEmpty());
+        assertEquals(Arrays.asList(muta, drone), waiting.requeued);
+        assertEquals(muta, reportedPlans.get(0));
+        assertEquals(PlanBlocker.NO_LARVA, reportedBlockers.get(0));
+
+        scheduler.larva = 1;
+        ScanOutcome hatched = ProductionManager.scanPlans(waiting.requeued, scheduler);
+
+        assertEquals(Collections.singletonList(muta), hatched.scheduled);
+        assertEquals(Collections.singletonList(drone), hatched.requeued);
+        assertEquals(0, scheduler.larva);
+    }
+
     @Test
     void withNoBlockedPlanAheadTheDroneTakesTheLarva() {
         Plan drone = drone(7709);

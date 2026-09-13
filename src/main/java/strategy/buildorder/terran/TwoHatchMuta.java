@@ -7,6 +7,7 @@ import info.BaseData;
 import info.GameState;
 import info.Readiness;
 import info.TechProgression;
+import info.UnitTypeCount;
 import macro.plan.Plan;
 
 import java.util.ArrayList;
@@ -142,14 +143,18 @@ public class TwoHatchMuta extends TerranBase {
         // Plan Units
         final int desiredScourge = enemyVessel + enemyDropship + enemyValkyrie + enemyWraith;
         if (techProgression.isSpire() && scourgeCount < desiredScourge && canPlanAdvancedUnit(gameState, UnitType.Zerg_Scourge)) {
-            plans.add(this.planUnit(gameState, UnitType.Zerg_Scourge));
-            return plans;
+            List<Plan> scourgePlans = this.planAdvancedUnit(gameState, UnitType.Zerg_Scourge);
+            if (!scourgePlans.isEmpty()) {
+                plans.addAll(scourgePlans);
+                return plans;
+            }
         }
 
         final int desiredMutalisks = desiredMutalisks(gameState);
-        if (shouldPlanMutalisk(techProgression, mutaCount, desiredMutalisks, gameState.numGatherers())) {
-            Plan mutaliskPlan = this.planUnit(gameState, UnitType.Zerg_Mutalisk);
-            plans.add(mutaliskPlan);
+        List<Plan> mutaliskPlans = planMutalisk(techProgression, desiredMutalisks, gameState.numGatherers(),
+                gameState.queuedUnitPlanCount(UnitType.Zerg_Mutalisk), gameState.getUnitTypeCount());
+        if (!mutaliskPlans.isEmpty()) {
+            plans.addAll(mutaliskPlans);
             return plans;
         }
 
@@ -224,5 +229,27 @@ public class TwoHatchMuta extends TerranBase {
     static boolean shouldPlanMutalisk(TechProgression techProgression, int mutaCount, int desiredMutalisks, int gatherers) {
         return techProgression.isSpire() && mutaCount < desiredMutalisks
                 && canPlanAdvancedUnit(UnitType.Zerg_Mutalisk, techProgression, gatherers);
+    }
+
+    /**
+     * The Mutalisk plan for this frame, ranked ahead of the Drone and Zergling backlog.
+     *
+     * <p>The count read against the target includes plans already charged to it, so a wave is
+     * queued one plan at a time until the target is met. While a Mutalisk plan still waits in the
+     * queue no second one is added, and the build goes on to plan the units below it.
+     *
+     * @param techProgression the bot's tech state
+     * @param desiredMutalisks the Mutalisk target
+     * @param gatherers workers gathering, for the eligibility gate
+     * @param queuedMutalisks Mutalisk plans still waiting in the production queue
+     * @param count the unit counts, including planned units, that the plan is charged to
+     * @return one Mutalisk plan at the advanced unit priority, or none
+     */
+    static List<Plan> planMutalisk(TechProgression techProgression, int desiredMutalisks, int gatherers,
+                                   int queuedMutalisks, UnitTypeCount count) {
+        if (!shouldPlanMutalisk(techProgression, count.get(UnitType.Zerg_Mutalisk), desiredMutalisks, gatherers)) {
+            return new ArrayList<>();
+        }
+        return planAdvancedUnit(UnitType.Zerg_Mutalisk, techProgression, gatherers, queuedMutalisks, count);
     }
 }

@@ -717,14 +717,31 @@ public abstract class BuildOrder {
      * per call, and none while the production sweep would cancel it the same frame.
      */
     protected List<Plan> planAdvancedUnit(GameState gameState, UnitType unitType) {
+        return planAdvancedUnit(unitType, gameState.getTechProgression(), gameState.numGatherers(),
+                gameState.queuedUnitPlanCount(unitType), gameState.getUnitTypeCount());
+    }
+
+    /**
+     * The advanced unit plan for a type, counted into the planned units it is charged to.
+     *
+     * @param unitType the unit a tech building unlocked
+     * @param techProgression the bot's tech state
+     * @param gatherers workers gathering, for the eligibility gate
+     * @param queuedPlans plans of this type still waiting in the production queue
+     * @param count the unit counts the plan is charged to
+     * @return one plan at {@link UnitPlan#ADVANCED_UNIT_PRIORITY}, or none
+     */
+    protected static List<Plan> planAdvancedUnit(UnitType unitType, TechProgression techProgression, int gatherers,
+                                                 int queuedPlans, UnitTypeCount count) {
         List<Plan> plans = new ArrayList<>();
-        if (gameState.queuedUnitPlanCount(unitType) > 0) {
+        if (queuedPlans > 0) {
             return plans;
         }
-        if (!canPlanAdvancedUnit(gameState, unitType)) {
+        if (!canPlanAdvancedUnit(unitType, techProgression, gatherers)) {
             return plans;
         }
-        plans.add(planUnit(gameState, unitType, UnitPlan.ADVANCED_UNIT_PRIORITY));
+        count.planUnit(unitType);
+        plans.add(new UnitPlan(unitType, UnitPlan.ADVANCED_UNIT_PRIORITY));
         return plans;
     }
 
