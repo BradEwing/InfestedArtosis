@@ -84,8 +84,22 @@ public class ResourceCount {
         return self.minerals();
     }
 
-    private boolean cannotAfford(int mineralPrice, int gasPrice) { 
-        return availableMinerals() < mineralPrice || availableGas() < gasPrice; 
+    private boolean cannotAfford(int mineralPrice, int gasPrice) {
+        return isShort(availableMinerals(), mineralPrice) || isShort(availableGas(), gasPrice);
+    }
+
+    /**
+     * True when a resource the plan prices is not covered by the unreserved bank.
+     *
+     * <p>An unreserved bank goes negative once reservations outrun it. A plan that does not price
+     * the resource is never short of it, so a gas-free unit stays affordable under a gas debt.
+     *
+     * @param available the unreserved bank, negative while reservations outrun it
+     * @param price the plan's price in that resource
+     * @return true when the plan prices the resource and the bank does not cover it
+     */
+    static boolean isShort(int available, int price) {
+        return price > 0 && available < price;
     }
 
     public boolean cannotAffordUnit(UnitType unit) {

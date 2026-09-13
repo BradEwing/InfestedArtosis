@@ -69,6 +69,75 @@ class ResourceCountTest {
         assertFalse(ResourceCount.mineralsOutpaceGas(0, 500));
     }
 
+    private ResourceCount resourceCount(int mineralBank, int gasBank) {
+        return new ResourceCount(null) {
+            @Override
+            public int availableMinerals() {
+                return mineralBank - getReservedMinerals();
+            }
+
+            @Override
+            public int availableGas() {
+                return gasBank - getReservedGas();
+            }
+        };
+    }
+
+    @Test
+    void aGasDebtDoesNotMakeAGasFreeUnitUnaffordable() {
+        ResourceCount resourceCount = resourceCount(
+                UnitType.Zerg_Lair.mineralPrice() + UnitType.Zerg_Zergling.mineralPrice(),
+                UnitType.Zerg_Lair.gasPrice() - 60);
+        resourceCount.reserveUnit(UnitType.Zerg_Lair);
+
+        assertTrue(resourceCount.availableGas() < 0);
+        assertFalse(resourceCount.cannotAffordUnit(UnitType.Zerg_Zergling));
+    }
+
+    @Test
+    void aGasPricedUnitIsUnaffordableWithoutTheGas() {
+        UnitType mutalisk = UnitType.Zerg_Mutalisk;
+        ResourceCount resourceCount = resourceCount(mutalisk.mineralPrice(), mutalisk.gasPrice() - 1);
+
+        assertTrue(resourceCount.cannotAffordUnit(mutalisk));
+    }
+
+    @Test
+    void aGasPricedUnitIsUnaffordableUnderAGasDebt() {
+        ResourceCount resourceCount = resourceCount(
+                UnitType.Zerg_Lair.mineralPrice() + UnitType.Zerg_Mutalisk.mineralPrice(),
+                0);
+        resourceCount.reserveUnit(UnitType.Zerg_Lair);
+
+        assertTrue(resourceCount.cannotAffordUnit(UnitType.Zerg_Mutalisk));
+    }
+
+    @Test
+    void aUnitIsUnaffordableWithoutTheMineralsWhateverTheGas() {
+        UnitType zergling = UnitType.Zerg_Zergling;
+        UnitType mutalisk = UnitType.Zerg_Mutalisk;
+
+        assertTrue(resourceCount(zergling.mineralPrice() - 1, 1000).cannotAffordUnit(zergling));
+        assertTrue(resourceCount(mutalisk.mineralPrice() - 1, 1000).cannotAffordUnit(mutalisk));
+        assertTrue(resourceCount(zergling.mineralPrice() - 1, -100).cannotAffordUnit(zergling));
+    }
+
+    @Test
+    void aUnitThatCoversBothPricesIsAffordable() {
+        UnitType mutalisk = UnitType.Zerg_Mutalisk;
+
+        assertFalse(resourceCount(mutalisk.mineralPrice(), mutalisk.gasPrice()).cannotAffordUnit(mutalisk));
+    }
+
+    @Test
+    void aResourceThePlanDoesNotPriceIsNeverShort() {
+        assertFalse(ResourceCount.isShort(-76, 0));
+        assertFalse(ResourceCount.isShort(0, 0));
+        assertTrue(ResourceCount.isShort(-76, 1));
+        assertTrue(ResourceCount.isShort(99, 100));
+        assertFalse(ResourceCount.isShort(100, 100));
+    }
+
     @Test
     void unreservingAMorphFromAnExistingUnitDoesNotFreeALarva() {
         ResourceCount resourceCount = resourceCount();
