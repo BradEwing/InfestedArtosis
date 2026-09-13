@@ -171,10 +171,11 @@ class OneHatchSpireTest {
 
     /**
      * The same 638 minerals and 530 gas with a Mutalisk pair and an upgrade already claiming most
-     * of it. The banks are read after reservations, so a committed bank is not a float.
+     * of it. The banks are read after reservations, which a plan takes when it is scheduled, so a
+     * committed bank is not a float.
      */
     @Test
-    void doesNotRequestAHatcheryWhileTheBankIsReservedByQueuedPlans() {
+    void doesNotRequestAHatcheryWhileTheBankIsReservedByScheduledPlans() {
         int reservedMinerals = 2 * UnitType.Zerg_Mutalisk.mineralPrice() + 150;
         int reservedGas = 2 * UnitType.Zerg_Mutalisk.gasPrice() + 150;
 

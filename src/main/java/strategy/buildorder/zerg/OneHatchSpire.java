@@ -193,7 +193,7 @@ public class OneHatchSpire extends ZergBase {
      * Whether the build should add a macro hatchery.
      *
      * <p>The build is larva limited once its Spire is up, so the signal is the one a larva limit
-     * produces: fewer living larva than hatcheries to make them, while both unreserved banks sit
+     * produces: fewer free larva than hatcheries to make them, while both unreserved banks sit
      * above what the next purchases need. Minerals alone cannot see this state, because a Mutalisk
      * build that cannot find larva floats gas as well, and a bar scaled to hatchery count waits
      * for a mineral pile the build never reaches.
@@ -203,7 +203,7 @@ public class OneHatchSpire extends ZergBase {
      * for the Spire it has not placed.
      *
      * @param committedSpires Spires standing, under construction, or claimed by a plan in flight
-     * @param larva living larva
+     * @param larva larva not yet handed to a plan, from {@link GameState#numLarva()}
      * @param hatcheries completed larva-producing hatcheries
      * @param availableMinerals minerals mined and not reserved by a queued plan
      * @param availableGas gas mined and not reserved by a queued plan
