@@ -56,10 +56,13 @@ public class ThreeHatchLurker extends TerranBase {
 
         boolean wantLurkerAspect = wantLurkerAspect(gameState);
         int livingLurkerCount = gameState.ourLivingUnitCount(UnitType.Zerg_Lurker);
+        int livingHydraCount = gameState.ourLivingUnitCount(UnitType.Zerg_Hydralisk);
+        int livingZerglingCount = gameState.ourLivingUnitCount(UnitType.Zerg_Zergling);
         boolean wantMetabolicBoost = techProgression.canPlanMetabolicBoost() && lairCount > 0
-                && shouldPlanMetabolicBoost(zerglingCount, livingLurkerCount);
-        boolean wantMuscularAugments = techProgression.canPlanMuscularAugments() && hydraCount > 3 && livingLurkerCount >= 2;
-        boolean wantGroovedSpines = techProgression.canPlanGroovedSpines() && hydraCount > 6;
+                && shouldPlanMetabolicBoost(livingZerglingCount, livingLurkerCount);
+        boolean wantMuscularAugments = techProgression.canPlanMuscularAugments()
+                && shouldPlanMuscularAugments(livingHydraCount, livingLurkerCount);
+        boolean wantGroovedSpines = techProgression.canPlanGroovedSpines() && shouldPlanGroovedSpines(livingHydraCount);
         boolean wantRangedUpgrades = techProgression.canPlanRangedUpgrades();
         boolean wantCarapaceUpgrade = techProgression.canPlanCarapaceUpgrades();
         boolean wantOverlordSpeed = needOverlordSpeed(gameState) && techProgression.canPlanOverlordSpeed();
@@ -242,14 +245,41 @@ public class ThreeHatchLurker extends TerranBase {
     }
 
     /**
-     * Metabolic Boost waits until the lurkers it complements are fielded, not merely queued.
+     * Metabolic Boost waits until the zerglings it upgrades and the lurkers it complements are
+     * fielded, not merely queued. A queued Zergling plan adds two to the planned count, so a gate
+     * read off planned units clears on eggs and plans with no army to upgrade.
      *
-     * @param zerglingCount zerglings the build has committed to
+     * @param livingZerglingCount zerglings already on the field
      * @param livingLurkerCount lurkers already on the field
      * @return whether the upgrade may be planned
      */
-    static boolean shouldPlanMetabolicBoost(int zerglingCount, int livingLurkerCount) {
-        return zerglingCount >= 12 && livingLurkerCount > 2;
+    static boolean shouldPlanMetabolicBoost(int livingZerglingCount, int livingLurkerCount) {
+        return livingZerglingCount >= 12 && livingLurkerCount > 2;
+    }
+
+    /**
+     * Muscular Augments waits until the hydralisks it upgrades and the lurkers they support are
+     * fielded. A planned Hydralisk has not been given larva or gas yet, and the upgrade waits on
+     * neither larva nor a morph, so counting plans starts it against the bank those Hydralisks
+     * still need.
+     *
+     * @param livingHydraCount hydralisks already on the field
+     * @param livingLurkerCount lurkers already on the field
+     * @return whether the upgrade may be planned
+     */
+    static boolean shouldPlanMuscularAugments(int livingHydraCount, int livingLurkerCount) {
+        return livingHydraCount > 3 && livingLurkerCount >= 2;
+    }
+
+    /**
+     * Grooved Spines waits until the hydralisks it upgrades are fielded, for the same reason as
+     * {@link #shouldPlanMuscularAugments}.
+     *
+     * @param livingHydraCount hydralisks already on the field
+     * @return whether the upgrade may be planned
+     */
+    static boolean shouldPlanGroovedSpines(int livingHydraCount) {
+        return livingHydraCount > 6;
     }
 
     private boolean wantHydraliskDen(GameState gameState) {
