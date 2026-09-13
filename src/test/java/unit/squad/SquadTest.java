@@ -5,6 +5,8 @@ import org.junit.jupiter.api.Test;
 import java.util.Arrays;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SquadTest {
 
@@ -112,5 +114,101 @@ class SquadTest {
         SquadManager.updateFightLock(squad, CombatSimulator.CombatResult.ADVANCE, false, 200);
 
         assertEquals(100, squad.getFightLockedUntilFrame());
+    }
+
+    private static Squad lockedFightSquad(int supply, int armedFrame) {
+        Squad squad = squad(SquadStatus.FIGHT);
+        squad.setCachedSupply(supply);
+        SquadManager.updateFightLock(squad, CombatSimulator.CombatResult.ENGAGE, false, armedFrame);
+        return squad;
+    }
+
+    private static int window(Squad squad) {
+        return squad.getFightHysteresis().getFrames();
+    }
+
+    @Test
+    void engageRenewsTheLockOfASquadAtFullStrength() {
+        Squad squad = lockedFightSquad(12, 4582);
+        int expiry = squad.getFightLockedUntilFrame();
+
+        SquadManager.updateFightLock(squad, CombatSimulator.CombatResult.ENGAGE, false, expiry);
+
+        assertEquals(expiry + window(squad), squad.getFightLockedUntilFrame());
+        assertTrue(squad.isFightLocked(expiry + 2));
+    }
+
+    /**
+     * L9NW30UL: the lock armed at frame 4582 with six Zerglings was renewed at its expiry on frame 4654
+     * after one had died, and so held the frame 4656 RETREAT.
+     */
+    @Test
+    void engageDoesNotRenewTheLockOfASquadThatLostSupply() {
+        Squad squad = lockedFightSquad(12, 4582);
+        int expiry = squad.getFightLockedUntilFrame();
+        squad.setCachedSupply(10);
+
+        SquadManager.updateFightLock(squad, CombatSimulator.CombatResult.ENGAGE, false, expiry);
+
+        assertEquals(expiry, squad.getFightLockedUntilFrame());
+        assertFalse(squad.isFightLocked(expiry + 2));
+        assertFalse(SquadManager.fightLockHolds(squad.isFightLocked(expiry + 2),
+                CombatSimulator.CombatResult.RETREAT, true, 1.3312, 1.4));
+    }
+
+    @Test
+    void lockDoesNotExtendWhileTheSquadKeepsLosingUnits() {
+        Squad squad = lockedFightSquad(12, 1000);
+        int expiry = squad.getFightLockedUntilFrame();
+
+        int supply = 12;
+        for (int frame = 1001; frame < expiry + window(squad); frame++) {
+            if (frame % 20 == 0 && supply > 2) {
+                supply -= 2;
+                squad.setCachedSupply(supply);
+            }
+            if (!squad.isFightLocked(frame)) {
+                SquadManager.updateFightLock(squad, CombatSimulator.CombatResult.ENGAGE, false, frame);
+            }
+        }
+
+        assertEquals(expiry, squad.getFightLockedUntilFrame());
+    }
+
+    @Test
+    void reinforcementRaisesTheCommittedSupplySoLaterLossesStillBlockRenewal() {
+        Squad squad = lockedFightSquad(12, 1000);
+        int expiry = squad.getFightLockedUntilFrame();
+        squad.setCachedSupply(16);
+        SquadManager.updateFightLock(squad, CombatSimulator.CombatResult.ENGAGE, false, expiry);
+        int renewedExpiry = squad.getFightLockedUntilFrame();
+        squad.setCachedSupply(14);
+
+        SquadManager.updateFightLock(squad, CombatSimulator.CombatResult.ENGAGE, false, renewedExpiry);
+
+        assertEquals(renewedExpiry, squad.getFightLockedUntilFrame());
+    }
+
+    @Test
+    void freshLockIsAllowedAfterAFullWindowWithoutOne() {
+        Squad squad = lockedFightSquad(12, 1000);
+        int expiry = squad.getFightLockedUntilFrame();
+        squad.setCachedSupply(6);
+        int fresh = expiry + window(squad);
+
+        SquadManager.updateFightLock(squad, CombatSimulator.CombatResult.ENGAGE, false, fresh);
+
+        assertEquals(fresh + window(squad), squad.getFightLockedUntilFrame());
+        assertEquals(6, squad.getFightLockSupply());
+    }
+
+    @Test
+    void retreatLockStillBlocksTheFightLock() {
+        Squad squad = squad(SquadStatus.FIGHT);
+        squad.setCachedSupply(12);
+
+        SquadManager.updateFightLock(squad, CombatSimulator.CombatResult.ENGAGE, true, 1000);
+
+        assertEquals(0, squad.getFightLockedUntilFrame());
     }
 }

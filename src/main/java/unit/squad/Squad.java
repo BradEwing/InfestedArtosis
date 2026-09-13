@@ -51,6 +51,7 @@ public class Squad implements Comparable<Squad> {
     private double max_dy = 0;
 
     protected int fightLockedUntilFrame = 0;
+    protected int fightLockSupply = 0;
     protected int retreatLockedUntilFrame = 0;
     protected int containLockedUntilFrame = 0;
     @Getter
@@ -298,8 +299,36 @@ public class Squad implements Comparable<Squad> {
         return currentFrame < retreatLockedUntilFrame;
     }
 
+    /**
+     * Arms or renews the fight lock.
+     *
+     * <p>A lock armed within one hysteresis window of the previous lock's expiry continues that lock, and the
+     * peak supply seen across the continuing locks is kept as the strength the squad committed with. A lock
+     * armed after a longer gap starts over from the squad's current supply.
+     *
+     * @param currentFrame frame the lock is armed on
+     */
     public void startFightLock(int currentFrame) {
+        fightLockSupply = continuesFightLock(currentFrame) ? Math.max(fightLockSupply, cachedSupply) : cachedSupply;
         fightLockedUntilFrame = currentFrame + fightHysteresis.getFrames();
+    }
+
+    /**
+     * Whether arming the fight lock on this frame is allowed.
+     *
+     * <p>A lock that would continue the previous one is refused once the squad has fallen below the supply it
+     * committed with, so the lock cannot keep renewing itself while the squad loses units. After a full
+     * hysteresis window without a lock, a fresh lock is allowed at whatever supply remains.
+     *
+     * @param currentFrame frame the lock would be armed on
+     * @return true if the fight lock may be armed or renewed
+     */
+    public boolean canRenewFightLock(int currentFrame) {
+        return !continuesFightLock(currentFrame) || cachedSupply >= fightLockSupply;
+    }
+
+    private boolean continuesFightLock(int currentFrame) {
+        return fightLockedUntilFrame > 0 && currentFrame < fightLockedUntilFrame + fightHysteresis.getFrames();
     }
 
     public void startRetreatLock(int currentFrame) {

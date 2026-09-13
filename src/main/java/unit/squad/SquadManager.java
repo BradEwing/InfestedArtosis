@@ -883,7 +883,7 @@ public class SquadManager {
         boolean enemyMeasured = snapshot == null || snapshot.isEnemyMeasured();
         boolean threatBeyondRadius = snapshot != null && snapshot.isThreatBeyondRadius();
         double ratio = snapshot != null ? snapshot.getOverallRatio() : 0;
-        double retreatThreshold = snapshot != null ? snapshot.getRetreatThreshold() : 0;
+        double engageThreshold = snapshot != null ? snapshot.getEngageThreshold() : 0;
 
         if (squad.getStatus() == SquadStatus.RETREAT && retreatLocked) {
             SquadDecisions.lockSuppressed(squad, SquadLock.RETREAT);
@@ -891,7 +891,7 @@ public class SquadManager {
             return;
         }
         if (squad.getStatus() == SquadStatus.FIGHT
-                && fightLockHolds(fightLocked, result, enemyMeasured, ratio, retreatThreshold)) {
+                && fightLockHolds(fightLocked, result, enemyMeasured, ratio, engageThreshold)) {
             SquadDecisions.lockSuppressed(squad, SquadLock.FIGHT);
             assignFightTargets(squad, managedFighters, false);
             return;
@@ -928,9 +928,21 @@ public class SquadManager {
         }
     }
 
+    /**
+     * Arms or renews the fight lock on an ENGAGE verdict.
+     *
+     * <p>A retreat lock blocks the fight lock, and so does a squad that has lost supply since the
+     * lock it would be renewing was armed (see {@link Squad#canRenewFightLock}).
+     *
+     * @param squad squad whose verdict this is
+     * @param result this frame's combat sim verdict
+     * @param retreatLocked whether the squad's retreat lock is currently active
+     * @param currentFrame current frame
+     */
     static void updateFightLock(Squad squad, CombatSimulator.CombatResult result,
                                 boolean retreatLocked, int currentFrame) {
-        if (result == CombatSimulator.CombatResult.ENGAGE && !retreatLocked) {
+        if (result == CombatSimulator.CombatResult.ENGAGE && !retreatLocked
+                && squad.canRenewFightLock(currentFrame)) {
             squad.startFightLock(currentFrame);
         }
     }
@@ -938,23 +950,24 @@ public class SquadManager {
     /**
      * Whether an active fight lock still holds against this frame's verdict.
      *
-     * <p>Every RETREAT is measured by construction: the combat sim answers an unmeasured enemy
-     * with ADVANCE, never RETREAT. So the lock only breaks for a RETREAT that was measured against
-     * a real enemy and still fell below the matchup's retreat threshold; an in-band RETREAT (below
-     * the engage threshold but at or above the retreat threshold) stays suppressed.
+     * <p>The lock holds a squad in FIGHT against ENGAGE and ADVANCE verdicts, and breaks for a
+     * RETREAT that was measured against a real enemy below the engage threshold the sim judged it
+     * by. Every RETREAT from the Horizon sim is measured and below that threshold by construction,
+     * so the lock never discards one. A simulator that leaves no snapshot reports a ratio and a
+     * threshold of 0, which holds.
      *
      * @param fightLocked whether the squad's fight lock is currently active
      * @param result this frame's combat sim verdict
      * @param enemyMeasured whether the sim measured a real enemy this frame
      * @param ratio the sim's overall strength ratio this frame
-     * @param retreatThreshold the matchup's retreat threshold
+     * @param engageThreshold the engage threshold the sim judged this frame's ratio against
      * @return true if the lock should still suppress this frame's verdict
      */
     static boolean fightLockHolds(boolean fightLocked, CombatSimulator.CombatResult result,
-                                  boolean enemyMeasured, double ratio, double retreatThreshold) {
+                                  boolean enemyMeasured, double ratio, double engageThreshold) {
         if (!fightLocked) return false;
         if (result != CombatSimulator.CombatResult.RETREAT) return true;
-        return !enemyMeasured || ratio >= retreatThreshold;
+        return !enemyMeasured || ratio >= engageThreshold;
     }
 
     /**
