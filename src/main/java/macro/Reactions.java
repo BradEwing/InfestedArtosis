@@ -556,6 +556,9 @@ public class Reactions {
     private boolean isUnderOneBaseFloor() {
         return SunkenTargets.oneBaseSunkens(gameState.getStrategyTracker().isDetectedStrategy(SunkenTargets.ONE_BASE_STRATEGY),
                 gameState.getBaseData().getEnemyBases().size(),
+                SunkenTargets.hasGroundLead(gameState.getOpponentRace(),
+                        gameState.ourLivingUnitCount(UnitType.Zerg_Zergling),
+                        gameState.enemyUnitCount(UnitType.Zerg_Zergling)),
                 gameState.getGameTime()) > 0;
     }
 

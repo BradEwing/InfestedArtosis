@@ -194,6 +194,9 @@ public abstract class BuildOrder {
         return SunkenTargets.sunkenTarget(matchupSunkens(gameState),
                 gameState.getStrategyTracker().isDetectedStrategy(SunkenTargets.ONE_BASE_STRATEGY),
                 gameState.getBaseData().getEnemyBases().size(),
+                SunkenTargets.hasGroundLead(gameState.getOpponentRace(),
+                        gameState.ourLivingUnitCount(UnitType.Zerg_Zergling),
+                        gameState.enemyUnitCount(UnitType.Zerg_Zergling)),
                 gameState.enemyUnitCount(UnitType.Terran_Barracks),
                 gameState.getGameTime());
     }

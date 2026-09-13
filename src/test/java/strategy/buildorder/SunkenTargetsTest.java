@@ -1,5 +1,6 @@
 package strategy.buildorder;
 
+import bwapi.Race;
 import org.junit.jupiter.api.Test;
 import util.Time;
 
@@ -44,6 +45,14 @@ class SunkenTargetsTest {
 
     private static final int NO_ENEMY_BASE_SEEN = 0;
 
+    private static final boolean GROUND_LEAD = true;
+
+    private static final boolean NO_GROUND_LEAD = false;
+
+    private static final int EVIDENCE_OUR_ZERGLINGS = 20;
+
+    private static final int EVIDENCE_ENEMY_ZERGLINGS = 7;
+
     @Test
     void readsASingleEarlyRaxAsNoPressure() {
         assertFalse(SunkenTargets.isBarracksPressure(0));
@@ -69,42 +78,46 @@ class SunkenTargetsTest {
 
     @Test
     void asksForNothingOffAnEnemyThatHasExpanded() {
-        assertEquals(0, SunkenTargets.oneBaseSunkens(EXPANDED, ENEMY_STILL_ON_ONE_BASE, AFTER_ONE_BASE_RESPONSE));
-        assertEquals(0, SunkenTargets.oneBaseSunkens(EXPANDED, ENEMY_STILL_ON_ONE_BASE, LATE));
+        assertEquals(0, SunkenTargets.oneBaseSunkens(EXPANDED, ENEMY_STILL_ON_ONE_BASE, NO_GROUND_LEAD, AFTER_ONE_BASE_RESPONSE));
+        assertEquals(0, SunkenTargets.oneBaseSunkens(EXPANDED, ENEMY_STILL_ON_ONE_BASE, NO_GROUND_LEAD, LATE));
     }
 
     @Test
     void holdsTheOneBaseFloorBackUntilItsTimeGateOpens() {
-        assertEquals(0, SunkenTargets.oneBaseSunkens(ONE_BASE, ENEMY_STILL_ON_ONE_BASE, BEFORE_ONE_BASE_RESPONSE));
-        assertEquals(0, SunkenTargets.oneBaseSunkens(ONE_BASE, ENEMY_STILL_ON_ONE_BASE, ON_ONE_BASE_RESPONSE));
+        assertEquals(0, SunkenTargets.oneBaseSunkens(ONE_BASE, ENEMY_STILL_ON_ONE_BASE, NO_GROUND_LEAD, BEFORE_ONE_BASE_RESPONSE));
+        assertEquals(0, SunkenTargets.oneBaseSunkens(ONE_BASE, ENEMY_STILL_ON_ONE_BASE, NO_GROUND_LEAD, ON_ONE_BASE_RESPONSE));
     }
 
     @Test
     void asksForTwoSunkensOnceTheOneBaseGateOpens() {
-        assertEquals(SunkenTargets.ONE_BASE_SUNKENS, SunkenTargets.oneBaseSunkens(ONE_BASE, ENEMY_STILL_ON_ONE_BASE, AFTER_ONE_BASE_RESPONSE));
+        assertEquals(SunkenTargets.ONE_BASE_SUNKENS,
+                SunkenTargets.oneBaseSunkens(ONE_BASE, ENEMY_STILL_ON_ONE_BASE, NO_GROUND_LEAD, AFTER_ONE_BASE_RESPONSE));
     }
 
     @Test
     void keepsTheOneBaseFloorForTheRestOfTheGame() {
-        assertEquals(SunkenTargets.ONE_BASE_SUNKENS, SunkenTargets.oneBaseSunkens(ONE_BASE, ENEMY_STILL_ON_ONE_BASE, LATE));
+        assertEquals(SunkenTargets.ONE_BASE_SUNKENS, SunkenTargets.oneBaseSunkens(ONE_BASE, ENEMY_STILL_ON_ONE_BASE, NO_GROUND_LEAD, LATE));
     }
 
     @Test
     void leavesAMatchupTargetAloneWhenTheFloorIsNotOwed() {
-        assertEquals(MATCHUP_BELOW_FLOOR, SunkenTargets.sunkenTarget(MATCHUP_BELOW_FLOOR, EXPANDED, ENEMY_EXPANSION_SEEN, NO_BARRACKS, LATE));
-        assertEquals(0, SunkenTargets.sunkenTarget(0, ONE_BASE, ENEMY_STILL_ON_ONE_BASE, NO_BARRACKS, BEFORE_ONE_BASE_RESPONSE));
+        assertEquals(MATCHUP_BELOW_FLOOR,
+                SunkenTargets.sunkenTarget(MATCHUP_BELOW_FLOOR, EXPANDED, ENEMY_EXPANSION_SEEN, NO_GROUND_LEAD, NO_BARRACKS, LATE));
+        assertEquals(0, SunkenTargets.sunkenTarget(0, ONE_BASE, ENEMY_STILL_ON_ONE_BASE, NO_GROUND_LEAD, NO_BARRACKS, BEFORE_ONE_BASE_RESPONSE));
     }
 
     @Test
     void raisesAMatchupTargetThatSitsUnderTheOneBaseFloor() {
         assertEquals(SunkenTargets.ONE_BASE_SUNKENS,
-                SunkenTargets.sunkenTarget(MATCHUP_BELOW_FLOOR, ONE_BASE, ENEMY_STILL_ON_ONE_BASE, NO_BARRACKS, AFTER_ONE_BASE_RESPONSE));
+                SunkenTargets.sunkenTarget(MATCHUP_BELOW_FLOOR, ONE_BASE, ENEMY_STILL_ON_ONE_BASE,
+                        NO_GROUND_LEAD, NO_BARRACKS, AFTER_ONE_BASE_RESPONSE));
     }
 
     @Test
     void keepsTheHigherMatchupTargetWhenBothRulesFire() {
         assertEquals(MATCHUP_ABOVE_FLOOR,
-                SunkenTargets.sunkenTarget(MATCHUP_ABOVE_FLOOR, ONE_BASE, ENEMY_STILL_ON_ONE_BASE, NO_BARRACKS, AFTER_ONE_BASE_RESPONSE));
+                SunkenTargets.sunkenTarget(MATCHUP_ABOVE_FLOOR, ONE_BASE, ENEMY_STILL_ON_ONE_BASE,
+                        NO_GROUND_LEAD, NO_BARRACKS, AFTER_ONE_BASE_RESPONSE));
     }
 
     @Test
@@ -127,7 +140,7 @@ class SunkenTargetsTest {
 
     @Test
     void isInertAgainstAnOpponentWithNoBarracksAtAll() {
-        assertEquals(MATCHUP_SILENT, SunkenTargets.sunkenTarget(MATCHUP_SILENT, EXPANDED, ENEMY_EXPANSION_SEEN, NO_BARRACKS, LATE));
+        assertEquals(MATCHUP_SILENT, SunkenTargets.sunkenTarget(MATCHUP_SILENT, EXPANDED, ENEMY_EXPANSION_SEEN, NO_GROUND_LEAD, NO_BARRACKS, LATE));
     }
 
     /**
@@ -137,38 +150,113 @@ class SunkenTargetsTest {
     @Test
     void raisesASilentMatchupToTheBarracksFloor() {
         assertEquals(SunkenTargets.BARRACKS_PRESSURE_SUNKENS,
-                SunkenTargets.sunkenTarget(MATCHUP_SILENT, EXPANDED, ENEMY_EXPANSION_SEEN, THREE_RAX, BEFORE_ONE_BASE_RESPONSE));
+                SunkenTargets.sunkenTarget(MATCHUP_SILENT, EXPANDED, ENEMY_EXPANSION_SEEN, NO_GROUND_LEAD, THREE_RAX, BEFORE_ONE_BASE_RESPONSE));
     }
 
     @Test
     void keepsAMatchupTargetThatAlreadyOutbidsBothFloors() {
         assertEquals(MATCHUP_ABOVE_BARRACKS_FLOOR,
-                SunkenTargets.sunkenTarget(MATCHUP_ABOVE_BARRACKS_FLOOR, ONE_BASE, ENEMY_STILL_ON_ONE_BASE, THREE_RAX, AFTER_ONE_BASE_RESPONSE));
+                SunkenTargets.sunkenTarget(MATCHUP_ABOVE_BARRACKS_FLOOR, ONE_BASE, ENEMY_STILL_ON_ONE_BASE,
+                        NO_GROUND_LEAD, THREE_RAX, AFTER_ONE_BASE_RESPONSE));
     }
 
     @Test
     void takesTheHigherOfTheTwoFloorsWhenBothApply() {
         assertEquals(SunkenTargets.BARRACKS_PRESSURE_SUNKENS,
-                SunkenTargets.sunkenTarget(MATCHUP_SILENT, ONE_BASE, ENEMY_STILL_ON_ONE_BASE, THREE_RAX, AFTER_ONE_BASE_RESPONSE));
+                SunkenTargets.sunkenTarget(MATCHUP_SILENT, ONE_BASE, ENEMY_STILL_ON_ONE_BASE, NO_GROUND_LEAD, THREE_RAX, AFTER_ONE_BASE_RESPONSE));
         assertEquals(SunkenTargets.ONE_BASE_SUNKENS,
-                SunkenTargets.sunkenTarget(MATCHUP_SILENT, ONE_BASE, ENEMY_STILL_ON_ONE_BASE, TWO_RAX, AFTER_ONE_BASE_RESPONSE));
+                SunkenTargets.sunkenTarget(MATCHUP_SILENT, ONE_BASE, ENEMY_STILL_ON_ONE_BASE, NO_GROUND_LEAD, TWO_RAX, AFTER_ONE_BASE_RESPONSE));
     }
 
     @Test
     void dropsTheOneBaseFloorOnceTheEnemyExpansionIsActuallySeen() {
-        assertEquals(0, SunkenTargets.oneBaseSunkens(ONE_BASE, ENEMY_EXPANSION_SEEN, AFTER_ONE_BASE_RESPONSE));
-        assertEquals(0, SunkenTargets.oneBaseSunkens(ONE_BASE, ENEMY_EXPANSION_SEEN, LATE));
+        assertEquals(0, SunkenTargets.oneBaseSunkens(ONE_BASE, ENEMY_EXPANSION_SEEN, NO_GROUND_LEAD, AFTER_ONE_BASE_RESPONSE));
+        assertEquals(0, SunkenTargets.oneBaseSunkens(ONE_BASE, ENEMY_EXPANSION_SEEN, NO_GROUND_LEAD, LATE));
     }
 
     @Test
     void keepsTheOneBaseFloorWhileNothingSeenContradictsTheDetection() {
         assertEquals(SunkenTargets.ONE_BASE_SUNKENS,
-                SunkenTargets.oneBaseSunkens(ONE_BASE, NO_ENEMY_BASE_SEEN, AFTER_ONE_BASE_RESPONSE));
+                SunkenTargets.oneBaseSunkens(ONE_BASE, NO_ENEMY_BASE_SEEN, NO_GROUND_LEAD, AFTER_ONE_BASE_RESPONSE));
     }
 
     @Test
     void leavesTheBarracksFloorStandingWhenTheEnemyExpansionRetractsTheOneBaseFloor() {
         assertEquals(SunkenTargets.BARRACKS_PRESSURE_SUNKENS,
-                SunkenTargets.sunkenTarget(MATCHUP_SILENT, ONE_BASE, ENEMY_EXPANSION_SEEN, THREE_RAX, LATE));
+                SunkenTargets.sunkenTarget(MATCHUP_SILENT, ONE_BASE, ENEMY_EXPANSION_SEEN, NO_GROUND_LEAD, THREE_RAX, LATE));
+    }
+
+    @Test
+    void dropsTheOneBaseFloorWhileOurGroundArmyLeads() {
+        assertEquals(0, SunkenTargets.oneBaseSunkens(ONE_BASE, ENEMY_STILL_ON_ONE_BASE, GROUND_LEAD, AFTER_ONE_BASE_RESPONSE));
+        assertEquals(0, SunkenTargets.oneBaseSunkens(ONE_BASE, NO_ENEMY_BASE_SEEN, GROUND_LEAD, LATE));
+        assertEquals(0,
+                SunkenTargets.sunkenTarget(MATCHUP_SILENT, ONE_BASE, ENEMY_STILL_ON_ONE_BASE, GROUND_LEAD, NO_BARRACKS, AFTER_ONE_BASE_RESPONSE));
+    }
+
+    @Test
+    void readsTheZvZEvidenceBalanceAsAGroundLeadThatDropsTheFloor() {
+        boolean lead = SunkenTargets.hasGroundLead(Race.Zerg, EVIDENCE_OUR_ZERGLINGS, EVIDENCE_ENEMY_ZERGLINGS);
+
+        assertTrue(lead);
+        assertEquals(0, SunkenTargets.oneBaseSunkens(ONE_BASE, ENEMY_STILL_ON_ONE_BASE, lead, AFTER_ONE_BASE_RESPONSE));
+    }
+
+    @Test
+    void firesTheOneBaseFloorAsBeforeWhileTheEnemyLeadsOnGround() {
+        boolean lead = SunkenTargets.hasGroundLead(Race.Zerg, EVIDENCE_ENEMY_ZERGLINGS, EVIDENCE_OUR_ZERGLINGS);
+
+        assertFalse(lead);
+        assertEquals(SunkenTargets.ONE_BASE_SUNKENS, SunkenTargets.oneBaseSunkens(ONE_BASE, ENEMY_STILL_ON_ONE_BASE, lead, AFTER_ONE_BASE_RESPONSE));
+    }
+
+    @Test
+    void firesTheOneBaseFloorWhenTheZerglingsAreLevelOrOurLeadIsUnderTheThreshold() {
+        assertFalse(SunkenTargets.hasGroundLead(Race.Zerg, 7, 7));
+        assertFalse(SunkenTargets.hasGroundLead(Race.Zerg, 7 + SunkenTargets.ZERGLING_LEAD - 1, 7));
+        assertTrue(SunkenTargets.hasGroundLead(Race.Zerg, 7 + SunkenTargets.ZERGLING_LEAD, 7));
+    }
+
+    @Test
+    void readsNoGroundLeadAgainstARaceWhoseArmyIsNotZerglings() {
+        assertFalse(SunkenTargets.hasGroundLead(Race.Protoss, EVIDENCE_OUR_ZERGLINGS, 0));
+        assertFalse(SunkenTargets.hasGroundLead(Race.Terran, EVIDENCE_OUR_ZERGLINGS, 0));
+        assertFalse(SunkenTargets.hasGroundLead(Race.Random, EVIDENCE_OUR_ZERGLINGS, 0));
+        assertFalse(SunkenTargets.hasGroundLead(Race.Unknown, EVIDENCE_OUR_ZERGLINGS, 0));
+    }
+
+    @Test
+    void leavesTheBarracksFloorStandingWhileOurGroundArmyLeads() {
+        assertEquals(SunkenTargets.BARRACKS_PRESSURE_SUNKENS,
+                SunkenTargets.sunkenTarget(MATCHUP_SILENT, ONE_BASE, ENEMY_STILL_ON_ONE_BASE, GROUND_LEAD, THREE_RAX, AFTER_ONE_BASE_RESPONSE));
+        assertEquals(SunkenTargets.BARRACKS_PRESSURE_SUNKENS,
+                SunkenTargets.sunkenTarget(MATCHUP_SILENT, EXPANDED, ENEMY_EXPANSION_SEEN, GROUND_LEAD, THREE_RAX, LATE));
+    }
+
+    @Test
+    void leavesTheMatchupTargetStandingWhileOurGroundArmyLeads() {
+        assertEquals(MATCHUP_BELOW_FLOOR,
+                SunkenTargets.sunkenTarget(MATCHUP_BELOW_FLOOR, ONE_BASE, ENEMY_STILL_ON_ONE_BASE,
+                        GROUND_LEAD, NO_BARRACKS, AFTER_ONE_BASE_RESPONSE));
+        assertEquals(MATCHUP_ABOVE_FLOOR,
+                SunkenTargets.sunkenTarget(MATCHUP_ABOVE_FLOOR, ONE_BASE, ENEMY_STILL_ON_ONE_BASE, GROUND_LEAD, NO_BARRACKS, LATE));
+    }
+
+    /**
+     * The Zerg matchup's "enemy up zerglings" term reads this comparison with the enemy as leader,
+     * and it must answer exactly as the inline enemyZerglings >= ourZerglings + 3 did.
+     */
+    @Test
+    void answersTheZergMatchupZerglingComparisonExactlyAsTheInlineRuleDid() {
+        for (int enemyZerglings = 0; enemyZerglings <= 40; enemyZerglings++) {
+            for (int ourZerglings = 0; ourZerglings <= 40; ourZerglings++) {
+                assertEquals(enemyZerglings >= ourZerglings + 3, SunkenTargets.isZerglingLead(enemyZerglings, ourZerglings));
+            }
+        }
+    }
+
+    @Test
+    void pinsTheZerglingLeadThreshold() {
+        assertEquals(3, SunkenTargets.ZERGLING_LEAD);
     }
 }
