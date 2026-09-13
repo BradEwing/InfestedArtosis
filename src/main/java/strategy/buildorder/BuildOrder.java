@@ -214,9 +214,25 @@ public abstract class BuildOrder {
         return 6;
     }
 
-    private int earlyRushSunkens(GameState gameState) {
-        int attackers = gameState.visibleEnemyMobileGroundCombatUnitsAtOurBases();
-        return attackers >= EARLY_RUSH_SECOND_SUNKEN_ATTACKERS ? 2 : 1;
+    /**
+     * The sunken floor an early rush sets, keyed on enemy ground combat units at our bases.
+     * <p>
+     * EarlyRush is inferred from what the scout saw of the opponent's build, often minutes before
+     * any of that army moves, so the detection alone commits nothing. The floor opens once an
+     * enemy ground combat unit is known at one of our bases. Last known positions are read for
+     * that, so a rush that has crossed into the fog near a base still counts. The second sunken
+     * still waits for enough attackers to be visible there now. Workers are not ground combat
+     * units, so a scouting worker opens nothing.
+     *
+     * @param knownAttackers living enemy ground combat units last known to be at our bases
+     * @param visibleAttackers enemy ground combat units visible at our bases now
+     * @return sunkens per base the rush asks for
+     */
+    static int earlyRushSunkens(int knownAttackers, int visibleAttackers) {
+        if (knownAttackers == 0 && visibleAttackers == 0) {
+            return 0;
+        }
+        return visibleAttackers >= EARLY_RUSH_SECOND_SUNKEN_ATTACKERS ? 2 : 1;
     }
 
     private int earlyRushZerglings(GameState gameState) {
@@ -280,7 +296,8 @@ public abstract class BuildOrder {
         int sunkenTarget = this.requiredSunkens(gameState);
         int priority = DEFAULT_COLONY_PRIORITY;
         if (earlyRushed) {
-            sunkenTarget = Math.max(sunkenTarget, earlyRushSunkens(gameState));
+            sunkenTarget = Math.max(sunkenTarget, earlyRushSunkens(gameState.knownEnemyMobileGroundCombatUnitsAtOurBases(),
+                    gameState.visibleEnemyMobileGroundCombatUnitsAtOurBases()));
             priority = EMERGENCY_DEFENSE_PRIORITY;
         }
         if (gameState.basesNeedingSunken(sunkenTarget).isEmpty()) {

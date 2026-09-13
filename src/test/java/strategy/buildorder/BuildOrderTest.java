@@ -19,6 +19,7 @@ import strategy.buildorder.opener.ThreeHatchBeforePool;
 import strategy.buildorder.opener.TwelvePool;
 import telemetry.PlanEventSink;
 import telemetry.PlanEvents;
+import util.Filter;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -38,6 +39,8 @@ class BuildOrderTest {
     private static final int EMERGENCY_ZERGLING_TARGET = 6;
 
     private static final int FRAMES = 30;
+
+    private static final int EARLY_RUSH_SECOND_SUNKEN_ATTACKERS = 4;
 
     private static final int EMERGENCY_PRIORITY = 0;
 
@@ -448,5 +451,47 @@ class BuildOrderTest {
     @Test
     void keepsTheUnknownRaceContinuationClosedWhileTheEmergencyOwnsProduction() {
         assertFalse(BuildOrder.unknownRaceMacroOpen(true, true, true, true));
+    }
+
+    private static int groundCombatUnits(UnitType... sighted) {
+        return (int) Arrays.stream(sighted).filter(Filter::isMobileGroundCombatUnit).count();
+    }
+
+    @Test
+    void forcesNoEarlyRushSunkenWithNoAttackerAtOurBases() {
+        assertEquals(0, BuildOrder.earlyRushSunkens(0, 0));
+    }
+
+    @Test
+    void asksForOneEarlyRushSunkenOnceAnAttackerIsAtOurBases() {
+        assertEquals(1, BuildOrder.earlyRushSunkens(1, 1));
+        assertEquals(1, BuildOrder.earlyRushSunkens(EARLY_RUSH_SECOND_SUNKEN_ATTACKERS - 1, EARLY_RUSH_SECOND_SUNKEN_ATTACKERS - 1));
+    }
+
+    @Test
+    void asksForTwoEarlyRushSunkensAtTheSecondSunkenThreshold() {
+        assertEquals(2, BuildOrder.earlyRushSunkens(EARLY_RUSH_SECOND_SUNKEN_ATTACKERS, EARLY_RUSH_SECOND_SUNKEN_ATTACKERS));
+        assertEquals(2, BuildOrder.earlyRushSunkens(EARLY_RUSH_SECOND_SUNKEN_ATTACKERS + 3, EARLY_RUSH_SECOND_SUNKEN_ATTACKERS + 3));
+    }
+
+    @Test
+    void keepsTheEarlyRushFloorForAnAttackerLastSeenAtOurBasesInTheFog() {
+        assertEquals(1, BuildOrder.earlyRushSunkens(1, 0));
+        assertEquals(1, BuildOrder.earlyRushSunkens(EARLY_RUSH_SECOND_SUNKEN_ATTACKERS, 0));
+    }
+
+    @Test
+    void doesNotCountAScoutingWorkerAsAnEarlyRushAttacker() {
+        int attackers = groundCombatUnits(UnitType.Protoss_Probe, UnitType.Terran_SCV, UnitType.Zerg_Drone);
+
+        assertEquals(0, attackers);
+        assertEquals(0, BuildOrder.earlyRushSunkens(attackers, attackers));
+    }
+
+    @Test
+    void countsTheZealotBehindTheScoutAsAnEarlyRushAttacker() {
+        int attackers = groundCombatUnits(UnitType.Protoss_Probe, UnitType.Protoss_Zealot);
+
+        assertEquals(1, BuildOrder.earlyRushSunkens(attackers, attackers));
     }
 }
