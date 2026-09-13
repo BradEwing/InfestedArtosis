@@ -88,6 +88,7 @@ class ProductionManagerTest {
 
         private final Map<Plan, PlanBlocker> blockers = new HashMap<>();
         private final Map<Plan, Boolean> bankClaimedAhead = new HashMap<>();
+        private final Map<Plan, Boolean> larvaClaimedAhead = new HashMap<>();
         private final List<Plan> examined = new ArrayList<>();
 
         private Recorder block(Plan plan, PlanBlocker blocker) {
@@ -96,9 +97,10 @@ class ProductionManagerTest {
         }
 
         @Override
-        public PlanBlocker schedule(Plan plan, boolean claimedAhead) {
+        public PlanBlocker schedule(Plan plan, boolean claimedAhead, boolean larvaClaimed) {
             examined.add(plan);
             bankClaimedAhead.put(plan, claimedAhead);
+            larvaClaimedAhead.put(plan, larvaClaimed);
             return blockers.getOrDefault(plan, PlanBlocker.NONE);
         }
     }
@@ -118,7 +120,7 @@ class ProductionManagerTest {
         }
 
         @Override
-        public PlanBlocker schedule(Plan plan, boolean bankClaimedAhead) {
+        public PlanBlocker schedule(Plan plan, boolean bankClaimedAhead, boolean larvaClaimedAhead) {
             UnitType building = plan.getPlannedUnit();
             PlanBlocker blocker = ProductionManager.buildAheadBlocker(
                     slot,
@@ -134,6 +136,56 @@ class ProductionManagerTest {
             minerals -= building.mineralPrice();
             return PlanBlocker.NONE;
         }
+    }
+
+    /**
+     * The unit path of the scheduler over a larva pool and a mineral bank, gated in the order
+     * scheduleUnitItem gates: larva, then supply, then the bank. A scheduled plan takes a larva and
+     * its cost.
+     */
+    private static final class Larva implements PlanScheduler {
+
+        private final BuildAheadSlot slot = new BuildAheadSlot();
+
+        private final boolean buildingHoldsBank;
+
+        private int larva;
+
+        private int minerals;
+
+        private int freeSupply;
+
+        private Larva(int larva, int minerals, int freeSupply, boolean buildingHoldsBank) {
+            this.larva = larva;
+            this.minerals = minerals;
+            this.freeSupply = freeSupply;
+            this.buildingHoldsBank = buildingHoldsBank;
+        }
+
+        @Override
+        public PlanBlocker schedule(Plan plan, boolean bankClaimedAhead, boolean larvaClaimedAhead) {
+            UnitType unit = plan.getPlannedUnit();
+            if (ProductionManager.isLarvaBlocked(unit, larva > 0, larvaClaimedAhead)) {
+                return PlanBlocker.NO_LARVA;
+            }
+            if (ProductionManager.isSupplyBlocked(unit, freeSupply)) {
+                return PlanBlocker.SUPPLY;
+            }
+            boolean cannotAfford = minerals < unit.mineralPrice();
+            PlanBlocker blocker = ProductionManager.unitAheadBlocker(
+                    slot, plan, FRAME, cannotAfford, bankClaimedAhead, buildingHoldsBank, FRAME + 100);
+            if (blocker != PlanBlocker.NONE) {
+                return blocker;
+            }
+            larva -= 1;
+            minerals -= unit.mineralPrice();
+            freeSupply -= unit.supplyRequired();
+            return PlanBlocker.NONE;
+        }
+    }
+
+    private Plan drone(int priority) {
+        return new UnitPlan(UnitType.Zerg_Drone, priority);
     }
 
     private final List<PlanBlocker> reportedBlockers = new ArrayList<>();
@@ -431,14 +483,14 @@ class ProductionManagerTest {
     }
 
     @Test
-    void anAffordablePlanBehindALarvaBlockedPlanIsScheduledTheSameScan() {
+    void anAffordableBuildingBehindALarvaBlockedPlanIsScheduledTheSameScan() {
         Plan drone = new UnitPlan(UnitType.Zerg_Drone, 1);
-        Plan ling = zergling();
+        Plan extractor = extractor();
         Recorder scheduler = new Recorder().block(drone, PlanBlocker.NO_LARVA);
 
-        ScanOutcome outcome = ProductionManager.scanPlans(Arrays.asList(drone, ling), scheduler);
+        ScanOutcome outcome = ProductionManager.scanPlans(Arrays.asList(drone, extractor), scheduler);
 
-        assertEquals(Collections.singletonList(ling), outcome.scheduled);
+        assertEquals(Collections.singletonList(extractor), outcome.scheduled);
         assertEquals(Collections.singletonList(drone), outcome.requeued);
     }
 
@@ -605,7 +657,7 @@ class ProductionManagerTest {
     void aHeldHeadOfQueueUnitKeepsLowerPriorityPlansOffTheBank() {
         int[] bank = {UnitType.Zerg_Mutalisk.mineralPrice() - 10};
         BuildAheadSlot slot = new BuildAheadSlot();
-        PlanScheduler scheduler = (plan, claimedAhead) -> {
+        PlanScheduler scheduler = (plan, claimedAhead, larvaClaimed) -> {
             UnitType unit = plan.getPlannedUnit();
             boolean cannotAfford = bank[0] < unit.mineralPrice();
             PlanBlocker blocker = ProductionManager.unitAheadBlocker(
@@ -727,21 +779,21 @@ class ProductionManagerTest {
 
     @Test
     void aMorphFromAnExistingUnitIsNotLarvaBlocked() {
-        assertFalse(ProductionManager.isLarvaBlocked(UnitType.Zerg_Lurker, false));
-        assertFalse(ProductionManager.isLarvaBlocked(UnitType.Zerg_Guardian, false));
-        assertFalse(ProductionManager.isLarvaBlocked(UnitType.Zerg_Devourer, false));
+        assertFalse(ProductionManager.isLarvaBlocked(UnitType.Zerg_Lurker, false, false));
+        assertFalse(ProductionManager.isLarvaBlocked(UnitType.Zerg_Guardian, false, false));
+        assertFalse(ProductionManager.isLarvaBlocked(UnitType.Zerg_Devourer, false, false));
     }
 
     @Test
     void aLarvaMorphIsBlockedWithoutFreeLarva() {
-        assertTrue(ProductionManager.isLarvaBlocked(UnitType.Zerg_Zergling, false));
-        assertTrue(ProductionManager.isLarvaBlocked(UnitType.Zerg_Hydralisk, false));
-        assertTrue(ProductionManager.isLarvaBlocked(UnitType.Zerg_Overlord, false));
+        assertTrue(ProductionManager.isLarvaBlocked(UnitType.Zerg_Zergling, false, false));
+        assertTrue(ProductionManager.isLarvaBlocked(UnitType.Zerg_Hydralisk, false, false));
+        assertTrue(ProductionManager.isLarvaBlocked(UnitType.Zerg_Overlord, false, false));
     }
 
     @Test
     void aLarvaMorphSchedulesWithFreeLarva() {
-        assertFalse(ProductionManager.isLarvaBlocked(UnitType.Zerg_Zergling, true));
+        assertFalse(ProductionManager.isLarvaBlocked(UnitType.Zerg_Zergling, true, false));
     }
 
     @Test
@@ -783,5 +835,123 @@ class ProductionManagerTest {
         ScanOutcome outcome = ProductionManager.scanPlans(Collections.singletonList(extractor), bank);
 
         assertEquals(Collections.singletonList(extractor), outcome.scheduled);
+    }
+
+    @Test
+    void aMutaliskWaitingOnABuildingsBankKeepsTheLarvaFromALaterDrone() {
+        Plan muta = mutalisk();
+        Plan drone = drone(7709);
+        Larva scheduler = new Larva(1, UnitType.Zerg_Drone.mineralPrice(), 20, true);
+
+        ScanOutcome outcome = ProductionManager.scanPlans(Arrays.asList(muta, drone), scheduler);
+
+        assertTrue(outcome.scheduled.isEmpty());
+        assertEquals(Arrays.asList(muta, drone), outcome.requeued);
+        assertEquals(1, scheduler.larva);
+    }
+
+    @Test
+    void aSupplyBlockedMutaliskKeepsTheLarvaFromALaterDrone() {
+        Plan muta = mutalisk();
+        Plan drone = drone(7709);
+        Larva scheduler = new Larva(1, 1000, UnitType.Zerg_Drone.supplyRequired(), false);
+
+        ScanOutcome outcome = ProductionManager.scanPlans(Arrays.asList(muta, drone), scheduler);
+
+        assertTrue(outcome.scheduled.isEmpty());
+        assertEquals(Arrays.asList(muta, drone), outcome.requeued);
+    }
+
+    @Test
+    void aLarvaBlockedPlanClaimsTheLarvaForEveryPlanBehindIt() {
+        Plan muta = mutalisk();
+        Plan drone = drone(7709);
+        Plan ling = zergling();
+        Recorder scheduler = new Recorder().block(muta, PlanBlocker.NO_LARVA);
+
+        ProductionManager.scanPlans(Arrays.asList(muta, drone, ling), scheduler);
+
+        assertFalse(scheduler.larvaClaimedAhead.get(muta));
+        assertTrue(scheduler.larvaClaimedAhead.get(drone));
+        assertTrue(scheduler.larvaClaimedAhead.get(ling));
+    }
+
+    @Test
+    void aClaimedLarvaStillLetsTheOverlordThroughAndBarsOtherMorphs() {
+        assertTrue(ProductionManager.isLarvaBlocked(UnitType.Zerg_Drone, true, true));
+        assertTrue(ProductionManager.isLarvaBlocked(UnitType.Zerg_Zergling, true, true));
+        assertFalse(ProductionManager.isLarvaBlocked(UnitType.Zerg_Overlord, true, true));
+        assertFalse(ProductionManager.isLarvaBlocked(UnitType.Zerg_Lurker, true, true));
+    }
+
+    @Test
+    void anOverlordBehindASupplyBlockedMutaliskIsStillScheduled() {
+        Plan muta = mutalisk();
+        Plan overlord = overlord(151);
+        Larva scheduler = new Larva(1, 1000, 0, false);
+
+        ScanOutcome outcome = ProductionManager.scanPlans(Arrays.asList(muta, overlord), scheduler);
+
+        assertEquals(Collections.singletonList(overlord), outcome.scheduled);
+    }
+
+    @Test
+    void withNoBlockedPlanAheadTheDroneTakesTheLarva() {
+        Plan drone = drone(7709);
+        Larva scheduler = new Larva(1, UnitType.Zerg_Drone.mineralPrice(), 20, true);
+
+        ScanOutcome outcome = ProductionManager.scanPlans(Collections.singletonList(drone), scheduler);
+
+        assertEquals(Collections.singletonList(drone), outcome.scheduled);
+        assertEquals(0, scheduler.larva);
+    }
+
+    @Test
+    void onlyAWaitThatClearsIntoALarvaMorphClaimsTheLarva() {
+        for (PlanBlocker blocker : PlanBlocker.values()) {
+            boolean expected = blocker == PlanBlocker.NO_LARVA
+                    || blocker == PlanBlocker.SUPPLY
+                    || blocker == PlanBlocker.BUILD_AHEAD_SLOT_TAKEN;
+            assertEquals(expected, ProductionManager.claimsLarva(mutalisk(), blocker), blocker.name());
+        }
+    }
+
+    @Test
+    void aPlanThatTakesNoLarvaNeverClaimsTheLarva() {
+        Plan lurker = new UnitPlan(UnitType.Zerg_Lurker, UnitPlan.ADVANCED_UNIT_PRIORITY);
+        for (PlanBlocker blocker : PlanBlocker.values()) {
+            assertFalse(ProductionManager.claimsLarva(hatchery(), blocker), blocker.name());
+            assertFalse(ProductionManager.claimsLarva(metabolicBoost(), blocker), blocker.name());
+            assertFalse(ProductionManager.claimsLarva(lurker, blocker), blocker.name());
+        }
+    }
+
+    @Test
+    void aNonClaimingBlockerLeavesTheLarvaOpenToThePlansBehindIt() {
+        for (PlanBlocker blocker : PlanBlocker.values()) {
+            if (blocker == PlanBlocker.NONE || ProductionManager.claimsLarva(mutalisk(), blocker)) {
+                continue;
+            }
+            Plan muta = mutalisk();
+            Plan drone = drone(7709);
+            Recorder scheduler = new Recorder().block(muta, blocker);
+
+            ProductionManager.scanPlans(Arrays.asList(muta, drone), scheduler);
+
+            assertFalse(scheduler.larvaClaimedAhead.get(drone), blocker.name());
+        }
+    }
+
+    @Test
+    void theLarvaClaimEndsOnceTheBlockedPlanIsCancelled() {
+        Plan muta = mutalisk();
+        Plan drone = drone(7709);
+        Larva scheduler = new Larva(1, UnitType.Zerg_Drone.mineralPrice(), 20, true);
+        ScanOutcome claimed = ProductionManager.scanPlans(Arrays.asList(muta, drone), scheduler);
+
+        ScanOutcome afterCancel = ProductionManager.scanPlans(Collections.singletonList(drone), scheduler);
+
+        assertTrue(claimed.scheduled.isEmpty());
+        assertEquals(Collections.singletonList(drone), afterCancel.scheduled);
     }
 }

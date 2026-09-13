@@ -794,12 +794,12 @@ public class ProductionManager {
         gameState.getProductionQueue().addAll(outcome.requeued);
     }
 
-    private PlanBlocker schedulePlan(Plan plan, boolean bankClaimedAhead) {
+    private PlanBlocker schedulePlan(Plan plan, boolean bankClaimedAhead, boolean larvaClaimedAhead) {
         switch (plan.getType()) {
             case BUILDING:
                 return scheduleBuildingItem(plan, bankClaimedAhead);
             case UNIT:
-                return scheduleUnitItem(plan, bankClaimedAhead);
+                return scheduleUnitItem(plan, bankClaimedAhead, larvaClaimedAhead);
             case UPGRADE:
                 return scheduleUpgradeItem(game.self(), plan);
             case TECH:
@@ -811,7 +811,7 @@ public class ProductionManager {
 
     @FunctionalInterface
     interface PlanScheduler {
-        PlanBlocker schedule(Plan plan, boolean bankClaimedAhead);
+        PlanBlocker schedule(Plan plan, boolean bankClaimedAhead, boolean larvaClaimedAhead);
     }
 
     static final class ScanOutcome {
@@ -825,8 +825,9 @@ public class ProductionManager {
     static ScanOutcome scanPlans(List<Plan> plansInPriorityOrder, PlanScheduler scheduler) {
         ScanOutcome outcome = new ScanOutcome();
         boolean bankClaimedAhead = false;
+        boolean larvaClaimedAhead = false;
         for (Plan plan : plansInPriorityOrder) {
-            PlanBlocker blocker = scheduler.schedule(plan, bankClaimedAhead);
+            PlanBlocker blocker = scheduler.schedule(plan, bankClaimedAhead, larvaClaimedAhead);
             if (blocker == PlanBlocker.NONE) {
                 outcome.scheduled.add(plan);
                 continue;
@@ -834,6 +835,7 @@ public class ProductionManager {
             PlanEvents.blocked(plan, blocker);
             outcome.requeued.add(plan);
             bankClaimedAhead = bankClaimedAhead || claimsBank(blocker);
+            larvaClaimedAhead = larvaClaimedAhead || claimsLarva(plan, blocker);
         }
         return outcome;
     }
@@ -855,6 +857,28 @@ public class ProductionManager {
 
     static boolean claimsBank(PlanBlocker blocker) {
         return blocker == PlanBlocker.RESOURCES;
+    }
+
+    /**
+     * True when a blocked larva morph claims the next free larva against every plan behind it.
+     *
+     * <p>A plan waiting on larva, on supply, or on a bank another plan is holding will take a larva
+     * as soon as that one wait clears. Letting a later plan spend the larva meanwhile hands the
+     * higher-priority plan a fresh larva wait on top of the one it had. A plan short of its own cost
+     * by more than a build cycle, with no income for it, or in eviction backoff is not about to use
+     * a larva, and holding one for it would only idle larva production.
+     *
+     * @param plan the blocked plan
+     * @param blocker the gate it failed this scan
+     * @return true when later larva morphs must leave the larva to this plan
+     */
+    static boolean claimsLarva(Plan plan, PlanBlocker blocker) {
+        if (plan.getType() != PlanType.UNIT || !isLarvaMorph(plan.getPlannedUnit())) {
+            return false;
+        }
+        return blocker == PlanBlocker.NO_LARVA
+                || blocker == PlanBlocker.SUPPLY
+                || blocker == PlanBlocker.BUILD_AHEAD_SLOT_TAKEN;
     }
 
     // TODO: Refactor this into WorkerManager or a Buildingmanager (TechManager)?
@@ -1193,11 +1217,11 @@ public class ProductionManager {
         return null;
     }
 
-    private PlanBlocker scheduleUnitItem(Plan plan, boolean bankClaimedAhead) {
+    private PlanBlocker scheduleUnitItem(Plan plan, boolean bankClaimedAhead, boolean larvaClaimedAhead) {
         UnitType unit = plan.getPlannedUnit();
         ResourceCount resourceCount = gameState.getResourceCount();
         boolean larvaAvailable = resourceCount.canScheduleLarva(gameState.numLarva(), gameState.larvaAssignedToPlans());
-        if (isLarvaBlocked(unit, larvaAvailable)) {
+        if (isLarvaBlocked(unit, larvaAvailable, larvaClaimedAhead)) {
             return PlanBlocker.NO_LARVA;
         }
 
@@ -1229,19 +1253,30 @@ public class ProductionManager {
     }
 
     /**
-     * True when a larva morph cannot start for lack of free larva.
+     * True when a larva morph cannot start for lack of free larva, or because a blocked plan ahead
+     * of it in the scan has claimed the larva.
      *
      * Units that morph from an existing unit consume no larva, so only larva morphs are gated.
+     * Overlords are exempt from the claim, so a plan waiting on supply cannot hold back the Overlord
+     * that gives it supply.
      *
      * @param unit the planned unit
      * @param larvaAvailable whether unreserved larva is on hand
+     * @param larvaClaimedAhead whether a higher-priority larva morph blocked this scan claims the larva
      * @return true when the morph cannot be issued yet
      */
-    static boolean isLarvaBlocked(UnitType unit, boolean larvaAvailable) {
-        if (unit.whatBuilds().getKey() != UnitType.Zerg_Larva) {
+    static boolean isLarvaBlocked(UnitType unit, boolean larvaAvailable, boolean larvaClaimedAhead) {
+        if (!isLarvaMorph(unit)) {
             return false;
         }
-        return !larvaAvailable;
+        if (!larvaAvailable) {
+            return true;
+        }
+        return larvaClaimedAhead && unit != UnitType.Zerg_Overlord;
+    }
+
+    private static boolean isLarvaMorph(UnitType unit) {
+        return unit.whatBuilds().getKey() == UnitType.Zerg_Larva;
     }
 
     /**
