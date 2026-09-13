@@ -15,6 +15,7 @@ public enum PlanBlocker {
     NO_PRODUCER,
     INSUFFICIENT_GATHERERS,
     TECH_MISSING,
+    TECH_WAVE_RESERVE,
     UNSUPPORTED_PLAN_TYPE;
 
     /** The cancel reason a sweep records for a plan this blocker holds. */

@@ -10,6 +10,7 @@ import bwapi.UnitType;
 import bwapi.UpgradeType;
 import bwem.Base;
 import info.GameState;
+import info.Readiness;
 import info.ResourceCount;
 import info.TechProgression;
 import info.UnitTypeCount;
@@ -66,6 +67,9 @@ public class ProductionManager {
 
     private final BuildAheadSlot unitAheadSlot = new BuildAheadSlot();
 
+    /** The tech wave production is pre-positioning for this frame, or null. */
+    private TechWave techWave;
+
     private int currentFrame = 5;
 
     /** Plans the current schedule pass pulled out of the queue; they still hold their colony claims. */
@@ -105,6 +109,7 @@ public class ProductionManager {
 
         transition();
         reactions.onFrame();
+        updateTechWave();
         plan();
         cancelImpossiblePlans();
         cancelDelayedLairPlans();
@@ -121,6 +126,63 @@ public class ProductionManager {
         if (gameState.isTransitionBuildOrder()) {
             this.activeBuildOrder = gameState.getActiveBuildOrder();
         }
+    }
+
+    /** Re-derives the pending tech wave from the structures under construction this frame. */
+    private void updateTechWave() {
+        techWave = null;
+        Unit prerequisite = null;
+        for (Unit unit : gameState.getSelf().getUnits()) {
+            if (!unit.isCompleted() && TechWave.waveUnit(unit.getType()) != null) {
+                prerequisite = unit;
+                break;
+            }
+        }
+        if (prerequisite == null) {
+            return;
+        }
+
+        UnitType prerequisiteType = prerequisite.getType();
+        boolean rushReactionActive = gameState.isEarlyRushed()
+                || gameState.isCannonRushed()
+                || gameState.isScvRushed()
+                || gameState.isLarvaDeadlocked();
+        boolean groundSafe = TechWave.isGroundSafe(
+                gameState.ourLivingUnitCount(UnitType.Zerg_Zergling),
+                gameState.enemyUnitCount(UnitType.Zerg_Zergling),
+                gameState.visibleEnemyMobileGroundCombatUnitsAtOurBases());
+        techWave = TechWave.pending(
+                prerequisiteType,
+                prerequisite.getRemainingBuildTime(),
+                gameState.structureCount(Readiness.USABLE, prerequisiteType) > 0,
+                rushReactionActive,
+                groundSafe);
+    }
+
+    private PlanBlocker techWaveBlocker(Plan plan) {
+        if (techWave == null) {
+            return PlanBlocker.NONE;
+        }
+        ResourceCount resourceCount = gameState.getResourceCount();
+        return techWave.blocker(
+                plan,
+                resourceCount.freeLarva(gameState.numLarva(), gameState.larvaAssignedToPlans()),
+                resourceCount.availableMinerals(),
+                resourceCount.availableGas());
+    }
+
+    /** Queues the Overlord a pending tech wave needs so it hatches before the wave is issued. */
+    private void planTechWaveSupply(Player self) {
+        if (techWave == null) {
+            return;
+        }
+        int supplyInFlight = gameState.getUnitTypeCount().plannedCount(UnitType.Zerg_Overlord) * OVERLORD_SUPPLY;
+        if (!techWave.needsOverlord(self.supplyTotal() - self.supplyUsed(), supplyInFlight)) {
+            return;
+        }
+        addUnitToQueue(UnitType.Zerg_Overlord, UnitPlan.ADVANCED_UNIT_PRIORITY - 1);
+        ResourceCount resourceCount = gameState.getResourceCount();
+        resourceCount.setPlannedSupply(resourceCount.getPlannedSupply() + OVERLORD_SUPPLY);
     }
 
     private void cancelImpossiblePlans() {
@@ -490,6 +552,8 @@ public class ProductionManager {
         if (hasExcessSupply(self)) {
             return;
         }
+
+        planTechWaveSupply(self);
 
         final int overlordCount = gameState.ourLivingUnitCount(UnitType.Zerg_Overlord);
         final int plannedSupply = gameState.getResourceCount().getPlannedSupply();
@@ -1010,6 +1074,11 @@ public class ProductionManager {
             return producerBlocker;
         }
 
+        PlanBlocker waveBlocker = techWaveBlocker(plan);
+        if (waveBlocker != PlanBlocker.NONE) {
+            return waveBlocker;
+        }
+
         ResourceCount resourceCount = gameState.getResourceCount();
         int predictedReadyFrame = gameState.frameCanAffordUnit(building, currentFrame);
         PlanBlocker buildAheadBlocker = buildAheadBlocker(
@@ -1225,6 +1294,11 @@ public class ProductionManager {
             return PlanBlocker.NO_LARVA;
         }
 
+        PlanBlocker waveBlocker = techWaveBlocker(plan);
+        if (waveBlocker != PlanBlocker.NONE) {
+            return waveBlocker;
+        }
+
         Player self = gameState.getSelf();
         if (isSupplyBlocked(unit, self.supplyTotal() - self.supplyUsed())) {
             return PlanBlocker.SUPPLY;
@@ -1354,6 +1428,11 @@ public class ProductionManager {
         final UpgradeType upgrade = plan.getPlannedUpgrade();
         ResourceCount resourceCount = gameState.getResourceCount();
 
+        PlanBlocker waveBlocker = techWaveBlocker(plan);
+        if (waveBlocker != PlanBlocker.NONE) {
+            return waveBlocker;
+        }
+
         if (resourceCount.cannotAffordUpgrade(plan)) {
             return shortfallBlocker(gameState.frameCanAffordPlan(plan, currentFrame));
         }
@@ -1401,6 +1480,11 @@ public class ProductionManager {
     private PlanBlocker scheduleResearch(Plan plan) {
         final TechType techType = plan.getPlannedTechType();
         ResourceCount resourceCount = gameState.getResourceCount();
+
+        PlanBlocker waveBlocker = techWaveBlocker(plan);
+        if (waveBlocker != PlanBlocker.NONE) {
+            return waveBlocker;
+        }
 
         if (resourceCount.cannotAffordResearch(techType)) {
             return shortfallBlocker(gameState.frameCanAffordPlan(plan, currentFrame));

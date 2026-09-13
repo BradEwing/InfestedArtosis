@@ -39,7 +39,7 @@ import java.util.function.ToLongFunction;
 public abstract class BuildOrder {
     private static final int EARLY_RUSH_SECOND_SUNKEN_ATTACKERS = 4;
     private static final int EARLY_RUSH_MIN_ZERGLINGS = 6;
-    private static final int EMERGENCY_DEFENSE_PRIORITY = 1;
+    public static final int EMERGENCY_DEFENSE_PRIORITY = 1;
     protected static final int SPAWNING_POOL_PRIORITY = 2;
     private static final int DEFAULT_COLONY_PRIORITY = 5;
     private static final int UNKNOWN_RACE_BASE_TARGET = 2;
