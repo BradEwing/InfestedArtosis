@@ -600,6 +600,8 @@ public class ProductionManager {
     /**
      * Walks the scheduled plans and then the production queue, returning the priority at which an
      * overlord has to be inserted every time the running supply headroom falls under the buffer.
+     * Each unit plan is charged {@link SupplyCapacity#morphSupplyCost}, the same cost
+     * {@link #isSupplyBlocked} gates the morph on.
      *
      * <p>A scheduled overlord earns headroom because it holds a larva and will morph. A queued
      * overlord earns none: the production queue holds PLANNED plans only, every one of them is
@@ -622,7 +624,7 @@ public class ProductionManager {
             if (unitType == UnitType.Zerg_Overlord) {
                 availableSupply += OVERLORD_SUPPLY;
             } else {
-                availableSupply -= unitType.supplyRequired();
+                availableSupply -= SupplyCapacity.morphSupplyCost(unitType);
             }
         }
 
@@ -637,7 +639,7 @@ public class ProductionManager {
                 continue;
             }
 
-            availableSupply -= unitType.supplyRequired();
+            availableSupply -= SupplyCapacity.morphSupplyCost(unitType);
 
             while (availableSupply < SUPPLY_BUFFER
                     && supplyUsed + plannedSupply + OVERLORD_SUPPLY * insertPriorities.size() < MAX_SUPPLY) {
@@ -1371,8 +1373,7 @@ public class ProductionManager {
         if (unit.whatBuilds().getKey() != UnitType.Zerg_Larva) {
             return false;
         }
-        int supplyCost = unit.supplyRequired() * (unit.isTwoUnitsInOneEgg() ? 2 : 1);
-        return freeSupply < supplyCost;
+        return freeSupply < SupplyCapacity.morphSupplyCost(unit);
     }
 
     /**
