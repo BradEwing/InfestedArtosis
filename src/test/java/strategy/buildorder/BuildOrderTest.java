@@ -5,6 +5,7 @@ import info.ResourceCount;
 import info.TechProgression;
 import info.UnitTypeCount;
 import macro.AdvancedUnitEligibility;
+import macro.HatcheryCapacity;
 import macro.plan.BuildingPlan;
 import macro.plan.Plan;
 import macro.plan.PlanBlocker;
@@ -260,6 +261,64 @@ class BuildOrderTest {
         }
 
         assertEquals(1, chambers);
+    }
+
+    @Test
+    void theChamberIsPlannedBeforeASporeIsRequested() {
+        TechProgression techProgression = withPool();
+
+        assertEquals(BuildOrder.SporeStep.EVOLUTION_CHAMBER, BuildOrder.sporeStep(techProgression));
+
+        techProgression.setPlannedEvolutionChambers(1);
+        assertEquals(BuildOrder.SporeStep.WAIT, BuildOrder.sporeStep(techProgression));
+
+        techProgression.setPlannedEvolutionChambers(0);
+        techProgression.setEvolutionChambers(1);
+        assertEquals(BuildOrder.SporeStep.SPORE_COLONY, BuildOrder.sporeStep(techProgression));
+    }
+
+    @Test
+    void noSporeIsRequestedWhileTheChamberCannotBePlanned() {
+        TechProgression techProgression = new TechProgression();
+        for (int frame = 0; frame < FRAMES; frame++) {
+            assertEquals(BuildOrder.SporeStep.WAIT, BuildOrder.sporeStep(techProgression));
+        }
+    }
+
+    @Test
+    void noSporeIsRequestedWhileTheChamberIsOnlyPlanned() {
+        TechProgression techProgression = withPool();
+        List<BuildOrder.SporeStep> steps = new ArrayList<>();
+        for (int frame = 0; frame < FRAMES; frame++) {
+            BuildOrder.SporeStep step = BuildOrder.sporeStep(techProgression);
+            steps.add(step);
+            if (step == BuildOrder.SporeStep.EVOLUTION_CHAMBER) {
+                techProgression.setPlannedEvolutionChambers(techProgression.getPlannedEvolutionChambers() + 1);
+            }
+        }
+
+        assertEquals(BuildOrder.SporeStep.EVOLUTION_CHAMBER, steps.get(0));
+        assertFalse(steps.contains(BuildOrder.SporeStep.SPORE_COLONY));
+    }
+
+    /**
+     * Game L9NW30JG: two depots each. The strict hatchery parity rule 1HatchSpire used could not
+     * fire there; the base parity every transition build reads does.
+     */
+    @Test
+    void baseParityFiresWhenLevelOnDepots() {
+        assertTrue(BuildOrder.isBehindOnBases(2, 2));
+        assertFalse(HatcheryCapacity.isBehind(2, 2, false, false));
+    }
+
+    @Test
+    void baseParityFiresWhenTrailingOnDepots() {
+        assertTrue(BuildOrder.isBehindOnBases(1, 2));
+    }
+
+    @Test
+    void baseParityHoldsWhenAheadOnDepots() {
+        assertFalse(BuildOrder.isBehindOnBases(2, 1));
     }
 
     @Test

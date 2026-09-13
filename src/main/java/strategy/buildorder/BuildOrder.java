@@ -586,10 +586,11 @@ public abstract class BuildOrder {
         if (!eligibleBase.isPresent()) {
             return plans;
         }
-        if (!techProgression.canPlanSporeColony()) {
-            if (shouldPlanSporePrerequisite(techProgression)) {
-                plans.add(planEvolutionChamber(gameState));
-            }
+        SporeStep step = sporeStep(techProgression);
+        if (step == SporeStep.EVOLUTION_CHAMBER) {
+            plans.add(planEvolutionChamber(gameState));
+        }
+        if (step != SporeStep.SPORE_COLONY) {
             return plans;
         }
         TilePosition location = buildingPlanner.getLocationForSporeColony(eligibleBase.get());
@@ -605,6 +606,35 @@ public abstract class BuildOrder {
         plans.add(creepColonyPlan);
         plans.add(sporeColonyPlan);
         return plans;
+    }
+
+    /**
+     * What a base short of its Spore target gets this frame.
+     */
+    enum SporeStep {
+        EVOLUTION_CHAMBER,
+        SPORE_COLONY,
+        WAIT
+    }
+
+    /**
+     * The step towards a Spore Colony the bot's tech allows this frame.
+     *
+     * <p>The Creep and Spore pair is formed only once an Evolution Chamber stands. Until then the
+     * chamber is planned, or waited on while it is planned or while the Spawning Pool it needs is
+     * missing, and no Spore is requested.
+     *
+     * @param techProgression the bot's tech state
+     * @return the Spore pair, the chamber it needs, or nothing
+     */
+    static SporeStep sporeStep(TechProgression techProgression) {
+        if (techProgression.canPlanSporeColony()) {
+            return SporeStep.SPORE_COLONY;
+        }
+        if (shouldPlanSporePrerequisite(techProgression)) {
+            return SporeStep.EVOLUTION_CHAMBER;
+        }
+        return SporeStep.WAIT;
     }
 
     /**
@@ -864,9 +894,19 @@ public abstract class BuildOrder {
             return false;
         }
         
-        int ourBaseCount = baseData.currentAndReservedCount();
-        int enemyTotal = gameState.enemyResourceDepotCount();
-        return ourBaseCount <= enemyTotal;
+        return isBehindOnBases(baseData.currentAndReservedCount(), gameState.enemyResourceDepotCount());
+    }
+
+    /**
+     * Base parity as the transition builds read it: an opponent level with us on depots already
+     * counts as ahead, so the request fires at parity rather than only once we trail.
+     *
+     * @param ourBaseCount bases we hold or have reserved for a queued hatchery
+     * @param enemyDepots living enemy resource depots we have observed
+     * @return true when we should take another base
+     */
+    static boolean isBehindOnBases(int ourBaseCount, int enemyDepots) {
+        return ourBaseCount <= enemyDepots;
     }
 
     @Override

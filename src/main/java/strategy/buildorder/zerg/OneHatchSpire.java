@@ -6,7 +6,6 @@ import info.BaseData;
 import info.GameState;
 import info.Readiness;
 import info.TechProgression;
-import macro.HatcheryCapacity;
 import macro.plan.Plan;
 
 import java.util.ArrayList;
@@ -18,6 +17,17 @@ import java.util.List;
  * <a href="https://liquipedia.net/starcraft/9_Pool_Speed_into_1_Hatch_Spire_(vs._Zerg)">Liquipedia</a>
  */
 public class OneHatchSpire extends ZergBase {
+    /**
+     * Unreserved minerals that count as floating: the hatchery itself, so buying one does not
+     * take the bank below zero.
+     */
+    static final int FLOAT_MINERALS = UnitType.Zerg_Hatchery.mineralPrice();
+
+    /**
+     * Unreserved gas that counts as floating: two Mutalisks the build could not find larva for.
+     */
+    static final int FLOAT_GAS = 2 * UnitType.Zerg_Mutalisk.gasPrice();
+
     public OneHatchSpire() {
         super("1HatchSpire");
     }
@@ -51,8 +61,9 @@ public class OneHatchSpire extends ZergBase {
         boolean wantOverlordSpeed = needOverlordSpeed(gameState) && techProgression.canPlanOverlordSpeed();
 
 
-        boolean wantHatchery = behindOnHatchery(gameState)
-                || HatcheryCapacity.isFloatingExpansion(gameState.isFloatingMinerals(), gameState.isEarlyRushed());
+        boolean wantExpansion = behindOnBases(gameState);
+        boolean wantMacroHatchery = shouldPlanMacroHatchery(committedSpires, gameState.numLarva(),
+                gameState.hatcheryCount(), gameState.getResourceCount().availableMinerals(), gas);
 
         boolean enemyHasSpire = gameState.enemyUnitCount(UnitType.Zerg_Spire) > 0;
 
@@ -66,10 +77,18 @@ public class OneHatchSpire extends ZergBase {
             plans.addAll(this.planSporeColony(gameState));
         }
 
-        if (wantHatchery) {
-            Plan hatcheryPlan = this.planNewBase(gameState);
-            if (hatcheryPlan != null) {
-                plans.add(hatcheryPlan);
+        Plan expansionPlan = null;
+        if (wantExpansion) {
+            expansionPlan = this.planNewBase(gameState);
+            if (expansionPlan != null) {
+                plans.add(expansionPlan);
+            }
+        }
+
+        if (expansionPlan == null && wantMacroHatchery) {
+            Plan macroHatcheryPlan = this.planMacroHatchery(gameState);
+            if (macroHatcheryPlan != null) {
+                plans.add(macroHatcheryPlan);
             }
         }
 
@@ -168,6 +187,34 @@ public class OneHatchSpire extends ZergBase {
      */
     static boolean shouldPlanAnotherGas(int committedSpires, boolean canPlanExtractor) {
         return committedSpires > 0 && canPlanExtractor;
+    }
+
+    /**
+     * Whether the build should add a macro hatchery.
+     *
+     * <p>The build is larva limited once its Spire is up, so the signal is the one a larva limit
+     * produces: fewer free larva than hatcheries to make them, while both unreserved banks sit
+     * above what the next purchases need. Minerals alone cannot see this state, because a Mutalisk
+     * build that cannot find larva floats gas as well, and a bar scaled to hatchery count waits
+     * for a mineral pile the build never reaches.
+     *
+     * <p>The banks are read after reservations, so resources a queued plan has already claimed do
+     * not count as floating. The Spire term keeps the rule shut while the build is still banking
+     * for the Spire it has not placed.
+     *
+     * @param committedSpires Spires standing, under construction, or claimed by a plan in flight
+     * @param larva larva not yet handed to a plan, from {@link GameState#numLarva()}
+     * @param hatcheries completed larva-producing hatcheries
+     * @param availableMinerals minerals mined and not reserved by a queued plan
+     * @param availableGas gas mined and not reserved by a queued plan
+     * @return true when a macro hatchery should be requested
+     */
+    static boolean shouldPlanMacroHatchery(int committedSpires, int larva, int hatcheries,
+                                           int availableMinerals, int availableGas) {
+        return committedSpires > 0
+                && larva < hatcheries
+                && availableMinerals >= FLOAT_MINERALS
+                && availableGas >= FLOAT_GAS;
     }
 
     static List<UnitType> unitsToPlan(boolean wantScourge, boolean wantMutalisk, boolean wantZergling, boolean wantDrone) {
