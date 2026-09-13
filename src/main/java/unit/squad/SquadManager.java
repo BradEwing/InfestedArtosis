@@ -23,6 +23,7 @@ import telemetry.RallyReason;
 import telemetry.RallyRelease;
 import telemetry.SquadDecisions;
 import telemetry.SquadLock;
+import telemetry.TargetChoices;
 import unit.managed.ManagedUnit;
 import unit.squad.horizon.HorizonCombatSimulator;
 import unit.managed.UnitRole;
@@ -240,9 +241,9 @@ public class SquadManager {
 
         filtered = filterByProximity(filtered, unit);
 
-        Unit bestTarget = TargetScorer.selectTarget(unit, filtered, managedUnit.fightTarget);
-        if (bestTarget != null) {
-            managedUnit.setFightTarget(bestTarget);
+        TargetScorer.Selection selection = TargetScorer.selectTarget(unit, filtered, managedUnit.fightTarget);
+        if (selection != null) {
+            managedUnit.setFightTarget(selection.getTarget());
         }
     }
 
@@ -1723,9 +1724,10 @@ public class SquadManager {
             }
         }
 
-        Unit bestTarget = TargetScorer.selectTarget(unit, filtered, managedUnit.fightTarget);
-        if (bestTarget != null) {
-            managedUnit.setFightTarget(bestTarget);
+        TargetScorer.Selection selection = TargetScorer.selectTarget(unit, filtered, managedUnit.fightTarget);
+        if (selection != null) {
+            TargetChoices.chosen(managedUnit, managedUnit.fightTarget, selection);
+            managedUnit.setFightTarget(selection.getTarget());
         }
     }
 
