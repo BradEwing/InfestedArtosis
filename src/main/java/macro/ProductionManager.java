@@ -372,6 +372,23 @@ public class ProductionManager {
      */
     private void requeueStalledPlan(Plan plan, BuildAheadSlot slot) {
         slot.releaseWithBackoff(plan, currentFrame);
+        requeueHolder(plan);
+    }
+
+    /**
+     * Hands a lower-priority holder's slot to emergency defence. The holder did not stall, so it is
+     * requeued without a backoff and claims a fresh hold once the slot is free again.
+     */
+    private void yieldBuildAheadHold(Plan holder) {
+        buildAheadSlot.release(holder);
+        PlanState state = holder.getState();
+        if (state != PlanState.SCHEDULE && state != PlanState.BUILDING) {
+            return;
+        }
+        requeueHolder(holder);
+    }
+
+    private void requeueHolder(Plan plan) {
         removeFromActivePlans(plan);
         releaseExecutor(plan);
         gameState.getResourceCount().unreserveUnit(plan.getPlannedUnit());
@@ -1080,12 +1097,13 @@ public class ProductionManager {
         }
 
         ResourceCount resourceCount = gameState.getResourceCount();
+        boolean cannotAfford = resourceCount.cannotAffordUnit(building);
         int predictedReadyFrame = gameState.frameCanAffordUnit(building, currentFrame);
         PlanBlocker buildAheadBlocker = buildAheadBlocker(
                 buildAheadSlot,
                 plan,
                 currentFrame,
-                resourceCount.cannotAffordUnit(building),
+                cannotAfford,
                 hasHigherPriorityPending,
                 predictedReadyFrame);
         if (buildAheadBlocker != PlanBlocker.NONE) {
@@ -1099,6 +1117,12 @@ public class ProductionManager {
         int travelFrames = builderTravelFrames(plan);
         if (BuildAheadSlot.dispatchOutlastsHold(currentFrame, predictedReadyFrame, travelFrames)) {
             return PlanBlocker.BUILD_AHEAD_TOO_FAR;
+        }
+
+        List<Plan> yieldingHolders = cannotAfford ? buildAheadSlot.holdersYieldingTo(plan) : new ArrayList<>();
+        if (!yieldingHolders.isEmpty()) {
+            yieldingHolders.forEach(this::yieldBuildAheadHold);
+            predictedReadyFrame = gameState.frameCanAffordUnit(building, currentFrame);
         }
 
         buildAheadSlot.claim(plan, currentFrame, predictedReadyFrame, travelFrames);
@@ -1184,6 +1208,9 @@ public class ProductionManager {
      * <p>Affordability is answered first: an eviction bars a plan from a fresh hold, never from
      * being scheduled with minerals it can already pay for. A plan that can pay resumes the hold it
      * was evicted from, so it waits out its backoff only once that hold has run out.
+     *
+     * <p>An occupied slot does not bar emergency defence from holders queued below it; the caller
+     * takes the slot from them with {@link BuildAheadSlot#holdersYieldingTo}.
      */
     static PlanBlocker buildAheadBlocker(
             BuildAheadSlot slot,
@@ -1195,7 +1222,10 @@ public class ProductionManager {
         if (!cannotAfford) {
             return slot.isHoldSpent(plan, frame) ? PlanBlocker.BUILD_AHEAD_BACKOFF : PlanBlocker.NONE;
         }
-        if (hasHigherPriorityPending || slot.isOccupied()) {
+        if (hasHigherPriorityPending) {
+            return PlanBlocker.BUILD_AHEAD_SLOT_TAKEN;
+        }
+        if (slot.isOccupied() && slot.holdersYieldingTo(plan).isEmpty()) {
             return PlanBlocker.BUILD_AHEAD_SLOT_TAKEN;
         }
         if (slot.isInBackoff(plan, frame)) {
@@ -1379,14 +1409,18 @@ public class ProductionManager {
      * True when a building already holding the bank bars this unit from spending against it.
      *
      * <p>Overlords are exempt. A building that cannot be funded yet is funded by the income the
-     * bot is still gathering, and holding supply down stops the drones that gather it.
+     * bot is still gathering, and holding supply down stops the drones that gather it. Emergency
+     * defence is exempt too, so zerglings answering a rush are not queued behind a tech building.
      *
-     * @param unit the planned unit
+     * @param plan the planned unit
      * @param buildingHoldsBank whether a building plan holds the build-ahead slot
      * @return true when the unit must wait for the building to be funded
      */
-    static boolean isBarredByBuildingReservation(UnitType unit, boolean buildingHoldsBank) {
-        return buildingHoldsBank && unit != UnitType.Zerg_Overlord;
+    static boolean isBarredByBuildingReservation(Plan plan, boolean buildingHoldsBank) {
+        if (!buildingHoldsBank || BuildAheadSlot.isEmergencyDefence(plan)) {
+            return false;
+        }
+        return plan.getPlannedUnit() != UnitType.Zerg_Overlord;
     }
 
     /**
@@ -1409,7 +1443,7 @@ public class ProductionManager {
         if (bankClaimedAhead || slot.isOccupied()) {
             return PlanBlocker.BUILD_AHEAD_SLOT_TAKEN;
         }
-        if (isBarredByBuildingReservation(plan.getPlannedUnit(), buildingHoldsBank)) {
+        if (isBarredByBuildingReservation(plan, buildingHoldsBank)) {
             return PlanBlocker.BUILD_AHEAD_SLOT_TAKEN;
         }
         if (slot.isInBackoff(plan, frame)) {

@@ -13,6 +13,7 @@ import macro.plan.UnitPlan;
 import macro.plan.UpgradePlan;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import strategy.buildorder.BuildOrder;
 import telemetry.PlanEventSink;
 import telemetry.PlanEvents;
 
@@ -105,13 +106,23 @@ class ProductionManagerTest {
         }
     }
 
+    private Plan emergency(UnitType unitType) {
+        if (unitType.isBuilding()) {
+            return new BuildingPlan(unitType, BuildOrder.EMERGENCY_DEFENSE_PRIORITY);
+        }
+        return new UnitPlan(unitType, BuildOrder.EMERGENCY_DEFENSE_PRIORITY);
+    }
+
     /**
      * The building path of the scheduler over a mineral bank. A plan that clears buildAheadBlocker
-     * takes the slot and reserves its cost, leaving the bank short for everything behind it.
+     * takes the slot and reserves its cost, leaving the bank short for everything behind it. A plan
+     * that cannot pay first takes the slot from any holder yielding to it, refunding their cost.
      */
     private static final class Bank implements PlanScheduler {
 
         private final BuildAheadSlot slot = new BuildAheadSlot();
+
+        private final List<Plan> evicted = new ArrayList<>();
 
         private int minerals;
 
@@ -119,18 +130,31 @@ class ProductionManagerTest {
             this.minerals = minerals;
         }
 
+        private void hold(Plan plan) {
+            slot.claim(plan, FRAME, FRAME + 100);
+            minerals -= plan.getPlannedUnit().mineralPrice();
+        }
+
         @Override
         public PlanBlocker schedule(Plan plan, boolean bankClaimedAhead, boolean larvaClaimedAhead) {
             UnitType building = plan.getPlannedUnit();
+            boolean cannotAfford = minerals < building.mineralPrice();
             PlanBlocker blocker = ProductionManager.buildAheadBlocker(
                     slot,
                     plan,
                     FRAME,
-                    minerals < building.mineralPrice(),
+                    cannotAfford,
                     bankClaimedAhead,
                     FRAME + 100);
             if (blocker != PlanBlocker.NONE) {
                 return blocker;
+            }
+            if (cannotAfford) {
+                for (Plan holder : slot.holdersYieldingTo(plan)) {
+                    slot.release(holder);
+                    minerals += holder.getPlannedUnit().mineralPrice();
+                    evicted.add(holder);
+                }
             }
             slot.claim(plan, FRAME, FRAME + 100);
             minerals -= building.mineralPrice();
@@ -748,9 +772,119 @@ class ProductionManagerTest {
 
     @Test
     void onlyABuildingHoldingTheBankBarsAUnit() {
-        assertTrue(ProductionManager.isBarredByBuildingReservation(UnitType.Zerg_Drone, true));
-        assertFalse(ProductionManager.isBarredByBuildingReservation(UnitType.Zerg_Drone, false));
-        assertFalse(ProductionManager.isBarredByBuildingReservation(UnitType.Zerg_Overlord, true));
+        assertTrue(ProductionManager.isBarredByBuildingReservation(drone(FRAME), true));
+        assertFalse(ProductionManager.isBarredByBuildingReservation(drone(FRAME), false));
+        assertFalse(ProductionManager.isBarredByBuildingReservation(overlord(FRAME), true));
+    }
+
+    @Test
+    void anEmergencyZerglingIsNotBarredByABuildingHoldingTheBank() {
+        int predicted = FRAME + UnitType.Zerg_Zergling.buildTime() - 1;
+
+        PlanBlocker blocker = ProductionManager.unitAheadBlocker(
+                new BuildAheadSlot(), emergency(UnitType.Zerg_Zergling), FRAME, true, false, true, predicted);
+
+        assertEquals(PlanBlocker.NONE, blocker);
+        assertFalse(ProductionManager.isBarredByBuildingReservation(emergency(UnitType.Zerg_Zergling), true));
+    }
+
+    @Test
+    void aQueuedZerglingIsStillBarredByABuildingHoldingTheBank() {
+        int predicted = FRAME + UnitType.Zerg_Zergling.buildTime() - 1;
+
+        PlanBlocker blocker = ProductionManager.unitAheadBlocker(
+                new BuildAheadSlot(), zergling(), FRAME, true, false, true, predicted);
+
+        assertEquals(PlanBlocker.BUILD_AHEAD_SLOT_TAKEN, blocker);
+    }
+
+    @Test
+    void anEmergencySunkenIsNotBlockedByALowerPriorityLairHoldingTheSlot() {
+        BuildAheadSlot slot = new BuildAheadSlot();
+        Plan lair = lair();
+        slot.claim(lair, FRAME, FRAME + 100);
+        Plan sunken = emergency(UnitType.Zerg_Sunken_Colony);
+
+        PlanBlocker blocker = ProductionManager.buildAheadBlocker(slot, sunken, FRAME, true, false, FRAME + 100);
+
+        assertEquals(PlanBlocker.NONE, blocker);
+        assertEquals(Collections.singletonList(lair), slot.holdersYieldingTo(sunken));
+    }
+
+    @Test
+    void anEmergencyCreepColonyTakesTheSlotFromALowerPrioritySpire() {
+        Bank bank = new Bank(0);
+        Plan spire = spire(PlanState.SCHEDULE);
+        bank.hold(spire);
+        Plan colony = emergency(UnitType.Zerg_Creep_Colony);
+
+        ScanOutcome outcome = ProductionManager.scanPlans(Collections.singletonList(colony), bank);
+
+        assertEquals(Collections.singletonList(colony), outcome.scheduled);
+        assertEquals(Collections.singletonList(spire), bank.evicted);
+        assertEquals(Collections.singletonList(colony), bank.slot.claimedPlans());
+    }
+
+    @Test
+    void aNonEmergencyPlanBehindTheSameHolderIsStillBlocked() {
+        BuildAheadSlot slot = new BuildAheadSlot();
+        slot.claim(lair(), FRAME, FRAME + 100);
+        Plan queuedSunken = new BuildingPlan(UnitType.Zerg_Sunken_Colony, FRAME);
+        Plan liftedHatchery = hatchery();
+
+        assertEquals(PlanBlocker.BUILD_AHEAD_SLOT_TAKEN,
+                ProductionManager.buildAheadBlocker(slot, queuedSunken, FRAME, true, false, FRAME + 100));
+        assertEquals(PlanBlocker.BUILD_AHEAD_SLOT_TAKEN,
+                ProductionManager.buildAheadBlocker(slot, liftedHatchery, FRAME, true, false, FRAME + 100));
+        assertTrue(slot.holdersYieldingTo(queuedSunken).isEmpty());
+        assertTrue(slot.holdersYieldingTo(liftedHatchery).isEmpty());
+    }
+
+    @Test
+    void anEmergencyPlanBehindAHigherPriorityBankClaimStillWaits() {
+        BuildAheadSlot slot = new BuildAheadSlot();
+        slot.claim(lair(), FRAME, FRAME + 100);
+
+        PlanBlocker blocker = ProductionManager.buildAheadBlocker(
+                slot, emergency(UnitType.Zerg_Sunken_Colony), FRAME, true, true, FRAME + 100);
+
+        assertEquals(PlanBlocker.BUILD_AHEAD_SLOT_TAKEN, blocker);
+    }
+
+    @Test
+    void anAffordableEmergencyPlanLeavesTheHolderInPlace() {
+        Bank bank = new Bank(UnitType.Zerg_Spire.mineralPrice() + UnitType.Zerg_Creep_Colony.mineralPrice());
+        Plan spire = spire(PlanState.SCHEDULE);
+        bank.hold(spire);
+        Plan colony = emergency(UnitType.Zerg_Creep_Colony);
+
+        ProductionManager.scanPlans(Collections.singletonList(colony), bank);
+
+        assertTrue(bank.evicted.isEmpty());
+        assertEquals(Arrays.asList(spire, colony), bank.slot.claimedPlans());
+    }
+
+    @Test
+    void twoEmergencyPlansNeitherEvictNorStarveEachOther() {
+        Bank bank = new Bank(0);
+        Plan lair = lair();
+        bank.hold(lair);
+        Plan sunken = emergency(UnitType.Zerg_Sunken_Colony);
+        Plan colony = emergency(UnitType.Zerg_Creep_Colony);
+
+        ScanOutcome first = ProductionManager.scanPlans(Arrays.asList(sunken, colony), bank);
+        List<Plan> queue = new ArrayList<>(first.requeued);
+        queue.addAll(bank.evicted);
+        ScanOutcome second = ProductionManager.scanPlans(queue, bank);
+        ScanOutcome third = ProductionManager.scanPlans(second.requeued, bank);
+
+        assertEquals(Collections.singletonList(sunken), first.scheduled);
+        assertEquals(Collections.singletonList(lair), bank.evicted);
+        assertTrue(second.scheduled.isEmpty());
+        assertTrue(third.scheduled.isEmpty());
+        assertEquals(Arrays.asList(colony, lair), third.requeued);
+        assertEquals(Collections.singletonList(sunken), bank.slot.claimedPlans());
+        assertTrue(bank.slot.holdersYieldingTo(colony).isEmpty());
     }
 
     @Test
