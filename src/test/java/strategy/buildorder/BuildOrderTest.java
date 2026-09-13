@@ -263,6 +263,44 @@ class BuildOrderTest {
     }
 
     @Test
+    void theChamberIsPlannedBeforeASporeIsRequested() {
+        TechProgression techProgression = withPool();
+
+        assertEquals(BuildOrder.SporeStep.EVOLUTION_CHAMBER, BuildOrder.sporeStep(techProgression));
+
+        techProgression.setPlannedEvolutionChambers(1);
+        assertEquals(BuildOrder.SporeStep.WAIT, BuildOrder.sporeStep(techProgression));
+
+        techProgression.setPlannedEvolutionChambers(0);
+        techProgression.setEvolutionChambers(1);
+        assertEquals(BuildOrder.SporeStep.SPORE_COLONY, BuildOrder.sporeStep(techProgression));
+    }
+
+    @Test
+    void noSporeIsRequestedWhileTheChamberCannotBePlanned() {
+        TechProgression techProgression = new TechProgression();
+        for (int frame = 0; frame < FRAMES; frame++) {
+            assertEquals(BuildOrder.SporeStep.WAIT, BuildOrder.sporeStep(techProgression));
+        }
+    }
+
+    @Test
+    void noSporeIsRequestedWhileTheChamberIsOnlyPlanned() {
+        TechProgression techProgression = withPool();
+        List<BuildOrder.SporeStep> steps = new ArrayList<>();
+        for (int frame = 0; frame < FRAMES; frame++) {
+            BuildOrder.SporeStep step = BuildOrder.sporeStep(techProgression);
+            steps.add(step);
+            if (step == BuildOrder.SporeStep.EVOLUTION_CHAMBER) {
+                techProgression.setPlannedEvolutionChambers(techProgression.getPlannedEvolutionChambers() + 1);
+            }
+        }
+
+        assertEquals(BuildOrder.SporeStep.EVOLUTION_CHAMBER, steps.get(0));
+        assertFalse(steps.contains(BuildOrder.SporeStep.SPORE_COLONY));
+    }
+
+    @Test
     void theHashDoesNotDependOnTheClassObjectIdentity() {
         BuildOrder order = new SpeedlingAllIn();
         assertEquals(java.util.Objects.hash(SpeedlingAllIn.class.getName(), order.getName()), order.hashCode());
