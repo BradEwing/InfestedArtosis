@@ -2,6 +2,7 @@ package macro;
 
 import bwapi.UnitType;
 import macro.plan.Plan;
+import strategy.buildorder.BuildOrder;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -113,6 +114,39 @@ public class BuildAheadSlot {
     }
 
     public List<Plan> claimedPlans() {
+        return new ArrayList<>(claims.keySet());
+    }
+
+    /**
+     * True for the defence an early rush queues at emergency priority: the Creep Colony and Sunken
+     * Colony pair and the Zergling floor. A Spawning Pool, Hatchery or Drone a reaction lifts to the
+     * same priority is not defence and gets no claim on another plan's hold.
+     */
+    public static boolean isEmergencyDefence(Plan plan) {
+        if (plan.getPriority() > BuildOrder.EMERGENCY_DEFENSE_PRIORITY) {
+            return false;
+        }
+        UnitType unit = plan.getPlannedUnit();
+        return unit == UnitType.Zerg_Creep_Colony
+                || unit == UnitType.Zerg_Sunken_Colony
+                || unit == UnitType.Zerg_Zergling;
+    }
+
+    /**
+     * The holders an emergency defence plan takes the slot from, or an empty list when it waits.
+     *
+     * <p>The slot yields only when every holder is queued below emergency priority, so an emergency
+     * holder is never taken from and two emergency plans cannot evict each other.
+     */
+    public List<Plan> holdersYieldingTo(Plan plan) {
+        if (claims.isEmpty() || !isEmergencyDefence(plan)) {
+            return new ArrayList<>();
+        }
+        for (Plan holder : claims.keySet()) {
+            if (holder.getPriority() <= BuildOrder.EMERGENCY_DEFENSE_PRIORITY) {
+                return new ArrayList<>();
+            }
+        }
         return new ArrayList<>(claims.keySet());
     }
 
