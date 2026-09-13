@@ -19,8 +19,9 @@ import strategy.buildorder.BuildOrder;
  * building completes, dies, or a gate fails, the hold is gone on the next frame with nothing left
  * to release.
  *
- * <p>Only the Spire has a wave. Every other tech building is left out on purpose, and the author
- * report for IA-357 records why.
+ * <p>Only the Spire has a wave. A Lurker, Guardian or Devourer wave has no structure under
+ * construction to time against, and a Hydralisk Den, Ultralisk Cavern or Defiler Mound wave is
+ * left out until a ground-safety gate covers the matchups those buildings are built in.
  */
 public final class TechWave {
 
