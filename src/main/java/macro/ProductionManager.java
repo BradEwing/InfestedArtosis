@@ -378,8 +378,12 @@ public class ProductionManager {
     /**
      * Hands a lower-priority holder's slot to emergency defence. The holder did not stall, so it is
      * requeued without a backoff and claims a fresh hold once the slot is free again.
+     *
+     * @param holder the plan giving up the slot
+     * @param emergency the emergency defence plan taking it
      */
-    private void yieldBuildAheadHold(Plan holder) {
+    private void yieldBuildAheadHold(Plan holder, Plan emergency) {
+        PlanEvents.buildAheadYielded(holder, buildAheadSlot.heldFrames(holder, currentFrame), emergency);
         buildAheadSlot.release(holder);
         PlanState state = holder.getState();
         if (state != PlanState.SCHEDULE && state != PlanState.BUILDING) {
@@ -1123,7 +1127,7 @@ public class ProductionManager {
 
         List<Plan> yieldingHolders = cannotAfford ? buildAheadSlot.holdersYieldingTo(plan) : new ArrayList<>();
         if (!yieldingHolders.isEmpty()) {
-            yieldingHolders.forEach(this::yieldBuildAheadHold);
+            yieldingHolders.forEach(holder -> yieldBuildAheadHold(holder, plan));
             predictedReadyFrame = gameState.frameCanAffordUnit(building, currentFrame);
         }
 
