@@ -77,6 +77,14 @@ public class ReactionsTest {
 
     private static final int ONE_ENEMY_GROUND_UNIT_AT_OUR_BASES = 1;
 
+    private static final int NO_EXPANSION_UNDER_CONSTRUCTION = 0;
+
+    private static final int NATURAL_HATCHERY_MORPHING = 1;
+
+    private static final boolean MAIN_HELD_THROUGH_EXPANSION = true;
+
+    private static final boolean MAIN_NOT_HELD = false;
+
     private static final boolean HAVE_EXTRACTOR = true;
 
     private static final boolean NO_EXTRACTOR = false;
@@ -236,17 +244,92 @@ public class ReactionsTest {
     }
 
     /**
-     * The threat gate is the ZvZ reaction's alone. The SCV rush, early rush and 2Gate reactions call
-     * the shared helper directly, so a main no enemy has reached still opens for them.
+     * The threat gate is the ZvZ reaction's alone. The SCV rush reaction calls the shared helper
+     * directly, so a main no enemy has reached still opens for it while the natural morphs.
      */
     @Test
-    void testTheRushPathsOpenAQuietMainWhileTheNaturalMorphs() throws ReflectiveOperationException {
+    void testTheScvRushPathOpensAQuietMainWhileTheNaturalMorphs() throws ReflectiveOperationException {
         setBaseCounts(MAIN_ONLY, NATURAL_STILL_MORPHING);
 
         Reactions.allowSunkenAtMainIfSingleBase(baseData);
 
         assertTrue(baseData.isAllowSunkenAtMain());
         assertFalse(Reactions.shouldOpenMainForZvZPressure(ENEMY_AHEAD, NO_ENEMY_GROUND_UNITS_AT_OUR_BASES));
+        assertFalse(Reactions.shouldClearMainSunken(baseData, NO_BARRACKS_PRESSURE,
+                NATURAL_HATCHERY_MORPHING, MAIN_HELD_THROUGH_EXPANSION));
+    }
+
+    /**
+     * IA-356: the early rush, 2Gate and 1Base grants do not open the main once the natural Hatchery
+     * has started morphing, even though the natural is not yet a completed base.
+     */
+    @Test
+    void testTheEarlyRushPathDoesNotOpenTheMainWhileTheNaturalMorphs() throws ReflectiveOperationException {
+        setBaseCounts(MAIN_ONLY, NATURAL_STILL_MORPHING);
+
+        Reactions.allowSunkenAtMainIfNoExpansionUnderway(baseData, NATURAL_HATCHERY_MORPHING);
+
+        assertFalse(baseData.isAllowSunkenAtMain());
+    }
+
+    /**
+     * A main opened by the early rush reaction before the natural's drone morphed is closed on the
+     * first frame the natural is under construction, rather than when it completes.
+     */
+    @Test
+    void testAMainOpenedBeforeTheNaturalMorphsClosesOnceItStarts() throws ReflectiveOperationException {
+        setBaseCounts(MAIN_ONLY, 1);
+        Reactions.allowSunkenAtMainIfNoExpansionUnderway(baseData, NO_EXPANSION_UNDER_CONSTRUCTION);
+        assertTrue(baseData.isAllowSunkenAtMain());
+        assertFalse(Reactions.shouldClearMainSunken(baseData, NO_BARRACKS_PRESSURE,
+                NO_EXPANSION_UNDER_CONSTRUCTION, MAIN_NOT_HELD));
+
+        Reactions.allowSunkenAtMainIfNoExpansionUnderway(baseData, NATURAL_HATCHERY_MORPHING);
+
+        assertTrue(Reactions.shouldClearMainSunken(baseData, NO_BARRACKS_PRESSURE,
+                NATURAL_HATCHERY_MORPHING, MAIN_NOT_HELD));
+    }
+
+    @Test
+    void testBarracksPressureHoldsTheMainOpenWhileTheNaturalMorphs() throws ReflectiveOperationException {
+        setBaseCounts(MAIN_ONLY, NATURAL_STILL_MORPHING);
+        baseData.setAllowSunkenAtMain(true);
+
+        assertFalse(Reactions.shouldClearMainSunken(baseData, UNDER_BARRACKS_PRESSURE,
+                NATURAL_HATCHERY_MORPHING, MAIN_NOT_HELD));
+    }
+
+    /**
+     * IA-356: with a single base and no expansion under way, both grants still open the main, so the
+     * SCV rush case and a rush that arrives before the natural are unchanged.
+     */
+    @Test
+    void testASingleBaseWithNoExpansionCommittedStillOpensTheMain() throws ReflectiveOperationException {
+        setBaseCounts(MAIN_ONLY, 0);
+        Reactions.allowSunkenAtMainIfSingleBase(baseData);
+        assertTrue(baseData.isAllowSunkenAtMain());
+
+        baseData.setAllowSunkenAtMain(false);
+        Reactions.allowSunkenAtMainIfNoExpansionUnderway(baseData, NO_EXPANSION_UNDER_CONSTRUCTION);
+        assertTrue(baseData.isAllowSunkenAtMain());
+        assertFalse(Reactions.shouldClearMainSunken(baseData, NO_BARRACKS_PRESSURE,
+                NO_EXPANSION_UNDER_CONSTRUCTION, MAIN_NOT_HELD));
+    }
+
+    /**
+     * IA-356: the morphing natural is read from its own count, never folded into the base count, so
+     * every other reader of currentBaseCount still sees only completed bases.
+     */
+    @Test
+    void testTheGateLeavesTheBaseCountUntouched() throws ReflectiveOperationException {
+        setBaseCounts(MAIN_ONLY, NATURAL_STILL_MORPHING);
+
+        Reactions.allowSunkenAtMainIfNoExpansionUnderway(baseData, NATURAL_HATCHERY_MORPHING);
+        Reactions.allowSunkenAtMainIfSingleBase(baseData);
+        Reactions.shouldClearMainSunken(baseData, NO_BARRACKS_PRESSURE, NATURAL_HATCHERY_MORPHING, MAIN_NOT_HELD);
+
+        assertEquals(MAIN_ONLY, baseData.currentBaseCount());
+        assertEquals(MAIN_ONLY + NATURAL_STILL_MORPHING, baseData.currentAndReservedCount());
     }
 
     @Test
@@ -254,7 +337,10 @@ public class ReactionsTest {
         setBaseCounts(2, 0);
         baseData.setAllowSunkenAtMain(true);
 
-        assertTrue(Reactions.shouldClearMainSunken(baseData, NO_BARRACKS_PRESSURE));
+        assertTrue(Reactions.shouldClearMainSunken(baseData, NO_BARRACKS_PRESSURE,
+                NO_EXPANSION_UNDER_CONSTRUCTION, MAIN_NOT_HELD));
+        assertTrue(Reactions.shouldClearMainSunken(baseData, NO_BARRACKS_PRESSURE,
+                NO_EXPANSION_UNDER_CONSTRUCTION, MAIN_HELD_THROUGH_EXPANSION));
     }
 
     /**
@@ -266,7 +352,8 @@ public class ReactionsTest {
         setBaseCounts(2, 0);
         baseData.setAllowSunkenAtMain(true);
 
-        assertFalse(Reactions.shouldClearMainSunken(baseData, UNDER_BARRACKS_PRESSURE));
+        assertFalse(Reactions.shouldClearMainSunken(baseData, UNDER_BARRACKS_PRESSURE,
+                NO_EXPANSION_UNDER_CONSTRUCTION, MAIN_NOT_HELD));
     }
 
     @Test
@@ -280,7 +367,8 @@ public class ReactionsTest {
         setBaseCounts(1, 1);
         baseData.setAllowSunkenAtMain(true);
 
-        assertFalse(Reactions.shouldClearMainSunken(baseData, NO_BARRACKS_PRESSURE));
+        assertFalse(Reactions.shouldClearMainSunken(baseData, NO_BARRACKS_PRESSURE,
+                NO_EXPANSION_UNDER_CONSTRUCTION, MAIN_NOT_HELD));
     }
 
     @Test

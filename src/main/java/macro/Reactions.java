@@ -82,11 +82,17 @@ public class Reactions {
 
     private int quietFrames;
 
+    private int expansionsUnderConstruction;
+
+    private boolean mainHeldThroughExpansion;
+
     public Reactions(GameState gameState) {
         this.gameState = gameState;
     }
 
     public void onFrame() {
+        expansionsUnderConstruction = gameState.hatcheriesUnderConstruction(false);
+        mainHeldThroughExpansion = false;
         cannonRushReaction();
         scvRushReaction();
         earlyRushReaction();
@@ -123,7 +129,7 @@ public class Reactions {
             productionQueue.removeWhere(IS_DRONE, PlanCancelSource.REACTION_SCV_RUSH_DRONE, gameState::setImpossiblePlan);
         }
 
-        allowSunkenAtMainIfSingleBase(baseData);
+        holdMainIfSingleBase(baseData);
     }
 
     private void earlyRushReaction() {
@@ -176,7 +182,7 @@ public class Reactions {
             productionQueue.removeWhere(IS_DRONE, PlanCancelSource.REACTION_EARLY_RUSH_DRONE, gameState::setImpossiblePlan);
         }
 
-        allowSunkenAtMainIfSingleBase(gameState.getBaseData());
+        allowSunkenAtMainIfNoExpansionUnderway(gameState.getBaseData(), expansionsUnderConstruction);
     }
 
     boolean shouldFireDroneCut(int livingDrones, int livingZerglings) {
@@ -298,11 +304,41 @@ public class Reactions {
      * counting one leaves no base eligible for static defense between the natural being queued and its
      * hatchery completing. This is the inverse of {@link #clearMainSunkenOnExpansion}, which reads the
      * same count so the two halves of the rule agree on what a single base means.
+     *
+     * <p>A Hatchery morphing at an expansion does not count either, so a grant made here holds the
+     * main open for the whole morph. Only reactions whose threat reaches the main regardless of the
+     * natural call this; the rest go through {@link #allowSunkenAtMainIfNoExpansionUnderway}.
      */
     static void allowSunkenAtMainIfSingleBase(BaseData baseData) {
         if (baseData.currentBaseCount() < 2) {
             baseData.setAllowSunkenAtMain(true);
         }
+    }
+
+    /**
+     * Relaxes the main-base sunken restriction only while the main is our sole base and no
+     * expansion Hatchery has started morphing.
+     *
+     * <p>Once the natural is morphing the main is no longer where the next base's defense belongs,
+     * and {@link #shouldClearMainSunken} closes a main this grant opened earlier. A queued expansion
+     * does not block the grant, for the reason given on {@link #allowSunkenAtMainIfSingleBase}.
+     *
+     * @param baseData our bases and the main sunken gate
+     * @param expansionsUnderConstruction expansion Hatcheries that have started morphing and not finished
+     */
+    static void allowSunkenAtMainIfNoExpansionUnderway(BaseData baseData, int expansionsUnderConstruction) {
+        if (expansionsUnderConstruction == 0) {
+            allowSunkenAtMainIfSingleBase(baseData);
+        }
+    }
+
+    /**
+     * Opens a single-base main and marks it held for this frame, so a morphing expansion does not
+     * close it. Used by the reactions whose threat is at the main itself.
+     */
+    private void holdMainIfSingleBase(BaseData baseData) {
+        allowSunkenAtMainIfSingleBase(baseData);
+        mainHeldThroughExpansion = true;
     }
 
     private void planSpeedUpgrade(ProductionQueue productionQueue) {
@@ -464,7 +500,7 @@ public class Reactions {
         planSpeedUpgrade(productionQueue);
 
         BaseData baseData = gameState.getBaseData();
-        allowSunkenAtMainIfSingleBase(baseData);
+        allowSunkenAtMainIfNoExpansionUnderway(baseData, expansionsUnderConstruction);
     }
 
     private void zvzSunkenReaction() {
@@ -483,7 +519,7 @@ public class Reactions {
         boolean enemyAhead = enemyUpAHatchery || enemyUpZerglings;
 
         if (shouldOpenMainForZvZPressure(enemyAhead, gameState.knownEnemyMobileGroundCombatUnitsAtOurBases())) {
-            allowSunkenAtMainIfSingleBase(baseData);
+            holdMainIfSingleBase(baseData);
         }
     }
 
@@ -545,7 +581,7 @@ public class Reactions {
         }
 
         if (isUnderOneBaseFloor()) {
-            allowSunkenAtMainIfSingleBase(baseData);
+            allowSunkenAtMainIfNoExpansionUnderway(baseData, expansionsUnderConstruction);
         }
     }
 
@@ -570,17 +606,31 @@ public class Reactions {
      * raise their sunken count on. Pressure holds the main open past the natural: closing it would
      * cancel the colonies the raised count had just asked for there.
      *
+     * <p>The gate also closes as soon as an expansion Hatchery starts morphing, unless a reaction
+     * whose threat is at the main held it open this frame. Waiting for the natural to complete
+     * leaves the main open for the natural's whole build time. Colonies already scheduled or
+     * building at the main are left alone; only queued ones are dropped.
+     *
      * @param baseData our bases and the current main sunken gate
      * @param underBarracksPressure whether the enemy's observed Barracks read as a bio push
+     * @param expansionsUnderConstruction expansion Hatcheries that have started morphing and not finished
+     * @param mainHeldThroughExpansion whether the SCV rush or ZvZ pressure reaction held the main open this frame
      * @return true when the gate should close and the main's queued colonies be dropped
      */
-    static boolean shouldClearMainSunken(BaseData baseData, boolean underBarracksPressure) {
-        return baseData.isAllowSunkenAtMain() && !underBarracksPressure && baseData.currentBaseCount() >= 2;
+    static boolean shouldClearMainSunken(BaseData baseData, boolean underBarracksPressure,
+                                         int expansionsUnderConstruction, boolean mainHeldThroughExpansion) {
+        if (!baseData.isAllowSunkenAtMain() || underBarracksPressure) {
+            return false;
+        }
+        if (baseData.currentBaseCount() >= 2) {
+            return true;
+        }
+        return expansionsUnderConstruction > 0 && !mainHeldThroughExpansion;
     }
 
     private void clearMainSunkenOnExpansion() {
         BaseData baseData = gameState.getBaseData();
-        if (!shouldClearMainSunken(baseData, isUnderBarracksPressure())) {
+        if (!shouldClearMainSunken(baseData, isUnderBarracksPressure(), expansionsUnderConstruction, mainHeldThroughExpansion)) {
             return;
         }
 
