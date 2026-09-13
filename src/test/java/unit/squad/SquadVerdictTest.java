@@ -10,43 +10,55 @@ import static unit.squad.CombatSimulator.CombatResult.RETREAT;
 
 class SquadVerdictTest {
 
+    private static final double ENGAGE_THRESHOLD = 1.4;
     private static final double RETREAT_THRESHOLD = 0.8;
 
     @Test
     void unlockedNeverHoldsWhateverTheVerdict() {
-        assertFalse(SquadManager.fightLockHolds(false, ADVANCE, true, 1.3948, RETREAT_THRESHOLD));
-        assertFalse(SquadManager.fightLockHolds(false, ENGAGE, true, 1.3948, RETREAT_THRESHOLD));
-        assertFalse(SquadManager.fightLockHolds(false, RETREAT, true, 1.3948, RETREAT_THRESHOLD));
+        assertFalse(SquadManager.fightLockHolds(false, ADVANCE, true, 1.3948, ENGAGE_THRESHOLD));
+        assertFalse(SquadManager.fightLockHolds(false, ENGAGE, true, 1.3948, ENGAGE_THRESHOLD));
+        assertFalse(SquadManager.fightLockHolds(false, RETREAT, true, 1.3948, ENGAGE_THRESHOLD));
     }
 
     @Test
-    void lockedEngageAndAdvanceAlwaysHold() {
-        assertTrue(SquadManager.fightLockHolds(true, ENGAGE, true, 1.3948, RETREAT_THRESHOLD));
-        assertTrue(SquadManager.fightLockHolds(true, ADVANCE, false, 0, RETREAT_THRESHOLD));
+    void lockedWinnableFightHolds() {
+        assertTrue(SquadManager.fightLockHolds(true, ENGAGE, true, ENGAGE_THRESHOLD, ENGAGE_THRESHOLD));
+        assertTrue(SquadManager.fightLockHolds(true, ENGAGE, true, 2.5, ENGAGE_THRESHOLD));
     }
 
     @Test
-    void lockedUnmeasuredRetreatHolds() {
-        assertTrue(SquadManager.fightLockHolds(true, RETREAT, false, 100, RETREAT_THRESHOLD));
+    void lockedRetreatAtTheEngageThresholdHolds() {
+        assertTrue(SquadManager.fightLockHolds(true, RETREAT, true, ENGAGE_THRESHOLD, ENGAGE_THRESHOLD));
+    }
+
+    @Test
+    void lockedUnmeasuredVerdictsHold() {
+        assertTrue(SquadManager.fightLockHolds(true, RETREAT, false, 100, ENGAGE_THRESHOLD));
+        assertTrue(SquadManager.fightLockHolds(true, RETREAT, false, 0, ENGAGE_THRESHOLD));
+        assertTrue(SquadManager.fightLockHolds(true, ADVANCE, false, 0, ENGAGE_THRESHOLD));
+    }
+
+    @Test
+    void lockedRetreatWithoutASnapshotHolds() {
+        assertTrue(SquadManager.fightLockHolds(true, RETREAT, true, 0, 0));
     }
 
     /**
-     * Reproduces KSV3501B frame 4836: an in-band RETREAT, measured at 1.3948 against a retreat
-     * threshold of 0.8, stays suppressed by the lock.
+     * L9NW30UL frames 4650 and 4656 (ratios 1.39996 and 1.3312) and KSV3501B frame 4836 (1.3948): a RETREAT
+     * measured between the ZvP retreat threshold of 0.8 and the engage threshold of 1.4 releases the lock.
      */
     @Test
-    void lockedMeasuredRetreatInBandHolds() {
-        assertTrue(SquadManager.fightLockHolds(true, RETREAT, true, 1.3948, RETREAT_THRESHOLD));
+    void lockedMeasuredRetreatBetweenTheThresholdsIsReleased() {
+        assertFalse(SquadManager.fightLockHolds(true, RETREAT, true, 1.39996, ENGAGE_THRESHOLD));
+        assertFalse(SquadManager.fightLockHolds(true, RETREAT, true, 1.3312, ENGAGE_THRESHOLD));
+        assertFalse(SquadManager.fightLockHolds(true, RETREAT, true, 1.3948, ENGAGE_THRESHOLD));
+        assertFalse(SquadManager.fightLockHolds(true, RETREAT, true, 1.1, ENGAGE_THRESHOLD));
+        assertFalse(SquadManager.fightLockHolds(true, RETREAT, true, RETREAT_THRESHOLD, ENGAGE_THRESHOLD));
     }
 
     @Test
-    void lockedMeasuredRetreatBelowThresholdBreaksTheLock() {
-        assertFalse(SquadManager.fightLockHolds(true, RETREAT, true, 0.3453, RETREAT_THRESHOLD));
-    }
-
-    @Test
-    void lockedMeasuredRetreatAtThresholdHolds() {
-        assertTrue(SquadManager.fightLockHolds(true, RETREAT, true, RETREAT_THRESHOLD, RETREAT_THRESHOLD));
+    void lockedMeasuredRetreatBelowTheRetreatThresholdIsReleased() {
+        assertFalse(SquadManager.fightLockHolds(true, RETREAT, true, 0.3453, ENGAGE_THRESHOLD));
     }
 
     @Test
