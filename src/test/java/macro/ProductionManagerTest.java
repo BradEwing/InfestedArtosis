@@ -84,6 +84,41 @@ class ProductionManagerTest {
         return Arrays.asList(overlord(6708), overlord(6716), overlord(8031), overlord(9903));
     }
 
+    /** Lowest free supply at which the planner inserts no overlord for these plans. */
+    private int quietFreeSupply(List<Plan> scheduledPlans, List<Plan> queuedPlans) {
+        int freeSupply = 0;
+        while (!ProductionManager.overlordInsertPriorities(scheduledPlans, queuedPlans, freeSupply, 0, 20).isEmpty()) {
+            freeSupply++;
+        }
+        return freeSupply;
+    }
+
+    /** Supply the planner charges a queued plan of this type, measured ahead of a trailing hydralisk. */
+    private int queuedPlannerCharge(UnitType unitType) {
+        List<Plan> trailing = hydralisks(1, 2000);
+        List<Plan> withPlan = new ArrayList<>();
+        withPlan.add(new UnitPlan(unitType, 1000));
+        withPlan.addAll(trailing);
+        return quietFreeSupply(Collections.<Plan>emptyList(), withPlan)
+                - quietFreeSupply(Collections.<Plan>emptyList(), trailing);
+    }
+
+    /** Supply the planner charges a scheduled plan of this type, measured against a queued hydralisk. */
+    private int scheduledPlannerCharge(UnitType unitType) {
+        List<Plan> queued = hydralisks(1, 2000);
+        return quietFreeSupply(Collections.<Plan>singletonList(new UnitPlan(unitType, 1000)), queued)
+                - quietFreeSupply(Collections.<Plan>emptyList(), queued);
+    }
+
+    /** Lowest free supply at which the scheduling gate lets a morph of this type start. */
+    private int supplyGateCost(UnitType unitType) {
+        int freeSupply = 0;
+        while (ProductionManager.isSupplyBlocked(unitType, freeSupply)) {
+            freeSupply++;
+        }
+        return freeSupply;
+    }
+
     private static final class Recorder implements PlanScheduler {
 
         private final Map<Plan, PlanBlocker> blockers = new HashMap<>();
@@ -282,6 +317,40 @@ class ProductionManagerTest {
                 Collections.<Plan>emptyList(), hydralisks(23, 11000), 1, 16, 53);
 
         assertEquals(Arrays.asList(11005, 11013, 11021), priorities);
+    }
+
+    @Test
+    void aQueuedZerglingPairIsChargedForBothUnits() {
+        assertEquals(2 * UnitType.Zerg_Zergling.supplyRequired(), queuedPlannerCharge(UnitType.Zerg_Zergling));
+        assertEquals(UnitType.Zerg_Drone.supplyRequired(), queuedPlannerCharge(UnitType.Zerg_Drone));
+    }
+
+    @Test
+    void aScheduledZerglingPairIsChargedForBothUnits() {
+        assertEquals(2 * UnitType.Zerg_Zergling.supplyRequired(), scheduledPlannerCharge(UnitType.Zerg_Zergling));
+        assertEquals(UnitType.Zerg_Drone.supplyRequired(), scheduledPlannerCharge(UnitType.Zerg_Drone));
+    }
+
+    @Test
+    void thePlannerAndTheSupplyGateChargeThePlanTheSame() {
+        for (UnitType unitType : Arrays.asList(
+                UnitType.Zerg_Zergling, UnitType.Zerg_Scourge, UnitType.Zerg_Drone, UnitType.Zerg_Hydralisk)) {
+            assertEquals(supplyGateCost(unitType), queuedPlannerCharge(unitType), unitType + " queued");
+            assertEquals(supplyGateCost(unitType), scheduledPlannerCharge(unitType), unitType + " scheduled");
+        }
+    }
+
+    @Test
+    void threeQueuedZerglingPairsInsertTheOverlordAheadOfTheSecondPair() {
+        List<Plan> queued = Arrays.<Plan>asList(
+                new UnitPlan(UnitType.Zerg_Zergling, 3388),
+                new UnitPlan(UnitType.Zerg_Zergling, 3389),
+                new UnitPlan(UnitType.Zerg_Zergling, 3858));
+
+        List<Integer> priorities = ProductionManager.overlordInsertPriorities(
+                Collections.<Plan>emptyList(), queued, 6, 0, 28);
+
+        assertEquals(Collections.singletonList(3388), priorities);
     }
 
     @Test
