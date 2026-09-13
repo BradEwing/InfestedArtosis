@@ -20,6 +20,8 @@ import telemetry.PlanEventLogger;
 import telemetry.PlanEvents;
 import telemetry.SquadDecisionLogger;
 import telemetry.SquadDecisions;
+import telemetry.TargetChoiceLogger;
+import telemetry.TargetChoices;
 import unit.UnitManager;
 
 /**
@@ -51,6 +53,7 @@ public class Bot extends DefaultBWListener {
     private PlanEventLogger planEventLogger;
     private SquadDecisionLogger squadDecisionLogger;
     private PerchAssignmentLogger perchAssignmentLogger;
+    private TargetChoiceLogger targetChoiceLogger;
 
     @Override
     public void onStart() {
@@ -81,6 +84,7 @@ public class Bot extends DefaultBWListener {
         combatTelemetry = new CombatTelemetry(game, gameState, unitManager.getSquadManager());
         startSquadDecisionLogging();
         startPerchAssignmentLogging();
+        startTargetChoiceLogging();
         startPlanEventLogging(decisions.getOpener());
     }
 
@@ -101,6 +105,15 @@ public class Bot extends DefaultBWListener {
 
         perchAssignmentLogger = new PerchAssignmentLogger(game, gameState, combatTelemetry.getGameId());
         PerchAssignments.register(perchAssignmentLogger);
+    }
+
+    private void startTargetChoiceLogging() {
+        if (!gameState.getConfig().telemetryCombat) {
+            return;
+        }
+
+        targetChoiceLogger = new TargetChoiceLogger(game, combatTelemetry.getGameId());
+        TargetChoices.register(targetChoiceLogger);
     }
 
     private void startPlanEventLogging(BuildOrder opener) {
@@ -129,6 +142,9 @@ public class Bot extends DefaultBWListener {
         }
         if (perchAssignmentLogger != null) {
             perchAssignmentLogger.onFrame();
+        }
+        if (targetChoiceLogger != null) {
+            targetChoiceLogger.onFrame();
         }
         combatTelemetry.onFrame();
         debugMap.onFrame();
@@ -201,6 +217,9 @@ public class Bot extends DefaultBWListener {
         }
         if (perchAssignmentLogger != null) {
             perchAssignmentLogger.onEnd();
+        }
+        if (targetChoiceLogger != null) {
+            targetChoiceLogger.onEnd();
         }
         combatTelemetry.onEnd(isWinner);
     }
