@@ -667,7 +667,8 @@ public class ReactionsTest {
         assertFalse(canAfford(speed, bankMinerals, bankGas, resourceCount));
 
         boolean speedStarted = Reactions.isSpeedStarted(NOT_RESEARCHED, new HashSet<>());
-        boolean delayLair = Reactions.shouldDelayLair(Race.Zerg, techProgression.isPlannedMetabolicBoost(), speedStarted);
+        boolean delayLair = Reactions.shouldDelayLair(Race.Zerg, techProgression.isPlannedMetabolicBoost(), speedStarted,
+                NO_ENEMY_GROUND_UNITS_AT_OUR_BASES);
         assertTrue(delayLair);
         assertTrue(new Reactions(null).shouldFireLairCancel(delayLair));
 
@@ -690,12 +691,15 @@ public class ReactionsTest {
         Plan speed = new UpgradePlan(UpgradeType.Metabolic_Boost, CANCEL_FRAME);
         Set<Plan> plansBuilding = new HashSet<>();
         Reactions reactions = new Reactions(null);
-        boolean pending = Reactions.shouldDelayLair(Race.Zerg, SPEED_PLANNED, Reactions.isSpeedStarted(NOT_RESEARCHED, plansBuilding));
+        boolean pending = Reactions.shouldDelayLair(Race.Zerg, SPEED_PLANNED, Reactions.isSpeedStarted(NOT_RESEARCHED, plansBuilding),
+                NO_ENEMY_GROUND_UNITS_AT_OUR_BASES);
         assertTrue(reactions.shouldFireLairCancel(pending));
 
         plansBuilding.add(speed);
-        boolean researching = Reactions.shouldDelayLair(Race.Zerg, SPEED_PLANNED, Reactions.isSpeedStarted(NOT_RESEARCHED, plansBuilding));
-        boolean researched = Reactions.shouldDelayLair(Race.Zerg, SPEED_NOT_PLANNED, Reactions.isSpeedStarted(RESEARCHED, new HashSet<>()));
+        boolean researching = Reactions.shouldDelayLair(Race.Zerg, SPEED_PLANNED, Reactions.isSpeedStarted(NOT_RESEARCHED, plansBuilding),
+                NO_ENEMY_GROUND_UNITS_AT_OUR_BASES);
+        boolean researched = Reactions.shouldDelayLair(Race.Zerg, SPEED_NOT_PLANNED, Reactions.isSpeedStarted(RESEARCHED, new HashSet<>()),
+                NO_ENEMY_GROUND_UNITS_AT_OUR_BASES);
 
         assertFalse(researching);
         assertFalse(researched);
@@ -725,21 +729,62 @@ public class ReactionsTest {
 
     @Test
     void theZvZEarlyRushDoesNotDelayTheLairBeforeSpeedIsPlanned() {
-        assertFalse(Reactions.shouldDelayLair(Race.Zerg, SPEED_NOT_PLANNED, SPEED_NOT_STARTED));
+        assertFalse(Reactions.shouldDelayLair(Race.Zerg, SPEED_NOT_PLANNED, SPEED_NOT_STARTED, NO_ENEMY_GROUND_UNITS_AT_OUR_BASES));
+    }
+
+    @Test
+    void theZvZEarlyRushHoldsTheLairAfterSpeedStartsWhileAttackersAreAtOurBases() {
+        Reactions reactions = new Reactions(null);
+        assertTrue(reactions.shouldFireLairCancel(Reactions.shouldDelayLair(Race.Zerg, SPEED_PLANNED, SPEED_NOT_STARTED,
+                ONE_ENEMY_GROUND_UNIT_AT_OUR_BASES)));
+
+        boolean researching = Reactions.shouldDelayLair(Race.Zerg, SPEED_PLANNED, SPEED_STARTED, ONE_ENEMY_GROUND_UNIT_AT_OUR_BASES);
+        boolean researched = Reactions.shouldDelayLair(Race.Zerg, SPEED_NOT_PLANNED, SPEED_STARTED, ONE_ENEMY_GROUND_UNIT_AT_OUR_BASES);
+
+        assertTrue(researching);
+        assertTrue(researched);
+        assertFalse(reactions.shouldFireLairCancel(researching));
+        Plan scheduledLair = lair(PlanState.SCHEDULE);
+        assertEquals(Collections.singleton(scheduledLair),
+                ProductionManager.delayedLairPlans(researching, new HashSet<>(Collections.singletonList(scheduledLair))));
+    }
+
+    @Test
+    void theZvZEarlyRushHoldsTheLairForAttackersAtOurBasesBeforeSpeedIsPlanned() {
+        assertTrue(Reactions.shouldDelayLair(Race.Zerg, SPEED_NOT_PLANNED, SPEED_NOT_STARTED, ONE_ENEMY_GROUND_UNIT_AT_OUR_BASES));
+    }
+
+    @Test
+    void theZvZEarlyRushReleasesTheLairOnceTheAttackersLeaveOurBases() {
+        Reactions reactions = new Reactions(null);
+        boolean underAttack = Reactions.shouldDelayLair(Race.Zerg, SPEED_PLANNED, SPEED_STARTED, ONE_ENEMY_GROUND_UNIT_AT_OUR_BASES);
+        assertTrue(reactions.shouldFireLairCancel(underAttack));
+
+        boolean cleared = Reactions.shouldDelayLair(Race.Zerg, SPEED_PLANNED, SPEED_STARTED, NO_ENEMY_GROUND_UNITS_AT_OUR_BASES);
+
+        assertFalse(cleared);
+        assertFalse(reactions.shouldFireLairCancel(cleared));
+        assertTrue(reactions.shouldFireLairCancel(underAttack));
     }
 
     @Test
     void theEarlyRushDelaysTheLairAgainstProtossWhateverTheSpeedState() {
-        assertTrue(Reactions.shouldDelayLair(Race.Protoss, SPEED_NOT_PLANNED, SPEED_NOT_STARTED));
-        assertTrue(Reactions.shouldDelayLair(Race.Protoss, SPEED_PLANNED, SPEED_NOT_STARTED));
-        assertTrue(Reactions.shouldDelayLair(Race.Protoss, SPEED_PLANNED, SPEED_STARTED));
-        assertTrue(Reactions.shouldDelayLair(Race.Protoss, SPEED_NOT_PLANNED, SPEED_STARTED));
+        for (int attackers : new int[] {NO_ENEMY_GROUND_UNITS_AT_OUR_BASES, ONE_ENEMY_GROUND_UNIT_AT_OUR_BASES}) {
+            assertTrue(Reactions.shouldDelayLair(Race.Protoss, SPEED_NOT_PLANNED, SPEED_NOT_STARTED, attackers));
+            assertTrue(Reactions.shouldDelayLair(Race.Protoss, SPEED_PLANNED, SPEED_NOT_STARTED, attackers));
+            assertTrue(Reactions.shouldDelayLair(Race.Protoss, SPEED_PLANNED, SPEED_STARTED, attackers));
+            assertTrue(Reactions.shouldDelayLair(Race.Protoss, SPEED_NOT_PLANNED, SPEED_STARTED, attackers));
+        }
     }
 
     @Test
     void theEarlyRushDoesNotDelayTheLairAgainstTerranOrAnUnresolvedRace() {
-        assertFalse(Reactions.shouldDelayLair(Race.Terran, SPEED_PLANNED, SPEED_NOT_STARTED));
-        assertFalse(Reactions.shouldDelayLair(Race.Unknown, SPEED_PLANNED, SPEED_NOT_STARTED));
+        for (int attackers : new int[] {NO_ENEMY_GROUND_UNITS_AT_OUR_BASES, ONE_ENEMY_GROUND_UNIT_AT_OUR_BASES}) {
+            assertFalse(Reactions.shouldDelayLair(Race.Terran, SPEED_PLANNED, SPEED_NOT_STARTED, attackers));
+            assertFalse(Reactions.shouldDelayLair(Race.Terran, SPEED_PLANNED, SPEED_STARTED, attackers));
+            assertFalse(Reactions.shouldDelayLair(Race.Unknown, SPEED_PLANNED, SPEED_NOT_STARTED, attackers));
+            assertFalse(Reactions.shouldDelayLair(Race.Unknown, SPEED_PLANNED, SPEED_STARTED, attackers));
+        }
     }
 
     @Test

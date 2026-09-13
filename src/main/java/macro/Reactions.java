@@ -163,7 +163,8 @@ public class Reactions {
         planSpeedUpgrade(productionQueue);
 
         Race opponentRace = gameState.getOpponentRace();
-        boolean delayLair = shouldDelayLair(opponentRace, gameState.getTechProgression().isPlannedMetabolicBoost(), isSpeedStarted());
+        boolean delayLair = shouldDelayLair(opponentRace, gameState.getTechProgression().isPlannedMetabolicBoost(), isSpeedStarted(),
+                gameState.knownEnemyMobileGroundCombatUnitsAtOurBases());
         gameState.setEarlyRushDelayLair(delayLair);
         gameState.setEarlyRushMacroHatch(opponentRace == Race.Protoss);
 
@@ -208,20 +209,28 @@ public class Reactions {
      * Whether the early rush reaction holds the Lair back, blocking new Lair plans through
      * {@link GameState#canPlanLair()} and dropping queued and scheduled ones.
      *
-     * <p>Against Protoss the Lair waits for the whole reaction. Against Zerg it waits only while
+     * <p>Against Protoss the Lair waits for the whole reaction. Against Zerg it waits while
      * Metabolic Boost is planned and not yet started, so a Lair claim cannot take the minerals the
-     * upgrade is waiting on; it is released as soon as research starts. No other race delays it.
+     * upgrade is waiting on, and while enemy ground combat units are last known to be at our bases,
+     * so a Lair claim cannot take the minerals the rush defence is waiting on. The Zerg hold is
+     * released once research has started and no attacker is known at our bases, or when the
+     * reaction stands down. No other race delays it.
      *
      * @param opponentRace the opponent's race as currently resolved
      * @param speedPlanned whether a Metabolic Boost plan is outstanding
      * @param speedStarted whether Metabolic Boost research has started or finished
+     * @param knownEnemyGroundUnitsAtOurBases living enemy ground combat units last known to be at our bases
      * @return true while the Lair is held back
      */
-    static boolean shouldDelayLair(Race opponentRace, boolean speedPlanned, boolean speedStarted) {
+    static boolean shouldDelayLair(Race opponentRace, boolean speedPlanned, boolean speedStarted,
+                                   int knownEnemyGroundUnitsAtOurBases) {
         if (opponentRace == Race.Protoss) {
             return true;
         }
-        return opponentRace == Race.Zerg && speedPlanned && !speedStarted;
+        if (opponentRace != Race.Zerg) {
+            return false;
+        }
+        return speedPlanned && !speedStarted || knownEnemyGroundUnitsAtOurBases > 0;
     }
 
     private boolean isSpeedStarted() {
