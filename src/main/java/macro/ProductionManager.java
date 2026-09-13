@@ -10,6 +10,7 @@ import bwapi.UnitType;
 import bwapi.UpgradeType;
 import bwem.Base;
 import info.GameState;
+import info.Readiness;
 import info.ResourceCount;
 import info.TechProgression;
 import info.UnitTypeCount;
@@ -66,6 +67,9 @@ public class ProductionManager {
 
     private final BuildAheadSlot unitAheadSlot = new BuildAheadSlot();
 
+    /** The tech wave production is pre-positioning for this frame, or null. */
+    private TechWave techWave;
+
     private int currentFrame = 5;
 
     /** Plans the current schedule pass pulled out of the queue; they still hold their colony claims. */
@@ -105,6 +109,7 @@ public class ProductionManager {
 
         transition();
         reactions.onFrame();
+        updateTechWave();
         plan();
         cancelImpossiblePlans();
         cancelDelayedLairPlans();
@@ -121,6 +126,63 @@ public class ProductionManager {
         if (gameState.isTransitionBuildOrder()) {
             this.activeBuildOrder = gameState.getActiveBuildOrder();
         }
+    }
+
+    /** Re-derives the pending tech wave from the structures under construction this frame. */
+    private void updateTechWave() {
+        techWave = null;
+        Unit prerequisite = null;
+        for (Unit unit : gameState.getSelf().getUnits()) {
+            if (!unit.isCompleted() && TechWave.waveUnit(unit.getType()) != null) {
+                prerequisite = unit;
+                break;
+            }
+        }
+        if (prerequisite == null) {
+            return;
+        }
+
+        UnitType prerequisiteType = prerequisite.getType();
+        boolean rushReactionActive = gameState.isEarlyRushed()
+                || gameState.isCannonRushed()
+                || gameState.isScvRushed()
+                || gameState.isLarvaDeadlocked();
+        boolean groundSafe = TechWave.isGroundSafe(
+                gameState.ourLivingUnitCount(UnitType.Zerg_Zergling),
+                gameState.enemyUnitCount(UnitType.Zerg_Zergling),
+                gameState.visibleEnemyMobileGroundCombatUnitsAtOurBases());
+        techWave = TechWave.pending(
+                prerequisiteType,
+                prerequisite.getRemainingBuildTime(),
+                gameState.structureCount(Readiness.USABLE, prerequisiteType) > 0,
+                rushReactionActive,
+                groundSafe);
+    }
+
+    private PlanBlocker techWaveBlocker(Plan plan) {
+        if (techWave == null) {
+            return PlanBlocker.NONE;
+        }
+        ResourceCount resourceCount = gameState.getResourceCount();
+        return techWave.blocker(
+                plan,
+                resourceCount.freeLarva(gameState.numLarva(), gameState.larvaAssignedToPlans()),
+                resourceCount.availableMinerals(),
+                resourceCount.availableGas());
+    }
+
+    /** Queues the Overlord a pending tech wave needs so it hatches before the wave is issued. */
+    private void planTechWaveSupply(Player self) {
+        if (techWave == null) {
+            return;
+        }
+        int supplyInFlight = gameState.getUnitTypeCount().plannedCount(UnitType.Zerg_Overlord) * OVERLORD_SUPPLY;
+        if (!techWave.needsOverlord(self.supplyTotal() - self.supplyUsed(), supplyInFlight)) {
+            return;
+        }
+        addUnitToQueue(UnitType.Zerg_Overlord, UnitPlan.ADVANCED_UNIT_PRIORITY - 1);
+        ResourceCount resourceCount = gameState.getResourceCount();
+        resourceCount.setPlannedSupply(resourceCount.getPlannedSupply() + OVERLORD_SUPPLY);
     }
 
     private void cancelImpossiblePlans() {
@@ -491,6 +553,8 @@ public class ProductionManager {
             return;
         }
 
+        planTechWaveSupply(self);
+
         final int overlordCount = gameState.ourLivingUnitCount(UnitType.Zerg_Overlord);
         final int plannedSupply = gameState.getResourceCount().getPlannedSupply();
         final boolean isNinePool = "9PoolSpeed".equals(activeBuildOrder.getName());
@@ -794,12 +858,12 @@ public class ProductionManager {
         gameState.getProductionQueue().addAll(outcome.requeued);
     }
 
-    private PlanBlocker schedulePlan(Plan plan, boolean bankClaimedAhead) {
+    private PlanBlocker schedulePlan(Plan plan, boolean bankClaimedAhead, boolean larvaClaimedAhead) {
         switch (plan.getType()) {
             case BUILDING:
                 return scheduleBuildingItem(plan, bankClaimedAhead);
             case UNIT:
-                return scheduleUnitItem(plan, bankClaimedAhead);
+                return scheduleUnitItem(plan, bankClaimedAhead, larvaClaimedAhead);
             case UPGRADE:
                 return scheduleUpgradeItem(game.self(), plan);
             case TECH:
@@ -811,7 +875,7 @@ public class ProductionManager {
 
     @FunctionalInterface
     interface PlanScheduler {
-        PlanBlocker schedule(Plan plan, boolean bankClaimedAhead);
+        PlanBlocker schedule(Plan plan, boolean bankClaimedAhead, boolean larvaClaimedAhead);
     }
 
     static final class ScanOutcome {
@@ -825,8 +889,9 @@ public class ProductionManager {
     static ScanOutcome scanPlans(List<Plan> plansInPriorityOrder, PlanScheduler scheduler) {
         ScanOutcome outcome = new ScanOutcome();
         boolean bankClaimedAhead = false;
+        boolean larvaClaimedAhead = false;
         for (Plan plan : plansInPriorityOrder) {
-            PlanBlocker blocker = scheduler.schedule(plan, bankClaimedAhead);
+            PlanBlocker blocker = scheduler.schedule(plan, bankClaimedAhead, larvaClaimedAhead);
             if (blocker == PlanBlocker.NONE) {
                 outcome.scheduled.add(plan);
                 continue;
@@ -834,6 +899,7 @@ public class ProductionManager {
             PlanEvents.blocked(plan, blocker);
             outcome.requeued.add(plan);
             bankClaimedAhead = bankClaimedAhead || claimsBank(blocker);
+            larvaClaimedAhead = larvaClaimedAhead || claimsLarva(plan, blocker);
         }
         return outcome;
     }
@@ -855,6 +921,28 @@ public class ProductionManager {
 
     static boolean claimsBank(PlanBlocker blocker) {
         return blocker == PlanBlocker.RESOURCES;
+    }
+
+    /**
+     * True when a blocked larva morph claims the next free larva against every plan behind it.
+     *
+     * <p>A plan waiting on larva, on supply, or on a bank another plan is holding will take a larva
+     * as soon as that one wait clears. Letting a later plan spend the larva meanwhile hands the
+     * higher-priority plan a fresh larva wait on top of the one it had. A plan short of its own cost
+     * by more than a build cycle, with no income for it, or in eviction backoff is not about to use
+     * a larva, and holding one for it would only idle larva production.
+     *
+     * @param plan the blocked plan
+     * @param blocker the gate it failed this scan
+     * @return true when later larva morphs must leave the larva to this plan
+     */
+    static boolean claimsLarva(Plan plan, PlanBlocker blocker) {
+        if (plan.getType() != PlanType.UNIT || !isLarvaMorph(plan.getPlannedUnit())) {
+            return false;
+        }
+        return blocker == PlanBlocker.NO_LARVA
+                || blocker == PlanBlocker.SUPPLY
+                || blocker == PlanBlocker.BUILD_AHEAD_SLOT_TAKEN;
     }
 
     // TODO: Refactor this into WorkerManager or a Buildingmanager (TechManager)?
@@ -984,6 +1072,11 @@ public class ProductionManager {
         PlanBlocker producerBlocker = buildingMorphBlocker(building, hasFreeMorphProducer(building));
         if (producerBlocker != PlanBlocker.NONE) {
             return producerBlocker;
+        }
+
+        PlanBlocker waveBlocker = techWaveBlocker(plan);
+        if (waveBlocker != PlanBlocker.NONE) {
+            return waveBlocker;
         }
 
         ResourceCount resourceCount = gameState.getResourceCount();
@@ -1193,12 +1286,17 @@ public class ProductionManager {
         return null;
     }
 
-    private PlanBlocker scheduleUnitItem(Plan plan, boolean bankClaimedAhead) {
+    private PlanBlocker scheduleUnitItem(Plan plan, boolean bankClaimedAhead, boolean larvaClaimedAhead) {
         UnitType unit = plan.getPlannedUnit();
         ResourceCount resourceCount = gameState.getResourceCount();
         boolean larvaAvailable = resourceCount.canScheduleLarva(gameState.numLarva(), gameState.larvaAssignedToPlans());
-        if (isLarvaBlocked(unit, larvaAvailable)) {
+        if (isLarvaBlocked(unit, larvaAvailable, larvaClaimedAhead)) {
             return PlanBlocker.NO_LARVA;
+        }
+
+        PlanBlocker waveBlocker = techWaveBlocker(plan);
+        if (waveBlocker != PlanBlocker.NONE) {
+            return waveBlocker;
         }
 
         Player self = gameState.getSelf();
@@ -1229,19 +1327,30 @@ public class ProductionManager {
     }
 
     /**
-     * True when a larva morph cannot start for lack of free larva.
+     * True when a larva morph cannot start for lack of free larva, or because a blocked plan ahead
+     * of it in the scan has claimed the larva.
      *
      * Units that morph from an existing unit consume no larva, so only larva morphs are gated.
+     * Overlords are exempt from the claim, so a plan waiting on supply cannot hold back the Overlord
+     * that gives it supply.
      *
      * @param unit the planned unit
      * @param larvaAvailable whether unreserved larva is on hand
+     * @param larvaClaimedAhead whether a higher-priority larva morph blocked this scan claims the larva
      * @return true when the morph cannot be issued yet
      */
-    static boolean isLarvaBlocked(UnitType unit, boolean larvaAvailable) {
-        if (unit.whatBuilds().getKey() != UnitType.Zerg_Larva) {
+    static boolean isLarvaBlocked(UnitType unit, boolean larvaAvailable, boolean larvaClaimedAhead) {
+        if (!isLarvaMorph(unit)) {
             return false;
         }
-        return !larvaAvailable;
+        if (!larvaAvailable) {
+            return true;
+        }
+        return larvaClaimedAhead && unit != UnitType.Zerg_Overlord;
+    }
+
+    private static boolean isLarvaMorph(UnitType unit) {
+        return unit.whatBuilds().getKey() == UnitType.Zerg_Larva;
     }
 
     /**
@@ -1319,6 +1428,11 @@ public class ProductionManager {
         final UpgradeType upgrade = plan.getPlannedUpgrade();
         ResourceCount resourceCount = gameState.getResourceCount();
 
+        PlanBlocker waveBlocker = techWaveBlocker(plan);
+        if (waveBlocker != PlanBlocker.NONE) {
+            return waveBlocker;
+        }
+
         if (resourceCount.cannotAffordUpgrade(plan)) {
             return shortfallBlocker(gameState.frameCanAffordPlan(plan, currentFrame));
         }
@@ -1366,6 +1480,11 @@ public class ProductionManager {
     private PlanBlocker scheduleResearch(Plan plan) {
         final TechType techType = plan.getPlannedTechType();
         ResourceCount resourceCount = gameState.getResourceCount();
+
+        PlanBlocker waveBlocker = techWaveBlocker(plan);
+        if (waveBlocker != PlanBlocker.NONE) {
+            return waveBlocker;
+        }
 
         if (resourceCount.cannotAffordResearch(techType)) {
             return shortfallBlocker(gameState.frameCanAffordPlan(plan, currentFrame));

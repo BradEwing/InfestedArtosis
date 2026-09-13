@@ -240,7 +240,18 @@ public class ResourceCount {
      * @return true when a plan can take a larva
      */
     public boolean canScheduleLarva(int currentLarva, int larvaHeldByPlans) {
-        return currentLarva + larvaHeldByPlans > reservedLarva;
+        return freeLarva(currentLarva, larvaHeldByPlans) > 0;
+    }
+
+    /**
+     * Larva no scheduled plan has reserved, counted as {@link #canScheduleLarva} counts them.
+     *
+     * @param currentLarva unassigned larva
+     * @param larvaHeldByPlans larva already assigned to a plan that has not morphed yet
+     * @return free larva, negative while reservations outrun the larva on hand
+     */
+    public int freeLarva(int currentLarva, int larvaHeldByPlans) {
+        return currentLarva + larvaHeldByPlans - reservedLarva;
     }
 
     public int getReservedLarva() {
