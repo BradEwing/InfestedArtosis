@@ -894,9 +894,19 @@ public abstract class BuildOrder {
             return false;
         }
         
-        int ourBaseCount = baseData.currentAndReservedCount();
-        int enemyTotal = gameState.enemyResourceDepotCount();
-        return ourBaseCount <= enemyTotal;
+        return isBehindOnBases(baseData.currentAndReservedCount(), gameState.enemyResourceDepotCount());
+    }
+
+    /**
+     * Base parity as the transition builds read it: an opponent level with us on depots already
+     * counts as ahead, so the request fires at parity rather than only once we trail.
+     *
+     * @param ourBaseCount bases we hold or have reserved for a queued hatchery
+     * @param enemyDepots living enemy resource depots we have observed
+     * @return true when we should take another base
+     */
+    static boolean isBehindOnBases(int ourBaseCount, int enemyDepots) {
+        return ourBaseCount <= enemyDepots;
     }
 
     @Override
