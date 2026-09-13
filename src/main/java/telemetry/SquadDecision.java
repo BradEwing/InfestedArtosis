@@ -28,6 +28,8 @@ final class SquadDecision {
     private double engageThreshold = NOT_EVALUATED;
     private int enemySupplyBelieved = NOT_EVALUATED;
 
+    private RallyRelease rallyRelease = RallyRelease.NONE;
+
     private int shouldContain = NOT_EVALUATED;
     private int canBreakContainment = NOT_EVALUATED;
     private int containmentEntered = NOT_EVALUATED;

@@ -28,6 +28,16 @@ public interface SquadDecisionSink {
     void onSplitSuppressed(Squad squad, int moveOutThreshold, int squadStrength, int outlierStrength);
 
     /**
+     * A squad was sent to the rally point, with the branch that put it there.
+     */
+    void onRallied(Squad squad, RallyReason reason);
+
+    /**
+     * A squad that was rallying is no longer rallying, with the term that released it.
+     */
+    void onRallyReleased(Squad squad, RallyRelease release);
+
+    /**
      * The containment verdict for a squad that was eligible to enter an arc this frame.
      *
      * <p>canBreakContainment is only meaningful when shouldContain is true.

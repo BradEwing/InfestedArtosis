@@ -23,7 +23,9 @@ import java.util.Set;
  * differs from the previous frame sweep. LOCK_SUPPRESSED is emitted when a hysteresis lock holds a
  * squad on its current status after the simulator asks for the other one. SPLIT_SUPPRESSED is
  * emitted when splitSquads keeps a squad together because a split would drop a side below the move
- * out floor; suppressed_by carries MOVE_OUT_FLOOR on those rows.
+ * out floor; suppressed_by carries MOVE_OUT_FLOOR on those rows. SQUAD_DISBANDED is emitted when a
+ * squad leaves the fight squads, whether it merged, emptied or disbanded for want of targets, so a
+ * RALLY episode that never resolves is still bounded.
  *
  * <p>LOCK_SUPPRESSED rows are deduplicated per suppression episode, keyed on the lock, its expiry
  * frame, and the overridden verdict.
@@ -38,12 +40,14 @@ public class SquadDecisionLogger implements SquadDecisionSink {
             + "suppressed_by,our_supply_real,squad_size,enemy_supply_believed_real,enemy_scouted,sim_our_strength,"
             + "sim_enemy_strength,sim_ratio,sim_engage_threshold,retreat_locked,fight_locked,"
             + "retreat_lock_until_frame,fight_lock_until_frame,committed,commit_frame,should_contain,"
-            + "can_break_containment,containment_entered,centroid_x,centroid_y,ground_distance_to_base";
+            + "can_break_containment,containment_entered,centroid_x,centroid_y,ground_distance_to_base,"
+            + "rally_reason,rally_release";
 
     private static final int FLUSH_INTERVAL_FRAMES = 480;
     private static final String EVENT_STATUS_CHANGE = "STATUS_CHANGE";
     private static final String EVENT_LOCK_SUPPRESSED = "LOCK_SUPPRESSED";
     private static final String EVENT_SPLIT_SUPPRESSED = "SPLIT_SUPPRESSED";
+    private static final String EVENT_SQUAD_DISBANDED = "SQUAD_DISBANDED";
     private static final String MOVE_OUT_FLOOR = "MOVE_OUT_FLOOR";
     private static final String NONE = "NONE";
 
@@ -56,6 +60,8 @@ public class SquadDecisionLogger implements SquadDecisionSink {
     private final Map<String, SquadStatus> lastStatus = new HashMap<>();
     private final Map<String, SquadDecision> decisions = new HashMap<>();
     private final Map<String, String> lastSuppression = new HashMap<>();
+    private final Map<String, Squad> lastSquad = new HashMap<>();
+    private final Map<String, RallyReason> rallyReason = new HashMap<>();
 
     private boolean disabled;
 
@@ -139,6 +145,32 @@ public class SquadDecisionLogger implements SquadDecisionSink {
     }
 
     @Override
+    public void onRallied(Squad squad, RallyReason reason) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            rallyReason.put(squad.getId(), reason);
+        } catch (RuntimeException e) {
+            disable();
+        }
+    }
+
+    @Override
+    public void onRallyReleased(Squad squad, RallyRelease release) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            decisionFor(squad).setRallyRelease(release);
+        } catch (RuntimeException e) {
+            disable();
+        }
+    }
+
+    @Override
     public void onContainmentEvaluated(Squad squad, boolean shouldContain, boolean canBreakContainment,
                                        boolean entered) {
         if (disabled) {
@@ -178,6 +210,8 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         decisions.clear();
         lastStatus.clear();
         lastSuppression.clear();
+        lastSquad.clear();
+        rallyReason.clear();
         SquadDecisions.clear();
     }
 
@@ -200,6 +234,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         for (Squad squad : squadManager.fightSquads) {
             String id = squad.getId();
             present.add(id);
+            lastSquad.put(id, squad);
             SquadStatus current = squad.getStatus();
             SquadStatus previous = lastStatus.get(id);
             if (current == previous) {
@@ -209,9 +244,44 @@ public class SquadDecisionLogger implements SquadDecisionSink {
             writer.append(row(squad, frame, EVENT_STATUS_CHANGE, previous, current, decisions.get(id), NONE));
         }
 
+        emitDisbands(frame, present);
+
         lastStatus.keySet().retainAll(present);
         lastSuppression.keySet().retainAll(present);
+        lastSquad.keySet().retainAll(present);
+        rallyReason.keySet().retainAll(present);
         decisions.clear();
+    }
+
+    /**
+     * Emits the terminal row for every squad that was present at the last sweep and is gone now,
+     * whichever way it left: merged into a neighbour, emptied by losses, or disbanded for want of
+     * targets. Without it a squad that never changed status again simply stopped appearing, so an
+     * episode that was open when it left was never closed and its dwell had no upper bound.
+     *
+     * <p>The squad object outlives its membership in fightSquads, so the row still carries its last
+     * centroid and composition. Runs before the bookkeeping is dropped, so the rally reason the
+     * episode opened with is still readable.
+     */
+    private void emitDisbands(int frame, Set<String> present) {
+        for (Map.Entry<String, Squad> entry : lastSquad.entrySet()) {
+            if (present.contains(entry.getKey())) {
+                continue;
+            }
+            SquadStatus last = lastStatus.get(entry.getKey());
+            SquadDecision context = new SquadDecision();
+            context.setRallyRelease(releaseOnDisband(last));
+            writer.append(row(entry.getValue(), frame, EVENT_SQUAD_DISBANDED, last, null, context, NONE));
+        }
+    }
+
+    /**
+     * Returns the release a terminal row records. Only a squad that was rallying when it vanished
+     * closes a RALLY episode; for any other status the column stays NONE, so counting DISBANDED
+     * counts unresolved rallies and nothing else.
+     */
+    static RallyRelease releaseOnDisband(SquadStatus last) {
+        return last == SquadStatus.RALLY ? RallyRelease.DISBANDED : RallyRelease.NONE;
     }
 
     private void readSnapshot(Squad squad, SquadDecision decision) {
@@ -280,6 +350,8 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         fields.addAll(squadCells(squad, context,
                 gameState.getScoutData().isEnemyBuildingLocationKnown(),
                 groundDistanceToNearestBase(squad.getCenter())));
+        fields.addAll(rallyCells(rallyReason.getOrDefault(squad.getId(), RallyReason.NONE),
+                context.getRallyRelease()));
         return String.join(",", fields);
     }
 
@@ -333,6 +405,23 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         fields.add(String.valueOf(center != null ? center.getX() : SquadDecision.NOT_EVALUATED));
         fields.add(String.valueOf(center != null ? center.getY() : SquadDecision.NOT_EVALUATED));
         fields.add(String.valueOf(groundDistanceToBase));
+        return fields;
+    }
+
+    /**
+     * Builds the two cells that describe the row's place in a RALLY episode.
+     *
+     * <p>The reason is sticky for as long as the squad exists, so it is present on the row that
+     * opens the episode and on the row that closes it. Reading it is how a metric drops the
+     * Defiler only squads that SquadManager rallies every frame by design.
+     *
+     * @param reason branch that last sent this squad to the rally point
+     * @param release term that ended the episode, NONE on a row that does not end one
+     */
+    static List<String> rallyCells(RallyReason reason, RallyRelease release) {
+        List<String> fields = new ArrayList<>();
+        fields.add(reason.name());
+        fields.add(release.name());
         return fields;
     }
 
