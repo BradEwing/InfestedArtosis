@@ -1,5 +1,6 @@
 package strategy.buildorder;
 
+import bwapi.Race;
 import util.Time;
 
 /**
@@ -27,9 +28,44 @@ public final class SunkenTargets {
      */
     public static final String ONE_BASE_STRATEGY = "1Base";
 
+    /**
+     * Zerglings one side must hold over the other before its zergling count reads as a lead.
+     */
+    public static final int ZERGLING_LEAD = 3;
+
     private static final Time ONE_BASE_RESPONSE_OPENS = new Time(5, 0);
 
     private SunkenTargets() {
+    }
+
+    /**
+     * Whether one side's zerglings lead the other's by {@link #ZERGLING_LEAD}.
+     * <p>
+     * The one comparison both directions of the zergling balance read: the Zerg matchup asks
+     * whether the enemy leads us, the 1Base floor whether we lead the enemy.
+     *
+     * @param leaderZerglings zerglings of the side being asked about
+     * @param trailerZerglings zerglings of the other side
+     * @return true when the first count leads the second by the threshold
+     */
+    public static boolean isZerglingLead(int leaderZerglings, int trailerZerglings) {
+        return leaderZerglings >= trailerZerglings + ZERGLING_LEAD;
+    }
+
+    /**
+     * Whether our ground army leads the enemy's by enough that the 1Base floor is not owed.
+     * <p>
+     * Only answered against Zerg, where both armies are measured in the zerglings the matchup
+     * already compares. Against the other races a zergling count says nothing about the army
+     * across the map, so there is no lead to read and the floor stands.
+     *
+     * @param opponentRace the opponent's race, Unknown until it is revealed
+     * @param ourZerglings our living zerglings
+     * @param enemyZerglings living enemy zerglings we have observed
+     * @return true when we lead on ground by the threshold
+     */
+    public static boolean hasGroundLead(Race opponentRace, int ourZerglings, int enemyZerglings) {
+        return opponentRace == Race.Zerg && isZerglingLead(ourZerglings, enemyZerglings);
     }
 
     /**
@@ -76,17 +112,22 @@ public final class SunkenTargets {
      * here, so the floor holds while the detection has fired and nothing seen since has
      * contradicted it, and recedes on the frame the expansion is scouted. A bot that never scouts
      * again keeps the floor, because a base it has not seen is a base it cannot price.
+     * <p>
+     * An enemy on one base spending on army is only a threat the colonies answer while that army
+     * can beat ours. The floor recedes while our ground army leads by {@link #hasGroundLead} and
+     * returns on the frame the lead is lost.
      *
      * @param oneBaseDetected whether StrategyTracker has detected 1Base
      * @param observedEnemyBases enemy bases we have seen and not seen destroyed
+     * @param groundLead whether our ground army leads the enemy's, per {@link #hasGroundLead}
      * @param gameTime current game time
      * @return the floor the detection sets, or zero
      */
-    public static int oneBaseSunkens(boolean oneBaseDetected, int observedEnemyBases, Time gameTime) {
+    public static int oneBaseSunkens(boolean oneBaseDetected, int observedEnemyBases, boolean groundLead, Time gameTime) {
         if (!oneBaseDetected || gameTime.lessThanOrEqual(ONE_BASE_RESPONSE_OPENS)) {
             return 0;
         }
-        if (observedEnemyBases > 1) {
+        if (observedEnemyBases > 1 || groundLead) {
             return 0;
         }
         return ONE_BASE_SUNKENS;
@@ -103,13 +144,14 @@ public final class SunkenTargets {
      * @param matchupSunkens the sunkens the matchup asks for
      * @param oneBaseDetected whether StrategyTracker has detected 1Base
      * @param observedEnemyBases enemy bases we have seen and not seen destroyed
+     * @param groundLead whether our ground army leads the enemy's, per {@link #hasGroundLead}
      * @param enemyBarracks living enemy Barracks we have observed
      * @param gameTime current game time
      * @return sunkens per base
      */
     public static int sunkenTarget(int matchupSunkens, boolean oneBaseDetected, int observedEnemyBases,
-                                   int enemyBarracks, Time gameTime) {
-        int oneBase = oneBaseSunkens(oneBaseDetected, observedEnemyBases, gameTime);
+                                   boolean groundLead, int enemyBarracks, Time gameTime) {
+        int oneBase = oneBaseSunkens(oneBaseDetected, observedEnemyBases, groundLead, gameTime);
         int floor = Math.max(oneBase, barracksPressureSunkens(enemyBarracks));
         return Math.max(matchupSunkens, floor);
     }

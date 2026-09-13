@@ -6,6 +6,7 @@ import info.GameState;
 import info.Readiness;
 import macro.plan.Plan;
 import strategy.buildorder.BuildOrder;
+import strategy.buildorder.SunkenTargets;
 
 import java.util.Collections;
 import java.util.List;
@@ -41,7 +42,7 @@ public class ZergBase extends BuildOrder {
         int ourZerglings = gameState.ourLivingUnitCount(UnitType.Zerg_Zergling);
         int enemyZerglings = gameState.enemyUnitCount(UnitType.Zerg_Zergling);
 
-        if (enemyDepots > ourBaseCount || enemyZerglings >= ourZerglings + 3) {
+        if (enemyDepots > ourBaseCount || SunkenTargets.isZerglingLead(enemyZerglings, ourZerglings)) {
             return 1;
         }
         return 0;
