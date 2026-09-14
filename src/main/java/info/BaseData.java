@@ -104,6 +104,22 @@ public class BaseData {
         return tiles;
     }
 
+    /**
+     * Tiles of the base a building site belongs to: the main base tiles for a site in our main, otherwise every
+     * tile within the manhattan radius of the site.
+     *
+     * @param mainBaseTiles tiles of our main base
+     * @param site building site
+     * @param radius manhattan tile radius used for a site outside the main
+     * @return the tiles an enemy must stand on to contest the site
+     */
+    public static Set<TilePosition> siteTiles(Set<TilePosition> mainBaseTiles, TilePosition site, int radius) {
+        if (mainBaseTiles.contains(site)) {
+            return mainBaseTiles;
+        }
+        return Distance.tilesWithinManhattanDistance(site, radius);
+    }
+
     public void initializeMainBase(Base base, GameMap map) {
 
         this.mainBase = base;
