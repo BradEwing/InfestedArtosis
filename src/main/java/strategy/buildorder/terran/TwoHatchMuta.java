@@ -43,6 +43,7 @@ public class TwoHatchMuta extends TerranBase {
         int spireCount        = gameState.structureCount(Readiness.USABLE, UnitType.Zerg_Spire);
         int committedSpires   = gameState.structureCount(Readiness.COMMITTED, UnitType.Zerg_Spire);
         int mutaCount         = gameState.ourUnitCount(UnitType.Zerg_Mutalisk);
+        int livingMutaCount   = gameState.ourLivingUnitCount(UnitType.Zerg_Mutalisk);
         int scourgeCount      = gameState.ourUnitCount(UnitType.Zerg_Scourge);
         int droneCount        = gameState.numEconomyDrones();
         int zerglingCount     = gameState.ourUnitCount(UnitType.Zerg_Zergling);
@@ -75,7 +76,7 @@ public class TwoHatchMuta extends TerranBase {
         boolean wantSpire = techProgression.canPlanSpire() && spireCount < 1 && lairCount >= 1 && droneCount >= 16;
 
         boolean wantMetabolicBoost = techProgression.canPlanMetabolicBoost() && !techProgression.isMetabolicBoost() && lairCount > 0;
-        boolean wantFlyingAttack = mutaCount > 6 && techProgression.canPlanFlyerAttack();
+        boolean wantFlyingAttack = shouldPlanFlyerAttack(techProgression, livingMutaCount);
         boolean wantOverlordSpeed = needOverlordSpeed(gameState) && techProgression.canPlanOverlordSpeed();
 
         // Plan buildings
@@ -262,6 +263,23 @@ public class TwoHatchMuta extends TerranBase {
                                            int outstandingMacroHatcheries) {
         return outstandingMacroHatcheries == 0
                 && SpireMacroHatchery.shouldPlan(committedSpires, larva, hatcheries, availableMinerals, availableGas);
+    }
+
+    /**
+     * Whether the build should queue the next Flyer Attacks level.
+     *
+     * <p>Reads completed Mutalisks only. A planned Mutalisk has not been given larva or gas yet,
+     * and the upgrade waits on neither larva nor a morph, so counting plans starts it against the
+     * bank those Mutalisks still need. The same gate holds each level, so the next level is not
+     * queued on the frame the previous one finishes unless the Mutalisks stand.
+     *
+     * @param techProgression the tech state, which already bars a level in flight or one the
+     *     current tech cannot research
+     * @param livingMutalisks completed Mutalisks
+     * @return true when the next Flyer Attacks level should be queued
+     */
+    static boolean shouldPlanFlyerAttack(TechProgression techProgression, int livingMutalisks) {
+        return livingMutalisks > 6 && techProgression.canPlanFlyerAttack();
     }
 
     static boolean shouldPlanMutalisk(TechProgression techProgression, int mutaCount, int desiredMutalisks, int gatherers) {

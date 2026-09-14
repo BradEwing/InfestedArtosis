@@ -2,6 +2,7 @@ package strategy.buildorder.zerg;
 
 import bwapi.UnitType;
 import info.TechProgression;
+import info.UnitTypeCount;
 import macro.ProductionQueue;
 import macro.plan.BuildingPlan;
 import macro.plan.Plan;
@@ -29,6 +30,33 @@ class OneHatchSpireTest {
     private static final int POOL_FRAME = 2300;
 
     private static final int GAS_FRAME = POOL_FRAME + 1;
+
+    @Test
+    void withholdsFlyerCarapaceWhileTheMutalisksAreOnlyPlanned() {
+        UnitTypeCount count = new UnitTypeCount();
+        for (int i = 0; i < 7; i++) {
+            count.planUnit(UnitType.Zerg_Mutalisk);
+        }
+
+        assertTrue(count.get(UnitType.Zerg_Mutalisk) > 6);
+        assertFalse(OneHatchSpire.shouldPlanFlyerCarapace(withSpire(), count.livingCount(UnitType.Zerg_Mutalisk)));
+    }
+
+    @Test
+    void plansFlyerCarapaceWithSevenLivingMutalisks() {
+        assertTrue(OneHatchSpire.shouldPlanFlyerCarapace(withSpire(), 7));
+    }
+
+    @Test
+    void withholdsFlyerCarapaceWithSixLivingMutalisks() {
+        assertFalse(OneHatchSpire.shouldPlanFlyerCarapace(withSpire(), 6));
+    }
+
+    private static TechProgression withSpire() {
+        TechProgression techProgression = new TechProgression();
+        techProgression.setSpire(true);
+        return techProgression;
+    }
 
     @Test
     void derivesTheDroneAlongsideTheMutalisk() {

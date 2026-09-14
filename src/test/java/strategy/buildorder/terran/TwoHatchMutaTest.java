@@ -59,6 +59,8 @@ class TwoHatchMutaTest {
 
     private static final int WAVE_FRAMES = FRAMES_PER_LARVA * (FLOATING_TARGET + 5);
 
+    private static final int PLANNED_MUTALISKS = 7;
+
     private static TechProgression withSpire() {
         TechProgression techProgression = new TechProgression();
         techProgression.setSpire(true);
@@ -88,6 +90,75 @@ class TwoHatchMutaTest {
     @Test
     void withholdsTheMutaliskOnceTheCountIsMet() {
         assertFalse(TwoHatchMuta.shouldPlanMutalisk(withSpire(), 9, 9, GATHERER_FLOOR));
+    }
+
+    /**
+     * Game LBIDH0GO frame 8,233: the seventh Mutalisk plan was queued with none alive, and Flyer
+     * Attacks was queued on the same frame.
+     */
+    @Test
+    void withholdsFlyerAttacksWhileTheMutalisksAreOnlyPlanned() {
+        UnitTypeCount count = mutalisks(PLANNED_MUTALISKS, 0);
+
+        assertTrue(count.get(UnitType.Zerg_Mutalisk) > 6);
+        assertFalse(TwoHatchMuta.shouldPlanFlyerAttack(withSpire(), count.livingCount(UnitType.Zerg_Mutalisk)));
+    }
+
+    @Test
+    void withholdsFlyerAttacksWithSixLivingMutalisksAndMorePlanned() {
+        UnitTypeCount count = mutalisks(PLANNED_MUTALISKS, 6);
+
+        assertFalse(TwoHatchMuta.shouldPlanFlyerAttack(withSpire(), count.livingCount(UnitType.Zerg_Mutalisk)));
+    }
+
+    @Test
+    void plansFlyerAttacksWithSevenLivingMutalisks() {
+        UnitTypeCount count = mutalisks(0, 7);
+
+        assertTrue(TwoHatchMuta.shouldPlanFlyerAttack(withSpire(), count.livingCount(UnitType.Zerg_Mutalisk)));
+    }
+
+    @Test
+    void withholdsFlyerAttacksWithoutASpire() {
+        assertFalse(TwoHatchMuta.shouldPlanFlyerAttack(new TechProgression(), 7));
+    }
+
+    /**
+     * Game LBIDH0GO frame 12,830: level 1 finished and level 2 was queued the same frame with no
+     * Mutalisk alive.
+     */
+    @Test
+    void withholdsTheSecondLevelOnTheFrameTheFirstCompletesWithoutLivingMutalisks() {
+        TechProgression techProgression = withSpire();
+        techProgression.setPlannedFlyerAttack(true);
+        UnitTypeCount count = mutalisks(PLANNED_MUTALISKS, 3);
+
+        assertFalse(TwoHatchMuta.shouldPlanFlyerAttack(techProgression, count.livingCount(UnitType.Zerg_Mutalisk)));
+
+        techProgression.setFlyerAttack(1);
+        techProgression.setPlannedFlyerAttack(false);
+
+        assertTrue(techProgression.canPlanFlyerAttack());
+        assertFalse(TwoHatchMuta.shouldPlanFlyerAttack(techProgression, count.livingCount(UnitType.Zerg_Mutalisk)));
+    }
+
+    @Test
+    void plansTheSecondLevelOnceTheFirstCompletesWithSevenLivingMutalisks() {
+        TechProgression techProgression = withSpire();
+        techProgression.setFlyerAttack(1);
+
+        assertTrue(TwoHatchMuta.shouldPlanFlyerAttack(techProgression, 7));
+    }
+
+    private static UnitTypeCount mutalisks(int planned, int living) {
+        UnitTypeCount count = new UnitTypeCount();
+        for (int i = 0; i < planned; i++) {
+            count.planUnit(UnitType.Zerg_Mutalisk);
+        }
+        for (int i = 0; i < living; i++) {
+            count.addUnit(UnitType.Zerg_Mutalisk);
+        }
+        return count;
     }
 
     @Test

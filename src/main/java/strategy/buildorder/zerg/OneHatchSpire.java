@@ -36,6 +36,7 @@ public class OneHatchSpire extends ZergBase {
         final int spireCount        = gameState.structureCount(Readiness.USABLE, UnitType.Zerg_Spire);
         final int committedSpires   = gameState.structureCount(Readiness.COMMITTED, UnitType.Zerg_Spire);
         final int mutaCount         = gameState.ourUnitCount(UnitType.Zerg_Mutalisk);
+        final int livingMutaCount   = gameState.ourLivingUnitCount(UnitType.Zerg_Mutalisk);
         final int scourgeCount      = gameState.ourUnitCount(UnitType.Zerg_Scourge);
         final int droneCount        = gameState.ourUnitCount(UnitType.Zerg_Drone);
         final int zerglingCount     = gameState.ourUnitCount(UnitType.Zerg_Zergling);
@@ -47,7 +48,7 @@ public class OneHatchSpire extends ZergBase {
 
         boolean wantMetabolicBoost = techProgression.canPlanMetabolicBoost() && !techProgression.isMetabolicBoost() && 
                                     zerglingCount > 5 && lairCount > 0;
-        boolean wantFlyingCarapace = mutaCount > 6 && techProgression.canPlanFlyerDefense();
+        boolean wantFlyingCarapace = shouldPlanFlyerCarapace(techProgression, livingMutaCount);
         boolean wantOverlordSpeed = needOverlordSpeed(gameState) && techProgression.canPlanOverlordSpeed();
 
 
@@ -177,6 +178,22 @@ public class OneHatchSpire extends ZergBase {
      */
     static boolean shouldPlanAnotherGas(int committedSpires, boolean canPlanExtractor) {
         return committedSpires > 0 && canPlanExtractor;
+    }
+
+    /**
+     * Whether the build should queue the next Flyer Carapace level.
+     *
+     * <p>Reads completed Mutalisks only. A planned Mutalisk has not been given larva or gas yet,
+     * and the upgrade waits on neither larva nor a morph, so counting plans starts it against the
+     * bank those Mutalisks still need.
+     *
+     * @param techProgression the tech state, which already bars a level in flight or one the
+     *     current tech cannot research
+     * @param livingMutalisks completed Mutalisks
+     * @return true when the next Flyer Carapace level should be queued
+     */
+    static boolean shouldPlanFlyerCarapace(TechProgression techProgression, int livingMutalisks) {
+        return livingMutalisks > 6 && techProgression.canPlanFlyerDefense();
     }
 
     static List<UnitType> unitsToPlan(boolean wantScourge, boolean wantMutalisk, boolean wantZergling, boolean wantDrone) {
