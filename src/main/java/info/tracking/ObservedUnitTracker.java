@@ -130,26 +130,23 @@ public class ObservedUnitTracker {
                 .count();
     }
 
+    /**
+     * Estimates a bunker's garrison from the marine bullets it fired this frame. A bunker only fires with a
+     * target in range, so a silent frame is no evidence the bunker is empty and leaves the estimate unchanged.
+     *
+     * @param bunker the bunker
+     * @param bulletsThisFrame marine bullets attributed to the bunker this frame
+     * @param currentFrame current frame
+     */
     public void updateBunkerGarrison(Unit bunker, int bulletsThisFrame, int currentFrame) {
         ObservedUnit ou = observedUnits.get(bunker);
-        if (ou == null) return;
-        if (bulletsThisFrame > 0) {
-            int sinceLastBullet = ou.getLastBunkerBulletFrame() >= 0
-                    ? currentFrame - ou.getLastBunkerBulletFrame() : Integer.MAX_VALUE;
-            if (sinceLastBullet > MARINE_COOLDOWN * 2) {
-                ou.setLastKnownLoadedCount(bulletsThisFrame);
-            } else if (bulletsThisFrame > ou.getLastKnownLoadedCount()) {
-                ou.setLastKnownLoadedCount(bulletsThisFrame);
-            }
-            ou.setLastBunkerBulletFrame(currentFrame);
-        } else if (ou.getLastBunkerBulletFrame() >= 0
-                && currentFrame - ou.getLastBunkerBulletFrame() > MARINE_COOLDOWN * 2) {
-            ou.setLastKnownLoadedCount(0);
-        } else if (ou.getLastBunkerBulletFrame() < 0
-                && ou.getLastLoadedCheckFrame() >= 0
-                && currentFrame - ou.getLastLoadedCheckFrame() > MARINE_COOLDOWN * 2) {
-            ou.setLastKnownLoadedCount(0);
+        if (ou == null || bulletsThisFrame <= 0) return;
+        int sinceLastBullet = ou.getLastBunkerBulletFrame() >= 0
+                ? currentFrame - ou.getLastBunkerBulletFrame() : Integer.MAX_VALUE;
+        if (sinceLastBullet > MARINE_COOLDOWN * 2 || bulletsThisFrame > ou.getLastKnownLoadedCount()) {
+            ou.setLastKnownLoadedCount(bulletsThisFrame);
         }
+        ou.setLastBunkerBulletFrame(currentFrame);
     }
 
     public void updateGroundHeight(Unit unit, int groundHeight) {

@@ -8,6 +8,7 @@ import unit.squad.Squad;
 import unit.squad.SquadManager;
 import unit.squad.SquadStatus;
 import unit.squad.horizon.HorizonCombatSimulator;
+import util.Arc;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -27,6 +28,9 @@ import java.util.Set;
  * squad leaves the fight squads, whether it merged, emptied or disbanded for want of targets, so a
  * RALLY episode that never resolves is still bounded.
  *
+ * <p>Rows for a squad holding a containment arc carry the arc's center and its points as x:y pairs joined by
+ * semicolons; every other row carries -1 and NONE there.
+ *
  * <p>LOCK_SUPPRESSED rows are deduplicated per suppression episode, keyed on the lock, its expiry
  * frame, and the overridden verdict.
  *
@@ -41,7 +45,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
             + "sim_enemy_strength,sim_ratio,sim_engage_threshold,retreat_locked,fight_locked,"
             + "retreat_lock_until_frame,fight_lock_until_frame,committed,commit_frame,should_contain,"
             + "can_break_containment,containment_entered,centroid_x,centroid_y,ground_distance_to_base,"
-            + "rally_reason,rally_release";
+            + "rally_reason,rally_release,arc_center_x,arc_center_y,arc_points";
 
     private static final int FLUSH_INTERVAL_FRAMES = 480;
     private static final String EVENT_STATUS_CHANGE = "STATUS_CHANGE";
@@ -352,6 +356,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
                 groundDistanceToNearestBase(squad.getCenter())));
         fields.addAll(rallyCells(rallyReason.getOrDefault(squad.getId(), RallyReason.NONE),
                 context.getRallyRelease()));
+        fields.addAll(arcCells(squad));
         return String.join(",", fields);
     }
 
@@ -422,6 +427,31 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         List<String> fields = new ArrayList<>();
         fields.add(reason.name());
         fields.add(release.name());
+        return fields;
+    }
+
+    /**
+     * Builds the three cells that locate the containment arc a CONTAIN squad is holding.
+     *
+     * @param squad squad the row describes
+     * @return arc center x, arc center y and the arc points, or the not evaluated sentinels
+     */
+    static List<String> arcCells(Squad squad) {
+        List<String> fields = new ArrayList<>();
+        Arc arc = squad.getStatus() == SquadStatus.CONTAIN ? squad.getContainmentArc() : null;
+        if (arc == null) {
+            fields.add(String.valueOf(SquadDecision.NOT_EVALUATED));
+            fields.add(String.valueOf(SquadDecision.NOT_EVALUATED));
+            fields.add(NONE);
+            return fields;
+        }
+        List<String> points = new ArrayList<>();
+        for (Position point : arc.getPositions()) {
+            points.add(point.getX() + ":" + point.getY());
+        }
+        fields.add(String.valueOf(arc.getCenter().getX()));
+        fields.add(String.valueOf(arc.getCenter().getY()));
+        fields.add(String.join(";", points));
         return fields;
     }
 

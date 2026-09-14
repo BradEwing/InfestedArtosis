@@ -6,6 +6,7 @@ import lombok.Getter;
 import unit.managed.ManagedUnit;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -42,8 +43,18 @@ public class Arc {
         this.centerAngle = Math.atan2(dy, dx);
     }
 
-    public void compute(Set<WalkPosition> accessibleWalkPositions, Set<Position> staticDefenseCoverage,
-                        int mapPixelWidth, int mapPixelHeight) {
+    /**
+     * Places the arc's points. A point a static defence structure could fire on is pushed outward along its ray
+     * until no zone covers it, and dropped when no walkable point within the push limit is clear.
+     *
+     * @param accessibleWalkPositions walkable positions, or empty to treat the whole map as walkable
+     * @param staticDefenseZones enemy static defence the points must stay out of
+     * @param defensePadding pixels added to every zone's reach, covering the holding unit's extent and a margin
+     * @param mapPixelWidth map width in pixels
+     * @param mapPixelHeight map height in pixels
+     */
+    public void compute(Set<WalkPosition> accessibleWalkPositions, Collection<StaticDefenseZone> staticDefenseZones,
+                        int defensePadding, int mapPixelWidth, int mapPixelHeight) {
         this.mapPixelWidth = mapPixelWidth;
         this.mapPixelHeight = mapPixelHeight;
         positions.clear();
@@ -67,8 +78,9 @@ public class Arc {
                 }
             }
 
-            if (isInStaticDefenseCoverage(candidate, staticDefenseCoverage)) {
-                candidate = pushOutsideDefenseCoverage(angle, candidate, accessibleWalkPositions, staticDefenseCoverage);
+            if (isInStaticDefenseCoverage(candidate, staticDefenseZones, defensePadding)) {
+                candidate = pushOutsideDefenseCoverage(angle, candidate, accessibleWalkPositions, staticDefenseZones,
+                        defensePadding);
                 if (candidate == null) continue;
             }
 
@@ -154,22 +166,22 @@ public class Arc {
         return new ArrayList<>(positions.subList(start, end));
     }
 
-    private boolean isInStaticDefenseCoverage(Position pos, Set<Position> coverage) {
-        if (coverage.isEmpty()) return false;
-        int snappedX = (pos.getX() / 8) * 8;
-        int snappedY = (pos.getY() / 8) * 8;
-        return coverage.contains(new Position(snappedX, snappedY));
+    private boolean isInStaticDefenseCoverage(Position pos, Collection<StaticDefenseZone> zones, int padding) {
+        for (StaticDefenseZone zone : zones) {
+            if (zone.covers(pos, padding)) return true;
+        }
+        return false;
     }
 
-    private Position pushOutsideDefenseCoverage(double angle, Position original,
-                                                Set<WalkPosition> accessible, Set<Position> coverage) {
+    private Position pushOutsideDefenseCoverage(double angle, Position original, Set<WalkPosition> accessible,
+                                                Collection<StaticDefenseZone> zones, int padding) {
         double baseDist = original.getDistance(center);
         for (int delta = DEFENSE_PUSH_STEP; delta <= DEFENSE_PUSH_MAX; delta += DEFENSE_PUSH_STEP) {
             double pushRadius = baseDist + delta;
             int px = center.getX() + (int) (Math.cos(angle) * pushRadius);
             int py = center.getY() + (int) (Math.sin(angle) * pushRadius);
             Position candidate = clampPosition(px, py);
-            if (isInStaticDefenseCoverage(candidate, coverage)) continue;
+            if (isInStaticDefenseCoverage(candidate, zones, padding)) continue;
             if (!accessible.isEmpty() && !accessible.contains(new WalkPosition(candidate))) continue;
             return candidate;
         }
