@@ -15,13 +15,20 @@ import java.util.Set;
 public class Overpool extends BuildOrder {
     private static final int POOL_SUPPLY = 18;
 
+    private static final int DRONE_TARGET_AFTER_POOL = 10;
+
+    static final int ZERGLING_TARGET = 4;
+
     public Overpool() {
         super("Overpool");
     }
 
     @Override
     protected boolean openerComplete(GameState gameState) {
-        return openerComplete(gameState.structureCount(Readiness.COMMITTED, UnitType.Zerg_Spawning_Pool));
+        int unstartedZerglings = 2 * gameState.outstandingUnitPlanCount(UnitType.Zerg_Zergling);
+        return openerComplete(
+                gameState.structureCount(Readiness.COMMITTED, UnitType.Zerg_Spawning_Pool),
+                gameState.ourUnitCount(UnitType.Zerg_Zergling) - unstartedZerglings);
     }
 
     @Override
@@ -51,12 +58,12 @@ public class Overpool extends BuildOrder {
         }
 
         boolean pool = techProgression.isPlannedSpawningPool() || techProgression.isSpawningPool();
-        if (pool && droneCount < 10) {
+        if (pool && droneCount < DRONE_TARGET_AFTER_POOL) {
             plans.add(planUnit(gameState, UnitType.Zerg_Drone));
             return plans;
         }
 
-        if (zerglingCount < this.zerglingsNeeded(gameState) && gameState.canPlanUnit(UnitType.Zerg_Zergling)) {
+        if (zerglingCount < ZERGLING_TARGET && gameState.canPlanUnit(UnitType.Zerg_Zergling)) {
             plans.add(planUnit(gameState, UnitType.Zerg_Zergling));
             return plans;
         }
@@ -88,14 +95,19 @@ public class Overpool extends BuildOrder {
      * Whether the opener has produced everything it will produce, so the terminal build order can
      * take over.
      *
-     * <p>Counts a Spawning Pool under construction, not only a finished one: the opener's last
-     * scripted act is committing to the pool, and everything the terminal build order would queue
-     * next, the natural hatchery above all, is unreachable until this fires.
+     * <p>The opener's last scripted act is starting its zerglings once the pool finishes. Everything
+     * the terminal build order would queue next, the natural hatchery above all, is unreachable
+     * until this fires, so the hatchery cannot take the minerals and larva those zerglings need.
+     *
+     * <p>A zergling counts as started once its larva has become an egg. A plan still waiting in
+     * the queue or on a larva does not count: a terminal build order that took over then could
+     * still spend the minerals first.
      *
      * @param poolCount Spawning Pools standing, under construction, or claimed by a plan in flight
+     * @param startedZerglings zerglings alive or in an egg
      * @return true once the opener should hand off
      */
-    static boolean openerComplete(int poolCount) {
-        return poolCount > 0;
+    static boolean openerComplete(int poolCount, int startedZerglings) {
+        return poolCount > 0 && startedZerglings >= ZERGLING_TARGET;
     }
 }
