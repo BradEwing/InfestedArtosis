@@ -73,6 +73,18 @@ public class ProductionQueue implements Iterable<Plan> {
         return count;
     }
 
+    /**
+     * Sums the gas price of every plan still waiting to be scheduled. A queued plan has not
+     * reserved yet, so this gas is invisible to the unreserved bank.
+     */
+    public int gasDemand() {
+        int gas = 0;
+        for (Plan plan : queue) {
+            gas += plan.gasPrice();
+        }
+        return gas;
+    }
+
     public int minPriority() {
         int min = Integer.MAX_VALUE;
         for (Plan plan : queue) {

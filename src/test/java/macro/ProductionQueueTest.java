@@ -27,6 +27,18 @@ class ProductionQueueTest {
     }
 
     @Test
+    void gasDemandSumsTheGasPriceOfEveryQueuedPlan() {
+        ProductionQueue queue = new ProductionQueue();
+        assertEquals(0, queue.gasDemand());
+        queue.add(new UnitPlan(UnitType.Zerg_Zergling, 6275));
+        queue.add(new BuildingPlan(UnitType.Zerg_Spire, SPIRE_PRIORITY));
+        queue.add(new UnitPlan(UnitType.Zerg_Mutalisk, UnitPlan.ADVANCED_UNIT_PRIORITY));
+        queue.add(new UnitPlan(UnitType.Zerg_Mutalisk, UnitPlan.ADVANCED_UNIT_PRIORITY));
+
+        assertEquals(UnitType.Zerg_Spire.gasPrice() + 2 * UnitType.Zerg_Mutalisk.gasPrice(), queue.gasDemand());
+    }
+
+    @Test
     void advancedUnitPlanLeadsTheBacklogItWasDerivedBehind() {
         ProductionQueue queue = new ProductionQueue();
         queue.add(new UnitPlan(UnitType.Zerg_Zergling, 6275));

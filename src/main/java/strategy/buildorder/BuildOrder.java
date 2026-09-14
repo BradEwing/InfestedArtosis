@@ -881,7 +881,15 @@ public abstract class BuildOrder {
 
         gameState.getBuildingPlanner().reservePlannedBuildingTiles(location, UnitType.Zerg_Hatchery);
         gameState.addPlannedHatchery(1);
-        Plan plan = new BuildingPlan(UnitType.Zerg_Hatchery, gameState.getGameTime().getFrames(), location);
+        return macroHatcheryPlan(gameState.getGameTime().getFrames(), location);
+    }
+
+    /**
+     * The plan every macro hatchery request creates: a Hatchery marked as a macro hatchery at the
+     * tile the request chose.
+     */
+    public static Plan macroHatcheryPlan(int frame, TilePosition location) {
+        Plan plan = new BuildingPlan(UnitType.Zerg_Hatchery, frame, location);
         plan.setMacroHatchery(true);
         return plan;
     }

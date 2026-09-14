@@ -153,18 +153,27 @@ public class BuildingManager {
         gameState.setPlansScheduled(scheduledPlans.stream().collect(Collectors.toCollection(HashSet::new)));
     }
 
+    /**
+     * Hands a Lair plan to a free Hatchery, preferring the main base Hatchery over the natural and
+     * other expansions. See {@link LairSite} for the full ordering.
+     */
     private boolean assignMorphLair(Plan plan) {
-        for (ManagedUnit managedHatchery : hatcheries) {
-            Unit hatchery = managedHatchery.getUnit();
-            if (hatchery.canBuild(plan.getPlannedUnit()) && !gameState.getAssignedPlannedItems().containsKey(hatchery)) {
-                managedHatchery.setRole(UnitRole.MORPH);
-                gameState.getAssignedPlannedItems().put(hatchery, plan);
-                managedHatchery.setPlan(plan);
-                return true;
-            }
+        TilePosition mainBase = gameState.getBaseData().mainBasePosition();
+        ManagedUnit managedHatchery = LairSite.choose(
+                hatcheries,
+                mu -> mu.getUnit().canBuild(plan.getPlannedUnit()) && !gameState.getAssignedPlannedItems().containsKey(mu.getUnit()),
+                mu -> mu.getUnit().getTilePosition().equals(mainBase),
+                mu -> mu.getUnit().getTilePosition().getDistance(mainBase),
+                mu -> mu.getUnit().getID());
+        if (managedHatchery == null) {
+            return false;
         }
 
-        return false;
+        Unit hatchery = managedHatchery.getUnit();
+        managedHatchery.setRole(UnitRole.MORPH);
+        gameState.getAssignedPlannedItems().put(hatchery, plan);
+        managedHatchery.setPlan(plan);
+        return true;
     }
 
     /**
