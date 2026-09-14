@@ -8,12 +8,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class OverpoolTest {
 
     @Test
-    void handsOffOnASpawningPoolUnderConstruction() {
-        assertTrue(Overpool.openerComplete(1));
+    void handsOffOnceThePoolIsCommittedAndTheZerglingsAreStarted() {
+        assertTrue(Overpool.openerComplete(1, Overpool.ZERGLING_TARGET));
+    }
+
+    @Test
+    void holdsWhileTheZerglingsAreNotStarted() {
+        assertFalse(Overpool.openerComplete(1, Overpool.ZERGLING_TARGET - 2));
     }
 
     @Test
     void holdsWhileNoSpawningPoolIsCommittedTo() {
-        assertFalse(Overpool.openerComplete(0));
+        assertFalse(Overpool.openerComplete(0, Overpool.ZERGLING_TARGET));
     }
 }
