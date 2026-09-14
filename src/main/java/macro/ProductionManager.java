@@ -1572,32 +1572,43 @@ public class ProductionManager {
      * 300-mineral reservation would otherwise suppress the rule that exists to rescue it.
      */
     private void reprioritizeHatcheriesForLarvaConstraint() {
-        if (gameState.numLarva() > 0) {
-            return;
+        Plan target = larvaConstraintHatchery(gameState.numLarva(),
+                gameState.getResourceCount().minedMinerals(), gameState.getProductionQueue());
+        if (target != null) {
+            gameState.getProductionQueue().setPriorityWhere(plan -> plan == target, 0);
         }
+    }
 
-        if (gameState.getResourceCount().minedMinerals() < HATCHERY_MINERAL_PRICE) {
-            return;
+    /**
+     * The queued hatchery the larva constraint rule promotes to priority 0.
+     *
+     * <p>The rule only re-prioritises. It never creates a hatchery plan and never changes the
+     * chosen plan's tile or macro hatchery flag, so an expansion stays an expansion. The main
+     * macro hatchery a larva-bound build needs is requested by the build order itself.
+     *
+     * @param larva larva not yet handed to a plan
+     * @param minedMinerals minerals mined and unspent, before any reservation
+     * @param queue the production queue
+     * @return the highest-priority queued hatchery, or null when larva is free, the bank cannot
+     *     buy a hatchery, none is queued, or the best one already sits at priority 0
+     */
+    static Plan larvaConstraintHatchery(int larva, int minedMinerals, Iterable<Plan> queue) {
+        if (larva > 0 || minedMinerals < HATCHERY_MINERAL_PRICE) {
+            return null;
         }
 
         Plan priorityHatcheryPlan = null;
         int highestPriority = Integer.MAX_VALUE;
-
-        for (Plan plan : gameState.getProductionQueue()) {
-            if (plan.getType() == PlanType.BUILDING && 
-                plan.getPlannedUnit() == UnitType.Zerg_Hatchery) {
-                
-                if (plan.getPriority() < highestPriority) {
-                    highestPriority = plan.getPriority();
-                    priorityHatcheryPlan = plan;
-                }
+        for (Plan plan : queue) {
+            if (plan.getType() == PlanType.BUILDING
+                    && plan.getPlannedUnit() == UnitType.Zerg_Hatchery
+                    && plan.getPriority() < highestPriority) {
+                highestPriority = plan.getPriority();
+                priorityHatcheryPlan = plan;
             }
         }
 
-        if (priorityHatcheryPlan != null && highestPriority > 0) {
-            Plan target = priorityHatcheryPlan;
-            gameState.getProductionQueue().setPriorityWhere(plan -> plan == target, 0);
-        }
+        return highestPriority > 0 ? priorityHatcheryPlan : null;
     }
 
     // Need to handle cancel case (building about to die, extractor trick, etc.)

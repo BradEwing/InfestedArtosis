@@ -8,6 +8,7 @@ import info.GameState;
 import info.Readiness;
 import info.TechProgression;
 import macro.plan.Plan;
+import strategy.buildorder.SpireMacroHatchery;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -39,6 +40,7 @@ public class TwoHatchMuta extends TerranBase {
         int lairCount         = gameState.structureCount(Readiness.USABLE, UnitType.Zerg_Lair);
         int committedLairs    = gameState.structureCount(Readiness.COMMITTED, UnitType.Zerg_Lair);
         int spireCount        = gameState.structureCount(Readiness.USABLE, UnitType.Zerg_Spire);
+        int committedSpires   = gameState.structureCount(Readiness.COMMITTED, UnitType.Zerg_Spire);
         int mutaCount         = gameState.ourUnitCount(UnitType.Zerg_Mutalisk);
         int scourgeCount      = gameState.ourUnitCount(UnitType.Zerg_Scourge);
         int droneCount        = gameState.numEconomyDrones();
@@ -60,6 +62,10 @@ public class TwoHatchMuta extends TerranBase {
         boolean wantNatural  = plannedAndCurrentHatcheries < 2 && droneCount >= 12;
         boolean wantThird    = plannedAndCurrentHatcheries < 3 && spireCount > 0 && mutaCount > 5;
         boolean wantBaseAdvantage = behindOnBases(gameState) || floatingMinerals;
+        boolean wantMacroHatchery = shouldPlanMacroHatchery(committedSpires, gameState.numLarva(),
+                gameState.hatcheryCount(), gameState.getResourceCount().availableMinerals(),
+                gameState.getResourceCount().availableGas(),
+                gameState.inFlightHatcheryPlans(true) + gameState.hatcheriesUnderConstruction(true));
 
         // Lair timing
         boolean wantLair = gameState.canPlanLair() && lairCount < 1 && baseCount >= 2;
@@ -85,10 +91,18 @@ public class TwoHatchMuta extends TerranBase {
         }
 
         // Bases
+        Plan expansionPlan = null;
         if (wantNatural || wantThird || wantBaseAdvantage) {
-            Plan hatcheryPlan = this.planNewBase(gameState);
-            if (hatcheryPlan != null) {
-                plans.add(hatcheryPlan);
+            expansionPlan = this.planNewBase(gameState);
+            if (expansionPlan != null) {
+                plans.add(expansionPlan);
+            }
+        }
+
+        if (expansionPlan == null && wantMacroHatchery) {
+            Plan macroHatcheryPlan = this.planMacroHatcheryAt(gameState, baseData.getMainBase());
+            if (macroHatcheryPlan != null) {
+                plans.add(macroHatcheryPlan);
             }
         }
 
@@ -219,6 +233,30 @@ public class TwoHatchMuta extends TerranBase {
 
     static boolean shouldPlanOverlord(int spireCount, int overlordCount, boolean excessSupply) {
         return spireCount > 1 && overlordCount < 4 && !excessSupply;
+    }
+
+    /**
+     * Whether the build should add a macro hatchery in its main.
+     *
+     * <p>Reads the larva-bound Spire request {@link SpireMacroHatchery#shouldPlan} shares with
+     * 1HatchSpire, held while a macro hatchery is already on its way. The main is the tile the
+     * plan takes, because it is the one base the build still holds when its natural is lost and
+     * its expansions are backing off.
+     *
+     * @param committedSpires Spires standing, under construction, or claimed by a plan in flight
+     * @param larva larva not yet handed to a plan
+     * @param hatcheries completed larva-producing hatcheries
+     * @param availableMinerals minerals mined and not reserved by a queued plan
+     * @param availableGas gas mined and not reserved by a queued plan
+     * @param outstandingMacroHatcheries macro hatchery plans in flight plus macro hatcheries
+     *     under construction
+     * @return true when a main macro hatchery should be requested
+     */
+    static boolean shouldPlanMacroHatchery(int committedSpires, int larva, int hatcheries,
+                                           int availableMinerals, int availableGas,
+                                           int outstandingMacroHatcheries) {
+        return outstandingMacroHatcheries == 0
+                && SpireMacroHatchery.shouldPlan(committedSpires, larva, hatcheries, availableMinerals, availableGas);
     }
 
     static boolean shouldPlanMutalisk(TechProgression techProgression, int mutaCount, int desiredMutalisks, int gatherers) {
