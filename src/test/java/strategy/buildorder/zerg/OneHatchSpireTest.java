@@ -27,10 +27,6 @@ class OneHatchSpireTest {
 
     private static final boolean CAN_PLAN_EXTRACTOR = true;
 
-    private static final int NO_LARVA = 0;
-
-    private static final int TWO_HATCHERIES = 2;
-
     private static final int POOL_FRAME = 2300;
 
     private static final int GAS_FRAME = POOL_FRAME + 1;
@@ -157,62 +153,5 @@ class OneHatchSpireTest {
     @Test
     void withholdsAnotherGasWhileTheExtractorRequestIsBarred() {
         assertFalse(OneHatchSpire.shouldPlanAnotherGas(ONE_SPIRE, !CAN_PLAN_EXTRACTOR));
-    }
-
-    /**
-     * Game L9NW30JG from 10:36: two hatcheries, at most one larva, and a peak bank of 638 minerals
-     * and 530 gas, taken here as unreserved. The 1050 mineral bar the build used to wait for was
-     * never reached.
-     */
-    @Test
-    void requestsAHatcheryWhileLarvaStarvedAndFloatingBothResources() {
-        assertTrue(OneHatchSpire.shouldPlanMacroHatchery(ONE_SPIRE, 1, TWO_HATCHERIES, 638, 530));
-    }
-
-    @Test
-    void requestsAHatcheryAtTheFloatBars() {
-        assertTrue(OneHatchSpire.shouldPlanMacroHatchery(ONE_SPIRE, NO_LARVA, TWO_HATCHERIES,
-                OneHatchSpire.FLOAT_MINERALS, OneHatchSpire.FLOAT_GAS));
-    }
-
-    @Test
-    void theMineralBarCoversTheHatcheryItBuys() {
-        assertEquals(UnitType.Zerg_Hatchery.mineralPrice(), OneHatchSpire.FLOAT_MINERALS);
-    }
-
-    @Test
-    void doesNotRequestAHatcheryWhileLarvaIsNotShort() {
-        assertFalse(OneHatchSpire.shouldPlanMacroHatchery(ONE_SPIRE, TWO_HATCHERIES, TWO_HATCHERIES, 638, 530));
-    }
-
-    @Test
-    void doesNotRequestAHatcheryOnFloatingMineralsAlone() {
-        assertFalse(OneHatchSpire.shouldPlanMacroHatchery(ONE_SPIRE, NO_LARVA, TWO_HATCHERIES, 638,
-                OneHatchSpire.FLOAT_GAS - 1));
-    }
-
-    @Test
-    void doesNotRequestAHatcheryOnFloatingGasAlone() {
-        assertFalse(OneHatchSpire.shouldPlanMacroHatchery(ONE_SPIRE, NO_LARVA, TWO_HATCHERIES,
-                OneHatchSpire.FLOAT_MINERALS - 1, 530));
-    }
-
-    /**
-     * The same 638 minerals and 530 gas with a Mutalisk pair and an upgrade already claiming most
-     * of it. The banks are read after reservations, which a plan takes when it is scheduled, so a
-     * committed bank is not a float.
-     */
-    @Test
-    void doesNotRequestAHatcheryWhileTheBankIsReservedByScheduledPlans() {
-        int reservedMinerals = 2 * UnitType.Zerg_Mutalisk.mineralPrice() + 150;
-        int reservedGas = 2 * UnitType.Zerg_Mutalisk.gasPrice() + 150;
-
-        assertFalse(OneHatchSpire.shouldPlanMacroHatchery(ONE_SPIRE, NO_LARVA, TWO_HATCHERIES,
-                638 - reservedMinerals, 530 - reservedGas));
-    }
-
-    @Test
-    void doesNotRequestAHatcheryWhileBankingForTheSpire() {
-        assertFalse(OneHatchSpire.shouldPlanMacroHatchery(NO_SPIRE, NO_LARVA, TWO_HATCHERIES, 638, 530));
     }
 }

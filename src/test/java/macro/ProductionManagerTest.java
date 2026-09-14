@@ -1,5 +1,6 @@
 package macro;
 
+import bwapi.TilePosition;
 import bwapi.UnitType;
 import bwapi.UpgradeType;
 import macro.ProductionManager.PlanScheduler;
@@ -36,6 +37,12 @@ class ProductionManagerTest {
 
     /** A drone walking to a far expansion; its claim-time hold ends near 815 frames. */
     private static final int HATCHERY_TRAVEL_FRAMES = 455;
+
+    private static final int STARVED_BANK = 397;
+
+    private static final TilePosition MAIN_TILE = new TilePosition(117, 119);
+
+    private static final TilePosition REMOTE_EXPANSION_TILE = new TilePosition(7, 6);
 
     private Plan spire(PlanState state) {
         Plan plan = new BuildingPlan(UnitType.Zerg_Spire, 1000);
@@ -1098,6 +1105,37 @@ class ProductionManagerTest {
         assertEquals(Collections.singletonList(overlord), outcome.scheduled);
     }
 
+    /**
+     * Game LBIDH0GO: a Drone derived before the Spire finished and a Mutalisk derived after it.
+     * With no larva the Mutalisk waits on NO_LARVA, and the next larva goes to it rather than to
+     * the Drone queued first.
+     */
+    @Test
+    void aMutaliskWaitingOnLarvaClaimsTheNextLarvaOverALaterPriorityDrone() {
+        ProductionQueue queue = new ProductionQueue();
+        Plan drone = drone(8178);
+        Plan muta = mutalisk();
+        queue.add(drone);
+        queue.add(muta);
+        Larva scheduler = new Larva(0, 1000, 20, false);
+
+        PlanEvents.register(blockerRecorder());
+
+        ScanOutcome waiting = ProductionManager.scanPlans(queue.toSortedList(), scheduler);
+
+        assertTrue(waiting.scheduled.isEmpty());
+        assertEquals(Arrays.asList(muta, drone), waiting.requeued);
+        assertEquals(muta, reportedPlans.get(0));
+        assertEquals(PlanBlocker.NO_LARVA, reportedBlockers.get(0));
+
+        scheduler.larva = 1;
+        ScanOutcome hatched = ProductionManager.scanPlans(waiting.requeued, scheduler);
+
+        assertEquals(Collections.singletonList(muta), hatched.scheduled);
+        assertEquals(Collections.singletonList(drone), hatched.requeued);
+        assertEquals(0, scheduler.larva);
+    }
+
     @Test
     void withNoBlockedPlanAheadTheDroneTakesTheLarva() {
         Plan drone = drone(7709);
@@ -1156,5 +1194,82 @@ class ProductionManagerTest {
 
         assertTrue(claimed.scheduled.isEmpty());
         assertEquals(Collections.singletonList(drone), afterCancel.scheduled);
+    }
+
+    private static Plan expansionHatchery(int priority) {
+        return new BuildingPlan(UnitType.Zerg_Hatchery, priority, REMOTE_EXPANSION_TILE);
+    }
+
+    private static List<Plan> hatcheryPlansIn(ProductionQueue queue) {
+        List<Plan> hatcheries = new ArrayList<>();
+        for (Plan plan : queue) {
+            if (plan.getPlannedUnit() == UnitType.Zerg_Hatchery) {
+                hatcheries.add(plan);
+            }
+        }
+        return hatcheries;
+    }
+
+    private static void applyLarvaConstraint(ProductionQueue queue) {
+        Plan target = ProductionManager.larvaConstraintHatchery(0, STARVED_BANK, queue);
+        if (target != null) {
+            queue.setPriorityWhere(plan -> plan == target, 0);
+        }
+    }
+
+    /**
+     * Game LBIDH0GO at frame 9917: the only queued hatchery was a remote expansion. The rule
+     * promotes it as it stands and creates no main macro hatchery of its own.
+     */
+    @Test
+    void theLarvaConstraintPromotesAQueuedExpansionWithoutTurningItIntoAMacroHatchery() {
+        ProductionQueue queue = new ProductionQueue();
+        Plan expansion = expansionHatchery(FRAME);
+        queue.add(expansion);
+
+        applyLarvaConstraint(queue);
+
+        assertEquals(Collections.singletonList(expansion), hatcheryPlansIn(queue));
+        assertEquals(0, expansion.getPriority());
+        assertFalse(expansion.isMacroHatchery());
+        assertEquals(REMOTE_EXPANSION_TILE, expansion.getBuildPosition());
+    }
+
+    @Test
+    void theLarvaConstraintKeepsTheMacroFlagAndMainTileOfTheHatcheryItPromotes() {
+        ProductionQueue queue = new ProductionQueue();
+        Plan macroHatchery = BuildOrder.macroHatcheryPlan(FRAME, MAIN_TILE);
+        queue.add(macroHatchery);
+
+        applyLarvaConstraint(queue);
+
+        assertEquals(0, macroHatchery.getPriority());
+        assertTrue(macroHatchery.isMacroHatchery());
+        assertEquals(MAIN_TILE, macroHatchery.getBuildPosition());
+    }
+
+    @Test
+    void theLarvaConstraintLeavesAMacroHatcheryBehindAnExpansionAlreadyAtPriorityZero() {
+        ProductionQueue queue = new ProductionQueue();
+        queue.add(expansionHatchery(0));
+        queue.add(BuildOrder.macroHatcheryPlan(FRAME, MAIN_TILE));
+
+        assertNull(ProductionManager.larvaConstraintHatchery(0, STARVED_BANK, queue));
+    }
+
+    @Test
+    void theLarvaConstraintHoldsWhileLarvaIsFree() {
+        ProductionQueue queue = new ProductionQueue();
+        queue.add(expansionHatchery(FRAME));
+
+        assertNull(ProductionManager.larvaConstraintHatchery(1, STARVED_BANK, queue));
+    }
+
+    @Test
+    void theLarvaConstraintHoldsWhileTheBankCannotBuyAHatchery() {
+        ProductionQueue queue = new ProductionQueue();
+        queue.add(expansionHatchery(FRAME));
+
+        assertNull(ProductionManager.larvaConstraintHatchery(0, UnitType.Zerg_Hatchery.mineralPrice() - 1, queue));
     }
 }

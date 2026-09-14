@@ -7,7 +7,9 @@ import info.BaseData;
 import info.GameState;
 import info.Readiness;
 import info.TechProgression;
+import info.UnitTypeCount;
 import macro.plan.Plan;
+import strategy.buildorder.SpireMacroHatchery;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -39,6 +41,7 @@ public class TwoHatchMuta extends TerranBase {
         int lairCount         = gameState.structureCount(Readiness.USABLE, UnitType.Zerg_Lair);
         int committedLairs    = gameState.structureCount(Readiness.COMMITTED, UnitType.Zerg_Lair);
         int spireCount        = gameState.structureCount(Readiness.USABLE, UnitType.Zerg_Spire);
+        int committedSpires   = gameState.structureCount(Readiness.COMMITTED, UnitType.Zerg_Spire);
         int mutaCount         = gameState.ourUnitCount(UnitType.Zerg_Mutalisk);
         int livingMutaCount   = gameState.ourLivingUnitCount(UnitType.Zerg_Mutalisk);
         int scourgeCount      = gameState.ourUnitCount(UnitType.Zerg_Scourge);
@@ -61,6 +64,10 @@ public class TwoHatchMuta extends TerranBase {
         boolean wantNatural  = plannedAndCurrentHatcheries < 2 && droneCount >= 12;
         boolean wantThird    = plannedAndCurrentHatcheries < 3 && spireCount > 0 && mutaCount > 5;
         boolean wantBaseAdvantage = behindOnBases(gameState) || floatingMinerals;
+        boolean wantMacroHatchery = shouldPlanMacroHatchery(committedSpires, gameState.numLarva(),
+                gameState.hatcheryCount(), gameState.getResourceCount().availableMinerals(),
+                gameState.getResourceCount().availableGas(),
+                gameState.inFlightHatcheryPlans(true) + gameState.hatcheriesUnderConstruction(true));
 
         // Lair timing
         boolean wantLair = gameState.canPlanLair() && lairCount < 1 && baseCount >= 2;
@@ -86,10 +93,18 @@ public class TwoHatchMuta extends TerranBase {
         }
 
         // Bases
+        Plan expansionPlan = null;
         if (wantNatural || wantThird || wantBaseAdvantage) {
-            Plan hatcheryPlan = this.planNewBase(gameState);
-            if (hatcheryPlan != null) {
-                plans.add(hatcheryPlan);
+            expansionPlan = this.planNewBase(gameState);
+            if (expansionPlan != null) {
+                plans.add(expansionPlan);
+            }
+        }
+
+        if (expansionPlan == null && wantMacroHatchery) {
+            Plan macroHatcheryPlan = this.planMacroHatcheryAt(gameState, baseData.getMainBase());
+            if (macroHatcheryPlan != null) {
+                plans.add(macroHatcheryPlan);
             }
         }
 
@@ -143,14 +158,18 @@ public class TwoHatchMuta extends TerranBase {
         // Plan Units
         final int desiredScourge = enemyVessel + enemyDropship + enemyValkyrie + enemyWraith;
         if (techProgression.isSpire() && scourgeCount < desiredScourge && canPlanAdvancedUnit(gameState, UnitType.Zerg_Scourge)) {
-            plans.add(this.planUnit(gameState, UnitType.Zerg_Scourge));
-            return plans;
+            List<Plan> scourgePlans = this.planAdvancedUnit(gameState, UnitType.Zerg_Scourge);
+            if (!scourgePlans.isEmpty()) {
+                plans.addAll(scourgePlans);
+                return plans;
+            }
         }
 
         final int desiredMutalisks = desiredMutalisks(gameState);
-        if (shouldPlanMutalisk(techProgression, mutaCount, desiredMutalisks, gameState.numGatherers())) {
-            Plan mutaliskPlan = this.planUnit(gameState, UnitType.Zerg_Mutalisk);
-            plans.add(mutaliskPlan);
+        List<Plan> mutaliskPlans = planMutalisk(techProgression, desiredMutalisks, gameState.numGatherers(),
+                gameState.queuedUnitPlanCount(UnitType.Zerg_Mutalisk), gameState.getUnitTypeCount());
+        if (!mutaliskPlans.isEmpty()) {
+            plans.addAll(mutaliskPlans);
             return plans;
         }
 
@@ -223,6 +242,30 @@ public class TwoHatchMuta extends TerranBase {
     }
 
     /**
+     * Whether the build should add a macro hatchery in its main.
+     *
+     * <p>Reads the larva-bound Spire request {@link SpireMacroHatchery#shouldPlan} shares with
+     * 1HatchSpire, held while a macro hatchery is already on its way. The main is the tile the
+     * plan takes, because it is the one base the build still holds when its natural is lost and
+     * its expansions are backing off.
+     *
+     * @param committedSpires Spires standing, under construction, or claimed by a plan in flight
+     * @param larva larva not yet handed to a plan
+     * @param hatcheries completed larva-producing hatcheries
+     * @param availableMinerals minerals mined and not reserved by a queued plan
+     * @param availableGas gas mined and not reserved by a queued plan
+     * @param outstandingMacroHatcheries macro hatchery plans in flight plus macro hatcheries
+     *     under construction
+     * @return true when a main macro hatchery should be requested
+     */
+    static boolean shouldPlanMacroHatchery(int committedSpires, int larva, int hatcheries,
+                                           int availableMinerals, int availableGas,
+                                           int outstandingMacroHatcheries) {
+        return outstandingMacroHatcheries == 0
+                && SpireMacroHatchery.shouldPlan(committedSpires, larva, hatcheries, availableMinerals, availableGas);
+    }
+
+    /**
      * Whether the build should queue the next Flyer Attacks level.
      *
      * <p>Reads completed Mutalisks only. A planned Mutalisk has not been given larva or gas yet,
@@ -242,5 +285,27 @@ public class TwoHatchMuta extends TerranBase {
     static boolean shouldPlanMutalisk(TechProgression techProgression, int mutaCount, int desiredMutalisks, int gatherers) {
         return techProgression.isSpire() && mutaCount < desiredMutalisks
                 && canPlanAdvancedUnit(UnitType.Zerg_Mutalisk, techProgression, gatherers);
+    }
+
+    /**
+     * The Mutalisk plan for this frame, ranked ahead of the Drone and Zergling backlog.
+     *
+     * <p>The count read against the target includes plans already charged to it, so a wave is
+     * queued one plan at a time until the target is met. While a Mutalisk plan still waits in the
+     * queue no second one is added, and the build goes on to plan the units below it.
+     *
+     * @param techProgression the bot's tech state
+     * @param desiredMutalisks the Mutalisk target
+     * @param gatherers workers gathering, for the eligibility gate
+     * @param queuedMutalisks Mutalisk plans still waiting in the production queue
+     * @param count the unit counts, including planned units, that the plan is charged to
+     * @return one Mutalisk plan at the advanced unit priority, or none
+     */
+    static List<Plan> planMutalisk(TechProgression techProgression, int desiredMutalisks, int gatherers,
+                                   int queuedMutalisks, UnitTypeCount count) {
+        if (!shouldPlanMutalisk(techProgression, count.get(UnitType.Zerg_Mutalisk), desiredMutalisks, gatherers)) {
+            return new ArrayList<>();
+        }
+        return planAdvancedUnit(UnitType.Zerg_Mutalisk, techProgression, gatherers, queuedMutalisks, count);
     }
 }
