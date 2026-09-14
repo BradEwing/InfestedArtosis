@@ -1,5 +1,6 @@
 package macro;
 
+import bwapi.TechType;
 import bwapi.TilePosition;
 import bwapi.UnitType;
 import bwapi.UpgradeType;
@@ -10,6 +11,8 @@ import macro.plan.Plan;
 import macro.plan.PlanBlocker;
 import macro.plan.PlanCancelSource;
 import macro.plan.PlanState;
+import macro.plan.PlanType;
+import macro.plan.TechPlan;
 import macro.plan.UnitPlan;
 import macro.plan.UpgradePlan;
 import org.junit.jupiter.api.AfterEach;
@@ -39,6 +42,8 @@ class ProductionManagerTest {
     private static final int HATCHERY_TRAVEL_FRAMES = 455;
 
     private static final int STARVED_BANK = 397;
+
+    private static final int QUEUED_COLONY_PRIORITY = 5;
 
     private static final TilePosition MAIN_TILE = new TilePosition(117, 119);
 
@@ -132,6 +137,7 @@ class ProductionManagerTest {
         private final Map<Plan, PlanBlocker> blockers = new HashMap<>();
         private final Map<Plan, Boolean> bankClaimedAhead = new HashMap<>();
         private final Map<Plan, Boolean> larvaClaimedAhead = new HashMap<>();
+        private final Map<Plan, Boolean> researchClaimedAhead = new HashMap<>();
         private final List<Plan> examined = new ArrayList<>();
 
         private Recorder block(Plan plan, PlanBlocker blocker) {
@@ -140,12 +146,71 @@ class ProductionManagerTest {
         }
 
         @Override
-        public PlanBlocker schedule(Plan plan, boolean claimedAhead, boolean larvaClaimed) {
+        public PlanBlocker schedule(Plan plan, boolean claimedAhead, boolean larvaClaimed, boolean researchClaimed) {
             examined.add(plan);
             bankClaimedAhead.put(plan, claimedAhead);
             larvaClaimedAhead.put(plan, larvaClaimed);
+            researchClaimedAhead.put(plan, researchClaimed);
             return blockers.getOrDefault(plan, PlanBlocker.NONE);
         }
+    }
+
+    /**
+     * Upgrades, research and larva morphs over one bank, gated as the real schedulers gate: the
+     * research claim first, then the research shortfall or the unit bank gate. A research plan
+     * pays its cost once the bank covers it; income arrives between scans through {@link #mine}.
+     */
+    private static final class ResearchBank implements PlanScheduler {
+
+        private final BuildAheadSlot slot = new BuildAheadSlot();
+
+        private final boolean colonyReady;
+
+        private int minerals;
+
+        private int gas;
+
+        private ResearchBank(int minerals, int gas, boolean colonyReady) {
+            this.minerals = minerals;
+            this.gas = gas;
+            this.colonyReady = colonyReady;
+        }
+
+        private void mine(int mineralIncome) {
+            minerals += mineralIncome;
+        }
+
+        @Override
+        public PlanBlocker schedule(Plan plan, boolean bankClaimedAhead, boolean larvaClaimedAhead,
+                                    boolean researchClaimedAhead) {
+            boolean ready = colonyReady && plan.getPlannedUnit() == UnitType.Zerg_Sunken_Colony;
+            if (ProductionManager.isHeldByResearchClaim(plan, researchClaimedAhead, ready)) {
+                return PlanBlocker.RESEARCH_CLAIM;
+            }
+            boolean cannotAfford = minerals < plan.mineralPrice() || gas < plan.gasPrice();
+            PlanBlocker blocker;
+            if (plan.getType() == PlanType.TECH || plan.getType() == PlanType.UPGRADE) {
+                blocker = cannotAfford
+                        ? ProductionManager.researchShortfallBlocker(FRAME, FRAME + 100, gas >= plan.gasPrice(), true)
+                        : PlanBlocker.NONE;
+            } else if (plan.getType() == PlanType.BUILDING) {
+                blocker = ProductionManager.buildAheadBlocker(
+                        slot, plan, FRAME, cannotAfford, bankClaimedAhead, FRAME + 100);
+            } else {
+                blocker = ProductionManager.unitAheadBlocker(
+                        slot, plan, FRAME, cannotAfford, bankClaimedAhead, false, FRAME + 100);
+            }
+            if (blocker != PlanBlocker.NONE) {
+                return blocker;
+            }
+            minerals -= plan.mineralPrice();
+            gas -= plan.gasPrice();
+            return PlanBlocker.NONE;
+        }
+    }
+
+    private Plan lurkerAspect() {
+        return new TechPlan(TechType.Lurker_Aspect, 100, false);
     }
 
     private Plan emergency(UnitType unitType) {
@@ -178,7 +243,8 @@ class ProductionManagerTest {
         }
 
         @Override
-        public PlanBlocker schedule(Plan plan, boolean bankClaimedAhead, boolean larvaClaimedAhead) {
+        public PlanBlocker schedule(Plan plan, boolean bankClaimedAhead, boolean larvaClaimedAhead,
+                                    boolean researchClaimedAhead) {
             UnitType building = plan.getPlannedUnit();
             boolean cannotAfford = minerals < building.mineralPrice();
             PlanBlocker blocker = ProductionManager.buildAheadBlocker(
@@ -229,7 +295,8 @@ class ProductionManagerTest {
         }
 
         @Override
-        public PlanBlocker schedule(Plan plan, boolean bankClaimedAhead, boolean larvaClaimedAhead) {
+        public PlanBlocker schedule(Plan plan, boolean bankClaimedAhead, boolean larvaClaimedAhead,
+                                    boolean researchClaimedAhead) {
             UnitType unit = plan.getPlannedUnit();
             if (ProductionManager.isLarvaBlocked(unit, larva > 0, larvaClaimedAhead)) {
                 return PlanBlocker.NO_LARVA;
@@ -578,8 +645,122 @@ class ProductionManagerTest {
     @Test
     void onlyAResourceShortfallClaimsTheBank() {
         for (PlanBlocker blocker : PlanBlocker.values()) {
-            assertEquals(blocker == PlanBlocker.RESOURCES, ProductionManager.claimsBank(blocker), blocker.name());
+            boolean expected = blocker == PlanBlocker.RESOURCES || blocker == PlanBlocker.RESEARCH_MINERALS;
+            assertEquals(expected, ProductionManager.claimsBank(blocker), blocker.name());
         }
+    }
+
+    @Test
+    void aMineralBlockedTechPlanAtTheHeadHoldsALaterDroneUntilFunded() {
+        Plan lurkerAspect = lurkerAspect();
+        Plan drone = drone(7100);
+        ResearchBank bank = new ResearchBank(
+                TechType.Lurker_Aspect.mineralPrice() - 1, TechType.Lurker_Aspect.gasPrice(), false);
+        PlanEvents.register(blockerRecorder());
+
+        ScanOutcome held = ProductionManager.scanPlans(Arrays.asList(lurkerAspect, drone), bank);
+        bank.mine(1 + UnitType.Zerg_Drone.mineralPrice());
+        ScanOutcome funded = ProductionManager.scanPlans(held.requeued, bank);
+
+        assertTrue(held.scheduled.isEmpty());
+        assertEquals(Arrays.asList(lurkerAspect, drone), reportedPlans.subList(0, 2));
+        assertEquals(Arrays.asList(PlanBlocker.RESEARCH_MINERALS, PlanBlocker.RESEARCH_CLAIM), reportedBlockers.subList(0, 2));
+        assertEquals(Arrays.asList(lurkerAspect, drone), funded.scheduled);
+    }
+
+    @Test
+    void aDroneTheBankCoversIsSpentBeforeTheResearchWithoutTheClaim() {
+        Plan lurkerAspect = lurkerAspect();
+        Plan drone = drone(7100);
+        Recorder scheduler = new Recorder().block(lurkerAspect, PlanBlocker.RESOURCES);
+
+        ProductionManager.scanPlans(Arrays.asList(lurkerAspect, drone), scheduler);
+
+        assertFalse(scheduler.researchClaimedAhead.get(drone));
+    }
+
+    @Test
+    void aResearchClaimReachesEveryPlanBehindItAndNoneAhead() {
+        Plan drone = drone(90);
+        Plan lurkerAspect = lurkerAspect();
+        Plan ling = zergling();
+        Recorder scheduler = new Recorder().block(lurkerAspect, PlanBlocker.RESEARCH_MINERALS);
+
+        ProductionManager.scanPlans(Arrays.asList(drone, lurkerAspect, ling), scheduler);
+
+        assertFalse(scheduler.researchClaimedAhead.get(drone));
+        assertFalse(scheduler.researchClaimedAhead.get(lurkerAspect));
+        assertTrue(scheduler.researchClaimedAhead.get(ling));
+        assertTrue(scheduler.bankClaimedAhead.get(ling));
+    }
+
+    @Test
+    void anOverlordAndAPriorityOneSunkenPassAHeldResearchClaim() {
+        Plan lurkerAspect = lurkerAspect();
+        Plan overlord = overlord(7100);
+        Plan sunken = emergency(UnitType.Zerg_Sunken_Colony);
+        int minerals = UnitType.Zerg_Overlord.mineralPrice() + UnitType.Zerg_Sunken_Colony.mineralPrice();
+        ResearchBank bank = new ResearchBank(minerals, TechType.Lurker_Aspect.gasPrice(), false);
+        assertTrue(minerals < TechType.Lurker_Aspect.mineralPrice());
+
+        ScanOutcome outcome = ProductionManager.scanPlans(Arrays.asList(lurkerAspect, overlord, sunken), bank);
+
+        assertEquals(Arrays.asList(overlord, sunken), outcome.scheduled);
+        assertEquals(Collections.singletonList(lurkerAspect), outcome.requeued);
+        assertFalse(ProductionManager.isHeldByResearchClaim(overlord, true, false));
+        assertFalse(ProductionManager.isHeldByResearchClaim(sunken, true, false));
+    }
+
+    @Test
+    void aSunkenMorphWhoseCreepColonyIsCompletePassesAHeldResearchClaim() {
+        Plan lurkerAspect = lurkerAspect();
+        Plan sunken = new BuildingPlan(UnitType.Zerg_Sunken_Colony, QUEUED_COLONY_PRIORITY);
+        ResearchBank bank = new ResearchBank(
+                UnitType.Zerg_Sunken_Colony.mineralPrice(), TechType.Lurker_Aspect.gasPrice(), true);
+
+        ScanOutcome outcome = ProductionManager.scanPlans(Arrays.asList(lurkerAspect, sunken), bank);
+
+        assertEquals(Collections.singletonList(sunken), outcome.scheduled);
+        assertFalse(ProductionManager.isHeldByResearchClaim(sunken, true, true));
+        assertTrue(ProductionManager.isHeldByResearchClaim(sunken, true, false));
+    }
+
+    @Test
+    void queuedZerglingsExtractorsAndUpgradesAreHeldByAResearchClaim() {
+        assertTrue(ProductionManager.isHeldByResearchClaim(zergling(), true, false));
+        assertTrue(ProductionManager.isHeldByResearchClaim(extractor(), true, false));
+        assertTrue(ProductionManager.isHeldByResearchClaim(metabolicBoost(), true, false));
+        assertFalse(ProductionManager.isHeldByResearchClaim(emergency(UnitType.Zerg_Zergling), true, false));
+        assertFalse(ProductionManager.isHeldByResearchClaim(zergling(), false, false));
+    }
+
+    @Test
+    void onlyAMineralShortfallWithAFreeProducerWithinTheHoldHoldsTheBank() {
+        int soon = FRAME + BuildAheadSlot.MAX_HOLD_FRAMES;
+
+        assertEquals(PlanBlocker.RESEARCH_MINERALS, ProductionManager.researchShortfallBlocker(FRAME, soon, true, true));
+        assertEquals(PlanBlocker.RESOURCES, ProductionManager.researchShortfallBlocker(FRAME, soon, false, true));
+        assertEquals(PlanBlocker.RESOURCES, ProductionManager.researchShortfallBlocker(FRAME, soon, true, false));
+        assertEquals(PlanBlocker.RESOURCES, ProductionManager.researchShortfallBlocker(FRAME, soon + 1, true, true));
+        assertEquals(PlanBlocker.NO_INCOME,
+                ProductionManager.researchShortfallBlocker(FRAME, Integer.MAX_VALUE, true, true));
+    }
+
+    @Test
+    void aGasShortResearchLeavesTheDroneBehindItFreeToSpend() {
+        Plan lurkerAspect = lurkerAspect();
+        Plan drone = drone(7100);
+        ResearchBank bank = new ResearchBank(UnitType.Zerg_Drone.mineralPrice(), 0, false);
+
+        ScanOutcome outcome = ProductionManager.scanPlans(Arrays.asList(lurkerAspect, drone), bank);
+
+        assertEquals(Collections.singletonList(drone), outcome.scheduled);
+    }
+
+    @Test
+    void aHeldPlanDoesNotClaimTheLarvaForThePlansBehindIt() {
+        assertFalse(ProductionManager.claimsLarva(drone(7100), PlanBlocker.RESEARCH_CLAIM));
+        assertFalse(ProductionManager.claimsLarva(drone(7100), PlanBlocker.RESEARCH_MINERALS));
     }
 
     @Test
@@ -626,7 +807,7 @@ class ProductionManagerTest {
     @Test
     void aNonResourceBlockerLeavesTheBankOpenToThePlansBehindIt() {
         for (PlanBlocker blocker : PlanBlocker.values()) {
-            if (blocker == PlanBlocker.NONE || blocker == PlanBlocker.RESOURCES) {
+            if (blocker == PlanBlocker.NONE || ProductionManager.claimsBank(blocker)) {
                 continue;
             }
             Plan hatchery = hatchery();
@@ -757,7 +938,7 @@ class ProductionManagerTest {
     void aHeldHeadOfQueueUnitKeepsLowerPriorityPlansOffTheBank() {
         int[] bank = {UnitType.Zerg_Mutalisk.mineralPrice() - 10};
         BuildAheadSlot slot = new BuildAheadSlot();
-        PlanScheduler scheduler = (plan, claimedAhead, larvaClaimed) -> {
+        PlanScheduler scheduler = (plan, claimedAhead, larvaClaimed, researchClaimed) -> {
             UnitType unit = plan.getPlannedUnit();
             boolean cannotAfford = bank[0] < unit.mineralPrice();
             PlanBlocker blocker = ProductionManager.unitAheadBlocker(

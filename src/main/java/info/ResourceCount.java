@@ -142,6 +142,20 @@ public class ResourceCount {
         return cannotAfford(plan.mineralPrice(), plan.gasPrice());
     }
 
+    /**
+     * True when the unreserved bank covers a plan's gas but not its minerals.
+     *
+     * @param plan a plan pricing minerals and optionally gas
+     * @return true when minerals alone keep the plan from being paid for
+     */
+    public boolean isShortOnlyOfMinerals(Plan plan) {
+        return isShortOnlyOfMinerals(availableMinerals(), availableGas(), plan.mineralPrice(), plan.gasPrice());
+    }
+
+    static boolean isShortOnlyOfMinerals(int availableMinerals, int availableGas, int mineralPrice, int gasPrice) {
+        return isShort(availableMinerals, mineralPrice) && !isShort(availableGas, gasPrice);
+    }
+
     public boolean cannotAffordResearch(TechType techType) {
         final int mineralPrice = techType.mineralPrice();
         final int gasPrice = techType.gasPrice();

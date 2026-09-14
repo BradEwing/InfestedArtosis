@@ -13,6 +13,14 @@ class ResourceCountTest {
     }
 
     @Test
+    void aPlanIsShortOnlyOfMineralsWhenTheBankCoversItsGas() {
+        assertTrue(ResourceCount.isShortOnlyOfMinerals(56, 200, 200, 200));
+        assertFalse(ResourceCount.isShortOnlyOfMinerals(56, 199, 200, 200));
+        assertFalse(ResourceCount.isShortOnlyOfMinerals(200, 200, 200, 200));
+        assertTrue(ResourceCount.isShortOnlyOfMinerals(-19, -40, 50, 0));
+    }
+
+    @Test
     void aReservationWithoutALarvaBlocksTheLastLarva() {
         ResourceCount resourceCount = resourceCount();
         resourceCount.reserveUnit(UnitType.Zerg_Hydralisk);
