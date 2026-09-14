@@ -483,12 +483,13 @@ public class WorkerManager {
         ResourceCount resourceCount = gameState.getResourceCount();
         final int availableMinerals = resourceCount.availableMinerals();
         final int availableGas = resourceCount.availableGas();
+        final int queuedGas = gameState.getProductionQueue().gasDemand();
 
-        if (shouldCutGasHarvesting(availableMinerals, availableGas)) {
+        if (shouldCutGasHarvesting(availableMinerals, availableGas, queuedGas)) {
             cutGasHarvesting();
         } else if (shouldSaturateOnMineralSurplus(availableMinerals, availableGas)) {
             saturateGeysers(NO_MINERAL_FLOOR);
-        } else if (shouldSaturateOnGasDemand(availableGas)) {
+        } else if (shouldSaturateOnGasDemand(availableGas, queuedGas)) {
             saturateGeysers(MIN_MINERAL_GATHERERS);
         }
     }
@@ -503,12 +504,28 @@ public class WorkerManager {
      * {@link #GAS_SURPLUS} gas. The mineral side is floored at zero so only gas the bot actually
      * holds and has not already claimed can trigger the cut.
      *
+     * <p>Gas priced by plans still in the production queue is claimed as well. Those plans have
+     * not reserved, so a Spire reservation that sinks the mineral bank would otherwise read the
+     * gas the queued Mutalisks and upgrades are waiting on as floating.
+     *
      * @param availableMinerals minerals mined and unreserved, which may be negative
      * @param availableGas gas mined and unreserved, which may be negative
+     * @param queuedGas summed gas price of plans waiting to be scheduled
      * @return true when every drone should come off gas
      */
-    static boolean shouldCutGasHarvesting(int availableMinerals, int availableGas) {
-        return availableGas - Math.max(0, availableMinerals) > GAS_SURPLUS;
+    static boolean shouldCutGasHarvesting(int availableMinerals, int availableGas, int queuedGas) {
+        return unclaimedGas(availableGas, queuedGas) - Math.max(0, availableMinerals) > GAS_SURPLUS;
+    }
+
+    /**
+     * Gas neither reserved by a scheduled plan nor priced by a queued one.
+     *
+     * @param availableGas gas mined and unreserved, which may be negative
+     * @param queuedGas summed gas price of plans waiting to be scheduled
+     * @return gas left over once queued demand is paid, which may be negative
+     */
+    static int unclaimedGas(int availableGas, int queuedGas) {
+        return availableGas - queuedGas;
     }
 
     /**
@@ -523,19 +540,24 @@ public class WorkerManager {
     }
 
     /**
-     * True when no unreserved gas is left, so a plan is already waiting on gas the bot is not
-     * mining.
+     * True when queued plans price at least as much gas as is left unreserved, so a plan is
+     * already waiting on gas the bot is not mining.
      *
      * <p>This is what undoes a cut. The mineral surplus
      * {@link #shouldSaturateOnMineralSurplus} needs is rare while reservations hold the bank down,
      * so without this the geysers a cut emptied stay empty for the rest of the game. It runs only
      * where the mineral-surplus rule already declined, so that path keeps its behaviour.
      *
+     * <p>The cut needs more than {@link #GAS_SURPLUS} unclaimed gas and this needs none, so the
+     * band between them is the hysteresis: a bank drifting across either edge holds the current
+     * worker split rather than cutting and restoring on alternate frames.
+     *
      * @param availableGas gas mined and unreserved, which may be negative
+     * @param queuedGas summed gas price of plans waiting to be scheduled
      * @return true when geysers should be saturated off gas demand
      */
-    static boolean shouldSaturateOnGasDemand(int availableGas) {
-        return availableGas <= 0;
+    static boolean shouldSaturateOnGasDemand(int availableGas, int queuedGas) {
+        return unclaimedGas(availableGas, queuedGas) <= 0;
     }
 
     /**
