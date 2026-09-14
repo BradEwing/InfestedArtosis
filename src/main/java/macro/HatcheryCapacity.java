@@ -5,8 +5,8 @@ package macro;
  * survives the frame.
  *
  * <p>Producers and cancellers must agree on the same inputs. Every input to a want rule is
- * invariant under queueing or cancelling a plan: completed hatcheries, living larva, mined
- * minerals and the reaction flags. No want rule reads a planned or reserved counter, because a
+ * invariant under queueing or cancelling a plan: completed hatcheries and macro hatcheries,
+ * living larva, mined minerals and the reaction flags. No want rule reads a planned or reserved counter, because a
  * counter that moves when a plan is created lets a producer switch its own canceller on, and a
  * counter that moves when a plan is cancelled lets the canceller switch its own producer back on.
  *
@@ -45,6 +45,34 @@ public final class HatcheryCapacity {
      */
     public static boolean isExcess(int hatcheryCount, int larvaCount) {
         return hatcheryCount >= EXCESS_HATCHERIES && larvaCount >= EXCESS_LARVA;
+    }
+
+    /**
+     * The excess rule as expansion hatcheries read it: completed macro hatcheries are left out of
+     * the count.
+     *
+     * <p>A macro hatchery answers a larva shortage, and the larva it adds are what the excess rule
+     * reads. Counting it would let the hatchery a larva-bound build bought cancel the expansions
+     * that build plans for minerals. Macro hatchery plans still read {@link #isExcess} with every
+     * hatchery counted.
+     *
+     * @param hatcheryCount larva-producing hatcheries we control; queued and morphing plans are
+     *     excluded
+     * @param macroHatcheries completed macro hatcheries among them
+     */
+    public static boolean isExcessForExpansion(int hatcheryCount, int macroHatcheries, int larvaCount) {
+        return isExcess(hatcheryCount - macroHatcheries, larvaCount);
+    }
+
+    /**
+     * Whether the excess sweep cancels this hatchery plan.
+     *
+     * @param macroHatchery the plan is a macro hatchery
+     * @param excess {@link #isExcess} with every hatchery counted
+     * @param excessForExpansion {@link #isExcessForExpansion}
+     */
+    public static boolean isExcessPlan(boolean macroHatchery, boolean excess, boolean excessForExpansion) {
+        return macroHatchery ? excess : excessForExpansion;
     }
 
     /**
