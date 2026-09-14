@@ -239,8 +239,11 @@ public class CrazyZerg extends TerranBase {
 
         final int desiredScourge = enemyVessel + enemyDropship + enemyValkyrie + enemyWraith;
         if (techProgression.isSpire() && scourgeCount < desiredScourge && canPlanAdvancedUnit(gameState, UnitType.Zerg_Scourge)) {
-            plans.add(this.planUnit(gameState, UnitType.Zerg_Scourge));
-            return plans;
+            List<Plan> scourgePlans = this.planAdvancedUnit(gameState, UnitType.Zerg_Scourge);
+            if (!scourgePlans.isEmpty()) {
+                plans.addAll(scourgePlans);
+                return plans;
+            }
         }
 
         int totalMutasProduced = gameState.totalProduced(UnitType.Zerg_Mutalisk);
@@ -250,22 +253,28 @@ public class CrazyZerg extends TerranBase {
         boolean canReplenishMutas = livingUltralisks >= ULTRALISK_THRESHOLD_FOR_MUTA_REPLENISH;
         boolean wantMoreMutas = mutaCount < MUTALISK_CAP && (!reachedMutaCap || canReplenishMutas);
         if (shouldPlanMutalisk(techProgression, wantMoreMutas, gameState.numGatherers())) {
-            Plan mutaliskPlan = this.planUnit(gameState, UnitType.Zerg_Mutalisk);
-            plans.add(mutaliskPlan);
-            return plans;
+            List<Plan> mutaliskPlans = this.planAdvancedUnit(gameState, UnitType.Zerg_Mutalisk);
+            if (!mutaliskPlans.isEmpty()) {
+                plans.addAll(mutaliskPlans);
+                return plans;
+            }
         }
 
         if (techProgression.isUltraliskCavern() && ultraliskCount < desiredUltralisks(gameState)
                 && canPlanAdvancedUnit(gameState, UnitType.Zerg_Ultralisk)) {
-            Plan ultraliskPlan = this.planUnit(gameState, UnitType.Zerg_Ultralisk);
-            plans.add(ultraliskPlan);
-            return plans;
+            List<Plan> ultraliskPlans = this.planAdvancedUnit(gameState, UnitType.Zerg_Ultralisk);
+            if (!ultraliskPlans.isEmpty()) {
+                plans.addAll(ultraliskPlans);
+                return plans;
+            }
         }
 
         if (techProgression.isDefilerMound() && defilerCount < DESIRED_DEFILERS && canPlanAdvancedUnit(gameState, UnitType.Zerg_Defiler)) {
-            Plan defilerPlan = this.planUnit(gameState, UnitType.Zerg_Defiler);
-            plans.add(defilerPlan);
-            return plans;
+            List<Plan> defilerPlans = this.planAdvancedUnit(gameState, UnitType.Zerg_Defiler);
+            if (!defilerPlans.isEmpty()) {
+                plans.addAll(defilerPlans);
+                return plans;
+            }
         }
 
         if (zerglingCount < desiredZerglings) {
