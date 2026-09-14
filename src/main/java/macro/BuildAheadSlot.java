@@ -1,7 +1,9 @@
 package macro;
 
 import bwapi.UnitType;
+import macro.plan.ColonyClaims;
 import macro.plan.Plan;
+import macro.plan.PlanState;
 import strategy.buildorder.BuildOrder;
 
 import java.util.ArrayList;
@@ -133,17 +135,50 @@ public class BuildAheadSlot {
     }
 
     /**
-     * The holders an emergency defence plan takes the slot from, or an empty list when it waits.
-     *
-     * <p>The slot yields only when every holder is queued below emergency priority, so an emergency
-     * holder is never taken from and two emergency plans cannot evict each other.
+     * True for a holder a Sunken or Spore morph with a completed Creep Colony may take the slot from:
+     * one queued below emergency priority whose builder has not been dispatched and whose morph has
+     * not been issued, and which is not itself a colony morph.
      */
+    static boolean yieldsToReadyColonyMorph(Plan holder) {
+        return holder.getState() == PlanState.SCHEDULE
+                && holder.getPriority() > BuildOrder.EMERGENCY_DEFENSE_PRIORITY
+                && !ColonyClaims.isColonyMorph(holder.getPlannedUnit());
+    }
+
     public List<Plan> holdersYieldingTo(Plan plan) {
-        if (claims.isEmpty() || !isEmergencyDefence(plan)) {
+        return holdersYieldingTo(plan, false);
+    }
+
+    /**
+     * The holders a plan takes the slot from, or an empty list when it waits.
+     *
+     * <p>Emergency defence takes the slot only when every holder is queued below emergency
+     * priority, so an emergency holder is never taken from and two emergency plans cannot evict
+     * each other. A Sunken or Spore morph whose own Creep Colony is complete has nothing left to
+     * wait for but its cost, so it takes the slot from holders that still sit in SCHEDULE,
+     * whatever their priority; a dispatched builder, an issued morph or another colony morph keeps
+     * the slot, so two such morphs cannot evict each other.
+     *
+     * @param plan the plan asking for the slot
+     * @param colonyReady whether the plan is a colony morph whose own Creep Colony is complete
+     */
+    public List<Plan> holdersYieldingTo(Plan plan, boolean colonyReady) {
+        if (claims.isEmpty()) {
+            return new ArrayList<>();
+        }
+        if (isEmergencyDefence(plan)) {
+            for (Plan holder : claims.keySet()) {
+                if (holder.getPriority() <= BuildOrder.EMERGENCY_DEFENSE_PRIORITY) {
+                    return new ArrayList<>();
+                }
+            }
+            return new ArrayList<>(claims.keySet());
+        }
+        if (!colonyReady || !ColonyClaims.isColonyMorph(plan.getPlannedUnit())) {
             return new ArrayList<>();
         }
         for (Plan holder : claims.keySet()) {
-            if (holder.getPriority() <= BuildOrder.EMERGENCY_DEFENSE_PRIORITY) {
+            if (!yieldsToReadyColonyMorph(holder)) {
                 return new ArrayList<>();
             }
         }
