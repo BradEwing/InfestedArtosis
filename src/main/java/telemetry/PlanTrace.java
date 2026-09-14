@@ -11,6 +11,7 @@ class PlanTrace {
     private int lastStateFrame;
     private PlanBlocker blocker = PlanBlocker.NONE;
     private int blockerSinceFrame;
+    private boolean staleReported;
 
     PlanTrace(int frame) {
         this.enqueueFrame = frame;
@@ -28,6 +29,19 @@ class PlanTrace {
 
     void setLastStateFrame(int frame) {
         this.lastStateFrame = frame;
+    }
+
+    void clearStaleReported() {
+        this.staleReported = false;
+    }
+
+    /** Marks the current state's stale row as written; returns false if it already was. */
+    boolean markStaleReported() {
+        if (staleReported) {
+            return false;
+        }
+        staleReported = true;
+        return true;
     }
 
     PlanBlocker getBlocker() {

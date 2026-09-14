@@ -35,6 +35,7 @@ public class PlanEventLogger implements PlanEventSink {
     private static final String EVENT_ENQUEUE = "ENQUEUE";
     private static final String EVENT_TRANSITION = "TRANSITION";
     private static final String EVENT_BLOCKED = "BLOCKED";
+    private static final String EVENT_STALE = "STALE";
     private static final String EVENT_OPEN_AT_GAME_END = "OPEN_AT_GAME_END";
     private static final String EVENT_BUILD_AHEAD_HOLD = "BUILD_AHEAD_HOLD";
     private static final String EVENT_BUILD_AHEAD_EVICT = "BUILD_AHEAD_EVICT";
@@ -213,6 +214,7 @@ public class PlanEventLogger implements PlanEventSink {
             endBlocker(plan, trace);
             buffer.add(row(plan, trace, EVENT_TRANSITION, from, to, PlanBlocker.NONE, 0, NO_STARVED_COUNT));
             trace.setLastStateFrame(currentFrame);
+            trace.clearStaleReported();
             if (to == PlanState.COMPLETE || to == PlanState.CANCELLED) {
                 openPlans.remove(plan.getUuid());
             }
@@ -247,6 +249,29 @@ public class PlanEventLogger implements PlanEventSink {
         }
     }
 
+    /**
+     * Writes one STALE row per stint in PLANNED, on the first scan past the stale threshold, so a
+     * plan that is never attempted shows up before a late cancel closes its blocker interval. The
+     * blocker and blocked_frames columns carry the open interval so far without closing it.
+     */
+    @Override
+    public void onStale(Plan plan) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            PlanTrace trace = trace(plan);
+            if (!trace.markStaleReported()) {
+                return;
+            }
+            PlanBlocker blocker = trace.getBlocker();
+            int waited = blocker == PlanBlocker.NONE ? 0 : currentFrame - trace.getBlockerSinceFrame();
+            buffer.add(row(plan, trace, EVENT_STALE, null, plan.getState(), blocker, waited, NO_STARVED_COUNT));
+        } catch (Exception e) {
+            disabled = true;
+        }
+    }
 
     @Override
     public void onBuildAheadHold(Plan holder, int heldFrames, int starvedBehind) {

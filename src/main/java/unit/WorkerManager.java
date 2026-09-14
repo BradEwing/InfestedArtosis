@@ -483,7 +483,7 @@ public class WorkerManager {
         ResourceCount resourceCount = gameState.getResourceCount();
         final int availableMinerals = resourceCount.availableMinerals();
         final int availableGas = resourceCount.availableGas();
-        final int queuedGas = gameState.getProductionQueue().gasDemand();
+        final int queuedGas = gameState.getProductionQueue().gasDemand(game.getFrameCount());
 
         if (shouldCutGasHarvesting(availableMinerals, availableGas, queuedGas)) {
             cutGasHarvesting();

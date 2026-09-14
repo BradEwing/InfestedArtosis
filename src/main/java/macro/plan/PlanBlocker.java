@@ -16,6 +16,10 @@ public enum PlanBlocker {
     INSUFFICIENT_GATHERERS,
     TECH_MISSING,
     TECH_WAVE_RESERVE,
+    /** A research or upgrade short only of minerals, holding the bank against the plans behind it. */
+    RESEARCH_MINERALS,
+    /** A plan behind a research or upgrade that holds the bank with {@link #RESEARCH_MINERALS}. */
+    RESEARCH_CLAIM,
     UNSUPPORTED_PLAN_TYPE;
 
     /** The cancel reason a sweep records for a plan this blocker holds. */

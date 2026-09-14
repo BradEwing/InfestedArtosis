@@ -21,6 +21,8 @@ public abstract class Plan {
 
     private static final AtomicInteger NEXT_PLAN_ID = new AtomicInteger();
 
+    private static final int NOT_SCANNED = -1;
+
     private final String uuid = UUID.randomUUID().toString();
 
     private final int planId = NEXT_PLAN_ID.incrementAndGet();
@@ -40,6 +42,13 @@ public abstract class Plan {
     private int frameStart;
     private int retries = 0;
     private int predictedReadyFrame = 0;
+
+    /**
+     * The first scan frame of the plan's current stint in PLANNED. Cleared on every state change,
+     * so a plan requeued from SCHEDULE starts a fresh stint.
+     */
+    @Setter(AccessLevel.NONE)
+    private int plannedSinceFrame = NOT_SCANNED;
 
     @Nullable
     private TilePosition buildPosition;
@@ -112,7 +121,23 @@ public abstract class Plan {
             return;
         }
         this.state = state;
+        this.plannedSinceFrame = NOT_SCANNED;
         PlanEvents.stateChanged(this, previous, state);
+    }
+
+    /** Stamps the start of the current PLANNED stint on the first scan that sees it. */
+    public void markPlannedSince(int frame) {
+        if (plannedSinceFrame == NOT_SCANNED) {
+            plannedSinceFrame = frame;
+        }
+    }
+
+    /** Frames the plan has waited in PLANNED since the first scan of its current stint. */
+    public int plannedFrames(int frame) {
+        if (plannedSinceFrame == NOT_SCANNED) {
+            return 0;
+        }
+        return frame - plannedSinceFrame;
     }
 
     public void setCancelSource(PlanCancelSource cancelSource) {

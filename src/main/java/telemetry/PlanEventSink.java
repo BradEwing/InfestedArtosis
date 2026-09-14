@@ -27,6 +27,13 @@ public interface PlanEventSink {
         }
     }
 
+    /**
+     * A plan has waited in PLANNED past the stale threshold and no longer counts as gas demand.
+     * Called on every scan that finds it stale.
+     */
+    default void onStale(Plan plan) {
+    }
+
     /** A building plan still holds the build-ahead slot. */
     default void onBuildAheadHold(Plan holder, int heldFrames, int starvedBehind) {
     }
