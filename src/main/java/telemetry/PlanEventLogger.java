@@ -38,6 +38,7 @@ public class PlanEventLogger implements PlanEventSink {
     private static final String EVENT_OPEN_AT_GAME_END = "OPEN_AT_GAME_END";
     private static final String EVENT_BUILD_AHEAD_HOLD = "BUILD_AHEAD_HOLD";
     private static final String EVENT_BUILD_AHEAD_EVICT = "BUILD_AHEAD_EVICT";
+    private static final String EVENT_BUILD_AHEAD_YIELD = "BUILD_AHEAD_YIELD";
     private static final String EVENT_WITHHELD = "WITHHELD";
     private static final String EVENT_UNPLANNED_CANCEL = "UNPLANNED_CANCEL";
     private static final String EVENT_BLOCKER_DIVERT = "BLOCKER_DIVERT";
@@ -47,12 +48,20 @@ public class PlanEventLogger implements PlanEventSink {
     private static final String EVENT_RECURRING_CANCEL = "RECURRING_CANCEL";
 
     /**
-     * 41 columns; readers that index by position rather than by name must match this order.
-     * enemy_air, gas_gathered, enemy_barracks and the blocker mineral pair are trailing columns
-     * written by {@link #appendTrailing}, so every row shape keeps one width.
+     * 44 columns; readers that index by position rather than by name must match this order.
+     * enemy_air, gas_gathered, enemy_barracks, the blocker mineral pair, the enemy ground pair and
+     * yield_to_plan_id are trailing columns written by {@link #appendTrailing}, so every row shape
+     * keeps one width.
      * <p>
      * blocker_mineral_x and blocker_mineral_y are the pixel position of the mineral a stalled
      * builder was sent to mine, set only on BLOCKER_DIVERT rows.
+     * <p>
+     * enemy_ground_known_at_bases and enemy_ground_visible_at_bases are the two counts of enemy
+     * mobile ground combat units at our bases that the rush defence reads: by last known position,
+     * and by what is visible this frame.
+     * <p>
+     * yield_to_plan_id is the emergency defence plan a holder gave the build-ahead slot to, set only
+     * on BUILD_AHEAD_YIELD rows.
      * <p>
      * enemy_barracks is the living observed count the sunken floors read, on the plan row rather
      * than the game summary, so a batch can date a colony plan against the Barracks known at the
@@ -68,7 +77,8 @@ public class PlanEventLogger implements PlanEventSink {
             + "minerals,gas,available_minerals,available_gas,supply_used_real,supply_total_real,larva,assigned_larva,"
             + "reserved_larva,gatherers,queue_depth,plans_scheduled,plans_building,plans_morphing,build_tile_x,"
             + "build_tile_y,macro_hatchery,build_order,starved_behind,builder_distance_px,enemy_air,gas_gathered,"
-            + "enemy_barracks,blocker_mineral_x,blocker_mineral_y";
+            + "enemy_barracks,blocker_mineral_x,blocker_mineral_y,enemy_ground_known_at_bases,"
+            + "enemy_ground_visible_at_bases,yield_to_plan_id";
 
     private static final String GAME_HEADER = "timestamp,is_winner,num_starting_locations,map_name,opponent_name,"
             + "opponent_race,opener,build_order,detected_strategies,frame_count";
@@ -249,6 +259,27 @@ public class PlanEventLogger implements PlanEventSink {
     }
 
     /**
+     * Writes one row per holder that gave the slot to emergency defence, in the shape of a
+     * BUILD_AHEAD_EVICT row: blocked_frames is how long the holder held the slot.
+     */
+    @Override
+    public void onBuildAheadYield(Plan holder, int heldFrames, Plan emergency) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            PlanTrace trace = trace(holder);
+            StringBuilder sb = planColumns(holder, trace, EVENT_BUILD_AHEAD_YIELD, null, holder.getState(),
+                    PlanBlocker.BUILD_AHEAD_SLOT_TAKEN, heldFrames, NO_STARVED_COUNT);
+            appendTrailing(sb, null, emergency);
+            buffer.add(sb.toString());
+        } catch (Exception e) {
+            disabled = true;
+        }
+    }
+
+    /**
      * Writes one row per divert, so a batch can tell a wall clear the stall started from one it
      * did not. builder_distance_px is the builder's distance to its site at the divert frame.
      */
@@ -262,7 +293,7 @@ public class PlanEventLogger implements PlanEventSink {
             PlanTrace trace = trace(plan);
             StringBuilder sb = planColumns(plan, trace, EVENT_BLOCKER_DIVERT, null, plan.getState(),
                     PlanBlocker.NONE, 0, NO_STARVED_COUNT);
-            appendTrailing(sb, mineral);
+            appendTrailing(sb, mineral, null);
             buffer.add(sb.toString());
         } catch (Exception e) {
             disabled = true;
@@ -357,7 +388,7 @@ public class PlanEventLogger implements PlanEventSink {
     private String row(Plan plan, PlanTrace trace, String event, PlanState from, PlanState to,
                        PlanBlocker blocker, int blockedFrames, int starvedBehind) {
         StringBuilder sb = planColumns(plan, trace, event, from, to, blocker, blockedFrames, starvedBehind);
-        appendTrailing(sb, null);
+        appendTrailing(sb, null, null);
         return sb.toString();
     }
 
@@ -419,7 +450,7 @@ public class PlanEventLogger implements PlanEventSink {
         appendEmpty(sb, 3);
         sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
         appendEmpty(sb, 2);
-        appendTrailing(sb, null);
+        appendTrailing(sb, null, null);
         return sb.toString();
     }
 
@@ -441,7 +472,7 @@ public class PlanEventLogger implements PlanEventSink {
         sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
         appendEmpty(sb, 1);
         appendEmpty(sb, 1);
-        appendTrailing(sb, null);
+        appendTrailing(sb, null, null);
         return sb.toString();
     }
 
@@ -454,12 +485,16 @@ public class PlanEventLogger implements PlanEventSink {
      *
      * @param sb the row being built
      * @param blockerMineral the diverted-to mineral's position, or null on every row but BLOCKER_DIVERT
+     * @param yieldTo the emergency plan given the build-ahead slot, or null on every row but BUILD_AHEAD_YIELD
      */
-    private void appendTrailing(StringBuilder sb, Position blockerMineral) {
+    private void appendTrailing(StringBuilder sb, Position blockerMineral, Plan yieldTo) {
         appendGameTotals(sb);
         sb.append(',');
         sb.append(blockerMineral == null ? "" : String.valueOf(blockerMineral.getX())).append(',');
-        sb.append(blockerMineral == null ? "" : String.valueOf(blockerMineral.getY()));
+        sb.append(blockerMineral == null ? "" : String.valueOf(blockerMineral.getY())).append(',');
+        sb.append(gameState.knownEnemyMobileGroundCombatUnitsAtOurBases()).append(',');
+        sb.append(gameState.visibleEnemyMobileGroundCombatUnitsAtOurBases()).append(',');
+        sb.append(yieldTo == null ? "" : String.valueOf(yieldTo.getPlanId()));
     }
 
     /** The trailing cumulative columns. */

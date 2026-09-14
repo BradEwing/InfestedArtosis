@@ -80,6 +80,14 @@ public final class PlanEvents {
         current.onBuildAheadEvict(holder, heldFrames, starvedBehind);
     }
 
+    public static void buildAheadYielded(Plan holder, int heldFrames, Plan emergency) {
+        PlanEventSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onBuildAheadYield(holder, heldFrames, emergency);
+    }
+
     public static void withheld(UnitType unitType, PlanBlocker blocker) {
         PlanEventSink current = sink;
         if (current == null) {

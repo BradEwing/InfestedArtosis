@@ -35,6 +35,10 @@ public interface PlanEventSink {
     default void onBuildAheadEvict(Plan holder, int heldFrames, int starvedBehind) {
     }
 
+    /** A building plan gave the build-ahead slot to an emergency defence plan. */
+    default void onBuildAheadYield(Plan holder, int heldFrames, Plan emergency) {
+    }
+
     /** A build order wanted a unit but created no plan because the blocker would sweep it. */
     default void onWithheld(UnitType unitType, PlanBlocker blocker) {
     }
