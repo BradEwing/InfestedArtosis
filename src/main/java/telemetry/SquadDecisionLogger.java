@@ -4,6 +4,7 @@ import bwapi.Game;
 import bwapi.Position;
 import info.GameState;
 import unit.squad.CombatSimulator;
+import unit.squad.DefenseSim;
 import unit.squad.Squad;
 import unit.squad.SquadManager;
 import unit.squad.SquadStatus;
@@ -27,6 +28,11 @@ import java.util.Set;
  * squad leaves the fight squads, whether it merged, emptied or disbanded for want of targets, so a
  * RALLY episode that never resolves is still bounded.
  *
+ * <p>DEFENSE_PULL, DEFENSE_ABANDON and DEFENSE_RELEASE rows describe worker defence squads, with
+ * squad_type DEFENSE. They carry the candidate, pulled and released worker counts and the full
+ * commitment simulation; sim_result is ENGAGE when that simulation wins, RETREAT when it loses and
+ * NONE when none ran. Fight squad rows leave the defense columns at -1.
+ *
  * <p>LOCK_SUPPRESSED rows are deduplicated per suppression episode, keyed on the lock, its expiry
  * frame, and the overridden verdict.
  *
@@ -41,13 +47,18 @@ public class SquadDecisionLogger implements SquadDecisionSink {
             + "sim_enemy_strength,sim_ratio,sim_engage_threshold,retreat_locked,fight_locked,"
             + "retreat_lock_until_frame,fight_lock_until_frame,committed,commit_frame,should_contain,"
             + "can_break_containment,containment_entered,centroid_x,centroid_y,ground_distance_to_base,"
-            + "rally_reason,rally_release";
+            + "rally_reason,rally_release,defense_candidates,workers_pulled,workers_released,"
+            + "defense_sim_defenders,defense_sim_enemies,defense_sim_defender_survivors,"
+            + "defense_sim_enemy_survivors,defense_win_threshold";
 
     private static final int FLUSH_INTERVAL_FRAMES = 480;
     private static final String EVENT_STATUS_CHANGE = "STATUS_CHANGE";
     private static final String EVENT_LOCK_SUPPRESSED = "LOCK_SUPPRESSED";
     private static final String EVENT_SPLIT_SUPPRESSED = "SPLIT_SUPPRESSED";
     private static final String EVENT_SQUAD_DISBANDED = "SQUAD_DISBANDED";
+    private static final String EVENT_DEFENSE_PREFIX = "DEFENSE_";
+    private static final String SQUAD_TYPE_DEFENSE = "DEFENSE";
+    private static final int SQUAD_TYPE_CELL = 3;
     private static final String MOVE_OUT_FLOOR = "MOVE_OUT_FLOOR";
     private static final String NONE = "NONE";
 
@@ -197,6 +208,20 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         try {
             writer.append(row(squad, game.getFrameCount(), EVENT_SPLIT_SUPPRESSED, squad.getStatus(),
                     squad.getStatus(), decisions.get(squad.getId()), MOVE_OUT_FLOOR));
+        } catch (RuntimeException e) {
+            disable();
+        }
+    }
+
+    @Override
+    public void onDefenseEvaluated(Squad squad, DefenseEvent event, int candidates, int pulled, int released,
+                                   DefenseSim sim) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            writer.append(defenseRow(squad, game.getFrameCount(), event, candidates, pulled, released, sim));
         } catch (RuntimeException e) {
             disable();
         }
@@ -352,6 +377,23 @@ public class SquadDecisionLogger implements SquadDecisionSink {
                 groundDistanceToNearestBase(squad.getCenter())));
         fields.addAll(rallyCells(rallyReason.getOrDefault(squad.getId(), RallyReason.NONE),
                 context.getRallyRelease()));
+        fields.addAll(defenseCells(SquadDecision.NOT_EVALUATED, SquadDecision.NOT_EVALUATED,
+                SquadDecision.NOT_EVALUATED, null));
+        return String.join(",", fields);
+    }
+
+    private String defenseRow(Squad squad, int frame, DefenseEvent event, int candidates, int pulled, int released,
+                              DefenseSim sim) {
+        SquadDecision context = new SquadDecision();
+        if (sim != null && sim.isSimulated()) {
+            context.setResult(sim.wins() ? CombatSimulator.CombatResult.ENGAGE : CombatSimulator.CombatResult.RETREAT);
+        }
+        List<String> fields = new ArrayList<>(defenseIdentityCells(gameId, frame, squad, event, context));
+        fields.addAll(squadCells(squad, context,
+                gameState.getScoutData().isEnemyBuildingLocationKnown(),
+                groundDistanceToNearestBase(squad.getCenter())));
+        fields.addAll(rallyCells(RallyReason.NONE, RallyRelease.NONE));
+        fields.addAll(defenseCells(candidates, pulled, released, sim));
         return String.join(",", fields);
     }
 
@@ -371,6 +413,18 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         fields.add(Csv.name(to));
         fields.add(context.getResult() != null ? context.getResult().name() : NONE);
         fields.add(suppressedBy);
+        return fields;
+    }
+
+    /**
+     * Builds the identity cells of a worker defence row: squad_type DEFENSE, event DEFENSE_ followed by
+     * the defence event, and no status transition.
+     */
+    static List<String> defenseIdentityCells(String gameId, int frame, Squad squad, DefenseEvent event,
+                                             SquadDecision context) {
+        List<String> fields = identityCells(gameId, frame, squad, EVENT_DEFENSE_PREFIX + event.name(), null, null,
+                context, NONE);
+        fields.set(SQUAD_TYPE_CELL, SQUAD_TYPE_DEFENSE);
         return fields;
     }
 
@@ -422,6 +476,29 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         List<String> fields = new ArrayList<>();
         fields.add(reason.name());
         fields.add(release.name());
+        return fields;
+    }
+
+    /**
+     * Builds the worker defence cells. Every cell is -1 when the row is not a defence row, and the
+     * simulation cells are -1 when no simulation ran.
+     *
+     * @param candidates gatherers that could have been pulled
+     * @param pulled gatherers pulled on this row
+     * @param released defenders released to mine on this row
+     * @param sim full commitment simulation, or null when none ran
+     */
+    static List<String> defenseCells(int candidates, int pulled, int released, DefenseSim sim) {
+        boolean simulated = sim != null && sim.isSimulated();
+        List<String> fields = new ArrayList<>();
+        fields.add(String.valueOf(candidates));
+        fields.add(String.valueOf(pulled));
+        fields.add(String.valueOf(released));
+        fields.add(String.valueOf(simulated ? sim.getDefenders() : SquadDecision.NOT_EVALUATED));
+        fields.add(String.valueOf(simulated ? sim.getEnemies() : SquadDecision.NOT_EVALUATED));
+        fields.add(String.valueOf(simulated ? sim.getDefenderSurvivors() : SquadDecision.NOT_EVALUATED));
+        fields.add(String.valueOf(simulated ? sim.getEnemySurvivors() : SquadDecision.NOT_EVALUATED));
+        fields.add(simulated ? Csv.format(sim.getThreshold()) : String.valueOf(SquadDecision.NOT_EVALUATED));
         return fields;
     }
 

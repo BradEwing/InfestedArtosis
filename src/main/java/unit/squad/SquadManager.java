@@ -17,8 +17,10 @@ import info.tracking.PsiStormTracker;
 import info.tracking.StrategyTracker;
 import lombok.Getter;
 
+import org.bk.ass.sim.Agent;
 import org.bk.ass.sim.BWMirrorAgentFactory;
 import org.bk.ass.sim.Simulator;
+import telemetry.DefenseEvent;
 import telemetry.RallyReason;
 import telemetry.RallyRelease;
 import telemetry.SquadDecisions;
@@ -61,6 +63,8 @@ public class SquadManager {
     @Getter
     private HashMap<Base, Squad> defenseSquads = new HashMap<>();
 
+    private HashMap<Base, Integer> defenseAbandonedUntilFrame = new HashMap<>();
+
     @Getter
     private List<Arc> activeContainmentArcs = new ArrayList<>();
 
@@ -93,6 +97,7 @@ public class SquadManager {
     private static final int RETREAT_VECTOR_MAGNITUDE = 192;
     private static final int COMBAT_SIM_DURATION_FRAMES = 150;
     private static final double DEFENSE_WIN_THRESHOLD = 0.50;
+    private static final double SCV_RUSH_DEFENSE_CLEAR_THRESHOLD = 0.75;
     private static final int MERGE_CHECK_INTERVAL = 50;
     private static final int DEFENSE_SIM_RANGE = 256;
     private static final int CONTAINMENT_REEVALUATE_INTERVAL = 48;
@@ -248,66 +253,106 @@ public class SquadManager {
     }
 
     /**
-     * Determines the number of workers required to defend, assigns them to the defense squad and
-     * returns the assigned workers so they can be removed from the WorkerManager.
+     * Re-evaluates the worker defence of a base, then pulls the gatherers it still needs.
+     *
+     * <p>Outside a cannon rush the defence is simulated with every assigned defender and every candidate. If
+     * that full commitment loses, no candidate is pulled, every assigned defender is released and the base
+     * may not pull again for {@link WorkerDefense#ABANDON_HOLD_FRAMES}. Otherwise candidates are added until
+     * the defence clears the threat.
      *
      * @param base base to defend
-     * @param baseUnits gatherers to assign to defense squad
+     * @param candidates gatherers that may be pulled, in pull order
      * @param hostileUnits units threatening this base
-     * @return gatherers that have been assigned to defend
+     * @return gatherers pulled, to be removed from the WorkerManager, and defenders released, to be returned
      */
-    public List<ManagedUnit> assignGatherersToDefend(Base base, HashSet<ManagedUnit> baseUnits, List<Unit> hostileUnits) {
+    public WorkerDefense.Outcome<ManagedUnit> assignGatherersToDefend(Base base, List<ManagedUnit> candidates,
+                                                                      List<Unit> hostileUnits) {
         ensureDefenseSquad(base);
         Squad defenseSquad = defenseSquads.get(base);
 
-        List<ManagedUnit> reassignedGatherers = new ArrayList<>();
-        if (baseUnits.size() < 3) {
-            return reassignedGatherers;
-        }
-
         if (gameState.isCannonRushed()) {
-            int totalGatherers = gameState.getGatherersAssignedToBase().values().stream()
-                    .mapToInt(HashSet::size)
-                    .sum();
-            int existingDefenders = defenseSquads.values().stream()
-                    .mapToInt(s -> s.getMembers().size())
-                    .sum();
-            int maxToAssign = totalGatherers / 2 - existingDefenders;
-            if (maxToAssign <= 0) {
-                return reassignedGatherers;
-            }
-            int assigned = 0;
-            for (ManagedUnit gatherer : baseUnits) {
-                if (assigned >= maxToAssign) {
-                    break;
-                }
-                defenseSquad.addUnit(gatherer);
-                reassignedGatherers.add(gatherer);
-                assigned++;
-            }
-        } else {
-            for (ManagedUnit gatherer : baseUnits) {
-                boolean canClear = canDefenseSquadClearThreat(defenseSquad, hostileUnits);
-                if (canClear) {
-                    break;
-                }
-                defenseSquad.addUnit(gatherer);
-                reassignedGatherers.add(gatherer);
-            }
+            return assignCannonRushDefenders(defenseSquad, candidates, hostileUnits);
         }
 
-        for (ManagedUnit managedUnit: reassignedGatherers) {
-            managedUnit.setRole(UnitRole.DEFEND);
-            assignDefenderTarget(managedUnit, hostileUnits);
+        int frame = game.getFrameCount();
+        if (WorkerDefense.abandonHeld(defenseAbandonedUntilFrame.get(base), frame)) {
+            return new WorkerDefense.Outcome<>(false, Collections.emptyList(), Collections.emptyList());
         }
 
-        return reassignedGatherers;
+        final double clearThreshold = gameState.getStrategyTracker().isDetectedStrategy("SCVRush")
+                ? SCV_RUSH_DEFENSE_CLEAR_THRESHOLD
+                : DEFENSE_WIN_THRESHOLD;
+        List<DefenseSim> sims = new ArrayList<>();
+        List<ManagedUnit> members = new ArrayList<>(defenseSquad.getMembers());
+        WorkerDefense.Outcome<ManagedUnit> outcome = WorkerDefense.decide(members, candidates,
+                defenders -> {
+                    DefenseSim sim = simulateDefense(base, defenders, hostileUnits, DEFENSE_WIN_THRESHOLD);
+                    sims.add(sim);
+                    return sim.wins();
+                },
+                defenders -> simulateDefense(base, defenders, hostileUnits, clearThreshold).wins());
+        DefenseSim fullCommitment = sims.isEmpty() ? null : sims.get(0);
+
+        if (outcome.isAbandoned()) {
+            releaseDefenders(defenseSquad);
+            defenseAbandonedUntilFrame.put(base, frame + WorkerDefense.ABANDON_HOLD_FRAMES);
+            SquadDecisions.defenseEvaluated(defenseSquad, DefenseEvent.ABANDON, candidates.size(), 0,
+                    outcome.getReleased().size(), fullCommitment);
+            return outcome;
+        }
+
+        for (ManagedUnit gatherer : outcome.getPulled()) {
+            defenseSquad.addUnit(gatherer);
+            gatherer.setRole(UnitRole.DEFEND);
+            assignDefenderTarget(gatherer, hostileUnits);
+        }
+        if (!outcome.getPulled().isEmpty()) {
+            SquadDecisions.defenseEvaluated(defenseSquad, DefenseEvent.PULL, candidates.size(),
+                    outcome.getPulled().size(), 0, fullCommitment);
+        }
+        return outcome;
+    }
+
+    private WorkerDefense.Outcome<ManagedUnit> assignCannonRushDefenders(Squad defenseSquad,
+                                                                         List<ManagedUnit> candidates,
+                                                                         List<Unit> hostileUnits) {
+        List<ManagedUnit> pulled = new ArrayList<>();
+        int totalGatherers = gameState.getGatherersAssignedToBase().values().stream()
+                .mapToInt(HashSet::size)
+                .sum();
+        int existingDefenders = defenseSquads.values().stream()
+                .mapToInt(s -> s.getMembers().size())
+                .sum();
+        int maxToAssign = totalGatherers / 2 - existingDefenders;
+        for (ManagedUnit gatherer : candidates) {
+            if (pulled.size() >= maxToAssign) {
+                break;
+            }
+            defenseSquad.addUnit(gatherer);
+            gatherer.setRole(UnitRole.DEFEND);
+            assignDefenderTarget(gatherer, hostileUnits);
+            pulled.add(gatherer);
+        }
+        if (!pulled.isEmpty()) {
+            SquadDecisions.defenseEvaluated(defenseSquad, DefenseEvent.PULL, candidates.size(), pulled.size(), 0,
+                    null);
+        }
+        return new WorkerDefense.Outcome<>(false, pulled, Collections.emptyList());
     }
 
     public List<ManagedUnit> disbandDefendSquad(Base base) {
         ensureDefenseSquad(base);
         Squad defenseSquad = defenseSquads.get(base);
 
+        List<ManagedUnit> reassignedDefenders = releaseDefenders(defenseSquad);
+        if (!reassignedDefenders.isEmpty()) {
+            SquadDecisions.defenseEvaluated(defenseSquad, DefenseEvent.RELEASE, 0, 0, reassignedDefenders.size(),
+                    null);
+        }
+        return reassignedDefenders;
+    }
+
+    private List<ManagedUnit> releaseDefenders(Squad defenseSquad) {
         List<ManagedUnit> reassignedDefenders = new ArrayList<>(defenseSquad.getMembers());
 
         for (ManagedUnit defender: reassignedDefenders) {
@@ -1438,46 +1483,49 @@ public class SquadManager {
         return retreat.clampToMap(game, unitPos);
     }
 
-    private boolean canDefenseSquadClearThreat(Squad squad, List<Unit> enemyUnits) {
-        HashSet<ManagedUnit> managedDefenders = squad.getMembers();
-
+    /**
+     * Simulates the given defenders against the threats near a base.
+     *
+     * <p>Enemies farther than {@link #DEFENSE_SIM_RANGE} from the base center are left out. A defender that
+     * far away is placed at the base center, so a drone still mining at another base is judged in the fight
+     * it would walk into rather than from out of range of it.
+     */
+    private DefenseSim simulateDefense(Base base, List<ManagedUnit> defenders, List<Unit> enemyUnits,
+                                       double threshold) {
+        Position center = base.getCenter();
         Simulator simulator = new Simulator.Builder().build();
 
-        for (ManagedUnit managedUnit: managedDefenders) {
-            if (managedUnit.getUnit().getType() == UnitType.Unknown) {
+        for (ManagedUnit managedUnit: defenders) {
+            Unit unit = managedUnit.getUnit();
+            if (unit.getType() == UnitType.Unknown) {
                 continue;
             }
-            simulator.addAgentA(agentFactory.of(managedUnit.getUnit()));
+            Agent agent = agentFactory.of(unit);
+            if (unit.getPosition().getDistance(center) > DEFENSE_SIM_RANGE) {
+                agent.setX(center.getX()).setY(center.getY());
+            }
+            simulator.addAgentA(agent);
         }
 
         for (Unit enemyUnit: enemyUnits) {
             if (enemyUnit.getType() == UnitType.Unknown) {
                 continue;
             }
-            if ((int) enemyUnit.getPosition().getDistance(squad.getCenter()) > DEFENSE_SIM_RANGE) {
+            if ((int) enemyUnit.getPosition().getDistance(center) > DEFENSE_SIM_RANGE) {
                 continue;
             }
             try {
                 simulator.addAgentB(agentFactory.of(enemyUnit));
             } catch (ArithmeticException e) {
-                return false;
+                return DefenseSim.unsimulated(simulator.getAgentsA().size(), threshold);
             }
         }
 
+        int defenderAgents = simulator.getAgentsA().size();
+        int enemyAgents = simulator.getAgentsB().size();
         simulator.simulate(COMBAT_SIM_DURATION_FRAMES);
-
-        if (simulator.getAgentsB().isEmpty()) {
-            return true;
-        }
-
-        if (simulator.getAgentsA().isEmpty()) {
-            return false;
-        }
-
-        final boolean isSCVRush = gameState.getStrategyTracker().isDetectedStrategy("SCVRush");
-        float percentRemaining = (float) simulator.getAgentsA().size() / managedDefenders.size();
-        final double percentThreshold = isSCVRush ? 0.75 : DEFENSE_WIN_THRESHOLD;
-        return percentRemaining >= percentThreshold;
+        return new DefenseSim(true, defenderAgents, enemyAgents, simulator.getAgentsA().size(),
+                simulator.getAgentsB().size(), threshold);
     }
 
     /**
