@@ -1349,6 +1349,14 @@ public class GameState {
     }
 
     /**
+     * The excess rule for expansion hatcheries, which leaves completed macro hatcheries out of the
+     * hatchery count.
+     */
+    public boolean hasExcessExpansionHatchery() {
+        return HatcheryCapacity.isExcessForExpansion(hatcheryCount(), baseData.numMacroHatcheries(), numLarva());
+    }
+
+    /**
      * True when an expansion hatchery queued now survives the frame and the request that asks
      * for it has re-armed.
      *
@@ -1357,7 +1365,7 @@ public class GameState {
      */
     public boolean mayQueueExpansionHatchery() {
         return isHatcheryEnqueueRearmed(false)
-                && HatcheryCapacity.isQueueable(hasExcessHatchery(), isEarlyRushed() || isScvRushed());
+                && HatcheryCapacity.isQueueable(hasExcessExpansionHatchery(), isEarlyRushed() || isScvRushed());
     }
 
     /**

@@ -205,18 +205,20 @@ public class ProductionManager {
     }
 
     private void cancelExcessHatcheryPlans() {
-        if (!gameState.hasExcessHatchery()) {
+        boolean excess = gameState.hasExcessHatchery();
+        if (!excess) {
             return;
         }
+        boolean excessForExpansion = gameState.hasExcessExpansionHatchery();
 
         gameState.getProductionQueue().removeWhere(
-                p -> p.getType() == PlanType.BUILDING && p.getPlannedUnit() == UnitType.Zerg_Hatchery,
+                p -> isExcessHatcheryPlan(p, excess, excessForExpansion),
                 PlanCancelSource.PRODUCTION_EXCESS_HATCHERY_QUEUED,
                 gameState::setImpossiblePlan);
 
         Set<Plan> scheduledPlansToCancel = gameState.getPlansScheduled()
                 .stream()
-                .filter(plan -> plan.getType() == PlanType.BUILDING && plan.getPlannedUnit() == UnitType.Zerg_Hatchery)
+                .filter(plan -> isExcessHatcheryPlan(plan, excess, excessForExpansion))
                 .collect(Collectors.toSet());
 
         for (Plan plan : scheduledPlansToCancel) {
@@ -224,6 +226,20 @@ public class ProductionManager {
             gameState.getPlansScheduled().remove(plan);
             gameState.cancelPlan(null, plan, PlanCancelSource.PRODUCTION_EXCESS_HATCHERY_SCHEDULED);
         }
+    }
+
+    /**
+     * Whether the excess sweep cancels this plan: a hatchery plan the excess rule for its kind
+     * reports as excess.
+     *
+     * @param plan a plan in the queue or the scheduled set
+     * @param excess the excess rule with every hatchery counted
+     * @param excessForExpansion the excess rule with completed macro hatcheries left out
+     */
+    static boolean isExcessHatcheryPlan(Plan plan, boolean excess, boolean excessForExpansion) {
+        return plan.getType() == PlanType.BUILDING
+                && plan.getPlannedUnit() == UnitType.Zerg_Hatchery
+                && HatcheryCapacity.isExcessPlan(plan.isMacroHatchery(), excess, excessForExpansion);
     }
 
     /** Drops scheduled Lair plans while an early rush delays the Lair; the reaction removes only queued ones. */

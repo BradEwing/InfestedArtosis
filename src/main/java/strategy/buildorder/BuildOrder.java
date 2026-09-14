@@ -860,6 +860,27 @@ public abstract class BuildOrder {
         return new TechPlan(techType, priority, true);
     }
 
+    /**
+     * Whether the larva-bound macro hatchery request fires this frame.
+     *
+     * <p>Reads the gate inputs off the game state, hands {@link LarvaBoundMacroHatchery#evaluate}
+     * the build's tech condition, and reports the gate it stopped on to plan telemetry.
+     *
+     * @param gameState current game state
+     * @param techReady the build's tech condition, read from finished structures and research
+     * @return true when every gate is open
+     */
+    protected boolean wantLarvaBoundMacroHatchery(GameState gameState, boolean techReady) {
+        ResourceCount resourceCount = gameState.getResourceCount();
+        int hatcheries = gameState.hatcheryCount();
+        int outstanding = gameState.inFlightHatcheryPlans(true) + gameState.hatcheriesUnderConstruction(true);
+        LarvaBoundMacroHatchery.Gate gate = LarvaBoundMacroHatchery.evaluate(techReady, gameState.numLarva(),
+                hatcheries, resourceCount.availableMinerals(), resourceCount.availableGas(),
+                gameState.knownEnemyMobileGroundCombatUnitsAtOurBases(), outstanding);
+        PlanEvents.macroHatcheryGate(gate, techReady, hatcheries, outstanding);
+        return gate == LarvaBoundMacroHatchery.Gate.TRIGGER;
+    }
+
     protected Plan planMacroHatchery(GameState gameState) {
         BuildingPlanner buildingPlanner = gameState.getBuildingPlanner();
         BaseData baseData = gameState.getBaseData();

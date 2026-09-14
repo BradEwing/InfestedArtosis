@@ -1272,4 +1272,47 @@ class ProductionManagerTest {
 
         assertNull(ProductionManager.larvaConstraintHatchery(0, UnitType.Zerg_Hatchery.mineralPrice() - 1, queue));
     }
+
+    /**
+     * Game LC0QF0BR: the main macro hatchery finished as the third hatchery, larva reached five,
+     * and the excess sweep cancelled expansions 106, 111 and 146.
+     */
+    @Test
+    void aFinishedMacroHatcheryDoesNotMakeAPlannedExpansionExcess() {
+        boolean excess = HatcheryCapacity.isExcess(3, HatcheryCapacity.EXCESS_LARVA);
+        boolean excessForExpansion = HatcheryCapacity.isExcessForExpansion(3, 1, HatcheryCapacity.EXCESS_LARVA);
+
+        assertTrue(excess);
+        assertFalse(ProductionManager.isExcessHatcheryPlan(hatchery(), excess, excessForExpansion));
+    }
+
+    @Test
+    void aMacroHatcheryUnderConstructionDoesNotMakeAPlannedExpansionExcess() {
+        boolean excess = HatcheryCapacity.isExcess(2, HatcheryCapacity.EXCESS_LARVA);
+        boolean excessForExpansion = HatcheryCapacity.isExcessForExpansion(2, 0, HatcheryCapacity.EXCESS_LARVA);
+
+        assertFalse(ProductionManager.isExcessHatcheryPlan(hatchery(), excess, excessForExpansion));
+    }
+
+    @Test
+    void aFinishedMacroHatcheryStillMakesAnotherMacroHatcheryExcess() {
+        boolean excess = HatcheryCapacity.isExcess(3, HatcheryCapacity.EXCESS_LARVA);
+        boolean excessForExpansion = HatcheryCapacity.isExcessForExpansion(3, 1, HatcheryCapacity.EXCESS_LARVA);
+
+        assertTrue(ProductionManager.isExcessHatcheryPlan(BuildOrder.macroHatcheryPlan(FRAME, MAIN_TILE),
+                excess, excessForExpansion));
+    }
+
+    @Test
+    void threeExpansionHatcheriesWithIdleLarvaStillCancelAPlannedExpansion() {
+        boolean excess = HatcheryCapacity.isExcess(3, HatcheryCapacity.EXCESS_LARVA);
+        boolean excessForExpansion = HatcheryCapacity.isExcessForExpansion(3, 0, HatcheryCapacity.EXCESS_LARVA);
+
+        assertTrue(ProductionManager.isExcessHatcheryPlan(hatchery(), excess, excessForExpansion));
+    }
+
+    @Test
+    void theExcessSweepLeavesNonHatcheryPlansAlone() {
+        assertFalse(ProductionManager.isExcessHatcheryPlan(extractor(), true, true));
+    }
 }
