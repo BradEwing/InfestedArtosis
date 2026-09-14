@@ -564,7 +564,16 @@ public class HorizonCombatSimulator implements CombatSimulator {
         return weapon.damageType();
     }
 
-    private double bunkerGarrisonModifier(ObservedUnit ou, int currentFrame) {
+    /**
+     * Share of a bunker's full strength its estimated garrison carries. A bunker never seen firing counts at full
+     * strength; an estimate decays back to full strength once the bunker has gone unobserved past the trust
+     * window.
+     *
+     * @param ou the observed bunker
+     * @param currentFrame current frame
+     * @return multiplier on the bunker's strength
+     */
+    static double bunkerGarrisonModifier(ObservedUnit ou, int currentFrame) {
         int loadedCount = ou.getLastKnownLoadedCount();
         if (loadedCount < 0) return 1.0;
         double baseModifier = (double) loadedCount / BUNKER_MAX_GARRISON;

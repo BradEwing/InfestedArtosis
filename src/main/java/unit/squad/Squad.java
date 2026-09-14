@@ -8,6 +8,7 @@ import lombok.Data;
 import lombok.Getter;
 import org.jetbrains.annotations.NotNull;
 import unit.managed.ManagedUnit;
+import util.Arc;
 import util.Distance;
 import util.Time;
 
@@ -56,6 +57,7 @@ public class Squad implements Comparable<Squad> {
     protected int containLockedUntilFrame = 0;
     @Getter
     protected int containStartFrame = 0;
+    private Arc containmentArc;
     protected Time fightHysteresis = new Time(0, 3);
     protected Time retreatHysteresis = new Time(0, 5);
     protected Time containHysteresis = new Time(0, 5);
@@ -228,10 +230,14 @@ public class Squad implements Comparable<Squad> {
         SquadStatus mergedStatus = null;
         int earliestContainStart = 0;
         int earliestCommit = 0;
+        Arc inheritedArc = null;
         for (Squad source: sources) {
             mergedStatus = SquadStatus.dominant(mergedStatus, source.status);
             if (source.containStartFrame > 0 && (earliestContainStart == 0 || source.containStartFrame < earliestContainStart)) {
                 earliestContainStart = source.containStartFrame;
+            }
+            if (inheritedArc == null && source.status == SquadStatus.CONTAIN) {
+                inheritedArc = source.containmentArc;
             }
             if (source.commitFrame > 0 && (earliestCommit == 0 || source.commitFrame < earliestCommit)) {
                 earliestCommit = source.commitFrame;
@@ -243,6 +249,7 @@ public class Squad implements Comparable<Squad> {
 
         this.status = mergedStatus;
         this.containStartFrame = mergedStatus == SquadStatus.CONTAIN ? earliestContainStart : 0;
+        this.containmentArc = mergedStatus == SquadStatus.CONTAIN ? inheritedArc : null;
         this.commitFrame = earliestCommit;
     }
 
@@ -349,6 +356,7 @@ public class Squad implements Comparable<Squad> {
     public void clearContainStart() {
         containStartFrame = 0;
         containLockedUntilFrame = 0;
+        containmentArc = null;
     }
 
     /**

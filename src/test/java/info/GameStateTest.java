@@ -1,5 +1,6 @@
 package info;
 
+import bwapi.Race;
 import bwapi.UnitType;
 import macro.plan.BuildingPlan;
 import macro.plan.Plan;
@@ -8,6 +9,7 @@ import macro.plan.UnitPlan;
 import org.junit.jupiter.api.Test;
 
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -129,6 +131,19 @@ class GameStateTest {
         int usableExtractors = GameState.structureCount(Readiness.USABLE, NONE, ONE, ONE);
 
         assertFalse(GameState.canPlanLair(NO_RUSH_DELAY, NEEDS_LAIR, TECH_ALLOWS_LAIR, ENOUGH_HATCHERIES, usableExtractors));
+    }
+
+    @Test
+    void staticDefenseReachComesFromTheWeaponThatFiresFromEachStructure() {
+        Map<UnitType, Integer> terran = GameState.staticDefenseReaches(Race.Terran);
+        Map<UnitType, Integer> protoss = GameState.staticDefenseReaches(Race.Protoss);
+        Map<UnitType, Integer> zerg = GameState.staticDefenseReaches(Race.Zerg);
+
+        assertEquals(UnitType.Terran_Marine.groundWeapon().maxRange(), terran.get(UnitType.Terran_Bunker));
+        assertEquals(UnitType.Protoss_Photon_Cannon.groundWeapon().maxRange(),
+                protoss.get(UnitType.Protoss_Photon_Cannon));
+        assertEquals(UnitType.Zerg_Sunken_Colony.groundWeapon().maxRange(), zerg.get(UnitType.Zerg_Sunken_Colony));
+        assertTrue(GameState.staticDefenseReaches(Race.Unknown).isEmpty());
     }
 
     @Test
