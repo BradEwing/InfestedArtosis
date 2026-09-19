@@ -6,6 +6,7 @@ import macro.plan.Plan;
 import macro.plan.PlanBlocker;
 import macro.plan.PlanCancelSource;
 import macro.plan.PlanState;
+import strategy.buildorder.LarvaBoundMacroHatchery;
 
 import java.util.List;
 
@@ -48,6 +49,18 @@ public interface PlanEventSink {
 
     /** A build order wanted a unit but created no plan because the blocker would sweep it. */
     default void onWithheld(UnitType unitType, PlanBlocker blocker) {
+    }
+
+    /**
+     * A build order evaluated the larva-bound macro hatchery request.
+     *
+     * @param gate the gate the request stopped on, or TRIGGER
+     * @param techReady the build's tech condition as the request read it
+     * @param hatcheries completed larva-producing hatcheries as the request read them
+     * @param outstandingMacroHatcheries macro hatchery plans in flight plus macro hatcheries under construction
+     */
+    default void onMacroHatcheryGate(LarvaBoundMacroHatchery.Gate gate, boolean techReady, int hatcheries,
+                                     int outstandingMacroHatcheries) {
     }
 
     /** A unit was cancelled outside the plan system, so no plan transition records the cancellation. */

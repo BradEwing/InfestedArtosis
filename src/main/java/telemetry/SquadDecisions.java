@@ -1,6 +1,7 @@
 package telemetry;
 
 import unit.squad.CombatSimulator;
+import unit.squad.DefenseSim;
 import unit.squad.Squad;
 
 /**
@@ -70,5 +71,14 @@ public final class SquadDecisions {
             return;
         }
         current.onSplitSuppressed(squad, moveOutThreshold, squadStrength, outlierStrength);
+    }
+
+    public static void defenseEvaluated(Squad squad, DefenseEvent event, int candidates, int pulled, int released,
+                                        DefenseSim sim) {
+        SquadDecisionSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onDefenseEvaluated(squad, event, candidates, pulled, released, sim);
     }
 }

@@ -6,6 +6,7 @@ import macro.plan.Plan;
 import macro.plan.PlanBlocker;
 import macro.plan.PlanCancelSource;
 import macro.plan.PlanState;
+import strategy.buildorder.LarvaBoundMacroHatchery;
 
 import java.util.List;
 
@@ -102,6 +103,15 @@ public final class PlanEvents {
             return;
         }
         current.onWithheld(unitType, blocker);
+    }
+
+    public static void macroHatcheryGate(LarvaBoundMacroHatchery.Gate gate, boolean techReady, int hatcheries,
+                                         int outstandingMacroHatcheries) {
+        PlanEventSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onMacroHatcheryGate(gate, techReady, hatcheries, outstandingMacroHatcheries);
     }
 
     public static void unplannedCancel(UnitType unitType, PlanCancelSource cancelSource) {

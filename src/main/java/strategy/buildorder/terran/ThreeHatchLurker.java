@@ -10,6 +10,7 @@ import info.Readiness;
 import info.ResourceCount;
 import info.TechProgression;
 import macro.plan.Plan;
+import strategy.buildorder.LarvaBoundMacroHatchery;
 import strategy.buildorder.ZerglingTargets;
 
 import java.util.ArrayList;
@@ -48,6 +49,8 @@ public class ThreeHatchLurker extends TerranBase {
         boolean wantNatural = plannedAndCurrentHatcheries < 2 && droneCount >= 12;
 
         boolean wantFirstMacroHatch = wantFirstMacroHatchery(gameState);
+        boolean wantLarvaBoundMacroHatch = wantLarvaBoundMacroHatchery(gameState,
+                LarvaBoundMacroHatchery.isLurkerTechReady(techProgression));
 
         boolean wantLair = gameState.canPlanLair() && lairCount < 1 && baseCount >= 2;
 
@@ -94,6 +97,13 @@ public class ThreeHatchLurker extends TerranBase {
             if (macroHatchPlan != null) {
                 plans.add(macroHatchPlan);
                 return plans;
+            }
+        }
+
+        if (expansionPlan == null && wantLarvaBoundMacroHatch) {
+            Plan macroHatchPlan = planMacroHatcheryAt(gameState, baseData.getMainBase());
+            if (macroHatchPlan != null) {
+                plans.add(macroHatchPlan);
             }
         }
 

@@ -17,8 +17,10 @@ import util.OneShotGate;
 import util.Time;
 import macro.plan.Plan;
 import macro.plan.PlanCancelSource;
+import macro.plan.PlanState;
 import macro.plan.PlanType;
 import macro.plan.UpgradePlan;
+import strategy.buildorder.BuildOrder;
 import strategy.buildorder.SunkenTargets;
 import telemetry.PlanEvents;
 
@@ -30,6 +32,7 @@ import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * Reactions updates the ProductionQueue and GameState when particular enemy strategies are detected.
@@ -51,6 +54,9 @@ public class Reactions {
 
     private static final Predicate<Plan> IS_CREEP_COLONY = p ->
             p.getType() == PlanType.BUILDING && p.getPlannedUnit() == UnitType.Zerg_Creep_Colony;
+
+    private static final Predicate<Plan> IS_SUNKEN_COLONY = p ->
+            p.getType() == PlanType.BUILDING && p.getPlannedUnit() == UnitType.Zerg_Sunken_Colony;
 
     private static final Predicate<Plan> IS_LAIR = p ->
             p.getType() == PlanType.BUILDING && p.getPlannedUnit() == UnitType.Zerg_Lair;
@@ -160,6 +166,9 @@ public class Reactions {
         gameState.setEarlyRushed(true);
 
         ProductionQueue productionQueue = gameState.getProductionQueue();
+        BaseData baseData = gameState.getBaseData();
+        raiseSunkensToEmergency(productionQueue, gameState.getPlansScheduled(), gameState.getPlansMorphing(),
+                plan -> plan.getReservedColonyBase() != null && baseData.isEligibleForSunkenColony(plan.getReservedColonyBase()));
         planSpeedUpgrade(productionQueue);
 
         Race opponentRace = gameState.getOpponentRace();
@@ -183,7 +192,34 @@ public class Reactions {
             productionQueue.removeWhere(IS_DRONE, PlanCancelSource.REACTION_EARLY_RUSH_DRONE, gameState::setImpossiblePlan);
         }
 
-        allowSunkenAtMainIfNoExpansionUnderway(gameState.getBaseData(), expansionsUnderConstruction);
+        allowSunkenAtMainIfNoExpansionUnderway(baseData, expansionsUnderConstruction);
+    }
+
+    /**
+     * Lifts the Sunken Colony plans already waiting at a base the rush defence covers to the
+     * priority the rush queues its own colony pairs at.
+     *
+     * <p>The build order stamps emergency priority only on the pairs it creates while rushed, so a
+     * Sunken queued earlier, often with its Creep Colony already standing, would otherwise wait
+     * behind every new emergency pair and never take the build-ahead slot from one. Plans still
+     * queued are re-inserted through the queue; plans that have claimed their slot but not issued
+     * the morph are lifted in place, so an emergency colony cannot take the slot back from them.
+     *
+     * @param productionQueue the queue holding plans not yet scheduled
+     * @param plansScheduled plans holding a schedule claim
+     * @param plansMorphing plans handed to a producer, including morphs not yet issued
+     * @param atDefendedBase whether a Sunken plan's reserved base is one the rush defence may build at
+     */
+    static void raiseSunkensToEmergency(ProductionQueue productionQueue, Set<Plan> plansScheduled, Set<Plan> plansMorphing,
+                                        Predicate<Plan> atDefendedBase) {
+        Predicate<Plan> belowEmergency = plan -> plan.getPriority() > BuildOrder.EMERGENCY_DEFENSE_PRIORITY;
+        Predicate<Plan> raisable = IS_SUNKEN_COLONY.and(belowEmergency).and(atDefendedBase);
+        productionQueue.setPriorityWhere(raisable, BuildOrder.EMERGENCY_DEFENSE_PRIORITY);
+
+        Predicate<Plan> claimed = raisable.and(plan -> plan.getState() == PlanState.SCHEDULE);
+        Stream.concat(plansScheduled.stream(), plansMorphing.stream())
+                .filter(claimed)
+                .forEach(plan -> plan.setPriority(BuildOrder.EMERGENCY_DEFENSE_PRIORITY));
     }
 
     boolean shouldFireDroneCut(int livingDrones, int livingZerglings) {

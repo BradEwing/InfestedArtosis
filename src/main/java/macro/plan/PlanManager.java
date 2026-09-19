@@ -167,7 +167,7 @@ public class PlanManager {
                 continue;
             }
             int travelFrames = this.getTravelFrames(managedUnit.getUnit(), plan.getBuildPosition().toPosition());
-            if (currentFrame > plan.getPredictedReadyFrame() - travelFrames) {
+            if (currentFrame > plan.getPredictedReadyFrame() - travelFrames && !isSiteContested(managedUnit, plan)) {
                 gameState.clearAssignments(managedUnit);
                 plan.setState(PlanState.BUILDING);
                 managedUnit.setRole(UnitRole.BUILD);
@@ -178,6 +178,24 @@ public class PlanManager {
         for (ManagedUnit managedUnit: executed) {
             scheduledDrones.remove(managedUnit);
         }
+    }
+
+    private boolean isSiteContested(ManagedUnit drone, Plan plan) {
+        Set<TilePosition> tiles = BaseData.siteTiles(gameState.getGameMap().getMainBaseTiles(),
+                plan.getBuildPosition(), BaseData.NATURAL_DEFENSE_TILE_RADIUS);
+        return shouldHoldBuilder(gameState.knownEnemyMobileGroundCombatUnitsOnTiles(tiles),
+                tiles.contains(drone.getUnit().getTilePosition()));
+    }
+
+    /**
+     * Returns true if a scheduled builder must keep mining instead of leaving for its site. A builder is held
+     * while enemy ground combat units are known at the site's base, unless it is already standing there.
+     *
+     * @param enemiesAtSite enemy mobile ground combat units last known on the site's base tiles
+     * @param builderAtSite true if the builder already stands on the site's base tiles
+     */
+    static boolean shouldHoldBuilder(int enemiesAtSite, boolean builderAtSite) {
+        return enemiesAtSite > 0 && !builderAtSite;
     }
 
     private int getTravelFrames(Unit unit, Position buildingPosition) {
