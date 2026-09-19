@@ -1,8 +1,13 @@
 package strategy.buildorder.terran;
 
+import bwapi.TilePosition;
 import bwapi.UnitType;
+import info.TechProgression;
 import info.UnitTypeCount;
+import macro.plan.Plan;
 import org.junit.jupiter.api.Test;
+import strategy.buildorder.BuildOrder;
+import strategy.buildorder.LarvaBoundMacroHatchery;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -11,6 +16,72 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ThreeHatchLurkerTest {
 
     private static final int BASE_TARGET = 8;
+
+    private static final int NO_LARVA = 0;
+
+    private static final int TWO_HATCHERIES = 2;
+
+    private static final int NO_ENEMIES = 0;
+
+    private static final int NO_MACRO_HATCHERY = 0;
+
+    /** Game LC0QF0B5: the frame the larva-bound request without its Spire term would first have fired. */
+    private static final int FLOAT_FRAME = 9386;
+
+    private static final TilePosition MAIN_TILE = new TilePosition(117, 119);
+
+    /**
+     * Game LC0QF0B5 at 6:31: Lair and Hydralisk Den finished, two hatcheries, no larva, and both
+     * unreserved banks over the float bars. The build's own third hatchery gates never opened.
+     */
+    @Test
+    void requestsOneMainMacroHatcheryWithTheLairAndDenFinished() {
+        TechProgression techProgression = lairAndDen();
+
+        assertTrue(requestsMacroHatchery(techProgression, NO_ENEMIES, NO_MACRO_HATCHERY));
+
+        Plan plan = BuildOrder.macroHatcheryPlan(FLOAT_FRAME, MAIN_TILE);
+        assertEquals(UnitType.Zerg_Hatchery, plan.getPlannedUnit());
+        assertTrue(plan.isMacroHatchery());
+        assertEquals(MAIN_TILE, plan.getBuildPosition());
+    }
+
+    @Test
+    void requestsAMacroHatcheryWithLurkerAspectResearched() {
+        TechProgression techProgression = new TechProgression();
+        techProgression.setLair(true);
+        techProgression.setLurker(true);
+
+        assertTrue(requestsMacroHatchery(techProgression, NO_ENEMIES, NO_MACRO_HATCHERY));
+    }
+
+    @Test
+    void doesNotRequestAMacroHatcheryWhileTheDenIsStillMorphing() {
+        TechProgression techProgression = new TechProgression();
+        techProgression.setLair(true);
+        techProgression.setPlannedDen(true);
+
+        assertFalse(requestsMacroHatchery(techProgression, NO_ENEMIES, NO_MACRO_HATCHERY));
+    }
+
+    @Test
+    void doesNotRequestAMacroHatcheryWhileTheLairIsStillMorphing() {
+        TechProgression techProgression = new TechProgression();
+        techProgression.setPlannedLair(true);
+        techProgression.setHydraliskDen(true);
+
+        assertFalse(requestsMacroHatchery(techProgression, NO_ENEMIES, NO_MACRO_HATCHERY));
+    }
+
+    @Test
+    void doesNotRequestAMacroHatcheryWhileEnemiesAreKnownAtOurBases() {
+        assertFalse(requestsMacroHatchery(lairAndDen(), 1, NO_MACRO_HATCHERY));
+    }
+
+    @Test
+    void doesNotRequestASecondMacroHatcheryWhileOneIsOutstanding() {
+        assertFalse(requestsMacroHatchery(lairAndDen(), NO_ENEMIES, 1));
+    }
 
     @Test
     void theTargetStandsWhileEnoughHydralisksExistToReachIt() {
@@ -100,6 +171,20 @@ class ThreeHatchLurkerTest {
     @Test
     void muscularAugmentsWaitsForFieldedLurkers() {
         assertFalse(ThreeHatchLurker.shouldPlanMuscularAugments(4, 1));
+    }
+
+    private static TechProgression lairAndDen() {
+        TechProgression techProgression = new TechProgression();
+        techProgression.setLair(true);
+        techProgression.setHydraliskDen(true);
+        return techProgression;
+    }
+
+    private static boolean requestsMacroHatchery(TechProgression techProgression, int enemiesAtBases,
+                                                 int outstandingMacroHatcheries) {
+        return LarvaBoundMacroHatchery.shouldPlan(LarvaBoundMacroHatchery.isLurkerTechReady(techProgression),
+                NO_LARVA, TWO_HATCHERIES, LarvaBoundMacroHatchery.FLOAT_MINERALS, LarvaBoundMacroHatchery.FLOAT_GAS,
+                enemiesAtBases, outstandingMacroHatcheries);
     }
 
     private static UnitTypeCount hydralisks(int planned, int living) {
