@@ -883,6 +883,10 @@ public class ProductionManager {
             if (plan == null) {
                 continue;
             }
+            plan.markPlannedSince(currentFrame);
+            if (ProductionQueue.isStale(plan, currentFrame)) {
+                PlanEvents.stale(plan);
+            }
             if (!canSchedulePlan(plan)) {
                 plan.setCancelSource(PlanCancelSource.PRODUCTION_SCHEDULE_GATE);
                 gameState.setImpossiblePlan(plan);
@@ -898,16 +902,17 @@ public class ProductionManager {
         gameState.getProductionQueue().addAll(outcome.requeued);
     }
 
-    private PlanBlocker schedulePlan(Plan plan, boolean bankClaimedAhead, boolean larvaClaimedAhead) {
+    private PlanBlocker schedulePlan(Plan plan, boolean bankClaimedAhead, boolean larvaClaimedAhead,
+                                     boolean researchClaimedAhead) {
         switch (plan.getType()) {
             case BUILDING:
-                return scheduleBuildingItem(plan, bankClaimedAhead);
+                return scheduleBuildingItem(plan, bankClaimedAhead, researchClaimedAhead);
             case UNIT:
-                return scheduleUnitItem(plan, bankClaimedAhead, larvaClaimedAhead);
+                return scheduleUnitItem(plan, bankClaimedAhead, larvaClaimedAhead, researchClaimedAhead);
             case UPGRADE:
-                return scheduleUpgradeItem(game.self(), plan);
+                return scheduleUpgradeItem(game.self(), plan, researchClaimedAhead);
             case TECH:
-                return scheduleResearch(plan);
+                return scheduleResearch(plan, researchClaimedAhead);
             default:
                 return PlanBlocker.UNSUPPORTED_PLAN_TYPE;
         }
@@ -915,7 +920,8 @@ public class ProductionManager {
 
     @FunctionalInterface
     interface PlanScheduler {
-        PlanBlocker schedule(Plan plan, boolean bankClaimedAhead, boolean larvaClaimedAhead);
+        PlanBlocker schedule(Plan plan, boolean bankClaimedAhead, boolean larvaClaimedAhead,
+                             boolean researchClaimedAhead);
     }
 
     static final class ScanOutcome {
@@ -930,8 +936,9 @@ public class ProductionManager {
         ScanOutcome outcome = new ScanOutcome();
         boolean bankClaimedAhead = false;
         boolean larvaClaimedAhead = false;
+        boolean researchClaimedAhead = false;
         for (Plan plan : plansInPriorityOrder) {
-            PlanBlocker blocker = scheduler.schedule(plan, bankClaimedAhead, larvaClaimedAhead);
+            PlanBlocker blocker = scheduler.schedule(plan, bankClaimedAhead, larvaClaimedAhead, researchClaimedAhead);
             if (blocker == PlanBlocker.NONE) {
                 outcome.scheduled.add(plan);
                 continue;
@@ -940,8 +947,59 @@ public class ProductionManager {
             outcome.requeued.add(plan);
             bankClaimedAhead = bankClaimedAhead || claimsBank(blocker);
             larvaClaimedAhead = larvaClaimedAhead || claimsLarva(plan, blocker);
+            researchClaimedAhead = researchClaimedAhead || blocker == PlanBlocker.RESEARCH_MINERALS;
         }
         return outcome;
+    }
+
+    /**
+     * The shortfall an upgrade or a research plan reports, and whether it holds the bank.
+     *
+     * <p>A plan short only of minerals, with a producer free to start it and income that covers the
+     * shortfall within {@link BuildAheadSlot#MAX_HOLD_FRAMES}, holds the bank against every cheaper
+     * plan behind it. Research reserves nothing while it is short, so without the hold each mineral
+     * is spent by a Drone or Zergling that can already pay, and the research is funded only once
+     * larva runs out. A plan also waiting on gas or on a busy producer would hold the bank for
+     * nothing, and one whose shortfall outlasts the longest build-ahead hold would stall the drones
+     * that gather it; those keep the plain shortfall claim.
+     *
+     * @param frame the current frame
+     * @param predictedReadyFrame the frame the plan can pay its own cost
+     * @param shortOnlyOfMinerals whether the unreserved bank covers the gas but not the minerals
+     * @param producerFree whether a producer is idle and carries no plan
+     * @return RESEARCH_MINERALS when the plan holds the bank, otherwise the plain shortfall blocker
+     */
+    static PlanBlocker researchShortfallBlocker(int frame, int predictedReadyFrame,
+                                                boolean shortOnlyOfMinerals, boolean producerFree) {
+        PlanBlocker shortfall = shortfallBlocker(predictedReadyFrame);
+        if (shortfall != PlanBlocker.RESOURCES || !shortOnlyOfMinerals || !producerFree) {
+            return shortfall;
+        }
+        if (predictedReadyFrame - frame > BuildAheadSlot.MAX_HOLD_FRAMES) {
+            return PlanBlocker.RESOURCES;
+        }
+        return PlanBlocker.RESEARCH_MINERALS;
+    }
+
+    /**
+     * True when a research or upgrade holding the bank ahead in the scan bars this plan.
+     *
+     * <p>Drones and Zerglings are held like every other plan: they are the larva spend that starves
+     * research, and the hold lasts no longer than the income the research is waiting on. Overlords
+     * are exempt so the hold can never become a supply block. Emergency defence is exempt, as it is
+     * from a building holding the build-ahead slot, and so is a Sunken or Spore morph whose own
+     * Creep Colony is complete, which has nothing left to wait for but its cost.
+     *
+     * @param plan the plan behind the claim
+     * @param researchClaimedAhead whether a plan ahead in the scan reported RESEARCH_MINERALS
+     * @param colonyReady whether the plan is a colony morph whose Creep Colony is complete
+     * @return true when the plan must wait for the research to be funded
+     */
+    static boolean isHeldByResearchClaim(Plan plan, boolean researchClaimedAhead, boolean colonyReady) {
+        if (!researchClaimedAhead || colonyReady || BuildAheadSlot.isEmergencyDefence(plan)) {
+            return false;
+        }
+        return plan.getPlannedUnit() != UnitType.Zerg_Overlord;
     }
 
     /**
@@ -960,7 +1018,7 @@ public class ProductionManager {
     }
 
     static boolean claimsBank(PlanBlocker blocker) {
-        return blocker == PlanBlocker.RESOURCES;
+        return blocker == PlanBlocker.RESOURCES || blocker == PlanBlocker.RESEARCH_MINERALS;
     }
 
     /**
@@ -1099,7 +1157,8 @@ public class ProductionManager {
 
     // PLANNED -> SCHEDULED
     // Allow one building to be scheduled if resources aren't available, unless in an opener
-    private PlanBlocker scheduleBuildingItem(Plan plan, boolean hasHigherPriorityPending) {
+    private PlanBlocker scheduleBuildingItem(Plan plan, boolean hasHigherPriorityPending,
+                                             boolean researchClaimedAhead) {
         UnitType building = plan.getPlannedUnit();
 
         boolean colonyReady = false;
@@ -1119,6 +1178,10 @@ public class ProductionManager {
         PlanBlocker waveBlocker = techWaveBlocker(plan);
         if (waveBlocker != PlanBlocker.NONE) {
             return waveBlocker;
+        }
+
+        if (isHeldByResearchClaim(plan, researchClaimedAhead, colonyReady)) {
+            return PlanBlocker.RESEARCH_CLAIM;
         }
 
         ResourceCount resourceCount = gameState.getResourceCount();
@@ -1356,7 +1419,8 @@ public class ProductionManager {
         return null;
     }
 
-    private PlanBlocker scheduleUnitItem(Plan plan, boolean bankClaimedAhead, boolean larvaClaimedAhead) {
+    private PlanBlocker scheduleUnitItem(Plan plan, boolean bankClaimedAhead, boolean larvaClaimedAhead,
+                                         boolean researchClaimedAhead) {
         UnitType unit = plan.getPlannedUnit();
         ResourceCount resourceCount = gameState.getResourceCount();
         boolean larvaAvailable = resourceCount.canScheduleLarva(gameState.numLarva(), gameState.larvaAssignedToPlans());
@@ -1372,6 +1436,10 @@ public class ProductionManager {
         Player self = gameState.getSelf();
         if (isSupplyBlocked(unit, self.supplyTotal() - self.supplyUsed())) {
             return PlanBlocker.SUPPLY;
+        }
+
+        if (isHeldByResearchClaim(plan, researchClaimedAhead, false)) {
+            return PlanBlocker.RESEARCH_CLAIM;
         }
 
         boolean cannotAfford = resourceCount.cannotAffordUnit(unit);
@@ -1497,7 +1565,7 @@ public class ProductionManager {
         return PlanBlocker.NONE;
     }
 
-    private PlanBlocker scheduleUpgradeItem(Player self, Plan plan) {
+    private PlanBlocker scheduleUpgradeItem(Player self, Plan plan, boolean researchClaimedAhead) {
         final UpgradeType upgrade = plan.getPlannedUpgrade();
         ResourceCount resourceCount = gameState.getResourceCount();
 
@@ -1506,8 +1574,12 @@ public class ProductionManager {
             return waveBlocker;
         }
 
+        if (isHeldByResearchClaim(plan, researchClaimedAhead, false)) {
+            return PlanBlocker.RESEARCH_CLAIM;
+        }
+
         if (resourceCount.cannotAffordUpgrade(plan)) {
-            return shortfallBlocker(gameState.frameCanAffordPlan(plan, currentFrame));
+            return researchShortfall(plan, hasFreeResearcher(upgrade.whatUpgrades()));
         }
 
         Unit nextAvailable = null;
@@ -1550,7 +1622,32 @@ public class ProductionManager {
                 || required == UnitType.Zerg_Spire && actual == UnitType.Zerg_Greater_Spire;
     }
 
-    private PlanBlocker scheduleResearch(Plan plan) {
+    private PlanBlocker researchShortfall(Plan plan, boolean producerFree) {
+        return researchShortfallBlocker(
+                currentFrame,
+                gameState.frameCanAffordPlan(plan, currentFrame),
+                gameState.getResourceCount().isShortOnlyOfMinerals(plan),
+                producerFree);
+    }
+
+    /** A completed producer, or its upgraded form, that is not researching and carries no plan. */
+    private boolean hasFreeResearcher(UnitType producer) {
+        for (Unit unit : gameState.getSelf().getUnits()) {
+            UnitType unitType = unit.getType();
+            if (unitType != producer && !isUpgradedForm(unitType, producer)) {
+                continue;
+            }
+            if (unit.isCompleted()
+                    && !unit.isUpgrading()
+                    && !unit.isResearching()
+                    && !gameState.getAssignedPlannedItems().containsKey(unit)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private PlanBlocker scheduleResearch(Plan plan, boolean researchClaimedAhead) {
         final TechType techType = plan.getPlannedTechType();
         ResourceCount resourceCount = gameState.getResourceCount();
 
@@ -1559,8 +1656,12 @@ public class ProductionManager {
             return waveBlocker;
         }
 
+        if (isHeldByResearchClaim(plan, researchClaimedAhead, false)) {
+            return PlanBlocker.RESEARCH_CLAIM;
+        }
+
         if (resourceCount.cannotAffordResearch(techType)) {
-            return shortfallBlocker(gameState.frameCanAffordPlan(plan, currentFrame));
+            return researchShortfall(plan, hasFreeResearcher(techType.whatResearches()));
         }
 
         Unit nextAvailable = null;

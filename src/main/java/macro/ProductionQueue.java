@@ -17,6 +17,12 @@ import java.util.function.Predicate;
 
 public class ProductionQueue implements Iterable<Plan> {
 
+    /**
+     * How long a plan may wait in PLANNED before production stops counting it as demand: two
+     * minutes of game time.
+     */
+    public static final int STALE_PLANNED_FRAMES = 24 * 120;
+
     private final PriorityQueue<Plan> queue = new PriorityQueue<>(new PlanComparator());
 
     public void add(Plan plan) {
@@ -74,15 +80,41 @@ public class ProductionQueue implements Iterable<Plan> {
     }
 
     /**
-     * Sums the gas price of every plan still waiting to be scheduled. A queued plan has not
+     * Sums the gas price of the queued plans production is still attempting. A queued plan has not
      * reserved yet, so this gas is invisible to the unreserved bank.
+     *
+     * <p>A plan that has waited in PLANNED longer than {@link #STALE_PLANNED_FRAMES} is not
+     * counted: an upgrade that sits queued for thousands of frames would otherwise hold drones on
+     * a floating geyser for all of them. The first gas-priced plan in queue order always counts,
+     * however long it has waited, so a cut never strands the plan production reaches next.
+     *
+     * @param frame the current frame
+     * @return the gas priced by queued plans that are still being attempted
      */
-    public int gasDemand() {
+    public int gasDemand(int frame) {
+        PlanComparator order = new PlanComparator();
+        Plan head = null;
         int gas = 0;
         for (Plan plan : queue) {
-            gas += plan.gasPrice();
+            if (plan.gasPrice() <= 0) {
+                continue;
+            }
+            if (head == null || order.compare(plan, head) < 0) {
+                head = plan;
+            }
+            if (!isStale(plan, frame)) {
+                gas += plan.gasPrice();
+            }
+        }
+        if (head != null && isStale(head, frame)) {
+            gas += head.gasPrice();
         }
         return gas;
+    }
+
+    /** True when a plan has waited in PLANNED longer than {@link #STALE_PLANNED_FRAMES}. */
+    public static boolean isStale(Plan plan, int frame) {
+        return plan.plannedFrames(frame) > STALE_PLANNED_FRAMES;
     }
 
     public int minPriority() {

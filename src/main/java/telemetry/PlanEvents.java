@@ -65,6 +65,14 @@ public final class PlanEvents {
         current.onBlocked(plan, blocker);
     }
 
+    public static void stale(Plan plan) {
+        PlanEventSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onStale(plan);
+    }
+
     public static void buildAheadHold(Plan holder, int heldFrames, int starvedBehind) {
         PlanEventSink current = sink;
         if (current == null) {
