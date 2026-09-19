@@ -34,6 +34,7 @@ import util.Filter;
 import util.Vec2;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -106,6 +107,7 @@ public class SquadManager {
     private static final int CONTAINMENT_ENGAGE_RADIUS = 256;
     private static final int ARC_DEGREES = 90;
     private static final int ARC_RADIUS = 160;
+    private static final int CONTAIN_DEFENSE_MARGIN = 32;
     private static final double REINFORCEMENT_RADIUS = 384.0;
     private static final int TARGETING_RADIUS = 256;
     public static final int GROUND_SPLIT_DISTANCE = 256;
@@ -1111,14 +1113,11 @@ public class SquadManager {
     }
 
     private boolean enterContainment(Squad squad) {
-        HashSet<Base> enemyBases = gameState.getBaseData().getEnemyBases();
-        if (enemyBases.isEmpty()) return false;
-        Base containBase = closestBaseTo(squad.getCenter(), enemyBases);
-        Position chokePosition = findContainmentChoke(squad.getCenter(), containBase);
-        if (chokePosition == null) return false;
+        Arc arc = containmentArc(squad);
+        if (arc == null) return false;
         squad.setStatus(SquadStatus.CONTAIN);
         squad.startContainLock(game.getFrameCount());
-        assignContainmentPositions(squad, containBase, chokePosition);
+        assignContainmentPositions(squad, arc);
         return true;
     }
 
@@ -1199,17 +1198,38 @@ public class SquadManager {
                 breakAllContainment(now);
                 break;
             case RETREAT:
-                squad.clearContainStart();
-                squad.setStatus(SquadStatus.RETREAT);
-                assignRetreatTargets(squad, members);
-                squad.startRetreatLock(now);
+                retreatFromContainment(squad, members, now);
                 break;
             case REPOSITION:
-                assignContainmentPositions(squad);
+                repositionContainingSquad(squad, members, now);
                 break;
             default:
                 break;
         }
+    }
+
+    private void retreatFromContainment(Squad squad, HashSet<ManagedUnit> members, int now) {
+        squad.clearContainStart();
+        squad.setStatus(SquadStatus.RETREAT);
+        assignRetreatTargets(squad, members);
+        squad.startRetreatLock(now);
+    }
+
+    /**
+     * Moves a containing squad onto a freshly computed arc, or retreats it when no arc point is left clear of
+     * enemy static defence.
+     *
+     * @param squad containing squad
+     * @param members squad members
+     * @param now current frame
+     */
+    private void repositionContainingSquad(Squad squad, HashSet<ManagedUnit> members, int now) {
+        Arc arc = containmentArc(squad);
+        if (arc == null) {
+            retreatFromContainment(squad, members, now);
+            return;
+        }
+        assignContainmentPositions(squad, arc);
     }
 
     /**
@@ -1294,36 +1314,55 @@ public class SquadManager {
         return false;
     }
 
-    private void assignContainmentPositions(Squad squad) {
+    /**
+     * Builds the arc a squad would hold at the choke in front of the enemy base closest to it.
+     *
+     * @param squad squad offered the arc
+     * @return the computed arc, or null when there is no enemy base or choke, or no arc point is clear of
+     *     enemy static defence
+     */
+    private Arc containmentArc(Squad squad) {
         HashSet<Base> enemyBases = gameState.getBaseData().getEnemyBases();
-        if (enemyBases.isEmpty()) return;
+        if (enemyBases.isEmpty()) return null;
         Base containBase = closestBaseTo(squad.getCenter(), enemyBases);
         Position chokePosition = findContainmentChoke(squad.getCenter(), containBase);
-        if (chokePosition == null) return;
-        assignContainmentPositions(squad, containBase, chokePosition);
-    }
+        if (chokePosition == null) return null;
 
-    private void assignContainmentPositions(Squad squad, Base containBase, Position chokePosition) {
         Position enemyBasePosition = containBase.getCenter();
         Position faceTarget = new Position(
                 2 * chokePosition.getX() - enemyBasePosition.getX(),
                 2 * chokePosition.getY() - enemyBasePosition.getY()
         );
 
-        Set<Position> coverage = gameState.getStaticDefenseCoverage();
-
-        int unitCount = squad.size();
-        int numPoints = Math.max(unitCount, 4);
-
+        int numPoints = Math.max(squad.size(), 4);
         int mapPixelWidth = game.mapWidth() * 32;
         int mapPixelHeight = game.mapHeight() * 32;
         Arc arc = new Arc(chokePosition, faceTarget, ARC_RADIUS, ARC_DEGREES, numPoints);
         Set<WalkPosition> accessiblePositions = gameState.getGameMap().getAccessibleWalkPositions();
-        arc.compute(accessiblePositions, coverage, mapPixelWidth, mapPixelHeight);
+        arc.compute(accessiblePositions, gameState.getStaticDefenseZones(),
+                containmentDefensePadding(squad.getComposition().keySet()), mapPixelWidth, mapPixelHeight);
+        return arc.isEmpty() ? null : arc;
+    }
 
-        if (arc.isEmpty()) return;
+    /**
+     * Pixels an arc point must keep beyond a static defence structure's reach: the largest extent of any unit
+     * that may stand on the point, plus a margin.
+     *
+     * @param memberTypes unit types in the squad
+     * @return padding in pixels
+     */
+    static int containmentDefensePadding(Collection<UnitType> memberTypes) {
+        int extent = 0;
+        for (UnitType type : memberTypes) {
+            extent = Math.max(extent, Math.max(Math.max(type.dimensionLeft(), type.dimensionRight()),
+                    Math.max(type.dimensionUp(), type.dimensionDown())));
+        }
+        return extent + CONTAIN_DEFENSE_MARGIN;
+    }
 
+    private void assignContainmentPositions(Squad squad, Arc arc) {
         activeContainmentArcs.add(arc);
+        squad.setContainmentArc(arc);
 
         List<ManagedUnit> units = new ArrayList<>(squad.getMembers());
         Map<ManagedUnit, Position> assignments = arc.assignUnits(units);

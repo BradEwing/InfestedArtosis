@@ -37,8 +37,8 @@ import macro.plan.PlanState;
 import strategy.buildorder.BuildOrder;
 import unit.managed.ManagedUnit;
 import unit.managed.UnitRole;
-import util.Distance;
 import util.Filter;
+import util.StaticDefenseZone;
 import util.Time;
 
 import java.util.ArrayList;
@@ -1222,47 +1222,48 @@ public class GameState {
         return psiStormTracker.isPositionInStorm(pos, buffer);
     }
 
-    public Set<Position> getStaticDefenseCoverage() {
-        Set<Position> coveredPositions = new HashSet<>();
-
-        Map<UnitType, Integer> staticDefenseRanges = new HashMap<>();
+    /**
+     * Reach of each static defence structure the opponent's race builds, measured from the structure's edge.
+     * A Bunker reaches as far as the Marines inside it; JBWAPI's Player.weaponMaxRange carries no bunker bonus.
+     *
+     * @param opponentRace race of the opponent
+     * @return reach in pixels by structure type, empty for an unknown race
+     */
+    static Map<UnitType, Integer> staticDefenseReaches(Race opponentRace) {
+        Map<UnitType, Integer> reaches = new HashMap<>();
         switch (opponentRace) {
             case Terran:
-                staticDefenseRanges.put(UnitType.Terran_Missile_Turret, UnitType.Terran_Missile_Turret.airWeapon().maxRange());
-                staticDefenseRanges.put(UnitType.Terran_Bunker, UnitType.Terran_Marine.groundWeapon().maxRange() + 32);
+                reaches.put(UnitType.Terran_Missile_Turret, UnitType.Terran_Missile_Turret.airWeapon().maxRange());
+                reaches.put(UnitType.Terran_Bunker, UnitType.Terran_Marine.groundWeapon().maxRange());
                 break;
             case Protoss:
-                staticDefenseRanges.put(UnitType.Protoss_Photon_Cannon, UnitType.Protoss_Photon_Cannon.groundWeapon().maxRange());
+                reaches.put(UnitType.Protoss_Photon_Cannon, UnitType.Protoss_Photon_Cannon.groundWeapon().maxRange());
                 break;
             case Zerg:
-                staticDefenseRanges.put(UnitType.Zerg_Spore_Colony, UnitType.Zerg_Spore_Colony.airWeapon().maxRange());
-                staticDefenseRanges.put(UnitType.Zerg_Sunken_Colony, UnitType.Zerg_Sunken_Colony.groundWeapon().maxRange());
+                reaches.put(UnitType.Zerg_Spore_Colony, UnitType.Zerg_Spore_Colony.airWeapon().maxRange());
+                reaches.put(UnitType.Zerg_Sunken_Colony, UnitType.Zerg_Sunken_Colony.groundWeapon().maxRange());
                 break;
             default:
-                return coveredPositions;
+                break;
         }
+        return reaches;
+    }
 
-        for (Map.Entry<UnitType, Integer> entry : staticDefenseRanges.entrySet()) {
-            UnitType defenseType = entry.getKey();
-            int range = entry.getValue();
-
-            Set<Position> defensePositions = observedUnitTracker.getLastKnownPositionsOfLivingUnits(defenseType);
-
-            for (Position defensePos : defensePositions) {
-                if (defensePos != null) {
-                    for (int x = defensePos.getX() - range; x <= defensePos.getX() + range; x += 8) {
-                        for (int y = defensePos.getY() - range; y <= defensePos.getY() + range; y += 8) {
-                            Position testPos = new Position(x, y);
-
-                            if (Distance.isWithinRange(x, y, defensePos.getX(), defensePos.getY(), range)) {
-                                coveredPositions.add(testPos);
-                            }
-                        }
-                    }
-                }
+    public List<StaticDefenseZone> getStaticDefenseZones() {
+        List<StaticDefenseZone> zones = new ArrayList<>();
+        for (Map.Entry<UnitType, Integer> entry : staticDefenseReaches(opponentRace).entrySet()) {
+            for (Position defensePos : observedUnitTracker.getLastKnownPositionsOfLivingUnits(entry.getKey())) {
+                zones.add(new StaticDefenseZone(entry.getKey(), defensePos, entry.getValue()));
             }
         }
+        return zones;
+    }
 
+    public Set<Position> getStaticDefenseCoverage() {
+        Set<Position> coveredPositions = new HashSet<>();
+        for (StaticDefenseZone zone : getStaticDefenseZones()) {
+            coveredPositions.addAll(zone.coveredGridPositions());
+        }
         return coveredPositions;
     }
 

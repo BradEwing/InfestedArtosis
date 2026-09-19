@@ -1,5 +1,6 @@
 package telemetry;
 
+import bwapi.Position;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import unit.squad.CombatSimulator;
@@ -7,8 +8,10 @@ import unit.squad.DefenseSim;
 import unit.squad.GroundSquad;
 import unit.squad.Squad;
 import unit.squad.SquadStatus;
+import util.Arc;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -77,7 +80,8 @@ class SquadDecisionsTest {
                 SquadStatus.RETREAT, SquadStatus.FIGHT, context, suppressedBy))
                 + "," + String.join(",", SquadDecisionLogger.squadCells(squad, context, false, -1))
                 + "," + String.join(",", SquadDecisionLogger.rallyCells(reason, release))
-                + "," + String.join(",", SquadDecisionLogger.defenseCells(-1, -1, -1, null));
+                + "," + String.join(",", SquadDecisionLogger.defenseCells(-1, -1, -1, null))
+                + "," + String.join(",", SquadDecisionLogger.arcCells(squad));
         return row.split(",", -1);
     }
 
@@ -249,6 +253,57 @@ class SquadDecisionsTest {
         assertEquals("DISBANDED", fields[columnIndex("rally_release")]);
     }
 
+    private static Arc computedArc() {
+        Arc arc = new Arc(new Position(1600, 1600), new Position(1600, 960), 160, 90, 3);
+        arc.compute(Collections.emptySet(), Collections.emptyList(), 0, 4096, 4096);
+        return arc;
+    }
+
+    @Test
+    void aContainingSquadCarriesItsArcCenterAndPoints() {
+        Squad squad = new GroundSquad();
+        squad.setStatus(SquadStatus.CONTAIN);
+        Arc arc = computedArc();
+        squad.setContainmentArc(arc);
+
+        String[] fields = rowFor(squad);
+
+        List<String> expectedPoints = new ArrayList<>();
+        for (Position point : arc.getPositions()) {
+            expectedPoints.add(point.getX() + ":" + point.getY());
+        }
+        assertEquals(SquadDecisionLogger.HEADER.split(",", -1).length, fields.length);
+        assertEquals("1600", fields[columnIndex("arc_center_x")]);
+        assertEquals("1600", fields[columnIndex("arc_center_y")]);
+        assertEquals(String.join(";", expectedPoints), fields[columnIndex("arc_points")]);
+        assertEquals(3, fields[columnIndex("arc_points")].split(";").length);
+    }
+
+    @Test
+    void aSquadNotContainingCarriesNoArc() {
+        Squad squad = new GroundSquad();
+        squad.setStatus(SquadStatus.RETREAT);
+        squad.setContainmentArc(computedArc());
+
+        String[] fields = rowFor(squad);
+
+        assertEquals("-1", fields[columnIndex("arc_center_x")]);
+        assertEquals("-1", fields[columnIndex("arc_center_y")]);
+        assertEquals("NONE", fields[columnIndex("arc_points")]);
+    }
+
+    @Test
+    void leavingContainmentDropsTheArc() {
+        Squad squad = new GroundSquad();
+        squad.setStatus(SquadStatus.CONTAIN);
+        squad.startContainLock(100);
+        squad.setContainmentArc(computedArc());
+
+        squad.clearContainStart();
+
+        assertEquals(null, squad.getContainmentArc());
+    }
+
     @Test
     void registeredSinkReceivesDefenseDecisions() {
         SquadDecisions.register(recorder());
@@ -269,7 +324,8 @@ class SquadDecisionsTest {
                 DefenseEvent.ABANDON, context))
                 + "," + String.join(",", SquadDecisionLogger.squadCells(squad, context, true, -1))
                 + "," + String.join(",", SquadDecisionLogger.rallyCells(RallyReason.NONE, RallyRelease.NONE))
-                + "," + String.join(",", SquadDecisionLogger.defenseCells(6, 0, 2, sim));
+                + "," + String.join(",", SquadDecisionLogger.defenseCells(6, 0, 2, sim))
+                + "," + String.join(",", SquadDecisionLogger.arcCells(squad));
         String[] fields = row.split(",", -1);
 
         assertEquals(SquadDecisionLogger.HEADER.split(",", -1).length, fields.length);

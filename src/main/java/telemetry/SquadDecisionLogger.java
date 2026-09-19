@@ -9,6 +9,7 @@ import unit.squad.Squad;
 import unit.squad.SquadManager;
 import unit.squad.SquadStatus;
 import unit.squad.horizon.HorizonCombatSimulator;
+import util.Arc;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -33,6 +34,9 @@ import java.util.Set;
  * commitment simulation; sim_result is ENGAGE when that simulation wins, RETREAT when it loses and
  * NONE when none ran. Fight squad rows leave the defense columns at -1.
  *
+ * <p>Rows for a squad holding a containment arc carry the arc's center and its points as x:y pairs joined by
+ * semicolons; every other row carries -1 and NONE there.
+ *
  * <p>LOCK_SUPPRESSED rows are deduplicated per suppression episode, keyed on the lock, its expiry
  * frame, and the overridden verdict.
  *
@@ -49,7 +53,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
             + "can_break_containment,containment_entered,centroid_x,centroid_y,ground_distance_to_base,"
             + "rally_reason,rally_release,defense_candidates,workers_pulled,workers_released,"
             + "defense_sim_defenders,defense_sim_enemies,defense_sim_defender_survivors,"
-            + "defense_sim_enemy_survivors,defense_win_threshold";
+            + "defense_sim_enemy_survivors,defense_win_threshold,arc_center_x,arc_center_y,arc_points";
 
     private static final int FLUSH_INTERVAL_FRAMES = 480;
     private static final String EVENT_STATUS_CHANGE = "STATUS_CHANGE";
@@ -379,6 +383,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
                 context.getRallyRelease()));
         fields.addAll(defenseCells(SquadDecision.NOT_EVALUATED, SquadDecision.NOT_EVALUATED,
                 SquadDecision.NOT_EVALUATED, null));
+        fields.addAll(arcCells(squad));
         return String.join(",", fields);
     }
 
@@ -394,6 +399,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
                 groundDistanceToNearestBase(squad.getCenter())));
         fields.addAll(rallyCells(RallyReason.NONE, RallyRelease.NONE));
         fields.addAll(defenseCells(candidates, pulled, released, sim));
+        fields.addAll(arcCells(squad));
         return String.join(",", fields);
     }
 
@@ -499,6 +505,31 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         fields.add(String.valueOf(simulated ? sim.getDefenderSurvivors() : SquadDecision.NOT_EVALUATED));
         fields.add(String.valueOf(simulated ? sim.getEnemySurvivors() : SquadDecision.NOT_EVALUATED));
         fields.add(simulated ? Csv.format(sim.getThreshold()) : String.valueOf(SquadDecision.NOT_EVALUATED));
+        return fields;
+    }
+
+    /**
+     * Builds the three cells that locate the containment arc a CONTAIN squad is holding.
+     *
+     * @param squad squad the row describes
+     * @return arc center x, arc center y and the arc points, or the not evaluated sentinels
+     */
+    static List<String> arcCells(Squad squad) {
+        List<String> fields = new ArrayList<>();
+        Arc arc = squad.getStatus() == SquadStatus.CONTAIN ? squad.getContainmentArc() : null;
+        if (arc == null) {
+            fields.add(String.valueOf(SquadDecision.NOT_EVALUATED));
+            fields.add(String.valueOf(SquadDecision.NOT_EVALUATED));
+            fields.add(NONE);
+            return fields;
+        }
+        List<String> points = new ArrayList<>();
+        for (Position point : arc.getPositions()) {
+            points.add(point.getX() + ":" + point.getY());
+        }
+        fields.add(String.valueOf(arc.getCenter().getX()));
+        fields.add(String.valueOf(arc.getCenter().getY()));
+        fields.add(String.join(";", points));
         return fields;
     }
 
