@@ -25,6 +25,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -166,10 +167,17 @@ class ProductionManagerTest {
 
         private final List<Plan> evicted = new ArrayList<>();
 
+        private final Set<Plan> readyColonyMorphs = new HashSet<>();
+
         private int minerals;
 
         private Bank(int minerals) {
             this.minerals = minerals;
+        }
+
+        private Bank colonyReady(Plan plan) {
+            readyColonyMorphs.add(plan);
+            return this;
         }
 
         private void hold(Plan plan) {
@@ -181,18 +189,20 @@ class ProductionManagerTest {
         public PlanBlocker schedule(Plan plan, boolean bankClaimedAhead, boolean larvaClaimedAhead) {
             UnitType building = plan.getPlannedUnit();
             boolean cannotAfford = minerals < building.mineralPrice();
+            boolean colonyReady = readyColonyMorphs.contains(plan);
             PlanBlocker blocker = ProductionManager.buildAheadBlocker(
                     slot,
                     plan,
                     FRAME,
                     cannotAfford,
                     bankClaimedAhead,
-                    FRAME + 100);
+                    FRAME + 100,
+                    colonyReady);
             if (blocker != PlanBlocker.NONE) {
                 return blocker;
             }
             if (cannotAfford) {
-                for (Plan holder : slot.holdersYieldingTo(plan)) {
+                for (Plan holder : slot.holdersYieldingTo(plan, colonyReady)) {
                     slot.release(holder);
                     minerals += holder.getPlannedUnit().mineralPrice();
                     evicted.add(holder);
@@ -961,6 +971,133 @@ class ProductionManagerTest {
         assertEquals(Arrays.asList(colony, lair), third.requeued);
         assertEquals(Collections.singletonList(sunken), bank.slot.claimedPlans());
         assertTrue(bank.slot.holdersYieldingTo(colony).isEmpty());
+    }
+
+    private Plan colonyMorph(UnitType morph, int priority) {
+        return new BuildingPlan(morph, priority);
+    }
+
+    private Plan holder(UnitType building, int priority, PlanState state) {
+        Plan plan = new BuildingPlan(building, priority);
+        plan.setState(state);
+        return plan;
+    }
+
+    @Test
+    void aScheduledLairYieldsToASunkenWhoseCreepColonyIsComplete() {
+        Bank bank = new Bank(0);
+        Plan lair = holder(UnitType.Zerg_Lair, 3, PlanState.SCHEDULE);
+        bank.hold(lair);
+        Plan sunken = colonyMorph(UnitType.Zerg_Sunken_Colony, 5);
+        bank.colonyReady(sunken);
+
+        ScanOutcome outcome = ProductionManager.scanPlans(Collections.singletonList(sunken), bank);
+
+        assertEquals(Collections.singletonList(sunken), outcome.scheduled);
+        assertEquals(Collections.singletonList(lair), bank.evicted);
+        assertEquals(Collections.singletonList(sunken), bank.slot.claimedPlans());
+    }
+
+    @Test
+    void aSporeWhoseCreepColonyIsCompleteTakesTheSlotFromAScheduledHatchery() {
+        BuildAheadSlot slot = new BuildAheadSlot();
+        Plan hatchery = holder(UnitType.Zerg_Hatchery, 2, PlanState.SCHEDULE);
+        slot.claim(hatchery, FRAME, FRAME + 100);
+        Plan spore = colonyMorph(UnitType.Zerg_Spore_Colony, 5);
+
+        assertEquals(PlanBlocker.NONE, ProductionManager.buildAheadBlocker(slot, spore, FRAME, true, false, FRAME + 100, true));
+        assertEquals(Collections.singletonList(hatchery), slot.holdersYieldingTo(spore, true));
+    }
+
+    @Test
+    void aHolderWhoseBuilderIsDispatchedKeepsTheSlotFromAReadySunken() {
+        BuildAheadSlot slot = new BuildAheadSlot();
+        slot.claim(spire(PlanState.BUILDING), FRAME, FRAME + 100);
+        Plan sunken = colonyMorph(UnitType.Zerg_Sunken_Colony, 5);
+
+        assertEquals(PlanBlocker.BUILD_AHEAD_SLOT_TAKEN,
+                ProductionManager.buildAheadBlocker(slot, sunken, FRAME, true, false, FRAME + 100, true));
+        assertTrue(slot.holdersYieldingTo(sunken, true).isEmpty());
+    }
+
+    @Test
+    void aHolderWhoseMorphIsIssuedKeepsTheSlotFromAReadySunken() {
+        BuildAheadSlot slot = new BuildAheadSlot();
+        slot.claim(holder(UnitType.Zerg_Lair, 3, PlanState.MORPHING), FRAME, FRAME + 100);
+        Plan sunken = colonyMorph(UnitType.Zerg_Sunken_Colony, 5);
+
+        assertEquals(PlanBlocker.BUILD_AHEAD_SLOT_TAKEN,
+                ProductionManager.buildAheadBlocker(slot, sunken, FRAME, true, false, FRAME + 100, true));
+        assertTrue(slot.holdersYieldingTo(sunken, true).isEmpty());
+    }
+
+    @Test
+    void anEmergencyHolderKeepsTheSlotFromANonEmergencyReadySunken() {
+        BuildAheadSlot slot = new BuildAheadSlot();
+        Plan colony = emergency(UnitType.Zerg_Creep_Colony);
+        colony.setState(PlanState.SCHEDULE);
+        slot.claim(colony, FRAME, FRAME + 100);
+
+        assertTrue(slot.holdersYieldingTo(colonyMorph(UnitType.Zerg_Sunken_Colony, 5), true).isEmpty());
+    }
+
+    @Test
+    void twoReadyColonyMorphsDoNotEvictEachOther() {
+        BuildAheadSlot slot = new BuildAheadSlot();
+        slot.claim(holder(UnitType.Zerg_Sunken_Colony, 5, PlanState.SCHEDULE), FRAME, FRAME + 100);
+
+        assertTrue(slot.holdersYieldingTo(colonyMorph(UnitType.Zerg_Sunken_Colony, 3), true).isEmpty());
+    }
+
+    @Test
+    void aSunkenWhoseCreepColonyIsNotReadyTakesNothing() {
+        BuildAheadSlot slot = new BuildAheadSlot();
+        slot.claim(lair(), FRAME, FRAME + 100);
+
+        assertTrue(slot.holdersYieldingTo(colonyMorph(UnitType.Zerg_Sunken_Colony, 5), false).isEmpty());
+    }
+
+    @Test
+    void aReadySunkenInBackoffStillWaitsItOut() {
+        BuildAheadSlot slot = new BuildAheadSlot();
+        Plan sunken = colonyMorph(UnitType.Zerg_Sunken_Colony, 5);
+        slot.claim(sunken, FRAME, FRAME + 100);
+        slot.releaseWithBackoff(sunken, FRAME);
+        slot.claim(lair(), FRAME, FRAME + 100);
+
+        assertEquals(PlanBlocker.BUILD_AHEAD_BACKOFF,
+                ProductionManager.buildAheadBlocker(slot, sunken, FRAME, true, false, FRAME + 100, true));
+    }
+
+    @Test
+    void aReadySunkenWinsAnEqualPriorityTieWithACreepColonyHoldingTheSlot() {
+        Bank bank = new Bank(0);
+        Plan creepColony = holder(UnitType.Zerg_Creep_Colony, 5, PlanState.SCHEDULE);
+        bank.hold(creepColony);
+        Plan sunken = colonyMorph(UnitType.Zerg_Sunken_Colony, 5);
+        bank.colonyReady(sunken);
+
+        ScanOutcome outcome = ProductionManager.scanPlans(Collections.singletonList(sunken), bank);
+
+        assertEquals(Collections.singletonList(sunken), outcome.scheduled);
+        assertEquals(Collections.singletonList(creepColony), bank.evicted);
+    }
+
+    @Test
+    void aReadySunkenIsScannedAheadOfAnEqualPriorityCreepColony() {
+        ProductionQueue queue = new ProductionQueue();
+        Plan creepColony = new BuildingPlan(UnitType.Zerg_Creep_Colony, 5);
+        Plan sunken = colonyMorph(UnitType.Zerg_Sunken_Colony, 5);
+        queue.add(creepColony);
+        queue.add(sunken);
+        Bank bank = new Bank(0).colonyReady(sunken);
+
+        ScanOutcome outcome = ProductionManager.scanPlans(queue.toSortedList(), bank);
+
+        assertEquals(Arrays.asList(sunken, creepColony), queue.toSortedList());
+        assertEquals(Collections.singletonList(sunken), outcome.scheduled);
+        assertEquals(Collections.singletonList(creepColony), outcome.requeued);
+        assertTrue(bank.evicted.isEmpty());
     }
 
     @Test
