@@ -18,10 +18,12 @@ import macro.plan.PlanType;
 import macro.plan.UpgradePlan;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import strategy.buildorder.BuildOrder;
 import strategy.buildorder.SunkenTargets;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -842,6 +844,38 @@ public class ReactionsTest {
                 .filter(p -> p.getType() == PlanType.UPGRADE)
                 .filter(p -> ((UpgradePlan) p).getPlannedUpgrade() == UpgradeType.Metabolic_Boost)
                 .count();
+    }
+
+    @Test
+    void theEarlyRushRaisesSunkensAlreadyWaitingAtADefendedBaseToEmergencyPriority() {
+        ProductionQueue queue = new ProductionQueue();
+        Plan queuedSunken = new BuildingPlan(UnitType.Zerg_Sunken_Colony, 5);
+        Plan sunkenElsewhere = new BuildingPlan(UnitType.Zerg_Sunken_Colony, 5);
+        Plan creepColony = new BuildingPlan(UnitType.Zerg_Creep_Colony, 5);
+        Plan lair = new BuildingPlan(UnitType.Zerg_Lair, 3);
+        queue.add(sunkenElsewhere);
+        queue.add(lair);
+        queue.add(creepColony);
+        queue.add(queuedSunken);
+        Plan claimedSunken = new BuildingPlan(UnitType.Zerg_Sunken_Colony, 5);
+        claimedSunken.setState(PlanState.SCHEDULE);
+        Plan colonyHandedSunken = new BuildingPlan(UnitType.Zerg_Sunken_Colony, 5);
+        colonyHandedSunken.setState(PlanState.SCHEDULE);
+        Plan issuedSunken = new BuildingPlan(UnitType.Zerg_Sunken_Colony, 5);
+        issuedSunken.setState(PlanState.MORPHING);
+        Set<Plan> scheduled = new HashSet<>(Collections.singletonList(claimedSunken));
+        Set<Plan> morphing = new HashSet<>(Arrays.asList(colonyHandedSunken, issuedSunken));
+
+        Reactions.raiseSunkensToEmergency(queue, scheduled, morphing, plan -> plan != sunkenElsewhere);
+
+        assertEquals(BuildOrder.EMERGENCY_DEFENSE_PRIORITY, queuedSunken.getPriority());
+        assertEquals(BuildOrder.EMERGENCY_DEFENSE_PRIORITY, claimedSunken.getPriority());
+        assertEquals(BuildOrder.EMERGENCY_DEFENSE_PRIORITY, colonyHandedSunken.getPriority());
+        assertEquals(5, issuedSunken.getPriority());
+        assertEquals(5, sunkenElsewhere.getPriority());
+        assertEquals(5, creepColony.getPriority());
+        assertEquals(3, lair.getPriority());
+        assertEquals(queuedSunken, queue.poll());
     }
 
     private static BaseData baseDataWithOneGeyser(TilePosition tile) throws ReflectiveOperationException {

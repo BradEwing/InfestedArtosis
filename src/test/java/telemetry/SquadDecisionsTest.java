@@ -4,6 +4,7 @@ import bwapi.Position;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import unit.squad.CombatSimulator;
+import unit.squad.DefenseSim;
 import unit.squad.GroundSquad;
 import unit.squad.Squad;
 import unit.squad.SquadStatus;
@@ -56,6 +57,12 @@ class SquadDecisionsTest {
                                                boolean entered) {
                 events.add("CONTAIN:" + shouldContain + ":" + canBreakContainment + ":" + entered);
             }
+
+            @Override
+            public void onDefenseEvaluated(Squad squad, DefenseEvent event, int candidates, int pulled, int released,
+                                           DefenseSim sim) {
+                events.add("DEFENSE:" + event + ":" + candidates + ":" + pulled + ":" + released);
+            }
         };
     }
 
@@ -73,6 +80,7 @@ class SquadDecisionsTest {
                 SquadStatus.RETREAT, SquadStatus.FIGHT, context, suppressedBy))
                 + "," + String.join(",", SquadDecisionLogger.squadCells(squad, context, false, -1))
                 + "," + String.join(",", SquadDecisionLogger.rallyCells(reason, release))
+                + "," + String.join(",", SquadDecisionLogger.defenseCells(-1, -1, -1, null))
                 + "," + String.join(",", SquadDecisionLogger.arcCells(squad));
         return row.split(",", -1);
     }
@@ -294,6 +302,52 @@ class SquadDecisionsTest {
         squad.clearContainStart();
 
         assertEquals(null, squad.getContainmentArc());
+    }
+
+    @Test
+    void registeredSinkReceivesDefenseDecisions() {
+        SquadDecisions.register(recorder());
+        Squad squad = new Squad();
+
+        SquadDecisions.defenseEvaluated(squad, DefenseEvent.ABANDON, 6, 0, 2, DefenseSim.unsimulated(8, 0.5));
+
+        assertEquals(1, events.size());
+        assertEquals("DEFENSE:ABANDON:6:0:2", events.get(0));
+    }
+
+    @Test
+    void defenseRowsCarryTheWorkerCountsAndTheSimulation() {
+        Squad squad = new Squad();
+        SquadDecision context = new SquadDecision();
+        DefenseSim sim = new DefenseSim(true, 8, 6, 1, 5, 0.5);
+        String row = String.join(",", SquadDecisionLogger.defenseIdentityCells("game-1", 6242, squad,
+                DefenseEvent.ABANDON, context))
+                + "," + String.join(",", SquadDecisionLogger.squadCells(squad, context, true, -1))
+                + "," + String.join(",", SquadDecisionLogger.rallyCells(RallyReason.NONE, RallyRelease.NONE))
+                + "," + String.join(",", SquadDecisionLogger.defenseCells(6, 0, 2, sim))
+                + "," + String.join(",", SquadDecisionLogger.arcCells(squad));
+        String[] fields = row.split(",", -1);
+
+        assertEquals(SquadDecisionLogger.HEADER.split(",", -1).length, fields.length);
+        assertEquals("DEFENSE", fields[columnIndex("squad_type")]);
+        assertEquals("DEFENSE_ABANDON", fields[columnIndex("event")]);
+        assertEquals("6", fields[columnIndex("defense_candidates")]);
+        assertEquals("0", fields[columnIndex("workers_pulled")]);
+        assertEquals("2", fields[columnIndex("workers_released")]);
+        assertEquals("8", fields[columnIndex("defense_sim_defenders")]);
+        assertEquals("6", fields[columnIndex("defense_sim_enemies")]);
+        assertEquals("1", fields[columnIndex("defense_sim_defender_survivors")]);
+        assertEquals("5", fields[columnIndex("defense_sim_enemy_survivors")]);
+        assertEquals("0.5000", fields[columnIndex("defense_win_threshold")]);
+    }
+
+    @Test
+    void fightSquadRowsLeaveTheDefenseColumnsUnevaluated() {
+        String[] fields = rowFor(new GroundSquad());
+
+        assertEquals("-1", fields[columnIndex("workers_pulled")]);
+        assertEquals("-1", fields[columnIndex("defense_sim_defenders")]);
+        assertEquals("-1", fields[columnIndex("defense_win_threshold")]);
     }
 
     @Test

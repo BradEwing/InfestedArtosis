@@ -7,7 +7,7 @@ import info.GameState;
 import info.Readiness;
 import info.TechProgression;
 import macro.plan.Plan;
-import strategy.buildorder.SpireMacroHatchery;
+import strategy.buildorder.LarvaBoundMacroHatchery;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -53,8 +53,8 @@ public class OneHatchSpire extends ZergBase {
 
 
         boolean wantExpansion = behindOnBases(gameState);
-        boolean wantMacroHatchery = SpireMacroHatchery.shouldPlan(committedSpires, gameState.numLarva(),
-                gameState.hatcheryCount(), gameState.getResourceCount().availableMinerals(), gas);
+        boolean wantMacroHatchery = wantLarvaBoundMacroHatchery(gameState,
+                LarvaBoundMacroHatchery.isSpireReady(techProgression));
 
         boolean enemyHasSpire = gameState.enemyUnitCount(UnitType.Zerg_Spire) > 0;
 

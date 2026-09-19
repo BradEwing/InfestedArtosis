@@ -1097,6 +1097,13 @@ public class GameState {
         return observedUnitTracker.getCountOfLivingUnitsOnTiles(Filter::isMobileGroundCombatUnit, tiles);
     }
 
+    /**
+     * Enemy mobile ground combat units last known to be on the given tiles, whether or not we can see them now.
+     */
+    public int knownEnemyMobileGroundCombatUnitsOnTiles(Set<TilePosition> tiles) {
+        return observedUnitTracker.getCountOfLivingUnitsOnTiles(Filter::isMobileGroundCombatUnit, tiles);
+    }
+
     public int enemyUnitCount(UnitType unitType) {
         return observedUnitTracker.getCountOfLivingUnits(unitType);
     }
@@ -1350,6 +1357,14 @@ public class GameState {
     }
 
     /**
+     * The excess rule for expansion hatcheries, which leaves completed macro hatcheries out of the
+     * hatchery count.
+     */
+    public boolean hasExcessExpansionHatchery() {
+        return HatcheryCapacity.isExcessForExpansion(hatcheryCount(), baseData.numMacroHatcheries(), numLarva());
+    }
+
+    /**
      * True when an expansion hatchery queued now survives the frame and the request that asks
      * for it has re-armed.
      *
@@ -1358,7 +1373,7 @@ public class GameState {
      */
     public boolean mayQueueExpansionHatchery() {
         return isHatcheryEnqueueRearmed(false)
-                && HatcheryCapacity.isQueueable(hasExcessHatchery(), isEarlyRushed() || isScvRushed());
+                && HatcheryCapacity.isQueueable(hasExcessExpansionHatchery(), isEarlyRushed() || isScvRushed());
     }
 
     /**

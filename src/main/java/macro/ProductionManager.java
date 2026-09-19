@@ -205,18 +205,20 @@ public class ProductionManager {
     }
 
     private void cancelExcessHatcheryPlans() {
-        if (!gameState.hasExcessHatchery()) {
+        boolean excess = gameState.hasExcessHatchery();
+        if (!excess) {
             return;
         }
+        boolean excessForExpansion = gameState.hasExcessExpansionHatchery();
 
         gameState.getProductionQueue().removeWhere(
-                p -> p.getType() == PlanType.BUILDING && p.getPlannedUnit() == UnitType.Zerg_Hatchery,
+                p -> isExcessHatcheryPlan(p, excess, excessForExpansion),
                 PlanCancelSource.PRODUCTION_EXCESS_HATCHERY_QUEUED,
                 gameState::setImpossiblePlan);
 
         Set<Plan> scheduledPlansToCancel = gameState.getPlansScheduled()
                 .stream()
-                .filter(plan -> plan.getType() == PlanType.BUILDING && plan.getPlannedUnit() == UnitType.Zerg_Hatchery)
+                .filter(plan -> isExcessHatcheryPlan(plan, excess, excessForExpansion))
                 .collect(Collectors.toSet());
 
         for (Plan plan : scheduledPlansToCancel) {
@@ -224,6 +226,20 @@ public class ProductionManager {
             gameState.getPlansScheduled().remove(plan);
             gameState.cancelPlan(null, plan, PlanCancelSource.PRODUCTION_EXCESS_HATCHERY_SCHEDULED);
         }
+    }
+
+    /**
+     * Whether the excess sweep cancels this plan: a hatchery plan the excess rule for its kind
+     * reports as excess.
+     *
+     * @param plan a plan in the queue or the scheduled set
+     * @param excess the excess rule with every hatchery counted
+     * @param excessForExpansion the excess rule with completed macro hatcheries left out
+     */
+    static boolean isExcessHatcheryPlan(Plan plan, boolean excess, boolean excessForExpansion) {
+        return plan.getType() == PlanType.BUILDING
+                && plan.getPlannedUnit() == UnitType.Zerg_Hatchery
+                && HatcheryCapacity.isExcessPlan(plan.isMacroHatchery(), excess, excessForExpansion);
     }
 
     /** Drops scheduled Lair plans while an early rush delays the Lair; the reaction removes only queued ones. */
@@ -376,14 +392,15 @@ public class ProductionManager {
     }
 
     /**
-     * Hands a lower-priority holder's slot to emergency defence. The holder did not stall, so it is
-     * requeued without a backoff and claims a fresh hold once the slot is free again.
+     * Hands a holder's slot to emergency defence or to a colony morph whose Creep Colony is
+     * complete. The holder did not stall, so it is requeued without a backoff and claims a fresh
+     * hold once the slot is free again.
      *
      * @param holder the plan giving up the slot
-     * @param emergency the emergency defence plan taking it
+     * @param taker the plan taking it
      */
-    private void yieldBuildAheadHold(Plan holder, Plan emergency) {
-        PlanEvents.buildAheadYielded(holder, buildAheadSlot.heldFrames(holder, currentFrame), emergency);
+    private void yieldBuildAheadHold(Plan holder, Plan taker) {
+        PlanEvents.buildAheadYielded(holder, buildAheadSlot.heldFrames(holder, currentFrame), taker);
         buildAheadSlot.release(holder);
         PlanState state = holder.getState();
         if (state != PlanState.SCHEDULE && state != PlanState.BUILDING) {
@@ -1085,11 +1102,13 @@ public class ProductionManager {
     private PlanBlocker scheduleBuildingItem(Plan plan, boolean hasHigherPriorityPending) {
         UnitType building = plan.getPlannedUnit();
 
+        boolean colonyReady = false;
         if (ColonyClaims.isColonyMorph(building)) {
             PlanBlocker colonyBlocker = resolveColonyMorph(plan);
             if (colonyBlocker != PlanBlocker.NONE) {
                 return colonyBlocker;
             }
+            colonyReady = true;
         }
 
         PlanBlocker producerBlocker = buildingMorphBlocker(building, hasFreeMorphProducer(building));
@@ -1111,7 +1130,8 @@ public class ProductionManager {
                 currentFrame,
                 cannotAfford,
                 hasHigherPriorityPending,
-                predictedReadyFrame);
+                predictedReadyFrame,
+                colonyReady);
         if (buildAheadBlocker != PlanBlocker.NONE) {
             return buildAheadBlocker;
         }
@@ -1125,7 +1145,9 @@ public class ProductionManager {
             return PlanBlocker.BUILD_AHEAD_TOO_FAR;
         }
 
-        List<Plan> yieldingHolders = cannotAfford ? buildAheadSlot.holdersYieldingTo(plan) : new ArrayList<>();
+        List<Plan> yieldingHolders = cannotAfford
+                ? buildAheadSlot.holdersYieldingTo(plan, colonyReady)
+                : new ArrayList<>();
         if (!yieldingHolders.isEmpty()) {
             yieldingHolders.forEach(holder -> yieldBuildAheadHold(holder, plan));
             predictedReadyFrame = gameState.frameCanAffordUnit(building, currentFrame);
@@ -1215,8 +1237,9 @@ public class ProductionManager {
      * being scheduled with minerals it can already pay for. A plan that can pay resumes the hold it
      * was evicted from, so it waits out its backoff only once that hold has run out.
      *
-     * <p>An occupied slot does not bar emergency defence from holders queued below it; the caller
-     * takes the slot from them with {@link BuildAheadSlot#holdersYieldingTo}.
+     * <p>An occupied slot does not bar emergency defence from holders queued below it, nor a
+     * colony morph whose Creep Colony is complete from holders still in SCHEDULE; the caller takes
+     * the slot from them with {@link BuildAheadSlot#holdersYieldingTo}.
      */
     static PlanBlocker buildAheadBlocker(
             BuildAheadSlot slot,
@@ -1225,13 +1248,24 @@ public class ProductionManager {
             boolean cannotAfford,
             boolean hasHigherPriorityPending,
             int predictedReadyFrame) {
+        return buildAheadBlocker(slot, plan, frame, cannotAfford, hasHigherPriorityPending, predictedReadyFrame, false);
+    }
+
+    static PlanBlocker buildAheadBlocker(
+            BuildAheadSlot slot,
+            Plan plan,
+            int frame,
+            boolean cannotAfford,
+            boolean hasHigherPriorityPending,
+            int predictedReadyFrame,
+            boolean colonyReady) {
         if (!cannotAfford) {
             return slot.isHoldSpent(plan, frame) ? PlanBlocker.BUILD_AHEAD_BACKOFF : PlanBlocker.NONE;
         }
         if (hasHigherPriorityPending) {
             return PlanBlocker.BUILD_AHEAD_SLOT_TAKEN;
         }
-        if (slot.isOccupied() && slot.holdersYieldingTo(plan).isEmpty()) {
+        if (slot.isOccupied() && slot.holdersYieldingTo(plan, colonyReady).isEmpty()) {
             return PlanBlocker.BUILD_AHEAD_SLOT_TAKEN;
         }
         if (slot.isInBackoff(plan, frame)) {

@@ -11,7 +11,7 @@ import macro.plan.UnitPlan;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import strategy.buildorder.BuildOrder;
-import strategy.buildorder.SpireMacroHatchery;
+import strategy.buildorder.LarvaBoundMacroHatchery;
 import telemetry.PlanEvents;
 
 import java.util.List;
@@ -25,15 +25,13 @@ class TwoHatchMutaTest {
 
     private static final int GATHERER_FLOOR = AdvancedUnitEligibility.MIN_GATHERERS;
 
-    private static final int NO_SPIRE = 0;
-
-    private static final int ONE_SPIRE = 1;
-
     private static final int NO_LARVA = 0;
 
     private static final int ONE_HATCHERY = 1;
 
     private static final int TWO_HATCHERIES = 2;
+
+    private static final int NO_ENEMIES = 0;
 
     private static final int NO_MACRO_HATCHERY = 0;
 
@@ -183,18 +181,18 @@ class TwoHatchMutaTest {
 
     @Test
     void requestsAMacroHatcheryWhileLarvaBoundWithASpireAtTheFloatBars() {
-        assertTrue(TwoHatchMuta.shouldPlanMacroHatchery(ONE_SPIRE, NO_LARVA, TWO_HATCHERIES,
-                SpireMacroHatchery.FLOAT_MINERALS, SpireMacroHatchery.FLOAT_GAS, NO_MACRO_HATCHERY));
+        assertTrue(requestsMacroHatchery(withSpire(), NO_LARVA, TWO_HATCHERIES,
+                LarvaBoundMacroHatchery.FLOAT_MINERALS, LarvaBoundMacroHatchery.FLOAT_GAS, NO_ENEMIES, NO_MACRO_HATCHERY));
     }
 
     /**
      * Game LBIDH0GO at frame 9917: one hatchery left after the natural Lair fell, no larva, and
-     * 397 minerals and 214 gas, taken here as unreserved, with the Spire committed.
+     * 397 minerals and 214 gas, taken here as unreserved, with the Spire finished.
      */
     @Test
     void requestsAMacroHatcheryOnTheLastHatcheryWithTheNaturalLost() {
-        assertTrue(TwoHatchMuta.shouldPlanMacroHatchery(ONE_SPIRE, NO_LARVA, ONE_HATCHERY, 397, 214,
-                NO_MACRO_HATCHERY));
+        assertTrue(requestsMacroHatchery(withSpire(), NO_LARVA, ONE_HATCHERY, 397, 214,
+                NO_ENEMIES, NO_MACRO_HATCHERY));
     }
 
     @Test
@@ -209,20 +207,46 @@ class TwoHatchMutaTest {
 
     @Test
     void doesNotRequestAMacroHatcheryBeforeASpireIsCommitted() {
-        assertFalse(TwoHatchMuta.shouldPlanMacroHatchery(NO_SPIRE, NO_LARVA, TWO_HATCHERIES,
-                SpireMacroHatchery.FLOAT_MINERALS, SpireMacroHatchery.FLOAT_GAS, NO_MACRO_HATCHERY));
+        assertFalse(requestsMacroHatchery(new TechProgression(), NO_LARVA, TWO_HATCHERIES,
+                LarvaBoundMacroHatchery.FLOAT_MINERALS, LarvaBoundMacroHatchery.FLOAT_GAS, NO_ENEMIES, NO_MACRO_HATCHERY));
+    }
+
+    /**
+     * Game LC0QF0B7 queued its macro hatchery at frame 8,026 while the Spire was still morphing,
+     * reading the gas banked for the first Mutalisks as float.
+     */
+    @Test
+    void doesNotRequestAMacroHatcheryWhileTheCommittedSpireIsStillMorphing() {
+        TechProgression spireMorphing = new TechProgression();
+        spireMorphing.setPlannedSpire(true);
+
+        assertFalse(requestsMacroHatchery(spireMorphing, NO_LARVA, TWO_HATCHERIES,
+                LarvaBoundMacroHatchery.FLOAT_MINERALS, LarvaBoundMacroHatchery.FLOAT_GAS, NO_ENEMIES, NO_MACRO_HATCHERY));
+    }
+
+    @Test
+    void doesNotRequestAMacroHatcheryWhileEnemiesAreKnownAtOurBases() {
+        assertFalse(requestsMacroHatchery(withSpire(), NO_LARVA, TWO_HATCHERIES,
+                LarvaBoundMacroHatchery.FLOAT_MINERALS, LarvaBoundMacroHatchery.FLOAT_GAS, 1, NO_MACRO_HATCHERY));
     }
 
     @Test
     void doesNotRequestAMacroHatcheryWhileOneIsQueuedOrMorphing() {
-        assertFalse(TwoHatchMuta.shouldPlanMacroHatchery(ONE_SPIRE, NO_LARVA, TWO_HATCHERIES,
-                SpireMacroHatchery.FLOAT_MINERALS, SpireMacroHatchery.FLOAT_GAS, ONE_MACRO_HATCHERY));
+        assertFalse(requestsMacroHatchery(withSpire(), NO_LARVA, TWO_HATCHERIES,
+                LarvaBoundMacroHatchery.FLOAT_MINERALS, LarvaBoundMacroHatchery.FLOAT_GAS, NO_ENEMIES, ONE_MACRO_HATCHERY));
     }
 
     @Test
     void doesNotRequestAMacroHatcheryWhileLarvaIsNotShort() {
-        assertFalse(TwoHatchMuta.shouldPlanMacroHatchery(ONE_SPIRE, TWO_HATCHERIES, TWO_HATCHERIES,
-                SpireMacroHatchery.FLOAT_MINERALS, SpireMacroHatchery.FLOAT_GAS, NO_MACRO_HATCHERY));
+        assertFalse(requestsMacroHatchery(withSpire(), TWO_HATCHERIES, TWO_HATCHERIES,
+                LarvaBoundMacroHatchery.FLOAT_MINERALS, LarvaBoundMacroHatchery.FLOAT_GAS, NO_ENEMIES, NO_MACRO_HATCHERY));
+    }
+
+    private static boolean requestsMacroHatchery(TechProgression techProgression, int larva, int hatcheries,
+                                                 int availableMinerals, int availableGas, int enemiesAtBases,
+                                                 int outstandingMacroHatcheries) {
+        return LarvaBoundMacroHatchery.shouldPlan(LarvaBoundMacroHatchery.isSpireReady(techProgression), larva,
+                hatcheries, availableMinerals, availableGas, enemiesAtBases, outstandingMacroHatcheries);
     }
 
     /**

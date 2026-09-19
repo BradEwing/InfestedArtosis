@@ -16,10 +16,14 @@ import unit.managed.ManagedUnitFactory;
 import unit.managed.UnitRole;
 import unit.scout.ScoutManager;
 import unit.squad.SquadManager;
+import unit.squad.WorkerDefense;
+import util.Distance;
+import util.Filter;
 import util.Time;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -470,30 +474,44 @@ public class UnitManager {
     }
 
     private void assignGatherersToDefense(Base base) {
-        boolean isSCVRush = gameState.getStrategyTracker().isDetectedStrategy("SCVRush");
-        if (gameState.getGameTime().greaterThan(new Time(5, 0)) && !isSCVRush) {
-            return;
-        }
-        HashSet<ManagedUnit> gatherersAssignedToBase = this.gameState.getGatherersAssignedToBase().get(base);
-        if (gatherersAssignedToBase == null || gatherersAssignedToBase.isEmpty()) {
-            Base mainBase = gameState.getBaseData().getMainBase();
-            if (mainBase == null || mainBase.equals(base)) {
-                return;
-            }
-            gatherersAssignedToBase = this.gameState.getGatherersAssignedToBase().get(mainBase);
-            if (gatherersAssignedToBase == null || gatherersAssignedToBase.isEmpty()) {
-                return;
-            }
-        }
         List<Unit> threateningUnits = new ArrayList<>(this.gameState.getBaseToThreatLookup()
                 .get(base));
+        boolean isSCVRush = gameState.getStrategyTracker().isDetectedStrategy("SCVRush");
+        boolean pullsAllowed = !gameState.getGameTime().greaterThan(new Time(5, 0)) || isSCVRush;
+        List<ManagedUnit> candidates = pullsAllowed
+                ? defenseCandidates(base, threateningUnits)
+                : Collections.emptyList();
 
-
-
-        List<ManagedUnit> gatherersToReassign = this.squadManager.assignGatherersToDefend(base, gatherersAssignedToBase, threateningUnits);
-        for (ManagedUnit managedUnit: gatherersToReassign) {
+        WorkerDefense.Outcome<ManagedUnit> outcome =
+                this.squadManager.assignGatherersToDefend(base, candidates, threateningUnits);
+        for (ManagedUnit managedUnit: outcome.getPulled()) {
             this.workerManager.removeManagedWorker(managedUnit);
         }
+        for (ManagedUnit managedUnit: outcome.getReleased()) {
+            managedUnit.getUnit().stop();
+            this.workerManager.addManagedWorker(managedUnit);
+        }
+    }
+
+    private List<ManagedUnit> defenseCandidates(Base base, List<Unit> threateningUnits) {
+        Base mainBase = gameState.getBaseData().getMainBase();
+        List<ManagedUnit> own = gatherersClosestFirst(base, base);
+        List<ManagedUnit> other = mainBase == null || mainBase.equals(base)
+                ? Collections.emptyList()
+                : gatherersClosestFirst(mainBase, base);
+        boolean combatUnitThreat = threateningUnits.stream()
+                .anyMatch(unit -> Filter.isMobileGroundCombatUnit(unit.getType()));
+        return WorkerDefense.candidates(own, other, combatUnitThreat, gameState.isCannonRushed());
+    }
+
+    private List<ManagedUnit> gatherersClosestFirst(Base source, Base defended) {
+        HashSet<ManagedUnit> gatherers = this.gameState.getGatherersAssignedToBase().get(source);
+        if (gatherers == null) {
+            return Collections.emptyList();
+        }
+        List<ManagedUnit> sorted = new ArrayList<>(gatherers);
+        sorted.sort(Distance.closestManagedUnitTo(defended.getCenter()));
+        return sorted;
     }
 
     private void assignDefendersToGather(Base base) {
