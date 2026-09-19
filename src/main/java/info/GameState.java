@@ -1097,6 +1097,13 @@ public class GameState {
         return observedUnitTracker.getCountOfLivingUnitsOnTiles(Filter::isMobileGroundCombatUnit, tiles);
     }
 
+    /**
+     * Enemy mobile ground combat units last known to be on the given tiles, whether or not we can see them now.
+     */
+    public int knownEnemyMobileGroundCombatUnitsOnTiles(Set<TilePosition> tiles) {
+        return observedUnitTracker.getCountOfLivingUnitsOnTiles(Filter::isMobileGroundCombatUnit, tiles);
+    }
+
     public int enemyUnitCount(UnitType unitType) {
         return observedUnitTracker.getCountOfLivingUnits(unitType);
     }

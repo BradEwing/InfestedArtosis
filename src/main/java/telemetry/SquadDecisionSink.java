@@ -1,6 +1,7 @@
 package telemetry;
 
 import unit.squad.CombatSimulator;
+import unit.squad.DefenseSim;
 import unit.squad.Squad;
 
 /**
@@ -43,4 +44,12 @@ public interface SquadDecisionSink {
      * <p>canBreakContainment is only meaningful when shouldContain is true.
      */
     void onContainmentEvaluated(Squad squad, boolean shouldContain, boolean canBreakContainment, boolean entered);
+
+    /**
+     * Worker defence at a base pulled gatherers, abandoned its defence, or released its defenders.
+     *
+     * <p>sim is the full commitment simulation behind a PULL or ABANDON, and null when none ran.
+     */
+    void onDefenseEvaluated(Squad squad, DefenseEvent event, int candidates, int pulled, int released,
+                            DefenseSim sim);
 }
