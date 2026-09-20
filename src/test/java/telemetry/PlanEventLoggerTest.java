@@ -6,7 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class PlanEventLoggerTest {
 
-    private static final int PLAN_COLUMNS = 55;
+    private static final int PLAN_COLUMNS = 57;
 
     @Test
     void thePlanRowCarriesEveryColumnItsReadersIndexBy() {
@@ -47,6 +47,8 @@ class PlanEventLoggerTest {
         assertEquals("builder_dispatch_decision", column(route + 4));
         assertEquals("lost_expansion_builders", column(route + 5));
         assertEquals("expansion_hold_until_frame", column(route + 6));
+        assertEquals("builder_site_at_our_base", column(route + 7));
+        assertEquals("builder_at_our_base", column(route + 8));
     }
 
     private static String column(int index) {

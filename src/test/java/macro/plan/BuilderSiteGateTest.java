@@ -22,7 +22,7 @@ class BuilderSiteGateTest {
     @Test
     void aBuilderIsHeldFromASiteWithKnownEnemies() {
         assertSame(BuilderDispatchDecision.HOLD_SITE_THREAT,
-                PlanManager.dispatchDecision(new BuilderThreat(0, 6, 0, false, false)));
+                PlanManager.dispatchDecision(new BuilderThreat(0, 6, 0, false, false, false)));
     }
 
     @Test
@@ -33,26 +33,26 @@ class BuilderSiteGateTest {
     @Test
     void aBuilderAlreadyAtAContestedRemoteSiteIsHeld() {
         assertSame(BuilderDispatchDecision.HOLD_SITE_THREAT,
-                PlanManager.dispatchDecision(new BuilderThreat(0, 6, 0, true, false)));
+                PlanManager.dispatchDecision(new BuilderThreat(0, 6, 0, true, false, false)));
     }
 
     @Test
     void aBuilderIsHeldFromAClearSiteAcrossAContestedRoute() {
         assertSame(BuilderDispatchDecision.HOLD_PATH_THREAT,
-                PlanManager.dispatchDecision(new BuilderThreat(3, 0, 0, false, false)));
+                PlanManager.dispatchDecision(new BuilderThreat(3, 0, 0, false, false, false)));
     }
 
     @Test
     void aBuilderIsHeldFromARouteEnemyStaticDefenceCovers() {
         assertSame(BuilderDispatchDecision.HOLD_PATH_THREAT,
-                PlanManager.dispatchDecision(new BuilderThreat(0, 0, 1, false, false)));
+                PlanManager.dispatchDecision(new BuilderThreat(0, 0, 1, false, false, false)));
     }
 
     /** The site is the more specific answer, so it names the hold when both are hot. */
     @Test
     void aSiteThreatOutranksARouteThreat() {
         assertSame(BuilderDispatchDecision.HOLD_SITE_THREAT,
-                PlanManager.dispatchDecision(new BuilderThreat(3, 6, 2, false, false)));
+                PlanManager.dispatchDecision(new BuilderThreat(3, 6, 2, false, false, false)));
     }
 
     /**
@@ -62,20 +62,43 @@ class BuilderSiteGateTest {
     @Test
     void aBuilderIsDispatchedToAThreatenedSiteAtOneOfOurBases() {
         assertSame(BuilderDispatchDecision.DISPATCH_HOME_SITE,
-                PlanManager.dispatchDecision(new BuilderThreat(0, 6, 0, false, true)));
+                PlanManager.dispatchDecision(new BuilderThreat(0, 6, 0, false, true, true)));
     }
 
     @Test
     void aBuilderIsDispatchedToASiteAtOneOfOurBasesAcrossAContestedRoute() {
         assertSame(BuilderDispatchDecision.DISPATCH_HOME_SITE,
-                PlanManager.dispatchDecision(new BuilderThreat(4, 6, 2, false, true)));
+                PlanManager.dispatchDecision(new BuilderThreat(4, 6, 2, false, true, true)));
     }
 
     /** A quiet home site is an ordinary dispatch, so the carve-out only names holds it overrode. */
     @Test
     void aQuietSiteAtOneOfOurBasesIsAnOrdinaryDispatch() {
         assertSame(BuilderDispatchDecision.DISPATCH,
-                PlanManager.dispatchDecision(new BuilderThreat(0, 0, 0, false, true)));
+                PlanManager.dispatchDecision(new BuilderThreat(0, 0, 0, false, true, true)));
+    }
+
+    /**
+     * The carve-out needs both ends of the walk on ground we hold. A base whose own drones are all
+     * carrying, on gas or already building hands the plan to the nearest drone anywhere on the map,
+     * and that drone is the lone builder setting out across it that the gate exists to stop.
+     */
+    @Test
+    void aBuilderFromOffOurGroundIsHeldEvenWhenTheSiteIsAtOneOfOurBases() {
+        assertSame(BuilderDispatchDecision.HOLD_SITE_THREAT,
+                PlanManager.dispatchDecision(new BuilderThreat(0, 6, 0, false, true, false)));
+    }
+
+    @Test
+    void aBuilderOnOurGroundIsStillHeldFromAContestedSiteWeDoNotHold() {
+        assertSame(BuilderDispatchDecision.HOLD_SITE_THREAT,
+                PlanManager.dispatchDecision(new BuilderThreat(0, 6, 0, false, false, true)));
+    }
+
+    @Test
+    void aBuilderOnOurGroundIsStillHeldFromAContestedRouteToASiteWeDoNotHold() {
+        assertSame(BuilderDispatchDecision.HOLD_PATH_THREAT,
+                PlanManager.dispatchDecision(new BuilderThreat(3, 0, 1, false, false, true)));
     }
 
     @Test

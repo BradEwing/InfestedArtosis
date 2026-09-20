@@ -1130,7 +1130,8 @@ public class GameState {
                 knownEnemyMobileGroundCombatUnitsOnTiles(siteTiles),
                 staticDefenseZonesCovering(routeTiles),
                 builderTile != null && siteTiles.contains(builderTile),
-                baseData.isOurBaseSite(mainBaseTiles, buildPosition, BaseData.NATURAL_DEFENSE_TILE_RADIUS));
+                baseData.isOurBaseSite(mainBaseTiles, buildPosition, BaseData.NATURAL_DEFENSE_TILE_RADIUS),
+                baseData.isOurBaseSite(mainBaseTiles, builderTile, BaseData.NATURAL_DEFENSE_TILE_RADIUS));
     }
 
     /**
@@ -1149,7 +1150,8 @@ public class GameState {
                 BaseData.NATURAL_DEFENSE_TILE_RADIUS);
         return new BuilderThreat(0, knownEnemyMobileGroundCombatUnitsOnTiles(siteTiles), 0,
                 executorTile != null && siteTiles.contains(executorTile),
-                baseData.isOurBaseSite(mainBaseTiles, buildPosition, BaseData.NATURAL_DEFENSE_TILE_RADIUS));
+                baseData.isOurBaseSite(mainBaseTiles, buildPosition, BaseData.NATURAL_DEFENSE_TILE_RADIUS),
+                baseData.isOurBaseSite(mainBaseTiles, executorTile, BaseData.NATURAL_DEFENSE_TILE_RADIUS));
     }
 
     private int staticDefenseZonesCovering(Set<TilePosition> tiles) {

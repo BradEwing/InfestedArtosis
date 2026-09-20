@@ -138,6 +138,14 @@ public class BaseData {
      * builder walks across the map to reach, and that walk is what the dispatch gate exists to
      * stop.
      *
+     * <p>A site that is itself a base location answers on ownership alone, before either of the
+     * looser readings below, because that is where every expansion hatchery goes. Neither the
+     * radius nor {@code mainBaseTiles} can be trusted to exclude one: two base locations can sit
+     * within the radius of each other, and the main tiles are an uncapped flood fill over
+     * buildable ground that reaches a neighbouring base on maps whose plateau connects to one.
+     * Either would wave an expansion builder into a base we do not hold, which is the walk this
+     * ticket was opened for.
+     *
      * @param mainBaseTiles tiles of our main base
      * @param site building site
      * @param radius manhattan tile radius a site still counts as belonging to a base within
@@ -146,6 +154,10 @@ public class BaseData {
     public boolean isOurBaseSite(Set<TilePosition> mainBaseTiles, TilePosition site, int radius) {
         if (site == null) {
             return false;
+        }
+        Base siteBase = baseAtTilePosition(site);
+        if (siteBase != null) {
+            return siteBase == mainBase || myBases.contains(siteBase);
         }
         if (mainBaseTiles.contains(site)) {
             return true;

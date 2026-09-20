@@ -517,8 +517,11 @@ public class BaseDataTest {
 
     /**
      * IA-381: only the main-tile branch of isOurBaseSite is reachable here. bwem.Base cannot be
-     * constructed, so myBases stays empty and every site outside the main reads as ground we do
-     * not hold, which is the remote-expansion case the dispatch gate still holds a builder from.
+     * constructed, so myBases and the base-tile lookup both stay empty, every site outside the
+     * main reads as ground we do not hold - the remote-expansion case the dispatch gate still
+     * holds a builder from - and the branch that answers a base location on ownership alone is
+     * left to the review of the code and to the batch, where it shows as a DISPATCH_HOME_SITE row
+     * carrying a Zerg_Hatchery, which cannot occur while it is correct.
      */
     @Test
     void testASiteInOurMainIsOurBaseSite() {

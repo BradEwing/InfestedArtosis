@@ -238,20 +238,24 @@ public class PlanManager {
     /**
      * Whether a builder may leave for its site, and what stops it when it may not.
      *
-     * <p>A site at a base we already hold is never held. The gate exists to stop a lone drone
-     * walking across the map into a contested expansion, and there is no such walk to ground we
-     * own: the builder is the nearest drone, which is mining at that base. Holding there refuses
-     * the creep colony that a sunken grows from at the moment enemies arrive, which is the
-     * condition that makes the sunken worth having. A 900-game batch measured the cost: the gate
-     * blocked 4,005 departures against 3,873 allowed, 2,831 of them creep colonies, and the run
-     * fell from 15.5% to 6.8%. The home carve-out is keyed on ownership rather than on unit type
-     * because the walk, not the building, is what the gate is about.
+     * <p>A builder standing on a base we hold, sent to a site at a base we hold, is never held.
+     * The gate exists to stop a lone drone setting out across the map into a contested expansion,
+     * and a walk with both ends on ground we own is not that walk. Holding it refuses the creep
+     * colony a sunken grows from at the moment enemies arrive, which is the condition that makes
+     * the sunken worth having. A 900-game batch measured the cost: the gate blocked 4,005
+     * departures against 3,873 allowed, 2,831 of them creep colonies, and the run fell from 15.5%
+     * to 6.8%. The carve-out is keyed on ownership rather than on unit type because the walk, not
+     * the building, is what the gate is about.
+     *
+     * <p>Both ends are required. A site of ours whose own drones are all carrying, on gas or
+     * already building hands the plan to the nearest drone anywhere on the map, and that drone
+     * does set out across it; the full gate still applies to it.
      *
      * <p>The site is read before the route because it is the more specific answer: a plan held for
      * enemies standing on the ground it would build on says something a corridor count does not.
      * Away from our bases a builder already at the site no longer waves the site check through;
-     * that bypass was a proxy for the builder being home, and the carve-out reads ownership
-     * directly instead.
+     * that bypass was an accidental proxy for the builder being home, and the carve-out reads
+     * ownership directly instead.
      *
      * @param threat what the builder would walk into
      */
@@ -259,7 +263,7 @@ public class PlanManager {
         if (threat.getSiteEnemies() == 0 && threat.getRouteEnemies() == 0 && threat.getRouteDefenseZones() == 0) {
             return BuilderDispatchDecision.DISPATCH;
         }
-        if (threat.isSiteAtOurBase()) {
+        if (threat.isSiteAtOurBase() && threat.isBuilderAtOurBase()) {
             return BuilderDispatchDecision.DISPATCH_HOME_SITE;
         }
         if (threat.getSiteEnemies() > 0) {
