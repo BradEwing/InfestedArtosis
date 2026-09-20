@@ -392,10 +392,12 @@ class SquadDecisionsTest {
     }
 
     @Test
-    void decisionPathIsTheLastColumn() {
+    void decisionPathFollowsTheArcColumns() {
         String[] columns = SquadDecisionLogger.HEADER.split(",", -1);
+        int path = java.util.Arrays.asList(columns).indexOf("decision_path");
 
-        assertEquals("decision_path", columns[columns.length - 1]);
+        assertEquals("arc_points", columns[path - 1]);
+        assertEquals("sim_enemy_composition", columns[path + 1]);
     }
 
     @Test

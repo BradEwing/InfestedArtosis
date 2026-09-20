@@ -741,7 +741,7 @@ public class PlanEventLogger implements PlanEventSink {
         appendEmpty(sb, 3);
         sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
         appendEmpty(sb, 2);
-        appendTrailing(sb, null, null, null, null, null, inputs);
+        appendTrailing(sb, null, null, null, null, null, null, inputs);
         return sb.toString();
     }
 
