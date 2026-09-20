@@ -32,6 +32,9 @@ public final class GasBoundHiveTech {
      */
     public static final int SUSTAINED_FRAMES = 480;
 
+    /** No observation has put the unreserved gas bank at the bar yet. */
+    public static final int NOT_HELD = -1;
+
     /**
      * The first gate a request stops on, in the order {@link #evaluate} reads them.
      */
@@ -79,6 +82,38 @@ public final class GasBoundHiveTech {
             return Gate.GAS_SHORT;
         }
         return Gate.TRIGGER;
+    }
+
+    /**
+     * The frame the bank's hold on the bar started, given the hold so far and this observation.
+     *
+     * <p>A bank observed below the bar restarts the hold. So does a gap longer than the window
+     * itself between observations: the bank is sampled where the build order evaluates, and frames
+     * nothing looked at are not frames the bar was held.
+     *
+     * @param sinceFrame the frame the hold started, or {@link #NOT_HELD}
+     * @param lastEvaluatedFrame the frame the bank was last observed
+     * @param frame the current frame
+     * @param availableGas gas mined and not reserved by a queued plan
+     * @return the frame the hold starts from, or {@link #NOT_HELD} while the bar is not held
+     */
+    public static int holdSince(int sinceFrame, int lastEvaluatedFrame, int frame, int availableGas) {
+        if (availableGas < BRANCH_GAS || frame - lastEvaluatedFrame > SUSTAINED_FRAMES) {
+            return NOT_HELD;
+        }
+        return sinceFrame == NOT_HELD ? frame : sinceFrame;
+    }
+
+    /**
+     * How long the bank has held the bar, the term {@link #evaluate} measures against
+     * {@link #SUSTAINED_FRAMES}.
+     *
+     * @param sinceFrame the frame the hold started, or {@link #NOT_HELD}
+     * @param frame the current frame
+     * @return frames held, or zero while the bar is not held
+     */
+    public static int framesHeld(int sinceFrame, int frame) {
+        return sinceFrame == NOT_HELD ? 0 : frame - sinceFrame;
     }
 
     /**

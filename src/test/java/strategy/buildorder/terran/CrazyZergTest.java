@@ -102,6 +102,46 @@ class CrazyZergTest {
                 GasBoundHiveTech.evaluate(false, 1677, GasBoundHiveTech.SUSTAINED_FRAMES));
     }
 
+    @Test
+    void theHoldStartsAtTheFrameTheBankReachesTheBar() {
+        assertEquals(7623, GasBoundHiveTech.holdSince(GasBoundHiveTech.NOT_HELD, 7622, 7623,
+                GasBoundHiveTech.BRANCH_GAS));
+    }
+
+    @Test
+    void theHoldKeepsItsStartWhileTheBankStaysAtTheBar() {
+        assertEquals(7623, GasBoundHiveTech.holdSince(7623, 8000, 8001, 1677));
+    }
+
+    @Test
+    void theHoldRestartsOnABankBelowTheBar() {
+        assertEquals(GasBoundHiveTech.NOT_HELD,
+                GasBoundHiveTech.holdSince(7623, 8000, 8001, GasBoundHiveTech.BRANCH_GAS - 1));
+    }
+
+    /**
+     * The bank is sampled where the build order evaluates, so frames nothing looked at are not
+     * frames the bar was held.
+     */
+    @Test
+    void theHoldRestartsAfterAGapLongerThanTheWindow() {
+        int gapped = 8000 + GasBoundHiveTech.SUSTAINED_FRAMES + 1;
+        assertEquals(GasBoundHiveTech.NOT_HELD, GasBoundHiveTech.holdSince(7623, 8000, gapped, 1677));
+    }
+
+    @Test
+    void readingTheHoldTwiceInOneFrameNeitherAdvancesNorRestartsIt() {
+        int first = GasBoundHiveTech.holdSince(GasBoundHiveTech.NOT_HELD, 7622, 7623, 1677);
+        assertEquals(first, GasBoundHiveTech.holdSince(first, 7623, 7623, 1677));
+        assertEquals(0, GasBoundHiveTech.framesHeld(first, 7623));
+    }
+
+    @Test
+    void framesHeldIsZeroWhileTheBarIsNotHeld() {
+        assertEquals(0, GasBoundHiveTech.framesHeld(GasBoundHiveTech.NOT_HELD, 20059));
+        assertEquals(480, GasBoundHiveTech.framesHeld(7623, 8103));
+    }
+
     /**
      * An unavailable structure is not a withheld one, so the gate writes no telemetry row for it.
      */
