@@ -23,7 +23,7 @@ public class OneHatchSpire extends ZergBase {
     }
 
     @Override
-    public List<Plan> plan(GameState gameState) {
+    protected List<Plan> buildPlans(GameState gameState) {
         List<Plan> plans = new ArrayList<>();
 
         TechProgression techProgression = gameState.getTechProgression();
@@ -53,8 +53,6 @@ public class OneHatchSpire extends ZergBase {
 
 
         boolean wantExpansion = behindOnBases(gameState);
-        boolean wantMacroHatchery = wantLarvaBoundMacroHatchery(gameState,
-                LarvaBoundMacroHatchery.isSpireReady(techProgression));
 
         boolean enemyHasSpire = gameState.enemyUnitCount(UnitType.Zerg_Spire) > 0;
 
@@ -68,18 +66,10 @@ public class OneHatchSpire extends ZergBase {
             plans.addAll(this.planSporeColony(gameState));
         }
 
-        Plan expansionPlan = null;
         if (wantExpansion) {
-            expansionPlan = this.planNewBase(gameState);
+            Plan expansionPlan = this.planNewBase(gameState);
             if (expansionPlan != null) {
                 plans.add(expansionPlan);
-            }
-        }
-
-        if (expansionPlan == null && wantMacroHatchery) {
-            Plan macroHatcheryPlan = this.planMacroHatchery(gameState);
-            if (macroHatcheryPlan != null) {
-                plans.add(macroHatcheryPlan);
             }
         }
 
@@ -220,7 +210,12 @@ public class OneHatchSpire extends ZergBase {
     }
 
     @Override
-    public boolean needLair() { 
-        return true; 
+    protected boolean macroHatcheryTechReady(TechProgression techProgression) {
+        return LarvaBoundMacroHatchery.isSpireReady(techProgression);
+    }
+
+    @Override
+    public boolean needLair() {
+        return true;
     }
 }

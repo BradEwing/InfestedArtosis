@@ -37,6 +37,15 @@ public final class LarvaBoundMacroHatchery {
         THREAT,
         /** A macro hatchery is already planned or under construction. */
         OUTSTANDING,
+        /**
+         * Every gate is open but no plan could be created: no base we hold had room for a
+         * hatchery, or the hatchery enqueue had not re-armed.
+         *
+         * <p>Not returned by {@link #evaluate}. The request reaches it only after the gates pass
+         * and the plan the request asks for comes back null, so a request that produces nothing
+         * is still a row rather than silence.
+         */
+        PLACEMENT_UNAVAILABLE,
         /** Every gate is open. */
         TRIGGER;
 
@@ -63,6 +72,20 @@ public final class LarvaBoundMacroHatchery {
      */
     public static boolean isSpireReady(TechProgression techProgression) {
         return techProgression.isSpire();
+    }
+
+    /**
+     * The tech condition for the Hydralisk builds: a finished Hydralisk Den.
+     *
+     * <p>No Lair term, because the Den alone is what the build spends its larva and gas on. A
+     * Lair follows for the Lurker or the upgrades, and waiting for it would leave the build
+     * larva bound through the whole first Hydralisk wave.
+     *
+     * @param techProgression the bot's tech state
+     * @return true once a Hydralisk Den is finished
+     */
+    public static boolean isHydraliskTechReady(TechProgression techProgression) {
+        return techProgression.isHydraliskDen();
     }
 
     /**

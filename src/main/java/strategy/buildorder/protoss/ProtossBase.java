@@ -12,7 +12,15 @@ import util.Time;
 import java.util.Collections;
 import java.util.List;
 
-public class ProtossBase extends BuildOrder {
+/**
+ * Shared behaviour for the Protoss matchup builds.
+ *
+ * <p>Abstract, and deliberately silent on {@link BuildOrder#macroHatcheryTechReady}. A default
+ * here would be a lineage default: every build under it would inherit a tech condition it never
+ * stated, which is how the larva-bound macro hatchery was lost once already. Leaving the hook
+ * unanswered makes a new build in this matchup fail to compile until it states its own.
+ */
+public abstract class ProtossBase extends BuildOrder {
 
     private static final int EXCESS_MINERALS = 350;
 
@@ -33,7 +41,7 @@ public class ProtossBase extends BuildOrder {
     }
 
     @Override
-    public List<Plan> plan(GameState gameState) {
+    protected List<Plan> buildPlans(GameState gameState) {
         return Collections.emptyList();
     }
 

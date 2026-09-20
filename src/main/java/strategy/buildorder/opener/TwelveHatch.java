@@ -30,7 +30,7 @@ public class TwelveHatch extends BuildOrder {
     }
 
     @Override
-    public List<Plan> plan(GameState gameState) {
+    protected List<Plan> buildPlans(GameState gameState) {
         List<Plan> plans = new ArrayList<>();
 
         BaseData baseData = gameState.getBaseData();
@@ -119,5 +119,14 @@ public class TwelveHatch extends BuildOrder {
     @Override
     public boolean isOpener() { 
         return true; 
+    }
+
+    /**
+     * False. The opener hands over before any tech unit exists, so it is never larva bound on
+     * tech and never needs the shared macro hatchery.
+     */
+    @Override
+    protected boolean macroHatcheryTechReady(TechProgression techProgression) {
+        return false;
     }
 }

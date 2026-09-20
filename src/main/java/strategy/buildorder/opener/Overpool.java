@@ -37,7 +37,7 @@ public class Overpool extends BuildOrder {
     }
 
     @Override
-    public List<Plan> plan(GameState gameState) {
+    protected List<Plan> buildPlans(GameState gameState) {
         List<Plan> plans = new ArrayList<>();
         TechProgression techProgression = gameState.getTechProgression();
 
@@ -109,5 +109,14 @@ public class Overpool extends BuildOrder {
      */
     static boolean openerComplete(int poolCount, int startedZerglings) {
         return poolCount > 0 && startedZerglings >= ZERGLING_TARGET;
+    }
+
+    /**
+     * False. The opener hands over before any tech unit exists, so it is never larva bound on
+     * tech and never needs the shared macro hatchery.
+     */
+    @Override
+    protected boolean macroHatcheryTechReady(TechProgression techProgression) {
+        return false;
     }
 }
