@@ -131,6 +131,34 @@ public class BaseData {
     }
 
     /**
+     * Whether a build site sits at a base we already hold: our main, or within {@code radius}
+     * tiles of a base one of our hatcheries stands on.
+     *
+     * <p>Reserved bases do not count. A base we have only claimed is the contested expansion a
+     * builder walks across the map to reach, and that walk is what the dispatch gate exists to
+     * stop.
+     *
+     * @param mainBaseTiles tiles of our main base
+     * @param site building site
+     * @param radius manhattan tile radius a site still counts as belonging to a base within
+     * @return true when the site is ground we hold
+     */
+    public boolean isOurBaseSite(Set<TilePosition> mainBaseTiles, TilePosition site, int radius) {
+        if (site == null) {
+            return false;
+        }
+        if (mainBaseTiles.contains(site)) {
+            return true;
+        }
+        for (Base base : myBases) {
+            if (Distance.manhattanTileDistance(base.getLocation(), site) <= radius) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * Tiles a builder walks over to reach a build site: the ground path from our main to the base
      * nearest the site, padded by {@link #BUILDER_ROUTE_TILE_RADIUS}.
      *

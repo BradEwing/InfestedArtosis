@@ -11,6 +11,7 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class BuilderSiteGateTest {
 
@@ -21,7 +22,7 @@ class BuilderSiteGateTest {
     @Test
     void aBuilderIsHeldFromASiteWithKnownEnemies() {
         assertSame(BuilderDispatchDecision.HOLD_SITE_THREAT,
-                PlanManager.dispatchDecision(new BuilderThreat(0, 6, 0, false)));
+                PlanManager.dispatchDecision(new BuilderThreat(0, 6, 0, false, false)));
     }
 
     @Test
@@ -29,33 +30,61 @@ class BuilderSiteGateTest {
         assertSame(BuilderDispatchDecision.DISPATCH, PlanManager.dispatchDecision(BuilderThreat.NONE));
     }
 
-    /**
-     * IA-381: the bypass that let a builder standing on a contested site proceed is gone. Sixteen
-     * colony builders died to it inside a main that was being overrun.
-     */
     @Test
-    void aBuilderAlreadyAtAContestedSiteIsHeld() {
+    void aBuilderAlreadyAtAContestedRemoteSiteIsHeld() {
         assertSame(BuilderDispatchDecision.HOLD_SITE_THREAT,
-                PlanManager.dispatchDecision(new BuilderThreat(0, 6, 0, true)));
+                PlanManager.dispatchDecision(new BuilderThreat(0, 6, 0, true, false)));
     }
 
     @Test
     void aBuilderIsHeldFromAClearSiteAcrossAContestedRoute() {
         assertSame(BuilderDispatchDecision.HOLD_PATH_THREAT,
-                PlanManager.dispatchDecision(new BuilderThreat(3, 0, 0, false)));
+                PlanManager.dispatchDecision(new BuilderThreat(3, 0, 0, false, false)));
     }
 
     @Test
     void aBuilderIsHeldFromARouteEnemyStaticDefenceCovers() {
         assertSame(BuilderDispatchDecision.HOLD_PATH_THREAT,
-                PlanManager.dispatchDecision(new BuilderThreat(0, 0, 1, false)));
+                PlanManager.dispatchDecision(new BuilderThreat(0, 0, 1, false, false)));
     }
 
     /** The site is the more specific answer, so it names the hold when both are hot. */
     @Test
     void aSiteThreatOutranksARouteThreat() {
         assertSame(BuilderDispatchDecision.HOLD_SITE_THREAT,
-                PlanManager.dispatchDecision(new BuilderThreat(3, 6, 2, false)));
+                PlanManager.dispatchDecision(new BuilderThreat(3, 6, 2, false, false)));
+    }
+
+    /**
+     * IA-381: a creep colony at a base we hold is the seed of the sunken the enemies at that base
+     * are the reason for, so the gate waves it through.
+     */
+    @Test
+    void aBuilderIsDispatchedToAThreatenedSiteAtOneOfOurBases() {
+        assertSame(BuilderDispatchDecision.DISPATCH_HOME_SITE,
+                PlanManager.dispatchDecision(new BuilderThreat(0, 6, 0, false, true)));
+    }
+
+    @Test
+    void aBuilderIsDispatchedToASiteAtOneOfOurBasesAcrossAContestedRoute() {
+        assertSame(BuilderDispatchDecision.DISPATCH_HOME_SITE,
+                PlanManager.dispatchDecision(new BuilderThreat(4, 6, 2, false, true)));
+    }
+
+    /** A quiet home site is an ordinary dispatch, so the carve-out only names holds it overrode. */
+    @Test
+    void aQuietSiteAtOneOfOurBasesIsAnOrdinaryDispatch() {
+        assertSame(BuilderDispatchDecision.DISPATCH,
+                PlanManager.dispatchDecision(new BuilderThreat(0, 0, 0, false, true)));
+    }
+
+    @Test
+    void everyDispatchDecisionSendsTheBuilderAndEveryHoldDoesNot() {
+        assertTrue(BuilderDispatchDecision.DISPATCH.isDispatch());
+        assertTrue(BuilderDispatchDecision.DISPATCH_HOME_SITE.isDispatch());
+        assertFalse(BuilderDispatchDecision.HOLD_SITE_THREAT.isDispatch());
+        assertFalse(BuilderDispatchDecision.HOLD_PATH_THREAT.isDispatch());
+        assertFalse(BuilderDispatchDecision.RECALLED.isDispatch());
     }
 
     @Test
