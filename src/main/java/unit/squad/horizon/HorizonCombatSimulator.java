@@ -24,6 +24,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 
 /**
  * Combat simulator inspired by McRave's Horizon.
@@ -46,6 +47,8 @@ public class HorizonCombatSimulator implements CombatSimulator {
     private static final int BUNKER_DECAY_FRAMES = 72;
     private static final int BUNKER_MAX_GARRISON = 4;
     private static final double STATIC_DEFENSE_COVER_BUFFER = 64;
+    private static final double MEDIC_SUPPORT_CAP = 0.4;
+    private static final double MEDIC_SUPPORT_HALF_RATIO = 1.0 / 3.0;
     private static final Set<UnitType> OWN_STATIC_DEFENSE =
             EnumSet.of(UnitType.Zerg_Sunken_Colony, UnitType.Zerg_Spore_Colony);
 
@@ -98,8 +101,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
             }
         }
 
-        double enemyGroundStr = 0;
-        double enemyAntiAirStr = 0;
+        EnemySample enemySample = new EnemySample();
 
         Map<UnitSizeType, Double> friendlySizeProportions = sizeProportions(squad, adjacentSquads);
 
@@ -162,12 +164,16 @@ public class HorizonCombatSimulator implements CombatSimulator {
 
             double groundEnemyStr = groundBase * hpWeight * distWeight * heightMod;
             double aaEnemyStr = antiAirBase * hpWeight * distWeight * heightMod;
-            enemyGroundStr += groundEnemyStr;
-            enemyAntiAirStr += aaEnemyStr;
+            enemySample.add(type, groundEnemyStr, aaEnemyStr);
 
             double displayStr = airSquad ? aaEnemyStr : groundEnemyStr;
             snapshot.getEnemyUnits().add(new UnitDebugEntry(pos, type, displayStr, false, !visible));
         }
+
+        creditMedicSupport(snapshot, enemySample, airSquad);
+        snapshot.setEnemyUnscoredSupply(enemySample.unscoredSupply());
+        double enemyGroundStr = enemySample.groundTotal();
+        double enemyAntiAirStr = enemySample.antiAirTotal();
 
         StaticDefenseSupport ownStaticDefense = evaluateOwnStaticDefense(gameState, squadCenter,
                 engagedGroundEnemies, coveredGroundThreats, coveredAirThreats, !airSquad, snapshot);
@@ -274,6 +280,153 @@ public class HorizonCombatSimulator implements CombatSimulator {
     static boolean isThreatBeyondRadius(UnitType type, double distance, double engagementRadius) {
         if (distance <= engagementRadius || distance > NEARBY_THREAT_RADIUS) return false;
         return type.canAttack() && !type.isWorker();
+    }
+
+    /**
+     * The fraction by which medics raise the strength of the biological units measured beside them.
+     *
+     * <p>A medic has no weapon, so the strength table prices it at zero and always will: a
+     * multiplicative durability term cannot move a zero. What a medic actually contributes is
+     * durability on somebody else, so it is priced as a bonus on the supported units' strength and
+     * kept structurally separate from {@link UnitStrength#durabilityFactor}. An isolated medic
+     * supports nobody and contributes exactly zero, which is why this is not a per-medic literal.
+     *
+     * <p>The bonus saturates in the medic to supported ratio rather than counting medics: the
+     * second medic over three marines is worth less than the first, and a surplus of medics over a
+     * small sample is worth little. Half the cap is reached at one medic per three supported units.
+     * The cap of {@value #MEDIC_SUPPORT_CAP} is sqrt(2) - 1 rounded down, so a fully supported
+     * sample reads as at most one extra hit point pool's worth of durability under the square root
+     * that prices durability. Sustain -- heal rate, medic energy, healing between engagements -- is
+     * deliberately not modelled, and without it a snapshot cannot justify more than that.
+     *
+     * @param medics medics measured in the sample
+     * @param supported biological units in the sample a medic could be healing
+     * @return the fraction to add to the supported units' strength, 0 when either side is empty
+     */
+    static double medicSupportBonus(int medics, int supported) {
+        if (medics <= 0 || supported <= 0) return 0;
+        double ratio = (double) medics / supported;
+        return MEDIC_SUPPORT_CAP * ratio / (ratio + MEDIC_SUPPORT_HALF_RATIO);
+    }
+
+    /**
+     * Whether a medic in the same sample would be healing this type.
+     *
+     * @param type enemy unit type
+     * @return true for a biological unit that is not itself a medic
+     */
+    static boolean isMedicSupported(UnitType type) {
+        if (type == UnitType.Terran_Medic) return false;
+        return type.isOrganic() && !type.isBuilding() && !type.isWorker();
+    }
+
+    /**
+     * Hands the sample's medic support term back to its medic entries in the debug snapshot, split
+     * evenly between them.
+     *
+     * <p>The term is earned on the supported units, but it is the medics that produced it, and a
+     * medic that left the enemy measurably stronger must not still render, or log, at zero. Splitting
+     * it this way leaves the entries summing to the total the ratio was taken on.
+     *
+     * @param snapshot snapshot whose enemy entries are being credited
+     * @param sample the sampled enemy
+     * @param airSquad whether the snapshot displays the anti-air domain
+     */
+    static void creditMedicSupport(DebugSnapshot snapshot, EnemySample sample, boolean airSquad) {
+        double support = airSquad ? sample.antiAirSupport() : sample.groundSupport();
+        if (support <= 0) return;
+        double share = support / sample.getMedics();
+        List<UnitDebugEntry> entries = snapshot.getEnemyUnits();
+        for (int i = 0; i < entries.size(); i++) {
+            UnitDebugEntry entry = entries.get(i);
+            if (entry.getType() != UnitType.Terran_Medic) continue;
+            entries.set(i, new UnitDebugEntry(entry.getPosition(), entry.getType(), share,
+                    entry.isAdjacent(), entry.isFogOfWar()));
+        }
+    }
+
+    /**
+     * The sampled enemy composition as Type:count pairs joined by semicolons, ordered by type name
+     * so the same sample always reads the same way.
+     *
+     * @param snapshot snapshot to read the enemy entries from
+     * @return the composition, empty when nothing was sampled
+     */
+    public static String enemyComposition(DebugSnapshot snapshot) {
+        Map<String, Integer> counts = new TreeMap<>();
+        for (UnitDebugEntry entry : snapshot.getEnemyUnits()) {
+            counts.merge(entry.getType().toString(), 1, Integer::sum);
+        }
+        List<String> pairs = new ArrayList<>();
+        for (Map.Entry<String, Integer> count : counts.entrySet()) {
+            pairs.add(count.getKey() + ":" + count.getValue());
+        }
+        return String.join(";", pairs);
+    }
+
+    /**
+     * The enemy the simulator measured on one frame, accumulated as the engagement loop walks it.
+     *
+     * <p>Totals are read once the loop is finished because the medic support term is a property of
+     * the whole sample rather than of any one entry: it is the durability medics confer on the
+     * biological units measured alongside them, so it cannot be known until both have been counted.
+     */
+    static final class EnemySample {
+
+        @Getter
+        private int medics;
+        private int supported;
+        private double groundStrength;
+        private double antiAirStrength;
+        private double supportedGroundStrength;
+        private double supportedAntiAirStrength;
+        private int unscoredSupply;
+        private int unscoredMedicSupply;
+
+        void add(UnitType type, double ground, double antiAir) {
+            groundStrength += ground;
+            antiAirStrength += antiAir;
+            if (ground + antiAir <= 0) {
+                unscoredSupply += type.supplyRequired();
+                if (type == UnitType.Terran_Medic) {
+                    unscoredMedicSupply += type.supplyRequired();
+                }
+            }
+            if (type == UnitType.Terran_Medic) {
+                medics++;
+            } else if (isMedicSupported(type)) {
+                supported++;
+                supportedGroundStrength += ground;
+                supportedAntiAirStrength += antiAir;
+            }
+        }
+
+        double groundSupport() {
+            return medicSupportBonus(medics, supported) * supportedGroundStrength;
+        }
+
+        double antiAirSupport() {
+            return medicSupportBonus(medics, supported) * supportedAntiAirStrength;
+        }
+
+        double groundTotal() {
+            return groundStrength + groundSupport();
+        }
+
+        double antiAirTotal() {
+            return antiAirStrength + antiAirSupport();
+        }
+
+        /**
+         * Supply the sample measured and then priced at nothing. Medics drop out of it once the
+         * support term they produced is non zero, because on those frames they were priced.
+         *
+         * @return the unscored supply, in half supply units
+         */
+        int unscoredSupply() {
+            if (groundSupport() + antiAirSupport() > 0) return unscoredSupply - unscoredMedicSupply;
+            return unscoredSupply;
+        }
     }
 
     private double computeFriendlyStrength(ManagedUnit mu, Position engagementCenter, boolean enemyHasDetection, TechProgression techProgression) {
@@ -466,10 +619,27 @@ public class HorizonCombatSimulator implements CombatSimulator {
         return Math.max(MAX_ENGAGEMENT_RADIUS, Math.max(groundRange, airRange) + APPROACH_BUFFER);
     }
 
-    private double hpWeighting(int hp, int shields, int maxHp, int maxShields) {
+    /**
+     * The share of its own strength a unit still carries at its current health.
+     *
+     * <p>Rooted, to match the shape of {@link UnitStrength#durabilityFactor}. Strength grows with
+     * the square root of a hit point pool, so a unit down to a fraction f of that pool keeps
+     * sqrt(f) of a root-shaped term, not f of it. Leaving it linear would have priced a half-health
+     * unit at half strength while its full-health twin with half the pool was priced at 0.707 of it,
+     * which is the same pool read two different ways.
+     *
+     * @param hp current hit points
+     * @param shields current shields
+     * @param maxHp the type's hit point pool
+     * @param maxShields the type's shield pool
+     * @return the health weighting, between 0 and 1
+     */
+    static double hpWeighting(int hp, int shields, int maxHp, int maxShields) {
         int denominator = 3 * maxHp + maxShields;
         if (denominator == 0) return 1.0;
-        return (double) (3 * hp + shields) / denominator;
+        double fraction = (double) (3 * hp + shields) / denominator;
+        if (fraction <= 0) return 0;
+        return Math.sqrt(fraction);
     }
 
     /**
@@ -643,5 +813,6 @@ public class HorizonCombatSimulator implements CombatSimulator {
         private CombatResult result;
         private boolean enemyMeasured;
         private boolean threatBeyondRadius;
+        private int enemyUnscoredSupply;
     }
 }
