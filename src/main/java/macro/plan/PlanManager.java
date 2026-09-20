@@ -8,8 +8,10 @@ import bwapi.UnitType;
 import bwem.Base;
 import bwem.Mineral;
 import info.BaseData;
+import info.BuilderThreat;
 import info.GameState;
 import info.map.GameMap;
+import telemetry.PlanEvents;
 import unit.managed.ManagedUnit;
 import unit.managed.UnitRole;
 import util.Distance;
@@ -32,6 +34,7 @@ public class PlanManager {
     private HashSet<ManagedUnit> gasGatherers;
     private HashSet<ManagedUnit> larva;
     private HashSet<ManagedUnit> scheduledDrones = new HashSet<>();
+    private HashSet<ManagedUnit> dispatchedDrones = new HashSet<>();
 
 
     public PlanManager(Game game, GameState gameState) {
@@ -45,6 +48,7 @@ public class PlanManager {
     public void onFrame() {
         fixOutOfBoundsBuildingPlans();
         assignScheduledPlannedItems();
+        recallThreatenedBuilders();
         executeScheduledDrones();
         releaseImpossiblePlans();
     }
@@ -167,12 +171,20 @@ public class PlanManager {
                 continue;
             }
             int travelFrames = this.getTravelFrames(managedUnit.getUnit(), plan.getBuildPosition().toPosition());
-            if (currentFrame > plan.getPredictedReadyFrame() - travelFrames && !isSiteContested(managedUnit, plan)) {
-                gameState.clearAssignments(managedUnit);
-                plan.setState(PlanState.BUILDING);
-                managedUnit.setRole(UnitRole.BUILD);
-                executed.add(managedUnit);
+            if (currentFrame <= plan.getPredictedReadyFrame() - travelFrames) {
+                continue;
             }
+            BuilderThreat threat = builderThreat(managedUnit, plan);
+            BuilderDispatchDecision decision = dispatchDecision(threat);
+            PlanEvents.builderDispatchDecision(plan, decision, threat);
+            if (decision != BuilderDispatchDecision.DISPATCH) {
+                continue;
+            }
+            gameState.clearAssignments(managedUnit);
+            plan.setState(PlanState.BUILDING);
+            managedUnit.setRole(UnitRole.BUILD);
+            dispatchedDrones.add(managedUnit);
+            executed.add(managedUnit);
         }
 
         for (ManagedUnit managedUnit: executed) {
@@ -180,22 +192,64 @@ public class PlanManager {
         }
     }
 
-    private boolean isSiteContested(ManagedUnit drone, Plan plan) {
-        Set<TilePosition> tiles = BaseData.siteTiles(gameState.getGameMap().getMainBaseTiles(),
-                plan.getBuildPosition(), BaseData.NATURAL_DEFENSE_TILE_RADIUS);
-        return shouldHoldBuilder(gameState.knownEnemyMobileGroundCombatUnitsOnTiles(tiles),
-                tiles.contains(drone.getUnit().getTilePosition()));
+    /**
+     * Re-runs the dispatch gate against every builder already walking whose morph has not been
+     * issued, and pulls back the ones whose ground has gone hot since they left.
+     *
+     * <p>A launch-time-only gate does not save a builder that walks into an army it could not see
+     * at launch, which is how the first expansion of LMR9R0MB died: nothing was known at any base
+     * on the frame it was dispatched. A recall restores exactly the state the builder left from -
+     * the plan parked in SCHEDULE still holding its build-ahead claim, the drone back on minerals
+     * with the plan still assigned to it - so the next frame evaluates it like any other scheduled
+     * builder and dispatches it again once the route is clear.
+     */
+    private void recallThreatenedBuilders() {
+        List<ManagedUnit> recalled = new ArrayList<>();
+        for (ManagedUnit managedUnit: dispatchedDrones) {
+            Plan plan = managedUnit.getPlan();
+            if (plan == null || plan.getState() != PlanState.BUILDING) {
+                recalled.add(managedUnit);
+                continue;
+            }
+            BuilderThreat threat = builderThreat(managedUnit, plan);
+            if (dispatchDecision(threat) == BuilderDispatchDecision.DISPATCH) {
+                continue;
+            }
+            PlanEvents.builderDispatchDecision(plan, BuilderDispatchDecision.RECALLED, threat);
+            plan.setState(PlanState.SCHEDULE);
+            managedUnit.setRole(UnitRole.IDLE);
+            scheduledDrones.add(managedUnit);
+            recalled.add(managedUnit);
+        }
+
+        for (ManagedUnit managedUnit: recalled) {
+            dispatchedDrones.remove(managedUnit);
+        }
+    }
+
+    private BuilderThreat builderThreat(ManagedUnit drone, Plan plan) {
+        return gameState.builderThreat(plan.getBuildPosition(), drone.getUnit().getTilePosition());
     }
 
     /**
-     * Returns true if a scheduled builder must keep mining instead of leaving for its site. A builder is held
-     * while enemy ground combat units are known at the site's base, unless it is already standing there.
+     * Whether a builder may leave for its site, and what stops it when it may not.
      *
-     * @param enemiesAtSite enemy mobile ground combat units last known on the site's base tiles
-     * @param builderAtSite true if the builder already stands on the site's base tiles
+     * <p>The site is read before the route because it is the more specific answer: a plan held for
+     * enemies standing on the ground it would build on says something a corridor count does not.
+     * A builder already at the site no longer waves the site check through. That bypass sent a
+     * drone to build among known enemies on the grounds that it had already arrived, which is the
+     * shape of the sixteen colony builders LMR9R0MB lost inside a main that was being overrun.
+     *
+     * @param threat what the builder would walk into
      */
-    static boolean shouldHoldBuilder(int enemiesAtSite, boolean builderAtSite) {
-        return enemiesAtSite > 0 && !builderAtSite;
+    static BuilderDispatchDecision dispatchDecision(BuilderThreat threat) {
+        if (threat.getSiteEnemies() > 0) {
+            return BuilderDispatchDecision.HOLD_SITE_THREAT;
+        }
+        if (threat.getRouteEnemies() > 0 || threat.getRouteDefenseZones() > 0) {
+            return BuilderDispatchDecision.HOLD_PATH_THREAT;
+        }
+        return BuilderDispatchDecision.DISPATCH;
     }
 
     private int getTravelFrames(Unit unit, Position buildingPosition) {

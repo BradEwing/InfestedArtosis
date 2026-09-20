@@ -2,6 +2,8 @@ package telemetry;
 
 import bwapi.Position;
 import bwapi.UnitType;
+import info.BuilderThreat;
+import macro.plan.BuilderDispatchDecision;
 import macro.plan.Plan;
 import macro.plan.PlanBlocker;
 import macro.plan.PlanCancelSource;
@@ -128,5 +130,21 @@ public final class PlanEvents {
             return;
         }
         current.onBlockerDivert(plan, mineral);
+    }
+
+    public static void builderDispatchDecision(Plan plan, BuilderDispatchDecision decision, BuilderThreat threat) {
+        PlanEventSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onBuilderDispatchDecision(plan, decision, threat);
+    }
+
+    public static void expansionBackoff(int lostExpansionBuilders, int expansionHeldUntilFrame) {
+        PlanEventSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onExpansionBackoff(lostExpansionBuilders, expansionHeldUntilFrame);
     }
 }

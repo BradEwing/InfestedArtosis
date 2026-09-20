@@ -6,9 +6,11 @@ import bwapi.Position;
 import bwapi.TilePosition;
 import bwapi.Unit;
 import bwapi.UnitType;
+import info.BuilderThreat;
 import info.GameState;
 import info.ResourceCount;
 import learning.GameRecord;
+import macro.plan.BuilderDispatchDecision;
 import macro.plan.Plan;
 import macro.plan.PlanBlocker;
 import macro.plan.PlanCancelSource;
@@ -46,6 +48,8 @@ public class PlanEventLogger implements PlanEventSink {
     private static final String EVENT_BLOCKER_DIVERT = "BLOCKER_DIVERT";
     private static final String EVENT_MACRO_HATCHERY_TRIGGER = "MACRO_HATCHERY_TRIGGER";
     private static final String EVENT_MACRO_HATCHERY_WITHHELD = "MACRO_HATCHERY_WITHHELD";
+    private static final String EVENT_BUILDER_DISPATCH_DECISION = "BUILDER_DISPATCH_DECISION";
+    private static final String EVENT_EXPANSION_BACKOFF = "EXPANSION_BACKOFF";
 
     private static final int NO_STARVED_COUNT = -1;
 
@@ -81,6 +85,14 @@ public class PlanEventLogger implements PlanEventSink {
      * A larva handed to a plan leaves the larva set while its reservation stands, so larva free
      * for another plan is {@code larva + assigned_larva - reserved_larva}, which is the arithmetic
      * {@link info.ResourceCount#canScheduleLarva} applies.
+     * <p>
+     * builder_route_enemies, builder_site_enemies, builder_route_defense_zones and builder_at_site
+     * are what a builder would walk into, written on every BUILDING row that has an executor and
+     * read fresh on the row's own frame. builder_dispatch_decision is what the gate did with it,
+     * set only on BUILDER_DISPATCH_DECISION rows.
+     * <p>
+     * lost_expansion_builders and expansion_hold_until_frame are set only on EXPANSION_BACKOFF
+     * rows. The hold a row armed is expansion_hold_until_frame minus frame.
      */
     static final String PLAN_HEADER = "frame,time,event,plan_id,executor_unit_id,plan_type,item,from_state,"
             + "to_state,cancel_reason,cancel_source,blocker,blocked_frames,priority,frames_in_state,age_frames,"
@@ -89,7 +101,9 @@ public class PlanEventLogger implements PlanEventSink {
             + "build_tile_y,macro_hatchery,build_order,starved_behind,builder_distance_px,enemy_air,gas_gathered,"
             + "enemy_barracks,blocker_mineral_x,blocker_mineral_y,enemy_ground_known_at_bases,"
             + "enemy_ground_visible_at_bases,yield_to_plan_id,macro_hatchery_gate,hatcheries,macro_tech_ready,"
-            + "macro_hatcheries_outstanding";
+            + "macro_hatcheries_outstanding,builder_route_enemies,builder_site_enemies,"
+            + "builder_route_defense_zones,builder_at_site,builder_dispatch_decision,lost_expansion_builders,"
+            + "expansion_hold_until_frame";
 
     private static final String GAME_HEADER = "timestamp,is_winner,num_starting_locations,map_name,opponent_name,"
             + "opponent_race,opener,build_order,detected_strategies,frame_count";
@@ -110,6 +124,8 @@ public class PlanEventLogger implements PlanEventSink {
     private final Map<String, PlanRecurrence> recurrences = new HashMap<>();
 
     private LarvaBoundMacroHatchery.Gate lastMacroHatcheryGate;
+
+    private final Map<String, BuilderDispatchDecision> lastDispatchDecisions = new HashMap<>();
 
     private boolean disabled;
     private int currentFrame;
@@ -309,7 +325,7 @@ public class PlanEventLogger implements PlanEventSink {
             PlanTrace trace = trace(holder);
             StringBuilder sb = planColumns(holder, trace, EVENT_BUILD_AHEAD_YIELD, null, holder.getState(),
                     PlanBlocker.BUILD_AHEAD_SLOT_TAKEN, heldFrames, NO_STARVED_COUNT);
-            appendTrailing(sb, null, emergency, null);
+            appendTrailing(sb, null, emergency, null, builderThreat(holder), null, null);
             buffer.add(sb.toString());
         } catch (Exception e) {
             disabled = true;
@@ -330,7 +346,7 @@ public class PlanEventLogger implements PlanEventSink {
             PlanTrace trace = trace(plan);
             StringBuilder sb = planColumns(plan, trace, EVENT_BLOCKER_DIVERT, null, plan.getState(),
                     PlanBlocker.NONE, 0, NO_STARVED_COUNT);
-            appendTrailing(sb, mineral, null, null);
+            appendTrailing(sb, mineral, null, null, builderThreat(plan), null, null);
             buffer.add(sb.toString());
         } catch (Exception e) {
             disabled = true;
@@ -359,6 +375,46 @@ public class PlanEventLogger implements PlanEventSink {
             }
             buffer.add(macroHatcheryGateRow(new MacroHatcheryGateInputs(gate, techReady, hatcheries,
                     outstandingMacroHatcheries)));
+        } catch (Exception e) {
+            disabled = true;
+        }
+    }
+
+    /**
+     * Writes one row each time the dispatch gate reaches a new decision for a plan, so a builder
+     * parked on the same threat for hundreds of frames writes one row, on the frame it was first
+     * held. A recall always writes, because the decision before it was DISPATCH.
+     */
+    @Override
+    public void onBuilderDispatchDecision(Plan plan, BuilderDispatchDecision decision, BuilderThreat threat) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            if (lastDispatchDecisions.put(plan.getUuid(), decision) == decision) {
+                return;
+            }
+            PlanTrace trace = trace(plan);
+            StringBuilder sb = planColumns(plan, trace, EVENT_BUILDER_DISPATCH_DECISION, null, plan.getState(),
+                    PlanBlocker.NONE, 0, NO_STARVED_COUNT);
+            appendTrailing(sb, null, null, null, threat, decision, null);
+            buffer.add(sb.toString());
+        } catch (Exception e) {
+            disabled = true;
+        }
+    }
+
+    /** Writes one row per hold armed, with no plan behind it: the plan that armed it is already cancelled. */
+    @Override
+    public void onExpansionBackoff(int lostExpansionBuilders, int expansionHeldUntilFrame) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            buffer.add(expansionBackoffRow(new ExpansionBackoffInputs(lostExpansionBuilders,
+                    expansionHeldUntilFrame)));
         } catch (Exception e) {
             disabled = true;
         }
@@ -452,7 +508,7 @@ public class PlanEventLogger implements PlanEventSink {
     private String row(Plan plan, PlanTrace trace, String event, PlanState from, PlanState to,
                        PlanBlocker blocker, int blockedFrames, int starvedBehind) {
         StringBuilder sb = planColumns(plan, trace, event, from, to, blocker, blockedFrames, starvedBehind);
-        appendTrailing(sb, null, null, null);
+        appendTrailing(sb, null, null, null, builderThreat(plan), null, null);
         return sb.toString();
     }
 
@@ -514,7 +570,7 @@ public class PlanEventLogger implements PlanEventSink {
         appendEmpty(sb, 3);
         sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
         appendEmpty(sb, 2);
-        appendTrailing(sb, null, null, null);
+        appendTrailing(sb, null, null, null, null, null, null);
         return sb.toString();
     }
 
@@ -534,7 +590,7 @@ public class PlanEventLogger implements PlanEventSink {
         sb.append(true).append(',');
         sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
         appendEmpty(sb, 2);
-        appendTrailing(sb, null, null, inputs);
+        appendTrailing(sb, null, null, inputs, null, null, null);
         return sb.toString();
     }
 
@@ -556,8 +612,46 @@ public class PlanEventLogger implements PlanEventSink {
         sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
         appendEmpty(sb, 1);
         appendEmpty(sb, 1);
-        appendTrailing(sb, null, null, null);
+        appendTrailing(sb, null, null, null, null, null, null);
         return sb.toString();
+    }
+
+    /** A row for a hold on expanding, which no plan owns, so the plan columns are empty. */
+    private String expansionBackoffRow(ExpansionBackoffInputs inputs) {
+        StringBuilder sb = new StringBuilder();
+        appendEvent(sb, EVENT_EXPANSION_BACKOFF);
+        appendEmpty(sb, 2);
+        sb.append(PlanType.BUILDING).append(',');
+        sb.append(Csv.sanitize(UnitType.Zerg_Hatchery.toString())).append(',');
+        appendEmpty(sb, 4);
+        appendBlocker(sb, PlanBlocker.NONE, 0);
+        appendEmpty(sb, 3);
+        appendGameState(sb);
+        appendEmpty(sb, 3);
+        sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
+        appendEmpty(sb, 2);
+        appendTrailing(sb, null, null, null, null, null, inputs);
+        return sb.toString();
+    }
+
+    /**
+     * What the builder for this plan would walk into, or null when the plan has no builder to read
+     * it for. Recomputed per row rather than carried from the last gate evaluation, so a row taken
+     * between two evaluations reports the frame it was written on.
+     *
+     * <p>Only a worker executor is read. A Lair, Hive or colony morph is a building plan with an
+     * executor too, but its executor is the structure morphing in place: it walks nowhere, so a
+     * route and a site reading for it would describe a walk that never happens.
+     */
+    private BuilderThreat builderThreat(Plan plan) {
+        if (plan.getType() != PlanType.BUILDING) {
+            return null;
+        }
+        Unit executor = gameState.executorOf(plan);
+        if (executor == null || !executor.getType().isWorker()) {
+            return null;
+        }
+        return gameState.builderThreat(plan.getBuildPosition(), executor.getTilePosition());
     }
 
     /**
@@ -572,9 +666,14 @@ public class PlanEventLogger implements PlanEventSink {
      * @param yieldTo the emergency plan given the build-ahead slot, or null on every row but BUILD_AHEAD_YIELD
      * @param macroHatchery the macro hatchery request's gate and inputs, or null on every row but
      *     MACRO_HATCHERY_TRIGGER and MACRO_HATCHERY_WITHHELD
+     * @param builderThreat what the plan's builder would walk into, or null when the row has no
+     *     BUILDING plan with an executor behind it
+     * @param decision what the dispatch gate did, or null on every row but BUILDER_DISPATCH_DECISION
+     * @param backoff the hold armed, or null on every row but EXPANSION_BACKOFF
      */
     private void appendTrailing(StringBuilder sb, Position blockerMineral, Plan yieldTo,
-                                MacroHatcheryGateInputs macroHatchery) {
+                                MacroHatcheryGateInputs macroHatchery, BuilderThreat builderThreat,
+                                BuilderDispatchDecision decision, ExpansionBackoffInputs backoff) {
         appendGameTotals(sb);
         sb.append(',');
         sb.append(blockerMineral == null ? "" : String.valueOf(blockerMineral.getX())).append(',');
@@ -585,7 +684,14 @@ public class PlanEventLogger implements PlanEventSink {
         sb.append(macroHatchery == null ? "" : macroHatchery.gate.toString()).append(',');
         sb.append(macroHatchery == null ? "" : String.valueOf(macroHatchery.hatcheries)).append(',');
         sb.append(macroHatchery == null ? "" : String.valueOf(macroHatchery.techReady)).append(',');
-        sb.append(macroHatchery == null ? "" : String.valueOf(macroHatchery.outstandingMacroHatcheries));
+        sb.append(macroHatchery == null ? "" : String.valueOf(macroHatchery.outstandingMacroHatcheries)).append(',');
+        sb.append(builderThreat == null ? "" : String.valueOf(builderThreat.getRouteEnemies())).append(',');
+        sb.append(builderThreat == null ? "" : String.valueOf(builderThreat.getSiteEnemies())).append(',');
+        sb.append(builderThreat == null ? "" : String.valueOf(builderThreat.getRouteDefenseZones())).append(',');
+        sb.append(builderThreat == null ? "" : String.valueOf(builderThreat.isBuilderAtSite())).append(',');
+        sb.append(decision == null ? "" : decision.toString()).append(',');
+        sb.append(backoff == null ? "" : String.valueOf(backoff.lostExpansionBuilders)).append(',');
+        sb.append(backoff == null ? "" : String.valueOf(backoff.expansionHeldUntilFrame));
     }
 
     /** The trailing cumulative columns. */
@@ -674,6 +780,17 @@ public class PlanEventLogger implements PlanEventSink {
             this.techReady = techReady;
             this.hatcheries = hatcheries;
             this.outstandingMacroHatcheries = outstandingMacroHatcheries;
+        }
+    }
+
+    /** The hold a lost expansion builder armed. */
+    private static final class ExpansionBackoffInputs {
+        private final int lostExpansionBuilders;
+        private final int expansionHeldUntilFrame;
+
+        private ExpansionBackoffInputs(int lostExpansionBuilders, int expansionHeldUntilFrame) {
+            this.lostExpansionBuilders = lostExpansionBuilders;
+            this.expansionHeldUntilFrame = expansionHeldUntilFrame;
         }
     }
 }
