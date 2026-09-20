@@ -67,9 +67,18 @@ public abstract class BuildOrder {
 
     static final int MAX_QUEUED_SURPLUS_PLANS = 4;
 
+    /** No observation has put the unreserved gas bank at the Hive-branch bar yet. */
+    private static final int GAS_BAR_NOT_HELD = -1;
+
     @Getter
     private final String name;
     protected Time activatedAt;
+
+    /**
+     * Frame the unreserved gas bank reached {@link GasBoundHiveTech#BRANCH_GAS} and has held it
+     * since, or {@link #GAS_BAR_NOT_HELD} while the last observation was below the bar.
+     */
+    private int hiveTechGasSinceFrame = GAS_BAR_NOT_HELD;
 
     protected BuildOrder(String name) {
         this.name = name;
@@ -879,6 +888,49 @@ public abstract class BuildOrder {
                 gameState.knownEnemyMobileGroundCombatUnitsAtOurBases(), outstanding);
         PlanEvents.macroHatcheryGate(gate, techReady, hatcheries, outstanding);
         return gate == LarvaBoundMacroHatchery.Gate.TRIGGER;
+    }
+
+    /**
+     * Whether a Hive-branch structure is requested this frame.
+     *
+     * <p>Reads the unreserved gas bank off the game state, tracks how long it has held the branch
+     * bar, hands {@link GasBoundHiveTech#evaluate} the caller's tech term, and reports the gate it
+     * stopped on to plan telemetry. The extractor count travels with the row as a diagnostic only:
+     * no gate reads it.
+     *
+     * <p>The hold is sampled at each evaluation rather than at each frame, because a build order
+     * plans only while its queue has room. A bank observed below the bar restarts the hold.
+     *
+     * @param gameState current game state
+     * @param structure the structure the gate guards, carried on the telemetry row
+     * @param techAvailable whether the structure can be planned at all: its prerequisite is
+     *     finished and no copy is planned or standing
+     * @return true when every gate is open
+     */
+    protected boolean wantGasBoundHiveTech(GameState gameState, UnitType structure, boolean techAvailable) {
+        int frame = gameState.getGameTime().getFrames();
+        int availableGas = gameState.getResourceCount().availableGas();
+        updateHiveTechGasHold(frame, availableGas);
+        int framesAtOrAboveBar = hiveTechGasSinceFrame == GAS_BAR_NOT_HELD ? 0 : frame - hiveTechGasSinceFrame;
+        GasBoundHiveTech.Gate gate = GasBoundHiveTech.evaluate(techAvailable, availableGas, framesAtOrAboveBar);
+        PlanEvents.hiveTechGate(gate, structure, availableGas, GasBoundHiveTech.BRANCH_GAS,
+                gameState.structureCount(Readiness.USABLE, UnitType.Zerg_Extractor));
+        return gate == GasBoundHiveTech.Gate.TRIGGER;
+    }
+
+    /**
+     * Marks the frame the unreserved gas bank reached the branch bar, and clears the mark on any
+     * observation below it. Idempotent within a frame, so both guarded structures can evaluate
+     * without advancing or restarting the hold.
+     */
+    private void updateHiveTechGasHold(int frame, int availableGas) {
+        if (availableGas < GasBoundHiveTech.BRANCH_GAS) {
+            hiveTechGasSinceFrame = GAS_BAR_NOT_HELD;
+            return;
+        }
+        if (hiveTechGasSinceFrame == GAS_BAR_NOT_HELD) {
+            hiveTechGasSinceFrame = frame;
+        }
     }
 
     protected Plan planMacroHatchery(GameState gameState) {

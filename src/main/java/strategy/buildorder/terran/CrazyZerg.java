@@ -81,10 +81,12 @@ public class CrazyZerg extends TerranBase {
         boolean wantSecondEvoChamber = techProgression.canPlanEvolutionChamber() && hasHive && totalEvoChambers >= 1;
         boolean wantSpire = techProgression.canPlanSpire() && spireCount < 1 && hasLairOrHive && droneCount >= 16;
 
-        boolean wantQueensNest = gameState.canPlanQueensNest() && extractorCount >= 3;
+        boolean wantQueensNest = wantGasBoundHiveTech(gameState, UnitType.Zerg_Queens_Nest,
+                gameState.canPlanQueensNest());
         boolean wantHive = gameState.canPlanHive();
         boolean wantUltraliskCavern = gameState.canPlanUltraliskCavern();
-        boolean wantDefilerMound = techProgression.canPlanDefilerMound() && extractorCount >= 4;
+        boolean wantDefilerMound = wantGasBoundHiveTech(gameState, UnitType.Zerg_Defiler_Mound,
+                techProgression.canPlanDefilerMound());
 
         boolean wantMetabolicBoost = techProgression.canPlanMetabolicBoost() && hasLairOrHive;
         boolean wantCarapace = techProgression.canPlanCarapaceUpgrades() && techProgression.getEvolutionChambers() > 0;
