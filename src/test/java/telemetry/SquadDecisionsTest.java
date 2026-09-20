@@ -81,7 +81,8 @@ class SquadDecisionsTest {
                 + "," + String.join(",", SquadDecisionLogger.squadCells(squad, context, false, -1))
                 + "," + String.join(",", SquadDecisionLogger.rallyCells(reason, release))
                 + "," + String.join(",", SquadDecisionLogger.defenseCells(-1, -1, -1, null))
-                + "," + String.join(",", SquadDecisionLogger.arcCells(squad));
+                + "," + String.join(",", SquadDecisionLogger.arcCells(squad))
+                + "," + String.join(",", SquadDecisionLogger.enemySampleCells(context));
         return row.split(",", -1);
     }
 
@@ -325,7 +326,8 @@ class SquadDecisionsTest {
                 + "," + String.join(",", SquadDecisionLogger.squadCells(squad, context, true, -1))
                 + "," + String.join(",", SquadDecisionLogger.rallyCells(RallyReason.NONE, RallyRelease.NONE))
                 + "," + String.join(",", SquadDecisionLogger.defenseCells(6, 0, 2, sim))
-                + "," + String.join(",", SquadDecisionLogger.arcCells(squad));
+                + "," + String.join(",", SquadDecisionLogger.arcCells(squad))
+                + "," + String.join(",", SquadDecisionLogger.enemySampleCells(context));
         String[] fields = row.split(",", -1);
 
         assertEquals(SquadDecisionLogger.HEADER.split(",", -1).length, fields.length);

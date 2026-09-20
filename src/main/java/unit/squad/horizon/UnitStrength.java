@@ -14,8 +14,16 @@ import java.util.Set;
  * Combat strength per unit type, split into the four attack domains.
  *
  * <p>Every entry comes from {@link #formulaStrength}, which is deliberately damage-type blind:
- * it scores raw weapon output and range only. Damage type is applied once, downstream, by
+ * it scores weapon output, range and durability only. Damage type is applied once, downstream, by
  * {@link HorizonCombatSimulator} against the size mix of the squad actually being simulated.
+ *
+ * <p>Durability enters through {@link #durabilityFactor}, the square root of a type's maximum hit
+ * point and shield pool, multiplying all four domains. It carries no reference or anchor constant.
+ * An anchor would be a single factor common to every formula entry, so it would cancel exactly from
+ * the friendly over enemy ratio {@link HorizonCombatSimulator#selectResult} compares against the
+ * engage threshold, and could not change a verdict. This factor is per type and therefore survives
+ * that ratio: it moves a marine against a zergling, a zealot against a hydralisk and a sunken
+ * against either, by different amounts.
  *
  * <p>Three types keep a hand-picked literal instead:
  * <ul>
@@ -24,8 +32,11 @@ import java.util.Set;
  *   <li>{@code Protoss_Photon_Cannon} is held above its formula value so air and ground squads
  *       both treat a cannon as a position to avoid.</li>
  * </ul>
- * Each literal sits at or above the formula value for the same type in every domain it scores, so
- * none of them can have been chosen with a damage-type discount already folded in.
+ * Each literal is written on the pre-durability scale and carried onto the new one by the same
+ * {@link #durabilityFactor} the formula entries take, so every literal keeps exactly the multiple of
+ * its own type's formula value that it held before durability was priced. That keeps each literal at
+ * or above the formula value in every domain it scores, so none of them can have been chosen with a
+ * damage-type discount already folded in.
  */
 public class UnitStrength {
 
@@ -42,16 +53,23 @@ public class UnitStrength {
             STRENGTH_TABLE.put(type, formulaStrength(type));
         }
 
-        STRENGTH_TABLE.put(UnitType.Zerg_Sunken_Colony, new double[]{6, 0, 0, 0});
-        STRENGTH_TABLE.put(UnitType.Protoss_Photon_Cannon, new double[]{6, 6, 0, 0});
-        STRENGTH_TABLE.put(UnitType.Terran_Bunker, new double[]{12, 12, 0, 0});
+        STRENGTH_TABLE.put(UnitType.Zerg_Sunken_Colony,
+                handTunedEntry(UnitType.Zerg_Sunken_Colony, 6, 0, 0, 0));
+        STRENGTH_TABLE.put(UnitType.Protoss_Photon_Cannon,
+                handTunedEntry(UnitType.Protoss_Photon_Cannon, 6, 6, 0, 0));
+        STRENGTH_TABLE.put(UnitType.Terran_Bunker,
+                handTunedEntry(UnitType.Terran_Bunker, 12, 12, 0, 0));
     }
 
     /**
-     * Damage-type blind strength for a type, from weapon damage, cooldown and range.
+     * Damage-type blind strength for a type, from weapon damage, cooldown, range and durability.
+     *
+     * <p>The Lurker and Mutalisk multipliers describe attack shape, splash and attack pattern, and
+     * are untouched by durability. The Ultralisk multiplier is gone: it stood in for the missing hit
+     * point term and would now be counted twice.
      *
      * @param type unit type to score
-     * @return a fresh array of {groundToGround, groundToAir, airToGround, airToAir}
+     * @return a fresh array of groundToGround, groundToAir, airToGround, airToAir
      */
     static double[] formulaStrength(UnitType type) {
         double g2g = computeWeaponDps(type.groundWeapon(), type.maxGroundHits());
@@ -72,13 +90,50 @@ public class UnitStrength {
         }
         if (type == UnitType.Zerg_Lurker) {
             g2g *= 2.5;
-        } else if (type == UnitType.Zerg_Ultralisk) {
-            g2g *= 2.0;
         } else if (type == UnitType.Zerg_Mutalisk) {
             a2g *= 1.5;
             a2a *= 1.5;
         }
-        return new double[]{g2g, g2a, a2g, a2a};
+        double durability = durabilityFactor(type);
+        return new double[]{g2g * durability, g2a * durability, a2g * durability, a2a * durability};
+    }
+
+    /**
+     * How much of a type's weapon output its hit points escort into a fight.
+     *
+     * <p>The square root of the pool, not the pool itself: doubling a hit point pool buys well under
+     * twice the damage delivered, because the unit is under fire for the whole of the extra time it
+     * survives. Rooting it also puts the term on the same shape as
+     * {@code HorizonCombatSimulator.hpWeighting}, which prices the fraction of that pool a unit has
+     * left.
+     *
+     * <p>A type with no hit point pool at all scores 1.0 rather than 0. The pool is zero only for
+     * turret sub-units such as {@code Terran_Goliath_Turret}, which carry a real weapon on a type
+     * with no health of its own; zeroing them would invent a new unscored attacker.
+     *
+     * @param type unit type to score
+     * @return the durability multiplier for that type
+     */
+    static double durabilityFactor(UnitType type) {
+        int pool = type.maxHitPoints() + type.maxShields();
+        if (pool <= 0) return 1.0;
+        return Math.sqrt(pool);
+    }
+
+    /**
+     * Carries a hand-picked literal, written on the pre-durability scale, onto the durability scale.
+     *
+     * @param type unit type the literal belongs to
+     * @param domains the literal's four domain values before durability
+     * @return a fresh array of the four domain values after durability
+     */
+    private static double[] handTunedEntry(UnitType type, double... domains) {
+        double durability = durabilityFactor(type);
+        double[] entry = new double[domains.length];
+        for (int i = 0; i < domains.length; i++) {
+            entry[i] = domains[i] * durability;
+        }
+        return entry;
     }
 
     /**

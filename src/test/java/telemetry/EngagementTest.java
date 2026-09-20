@@ -147,7 +147,7 @@ class EngagementTest {
         engagement.noteUnit(0, 1, UnitType.Zerg_Zergling, 35, "FIGHT", "squad-a");
         engagement.noteSupply(1, 10, 4);
         engagement.noteStatus("FIGHT");
-        engagement.noteSim(1.25, 1.4, "RETREAT");
+        engagement.noteSim(1.25, 1.4, "RETREAT", "Terran_Marine:4;Terran_Medic:1");
 
         assertEquals(TelemetryLog.ENGAGEMENT_HEADER.split(",", -1).length, engagementFields(engagement).length);
         for (String field : engagementFields(engagement)) {

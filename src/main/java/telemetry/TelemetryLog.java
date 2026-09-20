@@ -22,7 +22,8 @@ public final class TelemetryLog {
             + "our_supply_open,our_supply_peak,our_supply_close,army_supply_open,our_units_lost,our_supply_lost,"
             + "arrival_p25_offset,arrival_p50_offset,arrival_p75_offset,enemy_supply_seen_peak,enemy_units_killed,"
             + "enemy_supply_killed,kills_ambiguous,squads_involved,squad_status_open,squad_status_close,"
-            + "status_change_count,sim_ratio_open,sim_engage_threshold_open,sim_verdict_open";
+            + "status_change_count,sim_ratio_open,sim_engage_threshold_open,sim_verdict_open,"
+            + "sim_enemy_composition_open";
 
     static final String ENGAGEMENT_UNIT_HEADER = "game_id,engagement_id,unit_id,unit_type,supply,arrival_frame,"
             + "arrival_offset,exit_frame,died,death_frame,death_x,death_y,hp_at_arrival,hp_at_exit,role_at_arrival,"
