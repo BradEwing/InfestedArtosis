@@ -389,6 +389,51 @@ class HorizonCombatSimulatorTest {
     }
 
     @Test
+    void theSnapshotCarriesTheMedicSupportOnTheMedicEntries() {
+        HorizonCombatSimulator.DebugSnapshot withMedics = snapshotFor(NEAR_THRESHOLD_MARINES, NEAR_THRESHOLD_MEDICS);
+        HorizonCombatSimulator.DebugSnapshot withoutMedics = snapshotFor(NEAR_THRESHOLD_MARINES, 0);
+
+        assertTrue(withMedics.getEnemyTotal() > withoutMedics.getEnemyTotal());
+        assertEquals(0, withMedics.getEnemyUnscoredSupply());
+        for (HorizonCombatSimulator.UnitDebugEntry entry : withMedics.getEnemyUnits()) {
+            assertTrue(entry.getStrength() > 0, entry.getType().toString());
+        }
+        assertEquals(withMedics.getEnemyTotal(), sumOfEntries(withMedics), 1e-9);
+    }
+
+    @Test
+    void aSnapshotOfMedicsAloneStillReportsThemUnscored() {
+        HorizonCombatSimulator.DebugSnapshot snapshot = snapshotFor(0, 2);
+
+        assertEquals(0.0, snapshot.getEnemyTotal(), 1e-9);
+        assertEquals(2 * UnitType.Terran_Medic.supplyRequired(), snapshot.getEnemyUnscoredSupply());
+    }
+
+    private static HorizonCombatSimulator.DebugSnapshot snapshotFor(int marines, int medics) {
+        HorizonCombatSimulator.EnemySample sample = bioSample(marines, medics);
+        HorizonCombatSimulator.DebugSnapshot snapshot = new HorizonCombatSimulator.DebugSnapshot();
+        for (int i = 0; i < marines; i++) {
+            snapshot.getEnemyUnits().add(new HorizonCombatSimulator.UnitDebugEntry(
+                    COLONY, UnitType.Terran_Marine, marineGround(), false, false));
+        }
+        for (int i = 0; i < medics; i++) {
+            snapshot.getEnemyUnits().add(enemyEntry(UnitType.Terran_Medic));
+        }
+        HorizonCombatSimulator.creditMedicSupport(snapshot, sample, false);
+        snapshot.setEnemyUnscoredSupply(sample.unscoredSupply());
+        snapshot.setEnemyTotal(sample.groundTotal());
+        return snapshot;
+    }
+
+    private static double sumOfEntries(HorizonCombatSimulator.DebugSnapshot snapshot) {
+        double total = 0;
+        for (HorizonCombatSimulator.UnitDebugEntry entry : snapshot.getEnemyUnits()) {
+            total += entry.getStrength();
+        }
+        return total;
+    }
+
+    @Test
     void theEnemyCompositionNamesEveryTypeSampled() {
         HorizonCombatSimulator.DebugSnapshot snapshot = new HorizonCombatSimulator.DebugSnapshot();
         snapshot.getEnemyUnits().add(enemyEntry(UnitType.Terran_Medic));
