@@ -15,6 +15,7 @@ import macro.plan.PlanCancelSource;
 import macro.plan.PlanState;
 import macro.plan.PlanType;
 import strategy.buildorder.BuildOrder;
+import strategy.buildorder.GasBoundHiveTech;
 import strategy.buildorder.LarvaBoundMacroHatchery;
 import util.Time;
 
@@ -46,16 +47,18 @@ public class PlanEventLogger implements PlanEventSink {
     private static final String EVENT_BLOCKER_DIVERT = "BLOCKER_DIVERT";
     private static final String EVENT_MACRO_HATCHERY_TRIGGER = "MACRO_HATCHERY_TRIGGER";
     private static final String EVENT_MACRO_HATCHERY_WITHHELD = "MACRO_HATCHERY_WITHHELD";
+    private static final String EVENT_HIVE_TECH_TRIGGER = "HIVE_TECH_TRIGGER";
+    private static final String EVENT_HIVE_TECH_WITHHELD = "HIVE_TECH_WITHHELD";
 
     private static final int NO_STARVED_COUNT = -1;
 
     private static final String EVENT_RECURRING_CANCEL = "RECURRING_CANCEL";
 
     /**
-     * 48 columns; readers that index by position rather than by name must match this order.
+     * 52 columns; readers that index by position rather than by name must match this order.
      * enemy_air, gas_gathered, enemy_barracks, the blocker mineral pair, the enemy ground pair,
-     * yield_to_plan_id and the four macro hatchery gate columns are trailing columns written by
-     * {@link #appendTrailing}, so every row shape keeps one width.
+     * yield_to_plan_id, the four macro hatchery gate columns and the four Hive tech gate columns
+     * are trailing columns written by {@link #appendTrailing}, so every row shape keeps one width.
      * <p>
      * blocker_mineral_x and blocker_mineral_y are the pixel position of the mineral a stalled
      * builder was sent to mine, set only on BLOCKER_DIVERT rows.
@@ -73,6 +76,11 @@ public class PlanEventLogger implements PlanEventSink {
      * larva, available_minerals, available_gas and enemy_ground_known_at_bases columns on those
      * rows are the request's other inputs.
      * <p>
+     * tech_gate, gate_available_gas, gate_required_gas and extractors_completed are set only on
+     * HIVE_TECH_TRIGGER and HIVE_TECH_WITHHELD rows: the gate the Hive-branch request stopped on,
+     * the unreserved gas it read, the branch bar it measured against, and the finished Extractors
+     * at that frame. The extractor count is a diagnostic; no gate reads it.
+     * <p>
      * enemy_barracks is the living observed count the sunken floors read, on the plan row rather
      * than the game summary, so a batch can date a colony plan against the Barracks known at the
      * frame it was queued.
@@ -89,7 +97,8 @@ public class PlanEventLogger implements PlanEventSink {
             + "build_tile_y,macro_hatchery,build_order,starved_behind,builder_distance_px,enemy_air,gas_gathered,"
             + "enemy_barracks,blocker_mineral_x,blocker_mineral_y,enemy_ground_known_at_bases,"
             + "enemy_ground_visible_at_bases,yield_to_plan_id,macro_hatchery_gate,hatcheries,macro_tech_ready,"
-            + "macro_hatcheries_outstanding";
+            + "macro_hatcheries_outstanding,tech_gate,gate_available_gas,gate_required_gas,"
+            + "extractors_completed";
 
     private static final String GAME_HEADER = "timestamp,is_winner,num_starting_locations,map_name,opponent_name,"
             + "opponent_race,opener,build_order,detected_strategies,frame_count";
@@ -112,6 +121,8 @@ public class PlanEventLogger implements PlanEventSink {
     private LarvaBoundMacroHatchery.Gate lastMacroHatcheryGate;
 
     private boolean lastMacroHatcheryStarved;
+
+    private final Map<String, GasBoundHiveTech.Gate> lastHiveTechGates = new HashMap<>();
 
     private boolean disabled;
     private int currentFrame;
@@ -311,7 +322,7 @@ public class PlanEventLogger implements PlanEventSink {
             PlanTrace trace = trace(holder);
             StringBuilder sb = planColumns(holder, trace, EVENT_BUILD_AHEAD_YIELD, null, holder.getState(),
                     PlanBlocker.BUILD_AHEAD_SLOT_TAKEN, heldFrames, NO_STARVED_COUNT);
-            appendTrailing(sb, null, emergency, null);
+            appendTrailing(sb, null, emergency, null, null);
             buffer.add(sb.toString());
         } catch (Exception e) {
             disabled = true;
@@ -332,7 +343,7 @@ public class PlanEventLogger implements PlanEventSink {
             PlanTrace trace = trace(plan);
             StringBuilder sb = planColumns(plan, trace, EVENT_BLOCKER_DIVERT, null, plan.getState(),
                     PlanBlocker.NONE, 0, NO_STARVED_COUNT);
-            appendTrailing(sb, mineral, null, null);
+            appendTrailing(sb, mineral, null, null, null);
             buffer.add(sb.toString());
         } catch (Exception e) {
             disabled = true;
@@ -405,6 +416,34 @@ public class PlanEventLogger implements PlanEventSink {
                 && resourceCount.availableMinerals() >= LarvaBoundMacroHatchery.FLOAT_MINERALS
                 && resourceCount.availableGas() >= LarvaBoundMacroHatchery.FLOAT_GAS
                 && gameState.knownEnemyMobileGroundCombatUnitsAtOurBases() == 0;
+    }
+
+    /**
+     * Writes one row each time a Hive-branch structure reaches a new gate while the build could
+     * plan it. A structure sitting on one gate for many frames writes one row, on the frame it
+     * reached that gate, so an absence carries a reason without carrying a row per frame.
+     */
+    @Override
+    public void onHiveTechGate(GasBoundHiveTech.Gate gate, UnitType structure, int availableGas,
+                               int requiredGas, int extractorsCompleted) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            String item = structure.toString();
+            if (gate == lastHiveTechGates.get(item)) {
+                return;
+            }
+            lastHiveTechGates.put(item, gate);
+            if (!gate.isRequest()) {
+                return;
+            }
+            buffer.add(hiveTechGateRow(new HiveTechGateInputs(gate, item, availableGas, requiredGas,
+                    extractorsCompleted)));
+        } catch (Exception e) {
+            disabled = true;
+        }
     }
 
     private void buildAheadRow(String event, Plan holder, int heldFrames, int starvedBehind) {
@@ -495,7 +534,7 @@ public class PlanEventLogger implements PlanEventSink {
     private String row(Plan plan, PlanTrace trace, String event, PlanState from, PlanState to,
                        PlanBlocker blocker, int blockedFrames, int starvedBehind) {
         StringBuilder sb = planColumns(plan, trace, event, from, to, blocker, blockedFrames, starvedBehind);
-        appendTrailing(sb, null, null, null);
+        appendTrailing(sb, null, null, null, null);
         return sb.toString();
     }
 
@@ -557,7 +596,7 @@ public class PlanEventLogger implements PlanEventSink {
         appendEmpty(sb, 3);
         sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
         appendEmpty(sb, 2);
-        appendTrailing(sb, null, null, null);
+        appendTrailing(sb, null, null, null, null);
         return sb.toString();
     }
 
@@ -577,7 +616,27 @@ public class PlanEventLogger implements PlanEventSink {
         sb.append(true).append(',');
         sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
         appendEmpty(sb, 2);
-        appendTrailing(sb, null, null, inputs);
+        appendTrailing(sb, null, null, inputs, null);
+        return sb.toString();
+    }
+
+    /** A row for a Hive-branch request, which has no plan behind it, so the plan columns are empty. */
+    private String hiveTechGateRow(HiveTechGateInputs inputs) {
+        StringBuilder sb = new StringBuilder();
+        appendEvent(sb, inputs.gate == GasBoundHiveTech.Gate.TRIGGER
+                ? EVENT_HIVE_TECH_TRIGGER : EVENT_HIVE_TECH_WITHHELD);
+        appendEmpty(sb, 2);
+        sb.append(PlanType.BUILDING).append(',');
+        sb.append(Csv.sanitize(inputs.item)).append(',');
+        appendEmpty(sb, 4);
+        appendBlocker(sb, PlanBlocker.NONE, 0);
+        appendEmpty(sb, 3);
+        appendGameState(sb);
+        appendEmpty(sb, 2);
+        sb.append(false).append(',');
+        sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
+        appendEmpty(sb, 2);
+        appendTrailing(sb, null, null, null, inputs);
         return sb.toString();
     }
 
@@ -599,7 +658,7 @@ public class PlanEventLogger implements PlanEventSink {
         sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
         appendEmpty(sb, 1);
         appendEmpty(sb, 1);
-        appendTrailing(sb, null, null, null);
+        appendTrailing(sb, null, null, null, null);
         return sb.toString();
     }
 
@@ -615,9 +674,11 @@ public class PlanEventLogger implements PlanEventSink {
      * @param yieldTo the emergency plan given the build-ahead slot, or null on every row but BUILD_AHEAD_YIELD
      * @param macroHatchery the macro hatchery request's gate and inputs, or null on every row but
      *     MACRO_HATCHERY_TRIGGER and MACRO_HATCHERY_WITHHELD
+     * @param hiveTech the Hive-branch request's gate and inputs, or null on every row but
+     *     HIVE_TECH_TRIGGER and HIVE_TECH_WITHHELD
      */
     private void appendTrailing(StringBuilder sb, Position blockerMineral, Plan yieldTo,
-                                MacroHatcheryGateInputs macroHatchery) {
+                                MacroHatcheryGateInputs macroHatchery, HiveTechGateInputs hiveTech) {
         appendGameTotals(sb);
         sb.append(',');
         sb.append(blockerMineral == null ? "" : String.valueOf(blockerMineral.getX())).append(',');
@@ -628,7 +689,11 @@ public class PlanEventLogger implements PlanEventSink {
         sb.append(macroHatchery == null ? "" : macroHatchery.gate.toString()).append(',');
         sb.append(macroHatchery == null ? "" : String.valueOf(macroHatchery.hatcheries)).append(',');
         sb.append(macroHatchery == null ? "" : String.valueOf(macroHatchery.techReady)).append(',');
-        sb.append(macroHatchery == null ? "" : String.valueOf(macroHatchery.outstandingMacroHatcheries));
+        sb.append(macroHatchery == null ? "" : String.valueOf(macroHatchery.outstandingMacroHatcheries)).append(',');
+        sb.append(hiveTech == null ? "" : hiveTech.gate.toString()).append(',');
+        sb.append(hiveTech == null ? "" : String.valueOf(hiveTech.availableGas)).append(',');
+        sb.append(hiveTech == null ? "" : String.valueOf(hiveTech.requiredGas)).append(',');
+        sb.append(hiveTech == null ? "" : String.valueOf(hiveTech.extractorsCompleted));
     }
 
     /** The trailing cumulative columns. */
@@ -702,6 +767,24 @@ public class PlanEventLogger implements PlanEventSink {
                 .isWinner(isWinner)
                 .frameCount(currentFrame)
                 .build();
+    }
+
+    /** The gate a Hive-branch request stopped on and the inputs no other row column carries. */
+    private static final class HiveTechGateInputs {
+        private final GasBoundHiveTech.Gate gate;
+        private final String item;
+        private final int availableGas;
+        private final int requiredGas;
+        private final int extractorsCompleted;
+
+        private HiveTechGateInputs(GasBoundHiveTech.Gate gate, String item, int availableGas, int requiredGas,
+                                   int extractorsCompleted) {
+            this.gate = gate;
+            this.item = item;
+            this.availableGas = availableGas;
+            this.requiredGas = requiredGas;
+            this.extractorsCompleted = extractorsCompleted;
+        }
     }
 
     /** The gate a macro hatchery request stopped on and the inputs no other row column carries. */

@@ -12,6 +12,7 @@ import macro.plan.PlanState;
 import macro.plan.UnitPlan;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import strategy.buildorder.GasBoundHiveTech;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -29,6 +30,7 @@ class PlanEventsTest {
     private final List<String> unplannedCancels = new ArrayList<>();
     private final List<Plan> diverted = new ArrayList<>();
     private final List<Position> divertMinerals = new ArrayList<>();
+    private final List<String> hiveTechGates = new ArrayList<>();
 
     private PlanEventSink recorder() {
         return new PlanEventSink() {
@@ -61,6 +63,13 @@ class PlanEventsTest {
             public void onBlockerDivert(Plan plan, Position mineral) {
                 diverted.add(plan);
                 divertMinerals.add(mineral);
+            }
+
+            @Override
+            public void onHiveTechGate(GasBoundHiveTech.Gate gate, UnitType structure, int availableGas,
+                                       int requiredGas, int extractorsCompleted) {
+                hiveTechGates.add(gate + ":" + structure + ":" + availableGas + ":" + requiredGas + ":"
+                        + extractorsCompleted);
             }
         };
     }
@@ -250,6 +259,25 @@ class PlanEventsTest {
         plan.setCancelSource(PlanCancelSource.PRODUCTION_IMPOSSIBLE_SWEEP, PlanCancelReason.INSUFFICIENT_GATHERERS);
 
         assertEquals(PlanCancelReason.TECH_MISSING, plan.getCancelReason());
+    }
+
+    @Test
+    void hiveTechGateHookCarriesTheGateTheStructureAndTheBank() {
+        PlanEvents.register(recorder());
+
+        PlanEvents.hiveTechGate(GasBoundHiveTech.Gate.GAS_SHORT, UnitType.Zerg_Queens_Nest, 120,
+                GasBoundHiveTech.BRANCH_GAS, 2);
+
+        assertEquals(Collections.singletonList("GAS_SHORT:Zerg_Queens_Nest:120:"
+                + GasBoundHiveTech.BRANCH_GAS + ":2"), hiveTechGates);
+    }
+
+    @Test
+    void hiveTechGateWithNoSinkRegisteredIsANoOp() {
+        PlanEvents.hiveTechGate(GasBoundHiveTech.Gate.TRIGGER, UnitType.Zerg_Defiler_Mound, 400,
+                GasBoundHiveTech.BRANCH_GAS, 2);
+
+        assertTrue(hiveTechGates.isEmpty());
     }
 
     @Test
