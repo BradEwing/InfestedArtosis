@@ -7,9 +7,6 @@ package telemetry;
  * names the request the lock refused, which is the branch that would have set the status had the
  * lock not held; the lock branches record {@link #RETREAT_LOCK} or {@link #FIGHT_LOCK} only after
  * that row is written, so the held status on any later row is still attributed to the lock.
- *
- * <p>Without this a row emitted on a frame where no simulation ran carried no trace of which
- * statement set the status, and two branches that both produce FIGHT were indistinguishable.
  */
 public enum DecisionPath {
 
@@ -78,6 +75,12 @@ public enum DecisionPath {
      * The squad was created this frame by a merge and holds the status folded from its sources.
      */
     MERGE_INHERIT,
+
+    /**
+     * The squad was created this frame by a split and holds the status it inherited from its
+     * parent.
+     */
+    SPLIT_INHERIT,
 
     /**
      * No branch recorded a decision for this row.

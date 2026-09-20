@@ -567,6 +567,7 @@ public class SquadManager {
 
             Squad child = squad.createSibling();
             child.inheritStateFrom(squad);
+            SquadDecisions.pathTaken(child, DecisionPath.SPLIT_INHERIT);
             child.setSplitFrame(currentFrame);
             squad.setSplitFrame(currentFrame);
             for (ManagedUnit mu : outliers) {
@@ -859,9 +860,10 @@ public class SquadManager {
     /**
      * Runs one tick of a fight squad that is not holding a containment arc.
      *
-     * <p>Every transition into FIGHT is decided at or below the lock reads, so the retreat lock
-     * gates all of them. A branch that sets a status above those reads returns before the simulator
-     * runs and neither lock can see it.
+     * <p>The composition and hazard branches answer first, before anything is measured: a Lurker
+     * only squad, a Defiler only squad, and a squad standing in a psionic storm. Every other status
+     * is decided at or below the lock reads, so the retreat lock gates it. A branch placed above
+     * those reads returns before the simulator runs and neither lock can see it.
      *
      * <p>A squad with nothing detected anywhere still attacks: the sim has no enemy to weigh, so it
      * returns ADVANCE, and the fighters take the remembered enemy building through
