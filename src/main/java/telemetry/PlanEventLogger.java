@@ -405,7 +405,15 @@ public class PlanEventLogger implements PlanEventSink {
         }
     }
 
-    /** Writes one row per hold armed, with no plan behind it: the plan that armed it is already cancelled. */
+    /**
+     * Writes one row per hold armed, with no plan behind it: the plan that armed it is already
+     * cancelled.
+     *
+     * <p>The frame is re-read rather than taken from the last onFrame. A hold is almost always
+     * armed from onUnitDestroy, which JBWAPI dispatches ahead of the frame's onFrame, so the
+     * cached frame is one behind the frame the hold was armed on and the window a reader derives
+     * from expansion_hold_until_frame minus frame would read one frame too long.
+     */
     @Override
     public void onExpansionBackoff(int lostExpansionBuilders, int expansionHeldUntilFrame) {
         if (disabled) {
@@ -413,6 +421,7 @@ public class PlanEventLogger implements PlanEventSink {
         }
 
         try {
+            currentFrame = game.getFrameCount();
             buffer.add(expansionBackoffRow(new ExpansionBackoffInputs(lostExpansionBuilders,
                     expansionHeldUntilFrame)));
         } catch (Exception e) {
@@ -639,17 +648,20 @@ public class PlanEventLogger implements PlanEventSink {
      * it for. Recomputed per row rather than carried from the last gate evaluation, so a row taken
      * between two evaluations reports the frame it was written on.
      *
-     * <p>Only a worker executor is read. A Lair, Hive or colony morph is a building plan with an
-     * executor too, but its executor is the structure morphing in place: it walks nowhere, so a
-     * route and a site reading for it would describe a walk that never happens.
+     * <p>A Lair, Hive or colony morph is a building plan with an executor too, but its executor is
+     * the structure morphing in place. It walks nowhere, so its route terms are zero by fact
+     * rather than by omission, and only the site reading says anything about it.
      */
     private BuilderThreat builderThreat(Plan plan) {
         if (plan.getType() != PlanType.BUILDING) {
             return null;
         }
         Unit executor = gameState.executorOf(plan);
-        if (executor == null || !executor.getType().isWorker()) {
+        if (executor == null) {
             return null;
+        }
+        if (!executor.getType().isWorker()) {
+            return gameState.siteThreat(plan.getBuildPosition(), executor.getTilePosition());
         }
         return gameState.builderThreat(plan.getBuildPosition(), executor.getTilePosition());
     }

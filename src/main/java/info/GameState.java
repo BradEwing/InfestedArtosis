@@ -1132,6 +1132,23 @@ public class GameState {
                 builderTile != null && siteTiles.contains(builderTile));
     }
 
+    /**
+     * The same reading for a plan whose executor morphs in place rather than walking to its site.
+     * The route terms are zero because there is no walk, not because nothing was read.
+     *
+     * @param buildPosition the site the structure morphs at, or null before one is chosen
+     * @param executorTile the tile the morphing structure stands on, or null when it is not known
+     */
+    public BuilderThreat siteThreat(TilePosition buildPosition, TilePosition executorTile) {
+        if (buildPosition == null) {
+            return BuilderThreat.NONE;
+        }
+        Set<TilePosition> siteTiles = BaseData.siteTiles(gameMap.getMainBaseTiles(), buildPosition,
+                BaseData.NATURAL_DEFENSE_TILE_RADIUS);
+        return new BuilderThreat(0, knownEnemyMobileGroundCombatUnitsOnTiles(siteTiles), 0,
+                executorTile != null && siteTiles.contains(executorTile));
+    }
+
     private int staticDefenseZonesCovering(Set<TilePosition> tiles) {
         if (tiles.isEmpty()) {
             return 0;
