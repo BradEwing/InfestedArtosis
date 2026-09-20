@@ -111,6 +111,8 @@ public class PlanEventLogger implements PlanEventSink {
 
     private LarvaBoundMacroHatchery.Gate lastMacroHatcheryGate;
 
+    private boolean lastMacroHatcheryStarved;
+
     private boolean disabled;
     private int currentFrame;
     private int lastFlushFrame;
@@ -338,9 +340,10 @@ public class PlanEventLogger implements PlanEventSink {
     }
 
     /**
-     * Writes one row each time the larva-bound macro hatchery request reaches a new gate while the
-     * build is larva bound and floating both banks. A request that stops on one gate for many
-     * frames writes one row, on the frame it reached that gate.
+     * Writes one row each time the larva-bound macro hatchery request reaches a new gate, or the
+     * build enters or leaves larva starvation, while the build is larva bound and floating both
+     * banks. A request that stops on one gate for many frames in one state writes one row, on the
+     * frame it reached that state.
      */
     @Override
     public void onMacroHatcheryGate(LarvaBoundMacroHatchery.Gate gate, boolean techReady, int hatcheries,
@@ -350,10 +353,12 @@ public class PlanEventLogger implements PlanEventSink {
         }
 
         try {
-            if (gate == lastMacroHatcheryGate) {
+            boolean starved = larvaStarved();
+            if (!isNewMacroHatcheryGateReading(gate, starved, lastMacroHatcheryGate, lastMacroHatcheryStarved)) {
                 return;
             }
             lastMacroHatcheryGate = gate;
+            lastMacroHatcheryStarved = starved;
             if (!gate.isRequest()) {
                 return;
             }
@@ -362,6 +367,44 @@ public class PlanEventLogger implements PlanEventSink {
         } catch (Exception e) {
             disabled = true;
         }
+    }
+
+    /**
+     * Whether a gate reading is a row rather than a repeat of the one before it.
+     *
+     * <p>Keyed on the gate and on larva starvation together. A run of starved frames that begins
+     * under a gate that was already standing is a new reading, so the run carries a row at the
+     * frame it began rather than only the row written before it.
+     *
+     * @param gate the gate this frame's request stopped on
+     * @param starved whether the build is larva starved with both banks floating and no threat
+     * @param lastGate the gate the previous reading stopped on, or null before the first
+     * @param lastStarved the starvation state of the previous reading
+     * @return true when the reading should be written
+     */
+    static boolean isNewMacroHatcheryGateReading(LarvaBoundMacroHatchery.Gate gate, boolean starved,
+                                                 LarvaBoundMacroHatchery.Gate lastGate, boolean lastStarved) {
+        return gate != lastGate || starved != lastStarved;
+    }
+
+    /**
+     * The state a larva starvation run is measured over: no free larva, both unreserved banks at
+     * or above the request's own float bars, and no enemy ground unit known at our bases.
+     *
+     * <p>Half of the de-duplication key, because the gate alone is not enough. A request that
+     * stops on the same gate either side of the frame this turns true - a build still waiting on
+     * its tech, or one whose macro hatchery is already outstanding - would otherwise write its row
+     * before the run began and nothing inside it, leaving the run the row exists to witness
+     * unmarked for as long as the answer did not change.
+     *
+     * @return true while the build is larva starved with both banks floating and no threat
+     */
+    private boolean larvaStarved() {
+        ResourceCount resourceCount = gameState.getResourceCount();
+        return gameState.numLarva() == 0
+                && resourceCount.availableMinerals() >= LarvaBoundMacroHatchery.FLOAT_MINERALS
+                && resourceCount.availableGas() >= LarvaBoundMacroHatchery.FLOAT_GAS
+                && gameState.knownEnemyMobileGroundCombatUnitsAtOurBases() == 0;
     }
 
     private void buildAheadRow(String event, Plan holder, int heldFrames, int starvedBehind) {

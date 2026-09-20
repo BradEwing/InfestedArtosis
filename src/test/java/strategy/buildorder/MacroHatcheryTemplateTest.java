@@ -42,6 +42,10 @@ class MacroHatcheryTemplateTest {
 
     private static final boolean TERMINAL_BUILD = false;
 
+    private static final String OPENER_PACKAGE = ".opener";
+
+    private static final int REGISTERED_OPENERS = 6;
+
     /**
      * A build order that says nothing at all about the macro hatchery: it answers the abstract
      * hooks and no more. It still gets the shared step, because plan is final and runs it.
@@ -134,13 +138,35 @@ class MacroHatcheryTemplateTest {
         assertFalse(BuildOrder.runsLarvaBoundMacroHatchery(OPENER, Collections.emptyList()));
     }
 
+    /**
+     * Every build order in the opener package reports itself an opener, which is what holds it out
+     * of the shared step. An opener that forgot the override would reach the step and write gate
+     * rows under its own name.
+     */
     @Test
-    void everyRegisteredOpenerIsHeldOutOfTheSharedStep() {
+    void everyBuildOrderInTheOpenerPackageIsHeldOutOfTheSharedStep() {
+        int openers = 0;
         for (BuildOrder buildOrder : registeredBuildOrders()) {
-            if (buildOrder.isOpener()) {
-                assertFalse(BuildOrder.runsLarvaBoundMacroHatchery(buildOrder.isOpener(), Collections.emptyList()),
-                        buildOrder.getName() + " would write a gate row");
+            if (!buildOrder.getClass().getPackage().getName().endsWith(OPENER_PACKAGE)) {
+                continue;
             }
+            openers++;
+            assertTrue(buildOrder.isOpener(), buildOrder.getName() + " does not report itself an opener");
+            assertFalse(BuildOrder.runsLarvaBoundMacroHatchery(buildOrder.isOpener(), Collections.emptyList()),
+                    buildOrder.getName() + " would write a gate row");
+        }
+
+        assertEquals(REGISTERED_OPENERS, openers);
+    }
+
+    @Test
+    void noBuildOrderOutsideTheOpenerPackageIsHeldOut() {
+        for (BuildOrder buildOrder : registeredBuildOrders()) {
+            if (buildOrder.getClass().getPackage().getName().endsWith(OPENER_PACKAGE)) {
+                continue;
+            }
+            assertTrue(BuildOrder.runsLarvaBoundMacroHatchery(buildOrder.isOpener(), Collections.emptyList()),
+                    buildOrder.getName() + " would never consult the gate");
         }
     }
 
