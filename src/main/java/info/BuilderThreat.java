@@ -3,7 +3,8 @@ package info;
 import lombok.Getter;
 
 /**
- * What a lone builder would walk into on its way to a build site, and what waits at the site.
+ * What a lone builder would walk into on its way to a build site, what waits at the site, and
+ * whether either end of the walk is ground we already hold.
  *
  * <p>Three independent readings of the same enemy intelligence: mobile ground combat units last
  * known on the corridor from our main, the same units last known at the site's base, and enemy
@@ -13,7 +14,7 @@ import lombok.Getter;
  */
 public final class BuilderThreat {
 
-    public static final BuilderThreat NONE = new BuilderThreat(0, 0, 0, false);
+    public static final BuilderThreat NONE = new BuilderThreat(0, 0, 0, false, false, false);
 
     @Getter
     private final int routeEnemies;
@@ -24,17 +25,32 @@ public final class BuilderThreat {
     @Getter
     private final int routeDefenseZones;
 
-    /**
-     * Whether the builder already stands on the site's base tiles. Recorded for diagnosis only:
-     * it used to wave a builder through a contested site, and no longer does.
-     */
+    /** Whether the builder already stands on the site's base tiles. Recorded for diagnosis. */
     @Getter
     private final boolean builderAtSite;
 
-    public BuilderThreat(int routeEnemies, int siteEnemies, int routeDefenseZones, boolean builderAtSite) {
+    /**
+     * Whether the site sits at a base we already hold. Enemies on ground we own are a reason to
+     * build there rather than a reason to stay home.
+     */
+    @Getter
+    private final boolean siteAtOurBase;
+
+    /**
+     * Whether the builder itself stands on a base we hold. Read alongside the site so the pair
+     * describes a walk between two bases of ours rather than a lone drone setting out across the
+     * map, which is the walk the dispatch gate exists to stop.
+     */
+    @Getter
+    private final boolean builderAtOurBase;
+
+    public BuilderThreat(int routeEnemies, int siteEnemies, int routeDefenseZones, boolean builderAtSite,
+                         boolean siteAtOurBase, boolean builderAtOurBase) {
         this.routeEnemies = routeEnemies;
         this.siteEnemies = siteEnemies;
         this.routeDefenseZones = routeDefenseZones;
         this.builderAtSite = builderAtSite;
+        this.siteAtOurBase = siteAtOurBase;
+        this.builderAtOurBase = builderAtOurBase;
     }
 }

@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -24,6 +25,7 @@ import macro.plan.PlanCancelReason;
 import macro.plan.PlanState;
 import telemetry.PlanEvents;
 import telemetry.PlanEventSink;
+import util.Distance;
 
 /**
  * Unit tests for BaseData expansion selection and geyser reservation release.
@@ -43,6 +45,12 @@ public class BaseDataTest {
     private static final TilePosition GEYSER_TILE = new TilePosition(20, 30);
 
     private static final TilePosition OTHER_TILE = new TilePosition(44, 12);
+
+    private static final TilePosition MAIN_HATCHERY = new TilePosition(45, 9);
+
+    private static final TilePosition REMOTE_EXPANSION = new TilePosition(90, 100);
+
+    private static final Set<TilePosition> MAIN_TILES = Distance.tilesWithinManhattanDistance(MAIN_HATCHERY, 12);
 
     private static final int SUNKEN_ID = 42;
 
@@ -505,5 +513,28 @@ public class BaseDataTest {
             frame += WALK_FRAMES;
         }
         return cancels;
+    }
+
+    /**
+     * IA-381: only the main-tile branch of isOurBaseSite is reachable here. bwem.Base cannot be
+     * constructed, so myBases and the base-tile lookup both stay empty, every site outside the
+     * main reads as ground we do not hold - the remote-expansion case the dispatch gate still
+     * holds a builder from - and the branch that answers a base location on ownership alone is
+     * left to the review of the code and to the batch, where it shows as a DISPATCH_HOME_SITE row
+     * carrying a Zerg_Hatchery, which cannot occur while it is correct.
+     */
+    @Test
+    void testASiteInOurMainIsOurBaseSite() {
+        assertTrue(baseData.isOurBaseSite(MAIN_TILES, MAIN_HATCHERY, BaseData.NATURAL_DEFENSE_TILE_RADIUS));
+    }
+
+    @Test
+    void testASiteAtABaseWeDoNotHoldIsNotOurBaseSite() {
+        assertFalse(baseData.isOurBaseSite(MAIN_TILES, REMOTE_EXPANSION, BaseData.NATURAL_DEFENSE_TILE_RADIUS));
+    }
+
+    @Test
+    void testASiteWithNoPositionIsNotOurBaseSite() {
+        assertFalse(baseData.isOurBaseSite(MAIN_TILES, null, BaseData.NATURAL_DEFENSE_TILE_RADIUS));
     }
 }

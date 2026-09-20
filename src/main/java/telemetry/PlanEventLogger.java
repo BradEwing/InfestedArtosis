@@ -94,10 +94,12 @@ public class PlanEventLogger implements PlanEventSink {
      * for another plan is {@code larva + assigned_larva - reserved_larva}, which is the arithmetic
      * {@link info.ResourceCount#canScheduleLarva} applies.
      * <p>
-     * builder_route_enemies, builder_site_enemies, builder_route_defense_zones and builder_at_site
-     * are what a builder would walk into, written on every BUILDING row that has an executor and
-     * read fresh on the row's own frame. builder_dispatch_decision is what the gate did with it,
-     * set only on BUILDER_DISPATCH_DECISION rows.
+     * builder_route_enemies, builder_site_enemies, builder_route_defense_zones, builder_at_site,
+     * builder_site_at_our_base and builder_at_our_base are what a builder would walk into and
+     * whether either end of the walk is ground we hold, written on every BUILDING row that has an
+     * executor and read fresh on the row's own frame. builder_dispatch_decision is what the gate
+     * did with it, set only on BUILDER_DISPATCH_DECISION rows: a dispatch a threat reading would
+     * otherwise have held reads DISPATCH_HOME_SITE, and carries both ownership columns true.
      * <p>
      * lost_expansion_builders and expansion_hold_until_frame are set only on EXPANSION_BACKOFF
      * rows. The hold a row armed is expansion_hold_until_frame minus frame.
@@ -112,7 +114,7 @@ public class PlanEventLogger implements PlanEventSink {
             + "macro_hatcheries_outstanding,tech_gate,gate_available_gas,gate_required_gas,"
             + "extractors_completed,builder_route_enemies,builder_site_enemies,"
             + "builder_route_defense_zones,builder_at_site,builder_dispatch_decision,lost_expansion_builders,"
-            + "expansion_hold_until_frame";
+            + "expansion_hold_until_frame,builder_site_at_our_base,builder_at_our_base";
 
     private static final String GAME_HEADER = "timestamp,is_winner,num_starting_locations,map_name,opponent_name,"
             + "opponent_race,opener,build_order,detected_strategies,frame_count";
@@ -812,7 +814,9 @@ public class PlanEventLogger implements PlanEventSink {
         sb.append(builderThreat == null ? "" : String.valueOf(builderThreat.isBuilderAtSite())).append(',');
         sb.append(decision == null ? "" : decision.toString()).append(',');
         sb.append(backoff == null ? "" : String.valueOf(backoff.lostExpansionBuilders)).append(',');
-        sb.append(backoff == null ? "" : String.valueOf(backoff.expansionHeldUntilFrame));
+        sb.append(backoff == null ? "" : String.valueOf(backoff.expansionHeldUntilFrame)).append(',');
+        sb.append(builderThreat == null ? "" : String.valueOf(builderThreat.isSiteAtOurBase())).append(',');
+        sb.append(builderThreat == null ? "" : String.valueOf(builderThreat.isBuilderAtOurBase()));
     }
 
     /** The trailing cumulative columns. */

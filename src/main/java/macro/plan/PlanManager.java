@@ -177,7 +177,7 @@ public class PlanManager {
             BuilderThreat threat = builderThreat(managedUnit, plan);
             BuilderDispatchDecision decision = dispatchDecision(threat);
             PlanEvents.builderDispatchDecision(plan, decision, threat);
-            if (decision != BuilderDispatchDecision.DISPATCH) {
+            if (!decision.isDispatch()) {
                 continue;
             }
             gameState.clearAssignments(managedUnit);
@@ -202,6 +202,10 @@ public class PlanManager {
      * the plan parked in SCHEDULE still holding its build-ahead claim, the drone back on minerals
      * with the plan still assigned to it - so the next frame evaluates it like any other scheduled
      * builder and dispatches it again once the route is clear.
+     *
+     * <p>It runs the same predicate as the launch gate, so a builder working at a base we hold is
+     * never pulled off it: recalling a drone from a threatened home site is the same defect as
+     * refusing to send it there.
      */
     private void recallThreatenedBuilders() {
         List<ManagedUnit> recalled = new ArrayList<>();
@@ -212,7 +216,7 @@ public class PlanManager {
                 continue;
             }
             BuilderThreat threat = builderThreat(managedUnit, plan);
-            if (dispatchDecision(threat) == BuilderDispatchDecision.DISPATCH) {
+            if (dispatchDecision(threat).isDispatch()) {
                 continue;
             }
             PlanEvents.builderDispatchDecision(plan, BuilderDispatchDecision.RECALLED, threat);
@@ -234,22 +238,38 @@ public class PlanManager {
     /**
      * Whether a builder may leave for its site, and what stops it when it may not.
      *
+     * <p>A builder standing on a base we hold, sent to a site at a base we hold, is never held.
+     * The gate exists to stop a lone drone setting out across the map into a contested expansion,
+     * and a walk with both ends on ground we own is not that walk. Holding it refuses the creep
+     * colony a sunken grows from at the moment enemies arrive, which is the condition that makes
+     * the sunken worth having. A 900-game batch measured the cost: the gate blocked 4,005
+     * departures against 3,873 allowed, 2,831 of them creep colonies, and the run fell from 15.5%
+     * to 6.8%. The carve-out is keyed on ownership rather than on unit type because the walk, not
+     * the building, is what the gate is about.
+     *
+     * <p>Both ends are required. A site of ours whose own drones are all carrying, on gas or
+     * already building hands the plan to the nearest drone anywhere on the map, and that drone
+     * does set out across it; the full gate still applies to it.
+     *
      * <p>The site is read before the route because it is the more specific answer: a plan held for
      * enemies standing on the ground it would build on says something a corridor count does not.
-     * A builder already at the site no longer waves the site check through. That bypass sent a
-     * drone to build among known enemies on the grounds that it had already arrived, which is the
-     * shape of the sixteen colony builders LMR9R0MB lost inside a main that was being overrun.
+     * Away from our bases a builder already at the site no longer waves the site check through;
+     * that bypass was an accidental proxy for the builder being home, and the carve-out reads
+     * ownership directly instead.
      *
      * @param threat what the builder would walk into
      */
     static BuilderDispatchDecision dispatchDecision(BuilderThreat threat) {
+        if (threat.getSiteEnemies() == 0 && threat.getRouteEnemies() == 0 && threat.getRouteDefenseZones() == 0) {
+            return BuilderDispatchDecision.DISPATCH;
+        }
+        if (threat.isSiteAtOurBase() && threat.isBuilderAtOurBase()) {
+            return BuilderDispatchDecision.DISPATCH_HOME_SITE;
+        }
         if (threat.getSiteEnemies() > 0) {
             return BuilderDispatchDecision.HOLD_SITE_THREAT;
         }
-        if (threat.getRouteEnemies() > 0 || threat.getRouteDefenseZones() > 0) {
-            return BuilderDispatchDecision.HOLD_PATH_THREAT;
-        }
-        return BuilderDispatchDecision.DISPATCH;
+        return BuilderDispatchDecision.HOLD_PATH_THREAT;
     }
 
     private int getTravelFrames(Unit unit, Position buildingPosition) {
