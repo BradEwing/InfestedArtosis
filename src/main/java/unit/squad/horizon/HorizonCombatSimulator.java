@@ -332,7 +332,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
      * @param sample the sampled enemy
      * @param airSquad whether the snapshot displays the anti-air domain
      */
-    private static void creditMedicSupport(DebugSnapshot snapshot, EnemySample sample, boolean airSquad) {
+    static void creditMedicSupport(DebugSnapshot snapshot, EnemySample sample, boolean airSquad) {
         double support = airSquad ? sample.antiAirSupport() : sample.groundSupport();
         if (support <= 0) return;
         double share = support / sample.getMedics();

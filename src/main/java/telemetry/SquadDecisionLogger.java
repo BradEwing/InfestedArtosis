@@ -332,7 +332,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         decision.setRatio(snapshot.getOverallRatio());
         decision.setEngageThreshold(snapshot.getEngageThreshold());
         decision.setEnemySupplyBelieved(believedEnemySupply(snapshot));
-        String composition = HorizonCombatSimulator.enemyComposition(snapshot);
+        String composition = Csv.sanitize(HorizonCombatSimulator.enemyComposition(snapshot));
         decision.setEnemyComposition(composition.isEmpty() ? NONE : composition);
         decision.setEnemyUnscoredSupply(snapshot.getEnemyUnscoredSupply());
     }

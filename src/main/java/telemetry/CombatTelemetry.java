@@ -321,7 +321,7 @@ public class CombatTelemetry {
         }
 
         engagement.noteSim(snapshot.getOverallRatio(), snapshot.getEngageThreshold(), Csv.name(snapshot.getResult()),
-                HorizonCombatSimulator.enemyComposition(snapshot));
+                Csv.sanitize(HorizonCombatSimulator.enemyComposition(snapshot)));
     }
 
     private Squad dominantSquad(List<Contact> contacts) {
