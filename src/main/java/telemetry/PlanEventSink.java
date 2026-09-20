@@ -2,6 +2,8 @@ package telemetry;
 
 import bwapi.Position;
 import bwapi.UnitType;
+import info.BuilderThreat;
+import macro.plan.BuilderDispatchDecision;
 import macro.plan.Plan;
 import macro.plan.PlanBlocker;
 import macro.plan.PlanCancelSource;
@@ -83,5 +85,25 @@ public interface PlanEventSink {
 
     /** A stalled builder was sent to mine the blocking mineral at this position. */
     default void onBlockerDivert(Plan plan, Position mineral) {
+    }
+
+    /**
+     * The dispatch gate evaluated a scheduled drone-built building for departure, or re-evaluated
+     * one already walking.
+     *
+     * @param plan the building plan
+     * @param decision what the gate did with it
+     * @param threat the reading the decision was made on
+     */
+    default void onBuilderDispatchDecision(Plan plan, BuilderDispatchDecision decision, BuilderThreat threat) {
+    }
+
+    /**
+     * A lost expansion builder armed a hold on expanding.
+     *
+     * @param lostExpansionBuilders builders lost since the last expansion that landed
+     * @param expansionHeldUntilFrame frame expansions become available again
+     */
+    default void onExpansionBackoff(int lostExpansionBuilders, int expansionHeldUntilFrame) {
     }
 }

@@ -2,6 +2,7 @@ package macro.plan;
 
 import bwapi.TilePosition;
 import info.BaseData;
+import info.BuilderThreat;
 import org.junit.jupiter.api.Test;
 import util.Distance;
 
@@ -10,7 +11,6 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class BuilderSiteGateTest {
 
@@ -20,17 +20,42 @@ class BuilderSiteGateTest {
 
     @Test
     void aBuilderIsHeldFromASiteWithKnownEnemies() {
-        assertTrue(PlanManager.shouldHoldBuilder(6, false));
+        assertSame(BuilderDispatchDecision.HOLD_SITE_THREAT,
+                PlanManager.dispatchDecision(new BuilderThreat(0, 6, 0, false)));
     }
 
     @Test
-    void aBuilderIsDispatchedToASiteWithNoKnownEnemies() {
-        assertFalse(PlanManager.shouldHoldBuilder(0, false));
+    void aBuilderIsDispatchedToASiteWithNoKnownEnemiesOnAClearRoute() {
+        assertSame(BuilderDispatchDecision.DISPATCH, PlanManager.dispatchDecision(BuilderThreat.NONE));
+    }
+
+    /**
+     * IA-381: the bypass that let a builder standing on a contested site proceed is gone. Sixteen
+     * colony builders died to it inside a main that was being overrun.
+     */
+    @Test
+    void aBuilderAlreadyAtAContestedSiteIsHeld() {
+        assertSame(BuilderDispatchDecision.HOLD_SITE_THREAT,
+                PlanManager.dispatchDecision(new BuilderThreat(0, 6, 0, true)));
     }
 
     @Test
-    void aBuilderAlreadyAtTheSiteIsNotHeld() {
-        assertFalse(PlanManager.shouldHoldBuilder(6, true));
+    void aBuilderIsHeldFromAClearSiteAcrossAContestedRoute() {
+        assertSame(BuilderDispatchDecision.HOLD_PATH_THREAT,
+                PlanManager.dispatchDecision(new BuilderThreat(3, 0, 0, false)));
+    }
+
+    @Test
+    void aBuilderIsHeldFromARouteEnemyStaticDefenceCovers() {
+        assertSame(BuilderDispatchDecision.HOLD_PATH_THREAT,
+                PlanManager.dispatchDecision(new BuilderThreat(0, 0, 1, false)));
+    }
+
+    /** The site is the more specific answer, so it names the hold when both are hot. */
+    @Test
+    void aSiteThreatOutranksARouteThreat() {
+        assertSame(BuilderDispatchDecision.HOLD_SITE_THREAT,
+                PlanManager.dispatchDecision(new BuilderThreat(3, 6, 2, false)));
     }
 
     @Test

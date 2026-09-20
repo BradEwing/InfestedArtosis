@@ -9,7 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PlanEventLoggerTest {
 
-    private static final int PLAN_COLUMNS = 52;
+    private static final int PLAN_COLUMNS = 59;
 
     private static final boolean STARVED = true;
 
@@ -22,36 +22,35 @@ class PlanEventLoggerTest {
 
     @Test
     void theBlockerMineralPositionFollowsTheEnemyBarracksCount() {
-        String[] columns = PlanEventLogger.PLAN_HEADER.split(",", -1);
-        assertEquals("enemy_barracks", columns[columns.length - 14]);
-        assertEquals("blocker_mineral_x", columns[columns.length - 13]);
-        assertEquals("blocker_mineral_y", columns[columns.length - 12]);
+        int barracks = indexOf("enemy_barracks");
+        assertEquals("blocker_mineral_x", column(barracks + 1));
+        assertEquals("blocker_mineral_y", column(barracks + 2));
     }
 
     @Test
     void theEnemyGroundCountsAndYieldTargetFollowTheBlockerMineral() {
-        String[] columns = PlanEventLogger.PLAN_HEADER.split(",", -1);
-        assertEquals("enemy_ground_known_at_bases", columns[columns.length - 11]);
-        assertEquals("enemy_ground_visible_at_bases", columns[columns.length - 10]);
-        assertEquals("yield_to_plan_id", columns[columns.length - 9]);
+        int known = indexOf("enemy_ground_known_at_bases");
+        assertEquals(indexOf("blocker_mineral_y") + 1, known);
+        assertEquals("enemy_ground_visible_at_bases", column(known + 1));
+        assertEquals("yield_to_plan_id", column(known + 2));
     }
 
     @Test
     void theMacroHatcheryGateColumnsFollowTheYieldTarget() {
-        String[] columns = PlanEventLogger.PLAN_HEADER.split(",", -1);
-        assertEquals("macro_hatchery_gate", columns[columns.length - 8]);
-        assertEquals("hatcheries", columns[columns.length - 7]);
-        assertEquals("macro_tech_ready", columns[columns.length - 6]);
-        assertEquals("macro_hatcheries_outstanding", columns[columns.length - 5]);
+        int gate = indexOf("macro_hatchery_gate");
+        assertEquals(indexOf("yield_to_plan_id") + 1, gate);
+        assertEquals("hatcheries", column(gate + 1));
+        assertEquals("macro_tech_ready", column(gate + 2));
+        assertEquals("macro_hatcheries_outstanding", column(gate + 3));
     }
 
     @Test
-    void theHiveTechGateColumnsAreAppendedLast() {
-        String[] columns = PlanEventLogger.PLAN_HEADER.split(",", -1);
-        assertEquals("tech_gate", columns[columns.length - 4]);
-        assertEquals("gate_available_gas", columns[columns.length - 3]);
-        assertEquals("gate_required_gas", columns[columns.length - 2]);
-        assertEquals("extractors_completed", columns[columns.length - 1]);
+    void theHiveTechGateColumnsFollowTheMacroHatcheryGate() {
+        int techGate = indexOf("tech_gate");
+        assertEquals(indexOf("macro_hatcheries_outstanding") + 1, techGate);
+        assertEquals("gate_available_gas", column(techGate + 1));
+        assertEquals("gate_required_gas", column(techGate + 2));
+        assertEquals("extractors_completed", column(techGate + 3));
     }
 
     @Test
@@ -88,5 +87,31 @@ class PlanEventLoggerTest {
     void leavingStarvationUnderAStandingGateIsARowSoTheNextRunIsMarkedAgain() {
         assertTrue(PlanEventLogger.isNewMacroHatcheryGateReading(Gate.OUTSTANDING, NOT_STARVED, Gate.OUTSTANDING,
                 STARVED));
+    }
+
+    @Test
+    void theBuilderThreatColumnsAreAppendedLast() {
+        int route = indexOf("builder_route_enemies");
+        assertEquals(indexOf("extractors_completed") + 1, route);
+        assertEquals("builder_site_enemies", column(route + 1));
+        assertEquals("builder_route_defense_zones", column(route + 2));
+        assertEquals("builder_at_site", column(route + 3));
+        assertEquals("builder_dispatch_decision", column(route + 4));
+        assertEquals("lost_expansion_builders", column(route + 5));
+        assertEquals("expansion_hold_until_frame", column(route + 6));
+    }
+
+    private static String column(int index) {
+        return PlanEventLogger.PLAN_HEADER.split(",", -1)[index];
+    }
+
+    private static int indexOf(String name) {
+        String[] columns = PlanEventLogger.PLAN_HEADER.split(",", -1);
+        for (int i = 0; i < columns.length; i++) {
+            if (columns[i].equals(name)) {
+                return i;
+            }
+        }
+        return -1;
     }
 }

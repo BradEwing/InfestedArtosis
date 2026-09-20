@@ -37,6 +37,7 @@ import macro.plan.PlanState;
 import strategy.buildorder.BuildOrder;
 import unit.managed.ManagedUnit;
 import unit.managed.UnitRole;
+import util.Distance;
 import util.Filter;
 import util.StaticDefenseZone;
 import util.Time;
@@ -1102,6 +1103,74 @@ public class GameState {
      */
     public int knownEnemyMobileGroundCombatUnitsOnTiles(Set<TilePosition> tiles) {
         return observedUnitTracker.getCountOfLivingUnitsOnTiles(Filter::isMobileGroundCombatUnit, tiles);
+    }
+
+    /**
+     * What a builder sent to a site would walk into, read off the enemy intelligence already held:
+     * mobile ground combat units last known on the corridor from our main, the same units last
+     * known at the site's base, and enemy static defence whose reach covers the corridor.
+     *
+     * <p>Static defence is counted on the corridor alone. A cannon or bunker at the site is not a
+     * reason to refuse to build there - it is often the reason a defence is wanted - while one
+     * covering the walk kills a lone drone that has no answer to it.
+     *
+     * @param buildPosition the site the builder is sent to, or null before one is chosen
+     * @param builderTile the tile the builder stands on, or null when it is not known
+     */
+    public BuilderThreat builderThreat(TilePosition buildPosition, TilePosition builderTile) {
+        if (buildPosition == null) {
+            return BuilderThreat.NONE;
+        }
+        Set<TilePosition> mainBaseTiles = gameMap.getMainBaseTiles();
+        Set<TilePosition> siteTiles = BaseData.siteTiles(mainBaseTiles, buildPosition,
+                BaseData.NATURAL_DEFENSE_TILE_RADIUS);
+        Set<TilePosition> routeTiles = baseData.routeTiles(mainBaseTiles, buildPosition);
+        return new BuilderThreat(
+                knownEnemyMobileGroundCombatUnitsOnTiles(routeTiles),
+                knownEnemyMobileGroundCombatUnitsOnTiles(siteTiles),
+                staticDefenseZonesCovering(routeTiles),
+                builderTile != null && siteTiles.contains(builderTile));
+    }
+
+    /**
+     * The same reading for a plan whose executor morphs in place rather than walking to its site.
+     * The route terms are zero because there is no walk, not because nothing was read.
+     *
+     * @param buildPosition the site the structure morphs at, or null before one is chosen
+     * @param executorTile the tile the morphing structure stands on, or null when it is not known
+     */
+    public BuilderThreat siteThreat(TilePosition buildPosition, TilePosition executorTile) {
+        if (buildPosition == null) {
+            return BuilderThreat.NONE;
+        }
+        Set<TilePosition> siteTiles = BaseData.siteTiles(gameMap.getMainBaseTiles(), buildPosition,
+                BaseData.NATURAL_DEFENSE_TILE_RADIUS);
+        return new BuilderThreat(0, knownEnemyMobileGroundCombatUnitsOnTiles(siteTiles), 0,
+                executorTile != null && siteTiles.contains(executorTile));
+    }
+
+    private int staticDefenseZonesCovering(Set<TilePosition> tiles) {
+        if (tiles.isEmpty()) {
+            return 0;
+        }
+        int covering = 0;
+        for (StaticDefenseZone zone : getStaticDefenseZones()) {
+            if (coversAnyTile(zone, tiles)) {
+                covering += 1;
+            }
+        }
+        return covering;
+    }
+
+    private static boolean coversAnyTile(StaticDefenseZone zone, Set<TilePosition> tiles) {
+        TilePosition center = zone.getCenter().toTilePosition();
+        int radius = zone.getReach() / TilePosition.SIZE_IN_PIXELS + 1;
+        for (TilePosition tile : Distance.tilesWithinManhattanDistance(center, radius)) {
+            if (tiles.contains(tile)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public int enemyUnitCount(UnitType unitType) {

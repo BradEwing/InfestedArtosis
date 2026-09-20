@@ -8,10 +8,12 @@ import bwem.Base;
 import info.map.GameMap;
 import info.map.GroundPath;
 import info.map.GroundPathComparator;
+import info.map.MapTile;
 import info.map.StartingLocationPaths;
 import lombok.Getter;
 import lombok.Setter;
 import macro.plan.PlanCancelReason;
+import telemetry.PlanEvents;
 import util.Distance;
 
 import java.util.Collections;
@@ -32,6 +34,13 @@ public class BaseData {
     static final int EXPANSION_BACKOFF_FRAMES = 1200;
 
     static final int MAX_EXPANSION_BACKOFF_STEPS = 6;
+
+    /**
+     * How far either side of a ground path a builder still counts as walking. The path itself is
+     * one tile wide, which an army standing beside the corridor slips past; two tiles of manhattan
+     * padding makes the corridor about as wide as the ground a melee unit can reach across it.
+     */
+    static final int BUILDER_ROUTE_TILE_RADIUS = 2;
 
     static final int EXTRACTOR_REPLAN_BACKOFF_FRAMES = 500;
 
@@ -59,6 +68,7 @@ public class BaseData {
     private HashMap<TilePosition, Base> baseTilePositionLookup = new HashMap<>();
     private HashMap<Base, GroundPath> allBasePaths = new HashMap<>();
     private HashMap<Base, GroundPath> availableBases = new HashMap<>();
+    private HashMap<Base, Set<TilePosition>> routeTileLookup = new HashMap<>();
     private HashMap<Base, Integer> expansionBackoffUntil = new HashMap<>();
     private int lostExpansionBuilders = 0;
     private int expansionHeldUntil = 0;
@@ -118,6 +128,56 @@ public class BaseData {
             return mainBaseTiles;
         }
         return Distance.tilesWithinManhattanDistance(site, radius);
+    }
+
+    /**
+     * Tiles a builder walks over to reach a build site: the ground path from our main to the base
+     * nearest the site, padded by {@link #BUILDER_ROUTE_TILE_RADIUS}.
+     *
+     * <p>A site in our main has no corridor, and neither has a site whose nearest base we have no
+     * ground path to, so both read as empty and leave the site check as the only gate. Paths are
+     * measured once at map load and never change, so each base's corridor is built on first use
+     * and kept.
+     *
+     * @param mainBaseTiles tiles of our main base
+     * @param site building site
+     * @return the tiles an enemy must stand on to contest the walk
+     */
+    public Set<TilePosition> routeTiles(Set<TilePosition> mainBaseTiles, TilePosition site) {
+        if (site == null || mainBaseTiles.contains(site)) {
+            return Collections.emptySet();
+        }
+        Base base = nearestPathedBase(site);
+        if (base == null) {
+            return Collections.emptySet();
+        }
+        return routeTileLookup.computeIfAbsent(base, this::pathTiles);
+    }
+
+    private Base nearestPathedBase(TilePosition site) {
+        Position sitePosition = site.toPosition();
+        Base nearest = null;
+        double bestDistance = Double.MAX_VALUE;
+        for (Base base : allBasePaths.keySet()) {
+            double distance = sitePosition.getDistance(base.getLocation().toPosition());
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                nearest = base;
+            }
+        }
+        return nearest;
+    }
+
+    private Set<TilePosition> pathTiles(Base base) {
+        GroundPath path = allBasePaths.get(base);
+        if (path == null) {
+            return Collections.emptySet();
+        }
+        Set<TilePosition> tiles = new HashSet<>();
+        for (MapTile mapTile : path.getPath()) {
+            tiles.addAll(Distance.tilesWithinManhattanDistance(mapTile.getTile(), BUILDER_ROUTE_TILE_RADIUS));
+        }
+        return tiles;
     }
 
     public void initializeMainBase(Base base, GameMap map) {
@@ -385,15 +445,22 @@ public class BaseData {
      * <p>The base that killed the builder is held for the longest window the hold can reach, which
      * outlasts the first few holds on purpose: the point of coming back is to try somewhere else.
      *
+     * <p>The global hold is one step, always. Escalating it converted a run of lost builders into a
+     * hold that outlived the game: the second loss of LMR9R0MB armed 2,400 frames at frame 18461 of
+     * a game that ended at 20059, and every expansion after it was refused with 2,263 minerals in
+     * the bank. Escalation belongs on the base that killed the builder, which still carries it, not
+     * on expanding at all.
+     *
      * @param base the base the lost builder was sent to, or null when it is not known
      * @param currentFrame frame the builder was lost on
      */
     public void backoffExpansion(Base base, int currentFrame) {
         lostExpansionBuilders += 1;
-        expansionHeldUntil = currentFrame + expansionHold(lostExpansionBuilders);
+        expansionHeldUntil = currentFrame + EXPANSION_BACKOFF_FRAMES;
         if (base != null) {
             expansionBackoffUntil.put(base, currentFrame + expansionHold(MAX_EXPANSION_BACKOFF_STEPS));
         }
+        PlanEvents.expansionBackoff(lostExpansionBuilders, expansionHeldUntil);
     }
 
     /**
@@ -404,8 +471,9 @@ public class BaseData {
     }
 
     /**
-     * How long expansions are held after a builder was lost. Capped so the hold stays a hold and
-     * never becomes a permanent stop: an expansion that lands clears the count anyway.
+     * How long the base a lost builder was walking to is held. Capped so the hold stays a hold and
+     * never becomes a permanent stop: an expansion that lands clears the count anyway. The global
+     * hold no longer reads this; it is one step regardless of how many builders have been lost.
      *
      * @param lostBuilders builders lost since the last expansion that completed
      */
