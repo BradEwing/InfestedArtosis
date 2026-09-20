@@ -1,0 +1,86 @@
+package telemetry;
+
+/**
+ * The branch of SquadManager that decided a squad's status on the frame a row describes.
+ *
+ * <p>On a STATUS_CHANGE row this names what produced the new status. On a LOCK_SUPPRESSED row it
+ * names the request the lock refused, which is the branch that would have set the status had the
+ * lock not held; the lock branches record {@link #RETREAT_LOCK} or {@link #FIGHT_LOCK} only after
+ * that row is written, so the held status on any later row is still attributed to the lock.
+ *
+ * <p>Without this a row emitted on a frame where no simulation ran carried no trace of which
+ * statement set the status, and two branches that both produce FIGHT were indistinguishable.
+ */
+public enum DecisionPath {
+
+    /**
+     * The squad has no detected enemy unit anywhere and at least one remembered enemy building, so
+     * the fight target chain falls through to the march on that building.
+     */
+    NO_VISION_MARCH,
+
+    /**
+     * A ground squad of Lurkers only, which fights where it stands.
+     */
+    LURKER_ONLY,
+
+    /**
+     * The combat sim returned ADVANCE and the blind advance rule did not hold it.
+     */
+    SIM_ADVANCE,
+
+    /**
+     * The combat sim returned ENGAGE.
+     */
+    SIM_ENGAGE,
+
+    /**
+     * The combat sim returned RETREAT and the squad did not enter a containment arc instead.
+     */
+    SIM_RETREAT,
+
+    /**
+     * The retreat hysteresis lock kept the squad retreating.
+     */
+    RETREAT_LOCK,
+
+    /**
+     * The fight hysteresis lock kept the squad fighting.
+     */
+    FIGHT_LOCK,
+
+    /**
+     * A unit of the squad is standing in a psionic storm.
+     */
+    STORM_RETREAT,
+
+    /**
+     * The squad took a containment arc.
+     */
+    CONTAIN_ENTER,
+
+    /**
+     * Containment broke army wide and every containing squad was committed.
+     */
+    CONTAIN_BREAK,
+
+    /**
+     * A containing squad left its arc without the army breaking.
+     */
+    CONTAIN_RETREAT,
+
+    /**
+     * The squad was sent to the rally point. The rally_reason column names which branch.
+     */
+    RALLY,
+
+    /**
+     * The squad was created this frame by a merge and holds the status folded from its sources.
+     */
+    MERGE_INHERIT,
+
+    /**
+     * No branch recorded a decision for this row.
+     */
+    NONE
+}
