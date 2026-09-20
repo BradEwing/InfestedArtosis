@@ -13,7 +13,15 @@ import util.Time;
 import java.util.Collections;
 import java.util.List;
 
-public class TerranBase extends BuildOrder {
+/**
+ * Shared behaviour for the Terran matchup builds.
+ *
+ * <p>Abstract, and deliberately silent on {@link BuildOrder#macroHatcheryTechReady}. A default
+ * here would be a lineage default: every build under it would inherit a tech condition it never
+ * stated, which is how the larva-bound macro hatchery was lost once already. Leaving the hook
+ * unanswered makes a new build in this matchup fail to compile until it states its own.
+ */
+public abstract class TerranBase extends BuildOrder {
     /**
      * Drones the opening pushes to before the build order moves on. Counted as gatherers rather
      * than as living drones, so it is one lower than the count it replaced: a drone scouting or
@@ -159,7 +167,7 @@ public class TerranBase extends BuildOrder {
     }
 
     @Override
-    public List<Plan> plan(GameState gameState) {
+    protected List<Plan> buildPlans(GameState gameState) {
         return Collections.emptyList();
     }
 

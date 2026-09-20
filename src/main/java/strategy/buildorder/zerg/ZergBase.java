@@ -11,7 +11,15 @@ import strategy.buildorder.SunkenTargets;
 import java.util.Collections;
 import java.util.List;
 
-public class ZergBase extends BuildOrder {
+/**
+ * Shared behaviour for the Zerg matchup builds.
+ *
+ * <p>Abstract, and deliberately silent on {@link BuildOrder#macroHatcheryTechReady}. A default
+ * here would be a lineage default: every build under it would inherit a tech condition it never
+ * stated, which is how the larva-bound macro hatchery was lost once already. Leaving the hook
+ * unanswered makes a new build in this matchup fail to compile until it states its own.
+ */
+public abstract class ZergBase extends BuildOrder {
 
     static final int BASE_ZERGLING_TARGET = 10;
     static final int MAX_ZERGLING_TARGET = 40;
@@ -23,7 +31,7 @@ public class ZergBase extends BuildOrder {
     }
 
     @Override
-    public List<Plan> plan(GameState gameState) {
+    protected List<Plan> buildPlans(GameState gameState) {
         return Collections.emptyList();
     }
 
