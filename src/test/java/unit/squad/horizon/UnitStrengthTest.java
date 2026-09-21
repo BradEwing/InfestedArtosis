@@ -17,7 +17,7 @@ class UnitStrengthTest {
     private static final double MARINE_GROUND_BEFORE_DURABILITY = 1.5484804043631566;
 
     private static final double SUNKEN_GROUND_FORMULA = 92.5925375643027;
-    private static final double PHOTON_CANNON_FORMULA = 54.98290206594559;
+    private static final double PHOTON_CANNON_FORMULA = 38.87878290014596;
     private static final double BUNKER_GARRISON = 115.8776628652021;
     private static final double SUPERSEDED_BUNKER_LITERAL = 224.4994432064365;
 
@@ -70,9 +70,16 @@ class UnitStrengthTest {
     }
 
     @Test
-    void durabilityIsTheRootOfTheHitPointAndShieldPool() {
+    void durabilityIsTheRootOfTheHitPointPool() {
         assertEquals(Math.sqrt(35), UnitStrength.durabilityFactor(UnitType.Zerg_Zergling), TOLERANCE);
-        assertEquals(Math.sqrt(200), UnitStrength.durabilityFactor(UnitType.Protoss_Photon_Cannon), TOLERANCE);
+        assertEquals(Math.sqrt(100), UnitStrength.durabilityFactor(UnitType.Protoss_Photon_Cannon), TOLERANCE);
+    }
+
+    @Test
+    void shieldsDoNotEnterDurability() {
+        assertEquals(Math.sqrt(100), UnitStrength.durabilityFactor(UnitType.Protoss_Zealot), TOLERANCE);
+        assertEquals(1.6903, UnitStrength.durabilityFactor(UnitType.Protoss_Zealot)
+                / UnitStrength.durabilityFactor(UnitType.Zerg_Zergling), 1e-4);
     }
 
     @Test
@@ -98,7 +105,7 @@ class UnitStrengthTest {
         double zealotToHydralisk = UnitStrength.durabilityFactor(UnitType.Protoss_Zealot)
                 / UnitStrength.durabilityFactor(UnitType.Zerg_Hydralisk);
         assertEquals(1.0690, marineToZergling, 1e-4);
-        assertEquals(1.4142, zealotToHydralisk, 1e-4);
+        assertEquals(1.1180, zealotToHydralisk, 1e-4);
         assertTrue(zealotToHydralisk > marineToZergling);
     }
 

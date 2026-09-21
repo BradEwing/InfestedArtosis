@@ -16,8 +16,8 @@ import java.util.Map;
  * {@link HorizonCombatSimulator} against the size mix of the squad actually being simulated.
  *
  * <p>Durability enters through {@link #durabilityFactor}, the square root of a type's maximum hit
- * point and shield pool, multiplying all four domains. It carries no reference or anchor constant.
- * An anchor would be a single factor common to every formula entry, so it would cancel exactly from
+ * points, shields excluded, multiplying all four domains. It carries no reference or anchor
+ * constant. An anchor would be a single factor common to every formula entry, so it would cancel exactly from
  * the friendly over enemy ratio {@link HorizonCombatSimulator#selectResult} compares against the
  * engage threshold, and could not change a verdict. This factor is per type and therefore survives
  * that ratio: it moves a marine against a zergling, a zealot against a hydralisk and a sunken
@@ -83,6 +83,11 @@ public class UnitStrength {
     /**
      * How much of a type's weapon output its hit points escort into a fight.
      *
+     * <p>Hit points only, not shields. Shields are Protoss-only, so counting them would reprice every
+     * Protoss type against every Zerg and Terran one on top of its hit points: a Zealot would score
+     * 2.14 and a Photon Cannon 2.39 times the durability of a Zergling. Without them both score 1.69,
+     * and the term leaves every Terran and Zerg pairing exactly where hit points put it.
+     *
      * <p>The square root of the pool, not the pool itself: doubling a hit point pool buys well under
      * twice the damage delivered, because the unit is under fire for the whole of the extra time it
      * survives. Rooting it also puts the term on the same shape as
@@ -97,7 +102,7 @@ public class UnitStrength {
      * @return the durability multiplier for that type
      */
     static double durabilityFactor(UnitType type) {
-        int pool = type.maxHitPoints() + type.maxShields();
+        int pool = type.maxHitPoints();
         if (pool <= 0) return 1.0;
         return Math.sqrt(pool);
     }
