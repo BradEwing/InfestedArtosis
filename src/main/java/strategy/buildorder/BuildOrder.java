@@ -20,6 +20,7 @@ import macro.HatcheryCapacity;
 import macro.plan.BuildingPlan;
 import macro.plan.Plan;
 import macro.plan.PlanBlocker;
+import macro.plan.PlanType;
 import macro.plan.TechPlan;
 import macro.plan.UnitPlan;
 import macro.plan.UpgradePlan;
@@ -100,7 +101,55 @@ public abstract class BuildOrder {
         return new HashSet<>();
     }
 
-    public abstract List<Plan> plan(GameState gameState);
+    /**
+     * The plans the build order asks for this frame.
+     *
+     * <p>Final: the build's own plans come from {@link #buildPlans}, and the shared larva-bound
+     * macro hatchery step runs after them whatever the build said. A build order that never
+     * mentions the macro hatchery still makes the request, which is what stops the rule being
+     * lost again by a build that simply says nothing.
+     *
+     * <p>An opener is the one exception. It hands over before any tech condition can hold, so the
+     * request could only ever stop on its tech gate, and running it would write gate rows naming
+     * a build that can never answer them.
+     *
+     * @param gameState current game state
+     * @return the build's plans, plus a macro hatchery when the shared request fires
+     */
+    public final List<Plan> plan(GameState gameState) {
+        List<Plan> plans = new ArrayList<>(buildPlans(gameState));
+
+        if (!runsLarvaBoundMacroHatchery(isOpener(), plans)) {
+            return plans;
+        }
+
+        Plan macroHatchery = larvaBoundMacroHatchery(gameState);
+        if (macroHatchery != null) {
+            plans.add(macroHatchery);
+        }
+
+        return plans;
+    }
+
+    /**
+     * The build order's own plans for this frame.
+     *
+     * @param gameState current game state
+     * @return the plans this build wants, which {@link #plan} appends the shared steps to
+     */
+    protected abstract List<Plan> buildPlans(GameState gameState);
+
+    /**
+     * The build's tech condition for the larva-bound macro hatchery.
+     *
+     * <p>Abstract so a new build order has to state it. A build with no tech unit to be larva
+     * bound on - an opener, or a build that only ever makes Zerglings - answers false.
+     *
+     * @param techProgression the bot's tech state
+     * @return true once the tech whose units the build spends its larva on is finished
+     * @see LarvaBoundMacroHatchery#evaluate
+     */
+    protected abstract boolean macroHatcheryTechReady(TechProgression techProgression);
 
     public abstract boolean playsRace(Race race);
 
@@ -506,6 +555,22 @@ public abstract class BuildOrder {
      * @return a rank that sorts ascending, main first
      */
     static long sunkenBaseRank(boolean isMainBase, int tileX, int tileY) {
+        return homeFirstBaseRank(isMainBase, tileX, tileY);
+    }
+
+    /**
+     * Ranks a base of ours, main first and every other base by its tile.
+     *
+     * <p>The tile term is a tie break that only has to be stable, not meaningful. A set of our
+     * bases is a HashSet, so without it the choice between two equally eligible bases follows
+     * hash order and can differ from frame to frame.
+     *
+     * @param isMainBase whether the base is our main
+     * @param tileX base tile x
+     * @param tileY base tile y
+     * @return a rank that sorts ascending, main first
+     */
+    static long homeFirstBaseRank(boolean isMainBase, int tileX, int tileY) {
         long tieBreak = tileX * TILE_RANK_STRIDE + tileY;
         return isMainBase ? tieBreak : NON_MAIN_BASE_RANK + tieBreak;
     }
@@ -870,24 +935,71 @@ public abstract class BuildOrder {
     }
 
     /**
-     * Whether the larva-bound macro hatchery request fires this frame.
+     * The shared larva-bound macro hatchery step, run for every build order by {@link #plan}.
      *
      * <p>Reads the gate inputs off the game state, hands {@link LarvaBoundMacroHatchery#evaluate}
-     * the build's tech condition, and reports the gate it stopped on to plan telemetry.
+     * the build's own tech condition, and reports to plan telemetry the gate the request stopped
+     * on. A gate that opens every term but still yields no plan is reported as
+     * {@link LarvaBoundMacroHatchery.Gate#PLACEMENT_UNAVAILABLE}, so TRIGGER is written only on a
+     * frame a macro hatchery is actually enqueued.
+     *
+     * <p>The plan is placed at the main first. The main is behind the army and already on creep,
+     * and placing there keeps the request off the expansion path, so it never reserves a base and
+     * is never held by the expansion backoff.
      *
      * @param gameState current game state
-     * @param techReady the build's tech condition, read from finished structures and research
-     * @return true when every gate is open
+     * @return the macro hatchery plan, or null when the request is withheld or cannot be placed
      */
-    protected boolean wantLarvaBoundMacroHatchery(GameState gameState, boolean techReady) {
+    private Plan larvaBoundMacroHatchery(GameState gameState) {
         ResourceCount resourceCount = gameState.getResourceCount();
+        boolean techReady = macroHatcheryTechReady(gameState.getTechProgression());
         int hatcheries = gameState.hatcheryCount();
         int outstanding = gameState.inFlightHatcheryPlans(true) + gameState.hatcheriesUnderConstruction(true);
         LarvaBoundMacroHatchery.Gate gate = LarvaBoundMacroHatchery.evaluate(techReady, gameState.numLarva(),
                 hatcheries, resourceCount.availableMinerals(), resourceCount.availableGas(),
                 gameState.knownEnemyMobileGroundCombatUnitsAtOurBases(), outstanding);
-        PlanEvents.macroHatcheryGate(gate, techReady, hatcheries, outstanding);
-        return gate == LarvaBoundMacroHatchery.Gate.TRIGGER;
+
+        if (gate != LarvaBoundMacroHatchery.Gate.TRIGGER) {
+            PlanEvents.macroHatcheryGate(gate, techReady, hatcheries, outstanding);
+            return null;
+        }
+
+        Plan plan = planMacroHatcheryAt(gameState, gameState.getBaseData().getMainBase());
+        PlanEvents.macroHatcheryGate(plan == null
+                ? LarvaBoundMacroHatchery.Gate.PLACEMENT_UNAVAILABLE : gate, techReady, hatcheries, outstanding);
+        return plan;
+    }
+
+    /**
+     * Whether the shared larva-bound macro hatchery step runs after the build's own plans.
+     *
+     * <p>An opener is out: it hands over before any tech condition can hold, so the request could
+     * only stop on its tech gate and would write gate rows naming a build that can never answer
+     * them. A build that already asked for a hatchery this frame is out too, whatever it wanted
+     * the hatchery for, so a build that owns its own hatchery policy keeps it and the shared step
+     * does not buy a second hatchery on the frame the build bought one.
+     *
+     * @param isOpener whether the active build order is an opener
+     * @param plans the plans the build order produced this frame
+     * @return true when the shared step should run
+     */
+    static boolean runsLarvaBoundMacroHatchery(boolean isOpener, List<Plan> plans) {
+        return !isOpener && !containsHatcheryPlan(plans);
+    }
+
+    /**
+     * Whether the build already asked for a hatchery this frame.
+     *
+     * @param plans the plans the build order produced this frame
+     * @return true when one of them is a hatchery
+     */
+    static boolean containsHatcheryPlan(List<Plan> plans) {
+        for (Plan plan : plans) {
+            if (plan.getType() == PlanType.BUILDING && plan.getPlannedUnit() == UnitType.Zerg_Hatchery) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -925,25 +1037,77 @@ public abstract class BuildOrder {
     protected Plan planMacroHatchery(GameState gameState) {
         BuildingPlanner buildingPlanner = gameState.getBuildingPlanner();
         BaseData baseData = gameState.getBaseData();
-        return macroHatcheryAt(gameState, buildingPlanner.getLocationForMacroHatchery(gameState.getOpponentRace(), baseData));
+        return macroHatcheryAt(gameState, buildingPlanner.targetBaseForMacroHatchery(gameState.getOpponentRace(), baseData));
     }
 
     /**
      * Plans a macro hatchery at an explicitly chosen base rather than the race-keyed rotation.
      */
     protected Plan planMacroHatcheryAt(GameState gameState, Base base) {
-        BuildingPlanner buildingPlanner = gameState.getBuildingPlanner();
-        return macroHatcheryAt(gameState, buildingPlanner.getLocationForMacroHatchery(base));
+        return macroHatcheryAt(gameState, base);
     }
 
-    private Plan macroHatcheryAt(GameState gameState, TilePosition location) {
-        if (location == null || !gameState.mayQueueMacroHatchery()) {
+    /**
+     * The macro hatchery plan for the first base with room for one.
+     *
+     * <p>The preferred base is tried first and every other base we hold after it. A base whose
+     * buildable ring is full used to drop the plan and leave nothing behind; the caller sees null
+     * only once no base we hold can take a hatchery.
+     *
+     * @param gameState current game state
+     * @param preferredBase the base the request wants the hatchery at, which may be null
+     * @return the plan, or null when the enqueue is barred or no base has room
+     */
+    private Plan macroHatcheryAt(GameState gameState, Base preferredBase) {
+        if (!gameState.mayQueueMacroHatchery()) {
             return null;
         }
 
-        gameState.getBuildingPlanner().reservePlannedBuildingTiles(location, UnitType.Zerg_Hatchery);
-        gameState.addPlannedHatchery(1);
-        return macroHatcheryPlan(gameState.getGameTime().getFrames(), location);
+        BuildingPlanner buildingPlanner = gameState.getBuildingPlanner();
+        for (Base base : macroHatcheryBaseOrder(preferredBase, gameState.getBaseData())) {
+            TilePosition location = buildingPlanner.getLocationForMacroHatchery(base);
+            if (location == null) {
+                continue;
+            }
+
+            buildingPlanner.reservePlannedBuildingTiles(location, UnitType.Zerg_Hatchery);
+            gameState.addPlannedHatchery(1);
+            return macroHatcheryPlan(gameState.getGameTime().getFrames(), location);
+        }
+
+        return null;
+    }
+
+    /**
+     * The bases a macro hatchery request tries, in order: the base it asked for, then the main,
+     * then every other base we hold.
+     *
+     * <p>The main comes first among the fallbacks because it is the base furthest behind the
+     * army and the one a builder reaches without crossing the map. The rest are ranked by tile so
+     * the order does not depend on the hash order of the base set, which would make a request that
+     * fails at one base land somewhere different on the next frame.
+     *
+     * @param preferredBase the base the request wants the hatchery at, which may be null
+     * @param baseData the bases we hold
+     * @return the bases to try, in order, without repeats
+     */
+    private static List<Base> macroHatcheryBaseOrder(Base preferredBase, BaseData baseData) {
+        Base mainBase = baseData.getMainBase();
+        List<Base> fallbacks = new ArrayList<>();
+        for (Base base : baseData.getMyBases()) {
+            if (base != null && base != preferredBase) {
+                fallbacks.add(base);
+            }
+        }
+        fallbacks.sort(Comparator.comparingLong(base -> homeFirstBaseRank(base == mainBase,
+                base.getLocation().getX(), base.getLocation().getY())));
+
+        List<Base> ordered = new ArrayList<>();
+        if (preferredBase != null) {
+            ordered.add(preferredBase);
+        }
+        ordered.addAll(fallbacks);
+        return ordered;
     }
 
     /**

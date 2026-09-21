@@ -20,6 +20,7 @@ import lombok.Getter;
 import org.bk.ass.sim.Agent;
 import org.bk.ass.sim.BWMirrorAgentFactory;
 import org.bk.ass.sim.Simulator;
+import telemetry.DecisionPath;
 import telemetry.DefenseEvent;
 import telemetry.RallyReason;
 import telemetry.RallyRelease;
@@ -526,6 +527,7 @@ public class SquadManager {
                 newSquad = newFightSquad(UnitType.Zerg_Mutalisk);
             }
             newSquad.inheritStateFrom(mergeSet);
+            SquadDecisions.pathTaken(newSquad, DecisionPath.MERGE_INHERIT);
             for (Squad mergingSquad: mergeSet) {
                 for (ManagedUnit mu : new ArrayList<>(mergingSquad.getMembers())) {
                     newSquad.addUnit(mu);
@@ -565,6 +567,7 @@ public class SquadManager {
 
             Squad child = squad.createSibling();
             child.inheritStateFrom(squad);
+            SquadDecisions.pathTaken(child, DecisionPath.SPLIT_INHERIT);
             child.setSplitFrame(currentFrame);
             squad.setSplitFrame(currentFrame);
             for (ManagedUnit mu : outliers) {
@@ -636,6 +639,7 @@ public class SquadManager {
     private void rallySquad(Squad squad, RallyReason reason) {
         boolean defilersOnly = squad.isGroundSquad() && squad.hasOnly(UnitType.Zerg_Defiler);
         SquadDecisions.rallied(squad, rallyReasonFor(defilersOnly, reason));
+        SquadDecisions.pathTaken(squad, DecisionPath.RALLY);
         squad.setStatus(SquadStatus.RALLY);
         squad.clearCommitment();
         Position rallyPoint = gameState.getSquadRallyPoint();
@@ -853,11 +857,26 @@ public class SquadManager {
         return Math.min(threshold, MAX_MOVE_OUT_THRESHOLD);
     }
 
+    /**
+     * Runs one tick of a fight squad that is not holding a containment arc.
+     *
+     * <p>The composition and hazard branches answer first, before anything is measured: a Lurker
+     * only squad, a Defiler only squad, and a squad standing in a psionic storm. Every other status
+     * is decided at or below the lock reads, so the retreat lock gates it. A branch placed above
+     * those reads returns before the simulator runs and neither lock can see it.
+     *
+     * <p>A squad with nothing detected anywhere still attacks: the sim has no enemy to weigh, so it
+     * returns ADVANCE, and the fighters take the remembered enemy building through
+     * {@link #assignFallbackMovementTarget}.
+     *
+     * @param squad fight squad to tick
+     */
     private void simulateFightSquad(Squad squad) {
         HashSet<ManagedUnit> managedFighters = squad.getMembers();
 
         if (squad.isGroundSquad() && squad.hasOnly(UnitType.Zerg_Lurker)) {
             squad.setStatus(SquadStatus.FIGHT);
+            SquadDecisions.pathTaken(squad, DecisionPath.LURKER_ONLY);
             assignFightTargets(squad, managedFighters, false);
             return;
         }
@@ -883,6 +902,7 @@ public class SquadManager {
 
             if (anyUnitInStorm) {
                 squad.setStatus(SquadStatus.RETREAT);
+                SquadDecisions.pathTaken(squad, DecisionPath.STORM_RETREAT);
                 int now = game.getFrameCount();
                 for (ManagedUnit managedUnit : managedFighters) {
                     managedUnit.setRole(UnitRole.RETREAT);
@@ -906,17 +926,7 @@ public class SquadManager {
             }
         }
 
-        if (enemyUnits.isEmpty() && !enemyBuildingPositions.isEmpty()) {
-            Position closestPosition = closestKnownEnemyBuilding(squad.getCenter());
-            if (closestPosition != null) {
-                squad.setStatus(SquadStatus.FIGHT);
-                for (ManagedUnit managedUnit : squad.getMembers()) {
-                    managedUnit.setRole(UnitRole.FIGHT);
-                    managedUnit.setMovementTargetPosition(closestPosition.toTilePosition());
-                }
-                return;
-            }
-        }
+        boolean noVisionMarch = enemyUnits.isEmpty() && !enemyBuildingPositions.isEmpty();
 
         int now = game.getFrameCount();
         boolean retreatLocked = squad.isRetreatLocked(now);
@@ -926,6 +936,7 @@ public class SquadManager {
         CombatSimulator.CombatResult result = squad.getCombatSimulator()
                 .evaluate(squad, adjacentSquads, gameState);
         SquadDecisions.simEvaluated(squad, result, retreatLocked, fightLocked);
+        SquadDecisions.pathTaken(squad, requestPath(noVisionMarch, result));
 
         HorizonCombatSimulator.DebugSnapshot snapshot = lastSnapshot(squad);
         boolean enemyMeasured = snapshot == null || snapshot.isEnemyMeasured();
@@ -935,12 +946,14 @@ public class SquadManager {
 
         if (squad.getStatus() == SquadStatus.RETREAT && retreatLocked) {
             SquadDecisions.lockSuppressed(squad, SquadLock.RETREAT);
+            SquadDecisions.pathTaken(squad, DecisionPath.RETREAT_LOCK);
             assignRetreatTargets(squad, managedFighters);
             return;
         }
         if (squad.getStatus() == SquadStatus.FIGHT
                 && fightLockHolds(fightLocked, result, enemyMeasured, ratio, engageThreshold)) {
             SquadDecisions.lockSuppressed(squad, SquadLock.FIGHT);
+            SquadDecisions.pathTaken(squad, DecisionPath.FIGHT_LOCK);
             assignFightTargets(squad, managedFighters, false);
             return;
         }
@@ -1016,6 +1029,37 @@ public class SquadManager {
         if (!fightLocked) return false;
         if (result != CombatSimulator.CombatResult.RETREAT) return true;
         return !enemyMeasured || ratio >= engageThreshold;
+    }
+
+    /**
+     * Names the branch asking for this frame's status, read before either lock is consulted.
+     *
+     * <p>A squad with no detected enemy anywhere cannot be given a fight target by
+     * {@link #assignEnemyTarget}, so every member falls through to the remembered building march
+     * whatever the verdict says. The march therefore outranks the verdict as the description of
+     * what the squad is doing, and the sim columns on the row still carry the verdict itself.
+     *
+     * @param noVisionMarch true when no enemy unit is detected and an enemy building is remembered
+     * @param result this frame's combat sim verdict
+     * @return the branch the row should name
+     */
+    static DecisionPath requestPath(boolean noVisionMarch, CombatSimulator.CombatResult result) {
+        if (noVisionMarch) {
+            return DecisionPath.NO_VISION_MARCH;
+        }
+        if (result == null) {
+            return DecisionPath.NONE;
+        }
+        switch (result) {
+            case ADVANCE:
+                return DecisionPath.SIM_ADVANCE;
+            case ENGAGE:
+                return DecisionPath.SIM_ENGAGE;
+            case RETREAT:
+                return DecisionPath.SIM_RETREAT;
+            default:
+                return DecisionPath.NONE;
+        }
     }
 
     /**
@@ -1116,6 +1160,7 @@ public class SquadManager {
         Arc arc = containmentArc(squad);
         if (arc == null) return false;
         squad.setStatus(SquadStatus.CONTAIN);
+        SquadDecisions.pathTaken(squad, DecisionPath.CONTAIN_ENTER);
         squad.startContainLock(game.getFrameCount());
         assignContainmentPositions(squad, arc);
         return true;
@@ -1211,6 +1256,7 @@ public class SquadManager {
     private void retreatFromContainment(Squad squad, HashSet<ManagedUnit> members, int now) {
         squad.clearContainStart();
         squad.setStatus(SquadStatus.RETREAT);
+        SquadDecisions.pathTaken(squad, DecisionPath.CONTAIN_RETREAT);
         assignRetreatTargets(squad, members);
         squad.startRetreatLock(now);
     }
@@ -1301,6 +1347,7 @@ public class SquadManager {
             if (s.getStatus() == SquadStatus.CONTAIN) {
                 s.clearContainStart();
                 s.setStatus(SquadStatus.FIGHT);
+                SquadDecisions.pathTaken(s, DecisionPath.CONTAIN_BREAK);
                 assignFightTargets(s, s.getMembers(), true);
                 s.startFightLock(now);
             }

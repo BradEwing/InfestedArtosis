@@ -25,7 +25,7 @@ public class ThreeHatchLurker extends TerranBase {
     }
     
     @Override
-    public List<Plan> plan(GameState gameState) {
+    protected List<Plan> buildPlans(GameState gameState) {
         List<Plan> plans = new ArrayList<>();
 
         TechProgression techProgression = gameState.getTechProgression();
@@ -49,8 +49,6 @@ public class ThreeHatchLurker extends TerranBase {
         boolean wantNatural = plannedAndCurrentHatcheries < 2 && droneCount >= 12;
 
         boolean wantFirstMacroHatch = wantFirstMacroHatchery(gameState);
-        boolean wantLarvaBoundMacroHatch = wantLarvaBoundMacroHatchery(gameState,
-                LarvaBoundMacroHatchery.isLurkerTechReady(techProgression));
 
         boolean wantLair = gameState.canPlanLair() && lairCount < 1 && baseCount >= 2;
 
@@ -97,13 +95,6 @@ public class ThreeHatchLurker extends TerranBase {
             if (macroHatchPlan != null) {
                 plans.add(macroHatchPlan);
                 return plans;
-            }
-        }
-
-        if (expansionPlan == null && wantLarvaBoundMacroHatch) {
-            Plan macroHatchPlan = planMacroHatcheryAt(gameState, baseData.getMainBase());
-            if (macroHatchPlan != null) {
-                plans.add(macroHatchPlan);
             }
         }
 
@@ -399,6 +390,11 @@ public class ThreeHatchLurker extends TerranBase {
         return Math.min(baseTarget, livingLurkers + livingHydralisks);
     }
     
+    @Override
+    protected boolean macroHatcheryTechReady(TechProgression techProgression) {
+        return LarvaBoundMacroHatchery.isLurkerTechReady(techProgression);
+    }
+
     @Override
     public boolean playsRace(Race race) {
         return race == Race.Terran;

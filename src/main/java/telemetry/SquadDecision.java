@@ -19,8 +19,7 @@ final class SquadDecision {
 
     private CombatSimulator.CombatResult result;
     private boolean simSampled;
-    private boolean retreatLocked;
-    private boolean fightLocked;
+    private DecisionPath decisionPath = DecisionPath.NONE;
 
     private double ourStrength = NOT_EVALUATED;
     private double enemyStrength = NOT_EVALUATED;

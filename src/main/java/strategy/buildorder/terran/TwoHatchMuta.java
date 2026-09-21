@@ -29,7 +29,7 @@ public class TwoHatchMuta extends TerranBase {
     }
 
     @Override
-    public List<Plan> plan(GameState gameState) {
+    protected List<Plan> buildPlans(GameState gameState) {
         List<Plan> plans = new ArrayList<>();
 
         TechProgression techProgression = gameState.getTechProgression();
@@ -63,8 +63,6 @@ public class TwoHatchMuta extends TerranBase {
         boolean wantNatural  = plannedAndCurrentHatcheries < 2 && droneCount >= 12;
         boolean wantThird    = plannedAndCurrentHatcheries < 3 && spireCount > 0 && mutaCount > 5;
         boolean wantBaseAdvantage = behindOnBases(gameState) || floatingMinerals;
-        boolean wantMacroHatchery = wantLarvaBoundMacroHatchery(gameState,
-                LarvaBoundMacroHatchery.isSpireReady(techProgression));
 
         // Lair timing
         boolean wantLair = gameState.canPlanLair() && lairCount < 1 && baseCount >= 2;
@@ -90,18 +88,10 @@ public class TwoHatchMuta extends TerranBase {
         }
 
         // Bases
-        Plan expansionPlan = null;
         if (wantNatural || wantThird || wantBaseAdvantage) {
-            expansionPlan = this.planNewBase(gameState);
+            Plan expansionPlan = this.planNewBase(gameState);
             if (expansionPlan != null) {
                 plans.add(expansionPlan);
-            }
-        }
-
-        if (expansionPlan == null && wantMacroHatchery) {
-            Plan macroHatcheryPlan = this.planMacroHatcheryAt(gameState, baseData.getMainBase());
-            if (macroHatcheryPlan != null) {
-                plans.add(macroHatcheryPlan);
             }
         }
 
@@ -225,12 +215,17 @@ public class TwoHatchMuta extends TerranBase {
     }
 
     @Override
+    protected boolean macroHatcheryTechReady(TechProgression techProgression) {
+        return LarvaBoundMacroHatchery.isSpireReady(techProgression);
+    }
+
+    @Override
     public boolean playsRace(Race race) {
         return race == Race.Terran;
     }
 
     @Override
-    public boolean needLair() { 
+    public boolean needLair() {
         return true; 
     }
 

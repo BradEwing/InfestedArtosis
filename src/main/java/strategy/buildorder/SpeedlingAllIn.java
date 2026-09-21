@@ -76,7 +76,7 @@ public class SpeedlingAllIn extends BuildOrder {
     }
 
     @Override
-    public List<Plan> plan(GameState gameState) {
+    protected List<Plan> buildPlans(GameState gameState) {
         List<Plan> plans = new ArrayList<>();
         TechProgression techProgression = gameState.getTechProgression();
         BaseData baseData = gameState.getBaseData();
@@ -157,6 +157,16 @@ public class SpeedlingAllIn extends BuildOrder {
     @Override
     public boolean playsRace(Race race) {
         return true;
+    }
+
+    /**
+     * False. The build has no tech unit to be larva bound on: every larva goes to a Zergling the
+     * Spawning Pool already allows. Its own hatchery request at the mineral bar stays the one
+     * producer, so the shared step would only add a second rule reading the same state.
+     */
+    @Override
+    protected boolean macroHatcheryTechReady(TechProgression techProgression) {
+        return false;
     }
 
     /**
