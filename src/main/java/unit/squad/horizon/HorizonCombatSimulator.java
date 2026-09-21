@@ -757,14 +757,20 @@ public class HorizonCombatSimulator implements CombatSimulator {
     /**
      * Strength ratio a squad must beat before it commits to a fight.
      *
+     * <p>Durability is priced per type and shields are Protoss-only, so one value cannot hold the
+     * same meaning in every matchup. Each value is the ratio that the given share of measured-enemy
+     * frames (sim_enemy_strength above {@link #MIN_ENEMY_STRENGTH}) clears: Protoss 45.6%,
+     * Terran 46.8%, Zerg 27.4%. A batch checks the calibration by comparing the share of such
+     * rows whose sim_ratio reaches sim_engage_threshold against those targets.
+     *
      * @param opponentRace race of the opponent
      * @return the engage threshold for that matchup
      */
     static double engageThreshold(Race opponentRace) {
         switch (opponentRace) {
-            case Terran:  return 1.4;
-            case Protoss: return 1.4;
-            case Zerg:    return 1.3;
+            case Terran:  return 1.44;
+            case Protoss: return 1.30;
+            case Zerg:    return 1.35;
             default:      return DEFAULT_ENGAGE_THRESHOLD;
         }
     }
