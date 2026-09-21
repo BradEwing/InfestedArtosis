@@ -37,6 +37,10 @@ GAMES_DIR = SCBW_ROOT / "games"
 MAPS_DIR = SCBW_ROOT / "maps" / "sscai"
 BATCHES_DIR = SCBW_ROOT / "batches"
 
+# A reader holds the manifest for milliseconds; 20 tries over 5 s outlasts any poll without stalling a worker long.
+MANIFEST_REPLACE_ATTEMPTS = 20
+MANIFEST_REPLACE_BACKOFF_S = 0.25
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_MAPS_FILE = Path(__file__).resolve().parent / "maps.txt"
 
@@ -92,12 +96,26 @@ def load_manifest(run_id):
 
 
 def save_manifest(manifest):
+    """Write the manifest atomically, tolerating another process holding it open.
+
+    On Windows os.replace fails while any other process has the destination open, as a dashboard or
+    sitrep polling the manifest does. Every save writes the whole manifest, so a save that still cannot
+    land after retrying is skipped with a warning and the next save carries its state. Raising instead
+    would record a finished game as NO_RESULT and end the worker thread that tried to save it.
+    """
     BATCHES_DIR.mkdir(parents=True, exist_ok=True)
     path = manifest_path(manifest["run_id"])
     tmp = path.with_suffix(".json.tmp")
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=2)
-    os.replace(tmp, path)
+    for _ in range(MANIFEST_REPLACE_ATTEMPTS):
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError:
+            time.sleep(MANIFEST_REPLACE_BACKOFF_S)
+    print(f"warning: {path.name} is held open by another process; this save is deferred to the next one",
+          file=sys.stderr, flush=True)
 
 
 def latest_run_id():
