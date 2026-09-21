@@ -7,6 +7,7 @@ import info.Readiness;
 import info.tracking.StrategyTracker;
 import macro.plan.Plan;
 import strategy.buildorder.BuildOrder;
+import strategy.buildorder.SporeTargets;
 import strategy.buildorder.SunkenTargets;
 import util.Time;
 
@@ -178,34 +179,7 @@ public abstract class TerranBase extends BuildOrder {
 
     @Override
     protected int requiredSpores(GameState gameState) {
-        int spores = 0;
-
-        if (gameState.enemyUnitCount(UnitType.Terran_Starport) > 0) {
-            spores = 1;
-        }
-
-        if (gameState.enemyUnitCount(UnitType.Terran_Wraith) > 0) {
-            spores = Math.max(spores, 1);
-        }
-
-        if (gameState.enemyUnitCount(UnitType.Terran_Valkyrie) > 0) {
-            spores = Math.max(spores, 1);
-        }
-
-        if (gameState.enemyUnitCount(UnitType.Terran_Science_Vessel) > 0) {
-            spores = Math.max(spores, 1);
-        }
-
-        if (gameState.enemyUnitCount(UnitType.Terran_Ghost) > 0
-                || gameState.enemyUnitCount(UnitType.Terran_Science_Facility) > 0) {
-            spores = Math.max(spores, 1);
-        }
-
-        if (gameState.enemyUnitCount(UnitType.Terran_Battlecruiser) > 0) {
-            spores = Math.max(spores, 2);
-        }
-
-        return spores;
+        return SporeTargets.terranSpores(gameState::enemyUnitCount);
     }
 
     /**

@@ -6,6 +6,7 @@ import info.GameState;
 import info.Readiness;
 import macro.plan.Plan;
 import strategy.buildorder.BuildOrder;
+import strategy.buildorder.SporeTargets;
 import strategy.buildorder.SunkenTargets;
 
 import java.util.Collections;
@@ -24,8 +25,6 @@ public abstract class ZergBase extends BuildOrder {
     static final int BASE_ZERGLING_TARGET = 10;
     static final int MAX_ZERGLING_TARGET = 40;
 
-    static final int AIR_THREAT_SPORES = 1;
-
     protected ZergBase(String name) {
         super(name);
     }
@@ -42,33 +41,7 @@ public abstract class ZergBase extends BuildOrder {
 
     @Override
     protected int requiredSpores(GameState gameState) {
-        return sporeTarget(
-                gameState.enemyUnitCount(UnitType.Zerg_Spire) + gameState.enemyUnitCount(UnitType.Zerg_Greater_Spire),
-                gameState.observedEnemyAirCombatUnitCount());
-    }
-
-    /**
-     * Spores per base the Zerg matchup asks for.
-     * <p>
-     * A Spire is read as well as the flyers it makes, because a Spore needs an Evolution Chamber
-     * first and the two together take longer to stand than a Spire takes to produce its first
-     * Mutalisk. Waiting for the flyer leaves the Spore finishing after the raid it answers. The
-     * flyer term covers a Spire that was never scouted. Overlords do not count: the flyer term is
-     * {@link GameState#observedEnemyAirCombatUnitCount()}, which counts only flyers that carry a
-     * weapon.
-     * <p>
-     * One per base, because the planner already spreads a per base target across every base we
-     * hold, and each base has its own mineral line for a raid to reach.
-     *
-     * @param enemySpires living enemy Spires and Greater Spires we have observed
-     * @param enemyAirCombatUnits living armed enemy flyers we have observed
-     * @return spores per base
-     */
-    static int sporeTarget(int enemySpires, int enemyAirCombatUnits) {
-        if (enemySpires > 0 || enemyAirCombatUnits > 0) {
-            return AIR_THREAT_SPORES;
-        }
-        return 0;
+        return SporeTargets.zergSpores(gameState::enemyUnitCount, gameState.observedEnemyAirCombatUnitCount());
     }
 
     @Override

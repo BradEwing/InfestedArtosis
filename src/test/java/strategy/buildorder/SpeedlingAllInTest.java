@@ -1,9 +1,15 @@
 package strategy.buildorder;
 
 import bwapi.Race;
+import bwapi.UnitType;
+import info.TechProgression;
 import org.junit.jupiter.api.Test;
 import strategy.BuildOrderFactory;
 import util.Time;
+
+import java.util.HashMap;
+import java.util.Map;
+import java.util.function.ToIntFunction;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -15,6 +21,18 @@ class SpeedlingAllInTest {
     private static final Time STALLED = new Time(9, 0);
 
     private static final Time EARLY = new Time(6, 0);
+
+    private static final int NO_AIR_UNITS = 0;
+
+    private static final ToIntFunction<UnitType> NOTHING_OBSERVED = unitType -> 0;
+
+    private static ToIntFunction<UnitType> observed(UnitType... unitTypes) {
+        Map<UnitType, Integer> counts = new HashMap<>();
+        for (UnitType unitType : unitTypes) {
+            counts.merge(unitType, 1, Integer::sum);
+        }
+        return unitType -> counts.getOrDefault(unitType, 0);
+    }
 
     @Test
     void derivesTheDroneBelowTheTarget() {
@@ -168,6 +186,81 @@ class SpeedlingAllInTest {
     @Test
     void reportsNoStallWhileSpeedStillOwesGas() {
         assertFalse(SpeedlingAllIn.allInStalled(STALLED, SpeedlingAllIn.STALL_ZERGLINGS, false));
+    }
+
+    /**
+     * The build has no matchup class, so the race dispatch is the whole of its Spore target. Each
+     * race's number is the one its matchup base class asks for.
+     */
+    @Test
+    void asksForTheMatchupSporeTargetOfEveryRace() {
+        assertEquals(SporeTargets.AIR_THREAT_SPORES,
+                SporeTargets.sporeTarget(Race.Protoss, observed(UnitType.Protoss_Stargate), NO_AIR_UNITS));
+        assertEquals(SporeTargets.AIR_THREAT_SPORES,
+                SporeTargets.sporeTarget(Race.Terran, observed(UnitType.Terran_Wraith), NO_AIR_UNITS));
+        assertEquals(SporeTargets.AIR_THREAT_SPORES,
+                SporeTargets.sporeTarget(Race.Zerg, observed(UnitType.Zerg_Spire), NO_AIR_UNITS));
+        assertEquals(SporeTargets.AIR_THREAT_SPORES,
+                SporeTargets.sporeTarget(Race.Zerg, NOTHING_OBSERVED, 3));
+    }
+
+    @Test
+    void asksForNoSporeWhileTheOpponentRaceIsUnknown() {
+        assertEquals(0, SporeTargets.sporeTarget(Race.Unknown,
+                observed(UnitType.Protoss_Stargate, UnitType.Terran_Wraith, UnitType.Zerg_Spire), 3));
+    }
+
+    @Test
+    void asksForNoSporeWithNoAirThreatObserved() {
+        for (Race race : new Race[]{Race.Protoss, Race.Terran, Race.Zerg}) {
+            assertEquals(0, SporeTargets.sporeTarget(race, NOTHING_OBSERVED, NO_AIR_UNITS),
+                    "should ask for no spore against " + race);
+        }
+    }
+
+    /**
+     * A Spore needs an Evolution Chamber, and the stall path takes one for its melee upgrade. Both
+     * read chambers standing plus chambers planned, so the first to ask builds the only one.
+     */
+    @Test
+    void theStallPathTakesTheEvolutionChamberNoOneHasTakenYet() {
+        TechProgression techProgression = new TechProgression();
+        techProgression.setSpawningPool(true);
+
+        assertTrue(SpeedlingAllIn.shouldPlanStallEvolutionChamber(techProgression));
+        assertTrue(BuildOrder.shouldPlanSporePrerequisite(techProgression));
+    }
+
+    @Test
+    void theStallPathDegradesToTheMeleeUpgradeBehindASporeDrivenEvolutionChamber() {
+        TechProgression planned = new TechProgression();
+        planned.setSpawningPool(true);
+        planned.setPlannedEvolutionChambers(1);
+
+        assertFalse(SpeedlingAllIn.shouldPlanStallEvolutionChamber(planned));
+        assertFalse(BuildOrder.shouldPlanSporePrerequisite(planned));
+
+        TechProgression standing = new TechProgression();
+        standing.setSpawningPool(true);
+        standing.setEvolutionChambers(1);
+
+        assertFalse(SpeedlingAllIn.shouldPlanStallEvolutionChamber(standing));
+        assertTrue(standing.canPlanMeleeUpgrades());
+    }
+
+    /**
+     * Melee stops at level 1, so the only upgrade either path researches never reaches the count
+     * that would pull in a Lair.
+     */
+    @Test
+    void pullsNoLairBehindTheSharedEvolutionChamber() {
+        TechProgression techProgression = new TechProgression();
+        techProgression.setSpawningPool(true);
+        techProgression.setEvolutionChambers(1);
+        techProgression.setMeleeUpgrades(1);
+
+        assertFalse(techProgression.needLairForNextEvolutionChamberUpgrades());
+        assertFalse(new SpeedlingAllIn().needLair());
     }
 
     @Test
