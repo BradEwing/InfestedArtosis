@@ -31,6 +31,7 @@ class HorizonCombatSimulatorTest {
     private static final double SUPERSEDED_ANTI_AIR_LITERAL = 2.0;
     private static final double ZERG_ENGAGE_THRESHOLD = HorizonCombatSimulator.engageThreshold(Race.Zerg);
     private static final double TERRAN_ENGAGE_THRESHOLD = HorizonCombatSimulator.engageThreshold(Race.Terran);
+    private static final double UNCALIBRATED_TERRAN_ENGAGE_THRESHOLD = 1.4;
     private static final double DISPERSED_SQUAD_STRENGTH = 0;
     private static final double EXPLOSIVE_VERSUS_SMALL =
             UnitStrength.effectiveness(DamageType.Explosive, UnitSizeType.Small);
@@ -461,6 +462,26 @@ class HorizonCombatSimulatorTest {
         assertEquals(RETREAT, HorizonCombatSimulator.selectResult(
                 zerglingStrength(NEAR_THRESHOLD_ZERGLINGS), 0, sample.groundTotal(), sample.antiAirTotal(),
                 false, TERRAN_ENGAGE_THRESHOLD));
+    }
+
+    @Test
+    void theNearThresholdFlipDoesNotDependOnTheTerranThresholdCalibration() {
+        double withMedics = zerglingStrength(NEAR_THRESHOLD_ZERGLINGS)
+                / bioSample(NEAR_THRESHOLD_MARINES, NEAR_THRESHOLD_MEDICS).groundTotal();
+        double withoutMedics = zerglingStrength(NEAR_THRESHOLD_ZERGLINGS)
+                / bioSample(NEAR_THRESHOLD_MARINES, 0).groundTotal();
+        for (double threshold : new double[] {UNCALIBRATED_TERRAN_ENGAGE_THRESHOLD, TERRAN_ENGAGE_THRESHOLD}) {
+            assertTrue(withMedics < threshold);
+            assertTrue(withoutMedics >= threshold);
+        }
+    }
+
+    @Test
+    void pinsThePerRaceEngageThresholds() {
+        assertEquals(1.30, HorizonCombatSimulator.engageThreshold(Race.Protoss), 1e-9);
+        assertEquals(1.44, HorizonCombatSimulator.engageThreshold(Race.Terran), 1e-9);
+        assertEquals(1.35, HorizonCombatSimulator.engageThreshold(Race.Zerg), 1e-9);
+        assertEquals(1.0, HorizonCombatSimulator.engageThreshold(Race.Random), 1e-9);
     }
 
     @Test
