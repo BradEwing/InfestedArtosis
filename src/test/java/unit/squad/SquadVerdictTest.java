@@ -45,7 +45,7 @@ class SquadVerdictTest {
 
     /**
      * L9NW30UL frames 4650 and 4656 (ratios 1.39996 and 1.3312) and KSV3501B frame 4836 (1.3948): a RETREAT
-     * measured between the ZvP retreat threshold of 0.8 and the engage threshold of 1.4 releases the lock.
+     * measured between a retreat threshold of 0.8 and an engage threshold of 1.4 releases the lock.
      */
     @Test
     void lockedMeasuredRetreatBetweenTheThresholdsIsReleased() {
