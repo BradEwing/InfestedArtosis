@@ -46,6 +46,9 @@ public class HorizonCombatSimulator implements CombatSimulator {
     private static final int BUNKER_TRUST_FRAMES = 48;
     private static final int BUNKER_DECAY_FRAMES = 72;
     private static final int BUNKER_MAX_GARRISON = 4;
+    private static final double BUNKER_LOAD_REACH = 16;
+    private static final Set<UnitType> BUNKER_OCCUPANTS = EnumSet.of(UnitType.Terran_Marine, UnitType.Terran_Firebat,
+            UnitType.Terran_Ghost, UnitType.Terran_Medic);
     private static final double STATIC_DEFENSE_COVER_BUFFER = 64;
     private static final double MEDIC_SUPPORT_CAP = 0.4;
     private static final double MEDIC_SUPPORT_HALF_RATIO = 1.0 / 3.0;
@@ -109,6 +112,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
         List<Position> coveredGroundThreats = new ArrayList<>();
         List<Position> coveredAirThreats = new ArrayList<>();
 
+        List<Position> visibleBunkers = visibleCompletedBunkers(tracker);
         for (ObservedUnit ou : tracker.getLivingObservedUnits()) {
             UnitType type = ou.getUnitType();
             boolean visible = ou.getUnit().isVisible();
@@ -119,6 +123,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
 
             Position pos = visible ? ou.getUnit().getPosition() : ou.getLastKnownLocation();
             if (pos == null) continue;
+            if (!visible && enteredBunker(type, pos, visibleBunkers)) continue;
             double dist = squadCenter.getDistance(pos);
             double radius = engagementRadius(type);
             if (dist > radius) {
@@ -734,10 +739,46 @@ public class HorizonCombatSimulator implements CombatSimulator {
         return weapon.damageType();
     }
 
+    private static List<Position> visibleCompletedBunkers(ObservedUnitTracker tracker) {
+        List<Position> bunkers = new ArrayList<>();
+        for (ObservedUnit ou : tracker.getLivingObservedUnits()) {
+            if (ou.getUnitType() != UnitType.Terran_Bunker || !ou.isCompleted()) continue;
+            Unit unit = ou.getUnit();
+            if (unit != null && unit.isVisible()) {
+                bunkers.add(unit.getPosition());
+            }
+        }
+        return bunkers;
+    }
+
     /**
-     * Share of a bunker's full strength its estimated garrison carries. A bunker never seen firing counts at full
-     * strength; an estimate decays back to full strength once the bunker has gone unobserved past the trust
-     * window.
+     * Whether a unit that has dropped out of sight was last seen against the footprint of a Bunker we can
+     * still see, which is where infantry disappears when it loads. The Bunker's garrison price already
+     * carries it, so keeping it in the sample at its last known position would count it twice.
+     *
+     * @param type the unit's type
+     * @param lastKnown where it was last seen
+     * @param visibleBunkers centres of the completed Bunkers currently in sight
+     * @return true when the unit should be read as loaded
+     */
+    static boolean enteredBunker(UnitType type, Position lastKnown, List<Position> visibleBunkers) {
+        if (!BUNKER_OCCUPANTS.contains(type)) return false;
+        UnitType bunker = UnitType.Terran_Bunker;
+        for (Position centre : visibleBunkers) {
+            int dx = Math.max(Math.max(centre.getX() - bunker.dimensionLeft() - lastKnown.getX(),
+                    lastKnown.getX() - centre.getX() - bunker.dimensionRight()), 0);
+            int dy = Math.max(Math.max(centre.getY() - bunker.dimensionUp() - lastKnown.getY(),
+                    lastKnown.getY() - centre.getY() - bunker.dimensionDown()), 0);
+            if (Math.hypot(dx, dy) <= BUNKER_LOAD_REACH) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Share of a bunker's full strength its estimated garrison carries. A bunker whose garrison is still unknown
+     * counts at full strength and one proven empty counts at nothing, see
+     * {@link info.tracking.BunkerGarrisonEstimator}; an estimate decays back to full strength once the bunker has
+     * gone unobserved past the trust window.
      *
      * @param ou the observed bunker
      * @param currentFrame current frame
