@@ -37,8 +37,12 @@ import java.util.Set;
  * <p>Rows for a squad holding a containment arc carry the arc's center and its points as x:y pairs joined by
  * semicolons; every other row carries -1 and NONE there.
  *
+ * <p>Every row names the branch that decided the status it reports in decision_path. On a
+ * LOCK_SUPPRESSED row that is the request the lock refused, so the suppression episodes a lock
+ * produced are separable by the branch that asked for them.
+ *
  * <p>LOCK_SUPPRESSED rows are deduplicated per suppression episode, keyed on the lock, its expiry
- * frame, and the overridden verdict.
+ * frame, the overridden verdict, and the branch that asked for it.
  *
  * <p>Constructed only when combat telemetry is enabled.
  */
@@ -53,7 +57,8 @@ public class SquadDecisionLogger implements SquadDecisionSink {
             + "can_break_containment,containment_entered,centroid_x,centroid_y,ground_distance_to_base,"
             + "rally_reason,rally_release,defense_candidates,workers_pulled,workers_released,"
             + "defense_sim_defenders,defense_sim_enemies,defense_sim_defender_survivors,"
-            + "defense_sim_enemy_survivors,defense_win_threshold,arc_center_x,arc_center_y,arc_points";
+            + "defense_sim_enemy_survivors,defense_win_threshold,arc_center_x,arc_center_y,arc_points,"
+            + "decision_path";
 
     private static final int FLUSH_INTERVAL_FRAMES = 480;
     private static final String EVENT_STATUS_CHANGE = "STATUS_CHANGE";
@@ -127,8 +132,6 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         try {
             SquadDecision decision = decisionFor(squad);
             decision.setResult(result);
-            decision.setRetreatLocked(retreatLocked);
-            decision.setFightLocked(fightLocked);
             readSnapshot(squad, decision);
         } catch (RuntimeException e) {
             disable();
@@ -147,13 +150,27 @@ public class SquadDecisionLogger implements SquadDecisionSink {
                 return;
             }
 
-            String episode = lock.name() + "@" + lockUntilFrame(squad, lock) + ":" + decision.getResult();
+            String episode = lock.name() + "@" + lockUntilFrame(squad, lock) + ":" + decision.getResult()
+                    + ":" + decision.getDecisionPath();
             if (episode.equals(lastSuppression.get(squad.getId()))) {
                 return;
             }
             lastSuppression.put(squad.getId(), episode);
             writer.append(row(squad, game.getFrameCount(), EVENT_LOCK_SUPPRESSED, squad.getStatus(),
                     squad.getStatus(), decision, lock.name()));
+        } catch (RuntimeException e) {
+            disable();
+        }
+    }
+
+    @Override
+    public void onPathTaken(Squad squad, DecisionPath path) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            decisionFor(squad).setDecisionPath(path);
         } catch (RuntimeException e) {
             disable();
         }
@@ -378,12 +395,13 @@ public class SquadDecisionLogger implements SquadDecisionSink {
                 suppressedBy));
         fields.addAll(squadCells(squad, context,
                 gameState.getScoutData().isEnemyBuildingLocationKnown(),
-                groundDistanceToNearestBase(squad.getCenter())));
+                groundDistanceToNearestBase(squad.getCenter()), frame));
         fields.addAll(rallyCells(rallyReason.getOrDefault(squad.getId(), RallyReason.NONE),
                 context.getRallyRelease()));
         fields.addAll(defenseCells(SquadDecision.NOT_EVALUATED, SquadDecision.NOT_EVALUATED,
                 SquadDecision.NOT_EVALUATED, null));
         fields.addAll(arcCells(squad));
+        fields.addAll(pathCells(context));
         return String.join(",", fields);
     }
 
@@ -396,10 +414,11 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         List<String> fields = new ArrayList<>(defenseIdentityCells(gameId, frame, squad, event, context));
         fields.addAll(squadCells(squad, context,
                 gameState.getScoutData().isEnemyBuildingLocationKnown(),
-                groundDistanceToNearestBase(squad.getCenter())));
+                groundDistanceToNearestBase(squad.getCenter()), frame));
         fields.addAll(rallyCells(RallyReason.NONE, RallyRelease.NONE));
         fields.addAll(defenseCells(candidates, pulled, released, sim));
         fields.addAll(arcCells(squad));
+        fields.addAll(pathCells(context));
         return String.join(",", fields);
     }
 
@@ -438,9 +457,19 @@ public class SquadDecisionLogger implements SquadDecisionSink {
      * Builds the cells that measure the squad at decision time, from our_supply_real through
      * ground_distance_to_base. commit_frame is -1 when the squad is not committed, matching the
      * {@link SquadDecision#NOT_EVALUATED} sentinel used by the sim columns.
+     *
+     * <p>retreat_locked and fight_locked are read from the squad against the row's own frame, so a
+     * row emitted on a frame where no simulation ran still reports the real lock state.
+     *
+     * @param squad squad the row describes
+     * @param context decision accumulated for the squad this frame
+     * @param enemyScouted whether an enemy building location is known
+     * @param groundDistanceToBase ground path length to the closest base held
+     * @param frame frame the row is emitted on
+     * @return the squad measurement cells
      */
     static List<String> squadCells(Squad squad, SquadDecision context, boolean enemyScouted,
-                                   int groundDistanceToBase) {
+                                   int groundDistanceToBase, int frame) {
         Position center = squad.getCenter();
         List<String> fields = new ArrayList<>();
         fields.add(Csv.halfSupply(squad.getSupply()));
@@ -453,8 +482,8 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         fields.add(Csv.format(context.getEnemyStrength()));
         fields.add(Csv.format(context.getRatio()));
         fields.add(Csv.format(context.getEngageThreshold()));
-        fields.add(String.valueOf(SquadDecision.tristate(context.isRetreatLocked())));
-        fields.add(String.valueOf(SquadDecision.tristate(context.isFightLocked())));
+        fields.add(String.valueOf(SquadDecision.tristate(squad.isRetreatLocked(frame))));
+        fields.add(String.valueOf(SquadDecision.tristate(squad.isFightLocked(frame))));
         fields.add(String.valueOf(squad.getRetreatLockedUntilFrame()));
         fields.add(String.valueOf(squad.getFightLockedUntilFrame()));
         fields.add(String.valueOf(SquadDecision.tristate(squad.isCommitted())));
@@ -505,6 +534,21 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         fields.add(String.valueOf(simulated ? sim.getDefenderSurvivors() : SquadDecision.NOT_EVALUATED));
         fields.add(String.valueOf(simulated ? sim.getEnemySurvivors() : SquadDecision.NOT_EVALUATED));
         fields.add(simulated ? Csv.format(sim.getThreshold()) : String.valueOf(SquadDecision.NOT_EVALUATED));
+        return fields;
+    }
+
+    /**
+     * Builds the cell naming the branch that decided the status this row reports.
+     *
+     * <p>NONE on a row no branch claimed, which is every worker defence row and every terminal row,
+     * both of which build their own context.
+     *
+     * @param context decision accumulated for the squad this frame
+     * @return the decision path cell
+     */
+    static List<String> pathCells(SquadDecision context) {
+        List<String> fields = new ArrayList<>();
+        fields.add(Csv.name(context.getDecisionPath()));
         return fields;
     }
 

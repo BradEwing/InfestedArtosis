@@ -40,6 +40,14 @@ public final class SquadDecisions {
         current.onLockSuppressed(squad, lock);
     }
 
+    public static void pathTaken(Squad squad, DecisionPath path) {
+        SquadDecisionSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onPathTaken(squad, path);
+    }
+
     public static void containmentEvaluated(Squad squad, boolean shouldContain, boolean canBreakContainment,
                                             boolean entered) {
         SquadDecisionSink current = sink;

@@ -12,6 +12,10 @@ public interface SquadDecisionSink {
 
     /**
      * The combat sim verdict for a squad, together with the lock state read just before it.
+     *
+     * <p>The lock booleans are the state the verdict was judged against. The lock columns on the
+     * row are read from the squad when the row is built, so a row emitted on a frame with no
+     * verdict still reports them.
      */
     void onSimEvaluated(Squad squad, CombatSimulator.CombatResult result, boolean retreatLocked, boolean fightLocked);
 
@@ -19,6 +23,14 @@ public interface SquadDecisionSink {
      * A lock kept the squad on its current status after the simulator asked for the other one.
      */
     void onLockSuppressed(Squad squad, SquadLock lock);
+
+    /**
+     * The branch of SquadManager that decided this squad's status on this frame.
+     *
+     * <p>Called by every branch that sets or holds a status. The last call of the frame wins, so a
+     * branch that re-decides a status set earlier in the same frame is the one the row names.
+     */
+    void onPathTaken(Squad squad, DecisionPath path);
 
     /**
      * A split that would have fragmented the squad below the move out floor.
