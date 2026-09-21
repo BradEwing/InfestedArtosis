@@ -381,7 +381,7 @@ public class BuildingPlanner {
      * @return TilePosition for macro hatchery placement, or null if no suitable location found
      */
     public TilePosition getLocationForMacroHatchery(Race opponentRace, BaseData baseData) {
-        return getLocationForMacroHatchery(determineTargetBaseForMacroHatch(opponentRace, baseData));
+        return getLocationForMacroHatchery(targetBaseForMacroHatchery(opponentRace, baseData));
     }
 
     /**
@@ -399,8 +399,12 @@ public class BuildingPlanner {
 
     /**
      * Determines which base should receive the next macro hatchery based on opponent race and count.
+     *
+     * @param opponentRace the race of the opponent
+     * @param baseData BaseData instance to access base information
+     * @return the base the rotation wants the next macro hatchery at, or null when it names one we do not hold
      */
-    private Base determineTargetBaseForMacroHatch(Race opponentRace, BaseData baseData) {
+    public Base targetBaseForMacroHatchery(Race opponentRace, BaseData baseData) {
         Base mainBase = baseData.getMainBase();
         Base naturalBase = baseData.hasNaturalExpansion() ?
                 baseData.baseAtTilePosition(baseData.naturalExpansionPosition()) : null;
@@ -505,6 +509,12 @@ public class BuildingPlanner {
 
     /**
      * Checks if a location is valid for placing a macro hatchery.
+     *
+     * <p>The buildability term passes includeBuildings, because the one argument form of
+     * {@link bwapi.Game#isBuildable} reads static map data only and answers true for a tile a
+     * building already stands on. Our own buildings are held in reservedTiles from the frame they
+     * start morphing, but a neutral or enemy structure is in neither, and this runs at every base
+     * we hold rather than only at the main.
      */
     private boolean isValidMacroHatchLocation(TilePosition location, TilePosition buildingSize, Base base) {
         if (location.getX() < 0 || location.getY() < 0 ||
@@ -517,7 +527,7 @@ public class BuildingPlanner {
             for (int dy = 0; dy < buildingSize.getY(); dy++) {
                 TilePosition currentTile = location.add(new TilePosition(dx, dy));
 
-                if (!game.isBuildable(currentTile) || reservedTiles.contains(currentTile)) {
+                if (!game.isBuildable(currentTile, true) || reservedTiles.contains(currentTile)) {
                     return false;
                 }
             }

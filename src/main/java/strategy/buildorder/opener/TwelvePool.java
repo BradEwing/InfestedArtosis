@@ -34,7 +34,7 @@ public class TwelvePool extends BuildOrder {
     }
 
     @Override
-    public List<Plan> plan(GameState gameState) {
+    protected List<Plan> buildPlans(GameState gameState) {
         List<Plan> plans = new ArrayList<>();
         TechProgression techProgression = gameState.getTechProgression();
 
@@ -122,5 +122,14 @@ public class TwelvePool extends BuildOrder {
      */
     static boolean shouldPlanZergling(int poolCount, int zerglingCount, int zerglingsNeeded) {
         return poolCount > 0 && zerglingCount <= zerglingsNeeded;
+    }
+
+    /**
+     * False. The opener hands over before any tech unit exists, so it is never larva bound on
+     * tech and never needs the shared macro hatchery.
+     */
+    @Override
+    protected boolean macroHatcheryTechReady(TechProgression techProgression) {
+        return false;
     }
 }

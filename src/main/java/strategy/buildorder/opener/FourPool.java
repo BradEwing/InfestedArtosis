@@ -20,7 +20,7 @@ public class FourPool extends BuildOrder {
     }
 
     @Override
-    public List<Plan> plan(GameState gameState) {
+    protected List<Plan> buildPlans(GameState gameState) {
         Time currentTime = gameState.getGameTime();
         TechProgression techProgression = gameState.getTechProgression();
         List<Plan> list = new ArrayList<>();
@@ -66,5 +66,14 @@ public class FourPool extends BuildOrder {
     @Override
     protected int poolPriority(int enqueueFrame) {
         return SPAWNING_POOL_PRIORITY;
+    }
+
+    /**
+     * False. The opener hands over before any tech unit exists, so it is never larva bound on
+     * tech and never needs the shared macro hatchery.
+     */
+    @Override
+    protected boolean macroHatcheryTechReady(TechProgression techProgression) {
+        return false;
     }
 }

@@ -1,11 +1,13 @@
 package strategy.buildorder;
 
 import bwapi.UnitType;
+import info.TechProgression;
 import org.junit.jupiter.api.Test;
 import strategy.buildorder.LarvaBoundMacroHatchery.Gate;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class LarvaBoundMacroHatcheryTest {
@@ -106,6 +108,39 @@ class LarvaBoundMacroHatcheryTest {
         assertTrue(Gate.TECH_NOT_READY.isRequest());
         assertTrue(Gate.THREAT.isRequest());
         assertTrue(Gate.OUTSTANDING.isRequest());
+        assertTrue(Gate.PLACEMENT_UNAVAILABLE.isRequest());
         assertTrue(Gate.TRIGGER.isRequest());
+    }
+
+    /**
+     * A request that opens every gate and still produces no plan is a withheld row, not a trigger.
+     * The logger writes MACRO_HATCHERY_TRIGGER for the TRIGGER gate alone, so a value that must
+     * report a lost request has to be a value of its own and must not be TRIGGER.
+     */
+    @Test
+    void aLostPlacementIsAWithheldRequestRatherThanATrigger() {
+        assertNotEquals(Gate.TRIGGER, Gate.PLACEMENT_UNAVAILABLE);
+        assertTrue(Gate.PLACEMENT_UNAVAILABLE.isRequest());
+    }
+
+    /**
+     * The gate the evaluation itself can reach is never PLACEMENT_UNAVAILABLE: the placement is
+     * tried after every gate opens, so only the caller can reach it.
+     */
+    @Test
+    void theEvaluationNeverReportsALostPlacement() {
+        assertNotEquals(Gate.PLACEMENT_UNAVAILABLE, LarvaBoundMacroHatchery.evaluate(TECH_READY, NO_LARVA,
+                TWO_HATCHERIES, 638, 530, NO_ENEMIES, NO_MACRO_HATCHERY));
+        assertNotEquals(Gate.PLACEMENT_UNAVAILABLE, LarvaBoundMacroHatchery.evaluate(TECH_NOT_READY, NO_LARVA,
+                TWO_HATCHERIES, 638, 530, NO_ENEMIES, NO_MACRO_HATCHERY));
+    }
+
+    @Test
+    void theHydraliskConditionReadsAFinishedDen() {
+        TechProgression den = new TechProgression();
+        den.setHydraliskDen(true);
+
+        assertTrue(LarvaBoundMacroHatchery.isHydraliskTechReady(den));
+        assertFalse(LarvaBoundMacroHatchery.isHydraliskTechReady(new TechProgression()));
     }
 }
