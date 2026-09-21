@@ -34,9 +34,9 @@ class HorizonCombatSimulatorTest {
     private static final double DISPERSED_SQUAD_STRENGTH = 0;
     private static final double EXPLOSIVE_VERSUS_SMALL =
             UnitStrength.effectiveness(DamageType.Explosive, UnitSizeType.Small);
-    private static final double PHOTON_CANNON_LITERAL = 84.8528137423857;
-    private static final double BUNKER_LITERAL = 224.4994432064365;
-    private static final double SUNKEN_GROUND_AFTER_EXPLOSIVE_DISCOUNT = 51.96152422706632;
+    private static final double SUPERSEDED_BUNKER_LITERAL = 224.4994432064365;
+    private static final int BUNKER_BUST_ZERGLINGS = 27;
+    private static final int BUNKER_BUST_MARINES = 8;
     private static final double ZERGLING_GROUND_BEFORE_DURABILITY = 1.8644709320919568;
     private static final double MARINE_GROUND_BEFORE_DURABILITY = 1.5484804043631566;
     private static final int NEAR_THRESHOLD_ZERGLINGS = 8;
@@ -297,39 +297,33 @@ class HorizonCombatSimulatorTest {
     }
 
     @Test
-    void handTunedLiteralsAreNotDiscountedBelowTheirOwnFormulaBasis() {
-        for (UnitType type : UnitType.values()) {
-            if (!UnitStrength.isHandTuned(type)) continue;
-            double[] formula = UnitStrength.formulaStrength(type);
-            double formulaGround = formula[0] + formula[2];
-            double weightedGround = HorizonCombatSimulator.weightedGroundStrength(type, ALL_SMALL);
-            DamageType groundDamage = type.groundWeapon() == bwapi.WeaponType.None
-                    ? DamageType.Normal
-                    : type.groundWeapon().damageType();
-            double weightedFormulaGround = formulaGround
-                    * UnitStrength.effectiveness(groundDamage, UnitSizeType.Small);
-            assertTrue(weightedGround >= weightedFormulaGround - 1e-9, type.toString());
-        }
-    }
-
-    @Test
-    void sunkenColonyKeepsItsLiteralAboveTheFormulaAfterTheExplosiveDiscount() {
-        double weighted = HorizonCombatSimulator.weightedGroundStrength(
-                UnitType.Zerg_Sunken_Colony, ALL_SMALL);
-        double formulaWeighted = UnitStrength.formulaStrength(UnitType.Zerg_Sunken_Colony)[0]
-                * EXPLOSIVE_VERSUS_SMALL;
-        assertEquals(SUNKEN_GROUND_AFTER_EXPLOSIVE_DISCOUNT, weighted, 1e-9);
-        assertTrue(weighted > formulaWeighted);
+    void sunkenColonyIsDiscountedOnceForExplosiveDamage() {
+        double formula = UnitStrength.formulaStrength(UnitType.Zerg_Sunken_Colony)[0];
+        assertEquals(formula * EXPLOSIVE_VERSUS_SMALL, HorizonCombatSimulator.weightedGroundStrength(
+                UnitType.Zerg_Sunken_Colony, ALL_SMALL), 1e-9);
     }
 
     @Test
     void normalDamageDefencesAreNeverDiscounted() {
-        assertEquals(PHOTON_CANNON_LITERAL, HorizonCombatSimulator.weightedGroundStrength(
+        double cannon = UnitStrength.formulaStrength(UnitType.Protoss_Photon_Cannon)[0];
+        double bunker = UnitStrength.formulaStrength(UnitType.Terran_Bunker)[1];
+        assertEquals(cannon, HorizonCombatSimulator.weightedGroundStrength(
                 UnitType.Protoss_Photon_Cannon, ALL_SMALL), 1e-9);
-        assertEquals(PHOTON_CANNON_LITERAL, HorizonCombatSimulator.weightedAntiAirStrength(
+        assertEquals(cannon, HorizonCombatSimulator.weightedAntiAirStrength(
                 UnitType.Protoss_Photon_Cannon, ALL_SMALL), 1e-9);
-        assertEquals(BUNKER_LITERAL, HorizonCombatSimulator.weightedAntiAirStrength(
+        assertEquals(bunker, HorizonCombatSimulator.weightedAntiAirStrength(
                 UnitType.Terran_Bunker, ALL_SMALL), 1e-9);
+    }
+
+    @Test
+    void zerglingsThatOutnumberAFullBunkerAndItsEscortEngage() {
+        double zerglings = BUNKER_BUST_ZERGLINGS * UnitStrength.groundToGround(UnitType.Zerg_Zergling);
+        double escort = BUNKER_BUST_MARINES * UnitStrength.groundToGround(UnitType.Terran_Marine);
+        double bunker = HorizonCombatSimulator.weightedGroundStrength(UnitType.Terran_Bunker, ALL_SMALL);
+        assertEquals(RETREAT, HorizonCombatSimulator.selectResult(zerglings, 0,
+                SUPERSEDED_BUNKER_LITERAL + escort, 0, false, TERRAN_ENGAGE_THRESHOLD));
+        assertEquals(ENGAGE, HorizonCombatSimulator.selectResult(zerglings, 0,
+                bunker + escort, 0, false, TERRAN_ENGAGE_THRESHOLD));
     }
 
     @Test

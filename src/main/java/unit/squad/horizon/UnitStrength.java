@@ -5,10 +5,8 @@ import bwapi.UnitSizeType;
 import bwapi.UnitType;
 import bwapi.WeaponType;
 
-import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Set;
 
 /**
  * Combat strength per unit type, split into the four attack domains.
@@ -25,40 +23,21 @@ import java.util.Set;
  * that ratio: it moves a marine against a zergling, a zealot against a hydralisk and a sunken
  * against either, by different amounts.
  *
- * <p>Three types keep a hand-picked literal instead:
- * <ul>
- *   <li>{@code Zerg_Sunken_Colony} and {@code Terran_Bunker} stand for a defended position rather
- *       than a lone building, and the Bunker has no weapon of its own for the formula to read.</li>
- *   <li>{@code Protoss_Photon_Cannon} is held above its formula value so air and ground squads
- *       both treat a cannon as a position to avoid.</li>
- * </ul>
- * Each literal is written on the pre-durability scale and carried onto the new one by the same
- * {@link #durabilityFactor} the formula entries take, so every literal keeps exactly the multiple of
- * its own type's formula value that it held before durability was priced. That keeps each literal at
- * or above the formula value in every domain it scores, so none of them can have been chosen with a
- * damage-type discount already folded in.
+ * <p>Static defence carries no hand-picked literal. The Sunken Colony and Photon Cannon score their
+ * formula value like any other armed type. The Bunker has no weapon of its own, so
+ * {@link #garrisonStrength} prices it as the Marines a full Bunker holds, firing at their own range,
+ * behind the Bunker's hit point pool rather than their own. {@link HorizonCombatSimulator} then scales
+ * that by the garrison it has observed.
  */
 public class UnitStrength {
 
     private static final Map<UnitType, double[]> STRENGTH_TABLE = new HashMap<>();
-
-    private static final Set<UnitType> HAND_TUNED = EnumSet.of(
-            UnitType.Zerg_Sunken_Colony,
-            UnitType.Protoss_Photon_Cannon,
-            UnitType.Terran_Bunker);
 
     static {
         for (UnitType type : UnitType.values()) {
             if (type == UnitType.Unknown || type == UnitType.None) continue;
             STRENGTH_TABLE.put(type, formulaStrength(type));
         }
-
-        STRENGTH_TABLE.put(UnitType.Zerg_Sunken_Colony,
-                handTunedEntry(UnitType.Zerg_Sunken_Colony, 6, 0, 0, 0));
-        STRENGTH_TABLE.put(UnitType.Protoss_Photon_Cannon,
-                handTunedEntry(UnitType.Protoss_Photon_Cannon, 6, 6, 0, 0));
-        STRENGTH_TABLE.put(UnitType.Terran_Bunker,
-                handTunedEntry(UnitType.Terran_Bunker, 12, 12, 0, 0));
     }
 
     /**
@@ -68,10 +47,13 @@ public class UnitStrength {
      * are untouched by durability. The Ultralisk multiplier is gone: it stood in for the missing hit
      * point term and would now be counted twice.
      *
+     * <p>A Bunker scores its garrison, see {@link #garrisonStrength}.
+     *
      * @param type unit type to score
      * @return a fresh array of groundToGround, groundToAir, airToGround, airToAir
      */
     static double[] formulaStrength(UnitType type) {
+        if (type == UnitType.Terran_Bunker) return garrisonStrength(type);
         double g2g = computeWeaponDps(type.groundWeapon(), type.maxGroundHits());
         double g2a = computeWeaponDps(type.airWeapon(), type.maxAirHits());
         double groundRange = type.groundWeapon() != null ? type.groundWeapon().maxRange() : 0;
@@ -121,29 +103,25 @@ public class UnitStrength {
     }
 
     /**
-     * Carries a hand-picked literal, written on the pre-durability scale, onto the durability scale.
+     * Strength of a full Bunker: the Marines it holds, each firing at its own formula value, escorted
+     * by the Bunker's hit point pool instead of their own, because nothing reaches a garrisoned Marine
+     * until the Bunker falls.
      *
-     * @param type unit type the literal belongs to
-     * @param domains the literal's four domain values before durability
-     * @return a fresh array of the four domain values after durability
+     * <p>The Marines keep their own weapon range, matching how {@code GameState} measures a Bunker's
+     * reach. {@link HorizonCombatSimulator} scales the result by the garrison it has observed.
+     *
+     * @param bunker the Bunker type
+     * @return a fresh array of groundToGround, groundToAir, airToGround, airToAir
      */
-    private static double[] handTunedEntry(UnitType type, double... domains) {
-        double durability = durabilityFactor(type);
-        double[] entry = new double[domains.length];
-        for (int i = 0; i < domains.length; i++) {
-            entry[i] = domains[i] * durability;
+    static double[] garrisonStrength(UnitType bunker) {
+        UnitType occupant = UnitType.Terran_Marine;
+        int occupants = bunker.spaceProvided() / occupant.spaceRequired();
+        double pool = durabilityFactor(bunker) / durabilityFactor(occupant);
+        double[] entry = formulaStrength(occupant);
+        for (int i = 0; i < entry.length; i++) {
+            entry[i] *= occupants * pool;
         }
         return entry;
-    }
-
-    /**
-     * Whether a type's table entry is a hand-picked literal rather than the formula value.
-     *
-     * @param type unit type to test
-     * @return true when the entry is a literal
-     */
-    static boolean isHandTuned(UnitType type) {
-        return HAND_TUNED.contains(type);
     }
 
     private static double computeWeaponDps(WeaponType weapon, int maxHits) {

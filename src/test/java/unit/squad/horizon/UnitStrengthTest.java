@@ -6,7 +6,6 @@ import bwapi.UnitType;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class UnitStrengthTest {
@@ -17,9 +16,10 @@ class UnitStrengthTest {
     private static final double ZERGLING_GROUND_BEFORE_DURABILITY = 1.8644709320919568;
     private static final double MARINE_GROUND_BEFORE_DURABILITY = 1.5484804043631566;
 
-    private static final double SUNKEN_GROUND_LITERAL = 103.92304845413264;
-    private static final double PHOTON_CANNON_LITERAL = 84.8528137423857;
-    private static final double BUNKER_LITERAL = 224.4994432064365;
+    private static final double SUNKEN_GROUND_FORMULA = 92.5925375643027;
+    private static final double PHOTON_CANNON_FORMULA = 54.98290206594559;
+    private static final double BUNKER_GARRISON = 115.8776628652021;
+    private static final double SUPERSEDED_BUNKER_LITERAL = 224.4994432064365;
 
     private static double tableEntry(UnitType type, int domain) {
         switch (domain) {
@@ -51,40 +51,9 @@ class UnitStrengthTest {
     }
 
     @Test
-    void antiAirOnlyBuildingsAreNoLongerHandTuned() {
-        assertFalse(UnitStrength.isHandTuned(UnitType.Zerg_Spore_Colony));
-        assertFalse(UnitStrength.isHandTuned(UnitType.Terran_Missile_Turret));
-    }
-
-    @Test
-    void onlyThreeTypesKeepAHandTunedLiteral() {
-        assertTrue(UnitStrength.isHandTuned(UnitType.Zerg_Sunken_Colony));
-        assertTrue(UnitStrength.isHandTuned(UnitType.Protoss_Photon_Cannon));
-        assertTrue(UnitStrength.isHandTuned(UnitType.Terran_Bunker));
-        int handTuned = 0;
-        for (UnitType type : UnitType.values()) {
-            if (UnitStrength.isHandTuned(type)) handTuned++;
-        }
-        assertEquals(3, handTuned);
-    }
-
-    @Test
-    void noHandTunedLiteralSitsBelowItsFormulaValue() {
-        for (UnitType type : UnitType.values()) {
-            if (!UnitStrength.isHandTuned(type)) continue;
-            double[] formula = UnitStrength.formulaStrength(type);
-            for (int domain = 0; domain < formula.length; domain++) {
-                assertTrue(tableEntry(type, domain) >= formula[domain] - TOLERANCE,
-                        type + " domain " + domain);
-            }
-        }
-    }
-
-    @Test
-    void everyOtherTypeScoresExactlyItsFormulaValue() {
+    void everyTypeScoresExactlyItsFormulaValue() {
         for (UnitType type : UnitType.values()) {
             if (type == UnitType.Unknown || type == UnitType.None) continue;
-            if (UnitStrength.isHandTuned(type)) continue;
             double[] formula = UnitStrength.formulaStrength(type);
             for (int domain = 0; domain < formula.length; domain++) {
                 assertEquals(formula[domain], tableEntry(type, domain), TOLERANCE, type.toString());
@@ -148,25 +117,35 @@ class UnitStrengthTest {
     }
 
     @Test
-    void handTunedLiteralsSitOnTheDurabilityScale() {
-        assertEquals(SUNKEN_GROUND_LITERAL,
+    void armedStaticDefenceScoresItsFormulaValue() {
+        assertEquals(SUNKEN_GROUND_FORMULA,
                 UnitStrength.groundToGround(UnitType.Zerg_Sunken_Colony), TOLERANCE);
-        assertEquals(PHOTON_CANNON_LITERAL,
+        assertEquals(PHOTON_CANNON_FORMULA,
                 UnitStrength.groundToGround(UnitType.Protoss_Photon_Cannon), TOLERANCE);
-        assertEquals(PHOTON_CANNON_LITERAL,
+        assertEquals(PHOTON_CANNON_FORMULA,
                 UnitStrength.groundToAir(UnitType.Protoss_Photon_Cannon), TOLERANCE);
-        assertEquals(BUNKER_LITERAL, UnitStrength.groundToGround(UnitType.Terran_Bunker), TOLERANCE);
-        assertEquals(BUNKER_LITERAL, UnitStrength.groundToAir(UnitType.Terran_Bunker), TOLERANCE);
     }
 
     @Test
-    void eachHandTunedLiteralKeepsItsMultipleOfTheTypeItScores() {
-        assertEquals(6 * UnitStrength.durabilityFactor(UnitType.Zerg_Sunken_Colony),
-                UnitStrength.groundToGround(UnitType.Zerg_Sunken_Colony), TOLERANCE);
-        assertEquals(6 * UnitStrength.durabilityFactor(UnitType.Protoss_Photon_Cannon),
-                UnitStrength.groundToGround(UnitType.Protoss_Photon_Cannon), TOLERANCE);
-        assertEquals(12 * UnitStrength.durabilityFactor(UnitType.Terran_Bunker),
-                UnitStrength.groundToGround(UnitType.Terran_Bunker), TOLERANCE);
+    void aBunkerScoresFourMarinesBehindItsOwnHitPoints() {
+        double pool = UnitStrength.durabilityFactor(UnitType.Terran_Bunker)
+                / UnitStrength.durabilityFactor(UnitType.Terran_Marine);
+        double expected = 4 * UnitStrength.groundToGround(UnitType.Terran_Marine) * pool;
+        assertEquals(expected, UnitStrength.groundToGround(UnitType.Terran_Bunker), TOLERANCE);
+        assertEquals(BUNKER_GARRISON, UnitStrength.groundToGround(UnitType.Terran_Bunker), TOLERANCE);
+        assertEquals(BUNKER_GARRISON, UnitStrength.groundToAir(UnitType.Terran_Bunker), TOLERANCE);
+        assertEquals(0.0, UnitStrength.airToGround(UnitType.Terran_Bunker), TOLERANCE);
+        assertEquals(0.0, UnitStrength.airToAir(UnitType.Terran_Bunker), TOLERANCE);
+    }
+
+    @Test
+    void aBunkerIsPricedBelowTheLiteralItReplaces() {
+        double zerglings = UnitStrength.groundToGround(UnitType.Terran_Bunker)
+                / UnitStrength.groundToGround(UnitType.Zerg_Zergling);
+        double supersededZerglings = SUPERSEDED_BUNKER_LITERAL
+                / UnitStrength.groundToGround(UnitType.Zerg_Zergling);
+        assertEquals(10.5053, zerglings, 1e-4);
+        assertEquals(20.3529, supersededZerglings, 1e-4);
     }
 
     @Test
