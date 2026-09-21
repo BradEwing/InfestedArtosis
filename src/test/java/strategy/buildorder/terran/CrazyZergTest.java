@@ -4,7 +4,9 @@ import info.TechProgression;
 import macro.AdvancedUnitEligibility;
 import org.junit.jupiter.api.Test;
 import strategy.buildorder.LarvaBoundMacroHatchery;
+import strategy.buildorder.GasBoundHiveTech;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -21,6 +23,7 @@ class CrazyZergTest {
     private static final int NO_MACRO_HATCHERY = 0;
 
     private static final int ONE_MACRO_HATCHERY = 1;
+    private static final boolean TECH_AVAILABLE = true;
 
     private static TechProgression withSpire() {
         TechProgression techProgression = new TechProgression();
@@ -147,5 +150,91 @@ class CrazyZergTest {
                                                  int outstandingMacroHatcheries) {
         return LarvaBoundMacroHatchery.shouldPlan(new CrazyZerg().macroHatcheryTechReady(techProgression), larva,
                 hatcheries, availableMinerals, availableGas, enemiesAtBases, outstandingMacroHatcheries);
+    }
+
+    /**
+     * Game LMR9R0MB from frame 14823 on: the Lair finished at 7623, two Extractors were ever
+     * taken and one was alive, and the unreserved bank sat at or above 500 gas for the remaining
+     * 5,236 frames. The build asked for no Queen's Nest in any of them.
+     */
+    @Test
+    void asksForTheQueensNestOnATwoGeyserBankThatHeldTheBar() {
+        assertEquals(GasBoundHiveTech.Gate.TRIGGER,
+                GasBoundHiveTech.evaluate(TECH_AVAILABLE, 500, GasBoundHiveTech.SUSTAINED_FRAMES));
+    }
+
+    @Test
+    void asksForTheQueensNestAtTheBar() {
+        assertTrue(GasBoundHiveTech.shouldPlan(TECH_AVAILABLE, GasBoundHiveTech.BRANCH_GAS,
+                GasBoundHiveTech.SUSTAINED_FRAMES));
+    }
+
+    @Test
+    void withholdsTheQueensNestOnABankBelowTheBar() {
+        assertEquals(GasBoundHiveTech.Gate.GAS_SHORT,
+                GasBoundHiveTech.evaluate(TECH_AVAILABLE, GasBoundHiveTech.BRANCH_GAS - 1,
+                        GasBoundHiveTech.SUSTAINED_FRAMES));
+    }
+
+    @Test
+    void withholdsTheQueensNestOnABankThatOnlyTouchedTheBar() {
+        assertEquals(GasBoundHiveTech.Gate.GAS_SHORT,
+                GasBoundHiveTech.evaluate(TECH_AVAILABLE, 1677, GasBoundHiveTech.SUSTAINED_FRAMES - 1));
+    }
+
+    @Test
+    void withholdsTheQueensNestWhileTheLairIsUnfinished() {
+        assertEquals(GasBoundHiveTech.Gate.TECH_UNAVAILABLE,
+                GasBoundHiveTech.evaluate(false, 1677, GasBoundHiveTech.SUSTAINED_FRAMES));
+    }
+
+    @Test
+    void theHoldStartsAtTheFrameTheBankReachesTheBar() {
+        assertEquals(7623, GasBoundHiveTech.holdSince(GasBoundHiveTech.NOT_HELD, 7622, 7623,
+                GasBoundHiveTech.BRANCH_GAS));
+    }
+
+    @Test
+    void theHoldKeepsItsStartWhileTheBankStaysAtTheBar() {
+        assertEquals(7623, GasBoundHiveTech.holdSince(7623, 8000, 8001, 1677));
+    }
+
+    @Test
+    void theHoldRestartsOnABankBelowTheBar() {
+        assertEquals(GasBoundHiveTech.NOT_HELD,
+                GasBoundHiveTech.holdSince(7623, 8000, 8001, GasBoundHiveTech.BRANCH_GAS - 1));
+    }
+
+    /**
+     * The bank is sampled where the build order evaluates, so frames nothing looked at are not
+     * frames the bar was held.
+     */
+    @Test
+    void theHoldRestartsAfterAGapLongerThanTheWindow() {
+        int gapped = 8000 + GasBoundHiveTech.SUSTAINED_FRAMES + 1;
+        assertEquals(GasBoundHiveTech.NOT_HELD, GasBoundHiveTech.holdSince(7623, 8000, gapped, 1677));
+    }
+
+    @Test
+    void readingTheHoldTwiceInOneFrameNeitherAdvancesNorRestartsIt() {
+        int first = GasBoundHiveTech.holdSince(GasBoundHiveTech.NOT_HELD, 7622, 7623, 1677);
+        assertEquals(first, GasBoundHiveTech.holdSince(first, 7623, 7623, 1677));
+        assertEquals(0, GasBoundHiveTech.framesHeld(first, 7623));
+    }
+
+    @Test
+    void framesHeldIsZeroWhileTheBarIsNotHeld() {
+        assertEquals(0, GasBoundHiveTech.framesHeld(GasBoundHiveTech.NOT_HELD, 20059));
+        assertEquals(480, GasBoundHiveTech.framesHeld(7623, 8103));
+    }
+
+    /**
+     * An unavailable structure is not a withheld one, so the gate writes no telemetry row for it.
+     */
+    @Test
+    void theUnavailableGateIsNotARequest() {
+        assertFalse(GasBoundHiveTech.Gate.TECH_UNAVAILABLE.isRequest());
+        assertTrue(GasBoundHiveTech.Gate.GAS_SHORT.isRequest());
+        assertTrue(GasBoundHiveTech.Gate.TRIGGER.isRequest());
     }
 }

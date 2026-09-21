@@ -6,6 +6,7 @@ import macro.plan.Plan;
 import macro.plan.PlanBlocker;
 import macro.plan.PlanCancelSource;
 import macro.plan.PlanState;
+import strategy.buildorder.GasBoundHiveTech;
 import strategy.buildorder.LarvaBoundMacroHatchery;
 
 import java.util.List;
@@ -112,6 +113,15 @@ public final class PlanEvents {
             return;
         }
         current.onMacroHatcheryGate(gate, techReady, hatcheries, outstandingMacroHatcheries);
+    }
+
+    public static void hiveTechGate(GasBoundHiveTech.Gate gate, UnitType structure, int availableGas,
+                                    int requiredGas, int extractorsCompleted) {
+        PlanEventSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onHiveTechGate(gate, structure, availableGas, requiredGas, extractorsCompleted);
     }
 
     public static void unplannedCancel(UnitType unitType, PlanCancelSource cancelSource) {
