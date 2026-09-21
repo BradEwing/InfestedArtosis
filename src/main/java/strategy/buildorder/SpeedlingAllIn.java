@@ -49,12 +49,15 @@ import java.util.List;
  * {@link #requiredSunkens(GameState)}, because it overrides no matchup class of its own.
  *
  * <p>Air is the one threat the ground army cannot answer, so {@link #requiredSpores(GameState)}
- * reads the matchup target of whichever race the opponent turns out to be and the Spore branch
- * sits behind the Spawning Pool, expansion and Extractor and ahead of the zergling, where it costs
- * the opening nothing and is still reachable under uncapped zergling production. The Evolution
- * Chamber a Spore needs is the one the stall path would take, gated on the same count of chambers
- * planned and standing, so whichever asks first is the only one built and the stall path falls
- * through to its melee upgrade.
+ * reads the matchup target of whichever race the opponent turns out to be. The Spore branch sits
+ * behind every branch that makes up the opening - the Spawning Pool, the expansion, the macro
+ * hatchery, the Extractor and Metabolic Boost - and ahead of the drone, stall and zergling
+ * branches, so it costs the opening nothing and is still reachable under uncapped zergling
+ * production. It returns only once it has produced a plan, so a base waiting on its Evolution
+ * Chamber falls through to the branches below rather than spending the frame on nothing. The
+ * Evolution Chamber a Spore needs is the one the stall path would take, gated on the same count of
+ * chambers planned and standing, so whichever asks first is the only one built and the stall path
+ * falls through to its melee upgrade.
  */
 public class SpeedlingAllIn extends BuildOrder {
 
