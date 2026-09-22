@@ -20,6 +20,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SquadDecisionsTest {
 
+    private static final int IDENTITY_CELLS = 9;
+
     private final List<String> events = new ArrayList<>();
 
     private SquadDecisionSink recorder() {
@@ -33,6 +35,11 @@ class SquadDecisionsTest {
             @Override
             public void onLockSuppressed(Squad squad, SquadLock lock) {
                 events.add("LOCK:" + lock);
+            }
+
+            @Override
+            public void onPathTaken(Squad squad, DecisionPath path) {
+                events.add("PATH:" + path);
             }
 
             @Override
@@ -78,10 +85,12 @@ class SquadDecisionsTest {
         SquadDecision context = new SquadDecision();
         String row = String.join(",", SquadDecisionLogger.identityCells("game-1", 1000, squad, "STATUS_CHANGE",
                 SquadStatus.RETREAT, SquadStatus.FIGHT, context, suppressedBy))
-                + "," + String.join(",", SquadDecisionLogger.squadCells(squad, context, false, -1))
+                + "," + String.join(",", SquadDecisionLogger.squadCells(squad, context, false, -1, 1000))
                 + "," + String.join(",", SquadDecisionLogger.rallyCells(reason, release))
                 + "," + String.join(",", SquadDecisionLogger.defenseCells(-1, -1, -1, null))
-                + "," + String.join(",", SquadDecisionLogger.arcCells(squad));
+                + "," + String.join(",", SquadDecisionLogger.arcCells(squad))
+                + "," + String.join(",", SquadDecisionLogger.pathCells(context))
+                + "," + String.join(",", SquadDecisionLogger.enemySampleCells(context));
         return row.split(",", -1);
     }
 
@@ -322,10 +331,12 @@ class SquadDecisionsTest {
         DefenseSim sim = new DefenseSim(true, 8, 6, 1, 5, 0.5);
         String row = String.join(",", SquadDecisionLogger.defenseIdentityCells("game-1", 6242, squad,
                 DefenseEvent.ABANDON, context))
-                + "," + String.join(",", SquadDecisionLogger.squadCells(squad, context, true, -1))
+                + "," + String.join(",", SquadDecisionLogger.squadCells(squad, context, true, -1, 6242))
                 + "," + String.join(",", SquadDecisionLogger.rallyCells(RallyReason.NONE, RallyRelease.NONE))
                 + "," + String.join(",", SquadDecisionLogger.defenseCells(6, 0, 2, sim))
-                + "," + String.join(",", SquadDecisionLogger.arcCells(squad));
+                + "," + String.join(",", SquadDecisionLogger.arcCells(squad))
+                + "," + String.join(",", SquadDecisionLogger.pathCells(context))
+                + "," + String.join(",", SquadDecisionLogger.enemySampleCells(context));
         String[] fields = row.split(",", -1);
 
         assertEquals(SquadDecisionLogger.HEADER.split(",", -1).length, fields.length);
@@ -362,4 +373,70 @@ class SquadDecisionsTest {
         assertEquals(RallyRelease.NONE, SquadDecisionLogger.releaseOnDisband(SquadStatus.CONTAIN));
         assertEquals(RallyRelease.NONE, SquadDecisionLogger.releaseOnDisband(null));
     }
+
+    @Test
+    void pathDispatchIsANoOpWithoutASink() {
+        SquadDecisions.pathTaken(new GroundSquad(), DecisionPath.NO_VISION_MARCH);
+
+        assertTrue(events.isEmpty());
+    }
+
+    @Test
+    void registeredSinkReceivesTheDecisionPath() {
+        SquadDecisions.register(recorder());
+
+        SquadDecisions.pathTaken(new GroundSquad(), DecisionPath.NO_VISION_MARCH);
+
+        assertEquals(1, events.size());
+        assertEquals("PATH:NO_VISION_MARCH", events.get(0));
+    }
+
+    @Test
+    void decisionPathFollowsTheArcColumns() {
+        String[] columns = SquadDecisionLogger.HEADER.split(",", -1);
+        int path = java.util.Arrays.asList(columns).indexOf("decision_path");
+
+        assertEquals("arc_points", columns[path - 1]);
+        assertEquals("sim_enemy_composition", columns[path + 1]);
+    }
+
+    @Test
+    void everyRowNamesTheBranchThatDecidedIt() {
+        SquadDecision context = new SquadDecision();
+        context.setDecisionPath(DecisionPath.NO_VISION_MARCH);
+
+        assertEquals("NO_VISION_MARCH", SquadDecisionLogger.pathCells(context).get(0));
+    }
+
+    @Test
+    void aRowNoBranchClaimedNamesNone() {
+        String[] fields = rowFor(new GroundSquad());
+
+        assertEquals("NONE", fields[columnIndex("decision_path")]);
+    }
+
+    @Test
+    void lockColumnsAreReadFromTheSquadAtTheRowFrame() {
+        Squad locked = new GroundSquad();
+        locked.startRetreatLock(1000);
+
+        List<String> fields = SquadDecisionLogger.squadCells(locked, new SquadDecision(), false, -1, 1000);
+
+        assertEquals("1", fields.get(columnIndex("retreat_locked") - IDENTITY_CELLS));
+        assertEquals("0", fields.get(columnIndex("fight_locked") - IDENTITY_CELLS));
+        assertTrue(locked.getRetreatLockedUntilFrame() > 1000);
+    }
+
+    @Test
+    void anExpiredLockReportsUnlockedOnTheSameSquad() {
+        Squad locked = new GroundSquad();
+        locked.startRetreatLock(1000);
+        int expiry = locked.getRetreatLockedUntilFrame();
+
+        List<String> fields = SquadDecisionLogger.squadCells(locked, new SquadDecision(), false, -1, expiry);
+
+        assertEquals("0", fields.get(columnIndex("retreat_locked") - IDENTITY_CELLS));
+        assertEquals(String.valueOf(expiry), fields.get(columnIndex("retreat_lock_until_frame") - IDENTITY_CELLS));
+    }
+
 }

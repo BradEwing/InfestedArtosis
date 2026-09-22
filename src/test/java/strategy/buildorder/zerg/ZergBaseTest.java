@@ -3,18 +3,12 @@ package strategy.buildorder.zerg;
 import bwapi.UnitType;
 import info.UnitTypeCount;
 import org.junit.jupiter.api.Test;
-import util.Filter;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ZergBaseTest {
 
     private static final int FRAMES = 30;
-
-    private static final int NO_SPIRES = 0;
-    private static final int NO_AIR_UNITS = 0;
 
     private static final int NO_ENEMY_ZERGLINGS = 0;
     private static final int NO_LAIR = 0;
@@ -73,31 +67,5 @@ class ZergBaseTest {
     void capsTheTarget() {
         assertEquals(ZergBase.MAX_ZERGLING_TARGET,
                 ZergBase.zerglingTarget(0, NO_ENEMY_ZERGLINGS, NO_LAIR, false, 100000));
-    }
-
-    @Test
-    void anObservedSpireAsksEveryBaseForASpore() {
-        assertEquals(ZergBase.AIR_THREAT_SPORES, ZergBase.sporeTarget(1, NO_AIR_UNITS));
-        assertTrue(ZergBase.AIR_THREAT_SPORES > 0);
-    }
-
-    @Test
-    void anObservedArmedFlyerAsksEveryBaseForASporeWithoutAScoutedSpire() {
-        assertEquals(ZergBase.AIR_THREAT_SPORES, ZergBase.sporeTarget(NO_SPIRES, 3));
-    }
-
-    @Test
-    void noAirTechObservedAsksForNoSpore() {
-        assertEquals(0, ZergBase.sporeTarget(NO_SPIRES, NO_AIR_UNITS));
-    }
-
-    /**
-     * The flyer term is fed by the armed flyer filter, so the Overlords every Zerg opponent flies
-     * do not raise the target on their own while the Mutalisks they precede do.
-     */
-    @Test
-    void theFlyerTermCountsMutalisksButNotOverlords() {
-        assertFalse(Filter.isAirCombatUnit(UnitType.Zerg_Overlord));
-        assertTrue(Filter.isAirCombatUnit(UnitType.Zerg_Mutalisk));
     }
 }

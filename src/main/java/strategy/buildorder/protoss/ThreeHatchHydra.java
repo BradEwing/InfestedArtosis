@@ -9,6 +9,7 @@ import info.Readiness;
 import info.TechProgression;
 import info.tracking.StrategyTracker;
 import macro.plan.Plan;
+import strategy.buildorder.LarvaBoundMacroHatchery;
 import strategy.buildorder.ZerglingTargets;
 import util.Time;
 
@@ -37,7 +38,7 @@ public class ThreeHatchHydra extends ProtossBase {
     }
 
     @Override
-    public List<Plan> plan(GameState gameState) {
+    protected List<Plan> buildPlans(GameState gameState) {
         List<Plan> plans = new ArrayList<>();
 
         Time time = gameState.getGameTime();
@@ -420,5 +421,10 @@ public class ThreeHatchHydra extends ProtossBase {
 
         return ZerglingTargets.gasUnitFocus(super.zerglingsNeeded(gameState), den, hydras,
                 HYDRALISKS_BEFORE_ZERGLINGS, gasReachable);
+    }
+
+    @Override
+    protected boolean macroHatcheryTechReady(TechProgression techProgression) {
+        return LarvaBoundMacroHatchery.isHydraliskTechReady(techProgression);
     }
 }

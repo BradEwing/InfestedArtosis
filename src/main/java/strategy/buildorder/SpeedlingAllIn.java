@@ -47,6 +47,17 @@ import java.util.List;
  * <p>Static defense and rush zerglings are left to {@link #planDefense(GameState)} with the base
  * class defaults. Static defense reaches this build through the race agnostic floors in
  * {@link #requiredSunkens(GameState)}, because it overrides no matchup class of its own.
+ *
+ * <p>Air is the one threat the ground army cannot answer, so {@link #requiredSpores(GameState)}
+ * reads the matchup target of whichever race the opponent turns out to be. The Spore branch sits
+ * behind every branch that makes up the opening - the Spawning Pool, the expansion, the macro
+ * hatchery, the Extractor and Metabolic Boost - and ahead of the drone, stall and zergling
+ * branches, so it costs the opening nothing and is still reachable under uncapped zergling
+ * production. It returns only once it has produced a plan, so a base waiting on its Evolution
+ * Chamber falls through to the branches below rather than spending the frame on nothing. The
+ * Evolution Chamber a Spore needs is the one the stall path would take, gated on the same count of
+ * chambers planned and standing, so whichever asks first is the only one built and the stall path
+ * falls through to its melee upgrade.
  */
 public class SpeedlingAllIn extends BuildOrder {
 
@@ -76,7 +87,7 @@ public class SpeedlingAllIn extends BuildOrder {
     }
 
     @Override
-    public List<Plan> plan(GameState gameState) {
+    protected List<Plan> buildPlans(GameState gameState) {
         List<Plan> plans = new ArrayList<>();
         TechProgression techProgression = gameState.getTechProgression();
         BaseData baseData = gameState.getBaseData();
@@ -115,6 +126,13 @@ public class SpeedlingAllIn extends BuildOrder {
             return plans;
         }
 
+        if (!gameState.basesNeedingSpore(this.requiredSpores(gameState)).isEmpty()) {
+            plans.addAll(this.planSporeColony(gameState));
+            if (!plans.isEmpty()) {
+                return plans;
+            }
+        }
+
         int queuedZerglings = gameState.queuedUnitPlanCount(UnitType.Zerg_Zergling);
         boolean owesZergling = shouldPlanZergling(queuedZerglings, techProgression.isSpawningPool());
 
@@ -142,7 +160,7 @@ public class SpeedlingAllIn extends BuildOrder {
         List<Plan> plans = new ArrayList<>();
         TechProgression techProgression = gameState.getTechProgression();
 
-        if (techProgression.evolutionChambers() < 1 && techProgression.canPlanEvolutionChamber()) {
+        if (shouldPlanStallEvolutionChamber(techProgression)) {
             plans.add(this.planEvolutionChamber(gameState));
             return plans;
         }
@@ -157,6 +175,32 @@ public class SpeedlingAllIn extends BuildOrder {
     @Override
     public boolean playsRace(Race race) {
         return true;
+    }
+
+    /**
+     * The per base Spore target of whichever matchup the opponent turns out to be.
+     *
+     * <p>This build has no matchup class to inherit one from and no air unit of its own, so
+     * without this it would answer a Wraith, a Corsair or a Mutalisk with nothing at all. The
+     * numbers are the ones the matchup builds ask for, read from the same place they read them.
+     *
+     * <p>Zero while the race is Unknown: a Random opponent has revealed no unit that could raise
+     * a target, so there is nothing to price.
+     */
+    @Override
+    protected int requiredSpores(GameState gameState) {
+        return SporeTargets.sporeTarget(gameState.getOpponentRace(), gameState::enemyUnitCount,
+                gameState.observedEnemyAirCombatUnitCount());
+    }
+
+    /**
+     * False. The build has no tech unit to be larva bound on: every larva goes to a Zergling the
+     * Spawning Pool already allows. Its own hatchery request at the mineral bar stays the one
+     * producer, so the shared step would only add a second rule reading the same state.
+     */
+    @Override
+    protected boolean macroHatcheryTechReady(TechProgression techProgression) {
+        return false;
     }
 
     /**
@@ -204,6 +248,21 @@ public class SpeedlingAllIn extends BuildOrder {
      */
     static boolean shouldPlanZergling(int queuedZerglingPlans, boolean poolComplete) {
         return poolComplete && queuedZerglingPlans < MAX_QUEUED_ZERGLING_PLANS;
+    }
+
+    /**
+     * Whether the stall path should take the Evolution Chamber its melee upgrade needs.
+     * <p>
+     * The chamber count is chambers standing plus chambers planned, which is the count
+     * {@link BuildOrder#shouldPlanSporePrerequisite(TechProgression)} reads as well. Whichever of
+     * the two paths asks first builds the one chamber and closes this for the other, so the Spore
+     * reaction and the stall upgrade share a chamber rather than each taking one.
+     *
+     * @param techProgression the bot's tech state
+     * @return true when no chamber stands or is on the way and one can be queued
+     */
+    static boolean shouldPlanStallEvolutionChamber(TechProgression techProgression) {
+        return techProgression.evolutionChambers() < 1 && techProgression.canPlanEvolutionChamber();
     }
 
     /**

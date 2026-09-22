@@ -7,12 +7,21 @@ import info.Readiness;
 import info.tracking.StrategyTracker;
 import macro.plan.Plan;
 import strategy.buildorder.BuildOrder;
+import strategy.buildorder.SporeTargets;
 import util.Time;
 
 import java.util.Collections;
 import java.util.List;
 
-public class ProtossBase extends BuildOrder {
+/**
+ * Shared behaviour for the Protoss matchup builds.
+ *
+ * <p>Abstract, and deliberately silent on {@link BuildOrder#macroHatcheryTechReady}. A default
+ * here would be a lineage default: every build under it would inherit a tech condition it never
+ * stated, which is how the larva-bound macro hatchery was lost once already. Leaving the hook
+ * unanswered makes a new build in this matchup fail to compile until it states its own.
+ */
+public abstract class ProtossBase extends BuildOrder {
 
     private static final int EXCESS_MINERALS = 350;
 
@@ -33,7 +42,7 @@ public class ProtossBase extends BuildOrder {
     }
 
     @Override
-    public List<Plan> plan(GameState gameState) {
+    protected List<Plan> buildPlans(GameState gameState) {
         return Collections.emptyList();
     }
 
@@ -82,36 +91,7 @@ public class ProtossBase extends BuildOrder {
 
     @Override
     protected int requiredSpores(GameState gameState) {
-        int spores = 0;
-
-        if (gameState.enemyUnitCount(UnitType.Protoss_Stargate) > 0) {
-            spores = 1;
-        }
-
-        if (gameState.enemyUnitCount(UnitType.Protoss_Corsair) > 0
-                || gameState.enemyUnitCount(UnitType.Protoss_Scout) > 0) {
-            spores = Math.max(spores, 1);
-        }
-
-        if (gameState.enemyUnitCount(UnitType.Protoss_Fleet_Beacon) > 0) {
-            spores = Math.max(spores, 2);
-        }
-
-        if (gameState.enemyUnitCount(UnitType.Protoss_Dark_Templar) > 0
-                || gameState.enemyUnitCount(UnitType.Protoss_Arbiter) > 0) {
-            spores = Math.max(spores, 1);
-        }
-
-        if (gameState.enemyUnitCount(UnitType.Protoss_Templar_Archives) > 0) {
-            spores = Math.max(spores, 1);
-        }
-
-        if (gameState.enemyUnitCount(UnitType.Protoss_Observer) > 0
-                || gameState.enemyUnitCount(UnitType.Protoss_Shuttle) > 0) {
-            spores = Math.max(spores, 1);
-        }
-
-        return spores;
+        return SporeTargets.protossSpores(gameState::enemyUnitCount);
     }
 
     /**

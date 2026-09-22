@@ -50,6 +50,7 @@ class Engagement {
     private double simRatioOpen = -1;
     private double simThresholdOpen = -1;
     private String simVerdictOpen = NONE;
+    private String simCompositionOpen = NONE;
 
     private int unitsLost;
     private int supplyLost;
@@ -126,10 +127,18 @@ class Engagement {
         statusLast = status;
     }
 
-    void noteSim(double ratio, double threshold, String verdict) {
+    /**
+     * Pins the simulator reading the engagement opened on, including the enemy composition that
+     * reading was taken against. The composition is what separates a ratio taken against a sample
+     * the simulator could price from one taken against a sample it could not.
+     *
+     * @param composition sampled enemy as Type:count pairs, empty when nothing was sampled
+     */
+    void noteSim(double ratio, double threshold, String verdict, String composition) {
         this.simRatioOpen = ratio;
         this.simThresholdOpen = threshold;
         this.simVerdictOpen = verdict;
+        this.simCompositionOpen = composition == null || composition.isEmpty() ? NONE : composition;
     }
 
     void addKills(int killedUnits, int killedSupply, boolean ambiguous) {
@@ -186,6 +195,7 @@ class Engagement {
             simRatioOpen = other.simRatioOpen;
             simThresholdOpen = other.simThresholdOpen;
             simVerdictOpen = other.simVerdictOpen;
+            simCompositionOpen = other.simCompositionOpen;
         }
     }
 
@@ -222,6 +232,7 @@ class Engagement {
         fields.add(Csv.format(simRatioOpen));
         fields.add(Csv.format(simThresholdOpen));
         fields.add(simVerdictOpen);
+        fields.add(simCompositionOpen);
         return String.join(",", fields);
     }
 

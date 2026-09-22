@@ -8,6 +8,7 @@ import info.GameState;
 import info.Readiness;
 import info.TechProgression;
 import macro.plan.Plan;
+import strategy.buildorder.LarvaBoundMacroHatchery;
 import util.Time;
 
 import java.util.ArrayList;
@@ -34,7 +35,7 @@ public class CrazyZerg extends TerranBase {
     }
 
     @Override
-    public List<Plan> plan(GameState gameState) {
+    protected List<Plan> buildPlans(GameState gameState) {
         List<Plan> plans = new ArrayList<>();
 
         TechProgression techProgression = gameState.getTechProgression();
@@ -81,10 +82,12 @@ public class CrazyZerg extends TerranBase {
         boolean wantSecondEvoChamber = techProgression.canPlanEvolutionChamber() && hasHive && totalEvoChambers >= 1;
         boolean wantSpire = techProgression.canPlanSpire() && spireCount < 1 && hasLairOrHive && droneCount >= 16;
 
-        boolean wantQueensNest = gameState.canPlanQueensNest() && extractorCount >= 3;
+        boolean wantQueensNest = wantGasBoundHiveTech(gameState, UnitType.Zerg_Queens_Nest,
+                gameState.canPlanQueensNest());
         boolean wantHive = gameState.canPlanHive();
         boolean wantUltraliskCavern = gameState.canPlanUltraliskCavern();
-        boolean wantDefilerMound = techProgression.canPlanDefilerMound() && extractorCount >= 4;
+        boolean wantDefilerMound = wantGasBoundHiveTech(gameState, UnitType.Zerg_Defiler_Mound,
+                techProgression.canPlanDefilerMound());
 
         boolean wantMetabolicBoost = techProgression.canPlanMetabolicBoost() && hasLairOrHive;
         boolean wantCarapace = techProgression.canPlanCarapaceUpgrades() && techProgression.getEvolutionChambers() > 0;
@@ -339,6 +342,17 @@ public class CrazyZerg extends TerranBase {
         }
 
         return Math.min(base, 80);
+    }
+
+    /**
+     * The Spire, as for every Mutalisk build. The composition goes on to Ultralisks and Defilers,
+     * but the Spire is the first tech whose units the build spends every larva it has on, so it is
+     * the point from which floating banks read as a larva limit rather than as tech being saved
+     * for.
+     */
+    @Override
+    protected boolean macroHatcheryTechReady(TechProgression techProgression) {
+        return LarvaBoundMacroHatchery.isSpireReady(techProgression);
     }
 
     @Override

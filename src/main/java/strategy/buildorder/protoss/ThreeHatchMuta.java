@@ -9,6 +9,7 @@ import info.Readiness;
 import info.TechProgression;
 import info.tracking.StrategyTracker;
 import macro.plan.Plan;
+import strategy.buildorder.LarvaBoundMacroHatchery;
 import util.Time;
 
 import java.util.ArrayList;
@@ -38,7 +39,7 @@ public class ThreeHatchMuta extends ProtossBase {
     }
 
     @Override
-    public List<Plan> plan(GameState gameState) {
+    protected List<Plan> buildPlans(GameState gameState) {
         List<Plan> plans = new ArrayList<>();
 
         Time time = gameState.getGameTime();
@@ -375,6 +376,11 @@ public class ThreeHatchMuta extends ProtossBase {
             default:
                 return false;
         }
+    }
+
+    @Override
+    protected boolean macroHatcheryTechReady(TechProgression techProgression) {
+        return LarvaBoundMacroHatchery.isSpireReady(techProgression);
     }
 
     @Override

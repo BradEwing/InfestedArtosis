@@ -122,6 +122,7 @@ public class GameState {
     private ScoutData scoutData;
     private ObservedUnitTracker observedUnitTracker = new ObservedUnitTracker();
     private ObservedBulletTracker observedBulletTracker = new ObservedBulletTracker();
+    private Set<Bullet> lastFrameBunkerBullets = new HashSet<>();
     private PsiStormTracker psiStormTracker = new PsiStormTracker(observedBulletTracker);
     private StrategyTracker strategyTracker;
 
@@ -157,22 +158,28 @@ public class GameState {
     private void updateBunkerGarrisonCounts() {
         int currentFrame = game.getFrameCount();
 
-        Map<Unit, Integer> bunkerBulletCounts = new HashMap<>();
+        Map<Unit, Integer> bunkerShotCounts = new HashMap<>();
         for (Unit enemy : observedUnitTracker.getVisibleEnemyUnits()) {
             if (enemy.getType() == UnitType.Terran_Bunker) {
-                bunkerBulletCounts.put(enemy, 0);
+                bunkerShotCounts.put(enemy, 0);
             }
         }
-        if (bunkerBulletCounts.isEmpty()) return;
+        Set<Bullet> bunkerBullets = new HashSet<>();
+        if (bunkerShotCounts.isEmpty()) {
+            lastFrameBunkerBullets = bunkerBullets;
+            return;
+        }
 
         for (Bullet bullet : game.getBullets()) {
             if (bullet == null || !bullet.exists()) continue;
             if (bullet.getType() != BulletType.Gauss_Rifle_Hit) continue;
             if (bullet.getSource() != null) continue;
+            bunkerBullets.add(bullet);
+            if (lastFrameBunkerBullets.contains(bullet)) continue;
             Position bulletPos = bullet.getPosition();
             Unit closestBunker = null;
             double closestDist = BUNKER_BULLET_RADIUS;
-            for (Unit bunker : bunkerBulletCounts.keySet()) {
+            for (Unit bunker : bunkerShotCounts.keySet()) {
                 double dist = bunker.getPosition().getDistance(bulletPos);
                 if (dist <= closestDist) {
                     closestDist = dist;
@@ -180,14 +187,26 @@ public class GameState {
                 }
             }
             if (closestBunker != null) {
-                bunkerBulletCounts.merge(closestBunker, 1, Integer::sum);
+                bunkerShotCounts.merge(closestBunker, 1, Integer::sum);
             }
         }
+        lastFrameBunkerBullets = bunkerBullets;
 
-        for (Map.Entry<Unit, Integer> entry : bunkerBulletCounts.entrySet()) {
-            int bulletsThisFrame = Math.min(entry.getValue(), 4);
-            observedUnitTracker.updateBunkerGarrison(entry.getKey(), bulletsThisFrame, currentFrame);
+        for (Map.Entry<Unit, Integer> entry : bunkerShotCounts.entrySet()) {
+            Unit bunker = entry.getKey();
+            observedUnitTracker.updateBunkerGarrison(bunker, entry.getValue(), hasTargetInBunkerRange(bunker),
+                    currentFrame);
         }
+    }
+
+    private boolean hasTargetInBunkerRange(Unit bunker) {
+        int range = UnitType.Terran_Marine.groundWeapon().maxRange();
+        for (Unit unit : game.self().getUnits()) {
+            UnitType type = unit.getType();
+            if (type.isBuilding() || !type.canAttack() || !unit.isCompleted() || unit.isBurrowed()) continue;
+            if (bunker.getDistance(unit) <= range) return true;
+        }
+        return false;
     }
 
     private void updateObservedUnitGroundHeights() {

@@ -8,6 +8,7 @@ import macro.plan.Plan;
 import macro.plan.PlanBlocker;
 import macro.plan.PlanCancelSource;
 import macro.plan.PlanState;
+import strategy.buildorder.GasBoundHiveTech;
 import strategy.buildorder.LarvaBoundMacroHatchery;
 
 import java.util.List;
@@ -63,6 +64,19 @@ public interface PlanEventSink {
      */
     default void onMacroHatcheryGate(LarvaBoundMacroHatchery.Gate gate, boolean techReady, int hatcheries,
                                      int outstandingMacroHatcheries) {
+    }
+
+    /**
+     * A build order evaluated a Hive-branch structure against the gas bank.
+     *
+     * @param gate the gate the request stopped on, or TRIGGER
+     * @param structure the structure the gate guards
+     * @param availableGas gas mined and not reserved by a queued plan, as the request read it
+     * @param requiredGas the branch bar the bank is measured against
+     * @param extractorsCompleted finished Extractors, carried as a diagnostic: no gate reads it
+     */
+    default void onHiveTechGate(GasBoundHiveTech.Gate gate, UnitType structure, int availableGas,
+                                int requiredGas, int extractorsCompleted) {
     }
 
     /** A unit was cancelled outside the plan system, so no plan transition records the cancellation. */

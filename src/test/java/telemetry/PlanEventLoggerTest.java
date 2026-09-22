@@ -1,12 +1,19 @@
 package telemetry;
 
 import org.junit.jupiter.api.Test;
+import strategy.buildorder.LarvaBoundMacroHatchery.Gate;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PlanEventLoggerTest {
 
-    private static final int PLAN_COLUMNS = 57;
+    private static final int PLAN_COLUMNS = 61;
+
+    private static final boolean STARVED = true;
+
+    private static final boolean NOT_STARVED = false;
 
     @Test
     void thePlanRowCarriesEveryColumnItsReadersIndexBy() {
@@ -38,9 +45,54 @@ class PlanEventLoggerTest {
     }
 
     @Test
+    void theHiveTechGateColumnsFollowTheMacroHatcheryGate() {
+        int techGate = indexOf("tech_gate");
+        assertEquals(indexOf("macro_hatcheries_outstanding") + 1, techGate);
+        assertEquals("gate_available_gas", column(techGate + 1));
+        assertEquals("gate_required_gas", column(techGate + 2));
+        assertEquals("extractors_completed", column(techGate + 3));
+    }
+
+    @Test
+    void theFirstGateReadingOfTheGameIsAlwaysARow() {
+        assertTrue(PlanEventLogger.isNewMacroHatcheryGateReading(Gate.TECH_NOT_READY, NOT_STARVED, null,
+                NOT_STARVED));
+    }
+
+    @Test
+    void aGateStandingThroughTheSameStateIsNotRepeated() {
+        assertFalse(PlanEventLogger.isNewMacroHatcheryGateReading(Gate.OUTSTANDING, STARVED, Gate.OUTSTANDING,
+                STARVED));
+    }
+
+    @Test
+    void reachingANewGateIsARow() {
+        assertTrue(PlanEventLogger.isNewMacroHatcheryGateReading(Gate.TRIGGER, STARVED, Gate.OUTSTANDING, STARVED));
+    }
+
+    /**
+     * Game LMR9R0MB's 90 frame starvation run would carry no row at all if the gate alone were the
+     * key: a build still short of its tech, or one whose macro hatchery is outstanding, answers the
+     * same gate before the run and throughout it.
+     */
+    @Test
+    void aStarvationRunBeginningUnderAStandingGateIsARow() {
+        assertTrue(PlanEventLogger.isNewMacroHatcheryGateReading(Gate.TECH_NOT_READY, STARVED, Gate.TECH_NOT_READY,
+                NOT_STARVED));
+        assertTrue(PlanEventLogger.isNewMacroHatcheryGateReading(Gate.OUTSTANDING, STARVED, Gate.OUTSTANDING,
+                NOT_STARVED));
+    }
+
+    @Test
+    void leavingStarvationUnderAStandingGateIsARowSoTheNextRunIsMarkedAgain() {
+        assertTrue(PlanEventLogger.isNewMacroHatcheryGateReading(Gate.OUTSTANDING, NOT_STARVED, Gate.OUTSTANDING,
+                STARVED));
+    }
+
+    @Test
     void theBuilderThreatColumnsAreAppendedLast() {
         int route = indexOf("builder_route_enemies");
-        assertEquals(indexOf("macro_hatcheries_outstanding") + 1, route);
+        assertEquals(indexOf("extractors_completed") + 1, route);
         assertEquals("builder_site_enemies", column(route + 1));
         assertEquals("builder_route_defense_zones", column(route + 2));
         assertEquals("builder_at_site", column(route + 3));

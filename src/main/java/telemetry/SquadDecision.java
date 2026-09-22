@@ -19,14 +19,15 @@ final class SquadDecision {
 
     private CombatSimulator.CombatResult result;
     private boolean simSampled;
-    private boolean retreatLocked;
-    private boolean fightLocked;
+    private DecisionPath decisionPath = DecisionPath.NONE;
 
     private double ourStrength = NOT_EVALUATED;
     private double enemyStrength = NOT_EVALUATED;
     private double ratio = NOT_EVALUATED;
     private double engageThreshold = NOT_EVALUATED;
     private int enemySupplyBelieved = NOT_EVALUATED;
+    private String enemyComposition = "NONE";
+    private int enemyUnscoredSupply = NOT_EVALUATED;
 
     private RallyRelease rallyRelease = RallyRelease.NONE;
 
