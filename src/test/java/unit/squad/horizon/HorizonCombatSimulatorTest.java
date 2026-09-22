@@ -36,12 +36,14 @@ class HorizonCombatSimulatorTest {
     private static final double EXPLOSIVE_VERSUS_SMALL =
             UnitStrength.effectiveness(DamageType.Explosive, UnitSizeType.Small);
     private static final double SUPERSEDED_BUNKER_LITERAL = 224.4994432064365;
-    private static final int BUNKER_BUST_ZERGLINGS = 27;
+    private static final int BUNKER_BUST_ZERGLINGS = 30;
+    private static final int ORIGIN_CONTAIN_ZERGLINGS = 27;
     private static final int BUNKER_BUST_MARINES = 8;
+    private static final int BUNKER_BUST_MEDICS = 2;
     private static final double ZERGLING_GROUND_BEFORE_DURABILITY = 1.8644709320919568;
     private static final double MARINE_GROUND_BEFORE_DURABILITY = 1.5484804043631566;
-    private static final int NEAR_THRESHOLD_ZERGLINGS = 8;
-    private static final int NEAR_THRESHOLD_MARINES = 6;
+    private static final int NEAR_THRESHOLD_ZERGLINGS = 10;
+    private static final int NEAR_THRESHOLD_MARINES = 7;
     private static final int NEAR_THRESHOLD_MEDICS = 2;
 
     private static List<Position> at(int offsetX) {
@@ -317,14 +319,25 @@ class HorizonCombatSimulatorTest {
     }
 
     @Test
-    void zerglingsThatOutnumberAFullBunkerAndItsEscortEngage() {
-        double zerglings = BUNKER_BUST_ZERGLINGS * UnitStrength.groundToGround(UnitType.Zerg_Zergling);
-        double escort = BUNKER_BUST_MARINES * UnitStrength.groundToGround(UnitType.Terran_Marine);
+    void zerglingsThatOutnumberAFullBunkerItsEscortAndItsMedicsEngage() {
+        double zerglings = zerglingStrength(BUNKER_BUST_ZERGLINGS);
+        double escort = bunkerEscort().groundTotal();
         double bunker = HorizonCombatSimulator.weightedGroundStrength(UnitType.Terran_Bunker, ALL_SMALL);
+        assertEquals(1.5935, zerglings / (bunker + escort), 1e-4);
         assertEquals(RETREAT, HorizonCombatSimulator.selectResult(zerglings, 0,
                 SUPERSEDED_BUNKER_LITERAL + escort, 0, false, TERRAN_ENGAGE_THRESHOLD));
         assertEquals(ENGAGE, HorizonCombatSimulator.selectResult(zerglings, 0,
                 bunker + escort, 0, false, TERRAN_ENGAGE_THRESHOLD));
+    }
+
+    @Test
+    void theContainThatSatOutsideTheBunkerReadsJustBelowTheTerranThreshold() {
+        double zerglings = zerglingStrength(ORIGIN_CONTAIN_ZERGLINGS);
+        double enemy = HorizonCombatSimulator.weightedGroundStrength(UnitType.Terran_Bunker, ALL_SMALL)
+                + bunkerEscort().groundTotal();
+        assertEquals(1.4342, zerglings / enemy, 1e-4);
+        assertEquals(RETREAT, HorizonCombatSimulator.selectResult(zerglings, 0, enemy, 0, false,
+                TERRAN_ENGAGE_THRESHOLD));
     }
 
     @Test
@@ -447,12 +460,12 @@ class HorizonCombatSimulatorTest {
     void theNearThresholdMarineMedicScenarioMainEngagedNowRetreats() {
         double mainFriendly = NEAR_THRESHOLD_ZERGLINGS * ZERGLING_GROUND_BEFORE_DURABILITY;
         double mainEnemy = NEAR_THRESHOLD_MARINES * MARINE_GROUND_BEFORE_DURABILITY;
-        assertEquals(1.6054, mainFriendly / mainEnemy, 1e-4);
+        assertEquals(1.7201, mainFriendly / mainEnemy, 1e-4);
         assertEquals(ENGAGE, HorizonCombatSimulator.selectResult(
                 mainFriendly, 0, mainEnemy, 0, false, TERRAN_ENGAGE_THRESHOLD));
 
         HorizonCombatSimulator.EnemySample sample = bioSample(NEAR_THRESHOLD_MARINES, NEAR_THRESHOLD_MEDICS);
-        assertEquals(1.2514, zerglingStrength(NEAR_THRESHOLD_ZERGLINGS) / sample.groundTotal(), 1e-4);
+        assertEquals(1.3582, zerglingStrength(NEAR_THRESHOLD_ZERGLINGS) / sample.groundTotal(), 1e-4);
         assertEquals(RETREAT, HorizonCombatSimulator.selectResult(
                 zerglingStrength(NEAR_THRESHOLD_ZERGLINGS), 0, sample.groundTotal(), sample.antiAirTotal(),
                 false, TERRAN_ENGAGE_THRESHOLD));
@@ -472,16 +485,16 @@ class HorizonCombatSimulatorTest {
 
     @Test
     void pinsThePerRaceEngageThresholds() {
-        assertEquals(1.30, HorizonCombatSimulator.engageThreshold(Race.Protoss), 1e-9);
-        assertEquals(1.44, HorizonCombatSimulator.engageThreshold(Race.Terran), 1e-9);
-        assertEquals(1.35, HorizonCombatSimulator.engageThreshold(Race.Zerg), 1e-9);
+        assertEquals(1.25, HorizonCombatSimulator.engageThreshold(Race.Protoss), 1e-9);
+        assertEquals(1.54, HorizonCombatSimulator.engageThreshold(Race.Terran), 1e-9);
+        assertEquals(1.34, HorizonCombatSimulator.engageThreshold(Race.Zerg), 1e-9);
         assertEquals(1.0, HorizonCombatSimulator.engageThreshold(Race.Random), 1e-9);
     }
 
     @Test
     void theSameScenarioWithoutTheMedicsStillEngages() {
         HorizonCombatSimulator.EnemySample sample = bioSample(NEAR_THRESHOLD_MARINES, 0);
-        assertEquals(1.5017, zerglingStrength(NEAR_THRESHOLD_ZERGLINGS) / sample.groundTotal(), 1e-4);
+        assertEquals(1.6090, zerglingStrength(NEAR_THRESHOLD_ZERGLINGS) / sample.groundTotal(), 1e-4);
         assertEquals(ENGAGE, HorizonCombatSimulator.selectResult(
                 zerglingStrength(NEAR_THRESHOLD_ZERGLINGS), 0, sample.groundTotal(), sample.antiAirTotal(),
                 false, TERRAN_ENGAGE_THRESHOLD));
@@ -489,6 +502,10 @@ class HorizonCombatSimulatorTest {
 
     private static double marineGround() {
         return HorizonCombatSimulator.weightedGroundStrength(UnitType.Terran_Marine, ALL_SMALL);
+    }
+
+    private static HorizonCombatSimulator.EnemySample bunkerEscort() {
+        return bioSample(BUNKER_BUST_MARINES, BUNKER_BUST_MEDICS);
     }
 
     private static HorizonCombatSimulator.EnemySample bioSample(int marines, int medics) {
