@@ -11,13 +11,21 @@ import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import bwapi.UnitType;
+import macro.plan.Plan;
+import macro.plan.PlanBlocker;
 import macro.plan.PlanCancelReason;
+import macro.plan.PlanState;
+import telemetry.PlanEvents;
+import telemetry.PlanEventSink;
+import util.Distance;
 
 /**
  * Unit tests for BaseData expansion selection and geyser reservation release.
@@ -37,6 +45,12 @@ public class BaseDataTest {
     private static final TilePosition GEYSER_TILE = new TilePosition(20, 30);
 
     private static final TilePosition OTHER_TILE = new TilePosition(44, 12);
+
+    private static final TilePosition MAIN_HATCHERY = new TilePosition(45, 9);
+
+    private static final TilePosition REMOTE_EXPANSION = new TilePosition(90, 100);
+
+    private static final Set<TilePosition> MAIN_TILES = Distance.tilesWithinManhattanDistance(MAIN_HATCHERY, 12);
 
     private static final int SUNKEN_ID = 42;
 
@@ -345,6 +359,102 @@ public class BaseDataTest {
         assertTrue(BaseData.isExpansionAvailable(0, 0));
     }
 
+    /**
+     * IA-381 acceptance criteria 2, 3 and 4: every hold a lost builder arms is reported, and it is
+     * one step however many builders have been lost. LMR9R0MB armed 2,400 frames on its second
+     * loss at frame 18461 of a game that ended at 20059, which froze expansion for the final 1,598
+     * frames with 2,263 minerals in the bank.
+     */
+    @Test
+    void everyGlobalHoldIsReportedAndNeverExceedsOneStep() {
+        List<int[]> holds = recordExpansionBackoffs(18461, 3);
+
+        assertEquals(3, holds.size());
+        for (int loss = 0; loss < holds.size(); loss++) {
+            assertEquals(loss + 1, holds.get(loss)[0]);
+            assertEquals(BaseData.EXPANSION_BACKOFF_FRAMES, holds.get(loss)[1] - 18461);
+        }
+    }
+
+    /**
+     * IA-381 acceptance criterion 4: a successful expansion clears the count, so the next loss
+     * reports one builder again.
+     */
+    @Test
+    void anExpansionThatLandsResetsTheLostBuilderCount() {
+        List<int[]> holds = new ArrayList<>();
+        PlanEvents.register(backoffRecorder(holds));
+        try {
+            baseData.backoffExpansion(null, 14000);
+            baseData.backoffExpansion(null, 15000);
+            resetLostExpansionBuilders();
+            baseData.backoffExpansion(null, 16000);
+        } finally {
+            PlanEvents.clear();
+        }
+
+        assertEquals(1, holds.get(0)[0]);
+        assertEquals(2, holds.get(1)[0]);
+        assertEquals(1, holds.get(2)[0]);
+    }
+
+    private List<int[]> recordExpansionBackoffs(int lostAt, int losses) {
+        List<int[]> holds = new ArrayList<>();
+        PlanEvents.register(backoffRecorder(holds));
+        try {
+            for (int loss = 0; loss < losses; loss++) {
+                baseData.backoffExpansion(null, lostAt);
+            }
+        } finally {
+            PlanEvents.clear();
+        }
+        return holds;
+    }
+
+    /** Stands in for the addBase reset, which needs a base and a hatchery this test cannot build. */
+    private void resetLostExpansionBuilders() {
+        try {
+            Field field = BaseData.class.getDeclaredField("lostExpansionBuilders");
+            field.setAccessible(true);
+            field.set(baseData, 0);
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private static PlanEventSink backoffRecorder(List<int[]> holds) {
+        return new PlanEventSink() {
+            @Override
+            public void onEnqueue(Plan plan) {
+            }
+
+            @Override
+            public void onStateChange(Plan plan, PlanState from, PlanState to) {
+            }
+
+            @Override
+            public void onBlocked(Plan plan, PlanBlocker blocker) {
+            }
+
+            @Override
+            public void onExpansionBackoff(int lostExpansionBuilders, int expansionHeldUntilFrame) {
+                holds.add(new int[] {lostExpansionBuilders, expansionHeldUntilFrame});
+            }
+        };
+    }
+
+    /**
+     * IA-381 acceptance criterion 4: escalation moves onto the base that killed the builder, which
+     * still outlasts every global hold, so the retry picks somewhere else rather than nowhere.
+     */
+    @Test
+    void thePerBaseHoldStillOutlastsTheCappedGlobalHold() {
+        int lostAt = 18461;
+        int baseHeldUntil = lostAt + BaseData.expansionHold(BaseData.MAX_EXPANSION_BACKOFF_STEPS);
+
+        assertFalse(BaseData.isExpansionAvailable(baseHeldUntil, lostAt + BaseData.EXPANSION_BACKOFF_FRAMES));
+    }
+
     @Test
     void testHoldGrowsWithLostBuildersThenStops() {
         assertEquals(BaseData.EXPANSION_BACKOFF_FRAMES, BaseData.expansionHold(1));
@@ -403,5 +513,28 @@ public class BaseDataTest {
             frame += WALK_FRAMES;
         }
         return cancels;
+    }
+
+    /**
+     * IA-381: only the main-tile branch of isOurBaseSite is reachable here. bwem.Base cannot be
+     * constructed, so myBases and the base-tile lookup both stay empty, every site outside the
+     * main reads as ground we do not hold - the remote-expansion case the dispatch gate still
+     * holds a builder from - and the branch that answers a base location on ownership alone is
+     * left to the review of the code and to the batch, where it shows as a DISPATCH_HOME_SITE row
+     * carrying a Zerg_Hatchery, which cannot occur while it is correct.
+     */
+    @Test
+    void testASiteInOurMainIsOurBaseSite() {
+        assertTrue(baseData.isOurBaseSite(MAIN_TILES, MAIN_HATCHERY, BaseData.NATURAL_DEFENSE_TILE_RADIUS));
+    }
+
+    @Test
+    void testASiteAtABaseWeDoNotHoldIsNotOurBaseSite() {
+        assertFalse(baseData.isOurBaseSite(MAIN_TILES, REMOTE_EXPANSION, BaseData.NATURAL_DEFENSE_TILE_RADIUS));
+    }
+
+    @Test
+    void testASiteWithNoPositionIsNotOurBaseSite() {
+        assertFalse(baseData.isOurBaseSite(MAIN_TILES, null, BaseData.NATURAL_DEFENSE_TILE_RADIUS));
     }
 }
