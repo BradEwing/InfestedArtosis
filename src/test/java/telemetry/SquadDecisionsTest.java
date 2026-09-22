@@ -89,7 +89,8 @@ class SquadDecisionsTest {
                 + "," + String.join(",", SquadDecisionLogger.rallyCells(reason, release))
                 + "," + String.join(",", SquadDecisionLogger.defenseCells(-1, -1, -1, null))
                 + "," + String.join(",", SquadDecisionLogger.arcCells(squad))
-                + "," + String.join(",", SquadDecisionLogger.pathCells(context));
+                + "," + String.join(",", SquadDecisionLogger.pathCells(context))
+                + "," + String.join(",", SquadDecisionLogger.enemySampleCells(context));
         return row.split(",", -1);
     }
 
@@ -334,7 +335,8 @@ class SquadDecisionsTest {
                 + "," + String.join(",", SquadDecisionLogger.rallyCells(RallyReason.NONE, RallyRelease.NONE))
                 + "," + String.join(",", SquadDecisionLogger.defenseCells(6, 0, 2, sim))
                 + "," + String.join(",", SquadDecisionLogger.arcCells(squad))
-                + "," + String.join(",", SquadDecisionLogger.pathCells(context));
+                + "," + String.join(",", SquadDecisionLogger.pathCells(context))
+                + "," + String.join(",", SquadDecisionLogger.enemySampleCells(context));
         String[] fields = row.split(",", -1);
 
         assertEquals(SquadDecisionLogger.HEADER.split(",", -1).length, fields.length);
@@ -390,10 +392,12 @@ class SquadDecisionsTest {
     }
 
     @Test
-    void decisionPathIsTheLastColumn() {
+    void decisionPathFollowsTheArcColumns() {
         String[] columns = SquadDecisionLogger.HEADER.split(",", -1);
+        int path = java.util.Arrays.asList(columns).indexOf("decision_path");
 
-        assertEquals("decision_path", columns[columns.length - 1]);
+        assertEquals("arc_points", columns[path - 1]);
+        assertEquals("sim_enemy_composition", columns[path + 1]);
     }
 
     @Test

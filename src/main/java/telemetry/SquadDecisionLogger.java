@@ -58,7 +58,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
             + "rally_reason,rally_release,defense_candidates,workers_pulled,workers_released,"
             + "defense_sim_defenders,defense_sim_enemies,defense_sim_defender_survivors,"
             + "defense_sim_enemy_survivors,defense_win_threshold,arc_center_x,arc_center_y,arc_points,"
-            + "decision_path";
+            + "decision_path,sim_enemy_composition,sim_enemy_unscored_supply";
 
     private static final int FLUSH_INTERVAL_FRAMES = 480;
     private static final String EVENT_STATUS_CHANGE = "STATUS_CHANGE";
@@ -348,6 +348,9 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         decision.setRatio(snapshot.getOverallRatio());
         decision.setEngageThreshold(snapshot.getEngageThreshold());
         decision.setEnemySupplyBelieved(believedEnemySupply(snapshot));
+        String composition = Csv.sanitize(HorizonCombatSimulator.enemyComposition(snapshot));
+        decision.setEnemyComposition(composition.isEmpty() ? NONE : composition);
+        decision.setEnemyUnscoredSupply(snapshot.getEnemyUnscoredSupply());
     }
 
     /**
@@ -402,6 +405,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
                 SquadDecision.NOT_EVALUATED, null));
         fields.addAll(arcCells(squad));
         fields.addAll(pathCells(context));
+        fields.addAll(enemySampleCells(context));
         return String.join(",", fields);
     }
 
@@ -419,7 +423,30 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         fields.addAll(defenseCells(candidates, pulled, released, sim));
         fields.addAll(arcCells(squad));
         fields.addAll(pathCells(context));
+        fields.addAll(enemySampleCells(context));
         return String.join(",", fields);
+    }
+
+    /**
+     * Builds the two cells that describe what the simulator sampled on the enemy side: the
+     * composition it measured, as Type:count pairs joined by semicolons, and the supply inside that
+     * composition it then priced at nothing.
+     *
+     * <p>Both come from the same enemy list that enemy_supply_believed_real is summed over, so the
+     * supply implied by the composition is that column by construction, and the unscored supply is a
+     * subset of it. Either is the not evaluated sentinel on a row whose decision never read a
+     * simulator snapshot.
+     *
+     * @param context the decision the row is built from
+     * @return the composition cell and the unscored supply cell
+     */
+    static List<String> enemySampleCells(SquadDecision context) {
+        List<String> fields = new ArrayList<>();
+        fields.add(context.getEnemyComposition());
+        fields.add(context.getEnemyUnscoredSupply() < 0
+                ? String.valueOf(SquadDecision.NOT_EVALUATED)
+                : Csv.halfSupply(context.getEnemyUnscoredSupply()));
+        return fields;
     }
 
     /**

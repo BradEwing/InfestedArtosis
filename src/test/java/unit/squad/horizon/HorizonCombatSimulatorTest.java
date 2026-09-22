@@ -31,9 +31,20 @@ class HorizonCombatSimulatorTest {
     private static final double SUPERSEDED_ANTI_AIR_LITERAL = 2.0;
     private static final double ZERG_ENGAGE_THRESHOLD = HorizonCombatSimulator.engageThreshold(Race.Zerg);
     private static final double TERRAN_ENGAGE_THRESHOLD = HorizonCombatSimulator.engageThreshold(Race.Terran);
+    private static final double UNCALIBRATED_TERRAN_ENGAGE_THRESHOLD = 1.4;
     private static final double DISPERSED_SQUAD_STRENGTH = 0;
     private static final double EXPLOSIVE_VERSUS_SMALL =
             UnitStrength.effectiveness(DamageType.Explosive, UnitSizeType.Small);
+    private static final double SUPERSEDED_BUNKER_LITERAL = 224.4994432064365;
+    private static final int BUNKER_BUST_ZERGLINGS = 30;
+    private static final int ORIGIN_CONTAIN_ZERGLINGS = 27;
+    private static final int BUNKER_BUST_MARINES = 8;
+    private static final int BUNKER_BUST_MEDICS = 2;
+    private static final double ZERGLING_GROUND_BEFORE_DURABILITY = 1.8644709320919568;
+    private static final double MARINE_GROUND_BEFORE_DURABILITY = 1.5484804043631566;
+    private static final int NEAR_THRESHOLD_ZERGLINGS = 10;
+    private static final int NEAR_THRESHOLD_MARINES = 7;
+    private static final int NEAR_THRESHOLD_MEDICS = 2;
 
     private static List<Position> at(int offsetX) {
         return Collections.singletonList(new Position(COLONY.getX() + offsetX, COLONY.getY()));
@@ -289,38 +300,228 @@ class HorizonCombatSimulatorTest {
     }
 
     @Test
-    void handTunedLiteralsAreNotDiscountedBelowTheirOwnFormulaBasis() {
-        for (UnitType type : UnitType.values()) {
-            if (!UnitStrength.isHandTuned(type)) continue;
-            double[] formula = UnitStrength.formulaStrength(type);
-            double formulaGround = formula[0] + formula[2];
-            double weightedGround = HorizonCombatSimulator.weightedGroundStrength(type, ALL_SMALL);
-            DamageType groundDamage = type.groundWeapon() == bwapi.WeaponType.None
-                    ? DamageType.Normal
-                    : type.groundWeapon().damageType();
-            double weightedFormulaGround = formulaGround
-                    * UnitStrength.effectiveness(groundDamage, UnitSizeType.Small);
-            assertTrue(weightedGround >= weightedFormulaGround - 1e-9, type.toString());
-        }
-    }
-
-    @Test
-    void sunkenColonyKeepsItsLiteralAboveTheFormulaAfterTheExplosiveDiscount() {
-        double weighted = HorizonCombatSimulator.weightedGroundStrength(
-                UnitType.Zerg_Sunken_Colony, ALL_SMALL);
-        double formulaWeighted = UnitStrength.formulaStrength(UnitType.Zerg_Sunken_Colony)[0]
-                * EXPLOSIVE_VERSUS_SMALL;
-        assertEquals(3.0, weighted, 1e-9);
-        assertTrue(weighted > formulaWeighted);
+    void sunkenColonyIsDiscountedOnceForExplosiveDamage() {
+        double formula = UnitStrength.formulaStrength(UnitType.Zerg_Sunken_Colony)[0];
+        assertEquals(formula * EXPLOSIVE_VERSUS_SMALL, HorizonCombatSimulator.weightedGroundStrength(
+                UnitType.Zerg_Sunken_Colony, ALL_SMALL), 1e-9);
     }
 
     @Test
     void normalDamageDefencesAreNeverDiscounted() {
-        assertEquals(6.0, HorizonCombatSimulator.weightedGroundStrength(
+        double cannon = UnitStrength.formulaStrength(UnitType.Protoss_Photon_Cannon)[0];
+        double bunker = UnitStrength.formulaStrength(UnitType.Terran_Bunker)[1];
+        assertEquals(cannon, HorizonCombatSimulator.weightedGroundStrength(
                 UnitType.Protoss_Photon_Cannon, ALL_SMALL), 1e-9);
-        assertEquals(6.0, HorizonCombatSimulator.weightedAntiAirStrength(
+        assertEquals(cannon, HorizonCombatSimulator.weightedAntiAirStrength(
                 UnitType.Protoss_Photon_Cannon, ALL_SMALL), 1e-9);
-        assertEquals(12.0, HorizonCombatSimulator.weightedAntiAirStrength(
+        assertEquals(bunker, HorizonCombatSimulator.weightedAntiAirStrength(
                 UnitType.Terran_Bunker, ALL_SMALL), 1e-9);
+    }
+
+    @Test
+    void zerglingsThatOutnumberAFullBunkerItsEscortAndItsMedicsEngage() {
+        double zerglings = zerglingStrength(BUNKER_BUST_ZERGLINGS);
+        double escort = bunkerEscort().groundTotal();
+        double bunker = HorizonCombatSimulator.weightedGroundStrength(UnitType.Terran_Bunker, ALL_SMALL);
+        assertEquals(1.5935, zerglings / (bunker + escort), 1e-4);
+        assertEquals(RETREAT, HorizonCombatSimulator.selectResult(zerglings, 0,
+                SUPERSEDED_BUNKER_LITERAL + escort, 0, false, TERRAN_ENGAGE_THRESHOLD));
+        assertEquals(ENGAGE, HorizonCombatSimulator.selectResult(zerglings, 0,
+                bunker + escort, 0, false, TERRAN_ENGAGE_THRESHOLD));
+    }
+
+    @Test
+    void theContainThatSatOutsideTheBunkerReadsJustBelowTheTerranThreshold() {
+        double zerglings = zerglingStrength(ORIGIN_CONTAIN_ZERGLINGS);
+        double enemy = HorizonCombatSimulator.weightedGroundStrength(UnitType.Terran_Bunker, ALL_SMALL)
+                + bunkerEscort().groundTotal();
+        assertEquals(1.4342, zerglings / enemy, 1e-4);
+        assertEquals(RETREAT, HorizonCombatSimulator.selectResult(zerglings, 0, enemy, 0, false,
+                TERRAN_ENGAGE_THRESHOLD));
+    }
+
+    @Test
+    void aHealthFractionIsRootedToMatchTheDurabilityTerm() {
+        assertEquals(1.0, HorizonCombatSimulator.hpWeighting(35, 0, 35, 0), 1e-9);
+        assertEquals(Math.sqrt(0.5), HorizonCombatSimulator.hpWeighting(20, 0, 40, 0), 1e-9);
+        assertEquals(0.0, HorizonCombatSimulator.hpWeighting(0, 0, 40, 0), 1e-9);
+    }
+
+    @Test
+    void anIsolatedMedicContributesNothing() {
+        assertEquals(0.0, HorizonCombatSimulator.medicSupportBonus(3, 0), 1e-9);
+        assertEquals(0.0, bioSample(0, 3).groundTotal(), 1e-9);
+        assertEquals(0.0, bioSample(0, 3).antiAirTotal(), 1e-9);
+    }
+
+    @Test
+    void marinesWithoutAMedicCarryNoSupportTerm() {
+        assertEquals(0.0, HorizonCombatSimulator.medicSupportBonus(0, 6), 1e-9);
+        assertEquals(6 * marineGround(), bioSample(6, 0).groundTotal(), 1e-9);
+    }
+
+    @Test
+    void aMedicMakesTheSameMarineSampleMeasureStronger() {
+        assertTrue(bioSample(6, 1).groundTotal() > bioSample(6, 0).groundTotal());
+        assertTrue(bioSample(6, 1).antiAirTotal() > bioSample(6, 0).antiAirTotal());
+    }
+
+    @Test
+    void everyExtraMedicAddsLessThanTheOneBeforeIt() {
+        double none = bioSample(6, 0).groundTotal();
+        double one = bioSample(6, 1).groundTotal();
+        double two = bioSample(6, 2).groundTotal();
+        double three = bioSample(6, 3).groundTotal();
+        assertTrue(one > none);
+        assertTrue(two > one);
+        assertTrue(three > two);
+        assertTrue(two - one < one - none);
+        assertTrue(three - two < two - one);
+    }
+
+    @Test
+    void theMedicSupportTermIsCapped() {
+        assertTrue(bioSample(6, 200).groundTotal() < 1.4 * bioSample(6, 0).groundTotal());
+    }
+
+    @Test
+    void removingTheSupportedUnitsReturnsTheSupportTermToZero() {
+        assertTrue(bioSample(6, 2).groundTotal() > bioSample(6, 0).groundTotal());
+        assertEquals(0.0, bioSample(0, 2).groundTotal(), 1e-9);
+    }
+
+    @Test
+    void aSupportedMedicIsNoLongerUnscoredSupply() {
+        assertEquals(0, bioSample(6, 2).unscoredSupply());
+        assertEquals(2 * UnitType.Terran_Medic.supplyRequired(), bioSample(0, 2).unscoredSupply());
+    }
+
+    @Test
+    void theSnapshotCarriesTheMedicSupportOnTheMedicEntries() {
+        HorizonCombatSimulator.DebugSnapshot withMedics = snapshotFor(NEAR_THRESHOLD_MARINES, NEAR_THRESHOLD_MEDICS);
+        HorizonCombatSimulator.DebugSnapshot withoutMedics = snapshotFor(NEAR_THRESHOLD_MARINES, 0);
+
+        assertTrue(withMedics.getEnemyTotal() > withoutMedics.getEnemyTotal());
+        assertEquals(0, withMedics.getEnemyUnscoredSupply());
+        for (HorizonCombatSimulator.UnitDebugEntry entry : withMedics.getEnemyUnits()) {
+            assertTrue(entry.getStrength() > 0, entry.getType().toString());
+        }
+        assertEquals(withMedics.getEnemyTotal(), sumOfEntries(withMedics), 1e-9);
+    }
+
+    @Test
+    void aSnapshotOfMedicsAloneStillReportsThemUnscored() {
+        HorizonCombatSimulator.DebugSnapshot snapshot = snapshotFor(0, 2);
+
+        assertEquals(0.0, snapshot.getEnemyTotal(), 1e-9);
+        assertEquals(2 * UnitType.Terran_Medic.supplyRequired(), snapshot.getEnemyUnscoredSupply());
+    }
+
+    private static HorizonCombatSimulator.DebugSnapshot snapshotFor(int marines, int medics) {
+        HorizonCombatSimulator.EnemySample sample = bioSample(marines, medics);
+        HorizonCombatSimulator.DebugSnapshot snapshot = new HorizonCombatSimulator.DebugSnapshot();
+        for (int i = 0; i < marines; i++) {
+            snapshot.getEnemyUnits().add(new HorizonCombatSimulator.UnitDebugEntry(
+                    COLONY, UnitType.Terran_Marine, marineGround(), false, false));
+        }
+        for (int i = 0; i < medics; i++) {
+            snapshot.getEnemyUnits().add(enemyEntry(UnitType.Terran_Medic));
+        }
+        HorizonCombatSimulator.creditMedicSupport(snapshot, sample, false);
+        snapshot.setEnemyUnscoredSupply(sample.unscoredSupply());
+        snapshot.setEnemyTotal(sample.groundTotal());
+        return snapshot;
+    }
+
+    private static double sumOfEntries(HorizonCombatSimulator.DebugSnapshot snapshot) {
+        double total = 0;
+        for (HorizonCombatSimulator.UnitDebugEntry entry : snapshot.getEnemyUnits()) {
+            total += entry.getStrength();
+        }
+        return total;
+    }
+
+    @Test
+    void theEnemyCompositionNamesEveryTypeSampled() {
+        HorizonCombatSimulator.DebugSnapshot snapshot = new HorizonCombatSimulator.DebugSnapshot();
+        snapshot.getEnemyUnits().add(enemyEntry(UnitType.Terran_Medic));
+        snapshot.getEnemyUnits().add(enemyEntry(UnitType.Terran_Marine));
+        snapshot.getEnemyUnits().add(enemyEntry(UnitType.Terran_Marine));
+
+        assertEquals("Terran_Marine:2;Terran_Medic:1", HorizonCombatSimulator.enemyComposition(snapshot));
+    }
+
+    @Test
+    void anEmptySampleHasNoComposition() {
+        assertEquals("", HorizonCombatSimulator.enemyComposition(new HorizonCombatSimulator.DebugSnapshot()));
+    }
+
+    @Test
+    void theNearThresholdMarineMedicScenarioMainEngagedNowRetreats() {
+        double mainFriendly = NEAR_THRESHOLD_ZERGLINGS * ZERGLING_GROUND_BEFORE_DURABILITY;
+        double mainEnemy = NEAR_THRESHOLD_MARINES * MARINE_GROUND_BEFORE_DURABILITY;
+        assertEquals(1.7201, mainFriendly / mainEnemy, 1e-4);
+        assertEquals(ENGAGE, HorizonCombatSimulator.selectResult(
+                mainFriendly, 0, mainEnemy, 0, false, TERRAN_ENGAGE_THRESHOLD));
+
+        HorizonCombatSimulator.EnemySample sample = bioSample(NEAR_THRESHOLD_MARINES, NEAR_THRESHOLD_MEDICS);
+        assertEquals(1.3582, zerglingStrength(NEAR_THRESHOLD_ZERGLINGS) / sample.groundTotal(), 1e-4);
+        assertEquals(RETREAT, HorizonCombatSimulator.selectResult(
+                zerglingStrength(NEAR_THRESHOLD_ZERGLINGS), 0, sample.groundTotal(), sample.antiAirTotal(),
+                false, TERRAN_ENGAGE_THRESHOLD));
+    }
+
+    @Test
+    void theNearThresholdFlipDoesNotDependOnTheTerranThresholdCalibration() {
+        double withMedics = zerglingStrength(NEAR_THRESHOLD_ZERGLINGS)
+                / bioSample(NEAR_THRESHOLD_MARINES, NEAR_THRESHOLD_MEDICS).groundTotal();
+        double withoutMedics = zerglingStrength(NEAR_THRESHOLD_ZERGLINGS)
+                / bioSample(NEAR_THRESHOLD_MARINES, 0).groundTotal();
+        for (double threshold : new double[] {UNCALIBRATED_TERRAN_ENGAGE_THRESHOLD, TERRAN_ENGAGE_THRESHOLD}) {
+            assertTrue(withMedics < threshold);
+            assertTrue(withoutMedics >= threshold);
+        }
+    }
+
+    @Test
+    void pinsThePerRaceEngageThresholds() {
+        assertEquals(1.25, HorizonCombatSimulator.engageThreshold(Race.Protoss), 1e-9);
+        assertEquals(1.44, HorizonCombatSimulator.engageThreshold(Race.Terran), 1e-9);
+        assertEquals(1.34, HorizonCombatSimulator.engageThreshold(Race.Zerg), 1e-9);
+        assertEquals(1.0, HorizonCombatSimulator.engageThreshold(Race.Random), 1e-9);
+    }
+
+    @Test
+    void theSameScenarioWithoutTheMedicsStillEngages() {
+        HorizonCombatSimulator.EnemySample sample = bioSample(NEAR_THRESHOLD_MARINES, 0);
+        assertEquals(1.6090, zerglingStrength(NEAR_THRESHOLD_ZERGLINGS) / sample.groundTotal(), 1e-4);
+        assertEquals(ENGAGE, HorizonCombatSimulator.selectResult(
+                zerglingStrength(NEAR_THRESHOLD_ZERGLINGS), 0, sample.groundTotal(), sample.antiAirTotal(),
+                false, TERRAN_ENGAGE_THRESHOLD));
+    }
+
+    private static double marineGround() {
+        return HorizonCombatSimulator.weightedGroundStrength(UnitType.Terran_Marine, ALL_SMALL);
+    }
+
+    private static HorizonCombatSimulator.EnemySample bunkerEscort() {
+        return bioSample(BUNKER_BUST_MARINES, BUNKER_BUST_MEDICS);
+    }
+
+    private static HorizonCombatSimulator.EnemySample bioSample(int marines, int medics) {
+        HorizonCombatSimulator.EnemySample sample = new HorizonCombatSimulator.EnemySample();
+        double ground = marineGround();
+        double antiAir = HorizonCombatSimulator.weightedAntiAirStrength(UnitType.Terran_Marine, ALL_SMALL);
+        for (int i = 0; i < marines; i++) {
+            sample.add(UnitType.Terran_Marine, ground, antiAir);
+        }
+        for (int i = 0; i < medics; i++) {
+            sample.add(UnitType.Terran_Medic, 0, 0);
+        }
+        return sample;
+    }
+
+    private static HorizonCombatSimulator.UnitDebugEntry enemyEntry(UnitType type) {
+        return new HorizonCombatSimulator.UnitDebugEntry(COLONY, type, 0, false, false);
     }
 }

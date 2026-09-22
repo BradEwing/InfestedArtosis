@@ -18,8 +18,10 @@ import java.util.stream.Stream;
 
 public class ObservedUnitTracker {
     private static final int MARINE_COOLDOWN = 15;
+    private static final int EMPTY_BUNKER_EVIDENCE_FRAMES = 48;
 
     private final HashMap<Unit, ObservedUnit> observedUnits = new HashMap<>();
+    private final HashMap<Unit, BunkerGarrisonEstimator> bunkerGarrisons = new HashMap<>();
 
     public ObservedUnitTracker() {
 
@@ -131,22 +133,20 @@ public class ObservedUnitTracker {
     }
 
     /**
-     * Estimates a bunker's garrison from the marine bullets it fired this frame. A bunker only fires with a
-     * target in range, so a silent frame is no evidence the bunker is empty and leaves the estimate unchanged.
+     * Folds one frame of a visible bunker's fire into its garrison estimate, see {@link BunkerGarrisonEstimator}.
      *
      * @param bunker the bunker
-     * @param bulletsThisFrame marine bullets attributed to the bunker this frame
+     * @param newShots marine shots first seen this frame and attributed to the bunker
+     * @param targetInRange whether one of our combat units was inside a marine's range of the bunker
      * @param currentFrame current frame
      */
-    public void updateBunkerGarrison(Unit bunker, int bulletsThisFrame, int currentFrame) {
+    public void updateBunkerGarrison(Unit bunker, int newShots, boolean targetInRange, int currentFrame) {
         ObservedUnit ou = observedUnits.get(bunker);
-        if (ou == null || bulletsThisFrame <= 0) return;
-        int sinceLastBullet = ou.getLastBunkerBulletFrame() >= 0
-                ? currentFrame - ou.getLastBunkerBulletFrame() : Integer.MAX_VALUE;
-        if (sinceLastBullet > MARINE_COOLDOWN * 2 || bulletsThisFrame > ou.getLastKnownLoadedCount()) {
-            ou.setLastKnownLoadedCount(bulletsThisFrame);
-        }
-        ou.setLastBunkerBulletFrame(currentFrame);
+        if (ou == null) return;
+        BunkerGarrisonEstimator estimator = bunkerGarrisons.computeIfAbsent(bunker,
+                b -> new BunkerGarrisonEstimator(MARINE_COOLDOWN, EMPTY_BUNKER_EVIDENCE_FRAMES));
+        ou.setLastKnownLoadedCount(estimator.observe(newShots, targetInRange, currentFrame));
+        ou.setLastBunkerBulletFrame(estimator.getLastShotFrame());
     }
 
     public void updateGroundHeight(Unit unit, int groundHeight) {
