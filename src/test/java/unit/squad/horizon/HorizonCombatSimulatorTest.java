@@ -486,7 +486,7 @@ class HorizonCombatSimulatorTest {
     @Test
     void pinsThePerRaceEngageThresholds() {
         assertEquals(1.25, HorizonCombatSimulator.engageThreshold(Race.Protoss), 1e-9);
-        assertEquals(1.54, HorizonCombatSimulator.engageThreshold(Race.Terran), 1e-9);
+        assertEquals(1.44, HorizonCombatSimulator.engageThreshold(Race.Terran), 1e-9);
         assertEquals(1.34, HorizonCombatSimulator.engageThreshold(Race.Zerg), 1e-9);
         assertEquals(1.0, HorizonCombatSimulator.engageThreshold(Race.Random), 1e-9);
     }
