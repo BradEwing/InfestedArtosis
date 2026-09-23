@@ -107,7 +107,7 @@ public class SquadManager {
     private static final double SCV_RUSH_DEFENSE_CLEAR_THRESHOLD = 0.75;
     private static final int MERGE_CHECK_INTERVAL = 50;
     private static final int DEFENSE_SIM_RANGE = 256;
-    static final int CONTAINMENT_REEVALUATE_INTERVAL = 48;
+    private static final int CONTAINMENT_REEVALUATE_INTERVAL = 48;
     private static final int MAX_MOVE_OUT_THRESHOLD = 40;
     private static final int CONTAINMENT_TIMEOUT_FRAMES = 1400;
     private static final int CONTAINMENT_ENGAGE_RADIUS = 256;
@@ -1216,7 +1216,7 @@ public class SquadManager {
      * @return true if the squad took the arc and is now containing
      */
     private boolean tryEnterContainment(Squad squad) {
-        boolean underAttack = basesUnderAttack();
+        boolean underAttack = baseThreatensContainment();
         boolean shouldContain = containmentEvaluator.shouldContain(squad);
         boolean canBreak = shouldContain && containmentEvaluator.canBreakContainment(fightSquads);
         boolean entered = mayEnterContainment(underAttack, shouldContain, canBreak) && enterContainment(squad);
@@ -1227,11 +1227,11 @@ public class SquadManager {
     /**
      * Whether a squad may take a containment arc.
      *
-     * <p>A contain is never entered while any of our bases has a tracked threat. A containing squad breaks on that
-     * threat at its next re-evaluation, so an arc taken under it is dropped again and re-taken on the following
-     * sim RETREAT, and the squad alternates CONTAIN and FIGHT instead of retreating.
+     * <p>A contain is never entered while a base is under attack. A containing squad breaks on that threat on the
+     * next frame, so an arc taken under it is dropped again and re-taken on the following sim RETREAT, and the
+     * squad alternates CONTAIN and FIGHT instead of retreating.
      *
-     * @param basesUnderAttack true when any of our bases has a tracked threat
+     * @param basesUnderAttack true when a combat unit threatens one of our bases, see {@link #threatensContainment}
      * @param shouldContain true when containment applies to the squad
      * @param canBreak true when the strength gate clears the army to push in
      * @return true when the squad may enter containment
@@ -1278,8 +1278,7 @@ public class SquadManager {
      * true for every squad at once. A squad that has run out its own containment clock disengages by itself
      * rather than committing squads whose gate has not fired.
      *
-     * @param basesUnderAttack true when a base threat ends every contain this frame, see
-     *     {@link #baseAttackEndsContainment}
+     * @param basesUnderAttack true when a combat unit threatens one of our bases, see {@link #threatensContainment}
      * @param bleeding true when the squad is losing supply within the attrition window while killing little
      * @param arcLost true when no arc point on the choke stays out of reach of an enemy that outranges the squad
      * @param throttled true when the contain lock holds and this frame is not a re-evaluation tick
@@ -1323,10 +1322,10 @@ public class SquadManager {
         }
         HashSet<ManagedUnit> members = squad.getMembers();
 
-        boolean throttled = isContainmentThrottled(squad, now);
-        boolean basesUnderAttack = baseAttackEndsContainment(basesUnderAttack(), combatThreatAtBase(), throttled);
+        boolean basesUnderAttack = baseThreatensContainment();
         boolean bleeding = !basesUnderAttack && squad.getContainmentAttrition().isBleeding(now, squad.getSupply());
         boolean arcLost = !basesUnderAttack && !bleeding && pushBackFromOutrangingFire(squad) == Pushback.NO_ARC;
+        boolean throttled = isContainmentThrottled(squad, now);
         boolean evaluate = !basesUnderAttack && !bleeding && !arcLost && !throttled;
         boolean timedOut = evaluate && containmentTimedOut(squad, now);
         boolean canBreak = evaluate && containmentEvaluator.canBreakContainment(fightSquads);
@@ -1489,7 +1488,7 @@ public class SquadManager {
      * @param now current frame
      * @return true when the squad keeps its arc without further checks
      */
-    private boolean isContainmentThrottled(Squad squad, int now) {
+    static boolean isContainmentThrottled(Squad squad, int now) {
         if (!squad.isContainLocked(now)) {
             return false;
         }
@@ -1562,39 +1561,34 @@ public class SquadManager {
         return false;
     }
 
-    private boolean combatThreatAtBase() {
-        for (HashSet<Unit> threats : gameState.getBaseToThreatLookup().values()) {
-            for (Unit threat : threats) {
-                if (isCombatThreat(threat.getType())) return true;
-            }
-        }
-        return false;
+    private boolean baseThreatensContainment() {
+        return threatensContainment(gameState.getBaseToThreatLookup().values().stream()
+                .flatMap(Collection::stream)
+                .map(Unit::getType)
+                .collect(Collectors.toList()));
     }
 
     /**
-     * Whether a base threat of this type is one a containing squad leaves its arc for between re-evaluations: a
-     * mobile unit that can fight, on the ground or in the air. A scouting worker, an Overlord or a building is not.
+     * Whether the threats tracked at our bases put a base under attack for containment purposes. Entry and the
+     * break both read this one predicate, so a squad is never let onto an arc by a threat that would pull it off
+     * again, and a scout circling a base, visible or last known, neither blocks a contain nor breaks one.
+     *
+     * @param threatTypes types of every enemy unit tracked as a threat to one of our bases
+     * @return true when any of them is a combat threat
+     */
+    static boolean threatensContainment(Collection<UnitType> threatTypes) {
+        return threatTypes.stream().anyMatch(SquadManager::isCombatThreat);
+    }
+
+    /**
+     * Whether a base threat of this type is one a containing squad leaves its arc for: a mobile unit that can
+     * fight, on the ground or in the air. A scouting worker, an Overlord, an Observer or a building is not.
      *
      * @param type type of the enemy unit tracked as a threat to one of our bases
-     * @return true when the threat interrupts a contain on a throttled frame
+     * @return true when the threat ends contains and refuses new ones
      */
     static boolean isCombatThreat(UnitType type) {
         return Filter.isMobileGroundCombatUnit(type) || Filter.isAirCombatUnit(type);
-    }
-
-    /**
-     * Whether a threat at one of our bases ends a contain this frame.
-     *
-     * <p>A mobile combat unit at a base ends it on any frame. Any other tracked threat ends it only on a
-     * re-evaluation tick, so a squad that has just taken an arc holds it for at least the re-evaluation interval.
-     *
-     * @param basesUnderAttack true when any of our bases has a tracked threat
-     * @param combatThreat true when a tracked base threat is a mobile combat unit
-     * @param throttled true when the contain lock holds and this frame is not a re-evaluation tick
-     * @return true when the base threat breaks every contain this frame
-     */
-    static boolean baseAttackEndsContainment(boolean basesUnderAttack, boolean combatThreat, boolean throttled) {
-        return combatThreat || basesUnderAttack && !throttled;
     }
 
     /**
@@ -2508,6 +2502,7 @@ public class SquadManager {
     public void onUnitDestroy(Unit unit) {
         int now = game.getFrameCount();
         boolean enemy = unit.getPlayer() == game.enemy();
+        Map<Squad, Double> killers = new HashMap<>();
         for (Squad squad: fightSquads) {
             if (squad.getTarget() == unit) {
                 squad.setTarget(null);
@@ -2517,8 +2512,9 @@ public class SquadManager {
             }
             squad.getOutrangingThreats().remove(unit.getID());
             if (enemy) {
-                if (anyMemberCouldHaveKilled(squad, unit)) {
-                    squad.getContainmentAttrition().recordKill(now, unit.getType().supplyRequired());
+                double distance = closestMemberInKillReach(squad, unit);
+                if (distance >= 0) {
+                    killers.put(squad, distance);
                 }
                 continue;
             }
@@ -2529,8 +2525,30 @@ public class SquadManager {
                 }
             }
         }
+        creditContainKill(killers, now, unit.getType().supplyRequired());
         irradiatedUnits.removeIf(mu -> mu.getUnit() == unit);
         creditRunbyKill(unit);
+    }
+
+    /**
+     * Credits a dead enemy to the one containing squad whose member stood closest to it, among those with a member
+     * that could have landed the killing blow. Squads sharing an arc would otherwise each book the same kill, and
+     * the one being ground down would never read as bleeding.
+     *
+     * @param killers each containing squad with a member in kill reach, mapped to that member's distance
+     * @param frame frame of the kill
+     * @param supply supply of the dead enemy
+     * @return the credited squad, or null when no squad was in reach
+     */
+    static Squad creditContainKill(Map<Squad, Double> killers, int frame, int supply) {
+        Squad credited = killers.entrySet().stream()
+                .min(Map.Entry.comparingByValue())
+                .map(Map.Entry::getKey)
+                .orElse(null);
+        if (credited != null) {
+            credited.getContainmentAttrition().recordKill(frame, supply);
+        }
+        return credited;
     }
 
     /**
@@ -2560,16 +2578,21 @@ public class SquadManager {
         }
     }
 
-    private boolean anyMemberCouldHaveKilled(Squad squad, Unit enemy) {
+    private double closestMemberInKillReach(Squad squad, Unit enemy) {
         Position position = enemy.getPosition();
+        double closest = -1;
         for (ManagedUnit member : squad.getMembers()) {
             UnitType memberType = member.getUnitType();
             int reach = ContainmentPushback.groundReach(memberType, weapon -> game.self().weaponMaxRange(weapon));
-            if (member.getPosition().getDistance(position) <= containKillRadius(memberType, reach, enemy.getType())) {
-                return true;
+            double distance = member.getPosition().getDistance(position);
+            if (distance > containKillRadius(memberType, reach, enemy.getType())) {
+                continue;
+            }
+            if (closest < 0 || distance < closest) {
+                closest = distance;
             }
         }
-        return false;
+        return closest;
     }
 
     /**

@@ -1,29 +1,38 @@
 package unit.squad;
 
+import bwapi.Position;
 import bwapi.UnitType;
 import bwapi.WeaponType;
 import org.junit.jupiter.api.Test;
 import telemetry.DecisionPath;
+import util.Arc;
 
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
-import java.util.function.IntPredicate;
+import java.util.Map;
+import java.util.function.IntFunction;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static unit.squad.SquadManager.CONTAINMENT_REEVALUATE_INTERVAL;
 import static unit.squad.SquadManager.ContainmentVerdict;
 import static unit.squad.SquadManager.ReinforcementPath;
-import static unit.squad.SquadManager.baseAttackEndsContainment;
 import static unit.squad.SquadManager.containKillRadius;
 import static unit.squad.SquadManager.containmentExitPath;
 import static unit.squad.SquadManager.containmentVerdict;
+import static unit.squad.SquadManager.creditContainKill;
 import static unit.squad.SquadManager.isCombatThreat;
+import static unit.squad.SquadManager.isContainmentThrottled;
 import static unit.squad.SquadManager.mayEnterContainment;
 import static unit.squad.SquadManager.mergeEndsContainment;
 import static unit.squad.SquadManager.reinforcementPath;
+import static unit.squad.SquadManager.threatensContainment;
 
 class SquadContainmentTest {
 
@@ -42,9 +51,12 @@ class SquadContainmentTest {
     private static final boolean CAN_BREAK = true;
     private static final boolean BELOW_BREAK_RATIO = false;
     private static final boolean SHOULD_CONTAIN = true;
-    private static final boolean COMBAT_THREAT = true;
-    private static final boolean SCOUT_THREAT = false;
+    private static final List<UnitType> PROBE = Collections.singletonList(UnitType.Protoss_Probe);
+    private static final List<UnitType> ZEALOT = Collections.singletonList(UnitType.Protoss_Zealot);
     private static final int FLAP_WINDOW = 24;
+    private static final int REPLAY_START = 18150;
+    private static final int KILL_FRAME = 18150;
+    private static final int SQUAD_SUPPLY_LEFT = 6;
 
     private static ContainmentVerdict verdict(boolean basesUnderAttack, boolean throttled, boolean engaged,
                                               boolean timedOut, boolean canBreak, boolean shouldContain) {
@@ -236,21 +248,34 @@ class SquadContainmentTest {
     }
 
     @Test
-    void aCombatThreatAtABaseEndsTheContainOnAnyFrame() {
-        assertTrue(baseAttackEndsContainment(BASES_ATTACKED, COMBAT_THREAT, THROTTLED));
-        assertTrue(baseAttackEndsContainment(BASES_ATTACKED, COMBAT_THREAT, UNTHROTTLED));
+    void aLoneProbeThreatAllowsEntryAndNeverBreaksAContain() {
+        boolean underAttack = threatensContainment(PROBE);
+
+        assertTrue(mayEnterContainment(underAttack, SHOULD_CONTAIN, BELOW_BREAK_RATIO));
+        for (boolean throttled : new boolean[] {UNTHROTTLED, THROTTLED}) {
+            assertNotEquals(ContainmentVerdict.BREAK_ALL,
+                    verdict(underAttack, throttled, ARC_CLEAR, IN_TIME, BELOW_BREAK_RATIO, SHOULD_CONTAIN));
+        }
     }
 
     @Test
-    void aNonCombatThreatAtABaseEndsTheContainOnlyOnAReevaluationTick() {
-        assertFalse(baseAttackEndsContainment(BASES_ATTACKED, SCOUT_THREAT, THROTTLED));
-        assertTrue(baseAttackEndsContainment(BASES_ATTACKED, SCOUT_THREAT, UNTHROTTLED));
+    void aZealotThreatRefusesEntryAndBreaksAContain() {
+        boolean underAttack = threatensContainment(ZEALOT);
+
+        assertFalse(mayEnterContainment(underAttack, SHOULD_CONTAIN, BELOW_BREAK_RATIO));
+        for (boolean throttled : new boolean[] {UNTHROTTLED, THROTTLED}) {
+            assertEquals(ContainmentVerdict.BREAK_ALL,
+                    verdict(underAttack, throttled, ARC_CLEAR, IN_TIME, BELOW_BREAK_RATIO, SHOULD_CONTAIN));
+        }
     }
 
     @Test
-    void safeBasesNeverEndTheContain() {
-        assertFalse(baseAttackEndsContainment(BASES_SAFE, SCOUT_THREAT, THROTTLED));
-        assertFalse(baseAttackEndsContainment(BASES_SAFE, SCOUT_THREAT, UNTHROTTLED));
+    void scoutsBesideACombatThreatStillPutTheBaseUnderAttack() {
+        assertTrue(threatensContainment(Arrays.asList(UnitType.Protoss_Probe, UnitType.Zerg_Overlord,
+                UnitType.Protoss_Zealot)));
+        assertFalse(threatensContainment(Arrays.asList(UnitType.Protoss_Probe, UnitType.Zerg_Overlord,
+                UnitType.Protoss_Observer)));
+        assertFalse(threatensContainment(Collections.emptyList()));
     }
 
     @Test
@@ -273,62 +298,91 @@ class SquadContainmentTest {
     }
 
     @Test
-    void aSquadRetreatingUnderABaseThreatNeverFlapsBetweenContainAndFight() {
-        for (boolean combat : new boolean[] {SCOUT_THREAT, COMBAT_THREAT}) {
-            List<SquadStatus> statuses = replayContainOnRetreatVerdicts(240, frame -> true, combat);
+    void aSquadRetreatingUnderACombatThreatNeverFlapsBetweenContainAndFight() {
+        List<SquadStatus> statuses = replayContainOnRetreatVerdicts(240, frame -> ZEALOT);
 
-            assertFalse(statuses.contains(SquadStatus.CONTAIN), "no arc is taken while a base has a threat");
-            assertEquals(0, containFightContainFlaps(statuses));
-        }
-    }
-
-    @Test
-    void aScoutThreatArrivingMidContainHoldsTheArcForTheReevaluationInterval() {
-        List<SquadStatus> statuses = replayContainOnRetreatVerdicts(240, frame -> frame > 0, SCOUT_THREAT);
-
-        for (int frame = 0; frame < CONTAINMENT_REEVALUATE_INTERVAL; frame++) {
-            assertEquals(SquadStatus.CONTAIN, statuses.get(frame), "frame " + frame);
-        }
-        assertEquals(SquadStatus.FIGHT, statuses.get(CONTAINMENT_REEVALUATE_INTERVAL));
+        assertFalse(statuses.contains(SquadStatus.CONTAIN), "no arc is taken while a base is under attack");
         assertEquals(0, containFightContainFlaps(statuses));
     }
 
     @Test
+    void aScoutCirclingABaseLeavesAFreshContainInPlace() {
+        List<SquadStatus> statuses = replayContainOnRetreatVerdicts(240, frame -> PROBE);
+
+        assertTrue(statuses.stream().allMatch(status -> status == SquadStatus.CONTAIN));
+    }
+
+    @Test
     void aCombatThreatArrivingMidContainBreaksAtOnceAndIsNotReentered() {
-        List<SquadStatus> statuses = replayContainOnRetreatVerdicts(240, frame -> frame > 0, COMBAT_THREAT);
+        List<SquadStatus> statuses = replayContainOnRetreatVerdicts(240,
+                frame -> frame > 0 ? ZEALOT : Collections.emptyList());
 
         assertEquals(SquadStatus.CONTAIN, statuses.get(0));
         assertEquals(SquadStatus.FIGHT, statuses.get(1));
         assertEquals(0, containFightContainFlaps(statuses));
     }
 
+    @Test
+    void aKillBetweenTwoSquadsOnOneArcIsCreditedOnlyToTheNearer() {
+        Arc shared = new Arc(new Position(1000, 1000), new Position(1000, 1400), 160, 90, 8);
+        Squad nearer = containingSquad(shared);
+        Squad farther = containingSquad(shared);
+        Map<Squad, Double> killers = new HashMap<>();
+        killers.put(farther, 60.0);
+        killers.put(nearer, 20.0);
+
+        Squad credited = creditContainKill(killers, KILL_FRAME, UnitType.Terran_Marine.supplyRequired());
+
+        assertSame(nearer, credited);
+        assertFalse(nearer.getContainmentAttrition().isBleeding(KILL_FRAME, SQUAD_SUPPLY_LEFT));
+        assertTrue(farther.getContainmentAttrition().isBleeding(KILL_FRAME, SQUAD_SUPPLY_LEFT),
+                "the squad that did not land the kill keeps bleeding");
+    }
+
+    @Test
+    void aKillWithNoSquadInReachIsCreditedToNone() {
+        assertNull(creditContainKill(new HashMap<>(), KILL_FRAME, UnitType.Terran_Marine.supplyRequired()));
+    }
+
+    private static Squad containingSquad(Arc arc) {
+        Squad squad = new Squad();
+        squad.setStatus(SquadStatus.CONTAIN);
+        squad.startContainLock(KILL_FRAME - 1);
+        squad.setContainmentArc(arc);
+        for (int ling = 0; ling < 2; ling++) {
+            squad.getContainmentAttrition().recordLoss(KILL_FRAME - 1, UnitType.Zerg_Zergling.supplyRequired());
+        }
+        return squad;
+    }
+
     /**
      * Replays a squad whose sim returns RETREAT on every frame with the strength gate closed, as squad 97a3b43c did
-     * in game LSWLD05O from frame 18150, through the contain entry and contain verdict predicates.
+     * in game LSWLD05O from frame 18150. Entry, the contain lock and its throttle, the base threat predicate and the
+     * verdict are the production ones, applied in the order tryEnterContainment, enterContainment,
+     * evaluateContainingSquad and endContainment apply them.
      */
-    private static List<SquadStatus> replayContainOnRetreatVerdicts(int frames, IntPredicate threatAt,
-                                                                    boolean combat) {
+    private static List<SquadStatus> replayContainOnRetreatVerdicts(int frames,
+                                                                    IntFunction<List<UnitType>> threatsAt) {
         List<SquadStatus> statuses = new ArrayList<>();
-        SquadStatus status = SquadStatus.FIGHT;
-        int enteredAt = -1;
-        for (int frame = 0; frame < frames; frame++) {
-            boolean threat = threatAt.test(frame);
-            if (status == SquadStatus.CONTAIN) {
-                int elapsed = frame - enteredAt;
-                boolean throttled = elapsed <= 0 || elapsed % CONTAINMENT_REEVALUATE_INTERVAL != 0;
-                boolean breaks = baseAttackEndsContainment(threat, threat && combat, throttled);
-                ContainmentVerdict verdict = containmentVerdict(breaks, HOLDING_UP, ARC_KEPT, throttled, ARC_CLEAR,
-                        IN_TIME, BELOW_BREAK_RATIO, SHOULD_CONTAIN);
+        Squad squad = new Squad();
+        squad.setStatus(SquadStatus.FIGHT);
+        for (int frame = REPLAY_START; frame < REPLAY_START + frames; frame++) {
+            boolean underAttack = threatensContainment(threatsAt.apply(frame - REPLAY_START));
+            if (squad.getStatus() == SquadStatus.CONTAIN) {
+                boolean throttled = isContainmentThrottled(squad, frame);
+                ContainmentVerdict verdict = containmentVerdict(underAttack, HOLDING_UP, ARC_KEPT, throttled,
+                        ARC_CLEAR, IN_TIME, BELOW_BREAK_RATIO, SHOULD_CONTAIN);
                 if (verdict == ContainmentVerdict.BREAK_ALL) {
-                    status = SquadStatus.FIGHT;
+                    squad.clearContainStart();
+                    squad.setStatus(SquadStatus.FIGHT);
                 }
-            } else if (mayEnterContainment(threat, SHOULD_CONTAIN, BELOW_BREAK_RATIO)) {
-                status = SquadStatus.CONTAIN;
-                enteredAt = frame;
+            } else if (mayEnterContainment(underAttack, SHOULD_CONTAIN, BELOW_BREAK_RATIO)) {
+                squad.setStatus(SquadStatus.CONTAIN);
+                squad.startContainLock(frame);
             } else {
-                status = SquadStatus.RETREAT;
+                squad.setStatus(SquadStatus.RETREAT);
             }
-            statuses.add(status);
+            statuses.add(squad.getStatus());
         }
         return statuses;
     }
