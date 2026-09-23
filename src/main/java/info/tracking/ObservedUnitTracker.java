@@ -92,6 +92,18 @@ public class ObservedUnitTracker {
                 .count();
     }
 
+    /**
+     * Whether a unit of any of the given types was first observed at or before t, counting units since
+     * destroyed. A unit that morphed is counted under the type it was last seen as.
+     */
+    public boolean hasObservedAnyBeforeTime(Time t, UnitType... types) {
+        final Set<UnitType> typeSet = Arrays.stream(types).collect(Collectors.toSet());
+        return observedUnits.values()
+                .stream()
+                .filter(ou -> typeSet.contains(ou.getUnitType()))
+                .anyMatch(ou -> ou.getFirstObservedFrame().lessThanOrEqual(t));
+    }
+
     public int getUnitTypeCountCompletedBeforeTime(UnitType type, Time t) {
         return (int) observedUnits.values()
                 .stream()
