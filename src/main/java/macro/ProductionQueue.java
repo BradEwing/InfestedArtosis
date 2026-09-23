@@ -117,10 +117,16 @@ public class ProductionQueue implements Iterable<Plan> {
         return plan.plannedFrames(frame) > STALE_PLANNED_FRAMES;
     }
 
-    public int minPriority() {
+    /**
+     * The lowest priority number among queued plans matching the predicate.
+     *
+     * @param predicate the plans to read
+     * @return the minimum priority, or {@link Integer#MAX_VALUE} when no plan matches
+     */
+    public int minPriorityWhere(Predicate<Plan> predicate) {
         int min = Integer.MAX_VALUE;
         for (Plan plan : queue) {
-            if (plan.getPriority() < min) {
+            if (predicate.test(plan) && plan.getPriority() < min) {
                 min = plan.getPriority();
             }
         }

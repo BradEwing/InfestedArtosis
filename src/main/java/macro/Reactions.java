@@ -52,6 +52,9 @@ public class Reactions {
     private static final Predicate<Plan> IS_DRONE = p ->
             p.getType() == PlanType.UNIT && p.getPlannedUnit() == UnitType.Zerg_Drone;
 
+    private static final Predicate<Plan> IS_OVERLORD = p ->
+            p.getType() == PlanType.UNIT && p.getPlannedUnit() == UnitType.Zerg_Overlord;
+
     private static final Predicate<Plan> IS_CREEP_COLONY = p ->
             p.getType() == PlanType.BUILDING && p.getPlannedUnit() == UnitType.Zerg_Creep_Colony;
 
@@ -80,11 +83,21 @@ public class Reactions {
     static final int EARLY_RUSH_CUT_ZERGLINGS = 8;
     static final int EARLY_RUSH_QUIET_FRAMES = 24 * 3;
 
+    private static final Time FFE_DEADLINE = new Time(7, 0);
+
+    /**
+     * The highest priority the FFE boost may lift a Drone or Hatchery to: behind emergency defense,
+     * so the boost never ties with the emergency colony, and never at 0, which is reserved for
+     * emergency reactions.
+     */
+    static final int FFE_BOOST_FLOOR = BuildOrder.EMERGENCY_DEFENSE_PRIORITY + 1;
+
     private GameState gameState;
 
     private final OneShotGate expansionCancel = new OneShotGate();
     private final OneShotGate lairCancel = new OneShotGate();
     private final OneShotGate droneCut = new OneShotGate();
+    private final OneShotGate ffeBoost = new OneShotGate();
 
     private int quietFrames;
 
@@ -593,15 +606,57 @@ public class Reactions {
             return;
         }
 
-        Time time = gameState.getGameTime();
-        if (time.greaterThan(new Time(7, 0))) {
+        if (gameState.getGameTime().greaterThan(FFE_DEADLINE)) {
             return;
         }
 
-        ProductionQueue productionQueue = gameState.getProductionQueue();
-        int minPriority = productionQueue.minPriority();
+        if (shouldFireFfeBoost(gameState.getTechProgression())) {
+            boostDronesForFfe(gameState.getProductionQueue());
+        }
+    }
 
-        productionQueue.setPriorityWhere(IS_DRONE.or(IS_HATCHERY), minPriority);
+    /**
+     * Whether the FFE drone boost should be applied this frame. It fires once, on the first frame
+     * the reaction runs, and never once army tech is committed: the reaction is "drone hard until
+     * tech", not "drone over the army".
+     *
+     * @param techProgression the bot's tech state
+     * @return true on the one frame the boost applies
+     */
+    boolean shouldFireFfeBoost(TechProgression techProgression) {
+        return !isArmyTechCommitted(techProgression) && ffeBoost.fire();
+    }
+
+    /**
+     * Whether a Hydralisk Den, Lair or Spire stands, so the army it unlocks outranks the drones.
+     *
+     * @param techProgression the bot's tech state
+     * @return true once army tech is committed
+     */
+    static boolean isArmyTechCommitted(TechProgression techProgression) {
+        return techProgression.isHydraliskDen() || techProgression.isLair() || techProgression.isHive()
+                || techProgression.isSpire();
+    }
+
+    /**
+     * Lifts the Drone and Hatchery plans queued now to the head of the rest of the queue.
+     *
+     * <p>The target is read off plans that are neither Drones, Hatcheries nor Overlords, so it
+     * cannot chase a Drone it already lifted or an Overlord inserted just ahead of one. Plans
+     * already ahead of the target keep their priority, and the target never falls below
+     * {@link #FFE_BOOST_FLOOR}, so the boost cannot reach the priorities held for emergencies.
+     * With nothing else queued there is nothing to jump and the queue is left unchanged.
+     *
+     * @param productionQueue the queue holding plans not yet scheduled
+     */
+    static void boostDronesForFfe(ProductionQueue productionQueue) {
+        Predicate<Plan> boosted = IS_DRONE.or(IS_HATCHERY);
+        int target = productionQueue.minPriorityWhere(boosted.or(IS_OVERLORD).negate());
+        if (target == Integer.MAX_VALUE) {
+            return;
+        }
+        int priority = Math.max(target, FFE_BOOST_FLOOR);
+        productionQueue.setPriorityWhere(boosted.and(p -> p.getPriority() > priority), priority);
     }
 
     /**
