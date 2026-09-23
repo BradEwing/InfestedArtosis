@@ -16,6 +16,8 @@ public interface TargetChoiceSink {
      * @param attacker the fighter, whose fight target has not been replaced yet
      * @param previousTarget the target it held, or null if it held none
      * @param selection the target TargetScorer chose, with its tier and candidate count
+     * @param scoutCapped true if the scout chase cap removed a scout from the attacker's candidates
      */
-    void onTargetChosen(ManagedUnit attacker, Unit previousTarget, TargetScorer.Selection selection);
+    void onTargetChosen(ManagedUnit attacker, Unit previousTarget, TargetScorer.Selection selection,
+                        boolean scoutCapped);
 }

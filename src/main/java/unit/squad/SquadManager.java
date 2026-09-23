@@ -47,6 +47,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.ToDoubleFunction;
 import java.util.stream.Collectors;
 
 import util.TargetScorer;
@@ -126,6 +127,8 @@ public class SquadManager {
 
     private final Map<Base, RunbyTarget> runbyTargets = new HashMap<>();
 
+    private final ScoutChase scoutChase = new ScoutChase();
+
     public SquadManager(Game game, GameState gameState) {
         this.game = game;
         this.gameState = gameState;
@@ -139,6 +142,7 @@ public class SquadManager {
         removeEmptySquads();
         mergeSquads();
         splitSquads();
+        rebuildScoutChase();
         evictIrradiatedUnits();
         updateIrradiatedUnits();
         assignOverlordsToSquads();
@@ -250,7 +254,15 @@ public class SquadManager {
             }
         }
 
+        List<Unit> uncapped = ScoutChase.withoutCappedScouts(filtered, enemy -> isCappedScoutFor(unit, enemy));
+        if (uncapped.isEmpty() && !filtered.isEmpty()) {
+            rallyToDefensePosition(managedUnit, gameState.defensePosition());
+            return;
+        }
+        filtered = uncapped;
         if (filtered.isEmpty()) {
+            scoutChase.release(unit.getID());
+            managedUnit.setRole(UnitRole.FIGHT);
             Base enemyBase = gameState.getBaseData().getMainEnemyBase();
             if (enemyBase != null) {
                 managedUnit.setMovementTargetPosition(enemyBase.getLocation());
@@ -258,11 +270,13 @@ public class SquadManager {
             return;
         }
 
-        filtered = filterByProximity(filtered, unit);
+        filtered = filterByProximity(filtered, unit::getDistance);
 
         TargetScorer.Selection selection = TargetScorer.selectTarget(unit, filtered, managedUnit.fightTarget);
         if (selection != null) {
+            managedUnit.setRole(UnitRole.FIGHT);
             managedUnit.setFightTarget(selection.getTarget());
+            recordScoutClaim(unit, selection.getTarget());
         }
     }
 
@@ -1555,8 +1569,16 @@ public class SquadManager {
     }
 
     private boolean basesUnderAttack() {
-        for (HashSet<Unit> threats : gameState.getBaseToThreatLookup().values()) {
-            if (!threats.isEmpty()) return true;
+        Set<Base> morphingBases = gameState.getBaseData().morphingBases();
+        Set<Base> heldBases = gameState.getBaseData().getMyBases();
+        boolean cannonRushed = gameState.isCannonRushed();
+        for (Map.Entry<Base, HashSet<Unit>> entry : gameState.getBaseToThreatLookup().entrySet()) {
+            Base base = entry.getKey();
+            boolean morphingOnly = !cannonRushed && morphingBases.contains(base) && !heldBases.contains(base);
+            List<UnitType> threatTypes = entry.getValue().stream().map(Unit::getType).collect(Collectors.toList());
+            if (baseUnderAttack(morphingOnly, threatTypes)) {
+                return true;
+            }
         }
         return false;
     }
@@ -1589,6 +1611,21 @@ public class SquadManager {
      */
     static boolean isCombatThreat(UnitType type) {
         return Filter.isMobileGroundCombatUnit(type) || Filter.isAirCombatUnit(type);
+    }
+
+    /**
+     * Returns true if a base's tracked threats count as an attack. Any threat does at a base we hold. At a base
+     * where our hatchery is still morphing only a mobile ground combat unit does, so a scouting worker or
+     * Overlord watching the morph does not break contains or hold advances.
+     *
+     * @param morphingOnly true if our only hatchery at the base is still morphing
+     * @param threatTypes types of the enemy units tracked as threats to the base
+     */
+    static boolean baseUnderAttack(boolean morphingOnly, Collection<UnitType> threatTypes) {
+        if (!morphingOnly) {
+            return !threatTypes.isEmpty();
+        }
+        return threatTypes.stream().anyMatch(Filter::isMobileGroundCombatUnit);
     }
 
     /**
@@ -1892,12 +1929,12 @@ public class SquadManager {
         if (candidates.isEmpty()) {
             return false;
         }
-        TargetScorer.Selection selection = TargetScorer.selectTarget(unit, filterByProximity(candidates, unit),
-                member.fightTarget);
+        TargetScorer.Selection selection = TargetScorer.selectTarget(unit,
+                filterByProximity(candidates, unit::getDistance), member.fightTarget);
         if (selection == null) {
             return false;
         }
-        TargetChoices.chosen(member, member.fightTarget, selection);
+        TargetChoices.chosen(member, member.fightTarget, selection, false);
         member.setFightTarget(selection.getTarget());
         return true;
     }
@@ -2527,6 +2564,8 @@ public class SquadManager {
         }
         creditContainKill(killers, now, unit.getType().supplyRequired());
         irradiatedUnits.removeIf(mu -> mu.getUnit() == unit);
+        scoutChase.releaseScout(unit.getID());
+        scoutChase.release(unit.getID());
         creditRunbyKill(unit);
     }
 
@@ -2853,11 +2892,28 @@ public class SquadManager {
         }
 
         if (filtered.isEmpty()) {
+            scoutChase.release(unit.getID());
             assignFallbackMovementTarget(managedUnit, squad);
             return;
         }
 
-        filtered = filterByProximity(filtered, unit);
+        List<Unit> uncapped = ScoutChase.withoutCappedScouts(filtered, enemy -> isCappedScoutFor(unit, enemy));
+        boolean scoutCapped = uncapped.size() < filtered.size();
+        if (scoutCapped) {
+            Position threatened = gameState.threatenedDefensePosition();
+            ScoutChase.Excess excess = ScoutChase.excessAction(uncapped.size(), nearestDistance(unit, uncapped),
+                    ENEMY_DETECTION_RADIUS, threatened != null);
+            if (excess == ScoutChase.Excess.DEFEND) {
+                rallyToDefensePosition(managedUnit, threatened);
+                return;
+            }
+            if (excess == ScoutChase.Excess.FOLLOW_SQUAD) {
+                rallyToDefensePosition(managedUnit, squad.getCenter());
+                return;
+            }
+        }
+
+        filtered = filterByProximity(uncapped, unit::getDistance);
 
         if (gameState.isCannonRushed()) {
             Set<Unit> proxied = gameState.getObservedUnitTracker().getProxiedBuildings();
@@ -2871,9 +2927,85 @@ public class SquadManager {
 
         TargetScorer.Selection selection = TargetScorer.selectTarget(unit, filtered, managedUnit.fightTarget);
         if (selection != null) {
-            TargetChoices.chosen(managedUnit, managedUnit.fightTarget, selection);
+            TargetChoices.chosen(managedUnit, managedUnit.fightTarget, selection, scoutCapped);
             managedUnit.setFightTarget(selection.getTarget());
+            recordScoutClaim(unit, selection.getTarget());
         }
+    }
+
+    /**
+     * Rebuilds the scout chase ledger from the scouts that fight squad members and irradiated units already
+     * target, so the closest chasers keep their scout and the rest are turned away this frame.
+     */
+    private void rebuildScoutChase() {
+        List<ScoutChase.Claim> claims = new ArrayList<>();
+        for (Squad squad : fightSquads) {
+            addScoutClaims(squad.getMembers(), claims);
+        }
+        addScoutClaims(irradiatedUnits, claims);
+        scoutChase.beginFrame(claims);
+    }
+
+    private void addScoutClaims(Collection<ManagedUnit> units, List<ScoutChase.Claim> claims) {
+        for (ManagedUnit managedUnit : units) {
+            Unit target = managedUnit.fightTarget;
+            if (target == null || !target.exists() || !isEnemyScout(target)) {
+                continue;
+            }
+            Unit attacker = managedUnit.getUnit();
+            claims.add(new ScoutChase.Claim(target.getID(), attacker.getID(), attacker.getDistance(target),
+                    chaserCap(attacker, target)));
+        }
+    }
+
+    private boolean isEnemyScout(Unit enemy) {
+        return ScoutChase.isScout(enemy.getType(), enemy.isAttacking(), enemy.isConstructing(),
+                isNearEnemyBase(enemy.getTilePosition()));
+    }
+
+    private boolean isNearEnemyBase(TilePosition tile) {
+        for (Base base : gameState.getBaseData().getEnemyBases()) {
+            if (manhattanTileDistance(base.getLocation(), tile) <= ScoutChase.ENEMY_BASE_TILE_RADIUS) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static int chaserCap(Unit attacker, Unit scout) {
+        return ScoutChase.chaserCap(attacker.getPlayer().topSpeed(attacker.getType()),
+                scout.getPlayer().topSpeed(scout.getType()));
+    }
+
+    private boolean isCappedScoutFor(Unit attacker, Unit enemy) {
+        return isEnemyScout(enemy) && !scoutChase.admits(enemy.getID(), attacker.getID(), chaserCap(attacker, enemy));
+    }
+
+    private void recordScoutClaim(Unit attacker, Unit target) {
+        if (isEnemyScout(target)) {
+            scoutChase.claim(target.getID(), attacker.getID());
+        } else {
+            scoutChase.release(attacker.getID());
+        }
+    }
+
+    private static double nearestDistance(Unit attacker, List<Unit> candidates) {
+        double nearest = Double.MAX_VALUE;
+        for (Unit candidate : candidates) {
+            nearest = Math.min(nearest, attacker.getDistance(candidate));
+        }
+        return nearest;
+    }
+
+    /**
+     * Sends a unit the scout cap turned away to a position in the RALLY role, rather than marching it on the
+     * enemy's buildings.
+     */
+    private void rallyToDefensePosition(ManagedUnit managedUnit, Position position) {
+        scoutChase.release(managedUnit.getUnit().getID());
+        managedUnit.setFightTarget(null);
+        managedUnit.setRallyPoint(position);
+        managedUnit.setRole(UnitRole.RALLY);
     }
 
     /**
@@ -2910,10 +3042,13 @@ public class SquadManager {
         return closestPosition(from, gameState.getLastKnownPositionsOfBuildings());
     }
 
-    private List<Unit> filterByProximity(List<Unit> candidates, Unit attacker) {
-        List<Unit> nearby = new ArrayList<>();
-        for (Unit enemy : candidates) {
-            if (attacker.getDistance(enemy) <= TARGETING_RADIUS) {
+    /**
+     * @return the candidates within {@link #TARGETING_RADIUS} of the attacker, or every candidate when none are
+     */
+    static <T> List<T> filterByProximity(List<T> candidates, ToDoubleFunction<T> distance) {
+        List<T> nearby = new ArrayList<>();
+        for (T enemy : candidates) {
+            if (distance.applyAsDouble(enemy) <= TARGETING_RADIUS) {
                 nearby.add(enemy);
             }
         }

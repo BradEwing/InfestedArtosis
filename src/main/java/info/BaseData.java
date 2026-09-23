@@ -60,6 +60,7 @@ public class BaseData {
     private HashSet<Base> reservedBases = new HashSet<>();
     @Getter
     private HashSet<Base> enemyBases = new HashSet<>();
+    private HashMap<Unit, Base> morphingBaseHatcheries = new HashMap<>();
     private HashSet<Base> islands = new HashSet<>();
     private HashSet<Base> mineralOnlyBase = new HashSet<>();
     private HashSet<Base> mains = new HashSet<>();
@@ -573,7 +574,39 @@ public class BaseData {
         macroHatcheries.add(hatchery);
     }
 
+    /**
+     * Records a hatchery of ours morphing on a base's tile. The base counts as ours for threat tracking and the
+     * rally point until the hatchery completes, is cancelled or dies.
+     */
+    public void addMorphingBaseHatchery(Unit hatchery, Base base) {
+        if (base != null) {
+            morphingBaseHatcheries.put(hatchery, base);
+        }
+    }
+
+    /**
+     * @return the base the hatchery was morphing on, or null if it was not recorded as one
+     */
+    public Base removeMorphingBaseHatchery(Unit hatchery) {
+        return morphingBaseHatcheries.remove(hatchery);
+    }
+
+    /**
+     * @return bases where a hatchery of ours is morphing
+     */
+    public Set<Base> morphingBases() {
+        return new HashSet<>(morphingBaseHatcheries.values());
+    }
+
+    /**
+     * @return true if one of our completed hatcheries stands on the base, or one is morphing there
+     */
+    public boolean isHeldOrMorphing(Base base) {
+        return base != null && (myBases.contains(base) || morphingBaseHatcheries.containsValue(base));
+    }
+
     public void removeHatchery(Unit hatchery) {
+        morphingBaseHatcheries.remove(hatchery);
         if (baseHatcheries.contains(hatchery)) {
             removeBase(hatchery);
         } else {

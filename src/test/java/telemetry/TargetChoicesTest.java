@@ -26,16 +26,17 @@ class TargetChoicesTest {
     }
 
     private static String[] rowFor(UnitType targetType, TargetScorer.Priority tier, int previousTargetId,
-                                   UnitType previousTargetType) {
+                                   UnitType previousTargetType, boolean scoutCapped) {
         List<String> fields = new ArrayList<>(TargetChoiceLogger.attackerCells("game-1", 2400, 17,
                 UnitType.Zerg_Mutalisk));
         fields.addAll(TargetChoiceLogger.targetCells(42, targetType, tier, 96, 3));
         fields.addAll(TargetChoiceLogger.previousTargetCells(previousTargetId, previousTargetType));
+        fields.add(TargetChoiceLogger.scoutCappedCell(scoutCapped));
         return String.join(",", fields).split(",", -1);
     }
 
     private static String[] mutaOnOverlordRow() {
-        return rowFor(UnitType.Zerg_Overlord, TargetScorer.Priority.NORMAL, 40, UnitType.Zerg_Sunken_Colony);
+        return rowFor(UnitType.Zerg_Overlord, TargetScorer.Priority.NORMAL, 40, UnitType.Zerg_Sunken_Colony, false);
     }
 
     @AfterEach
@@ -45,17 +46,17 @@ class TargetChoicesTest {
 
     @Test
     void dispatchIsANoOpWithoutASink() {
-        TargetChoices.chosen(null, null, new TargetScorer.Selection(null, TargetScorer.Priority.LOW, 1));
+        TargetChoices.chosen(null, null, new TargetScorer.Selection(null, TargetScorer.Priority.LOW, 1), false);
 
         assertTrue(received.isEmpty());
     }
 
     @Test
     void aFighterWithNoTargetReportsItsFirstChoice() {
-        TargetChoices.register((attacker, previousTarget, selection) -> received.add(selection));
+        TargetChoices.register((attacker, previousTarget, selection, scoutCapped) -> received.add(selection));
         TargetScorer.Selection selection = new TargetScorer.Selection(null, TargetScorer.Priority.ELEVATED, 4);
 
-        TargetChoices.chosen(null, null, selection);
+        TargetChoices.chosen(null, null, selection, false);
 
         assertEquals(1, received.size());
         assertEquals(TargetScorer.Priority.ELEVATED, received.get(0).getPriority());
@@ -64,10 +65,10 @@ class TargetChoicesTest {
 
     @Test
     void clearStopsDispatch() {
-        TargetChoices.register((attacker, previousTarget, selection) -> received.add(selection));
+        TargetChoices.register((attacker, previousTarget, selection, scoutCapped) -> received.add(selection));
         TargetChoices.clear();
 
-        TargetChoices.chosen(null, null, new TargetScorer.Selection(null, TargetScorer.Priority.LOW, 1));
+        TargetChoices.chosen(null, null, new TargetScorer.Selection(null, TargetScorer.Priority.LOW, 1), false);
 
         assertTrue(received.isEmpty());
     }
@@ -94,9 +95,29 @@ class TargetChoicesTest {
 
     @Test
     void aRowWithNoPreviousTargetCarriesTheSentinels() {
-        String[] fields = rowFor(UnitType.Zerg_Drone, TargetScorer.Priority.ELEVATED, -1, null);
+        String[] fields = rowFor(UnitType.Zerg_Drone, TargetScorer.Priority.ELEVATED, -1, null, false);
 
         assertEquals("-1", fields[columnIndex("previous_target_id")]);
         assertEquals("NONE", fields[columnIndex("previous_target_type")]);
+    }
+
+    @Test
+    void aRowRecordsWhetherTheScoutCapRemovedAScout() {
+        String[] capped = rowFor(UnitType.Protoss_Zealot, TargetScorer.Priority.CRITICAL, -1, null, true);
+        String[] uncapped = mutaOnOverlordRow();
+
+        assertEquals("1", capped[columnIndex("scout_capped")]);
+        assertEquals("0", uncapped[columnIndex("scout_capped")]);
+    }
+
+    @Test
+    void theSinkReceivesTheScoutCappedFlag() {
+        List<Boolean> flags = new ArrayList<>();
+        TargetChoices.register((attacker, previousTarget, selection, scoutCapped) -> flags.add(scoutCapped));
+
+        TargetChoices.chosen(null, null, new TargetScorer.Selection(null, TargetScorer.Priority.CRITICAL, 1), true);
+
+        assertEquals(1, flags.size());
+        assertTrue(flags.get(0));
     }
 }

@@ -265,6 +265,10 @@ public class InformationManager {
     }
 
     public void onUnitMorph(Unit unit) {
+        if (unit.getPlayer() == game.self()) {
+            trackMorphingBaseHatchery(unit);
+        }
+
         HashMap<Unit, Plan> assignedPlannedItems = gameState.getAssignedPlannedItems();
         Plan assignedPlan = assignedPlannedItems.get(unit);
         
@@ -281,6 +285,18 @@ public class InformationManager {
             if (plannedUnit == UnitType.Zerg_Lurker) {
                 count.removeUnit(UnitType.Zerg_Hydralisk);
             }
+        }
+    }
+
+    /**
+     * Records a drone that began morphing into a hatchery on a base tile, and forgets one whose morph was
+     * cancelled back into a drone.
+     */
+    private void trackMorphingBaseHatchery(Unit unit) {
+        if (unit.getType() == UnitType.Zerg_Hatchery && !unit.isCompleted()) {
+            gameState.addMorphingHatchery(unit);
+        } else {
+            gameState.releaseMorphingHatchery(unit);
         }
     }
 
@@ -316,6 +332,7 @@ public class InformationManager {
             } else {
                 gameState.addMacroHatchery(unit);
             }
+            gameState.releaseMorphingHatchery(unit);
 
             gameState.removePlannedHatchery(1);
             if (gameState.getPlannedHatcheries() < 0) {
@@ -820,6 +837,7 @@ public class InformationManager {
         Set<Unit> visibleUnits = gameState.getDetectedEnemyUnits();
 
         Set<Base> bases = new HashSet<>(gameState.getGatherersAssignedToBase().keySet());
+        bases.addAll(gameState.getBaseData().morphingBases());
         HashMap<Base, HashSet<Unit>> baseThreats = gameState.getBaseToThreatLookup();
         ObservedUnitTracker tracker = gameState.getObservedUnitTracker();
 
