@@ -1,6 +1,8 @@
 package info.tracking;
 
 import bwapi.TilePosition;
+import bwapi.UnitType;
+import bwem.Area;
 import bwem.BWMap;
 import bwem.Base;
 import info.BaseData;
@@ -13,6 +15,7 @@ import util.Time;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Predicate;
 
 @RequiredArgsConstructor
 public class StrategyDetectionContext {
@@ -47,6 +50,44 @@ public class StrategyDetectionContext {
             return null;
         }
         return BaseArea.from(enemyNatural, bwMap, proximityTileRadius, areaTileRadius);
+    }
+
+    /**
+     * Whether a living enemy Hatchery, Lair or Hive, other than the depot on the enemy main's base location,
+     * stands in the BWEM Area of the enemy main. False while the enemy main is unknown.
+     */
+    public boolean enemyHasExtraDepotInMainArea() {
+        Base enemyMain = baseData.getMainEnemyBase();
+        if (enemyMain == null || enemyMain.getArea() == null) {
+            return false;
+        }
+        TilePosition mainDepotTile = enemyMain.getCenter().toTilePosition();
+        return hasEnemyDepotInArea(enemyMain.getArea(), tile -> !tile.equals(mainDepotTile));
+    }
+
+    /**
+     * Whether a living enemy Hatchery, Lair or Hive stands in the BWEM Area of the inferred enemy natural.
+     * False while the enemy natural is unknown.
+     */
+    public boolean enemyNaturalHasDepot() {
+        Base enemyNatural = baseData.getEnemyNaturalBase();
+        if (enemyNatural == null || enemyNatural.getArea() == null) {
+            return false;
+        }
+        return hasEnemyDepotInArea(enemyNatural.getArea(), tile -> true);
+    }
+
+    private boolean hasEnemyDepotInArea(Area area, Predicate<TilePosition> depotFilter) {
+        return tracker.hasLivingUnitAt(UnitType::isResourceDepot,
+                tile -> depotFilter.test(tile) && isInArea(tile, area));
+    }
+
+    private boolean isInArea(TilePosition tile, Area area) {
+        if (!bwMap.getData().getMapData().isValid(tile)) {
+            return false;
+        }
+        Area tileArea = bwMap.getArea(tile);
+        return tileArea != null && tileArea.getId().equals(area.getId());
     }
 
     private Set<TilePosition> computeOurBaseTiles(int naturalTileRadius) {

@@ -85,6 +85,35 @@ class ObservedUnitTrackerTest {
         assertEquals(0, tracker.getUnitTypeCountCompletedBeforeTime(UnitType.Zerg_Spawning_Pool, WINDOW));
     }
 
+    @Test
+    void hatcheryThatMorphedIntoALairIsObservedAsLairTech() {
+        ObservedUnit hatchery = ObservedUnitFixture.observedUnit(UnitType.Zerg_Hatchery, DRONE_OBSERVED);
+        ObservedUnitTracker tracker = ObservedUnitFixture.trackerHolding(hatchery);
+
+        assertFalse(tracker.hasObservedAnyBeforeTime(WINDOW, UnitType.Zerg_Lair, UnitType.Zerg_Spire));
+
+        ObservedUnitFixture.changeType(hatchery, UnitType.Zerg_Lair);
+
+        assertTrue(tracker.hasObservedAnyBeforeTime(WINDOW, UnitType.Zerg_Lair, UnitType.Zerg_Spire));
+    }
+
+    @Test
+    void destroyedUnitStillCountsAsObserved() {
+        ObservedUnit spire = ObservedUnitFixture.observedUnit(UnitType.Zerg_Spire, DRONE_OBSERVED);
+        spire.setDestroyedFrame(POOL_COMPLETED);
+        ObservedUnitTracker tracker = ObservedUnitFixture.trackerHolding(spire);
+
+        assertTrue(tracker.hasObservedAnyBeforeTime(POOL_COMPLETED, UnitType.Zerg_Lair, UnitType.Zerg_Spire));
+    }
+
+    @Test
+    void unitFirstObservedAfterTheTimeIsNotCounted() {
+        ObservedUnit lair = ObservedUnitFixture.observedUnit(UnitType.Zerg_Lair, POOL_COMPLETED);
+        ObservedUnitTracker tracker = ObservedUnitFixture.trackerHolding(lair);
+
+        assertFalse(tracker.hasObservedAnyBeforeTime(WINDOW, UnitType.Zerg_Lair));
+    }
+
     private static ObservedUnit completedDrone() {
         ObservedUnit drone = ObservedUnitFixture.observedUnit(UnitType.Zerg_Drone, DRONE_OBSERVED);
         drone.markCompleted(DRONE_COMPLETED);
