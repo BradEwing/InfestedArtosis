@@ -61,8 +61,8 @@ public class StrategyDetectionContext {
         if (enemyMain == null || enemyMain.getArea() == null) {
             return false;
         }
-        TilePosition mainDepotTile = enemyMain.getCenter().toTilePosition();
-        return hasEnemyDepotInArea(enemyMain.getArea(), tile -> !tile.equals(mainDepotTile));
+        TilePosition mainLocation = enemyMain.getLocation();
+        return hasEnemyDepotInArea(enemyMain.getArea(), tile -> !occupiesBaseLocation(tile, mainLocation));
     }
 
     /**
@@ -77,9 +77,26 @@ public class StrategyDetectionContext {
         return hasEnemyDepotInArea(enemyNatural.getArea(), tile -> true);
     }
 
+    /**
+     * Whether a depot reported at depotTile stands on the base whose location is baseLocation: the tile lies
+     * inside the Hatchery footprint anchored at that location. depotTile is the tile of the depot's reported
+     * centre position, so the test holds whichever tile of the footprint the centre rounds into, and a second
+     * depot never passes because buildings cannot overlap the footprint.
+     */
+    static boolean occupiesBaseLocation(TilePosition depotTile, TilePosition baseLocation) {
+        int dx = depotTile.getX() - baseLocation.getX();
+        int dy = depotTile.getY() - baseLocation.getY();
+        return dx >= 0 && dx < UnitType.Zerg_Hatchery.tileWidth()
+                && dy >= 0 && dy < UnitType.Zerg_Hatchery.tileHeight();
+    }
+
     private boolean hasEnemyDepotInArea(Area area, Predicate<TilePosition> depotFilter) {
-        return tracker.hasLivingUnitAt(UnitType::isResourceDepot,
+        return tracker.hasLivingUnitAt(StrategyDetectionContext::isZergDepot,
                 tile -> depotFilter.test(tile) && isInArea(tile, area));
+    }
+
+    private static boolean isZergDepot(UnitType unitType) {
+        return unitType == UnitType.Zerg_Hatchery || unitType == UnitType.Zerg_Lair || unitType == UnitType.Zerg_Hive;
     }
 
     private boolean isInArea(TilePosition tile, Area area) {

@@ -49,6 +49,15 @@ class TwoHatchLingTest {
     }
 
     @Test
+    void naturalDepotSeenOnceKeepsCountingAfterItDies() {
+        TwoHatchLing strategy = new TwoHatchLing();
+
+        assertFalse(strategy.observeNaturalDepot(false));
+        assertTrue(strategy.observeNaturalDepot(true));
+        assertTrue(strategy.observeNaturalDepot(false));
+    }
+
+    @Test
     void isAZergOnlyStrategy() {
         TwoHatchLing strategy = new TwoHatchLing();
         assertEquals("2HatchLing", strategy.getName());
