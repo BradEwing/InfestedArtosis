@@ -150,6 +150,7 @@ public class UnitManager {
                 case FIGHT:
                 case CONTAIN:
                 case PERCH:
+                case RUNBY:
                     managedUnit.execute();
                     continue;
                 default:
@@ -439,7 +440,7 @@ public class UnitManager {
 
         List<ManagedUnit> idleZerglings = managedUnits.stream()
             .filter(mu -> mu.getUnitType() == UnitType.Zerg_Zergling)
-            .filter(mu -> mu.getRole() != UnitRole.SCOUT)
+            .filter(mu -> mayPullAsZerglingScout(mu.getRole()))
             .collect(Collectors.toList());
 
         Set<ManagedUnit> disbandedZerglings = squadManager.getDisbandedUnits().stream()
@@ -471,6 +472,17 @@ public class UnitManager {
             squadManager.removeManagedUnit(zergling);
             scoutManager.addScout(zergling);
         }
+    }
+
+    /**
+     * Whether a zergling holding a role may be pulled to scout. A ling already scouting is not pulled again,
+     * and a ling on a runby stays with its squad in the enemy base, where it would otherwise be first in line.
+     *
+     * @param role the ling's role
+     * @return true when the ling may be pulled
+     */
+    static boolean mayPullAsZerglingScout(UnitRole role) {
+        return role != UnitRole.SCOUT && role != UnitRole.RUNBY;
     }
 
     private void assignGatherersToDefense(Base base) {

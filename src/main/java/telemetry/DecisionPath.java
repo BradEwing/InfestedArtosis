@@ -67,6 +67,31 @@ public enum DecisionPath {
     CONTAIN_RETREAT,
 
     /**
+     * A containing squad ran by into the enemy base.
+     */
+    RUNBY_ENTER,
+
+    /**
+     * A runby squad started a phase: HARASS after PENETRATE, or PENETRATE again at a new target base.
+     */
+    RUNBY_PHASE,
+
+    /**
+     * A runby squad met overwhelming enemy strength inside its abort window and retreated.
+     */
+    RUNBY_ABORT,
+
+    /**
+     * A runby squad ran out of targets at its base and moved on to the next known enemy base.
+     */
+    RUNBY_RETARGET,
+
+    /**
+     * A runby squad ran out of targets with no other enemy base known, and retreated.
+     */
+    RUNBY_EXIT_NO_TARGETS,
+
+    /**
      * The squad was sent to the rally point. The rally_reason column names which branch.
      */
     RALLY,

@@ -331,6 +331,27 @@ public class ObservedUnitTracker {
                 .collect(Collectors.toSet());
     }
 
+    /**
+     * Last known positions of living enemy workers of any race inside an area, restricted to workers observed
+     * recently. Reads only what was recorded when each worker was last shown or hidden, so a worker whose last
+     * known position has been cleared by observation is left out.
+     *
+     * @param inArea tiles belonging to the area of interest
+     * @param currentFrame current frame
+     * @param maxAgeFrames most frames since a worker was last observed for it to count
+     * @return the last known positions of qualifying workers
+     */
+    public Set<Position> getRecentWorkerPositionsIn(Predicate<TilePosition> inArea, int currentFrame,
+                                                    int maxAgeFrames) {
+        return knownPositions(observedUnits.values()
+                .stream()
+                .filter(ou -> Filter.isWorkerType(ou.getUnitType()))
+                .filter(ou -> ou.getDestroyedFrame() == null)
+                .filter(ou -> currentFrame - ou.getLastObservedFrame().getFrames() <= maxAgeFrames)
+                .map(ObservedUnit::getLastKnownLocation)
+                .filter(pos -> pos != null && inArea.test(pos.toTilePosition())));
+    }
+
     public Position getLastKnownPosition(Unit unit) {
         ObservedUnit ou = observedUnits.get(unit);
         if (ou == null) {

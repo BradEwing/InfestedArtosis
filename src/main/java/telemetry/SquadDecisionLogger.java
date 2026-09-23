@@ -5,6 +5,7 @@ import bwapi.Position;
 import info.GameState;
 import unit.squad.CombatSimulator;
 import unit.squad.DefenseSim;
+import unit.squad.RunbyState;
 import unit.squad.Squad;
 import unit.squad.SquadManager;
 import unit.squad.SquadStatus;
@@ -27,7 +28,12 @@ import java.util.Set;
  * emitted when splitSquads keeps a squad together because a split would drop a side below the move
  * out floor; suppressed_by carries MOVE_OUT_FLOOR on those rows. SQUAD_DISBANDED is emitted when a
  * squad leaves the fight squads, whether it merged, emptied or disbanded for want of targets, so a
- * RALLY episode that never resolves is still bounded.
+ * RALLY episode that never resolves is still bounded. PHASE_CHANGE is emitted when a RUNBY squad starts a
+ * phase, which changes no status and so would never reach a STATUS_CHANGE row; runby_phase_old and
+ * runby_phase carry the phase it left and the one it started.
+ *
+ * <p>runby_phase names the phase a RUNBY squad is in on every row, and NONE for any other status.
+ * runby_phase_old is NONE on every row except PHASE_CHANGE.
  *
  * <p>DEFENSE_PULL, DEFENSE_ABANDON and DEFENSE_RELEASE rows describe worker defence squads, with
  * squad_type DEFENSE. They carry the candidate, pulled and released worker counts and the full
@@ -58,13 +64,14 @@ public class SquadDecisionLogger implements SquadDecisionSink {
             + "rally_reason,rally_release,defense_candidates,workers_pulled,workers_released,"
             + "defense_sim_defenders,defense_sim_enemies,defense_sim_defender_survivors,"
             + "defense_sim_enemy_survivors,defense_win_threshold,arc_center_x,arc_center_y,arc_points,"
-            + "decision_path,sim_enemy_composition,sim_enemy_unscored_supply";
+            + "decision_path,sim_enemy_composition,sim_enemy_unscored_supply,runby_phase_old,runby_phase";
 
     private static final int FLUSH_INTERVAL_FRAMES = 480;
     private static final String EVENT_STATUS_CHANGE = "STATUS_CHANGE";
     private static final String EVENT_LOCK_SUPPRESSED = "LOCK_SUPPRESSED";
     private static final String EVENT_SPLIT_SUPPRESSED = "SPLIT_SUPPRESSED";
     private static final String EVENT_SQUAD_DISBANDED = "SQUAD_DISBANDED";
+    static final String EVENT_PHASE_CHANGE = "PHASE_CHANGE";
     private static final String EVENT_DEFENSE_PREFIX = "DEFENSE_";
     private static final String SQUAD_TYPE_DEFENSE = "DEFENSE";
     private static final int SQUAD_TYPE_CELL = 3;
@@ -235,6 +242,22 @@ public class SquadDecisionLogger implements SquadDecisionSink {
     }
 
     @Override
+    public void onRunbyPhaseStarted(Squad squad, RunbyState.Phase from, RunbyState.Phase to, DecisionPath path) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            SquadDecision context = new SquadDecision();
+            context.setDecisionPath(path);
+            writer.append(row(squad, game.getFrameCount(), EVENT_PHASE_CHANGE, squad.getStatus(), squad.getStatus(),
+                    context, NONE, runbyCells(from, to)));
+        } catch (RuntimeException e) {
+            disable();
+        }
+    }
+
+    @Override
     public void onDefenseEvaluated(Squad squad, DefenseEvent event, int candidates, int pulled, int released,
                                    DefenseSim sim) {
         if (disabled) {
@@ -393,6 +416,11 @@ public class SquadDecisionLogger implements SquadDecisionSink {
 
     private String row(Squad squad, int frame, String event, SquadStatus from, SquadStatus to,
                        SquadDecision decision, String suppressedBy) {
+        return row(squad, frame, event, from, to, decision, suppressedBy, runbyCells(null, currentRunbyPhase(squad)));
+    }
+
+    private String row(Squad squad, int frame, String event, SquadStatus from, SquadStatus to,
+                       SquadDecision decision, String suppressedBy, List<String> runbyCells) {
         SquadDecision context = decision != null ? decision : new SquadDecision();
         List<String> fields = new ArrayList<>(identityCells(gameId, frame, squad, event, from, to, context,
                 suppressedBy));
@@ -406,6 +434,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         fields.addAll(arcCells(squad));
         fields.addAll(pathCells(context));
         fields.addAll(enemySampleCells(context));
+        fields.addAll(runbyCells);
         return String.join(",", fields);
     }
 
@@ -424,7 +453,27 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         fields.addAll(arcCells(squad));
         fields.addAll(pathCells(context));
         fields.addAll(enemySampleCells(context));
+        fields.addAll(runbyCells(null, null));
         return String.join(",", fields);
+    }
+
+    /**
+     * Builds the runby_phase_old and runby_phase cells.
+     *
+     * @param from phase a PHASE_CHANGE row left, or null on any other row
+     * @param to phase the squad is in, or null when it is not running by
+     * @return the two cells, NONE where a phase is null
+     */
+    static List<String> runbyCells(RunbyState.Phase from, RunbyState.Phase to) {
+        List<String> fields = new ArrayList<>();
+        fields.add(Csv.name(from));
+        fields.add(Csv.name(to));
+        return fields;
+    }
+
+    private static RunbyState.Phase currentRunbyPhase(Squad squad) {
+        RunbyState state = squad.getRunbyState();
+        return squad.getStatus() == SquadStatus.RUNBY && state != null ? state.getPhase() : null;
     }
 
     /**

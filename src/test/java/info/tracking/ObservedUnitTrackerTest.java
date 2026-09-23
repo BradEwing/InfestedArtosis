@@ -28,6 +28,44 @@ class ObservedUnitTrackerTest {
     private static final Time WINDOW = new Time(1, 52);
 
     @Test
+    void recentWorkersOfAnyRaceAreFoundInsideTheArea() {
+        for (UnitType worker : new UnitType[] {UnitType.Protoss_Probe, UnitType.Terran_SCV, UnitType.Zerg_Drone}) {
+            ObservedUnit observed = ObservedUnitFixture.observedUnit(worker, new Time(5000));
+            observed.setLastKnownLocation(KNOWN);
+            ObservedUnitTracker tracker = ObservedUnitFixture.trackerHolding(observed);
+
+            Set<Position> positions = tracker.getRecentWorkerPositionsIn(tile -> true, 5100, 240);
+
+            assertEquals(1, positions.size(), worker.toString());
+            assertTrue(positions.contains(KNOWN));
+        }
+    }
+
+    @Test
+    void recentWorkerQueryLeavesOutStaleWorkersOtherAreasAndNonWorkers() {
+        ObservedUnit probe = ObservedUnitFixture.observedUnit(UnitType.Protoss_Probe, new Time(5000));
+        probe.setLastKnownLocation(KNOWN);
+        ObservedUnitTracker tracker = ObservedUnitFixture.trackerHolding(probe);
+
+        assertTrue(tracker.getRecentWorkerPositionsIn(tile -> true, 5241, 240).isEmpty());
+        assertEquals(1, tracker.getRecentWorkerPositionsIn(tile -> true, 5240, 240).size());
+        assertTrue(tracker.getRecentWorkerPositionsIn(tile -> false, 5100, 240).isEmpty());
+
+        ObservedUnit zealot = ObservedUnitFixture.observedUnit(UnitType.Protoss_Zealot, new Time(5000));
+        zealot.setLastKnownLocation(KNOWN);
+        assertTrue(ObservedUnitFixture.trackerHolding(zealot)
+                .getRecentWorkerPositionsIn(tile -> true, 5100, 240).isEmpty());
+    }
+
+    @Test
+    void aWorkerWhosePositionWasClearedIsLeftOut() {
+        ObservedUnit probe = ObservedUnitFixture.observedUnit(UnitType.Protoss_Probe, new Time(5000));
+
+        assertTrue(ObservedUnitFixture.trackerHolding(probe)
+                .getRecentWorkerPositionsIn(tile -> true, 5100, 240).isEmpty());
+    }
+
+    @Test
     void clearedLocationIsDroppedRatherThanReturnedAsNull() {
         Set<Position> positions = ObservedUnitTracker.knownPositions(Stream.of(KNOWN, null));
 

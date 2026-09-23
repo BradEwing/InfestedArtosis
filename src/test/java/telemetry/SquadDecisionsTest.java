@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import unit.squad.CombatSimulator;
 import unit.squad.DefenseSim;
 import unit.squad.GroundSquad;
+import unit.squad.RunbyState;
 import unit.squad.Squad;
 import unit.squad.SquadStatus;
 import util.Arc;
@@ -66,6 +67,12 @@ class SquadDecisionsTest {
             }
 
             @Override
+            public void onRunbyPhaseStarted(Squad squad, RunbyState.Phase from, RunbyState.Phase to,
+                                            DecisionPath path) {
+                events.add("PHASE:" + from + ":" + to + ":" + path);
+            }
+
+            @Override
             public void onDefenseEvaluated(Squad squad, DefenseEvent event, int candidates, int pulled, int released,
                                            DefenseSim sim) {
                 events.add("DEFENSE:" + event + ":" + candidates + ":" + pulled + ":" + released);
@@ -90,7 +97,8 @@ class SquadDecisionsTest {
                 + "," + String.join(",", SquadDecisionLogger.defenseCells(-1, -1, -1, null))
                 + "," + String.join(",", SquadDecisionLogger.arcCells(squad))
                 + "," + String.join(",", SquadDecisionLogger.pathCells(context))
-                + "," + String.join(",", SquadDecisionLogger.enemySampleCells(context));
+                + "," + String.join(",", SquadDecisionLogger.enemySampleCells(context))
+                + "," + String.join(",", SquadDecisionLogger.runbyCells(null, null));
         return row.split(",", -1);
     }
 
@@ -336,7 +344,8 @@ class SquadDecisionsTest {
                 + "," + String.join(",", SquadDecisionLogger.defenseCells(6, 0, 2, sim))
                 + "," + String.join(",", SquadDecisionLogger.arcCells(squad))
                 + "," + String.join(",", SquadDecisionLogger.pathCells(context))
-                + "," + String.join(",", SquadDecisionLogger.enemySampleCells(context));
+                + "," + String.join(",", SquadDecisionLogger.enemySampleCells(context))
+                + "," + String.join(",", SquadDecisionLogger.runbyCells(null, null));
         String[] fields = row.split(",", -1);
 
         assertEquals(SquadDecisionLogger.HEADER.split(",", -1).length, fields.length);
@@ -372,6 +381,60 @@ class SquadDecisionsTest {
         assertEquals(RallyRelease.NONE, SquadDecisionLogger.releaseOnDisband(SquadStatus.RETREAT));
         assertEquals(RallyRelease.NONE, SquadDecisionLogger.releaseOnDisband(SquadStatus.CONTAIN));
         assertEquals(RallyRelease.NONE, SquadDecisionLogger.releaseOnDisband(null));
+    }
+
+    @Test
+    void aRunbyPhaseChangeReachesTheSink() {
+        SquadDecisions.register(recorder());
+
+        SquadDecisions.runbyPhaseStarted(new GroundSquad(), RunbyState.Phase.PENETRATE, RunbyState.Phase.HARASS,
+                DecisionPath.RUNBY_PHASE);
+
+        assertEquals(1, events.size());
+        assertEquals("PHASE:PENETRATE:HARASS:RUNBY_PHASE", events.get(0));
+    }
+
+    @Test
+    void aRunbyPhaseChangeIsANoOpWithoutASink() {
+        SquadDecisions.runbyPhaseStarted(new GroundSquad(), RunbyState.Phase.PENETRATE, RunbyState.Phase.HARASS,
+                DecisionPath.RUNBY_PHASE);
+
+        assertTrue(events.isEmpty());
+    }
+
+    @Test
+    void aPhaseChangeRowKeepsTheStatusAndNamesBothPhases() {
+        Squad squad = new GroundSquad();
+        squad.setStatus(SquadStatus.RUNBY);
+        SquadDecision context = new SquadDecision();
+        context.setDecisionPath(DecisionPath.RUNBY_PHASE);
+        String row = String.join(",", SquadDecisionLogger.identityCells("game-1", 7000, squad,
+                SquadDecisionLogger.EVENT_PHASE_CHANGE, squad.getStatus(), squad.getStatus(), context, "NONE"))
+                + "," + String.join(",", SquadDecisionLogger.squadCells(squad, context, true, -1, 7000))
+                + "," + String.join(",", SquadDecisionLogger.rallyCells(RallyReason.NONE, RallyRelease.NONE))
+                + "," + String.join(",", SquadDecisionLogger.defenseCells(-1, -1, -1, null))
+                + "," + String.join(",", SquadDecisionLogger.arcCells(squad))
+                + "," + String.join(",", SquadDecisionLogger.pathCells(context))
+                + "," + String.join(",", SquadDecisionLogger.enemySampleCells(context))
+                + "," + String.join(",", SquadDecisionLogger.runbyCells(RunbyState.Phase.PENETRATE,
+                RunbyState.Phase.HARASS));
+        String[] fields = row.split(",", -1);
+
+        assertEquals(SquadDecisionLogger.HEADER.split(",", -1).length, fields.length);
+        assertEquals("PHASE_CHANGE", fields[columnIndex("event")]);
+        assertEquals("RUNBY", fields[columnIndex("old_status")]);
+        assertEquals("RUNBY", fields[columnIndex("new_status")]);
+        assertEquals("RUNBY_PHASE", fields[columnIndex("decision_path")]);
+        assertEquals("PENETRATE", fields[columnIndex("runby_phase_old")]);
+        assertEquals("HARASS", fields[columnIndex("runby_phase")]);
+    }
+
+    @Test
+    void aRowOutsideARunbyCarriesNoPhase() {
+        String[] fields = rowFor(new GroundSquad());
+
+        assertEquals("NONE", fields[columnIndex("runby_phase_old")]);
+        assertEquals("NONE", fields[columnIndex("runby_phase")]);
     }
 
     @Test

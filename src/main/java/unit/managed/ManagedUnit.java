@@ -43,6 +43,8 @@ public class ManagedUnit {
     protected Position containPosition;
     @Setter @Getter
     protected Position perchPosition;
+    @Setter @Getter
+    protected Position runbyDestination;
     protected List<TilePosition> pathToTarget;
 
     @Setter
@@ -171,6 +173,9 @@ public class ManagedUnit {
                 break;
             case PERCH:
                 perch();
+                break;
+            case RUNBY:
+                runby();
                 break;
             default:
                 break;
@@ -710,6 +715,13 @@ public class ManagedUnit {
         }
 
         role = UnitRole.IDLE;
+    }
+
+    /**
+     * Acts on the order a runby squad gave this unit. Only zerglings run by, so every other type fights.
+     */
+    protected void runby() {
+        fight();
     }
 
     protected void retreat() {

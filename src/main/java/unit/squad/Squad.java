@@ -58,6 +58,7 @@ public class Squad implements Comparable<Squad> {
     @Getter
     protected int containStartFrame = 0;
     private Arc containmentArc;
+    private RunbyState runbyState;
     protected Time fightHysteresis = new Time(0, 3);
     protected Time retreatHysteresis = new Time(0, 5);
     protected Time containHysteresis = new Time(0, 5);
@@ -231,7 +232,11 @@ public class Squad implements Comparable<Squad> {
         int earliestContainStart = 0;
         int earliestCommit = 0;
         Arc inheritedArc = null;
+        RunbyState inheritedRunby = null;
         for (Squad source: sources) {
+            if (inheritedRunby == null && source.status == SquadStatus.RUNBY) {
+                inheritedRunby = source.runbyState;
+            }
             mergedStatus = SquadStatus.dominant(mergedStatus, source.status);
             if (source.containStartFrame > 0 && (earliestContainStart == 0 || source.containStartFrame < earliestContainStart)) {
                 earliestContainStart = source.containStartFrame;
@@ -250,6 +255,7 @@ public class Squad implements Comparable<Squad> {
         this.status = mergedStatus;
         this.containStartFrame = mergedStatus == SquadStatus.CONTAIN ? earliestContainStart : 0;
         this.containmentArc = mergedStatus == SquadStatus.CONTAIN ? inheritedArc : null;
+        this.runbyState = mergedStatus == SquadStatus.RUNBY ? inheritedRunby : null;
         this.commitFrame = earliestCommit;
     }
 
