@@ -25,6 +25,11 @@ import java.util.function.ToIntFunction;
  * learned. A Bunker has no weapon of its own: it starts at the range of the Marines it holds, and any further reach
  * is learned from the shots it fires.
  *
+ * <p>Learned reach never exceeds a type's {@link #reachCap cap}: the longest range its owner's weapon has reported,
+ * plus {@link #MEASUREMENT_MARGIN}, plus {@link #BUNKER_ALLOWANCE} for a Bunker. The cap holds on every read, so a
+ * misattributed hit can raise a type no further than just past its real weapon. A type with no ground weapon, apart
+ * from the Bunker, never learns reach.
+ *
  * <p>A hit is attributed to a type only when the distance lies within {@link #MAX_LEARN_STEP} of the type's current
  * reach, so a hit from an unseen shooter never teaches a visible bystander an unbounded range. A hit nothing
  * accounts for leaves a {@link HurtMark} where the victim stood, kept for {@link #HURT_MARK_WINDOW} frames from the
@@ -38,6 +43,18 @@ public class EnemyReachMemory {
     static final int MAX_LEARN_STEP = 64;
 
     /**
+     * Slack allowed past a weapon's range when measuring a hit edge to edge: the victim moves between the shot and
+     * the hit, and footprints round to whole pixels.
+     */
+    public static final int MEASUREMENT_MARGIN = 16;
+
+    /**
+     * Extra reach allowed a Bunker past the range of the Marines inside. How far a garrisoned Marine fires in Brood
+     * War is not known here and JBWAPI does not expose it, so this is a tuning constant, not a claimed game fact.
+     */
+    public static final int BUNKER_ALLOWANCE = 48;
+
+    /**
      * What raised a reach.
      */
     public enum Source {
@@ -48,6 +65,7 @@ public class EnemyReachMemory {
     }
 
     private final Map<UnitType, Integer> learned = new HashMap<>();
+    private final Map<WeaponType, Integer> weaponRanges = new HashMap<>();
     private final List<HurtMark> hurtMarks = new ArrayList<>();
 
     /**
@@ -86,13 +104,30 @@ public class EnemyReachMemory {
     }
 
     /**
-     * The largest reach known for a type.
+     * The most reach a type may be known to have: the longest range its owner's ground weapon has reported, plus
+     * {@link #MEASUREMENT_MARGIN}, plus {@link #BUNKER_ALLOWANCE} for a Bunker.
      *
      * @param type enemy unit type
-     * @return the larger of its base ground range and its learned reach
+     * @return cap in pixels, or 0 for a type with no ground weapon
+     */
+    public int reachCap(UnitType type) {
+        WeaponType weapon = groundWeapon(type);
+        if (weapon == WeaponType.None) {
+            return 0;
+        }
+        int range = Math.max(weapon.maxRange(), weaponRanges.getOrDefault(weapon, 0));
+        int allowance = type == UnitType.Terran_Bunker ? BUNKER_ALLOWANCE : 0;
+        return range + MEASUREMENT_MARGIN + allowance;
+    }
+
+    /**
+     * The largest reach known for a type, never past its cap.
+     *
+     * @param type enemy unit type
+     * @return the larger of its base ground range and its learned reach, capped by {@link #reachCap}
      */
     public int groundReach(UnitType type) {
-        return Math.max(baseGroundRange(type), learned.getOrDefault(type, 0));
+        return Math.min(reachCap(type), Math.max(baseGroundRange(type), learned.getOrDefault(type, 0)));
     }
 
     /**
@@ -107,19 +142,25 @@ public class EnemyReachMemory {
     }
 
     /**
-     * Raises a type's reach to the range its owner's weapon reports. Reports a row only when that exceeds the reach
-     * already known, which is the only way an upgrade shows here.
+     * Raises a type's reach, and the cap of every type firing the same weapon, to the range its owner's weapon
+     * reports. Reports a row only when that exceeds the reach already known, which is the only way an upgrade shows
+     * here.
      *
      * @param type visible enemy type
      * @param apiRange range from {@link bwapi.Player#weaponMaxRange}
      * @param frame current frame
      */
     public void seed(UnitType type, int apiRange, int frame) {
+        WeaponType weapon = groundWeapon(type);
+        if (weapon == WeaponType.None) {
+            return;
+        }
+        weaponRanges.merge(weapon, apiRange, Math::max);
         raise(type, apiRange, Source.API, null, frame);
     }
 
     /**
-     * Raises a type's reach. Never lowers it.
+     * Raises a type's reach, no further than its cap. Never lowers it. A type with no ground weapon never learns.
      *
      * @param type enemy unit type
      * @param reach observed reach in pixels
@@ -129,12 +170,14 @@ public class EnemyReachMemory {
      * @return true when the known reach rose
      */
     public boolean raise(UnitType type, int reach, Source source, Position victim, int frame) {
+        int cap = reachCap(type);
+        int capped = Math.min(reach, cap);
         int old = groundReach(type);
-        if (reach <= old) {
+        if (capped <= old) {
             return false;
         }
-        learned.put(type, reach);
-        ReachTelemetry.reachRaised(frame, type, old, reach, source, victim);
+        learned.put(type, capped);
+        ReachTelemetry.reachRaised(frame, type, old, capped, source, victim, reach > cap);
         return true;
     }
 
@@ -152,17 +195,17 @@ public class EnemyReachMemory {
 
     /**
      * Learns from a hit attributed to a unit of the type. A hit from within the known reach teaches nothing; a hit
-     * from past it raises the reach to the distance.
+     * from past it raises the reach to the distance, no further than the type's cap.
      *
      * @param shooter type of the shooter
      * @param distance edge distance from the shooter to the victim
      * @param source VISIBLE or BULLET
      * @param victim where the victim stood
      * @param frame current frame
-     * @return true when the hit was attributable to the type
+     * @return true when the hit was attributable to the type, never for a type with no ground weapon
      */
     public boolean learnFromHit(UnitType shooter, int distance, Source source, Position victim, int frame) {
-        if (!isAttributable(groundReach(shooter), distance)) {
+        if (reachCap(shooter) == 0 || !isAttributable(groundReach(shooter), distance)) {
             return false;
         }
         raise(shooter, distance, source, victim, frame);
@@ -176,7 +219,8 @@ public class EnemyReachMemory {
      * <p>A bystander already within its type's known reach explains the hit and teaches nothing. Otherwise the hit
      * is pinned on a type only when exactly one bystander stands within {@link #MAX_LEARN_STEP} past its known
      * reach: with two or more, or none, the shooter is unknown and the caller records a hurt mark instead, so a
-     * visible unit that merely stands near a hit from an unseen shooter never teaches its type.
+     * visible unit that merely stands near a hit from an unseen shooter never teaches its type. A bystander with no
+     * ground weapon is never a candidate.
      *
      * @param bystanders visible enemies with a ground weapon, each with its edge distance to the victim
      * @param victim where the victim stood
@@ -187,6 +231,9 @@ public class EnemyReachMemory {
         Bystander sole = null;
         int beyondReach = 0;
         for (Bystander bystander : bystanders) {
+            if (reachCap(bystander.getType()) == 0) {
+                continue;
+            }
             int reach = groundReach(bystander.getType());
             if (bystander.getDistance() <= reach) {
                 return true;
@@ -261,7 +308,7 @@ public class EnemyReachMemory {
             }
         }
         hurtMarks.add(new HurtMark(victim, frame));
-        ReachTelemetry.reachRaised(frame, null, -1, HURT_MARK_RADIUS, Source.HURTMARK, victim);
+        ReachTelemetry.reachRaised(frame, null, -1, HURT_MARK_RADIUS, Source.HURTMARK, victim, false);
     }
 
     /**

@@ -36,7 +36,7 @@ class ReachLoggerTest {
     @Test
     void aBunkerReachLearnedFromAShotWritesARowWithTheVictim() {
         String[] fields = ReachLogger.row("game-1", 7546, UnitType.Terran_Bunker, 128, 184,
-                EnemyReachMemory.Source.BULLET, new Position(831, 1102)).split(",", -1);
+                EnemyReachMemory.Source.BULLET, new Position(831, 1102), false).split(",", -1);
 
         assertEquals(ReachLogger.HEADER.split(",", -1).length, fields.length);
         assertEquals("7546", fields[columnIndex("frame")]);
@@ -46,12 +46,22 @@ class ReachLoggerTest {
         assertEquals("BULLET", fields[columnIndex("source")]);
         assertEquals("831", fields[columnIndex("victim_x")]);
         assertEquals("1102", fields[columnIndex("victim_y")]);
+        assertEquals("0", fields[columnIndex("capped")]);
+    }
+
+    @Test
+    void aRiseCutToTheCapIsFlagged() {
+        String[] fields = ReachLogger.row("game-1", 7546, UnitType.Protoss_Zealot, 15, 31,
+                EnemyReachMemory.Source.VISIBLE, new Position(831, 1102), true).split(",", -1);
+
+        assertEquals("31", fields[columnIndex("new_reach")]);
+        assertEquals("1", fields[columnIndex("capped")]);
     }
 
     @Test
     void anApiRowCarriesNoVictim() {
         String[] fields = ReachLogger.row("game-1", 100, UnitType.Terran_Marine, 128, 160,
-                EnemyReachMemory.Source.API, null).split(",", -1);
+                EnemyReachMemory.Source.API, null, false).split(",", -1);
 
         assertEquals("-1", fields[columnIndex("victim_x")]);
         assertEquals("-1", fields[columnIndex("victim_y")]);

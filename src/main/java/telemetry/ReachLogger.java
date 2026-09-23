@@ -15,7 +15,8 @@ import java.util.List;
  * <p>source names what raised the reach: API when the owner's weapon reports a longer range than was known,
  * VISIBLE for a hit by a visible enemy, BULLET for a Marine shot out of a Bunker, and HURTMARK for a hit nothing
  * known accounts for. A HURTMARK row carries NONE as the type, -1 as the old reach and the mark's radius as the new
- * one. victim_x and victim_y are where the unit that was hit stood, -1 on an API row.
+ * one. victim_x and victim_y are where the unit that was hit stood, -1 on an API row. new_reach is the reach stored,
+ * never past the type's cap; capped is 1 when the observed reach was past the cap and was cut to it, else 0.
  *
  * <p>Constructed only when combat telemetry is enabled.
  */
@@ -23,7 +24,7 @@ public class ReachLogger implements ReachSink {
 
     static final String FILE = "telemetry_reach.csv";
 
-    static final String HEADER = "game_id,frame,unit_type,old_reach,new_reach,source,victim_x,victim_y";
+    static final String HEADER = "game_id,frame,unit_type,old_reach,new_reach,source,victim_x,victim_y,capped";
 
     private static final int FLUSH_INTERVAL_FRAMES = 480;
     private static final int NOT_EVALUATED = -1;
@@ -72,13 +73,13 @@ public class ReachLogger implements ReachSink {
 
     @Override
     public void onReachRaised(int frame, UnitType type, int oldReach, int newReach, EnemyReachMemory.Source source,
-                              Position victim) {
+                              Position victim, boolean capped) {
         if (disabled) {
             return;
         }
 
         try {
-            writer.append(row(gameId, frame, type, oldReach, newReach, source, victim));
+            writer.append(row(gameId, frame, type, oldReach, newReach, source, victim, capped));
         } catch (RuntimeException e) {
             disable();
         }
@@ -95,7 +96,7 @@ public class ReachLogger implements ReachSink {
      * @return the row
      */
     static String row(String gameId, int frame, UnitType type, int oldReach, int newReach,
-                      EnemyReachMemory.Source source, Position victim) {
+                      EnemyReachMemory.Source source, Position victim, boolean capped) {
         List<String> fields = new ArrayList<>();
         fields.add(gameId);
         fields.add(String.valueOf(frame));
@@ -105,6 +106,7 @@ public class ReachLogger implements ReachSink {
         fields.add(Csv.name(source));
         fields.add(String.valueOf(victim == null ? NOT_EVALUATED : victim.getX()));
         fields.add(String.valueOf(victim == null ? NOT_EVALUATED : victim.getY()));
+        fields.add(capped ? "1" : "0");
         return String.join(",", fields);
     }
 }

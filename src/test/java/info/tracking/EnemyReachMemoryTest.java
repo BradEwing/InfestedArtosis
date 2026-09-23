@@ -21,6 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class EnemyReachMemoryTest {
 
     private static final int MARINE_RANGE = UnitType.Terran_Marine.groundWeapon().maxRange();
+    private static final int MARINE_CAP = MARINE_RANGE + EnemyReachMemory.MEASUREMENT_MARGIN;
     private static final Position BUNKER = new Position(848, 896);
     private static final Set<Position> BUNKERS = Collections.singleton(BUNKER);
     private static final int BUNKER_SHOT_RADIUS = 224;
@@ -40,11 +41,14 @@ class EnemyReachMemoryTest {
     void reachOnlyRises() {
         EnemyReachMemory memory = new EnemyReachMemory();
 
-        assertTrue(memory.raise(UnitType.Terran_Marine, 160, EnemyReachMemory.Source.VISIBLE, VICTIM, 100));
-        assertFalse(memory.raise(UnitType.Terran_Marine, 140, EnemyReachMemory.Source.VISIBLE, VICTIM, 200));
+        assertTrue(memory.raise(UnitType.Terran_Marine, MARINE_RANGE + 12, EnemyReachMemory.Source.VISIBLE, VICTIM,
+                100));
+        assertFalse(memory.raise(UnitType.Terran_Marine, MARINE_RANGE + 6, EnemyReachMemory.Source.VISIBLE, VICTIM,
+                200));
         memory.seed(UnitType.Terran_Marine, MARINE_RANGE, 300);
 
-        assertEquals(160, memory.groundReach(UnitType.Terran_Marine));
+        assertEquals(MARINE_RANGE + 12, memory.groundReach(UnitType.Terran_Marine),
+                "both values sit under the Marine's cap, so the test shows only the ratchet");
     }
 
     @Test
@@ -54,10 +58,87 @@ class EnemyReachMemoryTest {
         assertEquals(MARINE_RANGE, memory.groundReach(UnitType.Terran_Marine));
         assertEquals(MARINE_RANGE + 32, memory.groundReach(UnitType.Terran_Marine, MARINE_RANGE + 32));
 
-        memory.raise(UnitType.Terran_Marine, 184, EnemyReachMemory.Source.VISIBLE, VICTIM, 100);
+        memory.raise(UnitType.Terran_Marine, MARINE_RANGE + 12, EnemyReachMemory.Source.VISIBLE, VICTIM, 100);
 
-        assertEquals(184, memory.groundReach(UnitType.Terran_Marine, MARINE_RANGE + 32));
+        assertEquals(MARINE_RANGE + 12, memory.groundReach(UnitType.Terran_Marine, MARINE_RANGE + 8),
+                "learned 140 used to be 184, which is now past the 144 cap of a Marine with no reported upgrade");
         assertEquals(200, memory.groundReach(UnitType.Terran_Marine, 200));
+    }
+
+    @Test
+    void aMeleeTypeNeverLearnsPastItsWeaponRangePlusTheMargin() {
+        EnemyReachMemory memory = new EnemyReachMemory();
+        int zealotCap = UnitType.Protoss_Zealot.groundWeapon().maxRange() + EnemyReachMemory.MEASUREMENT_MARGIN;
+        int lingCap = UnitType.Zerg_Zergling.groundWeapon().maxRange() + EnemyReachMemory.MEASUREMENT_MARGIN;
+
+        memory.raise(UnitType.Protoss_Zealot, 584, EnemyReachMemory.Source.VISIBLE, VICTIM, 100);
+        assertTrue(memory.learnFromHit(UnitType.Zerg_Zergling, 70, EnemyReachMemory.Source.VISIBLE, VICTIM, 100));
+
+        assertEquals(zealotCap, memory.reachCap(UnitType.Protoss_Zealot));
+        assertEquals(zealotCap, memory.groundReach(UnitType.Protoss_Zealot));
+        assertEquals(lingCap, memory.groundReach(UnitType.Zerg_Zergling));
+    }
+
+    @Test
+    void aRangedTypeIsCappedAtItsReportedRangePlusTheMargin() {
+        EnemyReachMemory memory = new EnemyReachMemory();
+
+        memory.raise(UnitType.Terran_Marine, 411, EnemyReachMemory.Source.VISIBLE, VICTIM, 100);
+        assertEquals(MARINE_CAP, memory.groundReach(UnitType.Terran_Marine));
+
+        memory.seed(UnitType.Terran_Marine, 160, 200);
+        memory.raise(UnitType.Terran_Marine, 411, EnemyReachMemory.Source.VISIBLE, VICTIM, 300);
+        assertEquals(160 + EnemyReachMemory.MEASUREMENT_MARGIN, memory.groundReach(UnitType.Terran_Marine));
+
+        memory.seed(UnitType.Protoss_Dragoon, 192, 400);
+        memory.raise(UnitType.Protoss_Dragoon, 385, EnemyReachMemory.Source.VISIBLE, VICTIM, 500);
+        assertEquals(192 + EnemyReachMemory.MEASUREMENT_MARGIN, memory.groundReach(UnitType.Protoss_Dragoon));
+    }
+
+    @Test
+    void aBunkerIsCappedAtTheMarineRangePlusTheAllowance() {
+        EnemyReachMemory memory = new EnemyReachMemory();
+        int bunkerCap = MARINE_CAP + EnemyReachMemory.BUNKER_ALLOWANCE;
+
+        memory.raise(UnitType.Terran_Bunker, 287, EnemyReachMemory.Source.BULLET, VICTIM, 100);
+        assertEquals(bunkerCap, memory.groundReach(UnitType.Terran_Bunker));
+
+        memory.seed(UnitType.Terran_Marine, 160, 200);
+        assertEquals(bunkerCap + 160 - MARINE_RANGE, memory.reachCap(UnitType.Terran_Bunker),
+                "a longer Marine range reported by the owner raises the cap of the Bunker it garrisons");
+        memory.raise(UnitType.Terran_Bunker, 287, EnemyReachMemory.Source.BULLET, VICTIM, 300);
+        assertEquals(bunkerCap + 160 - MARINE_RANGE, memory.groundReach(UnitType.Terran_Bunker));
+    }
+
+    @Test
+    void aTypeWithNoGroundWeaponNeverLearns() {
+        EnemyReachMemory memory = new EnemyReachMemory();
+
+        memory.seed(UnitType.Terran_Medic, 96, 100);
+        assertFalse(memory.raise(UnitType.Terran_Medic, 96, EnemyReachMemory.Source.VISIBLE, VICTIM, 100));
+        assertFalse(memory.learnFromBystanders(Collections.singletonList(
+                new EnemyReachMemory.Bystander(UnitType.Terran_Medic, 40)), VICTIM, 100));
+
+        assertEquals(0, memory.reachCap(UnitType.Terran_Medic));
+        assertEquals(0, memory.groundReach(UnitType.Terran_Medic));
+        assertEquals(224, memory.groundReach(UnitType.Terran_Missile_Turret, 224),
+                "a table reach for a structure with no ground weapon still passes through");
+    }
+
+    @Test
+    void aRiseCutToTheCapIsReportedAsCapped() {
+        List<String> rows = new ArrayList<>();
+        ReachTelemetry.register((frame, type, oldReach, newReach, source, victim, capped) ->
+                rows.add(newReach + ":" + capped));
+        EnemyReachMemory memory = new EnemyReachMemory();
+
+        memory.raise(UnitType.Terran_Marine, MARINE_RANGE + 8, EnemyReachMemory.Source.VISIBLE, VICTIM, 100);
+        memory.raise(UnitType.Terran_Marine, 411, EnemyReachMemory.Source.VISIBLE, VICTIM, 200);
+        memory.raise(UnitType.Terran_Marine, 500, EnemyReachMemory.Source.VISIBLE, VICTIM, 300);
+
+        assertEquals(2, rows.size());
+        assertEquals((MARINE_RANGE + 8) + ":false", rows.get(0));
+        assertEquals(MARINE_CAP + ":true", rows.get(1));
     }
 
     @Test
@@ -90,9 +171,19 @@ class EnemyReachMemoryTest {
     void aHitFromPastTheKnownReachRaisesItToTheDistance() {
         EnemyReachMemory memory = new EnemyReachMemory();
 
+        assertTrue(memory.learnFromHit(UnitType.Terran_Marine, MARINE_RANGE + 10,
+                EnemyReachMemory.Source.VISIBLE, VICTIM, 100));
+        assertEquals(MARINE_RANGE + 10, memory.groundReach(UnitType.Terran_Marine));
+    }
+
+    @Test
+    void anAttributableHitPastTheCapRaisesReachOnlyToTheCap() {
+        EnemyReachMemory memory = new EnemyReachMemory();
+
         assertTrue(memory.learnFromHit(UnitType.Terran_Marine, MARINE_RANGE + 40,
                 EnemyReachMemory.Source.VISIBLE, VICTIM, 100));
-        assertEquals(MARINE_RANGE + 40, memory.groundReach(UnitType.Terran_Marine));
+        assertEquals(MARINE_CAP, memory.groundReach(UnitType.Terran_Marine),
+                "the hit is still explained, so no hurt mark is left, but reach stops at the cap");
     }
 
     @Test
@@ -148,8 +239,8 @@ class EnemyReachMemoryTest {
     void aSoleBystanderBeyondItsReachIsCreditedWithTheHit() {
         EnemyReachMemory memory = new EnemyReachMemory();
 
-        assertTrue(memory.learnFromBystanders(Collections.singletonList(marineAt(MARINE_RANGE + 40)), VICTIM, 100));
-        assertEquals(MARINE_RANGE + 40, memory.groundReach(UnitType.Terran_Marine));
+        assertTrue(memory.learnFromBystanders(Collections.singletonList(marineAt(MARINE_RANGE + 10)), VICTIM, 100));
+        assertEquals(MARINE_RANGE + 10, memory.groundReach(UnitType.Terran_Marine));
     }
 
     @Test
@@ -236,7 +327,7 @@ class EnemyReachMemoryTest {
     @Test
     void everyRiseAndEveryNewMarkIsReported() {
         List<String> rows = new ArrayList<>();
-        ReachTelemetry.register((frame, type, oldReach, newReach, source, victim) ->
+        ReachTelemetry.register((frame, type, oldReach, newReach, source, victim, capped) ->
                 rows.add(type + ":" + oldReach + ":" + newReach + ":" + source));
         EnemyReachMemory memory = new EnemyReachMemory();
         Position ling = lingBelowBunkerAtGap(184);

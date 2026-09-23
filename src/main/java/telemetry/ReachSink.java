@@ -19,7 +19,8 @@ public interface ReachSink {
      * @param newReach reach known now, or the mark's radius
      * @param source what raised it
      * @param victim where the unit that was hit stood, or null for a reach read from the API
+     * @param capped true when the observed reach was past the type's cap and newReach is the cap
      */
     void onReachRaised(int frame, UnitType type, int oldReach, int newReach, EnemyReachMemory.Source source,
-                       Position victim);
+                       Position victim, boolean capped);
 }

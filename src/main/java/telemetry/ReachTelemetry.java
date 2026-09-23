@@ -23,11 +23,11 @@ public final class ReachTelemetry {
     }
 
     public static void reachRaised(int frame, UnitType type, int oldReach, int newReach,
-                                   EnemyReachMemory.Source source, Position victim) {
+                                   EnemyReachMemory.Source source, Position victim, boolean capped) {
         ReachSink current = sink;
         if (current == null) {
             return;
         }
-        current.onReachRaised(frame, type, oldReach, newReach, source, victim);
+        current.onReachRaised(frame, type, oldReach, newReach, source, victim, capped);
     }
 }
