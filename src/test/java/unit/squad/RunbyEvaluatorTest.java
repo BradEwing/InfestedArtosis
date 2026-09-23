@@ -94,15 +94,63 @@ class RunbyEvaluatorTest {
         assertEquals(EntryVerdict.ARMY_NEAR_TARGET, RunbyEvaluator.entryVerdict(passing().army(army).build()));
     }
 
-    @Test
-    void refusesWhenAFreshArmyUnitIsNearThePathToTheTarget() {
-        Position farArc = new Position(3500, 3000);
-        Position onThePath = new Position(3300, 2000);
-        List<RunbyEvaluator.ArmyUnit> army = with(armyAtOurBase(10), zealot(onThePath, true, false));
+    private static final Position FAR_ARC = new Position(3500, 3000);
+    private static final Position ON_THE_PATH = new Position(3300, 2000);
 
-        assertTrue(onThePath.getDistance(MINERAL_LINE) > RunbyEvaluator.ARMY_CLEARANCE);
-        assertEquals(EntryVerdict.ARMY_NEAR_TARGET,
-                RunbyEvaluator.entryVerdict(passing().squadCenter(farArc).army(army).build()));
+    private static RunbyEvaluator.ArmyUnit marine(Position position) {
+        return new RunbyEvaluator.ArmyUnit(UnitType.Terran_Marine, position, true, false);
+    }
+
+    private static StaticDefenseZone bunkerAt(Position position) {
+        return new StaticDefenseZone(UnitType.Terran_Bunker, position,
+                UnitType.Terran_Marine.groundWeapon().maxRange() + 32);
+    }
+
+    private static int lingsToRunPast(double pathTally) {
+        return (int) Math.ceil(RunbyEvaluator.RUN_PAST_RATIO * pathTally
+                / UnitStrength.groundToGround(UnitType.Zerg_Zergling));
+    }
+
+    @Test
+    void aDefenderOnThePathDoesNotRefuseASquadWithTheMassToRunPast() {
+        List<RunbyEvaluator.ArmyUnit> army = with(armyAtOurBase(10), zealot(ON_THE_PATH, true, false));
+
+        assertTrue(ON_THE_PATH.getDistance(MINERAL_LINE) > RunbyEvaluator.ARMY_CLEARANCE);
+        assertEquals(EntryVerdict.ENTER,
+                RunbyEvaluator.entryVerdict(passing().squadCenter(FAR_ARC).army(army).build()));
+    }
+
+    @Test
+    void aBunkerAndMarinesOnThePathRefuseUntilTheSquadHasTheMassToRunPast() {
+        List<RunbyEvaluator.ArmyUnit> army = with(armyAtOurBase(10), marine(ON_THE_PATH), marine(ON_THE_PATH),
+                marine(ON_THE_PATH), marine(ON_THE_PATH), marine(ON_THE_PATH));
+        List<StaticDefenseZone> zones = Collections.singletonList(bunkerAt(ON_THE_PATH));
+        double path = RunbyEvaluator.pathTally(army, zones, FAR_ARC, MINERAL_LINE);
+        int needed = lingsToRunPast(path);
+
+        assertEquals(UnitStrength.groundToGround(UnitType.Terran_Bunker)
+                + 5 * UnitStrength.groundToGround(UnitType.Terran_Marine), path, 1e-9);
+        assertEquals(EntryVerdict.PATH_DEFENDED, RunbyEvaluator.entryVerdict(passing().squadCenter(FAR_ARC)
+                .army(army).zones(zones).size(needed - 1).build()));
+        assertEquals(EntryVerdict.ENTER, RunbyEvaluator.entryVerdict(passing().squadCenter(FAR_ARC)
+                .army(army).zones(zones).size(needed).build()));
+    }
+
+    @Test
+    void thePathTallySkipsArmyAtTheTargetClearedPositionsAndAntiAirDefence() {
+        List<RunbyEvaluator.ArmyUnit> army = Arrays.asList(
+                marine(ON_THE_PATH),
+                new RunbyEvaluator.ArmyUnit(UnitType.Terran_Marine, ON_THE_PATH, false, true),
+                marine(new Position(3650, 450)),
+                marine(OUR_SIDE));
+        List<StaticDefenseZone> zones = Arrays.asList(bunkerAt(ON_THE_PATH),
+                new StaticDefenseZone(UnitType.Terran_Missile_Turret, ON_THE_PATH,
+                        UnitType.Terran_Missile_Turret.airWeapon().maxRange()));
+
+        assertEquals(UnitStrength.groundToGround(UnitType.Terran_Bunker)
+                        + UnitStrength.groundToGround(UnitType.Terran_Marine),
+                RunbyEvaluator.pathTally(army, zones, FAR_ARC, MINERAL_LINE), 1e-9);
+        assertEquals(0, RunbyEvaluator.pathTally(army, zones, null, MINERAL_LINE), 1e-9);
     }
 
     @Test

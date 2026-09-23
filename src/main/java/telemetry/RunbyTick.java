@@ -38,6 +38,8 @@ public final class RunbyTick {
     @Builder.Default
     private final double ourTally = -1;
     @Builder.Default
+    private final double pathTally = -1;
+    @Builder.Default
     private final int inBaseArea = -1;
     private final int lings;
     @Builder.Default

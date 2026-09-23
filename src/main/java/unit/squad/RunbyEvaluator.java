@@ -27,6 +27,7 @@ public final class RunbyEvaluator {
     static final double EVIDENCE_FRACTION = 0.5;
     static final int TARGET_RADIUS = 384;
     static final double ABORT_RATIO = 2.0;
+    static final double RUN_PAST_RATIO = 1.5;
     static final double ABORT_SIM_FRACTION = 0.5;
     static final int ABORT_GRACE_AFTER_ARRIVAL = 48;
     static final double PENETRATE_BUDGET_FACTOR = 1.5;
@@ -47,6 +48,7 @@ public final class RunbyEvaluator {
         TOO_FEW,
         NO_TARGET,
         ARMY_NEAR_TARGET,
+        PATH_DEFENDED,
         NO_ARMY_EVIDENCE,
         STATIC_DEFENSE
     }
@@ -156,10 +158,12 @@ public final class RunbyEvaluator {
     /**
      * Runs the entry gates in order and names the first one that refuses.
      *
-     * <p>An army position counts against entry near the target or near the squad's path to it when it is fresh,
-     * and also when it is stale but has not been cleared by our vision: a zealot last seen at the mineral line
-     * is still assumed to be there. The evidence gate asks for positive knowledge that the army is away, as a
-     * share of the supply we track; with no army tracked at all there is no such knowledge.
+     * <p>An army position counts against entry near the target when it is fresh, and also when it is stale but
+     * has not been cleared by our vision: a zealot last seen at the mineral line is still assumed to be there.
+     * Defenders on the squad's path to the target, army and ground static defence alike, do not refuse entry by
+     * their presence: a contain sits in front of exactly those units. They refuse only while the squad lacks
+     * {@link #RUN_PAST_RATIO} times their strength. The evidence gate asks for positive knowledge that the army
+     * is away, as a share of the supply we track; with no army tracked at all there is no such knowledge.
      *
      * <p>Superiority is not an entry gate. Every unit the target tally counts sits inside the army clearance and
      * every zone it counts covers the anchor, so either has already refused entry here. The tally is first read on
@@ -182,8 +186,12 @@ public final class RunbyEvaluator {
         if (anchor == null) {
             return EntryVerdict.NO_TARGET;
         }
-        if (armyNearTarget(input.getArmy(), input.getSquadCenter(), anchor)) {
+        if (armyNearTarget(input.getArmy(), anchor)) {
             return EntryVerdict.ARMY_NEAR_TARGET;
+        }
+        if (!canRunPast(ourTally(input.getSize()),
+                pathTally(input.getArmy(), input.getZones(), input.getSquadCenter(), anchor))) {
+            return EntryVerdict.PATH_DEFENDED;
         }
         if (!armyEvidenceAway(input.getArmy(), anchor)) {
             return EntryVerdict.NO_ARMY_EVIDENCE;
@@ -196,7 +204,7 @@ public final class RunbyEvaluator {
         return EntryVerdict.ENTER;
     }
 
-    static boolean armyNearTarget(List<ArmyUnit> army, Position squadCenter, Position anchor) {
+    static boolean armyNearTarget(List<ArmyUnit> army, Position anchor) {
         for (ArmyUnit unit : army) {
             Position position = unit.getPosition();
             if (position == null || !unit.isFresh() && unit.isCleared()) {
@@ -205,11 +213,57 @@ public final class RunbyEvaluator {
             if (position.getDistance(anchor) <= ARMY_CLEARANCE) {
                 return true;
             }
-            if (squadCenter != null && distanceToSegment(position, squadCenter, anchor) <= ARMY_CLEARANCE) {
-                return true;
-            }
         }
         return false;
+    }
+
+    /**
+     * Enemy ground strength the squad runs past on its way to the target: army units within
+     * {@link #ARMY_CLEARANCE} of the straight squad to target segment, counted when fresh or not yet cleared by
+     * our vision, plus static defence that shoots ground within the same distance of it. Army near the target
+     * itself is left to {@link #armyNearTarget}, and static defence covering the target to the static defence
+     * gate. Priced with the same table the combat sim uses.
+     *
+     * @param army tracked enemy army
+     * @param zones known static defence
+     * @param squadCenter squad center, or null when unknown
+     * @param anchor point being raided
+     * @return summed ground strength on the path
+     */
+    public static double pathTally(List<ArmyUnit> army, List<StaticDefenseZone> zones, Position squadCenter,
+                                   Position anchor) {
+        if (squadCenter == null) {
+            return 0;
+        }
+        double total = 0;
+        for (ArmyUnit unit : army) {
+            Position position = unit.getPosition();
+            if (position == null || !unit.isFresh() && unit.isCleared()
+                    || position.getDistance(anchor) <= ARMY_CLEARANCE) {
+                continue;
+            }
+            if (distanceToSegment(position, squadCenter, anchor) <= ARMY_CLEARANCE) {
+                total += UnitStrength.groundToGround(unit.getType());
+            }
+        }
+        for (StaticDefenseZone zone : zones) {
+            if (threatensGround(zone) && !zone.covers(anchor, 0)
+                    && distanceToSegment(zone.getCenter(), squadCenter, anchor) <= ARMY_CLEARANCE) {
+                total += UnitStrength.groundToGround(zone.getStructure());
+            }
+        }
+        return total;
+    }
+
+    /**
+     * Whether the squad has the mass to run past the defenders on its path.
+     *
+     * @param ours our tally
+     * @param path enemy strength on the path
+     * @return true when we hold at least {@link #RUN_PAST_RATIO} times the path strength
+     */
+    public static boolean canRunPast(double ours, double path) {
+        return ours >= RUN_PAST_RATIO * path;
     }
 
     static boolean armyEvidenceAway(List<ArmyUnit> army, Position anchor) {

@@ -1455,7 +1455,8 @@ public class SquadManager {
                 .basesUnderAttack(underAttack ? 1 : 0);
         if (anchor != null) {
             row.enemyTally(RunbyEvaluator.enemyTally(view.army, view.zones, anchor))
-                    .ourTally(RunbyEvaluator.ourTally(squad.size()));
+                    .ourTally(RunbyEvaluator.ourTally(squad.size()))
+                    .pathTally(RunbyEvaluator.pathTally(view.army, view.zones, squad.getCenter(), anchor));
         }
         RunbyTelemetry.tick(row.build());
         if (verdict != RunbyEvaluator.EntryVerdict.ENTER) {

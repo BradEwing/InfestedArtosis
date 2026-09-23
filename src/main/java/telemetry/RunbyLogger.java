@@ -27,7 +27,7 @@ public class RunbyLogger implements RunbySink {
 
     static final String HEADER = "game_id,frame,squad_id,event,verdict,phase,goal_type,seek_x,seek_y,anchor_x,anchor_y,"
             + "abort_window_open,abort_enemy_tally,abort_our_tally,in_base_area,lings,workers_visible,exposed_lings,"
-            + "hp_lost,hp_lost_non_worker_in_reach,winnable,bases_under_attack,workers_killed,buildings_killed";
+            + "hp_lost,hp_lost_non_worker_in_reach,winnable,bases_under_attack,workers_killed,buildings_killed,path_tally";
 
     private static final int FLUSH_INTERVAL_FRAMES = 480;
     private static final int NOT_EVALUATED = -1;
@@ -131,6 +131,7 @@ public class RunbyLogger implements RunbySink {
         fields.add(String.valueOf(tick.getBasesUnderAttack()));
         fields.add(String.valueOf(tick.getWorkersKilled()));
         fields.add(String.valueOf(tick.getBuildingsKilled()));
+        fields.add(Csv.format(tick.getPathTally()));
         return String.join(",", fields);
     }
 
