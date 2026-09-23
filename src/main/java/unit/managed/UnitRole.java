@@ -16,4 +16,5 @@ public enum UnitRole {
     RALLY,
     CONTAIN,
     PERCH,
+    RUNBY,
 }

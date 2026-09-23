@@ -37,6 +37,34 @@ public class Zergling extends ManagedUnit {
         role = UnitRole.IDLE;
     }
 
+    /**
+     * Moves to the runby destination when one is set, otherwise closes on the fight target and attacks it
+     * within 64 pixels. Moving rather than attack-moving keeps the ling from stopping on units it was not
+     * told to hit. The role is never changed here, so a ling without an order waits for the next one instead
+     * of going idle and being re-homed.
+     */
+    @Override
+    protected void runby() {
+        if (unit.isAttackFrame()) {
+            return;
+        }
+
+        if (runbyDestination != null) {
+            setUnready(5);
+            unit.move(runbyDestination);
+            return;
+        }
+
+        if (fightTarget != null) {
+            setUnready(5);
+            if (unit.getDistance(fightTarget) < 64) {
+                unit.attack(fightTarget);
+                return;
+            }
+            unit.move(fightTarget.getPosition());
+        }
+    }
+
     @Override
     protected List<Unit> getEnemiesInRadius(int currentX, int currentY) {
         return game.getUnitsInRadius(currentX, currentY, 128)
