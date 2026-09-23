@@ -555,12 +555,19 @@ public class Reactions {
 
     /**
      * Holds the natural against a proxy Gateway. ProxyGate implies EarlyRush, so the Pool, Zergling, speed
-     * and drone cut response is the early rush reaction's; this adds the expansion hold, once per game, on
-     * the first frame ProxyGate is detected.
+     * and drone cut response is the early rush reaction's; this adds the expansion hold.
+     *
+     * <p>The hold stands while ProxyGate is detected and the early rush reaction is armed, so it stands
+     * down with the early rush reaction, at the latest at its hard deadline. On the first frame of each
+     * hold every unmorphed expansion is cancelled. For the rest of the hold no new one is created:
+     * {@link GameState#mayQueueExpansionHatchery()} refuses expansion Hatcheries while the bot is early
+     * rushed, which the hold implies. The early rush reaction runs first each frame, so the flag the hold
+     * reads is current.
      */
     private void proxyGateReaction() {
-        boolean detected = gameState.getStrategyTracker().isDetectedStrategy(ProxyGate.NAME);
-        if (!shouldHoldExpansionsForProxyGate(detected)) {
+        boolean holding = isProxyGateExpansionHold(gameState.getStrategyTracker().isDetectedStrategy(ProxyGate.NAME),
+                gameState.isEarlyRushed());
+        if (!shouldCancelExpansionsForProxyGate(holding)) {
             return;
         }
 
@@ -570,13 +577,29 @@ public class Reactions {
     }
 
     /**
-     * Whether the proxy Gateway reaction cancels unmorphed expansions this frame.
+     * Whether the proxy Gateway expansion hold stands this frame.
      *
      * @param proxyGateDetected whether ProxyGate is detected
-     * @return true on the first frame ProxyGate is detected, and never again
+     * @param earlyRushed whether the early rush reaction is armed
+     * @return true while both hold
      */
-    boolean shouldHoldExpansionsForProxyGate(boolean proxyGateDetected) {
-        return proxyGateDetected && proxyGateExpansionHold.fire();
+    static boolean isProxyGateExpansionHold(boolean proxyGateDetected, boolean earlyRushed) {
+        return proxyGateDetected && earlyRushed;
+    }
+
+    /**
+     * Whether the proxy Gateway reaction cancels unmorphed expansions this frame. The cancel runs once per
+     * hold and rearms whenever the hold lifts, so a hold that returns cancels again.
+     *
+     * @param holding whether the expansion hold stands this frame
+     * @return true on the first frame of each hold
+     */
+    boolean shouldCancelExpansionsForProxyGate(boolean holding) {
+        if (!holding) {
+            proxyGateExpansionHold.rearm();
+            return false;
+        }
+        return proxyGateExpansionHold.fire();
     }
 
     /**

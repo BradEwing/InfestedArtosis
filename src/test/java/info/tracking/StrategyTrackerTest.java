@@ -170,18 +170,20 @@ class StrategyTrackerTest {
     }
 
     /**
-     * GAME_LSP4O001: the first local Zealot completes at frame 4063 and the third, which is 2Gate's volume
-     * evidence, at 4235. ProxyGate, fed the first Zealot's completion, fires on the first frame; 2Gate fires on
-     * the later one and is suppressed.
+     * GAME_LSP4O001: local Zealots complete at the natural on frames 4063 and 4097, and the third, which is
+     * 2Gate's volume evidence, at 4235. ProxyGate fires once the second has completed; 2Gate fires on the later
+     * frame and is suppressed.
      */
     @Test
     void theLsp4o001ProxyGateCarriesNoTwoGateCoLabel() {
-        ObservedUnit zealot = ObservedUnitFixture.observedUnit(UnitType.Protoss_Zealot, new Time(4063));
-        zealot.markCompletedWhileObserved(new Time(4063), new Position(2057, 843));
+        ObservedUnit zealot176 = ObservedUnitFixture.observedUnit(UnitType.Protoss_Zealot, new Time(4063));
+        zealot176.markCompletedWhileObserved(new Time(4063), new Position(2057, 843));
+        ObservedUnit zealot179 = ObservedUnitFixture.observedUnit(UnitType.Protoss_Zealot, new Time(4097));
+        zealot179.markCompletedWhileObserved(new Time(4097), new Position(2035, 841));
         Set<TilePosition> naturalTiles = Distance.tilesWithinManhattanDistance(new TilePosition(63, 19),
                 BaseData.NATURAL_DEFENSE_TILE_RADIUS);
-        assertTrue(ObservedUnitFixture.trackerHolding(zealot)
-                .hasCompletedWhileObservedOnTiles(UnitType.Protoss_Zealot, naturalTiles, new Time(4063)));
+        assertEquals(2, ObservedUnitFixture.countCompletedWhileObservedOnTiles(Arrays.asList(zealot176, zealot179),
+                UnitType.Protoss_Zealot, naturalTiles, new Time(4097)));
 
         StrategyTracker strategyTracker = trackerAgainst(Race.Protoss);
         strategyTracker.recordDetections(Collections.singleton(new ProxyGate()));
@@ -220,6 +222,45 @@ class StrategyTrackerTest {
 
             assertEquals(2, reported.size());
             assertEquals(new HashSet<>(Arrays.asList("ProxyGate", "EarlyRush")), new HashSet<>(reported));
+        } finally {
+            PlanEvents.clear();
+        }
+    }
+
+    @Test
+    void theDetectionIsReportedUnderItsDetectionLabel() {
+        List<String> reported = new ArrayList<>();
+        PlanEvents.register(new PlanEventSink() {
+            @Override
+            public void onEnqueue(Plan plan) {
+            }
+
+            @Override
+            public void onStateChange(Plan plan, PlanState from, PlanState to) {
+            }
+
+            @Override
+            public void onBlocked(Plan plan, PlanBlocker blocker) {
+            }
+
+            @Override
+            public void onStrategyDetected(String detectionLabel) {
+                reported.add(detectionLabel);
+            }
+        });
+        try {
+            StrategyTracker strategyTracker = trackerAgainst(Race.Protoss);
+            ProxyGate zealotsOnly = new ProxyGate() {
+                @Override
+                public String getDetectionLabel() {
+                    return "ProxyGate:ZEALOTS";
+                }
+            };
+
+            strategyTracker.recordDetections(Collections.singleton(zealotsOnly));
+
+            assertEquals(new HashSet<>(Arrays.asList("ProxyGate:ZEALOTS", "EarlyRush")), new HashSet<>(reported));
+            assertTrue(strategyTracker.isDetectedStrategy("ProxyGate"));
         } finally {
             PlanEvents.clear();
         }

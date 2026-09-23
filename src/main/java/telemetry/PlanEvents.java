@@ -158,11 +158,11 @@ public final class PlanEvents {
         current.onExpansionBackoff(lostExpansionBuilders, expansionHeldUntilFrame);
     }
 
-    public static void strategyDetected(String strategyName) {
+    public static void strategyDetected(String detectionLabel) {
         PlanEventSink current = sink;
         if (current == null) {
             return;
         }
-        current.onStrategyDetected(strategyName);
+        current.onStrategyDetected(detectionLabel);
     }
 }

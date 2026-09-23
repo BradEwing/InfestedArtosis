@@ -111,8 +111,9 @@ public interface PlanEventSink {
      * StrategyTracker added a strategy to its detected set, directly or by implication, after resolving
      * supersessions for the frame.
      *
-     * @param strategyName the detected strategy's name
+     * @param detectionLabel the detected strategy's name, followed by the evidence it was detected on when the
+     *     strategy records one, e.g. ProxyGate:ZEALOTS
      */
-    default void onStrategyDetected(String strategyName) {
+    default void onStrategyDetected(String detectionLabel) {
     }
 }

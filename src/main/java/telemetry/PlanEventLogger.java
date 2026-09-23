@@ -105,8 +105,10 @@ public class PlanEventLogger implements PlanEventSink {
      * lost_expansion_builders and expansion_hold_until_frame are set only on EXPANSION_BACKOFF
      * rows. The hold a row armed is expansion_hold_until_frame minus frame.
      * <p>
-     * STRATEGY_DETECTED rows carry the detected strategy's name in item and leave every plan column
-     * empty, so the frame a strategy was detected is the row's frame.
+     * STRATEGY_DETECTED rows carry the detected strategy's detection label in item and leave every
+     * plan column empty, so the frame a strategy was detected is the row's frame. The label is the
+     * strategy's name, followed for ProxyGate by the evidence arms that fired: ProxyGate:GATEWAY,
+     * ProxyGate:ZEALOTS or ProxyGate:GATEWAY+ZEALOTS.
      */
     static final String PLAN_HEADER = "frame,time,event,plan_id,executor_unit_id,plan_type,item,from_state,"
             + "to_state,cancel_reason,cancel_source,blocker,blocked_frames,priority,frames_in_state,age_frames,"
@@ -522,14 +524,14 @@ public class PlanEventLogger implements PlanEventSink {
      * onFrame, because StrategyTracker may run ahead of this logger's onFrame on the same frame.
      */
     @Override
-    public void onStrategyDetected(String strategyName) {
+    public void onStrategyDetected(String detectionLabel) {
         if (disabled) {
             return;
         }
 
         try {
             currentFrame = game.getFrameCount();
-            buffer.add(strategyDetectedRow(strategyName));
+            buffer.add(strategyDetectedRow(detectionLabel));
         } catch (Exception e) {
             disabled = true;
         }
@@ -770,11 +772,11 @@ public class PlanEventLogger implements PlanEventSink {
     }
 
     /** A row for a detected strategy, which no plan owns, so the plan columns are empty. */
-    private String strategyDetectedRow(String strategyName) {
+    private String strategyDetectedRow(String detectionLabel) {
         StringBuilder sb = new StringBuilder();
         appendEvent(sb, EVENT_STRATEGY_DETECTED);
         appendEmpty(sb, 3);
-        sb.append(Csv.sanitize(strategyName)).append(',');
+        sb.append(Csv.sanitize(detectionLabel)).append(',');
         appendEmpty(sb, 4);
         appendBlocker(sb, PlanBlocker.NONE, 0);
         appendEmpty(sb, 3);

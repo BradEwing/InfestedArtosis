@@ -98,9 +98,12 @@ public abstract class ProtossBase extends BuildOrder {
     /**
      * Sunkens per base the Protoss matchup asks for.
      *
-     * Take a sunken if 2Gate is detected.
-     * Taken a sunken if 6+ zealots are detected
-     * Take a sunken if game time over 10 minutes and drone supply is healthy (20+)
+     * <p>One if CannonRush is detected, and nothing else. Otherwise the sum of:
+     * <ul>
+     *     <li>one if 2Gate or ProxyGate is detected and a Zealot has been seen or the game is past 3:20;</li>
+     *     <li>one if more than 3 Zealots are seen, and another if more than 6;</li>
+     *     <li>one past 10:00 with more than 20 drones.</li>
+     * </ul>
      */
     @Override
     protected int matchupSunkens(GameState gameState) {

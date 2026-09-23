@@ -101,8 +101,9 @@ public class StrategyTracker {
     /**
      * Moves this frame's detections into the detected set, then resolves supersessions before
      * implications, so a superseded strategy detected on the same frame never reaches the detected set
-     * alongside the strategy that supersedes it. Emits one STRATEGY_DETECTED telemetry row per strategy that
-     * is detected at the end of the frame and was not at its start.
+     * alongside the strategy that supersedes it. Emits one STRATEGY_DETECTED telemetry row, carrying the
+     * strategy's detection label, per strategy that is detected at the end of the frame and was not at its
+     * start.
      */
     void recordDetections(Set<ObservedStrategy> newlyDetected) {
         Set<ObservedStrategy> detectedBefore = new HashSet<>(detectedStrategies);
@@ -115,7 +116,7 @@ public class StrategyTracker {
 
         for (ObservedStrategy strategy : detectedStrategies) {
             if (!detectedBefore.contains(strategy)) {
-                PlanEvents.strategyDetected(strategy.getName());
+                PlanEvents.strategyDetected(strategy.getDetectionLabel());
             }
         }
     }

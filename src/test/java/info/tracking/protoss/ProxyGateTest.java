@@ -7,12 +7,11 @@ import bwapi.UnitType;
 import info.BaseData;
 import info.tracking.ObservedUnit;
 import info.tracking.ObservedUnitFixture;
-import info.tracking.ObservedUnitTracker;
 import org.junit.jupiter.api.Test;
 import util.Distance;
 import util.Time;
 
-import java.util.Collections;
+import java.util.Arrays;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -21,7 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Positions and frames are GAME_LSP4O001's (Destination): our natural's base location, the proxy Probe shown
- * beside it, and the first Zealot completing there.
+ * beside it, and the first two Zealots completing there.
  */
 class ProxyGateTest {
 
@@ -34,9 +33,13 @@ class ProxyGateTest {
 
     private static final Position PROBE_POSITION = new Position(2035, 738);
 
-    private static final Time ZEALOT_COMPLETED = new Time(4063);
+    private static final Time FIRST_ZEALOT_COMPLETED = new Time(4063);
 
-    private static final Position ZEALOT_POSITION = new Position(2057, 843);
+    private static final Position FIRST_ZEALOT_POSITION = new Position(2057, 843);
+
+    private static final Time SECOND_ZEALOT_COMPLETED = new Time(4097);
+
+    private static final Position SECOND_ZEALOT_POSITION = new Position(2035, 841);
 
     private static final Position ENEMY_MAIN_POSITION = new Position(2112, 3824);
 
@@ -44,17 +47,17 @@ class ProxyGateTest {
 
     @Test
     void aProxiedGatewayInsideTheCutoffIsDetected() {
-        assertTrue(ProxyGate.matches(trackerHolding(gateway(ProxyGate.DETECTION_CUTOFF, true)), OUR_BASE_TILES));
+        assertTrue(ProxyGate.matches(proxiedGateways(gateway(ProxyGate.DETECTION_CUTOFF, true)), 0));
     }
 
     @Test
     void aProxiedGatewayFirstSeenAfterTheCutoffIsNotDetected() {
-        assertFalse(ProxyGate.matches(trackerHolding(gateway(AFTER_CUTOFF, true)), OUR_BASE_TILES));
+        assertFalse(ProxyGate.matches(proxiedGateways(gateway(AFTER_CUTOFF, true)), 0));
     }
 
     @Test
     void aGatewayAwayFromOurBasesIsNotDetected() {
-        assertFalse(ProxyGate.matches(trackerHolding(gateway(PROBE_SHOWN, false)), OUR_BASE_TILES));
+        assertFalse(ProxyGate.matches(proxiedGateways(gateway(PROBE_SHOWN, false)), 0));
     }
 
     @Test
@@ -63,65 +66,112 @@ class ProxyGateTest {
         probe.setProxied(true);
         probe.markCompletedWhileObserved(PROBE_SHOWN, PROBE_POSITION);
 
-        assertFalse(ProxyGate.matches(trackerHolding(probe), OUR_BASE_TILES));
+        assertEquals(0, proxiedGateways(probe));
+        assertEquals(0, localZealots(ProxyGate.DETECTION_CUTOFF, probe));
+        assertFalse(ProxyGate.matches(proxiedGateways(probe), localZealots(ProxyGate.DETECTION_CUTOFF, probe)));
+    }
+
+    /**
+     * BWAPI raises the enemy onUnitComplete when it first shows an already complete unit, so a single Zealot
+     * walking onto the natural unseen reports a local completion. One is not enough.
+     */
+    @Test
+    void oneZealotCompletingAtOurNaturalIsNotDetected() {
+        ObservedUnit zealot = zealot(FIRST_ZEALOT_COMPLETED, FIRST_ZEALOT_POSITION);
+
+        assertEquals(1, localZealots(ProxyGate.DETECTION_CUTOFF, zealot));
+        assertFalse(ProxyGate.matches(0, localZealots(ProxyGate.DETECTION_CUTOFF, zealot)));
     }
 
     @Test
-    void aZealotCompletingAtOurNaturalIsDetected() {
-        ObservedUnit zealot = ObservedUnitFixture.observedUnit(UnitType.Protoss_Zealot, ZEALOT_COMPLETED);
-        zealot.markCompletedWhileObserved(ZEALOT_COMPLETED, ZEALOT_POSITION);
+    void twoZealotsCompletingAtOurNaturalAreDetected() {
+        ObservedUnit first = zealot(FIRST_ZEALOT_COMPLETED, FIRST_ZEALOT_POSITION);
+        ObservedUnit second = zealot(SECOND_ZEALOT_COMPLETED, SECOND_ZEALOT_POSITION);
 
-        assertTrue(OUR_BASE_TILES.contains(ZEALOT_POSITION.toTilePosition()));
-        assertTrue(ProxyGate.matches(trackerHolding(zealot), OUR_BASE_TILES));
+        assertEquals(2, localZealots(ProxyGate.DETECTION_CUTOFF, first, second));
+        assertTrue(ProxyGate.matches(0, localZealots(ProxyGate.DETECTION_CUTOFF, first, second)));
+    }
+
+    /**
+     * GAME_LSP4O001: Zealot 176 completes at the natural on frame 4063 and Zealot 179 on 4097. The first alone
+     * does not detect; both do, by frame 4097.
+     */
+    @Test
+    void theLsp4o001ZealotsDetectByTheSecondCompletion() {
+        ObservedUnit zealot176 = zealot(FIRST_ZEALOT_COMPLETED, FIRST_ZEALOT_POSITION);
+        ObservedUnit zealot179 = zealot(SECOND_ZEALOT_COMPLETED, SECOND_ZEALOT_POSITION);
+
+        assertFalse(ProxyGate.matches(0, localZealots(FIRST_ZEALOT_COMPLETED, zealot176, zealot179)));
+        assertTrue(ProxyGate.matches(0, localZealots(SECOND_ZEALOT_COMPLETED, zealot176, zealot179)));
     }
 
     @Test
-    void firstSightOfAnAlreadyCompleteZealotIsNotALocalCompletion() {
-        ObservedUnit zealot = ObservedUnitFixture.observedUnit(UnitType.Protoss_Zealot, ZEALOT_COMPLETED);
-        zealot.markCompleted(ZEALOT_COMPLETED);
+    void firstSightOfAlreadyCompleteZealotsIsNotALocalCompletion() {
+        ObservedUnit first = ObservedUnitFixture.observedUnit(UnitType.Protoss_Zealot, FIRST_ZEALOT_COMPLETED);
+        first.markCompleted(FIRST_ZEALOT_COMPLETED);
+        ObservedUnit second = ObservedUnitFixture.observedUnit(UnitType.Protoss_Zealot, SECOND_ZEALOT_COMPLETED);
+        second.markCompleted(SECOND_ZEALOT_COMPLETED);
 
-        assertFalse(ProxyGate.matches(trackerHolding(zealot), OUR_BASE_TILES));
+        assertEquals(0, localZealots(ProxyGate.DETECTION_CUTOFF, first, second));
     }
 
     @Test
-    void aZealotCompletingAwayFromOurBasesIsNotDetected() {
-        ObservedUnit zealot = ObservedUnitFixture.observedUnit(UnitType.Protoss_Zealot, ZEALOT_COMPLETED);
-        zealot.markCompletedWhileObserved(ZEALOT_COMPLETED, ENEMY_MAIN_POSITION);
+    void zealotsCompletingAwayFromOurBasesAreNotDetected() {
+        ObservedUnit first = zealot(FIRST_ZEALOT_COMPLETED, ENEMY_MAIN_POSITION);
+        ObservedUnit second = zealot(SECOND_ZEALOT_COMPLETED, ENEMY_MAIN_POSITION);
 
-        assertFalse(ProxyGate.matches(trackerHolding(zealot), OUR_BASE_TILES));
+        assertEquals(0, localZealots(ProxyGate.DETECTION_CUTOFF, first, second));
     }
 
     @Test
-    void aZealotCompletingAtOurNaturalAfterTheCutoffIsNotDetected() {
-        ObservedUnit zealot = ObservedUnitFixture.observedUnit(UnitType.Protoss_Zealot, AFTER_CUTOFF);
-        zealot.markCompletedWhileObserved(AFTER_CUTOFF, ZEALOT_POSITION);
+    void zealotsCompletingAtOurNaturalAfterTheCutoffAreNotCounted() {
+        ObservedUnit first = zealot(AFTER_CUTOFF, FIRST_ZEALOT_POSITION);
+        ObservedUnit second = zealot(AFTER_CUTOFF, SECOND_ZEALOT_POSITION);
 
-        assertFalse(ProxyGate.matches(trackerHolding(zealot), OUR_BASE_TILES));
+        assertEquals(0, localZealots(ProxyGate.DETECTION_CUTOFF, first, second));
     }
 
     @Test
-    void aZealotCompletionIsKeptAfterTheZealotDies() {
-        ObservedUnit zealot = ObservedUnitFixture.observedUnit(UnitType.Protoss_Zealot, ZEALOT_COMPLETED);
-        zealot.markCompletedWhileObserved(ZEALOT_COMPLETED, ZEALOT_POSITION);
-        zealot.setDestroyedFrame(new Time(ZEALOT_COMPLETED.getFrames() + 100));
+    void aZealotCompletionIsCountedAfterTheZealotDies() {
+        ObservedUnit zealot = zealot(FIRST_ZEALOT_COMPLETED, FIRST_ZEALOT_POSITION);
+        zealot.setDestroyedFrame(new Time(FIRST_ZEALOT_COMPLETED.getFrames() + 100));
 
-        assertTrue(ProxyGate.matches(trackerHolding(zealot), OUR_BASE_TILES));
+        assertEquals(1, localZealots(ProxyGate.DETECTION_CUTOFF, zealot));
     }
 
     @Test
     void onlyTheFirstCompletionReportIsKept() {
-        ObservedUnit zealot = ObservedUnitFixture.observedUnit(UnitType.Protoss_Zealot, ZEALOT_COMPLETED);
-        zealot.markCompletedWhileObserved(ZEALOT_COMPLETED, ZEALOT_POSITION);
+        ObservedUnit zealot = zealot(FIRST_ZEALOT_COMPLETED, FIRST_ZEALOT_POSITION);
         zealot.markCompletedWhileObserved(AFTER_CUTOFF, ENEMY_MAIN_POSITION);
 
-        assertEquals(ZEALOT_COMPLETED, zealot.getCompletedWhileObservedFrame());
-        assertEquals(ZEALOT_POSITION, zealot.getCompletedWhileObservedPosition());
+        assertEquals(FIRST_ZEALOT_COMPLETED, zealot.getCompletedWhileObservedFrame());
+        assertEquals(FIRST_ZEALOT_POSITION, zealot.getCompletedWhileObservedPosition());
         assertTrue(zealot.isCompleted());
     }
 
     @Test
     void noEvidenceIsNotDetected() {
-        assertFalse(ProxyGate.matches(new ObservedUnitTracker(), Collections.emptySet()));
+        assertFalse(ProxyGate.matches(0, 0));
+    }
+
+    @Test
+    void theEvidenceNamesTheArmsThatFired() {
+        assertEquals("GATEWAY", ProxyGate.evidence(1, 0));
+        assertEquals("GATEWAY", ProxyGate.evidence(1, 1));
+        assertEquals("ZEALOTS", ProxyGate.evidence(0, 2));
+        assertEquals("GATEWAY+ZEALOTS", ProxyGate.evidence(1, 2));
+        assertEquals("", ProxyGate.evidence(0, 1));
+    }
+
+    @Test
+    void theDetectionLabelCarriesTheEvidence() {
+        ProxyGate strategy = new ProxyGate();
+        assertEquals("ProxyGate", strategy.getDetectionLabel());
+
+        assertTrue(strategy.recordEvidence(0, 2));
+
+        assertEquals("ProxyGate:ZEALOTS", strategy.getDetectionLabel());
+        assertEquals("ProxyGate", strategy.getName());
     }
 
     @Test
@@ -137,7 +187,19 @@ class ProxyGateTest {
         return gateway;
     }
 
-    private static ObservedUnitTracker trackerHolding(ObservedUnit observedUnit) {
-        return ObservedUnitFixture.trackerHolding(observedUnit);
+    private static ObservedUnit zealot(Time completed, Position position) {
+        ObservedUnit zealot = ObservedUnitFixture.observedUnit(UnitType.Protoss_Zealot, completed);
+        zealot.markCompletedWhileObserved(completed, position);
+        return zealot;
+    }
+
+    private static int proxiedGateways(ObservedUnit observedUnit) {
+        return ObservedUnitFixture.trackerHolding(observedUnit)
+                .getProxiedCountByTypeBeforeTime(UnitType.Protoss_Gateway, ProxyGate.DETECTION_CUTOFF);
+    }
+
+    private static int localZealots(Time by, ObservedUnit... units) {
+        return ObservedUnitFixture.countCompletedWhileObservedOnTiles(Arrays.asList(units), UnitType.Protoss_Zealot,
+                OUR_BASE_TILES, by);
     }
 }

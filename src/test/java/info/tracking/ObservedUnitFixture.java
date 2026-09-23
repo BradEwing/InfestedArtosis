@@ -1,7 +1,11 @@
 package info.tracking;
 
+import bwapi.TilePosition;
 import bwapi.UnitType;
 import util.Time;
+
+import java.util.Collection;
+import java.util.Set;
 
 /**
  * Builds ObservedUnit and ObservedUnitTracker state without a live bwapi Unit, which cannot be instantiated
@@ -20,6 +24,15 @@ public final class ObservedUnitFixture {
         ObservedUnitTracker tracker = new ObservedUnitTracker();
         tracker.track(observedUnit);
         return tracker;
+    }
+
+    /**
+     * The count ObservedUnitTracker.countCompletedWhileObservedOnTiles() takes over its tracked units, taken
+     * over the given units instead, since a tracker holds at most one unit built here.
+     */
+    public static int countCompletedWhileObservedOnTiles(Collection<ObservedUnit> units, UnitType unitType,
+                                                         Set<TilePosition> tiles, Time t) {
+        return ObservedUnitTracker.countCompletedWhileObservedOnTiles(units, unitType, tiles, t);
     }
 
     public static void changeType(ObservedUnit observedUnit, UnitType unitType) {

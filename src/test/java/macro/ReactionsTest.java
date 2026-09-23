@@ -926,12 +926,47 @@ public class ReactionsTest {
     }
 
     @Test
-    void theProxyGateReactionHoldsTheNaturalOnlyOnce() {
-        Reactions reactions = new Reactions(null);
+    void theProxyGateHoldStandsOnlyWhileProxyGateIsDetectedAndTheEarlyRushIsArmed() {
+        assertTrue(Reactions.isProxyGateExpansionHold(true, true));
+        assertFalse(Reactions.isProxyGateExpansionHold(true, false));
+        assertFalse(Reactions.isProxyGateExpansionHold(false, true));
+        assertFalse(Reactions.isProxyGateExpansionHold(false, false));
+    }
 
-        assertFalse(reactions.shouldHoldExpansionsForProxyGate(false));
-        assertTrue(reactions.shouldHoldExpansionsForProxyGate(true));
-        assertFalse(reactions.shouldHoldExpansionsForProxyGate(true));
+    /**
+     * No expansion can be queued while the hold stands, because the hold implies the early rush flag that
+     * GameState.mayQueueExpansionHatchery() refuses expansions on. Queued, scheduled and assigned-but-unmorphed
+     * expansions are cancelled on the first frame of each hold; one re-queued while the early rush reaction
+     * had stood down is cancelled when the hold returns.
+     */
+    @Test
+    void theProxyGateHoldCancelsOnEachHoldAndRefusesExpansionsWhileItStands() {
+        Reactions reactions = new Reactions(null);
+        ProductionQueue queue = new ProductionQueue();
+        List<Plan> cancelled = new ArrayList<>();
+
+        queue.add(expansion(PlanState.PLANNED));
+        boolean holding = Reactions.isProxyGateExpansionHold(true, true);
+        assertTrue(reactions.shouldCancelExpansionsForProxyGate(holding));
+        Reactions.cancelUnmorphedExpansions(queue, new HashSet<>(), new HashSet<>(), cancelled::add, cancelled::add);
+        assertEquals(1, cancelled.size());
+
+        for (int frame = 0; frame < SUSTAINED_RUSH_FRAMES; frame++) {
+            assertFalse(reactions.shouldCancelExpansionsForProxyGate(holding));
+            assertFalse(HatcheryCapacity.isQueueable(false, holding));
+        }
+
+        boolean stoodDown = Reactions.isProxyGateExpansionHold(true, false);
+        assertFalse(reactions.shouldCancelExpansionsForProxyGate(stoodDown));
+        assertTrue(HatcheryCapacity.isQueueable(false, stoodDown));
+        Plan requeued = expansion(PlanState.SCHEDULE);
+        Set<Plan> plansScheduled = new HashSet<>(Collections.singletonList(requeued));
+
+        assertTrue(reactions.shouldCancelExpansionsForProxyGate(Reactions.isProxyGateExpansionHold(true, true)));
+        Reactions.cancelUnmorphedExpansions(queue, plansScheduled, new HashSet<>(), cancelled::add, cancelled::add);
+        assertEquals(2, cancelled.size());
+        assertEquals(requeued, cancelled.get(1));
+        assertTrue(plansScheduled.isEmpty());
     }
 
     /**

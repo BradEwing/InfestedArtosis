@@ -11,6 +11,7 @@ import util.StaticDefenseZone;
 import util.Time;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Arrays;
@@ -292,18 +293,23 @@ public class ObservedUnitTracker {
     }
 
     /**
-     * Whether a unit of this type had an onUnitComplete callback at or before t while standing on one of the
-     * tiles, counting units since destroyed. Completion stamps set on first sight or on a later frame do not
-     * count.
+     * Distinct units of this type whose onUnitComplete callback fired at or before t while they stood on one
+     * of the tiles, counting units since destroyed. Completion stamps set on first sight or on a later frame
+     * do not count.
      */
-    public boolean hasCompletedWhileObservedOnTiles(UnitType unitType, Set<TilePosition> tiles, Time t) {
-        return observedUnits.values()
-                .stream()
+    public int countCompletedWhileObservedOnTiles(UnitType unitType, Set<TilePosition> tiles, Time t) {
+        return countCompletedWhileObservedOnTiles(observedUnits.values(), unitType, tiles, t);
+    }
+
+    static int countCompletedWhileObservedOnTiles(Collection<ObservedUnit> units, UnitType unitType,
+                                                  Set<TilePosition> tiles, Time t) {
+        return (int) units.stream()
                 .filter(ou -> ou.getUnitType() == unitType)
                 .filter(ou -> ou.getCompletedWhileObservedFrame() != null)
                 .filter(ou -> ou.getCompletedWhileObservedFrame().lessThanOrEqual(t))
                 .map(ObservedUnit::getCompletedWhileObservedPosition)
-                .anyMatch(pos -> pos != null && tiles.contains(pos.toTilePosition()));
+                .filter(pos -> pos != null && tiles.contains(pos.toTilePosition()))
+                .count();
     }
 
     public Set<Unit> getDetectedUnits() {
