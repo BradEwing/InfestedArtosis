@@ -11,7 +11,9 @@ import bwapi.Unit;
 import bwapi.UnitType;
 import bwapi.UpgradeType;
 import bwapi.WalkPosition;
+import bwem.Area;
 import bwem.BWEM;
+import bwem.BWMap;
 import bwem.Base;
 import bwem.Geyser;
 import bwem.Mineral;
@@ -36,6 +38,7 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 
 public class InformationManager {
@@ -50,6 +53,7 @@ public class InformationManager {
     // TODO: Move to GameState
     private HashSet<Base> startingBasesSet = new HashSet<>();
     private HashSet<Base> expansionBasesSet = new HashSet<>();
+    private final HashMap<Base, List<TilePosition>> buildableAreaTiles = new HashMap<>();
 
     private static final int PROXY_DETECTION_DISTANCE = 24;
 
@@ -81,7 +85,7 @@ public class InformationManager {
         trackEnemyUnits();
         trackEnemyBuildings();
         checkEnemyBases();
-        recordEnemyMainReached();
+        recordEnemyMainVision();
         checkEnemyBuildingPositions();
         debugEnemyTargets();
         checkScoutTargets();
@@ -612,16 +616,41 @@ public class InformationManager {
     }
 
     /**
-     * Records the scouting fact that the enemy main has been reached: its depot location is in our vision.
-     * Runs after checkEnemyBases, so a starting location wrongly taken for the enemy main is dropped, not
-     * recorded, once we see it holds no enemy building.
+     * Adds the enemy main's buildable tiles now in our vision to ScoutData's coverage of that main, until the
+     * main counts as scouted. Runs after checkEnemyBases, so a starting location wrongly taken for the enemy
+     * main is dropped, not recorded, once we see it holds no enemy building.
      */
-    private void recordEnemyMainReached() {
+    private void recordEnemyMainVision() {
         Base enemyMain = gameState.getBaseData().getMainEnemyBase();
-        if (enemyMain == null || !game.isVisible(enemyMain.getLocation())) {
+        if (enemyMain == null || enemyMain.getArea() == null) {
             return;
         }
-        gameState.getScoutData().recordEnemyMainReached(enemyMain, new Time(game.getFrameCount()));
+        ScoutData scoutData = gameState.getScoutData();
+        if (scoutData.getEnemyMainScoutedFrame(enemyMain) != null) {
+            return;
+        }
+        List<TilePosition> mainTiles = buildableAreaTiles.computeIfAbsent(enemyMain, this::buildableTilesOfArea);
+        List<TilePosition> visibleTiles = mainTiles.stream()
+                .filter(tile -> !scoutData.hasSeenEnemyMainTile(enemyMain, tile))
+                .filter(game::isVisible)
+                .collect(Collectors.toList());
+        scoutData.recordEnemyMainVision(enemyMain, visibleTiles, mainTiles.size(), new Time(game.getFrameCount()));
+    }
+
+    private List<TilePosition> buildableTilesOfArea(Base base) {
+        BWMap map = bwem.getMap();
+        Area area = base.getArea();
+        List<TilePosition> tiles = new ArrayList<>();
+        for (int x = area.getTopLeft().getX(); x <= area.getBottomRight().getX(); x++) {
+            for (int y = area.getTopLeft().getY(); y <= area.getBottomRight().getY(); y++) {
+                TilePosition tile = new TilePosition(x, y);
+                if (map.getData().getMapData().isValid(tile) && map.getTile(tile).isBuildable()
+                        && area.equals(map.getArea(tile))) {
+                    tiles.add(tile);
+                }
+            }
+        }
+        return tiles;
     }
 
     private void ensureScoutTargets() {

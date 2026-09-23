@@ -11,7 +11,7 @@ import util.Time;
 public class FFE extends ProtossBaseStrategy {
 
     private static final Time DETECTION_CUTOFF = new Time(4, 30);
-    private static final int PROXIMITY_TILE_RADIUS = 8;
+    static final int PROXIMITY_TILE_RADIUS = 8;
     private static final int AREA_TILE_RADIUS = 20;
 
     public FFE() {

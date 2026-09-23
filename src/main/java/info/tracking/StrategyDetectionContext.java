@@ -84,28 +84,36 @@ public class StrategyDetectionContext {
         return hasEnemyDepotInArea(enemyNatural.getArea(), tile -> true);
     }
 
-    public boolean isEnemyMainKnown() {
-        return baseData.getMainEnemyBase() != null;
+    /**
+     * Whether both the enemy main and the inferred enemy natural are known.
+     */
+    public boolean isEnemyHomeKnown() {
+        return baseData.getMainEnemyBase() != null && baseData.getEnemyNaturalBase() != null;
     }
 
     /**
-     * The first frame the depot location of the enemy main was in our vision, recorded in ScoutData. Null
-     * while the enemy main is unknown or our scouting has not reached it.
+     * The first frame our vision had covered ScoutData.ENEMY_MAIN_SCOUTED_COVERAGE of the enemy main's
+     * buildable tiles. Null while the enemy main is unknown or not yet scouted.
      */
-    public Time enemyMainReachedFrame() {
+    public Time enemyMainScoutedFrame() {
         Base enemyMain = baseData.getMainEnemyBase();
         if (enemyMain == null) {
             return null;
         }
-        return scoutData.getEnemyMainReachedFrame(enemyMain);
+        return scoutData.getEnemyMainScoutedFrame(enemyMain);
     }
 
     /**
-     * Whether the tile lies in the BWEM Area of the enemy main or of the inferred enemy natural. False while
-     * the enemy main is unknown.
+     * Whether the tile belongs to the enemy's home: the BWEM Area of the enemy main or of the inferred enemy
+     * natural, or within naturalWallTileRadius manhattan tiles of the natural's depot or of one of its
+     * chokepoints, where a wall at the natural stands. False where neither base is known.
      */
-    public boolean isInEnemyMainOrNatural(TilePosition tile) {
-        return isInBaseArea(tile, baseData.getMainEnemyBase()) || isInBaseArea(tile, baseData.getEnemyNaturalBase());
+    public boolean isAtEnemyHome(TilePosition tile, int naturalWallTileRadius) {
+        if (isInBaseArea(tile, baseData.getMainEnemyBase()) || isInBaseArea(tile, baseData.getEnemyNaturalBase())) {
+            return true;
+        }
+        BaseArea naturalWall = enemyNaturalArea(naturalWallTileRadius, naturalWallTileRadius);
+        return naturalWall != null && naturalWall.contains(tile);
     }
 
     /**

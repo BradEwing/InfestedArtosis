@@ -1,13 +1,16 @@
 package info;
 
 import bwapi.Race;
+import bwapi.TilePosition;
 import bwapi.UnitType;
 import org.junit.jupiter.api.Test;
 import util.Time;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -145,17 +148,48 @@ class ScoutDataTest {
      * A bwem Base cannot be built outside its package, so the null key stands in for one enemy main.
      */
     @Test
-    void anEnemyMainNeverReachedHasNoReachedFrame() {
-        assertNull(new ScoutData().getEnemyMainReachedFrame(null));
+    void anEnemyMainNeverSeenIsNotScouted() {
+        assertNull(new ScoutData().getEnemyMainScoutedFrame(null));
     }
 
     @Test
-    void theFirstFrameAnEnemyMainIsReachedIsKept() {
+    void seeingOnlyTheDepotDoesNotScoutTheMain() {
         ScoutData scoutData = new ScoutData();
 
-        scoutData.recordEnemyMainReached(null, new Time(3314));
-        scoutData.recordEnemyMainReached(null, new Time(3490));
+        scoutData.recordEnemyMainVision(null, tilesInRow(0, 12), 100, new Time(3314));
 
-        assertEquals(new Time(3314), scoutData.getEnemyMainReachedFrame(null));
+        assertNull(scoutData.getEnemyMainScoutedFrame(null));
+        assertTrue(scoutData.hasSeenEnemyMainTile(null, new TilePosition(0, 0)));
+        assertFalse(scoutData.hasSeenEnemyMainTile(null, new TilePosition(12, 0)));
+    }
+
+    @Test
+    void visionAccumulatedOverFramesScoutsTheMainOnceItCoversTheThreshold() {
+        ScoutData scoutData = new ScoutData();
+
+        scoutData.recordEnemyMainVision(null, tilesInRow(0, 30), 100, new Time(3314));
+        scoutData.recordEnemyMainVision(null, tilesInRow(20, 49), 100, new Time(3400));
+        assertNull(scoutData.getEnemyMainScoutedFrame(null));
+
+        scoutData.recordEnemyMainVision(null, tilesInRow(49, 50), 100, new Time(3490));
+        scoutData.recordEnemyMainVision(null, tilesInRow(50, 100), 100, new Time(3600));
+
+        assertEquals(new Time(3490), scoutData.getEnemyMainScoutedFrame(null));
+    }
+
+    @Test
+    void theScoutedThresholdIsHalfTheMainsBuildableTiles() {
+        assertEquals(0.5, ScoutData.ENEMY_MAIN_SCOUTED_COVERAGE);
+        assertFalse(ScoutData.isScouted(49, 100));
+        assertTrue(ScoutData.isScouted(50, 100));
+        assertFalse(ScoutData.isScouted(0, 0));
+    }
+
+    private static List<TilePosition> tilesInRow(int fromX, int toX) {
+        List<TilePosition> tiles = new ArrayList<>();
+        for (int x = fromX; x < toX; x++) {
+            tiles.add(new TilePosition(x, 0));
+        }
+        return tiles;
     }
 }

@@ -14,6 +14,12 @@ import java.util.HashSet;
 import java.util.Set;
 
 public class ScoutData {
+    /**
+     * Share of an enemy main's buildable tiles our vision must have covered before the main counts as scouted.
+     * A majority: the unseen remainder, where a Gateway could still hide, is then smaller than what was seen.
+     */
+    public static final double ENEMY_MAIN_SCOUTED_COVERAGE = 0.5;
+
     private HashSet<TilePosition> scoutTargets = new HashSet<>();
     @Getter
     private HashSet<TilePosition> activeScoutTargets = new HashSet<>();
@@ -22,7 +28,8 @@ public class ScoutData {
 
     private HashMap<Base, Integer> baseScoutAssignments = new HashMap<>();
 
-    private final HashMap<Base, Time> enemyMainReachedFrames = new HashMap<>();
+    private final HashMap<Base, Set<TilePosition>> enemyMainSeenTiles = new HashMap<>();
+    private final HashMap<Base, Time> enemyMainScoutedFrames = new HashMap<>();
 
     public void addScoutTarget(TilePosition tp) {
         scoutTargets.add(tp);
@@ -209,17 +216,36 @@ public class ScoutData {
     }
 
     /**
-     * Records that the depot location of this enemy main was in our vision. Only the first frame is kept, so
-     * the fact names when our scouting first reached the base.
+     * Adds the tiles of this enemy main now in our vision to the tiles seen so far, and records the frame on
+     * which the tiles seen first cover {@link #ENEMY_MAIN_SCOUTED_COVERAGE} of the main's buildable tiles.
+     * Only the first such frame is kept.
+     *
+     * @param visibleTiles buildable tiles of the enemy main's area in our vision this frame
+     * @param mainTileCount buildable tiles in the enemy main's area
      */
-    public void recordEnemyMainReached(Base enemyMain, Time frame) {
-        enemyMainReachedFrames.putIfAbsent(enemyMain, frame);
+    public void recordEnemyMainVision(Base enemyMain, Collection<TilePosition> visibleTiles, int mainTileCount,
+                                      Time frame) {
+        Set<TilePosition> seen = enemyMainSeenTiles.computeIfAbsent(enemyMain, base -> new HashSet<>());
+        seen.addAll(visibleTiles);
+        if (isScouted(seen.size(), mainTileCount)) {
+            enemyMainScoutedFrames.putIfAbsent(enemyMain, frame);
+        }
+    }
+
+    public boolean hasSeenEnemyMainTile(Base enemyMain, TilePosition tile) {
+        Set<TilePosition> seen = enemyMainSeenTiles.get(enemyMain);
+        return seen != null && seen.contains(tile);
     }
 
     /**
-     * @return the first frame the depot location of this enemy main was in our vision, or null if it never was
+     * @return the first frame our vision had covered {@link #ENEMY_MAIN_SCOUTED_COVERAGE} of this enemy main's
+     *     buildable tiles, or null if it never has
      */
-    public Time getEnemyMainReachedFrame(Base enemyMain) {
-        return enemyMainReachedFrames.get(enemyMain);
+    public Time getEnemyMainScoutedFrame(Base enemyMain) {
+        return enemyMainScoutedFrames.get(enemyMain);
+    }
+
+    static boolean isScouted(int seenTiles, int mainTileCount) {
+        return mainTileCount > 0 && seenTiles >= ENEMY_MAIN_SCOUTED_COVERAGE * mainTileCount;
     }
 }
