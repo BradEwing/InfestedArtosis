@@ -15,6 +15,7 @@ import macro.plan.Plan;
 import macro.plan.PlanCancelSource;
 import macro.plan.PlanState;
 import macro.plan.PlanType;
+import macro.plan.UnitPlan;
 import macro.plan.UpgradePlan;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -897,5 +898,165 @@ public class ReactionsTest {
         Field field = BaseData.class.getDeclaredField(fieldName);
         field.setAccessible(true);
         field.set(baseData, value);
+    }
+
+    private static final int FFE_DETECTED_FRAME = 3078;
+
+    private static final int FFE_REACTION_FRAMES = 4000;
+
+    private static final int OVERLORD_INSERT_INTERVAL = 160;
+
+    private static final int DRONE_ENQUEUE_INTERVAL = 40;
+
+    private static int unitPlanPriority(ProductionQueue queue, UnitType unitType) {
+        return queue.minPriorityWhere(p -> p.getType() == PlanType.UNIT && p.getPlannedUnit() == unitType);
+    }
+
+    /**
+     * Drives the FFE reaction the way the production loop does: the reaction runs first each frame,
+     * then an Overlord may be inserted just ahead of the earliest Drone and a new Drone is queued at
+     * its enqueue frame.
+     *
+     * @return the Drones queued during the run, each at the frame it was queued
+     */
+    private static List<Plan> runFfeFrames(Reactions reactions, TechProgression techProgression, ProductionQueue queue) {
+        List<Plan> queuedDrones = new ArrayList<>();
+        for (int frame = FFE_DETECTED_FRAME; frame < FFE_DETECTED_FRAME + FFE_REACTION_FRAMES; frame++) {
+            if (reactions.shouldFireFfeBoost(techProgression)) {
+                Reactions.boostDronesForFfe(queue);
+            }
+            if (frame % OVERLORD_INSERT_INTERVAL == 0) {
+                queue.add(new UnitPlan(UnitType.Zerg_Overlord, unitPlanPriority(queue, UnitType.Zerg_Drone) - 1));
+            }
+            if (frame % DRONE_ENQUEUE_INTERVAL == 0) {
+                Plan drone = new UnitPlan(UnitType.Zerg_Drone, frame);
+                queuedDrones.add(drone);
+                queue.add(drone);
+            }
+        }
+        return queuedDrones;
+    }
+
+    /**
+     * Game LSWLD0GP: FFE was detected at frame 3078 with a Drone at 2933 heading the queue, and an
+     * Overlord inserted at 2932 then dragged every later Drone down to 2932 until the Den was up.
+     */
+    @Test
+    void theFfeBoostHoldsTheDronePriorityStableAcrossRepeatedReactionFrames() {
+        ProductionQueue queue = new ProductionQueue();
+        Plan leadingDrone = new UnitPlan(UnitType.Zerg_Drone, 2933);
+        Plan laterDrone = new UnitPlan(UnitType.Zerg_Drone, 3050);
+        Plan extractor = new BuildingPlan(UnitType.Zerg_Extractor, 3010);
+        queue.add(leadingDrone);
+        queue.add(laterDrone);
+        queue.add(extractor);
+        queue.add(new UnitPlan(UnitType.Zerg_Overlord, 2932));
+        queue.add(new UnitPlan(UnitType.Zerg_Zergling, 3060));
+
+        List<Plan> queuedDrones = runFfeFrames(new Reactions(null), withSpawningPool(), queue);
+
+        assertEquals(2933, leadingDrone.getPriority());
+        assertEquals(3010, laterDrone.getPriority());
+        assertEquals(3010, extractor.getPriority());
+        assertFalse(queuedDrones.isEmpty());
+        for (Plan drone : queuedDrones) {
+            assertTrue(drone.getPriority() > FFE_DETECTED_FRAME);
+        }
+        for (Plan plan : queue) {
+            assertTrue(plan.getPriority() >= 1);
+        }
+    }
+
+    @Test
+    void theFfeBoostFiresOnlyOnceWhileTheReactionRuns() {
+        Reactions reactions = new Reactions(null);
+        TechProgression techProgression = withSpawningPool();
+
+        assertTrue(reactions.shouldFireFfeBoost(techProgression));
+        for (int frame = 0; frame < FFE_REACTION_FRAMES; frame++) {
+            assertFalse(reactions.shouldFireFfeBoost(techProgression));
+        }
+    }
+
+    @Test
+    void theFfeBoostTargetIgnoresAQueuedOverlord() {
+        ProductionQueue queue = new ProductionQueue();
+        Plan drone = new UnitPlan(UnitType.Zerg_Drone, 3100);
+        Plan hatchery = new BuildingPlan(UnitType.Zerg_Hatchery, 3200);
+        queue.add(drone);
+        queue.add(hatchery);
+        queue.add(new UnitPlan(UnitType.Zerg_Overlord, 2932));
+        queue.add(new UnitPlan(UnitType.Zerg_Zergling, 3000));
+
+        Reactions.boostDronesForFfe(queue);
+
+        assertEquals(3000, drone.getPriority());
+        assertEquals(3000, hatchery.getPriority());
+    }
+
+    @Test
+    void theFfeBoostNeverReachesTheEmergencyPriorities() {
+        ProductionQueue queue = new ProductionQueue();
+        Plan drone = new UnitPlan(UnitType.Zerg_Drone, 3100);
+        queue.add(drone);
+        queue.add(new BuildingPlan(UnitType.Zerg_Spawning_Pool, 0));
+
+        Reactions.boostDronesForFfe(queue);
+
+        assertEquals(Reactions.FFE_BOOST_FLOOR, drone.getPriority());
+        assertTrue(drone.getPriority() >= 1);
+    }
+
+    @Test
+    void theFfeBoostLeavesTheQueueAloneWithOnlyDronesAndOverlordsQueued() {
+        ProductionQueue queue = new ProductionQueue();
+        Plan drone = new UnitPlan(UnitType.Zerg_Drone, 3100);
+        Plan overlord = new UnitPlan(UnitType.Zerg_Overlord, 3099);
+        queue.add(drone);
+        queue.add(overlord);
+
+        Reactions.boostDronesForFfe(queue);
+
+        assertEquals(3100, drone.getPriority());
+        assertEquals(3099, overlord.getPriority());
+    }
+
+    @Test
+    void theFfeReactionNoLongerChangesPrioritiesOnceArmyTechIsCommitted() {
+        List<TechProgression> committed = new ArrayList<>();
+        for (int i = 0; i < 3; i++) {
+            committed.add(withSpawningPool());
+        }
+        committed.get(0).setHydraliskDen(true);
+        committed.get(1).setLair(true);
+        committed.get(2).setSpire(true);
+
+        for (TechProgression techProgression : committed) {
+            assertTrue(Reactions.isArmyTechCommitted(techProgression));
+            ProductionQueue queue = new ProductionQueue();
+            Plan drone = new UnitPlan(UnitType.Zerg_Drone, 3100);
+            Plan hydralisk = new UnitPlan(UnitType.Zerg_Hydralisk, UnitPlan.ADVANCED_UNIT_PRIORITY);
+            Plan zergling = new UnitPlan(UnitType.Zerg_Zergling, 3000);
+            queue.add(drone);
+            queue.add(hydralisk);
+            queue.add(zergling);
+
+            List<Plan> queuedDrones = runFfeFrames(new Reactions(null), techProgression, queue);
+
+            assertEquals(3100, drone.getPriority());
+            assertEquals(UnitPlan.ADVANCED_UNIT_PRIORITY, hydralisk.getPriority());
+            assertEquals(3000, zergling.getPriority());
+            for (Plan queued : queuedDrones) {
+                assertTrue(queued.getPriority() > FFE_DETECTED_FRAME);
+            }
+        }
+    }
+
+    @Test
+    void thePoolAndEvolutionChamberAloneDoNotCommitArmyTech() {
+        TechProgression techProgression = withSpawningPool();
+        techProgression.setEvolutionChambers(1);
+
+        assertFalse(Reactions.isArmyTechCommitted(techProgression));
     }
 }

@@ -7,6 +7,7 @@ import info.BaseData;
 import info.GameState;
 import info.Readiness;
 import info.TechProgression;
+import info.UnitTypeCount;
 import info.tracking.StrategyTracker;
 import macro.plan.Plan;
 import strategy.buildorder.LarvaBoundMacroHatchery;
@@ -56,7 +57,6 @@ public class ThreeHatchHydra extends ProtossBase {
         int committedDens = gameState.structureCount(Readiness.COMMITTED, UnitType.Zerg_Hydralisk_Den);
         final int plannedAndCurrentHatcheries = plannedHatcheries + baseCount;
 
-        int hydraCount = gameState.ourUnitCount(UnitType.Zerg_Hydralisk);
         int droneCount = gameState.ourUnitCount(UnitType.Zerg_Drone);
         int zerglingCount = gameState.ourUnitCount(UnitType.Zerg_Zergling);
         int livingZerglings = gameState.ourLivingUnitCount(UnitType.Zerg_Zergling);
@@ -239,9 +239,10 @@ public class ThreeHatchHydra extends ProtossBase {
         }
 
         final int desiredHydralisks = desiredHydralisks(gameState);
-        if (techProgression.isHydraliskDen() && hydraCount < desiredHydralisks && canPlanAdvancedUnit(gameState, UnitType.Zerg_Hydralisk)) {
-            Plan hydraliskPlan = this.planUnit(gameState, UnitType.Zerg_Hydralisk);
-            plans.add(hydraliskPlan);
+        List<Plan> hydraliskPlans = planHydralisk(techProgression, desiredHydralisks, gameState.numGatherers(),
+                gameState.queuedUnitPlanCount(UnitType.Zerg_Hydralisk), gameState.getUnitTypeCount());
+        if (!hydraliskPlans.isEmpty()) {
+            plans.addAll(hydraliskPlans);
             return plans;
         }
 
@@ -426,5 +427,27 @@ public class ThreeHatchHydra extends ProtossBase {
     @Override
     protected boolean macroHatcheryTechReady(TechProgression techProgression) {
         return LarvaBoundMacroHatchery.isHydraliskTechReady(techProgression);
+    }
+
+    /**
+     * The Hydralisk plan for this frame, ranked ahead of the Drone and Zergling backlog.
+     *
+     * <p>The count read against the target includes plans already charged to it, so the army is
+     * queued one plan at a time until the target is met. While a Hydralisk plan still waits in the
+     * queue no second one is added, and the build goes on to plan the units below it.
+     *
+     * @param techProgression the bot's tech state
+     * @param desiredHydralisks the Hydralisk target
+     * @param gatherers workers gathering, for the eligibility gate
+     * @param queuedHydralisks Hydralisk plans still waiting in the production queue
+     * @param count the unit counts, including planned units, that the plan is charged to
+     * @return one Hydralisk plan at the advanced unit priority, or none
+     */
+    static List<Plan> planHydralisk(TechProgression techProgression, int desiredHydralisks, int gatherers,
+                                    int queuedHydralisks, UnitTypeCount count) {
+        if (!techProgression.isHydraliskDen() || count.get(UnitType.Zerg_Hydralisk) >= desiredHydralisks) {
+            return new ArrayList<>();
+        }
+        return planAdvancedUnit(UnitType.Zerg_Hydralisk, techProgression, gatherers, queuedHydralisks, count);
     }
 }

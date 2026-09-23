@@ -244,8 +244,11 @@ public class ThreeHatchMuta extends ProtossBase {
 
         final int desiredHydralisks = desiredHydralisks(gameState);
         if (techProgression.isHydraliskDen() && hydraCount < desiredHydralisks && canPlanAdvancedUnit(gameState, UnitType.Zerg_Hydralisk)) {
-            plans.add(this.planUnit(gameState, UnitType.Zerg_Hydralisk));
-            return plans;
+            List<Plan> hydraliskPlans = this.planAdvancedUnit(gameState, UnitType.Zerg_Hydralisk);
+            if (!hydraliskPlans.isEmpty()) {
+                plans.addAll(hydraliskPlans);
+                return plans;
+            }
         }
 
         final int desiredZerglings = this.zerglingsNeeded(gameState);
