@@ -163,6 +163,84 @@ class RunbyEvaluatorTest {
         assertEquals(EntryVerdict.STATIC_DEFENSE, RunbyEvaluator.entryVerdict(passing().zones(zones).build()));
     }
 
+    private static StaticDefenseZone airZoneAt(UnitType structure, Position position) {
+        return new StaticDefenseZone(structure, position, structure.airWeapon().maxRange());
+    }
+
+    private static StaticDefenseZone groundZoneAt(UnitType structure, Position position, int reach) {
+        return new StaticDefenseZone(structure, position, reach);
+    }
+
+    @Test
+    void antiAirStaticDefenceCoveringTheTargetDoesNotRefuse() {
+        Position nextToAnchor = new Position(3650, 400);
+        for (UnitType antiAir : new UnitType[] {UnitType.Terran_Missile_Turret, UnitType.Zerg_Spore_Colony}) {
+            List<StaticDefenseZone> zones = Collections.singletonList(airZoneAt(antiAir, nextToAnchor));
+
+            assertEquals(EntryVerdict.ENTER, RunbyEvaluator.entryVerdict(passing().zones(zones).build()),
+                    antiAir.toString());
+            assertEquals(0, RunbyEvaluator.enemyTally(Collections.emptyList(), zones, MINERAL_LINE), 1e-9);
+        }
+    }
+
+    @Test
+    void groundStaticDefenceCoveringTheTargetStillRefuses() {
+        Position nextToAnchor = new Position(3650, 400);
+        List<StaticDefenseZone> sunken = Collections.singletonList(groundZoneAt(UnitType.Zerg_Sunken_Colony,
+                nextToAnchor, UnitType.Zerg_Sunken_Colony.groundWeapon().maxRange()));
+        List<StaticDefenseZone> bunker = Collections.singletonList(groundZoneAt(UnitType.Terran_Bunker,
+                nextToAnchor, UnitType.Terran_Marine.groundWeapon().maxRange()));
+
+        assertEquals(EntryVerdict.STATIC_DEFENSE, RunbyEvaluator.entryVerdict(passing().zones(sunken).build()));
+        assertEquals(EntryVerdict.STATIC_DEFENSE, RunbyEvaluator.entryVerdict(passing().zones(bunker).build()));
+        assertEquals(EntryVerdict.STATIC_DEFENSE, RunbyEvaluator.entryVerdict(passing()
+                .zones(Collections.singletonList(cannonAt(nextToAnchor))).build()));
+    }
+
+    @Test
+    void onlyStructuresThatShootGroundThreatenAGroundRunby() {
+        Position anywhere = new Position(100, 100);
+
+        assertTrue(RunbyEvaluator.threatensGround(cannonAt(anywhere)));
+        assertTrue(RunbyEvaluator.threatensGround(groundZoneAt(UnitType.Zerg_Sunken_Colony, anywhere, 224)));
+        assertTrue(RunbyEvaluator.threatensGround(groundZoneAt(UnitType.Terran_Bunker, anywhere, 160)));
+        assertFalse(RunbyEvaluator.threatensGround(airZoneAt(UnitType.Terran_Missile_Turret, anywhere)));
+        assertFalse(RunbyEvaluator.threatensGround(airZoneAt(UnitType.Zerg_Spore_Colony, anywhere)));
+    }
+
+    @Test
+    void aBurrowableUnitLastSeenInTheTargetIsNeverClearedByVision() {
+        boolean lurking = RunbyEvaluator.isLurking(false, UnitType.Zerg_Lurker.isBurrowable(), true);
+
+        assertTrue(lurking);
+        assertFalse(RunbyEvaluator.isCleared(false, true, lurking));
+    }
+
+    @Test
+    void anUnburrowableOrOffTargetUnitIsClearedByVision() {
+        boolean zealot = RunbyEvaluator.isLurking(false, UnitType.Protoss_Zealot.isBurrowable(), true);
+        boolean lurkerElsewhere = RunbyEvaluator.isLurking(false, UnitType.Zerg_Lurker.isBurrowable(), false);
+
+        assertFalse(zealot);
+        assertFalse(lurkerElsewhere);
+        assertTrue(RunbyEvaluator.isCleared(false, true, zealot));
+        assertTrue(RunbyEvaluator.isCleared(false, true, lurkerElsewhere));
+        assertFalse(RunbyEvaluator.isCleared(false, false, zealot));
+        assertFalse(RunbyEvaluator.isCleared(true, true, false));
+        assertFalse(RunbyEvaluator.isLurking(true, true, true));
+    }
+
+    @Test
+    void aLurkingUnitInTheTargetBlocksEntry() {
+        Position mineralLine = new Position(3650, 450);
+        boolean lurking = RunbyEvaluator.isLurking(false, UnitType.Zerg_Lurker.isBurrowable(), true);
+        RunbyEvaluator.ArmyUnit lurker = new RunbyEvaluator.ArmyUnit(UnitType.Zerg_Lurker, mineralLine, false,
+                RunbyEvaluator.isCleared(false, true, lurking));
+
+        assertEquals(EntryVerdict.ARMY_NEAR_TARGET,
+                RunbyEvaluator.entryVerdict(passing().army(with(armyAtOurBase(10), lurker)).build()));
+    }
+
     @Test
     void staticDefenceElsewhereDoesNotRefuse() {
         List<StaticDefenseZone> zones = Collections.singletonList(cannonAt(new Position(2400, 1600)));

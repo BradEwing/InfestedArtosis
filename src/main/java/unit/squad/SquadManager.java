@@ -1433,7 +1433,7 @@ public class SquadManager {
             base = runbyBaseNear(squad.getCenter(), Collections.emptySet());
             target = base == null ? null : runbyTarget(base);
         }
-        RunbyView view = target == null ? new RunbyView() : runbyView(now);
+        RunbyView view = target == null ? new RunbyView() : runbyView(now, target.area);
         Position anchor = target == null ? null : target.anchor;
         RunbyEvaluator.EntryVerdict verdict = RunbyEvaluator.entryVerdict(RunbyEvaluator.EntryInput.builder()
                 .zerglingsOnly(zerglingsOnly)
@@ -1501,7 +1501,7 @@ public class SquadManager {
             return;
         }
 
-        RunbyView view = runbyView(now);
+        RunbyView view = runbyView(now, state.getTargetArea());
         boolean inside = state.getTargetArea().contains(squad.getCenter().toTilePosition());
         if (inside && state.getArrivedFrame() < 0) {
             state.setArrivedFrame(now);
@@ -1934,9 +1934,13 @@ public class SquadManager {
     /**
      * Reads the enemy once for a runby frame: visible ground targets for the lings, the tracked army with the
      * freshness of each observation, and everything that can hurt a ling with its reach. An army unit threatens
-     * only while its observation is fresh; a structure that shoots ground threatens wherever it was last seen.
+     * while its observation is fresh, or for as long as it may be burrowed where it was last seen inside the
+     * target base; a structure that shoots ground threatens wherever it was last seen.
+     *
+     * @param now current frame
+     * @param targetArea ground of the base being raided or offered
      */
-    private RunbyView runbyView(int now) {
+    private RunbyView runbyView(int now, BaseArea targetArea) {
         RunbyView view = new RunbyView();
         view.zones = gameState.getStaticDefenseZones();
         for (Unit enemy : gameState.getVisibleEnemyUnits()) {
@@ -1958,9 +1962,12 @@ public class SquadManager {
             if (RunbyEvaluator.isArmyType(type)) {
                 boolean fresh = RunbyEvaluator.isFresh(visible, observed.getLastObservedFrame().getFrames(), now);
                 Position lastKnown = observed.getLastKnownLocation();
-                boolean cleared = !visible && lastKnown != null && game.isVisible(lastKnown.toTilePosition());
+                boolean lurking = RunbyEvaluator.isLurking(visible, type.isBurrowable(),
+                        lastKnown != null && targetArea.contains(lastKnown.toTilePosition()));
+                boolean cleared = RunbyEvaluator.isCleared(visible,
+                        lastKnown != null && game.isVisible(lastKnown.toTilePosition()), lurking);
                 view.army.add(new RunbyEvaluator.ArmyUnit(type, position, fresh, cleared));
-                if (fresh && position != null) {
+                if ((fresh || lurking) && position != null) {
                     view.threats.add(RunbyTargeting.Threat.of(type, position));
                 }
             } else if (Filter.isHostileBuildingToGround(type) && position != null) {

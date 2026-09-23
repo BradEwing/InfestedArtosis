@@ -479,7 +479,8 @@ public final class RunbyTargeting {
     }
 
     /**
-     * Whether a building is out of every threat's reach and every static defence zone, measured to its edge.
+     * Whether a building is out of every threat's reach and every static defence zone that shoots ground,
+     * measured to its edge.
      *
      * @param building the building
      * @param threats the threats
@@ -494,7 +495,7 @@ public final class RunbyTargeting {
             }
         }
         for (StaticDefenseZone zone : zones) {
-            if (zone.covers(building.getPosition(), extent)) {
+            if (RunbyEvaluator.threatensGround(zone) && zone.covers(building.getPosition(), extent)) {
                 return false;
             }
         }

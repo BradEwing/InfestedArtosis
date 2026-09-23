@@ -117,6 +117,43 @@ public final class RunbyEvaluator {
     }
 
     /**
+     * Whether a static defence zone can fire on lings. The zone list also holds anti-air structures sized by
+     * their air range, which never refuse a runby, add to the abort tally, or cover a building from lings.
+     *
+     * @param zone a static defence zone
+     * @return true for a structure that shoots ground
+     */
+    public static boolean threatensGround(StaticDefenseZone zone) {
+        return Filter.isHostileBuildingToGround(zone.getStructure());
+    }
+
+    /**
+     * Whether an unseen unit may be sitting burrowed where it was last seen in the target base, where seeing the
+     * tile empty proves nothing.
+     *
+     * @param visible true when the unit is in view
+     * @param burrowable true when its type can burrow
+     * @param lastKnownInTarget true when its last known position is inside the target base
+     * @return true when the unit must be assumed to still be there
+     */
+    public static boolean isLurking(boolean visible, boolean burrowable, boolean lastKnownInTarget) {
+        return !visible && burrowable && lastKnownInTarget;
+    }
+
+    /**
+     * Whether our vision has ruled out an unseen unit's last known position: the tile is in view, the unit is not,
+     * and it could not be hiding there burrowed.
+     *
+     * @param visible true when the unit is in view
+     * @param lastKnownTileVisible true when its last known tile is in our vision
+     * @param lurking true when {@link #isLurking} holds for it
+     * @return true when the position is cleared
+     */
+    public static boolean isCleared(boolean visible, boolean lastKnownTileVisible, boolean lurking) {
+        return !visible && lastKnownTileVisible && !lurking;
+    }
+
+    /**
      * Runs the entry gates in order and names the first one that refuses.
      *
      * <p>An army position counts against entry near the target or near the squad's path to it when it is fresh,
@@ -152,7 +189,7 @@ public final class RunbyEvaluator {
             return EntryVerdict.NO_ARMY_EVIDENCE;
         }
         for (StaticDefenseZone zone : input.getZones()) {
-            if (zone.covers(anchor, 0)) {
+            if (threatensGround(zone) && zone.covers(anchor, 0)) {
                 return EntryVerdict.STATIC_DEFENSE;
             }
         }
@@ -191,7 +228,8 @@ public final class RunbyEvaluator {
 
     /**
      * Enemy ground strength at the target: fresh army units within {@link #TARGET_RADIUS} of the anchor, plus
-     * static defence whose zone covers the anchor. Priced with the same table the combat sim uses.
+     * static defence that shoots ground and whose zone covers the anchor. Priced with the same table the combat sim
+     * uses.
      *
      * @param army tracked enemy army
      * @param zones known static defence
@@ -207,7 +245,7 @@ public final class RunbyEvaluator {
             }
         }
         for (StaticDefenseZone zone : zones) {
-            if (zone.covers(anchor, 0)) {
+            if (threatensGround(zone) && zone.covers(anchor, 0)) {
                 total += UnitStrength.groundToGround(zone.getStructure());
             }
         }

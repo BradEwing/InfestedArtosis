@@ -264,6 +264,40 @@ class RunbyTargetingTest {
     }
 
     @Test
+    void antiAirStaticDefenceDoesNotCoverABuilding() {
+        Position pylonAt = east(150);
+        for (UnitType antiAir : new UnitType[] {UnitType.Terran_Missile_Turret, UnitType.Zerg_Spore_Colony}) {
+            StaticDefenseZone zone = new StaticDefenseZone(antiAir, east(200), antiAir.airWeapon().maxRange());
+            RunbyTargeting.Situation situation = harass(false)
+                    .contacts(Collections.singletonList(pylon(30, pylonAt)))
+                    .zones(Collections.singletonList(zone))
+                    .build();
+
+            assertEquals(Kind.BUILDING, choose(situation).getKind(), antiAir.toString());
+        }
+    }
+
+    @Test
+    void groundStaticDefenceStillCoversABuilding() {
+        Position pylonAt = east(150);
+        StaticDefenseZone[] zones = {
+            new StaticDefenseZone(UnitType.Zerg_Sunken_Colony, east(200),
+                    UnitType.Zerg_Sunken_Colony.groundWeapon().maxRange()),
+            new StaticDefenseZone(UnitType.Protoss_Photon_Cannon, east(200),
+                    UnitType.Protoss_Photon_Cannon.groundWeapon().maxRange()),
+            new StaticDefenseZone(UnitType.Terran_Bunker, east(200), UnitType.Terran_Marine.groundWeapon().maxRange())
+        };
+        for (StaticDefenseZone zone : zones) {
+            RunbyTargeting.Situation situation = harass(false)
+                    .contacts(Collections.singletonList(pylon(30, pylonAt)))
+                    .zones(Collections.singletonList(zone))
+                    .build();
+
+            assertEquals(Kind.SEEK, choose(situation).getKind(), zone.getStructure().toString());
+        }
+    }
+
+    @Test
     void aBuildingTargetIsStickyForItsWindow() {
         RunbyTargeting.LingMemory memory = new RunbyTargeting.LingMemory();
         RunbyTargeting.Situation farOnly = harass(false)
