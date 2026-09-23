@@ -11,7 +11,6 @@ import util.StaticDefenseZone;
 import util.Time;
 
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Arrays;
@@ -132,20 +131,6 @@ public class ObservedUnitTracker {
                 u.markCompleted(t);
             }
         }
-    }
-
-    /**
-     * Records an enemy onUnitComplete callback. The callback can arrive ahead of the unit's first
-     * onUnitShow, so an untracked unit is tracked here as it would be on show.
-     */
-    public void onUnitComplete(Unit unit, int currentFrame, boolean isProxied) {
-        Time t = new Time(currentFrame);
-        ObservedUnit ou = observedUnits.get(unit);
-        if (ou == null) {
-            ou = new ObservedUnit(unit, t, isProxied);
-            observedUnits.put(unit, ou);
-        }
-        ou.markCompletedWhileObserved(t, unit.getPosition());
     }
 
     public void onUnitHide(Unit unit, int currentFrame) {
@@ -293,23 +278,15 @@ public class ObservedUnitTracker {
     }
 
     /**
-     * Distinct units of this type whose onUnitComplete callback fired at or before t while they stood on one
-     * of the tiles, counting units since destroyed. Completion stamps set on first sight or on a later frame
-     * do not count.
+     * Last known positions of units of this type first observed at or before t. A unit whose position is no
+     * longer known, including one since destroyed, is left out.
      */
-    public int countCompletedWhileObservedOnTiles(UnitType unitType, Set<TilePosition> tiles, Time t) {
-        return countCompletedWhileObservedOnTiles(observedUnits.values(), unitType, tiles, t);
-    }
-
-    static int countCompletedWhileObservedOnTiles(Collection<ObservedUnit> units, UnitType unitType,
-                                                  Set<TilePosition> tiles, Time t) {
-        return (int) units.stream()
+    public Set<Position> getLastKnownPositionsObservedBeforeTime(UnitType unitType, Time t) {
+        return knownPositions(observedUnits.values()
+                .stream()
                 .filter(ou -> ou.getUnitType() == unitType)
-                .filter(ou -> ou.getCompletedWhileObservedFrame() != null)
-                .filter(ou -> ou.getCompletedWhileObservedFrame().lessThanOrEqual(t))
-                .map(ObservedUnit::getCompletedWhileObservedPosition)
-                .filter(pos -> pos != null && tiles.contains(pos.toTilePosition()))
-                .count();
+                .filter(ou -> ou.getFirstObservedFrame().lessThanOrEqual(t))
+                .map(ObservedUnit::getLastKnownLocation));
     }
 
     public Set<Unit> getDetectedUnits() {

@@ -1,10 +1,6 @@
 package info.tracking;
 
-import bwapi.Position;
 import bwapi.Race;
-import bwapi.TilePosition;
-import bwapi.UnitType;
-import info.BaseData;
 import info.tracking.protoss.ProxyGate;
 import info.tracking.protoss.TwoGate;
 import info.tracking.zerg.TwoHatchLing;
@@ -14,15 +10,12 @@ import macro.plan.PlanState;
 import org.junit.jupiter.api.Test;
 import telemetry.PlanEventSink;
 import telemetry.PlanEvents;
-import util.Distance;
-import util.Time;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -170,22 +163,14 @@ class StrategyTrackerTest {
     }
 
     /**
-     * GAME_LSP4O001: local Zealots complete at the natural on frames 4063 and 4097, and the third, which is
-     * 2Gate's volume evidence, at 4235. ProxyGate fires once the second has completed; 2Gate fires on the later
-     * frame and is suppressed.
+     * GAME_LSP4O001: the third local Zealot, 2Gate's volume evidence, shows on frame 4235, and ProxyGate's
+     * MAIN_EMPTY arm fires when the main scouting window closes on frame 4320. ProxyGate retires the 2Gate
+     * detected on the earlier frame, and later volume evidence stays suppressed.
      */
     @Test
     void theLsp4o001ProxyGateCarriesNoTwoGateCoLabel() {
-        ObservedUnit zealot176 = ObservedUnitFixture.observedUnit(UnitType.Protoss_Zealot, new Time(4063));
-        zealot176.markCompletedWhileObserved(new Time(4063), new Position(2057, 843));
-        ObservedUnit zealot179 = ObservedUnitFixture.observedUnit(UnitType.Protoss_Zealot, new Time(4097));
-        zealot179.markCompletedWhileObserved(new Time(4097), new Position(2035, 841));
-        Set<TilePosition> naturalTiles = Distance.tilesWithinManhattanDistance(new TilePosition(63, 19),
-                BaseData.NATURAL_DEFENSE_TILE_RADIUS);
-        assertEquals(2, ObservedUnitFixture.countCompletedWhileObservedOnTiles(Arrays.asList(zealot176, zealot179),
-                UnitType.Protoss_Zealot, naturalTiles, new Time(4097)));
-
         StrategyTracker strategyTracker = trackerAgainst(Race.Protoss);
+        strategyTracker.recordDetections(Collections.singleton(new TwoGate()));
         strategyTracker.recordDetections(Collections.singleton(new ProxyGate()));
         strategyTracker.recordDetections(Collections.singleton(new TwoGate()));
 
@@ -250,16 +235,16 @@ class StrategyTrackerTest {
         });
         try {
             StrategyTracker strategyTracker = trackerAgainst(Race.Protoss);
-            ProxyGate zealotsOnly = new ProxyGate() {
+            ProxyGate mainEmpty = new ProxyGate() {
                 @Override
                 public String getDetectionLabel() {
-                    return "ProxyGate:ZEALOTS";
+                    return "ProxyGate:MAIN_EMPTY";
                 }
             };
 
-            strategyTracker.recordDetections(Collections.singleton(zealotsOnly));
+            strategyTracker.recordDetections(Collections.singleton(mainEmpty));
 
-            assertEquals(new HashSet<>(Arrays.asList("ProxyGate:ZEALOTS", "EarlyRush")), new HashSet<>(reported));
+            assertEquals(new HashSet<>(Arrays.asList("ProxyGate:MAIN_EMPTY", "EarlyRush")), new HashSet<>(reported));
             assertTrue(strategyTracker.isDetectedStrategy("ProxyGate"));
         } finally {
             PlanEvents.clear();
@@ -267,7 +252,7 @@ class StrategyTrackerTest {
     }
 
     private static StrategyTracker trackerAgainst(Race race) {
-        return new StrategyTracker(null, race, new ObservedUnitTracker(), null, null, null);
+        return new StrategyTracker(null, race, new ObservedUnitTracker(), null, null, null, null);
     }
 
     private static long occurrences(StrategyTracker strategyTracker, String strategyName) {

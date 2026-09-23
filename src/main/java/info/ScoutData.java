@@ -6,6 +6,7 @@ import bwapi.UnitType;
 import bwem.Base;
 import lombok.Getter;
 import util.Filter;
+import util.Time;
 
 import java.util.Collection;
 import java.util.HashMap;
@@ -20,6 +21,8 @@ public class ScoutData {
     private HashSet<TilePosition> enemyBuildingPositions = new HashSet<>();
 
     private HashMap<Base, Integer> baseScoutAssignments = new HashMap<>();
+
+    private final HashMap<Base, Time> enemyMainReachedFrames = new HashMap<>();
 
     public void addScoutTarget(TilePosition tp) {
         scoutTargets.add(tp);
@@ -203,5 +206,20 @@ public class ScoutData {
         scoutTargets.remove(tp);
         enemyBuildingPositions.remove(tp);
         removeBaseScoutAssignment(base);
+    }
+
+    /**
+     * Records that the depot location of this enemy main was in our vision. Only the first frame is kept, so
+     * the fact names when our scouting first reached the base.
+     */
+    public void recordEnemyMainReached(Base enemyMain, Time frame) {
+        enemyMainReachedFrames.putIfAbsent(enemyMain, frame);
+    }
+
+    /**
+     * @return the first frame the depot location of this enemy main was in our vision, or null if it never was
+     */
+    public Time getEnemyMainReachedFrame(Base enemyMain) {
+        return enemyMainReachedFrames.get(enemyMain);
     }
 }

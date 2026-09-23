@@ -107,8 +107,8 @@ public class PlanEventLogger implements PlanEventSink {
      * <p>
      * STRATEGY_DETECTED rows carry the detected strategy's detection label in item and leave every
      * plan column empty, so the frame a strategy was detected is the row's frame. The label is the
-     * strategy's name, followed for ProxyGate by the evidence arms that fired: ProxyGate:GATEWAY,
-     * ProxyGate:ZEALOTS or ProxyGate:GATEWAY+ZEALOTS.
+     * strategy's name, followed for ProxyGate by the evidence arms that fired: ProxyGate:GATEWAY_AWAY,
+     * ProxyGate:MAIN_EMPTY or ProxyGate:GATEWAY_AWAY+MAIN_EMPTY.
      */
     static final String PLAN_HEADER = "frame,time,event,plan_id,executor_unit_id,plan_type,item,from_state,"
             + "to_state,cancel_reason,cancel_source,blocker,blocked_frames,priority,frames_in_state,age_frames,"

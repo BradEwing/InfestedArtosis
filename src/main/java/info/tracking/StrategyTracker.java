@@ -4,6 +4,7 @@ import bwapi.Game;
 import bwapi.Race;
 import bwem.BWMap;
 import info.BaseData;
+import info.ScoutData;
 import info.map.GameMap;
 import info.tracking.any.EarlyRush;
 import info.tracking.any.OneBase;
@@ -48,13 +49,16 @@ public class StrategyTracker {
     private final BaseData baseData;
     private final GameMap gameMap;
     private final BWMap bwMap;
+    private final ScoutData scoutData;
 
-    public StrategyTracker(Game game, Race opponentRace, ObservedUnitTracker tracker, BaseData baseData, GameMap gameMap, BWMap bwMap) {
+    public StrategyTracker(Game game, Race opponentRace, ObservedUnitTracker tracker, BaseData baseData, GameMap gameMap,
+                           BWMap bwMap, ScoutData scoutData) {
         this.game = game;
         this.tracker = tracker;
         this.baseData = baseData;
         this.gameMap = gameMap;
         this.bwMap = bwMap;
+        this.scoutData = scoutData;
         this.init(opponentRace);
     }
 
@@ -86,7 +90,8 @@ public class StrategyTracker {
 
     public void onFrame() {
         Time currentTime = new Time(game.getFrameCount());
-        StrategyDetectionContext context = new StrategyDetectionContext(tracker, currentTime, baseData, gameMap, bwMap);
+        StrategyDetectionContext context = new StrategyDetectionContext(tracker, currentTime, baseData, gameMap, bwMap,
+                scoutData);
 
         Set<ObservedStrategy> newlyDetected = new HashSet<>();
         for (ObservedStrategy strategy : possibleStrategies) {
@@ -123,8 +128,8 @@ public class StrategyTracker {
 
     /**
      * Retires every strategy a detected strategy supersedes, from the detected and the possible sets, so it
-     * is neither reported nor detected again for the rest of the game. ProxyGate supersedes 2Gate: both read
-     * Zealot volume or Gateways, and ProxyGate is the more specific reading of where they were built.
+     * is neither reported nor detected again for the rest of the game. ProxyGate supersedes 2Gate: 2Gate reads
+     * Zealot and Gateway volume, and ProxyGate is the more specific reading of where the Gateways were built.
      */
     void applyStrategySupersessions() {
         for (Map.Entry<String, String> supersession : SUPERSEDED_STRATEGIES.entrySet()) {

@@ -3,12 +3,15 @@ package info;
 import bwapi.Race;
 import bwapi.UnitType;
 import org.junit.jupiter.api.Test;
+import util.Time;
 
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ScoutDataTest {
@@ -136,5 +139,23 @@ class ScoutDataTest {
     void emptySetContinuesForZerg() {
         ScoutData scoutData = new ScoutData();
         assertTrue(scoutData.shouldOverlordsContinueScouting(Race.Zerg, Collections.emptyList()));
+    }
+
+    /**
+     * A bwem Base cannot be built outside its package, so the null key stands in for one enemy main.
+     */
+    @Test
+    void anEnemyMainNeverReachedHasNoReachedFrame() {
+        assertNull(new ScoutData().getEnemyMainReachedFrame(null));
+    }
+
+    @Test
+    void theFirstFrameAnEnemyMainIsReachedIsKept() {
+        ScoutData scoutData = new ScoutData();
+
+        scoutData.recordEnemyMainReached(null, new Time(3314));
+        scoutData.recordEnemyMainReached(null, new Time(3490));
+
+        assertEquals(new Time(3314), scoutData.getEnemyMainReachedFrame(null));
     }
 }

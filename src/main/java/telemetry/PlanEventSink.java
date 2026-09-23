@@ -112,7 +112,7 @@ public interface PlanEventSink {
      * supersessions for the frame.
      *
      * @param detectionLabel the detected strategy's name, followed by the evidence it was detected on when the
-     *     strategy records one, e.g. ProxyGate:ZEALOTS
+     *     strategy records one, e.g. ProxyGate:MAIN_EMPTY
      */
     default void onStrategyDetected(String detectionLabel) {
     }

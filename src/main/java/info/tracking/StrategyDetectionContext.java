@@ -1,21 +1,27 @@
 package info.tracking;
 
+import bwapi.Position;
 import bwapi.TilePosition;
 import bwapi.UnitType;
 import bwem.Area;
 import bwem.BWMap;
 import bwem.Base;
 import info.BaseData;
+import info.ScoutData;
 import info.map.BaseArea;
 import info.map.GameMap;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import util.Time;
 
+import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Predicate;
+import java.util.stream.Collectors;
 
 @RequiredArgsConstructor
 public class StrategyDetectionContext {
@@ -28,6 +34,7 @@ public class StrategyDetectionContext {
     @Getter
     private final GameMap gameMap;
     private final BWMap bwMap;
+    private final ScoutData scoutData;
 
     private final Map<Integer, Set<TilePosition>> ourBaseTilesByNaturalRadius = new HashMap<>();
 
@@ -75,6 +82,73 @@ public class StrategyDetectionContext {
             return false;
         }
         return hasEnemyDepotInArea(enemyNatural.getArea(), tile -> true);
+    }
+
+    public boolean isEnemyMainKnown() {
+        return baseData.getMainEnemyBase() != null;
+    }
+
+    /**
+     * The first frame the depot location of the enemy main was in our vision, recorded in ScoutData. Null
+     * while the enemy main is unknown or our scouting has not reached it.
+     */
+    public Time enemyMainReachedFrame() {
+        Base enemyMain = baseData.getMainEnemyBase();
+        if (enemyMain == null) {
+            return null;
+        }
+        return scoutData.getEnemyMainReachedFrame(enemyMain);
+    }
+
+    /**
+     * Whether the tile lies in the BWEM Area of the enemy main or of the inferred enemy natural. False while
+     * the enemy main is unknown.
+     */
+    public boolean isInEnemyMainOrNatural(TilePosition tile) {
+        return isInBaseArea(tile, baseData.getMainEnemyBase()) || isInBaseArea(tile, baseData.getEnemyNaturalBase());
+    }
+
+    /**
+     * Whether the position is on our side of the map: its BWEM ground path to our main is shorter than its
+     * path to the enemy main or, while the enemy main is unknown, to every other starting location.
+     */
+    public boolean isOnOurSide(Position position) {
+        Base ourMain = baseData.getMainBase();
+        if (ourMain == null) {
+            return false;
+        }
+        int ourLength = bwMap.getPathLength(position, ourMain.getCenter());
+        List<Integer> enemyLengths = enemyMainCandidates(ourMain).stream()
+                .map(base -> bwMap.getPathLength(position, base.getCenter()))
+                .collect(Collectors.toList());
+        return isCloserToOurMain(ourLength, enemyLengths);
+    }
+
+    /**
+     * Whether a ground path of ourLength is shorter than every enemy path. A negative length means BWEM found
+     * no ground path: with none to our main the position is not on our side, and an enemy main with none does
+     * not count against it.
+     */
+    static boolean isCloserToOurMain(int ourLength, Collection<Integer> enemyLengths) {
+        if (ourLength < 0) {
+            return false;
+        }
+        return enemyLengths.stream().allMatch(length -> length < 0 || ourLength < length);
+    }
+
+    private List<Base> enemyMainCandidates(Base ourMain) {
+        Base enemyMain = baseData.getMainEnemyBase();
+        if (enemyMain != null) {
+            return Collections.singletonList(enemyMain);
+        }
+        return bwMap.getBases().stream()
+                .filter(Base::isStartingLocation)
+                .filter(base -> base != ourMain)
+                .collect(Collectors.toList());
+    }
+
+    private boolean isInBaseArea(TilePosition tile, Base base) {
+        return base != null && base.getArea() != null && isInArea(tile, base.getArea());
     }
 
     /**

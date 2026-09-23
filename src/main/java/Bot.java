@@ -207,7 +207,6 @@ public class Bot extends DefaultBWListener {
     @Override
     public void onUnitComplete(Unit unit) {
         if (unit.getPlayer() != game.self()) {
-            informationManager.onEnemyUnitComplete(unit);
             return;
         }
         if (unit.getType() == UnitType.Zerg_Larva) {
