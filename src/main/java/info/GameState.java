@@ -1094,10 +1094,6 @@ public class GameState {
         return i;
     }
 
-    public int enemyMobileGroundCombatUnitCount() {
-        return observedUnitTracker.getCountOfLivingUnits(Filter::isMobileGroundCombatUnit);
-    }
-
     public int visibleEnemyMobileGroundCombatUnitsAtOurBases() {
         Set<TilePosition> tiles = baseData.ourBaseTiles(gameMap, BaseData.NATURAL_DEFENSE_TILE_RADIUS);
         return observedUnitTracker.getCountOfVisibleUnitsOnTiles(Filter::isMobileGroundCombatUnit, tiles);

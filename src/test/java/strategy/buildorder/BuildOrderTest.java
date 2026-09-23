@@ -167,6 +167,20 @@ class BuildOrderTest {
         assertTrue(BuildOrder.shouldPlanEmergencyZergling(EMERGENCY_ZERGLING_TARGET - 1, EMERGENCY_ZERGLING_TARGET));
     }
 
+    @Test
+    void theEarlyRushZerglingFloorDoesNotGrowWithoutAttackersAtOurBases() {
+        int floor = BuildOrder.earlyRushZerglings(0);
+
+        assertEquals(6, floor);
+        assertEquals(floor, BuildOrder.earlyRushZerglings(3));
+    }
+
+    @Test
+    void theEarlyRushZerglingFloorScalesWithAttackersAtOurBases() {
+        assertEquals(20, BuildOrder.earlyRushZerglings(10));
+        assertEquals(40, BuildOrder.earlyRushZerglings(20));
+    }
+
     private static Plan poolPlanFor(BuildOrder buildOrder) {
         return new BuildingPlan(UnitType.Zerg_Spawning_Pool, buildOrder.poolPriority(POOL_FRAME));
     }
