@@ -18,6 +18,8 @@ import telemetry.PerchAssignmentLogger;
 import telemetry.PerchAssignments;
 import telemetry.PlanEventLogger;
 import telemetry.PlanEvents;
+import telemetry.RunbyLogger;
+import telemetry.RunbyTelemetry;
 import telemetry.SquadDecisionLogger;
 import telemetry.SquadDecisions;
 import telemetry.TargetChoiceLogger;
@@ -54,6 +56,7 @@ public class Bot extends DefaultBWListener {
     private SquadDecisionLogger squadDecisionLogger;
     private PerchAssignmentLogger perchAssignmentLogger;
     private TargetChoiceLogger targetChoiceLogger;
+    private RunbyLogger runbyLogger;
 
     @Override
     public void onStart() {
@@ -85,6 +88,7 @@ public class Bot extends DefaultBWListener {
         startSquadDecisionLogging();
         startPerchAssignmentLogging();
         startTargetChoiceLogging();
+        startRunbyLogging();
         startPlanEventLogging(decisions.getOpener());
     }
 
@@ -116,6 +120,15 @@ public class Bot extends DefaultBWListener {
         TargetChoices.register(targetChoiceLogger);
     }
 
+    private void startRunbyLogging() {
+        if (!gameState.getConfig().telemetryCombat) {
+            return;
+        }
+
+        runbyLogger = new RunbyLogger(game, combatTelemetry.getGameId());
+        RunbyTelemetry.register(runbyLogger);
+    }
+
     private void startPlanEventLogging(BuildOrder opener) {
         if (!gameState.getConfig().logPlanEvents) {
             return;
@@ -145,6 +158,9 @@ public class Bot extends DefaultBWListener {
         }
         if (targetChoiceLogger != null) {
             targetChoiceLogger.onFrame();
+        }
+        if (runbyLogger != null) {
+            runbyLogger.onFrame();
         }
         combatTelemetry.onFrame();
         debugMap.onFrame();
@@ -220,6 +236,9 @@ public class Bot extends DefaultBWListener {
         }
         if (targetChoiceLogger != null) {
             targetChoiceLogger.onEnd();
+        }
+        if (runbyLogger != null) {
+            runbyLogger.onEnd();
         }
         combatTelemetry.onEnd(isWinner);
     }

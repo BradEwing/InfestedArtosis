@@ -2,6 +2,7 @@ package telemetry;
 
 import unit.squad.CombatSimulator;
 import unit.squad.DefenseSim;
+import unit.squad.RunbyState;
 import unit.squad.Squad;
 
 /**
@@ -56,6 +57,16 @@ public interface SquadDecisionSink {
      * <p>canBreakContainment is only meaningful when shouldContain is true.
      */
     void onContainmentEvaluated(Squad squad, boolean shouldContain, boolean canBreakContainment, boolean entered);
+
+    /**
+     * A runby squad started a phase without changing its status, so the status sweep would not see it.
+     *
+     * @param squad the runby squad
+     * @param from the phase it left
+     * @param to the phase it started
+     * @param path the branch that started it
+     */
+    void onRunbyPhaseStarted(Squad squad, RunbyState.Phase from, RunbyState.Phase to, DecisionPath path);
 
     /**
      * Worker defence at a base pulled gatherers, abandoned its defence, or released its defenders.

@@ -12,6 +12,8 @@ import bwem.Base;
 import bwem.CPPath;
 import info.GameState;
 import info.ScoutData;
+import info.map.BaseArea;
+import info.tracking.ObservedUnit;
 import info.tracking.ObservedUnitTracker;
 import info.tracking.PsiStormTracker;
 import info.tracking.StrategyTracker;
@@ -24,6 +26,8 @@ import telemetry.DecisionPath;
 import telemetry.DefenseEvent;
 import telemetry.RallyReason;
 import telemetry.RallyRelease;
+import telemetry.RunbyTelemetry;
+import telemetry.RunbyTick;
 import telemetry.SquadDecisions;
 import telemetry.SquadLock;
 import telemetry.TargetChoices;
@@ -32,6 +36,7 @@ import unit.squad.horizon.HorizonCombatSimulator;
 import unit.managed.UnitRole;
 import util.Arc;
 import util.Filter;
+import util.StaticDefenseZone;
 import util.Vec2;
 
 import java.util.ArrayList;
@@ -114,6 +119,12 @@ public class SquadManager {
     public static final int GROUND_SPLIT_DISTANCE = 256;
     public static final int AIR_SPLIT_DISTANCE = 768;
     private static final int COMMITMENT_RELEASE_DISTANCE = 512;
+    private static final int RUNBY_AREA_PROXIMITY_TILES = 4;
+    private static final int RUNBY_AREA_TILES = 24;
+    private static final int LIKELY_SPOT_SEARCH_TILES = 2;
+    private static final int RUNBY_KILL_CREDIT_RADIUS = 64;
+
+    private final Map<Base, RunbyTarget> runbyTargets = new HashMap<>();
 
     public SquadManager(Game game, GameState gameState) {
         this.game = game;
@@ -504,6 +515,7 @@ public class SquadManager {
                 if (squad1 == squad2) continue;
                 if (considered.contains(squad1) || considered.contains(squad2)) continue;
                 if (!squad1.isMergeEligible(currentFrame) || !squad2.isMergeEligible(currentFrame)) continue;
+                if (!mayMerge(squad1.getStatus()) || !mayMerge(squad2.getStatus())) continue;
                 boolean bothGround = squad1.isGroundSquad() && squad2.isGroundSquad();
                 boolean bothAir = squad1.isAirSquad() && squad2.isAirSquad();
                 if (!bothGround && !bothAir) continue;
@@ -548,9 +560,7 @@ public class SquadManager {
         List<Squad> toAdd = new ArrayList<>();
 
         for (Squad squad : fightSquads) {
-            if (squad.getStatus() == SquadStatus.CONTAIN) continue;
-            if (squad.getStatus() == SquadStatus.RALLY) continue;
-            if (squad.getStatus() == SquadStatus.RETREAT) continue;
+            if (!maySplit(squad.getStatus())) continue;
             if (squad.size() < 4) continue;
 
             int threshold = squad.isAirSquad() ? AIR_SPLIT_DISTANCE : GROUND_SPLIT_DISTANCE;
@@ -578,6 +588,40 @@ public class SquadManager {
         }
 
         fightSquads.addAll(toAdd);
+    }
+
+    /**
+     * Whether a squad holding a status may merge with a neighbour. A runby squad is kept apart: a merge would
+     * fold a squad at home into the enemy base, or hand the runby to a squad that recalls it.
+     *
+     * @param status the squad's status
+     * @return true when the squad may merge
+     */
+    static boolean mayMerge(SquadStatus status) {
+        return status != SquadStatus.RUNBY;
+    }
+
+    /**
+     * Whether a squad holding a status may split off its outliers. A runby squad spreads out among the workers
+     * on purpose, so it is never split.
+     *
+     * @param status the squad's status
+     * @return true when the squad may split
+     */
+    static boolean maySplit(SquadStatus status) {
+        return status != SquadStatus.CONTAIN && status != SquadStatus.RALLY && status != SquadStatus.RETREAT
+                && status != SquadStatus.RUNBY;
+    }
+
+    /**
+     * Whether a new or re-homed unit may join a squad holding a status. A runby squad takes no
+     * reinforcements: joining one would re-simulate it and overwrite its status.
+     *
+     * @param status the squad's status
+     * @return true when the squad may take the unit
+     */
+    static boolean mayJoin(SquadStatus status) {
+        return status != SquadStatus.RUNBY;
     }
 
     /**
@@ -677,6 +721,11 @@ public class SquadManager {
      * @param squad Squad to evaluate
      */
     private void evaluateSquadRole(Squad squad) {
+        if (squad.getStatus() == SquadStatus.RUNBY) {
+            evaluateRunbySquad(squad);
+            return;
+        }
+
         final boolean closeThreats = !enemyUnitsNearSquad(squad).isEmpty();
 
         SquadStatus squadStatus = squad.getStatus();
@@ -1225,6 +1274,9 @@ public class SquadManager {
 
     private void evaluateContainingSquad(Squad squad) {
         int now = game.getFrameCount();
+        if (now % RunbyEvaluator.RUNBY_TICK == 0 && tryEnterRunby(squad, now)) {
+            return;
+        }
         HashSet<ManagedUnit> members = squad.getMembers();
 
         boolean basesUnderAttack = basesUnderAttack();
@@ -1359,6 +1411,596 @@ public class SquadManager {
             if (!threats.isEmpty()) return true;
         }
         return false;
+    }
+
+    /**
+     * Offers a containing squad a runby into the base it contains.
+     *
+     * <p>Runs ahead of every containment exit, a base under attack included: a contain that has lost a ling or
+     * two, or whose army is needed at home, still runs by when the gates pass, and trades bases instead of
+     * walking home. The cheap gates are read first so the target base is only resolved for a squad that could go.
+     *
+     * @param squad containing squad
+     * @param now current frame
+     * @return true when the squad entered RUNBY
+     */
+    private boolean tryEnterRunby(Squad squad, int now) {
+        boolean zerglingsOnly = squad.hasOnly(UnitType.Zerg_Zergling);
+        boolean metabolicBoost = gameState.getTechProgression().isMetabolicBoost();
+        Base base = null;
+        RunbyTarget target = null;
+        if (zerglingsOnly && metabolicBoost && squad.size() >= RunbyEvaluator.MIN_LINGS) {
+            base = runbyBaseNear(squad.getCenter(), Collections.emptySet());
+            target = base == null ? null : runbyTarget(base);
+        }
+        RunbyView view = target == null ? new RunbyView() : runbyView(now, target.area);
+        Position anchor = target == null ? null : target.anchor;
+        RunbyEvaluator.EntryVerdict verdict = RunbyEvaluator.entryVerdict(RunbyEvaluator.EntryInput.builder()
+                .zerglingsOnly(zerglingsOnly)
+                .metabolicBoost(metabolicBoost)
+                .size(squad.size())
+                .squadCenter(squad.getCenter())
+                .anchor(anchor)
+                .army(view.army)
+                .zones(view.zones)
+                .build());
+        boolean underAttack = basesUnderAttack();
+        RunbyTick.RunbyTickBuilder row = RunbyTick.builder()
+                .frame(now)
+                .squadId(squad.getId())
+                .event(RunbyTick.Event.ENTRY_CHECK)
+                .verdict(verdict)
+                .anchor(anchor)
+                .lings(squad.size())
+                .basesUnderAttack(underAttack ? 1 : 0);
+        if (anchor != null) {
+            row.enemyTally(RunbyEvaluator.enemyTally(view.army, view.zones, anchor))
+                    .ourTally(RunbyEvaluator.ourTally(squad.size()));
+        }
+        RunbyTelemetry.tick(row.build());
+        if (verdict != RunbyEvaluator.EntryVerdict.ENTER) {
+            return false;
+        }
+        enterRunby(squad, base, target, now);
+        return true;
+    }
+
+    private void enterRunby(Squad squad, Base base, RunbyTarget target, int now) {
+        squad.clearContainStart();
+        squad.setStatus(SquadStatus.RUNBY);
+        squad.commit(now);
+        SquadDecisions.pathTaken(squad, DecisionPath.RUNBY_ENTER);
+        RunbyState state = new RunbyState(now);
+        state.target(base, target.area, target.anchor, target.spots, runbyBudget(squad, target.anchor), now);
+        state.setLastTickFrame(now - RunbyEvaluator.RUNBY_TICK);
+        squad.setRunbyState(state);
+        for (ManagedUnit member : squad.getMembers()) {
+            member.setRole(UnitRole.RUNBY);
+            member.setContainPosition(null);
+            member.setFightTarget(null);
+            member.setRunbyDestination(null);
+            state.getLastHitPoints().put(member.getUnitID(), member.getUnit().getHitPoints());
+        }
+    }
+
+    /**
+     * Runs one frame of a runby squad: a squad decision every {@link RunbyEvaluator#RUNBY_TICK} frames, then an
+     * order for every ling. The contain throttle, the combat sim branch and the containment exits never see a
+     * runby squad; it leaves RUNBY only by aborting, by running out of targets, or by emptying.
+     *
+     * @param squad runby squad
+     */
+    private void evaluateRunbySquad(Squad squad) {
+        int now = game.getFrameCount();
+        RunbyState state = squad.getRunbyState();
+        if (squad.size() == 0) {
+            return;
+        }
+        if (state == null || state.getTargetArea() == null) {
+            exitRunby(squad, DecisionPath.RUNBY_EXIT_NO_TARGETS, now);
+            return;
+        }
+
+        RunbyView view = runbyView(now, state.getTargetArea());
+        boolean inside = state.getTargetArea().contains(squad.getCenter().toTilePosition());
+        if (inside && state.getArrivedFrame() < 0) {
+            state.setArrivedFrame(now);
+        }
+
+        if (RunbyEvaluator.decisionTickDue(now, state.getLastTickFrame())) {
+            state.setLastTickFrame(now);
+            if (runbyDecisionTick(squad, state, view, inside, now)) {
+                return;
+            }
+        }
+
+        assignRunbyOrders(squad, state, view, now);
+    }
+
+    /**
+     * One squad decision of a runby: abort while the abort window is open, refresh the winnable fight verdict
+     * in HARASS, refresh the seek point, end PENETRATE, and retarget once the base has nothing left.
+     *
+     * @return true when the squad left RUNBY
+     */
+    private boolean runbyDecisionTick(Squad squad, RunbyState state, RunbyView view, boolean inside, int now) {
+        boolean windowOpen = RunbyEvaluator.abortWindowOpen(state.isAbortWindowClosed(), state.getArrivedFrame(), now);
+        if (!windowOpen) {
+            state.setAbortWindowClosed(true);
+        }
+
+        boolean simDue = windowOpen && inside
+                || state.getPhase() == RunbyState.Phase.HARASS
+                && RunbyEvaluator.winnableRefreshDue(now, state.getWinnableCheckedFrame());
+        CombatSimulator.CombatResult simResult = simDue ? runbySim(squad) : null;
+        HorizonCombatSimulator.DebugSnapshot snapshot = simResult == null ? null : lastSnapshot(squad);
+        boolean measured = snapshot != null && snapshot.isEnemyMeasured();
+        double ratio = snapshot != null ? snapshot.getOverallRatio() : 0;
+        double threshold = snapshot != null ? snapshot.getEngageThreshold() : 0;
+
+        if (state.getPhase() == RunbyState.Phase.HARASS && simResult != null) {
+            state.setWinnable(simResult == CombatSimulator.CombatResult.ENGAGE && measured);
+            state.setWinnableCheckedFrame(now);
+        }
+
+        if (windowOpen) {
+            state.setEnemyTally(RunbyEvaluator.enemyTally(view.army, view.zones, state.getAnchor()));
+            state.setOurTally(RunbyEvaluator.ourTally(squad.size()));
+            if (RunbyEvaluator.shouldAbort(true, state.getEnemyTally(), state.getOurTally(), inside, simResult, measured,
+                    ratio, threshold)) {
+                logRunbyTick(squad, state, view, inside, windowOpen, now);
+                exitRunby(squad, DecisionPath.RUNBY_ABORT, now);
+                return true;
+            }
+        }
+
+        List<Position> lings = memberPositions(squad);
+        List<Position> visibleWorkers = visibleWorkersIn(view, state.getTargetArea());
+        Set<Position> recentWorkers = gameState.getObservedUnitTracker().getRecentWorkerPositionsIn(
+                state.getTargetArea()::contains, now, RunbyEvaluator.FRESH_FRAMES);
+        RunbyTargeting.markVisited(state.getLikelySpots(), state.getVisitedSpots(), lings, visibleWorkers);
+        RunbyTargeting.Goal goal = RunbyTargeting.seekGoal(squad.getCenter(), visibleWorkers, recentWorkers,
+                state.getLikelySpots(), state.getVisitedSpots());
+        state.setGoal(goal.getPoint());
+        state.setGoalType(goal.getType());
+        if (goal.getType() != RunbyState.GoalType.NONE) {
+            state.setLastProgressFrame(now);
+        }
+
+        if (state.getPhase() == RunbyState.Phase.PENETRATE && RunbyEvaluator.penetrateEnds(now,
+                state.getPhaseStartFrame(), state.getPenetrateBudgetFrames(), inside,
+                safeWorkerInReach(squad, view, state.getTargetArea()))) {
+            state.startHarass(now);
+            SquadDecisions.runbyPhaseStarted(squad, RunbyState.Phase.PENETRATE, RunbyState.Phase.HARASS,
+                    DecisionPath.RUNBY_PHASE);
+        }
+
+        boolean targetGone = !gameState.getBaseData().getEnemyBases().contains(state.getTargetBase());
+        if (targetGone || RunbyEvaluator.noTargets(now, state.getLastProgressFrame())) {
+            logRunbyTick(squad, state, view, inside, windowOpen, now);
+            return retargetOrExitRunby(squad, state, now);
+        }
+
+        logRunbyTick(squad, state, view, inside, windowOpen, now);
+        return false;
+    }
+
+    private CombatSimulator.CombatResult runbySim(Squad squad) {
+        CombatSimulator.CombatResult result = squad.getCombatSimulator()
+                .evaluate(squad, Collections.emptyMap(), gameState);
+        SquadDecisions.simEvaluated(squad, result, false, false);
+        return result;
+    }
+
+    /**
+     * Moves a runby squad on to the next known enemy base it has not raided yet, or retreats it when there is
+     * none.
+     *
+     * @return true when the squad left RUNBY
+     */
+    private boolean retargetOrExitRunby(Squad squad, RunbyState state, int now) {
+        Base next = runbyBaseNear(squad.getCenter(), state.getVisitedBases());
+        if (next == null) {
+            exitRunby(squad, DecisionPath.RUNBY_EXIT_NO_TARGETS, now);
+            return true;
+        }
+        RunbyTarget target = runbyTarget(next);
+        RunbyState.Phase from = state.getPhase();
+        state.target(next, target.area, target.anchor, target.spots, runbyBudget(squad, target.anchor), now);
+        SquadDecisions.runbyPhaseStarted(squad, from, RunbyState.Phase.PENETRATE, DecisionPath.RUNBY_RETARGET);
+        return false;
+    }
+
+    private void exitRunby(Squad squad, DecisionPath path, int now) {
+        for (ManagedUnit member : squad.getMembers()) {
+            member.setRunbyDestination(null);
+            member.setFightTarget(null);
+        }
+        squad.setRunbyState(null);
+        squad.setStatus(SquadStatus.RETREAT);
+        SquadDecisions.pathTaken(squad, path);
+        assignRetreatTargets(squad, squad.getMembers());
+        squad.startRetreatLock(now);
+    }
+
+    /**
+     * Gives every ling of a runby squad its order for this frame. Orders are recomputed on every frame and each
+     * ling acts on its latest order whenever it is ready.
+     */
+    private void assignRunbyOrders(Squad squad, RunbyState state, RunbyView view, int now) {
+        BaseArea area = state.getTargetArea();
+        RunbyTargeting.Situation situation = RunbyTargeting.Situation.builder()
+                .phase(state.getPhase())
+                .winnable(state.isWinnable())
+                .contacts(view.contacts)
+                .threats(view.threats)
+                .zones(view.zones)
+                .seekPoint(state.getGoal())
+                .evadeAllowed(point -> isRunbyEvadePoint(area, point))
+                .workerAllowed(point -> area.contains(point.toTilePosition()))
+                .now(now)
+                .build();
+        for (ManagedUnit member : squad.getMembers()) {
+            if (member.getRole() != UnitRole.RUNBY) {
+                member.setRole(UnitRole.RUNBY);
+            }
+            RunbyTargeting.Ling ling = new RunbyTargeting.Ling(member.getUnitID(), member.getPosition(),
+                    RunbyTargeting.reach(member.getUnitType()));
+            RunbyTargeting.Decision decision = RunbyTargeting.choose(ling, situation, state.memoryFor(member.getUnitID()));
+            if (applyRunbyDecision(member, decision, view, state)) {
+                state.setLastProgressFrame(now);
+            }
+        }
+    }
+
+    /**
+     * Turns a ling's decision into its order.
+     *
+     * @return true when the ling was given an enemy to hit, which counts as progress at the target base
+     */
+    private boolean applyRunbyDecision(ManagedUnit member, RunbyTargeting.Decision decision, RunbyView view,
+                                       RunbyState state) {
+        switch (decision.getKind()) {
+            case EVADE:
+            case SEEK:
+                member.setFightTarget(null);
+                member.setRunbyDestination(decision.getPoint());
+                return false;
+            case WORKER:
+            case BUILDING:
+                Unit target = view.units.get(decision.getTargetId());
+                if (target == null) {
+                    seekOrHold(member, state);
+                    return false;
+                }
+                member.setRunbyDestination(null);
+                member.setFightTarget(target);
+                return true;
+            case FIGHT:
+                if (!assignRunbyFightTarget(member, view)) {
+                    seekOrHold(member, state);
+                    return false;
+                }
+                member.setRunbyDestination(null);
+                return true;
+            default:
+                seekOrHold(member, state);
+                return false;
+        }
+    }
+
+    /**
+     * Sends a ling with nothing to hit to the squad's seek point, or to the anchor when there is none.
+     */
+    private void seekOrHold(ManagedUnit member, RunbyState state) {
+        member.setFightTarget(null);
+        member.setRunbyDestination(state.getGoal() != null ? state.getGoal() : state.getAnchor());
+    }
+
+    /**
+     * Picks a winnable fight target with TargetScorer among the visible enemies the ling can attack.
+     *
+     * @return true when a target was set, false when no candidate survived the attack filter
+     */
+    private boolean assignRunbyFightTarget(ManagedUnit member, RunbyView view) {
+        Unit unit = member.getUnit();
+        List<Unit> candidates = new ArrayList<>();
+        for (Unit enemy : view.units.values()) {
+            if (RunbyTargeting.isFightTarget(enemy.getType()) && unit.canAttack(enemy)) {
+                candidates.add(enemy);
+            }
+        }
+        if (candidates.isEmpty()) {
+            return false;
+        }
+        TargetScorer.Selection selection = TargetScorer.selectTarget(unit, filterByProximity(candidates, unit),
+                member.fightTarget);
+        if (selection == null) {
+            return false;
+        }
+        TargetChoices.chosen(member, member.fightTarget, selection);
+        member.setFightTarget(selection.getTarget());
+        return true;
+    }
+
+    private boolean isRunbyEvadePoint(BaseArea area, Position point) {
+        int maxX = game.mapWidth() * 32 - 1;
+        int maxY = game.mapHeight() * 32 - 1;
+        if (point.getX() < 0 || point.getY() < 0 || point.getX() > maxX || point.getY() > maxY) {
+            return false;
+        }
+        return area.contains(point.toTilePosition()) && game.isWalkable(new WalkPosition(point));
+    }
+
+    private boolean safeWorkerInReach(Squad squad, RunbyView view, BaseArea area) {
+        for (RunbyTargeting.Contact contact : view.contacts) {
+            if (!contact.isWorker() || !area.contains(contact.getPosition().toTilePosition())
+                    || !RunbyTargeting.isSafe(contact.getPosition(), view.threats)) {
+                continue;
+            }
+            for (ManagedUnit member : squad.getMembers()) {
+                if (member.getPosition().getDistance(contact.getPosition())
+                        <= RunbyTargeting.reach(member.getUnitType())) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private List<Position> visibleWorkersIn(RunbyView view, BaseArea area) {
+        List<Position> workers = new ArrayList<>();
+        for (RunbyTargeting.Contact contact : view.contacts) {
+            if (contact.isWorker() && area.contains(contact.getPosition().toTilePosition())) {
+                workers.add(contact.getPosition());
+            }
+        }
+        return workers;
+    }
+
+    private List<Position> memberPositions(Squad squad) {
+        List<Position> positions = new ArrayList<>();
+        for (ManagedUnit member : squad.getMembers()) {
+            positions.add(member.getPosition());
+        }
+        return positions;
+    }
+
+    /**
+     * Records a runby decision tick, measuring the hit points the squad lost since the previous tick. A ling
+     * that died since then counts its whole remaining pool.
+     */
+    private void logRunbyTick(Squad squad, RunbyState state, RunbyView view, boolean inside, boolean windowOpen,
+                              int now) {
+        Map<Integer, Integer> previous = state.getLastHitPoints();
+        Map<Integer, Integer> current = new HashMap<>();
+        int hpLost = 0;
+        int hpLostExposed = 0;
+        int exposed = 0;
+        for (ManagedUnit member : squad.getMembers()) {
+            int hp = member.getUnit().getHitPoints();
+            current.put(member.getUnitID(), hp);
+            boolean inReach = RunbyTargeting.minMargin(member.getPosition(), view.threats) <= 0;
+            if (inReach) {
+                exposed++;
+            }
+            Integer before = previous.get(member.getUnitID());
+            int lost = before == null ? 0 : Math.max(0, before - hp);
+            hpLost += lost;
+            if (inReach) {
+                hpLostExposed += lost;
+            }
+        }
+        for (Map.Entry<Integer, Integer> entry : previous.entrySet()) {
+            if (!current.containsKey(entry.getKey())) {
+                hpLost += entry.getValue();
+            }
+        }
+        previous.clear();
+        previous.putAll(current);
+
+        RunbyTelemetry.tick(RunbyTick.builder()
+                .frame(now)
+                .squadId(squad.getId())
+                .event(RunbyTick.Event.TICK)
+                .phase(state.getPhase())
+                .goalType(state.getGoalType())
+                .seekPoint(state.getGoal())
+                .anchor(state.getAnchor())
+                .abortWindowOpen(windowOpen ? 1 : 0)
+                .enemyTally(windowOpen ? state.getEnemyTally() : -1)
+                .ourTally(windowOpen ? state.getOurTally() : -1)
+                .inBaseArea(inside ? 1 : 0)
+                .lings(squad.size())
+                .workersVisible(visibleWorkersIn(view, state.getTargetArea()).size())
+                .exposedLings(exposed)
+                .hpLost(hpLost)
+                .hpLostNonWorkerInReach(hpLostExposed)
+                .winnable(winnableCell(state))
+                .basesUnderAttack(basesUnderAttack() ? 1 : 0)
+                .workersKilled(state.getWorkersKilled())
+                .buildingsKilled(state.getBuildingsKilled())
+                .build());
+    }
+
+    private static int winnableCell(RunbyState state) {
+        if (state.getPhase() != RunbyState.Phase.HARASS) {
+            return -1;
+        }
+        return state.isWinnable() ? 1 : 0;
+    }
+
+    private int runbyBudget(Squad squad, Position anchor) {
+        Position center = squad.getCenter();
+        int length = gameState.getBwem().getMap().getPathLength(center, anchor);
+        double distance = length >= 0 ? length : center.getDistance(anchor);
+        return RunbyEvaluator.penetrateBudget(distance);
+    }
+
+    /**
+     * The known enemy base a runby from here would raid: the nearest by ground, skipping bases already raided.
+     *
+     * @param from squad center
+     * @param excluded bases already raided
+     * @return the base, or null when none is left
+     */
+    private Base runbyBaseNear(Position from, Set<Base> excluded) {
+        Set<Base> candidates = new HashSet<>(gameState.getBaseData().getEnemyBases());
+        candidates.removeAll(excluded);
+        if (candidates.isEmpty()) {
+            return null;
+        }
+        return closestBaseTo(from, candidates);
+    }
+
+    /**
+     * Resolves the ground a runby raids at a base, and the walkable spots its workers are likely to be at:
+     * the mineral line side between the depot and the mineral centroid first, then the geyser side. Each raw
+     * spot is snapped to the walkable tile nearest the depot by ground, so a spot under a mineral field is never
+     * sent as an order. The anchor is the first spot, or the depot when no spot resolves.
+     *
+     * @param base the base
+     * @return the runby target, cached per base
+     */
+    private RunbyTarget runbyTarget(Base base) {
+        return runbyTargets.computeIfAbsent(base, b -> {
+            BaseArea area = BaseArea.from(b, gameState.getBwem().getMap(), RUNBY_AREA_PROXIMITY_TILES,
+                    RUNBY_AREA_TILES);
+            List<Position> spots = likelyWorkerSpots(b);
+            Position anchor = spots.isEmpty() ? b.getCenter() : spots.get(0);
+            return new RunbyTarget(area, anchor, spots);
+        });
+    }
+
+    private List<Position> likelyWorkerSpots(Base base) {
+        Position depot = base.getCenter();
+        List<Position> raw = new ArrayList<>();
+        if (!base.getMinerals().isEmpty()) {
+            int sumX = 0;
+            int sumY = 0;
+            for (bwem.Mineral mineral : base.getMinerals()) {
+                sumX += mineral.getCenter().getX();
+                sumY += mineral.getCenter().getY();
+            }
+            int count = base.getMinerals().size();
+            raw.add(midpoint(depot, new Position(sumX / count, sumY / count)));
+        }
+        for (bwem.Geyser geyser : base.getGeysers()) {
+            raw.add(midpoint(depot, geyser.getCenter()));
+        }
+
+        Set<TilePosition> blocked = new HashSet<>();
+        for (bwem.Mineral mineral : base.getMinerals()) {
+            blocked.addAll(footprint(mineral.getTopLeft(), mineral.getBottomRight()));
+        }
+        for (bwem.Geyser geyser : base.getGeysers()) {
+            blocked.addAll(footprint(geyser.getTopLeft(), geyser.getBottomRight()));
+        }
+
+        List<Position> spots = new ArrayList<>();
+        for (Position spot : raw) {
+            Map<TilePosition, Position> candidates = new HashMap<>();
+            TilePosition center = spot.toTilePosition();
+            for (int dx = -LIKELY_SPOT_SEARCH_TILES; dx <= LIKELY_SPOT_SEARCH_TILES; dx++) {
+                for (int dy = -LIKELY_SPOT_SEARCH_TILES; dy <= LIKELY_SPOT_SEARCH_TILES; dy++) {
+                    TilePosition tile = new TilePosition(center.getX() + dx, center.getY() + dy);
+                    if (!blocked.contains(tile) && gameState.getGameMap().isValidTile(tile)) {
+                        candidates.put(tile, tile.toPosition().add(new Position(16, 16)));
+                    }
+                }
+            }
+            Position snapped = gameState.getGameMap().findNearestByGround(base.getLocation(), candidates, blocked);
+            if (snapped != null && !spots.contains(snapped)) {
+                spots.add(snapped);
+            }
+        }
+        return spots;
+    }
+
+    private static Position midpoint(Position a, Position b) {
+        return new Position((a.getX() + b.getX()) / 2, (a.getY() + b.getY()) / 2);
+    }
+
+    private static Set<TilePosition> footprint(TilePosition topLeft, TilePosition bottomRight) {
+        Set<TilePosition> tiles = new HashSet<>();
+        for (int x = topLeft.getX(); x <= bottomRight.getX(); x++) {
+            for (int y = topLeft.getY(); y <= bottomRight.getY(); y++) {
+                tiles.add(new TilePosition(x, y));
+            }
+        }
+        return tiles;
+    }
+
+    /**
+     * Reads the enemy once for a runby frame: visible ground targets for the lings, the tracked army with the
+     * freshness of each observation, and everything that can hurt a ling with its reach. An army unit threatens
+     * while its observation is fresh, or for as long as it may be burrowed where it was last seen inside the
+     * target base; a structure that shoots ground threatens wherever it was last seen.
+     *
+     * @param now current frame
+     * @param targetArea ground of the base being raided or offered
+     */
+    private RunbyView runbyView(int now, BaseArea targetArea) {
+        RunbyView view = new RunbyView();
+        view.zones = gameState.getStaticDefenseZones();
+        for (Unit enemy : gameState.getVisibleEnemyUnits()) {
+            UnitType type = enemy.getType();
+            if (!enemy.isDetected() || enemy.isFlying() || !enemy.isTargetable()
+                    || Filter.isLowPriorityCombatTarget(type)) {
+                continue;
+            }
+            int maxPool = type.maxHitPoints() + type.maxShields();
+            double hpFraction = maxPool <= 0 ? 1.0 : (double) (enemy.getHitPoints() + enemy.getShields()) / maxPool;
+            view.contacts.add(new RunbyTargeting.Contact(enemy.getID(), type, enemy.getPosition(), hpFraction,
+                    Filter.isMeanWorker(enemy)));
+            view.units.put(enemy.getID(), enemy);
+        }
+        for (ObservedUnit observed : gameState.getObservedUnitTracker().getLivingObservedUnits()) {
+            UnitType type = observed.getUnitType();
+            boolean visible = observed.getUnit().isVisible();
+            Position position = observed.getCurrentOrLastKnownPosition();
+            if (RunbyEvaluator.isArmyType(type)) {
+                boolean fresh = RunbyEvaluator.isFresh(visible, observed.getLastObservedFrame().getFrames(), now);
+                Position lastKnown = observed.getLastKnownLocation();
+                boolean lurking = RunbyEvaluator.isLurking(visible, type.isBurrowable(),
+                        lastKnown != null && targetArea.contains(lastKnown.toTilePosition()));
+                boolean cleared = RunbyEvaluator.isCleared(visible,
+                        lastKnown != null && game.isVisible(lastKnown.toTilePosition()), lurking);
+                view.army.add(new RunbyEvaluator.ArmyUnit(type, position, fresh, cleared));
+                if ((fresh || lurking) && position != null) {
+                    view.threats.add(RunbyTargeting.Threat.of(type, position));
+                }
+            } else if (Filter.isHostileBuildingToGround(type) && position != null) {
+                view.threats.add(RunbyTargeting.Threat.of(type, position));
+            }
+        }
+        return view;
+    }
+
+    /**
+     * The enemy as a runby reads it on one frame.
+     */
+    private static final class RunbyView {
+        private final List<RunbyTargeting.Contact> contacts = new ArrayList<>();
+        private final Map<Integer, Unit> units = new HashMap<>();
+        private final List<RunbyEvaluator.ArmyUnit> army = new ArrayList<>();
+        private final List<RunbyTargeting.Threat> threats = new ArrayList<>();
+        private List<StaticDefenseZone> zones = Collections.emptyList();
+    }
+
+    /**
+     * The ground a runby raids at one base, the point it is measured at, and where its workers are likely to be.
+     */
+    private static final class RunbyTarget {
+        private final BaseArea area;
+        private final Position anchor;
+        private final List<Position> spots;
+
+        private RunbyTarget(BaseArea area, Position anchor, List<Position> spots) {
+            this.area = area;
+            this.anchor = anchor;
+            this.spots = spots;
+        }
     }
 
     /**
@@ -1635,6 +2277,34 @@ public class SquadManager {
             }
         }
         irradiatedUnits.removeIf(mu -> mu.getUnit() == unit);
+        creditRunbyKill(unit);
+    }
+
+    /**
+     * Credits a dead enemy worker or building to the runby squad that killed it: a member was targeting it, or
+     * stood within {@link #RUNBY_KILL_CREDIT_RADIUS} of it.
+     *
+     * @param unit the destroyed unit
+     */
+    private void creditRunbyKill(Unit unit) {
+        UnitType type = unit.getType();
+        boolean worker = Filter.isWorkerType(type);
+        if (!worker && !type.isBuilding() || !game.self().isEnemy(unit.getPlayer())) {
+            return;
+        }
+        Position position = unit.getPosition();
+        for (Squad squad : fightSquads) {
+            RunbyState state = squad.getRunbyState();
+            if (squad.getStatus() != SquadStatus.RUNBY || state == null) {
+                continue;
+            }
+            for (ManagedUnit member : squad.getMembers()) {
+                if (member.fightTarget == unit || member.getPosition().getDistance(position) <= RUNBY_KILL_CREDIT_RADIUS) {
+                    state.creditKill(worker);
+                    return;
+                }
+            }
+        }
     }
 
     private void addManagedFighter(ManagedUnit managedUnit) {
@@ -1693,6 +2363,7 @@ public class SquadManager {
     private Squad findCloseGroundSquad(ManagedUnit managedUnit) {
         for (Squad squad : fightSquads) {
             if (!squad.isGroundSquad()) continue;
+            if (!mayJoin(squad.getStatus())) continue;
             if (squad.distance(managedUnit) < SQUAD_MERGE_DISTANCE) {
                 return squad;
             }

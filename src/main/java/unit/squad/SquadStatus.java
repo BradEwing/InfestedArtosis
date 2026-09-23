@@ -5,10 +5,13 @@ package unit.squad;
  *
  * <p>Each status carries a merge precedence used when two squads combine into one.
  *
- * <p>Highest to lowest: FIGHT, CONTAIN, RETREAT, RALLY, DEFENSE.
+ * <p>Highest to lowest: RUNBY, FIGHT, CONTAIN, RETREAT, RALLY, DEFENSE.
  *
  * <ul>
- *     <li>FIGHT wins outright</li>
+ *     <li>RUNBY sits first as a guard. A runby squad is kept out of merges and splits, so the precedence only
+ *     matters if one ever reaches a merge, and then the squad inside the enemy base must not be recalled by the
+ *     squad it touched</li>
+ *     <li>FIGHT outranks every status below it</li>
  *     <li>CONTAIN outranks RETREAT and RALLY because a containing squad has already cleared the moveout threshold and
  *     committed to an arc forward of the rally point</li>
  *     <li>RETREAT outranks RALLY so a squad disengaging under threat is not downgraded</li>
@@ -20,7 +23,8 @@ public enum SquadStatus {
     DEFENSE(0),
     RALLY(1),
     RETREAT(2),
-    CONTAIN(3);
+    CONTAIN(3),
+    RUNBY(5);
 
     private final int mergePrecedence;
 

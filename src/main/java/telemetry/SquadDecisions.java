@@ -2,6 +2,7 @@ package telemetry;
 
 import unit.squad.CombatSimulator;
 import unit.squad.DefenseSim;
+import unit.squad.RunbyState;
 import unit.squad.Squad;
 
 /**
@@ -79,6 +80,14 @@ public final class SquadDecisions {
             return;
         }
         current.onSplitSuppressed(squad, moveOutThreshold, squadStrength, outlierStrength);
+    }
+
+    public static void runbyPhaseStarted(Squad squad, RunbyState.Phase from, RunbyState.Phase to, DecisionPath path) {
+        SquadDecisionSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onRunbyPhaseStarted(squad, from, to, path);
     }
 
     public static void defenseEvaluated(Squad squad, DefenseEvent event, int candidates, int pulled, int released,
