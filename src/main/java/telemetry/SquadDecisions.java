@@ -69,6 +69,14 @@ public final class SquadDecisions {
         current.onContainmentPushedBack(squad, from, to, enemyType, membersMoved);
     }
 
+    public static void outrangedHit(Squad squad, boolean outrangedHit) {
+        SquadDecisionSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onOutrangedHitEvaluated(squad, outrangedHit);
+    }
+
     public static void containmentEnded(Squad squad, int supplyLost) {
         SquadDecisionSink current = sink;
         if (current == null) {

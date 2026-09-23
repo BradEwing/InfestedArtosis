@@ -2,7 +2,7 @@ package unit.squad;
 
 import bwapi.Position;
 import bwapi.UnitType;
-import bwapi.WeaponType;
+import info.tracking.EnemyReachMemory;
 import lombok.Builder;
 import lombok.Getter;
 import util.Filter;
@@ -14,6 +14,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.function.Predicate;
+import java.util.function.ToDoubleFunction;
 
 /**
  * Per-ling decisions of a runby, as static functions over plain values.
@@ -22,9 +23,10 @@ import java.util.function.Predicate;
  * winnable fight, then mean workers in reach, then workers no threat covers, then a winnable fight, then a
  * building no threat covers, then the squad's seek point. PENETRATE uses only the evade, worker and seek steps.
  *
- * <p>A threat's reach is its ground weapon range plus its own extent, because distances here are measured
- * between centers while weapon range is measured between edges, plus the ground it covers in
- * {@link #LOOKAHEAD_FRAMES} at its top speed, plus a buffer. Ranges, extents and speeds are read from JBWAPI.
+ * <p>A threat's reach is its ground range plus its own extent, because distances here are measured between
+ * centers while weapon range is measured between edges, plus the ground it covers in {@link #LOOKAHEAD_FRAMES}
+ * at its top speed, plus a buffer. The ground range is the one {@link EnemyReachMemory} has learned for the type;
+ * extents and speeds are read from JBWAPI.
  */
 public final class RunbyTargeting {
 
@@ -100,10 +102,19 @@ public final class RunbyTargeting {
         /**
          * @param type enemy type
          * @param position its live or last known position
-         * @return a threat covering {@link #reach(UnitType)} around the position
+         * @param groundRange ground range learned for the type
+         * @return a threat covering {@link #reach(UnitType, int)} around the position
          */
-        public static Threat of(UnitType type, Position position) {
-            return new Threat(position, reach(type));
+        public static Threat of(UnitType type, Position position, int groundRange) {
+            return new Threat(position, reach(type, groundRange));
+        }
+
+        /**
+         * @param mark where one of our units was hit by something no known enemy accounts for
+         * @return a threat covering the mark's radius around it
+         */
+        public static Threat of(EnemyReachMemory.HurtMark mark) {
+            return new Threat(mark.getPosition(), EnemyReachMemory.HURT_MARK_RADIUS);
         }
 
         double margin(Position point) {
@@ -202,16 +213,25 @@ public final class RunbyTargeting {
     }
 
     /**
-     * Ground a unit type covers around its center over the lookahead.
-     *
-     * <p>A Bunker is given a Marine's range, the way GameState sizes a Bunker's static defence zone.
+     * Ground a unit type covers around its center over the lookahead, at its base ground range.
      *
      * @param type unit type
      * @return reach in pixels
      */
     public static int reach(UnitType type) {
-        WeaponType weapon = type == UnitType.Terran_Bunker ? UnitType.Terran_Marine.groundWeapon() : type.groundWeapon();
-        int range = weapon == null || weapon == WeaponType.None ? 0 : weapon.maxRange();
+        return reach(type, EnemyReachMemory.baseGroundRange(type));
+    }
+
+    /**
+     * Ground a unit type covers around its center over the lookahead, at the larger of its base ground range and a
+     * learned one. A Bunker's base range is the Marines' it holds.
+     *
+     * @param type unit type
+     * @param groundRange ground range learned for the type
+     * @return reach in pixels
+     */
+    public static int reach(UnitType type, int groundRange) {
+        int range = Math.max(groundRange, EnemyReachMemory.baseGroundRange(type));
         return range + extent(type) + (int) Math.ceil(type.topSpeed() * LOOKAHEAD_FRAMES) + REACH_BUFFER;
     }
 
@@ -317,19 +337,57 @@ public final class RunbyTargeting {
      * @return the best point, or null when no point is allowed
      */
     static Position findEvadePoint(Position from, Situation situation) {
+        return findEvadePoint(from, candidate -> minMargin(candidate, situation.getThreats()),
+                situation.getEvadeAllowed(), situation.getSeekPoint());
+    }
+
+    /**
+     * Scores a ring of points around a unit and returns the one farthest outside every zone's reach plus the
+     * padding, among the allowed points, breaking ties toward the seek point.
+     *
+     * @param from the unit's position
+     * @param zones ground the enemy fires on, measured from each zone's edge
+     * @param padding pixels added to every zone's reach, covering the unit's extent and a margin
+     * @param allowed points the unit may move to
+     * @param seek point ties are broken toward, or null
+     * @return the best point, or null when no point is allowed
+     */
+    public static Position findEvadePoint(Position from, Collection<StaticDefenseZone> zones, int padding,
+                                          Predicate<Position> allowed, Position seek) {
+        return findEvadePoint(from, candidate -> zoneMargin(candidate, zones, padding), allowed, seek);
+    }
+
+    /**
+     * Smallest distance from a point to the edge of any zone's reach plus the padding; negative inside, and
+     * positive infinity with no zones.
+     *
+     * @param point the point
+     * @param zones the zones
+     * @param padding pixels added to every zone's reach
+     * @return the margin in pixels
+     */
+    static double zoneMargin(Position point, Collection<StaticDefenseZone> zones, int padding) {
+        double min = Double.POSITIVE_INFINITY;
+        for (StaticDefenseZone zone : zones) {
+            min = Math.min(min, zone.edgeDistance(point.getX(), point.getY()) - zone.getReach() - padding);
+        }
+        return min;
+    }
+
+    private static Position findEvadePoint(Position from, ToDoubleFunction<Position> marginOf,
+                                           Predicate<Position> allowed, Position seek) {
         Position best = null;
         double bestMargin = Double.NEGATIVE_INFINITY;
         double bestSeekDistance = Double.MAX_VALUE;
-        Position seek = situation.getSeekPoint();
         for (int radius : EVADE_RADII) {
             for (int i = 0; i < EVADE_ANGLES; i++) {
                 double angle = 2 * Math.PI * i / EVADE_ANGLES;
                 Position candidate = new Position(from.getX() + (int) Math.round(Math.cos(angle) * radius),
                         from.getY() + (int) Math.round(Math.sin(angle) * radius));
-                if (!situation.getEvadeAllowed().test(candidate)) {
+                if (!allowed.test(candidate)) {
                     continue;
                 }
-                double margin = minMargin(candidate, situation.getThreats());
+                double margin = marginOf.applyAsDouble(candidate);
                 double seekDistance = seek == null ? 0 : candidate.getDistance(seek);
                 if (margin > bestMargin || margin == bestMargin && seekDistance < bestSeekDistance) {
                     best = candidate;

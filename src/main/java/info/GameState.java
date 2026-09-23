@@ -12,6 +12,7 @@ import bwapi.Unit;
 import bwapi.UnitType;
 import bwapi.UpgradeType;
 import bwapi.WalkPosition;
+import bwapi.WeaponType;
 import bwem.BWEM;
 import bwem.Base;
 import bwem.Mineral;
@@ -19,6 +20,7 @@ import config.Config;
 import info.map.BuildingPlanner;
 import info.map.GameMap;
 import info.map.MapTile;
+import info.tracking.EnemyReachMemory;
 import info.tracking.ObservedBulletTracker;
 import info.tracking.ObservedUnitTracker;
 import info.tracking.PsiStormTracker;
@@ -37,6 +39,7 @@ import macro.plan.PlanState;
 import strategy.buildorder.BuildOrder;
 import unit.managed.ManagedUnit;
 import unit.managed.UnitRole;
+import unit.squad.RunbyEvaluator;
 import util.Distance;
 import util.Filter;
 import util.StaticDefenseZone;
@@ -49,6 +52,7 @@ import java.util.List;
 import java.util.Map;
 
 import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
@@ -57,6 +61,7 @@ import java.util.stream.Collectors;
 @Data
 public class GameState {
     private static final int BUNKER_BULLET_RADIUS = 224;
+    private static final int BUNKER_SHOT_GRACE_FRAMES = 2;
 
     private Game game;
     private Config config;
@@ -123,6 +128,7 @@ public class GameState {
     private ObservedUnitTracker observedUnitTracker = new ObservedUnitTracker();
     private ObservedBulletTracker observedBulletTracker = new ObservedBulletTracker();
     private Set<Bullet> lastFrameBunkerBullets = new HashSet<>();
+    private Map<Unit, Integer> recentBunkerShotVictims = new HashMap<>();
     private PsiStormTracker psiStormTracker = new PsiStormTracker(observedBulletTracker);
     private StrategyTracker strategyTracker;
 
@@ -148,13 +154,26 @@ public class GameState {
     }
 
     public void onFrame() {
-        observedUnitTracker.onFrame(game.getFrameCount());
+        int frame = game.getFrameCount();
+        observedUnitTracker.onFrame(frame);
         updateObservedUnitGroundHeights();
+        observeHitPoints(frame);
         updateBunkerGarrisonCounts();
+        learnReachFromHits(frame);
         strategyTracker.onFrame();
         clearVisibleEnemyWorkerLocations();
     }
 
+    private void observeHitPoints(int frame) {
+        for (ManagedUnit managedUnit : managedUnits) {
+            managedUnit.observeHitPoints(frame);
+        }
+    }
+
+    /**
+     * Counts the Marine shots each visible Bunker fires into its garrison estimate, and teaches the reach memory
+     * from every such shot that hit one of our units, crediting it to the nearest known Bunker, visible or not.
+     */
     private void updateBunkerGarrisonCounts() {
         int currentFrame = game.getFrameCount();
 
@@ -164,8 +183,9 @@ public class GameState {
                 bunkerShotCounts.put(enemy, 0);
             }
         }
+        Set<Position> knownBunkers = observedUnitTracker.getLastKnownPositionsOfLivingUnits(UnitType.Terran_Bunker);
         Set<Bullet> bunkerBullets = new HashSet<>();
-        if (bunkerShotCounts.isEmpty()) {
+        if (knownBunkers.isEmpty()) {
             lastFrameBunkerBullets = bunkerBullets;
             return;
         }
@@ -176,6 +196,7 @@ public class GameState {
             if (bullet.getSource() != null) continue;
             bunkerBullets.add(bullet);
             if (lastFrameBunkerBullets.contains(bullet)) continue;
+            learnFromBunkerShot(bullet, knownBunkers, currentFrame);
             Position bulletPos = bullet.getPosition();
             Unit closestBunker = null;
             double closestDist = BUNKER_BULLET_RADIUS;
@@ -199,8 +220,101 @@ public class GameState {
         }
     }
 
+    private void learnFromBunkerShot(Bullet bullet, Set<Position> knownBunkers, int frame) {
+        Unit victim = bullet.getTarget();
+        if (victim == null || victim.getPlayer() != self || victim.isFlying()) {
+            return;
+        }
+        if (observedUnitTracker.getReachMemory().learnFromBunkerShot(bullet.getPosition(), victim.getType(),
+                victim.getPosition(), knownBunkers, BUNKER_BULLET_RADIUS, frame)) {
+            recentBunkerShotVictims.put(victim, frame);
+        }
+    }
+
+    /**
+     * Teaches the reach memory from every weapon hit one of our ground units took this frame. A hit a Bunker shot
+     * already accounts for teaches nothing more. Otherwise the visible enemy targeting the victim is credited when
+     * the distance is attributable to its type, else the visible enemies with a ground weapon near the victim are
+     * weighed as {@link EnemyReachMemory#learnFromBystanders} describes. A hit nothing accounts for leaves a hurt mark
+     * where the victim stood.
+     *
+     * @param frame current frame
+     */
+    private void learnReachFromHits(int frame) {
+        EnemyReachMemory memory = observedUnitTracker.getReachMemory();
+        Set<Unit> visibleEnemies = null;
+        for (ManagedUnit managedUnit : managedUnits) {
+            if (!managedUnit.wasHitOn(frame)) {
+                continue;
+            }
+            Unit victim = managedUnit.getUnit();
+            if (!teachesReach(victim.getType(), victim.isFlying(), isTakingNonWeaponDamage(managedUnit))) {
+                continue;
+            }
+            Integer shotFrame = recentBunkerShotVictims.get(victim);
+            if (shotFrame != null && frame - shotFrame <= BUNKER_SHOT_GRACE_FRAMES) {
+                continue;
+            }
+            if (visibleEnemies == null) {
+                visibleEnemies = observedUnitTracker.getVisibleEnemyUnits();
+            }
+            if (learnFromVisibleAttacker(memory, victim, visibleEnemies, frame)) {
+                continue;
+            }
+            memory.recordHurt(victim.getPosition(), frame);
+        }
+        recentBunkerShotVictims.values().removeIf(shot -> frame - shot > BUNKER_SHOT_GRACE_FRAMES);
+    }
+
+    private static boolean learnFromVisibleAttacker(EnemyReachMemory memory, Unit victim, Set<Unit> enemies,
+                                                    int frame) {
+        List<EnemyReachMemory.Bystander> bystanders = new ArrayList<>();
+        for (Unit enemy : enemies) {
+            if (enemy.isFlying() || EnemyReachMemory.groundWeapon(enemy.getType()) == WeaponType.None) {
+                continue;
+            }
+            int distance = enemy.getDistance(victim);
+            if (enemy.getTarget() == victim || enemy.getOrderTarget() == victim) {
+                if (memory.learnFromHit(enemy.getType(), distance, EnemyReachMemory.Source.VISIBLE,
+                        victim.getPosition(), frame)) {
+                    return true;
+                }
+                continue;
+            }
+            bystanders.add(new EnemyReachMemory.Bystander(enemy.getType(), distance));
+        }
+        return memory.learnFromBystanders(bystanders, victim.getPosition(), frame);
+    }
+
+    /**
+     * Whether a hit on one of our units can teach enemy reach: only a ground unit, not a building, and only when the
+     * hit points it lost can have come from a weapon rather than an effect the bot tracks.
+     *
+     * @param victimType type of the unit hit
+     * @param flying true when the unit is in the air
+     * @param nonWeaponDamage true when the unit stands in an active Psionic Storm or is irradiated
+     * @return true when the hit teaches reach
+     */
+    static boolean teachesReach(UnitType victimType, boolean flying, boolean nonWeaponDamage) {
+        return !flying && !victimType.isBuilding() && !nonWeaponDamage;
+    }
+
+    /**
+     * Whether one of our units is losing hit points to an effect rather than a weapon: it stands in an active
+     * Psionic Storm, measured to its largest extent, or it is irradiated.
+     *
+     * @param managedUnit our unit
+     * @return true when its hit point loss may not come from a weapon
+     */
+    public boolean isTakingNonWeaponDamage(ManagedUnit managedUnit) {
+        UnitType type = managedUnit.getUnitType();
+        int extent = Math.max(Math.max(type.dimensionLeft(), type.dimensionRight()),
+                Math.max(type.dimensionUp(), type.dimensionDown()));
+        return managedUnit.isIrradiated() || psiStormTracker.isPositionInStorm(managedUnit.getPosition(), extent);
+    }
+
     private boolean hasTargetInBunkerRange(Unit bunker) {
-        int range = UnitType.Terran_Marine.groundWeapon().maxRange();
+        int range = observedUnitTracker.getReachMemory().groundReach(UnitType.Terran_Bunker);
         for (Unit unit : game.self().getUnits()) {
             UnitType type = unit.getType();
             if (type.isBuilding() || !type.canAttack() || !unit.isCompleted() || unit.isBurrowed()) continue;
@@ -1335,18 +1449,18 @@ public class GameState {
     }
 
     /**
-     * Reach of each static defence structure the opponent's race builds, measured from the structure's edge.
-     * A Bunker reaches as far as the Marines inside it; JBWAPI's Player.weaponMaxRange carries no bunker bonus.
+     * Base reach of each static defence structure the opponent's race builds, measured from the structure's edge.
+     * A Bunker starts at the range of the Marines inside it; the zones raise it to whatever reach has been learned.
      *
      * @param opponentRace race of the opponent
      * @return reach in pixels by structure type, empty for an unknown race
      */
-    static Map<UnitType, Integer> staticDefenseReaches(Race opponentRace) {
+    public static Map<UnitType, Integer> staticDefenseReaches(Race opponentRace) {
         Map<UnitType, Integer> reaches = new HashMap<>();
         switch (opponentRace) {
             case Terran:
                 reaches.put(UnitType.Terran_Missile_Turret, UnitType.Terran_Missile_Turret.airWeapon().maxRange());
-                reaches.put(UnitType.Terran_Bunker, UnitType.Terran_Marine.groundWeapon().maxRange());
+                reaches.put(UnitType.Terran_Bunker, EnemyReachMemory.baseGroundRange(UnitType.Terran_Bunker));
                 break;
             case Protoss:
                 reaches.put(UnitType.Protoss_Photon_Cannon, UnitType.Protoss_Photon_Cannon.groundWeapon().maxRange());
@@ -1361,14 +1475,71 @@ public class GameState {
         return reaches;
     }
 
+    /**
+     * One zone per living enemy static defence structure at its last known position, at the larger of its base
+     * reach and the reach learned for its type.
+     *
+     * @return the zones
+     */
     public List<StaticDefenseZone> getStaticDefenseZones() {
+        return staticDefenseZones(staticDefenseReaches(opponentRace), observedUnitTracker.getReachMemory(),
+                observedUnitTracker::getLastKnownPositionsOfLivingUnits);
+    }
+
+    /**
+     * Builds static defence zones from base reaches, raised by the reach memory.
+     *
+     * @param reaches base reach by structure type
+     * @param memory learned reach
+     * @param positions known positions of living structures of a type
+     * @return one zone per structure
+     */
+    public static List<StaticDefenseZone> staticDefenseZones(Map<UnitType, Integer> reaches, EnemyReachMemory memory,
+                                                      Function<UnitType, Set<Position>> positions) {
         List<StaticDefenseZone> zones = new ArrayList<>();
-        for (Map.Entry<UnitType, Integer> entry : staticDefenseReaches(opponentRace).entrySet()) {
-            for (Position defensePos : observedUnitTracker.getLastKnownPositionsOfLivingUnits(entry.getKey())) {
-                zones.add(new StaticDefenseZone(entry.getKey(), defensePos, entry.getValue()));
+        for (Map.Entry<UnitType, Integer> entry : reaches.entrySet()) {
+            int reach = memory.groundReach(entry.getKey(), entry.getValue());
+            for (Position defensePos : positions.apply(entry.getKey())) {
+                zones.add(new StaticDefenseZone(entry.getKey(), defensePos, reach));
             }
         }
         return zones;
+    }
+
+    /**
+     * Every piece of ground an enemy is known to fire on: the static defence zones, a zone at learned reach around
+     * each enemy army unit whose observation is fresh, and a disc around each live hurt mark.
+     *
+     * @param now current frame
+     * @return the zones
+     */
+    public List<StaticDefenseZone> getGroundThreatZones(int now) {
+        return groundThreatZones(getStaticDefenseZones(),
+                observedUnitTracker.getFreshArmyReachZones(RunbyEvaluator::isFresh, RunbyEvaluator::isArmyType, now),
+                observedUnitTracker.getReachMemory().liveHurtMarks(now));
+    }
+
+    /**
+     * Joins the static, mobile and hurt mark zones into one list.
+     *
+     * @param staticZones static defence zones
+     * @param mobileZones zones around fresh enemy army units
+     * @param hurtMarks live hurt marks
+     * @return every zone
+     */
+    static List<StaticDefenseZone> groundThreatZones(List<StaticDefenseZone> staticZones,
+                                                     List<StaticDefenseZone> mobileZones,
+                                                     List<EnemyReachMemory.HurtMark> hurtMarks) {
+        List<StaticDefenseZone> zones = new ArrayList<>(staticZones);
+        zones.addAll(mobileZones);
+        for (EnemyReachMemory.HurtMark mark : hurtMarks) {
+            zones.add(mark.toZone());
+        }
+        return zones;
+    }
+
+    public EnemyReachMemory getReachMemory() {
+        return observedUnitTracker.getReachMemory();
     }
 
     public Set<Position> getStaticDefenseCoverage() {

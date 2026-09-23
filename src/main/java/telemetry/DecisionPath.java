@@ -103,7 +103,8 @@ public enum DecisionPath {
     CONTAIN_OUTRANGED,
 
     /**
-     * A containing squad moved its arc back out of reach of an enemy that outranges it and kept containing.
+     * A containing squad was hit by an enemy that outranges it, recomputed its arc out of that enemy's reach and kept
+     * containing. The arc may be unchanged when it already stood out of reach.
      */
     CONTAIN_PUSHBACK,
 

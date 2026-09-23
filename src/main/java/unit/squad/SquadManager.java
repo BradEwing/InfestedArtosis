@@ -13,6 +13,7 @@ import bwem.CPPath;
 import info.GameState;
 import info.ScoutData;
 import info.map.BaseArea;
+import info.tracking.EnemyReachMemory;
 import info.tracking.ObservedUnit;
 import info.tracking.ObservedUnitTracker;
 import info.tracking.PsiStormTracker;
@@ -48,6 +49,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.ToDoubleFunction;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 import util.TargetScorer;
@@ -126,6 +128,7 @@ public class SquadManager {
     private static final int RUNBY_KILL_CREDIT_RADIUS = 64;
 
     private final Map<Base, RunbyTarget> runbyTargets = new HashMap<>();
+    private Set<ManagedUnit> outrangedHits = new HashSet<>();
 
     private final ScoutChase scoutChase = new ScoutChase();
 
@@ -147,6 +150,8 @@ public class SquadManager {
         updateIrradiatedUnits();
         assignOverlordsToSquads();
 
+        int now = game.getFrameCount();
+        outrangedHits = findOutrangedHits(now);
         Set<Squad> removed = new HashSet<>();
         for (Squad fightSquad: fightSquads) {
             fightSquad.onFrame();
@@ -172,6 +177,72 @@ public class SquadManager {
         }
 
         fightSquads.removeAll(removed);
+        evadeOutrangedHits(now);
+    }
+
+    /**
+     * Members of every fight squad hit this frame by something they cannot answer, read before any squad decides,
+     * so a containing squad and the hit unit both react on the frame the hit is seen. A member standing in an active
+     * Psionic Storm or irradiated may be losing hit points to the effect, and its drop is not read as a hit.
+     *
+     * @param now current frame
+     * @return the members with an outranged hit
+     */
+    private Set<ManagedUnit> findOutrangedHits(int now) {
+        Set<ManagedUnit> hit = new HashSet<>();
+        for (Squad squad : fightSquads) {
+            for (ManagedUnit member : squad.getMembers()) {
+                if (!member.wasHitOn(now) || gameState.isTakingNonWeaponDamage(member)) {
+                    continue;
+                }
+                if (ManagedUnit.isOutrangedHit(member.getHitPointsBefore(), member.getUnit().getHitPoints(),
+                        member.getRole(), member.hasEnemyWithinReach(ManagedUnit.MELEE_MARGIN))) {
+                    hit.add(member);
+                }
+            }
+        }
+        return hit;
+    }
+
+    /**
+     * Moves every member with an outranged hit this frame to the point, within a short ring around it, farthest
+     * outside every zone that outranges it. The move is issued this frame, ahead of the unit's ready gate. A
+     * burrowed member, or one whose type cannot move, is left to keep attacking from its role.
+     *
+     * @param now current frame
+     */
+    private void evadeOutrangedHits(int now) {
+        if (outrangedHits.isEmpty()) {
+            return;
+        }
+        List<StaticDefenseZone> threats = gameState.getGroundThreatZones(now);
+        Set<WalkPosition> accessible = gameState.getGameMap().getAccessibleWalkPositions();
+        int mapPixelWidth = game.mapWidth() * 32;
+        int mapPixelHeight = game.mapHeight() * 32;
+        Predicate<Position> allowed = point -> isWalkable(point, accessible, mapPixelWidth, mapPixelHeight);
+        for (ManagedUnit member : outrangedHits) {
+            if (!member.canStepOutNow()
+                    || !ManagedUnit.evadesOutrangedHit(member.getRole(), member.isClosingOnTarget())) {
+                continue;
+            }
+            UnitType type = member.getUnitType();
+            List<StaticDefenseZone> zones = ContainmentPushback.outrangingZones(threats,
+                    EnemyReachMemory.baseGroundRange(type));
+            Position seek = member.getRole() == UnitRole.CONTAIN ? member.getContainPosition() : null;
+            Position point = RunbyTargeting.findEvadePoint(member.getPosition(), zones,
+                    containmentDefensePadding(Collections.singletonList(type)), allowed, seek);
+            if (point != null) {
+                member.evade(point, now);
+            }
+        }
+    }
+
+    private static boolean isWalkable(Position point, Set<WalkPosition> accessible, int mapPixelWidth,
+                                      int mapPixelHeight) {
+        if (point.getX() < 0 || point.getY() < 0 || point.getX() >= mapPixelWidth || point.getY() >= mapPixelHeight) {
+            return false;
+        }
+        return accessible.isEmpty() || accessible.contains(new WalkPosition(point));
     }
 
     public void updateOverlordSquad() {
@@ -1270,8 +1341,19 @@ public class SquadManager {
     enum ContainmentVerdict {
         BREAK_ALL,
         RETREAT,
+        PUSH_BACK,
         HOLD,
         REPOSITION
+    }
+
+    /**
+     * Whether a member of a containing squad was hit this frame by something it cannot answer, and if so whether
+     * any arc point on the choke is left out of every known reach.
+     */
+    enum OutrangedHit {
+        NONE,
+        ARC_KEPT,
+        ARC_LOST
     }
 
     /**
@@ -1284,9 +1366,12 @@ public class SquadManager {
      * returns fire inside its own weapon range, so the squad trades on the line rather than charging a position it
      * has been measured as unable to break.
      *
-     * <p>Bases under attack, attrition and a lost arc outrank the re-evaluation throttle and are the only verdicts
-     * reachable on a throttled frame. A squad being ground down, or with nowhere left to stand out of reach, leaves
-     * on the frame it happens rather than at the next re-evaluation tick.
+     * <p>A member hit by something it cannot answer moves the arc out of every known reach, overriding both the
+     * throttle and an enemy on the arc; with no arc point left out of reach the squad retreats.
+     *
+     * <p>Bases under attack, attrition, an outranged hit and a lost arc outrank the re-evaluation throttle and are
+     * the only verdicts reachable on a throttled frame. A squad being ground down, hit from out of its reach, or with
+     * nowhere left to stand out of reach, acts on the frame it happens rather than at the next re-evaluation tick.
      *
      * <p>Only a base under attack and the strength gate move the whole army; they are the two signals that are
      * true for every squad at once. A squad that has run out its own containment clock disengages by itself
@@ -1294,7 +1379,8 @@ public class SquadManager {
      *
      * @param basesUnderAttack true when a combat unit threatens one of our bases, see {@link #threatensContainment}
      * @param bleeding true when the squad is losing supply within the attrition window while killing little
-     * @param arcLost true when no arc point on the choke stays out of reach of an enemy that outranges the squad
+     * @param outrangedHit whether a member was hit this frame with no enemy in its own range, and whether an arc
+     *     point on the choke stays out of reach of every enemy that outranges the squad
      * @param throttled true when the contain lock holds and this frame is not a re-evaluation tick
      * @param engaged true when a mobile enemy is within contact range of a member
      * @param timedOut true when the episode has run past the containment timeout
@@ -1302,14 +1388,17 @@ public class SquadManager {
      * @param shouldContain true when containment still applies to this squad
      * @return verdict for this frame
      */
-    static ContainmentVerdict containmentVerdict(boolean basesUnderAttack, boolean bleeding, boolean arcLost,
-                                                 boolean throttled, boolean engaged, boolean timedOut,
-                                                 boolean canBreak, boolean shouldContain) {
+    static ContainmentVerdict containmentVerdict(boolean basesUnderAttack, boolean bleeding,
+                                                 OutrangedHit outrangedHit, boolean throttled, boolean engaged,
+                                                 boolean timedOut, boolean canBreak, boolean shouldContain) {
         if (basesUnderAttack) {
             return ContainmentVerdict.BREAK_ALL;
         }
-        if (bleeding || arcLost) {
+        if (bleeding || outrangedHit == OutrangedHit.ARC_LOST) {
             return ContainmentVerdict.RETREAT;
+        }
+        if (outrangedHit == OutrangedHit.ARC_KEPT) {
+            return ContainmentVerdict.PUSH_BACK;
         }
         if (throttled) {
             return ContainmentVerdict.HOLD;
@@ -1338,15 +1427,20 @@ public class SquadManager {
 
         boolean basesUnderAttack = baseThreatensContainment();
         boolean bleeding = !basesUnderAttack && squad.getContainmentAttrition().isBleeding(now, squad.getSupply());
-        boolean arcLost = !basesUnderAttack && !bleeding && pushBackFromOutrangingFire(squad) == Pushback.NO_ARC;
+        boolean outrangedHit = !basesUnderAttack && !bleeding && hasOutrangedHit(squad);
+        List<StaticDefenseZone> zones = outrangedHit ? containmentZones(squad, now) : Collections.emptyList();
+        Arc underFire = outrangedHit ? arcUnderFire(squad, zones) : null;
+        boolean arcLost = outrangedHit && underFire == null;
+        OutrangedHit hit = outrangedHitVerdict(outrangedHit, arcLost);
         boolean throttled = isContainmentThrottled(squad, now);
-        boolean evaluate = !basesUnderAttack && !bleeding && !arcLost && !throttled;
+        boolean evaluate = !basesUnderAttack && !bleeding && !outrangedHit && !throttled;
         boolean timedOut = evaluate && containmentTimedOut(squad, now);
         boolean canBreak = evaluate && containmentEvaluator.canBreakContainment(fightSquads);
         boolean shouldContain = !evaluate || containmentEvaluator.shouldContain(squad);
         boolean engaged = evaluate && enemiesOnContainmentArc(squad);
 
-        ContainmentVerdict verdict = containmentVerdict(basesUnderAttack, bleeding, arcLost, throttled, engaged,
+        SquadDecisions.outrangedHit(squad, outrangedHit);
+        ContainmentVerdict verdict = containmentVerdict(basesUnderAttack, bleeding, hit, throttled, engaged,
                 timedOut, canBreak, shouldContain);
 
         switch (verdict) {
@@ -1355,6 +1449,9 @@ public class SquadManager {
                 break;
             case RETREAT:
                 retreatFromContainment(squad, members, now, containmentExitPath(bleeding, arcLost));
+                break;
+            case PUSH_BACK:
+                pushBackContainingSquad(squad, zones, underFire);
                 break;
             case REPOSITION:
                 repositionContainingSquad(squad, members, now);
@@ -1396,83 +1493,62 @@ public class SquadManager {
     }
 
     /**
-     * Outcome of checking a containing squad for fire from enemies that outrange it.
+     * Folds an outranged hit and whether the recomputed arc kept a point into one verdict input.
+     *
+     * @param outrangedHit true when a member was hit this frame with no enemy in its own range
+     * @param arcLost true when no arc point on the choke stays out of every known reach
+     * @return NONE without a hit, else ARC_KEPT or ARC_LOST
      */
-    enum Pushback {
-        NONE,
-        PUSHED,
-        NO_ARC
+    static OutrangedHit outrangedHitVerdict(boolean outrangedHit, boolean arcLost) {
+        if (!outrangedHit) {
+            return OutrangedHit.NONE;
+        }
+        return arcLost ? OutrangedHit.ARC_LOST : OutrangedHit.ARC_KEPT;
+    }
+
+    private boolean hasOutrangedHit(Squad squad) {
+        for (ManagedUnit member : squad.getMembers()) {
+            if (outrangedHits.contains(member)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
-     * Moves the arc back when a member is hit by an enemy that outranges it and the arc still stands in that
-     * enemy's reach. The arc is regrown until every point, and so every member's contain position, is outside the
-     * reach of every outranging enemy the episode has seen, plus the padding. Every member is reassigned, not only
-     * the one that was hit.
+     * The arc a squad hit from out of its reach holds next: its current arc recomputed against every zone that
+     * outranges it, at learned reach, and pushed back when that loses points.
      *
      * @param squad containing squad
-     * @return PUSHED when the arc moved, NO_ARC when no radius leaves a point clear, NONE otherwise
+     * @param zones zones the arc must stay out of
+     * @return the arc, or null when no point on the choke is left clear
      */
-    private Pushback pushBackFromOutrangingFire(Squad squad) {
+    private Arc arcUnderFire(Squad squad, List<StaticDefenseZone> zones) {
         Arc current = squad.getContainmentArc();
         if (current == null || current.isEmpty()) {
-            return Pushback.NONE;
+            return containmentArc(squad, zones);
         }
-        Unit trigger = recordOutrangingShooters(squad);
-        if (trigger == null) {
-            return Pushback.NONE;
-        }
-        int padding = containmentDefensePadding(squad.getComposition().keySet());
-        if (!ContainmentPushback.covers(current, squad.getOutrangingThreats().values(), padding)) {
-            return Pushback.NONE;
-        }
-        Arc pushed = ContainmentPushback.pushBack(current, containmentZones(squad), padding,
+        return ContainmentPushback.recompute(current, zones, containmentDefensePadding(squad.getComposition().keySet()),
                 gameState.getGameMap().getAccessibleWalkPositions(), game.mapWidth() * 32, game.mapHeight() * 32);
-        if (pushed == null) {
-            return Pushback.NO_ARC;
-        }
-        Position from = current.getMidpoint();
-        squad.setContainRadius(pushed.getRadius());
-        int moved = assignContainmentPositions(squad, pushed);
-        SquadDecisions.containmentPushedBack(squad, from, pushed.getMidpoint(), trigger.getType(), moved);
-        return Pushback.PUSHED;
     }
 
     /**
-     * Records every visible enemy that outranges a member it can reach while that member is under attack, where
-     * it stands now. Those are the units a member can be hit by and cannot answer.
+     * Puts a squad hit from out of its reach on the recomputed arc, reassigning every member, not only the one that
+     * was hit, and reports it on every hit, with no member moved when the recomputed arc left every point in place.
      *
      * @param squad containing squad
-     * @return the outranging enemy with the longest reach found this frame, or null when there is none
+     * @param zones zones the arc was recomputed against
+     * @param arc recomputed arc
      */
-    private Unit recordOutrangingShooters(Squad squad) {
-        Unit trigger = null;
-        int triggerReach = 0;
-        for (ManagedUnit member : squad.getMembers()) {
-            Unit memberUnit = member.getUnit();
-            if (!memberUnit.isUnderAttack()) {
-                continue;
-            }
-            int memberRange = ContainmentPushback.groundReach(member.getUnitType(),
-                    weapon -> memberUnit.getPlayer().weaponMaxRange(weapon));
-            for (Unit enemy : gameState.getVisibleEnemyUnits()) {
-                int reach = ContainmentPushback.groundReach(enemy.getType(),
-                        weapon -> enemy.getPlayer().weaponMaxRange(weapon));
-                if (!ContainmentPushback.outranges(reach, memberRange)) {
-                    continue;
-                }
-                if (enemy.getDistance(memberUnit) > reach + CONTAIN_DEFENSE_MARGIN) {
-                    continue;
-                }
-                squad.getOutrangingThreats().put(enemy.getID(),
-                        new StaticDefenseZone(enemy.getType(), enemy.getPosition(), reach));
-                if (reach > triggerReach) {
-                    trigger = enemy;
-                    triggerReach = reach;
-                }
-            }
-        }
-        return trigger;
+    private void pushBackContainingSquad(Squad squad, List<StaticDefenseZone> zones, Arc arc) {
+        Arc current = squad.getContainmentArc();
+        Position from = current == null ? null : current.getMidpoint();
+        UnitType enemyType = current == null ? null
+                : ContainmentPushback.coveringType(current, zones,
+                containmentDefensePadding(squad.getComposition().keySet()));
+        squad.setContainRadius(Math.max(squad.getContainRadius(), arc.getRadius()));
+        int moved = assignContainmentPositions(squad, arc);
+        SquadDecisions.containmentPushedBack(squad, from, arc.getMidpoint(), enemyType, moved);
     }
 
     /**
@@ -2159,6 +2235,10 @@ public class SquadManager {
     private RunbyView runbyView(int now, BaseArea targetArea) {
         RunbyView view = new RunbyView();
         view.zones = gameState.getStaticDefenseZones();
+        EnemyReachMemory reachMemory = gameState.getReachMemory();
+        for (EnemyReachMemory.HurtMark mark : reachMemory.liveHurtMarks(now)) {
+            view.threats.add(RunbyTargeting.Threat.of(mark));
+        }
         for (Unit enemy : gameState.getVisibleEnemyUnits()) {
             UnitType type = enemy.getType();
             if (!enemy.isDetected() || enemy.isFlying() || !enemy.isTargetable()
@@ -2184,10 +2264,10 @@ public class SquadManager {
                         lastKnown != null && game.isVisible(lastKnown.toTilePosition()), lurking);
                 view.army.add(new RunbyEvaluator.ArmyUnit(type, position, fresh, cleared));
                 if ((fresh || lurking) && position != null) {
-                    view.threats.add(RunbyTargeting.Threat.of(type, position));
+                    view.threats.add(RunbyTargeting.Threat.of(type, position, reachMemory.groundReach(type)));
                 }
             } else if (Filter.isHostileBuildingToGround(type) && position != null) {
-                view.threats.add(RunbyTargeting.Threat.of(type, position));
+                view.threats.add(RunbyTargeting.Threat.of(type, position, reachMemory.groundReach(type)));
             }
         }
         return view;
@@ -2221,14 +2301,17 @@ public class SquadManager {
 
     /**
      * Builds the arc a squad would hold at the choke in front of the enemy base closest to it, at the radius the
-     * episode has been pushed back to, clear of enemy static defence and of every enemy that has outranged the
-     * squad this episode.
+     * episode has been pushed back to, clear of every zone that outranges the squad at the reach learned over the
+     * game.
      *
      * @param squad squad offered the arc
-     * @return the computed arc, or null when there is no enemy base or choke, or no arc point is clear of
-     *     enemy static defence or outranging enemies
+     * @return the computed arc, or null when there is no enemy base or choke, or no arc point is clear
      */
     private Arc containmentArc(Squad squad) {
+        return containmentArc(squad, containmentZones(squad, game.getFrameCount()));
+    }
+
+    private Arc containmentArc(Squad squad, List<StaticDefenseZone> zones) {
         HashSet<Base> enemyBases = gameState.getBaseData().getEnemyBases();
         if (enemyBases.isEmpty()) return null;
         Base containBase = closestBaseTo(squad.getCenter(), enemyBases);
@@ -2241,21 +2324,67 @@ public class SquadManager {
                 2 * chokePosition.getY() - enemyBasePosition.getY()
         );
 
-        int numPoints = Math.max(squad.size(), 4);
-        int mapPixelWidth = game.mapWidth() * 32;
-        int mapPixelHeight = game.mapHeight() * 32;
-        int radius = Math.max(ARC_RADIUS, squad.getContainRadius());
-        Arc arc = new Arc(chokePosition, faceTarget, radius, ARC_DEGREES, numPoints);
-        Set<WalkPosition> accessiblePositions = gameState.getGameMap().getAccessibleWalkPositions();
-        arc.compute(accessiblePositions, containmentZones(squad),
-                containmentDefensePadding(squad.getComposition().keySet()), mapPixelWidth, mapPixelHeight);
+        Arc arc = new Arc(chokePosition, faceTarget, containmentRadius(squad), ARC_DEGREES,
+                Math.max(squad.size(), 4));
+        return computeContainmentArc(arc, zones, containmentDefensePadding(squad.getComposition().keySet()),
+                gameState.getGameMap().getAccessibleWalkPositions(), game.mapWidth() * 32, game.mapHeight() * 32);
+    }
+
+    /**
+     * Radius a squad's arc is drawn at: the radius its episode has been pushed back to, or the default radius for a
+     * squad starting an episode.
+     *
+     * @param squad squad offered the arc
+     * @return radius in pixels
+     */
+    static int containmentRadius(Squad squad) {
+        return Math.max(ARC_RADIUS, squad.getContainRadius());
+    }
+
+    /**
+     * Places an arc's points clear of the zones.
+     *
+     * @param arc uncomputed arc
+     * @param zones zones the points must stay out of
+     * @param padding pixels added to every zone's reach
+     * @param accessible walkable positions, or empty to treat the whole map as walkable
+     * @param mapPixelWidth map width in pixels
+     * @param mapPixelHeight map height in pixels
+     * @return the computed arc, or null when no point is clear
+     */
+    static Arc computeContainmentArc(Arc arc, Collection<StaticDefenseZone> zones, int padding,
+                                     Set<WalkPosition> accessible, int mapPixelWidth, int mapPixelHeight) {
+        arc.compute(accessible, zones, padding, mapPixelWidth, mapPixelHeight);
         return arc.isEmpty() ? null : arc;
     }
 
-    private List<StaticDefenseZone> containmentZones(Squad squad) {
-        List<StaticDefenseZone> zones = new ArrayList<>(gameState.getStaticDefenseZones());
-        zones.addAll(squad.getOutrangingThreats().values());
-        return zones;
+    /**
+     * The ground threat zones a containing squad's arc stays out of, at the reach learned over the game.
+     *
+     * @param squad containing squad
+     * @param now current frame
+     * @return every static defence zone, and every other zone that outranges the squad's shortest ranged member
+     */
+    private List<StaticDefenseZone> containmentZones(Squad squad, int now) {
+        return ContainmentPushback.outrangingZones(gameState.getGroundThreatZones(now),
+                shortestGroundRange(squad.getComposition().keySet()));
+    }
+
+    /**
+     * Shortest ground weapon range among unit types that have one.
+     *
+     * @param types unit types in a squad
+     * @return range in pixels, or 0 when no type has a ground weapon
+     */
+    static int shortestGroundRange(Collection<UnitType> types) {
+        int shortest = Integer.MAX_VALUE;
+        for (UnitType type : types) {
+            if (type.groundWeapon() == WeaponType.None) {
+                continue;
+            }
+            shortest = Math.min(shortest, EnemyReachMemory.baseGroundRange(type));
+        }
+        return shortest == Integer.MAX_VALUE ? 0 : shortest;
     }
 
     /**
@@ -2547,7 +2676,6 @@ public class SquadManager {
             if (squad.getStatus() != SquadStatus.CONTAIN) {
                 continue;
             }
-            squad.getOutrangingThreats().remove(unit.getID());
             if (enemy) {
                 double distance = closestMemberInKillReach(squad, unit);
                 if (distance >= 0) {
@@ -2622,7 +2750,7 @@ public class SquadManager {
         double closest = -1;
         for (ManagedUnit member : squad.getMembers()) {
             UnitType memberType = member.getUnitType();
-            int reach = ContainmentPushback.groundReach(memberType, weapon -> game.self().weaponMaxRange(weapon));
+            int reach = EnemyReachMemory.groundRange(memberType, weapon -> game.self().weaponMaxRange(weapon));
             double distance = member.getPosition().getDistance(position);
             if (distance > containKillRadius(memberType, reach, enemy.getType())) {
                 continue;

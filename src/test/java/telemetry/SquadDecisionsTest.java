@@ -85,6 +85,11 @@ class SquadDecisionsTest {
             }
 
             @Override
+            public void onOutrangedHitEvaluated(Squad squad, boolean outrangedHit) {
+                events.add("OUTRANGED_HIT:" + outrangedHit);
+            }
+
+            @Override
             public void onDefenseEvaluated(Squad squad, DefenseEvent event, int candidates, int pulled, int released,
                                            DefenseSim sim) {
                 events.add("DEFENSE:" + event + ":" + candidates + ":" + pulled + ":" + released);
@@ -379,6 +384,28 @@ class SquadDecisionsTest {
         assertEquals("Terran_Siege_Tank_Siege_Mode", cells.get(columnIndex("pushback_enemy_type") - first));
         assertEquals("20", cells.get(columnIndex("pushback_members_moved") - first));
         assertEquals("-1", cells.get(columnIndex("contain_supply_lost") - first));
+    }
+
+    @Test
+    void aContainingSquadsRowCarriesWhetherAMemberTookAnOutrangedHit() {
+        SquadDecision hit = new SquadDecision();
+        hit.setOutrangedHit(SquadDecision.tristate(true));
+        SquadDecision quiet = new SquadDecision();
+        quiet.setOutrangedHit(SquadDecision.tristate(false));
+        int first = columnIndex("pushback_from_x");
+
+        assertEquals("1", SquadDecisionLogger.containmentCells(hit).get(columnIndex("outranged_hit") - first));
+        assertEquals("0", SquadDecisionLogger.containmentCells(quiet).get(columnIndex("outranged_hit") - first));
+        assertEquals("-1", rowFor(new GroundSquad())[columnIndex("outranged_hit")]);
+    }
+
+    @Test
+    void registeredSinkReceivesOutrangedHitEvaluations() {
+        SquadDecisions.register(recorder());
+
+        SquadDecisions.outrangedHit(new Squad(), true);
+
+        assertEquals(Collections.singletonList("OUTRANGED_HIT:true"), events);
     }
 
     @Test

@@ -10,7 +10,6 @@ import org.jetbrains.annotations.NotNull;
 import unit.managed.ManagedUnit;
 import util.Arc;
 import util.Distance;
-import util.StaticDefenseZone;
 import util.Time;
 
 import java.util.ArrayList;
@@ -62,7 +61,6 @@ public class Squad implements Comparable<Squad> {
     private RunbyState runbyState;
     private int containRadius = 0;
     private final ContainmentAttrition containmentAttrition = new ContainmentAttrition();
-    private final Map<Integer, StaticDefenseZone> outrangingThreats = new HashMap<>();
     protected Time fightHysteresis = new Time(0, 3);
     protected Time retreatHysteresis = new Time(0, 5);
     protected Time containHysteresis = new Time(0, 5);
@@ -230,8 +228,9 @@ public class Squad implements Comparable<Squad> {
      *
      * <p>Status follows the precedence documented on {@link SquadStatus}:
      *
-     * <p>A merge that stays in CONTAIN carries the episode on: the arc, the pushed back radius, the outranging
-     * enemies and the attrition of every containing source. Any other merged status drops them.
+     * <p>A merge that stays in CONTAIN carries the episode on: the arc, the pushed back radius and the attrition of
+     * every containing source. Any other merged status drops them. Enemy reach is kept game-wide in the reach
+     * memory, not on the squad.
      *
      * @param sources squads being merged into this one
      */
@@ -242,7 +241,6 @@ public class Squad implements Comparable<Squad> {
         Arc inheritedArc = null;
         RunbyState inheritedRunby = null;
         int inheritedRadius = 0;
-        Map<Integer, StaticDefenseZone> inheritedThreats = new HashMap<>();
         ContainmentAttrition inheritedAttrition = new ContainmentAttrition();
         for (Squad source: sources) {
             if (inheritedRunby == null && source.status == SquadStatus.RUNBY) {
@@ -257,7 +255,6 @@ public class Squad implements Comparable<Squad> {
                 inheritedRadius = source.containRadius;
             }
             if (source.status == SquadStatus.CONTAIN) {
-                inheritedThreats.putAll(source.outrangingThreats);
                 inheritedAttrition.absorb(source.containmentAttrition);
             }
             if (source.commitFrame > 0 && (earliestCommit == 0 || source.commitFrame < earliestCommit)) {
@@ -273,10 +270,6 @@ public class Squad implements Comparable<Squad> {
         this.containmentArc = mergedStatus == SquadStatus.CONTAIN ? inheritedArc : null;
         this.runbyState = mergedStatus == SquadStatus.RUNBY ? inheritedRunby : null;
         this.containRadius = mergedStatus == SquadStatus.CONTAIN ? inheritedRadius : 0;
-        this.outrangingThreats.clear();
-        if (mergedStatus == SquadStatus.CONTAIN) {
-            this.outrangingThreats.putAll(inheritedThreats);
-        }
         this.containmentAttrition.reset();
         if (mergedStatus == SquadStatus.CONTAIN) {
             this.containmentAttrition.absorb(inheritedAttrition);
@@ -378,8 +371,9 @@ public class Squad implements Comparable<Squad> {
     }
 
     /**
-     * Arms the contain lock. The first lock of an episode also starts the episode, which clears the attrition,
-     * the outranging enemies and the pushed back radius left by any earlier episode.
+     * Arms the contain lock. The first lock of an episode also starts the episode, which clears the attrition and
+     * the pushed back radius left by any earlier episode. The reach of enemies that outranged it is kept game-wide
+     * in the reach memory, not on the squad.
      *
      * @param currentFrame frame the lock is armed on
      */
@@ -401,7 +395,6 @@ public class Squad implements Comparable<Squad> {
     private void resetContainmentEpisode() {
         containRadius = 0;
         containmentAttrition.reset();
-        outrangingThreats.clear();
     }
 
     /**

@@ -5,10 +5,14 @@ import bwapi.Position;
 import bwapi.TilePosition;
 import bwapi.Unit;
 import bwapi.UnitType;
+import bwapi.WeaponType;
 import util.Filter;
+import util.StaticDefenseZone;
 import util.Time;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Arrays;
 import java.util.Objects;
 import java.util.Set;
@@ -22,11 +26,18 @@ public class ObservedUnitTracker {
 
     private final HashMap<Unit, ObservedUnit> observedUnits = new HashMap<>();
     private final HashMap<Unit, BunkerGarrisonEstimator> bunkerGarrisons = new HashMap<>();
+    private final EnemyReachMemory reachMemory = new EnemyReachMemory();
 
     public ObservedUnitTracker() {
 
     }
 
+    /**
+     * Refreshes every visible unit's hit points, shields and completion, and seeds the reach memory with the ground
+     * range each visible unit's owner reports for its weapon.
+     *
+     * @param currentFrame current frame
+     */
     public void onFrame(int currentFrame) {
         Time t = new Time(currentFrame);
         for (ObservedUnit ou : observedUnits.values()) {
@@ -43,8 +54,64 @@ public class ObservedUnitTracker {
                 if (ou.getUnitType() == UnitType.Terran_Bunker && ou.isCompleted()) {
                     ou.setLastLoadedCheckFrame(currentFrame);
                 }
+                seedReach(unit, currentFrame);
             }
         }
+    }
+
+    private void seedReach(Unit unit, int currentFrame) {
+        WeaponType weapon = EnemyReachMemory.groundWeapon(unit.getType());
+        if (weapon == WeaponType.None) {
+            return;
+        }
+        reachMemory.seed(unit.getType(), unit.getPlayer().weaponMaxRange(weapon), currentFrame);
+    }
+
+    /**
+     * Ground reach learned for every enemy type over the game, and the marks left by hits no known enemy
+     * accounts for.
+     *
+     * @return the game-wide reach memory
+     */
+    public EnemyReachMemory getReachMemory() {
+        return reachMemory;
+    }
+
+    /**
+     * Zones around every tracked enemy army unit whose observation is fresh, each at its type's learned reach.
+     *
+     * @param isFresh whether an observation is recent enough to act on, given visibility, the frame it was last
+     *     shown or hidden, and the current frame
+     * @param isArmyType whether a type belongs to the enemy army
+     * @param currentFrame current frame
+     * @return one zone per fresh army unit with a known position
+     */
+    public List<StaticDefenseZone> getFreshArmyReachZones(FreshnessRule isFresh, Predicate<UnitType> isArmyType,
+                                                          int currentFrame) {
+        List<StaticDefenseZone> zones = new ArrayList<>();
+        for (ObservedUnit ou : observedUnits.values()) {
+            if (ou.getDestroyedFrame() != null || !isArmyType.test(ou.getUnitType())) {
+                continue;
+            }
+            boolean visible = ou.getUnit().isVisible();
+            if (!isFresh.test(visible, ou.getLastObservedFrame().getFrames(), currentFrame)) {
+                continue;
+            }
+            Position position = ou.getCurrentOrLastKnownPosition();
+            if (position == null) {
+                continue;
+            }
+            zones.add(new StaticDefenseZone(ou.getUnitType(), position, reachMemory.groundReach(ou.getUnitType())));
+        }
+        return zones;
+    }
+
+    /**
+     * Whether an observation is recent enough to act on.
+     */
+    @FunctionalInterface
+    public interface FreshnessRule {
+        boolean test(boolean visible, int lastObservedFrame, int currentFrame);
     }
 
     public void onUnitShow(Unit unit, int currentFrame, boolean isProxied) {
