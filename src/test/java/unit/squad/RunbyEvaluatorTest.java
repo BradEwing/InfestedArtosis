@@ -324,6 +324,9 @@ class RunbyEvaluatorTest {
 
         assertEquals(expected, RunbyEvaluator.penetrateBudget(800));
         assertTrue(RunbyEvaluator.penetrateBudget(1600) > RunbyEvaluator.penetrateBudget(800));
+        assertTrue(RunbyEvaluator.penetrateBudget(800) > 800 / UnitType.Zerg_Zergling.topSpeed());
+        assertTrue(RunbyEvaluator.penetrateBudget(800)
+                > TravelTime.framesToReach(800, UnitType.Zerg_Zergling.topSpeed()));
     }
 
     @Test

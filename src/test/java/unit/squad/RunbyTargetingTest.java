@@ -493,6 +493,10 @@ class RunbyTargetingTest {
                 + (int) Math.ceil(type.topSpeed() * RunbyTargeting.LOOKAHEAD_FRAMES) + RunbyTargeting.REACH_BUFFER;
 
         assertEquals(expected, RunbyTargeting.reach(type));
+        assertTrue(RunbyTargeting.reach(type) > type.groundWeapon().maxRange() + extent);
+        assertEquals(UnitType.Protoss_Photon_Cannon.groundWeapon().maxRange()
+                + RunbyTargeting.extent(UnitType.Protoss_Photon_Cannon) + RunbyTargeting.REACH_BUFFER,
+                RunbyTargeting.reach(UnitType.Protoss_Photon_Cannon));
         assertTrue(RunbyTargeting.reach(UnitType.Terran_Bunker)
                 >= UnitType.Terran_Marine.groundWeapon().maxRange());
     }
