@@ -1,14 +1,20 @@
 package unit.squad;
 
+import bwapi.UnitType;
+import bwapi.WeaponType;
 import org.junit.jupiter.api.Test;
 import telemetry.DecisionPath;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static unit.squad.SquadManager.ContainmentVerdict;
 import static unit.squad.SquadManager.ReinforcementPath;
+import static unit.squad.SquadManager.containKillRadius;
 import static unit.squad.SquadManager.containmentExitPath;
 import static unit.squad.SquadManager.containmentVerdict;
+import static unit.squad.SquadManager.mergeEndsContainment;
 import static unit.squad.SquadManager.reinforcementPath;
 
 class SquadContainmentTest {
@@ -167,5 +173,42 @@ class SquadContainmentTest {
         assertEquals(ReinforcementPath.STAGE, reinforcementPath(SquadStatus.RALLY, true));
         assertEquals(ReinforcementPath.SIMULATE, reinforcementPath(SquadStatus.RALLY, false));
         assertEquals(ReinforcementPath.SIMULATE, reinforcementPath(SquadStatus.FIGHT, false));
+    }
+
+    @Test
+    void aMergeOutOfContainClosesTheContainingSourcesEpisode() {
+        assertTrue(mergeEndsContainment(SquadStatus.CONTAIN, SquadStatus.FIGHT));
+        assertTrue(mergeEndsContainment(SquadStatus.CONTAIN, SquadStatus.RUNBY));
+    }
+
+    @Test
+    void aMergeThatStaysInContainOrNeverContainedClosesNothing() {
+        assertFalse(mergeEndsContainment(SquadStatus.CONTAIN, SquadStatus.CONTAIN));
+        assertFalse(mergeEndsContainment(SquadStatus.FIGHT, SquadStatus.FIGHT));
+        assertFalse(mergeEndsContainment(SquadStatus.RALLY, SquadStatus.CONTAIN));
+    }
+
+    @Test
+    void aKillAtTheOldEngageRadiusIsNotCreditedToALingContain() {
+        int lingReach = ContainmentPushback.groundReach(UnitType.Zerg_Zergling, WeaponType::maxRange);
+
+        assertTrue(containKillRadius(UnitType.Zerg_Zergling, lingReach, UnitType.Terran_Marine) < 256);
+    }
+
+    @Test
+    void aKillBesideAMemberIsCredited() {
+        int lingReach = ContainmentPushback.groundReach(UnitType.Zerg_Zergling, WeaponType::maxRange);
+        int adjacent = UnitType.Zerg_Zergling.dimensionRight() + UnitType.Terran_Marine.dimensionLeft() + lingReach;
+
+        assertTrue(adjacent <= containKillRadius(UnitType.Zerg_Zergling, lingReach, UnitType.Terran_Marine));
+    }
+
+    @Test
+    void aRangedMemberIsCreditedFartherOut() {
+        int lingReach = ContainmentPushback.groundReach(UnitType.Zerg_Zergling, WeaponType::maxRange);
+        int hydraReach = ContainmentPushback.groundReach(UnitType.Zerg_Hydralisk, WeaponType::maxRange);
+
+        assertTrue(containKillRadius(UnitType.Zerg_Hydralisk, hydraReach, UnitType.Terran_Marine)
+                > containKillRadius(UnitType.Zerg_Zergling, lingReach, UnitType.Terran_Marine));
     }
 }

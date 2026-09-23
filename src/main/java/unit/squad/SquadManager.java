@@ -491,6 +491,9 @@ public class SquadManager {
         }
 
         for (Squad squad: emptySquads) {
+            if (squad.getStatus() == SquadStatus.CONTAIN) {
+                endContainment(squad);
+            }
             fightSquads.remove(squad);
         }
     }
@@ -541,6 +544,9 @@ public class SquadManager {
             newSquad.inheritStateFrom(mergeSet);
             SquadDecisions.pathTaken(newSquad, DecisionPath.MERGE_INHERIT);
             for (Squad mergingSquad: mergeSet) {
+                if (mergeEndsContainment(mergingSquad.getStatus(), newSquad.getStatus())) {
+                    endContainment(mergingSquad);
+                }
                 for (ManagedUnit mu : new ArrayList<>(mergingSquad.getMembers())) {
                     newSquad.addUnit(mu);
                 }
@@ -588,6 +594,18 @@ public class SquadManager {
         }
 
         fightSquads.addAll(toAdd);
+    }
+
+    /**
+     * Whether a merge closes a source squad's contain episode: the source was containing and the merged squad is
+     * not. A merge that stays in CONTAIN carries the episode on in the merged squad.
+     *
+     * @param source status of a squad being merged
+     * @param merged status the merged squad took
+     * @return true when the source's episode ends with the merge
+     */
+    static boolean mergeEndsContainment(SquadStatus source, SquadStatus merged) {
+        return source == SquadStatus.CONTAIN && merged != SquadStatus.CONTAIN;
     }
 
     /**
@@ -2164,12 +2182,16 @@ public class SquadManager {
      * @return padding in pixels
      */
     static int containmentDefensePadding(Collection<UnitType> memberTypes) {
-        int extent = 0;
+        int largest = 0;
         for (UnitType type : memberTypes) {
-            extent = Math.max(extent, Math.max(Math.max(type.dimensionLeft(), type.dimensionRight()),
-                    Math.max(type.dimensionUp(), type.dimensionDown())));
+            largest = Math.max(largest, extent(type));
         }
-        return extent + CONTAIN_DEFENSE_MARGIN;
+        return largest + CONTAIN_DEFENSE_MARGIN;
+    }
+
+    private static int extent(UnitType type) {
+        return Math.max(Math.max(type.dimensionLeft(), type.dimensionRight()),
+                Math.max(type.dimensionUp(), type.dimensionDown()));
     }
 
     /**
@@ -2442,7 +2464,7 @@ public class SquadManager {
             }
             squad.getOutrangingThreats().remove(unit.getID());
             if (enemy) {
-                if (anyMemberWithin(squad, unit.getPosition(), CONTAINMENT_ENGAGE_RADIUS)) {
+                if (anyMemberCouldHaveKilled(squad, unit)) {
                     squad.getContainmentAttrition().recordKill(now, unit.getType().supplyRequired());
                 }
                 continue;
@@ -2485,13 +2507,30 @@ public class SquadManager {
         }
     }
 
-    private boolean anyMemberWithin(Squad squad, Position position, int radius) {
+    private boolean anyMemberCouldHaveKilled(Squad squad, Unit enemy) {
+        Position position = enemy.getPosition();
         for (ManagedUnit member : squad.getMembers()) {
-            if (member.getPosition().getDistance(position) <= radius) {
+            UnitType memberType = member.getUnitType();
+            int reach = ContainmentPushback.groundReach(memberType, weapon -> game.self().weaponMaxRange(weapon));
+            if (member.getPosition().getDistance(position) <= containKillRadius(memberType, reach, enemy.getType())) {
                 return true;
             }
         }
         return false;
+    }
+
+    /**
+     * Centre to centre distance within which a member could have landed the killing blow on an enemy: the member's
+     * ground reach from its edge, both units' largest extents, and the contain margin. An enemy that dies farther
+     * from every member was killed by something else and is not credited to the contain.
+     *
+     * @param memberType member unit type
+     * @param memberReach member ground reach in pixels, upgrades included
+     * @param enemyType destroyed enemy's unit type
+     * @return radius in pixels
+     */
+    static int containKillRadius(UnitType memberType, int memberReach, UnitType enemyType) {
+        return memberReach + extent(memberType) + extent(enemyType) + CONTAIN_DEFENSE_MARGIN;
     }
 
     private void addManagedFighter(ManagedUnit managedUnit) {
@@ -2545,10 +2584,11 @@ public class SquadManager {
     /**
      * Picks what a reinforcement does to the squad it joined.
      *
-     * <p>A containing squad changes status only through {@link #evaluateContainingSquad}, so a unit joining one
-     * takes a point on the arc and never runs the squad through {@link #simulateFightSquad}. A zergling scout can
-     * be pulled from a containing squad and handed straight back every 24 frames; simulating on each return would
-     * let a blind ADVANCE flip the squad to FIGHT until the next frame re-entered the arc.
+     * <p>Apart from a merge with a squad of higher precedence, a containing squad changes status only through
+     * {@link #evaluateContainingSquad}, so a unit joining one takes a point on the arc and never runs the squad
+     * through {@link #simulateFightSquad}. A zergling scout can be pulled from a containing squad and handed
+     * straight back every 24 frames; simulating on each return would let a blind ADVANCE flip the squad to FIGHT
+     * until the next frame re-entered the arc.
      *
      * @param status status the squad held as the reinforcement joined
      * @param stage true when the squad is rallying with no enemy inside its detection radius

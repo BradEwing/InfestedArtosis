@@ -455,6 +455,25 @@ class SquadDecisionsTest {
     }
 
     @Test
+    void aContainingSquadThatVanishesCarriesItsEpisodeSupplyLost() {
+        SquadDecision pending = new SquadDecision();
+        pending.setContainSupplyLost(44);
+
+        SquadDecision context = SquadDecisionLogger.disbandContext(SquadStatus.CONTAIN, pending);
+
+        assertEquals(44, context.getContainSupplyLost());
+        assertEquals(RallyRelease.NONE, context.getRallyRelease());
+    }
+
+    @Test
+    void aSquadThatVanishesWithNothingPendingReportsNoSupplyLost() {
+        SquadDecision context = SquadDecisionLogger.disbandContext(SquadStatus.RALLY, null);
+
+        assertEquals(SquadDecision.NOT_EVALUATED, context.getContainSupplyLost());
+        assertEquals(RallyRelease.DISBANDED, context.getRallyRelease());
+    }
+
+    @Test
     void aSquadThatVanishesWhileRallyingClosesItsEpisode() {
         assertEquals(RallyRelease.DISBANDED, SquadDecisionLogger.releaseOnDisband(SquadStatus.RALLY));
     }

@@ -3,7 +3,10 @@ package unit.squad;
 import lombok.Getter;
 
 import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.Deque;
+import java.util.List;
 
 /**
  * Supply a containing squad has lost and killed during its current episode, kept per frame so the recent share
@@ -30,6 +33,18 @@ public class ContainmentAttrition {
 
     public void recordKill(int frame, int supply) {
         kills.addLast(new int[] {frame, supply});
+    }
+
+    /**
+     * Folds another squad's episode into this one, as when containing squads merge and the episode carries on, so
+     * the window and the episode total span both squads' losses and kills.
+     *
+     * @param other attrition of a squad being merged into this one
+     */
+    public void absorb(ContainmentAttrition other) {
+        mergeByFrame(losses, other.losses);
+        mergeByFrame(kills, other.kills);
+        totalLost += other.totalLost;
     }
 
     public void reset() {
@@ -64,6 +79,14 @@ public class ContainmentAttrition {
             return false;
         }
         return lost >= LOSS_SHARE * (supplyNow + lost) && killed < KILL_SHARE * lost;
+    }
+
+    private static void mergeByFrame(Deque<int[]> into, Deque<int[]> from) {
+        List<int[]> merged = new ArrayList<>(into);
+        merged.addAll(from);
+        merged.sort(Comparator.comparingInt(event -> event[0]));
+        into.clear();
+        into.addAll(merged);
     }
 
     private static int supplyWithin(Deque<int[]> events, int now) {

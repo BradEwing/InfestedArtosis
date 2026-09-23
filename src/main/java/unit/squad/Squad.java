@@ -229,6 +229,10 @@ public class Squad implements Comparable<Squad> {
      * Folds the state of every squad taking part in a merge into this squad.
      *
      * <p>Status follows the precedence documented on {@link SquadStatus}:
+     *
+     * <p>A merge that stays in CONTAIN carries the episode on: the arc, the pushed back radius, the outranging
+     * enemies and the attrition of every containing source. Any other merged status drops them.
+     *
      * @param sources squads being merged into this one
      */
     public void inheritStateFrom(Collection<Squad> sources) {
@@ -239,6 +243,7 @@ public class Squad implements Comparable<Squad> {
         RunbyState inheritedRunby = null;
         int inheritedRadius = 0;
         Map<Integer, StaticDefenseZone> inheritedThreats = new HashMap<>();
+        ContainmentAttrition inheritedAttrition = new ContainmentAttrition();
         for (Squad source: sources) {
             if (inheritedRunby == null && source.status == SquadStatus.RUNBY) {
                 inheritedRunby = source.runbyState;
@@ -253,6 +258,7 @@ public class Squad implements Comparable<Squad> {
             }
             if (source.status == SquadStatus.CONTAIN) {
                 inheritedThreats.putAll(source.outrangingThreats);
+                inheritedAttrition.absorb(source.containmentAttrition);
             }
             if (source.commitFrame > 0 && (earliestCommit == 0 || source.commitFrame < earliestCommit)) {
                 earliestCommit = source.commitFrame;
@@ -270,6 +276,10 @@ public class Squad implements Comparable<Squad> {
         this.outrangingThreats.clear();
         if (mergedStatus == SquadStatus.CONTAIN) {
             this.outrangingThreats.putAll(inheritedThreats);
+        }
+        this.containmentAttrition.reset();
+        if (mergedStatus == SquadStatus.CONTAIN) {
+            this.containmentAttrition.absorb(inheritedAttrition);
         }
         this.commitFrame = earliestCommit;
     }

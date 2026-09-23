@@ -380,8 +380,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
                 continue;
             }
             SquadStatus last = lastStatus.get(entry.getKey());
-            SquadDecision context = new SquadDecision();
-            context.setRallyRelease(releaseOnDisband(last));
+            SquadDecision context = disbandContext(last, decisions.get(entry.getKey()));
             writer.append(row(entry.getValue(), frame, EVENT_SQUAD_DISBANDED, last, null, context, NONE));
         }
     }
@@ -393,6 +392,24 @@ public class SquadDecisionLogger implements SquadDecisionSink {
      */
     static RallyRelease releaseOnDisband(SquadStatus last) {
         return last == SquadStatus.RALLY ? RallyRelease.DISBANDED : RallyRelease.NONE;
+    }
+
+    /**
+     * Builds the context of a terminal row. It closes a rally episode the way {@link #releaseOnDisband} names, and
+     * a contain episode that ended with the squad, by a merge out of CONTAIN or by every member dying, with the
+     * supply lost the squad reported as it went.
+     *
+     * @param last status the squad held at the last sweep
+     * @param pending decision the squad reported since the last sweep, or null
+     * @return context of the SQUAD_DISBANDED row
+     */
+    static SquadDecision disbandContext(SquadStatus last, SquadDecision pending) {
+        SquadDecision context = new SquadDecision();
+        context.setRallyRelease(releaseOnDisband(last));
+        if (pending != null) {
+            context.setContainSupplyLost(pending.getContainSupplyLost());
+        }
+        return context;
     }
 
     private void readSnapshot(Squad squad, SquadDecision decision) {
