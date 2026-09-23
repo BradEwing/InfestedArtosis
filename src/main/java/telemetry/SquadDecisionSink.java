@@ -71,7 +71,8 @@ public interface SquadDecisionSink {
     void onRunbyPhaseStarted(Squad squad, RunbyState.Phase from, RunbyState.Phase to, DecisionPath path);
 
     /**
-     * A containing squad moved its arc back out of the reach of an enemy that outranges it.
+     * A member of a containing squad was hit by an enemy that outranges it and the squad kept an arc out of that
+     * enemy's reach, whether or not any member had to move to hold it.
      *
      * @param from midpoint of the arc the squad held
      * @param to midpoint of the arc it holds now

@@ -44,13 +44,13 @@ import java.util.Set;
  * <p>Rows for a squad holding a containment arc carry the arc's center and its points as x:y pairs joined by
  * semicolons; every other row carries -1 and NONE there.
  *
- * <p>CONTAIN_PUSHBACK is emitted when a containing squad moves its arc back out of reach of an enemy that
- * outranges it, with the old and new arc midpoints, the type of the longest reaching zone that covered the old
- * arc (None for a hurt mark) and the members moved. The row that closes a containment episode carries the supply
- * lost over it. outranged_hit is 1 on a containing squad's row when a member was hit on the frame the row is written
- * by something it cannot answer, 0 when none was, and -1 on any row not written from a containment evaluation.
- * Rows are written only on status changes and push backs that move a member, so a hit on a frame that writes no
- * row leaves no trace here.
+ * <p>CONTAIN_PUSHBACK is emitted on every frame a member of a containing squad is hit by something it cannot
+ * answer and the squad keeps an arc, with the old and new arc midpoints, the type of the longest reaching zone that
+ * covered the old arc (None for a hurt mark) and the members moved, 0 when the recomputed arc left every member in
+ * place. The row that closes a containment episode carries the supply lost over it. outranged_hit is 1 on a
+ * containing squad's row when a member was hit on the frame the row is written by something it cannot answer, 0 when
+ * none was, and -1 on any row not written from a containment evaluation. Every such hit writes a row: a
+ * CONTAIN_PUSHBACK row when the arc is kept, the status change row when the squad retreats.
  *
  * <p>Every row names the branch that decided the status it reports in decision_path. On a
  * LOCK_SUPPRESSED row that is the request the lock refused, so the suppression episodes a lock

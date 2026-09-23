@@ -1534,7 +1534,7 @@ public class SquadManager {
 
     /**
      * Puts a squad hit from out of its reach on the recomputed arc, reassigning every member, not only the one that
-     * was hit, and reports the move when any member's point changed.
+     * was hit, and reports it on every hit, with no member moved when the recomputed arc left every point in place.
      *
      * @param squad containing squad
      * @param zones zones the arc was recomputed against
@@ -1548,9 +1548,7 @@ public class SquadManager {
                 containmentDefensePadding(squad.getComposition().keySet()));
         squad.setContainRadius(Math.max(squad.getContainRadius(), arc.getRadius()));
         int moved = assignContainmentPositions(squad, arc);
-        if (moved > 0) {
-            SquadDecisions.containmentPushedBack(squad, from, arc.getMidpoint(), enemyType, moved);
-        }
+        SquadDecisions.containmentPushedBack(squad, from, arc.getMidpoint(), enemyType, moved);
     }
 
     /**
