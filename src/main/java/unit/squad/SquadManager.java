@@ -107,7 +107,7 @@ public class SquadManager {
     private static final double SCV_RUSH_DEFENSE_CLEAR_THRESHOLD = 0.75;
     private static final int MERGE_CHECK_INTERVAL = 50;
     private static final int DEFENSE_SIM_RANGE = 256;
-    private static final int CONTAINMENT_REEVALUATE_INTERVAL = 48;
+    static final int CONTAINMENT_REEVALUATE_INTERVAL = 48;
     private static final int MAX_MOVE_OUT_THRESHOLD = 40;
     private static final int CONTAINMENT_TIMEOUT_FRAMES = 1400;
     private static final int CONTAINMENT_ENGAGE_RADIUS = 256;
@@ -1216,11 +1216,28 @@ public class SquadManager {
      * @return true if the squad took the arc and is now containing
      */
     private boolean tryEnterContainment(Squad squad) {
+        boolean underAttack = basesUnderAttack();
         boolean shouldContain = containmentEvaluator.shouldContain(squad);
         boolean canBreak = shouldContain && containmentEvaluator.canBreakContainment(fightSquads);
-        boolean entered = shouldContain && !canBreak && enterContainment(squad);
+        boolean entered = mayEnterContainment(underAttack, shouldContain, canBreak) && enterContainment(squad);
         SquadDecisions.containmentEvaluated(squad, shouldContain, canBreak, entered);
         return entered;
+    }
+
+    /**
+     * Whether a squad may take a containment arc.
+     *
+     * <p>A contain is never entered while any of our bases has a tracked threat. A containing squad breaks on that
+     * threat at its next re-evaluation, so an arc taken under it is dropped again and re-taken on the following
+     * sim RETREAT, and the squad alternates CONTAIN and FIGHT instead of retreating.
+     *
+     * @param basesUnderAttack true when any of our bases has a tracked threat
+     * @param shouldContain true when containment applies to the squad
+     * @param canBreak true when the strength gate clears the army to push in
+     * @return true when the squad may enter containment
+     */
+    static boolean mayEnterContainment(boolean basesUnderAttack, boolean shouldContain, boolean canBreak) {
+        return !basesUnderAttack && shouldContain && !canBreak;
     }
 
     private boolean enterContainment(Squad squad) {
@@ -1261,7 +1278,8 @@ public class SquadManager {
      * true for every squad at once. A squad that has run out its own containment clock disengages by itself
      * rather than committing squads whose gate has not fired.
      *
-     * @param basesUnderAttack true when any of our bases has a tracked threat
+     * @param basesUnderAttack true when a base threat ends every contain this frame, see
+     *     {@link #baseAttackEndsContainment}
      * @param bleeding true when the squad is losing supply within the attrition window while killing little
      * @param arcLost true when no arc point on the choke stays out of reach of an enemy that outranges the squad
      * @param throttled true when the contain lock holds and this frame is not a re-evaluation tick
@@ -1305,10 +1323,10 @@ public class SquadManager {
         }
         HashSet<ManagedUnit> members = squad.getMembers();
 
-        boolean basesUnderAttack = basesUnderAttack();
+        boolean throttled = isContainmentThrottled(squad, now);
+        boolean basesUnderAttack = baseAttackEndsContainment(basesUnderAttack(), combatThreatAtBase(), throttled);
         boolean bleeding = !basesUnderAttack && squad.getContainmentAttrition().isBleeding(now, squad.getSupply());
         boolean arcLost = !basesUnderAttack && !bleeding && pushBackFromOutrangingFire(squad) == Pushback.NO_ARC;
-        boolean throttled = isContainmentThrottled(squad, now);
         boolean evaluate = !basesUnderAttack && !bleeding && !arcLost && !throttled;
         boolean timedOut = evaluate && containmentTimedOut(squad, now);
         boolean canBreak = evaluate && containmentEvaluator.canBreakContainment(fightSquads);
@@ -1542,6 +1560,41 @@ public class SquadManager {
             if (!threats.isEmpty()) return true;
         }
         return false;
+    }
+
+    private boolean combatThreatAtBase() {
+        for (HashSet<Unit> threats : gameState.getBaseToThreatLookup().values()) {
+            for (Unit threat : threats) {
+                if (isCombatThreat(threat.getType())) return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Whether a base threat of this type is one a containing squad leaves its arc for between re-evaluations: a
+     * mobile unit that can fight, on the ground or in the air. A scouting worker, an Overlord or a building is not.
+     *
+     * @param type type of the enemy unit tracked as a threat to one of our bases
+     * @return true when the threat interrupts a contain on a throttled frame
+     */
+    static boolean isCombatThreat(UnitType type) {
+        return Filter.isMobileGroundCombatUnit(type) || Filter.isAirCombatUnit(type);
+    }
+
+    /**
+     * Whether a threat at one of our bases ends a contain this frame.
+     *
+     * <p>A mobile combat unit at a base ends it on any frame. Any other tracked threat ends it only on a
+     * re-evaluation tick, so a squad that has just taken an arc holds it for at least the re-evaluation interval.
+     *
+     * @param basesUnderAttack true when any of our bases has a tracked threat
+     * @param combatThreat true when a tracked base threat is a mobile combat unit
+     * @param throttled true when the contain lock holds and this frame is not a re-evaluation tick
+     * @return true when the base threat breaks every contain this frame
+     */
+    static boolean baseAttackEndsContainment(boolean basesUnderAttack, boolean combatThreat, boolean throttled) {
+        return combatThreat || basesUnderAttack && !throttled;
     }
 
     /**
