@@ -326,7 +326,30 @@ public class GameState {
         this.baseData.addMacroHatchery(hatchery);
     }
 
+    /**
+     * Records a hatchery of ours that started morphing. One on a base's tile makes that base ours for threat
+     * tracking and the rally point while it morphs.
+     */
+    public void addMorphingHatchery(Unit hatchery) {
+        TilePosition tile = hatchery.getTilePosition();
+        if (baseData.isBaseTilePosition(tile)) {
+            baseData.addMorphingBaseHatchery(hatchery, baseData.baseAtTilePosition(tile));
+        }
+    }
+
+    /**
+     * Forgets a hatchery that is no longer morphing on a base, dropping that base's threats unless another of
+     * our hatcheries holds it.
+     */
+    public void releaseMorphingHatchery(Unit hatchery) {
+        Base base = baseData.removeMorphingBaseHatchery(hatchery);
+        if (base != null && !baseData.isHeldOrMorphing(base)) {
+            baseToThreatLookup.remove(base);
+        }
+    }
+
     public void removeHatchery(Unit hatchery) {
+        releaseMorphingHatchery(hatchery);
         if (this.baseData.isBase(hatchery)) {
             Base base = this.baseData.get(hatchery);
             gatherersAssignedToBase.remove(base);
@@ -1389,12 +1412,81 @@ public class GameState {
         return observedUnitTracker.getVisibleEnemyUnits();
     }
 
+    /**
+     * @return our natural expansion, or the inferred natural while a hatchery of ours morphs there, otherwise our
+     *     main
+     */
     public Position getSquadRallyPoint() {
         if (baseData.hasNaturalExpansion()) {
             return baseData.naturalExpansionPosition().toPosition();
-        } else {
-            return baseData.mainBasePosition().toPosition();
         }
+        Base inferredNatural = baseData.getInferredNaturalBase();
+        if (inferredNatural != null && baseData.isHeldOrMorphing(inferredNatural)) {
+            return inferredNatural.getLocation().toPosition();
+        }
+        return baseData.mainBasePosition().toPosition();
+    }
+
+    /**
+     * Where units with nothing to fight go to defend: the base whose tracked threats hold the most enemy mobile
+     * ground combat units, otherwise our natural (completed or morphing) while such units are last known on its
+     * tiles, otherwise the squad rally point.
+     */
+    public Position defensePosition() {
+        return defensePosition(mostThreatenedBaseCenter(), threatenedNaturalCenter(), getSquadRallyPoint());
+    }
+
+    /**
+     * @return the first position that is set, in the order given
+     */
+    static Position defensePosition(Position threatenedBase, Position threatenedNatural, Position rallyPoint) {
+        if (threatenedBase != null) {
+            return threatenedBase;
+        }
+        if (threatenedNatural != null) {
+            return threatenedNatural;
+        }
+        return rallyPoint;
+    }
+
+    private Position mostThreatenedBaseCenter() {
+        Base mostThreatened = null;
+        long mostCombatUnits = 0;
+        for (Map.Entry<Base, HashSet<Unit>> entry : baseToThreatLookup.entrySet()) {
+            long combatUnits = entry.getValue().stream()
+                    .filter(unit -> Filter.isMobileGroundCombatUnit(unit.getType()))
+                    .count();
+            if (combatUnits > mostCombatUnits) {
+                mostThreatened = entry.getKey();
+                mostCombatUnits = combatUnits;
+            }
+        }
+        return mostThreatened == null ? null : mostThreatened.getCenter();
+    }
+
+    private Position threatenedNaturalCenter() {
+        Base natural = baseData.getInferredNaturalBase();
+        if (natural == null) {
+            return null;
+        }
+        Set<TilePosition> tiles = Distance.tilesWithinManhattanDistance(natural.getLocation(),
+                BaseData.NATURAL_DEFENSE_TILE_RADIUS);
+        return threatenedNatural(natural.getCenter(), baseData.getMyBases().contains(natural),
+                baseData.morphingBases().contains(natural), knownEnemyMobileGroundCombatUnitsOnTiles(tiles));
+    }
+
+    /**
+     * @param natural center of the inferred natural
+     * @param held true if a completed hatchery of ours stands there
+     * @param morphing true if a hatchery of ours is morphing there
+     * @param enemyCombatUnits enemy mobile ground combat units last known on the natural's tiles
+     * @return the natural when we hold it or are building it and enemy combat units are on it, otherwise null
+     */
+    static Position threatenedNatural(Position natural, boolean held, boolean morphing, int enemyCombatUnits) {
+        if (!held && !morphing || enemyCombatUnits == 0) {
+            return null;
+        }
+        return natural;
     }
 
     public int enemyResourceDepotCount() {

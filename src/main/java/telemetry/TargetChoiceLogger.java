@@ -18,6 +18,9 @@ import java.util.List;
  *
  * <p>previous_target_id is -1 and previous_target_type is NONE when the attacker held no target.
  *
+ * <p>scout_capped is 1 when the scout chase cap removed a scout from the attacker's candidates, so
+ * candidate_count excludes it.
+ *
  * <p>Constructed only when combat telemetry is enabled.
  */
 public class TargetChoiceLogger implements TargetChoiceSink {
@@ -25,7 +28,7 @@ public class TargetChoiceLogger implements TargetChoiceSink {
     static final String FILE = "telemetry_target_choices.csv";
 
     static final String HEADER = "game_id,frame,attacker_id,attacker_type,target_id,target_type,tier,distance_px,"
-            + "candidate_count,previous_target_id,previous_target_type";
+            + "candidate_count,previous_target_id,previous_target_type,scout_capped";
 
     private static final int FLUSH_INTERVAL_FRAMES = 480;
     private static final int NO_TARGET = -1;
@@ -69,13 +72,14 @@ public class TargetChoiceLogger implements TargetChoiceSink {
     }
 
     @Override
-    public void onTargetChosen(ManagedUnit attacker, Unit previousTarget, TargetScorer.Selection selection) {
+    public void onTargetChosen(ManagedUnit attacker, Unit previousTarget, TargetScorer.Selection selection,
+                               boolean scoutCapped) {
         if (disabled) {
             return;
         }
 
         try {
-            writer.append(row(attacker, previousTarget, selection));
+            writer.append(row(attacker, previousTarget, selection, scoutCapped));
         } catch (RuntimeException e) {
             disable();
         }
@@ -86,7 +90,8 @@ public class TargetChoiceLogger implements TargetChoiceSink {
         TargetChoices.clear();
     }
 
-    private String row(ManagedUnit attacker, Unit previousTarget, TargetScorer.Selection selection) {
+    private String row(ManagedUnit attacker, Unit previousTarget, TargetScorer.Selection selection,
+                       boolean scoutCapped) {
         Unit target = selection.getTarget();
         List<String> fields = new ArrayList<>(attackerCells(gameId, game.getFrameCount(), attacker.getUnitID(),
                 attacker.getUnitType()));
@@ -94,6 +99,7 @@ public class TargetChoiceLogger implements TargetChoiceSink {
                 attacker.getUnit().getDistance(target), selection.getCandidateCount()));
         fields.addAll(previousTargetCells(previousTarget != null ? previousTarget.getID() : NO_TARGET,
                 previousTarget != null ? previousTarget.getType() : null));
+        fields.add(scoutCappedCell(scoutCapped));
         return String.join(",", fields);
     }
 
@@ -121,6 +127,13 @@ public class TargetChoiceLogger implements TargetChoiceSink {
         fields.add(String.valueOf(distance));
         fields.add(String.valueOf(candidateCount));
         return fields;
+    }
+
+    /**
+     * Builds the scout_capped cell.
+     */
+    static String scoutCappedCell(boolean scoutCapped) {
+        return scoutCapped ? "1" : "0";
     }
 
     /**

@@ -25,8 +25,11 @@ public final class TargetChoices {
     /**
      * Forwards a selection to the sink only when it replaces the attacker's current target, so a
      * fighter that keeps its target every frame writes nothing.
+     *
+     * @param scoutCapped true if the scout chase cap removed a scout from the attacker's candidates
      */
-    public static void chosen(ManagedUnit attacker, Unit previousTarget, TargetScorer.Selection selection) {
+    public static void chosen(ManagedUnit attacker, Unit previousTarget, TargetScorer.Selection selection,
+                              boolean scoutCapped) {
         TargetChoiceSink current = sink;
         if (current == null) {
             return;
@@ -34,6 +37,6 @@ public final class TargetChoices {
         if (previousTarget != null && previousTarget.getID() == selection.getTarget().getID()) {
             return;
         }
-        current.onTargetChosen(attacker, previousTarget, selection);
+        current.onTargetChosen(attacker, previousTarget, selection, scoutCapped);
     }
 }
