@@ -234,23 +234,7 @@ public class InformationManager {
     }
 
     public void onUnitShow(Unit unit) {
-        UnitType unitType = unit.getInitialType();
-        PlayerType playerType = unit.getPlayer().getType();
-
-        if (playerType == PlayerType.Neutral || playerType == PlayerType.None) {
-            return;
-        }
-
-        if (unit.getPlayer() == game.self()) {
-            return;
-        }
-        // Check if the unit should be ignored: resource, powerup, special/unknown
-        // Exception: Allow gas structures (Refinery, Extractor, Assimilator) to be tracked
-        if (unitType.isResourceContainer() && !isGasStructure(unitType)
-                || unitType.isMineralField()
-                || unitType.isNeutral()
-                || unitType.isSpecialBuilding()
-                || unitType == UnitType.Unknown) {
+        if (!isTrackedEnemyUnit(unit)) {
             return;
         }
 
@@ -262,6 +246,45 @@ public class InformationManager {
         ObservedUnitTracker tracker = gameState.getObservedUnitTracker();
         boolean isProxied = isProxiedBuilding(unit);
         tracker.onUnitShow(unit, game.getFrameCount(), isProxied);
+    }
+
+    /**
+     * Records the onUnitComplete callback of an enemy unit the tracker follows. BWAPI also raises the
+     * callback when it first shows a unit that is already complete, so the record alone does not prove the
+     * unit was produced where it stood.
+     */
+    public void onEnemyUnitComplete(Unit unit) {
+        if (!isTrackedEnemyUnit(unit)) {
+            return;
+        }
+
+        ObservedUnitTracker tracker = gameState.getObservedUnitTracker();
+        boolean isProxied = isProxiedBuilding(unit);
+        tracker.onUnitComplete(unit, game.getFrameCount(), isProxied);
+    }
+
+    /**
+     * Whether the unit belongs to an opponent and is of a type the tracker follows. Resources, powerups,
+     * special buildings and units of unknown type are ignored, except gas structures (Refinery, Extractor,
+     * Assimilator), which are tracked.
+     */
+    private boolean isTrackedEnemyUnit(Unit unit) {
+        UnitType unitType = unit.getInitialType();
+        PlayerType playerType = unit.getPlayer().getType();
+
+        if (playerType == PlayerType.Neutral || playerType == PlayerType.None) {
+            return false;
+        }
+
+        if (unit.getPlayer() == game.self()) {
+            return false;
+        }
+
+        return !(unitType.isResourceContainer() && !isGasStructure(unitType)
+                || unitType.isMineralField()
+                || unitType.isNeutral()
+                || unitType.isSpecialBuilding()
+                || unitType == UnitType.Unknown);
     }
 
     public void onUnitMorph(Unit unit) {

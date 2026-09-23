@@ -5,6 +5,7 @@ import bwapi.UnitType;
 import info.GameState;
 import info.Readiness;
 import info.tracking.StrategyTracker;
+import info.tracking.protoss.ProxyGate;
 import macro.plan.Plan;
 import strategy.buildorder.BuildOrder;
 import strategy.buildorder.SporeTargets;
@@ -71,7 +72,7 @@ public abstract class ProtossBase extends BuildOrder {
             if (availableMinerals > EXCESS_MINERALS) {
                 zerglings += availableMinerals % UnitType.Zerg_Zergling.mineralPrice();
             }
-        } else if (strategyTracker.isDetectedStrategy("2Gate")) {
+        } else if (strategyTracker.isAnyDetectedStrategy("2Gate", ProxyGate.NAME)) {
             zerglings = 12;
         } else if (strategyTracker.isDetectedStrategy("1GateCore")) {
             zerglings = 4;
@@ -112,7 +113,7 @@ public abstract class ProtossBase extends BuildOrder {
         }
 
         boolean zealotsObserved = gameState.enemyUnitCount(UnitType.Protoss_Zealot) > 0;
-        if (strategyTracker.isDetectedStrategy("2Gate") && (zealotsObserved || gameTime.greaterThan(new Time(3, 20)))) {
+        if (strategyTracker.isAnyDetectedStrategy("2Gate", ProxyGate.NAME) && (zealotsObserved || gameTime.greaterThan(new Time(3, 20)))) {
             sunkens += 1;
         }
 

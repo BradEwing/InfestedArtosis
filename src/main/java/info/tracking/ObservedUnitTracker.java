@@ -133,6 +133,20 @@ public class ObservedUnitTracker {
         }
     }
 
+    /**
+     * Records an enemy onUnitComplete callback. The callback can arrive ahead of the unit's first
+     * onUnitShow, so an untracked unit is tracked here as it would be on show.
+     */
+    public void onUnitComplete(Unit unit, int currentFrame, boolean isProxied) {
+        Time t = new Time(currentFrame);
+        ObservedUnit ou = observedUnits.get(unit);
+        if (ou == null) {
+            ou = new ObservedUnit(unit, t, isProxied);
+            observedUnits.put(unit, ou);
+        }
+        ou.markCompletedWhileObserved(t, unit.getPosition());
+    }
+
     public void onUnitHide(Unit unit, int currentFrame) {
         Time t = new Time(currentFrame);
         if (observedUnits.containsKey(unit)) {
@@ -275,6 +289,21 @@ public class ObservedUnitTracker {
                 .filter(ObservedUnit::isProxied)
                 .filter(ou -> ou.getFirstObservedFrame().lessThanOrEqual(detectedBy))
                 .count();
+    }
+
+    /**
+     * Whether a unit of this type had an onUnitComplete callback at or before t while standing on one of the
+     * tiles, counting units since destroyed. Completion stamps set on first sight or on a later frame do not
+     * count.
+     */
+    public boolean hasCompletedWhileObservedOnTiles(UnitType unitType, Set<TilePosition> tiles, Time t) {
+        return observedUnits.values()
+                .stream()
+                .filter(ou -> ou.getUnitType() == unitType)
+                .filter(ou -> ou.getCompletedWhileObservedFrame() != null)
+                .filter(ou -> ou.getCompletedWhileObservedFrame().lessThanOrEqual(t))
+                .map(ObservedUnit::getCompletedWhileObservedPosition)
+                .anyMatch(pos -> pos != null && tiles.contains(pos.toTilePosition()));
     }
 
     public Set<Unit> getDetectedUnits() {

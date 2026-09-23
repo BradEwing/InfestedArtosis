@@ -12,6 +12,8 @@ public class ObservedUnit {
     private Time lastObservedFrame;
     private Time destroyedFrame;
     private Time completedFrame;
+    private Time completedWhileObservedFrame;
+    private Position completedWhileObservedPosition;
     private Position lastKnownLocation;
     private final Unit unit;
     private UnitType unitType;
@@ -56,6 +58,20 @@ public class ObservedUnit {
         }
         completed = true;
         completedFrame = currentFrame;
+    }
+
+    /**
+     * Records a completion reported through the enemy onUnitComplete callback, and where the unit stood when
+     * it fired. The completion stamp set by {@link #markCompleted} on first sight or on a later frame never
+     * records this. Only the first report is kept.
+     */
+    public void markCompletedWhileObserved(Time currentFrame, Position position) {
+        markCompleted(currentFrame);
+        if (completedWhileObservedFrame != null) {
+            return;
+        }
+        completedWhileObservedFrame = currentFrame;
+        completedWhileObservedPosition = position;
     }
 
     /**

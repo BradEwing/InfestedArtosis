@@ -106,4 +106,13 @@ public interface PlanEventSink {
      */
     default void onExpansionBackoff(int lostExpansionBuilders, int expansionHeldUntilFrame) {
     }
+
+    /**
+     * StrategyTracker added a strategy to its detected set, directly or by implication, after resolving
+     * supersessions for the frame.
+     *
+     * @param strategyName the detected strategy's name
+     */
+    default void onStrategyDetected(String strategyName) {
+    }
 }

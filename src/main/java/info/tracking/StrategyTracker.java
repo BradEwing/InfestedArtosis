@@ -10,12 +10,14 @@ import info.tracking.any.OneBase;
 import info.tracking.protoss.CannonRush;
 import info.tracking.protoss.FFE;
 import info.tracking.protoss.OneGateCore;
+import info.tracking.protoss.ProxyGate;
 import info.tracking.protoss.TwoGate;
 import info.tracking.terran.SCVRush;
 import info.tracking.terran.TwoRaxAcademy;
 import info.tracking.zerg.Hydralisk;
 import info.tracking.zerg.TwoHatchLing;
 import lombok.Getter;
+import telemetry.PlanEvents;
 import util.Time;
 
 import java.util.HashSet;
@@ -28,9 +30,14 @@ public class StrategyTracker {
 
     private static final Map<String, String> IMPLIED_STRATEGIES = new LinkedHashMap<>();
 
+    private static final Map<String, String> SUPERSEDED_STRATEGIES = new LinkedHashMap<>();
+
     static {
         IMPLIED_STRATEGIES.put("2Gate", "EarlyRush");
         IMPLIED_STRATEGIES.put("2HatchLing", "EarlyRush");
+        IMPLIED_STRATEGIES.put(ProxyGate.NAME, "EarlyRush");
+
+        SUPERSEDED_STRATEGIES.put(ProxyGate.NAME, "2Gate");
     }
 
     @Getter
@@ -58,6 +65,7 @@ public class StrategyTracker {
             possibleStrategies.add(new FFE());
             possibleStrategies.add(new OneGateCore());
             possibleStrategies.add(new TwoGate());
+            possibleStrategies.add(new ProxyGate());
             possibleStrategies.add(new CannonRush());
         }
         if (race == Race.Terran || race == Race.Unknown) {
@@ -87,16 +95,50 @@ public class StrategyTracker {
             }
         }
 
-        detectedStrategies.addAll(newlyDetected);
-        possibleStrategies.removeAll(newlyDetected);
-
-        applyStrategyImplications();
+        recordDetections(newlyDetected);
     }
 
     /**
-     * Promotes the strategy each detected strategy implies. 2Gate and 2HatchLing are both strictly more
-     * reliable signals of an early rush than EarlyRush's own evidence, which stops looking at ARRIVAL_DEADLINE
-     * and so misses rushes that land later.
+     * Moves this frame's detections into the detected set, then resolves supersessions before
+     * implications, so a superseded strategy detected on the same frame never reaches the detected set
+     * alongside the strategy that supersedes it. Emits one STRATEGY_DETECTED telemetry row per strategy that
+     * is detected at the end of the frame and was not at its start.
+     */
+    void recordDetections(Set<ObservedStrategy> newlyDetected) {
+        Set<ObservedStrategy> detectedBefore = new HashSet<>(detectedStrategies);
+
+        detectedStrategies.addAll(newlyDetected);
+        possibleStrategies.removeAll(newlyDetected);
+
+        applyStrategySupersessions();
+        applyStrategyImplications();
+
+        for (ObservedStrategy strategy : detectedStrategies) {
+            if (!detectedBefore.contains(strategy)) {
+                PlanEvents.strategyDetected(strategy.getName());
+            }
+        }
+    }
+
+    /**
+     * Retires every strategy a detected strategy supersedes, from the detected and the possible sets, so it
+     * is neither reported nor detected again for the rest of the game. ProxyGate supersedes 2Gate: both read
+     * Zealot volume or Gateways, and ProxyGate is the more specific reading of where they were built.
+     */
+    void applyStrategySupersessions() {
+        for (Map.Entry<String, String> supersession : SUPERSEDED_STRATEGIES.entrySet()) {
+            if (isDetectedStrategy(supersession.getKey())) {
+                String superseded = supersession.getValue();
+                detectedStrategies.removeIf(s -> s.getName().equals(superseded));
+                possibleStrategies.removeIf(s -> s.getName().equals(superseded));
+            }
+        }
+    }
+
+    /**
+     * Promotes the strategy each detected strategy implies. 2Gate, ProxyGate and 2HatchLing are all strictly
+     * more reliable signals of an early rush than EarlyRush's own evidence, which stops looking at
+     * ARRIVAL_DEADLINE and so misses rushes that land later.
      */
     void applyStrategyImplications() {
         for (Map.Entry<String, String> implication : IMPLIED_STRATEGIES.entrySet()) {
@@ -138,6 +180,15 @@ public class StrategyTracker {
     public boolean isDetectedStrategy(String strategyName) {
         for (ObservedStrategy strategy : detectedStrategies) {
             if (strategy.getName().equals(strategyName)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public boolean isAnyDetectedStrategy(String... strategyNames) {
+        for (String strategyName : strategyNames) {
+            if (isDetectedStrategy(strategyName)) {
                 return true;
             }
         }
