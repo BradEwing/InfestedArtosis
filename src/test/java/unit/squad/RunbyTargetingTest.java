@@ -114,6 +114,61 @@ class RunbyTargetingTest {
     }
 
     @Test
+    void anOffBaseSafeWorkerIsNeverChosenEvenWithNoWorkerInTheBase() {
+        Position offBase = east(200);
+        RunbyTargeting.Situation situation = harass(false)
+                .contacts(Arrays.asList(probe(10, offBase, 0.1), meanProbe(11, east(20))))
+                .workerAllowed(point -> point.getX() < LING_AT.getX() + 10)
+                .build();
+
+        RunbyTargeting.Decision decision = choose(situation);
+
+        assertEquals(Kind.SEEK, decision.getKind());
+        assertEquals(SEEK, decision.getPoint());
+    }
+
+    @Test
+    void anInBaseWorkerIsChosenOverAnOffBaseOne() {
+        RunbyTargeting.Situation situation = harass(false)
+                .contacts(Arrays.asList(probe(10, east(20), 0.1), probe(11, new Position(900, 1008), 1.0)))
+                .workerAllowed(point -> point.getX() < LING_AT.getX())
+                .build();
+
+        assertEquals(11, choose(situation).getTargetId());
+    }
+
+    @Test
+    void aWorkerTargetThatLeavesTheBaseIsDropped() {
+        RunbyTargeting.LingMemory memory = new RunbyTargeting.LingMemory();
+        RunbyTargeting.Situation inside = harass(false)
+                .contacts(Collections.singletonList(probe(10, east(100), 1.0)))
+                .workerAllowed(point -> point.getX() < LING_AT.getX() + 150)
+                .build();
+        assertEquals(10, RunbyTargeting.choose(ling(), inside, memory).getTargetId());
+
+        RunbyTargeting.Situation left = harass(false)
+                .contacts(Collections.singletonList(probe(10, east(200), 1.0)))
+                .workerAllowed(point -> point.getX() < LING_AT.getX() + 150)
+                .build();
+        RunbyTargeting.Decision decision = RunbyTargeting.choose(ling(), left, memory);
+
+        assertEquals(Kind.SEEK, decision.getKind());
+        assertEquals(-1, memory.getTargetId());
+    }
+
+    @Test
+    void aTargetThatLeavesTheBaseLosesItsStickinessToAnInBaseWorker() {
+        RunbyTargeting.Situation left = harass(false)
+                .contacts(Arrays.asList(probe(10, east(200), 1.0), probe(11, east(100), 1.0)))
+                .workerAllowed(point -> point.getX() < LING_AT.getX() + 150)
+                .build();
+
+        assertTrue(RunbyTargeting.targetLeftWorkerArea(10, left));
+        assertEquals(false, RunbyTargeting.targetLeftWorkerArea(11, left));
+        assertEquals(false, RunbyTargeting.targetLeftWorkerArea(-1, left));
+    }
+
+    @Test
     void aMeanWorkerInReachBeatsAMiningWorker() {
         RunbyTargeting.Situation situation = harass(false)
                 .contacts(Arrays.asList(probe(10, east(20), 0.1), meanProbe(11, east(LING_REACH / 2))))

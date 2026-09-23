@@ -1568,7 +1568,8 @@ public class SquadManager {
         }
 
         if (state.getPhase() == RunbyState.Phase.PENETRATE && RunbyEvaluator.penetrateEnds(now,
-                state.getPhaseStartFrame(), state.getPenetrateBudgetFrames(), inside, safeWorkerInReach(squad, view))) {
+                state.getPhaseStartFrame(), state.getPenetrateBudgetFrames(), inside,
+                safeWorkerInReach(squad, view, state.getTargetArea()))) {
             state.startHarass(now);
             SquadDecisions.runbyPhaseStarted(squad, RunbyState.Phase.PENETRATE, RunbyState.Phase.HARASS,
                     DecisionPath.RUNBY_PHASE);
@@ -1636,6 +1637,7 @@ public class SquadManager {
                 .zones(view.zones)
                 .seekPoint(state.getGoal())
                 .evadeAllowed(point -> isRunbyEvadePoint(area, point))
+                .workerAllowed(point -> area.contains(point.toTilePosition()))
                 .now(now)
                 .build();
         for (ManagedUnit member : squad.getMembers()) {
@@ -1645,39 +1647,62 @@ public class SquadManager {
             RunbyTargeting.Ling ling = new RunbyTargeting.Ling(member.getUnitID(), member.getPosition(),
                     RunbyTargeting.reach(member.getUnitType()));
             RunbyTargeting.Decision decision = RunbyTargeting.choose(ling, situation, state.memoryFor(member.getUnitID()));
-            applyRunbyDecision(member, decision, view, state);
-            if (decision.getKind() == RunbyTargeting.Kind.WORKER || decision.getKind() == RunbyTargeting.Kind.FIGHT
-                    || decision.getKind() == RunbyTargeting.Kind.BUILDING) {
+            if (applyRunbyDecision(member, decision, view, state)) {
                 state.setLastProgressFrame(now);
             }
         }
     }
 
-    private void applyRunbyDecision(ManagedUnit member, RunbyTargeting.Decision decision, RunbyView view,
-                                    RunbyState state) {
+    /**
+     * Turns a ling's decision into its order.
+     *
+     * @return true when the ling was given an enemy to hit, which counts as progress at the target base
+     */
+    private boolean applyRunbyDecision(ManagedUnit member, RunbyTargeting.Decision decision, RunbyView view,
+                                       RunbyState state) {
         switch (decision.getKind()) {
             case EVADE:
             case SEEK:
                 member.setFightTarget(null);
                 member.setRunbyDestination(decision.getPoint());
-                break;
+                return false;
             case WORKER:
             case BUILDING:
+                Unit target = view.units.get(decision.getTargetId());
+                if (target == null) {
+                    seekOrHold(member, state);
+                    return false;
+                }
                 member.setRunbyDestination(null);
-                member.setFightTarget(view.units.get(decision.getTargetId()));
-                break;
+                member.setFightTarget(target);
+                return true;
             case FIGHT:
+                if (!assignRunbyFightTarget(member, view)) {
+                    seekOrHold(member, state);
+                    return false;
+                }
                 member.setRunbyDestination(null);
-                assignRunbyFightTarget(member, view);
-                break;
+                return true;
             default:
-                member.setFightTarget(null);
-                member.setRunbyDestination(state.getAnchor());
-                break;
+                seekOrHold(member, state);
+                return false;
         }
     }
 
-    private void assignRunbyFightTarget(ManagedUnit member, RunbyView view) {
+    /**
+     * Sends a ling with nothing to hit to the squad's seek point, or to the anchor when there is none.
+     */
+    private void seekOrHold(ManagedUnit member, RunbyState state) {
+        member.setFightTarget(null);
+        member.setRunbyDestination(state.getGoal() != null ? state.getGoal() : state.getAnchor());
+    }
+
+    /**
+     * Picks a winnable fight target with TargetScorer among the visible enemies the ling can attack.
+     *
+     * @return true when a target was set, false when no candidate survived the attack filter
+     */
+    private boolean assignRunbyFightTarget(ManagedUnit member, RunbyView view) {
         Unit unit = member.getUnit();
         List<Unit> candidates = new ArrayList<>();
         for (Unit enemy : view.units.values()) {
@@ -1686,15 +1711,16 @@ public class SquadManager {
             }
         }
         if (candidates.isEmpty()) {
-            member.setFightTarget(null);
-            return;
+            return false;
         }
         TargetScorer.Selection selection = TargetScorer.selectTarget(unit, filterByProximity(candidates, unit),
                 member.fightTarget);
-        if (selection != null) {
-            TargetChoices.chosen(member, member.fightTarget, selection);
-            member.setFightTarget(selection.getTarget());
+        if (selection == null) {
+            return false;
         }
+        TargetChoices.chosen(member, member.fightTarget, selection);
+        member.setFightTarget(selection.getTarget());
+        return true;
     }
 
     private boolean isRunbyEvadePoint(BaseArea area, Position point) {
@@ -1706,9 +1732,10 @@ public class SquadManager {
         return area.contains(point.toTilePosition()) && game.isWalkable(new WalkPosition(point));
     }
 
-    private boolean safeWorkerInReach(Squad squad, RunbyView view) {
+    private boolean safeWorkerInReach(Squad squad, RunbyView view, BaseArea area) {
         for (RunbyTargeting.Contact contact : view.contacts) {
-            if (!contact.isWorker() || !RunbyTargeting.isSafe(contact.getPosition(), view.threats)) {
+            if (!contact.isWorker() || !area.contains(contact.getPosition().toTilePosition())
+                    || !RunbyTargeting.isSafe(contact.getPosition(), view.threats)) {
                 continue;
             }
             for (ManagedUnit member : squad.getMembers()) {

@@ -144,6 +144,8 @@ public final class RunbyTargeting {
         private final Position seekPoint;
         @Builder.Default
         private final Predicate<Position> evadeAllowed = position -> true;
+        @Builder.Default
+        private final Predicate<Position> workerAllowed = position -> true;
         private final int now;
     }
 
@@ -237,6 +239,9 @@ public final class RunbyTargeting {
             }
         }
 
+        if (targetLeftWorkerArea(memory.targetId, situation)) {
+            memory.targetId = NO_TARGET;
+        }
         Contact worker = bestMeanWorker(ling, situation);
         if (worker == null) {
             worker = bestSafeWorker(ling, situation, memory.targetId);
@@ -356,11 +361,43 @@ public final class RunbyTargeting {
         return minMargin(point, threats) > 0;
     }
 
+    /**
+     * Whether a worker may be targeted: only workers the situation allows, which the runby limits to its target
+     * base, so a worker seen anywhere else never pulls a ling out of the base.
+     *
+     * @param contact the contact
+     * @param situation the frame's shared view
+     * @return true for an allowed worker
+     */
+    static boolean isWorkerCandidate(Contact contact, Situation situation) {
+        return contact.isWorker() && situation.getWorkerAllowed().test(contact.getPosition());
+    }
+
+    /**
+     * Whether the ling's current target is a worker that has left the ground workers may be taken on, so the
+     * ling drops it and decides again rather than chasing it out of the base.
+     *
+     * @param targetId the ling's current target, or -1
+     * @param situation the frame's shared view
+     * @return true when the target is a visible worker outside the allowed ground
+     */
+    static boolean targetLeftWorkerArea(int targetId, Situation situation) {
+        if (targetId == NO_TARGET) {
+            return false;
+        }
+        for (Contact contact : situation.getContacts()) {
+            if (contact.getId() == targetId) {
+                return contact.isWorker() && !situation.getWorkerAllowed().test(contact.getPosition());
+            }
+        }
+        return false;
+    }
+
     static Contact bestMeanWorker(Ling ling, Situation situation) {
         Contact best = null;
         double bestDistance = Double.MAX_VALUE;
         for (Contact contact : situation.getContacts()) {
-            if (!contact.isWorker() || !contact.isMeanWorker()) {
+            if (!isWorkerCandidate(contact, situation) || !contact.isMeanWorker()) {
                 continue;
             }
             double distance = ling.getPosition().getDistance(contact.getPosition());
@@ -377,8 +414,8 @@ public final class RunbyTargeting {
 
     /**
      * Picks a worker outside every threat's reach: lowest hit point fraction first, then nearest, with the
-     * current target favoured by {@link #CURRENT_TARGET_BONUS} on both. Workers within
-     * {@link #WORKER_SEARCH_RADIUS} of the ling are preferred over farther ones.
+     * current target favoured by {@link #CURRENT_TARGET_BONUS} on both. Only workers the situation allows are
+     * considered, and among them those within {@link #WORKER_SEARCH_RADIUS} of the ling are preferred.
      *
      * @param ling the ling
      * @param situation the frame's shared view
@@ -389,7 +426,7 @@ public final class RunbyTargeting {
         List<Contact> safe = new ArrayList<>();
         List<Contact> near = new ArrayList<>();
         for (Contact contact : situation.getContacts()) {
-            if (!contact.isWorker() || !isSafe(contact.getPosition(), situation.getThreats())) {
+            if (!isWorkerCandidate(contact, situation) || !isSafe(contact.getPosition(), situation.getThreats())) {
                 continue;
             }
             safe.add(contact);
