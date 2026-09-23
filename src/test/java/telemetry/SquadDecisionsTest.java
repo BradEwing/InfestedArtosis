@@ -1,6 +1,7 @@
 package telemetry;
 
 import bwapi.Position;
+import bwapi.UnitType;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import unit.squad.CombatSimulator;
@@ -73,6 +74,17 @@ class SquadDecisionsTest {
             }
 
             @Override
+            public void onContainmentPushedBack(Squad squad, Position from, Position to, UnitType enemyType,
+                                                int membersMoved) {
+                events.add("PUSHBACK:" + from + ":" + to + ":" + enemyType + ":" + membersMoved);
+            }
+
+            @Override
+            public void onContainmentEnded(Squad squad, int supplyLost) {
+                events.add("CONTAIN_ENDED:" + supplyLost);
+            }
+
+            @Override
             public void onDefenseEvaluated(Squad squad, DefenseEvent event, int candidates, int pulled, int released,
                                            DefenseSim sim) {
                 events.add("DEFENSE:" + event + ":" + candidates + ":" + pulled + ":" + released);
@@ -98,7 +110,8 @@ class SquadDecisionsTest {
                 + "," + String.join(",", SquadDecisionLogger.arcCells(squad))
                 + "," + String.join(",", SquadDecisionLogger.pathCells(context))
                 + "," + String.join(",", SquadDecisionLogger.enemySampleCells(context))
-                + "," + String.join(",", SquadDecisionLogger.runbyCells(null, null));
+                + "," + String.join(",", SquadDecisionLogger.runbyCells(null, null))
+                + "," + String.join(",", SquadDecisionLogger.containmentCells(context));
         return row.split(",", -1);
     }
 
@@ -322,6 +335,76 @@ class SquadDecisionsTest {
     }
 
     @Test
+    void registeredSinkReceivesThePushBackAndTheEpisodeEnd() {
+        SquadDecisions.register(recorder());
+        Squad squad = new GroundSquad();
+
+        SquadDecisions.containmentPushedBack(squad, new Position(1600, 1440), new Position(1600, 1376),
+                UnitType.Protoss_Dragoon, 12);
+        SquadDecisions.containmentEnded(squad, 18);
+
+        assertEquals(2, events.size());
+        assertTrue(events.get(0).startsWith("PUSHBACK:"));
+        assertTrue(events.get(0).endsWith(":Protoss_Dragoon:12"));
+        assertEquals("CONTAIN_ENDED:18", events.get(1));
+    }
+
+    @Test
+    void containmentDispatchIsANoOpWithoutASink() {
+        Squad squad = new GroundSquad();
+
+        SquadDecisions.containmentPushedBack(squad, null, null, UnitType.Terran_Marine, 1);
+        SquadDecisions.containmentEnded(squad, 4);
+
+        assertTrue(events.isEmpty());
+    }
+
+    @Test
+    void aPushBackRowCarriesBothMidpointsTheEnemyAndTheMembersMoved() {
+        SquadDecision context = new SquadDecision();
+        context.setPushbackFrom(new Position(1600, 1440));
+        context.setPushbackTo(new Position(1600, 1376));
+        context.setPushbackEnemyType(UnitType.Terran_Siege_Tank_Siege_Mode);
+        context.setPushbackMembersMoved(20);
+
+        List<String> cells = SquadDecisionLogger.containmentCells(context);
+        String[] columns = SquadDecisionLogger.HEADER.split(",", -1);
+        int first = java.util.Arrays.asList(columns).indexOf("pushback_from_x");
+
+        assertEquals(columns.length - first, cells.size());
+        assertEquals("1600", cells.get(columnIndex("pushback_from_x") - first));
+        assertEquals("1440", cells.get(columnIndex("pushback_from_y") - first));
+        assertEquals("1600", cells.get(columnIndex("pushback_to_x") - first));
+        assertEquals("1376", cells.get(columnIndex("pushback_to_y") - first));
+        assertEquals("Terran_Siege_Tank_Siege_Mode", cells.get(columnIndex("pushback_enemy_type") - first));
+        assertEquals("20", cells.get(columnIndex("pushback_members_moved") - first));
+        assertEquals("-1", cells.get(columnIndex("contain_supply_lost") - first));
+    }
+
+    @Test
+    void theExitRowCarriesTheSupplyLostInRealSupply() {
+        SquadDecision context = new SquadDecision();
+        context.setContainSupplyLost(19);
+
+        List<String> cells = SquadDecisionLogger.containmentCells(context);
+        int first = columnIndex("pushback_from_x");
+
+        assertEquals("9.5", cells.get(columnIndex("contain_supply_lost") - first));
+        assertEquals("-1", cells.get(columnIndex("pushback_from_x") - first));
+        assertEquals("NONE", cells.get(columnIndex("pushback_enemy_type") - first));
+    }
+
+    @Test
+    void anOrdinaryRowLeavesTheContainmentColumnsUnevaluated() {
+        String[] fields = rowFor(new GroundSquad());
+
+        assertEquals("-1", fields[columnIndex("pushback_from_x")]);
+        assertEquals("NONE", fields[columnIndex("pushback_enemy_type")]);
+        assertEquals("-1", fields[columnIndex("pushback_members_moved")]);
+        assertEquals("-1", fields[columnIndex("contain_supply_lost")]);
+    }
+
+    @Test
     void registeredSinkReceivesDefenseDecisions() {
         SquadDecisions.register(recorder());
         Squad squad = new Squad();
@@ -345,7 +428,8 @@ class SquadDecisionsTest {
                 + "," + String.join(",", SquadDecisionLogger.arcCells(squad))
                 + "," + String.join(",", SquadDecisionLogger.pathCells(context))
                 + "," + String.join(",", SquadDecisionLogger.enemySampleCells(context))
-                + "," + String.join(",", SquadDecisionLogger.runbyCells(null, null));
+                + "," + String.join(",", SquadDecisionLogger.runbyCells(null, null))
+                + "," + String.join(",", SquadDecisionLogger.containmentCells(context));
         String[] fields = row.split(",", -1);
 
         assertEquals(SquadDecisionLogger.HEADER.split(",", -1).length, fields.length);
@@ -417,7 +501,8 @@ class SquadDecisionsTest {
                 + "," + String.join(",", SquadDecisionLogger.pathCells(context))
                 + "," + String.join(",", SquadDecisionLogger.enemySampleCells(context))
                 + "," + String.join(",", SquadDecisionLogger.runbyCells(RunbyState.Phase.PENETRATE,
-                RunbyState.Phase.HARASS));
+                RunbyState.Phase.HARASS))
+                + "," + String.join(",", SquadDecisionLogger.containmentCells(context));
         String[] fields = row.split(",", -1);
 
         assertEquals(SquadDecisionLogger.HEADER.split(",", -1).length, fields.length);

@@ -1,5 +1,7 @@
 package telemetry;
 
+import bwapi.Position;
+import bwapi.UnitType;
 import unit.squad.CombatSimulator;
 import unit.squad.DefenseSim;
 import unit.squad.RunbyState;
@@ -67,6 +69,21 @@ public interface SquadDecisionSink {
      * @param path the branch that started it
      */
     void onRunbyPhaseStarted(Squad squad, RunbyState.Phase from, RunbyState.Phase to, DecisionPath path);
+
+    /**
+     * A containing squad moved its arc back out of the reach of an enemy that outranges it.
+     *
+     * @param from midpoint of the arc the squad held
+     * @param to midpoint of the arc it holds now
+     * @param enemyType type of the outranging enemy with the longest reach
+     * @param membersMoved members whose contain position changed
+     */
+    void onContainmentPushedBack(Squad squad, Position from, Position to, UnitType enemyType, int membersMoved);
+
+    /**
+     * A containing squad left its arc, with the supply it lost over the episode, in BWAPI half-supply units.
+     */
+    void onContainmentEnded(Squad squad, int supplyLost);
 
     /**
      * Worker defence at a base pulled gatherers, abandoned its defence, or released its defenders.

@@ -92,6 +92,22 @@ public enum DecisionPath {
     RUNBY_EXIT_NO_TARGETS,
 
     /**
+     * A containing squad left its arc because it was losing supply while killing little.
+     */
+    CONTAIN_ATTRITION,
+
+    /**
+     * A containing squad left its arc because no arc point on the choke stayed out of reach of an enemy that
+     * outranges it.
+     */
+    CONTAIN_OUTRANGED,
+
+    /**
+     * A containing squad moved its arc back out of reach of an enemy that outranges it and kept containing.
+     */
+    CONTAIN_PUSHBACK,
+
+    /**
      * The squad was sent to the rally point. The rally_reason column names which branch.
      */
     RALLY,

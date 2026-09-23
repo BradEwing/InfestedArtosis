@@ -1,5 +1,7 @@
 package telemetry;
 
+import bwapi.Position;
+import bwapi.UnitType;
 import unit.squad.CombatSimulator;
 import unit.squad.DefenseSim;
 import unit.squad.RunbyState;
@@ -56,6 +58,23 @@ public final class SquadDecisions {
             return;
         }
         current.onContainmentEvaluated(squad, shouldContain, canBreakContainment, entered);
+    }
+
+    public static void containmentPushedBack(Squad squad, Position from, Position to, UnitType enemyType,
+                                             int membersMoved) {
+        SquadDecisionSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onContainmentPushedBack(squad, from, to, enemyType, membersMoved);
+    }
+
+    public static void containmentEnded(Squad squad, int supplyLost) {
+        SquadDecisionSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onContainmentEnded(squad, supplyLost);
     }
 
     public static void rallied(Squad squad, RallyReason reason) {

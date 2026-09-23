@@ -2,6 +2,7 @@ package telemetry;
 
 import bwapi.Game;
 import bwapi.Position;
+import bwapi.UnitType;
 import info.GameState;
 import unit.squad.CombatSimulator;
 import unit.squad.DefenseSim;
@@ -43,6 +44,10 @@ import java.util.Set;
  * <p>Rows for a squad holding a containment arc carry the arc's center and its points as x:y pairs joined by
  * semicolons; every other row carries -1 and NONE there.
  *
+ * <p>CONTAIN_PUSHBACK is emitted when a containing squad moves its arc back out of reach of an enemy that
+ * outranges it, with the old and new arc midpoints, the enemy type and the members moved. The row that closes a
+ * containment episode carries the supply lost over it.
+ *
  * <p>Every row names the branch that decided the status it reports in decision_path. On a
  * LOCK_SUPPRESSED row that is the request the lock refused, so the suppression episodes a lock
  * produced are separable by the branch that asked for them.
@@ -64,7 +69,9 @@ public class SquadDecisionLogger implements SquadDecisionSink {
             + "rally_reason,rally_release,defense_candidates,workers_pulled,workers_released,"
             + "defense_sim_defenders,defense_sim_enemies,defense_sim_defender_survivors,"
             + "defense_sim_enemy_survivors,defense_win_threshold,arc_center_x,arc_center_y,arc_points,"
-            + "decision_path,sim_enemy_composition,sim_enemy_unscored_supply,runby_phase_old,runby_phase";
+            + "decision_path,sim_enemy_composition,sim_enemy_unscored_supply,runby_phase_old,runby_phase,"
+            + "pushback_from_x,pushback_from_y,pushback_to_x,pushback_to_y,pushback_enemy_type,"
+            + "pushback_members_moved,contain_supply_lost";
 
     private static final int FLUSH_INTERVAL_FRAMES = 480;
     private static final String EVENT_STATUS_CHANGE = "STATUS_CHANGE";
@@ -72,6 +79,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
     private static final String EVENT_SPLIT_SUPPRESSED = "SPLIT_SUPPRESSED";
     private static final String EVENT_SQUAD_DISBANDED = "SQUAD_DISBANDED";
     static final String EVENT_PHASE_CHANGE = "PHASE_CHANGE";
+    private static final String EVENT_CONTAIN_PUSHBACK = "CONTAIN_PUSHBACK";
     private static final String EVENT_DEFENSE_PREFIX = "DEFENSE_";
     private static final String SQUAD_TYPE_DEFENSE = "DEFENSE";
     private static final int SQUAD_TYPE_CELL = 3;
@@ -222,6 +230,40 @@ public class SquadDecisionLogger implements SquadDecisionSink {
             decision.setCanBreakContainment(shouldContain
                     ? SquadDecision.tristate(canBreakContainment) : SquadDecision.NOT_EVALUATED);
             decision.setContainmentEntered(SquadDecision.tristate(entered));
+        } catch (RuntimeException e) {
+            disable();
+        }
+    }
+
+    @Override
+    public void onContainmentPushedBack(Squad squad, Position from, Position to, UnitType enemyType,
+                                        int membersMoved) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            SquadDecision context = new SquadDecision();
+            context.setDecisionPath(DecisionPath.CONTAIN_PUSHBACK);
+            context.setPushbackFrom(from);
+            context.setPushbackTo(to);
+            context.setPushbackEnemyType(enemyType);
+            context.setPushbackMembersMoved(membersMoved);
+            writer.append(row(squad, game.getFrameCount(), EVENT_CONTAIN_PUSHBACK, squad.getStatus(),
+                    squad.getStatus(), context, NONE));
+        } catch (RuntimeException e) {
+            disable();
+        }
+    }
+
+    @Override
+    public void onContainmentEnded(Squad squad, int supplyLost) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            decisionFor(squad).setContainSupplyLost(supplyLost);
         } catch (RuntimeException e) {
             disable();
         }
@@ -435,6 +477,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         fields.addAll(pathCells(context));
         fields.addAll(enemySampleCells(context));
         fields.addAll(runbyCells);
+        fields.addAll(containmentCells(context));
         return String.join(",", fields);
     }
 
@@ -454,6 +497,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         fields.addAll(pathCells(context));
         fields.addAll(enemySampleCells(context));
         fields.addAll(runbyCells(null, null));
+        fields.addAll(containmentCells(context));
         return String.join(",", fields);
     }
 
@@ -495,6 +539,32 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         fields.add(context.getEnemyUnscoredSupply() < 0
                 ? String.valueOf(SquadDecision.NOT_EVALUATED)
                 : Csv.halfSupply(context.getEnemyUnscoredSupply()));
+        return fields;
+    }
+
+    /**
+     * Builds the containment episode cells: where a push back moved the arc from and to, the enemy that forced
+     * it and how many members moved, then the supply lost over the episode in real supply.
+     *
+     * <p>The push back cells are filled only on a CONTAIN_PUSHBACK row, and the supply lost only on the row that
+     * closes a containment episode. Every other row carries the not evaluated sentinels.
+     *
+     * @param context the decision the row is built from
+     * @return the push back cells and the supply lost cell
+     */
+    static List<String> containmentCells(SquadDecision context) {
+        List<String> fields = new ArrayList<>();
+        Position from = context.getPushbackFrom();
+        Position to = context.getPushbackTo();
+        fields.add(String.valueOf(from != null ? from.getX() : SquadDecision.NOT_EVALUATED));
+        fields.add(String.valueOf(from != null ? from.getY() : SquadDecision.NOT_EVALUATED));
+        fields.add(String.valueOf(to != null ? to.getX() : SquadDecision.NOT_EVALUATED));
+        fields.add(String.valueOf(to != null ? to.getY() : SquadDecision.NOT_EVALUATED));
+        fields.add(Csv.name(context.getPushbackEnemyType()));
+        fields.add(String.valueOf(context.getPushbackMembersMoved()));
+        fields.add(context.getContainSupplyLost() < 0
+                ? String.valueOf(SquadDecision.NOT_EVALUATED)
+                : Csv.halfSupply(context.getContainSupplyLost()));
         return fields;
     }
 

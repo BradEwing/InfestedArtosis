@@ -1,5 +1,7 @@
 package telemetry;
 
+import bwapi.Position;
+import bwapi.UnitType;
 import lombok.Getter;
 import lombok.Setter;
 import unit.squad.CombatSimulator;
@@ -34,6 +36,12 @@ final class SquadDecision {
     private int shouldContain = NOT_EVALUATED;
     private int canBreakContainment = NOT_EVALUATED;
     private int containmentEntered = NOT_EVALUATED;
+
+    private Position pushbackFrom;
+    private Position pushbackTo;
+    private UnitType pushbackEnemyType;
+    private int pushbackMembersMoved = NOT_EVALUATED;
+    private int containSupplyLost = NOT_EVALUATED;
 
     static int tristate(boolean value) {
         return value ? 1 : 0;

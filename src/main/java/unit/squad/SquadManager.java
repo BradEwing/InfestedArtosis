@@ -1230,18 +1230,22 @@ public class SquadManager {
      *
      * <p>A containing squad always sits within the squad detection radius of the units it contains, so mere
      * proximity carries no information and never ends an episode. Only the strength gate, the timeout, a base
-     * under attack, or containment ceasing to apply end one. An enemy that has reached the arc holds the squad
-     * in place instead of moving it: each unit already returns fire inside its own weapon range, so the squad
-     * trades on the line rather than charging a position it has been measured as unable to break.
+     * under attack, attrition, losing every arc point to outranging fire, or containment ceasing to apply end
+     * one. An enemy that has reached the arc holds the squad in place instead of moving it: each unit already
+     * returns fire inside its own weapon range, so the squad trades on the line rather than charging a position it
+     * has been measured as unable to break.
      *
-     * <p>Bases under attack outrank the re-evaluation throttle and are the only verdict reachable on a throttled
-     * frame, so every episode survives at least one throttle interval.
+     * <p>Bases under attack, attrition and a lost arc outrank the re-evaluation throttle and are the only verdicts
+     * reachable on a throttled frame. A squad being ground down, or with nowhere left to stand out of reach, leaves
+     * on the frame it happens rather than at the next re-evaluation tick.
      *
      * <p>Only a base under attack and the strength gate move the whole army; they are the two signals that are
      * true for every squad at once. A squad that has run out its own containment clock disengages by itself
      * rather than committing squads whose gate has not fired.
      *
      * @param basesUnderAttack true when any of our bases has a tracked threat
+     * @param bleeding true when the squad is losing supply within the attrition window while killing little
+     * @param arcLost true when no arc point on the choke stays out of reach of an enemy that outranges the squad
      * @param throttled true when the contain lock holds and this frame is not a re-evaluation tick
      * @param engaged true when a mobile enemy is within contact range of a member
      * @param timedOut true when the episode has run past the containment timeout
@@ -1249,10 +1253,14 @@ public class SquadManager {
      * @param shouldContain true when containment still applies to this squad
      * @return verdict for this frame
      */
-    static ContainmentVerdict containmentVerdict(boolean basesUnderAttack, boolean throttled, boolean engaged,
-                                                 boolean timedOut, boolean canBreak, boolean shouldContain) {
+    static ContainmentVerdict containmentVerdict(boolean basesUnderAttack, boolean bleeding, boolean arcLost,
+                                                 boolean throttled, boolean engaged, boolean timedOut,
+                                                 boolean canBreak, boolean shouldContain) {
         if (basesUnderAttack) {
             return ContainmentVerdict.BREAK_ALL;
+        }
+        if (bleeding || arcLost) {
+            return ContainmentVerdict.RETREAT;
         }
         if (throttled) {
             return ContainmentVerdict.HOLD;
@@ -1280,22 +1288,24 @@ public class SquadManager {
         HashSet<ManagedUnit> members = squad.getMembers();
 
         boolean basesUnderAttack = basesUnderAttack();
+        boolean bleeding = !basesUnderAttack && squad.getContainmentAttrition().isBleeding(now, squad.getSupply());
+        boolean arcLost = !basesUnderAttack && !bleeding && pushBackFromOutrangingFire(squad) == Pushback.NO_ARC;
         boolean throttled = isContainmentThrottled(squad, now);
-        boolean evaluate = !basesUnderAttack && !throttled;
+        boolean evaluate = !basesUnderAttack && !bleeding && !arcLost && !throttled;
         boolean timedOut = evaluate && containmentTimedOut(squad, now);
         boolean canBreak = evaluate && containmentEvaluator.canBreakContainment(fightSquads);
         boolean shouldContain = !evaluate || containmentEvaluator.shouldContain(squad);
         boolean engaged = evaluate && enemiesOnContainmentArc(squad);
 
-        ContainmentVerdict verdict = containmentVerdict(basesUnderAttack, throttled, engaged, timedOut, canBreak,
-                shouldContain);
+        ContainmentVerdict verdict = containmentVerdict(basesUnderAttack, bleeding, arcLost, throttled, engaged,
+                timedOut, canBreak, shouldContain);
 
         switch (verdict) {
             case BREAK_ALL:
                 breakAllContainment(now);
                 break;
             case RETREAT:
-                retreatFromContainment(squad, members, now);
+                retreatFromContainment(squad, members, now, containmentExitPath(bleeding, arcLost));
                 break;
             case REPOSITION:
                 repositionContainingSquad(squad, members, now);
@@ -1305,12 +1315,115 @@ public class SquadManager {
         }
     }
 
-    private void retreatFromContainment(Squad squad, HashSet<ManagedUnit> members, int now) {
-        squad.clearContainStart();
+    /**
+     * Names the branch that sent a containing squad back, so attrition and outranging exits are separable from the
+     * timeout and the size floor.
+     *
+     * @param bleeding true when the attrition rule fired
+     * @param arcLost true when no arc point stayed out of reach of an outranging enemy
+     * @return the decision path of the retreat
+     */
+    static DecisionPath containmentExitPath(boolean bleeding, boolean arcLost) {
+        if (bleeding) {
+            return DecisionPath.CONTAIN_ATTRITION;
+        }
+        if (arcLost) {
+            return DecisionPath.CONTAIN_OUTRANGED;
+        }
+        return DecisionPath.CONTAIN_RETREAT;
+    }
+
+    private void retreatFromContainment(Squad squad, HashSet<ManagedUnit> members, int now, DecisionPath path) {
+        endContainment(squad);
         squad.setStatus(SquadStatus.RETREAT);
-        SquadDecisions.pathTaken(squad, DecisionPath.CONTAIN_RETREAT);
+        SquadDecisions.pathTaken(squad, path);
         assignRetreatTargets(squad, members);
         squad.startRetreatLock(now);
+    }
+
+    private void endContainment(Squad squad) {
+        SquadDecisions.containmentEnded(squad, squad.getContainmentAttrition().getTotalLost());
+        squad.clearContainStart();
+    }
+
+    /**
+     * Outcome of checking a containing squad for fire from enemies that outrange it.
+     */
+    enum Pushback {
+        NONE,
+        PUSHED,
+        NO_ARC
+    }
+
+    /**
+     * Moves the arc back when a member is hit by an enemy that outranges it and the arc still stands in that
+     * enemy's reach. The arc is regrown until every point, and so every member's contain position, is outside the
+     * reach of every outranging enemy the episode has seen, plus the padding. Every member is reassigned, not only
+     * the one that was hit.
+     *
+     * @param squad containing squad
+     * @return PUSHED when the arc moved, NO_ARC when no radius leaves a point clear, NONE otherwise
+     */
+    private Pushback pushBackFromOutrangingFire(Squad squad) {
+        Arc current = squad.getContainmentArc();
+        if (current == null || current.isEmpty()) {
+            return Pushback.NONE;
+        }
+        Unit trigger = recordOutrangingShooters(squad);
+        if (trigger == null) {
+            return Pushback.NONE;
+        }
+        int padding = containmentDefensePadding(squad.getComposition().keySet());
+        if (!ContainmentPushback.covers(current, squad.getOutrangingThreats().values(), padding)) {
+            return Pushback.NONE;
+        }
+        Arc pushed = ContainmentPushback.pushBack(current, containmentZones(squad), padding,
+                gameState.getGameMap().getAccessibleWalkPositions(), game.mapWidth() * 32, game.mapHeight() * 32);
+        if (pushed == null) {
+            return Pushback.NO_ARC;
+        }
+        Position from = current.getMidpoint();
+        squad.setContainRadius(pushed.getRadius());
+        int moved = assignContainmentPositions(squad, pushed);
+        SquadDecisions.containmentPushedBack(squad, from, pushed.getMidpoint(), trigger.getType(), moved);
+        return Pushback.PUSHED;
+    }
+
+    /**
+     * Records every visible enemy that outranges a member it can reach while that member is under attack, where
+     * it stands now. Those are the units a member can be hit by and cannot answer.
+     *
+     * @param squad containing squad
+     * @return the outranging enemy with the longest reach found this frame, or null when there is none
+     */
+    private Unit recordOutrangingShooters(Squad squad) {
+        Unit trigger = null;
+        int triggerReach = 0;
+        for (ManagedUnit member : squad.getMembers()) {
+            Unit memberUnit = member.getUnit();
+            if (!memberUnit.isUnderAttack()) {
+                continue;
+            }
+            int memberRange = ContainmentPushback.groundReach(member.getUnitType(),
+                    weapon -> memberUnit.getPlayer().weaponMaxRange(weapon));
+            for (Unit enemy : gameState.getVisibleEnemyUnits()) {
+                int reach = ContainmentPushback.groundReach(enemy.getType(),
+                        weapon -> enemy.getPlayer().weaponMaxRange(weapon));
+                if (!ContainmentPushback.outranges(reach, memberRange)) {
+                    continue;
+                }
+                if (enemy.getDistance(memberUnit) > reach + CONTAIN_DEFENSE_MARGIN) {
+                    continue;
+                }
+                squad.getOutrangingThreats().put(enemy.getID(),
+                        new StaticDefenseZone(enemy.getType(), enemy.getPosition(), reach));
+                if (reach > triggerReach) {
+                    trigger = enemy;
+                    triggerReach = reach;
+                }
+            }
+        }
+        return trigger;
     }
 
     /**
@@ -1324,7 +1437,7 @@ public class SquadManager {
     private void repositionContainingSquad(Squad squad, HashSet<ManagedUnit> members, int now) {
         Arc arc = containmentArc(squad);
         if (arc == null) {
-            retreatFromContainment(squad, members, now);
+            retreatFromContainment(squad, members, now, DecisionPath.CONTAIN_RETREAT);
             return;
         }
         assignContainmentPositions(squad, arc);
@@ -1397,7 +1510,7 @@ public class SquadManager {
     private void breakAllContainment(int now) {
         for (Squad s : fightSquads) {
             if (s.getStatus() == SquadStatus.CONTAIN) {
-                s.clearContainStart();
+                endContainment(s);
                 s.setStatus(SquadStatus.FIGHT);
                 SquadDecisions.pathTaken(s, DecisionPath.CONTAIN_BREAK);
                 assignFightTargets(s, s.getMembers(), true);
@@ -1467,7 +1580,7 @@ public class SquadManager {
     }
 
     private void enterRunby(Squad squad, Base base, RunbyTarget target, int now) {
-        squad.clearContainStart();
+        endContainment(squad);
         squad.setStatus(SquadStatus.RUNBY);
         squad.commit(now);
         SquadDecisions.pathTaken(squad, DecisionPath.RUNBY_ENTER);
@@ -2005,11 +2118,13 @@ public class SquadManager {
     }
 
     /**
-     * Builds the arc a squad would hold at the choke in front of the enemy base closest to it.
+     * Builds the arc a squad would hold at the choke in front of the enemy base closest to it, at the radius the
+     * episode has been pushed back to, clear of enemy static defence and of every enemy that has outranged the
+     * squad this episode.
      *
      * @param squad squad offered the arc
      * @return the computed arc, or null when there is no enemy base or choke, or no arc point is clear of
-     *     enemy static defence
+     *     enemy static defence or outranging enemies
      */
     private Arc containmentArc(Squad squad) {
         HashSet<Base> enemyBases = gameState.getBaseData().getEnemyBases();
@@ -2027,11 +2142,18 @@ public class SquadManager {
         int numPoints = Math.max(squad.size(), 4);
         int mapPixelWidth = game.mapWidth() * 32;
         int mapPixelHeight = game.mapHeight() * 32;
-        Arc arc = new Arc(chokePosition, faceTarget, ARC_RADIUS, ARC_DEGREES, numPoints);
+        int radius = Math.max(ARC_RADIUS, squad.getContainRadius());
+        Arc arc = new Arc(chokePosition, faceTarget, radius, ARC_DEGREES, numPoints);
         Set<WalkPosition> accessiblePositions = gameState.getGameMap().getAccessibleWalkPositions();
-        arc.compute(accessiblePositions, gameState.getStaticDefenseZones(),
+        arc.compute(accessiblePositions, containmentZones(squad),
                 containmentDefensePadding(squad.getComposition().keySet()), mapPixelWidth, mapPixelHeight);
         return arc.isEmpty() ? null : arc;
+    }
+
+    private List<StaticDefenseZone> containmentZones(Squad squad) {
+        List<StaticDefenseZone> zones = new ArrayList<>(gameState.getStaticDefenseZones());
+        zones.addAll(squad.getOutrangingThreats().values());
+        return zones;
     }
 
     /**
@@ -2050,10 +2172,18 @@ public class SquadManager {
         return extent + CONTAIN_DEFENSE_MARGIN;
     }
 
-    private void assignContainmentPositions(Squad squad, Arc arc) {
+    /**
+     * Puts the squad on an arc and gives every member a point of it.
+     *
+     * @param squad containing squad
+     * @param arc computed arc
+     * @return members whose contain position changed
+     */
+    private int assignContainmentPositions(Squad squad, Arc arc) {
         activeContainmentArcs.add(arc);
         squad.setContainmentArc(arc);
 
+        int moved = 0;
         List<ManagedUnit> units = new ArrayList<>(squad.getMembers());
         Map<ManagedUnit, Position> assignments = arc.assignUnits(units);
         for (ManagedUnit mu : units) {
@@ -2064,9 +2194,32 @@ public class SquadManager {
             if (assigned == null) {
                 continue;
             }
+            if (!assigned.equals(mu.getContainPosition())) {
+                moved++;
+            }
             mu.setRole(UnitRole.CONTAIN);
             mu.setContainPosition(assigned);
         }
+        return moved;
+    }
+
+    /**
+     * Puts a unit joining a containing squad on the arc the squad already holds, leaving the squad's status alone.
+     * The squad's next re-evaluation redistributes the whole arc.
+     *
+     * @param squad containing squad the unit joined
+     * @param managedUnit unit that joined
+     */
+    private void joinContainment(Squad squad, ManagedUnit managedUnit) {
+        Arc arc = squad.getContainmentArc();
+        Position assigned = arc == null ? null : arc.closestPosition(managedUnit.getPosition());
+        if (assigned == null) {
+            managedUnit.setRallyPoint(squad.getCenter());
+            managedUnit.setRole(UnitRole.RALLY);
+            return;
+        }
+        managedUnit.setRole(UnitRole.CONTAIN);
+        managedUnit.setContainPosition(assigned);
     }
 
     private Base closestBaseTo(Position pos, Set<Base> bases) {
@@ -2271,10 +2424,34 @@ public class SquadManager {
         addManagedFighter(managedUnit);
     }
 
+    /**
+     * Clears references to a destroyed unit and books it against any containing squad: a member's death as a
+     * loss, an enemy's death near a member as a kill. Must run before the unit is removed from its squad.
+     *
+     * @param unit destroyed unit
+     */
     public void onUnitDestroy(Unit unit) {
+        int now = game.getFrameCount();
+        boolean enemy = unit.getPlayer() == game.enemy();
         for (Squad squad: fightSquads) {
             if (squad.getTarget() == unit) {
                 squad.setTarget(null);
+            }
+            if (squad.getStatus() != SquadStatus.CONTAIN) {
+                continue;
+            }
+            squad.getOutrangingThreats().remove(unit.getID());
+            if (enemy) {
+                if (anyMemberWithin(squad, unit.getPosition(), CONTAINMENT_ENGAGE_RADIUS)) {
+                    squad.getContainmentAttrition().recordKill(now, unit.getType().supplyRequired());
+                }
+                continue;
+            }
+            for (ManagedUnit member : squad.getMembers()) {
+                if (member.getUnit() == unit) {
+                    squad.getContainmentAttrition().recordLoss(now, member.getUnitType().supplyRequired());
+                    break;
+                }
             }
         }
         irradiatedUnits.removeIf(mu -> mu.getUnit() == unit);
@@ -2308,6 +2485,15 @@ public class SquadManager {
         }
     }
 
+    private boolean anyMemberWithin(Squad squad, Position position, int radius) {
+        for (ManagedUnit member : squad.getMembers()) {
+            if (member.getPosition().getDistance(position) <= radius) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private void addManagedFighter(ManagedUnit managedUnit) {
         if (managedUnit.isIrradiated()) {
             managedUnit.setRole(UnitRole.FIGHT);
@@ -2328,9 +2514,15 @@ public class SquadManager {
         }
 
         squad.addUnit(managedUnit);
-        if (shouldStageSquad(squad)) {
-            rallySquad(squad, RallyReason.STAGING);
-            return;
+        switch (reinforcementPath(squad.getStatus(), shouldStageSquad(squad))) {
+            case STAGE:
+                rallySquad(squad, RallyReason.STAGING);
+                return;
+            case JOIN_CONTAINMENT:
+                joinContainment(squad, managedUnit);
+                return;
+            default:
+                break;
         }
 
         RallyRelease release = reinforcementRelease(squad.getStatus());
@@ -2339,6 +2531,37 @@ public class SquadManager {
         }
 
         simulateFightSquad(squad);
+    }
+
+    /**
+     * Branch {@link #addManagedFighter} takes for the squad a reinforcement joined.
+     */
+    enum ReinforcementPath {
+        STAGE,
+        JOIN_CONTAINMENT,
+        SIMULATE
+    }
+
+    /**
+     * Picks what a reinforcement does to the squad it joined.
+     *
+     * <p>A containing squad changes status only through {@link #evaluateContainingSquad}, so a unit joining one
+     * takes a point on the arc and never runs the squad through {@link #simulateFightSquad}. A zergling scout can
+     * be pulled from a containing squad and handed straight back every 24 frames; simulating on each return would
+     * let a blind ADVANCE flip the squad to FIGHT until the next frame re-entered the arc.
+     *
+     * @param status status the squad held as the reinforcement joined
+     * @param stage true when the squad is rallying with no enemy inside its detection radius
+     * @return branch to take
+     */
+    static ReinforcementPath reinforcementPath(SquadStatus status, boolean stage) {
+        if (status == SquadStatus.CONTAIN) {
+            return ReinforcementPath.JOIN_CONTAINMENT;
+        }
+        if (stage) {
+            return ReinforcementPath.STAGE;
+        }
+        return ReinforcementPath.SIMULATE;
     }
 
     /**

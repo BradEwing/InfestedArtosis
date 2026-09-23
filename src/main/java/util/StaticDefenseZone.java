@@ -10,6 +10,9 @@ import java.util.Set;
 /**
  * Ground a static defence structure can fire on. Weapon range is measured from the structure's edge, the way
  * Unit.getDistance measures it, so the zone is the structure's footprint grown by its reach.
+ *
+ * <p>A containing squad also builds one around a mobile enemy that outranges it, from the enemy's type and the
+ * position it fired from.
  */
 public final class StaticDefenseZone {
 

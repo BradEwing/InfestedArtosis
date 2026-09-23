@@ -43,6 +43,24 @@ public class Arc {
         this.centerAngle = Math.atan2(dy, dx);
     }
 
+    private Arc(Position center, double centerAngle, int radius, int arcDegrees, int numPoints) {
+        this.center = center;
+        this.centerAngle = centerAngle;
+        this.radius = radius;
+        this.arcDegrees = arcDegrees;
+        this.numPoints = numPoints;
+    }
+
+    /**
+     * An uncomputed arc with the same center, facing, span and point count at another radius.
+     *
+     * @param newRadius radius of the new arc
+     * @return the new arc, to be computed before use
+     */
+    public Arc withRadius(int newRadius) {
+        return new Arc(center, centerAngle, newRadius, arcDegrees, numPoints);
+    }
+
     /**
      * Places the arc's points. A point a static defence structure could fire on is pushed outward along its ray
      * until no zone covers it, and dropped when no walkable point within the push limit is clear.
@@ -101,6 +119,25 @@ public class Arc {
 
     public int size() {
         return positions.size();
+    }
+
+    /**
+     * Centroid of the computed points: where the line the squad holds actually sits, as opposed to the choke
+     * the arc is drawn around.
+     *
+     * @return centroid of the points, or null when the arc is empty
+     */
+    public Position getMidpoint() {
+        if (positions.isEmpty()) {
+            return null;
+        }
+        int x = 0;
+        int y = 0;
+        for (Position pos : positions) {
+            x += pos.getX();
+            y += pos.getY();
+        }
+        return new Position(x / positions.size(), y / positions.size());
     }
 
     /**
