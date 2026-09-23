@@ -3,6 +3,7 @@ package unit.squad;
 import bwapi.Position;
 import bwapi.UnitType;
 import info.map.BaseArea;
+import info.tracking.EnemyReachMemory;
 import org.junit.jupiter.api.Test;
 import util.StaticDefenseZone;
 
@@ -52,7 +53,8 @@ class RunbyTargetingTest {
     }
 
     private static RunbyTargeting.Threat zealotThreat(Position position) {
-        return RunbyTargeting.Threat.of(UnitType.Protoss_Zealot, position);
+        return RunbyTargeting.Threat.of(UnitType.Protoss_Zealot, position,
+                EnemyReachMemory.baseGroundRange(UnitType.Protoss_Zealot));
     }
 
     private static RunbyTargeting.Situation.SituationBuilder harass(boolean winnable) {
@@ -499,6 +501,49 @@ class RunbyTargetingTest {
                 RunbyTargeting.reach(UnitType.Protoss_Photon_Cannon));
         assertTrue(RunbyTargeting.reach(UnitType.Terran_Bunker)
                 >= UnitType.Terran_Marine.groundWeapon().maxRange());
+    }
+
+    @Test
+    void reachTakesTheLearnedRangeAndIsUnchangedWhenTheLearnedRangeIsShorter() {
+        UnitType bunker = UnitType.Terran_Bunker;
+        int base = EnemyReachMemory.baseGroundRange(bunker);
+
+        assertEquals(RunbyTargeting.reach(bunker), RunbyTargeting.reach(bunker, base));
+        assertEquals(RunbyTargeting.reach(bunker), RunbyTargeting.reach(bunker, base - 40));
+        assertEquals(RunbyTargeting.reach(bunker) + 56, RunbyTargeting.reach(bunker, base + 56));
+    }
+
+    @Test
+    void aHurtMarkThreatensItsRadiusAroundWhereTheLingWasHit() {
+        EnemyReachMemory memory = new EnemyReachMemory();
+        memory.recordHurt(LING_AT, NOW);
+
+        RunbyTargeting.Threat threat = RunbyTargeting.Threat.of(memory.liveHurtMarks(NOW).get(0));
+
+        assertEquals(LING_AT, threat.getPosition());
+        assertEquals(EnemyReachMemory.HURT_MARK_RADIUS, threat.getReach());
+    }
+
+    @Test
+    void theZoneEvadeSearchStepsOutOfAZoneAwayFromItsSource() {
+        StaticDefenseZone bunker = new StaticDefenseZone(UnitType.Terran_Bunker, east(-200), 184);
+        int padding = SquadManager.containmentDefensePadding(Collections.singletonList(UnitType.Zerg_Zergling));
+        List<StaticDefenseZone> zones = Collections.singletonList(bunker);
+        assertTrue(RunbyTargeting.zoneMargin(LING_AT, zones, padding) < 0);
+
+        Position point = RunbyTargeting.findEvadePoint(LING_AT, zones, padding, position -> true, null);
+
+        assertTrue(RunbyTargeting.zoneMargin(point, zones, padding) > RunbyTargeting.zoneMargin(LING_AT, zones,
+                padding));
+        assertTrue(point.getX() > LING_AT.getX(), "the ling steps away from the Bunker");
+    }
+
+    @Test
+    void theZoneEvadeSearchHonoursWhereTheUnitMayGo() {
+        StaticDefenseZone bunker = new StaticDefenseZone(UnitType.Terran_Bunker, east(-200), 184);
+
+        assertNull(RunbyTargeting.findEvadePoint(LING_AT, Collections.singletonList(bunker), 43,
+                position -> false, null));
     }
 
     @Test

@@ -2,7 +2,7 @@ package unit.squad;
 
 import bwapi.Position;
 import bwapi.UnitType;
-import bwapi.WeaponType;
+import info.tracking.EnemyReachMemory;
 import org.junit.jupiter.api.Test;
 import telemetry.DecisionPath;
 import util.Arc;
@@ -22,6 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static unit.squad.SquadManager.ContainmentVerdict;
+import static unit.squad.SquadManager.OutrangedHit;
 import static unit.squad.SquadManager.ReinforcementPath;
 import static unit.squad.SquadManager.containKillRadius;
 import static unit.squad.SquadManager.containmentExitPath;
@@ -57,10 +58,13 @@ class SquadContainmentTest {
     private static final int REPLAY_START = 18150;
     private static final int KILL_FRAME = 18150;
     private static final int SQUAD_SUPPLY_LEFT = 6;
+    private static final OutrangedHit NO_HIT = OutrangedHit.NONE;
+    private static final OutrangedHit HIT_ARC_KEPT = OutrangedHit.ARC_KEPT;
+    private static final OutrangedHit HIT_ARC_LOST = OutrangedHit.ARC_LOST;
 
     private static ContainmentVerdict verdict(boolean basesUnderAttack, boolean throttled, boolean engaged,
                                               boolean timedOut, boolean canBreak, boolean shouldContain) {
-        return containmentVerdict(basesUnderAttack, HOLDING_UP, ARC_KEPT, throttled, engaged, timedOut, canBreak,
+        return containmentVerdict(basesUnderAttack, HOLDING_UP, NO_HIT, throttled, engaged, timedOut, canBreak,
                 shouldContain);
     }
 
@@ -139,7 +143,7 @@ class SquadContainmentTest {
             for (boolean engaged : new boolean[] {ARC_CLEAR, ENEMIES_ON_ARC}) {
                 for (boolean canBreak : new boolean[] {BELOW_BREAK_RATIO, CAN_BREAK}) {
                     assertEquals(ContainmentVerdict.RETREAT,
-                            containmentVerdict(BASES_SAFE, BLEEDING, ARC_KEPT, throttled, engaged, IN_TIME,
+                            containmentVerdict(BASES_SAFE, BLEEDING, NO_HIT, throttled, engaged, IN_TIME,
                                     canBreak, SHOULD_CONTAIN));
                 }
             }
@@ -149,17 +153,17 @@ class SquadContainmentTest {
     @Test
     void withoutAttritionAnEngagedSquadHolds() {
         assertEquals(ContainmentVerdict.HOLD,
-                containmentVerdict(BASES_SAFE, HOLDING_UP, ARC_KEPT, UNTHROTTLED, ENEMIES_ON_ARC, IN_TIME,
+                containmentVerdict(BASES_SAFE, HOLDING_UP, NO_HIT, UNTHROTTLED, ENEMIES_ON_ARC, IN_TIME,
                         BELOW_BREAK_RATIO, SHOULD_CONTAIN));
         assertEquals(ContainmentVerdict.HOLD,
-                containmentVerdict(BASES_SAFE, HOLDING_UP, ARC_KEPT, THROTTLED, ENEMIES_ON_ARC, IN_TIME,
+                containmentVerdict(BASES_SAFE, HOLDING_UP, NO_HIT, THROTTLED, ENEMIES_ON_ARC, IN_TIME,
                         BELOW_BREAK_RATIO, SHOULD_CONTAIN));
     }
 
     @Test
     void aBaseUnderAttackStillOutranksAttrition() {
         assertEquals(ContainmentVerdict.BREAK_ALL,
-                containmentVerdict(BASES_ATTACKED, BLEEDING, ARC_LOST, THROTTLED, ENEMIES_ON_ARC, IN_TIME,
+                containmentVerdict(BASES_ATTACKED, BLEEDING, HIT_ARC_LOST, THROTTLED, ENEMIES_ON_ARC, IN_TIME,
                         BELOW_BREAK_RATIO, SHOULD_CONTAIN));
     }
 
@@ -167,9 +171,55 @@ class SquadContainmentTest {
     void noArcPointOutOfReachRetreatsInsteadOfHolding() {
         for (boolean throttled : new boolean[] {UNTHROTTLED, THROTTLED}) {
             assertEquals(ContainmentVerdict.RETREAT,
-                    containmentVerdict(BASES_SAFE, HOLDING_UP, ARC_LOST, throttled, ENEMIES_ON_ARC, IN_TIME,
+                    containmentVerdict(BASES_SAFE, HOLDING_UP, HIT_ARC_LOST, throttled, ENEMIES_ON_ARC, IN_TIME,
                             BELOW_BREAK_RATIO, SHOULD_CONTAIN));
         }
+    }
+
+    @Test
+    void anOutrangedHitOnAThrottledFramePushesBackOrRetreatsAndNeverHolds() {
+        for (boolean engaged : new boolean[] {ARC_CLEAR, ENEMIES_ON_ARC}) {
+            for (boolean timedOut : new boolean[] {IN_TIME, TIMED_OUT}) {
+                for (boolean shouldContain : new boolean[] {SHOULD_CONTAIN, false}) {
+                    assertEquals(ContainmentVerdict.PUSH_BACK,
+                            containmentVerdict(BASES_SAFE, HOLDING_UP, HIT_ARC_KEPT, THROTTLED, engaged, timedOut,
+                                    BELOW_BREAK_RATIO, shouldContain));
+                    assertEquals(ContainmentVerdict.RETREAT,
+                            containmentVerdict(BASES_SAFE, HOLDING_UP, HIT_ARC_LOST, THROTTLED, engaged, timedOut,
+                                    BELOW_BREAK_RATIO, shouldContain));
+                }
+            }
+        }
+    }
+
+    @Test
+    void anOutrangedHitOverridesAnEnemyOnTheArc() {
+        for (boolean throttled : new boolean[] {UNTHROTTLED, THROTTLED}) {
+            assertEquals(ContainmentVerdict.HOLD,
+                    containmentVerdict(BASES_SAFE, HOLDING_UP, NO_HIT, throttled, ENEMIES_ON_ARC, IN_TIME,
+                            BELOW_BREAK_RATIO, SHOULD_CONTAIN));
+            assertEquals(ContainmentVerdict.PUSH_BACK,
+                    containmentVerdict(BASES_SAFE, HOLDING_UP, HIT_ARC_KEPT, throttled, ENEMIES_ON_ARC, IN_TIME,
+                            BELOW_BREAK_RATIO, SHOULD_CONTAIN));
+        }
+    }
+
+    @Test
+    void attritionAndABaseUnderAttackOutrankAnOutrangedHit() {
+        assertEquals(ContainmentVerdict.RETREAT,
+                containmentVerdict(BASES_SAFE, BLEEDING, HIT_ARC_KEPT, THROTTLED, ENEMIES_ON_ARC, IN_TIME,
+                        BELOW_BREAK_RATIO, SHOULD_CONTAIN));
+        assertEquals(ContainmentVerdict.BREAK_ALL,
+                containmentVerdict(BASES_ATTACKED, HOLDING_UP, HIT_ARC_KEPT, THROTTLED, ENEMIES_ON_ARC, IN_TIME,
+                        BELOW_BREAK_RATIO, SHOULD_CONTAIN));
+    }
+
+    @Test
+    void anOutrangedHitKeepsTheArcUnlessNoPointIsLeft() {
+        assertEquals(NO_HIT, SquadManager.outrangedHitVerdict(false, false));
+        assertEquals(NO_HIT, SquadManager.outrangedHitVerdict(false, true));
+        assertEquals(HIT_ARC_KEPT, SquadManager.outrangedHitVerdict(true, false));
+        assertEquals(HIT_ARC_LOST, SquadManager.outrangedHitVerdict(true, true));
     }
 
     @Test
@@ -213,14 +263,14 @@ class SquadContainmentTest {
 
     @Test
     void aKillAtTheOldEngageRadiusIsNotCreditedToALingContain() {
-        int lingReach = ContainmentPushback.groundReach(UnitType.Zerg_Zergling, WeaponType::maxRange);
+        int lingReach = EnemyReachMemory.baseGroundRange(UnitType.Zerg_Zergling);
 
         assertTrue(containKillRadius(UnitType.Zerg_Zergling, lingReach, UnitType.Terran_Marine) < 256);
     }
 
     @Test
     void aKillBesideAMemberIsCredited() {
-        int lingReach = ContainmentPushback.groundReach(UnitType.Zerg_Zergling, WeaponType::maxRange);
+        int lingReach = EnemyReachMemory.baseGroundRange(UnitType.Zerg_Zergling);
         int adjacent = UnitType.Zerg_Zergling.dimensionRight() + UnitType.Terran_Marine.dimensionLeft() + lingReach;
 
         assertTrue(adjacent <= containKillRadius(UnitType.Zerg_Zergling, lingReach, UnitType.Terran_Marine));
@@ -228,8 +278,8 @@ class SquadContainmentTest {
 
     @Test
     void aRangedMemberIsCreditedFartherOut() {
-        int lingReach = ContainmentPushback.groundReach(UnitType.Zerg_Zergling, WeaponType::maxRange);
-        int hydraReach = ContainmentPushback.groundReach(UnitType.Zerg_Hydralisk, WeaponType::maxRange);
+        int lingReach = EnemyReachMemory.baseGroundRange(UnitType.Zerg_Zergling);
+        int hydraReach = EnemyReachMemory.baseGroundRange(UnitType.Zerg_Hydralisk);
 
         assertTrue(containKillRadius(UnitType.Zerg_Hydralisk, hydraReach, UnitType.Terran_Marine)
                 > containKillRadius(UnitType.Zerg_Zergling, lingReach, UnitType.Terran_Marine));
@@ -370,7 +420,7 @@ class SquadContainmentTest {
             boolean underAttack = threatensContainment(threatsAt.apply(frame - REPLAY_START));
             if (squad.getStatus() == SquadStatus.CONTAIN) {
                 boolean throttled = isContainmentThrottled(squad, frame);
-                ContainmentVerdict verdict = containmentVerdict(underAttack, HOLDING_UP, ARC_KEPT, throttled,
+                ContainmentVerdict verdict = containmentVerdict(underAttack, HOLDING_UP, NO_HIT, throttled,
                         ARC_CLEAR, IN_TIME, BELOW_BREAK_RATIO, SHOULD_CONTAIN);
                 if (verdict == ContainmentVerdict.BREAK_ALL) {
                     squad.clearContainStart();

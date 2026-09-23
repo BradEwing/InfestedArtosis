@@ -1,16 +1,22 @@
 package info;
 
+import bwapi.Position;
 import bwapi.Race;
 import bwapi.UnitType;
+import info.tracking.EnemyReachMemory;
 import macro.plan.BuildingPlan;
 import macro.plan.Plan;
 import macro.plan.PlanState;
 import macro.plan.UnitPlan;
 import org.junit.jupiter.api.Test;
+import util.StaticDefenseZone;
 
+import java.util.Collections;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -144,6 +150,43 @@ class GameStateTest {
                 protoss.get(UnitType.Protoss_Photon_Cannon));
         assertEquals(UnitType.Zerg_Sunken_Colony.groundWeapon().maxRange(), zerg.get(UnitType.Zerg_Sunken_Colony));
         assertTrue(GameState.staticDefenseReaches(Race.Unknown).isEmpty());
+    }
+
+    @Test
+    void staticDefenceZonesTakeTheReachLearnedForTheirType() {
+        EnemyReachMemory memory = new EnemyReachMemory();
+        Position bunker = new Position(848, 896);
+        Function<UnitType, Set<Position>> positions = type -> type == UnitType.Terran_Bunker
+                ? Collections.singleton(bunker) : Collections.emptySet();
+
+        List<StaticDefenseZone> before = GameState.staticDefenseZones(GameState.staticDefenseReaches(Race.Terran),
+                memory, positions);
+        memory.raise(UnitType.Terran_Bunker, 184, EnemyReachMemory.Source.BULLET, new Position(831, 1102), 7546);
+        List<StaticDefenseZone> after = GameState.staticDefenseZones(GameState.staticDefenseReaches(Race.Terran),
+                memory, positions);
+
+        assertEquals(1, before.size());
+        assertEquals(UnitType.Terran_Marine.groundWeapon().maxRange(), before.get(0).getReach());
+        assertEquals(184, after.get(0).getReach());
+    }
+
+    @Test
+    void groundThreatZonesJoinStaticMobileAndHurtMarkZones() {
+        EnemyReachMemory memory = new EnemyReachMemory();
+        memory.recordHurt(new Position(831, 1102), 7500);
+        StaticDefenseZone bunker = new StaticDefenseZone(UnitType.Terran_Bunker, new Position(848, 896), 184);
+        StaticDefenseZone marine = new StaticDefenseZone(UnitType.Terran_Marine, new Position(783, 901), 128);
+
+        List<StaticDefenseZone> zones = GameState.groundThreatZones(Collections.singletonList(bunker),
+                Collections.singletonList(marine), memory.liveHurtMarks(7600));
+
+        assertEquals(3, zones.size());
+        assertEquals(bunker, zones.get(0));
+        assertEquals(marine, zones.get(1));
+        assertEquals(new Position(831, 1102), zones.get(2).getCenter());
+        assertEquals(EnemyReachMemory.HURT_MARK_RADIUS, zones.get(2).getReach());
+        assertTrue(GameState.groundThreatZones(Collections.emptyList(), Collections.emptyList(),
+                memory.liveHurtMarks(7500 + EnemyReachMemory.HURT_MARK_WINDOW)).isEmpty());
     }
 
     @Test

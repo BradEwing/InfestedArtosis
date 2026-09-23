@@ -3,7 +3,7 @@ package unit.squad;
 import bwapi.Position;
 import bwapi.UnitType;
 import bwapi.WalkPosition;
-import bwapi.WeaponType;
+import info.tracking.EnemyReachMemory;
 import org.junit.jupiter.api.Test;
 import util.Arc;
 import util.StaticDefenseZone;
@@ -33,7 +33,7 @@ class ContainmentPushbackTest {
             Collections.singletonList(UnitType.Zerg_Zergling));
 
     private static int baseRange(UnitType type) {
-        return ContainmentPushback.groundReach(type, WeaponType::maxRange);
+        return EnemyReachMemory.baseGroundRange(type);
     }
 
     private static StaticDefenseZone firing(UnitType type, Position position) {
@@ -123,7 +123,8 @@ class ContainmentPushbackTest {
 
         assertNull(pushed);
         assertEquals(SquadManager.ContainmentVerdict.RETREAT,
-                SquadManager.containmentVerdict(false, false, pushed == null, true, true, false, false, true));
+                SquadManager.containmentVerdict(false, false, SquadManager.outrangedHitVerdict(true, pushed == null),
+                        true, true, false, false, true));
     }
 
     @Test
@@ -132,6 +133,68 @@ class ContainmentPushbackTest {
         atLimit.compute(ALL_WALKABLE, Collections.emptyList(), PADDING, MAP_PIXELS, MAP_PIXELS);
 
         assertNull(pushBack(atLimit, Collections.singletonList(firing(UnitType.Protoss_Dragoon, CHOKE))));
+    }
+
+    @Test
+    void aRecomputedArcClearOfEveryZoneStaysWhereItIs() {
+        Arc current = heldArc();
+        List<StaticDefenseZone> zones = Collections.singletonList(
+                firing(UnitType.Terran_Marine, new Position(1600, 2200)));
+
+        Arc recomputed = ContainmentPushback.recompute(current, zones, PADDING, ALL_WALKABLE, MAP_PIXELS, MAP_PIXELS);
+
+        assertNotNull(recomputed);
+        assertEquals(current.getRadius(), recomputed.getRadius());
+        assertEquals(current.getPositions(), recomputed.getPositions());
+    }
+
+    @Test
+    void aRecomputedArcUnderFireEndsOutsideEveryReach() {
+        Arc current = heldArc();
+        List<StaticDefenseZone> zones = Arrays.asList(
+                firing(UnitType.Protoss_Dragoon, new Position(1600, 1480)),
+                new StaticDefenseZone(UnitType.None, current.getPositions().get(0), 64));
+
+        Arc recomputed = ContainmentPushback.recompute(current, zones, PADDING, ALL_WALKABLE, MAP_PIXELS, MAP_PIXELS);
+
+        assertNotNull(recomputed);
+        assertEveryPointOutOfReach(recomputed, zones);
+    }
+
+    @Test
+    void aRecomputedArcWithNoPointClearIsNull() {
+        StaticDefenseZone coversEveryRadius = new StaticDefenseZone(UnitType.Terran_Siege_Tank_Siege_Mode, CHOKE,
+                ContainmentPushback.MAX_RADIUS * 4);
+
+        assertNull(ContainmentPushback.recompute(heldArc(), Collections.singletonList(coversEveryRadius), PADDING,
+                ALL_WALKABLE, MAP_PIXELS, MAP_PIXELS));
+    }
+
+    @Test
+    void theArcStaysOutOfStaticDefenceAndOfWhatOutrangesTheSquadOnly() {
+        int ling = baseRange(UnitType.Zerg_Zergling);
+        StaticDefenseZone sunken = firing(UnitType.Zerg_Sunken_Colony, CHOKE);
+        StaticDefenseZone marine = firing(UnitType.Terran_Marine, CHOKE);
+        StaticDefenseZone zealot = firing(UnitType.Protoss_Zealot, CHOKE);
+        StaticDefenseZone hurtMark = new StaticDefenseZone(UnitType.None, CHOKE, 64);
+
+        List<StaticDefenseZone> kept = ContainmentPushback.outrangingZones(
+                Arrays.asList(sunken, marine, zealot, hurtMark), ling);
+
+        assertEquals(Arrays.asList(sunken, marine, hurtMark), kept);
+    }
+
+    @Test
+    void theCoveringTypeIsTheLongestReachOverTheArc() {
+        Arc current = heldArc();
+        List<StaticDefenseZone> zones = Arrays.asList(
+                firing(UnitType.Terran_Marine, new Position(1500, 1520)),
+                firing(UnitType.Terran_Siege_Tank_Siege_Mode, new Position(1600, 1200)));
+
+        assertEquals(UnitType.Terran_Siege_Tank_Siege_Mode,
+                ContainmentPushback.coveringType(current, zones, PADDING));
+        assertNull(ContainmentPushback.coveringType(current,
+                Collections.singletonList(firing(UnitType.Terran_Marine, new Position(1600, 2200))), PADDING));
     }
 
     @Test

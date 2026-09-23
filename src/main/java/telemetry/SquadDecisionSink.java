@@ -86,6 +86,11 @@ public interface SquadDecisionSink {
     void onContainmentEnded(Squad squad, int supplyLost);
 
     /**
+     * A containing squad was evaluated, with whether a member was hit this frame by something it cannot answer.
+     */
+    void onOutrangedHitEvaluated(Squad squad, boolean outrangedHit);
+
+    /**
      * Worker defence at a base pulled gatherers, abandoned its defence, or released its defenders.
      *
      * <p>sim is the full commitment simulation behind a PULL or ABANDON, and null when none ran.

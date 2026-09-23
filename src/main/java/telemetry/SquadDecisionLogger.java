@@ -45,8 +45,10 @@ import java.util.Set;
  * semicolons; every other row carries -1 and NONE there.
  *
  * <p>CONTAIN_PUSHBACK is emitted when a containing squad moves its arc back out of reach of an enemy that
- * outranges it, with the old and new arc midpoints, the enemy type and the members moved. The row that closes a
- * containment episode carries the supply lost over it.
+ * outranges it, with the old and new arc midpoints, the type of the longest reaching zone that covered the old
+ * arc (None for a hurt mark) and the members moved. The row that closes a containment episode carries the supply
+ * lost over it. outranged_hit is 1 on a containing squad's row when a member was hit on that frame by something it
+ * cannot answer, 0 when none was, and -1 on any row not written from a containment evaluation.
  *
  * <p>Every row names the branch that decided the status it reports in decision_path. On a
  * LOCK_SUPPRESSED row that is the request the lock refused, so the suppression episodes a lock
@@ -71,7 +73,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
             + "defense_sim_enemy_survivors,defense_win_threshold,arc_center_x,arc_center_y,arc_points,"
             + "decision_path,sim_enemy_composition,sim_enemy_unscored_supply,runby_phase_old,runby_phase,"
             + "pushback_from_x,pushback_from_y,pushback_to_x,pushback_to_y,pushback_enemy_type,"
-            + "pushback_members_moved,contain_supply_lost";
+            + "pushback_members_moved,contain_supply_lost,outranged_hit";
 
     private static final int FLUSH_INTERVAL_FRAMES = 480;
     private static final String EVENT_STATUS_CHANGE = "STATUS_CHANGE";
@@ -249,8 +251,22 @@ public class SquadDecisionLogger implements SquadDecisionSink {
             context.setPushbackTo(to);
             context.setPushbackEnemyType(enemyType);
             context.setPushbackMembersMoved(membersMoved);
+            context.setOutrangedHit(1);
             writer.append(row(squad, game.getFrameCount(), EVENT_CONTAIN_PUSHBACK, squad.getStatus(),
                     squad.getStatus(), context, NONE));
+        } catch (RuntimeException e) {
+            disable();
+        }
+    }
+
+    @Override
+    public void onOutrangedHitEvaluated(Squad squad, boolean outrangedHit) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            decisionFor(squad).setOutrangedHit(SquadDecision.tristate(outrangedHit));
         } catch (RuntimeException e) {
             disable();
         }
@@ -561,13 +577,15 @@ public class SquadDecisionLogger implements SquadDecisionSink {
 
     /**
      * Builds the containment episode cells: where a push back moved the arc from and to, the enemy that forced
-     * it and how many members moved, then the supply lost over the episode in real supply.
+     * it and how many members moved, then the supply lost over the episode in real supply, then whether a member
+     * took an outranged hit.
      *
-     * <p>The push back cells are filled only on a CONTAIN_PUSHBACK row, and the supply lost only on the row that
-     * closes a containment episode. Every other row carries the not evaluated sentinels.
+     * <p>The push back cells are filled only on a CONTAIN_PUSHBACK row, the supply lost only on the row that
+     * closes a containment episode, and the outranged hit only on rows of a containing squad. Every other row
+     * carries the not evaluated sentinels.
      *
      * @param context the decision the row is built from
-     * @return the push back cells and the supply lost cell
+     * @return the push back cells, the supply lost cell and the outranged hit cell
      */
     static List<String> containmentCells(SquadDecision context) {
         List<String> fields = new ArrayList<>();
@@ -582,6 +600,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         fields.add(context.getContainSupplyLost() < 0
                 ? String.valueOf(SquadDecision.NOT_EVALUATED)
                 : Csv.halfSupply(context.getContainSupplyLost()));
+        fields.add(String.valueOf(context.getOutrangedHit()));
         return fields;
     }
 

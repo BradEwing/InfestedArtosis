@@ -42,6 +42,7 @@ final class SquadDecision {
     private UnitType pushbackEnemyType;
     private int pushbackMembersMoved = NOT_EVALUATED;
     private int containSupplyLost = NOT_EVALUATED;
+    private int outrangedHit = NOT_EVALUATED;
 
     static int tristate(boolean value) {
         return value ? 1 : 0;

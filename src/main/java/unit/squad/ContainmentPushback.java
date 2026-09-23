@@ -3,20 +3,22 @@ package unit.squad;
 import bwapi.Position;
 import bwapi.UnitType;
 import bwapi.WalkPosition;
-import bwapi.WeaponType;
 import util.Arc;
 import util.StaticDefenseZone;
 
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.List;
 import java.util.Set;
-import java.util.function.ToIntFunction;
 
 /**
  * Moves a containment arc back from enemies that outrange the units holding it.
  *
- * <p>The arc is regrown around the same choke at a larger radius, step by step, until a computed arc keeps as
- * many points as the arc it replaces. Every computed point already sits outside every reach zone plus the padding,
- * and members are only ever given computed points, so every member ends up outside the reach of every such enemy.
+ * <p>The arc is first recomputed where it stands against the current zones, which pushes only the points now
+ * covered. When that loses points, it is regrown around the same choke at a larger radius, step by step, until a
+ * computed arc keeps as many points as the arc it replaces. Every computed point already sits outside every reach
+ * zone plus the padding, and members are only ever given computed points, so every member ends up outside the
+ * reach of every such enemy.
  */
 final class ContainmentPushback {
 
@@ -24,24 +26,6 @@ final class ContainmentPushback {
     static final int MAX_RADIUS = 416;
 
     private ContainmentPushback() {
-    }
-
-    /**
-     * Ground reach of an enemy, measured from its edge the way {@link bwapi.Unit#getDistance} measures it. A Bunker
-     * reaches as far as the Marines inside it, matching the static defence zones.
-     *
-     * @param type enemy unit type
-     * @param weaponRange maps a ground weapon to its range for the owning player, upgrades included
-     * @return reach in pixels, or 0 when the unit has no ground attack
-     */
-    static int groundReach(UnitType type, ToIntFunction<WeaponType> weaponRange) {
-        WeaponType weapon = type == UnitType.Terran_Bunker
-                ? UnitType.Terran_Marine.groundWeapon()
-                : type.groundWeapon();
-        if (weapon == null || weapon == WeaponType.None) {
-            return 0;
-        }
-        return weaponRange.applyAsInt(weapon);
     }
 
     /**
@@ -57,6 +41,25 @@ final class ContainmentPushback {
     }
 
     /**
+     * The zones a containing squad keeps its arc out of: every static defence structure, and every other zone whose
+     * reach outranges the squad's shortest ranged member. An enemy the squad can answer in its own range is fought
+     * on the line instead.
+     *
+     * @param zones every ground threat zone
+     * @param memberRange shortest ground weapon range among the squad's members
+     * @return the zones the arc must stay out of
+     */
+    static List<StaticDefenseZone> outrangingZones(Collection<StaticDefenseZone> zones, int memberRange) {
+        List<StaticDefenseZone> kept = new ArrayList<>();
+        for (StaticDefenseZone zone : zones) {
+            if (zone.getStructure().isBuilding() || outranges(zone.getReach(), memberRange)) {
+                kept.add(zone);
+            }
+        }
+        return kept;
+    }
+
+    /**
      * Whether any point of the arc lies within reach plus padding of any zone.
      *
      * @param arc computed arc
@@ -65,14 +68,53 @@ final class ContainmentPushback {
      * @return true when a point is covered
      */
     static boolean covers(Arc arc, Collection<StaticDefenseZone> zones, int padding) {
+        return coveringType(arc, zones, padding) != null;
+    }
+
+    /**
+     * The type behind the longest reaching zone that covers a point of the arc.
+     *
+     * @param arc computed arc
+     * @param zones reach zones to test
+     * @param padding pixels added to each zone's reach
+     * @return the type, {@link UnitType#None} for a hurt mark, or null when no zone covers the arc
+     */
+    static UnitType coveringType(Arc arc, Collection<StaticDefenseZone> zones, int padding) {
+        StaticDefenseZone longest = null;
         for (Position point : arc.getPositions()) {
             for (StaticDefenseZone zone : zones) {
-                if (zone.covers(point, padding)) {
-                    return true;
+                if (zone.covers(point, padding) && (longest == null || zone.getReach() > longest.getReach())) {
+                    longest = zone;
                 }
             }
         }
-        return false;
+        return longest == null ? null : longest.getStructure();
+    }
+
+    /**
+     * Recomputes the arc against the current zones: where it stands when that keeps every point, otherwise the
+     * fuller of that and the arc {@link #pushBack} finds.
+     *
+     * @param current arc the squad holds now
+     * @param zones every reach zone the points must stay out of
+     * @param padding pixels added to every zone's reach, covering the holding unit's extent and a margin
+     * @param accessible walkable positions, or empty to treat the whole map as walkable
+     * @param mapPixelWidth map width in pixels
+     * @param mapPixelHeight map height in pixels
+     * @return the recomputed arc, or null when no point is left clear
+     */
+    static Arc recompute(Arc current, Collection<StaticDefenseZone> zones, int padding, Set<WalkPosition> accessible,
+                         int mapPixelWidth, int mapPixelHeight) {
+        Arc inPlace = current.withRadius(current.getRadius());
+        inPlace.compute(accessible, zones, padding, mapPixelWidth, mapPixelHeight);
+        if (!inPlace.isEmpty() && inPlace.size() >= current.size()) {
+            return inPlace;
+        }
+        Arc pushed = pushBack(current, zones, padding, accessible, mapPixelWidth, mapPixelHeight);
+        if (pushed != null && pushed.size() > inPlace.size()) {
+            return pushed;
+        }
+        return inPlace.isEmpty() ? null : inPlace;
     }
 
     /**

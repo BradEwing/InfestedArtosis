@@ -23,6 +23,8 @@ import java.util.stream.Collectors;
 
 public class ManagedUnit {
     protected static int THREE_SECONDS = 72;
+    public static final int MELEE_MARGIN = 16;
+    static final int OUTRANGED_EVADE_FRAMES = 12;
     protected Game game;
     protected GameMap gameMap;
 
@@ -72,6 +74,15 @@ public class ManagedUnit {
     @Getter
     protected int unreadyUntilFrame = 0;
     protected boolean isReady = true;
+
+    private int lastHitPoints = -1;
+    private UnitType lastHitPointsType;
+    @Getter
+    private int hitPointsBefore = -1;
+    private int hitFrame = -1;
+
+    private Position evadePosition;
+    private int evadeFrame = -1;
 
     public ManagedUnit(Game game, Unit unit, UnitRole role, GameMap gameMap) {
         this.game = game;
@@ -136,8 +147,17 @@ public class ManagedUnit {
         this.hasNewGatherTarget = hasNewGatherTarget; 
     }
 
+    /**
+     * Executes the unit's role. An evade ordered this frame is issued first and ignores the ready gate, so a unit
+     * hit by something it cannot answer moves on the frame the hit is seen.
+     */
     public void execute() {
         updateState();
+
+        if (evadePosition != null && evadeFrame == game.getFrameCount()) {
+            issueEvade();
+            return;
+        }
 
         if (!isReady) {
             return;
@@ -617,6 +637,116 @@ public class ManagedUnit {
 
     protected void setUnready() {
         setUnready(11);
+    }
+
+    /**
+     * Reads the unit's hit points for this frame, before any role runs. A change of type, such as a morph, starts
+     * the reading over, so it never reads as a hit.
+     *
+     * @param frame current frame
+     */
+    public void observeHitPoints(int frame) {
+        int hitPoints = unit.getHitPoints();
+        UnitType type = unit.getType();
+        hitPointsBefore = type == lastHitPointsType ? lastHitPoints : hitPoints;
+        lastHitPoints = hitPoints;
+        lastHitPointsType = type;
+        if (hitPoints < hitPointsBefore) {
+            hitFrame = frame;
+        }
+    }
+
+    /**
+     * @param frame current frame
+     * @return true when the unit lost hit points on the frame
+     */
+    public boolean wasHitOn(int frame) {
+        return hitFrame == frame;
+    }
+
+    /**
+     * Whether a unit was hit by something it cannot answer: it lost hit points this frame, it holds a role that
+     * stands in or walks through enemy fire, and no enemy is within its own range plus {@link #MELEE_MARGIN}. A unit
+     * actually in melee is fighting back, and regeneration only ever raises hit points.
+     *
+     * @param hpBefore hit points on the previous frame
+     * @param hpNow hit points now
+     * @param role the unit's role
+     * @param enemyInOwnRange true when an enemy is within the unit's own range plus the melee margin
+     * @return true for an outranged hit
+     */
+    public static boolean isOutrangedHit(int hpBefore, int hpNow, UnitRole role, boolean enemyInOwnRange) {
+        if (hpNow >= hpBefore || enemyInOwnRange) {
+            return false;
+        }
+        return role == UnitRole.CONTAIN || role == UnitRole.RALLY || role == UnitRole.FIGHT
+                || role == UnitRole.RUNBY;
+    }
+
+    /**
+     * Whether an outranged hit moves the unit, given the role it holds once its squad has decided. A containing,
+     * rallying or running by unit steps out. A fighting unit closing on its target keeps closing: it was sent into
+     * that fire by a fight verdict, and stepping out on every hit would stop it ever reaching the target. Any other
+     * role, such as a retreat ordered this frame, already moves the unit.
+     *
+     * @param role the unit's role
+     * @param closingOnTarget true when the unit has a live fight target
+     * @return true when the unit evades
+     */
+    public static boolean evadesOutrangedHit(UnitRole role, boolean closingOnTarget) {
+        if (role == UnitRole.FIGHT) {
+            return !closingOnTarget;
+        }
+        return role == UnitRole.CONTAIN || role == UnitRole.RALLY || role == UnitRole.RUNBY;
+    }
+
+    /**
+     * @return true when the unit has a fight target that still exists
+     */
+    public boolean isClosingOnTarget() {
+        return fightTarget != null && fightTarget.exists();
+    }
+
+    /**
+     * Whether an enemy the unit would attack stands within its own ground range plus the margin, edge to edge.
+     *
+     * @param margin pixels added to the unit's ground range
+     * @return true when such an enemy is there
+     */
+    public boolean hasEnemyWithinReach(int margin) {
+        WeaponType weapon = unitType.groundWeapon();
+        int reach = (weapon == null || weapon == WeaponType.None ? 0 : weapon.maxRange()) + margin;
+        int searchRadius = reach + Math.max(Math.max(unitType.dimensionLeft(), unitType.dimensionRight()),
+                Math.max(unitType.dimensionUp(), unitType.dimensionDown())) + 32;
+        for (Unit enemy : game.getUnitsInRadius(unit.getPosition(), searchRadius)) {
+            UnitType enemyType = enemy.getType();
+            if (!enemy.getPlayer().isEnemy(game.self()) || !enemy.isTargetable()
+                    || Filter.isLowPriorityCombatTarget(enemyType)
+                    || enemyType.isBuilding() && !Filter.isHostileBuilding(enemyType)) {
+                continue;
+            }
+            if (unit.getDistance(enemy) <= reach) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Orders the unit to move to a point on this frame, ahead of the ready gate.
+     *
+     * @param point where to move
+     * @param frame current frame
+     */
+    public void evade(Position point, int frame) {
+        evadePosition = point;
+        evadeFrame = frame;
+    }
+
+    private void issueEvade() {
+        unit.move(evadePosition);
+        evadePosition = null;
+        setUnready(OUTRANGED_EVADE_FRAMES);
     }
 
     protected void setUnready(int unreadyFrames) {

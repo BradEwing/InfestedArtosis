@@ -19,6 +19,8 @@ import telemetry.PerchAssignments;
 import telemetry.PlanEventLogger;
 import telemetry.PlanEvents;
 import telemetry.RunbyLogger;
+import telemetry.ReachLogger;
+import telemetry.ReachTelemetry;
 import telemetry.RunbyTelemetry;
 import telemetry.SquadDecisionLogger;
 import telemetry.SquadDecisions;
@@ -57,6 +59,7 @@ public class Bot extends DefaultBWListener {
     private PerchAssignmentLogger perchAssignmentLogger;
     private TargetChoiceLogger targetChoiceLogger;
     private RunbyLogger runbyLogger;
+    private ReachLogger reachLogger;
 
     @Override
     public void onStart() {
@@ -89,6 +92,7 @@ public class Bot extends DefaultBWListener {
         startPerchAssignmentLogging();
         startTargetChoiceLogging();
         startRunbyLogging();
+        startReachLogging();
         startPlanEventLogging(decisions.getOpener());
     }
 
@@ -129,6 +133,15 @@ public class Bot extends DefaultBWListener {
         RunbyTelemetry.register(runbyLogger);
     }
 
+    private void startReachLogging() {
+        if (!gameState.getConfig().telemetryCombat) {
+            return;
+        }
+
+        reachLogger = new ReachLogger(game, combatTelemetry.getGameId());
+        ReachTelemetry.register(reachLogger);
+    }
+
     private void startPlanEventLogging(BuildOrder opener) {
         if (!gameState.getConfig().logPlanEvents) {
             return;
@@ -161,6 +174,9 @@ public class Bot extends DefaultBWListener {
         }
         if (runbyLogger != null) {
             runbyLogger.onFrame();
+        }
+        if (reachLogger != null) {
+            reachLogger.onFrame();
         }
         combatTelemetry.onFrame();
         debugMap.onFrame();
@@ -239,6 +255,9 @@ public class Bot extends DefaultBWListener {
         }
         if (runbyLogger != null) {
             runbyLogger.onEnd();
+        }
+        if (reachLogger != null) {
+            reachLogger.onEnd();
         }
         combatTelemetry.onEnd(isWinner);
     }
