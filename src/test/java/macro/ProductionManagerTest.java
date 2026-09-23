@@ -315,8 +315,9 @@ class ProductionManagerTest {
                 return PlanBlocker.SUPPLY;
             }
             boolean cannotAfford = minerals < unit.mineralPrice();
+            boolean barred = ProductionManager.isBarredByBuildingReservation(plan, buildingHoldsBank, 0, freeSupply);
             PlanBlocker blocker = ProductionManager.unitAheadBlocker(
-                    slot, plan, FRAME, cannotAfford, bankClaimedAhead, buildingHoldsBank, FRAME + 100);
+                    slot, plan, FRAME, cannotAfford, bankClaimedAhead, barred, FRAME + 100);
             if (blocker != PlanBlocker.NONE) {
                 return blocker;
             }
@@ -1028,31 +1029,76 @@ class ProductionManagerTest {
     }
 
     @Test
-    void anOverlordIsNotBarredByAScheduledBuildingsReservation() {
+    void anOverlordFacingASupplyBlockIsNotBarredByAScheduledBuildingsReservation() {
         int predicted = FRAME + UnitType.Zerg_Overlord.buildTime() - 1;
+        boolean barred = ProductionManager.isBarredByBuildingReservation(
+                overlord(1), true, 0, ProductionManager.SUPPLY_BUFFER - 1);
 
         PlanBlocker blocker = ProductionManager.unitAheadBlocker(
-                new BuildAheadSlot(), overlord(1), FRAME, true, false, true, predicted);
+                new BuildAheadSlot(), overlord(1), FRAME, true, false, barred, predicted);
 
+        assertFalse(barred);
         assertEquals(PlanBlocker.NONE, blocker);
+    }
+
+    @Test
+    void anOverlordWithSupplyToSpareWaitsBehindAScheduledBuildingsReservation() {
+        int predicted = FRAME + UnitType.Zerg_Overlord.buildTime() - 1;
+        boolean barred = ProductionManager.isBarredByBuildingReservation(
+                overlord(1), true, 0, ProductionManager.SUPPLY_BUFFER);
+
+        PlanBlocker blocker = ProductionManager.unitAheadBlocker(
+                new BuildAheadSlot(), overlord(1), FRAME, true, false, barred, predicted);
+
+        assertTrue(barred);
+        assertEquals(PlanBlocker.BUILD_AHEAD_SLOT_TAKEN, blocker);
     }
 
     @Test
     void onlyABuildingHoldingTheBankBarsAUnit() {
-        assertTrue(ProductionManager.isBarredByBuildingReservation(drone(FRAME), true));
-        assertFalse(ProductionManager.isBarredByBuildingReservation(drone(FRAME), false));
-        assertFalse(ProductionManager.isBarredByBuildingReservation(overlord(FRAME), true));
+        assertTrue(ProductionManager.isBarredByBuildingReservation(drone(FRAME), true, 0, 0));
+        assertFalse(ProductionManager.isBarredByBuildingReservation(drone(FRAME), false, 0, 0));
+        assertFalse(ProductionManager.isBarredByBuildingReservation(overlord(FRAME), false, 0, 0));
+        assertFalse(ProductionManager.isBarredByBuildingReservation(
+                emergency(UnitType.Zerg_Zergling), false, Reactions.EARLY_RUSH_SAFE_ZERGLINGS, 0));
     }
 
     @Test
-    void anEmergencyZerglingIsNotBarredByABuildingHoldingTheBank() {
+    void anEmergencyZerglingBelowTheRushFloorIsNotBarredByABuildingHoldingTheBank() {
         int predicted = FRAME + UnitType.Zerg_Zergling.buildTime() - 1;
+        Plan ling = emergency(UnitType.Zerg_Zergling);
+        boolean barred = ProductionManager.isBarredByBuildingReservation(
+                ling, true, Reactions.EARLY_RUSH_SAFE_ZERGLINGS - 1, 0);
 
         PlanBlocker blocker = ProductionManager.unitAheadBlocker(
-                new BuildAheadSlot(), emergency(UnitType.Zerg_Zergling), FRAME, true, false, true, predicted);
+                new BuildAheadSlot(), ling, FRAME, true, false, barred, predicted);
 
+        assertFalse(barred);
         assertEquals(PlanBlocker.NONE, blocker);
-        assertFalse(ProductionManager.isBarredByBuildingReservation(emergency(UnitType.Zerg_Zergling), true));
+    }
+
+    @Test
+    void anEmergencyZerglingAtTheRushFloorCannotSpendABuildingsReservation() {
+        int predicted = FRAME + UnitType.Zerg_Zergling.buildTime() - 1;
+        Plan ling = emergency(UnitType.Zerg_Zergling);
+        boolean barred = ProductionManager.isBarredByBuildingReservation(
+                ling, true, Reactions.EARLY_RUSH_SAFE_ZERGLINGS, 0);
+
+        PlanBlocker blocker = ProductionManager.unitAheadBlocker(
+                new BuildAheadSlot(), ling, FRAME, true, false, barred, predicted);
+
+        assertTrue(barred);
+        assertEquals(PlanBlocker.BUILD_AHEAD_SLOT_TAKEN, blocker);
+    }
+
+    @Test
+    void emergencyColoniesAreNeverBarredByABuildingHoldingTheBank() {
+        int manyZerglings = Reactions.EARLY_RUSH_SAFE_ZERGLINGS * 3;
+
+        assertFalse(ProductionManager.isBarredByBuildingReservation(
+                emergency(UnitType.Zerg_Creep_Colony), true, manyZerglings, 0));
+        assertFalse(ProductionManager.isBarredByBuildingReservation(
+                emergency(UnitType.Zerg_Sunken_Colony), true, manyZerglings, 0));
     }
 
     @Test

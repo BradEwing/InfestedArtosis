@@ -296,8 +296,16 @@ public abstract class BuildOrder {
         return visibleAttackers >= EARLY_RUSH_SECOND_SUNKEN_ATTACKERS ? 2 : 1;
     }
 
-    private int earlyRushZerglings(GameState gameState) {
-        return Math.max(EARLY_RUSH_MIN_ZERGLINGS, 2 * gameState.enemyMobileGroundCombatUnitCount());
+    /**
+     * The zergling floor an early rush sets: two per enemy ground combat unit known at our bases,
+     * and never fewer than the minimum. Units seen only elsewhere, such as the army still in the
+     * enemy main, do not raise it.
+     *
+     * @param knownAttackers living enemy ground combat units last known to be at our bases
+     * @return zerglings the rush asks for
+     */
+    static int earlyRushZerglings(int knownAttackers) {
+        return Math.max(EARLY_RUSH_MIN_ZERGLINGS, 2 * knownAttackers);
     }
 
     /**
@@ -339,7 +347,8 @@ public abstract class BuildOrder {
         if (!gameState.isEarlyRushed()) {
             return plans;
         }
-        int zerglingTarget = Math.max(this.zerglingsNeeded(gameState), earlyRushZerglings(gameState));
+        int zerglingTarget = Math.max(this.zerglingsNeeded(gameState),
+                earlyRushZerglings(gameState.knownEnemyMobileGroundCombatUnitsAtOurBases()));
         int zerglingCount = gameState.ourUnitCount(UnitType.Zerg_Zergling);
         if (shouldPlanEmergencyZergling(zerglingCount, zerglingTarget) && gameState.canPlanUnit(UnitType.Zerg_Zergling)) {
             Plan zerglingPlan = this.planUnit(gameState, UnitType.Zerg_Zergling);

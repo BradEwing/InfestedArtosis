@@ -50,7 +50,7 @@ public class ProductionManager {
     private static final int OVERLORD_SUPPLY = UnitType.Zerg_Overlord.supplyProvided();
 
     /** Raw supply headroom the overlord planner keeps ahead of the queue it is walking. */
-    private static final int SUPPLY_BUFFER = 4;
+    static final int SUPPLY_BUFFER = 4;
 
     private static final int MAX_SUPPLY = 400;
 
@@ -1450,7 +1450,7 @@ public class ProductionManager {
                 currentFrame,
                 cannotAfford,
                 bankClaimedAhead,
-                buildAheadSlot.isOccupied(),
+                cannotAfford && isBarredByBuildingReservation(plan, self),
                 predictedReadyFrame);
         if (unitAheadBlocker != PlanBlocker.NONE) {
             return unitAheadBlocker;
@@ -1515,26 +1515,64 @@ public class ProductionManager {
     /**
      * True when a building already holding the bank bars this unit from spending against it.
      *
-     * <p>Overlords are exempt. A building that cannot be funded yet is funded by the income the
-     * bot is still gathering, and holding supply down stops the drones that gather it. Emergency
-     * defence is exempt too, so zerglings answering a rush are not queued behind a tech building.
+     * <p>An Overlord is exempt only while a supply block is imminent: supply headroom, counting
+     * Overlords already in an egg, is under {@link #SUPPLY_BUFFER}. Holding supply down then stops
+     * the drones that gather the income funding the building. With more headroom the Overlord
+     * waits like any other unit.
+     *
+     * <p>An emergency Creep or Sunken Colony is always exempt. An emergency Zergling is exempt only
+     * while fewer than {@link Reactions#EARLY_RUSH_SAFE_ZERGLINGS} zerglings are alive; past that
+     * floor a rush that never ends would otherwise spend every mineral the building reserved.
      *
      * @param plan the planned unit
      * @param buildingHoldsBank whether a building plan holds the build-ahead slot
+     * @param livingZerglings zerglings that have hatched
+     * @param supplyHeadroom raw free supply plus the supply Overlords in an egg will add
      * @return true when the unit must wait for the building to be funded
      */
-    static boolean isBarredByBuildingReservation(Plan plan, boolean buildingHoldsBank) {
-        if (!buildingHoldsBank || BuildAheadSlot.isEmergencyDefence(plan)) {
+    static boolean isBarredByBuildingReservation(Plan plan, boolean buildingHoldsBank, int livingZerglings,
+                                                 int supplyHeadroom) {
+        if (!buildingHoldsBank) {
             return false;
         }
-        return plan.getPlannedUnit() != UnitType.Zerg_Overlord;
+        UnitType unit = plan.getPlannedUnit();
+        if (unit == UnitType.Zerg_Overlord) {
+            return supplyHeadroom >= SUPPLY_BUFFER;
+        }
+        if (!BuildAheadSlot.isEmergencyDefence(plan)) {
+            return true;
+        }
+        return unit == UnitType.Zerg_Zergling && livingZerglings >= Reactions.EARLY_RUSH_SAFE_ZERGLINGS;
+    }
+
+    /**
+     * Raw free supply plus the supply every Overlord still in an egg will add when it hatches.
+     */
+    private static int supplyHeadroom(Player self) {
+        int hatching = 0;
+        for (Unit unit : self.getUnits()) {
+            if (unit.getType() == UnitType.Zerg_Egg && unit.getBuildType() == UnitType.Zerg_Overlord) {
+                hatching += OVERLORD_SUPPLY;
+            }
+        }
+        return self.supplyTotal() - self.supplyUsed() + hatching;
+    }
+
+    private boolean isBarredByBuildingReservation(Plan plan, Player self) {
+        if (!buildAheadSlot.isOccupied()) {
+            return false;
+        }
+        int headroom = plan.getPlannedUnit() == UnitType.Zerg_Overlord ? supplyHeadroom(self) : SUPPLY_BUFFER;
+        return isBarredByBuildingReservation(
+                plan, true, gameState.ourLivingUnitCount(UnitType.Zerg_Zergling), headroom);
     }
 
     /**
      * Why a unit plan cannot be scheduled against a bank it cannot yet cover.
      *
      * <p>A building holding the build-ahead slot has reserved its cost out of the same bank, so
-     * its hold bars unit plans exactly as a resource-blocked plan ahead of them in the scan does.
+     * its hold bars unit plans exactly as a resource-blocked plan ahead of them in the scan does,
+     * unless {@link #isBarredByBuildingReservation(Plan, boolean, int, int)} exempts the plan.
      */
     static PlanBlocker unitAheadBlocker(
             BuildAheadSlot slot,
@@ -1542,7 +1580,7 @@ public class ProductionManager {
             int frame,
             boolean cannotAfford,
             boolean bankClaimedAhead,
-            boolean buildingHoldsBank,
+            boolean barredByBuildingReservation,
             int predictedReadyFrame) {
         if (!cannotAfford) {
             return PlanBlocker.NONE;
@@ -1550,7 +1588,7 @@ public class ProductionManager {
         if (bankClaimedAhead || slot.isOccupied()) {
             return PlanBlocker.BUILD_AHEAD_SLOT_TAKEN;
         }
-        if (isBarredByBuildingReservation(plan, buildingHoldsBank)) {
+        if (barredByBuildingReservation) {
             return PlanBlocker.BUILD_AHEAD_SLOT_TAKEN;
         }
         if (slot.isInBackoff(plan, frame)) {
