@@ -237,4 +237,30 @@ class ScoutChaseTest {
     void aCappedUnitWithANearbyThreatFightsIt() {
         assertFalse(ScoutChase.shouldDefend(1, 300, DETECTION_RADIUS));
     }
+
+    @Test
+    void aCappedUnitDefendsAThreatenedBaseWhenOnlyADistantThreatIsLeft() {
+        assertEquals(ScoutChase.Excess.DEFEND, ScoutChase.excessAction(1, 1117, DETECTION_RADIUS, true));
+    }
+
+    @Test
+    void aCappedUnitDefendsAThreatenedBaseWhenNothingIsLeft() {
+        assertEquals(ScoutChase.Excess.DEFEND, ScoutChase.excessAction(0, Double.MAX_VALUE, DETECTION_RADIUS, true));
+    }
+
+    @Test
+    void aCappedAirUnitMidMapWithNoThreatenedBaseFollowsItsSquad() {
+        assertEquals(ScoutChase.Excess.FOLLOW_SQUAD,
+                ScoutChase.excessAction(0, Double.MAX_VALUE, DETECTION_RADIUS, false));
+    }
+
+    @Test
+    void aCappedUnitWithNoThreatenedBaseTakesTheDistantCandidate() {
+        assertEquals(ScoutChase.Excess.FIGHT, ScoutChase.excessAction(1, 1117, DETECTION_RADIUS, false));
+    }
+
+    @Test
+    void aCappedUnitWithANearbyCandidateFightsEvenWhenABaseIsThreatened() {
+        assertEquals(ScoutChase.Excess.FIGHT, ScoutChase.excessAction(1, 300, DETECTION_RADIUS, true));
+    }
 }

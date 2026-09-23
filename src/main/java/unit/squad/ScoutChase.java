@@ -32,6 +32,18 @@ public final class ScoutChase {
     private final Map<Integer, Set<Integer>> holders = new HashMap<>();
 
     /**
+     * What a unit the cap turned away from a scout does next.
+     */
+    enum Excess {
+        /** Take one of the candidates left through the normal target path. */
+        FIGHT,
+        /** Rally to the threatened base. */
+        DEFEND,
+        /** Rally on its squad and keep the squad's goal. */
+        FOLLOW_SQUAD
+    }
+
+    /**
      * An attacker currently targeting a scout, with its distance to that scout and the cap its speed allows.
      */
     static final class Claim {
@@ -92,9 +104,9 @@ public final class ScoutChase {
     }
 
     /**
-     * Returns true if a unit the cap turned away from a scout should head to the defence position rather than
-     * take one of the candidates left: none are left, or the nearest is beyond the squad's detection radius,
-     * where its squad's simulation has not measured it.
+     * Returns true if a unit the cap turned away from a scout should not simply take one of the candidates left:
+     * none are left, or the nearest is beyond the squad's detection radius, where its squad's simulation has not
+     * measured it.
      *
      * @param remaining candidates left after the cap
      * @param nearestRemainingDistance distance to the nearest of them
@@ -102,6 +114,27 @@ public final class ScoutChase {
      */
     static boolean shouldDefend(int remaining, double nearestRemainingDistance, double detectionRadius) {
         return remaining == 0 || nearestRemainingDistance > detectionRadius;
+    }
+
+    /**
+     * Chooses what a unit the cap turned away from a scout does. When {@link #shouldDefend} holds it defends only
+     * if one of our bases is threatened. Otherwise it follows its squad when nothing is left to fight, or takes the
+     * distant candidates left.
+     *
+     * @param remaining candidates left after the cap
+     * @param nearestRemainingDistance distance to the nearest of them
+     * @param detectionRadius the squad's enemy detection radius
+     * @param baseThreatened true if a base or our natural holds an enemy mobile ground combat unit
+     */
+    static Excess excessAction(int remaining, double nearestRemainingDistance, double detectionRadius,
+                               boolean baseThreatened) {
+        if (!shouldDefend(remaining, nearestRemainingDistance, detectionRadius)) {
+            return Excess.FIGHT;
+        }
+        if (baseThreatened) {
+            return Excess.DEFEND;
+        }
+        return remaining == 0 ? Excess.FOLLOW_SQUAD : Excess.FIGHT;
     }
 
     /**

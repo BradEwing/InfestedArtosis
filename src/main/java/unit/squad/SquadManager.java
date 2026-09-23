@@ -254,9 +254,15 @@ public class SquadManager {
             }
         }
 
-        filtered = ScoutChase.withoutCappedScouts(filtered, enemy -> isCappedScoutFor(unit, enemy));
+        List<Unit> uncapped = ScoutChase.withoutCappedScouts(filtered, enemy -> isCappedScoutFor(unit, enemy));
+        if (uncapped.isEmpty() && !filtered.isEmpty()) {
+            rallyToDefensePosition(managedUnit, gameState.defensePosition());
+            return;
+        }
+        filtered = uncapped;
         if (filtered.isEmpty()) {
             scoutChase.release(unit.getID());
+            managedUnit.setRole(UnitRole.FIGHT);
             Base enemyBase = gameState.getBaseData().getMainEnemyBase();
             if (enemyBase != null) {
                 managedUnit.setMovementTargetPosition(enemyBase.getLocation());
@@ -268,6 +274,7 @@ public class SquadManager {
 
         TargetScorer.Selection selection = TargetScorer.selectTarget(unit, filtered, managedUnit.fightTarget);
         if (selection != null) {
+            managedUnit.setRole(UnitRole.FIGHT);
             managedUnit.setFightTarget(selection.getTarget());
             recordScoutClaim(unit, selection.getTarget());
         }
@@ -1414,10 +1421,33 @@ public class SquadManager {
     }
 
     private boolean basesUnderAttack() {
-        for (HashSet<Unit> threats : gameState.getBaseToThreatLookup().values()) {
-            if (!threats.isEmpty()) return true;
+        Set<Base> morphingBases = gameState.getBaseData().morphingBases();
+        Set<Base> heldBases = gameState.getBaseData().getMyBases();
+        boolean cannonRushed = gameState.isCannonRushed();
+        for (Map.Entry<Base, HashSet<Unit>> entry : gameState.getBaseToThreatLookup().entrySet()) {
+            Base base = entry.getKey();
+            boolean morphingOnly = !cannonRushed && morphingBases.contains(base) && !heldBases.contains(base);
+            List<UnitType> threatTypes = entry.getValue().stream().map(Unit::getType).collect(Collectors.toList());
+            if (baseUnderAttack(morphingOnly, threatTypes)) {
+                return true;
+            }
         }
         return false;
+    }
+
+    /**
+     * Returns true if a base's tracked threats count as an attack. Any threat does at a base we hold. At a base
+     * where our hatchery is still morphing only a mobile ground combat unit does, so a scouting worker or
+     * Overlord watching the morph does not break contains or hold advances.
+     *
+     * @param morphingOnly true if our only hatchery at the base is still morphing
+     * @param threatTypes types of the enemy units tracked as threats to the base
+     */
+    static boolean baseUnderAttack(boolean morphingOnly, Collection<UnitType> threatTypes) {
+        if (!morphingOnly) {
+            return !threatTypes.isEmpty();
+        }
+        return threatTypes.stream().anyMatch(Filter::isMobileGroundCombatUnit);
     }
 
     /**
@@ -2530,10 +2560,18 @@ public class SquadManager {
 
         List<Unit> uncapped = ScoutChase.withoutCappedScouts(filtered, enemy -> isCappedScoutFor(unit, enemy));
         boolean scoutCapped = uncapped.size() < filtered.size();
-        if (scoutCapped && ScoutChase.shouldDefend(uncapped.size(), nearestDistance(unit, uncapped),
-                ENEMY_DETECTION_RADIUS)) {
-            rallyToDefensePosition(managedUnit);
-            return;
+        if (scoutCapped) {
+            Position threatened = gameState.threatenedDefensePosition();
+            ScoutChase.Excess excess = ScoutChase.excessAction(uncapped.size(), nearestDistance(unit, uncapped),
+                    ENEMY_DETECTION_RADIUS, threatened != null);
+            if (excess == ScoutChase.Excess.DEFEND) {
+                rallyToDefensePosition(managedUnit, threatened);
+                return;
+            }
+            if (excess == ScoutChase.Excess.FOLLOW_SQUAD) {
+                rallyToDefensePosition(managedUnit, squad.getCenter());
+                return;
+            }
         }
 
         filtered = filterByProximity(uncapped, unit::getDistance);
@@ -2621,13 +2659,13 @@ public class SquadManager {
     }
 
     /**
-     * Sends a unit the scout cap turned away to {@link GameState#defensePosition()} in the RALLY role, rather than
-     * marching it on the enemy's buildings.
+     * Sends a unit the scout cap turned away to a position in the RALLY role, rather than marching it on the
+     * enemy's buildings.
      */
-    private void rallyToDefensePosition(ManagedUnit managedUnit) {
+    private void rallyToDefensePosition(ManagedUnit managedUnit, Position position) {
         scoutChase.release(managedUnit.getUnit().getID());
         managedUnit.setFightTarget(null);
-        managedUnit.setRallyPoint(gameState.defensePosition());
+        managedUnit.setRallyPoint(position);
         managedUnit.setRole(UnitRole.RALLY);
     }
 

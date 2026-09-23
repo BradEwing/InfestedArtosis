@@ -1437,6 +1437,14 @@ public class GameState {
     }
 
     /**
+     * @return {@link #defensePosition()} when a base or our natural holds an enemy mobile ground combat unit,
+     *     otherwise null
+     */
+    public Position threatenedDefensePosition() {
+        return defensePosition(mostThreatenedBaseCenter(), threatenedNaturalCenter(), null);
+    }
+
+    /**
      * @return the first position that is set, in the order given
      */
     static Position defensePosition(Position threatenedBase, Position threatenedNatural, Position rallyPoint) {
