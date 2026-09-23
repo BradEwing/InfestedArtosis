@@ -10,6 +10,7 @@ import org.jetbrains.annotations.NotNull;
 import unit.managed.ManagedUnit;
 import util.Arc;
 import util.Distance;
+import util.StaticDefenseZone;
 import util.Time;
 
 import java.util.ArrayList;
@@ -59,6 +60,9 @@ public class Squad implements Comparable<Squad> {
     protected int containStartFrame = 0;
     private Arc containmentArc;
     private RunbyState runbyState;
+    private int containRadius = 0;
+    private final ContainmentAttrition containmentAttrition = new ContainmentAttrition();
+    private final Map<Integer, StaticDefenseZone> outrangingThreats = new HashMap<>();
     protected Time fightHysteresis = new Time(0, 3);
     protected Time retreatHysteresis = new Time(0, 5);
     protected Time containHysteresis = new Time(0, 5);
@@ -225,6 +229,10 @@ public class Squad implements Comparable<Squad> {
      * Folds the state of every squad taking part in a merge into this squad.
      *
      * <p>Status follows the precedence documented on {@link SquadStatus}:
+     *
+     * <p>A merge that stays in CONTAIN carries the episode on: the arc, the pushed back radius, the outranging
+     * enemies and the attrition of every containing source. Any other merged status drops them.
+     *
      * @param sources squads being merged into this one
      */
     public void inheritStateFrom(Collection<Squad> sources) {
@@ -233,6 +241,9 @@ public class Squad implements Comparable<Squad> {
         int earliestCommit = 0;
         Arc inheritedArc = null;
         RunbyState inheritedRunby = null;
+        int inheritedRadius = 0;
+        Map<Integer, StaticDefenseZone> inheritedThreats = new HashMap<>();
+        ContainmentAttrition inheritedAttrition = new ContainmentAttrition();
         for (Squad source: sources) {
             if (inheritedRunby == null && source.status == SquadStatus.RUNBY) {
                 inheritedRunby = source.runbyState;
@@ -243,6 +254,11 @@ public class Squad implements Comparable<Squad> {
             }
             if (inheritedArc == null && source.status == SquadStatus.CONTAIN) {
                 inheritedArc = source.containmentArc;
+                inheritedRadius = source.containRadius;
+            }
+            if (source.status == SquadStatus.CONTAIN) {
+                inheritedThreats.putAll(source.outrangingThreats);
+                inheritedAttrition.absorb(source.containmentAttrition);
             }
             if (source.commitFrame > 0 && (earliestCommit == 0 || source.commitFrame < earliestCommit)) {
                 earliestCommit = source.commitFrame;
@@ -256,6 +272,15 @@ public class Squad implements Comparable<Squad> {
         this.containStartFrame = mergedStatus == SquadStatus.CONTAIN ? earliestContainStart : 0;
         this.containmentArc = mergedStatus == SquadStatus.CONTAIN ? inheritedArc : null;
         this.runbyState = mergedStatus == SquadStatus.RUNBY ? inheritedRunby : null;
+        this.containRadius = mergedStatus == SquadStatus.CONTAIN ? inheritedRadius : 0;
+        this.outrangingThreats.clear();
+        if (mergedStatus == SquadStatus.CONTAIN) {
+            this.outrangingThreats.putAll(inheritedThreats);
+        }
+        this.containmentAttrition.reset();
+        if (mergedStatus == SquadStatus.CONTAIN) {
+            this.containmentAttrition.absorb(inheritedAttrition);
+        }
         this.commitFrame = earliestCommit;
     }
 
@@ -352,10 +377,17 @@ public class Squad implements Comparable<Squad> {
         return currentFrame < containLockedUntilFrame;
     }
 
+    /**
+     * Arms the contain lock. The first lock of an episode also starts the episode, which clears the attrition,
+     * the outranging enemies and the pushed back radius left by any earlier episode.
+     *
+     * @param currentFrame frame the lock is armed on
+     */
     public void startContainLock(int currentFrame) {
         containLockedUntilFrame = currentFrame + containHysteresis.getFrames();
         if (containStartFrame == 0) {
             containStartFrame = currentFrame;
+            resetContainmentEpisode();
         }
     }
 
@@ -363,6 +395,13 @@ public class Squad implements Comparable<Squad> {
         containStartFrame = 0;
         containLockedUntilFrame = 0;
         containmentArc = null;
+        resetContainmentEpisode();
+    }
+
+    private void resetContainmentEpisode() {
+        containRadius = 0;
+        containmentAttrition.reset();
+        outrangingThreats.clear();
     }
 
     /**

@@ -329,8 +329,8 @@ public class UnitManager {
             return;
         }
 
-        removeManagedUnit(unit);
         squadManager.onUnitDestroy(unit);
+        removeManagedUnit(unit);
     }
 
     public void onUnitMorph(Unit unit) {
