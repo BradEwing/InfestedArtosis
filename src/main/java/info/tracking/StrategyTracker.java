@@ -14,14 +14,24 @@ import info.tracking.protoss.TwoGate;
 import info.tracking.terran.SCVRush;
 import info.tracking.terran.TwoRaxAcademy;
 import info.tracking.zerg.Hydralisk;
+import info.tracking.zerg.TwoHatchLing;
 import lombok.Getter;
 import util.Time;
 
 import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
 public class StrategyTracker {
+
+    private static final Map<String, String> IMPLIED_STRATEGIES = new LinkedHashMap<>();
+
+    static {
+        IMPLIED_STRATEGIES.put("2Gate", "EarlyRush");
+        IMPLIED_STRATEGIES.put("2HatchLing", "EarlyRush");
+    }
 
     @Getter
     private Set<ObservedStrategy> detectedStrategies = new HashSet<>();
@@ -56,6 +66,7 @@ public class StrategyTracker {
         }
         if (race == Race.Zerg || race == Race.Unknown) {
             possibleStrategies.add(new Hydralisk());
+            possibleStrategies.add(new TwoHatchLing());
         }
     }
 
@@ -83,29 +94,45 @@ public class StrategyTracker {
     }
 
     /**
-     * 2Gate is a strictly more reliable signal of an early zealot rush than EarlyRush's own
-     * evidence, which stops looking at ARRIVAL_DEADLINE and so misses rushes that land later.
-     * The existing EarlyRush instance is promoted rather than a new one constructed, because
-     * ObservedStrategy defines no equals/hashCode: a fresh instance would be a distinct member
-     * of the identity-based set and getDetectedStrategiesAsString() would emit EarlyRush twice.
+     * Promotes the strategy each detected strategy implies. 2Gate and 2HatchLing are both strictly more
+     * reliable signals of an early rush than EarlyRush's own evidence, which stops looking at ARRIVAL_DEADLINE
+     * and so misses rushes that land later.
      */
-    private void applyStrategyImplications() {
-        if (!isDetectedStrategy("2Gate") || isDetectedStrategy("EarlyRush")) {
+    void applyStrategyImplications() {
+        for (Map.Entry<String, String> implication : IMPLIED_STRATEGIES.entrySet()) {
+            if (isDetectedStrategy(implication.getKey())) {
+                promote(implication.getValue());
+            }
+        }
+    }
+
+    /**
+     * Moves the possible strategy with the given name into the detected set. The existing instance is
+     * promoted rather than a new one constructed, because ObservedStrategy defines no equals/hashCode: a fresh
+     * instance would be a distinct member of the identity-based set and getDetectedStrategiesAsString() would
+     * emit the name twice.
+     */
+    private void promote(String strategyName) {
+        if (isDetectedStrategy(strategyName)) {
             return;
         }
 
-        ObservedStrategy earlyRush = null;
+        ObservedStrategy promoted = null;
         for (ObservedStrategy strategy : possibleStrategies) {
-            if (strategy.getName().equals("EarlyRush")) {
-                earlyRush = strategy;
+            if (strategy.getName().equals(strategyName)) {
+                promoted = strategy;
                 break;
             }
         }
 
-        if (earlyRush != null) {
-            detectedStrategies.add(earlyRush);
-            possibleStrategies.remove(earlyRush);
+        if (promoted != null) {
+            detectedStrategies.add(promoted);
+            possibleStrategies.remove(promoted);
         }
+    }
+
+    boolean isPossibleStrategy(String strategyName) {
+        return possibleStrategies.stream().anyMatch(s -> s.getName().equals(strategyName));
     }
 
     public boolean isDetectedStrategy(String strategyName) {
