@@ -327,6 +327,20 @@ public abstract class BuildOrder {
     }
 
     /**
+     * Whether the defence path owes a Spawning Pool: a rush reaction is active and no pool is
+     * standing or planned. Every zergling and colony the rush asks for waits on a pool, and a
+     * hatch-first build order that has not reached its own pool trigger may never reach it while
+     * the rush forbids further expansions.
+     *
+     * @param rushed whether an EarlyRush or ScvRush reaction is active
+     * @param canPlanPool whether no Spawning Pool is standing or already claimed by a plan
+     * @return true when an emergency Spawning Pool plan should be queued
+     */
+    static boolean shouldPlanEmergencyPool(boolean rushed, boolean canPlanPool) {
+        return rushed && canPlanPool;
+    }
+
+    /**
      * Defense reachable from every build order, including the openers and SpeedlingAllIn that
      * never plan colonies of their own.
      *
@@ -339,11 +353,21 @@ public abstract class BuildOrder {
      *
      * <p>The zergling half stays emergency only: it is a response to units already at our bases.
      *
+     * <p>While an EarlyRush or ScvRush reaction is active and no Spawning Pool is standing or
+     * planned, a pool is queued at emergency priority. A build order that already claimed its own
+     * pool is left alone, and claiming one here stops the build order from queuing a second.
+     *
      * <p>Returned plans carry reservations (sunken base, build tiles, planned unit counts) and
      * must be added to the production queue by the caller.
      */
     public List<Plan> planDefense(GameState gameState) {
         List<Plan> plans = new ArrayList<>(planStaticDefense(gameState));
+        boolean rushed = gameState.isEarlyRushed() || gameState.isScvRushed();
+        if (shouldPlanEmergencyPool(rushed, gameState.getTechProgression().canPlanPool())) {
+            Plan poolPlan = this.planSpawningPool(gameState);
+            poolPlan.setPriority(EMERGENCY_DEFENSE_PRIORITY);
+            plans.add(poolPlan);
+        }
         if (!gameState.isEarlyRushed()) {
             return plans;
         }
