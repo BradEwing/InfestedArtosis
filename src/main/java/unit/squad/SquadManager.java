@@ -182,7 +182,8 @@ public class SquadManager {
 
     /**
      * Members of every fight squad hit this frame by something they cannot answer, read before any squad decides,
-     * so a containing squad and the hit unit both react on the frame the hit is seen.
+     * so a containing squad and the hit unit both react on the frame the hit is seen. A member standing in an active
+     * Psionic Storm or irradiated may be losing hit points to the effect, and its drop is not read as a hit.
      *
      * @param now current frame
      * @return the members with an outranged hit
@@ -191,7 +192,7 @@ public class SquadManager {
         Set<ManagedUnit> hit = new HashSet<>();
         for (Squad squad : fightSquads) {
             for (ManagedUnit member : squad.getMembers()) {
-                if (!member.wasHitOn(now)) {
+                if (!member.wasHitOn(now) || gameState.isTakingNonWeaponDamage(member)) {
                     continue;
                 }
                 if (ManagedUnit.isOutrangedHit(member.getHitPointsBefore(), member.getUnit().getHitPoints(),
@@ -205,7 +206,8 @@ public class SquadManager {
 
     /**
      * Moves every member with an outranged hit this frame to the point, within a short ring around it, farthest
-     * outside every zone that outranges it. The move is issued this frame, ahead of the unit's ready gate.
+     * outside every zone that outranges it. The move is issued this frame, ahead of the unit's ready gate. A
+     * burrowed member, or one whose type cannot move, is left to keep attacking from its role.
      *
      * @param now current frame
      */
@@ -219,7 +221,8 @@ public class SquadManager {
         int mapPixelHeight = game.mapHeight() * 32;
         Predicate<Position> allowed = point -> isWalkable(point, accessible, mapPixelWidth, mapPixelHeight);
         for (ManagedUnit member : outrangedHits) {
-            if (!ManagedUnit.evadesOutrangedHit(member.getRole(), member.isClosingOnTarget())) {
+            if (!member.canStepOutNow()
+                    || !ManagedUnit.evadesOutrangedHit(member.getRole(), member.isClosingOnTarget())) {
                 continue;
             }
             UnitType type = member.getUnitType();

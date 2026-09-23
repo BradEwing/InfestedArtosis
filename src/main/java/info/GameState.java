@@ -232,10 +232,11 @@ public class GameState {
     }
 
     /**
-     * Teaches the reach memory from every hit one of our ground units took this frame. A hit a Bunker shot already
-     * accounts for teaches nothing more. Otherwise the visible enemy targeting the victim is credited, else the
-     * nearest visible enemy with a ground weapon, each only when the distance is attributable to its type. A hit
-     * nothing accounts for leaves a hurt mark where the victim stood.
+     * Teaches the reach memory from every weapon hit one of our ground units took this frame. A hit a Bunker shot
+     * already accounts for teaches nothing more. Otherwise the visible enemy targeting the victim is credited when
+     * the distance is attributable to its type, else the visible enemies with a ground weapon near the victim are
+     * weighed as {@link EnemyReachMemory#learnFromBystanders} describes. A hit nothing accounts for leaves a hurt mark
+     * where the victim stood.
      *
      * @param frame current frame
      */
@@ -247,7 +248,7 @@ public class GameState {
                 continue;
             }
             Unit victim = managedUnit.getUnit();
-            if (victim.isFlying() || victim.getType().isBuilding()) {
+            if (!teachesReach(victim.getType(), victim.isFlying(), isTakingNonWeaponDamage(managedUnit))) {
                 continue;
             }
             Integer shotFrame = recentBunkerShotVictims.get(victim);
@@ -267,8 +268,7 @@ public class GameState {
 
     private static boolean learnFromVisibleAttacker(EnemyReachMemory memory, Unit victim, Set<Unit> enemies,
                                                     int frame) {
-        Unit nearest = null;
-        int nearestDistance = Integer.MAX_VALUE;
+        List<EnemyReachMemory.Bystander> bystanders = new ArrayList<>();
         for (Unit enemy : enemies) {
             if (enemy.isFlying() || EnemyReachMemory.groundWeapon(enemy.getType()) == WeaponType.None) {
                 continue;
@@ -281,13 +281,36 @@ public class GameState {
                 }
                 continue;
             }
-            if (distance < nearestDistance) {
-                nearest = enemy;
-                nearestDistance = distance;
-            }
+            bystanders.add(new EnemyReachMemory.Bystander(enemy.getType(), distance));
         }
-        return nearest != null && memory.learnFromHit(nearest.getType(), nearestDistance,
-                EnemyReachMemory.Source.VISIBLE, victim.getPosition(), frame);
+        return memory.learnFromBystanders(bystanders, victim.getPosition(), frame);
+    }
+
+    /**
+     * Whether a hit on one of our units can teach enemy reach: only a ground unit, not a building, and only when the
+     * hit points it lost can have come from a weapon rather than an effect the bot tracks.
+     *
+     * @param victimType type of the unit hit
+     * @param flying true when the unit is in the air
+     * @param nonWeaponDamage true when the unit stands in an active Psionic Storm or is irradiated
+     * @return true when the hit teaches reach
+     */
+    static boolean teachesReach(UnitType victimType, boolean flying, boolean nonWeaponDamage) {
+        return !flying && !victimType.isBuilding() && !nonWeaponDamage;
+    }
+
+    /**
+     * Whether one of our units is losing hit points to an effect rather than a weapon: it stands in an active
+     * Psionic Storm, measured to its largest extent, or it is irradiated.
+     *
+     * @param managedUnit our unit
+     * @return true when its hit point loss may not come from a weapon
+     */
+    public boolean isTakingNonWeaponDamage(ManagedUnit managedUnit) {
+        UnitType type = managedUnit.getUnitType();
+        int extent = Math.max(Math.max(type.dimensionLeft(), type.dimensionRight()),
+                Math.max(type.dimensionUp(), type.dimensionDown()));
+        return managedUnit.isIrradiated() || psiStormTracker.isPositionInStorm(managedUnit.getPosition(), extent);
     }
 
     private boolean hasTargetInBunkerRange(Unit bunker) {

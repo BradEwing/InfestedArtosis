@@ -140,6 +140,53 @@ class EnemyReachMemoryTest {
         assertEquals(MARINE_RANGE, memory.groundReach(UnitType.Terran_Bunker));
     }
 
+    private static EnemyReachMemory.Bystander marineAt(int distance) {
+        return new EnemyReachMemory.Bystander(UnitType.Terran_Marine, distance);
+    }
+
+    @Test
+    void aSoleBystanderBeyondItsReachIsCreditedWithTheHit() {
+        EnemyReachMemory memory = new EnemyReachMemory();
+
+        assertTrue(memory.learnFromBystanders(Collections.singletonList(marineAt(MARINE_RANGE + 40)), VICTIM, 100));
+        assertEquals(MARINE_RANGE + 40, memory.groundReach(UnitType.Terran_Marine));
+    }
+
+    @Test
+    void twoBystandersBeyondTheirReachTeachNothing() {
+        EnemyReachMemory memory = new EnemyReachMemory();
+
+        assertFalse(memory.learnFromBystanders(Arrays.asList(marineAt(MARINE_RANGE + 40),
+                marineAt(MARINE_RANGE + 57)), VICTIM, 100));
+        assertEquals(MARINE_RANGE, memory.groundReach(UnitType.Terran_Marine),
+                "with two candidates the shooter is unknown, so a hurt mark is recorded instead");
+    }
+
+    @Test
+    void aBystanderFarBeyondItsReachIsNotACandidate() {
+        EnemyReachMemory memory = new EnemyReachMemory();
+        int tooFar = MARINE_RANGE + EnemyReachMemory.MAX_LEARN_STEP + 1;
+
+        assertFalse(memory.learnFromBystanders(Collections.singletonList(marineAt(tooFar)), VICTIM, 100));
+        assertTrue(memory.learnFromBystanders(Arrays.asList(marineAt(tooFar), marineAt(MARINE_RANGE + 10)),
+                VICTIM, 100));
+        assertEquals(MARINE_RANGE + 10, memory.groundReach(UnitType.Terran_Marine));
+    }
+
+    @Test
+    void aBystanderWithinItsReachExplainsTheHitWithoutTeaching() {
+        EnemyReachMemory memory = new EnemyReachMemory();
+
+        assertTrue(memory.learnFromBystanders(Arrays.asList(marineAt(MARINE_RANGE - 20),
+                marineAt(MARINE_RANGE + 40)), VICTIM, 100));
+        assertEquals(MARINE_RANGE, memory.groundReach(UnitType.Terran_Marine));
+    }
+
+    @Test
+    void noBystanderLeavesTheHitUnexplained() {
+        assertFalse(new EnemyReachMemory().learnFromBystanders(Collections.emptyList(), VICTIM, 100));
+    }
+
     @Test
     void aHurtMarkExpiresAfterItsWindow() {
         EnemyReachMemory memory = new EnemyReachMemory();

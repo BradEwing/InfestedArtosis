@@ -190,6 +190,15 @@ class GameStateTest {
     }
 
     @Test
+    void onlyAWeaponHitOnAGroundUnitTeachesReach() {
+        assertTrue(GameState.teachesReach(UnitType.Zerg_Zergling, false, false));
+        assertFalse(GameState.teachesReach(UnitType.Zerg_Zergling, false, true),
+                "a ling in a Psionic Storm or irradiated may be losing hit points to the effect");
+        assertFalse(GameState.teachesReach(UnitType.Zerg_Mutalisk, true, false));
+        assertFalse(GameState.teachesReach(UnitType.Zerg_Hatchery, false, false));
+    }
+
+    @Test
     void takesTheLairOnceTheExtractorStands() {
         int usableExtractors = GameState.structureCount(Readiness.USABLE, ONE, NONE, NONE);
 

@@ -20,7 +20,6 @@ import info.map.GameMap;
 import info.map.MapTile;
 import info.map.MapTileType;
 import info.map.PerchCalculator;
-import info.tracking.ObservedBulletTracker;
 import static util.Distance.manhattanTileDistance;
 import info.tracking.ObservedUnitTracker;
 import learning.LearningManager;
@@ -73,6 +72,7 @@ public class InformationManager {
     }
 
     public void onFrame() {
+        gameState.getObservedBulletTracker().onFrame(game, game.getFrameCount());
         gameState.onFrame();
         updateUpgradeCompletion();
         ageHeatMap();
@@ -469,9 +469,6 @@ public class InformationManager {
 
     private void trackEnemyUnits() {
         ObservedUnitTracker tracker = gameState.getObservedUnitTracker();
-        ObservedBulletTracker observedBulletTracker = gameState.getObservedBulletTracker();
-
-        observedBulletTracker.onFrame(game, game.getFrameCount());
         boolean sawEnemyUnit = false;
 
         for (Unit unit: game.getAllUnits()) {

@@ -170,6 +170,61 @@ public class EnemyReachMemory {
     }
 
     /**
+     * Learns from a hit no visible enemy was seen targeting, given the visible enemies with a ground weapon near
+     * the victim.
+     *
+     * <p>A bystander already within its type's known reach explains the hit and teaches nothing. Otherwise the hit
+     * is pinned on a type only when exactly one bystander stands within {@link #MAX_LEARN_STEP} past its known
+     * reach: with two or more, or none, the shooter is unknown and the caller records a hurt mark instead, so a
+     * visible unit that merely stands near a hit from an unseen shooter never teaches its type.
+     *
+     * @param bystanders visible enemies with a ground weapon, each with its edge distance to the victim
+     * @param victim where the victim stood
+     * @param frame current frame
+     * @return true when the hit was explained or attributed
+     */
+    public boolean learnFromBystanders(Collection<Bystander> bystanders, Position victim, int frame) {
+        Bystander sole = null;
+        int beyondReach = 0;
+        for (Bystander bystander : bystanders) {
+            int reach = groundReach(bystander.getType());
+            if (bystander.getDistance() <= reach) {
+                return true;
+            }
+            if (isAttributable(reach, bystander.getDistance())) {
+                sole = bystander;
+                beyondReach++;
+            }
+        }
+        if (beyondReach != 1) {
+            return false;
+        }
+        raise(sole.getType(), sole.getDistance(), Source.VISIBLE, victim, frame);
+        return true;
+    }
+
+    /**
+     * A visible enemy with a ground weapon near a hit no enemy was seen targeting.
+     */
+    public static final class Bystander {
+        private final UnitType type;
+        private final int distance;
+
+        public Bystander(UnitType type, int distance) {
+            this.type = type;
+            this.distance = distance;
+        }
+
+        public UnitType getType() {
+            return type;
+        }
+
+        public int getDistance() {
+            return distance;
+        }
+    }
+
+    /**
      * Learns from a Marine shot with no visible source that hit one of our units: the shot came from inside a
      * Bunker, and the nearest known Bunker within the radius of the shot is taken to have fired it. Bunker reach
      * rises to the gap between the Bunker's footprint and the victim's.

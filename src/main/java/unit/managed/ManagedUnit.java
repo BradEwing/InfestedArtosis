@@ -701,6 +701,25 @@ public class ManagedUnit {
     }
 
     /**
+     * Whether the unit can step out of fire right now. A burrowed unit, or a type that cannot move, keeps its
+     * position and goes on attacking from its role instead.
+     *
+     * @param burrowed true when the unit is burrowed
+     * @param typeCanMove true when the unit's type can move
+     * @return true when an evade move can be carried out
+     */
+    public static boolean canStepOut(boolean burrowed, boolean typeCanMove) {
+        return !burrowed && typeCanMove;
+    }
+
+    /**
+     * @return true when the unit can carry out an evade move this frame
+     */
+    public boolean canStepOutNow() {
+        return canStepOut(unit.isBurrowed(), unitType.canMove());
+    }
+
+    /**
      * @return true when the unit has a fight target that still exists
      */
     public boolean isClosingOnTarget() {

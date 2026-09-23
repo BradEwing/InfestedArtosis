@@ -1,5 +1,6 @@
 package unit.managed;
 
+import bwapi.UnitType;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -54,5 +55,22 @@ class OutrangedHitTest {
     @Test
     void aUnitOrderedToRetreatThisFrameIsLeftToTheRetreat() {
         assertFalse(ManagedUnit.evadesOutrangedHit(UnitRole.RETREAT, false));
+    }
+
+    @Test
+    void aBurrowedLurkerOnTheArcKeepsItsGroundAndGoesOnAttacking() {
+        assertTrue(UnitType.Zerg_Lurker.canMove());
+        assertFalse(ManagedUnit.canStepOut(true, UnitType.Zerg_Lurker.canMove()));
+    }
+
+    @Test
+    void aTypeThatCannotMoveNeverStepsOut() {
+        assertFalse(UnitType.Zerg_Sunken_Colony.canMove());
+        assertFalse(ManagedUnit.canStepOut(false, UnitType.Zerg_Sunken_Colony.canMove()));
+    }
+
+    @Test
+    void anUnburrowedLingStepsOut() {
+        assertTrue(ManagedUnit.canStepOut(false, UnitType.Zerg_Zergling.canMove()));
     }
 }

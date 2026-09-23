@@ -47,8 +47,10 @@ import java.util.Set;
  * <p>CONTAIN_PUSHBACK is emitted when a containing squad moves its arc back out of reach of an enemy that
  * outranges it, with the old and new arc midpoints, the type of the longest reaching zone that covered the old
  * arc (None for a hurt mark) and the members moved. The row that closes a containment episode carries the supply
- * lost over it. outranged_hit is 1 on a containing squad's row when a member was hit on that frame by something it
- * cannot answer, 0 when none was, and -1 on any row not written from a containment evaluation.
+ * lost over it. outranged_hit is 1 on a containing squad's row when a member was hit on the frame the row is written
+ * by something it cannot answer, 0 when none was, and -1 on any row not written from a containment evaluation.
+ * Rows are written only on status changes and push backs that move a member, so a hit on a frame that writes no
+ * row leaves no trace here.
  *
  * <p>Every row names the branch that decided the status it reports in decision_path. On a
  * LOCK_SUPPRESSED row that is the request the lock refused, so the suppression episodes a lock
