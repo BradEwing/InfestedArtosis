@@ -54,6 +54,7 @@ public class InformationManager {
     private HashSet<Base> startingBasesSet = new HashSet<>();
     private HashSet<Base> expansionBasesSet = new HashSet<>();
     private final HashMap<Base, List<TilePosition>> buildableAreaTiles = new HashMap<>();
+    private final HashMap<Base, List<TilePosition>> gatewaySiteTiles = new HashMap<>();
 
     private static final int PROXY_DETECTION_DISTANCE = 24;
 
@@ -634,7 +635,11 @@ public class InformationManager {
                 .filter(tile -> !scoutData.hasSeenEnemyMainTile(enemyMain, tile))
                 .filter(game::isVisible)
                 .collect(Collectors.toList());
-        scoutData.recordEnemyMainVision(enemyMain, visibleTiles, mainTiles.size(), new Time(game.getFrameCount()));
+        List<TilePosition> gatewaySites = gatewaySiteTiles.computeIfAbsent(enemyMain, base -> mainTiles.stream()
+                .filter(tile -> ScoutData.isGatewaySite(tile, base.getCenter().toTilePosition()))
+                .collect(Collectors.toList()));
+        scoutData.recordEnemyMainVision(enemyMain, visibleTiles, mainTiles.size(), gatewaySites,
+                new Time(game.getFrameCount()));
     }
 
     private List<TilePosition> buildableTilesOfArea(Base base) {

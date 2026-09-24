@@ -85,15 +85,8 @@ public class StrategyDetectionContext {
     }
 
     /**
-     * Whether both the enemy main and the inferred enemy natural are known.
-     */
-    public boolean isEnemyHomeKnown() {
-        return baseData.getMainEnemyBase() != null && baseData.getEnemyNaturalBase() != null;
-    }
-
-    /**
-     * The first frame our vision had covered ScoutData.ENEMY_MAIN_SCOUTED_COVERAGE of the enemy main's
-     * buildable tiles. Null while the enemy main is unknown or not yet scouted.
+     * The first frame our vision had covered the enemy main as ScoutData.getEnemyMainScoutedFrame defines it.
+     * Null while the enemy main is unknown or not yet scouted.
      */
     public Time enemyMainScoutedFrame() {
         Base enemyMain = baseData.getMainEnemyBase();
@@ -101,19 +94,6 @@ public class StrategyDetectionContext {
             return null;
         }
         return scoutData.getEnemyMainScoutedFrame(enemyMain);
-    }
-
-    /**
-     * Whether the tile belongs to the enemy's home: the BWEM Area of the enemy main or of the inferred enemy
-     * natural, or within naturalWallTileRadius manhattan tiles of the natural's depot or of one of its
-     * chokepoints, where a wall at the natural stands. False where neither base is known.
-     */
-    public boolean isAtEnemyHome(TilePosition tile, int naturalWallTileRadius) {
-        if (isInBaseArea(tile, baseData.getMainEnemyBase()) || isInBaseArea(tile, baseData.getEnemyNaturalBase())) {
-            return true;
-        }
-        BaseArea naturalWall = enemyNaturalArea(naturalWallTileRadius, naturalWallTileRadius);
-        return naturalWall != null && naturalWall.contains(tile);
     }
 
     /**
@@ -153,10 +133,6 @@ public class StrategyDetectionContext {
                 .filter(Base::isStartingLocation)
                 .filter(base -> base != ourMain)
                 .collect(Collectors.toList());
-    }
-
-    private boolean isInBaseArea(TilePosition tile, Base base) {
-        return base != null && base.getArea() != null && isInArea(tile, base.getArea());
     }
 
     /**

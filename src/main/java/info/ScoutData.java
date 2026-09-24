@@ -20,6 +20,25 @@ public class ScoutData {
      */
     public static final double ENEMY_MAIN_SCOUTED_COVERAGE = 0.5;
 
+    /**
+     * Tile radius around an enemy main's depot inside which its Gateways stand. Home Gateways and Cores stand
+     * within about 400 px of the depot.
+     */
+    public static final int ENEMY_MAIN_GATEWAY_SITE_TILE_RADIUS = 14;
+
+    /**
+     * Share of an enemy main's Gateway sites, its buildable tiles within
+     * {@link #ENEMY_MAIN_GATEWAY_SITE_TILE_RADIUS} of the depot, our vision must also have covered before the main
+     * counts as scouted.
+     */
+    public static final double ENEMY_MAIN_GATEWAY_SITE_COVERAGE = 0.9;
+
+    /**
+     * Vision of an enemy main counts toward its coverage only from this time on. Earlier vision predates the
+     * Gateway it is meant to rule out, which can be up by 1:45.
+     */
+    public static final Time ENEMY_MAIN_VISION_START = new Time(2, 0);
+
     private HashSet<TilePosition> scoutTargets = new HashSet<>();
     @Getter
     private HashSet<TilePosition> activeScoutTargets = new HashSet<>();
@@ -217,19 +236,35 @@ public class ScoutData {
 
     /**
      * Adds the tiles of this enemy main now in our vision to the tiles seen so far, and records the frame on
-     * which the tiles seen first cover {@link #ENEMY_MAIN_SCOUTED_COVERAGE} of the main's buildable tiles.
-     * Only the first such frame is kept.
+     * which the tiles seen first cover {@link #ENEMY_MAIN_SCOUTED_COVERAGE} of the main's buildable tiles and
+     * {@link #ENEMY_MAIN_GATEWAY_SITE_COVERAGE} of its Gateway sites. Only the first such frame is kept, and
+     * vision before {@link #ENEMY_MAIN_VISION_START} is ignored.
      *
      * @param visibleTiles buildable tiles of the enemy main's area in our vision this frame
      * @param mainTileCount buildable tiles in the enemy main's area
+     * @param gatewaySites buildable tiles of the enemy main's area that are Gateway sites
      */
     public void recordEnemyMainVision(Base enemyMain, Collection<TilePosition> visibleTiles, int mainTileCount,
-                                      Time frame) {
+                                      Collection<TilePosition> gatewaySites, Time frame) {
+        if (!ENEMY_MAIN_VISION_START.lessThanOrEqual(frame)) {
+            return;
+        }
         Set<TilePosition> seen = enemyMainSeenTiles.computeIfAbsent(enemyMain, base -> new HashSet<>());
         seen.addAll(visibleTiles);
-        if (isScouted(seen.size(), mainTileCount)) {
+        int seenGatewaySites = (int) gatewaySites.stream().filter(seen::contains).count();
+        if (isScouted(seen.size(), mainTileCount, seenGatewaySites, gatewaySites.size())) {
             enemyMainScoutedFrames.putIfAbsent(enemyMain, frame);
         }
+    }
+
+    /**
+     * Whether a tile is a Gateway site of the main whose depot stands at depotTile: within
+     * {@link #ENEMY_MAIN_GATEWAY_SITE_TILE_RADIUS} tiles of it.
+     */
+    public static boolean isGatewaySite(TilePosition tile, TilePosition depotTile) {
+        int dx = tile.getX() - depotTile.getX();
+        int dy = tile.getY() - depotTile.getY();
+        return dx * dx + dy * dy <= ENEMY_MAIN_GATEWAY_SITE_TILE_RADIUS * ENEMY_MAIN_GATEWAY_SITE_TILE_RADIUS;
     }
 
     public boolean hasSeenEnemyMainTile(Base enemyMain, TilePosition tile) {
@@ -239,13 +274,19 @@ public class ScoutData {
 
     /**
      * @return the first frame our vision had covered {@link #ENEMY_MAIN_SCOUTED_COVERAGE} of this enemy main's
-     *     buildable tiles, or null if it never has
+     *     buildable tiles and {@link #ENEMY_MAIN_GATEWAY_SITE_COVERAGE} of its Gateway sites, or null if it never
+     *     has
      */
     public Time getEnemyMainScoutedFrame(Base enemyMain) {
         return enemyMainScoutedFrames.get(enemyMain);
     }
 
-    static boolean isScouted(int seenTiles, int mainTileCount) {
-        return mainTileCount > 0 && seenTiles >= ENEMY_MAIN_SCOUTED_COVERAGE * mainTileCount;
+    /**
+     * Whether the tiles seen cover enough of the main and of its Gateway sites. A main with no Gateway sites
+     * gives no ground where a Gateway would be seen, so it never counts as scouted.
+     */
+    static boolean isScouted(int seenTiles, int mainTileCount, int seenGatewaySites, int gatewaySiteCount) {
+        return mainTileCount > 0 && seenTiles >= ENEMY_MAIN_SCOUTED_COVERAGE * mainTileCount
+                && gatewaySiteCount > 0 && seenGatewaySites >= ENEMY_MAIN_GATEWAY_SITE_COVERAGE * gatewaySiteCount;
     }
 }

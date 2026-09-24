@@ -5,15 +5,14 @@ import bwapi.Race;
 import bwapi.TilePosition;
 import bwapi.UnitType;
 import info.ScoutData;
-import info.map.BaseArea;
 import info.tracking.ObservedUnit;
 import info.tracking.ObservedUnitFixture;
 import info.tracking.ObservedUnitTracker;
 import org.junit.jupiter.api.Test;
-import util.Distance;
 import util.Time;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.function.Predicate;
@@ -24,44 +23,49 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * BWEM Areas and ground paths need a live map, so the enemy's home stands in as the tiles within
- * {@link #MAIN_TILE_RADIUS} of the main depot plus the natural's wall ground, which is a real BaseArea around
- * the natural depot and one chokepoint. Our side is the tiles within {@link #MAIN_TILE_RADIUS} of our main.
- * The LSP4O001 frames and positions are GAME_LSP4O001's (Destination).
+ * Ground paths need a live map, so our side of the map stands in as the positions nearer our main than the enemy
+ * main by air. Frames and positions named after a game are that game's, from its unit_events.csv: GAME_LSP4O001
+ * (Destination, the proxy 9/9 Gateway) and the batch 20260923-121254 false positives.
  */
 class ProxyGateTest {
 
-    private static final int MAIN_TILE_RADIUS = 12;
+    private static final Position LSP4O001_OUR_MAIN = new Position(1056, 272);
 
-    private static final TilePosition ENEMY_MAIN_DEPOT = new TilePosition(100, 100);
+    private static final Position LSP4O001_ENEMY_MAIN = new Position(2112, 3824);
 
-    private static final TilePosition ENEMY_NATURAL_DEPOT = new TilePosition(100, 76);
+    private static final Predicate<Position> LSP4O001_OUR_SIDE = onOurSide(LSP4O001_OUR_MAIN, LSP4O001_ENEMY_MAIN);
 
-    private static final TilePosition ENEMY_NATURAL_CHOKE = new TilePosition(100, 66);
+    private static final Position LSP4O001_PROXY_GATEWAY = new Position(2240, 1424);
 
-    private static final TilePosition OUR_MAIN_DEPOT = new TilePosition(20, 20);
+    private static final Time LSP4O001_GATEWAY_SHOWN = new Time(6177);
 
-    private static final BaseArea ENEMY_NATURAL_WALL = new BaseArea(ENEMY_NATURAL_DEPOT, null,
-            Collections.singletonList(ENEMY_NATURAL_CHOKE), ProxyGate.NATURAL_WALL_TILE_RADIUS,
-            ProxyGate.NATURAL_WALL_TILE_RADIUS, tile -> null);
+    private static final Position LSP4O001_ZEALOT_AT_OUR_NATURAL = new Position(2035, 841);
 
-    private static final Predicate<TilePosition> AT_ENEMY_HOME = tile ->
-            Distance.manhattanTileDistance(tile, ENEMY_MAIN_DEPOT) <= MAIN_TILE_RADIUS
-                    || ENEMY_NATURAL_WALL.contains(tile);
+    private static final Position LSP4O001_ENEMY_MAIN_CORE = new Position(1840, 3712);
 
-    private static final Predicate<Position> AWAY = position -> ProxyGate.isAway(true,
-            AT_ENEMY_HOME.test(position.toTilePosition()),
-            Distance.manhattanTileDistance(position.toTilePosition(), OUR_MAIN_DEPOT) <= MAIN_TILE_RADIUS);
+    private static final Time LSP4O001_CORE_SHOWN = new Time(5035);
 
-    private static final Position ENEMY_MAIN_GATEWAY = tileCentre(new TilePosition(103, 98));
+    private static final Time LSP4O001_NEXUS_SHOWN = new Time(3314);
 
-    private static final Position NATURAL_WALL_GATEWAY = tileCentre(new TilePosition(103, 64));
+    private static final Position I1_OUR_MAIN = new Position(288, 3824);
 
-    private static final Position THIRD_BASE_GATEWAY = tileCentre(new TilePosition(60, 60));
+    private static final Position I1_ENEMY_MAIN = new Position(3808, 272);
 
-    private static final Position OUR_SIDE_GATEWAY = tileCentre(new TilePosition(24, 26));
+    private static final Position I1_FORWARD_GATEWAY = new Position(3680, 1104);
 
-    private static final Position DISTANT_FORGE = tileCentre(new TilePosition(60, 60));
+    private static final Time I1_FORWARD_GATEWAY_SHOWN = new Time(5059);
+
+    private static final Position EF_HOME_GATEWAY = new Position(1408, 272);
+
+    private static final Time EF_HOME_GATEWAY_SHOWN = new Time(3286);
+
+    private static final Time EF_HOME_GATEWAY_DESTROYED = new Time(7243);
+
+    private static final Position EF_ZEALOT_AT_ENEMY_HOME = new Position(1368, 320);
+
+    private static final Position EF_OUR_MAIN = new Position(2112, 3824);
+
+    private static final Position EF_ENEMY_MAIN = new Position(1056, 272);
 
     private static final Time EARLY = new Time(3314);
 
@@ -71,191 +75,225 @@ class ProxyGateTest {
 
     private static final Time BEFORE_WINDOW = new Time(ProxyGate.MAIN_SCOUT_WINDOW_END.getFrames() - 1);
 
-    private static final int MAIN_BUILDABLE_TILES = 400;
-
-    private static final Time LSP4O001_CORE_SHOWN = new Time(5035);
-
-    private static final Time LSP4O001_GATEWAY_SHOWN = new Time(6177);
-
-    private static final Position LSP4O001_PROXY_GATEWAY = new Position(2240, 1424);
-
     @Test
-    void aGatewayAtTheEnemyHomeIsNotAway() {
-        assertFalse(ProxyGate.isAway(true, true, false));
-    }
-
-    @Test
-    void aGatewayAwayFromTheEnemyHomeIsAway() {
-        assertTrue(ProxyGate.isAway(true, false, false));
-    }
-
-    @Test
-    void aGatewayOnOurSideIsAwayWhetherOrNotTheEnemyHomeIsKnown() {
-        assertTrue(ProxyGate.isAway(true, true, true));
-        assertTrue(ProxyGate.isAway(false, false, true));
-    }
-
-    @Test
-    void aGatewayOffOurSideIsNotAwayWhileTheEnemyHomeIsUnknown() {
-        assertFalse(ProxyGate.isAway(false, false, false));
+    void aGatewayOnOurSideBeforeTheCutoffIsDetected() {
+        assertTrue(ProxyGate.hasGatewayAway(ProxyGate.GATEWAY_CUTOFF,
+                gatewayTracker(LSP4O001_PROXY_GATEWAY, ProxyGate.GATEWAY_CUTOFF), LSP4O001_OUR_SIDE));
     }
 
     @Test
     void aGatewayInTheEnemyMainIsNotDetected() {
-        assertFalse(ProxyGate.hasGatewayAway(gatewayTracker(ENEMY_MAIN_GATEWAY, EARLY), AWAY));
+        assertFalse(ProxyGate.hasGatewayAway(EARLY, gatewayTracker(LSP4O001_ENEMY_MAIN_CORE, EARLY),
+                LSP4O001_OUR_SIDE));
     }
 
+    /**
+     * GAME_LU01I0I1: Stardust's forward Gateway 842 px from its own depot, with FFE dragoons behind it, fired
+     * GATEWAY_AWAY when any Gateway outside the enemy main and natural counted.
+     */
     @Test
-    void aWallGatewayAtTheEnemyNaturalChokeIsNotDetected() {
-        assertTrue(Distance.manhattanTileDistance(NATURAL_WALL_GATEWAY.toTilePosition(), ENEMY_NATURAL_CHOKE)
-                <= ProxyGate.NATURAL_WALL_TILE_RADIUS);
-        assertTrue(Distance.manhattanTileDistance(NATURAL_WALL_GATEWAY.toTilePosition(), ENEMY_NATURAL_DEPOT)
-                > ProxyGate.NATURAL_WALL_TILE_RADIUS);
-
-        assertFalse(ProxyGate.hasGatewayAway(gatewayTracker(NATURAL_WALL_GATEWAY, EARLY), AWAY));
-    }
-
-    @Test
-    void aGatewayAtAFarThirdBaseIsDetected() {
-        assertTrue(ProxyGate.hasGatewayAway(gatewayTracker(THIRD_BASE_GATEWAY, EARLY), AWAY));
-    }
-
-    @Test
-    void aGatewayOnOurSideBeforeTheCutoffIsDetected() {
-        assertTrue(ProxyGate.hasGatewayAway(gatewayTracker(OUR_SIDE_GATEWAY, ProxyGate.GATEWAY_CUTOFF), AWAY));
+    void aForwardGatewayOnTheEnemysSideIsNotDetected() {
+        assertFalse(ProxyGate.hasGatewayAway(I1_FORWARD_GATEWAY_SHOWN,
+                gatewayTracker(I1_FORWARD_GATEWAY, I1_FORWARD_GATEWAY_SHOWN), onOurSide(I1_OUR_MAIN, I1_ENEMY_MAIN)));
     }
 
     @Test
     void aGatewayOnOurSideFirstSeenAfterTheCutoffIsNotDetected() {
-        assertFalse(ProxyGate.hasGatewayAway(gatewayTracker(OUR_SIDE_GATEWAY, AFTER_GATEWAY_CUTOFF), AWAY));
+        assertFalse(ProxyGate.hasGatewayAway(AFTER_GATEWAY_CUTOFF,
+                gatewayTracker(LSP4O001_PROXY_GATEWAY, AFTER_GATEWAY_CUTOFF), LSP4O001_OUR_SIDE));
+    }
+
+    @Test
+    void aGatewayOnOurSideNeverFiresAfterTheCutoff() {
+        assertFalse(ProxyGate.hasGatewayAway(AFTER_GATEWAY_CUTOFF,
+                gatewayTracker(LSP4O001_PROXY_GATEWAY, EARLY), LSP4O001_OUR_SIDE));
     }
 
     @Test
     void aGatewayWithNoKnownPositionIsNotDetected() {
-        assertFalse(ProxyGate.hasGatewayAway(gatewayTracker(null, EARLY), position -> true));
+        assertFalse(ProxyGate.hasGatewayAway(EARLY, gatewayTracker(null, EARLY), position -> true));
     }
 
     @Test
     void anotherBuildingOnOurSideIsNotAGatewayAway() {
-        assertFalse(ProxyGate.hasGatewayAway(trackerHolding(UnitType.Protoss_Pylon, OUR_SIDE_GATEWAY, EARLY), AWAY));
+        assertFalse(ProxyGate.hasGatewayAway(EARLY,
+                trackerHolding(UnitType.Protoss_Pylon, LSP4O001_PROXY_GATEWAY, EARLY), LSP4O001_OUR_SIDE));
+    }
+
+    /**
+     * GAME_LSP4O001: proxy Gateway 169 is first shown on frame 6177 at (2240,1424), inside the cutoff and on our
+     * half of Destination.
+     */
+    @Test
+    void theLsp4o001ProxyGatewayIsOnOurSide() {
+        assertTrue(ProxyGate.hasGatewayAway(LSP4O001_GATEWAY_SHOWN,
+                gatewayTracker(LSP4O001_PROXY_GATEWAY, LSP4O001_GATEWAY_SHOWN), LSP4O001_OUR_SIDE));
     }
 
     @Test
-    void aMainNeverScoutedIsNotEmpty() {
-        assertFalse(ProxyGate.isMainEmpty(AFTER_WINDOW, null, false));
+    void theMainIsNotJudgedBeforeTheWindowCloses() {
+        ProxyGate strategy = new ProxyGate();
+
+        assertFalse(strategy.decideMainEmpty(BEFORE_WINDOW, () -> {
+            throw new AssertionError("judged before the window closed");
+        }));
+        assertTrue(strategy.decideMainEmpty(ProxyGate.MAIN_SCOUT_WINDOW_END, () -> true));
     }
 
     @Test
-    void aMainScoutedOnlyAfterTheWindowIsNotEmpty() {
-        assertFalse(ProxyGate.isMainEmpty(AFTER_WINDOW, AFTER_WINDOW, false));
+    void theMainIsJudgedOnceOnTheFirstFrameAtTheWindowEnd() {
+        ProxyGate strategy = new ProxyGate();
+
+        assertFalse(strategy.decideMainEmpty(ProxyGate.MAIN_SCOUT_WINDOW_END, () -> false));
+
+        assertFalse(strategy.decideMainEmpty(AFTER_WINDOW, () -> true));
+    }
+
+    /**
+     * GAME_LU01I0EF, 0EG, 0EM and 0KP: MAIN_EMPTY fired on the frame the last home tech seen before the window
+     * died (8415, 10746, 10525, 8098), because a destroyed unit loses its position. The verdict is now taken
+     * once at the window end, so a later frame never fires whatever it sees.
+     */
+    @Test
+    void anEmptyMainNeverFiresAfterTheWindow() {
+        ProxyGate strategy = new ProxyGate();
+        strategy.decideMainEmpty(ProxyGate.MAIN_SCOUT_WINDOW_END, () -> false);
+
+        assertFalse(strategy.decideMainEmpty(new Time(8415), () -> true));
     }
 
     @Test
-    void aScoutedMainIsNotJudgedBeforeTheWindowCloses() {
-        assertFalse(ProxyGate.isMainEmpty(BEFORE_WINDOW, EARLY, false));
+    void aMainFirstJudgedLateIsJudgedAtMostOnce() {
+        ProxyGate strategy = new ProxyGate();
+
+        assertTrue(strategy.decideMainEmpty(AFTER_WINDOW, () -> true));
+        assertFalse(strategy.decideMainEmpty(new Time(AFTER_WINDOW.getFrames() + 1), () -> true));
     }
 
     @Test
-    void aMainWhoseDepotAloneWasSeenIsNotDetected() {
-        ScoutData scoutData = new ScoutData();
-        scoutData.recordEnemyMainVision(null, tiles(12), MAIN_BUILDABLE_TILES, EARLY);
+    void aHomeGatewayDestroyedAfterTheWindowStillVetoes() {
+        ObservedUnit gateway = ObservedUnitFixture.observedUnit(UnitType.Protoss_Gateway, EF_HOME_GATEWAY,
+                EF_HOME_GATEWAY_SHOWN);
+        gateway.setDestroyedFrame(EF_HOME_GATEWAY_DESTROYED);
+        gateway.setLastKnownLocation(null);
 
-        assertNull(scoutData.getEnemyMainScoutedFrame(null));
-        assertFalse(ProxyGate.isMainEmpty(AFTER_WINDOW, scoutData.getEnemyMainScoutedFrame(null), false));
+        assertTrue(ProxyGate.isTechObserved(ObservedUnitFixture.trackerHolding(gateway)));
+    }
+
+    /**
+     * GAME_LU01I00J and LU01I0JE: an FFE's Forge seen by the window end vetoes, wherever it stands.
+     */
+    @Test
+    void aForgeVetoesAnEmptyMain() {
+        assertTrue(ProxyGate.isTechObserved(trackerHolding(UnitType.Protoss_Forge, null, EARLY)));
     }
 
     @Test
-    void aWellCoveredMainWithNoTechIsDetected() {
-        ScoutData scoutData = new ScoutData();
-        scoutData.recordEnemyMainVision(null, tiles(MAIN_BUILDABLE_TILES * 3 / 4), MAIN_BUILDABLE_TILES, EARLY);
-
-        assertEquals(EARLY, scoutData.getEnemyMainScoutedFrame(null));
-        assertTrue(ProxyGate.isMainEmpty(ProxyGate.MAIN_SCOUT_WINDOW_END, scoutData.getEnemyMainScoutedFrame(null),
-                false));
-    }
-
-    @Test
-    void aScoutedMainWithAGatewaySeenIsNotEmpty() {
-        boolean tech = homeTech(gatewayTracker(ENEMY_MAIN_GATEWAY, EARLY));
-
-        assertTrue(tech);
-        assertFalse(ProxyGate.isMainEmpty(AFTER_WINDOW, EARLY, tech));
-    }
-
-    @Test
-    void aScoutedMainWithACoreSeenIsNotEmpty() {
-        boolean tech = homeTech(trackerHolding(UnitType.Protoss_Cybernetics_Core, ENEMY_MAIN_GATEWAY,
-                ProxyGate.MAIN_SCOUT_WINDOW_END));
-
-        assertTrue(tech);
-        assertFalse(ProxyGate.isMainEmpty(AFTER_WINDOW, EARLY, tech));
-    }
-
-    @Test
-    void everyTechBuildingInTheMainBlocksAnEmptyMain() {
+    void everyTechBuildingVetoesAnEmptyMain() {
         for (UnitType tech : ProxyGate.MAIN_TECH) {
-            assertTrue(homeTech(trackerHolding(tech, ENEMY_MAIN_GATEWAY, EARLY)), tech.toString());
+            assertTrue(ProxyGate.isTechObserved(trackerHolding(tech, EF_HOME_GATEWAY, EARLY)), tech.toString());
         }
         assertEquals(5, ProxyGate.MAIN_TECH.length);
     }
 
     @Test
-    void aForgeWallingTheEnemyNaturalBlocksAnEmptyMain() {
-        assertTrue(homeTech(trackerHolding(UnitType.Protoss_Forge, NATURAL_WALL_GATEWAY, EARLY)));
+    void techSeenOnTheLastFrameOfTheWindowVetoes() {
+        assertTrue(ProxyGate.isTechObserved(trackerHolding(UnitType.Protoss_Cybernetics_Core, EF_HOME_GATEWAY,
+                ProxyGate.MAIN_SCOUT_WINDOW_END)));
     }
 
     @Test
-    void techAwayFromTheEnemyHomeDoesNotBlockAnEmptyMain() {
-        assertFalse(homeTech(trackerHolding(UnitType.Protoss_Forge, DISTANT_FORGE, EARLY)));
-        assertFalse(homeTech(gatewayTracker(OUR_SIDE_GATEWAY, EARLY)));
+    void aPylonDoesNotVetoAnEmptyMain() {
+        assertFalse(ProxyGate.isTechObserved(trackerHolding(UnitType.Protoss_Pylon, EF_HOME_GATEWAY, EARLY)));
     }
 
     @Test
-    void aPylonDoesNotBlockAnEmptyMain() {
-        assertFalse(homeTech(trackerHolding(UnitType.Protoss_Pylon, ENEMY_MAIN_GATEWAY, EARLY)));
+    void techFirstSeenAfterTheWindowDoesNotVetoAnEmptyMain() {
+        assertFalse(ProxyGate.isTechObserved(trackerHolding(UnitType.Protoss_Cybernetics_Core,
+                LSP4O001_ENEMY_MAIN_CORE, LSP4O001_CORE_SHOWN)));
     }
 
     @Test
-    void techFirstSeenAfterTheWindowDoesNotBlockAnEmptyMain() {
-        assertFalse(homeTech(trackerHolding(UnitType.Protoss_Cybernetics_Core, ENEMY_MAIN_GATEWAY, AFTER_WINDOW)));
+    void aMainNeverScoutedIsNotEmpty() {
+        assertFalse(ProxyGate.isMainEmpty(null, false, true));
+    }
+
+    @Test
+    void aMainScoutedOnlyAfterTheWindowIsNotEmpty() {
+        assertFalse(ProxyGate.isMainEmpty(AFTER_WINDOW, false, true));
+    }
+
+    @Test
+    void aScoutedMainWithTechSeenIsNotEmpty() {
+        assertFalse(ProxyGate.isMainEmpty(EARLY, true, true));
     }
 
     /**
-     * GAME_LSP4O001: the Nexus is in vision on frame 3314 and no tech is seen before the window closes; the Core
-     * is first shown on frame 5035. The logs cannot tell how much of the main our vision covered, so this case
-     * takes the main as covered by 3314: MAIN_EMPTY then fires when the window closes, before the natural dies
-     * on frame 4817.
+     * GAME_LU01I0E8, 0EX, 0L3, 0IG, 00J and 0JE fired at exactly the window end with a covered main and no tech
+     * seen; none had a Zealot on our side of the map by then.
      */
     @Test
-    void theLsp4o001MainDetectsAsEmptyOnceCovered() {
-        boolean tech = homeTech(trackerHolding(UnitType.Protoss_Cybernetics_Core, ENEMY_MAIN_GATEWAY,
-                LSP4O001_CORE_SHOWN));
+    void aScoutedMainWithNoTechAndNoZealotOnOurSideIsNotEmpty() {
+        assertFalse(ProxyGate.isMainEmpty(EARLY, false, false));
+    }
 
-        assertFalse(tech);
-        assertTrue(ProxyGate.isMainEmpty(ProxyGate.MAIN_SCOUT_WINDOW_END, EARLY, tech));
+    @Test
+    void aScoutedMainWithNoTechAndAZealotOnOurSideIsEmpty() {
+        assertTrue(ProxyGate.isMainEmpty(ProxyGate.MAIN_SCOUT_WINDOW_END, false, true));
+    }
+
+    @Test
+    void aMainCoveredWithoutItsGatewaySitesIsNotEmpty() {
+        ScoutData scoutData = new ScoutData();
+        List<TilePosition> gatewaySites = tilesInRow(300, 400);
+
+        scoutData.recordEnemyMainVision(null, tilesInRow(0, 300), 400, gatewaySites, EARLY);
+
+        assertNull(scoutData.getEnemyMainScoutedFrame(null));
+        assertFalse(ProxyGate.isMainEmpty(scoutData.getEnemyMainScoutedFrame(null), false, true));
+    }
+
+    @Test
+    void aMainCoveredWithItsGatewaySitesCanBeEmpty() {
+        ScoutData scoutData = new ScoutData();
+        List<TilePosition> gatewaySites = tilesInRow(300, 400);
+
+        scoutData.recordEnemyMainVision(null, tilesInRow(100, 400), 400, gatewaySites, EARLY);
+
+        assertEquals(EARLY, scoutData.getEnemyMainScoutedFrame(null));
+        assertTrue(ProxyGate.isMainEmpty(scoutData.getEnemyMainScoutedFrame(null), false, true));
+    }
+
+    @Test
+    void aZealotAtOurNaturalIsOnOurSide() {
+        assertTrue(ProxyGate.hasZealotOnOurSide(Collections.singleton(LSP4O001_ZEALOT_AT_OUR_NATURAL),
+                LSP4O001_OUR_SIDE));
+    }
+
+    @Test
+    void aZealotAtTheEnemyHomeIsNotOnOurSide() {
+        assertFalse(ProxyGate.hasZealotOnOurSide(Collections.singleton(EF_ZEALOT_AT_ENEMY_HOME),
+                onOurSide(EF_OUR_MAIN, EF_ENEMY_MAIN)));
+        assertFalse(ProxyGate.hasZealotOnOurSide(Collections.emptySet(), position -> true));
+    }
+
+    /**
+     * GAME_LSP4O001: the Nexus is in vision on frame 3314, no tech is seen before the window closes (the Core is
+     * first shown on frame 5035), and Zealots 176, 179 and 180 stand at our natural by frame 4235. The logs
+     * cannot tell how much of the main our vision covered, so this case takes the main as covered by 3314:
+     * MAIN_EMPTY then fires when the window closes, before the natural dies on frame 4817.
+     */
+    @Test
+    void theLsp4o001MainDetectsAsEmptyAtTheWindowEnd() {
+        boolean tech = ProxyGate.isTechObserved(trackerHolding(UnitType.Protoss_Cybernetics_Core,
+                LSP4O001_ENEMY_MAIN_CORE, LSP4O001_CORE_SHOWN));
+        boolean zealot = ProxyGate.hasZealotOnOurSide(Arrays.asList(LSP4O001_ZEALOT_AT_OUR_NATURAL,
+                new Position(2057, 843)), LSP4O001_OUR_SIDE);
+        ProxyGate strategy = new ProxyGate();
+
+        assertTrue(strategy.decideMainEmpty(ProxyGate.MAIN_SCOUT_WINDOW_END,
+                () -> ProxyGate.isMainEmpty(LSP4O001_NEXUS_SHOWN, tech, zealot)));
         assertTrue(ProxyGate.MAIN_SCOUT_WINDOW_END.getFrames() < 4817);
-    }
-
-    /**
-     * GAME_LSP4O001: proxy Gateway 169 is first shown on frame 6177 at (2240,1424), inside the Gateway cutoff and
-     * 79 manhattan tiles from the enemy main at (2112,3824), so GATEWAY_AWAY fires whatever the main's coverage.
-     */
-    @Test
-    void theLsp4o001ProxyGatewayIsAway() {
-        TilePosition enemyMain = new Position(2112, 3824).toTilePosition();
-        TilePosition proxy = LSP4O001_PROXY_GATEWAY.toTilePosition();
-        Predicate<Position> away = position -> ProxyGate.isAway(true,
-                Distance.manhattanTileDistance(position.toTilePosition(), enemyMain) <= MAIN_TILE_RADIUS, false);
-
-        assertTrue(Distance.manhattanTileDistance(proxy, enemyMain) > MAIN_TILE_RADIUS
-                + ProxyGate.NATURAL_WALL_TILE_RADIUS);
-        assertTrue(LSP4O001_GATEWAY_SHOWN.lessThanOrEqual(ProxyGate.GATEWAY_CUTOFF));
-        assertTrue(ProxyGate.hasGatewayAway(gatewayTracker(LSP4O001_PROXY_GATEWAY, LSP4O001_GATEWAY_SHOWN), away));
-    }
-
-    @Test
-    void theNaturalWallRadiusMatchesFfe() {
-        assertEquals(FFE.PROXIMITY_TILE_RADIUS, ProxyGate.NATURAL_WALL_TILE_RADIUS);
     }
 
     @Test
@@ -289,14 +327,14 @@ class ProxyGateTest {
         assertEquals(Race.Protoss, strategy.getRace());
     }
 
-    private static Position tileCentre(TilePosition tile) {
-        return new Position(tile.getX() * 32 + 16, tile.getY() * 32 + 16);
+    private static Predicate<Position> onOurSide(Position ourMain, Position enemyMain) {
+        return position -> position.getDistance(ourMain) < position.getDistance(enemyMain);
     }
 
-    private static List<TilePosition> tiles(int count) {
+    private static List<TilePosition> tilesInRow(int fromX, int toX) {
         List<TilePosition> tiles = new ArrayList<>();
-        for (int i = 0; i < count; i++) {
-            tiles.add(new TilePosition(i % 64, i / 64));
+        for (int x = fromX; x < toX; x++) {
+            tiles.add(new TilePosition(x, 0));
         }
         return tiles;
     }
@@ -308,9 +346,5 @@ class ProxyGateTest {
     private static ObservedUnitTracker trackerHolding(UnitType unitType, Position position, Time firstObserved) {
         ObservedUnit observedUnit = ObservedUnitFixture.observedUnit(unitType, position, firstObserved);
         return ObservedUnitFixture.trackerHolding(observedUnit);
-    }
-
-    private static boolean homeTech(ObservedUnitTracker tracker) {
-        return ProxyGate.isHomeTechObserved(tracker, AT_ENEMY_HOME);
     }
 }

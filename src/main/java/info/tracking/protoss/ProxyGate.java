@@ -1,29 +1,30 @@
 package info.tracking.protoss;
 
 import bwapi.Position;
-import bwapi.TilePosition;
 import bwapi.UnitType;
 import info.tracking.ObservedUnitTracker;
 import info.tracking.StrategyDetectionContext;
 import util.Time;
 
+import java.util.Collection;
+import java.util.function.BooleanSupplier;
 import java.util.function.Predicate;
 
 /**
- * Detects Gateways built away from the enemy's home. The enemy's home is the BWEM Areas of the enemy main and
- * natural plus the natural's wall ground, within {@link #NATURAL_WALL_TILE_RADIUS} of its depot or chokepoints.
- * Two arms of evidence:
+ * Detects Gateways built on our side of the map. Two arms of evidence:
  * <ul>
- *     <li>GATEWAY_AWAY: a Gateway first observed no later than {@link #GATEWAY_CUTOFF} that stands on our side
- *     of the map by ground distance, or, once the enemy main and natural are known, outside the enemy's
- *     home;</li>
- *     <li>MAIN_EMPTY: our vision covered enough of the enemy main to count it as scouted no later than
- *     {@link #MAIN_SCOUT_WINDOW_END}, and by then no Gateway, Cybernetics Core, Forge, Stargate or Robotics
- *     Facility had been observed at the enemy's home.</li>
+ *     <li>GATEWAY_AWAY: while the clock is within {@link #GATEWAY_CUTOFF}, a Gateway first observed within it
+ *     stands on our side of the map by ground distance. A forward or third-base Gateway on the enemy's side
+ *     never counts;</li>
+ *     <li>MAIN_EMPTY: decided once, on the first frame at or after {@link #MAIN_SCOUT_WINDOW_END}. Our vision
+ *     covered the enemy main, including the ground around its depot where a Gateway would stand, within the
+ *     window; no {@link #MAIN_TECH} building had been observed anywhere by the window end, destroyed ones
+ *     included; and a Zealot stands on our side of the map.</li>
  * </ul>
- * A main we never covered is no evidence, so MAIN_EMPTY never fires on it, nor while the enemy natural is
- * unknown and tech there could not be ruled out. ProxyGate is the specific label for
- * a Gateway rush, and supersedes 2Gate in StrategyTracker.
+ * A main we never covered is no evidence, and an empty main alone is not either: the scout may have missed a
+ * Gateway placed after it passed or in ground it never saw, so the arm also needs the Zealot a proxy Gateway
+ * delivers to our side by the window end. ProxyGate is the specific label for a Gateway rush, and supersedes
+ * 2Gate in StrategyTracker.
  */
 public class ProxyGate extends ProtossBaseStrategy {
 
@@ -35,11 +36,6 @@ public class ProxyGate extends ProtossBaseStrategy {
      * Matches TwoGate's cutoff for observing two Gateways.
      */
     static final Time MAIN_SCOUT_WINDOW_END = new Time(3, 0);
-
-    /**
-     * Matches FFE's reach around the enemy natural's depot and chokepoints for the buildings of a natural wall.
-     */
-    static final int NATURAL_WALL_TILE_RADIUS = FFE.PROXIMITY_TILE_RADIUS;
 
     static final String GATEWAY_AWAY_EVIDENCE = "GATEWAY_AWAY";
     static final String MAIN_EMPTY_EVIDENCE = "MAIN_EMPTY";
@@ -54,6 +50,8 @@ public class ProxyGate extends ProtossBaseStrategy {
 
     private String evidence = "";
 
+    private boolean mainEmptyDecided;
+
     public ProxyGate() {
         super(NAME);
     }
@@ -61,56 +59,64 @@ public class ProxyGate extends ProtossBaseStrategy {
     @Override
     public boolean isDetected(StrategyDetectionContext context) {
         ObservedUnitTracker tracker = context.getTracker();
-        boolean enemyHomeKnown = context.isEnemyHomeKnown();
-        Predicate<TilePosition> atEnemyHome = tile -> context.isAtEnemyHome(tile, NATURAL_WALL_TILE_RADIUS);
-        boolean gatewayAway = hasGatewayAway(tracker, position -> isAway(enemyHomeKnown,
-                atEnemyHome.test(position.toTilePosition()), context.isOnOurSide(position)));
-        boolean mainEmpty = enemyHomeKnown && isMainEmpty(context.getTime(), context.enemyMainScoutedFrame(),
-                isHomeTechObserved(tracker, atEnemyHome));
+        Time now = context.getTime();
+        boolean gatewayAway = hasGatewayAway(now, tracker, context::isOnOurSide);
+        boolean mainEmpty = decideMainEmpty(now, () -> isMainEmpty(context.enemyMainScoutedFrame(),
+                isTechObserved(tracker),
+                hasZealotOnOurSide(tracker.getLastKnownPositionsOfLivingUnits(UnitType.Protoss_Zealot),
+                        context::isOnOurSide)));
         return recordEvidence(gatewayAway, mainEmpty);
     }
 
     /**
-     * Whether a Gateway first observed no later than {@link #GATEWAY_CUTOFF} stands at a position the test
-     * calls away.
+     * Whether, with now no later than {@link #GATEWAY_CUTOFF}, a Gateway first observed no later than the cutoff
+     * stands at a position on our side of the map.
      */
-    static boolean hasGatewayAway(ObservedUnitTracker tracker, Predicate<Position> away) {
-        return tracker.getLastKnownPositionsObservedBeforeTime(UnitType.Protoss_Gateway, GATEWAY_CUTOFF)
-                .stream()
-                .anyMatch(away);
-    }
-
-    /**
-     * Whether a Gateway position is away from the enemy's home: on our side of the map, or, once the enemy main
-     * and natural are known, not at the enemy's home.
-     */
-    static boolean isAway(boolean enemyHomeKnown, boolean atEnemyHome, boolean onOurSide) {
-        return onOurSide || enemyHomeKnown && !atEnemyHome;
-    }
-
-    /**
-     * Whether a {@link #MAIN_TECH} building was first observed at the enemy's home no later than
-     * {@link #MAIN_SCOUT_WINDOW_END}. The natural and its wall count as home because a Forge or Gateway
-     * expansion puts its first tech there rather than in the main.
-     */
-    static boolean isHomeTechObserved(ObservedUnitTracker tracker, Predicate<TilePosition> atEnemyHome) {
-        return tracker.hasObservedAnyBeforeTimeAt(MAIN_SCOUT_WINDOW_END, atEnemyHome, MAIN_TECH);
-    }
-
-    /**
-     * Whether the scouted enemy main held no tech: the window has closed, our vision covered the main within
-     * it, and no tech building was observed at the enemy's home by its end.
-     *
-     * @param now the current time
-     * @param mainScouted when our vision first covered the enemy main, or null if it never did
-     * @param techObserved whether a {@link #MAIN_TECH} building was first observed at the enemy's home by the
-     *     window end
-     */
-    static boolean isMainEmpty(Time now, Time mainScouted, boolean techObserved) {
-        if (mainScouted == null || techObserved) {
+    static boolean hasGatewayAway(Time now, ObservedUnitTracker tracker, Predicate<Position> onOurSide) {
+        if (!now.lessThanOrEqual(GATEWAY_CUTOFF)) {
             return false;
         }
-        return MAIN_SCOUT_WINDOW_END.lessThanOrEqual(now) && mainScouted.lessThanOrEqual(MAIN_SCOUT_WINDOW_END);
+        return tracker.getLastKnownPositionsObservedBeforeTime(UnitType.Protoss_Gateway, GATEWAY_CUTOFF)
+                .stream()
+                .anyMatch(onOurSide);
+    }
+
+    /**
+     * Evaluates the MAIN_EMPTY verdict on the first call at or after {@link #MAIN_SCOUT_WINDOW_END} and returns
+     * it. Every other call returns false, so the arm never fires after the window.
+     */
+    boolean decideMainEmpty(Time now, BooleanSupplier verdict) {
+        if (mainEmptyDecided || !MAIN_SCOUT_WINDOW_END.lessThanOrEqual(now)) {
+            return false;
+        }
+        mainEmptyDecided = true;
+        return verdict.getAsBoolean();
+    }
+
+    /**
+     * Whether a {@link #MAIN_TECH} building was first observed no later than {@link #MAIN_SCOUT_WINDOW_END},
+     * wherever it stood and whether or not it has since been destroyed. A Gateway on our side vetoes too, and is
+     * GATEWAY_AWAY evidence instead.
+     */
+    static boolean isTechObserved(ObservedUnitTracker tracker) {
+        return tracker.hasObservedAnyBeforeTime(MAIN_SCOUT_WINDOW_END, MAIN_TECH);
+    }
+
+    static boolean hasZealotOnOurSide(Collection<Position> zealotPositions, Predicate<Position> onOurSide) {
+        return zealotPositions.stream().anyMatch(onOurSide);
+    }
+
+    /**
+     * Whether the scouted enemy main held no tech while a proxy Gateway's Zealot reached our side.
+     *
+     * @param mainScouted when our vision first covered the enemy main and the ground around its depot, or null
+     *     if it never did
+     * @param techObserved whether a {@link #MAIN_TECH} building was observed by the window end
+     * @param zealotOnOurSide whether a Zealot stands on our side of the map
+     */
+    static boolean isMainEmpty(Time mainScouted, boolean techObserved, boolean zealotOnOurSide) {
+        return mainScouted != null && mainScouted.lessThanOrEqual(MAIN_SCOUT_WINDOW_END) && !techObserved
+                && zealotOnOurSide;
     }
 
     /**

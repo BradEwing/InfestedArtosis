@@ -171,21 +171,6 @@ public class ObservedUnitTracker {
                 .anyMatch(ou -> ou.getFirstObservedFrame().lessThanOrEqual(t));
     }
 
-    /**
-     * Whether a unit of any of the given types was first observed at or before t with its last known position
-     * on a tile the filter accepts. A unit whose position is no longer known, including one since destroyed,
-     * is left out.
-     */
-    public boolean hasObservedAnyBeforeTimeAt(Time t, Predicate<TilePosition> tileFilter, UnitType... types) {
-        final Set<UnitType> typeSet = Arrays.stream(types).collect(Collectors.toSet());
-        return observedUnits.values()
-                .stream()
-                .filter(ou -> typeSet.contains(ou.getUnitType()))
-                .filter(ou -> ou.getFirstObservedFrame().lessThanOrEqual(t))
-                .map(ObservedUnit::getLastKnownLocation)
-                .anyMatch(pos -> pos != null && tileFilter.test(pos.toTilePosition()));
-    }
-
     public int getUnitTypeCountCompletedBeforeTime(UnitType type, Time t) {
         return (int) observedUnits.values()
                 .stream()
