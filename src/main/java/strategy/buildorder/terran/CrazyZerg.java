@@ -77,9 +77,6 @@ public class CrazyZerg extends TerranBase {
         boolean wantBaseAdvantage = behindOnBases(gameState) || floatingMinerals;
 
         boolean wantLair = gameState.canPlanLair() && lairCount < 1 && hiveCount < 1 && baseCount >= 2;
-        int totalEvoChambers = techProgression.getEvolutionChambers() + techProgression.getPlannedEvolutionChambers();
-        boolean wantEvoChamber = techProgression.canPlanEvolutionChamber() && hasLairOrHive && totalEvoChambers < 1;
-        boolean wantSecondEvoChamber = techProgression.canPlanEvolutionChamber() && hasHive && totalEvoChambers >= 1;
         boolean wantSpire = techProgression.canPlanSpire() && spireCount < 1 && hasLairOrHive && droneCount >= 16;
 
         boolean wantQueensNest = wantGasBoundHiveTech(gameState, UnitType.Zerg_Queens_Nest,
@@ -144,7 +141,7 @@ public class CrazyZerg extends TerranBase {
             return plans;
         }
 
-        if (wantEvoChamber) {
+        if (hasLairOrHive && shouldPlanUpgradeEvolutionChamber(techProgression, 1)) {
             Plan evoPlan = this.planEvolutionChamber(gameState);
             plans.add(evoPlan);
         }
@@ -167,7 +164,7 @@ public class CrazyZerg extends TerranBase {
             return plans;
         }
 
-        if (wantSecondEvoChamber) {
+        if (hasHive && shouldPlanUpgradeEvolutionChamber(techProgression, 2)) {
             Plan evoPlan = this.planEvolutionChamber(gameState);
             plans.add(evoPlan);
         }

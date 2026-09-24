@@ -760,6 +760,25 @@ public abstract class BuildOrder {
     }
 
     /**
+     * Whether a build order's upgrade path should plan another Evolution Chamber, up to
+     * {@code wanted} of them.
+     *
+     * <p>Chambers are added one at a time. While any chamber is planned, including the one a Spore
+     * prerequisite queued earlier in the same pass, the upgrade path waits on it, so one need never
+     * queues two. A build that runs two upgrade lines in parallel asks for two and gets the second
+     * once the first completes.
+     *
+     * @param techProgression the bot's tech state
+     * @param wanted the chambers the build's upgrade lines use
+     * @return true when the upgrade path should queue a chamber now
+     */
+    protected static boolean shouldPlanUpgradeEvolutionChamber(TechProgression techProgression, int wanted) {
+        return techProgression.getPlannedEvolutionChambers() == 0
+                && techProgression.evolutionChambers() < wanted
+                && techProgression.canPlanEvolutionChamber();
+    }
+
+    /**
      * Buys a mineral-only unit with minerals the build's own unit targets have stopped spending.
      * Sits at the end of the plan chain, so it only fires once every branch above it declined:
      * the build gets what it asked for first and the leftovers become zerglings rather than bank.
