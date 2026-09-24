@@ -43,14 +43,23 @@ class NinePoolSpeedTest {
     }
 
     @Test
-    void takesGasAtNineSupplyOnceThePoolIsCommitted() {
-        assertTrue(NinePoolSpeed.shouldPlanExtractor(0, 1, NINE_SUPPLY, true));
+    void takesGasAtNineSupplyOnceThePoolStands() {
+        assertTrue(NinePoolSpeed.shouldPlanExtractor(0, ONE_STANDING_POOL, NINE_SUPPLY, true));
     }
 
     /** The pool's drone has not been replaced yet, so the Extractor waits for the 9th drone. */
     @Test
     void withholdsGasUntilThePoolDroneIsReplaced() {
-        assertFalse(NinePoolSpeed.shouldPlanExtractor(0, 1, EIGHT_SUPPLY, true));
+        assertFalse(NinePoolSpeed.shouldPlanExtractor(0, ONE_STANDING_POOL, EIGHT_SUPPLY, true));
+    }
+
+    /**
+     * The pool is queued but its drone has not morphed, so supply still reads 9. The Extractor
+     * must wait for the pool to stand and its drone to be replaced.
+     */
+    @Test
+    void withholdsGasWhileThePoolIsQueuedButNotStanding() {
+        assertFalse(NinePoolSpeed.shouldPlanExtractor(0, NO_STANDING_POOL, NINE_SUPPLY, true));
     }
 
     @Test
@@ -83,13 +92,13 @@ class NinePoolSpeedTest {
 
     @Test
     void withholdsGasUntilTheSpawningPoolIsPlanned() {
-        assertFalse(NinePoolSpeed.shouldPlanExtractor(0, 0, NINE_SUPPLY, false));
-        assertFalse(NinePoolSpeed.shouldPlanExtractor(0, 0, NINE_SUPPLY, true));
+        assertFalse(NinePoolSpeed.shouldPlanExtractor(0, NO_STANDING_POOL, NINE_SUPPLY, false));
+        assertFalse(NinePoolSpeed.shouldPlanExtractor(0, NO_STANDING_POOL, NINE_SUPPLY, true));
     }
 
     @Test
     void withholdsGasOnceAnExtractorExists() {
-        assertFalse(NinePoolSpeed.shouldPlanExtractor(1, 1, NINE_SUPPLY, true));
+        assertFalse(NinePoolSpeed.shouldPlanExtractor(1, ONE_STANDING_POOL, NINE_SUPPLY, true));
     }
 
     /**

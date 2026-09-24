@@ -56,6 +56,7 @@ public class NinePoolSpeed extends BuildOrder {
         int supplyUsed     = gameState.getSupply();
         int poolCount      = gameState.structureCount(Readiness.USABLE, UnitType.Zerg_Spawning_Pool);
         int committedPools = gameState.structureCount(Readiness.COMMITTED, UnitType.Zerg_Spawning_Pool);
+        int standingPools  = gameState.structureCount(Readiness.STANDING, UnitType.Zerg_Spawning_Pool);
         int extractorCount = gameState.getBaseData().numExtractor();
         int zerglingCount  = gameState.ourUnitCount(UnitType.Zerg_Zergling);
 
@@ -69,7 +70,7 @@ public class NinePoolSpeed extends BuildOrder {
             return plans;
         }
 
-        if (shouldPlanExtractor(extractorCount, committedPools, supplyUsed, gameState.canPlanExtractor())) {
+        if (shouldPlanExtractor(extractorCount, standingPools, supplyUsed, gameState.canPlanExtractor())) {
             plans.add(planExtractor(gameState));
             return plans;
         }
@@ -167,18 +168,19 @@ public class NinePoolSpeed extends BuildOrder {
     }
 
     /**
-     * Whether the opener takes its gas: at 9 supply, once the pool is committed and its drone has
-     * been replaced.
+     * Whether the opener takes its gas: at 9 supply, once the pool is standing and its drone has
+     * been replaced. A pool that is only queued has not consumed its drone, so supply still reads
+     * 9 and a committed-pool gate would let the Extractor take the pool's replacement drone's slot.
      *
      * @param extractorCount Extractors standing or reserved by a queued plan
-     * @param committedPools Spawning Pools planned, under construction or finished
+     * @param standingPools Spawning Pools under construction or finished
      * @param supplyUsed supply used, in BWAPI's doubled units
      * @param canPlanExtractor whether a geyser is free and the pool is planned or standing
      * @return true while the Extractor should be queued
      */
-    static boolean shouldPlanExtractor(int extractorCount, int committedPools, int supplyUsed,
+    static boolean shouldPlanExtractor(int extractorCount, int standingPools, int supplyUsed,
                                        boolean canPlanExtractor) {
-        return extractorCount < 1 && committedPools > 0 && supplyUsed >= POOL_SUPPLY && canPlanExtractor;
+        return extractorCount < 1 && standingPools > 0 && supplyUsed >= POOL_SUPPLY && canPlanExtractor;
     }
 
     /**
