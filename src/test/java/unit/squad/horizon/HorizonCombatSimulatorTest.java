@@ -45,7 +45,8 @@ class HorizonCombatSimulatorTest {
     private static final int NEAR_THRESHOLD_ZERGLINGS = 10;
     private static final int NEAR_THRESHOLD_MARINES = 7;
     private static final int NEAR_THRESHOLD_MEDICS = 2;
-    private static final double GROUND_ONLY = 0;
+    private static final double GROUND_TARGETS = 1;
+    private static final double NO_AIR_TARGETS = 0;
 
     private static List<Position> at(int offsetX) {
         return Collections.singletonList(new Position(COLONY.getX() + offsetX, COLONY.getY()));
@@ -57,12 +58,12 @@ class HorizonCombatSimulatorTest {
 
     @Test
     void friendlyStrengthWithoutRelevantEnemyAdvances() {
-        assertEquals(ADVANCE, HorizonCombatSimulator.selectResult(1, 0, 0, 0, false, 1.3));
+        assertEquals(ADVANCE, HorizonCombatSimulator.selectResult(1, 0, 0, 0, 0, false, 1.3));
     }
 
     @Test
     void noBelievedEnemyAndNoFriendlyStrengthDoesNotRetreat() {
-        CombatResult result = HorizonCombatSimulator.selectResult(0, 0, 0, 0, false, ZERG_ENGAGE_THRESHOLD);
+        CombatResult result = HorizonCombatSimulator.selectResult(0, 0, 0, 0, 0, false, ZERG_ENGAGE_THRESHOLD);
         assertNotEquals(RETREAT, result);
         assertEquals(ADVANCE, result);
     }
@@ -70,13 +71,13 @@ class HorizonCombatSimulatorTest {
     @Test
     void aDispersedSquadWithNoBelievedEnemyAdvances() {
         assertEquals(ADVANCE, HorizonCombatSimulator.selectResult(
-                DISPERSED_SQUAD_STRENGTH, 0, 0, 0, false, ZERG_ENGAGE_THRESHOLD));
+                DISPERSED_SQUAD_STRENGTH, 0, 0, 0, 0, false, ZERG_ENGAGE_THRESHOLD));
     }
 
     @Test
     void aDispersedSquadAgainstAMeasuredEnemyStillRetreats() {
         assertEquals(RETREAT, HorizonCombatSimulator.selectResult(
-                DISPERSED_SQUAD_STRENGTH, 0, zerglingStrength(4), 0, false, ZERG_ENGAGE_THRESHOLD));
+                DISPERSED_SQUAD_STRENGTH, 0, zerglingStrength(4), 0, 0, false, ZERG_ENGAGE_THRESHOLD));
     }
 
     @Test
@@ -93,18 +94,18 @@ class HorizonCombatSimulatorTest {
     @Test
     void anOutnumberedSquadAgainstARealEnemyStillRetreats() {
         assertEquals(RETREAT, HorizonCombatSimulator.selectResult(
-                zerglingStrength(2), 0, zerglingStrength(6), 0, false, ZERG_ENGAGE_THRESHOLD));
+                zerglingStrength(2), 0, zerglingStrength(6), 0, 0, false, ZERG_ENGAGE_THRESHOLD));
     }
 
     @Test
     void enemyStrengthAtMinimumStillAdvances() {
-        assertEquals(ADVANCE, HorizonCombatSimulator.selectResult(1, 0, 0.01, 0, false, 1.3));
+        assertEquals(ADVANCE, HorizonCombatSimulator.selectResult(1, 0, 0.01, 0, 0, false, 1.3));
     }
 
     @Test
     void enemyStrengthAboveMinimumUsesMeasuredVerdict() {
-        assertEquals(RETREAT, HorizonCombatSimulator.selectResult(0.001, 0, 0.0101, 0, false, 1.3));
-        assertEquals(ENGAGE, HorizonCombatSimulator.selectResult(1, 0, 0.0101, 0, false, 1.3));
+        assertEquals(RETREAT, HorizonCombatSimulator.selectResult(0.001, 0, 0.0101, 0, 0, false, 1.3));
+        assertEquals(ENGAGE, HorizonCombatSimulator.selectResult(1, 0, 0.0101, 0, 0, false, 1.3));
     }
 
     @Test
@@ -230,36 +231,36 @@ class HorizonCombatSimulatorTest {
 
     @Test
     void unmeasuredEnemyNeverEngagesHoweverStrongTheSquad() {
-        assertEquals(ADVANCE, HorizonCombatSimulator.selectResult(1000, 0, 0, 0, false, 1.3));
+        assertEquals(ADVANCE, HorizonCombatSimulator.selectResult(1000, 0, 0, 0, 0, false, 1.3));
     }
 
     @Test
     void measuredEnemyBelowThresholdRetreats() {
-        assertEquals(RETREAT, HorizonCombatSimulator.selectResult(1.3, 0, 1, 0, false, 1.4));
+        assertEquals(RETREAT, HorizonCombatSimulator.selectResult(1.3, 0, 1, 0, 0, false, 1.4));
     }
 
     @Test
     void airSquadIgnoresGroundOnlyEnemyStrength() {
-        assertEquals(ADVANCE, HorizonCombatSimulator.selectResult(0, 5, 100, 0, true, 1.3));
+        assertEquals(ADVANCE, HorizonCombatSimulator.selectResult(0, 5, 100, 0, 0, true, 1.3));
     }
 
     @Test
     void airSquadRetreatsAgainstMeasuredAntiAir() {
-        assertEquals(RETREAT, HorizonCombatSimulator.selectResult(0, 5, 0, 10, true, 1.3));
+        assertEquals(RETREAT, HorizonCombatSimulator.selectResult(0, 5, 0, 10, 0, true, 1.3));
     }
 
     private static double zerglingStrength(int zerglings) {
-        return zerglings * UnitStrength.engagedStrength(UnitType.Zerg_Zergling, GROUND_ONLY);
+        return zerglings * UnitStrength.engagedStrength(UnitType.Zerg_Zergling, GROUND_TARGETS, NO_AIR_TARGETS);
     }
 
     private static double mutaliskAirStrength(int mutalisks) {
-        return mutalisks * UnitStrength.engagedStrength(UnitType.Zerg_Mutalisk, GROUND_ONLY);
+        return mutalisks * UnitStrength.engagedStrength(UnitType.Zerg_Mutalisk, GROUND_TARGETS, NO_AIR_TARGETS);
     }
 
     private static CombatResult mutalisksVersus(int mutalisks, UnitType defence, double engageThreshold) {
         double enemyAntiAir = HorizonCombatSimulator.weightedAntiAirStrength(defence, ALL_SMALL);
         return HorizonCombatSimulator.selectResult(
-                0, mutaliskAirStrength(mutalisks), 0, enemyAntiAir, true, engageThreshold);
+                0, mutaliskAirStrength(mutalisks), 0, enemyAntiAir, 0, true, engageThreshold);
     }
 
     @Test
@@ -275,7 +276,7 @@ class HorizonCombatSimulatorTest {
     @Test
     void theSupersededSporeLiteralWouldHaveEngagedWithASingleMutalisk() {
         assertEquals(ENGAGE, HorizonCombatSimulator.selectResult(
-                0, mutaliskAirStrength(1), 0, SUPERSEDED_ANTI_AIR_LITERAL, true, ZERG_ENGAGE_THRESHOLD));
+                0, mutaliskAirStrength(1), 0, SUPERSEDED_ANTI_AIR_LITERAL, 0, true, ZERG_ENGAGE_THRESHOLD));
     }
 
     @Test
@@ -326,9 +327,9 @@ class HorizonCombatSimulatorTest {
         double bunker = HorizonCombatSimulator.weightedGroundStrength(UnitType.Terran_Bunker, ALL_SMALL);
         assertEquals(1.5935, zerglings / (bunker + escort), 1e-4);
         assertEquals(RETREAT, HorizonCombatSimulator.selectResult(zerglings, 0,
-                SUPERSEDED_BUNKER_LITERAL + escort, 0, false, TERRAN_ENGAGE_THRESHOLD));
+                SUPERSEDED_BUNKER_LITERAL + escort, 0, 0, false, TERRAN_ENGAGE_THRESHOLD));
         assertEquals(ENGAGE, HorizonCombatSimulator.selectResult(zerglings, 0,
-                bunker + escort, 0, false, TERRAN_ENGAGE_THRESHOLD));
+                bunker + escort, 0, 0, false, TERRAN_ENGAGE_THRESHOLD));
     }
 
     @Test
@@ -337,7 +338,7 @@ class HorizonCombatSimulatorTest {
         double enemy = HorizonCombatSimulator.weightedGroundStrength(UnitType.Terran_Bunker, ALL_SMALL)
                 + bunkerEscort().groundTotal();
         assertEquals(1.4342, zerglings / enemy, 1e-4);
-        assertEquals(RETREAT, HorizonCombatSimulator.selectResult(zerglings, 0, enemy, 0, false,
+        assertEquals(RETREAT, HorizonCombatSimulator.selectResult(zerglings, 0, enemy, 0, 0, false,
                 TERRAN_ENGAGE_THRESHOLD));
     }
 
@@ -463,12 +464,12 @@ class HorizonCombatSimulatorTest {
         double mainEnemy = NEAR_THRESHOLD_MARINES * MARINE_GROUND_BEFORE_DURABILITY;
         assertEquals(1.7201, mainFriendly / mainEnemy, 1e-4);
         assertEquals(ENGAGE, HorizonCombatSimulator.selectResult(
-                mainFriendly, 0, mainEnemy, 0, false, TERRAN_ENGAGE_THRESHOLD));
+                mainFriendly, 0, mainEnemy, 0, 0, false, TERRAN_ENGAGE_THRESHOLD));
 
         HorizonCombatSimulator.EnemySample sample = bioSample(NEAR_THRESHOLD_MARINES, NEAR_THRESHOLD_MEDICS);
         assertEquals(1.3582, zerglingStrength(NEAR_THRESHOLD_ZERGLINGS) / sample.groundTotal(), 1e-4);
         assertEquals(RETREAT, HorizonCombatSimulator.selectResult(
-                zerglingStrength(NEAR_THRESHOLD_ZERGLINGS), 0, sample.groundTotal(), sample.antiAirTotal(),
+                zerglingStrength(NEAR_THRESHOLD_ZERGLINGS), 0, sample.groundTotal(), sample.antiAirTotal(), 0,
                 false, TERRAN_ENGAGE_THRESHOLD));
     }
 
@@ -497,7 +498,7 @@ class HorizonCombatSimulatorTest {
         HorizonCombatSimulator.EnemySample sample = bioSample(NEAR_THRESHOLD_MARINES, 0);
         assertEquals(1.6090, zerglingStrength(NEAR_THRESHOLD_ZERGLINGS) / sample.groundTotal(), 1e-4);
         assertEquals(ENGAGE, HorizonCombatSimulator.selectResult(
-                zerglingStrength(NEAR_THRESHOLD_ZERGLINGS), 0, sample.groundTotal(), sample.antiAirTotal(),
+                zerglingStrength(NEAR_THRESHOLD_ZERGLINGS), 0, sample.groundTotal(), sample.antiAirTotal(), 0,
                 false, TERRAN_ENGAGE_THRESHOLD));
     }
 

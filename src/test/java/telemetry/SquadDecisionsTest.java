@@ -391,9 +391,13 @@ class SquadDecisionsTest {
     void aSimulatedRowCarriesTheEnemyAirShareItsStrengthWasPricedBy() {
         SquadDecision mixed = new SquadDecision();
         mixed.setEnemyAirShare(0.375);
+        mixed.setOurAirShare(0.25);
+        int first = columnIndex("sim_enemy_air_share");
 
         assertEquals("0.3750", SquadDecisionLogger.simDomainCells(mixed).get(0));
+        assertEquals("0.2500", SquadDecisionLogger.simDomainCells(mixed).get(columnIndex("sim_our_air_share") - first));
         assertEquals("-1.0000", rowFor(new GroundSquad())[columnIndex("sim_enemy_air_share")]);
+        assertEquals("-1.0000", rowFor(new GroundSquad())[columnIndex("sim_our_air_share")]);
     }
 
     @Test
