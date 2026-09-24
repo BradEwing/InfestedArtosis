@@ -1,5 +1,6 @@
 package info.tracking;
 
+import bwapi.Position;
 import bwapi.UnitType;
 import util.Time;
 
@@ -13,7 +14,11 @@ public final class ObservedUnitFixture {
     }
 
     public static ObservedUnit observedUnit(UnitType unitType, Time firstObservedFrame) {
-        return new ObservedUnit(null, unitType, null, firstObservedFrame, false);
+        return observedUnit(unitType, null, firstObservedFrame);
+    }
+
+    public static ObservedUnit observedUnit(UnitType unitType, Position lastKnownLocation, Time firstObservedFrame) {
+        return new ObservedUnit(null, unitType, lastKnownLocation, firstObservedFrame, false);
     }
 
     public static ObservedUnitTracker trackerHolding(ObservedUnit observedUnit) {

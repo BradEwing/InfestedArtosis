@@ -158,6 +158,19 @@ public abstract class BuildOrder {
     }
 
     /**
+     * True while the build wants no Overlord queued by the shared supply planner.
+     *
+     * <p>Defaults to false. A build that scripts its own supply timing answers true for as long
+     * as an Overlord would take minerals from steps it has not finished.
+     *
+     * @param gameState current game state
+     * @return true while the supply planner must not queue an Overlord
+     */
+    public boolean holdsOverlords(GameState gameState) {
+        return false;
+    }
+
+    /**
      * Whether no opener offers this build order any more. A retired build order stays registered so
      * learning rows that name it still resolve, but it is not seeded as a playable arm.
      */
@@ -383,9 +396,6 @@ public abstract class BuildOrder {
     }
 
     private Set<Plan> planStaticDefense(GameState gameState) {
-        if (!gameState.getTechProgression().isSpawningPool()) {
-            return Collections.emptySet();
-        }
         boolean earlyRushed = gameState.isEarlyRushed();
         int sunkenTarget = this.requiredSunkens(gameState);
         int priority = DEFAULT_COLONY_PRIORITY;
@@ -624,6 +634,9 @@ public abstract class BuildOrder {
      * puts the main first whenever it is eligible, so ending on the first null location would let
      * a main that is short of target and out of tiles starve every other base for the rest of the
      * game.
+     *
+     * <p>No pair is planned while no Spawning Pool stands, see {@link #sunkenPairBudget}. Every
+     * requester, the shared defense path and each build order, reaches the pair through here.
      */
     protected Set<Plan> planSunkenColony(GameState gameState, int priority, int target) {
         Set<Plan> plans = new HashSet<>();
@@ -631,8 +644,9 @@ public abstract class BuildOrder {
         BuildingPlanner buildingPlanner = gameState.getBuildingPlanner();
         Base mainBase = baseData.getMainBase();
         Set<Base> unplaceable = new HashSet<>();
+        int budget = sunkenPairBudget(gameState.getTechProgression(), target);
         int planned = 0;
-        while (planned < target) {
+        while (planned < budget) {
             Optional<Base> eligibleBase = nextSunkenBase(gameState.basesNeedingSunken(target), unplaceable,
                     base -> sunkenBaseRank(base == mainBase, base.getLocation().getX(), base.getLocation().getY()));
             if (!eligibleBase.isPresent()) {
@@ -654,6 +668,24 @@ public abstract class BuildOrder {
             planned++;
         }
         return plans;
+    }
+
+    /**
+     * How many Creep and Sunken Colony pairs one call may plan.
+     *
+     * <p>Zero until a Spawning Pool stands, the same test the production sweep applies to a
+     * Sunken Colony plan. A pair queued while the pool is missing or only planned loses its Sunken
+     * to that sweep on the frame it is queued, and the still planned Creep Colony is cancelled with
+     * it, so planning one would only repeat the pair every frame. The pool itself, including the
+     * emergency pool {@link #planDefense} queues, is planned independently of this budget, and the
+     * pairs follow once it stands.
+     *
+     * @param techProgression the bot's tech state
+     * @param target sunken colonies wanted per base
+     * @return the number of pairs that may be planned
+     */
+    static int sunkenPairBudget(TechProgression techProgression, int target) {
+        return techProgression.canPlanSunkenColony() ? target : 0;
     }
 
     /**
@@ -757,6 +789,25 @@ public abstract class BuildOrder {
      */
     static boolean shouldPlanSporePrerequisite(TechProgression techProgression) {
         return techProgression.evolutionChambers() == 0 && techProgression.canPlanEvolutionChamber();
+    }
+
+    /**
+     * Whether a build order's upgrade path should plan another Evolution Chamber, up to
+     * {@code wanted} of them.
+     *
+     * <p>Chambers are added one at a time. While any chamber is planned, including the one a Spore
+     * prerequisite queued earlier in the same pass, the upgrade path waits on it, so one need never
+     * queues two. A build that runs two upgrade lines in parallel asks for two and gets the second
+     * once the first completes.
+     *
+     * @param techProgression the bot's tech state
+     * @param wanted the chambers the build's upgrade lines use
+     * @return true when the upgrade path should queue a chamber now
+     */
+    protected static boolean shouldPlanUpgradeEvolutionChamber(TechProgression techProgression, int wanted) {
+        return techProgression.getPlannedEvolutionChambers() == 0
+                && techProgression.evolutionChambers() < wanted
+                && techProgression.canPlanEvolutionChamber();
     }
 
     /**

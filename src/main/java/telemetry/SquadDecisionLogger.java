@@ -14,6 +14,7 @@ import unit.squad.horizon.HorizonCombatSimulator;
 import util.Arc;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -52,6 +53,10 @@ import java.util.Set;
  * none was, and -1 on any row not written from a containment evaluation. Every such hit writes a row: a
  * CONTAIN_PUSHBACK row when the arc is kept, the status change row when the squad retreats.
  *
+ * <p>sim_enemy_air_share and sim_our_air_share are the shares of each side's priced strength that fly. Each unit on
+ * one side is priced over the other side's strength in the layers it can hit, so a weapon that fills two domains,
+ * a Mutalisk's or a Dragoon's, counts once in sim_our_strength and sim_enemy_strength.
+ *
  * <p>Every row names the branch that decided the status it reports in decision_path. On a
  * LOCK_SUPPRESSED row that is the request the lock refused, so the suppression episodes a lock
  * produced are separable by the branch that asked for them.
@@ -75,7 +80,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
             + "defense_sim_enemy_survivors,defense_win_threshold,arc_center_x,arc_center_y,arc_points,"
             + "decision_path,sim_enemy_composition,sim_enemy_unscored_supply,runby_phase_old,runby_phase,"
             + "pushback_from_x,pushback_from_y,pushback_to_x,pushback_to_y,pushback_enemy_type,"
-            + "pushback_members_moved,contain_supply_lost,outranged_hit,"
+            + "pushback_members_moved,contain_supply_lost,outranged_hit,sim_enemy_air_share,sim_our_air_share,"
             + "move_out_threshold,move_out_strength";
 
     private static final int FLUSH_INTERVAL_FRAMES = 480;
@@ -467,6 +472,8 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         String composition = Csv.sanitize(HorizonCombatSimulator.enemyComposition(snapshot));
         decision.setEnemyComposition(composition.isEmpty() ? NONE : composition);
         decision.setEnemyUnscoredSupply(snapshot.getEnemyUnscoredSupply());
+        decision.setEnemyAirShare(snapshot.getEnemyAirShare());
+        decision.setOurAirShare(snapshot.getOurAirShare());
     }
 
     /**
@@ -529,6 +536,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         fields.addAll(enemySampleCells(context));
         fields.addAll(runbyCells);
         fields.addAll(containmentCells(context));
+        fields.addAll(simDomainCells(context));
         fields.addAll(moveOutCells(context));
         return String.join(",", fields);
     }
@@ -550,6 +558,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         fields.addAll(enemySampleCells(context));
         fields.addAll(runbyCells(null, null));
         fields.addAll(containmentCells(context));
+        fields.addAll(simDomainCells(context));
         fields.addAll(moveOutCells(context));
         return String.join(",", fields);
     }
@@ -622,6 +631,18 @@ public class SquadDecisionLogger implements SquadDecisionSink {
                 : Csv.halfSupply(context.getContainSupplyLost()));
         fields.add(String.valueOf(context.getOutrangedHit()));
         return fields;
+    }
+
+    /**
+     * Builds the sim_enemy_air_share and sim_our_air_share cells: the share of each side's priced strength that
+     * flies, which the other side's units are priced against. Each is -1 on a row whose decision never read a
+     * simulator snapshot and on one where that side held nothing armed.
+     *
+     * @param context the decision the row is built from
+     * @return the enemy air share cell and our air share cell
+     */
+    static List<String> simDomainCells(SquadDecision context) {
+        return Arrays.asList(Csv.format(context.getEnemyAirShare()), Csv.format(context.getOurAirShare()));
     }
 
     /**

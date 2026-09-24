@@ -19,6 +19,14 @@ public abstract class ObservedStrategy {
      */
     public abstract boolean isDetected(StrategyDetectionContext context);
 
+    /**
+     * What telemetry records when the strategy is detected: the name, which a strategy may extend with the
+     * evidence it was detected on.
+     */
+    public String getDetectionLabel() {
+        return name;
+    }
+
     public Time lockAfter() {
         return new Time(59, 59);
     }

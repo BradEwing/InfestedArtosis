@@ -5,7 +5,7 @@ package info;
  *
  * <p>Every structure passes through three stages: a plan in flight, a shell standing on the map
  * part-built, and a finished building. A gate that reads a raw count has to pick a point in that
- * sequence, and the two useful points answer different questions. Naming the point at the call
+ * sequence, and each point answers a different question. Naming the point at the call
  * site is what this enum is for: {@link GameState#structureCount} takes one and has no default,
  * so a new gate cannot inherit the wrong answer by saying nothing.
  *
@@ -31,5 +31,13 @@ public enum Readiness {
      * out a build time it has already paid for: a second Extractor gated on a usable Spire stays
      * withheld for the whole Spire build, long after the Spire is a settled fact.
      */
-    COMMITTED
+    COMMITTED,
+
+    /**
+     * Finished structures and structures under construction, without building plans in flight.
+     *
+     * <p>What a gate wants when the decision follows from a drone having been spent on the
+     * structure: a plan still holds its drone and its minerals, and can still be cancelled.
+     */
+    STANDING
 }

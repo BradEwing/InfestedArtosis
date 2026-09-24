@@ -28,6 +28,10 @@ class ThreeHatchHydraTest {
 
     private static final int FRAMES_WITHOUT_LARVA = 3087;
 
+    private static final int HYDRALISKS_FOR_UPGRADES = 7;
+
+    private static final int UPGRADE_PASSES = 5;
+
     private static TechProgression withDen() {
         TechProgression techProgression = new TechProgression();
         techProgression.setSpawningPool(true);
@@ -117,5 +121,46 @@ class ThreeHatchHydraTest {
         queue.add(new UnitPlan(UnitType.Zerg_Drone, DEN_COMPLETE_FRAME));
 
         assertSame(hydralisk, queue.poll());
+    }
+
+    @Test
+    void reachesAChamberPerUpgradeLineOneAtATime() {
+        TechProgression techProgression = withDen();
+        int mostQueuedInOnePass = 0;
+        for (int pass = 0; pass < UPGRADE_PASSES; pass++) {
+            int queued = 0;
+            if (ThreeHatchHydra.wantEvolutionChamber(techProgression, HYDRALISKS_FOR_UPGRADES)) {
+                techProgression.setPlannedEvolutionChambers(techProgression.getPlannedEvolutionChambers() + 1);
+                queued++;
+            }
+            if (ThreeHatchHydra.wantEvolutionChamber(techProgression, HYDRALISKS_FOR_UPGRADES)) {
+                techProgression.setPlannedEvolutionChambers(techProgression.getPlannedEvolutionChambers() + 1);
+                queued++;
+            }
+            mostQueuedInOnePass = Math.max(mostQueuedInOnePass, queued);
+            if (techProgression.getPlannedEvolutionChambers() > 0) {
+                techProgression.setPlannedEvolutionChambers(techProgression.getPlannedEvolutionChambers() - 1);
+                techProgression.setEvolutionChambers(techProgression.getEvolutionChambers() + 1);
+            }
+        }
+
+        assertEquals(ThreeHatchHydra.UPGRADE_EVOLUTION_CHAMBERS, techProgression.getEvolutionChambers());
+        assertEquals(1, mostQueuedInOnePass);
+    }
+
+    @Test
+    void aChamberTheSporeQueuedThisPassHoldsTheUpgradeChamber() {
+        TechProgression techProgression = withDen();
+        techProgression.setPlannedEvolutionChambers(1);
+
+        assertFalse(ThreeHatchHydra.wantEvolutionChamber(techProgression, HYDRALISKS_FOR_UPGRADES));
+    }
+
+    @Test
+    void aSporeRequirementAloneDoesNotAskForAnUpgradeChamber() {
+        TechProgression techProgression = new TechProgression();
+        techProgression.setSpawningPool(true);
+
+        assertFalse(ThreeHatchHydra.wantEvolutionChamber(techProgression, HYDRALISKS_FOR_UPGRADES));
     }
 }

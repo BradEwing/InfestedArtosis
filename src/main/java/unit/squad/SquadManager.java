@@ -18,6 +18,7 @@ import info.tracking.ObservedUnit;
 import info.tracking.ObservedUnitTracker;
 import info.tracking.PsiStormTracker;
 import info.tracking.StrategyTracker;
+import info.tracking.protoss.ProxyGate;
 import lombok.Getter;
 
 import org.bk.ass.sim.Agent;
@@ -1043,7 +1044,7 @@ public class SquadManager {
         int staticDefensePenalty = min(gameState.getObservedUnitTracker().getHostileToGroundBuildings().size(), 6);
         int moveOutThreshold = 8 * (1 + staticDefensePenalty);
         StrategyTracker strategyTracker = gameState.getStrategyTracker();
-        if (strategyTracker.isDetectedStrategy("2Gate")) {
+        if (strategyTracker.isAnyDetectedStrategy("2Gate", ProxyGate.NAME)) {
             final int zealots = gameState.enemyUnitCount(UnitType.Protoss_Zealot);
             moveOutThreshold += zealots * 2;
         }
@@ -1082,7 +1083,7 @@ public class SquadManager {
         if (gameState.isEarlyRushed()) {
             rushThresholdIncrease = gameState.visibleEnemyMobileGroundCombatUnitsAtOurBases() * 2;
         }
-        if (strategyTracker.isDetectedStrategy("2Gate")) {
+        if (strategyTracker.isAnyDetectedStrategy("2Gate", ProxyGate.NAME)) {
             final int zealots = gameState.enemyUnitCount(UnitType.Protoss_Zealot);
             rushThresholdIncrease = Math.max(rushThresholdIncrease, zealots * 2);
         }

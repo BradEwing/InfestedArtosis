@@ -31,6 +31,11 @@ import java.util.Map;
  */
 public class UnitStrength {
 
+    /**
+     * Air share reported for a side of an engagement that holds nothing armed to split by.
+     */
+    public static final double UNMEASURED_AIR_SHARE = -1;
+
     private static final Map<UnitType, double[]> STRENGTH_TABLE = new HashMap<>();
 
     static {
@@ -161,9 +166,58 @@ public class UnitStrength {
         return s != null ? s[1] + s[3] : 0;
     }
 
-    public static double totalStrength(UnitType type) {
+    /**
+     * Strength a unit type brings against the opposing units it is fighting, never more than one domain of it.
+     * See {@link #engaged}.
+     *
+     * @param type unit type to price
+     * @param groundTargets strength of the opposing side standing on the ground
+     * @param airTargets strength of the opposing side in the air
+     * @return the strength that unit brings to the fight
+     */
+    public static double engagedStrength(UnitType type, double groundTargets, double airTargets) {
         double[] s = STRENGTH_TABLE.get(type);
-        return s != null ? s[0] + s[1] + s[2] + s[3] : 0;
+        if (s == null) return 0;
+        return engaged(s[0] + s[2], s[1] + s[3], groundTargets, airTargets);
+    }
+
+    /**
+     * Strength a unit type brings in its stronger domain, the price it carries before anything is known about what
+     * it faces. It is also how much that unit weighs as a target when the other side is priced.
+     *
+     * @param type unit type to price
+     * @return the larger of its ground-engaging and air-engaging strength
+     */
+    public static double strongerDomain(UnitType type) {
+        return engagedStrength(type, 0, 0);
+    }
+
+    /**
+     * Blends a unit's ground-engaging and air-engaging strength over the opposing strength it can actually hit.
+     *
+     * <p>A unit fires one weapon at one target at a time, so the two scores are alternatives, not a sum: a
+     * Mutalisk's single weapon fills both airToGround and airToAir, and a Dragoon's fills both groundToGround and
+     * groundToAir. Each score is weighted by the opposing strength standing in its layer, over the opposing
+     * strength in the layers the unit has a weapon for. Opposing units it cannot shoot therefore neither dilute nor
+     * add to its price: Zerglings keep their full ground strength beside Corsairs, and a Dragoon facing only
+     * ground units counts its ground weapon alone.
+     *
+     * <p>A unit with no weapon for any layer the other side stands in is priced at zero. With nothing measured on
+     * the other side it is priced at its stronger domain.
+     *
+     * @param versusGround the unit's strength against ground targets
+     * @param versusAir the unit's strength against air targets
+     * @param groundTargets strength of the opposing side standing on the ground
+     * @param airTargets strength of the opposing side in the air
+     * @return the blended strength
+     */
+    public static double engaged(double versusGround, double versusAir, double groundTargets, double airTargets) {
+        double reachableGround = versusGround > 0 ? groundTargets : 0;
+        double reachableAir = versusAir > 0 ? airTargets : 0;
+        double reachable = reachableGround + reachableAir;
+        if (reachable > 0) return (reachableGround * versusGround + reachableAir * versusAir) / reachable;
+        if (groundTargets + airTargets > 0) return 0;
+        return Math.max(versusGround, versusAir);
     }
 
     public static double effectiveness(DamageType damageType, UnitSizeType targetSize) {

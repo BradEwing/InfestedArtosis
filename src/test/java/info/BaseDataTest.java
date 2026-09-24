@@ -537,4 +537,25 @@ public class BaseDataTest {
     void testASiteWithNoPositionIsNotOurBaseSite() {
         assertFalse(baseData.isOurBaseSite(MAIN_TILES, null, BaseData.NATURAL_DEFENSE_TILE_RADIUS));
     }
+
+    @Test
+    void aFirstExpansionTakenAwayFromTheInferredNaturalIsInnerAlongsideIt() {
+        Object main = new Object();
+        Object inferredNatural = new Object();
+        Object takenNatural = new Object();
+        Object third = new Object();
+
+        assertTrue(BaseData.isInnerBase(main, main, inferredNatural, takenNatural));
+        assertTrue(BaseData.isInnerBase(inferredNatural, main, inferredNatural, takenNatural));
+        assertTrue(BaseData.isInnerBase(takenNatural, main, inferredNatural, takenNatural));
+        assertFalse(BaseData.isInnerBase(third, main, inferredNatural, takenNatural));
+    }
+
+    @Test
+    void anUnknownNaturalMakesNoBaseInner() {
+        Object main = new Object();
+
+        assertFalse(BaseData.isInnerBase(new Object(), main, null, null));
+        assertFalse(BaseData.isInnerBase(null, main, null, null));
+    }
 }

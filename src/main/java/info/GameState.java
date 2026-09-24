@@ -63,6 +63,12 @@ public class GameState {
     private static final int BUNKER_BULLET_RADIUS = 224;
     private static final int BUNKER_SHOT_GRACE_FRAMES = 2;
 
+    /**
+     * Gatherers required before a base other than the main and the naturals
+     * ({@link BaseData#isInnerBase(Base)}) may take Sunken or Spore Colonies. Tuning constant.
+     */
+    public static final int OUTER_BASE_DEFENSE_MIN_GATHERERS = 20;
+
     private Game game;
     private Config config;
     private Player self;
@@ -150,7 +156,8 @@ public class GameState {
         this.activeBuildOrder = decisions.getOpener();
         this.opponentRace = opponentRace;
         this.gameMap = new GameMap(game.mapWidth(), game.mapHeight());
-        this.strategyTracker = new StrategyTracker(game, opponentRace, this.observedUnitTracker, this.baseData, this.gameMap, bwem.getMap());
+        this.strategyTracker = new StrategyTracker(game, opponentRace, this.observedUnitTracker, this.baseData,
+                this.gameMap, bwem.getMap(), this.scoutData);
     }
 
     public void onFrame() {
@@ -1159,6 +1166,8 @@ public class GameState {
         switch (readiness) {
             case COMMITTED:
                 return completed + underConstruction + planned;
+            case STANDING:
+                return completed + underConstruction;
             case USABLE:
             default:
                 return completed;
@@ -1362,6 +1371,23 @@ public class GameState {
         return position;
     }
 
+    /**
+     * Whether a base may take static defense on the current economy. The main and the naturals always
+     * may; any other base waits for {@link #OUTER_BASE_DEFENSE_MIN_GATHERERS} gatherers. The main's own
+     * {@link BaseData#isAllowSunkenAtMain()} gate is applied separately.
+     *
+     * @param innerBase whether the base is our main or a natural, from {@link BaseData#isInnerBase(Base)}
+     * @param gatherers drones currently on a resource, excluding queued drone plans
+     * @return true when the base may take Sunken or Spore Colonies
+     */
+    static boolean mayDefendBase(boolean innerBase, int gatherers) {
+        return innerBase || gatherers >= OUTER_BASE_DEFENSE_MIN_GATHERERS;
+    }
+
+    private boolean mayDefendBase(Base base) {
+        return mayDefendBase(baseData.isInnerBase(base), numGatherers());
+    }
+
     public Set<Base> basesNeedingSunken(int target) {
         Time tenMinutes = new Time(10, 0);
         Time currentTime = getGameTime();
@@ -1378,7 +1404,8 @@ public class GameState {
 
 
         for (Base base: baseData.getMyBases()) {
-            if (baseData.isEligibleForSunkenColony(base) && baseData.sunkensPerBase(base) < target) {
+            if (baseData.isEligibleForSunkenColony(base) && mayDefendBase(base)
+                    && baseData.sunkensPerBase(base) < target) {
                 neededBases.add(base);
             }
         }
@@ -1395,7 +1422,8 @@ public class GameState {
         }
 
         for (Base base: baseData.getMyBases()) {
-            if (baseData.isEligibleForSporeColony(base) && baseData.sporesPerBase(base) < target) {
+            if (baseData.isEligibleForSporeColony(base) && mayDefendBase(base)
+                    && baseData.sporesPerBase(base) < target) {
                 neededBases.add(base);
             }
         }
@@ -1729,7 +1757,8 @@ public class GameState {
      * for it has re-armed.
      *
      * <p>Every rule that deletes a queued hatchery plan contributes a term: the excess rule, the
-     * early rush reaction and the SCV rush reaction. No term depends on the opponent's race.
+     * early rush reaction and the SCV rush reaction. No term depends on the opponent's race. The proxy
+     * Gateway expansion hold stands only while the bot is early rushed, so the early rush term covers it.
      */
     public boolean mayQueueExpansionHatchery() {
         return isHatcheryEnqueueRearmed(false)
