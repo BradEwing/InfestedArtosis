@@ -15,5 +15,10 @@ public enum EnemyMainClearReason {
     /**
      * A depot seen on another starting location replaced a main assigned from weaker evidence.
      */
-    REPLACED_BY_DEPOT
+    REPLACED_BY_DEPOT,
+    /**
+     * Evidence stronger than the main's own but weaker than a depot, seen for another starting location,
+     * replaced it.
+     */
+    REPLACED_BY_STRONGER_EVIDENCE
 }

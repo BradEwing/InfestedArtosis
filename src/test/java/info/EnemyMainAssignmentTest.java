@@ -23,11 +23,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Enemy main assignment on game LV28400N's (4)Icarus starts. A building's BWEM Area needs a live map, so each
- * test says which starting location's Area the building stands in with a predicate over the starts.
+ * test says which base's Area the building stands in with a predicate over the bases.
  */
 class EnemyMainAssignmentTest {
 
-    private static final Predicate<Base> IN_NO_START_AREA = start -> false;
+    private static final Predicate<Base> IN_NO_START_AREA = base -> false;
+
+    private static final Position FORGE_AT_REAL_NATURAL = new Position(3328, 1440);
+
+    private static final Position CANNON_AT_REAL_NATURAL = new Position(3264, 1504);
+
+    private static final Position SECOND_CANNON_AT_REAL_NATURAL = new Position(3264, 1568);
 
     private LV28400NFixture icarus;
 
@@ -157,7 +163,7 @@ class EnemyMainAssignmentTest {
      * InformationManager.checkEnemyBases marks the start seen empty before it drops the main, as here.
      */
     @Test
-    void anEmptyStartClearedWhileItsProxyIsStillVisibleIsNotAssignedAgain() {
+    void anEmptyStartClearedWhileItsProxyIsStillVisibleIsNotAssignedAgainButTheLastStartIs() {
         Predicate<Base> inEmptyStartArea = start -> start == icarus.emptyStart;
         offer(UnitType.Protoss_Pylon, LV28400NFixture.PROXY_PYLON, inEmptyStartArea);
 
@@ -166,12 +172,14 @@ class EnemyMainAssignmentTest {
 
         assertNull(baseData.getMainEnemyBase());
         assertNull(baseData.getEnemyNaturalBase());
-        assertFalse(offer(UnitType.Protoss_Pylon, LV28400NFixture.PROXY_PYLON, inEmptyStartArea));
+        assertTrue(offer(UnitType.Protoss_Pylon, LV28400NFixture.PROXY_PYLON, inEmptyStartArea));
         assertFalse(offer(UnitType.Protoss_Gateway, LV28400NFixture.SECOND_PROXY_GATEWAY, inEmptyStartArea));
-        assertNull(baseData.getMainEnemyBase());
+        assertSame(icarus.realMain, baseData.getMainEnemyBase());
+        assertEquals(EnemyMainEvidence.LAST_START, baseData.getMainEnemyBaseEvidence());
         assertEquals(Arrays.asList(
                 "ENEMY_MAIN_ASSIGNED [8, 77] MAIN_AREA Protoss_Pylon [384, 1696]",
-                "ENEMY_MAIN_CLEARED [8, 77] NO_BUILDING_SEEN"), events);
+                "ENEMY_MAIN_CLEARED [8, 77] NO_BUILDING_SEEN",
+                "ENEMY_MAIN_ASSIGNED [116, 47] LAST_START Protoss_Pylon [384, 1696]"), events);
     }
 
     @Test
@@ -202,6 +210,165 @@ class EnemyMainAssignmentTest {
         assertNull(baseData.getMainEnemyBase());
         assertNull(baseData.getMainEnemyBaseEvidence());
         assertEquals("ENEMY_MAIN_CLEARED [116, 47] DEPOT_DESTROYED", events.get(events.size() - 1));
+    }
+
+    @Test
+    void aForgeAndCannonsAtAnUnscoutedStartsNaturalSetTheMainAndItsNatural() {
+        Predicate<Base> inRealNaturalArea = base -> base == icarus.realNatural;
+
+        assertTrue(offer(UnitType.Protoss_Forge, FORGE_AT_REAL_NATURAL, inRealNaturalArea));
+        assertFalse(offer(UnitType.Protoss_Photon_Cannon, CANNON_AT_REAL_NATURAL, inRealNaturalArea));
+        assertFalse(offer(UnitType.Protoss_Photon_Cannon, SECOND_CANNON_AT_REAL_NATURAL, inRealNaturalArea));
+
+        assertSame(icarus.realMain, baseData.getMainEnemyBase());
+        assertEquals(EnemyMainEvidence.NATURAL_AREA, baseData.getMainEnemyBaseEvidence());
+        assertSame(icarus.realNatural, baseData.getEnemyNaturalBase());
+        assertTrue(baseData.isEnemyMainBaseFound());
+        assertEquals(Collections.singletonList(
+                "ENEMY_MAIN_ASSIGNED [116, 47] NATURAL_AREA Protoss_Forge [3328, 1440]"), events);
+    }
+
+    @Test
+    void aBunkerAtAnUnscoutedStartsNaturalSetsTheMain() {
+        assertTrue(offer(UnitType.Terran_Bunker, CANNON_AT_REAL_NATURAL, base -> base == icarus.realNatural));
+
+        assertSame(icarus.realMain, baseData.getMainEnemyBase());
+        assertEquals(EnemyMainEvidence.NATURAL_AREA, baseData.getMainEnemyBaseEvidence());
+    }
+
+    @Test
+    void theLv28400nProxyGatewayStillSetsNoMainInTheOpenOrAtAStartsNatural() {
+        assertFalse(offer(UnitType.Protoss_Gateway, LV28400NFixture.PROXY_GATEWAY, IN_NO_START_AREA));
+        assertFalse(offer(UnitType.Protoss_Gateway, LV28400NFixture.PROXY_GATEWAY,
+                base -> base == icarus.emptyStartNatural));
+
+        assertNull(baseData.getMainEnemyBase());
+        assertNull(baseData.getEnemyNaturalBase());
+        assertFalse(baseData.isEnemyMainBaseFound());
+        assertTrue(events.isEmpty());
+    }
+
+    @Test
+    void aForgeAtOurNaturalSetsNoMain() {
+        assertFalse(offer(UnitType.Protoss_Forge, new Position(1440, 704), base -> base == icarus.ourNatural));
+
+        assertNull(baseData.getMainEnemyBase());
+    }
+
+    @Test
+    void aForgeStandingInTwoStartsNaturalAreasSetsNoMain() {
+        assertFalse(offer(UnitType.Protoss_Forge, FORGE_AT_REAL_NATURAL,
+                base -> base == icarus.realNatural || base == icarus.emptyStartNatural));
+
+        assertNull(baseData.getMainEnemyBase());
+    }
+
+    @Test
+    void aDepotOnTheWalledStartUpgradesItsEvidenceWithoutANewAssignment() {
+        offer(UnitType.Protoss_Forge, FORGE_AT_REAL_NATURAL, base -> base == icarus.realNatural);
+
+        assertFalse(offer(UnitType.Protoss_Nexus, LV28400NFixture.REAL_NEXUS, IN_NO_START_AREA));
+
+        assertSame(icarus.realMain, baseData.getMainEnemyBase());
+        assertEquals(EnemyMainEvidence.DEPOT, baseData.getMainEnemyBaseEvidence());
+        assertEquals(1, events.size());
+    }
+
+    @Test
+    void aDepotAtAnotherStartReplacesANaturalWallMainAndTheNaturalFollows() {
+        offer(UnitType.Protoss_Forge, new Position(320, 2000), base -> base == icarus.emptyStartNatural);
+        assertSame(icarus.emptyStart, baseData.getMainEnemyBase());
+        assertSame(icarus.emptyStartNatural, baseData.getEnemyNaturalBase());
+
+        assertTrue(offer(UnitType.Protoss_Nexus, LV28400NFixture.REAL_NEXUS, IN_NO_START_AREA));
+
+        assertSame(icarus.realMain, baseData.getMainEnemyBase());
+        assertEquals(EnemyMainEvidence.DEPOT, baseData.getMainEnemyBaseEvidence());
+        assertSame(icarus.realNatural, baseData.getEnemyNaturalBase());
+        assertFalse(baseData.getEnemyBases().contains(icarus.emptyStart));
+        assertEquals(Arrays.asList(
+                "ENEMY_MAIN_ASSIGNED [8, 77] NATURAL_AREA Protoss_Forge [320, 2000]",
+                "ENEMY_MAIN_CLEARED [8, 77] REPLACED_BY_DEPOT",
+                "ENEMY_MAIN_ASSIGNED [116, 47] DEPOT Protoss_Nexus [3776, 1552]"), events);
+    }
+
+    @Test
+    void aBuildingInAnotherStartsAreaReplacesANaturalWallMain() {
+        offer(UnitType.Protoss_Forge, new Position(320, 2000), base -> base == icarus.emptyStartNatural);
+
+        assertTrue(offer(UnitType.Protoss_Pylon, new Position(3584, 1424), base -> base == icarus.realMain));
+
+        assertSame(icarus.realMain, baseData.getMainEnemyBase());
+        assertEquals(EnemyMainEvidence.MAIN_AREA, baseData.getMainEnemyBaseEvidence());
+        assertEquals("ENEMY_MAIN_CLEARED [8, 77] REPLACED_BY_STRONGER_EVIDENCE", events.get(1));
+    }
+
+    @Test
+    void aNaturalWallDoesNotReplaceAMainFromItsArea() {
+        offer(UnitType.Protoss_Pylon, new Position(3584, 1424), base -> base == icarus.realMain);
+
+        assertFalse(offer(UnitType.Protoss_Forge, new Position(320, 2000), base -> base == icarus.emptyStartNatural));
+
+        assertSame(icarus.realMain, baseData.getMainEnemyBase());
+        assertEquals(EnemyMainEvidence.MAIN_AREA, baseData.getMainEnemyBaseEvidence());
+    }
+
+    @Test
+    void anyBuildingSetsTheOnlyOtherStartNotSeenEmpty() {
+        baseData.markStartSeenEmpty(icarus.emptyStart);
+
+        assertTrue(offer(UnitType.Protoss_Gateway, LV28400NFixture.PROXY_GATEWAY, IN_NO_START_AREA));
+
+        assertSame(icarus.realMain, baseData.getMainEnemyBase());
+        assertEquals(EnemyMainEvidence.LAST_START, baseData.getMainEnemyBaseEvidence());
+        assertSame(icarus.realNatural, baseData.getEnemyNaturalBase());
+        assertEquals(Collections.singletonList(
+                "ENEMY_MAIN_ASSIGNED [116, 47] LAST_START Protoss_Gateway [416, 1616]"), events);
+    }
+
+    @Test
+    void aWallAtASeenEmptyStartsNaturalGivesWayToTheLastStart() {
+        baseData.markStartSeenEmpty(icarus.emptyStart);
+
+        assertTrue(offer(UnitType.Protoss_Forge, new Position(320, 2000), base -> base == icarus.emptyStartNatural));
+
+        assertSame(icarus.realMain, baseData.getMainEnemyBase());
+        assertEquals(EnemyMainEvidence.LAST_START, baseData.getMainEnemyBaseEvidence());
+    }
+
+    @Test
+    void aNaturalWallUpgradesToLastStartOnceTheOtherStartIsSeenEmpty() {
+        offer(UnitType.Protoss_Forge, FORGE_AT_REAL_NATURAL, base -> base == icarus.realNatural);
+        baseData.markStartSeenEmpty(icarus.emptyStart);
+
+        assertFalse(offer(UnitType.Protoss_Forge, FORGE_AT_REAL_NATURAL, base -> base == icarus.realNatural));
+
+        assertEquals(EnemyMainEvidence.LAST_START, baseData.getMainEnemyBaseEvidence());
+        assertEquals(1, events.size());
+    }
+
+    @Test
+    void withTwoOtherStartsNotSeenEmptyABuildingOutsideEveryAreaSetsNoMain() {
+        assertFalse(offer(UnitType.Protoss_Pylon, LV28400NFixture.PROXY_PYLON, IN_NO_START_AREA));
+
+        assertNull(baseData.getMainEnemyBase());
+    }
+
+    /**
+     * A razed main is cleared and later seen empty. The start its depot stood on is still where the enemy began,
+     * so neither the last start nor a wall at another start's natural takes the main.
+     */
+    @Test
+    void onceADepotHasBeenSeenNoWeakEvidenceSetsTheMain() {
+        offer(UnitType.Protoss_Nexus, LV28400NFixture.REAL_NEXUS, IN_NO_START_AREA);
+        baseData.removeEnemyBase(icarus.realMain, EnemyMainClearReason.DEPOT_DESTROYED);
+        baseData.markStartSeenEmpty(icarus.realMain);
+
+        assertFalse(offer(UnitType.Protoss_Pylon, new Position(2000, 2000), IN_NO_START_AREA));
+        assertFalse(offer(UnitType.Protoss_Forge, new Position(320, 2000), base -> base == icarus.emptyStartNatural));
+
+        assertNull(baseData.getMainEnemyBase());
+        assertNull(baseData.getEnemyNaturalBase());
     }
 
     private boolean offer(UnitType type, Position position, Predicate<Base> standsInArea) {

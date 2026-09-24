@@ -128,8 +128,9 @@ public class PlanEventLogger implements PlanEventSink {
      * <p>
      * ENEMY_MAIN_ASSIGNED, ENEMY_MAIN_CLEARED and ENEMY_MAIN_SCOUTED rows carry the enemy main's
      * starting location in build_tile_x and build_tile_y and leave every plan column empty.
-     * enemy_main_reason is the evidence on ASSIGNED rows (DEPOT or MAIN_AREA) and the cause on
-     * CLEARED rows (NO_BUILDING_SEEN, DEPOT_DESTROYED or REPLACED_BY_DEPOT). ASSIGNED rows also carry
+     * enemy_main_reason is the evidence on ASSIGNED rows (DEPOT, MAIN_AREA, LAST_START or
+     * NATURAL_AREA) and the cause on CLEARED rows (NO_BUILDING_SEEN, DEPOT_DESTROYED,
+     * REPLACED_BY_DEPOT or REPLACED_BY_STRONGER_EVIDENCE). ASSIGNED rows also carry
      * the assigning building's type in item and its pixel position in enemy_main_source_x and
      * enemy_main_source_y. A SCOUTED row is written when ScoutData first records the scouted frame
      * of the assigned main, so the frame is the row's frame.
