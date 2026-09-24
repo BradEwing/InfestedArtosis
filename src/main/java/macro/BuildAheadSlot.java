@@ -98,18 +98,11 @@ public class BuildAheadSlot {
      * the plan rides to the claim-time cap and is evicted with its drone parked on minerals. The
      * deadline follows the refreshed estimate but never shortens and never passes
      * {@code claimFrame + TOTAL_HOLD_FRAMES}.
-     */
-    public void extend(Plan plan, int predictedReadyFrame, int travelFrames) {
-        extend(plan, predictedReadyFrame, travelFrames, false);
-    }
-
-    /**
-     * Re-times a hold, carrying it past {@code claimFrame + MAX_HOLD_FRAMES} only while the bank
-     * cannot pay for the plan.
      *
-     * <p>Once the bank covers the plan's own cost the hold is no longer an income wait: the ledger
-     * prediction still slides as plans queued behind it reserve, but following it would only
-     * shelter a builder that is lost or blocked. Such a hold is re-timed against
+     * <p>The hold is carried past {@code claimFrame + MAX_HOLD_FRAMES} only while the bank cannot
+     * pay for the plan. Once the bank covers the plan's own cost the hold is no longer an income
+     * wait: the ledger prediction still slides as plans queued behind it reserve, but following it
+     * would only shelter a builder that is lost or blocked. Such a hold is re-timed against
      * {@code claimFrame + MAX_HOLD_FRAMES}, and one already carried past that while income-bound
      * keeps its deadline without being carried further.
      *
