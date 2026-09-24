@@ -461,6 +461,8 @@ class ProductionManagerTest {
 
         assertTrue(ProductionManager.overlordPriorities(
                 OverlordHold.Phase.FREE, 1, none, none, 2, 0, 16).isEmpty());
+        assertEquals(Collections.singletonList(1), ProductionManager.overlordPriorities(
+                OverlordHold.Phase.FREE, 1, none, none, 0, 0, 18));
     }
 
     @Test

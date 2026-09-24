@@ -21,6 +21,8 @@ public class NinePoolSpeed extends BuildOrder {
 
     private static final Time GAS_TIME = new Time(1, 4);
 
+    private boolean overlordHoldReleased = false;
+
     public NinePoolSpeed() {
         super("9PoolSpeed");
     }
@@ -117,15 +119,29 @@ public class NinePoolSpeed extends BuildOrder {
      * replaced and morphing, the supply planner would queue the first Overlord at priority 1 ahead
      * of the pool or of that drone.
      *
+     * <p>Once released the hold stays released. Against an unknown race the opener never hands
+     * over, and a hold that re-armed on later drone losses would stop all Overlord planning.
+     *
      * @param gameState current game state
      * @return true while the supply planner must not queue an Overlord
      */
     @Override
     public boolean holdsOverlords(GameState gameState) {
-        return holdsOverlords(
+        return latchOverlordHold(holdsOverlords(
                 gameState.ourUnitCount(UnitType.Zerg_Drone),
                 gameState.structureCount(Readiness.STANDING, UnitType.Zerg_Spawning_Pool),
-                gameState.getSupply());
+                gameState.getSupply()));
+    }
+
+    /**
+     * Records this frame's hold and keeps it released once it has released.
+     *
+     * @param held whether the opening conditions hold the Overlord this frame
+     * @return true until the hold has released once
+     */
+    boolean latchOverlordHold(boolean held) {
+        overlordHoldReleased = overlordHoldReleased || !held;
+        return !overlordHoldReleased;
     }
 
     /**

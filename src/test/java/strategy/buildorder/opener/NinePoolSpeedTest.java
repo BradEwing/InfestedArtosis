@@ -61,13 +61,16 @@ class NinePoolSpeedTest {
     }
 
     /**
-     * The opener must still be active, and so still holding, while the pool is only planned. A
-     * terminal build order taking over then would get the first Overlord at priority 1, ahead of
-     * the pool at 9 supply.
+     * Against an unknown race the opener never hands over. Drones lost after the hold released
+     * must not re-arm it, or no Overlord would be planned again.
      */
     @Test
-    void staysActiveWhileThePoolIsOnlyPlanned() {
-        assertTrue(NinePoolSpeed.holdsOverlords(NINE_DRONES, NO_STANDING_POOL, NINE_SUPPLY));
+    void theHoldStaysReleasedOnceItReleases() {
+        NinePoolSpeed opener = new NinePoolSpeed();
+
+        assertTrue(opener.latchOverlordHold(true));
+        assertFalse(opener.latchOverlordHold(false));
+        assertFalse(opener.latchOverlordHold(true));
     }
 
     @Test
