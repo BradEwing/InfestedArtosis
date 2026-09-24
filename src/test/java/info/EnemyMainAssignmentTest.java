@@ -162,6 +162,11 @@ class EnemyMainAssignmentTest {
     /**
      * InformationManager.checkEnemyBases marks the start seen empty before it drops the main, as here.
      */
+    /**
+     * The fixture leaves out (4)Icarus's fourth start, so here the real main is the last start not seen empty and
+     * the proxy Pylon assigns it. On the real four-start map two starts would still be unscouted and the Pylon
+     * would assign nothing; either way the empty start is never assigned again.
+     */
     @Test
     void anEmptyStartClearedWhileItsProxyIsStillVisibleIsNotAssignedAgainButTheLastStartIs() {
         Predicate<Base> inEmptyStartArea = start -> start == icarus.emptyStart;
@@ -345,6 +350,23 @@ class EnemyMainAssignmentTest {
 
         assertEquals(EnemyMainEvidence.LAST_START, baseData.getMainEnemyBaseEvidence());
         assertEquals(1, events.size());
+    }
+
+    /**
+     * With one other start, elimination holds from the first frame, so even a proxy Gateway beside our main sets
+     * the enemy main, and it sets the right one.
+     */
+    @Test
+    void onATwoStartMapTheFirstBuildingSeenAnywhereSetsTheOtherStart() {
+        BaseData twoStarts = icarus.twoStartBaseData();
+
+        assertTrue(twoStarts.offerEnemyMainEvidence(UnitType.Protoss_Gateway,
+                depotTile(UnitType.Protoss_Gateway, new Position(1600, 400)), new Position(1600, 400),
+                base -> base == icarus.ourMain));
+
+        assertSame(icarus.realMain, twoStarts.getMainEnemyBase());
+        assertEquals(EnemyMainEvidence.LAST_START, twoStarts.getMainEnemyBaseEvidence());
+        assertSame(icarus.realNatural, twoStarts.getEnemyNaturalBase());
     }
 
     @Test
