@@ -336,11 +336,27 @@ public class ThreeHatchMuta extends ProtossBase {
 
     // Tech building planning methods
     private boolean wantHydraliskDen(GameState gameState) {
-        if (!plannedFirstMacroHatch) {
+        int macroHatcheries = gameState.getBaseData().numMacroHatcheries()
+                + gameState.inFlightHatcheryPlans(true)
+                + gameState.hatcheriesUnderConstruction(true);
+        return shouldPlanHydraliskDen(gameState.getTechProgression(), plannedFirstMacroHatch, macroHatcheries);
+    }
+
+    /**
+     * The Hydralisk Den follows the first macro hatchery, whichever step bought it: this build's own
+     * macro hatchery branch, or the shared larva-bound macro hatchery step.
+     *
+     * @param techProgression our tech state
+     * @param plannedFirstMacroHatch true once this build has planned its first macro hatchery
+     * @param macroHatcheries completed macro hatcheries, plus macro hatcheries under construction and
+     *                        macro hatchery plans in flight
+     */
+    static boolean shouldPlanHydraliskDen(TechProgression techProgression, boolean plannedFirstMacroHatch,
+            int macroHatcheries) {
+        if (!plannedFirstMacroHatch && macroHatcheries < 1) {
             return false;
         }
 
-        TechProgression techProgression = gameState.getTechProgression();
         return techProgression.canPlanHydraliskDen();
     }
 
