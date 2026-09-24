@@ -261,7 +261,7 @@ class BuildAheadSlotTest {
     }
 
     @Test
-    void aResumedHoldEndsWhereTheEvictedHoldWould() {
+    void aResumedHoldEndsAtTheMaximumHoldOfTheClaimItResumes() {
         BuildAheadSlot slot = new BuildAheadSlot();
         Plan plan = spire();
         slot.claim(plan, CLAIM_FRAME, CLAIM_FRAME + 20, NATURAL_TRAVEL_FRAMES);
@@ -270,16 +270,16 @@ class BuildAheadSlotTest {
         slot.claim(plan, evictionFrame, evictionFrame + 20, NATURAL_TRAVEL_FRAMES);
 
         for (int frame = evictionFrame; frame < CLAIM_FRAME + BuildAheadSlot.TOTAL_HOLD_FRAMES; frame += 100) {
-            slot.extend(plan, frame + 20, NATURAL_TRAVEL_FRAMES);
+            slot.extend(plan, frame + 20, NATURAL_TRAVEL_FRAMES, true);
         }
 
-        assertTrue(slot.stalled(CLAIM_FRAME + BuildAheadSlot.TOTAL_HOLD_FRAMES - 1).isEmpty());
-        assertFalse(slot.stalled(CLAIM_FRAME + BuildAheadSlot.TOTAL_HOLD_FRAMES).isEmpty());
+        assertTrue(slot.stalled(CLAIM_FRAME + BuildAheadSlot.MAX_HOLD_FRAMES - 1).isEmpty());
+        assertFalse(slot.stalled(CLAIM_FRAME + BuildAheadSlot.MAX_HOLD_FRAMES).isEmpty());
     }
 
     @Test
     void aResumedHoldWithTimeLeftOutlivesTheFrameItIsTaken() {
-        for (int held = 0; held < BuildAheadSlot.TOTAL_HOLD_FRAMES; held += 37) {
+        for (int held = 0; held < BuildAheadSlot.MAX_HOLD_FRAMES; held += 37) {
             BuildAheadSlot slot = new BuildAheadSlot();
             Plan plan = spire();
             slot.claim(plan, CLAIM_FRAME, CLAIM_FRAME + 20, NATURAL_TRAVEL_FRAMES);
@@ -294,11 +294,11 @@ class BuildAheadSlotTest {
     }
 
     @Test
-    void aHoldIsSpentOnceItHasRunTheTotalHold() {
+    void aHoldIsSpentOnceItHasRunTheMaximumHold() {
         BuildAheadSlot slot = new BuildAheadSlot();
         Plan plan = spire();
         slot.claim(plan, CLAIM_FRAME, AFFORDABLE_SOON);
-        int evictionFrame = CLAIM_FRAME + BuildAheadSlot.TOTAL_HOLD_FRAMES - 1;
+        int evictionFrame = CLAIM_FRAME + BuildAheadSlot.MAX_HOLD_FRAMES - 1;
         slot.releaseWithBackoff(plan, evictionFrame);
 
         assertFalse(slot.isHoldSpent(plan, evictionFrame));
@@ -494,6 +494,60 @@ class BuildAheadSlotTest {
 
         assertTrue(slot.stalled(CLAIM_FRAME + BuildAheadSlot.TOTAL_HOLD_FRAMES - 1).isEmpty());
         assertFalse(slot.stalled(CLAIM_FRAME + BuildAheadSlot.TOTAL_HOLD_FRAMES).isEmpty());
+    }
+
+    @Test
+    void anAffordableHoldIsNeverCarriedPastTheMaximumHold() {
+        BuildAheadSlot slot = new BuildAheadSlot();
+        Plan plan = spire();
+        slot.claim(plan, CLAIM_FRAME, CLAIM_FRAME + 20, NATURAL_TRAVEL_FRAMES);
+
+        for (int frame = CLAIM_FRAME; frame < CLAIM_FRAME + BuildAheadSlot.TOTAL_HOLD_FRAMES; frame += 50) {
+            slot.extend(plan, frame + 20 + (frame - CLAIM_FRAME) * 3, NATURAL_TRAVEL_FRAMES, true);
+        }
+
+        assertTrue(slot.stalled(CLAIM_FRAME + BuildAheadSlot.MAX_HOLD_FRAMES - 1).isEmpty());
+        assertFalse(slot.stalled(CLAIM_FRAME + BuildAheadSlot.MAX_HOLD_FRAMES).isEmpty());
+    }
+
+    @Test
+    void anAffordableHoldWithAnUnreachablePredictionIsNotCarriedPastTheMaximumHold() {
+        BuildAheadSlot slot = new BuildAheadSlot();
+        Plan plan = spire();
+        slot.claim(plan, CLAIM_FRAME, CLAIM_FRAME + 20, BuildAheadSlot.TOTAL_HOLD_FRAMES);
+
+        slot.extend(plan, Integer.MAX_VALUE, BuildAheadSlot.TOTAL_HOLD_FRAMES, true);
+
+        assertFalse(slot.stalled(CLAIM_FRAME + BuildAheadSlot.MAX_HOLD_FRAMES).isEmpty());
+    }
+
+    @Test
+    void anIncomeBoundHoldStillExtendsToTheTotalHold() {
+        BuildAheadSlot slot = new BuildAheadSlot();
+        Plan plan = spire();
+        slot.claim(plan, CLAIM_FRAME, CLAIM_FRAME + 600, NATURAL_TRAVEL_FRAMES);
+
+        for (int decay = 300; decay <= 12000; decay += 300) {
+            slot.extend(plan, CLAIM_FRAME + 600 + decay, NATURAL_TRAVEL_FRAMES, false);
+        }
+
+        assertTrue(slot.stalled(CLAIM_FRAME + BuildAheadSlot.TOTAL_HOLD_FRAMES - 1).isEmpty());
+        assertFalse(slot.stalled(CLAIM_FRAME + BuildAheadSlot.TOTAL_HOLD_FRAMES).isEmpty());
+    }
+
+    @Test
+    void aHoldCarriedPastTheMaximumWhileIncomeBoundKeepsItsDeadlineOnceAffordable() {
+        BuildAheadSlot slot = new BuildAheadSlot();
+        Plan plan = spire();
+        slot.claim(plan, CLAIM_FRAME, CLAIM_FRAME + 600, NATURAL_TRAVEL_FRAMES);
+        int incomeBound = CLAIM_FRAME + 1800;
+        slot.extend(plan, incomeBound, NATURAL_TRAVEL_FRAMES, false);
+        int carried = incomeBound + BuildAheadSlot.PREDICTION_GRACE_FRAMES;
+
+        slot.extend(plan, CLAIM_FRAME + 9000, NATURAL_TRAVEL_FRAMES, true);
+
+        assertTrue(slot.stalled(carried - 1).isEmpty());
+        assertFalse(slot.stalled(carried).isEmpty());
     }
 
     @Test
