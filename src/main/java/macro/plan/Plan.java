@@ -93,6 +93,15 @@ public abstract class Plan {
     @ToString.Exclude
     private Base reservedColonyBase;
 
+    /**
+     * The base a Creep Colony plan was placed for. Set by the pair planners and never cleared, so
+     * a colony builder lost on the way is charged to the base whose sunken target asked for it,
+     * not to whichever base its tile happens to lie nearest. Null on a colony planned elsewhere.
+     */
+    @Nullable
+    @ToString.Exclude
+    private Base colonyBase;
+
     public Plan(int priority) {
         this.priority = priority;
     }

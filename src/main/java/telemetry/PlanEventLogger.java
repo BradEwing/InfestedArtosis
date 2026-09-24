@@ -53,6 +53,7 @@ public class PlanEventLogger implements PlanEventSink {
     private static final String EVENT_HIVE_TECH_WITHHELD = "HIVE_TECH_WITHHELD";
     private static final String EVENT_BUILDER_DISPATCH_DECISION = "BUILDER_DISPATCH_DECISION";
     private static final String EVENT_EXPANSION_BACKOFF = "EXPANSION_BACKOFF";
+    private static final String EVENT_COLONY_BUILDER_BACKOFF = "COLONY_BUILDER_BACKOFF";
     private static final String EVENT_STRATEGY_DETECTED = "STRATEGY_DETECTED";
     private static final String EVENT_BASE_LOST = "BASE_LOST";
 
@@ -105,6 +106,11 @@ public class PlanEventLogger implements PlanEventSink {
      * <p>
      * lost_expansion_builders and expansion_hold_until_frame are set only on EXPANSION_BACKOFF
      * rows. The hold a row armed is expansion_hold_until_frame minus frame.
+     * <p>
+     * COLONY_BUILDER_BACKOFF rows reuse the same two columns for a hold on sunken planning at one
+     * base: lost_expansion_builders is the colony builders lost at that base since a colony there
+     * last started morphing, and expansion_hold_until_frame is the frame the base's hold lifts. The
+     * held base's location is in build_tile_x and build_tile_y.
      * <p>
      * STRATEGY_DETECTED rows carry the detected strategy's detection label in item and leave every
      * plan column empty, so the frame a strategy was detected is the row's frame. The label is the
@@ -525,6 +531,25 @@ public class PlanEventLogger implements PlanEventSink {
     }
 
     /**
+     * Writes one row per colony hold armed. The frame is re-read for the reason
+     * {@link #onExpansionBackoff} gives: the builder is lost from onUnitDestroy.
+     */
+    @Override
+    public void onColonyBuilderBackoff(TilePosition base, int lostColonyBuilders, int colonyHeldUntilFrame) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            currentFrame = game.getFrameCount();
+            buffer.add(colonyBuilderBackoffRow(base, BaseEventInputs.expansionBackoff(lostColonyBuilders,
+                    colonyHeldUntilFrame)));
+        } catch (Exception e) {
+            disabled = true;
+        }
+    }
+
+    /**
      * Records the frame a strategy was detected. The frame is re-read rather than taken from the last
      * onFrame, because StrategyTracker may run ahead of this logger's onFrame on the same frame.
      */
@@ -794,6 +819,26 @@ public class PlanEventLogger implements PlanEventSink {
         return sb.toString();
     }
 
+    /** A row for a hold on sunken planning at one base, which no plan owns, so the plan columns are empty. */
+    private String colonyBuilderBackoffRow(TilePosition base, BaseEventInputs inputs) {
+        StringBuilder sb = new StringBuilder();
+        appendEvent(sb, EVENT_COLONY_BUILDER_BACKOFF);
+        appendEmpty(sb, 2);
+        sb.append(PlanType.BUILDING).append(',');
+        sb.append(Csv.sanitize(UnitType.Zerg_Creep_Colony.toString())).append(',');
+        appendEmpty(sb, 4);
+        appendBlocker(sb, PlanBlocker.NONE, 0);
+        appendEmpty(sb, 3);
+        appendGameState(sb);
+        sb.append(base.getX()).append(',');
+        sb.append(base.getY()).append(',');
+        appendEmpty(sb, 1);
+        sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
+        appendEmpty(sb, 2);
+        appendTrailing(sb, null, null, null, null, null, null, inputs);
+        return sb.toString();
+    }
+
     /** A row for a detected strategy, which no plan owns, so the plan columns are empty. */
     private String strategyDetectedRow(String detectionLabel) {
         StringBuilder sb = new StringBuilder();
@@ -871,8 +916,8 @@ public class PlanEventLogger implements PlanEventSink {
      * @param builderThreat what the plan's builder would walk into, or null when the row has no
      *     BUILDING plan with an executor behind it
      * @param decision what the dispatch gate did, or null on every row but BUILDER_DISPATCH_DECISION
-     * @param baseEvent the expansion hold armed or the base lost, or null on every row but
-     *     EXPANSION_BACKOFF and BASE_LOST
+     * @param baseEvent the expansion or colony hold armed or the base lost, or null on every row but
+     *     EXPANSION_BACKOFF, COLONY_BUILDER_BACKOFF and BASE_LOST
      */
     private void appendTrailing(StringBuilder sb, Position blockerMineral, Plan yieldTo,
                                 MacroHatcheryGateInputs macroHatchery, HiveTechGateInputs hiveTech,
