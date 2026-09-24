@@ -246,6 +246,59 @@ class BuildOrderTest {
     }
 
     @Test
+    void noSunkenPairIsPlannedWithNoPoolStandingOrPlanned() {
+        assertEquals(0, BuildOrder.sunkenPairBudget(new TechProgression(), 3));
+    }
+
+    @Test
+    void noSunkenPairIsPlannedWhileThePoolIsOnlyPlanned() {
+        TechProgression techProgression = new TechProgression();
+        techProgression.setPlannedSpawningPool(true);
+
+        assertEquals(0, BuildOrder.sunkenPairBudget(techProgression, 3));
+    }
+
+    @Test
+    void aStandingPoolPlansTheWholeSunkenTarget() {
+        assertEquals(3, BuildOrder.sunkenPairBudget(withPool(), 3));
+    }
+
+    @Test
+    void aDeadPoolStopsSunkenPairsUntilItsReplacementStands() {
+        TechProgression techProgression = withPool();
+        techProgression.setSpawningPool(false);
+        int pairs = 0;
+        int pools = 0;
+        for (int frame = 0; frame < FRAMES; frame++) {
+            if (BuildOrder.shouldPlanEmergencyPool(true, techProgression.canPlanPool())) {
+                techProgression.setPlannedSpawningPool(true);
+                pools++;
+            }
+            pairs += BuildOrder.sunkenPairBudget(techProgression, 1);
+        }
+
+        assertEquals(1, pools);
+        assertEquals(0, pairs);
+
+        techProgression.setPlannedSpawningPool(false);
+        techProgression.setSpawningPool(true);
+        assertEquals(1, BuildOrder.sunkenPairBudget(techProgression, 1));
+    }
+
+    @Test
+    void aDeadChamberStopsSporePairsAndPlansItsReplacement() {
+        TechProgression techProgression = withPool();
+        techProgression.setEvolutionChambers(1);
+        assertEquals(BuildOrder.SporeStep.SPORE_COLONY, BuildOrder.sporeStep(techProgression));
+
+        techProgression.setEvolutionChambers(0);
+        assertEquals(BuildOrder.SporeStep.EVOLUTION_CHAMBER, BuildOrder.sporeStep(techProgression));
+
+        techProgression.setSpawningPool(false);
+        assertEquals(BuildOrder.SporeStep.WAIT, BuildOrder.sporeStep(techProgression));
+    }
+
+    @Test
     void aSporeWithoutAChamberPlansTheChamberItNeeds() {
         assertTrue(BuildOrder.shouldPlanSporePrerequisite(withPool()));
     }
