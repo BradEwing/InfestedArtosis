@@ -4,6 +4,7 @@ import bwapi.Race;
 import strategy.buildorder.BuildOrder;
 import strategy.buildorder.SpeedlingAllIn;
 import strategy.buildorder.opener.FourPool;
+import strategy.buildorder.opener.NineHatch;
 import strategy.buildorder.opener.NinePoolSpeed;
 import strategy.buildorder.opener.Overpool;
 import strategy.buildorder.opener.ThreeHatchBeforePool;
@@ -73,6 +74,7 @@ public class BuildOrderFactory {
     private void initBuildOrders() {
         // Openers
         allBuildOrders.add(new FourPool());
+        allBuildOrders.add(new NineHatch());
         allBuildOrders.add(new NinePoolSpeed());
         allBuildOrders.add(new Overpool());
         allBuildOrders.add(new ThreeHatchBeforePool());
