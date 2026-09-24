@@ -6,6 +6,7 @@ import bwapi.UnitType;
 import info.ResourceCount;
 import macro.BuildAheadSlot;
 import org.junit.jupiter.api.Test;
+import unit.managed.UnitRole;
 
 import java.util.HashMap;
 import java.util.HashSet;
@@ -14,6 +15,8 @@ import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -72,7 +75,6 @@ class BuilderRedispatchTest {
         ResourceCount resourceCount = new ResourceCount(null);
         resourceCount.reserveUnit(DEN);
 
-        assertSame(BuilderLossReason.ROLE_CHANGED, BuilderLossReason.of(false, true, false));
         PlanManager.returnToSchedule(plan, assigned, building, scheduled);
 
         assertSame(PlanState.SCHEDULE, plan.getState());
@@ -201,5 +203,75 @@ class BuilderRedispatchTest {
         Position target = PlanManager.siteMoveTarget(DEN, DEN_TILE);
         assertEquals(DEN_TILE.toPosition().getX() + DEN.tileWidth() * 16, target.getX());
         assertEquals(DEN_TILE.toPosition().getY() + DEN.tileHeight() * 16, target.getY());
+    }
+
+    @Test
+    void aReleasedBuilderStillInBuildWithNoPlanGoesIdle() {
+        assertSame(UnitRole.IDLE, PlanManager.roleAfterRelease(UnitRole.BUILD, false));
+    }
+
+    @Test
+    void aReleasedBuilderAnotherManagerReRoledKeepsItsRole() {
+        assertSame(UnitRole.GATHER, PlanManager.roleAfterRelease(UnitRole.GATHER, false));
+        assertSame(UnitRole.FIGHT, PlanManager.roleAfterRelease(UnitRole.FIGHT, false));
+        assertSame(UnitRole.DEFEND, PlanManager.roleAfterRelease(UnitRole.DEFEND, true));
+    }
+
+    @Test
+    void aReleasedBuilderInBuildThatStillHoldsAnotherPlanKeepsBuild() {
+        assertSame(UnitRole.BUILD, PlanManager.roleAfterRelease(UnitRole.BUILD, true));
+    }
+
+    @Test
+    void aDispatchedBuilderIsPairedWithItsPlanAndAStrayTracker() {
+        DispatchedBuilders<String> dispatched = new DispatchedBuilders<>();
+        Plan plan = buildingDen();
+        dispatched.dispatch("drone161", plan);
+
+        assertSame(plan, dispatched.planOf("drone161"));
+        assertNotNull(dispatched.strayOf("drone161"));
+        assertEquals(1, dispatched.snapshot().size());
+    }
+
+    @Test
+    void anUndispatchedBuilderLosesBothItsPlanAndItsStrayTracker() {
+        DispatchedBuilders<String> dispatched = new DispatchedBuilders<>();
+        dispatched.dispatch("drone161", buildingDen());
+        dispatched.undispatch("drone161");
+
+        assertNull(dispatched.planOf("drone161"));
+        assertNull(dispatched.strayOf("drone161"));
+        assertTrue(dispatched.snapshot().isEmpty());
+    }
+
+    @Test
+    void aBuilderDispatchedAgainStartsAFreshStrayHistory() {
+        DispatchedBuilders<String> dispatched = new DispatchedBuilders<>();
+        Plan first = buildingDen();
+        Plan second = buildingDen();
+        dispatched.dispatch("drone161", first);
+        BuilderStray stray = dispatched.strayOf("drone161");
+        assertFalse(stray.isStrayed(FAR, true, false, CLAIM_FRAME));
+
+        dispatched.dispatch("drone161", second);
+
+        assertSame(second, dispatched.planOf("drone161"));
+        assertNotSame(stray, dispatched.strayOf("drone161"));
+        assertEquals(1, dispatched.snapshot().size());
+        assertFalse(dispatched.strayOf("drone161").isStrayed(FAR, true, false,
+                CLAIM_FRAME + BuilderStray.STUCK_FRAMES));
+    }
+
+    @Test
+    void theSnapshotSurvivesUndispatchingDuringIteration() {
+        DispatchedBuilders<String> dispatched = new DispatchedBuilders<>();
+        dispatched.dispatch("drone161", buildingDen());
+        dispatched.dispatch("drone170", buildingDen());
+
+        for (Map.Entry<String, Plan> entry : dispatched.snapshot()) {
+            dispatched.undispatch(entry.getKey());
+        }
+
+        assertTrue(dispatched.snapshot().isEmpty());
     }
 }

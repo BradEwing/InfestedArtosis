@@ -37,8 +37,7 @@ public class PlanManager {
     private HashSet<ManagedUnit> gasGatherers;
     private HashSet<ManagedUnit> larva;
     private HashSet<ManagedUnit> scheduledDrones = new HashSet<>();
-    private HashMap<ManagedUnit, Plan> dispatchedDrones = new HashMap<>();
-    private HashMap<ManagedUnit, BuilderStray> builderStrays = new HashMap<>();
+    private DispatchedBuilders<ManagedUnit> dispatchedDrones = new DispatchedBuilders<>();
 
 
     public PlanManager(Game game, GameState gameState) {
@@ -188,7 +187,7 @@ public class PlanManager {
             gameState.clearAssignments(managedUnit);
             plan.setState(PlanState.BUILDING);
             managedUnit.setRole(UnitRole.BUILD);
-            dispatch(managedUnit, plan);
+            dispatchedDrones.dispatch(managedUnit, plan);
             executed.add(managedUnit);
         }
 
@@ -215,7 +214,7 @@ public class PlanManager {
      */
     private void recallThreatenedBuilders() {
         List<ManagedUnit> recalled = new ArrayList<>();
-        for (Map.Entry<ManagedUnit, Plan> entry: dispatchedDrones.entrySet()) {
+        for (Map.Entry<ManagedUnit, Plan> entry: dispatchedDrones.snapshot()) {
             ManagedUnit managedUnit = entry.getKey();
             Plan plan = entry.getValue();
             if (plan.getState() != PlanState.BUILDING) {
@@ -234,18 +233,8 @@ public class PlanManager {
         }
 
         for (ManagedUnit managedUnit: recalled) {
-            undispatch(managedUnit);
+            dispatchedDrones.undispatch(managedUnit);
         }
-    }
-
-    private void dispatch(ManagedUnit builder, Plan plan) {
-        dispatchedDrones.put(builder, plan);
-        builderStrays.put(builder, new BuilderStray());
-    }
-
-    private void undispatch(ManagedUnit builder) {
-        dispatchedDrones.remove(builder);
-        builderStrays.remove(builder);
     }
 
     /**
@@ -259,11 +248,11 @@ public class PlanManager {
      */
     private void releaseLostBuilders() {
         final int frame = game.getFrameCount();
-        for (Map.Entry<ManagedUnit, Plan> entry : new ArrayList<>(dispatchedDrones.entrySet())) {
+        for (Map.Entry<ManagedUnit, Plan> entry : dispatchedDrones.snapshot()) {
             ManagedUnit builder = entry.getKey();
             Plan plan = entry.getValue();
             if (plan.getState() != PlanState.BUILDING) {
-                undispatch(builder);
+                dispatchedDrones.undispatch(builder);
                 continue;
             }
             BuilderLossReason reason = lossReason(builder, plan, frame);
@@ -277,7 +266,7 @@ public class PlanManager {
         Unit unit = builder.getUnit();
         boolean planBound = builder.getPlan() == plan && plan.equals(gameState.getAssignedPlannedItems().get(unit));
         TilePosition buildPosition = plan.getBuildPosition();
-        boolean strayed = buildPosition != null && builderStrays.get(builder).isStrayed(
+        boolean strayed = buildPosition != null && dispatchedDrones.strayOf(builder).isStrayed(
                 unit.getDistance(siteMoveTarget(plan.getPlannedUnit(), buildPosition)),
                 coversCost(game.self().minerals(), game.self().gas(), plan),
                 unit.isCarrying() || builder.isClearingBlocker(),
@@ -300,16 +289,25 @@ public class PlanManager {
      * @param reason why the builder is lost
      */
     private void releaseLostBuilder(ManagedUnit builder, Plan plan, BuilderLossReason reason) {
-        undispatch(builder);
+        dispatchedDrones.undispatch(builder);
         if (builder.getPlan() == plan) {
             builder.setPlan(null);
         }
-        if (builder.getRole() == UnitRole.BUILD && builder.getPlan() == null) {
-            builder.setRole(UnitRole.IDLE);
-        }
+        builder.setRole(roleAfterRelease(builder.getRole(), builder.getPlan() != null));
         returnToSchedule(plan, gameState.getAssignedPlannedItems(), gameState.getPlansBuilding(),
                 gameState.getPlansScheduled());
         PlanEvents.builderDispatchDecision(plan, reason.decision(), builderThreat(builder, plan));
+    }
+
+    /**
+     * The role a released builder is left in: IDLE for a builder still in BUILD with no plan left,
+     * so the worker manager takes it back, and otherwise the role it already has.
+     *
+     * @param role the builder's role on release
+     * @param holdsPlan whether the builder still holds a plan after dropping the released one
+     */
+    static UnitRole roleAfterRelease(UnitRole role, boolean holdsPlan) {
+        return role == UnitRole.BUILD && !holdsPlan ? UnitRole.IDLE : role;
     }
 
     /**
