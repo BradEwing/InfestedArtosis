@@ -8,6 +8,7 @@ import info.GameState;
 import info.Readiness;
 import info.TechProgression;
 import info.tracking.StrategyTracker;
+import info.tracking.protoss.ProxyGate;
 import macro.plan.Plan;
 import strategy.buildorder.LarvaBoundMacroHatchery;
 import util.Time;
@@ -49,7 +50,7 @@ public class ThreeHatchMuta extends ProtossBase {
         BaseData baseData = gameState.getBaseData();
         StrategyTracker strategyTracker = gameState.getStrategyTracker();
         boolean cannonRushed = strategyTracker.isDetectedStrategy("CannonRush");
-        boolean twoGateRushed = strategyTracker.isDetectedStrategy("2Gate");
+        boolean twoGateRushed = strategyTracker.isAnyDetectedStrategy("2Gate", ProxyGate.NAME);
         boolean rushed = cannonRushed || twoGateRushed;
         int baseCount = baseData.currentBaseCount();
         int extractorCount = baseData.numExtractor();

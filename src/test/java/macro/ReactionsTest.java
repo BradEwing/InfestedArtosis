@@ -879,6 +879,131 @@ public class ReactionsTest {
         assertEquals(queuedSunken, queue.poll());
     }
 
+    /**
+     * GAME_LSP4O001's natural went from BUILDING to a morph that the proxy Zealots killed. Queued, scheduled
+     * and assigned-but-unmorphed expansions are each cancelled once and hand their reservation back; the
+     * claimed ones leave the scheduled and building sets.
+     */
+    @Test
+    void theProxyGateReactionCancelsEveryUnmorphedExpansionOnceAndReleasesItsReservation() {
+        ProductionQueue queue = new ProductionQueue();
+        Plan queued = expansion(PlanState.PLANNED);
+        queue.add(queued);
+        Plan scheduled = expansion(PlanState.SCHEDULE);
+        Plan assigned = expansion(PlanState.BUILDING);
+        Set<Plan> plansScheduled = new HashSet<>(Arrays.asList(scheduled, assigned));
+        Set<Plan> plansBuilding = new HashSet<>();
+        ResourceCount resourceCount = new ResourceCount(null);
+        resourceCount.reserveUnit(UnitType.Zerg_Hatchery);
+        resourceCount.reserveUnit(UnitType.Zerg_Hatchery);
+
+        List<Plan> cancelledQueued = new ArrayList<>();
+        List<Plan> cancelledClaimed = new ArrayList<>();
+        Reactions.cancelUnmorphedExpansions(queue, plansScheduled, plansBuilding, cancelledQueued::add, plan -> {
+            cancelledClaimed.add(plan);
+            resourceCount.unreserveUnit(plan.getPlannedUnit());
+        });
+
+        assertEquals(Collections.singletonList(queued), cancelledQueued);
+        assertEquals(PlanCancelSource.REACTION_PROXY_GATE_EXPANSION, queued.getCancelSource());
+        assertEquals(2, cancelledClaimed.size());
+        assertEquals(new HashSet<>(Arrays.asList(scheduled, assigned)), new HashSet<>(cancelledClaimed));
+        assertTrue(queue.toSortedList().isEmpty());
+        assertTrue(plansScheduled.isEmpty());
+        assertEquals(0, resourceCount.getReservedMinerals());
+    }
+
+    @Test
+    void theProxyGateReactionFindsAnAssignedExpansionInTheBuildingSet() {
+        Plan assigned = expansion(PlanState.BUILDING);
+        Set<Plan> plansBuilding = new HashSet<>(Collections.singletonList(assigned));
+        List<Plan> cancelled = new ArrayList<>();
+
+        Reactions.cancelUnmorphedExpansions(new ProductionQueue(), new HashSet<>(), plansBuilding, plan -> { }, cancelled::add);
+
+        assertEquals(Collections.singletonList(assigned), cancelled);
+        assertTrue(plansBuilding.isEmpty());
+    }
+
+    @Test
+    void theProxyGateHoldStandsOnlyWhileProxyGateIsDetectedAndTheEarlyRushIsArmed() {
+        assertTrue(Reactions.isProxyGateExpansionHold(true, true));
+        assertFalse(Reactions.isProxyGateExpansionHold(true, false));
+        assertFalse(Reactions.isProxyGateExpansionHold(false, true));
+        assertFalse(Reactions.isProxyGateExpansionHold(false, false));
+    }
+
+    /**
+     * No expansion can be queued while the hold stands, because the hold implies the early rush flag that
+     * GameState.mayQueueExpansionHatchery() refuses expansions on. Queued, scheduled and assigned-but-unmorphed
+     * expansions are cancelled on the first frame of each hold; one re-queued while the early rush reaction
+     * had stood down is cancelled when the hold returns.
+     */
+    @Test
+    void theProxyGateHoldCancelsOnEachHoldAndRefusesExpansionsWhileItStands() {
+        Reactions reactions = new Reactions(null);
+        ProductionQueue queue = new ProductionQueue();
+        List<Plan> cancelled = new ArrayList<>();
+
+        queue.add(expansion(PlanState.PLANNED));
+        boolean holding = Reactions.isProxyGateExpansionHold(true, true);
+        assertTrue(reactions.shouldCancelExpansionsForProxyGate(holding));
+        Reactions.cancelUnmorphedExpansions(queue, new HashSet<>(), new HashSet<>(), cancelled::add, cancelled::add);
+        assertEquals(1, cancelled.size());
+
+        for (int frame = 0; frame < SUSTAINED_RUSH_FRAMES; frame++) {
+            assertFalse(reactions.shouldCancelExpansionsForProxyGate(holding));
+            assertFalse(HatcheryCapacity.isQueueable(false, holding));
+        }
+
+        boolean stoodDown = Reactions.isProxyGateExpansionHold(true, false);
+        assertFalse(reactions.shouldCancelExpansionsForProxyGate(stoodDown));
+        assertTrue(HatcheryCapacity.isQueueable(false, stoodDown));
+        Plan requeued = expansion(PlanState.SCHEDULE);
+        Set<Plan> plansScheduled = new HashSet<>(Collections.singletonList(requeued));
+
+        assertTrue(reactions.shouldCancelExpansionsForProxyGate(Reactions.isProxyGateExpansionHold(true, true)));
+        Reactions.cancelUnmorphedExpansions(queue, plansScheduled, new HashSet<>(), cancelled::add, cancelled::add);
+        assertEquals(2, cancelled.size());
+        assertEquals(requeued, cancelled.get(1));
+        assertTrue(plansScheduled.isEmpty());
+    }
+
+    /**
+     * A plan in MORPHING has had its build command accepted, and a COMPLETE plan's Hatchery is morphing or
+     * finished: neither is cancelled, so a completed base or a live morph is never touched. Macro Hatcheries
+     * are built in the main and are kept too.
+     */
+    @Test
+    void theProxyGateReactionNeverCancelsAnIssuedMorphACompletedBaseOrAMacroHatchery() {
+        Plan morphIssued = expansion(PlanState.MORPHING);
+        Plan completed = expansion(PlanState.COMPLETE);
+        Plan macroHatchery = expansion(PlanState.SCHEDULE);
+        macroHatchery.setMacroHatchery(true);
+        ProductionQueue queue = new ProductionQueue();
+        Plan queuedMacroHatchery = expansion(PlanState.PLANNED);
+        queuedMacroHatchery.setMacroHatchery(true);
+        queue.add(queuedMacroHatchery);
+        Set<Plan> plansScheduled = new HashSet<>(Arrays.asList(morphIssued, macroHatchery));
+        Set<Plan> plansBuilding = new HashSet<>(Collections.singletonList(completed));
+        List<Plan> cancelled = new ArrayList<>();
+
+        Reactions.cancelUnmorphedExpansions(queue, plansScheduled, plansBuilding, cancelled::add, cancelled::add);
+
+        assertTrue(cancelled.isEmpty());
+        assertEquals(new HashSet<>(Arrays.asList(morphIssued, macroHatchery)), plansScheduled);
+        assertEquals(Collections.singleton(completed), plansBuilding);
+        assertEquals(Collections.singletonList(queuedMacroHatchery), queue.toSortedList());
+        assertEquals(PlanState.MORPHING, morphIssued.getState());
+        assertEquals(PlanState.COMPLETE, completed.getState());
+    }
+
+    private static Plan expansion(PlanState state) {
+        Plan plan = new BuildingPlan(UnitType.Zerg_Hatchery, CANCEL_FRAME);
+        plan.setState(state);
+        return plan;
+    }
+
     private static BaseData baseDataWithOneGeyser(TilePosition tile) throws ReflectiveOperationException {
         BaseData baseData = new BaseData(new ArrayList<>());
         HashSet<Unit> available = new HashSet<>();

@@ -4,6 +4,9 @@ import bwapi.Position;
 import bwapi.TilePosition;
 import org.junit.jupiter.api.Test;
 
+import java.util.Arrays;
+import java.util.Collections;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -77,5 +80,36 @@ class StrategyDetectionContextTest {
         assertFalse(StrategyDetectionContext.occupiesBaseLocation(new TilePosition(9, 5), GAME_LSG2U0B4_MAIN_LOCATION));
         assertFalse(StrategyDetectionContext.occupiesBaseLocation(new TilePosition(9, 9), GAME_LSG2U0B4_MAIN_LOCATION));
         assertTrue(StrategyDetectionContext.occupiesBaseLocation(new TilePosition(10, 8), GAME_LSG2U0B4_MAIN_LOCATION));
+    }
+
+    @Test
+    void aPositionNearerOurMainIsOnOurSide() {
+        assertTrue(StrategyDetectionContext.isCloserToOurMain(1000, Collections.singletonList(3000)));
+    }
+
+    @Test
+    void aPositionNearerTheEnemyMainIsNotOnOurSide() {
+        assertFalse(StrategyDetectionContext.isCloserToOurMain(3000, Collections.singletonList(1000)));
+    }
+
+    @Test
+    void anEquidistantPositionIsNotOnOurSide() {
+        assertFalse(StrategyDetectionContext.isCloserToOurMain(2000, Collections.singletonList(2000)));
+    }
+
+    @Test
+    void anUnknownEnemyMainNeedsEveryOtherStartingLocationFarther() {
+        assertTrue(StrategyDetectionContext.isCloserToOurMain(1000, Arrays.asList(3000, 2500)));
+        assertFalse(StrategyDetectionContext.isCloserToOurMain(1000, Arrays.asList(3000, 800)));
+    }
+
+    @Test
+    void aPositionWithNoGroundPathToOurMainIsNotOnOurSide() {
+        assertFalse(StrategyDetectionContext.isCloserToOurMain(-1, Collections.singletonList(3000)));
+    }
+
+    @Test
+    void anEnemyMainWithNoGroundPathDoesNotCountAgainstOurSide() {
+        assertTrue(StrategyDetectionContext.isCloserToOurMain(1000, Collections.singletonList(-1)));
     }
 }
