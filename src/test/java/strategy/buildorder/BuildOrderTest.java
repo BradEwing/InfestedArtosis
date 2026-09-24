@@ -277,6 +277,51 @@ class BuildOrderTest {
         assertEquals(1, chambers);
     }
 
+    private static int plannedChambersInOnePass(TechProgression techProgression, int wantedForUpgrades) {
+        int chambers = 0;
+        if (BuildOrder.sporeStep(techProgression) == BuildOrder.SporeStep.EVOLUTION_CHAMBER) {
+            techProgression.setPlannedEvolutionChambers(techProgression.getPlannedEvolutionChambers() + 1);
+            chambers++;
+        }
+        if (BuildOrder.shouldPlanUpgradeEvolutionChamber(techProgression, wantedForUpgrades)) {
+            techProgression.setPlannedEvolutionChambers(techProgression.getPlannedEvolutionChambers() + 1);
+            chambers++;
+        }
+        return chambers;
+    }
+
+    @Test
+    void aSporePrerequisiteAndAnUpgradePathQueueOneChamberInOnePass() {
+        assertEquals(1, plannedChambersInOnePass(withPool(), 1));
+    }
+
+    @Test
+    void anUpgradePathWantingTwoChambersStillQueuesOneInThePassTheSporeQueuedOne() {
+        assertEquals(1, plannedChambersInOnePass(withPool(), 2));
+    }
+
+    @Test
+    void theUpgradePathWaitsOnAPlannedChamber() {
+        TechProgression techProgression = withPool();
+        techProgression.setPlannedEvolutionChambers(1);
+
+        assertFalse(BuildOrder.shouldPlanUpgradeEvolutionChamber(techProgression, 2));
+    }
+
+    @Test
+    void theUpgradePathStopsAtTheChambersItWants() {
+        TechProgression techProgression = withPool();
+        techProgression.setEvolutionChambers(1);
+
+        assertFalse(BuildOrder.shouldPlanUpgradeEvolutionChamber(techProgression, 1));
+        assertTrue(BuildOrder.shouldPlanUpgradeEvolutionChamber(techProgression, 2));
+    }
+
+    @Test
+    void theUpgradePathWaitsOnTheSpawningPool() {
+        assertFalse(BuildOrder.shouldPlanUpgradeEvolutionChamber(new TechProgression(), 1));
+    }
+
     @Test
     void theChamberIsPlannedBeforeASporeIsRequested() {
         TechProgression techProgression = withPool();
