@@ -111,6 +111,12 @@ public class SquadManager {
     static final int AIR_MOVE_OUT_UNITS_VS_ZERG = 2;
     /** Tuning value: Scourge a Scourge only squad needs to move out, against any race. */
     static final int SCOURGE_MOVE_OUT_UNITS = 2;
+    /**
+     * Tuning value: ground path length in pixels from the squad centre to the closest base held within which an air
+     * squad under its move out threshold still simulates close threats. Air distance stands in when no base is
+     * reachable on the ground from the centre.
+     */
+    static final int AIR_HOME_DEFENSE_RADIUS = 480;
 
     private static final int RETREAT_VECTOR_MAGNITUDE = 192;
     private static final int COMBAT_SIM_DURATION_FRAMES = 150;
@@ -873,7 +879,8 @@ public class SquadManager {
         int strength = squadStrength(squad);
         int moveOutThreshold = calculateMoveOutThreshold(squad);
         SquadDecisions.moveOutEvaluated(squad, moveOutThreshold, strength);
-        SquadAction action = chooseSquadAction(closeThreats, strength, moveOutThreshold,
+        boolean holdAway = holdsAwayFromHome(squad, closeThreats, strength, moveOutThreshold);
+        SquadAction action = chooseSquadAction(holdAway, closeThreats, strength, moveOutThreshold,
                 squadStatus, squad.isCommitted(), distanceFromRallyPoint(squad));
 
         if (squadStatus == SquadStatus.RALLY) {
@@ -882,7 +889,7 @@ public class SquadManager {
 
         if (action == SquadAction.RALLY) {
             clearCombatSimSnapshot(squad);
-            rallySquad(squad, RallyReason.BELOW_MOVE_OUT);
+            rallySquad(squad, holdAway ? RallyReason.AIR_BELOW_MOVE_OUT_AWAY : RallyReason.BELOW_MOVE_OUT);
             return;
         }
 
@@ -934,6 +941,90 @@ public class SquadManager {
             return SquadAction.SIMULATE;
         }
         return SquadAction.RALLY;
+    }
+
+    /**
+     * Picks the branch for a fight squad that is not already containing, holding a sub-threshold air squad at the
+     * rally point when its close threats are away from our bases. Every other squad takes
+     * {@link #chooseSquadAction(boolean, int, int, SquadStatus, boolean, double)}.
+     *
+     * @param holdAwayFromHome result of {@link #holdsAwayFromHome(boolean, boolean, boolean, int, int, boolean)}
+     * @param closeThreats true when enemies sit inside the squad detection radius
+     * @param squadStrength supply of a ground squad, or air combat unit count of an air squad
+     * @param moveOutThreshold strength the squad needs to be cleared to move out
+     * @param status status the squad held entering the tick
+     * @param committed true when the squad has been cleared to act and has not been recalled since
+     * @param distanceFromRallyPoint pixels between the squad center and the global rally point
+     * @return branch to take
+     */
+    static SquadAction chooseSquadAction(boolean holdAwayFromHome, boolean closeThreats, int squadStrength,
+                                         int moveOutThreshold, SquadStatus status, boolean committed,
+                                         double distanceFromRallyPoint) {
+        if (holdAwayFromHome) {
+            return SquadAction.RALLY;
+        }
+        return chooseSquadAction(closeThreats, squadStrength, moveOutThreshold, status, committed,
+                distanceFromRallyPoint);
+    }
+
+    /**
+     * Whether a squad's close threats are refused because it is an air squad under its move out threshold, not
+     * committed, and outside {@link #AIR_HOME_DEFENSE_RADIUS} of every base we hold. Such a squad simulates
+     * close threats only at home, where it is defending Overlords or a drone line; away from home the move out
+     * threshold decides. Ground squads and committed air squads are never held.
+     *
+     * @param airSquad true for an air squad
+     * @param closeThreats true when enemies sit inside the squad detection radius
+     * @param nearHome true when the squad centre is inside the home defence radius of a base we hold
+     * @param squadStrength air combat unit count of the squad
+     * @param moveOutThreshold air combat units the squad needs to be cleared to move out
+     * @param committed true when the squad has been cleared to act and has not been recalled since
+     * @return true when the squad rallies instead of simulating its close threats
+     */
+    static boolean holdsAwayFromHome(boolean airSquad, boolean closeThreats, boolean nearHome, int squadStrength,
+                                     int moveOutThreshold, boolean committed) {
+        return airSquad && closeThreats && !nearHome && squadStrength < moveOutThreshold && !committed;
+    }
+
+    private boolean holdsAwayFromHome(Squad squad, boolean closeThreats, int squadStrength, int moveOutThreshold) {
+        if (!squad.isAirSquad() || !closeThreats) {
+            return false;
+        }
+        return holdsAwayFromHome(true, true, isNearHome(squad.getCenter()), squadStrength, moveOutThreshold,
+                squad.isCommitted());
+    }
+
+    private boolean isNearHome(Position center) {
+        if (center == null) {
+            return true;
+        }
+        Set<Position> basePositions = gameState.getBaseData().getMyBasePositions();
+        int groundDistance = -1;
+        double airDistance = Double.MAX_VALUE;
+        for (Position basePosition : basePositions) {
+            int length = gameState.getBwem().getMap().getPathLength(center, basePosition);
+            if (length >= 0 && (groundDistance < 0 || length < groundDistance)) {
+                groundDistance = length;
+            }
+            airDistance = Math.min(airDistance, center.getDistance(basePosition));
+        }
+        return isInsideHomeDefenseRadius(groundDistance, airDistance);
+    }
+
+    /**
+     * Whether a squad centre is inside {@link #AIR_HOME_DEFENSE_RADIUS} of the bases we hold. The ground path
+     * length is the measure, the same one squad decision telemetry records as ground_distance_to_base; the air
+     * distance is read only when no base is reachable on the ground.
+     *
+     * @param groundDistance shortest ground path length to a base held, or negative when none is reachable
+     * @param airDistance shortest air distance to a base held, or Double.MAX_VALUE when we hold none
+     * @return true when the centre is inside the radius
+     */
+    static boolean isInsideHomeDefenseRadius(int groundDistance, double airDistance) {
+        if (groundDistance >= 0) {
+            return groundDistance <= AIR_HOME_DEFENSE_RADIUS;
+        }
+        return airDistance <= AIR_HOME_DEFENSE_RADIUS;
     }
 
     /**
@@ -2879,12 +2970,16 @@ public class SquadManager {
         }
 
         squad.addUnit(managedUnit);
-        switch (reinforcementPath(squad.getStatus(), shouldStageSquad(squad))) {
+        switch (reinforcementPath(squad.getStatus(), shouldStageSquad(squad), reinforcementHeldAway(squad))) {
             case STAGE:
                 rallySquad(squad, RallyReason.STAGING);
                 return;
             case JOIN_CONTAINMENT:
                 joinContainment(squad, managedUnit);
+                return;
+            case HOLD_AWAY:
+                clearCombatSimSnapshot(squad);
+                rallySquad(squad, RallyReason.AIR_BELOW_MOVE_OUT_AWAY);
                 return;
             default:
                 break;
@@ -2904,6 +2999,7 @@ public class SquadManager {
     enum ReinforcementPath {
         STAGE,
         JOIN_CONTAINMENT,
+        HOLD_AWAY,
         SIMULATE
     }
 
@@ -2916,18 +3012,35 @@ public class SquadManager {
      * straight back every 24 frames; simulating on each return would let a blind ADVANCE flip the squad to FIGHT
      * until the next frame re-entered the arc.
      *
+     * <p>A squad with close threats is otherwise simulated at once, except a squad
+     * {@link #holdsAwayFromHome(boolean, boolean, boolean, int, int, boolean)} holds: it returns to the rally
+     * point, the same branch {@link #evaluateSquadRole} takes for it, so a unit hatched under threat away from our
+     * bases does not fight below its move out threshold.
+     *
      * @param status status the squad held as the reinforcement joined
      * @param stage true when the squad is rallying with no enemy inside its detection radius
+     * @param holdAway true when the squad is an air squad held at the rally point away from home
      * @return branch to take
      */
-    static ReinforcementPath reinforcementPath(SquadStatus status, boolean stage) {
+    static ReinforcementPath reinforcementPath(SquadStatus status, boolean stage, boolean holdAway) {
         if (status == SquadStatus.CONTAIN) {
             return ReinforcementPath.JOIN_CONTAINMENT;
         }
         if (stage) {
             return ReinforcementPath.STAGE;
         }
+        if (holdAway) {
+            return ReinforcementPath.HOLD_AWAY;
+        }
         return ReinforcementPath.SIMULATE;
+    }
+
+    private boolean reinforcementHeldAway(Squad squad) {
+        if (!squad.isAirSquad()) {
+            return false;
+        }
+        boolean closeThreats = !enemyUnitsNearSquad(squad).isEmpty();
+        return holdsAwayFromHome(squad, closeThreats, squadStrength(squad), calculateMoveOutThreshold(squad));
     }
 
     /**
@@ -2969,20 +3082,33 @@ public class SquadManager {
             if (!squad.isAirSquad()) continue;
             if (!mayJoinAirSquad(managedUnit.getUnitType(), holdsOnlyScourge(squad.getComposition()))) continue;
 
-            if (squad.getStatus() == SquadStatus.RALLY || squad.getStatus() == SquadStatus.FIGHT) {
-                double distance = squad.distance(managedUnit);
-
-                boolean canJoin = squad.getStatus() == SquadStatus.RALLY ||
-                                distance < AIR_JOIN_DISTANCE;
-
-                if (canJoin && distance < closestDistance) {
-                    closestDistance = distance;
-                    closestSquad = squad;
-                }
+            double distance = squad.distance(managedUnit);
+            if (mayJoinAirSquadAt(squad.getStatus(), distance) && distance < closestDistance) {
+                closestDistance = distance;
+                closestSquad = squad;
             }
         }
 
         return closestSquad;
+    }
+
+    /**
+     * Whether a new air unit may join an air squad holding a status at a distance. A rallying squad takes it from
+     * anywhere; a fighting or retreating squad only within {@link #AIR_JOIN_DISTANCE}, so the hatchlings of one egg
+     * born beside a retreating squad join it instead of each starting a squad of one.
+     *
+     * @param status the squad's status
+     * @param distance pixels between the squad centre and the unit
+     * @return true when the unit may join the squad
+     */
+    static boolean mayJoinAirSquadAt(SquadStatus status, double distance) {
+        if (status == SquadStatus.RALLY) {
+            return true;
+        }
+        if (status == SquadStatus.FIGHT || status == SquadStatus.RETREAT) {
+            return distance < AIR_JOIN_DISTANCE;
+        }
+        return false;
     }
 
     private Squad newFightSquad(UnitType type) {
