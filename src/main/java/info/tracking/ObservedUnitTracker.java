@@ -277,6 +277,18 @@ public class ObservedUnitTracker {
                 .count();
     }
 
+    /**
+     * Last known positions of units of this type first observed at or before t. A unit whose position is no
+     * longer known, including one since destroyed, is left out.
+     */
+    public Set<Position> getLastKnownPositionsObservedBeforeTime(UnitType unitType, Time t) {
+        return knownPositions(observedUnits.values()
+                .stream()
+                .filter(ou -> ou.getUnitType() == unitType)
+                .filter(ou -> ou.getFirstObservedFrame().lessThanOrEqual(t))
+                .map(ObservedUnit::getLastKnownLocation));
+    }
+
     public Set<Unit> getDetectedUnits() {
         return observedUnits.values()
                 .stream()

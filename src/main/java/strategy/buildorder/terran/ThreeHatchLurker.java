@@ -20,6 +20,8 @@ public class ThreeHatchLurker extends TerranBase {
 
     static final int HYDRALISKS_BEFORE_ZERGLINGS = 3;
 
+    private static final int UPGRADE_EVOLUTION_CHAMBERS = 2;
+
     public ThreeHatchLurker() {
         super("3HatchLurker");
     }
@@ -53,7 +55,6 @@ public class ThreeHatchLurker extends TerranBase {
         boolean wantLair = gameState.canPlanLair() && lairCount < 1 && baseCount >= 2;
 
         boolean wantHydraliskDen = wantHydraliskDen(gameState);
-        boolean wantEvolutionChamber = wantEvolutionChamber(gameState);
 
         boolean wantLurkerAspect = wantLurkerAspect(gameState);
         int livingLurkerCount = gameState.ourLivingUnitCount(UnitType.Zerg_Lurker);
@@ -123,7 +124,7 @@ public class ThreeHatchLurker extends TerranBase {
             }
         }
 
-        if (wantEvolutionChamber) {
+        if (wantEvolutionChamber(gameState)) {
             Plan evolutionChamberPlan = planEvolutionChamber(gameState);
             if (evolutionChamberPlan != null) {
                 plans.add(evolutionChamberPlan);
@@ -312,6 +313,10 @@ public class ThreeHatchLurker extends TerranBase {
         return hydraCount >= 3;
     }
 
+    /**
+     * Whether the upgrade path should plan an Evolution Chamber. Missile Attacks and Carapace run
+     * in parallel, one chamber each, and a chamber the Spore branch queued counts towards the two.
+     */
     private boolean wantEvolutionChamber(GameState gameState) {
         TechProgression techProgression = gameState.getTechProgression();
         final boolean haveDen = techProgression.isHydraliskDen();
@@ -322,7 +327,8 @@ public class ThreeHatchLurker extends TerranBase {
 
         final int lurkers = gameState.ourLivingUnitCount(UnitType.Zerg_Lurker);
 
-        return techProgression.canPlanEvolutionChamber() && lurkers > 3 && droneCount > 18;
+        return shouldPlanUpgradeEvolutionChamber(techProgression, UPGRADE_EVOLUTION_CHAMBERS)
+                && lurkers > 3 && droneCount > 18;
     }
 
     private int desiredHydralisks(GameState gameState) {

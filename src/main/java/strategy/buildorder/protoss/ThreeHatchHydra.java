@@ -29,6 +29,10 @@ public class ThreeHatchHydra extends ProtossBase {
 
     private static final int METABOLIC_BOOST_ZERGLINGS = 12;
 
+    static final int UPGRADE_EVOLUTION_CHAMBERS = 2;
+
+    private static final int HYDRALISKS_BEFORE_EVOLUTION_CHAMBER = 6;
+
     private boolean plannedFirstMacroHatch = false;
     private boolean plannedSecondMacroHatch = false;
     private boolean plannedThirdMacroHatch = false;
@@ -84,7 +88,6 @@ public class ThreeHatchHydra extends ProtossBase {
 
         // Tech building timing
         boolean wantHydraliskDen = wantHydraliskDen(gameState);
-        boolean wantEvolutionChamber = wantEvolutionChamber(gameState);
 
         // Lair timing
         boolean wantLair = gameState.canPlanLair() && lairCount < 1 && time.greaterThan(new Time(5, 0)) && baseCount >= 3;
@@ -186,7 +189,7 @@ public class ThreeHatchHydra extends ProtossBase {
             return plans;
         }
 
-        if (wantEvolutionChamber) {
+        if (wantEvolutionChamber(techProgression, gameState.ourUnitCount(UnitType.Zerg_Hydralisk))) {
             Plan evolutionChamberPlan = planEvolutionChamber(gameState);
             if (evolutionChamberPlan != null) {
                 plans.add(evolutionChamberPlan);
@@ -349,18 +352,23 @@ public class ThreeHatchHydra extends ProtossBase {
         return techProgression.canPlanHydraliskDen() && plannedAndCurrentHatcheries >= 3;
     }
 
-    private boolean wantEvolutionChamber(GameState gameState) {
-        TechProgression techProgression = gameState.getTechProgression();
-        if (!techProgression.canPlanEvolutionChamber()) {
+    /**
+     * Whether the upgrade path should plan an Evolution Chamber.
+     *
+     * <p>Missile Attacks and Carapace run in parallel, one chamber each, once the Hydralisk Den
+     * stands and more than {@value #HYDRALISKS_BEFORE_EVOLUTION_CHAMBER} Hydralisks are out. A
+     * chamber the Spore branch queued counts towards the two.
+     *
+     * @param techProgression the bot's tech state
+     * @param hydras the bot's Hydralisk count
+     * @return true when a chamber should be queued now
+     */
+    static boolean wantEvolutionChamber(TechProgression techProgression, int hydras) {
+        if (!shouldPlanUpgradeEvolutionChamber(techProgression, UPGRADE_EVOLUTION_CHAMBERS)) {
             return false;
         }
 
-        if (requiredSpores(gameState) > 0) {
-            return true;
-        }
-
-        final int hydras = gameState.ourUnitCount(UnitType.Zerg_Hydralisk);
-        return techProgression.isHydraliskDen() && hydras > 6;
+        return techProgression.isHydraliskDen() && hydras > HYDRALISKS_BEFORE_EVOLUTION_CHAMBER;
     }
 
     // Unit production methods

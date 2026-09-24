@@ -4,6 +4,7 @@ import bwapi.Position;
 import bwapi.UnitType;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import unit.squad.AirSquad;
 import unit.squad.CombatSimulator;
 import unit.squad.DefenseSim;
 import unit.squad.GroundSquad;
@@ -90,6 +91,11 @@ class SquadDecisionsTest {
             }
 
             @Override
+            public void onMoveOutEvaluated(Squad squad, int moveOutThreshold, int squadStrength) {
+                events.add("MOVE_OUT:" + moveOutThreshold + ":" + squadStrength);
+            }
+
+            @Override
             public void onDefenseEvaluated(Squad squad, DefenseEvent event, int candidates, int pulled, int released,
                                            DefenseSim sim) {
                 events.add("DEFENSE:" + event + ":" + candidates + ":" + pulled + ":" + released);
@@ -116,7 +122,9 @@ class SquadDecisionsTest {
                 + "," + String.join(",", SquadDecisionLogger.pathCells(context))
                 + "," + String.join(",", SquadDecisionLogger.enemySampleCells(context))
                 + "," + String.join(",", SquadDecisionLogger.runbyCells(null, null))
-                + "," + String.join(",", SquadDecisionLogger.containmentCells(context));
+                + "," + String.join(",", SquadDecisionLogger.containmentCells(context))
+                + "," + String.join(",", SquadDecisionLogger.simDomainCells(context))
+                + "," + String.join(",", SquadDecisionLogger.moveOutCells(context));
         return row.split(",", -1);
     }
 
@@ -376,7 +384,7 @@ class SquadDecisionsTest {
         String[] columns = SquadDecisionLogger.HEADER.split(",", -1);
         int first = java.util.Arrays.asList(columns).indexOf("pushback_from_x");
 
-        assertEquals(columns.length - first, cells.size());
+        assertEquals(columnIndex("sim_enemy_air_share") - first, cells.size());
         assertEquals("1600", cells.get(columnIndex("pushback_from_x") - first));
         assertEquals("1440", cells.get(columnIndex("pushback_from_y") - first));
         assertEquals("1600", cells.get(columnIndex("pushback_to_x") - first));
@@ -384,6 +392,19 @@ class SquadDecisionsTest {
         assertEquals("Terran_Siege_Tank_Siege_Mode", cells.get(columnIndex("pushback_enemy_type") - first));
         assertEquals("20", cells.get(columnIndex("pushback_members_moved") - first));
         assertEquals("-1", cells.get(columnIndex("contain_supply_lost") - first));
+    }
+
+    @Test
+    void aSimulatedRowCarriesTheEnemyAirShareItsStrengthWasPricedBy() {
+        SquadDecision mixed = new SquadDecision();
+        mixed.setEnemyAirShare(0.375);
+        mixed.setOurAirShare(0.25);
+        int first = columnIndex("sim_enemy_air_share");
+
+        assertEquals("0.3750", SquadDecisionLogger.simDomainCells(mixed).get(0));
+        assertEquals("0.2500", SquadDecisionLogger.simDomainCells(mixed).get(columnIndex("sim_our_air_share") - first));
+        assertEquals("-1.0000", rowFor(new GroundSquad())[columnIndex("sim_enemy_air_share")]);
+        assertEquals("-1.0000", rowFor(new GroundSquad())[columnIndex("sim_our_air_share")]);
     }
 
     @Test
@@ -456,7 +477,9 @@ class SquadDecisionsTest {
                 + "," + String.join(",", SquadDecisionLogger.pathCells(context))
                 + "," + String.join(",", SquadDecisionLogger.enemySampleCells(context))
                 + "," + String.join(",", SquadDecisionLogger.runbyCells(null, null))
-                + "," + String.join(",", SquadDecisionLogger.containmentCells(context));
+                + "," + String.join(",", SquadDecisionLogger.containmentCells(context))
+                + "," + String.join(",", SquadDecisionLogger.simDomainCells(context))
+                + "," + String.join(",", SquadDecisionLogger.moveOutCells(context));
         String[] fields = row.split(",", -1);
 
         assertEquals(SquadDecisionLogger.HEADER.split(",", -1).length, fields.length);
@@ -548,7 +571,9 @@ class SquadDecisionsTest {
                 + "," + String.join(",", SquadDecisionLogger.enemySampleCells(context))
                 + "," + String.join(",", SquadDecisionLogger.runbyCells(RunbyState.Phase.PENETRATE,
                 RunbyState.Phase.HARASS))
-                + "," + String.join(",", SquadDecisionLogger.containmentCells(context));
+                + "," + String.join(",", SquadDecisionLogger.containmentCells(context))
+                + "," + String.join(",", SquadDecisionLogger.simDomainCells(context))
+                + "," + String.join(",", SquadDecisionLogger.moveOutCells(context));
         String[] fields = row.split(",", -1);
 
         assertEquals(SquadDecisionLogger.HEADER.split(",", -1).length, fields.length);
@@ -583,6 +608,31 @@ class SquadDecisionsTest {
 
         assertEquals(1, events.size());
         assertEquals("PATH:NO_VISION_MARCH", events.get(0));
+    }
+
+    @Test
+    void registeredSinkReceivesMoveOutEvaluations() {
+        SquadDecisions.register(recorder());
+
+        SquadDecisions.moveOutEvaluated(new AirSquad(), 5, 1);
+
+        assertEquals(Collections.singletonList("MOVE_OUT:5:1"), events);
+    }
+
+    @Test
+    void aRowCarriesTheMoveOutThresholdAndStrength() {
+        SquadDecision context = new SquadDecision();
+        context.setMoveOutThreshold(5);
+        context.setMoveOutStrength(1);
+        List<String> cells = SquadDecisionLogger.moveOutCells(context);
+        String[] columns = SquadDecisionLogger.HEADER.split(",", -1);
+        int first = columnIndex("move_out_threshold");
+
+        assertEquals(columns.length - first, cells.size());
+        assertEquals("5", cells.get(0));
+        assertEquals("1", cells.get(columnIndex("move_out_strength") - first));
+        assertEquals("-1", rowFor(new AirSquad())[columnIndex("move_out_threshold")]);
+        assertEquals("-1", rowFor(new AirSquad())[columnIndex("move_out_strength")]);
     }
 
     @Test

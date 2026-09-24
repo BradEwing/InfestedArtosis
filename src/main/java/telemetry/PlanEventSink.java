@@ -1,6 +1,7 @@
 package telemetry;
 
 import bwapi.Position;
+import bwapi.TilePosition;
 import bwapi.UnitType;
 import info.BuilderThreat;
 import macro.plan.BuilderDispatchDecision;
@@ -105,5 +106,24 @@ public interface PlanEventSink {
      * @param expansionHeldUntilFrame frame expansions become available again
      */
     default void onExpansionBackoff(int lostExpansionBuilders, int expansionHeldUntilFrame) {
+    }
+
+    /**
+     * StrategyTracker added a strategy to its detected set, directly or by implication, after resolving
+     * supersessions for the frame.
+     *
+     * @param detectionLabel the detected strategy's name, followed by the evidence it was detected on when the
+     *     strategy records one, e.g. ProxyGate:MAIN_EMPTY
+     */
+    default void onStrategyDetected(String detectionLabel) {
+    }
+
+    /**
+     * One of our bases lost its hatchery.
+     *
+     * @param base the base's tile location
+     * @param innerBase whether the base was our main or a natural
+     */
+    default void onBaseLost(TilePosition base, boolean innerBase) {
     }
 }

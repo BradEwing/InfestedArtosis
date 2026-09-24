@@ -8,6 +8,7 @@ import info.GameState;
 import info.Readiness;
 import info.TechProgression;
 import info.tracking.StrategyTracker;
+import info.tracking.protoss.ProxyGate;
 import macro.plan.Plan;
 import strategy.buildorder.LarvaBoundMacroHatchery;
 import util.Time;
@@ -28,6 +29,8 @@ import java.util.List;
  */
 public class ThreeHatchMuta extends ProtossBase {
 
+    private static final int UPGRADE_EVOLUTION_CHAMBERS = 1;
+
     // TODO: Move to TechProgression or GameState
     private boolean plannedFirstMacroHatch = false;
     private boolean plannedSecondMacroHatch = false;
@@ -47,7 +50,7 @@ public class ThreeHatchMuta extends ProtossBase {
         BaseData baseData = gameState.getBaseData();
         StrategyTracker strategyTracker = gameState.getStrategyTracker();
         boolean cannonRushed = strategyTracker.isDetectedStrategy("CannonRush");
-        boolean twoGateRushed = strategyTracker.isDetectedStrategy("2Gate");
+        boolean twoGateRushed = strategyTracker.isAnyDetectedStrategy("2Gate", ProxyGate.NAME);
         boolean rushed = cannonRushed || twoGateRushed;
         int baseCount = baseData.currentBaseCount();
         int extractorCount = baseData.numExtractor();
@@ -98,7 +101,6 @@ public class ThreeHatchMuta extends ProtossBase {
 
         // Tech building timing
         boolean wantHydraliskDen = wantHydraliskDen(gameState);
-        boolean wantEvolutionChamber = wantEvolutionChamber(gameState);
 
         // Upgrade timing
         boolean wantMetabolicBoost = techProgression.canPlanMetabolicBoost() && !techProgression.isMetabolicBoost() && lairCount > 0;
@@ -199,7 +201,7 @@ public class ThreeHatchMuta extends ProtossBase {
             }
         }
 
-        if (wantEvolutionChamber) {
+        if (wantEvolutionChamber(techProgression)) {
             Plan evolutionChamberPlan = planEvolutionChamber(gameState);
             if (evolutionChamberPlan != null) {
                 plans.add(evolutionChamberPlan);
@@ -358,14 +360,19 @@ public class ThreeHatchMuta extends ProtossBase {
         return techProgression.canPlanHydraliskDen();
     }
 
-    private boolean wantEvolutionChamber(GameState gameState) {
-        TechProgression techProgression = gameState.getTechProgression();
-        if (!techProgression.canPlanEvolutionChamber()) {
+    /**
+     * Whether the upgrade path should plan the build's Evolution Chamber.
+     *
+     * <p>The build researches Carapace alone, one level at a time, so it uses a single chamber,
+     * taken once a Hydralisk Den is planned or standing. A chamber the Spore branch queued, in
+     * this pass or earlier, is that chamber.
+     *
+     * @param techProgression the bot's tech state
+     * @return true when the chamber should be queued now
+     */
+    static boolean wantEvolutionChamber(TechProgression techProgression) {
+        if (!shouldPlanUpgradeEvolutionChamber(techProgression, UPGRADE_EVOLUTION_CHAMBERS)) {
             return false;
-        }
-
-        if (requiredSpores(gameState) > 0) {
-            return true;
         }
 
         return techProgression.isPlannedDen() || techProgression.isHydraliskDen();

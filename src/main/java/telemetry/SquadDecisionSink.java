@@ -92,6 +92,12 @@ public interface SquadDecisionSink {
     void onOutrangedHitEvaluated(Squad squad, boolean outrangedHit);
 
     /**
+     * A fight squad's strength was compared against its move out threshold, in the threshold's units: air
+     * combat units for an air squad, BWAPI half-supply for a ground squad.
+     */
+    void onMoveOutEvaluated(Squad squad, int moveOutThreshold, int squadStrength);
+
+    /**
      * Worker defence at a base pulled gatherers, abandoned its defence, or released its defenders.
      *
      * <p>sim is the full commitment simulation behind a PULL or ABANDON, and null when none ran.
