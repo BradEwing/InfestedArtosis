@@ -56,6 +56,7 @@ public class PlanEventLogger implements PlanEventSink {
     private static final String EVENT_COLONY_BUILDER_BACKOFF = "COLONY_BUILDER_BACKOFF";
     private static final String EVENT_STRATEGY_DETECTED = "STRATEGY_DETECTED";
     private static final String EVENT_BASE_LOST = "BASE_LOST";
+    private static final String EVENT_RALLY_POINT_CHANGED = "RALLY_POINT_CHANGED";
 
     private static final int NO_STARVED_COUNT = -1;
 
@@ -120,6 +121,10 @@ public class PlanEventLogger implements PlanEventSink {
      * base_inner is set only on BASE_LOST rows, written when one of our bases loses its hatchery:
      * true for the main or a natural, false for a third or later base. The lost base's location is
      * in build_tile_x and build_tile_y.
+     * <p>
+     * RALLY_POINT_CHANGED rows are written when the base squads rally to changes, and once for the first rally
+     * base: item is NATURAL, MAIN or FORWARD_BASE, and the rally base's location is in build_tile_x and
+     * build_tile_y.
      */
     static final String PLAN_HEADER = "frame,time,event,plan_id,executor_unit_id,plan_type,item,from_state,"
             + "to_state,cancel_reason,cancel_source,blocker,blocked_frames,priority,frames_in_state,age_frames,"
@@ -585,6 +590,24 @@ public class PlanEventLogger implements PlanEventSink {
         }
     }
 
+    /**
+     * The frame is re-read for the reason {@link #onStrategyDetected} gives: GameState may run ahead of this
+     * logger's onFrame on the same frame.
+     */
+    @Override
+    public void onRallyPointChanged(TilePosition base, String reason) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            currentFrame = game.getFrameCount();
+            buffer.add(rallyPointChangedRow(base, reason));
+        } catch (Exception e) {
+            disabled = true;
+        }
+    }
+
     private void buildAheadRow(String event, Plan holder, int heldFrames, int starvedBehind) {
         if (disabled) {
             return;
@@ -873,6 +896,25 @@ public class PlanEventLogger implements PlanEventSink {
         sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
         appendEmpty(sb, 2);
         appendTrailing(sb, null, null, null, null, null, null, BaseEventInputs.baseLost(innerBase));
+        return sb.toString();
+    }
+
+    /** A row for a change of the squad rally base, which no plan owns, so the plan columns are empty. */
+    private String rallyPointChangedRow(TilePosition base, String reason) {
+        StringBuilder sb = new StringBuilder();
+        appendEvent(sb, EVENT_RALLY_POINT_CHANGED);
+        appendEmpty(sb, 3);
+        sb.append(Csv.sanitize(reason)).append(',');
+        appendEmpty(sb, 4);
+        appendBlocker(sb, PlanBlocker.NONE, 0);
+        appendEmpty(sb, 3);
+        appendGameState(sb);
+        sb.append(base.getX()).append(',');
+        sb.append(base.getY()).append(',');
+        appendEmpty(sb, 1);
+        sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
+        appendEmpty(sb, 2);
+        appendTrailing(sb, null, null, null, null, null, null, null);
         return sb.toString();
     }
 
