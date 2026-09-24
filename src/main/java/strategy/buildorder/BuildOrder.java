@@ -633,7 +633,8 @@ public abstract class BuildOrder {
      * <p>A base with no placeable creep tile is skipped rather than ending the call. The ranking
      * puts the main first whenever it is eligible, so ending on the first null location would let
      * a main that is short of target and out of tiles starve every other base for the rest of the
-     * game.
+     * game. A base whose chosen tile is still contested after it lost a colony builder is skipped
+     * the same way, see {@link GameState#isColonySiteOpen}.
      *
      * <p>No pair is planned while no Spawning Pool stands, see {@link #sunkenPairBudget}. Every
      * requester, the shared defense path and each build order, reaches the pair through here.
@@ -653,7 +654,7 @@ public abstract class BuildOrder {
                 break;
             }
             TilePosition location = buildingPlanner.getLocationForCreepColony(eligibleBase.get(), gameState.getOpponentRace());
-            if (location == null) {
+            if (location == null || !gameState.isColonySiteOpen(eligibleBase.get(), location)) {
                 unplaceable.add(eligibleBase.get());
                 continue;
             }
@@ -734,7 +735,7 @@ public abstract class BuildOrder {
             return plans;
         }
         TilePosition location = buildingPlanner.getLocationForSporeColony(eligibleBase.get());
-        if (location == null) {
+        if (location == null || !gameState.isColonySiteOpen(eligibleBase.get(), location)) {
             return plans;
         }
         baseData.reserveSporeColony(eligibleBase.get());

@@ -1482,7 +1482,22 @@ public class GameState {
             }
         }
 
-        return neededBases;
+        return baseData.openColonyBases(neededBases, getGameTime().getFrames(),
+                base -> siteThreat(base.getLocation(), null).getSiteEnemies());
+    }
+
+    /**
+     * Whether a colony pair may be placed on a chosen tile. A base that has lost a colony builder
+     * takes no pair while enemies stand at the tile's site, read on the same tiles the dispatch
+     * gate will read for the builder, so no pair reserves minerals only to be held there.
+     *
+     * @param base the base the pair is for
+     * @param location the Creep Colony tile the planner chose
+     */
+    public boolean isColonySiteOpen(Base base, TilePosition location) {
+        boolean lostBuilder = baseData.hasLostColonyBuilder(base);
+        int siteEnemies = lostBuilder ? siteThreat(location, null).getSiteEnemies() : 0;
+        return ColonyBuilderBackoff.isOpen(false, lostBuilder, siteEnemies);
     }
 
     public boolean canPlanUnit(UnitType unitType) {

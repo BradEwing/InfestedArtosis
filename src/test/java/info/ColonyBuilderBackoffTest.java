@@ -112,6 +112,27 @@ class ColonyBuilderBackoffTest {
         assertFalse(ColonyBuilderBackoff.isOpen(true, true, 0));
     }
 
+    /**
+     * The check GameState#isColonySiteOpen makes on the tile the planner chose, which the dispatch
+     * gate reads for the builder: never held, so only a base that lost a builder is refused, and
+     * only while enemies stand at that tile's site.
+     */
+    @Test
+    void aChosenTileIsRefusedOnlyWhileContestedAtABaseThatLostABuilder() {
+        assertTrue(ColonyBuilderBackoff.isOpen(false, false, 6));
+        assertFalse(ColonyBuilderBackoff.isOpen(false, true, 6));
+        assertTrue(ColonyBuilderBackoff.isOpen(false, true, NO_ENEMIES));
+    }
+
+    /** A spore pair's base is filtered by the same hold as a sunken pair's. */
+    @Test
+    void aHeldBaseIsOfferedNoSporePairEither() {
+        backoff.recordLoss(BASE_B, LOST_AT);
+
+        assertEquals(Collections.singleton(BASE_C),
+                backoff.openBases(new HashSet<>(Arrays.asList(BASE_B, BASE_C)), LOST_AT + 1, base -> NO_ENEMIES));
+    }
+
     /** AC5: only a lost Creep Colony builder arms the backoff. */
     @Test
     void onlyALostCreepColonyBuilderArmsTheBackoff() {
