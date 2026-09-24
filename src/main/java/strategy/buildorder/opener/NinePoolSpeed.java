@@ -17,7 +17,11 @@ import java.util.Set;
 public class NinePoolSpeed extends BuildOrder {
     private static final int POOL_SUPPLY = 18;
 
+    private static final int DRONE_TARGET = 9;
+
     private static final Time GAS_TIME = new Time(1, 4);
+
+    private boolean overlordHoldReleased = false;
 
     public NinePoolSpeed() {
         super("9PoolSpeed");
@@ -25,7 +29,7 @@ public class NinePoolSpeed extends BuildOrder {
 
     @Override
     protected boolean openerComplete(GameState gameState) {
-        return openerComplete(gameState.structureCount(Readiness.COMMITTED, UnitType.Zerg_Spawning_Pool));
+        return !holdsOverlords(gameState);
     }
 
     @Override
@@ -41,24 +45,18 @@ public class NinePoolSpeed extends BuildOrder {
 
         int droneCount     = gameState.ourUnitCount(UnitType.Zerg_Drone);
         int supplyUsed     = gameState.getSupply();
-        int overlordCount  = gameState.ourUnitCount(UnitType.Zerg_Overlord);
         int poolCount      = gameState.structureCount(Readiness.USABLE, UnitType.Zerg_Spawning_Pool);
         int committedPools = gameState.structureCount(Readiness.COMMITTED, UnitType.Zerg_Spawning_Pool);
         int extractorCount = gameState.getBaseData().numExtractor();
         int zerglingCount  = gameState.ourUnitCount(UnitType.Zerg_Zergling);
 
-        if (droneCount < 9 && gameState.canPlanDrone()) {
+        if (droneCount < DRONE_TARGET && gameState.canPlanDrone()) {
             plans.add(planUnit(gameState, UnitType.Zerg_Drone));
             return plans;
         }
 
         if (shouldPlanPool(supplyUsed) && committedPools < 1 && techProgression.canPlanPool()) {
             plans.add(planSpawningPool(gameState));
-            return plans;
-        }
-
-        if (shouldPlanOverlord(droneCount, overlordCount, gameState.hasExcessSupply())) {
-            plans.add(planUnit(gameState, UnitType.Zerg_Overlord));
             return plans;
         }
 
@@ -106,27 +104,63 @@ public class NinePoolSpeed extends BuildOrder {
         return SPAWNING_POOL_PRIORITY;
     }
 
-    static boolean shouldPlanOverlord(int droneCount, int overlordCount, boolean excessSupply) {
-        return droneCount > 8 && overlordCount < 2 && !excessSupply;
-    }
-
     static boolean shouldPlanPool(int supplyUsed) {
         return supplyUsed >= POOL_SUPPLY;
     }
 
     /**
-     * Whether the opener has produced everything it will produce, so the terminal build order can
-     * take over.
+     * Holds every Overlord until 9 drones are made, the Spawning Pool is started, and 9 supply is
+     * used. The opener is complete, and hands over, on the frame the hold releases.
      *
-     * <p>Counts a Spawning Pool under construction, not only a finished one: the opener's last
-     * scripted act is committing to the pool, and everything the terminal build order would queue
-     * next, the natural hatchery above all, is unreachable until this fires.
+     * <p>Counts a Spawning Pool under construction, not only a finished one: everything the
+     * terminal build order would queue next, the natural hatchery above all, is unreachable until
+     * the opener hands over. The hand-over waits for the hold because the terminal build order
+     * holds nothing: taking over while the pool is only planned, or before the pool's drone is
+     * replaced and morphing, the supply planner would queue the first Overlord at priority 1 ahead
+     * of the pool or of that drone.
      *
-     * @param poolCount Spawning Pools standing, under construction, or claimed by a plan in flight
-     * @return true once the opener should hand off
+     * <p>Once released the hold stays released. Against an unknown race the opener never hands
+     * over, and a hold that re-armed on later drone losses would stop all Overlord planning.
+     *
+     * @param gameState current game state
+     * @return true while the supply planner must not queue an Overlord
      */
-    static boolean openerComplete(int poolCount) {
-        return poolCount > 0;
+    @Override
+    public boolean holdsOverlords(GameState gameState) {
+        return latchOverlordHold(holdsOverlords(
+                gameState.ourUnitCount(UnitType.Zerg_Drone),
+                gameState.structureCount(Readiness.STANDING, UnitType.Zerg_Spawning_Pool),
+                gameState.getSupply()));
+    }
+
+    /**
+     * Records this frame's hold and keeps it released once it has released.
+     *
+     * @param held whether the opening conditions hold the Overlord this frame
+     * @return true until the hold has released once
+     */
+    boolean latchOverlordHold(boolean held) {
+        overlordHoldReleased = overlordHoldReleased || !held;
+        return !overlordHoldReleased;
+    }
+
+    /**
+     * Whether the supply planner must hold the first Overlord.
+     *
+     * <p>The drone count includes drones planned and morphing, so it reaches 9 on the frame the
+     * replacement for the pool's drone is queued. The supply term keeps the hold on until that
+     * drone's egg is morphing, which is when supply used counts it. The supply planner queues
+     * the first Overlord at priority 1 on the frame the hold releases, so releasing while the
+     * replacement drone is only planned would let the Overlord take the larva ahead of it. Holding
+     * until the drone's build finishes instead would lengthen the block at 9 supply.
+     *
+     * @param droneCount drones living, morphing, and planned
+     * @param standingPools Spawning Pools finished or under construction
+     * @param supplyUsed supply used, in BWAPI's doubled units
+     * @return true until 9 drones are made, a Spawning Pool is standing, and 9 supply is used
+     */
+    static boolean holdsOverlords(int droneCount, int standingPools, int supplyUsed) {
+        return droneCount < DRONE_TARGET || standingPools < 1 || supplyUsed < POOL_SUPPLY;
     }
 
     /**
