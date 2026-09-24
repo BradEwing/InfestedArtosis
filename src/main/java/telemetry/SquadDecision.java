@@ -45,6 +45,8 @@ final class SquadDecision {
     private int outrangedHit = NOT_EVALUATED;
     private double enemyAirShare = NOT_EVALUATED;
     private double ourAirShare = NOT_EVALUATED;
+    private int moveOutThreshold = NOT_EVALUATED;
+    private int moveOutStrength = NOT_EVALUATED;
 
     static int tristate(boolean value) {
         return value ? 1 : 0;
