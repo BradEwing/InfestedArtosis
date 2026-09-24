@@ -1,10 +1,12 @@
 package strategy.buildorder;
 
 import bwapi.Race;
+import bwapi.Unit;
 import bwapi.UnitType;
 import bwapi.UpgradeType;
 import info.BaseData;
 import info.GameState;
+import info.Readiness;
 import info.TechProgression;
 import macro.plan.Plan;
 import util.Time;
@@ -16,10 +18,13 @@ import java.util.List;
  * Two hatchery speedling all-in, playable in every matchup.
  *
  * <p>Hatchery tech by definition: it never plans a Lair and never reports {@link #needLair()} or
- * {@link #needHive()}. Zergling production is continuous and uncapped; the cap is on drones, at 11,
- * split 8 on minerals and 3 on the single Extractor that funds Metabolic Boost once the natural is
- * up. The target is a floor as well as a ceiling, so dead drones are replaced and the economy is
- * never cut to zero. An opener that hands over above the target keeps its drones; nothing is cut.
+ * {@link #needHive()}. Zergling production is continuous and uncapped; the cap is on drones, from
+ * {@link #droneTarget(int, int)}. On one base the target is 11, split 8 on minerals and 3 on the
+ * single Extractor that funds Metabolic Boost once the natural is up. Holding two bases raises it to
+ * 12, and each hatchery standing beyond two adds {@link #DRONES_PER_EXTRA_HATCHERY}, so the income
+ * behind a macro hatchery grows with the larva it adds. The target is a total that includes the gas
+ * drones. It is a floor as well as a ceiling, so dead drones are replaced and the economy is never
+ * cut to zero. An opener that hands over above the target keeps its drones; nothing is cut.
  * It plans its own Spawning Pool when it does not have one, so it is reachable from an opener that
  * transitions before building one.
  *
@@ -27,7 +32,7 @@ import java.util.List;
  * this build enqueues first holds the earlier claim on a scarce one hatchery larva supply, and
  * planning the drone floor first spent the opening larva on economy while a rush was already
  * walking over. The drone branch stands down while a zergling is owed, and the zergling queue is
- * bounded at {@link #MAX_QUEUED_ZERGLING_PLANS}, so the eleven drones still arrive, behind the
+ * bounded at {@link #MAX_QUEUED_ZERGLING_PLANS}, so the target drones still arrive, behind the
  * opening zerglings rather than ahead of them.
  *
  * <p>The second hatchery is the natural expansion; only once a second base is held do surplus
@@ -61,7 +66,20 @@ import java.util.List;
  */
 public class SpeedlingAllIn extends BuildOrder {
 
-    static final int DRONE_TARGET = 11;
+    static final int DRONE_TARGET_ONE_BASE = 11;
+
+    static final int DRONE_TARGET_TWO_BASES = 12;
+
+    /**
+     * Drones added to the target for each standing hatchery beyond {@link #HATCHERY_TARGET}.
+     *
+     * <p>Tunable: if a fourth hatchery still leaves larva idle on an empty bank, this is the knob.
+     */
+    static final int DRONES_PER_EXTRA_HATCHERY = 1;
+
+    private static final UnitType[] HATCHERY_TYPES = {
+        UnitType.Zerg_Hatchery, UnitType.Zerg_Lair, UnitType.Zerg_Hive
+    };
 
     static final int HATCHERY_TARGET = 2;
 
@@ -136,7 +154,8 @@ public class SpeedlingAllIn extends BuildOrder {
         int queuedZerglings = gameState.queuedUnitPlanCount(UnitType.Zerg_Zergling);
         boolean owesZergling = shouldPlanZergling(queuedZerglings, techProgression.isSpawningPool());
 
-        if (shouldPlanDrone(gameState.numEconomyDrones(), gameState.canPlanDrone(), owesZergling)) {
+        int droneTarget = droneTarget(baseData.currentBaseCount(), standingHatcheries(gameState));
+        if (shouldPlanDrone(gameState.numEconomyDrones(), droneTarget, gameState.canPlanDrone(), owesZergling)) {
             plans.add(this.planUnit(gameState, UnitType.Zerg_Drone));
             return plans;
         }
@@ -154,6 +173,28 @@ public class SpeedlingAllIn extends BuildOrder {
         }
 
         return plans;
+    }
+
+    private static int standingHatcheries(GameState gameState) {
+        int completed = gameState.structureCount(Readiness.USABLE, HATCHERY_TYPES);
+        int committed = gameState.structureCount(Readiness.COMMITTED, HATCHERY_TYPES);
+        int underConstruction = 0;
+        for (Unit unit : gameState.getSelf().getUnits()) {
+            if (isHatcheryType(unit.getType()) && !unit.isCompleted()) {
+                underConstruction += 1;
+            }
+        }
+        int planned = Math.max(0, committed - completed - underConstruction);
+        return standingHatcheries(completed, underConstruction, planned);
+    }
+
+    private static boolean isHatcheryType(UnitType unitType) {
+        for (UnitType hatcheryType : HATCHERY_TYPES) {
+            if (unitType == hatcheryType) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private List<Plan> planStallUpgrades(GameState gameState) {
@@ -210,10 +251,42 @@ public class SpeedlingAllIn extends BuildOrder {
      * opening economy is untouched.
      *
      * @param economyDrones gathering plus queued drones, from {@link GameState#numEconomyDrones()}
+     * @param droneTarget the total from {@link #droneTarget(int, int)}
      * @param owesZergling whether {@link #shouldPlanZergling} wants a zergling this frame
      */
-    static boolean shouldPlanDrone(int economyDrones, boolean canPlanDrone, boolean owesZergling) {
-        return !owesZergling && economyDrones < DRONE_TARGET && canPlanDrone;
+    static boolean shouldPlanDrone(int economyDrones, int droneTarget, boolean canPlanDrone, boolean owesZergling) {
+        return !owesZergling && economyDrones < droneTarget && canPlanDrone;
+    }
+
+    /**
+     * The drone total, gas drones included, that this build holds: 11 below two bases, 12 at two,
+     * and {@link #DRONES_PER_EXTRA_HATCHERY} more for each standing hatchery beyond two.
+     * {@link GameState#canPlanDrone()} still bounds the result.
+     *
+     * @param bases base hatcheries held, from {@link BaseData#currentBaseCount()}
+     * @param standingHatcheries hatcheries, lairs and hives from {@link #standingHatcheries(int, int, int)}
+     */
+    static int droneTarget(int bases, int standingHatcheries) {
+        if (bases < BASE_TARGET) {
+            return DRONE_TARGET_ONE_BASE;
+        }
+        return DRONE_TARGET_TWO_BASES + DRONES_PER_EXTRA_HATCHERY * Math.max(0, standingHatcheries - HATCHERY_TARGET);
+    }
+
+    /**
+     * Hatcheries that raise the drone target: finished or under construction, never only planned.
+     *
+     * <p>A planned hatchery can still be cancelled, and drones bought for it would stay bought
+     * because the target is never cut. A hatchery under construction counts, since its minerals
+     * and its builder drone are already spent.
+     *
+     * @param completed hatcheries, lairs and hives that have finished building
+     * @param underConstruction hatcheries standing on the map part-built
+     * @param planned hatchery plans still in flight
+     * @return the standing count
+     */
+    static int standingHatcheries(int completed, int underConstruction, int planned) {
+        return completed + underConstruction;
     }
 
     /**
