@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Predicate;
+import java.util.function.ToIntBiFunction;
 import java.util.stream.Collectors;
 
 @RequiredArgsConstructor
@@ -98,16 +99,25 @@ public class StrategyDetectionContext {
 
     /**
      * Whether the position is on our side of the map: its BWEM ground path to our main is shorter than its
-     * path to the enemy main or, while the enemy main is unknown, to every other starting location.
+     * path to the enemy main or, while the enemy main is unknown, to every other starting location not yet seen
+     * empty.
      */
     public boolean isOnOurSide(Position position) {
+        return isOnOurSide(position, baseData, bwMap.getBases(), bwMap::getPathLength);
+    }
+
+    /**
+     * {@link #isOnOurSide(Position)} over the given bases, measuring ground paths with pathLength.
+     */
+    public static boolean isOnOurSide(Position position, BaseData baseData, Collection<Base> bases,
+                                      ToIntBiFunction<Position, Position> pathLength) {
         Base ourMain = baseData.getMainBase();
         if (ourMain == null) {
             return false;
         }
-        int ourLength = bwMap.getPathLength(position, ourMain.getCenter());
-        List<Integer> enemyLengths = enemyMainCandidates(ourMain).stream()
-                .map(base -> bwMap.getPathLength(position, base.getCenter()))
+        int ourLength = pathLength.applyAsInt(position, ourMain.getCenter());
+        List<Integer> enemyLengths = enemyMainCandidates(baseData, bases).stream()
+                .map(base -> pathLength.applyAsInt(position, base.getCenter()))
                 .collect(Collectors.toList());
         return isCloserToOurMain(ourLength, enemyLengths);
     }
@@ -124,14 +134,15 @@ public class StrategyDetectionContext {
         return enemyLengths.stream().allMatch(length -> length < 0 || ourLength < length);
     }
 
-    private List<Base> enemyMainCandidates(Base ourMain) {
+    private static List<Base> enemyMainCandidates(BaseData baseData, Collection<Base> bases) {
         Base enemyMain = baseData.getMainEnemyBase();
         if (enemyMain != null) {
             return Collections.singletonList(enemyMain);
         }
-        return bwMap.getBases().stream()
+        return bases.stream()
                 .filter(Base::isStartingLocation)
-                .filter(base -> base != ourMain)
+                .filter(base -> base != baseData.getMainBase())
+                .filter(base -> !baseData.isStartSeenEmpty(base))
                 .collect(Collectors.toList());
     }
 
