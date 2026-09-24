@@ -22,11 +22,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-<<<<<<< HEAD
-import java.util.function.ToIntFunction;
-=======
 import java.util.function.Predicate;
->>>>>>> origin/BradEwing/IA-407-enemy-main-proxy
+import java.util.function.ToIntFunction;
 import java.util.stream.Collectors;
 
 /**
