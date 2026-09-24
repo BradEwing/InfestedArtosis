@@ -882,6 +882,9 @@ public class SquadManager {
 
         if (action == SquadAction.RALLY) {
             clearCombatSimSnapshot(squad);
+            if (keepsJoiningContain(squadStatus, squad.isCommitted()) && joinActiveContain(squad)) {
+                return;
+            }
             rallySquad(squad, RallyReason.BELOW_MOVE_OUT);
             return;
         }
@@ -1104,6 +1107,11 @@ public class SquadManager {
      * returns ADVANCE, and the fighters take the remembered enemy building through
      * {@link #assignFallbackMovementTarget}.
      *
+     * <p>While another ground squad holds a containment arc, a ground squad's ADVANCE goes to that arc instead,
+     * through {@link #joinActiveContain}, unless one of our bases is threatened. ADVANCE is the verdict for a squad
+     * whose sim found no enemy strength to weigh, so the squad would otherwise march blind on a building behind the
+     * contained choke.
+     *
      * @param squad fight squad to tick
      */
     private void simulateFightSquad(Squad squad) {
@@ -1196,6 +1204,9 @@ public class SquadManager {
         switch (result) {
             case ADVANCE:
                 boolean baseThreatened = squad.getStatus() != SquadStatus.FIGHT && baseThreatened();
+                if (!baseThreatened && joinActiveContain(squad)) {
+                    break;
+                }
                 if (blindAdvanceHeld(squad.getStatus(), enemyMeasured, threatBeyondRadius, baseThreatened)) {
                     holdSquad(squad, managedFighters);
                     break;
@@ -2540,6 +2551,95 @@ public class SquadManager {
         managedUnit.setContainPosition(assigned);
     }
 
+    /**
+     * Sends a ground squad to the arc of the contain closest to it, each member to the arc point nearest it.
+     *
+     * <p>The squad takes RALLY rather than FIGHT. The merge folds it into the containing squad once the two are
+     * within {@link #SQUAD_MERGE_DISTANCE}, and RALLY is below CONTAIN in merge precedence, so the merged squad
+     * keeps the arc; a FIGHT reinforcement would end the contain it merged into. Commitment is kept, so a squad
+     * still near the rally point stays on its way to the arc, see {@link #keepsJoiningContain}.
+     *
+     * @param squad squad to send
+     * @return true when the squad was sent, false when it is not a ground squad or no contain holds an arc
+     */
+    private boolean joinActiveContain(Squad squad) {
+        Arc arc = containArcToJoin(squad);
+        if (arc == null) {
+            return false;
+        }
+        SquadDecisions.rallied(squad, RallyReason.JOIN_CONTAIN);
+        SquadDecisions.pathTaken(squad, DecisionPath.RALLY);
+        squad.setStatus(SquadStatus.RALLY);
+        for (ManagedUnit managedUnit : squad.getMembers()) {
+            managedUnit.setRallyPoint(arc.closestPosition(managedUnit.getPosition()));
+            managedUnit.setRole(UnitRole.RALLY);
+        }
+        return true;
+    }
+
+    /**
+     * The arc a ground squad reinforces: the arc of the other containing ground squad closest to it.
+     *
+     * @param squad squad looking for a contain to join
+     * @return the arc, or null when the squad is not a ground squad or no other ground squad holds an arc
+     */
+    private Arc containArcToJoin(Squad squad) {
+        if (!squad.isGroundSquad() || squad.getStatus() == SquadStatus.CONTAIN) {
+            return null;
+        }
+        List<Arc> arcs = new ArrayList<>();
+        for (Squad other : fightSquads) {
+            if (other == squad || !other.isGroundSquad() || other.getStatus() != SquadStatus.CONTAIN) {
+                continue;
+            }
+            arcs.add(other.getContainmentArc());
+        }
+        return arcToJoin(squad.getCenter(), arcs);
+    }
+
+    /**
+     * Picks the arc a reinforcement joins: the one whose held line sits closest to it. Missing and empty arcs are
+     * skipped.
+     *
+     * @param from reinforcement's center
+     * @param arcs arcs held by containing squads
+     * @return the closest arc, or null when there is none to join
+     */
+    static Arc arcToJoin(Position from, Collection<Arc> arcs) {
+        if (from == null) {
+            return null;
+        }
+        Arc closest = null;
+        double closestDistance = Double.MAX_VALUE;
+        for (Arc arc : arcs) {
+            if (arc == null || arc.isEmpty()) {
+                continue;
+            }
+            double distance = from.getDistance(arc.getMidpoint());
+            if (distance < closestDistance) {
+                closestDistance = distance;
+                closest = arc;
+            }
+        }
+        return closest;
+    }
+
+    /**
+     * Whether a squad the move out gate would send back to the rally point goes on to a contain instead.
+     *
+     * <p>{@link #rallySquad} clears commitment and {@link #joinActiveContain} keeps it, so a committed squad in
+     * RALLY is one on its way to an arc. Below the move out threshold and still within the commitment release
+     * distance of the rally point, {@link #chooseSquadAction} returns RALLY for it, and sending it home there would
+     * turn back every reinforcement that left the rally point under the threshold.
+     *
+     * @param status status the squad held entering the tick
+     * @param committed true when the squad has been cleared to act and has not been recalled since
+     * @return true when the squad keeps heading for a contain
+     */
+    static boolean keepsJoiningContain(SquadStatus status, boolean committed) {
+        return status == SquadStatus.RALLY && committed;
+    }
+
     private Base closestBaseTo(Position pos, Set<Base> bases) {
         Map<TilePosition, Position> baseTiles = new HashMap<>();
         for (Base base : bases) {
@@ -3103,8 +3203,13 @@ public class SquadManager {
             }
         }
 
+        Arc joinArc = containArcToJoin(squad);
         if (filtered.isEmpty()) {
             scoutChase.release(unit.getID());
+            if (joinArc != null) {
+                rallyToDefensePosition(managedUnit, joinArc.closestPosition(unit.getPosition()));
+                return;
+            }
             assignFallbackMovementTarget(managedUnit, squad);
             return;
         }
@@ -3125,7 +3230,16 @@ public class SquadManager {
             }
         }
 
-        filtered = filterByProximity(uncapped, unit::getDistance);
+        List<StaticDefenseZone> defenseZones = joinArc == null
+                ? Collections.emptyList()
+                : gameState.getStaticDefenseZones();
+        int defensePadding = containmentDefensePadding(Collections.singleton(unit.getType()));
+        filtered = filterByProximity(uncapped, unit::getDistance,
+                enemy -> !coveredByStaticDefense(enemy.getPosition(), defenseZones, defensePadding));
+        if (filtered.isEmpty() && joinArc != null) {
+            rallyToDefensePosition(managedUnit, joinArc.closestPosition(unit.getPosition()));
+            return;
+        }
 
         if (gameState.isCannonRushed()) {
             Set<Unit> proxied = gameState.getObservedUnitTracker().getProxiedBuildings();
@@ -3210,8 +3324,8 @@ public class SquadManager {
     }
 
     /**
-     * Sends a unit the scout cap turned away to a position in the RALLY role, rather than marching it on the
-     * enemy's buildings.
+     * Sends a unit to a position in the RALLY role, rather than marching it on the enemy's buildings: a unit the
+     * scout cap turned away, or a unit with nothing to attack outside enemy static defence while a contain is active.
      */
     private void rallyToDefensePosition(ManagedUnit managedUnit, Position position) {
         scoutChase.release(managedUnit.getUnit().getID());
@@ -3258,13 +3372,46 @@ public class SquadManager {
      * @return the candidates within {@link #TARGETING_RADIUS} of the attacker, or every candidate when none are
      */
     static <T> List<T> filterByProximity(List<T> candidates, ToDoubleFunction<T> distance) {
+        return filterByProximity(candidates, distance, candidate -> true);
+    }
+
+    /**
+     * Candidates a fighter may target: those within {@link #TARGETING_RADIUS} of it, or, when none are, the
+     * candidates anywhere on the map that the fallback admits.
+     *
+     * @param candidates attackable enemies
+     * @param distance distance from the attacker to a candidate
+     * @param fallback which candidates beyond the targeting radius may still be chased
+     * @return the nearby candidates, or the admitted candidates when none are nearby
+     */
+    static <T> List<T> filterByProximity(List<T> candidates, ToDoubleFunction<T> distance, Predicate<T> fallback) {
         List<T> nearby = new ArrayList<>();
         for (T enemy : candidates) {
             if (distance.applyAsDouble(enemy) <= TARGETING_RADIUS) {
                 nearby.add(enemy);
             }
         }
-        return nearby.isEmpty() ? candidates : nearby;
+        if (!nearby.isEmpty()) {
+            return nearby;
+        }
+        return candidates.stream().filter(fallback).collect(Collectors.toList());
+    }
+
+    /**
+     * Whether a target stands where enemy static defence fires on the unit attacking it.
+     *
+     * @param target target position
+     * @param zones enemy static defence zones, at the reach learned over the game
+     * @param padding pixels added to every zone's reach, covering the attacker's extent and a margin
+     * @return true when any zone covers the target
+     */
+    static boolean coveredByStaticDefense(Position target, Collection<StaticDefenseZone> zones, int padding) {
+        for (StaticDefenseZone zone : zones) {
+            if (zone.covers(target, padding)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
