@@ -21,6 +21,11 @@ import java.util.List;
  * <p>scout_capped is 1 when the scout chase cap removed a scout from the attacker's candidates, so
  * candidate_count excludes it.
  *
+ * <p>squad_id is the fight squad whose targeting pass made the choice, empty for choices made outside one.
+ * assigned_count is how many melee attackers of that squad were given the target earlier in the same pass, not
+ * counting this attacker, and saturated is 1 when that count had reached the melee cap for this attacker.
+ * priority_reason is why the target got its tier, see TargetScorer.Reason.
+ *
  * <p>Constructed only when combat telemetry is enabled.
  */
 public class TargetChoiceLogger implements TargetChoiceSink {
@@ -28,7 +33,8 @@ public class TargetChoiceLogger implements TargetChoiceSink {
     static final String FILE = "telemetry_target_choices.csv";
 
     static final String HEADER = "game_id,frame,attacker_id,attacker_type,target_id,target_type,tier,distance_px,"
-            + "candidate_count,previous_target_id,previous_target_type,scout_capped";
+            + "candidate_count,previous_target_id,previous_target_type,scout_capped,squad_id,assigned_count,"
+            + "saturated,priority_reason";
 
     private static final int FLUSH_INTERVAL_FRAMES = 480;
     private static final int NO_TARGET = -1;
@@ -100,7 +106,22 @@ public class TargetChoiceLogger implements TargetChoiceSink {
         fields.addAll(previousTargetCells(previousTarget != null ? previousTarget.getID() : NO_TARGET,
                 previousTarget != null ? previousTarget.getType() : null));
         fields.add(scoutCappedCell(scoutCapped));
+        fields.addAll(loadCells(selection.getSquadId(), selection.getAssignedCount(), selection.isSaturated(),
+                selection.getReason()));
         return String.join(",", fields);
+    }
+
+    /**
+     * Builds the cells from squad_id through priority_reason.
+     */
+    static List<String> loadCells(String squadId, int assignedCount, boolean saturated,
+                                  TargetScorer.Reason reason) {
+        List<String> fields = new ArrayList<>();
+        fields.add(Csv.sanitize(squadId));
+        fields.add(String.valueOf(assignedCount));
+        fields.add(saturated ? "1" : "0");
+        fields.add(Csv.name(reason));
+        return fields;
     }
 
     /**

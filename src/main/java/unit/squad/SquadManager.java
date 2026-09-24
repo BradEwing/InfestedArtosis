@@ -39,11 +39,13 @@ import unit.managed.UnitRole;
 import util.Arc;
 import util.Filter;
 import util.StaticDefenseZone;
+import util.TargetLedger;
 import util.Vec2;
 
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -1364,13 +1366,21 @@ public class SquadManager {
         }
     }
 
+    /**
+     * Puts every fighter in FIGHT and picks its target. Fighters are targeted in unit id order against one
+     * {@link TargetLedger}, so each melee pick counts toward the load the next fighter sees, and the same
+     * fighters keep their targets from one pass to the next.
+     */
     private void assignFightTargets(Squad squad, HashSet<ManagedUnit> managedFighters, boolean clearRetreat) {
-        for (ManagedUnit managedUnit : managedFighters) {
+        TargetLedger ledger = new TargetLedger(squad.getId(), gameState.getStaticDefenseZones());
+        List<ManagedUnit> ordered = new ArrayList<>(managedFighters);
+        ordered.sort(Comparator.comparingInt(ManagedUnit::getUnitID));
+        for (ManagedUnit managedUnit : ordered) {
             managedUnit.setRole(UnitRole.FIGHT);
             if (clearRetreat) {
                 managedUnit.clearRetreatStart();
             }
-            assignEnemyTarget(managedUnit, squad);
+            assignEnemyTarget(managedUnit, squad, ledger);
         }
     }
 
@@ -3054,8 +3064,9 @@ public class SquadManager {
      *
      * @param managedUnit unit that needs a target
      * @param squad squad that passed fight simulation
+     * @param ledger the squad's melee assignments so far in this pass; the chosen target is recorded in it
      */
-    private void assignEnemyTarget(ManagedUnit managedUnit, Squad squad) {
+    private void assignEnemyTarget(ManagedUnit managedUnit, Squad squad, TargetLedger ledger) {
         Unit unit = managedUnit.getUnit();
         if (managedUnit.getUnitType() == UnitType.Zerg_Overlord) {
             if (gameState.getTechProgression().isOverlordSpeed()) {
@@ -3137,10 +3148,11 @@ public class SquadManager {
             }
         }
 
-        TargetScorer.Selection selection = TargetScorer.selectTarget(unit, filtered, managedUnit.fightTarget);
+        TargetScorer.Selection selection = TargetScorer.selectTarget(unit, filtered, managedUnit.fightTarget, ledger);
         if (selection != null) {
             TargetChoices.chosen(managedUnit, managedUnit.fightTarget, selection, scoutCapped);
             managedUnit.setFightTarget(selection.getTarget());
+            ledger.recordPick(unit, selection.getTarget());
             recordScoutClaim(unit, selection.getTarget());
         }
     }

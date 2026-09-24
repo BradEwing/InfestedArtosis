@@ -330,7 +330,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
      * @param type enemy unit type
      * @return true for a biological unit that is not itself a medic
      */
-    static boolean isMedicSupported(UnitType type) {
+    public static boolean isMedicSupported(UnitType type) {
         if (type == UnitType.Terran_Medic) return false;
         return type.isOrganic() && !type.isBuilding() && !type.isWorker();
     }

@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import util.TargetScorer;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -32,6 +33,7 @@ class TargetChoicesTest {
         fields.addAll(TargetChoiceLogger.targetCells(42, targetType, tier, 96, 3));
         fields.addAll(TargetChoiceLogger.previousTargetCells(previousTargetId, previousTargetType));
         fields.add(TargetChoiceLogger.scoutCappedCell(scoutCapped));
+        fields.addAll(TargetChoiceLogger.loadCells("squad-7", 8, true, TargetScorer.Reason.MEDIC_NEARER));
         return String.join(",", fields).split(",", -1);
     }
 
@@ -119,5 +121,30 @@ class TargetChoicesTest {
 
         assertEquals(1, flags.size());
         assertTrue(flags.get(0));
+    }
+
+    @Test
+    void theLoadColumnsAreAppendedAfterScoutCapped() {
+        String[] columns = TargetChoiceLogger.HEADER.split(",", -1);
+
+        assertEquals(columnIndex("scout_capped") + 1, columnIndex("squad_id"));
+        assertEquals("priority_reason", columns[columns.length - 1]);
+    }
+
+    @Test
+    void aRowRecordsTheSquadItsLoadOnTheTargetAndTheReasonForTheTier() {
+        String[] fields = mutaOnOverlordRow();
+
+        assertEquals("squad-7", fields[columnIndex("squad_id")]);
+        assertEquals("8", fields[columnIndex("assigned_count")]);
+        assertEquals("1", fields[columnIndex("saturated")]);
+        assertEquals("MEDIC_NEARER", fields[columnIndex("priority_reason")]);
+    }
+
+    @Test
+    void aChoiceMadeOutsideASquadPassLeavesTheSquadEmptyAndTheReasonNone() {
+        List<String> cells = TargetChoiceLogger.loadCells("", 0, false, null);
+
+        assertEquals(Arrays.asList("", "0", "0", "NONE"), cells);
     }
 }
