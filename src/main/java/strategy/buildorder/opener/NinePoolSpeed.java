@@ -8,20 +8,28 @@ import info.Readiness;
 import info.TechProgression;
 import macro.plan.Plan;
 import strategy.buildorder.BuildOrder;
-import util.Time;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
+/**
+ * 9 Pool Speed in the standard order: drones to 9, Spawning Pool at 9, drone, Extractor at 9,
+ * Overlord at 8, drone, 6 zerglings the moment the pool finishes, then Metabolic Boost.
+ *
+ * <p>The opener hands over only once all six zerglings and Metabolic Boost are queued, so the
+ * terminal build order's natural hatchery cannot take the minerals the opening zerglings need.
+ */
 public class NinePoolSpeed extends BuildOrder {
     private static final int POOL_SUPPLY = 18;
 
     private static final int DRONE_TARGET = 9;
 
-    private static final Time GAS_TIME = new Time(1, 4);
+    static final int OPENING_ZERGLINGS = 6;
 
     private boolean overlordHoldReleased = false;
+
+    private boolean speedQueued = false;
 
     public NinePoolSpeed() {
         super("9PoolSpeed");
@@ -29,7 +37,9 @@ public class NinePoolSpeed extends BuildOrder {
 
     @Override
     protected boolean openerComplete(GameState gameState) {
-        return !holdsOverlords(gameState);
+        TechProgression techProgression = gameState.getTechProgression();
+        return openingDone(gameState.ourUnitCount(UnitType.Zerg_Zergling),
+                speedQueued || techProgression.isPlannedMetabolicBoost() || techProgression.isMetabolicBoost());
     }
 
     @Override
@@ -41,7 +51,6 @@ public class NinePoolSpeed extends BuildOrder {
     protected List<Plan> buildPlans(GameState gameState) {
         List<Plan> plans = new ArrayList<>();
         TechProgression techProgression = gameState.getTechProgression();
-        Time gameTime = gameState.getGameTime();
 
         int droneCount     = gameState.ourUnitCount(UnitType.Zerg_Drone);
         int supplyUsed     = gameState.getSupply();
@@ -60,23 +69,19 @@ public class NinePoolSpeed extends BuildOrder {
             return plans;
         }
 
-        if (droneCount < 6 && gameState.canPlanDrone()) {
-            plans.add(planUnit(gameState, UnitType.Zerg_Drone));
-            return plans;
-        }
-
-        if (poolCount > 0 && zerglingCount < 3 && gameState.canPlanUnit(UnitType.Zerg_Zergling)) {
-            plans.add(planUnit(gameState, UnitType.Zerg_Zergling));
-            return plans;
-        }
-
-        if (shouldPlanExtractor(extractorCount, gameState.canPlanExtractor(), gameTime.greaterThan(GAS_TIME))) {
+        if (shouldPlanExtractor(extractorCount, committedPools, supplyUsed, gameState.canPlanExtractor())) {
             plans.add(planExtractor(gameState));
             return plans;
         }
 
-        if (gameState.canPlanUpgrade(UpgradeType.Metabolic_Boost)) {
+        if (shouldPlanOpeningZergling(poolCount, zerglingCount) && gameState.canPlanUnit(UnitType.Zerg_Zergling)) {
+            plans.add(planUnit(gameState, UnitType.Zerg_Zergling));
+            return plans;
+        }
+
+        if (zerglingCount >= OPENING_ZERGLINGS && gameState.canPlanUpgrade(UpgradeType.Metabolic_Boost)) {
             plans.add(planUpgrade(gameState, UpgradeType.Metabolic_Boost));
+            speedQueued = true;
             return plans;
         }
 
@@ -95,8 +100,8 @@ public class NinePoolSpeed extends BuildOrder {
     }
 
     @Override
-    public boolean isOpener() { 
-        return true; 
+    public boolean isOpener() {
+        return true;
     }
 
     @Override
@@ -109,18 +114,25 @@ public class NinePoolSpeed extends BuildOrder {
     }
 
     /**
-     * Holds every Overlord until 9 drones are made, the Spawning Pool is started, and 9 supply is
-     * used. The opener is complete, and hands over, on the frame the hold releases.
+     * Whether the opening is finished: the six opening zerglings exist or are planned, and
+     * Metabolic Boost is queued, researching or done.
      *
-     * <p>Counts a Spawning Pool under construction, not only a finished one: everything the
-     * terminal build order would queue next, the natural hatchery above all, is unreachable until
-     * the opener hands over. The hand-over waits for the hold because the terminal build order
-     * holds nothing: taking over while the pool is only planned, or before the pool's drone is
-     * replaced and morphing, the supply planner would queue the first Overlord at priority 1 ahead
-     * of the pool or of that drone.
+     * @param zerglingCount zerglings living and planned, two per plan
+     * @param speedCommitted whether Metabolic Boost is queued, researching or finished
+     * @return true once the opener may hand over
+     */
+    static boolean openingDone(int zerglingCount, boolean speedCommitted) {
+        return zerglingCount >= OPENING_ZERGLINGS && speedCommitted;
+    }
+
+    /**
+     * Holds every Overlord until the Spawning Pool and the Extractor are both standing, which is
+     * 8 of 9 supply: the Extractor takes the 9th drone after the pool's drone was replaced. The
+     * supply planner queues the first Overlord at priority 1 on the frame the hold releases, so it
+     * takes the next larva ahead of the drone that follows it.
      *
      * <p>Once released the hold stays released. Against an unknown race the opener never hands
-     * over, and a hold that re-armed on later drone losses would stop all Overlord planning.
+     * over, and a hold that re-armed on later losses would stop all Overlord planning.
      *
      * @param gameState current game state
      * @return true while the supply planner must not queue an Overlord
@@ -128,9 +140,8 @@ public class NinePoolSpeed extends BuildOrder {
     @Override
     public boolean holdsOverlords(GameState gameState) {
         return latchOverlordHold(holdsOverlords(
-                gameState.ourUnitCount(UnitType.Zerg_Drone),
                 gameState.structureCount(Readiness.STANDING, UnitType.Zerg_Spawning_Pool),
-                gameState.getSupply()));
+                gameState.structureCount(Readiness.STANDING, UnitType.Zerg_Extractor)));
     }
 
     /**
@@ -147,36 +158,39 @@ public class NinePoolSpeed extends BuildOrder {
     /**
      * Whether the supply planner must hold the first Overlord.
      *
-     * <p>The drone count includes drones planned and morphing, so it reaches 9 on the frame the
-     * replacement for the pool's drone is queued. The supply term keeps the hold on until that
-     * drone's egg is morphing, which is when supply used counts it. The supply planner queues
-     * the first Overlord at priority 1 on the frame the hold releases, so releasing while the
-     * replacement drone is only planned would let the Overlord take the larva ahead of it. Holding
-     * until the drone's build finishes instead would lengthen the block at 9 supply.
-     *
-     * @param droneCount drones living, morphing, and planned
      * @param standingPools Spawning Pools finished or under construction
-     * @param supplyUsed supply used, in BWAPI's doubled units
-     * @return true until 9 drones are made, a Spawning Pool is standing, and 9 supply is used
+     * @param standingExtractors Extractors finished or under construction
+     * @return true until a Spawning Pool and an Extractor are both standing
      */
-    static boolean holdsOverlords(int droneCount, int standingPools, int supplyUsed) {
-        return droneCount < DRONE_TARGET || standingPools < 1 || supplyUsed < POOL_SUPPLY;
+    static boolean holdsOverlords(int standingPools, int standingExtractors) {
+        return standingPools < 1 || standingExtractors < 1;
     }
 
     /**
-     * Whether the opener takes its gas yet.
-     *
-     * <p>Reads the pool through canPlanExtractor, which opens once the pool is planned. A gate on
-     * a completed pool is the same expression as openerComplete, so against a known opponent race
-     * the opener handed off on the frame its own gas branch first became true.
+     * Whether the opener takes its gas: at 9 supply, once the pool is committed and its drone has
+     * been replaced.
      *
      * @param extractorCount Extractors standing or reserved by a queued plan
+     * @param committedPools Spawning Pools planned, under construction or finished
+     * @param supplyUsed supply used, in BWAPI's doubled units
      * @param canPlanExtractor whether a geyser is free and the pool is planned or standing
-     * @param pastGasTime whether the game is past GAS_TIME
      * @return true while the Extractor should be queued
      */
-    static boolean shouldPlanExtractor(int extractorCount, boolean canPlanExtractor, boolean pastGasTime) {
-        return extractorCount < 1 && canPlanExtractor && pastGasTime;
+    static boolean shouldPlanExtractor(int extractorCount, int committedPools, int supplyUsed,
+                                       boolean canPlanExtractor) {
+        return extractorCount < 1 && committedPools > 0 && supplyUsed >= POOL_SUPPLY && canPlanExtractor;
+    }
+
+    /**
+     * Whether another of the six opening zerglings is queued. They wait on a finished pool, so each
+     * plan morphs as soon as it is scheduled rather than holding a larva through the pool build.
+     *
+     * @param poolCount Spawning Pools that have finished building
+     * @param zerglingCount zerglings living and planned, two per plan
+     * @return true until the six opening zerglings are planned
+     */
+    static boolean shouldPlanOpeningZergling(int poolCount, int zerglingCount) {
+        return poolCount > 0 && zerglingCount < OPENING_ZERGLINGS;
     }
 
     /**

@@ -15,49 +15,57 @@ class NinePoolSpeedTest {
 
     private static final int ZERGLINGS_NEEDED = 6;
 
-    private static final int NINE_DRONES = 9;
-
     private static final int NO_STANDING_POOL = 0;
 
     private static final int ONE_STANDING_POOL = 1;
+
+    private static final int NO_EXTRACTOR = 0;
+
+    private static final int ONE_EXTRACTOR = 1;
 
     private static final int EIGHT_SUPPLY = 16;
 
     private static final int NINE_SUPPLY = 18;
 
-    /**
-     * LUZ9502W frame 6: four living drones and four planned. The first Overlord was queued here
-     * and morphed at 7 supply, ahead of the 8th and 9th drones and the pool.
-     */
     @Test
-    void holdsTheOverlordBelowNineDrones() {
-        assertTrue(NinePoolSpeed.holdsOverlords(NINE_DRONES - 1, NO_STANDING_POOL, EIGHT_SUPPLY));
+    void holdsTheOverlordUntilThePoolStands() {
+        assertTrue(NinePoolSpeed.holdsOverlords(NO_STANDING_POOL, NO_EXTRACTOR));
     }
 
     @Test
-    void holdsTheOverlordAtNineDronesUntilThePoolStands() {
-        assertTrue(NinePoolSpeed.holdsOverlords(NINE_DRONES, NO_STANDING_POOL, NINE_SUPPLY));
+    void holdsTheOverlordWhileThePoolStandsButTheExtractorDoesNot() {
+        assertTrue(NinePoolSpeed.holdsOverlords(ONE_STANDING_POOL, NO_EXTRACTOR));
     }
 
     @Test
-    void releasesTheOverlordOnceThePoolIsUnderConstruction() {
-        assertFalse(NinePoolSpeed.holdsOverlords(NINE_DRONES, ONE_STANDING_POOL, NINE_SUPPLY));
+    void releasesTheOverlordOnceTheExtractorIsUnderConstruction() {
+        assertFalse(NinePoolSpeed.holdsOverlords(ONE_STANDING_POOL, ONE_EXTRACTOR));
     }
 
-    /** The pool's drone is gone, and its replacement has not been queued yet. */
     @Test
-    void holdsTheOverlordUntilThePoolDroneIsReplaced() {
-        assertTrue(NinePoolSpeed.holdsOverlords(NINE_DRONES - 1, ONE_STANDING_POOL, EIGHT_SUPPLY));
+    void takesGasAtNineSupplyOnceThePoolIsCommitted() {
+        assertTrue(NinePoolSpeed.shouldPlanExtractor(0, 1, NINE_SUPPLY, true));
     }
 
-    /**
-     * The replacement drone is queued, so the drone count is back to 9, but its egg has not
-     * started. Released here, the first Overlord would be queued at priority 1 on the release
-     * frame and take the larva ahead of the drone, at 8 supply.
-     */
+    /** The pool's drone has not been replaced yet, so the Extractor waits for the 9th drone. */
     @Test
-    void holdsTheOverlordUntilTheReplacementDroneIsMorphing() {
-        assertTrue(NinePoolSpeed.holdsOverlords(NINE_DRONES, ONE_STANDING_POOL, EIGHT_SUPPLY));
+    void withholdsGasUntilThePoolDroneIsReplaced() {
+        assertFalse(NinePoolSpeed.shouldPlanExtractor(0, 1, EIGHT_SUPPLY, true));
+    }
+
+    @Test
+    void queuesSixOpeningZerglingsOnceThePoolFinishes() {
+        assertFalse(NinePoolSpeed.shouldPlanOpeningZergling(NO_USABLE_POOL, NO_ZERGLINGS));
+        assertTrue(NinePoolSpeed.shouldPlanOpeningZergling(ONE_USABLE_POOL, NO_ZERGLINGS));
+        assertTrue(NinePoolSpeed.shouldPlanOpeningZergling(ONE_USABLE_POOL, NinePoolSpeed.OPENING_ZERGLINGS - 2));
+        assertFalse(NinePoolSpeed.shouldPlanOpeningZergling(ONE_USABLE_POOL, NinePoolSpeed.OPENING_ZERGLINGS));
+    }
+
+    @Test
+    void handsOverOnlyAfterSixZerglingsAndSpeed() {
+        assertFalse(NinePoolSpeed.openingDone(NinePoolSpeed.OPENING_ZERGLINGS - 2, true));
+        assertFalse(NinePoolSpeed.openingDone(NinePoolSpeed.OPENING_ZERGLINGS, false));
+        assertTrue(NinePoolSpeed.openingDone(NinePoolSpeed.OPENING_ZERGLINGS, true));
     }
 
     /**
@@ -75,22 +83,13 @@ class NinePoolSpeedTest {
 
     @Test
     void withholdsGasUntilTheSpawningPoolIsPlanned() {
-        assertFalse(NinePoolSpeed.shouldPlanExtractor(0, false, true));
-    }
-
-    @Test
-    void takesGasOnceTheSpawningPoolIsPlanned() {
-        assertTrue(NinePoolSpeed.shouldPlanExtractor(0, true, true));
-    }
-
-    @Test
-    void withholdsGasBeforeTheGasTime() {
-        assertFalse(NinePoolSpeed.shouldPlanExtractor(0, true, false));
+        assertFalse(NinePoolSpeed.shouldPlanExtractor(0, 0, NINE_SUPPLY, false));
+        assertFalse(NinePoolSpeed.shouldPlanExtractor(0, 0, NINE_SUPPLY, true));
     }
 
     @Test
     void withholdsGasOnceAnExtractorExists() {
-        assertFalse(NinePoolSpeed.shouldPlanExtractor(1, true, true));
+        assertFalse(NinePoolSpeed.shouldPlanExtractor(1, 1, NINE_SUPPLY, true));
     }
 
     /**
