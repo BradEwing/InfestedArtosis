@@ -5,6 +5,7 @@ import bwapi.UnitType;
 import bwapi.WalkPosition;
 import org.junit.jupiter.api.Test;
 import util.Arc;
+import util.StaticDefenseZone;
 
 import java.util.Arrays;
 import java.util.Collections;
@@ -12,6 +13,7 @@ import java.util.List;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ContainmentArcSpacingTest {
@@ -62,7 +64,7 @@ class ContainmentArcSpacingTest {
     void consecutivePointsAreAtLeastOneLingWidthApartForFourToFortyLings() {
         int spacing = SquadManager.containmentSpacing(LINGS);
         for (int lings = 4; lings <= 40; lings++) {
-            for (int facing = 0; facing < 360; facing += 5) {
+            for (int facing = 0; facing < 360; facing++) {
                 Arc arc = spacedArc(0, lings, spacing, facing);
 
                 assertEquals(lings, arc.size(), lings + " lings facing " + facing);
@@ -111,9 +113,34 @@ class ContainmentArcSpacingTest {
         int radius = SquadManager.containmentRadius(0, 60, spacing);
         int degrees = SquadManager.containmentDegrees(radius, 60, spacing);
 
-        assertEquals(ContainmentPushback.MAX_RADIUS, radius);
+        assertEquals(ContainmentPushback.MAX_RADIUS - ContainmentPushback.RADIUS_STEP, radius);
         assertTrue(degrees > 90 && degrees <= 180, "degrees " + degrees);
         assertTrue(smallestGap(spacedArc(0, 60, spacing, 45)) >= LING_WIDTH);
+    }
+
+    @Test
+    void anArcSizedForItsSquadAlwaysLeavesOnePushbackStep() {
+        int spacing = SquadManager.containmentSpacing(LINGS);
+        for (int lings = 4; lings <= 100; lings++) {
+            int radius = SquadManager.containmentRadius(0, lings, spacing);
+            assertTrue(radius + ContainmentPushback.RADIUS_STEP <= ContainmentPushback.MAX_RADIUS,
+                    lings + " lings drew " + radius);
+        }
+    }
+
+    @Test
+    void fortyLingsHitFromOutOfReachCanStillBePushedBack() {
+        int spacing = SquadManager.containmentSpacing(LINGS);
+        Arc held = spacedArc(0, 40, spacing, 270);
+        List<StaticDefenseZone> zones = Collections.singletonList(
+                new StaticDefenseZone(UnitType.Terran_Siege_Tank_Siege_Mode, CHOKE, held.getRadius()));
+
+        Arc pushed = ContainmentPushback.pushBack(held, zones, 0, ALL_WALKABLE, MAP_PIXELS, MAP_PIXELS);
+
+        assertNotNull(pushed);
+        assertEquals(held.getRadius() + ContainmentPushback.RADIUS_STEP, pushed.getRadius());
+        assertEquals(40, pushed.size());
+        assertTrue(smallestGap(pushed) >= LING_WIDTH);
     }
 
     @Test

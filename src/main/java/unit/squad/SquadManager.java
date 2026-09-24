@@ -126,6 +126,7 @@ public class SquadManager {
     private static final int ARC_RADIUS = 160;
     private static final int MAX_ARC_DEGREES = 180;
     private static final int MIN_ARC_POINTS = 4;
+    private static final int MAX_SPACED_RADIUS = ContainmentPushback.MAX_RADIUS - ContainmentPushback.RADIUS_STEP;
     private static final int CONTAIN_DEFENSE_MARGIN = 32;
     private static final double REINFORCEMENT_RADIUS = 384.0;
     private static final int TARGETING_RADIUS = 256;
@@ -2433,7 +2434,8 @@ public class SquadManager {
     /**
      * Radius an arc of the given points is drawn at: the largest of the default radius, the radius the episode has
      * been pushed back to, and the radius that keeps consecutive points the spacing apart over the default span,
-     * the last capped at {@link ContainmentPushback#MAX_RADIUS}.
+     * the last capped one {@link ContainmentPushback#RADIUS_STEP} short of {@link ContainmentPushback#MAX_RADIUS} so
+     * an arc sized for its squad can still be pushed back.
      *
      * @param pushbackRadius radius the episode has been pushed back to, 0 when it has not
      * @param points points on the arc
@@ -2441,7 +2443,7 @@ public class SquadManager {
      * @return radius in pixels
      */
     static int containmentRadius(int pushbackRadius, int points, int spacing) {
-        int spaced = Math.min(ContainmentPushback.MAX_RADIUS, Arc.radiusForSpacing(points, ARC_DEGREES, spacing));
+        int spaced = Math.min(MAX_SPACED_RADIUS, Arc.radiusForSpacing(points, ARC_DEGREES, spacing));
         return Math.max(Math.max(ARC_RADIUS, pushbackRadius), spaced);
     }
 
