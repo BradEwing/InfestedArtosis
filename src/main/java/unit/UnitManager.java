@@ -551,7 +551,8 @@ public class UnitManager {
                 : gatherersClosestFirst(mainBase, base);
         boolean combatUnitThreat = threateningUnits.stream()
                 .anyMatch(unit -> Filter.isMobileGroundCombatUnit(unit.getType()));
-        return WorkerDefense.candidates(own, other, combatUnitThreat, gameState.isCannonRushed());
+        return WorkerDefense.candidates(own, other, combatUnitThreat, gameState.isCannonRushed(),
+                gatherer -> mayPullToDefend(gatherer.getRole(), planState(gatherer)));
     }
 
     private List<ManagedUnit> gatherersClosestFirst(Base source, Base defended) {
@@ -559,9 +560,7 @@ public class UnitManager {
         if (gatherers == null) {
             return Collections.emptyList();
         }
-        List<ManagedUnit> sorted = gatherers.stream()
-                .filter(gatherer -> mayPullToDefend(gatherer.getRole(), planState(gatherer)))
-                .collect(Collectors.toList());
+        List<ManagedUnit> sorted = new ArrayList<>(gatherers);
         sorted.sort(Distance.closestManagedUnitTo(defended.getCenter()));
         return sorted;
     }
