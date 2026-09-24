@@ -115,6 +115,13 @@ class GameStateTest {
     }
 
     @Test
+    void countsFinishedAndUnderConstructionButNotPlannedAsStanding() {
+        assertEquals(1, GameState.structureCount(Readiness.STANDING, NONE, ONE, NONE));
+        assertEquals(0, GameState.structureCount(Readiness.STANDING, NONE, NONE, ONE));
+        assertEquals(2, GameState.structureCount(Readiness.STANDING, ONE, ONE, ONE));
+    }
+
+    @Test
     void countsNeitherAStructureUnderConstructionNorAPlanAsUsable() {
         assertEquals(0, GameState.structureCount(Readiness.USABLE, NONE, ONE, NONE));
         assertEquals(0, GameState.structureCount(Readiness.USABLE, NONE, NONE, ONE));

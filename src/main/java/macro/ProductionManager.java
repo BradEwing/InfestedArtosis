@@ -591,6 +591,10 @@ public class ProductionManager {
             return;
         }
 
+        if (activeBuildOrder.holdsOverlords(gameState)) {
+            return;
+        }
+
         planTechWaveSupply(self);
 
         final int overlordCount = gameState.ourLivingUnitCount(UnitType.Zerg_Overlord);

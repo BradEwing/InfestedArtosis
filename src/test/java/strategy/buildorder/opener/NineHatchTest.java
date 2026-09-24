@@ -180,9 +180,42 @@ class NineHatchTest {
     }
 
     @Test
-    void transitionsOnceThePoolIsCommitted() {
-        assertFalse(NineHatch.openerComplete(0));
-        assertTrue(NineHatch.openerComplete(1));
+    void completesOnceTheNaturalTheDronesAndThePoolAreStarted() {
+        assertTrue(NineHatch.openerComplete(1, false, NINE_DRONES + 1));
+    }
+
+    /**
+     * LURUE0DY: the Overlord was queued at priority 1 on the frame the natural was, and took the
+     * natural's minerals. The opener stays incomplete, and so holds Overlords, until every step
+     * has started.
+     */
+    @Test
+    void staysIncompleteWhileThePoolIsOnlyPlanned() {
+        assertFalse(NineHatch.openerComplete(0, false, NINE_DRONES + 1));
+    }
+
+    @Test
+    void staysIncompleteWhileTheNaturalIsQueuedButNotStarted() {
+        assertFalse(NineHatch.openerComplete(1, true, NINE_DRONES + 1));
+    }
+
+    @Test
+    void staysIncompleteUntilTheDronesAreBackToNine() {
+        assertFalse(NineHatch.openerComplete(1, false, NINE_DRONES));
+    }
+
+    /**
+     * A natural planNewBase refused is not pending, so the opener completes on the pool and the
+     * Overlord is released instead of waiting on a hatchery that is not coming.
+     */
+    @Test
+    void completesWithoutANaturalThatWasNeverQueued() {
+        assertTrue(NineHatch.openerComplete(1, false, NINE_DRONES + 1));
+    }
+
+    @Test
+    void otherBuildOrdersDoNotHoldOverlords() {
+        assertFalse(new TwelveHatch().holdsOverlords(null));
     }
 
     @Test

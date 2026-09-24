@@ -158,6 +158,19 @@ public abstract class BuildOrder {
     }
 
     /**
+     * True while the build wants no Overlord queued by the shared supply planner.
+     *
+     * <p>Defaults to false. A build that scripts its own supply timing answers true for as long
+     * as an Overlord would take minerals from steps it has not finished.
+     *
+     * @param gameState current game state
+     * @return true while the supply planner must not queue an Overlord
+     */
+    public boolean holdsOverlords(GameState gameState) {
+        return false;
+    }
+
+    /**
      * Whether no opener offers this build order any more. A retired build order stays registered so
      * learning rows that name it still resolve, but it is not seeded as a playable arm.
      */
