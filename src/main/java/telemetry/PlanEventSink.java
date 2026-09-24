@@ -109,6 +109,16 @@ public interface PlanEventSink {
     }
 
     /**
+     * StrategyTracker added a strategy to its detected set, directly or by implication, after resolving
+     * supersessions for the frame.
+     *
+     * @param detectionLabel the detected strategy's name, followed by the evidence it was detected on when the
+     *     strategy records one, e.g. ProxyGate:MAIN_EMPTY
+     */
+    default void onStrategyDetected(String detectionLabel) {
+    }
+
+    /**
      * One of our bases lost its hatchery.
      *
      * @param base the base's tile location

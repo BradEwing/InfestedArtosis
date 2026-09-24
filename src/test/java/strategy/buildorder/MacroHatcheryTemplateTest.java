@@ -44,7 +44,7 @@ class MacroHatcheryTemplateTest {
 
     private static final String OPENER_PACKAGE = ".opener";
 
-    private static final int REGISTERED_OPENERS = 6;
+    private static final int REGISTERED_OPENERS = 7;
 
     /**
      * A build order that says nothing at all about the macro hatchery: it answers the abstract

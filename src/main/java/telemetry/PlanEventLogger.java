@@ -53,6 +53,7 @@ public class PlanEventLogger implements PlanEventSink {
     private static final String EVENT_HIVE_TECH_WITHHELD = "HIVE_TECH_WITHHELD";
     private static final String EVENT_BUILDER_DISPATCH_DECISION = "BUILDER_DISPATCH_DECISION";
     private static final String EVENT_EXPANSION_BACKOFF = "EXPANSION_BACKOFF";
+    private static final String EVENT_STRATEGY_DETECTED = "STRATEGY_DETECTED";
     private static final String EVENT_BASE_LOST = "BASE_LOST";
 
     private static final int NO_STARVED_COUNT = -1;
@@ -104,6 +105,11 @@ public class PlanEventLogger implements PlanEventSink {
      * <p>
      * lost_expansion_builders and expansion_hold_until_frame are set only on EXPANSION_BACKOFF
      * rows. The hold a row armed is expansion_hold_until_frame minus frame.
+     * <p>
+     * STRATEGY_DETECTED rows carry the detected strategy's detection label in item and leave every
+     * plan column empty, so the frame a strategy was detected is the row's frame. The label is the
+     * strategy's name, followed for ProxyGate by the evidence arms that fired: ProxyGate:GATEWAY_AWAY,
+     * ProxyGate:MAIN_EMPTY or ProxyGate:GATEWAY_AWAY+MAIN_EMPTY.
      * <p>
      * base_inner is set only on BASE_LOST rows, written when one of our bases loses its hatchery:
      * true for the main or a natural, false for a third or later base. The lost base's location is
@@ -519,6 +525,24 @@ public class PlanEventLogger implements PlanEventSink {
     }
 
     /**
+     * Records the frame a strategy was detected. The frame is re-read rather than taken from the last
+     * onFrame, because StrategyTracker may run ahead of this logger's onFrame on the same frame.
+     */
+    @Override
+    public void onStrategyDetected(String detectionLabel) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            currentFrame = game.getFrameCount();
+            buffer.add(strategyDetectedRow(detectionLabel));
+        } catch (Exception e) {
+            disabled = true;
+        }
+    }
+
+    /**
      * The frame is re-read rather than taken from the last onFrame, since a base is lost from
      * onUnitDestroy, which JBWAPI dispatches ahead of the frame's onFrame.
      */
@@ -767,6 +791,23 @@ public class PlanEventLogger implements PlanEventSink {
         sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
         appendEmpty(sb, 2);
         appendTrailing(sb, null, null, null, null, null, null, inputs);
+        return sb.toString();
+    }
+
+    /** A row for a detected strategy, which no plan owns, so the plan columns are empty. */
+    private String strategyDetectedRow(String detectionLabel) {
+        StringBuilder sb = new StringBuilder();
+        appendEvent(sb, EVENT_STRATEGY_DETECTED);
+        appendEmpty(sb, 3);
+        sb.append(Csv.sanitize(detectionLabel)).append(',');
+        appendEmpty(sb, 4);
+        appendBlocker(sb, PlanBlocker.NONE, 0);
+        appendEmpty(sb, 3);
+        appendGameState(sb);
+        appendEmpty(sb, 3);
+        sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
+        appendEmpty(sb, 2);
+        appendTrailing(sb, null, null, null, null, null, null, null);
         return sb.toString();
     }
 

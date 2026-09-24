@@ -159,6 +159,15 @@ public final class PlanEvents {
         current.onExpansionBackoff(lostExpansionBuilders, expansionHeldUntilFrame);
     }
 
+    public static void strategyDetected(String detectionLabel) {
+        PlanEventSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onStrategyDetected(detectionLabel);
+    }
+
+
     public static void baseLost(TilePosition base, boolean innerBase) {
         PlanEventSink current = sink;
         if (current == null) {

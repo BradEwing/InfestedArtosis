@@ -156,7 +156,8 @@ public class GameState {
         this.activeBuildOrder = decisions.getOpener();
         this.opponentRace = opponentRace;
         this.gameMap = new GameMap(game.mapWidth(), game.mapHeight());
-        this.strategyTracker = new StrategyTracker(game, opponentRace, this.observedUnitTracker, this.baseData, this.gameMap, bwem.getMap());
+        this.strategyTracker = new StrategyTracker(game, opponentRace, this.observedUnitTracker, this.baseData,
+                this.gameMap, bwem.getMap(), this.scoutData);
     }
 
     public void onFrame() {
@@ -1165,6 +1166,8 @@ public class GameState {
         switch (readiness) {
             case COMMITTED:
                 return completed + underConstruction + planned;
+            case STANDING:
+                return completed + underConstruction;
             case USABLE:
             default:
                 return completed;
@@ -1754,7 +1757,8 @@ public class GameState {
      * for it has re-armed.
      *
      * <p>Every rule that deletes a queued hatchery plan contributes a term: the excess rule, the
-     * early rush reaction and the SCV rush reaction. No term depends on the opponent's race.
+     * early rush reaction and the SCV rush reaction. No term depends on the opponent's race. The proxy
+     * Gateway expansion hold stands only while the bot is early rushed, so the early rush term covers it.
      */
     public boolean mayQueueExpansionHatchery() {
         return isHatcheryEnqueueRearmed(false)
