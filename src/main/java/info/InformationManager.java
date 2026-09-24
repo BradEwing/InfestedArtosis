@@ -274,6 +274,9 @@ public class InformationManager {
     public void onUnitMorph(Unit unit) {
         if (unit.getPlayer() == game.self()) {
             trackMorphingBaseHatchery(unit);
+            if (unit.getType() == UnitType.Zerg_Creep_Colony) {
+                gameState.onCreepColonyMorph(unit, gameState.getAssignedPlannedItems().get(unit));
+            }
         }
 
         HashMap<Unit, Plan> assignedPlannedItems = gameState.getAssignedPlannedItems();
