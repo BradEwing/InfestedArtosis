@@ -530,7 +530,11 @@ public class GameState {
                         baseData.backoffExpansion(base, getGameTime().getFrames());
                     }
                 }
-                
+
+                if (BaseData.shouldBackoffColony(buildingType, plan.getCancelReason())) {
+                    baseData.backoffColony(colonyBaseOf(plan), getGameTime().getFrames());
+                }
+
                 if (buildingType == UnitType.Zerg_Creep_Colony) {
                     cancelPairedColonyPlan(plan);
                 }
@@ -627,6 +631,41 @@ public class GameState {
         } else {
             baseData.unreserveSporeColony(reservedBase);
         }
+    }
+
+    /**
+     * The base a Creep Colony plan was placed for: the base its pair planner recorded, otherwise
+     * the base of ours nearest its tile.
+     */
+    private Base colonyBaseOf(Plan creepColonyPlan) {
+        if (creepColonyPlan.getColonyBase() != null) {
+            return creepColonyPlan.getColonyBase();
+        }
+        TilePosition tp = creepColonyPlan.getBuildPosition();
+        return tp == null ? null : baseData.nearestBase(tp);
+    }
+
+    /**
+     * Whether a building plan is a Creep Colony at a base that has lost a colony builder since a
+     * colony there last started morphing. Its builder does not get the home-site dispatch
+     * carve-out, see {@link macro.plan.PlanManager}.
+     */
+    public boolean isColonyBuilderBackedOff(Plan plan) {
+        return plan.getPlannedUnit() == UnitType.Zerg_Creep_Colony && baseData.hasLostColonyBuilder(colonyBaseOf(plan));
+    }
+
+    /**
+     * Clears the colony builder losses at the base a Creep Colony of ours just started morphing at.
+     *
+     * @param creepColony the colony that started morphing
+     * @param plan the plan its drone was assigned, or null when it had none
+     */
+    public void onCreepColonyMorph(Unit creepColony, Plan plan) {
+        if (plan != null && plan.getPlannedUnit() == UnitType.Zerg_Creep_Colony) {
+            baseData.resetColonyBackoff(colonyBaseOf(plan));
+            return;
+        }
+        baseData.resetColonyBackoff(baseData.nearestBase(creepColony.getTilePosition()));
     }
 
     private boolean isColonyMorphAtPosition(Plan p, TilePosition tp) {
@@ -1296,6 +1335,14 @@ public class GameState {
     }
 
     /**
+     * The base tiles a building site belongs to, the same tiles {@link #builderThreat} counts site
+     * enemies and builder_at_site on.
+     */
+    public Set<TilePosition> siteTiles(TilePosition buildPosition) {
+        return BaseData.siteTiles(gameMap.getMainBaseTiles(), buildPosition, BaseData.NATURAL_DEFENSE_TILE_RADIUS);
+    }
+
+    /**
      * The same reading for a plan whose executor morphs in place rather than walking to its site.
      * The route terms are zero because there is no walk, not because nothing was read.
      *
@@ -1388,6 +1435,12 @@ public class GameState {
         return mayDefendBase(baseData.isInnerBase(base), numGatherers());
     }
 
+    /**
+     * Bases short of their sunken target that may be offered a pair this frame. A base held after
+     * a lost colony builder is left out, as is one that has lost a builder and still has enemies at
+     * its site, see {@link ColonyBuilderBackoff#isOpen}; the pair goes to another base instead, or
+     * nowhere, and reserves nothing while it waits.
+     */
     public Set<Base> basesNeedingSunken(int target) {
         Time tenMinutes = new Time(10, 0);
         Time currentTime = getGameTime();
@@ -1410,7 +1463,8 @@ public class GameState {
             }
         }
 
-        return neededBases;
+        return baseData.openColonyBases(neededBases, currentTime.getFrames(),
+                base -> siteThreat(base.getLocation(), null).getSiteEnemies());
     }
 
     public Set<Base> basesNeedingSpore(int target) {

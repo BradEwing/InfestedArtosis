@@ -22,6 +22,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.ToIntFunction;
 import java.util.stream.Collectors;
 
 /**
@@ -71,6 +72,7 @@ public class BaseData {
     private HashMap<Base, GroundPath> availableBases = new HashMap<>();
     private HashMap<Base, Set<TilePosition>> routeTileLookup = new HashMap<>();
     private HashMap<Base, Integer> expansionBackoffUntil = new HashMap<>();
+    private final ColonyBuilderBackoff<Base> colonyBuilderBackoff = new ColonyBuilderBackoff<>();
     private int lostExpansionBuilders = 0;
     private int expansionHeldUntil = 0;
     @Getter
@@ -534,6 +536,60 @@ public class BaseData {
         return buildingType == UnitType.Zerg_Hatchery && cancelReason == PlanCancelReason.EXECUTOR_LOST;
     }
 
+    /**
+     * Records a Creep Colony builder lost on the way to a colony at a base, and holds sunken
+     * planning at that base for a window that grows with its losses. See
+     * {@link ColonyBuilderBackoff}.
+     *
+     * @param base the base the colony was planned for, or null when it is not known
+     * @param currentFrame frame the builder was lost on
+     */
+    public void backoffColony(Base base, int currentFrame) {
+        if (base == null) {
+            return;
+        }
+        int heldUntil = colonyBuilderBackoff.recordLoss(base, currentFrame);
+        PlanEvents.colonyBuilderBackoff(base.getLocation(), colonyBuilderBackoff.losses(base), heldUntil);
+    }
+
+    /**
+     * The bases short of their sunken target that may be offered a pair this frame, see
+     * {@link ColonyBuilderBackoff#openBases}.
+     */
+    public Set<Base> openColonyBases(Set<Base> candidates, int currentFrame, ToIntFunction<Base> siteEnemies) {
+        return colonyBuilderBackoff.openBases(candidates, currentFrame, siteEnemies);
+    }
+
+    /**
+     * @return true when a colony builder has been lost at the base since the last colony there
+     *     started morphing or the base was lost, which takes the base off the home-site dispatch
+     *     carve-out
+     */
+    public boolean hasLostColonyBuilder(Base base) {
+        return base != null && colonyBuilderBackoff.hasLostBuilder(base);
+    }
+
+    /**
+     * Clears a base's colony builder losses once a Creep Colony there has started morphing.
+     */
+    public void resetColonyBackoff(Base base) {
+        if (base != null) {
+            colonyBuilderBackoff.reset(base);
+        }
+    }
+
+    /**
+     * Only a lost builder earns a colony backoff, for the reason {@link #shouldBackoffExpansion}
+     * gives. The Sunken or Spore cancelled alongside the colony reads PAIRED_PLAN_CANCELLED and
+     * arms nothing, so one lost drone counts once.
+     *
+     * @param buildingType type of the cancelled building plan
+     * @param cancelReason why the plan was cancelled
+     */
+    static boolean shouldBackoffColony(UnitType buildingType, PlanCancelReason cancelReason) {
+        return buildingType == UnitType.Zerg_Creep_Colony && cancelReason == PlanCancelReason.EXECUTOR_LOST;
+    }
+
     public void cancelReserveBase(Base base) {
         GroundPath oldPath = allBasePaths.get(base);
         if (oldPath != null) {
@@ -627,6 +683,7 @@ public class BaseData {
         baseHatcheries.remove(hatchery);
         myBases.remove(base);
         if (base != null) {
+            colonyBuilderBackoff.reset(base);
             PlanEvents.baseLost(base.getLocation(), isInnerBase(base));
         }
 

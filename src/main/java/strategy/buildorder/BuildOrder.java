@@ -660,6 +660,7 @@ public abstract class BuildOrder {
             baseData.reserveSunkenColony(eligibleBase.get());
             buildingPlanner.reservePlannedBuildingTiles(location, UnitType.Zerg_Creep_Colony);
             Plan creepColonyPlan = new BuildingPlan(UnitType.Zerg_Creep_Colony, priority, location);
+            creepColonyPlan.setColonyBase(eligibleBase.get());
             Plan sunkenColonyPlan = new BuildingPlan(UnitType.Zerg_Sunken_Colony, priority, location);
             sunkenColonyPlan.setPairedColonyPlan(creepColonyPlan);
             sunkenColonyPlan.setReservedColonyBase(eligibleBase.get());
@@ -739,6 +740,7 @@ public abstract class BuildOrder {
         baseData.reserveSporeColony(eligibleBase.get());
         buildingPlanner.reservePlannedBuildingTiles(location, UnitType.Zerg_Creep_Colony);
         Plan creepColonyPlan = new BuildingPlan(UnitType.Zerg_Creep_Colony, 5, location);
+        creepColonyPlan.setColonyBase(eligibleBase.get());
         Plan sporeColonyPlan = new BuildingPlan(UnitType.Zerg_Spore_Colony, 5, location);
         sporeColonyPlan.setPairedColonyPlan(creepColonyPlan);
         sporeColonyPlan.setReservedColonyBase(eligibleBase.get());
