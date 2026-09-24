@@ -614,6 +614,9 @@ public class SquadManager {
                 boolean bothGround = squad1.isGroundSquad() && squad2.isGroundSquad();
                 boolean bothAir = squad1.isAirSquad() && squad2.isAirSquad();
                 if (!bothGround && !bothAir) continue;
+                boolean scourge1 = holdsOnlyScourge(squad1.getComposition());
+                boolean scourge2 = holdsOnlyScourge(squad2.getComposition());
+                if (bothAir && !mayMergeAirSquads(scourge1, scourge2)) continue;
                 if (squad1.distance(squad2) < SQUAD_MERGE_DISTANCE) {
                     Set<Squad> mergeSet = new HashSet<>();
                     mergeSet.add(squad1);
@@ -979,7 +982,43 @@ public class SquadManager {
     }
 
     private int calculateAirSquadMoveOutThreshold(Squad squad) {
-        return airMoveOutThreshold(squad.hasOnly(UnitType.Zerg_Scourge), gameState.getOpponentRace());
+        return airMoveOutThreshold(holdsOnlyScourge(squad.getComposition()), gameState.getOpponentRace());
+    }
+
+    /**
+     * Whether a composition's air combat units are all Scourge. Escorting Overlords are ignored, and a
+     * composition with no air combat units is not a Scourge squad.
+     *
+     * @param composition unit counts by type
+     * @return true when the composition holds Scourge and no other air combat unit
+     */
+    static boolean holdsOnlyScourge(Map<UnitType, Integer> composition) {
+        int units = airMoveOutUnits(composition);
+        return units > 0 && units == composition.getOrDefault(UnitType.Zerg_Scourge, 0);
+    }
+
+    /**
+     * Whether an air unit may join an air squad. Scourge keep to squads of Scourge so a pair moves out on
+     * {@link #SCOURGE_MOVE_OUT_UNITS}, and every other air unit keeps out of them.
+     *
+     * @param type the joining unit's type
+     * @param squadHoldsOnlyScourge true when the squad's air combat units are all Scourge
+     * @return true when the unit may join the squad
+     */
+    static boolean mayJoinAirSquad(UnitType type, boolean squadHoldsOnlyScourge) {
+        boolean scourge = type == UnitType.Zerg_Scourge;
+        return scourge == squadHoldsOnlyScourge;
+    }
+
+    /**
+     * Whether two air squads may merge. A Scourge squad merges only with another Scourge squad.
+     *
+     * @param firstHoldsOnlyScourge true when the first squad's air combat units are all Scourge
+     * @param secondHoldsOnlyScourge true when the second squad's air combat units are all Scourge
+     * @return true when the squads may merge
+     */
+    static boolean mayMergeAirSquads(boolean firstHoldsOnlyScourge, boolean secondHoldsOnlyScourge) {
+        return firstHoldsOnlyScourge == secondHoldsOnlyScourge;
     }
 
     /**
@@ -2927,6 +2966,7 @@ public class SquadManager {
 
         for (Squad squad : fightSquads) {
             if (!squad.isAirSquad()) continue;
+            if (!mayJoinAirSquad(managedUnit.getUnitType(), holdsOnlyScourge(squad.getComposition()))) continue;
 
             if (squad.getStatus() == SquadStatus.RALLY || squad.getStatus() == SquadStatus.FIGHT) {
                 double distance = squad.distance(managedUnit);

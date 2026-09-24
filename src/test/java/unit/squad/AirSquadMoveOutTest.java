@@ -110,6 +110,64 @@ class AirSquadMoveOutTest {
     }
 
     @Test
+    void aScourgeDoesNotJoinAMutaliskSquad() {
+        Map<UnitType, Integer> mutalisks = composition(UnitType.Zerg_Mutalisk, 3);
+
+        assertFalse(SquadManager.mayJoinAirSquad(UnitType.Zerg_Scourge, SquadManager.holdsOnlyScourge(mutalisks)));
+    }
+
+    @Test
+    void aMutaliskDoesNotJoinAScourgeSquad() {
+        Map<UnitType, Integer> scourge = composition(UnitType.Zerg_Scourge, 1);
+
+        assertFalse(SquadManager.mayJoinAirSquad(UnitType.Zerg_Mutalisk, SquadManager.holdsOnlyScourge(scourge)));
+        assertFalse(SquadManager.mayJoinAirSquad(UnitType.Zerg_Guardian, SquadManager.holdsOnlyScourge(scourge)));
+    }
+
+    @Test
+    void likeAirUnitsStillJoinEachOther() {
+        assertTrue(SquadManager.mayJoinAirSquad(UnitType.Zerg_Scourge,
+                SquadManager.holdsOnlyScourge(composition(UnitType.Zerg_Scourge, 1))));
+        assertTrue(SquadManager.mayJoinAirSquad(UnitType.Zerg_Mutalisk,
+                SquadManager.holdsOnlyScourge(composition(UnitType.Zerg_Mutalisk, 1))));
+    }
+
+    @Test
+    void aScourgeSquadDoesNotMergeWithAMutaliskSquad() {
+        boolean scourge = SquadManager.holdsOnlyScourge(composition(UnitType.Zerg_Scourge, 2));
+        boolean mutalisks = SquadManager.holdsOnlyScourge(composition(UnitType.Zerg_Mutalisk, 4));
+
+        assertFalse(SquadManager.mayMergeAirSquads(scourge, mutalisks));
+        assertFalse(SquadManager.mayMergeAirSquads(mutalisks, scourge));
+        assertTrue(SquadManager.mayMergeAirSquads(scourge, scourge));
+        assertTrue(SquadManager.mayMergeAirSquads(mutalisks, mutalisks));
+    }
+
+    @Test
+    void anOverlordEscortDoesNotStopASquadBeingAScourgeSquad() {
+        Map<UnitType, Integer> escorted = composition(UnitType.Zerg_Scourge, 2);
+        escorted.put(UnitType.Zerg_Overlord, 1);
+        Map<UnitType, Integer> mixed = composition(UnitType.Zerg_Scourge, 2);
+        mixed.put(UnitType.Zerg_Mutalisk, 1);
+
+        assertTrue(SquadManager.holdsOnlyScourge(escorted));
+        assertFalse(SquadManager.holdsOnlyScourge(mixed));
+        assertFalse(SquadManager.holdsOnlyScourge(composition(UnitType.Zerg_Overlord, 1)));
+    }
+
+    @Test
+    void twoScourgeInTheirOwnSquadAreClearedToMoveOut() {
+        Map<UnitType, Integer> pair = composition(UnitType.Zerg_Scourge, 2);
+
+        for (Race race : new Race[]{Race.Protoss, Race.Terran, Race.Zerg}) {
+            assertEquals(SquadManager.SquadAction.LAUNCH, SquadManager.chooseSquadAction(false,
+                    SquadManager.airMoveOutUnits(pair),
+                    SquadManager.airMoveOutThreshold(SquadManager.holdsOnlyScourge(pair), race),
+                    SquadStatus.RALLY, false, AT_HOME));
+        }
+    }
+
+    @Test
     void aSplitOfAnAirSquadKeepsBothSidesAboveTheUnitThreshold() {
         int threshold = SquadManager.airMoveOutThreshold(false, Race.Protoss);
 
