@@ -29,17 +29,32 @@ class NinePoolSpeedTest {
 
     @Test
     void holdsTheOverlordUntilThePoolStands() {
-        assertTrue(NinePoolSpeed.holdsOverlords(NO_STANDING_POOL, NO_EXTRACTOR));
+        assertTrue(NinePoolSpeed.holdsOverlords(NO_STANDING_POOL, NO_EXTRACTOR, NO_EXTRACTOR, true));
+        assertTrue(NinePoolSpeed.holdsOverlords(NO_STANDING_POOL, NO_EXTRACTOR, NO_EXTRACTOR, false));
     }
 
     @Test
     void holdsTheOverlordWhileThePoolStandsButTheExtractorDoesNot() {
-        assertTrue(NinePoolSpeed.holdsOverlords(ONE_STANDING_POOL, NO_EXTRACTOR));
+        assertTrue(NinePoolSpeed.holdsOverlords(ONE_STANDING_POOL, NO_EXTRACTOR, NO_EXTRACTOR, true));
+    }
+
+    @Test
+    void holdsTheOverlordWhileTheExtractorIsOnlyReserved() {
+        assertTrue(NinePoolSpeed.holdsOverlords(ONE_STANDING_POOL, NO_EXTRACTOR, ONE_EXTRACTOR, false));
     }
 
     @Test
     void releasesTheOverlordOnceTheExtractorIsUnderConstruction() {
-        assertFalse(NinePoolSpeed.holdsOverlords(ONE_STANDING_POOL, ONE_EXTRACTOR));
+        assertFalse(NinePoolSpeed.holdsOverlords(ONE_STANDING_POOL, ONE_EXTRACTOR, ONE_EXTRACTOR, false));
+    }
+
+    /**
+     * The SCV rush reaction cancels the Extractor and blocks new ones, and a stolen geyser leaves
+     * none to reserve. Waiting on an Extractor that cannot come would stop all Overlord planning.
+     */
+    @Test
+    void releasesTheOverlordOnceThePoolStandsAndNoExtractorCanCome() {
+        assertFalse(NinePoolSpeed.holdsOverlords(ONE_STANDING_POOL, NO_EXTRACTOR, NO_EXTRACTOR, false));
     }
 
     @Test

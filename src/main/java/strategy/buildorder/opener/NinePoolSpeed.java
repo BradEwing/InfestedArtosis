@@ -132,6 +132,10 @@ public class NinePoolSpeed extends BuildOrder {
      * supply planner queues the first Overlord at priority 1 on the frame the hold releases, so it
      * takes the next larva ahead of the drone that follows it.
      *
+     * <p>Once the pool stands, an Extractor that is neither reserved nor plannable releases the
+     * hold instead of waiting on it: the SCV rush reaction cancels Extractors and blocks new ones,
+     * and a stolen geyser leaves none to reserve, so the Extractor may never stand.
+     *
      * <p>Once released the hold stays released. Against an unknown race the opener never hands
      * over, and a hold that re-armed on later losses would stop all Overlord planning.
      *
@@ -142,7 +146,9 @@ public class NinePoolSpeed extends BuildOrder {
     public boolean holdsOverlords(GameState gameState) {
         return latchOverlordHold(holdsOverlords(
                 gameState.structureCount(Readiness.STANDING, UnitType.Zerg_Spawning_Pool),
-                gameState.structureCount(Readiness.STANDING, UnitType.Zerg_Extractor)));
+                gameState.structureCount(Readiness.STANDING, UnitType.Zerg_Extractor),
+                gameState.getBaseData().numExtractor(),
+                gameState.canPlanExtractor()));
     }
 
     /**
@@ -161,10 +167,14 @@ public class NinePoolSpeed extends BuildOrder {
      *
      * @param standingPools Spawning Pools finished or under construction
      * @param standingExtractors Extractors finished or under construction
-     * @return true until a Spawning Pool and an Extractor are both standing
+     * @param reservedExtractors Extractors standing or reserved by a queued plan
+     * @param canPlanExtractor whether a new Extractor may be planned this frame
+     * @return true until a Spawning Pool stands and an Extractor either stands or can no longer
+     *     be expected
      */
-    static boolean holdsOverlords(int standingPools, int standingExtractors) {
-        return standingPools < 1 || standingExtractors < 1;
+    static boolean holdsOverlords(int standingPools, int standingExtractors, int reservedExtractors,
+                                  boolean canPlanExtractor) {
+        return standingPools < 1 || standingExtractors < 1 && (reservedExtractors > 0 || canPlanExtractor);
     }
 
     /**
