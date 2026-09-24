@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -582,7 +583,7 @@ public class BaseDataTest {
     private static String rallyBase(String takenNatural, String inferredNatural, Set<String> heldOrMorphing,
                                     Set<String> held, ToIntFunction<String> distanceToEnemy) {
         return BaseData.squadRallyBase(takenNatural, inferredNatural, MAIN, heldOrMorphing::contains, held,
-                distanceToEnemy);
+                distanceToEnemy, Comparator.naturalOrder());
     }
 
     private static Set<String> bases(String... bases) {
@@ -661,11 +662,36 @@ public class BaseDataTest {
     }
 
     @Test
-    void aHeldBaseWithNoGroundPathFromTheEnemyIsChosenOnlyWhenNothingElseIsHeld() {
+    void aHeldBaseWithNoGroundPathFromTheEnemyIsNeverTheForwardRally() {
         ToIntFunction<String> islandAware = base -> THIRD.equals(base) ? Integer.MAX_VALUE : 4000;
 
         assertSame(MAIN, rallyBase(NATURAL, NATURAL, bases(MAIN, THIRD), bases(MAIN, THIRD), islandAware));
-        assertSame(THIRD, rallyBase(NATURAL, NATURAL, bases(THIRD), bases(THIRD), islandAware));
+    }
+
+    @Test
+    void withNoHeldBaseReachableFromTheEnemyTheMainIsTheRallyBase() {
+        ToIntFunction<String> unreachable = base -> Integer.MAX_VALUE;
+        Set<String> held = bases(THIRD, FOURTH);
+
+        assertSame(MAIN, rallyBase(NATURAL, NATURAL, held, held, unreachable));
+    }
+
+    @Test
+    void theMainWinsATieForNearestTheEnemy() {
+        ToIntFunction<String> equal = base -> 3000;
+        Set<String> held = bases(FOURTH, MAIN, THIRD);
+
+        assertSame(MAIN, rallyBase(NATURAL, NATURAL, held, held, equal));
+    }
+
+    @Test
+    void aTieBetweenForwardBasesGoesToTheTieBreakWhateverTheSetOrder() {
+        ToIntFunction<String> equal = base -> MAIN.equals(base) ? 4000 : 3000;
+
+        assertSame(FOURTH, rallyBase(NATURAL, NATURAL, bases(MAIN, THIRD, FOURTH), bases(MAIN, THIRD, FOURTH),
+                equal));
+        assertSame(FOURTH, rallyBase(NATURAL, NATURAL, bases(FOURTH, THIRD, MAIN), bases(FOURTH, THIRD, MAIN),
+                equal));
     }
 
     @Test

@@ -48,6 +48,10 @@ public class BaseData {
 
     static final int EXTRACTOR_REPLAN_BACKOFF_FRAMES = 500;
 
+    private static final Comparator<Base> BY_TILE_LOCATION = Comparator
+            .comparingInt((Base base) -> base.getLocation().getX())
+            .thenComparingInt(base -> base.getLocation().getY());
+
     private Base mainBase;
     private Base naturalExpansion;
     @Getter
@@ -93,6 +97,7 @@ public class BaseData {
     @Getter @Setter
     private boolean allowSunkenAtMain = false;
     private Base lastSquadRallyBase;
+    private Base lastEnemyMainBase;
 
     public BaseData(List<Base> allBases) {
         for (Base base: allBases) {
@@ -731,15 +736,16 @@ public class BaseData {
 
     /**
      * The base squads rally to. See {@link #squadRallyBase(Object, Object, Object, Predicate, Collection,
-     * ToIntFunction)}; distance to the enemy is the ground distance from the enemy main, known only once the enemy
-     * main is found.
+     * ToIntFunction, Comparator)}; distance to the enemy is the ground distance from the enemy main, or from the
+     * last enemy main located once it is no longer tracked, and ties go to the lower tile location.
      *
      * @return the base squads rally to
      */
     public Base squadRallyBase() {
         return squadRallyBase(naturalExpansion, inferredNaturalBase, mainBase, this::isHeldOrMorphing, myBases,
-                groundDistanceFromEnemyMain());
+                groundDistanceFromEnemyMain(), BY_TILE_LOCATION);
     }
+
 
     /**
      * Writes a RALLY_POINT_CHANGED plan event when the squad rally base differs from the one last seen, including
@@ -750,7 +756,7 @@ public class BaseData {
             return;
         }
         Base rally = squadRallyBase();
-        if (rally == null || rally == lastSquadRallyBase) {
+        if (rally == lastSquadRallyBase) {
             return;
         }
         lastSquadRallyBase = rally;
@@ -759,7 +765,11 @@ public class BaseData {
     }
 
     private ToIntFunction<Base> groundDistanceFromEnemyMain() {
-        StartingLocationPaths enemyPaths = mainEnemyBase == null ? null : startingLocationPaths.get(mainEnemyBase);
+        if (mainEnemyBase != null) {
+            lastEnemyMainBase = mainEnemyBase;
+        }
+        StartingLocationPaths enemyPaths = lastEnemyMainBase == null ? null
+                : startingLocationPaths.get(lastEnemyMainBase);
         if (enemyPaths == null) {
             return null;
         }
@@ -775,7 +785,8 @@ public class BaseData {
      *   <li>the first expansion we took, while a hatchery of ours stands or morphs on it;
      *   <li>otherwise the inferred natural, while a hatchery of ours stands or morphs on it;
      *   <li>otherwise, once an expansion has been taken and the enemy is located, the held base nearest the enemy,
-     *       or the main when no base is held;
+     *       preferring the main and then {@code tieBreak} among equally near bases, or the main when no held base
+     *       is reachable from the enemy;
      *   <li>otherwise the main.
      * </ol>
      * A lost natural is skipped until a hatchery of ours stands or morphs on it again.
@@ -785,11 +796,14 @@ public class BaseData {
      * @param main our main
      * @param heldOrMorphing whether a hatchery of ours stands or morphs on a base
      * @param heldBases bases a completed hatchery of ours stands on
-     * @param distanceToEnemy distance from a base to the enemy, or null when the enemy is not located
+     * @param distanceToEnemy distance from a base to the enemy, {@link Integer#MAX_VALUE} for a base the enemy
+     *     cannot reach, or null when the enemy is not located
+     * @param tieBreak order among held bases equally near the enemy
      * @return the rally base
      */
     static <T> T squadRallyBase(T takenNatural, T inferredNatural, T main, Predicate<T> heldOrMorphing,
-                                Collection<T> heldBases, ToIntFunction<T> distanceToEnemy) {
+                                Collection<T> heldBases, ToIntFunction<T> distanceToEnemy,
+                                Comparator<? super T> tieBreak) {
         if (takenNatural != null && heldOrMorphing.test(takenNatural)) {
             return takenNatural;
         }
@@ -799,8 +813,10 @@ public class BaseData {
         if (takenNatural == null || distanceToEnemy == null) {
             return main;
         }
+        Comparator<T> nearestEnemy = Comparator.comparingInt(distanceToEnemy);
         return heldBases.stream()
-                .min(Comparator.comparingInt(distanceToEnemy))
+                .filter(base -> distanceToEnemy.applyAsInt(base) != Integer.MAX_VALUE)
+                .min(nearestEnemy.thenComparing(base -> base != main).thenComparing(tieBreak))
                 .orElse(main);
     }
 
