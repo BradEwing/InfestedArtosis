@@ -626,6 +626,9 @@ public class BaseData {
         Base base = baseLookup.get(hatchery);
         baseHatcheries.remove(hatchery);
         myBases.remove(base);
+        if (base != null) {
+            PlanEvents.baseLost(base.getLocation(), isInnerBase(base));
+        }
 
         GroundPath pathToRemovedBase = this.allBasePaths.get(base);
         if (pathToRemovedBase != null) {
@@ -873,6 +876,26 @@ public class BaseData {
             }
         }
         return nearest;
+    }
+
+    /**
+     * Whether a base is our main or one of our naturals: the natural inferred from the ground paths
+     * out of the main, or the first expansion we actually took. Both count, so a first expansion
+     * taken away from the inferred natural stays inner.
+     */
+    public boolean isInnerBase(Base base) {
+        return isInnerBase(base, mainBase, inferredNaturalBase, naturalExpansion);
+    }
+
+    /**
+     * @param base the base asked about
+     * @param main our main
+     * @param inferredNatural the natural inferred from the ground paths out of the main, or null
+     * @param takenNatural the first expansion we took, or null
+     * @return true when base is non-null and is the main or either natural
+     */
+    static <T> boolean isInnerBase(T base, T main, T inferredNatural, T takenNatural) {
+        return base != null && (base == main || base == inferredNatural || base == takenNatural);
     }
 
     public boolean isEligibleForSunkenColony(Base base) {

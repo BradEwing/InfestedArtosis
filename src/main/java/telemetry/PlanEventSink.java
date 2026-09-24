@@ -1,6 +1,7 @@
 package telemetry;
 
 import bwapi.Position;
+import bwapi.TilePosition;
 import bwapi.UnitType;
 import info.BuilderThreat;
 import macro.plan.BuilderDispatchDecision;
@@ -105,5 +106,14 @@ public interface PlanEventSink {
      * @param expansionHeldUntilFrame frame expansions become available again
      */
     default void onExpansionBackoff(int lostExpansionBuilders, int expansionHeldUntilFrame) {
+    }
+
+    /**
+     * One of our bases lost its hatchery.
+     *
+     * @param base the base's tile location
+     * @param innerBase whether the base was our main or a natural
+     */
+    default void onBaseLost(TilePosition base, boolean innerBase) {
     }
 }
