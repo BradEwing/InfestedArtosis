@@ -104,6 +104,13 @@ public class SquadManager {
         AIR_SQUAD_TYPES.add(UnitType.Zerg_Devourer);
     }
 
+    /** Tuning value: air combat units a squad needs to move out against Protoss, Terran or an unknown race. */
+    static final int AIR_MOVE_OUT_UNITS = 5;
+    /** Tuning value: air combat units a squad needs to move out against Zerg. */
+    static final int AIR_MOVE_OUT_UNITS_VS_ZERG = 2;
+    /** Tuning value: Scourge a Scourge only squad needs to move out, against any race. */
+    static final int SCOURGE_MOVE_OUT_UNITS = 2;
+
     private static final int RETREAT_VECTOR_MAGNITUDE = 192;
     private static final int COMBAT_SIM_DURATION_FRAMES = 150;
     private static final double DEFENSE_WIN_THRESHOLD = 0.50;
@@ -744,8 +751,12 @@ public class SquadManager {
     }
 
     private int strengthOf(Squad squad, List<ManagedUnit> units) {
-        if (squad.isAirSquad() && squad.hasOnly(UnitType.Zerg_Scourge)) {
-            return units.size();
+        if (squad.isAirSquad()) {
+            Map<UnitType, Integer> composition = new HashMap<>();
+            for (ManagedUnit managedUnit : units) {
+                composition.merge(managedUnit.getUnitType(), 1, Integer::sum);
+            }
+            return airMoveOutUnits(composition);
         }
 
         int supply = 0;
@@ -756,10 +767,27 @@ public class SquadManager {
     }
 
     private int squadStrength(Squad squad) {
-        if (squad.isAirSquad() && squad.hasOnly(UnitType.Zerg_Scourge)) {
-            return squad.size();
+        if (squad.isAirSquad()) {
+            return airMoveOutUnits(squad.getComposition());
         }
         return squad.getSupply();
+    }
+
+    /**
+     * Counts the air combat units in a composition, the strength an air squad's move out threshold is measured in.
+     * Overlords escorting the squad are not counted.
+     *
+     * @param composition unit counts by type
+     * @return number of Mutalisks, Scourge, Guardians and Devourers
+     */
+    static int airMoveOutUnits(Map<UnitType, Integer> composition) {
+        int units = 0;
+        for (Map.Entry<UnitType, Integer> entry : composition.entrySet()) {
+            if (AIR_SQUAD_TYPES.contains(entry.getKey())) {
+                units += entry.getValue();
+            }
+        }
+        return units;
     }
 
     private List<Unit> enemyUnitsNearSquad(Squad squad) {
@@ -838,7 +866,10 @@ public class SquadManager {
             return;
         }
 
-        SquadAction action = chooseSquadAction(closeThreats, squadStrength(squad), calculateMoveOutThreshold(squad),
+        int strength = squadStrength(squad);
+        int moveOutThreshold = calculateMoveOutThreshold(squad);
+        SquadDecisions.moveOutEvaluated(squad, moveOutThreshold, strength);
+        SquadAction action = chooseSquadAction(closeThreats, strength, moveOutThreshold,
                 squadStatus, squad.isCommitted(), distanceFromRallyPoint(squad));
 
         if (squadStatus == SquadStatus.RALLY) {
@@ -877,7 +908,7 @@ public class SquadManager {
      * released by {@link #rallySquad} and, for a squad that has walked itself home, by the release distance.
      *
      * @param closeThreats true when enemies sit inside the squad detection radius
-     * @param squadStrength supply of the squad, or unit count for a Scourge only squad
+     * @param squadStrength supply of a ground squad, or air combat unit count of an air squad
      * @param moveOutThreshold strength the squad needs to be cleared to move out
      * @param status status the squad held entering the tick
      * @param committed true when the squad has been cleared to act and has not been recalled since
@@ -948,13 +979,25 @@ public class SquadManager {
     }
 
     private int calculateAirSquadMoveOutThreshold(Squad squad) {
-        if (squad.hasOnly(UnitType.Zerg_Scourge)) {
-            return 2;
+        return airMoveOutThreshold(squad.hasOnly(UnitType.Zerg_Scourge), gameState.getOpponentRace());
+    }
+
+    /**
+     * Air combat units an air squad needs before it is cleared to move out, compared against
+     * {@link #airMoveOutUnits}.
+     *
+     * @param scourgeOnly true when the squad holds Scourge and nothing else
+     * @param opponentRace the opponent's race
+     * @return threshold in units
+     */
+    static int airMoveOutThreshold(boolean scourgeOnly, Race opponentRace) {
+        if (scourgeOnly) {
+            return SCOURGE_MOVE_OUT_UNITS;
         }
-        if (gameState.getOpponentRace() == Race.Zerg) {
-            return 2;
+        if (opponentRace == Race.Zerg) {
+            return AIR_MOVE_OUT_UNITS_VS_ZERG;
         }
-        return 3;
+        return AIR_MOVE_OUT_UNITS;
     }
 
     private int defaultMoveOutThreshold() {

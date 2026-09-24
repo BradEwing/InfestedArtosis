@@ -77,6 +77,14 @@ public final class SquadDecisions {
         current.onOutrangedHitEvaluated(squad, outrangedHit);
     }
 
+    public static void moveOutEvaluated(Squad squad, int moveOutThreshold, int squadStrength) {
+        SquadDecisionSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onMoveOutEvaluated(squad, moveOutThreshold, squadStrength);
+    }
+
     public static void containmentEnded(Squad squad, int supplyLost) {
         SquadDecisionSink current = sink;
         if (current == null) {

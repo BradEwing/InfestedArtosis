@@ -75,7 +75,8 @@ public class SquadDecisionLogger implements SquadDecisionSink {
             + "defense_sim_enemy_survivors,defense_win_threshold,arc_center_x,arc_center_y,arc_points,"
             + "decision_path,sim_enemy_composition,sim_enemy_unscored_supply,runby_phase_old,runby_phase,"
             + "pushback_from_x,pushback_from_y,pushback_to_x,pushback_to_y,pushback_enemy_type,"
-            + "pushback_members_moved,contain_supply_lost,outranged_hit";
+            + "pushback_members_moved,contain_supply_lost,outranged_hit,"
+            + "move_out_threshold,move_out_strength";
 
     private static final int FLUSH_INTERVAL_FRAMES = 480;
     private static final String EVENT_STATUS_CHANGE = "STATUS_CHANGE";
@@ -269,6 +270,21 @@ public class SquadDecisionLogger implements SquadDecisionSink {
 
         try {
             decisionFor(squad).setOutrangedHit(SquadDecision.tristate(outrangedHit));
+        } catch (RuntimeException e) {
+            disable();
+        }
+    }
+
+    @Override
+    public void onMoveOutEvaluated(Squad squad, int moveOutThreshold, int squadStrength) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            SquadDecision decision = decisionFor(squad);
+            decision.setMoveOutThreshold(moveOutThreshold);
+            decision.setMoveOutStrength(squadStrength);
         } catch (RuntimeException e) {
             disable();
         }
@@ -513,6 +529,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         fields.addAll(enemySampleCells(context));
         fields.addAll(runbyCells);
         fields.addAll(containmentCells(context));
+        fields.addAll(moveOutCells(context));
         return String.join(",", fields);
     }
 
@@ -533,6 +550,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         fields.addAll(enemySampleCells(context));
         fields.addAll(runbyCells(null, null));
         fields.addAll(containmentCells(context));
+        fields.addAll(moveOutCells(context));
         return String.join(",", fields);
     }
 
@@ -603,6 +621,22 @@ public class SquadDecisionLogger implements SquadDecisionSink {
                 ? String.valueOf(SquadDecision.NOT_EVALUATED)
                 : Csv.halfSupply(context.getContainSupplyLost()));
         fields.add(String.valueOf(context.getOutrangedHit()));
+        return fields;
+    }
+
+    /**
+     * Builds the move_out_threshold and move_out_strength cells: the threshold a fight squad's strength was
+     * compared against and that strength, both in the threshold's units, air combat units for an air squad and
+     * BWAPI half-supply for a ground squad. Both are the not evaluated sentinel on a row whose squad did not reach
+     * the move out check this frame.
+     *
+     * @param context the decision the row is built from
+     * @return the threshold cell and the strength cell
+     */
+    static List<String> moveOutCells(SquadDecision context) {
+        List<String> fields = new ArrayList<>();
+        fields.add(String.valueOf(context.getMoveOutThreshold()));
+        fields.add(String.valueOf(context.getMoveOutStrength()));
         return fields;
     }
 
