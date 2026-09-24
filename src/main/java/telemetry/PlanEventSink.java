@@ -5,6 +5,8 @@ import bwapi.TilePosition;
 import bwapi.UnitType;
 import info.BuilderThreat;
 import macro.plan.BuilderDispatchDecision;
+import macro.plan.BuilderLossReason;
+import macro.plan.BuilderReading;
 import macro.plan.Plan;
 import macro.plan.PlanBlocker;
 import macro.plan.PlanCancelSource;
@@ -97,6 +99,28 @@ public interface PlanEventSink {
      * @param threat the reading the decision was made on
      */
     default void onBuilderDispatchDecision(Plan plan, BuilderDispatchDecision decision, BuilderThreat threat) {
+    }
+
+    /**
+     * A walking builder stopped executing its BUILDING plan for a reason other than a threat recall.
+     *
+     * @param plan the building plan
+     * @param reason why the builder was lost
+     * @param builder the lost builder as last read, or null if it was never read
+     */
+    default void onBuilderLost(Plan plan, BuilderLossReason reason, BuilderReading builder) {
+    }
+
+    /**
+     * A new builder was dispatched for a plan that had lost its builder.
+     *
+     * @param plan the building plan
+     * @param reason why the previous builder was lost
+     * @param lost the previous builder as last read
+     * @param taker the new builder, read on its dispatch frame
+     */
+    default void onBuilderRedispatch(Plan plan, BuilderLossReason reason, BuilderReading lost,
+                                     BuilderReading taker) {
     }
 
     /**

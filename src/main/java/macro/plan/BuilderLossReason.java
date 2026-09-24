@@ -6,12 +6,14 @@ package macro.plan;
  * <p>ROLE_CHANGED is a builder whose role is no longer BUILD, so {@code ManagedUnit.build()} never
  * runs for it. PLAN_UNBOUND is a builder still in BUILD whose plan reference or plan assignment no
  * longer names the plan it was dispatched for. STRAYED is a builder still bound to the plan that has
- * receded from an affordable site, as {@link BuilderStray} measures it.
+ * receded from an affordable site, as {@link BuilderStray} measures it. DIED is a builder killed
+ * while its plan was in BUILDING, which cancels the plan rather than returning it to SCHEDULE.
  */
 public enum BuilderLossReason {
     ROLE_CHANGED(BuilderDispatchDecision.LOST_ROLE_CHANGED),
     PLAN_UNBOUND(BuilderDispatchDecision.LOST_PLAN_UNBOUND),
-    STRAYED(BuilderDispatchDecision.LOST_STRAYED);
+    STRAYED(BuilderDispatchDecision.LOST_STRAYED),
+    DIED(BuilderDispatchDecision.LOST_DIED);
 
     private final BuilderDispatchDecision decision;
 

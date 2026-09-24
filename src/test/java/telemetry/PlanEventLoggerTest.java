@@ -3,13 +3,16 @@ package telemetry;
 import org.junit.jupiter.api.Test;
 import strategy.buildorder.LarvaBoundMacroHatchery.Gate;
 
+import java.util.Arrays;
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PlanEventLoggerTest {
 
-    private static final int PLAN_COLUMNS = 62;
+    private static final int PLAN_COLUMNS = 66;
 
     private static final boolean STARVED = true;
 
@@ -18,6 +21,12 @@ class PlanEventLoggerTest {
     @Test
     void thePlanRowCarriesEveryColumnItsReadersIndexBy() {
         assertEquals(PLAN_COLUMNS, PlanEventLogger.PLAN_HEADER.split(",", -1).length);
+        List<String> readByName = Arrays.asList("executor_unit_id", "builder_distance_px", "builder_at_site",
+                "builder_dispatch_decision", "builder_role", "builder_order", "builder_in_range",
+                "previous_executor_unit_id");
+        for (String name : readByName) {
+            assertTrue(indexOf(name) >= 0, name);
+        }
     }
 
     @Test
@@ -104,10 +113,18 @@ class PlanEventLoggerTest {
     }
 
     @Test
-    void theBaseLostColumnIsAppendedLast() {
-        String[] columns = PlanEventLogger.PLAN_HEADER.split(",", -1);
+    void theBaseLostColumnFollowsTheBuilderOwnershipColumns() {
         assertEquals(indexOf("builder_at_our_base") + 1, indexOf("base_inner"));
-        assertEquals("base_inner", columns[columns.length - 1]);
+    }
+
+    @Test
+    void theBuilderRoleColumnsAreAppendedLast() {
+        String[] columns = PlanEventLogger.PLAN_HEADER.split(",", -1);
+        int role = indexOf("builder_role");
+        assertEquals("builder_order", column(role + 1));
+        assertEquals("builder_in_range", column(role + 2));
+        assertEquals("previous_executor_unit_id", column(role + 3));
+        assertEquals("previous_executor_unit_id", columns[columns.length - 1]);
     }
 
     private static String column(int index) {

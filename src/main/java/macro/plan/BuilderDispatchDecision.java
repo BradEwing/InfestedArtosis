@@ -10,7 +10,9 @@ package macro.plan;
  *
  * <p>The LOST_ decisions release a walking builder that has left its plan, one per
  * {@link BuilderLossReason}. The plan returns to SCHEDULE without an executor, so the DISPATCH that
- * follows it names a newly assigned builder.
+ * follows it names a newly assigned builder. LOST_DIED is never a gate decision: it is the reason
+ * a BUILDER_LOST row gives for a builder killed on its walk, whose plan is cancelled rather than
+ * dispatched again.
  */
 public enum BuilderDispatchDecision {
     DISPATCH,
@@ -20,7 +22,8 @@ public enum BuilderDispatchDecision {
     RECALLED,
     LOST_ROLE_CHANGED,
     LOST_PLAN_UNBOUND,
-    LOST_STRAYED;
+    LOST_STRAYED,
+    LOST_DIED;
 
     /** Whether the builder leaves, or stays out, under this decision. */
     public boolean isDispatch() {

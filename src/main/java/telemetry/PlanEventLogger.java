@@ -11,6 +11,8 @@ import info.GameState;
 import info.ResourceCount;
 import learning.GameRecord;
 import macro.plan.BuilderDispatchDecision;
+import macro.plan.BuilderLossReason;
+import macro.plan.BuilderReading;
 import macro.plan.Plan;
 import macro.plan.PlanBlocker;
 import macro.plan.PlanCancelSource;
@@ -19,6 +21,7 @@ import macro.plan.PlanType;
 import strategy.buildorder.BuildOrder;
 import strategy.buildorder.GasBoundHiveTech;
 import strategy.buildorder.LarvaBoundMacroHatchery;
+import unit.managed.ManagedUnit;
 import util.Time;
 
 import java.time.LocalDateTime;
@@ -56,13 +59,15 @@ public class PlanEventLogger implements PlanEventSink {
     private static final String EVENT_COLONY_BUILDER_BACKOFF = "COLONY_BUILDER_BACKOFF";
     private static final String EVENT_STRATEGY_DETECTED = "STRATEGY_DETECTED";
     private static final String EVENT_BASE_LOST = "BASE_LOST";
+    private static final String EVENT_BUILDER_LOST = "BUILDER_LOST";
+    private static final String EVENT_BUILDER_REDISPATCH = "BUILDER_REDISPATCH";
 
     private static final int NO_STARVED_COUNT = -1;
 
     private static final String EVENT_RECURRING_CANCEL = "RECURRING_CANCEL";
 
     /**
-     * 52 columns; readers that index by position rather than by name must match this order.
+     * 66 columns; readers that index by position rather than by name must match this order.
      * enemy_air, gas_gathered, enemy_barracks, the blocker mineral pair, the enemy ground pair,
      * yield_to_plan_id, the four macro hatchery gate columns and the four Hive tech gate columns
      * are trailing columns written by {@link #appendTrailing}, so every row shape keeps one width.
@@ -101,8 +106,33 @@ public class PlanEventLogger implements PlanEventSink {
      * builder_site_at_our_base and builder_at_our_base are what a builder would walk into and
      * whether either end of the walk is ground we hold, written on every BUILDING row that has an
      * executor and read fresh on the row's own frame. builder_dispatch_decision is what the gate
-     * did with it, set only on BUILDER_DISPATCH_DECISION rows: a dispatch a threat reading would
-     * otherwise have held reads DISPATCH_HOME_SITE, and carries both ownership columns true.
+     * did with it, set on BUILDER_DISPATCH_DECISION rows and, as a builder's loss, on BUILDER_LOST
+     * and BUILDER_REDISPATCH rows: a dispatch a threat reading would otherwise have held reads
+     * DISPATCH_HOME_SITE, and carries both ownership columns true.
+     * <p>
+     * builder_at_site is a base-region test, not arrival: whether the builder stands on the site's
+     * base tiles, which are the whole main for a site in the main and every tile within a manhattan
+     * radius of the site elsewhere ({@link GameState#siteTiles}). For a site in the main, a builder
+     * anywhere in the main reads true however far it is from the site. builder_in_range is arrival:
+     * the builder's distance to the centre of the building's footprint is within the distance at
+     * which it issues the morph, measured as the builder measures it.
+     * <p>
+     * builder_role, builder_order and builder_in_range describe the plan's executor: its UnitRole,
+     * its BWAPI order and whether it is in build range. They are set on BUILD_AHEAD_HOLD,
+     * BUILD_AHEAD_EVICT, BUILDER_DISPATCH_DECISION, BUILDER_LOST and BUILDER_REDISPATCH rows.
+     * builder_role reads NONE on those rows when the plan has no executor and UNMANAGED when its
+     * executor is not a managed unit; builder_in_range is blank unless the executor is a drone
+     * building a structure on a known tile.
+     * <p>
+     * BUILDER_LOST is written when a walking builder stops executing its BUILDING plan for any reason
+     * but a threat recall. It reports the lost builder as last read: executor_unit_id,
+     * builder_distance_px and the builder columns are that builder's, and builder_dispatch_decision
+     * is the reason, LOST_ROLE_CHANGED, LOST_PLAN_UNBOUND, LOST_STRAYED or LOST_DIED. A builder
+     * killed on its walk is reported as read on the frame before it died, and its plan is cancelled.
+     * BUILDER_REDISPATCH is written when a new builder is dispatched for a plan that lost one:
+     * executor_unit_id and the builder columns are the new builder's, previous_executor_unit_id is
+     * the lost builder's, and builder_dispatch_decision repeats the reason it was lost. A
+     * previous_executor_unit_id equal to executor_unit_id is the same drone dispatched again.
      * <p>
      * lost_expansion_builders and expansion_hold_until_frame are set only on EXPANSION_BACKOFF
      * rows. The hold a row armed is expansion_hold_until_frame minus frame.
@@ -131,7 +161,8 @@ public class PlanEventLogger implements PlanEventSink {
             + "macro_hatcheries_outstanding,tech_gate,gate_available_gas,gate_required_gas,"
             + "extractors_completed,builder_route_enemies,builder_site_enemies,"
             + "builder_route_defense_zones,builder_at_site,builder_dispatch_decision,lost_expansion_builders,"
-            + "expansion_hold_until_frame,builder_site_at_our_base,builder_at_our_base,base_inner";
+            + "expansion_hold_until_frame,builder_site_at_our_base,builder_at_our_base,base_inner,"
+            + "builder_role,builder_order,builder_in_range,previous_executor_unit_id";
 
     private static final String GAME_HEADER = "timestamp,is_winner,num_starting_locations,map_name,opponent_name,"
             + "opponent_race,opener,build_order,detected_strategies,frame_count";
@@ -216,8 +247,8 @@ public class PlanEventLogger implements PlanEventSink {
                 return;
             }
             endWithheld(plan.getName());
-            PlanTrace trace = newTrace(plan);
-            buffer.add(row(plan, trace, EVENT_ENQUEUE, null, plan.getState(), PlanBlocker.NONE, 0, NO_STARVED_COUNT));
+            newTrace(plan);
+            buffer.add(row(plan, EVENT_ENQUEUE, null, plan.getState(), PlanBlocker.NONE, 0, NO_STARVED_COUNT));
         } catch (Exception e) {
             disabled = true;
         }
@@ -272,14 +303,14 @@ public class PlanEventLogger implements PlanEventSink {
         try {
             PlanTrace trace = trace(plan);
             endBlocker(plan, trace);
-            buffer.add(row(plan, trace, EVENT_TRANSITION, from, to, PlanBlocker.NONE, 0, NO_STARVED_COUNT));
+            buffer.add(row(plan, EVENT_TRANSITION, from, to, PlanBlocker.NONE, 0, NO_STARVED_COUNT));
             trace.setLastStateFrame(currentFrame);
             trace.clearStaleReported();
             if (to == PlanState.COMPLETE || to == PlanState.CANCELLED) {
                 openPlans.remove(plan.getUuid());
             }
             if (to == PlanState.CANCELLED && plan.getCancelSource() != null && recordRecurrence(plan)) {
-                buffer.add(row(plan, trace, EVENT_RECURRING_CANCEL, from, to, PlanBlocker.NONE, 0, NO_STARVED_COUNT));
+                buffer.add(row(plan, EVENT_RECURRING_CANCEL, from, to, PlanBlocker.NONE, 0, NO_STARVED_COUNT));
             }
         } catch (Exception e) {
             disabled = true;
@@ -327,7 +358,7 @@ public class PlanEventLogger implements PlanEventSink {
             }
             PlanBlocker blocker = trace.getBlocker();
             int waited = blocker == PlanBlocker.NONE ? 0 : currentFrame - trace.getBlockerSinceFrame();
-            buffer.add(row(plan, trace, EVENT_STALE, null, plan.getState(), blocker, waited, NO_STARVED_COUNT));
+            buffer.add(row(plan, EVENT_STALE, null, plan.getState(), blocker, waited, NO_STARVED_COUNT));
         } catch (Exception e) {
             disabled = true;
         }
@@ -354,10 +385,9 @@ public class PlanEventLogger implements PlanEventSink {
         }
 
         try {
-            PlanTrace trace = trace(holder);
-            StringBuilder sb = planColumns(holder, trace, EVENT_BUILD_AHEAD_YIELD, null, holder.getState(),
-                    PlanBlocker.BUILD_AHEAD_SLOT_TAKEN, heldFrames, NO_STARVED_COUNT);
-            appendTrailing(sb, null, emergency, null, null, builderThreat(holder), null, null);
+            StringBuilder sb = planColumns(holder, EVENT_BUILD_AHEAD_YIELD, null, holder.getState(),
+                    PlanBlocker.BUILD_AHEAD_SLOT_TAKEN, heldFrames, NO_STARVED_COUNT, executorReading(holder));
+            appendTrailing(sb, null, emergency, null, null, builderThreat(holder), null, BuilderColumns.BLANK);
             buffer.add(sb.toString());
         } catch (Exception e) {
             disabled = true;
@@ -375,10 +405,9 @@ public class PlanEventLogger implements PlanEventSink {
         }
 
         try {
-            PlanTrace trace = trace(plan);
-            StringBuilder sb = planColumns(plan, trace, EVENT_BLOCKER_DIVERT, null, plan.getState(),
-                    PlanBlocker.NONE, 0, NO_STARVED_COUNT);
-            appendTrailing(sb, mineral, null, null, null, builderThreat(plan), null, null);
+            StringBuilder sb = planColumns(plan, EVENT_BLOCKER_DIVERT, null, plan.getState(),
+                    PlanBlocker.NONE, 0, NO_STARVED_COUNT, executorReading(plan));
+            appendTrailing(sb, mineral, null, null, null, builderThreat(plan), null, BuilderColumns.BLANK);
             buffer.add(sb.toString());
         } catch (Exception e) {
             disabled = true;
@@ -496,10 +525,50 @@ public class PlanEventLogger implements PlanEventSink {
             if (lastDispatchDecisions.put(plan.getUuid(), decision) == decision) {
                 return;
             }
-            PlanTrace trace = trace(plan);
-            StringBuilder sb = planColumns(plan, trace, EVENT_BUILDER_DISPATCH_DECISION, null, plan.getState(),
-                    PlanBlocker.NONE, 0, NO_STARVED_COUNT);
-            appendTrailing(sb, null, null, null, null, threat, decision, null);
+            BuilderColumns builder = BuilderColumns.gateDecision(executorReading(plan), decision);
+            StringBuilder sb = planColumns(plan, EVENT_BUILDER_DISPATCH_DECISION, null, plan.getState(),
+                    PlanBlocker.NONE, 0, NO_STARVED_COUNT, builder.executor());
+            appendTrailing(sb, null, null, null, null, threat, null, builder);
+            buffer.add(sb.toString());
+        } catch (Exception e) {
+            disabled = true;
+        }
+    }
+
+    /**
+     * Writes one row per builder lost, with the builder as it was last read rather than the plan's
+     * executor now, which the release has already cleared. The row carries no builder threat
+     * reading, since a killed builder has no tile to read it from.
+     */
+    @Override
+    public void onBuilderLost(Plan plan, BuilderLossReason reason, BuilderReading builder) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            BuilderColumns columns = BuilderColumns.lost(reason, builder);
+            StringBuilder sb = planColumns(plan, EVENT_BUILDER_LOST, null, plan.getState(),
+                    PlanBlocker.NONE, 0, NO_STARVED_COUNT, columns.executor());
+            appendTrailing(sb, null, null, null, null, null, null, columns);
+            buffer.add(sb.toString());
+        } catch (Exception e) {
+            disabled = true;
+        }
+    }
+
+    /** Writes one row per new builder dispatched for a plan that lost its builder. */
+    @Override
+    public void onBuilderRedispatch(Plan plan, BuilderLossReason reason, BuilderReading lost, BuilderReading taker) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            BuilderColumns columns = BuilderColumns.redispatch(reason, lost, taker);
+            StringBuilder sb = planColumns(plan, EVENT_BUILDER_REDISPATCH, null, plan.getState(),
+                    PlanBlocker.NONE, 0, NO_STARVED_COUNT, columns.executor());
+            appendTrailing(sb, null, null, null, null, builderThreat(plan), null, columns);
             buffer.add(sb.toString());
         } catch (Exception e) {
             disabled = true;
@@ -591,9 +660,11 @@ public class PlanEventLogger implements PlanEventSink {
         }
 
         try {
-            PlanTrace trace = trace(holder);
-            buffer.add(row(holder, trace, event, null, holder.getState(),
-                    PlanBlocker.BUILD_AHEAD_SLOT_TAKEN, heldFrames, starvedBehind));
+            BuilderColumns builder = BuilderColumns.current(executorReading(holder));
+            StringBuilder sb = planColumns(holder, event, null, holder.getState(),
+                    PlanBlocker.BUILD_AHEAD_SLOT_TAKEN, heldFrames, starvedBehind, builder.executor());
+            appendTrailing(sb, null, null, null, null, builderThreat(holder), null, builder);
+            buffer.add(sb.toString());
         } catch (Exception e) {
             disabled = true;
         }
@@ -615,7 +686,7 @@ public class PlanEventLogger implements PlanEventSink {
             return;
         }
         int waited = currentFrame - trace.getBlockerSinceFrame();
-        buffer.add(row(plan, trace, EVENT_BLOCKED, null, null, blocker, waited, NO_STARVED_COUNT));
+        buffer.add(row(plan, EVENT_BLOCKED, null, null, blocker, waited, NO_STARVED_COUNT));
         trace.clearBlocker(currentFrame);
     }
 
@@ -636,7 +707,7 @@ public class PlanEventLogger implements PlanEventSink {
                 continue;
             }
             endBlocker(plan, trace);
-            buffer.add(row(plan, trace, EVENT_OPEN_AT_GAME_END, null, plan.getState(), PlanBlocker.NONE, 0, NO_STARVED_COUNT));
+            buffer.add(row(plan, EVENT_OPEN_AT_GAME_END, null, plan.getState(), PlanBlocker.NONE, 0, NO_STARVED_COUNT));
         }
         openPlans.clear();
         for (String item : new ArrayList<>(withheld.keySet())) {
@@ -670,25 +741,32 @@ public class PlanEventLogger implements PlanEventSink {
         }
     }
 
-    private String row(Plan plan, PlanTrace trace, String event, PlanState from, PlanState to,
+    private String row(Plan plan, String event, PlanState from, PlanState to,
                        PlanBlocker blocker, int blockedFrames, int starvedBehind) {
-        StringBuilder sb = planColumns(plan, trace, event, from, to, blocker, blockedFrames, starvedBehind);
-        appendTrailing(sb, null, null, null, null, builderThreat(plan), null, null);
+        StringBuilder sb = planColumns(plan, event, from, to, blocker, blockedFrames, starvedBehind,
+                executorReading(plan));
+        appendTrailing(sb, null, null, null, null, builderThreat(plan), null, BuilderColumns.BLANK);
         return sb.toString();
     }
 
-    /** Every plan-row column up to and including builder_distance_px. */
-    private StringBuilder planColumns(Plan plan, PlanTrace trace, String event, PlanState from, PlanState to,
-                                      PlanBlocker blocker, int blockedFrames, int starvedBehind) {
+    /**
+     * Every plan-row column up to and including builder_distance_px, with executor_unit_id and
+     * builder_distance_px taken from the given reading. builder_distance_px is blank until both the
+     * executor and the build position are known, which is what separates a builder still walking
+     * from one that arrived and could not place.
+     */
+    private StringBuilder planColumns(Plan plan, String event, PlanState from, PlanState to, PlanBlocker blocker,
+                                      int blockedFrames, int starvedBehind, BuilderReading executor) {
+        PlanTrace trace = trace(plan);
         TilePosition buildPosition = plan.getBuildPosition();
         boolean cancelled = to == PlanState.CANCELLED;
         PlanCancelSource cancelSource = plan.getCancelSource();
-        Unit executor = gameState.executorOf(plan);
+        BuilderColumns executorColumns = BuilderColumns.current(executor);
 
         StringBuilder sb = new StringBuilder();
         appendEvent(sb, event);
         sb.append(plan.getPlanId()).append(',');
-        sb.append(executor == null ? "" : String.valueOf(executor.getID())).append(',');
+        sb.append(executorColumns.executorUnitId()).append(',');
         sb.append(planType(plan)).append(',');
         sb.append(Csv.sanitize(plan.getName())).append(',');
         sb.append(from == null ? "" : from.toString()).append(',');
@@ -705,20 +783,18 @@ public class PlanEventLogger implements PlanEventSink {
         sb.append(plan.isMacroHatchery()).append(',');
         sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
         sb.append(starvedBehind == NO_STARVED_COUNT ? "" : String.valueOf(starvedBehind)).append(',');
-        sb.append(builderDistance(executor, buildPosition)).append(',');
+        sb.append(executorColumns.distance()).append(',');
         return sb;
     }
 
-    /**
-     * How far the executor still is from the tile it was sent to, in pixels. Blank until both the
-     * executor and the build position are known, which is what separates a builder still walking
-     * from one that arrived and could not place.
-     */
-    private String builderDistance(Unit executor, TilePosition buildPosition) {
-        if (executor == null || buildPosition == null) {
-            return "";
+    /** The plan's executor read now, or null when the plan has none. */
+    private BuilderReading executorReading(Plan plan) {
+        Unit executor = gameState.executorOf(plan);
+        if (executor == null) {
+            return null;
         }
-        return String.valueOf(executor.getDistance(buildPosition.toPosition()));
+        ManagedUnit managedUnit = gameState.getManagedUnitLookup().get(executor);
+        return BuilderReading.of(executor, managedUnit == null ? null : managedUnit.getRole(), plan);
     }
 
     /** A row for a unit the build order wanted but never planned, so the plan columns are empty. */
@@ -735,7 +811,7 @@ public class PlanEventLogger implements PlanEventSink {
         appendEmpty(sb, 3);
         sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
         appendEmpty(sb, 2);
-        appendTrailing(sb, null, null, null, null, null, null, null);
+        appendTrailing(sb, null, null, null, null, null, null, BuilderColumns.BLANK);
         return sb.toString();
     }
 
@@ -755,7 +831,7 @@ public class PlanEventLogger implements PlanEventSink {
         sb.append(true).append(',');
         sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
         appendEmpty(sb, 2);
-        appendTrailing(sb, null, null, inputs, null, null, null, null);
+        appendTrailing(sb, null, null, inputs, null, null, null, BuilderColumns.BLANK);
         return sb.toString();
     }
 
@@ -775,7 +851,7 @@ public class PlanEventLogger implements PlanEventSink {
         sb.append(false).append(',');
         sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
         appendEmpty(sb, 2);
-        appendTrailing(sb, null, null, null, inputs, null, null, null);
+        appendTrailing(sb, null, null, null, inputs, null, null, BuilderColumns.BLANK);
         return sb.toString();
     }
 
@@ -797,7 +873,7 @@ public class PlanEventLogger implements PlanEventSink {
         sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
         appendEmpty(sb, 1);
         appendEmpty(sb, 1);
-        appendTrailing(sb, null, null, null, null, null, null, null);
+        appendTrailing(sb, null, null, null, null, null, null, BuilderColumns.BLANK);
         return sb.toString();
     }
 
@@ -815,7 +891,7 @@ public class PlanEventLogger implements PlanEventSink {
         appendEmpty(sb, 3);
         sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
         appendEmpty(sb, 2);
-        appendTrailing(sb, null, null, null, null, null, null, inputs);
+        appendTrailing(sb, null, null, null, null, null, inputs, BuilderColumns.BLANK);
         return sb.toString();
     }
 
@@ -835,7 +911,7 @@ public class PlanEventLogger implements PlanEventSink {
         appendEmpty(sb, 1);
         sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
         appendEmpty(sb, 2);
-        appendTrailing(sb, null, null, null, null, null, null, inputs);
+        appendTrailing(sb, null, null, null, null, null, inputs, BuilderColumns.BLANK);
         return sb.toString();
     }
 
@@ -852,7 +928,7 @@ public class PlanEventLogger implements PlanEventSink {
         appendEmpty(sb, 3);
         sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
         appendEmpty(sb, 2);
-        appendTrailing(sb, null, null, null, null, null, null, null);
+        appendTrailing(sb, null, null, null, null, null, null, BuilderColumns.BLANK);
         return sb.toString();
     }
 
@@ -872,7 +948,8 @@ public class PlanEventLogger implements PlanEventSink {
         appendEmpty(sb, 1);
         sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
         appendEmpty(sb, 2);
-        appendTrailing(sb, null, null, null, null, null, null, BaseEventInputs.baseLost(innerBase));
+        appendTrailing(sb, null, null, null, null, null, BaseEventInputs.baseLost(innerBase),
+                BuilderColumns.BLANK);
         return sb.toString();
     }
 
@@ -915,14 +992,15 @@ public class PlanEventLogger implements PlanEventSink {
      *     HIVE_TECH_TRIGGER and HIVE_TECH_WITHHELD
      * @param builderThreat what the plan's builder would walk into, or null when the row has no
      *     BUILDING plan with an executor behind it
-     * @param decision what the dispatch gate did, or null on every row but BUILDER_DISPATCH_DECISION
      * @param baseEvent the expansion or colony hold armed or the base lost, or null on every row but
      *     EXPANSION_BACKOFF, COLONY_BUILDER_BACKOFF and BASE_LOST
+     * @param builder the builder columns, {@link BuilderColumns#BLANK} on every row but
+     *     BUILD_AHEAD_HOLD, BUILD_AHEAD_EVICT, BUILDER_DISPATCH_DECISION, BUILDER_LOST and
+     *     BUILDER_REDISPATCH, and the carrier of builder_dispatch_decision
      */
     private void appendTrailing(StringBuilder sb, Position blockerMineral, Plan yieldTo,
                                 MacroHatcheryGateInputs macroHatchery, HiveTechGateInputs hiveTech,
-                                BuilderThreat builderThreat, BuilderDispatchDecision decision,
-                                BaseEventInputs baseEvent) {
+                                BuilderThreat builderThreat, BaseEventInputs baseEvent, BuilderColumns builder) {
         appendGameTotals(sb);
         sb.append(',');
         sb.append(blockerMineral == null ? "" : String.valueOf(blockerMineral.getX())).append(',');
@@ -942,12 +1020,15 @@ public class PlanEventLogger implements PlanEventSink {
         sb.append(builderThreat == null ? "" : String.valueOf(builderThreat.getSiteEnemies())).append(',');
         sb.append(builderThreat == null ? "" : String.valueOf(builderThreat.getRouteDefenseZones())).append(',');
         sb.append(builderThreat == null ? "" : String.valueOf(builderThreat.isBuilderAtSite())).append(',');
-        sb.append(decision == null ? "" : decision.toString()).append(',');
+        sb.append(orEmpty(builder.decision())).append(',');
         sb.append(baseEvent == null ? "" : orEmpty(baseEvent.lostExpansionBuilders)).append(',');
         sb.append(baseEvent == null ? "" : orEmpty(baseEvent.expansionHeldUntilFrame)).append(',');
         sb.append(builderThreat == null ? "" : String.valueOf(builderThreat.isSiteAtOurBase())).append(',');
         sb.append(builderThreat == null ? "" : String.valueOf(builderThreat.isBuilderAtOurBase())).append(',');
         sb.append(baseEvent == null ? "" : orEmpty(baseEvent.baseInner));
+        for (String cell : builder.trailing()) {
+            sb.append(',').append(cell);
+        }
     }
 
     private static String orEmpty(Object value) {
