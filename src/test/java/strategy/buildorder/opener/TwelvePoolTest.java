@@ -1,10 +1,17 @@
 package strategy.buildorder.opener;
 
+import bwapi.UnitType;
+import info.GameState;
+import macro.plan.BuildingPlan;
+import macro.plan.Plan;
+import macro.plan.UnitPlan;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -23,6 +30,34 @@ class TwelvePoolTest {
     private static final int TWELVE_DRONES = 12;
 
     private static final int ZERGLINGS_PER_PLAN = 2;
+
+    private static final int TWELVE_SUPPLY = 24;
+
+    private static final int ELEVEN_SUPPLY = 22;
+
+    private static final int FRAME = 2062;
+
+    /** Stands in for the plan factories so the real step walk runs without a live game. */
+    private static final class ScriptedTwelvePool extends TwelvePool {
+        @Override
+        protected Plan planUnit(GameState gameState, UnitType unitType) {
+            return new UnitPlan(unitType, FRAME);
+        }
+
+        @Override
+        protected Plan planSpawningPool(GameState gameState) {
+            return new BuildingPlan(UnitType.Zerg_Spawning_Pool, poolPriority(FRAME));
+        }
+
+        @Override
+        protected List<Plan> planUnknownRaceMacro(GameState gameState) {
+            return Collections.emptyList();
+        }
+    }
+
+    private static List<UnitType> planned(List<Plan> plans) {
+        return plans.stream().map(Plan::getPlannedUnit).collect(Collectors.toList());
+    }
 
     /** LVOUC0M9 frame 2062: the pool was queued the frame before and the opener handed off. */
     @Test
@@ -90,5 +125,46 @@ class TwelvePoolTest {
         }
         assertEquals(Arrays.asList(0, 2, 4), queuedAt);
         assertFalse(TwelvePool.shouldPlanZergling(ONE_POOL, TwelvePool.OPENING_ZERGLINGS));
+    }
+
+    @Test
+    void stepsQueueTheDroneBeforeThePool() {
+        List<Plan> plans = new ScriptedTwelvePool()
+                .planSteps(null, ELEVEN_DRONES, ELEVEN_SUPPLY, NO_POOL, NO_POOL, NO_ZERGLINGS, true);
+
+        assertEquals(Collections.singletonList(UnitType.Zerg_Drone), planned(plans));
+    }
+
+    @Test
+    void stepsQueueThePoolAtTwelveSupply() {
+        List<Plan> plans = new ScriptedTwelvePool()
+                .planSteps(null, TWELVE_DRONES, TWELVE_SUPPLY, NO_POOL, NO_POOL, NO_ZERGLINGS, true);
+
+        assertEquals(Collections.singletonList(UnitType.Zerg_Spawning_Pool), planned(plans));
+    }
+
+    /** LVOUC0M9 frames 2062-3385: the pool's drone is gone and the pool is going up. */
+    @Test
+    void stepsQueueNothingWhileThePoolIsCommittedButUnfinished() {
+        List<Plan> plans = new ScriptedTwelvePool()
+                .planSteps(null, ELEVEN_DRONES, ELEVEN_SUPPLY, ONE_POOL, NO_POOL, NO_ZERGLINGS, false);
+
+        assertTrue(plans.isEmpty());
+    }
+
+    @Test
+    void stepsQueueAZerglingRatherThanADroneOnceThePoolFinishes() {
+        List<Plan> plans = new ScriptedTwelvePool()
+                .planSteps(null, ELEVEN_DRONES, ELEVEN_SUPPLY, ONE_POOL, ONE_POOL, NO_ZERGLINGS, false);
+
+        assertEquals(Collections.singletonList(UnitType.Zerg_Zergling), planned(plans));
+    }
+
+    @Test
+    void stepsQueueTheReplacementDroneOnceTheOpeningZerglingsAreQueued() {
+        List<Plan> plans = new ScriptedTwelvePool()
+                .planSteps(null, ELEVEN_DRONES, ELEVEN_SUPPLY, ONE_POOL, ONE_POOL, TwelvePool.OPENING_ZERGLINGS, false);
+
+        assertEquals(Collections.singletonList(UnitType.Zerg_Drone), planned(plans));
     }
 }

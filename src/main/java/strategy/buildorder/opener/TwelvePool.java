@@ -45,21 +45,40 @@ public class TwelvePool extends BuildOrder {
 
     @Override
     protected List<Plan> buildPlans(GameState gameState) {
-        List<Plan> plans = new ArrayList<>();
-        TechProgression techProgression = gameState.getTechProgression();
+        return planSteps(gameState,
+                gameState.ourUnitCount(UnitType.Zerg_Drone),
+                gameState.getSupply(),
+                gameState.structureCount(Readiness.COMMITTED, UnitType.Zerg_Spawning_Pool),
+                gameState.structureCount(Readiness.USABLE, UnitType.Zerg_Spawning_Pool),
+                gameState.ourUnitCount(UnitType.Zerg_Zergling),
+                gameState.getTechProgression().canPlanPool());
+    }
 
-        int droneCount     = gameState.ourUnitCount(UnitType.Zerg_Drone);
-        int supplyUsed     = gameState.getSupply();
-        int committedPools = gameState.structureCount(Readiness.COMMITTED, UnitType.Zerg_Spawning_Pool);
-        int poolCount      = gameState.structureCount(Readiness.USABLE, UnitType.Zerg_Spawning_Pool);
-        int zerglingCount  = gameState.ourUnitCount(UnitType.Zerg_Zergling);
+    /**
+     * One pass of the opener's steps: drones to 12, the Spawning Pool at 12 supply, then the six
+     * opening zerglings once the pool finishes. Each step that queues a plan ends the pass. While
+     * the pool is committed but unfinished and the zerglings are not yet queued, every step is
+     * closed and the pass queues nothing.
+     *
+     * @param gameState current game state, passed through to the plan factories only
+     * @param droneCount drones living, morphing, and planned
+     * @param supplyUsed supply used now, in BWAPI's doubled units
+     * @param committedPools Spawning Pools standing, under construction, or claimed by a plan in flight
+     * @param poolCount Spawning Pools that have finished building
+     * @param zerglingCount zerglings living and planned, two per plan
+     * @param canPlanPool whether no Spawning Pool is standing or already claimed by a plan
+     * @return the plans for this frame
+     */
+    List<Plan> planSteps(GameState gameState, int droneCount, int supplyUsed, int committedPools, int poolCount,
+                         int zerglingCount, boolean canPlanPool) {
+        List<Plan> plans = new ArrayList<>();
 
         if (shouldPlanDrone(droneCount, committedPools, zerglingCount)) {
             plans.add(planUnit(gameState, UnitType.Zerg_Drone));
             return plans;
         }
 
-        if (shouldPlanPool(supplyUsed) && techProgression.canPlanPool()) {
+        if (shouldPlanPool(supplyUsed) && canPlanPool) {
             plans.add(planSpawningPool(gameState));
             return plans;
         }
