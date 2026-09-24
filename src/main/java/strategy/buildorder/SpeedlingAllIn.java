@@ -78,6 +78,11 @@ public class SpeedlingAllIn extends BuildOrder {
      */
     static final int DRONES_PER_EXTRA_HATCHERY = 1;
 
+    /**
+     * Living zerglings required before any drone above {@link #DRONE_TARGET_ONE_BASE} is planned.
+     */
+    static final int ZERGLINGS_BEFORE_EXTRA_DRONES = 12;
+
     private static final UnitType[] HATCHERY_TYPES = {
         UnitType.Zerg_Hatchery, UnitType.Zerg_Lair, UnitType.Zerg_Hive
     };
@@ -159,13 +164,14 @@ public class SpeedlingAllIn extends BuildOrder {
         int queuedZerglings = gameState.queuedUnitPlanCount(UnitType.Zerg_Zergling);
         boolean owesZergling = shouldPlanZergling(queuedZerglings, techProgression.isSpawningPool());
 
+        int zerglingCount = gameState.ourLivingUnitCount(UnitType.Zerg_Zergling);
         int droneTarget = droneTarget(baseData.currentBaseCount(), standingHatcheries(gameState));
-        if (shouldPlanDrone(gameState.numEconomyDrones(), droneTarget, gameState.canPlanDrone(), owesZergling)) {
+        if (shouldPlanDrone(gameState.numEconomyDrones(), droneTarget, zerglingCount, gameState.canPlanDrone(),
+                owesZergling)) {
             plans.add(this.planUnit(gameState, UnitType.Zerg_Drone));
             return plans;
         }
 
-        int zerglingCount = gameState.ourLivingUnitCount(UnitType.Zerg_Zergling);
         if (allInStalled(gameState.getGameTime(), zerglingCount, techProgression.isMetabolicBoost())) {
             plans.addAll(this.planStallUpgrades(gameState));
             if (!plans.isEmpty()) {
@@ -291,12 +297,28 @@ public class SpeedlingAllIn extends BuildOrder {
      * resume the moment it fills. Before the pool finishes no zergling is owed at all, so the
      * opening economy is untouched.
      *
+     * <p>Drones above {@link #DRONE_TARGET_ONE_BASE} wait for {@link #ZERGLINGS_BEFORE_EXTRA_DRONES}
+     * living zerglings. Once that army stands, the first of them is planned even while a zergling is
+     * owed, so at least one extra drone slips in ahead of the saturated zergling queue and income
+     * starts to grow; the rest wait on the zergling queue like the floor does.
+     *
      * @param economyDrones gathering plus queued drones, from {@link GameState#numEconomyDrones()}
      * @param droneTarget the total from {@link #droneTarget(int, int)}
+     * @param zerglings living zerglings
      * @param owesZergling whether {@link #shouldPlanZergling} wants a zergling this frame
      */
-    static boolean shouldPlanDrone(int economyDrones, int droneTarget, boolean canPlanDrone, boolean owesZergling) {
-        return !owesZergling && economyDrones < droneTarget && canPlanDrone;
+    static boolean shouldPlanDrone(int economyDrones, int droneTarget, int zerglings, boolean canPlanDrone,
+                                   boolean owesZergling) {
+        if (!canPlanDrone || economyDrones >= droneTarget) {
+            return false;
+        }
+        if (economyDrones < DRONE_TARGET_ONE_BASE) {
+            return !owesZergling;
+        }
+        if (zerglings < ZERGLINGS_BEFORE_EXTRA_DRONES) {
+            return false;
+        }
+        return economyDrones == DRONE_TARGET_ONE_BASE || !owesZergling;
     }
 
     /**
