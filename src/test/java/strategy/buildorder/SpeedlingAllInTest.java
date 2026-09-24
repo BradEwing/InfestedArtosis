@@ -28,6 +28,8 @@ class SpeedlingAllInTest {
 
     private static final int TWO_BASE_TARGET = SpeedlingAllIn.droneTarget(2, 2);
 
+    private static final int ARMY = SpeedlingAllIn.ZERGLINGS_BEFORE_EXTRA_DRONES;
+
     private static final ToIntFunction<UnitType> NOTHING_OBSERVED = unitType -> 0;
 
     private static ToIntFunction<UnitType> observed(UnitType... unitTypes) {
@@ -91,33 +93,54 @@ class SpeedlingAllInTest {
 
     @Test
     void derivesTheDroneBelowTheTarget() {
-        assertTrue(SpeedlingAllIn.shouldPlanDrone(ONE_BASE_TARGET - 1, ONE_BASE_TARGET, true, false));
-        assertTrue(SpeedlingAllIn.shouldPlanDrone(12, 13, true, false));
+        assertTrue(SpeedlingAllIn.shouldPlanDrone(ONE_BASE_TARGET - 1, ONE_BASE_TARGET, ARMY, true, false));
+        assertTrue(SpeedlingAllIn.shouldPlanDrone(12, 13, ARMY, true, false));
     }
 
     @Test
     void withholdsTheDroneOnceTheTargetIsMet() {
-        assertFalse(SpeedlingAllIn.shouldPlanDrone(ONE_BASE_TARGET, ONE_BASE_TARGET, true, false));
-        assertFalse(SpeedlingAllIn.shouldPlanDrone(ONE_BASE_TARGET + 1, ONE_BASE_TARGET, true, false));
-        assertFalse(SpeedlingAllIn.shouldPlanDrone(13, 13, true, false));
+        assertFalse(SpeedlingAllIn.shouldPlanDrone(ONE_BASE_TARGET, ONE_BASE_TARGET, ARMY, true, false));
+        assertFalse(SpeedlingAllIn.shouldPlanDrone(ONE_BASE_TARGET + 1, ONE_BASE_TARGET, ARMY, true, false));
+        assertFalse(SpeedlingAllIn.shouldPlanDrone(13, 13, ARMY, true, false));
     }
 
     @Test
     void withholdsTheDroneWhileTheEconomicGateIsClosed() {
-        assertFalse(SpeedlingAllIn.shouldPlanDrone(0, ONE_BASE_TARGET, false, false));
-        assertFalse(SpeedlingAllIn.shouldPlanDrone(12, 13, false, false));
+        assertFalse(SpeedlingAllIn.shouldPlanDrone(0, ONE_BASE_TARGET, ARMY, false, false));
+        assertFalse(SpeedlingAllIn.shouldPlanDrone(12, 13, ARMY, false, false));
     }
 
     @Test
     void derivesTheDroneReplacementAfterLosingTheEconomy() {
-        assertTrue(SpeedlingAllIn.shouldPlanDrone(1, ONE_BASE_TARGET, true, false));
+        assertTrue(SpeedlingAllIn.shouldPlanDrone(1, ONE_BASE_TARGET, ARMY, true, false));
     }
 
     @Test
     void withholdsTheDroneWhileAZerglingIsOwed() {
-        assertFalse(SpeedlingAllIn.shouldPlanDrone(0, ONE_BASE_TARGET, true, true));
-        assertFalse(SpeedlingAllIn.shouldPlanDrone(ONE_BASE_TARGET - 1, ONE_BASE_TARGET, true, true));
-        assertFalse(SpeedlingAllIn.shouldPlanDrone(12, 13, true, true));
+        assertFalse(SpeedlingAllIn.shouldPlanDrone(0, ONE_BASE_TARGET, ARMY, true, true));
+        assertFalse(SpeedlingAllIn.shouldPlanDrone(ONE_BASE_TARGET - 1, ONE_BASE_TARGET, ARMY, true, true));
+        assertFalse(SpeedlingAllIn.shouldPlanDrone(12, 13, ARMY, true, true));
+    }
+
+    @Test
+    void withholdsDronesAboveElevenUntilTheZerglingArmyStands() {
+        int fewerLings = SpeedlingAllIn.ZERGLINGS_BEFORE_EXTRA_DRONES - 1;
+
+        assertFalse(SpeedlingAllIn.shouldPlanDrone(ONE_BASE_TARGET, TWO_BASE_TARGET, fewerLings, true, false));
+        assertFalse(SpeedlingAllIn.shouldPlanDrone(ONE_BASE_TARGET, TWO_BASE_TARGET, 0, true, true));
+        assertTrue(SpeedlingAllIn.shouldPlanDrone(ONE_BASE_TARGET - 1, TWO_BASE_TARGET, 0, true, false));
+    }
+
+    @Test
+    void slipsTheFirstExtraDroneInAheadOfAnOwedZergling() {
+        assertTrue(SpeedlingAllIn.shouldPlanDrone(ONE_BASE_TARGET, TWO_BASE_TARGET, ARMY, true, true));
+        assertFalse(SpeedlingAllIn.shouldPlanDrone(ONE_BASE_TARGET, TWO_BASE_TARGET, ARMY, false, true));
+    }
+
+    @Test
+    void holdsLaterExtraDronesBehindAnOwedZergling() {
+        assertFalse(SpeedlingAllIn.shouldPlanDrone(ONE_BASE_TARGET + 1, ONE_BASE_TARGET + 3, ARMY, true, true));
+        assertTrue(SpeedlingAllIn.shouldPlanDrone(ONE_BASE_TARGET + 1, ONE_BASE_TARGET + 3, ARMY, true, false));
     }
 
     @Test
@@ -125,7 +148,7 @@ class SpeedlingAllInTest {
         boolean owesZergling = SpeedlingAllIn.shouldPlanZergling(0, true);
 
         assertTrue(owesZergling);
-        assertFalse(SpeedlingAllIn.shouldPlanDrone(0, ONE_BASE_TARGET, true, owesZergling));
+        assertFalse(SpeedlingAllIn.shouldPlanDrone(0, ONE_BASE_TARGET, ARMY, true, owesZergling));
     }
 
     @Test
@@ -133,7 +156,7 @@ class SpeedlingAllInTest {
         boolean owesZergling = SpeedlingAllIn.shouldPlanZergling(SpeedlingAllIn.MAX_QUEUED_ZERGLING_PLANS, true);
 
         assertFalse(owesZergling);
-        assertTrue(SpeedlingAllIn.shouldPlanDrone(0, ONE_BASE_TARGET, true, owesZergling));
+        assertTrue(SpeedlingAllIn.shouldPlanDrone(0, ONE_BASE_TARGET, ARMY, true, owesZergling));
     }
 
     @Test
@@ -141,14 +164,14 @@ class SpeedlingAllInTest {
         boolean owesZergling = SpeedlingAllIn.shouldPlanZergling(0, false);
 
         assertFalse(owesZergling);
-        assertTrue(SpeedlingAllIn.shouldPlanDrone(0, ONE_BASE_TARGET, true, owesZergling));
+        assertTrue(SpeedlingAllIn.shouldPlanDrone(0, ONE_BASE_TARGET, ARMY, true, owesZergling));
     }
 
     @Test
     void reachesTheDroneTargetOnceTheZerglingQueueIsSaturated() {
         int queuedZerglings = SpeedlingAllIn.MAX_QUEUED_ZERGLING_PLANS;
         int economyDrones = 0;
-        while (SpeedlingAllIn.shouldPlanDrone(economyDrones, TWO_BASE_TARGET, true,
+        while (SpeedlingAllIn.shouldPlanDrone(economyDrones, TWO_BASE_TARGET, ARMY, true,
                 SpeedlingAllIn.shouldPlanZergling(queuedZerglings, true))) {
             economyDrones++;
         }
