@@ -8,6 +8,7 @@ import info.BaseData;
 import info.GameState;
 import info.Readiness;
 import info.TechProgression;
+import macro.ProductionQueue;
 import macro.plan.Plan;
 import util.Time;
 
@@ -91,9 +92,13 @@ public class SpeedlingAllIn extends BuildOrder {
 
     static final int MAX_QUEUED_ZERGLING_PLANS = 6;
 
+    static final int OPENING_ZERGLING_PLANS = MAX_QUEUED_ZERGLING_PLANS;
+
     static final int STALL_ZERGLINGS = 12;
 
     static final Time STALL_TIME = new Time(8, 0);
+
+    private final List<Plan> openingZerglings = new ArrayList<>();
 
     public SpeedlingAllIn() {
         super("SpeedlingAllIn");
@@ -139,7 +144,7 @@ public class SpeedlingAllIn extends BuildOrder {
             return plans;
         }
 
-        if (gameState.canPlanUpgrade(UpgradeType.Metabolic_Boost)) {
+        if (shouldPlanSpeed(gameState.canPlanUpgrade(UpgradeType.Metabolic_Boost), openingZerglings.size())) {
             plans.add(this.planUpgrade(gameState, UpgradeType.Metabolic_Boost));
             return plans;
         }
@@ -169,7 +174,9 @@ public class SpeedlingAllIn extends BuildOrder {
         }
 
         if (owesZergling) {
-            plans.add(this.planUnit(gameState, UnitType.Zerg_Zergling));
+            Plan zergling = this.planUnit(gameState, UnitType.Zerg_Zergling);
+            recordOpeningZergling(zergling);
+            plans.add(zergling);
         }
 
         return plans;
@@ -195,6 +202,40 @@ public class SpeedlingAllIn extends BuildOrder {
             }
         }
         return false;
+    }
+
+    /**
+     * Keeps the first {@link #OPENING_ZERGLING_PLANS} zergling plans this build creates, which are
+     * the opening zerglings Metabolic Boost waits behind.
+     */
+    void recordOpeningZergling(Plan zergling) {
+        if (openingZerglings.size() < OPENING_ZERGLING_PLANS) {
+            openingZerglings.add(zergling);
+        }
+    }
+
+    int openingZerglingPlans() {
+        return openingZerglings.size();
+    }
+
+    /**
+     * True until every opening zergling plan has been created and has left the production queue.
+     *
+     * <p>A research plan short only of minerals holds every plan behind it in the scan, so Metabolic
+     * Boost pulled ahead of an opening zergling still waiting in the queue would hold that zergling
+     * until the upgrade is funded. A plan that has left the queue has already reserved its larva and
+     * cost, and the scan no longer reaches it.
+     */
+    @Override
+    public boolean holdsSpeedUpgrade(GameState gameState) {
+        return holdsSpeedUpgrade(gameState.getProductionQueue());
+    }
+
+    boolean holdsSpeedUpgrade(ProductionQueue productionQueue) {
+        if (openingZerglings.size() < OPENING_ZERGLING_PLANS) {
+            return true;
+        }
+        return openingZerglings.stream().anyMatch(productionQueue::contains);
     }
 
     private List<Plan> planStallUpgrades(GameState gameState) {
@@ -313,6 +354,18 @@ public class SpeedlingAllIn extends BuildOrder {
             return true;
         }
         return hatcheryTotal < MAX_HATCHERIES && availableMinerals >= SURPLUS_MINERALS;
+    }
+
+    /**
+     * Metabolic Boost is planned only once the opening zergling plans have been created. Plan
+     * priority is the frame a plan was queued on, so the upgrade then sorts behind all of them and
+     * its research claim cannot hold them.
+     *
+     * @param canPlanUpgrade whether {@link GameState#canPlanUpgrade} allows Metabolic Boost
+     * @param openingZerglingPlans opening zergling plans this build has created so far
+     */
+    static boolean shouldPlanSpeed(boolean canPlanUpgrade, int openingZerglingPlans) {
+        return canPlanUpgrade && openingZerglingPlans >= OPENING_ZERGLING_PLANS;
     }
 
     /**

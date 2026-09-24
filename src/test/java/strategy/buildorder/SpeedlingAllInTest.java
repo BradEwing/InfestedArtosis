@@ -2,12 +2,19 @@ package strategy.buildorder;
 
 import bwapi.Race;
 import bwapi.UnitType;
+import bwapi.UpgradeType;
 import info.TechProgression;
+import macro.ProductionQueue;
+import macro.plan.Plan;
+import macro.plan.UnitPlan;
+import macro.plan.UpgradePlan;
 import org.junit.jupiter.api.Test;
 import strategy.BuildOrderFactory;
 import util.Time;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.function.ToIntFunction;
 
@@ -29,6 +36,19 @@ class SpeedlingAllInTest {
     private static final int TWO_BASE_TARGET = SpeedlingAllIn.droneTarget(2, 2);
 
     private static final ToIntFunction<UnitType> NOTHING_OBSERVED = unitType -> 0;
+
+    private static final int POOL_COMPLETE_FRAME = 3726;
+
+    private static List<Plan> queueOpeningZerglings(SpeedlingAllIn buildOrder, ProductionQueue queue) {
+        List<Plan> opening = new ArrayList<>();
+        for (int i = 0; i < SpeedlingAllIn.OPENING_ZERGLING_PLANS; i++) {
+            Plan zergling = new UnitPlan(UnitType.Zerg_Zergling, POOL_COMPLETE_FRAME + i);
+            buildOrder.recordOpeningZergling(zergling);
+            queue.add(zergling);
+            opening.add(zergling);
+        }
+        return opening;
+    }
 
     private static ToIntFunction<UnitType> observed(UnitType... unitTypes) {
         Map<UnitType, Integer> counts = new HashMap<>();
@@ -350,6 +370,118 @@ class SpeedlingAllInTest {
                 BuildOrderFactory factory = new BuildOrderFactory(startingLocations, race);
                 assertNotNull(factory.getByName("SpeedlingAllIn"));
                 assertTrue(factory.getPlayableNonOpenerNames().contains("SpeedlingAllIn"));
+            }
+        }
+    }
+
+    @Test
+    void withholdsSpeedUntilTheSixthOpeningZerglingIsQueued() {
+        for (int plans = 0; plans < SpeedlingAllIn.OPENING_ZERGLING_PLANS; plans++) {
+            assertFalse(SpeedlingAllIn.shouldPlanSpeed(true, plans), plans + " opening plans");
+        }
+        assertTrue(SpeedlingAllIn.shouldPlanSpeed(true, SpeedlingAllIn.OPENING_ZERGLING_PLANS));
+    }
+
+    @Test
+    void withholdsSpeedWhileTheUpgradeCannotBePlanned() {
+        for (int plans = 0; plans <= SpeedlingAllIn.OPENING_ZERGLING_PLANS + 1; plans++) {
+            assertFalse(SpeedlingAllIn.shouldPlanSpeed(false, plans), plans + " opening plans");
+        }
+    }
+
+    /**
+     * The pool completes with the Extractor already finished, so the speed and zergling branches
+     * open on the same frame. Taken in the order buildPlans takes them, one plan per frame, the six
+     * opening zerglings come first and Metabolic Boost sorts behind all of them.
+     */
+    @Test
+    void queuesMetabolicBoostBehindTheSixOpeningZerglingsOnThePoolFrame() {
+        SpeedlingAllIn buildOrder = new SpeedlingAllIn();
+        ProductionQueue queue = new ProductionQueue();
+        List<Plan> emitted = new ArrayList<>();
+        boolean speedPlanned = false;
+
+        for (int frame = POOL_COMPLETE_FRAME; frame < POOL_COMPLETE_FRAME + 7; frame++) {
+            if (SpeedlingAllIn.shouldPlanSpeed(!speedPlanned, buildOrder.openingZerglingPlans())) {
+                Plan speed = new UpgradePlan(UpgradeType.Metabolic_Boost, frame);
+                speedPlanned = true;
+                queue.add(speed);
+                emitted.add(speed);
+            } else if (SpeedlingAllIn.shouldPlanZergling(queue.unitPlanCount(UnitType.Zerg_Zergling), true)) {
+                Plan zergling = new UnitPlan(UnitType.Zerg_Zergling, frame);
+                buildOrder.recordOpeningZergling(zergling);
+                queue.add(zergling);
+                emitted.add(zergling);
+            }
+        }
+
+        assertEquals(7, emitted.size());
+        for (int i = 0; i < SpeedlingAllIn.OPENING_ZERGLING_PLANS; i++) {
+            assertEquals(UnitType.Zerg_Zergling, emitted.get(i).getPlannedUnit(), "plan " + i);
+        }
+        Plan speed = emitted.get(6);
+        assertEquals(UpgradeType.Metabolic_Boost, speed.getPlannedUpgrade());
+        assertTrue(speed.getPriority() > emitted.get(5).getPriority());
+        assertEquals(speed, queue.toSortedList().get(queue.size() - 1));
+    }
+
+    @Test
+    void recordsOnlyTheFirstSixZerglingPlansAsTheOpening() {
+        SpeedlingAllIn buildOrder = new SpeedlingAllIn();
+        for (int i = 0; i < SpeedlingAllIn.OPENING_ZERGLING_PLANS + 3; i++) {
+            buildOrder.recordOpeningZergling(new UnitPlan(UnitType.Zerg_Zergling, POOL_COMPLETE_FRAME + i));
+        }
+
+        assertEquals(SpeedlingAllIn.OPENING_ZERGLING_PLANS, buildOrder.openingZerglingPlans());
+    }
+
+    @Test
+    void holdsSpeedBeforeTheOpeningZerglingsAreQueued() {
+        assertTrue(new SpeedlingAllIn().holdsSpeedUpgrade(new ProductionQueue()));
+    }
+
+    @Test
+    void holdsSpeedWhileAnyOpeningZerglingIsStillQueued() {
+        SpeedlingAllIn buildOrder = new SpeedlingAllIn();
+        ProductionQueue queue = new ProductionQueue();
+        List<Plan> opening = queueOpeningZerglings(buildOrder, queue);
+
+        for (int i = 0; i < opening.size() - 1; i++) {
+            queue.remove(opening.get(i));
+            assertTrue(buildOrder.holdsSpeedUpgrade(queue), (i + 1) + " opening plans left the queue");
+        }
+    }
+
+    @Test
+    void releasesSpeedOnceEveryOpeningZerglingHasLeftTheQueue() {
+        SpeedlingAllIn buildOrder = new SpeedlingAllIn();
+        ProductionQueue queue = new ProductionQueue();
+        List<Plan> opening = queueOpeningZerglings(buildOrder, queue);
+        opening.forEach(queue::remove);
+        queue.add(new UnitPlan(UnitType.Zerg_Zergling, POOL_COMPLETE_FRAME + 100));
+
+        assertFalse(buildOrder.holdsSpeedUpgrade(queue));
+    }
+
+    @Test
+    void holdsSpeedAgainWhileARequeuedOpeningZerglingWaits() {
+        SpeedlingAllIn buildOrder = new SpeedlingAllIn();
+        ProductionQueue queue = new ProductionQueue();
+        List<Plan> opening = queueOpeningZerglings(buildOrder, queue);
+        opening.forEach(queue::remove);
+        queue.add(opening.get(0));
+
+        assertTrue(buildOrder.holdsSpeedUpgrade(queue));
+    }
+
+    @Test
+    void noOtherBuildOrderHoldsSpeed() {
+        for (Race race : new Race[]{Race.Protoss, Race.Terran, Race.Zerg, Race.Unknown}) {
+            BuildOrderFactory factory = new BuildOrderFactory(4, race);
+            for (String name : factory.getAllBuildOrderNames()) {
+                if (!"SpeedlingAllIn".equals(name)) {
+                    assertFalse(factory.getByName(name).holdsSpeedUpgrade(null), name + " against " + race);
+                }
             }
         }
     }
