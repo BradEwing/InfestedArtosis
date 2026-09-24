@@ -1,5 +1,6 @@
 package util;
 
+import bwapi.Position;
 import bwapi.Unit;
 import bwapi.UnitType;
 import bwapi.WeaponType;
@@ -7,19 +8,20 @@ import unit.squad.horizon.HorizonCombatSimulator;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Supplier;
 
 /**
  * Picks a fight target from a candidate list. Every candidate is assigned a {@link Priority} tier and
  * the highest tier wins outright. Within a tier, a melee attacker prefers a target that is not yet
  * saturated with melee attackers from its squad; after that, nearer, more injured candidates score higher,
- * a ground attacker's score halves for a target inside enemy ground static defence reach, and the current
- * target keeps a stickiness bonus.
+ * a ground attacker's score halves for a target inside enemy ground static defence reach (unless the target is
+ * itself a structure that fires on ground units), and the current target keeps a stickiness bonus.
  *
  * <p>Tiers, highest first:
  * <ul>
  *   <li>CRITICAL: anything that can attack the attacker's layer, workers that are attacking, and a Medic
- *       that is nearer than every such candidate or is within its seek range of an injured biological
- *       candidate it can heal</li>
+ *       that is nearer than the nearest such candidate still open to the attacker (the nearest one when all
+ *       are saturated) or is within its seek range of an injured biological candidate it can heal</li>
  *   <li>ELEVATED: other workers</li>
  *   <li>NORMAL: mobile units that cannot attack the attacker's layer</li>
  *   <li>LOW: buildings, including hostile buildings that cannot attack the attacker's layer</li>
@@ -199,14 +201,23 @@ public final class TargetScorer {
         return weapon != null && weapon != WeaponType.None;
     }
 
+    /**
+     * @return distance to the nearest candidate whose own reason is CRITICAL and that is not saturated for the
+     *     attacker, or to the nearest CRITICAL candidate when every one is saturated, or Integer.MAX_VALUE when
+     *     there is none
+     */
     private static int nearestThreatDistance(boolean attackerIsFlying, List<Candidate> candidates) {
         int nearest = Integer.MAX_VALUE;
+        int nearestOpen = Integer.MAX_VALUE;
         for (Candidate candidate : candidates) {
             if (candidate.baseReason(attackerIsFlying).priority() == Priority.CRITICAL) {
                 nearest = Math.min(nearest, candidate.distance);
+                if (!candidate.saturated()) {
+                    nearestOpen = Math.min(nearestOpen, candidate.distance);
+                }
             }
         }
-        return nearest;
+        return nearestOpen != Integer.MAX_VALUE ? nearestOpen : nearest;
     }
 
     private static Candidate toCandidate(Unit attacker, UnitType attackerType, Unit candidate, Unit currentTarget,
@@ -215,11 +226,31 @@ public final class TargetScorer {
         double hpFraction = (double) (candidate.getHitPoints() + candidate.getShields())
                 / (type.maxHitPoints() + type.maxShields());
         boolean isCurrent = currentTarget != null && candidate.getID() == currentTarget.getID();
-        return new Candidate(type, attacker.getDistance(candidate), hpFraction, isCurrent,
-                Filter.isMeanWorker(candidate))
-                .withMeleeLoad(ledger.meleeAssigned(candidate.getID()), loadCap(attackerType, type))
-                .withGroundDefense(!type.isBuilding() && ledger.insideGroundDefense(candidate.getPosition()))
+        Candidate base = new Candidate(type, attacker.getDistance(candidate), hpFraction, isCurrent,
+                Filter.isMeanWorker(candidate));
+        return withLedger(base, attackerType, attacker.isFlying(), candidate.getID(), candidate::getPosition, ledger)
                 .withHealingInjuredBio(type == UnitType.Terran_Medic && healsAnyCandidate(candidate, candidates));
+    }
+
+    /**
+     * Applies the squad's ledger to a candidate: the melee load already on it with the attacker's cap, and, for a
+     * ground attacker, whether it stands inside enemy ground static defence. The position is read only when that
+     * check is needed.
+     */
+    static Candidate withLedger(Candidate candidate, UnitType attackerType, boolean attackerIsFlying, int targetId,
+                                Supplier<Position> position, TargetLedger ledger) {
+        boolean covered = !attackerIsFlying && ledger.hasGroundDefense()
+                && isPenalizedByGroundDefense(candidate.type()) && ledger.insideGroundDefense(position.get());
+        return candidate.withMeleeLoad(ledger.meleeAssigned(targetId), loadCap(attackerType, candidate.type()))
+                .withGroundDefense(covered);
+    }
+
+    /**
+     * Whether a candidate standing inside enemy ground static defence has its score reduced: every candidate but
+     * a structure that itself fires on ground units, which stands inside its own zone.
+     */
+    static boolean isPenalizedByGroundDefense(UnitType type) {
+        return !type.isBuilding() || !canAttackType(type, false);
     }
 
     /**
@@ -289,6 +320,14 @@ public final class TargetScorer {
             return assignedMelee;
         }
 
+        int meleeCap() {
+            return meleeCap;
+        }
+
+        boolean inGroundDefense() {
+            return inGroundDefense;
+        }
+
         boolean saturated() {
             return assignedMelee >= meleeCap;
         }
@@ -298,8 +337,7 @@ public final class TargetScorer {
         }
 
         /**
-         * @param nearestThreat distance to the nearest candidate whose own reason is CRITICAL, or
-         *     Integer.MAX_VALUE when there is none
+         * @param nearestThreat distance from {@link TargetScorer#nearestThreatDistance}
          */
         Reason reason(boolean attackerIsFlying, int nearestThreat) {
             Reason base = baseReason(attackerIsFlying);

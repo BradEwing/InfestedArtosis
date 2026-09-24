@@ -35,6 +35,26 @@ class TargetLedgerTest {
     }
 
     @Test
+    void onlyMeleePicksAreCounted() {
+        TargetLedger ledger = TargetLedger.empty();
+
+        ledger.record(UnitType.Zerg_Zergling, 7);
+        ledger.record(UnitType.Zerg_Hydralisk, 7);
+        ledger.record(UnitType.Zerg_Mutalisk, 7);
+
+        assertEquals(1, ledger.meleeAssigned(7));
+    }
+
+    @Test
+    void aLedgerWithOnlyAntiAirDefenceHasNoGroundDefence() {
+        TargetLedger turretOnly = new TargetLedger("s", Arrays.asList(
+                new StaticDefenseZone(UnitType.Terran_Missile_Turret, TURRET, 224)));
+
+        assertFalse(turretOnly.hasGroundDefense());
+        assertTrue(ledgerWithBunkerAndTurret().hasGroundDefense());
+    }
+
+    @Test
     void aBunkerCountsAsGroundDefenceAndATurretDoesNot() {
         TargetLedger ledger = ledgerWithBunkerAndTurret();
 

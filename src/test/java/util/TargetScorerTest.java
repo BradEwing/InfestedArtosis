@@ -1,13 +1,16 @@
 package util;
 
+import bwapi.Position;
 import bwapi.UnitType;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -178,10 +181,13 @@ class TargetScorerTest {
         for (int ling = 0; ling < 20; ling++) {
             List<TargetScorer.Candidate> candidates = new ArrayList<>();
             for (int t = 0; t < types.length; t++) {
-                candidates.add(lingOn(types[t], baseDistances[t] + ling, ledger.meleeAssigned(targetIds[t])));
+                TargetScorer.Candidate base = new TargetScorer.Candidate(types[t], baseDistances[t] + ling, 1.0,
+                        false, false);
+                candidates.add(TargetScorer.withLedger(base, UnitType.Zerg_Zergling, ZERGLING, targetIds[t],
+                        () -> new Position(0, 0), ledger));
             }
             int chosen = TargetScorer.selectIndex(ZERGLING, candidates);
-            ledger.recordMelee(targetIds[chosen]);
+            ledger.record(UnitType.Zerg_Zergling, targetIds[chosen]);
             picks.merge(chosen, 1, Integer::sum);
         }
 
@@ -192,6 +198,84 @@ class TargetScorerTest {
         }
         assertEquals(20, picks.values().stream().mapToInt(Integer::intValue).sum());
         assertTrue(picks.size() > 1);
+        assertTrue(ledger.meleeAssigned(201) > 0, "the nearer Medic was never chosen");
+    }
+
+    @Test
+    void aSaturatedNearestMarineDoesNotHideANearerMedicFromTheNextLing() {
+        int cap = TargetScorer.meleeCap(UnitType.Terran_Marine, UnitType.Zerg_Zergling);
+        List<TargetScorer.Candidate> candidates = Arrays.asList(
+                lingOn(UnitType.Terran_Marine, 30, cap), lingOn(UnitType.Terran_Medic, 50, 0),
+                lingOn(UnitType.Terran_Marine, 200, 0));
+
+        assertEquals(1, TargetScorer.selectIndex(ZERGLING, candidates));
+        assertEquals(TargetScorer.Reason.MEDIC_NEARER, TargetScorer.reasonAt(ZERGLING, candidates, 1));
+    }
+
+    @Test
+    void whenEveryThreatIsSaturatedAMedicMustBeNearerThanTheNearestOne() {
+        int cap = TargetScorer.meleeCap(UnitType.Terran_Marine, UnitType.Zerg_Zergling);
+        List<TargetScorer.Candidate> candidates = Arrays.asList(
+                lingOn(UnitType.Terran_Marine, 30, cap), lingOn(UnitType.Terran_Medic, 50, 0));
+
+        assertEquals(TargetScorer.Reason.UNARMED, TargetScorer.reasonAt(ZERGLING, candidates, 1));
+    }
+
+    @Test
+    void aMutaliskAlsoPromotesAMedicNearerThanTheNearestMarine() {
+        List<TargetScorer.Candidate> candidates = Arrays.asList(
+                at(UnitType.Terran_Marine, 120), at(UnitType.Terran_Medic, 40));
+
+        assertEquals(1, TargetScorer.selectIndex(MUTALISK, candidates));
+        assertEquals(TargetScorer.Reason.MEDIC_NEARER, TargetScorer.reasonAt(MUTALISK, candidates, 1));
+    }
+
+    @Test
+    void theLedgerSetsTheLoadAndCapForAMeleeAttackerAndNoCapForARangedOne() {
+        TargetLedger ledger = TargetLedger.empty();
+        ledger.record(UnitType.Zerg_Zergling, 5);
+        ledger.record(UnitType.Zerg_Zergling, 5);
+
+        TargetScorer.Candidate forLing = TargetScorer.withLedger(at(UnitType.Terran_Marine, 50),
+                UnitType.Zerg_Zergling, ZERGLING, 5, () -> new Position(0, 0), ledger);
+        TargetScorer.Candidate forHydra = TargetScorer.withLedger(at(UnitType.Terran_Marine, 50),
+                UnitType.Zerg_Hydralisk, false, 5, () -> new Position(0, 0), ledger);
+
+        assertEquals(2, forLing.assignedMelee());
+        assertEquals(TargetScorer.meleeCap(UnitType.Terran_Marine, UnitType.Zerg_Zergling), forLing.meleeCap());
+        assertEquals(Integer.MAX_VALUE, forHydra.meleeCap());
+    }
+
+    @Test
+    void theLedgerMarksACoveredUnitOrDepotButNotTheDefenceStructureItself() {
+        Position bunker = new Position(1000, 1000);
+        TargetLedger ledger = new TargetLedger("s",
+                Collections.singletonList(new StaticDefenseZone(UnitType.Terran_Bunker, bunker, 160)));
+        Position near = new Position(1080, 1000);
+
+        assertTrue(covered(ledger, UnitType.Terran_Marine, near));
+        assertTrue(covered(ledger, UnitType.Terran_Supply_Depot, near));
+        assertFalse(covered(ledger, UnitType.Terran_Bunker, bunker));
+        assertFalse(covered(ledger, UnitType.Terran_Marine, new Position(1500, 1000)));
+    }
+
+    @Test
+    void aFlyingAttackerOrAnEmptyLedgerNeverReadsTheCandidatePosition() {
+        TargetLedger withBunker = new TargetLedger("s", Collections.singletonList(
+                new StaticDefenseZone(UnitType.Terran_Bunker, new Position(1000, 1000), 160)));
+        Supplier<Position> unreadable = () -> {
+            throw new AssertionError("position read");
+        };
+
+        TargetScorer.withLedger(at(UnitType.Terran_Marine, 50), UnitType.Zerg_Mutalisk, MUTALISK, 1, unreadable,
+                withBunker);
+        TargetScorer.withLedger(at(UnitType.Terran_Marine, 50), UnitType.Zerg_Zergling, ZERGLING, 1, unreadable,
+                TargetLedger.empty());
+    }
+
+    private static boolean covered(TargetLedger ledger, UnitType type, Position position) {
+        return TargetScorer.withLedger(at(type, 50), UnitType.Zerg_Zergling, ZERGLING, 1, () -> position, ledger)
+                .inGroundDefense();
     }
 
     @Test

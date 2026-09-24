@@ -2,6 +2,7 @@ package util;
 
 import bwapi.Position;
 import bwapi.Unit;
+import bwapi.UnitType;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -59,13 +60,24 @@ public final class TargetLedger {
      * Counts the attacker against its target when it fights in melee; ranged picks are not counted.
      */
     public void recordPick(Unit attacker, Unit target) {
-        if (TargetScorer.isMelee(attacker.getType())) {
-            recordMelee(target.getID());
+        record(attacker.getType(), target.getID());
+    }
+
+    void record(UnitType attackerType, int targetId) {
+        if (TargetScorer.isMelee(attackerType)) {
+            recordMelee(targetId);
         }
     }
 
     void recordMelee(int targetId) {
         meleeAssigned.merge(targetId, 1, Integer::sum);
+    }
+
+    /**
+     * @return true when any enemy static defence that fires on ground units is known
+     */
+    public boolean hasGroundDefense() {
+        return !groundDefenseZones.isEmpty();
     }
 
     /**
