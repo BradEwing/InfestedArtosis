@@ -63,6 +63,12 @@ public class GameState {
     private static final int BUNKER_BULLET_RADIUS = 224;
     private static final int BUNKER_SHOT_GRACE_FRAMES = 2;
 
+    /**
+     * Gatherers required before a base other than the main and the natural may take Sunken or
+     * Spore Colonies. Tuning constant.
+     */
+    public static final int OUTER_BASE_DEFENSE_MIN_GATHERERS = 20;
+
     private Game game;
     private Config config;
     private Player self;
@@ -1362,6 +1368,38 @@ public class GameState {
         return position;
     }
 
+    /**
+     * Whether a base may take static defense on the current economy. The main and the natural always
+     * may; any other base waits for {@link #OUTER_BASE_DEFENSE_MIN_GATHERERS} gatherers. The main's own
+     * {@link BaseData#isAllowSunkenAtMain()} gate is applied separately.
+     *
+     * @param innerBase whether the base is our main or our natural
+     * @param gatherers drones currently on a resource, excluding queued drone plans
+     * @return true when the base may take Sunken or Spore Colonies
+     */
+    static boolean mayDefendBase(boolean innerBase, int gatherers) {
+        return innerBase || gatherers >= OUTER_BASE_DEFENSE_MIN_GATHERERS;
+    }
+
+    private boolean mayDefendBase(Base base) {
+        return mayDefendBase(isInnerBase(base), numGatherers());
+    }
+
+    /**
+     * Whether a base is our main or our natural. The natural is the inferred natural, or the first
+     * expansion we took when no natural was inferred.
+     */
+    private boolean isInnerBase(Base base) {
+        if (base == baseData.getMainBase()) {
+            return true;
+        }
+        Base natural = baseData.getInferredNaturalBase();
+        if (natural == null && baseData.hasNaturalExpansion()) {
+            natural = baseData.baseAtTilePosition(baseData.naturalExpansionPosition());
+        }
+        return base == natural;
+    }
+
     public Set<Base> basesNeedingSunken(int target) {
         Time tenMinutes = new Time(10, 0);
         Time currentTime = getGameTime();
@@ -1378,7 +1416,8 @@ public class GameState {
 
 
         for (Base base: baseData.getMyBases()) {
-            if (baseData.isEligibleForSunkenColony(base) && baseData.sunkensPerBase(base) < target) {
+            if (baseData.isEligibleForSunkenColony(base) && mayDefendBase(base)
+                    && baseData.sunkensPerBase(base) < target) {
                 neededBases.add(base);
             }
         }
@@ -1395,7 +1434,8 @@ public class GameState {
         }
 
         for (Base base: baseData.getMyBases()) {
-            if (baseData.isEligibleForSporeColony(base) && baseData.sporesPerBase(base) < target) {
+            if (baseData.isEligibleForSporeColony(base) && mayDefendBase(base)
+                    && baseData.sporesPerBase(base) < target) {
                 neededBases.add(base);
             }
         }

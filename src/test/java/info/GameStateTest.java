@@ -204,4 +204,25 @@ class GameStateTest {
 
         assertTrue(GameState.canPlanLair(NO_RUSH_DELAY, NEEDS_LAIR, TECH_ALLOWS_LAIR, ENOUGH_HATCHERIES, usableExtractors));
     }
+
+    @Test
+    void innerBaseMayAlwaysTakeStaticDefense() {
+        assertTrue(GameState.mayDefendBase(true, 0));
+        assertTrue(GameState.mayDefendBase(true, GameState.OUTER_BASE_DEFENSE_MIN_GATHERERS - 1));
+    }
+
+    @Test
+    void outerBaseOpensAtTheGathererGate() {
+        assertFalse(GameState.mayDefendBase(false, GameState.OUTER_BASE_DEFENSE_MIN_GATHERERS - 1));
+        assertTrue(GameState.mayDefendBase(false, GameState.OUTER_BASE_DEFENSE_MIN_GATHERERS));
+    }
+
+    @Test
+    void plannedDronesDoNotOpenTheOuterBaseGate() {
+        int gatherers = 11;
+        int plannedDrones = 9;
+
+        assertTrue(gatherers + plannedDrones >= GameState.OUTER_BASE_DEFENSE_MIN_GATHERERS);
+        assertFalse(GameState.mayDefendBase(false, gatherers));
+    }
 }
