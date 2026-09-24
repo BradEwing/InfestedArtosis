@@ -412,7 +412,9 @@ class ProductionManagerTest {
         assertEquals(Collections.singletonList(4), ProductionManager.overlordInsertPriorities(
                 Collections.<Plan>emptyList(), drones, 8, 0, 10));
         assertTrue(ProductionManager.overlordPriorities(
-                1, Collections.<Plan>emptyList(), drones, 8, 0, 10).isEmpty());
+                OverlordHold.Phase.FREE, 1, Collections.<Plan>emptyList(), drones, 8, 0, 10).isEmpty());
+        assertTrue(ProductionManager.overlordPriorities(
+                OverlordHold.Phase.HELD, 1, Collections.<Plan>emptyList(), drones, 8, 0, 10).isEmpty());
     }
 
     /**
@@ -425,9 +427,58 @@ class ProductionManagerTest {
         List<Plan> zerglings = Collections.<Plan>singletonList(new UnitPlan(UnitType.Zerg_Zergling, 2000));
 
         assertEquals(Collections.singletonList(1), ProductionManager.overlordPriorities(
-                1, Collections.<Plan>emptyList(), zerglings, 0, 0, 18));
+                OverlordHold.Phase.RELEASED, 1, Collections.<Plan>emptyList(), zerglings, 0, 0, 18));
         assertTrue(ProductionManager.overlordPriorities(
-                1, Collections.<Plan>emptyList(), zerglings, 0, UnitType.Zerg_Overlord.supplyProvided(), 18).isEmpty());
+                OverlordHold.Phase.FREE, 1, Collections.<Plan>emptyList(), zerglings, 0,
+                UnitType.Zerg_Overlord.supplyProvided(), 18).isEmpty());
+    }
+
+    /**
+     * 9Hatch hands over at 8/9 supply, the natural's builder and the pool's drone spent. The
+     * first Overlord is queued on the frame the hold releases, not when supply climbs back to 9,
+     * and only once: it is in flight on the next frame.
+     */
+    @Test
+    void theFirstOverlordIsQueuedOnTheFrameTheHoldReleases() {
+        OverlordHold hold = new OverlordHold();
+        List<Plan> none = Collections.<Plan>emptyList();
+        int overlord = UnitType.Zerg_Overlord.supplyProvided();
+
+        OverlordHold.Phase held = hold.update(true);
+        assertTrue(ProductionManager.overlordPriorities(held, 1, none, none, 2, 0, 16).isEmpty());
+
+        OverlordHold.Phase released = hold.update(false);
+        assertEquals(Collections.singletonList(1), ProductionManager.overlordPriorities(
+                released, 1, none, none, 2, 0, 16));
+
+        OverlordHold.Phase next = hold.update(false);
+        assertTrue(ProductionManager.overlordPriorities(next, 1, none, none, 2, overlord, 16).isEmpty());
+    }
+
+    @Test
+    void aBuildThatNeverHeldWaitsForNineSupply() {
+        List<Plan> none = Collections.<Plan>emptyList();
+
+        assertTrue(ProductionManager.overlordPriorities(
+                OverlordHold.Phase.FREE, 1, none, none, 2, 0, 16).isEmpty());
+    }
+
+    @Test
+    void aReleaseWithSupplyToSpareWaitsForNineSupply() {
+        List<Plan> none = Collections.<Plan>emptyList();
+
+        assertTrue(ProductionManager.overlordPriorities(
+                OverlordHold.Phase.RELEASED, 1, none, none, ProductionManager.SUPPLY_BUFFER, 0, 14).isEmpty());
+        assertEquals(Collections.singletonList(1), ProductionManager.overlordPriorities(
+                OverlordHold.Phase.RELEASED, 1, none, none, ProductionManager.SUPPLY_BUFFER - 1, 0, 15));
+    }
+
+    @Test
+    void aReleaseAddsNothingWhileAnOverlordIsInFlight() {
+        List<Plan> none = Collections.<Plan>emptyList();
+
+        assertTrue(ProductionManager.overlordPriorities(
+                OverlordHold.Phase.RELEASED, 1, none, none, 2, UnitType.Zerg_Overlord.supplyProvided(), 16).isEmpty());
     }
 
     @Test
@@ -436,7 +487,12 @@ class ProductionManagerTest {
 
         assertEquals(
                 ProductionManager.overlordInsertPriorities(Collections.<Plan>emptyList(), hydralisks, 1, 16, 53),
-                ProductionManager.overlordPriorities(2, Collections.<Plan>emptyList(), hydralisks, 1, 16, 53));
+                ProductionManager.overlordPriorities(
+                        OverlordHold.Phase.FREE, 2, Collections.<Plan>emptyList(), hydralisks, 1, 16, 53));
+        assertEquals(
+                ProductionManager.overlordInsertPriorities(Collections.<Plan>emptyList(), hydralisks, 1, 16, 53),
+                ProductionManager.overlordPriorities(
+                        OverlordHold.Phase.RELEASED, 2, Collections.<Plan>emptyList(), hydralisks, 1, 16, 53));
     }
 
     @Test

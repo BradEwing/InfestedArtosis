@@ -21,29 +21,43 @@ class NinePoolSpeedTest {
 
     private static final int ONE_STANDING_POOL = 1;
 
+    private static final int EIGHT_SUPPLY = 16;
+
+    private static final int NINE_SUPPLY = 18;
+
     /**
      * LUZ9502W frame 6: four living drones and four planned. The first Overlord was queued here
      * and morphed at 7 supply, ahead of the 8th and 9th drones and the pool.
      */
     @Test
     void holdsTheOverlordBelowNineDrones() {
-        assertTrue(NinePoolSpeed.holdsOverlords(NINE_DRONES - 1, NO_STANDING_POOL));
+        assertTrue(NinePoolSpeed.holdsOverlords(NINE_DRONES - 1, NO_STANDING_POOL, EIGHT_SUPPLY));
     }
 
     @Test
     void holdsTheOverlordAtNineDronesUntilThePoolStands() {
-        assertTrue(NinePoolSpeed.holdsOverlords(NINE_DRONES, NO_STANDING_POOL));
+        assertTrue(NinePoolSpeed.holdsOverlords(NINE_DRONES, NO_STANDING_POOL, NINE_SUPPLY));
     }
 
     @Test
     void releasesTheOverlordOnceThePoolIsUnderConstruction() {
-        assertFalse(NinePoolSpeed.holdsOverlords(NINE_DRONES, ONE_STANDING_POOL));
+        assertFalse(NinePoolSpeed.holdsOverlords(NINE_DRONES, ONE_STANDING_POOL, NINE_SUPPLY));
     }
 
     /** The pool's drone is gone, and its replacement has not been queued yet. */
     @Test
     void holdsTheOverlordUntilThePoolDroneIsReplaced() {
-        assertTrue(NinePoolSpeed.holdsOverlords(NINE_DRONES - 1, ONE_STANDING_POOL));
+        assertTrue(NinePoolSpeed.holdsOverlords(NINE_DRONES - 1, ONE_STANDING_POOL, EIGHT_SUPPLY));
+    }
+
+    /**
+     * The replacement drone is queued, so the drone count is back to 9, but its egg has not
+     * started. Released here, the first Overlord would be queued at priority 1 on the release
+     * frame and take the larva ahead of the drone, at 8 supply.
+     */
+    @Test
+    void holdsTheOverlordUntilTheReplacementDroneIsMorphing() {
+        assertTrue(NinePoolSpeed.holdsOverlords(NINE_DRONES, ONE_STANDING_POOL, EIGHT_SUPPLY));
     }
 
     /**
@@ -53,8 +67,7 @@ class NinePoolSpeedTest {
      */
     @Test
     void staysActiveWhileThePoolIsOnlyPlanned() {
-        assertFalse(NinePoolSpeed.openerComplete(NO_STANDING_POOL));
-        assertTrue(NinePoolSpeed.holdsOverlords(NINE_DRONES, NO_STANDING_POOL));
+        assertTrue(NinePoolSpeed.holdsOverlords(NINE_DRONES, NO_STANDING_POOL, NINE_SUPPLY));
     }
 
     @Test
@@ -75,11 +88,6 @@ class NinePoolSpeedTest {
     @Test
     void withholdsGasOnceAnExtractorExists() {
         assertFalse(NinePoolSpeed.shouldPlanExtractor(1, true, true));
-    }
-
-    @Test
-    void handsOffOnASpawningPoolUnderConstruction() {
-        assertTrue(NinePoolSpeed.openerComplete(1));
     }
 
     /**

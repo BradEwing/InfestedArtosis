@@ -69,6 +69,8 @@ public class ProductionManager {
 
     private final BuildAheadSlot buildAheadSlot = new BuildAheadSlot();
 
+    private final OverlordHold overlordHold = new OverlordHold();
+
     private final BuildAheadSlot unitAheadSlot = new BuildAheadSlot();
 
     /** The tech wave production is pre-positioning for this frame, or null. */
@@ -595,7 +597,8 @@ public class ProductionManager {
             return;
         }
 
-        if (activeBuildOrder.holdsOverlords(gameState)) {
+        final OverlordHold.Phase holdPhase = overlordHold.update(activeBuildOrder.holdsOverlords(gameState));
+        if (holdPhase == OverlordHold.Phase.HELD) {
             return;
         }
 
@@ -610,6 +613,7 @@ public class ProductionManager {
         scheduledPlans.sort(new PlanComparator());
 
         List<Integer> insertPriorities = overlordPriorities(
+                holdPhase,
                 overlordCount,
                 scheduledPlans,
                 sortedQueue,
@@ -642,11 +646,15 @@ public class ProductionManager {
     /**
      * The priorities at which the supply planner inserts Overlords this frame.
      *
-     * <p>While fewer than two Overlords are alive, only the first-Overlord rule applies: one
-     * Overlord at priority 1 once 9 supply is used and no Overlord is in flight. The queue walker
+     * <p>Nothing while the build order holds Overlords. While fewer than two Overlords are alive,
+     * only the first-Overlord rule applies: one Overlord at priority 1 once no Overlord is in
+     * flight and either 9 supply is used or the hold released this frame with less than
+     * {@link #SUPPLY_BUFFER} supply free. An opener that holds its Overlords can hand over below
+     * 9 supply, and waiting for 9 there leaves its next steps supply blocked. The queue walker
      * takes over from the second Overlord. Every build order goes through the same rule, so the
      * walker cannot insert the first Overlord ahead of an opener's early drones.
      *
+     * @param holdPhase where the build order's Overlord hold stands this frame
      * @param overlordCount living Overlords
      * @param scheduledPlans plans holding a larva or a builder, in priority order
      * @param queuedPlans plans still in the production queue, in priority order
@@ -656,14 +664,18 @@ public class ProductionManager {
      * @return the priority of each Overlord to insert
      */
     static List<Integer> overlordPriorities(
+            OverlordHold.Phase holdPhase,
             int overlordCount,
             List<Plan> scheduledPlans,
             List<Plan> queuedPlans,
             int freeSupply,
             int plannedSupply,
             int supplyUsed) {
+        if (holdPhase == OverlordHold.Phase.HELD) {
+            return Collections.emptyList();
+        }
         if (usesFirstOverlordRule(overlordCount)) {
-            return shouldQueueFirstOverlord(supplyUsed, plannedSupply)
+            return shouldQueueFirstOverlord(holdPhase, freeSupply, supplyUsed, plannedSupply)
                     ? Collections.singletonList(1)
                     : Collections.<Integer>emptyList();
         }
@@ -674,8 +686,13 @@ public class ProductionManager {
         return overlordCount < 2;
     }
 
-    private static boolean shouldQueueFirstOverlord(int supplyUsed, int plannedSupply) {
-        return supplyUsed >= FIRST_OVERLORD_SUPPLY_USED && plannedSupply == 0;
+    private static boolean shouldQueueFirstOverlord(
+            OverlordHold.Phase holdPhase, int freeSupply, int supplyUsed, int plannedSupply) {
+        if (plannedSupply != 0) {
+            return false;
+        }
+        return supplyUsed >= FIRST_OVERLORD_SUPPLY_USED
+                || holdPhase == OverlordHold.Phase.RELEASED && freeSupply < SUPPLY_BUFFER;
     }
 
     /**
