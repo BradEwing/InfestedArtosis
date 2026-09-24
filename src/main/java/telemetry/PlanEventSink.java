@@ -1,6 +1,7 @@
 package telemetry;
 
 import bwapi.Position;
+import bwapi.TilePosition;
 import bwapi.UnitType;
 import info.BuilderThreat;
 import macro.plan.BuilderDispatchDecision;
@@ -115,5 +116,14 @@ public interface PlanEventSink {
      *     strategy records one, e.g. ProxyGate:MAIN_EMPTY
      */
     default void onStrategyDetected(String detectionLabel) {
+    }
+
+    /**
+     * One of our bases lost its hatchery.
+     *
+     * @param base the base's tile location
+     * @param innerBase whether the base was our main or a natural
+     */
+    default void onBaseLost(TilePosition base, boolean innerBase) {
     }
 }

@@ -9,7 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PlanEventLoggerTest {
 
-    private static final int PLAN_COLUMNS = 61;
+    private static final int PLAN_COLUMNS = 62;
 
     private static final boolean STARVED = true;
 
@@ -101,6 +101,13 @@ class PlanEventLoggerTest {
         assertEquals("expansion_hold_until_frame", column(route + 6));
         assertEquals("builder_site_at_our_base", column(route + 7));
         assertEquals("builder_at_our_base", column(route + 8));
+    }
+
+    @Test
+    void theBaseLostColumnIsAppendedLast() {
+        String[] columns = PlanEventLogger.PLAN_HEADER.split(",", -1);
+        assertEquals(indexOf("builder_at_our_base") + 1, indexOf("base_inner"));
+        assertEquals("base_inner", columns[columns.length - 1]);
     }
 
     private static String column(int index) {

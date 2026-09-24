@@ -54,6 +54,7 @@ public class PlanEventLogger implements PlanEventSink {
     private static final String EVENT_BUILDER_DISPATCH_DECISION = "BUILDER_DISPATCH_DECISION";
     private static final String EVENT_EXPANSION_BACKOFF = "EXPANSION_BACKOFF";
     private static final String EVENT_STRATEGY_DETECTED = "STRATEGY_DETECTED";
+    private static final String EVENT_BASE_LOST = "BASE_LOST";
 
     private static final int NO_STARVED_COUNT = -1;
 
@@ -109,6 +110,10 @@ public class PlanEventLogger implements PlanEventSink {
      * plan column empty, so the frame a strategy was detected is the row's frame. The label is the
      * strategy's name, followed for ProxyGate by the evidence arms that fired: ProxyGate:GATEWAY_AWAY,
      * ProxyGate:MAIN_EMPTY or ProxyGate:GATEWAY_AWAY+MAIN_EMPTY.
+     * <p>
+     * base_inner is set only on BASE_LOST rows, written when one of our bases loses its hatchery:
+     * true for the main or a natural, false for a third or later base. The lost base's location is
+     * in build_tile_x and build_tile_y.
      */
     static final String PLAN_HEADER = "frame,time,event,plan_id,executor_unit_id,plan_type,item,from_state,"
             + "to_state,cancel_reason,cancel_source,blocker,blocked_frames,priority,frames_in_state,age_frames,"
@@ -120,7 +125,7 @@ public class PlanEventLogger implements PlanEventSink {
             + "macro_hatcheries_outstanding,tech_gate,gate_available_gas,gate_required_gas,"
             + "extractors_completed,builder_route_enemies,builder_site_enemies,"
             + "builder_route_defense_zones,builder_at_site,builder_dispatch_decision,lost_expansion_builders,"
-            + "expansion_hold_until_frame,builder_site_at_our_base,builder_at_our_base";
+            + "expansion_hold_until_frame,builder_site_at_our_base,builder_at_our_base,base_inner";
 
     private static final String GAME_HEADER = "timestamp,is_winner,num_starting_locations,map_name,opponent_name,"
             + "opponent_race,opener,build_order,detected_strategies,frame_count";
@@ -512,7 +517,7 @@ public class PlanEventLogger implements PlanEventSink {
 
         try {
             currentFrame = game.getFrameCount();
-            buffer.add(expansionBackoffRow(new ExpansionBackoffInputs(lostExpansionBuilders,
+            buffer.add(expansionBackoffRow(BaseEventInputs.expansionBackoff(lostExpansionBuilders,
                     expansionHeldUntilFrame)));
         } catch (Exception e) {
             disabled = true;
@@ -532,6 +537,24 @@ public class PlanEventLogger implements PlanEventSink {
         try {
             currentFrame = game.getFrameCount();
             buffer.add(strategyDetectedRow(detectionLabel));
+        } catch (Exception e) {
+            disabled = true;
+        }
+    }
+
+    /**
+     * The frame is re-read rather than taken from the last onFrame, since a base is lost from
+     * onUnitDestroy, which JBWAPI dispatches ahead of the frame's onFrame.
+     */
+    @Override
+    public void onBaseLost(TilePosition base, boolean innerBase) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            currentFrame = game.getFrameCount();
+            buffer.add(baseLostRow(base, innerBase));
         } catch (Exception e) {
             disabled = true;
         }
@@ -754,7 +777,7 @@ public class PlanEventLogger implements PlanEventSink {
     }
 
     /** A row for a hold on expanding, which no plan owns, so the plan columns are empty. */
-    private String expansionBackoffRow(ExpansionBackoffInputs inputs) {
+    private String expansionBackoffRow(BaseEventInputs inputs) {
         StringBuilder sb = new StringBuilder();
         appendEvent(sb, EVENT_EXPANSION_BACKOFF);
         appendEmpty(sb, 2);
@@ -785,6 +808,26 @@ public class PlanEventLogger implements PlanEventSink {
         sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
         appendEmpty(sb, 2);
         appendTrailing(sb, null, null, null, null, null, null, null);
+        return sb.toString();
+    }
+
+    /** A row for a base that lost its hatchery, which no plan owns, so the plan columns are empty. */
+    private String baseLostRow(TilePosition base, boolean innerBase) {
+        StringBuilder sb = new StringBuilder();
+        appendEvent(sb, EVENT_BASE_LOST);
+        appendEmpty(sb, 2);
+        sb.append(PlanType.BUILDING).append(',');
+        sb.append(Csv.sanitize(UnitType.Zerg_Hatchery.toString())).append(',');
+        appendEmpty(sb, 4);
+        appendBlocker(sb, PlanBlocker.NONE, 0);
+        appendEmpty(sb, 3);
+        appendGameState(sb);
+        sb.append(base.getX()).append(',');
+        sb.append(base.getY()).append(',');
+        appendEmpty(sb, 1);
+        sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
+        appendEmpty(sb, 2);
+        appendTrailing(sb, null, null, null, null, null, null, BaseEventInputs.baseLost(innerBase));
         return sb.toString();
     }
 
@@ -828,12 +871,13 @@ public class PlanEventLogger implements PlanEventSink {
      * @param builderThreat what the plan's builder would walk into, or null when the row has no
      *     BUILDING plan with an executor behind it
      * @param decision what the dispatch gate did, or null on every row but BUILDER_DISPATCH_DECISION
-     * @param backoff the hold armed, or null on every row but EXPANSION_BACKOFF
+     * @param baseEvent the expansion hold armed or the base lost, or null on every row but
+     *     EXPANSION_BACKOFF and BASE_LOST
      */
     private void appendTrailing(StringBuilder sb, Position blockerMineral, Plan yieldTo,
                                 MacroHatcheryGateInputs macroHatchery, HiveTechGateInputs hiveTech,
                                 BuilderThreat builderThreat, BuilderDispatchDecision decision,
-                                ExpansionBackoffInputs backoff) {
+                                BaseEventInputs baseEvent) {
         appendGameTotals(sb);
         sb.append(',');
         sb.append(blockerMineral == null ? "" : String.valueOf(blockerMineral.getX())).append(',');
@@ -854,10 +898,15 @@ public class PlanEventLogger implements PlanEventSink {
         sb.append(builderThreat == null ? "" : String.valueOf(builderThreat.getRouteDefenseZones())).append(',');
         sb.append(builderThreat == null ? "" : String.valueOf(builderThreat.isBuilderAtSite())).append(',');
         sb.append(decision == null ? "" : decision.toString()).append(',');
-        sb.append(backoff == null ? "" : String.valueOf(backoff.lostExpansionBuilders)).append(',');
-        sb.append(backoff == null ? "" : String.valueOf(backoff.expansionHeldUntilFrame)).append(',');
+        sb.append(baseEvent == null ? "" : orEmpty(baseEvent.lostExpansionBuilders)).append(',');
+        sb.append(baseEvent == null ? "" : orEmpty(baseEvent.expansionHeldUntilFrame)).append(',');
         sb.append(builderThreat == null ? "" : String.valueOf(builderThreat.isSiteAtOurBase())).append(',');
-        sb.append(builderThreat == null ? "" : String.valueOf(builderThreat.isBuilderAtOurBase()));
+        sb.append(builderThreat == null ? "" : String.valueOf(builderThreat.isBuilderAtOurBase())).append(',');
+        sb.append(baseEvent == null ? "" : orEmpty(baseEvent.baseInner));
+    }
+
+    private static String orEmpty(Object value) {
+        return value == null ? "" : String.valueOf(value);
     }
 
     /** The trailing cumulative columns. */
@@ -967,14 +1016,24 @@ public class PlanEventLogger implements PlanEventSink {
         }
     }
 
-    /** The hold a lost expansion builder armed. */
-    private static final class ExpansionBackoffInputs {
-        private final int lostExpansionBuilders;
-        private final int expansionHeldUntilFrame;
+    /** The hold a lost expansion builder armed, or whether a lost base was the main or a natural. */
+    private static final class BaseEventInputs {
+        private final Integer lostExpansionBuilders;
+        private final Integer expansionHeldUntilFrame;
+        private final Boolean baseInner;
 
-        private ExpansionBackoffInputs(int lostExpansionBuilders, int expansionHeldUntilFrame) {
+        private BaseEventInputs(Integer lostExpansionBuilders, Integer expansionHeldUntilFrame, Boolean baseInner) {
             this.lostExpansionBuilders = lostExpansionBuilders;
             this.expansionHeldUntilFrame = expansionHeldUntilFrame;
+            this.baseInner = baseInner;
+        }
+
+        private static BaseEventInputs expansionBackoff(int lostExpansionBuilders, int expansionHeldUntilFrame) {
+            return new BaseEventInputs(lostExpansionBuilders, expansionHeldUntilFrame, null);
+        }
+
+        private static BaseEventInputs baseLost(boolean baseInner) {
+            return new BaseEventInputs(null, null, baseInner);
         }
     }
 }

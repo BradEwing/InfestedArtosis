@@ -1,6 +1,7 @@
 package telemetry;
 
 import bwapi.Position;
+import bwapi.TilePosition;
 import bwapi.UnitType;
 import info.BuilderThreat;
 import macro.plan.BuilderDispatchDecision;
@@ -164,5 +165,14 @@ public final class PlanEvents {
             return;
         }
         current.onStrategyDetected(detectionLabel);
+    }
+
+
+    public static void baseLost(TilePosition base, boolean innerBase) {
+        PlanEventSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onBaseLost(base, innerBase);
     }
 }

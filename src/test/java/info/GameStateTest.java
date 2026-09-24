@@ -11,6 +11,11 @@ import macro.plan.UnitPlan;
 import org.junit.jupiter.api.Test;
 import util.StaticDefenseZone;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -23,6 +28,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class GameStateTest {
+
+    private static final Path GAME_STATE_SOURCE = Paths.get("src", "main", "java", "info", "GameState.java");
 
     private static final int PRIORITY = 2;
 
@@ -210,5 +217,53 @@ class GameStateTest {
         int usableExtractors = GameState.structureCount(Readiness.USABLE, ONE, NONE, NONE);
 
         assertTrue(GameState.canPlanLair(NO_RUSH_DELAY, NEEDS_LAIR, TECH_ALLOWS_LAIR, ENOUGH_HATCHERIES, usableExtractors));
+    }
+
+    @Test
+    void innerBaseMayAlwaysTakeStaticDefense() {
+        assertTrue(GameState.mayDefendBase(true, 0));
+        assertTrue(GameState.mayDefendBase(true, GameState.OUTER_BASE_DEFENSE_MIN_GATHERERS - 1));
+    }
+
+    @Test
+    void outerBaseOpensAtTheGathererGate() {
+        assertFalse(GameState.mayDefendBase(false, GameState.OUTER_BASE_DEFENSE_MIN_GATHERERS - 1));
+        assertTrue(GameState.mayDefendBase(false, GameState.OUTER_BASE_DEFENSE_MIN_GATHERERS));
+    }
+
+    @Test
+    void plannedDronesDoNotOpenTheOuterBaseGate() {
+        int gatherers = 11;
+        int plannedDrones = 9;
+
+        assertTrue(gatherers + plannedDrones >= GameState.OUTER_BASE_DEFENSE_MIN_GATHERERS);
+        assertFalse(GameState.mayDefendBase(false, gatherers));
+    }
+
+    @Test
+    void theOuterBaseGateReadsGatherersNotPlannedDrones() throws IOException {
+        String gate = sourceSlice("private boolean mayDefendBase(Base base)", "public Set<Base> basesNeedingSunken(");
+
+        assertTrue(gate.contains("numGatherers()"), gate);
+        assertFalse(gate.contains("numEconomyDrones()"), gate);
+    }
+
+    @Test
+    void bothColonyBaseSetsPassThroughTheOuterBaseGate() throws IOException {
+        String sunken = sourceSlice("public Set<Base> basesNeedingSunken(", "public Set<Base> basesNeedingSpore(");
+        String spore = sourceSlice("public Set<Base> basesNeedingSpore(", "public boolean canPlanUnit(");
+
+        assertTrue(sunken.contains("mayDefendBase(base)"), sunken);
+        assertTrue(spore.contains("mayDefendBase(base)"), spore);
+        assertFalse(sunken.contains("numEconomyDrones()"), sunken);
+        assertFalse(spore.contains("numEconomyDrones()"), spore);
+    }
+
+    private static String sourceSlice(String from, String to) throws IOException {
+        String source = new String(Files.readAllBytes(GAME_STATE_SOURCE), StandardCharsets.UTF_8);
+        int start = source.indexOf(from);
+        int end = source.indexOf(to, start);
+        assertTrue(start >= 0 && end > start, GAME_STATE_SOURCE.toString());
+        return source.substring(start, end);
     }
 }
