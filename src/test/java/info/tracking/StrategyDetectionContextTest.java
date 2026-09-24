@@ -157,6 +157,20 @@ class StrategyDetectionContextTest {
         assertFalse(isOnOurSide(icarus, LV28400NFixture.PROXY_GATEWAY));
     }
 
+    /**
+     * A razed enemy main is cleared and then seen empty, like the start that never held one. A home Gateway's
+     * last known position beside it must still read as the enemy's side.
+     */
+    @Test
+    void withEveryOtherStartSeenEmptyAHomeGatewayBesideTheRazedMainIsNotOnOurSide() {
+        LV28400NFixture icarus = new LV28400NFixture();
+        icarus.baseData.markStartSeenEmpty(icarus.emptyStart);
+        icarus.baseData.markStartSeenEmpty(icarus.realMain);
+
+        assertFalse(isOnOurSide(icarus, new Position(3584, 1424)));
+        assertTrue(isOnOurSide(icarus, new Position(1600, 400)));
+    }
+
     private static boolean isOnOurSide(LV28400NFixture icarus, Position position) {
         return StrategyDetectionContext.isOnOurSide(position, icarus.baseData, icarus.bases,
                 (from, to) -> (int) from.getDistance(to));

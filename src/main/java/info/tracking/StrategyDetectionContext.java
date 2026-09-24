@@ -100,7 +100,8 @@ public class StrategyDetectionContext {
     /**
      * Whether the position is on our side of the map: its BWEM ground path to our main is shorter than its
      * path to the enemy main or, while the enemy main is unknown, to every other starting location not yet seen
-     * empty.
+     * empty. When every other starting location has been seen empty, as after the enemy main is razed, it is
+     * measured against all of them, so the test never passes on an empty set of enemy mains.
      */
     public boolean isOnOurSide(Position position) {
         return isOnOurSide(position, baseData, bwMap.getBases(), bwMap::getPathLength);
@@ -139,11 +140,14 @@ public class StrategyDetectionContext {
         if (enemyMain != null) {
             return Collections.singletonList(enemyMain);
         }
-        return bases.stream()
+        List<Base> otherStarts = bases.stream()
                 .filter(Base::isStartingLocation)
                 .filter(base -> base != baseData.getMainBase())
+                .collect(Collectors.toList());
+        List<Base> unresolvedStarts = otherStarts.stream()
                 .filter(base -> !baseData.isStartSeenEmpty(base))
                 .collect(Collectors.toList());
+        return unresolvedStarts.isEmpty() ? otherStarts : unresolvedStarts;
     }
 
     /**
