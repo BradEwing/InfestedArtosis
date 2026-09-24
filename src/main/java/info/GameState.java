@@ -1159,6 +1159,8 @@ public class GameState {
         switch (readiness) {
             case COMMITTED:
                 return completed + underConstruction + planned;
+            case STANDING:
+                return completed + underConstruction;
             case USABLE:
             default:
                 return completed;

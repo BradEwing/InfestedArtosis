@@ -44,6 +44,7 @@ class OpenerSpawningPoolTest {
     private static List<BuildOrder> openers() {
         return Arrays.asList(
                 new FourPool(),
+                new NineHatch(),
                 new NinePoolSpeed(),
                 new Overpool(),
                 new ThreeHatchBeforePool(),
