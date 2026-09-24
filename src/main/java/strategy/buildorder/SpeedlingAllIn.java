@@ -8,10 +8,13 @@ import info.GameState;
 import info.TechProgression;
 import macro.ProductionQueue;
 import macro.plan.Plan;
+import macro.plan.PlanState;
+import macro.plan.PlanType;
 import util.Time;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Predicate;
 
 /**
  * Two hatchery speedling all-in, playable in every matchup.
@@ -80,6 +83,10 @@ public class SpeedlingAllIn extends BuildOrder {
 
     static final Time STALL_TIME = new Time(8, 0);
 
+    private static final Predicate<Plan> IS_UNSTARTED_SPEED_UPGRADE = p ->
+            p.getType() == PlanType.UPGRADE && p.getState() == PlanState.PLANNED
+                    && p.getPlannedUpgrade() == UpgradeType.Metabolic_Boost;
+
     private final List<Plan> openingZerglings = new ArrayList<>();
 
     public SpeedlingAllIn() {
@@ -126,6 +133,11 @@ public class SpeedlingAllIn extends BuildOrder {
             return plans;
         }
 
+        ProductionQueue productionQueue = gameState.getProductionQueue();
+        if (holdsSpeedUpgrade(productionQueue)) {
+            deferSpeedUpgrade(productionQueue);
+        }
+
         if (shouldPlanSpeed(gameState.canPlanUpgrade(UpgradeType.Metabolic_Boost), openingZerglings.size())) {
             plans.add(this.planUpgrade(gameState, UpgradeType.Metabolic_Boost));
             return plans;
@@ -157,6 +169,7 @@ public class SpeedlingAllIn extends BuildOrder {
         if (owesZergling) {
             Plan zergling = this.planUnit(gameState, UnitType.Zerg_Zergling);
             recordOpeningZergling(zergling);
+            deferSpeedUpgrade(productionQueue);
             plans.add(zergling);
         }
 
@@ -171,6 +184,26 @@ public class SpeedlingAllIn extends BuildOrder {
         if (openingZerglings.size() < OPENING_ZERGLING_PLANS) {
             openingZerglings.add(zergling);
         }
+    }
+
+    /**
+     * Moves every queued, unstarted Metabolic Boost plan that sorts ahead of the newest opening
+     * zergling plan to one priority behind it.
+     *
+     * <p>An opener can hand over with Metabolic Boost already queued, and a reaction can pull it to
+     * priority 2 before the hand-off. Either way it sits ahead of the opening zerglings this build
+     * queues, and its research claim would hold them. A plan that is already researching has left
+     * the queue and is not touched, and an upgrade already behind the newest opening zergling keeps
+     * its place.
+     */
+    void deferSpeedUpgrade(ProductionQueue productionQueue) {
+        int newestOpeningPriority = openingZerglings.stream().mapToInt(Plan::getPriority).max().orElse(-1);
+        if (newestOpeningPriority < 0) {
+            return;
+        }
+        int deferredPriority = newestOpeningPriority + 1;
+        productionQueue.setPriorityWhere(
+                IS_UNSTARTED_SPEED_UPGRADE.and(p -> p.getPriority() < deferredPriority), deferredPriority);
     }
 
     int openingZerglingPlans() {

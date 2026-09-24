@@ -766,6 +766,35 @@ class ProductionManagerTest {
                 reportedBlockers.subList(1, reportedBlockers.size()));
     }
 
+    /**
+     * The opener-queued path: Metabolic Boost inherited from the opener at an early frame priority
+     * holds every opening zergling queued after the hand-off, which is why SpeedlingAllIn moves it
+     * behind the newest of them.
+     */
+    @Test
+    void speedInheritedFromTheOpenerHoldsTheOpeningZerglingsUntilMovedBehindThem() {
+        ProductionQueue queue = new ProductionQueue();
+        List<Plan> zerglings = openingZerglings(queue);
+        Plan speed = new UpgradePlan(UpgradeType.Metabolic_Boost, 2826);
+        queue.add(speed);
+        ResearchBank bank = new ResearchBank(speed.mineralPrice() - 1, speed.gasPrice(), false);
+        PlanEvents.register(blockerRecorder());
+
+        assertTrue(ProductionManager.scanPlans(queue.toSortedList(), bank).scheduled.isEmpty());
+        assertEquals(Collections.nCopies(OPENING_ZERGLING_PLANS, PlanBlocker.RESEARCH_CLAIM),
+                reportedBlockers.subList(1, reportedBlockers.size()));
+
+        queue.setPriorityWhere(plan -> plan == speed, zerglings.get(OPENING_ZERGLING_PLANS - 1).getPriority() + 1);
+        int zerglingMinerals = zerglings.stream().mapToInt(Plan::mineralPrice).sum();
+        reportedBlockers.clear();
+
+        ScanOutcome outcome = ProductionManager.scanPlans(queue.toSortedList(),
+                new ResearchBank(zerglingMinerals + speed.mineralPrice() - 1, speed.gasPrice(), false));
+
+        assertFalse(reportedBlockers.contains(PlanBlocker.RESEARCH_CLAIM));
+        assertEquals(zerglings, outcome.scheduled);
+    }
+
     @Test
     void aResearchClaimReachesEveryPlanBehindItAndNoneAhead() {
         Plan drone = drone(90);

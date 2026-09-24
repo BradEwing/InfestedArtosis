@@ -6,6 +6,7 @@ import bwapi.UpgradeType;
 import info.TechProgression;
 import macro.ProductionQueue;
 import macro.plan.Plan;
+import macro.plan.PlanState;
 import macro.plan.UnitPlan;
 import macro.plan.UpgradePlan;
 import org.junit.jupiter.api.Test;
@@ -425,5 +426,108 @@ class SpeedlingAllInTest {
                 }
             }
         }
+    }
+
+    private static final int INHERITED_SPEED_PRIORITY = 2826;
+
+    private static List<Plan> queueOpeningZerglingsDeferringSpeed(SpeedlingAllIn buildOrder, ProductionQueue queue,
+                                                                  Plan speed) {
+        List<Plan> opening = new ArrayList<>();
+        for (int i = 0; i < SpeedlingAllIn.OPENING_ZERGLING_PLANS; i++) {
+            Plan zergling = new UnitPlan(UnitType.Zerg_Zergling, POOL_COMPLETE_FRAME + i);
+            buildOrder.recordOpeningZergling(zergling);
+            buildOrder.deferSpeedUpgrade(queue);
+            queue.add(zergling);
+            opening.add(zergling);
+            List<Plan> sorted = queue.toSortedList();
+            assertTrue(sorted.indexOf(speed) > sorted.indexOf(zergling), "after opening plan " + (i + 1));
+        }
+        return opening;
+    }
+
+    /**
+     * An opener hands over with its own Metabolic Boost already queued, far ahead of the opening
+     * zerglings. Each opening zergling moves it one priority behind itself, so at no frame does the
+     * upgrade sort ahead of an opening zergling, and a research claim, which only reaches the plans
+     * behind the upgrade in the scan, holds none of them.
+     */
+    @Test
+    void movesAnInheritedSpeedPlanBehindTheSixthOpeningZergling() {
+        SpeedlingAllIn buildOrder = new SpeedlingAllIn();
+        ProductionQueue queue = new ProductionQueue();
+        Plan speed = new UpgradePlan(UpgradeType.Metabolic_Boost, INHERITED_SPEED_PRIORITY);
+        queue.add(speed);
+
+        List<Plan> opening = queueOpeningZerglingsDeferringSpeed(buildOrder, queue, speed);
+
+        assertEquals(opening.get(opening.size() - 1).getPriority() + 1, speed.getPriority());
+        List<Plan> sorted = queue.toSortedList();
+        assertEquals(opening, sorted.subList(0, SpeedlingAllIn.OPENING_ZERGLING_PLANS));
+        assertEquals(speed, sorted.get(sorted.size() - 1));
+    }
+
+    @Test
+    void movesASpeedPlanPulledToTheReactionPriorityBeforeTheHandOffBehindTheOpeningZerglings() {
+        SpeedlingAllIn buildOrder = new SpeedlingAllIn();
+        ProductionQueue queue = new ProductionQueue();
+        Plan speed = new UpgradePlan(UpgradeType.Metabolic_Boost, 2);
+        queue.add(speed);
+
+        List<Plan> opening = queueOpeningZerglingsDeferringSpeed(buildOrder, queue, speed);
+
+        assertEquals(opening.get(opening.size() - 1).getPriority() + 1, speed.getPriority());
+    }
+
+    @Test
+    void neverMovesASpeedUpgradeThatIsAlreadyResearching() {
+        SpeedlingAllIn buildOrder = new SpeedlingAllIn();
+        ProductionQueue queue = new ProductionQueue();
+        Plan researching = new UpgradePlan(UpgradeType.Metabolic_Boost, INHERITED_SPEED_PRIORITY);
+        researching.setState(PlanState.BUILDING);
+        queue.add(researching);
+        buildOrder.recordOpeningZergling(new UnitPlan(UnitType.Zerg_Zergling, POOL_COMPLETE_FRAME));
+
+        buildOrder.deferSpeedUpgrade(queue);
+
+        assertEquals(INHERITED_SPEED_PRIORITY, researching.getPriority());
+    }
+
+    @Test
+    void leavesASpeedPlanAlreadyBehindTheNewestOpeningZerglingInPlace() {
+        SpeedlingAllIn buildOrder = new SpeedlingAllIn();
+        ProductionQueue queue = new ProductionQueue();
+        int laterPriority = POOL_COMPLETE_FRAME + 100;
+        Plan speed = new UpgradePlan(UpgradeType.Metabolic_Boost, laterPriority);
+        queue.add(speed);
+        buildOrder.recordOpeningZergling(new UnitPlan(UnitType.Zerg_Zergling, POOL_COMPLETE_FRAME));
+
+        buildOrder.deferSpeedUpgrade(queue);
+
+        assertEquals(laterPriority, speed.getPriority());
+    }
+
+    @Test
+    void leavesSpeedAloneBeforeAnyOpeningZerglingIsRecorded() {
+        SpeedlingAllIn buildOrder = new SpeedlingAllIn();
+        ProductionQueue queue = new ProductionQueue();
+        Plan speed = new UpgradePlan(UpgradeType.Metabolic_Boost, INHERITED_SPEED_PRIORITY);
+        queue.add(speed);
+
+        buildOrder.deferSpeedUpgrade(queue);
+
+        assertEquals(INHERITED_SPEED_PRIORITY, speed.getPriority());
+    }
+
+    @Test
+    void leavesOtherUpgradesInPlace() {
+        SpeedlingAllIn buildOrder = new SpeedlingAllIn();
+        ProductionQueue queue = new ProductionQueue();
+        Plan melee = new UpgradePlan(UpgradeType.Zerg_Melee_Attacks, INHERITED_SPEED_PRIORITY);
+        queue.add(melee);
+        buildOrder.recordOpeningZergling(new UnitPlan(UnitType.Zerg_Zergling, POOL_COMPLETE_FRAME));
+
+        buildOrder.deferSpeedUpgrade(queue);
+
+        assertEquals(INHERITED_SPEED_PRIORITY, melee.getPriority());
     }
 }
