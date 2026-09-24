@@ -11,6 +11,7 @@ import info.UnitTypeCount;
 import lombok.Getter;
 import macro.plan.Plan;
 import macro.plan.PlanCancelSource;
+import macro.plan.PlanState;
 import unit.managed.ManagedUnit;
 import unit.managed.ManagedUnitFactory;
 import unit.managed.UnitRole;
@@ -105,7 +106,7 @@ public class UnitManager {
         if (gameState.isCannonRushed() && !gameState.isCannonRushDefend()) {
             for (Base base : new ArrayList<>(squadManager.getDefenseSquadBases())) {
                 List<ManagedUnit> freed = squadManager.disbandDefendSquad(base);
-                for (ManagedUnit mu : freed) {
+                for (ManagedUnit mu : returningToMining(freed)) {
                     mu.getUnit().stop();
                     workerManager.addManagedWorker(mu);
                 }
@@ -499,10 +500,47 @@ public class UnitManager {
         for (ManagedUnit managedUnit: outcome.getPulled()) {
             this.workerManager.removeManagedWorker(managedUnit);
         }
-        for (ManagedUnit managedUnit: outcome.getReleased()) {
+        for (ManagedUnit managedUnit: returningToMining(outcome.getReleased())) {
             managedUnit.getUnit().stop();
             this.workerManager.addManagedWorker(managedUnit);
         }
+    }
+
+    private static List<ManagedUnit> returningToMining(List<ManagedUnit> released) {
+        return released.stream()
+                .filter(managedUnit -> returnsToMiningOnRelease(managedUnit.getRole(), planState(managedUnit)))
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Whether a worker let go by a defence squad is sent back to mining. Only a worker still defending goes back.
+     * One that picked up another role while in the squad, such as a builder dispatched to its site, keeps that
+     * role, its order and its plan, as does one whose plan is already under way.
+     *
+     * @param role the role the worker holds when released
+     * @param planState the state of the plan it holds, or null when it holds none
+     * @return true when the worker is stopped and returned to the WorkerManager
+     */
+    static boolean returnsToMiningOnRelease(UnitRole role, PlanState planState) {
+        return role == UnitRole.DEFEND && planState != PlanState.BUILDING && planState != PlanState.MORPHING;
+    }
+
+    /**
+     * Whether a gatherer may be offered to worker defence. A drone holding a plan that is neither complete nor
+     * cancelled is left alone, so the dispatch that later makes it a builder never lands on a squad member.
+     *
+     * @param role the role the gatherer holds
+     * @param planState the state of the plan it holds, or null when it holds none
+     * @return true when the gatherer may be a defence candidate
+     */
+    static boolean mayPullToDefend(UnitRole role, PlanState planState) {
+        return role == UnitRole.GATHER
+                && (planState == null || planState == PlanState.COMPLETE || planState == PlanState.CANCELLED);
+    }
+
+    private static PlanState planState(ManagedUnit managedUnit) {
+        Plan plan = managedUnit.getPlan();
+        return plan == null ? null : plan.getState();
     }
 
     private List<ManagedUnit> defenseCandidates(Base base, List<Unit> threateningUnits) {
@@ -521,7 +559,9 @@ public class UnitManager {
         if (gatherers == null) {
             return Collections.emptyList();
         }
-        List<ManagedUnit> sorted = new ArrayList<>(gatherers);
+        List<ManagedUnit> sorted = gatherers.stream()
+                .filter(gatherer -> mayPullToDefend(gatherer.getRole(), planState(gatherer)))
+                .collect(Collectors.toList());
         sorted.sort(Distance.closestManagedUnitTo(defended.getCenter()));
         return sorted;
     }
@@ -529,7 +569,7 @@ public class UnitManager {
     private void assignDefendersToGather(Base base) {
         List<ManagedUnit> gatherersToReassign = this.squadManager.disbandDefendSquad(base);
 
-        for (ManagedUnit managedUnit: gatherersToReassign) {
+        for (ManagedUnit managedUnit: returningToMining(gatherersToReassign)) {
             this.workerManager.addManagedWorker(managedUnit);
         }
     }

@@ -403,8 +403,8 @@ public class SquadManager {
         if (outcome.isAbandoned()) {
             releaseDefenders(defenseSquad);
             defenseAbandonedUntilFrame.put(base, frame + WorkerDefense.ABANDON_HOLD_FRAMES);
-            SquadDecisions.defenseEvaluated(defenseSquad, DefenseEvent.ABANDON, candidates.size(), 0,
-                    outcome.getReleased().size(), fullCommitment);
+            SquadDecisions.defenseEvaluated(defenseSquad, DefenseEvent.ABANDON, candidates.size(),
+                    Collections.emptyList(), outcome.getReleased(), fullCommitment);
             return outcome;
         }
 
@@ -415,7 +415,7 @@ public class SquadManager {
         }
         if (!outcome.getPulled().isEmpty()) {
             SquadDecisions.defenseEvaluated(defenseSquad, DefenseEvent.PULL, candidates.size(),
-                    outcome.getPulled().size(), 0, fullCommitment);
+                    outcome.getPulled(), Collections.emptyList(), fullCommitment);
         }
         return outcome;
     }
@@ -441,8 +441,8 @@ public class SquadManager {
             pulled.add(gatherer);
         }
         if (!pulled.isEmpty()) {
-            SquadDecisions.defenseEvaluated(defenseSquad, DefenseEvent.PULL, candidates.size(), pulled.size(), 0,
-                    null);
+            SquadDecisions.defenseEvaluated(defenseSquad, DefenseEvent.PULL, candidates.size(), pulled,
+                    Collections.emptyList(), null);
         }
         return new WorkerDefense.Outcome<>(false, pulled, Collections.emptyList());
     }
@@ -453,8 +453,8 @@ public class SquadManager {
 
         List<ManagedUnit> reassignedDefenders = releaseDefenders(defenseSquad);
         if (!reassignedDefenders.isEmpty()) {
-            SquadDecisions.defenseEvaluated(defenseSquad, DefenseEvent.RELEASE, 0, 0, reassignedDefenders.size(),
-                    null);
+            SquadDecisions.defenseEvaluated(defenseSquad, DefenseEvent.RELEASE, 0, Collections.emptyList(),
+                    reassignedDefenders, null);
         }
         return reassignedDefenders;
     }
