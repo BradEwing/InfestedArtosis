@@ -685,6 +685,14 @@ class SquadDecisionsTest {
     }
 
     @Test
+    void onlyTheCollapseCommitIsWrittenAsARowOfItsOwn() {
+        assertTrue(SquadDecisionLogger.writesOwnRow(DecisionPath.CONTAIN_COLLAPSE_COMMIT));
+        assertFalse(SquadDecisionLogger.writesOwnRow(DecisionPath.CONTAIN_COLLAPSE));
+        assertFalse(SquadDecisionLogger.writesOwnRow(DecisionPath.RETREAT_LOCK_BROKEN));
+        assertFalse(SquadDecisionLogger.writesOwnRow(DecisionPath.SIM_ENGAGE));
+    }
+
+    @Test
     void aRowWithNoCollapseTestCarriesSentinels() {
         String[] fields = rowFor(new GroundSquad());
 

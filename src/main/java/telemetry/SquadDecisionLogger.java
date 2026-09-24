@@ -57,7 +57,8 @@ import java.util.Set;
  * <p>CONTAIN_COLLAPSE is emitted on the frame a containing squad collapses on the enemies inside its arc's sector,
  * and CONTAIN_COLLAPSE_REJECTED on a frame it tested a collapse with an armed enemy in the sector and declined,
  * deduplicated per contain episode and outcome. Both carry the outcome, the enemies in the sector, the sector sim
- * ratio, the flank count and whether the enemy centroid is clear of static defence.
+ * ratio, the flank count and whether the enemy centroid is clear of static defence. CONTAIN_COLLAPSE_COMMIT is
+ * emitted on the frame the centre of a collapse commits, which changes no status.
  *
  * <p>sim_enemy_air_share and sim_our_air_share are the shares of each side's priced strength that fly. Each unit on
  * one side is priced over the other side's strength in the layers it can hit, so a weapon that fills two domains,
@@ -205,10 +206,26 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         }
 
         try {
-            decisionFor(squad).setDecisionPath(path);
+            SquadDecision decision = decisionFor(squad);
+            decision.setDecisionPath(path);
+            if (writesOwnRow(path)) {
+                writer.append(row(squad, game.getFrameCount(), path.name(), squad.getStatus(), squad.getStatus(),
+                        decision, NONE));
+            }
         } catch (RuntimeException e) {
             disable();
         }
+    }
+
+    /**
+     * Whether a path is written as a row of its own on the frame it is taken. The centre of a collapse commits with
+     * the squad already in FIGHT, so no status change would ever carry the path.
+     *
+     * @param path the branch taken
+     * @return true for CONTAIN_COLLAPSE_COMMIT
+     */
+    static boolean writesOwnRow(DecisionPath path) {
+        return path == DecisionPath.CONTAIN_COLLAPSE_COMMIT;
     }
 
     @Override
