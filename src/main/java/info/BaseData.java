@@ -22,7 +22,11 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+<<<<<<< HEAD
 import java.util.function.ToIntFunction;
+=======
+import java.util.function.Predicate;
+>>>>>>> origin/BradEwing/IA-407-enemy-main-proxy
 import java.util.stream.Collectors;
 
 /**
@@ -50,6 +54,9 @@ public class BaseData {
     @Getter
     private Base inferredNaturalBase;
     private Base mainEnemyBase;
+    @Getter
+    private EnemyMainEvidence mainEnemyBaseEvidence;
+    private HashSet<Base> startsSeenEmpty = new HashSet<>();
     @Getter
     private boolean enemyMainBaseFound = false;
     private HashSet<Unit> macroHatcheries = new HashSet<>();
@@ -1041,34 +1048,117 @@ public class BaseData {
     }
 
     /**
-     * Adds an enemy base to the tracking structures.
+     * Adds an enemy base to the tracking structures. The enemy main is set only by
+     * {@link #assignEnemyMain}.
      * @param base The enemy base to add.
      */
     public void addEnemyBase(Base base) {
         if (enemyBases.add(base)) {
             availableBases.remove(base);
             reservedBases.remove(base);
-            // Automatically set as main enemy base if it's a starting location and not already set
-            if (mains.contains(base) && mainEnemyBase == null) {
-                mainEnemyBase = base;
-                enemyMainBaseFound = true;
-                StartingLocationPaths paths = startingLocationPaths.get(base);
-                if (paths != null) {
-                    enemyNaturalBase = paths.getNaturalExpansion();
-                }
-            }
         }
     }
 
     /**
-     * Removes an enemy base from tracking and makes it available if accessible.
-     * @param base The enemy base to remove.
+     * Offers a visible enemy building as evidence of the enemy main. A resource depot whose tile is a starting
+     * location's is DEPOT evidence for it; any other building standing in a starting location's BWEM Area is
+     * MAIN_AREA evidence for that one. A building that is neither, such as a proxy in the open or at a natural,
+     * is no evidence and leaves the enemy main as it is.
+     *
+     * @param type the building's type
+     * @param tile the building's tile
+     * @param position the building's position
+     * @param standsInArea whether the building stands in a starting location's BWEM Area
+     * @return whether the enemy main changed
      */
-    public void removeEnemyBase(Base base) {
+    public boolean offerEnemyMainEvidence(UnitType type, TilePosition tile, Position position,
+                                          Predicate<Base> standsInArea) {
+        Base depotStart = type.isResourceDepot() ? baseTilePositionLookup.get(tile) : null;
+        if (depotStart != null && mains.contains(depotStart)) {
+            return assignEnemyMain(depotStart, EnemyMainEvidence.DEPOT, type, position);
+        }
+        Base areaStart = mains.stream()
+                .filter(start -> start != mainBase)
+                .filter(standsInArea)
+                .findFirst()
+                .orElse(null);
+        return assignEnemyMain(areaStart, EnemyMainEvidence.MAIN_AREA, type, position);
+    }
+
+    /**
+     * Makes a starting location other than ours the enemy main on the evidence of an enemy building, adds it to
+     * the enemy bases and takes the enemy natural from its paths. A main already known is replaced only by
+     * stronger evidence at another starting location, which clears the old main first. A starting location
+     * seen empty takes nothing weaker than a depot, and a depot on it lifts that mark.
+     *
+     * @param start the starting location the building is evidence for
+     * @param evidence how the building ties to that starting location
+     * @param source the building's type
+     * @param sourcePosition the building's position
+     * @return whether the enemy main changed
+     */
+    public boolean assignEnemyMain(Base start, EnemyMainEvidence evidence, UnitType source, Position sourcePosition) {
+        if (start == null || start == mainBase || !mains.contains(start)) {
+            return false;
+        }
+        if (evidence == EnemyMainEvidence.DEPOT) {
+            startsSeenEmpty.remove(start);
+        } else if (startsSeenEmpty.contains(start)) {
+            return false;
+        }
+        if (start == mainEnemyBase) {
+            if (evidence.isStrongerThan(mainEnemyBaseEvidence)) {
+                mainEnemyBaseEvidence = evidence;
+            }
+            return false;
+        }
+        if (mainEnemyBase != null) {
+            if (!evidence.isStrongerThan(mainEnemyBaseEvidence)) {
+                return false;
+            }
+            removeEnemyBase(mainEnemyBase, EnemyMainClearReason.REPLACED_BY_DEPOT);
+        }
+        addEnemyBase(start);
+        mainEnemyBase = start;
+        mainEnemyBaseEvidence = evidence;
+        enemyMainBaseFound = true;
+        StartingLocationPaths paths = startingLocationPaths.get(start);
+        enemyNaturalBase = paths == null ? null : paths.getNaturalExpansion();
+        PlanEvents.enemyMainAssigned(start.getLocation(), evidence, source, sourcePosition);
+        return true;
+    }
+
+    /**
+     * Records that a starting location other than ours was in our vision with no enemy depot on it, so it is not
+     * where the enemy started.
+     */
+    public void markStartSeenEmpty(Base start) {
+        if (start != mainBase && mains.contains(start)) {
+            startsSeenEmpty.add(start);
+        }
+    }
+
+    /**
+     * Whether a starting location was in our vision with no enemy depot on it, and no depot has been seen on it
+     * since.
+     */
+    public boolean isStartSeenEmpty(Base start) {
+        return startsSeenEmpty.contains(start);
+    }
+
+    /**
+     * Removes an enemy base from tracking and makes it available if accessible. Removing the enemy main clears
+     * it and the enemy natural.
+     * @param base The enemy base to remove.
+     * @param reason why the base is removed, reported when it is the enemy main
+     */
+    public void removeEnemyBase(Base base, EnemyMainClearReason reason) {
         if (enemyBases.remove(base)) {
             if (base == mainEnemyBase) {
                 mainEnemyBase = null;
+                mainEnemyBaseEvidence = null;
                 enemyNaturalBase = null;
+                PlanEvents.enemyMainCleared(base.getLocation(), reason);
             }
             // Re-add to available bases if not an island
             if (!islands.contains(base)) {

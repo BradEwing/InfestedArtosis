@@ -2,6 +2,9 @@ package info.tracking;
 
 import bwapi.Position;
 import bwapi.TilePosition;
+import bwapi.UnitType;
+import info.EnemyMainEvidence;
+import info.LV28400NFixture;
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
@@ -111,5 +114,65 @@ class StrategyDetectionContextTest {
     @Test
     void anEnemyMainWithNoGroundPathDoesNotCountAgainstOurSide() {
         assertTrue(StrategyDetectionContext.isCloserToOurMain(1000, Collections.singletonList(-1)));
+    }
+
+    /**
+     * Game LV28400N's proxy Gateway is 901 px from the empty start, 1664 px from our main and 3360 px from the real
+     * main, by air: ground paths need a live map, so air distance stands in for them.
+     */
+    @Test
+    void theLv28400nProxyGatewayIsOnOurSideOnceTheRealMainIsAssigned() {
+        LV28400NFixture icarus = new LV28400NFixture();
+        icarus.baseData.assignEnemyMain(icarus.realMain, EnemyMainEvidence.DEPOT, UnitType.Protoss_Nexus,
+                LV28400NFixture.REAL_NEXUS);
+
+        assertTrue(isOnOurSide(icarus, LV28400NFixture.PROXY_GATEWAY));
+    }
+
+    @Test
+    void theLv28400nProxyGatewayIsNotOnOurSideWhileTheEmptyStartIsTakenForTheMain() {
+        LV28400NFixture icarus = new LV28400NFixture();
+        icarus.baseData.assignEnemyMain(icarus.emptyStart, EnemyMainEvidence.MAIN_AREA, UnitType.Protoss_Pylon,
+                LV28400NFixture.PROXY_PYLON);
+
+        assertFalse(isOnOurSide(icarus, LV28400NFixture.PROXY_GATEWAY));
+    }
+
+    @Test
+    void withTheMainUnknownTheLv28400nProxyGatewayIsOnOurSideOnceTheEmptyStartIsSeenEmpty() {
+        LV28400NFixture icarus = new LV28400NFixture();
+        icarus.baseData.markStartSeenEmpty(icarus.emptyStart);
+
+        assertTrue(isOnOurSide(icarus, LV28400NFixture.PROXY_GATEWAY));
+    }
+
+    /**
+     * An unscouted start nearer the Gateway than our main may still be the enemy's, so the Gateway could be its
+     * home Gateway.
+     */
+    @Test
+    void withTheMainUnknownTheLv28400nProxyGatewayIsNotOnOurSideWhileTheEmptyStartIsUnscouted() {
+        LV28400NFixture icarus = new LV28400NFixture();
+
+        assertFalse(isOnOurSide(icarus, LV28400NFixture.PROXY_GATEWAY));
+    }
+
+    /**
+     * A razed enemy main is cleared and then seen empty, like the start that never held one. A home Gateway's
+     * last known position beside it must still read as the enemy's side.
+     */
+    @Test
+    void withEveryOtherStartSeenEmptyAHomeGatewayBesideTheRazedMainIsNotOnOurSide() {
+        LV28400NFixture icarus = new LV28400NFixture();
+        icarus.baseData.markStartSeenEmpty(icarus.emptyStart);
+        icarus.baseData.markStartSeenEmpty(icarus.realMain);
+
+        assertFalse(isOnOurSide(icarus, new Position(3584, 1424)));
+        assertTrue(isOnOurSide(icarus, new Position(1600, 400)));
+    }
+
+    private static boolean isOnOurSide(LV28400NFixture icarus, Position position) {
+        return StrategyDetectionContext.isOnOurSide(position, icarus.baseData, icarus.bases,
+                (from, to) -> (int) from.getDistance(to));
     }
 }
