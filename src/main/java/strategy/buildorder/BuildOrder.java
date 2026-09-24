@@ -174,6 +174,14 @@ public abstract class BuildOrder {
     }
 
     /**
+     * Whether a reaction must leave Metabolic Boost where this build put it: neither queue it nor
+     * pull it ahead of normal production. False by default, so reactions pull it forward as usual.
+     */
+    public boolean holdsSpeedUpgrade(GameState gameState) {
+        return false;
+    }
+
+    /**
      * Returns true if Overlord Speed should be researched, based on Lair, game time and unit triggers.
      *
      * <p>The Lair term reads {@link Readiness#USABLE}, which counts only finished Lairs.
