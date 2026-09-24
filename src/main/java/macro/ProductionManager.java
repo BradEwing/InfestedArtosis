@@ -30,6 +30,7 @@ import unit.managed.UnitRole;
 import util.TravelTime;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -53,6 +54,9 @@ public class ProductionManager {
     static final int SUPPLY_BUFFER = 4;
 
     private static final int MAX_SUPPLY = 400;
+
+    /** Raw supply used, 9 in game terms, at which the first-Overlord rule queues an Overlord. */
+    private static final int FIRST_OVERLORD_SUPPLY_USED = 18;
 
     private static final int HATCHERY_MINERAL_PRICE = UnitType.Zerg_Hatchery.mineralPrice();
 
@@ -599,22 +603,14 @@ public class ProductionManager {
 
         final int overlordCount = gameState.ourLivingUnitCount(UnitType.Zerg_Overlord);
         final int plannedSupply = gameState.getResourceCount().getPlannedSupply();
-        final boolean isNinePool = "9PoolSpeed".equals(activeBuildOrder.getName());
-        if (overlordCount < 2 && !isNinePool) {
-            if (self.supplyUsed() >= 18 && overlordCount < 2 && plannedSupply == 0) {
-                addUnitToQueue(UnitType.Zerg_Overlord, 1);
-                gameState.getResourceCount().setPlannedSupply(OVERLORD_SUPPLY);
-                return;
-            }
-            return;
-        }
-    
+
         List<Plan> sortedQueue = gameState.getProductionQueue().toSortedList();
 
         List<Plan> scheduledPlans = new ArrayList<>(gameState.getPlansScheduled());
         scheduledPlans.sort(new PlanComparator());
 
-        List<Integer> insertPriorities = overlordInsertPriorities(
+        List<Integer> insertPriorities = overlordPriorities(
+                overlordCount,
                 scheduledPlans,
                 sortedQueue,
                 self.supplyTotal() - self.supplyUsed(),
@@ -627,6 +623,10 @@ public class ProductionManager {
         }
         gameState.getResourceCount().setPlannedSupply(supplyAfterInserts);
 
+        if (usesFirstOverlordRule(overlordCount)) {
+            return;
+        }
+
         // Emergency fallback: nothing waiting can fit in the remaining supply, with high minerals
         int cheapestWaitingUnit = Math.min(
                 SupplyCapacity.cheapestUnitSupply(sortedQueue),
@@ -637,6 +637,45 @@ public class ProductionManager {
             addUnitToQueue(UnitType.Zerg_Overlord, 1);
             gameState.getResourceCount().setPlannedSupply(supplyAfterInserts + OVERLORD_SUPPLY);
         }
+    }
+
+    /**
+     * The priorities at which the supply planner inserts Overlords this frame.
+     *
+     * <p>While fewer than two Overlords are alive, only the first-Overlord rule applies: one
+     * Overlord at priority 1 once 9 supply is used and no Overlord is in flight. The queue walker
+     * takes over from the second Overlord. Every build order goes through the same rule, so the
+     * walker cannot insert the first Overlord ahead of an opener's early drones.
+     *
+     * @param overlordCount living Overlords
+     * @param scheduledPlans plans holding a larva or a builder, in priority order
+     * @param queuedPlans plans still in the production queue, in priority order
+     * @param freeSupply supply total minus supply used
+     * @param plannedSupply supply from Overlords already in flight
+     * @param supplyUsed supply used
+     * @return the priority of each Overlord to insert
+     */
+    static List<Integer> overlordPriorities(
+            int overlordCount,
+            List<Plan> scheduledPlans,
+            List<Plan> queuedPlans,
+            int freeSupply,
+            int plannedSupply,
+            int supplyUsed) {
+        if (usesFirstOverlordRule(overlordCount)) {
+            return shouldQueueFirstOverlord(supplyUsed, plannedSupply)
+                    ? Collections.singletonList(1)
+                    : Collections.<Integer>emptyList();
+        }
+        return overlordInsertPriorities(scheduledPlans, queuedPlans, freeSupply, plannedSupply, supplyUsed);
+    }
+
+    private static boolean usesFirstOverlordRule(int overlordCount) {
+        return overlordCount < 2;
+    }
+
+    private static boolean shouldQueueFirstOverlord(int supplyUsed, int plannedSupply) {
+        return supplyUsed >= FIRST_OVERLORD_SUPPLY_USED && plannedSupply == 0;
     }
 
     /**

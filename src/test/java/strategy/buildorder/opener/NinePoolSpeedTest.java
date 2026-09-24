@@ -15,24 +15,46 @@ class NinePoolSpeedTest {
 
     private static final int ZERGLINGS_NEEDED = 6;
 
+    private static final int NINE_DRONES = 9;
+
+    private static final int NO_STANDING_POOL = 0;
+
+    private static final int ONE_STANDING_POOL = 1;
+
+    /**
+     * LUZ9502W frame 6: four living drones and four planned. The first Overlord was queued here
+     * and morphed at 7 supply, ahead of the 8th and 9th drones and the pool.
+     */
     @Test
-    void derivesTheOverlordWhileSupplyIsTight() {
-        assertTrue(NinePoolSpeed.shouldPlanOverlord(9, 1, false));
+    void holdsTheOverlordBelowNineDrones() {
+        assertTrue(NinePoolSpeed.holdsOverlords(NINE_DRONES - 1, NO_STANDING_POOL));
     }
 
     @Test
-    void withholdsTheOverlordWhileSupplyIsExcess() {
-        assertFalse(NinePoolSpeed.shouldPlanOverlord(9, 1, true));
+    void holdsTheOverlordAtNineDronesUntilThePoolStands() {
+        assertTrue(NinePoolSpeed.holdsOverlords(NINE_DRONES, NO_STANDING_POOL));
     }
 
     @Test
-    void withholdsTheOverlordOnceTheCountIsMet() {
-        assertFalse(NinePoolSpeed.shouldPlanOverlord(9, 2, false));
+    void releasesTheOverlordOnceThePoolIsUnderConstruction() {
+        assertFalse(NinePoolSpeed.holdsOverlords(NINE_DRONES, ONE_STANDING_POOL));
     }
 
+    /** The pool's drone is gone, and its replacement has not been queued yet. */
     @Test
-    void withholdsTheOverlordBelowNineDrones() {
-        assertFalse(NinePoolSpeed.shouldPlanOverlord(8, 1, false));
+    void holdsTheOverlordUntilThePoolDroneIsReplaced() {
+        assertTrue(NinePoolSpeed.holdsOverlords(NINE_DRONES - 1, ONE_STANDING_POOL));
+    }
+
+    /**
+     * The opener must still be active, and so still holding, while the pool is only planned. A
+     * terminal build order taking over then would get the first Overlord at priority 1, ahead of
+     * the pool at 9 supply.
+     */
+    @Test
+    void staysActiveWhileThePoolIsOnlyPlanned() {
+        assertFalse(NinePoolSpeed.openerComplete(NO_STANDING_POOL));
+        assertTrue(NinePoolSpeed.holdsOverlords(NINE_DRONES, NO_STANDING_POOL));
     }
 
     @Test
@@ -58,11 +80,6 @@ class NinePoolSpeedTest {
     @Test
     void handsOffOnASpawningPoolUnderConstruction() {
         assertTrue(NinePoolSpeed.openerComplete(1));
-    }
-
-    @Test
-    void holdsWhileNoSpawningPoolIsCommittedTo() {
-        assertFalse(NinePoolSpeed.openerComplete(0));
     }
 
     /**

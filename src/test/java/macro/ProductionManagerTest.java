@@ -397,6 +397,48 @@ class ProductionManagerTest {
                 ProductionManager.buildAheadCancellationSource(spire(PlanState.SCHEDULE), false, false));
     }
 
+    /**
+     * LUZ9502W frame 6, 9PoolSpeed at 5/9 supply with three drones queued. The walker inserted
+     * the first Overlord at priority 4 and it morphed at 7 supply. With one Overlord alive the
+     * first-Overlord rule governs every build order, and it queues nothing below 9 supply.
+     */
+    @Test
+    void theFirstOverlordIsNotInsertedAheadOfTheEarlyDrones() {
+        List<Plan> drones = Arrays.<Plan>asList(
+                new UnitPlan(UnitType.Zerg_Drone, 1),
+                new UnitPlan(UnitType.Zerg_Drone, 2),
+                new UnitPlan(UnitType.Zerg_Drone, 5));
+
+        assertEquals(Collections.singletonList(4), ProductionManager.overlordInsertPriorities(
+                Collections.<Plan>emptyList(), drones, 8, 0, 10));
+        assertTrue(ProductionManager.overlordPriorities(
+                1, Collections.<Plan>emptyList(), drones, 8, 0, 10).isEmpty());
+    }
+
+    /**
+     * 9PoolSpeed after its hold releases: the pool standing, the replacement drone morphing, 9/9
+     * supply. The first-Overlord rule is the only source of that Overlord, and the Overlord it
+     * queues is in flight on the next frame, so a second is never added.
+     */
+    @Test
+    void exactlyOneFirstOverlordIsQueuedOnceTheHoldReleases() {
+        List<Plan> zerglings = Collections.<Plan>singletonList(new UnitPlan(UnitType.Zerg_Zergling, 2000));
+
+        assertEquals(Collections.singletonList(1), ProductionManager.overlordPriorities(
+                1, Collections.<Plan>emptyList(), zerglings, 0, 0, 18));
+        assertTrue(ProductionManager.overlordPriorities(
+                1, Collections.<Plan>emptyList(), zerglings, 0, UnitType.Zerg_Overlord.supplyProvided(), 18).isEmpty());
+    }
+
+    @Test
+    void theWalkerTakesOverFromTheSecondOverlord() {
+        List<Plan> hydralisks = hydralisks(7, 11000);
+
+        assertEquals(
+                ProductionManager.overlordInsertPriorities(Collections.<Plan>emptyList(), hydralisks, 1, 16, 53),
+                ProductionManager.overlordPriorities(2, Collections.<Plan>emptyList(), hydralisks, 1, 16, 53));
+    }
+
     @Test
     void aQueuedOverlordBacklogEarnsNoSupplyHeadroom() {
         List<Plan> hydralisks = hydralisks(7, 11000);
