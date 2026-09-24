@@ -23,6 +23,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
@@ -36,7 +37,8 @@ public class PlanManager {
     private HashSet<ManagedUnit> gasGatherers;
     private HashSet<ManagedUnit> larva;
     private HashSet<ManagedUnit> scheduledDrones = new HashSet<>();
-    private HashSet<ManagedUnit> dispatchedDrones = new HashSet<>();
+    private HashMap<ManagedUnit, Plan> dispatchedDrones = new HashMap<>();
+    private HashMap<ManagedUnit, BuilderStray> builderStrays = new HashMap<>();
 
 
     public PlanManager(Game game, GameState gameState) {
@@ -50,6 +52,7 @@ public class PlanManager {
     public void onFrame() {
         fixOutOfBoundsBuildingPlans();
         assignScheduledPlannedItems();
+        releaseLostBuilders();
         recallThreatenedBuilders();
         executeScheduledDrones();
         releaseImpossiblePlans();
@@ -185,7 +188,7 @@ public class PlanManager {
             gameState.clearAssignments(managedUnit);
             plan.setState(PlanState.BUILDING);
             managedUnit.setRole(UnitRole.BUILD);
-            dispatchedDrones.add(managedUnit);
+            dispatch(managedUnit, plan);
             executed.add(managedUnit);
         }
 
@@ -212,9 +215,10 @@ public class PlanManager {
      */
     private void recallThreatenedBuilders() {
         List<ManagedUnit> recalled = new ArrayList<>();
-        for (ManagedUnit managedUnit: dispatchedDrones) {
-            Plan plan = managedUnit.getPlan();
-            if (plan == null || plan.getState() != PlanState.BUILDING) {
+        for (Map.Entry<ManagedUnit, Plan> entry: dispatchedDrones.entrySet()) {
+            ManagedUnit managedUnit = entry.getKey();
+            Plan plan = entry.getValue();
+            if (plan.getState() != PlanState.BUILDING) {
                 recalled.add(managedUnit);
                 continue;
             }
@@ -230,8 +234,116 @@ public class PlanManager {
         }
 
         for (ManagedUnit managedUnit: recalled) {
-            dispatchedDrones.remove(managedUnit);
+            undispatch(managedUnit);
         }
+    }
+
+    private void dispatch(ManagedUnit builder, Plan plan) {
+        dispatchedDrones.put(builder, plan);
+        builderStrays.put(builder, new BuilderStray());
+    }
+
+    private void undispatch(ManagedUnit builder) {
+        dispatchedDrones.remove(builder);
+        builderStrays.remove(builder);
+    }
+
+    /**
+     * Releases every walking builder that no longer executes the plan it was dispatched for, and
+     * drops the ones whose plan has left BUILDING.
+     *
+     * <p>The morph of a drone-built building is issued only by a builder in role BUILD, bound to the
+     * plan and within arrival distance of the site. A builder that fails any of those while the plan
+     * sits in BUILDING holds the plan, its build-ahead claim and its reservation until the claim is
+     * evicted. See {@link BuilderLossReason} for the reasons a builder is lost.
+     */
+    private void releaseLostBuilders() {
+        final int frame = game.getFrameCount();
+        for (Map.Entry<ManagedUnit, Plan> entry : new ArrayList<>(dispatchedDrones.entrySet())) {
+            ManagedUnit builder = entry.getKey();
+            Plan plan = entry.getValue();
+            if (plan.getState() != PlanState.BUILDING) {
+                undispatch(builder);
+                continue;
+            }
+            BuilderLossReason reason = lossReason(builder, plan, frame);
+            if (reason != null) {
+                releaseLostBuilder(builder, plan, reason);
+            }
+        }
+    }
+
+    private BuilderLossReason lossReason(ManagedUnit builder, Plan plan, int frame) {
+        Unit unit = builder.getUnit();
+        boolean planBound = builder.getPlan() == plan && plan.equals(gameState.getAssignedPlannedItems().get(unit));
+        TilePosition buildPosition = plan.getBuildPosition();
+        boolean strayed = buildPosition != null && builderStrays.get(builder).isStrayed(
+                unit.getDistance(siteMoveTarget(plan.getPlannedUnit(), buildPosition)),
+                coversCost(game.self().minerals(), game.self().gas(), plan),
+                unit.isCarrying() || builder.isClearingBlocker(),
+                frame);
+        return BuilderLossReason.of(builder.getRole() == UnitRole.BUILD, planBound, strayed);
+    }
+
+    /**
+     * Releases a lost builder and returns its plan to SCHEDULE without an executor, so
+     * {@link #assignMorphDrone} assigns a new builder on the next frame. The plan keeps its
+     * build-ahead claim and its resource reservation, since neither is released here and the claim
+     * is kept for any plan in SCHEDULE or BUILDING.
+     *
+     * <p>The builder drops the plan only while it still holds it. A builder that still reads BUILD
+     * with no plan left goes IDLE, so the worker manager takes it back; a builder another manager
+     * gave a new role keeps that role.
+     *
+     * @param builder the executor the plan loses
+     * @param plan the plan, in BUILDING
+     * @param reason why the builder is lost
+     */
+    private void releaseLostBuilder(ManagedUnit builder, Plan plan, BuilderLossReason reason) {
+        undispatch(builder);
+        if (builder.getPlan() == plan) {
+            builder.setPlan(null);
+        }
+        if (builder.getRole() == UnitRole.BUILD && builder.getPlan() == null) {
+            builder.setRole(UnitRole.IDLE);
+        }
+        returnToSchedule(plan, gameState.getAssignedPlannedItems(), gameState.getPlansBuilding(),
+                gameState.getPlansScheduled());
+        PlanEvents.builderDispatchDecision(plan, reason.decision(), builderThreat(builder, plan));
+    }
+
+    /**
+     * Moves a BUILDING plan back to SCHEDULE and unbinds every executor mapped to it, so no unit is
+     * left holding a plan that no longer names it.
+     *
+     * @param plan the plan to return
+     * @param assignedPlannedItems executor to plan assignments
+     * @param plansBuilding plans in BUILDING
+     * @param plansScheduled plans in SCHEDULE
+     * @param <U> the executor type
+     */
+    static <U> void returnToSchedule(Plan plan, Map<U, Plan> assignedPlannedItems, Set<Plan> plansBuilding,
+            Set<Plan> plansScheduled) {
+        assignedPlannedItems.values().removeIf(plan::equals);
+        plansBuilding.remove(plan);
+        plansScheduled.add(plan);
+        plan.setState(PlanState.SCHEDULE);
+    }
+
+    /**
+     * Whether the bank covers a plan's own cost, ignoring what other plans reserve.
+     *
+     * @param minerals minerals in the bank
+     * @param gas gas in the bank
+     * @param plan the plan
+     */
+    static boolean coversCost(int minerals, int gas, Plan plan) {
+        return minerals >= plan.mineralPrice() && gas >= plan.gasPrice();
+    }
+
+    /** The point a builder walks to for a building at this tile, the centre of its footprint. */
+    static Position siteMoveTarget(UnitType building, TilePosition buildPosition) {
+        return buildPosition.toPosition().add(new Position(building.tileWidth() * 16, building.tileHeight() * 16));
     }
 
     private BuilderThreat builderThreat(ManagedUnit drone, Plan plan) {
