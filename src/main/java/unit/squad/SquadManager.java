@@ -983,15 +983,30 @@ public class SquadManager {
      */
     static boolean holdsAwayFromHome(boolean airSquad, boolean closeThreats, boolean nearHome, int squadStrength,
                                      int moveOutThreshold, boolean committed) {
-        return airSquad && closeThreats && !nearHome && squadStrength < moveOutThreshold && !committed;
+        return mayHoldAwayFromHome(airSquad, squadStrength, moveOutThreshold, committed) && closeThreats && !nearHome;
+    }
+
+    /**
+     * The terms of {@link #holdsAwayFromHome(boolean, boolean, boolean, int, int, boolean)} that need no enemy scan
+     * or path search: an air squad under its move out threshold and not committed. A squad failing them is never
+     * held, so the costlier terms are measured only for a squad that passes.
+     *
+     * @param airSquad true for an air squad
+     * @param squadStrength air combat unit count of the squad
+     * @param moveOutThreshold air combat units the squad needs to be cleared to move out
+     * @param committed true when the squad has been cleared to act and has not been recalled since
+     * @return true when the squad can be held
+     */
+    static boolean mayHoldAwayFromHome(boolean airSquad, int squadStrength, int moveOutThreshold, boolean committed) {
+        return airSquad && squadStrength < moveOutThreshold && !committed;
     }
 
     private boolean holdsAwayFromHome(Squad squad, boolean closeThreats, int squadStrength, int moveOutThreshold) {
-        if (!squad.isAirSquad() || !closeThreats) {
+        if (!closeThreats
+                || !mayHoldAwayFromHome(squad.isAirSquad(), squadStrength, moveOutThreshold, squad.isCommitted())) {
             return false;
         }
-        return holdsAwayFromHome(true, true, isNearHome(squad.getCenter()), squadStrength, moveOutThreshold,
-                squad.isCommitted());
+        return !isNearHome(squad.getCenter());
     }
 
     private boolean isNearHome(Position center) {
@@ -2970,7 +2985,9 @@ public class SquadManager {
         }
 
         squad.addUnit(managedUnit);
-        switch (reinforcementPath(squad.getStatus(), shouldStageSquad(squad), reinforcementHeldAway(squad))) {
+        boolean stage = shouldStageSquad(squad);
+        boolean holdAway = !stage && squad.getStatus() != SquadStatus.CONTAIN && reinforcementHeldAway(squad);
+        switch (reinforcementPath(squad.getStatus(), stage, holdAway)) {
             case STAGE:
                 rallySquad(squad, RallyReason.STAGING);
                 return;
@@ -3039,8 +3056,13 @@ public class SquadManager {
         if (!squad.isAirSquad()) {
             return false;
         }
+        int strength = squadStrength(squad);
+        int moveOutThreshold = calculateMoveOutThreshold(squad);
+        if (!mayHoldAwayFromHome(true, strength, moveOutThreshold, squad.isCommitted())) {
+            return false;
+        }
         boolean closeThreats = !enemyUnitsNearSquad(squad).isEmpty();
-        return holdsAwayFromHome(squad, closeThreats, squadStrength(squad), calculateMoveOutThreshold(squad));
+        return holdsAwayFromHome(squad, closeThreats, strength, moveOutThreshold);
     }
 
     /**

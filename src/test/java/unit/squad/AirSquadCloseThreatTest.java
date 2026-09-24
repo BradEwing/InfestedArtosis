@@ -124,6 +124,30 @@ class AirSquadCloseThreatTest {
     }
 
     @Test
+    void aSquadFailingTheCheapTermsIsNeverHeldWhateverTheCostlyTermsSay() {
+        assertTrue(SquadManager.mayHoldAwayFromHome(AIR, ONE_MUTALISK, THRESHOLD, UNCOMMITTED));
+        assertFalse(SquadManager.mayHoldAwayFromHome(AIR, ONE_MUTALISK, THRESHOLD, COMMITTED));
+        assertFalse(SquadManager.mayHoldAwayFromHome(AIR, THRESHOLD, THRESHOLD, UNCOMMITTED));
+        assertFalse(SquadManager.mayHoldAwayFromHome(GROUND, ONE_MUTALISK, THRESHOLD, UNCOMMITTED));
+
+        for (boolean airSquad : new boolean[]{AIR, GROUND}) {
+            for (int strength : new int[]{ONE_MUTALISK, THRESHOLD}) {
+                for (boolean committed : new boolean[]{COMMITTED, UNCOMMITTED}) {
+                    if (SquadManager.mayHoldAwayFromHome(airSquad, strength, THRESHOLD, committed)) {
+                        continue;
+                    }
+                    for (boolean closeThreats : new boolean[]{true, false}) {
+                        for (boolean nearHome : new boolean[]{NEAR_HOME, AWAY}) {
+                            assertFalse(SquadManager.holdsAwayFromHome(airSquad, closeThreats, nearHome, strength,
+                                    THRESHOLD, committed));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
     void theHomeRadiusIsMeasuredOnTheGroundWithAirAsAFallback() {
         int radius = SquadManager.AIR_HOME_DEFENSE_RADIUS;
 
