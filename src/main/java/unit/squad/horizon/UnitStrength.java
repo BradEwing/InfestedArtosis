@@ -31,6 +31,11 @@ import java.util.Map;
  */
 public class UnitStrength {
 
+    /**
+     * Enemy air share passed to {@link #engagedStrength} when no enemy was measured to split by.
+     */
+    public static final double UNMEASURED_AIR_SHARE = -1;
+
     private static final Map<UnitType, double[]> STRENGTH_TABLE = new HashMap<>();
 
     static {
@@ -161,9 +166,26 @@ public class UnitStrength {
         return s != null ? s[1] + s[3] : 0;
     }
 
-    public static double totalStrength(UnitType type) {
+    /**
+     * Strength one of our units brings against the enemy it is fighting, never more than one domain of it.
+     *
+     * <p>A unit fires one weapon at one target at a time, so its ground-engaging and air-engaging scores are
+     * alternatives, not a sum: a Mutalisk's single weapon fills both airToGround and airToAir. The two are blended
+     * by where the enemy stands, ground-engaging by the enemy ground share and air-engaging by the enemy air share,
+     * so a unit with no weapon for a layer loses that layer's share. With no share measured the unit is priced at
+     * the stronger of the two.
+     *
+     * @param type our unit type
+     * @param enemyAirShare share of the measured enemy that flies, from 0 to 1, or {@link #UNMEASURED_AIR_SHARE}
+     * @return the strength that unit brings to the fight
+     */
+    public static double engagedStrength(UnitType type, double enemyAirShare) {
         double[] s = STRENGTH_TABLE.get(type);
-        return s != null ? s[0] + s[1] + s[2] + s[3] : 0;
+        if (s == null) return 0;
+        double versusGround = s[0] + s[2];
+        double versusAir = s[1] + s[3];
+        if (enemyAirShare < 0) return Math.max(versusGround, versusAir);
+        return (1 - enemyAirShare) * versusGround + enemyAirShare * versusAir;
     }
 
     public static double effectiveness(DamageType damageType, UnitSizeType targetSize) {

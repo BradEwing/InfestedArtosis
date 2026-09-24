@@ -36,7 +36,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
     private static final double NEARBY_THREAT_RADIUS = 512;
     private static final double APPROACH_BUFFER = 64;
     private static final double WORKER_STRENGTH_DIVISOR = 10.0;
-    private static final double HEIGHT_BONUS = 1.15;
+    static final double HEIGHT_BONUS = 1.15;
     private static final Time RECENTLY_SEEN_THRESHOLD = new Time(0, 5);
     private static final Time BUILDING_SEEN_THRESHOLD = new Time(0, 45);
     private static final double DEFAULT_ENGAGE_THRESHOLD = 1.0;
@@ -71,38 +71,6 @@ public class HorizonCombatSimulator implements CombatSimulator {
         DebugSnapshot snapshot = new DebugSnapshot();
         snapshot.setCapturedFrame(currentFrame);
         snapshot.setSquadCenter(squadCenter);
-
-        double friendlyGroundStr = 0;
-        double friendlyAirStr = 0;
-
-        for (ManagedUnit mu : squad.getMembers()) {
-            if (mu.getUnitType() == UnitType.Zerg_Overlord) continue;
-            double str = computeFriendlyStrength(mu, squadCenter, enemyHasDetection, techProgression);
-            snapshot.getFriendlyUnits().add(new UnitDebugEntry(mu.getUnit().getPosition(), mu.getUnitType(), str, false, false));
-            if (mu.getUnitType().isFlyer()) {
-                friendlyAirStr += str;
-            } else {
-                friendlyGroundStr += str;
-            }
-        }
-
-        if (adjacentSquads != null) {
-            for (Map.Entry<Squad, Double> entry : adjacentSquads.entrySet()) {
-                Squad adjSquad = entry.getKey();
-                double distance = entry.getValue();
-                double weight = distanceWeight(distance);
-                for (ManagedUnit mu : adjSquad.getMembers()) {
-                    if (mu.getUnitType() == UnitType.Zerg_Overlord) continue;
-                    double str = computeFriendlyStrength(mu, squadCenter, enemyHasDetection, techProgression) * weight;
-                    snapshot.getFriendlyUnits().add(new UnitDebugEntry(mu.getUnit().getPosition(), mu.getUnitType(), str, true, false));
-                    if (mu.getUnitType().isFlyer()) {
-                        friendlyAirStr += str;
-                    } else {
-                        friendlyGroundStr += str;
-                    }
-                }
-            }
-        }
 
         EnemySample enemySample = new EnemySample();
 
@@ -179,6 +147,41 @@ public class HorizonCombatSimulator implements CombatSimulator {
         snapshot.setEnemyUnscoredSupply(enemySample.unscoredSupply());
         double enemyGroundStr = enemySample.groundTotal();
         double enemyAntiAirStr = enemySample.antiAirTotal();
+        double enemyAirShare = enemySample.airShare();
+        snapshot.setEnemyAirShare(enemyAirShare);
+
+        double friendlyGroundStr = 0;
+        double friendlyAirStr = 0;
+
+        for (ManagedUnit mu : squad.getMembers()) {
+            if (mu.getUnitType() == UnitType.Zerg_Overlord) continue;
+            double str = computeFriendlyStrength(mu, squadCenter, enemyHasDetection, techProgression, enemyAirShare);
+            snapshot.getFriendlyUnits().add(new UnitDebugEntry(mu.getUnit().getPosition(), mu.getUnitType(), str, false, false));
+            if (mu.getUnitType().isFlyer()) {
+                friendlyAirStr += str;
+            } else {
+                friendlyGroundStr += str;
+            }
+        }
+
+        if (adjacentSquads != null) {
+            for (Map.Entry<Squad, Double> entry : adjacentSquads.entrySet()) {
+                Squad adjSquad = entry.getKey();
+                double distance = entry.getValue();
+                double weight = distanceWeight(distance);
+                for (ManagedUnit mu : adjSquad.getMembers()) {
+                    if (mu.getUnitType() == UnitType.Zerg_Overlord) continue;
+                    double str = computeFriendlyStrength(mu, squadCenter, enemyHasDetection, techProgression,
+                            enemyAirShare) * weight;
+                    snapshot.getFriendlyUnits().add(new UnitDebugEntry(mu.getUnit().getPosition(), mu.getUnitType(), str, true, false));
+                    if (mu.getUnitType().isFlyer()) {
+                        friendlyAirStr += str;
+                    } else {
+                        friendlyGroundStr += str;
+                    }
+                }
+            }
+        }
 
         StaticDefenseSupport ownStaticDefense = evaluateOwnStaticDefense(gameState, squadCenter,
                 engagedGroundEnemies, coveredGroundThreats, coveredAirThreats, !airSquad, snapshot);
@@ -387,10 +390,17 @@ public class HorizonCombatSimulator implements CombatSimulator {
         private double supportedAntiAirStrength;
         private int unscoredSupply;
         private int unscoredMedicSupply;
+        private double groundStandingStrength;
+        private double airStandingStrength;
 
         void add(UnitType type, double ground, double antiAir) {
             groundStrength += ground;
             antiAirStrength += antiAir;
+            if (type.isFlyer()) {
+                airStandingStrength += Math.max(ground, antiAir);
+            } else {
+                groundStandingStrength += Math.max(ground, antiAir);
+            }
             if (ground + antiAir <= 0) {
                 unscoredSupply += type.supplyRequired();
                 if (type == UnitType.Terran_Medic) {
@@ -423,6 +433,20 @@ public class HorizonCombatSimulator implements CombatSimulator {
         }
 
         /**
+         * Share of the sample that flies, weighted by each unit's priced strength in its stronger domain so a
+         * unit with one weapon counts once. Unarmed units weigh nothing, so an Observer or a Shuttle does not
+         * pull our units' pricing towards the air.
+         *
+         * @return the air share from 0 to 1, or {@link UnitStrength#UNMEASURED_AIR_SHARE} when nothing armed
+         *         was priced
+         */
+        double airShare() {
+            double total = groundStandingStrength + airStandingStrength;
+            if (total <= 0) return UnitStrength.UNMEASURED_AIR_SHARE;
+            return airStandingStrength / total;
+        }
+
+        /**
          * Supply the sample measured and then priced at nothing. Medics drop out of it once the
          * support term they produced is non zero, because on those frames they were priced.
          *
@@ -434,10 +458,18 @@ public class HorizonCombatSimulator implements CombatSimulator {
         }
     }
 
-    private double computeFriendlyStrength(ManagedUnit mu, Position engagementCenter, boolean enemyHasDetection, TechProgression techProgression) {
+    /**
+     * Strength one of our units brings to the engagement, priced by {@link UnitStrength#engagedStrength} against
+     * the layers the sampled enemy stands in, then weighted for health, distance, cloak, burrow, upgrades and
+     * speed research.
+     *
+     * @param enemyAirShare the sample's {@link EnemySample#airShare()}
+     */
+    private double computeFriendlyStrength(ManagedUnit mu, Position engagementCenter, boolean enemyHasDetection,
+                                           TechProgression techProgression, double enemyAirShare) {
         Unit unit = mu.getUnit();
         UnitType type = unit.getType();
-        double base = UnitStrength.totalStrength(type);
+        double base = UnitStrength.engagedStrength(type, enemyAirShare);
 
         int hp = unit.getHitPoints();
         int shields = unit.getShields();
@@ -865,5 +897,6 @@ public class HorizonCombatSimulator implements CombatSimulator {
         private boolean enemyMeasured;
         private boolean threatBeyondRadius;
         private int enemyUnscoredSupply;
+        private double enemyAirShare = UnitStrength.UNMEASURED_AIR_SHARE;
     }
 }

@@ -157,7 +157,7 @@ class UnitStrengthTest {
 
     @Test
     void aMedicIsStillPricedAtZeroByTheStrengthTable() {
-        assertEquals(0.0, UnitStrength.totalStrength(UnitType.Terran_Medic), TOLERANCE);
+        assertEquals(0.0, UnitStrength.engagedStrength(UnitType.Terran_Medic, UnitStrength.UNMEASURED_AIR_SHARE), TOLERANCE);
     }
 
     private static double rawWeaponStrength(UnitType type) {

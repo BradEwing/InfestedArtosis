@@ -45,6 +45,7 @@ class HorizonCombatSimulatorTest {
     private static final int NEAR_THRESHOLD_ZERGLINGS = 10;
     private static final int NEAR_THRESHOLD_MARINES = 7;
     private static final int NEAR_THRESHOLD_MEDICS = 2;
+    private static final double GROUND_ONLY = 0;
 
     private static List<Position> at(int offsetX) {
         return Collections.singletonList(new Position(COLONY.getX() + offsetX, COLONY.getY()));
@@ -248,11 +249,11 @@ class HorizonCombatSimulatorTest {
     }
 
     private static double zerglingStrength(int zerglings) {
-        return zerglings * UnitStrength.totalStrength(UnitType.Zerg_Zergling);
+        return zerglings * UnitStrength.engagedStrength(UnitType.Zerg_Zergling, GROUND_ONLY);
     }
 
     private static double mutaliskAirStrength(int mutalisks) {
-        return mutalisks * UnitStrength.totalStrength(UnitType.Zerg_Mutalisk);
+        return mutalisks * UnitStrength.engagedStrength(UnitType.Zerg_Mutalisk, GROUND_ONLY);
     }
 
     private static CombatResult mutalisksVersus(int mutalisks, UnitType defence, double engageThreshold) {
