@@ -125,6 +125,24 @@ public enum DecisionPath {
     SPLIT_INHERIT,
 
     /**
+     * A containing squad collapsed on the enemies inside its arc's sector: it left the arc for FIGHT under a fight
+     * lock, its flanks wrapping past the enemy centroid while the centre holds.
+     */
+    CONTAIN_COLLAPSE,
+
+    /**
+     * The wrap of a collapse ended, every flank having arrived or the wrap having run out its frames, and the centre
+     * of the squad committed to the fight.
+     */
+    CONTAIN_COLLAPSE_COMMIT,
+
+    /**
+     * A squad held in RETREAT by the lock a contain's attrition exit armed read an ENGAGE at or above the strong
+     * engage threshold, and the lock was dropped so the verdict could act.
+     */
+    RETREAT_LOCK_BROKEN,
+
+    /**
      * No branch recorded a decision for this row.
      */
     NONE

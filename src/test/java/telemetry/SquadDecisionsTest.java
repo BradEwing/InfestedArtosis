@@ -6,6 +6,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import unit.squad.AirSquad;
 import unit.squad.CombatSimulator;
+import unit.squad.ContainmentCollapse;
 import unit.squad.DefenseSim;
 import unit.squad.GroundSquad;
 import unit.squad.RunbyState;
@@ -91,6 +92,19 @@ class SquadDecisionsTest {
             }
 
             @Override
+            public void onContainmentCollapseEvaluated(Squad squad, ContainmentCollapse.Outcome outcome,
+                                                       int enemiesInSector, double ratio, int flanks,
+                                                       boolean staticClear) {
+                events.add("COLLAPSE:" + outcome + ":" + enemiesInSector + ":" + ratio + ":" + flanks + ":"
+                        + staticClear);
+            }
+
+            @Override
+            public void onContainArcMeasured(Squad squad, int distance) {
+                events.add("ARC_DISTANCE:" + distance);
+            }
+
+            @Override
             public void onMoveOutEvaluated(Squad squad, int moveOutThreshold, int squadStrength) {
                 events.add("MOVE_OUT:" + moveOutThreshold + ":" + squadStrength);
             }
@@ -124,7 +138,8 @@ class SquadDecisionsTest {
                 + "," + String.join(",", SquadDecisionLogger.runbyCells(null, null))
                 + "," + String.join(",", SquadDecisionLogger.containmentCells(context))
                 + "," + String.join(",", SquadDecisionLogger.simDomainCells(context))
-                + "," + String.join(",", SquadDecisionLogger.moveOutCells(context));
+                + "," + String.join(",", SquadDecisionLogger.moveOutCells(context))
+                + "," + String.join(",", SquadDecisionLogger.collapseCells(context));
         return row.split(",", -1);
     }
 
@@ -479,7 +494,8 @@ class SquadDecisionsTest {
                 + "," + String.join(",", SquadDecisionLogger.runbyCells(null, null))
                 + "," + String.join(",", SquadDecisionLogger.containmentCells(context))
                 + "," + String.join(",", SquadDecisionLogger.simDomainCells(context))
-                + "," + String.join(",", SquadDecisionLogger.moveOutCells(context));
+                + "," + String.join(",", SquadDecisionLogger.moveOutCells(context))
+                + "," + String.join(",", SquadDecisionLogger.collapseCells(context));
         String[] fields = row.split(",", -1);
 
         assertEquals(SquadDecisionLogger.HEADER.split(",", -1).length, fields.length);
@@ -573,7 +589,8 @@ class SquadDecisionsTest {
                 RunbyState.Phase.HARASS))
                 + "," + String.join(",", SquadDecisionLogger.containmentCells(context))
                 + "," + String.join(",", SquadDecisionLogger.simDomainCells(context))
-                + "," + String.join(",", SquadDecisionLogger.moveOutCells(context));
+                + "," + String.join(",", SquadDecisionLogger.moveOutCells(context))
+                + "," + String.join(",", SquadDecisionLogger.collapseCells(context));
         String[] fields = row.split(",", -1);
 
         assertEquals(SquadDecisionLogger.HEADER.split(",", -1).length, fields.length);
@@ -625,14 +642,57 @@ class SquadDecisionsTest {
         context.setMoveOutThreshold(5);
         context.setMoveOutStrength(1);
         List<String> cells = SquadDecisionLogger.moveOutCells(context);
-        String[] columns = SquadDecisionLogger.HEADER.split(",", -1);
         int first = columnIndex("move_out_threshold");
 
-        assertEquals(columns.length - first, cells.size());
+        assertEquals(columnIndex("collapse_outcome") - first, cells.size());
         assertEquals("5", cells.get(0));
         assertEquals("1", cells.get(columnIndex("move_out_strength") - first));
         assertEquals("-1", rowFor(new AirSquad())[columnIndex("move_out_threshold")]);
         assertEquals("-1", rowFor(new AirSquad())[columnIndex("move_out_strength")]);
+    }
+
+    @Test
+    void registeredSinkReceivesCollapseTestsAndArcDistances() {
+        SquadDecisions.register(recorder());
+
+        SquadDecisions.containmentCollapseEvaluated(new GroundSquad(), ContainmentCollapse.Outcome.STATIC_COVERED,
+                4, 2.5, 6, false);
+        SquadDecisions.containArcMeasured(new GroundSquad(), 700);
+
+        assertEquals(java.util.Arrays.asList("COLLAPSE:STATIC_COVERED:4:2.5:6:false", "ARC_DISTANCE:700"), events);
+    }
+
+    @Test
+    void aRowCarriesTheCollapseTestAndArcDistanceAsTheLastColumns() {
+        SquadDecision context = new SquadDecision();
+        context.setCollapseOutcome(ContainmentCollapse.Outcome.COLLAPSE.name());
+        context.setCollapseEnemiesInSector(5);
+        context.setCollapseRatio(2.25);
+        context.setCollapseFlanks(6);
+        context.setCollapseStaticClear(1);
+        context.setContainArcDistance(128);
+        List<String> cells = SquadDecisionLogger.collapseCells(context);
+        String[] columns = SquadDecisionLogger.HEADER.split(",", -1);
+        int first = columnIndex("collapse_outcome");
+
+        assertEquals(columns.length - first, cells.size());
+        assertEquals(java.util.Arrays.asList("COLLAPSE", "5", "2.2500", "6", "1", "128"), cells);
+        assertEquals("collapse_enemies_in_sector", columns[first + 1]);
+        assertEquals("collapse_sim_ratio", columns[first + 2]);
+        assertEquals("collapse_flank_count", columns[first + 3]);
+        assertEquals("collapse_static_clear", columns[first + 4]);
+        assertEquals("contain_arc_distance", columns[first + 5]);
+    }
+
+    @Test
+    void aRowWithNoCollapseTestCarriesSentinels() {
+        String[] fields = rowFor(new GroundSquad());
+
+        assertEquals(SquadDecisionLogger.HEADER.split(",", -1).length, fields.length);
+        assertEquals("NONE", fields[columnIndex("collapse_outcome")]);
+        assertEquals("-1", fields[columnIndex("collapse_enemies_in_sector")]);
+        assertEquals("-1", fields[columnIndex("collapse_static_clear")]);
+        assertEquals("-1", fields[columnIndex("contain_arc_distance")]);
     }
 
     @Test

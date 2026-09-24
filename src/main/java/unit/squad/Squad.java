@@ -54,12 +54,14 @@ public class Squad implements Comparable<Squad> {
     protected int fightLockedUntilFrame = 0;
     protected int fightLockSupply = 0;
     protected int retreatLockedUntilFrame = 0;
+    protected boolean attritionRetreatLock = false;
     protected int containLockedUntilFrame = 0;
     @Getter
     protected int containStartFrame = 0;
     private Arc containmentArc;
     private RunbyState runbyState;
     private int containRadius = 0;
+    private ContainmentCollapse.Maneuver collapse;
     private final ContainmentAttrition containmentAttrition = new ContainmentAttrition();
     protected Time fightHysteresis = new Time(0, 3);
     protected Time retreatHysteresis = new Time(0, 5);
@@ -232,6 +234,9 @@ public class Squad implements Comparable<Squad> {
      * every containing source. Any other merged status drops them. Enemy reach is kept game-wide in the reach
      * memory, not on the squad.
      *
+     * <p>Locks fold to the latest expiry among the sources, except a retreat lock armed by a contain's attrition
+     * exit, which is not inherited. A collapse under way is not inherited either.
+     *
      * @param sources squads being merged into this one
      */
     public void inheritStateFrom(Collection<Squad> sources) {
@@ -261,7 +266,9 @@ public class Squad implements Comparable<Squad> {
                 earliestCommit = source.commitFrame;
             }
             this.fightLockedUntilFrame = Math.max(this.fightLockedUntilFrame, source.fightLockedUntilFrame);
-            this.retreatLockedUntilFrame = Math.max(this.retreatLockedUntilFrame, source.retreatLockedUntilFrame);
+            if (!source.attritionRetreatLock) {
+                this.retreatLockedUntilFrame = Math.max(this.retreatLockedUntilFrame, source.retreatLockedUntilFrame);
+            }
             this.containLockedUntilFrame = Math.max(this.containLockedUntilFrame, source.containLockedUntilFrame);
         }
 
@@ -364,6 +371,23 @@ public class Squad implements Comparable<Squad> {
 
     public void startRetreatLock(int currentFrame) {
         retreatLockedUntilFrame = currentFrame + retreatHysteresis.getFrames();
+        attritionRetreatLock = false;
+    }
+
+    /**
+     * Arms the retreat lock for a squad a contain's attrition exit sent back. It holds like any retreat lock, but a
+     * strong enough ENGAGE may break it and a merge does not inherit it.
+     *
+     * @param currentFrame frame the lock is armed on
+     */
+    public void startAttritionRetreatLock(int currentFrame) {
+        startRetreatLock(currentFrame);
+        attritionRetreatLock = true;
+    }
+
+    public void clearRetreatLock() {
+        retreatLockedUntilFrame = 0;
+        attritionRetreatLock = false;
     }
 
     public boolean isContainLocked(int currentFrame) {

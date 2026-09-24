@@ -5,6 +5,7 @@ import bwapi.Position;
 import bwapi.UnitType;
 import info.GameState;
 import unit.squad.CombatSimulator;
+import unit.squad.ContainmentCollapse;
 import unit.squad.DefenseSim;
 import unit.squad.RunbyState;
 import unit.squad.Squad;
@@ -53,6 +54,11 @@ import java.util.Set;
  * none was, and -1 on any row not written from a containment evaluation. Every such hit writes a row: a
  * CONTAIN_PUSHBACK row when the arc is kept, the status change row when the squad retreats.
  *
+ * <p>CONTAIN_COLLAPSE is emitted on the frame a containing squad collapses on the enemies inside its arc's sector,
+ * and CONTAIN_COLLAPSE_REJECTED on a frame it tested a collapse with an armed enemy in the sector and declined,
+ * deduplicated per contain episode and outcome. Both carry the outcome, the enemies in the sector, the sector sim
+ * ratio, the flank count and whether the enemy centroid is clear of static defence.
+ *
  * <p>sim_enemy_air_share and sim_our_air_share are the shares of each side's priced strength that fly. Each unit on
  * one side is priced over the other side's strength in the layers it can hit, so a weapon that fills two domains,
  * a Mutalisk's or a Dragoon's, counts once in sim_our_strength and sim_enemy_strength.
@@ -81,7 +87,8 @@ public class SquadDecisionLogger implements SquadDecisionSink {
             + "decision_path,sim_enemy_composition,sim_enemy_unscored_supply,runby_phase_old,runby_phase,"
             + "pushback_from_x,pushback_from_y,pushback_to_x,pushback_to_y,pushback_enemy_type,"
             + "pushback_members_moved,contain_supply_lost,outranged_hit,sim_enemy_air_share,sim_our_air_share,"
-            + "move_out_threshold,move_out_strength";
+            + "move_out_threshold,move_out_strength,collapse_outcome,collapse_enemies_in_sector,collapse_sim_ratio,"
+            + "collapse_flank_count,collapse_static_clear,contain_arc_distance";
 
     private static final int FLUSH_INTERVAL_FRAMES = 480;
     private static final String EVENT_STATUS_CHANGE = "STATUS_CHANGE";
@@ -90,6 +97,8 @@ public class SquadDecisionLogger implements SquadDecisionSink {
     private static final String EVENT_SQUAD_DISBANDED = "SQUAD_DISBANDED";
     static final String EVENT_PHASE_CHANGE = "PHASE_CHANGE";
     private static final String EVENT_CONTAIN_PUSHBACK = "CONTAIN_PUSHBACK";
+    static final String EVENT_CONTAIN_COLLAPSE = "CONTAIN_COLLAPSE";
+    static final String EVENT_CONTAIN_COLLAPSE_REJECTED = "CONTAIN_COLLAPSE_REJECTED";
     private static final String EVENT_DEFENSE_PREFIX = "DEFENSE_";
     private static final String SQUAD_TYPE_DEFENSE = "DEFENSE";
     private static final int SQUAD_TYPE_CELL = 3;
@@ -105,6 +114,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
     private final Map<String, SquadStatus> lastStatus = new HashMap<>();
     private final Map<String, SquadDecision> decisions = new HashMap<>();
     private final Map<String, String> lastSuppression = new HashMap<>();
+    private final Map<String, String> lastCollapseRejection = new HashMap<>();
     private final Map<String, Squad> lastSquad = new HashMap<>();
     private final Map<String, RallyReason> rallyReason = new HashMap<>();
 
@@ -281,6 +291,59 @@ public class SquadDecisionLogger implements SquadDecisionSink {
     }
 
     @Override
+    public void onContainmentCollapseEvaluated(Squad squad, ContainmentCollapse.Outcome outcome, int enemiesInSector,
+                                               double ratio, int flanks, boolean staticClear) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            fillCollapse(decisionFor(squad), outcome, enemiesInSector, ratio, flanks, staticClear);
+            SquadDecision context = new SquadDecision();
+            fillCollapse(context, outcome, enemiesInSector, ratio, flanks, staticClear);
+            String id = squad.getId();
+            if (outcome == ContainmentCollapse.Outcome.COLLAPSE) {
+                lastCollapseRejection.remove(id);
+                context.setDecisionPath(DecisionPath.CONTAIN_COLLAPSE);
+                writer.append(row(squad, game.getFrameCount(), EVENT_CONTAIN_COLLAPSE, squad.getStatus(),
+                        squad.getStatus(), context, NONE));
+                return;
+            }
+            String episode = squad.getContainStartFrame() + ":" + outcome;
+            if (episode.equals(lastCollapseRejection.get(id))) {
+                return;
+            }
+            lastCollapseRejection.put(id, episode);
+            writer.append(row(squad, game.getFrameCount(), EVENT_CONTAIN_COLLAPSE_REJECTED, squad.getStatus(),
+                    squad.getStatus(), context, NONE));
+        } catch (RuntimeException e) {
+            disable();
+        }
+    }
+
+    private static void fillCollapse(SquadDecision decision, ContainmentCollapse.Outcome outcome, int enemiesInSector,
+                                     double ratio, int flanks, boolean staticClear) {
+        decision.setCollapseOutcome(outcome.name());
+        decision.setCollapseEnemiesInSector(enemiesInSector);
+        decision.setCollapseRatio(ratio);
+        decision.setCollapseFlanks(flanks);
+        decision.setCollapseStaticClear(SquadDecision.tristate(staticClear));
+    }
+
+    @Override
+    public void onContainArcMeasured(Squad squad, int distance) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            decisionFor(squad).setContainArcDistance(distance);
+        } catch (RuntimeException e) {
+            disable();
+        }
+    }
+
+    @Override
     public void onMoveOutEvaluated(Squad squad, int moveOutThreshold, int squadStrength) {
         if (disabled) {
             return;
@@ -360,6 +423,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         decisions.clear();
         lastStatus.clear();
         lastSuppression.clear();
+        lastCollapseRejection.clear();
         lastSquad.clear();
         rallyReason.clear();
         SquadDecisions.clear();
@@ -398,6 +462,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
 
         lastStatus.keySet().retainAll(present);
         lastSuppression.keySet().retainAll(present);
+        lastCollapseRejection.keySet().retainAll(present);
         lastSquad.keySet().retainAll(present);
         rallyReason.keySet().retainAll(present);
         decisions.clear();
@@ -538,6 +603,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         fields.addAll(containmentCells(context));
         fields.addAll(simDomainCells(context));
         fields.addAll(moveOutCells(context));
+        fields.addAll(collapseCells(context));
         return String.join(",", fields);
     }
 
@@ -560,6 +626,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         fields.addAll(containmentCells(context));
         fields.addAll(simDomainCells(context));
         fields.addAll(moveOutCells(context));
+        fields.addAll(collapseCells(context));
         return String.join(",", fields);
     }
 
@@ -658,6 +725,29 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         List<String> fields = new ArrayList<>();
         fields.add(String.valueOf(context.getMoveOutThreshold()));
         fields.add(String.valueOf(context.getMoveOutStrength()));
+        return fields;
+    }
+
+    /**
+     * Builds the collapse cells: the outcome of the containing squad's collapse test, the armed enemies inside its
+     * arc's sector, the squad's strength ratio over exactly those enemies, the members that flank in a collapse,
+     * whether the enemy centroid is clear of static defence reach, then the distance from the squad to the nearest
+     * point of an arc it was offered.
+     *
+     * <p>The collapse cells are filled on a frame a containing squad had an armed enemy inside its sector, the arc
+     * distance on a frame a squad was offered an arc. Every other row carries NONE and the not evaluated sentinels.
+     *
+     * @param context the decision the row is built from
+     * @return the collapse cells and the arc distance cell
+     */
+    static List<String> collapseCells(SquadDecision context) {
+        List<String> fields = new ArrayList<>();
+        fields.add(context.getCollapseOutcome());
+        fields.add(String.valueOf(context.getCollapseEnemiesInSector()));
+        fields.add(Csv.format(context.getCollapseRatio()));
+        fields.add(String.valueOf(context.getCollapseFlanks()));
+        fields.add(String.valueOf(context.getCollapseStaticClear()));
+        fields.add(String.valueOf(context.getContainArcDistance()));
         return fields;
     }
 

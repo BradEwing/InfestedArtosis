@@ -47,6 +47,12 @@ final class SquadDecision {
     private double ourAirShare = NOT_EVALUATED;
     private int moveOutThreshold = NOT_EVALUATED;
     private int moveOutStrength = NOT_EVALUATED;
+    private String collapseOutcome = "NONE";
+    private int collapseEnemiesInSector = NOT_EVALUATED;
+    private double collapseRatio = NOT_EVALUATED;
+    private int collapseFlanks = NOT_EVALUATED;
+    private int collapseStaticClear = NOT_EVALUATED;
+    private int containArcDistance = NOT_EVALUATED;
 
     static int tristate(boolean value) {
         return value ? 1 : 0;

@@ -3,6 +3,7 @@ package telemetry;
 import bwapi.Position;
 import bwapi.UnitType;
 import unit.squad.CombatSimulator;
+import unit.squad.ContainmentCollapse;
 import unit.squad.DefenseSim;
 import unit.squad.RunbyState;
 import unit.squad.Squad;
@@ -75,6 +76,24 @@ public final class SquadDecisions {
             return;
         }
         current.onOutrangedHitEvaluated(squad, outrangedHit);
+    }
+
+    public static void containmentCollapseEvaluated(Squad squad, ContainmentCollapse.Outcome outcome,
+                                                    int enemiesInSector, double ratio, int flanks,
+                                                    boolean staticClear) {
+        SquadDecisionSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onContainmentCollapseEvaluated(squad, outcome, enemiesInSector, ratio, flanks, staticClear);
+    }
+
+    public static void containArcMeasured(Squad squad, int distance) {
+        SquadDecisionSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onContainArcMeasured(squad, distance);
     }
 
     public static void moveOutEvaluated(Squad squad, int moveOutThreshold, int squadStrength) {

@@ -3,6 +3,7 @@ package telemetry;
 import bwapi.Position;
 import bwapi.UnitType;
 import unit.squad.CombatSimulator;
+import unit.squad.ContainmentCollapse;
 import unit.squad.DefenseSim;
 import unit.squad.RunbyState;
 import unit.squad.Squad;
@@ -90,6 +91,26 @@ public interface SquadDecisionSink {
      * A containing squad was evaluated, with whether a member was hit this frame by something it cannot answer.
      */
     void onOutrangedHitEvaluated(Squad squad, boolean outrangedHit);
+
+    /**
+     * A containing squad tested whether to collapse on the armed enemies inside its arc's sector. Called only when
+     * at least one stands there.
+     *
+     * @param outcome COLLAPSE, or the first condition that failed
+     * @param enemiesInSector armed enemies inside the sector
+     * @param ratio the squad's strength over exactly the enemies in the sector, -1 when fewer than the minimum stood
+     *     there and no sim ran
+     * @param flanks members that flank in a collapse of this squad
+     * @param staticClear true when the enemy centroid is clear of static defence reach
+     */
+    void onContainmentCollapseEvaluated(Squad squad, ContainmentCollapse.Outcome outcome, int enemiesInSector,
+                                        double ratio, int flanks, boolean staticClear);
+
+    /**
+     * A squad was offered a containment arc, with the distance from its center to the nearest arc point. A squad
+     * farther than the arrival distance stays in transit and keeps simulating.
+     */
+    void onContainArcMeasured(Squad squad, int distance);
 
     /**
      * A fight squad's strength was compared against its move out threshold, in the threshold's units: air
