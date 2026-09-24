@@ -191,7 +191,7 @@ public class PlanManager {
             dispatchedDrones.dispatch(managedUnit, plan);
             BuilderReading reading = reading(managedUnit, plan);
             dispatchedDrones.read(managedUnit, reading);
-            reportRedispatch(plan, reading);
+            reportRedispatch(lostBuilders, plan, reading);
             executed.add(managedUnit);
         }
 
@@ -261,7 +261,7 @@ public class PlanManager {
             Plan plan = entry.getValue();
             if (plan.getState() != PlanState.BUILDING) {
                 if (diedOnItsWalk(plan.getState(), builder.getUnit().exists())) {
-                    PlanEvents.builderLost(plan, BuilderLossReason.DIED, dispatchedDrones.lastReadingOf(builder));
+                    reportLoss(lostBuilders, plan, BuilderLossReason.DIED, dispatchedDrones.lastReadingOf(builder));
                 }
                 dispatchedDrones.undispatch(builder);
                 continue;
@@ -292,12 +292,30 @@ public class PlanManager {
     }
 
     /**
-     * Reports a dispatch that replaces a builder the plan lost, with both builders.
+     * Reports a lost builder and, unless it died, holds the loss for the plan's next dispatch to
+     * pair with. A builder that died leaves its plan cancelled, so nothing will re-dispatch it.
      *
+     * @param lostBuilders the losses awaiting a re-dispatch
+     * @param plan the plan that lost its builder
+     * @param reason why the builder was lost
+     * @param builder the lost builder as last read
+     */
+    static void reportLoss(LostBuilders lostBuilders, Plan plan, BuilderLossReason reason, BuilderReading builder) {
+        PlanEvents.builderLost(plan, reason, builder);
+        if (reason != BuilderLossReason.DIED) {
+            lostBuilders.lost(plan, reason, builder);
+        }
+    }
+
+    /**
+     * Reports a dispatch that replaces a builder the plan lost, with both builders. A dispatch of a
+     * plan that lost no builder, including one after a threat recall, reports nothing.
+     *
+     * @param lostBuilders the losses awaiting a re-dispatch
      * @param plan the plan just dispatched
      * @param taker the newly dispatched builder, read on its dispatch frame
      */
-    private void reportRedispatch(Plan plan, BuilderReading taker) {
+    static void reportRedispatch(LostBuilders lostBuilders, Plan plan, BuilderReading taker) {
         LostBuilders.Loss loss = lostBuilders.takeOver(plan);
         if (loss != null) {
             PlanEvents.builderRedispatched(plan, loss.getReason(), loss.getBuilder(), taker);
@@ -344,8 +362,7 @@ public class PlanManager {
         returnToSchedule(plan, gameState.getAssignedPlannedItems(), gameState.getPlansBuilding(),
                 gameState.getPlansScheduled());
         PlanEvents.builderDispatchDecision(plan, reason.decision(), builderThreat(builder, plan));
-        PlanEvents.builderLost(plan, reason, reading);
-        lostBuilders.lost(plan, reason, reading);
+        reportLoss(lostBuilders, plan, reason, reading);
     }
 
     /**

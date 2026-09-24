@@ -2,9 +2,17 @@ package macro.plan;
 
 import bwapi.TilePosition;
 import bwapi.UnitType;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import telemetry.PlanEventSink;
+import telemetry.PlanEvents;
 import unit.managed.BuilderStall;
 import unit.managed.UnitRole;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -17,6 +25,12 @@ class BuilderLossTrackingTest {
     private static final BuilderReading LOST =
             new BuilderReading(161, UnitRole.GATHER, "MoveToMinerals", 914, false);
     private static final BuilderReading WALKING = new BuilderReading(161, UnitRole.BUILD, "Move", 480, false);
+    private static final BuilderReading TAKER = new BuilderReading(204, UnitRole.BUILD, "Move", 176, false);
+
+    @AfterEach
+    void clearSink() {
+        PlanEvents.clear();
+    }
 
     private static Plan den() {
         Plan plan = new BuildingPlan(UnitType.Zerg_Hydralisk_Den, 1, new TilePosition(40, 20));
@@ -151,5 +165,81 @@ class BuilderLossTrackingTest {
     void aBuilderWhosePlanMorphsOrWasRequeuedDidNotDie() {
         assertFalse(PlanManager.diedOnItsWalk(PlanState.MORPHING, true));
         assertFalse(PlanManager.diedOnItsWalk(PlanState.PLANNED, true));
+    }
+
+    @Test
+    void aLossIsReportedWithTheLostBuilderAndPairsWithTheNextDispatch() {
+        List<String> events = record();
+        LostBuilders lostBuilders = new LostBuilders();
+        Plan plan = den();
+
+        PlanManager.reportLoss(lostBuilders, plan, BuilderLossReason.STRAYED, LOST);
+        PlanManager.reportRedispatch(lostBuilders, plan, TAKER);
+
+        assertEquals(Arrays.asList("LOST:STRAYED:161", "REDISPATCH:STRAYED:161>204"), events);
+    }
+
+    @Test
+    void aSecondDispatchAfterARedispatchIsNotReportedAgain() {
+        List<String> events = record();
+        LostBuilders lostBuilders = new LostBuilders();
+        Plan plan = den();
+        PlanManager.reportLoss(lostBuilders, plan, BuilderLossReason.ROLE_CHANGED, LOST);
+        PlanManager.reportRedispatch(lostBuilders, plan, TAKER);
+
+        PlanManager.reportRedispatch(lostBuilders, plan, WALKING);
+
+        assertEquals(Arrays.asList("LOST:ROLE_CHANGED:161", "REDISPATCH:ROLE_CHANGED:161>204"), events);
+    }
+
+    @Test
+    void aDispatchOfAPlanThatLostNoBuilderReportsNothing() {
+        List<String> events = record();
+
+        PlanManager.reportRedispatch(new LostBuilders(), den(), TAKER);
+
+        assertTrue(events.isEmpty());
+    }
+
+    @Test
+    void aBuilderThatDiedIsReportedButNeverPaired() {
+        List<String> events = record();
+        LostBuilders lostBuilders = new LostBuilders();
+        Plan plan = den();
+
+        PlanManager.reportLoss(lostBuilders, plan, BuilderLossReason.DIED, LOST);
+        PlanManager.reportRedispatch(lostBuilders, plan, TAKER);
+
+        assertEquals(Collections.singletonList("LOST:DIED:161"), events);
+        assertEquals(0, lostBuilders.size());
+    }
+
+    private static List<String> record() {
+        List<String> events = new ArrayList<>();
+        PlanEvents.register(new PlanEventSink() {
+            @Override
+            public void onEnqueue(Plan plan) {
+            }
+
+            @Override
+            public void onStateChange(Plan plan, PlanState from, PlanState to) {
+            }
+
+            @Override
+            public void onBlocked(Plan plan, PlanBlocker blocker) {
+            }
+
+            @Override
+            public void onBuilderLost(Plan plan, BuilderLossReason reason, BuilderReading builder) {
+                events.add("LOST:" + reason + ":" + builder.getUnitId());
+            }
+
+            @Override
+            public void onBuilderRedispatch(Plan plan, BuilderLossReason reason, BuilderReading lost,
+                                            BuilderReading taker) {
+                events.add("REDISPATCH:" + reason + ":" + lost.getUnitId() + ">" + taker.getUnitId());
+            }
+        });
+        return events;
     }
 }

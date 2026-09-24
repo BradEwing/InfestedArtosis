@@ -122,7 +122,9 @@ public class PlanEventLogger implements PlanEventSink {
      * BUILD_AHEAD_EVICT, BUILDER_DISPATCH_DECISION, BUILDER_LOST and BUILDER_REDISPATCH rows.
      * builder_role reads NONE on those rows when the plan has no executor and UNMANAGED when its
      * executor is not a managed unit; builder_in_range is blank unless the executor is a drone
-     * building a structure on a known tile.
+     * building a structure on a known tile. A BUILDER_DISPATCH_DECISION row is written before a
+     * dispatched drone is given its BUILD role, so its builder_role is the role the drone held while
+     * it waited, usually GATHER; the dispatched drone reads BUILD from the next row on.
      * <p>
      * BUILDER_LOST is written when a walking builder stops executing its BUILDING plan for any reason
      * but a threat recall. It reports the lost builder as last read: executor_unit_id,
@@ -132,7 +134,12 @@ public class PlanEventLogger implements PlanEventSink {
      * BUILDER_REDISPATCH is written when a new builder is dispatched for a plan that lost one:
      * executor_unit_id and the builder columns are the new builder's, previous_executor_unit_id is
      * the lost builder's, and builder_dispatch_decision repeats the reason it was lost. A
-     * previous_executor_unit_id equal to executor_unit_id is the same drone dispatched again.
+     * previous_executor_unit_id equal to executor_unit_id is the same drone dispatched again. A loss
+     * is held until the plan is dispatched again, cancelled or completed, so a plan evicted from the
+     * build-ahead slot in between pairs its BUILDER_LOST row with a BUILDER_REDISPATCH row written
+     * after it was requeued; the TRANSITION row to PLANNED between them marks the requeue. A loss
+     * reported as LOST_DIED never pairs, and a re-dispatch after a threat recall or an eviction
+     * alone writes no BUILDER_REDISPATCH row.
      * <p>
      * lost_expansion_builders and expansion_hold_until_frame are set only on EXPANSION_BACKOFF
      * rows. The hold a row armed is expansion_hold_until_frame minus frame.
