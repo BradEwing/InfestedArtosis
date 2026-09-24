@@ -746,7 +746,6 @@ public class BaseData {
                 groundDistanceFromEnemyMain(), BY_TILE_LOCATION);
     }
 
-
     /**
      * Writes a RALLY_POINT_CHANGED plan event when the squad rally base differs from the one last seen, including
      * the first frame the main is known.
