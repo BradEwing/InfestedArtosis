@@ -183,4 +183,12 @@ public final class PlanEvents {
         }
         current.onBaseLost(base, innerBase);
     }
+
+    public static void rallyPointChanged(TilePosition base, String reason) {
+        PlanEventSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onRallyPointChanged(base, reason);
+    }
 }

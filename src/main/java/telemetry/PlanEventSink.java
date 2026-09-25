@@ -136,4 +136,13 @@ public interface PlanEventSink {
      */
     default void onBaseLost(TilePosition base, boolean innerBase) {
     }
+
+    /**
+     * The base squads rally to changed, or was first chosen.
+     *
+     * @param base the rally base's tile location
+     * @param reason NATURAL, MAIN or FORWARD_BASE
+     */
+    default void onRallyPointChanged(TilePosition base, String reason) {
+    }
 }
