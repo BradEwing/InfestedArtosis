@@ -3517,10 +3517,21 @@ public class SquadManager {
     static void seedFightTargets(TargetLedger ledger, Collection<ManagedUnit> members) {
         for (ManagedUnit member : members) {
             Unit target = member.fightTarget;
-            if (member.getRole() == UnitRole.FIGHT && target != null && target.exists()) {
+            if (seedsFightTarget(member.getRole(), target != null && target.exists())) {
                 ledger.record(member.getUnitID(), member.getUnitType(), target.getID());
             }
         }
+    }
+
+    /**
+     * Whether a member's fight target is seeded into the frame's ledger: only while the member is in FIGHT and the
+     * target still exists. A member retreating, rallying, containing or on a runby holds no fight slot.
+     *
+     * @param role the member's role
+     * @param targetExists true when the member holds a fight target that still exists
+     */
+    static boolean seedsFightTarget(UnitRole role, boolean targetExists) {
+        return role == UnitRole.FIGHT && targetExists;
     }
 
     /**

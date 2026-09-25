@@ -2,6 +2,7 @@ package unit.squad;
 
 import bwapi.UnitType;
 import org.junit.jupiter.api.Test;
+import unit.managed.UnitRole;
 import util.TargetScorer;
 
 import java.util.Arrays;
@@ -95,5 +96,14 @@ class SaturatedTargetWideningTest {
         assertSame(full, SquadManager.widenWhenSaturated(full, 1, () -> widened, candidates -> {
             throw new AssertionError("selected again");
         }));
+    }
+
+    @Test
+    void onlyAFightingMemberWithALiveTargetIsSeededIntoTheFrameLedger() {
+        assertTrue(SquadManager.seedsFightTarget(UnitRole.FIGHT, true));
+        assertFalse(SquadManager.seedsFightTarget(UnitRole.FIGHT, false));
+        for (UnitRole role : Arrays.asList(UnitRole.RETREAT, UnitRole.RALLY, UnitRole.CONTAIN, UnitRole.RUNBY)) {
+            assertFalse(SquadManager.seedsFightTarget(role, true), role.toString());
+        }
     }
 }
