@@ -482,41 +482,8 @@ public class ProductionManager {
     }
 
     private void removePlansWithLaterPrerequisites() {
-        List<Plan> plansToRemove = new ArrayList<>();
-        List<Plan> queueList = gameState.getProductionQueue().toSortedList();
-        
-        for (int i = 0; i < queueList.size(); i++) {
-            Plan currentPlan = queueList.get(i);
-            UnitType prerequisite = null;
-            
-            switch (currentPlan.getType()) {
-                case UNIT:
-                    prerequisite = getPrerequisiteForUnit(currentPlan.getPlannedUnit());
-                    break;
-                case UPGRADE:
-                    prerequisite = getPrerequisiteForUpgrade(currentPlan.getPlannedUpgrade());
-                    break;
-                case TECH:
-                    prerequisite = getPrerequisiteForTech(currentPlan.getPlannedTechType());
-                    break;
-                default:
-                    continue;
-            }
-            
-            if (prerequisite == null) {
-                continue;
-            }
-            
-            for (int j = i + 1; j < queueList.size(); j++) {
-                Plan laterPlan = queueList.get(j);
-                if (laterPlan.getType() == PlanType.BUILDING && 
-                    laterPlan.getPlannedUnit() == prerequisite) {
-                    plansToRemove.add(currentPlan);
-                    break;
-                }
-            }
-        }
-        
+        List<Plan> plansToRemove = plansWithLaterPrerequisites(
+                gameState.getProductionQueue().toSortedList(), gameState.getTechProgression());
         for (Plan plan : plansToRemove) {
             gameState.getProductionQueue().remove(plan);
             plan.setCancelSource(PlanCancelSource.PRODUCTION_LATER_PREREQUISITE);
@@ -524,7 +491,48 @@ public class ProductionManager {
         }
     }
 
-    private UnitType getPrerequisiteForUnit(UnitType unitType) {
+    /**
+     * The plans that sort ahead of a building plan for their prerequisite, and so cannot start
+     * before it. An upgrade whose building has already finished is never among them
+     * ({@link #laterPrerequisiteForUpgrade}).
+     *
+     * @param queueList queued plans in priority order
+     * @param techProgression our finished tech
+     * @return the plans to cancel
+     */
+    static List<Plan> plansWithLaterPrerequisites(List<Plan> queueList, TechProgression techProgression) {
+        List<Plan> plansToRemove = new ArrayList<>();
+        for (int i = 0; i < queueList.size(); i++) {
+            Plan currentPlan = queueList.get(i);
+            UnitType prerequisite;
+            switch (currentPlan.getType()) {
+                case UNIT:
+                    prerequisite = getPrerequisiteForUnit(currentPlan.getPlannedUnit());
+                    break;
+                case UPGRADE:
+                    prerequisite = laterPrerequisiteForUpgrade(currentPlan.getPlannedUpgrade(), techProgression);
+                    break;
+                case TECH:
+                    prerequisite = getPrerequisiteForTech(currentPlan.getPlannedTechType());
+                    break;
+                default:
+                    continue;
+            }
+            if (prerequisite == null) {
+                continue;
+            }
+            for (int j = i + 1; j < queueList.size(); j++) {
+                Plan laterPlan = queueList.get(j);
+                if (laterPlan.getType() == PlanType.BUILDING && laterPlan.getPlannedUnit() == prerequisite) {
+                    plansToRemove.add(currentPlan);
+                    break;
+                }
+            }
+        }
+        return plansToRemove;
+    }
+
+    private static UnitType getPrerequisiteForUnit(UnitType unitType) {
         switch (unitType) {
             case Zerg_Zergling:
             case Zerg_Lair:
@@ -547,33 +555,25 @@ public class ProductionManager {
         }
     }
 
-    private UnitType getPrerequisiteForUpgrade(UpgradeType upgradeType) {
-        switch (upgradeType) {
-            case Metabolic_Boost:
-                return UnitType.Zerg_Spawning_Pool;
-            case Muscular_Augments:
-            case Grooved_Spines:
-                return UnitType.Zerg_Hydralisk_Den;
-            case Zerg_Carapace:
-            case Zerg_Missile_Attacks:
-            case Zerg_Melee_Attacks:
-                return UnitType.Zerg_Evolution_Chamber;
-            case Zerg_Flyer_Attacks:
-            case Zerg_Flyer_Carapace:
-                return UnitType.Zerg_Spire;
-            case Pneumatized_Carapace:
-                return UnitType.Zerg_Lair;
-            case Chitinous_Plating:
-            case Anabolic_Synthesis:
-                return UnitType.Zerg_Ultralisk_Cavern;
-            case Adrenal_Glands:
-                return UnitType.Zerg_Spawning_Pool;
-            default:
-                return null;
+    /**
+     * The building whose later-queued plan cancels an upgrade queued ahead of it.
+     *
+     * <p>An upgrade whose building has already finished can be researched there, so a later plan
+     * for another of that building does not cancel it. This keeps an upgrade in
+     * {@link BuildOrder#ARMY_UPGRADE_PRIORITY} queued ahead of a second Evolution Chamber.
+     *
+     * @param upgradeType the upgrade
+     * @param techProgression our finished tech
+     * @return the building, or null when no later plan cancels the upgrade
+     */
+    static UnitType laterPrerequisiteForUpgrade(UpgradeType upgradeType, TechProgression techProgression) {
+        if (techProgression.isUpgradePrerequisiteComplete(upgradeType)) {
+            return null;
         }
+        return TechProgression.prerequisiteForUpgrade(upgradeType);
     }
 
-    private UnitType getPrerequisiteForTech(TechType techType) {
+    private static UnitType getPrerequisiteForTech(TechType techType) {
         switch (techType) {
             case Lurker_Aspect:
                 return UnitType.Zerg_Hydralisk_Den;
@@ -886,7 +886,8 @@ public class ProductionManager {
         }
 
         reprioritizeHatcheriesForLarvaConstraint();
-        promoteArmyUpgrades(gameState.getProductionQueue(), activeBuildOrder, gameState.getUnitTypeCount());
+        promoteArmyUpgrades(gameState.getProductionQueue(), activeBuildOrder, gameState.getUnitTypeCount(),
+                gameState.getTechProgression());
 
         List<Plan> schedulable = new ArrayList<>();
         int queueSize = gameState.getProductionQueue().size();
@@ -915,23 +916,27 @@ public class ProductionManager {
     }
 
     /**
-     * Moves every queued upgrade whose army trigger the active build order reports met into
+     * Moves every queued upgrade the active build order reports promotable into
      * {@link BuildOrder#ARMY_UPGRADE_PRIORITY}, ahead of the advanced units it upgrades.
      *
-     * <p>An upgrade is often planned before its army is fielded, so the priority
-     * {@link BuildOrder#upgradePriority} gave it on enqueue is revisited here every frame. The move
-     * is one way: an upgrade already at or ahead of the band keeps its priority, and one moved into
-     * the band stays there if the army later falls below the trigger.
+     * <p>An upgrade is often planned before its army is fielded or its building has finished, so
+     * the priority {@link BuildOrder#upgradePriority} gave it on enqueue is revisited here every
+     * frame. It moves once {@link BuildOrder#isArmyUpgradePromotable} holds: its army trigger is
+     * met and the building it is researched at has finished. Until then it keeps its frame
+     * priority. The move is one way: an upgrade already at or ahead of the band keeps its
+     * priority, and one moved into the band stays there if the army later falls below the trigger.
      *
      * @param productionQueue plans not yet scheduled
      * @param buildOrder the active build order, which names the triggers
      * @param count our unit counts
+     * @param techProgression our finished tech
      */
-    static void promoteArmyUpgrades(ProductionQueue productionQueue, BuildOrder buildOrder, UnitTypeCount count) {
+    static void promoteArmyUpgrades(ProductionQueue productionQueue, BuildOrder buildOrder, UnitTypeCount count,
+                                    TechProgression techProgression) {
         productionQueue.setPriorityWhere(
                 plan -> plan.getType() == PlanType.UPGRADE
                         && plan.getPriority() > BuildOrder.ARMY_UPGRADE_PRIORITY
-                        && buildOrder.isArmyUpgradeTriggered(plan.getPlannedUpgrade(), count),
+                        && buildOrder.isArmyUpgradePromotable(plan.getPlannedUpgrade(), count, techProgression),
                 BuildOrder.ARMY_UPGRADE_PRIORITY);
     }
 

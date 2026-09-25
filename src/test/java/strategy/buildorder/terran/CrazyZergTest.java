@@ -247,7 +247,10 @@ class CrazyZergTest {
         for (int i = 0; i < living; i++) {
             count.addUnit(unitType);
         }
-        return new CrazyZerg().upgradePriority(upgradeType, count, 15000);
+        TechProgression techProgression = withSpire();
+        techProgression.setUltraliskCavern(true);
+        techProgression.setEvolutionChambers(1);
+        return new CrazyZerg().upgradePriority(upgradeType, count, techProgression, 15000);
     }
 
     @Test

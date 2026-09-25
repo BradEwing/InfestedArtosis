@@ -966,15 +966,34 @@ public abstract class BuildOrder {
     }
 
     /**
-     * The priority {@link #planUpgrade} gives an upgrade: {@link #ARMY_UPGRADE_PRIORITY} once
-     * its trigger is met, otherwise the frame it is planned on.
+     * True when the upgrade can take {@link #ARMY_UPGRADE_PRIORITY}: this build's trigger for it is
+     * met and the building it is researched at has finished
+     * ({@link TechProgression#isUpgradePrerequisiteComplete}).
+     *
+     * <p>An upgrade in the band sorts ahead of building plans queued at their frame, so one whose
+     * building is only planned would sort ahead of that building's plan and hold the bank it needs.
      *
      * @param upgradeType the upgrade
      * @param count our unit counts
+     * @param techProgression our finished tech
+     */
+    public boolean isArmyUpgradePromotable(UpgradeType upgradeType, UnitTypeCount count,
+                                           TechProgression techProgression) {
+        return isArmyUpgradeTriggered(upgradeType, count) && techProgression.isUpgradePrerequisiteComplete(upgradeType);
+    }
+
+    /**
+     * The priority {@link #planUpgrade} gives an upgrade: {@link #ARMY_UPGRADE_PRIORITY} once
+     * {@link #isArmyUpgradePromotable} holds, otherwise the frame it is planned on.
+     *
+     * @param upgradeType the upgrade
+     * @param count our unit counts
+     * @param techProgression our finished tech
      * @param frame the current frame
      */
-    public int upgradePriority(UpgradeType upgradeType, UnitTypeCount count, int frame) {
-        if (isArmyUpgradeTriggered(upgradeType, count)) {
+    public int upgradePriority(UpgradeType upgradeType, UnitTypeCount count, TechProgression techProgression,
+                               int frame) {
+        if (isArmyUpgradePromotable(upgradeType, count, techProgression)) {
             return Math.min(frame, ARMY_UPGRADE_PRIORITY);
         }
         return frame;
@@ -982,7 +1001,8 @@ public abstract class BuildOrder {
 
     protected Plan planUpgrade(GameState gameState, UpgradeType upgradeType) {
         TechProgression techProgression = gameState.getTechProgression();
-        int priority = upgradePriority(upgradeType, gameState.getUnitTypeCount(), gameState.getGameTime().getFrames());
+        int priority = upgradePriority(upgradeType, gameState.getUnitTypeCount(), techProgression,
+                gameState.getGameTime().getFrames());
         switch (upgradeType) {
             case Metabolic_Boost:
                 techProgression.setPlannedMetabolicBoost(true);

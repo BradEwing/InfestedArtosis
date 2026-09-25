@@ -4,6 +4,7 @@ import bwapi.TechType;
 import bwapi.TilePosition;
 import bwapi.UnitType;
 import bwapi.UpgradeType;
+import info.TechProgression;
 import info.UnitTypeCount;
 import macro.ProductionManager.PlanScheduler;
 import macro.ProductionManager.ScanOutcome;
@@ -881,6 +882,90 @@ class ProductionManagerTest {
         return new UpgradePlan(UpgradeType.Muscular_Augments, MUSCULAR_AUGMENTS_QUEUED_FRAME);
     }
 
+    private static TechProgression withDen() {
+        TechProgression techProgression = new TechProgression();
+        techProgression.setSpawningPool(true);
+        techProgression.setHydraliskDen(true);
+        return techProgression;
+    }
+
+    @Test
+    void aTriggeredUpgradeKeepsItsFramePriorityUntilItsBuildingHasFinished() {
+        ProductionQueue queue = new ProductionQueue();
+        Plan muscular = muscularAugments();
+        queue.add(muscular);
+        TechProgression denMorphing = new TechProgression();
+        denMorphing.setSpawningPool(true);
+        denMorphing.setPlannedDen(true);
+        UnitTypeCount triggered = livingHydralisks(ThreeHatchHydra.HYDRALISKS_BEFORE_DEN_UPGRADE_PRIORITY);
+
+        ProductionManager.promoteArmyUpgrades(queue, new ThreeHatchHydra(), triggered, denMorphing);
+
+        assertEquals(MUSCULAR_AUGMENTS_QUEUED_FRAME, muscular.getPriority());
+
+        ProductionManager.promoteArmyUpgrades(queue, new ThreeHatchHydra(), triggered, withDen());
+
+        assertEquals(BuildOrder.ARMY_UPGRADE_PRIORITY, muscular.getPriority());
+    }
+
+    /**
+     * 3HatchLurker and 3HatchHydra queue a second Evolution Chamber at its frame beside Carapace.
+     * With one chamber finished and the trigger met, Carapace moves ahead of that chamber plan and
+     * the prerequisite sweep leaves it queued, frame after frame, rather than cancelling it for the
+     * build to plan again.
+     */
+    @Test
+    void aPromotedCarapaceAheadOfASecondQueuedEvolutionChamberSurvivesThePrerequisiteSweep() {
+        ProductionQueue queue = new ProductionQueue();
+        Plan secondChamber = new BuildingPlan(UnitType.Zerg_Evolution_Chamber, 11790);
+        Plan carapace = new UpgradePlan(UpgradeType.Zerg_Carapace, 11791);
+        queue.add(secondChamber);
+        queue.add(carapace);
+        TechProgression oneChamber = withDen();
+        oneChamber.setEvolutionChambers(1);
+        oneChamber.setPlannedEvolutionChambers(1);
+        UnitTypeCount triggered = livingHydralisks(ThreeHatchHydra.HYDRALISKS_BEFORE_EVOLUTION_UPGRADE_PRIORITY);
+
+        for (int frame = 0; frame < 3; frame++) {
+            ProductionManager.promoteArmyUpgrades(queue, new ThreeHatchHydra(), triggered, oneChamber);
+            List<Plan> sorted = queue.toSortedList();
+
+            assertEquals(Arrays.asList(carapace, secondChamber), sorted);
+            assertTrue(ProductionManager.plansWithLaterPrerequisites(sorted, oneChamber).isEmpty());
+        }
+        assertEquals(BuildOrder.ARMY_UPGRADE_PRIORITY, carapace.getPriority());
+    }
+
+    @Test
+    void aTriggeredCarapaceWithNoFinishedChamberStaysBehindTheChamberPlan() {
+        ProductionQueue queue = new ProductionQueue();
+        Plan chamber = new BuildingPlan(UnitType.Zerg_Evolution_Chamber, 11790);
+        Plan carapace = new UpgradePlan(UpgradeType.Zerg_Carapace, 11791);
+        queue.add(chamber);
+        queue.add(carapace);
+        TechProgression chamberPlanned = withDen();
+        chamberPlanned.setPlannedEvolutionChambers(1);
+
+        ProductionManager.promoteArmyUpgrades(queue, new ThreeHatchHydra(),
+                livingHydralisks(ThreeHatchHydra.HYDRALISKS_BEFORE_EVOLUTION_UPGRADE_PRIORITY), chamberPlanned);
+        List<Plan> sorted = queue.toSortedList();
+
+        assertEquals(11791, carapace.getPriority());
+        assertEquals(Arrays.asList(chamber, carapace), sorted);
+        assertTrue(ProductionManager.plansWithLaterPrerequisites(sorted, chamberPlanned).isEmpty());
+    }
+
+    @Test
+    void anUpgradeAheadOfItsOnlyPlannedBuildingIsStillSwept() {
+        Plan carapace = new UpgradePlan(UpgradeType.Zerg_Carapace, 100);
+        Plan chamber = new BuildingPlan(UnitType.Zerg_Evolution_Chamber, 200);
+        TechProgression chamberPlanned = withDen();
+        chamberPlanned.setPlannedEvolutionChambers(1);
+
+        assertEquals(Collections.singletonList(carapace),
+                ProductionManager.plansWithLaterPrerequisites(Arrays.asList(carapace, chamber), chamberPlanned));
+    }
+
     @Test
     void aQueuedArmyUpgradeMovesIntoTheBandOnceItsTriggerIsMet() {
         ProductionQueue queue = new ProductionQueue();
@@ -888,7 +973,7 @@ class ProductionManagerTest {
         queue.add(muscular);
 
         ProductionManager.promoteArmyUpgrades(queue, new ThreeHatchHydra(),
-                livingHydralisks(ThreeHatchHydra.HYDRALISKS_BEFORE_DEN_UPGRADE_PRIORITY));
+                livingHydralisks(ThreeHatchHydra.HYDRALISKS_BEFORE_DEN_UPGRADE_PRIORITY), withDen());
 
         assertEquals(BuildOrder.ARMY_UPGRADE_PRIORITY, muscular.getPriority());
     }
@@ -900,7 +985,7 @@ class ProductionManagerTest {
         queue.add(muscular);
 
         ProductionManager.promoteArmyUpgrades(queue, new ThreeHatchHydra(),
-                livingHydralisks(ThreeHatchHydra.HYDRALISKS_BEFORE_DEN_UPGRADE_PRIORITY - 1));
+                livingHydralisks(ThreeHatchHydra.HYDRALISKS_BEFORE_DEN_UPGRADE_PRIORITY - 1), withDen());
 
         assertEquals(MUSCULAR_AUGMENTS_QUEUED_FRAME, muscular.getPriority());
     }
@@ -917,7 +1002,7 @@ class ProductionManagerTest {
         queue.add(hydralisk);
         queue.add(drone);
 
-        ProductionManager.promoteArmyUpgrades(queue, new ThreeHatchHydra(), livingHydralisks(20));
+        ProductionManager.promoteArmyUpgrades(queue, new ThreeHatchHydra(), livingHydralisks(20), withDen());
 
         assertEquals(3330, speed.getPriority());
         assertEquals(100, overlordSpeed.getPriority());
@@ -943,7 +1028,7 @@ class ProductionManagerTest {
         queue.add(overlord);
         queue.add(emergencyZergling);
         ProductionManager.promoteArmyUpgrades(queue, new ThreeHatchHydra(),
-                livingHydralisks(ThreeHatchHydra.HYDRALISKS_BEFORE_DEN_UPGRADE_PRIORITY));
+                livingHydralisks(ThreeHatchHydra.HYDRALISKS_BEFORE_DEN_UPGRADE_PRIORITY), withDen());
         int bankBeforeUpgrade = UnitType.Zerg_Zergling.mineralPrice() + muscular.mineralPrice() - 1;
         ResearchBank bank = new ResearchBank(bankBeforeUpgrade, muscular.gasPrice(), false);
         PlanEvents.register(blockerRecorder());
@@ -973,7 +1058,7 @@ class ProductionManagerTest {
         queue.add(muscular);
         queue.add(hydralisk);
         ProductionManager.promoteArmyUpgrades(queue, new ThreeHatchHydra(),
-                livingHydralisks(ThreeHatchHydra.HYDRALISKS_BEFORE_DEN_UPGRADE_PRIORITY - 1));
+                livingHydralisks(ThreeHatchHydra.HYDRALISKS_BEFORE_DEN_UPGRADE_PRIORITY - 1), withDen());
         ResearchBank bank = new ResearchBank(muscular.mineralPrice() - 1, muscular.gasPrice(), false);
         PlanEvents.register(blockerRecorder());
 
@@ -998,7 +1083,7 @@ class ProductionManagerTest {
         queue.add(grooved);
         queue.add(onCredit);
         ProductionManager.promoteArmyUpgrades(queue, new ThreeHatchHydra(),
-                livingHydralisks(ThreeHatchHydra.HYDRALISKS_BEFORE_DEN_UPGRADE_PRIORITY));
+                livingHydralisks(ThreeHatchHydra.HYDRALISKS_BEFORE_DEN_UPGRADE_PRIORITY), withDen());
         BuildAheadSlot slot = new BuildAheadSlot();
         Set<Plan> affordable = new HashSet<>();
         PlanScheduler scheduler = (plan, bankClaimedAhead, larvaClaimedAhead, researchClaimedAhead) -> {

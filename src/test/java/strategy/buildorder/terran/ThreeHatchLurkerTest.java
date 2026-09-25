@@ -210,8 +210,11 @@ class ThreeHatchLurkerTest {
     }
 
     private static int upgradePriority(UpgradeType upgradeType, int hydralisks, int lurkers) {
+        TechProgression techProgression = new TechProgression();
+        techProgression.setHydraliskDen(true);
+        techProgression.setEvolutionChambers(1);
         return new ThreeHatchLurker().upgradePriority(upgradeType,
-                livingHydralisksAndLurkers(hydralisks, lurkers), UPGRADE_QUEUED_FRAME);
+                livingHydralisksAndLurkers(hydralisks, lurkers), techProgression, UPGRADE_QUEUED_FRAME);
     }
 
     @Test

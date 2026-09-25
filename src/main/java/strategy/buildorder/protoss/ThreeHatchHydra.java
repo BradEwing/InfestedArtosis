@@ -36,7 +36,7 @@ public class ThreeHatchHydra extends ProtossBase {
 
     public static final int HYDRALISKS_BEFORE_DEN_UPGRADE_PRIORITY = 6;
 
-    static final int HYDRALISKS_BEFORE_EVOLUTION_UPGRADE_PRIORITY = 12;
+    public static final int HYDRALISKS_BEFORE_EVOLUTION_UPGRADE_PRIORITY = 12;
 
     private boolean plannedFirstMacroHatch = false;
     private boolean plannedSecondMacroHatch = false;

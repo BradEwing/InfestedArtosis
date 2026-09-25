@@ -367,7 +367,9 @@ class TwoHatchMutaTest {
         for (int i = 0; i < livingMutalisks; i++) {
             count.addUnit(UnitType.Zerg_Mutalisk);
         }
-        return new TwoHatchMuta().upgradePriority(UpgradeType.Zerg_Flyer_Attacks, count, 12000);
+        TechProgression techProgression = new TechProgression();
+        techProgression.setSpire(true);
+        return new TwoHatchMuta().upgradePriority(UpgradeType.Zerg_Flyer_Attacks, count, techProgression, 12000);
     }
 
     @Test

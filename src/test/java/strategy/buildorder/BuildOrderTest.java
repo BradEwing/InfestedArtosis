@@ -675,9 +675,12 @@ class BuildOrderTest {
             count.addUnit(UnitType.Zerg_Zergling);
         }
         BuildOrder buildOrder = new TwelvePool();
+        TechProgression techProgression = new TechProgression();
+        techProgression.setSpawningPool(true);
+        techProgression.setHydraliskDen(true);
 
-        assertEquals(4000, buildOrder.upgradePriority(UpgradeType.Muscular_Augments, count, 4000));
-        assertEquals(4000, buildOrder.upgradePriority(UpgradeType.Metabolic_Boost, count, 4000));
+        assertEquals(4000, buildOrder.upgradePriority(UpgradeType.Muscular_Augments, count, techProgression, 4000));
+        assertEquals(4000, buildOrder.upgradePriority(UpgradeType.Metabolic_Boost, count, techProgression, 4000));
         assertFalse(buildOrder.isArmyUpgradeTriggered(UpgradeType.Grooved_Spines, count));
     }
 

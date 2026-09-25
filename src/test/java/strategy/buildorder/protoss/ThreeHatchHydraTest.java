@@ -179,8 +179,33 @@ class ThreeHatchHydraTest {
         return count;
     }
 
+    private static TechProgression withDenAndEvolutionChamber() {
+        TechProgression techProgression = withDen();
+        techProgression.setEvolutionChambers(1);
+        return techProgression;
+    }
+
     private static int upgradePriority(UpgradeType upgradeType, int livingHydralisks) {
-        return new ThreeHatchHydra().upgradePriority(upgradeType, hydralisks(0, livingHydralisks), UPGRADE_QUEUED_FRAME);
+        return new ThreeHatchHydra().upgradePriority(upgradeType, hydralisks(0, livingHydralisks),
+                withDenAndEvolutionChamber(), UPGRADE_QUEUED_FRAME);
+    }
+
+    @Test
+    void aTriggeredUpgradeKeepsItsFramePriorityUntilItsBuildingHasFinished() {
+        UnitTypeCount count = hydralisks(0, ThreeHatchHydra.HYDRALISKS_BEFORE_EVOLUTION_UPGRADE_PRIORITY);
+        TechProgression plannedOnly = new TechProgression();
+        plannedOnly.setPlannedDen(true);
+        plannedOnly.setPlannedEvolutionChambers(1);
+        ThreeHatchHydra build = new ThreeHatchHydra();
+
+        assertEquals(UPGRADE_QUEUED_FRAME,
+                build.upgradePriority(UpgradeType.Muscular_Augments, count, plannedOnly, UPGRADE_QUEUED_FRAME));
+        assertEquals(UPGRADE_QUEUED_FRAME,
+                build.upgradePriority(UpgradeType.Zerg_Carapace, count, withDen(), UPGRADE_QUEUED_FRAME));
+        assertEquals(BuildOrder.ARMY_UPGRADE_PRIORITY,
+                build.upgradePriority(UpgradeType.Muscular_Augments, count, withDen(), UPGRADE_QUEUED_FRAME));
+        assertEquals(BuildOrder.ARMY_UPGRADE_PRIORITY,
+                build.upgradePriority(UpgradeType.Zerg_Carapace, count, withDenAndEvolutionChamber(), UPGRADE_QUEUED_FRAME));
     }
 
     @Test
@@ -223,7 +248,8 @@ class ThreeHatchHydraTest {
         UnitTypeCount count = hydralisks(ThreeHatchHydra.HYDRALISKS_BEFORE_DEN_UPGRADE_PRIORITY, 0);
 
         assertEquals(UPGRADE_QUEUED_FRAME,
-                new ThreeHatchHydra().upgradePriority(UpgradeType.Muscular_Augments, count, UPGRADE_QUEUED_FRAME));
+                new ThreeHatchHydra().upgradePriority(UpgradeType.Muscular_Augments, count, withDen(),
+                        UPGRADE_QUEUED_FRAME));
     }
 
     @Test

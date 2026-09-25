@@ -162,7 +162,9 @@ class OneHatchSpireTest {
         for (int i = 0; i < livingMutalisks; i++) {
             count.addUnit(UnitType.Zerg_Mutalisk);
         }
-        return new OneHatchSpire().upgradePriority(UpgradeType.Zerg_Flyer_Carapace, count, 12000);
+        TechProgression techProgression = new TechProgression();
+        techProgression.setSpire(true);
+        return new OneHatchSpire().upgradePriority(UpgradeType.Zerg_Flyer_Carapace, count, techProgression, 12000);
     }
 
     @Test
