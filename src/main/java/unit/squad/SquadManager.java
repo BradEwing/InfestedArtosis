@@ -39,6 +39,7 @@ import unit.managed.UnitRole;
 import util.Arc;
 import util.Filter;
 import util.StaticDefenseZone;
+import util.MeleeOverflowGate;
 import util.TargetLedger;
 import util.Vec2;
 
@@ -3379,7 +3380,7 @@ public class SquadManager {
      * @param managedUnit unit that needs a target
      * @param squad squad that passed fight simulation
      * @param ledger the frame's melee assignments across every fight squad; the unit's entry is dropped, and the
-     *     chosen target recorded in its place
+     *     chosen target recorded in its place unless the unit attack-moves in overflow (see {@link #commitPick})
      */
     private void assignEnemyTarget(ManagedUnit managedUnit, Squad squad, TargetLedger ledger) {
         Unit unit = managedUnit.getUnit();
@@ -3472,11 +3473,38 @@ public class SquadManager {
         TargetScorer.Selection selection = widenWhenSaturated(select.apply(filtered), filtered.size(),
                 () -> widenCandidates(uncapped, unit::getDistance, admitted), select);
         if (selection != null) {
-            TargetChoices.chosen(managedUnit, managedUnit.fightTarget, selection, scoutCapped);
-            managedUnit.setFightTarget(selection.getTarget());
-            ledger.recordPick(unit, selection.getTarget());
-            recordScoutClaim(unit, selection.getTarget());
+            TargetScorer.Selection issued = commitPick(ledger, managedUnit.getOverflowGate(), unit.getID(),
+                    unit.getType(), selection, selection.getTarget().getID(), game.getFrameCount());
+            TargetChoices.chosen(managedUnit, managedUnit.fightTarget, managedUnit.isAttackMoving(), issued,
+                    scoutCapped);
+            managedUnit.setFightTarget(issued.getTarget(), issued.isAttackMove());
+            recordScoutClaim(unit, issued.getTarget());
         }
+    }
+
+    /**
+     * Reports the pick to the attacker's {@link MeleeOverflowGate} and decides how it is issued. While the gate holds
+     * the attacker in overflow, the pick comes back marked as an attack-move to the target's position and the ledger
+     * is left alone, so the attacker does not count toward the target's load. Otherwise the pick stands as a direct
+     * attack and is recorded in the ledger.
+     *
+     * @param ledger the frame's melee assignments
+     * @param gate the attacker's overflow gate
+     * @param attackerId the attacker's unit id
+     * @param attackerType the attacker's type
+     * @param selection the pick made for the attacker
+     * @param targetId the picked target's unit id
+     * @param frame the current frame
+     * @return the pick as it is issued
+     */
+    static TargetScorer.Selection commitPick(TargetLedger ledger, MeleeOverflowGate gate, int attackerId,
+                                             UnitType attackerType, TargetScorer.Selection selection, int targetId,
+                                             int frame) {
+        if (gate.observe(selection.isSaturated(), frame)) {
+            return selection.asAttackMove();
+        }
+        ledger.record(attackerId, attackerType, targetId);
+        return selection;
     }
 
     /**
@@ -3497,7 +3525,8 @@ public class SquadManager {
      * The frame's melee target ledger, shared by every fight squad's targeting. The first read on a frame builds it
      * from the enemy static defence and seeds it with the fight target each FIGHT member of a fight squad already
      * holds, so a squad targeted early in the frame sees the load of a squad targeted after it. A member that has
-     * left FIGHT, or whose target no longer exists, is not seeded, and the ledger counts only melee members.
+     * left FIGHT, whose target no longer exists, or that attack-moves in overflow is not seeded, and the ledger counts
+     * only melee members.
      */
     private TargetLedger fightTargetLedger() {
         int now = game.getFrameCount();
@@ -3512,26 +3541,29 @@ public class SquadManager {
     }
 
     /**
-     * Records in the ledger the fight target of every member in FIGHT whose target still exists.
+     * Records in the ledger the fight target of every member in FIGHT whose target still exists and that attacks it
+     * directly.
      */
     static void seedFightTargets(TargetLedger ledger, Collection<ManagedUnit> members) {
         for (ManagedUnit member : members) {
             Unit target = member.fightTarget;
-            if (seedsFightTarget(member.getRole(), target != null && target.exists())) {
+            if (seedsFightTarget(member.getRole(), target != null && target.exists(), member.isAttackMoving())) {
                 ledger.record(member.getUnitID(), member.getUnitType(), target.getID());
             }
         }
     }
 
     /**
-     * Whether a member's fight target is seeded into the frame's ledger: only while the member is in FIGHT and the
-     * target still exists. A member retreating, rallying, containing or on a runby holds no fight slot.
+     * Whether a member's fight target is seeded into the frame's ledger: only while the member is in FIGHT, the
+     * target still exists and the member attacks it rather than attack-moving to it in overflow. A member
+     * retreating, rallying, containing, on a runby or in overflow holds no fight slot.
      *
      * @param role the member's role
      * @param targetExists true when the member holds a fight target that still exists
+     * @param attackMoving true when the member attack-moves to its target in overflow
      */
-    static boolean seedsFightTarget(UnitRole role, boolean targetExists) {
-        return role == UnitRole.FIGHT && targetExists;
+    static boolean seedsFightTarget(UnitRole role, boolean targetExists, boolean attackMoving) {
+        return role == UnitRole.FIGHT && targetExists && !attackMoving;
     }
 
     /**

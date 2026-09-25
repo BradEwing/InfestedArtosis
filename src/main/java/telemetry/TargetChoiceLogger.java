@@ -23,10 +23,14 @@ import java.util.List;
  *
  * <p>squad_id is the fight squad whose targeting pass made the choice, empty for choices made outside one.
  * assigned_count is how many other melee attackers, from any fight squad, held the target in the frame's shared
- * TargetLedger when this attacker chose it, and saturated is 1 when that count had reached the melee cap for this
- * attacker. priority_reason is why the target got its tier, see TargetScorer.Reason. widened is 1 when every target
- * within the targeting radius was saturated and the target was found among candidates out to twice that radius;
- * candidate_count then counts the widened candidates.
+ * TargetLedger when this attacker chose it. saturated is 0 when the attacker attacks the target with a slot open,
+ * 1 when that count had reached the melee cap for this attacker and it still attacks the target directly, and 2 when
+ * the attacker is in overflow (see util.MeleeOverflowGate): it attack-moves to the target's position, leaving what it
+ * hits to the game, and is not held in the ledger. A row is also written when the attacker keeps its target but enters
+ * or leaves overflow, so previous_target_id then equals target_id; each change of the cell between 2 and 0 or 1 for
+ * one attacker_id is one gate transition. priority_reason is why the target got its tier, see TargetScorer.Reason.
+ * widened is 1 when every target within the targeting radius was saturated and the target was found among candidates
+ * out to twice that radius; candidate_count then counts the widened candidates.
  *
  * <p>Constructed only when combat telemetry is enabled.
  */
@@ -109,22 +113,32 @@ public class TargetChoiceLogger implements TargetChoiceSink {
                 previousTarget != null ? previousTarget.getType() : null));
         fields.add(scoutCappedCell(scoutCapped));
         fields.addAll(loadCells(selection.getSquadId(), selection.getAssignedCount(), selection.isSaturated(),
-                selection.getReason(), selection.isWidened()));
+                selection.isAttackMove(), selection.getReason(), selection.isWidened()));
         return String.join(",", fields);
     }
 
     /**
      * Builds the cells from squad_id through widened.
      */
-    static List<String> loadCells(String squadId, int assignedCount, boolean saturated,
+    static List<String> loadCells(String squadId, int assignedCount, boolean saturated, boolean attackMove,
                                   TargetScorer.Reason reason, boolean widened) {
         List<String> fields = new ArrayList<>();
         fields.add(Csv.sanitize(squadId));
         fields.add(String.valueOf(assignedCount));
-        fields.add(saturated ? "1" : "0");
+        fields.add(saturatedCell(saturated, attackMove));
         fields.add(Csv.name(reason));
         fields.add(widened ? "1" : "0");
         return fields;
+    }
+
+    /**
+     * Builds the saturated cell: 2 for an overflow attack-move, otherwise 1 for a saturated pick and 0 for an open one.
+     */
+    static String saturatedCell(boolean saturated, boolean attackMove) {
+        if (attackMove) {
+            return "2";
+        }
+        return saturated ? "1" : "0";
     }
 
     /**

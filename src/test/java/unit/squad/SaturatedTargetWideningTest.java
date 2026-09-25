@@ -3,6 +3,8 @@ package unit.squad;
 import bwapi.UnitType;
 import org.junit.jupiter.api.Test;
 import unit.managed.UnitRole;
+import util.MeleeOverflowGate;
+import util.TargetLedger;
 import util.TargetScorer;
 
 import java.util.Arrays;
@@ -16,6 +18,9 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SaturatedTargetWideningTest {
+
+    private static final int LING = 5;
+    private static final int MARINE = 42;
 
     private static final class Enemy {
         private final int id;
@@ -100,10 +105,58 @@ class SaturatedTargetWideningTest {
 
     @Test
     void onlyAFightingMemberWithALiveTargetIsSeededIntoTheFrameLedger() {
-        assertTrue(SquadManager.seedsFightTarget(UnitRole.FIGHT, true));
-        assertFalse(SquadManager.seedsFightTarget(UnitRole.FIGHT, false));
+        assertTrue(SquadManager.seedsFightTarget(UnitRole.FIGHT, true, false));
+        assertFalse(SquadManager.seedsFightTarget(UnitRole.FIGHT, false, false));
         for (UnitRole role : Arrays.asList(UnitRole.RETREAT, UnitRole.RALLY, UnitRole.CONTAIN, UnitRole.RUNBY)) {
-            assertFalse(SquadManager.seedsFightTarget(role, true), role.toString());
+            assertFalse(SquadManager.seedsFightTarget(role, true, false), role.toString());
         }
+    }
+
+    @Test
+    void aMemberAttackMovingInOverflowIsNotSeededIntoTheFrameLedger() {
+        assertFalse(SquadManager.seedsFightTarget(UnitRole.FIGHT, true, true));
+    }
+
+    private static TargetScorer.Selection commit(TargetLedger ledger, MeleeOverflowGate gate, boolean saturated,
+                                                 int frame) {
+        return SquadManager.commitPick(ledger, gate, LING, UnitType.Zerg_Zergling, selection(saturated), MARINE,
+                frame);
+    }
+
+    @Test
+    void anUnsaturatedPickIsADirectAttackHeldInTheLedger() {
+        TargetLedger ledger = TargetLedger.empty();
+
+        TargetScorer.Selection issued = commit(ledger, new MeleeOverflowGate(), false, 100);
+
+        assertFalse(issued.isAttackMove());
+        assertEquals(1, ledger.meleeAssigned(MARINE));
+    }
+
+    @Test
+    void aSaturatedPickStaysADirectAttackUntilTheGateEnters() {
+        TargetLedger ledger = TargetLedger.empty();
+        MeleeOverflowGate gate = new MeleeOverflowGate();
+
+        for (int frame = 100; frame < 100 + MeleeOverflowGate.ENTER_FRAMES - 1; frame++) {
+            assertFalse(commit(ledger, gate, true, frame).isAttackMove());
+            assertEquals(1, ledger.meleeAssigned(MARINE));
+        }
+    }
+
+    @Test
+    void aSaturatedPickBecomesAnAttackMoveThatTheLedgerDoesNotHold() {
+        TargetLedger ledger = TargetLedger.empty();
+        MeleeOverflowGate gate = new MeleeOverflowGate();
+        TargetScorer.Selection issued = null;
+
+        for (int frame = 100; frame < 100 + MeleeOverflowGate.ENTER_FRAMES; frame++) {
+            ledger.release(LING);
+            issued = commit(ledger, gate, true, frame);
+        }
+
+        assertTrue(issued.isAttackMove());
+        assertTrue(issued.isSaturated());
+        assertEquals(0, ledger.meleeAssigned(MARINE));
     }
 }

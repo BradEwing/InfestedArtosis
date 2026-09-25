@@ -379,6 +379,7 @@ public final class TargetScorer {
         private final boolean saturated;
         private final String squadId;
         private final boolean widened;
+        private final boolean attackMove;
 
         public Selection(Unit target, Priority priority, int candidateCount) {
             this(target, priority, candidateCount, null, 0, false, "", false);
@@ -394,13 +395,34 @@ public final class TargetScorer {
             this.saturated = saturated;
             this.squadId = squadId;
             this.widened = widened;
+            this.attackMove = false;
+        }
+
+        private Selection(Selection source, boolean widened, boolean attackMove) {
+            this.target = source.target;
+            this.priority = source.priority;
+            this.candidateCount = source.candidateCount;
+            this.reason = source.reason;
+            this.assignedCount = source.assignedCount;
+            this.saturated = source.saturated;
+            this.squadId = source.squadId;
+            this.widened = widened;
+            this.attackMove = attackMove;
         }
 
         /**
          * @return this selection, marked as made from candidates widened past the targeting radius
          */
         public Selection asWidened() {
-            return new Selection(target, priority, candidateCount, reason, assignedCount, saturated, squadId, true);
+            return new Selection(this, true, attackMove);
+        }
+
+        /**
+         * @return this selection, marked as issued as an attack-move to the target's position rather than an attack
+         *     on the target, and so not held in the frame's ledger
+         */
+        public Selection asAttackMove() {
+            return new Selection(this, widened, true);
         }
 
         public Unit getTarget() {
@@ -439,6 +461,10 @@ public final class TargetScorer {
 
         public boolean isWidened() {
             return widened;
+        }
+
+        public boolean isAttackMove() {
+            return attackMove;
         }
     }
 }

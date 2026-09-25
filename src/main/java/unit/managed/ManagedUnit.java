@@ -1,6 +1,7 @@
 package unit.managed;
 
 import bwapi.Game;
+import bwapi.Order;
 import bwapi.Position;
 import bwapi.TilePosition;
 import bwapi.Unit;
@@ -15,6 +16,7 @@ import macro.plan.Plan;
 import macro.plan.PlanState;
 import telemetry.PlanEvents;
 import util.Filter;
+import util.MeleeOverflowGate;
 import util.Vec2;
 
 import java.util.List;
@@ -24,6 +26,11 @@ import java.util.stream.Collectors;
 public class ManagedUnit {
     protected static int THREE_SECONDS = 72;
     public static final int MELEE_MARGIN = 16;
+    /**
+     * How far, in pixels, an attack-move already under way may point from the fight target's position before it is
+     * issued again toward the target.
+     */
+    static final int ATTACK_MOVE_REISSUE_DISTANCE = 64;
     static final int OUTRANGED_EVADE_FRAMES = 12;
     protected Game game;
     protected GameMap gameMap;
@@ -58,6 +65,14 @@ public class ManagedUnit {
     @Setter @Getter
     protected Unit defendTarget;
     public Unit fightTarget;
+    /**
+     * True when the fight target is saturated with melee attackers and the unit attack-moves to its position
+     * instead of attacking it, so the game's auto-acquire picks what it hits.
+     */
+    @Getter
+    private boolean attackMoving;
+    @Getter
+    private final MeleeOverflowGate overflowGate = new MeleeOverflowGate();
     @Setter
     protected Unit gatherTarget;
 
@@ -867,7 +882,9 @@ public class ManagedUnit {
         setUnready(11);
 
         if (fightTarget != null) {
-            if (canKite(fightTarget)) {
+            if (attackMoving) {
+                attackMoveToward(fightTarget);
+            } else if (canKite(fightTarget)) {
                 kiteEnemy(fightTarget);
             } else {
                 unit.attack(fightTarget);
@@ -971,7 +988,18 @@ public class ManagedUnit {
     protected void defend() {}
 
     public void setFightTarget(Unit newFightTarget) {
+        setFightTarget(newFightTarget, false);
+    }
+
+    /**
+     * Sets the fight target and whether the unit attack-moves to its position rather than attacking it.
+     *
+     * @param newFightTarget the target, or null for none
+     * @param attackMove true to attack-move toward the target instead of attacking it
+     */
+    public void setFightTarget(Unit newFightTarget, boolean attackMove) {
         fightTarget = newFightTarget;
+        attackMoving = attackMove && newFightTarget != null;
         if (newFightTarget == null) {
             movementTargetPosition = null;
             return;
@@ -982,6 +1010,35 @@ public class ManagedUnit {
         } else {
             movementTargetPosition = null;
         }
+    }
+
+    /**
+     * Attack-moves toward the target's position, unless the unit is attacking or already attack-moving to within
+     * {@link #ATTACK_MOVE_REISSUE_DISTANCE} of it.
+     */
+    protected void attackMoveToward(Unit target) {
+        Position destination = target.getPosition();
+        if (needsAttackMove(unit.getOrder(), unit.getOrderTargetPosition(), unit.isAttacking(), destination)) {
+            unit.attack(destination);
+        }
+    }
+
+    /**
+     * Whether an attack-move toward the destination must be issued: not while the unit is attacking, and not while
+     * its current attack-move already points within {@link #ATTACK_MOVE_REISSUE_DISTANCE} of the destination.
+     *
+     * @param order the unit's current order
+     * @param orderTargetPosition where the current order points, or null
+     * @param attacking true when the unit is attacking
+     * @param destination the fight target's position
+     */
+    static boolean needsAttackMove(Order order, Position orderTargetPosition, boolean attacking,
+                                   Position destination) {
+        if (attacking) {
+            return false;
+        }
+        return order != Order.AttackMove || orderTargetPosition == null
+                || orderTargetPosition.getDistance(destination) > ATTACK_MOVE_REISSUE_DISTANCE;
     }
 
     protected int weaponRange(Unit enemy) {

@@ -1,7 +1,6 @@
 package util;
 
 import bwapi.Position;
-import bwapi.Unit;
 import bwapi.UnitType;
 
 import java.util.ArrayList;
@@ -57,13 +56,6 @@ public final class TargetLedger {
         Integer own = meleeTargetByAttacker.get(attackerId);
         int assigned = meleeAssigned(targetId);
         return own != null && own == targetId ? assigned - 1 : assigned;
-    }
-
-    /**
-     * Makes the target the attacker's entry when it fights in melee; ranged picks are not counted.
-     */
-    public void recordPick(Unit attacker, Unit target) {
-        record(attacker.getID(), attacker.getType(), target.getID());
     }
 
     /**
