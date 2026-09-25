@@ -6,6 +6,11 @@ import info.BuilderThreat;
 import org.junit.jupiter.api.Test;
 import util.Distance;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -22,37 +27,37 @@ class BuilderSiteGateTest {
     @Test
     void aBuilderIsHeldFromASiteWithKnownEnemies() {
         assertSame(BuilderDispatchDecision.HOLD_SITE_THREAT,
-                PlanManager.dispatchDecision(new BuilderThreat(0, 6, 0, false, false, false)));
+                PlanManager.dispatchDecision(new BuilderThreat(0, 6, 0, false, false, false), false));
     }
 
     @Test
     void aBuilderIsDispatchedToASiteWithNoKnownEnemiesOnAClearRoute() {
-        assertSame(BuilderDispatchDecision.DISPATCH, PlanManager.dispatchDecision(BuilderThreat.NONE));
+        assertSame(BuilderDispatchDecision.DISPATCH, PlanManager.dispatchDecision(BuilderThreat.NONE, false));
     }
 
     @Test
     void aBuilderAlreadyAtAContestedRemoteSiteIsHeld() {
         assertSame(BuilderDispatchDecision.HOLD_SITE_THREAT,
-                PlanManager.dispatchDecision(new BuilderThreat(0, 6, 0, true, false, false)));
+                PlanManager.dispatchDecision(new BuilderThreat(0, 6, 0, true, false, false), false));
     }
 
     @Test
     void aBuilderIsHeldFromAClearSiteAcrossAContestedRoute() {
         assertSame(BuilderDispatchDecision.HOLD_PATH_THREAT,
-                PlanManager.dispatchDecision(new BuilderThreat(3, 0, 0, false, false, false)));
+                PlanManager.dispatchDecision(new BuilderThreat(3, 0, 0, false, false, false), false));
     }
 
     @Test
     void aBuilderIsHeldFromARouteEnemyStaticDefenceCovers() {
         assertSame(BuilderDispatchDecision.HOLD_PATH_THREAT,
-                PlanManager.dispatchDecision(new BuilderThreat(0, 0, 1, false, false, false)));
+                PlanManager.dispatchDecision(new BuilderThreat(0, 0, 1, false, false, false), false));
     }
 
     /** The site is the more specific answer, so it names the hold when both are hot. */
     @Test
     void aSiteThreatOutranksARouteThreat() {
         assertSame(BuilderDispatchDecision.HOLD_SITE_THREAT,
-                PlanManager.dispatchDecision(new BuilderThreat(3, 6, 2, false, false, false)));
+                PlanManager.dispatchDecision(new BuilderThreat(3, 6, 2, false, false, false), false));
     }
 
     /**
@@ -62,20 +67,63 @@ class BuilderSiteGateTest {
     @Test
     void aBuilderIsDispatchedToAThreatenedSiteAtOneOfOurBases() {
         assertSame(BuilderDispatchDecision.DISPATCH_HOME_SITE,
-                PlanManager.dispatchDecision(new BuilderThreat(0, 6, 0, false, true, true)));
+                PlanManager.dispatchDecision(new BuilderThreat(0, 6, 0, false, true, true), false));
+    }
+
+    /**
+     * IA-406 AC4: a base that has lost a colony builder loses the carve-out, so the next builder
+     * waits on the site like any other; a base that has lost none keeps it.
+     */
+    @Test
+    void aHomeSiteColonyBuilderIsHeldOnlyAtABaseUnderColonyBackoff() {
+        BuilderThreat homeSiteWithEnemies = new BuilderThreat(0, 6, 0, true, true, true);
+
+        assertSame(BuilderDispatchDecision.DISPATCH_HOME_SITE, PlanManager.dispatchDecision(homeSiteWithEnemies, false));
+        assertSame(BuilderDispatchDecision.HOLD_SITE_THREAT, PlanManager.dispatchDecision(homeSiteWithEnemies, true));
+    }
+
+    @Test
+    void aColonyBuilderUnderBackoffIsHeldByAContestedRouteToAClearHomeSite() {
+        assertSame(BuilderDispatchDecision.HOLD_PATH_THREAT,
+                PlanManager.dispatchDecision(new BuilderThreat(3, 0, 0, false, true, true), true));
+    }
+
+    @Test
+    void aColonyBuilderUnderBackoffIsDispatchedOnceItsSiteAndRouteAreClear() {
+        assertSame(BuilderDispatchDecision.DISPATCH,
+                PlanManager.dispatchDecision(new BuilderThreat(0, 0, 0, true, true, true), true));
+    }
+
+    @Test
+    void aDroneAtTheSiteIsPreferredOverACloserOneElsewhere() {
+        List<Integer> distances = new ArrayList<>(Arrays.asList(297, 1298, 40, 1266));
+        Set<Integer> atSite = new HashSet<>(Arrays.asList(297, 1298));
+
+        distances.sort(PlanManager.<Integer>atSiteFirst(atSite::contains, Comparator.naturalOrder()));
+
+        assertEquals(Arrays.asList(297, 1298, 40, 1266), distances);
+    }
+
+    @Test
+    void theClosestDroneIsTakenWhenNoneIsAtTheSite() {
+        List<Integer> distances = new ArrayList<>(Arrays.asList(1385, 1266, 1337));
+
+        distances.sort(PlanManager.<Integer>atSiteFirst(d -> false, Comparator.naturalOrder()));
+
+        assertEquals(Arrays.asList(1266, 1337, 1385), distances);
     }
 
     @Test
     void aBuilderIsDispatchedToASiteAtOneOfOurBasesAcrossAContestedRoute() {
         assertSame(BuilderDispatchDecision.DISPATCH_HOME_SITE,
-                PlanManager.dispatchDecision(new BuilderThreat(4, 6, 2, false, true, true)));
+                PlanManager.dispatchDecision(new BuilderThreat(4, 6, 2, false, true, true), false));
     }
 
     /** A quiet home site is an ordinary dispatch, so the carve-out only names holds it overrode. */
     @Test
     void aQuietSiteAtOneOfOurBasesIsAnOrdinaryDispatch() {
         assertSame(BuilderDispatchDecision.DISPATCH,
-                PlanManager.dispatchDecision(new BuilderThreat(0, 0, 0, false, true, true)));
+                PlanManager.dispatchDecision(new BuilderThreat(0, 0, 0, false, true, true), false));
     }
 
     /**
@@ -86,19 +134,19 @@ class BuilderSiteGateTest {
     @Test
     void aBuilderFromOffOurGroundIsHeldEvenWhenTheSiteIsAtOneOfOurBases() {
         assertSame(BuilderDispatchDecision.HOLD_SITE_THREAT,
-                PlanManager.dispatchDecision(new BuilderThreat(0, 6, 0, false, true, false)));
+                PlanManager.dispatchDecision(new BuilderThreat(0, 6, 0, false, true, false), false));
     }
 
     @Test
     void aBuilderOnOurGroundIsStillHeldFromAContestedSiteWeDoNotHold() {
         assertSame(BuilderDispatchDecision.HOLD_SITE_THREAT,
-                PlanManager.dispatchDecision(new BuilderThreat(0, 6, 0, false, false, true)));
+                PlanManager.dispatchDecision(new BuilderThreat(0, 6, 0, false, false, true), false));
     }
 
     @Test
     void aBuilderOnOurGroundIsStillHeldFromAContestedRouteToASiteWeDoNotHold() {
         assertSame(BuilderDispatchDecision.HOLD_PATH_THREAT,
-                PlanManager.dispatchDecision(new BuilderThreat(3, 0, 1, false, false, true)));
+                PlanManager.dispatchDecision(new BuilderThreat(3, 0, 1, false, false, true), false));
     }
 
     @Test

@@ -19,10 +19,12 @@ import util.TravelTime;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 public class PlanManager {
@@ -175,7 +177,7 @@ public class PlanManager {
                 continue;
             }
             BuilderThreat threat = builderThreat(managedUnit, plan);
-            BuilderDispatchDecision decision = dispatchDecision(threat);
+            BuilderDispatchDecision decision = dispatchDecision(threat, gameState.isColonyBuilderBackedOff(plan));
             PlanEvents.builderDispatchDecision(plan, decision, threat);
             if (!decision.isDispatch()) {
                 continue;
@@ -204,8 +206,9 @@ public class PlanManager {
      * builder and dispatches it again once the route is clear.
      *
      * <p>It runs the same predicate as the launch gate, so a builder working at a base we hold is
-     * never pulled off it: recalling a drone from a threatened home site is the same defect as
-     * refusing to send it there.
+     * not pulled off it: recalling a drone from a threatened home site is the same defect as
+     * refusing to send it there. The exception is the one the launch gate makes, a Creep Colony at
+     * a base that has already lost a colony builder, whose builder is recalled like any other.
      */
     private void recallThreatenedBuilders() {
         List<ManagedUnit> recalled = new ArrayList<>();
@@ -216,7 +219,7 @@ public class PlanManager {
                 continue;
             }
             BuilderThreat threat = builderThreat(managedUnit, plan);
-            if (dispatchDecision(threat).isDispatch()) {
+            if (dispatchDecision(threat, gameState.isColonyBuilderBackedOff(plan)).isDispatch()) {
                 continue;
             }
             PlanEvents.builderDispatchDecision(plan, BuilderDispatchDecision.RECALLED, threat);
@@ -257,13 +260,20 @@ public class PlanManager {
      * that bypass was an accidental proxy for the builder being home, and the carve-out reads
      * ownership directly instead.
      *
+     * <p>A Creep Colony at a base that has already lost a colony builder does not get the
+     * carve-out. Enemies at a home site that has already killed a builder are enemies the next one
+     * walks into, so it waits for the site and the route to clear like any other builder. Bases
+     * that have lost no colony builder keep the carve-out.
+     *
      * @param threat what the builder would walk into
+     * @param colonyBackoff whether the plan is a Creep Colony at a base that has lost a colony
+     *     builder, from {@link GameState#isColonyBuilderBackedOff(Plan)}
      */
-    static BuilderDispatchDecision dispatchDecision(BuilderThreat threat) {
+    static BuilderDispatchDecision dispatchDecision(BuilderThreat threat, boolean colonyBackoff) {
         if (threat.getSiteEnemies() == 0 && threat.getRouteEnemies() == 0 && threat.getRouteDefenseZones() == 0) {
             return BuilderDispatchDecision.DISPATCH;
         }
-        if (threat.isSiteAtOurBase() && threat.isBuilderAtOurBase()) {
+        if (!colonyBackoff && threat.isSiteAtOurBase() && threat.isBuilderAtOurBase()) {
             return BuilderDispatchDecision.DISPATCH_HOME_SITE;
         }
         if (threat.getSiteEnemies() > 0) {
@@ -280,6 +290,8 @@ public class PlanManager {
      * Assign a drone to the building plan if it's not carrying resources, not mining gas and not already assigned to a plan.
      * The unit will store a scheduled plan until it's time to execute.
      * If the plan has an assigned building location, find the drone closest to the location.
+     * A Creep Colony takes a drone already on its site's base ahead of a closer one elsewhere, so
+     * its builder does not cross contested ground between two of our bases to reach it.
      * @param plan plan to build
      * @return true if plan assigned, false otherwise
      */
@@ -294,7 +306,12 @@ public class PlanManager {
 
         TilePosition buildPosition = plan.getBuildPosition();
         if (buildPosition != null) {
-            eligibleDrones.sort(Distance.closestManagedUnitTo(buildPosition.toPosition()));
+            Comparator<ManagedUnit> order = Distance.closestManagedUnitTo(buildPosition.toPosition());
+            if (plan.getPlannedUnit() == UnitType.Zerg_Creep_Colony) {
+                Set<TilePosition> siteTiles = gameState.siteTiles(buildPosition);
+                order = atSiteFirst(d -> siteTiles.contains(d.getUnit().getTilePosition()), order);
+            }
+            eligibleDrones.sort(order);
         }
 
         if (eligibleDrones.isEmpty()) {
@@ -307,6 +324,17 @@ public class PlanManager {
         managedUnit.setPlan(plan);
         gameState.getAssignedPlannedItems().put(unit, plan);
         return true;
+    }
+
+    /**
+     * Orders candidates standing at the site ahead of those that are not, then by the given order.
+     *
+     * @param atSite whether a candidate stands on the site's base tiles
+     * @param then the order within each group
+     * @param <T> the candidate type
+     */
+    static <T> Comparator<T> atSiteFirst(Predicate<T> atSite, Comparator<T> then) {
+        return Comparator.comparing((T candidate) -> !atSite.test(candidate)).thenComparing(then);
     }
 
     private boolean assignMorphUnit(Plan plan) {

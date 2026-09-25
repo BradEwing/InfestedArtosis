@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.function.Predicate;
+import java.util.stream.Collectors;
 
 /**
  * Decides how many gatherers a base under attack commits to worker defence.
@@ -45,27 +46,37 @@ public final class WorkerDefense {
      *
      * <p>A base defends with its own gatherers. A base with none may draw on another base's gatherers, capped
      * at {@link #CROSS_BASE_DEFENDER_CAP} and at zero when an enemy combat unit threatens. A source base with
-     * fewer than {@link #MIN_GATHERERS_TO_PULL} gatherers gives none.
+     * fewer than {@link #MIN_GATHERERS_TO_PULL} gatherers gives none. The minimum counts every gatherer at the
+     * source base, and only the pullable ones among them are offered, so a gatherer held back does not stop the
+     * others from defending.
      *
      * @param ownGatherers gatherers mining at the threatened base, closest first
      * @param otherGatherers gatherers mining at the fallback base, closest first
      * @param combatUnitThreat true if a mobile enemy ground combat unit is among the threats
      * @param uncapped true to lift the cross base cap, as a cannon rush defence does
+     * @param pullable whether a gatherer may be offered at all
      * @return candidates in pull order
      */
     public static <T> List<T> candidates(List<T> ownGatherers, List<T> otherGatherers, boolean combatUnitThreat,
-                                         boolean uncapped) {
+                                         boolean uncapped, Predicate<T> pullable) {
         if (!ownGatherers.isEmpty()) {
-            return ownGatherers.size() < MIN_GATHERERS_TO_PULL ? Collections.emptyList() : ownGatherers;
+            return ownGatherers.size() < MIN_GATHERERS_TO_PULL
+                    ? Collections.emptyList()
+                    : pullableOf(ownGatherers, pullable);
         }
         if (otherGatherers.size() < MIN_GATHERERS_TO_PULL) {
             return Collections.emptyList();
         }
+        List<T> pullableOther = pullableOf(otherGatherers, pullable);
         if (uncapped) {
-            return otherGatherers;
+            return pullableOther;
         }
         int cap = combatUnitThreat ? 0 : CROSS_BASE_DEFENDER_CAP;
-        return new ArrayList<>(otherGatherers.subList(0, Math.min(cap, otherGatherers.size())));
+        return new ArrayList<>(pullableOther.subList(0, Math.min(cap, pullableOther.size())));
+    }
+
+    private static <T> List<T> pullableOf(List<T> gatherers, Predicate<T> pullable) {
+        return gatherers.stream().filter(pullable).collect(Collectors.toList());
     }
 
     /**

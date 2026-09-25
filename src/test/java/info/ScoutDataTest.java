@@ -3,7 +3,10 @@ package info;
 import bwapi.Race;
 import bwapi.TilePosition;
 import bwapi.UnitType;
+import bwem.Base;
+import bwem.BaseFixture;
 import org.junit.jupiter.api.Test;
+import telemetry.PlanEvents;
 import util.Time;
 
 import java.util.ArrayList;
@@ -252,6 +255,27 @@ class ScoutDataTest {
         assertTrue(ScoutData.isGatewaySite(new TilePosition(114, 100), depot));
         assertFalse(ScoutData.isGatewaySite(new TilePosition(115, 100), depot));
         assertFalse(ScoutData.isGatewaySite(new TilePosition(111, 111), depot));
+    }
+
+    @Test
+    void theFirstScoutedFrameOfAnEnemyMainIsReportedOnce() {
+        Base enemyMain = BaseFixture.startingLocation(new TilePosition(116, 47));
+        List<String> events = new ArrayList<>();
+        PlanEvents.register(new EnemyMainEventRecorder(events));
+        try {
+            ScoutData scoutData = new ScoutData();
+
+            scoutData.recordEnemyMainVision(enemyMain, tilesInRow(0, 30), 100, SITE_AT_DEPOT, new Time(3314));
+            assertTrue(events.isEmpty());
+
+            scoutData.recordEnemyMainVision(enemyMain, tilesInRow(30, 100), 100, SITE_AT_DEPOT, new Time(3490));
+            scoutData.recordEnemyMainVision(enemyMain, tilesInRow(0, 100), 100, SITE_AT_DEPOT, new Time(3600));
+
+            assertEquals(new Time(3490), scoutData.getEnemyMainScoutedFrame(enemyMain));
+            assertEquals(Collections.singletonList("ENEMY_MAIN_SCOUTED " + new TilePosition(116, 47)), events);
+        } finally {
+            PlanEvents.clear();
+        }
     }
 
     private static List<TilePosition> tilesInRow(int fromX, int toX) {

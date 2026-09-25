@@ -187,6 +187,14 @@ public abstract class BuildOrder {
     }
 
     /**
+     * Whether a reaction must leave Metabolic Boost where this build put it: neither queue it nor
+     * pull it ahead of normal production. False by default, so reactions pull it forward as usual.
+     */
+    public boolean holdsSpeedUpgrade(GameState gameState) {
+        return false;
+    }
+
+    /**
      * Returns true if Overlord Speed should be researched, based on Lair, game time and unit triggers.
      *
      * <p>The Lair term reads {@link Readiness#USABLE}, which counts only finished Lairs.
@@ -633,7 +641,8 @@ public abstract class BuildOrder {
      * <p>A base with no placeable creep tile is skipped rather than ending the call. The ranking
      * puts the main first whenever it is eligible, so ending on the first null location would let
      * a main that is short of target and out of tiles starve every other base for the rest of the
-     * game.
+     * game. A base whose chosen tile is still contested after it lost a colony builder is skipped
+     * the same way, see {@link GameState#isColonySiteOpen}.
      *
      * <p>No pair is planned while no Spawning Pool stands, see {@link #sunkenPairBudget}. Every
      * requester, the shared defense path and each build order, reaches the pair through here.
@@ -653,13 +662,14 @@ public abstract class BuildOrder {
                 break;
             }
             TilePosition location = buildingPlanner.getLocationForCreepColony(eligibleBase.get(), gameState.getOpponentRace());
-            if (location == null) {
+            if (location == null || !gameState.isColonySiteOpen(eligibleBase.get(), location)) {
                 unplaceable.add(eligibleBase.get());
                 continue;
             }
             baseData.reserveSunkenColony(eligibleBase.get());
             buildingPlanner.reservePlannedBuildingTiles(location, UnitType.Zerg_Creep_Colony);
             Plan creepColonyPlan = new BuildingPlan(UnitType.Zerg_Creep_Colony, priority, location);
+            creepColonyPlan.setColonyBase(eligibleBase.get());
             Plan sunkenColonyPlan = new BuildingPlan(UnitType.Zerg_Sunken_Colony, priority, location);
             sunkenColonyPlan.setPairedColonyPlan(creepColonyPlan);
             sunkenColonyPlan.setReservedColonyBase(eligibleBase.get());
@@ -733,12 +743,13 @@ public abstract class BuildOrder {
             return plans;
         }
         TilePosition location = buildingPlanner.getLocationForSporeColony(eligibleBase.get());
-        if (location == null) {
+        if (location == null || !gameState.isColonySiteOpen(eligibleBase.get(), location)) {
             return plans;
         }
         baseData.reserveSporeColony(eligibleBase.get());
         buildingPlanner.reservePlannedBuildingTiles(location, UnitType.Zerg_Creep_Colony);
         Plan creepColonyPlan = new BuildingPlan(UnitType.Zerg_Creep_Colony, 5, location);
+        creepColonyPlan.setColonyBase(eligibleBase.get());
         Plan sporeColonyPlan = new BuildingPlan(UnitType.Zerg_Spore_Colony, 5, location);
         sporeColonyPlan.setPairedColonyPlan(creepColonyPlan);
         sporeColonyPlan.setReservedColonyBase(eligibleBase.get());
