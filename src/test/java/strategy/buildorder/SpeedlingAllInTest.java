@@ -3,6 +3,8 @@ package strategy.buildorder;
 import bwapi.Race;
 import bwapi.UnitType;
 import bwapi.UpgradeType;
+import info.GameState;
+import info.Readiness;
 import info.TechProgression;
 import macro.ProductionQueue;
 import macro.plan.Plan;
@@ -19,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.ToIntFunction;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -31,6 +34,12 @@ class SpeedlingAllInTest {
     private static final Time EARLY = new Time(6, 0);
 
     private static final int NO_AIR_UNITS = 0;
+
+    private static final int ONE_BASE_TARGET = SpeedlingAllIn.droneTarget(1, 1);
+
+    private static final int THIRD_HATCHERY_TARGET = SpeedlingAllIn.droneTarget(2, 3);
+
+    private static final int ARMY = SpeedlingAllIn.ZERGLINGS_BEFORE_EXTRA_DRONES;
 
     private static final ToIntFunction<UnitType> NOTHING_OBSERVED = unitType -> 0;
 
@@ -56,30 +65,146 @@ class SpeedlingAllInTest {
     }
 
     @Test
+    void holdsElevenDronesBelowTwoBases() {
+        assertEquals(SpeedlingAllIn.DRONE_TARGET_ONE_BASE, SpeedlingAllIn.droneTarget(1, 1));
+        assertEquals(SpeedlingAllIn.DRONE_TARGET_ONE_BASE, SpeedlingAllIn.droneTarget(1, 2));
+        assertEquals(SpeedlingAllIn.DRONE_TARGET_ONE_BASE, SpeedlingAllIn.droneTarget(0, 0));
+        assertEquals(11, SpeedlingAllIn.DRONE_TARGET_ONE_BASE);
+    }
+
+    @Test
+    void holdsElevenDronesAtTwoBasesAndTwoHatcheries() {
+        assertEquals(SpeedlingAllIn.DRONE_TARGET_TWO_BASES, SpeedlingAllIn.droneTarget(2, 2));
+        assertEquals(11, SpeedlingAllIn.DRONE_TARGET_TWO_BASES);
+        assertEquals(SpeedlingAllIn.DRONE_TARGET_ONE_BASE, SpeedlingAllIn.droneTarget(2, 2));
+    }
+
+    @Test
+    void startsExtraDronesOnlyWithTheThirdHatchery() {
+        int twoHatcheries = SpeedlingAllIn.droneTarget(2, 2);
+        int threeHatcheries = SpeedlingAllIn.droneTarget(2, 3);
+
+        assertEquals(SpeedlingAllIn.DRONE_TARGET_TWO_BASES + SpeedlingAllIn.DRONES_PER_EXTRA_HATCHERY, threeHatcheries);
+        assertTrue(threeHatcheries > twoHatcheries);
+        assertFalse(SpeedlingAllIn.shouldPlanDrone(ONE_BASE_TARGET, twoHatcheries, ARMY, true, false));
+        assertFalse(SpeedlingAllIn.shouldPlanDrone(ONE_BASE_TARGET, twoHatcheries, ARMY, true, true));
+        assertTrue(SpeedlingAllIn.shouldPlanDrone(ONE_BASE_TARGET, threeHatcheries, ARMY, true, false));
+    }
+
+    @Test
+    void addsDronesForEachHatcheryBeyondTwo() {
+        int perHatchery = SpeedlingAllIn.DRONES_PER_EXTRA_HATCHERY;
+        int twoBases = SpeedlingAllIn.DRONE_TARGET_TWO_BASES;
+
+        assertEquals(twoBases + perHatchery, SpeedlingAllIn.droneTarget(2, 3));
+        assertEquals(twoBases + 2 * perHatchery, SpeedlingAllIn.droneTarget(2, 4));
+        assertEquals(twoBases + 3 * perHatchery, SpeedlingAllIn.droneTarget(2, SpeedlingAllIn.MAX_HATCHERIES));
+    }
+
+    @Test
+    void dropsBackToTheOneBaseTargetWhenTheNaturalIsLost() {
+        assertEquals(SpeedlingAllIn.DRONE_TARGET_ONE_BASE, SpeedlingAllIn.droneTarget(1, 3));
+    }
+
+    @Test
+    void readsHatcheriesRatherThanBasesAboveTwoBases() {
+        assertEquals(SpeedlingAllIn.droneTarget(2, 2), SpeedlingAllIn.droneTarget(3, 2));
+        assertEquals(SpeedlingAllIn.droneTarget(2, 3), SpeedlingAllIn.droneTarget(3, 3));
+    }
+
+    @Test
+    void readsHatcheriesLairsAndHivesAtTheUsableReadiness() {
+        assertEquals(Readiness.USABLE, SpeedlingAllIn.HATCHERY_READINESS);
+        assertArrayEquals(new UnitType[] {UnitType.Zerg_Hatchery, UnitType.Zerg_Lair, UnitType.Zerg_Hive},
+                SpeedlingAllIn.HATCHERY_TYPES);
+    }
+
+    @Test
+    void holdsTheTargetWhileTheThirdHatcheryIsUnderConstruction() {
+        int target = targetAtTwoBases(2, 1, 0);
+
+        assertEquals(SpeedlingAllIn.droneTarget(2, 2), target);
+        assertFalse(SpeedlingAllIn.shouldPlanDrone(ONE_BASE_TARGET, target, ARMY, true, false));
+        assertFalse(SpeedlingAllIn.shouldPlanDrone(ONE_BASE_TARGET, target, ARMY, true, true));
+    }
+
+    @Test
+    void holdsTheTargetWhileTheThirdHatcheryIsOnlyPlanned() {
+        int target = targetAtTwoBases(2, 0, 1);
+
+        assertEquals(SpeedlingAllIn.droneTarget(2, 2), target);
+        assertFalse(SpeedlingAllIn.shouldPlanDrone(ONE_BASE_TARGET, target, ARMY, true, true));
+    }
+
+    @Test
+    void raisesTheTargetOnceTheThirdHatcheryFinishes() {
+        int target = targetAtTwoBases(3, 0, 0);
+
+        assertEquals(THIRD_HATCHERY_TARGET, target);
+        assertTrue(SpeedlingAllIn.shouldPlanDrone(ONE_BASE_TARGET, target, ARMY, true, true));
+    }
+
+    @Test
+    void raisesTheTargetOnlyForFinishedHatcheriesWhenAFourthIsUnderConstruction() {
+        assertEquals(THIRD_HATCHERY_TARGET, targetAtTwoBases(3, 1, 1));
+        assertEquals(SpeedlingAllIn.droneTarget(2, 4), targetAtTwoBases(4, 0, 0));
+    }
+
+    private static int targetAtTwoBases(int completed, int underConstruction, int planned) {
+        return SpeedlingAllIn.droneTarget(2,
+                GameState.structureCount(SpeedlingAllIn.HATCHERY_READINESS, completed, underConstruction, planned));
+    }
+
+    @Test
     void derivesTheDroneBelowTheTarget() {
-        assertTrue(SpeedlingAllIn.shouldPlanDrone(SpeedlingAllIn.DRONE_TARGET - 1, true, false));
+        assertTrue(SpeedlingAllIn.shouldPlanDrone(ONE_BASE_TARGET - 1, ONE_BASE_TARGET, ARMY, true, false));
+        assertTrue(SpeedlingAllIn.shouldPlanDrone(12, 13, ARMY, true, false));
     }
 
     @Test
     void withholdsTheDroneOnceTheTargetIsMet() {
-        assertFalse(SpeedlingAllIn.shouldPlanDrone(SpeedlingAllIn.DRONE_TARGET, true, false));
-        assertFalse(SpeedlingAllIn.shouldPlanDrone(SpeedlingAllIn.DRONE_TARGET + 1, true, false));
+        assertFalse(SpeedlingAllIn.shouldPlanDrone(ONE_BASE_TARGET, ONE_BASE_TARGET, ARMY, true, false));
+        assertFalse(SpeedlingAllIn.shouldPlanDrone(ONE_BASE_TARGET + 1, ONE_BASE_TARGET, ARMY, true, false));
+        assertFalse(SpeedlingAllIn.shouldPlanDrone(13, 13, ARMY, true, false));
     }
 
     @Test
     void withholdsTheDroneWhileTheEconomicGateIsClosed() {
-        assertFalse(SpeedlingAllIn.shouldPlanDrone(0, false, false));
+        assertFalse(SpeedlingAllIn.shouldPlanDrone(0, ONE_BASE_TARGET, ARMY, false, false));
+        assertFalse(SpeedlingAllIn.shouldPlanDrone(12, 13, ARMY, false, false));
     }
 
     @Test
     void derivesTheDroneReplacementAfterLosingTheEconomy() {
-        assertTrue(SpeedlingAllIn.shouldPlanDrone(1, true, false));
+        assertTrue(SpeedlingAllIn.shouldPlanDrone(1, ONE_BASE_TARGET, ARMY, true, false));
     }
 
     @Test
     void withholdsTheDroneWhileAZerglingIsOwed() {
-        assertFalse(SpeedlingAllIn.shouldPlanDrone(0, true, true));
-        assertFalse(SpeedlingAllIn.shouldPlanDrone(SpeedlingAllIn.DRONE_TARGET - 1, true, true));
+        assertFalse(SpeedlingAllIn.shouldPlanDrone(0, ONE_BASE_TARGET, ARMY, true, true));
+        assertFalse(SpeedlingAllIn.shouldPlanDrone(ONE_BASE_TARGET - 1, ONE_BASE_TARGET, ARMY, true, true));
+        assertFalse(SpeedlingAllIn.shouldPlanDrone(12, 13, ARMY, true, true));
+    }
+
+    @Test
+    void withholdsDronesAboveElevenUntilTheZerglingArmyStands() {
+        int fewerLings = SpeedlingAllIn.ZERGLINGS_BEFORE_EXTRA_DRONES - 1;
+
+        assertFalse(SpeedlingAllIn.shouldPlanDrone(ONE_BASE_TARGET, THIRD_HATCHERY_TARGET, fewerLings, true, false));
+        assertFalse(SpeedlingAllIn.shouldPlanDrone(ONE_BASE_TARGET, THIRD_HATCHERY_TARGET, 0, true, true));
+        assertTrue(SpeedlingAllIn.shouldPlanDrone(ONE_BASE_TARGET - 1, THIRD_HATCHERY_TARGET, 0, true, false));
+    }
+
+    @Test
+    void slipsTheFirstExtraDroneInAheadOfAnOwedZergling() {
+        assertTrue(SpeedlingAllIn.shouldPlanDrone(ONE_BASE_TARGET, THIRD_HATCHERY_TARGET, ARMY, true, true));
+        assertFalse(SpeedlingAllIn.shouldPlanDrone(ONE_BASE_TARGET, THIRD_HATCHERY_TARGET, ARMY, false, true));
+    }
+
+    @Test
+    void holdsLaterExtraDronesBehindAnOwedZergling() {
+        assertFalse(SpeedlingAllIn.shouldPlanDrone(ONE_BASE_TARGET + 1, ONE_BASE_TARGET + 3, ARMY, true, true));
+        assertTrue(SpeedlingAllIn.shouldPlanDrone(ONE_BASE_TARGET + 1, ONE_BASE_TARGET + 3, ARMY, true, false));
     }
 
     @Test
@@ -87,7 +212,7 @@ class SpeedlingAllInTest {
         boolean owesZergling = SpeedlingAllIn.shouldPlanZergling(0, true);
 
         assertTrue(owesZergling);
-        assertFalse(SpeedlingAllIn.shouldPlanDrone(0, true, owesZergling));
+        assertFalse(SpeedlingAllIn.shouldPlanDrone(0, ONE_BASE_TARGET, ARMY, true, owesZergling));
     }
 
     @Test
@@ -95,7 +220,7 @@ class SpeedlingAllInTest {
         boolean owesZergling = SpeedlingAllIn.shouldPlanZergling(SpeedlingAllIn.MAX_QUEUED_ZERGLING_PLANS, true);
 
         assertFalse(owesZergling);
-        assertTrue(SpeedlingAllIn.shouldPlanDrone(0, true, owesZergling));
+        assertTrue(SpeedlingAllIn.shouldPlanDrone(0, ONE_BASE_TARGET, ARMY, true, owesZergling));
     }
 
     @Test
@@ -103,19 +228,19 @@ class SpeedlingAllInTest {
         boolean owesZergling = SpeedlingAllIn.shouldPlanZergling(0, false);
 
         assertFalse(owesZergling);
-        assertTrue(SpeedlingAllIn.shouldPlanDrone(0, true, owesZergling));
+        assertTrue(SpeedlingAllIn.shouldPlanDrone(0, ONE_BASE_TARGET, ARMY, true, owesZergling));
     }
 
     @Test
     void reachesTheDroneTargetOnceTheZerglingQueueIsSaturated() {
         int queuedZerglings = SpeedlingAllIn.MAX_QUEUED_ZERGLING_PLANS;
         int economyDrones = 0;
-        while (SpeedlingAllIn.shouldPlanDrone(economyDrones, true,
+        while (SpeedlingAllIn.shouldPlanDrone(economyDrones, THIRD_HATCHERY_TARGET, ARMY, true,
                 SpeedlingAllIn.shouldPlanZergling(queuedZerglings, true))) {
             economyDrones++;
         }
 
-        assertEquals(SpeedlingAllIn.DRONE_TARGET, economyDrones);
+        assertEquals(THIRD_HATCHERY_TARGET, economyDrones);
     }
 
     @Test

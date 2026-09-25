@@ -1213,7 +1213,7 @@ public class GameState {
      * @param planned building plans for the type still in flight
      * @return structures at that readiness
      */
-    static int structureCount(Readiness readiness, int completed, int underConstruction, int planned) {
+    public static int structureCount(Readiness readiness, int completed, int underConstruction, int planned) {
         switch (readiness) {
             case COMMITTED:
                 return completed + underConstruction + planned;
