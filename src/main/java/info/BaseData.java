@@ -16,12 +16,15 @@ import macro.plan.PlanCancelReason;
 import telemetry.PlanEvents;
 import util.Distance;
 
+import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Predicate;
 import java.util.function.ToIntFunction;
 import java.util.stream.Collectors;
 
@@ -44,6 +47,10 @@ public class BaseData {
     static final int BUILDER_ROUTE_TILE_RADIUS = 2;
 
     static final int EXTRACTOR_REPLAN_BACKOFF_FRAMES = 500;
+
+    private static final Comparator<Base> BY_TILE_LOCATION = Comparator
+            .comparingInt((Base base) -> base.getLocation().getX())
+            .thenComparingInt(base -> base.getLocation().getY());
 
     private Base mainBase;
     private Base naturalExpansion;
@@ -89,6 +96,8 @@ public class BaseData {
     private Base enemyNaturalBase;
     @Getter @Setter
     private boolean allowSunkenAtMain = false;
+    private Base lastSquadRallyBase;
+    private Base lastEnemyMainBase;
 
     public BaseData(List<Base> allBases) {
         for (Base base: allBases) {
@@ -723,6 +732,104 @@ public class BaseData {
 
     public boolean hasNaturalExpansion() {
         return naturalExpansion != null;
+    }
+
+    /**
+     * The base squads rally to. See {@link #squadRallyBase(Object, Object, Object, Predicate, Collection,
+     * ToIntFunction, Comparator)}; distance to the enemy is the ground distance from the enemy main, or from the
+     * last enemy main located once it is no longer tracked, and ties go to the lower tile location.
+     *
+     * @return the base squads rally to
+     */
+    public Base squadRallyBase() {
+        return squadRallyBase(naturalExpansion, inferredNaturalBase, mainBase, this::isHeldOrMorphing, myBases,
+                groundDistanceFromEnemyMain(), BY_TILE_LOCATION);
+    }
+
+    /**
+     * Writes a RALLY_POINT_CHANGED plan event when the squad rally base differs from the one last seen, including
+     * the first frame the main is known.
+     */
+    public void updateSquadRallyBase() {
+        if (mainBase == null) {
+            return;
+        }
+        Base rally = squadRallyBase();
+        if (rally == lastSquadRallyBase) {
+            return;
+        }
+        lastSquadRallyBase = rally;
+        PlanEvents.rallyPointChanged(rally.getLocation(),
+                squadRallyReason(rally, naturalExpansion, inferredNaturalBase, mainBase));
+    }
+
+    private ToIntFunction<Base> groundDistanceFromEnemyMain() {
+        if (mainEnemyBase != null) {
+            lastEnemyMainBase = mainEnemyBase;
+        }
+        StartingLocationPaths enemyPaths = lastEnemyMainBase == null ? null
+                : startingLocationPaths.get(lastEnemyMainBase);
+        if (enemyPaths == null) {
+            return null;
+        }
+        return base -> {
+            GroundPath path = enemyPaths.getPath(base);
+            return path == null ? Integer.MAX_VALUE : path.getGroundDistance();
+        };
+    }
+
+    /**
+     * Picks the base squads rally to:
+     * <ol>
+     *   <li>the first expansion we took, while a hatchery of ours stands or morphs on it;
+     *   <li>otherwise the inferred natural, while a hatchery of ours stands or morphs on it;
+     *   <li>otherwise, once an expansion has been taken and the enemy is located, the held base nearest the enemy,
+     *       preferring the main and then {@code tieBreak} among equally near bases, or the main when no held base
+     *       is reachable from the enemy;
+     *   <li>otherwise the main.
+     * </ol>
+     * A lost natural is skipped until a hatchery of ours stands or morphs on it again.
+     *
+     * @param takenNatural the first expansion we took, or null
+     * @param inferredNatural the natural inferred from the ground paths out of the main, or null
+     * @param main our main
+     * @param heldOrMorphing whether a hatchery of ours stands or morphs on a base
+     * @param heldBases bases a completed hatchery of ours stands on
+     * @param distanceToEnemy distance from a base to the enemy, {@link Integer#MAX_VALUE} for a base the enemy
+     *     cannot reach, or null when the enemy is not located
+     * @param tieBreak order among held bases equally near the enemy
+     * @return the rally base
+     */
+    static <T> T squadRallyBase(T takenNatural, T inferredNatural, T main, Predicate<T> heldOrMorphing,
+                                Collection<T> heldBases, ToIntFunction<T> distanceToEnemy,
+                                Comparator<? super T> tieBreak) {
+        if (takenNatural != null && heldOrMorphing.test(takenNatural)) {
+            return takenNatural;
+        }
+        if (inferredNatural != null && heldOrMorphing.test(inferredNatural)) {
+            return inferredNatural;
+        }
+        if (takenNatural == null || distanceToEnemy == null) {
+            return main;
+        }
+        Comparator<T> nearestEnemy = Comparator.comparingInt(distanceToEnemy);
+        return heldBases.stream()
+                .filter(base -> distanceToEnemy.applyAsInt(base) != Integer.MAX_VALUE)
+                .min(nearestEnemy.thenComparing(base -> base != main).thenComparing(tieBreak))
+                .orElse(main);
+    }
+
+    /**
+     * @return NATURAL for either natural, MAIN for the main, otherwise FORWARD_BASE
+     */
+    static <T> String squadRallyReason(T rally, T takenNatural, T inferredNatural, T main) {
+        if (rally == takenNatural || rally == inferredNatural) {
+            return "NATURAL";
+        }
+        if (rally == main) {
+            return "MAIN";
+        }
+        return "FORWARD_BASE";
     }
 
     public boolean isBaseTilePosition(TilePosition tilePosition) {

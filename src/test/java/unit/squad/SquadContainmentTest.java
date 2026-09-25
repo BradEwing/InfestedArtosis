@@ -231,8 +231,8 @@ class SquadContainmentTest {
 
     @Test
     void aUnitJoiningAContainingSquadLeavesItContaining() {
-        assertEquals(ReinforcementPath.JOIN_CONTAINMENT, reinforcementPath(SquadStatus.CONTAIN, false));
-        assertEquals(ReinforcementPath.JOIN_CONTAINMENT, reinforcementPath(SquadStatus.CONTAIN, true));
+        assertEquals(ReinforcementPath.JOIN_CONTAINMENT, reinforcementPath(SquadStatus.CONTAIN, false, false));
+        assertEquals(ReinforcementPath.JOIN_CONTAINMENT, reinforcementPath(SquadStatus.CONTAIN, true, false));
     }
 
     @Test
@@ -241,11 +241,11 @@ class SquadContainmentTest {
             if (status == SquadStatus.CONTAIN) {
                 continue;
             }
-            assertNotEquals(ReinforcementPath.JOIN_CONTAINMENT, reinforcementPath(status, false));
+            assertNotEquals(ReinforcementPath.JOIN_CONTAINMENT, reinforcementPath(status, false, false));
         }
-        assertEquals(ReinforcementPath.STAGE, reinforcementPath(SquadStatus.RALLY, true));
-        assertEquals(ReinforcementPath.SIMULATE, reinforcementPath(SquadStatus.RALLY, false));
-        assertEquals(ReinforcementPath.SIMULATE, reinforcementPath(SquadStatus.FIGHT, false));
+        assertEquals(ReinforcementPath.STAGE, reinforcementPath(SquadStatus.RALLY, true, false));
+        assertEquals(ReinforcementPath.SIMULATE, reinforcementPath(SquadStatus.RALLY, false, false));
+        assertEquals(ReinforcementPath.SIMULATE, reinforcementPath(SquadStatus.FIGHT, false, false));
     }
 
     @Test

@@ -37,6 +37,13 @@ public enum RallyReason {
     HOLD,
 
     /**
+     * An air squad under its move out threshold and not committed had enemies inside its detection radius, but
+     * stood outside the home defence radius of every base we hold, so it was held at the rally point instead of
+     * simulating the fight.
+     */
+    AIR_BELOW_MOVE_OUT_AWAY,
+
+    /**
      * Another ground squad holds a containment arc, so the squad was sent to that arc instead of the rally point or
      * a march on an enemy building. The rally point of each member is the arc point nearest it, and the squad is
      * folded into the containing squad by the merge once the two are close.
