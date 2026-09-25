@@ -431,7 +431,7 @@ public class InformationManager {
             TilePosition tp = unit.getTilePosition();
             if (unitType.isResourceDepot() && baseData.isBaseTilePosition(tp)) {
                 Base enemyBaseCandidate = baseData.baseAtTilePosition(tp);
-                baseData.removeEnemyBase(enemyBaseCandidate);
+                baseData.removeEnemyBase(enemyBaseCandidate, EnemyMainClearReason.DEPOT_DESTROYED);
             }
             ObservedUnitTracker tracker = gameState.getObservedUnitTracker();
             tracker.onUnitDestroy(unit, game.getFrameCount());
@@ -516,24 +516,6 @@ public class InformationManager {
 
     }
 
-    // TODO: Refactor into util
-    private Base closestBaseToUnit(Unit unit, List<Base> baseList) {
-        if (baseList.size() == 1) {
-            return baseList.get(0);
-        }
-        Base closestBase = null;
-        int closestDistance = Integer.MAX_VALUE;
-        for (Base b : baseList) {
-            int distance = unit.getDistance(b.getCenter());
-            if (distance < closestDistance) {
-                closestBase = b;
-                closestDistance = distance;
-            }
-        }
-
-        return closestBase;
-    }
-
     private void trackEnemyBuildings() {
         BaseData baseData = gameState.getBaseData();
         ScoutData scoutData = gameState.getScoutData();
@@ -554,16 +536,9 @@ public class InformationManager {
 
                 scoutData.addEnemyBuildingLocation(tp);
 
-                // If enemyBase is unknown and this is our first time encountering an enemyUnit, set enemyBase
-                if (baseData.getMainEnemyBase() == null) {
-                    Base enemyMainCandidate = closestBaseToUnit(unit, new ArrayList<>(startingBasesSet));
-                    // If enemy main is unknown and closest main is ours, probably a cheese
-                    // TODO: Handle cheese, detect proxy
-                    if (enemyMainCandidate == baseData.getMainBase()) {
-                        continue;
-                    }
-                    baseData.addEnemyBase(enemyMainCandidate);
-                }
+                Area buildingArea = bwem.getMap().getArea(unit.getPosition().toTilePosition());
+                baseData.offerEnemyMainEvidence(unitType, tp, unit.getPosition(),
+                        start -> isSameArea(buildingArea, start.getArea()));
 
                 if (unitType.isResourceDepot() && baseData.isBaseTilePosition(tp)) {
                     Base enemyBaseCandidate = baseData.baseAtTilePosition(tp);
@@ -601,8 +576,28 @@ public class InformationManager {
         return;
     }
 
+    private static boolean isSameArea(Area area, Area other) {
+        return area != null && other != null && area.getId().equals(other.getId());
+    }
+
+    /**
+     * Marks each starting location other than ours that is in our vision with no enemy depot on its tile as seen
+     * empty, then drops enemy bases in our vision with no enemy building near them. Marking first means a main
+     * dropped here is already seen empty, so a building still standing in its Area cannot assign it again.
+     */
     private void checkEnemyBases() {
         BaseData baseData = gameState.getBaseData();
+        for (Base start : startingBasesSet) {
+            if (start == baseData.getMainBase() || baseData.isStartSeenEmpty(start)
+                    || !game.isVisible(start.getLocation())) {
+                continue;
+            }
+            boolean hasEnemyDepot = game.getUnitsOnTile(start.getLocation()).stream()
+                    .anyMatch(u -> u.getPlayer() == game.enemy() && u.getType().isResourceDepot());
+            if (!hasEnemyDepot) {
+                baseData.markStartSeenEmpty(start);
+            }
+        }
         List<Base> basesToRemove = new ArrayList<>();
         for (Base base : baseData.getEnemyBases()) {
             if (!game.isVisible(base.getLocation())) {
@@ -615,7 +610,7 @@ public class InformationManager {
             }
         }
         for (Base base : basesToRemove) {
-            baseData.removeEnemyBase(base);
+            baseData.removeEnemyBase(base, EnemyMainClearReason.NO_BUILDING_SEEN);
         }
     }
 

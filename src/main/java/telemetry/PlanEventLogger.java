@@ -7,6 +7,8 @@ import bwapi.TilePosition;
 import bwapi.Unit;
 import bwapi.UnitType;
 import info.BuilderThreat;
+import info.EnemyMainClearReason;
+import info.EnemyMainEvidence;
 import info.GameState;
 import info.ResourceCount;
 import learning.GameRecord;
@@ -57,6 +59,9 @@ public class PlanEventLogger implements PlanEventSink {
     private static final String EVENT_STRATEGY_DETECTED = "STRATEGY_DETECTED";
     private static final String EVENT_BASE_LOST = "BASE_LOST";
     private static final String EVENT_RALLY_POINT_CHANGED = "RALLY_POINT_CHANGED";
+    private static final String EVENT_ENEMY_MAIN_ASSIGNED = "ENEMY_MAIN_ASSIGNED";
+    private static final String EVENT_ENEMY_MAIN_CLEARED = "ENEMY_MAIN_CLEARED";
+    private static final String EVENT_ENEMY_MAIN_SCOUTED = "ENEMY_MAIN_SCOUTED";
 
     private static final int NO_STARVED_COUNT = -1;
 
@@ -125,6 +130,13 @@ public class PlanEventLogger implements PlanEventSink {
      * RALLY_POINT_CHANGED rows are written when the base squads rally to changes, and once for the first rally
      * base: item is NATURAL, MAIN or FORWARD_BASE, and the rally base's location is in build_tile_x and
      * build_tile_y.
+     * ENEMY_MAIN_ASSIGNED, ENEMY_MAIN_CLEARED and ENEMY_MAIN_SCOUTED rows carry the enemy main's
+     * starting location in build_tile_x and build_tile_y and leave every plan column empty.
+     * enemy_main_reason is the evidence on ASSIGNED rows (DEPOT or MAIN_AREA) and the cause on
+     * CLEARED rows (NO_BUILDING_SEEN, DEPOT_DESTROYED or REPLACED_BY_DEPOT). ASSIGNED rows also carry
+     * the assigning building's type in item and its pixel position in enemy_main_source_x and
+     * enemy_main_source_y. A SCOUTED row is written when ScoutData first records the scouted frame
+     * of the assigned main, so the frame is the row's frame.
      */
     static final String PLAN_HEADER = "frame,time,event,plan_id,executor_unit_id,plan_type,item,from_state,"
             + "to_state,cancel_reason,cancel_source,blocker,blocked_frames,priority,frames_in_state,age_frames,"
@@ -136,7 +148,8 @@ public class PlanEventLogger implements PlanEventSink {
             + "macro_hatcheries_outstanding,tech_gate,gate_available_gas,gate_required_gas,"
             + "extractors_completed,builder_route_enemies,builder_site_enemies,"
             + "builder_route_defense_zones,builder_at_site,builder_dispatch_decision,lost_expansion_builders,"
-            + "expansion_hold_until_frame,builder_site_at_our_base,builder_at_our_base,base_inner";
+            + "expansion_hold_until_frame,builder_site_at_our_base,builder_at_our_base,base_inner,enemy_main_reason,"
+            + "enemy_main_source_x,enemy_main_source_y";
 
     private static final String GAME_HEADER = "timestamp,is_winner,num_starting_locations,map_name,opponent_name,"
             + "opponent_race,opener,build_order,detected_strategies,frame_count";
@@ -608,6 +621,48 @@ public class PlanEventLogger implements PlanEventSink {
         }
     }
 
+    /**
+     * The frame is re-read rather than taken from the last onFrame, since the enemy main is assigned from
+     * InformationManager, which runs ahead of this logger's onFrame on the same frame.
+     */
+    @Override
+    public void onEnemyMainAssigned(TilePosition main, EnemyMainEvidence evidence, UnitType source,
+                                    Position sourcePosition) {
+        enemyMainRow(EVENT_ENEMY_MAIN_ASSIGNED, main, source, BaseEventInputs.enemyMain(evidence.toString(),
+                sourcePosition));
+    }
+
+    /**
+     * The frame is re-read rather than taken from the last onFrame, since the enemy main is cleared from
+     * InformationManager or from onUnitDestroy, which both run ahead of this logger's onFrame.
+     */
+    @Override
+    public void onEnemyMainCleared(TilePosition main, EnemyMainClearReason reason) {
+        enemyMainRow(EVENT_ENEMY_MAIN_CLEARED, main, null, BaseEventInputs.enemyMain(reason.toString(), null));
+    }
+
+    /**
+     * The frame is re-read rather than taken from the last onFrame, since ScoutData records the scouted frame
+     * from InformationManager, which runs ahead of this logger's onFrame.
+     */
+    @Override
+    public void onEnemyMainScouted(TilePosition main) {
+        enemyMainRow(EVENT_ENEMY_MAIN_SCOUTED, main, null, null);
+    }
+
+    private void enemyMainRow(String event, TilePosition main, UnitType source, BaseEventInputs inputs) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            currentFrame = game.getFrameCount();
+            buffer.add(enemyMainEventRow(event, main, source, inputs));
+        } catch (Exception e) {
+            disabled = true;
+        }
+    }
+
     private void buildAheadRow(String event, Plan holder, int heldFrames, int starvedBehind) {
         if (disabled) {
             return;
@@ -919,6 +974,28 @@ public class PlanEventLogger implements PlanEventSink {
     }
 
     /**
+     * A row for an enemy main assigned, cleared or scouted, which no plan owns, so the plan columns are empty.
+     * The main's location is in build_tile_x and build_tile_y, and the building that assigned it in item.
+     */
+    private String enemyMainEventRow(String event, TilePosition main, UnitType source, BaseEventInputs inputs) {
+        StringBuilder sb = new StringBuilder();
+        appendEvent(sb, event);
+        appendEmpty(sb, 3);
+        sb.append(source == null ? "" : Csv.sanitize(source.toString())).append(',');
+        appendEmpty(sb, 4);
+        appendBlocker(sb, PlanBlocker.NONE, 0);
+        appendEmpty(sb, 3);
+        appendGameState(sb);
+        sb.append(main.getX()).append(',');
+        sb.append(main.getY()).append(',');
+        appendEmpty(sb, 1);
+        sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
+        appendEmpty(sb, 2);
+        appendTrailing(sb, null, null, null, null, null, null, inputs);
+        return sb.toString();
+    }
+
+    /**
      * What the builder for this plan would walk into, or null when the plan has no builder to read
      * it for. Recomputed per row rather than carried from the last gate evaluation, so a row taken
      * between two evaluations reports the frame it was written on.
@@ -989,7 +1066,12 @@ public class PlanEventLogger implements PlanEventSink {
         sb.append(baseEvent == null ? "" : orEmpty(baseEvent.expansionHeldUntilFrame)).append(',');
         sb.append(builderThreat == null ? "" : String.valueOf(builderThreat.isSiteAtOurBase())).append(',');
         sb.append(builderThreat == null ? "" : String.valueOf(builderThreat.isBuilderAtOurBase())).append(',');
-        sb.append(baseEvent == null ? "" : orEmpty(baseEvent.baseInner));
+        sb.append(baseEvent == null ? "" : orEmpty(baseEvent.baseInner)).append(',');
+        sb.append(baseEvent == null ? "" : orEmpty(baseEvent.enemyMainReason)).append(',');
+        sb.append(baseEvent == null || baseEvent.enemyMainSource == null ? ""
+                : String.valueOf(baseEvent.enemyMainSource.getX())).append(',');
+        sb.append(baseEvent == null || baseEvent.enemyMainSource == null ? ""
+                : String.valueOf(baseEvent.enemyMainSource.getY()));
     }
 
     private static String orEmpty(Object value) {
@@ -1103,24 +1185,36 @@ public class PlanEventLogger implements PlanEventSink {
         }
     }
 
-    /** The hold a lost expansion builder armed, or whether a lost base was the main or a natural. */
+    /**
+     * The hold a lost expansion builder armed, whether a lost base was the main or a natural, or why the enemy
+     * main was assigned or cleared and the position of the building that assigned it.
+     */
     private static final class BaseEventInputs {
         private final Integer lostExpansionBuilders;
         private final Integer expansionHeldUntilFrame;
         private final Boolean baseInner;
+        private final String enemyMainReason;
+        private final Position enemyMainSource;
 
-        private BaseEventInputs(Integer lostExpansionBuilders, Integer expansionHeldUntilFrame, Boolean baseInner) {
+        private BaseEventInputs(Integer lostExpansionBuilders, Integer expansionHeldUntilFrame, Boolean baseInner,
+                                String enemyMainReason, Position enemyMainSource) {
             this.lostExpansionBuilders = lostExpansionBuilders;
             this.expansionHeldUntilFrame = expansionHeldUntilFrame;
             this.baseInner = baseInner;
+            this.enemyMainReason = enemyMainReason;
+            this.enemyMainSource = enemyMainSource;
         }
 
         private static BaseEventInputs expansionBackoff(int lostExpansionBuilders, int expansionHeldUntilFrame) {
-            return new BaseEventInputs(lostExpansionBuilders, expansionHeldUntilFrame, null);
+            return new BaseEventInputs(lostExpansionBuilders, expansionHeldUntilFrame, null, null, null);
         }
 
         private static BaseEventInputs baseLost(boolean baseInner) {
-            return new BaseEventInputs(null, null, baseInner);
+            return new BaseEventInputs(null, null, baseInner, null, null);
+        }
+
+        private static BaseEventInputs enemyMain(String reason, Position source) {
+            return new BaseEventInputs(null, null, null, reason, source);
         }
     }
 }
