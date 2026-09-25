@@ -26,9 +26,9 @@ import java.util.function.Predicate;
  * Extractor that funds Metabolic Boost once the natural is up, and it stays 11 at two hatcheries,
  * where larva rather than minerals bound the build. Once two bases are held, each finished hatchery
  * beyond two adds {@link #DRONES_PER_EXTRA_HATCHERY}, so the income behind a macro hatchery grows
- * with the larva it adds, once that larva exists. The target is a total that includes the gas drones. It is a floor as well
- * as a ceiling, so dead drones are replaced and the economy is never cut to zero. An opener that
- * hands over above the target keeps its drones; nothing is cut.
+ * with the larva it adds, once that larva exists. The target is a total that includes the gas
+ * drones. It is a floor as well as a ceiling, so dead drones are replaced and the economy is never
+ * cut to zero. An opener that hands over above the target keeps its drones; nothing is cut.
  * It plans its own Spawning Pool when it does not have one, so it is reachable from an opener that
  * transitions before building one.
  *

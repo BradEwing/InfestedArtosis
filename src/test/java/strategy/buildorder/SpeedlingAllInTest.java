@@ -107,6 +107,12 @@ class SpeedlingAllInTest {
     }
 
     @Test
+    void readsHatcheriesRatherThanBasesAboveTwoBases() {
+        assertEquals(SpeedlingAllIn.droneTarget(2, 2), SpeedlingAllIn.droneTarget(3, 2));
+        assertEquals(SpeedlingAllIn.droneTarget(2, 3), SpeedlingAllIn.droneTarget(3, 3));
+    }
+
+    @Test
     void readsHatcheriesLairsAndHivesAtTheUsableReadiness() {
         assertEquals(Readiness.USABLE, SpeedlingAllIn.HATCHERY_READINESS);
         assertArrayEquals(new UnitType[] {UnitType.Zerg_Hatchery, UnitType.Zerg_Lair, UnitType.Zerg_Hive},
