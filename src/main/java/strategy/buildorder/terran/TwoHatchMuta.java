@@ -72,7 +72,8 @@ public class TwoHatchMuta extends TerranBase {
 
         boolean wantMetabolicBoost = techProgression.canPlanMetabolicBoost() && !techProgression.isMetabolicBoost() && lairCount > 0;
         boolean wantFlyingAttack = shouldPlanFlyerAttack(techProgression, livingMutaCount);
-        boolean wantOverlordSpeed = needOverlordSpeed(gameState) && techProgression.canPlanOverlordSpeed();
+        boolean wantOverlordSpeed = shouldPlanOverlordSpeed(needOverlordSpeed(gameState) && techProgression.canPlanOverlordSpeed(),
+                wantFlyingAttack);
 
         // Plan buildings
 

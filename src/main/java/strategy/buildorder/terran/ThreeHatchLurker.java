@@ -67,7 +67,8 @@ public class ThreeHatchLurker extends TerranBase {
         boolean wantGroovedSpines = techProgression.canPlanGroovedSpines() && shouldPlanGroovedSpines(livingHydraCount);
         boolean wantRangedUpgrades = techProgression.canPlanRangedUpgrades();
         boolean wantCarapaceUpgrade = techProgression.canPlanCarapaceUpgrades();
-        boolean wantOverlordSpeed = needOverlordSpeed(gameState) && techProgression.canPlanOverlordSpeed();
+        boolean wantOverlordSpeed = shouldPlanOverlordSpeed(needOverlordSpeed(gameState) && techProgression.canPlanOverlordSpeed(),
+                wantMuscularAugments, wantGroovedSpines, wantRangedUpgrades, wantCarapaceUpgrade);
 
         // Check for floating resources (follows OneHatchSpire pattern)
         boolean floatingMinerals = gameState.isFloatingMinerals();

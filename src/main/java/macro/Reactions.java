@@ -28,6 +28,8 @@ import telemetry.PlanEvents;
 import bwapi.Unit;
 import info.BaseData;
 
+import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
@@ -92,19 +94,18 @@ public class Reactions {
     /**
      * Enemy units that hunt Overlords.
      */
-    private static final UnitType[] OVERLORD_HUNTERS = {
-        UnitType.Protoss_Corsair, UnitType.Protoss_Scout, UnitType.Terran_Wraith,
-        UnitType.Terran_Valkyrie, UnitType.Zerg_Devourer
-    };
+    private static final List<UnitType> OVERLORD_HUNTERS = Arrays.asList(
+            UnitType.Protoss_Corsair, UnitType.Protoss_Scout, UnitType.Terran_Wraith,
+            UnitType.Terran_Valkyrie, UnitType.Zerg_Devourer);
 
     /**
      * Enemy units that call for an Overlord to keep up with the army as a detector: Dark Templar,
-     * Lurkers and Spider Mines, and the Observer that backs a cloaked army.
+     * Lurkers and Spider Mines. An Observer on its own is not one; it only backs a cloaked army,
+     * which these units already stand for, and it queues the upgrade without lifting it through
+     * {@link BuildOrder#needOverlordSpeed}.
      */
-    private static final UnitType[] DETECTION_THREATS = {
-        UnitType.Protoss_Dark_Templar, UnitType.Protoss_Observer, UnitType.Zerg_Lurker,
-        UnitType.Terran_Vulture_Spider_Mine
-    };
+    private static final List<UnitType> DETECTION_THREATS = Arrays.asList(
+            UnitType.Protoss_Dark_Templar, UnitType.Zerg_Lurker, UnitType.Terran_Vulture_Spider_Mine);
 
     /**
      * Sits behind emergency defense so an unaffordable upgrade can never tie with, and so deny a
@@ -805,7 +806,7 @@ public class Reactions {
      * Whether the Overlord speed reaction fires.
      *
      * @param overlordHunters living enemy Corsairs, Scouts, Wraiths, Valkyries and Devourers seen
-     * @param detectionThreats living enemy Dark Templar, Observers, Lurkers and Spider Mines seen
+     * @param detectionThreats living enemy Dark Templar, Lurkers and Spider Mines seen
      * @param overlordsLost completed Overlords the bot has lost this game
      * @return true when any of them calls for the upgrade
      */
@@ -813,7 +814,15 @@ public class Reactions {
         return overlordHunters > 0 || detectionThreats > 0 || overlordsLost >= OVERLORDS_LOST_TRIGGER;
     }
 
-    private static int enemyCount(GameState gameState, UnitType[] unitTypes) {
+    static boolean isOverlordHunter(UnitType unitType) {
+        return OVERLORD_HUNTERS.contains(unitType);
+    }
+
+    static boolean isDetectionThreat(UnitType unitType) {
+        return DETECTION_THREATS.contains(unitType);
+    }
+
+    private static int enemyCount(GameState gameState, List<UnitType> unitTypes) {
         int count = 0;
         for (UnitType unitType : unitTypes) {
             count += gameState.enemyUnitCount(unitType);

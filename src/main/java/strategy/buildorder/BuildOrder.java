@@ -206,8 +206,8 @@ public abstract class BuildOrder {
      * <p>This only decides whether the upgrade is queued. {@link #planUpgrade} queues it at frame
      * priority, behind the army upgrades already waiting; only a threat the upgrade answers, from
      * {@link Reactions#isOverlordSpeedThreatened(GameState)}, lifts it to
-     * {@link Reactions#OVERLORD_SPEED_REACTION_PRIORITY}. The clock, enemy tech buildings and the
-     * Science Vessel queue it without lifting it.
+     * {@link Reactions#OVERLORD_SPEED_REACTION_PRIORITY}. The clock, enemy tech buildings, the
+     * Science Vessel and an Observer queue it without lifting it.
      */
     public boolean needOverlordSpeed(GameState gameState) {
         if (gameState.structureCount(Readiness.USABLE, bwapi.UnitType.Zerg_Lair) < 1) {
@@ -228,6 +228,9 @@ public abstract class BuildOrder {
         if (gameState.enemyUnitCount(bwapi.UnitType.Terran_Science_Vessel) > 0) {
             return true;
         }
+        if (gameState.enemyUnitCount(bwapi.UnitType.Protoss_Observer) > 0) {
+            return true;
+        }
         if (gameState.enemyUnitCount(bwapi.UnitType.Protoss_Stargate) > 0) {
             return true;
         }
@@ -241,6 +244,28 @@ public abstract class BuildOrder {
             return true;
         }
         return false;
+    }
+
+    /**
+     * Whether Pneumatized Carapace is queued this pass. It waits while any of the build's army
+     * upgrades is still to be queued, so its frame priority is later than theirs and it sits
+     * behind them unless the Overlord speed reaction lifts it. Queueing it in the same pass is not
+     * enough: plans of equal priority leave the queue in no fixed order.
+     *
+     * @param wantOverlordSpeed whether the build wants the upgrade and it may be queued
+     * @param armyUpgradesToQueue for each army upgrade the build plans, whether it is still to be queued
+     * @return true while the upgrade should be queued
+     */
+    protected static boolean shouldPlanOverlordSpeed(boolean wantOverlordSpeed, boolean... armyUpgradesToQueue) {
+        if (!wantOverlordSpeed) {
+            return false;
+        }
+        for (boolean toQueue : armyUpgradesToQueue) {
+            if (toQueue) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**

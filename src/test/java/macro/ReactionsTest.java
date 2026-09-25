@@ -1258,6 +1258,41 @@ public class ReactionsTest {
     }
 
     @Test
+    void theOverlordHuntersAreTheAntiAirFlyers() {
+        assertTrue(Reactions.isOverlordHunter(UnitType.Protoss_Corsair));
+        assertTrue(Reactions.isOverlordHunter(UnitType.Protoss_Scout));
+        assertTrue(Reactions.isOverlordHunter(UnitType.Terran_Wraith));
+        assertTrue(Reactions.isOverlordHunter(UnitType.Terran_Valkyrie));
+        assertTrue(Reactions.isOverlordHunter(UnitType.Zerg_Devourer));
+        assertFalse(Reactions.isOverlordHunter(UnitType.Protoss_Stargate));
+    }
+
+    @Test
+    void theDetectionThreatsAreTheCloakedAndBurrowedUnits() {
+        assertTrue(Reactions.isDetectionThreat(UnitType.Protoss_Dark_Templar));
+        assertTrue(Reactions.isDetectionThreat(UnitType.Zerg_Lurker));
+        assertTrue(Reactions.isDetectionThreat(UnitType.Terran_Vulture_Spider_Mine));
+    }
+
+    @Test
+    void anObserverAloneIsNotAnOverlordSpeedThreat() {
+        assertFalse(Reactions.isDetectionThreat(UnitType.Protoss_Observer));
+        assertFalse(Reactions.isOverlordHunter(UnitType.Protoss_Observer));
+    }
+
+    @Test
+    void enemyTechBuildingsAndTheScienceVesselAreNotOverlordSpeedThreats() {
+        UnitType[] queueOnly = {
+            UnitType.Protoss_Templar_Archives, UnitType.Protoss_Fleet_Beacon, UnitType.Protoss_Stargate,
+            UnitType.Terran_Starport, UnitType.Zerg_Greater_Spire, UnitType.Zerg_Hive, UnitType.Terran_Science_Vessel
+        };
+        for (UnitType unitType : queueOnly) {
+            assertFalse(Reactions.isOverlordHunter(unitType));
+            assertFalse(Reactions.isDetectionThreat(unitType));
+        }
+    }
+
+    @Test
     void withoutAThreatOverlordSpeedStaysBehindTheHydraliskDenUpgrades() {
         ProductionQueue queue = new ProductionQueue();
         Plan muscularAugments = new UpgradePlan(UpgradeType.Muscular_Augments, 6236);

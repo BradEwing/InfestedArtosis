@@ -100,7 +100,7 @@ public class ThreeHatchHydra extends ProtossBase {
         boolean wantRangedUpgrades = techProgression.canPlanRangedUpgrades();
         boolean wantCarapaceUpgrade = techProgression.canPlanCarapaceUpgrades();
         boolean wantOverlordSpeed = shouldPlanOverlordSpeed(needOverlordSpeed(gameState) && techProgression.canPlanOverlordSpeed(),
-                wantMuscularAugments, wantGroovedSpines);
+                wantMuscularAugments, wantGroovedSpines, wantRangedUpgrades, wantCarapaceUpgrade);
 
         // Plan buildings
 
@@ -420,20 +420,6 @@ public class ThreeHatchHydra extends ProtossBase {
      */
     static boolean shouldPlanMetabolicBoost(boolean canPlanMetabolicBoost, int livingZerglings) {
         return canPlanMetabolicBoost && livingZerglings > METABOLIC_BOOST_ZERGLINGS;
-    }
-
-    /**
-     * Whether Pneumatized Carapace is queued this frame. It waits until neither Hydralisk Den
-     * upgrade is still to be queued, so its frame priority is later than both and it sits behind
-     * them in the queue unless the Overlord speed reaction lifts it.
-     *
-     * @param wantOverlordSpeed whether the build wants the upgrade and it may be queued
-     * @param wantMuscularAugments whether Muscular Augments is still to be queued
-     * @param wantGroovedSpines whether Grooved Spines is still to be queued
-     * @return true while the upgrade should be queued
-     */
-    static boolean shouldPlanOverlordSpeed(boolean wantOverlordSpeed, boolean wantMuscularAugments, boolean wantGroovedSpines) {
-        return wantOverlordSpeed && !wantMuscularAugments && !wantGroovedSpines;
     }
 
     @Override

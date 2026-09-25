@@ -49,7 +49,8 @@ public class OneHatchSpire extends ZergBase {
         boolean wantMetabolicBoost = techProgression.canPlanMetabolicBoost() && !techProgression.isMetabolicBoost() && 
                                     zerglingCount > 5 && lairCount > 0;
         boolean wantFlyingCarapace = shouldPlanFlyerCarapace(techProgression, livingMutaCount);
-        boolean wantOverlordSpeed = needOverlordSpeed(gameState) && techProgression.canPlanOverlordSpeed();
+        boolean wantOverlordSpeed = shouldPlanOverlordSpeed(needOverlordSpeed(gameState) && techProgression.canPlanOverlordSpeed(),
+                wantFlyingCarapace);
 
 
         boolean wantExpansion = behindOnBases(gameState);

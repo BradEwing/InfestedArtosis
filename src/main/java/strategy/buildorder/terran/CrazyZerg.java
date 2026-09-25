@@ -99,7 +99,8 @@ public class CrazyZerg extends TerranBase {
         boolean wantConsume = techProgression.canPlanConsume();
         boolean wantPlague = techProgression.canPlanPlague();
         boolean wantAdrenalGlands = techProgression.canPlanAdrenalGlands();
-        boolean wantOverlordSpeed = needOverlordSpeed(gameState) && techProgression.canPlanOverlordSpeed();
+        boolean wantOverlordSpeed = shouldPlanOverlordSpeed(needOverlordSpeed(gameState) && techProgression.canPlanOverlordSpeed(),
+                wantCarapace, wantMelee, wantFlyerAttack, wantChitinousPlating, wantAnabolicSynthesis, wantAdrenalGlands);
 
         final int desiredSunkenColonies = this.requiredSunkens(gameState);
         if (!gameState.basesNeedingSunken(desiredSunkenColonies).isEmpty()) {

@@ -157,26 +157,6 @@ class ThreeHatchHydraTest {
     }
 
     @Test
-    void withholdsOverlordSpeedWhileMuscularAugmentsIsStillToBeQueued() {
-        assertFalse(ThreeHatchHydra.shouldPlanOverlordSpeed(true, true, true));
-    }
-
-    @Test
-    void withholdsOverlordSpeedWhileGroovedSpinesIsStillToBeQueued() {
-        assertFalse(ThreeHatchHydra.shouldPlanOverlordSpeed(true, false, true));
-    }
-
-    @Test
-    void queuesOverlordSpeedOnceBothDenUpgradesAreQueued() {
-        assertTrue(ThreeHatchHydra.shouldPlanOverlordSpeed(true, false, false));
-    }
-
-    @Test
-    void withholdsOverlordSpeedTheBuildDoesNotWant() {
-        assertFalse(ThreeHatchHydra.shouldPlanOverlordSpeed(false, false, false));
-    }
-
-    @Test
     void aSporeRequirementAloneDoesNotAskForAnUpgradeChamber() {
         TechProgression techProgression = new TechProgression();
         techProgression.setSpawningPool(true);

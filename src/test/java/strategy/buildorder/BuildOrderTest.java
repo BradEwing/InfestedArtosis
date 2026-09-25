@@ -665,4 +665,29 @@ class BuildOrderTest {
 
         assertEquals(1, BuildOrder.earlyRushSunkens(attackers, attackers));
     }
+
+    @Test
+    void withholdsOverlordSpeedWhileTheFirstArmyUpgradeIsStillToBeQueued() {
+        assertFalse(BuildOrder.shouldPlanOverlordSpeed(true, true, false));
+    }
+
+    @Test
+    void withholdsOverlordSpeedWhileTheLastArmyUpgradeIsStillToBeQueued() {
+        assertFalse(BuildOrder.shouldPlanOverlordSpeed(true, false, true));
+    }
+
+    @Test
+    void queuesOverlordSpeedOnceEveryArmyUpgradeIsQueued() {
+        assertTrue(BuildOrder.shouldPlanOverlordSpeed(true, false, false));
+    }
+
+    @Test
+    void queuesOverlordSpeedWhenTheBuildPlansNoArmyUpgrade() {
+        assertTrue(BuildOrder.shouldPlanOverlordSpeed(true));
+    }
+
+    @Test
+    void withholdsOverlordSpeedTheBuildDoesNotWant() {
+        assertFalse(BuildOrder.shouldPlanOverlordSpeed(false, false, false));
+    }
 }

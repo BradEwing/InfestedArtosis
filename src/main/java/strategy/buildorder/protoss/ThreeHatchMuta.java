@@ -105,7 +105,8 @@ public class ThreeHatchMuta extends ProtossBase {
         // Upgrade timing
         boolean wantMetabolicBoost = techProgression.canPlanMetabolicBoost() && !techProgression.isMetabolicBoost() && lairCount > 0;
         boolean wantCarapaceUpgrade = techProgression.canPlanCarapaceUpgrades();
-        boolean wantOverlordSpeed = needOverlordSpeed(gameState) && techProgression.canPlanOverlordSpeed();
+        boolean wantOverlordSpeed = shouldPlanOverlordSpeed(needOverlordSpeed(gameState) && techProgression.canPlanOverlordSpeed(),
+                wantCarapaceUpgrade);
 
         // Plan buildings
 
