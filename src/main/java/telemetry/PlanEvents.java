@@ -161,6 +161,14 @@ public final class PlanEvents {
         current.onExpansionBackoff(lostExpansionBuilders, expansionHeldUntilFrame);
     }
 
+    public static void colonyBuilderBackoff(TilePosition base, int lostColonyBuilders, int colonyHeldUntilFrame) {
+        PlanEventSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onColonyBuilderBackoff(base, lostColonyBuilders, colonyHeldUntilFrame);
+    }
+
     public static void strategyDetected(String detectionLabel) {
         PlanEventSink current = sink;
         if (current == null) {
@@ -176,6 +184,14 @@ public final class PlanEvents {
             return;
         }
         current.onBaseLost(base, innerBase);
+    }
+
+    public static void rallyPointChanged(TilePosition base, String reason) {
+        PlanEventSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onRallyPointChanged(base, reason);
     }
 
     public static void enemyMainAssigned(TilePosition main, EnemyMainEvidence evidence, UnitType source,

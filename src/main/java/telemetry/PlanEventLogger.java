@@ -55,8 +55,10 @@ public class PlanEventLogger implements PlanEventSink {
     private static final String EVENT_HIVE_TECH_WITHHELD = "HIVE_TECH_WITHHELD";
     private static final String EVENT_BUILDER_DISPATCH_DECISION = "BUILDER_DISPATCH_DECISION";
     private static final String EVENT_EXPANSION_BACKOFF = "EXPANSION_BACKOFF";
+    private static final String EVENT_COLONY_BUILDER_BACKOFF = "COLONY_BUILDER_BACKOFF";
     private static final String EVENT_STRATEGY_DETECTED = "STRATEGY_DETECTED";
     private static final String EVENT_BASE_LOST = "BASE_LOST";
+    private static final String EVENT_RALLY_POINT_CHANGED = "RALLY_POINT_CHANGED";
     private static final String EVENT_ENEMY_MAIN_ASSIGNED = "ENEMY_MAIN_ASSIGNED";
     private static final String EVENT_ENEMY_MAIN_CLEARED = "ENEMY_MAIN_CLEARED";
     private static final String EVENT_ENEMY_MAIN_SCOUTED = "ENEMY_MAIN_SCOUTED";
@@ -111,6 +113,11 @@ public class PlanEventLogger implements PlanEventSink {
      * lost_expansion_builders and expansion_hold_until_frame are set only on EXPANSION_BACKOFF
      * rows. The hold a row armed is expansion_hold_until_frame minus frame.
      * <p>
+     * COLONY_BUILDER_BACKOFF rows reuse the same two columns for a hold on sunken planning at one
+     * base: lost_expansion_builders is the colony builders lost at that base since a colony there
+     * last started morphing, and expansion_hold_until_frame is the frame the base's hold lifts. The
+     * held base's location is in build_tile_x and build_tile_y.
+     * <p>
      * STRATEGY_DETECTED rows carry the detected strategy's detection label in item and leave every
      * plan column empty, so the frame a strategy was detected is the row's frame. The label is the
      * strategy's name, followed for ProxyGate by the evidence arms that fired: ProxyGate:GATEWAY_AWAY,
@@ -120,6 +127,9 @@ public class PlanEventLogger implements PlanEventSink {
      * true for the main or a natural, false for a third or later base. The lost base's location is
      * in build_tile_x and build_tile_y.
      * <p>
+     * RALLY_POINT_CHANGED rows are written when the base squads rally to changes, and once for the first rally
+     * base: item is NATURAL, MAIN or FORWARD_BASE, and the rally base's location is in build_tile_x and
+     * build_tile_y.
      * ENEMY_MAIN_ASSIGNED, ENEMY_MAIN_CLEARED and ENEMY_MAIN_SCOUTED rows carry the enemy main's
      * starting location in build_tile_x and build_tile_y and leave every plan column empty.
      * enemy_main_reason is the evidence on ASSIGNED rows (DEPOT or MAIN_AREA) and the cause on
@@ -539,6 +549,25 @@ public class PlanEventLogger implements PlanEventSink {
     }
 
     /**
+     * Writes one row per colony hold armed. The frame is re-read for the reason
+     * {@link #onExpansionBackoff} gives: the builder is lost from onUnitDestroy.
+     */
+    @Override
+    public void onColonyBuilderBackoff(TilePosition base, int lostColonyBuilders, int colonyHeldUntilFrame) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            currentFrame = game.getFrameCount();
+            buffer.add(colonyBuilderBackoffRow(base, BaseEventInputs.expansionBackoff(lostColonyBuilders,
+                    colonyHeldUntilFrame)));
+        } catch (Exception e) {
+            disabled = true;
+        }
+    }
+
+    /**
      * Records the frame a strategy was detected. The frame is re-read rather than taken from the last
      * onFrame, because StrategyTracker may run ahead of this logger's onFrame on the same frame.
      */
@@ -569,6 +598,24 @@ public class PlanEventLogger implements PlanEventSink {
         try {
             currentFrame = game.getFrameCount();
             buffer.add(baseLostRow(base, innerBase));
+        } catch (Exception e) {
+            disabled = true;
+        }
+    }
+
+    /**
+     * The frame is re-read for the reason {@link #onStrategyDetected} gives: GameState may run ahead of this
+     * logger's onFrame on the same frame.
+     */
+    @Override
+    public void onRallyPointChanged(TilePosition base, String reason) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            currentFrame = game.getFrameCount();
+            buffer.add(rallyPointChangedRow(base, reason));
         } catch (Exception e) {
             disabled = true;
         }
@@ -850,6 +897,26 @@ public class PlanEventLogger implements PlanEventSink {
         return sb.toString();
     }
 
+    /** A row for a hold on sunken planning at one base, which no plan owns, so the plan columns are empty. */
+    private String colonyBuilderBackoffRow(TilePosition base, BaseEventInputs inputs) {
+        StringBuilder sb = new StringBuilder();
+        appendEvent(sb, EVENT_COLONY_BUILDER_BACKOFF);
+        appendEmpty(sb, 2);
+        sb.append(PlanType.BUILDING).append(',');
+        sb.append(Csv.sanitize(UnitType.Zerg_Creep_Colony.toString())).append(',');
+        appendEmpty(sb, 4);
+        appendBlocker(sb, PlanBlocker.NONE, 0);
+        appendEmpty(sb, 3);
+        appendGameState(sb);
+        sb.append(base.getX()).append(',');
+        sb.append(base.getY()).append(',');
+        appendEmpty(sb, 1);
+        sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
+        appendEmpty(sb, 2);
+        appendTrailing(sb, null, null, null, null, null, null, inputs);
+        return sb.toString();
+    }
+
     /** A row for a detected strategy, which no plan owns, so the plan columns are empty. */
     private String strategyDetectedRow(String detectionLabel) {
         StringBuilder sb = new StringBuilder();
@@ -884,6 +951,25 @@ public class PlanEventLogger implements PlanEventSink {
         sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
         appendEmpty(sb, 2);
         appendTrailing(sb, null, null, null, null, null, null, BaseEventInputs.baseLost(innerBase));
+        return sb.toString();
+    }
+
+    /** A row for a change of the squad rally base, which no plan owns, so the plan columns are empty. */
+    private String rallyPointChangedRow(TilePosition base, String reason) {
+        StringBuilder sb = new StringBuilder();
+        appendEvent(sb, EVENT_RALLY_POINT_CHANGED);
+        appendEmpty(sb, 3);
+        sb.append(Csv.sanitize(reason)).append(',');
+        appendEmpty(sb, 4);
+        appendBlocker(sb, PlanBlocker.NONE, 0);
+        appendEmpty(sb, 3);
+        appendGameState(sb);
+        sb.append(base.getX()).append(',');
+        sb.append(base.getY()).append(',');
+        appendEmpty(sb, 1);
+        sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
+        appendEmpty(sb, 2);
+        appendTrailing(sb, null, null, null, null, null, null, null);
         return sb.toString();
     }
 
@@ -949,8 +1035,8 @@ public class PlanEventLogger implements PlanEventSink {
      * @param builderThreat what the plan's builder would walk into, or null when the row has no
      *     BUILDING plan with an executor behind it
      * @param decision what the dispatch gate did, or null on every row but BUILDER_DISPATCH_DECISION
-     * @param baseEvent the expansion hold armed or the base lost, or null on every row but
-     *     EXPANSION_BACKOFF and BASE_LOST
+     * @param baseEvent the expansion or colony hold armed or the base lost, or null on every row but
+     *     EXPANSION_BACKOFF, COLONY_BUILDER_BACKOFF and BASE_LOST
      */
     private void appendTrailing(StringBuilder sb, Position blockerMineral, Plan yieldTo,
                                 MacroHatcheryGateInputs macroHatchery, HiveTechGateInputs hiveTech,

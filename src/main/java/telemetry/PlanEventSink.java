@@ -111,6 +111,16 @@ public interface PlanEventSink {
     }
 
     /**
+     * A lost Creep Colony builder armed a hold on sunken planning at a base.
+     *
+     * @param base the held base's tile location
+     * @param lostColonyBuilders colony builders lost at the base since a colony there last started morphing
+     * @param colonyHeldUntilFrame frame the hold on the base lifts
+     */
+    default void onColonyBuilderBackoff(TilePosition base, int lostColonyBuilders, int colonyHeldUntilFrame) {
+    }
+
+    /**
      * StrategyTracker added a strategy to its detected set, directly or by implication, after resolving
      * supersessions for the frame.
      *
@@ -127,6 +137,15 @@ public interface PlanEventSink {
      * @param innerBase whether the base was our main or a natural
      */
     default void onBaseLost(TilePosition base, boolean innerBase) {
+    }
+
+    /**
+     * The base squads rally to changed, or was first chosen.
+     *
+     * @param base the rally base's tile location
+     * @param reason NATURAL, MAIN or FORWARD_BASE
+     */
+    default void onRallyPointChanged(TilePosition base, String reason) {
     }
 
     /**
