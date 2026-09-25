@@ -1,6 +1,7 @@
 package macro.plan;
 
 import bwapi.Game;
+import bwapi.Order;
 import bwapi.Position;
 import bwapi.TilePosition;
 import bwapi.Unit;
@@ -38,6 +39,7 @@ public class PlanManager {
     private HashSet<ManagedUnit> larva;
     private HashSet<ManagedUnit> scheduledDrones = new HashSet<>();
     private DispatchedBuilders<ManagedUnit> dispatchedDrones = new DispatchedBuilders<>();
+    private BuilderReleases<ManagedUnit> builderReleases = new BuilderReleases<>();
 
 
     public PlanManager(Game game, GameState gameState) {
@@ -187,7 +189,7 @@ public class PlanManager {
             gameState.clearAssignments(managedUnit);
             plan.setState(PlanState.BUILDING);
             managedUnit.setRole(UnitRole.BUILD);
-            dispatchedDrones.dispatch(managedUnit, plan);
+            dispatchedDrones.dispatch(managedUnit, plan, currentFrame, travelFrames);
             executed.add(managedUnit);
         }
 
@@ -244,7 +246,8 @@ public class PlanManager {
      * <p>The morph of a drone-built building is issued only by a builder in role BUILD, bound to the
      * plan and within arrival distance of the site. A builder that fails any of those while the plan
      * sits in BUILDING holds the plan, its build-ahead claim and its reservation until the claim is
-     * evicted. See {@link BuilderLossReason} for the reasons a builder is lost.
+     * evicted. See {@link BuilderLossReason} for the reasons a builder is lost. A plan past its
+     * {@link BuilderReleases} stray cap is no longer measured for a stray and keeps its builder.
      */
     private void releaseLostBuilders() {
         final int frame = game.getFrameCount();
@@ -253,6 +256,9 @@ public class PlanManager {
             Plan plan = entry.getValue();
             if (plan.getState() != PlanState.BUILDING) {
                 dispatchedDrones.undispatch(builder);
+                if (isSettled(plan.getState())) {
+                    builderReleases.forget(plan);
+                }
                 continue;
             }
             BuilderLossReason reason = lossReason(builder, plan, frame);
@@ -266,12 +272,36 @@ public class PlanManager {
         Unit unit = builder.getUnit();
         boolean planBound = builder.getPlan() == plan && plan.equals(gameState.getAssignedPlannedItems().get(unit));
         TilePosition buildPosition = plan.getBuildPosition();
-        boolean strayed = buildPosition != null && dispatchedDrones.strayOf(builder).isStrayed(
-                unit.getDistance(siteMoveTarget(plan.getPlannedUnit(), buildPosition)),
+        if (buildPosition == null || !builderReleases.mayStray(plan)) {
+            return BuilderLossReason.of(builder.getRole() == UnitRole.BUILD, planBound, false);
+        }
+        Position moveTarget = siteMoveTarget(plan.getPlannedUnit(), buildPosition);
+        boolean strayed = dispatchedDrones.strayOf(builder).isStrayed(
+                unit.getPosition(),
+                unit.getDistance(moveTarget),
+                isHeadingTo(unit.getOrder(), unit.getOrderTargetPosition(), moveTarget),
                 coversCost(game.self().minerals(), game.self().gas(), plan),
                 unit.isCarrying() || builder.isClearingBlocker(),
                 frame);
         return BuilderLossReason.of(builder.getRole() == UnitRole.BUILD, planBound, strayed);
+    }
+
+    /**
+     * Whether a builder's order is a move to the site's move target, the order
+     * {@code ManagedUnit.build()} gives a builder walking to its site.
+     *
+     * @param order the builder's order
+     * @param orderTarget the builder's order target position
+     * @param moveTarget the site's move target
+     */
+    static boolean isHeadingTo(Order order, Position orderTarget, Position moveTarget) {
+        return order == Order.Move && orderTarget != null
+                && orderTarget.getDistance(moveTarget) <= BuilderStray.CLOSING_PROGRESS;
+    }
+
+    /** Whether a plan in this state will not be dispatched again. */
+    static boolean isSettled(PlanState state) {
+        return state == PlanState.MORPHING || state == PlanState.COMPLETE || state == PlanState.CANCELLED;
     }
 
     /**
@@ -290,6 +320,7 @@ public class PlanManager {
      */
     private void releaseLostBuilder(ManagedUnit builder, Plan plan, BuilderLossReason reason) {
         dispatchedDrones.undispatch(builder);
+        builderReleases.record(plan, builder, reason, game.getFrameCount());
         if (builder.getPlan() == plan) {
             builder.setPlan(null);
         }
@@ -402,16 +433,19 @@ public class PlanManager {
      * If the plan has an assigned building location, find the drone closest to the location.
      * A Creep Colony takes a drone already on its site's base ahead of a closer one elsewhere, so
      * its builder does not cross contested ground between two of our bases to reach it.
+     * A drone recently released from this plan is skipped, see {@link BuilderReleases}.
      * @param plan plan to build
      * @return true if plan assigned, false otherwise
      */
     private boolean assignMorphDrone(Plan plan) {
+        final int frame = game.getFrameCount();
         List<ManagedUnit> eligibleDrones = assignedManagedWorkers
                 .stream()
                 .filter(d -> {
                     Unit unit = d.getUnit();
                     return !unit.isCarrying() && !gasGatherers.contains(d) && !gameState.getAssignedPlannedItems().containsKey(unit);
                 })
+                .filter(d -> !builderReleases.isBackedOff(plan, d, frame))
                 .collect(Collectors.toList());
 
         TilePosition buildPosition = plan.getBuildPosition();
