@@ -1,5 +1,6 @@
 package macro.plan;
 
+import bwapi.Position;
 import bwapi.TilePosition;
 import bwapi.UnitType;
 import org.junit.jupiter.api.AfterEach;
@@ -13,6 +14,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -212,6 +214,47 @@ class BuilderLossTrackingTest {
 
         assertEquals(Collections.singletonList("LOST:DIED:161"), events);
         assertEquals(0, lostBuilders.size());
+    }
+
+    @Test
+    void aStrayReleasedAfterTheGracePeriodIsReportedOnceAndRedispatchedToAnotherDrone() {
+        List<String> events = record();
+        DispatchedBuilders<String> dispatched = new DispatchedBuilders<>();
+        BuilderReleases<String> releases = new BuilderReleases<>();
+        LostBuilders lostBuilders = new LostBuilders();
+        Plan plan = den();
+        plan.setState(PlanState.BUILDING);
+        int dispatchFrame = 5000;
+        int travelFrames = 400;
+        int graceEnd = dispatchFrame + travelFrames * BuilderStray.GRACE_MARGIN_PERCENT / 100;
+        dispatched.dispatch("drone161", plan, dispatchFrame, travelFrames);
+        Position standing = new Position(1000, 1000);
+        int far = BuilderStray.STRAY_DISTANCE + 200;
+
+        int releaseFrame = -1;
+        for (int frame = dispatchFrame; frame <= graceEnd + BuilderStray.STUCK_FRAMES && releaseFrame < 0; frame++) {
+            int distance = frame < graceEnd ? far + (frame - dispatchFrame) : far + 1000 + (frame - graceEnd);
+            boolean strayed = dispatched.strayOf("drone161").isStrayed(standing, distance, false, true, false, frame);
+            BuilderLossReason reason = BuilderLossReason.of(true, true, strayed);
+            if (reason != null) {
+                releaseFrame = frame;
+                dispatched.undispatch("drone161");
+                releases.record(plan, "drone161", reason, frame);
+                PlanManager.reportLoss(lostBuilders, plan, reason, LOST);
+            }
+        }
+
+        assertEquals(graceEnd + BuilderStray.STRAY_FRAMES, releaseFrame);
+        int redispatchFrame = releaseFrame + 1;
+        List<String> candidates = Arrays.asList("drone161", "drone204").stream()
+                .filter(d -> !releases.isBackedOff(plan, d, redispatchFrame))
+                .collect(Collectors.toList());
+        assertEquals(Collections.singletonList("drone204"), candidates);
+        dispatched.dispatch(candidates.get(0), plan, redispatchFrame, travelFrames);
+        PlanManager.reportRedispatch(lostBuilders, plan, TAKER);
+        PlanManager.reportRedispatch(lostBuilders, plan, TAKER);
+
+        assertEquals(Arrays.asList("LOST:STRAYED:161", "REDISPATCH:STRAYED:161>204"), events);
     }
 
     private static List<String> record() {

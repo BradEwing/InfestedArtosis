@@ -125,7 +125,8 @@ public class PlanEventLogger implements PlanEventSink {
      * <p>
      * builder_role, builder_order and builder_in_range describe the plan's executor: its UnitRole,
      * its BWAPI order and whether it is in build range. They are set on BUILD_AHEAD_HOLD,
-     * BUILD_AHEAD_EVICT, BUILDER_DISPATCH_DECISION, BUILDER_LOST and BUILDER_REDISPATCH rows.
+     * BUILD_AHEAD_EVICT, BUILD_AHEAD_YIELD, BUILDER_DISPATCH_DECISION, BUILDER_LOST and
+     * BUILDER_REDISPATCH rows.
      * builder_role reads NONE on those rows when the plan has no executor and UNMANAGED when its
      * executor is not a managed unit; builder_in_range is blank unless the executor is a drone
      * building a structure on a known tile. A BUILDER_DISPATCH_DECISION row is written before a
@@ -145,7 +146,10 @@ public class PlanEventLogger implements PlanEventSink {
      * build-ahead slot in between pairs its BUILDER_LOST row with a BUILDER_REDISPATCH row written
      * after it was requeued; the TRANSITION row to PLANNED between them marks the requeue. A loss
      * reported as LOST_DIED never pairs, and a re-dispatch after a threat recall or an eviction
-     * alone writes no BUILDER_REDISPATCH row.
+     * alone writes no BUILDER_REDISPATCH row. A builder released because its plan was evicted from
+     * the build-ahead slot or yielded it writes no BUILDER_LOST row: the BUILD_AHEAD_EVICT or
+     * BUILD_AHEAD_YIELD row, written before the release, reports it with its builder columns, and
+     * the requeued plan claims a new builder through the queue rather than a re-dispatch.
      * <p>
      * lost_expansion_builders and expansion_hold_until_frame are set only on EXPANSION_BACKOFF
      * rows. The hold a row armed is expansion_hold_until_frame minus frame.
@@ -411,9 +415,10 @@ public class PlanEventLogger implements PlanEventSink {
         }
 
         try {
+            BuilderColumns builder = BuilderColumns.current(executorReading(holder));
             StringBuilder sb = planColumns(holder, EVENT_BUILD_AHEAD_YIELD, null, holder.getState(),
-                    PlanBlocker.BUILD_AHEAD_SLOT_TAKEN, heldFrames, NO_STARVED_COUNT, executorReading(holder));
-            appendTrailing(sb, null, emergency, null, null, builderThreat(holder), null, BuilderColumns.BLANK);
+                    PlanBlocker.BUILD_AHEAD_SLOT_TAKEN, heldFrames, NO_STARVED_COUNT, builder.executor());
+            appendTrailing(sb, null, emergency, null, null, builderThreat(holder), null, builder);
             buffer.add(sb.toString());
         } catch (Exception e) {
             disabled = true;
@@ -1122,8 +1127,8 @@ public class PlanEventLogger implements PlanEventSink {
      * @param baseEvent the expansion or colony hold armed or the base lost, or null on every row but
      *     EXPANSION_BACKOFF, COLONY_BUILDER_BACKOFF and BASE_LOST
      * @param builder the builder columns, {@link BuilderColumns#BLANK} on every row but
-     *     BUILD_AHEAD_HOLD, BUILD_AHEAD_EVICT, BUILDER_DISPATCH_DECISION, BUILDER_LOST and
-     *     BUILDER_REDISPATCH, and the carrier of builder_dispatch_decision
+     *     BUILD_AHEAD_HOLD, BUILD_AHEAD_EVICT, BUILD_AHEAD_YIELD, BUILDER_DISPATCH_DECISION,
+     *     BUILDER_LOST and BUILDER_REDISPATCH, and the carrier of builder_dispatch_decision
      */
     private void appendTrailing(StringBuilder sb, Position blockerMineral, Plan yieldTo,
                                 MacroHatcheryGateInputs macroHatchery, HiveTechGateInputs hiveTech,
