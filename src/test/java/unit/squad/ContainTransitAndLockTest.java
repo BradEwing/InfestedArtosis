@@ -14,6 +14,7 @@ import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static unit.squad.CombatSimulator.CombatResult.ADVANCE;
 import static unit.squad.CombatSimulator.CombatResult.ENGAGE;
@@ -170,20 +171,37 @@ class ContainTransitAndLockTest {
 
     @Test
     void aJoinerMergingIntoACollapseFightsUnderItsLock() {
+        ContainmentCollapse.Maneuver wrap = new ContainmentCollapse.Maneuver(Collections.emptyMap(),
+                Collections.emptySet(), 5000);
         Squad collapsing = new GroundSquad();
         collapsing.setStatus(SquadStatus.FIGHT);
-        collapsing.setCollapse(new ContainmentCollapse.Maneuver(Collections.emptyMap(), Collections.emptySet(),
-                5000));
+        collapsing.setCollapse(wrap);
         collapsing.startFightLock(5000);
         Squad joiner = new GroundSquad();
         joiner.setStatus(SquadStatus.RALLY);
 
         Squad merged = new GroundSquad();
-        merged.inheritStateFrom(Arrays.asList(collapsing, joiner));
+        merged.inheritStateFrom(Arrays.asList(joiner, collapsing));
 
         assertEquals(SquadStatus.FIGHT, merged.getStatus());
         assertTrue(merged.isFightLocked(5010));
+        assertSame(wrap, merged.getCollapse(), "the wrap carries on through the merge");
         assertFalse(SquadManager.launchOffersContain(merged, 5010));
+    }
+
+    @Test
+    void aSplitOfACollapsingSquadKeepsTheWrapOnBothSides() {
+        ContainmentCollapse.Maneuver wrap = new ContainmentCollapse.Maneuver(Collections.emptyMap(),
+                Collections.emptySet(), 5000);
+        Squad collapsing = new GroundSquad();
+        collapsing.setStatus(SquadStatus.FIGHT);
+        collapsing.setCollapse(wrap);
+
+        Squad child = collapsing.createSibling();
+        child.inheritStateFrom(collapsing);
+
+        assertSame(wrap, child.getCollapse());
+        assertSame(wrap, collapsing.getCollapse());
     }
 
     @Test

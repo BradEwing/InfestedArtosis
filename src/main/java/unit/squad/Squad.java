@@ -236,7 +236,8 @@ public class Squad implements Comparable<Squad> {
      * memory, not on the squad.
      *
      * <p>Locks fold to the latest expiry among the sources, except a retreat lock armed by a contain's attrition
-     * exit, which is not inherited. A collapse under way is not inherited either.
+     * exit, which is not inherited. A collapse under way in a FIGHT source is carried on when the merged squad is in
+     * FIGHT: its members keep their wrap and hold orders, and every other member fights.
      *
      * @param sources squads being merged into this one
      */
@@ -248,7 +249,11 @@ public class Squad implements Comparable<Squad> {
         RunbyState inheritedRunby = null;
         int inheritedRadius = 0;
         ContainmentAttrition inheritedAttrition = new ContainmentAttrition();
+        ContainmentCollapse.Maneuver inheritedCollapse = null;
         for (Squad source: sources) {
+            if (inheritedCollapse == null && source.status == SquadStatus.FIGHT) {
+                inheritedCollapse = source.collapse;
+            }
             if (inheritedRunby == null && source.status == SquadStatus.RUNBY) {
                 inheritedRunby = source.runbyState;
             }
@@ -283,6 +288,7 @@ public class Squad implements Comparable<Squad> {
             this.containmentAttrition.absorb(inheritedAttrition);
         }
         this.commitFrame = earliestCommit;
+        this.collapse = mergedStatus == SquadStatus.FIGHT ? inheritedCollapse : null;
     }
 
     public boolean isMergeEligible(int currentFrame) {

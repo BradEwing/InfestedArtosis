@@ -1596,18 +1596,20 @@ public class SquadManager {
     /**
      * Puts a squad on the arc it is offered once it has arrived there. A squad farther than
      * {@link #CONTAIN_ARRIVAL_DISTANCE} from every arc point stays out of CONTAIN and keeps running the sim on its
-     * way, so it answers the enemies it meets in transit rather than walking through them to a line at the choke.
+     * way, so it answers the enemies it meets in transit rather than walking through them to a line at the choke. A
+     * squad wrapping in a collapse never takes an arc: the collapse ends only in its commit or in the squad leaving
+     * FIGHT, see {@link #holdCollapseWrap}.
      *
      * @param squad squad offered an arc
      * @return true if the squad took the arc
      */
     private boolean enterContainment(Squad squad) {
+        if (squad.getCollapse() != null) return false;
         Arc arc = containmentArc(squad);
         if (arc == null) return false;
         double arcDistance = squad.getCenter().getDistance(arc.closestPosition(squad.getCenter()));
         SquadDecisions.containArcMeasured(squad, (int) arcDistance);
         if (!arrivedAtArc(arcDistance)) return false;
-        squad.setCollapse(null);
         squad.setStatus(SquadStatus.CONTAIN);
         SquadDecisions.pathTaken(squad, DecisionPath.CONTAIN_ENTER);
         squad.startContainLock(game.getFrameCount());
@@ -1812,7 +1814,8 @@ public class SquadManager {
     /**
      * Tests whether a containing squad collapses on the armed enemies inside its arc's sector, see
      * {@link ContainmentCollapse}. The sim runs over exactly the mobile enemies in the sector, never over a sample
-     * around the squad's center. No test runs against an opponent the matchup gate excludes.
+     * around the squad's center. The enemy centroid must be clear of every zone that fires from where it stands, see
+     * {@link ContainmentCollapse#fixedFireZones}. No test runs against an opponent the matchup gate excludes.
      *
      * @param squad containing squad
      * @param now current frame
@@ -1842,7 +1845,7 @@ public class SquadManager {
                 ? ((HorizonCombatSimulator) sim).sectorRatio(squad, inSector, ContainmentCollapse.centroid(armed),
                 gameState)
                 : ContainmentCollapse.NOT_SIMULATED;
-        return ContainmentCollapse.read(armed, gameState.getStaticDefenseZones(),
+        return ContainmentCollapse.read(armed, ContainmentCollapse.fixedFireZones(gameState.getGroundThreatZones(now)),
                 containmentDefensePadding(squad.getComposition().keySet()), sectorSim,
                 HorizonCombatSimulator.engageThreshold(gameState.getOpponentRace()), squad.canRenewFightLock(now),
                 collapseMembers(squad).size());
@@ -1870,7 +1873,8 @@ public class SquadManager {
 
     /**
      * Plans the wrap of a collapse: the outer third of the members on each side by bearing around the choke wrap
-     * to a point past the enemy centroid on their side, pulled back to the centroid when static defence covers it,
+     * to a point past the enemy centroid on their side, pulled back to the centroid when a zone that fires from where
+     * it stands covers it, see {@link ContainmentCollapse#fixedFireZones},
      * and every other member holds the point it stands on the arc.
      *
      * @param squad containing squad, still holding its arc
@@ -1895,7 +1899,7 @@ public class SquadManager {
         if (flankPositions.isEmpty()) {
             return null;
         }
-        List<StaticDefenseZone> staticZones = gameState.getStaticDefenseZones();
+        List<StaticDefenseZone> staticZones = ContainmentCollapse.fixedFireZones(gameState.getGroundThreatZones(now));
         int padding = containmentDefensePadding(squad.getComposition().keySet());
         Map<Integer, Position> wraps = new HashMap<>();
         for (Map.Entry<Integer, List<Position>> flank : flankPositions.entrySet()) {

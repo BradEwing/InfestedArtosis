@@ -184,6 +184,35 @@ class ContainmentCollapseTest {
     }
 
     @Test
+    void aSiegedTankOrLurkerCoversTheCollapseButMobileUnitsAndHurtMarksDoNot() {
+        StaticDefenseZone bunker = bunkerAt(new Position(3000, 3000));
+        StaticDefenseZone sieged = new StaticDefenseZone(UnitType.Terran_Siege_Tank_Siege_Mode,
+                new Position(1600, 1300), 384);
+        StaticDefenseZone lurker = new StaticDefenseZone(UnitType.Zerg_Lurker, new Position(1200, 1200), 192);
+        StaticDefenseZone marine = new StaticDefenseZone(UnitType.Terran_Marine, new Position(1600, 1420), 128);
+        StaticDefenseZone hurt = new StaticDefenseZone(UnitType.None, new Position(1600, 1420), 64);
+
+        List<StaticDefenseZone> kept = ContainmentCollapse.fixedFireZones(Arrays.asList(bunker, sieged, lurker,
+                marine, hurt));
+
+        assertEquals(Arrays.asList(bunker, sieged, lurker), kept);
+    }
+
+    @Test
+    void aCollapseUnderASiegedTankIsStaticCovered() {
+        List<Position> armed = inSector(heldArc(), marinesInTheBowl());
+        StaticDefenseZone sieged = new StaticDefenseZone(UnitType.Terran_Siege_Tank_Siege_Mode,
+                new Position(1600, 1300), 384);
+
+        ContainmentCollapse.Read read = ContainmentCollapse.read(armed,
+                ContainmentCollapse.fixedFireZones(Collections.singletonList(sieged)), PADDING, FAVOURABLE,
+                TERRAN_THRESHOLD, true, MEMBERS);
+
+        assertEquals(ContainmentCollapse.Outcome.STATIC_COVERED, read.getOutcome());
+        assertFalse(read.isStaticClear());
+    }
+
+    @Test
     void theMatchupGateExcludesOnlyProtoss() {
         assertFalse(ContainmentCollapse.appliesAgainst(Race.Protoss));
         assertTrue(ContainmentCollapse.appliesAgainst(Race.Terran));

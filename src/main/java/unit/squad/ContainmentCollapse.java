@@ -2,6 +2,7 @@ package unit.squad;
 
 import bwapi.Position;
 import bwapi.Race;
+import bwapi.UnitType;
 import lombok.Getter;
 import unit.managed.ManagedUnit;
 import util.StaticDefenseZone;
@@ -24,9 +25,9 @@ import java.util.function.DoubleSupplier;
  * <p>The arc is drawn around the choke and faces away from the enemy base, so an enemy that has come through the
  * choke stands inside the bowl the arc makes. The sector is that bowl: within the arc's reach of the choke and
  * between the bearings of its outermost points. A squad of at least {@link #MIN_COLLAPSE_MEMBERS} members collapses
- * when at least {@link #MIN_ENEMIES_IN_SECTOR} armed enemies stand in the sector, their centroid is clear of static
- * defence reach, and a sim over exactly those enemies reads at or above the matchup engage threshold. No squad
- * collapses against Protoss, see {@link #appliesAgainst}.
+ * when at least {@link #MIN_ENEMIES_IN_SECTOR} armed enemies stand in the sector, their centroid is clear of the reach
+ * of static defence, sieged tanks and Lurkers, see {@link #fixedFireZones}, and a sim over exactly those enemies
+ * reads at or above the matchup engage threshold. No squad collapses against Protoss, see {@link #appliesAgainst}.
  *
  * <p>The collapse wraps before it commits. The outer third of the squad on each side, by bearing around the choke,
  * are the flanks: each moves to a point past the enemy centroid on the choke side, offset to its own side. The rest
@@ -200,6 +201,24 @@ public final class ContainmentCollapse {
             y += position.getY();
         }
         return new Position((int) (x / positions.size()), (int) (y / positions.size()));
+    }
+
+    /**
+     * The zones a collapse keeps its enemy centroid and wrap points out of: those around enemies that fire from where
+     * they stand, see {@link ContainmentPushback#movesTheArc}, without the hurt marks. A sieged tank or a Lurker is
+     * not in the sector sim, so its reach is kept clear the way a Bunker's is.
+     *
+     * @param groundThreatZones every ground threat zone, at the reach learned over the game
+     * @return the zones around buildings, sieged tanks and Lurkers
+     */
+    static List<StaticDefenseZone> fixedFireZones(Collection<StaticDefenseZone> groundThreatZones) {
+        List<StaticDefenseZone> kept = new ArrayList<>();
+        for (StaticDefenseZone zone : ContainmentPushback.arcZones(groundThreatZones)) {
+            if (zone.getStructure() != UnitType.None) {
+                kept.add(zone);
+            }
+        }
+        return kept;
     }
 
     /**
