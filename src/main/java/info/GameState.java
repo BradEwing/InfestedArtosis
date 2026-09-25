@@ -169,6 +169,7 @@ public class GameState {
         learnReachFromHits(frame);
         strategyTracker.onFrame();
         clearVisibleEnemyWorkerLocations();
+        baseData.updateSquadRallyBase();
     }
 
     private void observeHitPoints(int frame) {
@@ -1681,18 +1682,11 @@ public class GameState {
     }
 
     /**
-     * @return our natural expansion, or the inferred natural while a hatchery of ours morphs there, otherwise our
-     *     main
+     * @return the location of {@link BaseData#squadRallyBase()}: a natural we still hold, otherwise the held base
+     *     nearest the enemy once the natural is lost, otherwise our main
      */
     public Position getSquadRallyPoint() {
-        if (baseData.hasNaturalExpansion()) {
-            return baseData.naturalExpansionPosition().toPosition();
-        }
-        Base inferredNatural = baseData.getInferredNaturalBase();
-        if (inferredNatural != null && baseData.isHeldOrMorphing(inferredNatural)) {
-            return inferredNatural.getLocation().toPosition();
-        }
-        return baseData.mainBasePosition().toPosition();
+        return baseData.squadRallyBase().getLocation().toPosition();
     }
 
     /**

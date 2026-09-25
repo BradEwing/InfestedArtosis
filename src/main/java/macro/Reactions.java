@@ -410,6 +410,7 @@ public class Reactions {
                 gameState.getTechProgression(),
                 gameState.structureCount(Readiness.USABLE, UnitType.Zerg_Extractor) > 0,
                 gameState.canPlanUpgrade(UpgradeType.Metabolic_Boost),
+                gameState.getActiveBuildOrder().holdsSpeedUpgrade(gameState),
                 gameState.getGameTime().getFrames());
     }
 
@@ -424,12 +425,15 @@ public class Reactions {
      * @param techProgression marks the upgrade planned so it is queued once
      * @param haveExtractor whether a finished Extractor exists
      * @param canPlanSpeed whether Metabolic Boost may be queued now
+     * @param held whether the active build order holds the upgrade behind its own production, from
+     *     {@link BuildOrder#holdsSpeedUpgrade}; a held upgrade is neither queued nor pulled forward
      * @param currentFrame the current frame, which the new plan takes as its initial priority before
      *     being pulled forward to {@link #SPEED_UPGRADE_PRIORITY}
      */
     static void planSpeedUpgrade(ProductionQueue productionQueue, TechProgression techProgression,
-                                 boolean haveExtractor, boolean canPlanSpeed, int currentFrame) {
-        if (!haveExtractor) {
+                                 boolean haveExtractor, boolean canPlanSpeed, boolean held,
+                                 int currentFrame) {
+        if (!haveExtractor || held) {
             return;
         }
 

@@ -109,7 +109,8 @@ public enum DecisionPath {
     CONTAIN_PUSHBACK,
 
     /**
-     * The squad was sent to the rally point. The rally_reason column names which branch.
+     * The squad was sent to rally, at the rally point or, for JOIN_CONTAIN, on an active containment arc. The
+     * rally_reason column names which branch.
      */
     RALLY,
 
