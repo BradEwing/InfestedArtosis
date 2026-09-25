@@ -56,12 +56,13 @@ import java.util.stream.Collectors;
  * semicolons; every other row carries -1 and NONE there.
  *
  * <p>CONTAIN_PUSHBACK is emitted on every frame a member of a containing squad is hit by something it cannot
- * answer and the squad keeps an arc, with the old and new arc midpoints, the type of the longest reaching zone that
- * covered the old arc (None for a hurt mark) and the members moved, 0 when the recomputed arc left every member in
- * place. The row that closes a containment episode carries the supply lost over it. outranged_hit is 1 on a
- * containing squad's row when a member was hit on the frame the row is written by something it cannot answer, 0 when
- * none was, and -1 on any row not written from a containment evaluation. Every such hit writes a row: a
- * CONTAIN_PUSHBACK row when the arc is kept, the status change row when the squad retreats.
+ * answer and the squad keeps an arc that moved or reassigned a member, with the old and new arc midpoints, the type
+ * of the longest reaching zone that covered the old arc (None for a hurt mark) and the members moved. A hit that
+ * left the arc's midpoint and every member in place writes no row. The row that closes a containment episode
+ * carries the supply lost over it. outranged_hit is 1 on a containing squad's row when a member was hit on the frame
+ * the row is written by something it cannot answer, 0 when none was, and -1 on any row not written from a
+ * containment evaluation. A hit writes a CONTAIN_PUSHBACK row when the kept arc changed, and the status change row
+ * when the squad retreats.
  *
  * <p>CONTAIN_COLLAPSE is emitted on the frame a containing squad collapses on the enemies inside its arc's sector,
  * and CONTAIN_COLLAPSE_REJECTED on a frame it tested a collapse with an armed enemy in the sector and declined,

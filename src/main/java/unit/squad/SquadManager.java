@@ -48,6 +48,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.DoubleSupplier;
 import java.util.function.ToDoubleFunction;
@@ -907,12 +908,26 @@ public class SquadManager {
         }
 
         squad.commit(game.getFrameCount());
-        if (action == SquadAction.LAUNCH && tryEnterContainment(squad)) {
+        if (action == SquadAction.LAUNCH && launchOffersContain(squad, game.getFrameCount())
+                && tryEnterContainment(squad)) {
             return;
         }
 
         simulateFightSquad(squad);
         holdCollapseWrap(squad);
+    }
+
+    /**
+     * Whether a squad the move out gate launches is offered a containment arc. A squad wrapping in a collapse or
+     * holding a fight lock is not: taking the arc would drop the collapse and the fight it committed to on the
+     * frame after it left the arc.
+     *
+     * @param squad squad being launched
+     * @param now current frame
+     * @return true when the squad may take an arc on launch
+     */
+    static boolean launchOffersContain(Squad squad, int now) {
+        return squad.getCollapse() == null && !squad.isFightLocked(now);
     }
 
     /**
@@ -1305,8 +1320,10 @@ public class SquadManager {
         double engageThreshold = snapshot != null ? snapshot.getEngageThreshold() : 0;
 
         if (squad.getStatus() == SquadStatus.RETREAT && retreatLocked) {
-            if (strongEngageBreaksRetreatLock(squad.isAttritionRetreatLock(), result, enemyMeasured, ratio,
-                    engageThreshold)) {
+            boolean attritionLock = squad.isAttritionRetreatLock()
+                    && ContainmentCollapse.appliesAgainst(gameState.getOpponentRace());
+            if (squad.strongEngagePersisted(strongEngageBreaksRetreatLock(attritionLock, result, enemyMeasured, ratio,
+                    engageThreshold), now)) {
                 squad.clearRetreatLock();
                 retreatLocked = false;
                 SquadDecisions.pathTaken(squad, DecisionPath.RETREAT_LOCK_BROKEN);
@@ -1382,9 +1399,12 @@ public class SquadManager {
      * Whether this frame's verdict breaks an active retreat lock.
      *
      * <p>Only the lock a contain's attrition exit armed can be broken, and only by an ENGAGE measured against a real
-     * enemy at or above {@link #strongEngageThreshold}. Any other retreat lock holds for its full window.
+     * enemy at or above {@link #strongEngageThreshold}. Any other retreat lock holds for its full window. The lock
+     * breaks only once such a read has held over a fight hysteresis window, see {@link Squad#strongEngagePersisted},
+     * and never against Protoss, see {@link ContainmentCollapse#appliesAgainst}.
      *
-     * @param attritionLock true when the lock was armed by a contain's attrition exit
+     * @param attritionLock true when the lock was armed by a contain's attrition exit against an opponent the
+     *     matchup gate admits
      * @param result this frame's combat sim verdict
      * @param enemyMeasured whether the sim measured a real enemy this frame
      * @param ratio the sim's overall strength ratio this frame
@@ -1792,15 +1812,16 @@ public class SquadManager {
     /**
      * Tests whether a containing squad collapses on the armed enemies inside its arc's sector, see
      * {@link ContainmentCollapse}. The sim runs over exactly the mobile enemies in the sector, never over a sample
-     * around the squad's center.
+     * around the squad's center. No test runs against an opponent the matchup gate excludes.
      *
      * @param squad containing squad
      * @param now current frame
-     * @return the read, or null when no armed enemy stands inside the sector
+     * @return the read, or null when no armed enemy stands inside the sector or the matchup gate excludes the
+     *     opponent
      */
     private ContainmentCollapse.Read readCollapse(Squad squad, int now) {
         Arc arc = squad.getContainmentArc();
-        if (arc == null || arc.isEmpty()) {
+        if (arc == null || arc.isEmpty() || !ContainmentCollapse.appliesAgainst(gameState.getOpponentRace())) {
             return null;
         }
         List<Unit> inSector = new ArrayList<>();
@@ -1829,8 +1850,8 @@ public class SquadManager {
 
     /**
      * Takes a containing squad off its arc and onto the enemies inside it: FIGHT under a fight lock, the flanks
-     * wrapping past the enemy centroid while the centre holds its points, see {@link #holdCollapseWrap}. A squad
-     * too small to flank commits at once.
+     * wrapping past the enemy centroid while the centre holds its points, see {@link #holdCollapseWrap}. The
+     * collapse test admits only a squad large enough to flank, see {@link ContainmentCollapse#MIN_COLLAPSE_MEMBERS}.
      *
      * @param squad containing squad
      * @param read the collapse test that passed
@@ -2015,8 +2036,9 @@ public class SquadManager {
 
     /**
      * Puts a squad hit from out of its reach on the recomputed arc, reassigning every member, not only the one that
-     * was hit, and reports it on every hit. When the recomputed arc left every point in place no member is
-     * reassigned, so a squad still on its way to the arc is not re-ordered onto the same line on every hit.
+     * was hit, and reports it on every hit that changed something, see {@link #pushbackChanged}. When the recomputed
+     * arc left every point in place no member is reassigned, so a squad still on its way to the arc is not
+     * re-ordered onto the same line on every hit.
      *
      * @param squad containing squad
      * @param zones zones the arc was recomputed against
@@ -2030,7 +2052,21 @@ public class SquadManager {
                 containmentDefensePadding(squad.getComposition().keySet()));
         squad.setContainRadius(Math.max(squad.getContainRadius(), arc.getRadius()));
         int moved = ContainmentPushback.moved(current, arc) ? assignContainmentPositions(squad, arc) : 0;
-        SquadDecisions.containmentPushedBack(squad, from, arc.getMidpoint(), enemyType, moved);
+        if (pushbackChanged(from, arc.getMidpoint(), moved)) {
+            SquadDecisions.containmentPushedBack(squad, from, arc.getMidpoint(), enemyType, moved);
+        }
+    }
+
+    /**
+     * Whether a push back changed anything worth a row: the arc's midpoint moved or a member was reassigned.
+     *
+     * @param from midpoint of the arc before the push back, null when the squad held none
+     * @param to midpoint of the recomputed arc
+     * @param membersMoved members given a new arc point
+     * @return true when the push back is reported
+     */
+    static boolean pushbackChanged(Position from, Position to, int membersMoved) {
+        return membersMoved > 0 || !Objects.equals(from, to);
     }
 
     /**

@@ -111,6 +111,92 @@ class ContainTransitAndLockTest {
     }
 
     @Test
+    void aSingleFrameStrongEngageDoesNotBreakTheLock() {
+        Squad squad = new GroundSquad();
+        squad.startAttritionRetreatLock(9881);
+
+        assertFalse(squad.strongEngagePersisted(true, 9882));
+        assertFalse(squad.strongEngagePersisted(false, 9883), "the 2.89 at 9882 read 1.33 a moment later");
+        assertFalse(squad.strongEngagePersisted(true, 9884));
+        assertFalse(squad.strongEngagePersisted(true, 9884 + squad.getFightHysteresis().getFrames() - 1));
+    }
+
+    @Test
+    void aStrongEngageHeldOverAFightHysteresisWindowBreaksTheLock() {
+        Squad squad = new GroundSquad();
+        squad.startAttritionRetreatLock(9881);
+        int window = squad.getFightHysteresis().getFrames();
+
+        for (int frame = 9882; frame < 9882 + window; frame++) {
+            assertFalse(squad.strongEngagePersisted(true, frame));
+        }
+        assertTrue(squad.strongEngagePersisted(true, 9882 + window));
+        assertTrue(window < 9881 + 120 - 9882, "the run can complete inside the attrition lock");
+    }
+
+    @Test
+    void aNewRetreatLockStartsTheStrongEngageRunOver() {
+        Squad squad = new GroundSquad();
+        squad.startAttritionRetreatLock(1000);
+        int window = squad.getFightHysteresis().getFrames();
+        squad.strongEngagePersisted(true, 1001);
+
+        squad.startAttritionRetreatLock(1050);
+
+        assertFalse(squad.strongEngagePersisted(true, 1001 + window));
+        assertTrue(squad.strongEngagePersisted(true, 1001 + 2 * window));
+    }
+
+    @Test
+    void aCollapsingSquadIsNotOfferedAnArcOnLaunch() {
+        Squad squad = new GroundSquad();
+        squad.setStatus(SquadStatus.FIGHT);
+        squad.setCollapse(new ContainmentCollapse.Maneuver(Collections.emptyMap(), Collections.emptySet(), 5000));
+        squad.startFightLock(5000);
+
+        assertFalse(SquadManager.launchOffersContain(squad, 5001), "the wrap is under way");
+
+        squad.setCollapse(null);
+        squad.startFightLock(5040);
+        assertFalse(SquadManager.launchOffersContain(squad, 5041), "the centre committed under a fight lock");
+        assertTrue(SquadManager.launchOffersContain(squad, 5040 + squad.getFightHysteresis().getFrames()),
+                "the collapse fight is over");
+    }
+
+    @Test
+    void anIdleLaunchedSquadIsOfferedAnArc() {
+        assertTrue(SquadManager.launchOffersContain(new GroundSquad(), 5000));
+    }
+
+    @Test
+    void aJoinerMergingIntoACollapseFightsUnderItsLock() {
+        Squad collapsing = new GroundSquad();
+        collapsing.setStatus(SquadStatus.FIGHT);
+        collapsing.setCollapse(new ContainmentCollapse.Maneuver(Collections.emptyMap(), Collections.emptySet(),
+                5000));
+        collapsing.startFightLock(5000);
+        Squad joiner = new GroundSquad();
+        joiner.setStatus(SquadStatus.RALLY);
+
+        Squad merged = new GroundSquad();
+        merged.inheritStateFrom(Arrays.asList(collapsing, joiner));
+
+        assertEquals(SquadStatus.FIGHT, merged.getStatus());
+        assertTrue(merged.isFightLocked(5010));
+        assertFalse(SquadManager.launchOffersContain(merged, 5010));
+    }
+
+    @Test
+    void aPushbackThatChangedNothingWritesNoRow() {
+        Position midpoint = new Position(1453, 559);
+
+        assertFalse(SquadManager.pushbackChanged(midpoint, new Position(1453, 559), 0));
+        assertTrue(SquadManager.pushbackChanged(midpoint, new Position(1268, 637), 0));
+        assertTrue(SquadManager.pushbackChanged(midpoint, new Position(1453, 559), 3));
+        assertTrue(SquadManager.pushbackChanged(null, midpoint, 0));
+    }
+
+    @Test
     void aSquadTakesTheArcOnlyOnceItHasArrived() {
         assertTrue(SquadManager.arrivedAtArc(0));
         assertTrue(SquadManager.arrivedAtArc(SquadManager.CONTAIN_ARRIVAL_DISTANCE));

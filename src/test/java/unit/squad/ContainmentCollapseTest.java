@@ -1,6 +1,7 @@
 package unit.squad;
 
 import bwapi.Position;
+import bwapi.Race;
 import bwapi.UnitType;
 import bwapi.WalkPosition;
 import info.tracking.EnemyReachMemory;
@@ -142,6 +143,52 @@ class ContainmentCollapseTest {
         assertEquals(ContainmentCollapse.Outcome.TOO_FEW_ENEMIES, read.getOutcome());
         assertEquals(ContainmentCollapse.NOT_SIMULATED, read.getRatio());
         assertEquals(0, simRuns.get());
+    }
+
+    @Test
+    void aSquadBelowTheMinimumSizeDoesNotCollapseAndSkipsTheSim() {
+        List<Position> armed = inSector(heldArc(), marinesInTheBowl());
+        AtomicInteger simRuns = new AtomicInteger();
+        DoubleSupplier counted = () -> {
+            simRuns.incrementAndGet();
+            return 4.81;
+        };
+
+        ContainmentCollapse.Read small = ContainmentCollapse.read(armed, Collections.emptyList(), PADDING, counted,
+                TERRAN_THRESHOLD, true, ContainmentCollapse.MIN_COLLAPSE_MEMBERS - 1);
+
+        assertEquals(ContainmentCollapse.Outcome.TOO_FEW_MEMBERS, small.getOutcome());
+        assertEquals(ContainmentCollapse.NOT_SIMULATED, small.getRatio());
+        assertEquals(0, simRuns.get());
+        assertEquals(ContainmentCollapse.Outcome.TOO_FEW_MEMBERS,
+                ContainmentCollapse.evaluate(3, 2, true, 4.81, TERRAN_THRESHOLD, true),
+                "the two-member squad that read 4.81 against 3 enemies");
+    }
+
+    @Test
+    void aSquadAtTheMinimumSizeCollapsesWithFlanksOnBothSides() {
+        List<Position> armed = inSector(heldArc(), marinesInTheBowl());
+
+        ContainmentCollapse.Read read = ContainmentCollapse.read(armed, Collections.emptyList(), PADDING, FAVOURABLE,
+                TERRAN_THRESHOLD, true, ContainmentCollapse.MIN_COLLAPSE_MEMBERS);
+
+        assertEquals(ContainmentCollapse.Outcome.COLLAPSE, read.getOutcome());
+        assertTrue(read.getFlanks() >= 2, "a collapsing squad always has a flank on each side");
+        assertTrue(ContainmentCollapse.MIN_COLLAPSE_MEMBERS >= ContainmentCollapse.MIN_ENEMIES_IN_SECTOR);
+    }
+
+    @Test
+    void tooFewEnemiesStillRanksAboveTooFewMembers() {
+        assertEquals(ContainmentCollapse.Outcome.TOO_FEW_ENEMIES,
+                ContainmentCollapse.evaluate(2, 2, true, ContainmentCollapse.NOT_SIMULATED, TERRAN_THRESHOLD, true));
+    }
+
+    @Test
+    void theMatchupGateExcludesOnlyProtoss() {
+        assertFalse(ContainmentCollapse.appliesAgainst(Race.Protoss));
+        assertTrue(ContainmentCollapse.appliesAgainst(Race.Terran));
+        assertTrue(ContainmentCollapse.appliesAgainst(Race.Zerg));
+        assertTrue(ContainmentCollapse.appliesAgainst(Race.Unknown));
     }
 
     @Test

@@ -1,6 +1,7 @@
 package unit.squad;
 
 import bwapi.Position;
+import bwapi.Race;
 import lombok.Getter;
 import unit.managed.ManagedUnit;
 import util.StaticDefenseZone;
@@ -22,9 +23,10 @@ import java.util.function.DoubleSupplier;
  *
  * <p>The arc is drawn around the choke and faces away from the enemy base, so an enemy that has come through the
  * choke stands inside the bowl the arc makes. The sector is that bowl: within the arc's reach of the choke and
- * between the bearings of its outermost points. A squad collapses when at least {@link #MIN_ENEMIES_IN_SECTOR}
- * armed enemies stand in the sector, their centroid is clear of static defence reach, and a sim over exactly those
- * enemies reads at or above the matchup engage threshold.
+ * between the bearings of its outermost points. A squad of at least {@link #MIN_COLLAPSE_MEMBERS} members collapses
+ * when at least {@link #MIN_ENEMIES_IN_SECTOR} armed enemies stand in the sector, their centroid is clear of static
+ * defence reach, and a sim over exactly those enemies reads at or above the matchup engage threshold. No squad
+ * collapses against Protoss, see {@link #appliesAgainst}.
  *
  * <p>The collapse wraps before it commits. The outer third of the squad on each side, by bearing around the choke,
  * are the flanks: each moves to a point past the enemy centroid on the choke side, offset to its own side. The rest
@@ -35,6 +37,8 @@ public final class ContainmentCollapse {
 
     /** Tuning value: armed enemies that must stand inside the arc's sector before a collapse is considered. */
     static final int MIN_ENEMIES_IN_SECTOR = 3;
+    /** Tuning value: members a squad needs to collapse, enough for two flanks on each side and two in the centre. */
+    static final int MIN_COLLAPSE_MEMBERS = 6;
     /** Tuning value: pixels past the enemy centroid, toward the choke, that a flank wraps to. */
     static final int WRAP_DEPTH = 64;
     /** Tuning value: pixels a flank's wrap point sits to its own side of the line from the centroid to the choke. */
@@ -54,10 +58,22 @@ public final class ContainmentCollapse {
         TOO_FEW_ENEMIES,
         STATIC_COVERED,
         SIM_UNFAVOURABLE,
-        LOCK_REFUSED
+        LOCK_REFUSED,
+        TOO_FEW_MEMBERS
     }
 
     private ContainmentCollapse() {
+    }
+
+    /**
+     * The matchup gate for a collapse and for a strong ENGAGE breaking an attrition retreat lock: every opponent
+     * race but Protoss, against which both fights traded close to nothing.
+     *
+     * @param opponentRace the opponent's race, Unknown until it is seen
+     * @return true when collapses and attrition lock breaks apply against the opponent
+     */
+    public static boolean appliesAgainst(Race opponentRace) {
+        return opponentRace != Race.Protoss;
     }
 
     /**
@@ -67,7 +83,8 @@ public final class ContainmentCollapse {
      * @param staticZones enemy static defence zones, at the reach learned over the game
      * @param padding pixels added to every zone's reach
      * @param sectorSim the squad's strength ratio over exactly the enemies in the sector, run only when at least
-     *     {@link #MIN_ENEMIES_IN_SECTOR} armed enemies stand there
+     *     {@link #MIN_ENEMIES_IN_SECTOR} armed enemies stand there and the squad has at least
+     *     {@link #MIN_COLLAPSE_MEMBERS} members
      * @param engageThreshold the matchup engage threshold
      * @param lockRenewable true when the squad may arm a fight lock now, see {@link Squad#canRenewFightLock}
      * @param members members that would take part in the collapse
@@ -80,8 +97,10 @@ public final class ContainmentCollapse {
         }
         Position centroid = centroid(armedInSector);
         boolean staticClear = clearOfStaticDefence(centroid, staticZones, padding);
-        double ratio = armedInSector.size() >= MIN_ENEMIES_IN_SECTOR ? sectorSim.getAsDouble() : NOT_SIMULATED;
-        Outcome outcome = evaluate(armedInSector.size(), staticClear, ratio, engageThreshold, lockRenewable);
+        boolean simulated = armedInSector.size() >= MIN_ENEMIES_IN_SECTOR && members >= MIN_COLLAPSE_MEMBERS;
+        double ratio = simulated ? sectorSim.getAsDouble() : NOT_SIMULATED;
+        Outcome outcome = evaluate(armedInSector.size(), members, staticClear, ratio, engageThreshold,
+                lockRenewable);
         return new Read(outcome, armedInSector.size(), ratio, staticClear, flankCount(members), centroid);
     }
 
@@ -89,16 +108,20 @@ public final class ContainmentCollapse {
      * Applies the collapse conditions in order.
      *
      * @param armedInSector armed enemies inside the arc's sector
+     * @param members members that would take part in the collapse
      * @param staticClear true when their centroid is clear of every static defence zone plus padding
      * @param ratio the squad's strength over exactly the enemies in the sector
      * @param engageThreshold the matchup engage threshold
      * @param lockRenewable true when the squad may arm a fight lock now, see {@link Squad#canRenewFightLock}
      * @return COLLAPSE when every condition holds, else the first that failed
      */
-    static Outcome evaluate(int armedInSector, boolean staticClear, double ratio, double engageThreshold,
-                            boolean lockRenewable) {
+    static Outcome evaluate(int armedInSector, int members, boolean staticClear, double ratio,
+                            double engageThreshold, boolean lockRenewable) {
         if (armedInSector < MIN_ENEMIES_IN_SECTOR) {
             return Outcome.TOO_FEW_ENEMIES;
+        }
+        if (members < MIN_COLLAPSE_MEMBERS) {
+            return Outcome.TOO_FEW_MEMBERS;
         }
         if (!staticClear) {
             return Outcome.STATIC_COVERED;

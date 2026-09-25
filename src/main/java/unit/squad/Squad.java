@@ -55,6 +55,7 @@ public class Squad implements Comparable<Squad> {
     protected int fightLockSupply = 0;
     protected int retreatLockedUntilFrame = 0;
     protected boolean attritionRetreatLock = false;
+    private int strongEngageSinceFrame = -1;
     protected int containLockedUntilFrame = 0;
     @Getter
     protected int containStartFrame = 0;
@@ -372,6 +373,27 @@ public class Squad implements Comparable<Squad> {
     public void startRetreatLock(int currentFrame) {
         retreatLockedUntilFrame = currentFrame + retreatHysteresis.getFrames();
         attritionRetreatLock = false;
+        strongEngageSinceFrame = -1;
+    }
+
+    /**
+     * Records one evaluation of a retreat locked squad and reports whether the strong ENGAGE that may break its lock
+     * has persisted. A strong read starts the run, any other read ends it, and the run persists once it has lasted
+     * one fight hysteresis window, the window a fight lock holds for.
+     *
+     * @param strongEngage true when this evaluation read a strong enough ENGAGE to break the lock
+     * @param currentFrame frame of the evaluation
+     * @return true when every evaluation over the last fight hysteresis window read a strong ENGAGE
+     */
+    public boolean strongEngagePersisted(boolean strongEngage, int currentFrame) {
+        if (!strongEngage) {
+            strongEngageSinceFrame = -1;
+            return false;
+        }
+        if (strongEngageSinceFrame < 0) {
+            strongEngageSinceFrame = currentFrame;
+        }
+        return currentFrame - strongEngageSinceFrame >= fightHysteresis.getFrames();
     }
 
     /**
@@ -388,6 +410,7 @@ public class Squad implements Comparable<Squad> {
     public void clearRetreatLock() {
         retreatLockedUntilFrame = 0;
         attritionRetreatLock = false;
+        strongEngageSinceFrame = -1;
     }
 
     public boolean isContainLocked(int currentFrame) {
