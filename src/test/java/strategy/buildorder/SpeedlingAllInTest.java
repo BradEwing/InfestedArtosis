@@ -3,6 +3,7 @@ package strategy.buildorder;
 import bwapi.Race;
 import bwapi.UnitType;
 import bwapi.UpgradeType;
+import info.GameState;
 import info.Readiness;
 import info.TechProgression;
 import macro.ProductionQueue;
@@ -79,7 +80,7 @@ class SpeedlingAllInTest {
     }
 
     @Test
-    void startsExtraDronesOnlyWithTheThirdStandingHatchery() {
+    void startsExtraDronesOnlyWithTheThirdHatchery() {
         int twoHatcheries = SpeedlingAllIn.droneTarget(2, 2);
         int threeHatcheries = SpeedlingAllIn.droneTarget(2, 3);
 
@@ -91,7 +92,7 @@ class SpeedlingAllInTest {
     }
 
     @Test
-    void addsDronesForEachStandingHatcheryBeyondTwo() {
+    void addsDronesForEachHatcheryBeyondTwo() {
         int perHatchery = SpeedlingAllIn.DRONES_PER_EXTRA_HATCHERY;
         int twoBases = SpeedlingAllIn.DRONE_TARGET_TWO_BASES;
 
@@ -106,10 +107,46 @@ class SpeedlingAllInTest {
     }
 
     @Test
-    void readsHatcheriesLairsAndHivesAtTheStandingReadiness() {
-        assertEquals(Readiness.STANDING, SpeedlingAllIn.HATCHERY_READINESS);
+    void readsHatcheriesLairsAndHivesAtTheUsableReadiness() {
+        assertEquals(Readiness.USABLE, SpeedlingAllIn.HATCHERY_READINESS);
         assertArrayEquals(new UnitType[] {UnitType.Zerg_Hatchery, UnitType.Zerg_Lair, UnitType.Zerg_Hive},
                 SpeedlingAllIn.HATCHERY_TYPES);
+    }
+
+    @Test
+    void holdsTheTargetWhileTheThirdHatcheryIsUnderConstruction() {
+        int target = targetAtTwoBases(2, 1, 0);
+
+        assertEquals(SpeedlingAllIn.droneTarget(2, 2), target);
+        assertFalse(SpeedlingAllIn.shouldPlanDrone(ONE_BASE_TARGET, target, ARMY, true, false));
+        assertFalse(SpeedlingAllIn.shouldPlanDrone(ONE_BASE_TARGET, target, ARMY, true, true));
+    }
+
+    @Test
+    void holdsTheTargetWhileTheThirdHatcheryIsOnlyPlanned() {
+        int target = targetAtTwoBases(2, 0, 1);
+
+        assertEquals(SpeedlingAllIn.droneTarget(2, 2), target);
+        assertFalse(SpeedlingAllIn.shouldPlanDrone(ONE_BASE_TARGET, target, ARMY, true, true));
+    }
+
+    @Test
+    void raisesTheTargetOnceTheThirdHatcheryFinishes() {
+        int target = targetAtTwoBases(3, 0, 0);
+
+        assertEquals(THIRD_HATCHERY_TARGET, target);
+        assertTrue(SpeedlingAllIn.shouldPlanDrone(ONE_BASE_TARGET, target, ARMY, true, true));
+    }
+
+    @Test
+    void raisesTheTargetOnlyForFinishedHatcheriesWhenAFourthIsUnderConstruction() {
+        assertEquals(THIRD_HATCHERY_TARGET, targetAtTwoBases(3, 1, 1));
+        assertEquals(SpeedlingAllIn.droneTarget(2, 4), targetAtTwoBases(4, 0, 0));
+    }
+
+    private static int targetAtTwoBases(int completed, int underConstruction, int planned) {
+        return SpeedlingAllIn.droneTarget(2,
+                GameState.structureCount(SpeedlingAllIn.HATCHERY_READINESS, completed, underConstruction, planned));
     }
 
     @Test
