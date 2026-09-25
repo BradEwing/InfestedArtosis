@@ -1,5 +1,7 @@
 package strategy.buildorder.opener;
 
+import bwapi.Race;
+import info.GameState;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -26,6 +28,18 @@ class NinePoolSpeedTest {
     private static final int EIGHT_SUPPLY = 16;
 
     private static final int NINE_SUPPLY = 18;
+
+    private static final int ONE_BASE = 1;
+
+    private static final int ONE_HATCHERY = 1;
+
+    private static final int NO_GEYSERS = 0;
+
+    private static final int NO_PLANNED_DRONES = 0;
+
+    private static final int EIGHT_DRONES = 8;
+
+    private static final int NINE_DRONES = 9;
 
     @Test
     void holdsTheOverlordUntilThePoolStands() {
@@ -134,5 +148,40 @@ class NinePoolSpeedTest {
     @Test
     void withholdsZerglingsOnceTheTargetIsPassed() {
         assertFalse(NinePoolSpeed.shouldPlanZergling(ONE_USABLE_POOL, ZERGLINGS_NEEDED + 1, ZERGLINGS_NEEDED));
+    }
+
+    /**
+     * Against Zerg the shared expected-worker ceiling is 7 at one base with no gas, so the 8
+     * gatherers left after the pool's drone morphs would veto its replacement and leave the
+     * Extractor waiting at 8 supply for the first zergling.
+     */
+    @Test
+    void plansThePoolsReplacementDroneAgainstZerg() {
+        int expectedWorkers = GameState.expectedWorkers(Race.Zerg, ONE_BASE, NO_GEYSERS);
+
+        assertFalse(GameState.canPlanDrone(NO_PLANNED_DRONES, ONE_HATCHERY, EIGHT_DRONES, expectedWorkers));
+        assertTrue(NinePoolSpeed.shouldPlanDrone(EIGHT_DRONES,
+                GameState.canPlanOpeningDrone(NO_PLANNED_DRONES, ONE_HATCHERY)));
+        assertFalse(NinePoolSpeed.shouldPlanExtractor(NO_EXTRACTOR, ONE_STANDING_POOL, EIGHT_SUPPLY, true));
+    }
+
+    @Test
+    void takesGasAtNineSupplyOnceThePoolsDroneIsReplacedAgainstZerg() {
+        assertFalse(NinePoolSpeed.shouldPlanDrone(NINE_DRONES,
+                GameState.canPlanOpeningDrone(NO_PLANNED_DRONES, ONE_HATCHERY)));
+        assertTrue(NinePoolSpeed.shouldPlanExtractor(NO_EXTRACTOR, ONE_STANDING_POOL, NINE_SUPPLY, true));
+    }
+
+    @Test
+    void plansNoDroneBeyondNineCountingPlannedDrones() {
+        assertTrue(NinePoolSpeed.shouldPlanDrone(NINE_DRONES - 1, true));
+        assertFalse(NinePoolSpeed.shouldPlanDrone(NINE_DRONES, true));
+        assertFalse(NinePoolSpeed.shouldPlanDrone(NINE_DRONES + 1, true));
+    }
+
+    @Test
+    void plansNoDroneBeyondThePlannedWorkerLimit() {
+        assertFalse(NinePoolSpeed.shouldPlanDrone(EIGHT_DRONES, GameState.canPlanOpeningDrone(3, ONE_HATCHERY)));
+        assertTrue(NinePoolSpeed.shouldPlanDrone(EIGHT_DRONES, GameState.canPlanOpeningDrone(2, ONE_HATCHERY)));
     }
 }

@@ -60,7 +60,7 @@ public class NinePoolSpeed extends BuildOrder {
         int extractorCount = gameState.getBaseData().numExtractor();
         int zerglingCount  = gameState.ourUnitCount(UnitType.Zerg_Zergling);
 
-        if (droneCount < DRONE_TARGET && gameState.canPlanDrone()) {
+        if (shouldPlanDrone(droneCount, gameState.canPlanOpeningDrone())) {
             plans.add(planUnit(gameState, UnitType.Zerg_Drone));
             return plans;
         }
@@ -108,6 +108,20 @@ public class NinePoolSpeed extends BuildOrder {
     @Override
     protected int poolPriority(int enqueueFrame) {
         return SPAWNING_POOL_PRIORITY;
+    }
+
+    /**
+     * Whether the opener queues one of its own drones: up to 9, counting planned drones, including
+     * the one that replaces the pool's drone. The shared expected-worker ceiling does not apply, since
+     * against Zerg it is 7 at one base and would leave the opener at 8 supply with no drone to
+     * bring it to the Extractor's 9.
+     *
+     * @param droneCount drones living and planned
+     * @param canPlanOpeningDrone whether the planned-worker limit allows another drone
+     * @return true while the opener should queue a drone
+     */
+    static boolean shouldPlanDrone(int droneCount, boolean canPlanOpeningDrone) {
+        return droneCount < DRONE_TARGET && canPlanOpeningDrone;
     }
 
     static boolean shouldPlanPool(int supplyUsed) {
