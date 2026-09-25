@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PlanEventLoggerTest {
 
-    private static final int PLAN_COLUMNS = 66;
+    private static final int PLAN_COLUMNS = 69;
 
     private static final boolean STARVED = true;
 
@@ -113,14 +113,23 @@ class PlanEventLoggerTest {
     }
 
     @Test
-    void theBaseLostColumnFollowsTheBuilderOwnershipColumns() {
+    void theBaseLostColumnFollowsTheBuilderThreatColumns() {
         assertEquals(indexOf("builder_at_our_base") + 1, indexOf("base_inner"));
+    }
+
+    @Test
+    void theEnemyMainColumnsFollowTheBaseLostColumn() {
+        int reason = indexOf("enemy_main_reason");
+        assertEquals(indexOf("base_inner") + 1, reason);
+        assertEquals("enemy_main_source_x", column(reason + 1));
+        assertEquals("enemy_main_source_y", column(reason + 2));
     }
 
     @Test
     void theBuilderRoleColumnsAreAppendedLast() {
         String[] columns = PlanEventLogger.PLAN_HEADER.split(",", -1);
         int role = indexOf("builder_role");
+        assertEquals(indexOf("enemy_main_source_y") + 1, role);
         assertEquals("builder_order", column(role + 1));
         assertEquals("builder_in_range", column(role + 2));
         assertEquals("previous_executor_unit_id", column(role + 3));

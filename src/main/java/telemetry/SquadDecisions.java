@@ -2,10 +2,13 @@ package telemetry;
 
 import bwapi.Position;
 import bwapi.UnitType;
+import unit.managed.ManagedUnit;
 import unit.squad.CombatSimulator;
 import unit.squad.DefenseSim;
 import unit.squad.RunbyState;
 import unit.squad.Squad;
+
+import java.util.List;
 
 /**
  * Static dispatch point for squad status decision events. With no sink registered, every method
@@ -125,8 +128,8 @@ public final class SquadDecisions {
         current.onRunbyPhaseStarted(squad, from, to, path);
     }
 
-    public static void defenseEvaluated(Squad squad, DefenseEvent event, int candidates, int pulled, int released,
-                                        DefenseSim sim) {
+    public static void defenseEvaluated(Squad squad, DefenseEvent event, int candidates, List<ManagedUnit> pulled,
+                                        List<ManagedUnit> released, DefenseSim sim) {
         SquadDecisionSink current = sink;
         if (current == null) {
             return;

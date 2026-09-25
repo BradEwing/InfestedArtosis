@@ -4,6 +4,8 @@ import bwapi.Position;
 import bwapi.TilePosition;
 import bwapi.UnitType;
 import info.BuilderThreat;
+import info.EnemyMainClearReason;
+import info.EnemyMainEvidence;
 import macro.plan.BuilderDispatchDecision;
 import macro.plan.BuilderLossReason;
 import macro.plan.BuilderReading;
@@ -159,5 +161,43 @@ public interface PlanEventSink {
      * @param innerBase whether the base was our main or a natural
      */
     default void onBaseLost(TilePosition base, boolean innerBase) {
+    }
+
+    /**
+     * The base squads rally to changed, or was first chosen.
+     *
+     * @param base the rally base's tile location
+     * @param reason NATURAL, MAIN or FORWARD_BASE
+     */
+    default void onRallyPointChanged(TilePosition base, String reason) {
+    }
+
+    /**
+     * A starting location became the enemy main.
+     *
+     * @param main the starting location's tile
+     * @param evidence how the building that set it ties to the starting location
+     * @param source the type of the building that set it
+     * @param sourcePosition the position of the building that set it
+     */
+    default void onEnemyMainAssigned(TilePosition main, EnemyMainEvidence evidence, UnitType source,
+                                     Position sourcePosition) {
+    }
+
+    /**
+     * The enemy main stopped being the starting location it was.
+     *
+     * @param main the cleared starting location's tile
+     * @param reason why it was cleared
+     */
+    default void onEnemyMainCleared(TilePosition main, EnemyMainClearReason reason) {
+    }
+
+    /**
+     * ScoutData recorded the first frame our vision covered the enemy main.
+     *
+     * @param main the enemy main's tile
+     */
+    default void onEnemyMainScouted(TilePosition main) {
     }
 }

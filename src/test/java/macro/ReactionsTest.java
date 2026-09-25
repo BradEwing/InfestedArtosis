@@ -92,6 +92,10 @@ public class ReactionsTest {
 
     private static final boolean NO_EXTRACTOR = false;
 
+    private static final boolean NOT_HELD = false;
+
+    private static final boolean HELD = true;
+
     private static final boolean SPEED_PLANNED = true;
 
     private static final boolean SPEED_NOT_PLANNED = false;
@@ -594,7 +598,8 @@ public class ReactionsTest {
         queue.add(extractor);
         TechProgression techProgression = withSpawningPool();
 
-        Reactions.planSpeedUpgrade(queue, techProgression, HAVE_EXTRACTOR, techProgression.canPlanMetabolicBoost(), CANCEL_FRAME);
+        Reactions.planSpeedUpgrade(queue, techProgression, HAVE_EXTRACTOR, techProgression.canPlanMetabolicBoost(),
+                NOT_HELD, CANCEL_FRAME);
 
         assertTrue(queue.toSortedList().contains(extractor));
         assertNull(extractor.getCancelSource());
@@ -612,7 +617,8 @@ public class ReactionsTest {
         TechProgression techProgression = withSpawningPool();
 
         for (int frame = CANCEL_FRAME; frame < CANCEL_FRAME + SUSTAINED_RUSH_FRAMES; frame++) {
-            Reactions.planSpeedUpgrade(queue, techProgression, HAVE_EXTRACTOR, techProgression.canPlanMetabolicBoost(), frame);
+            Reactions.planSpeedUpgrade(queue, techProgression, HAVE_EXTRACTOR, techProgression.canPlanMetabolicBoost(),
+                    NOT_HELD, frame);
         }
 
         assertEquals(1, speedPlans(queue));
@@ -625,7 +631,8 @@ public class ReactionsTest {
         TechProgression techProgression = withSpawningPool();
         techProgression.setPlannedMetabolicBoost(true);
 
-        Reactions.planSpeedUpgrade(queue, techProgression, HAVE_EXTRACTOR, techProgression.canPlanMetabolicBoost(), CANCEL_FRAME);
+        Reactions.planSpeedUpgrade(queue, techProgression, HAVE_EXTRACTOR, techProgression.canPlanMetabolicBoost(),
+                NOT_HELD, CANCEL_FRAME);
 
         assertEquals(1, speedPlans(queue));
         assertEquals(Reactions.SPEED_UPGRADE_PRIORITY, queue.toSortedList().get(0).getPriority());
@@ -638,11 +645,62 @@ public class ReactionsTest {
         queue.add(extractor);
         TechProgression techProgression = withSpawningPool();
 
-        Reactions.planSpeedUpgrade(queue, techProgression, NO_EXTRACTOR, techProgression.canPlanMetabolicBoost(), CANCEL_FRAME);
+        Reactions.planSpeedUpgrade(queue, techProgression, NO_EXTRACTOR, techProgression.canPlanMetabolicBoost(),
+                NOT_HELD, CANCEL_FRAME);
 
         assertEquals(0, speedPlans(queue));
         assertTrue(queue.toSortedList().contains(extractor));
         assertFalse(techProgression.isPlannedMetabolicBoost());
+    }
+
+    /**
+     * IA-403: while the active build holds speed behind its opening zerglings, the reaction leaves
+     * the build's Metabolic Boost plan where the build queued it.
+     */
+    @Test
+    void aHeldSpeedUpgradeKeepsItsPriority() {
+        ProductionQueue queue = new ProductionQueue();
+        Plan speed = new UpgradePlan(UpgradeType.Metabolic_Boost, CANCEL_FRAME);
+        queue.add(speed);
+        TechProgression techProgression = withSpawningPool();
+        techProgression.setPlannedMetabolicBoost(true);
+
+        Reactions.planSpeedUpgrade(queue, techProgression, HAVE_EXTRACTOR, techProgression.canPlanMetabolicBoost(),
+                HELD, CANCEL_FRAME);
+
+        assertEquals(1, speedPlans(queue));
+        assertEquals(CANCEL_FRAME, speed.getPriority());
+    }
+
+    @Test
+    void aHeldSpeedUpgradeIsNotQueuedByTheReaction() {
+        ProductionQueue queue = new ProductionQueue();
+        TechProgression techProgression = withSpawningPool();
+
+        for (int frame = CANCEL_FRAME; frame < CANCEL_FRAME + SUSTAINED_RUSH_FRAMES; frame++) {
+            Reactions.planSpeedUpgrade(queue, techProgression, HAVE_EXTRACTOR, techProgression.canPlanMetabolicBoost(),
+                    HELD, frame);
+        }
+
+        assertEquals(0, speedPlans(queue));
+        assertFalse(techProgression.isPlannedMetabolicBoost());
+    }
+
+    @Test
+    void theReactionPullsSpeedForwardOnceTheBuildReleasesIt() {
+        ProductionQueue queue = new ProductionQueue();
+        Plan speed = new UpgradePlan(UpgradeType.Metabolic_Boost, CANCEL_FRAME);
+        queue.add(speed);
+        TechProgression techProgression = withSpawningPool();
+        techProgression.setPlannedMetabolicBoost(true);
+
+        Reactions.planSpeedUpgrade(queue, techProgression, HAVE_EXTRACTOR, techProgression.canPlanMetabolicBoost(),
+                HELD, CANCEL_FRAME);
+        Reactions.planSpeedUpgrade(queue, techProgression, HAVE_EXTRACTOR, techProgression.canPlanMetabolicBoost(),
+                NOT_HELD, CANCEL_FRAME + 1);
+
+        assertEquals(1, speedPlans(queue));
+        assertEquals(Reactions.SPEED_UPGRADE_PRIORITY, speed.getPriority());
     }
 
     /**
@@ -660,7 +718,8 @@ public class ReactionsTest {
         scheduledLair.setState(PlanState.SCHEDULE);
         Set<Plan> plansScheduled = new HashSet<>(Collections.singletonList(scheduledLair));
         TechProgression techProgression = withSpawningPool();
-        Reactions.planSpeedUpgrade(queue, techProgression, HAVE_EXTRACTOR, techProgression.canPlanMetabolicBoost(), CANCEL_FRAME);
+        Reactions.planSpeedUpgrade(queue, techProgression, HAVE_EXTRACTOR, techProgression.canPlanMetabolicBoost(),
+                NOT_HELD, CANCEL_FRAME);
         Plan speed = speedPlan(queue);
 
         ResourceCount resourceCount = new ResourceCount(null);

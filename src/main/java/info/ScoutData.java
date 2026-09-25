@@ -5,6 +5,7 @@ import bwapi.TilePosition;
 import bwapi.UnitType;
 import bwem.Base;
 import lombok.Getter;
+import telemetry.PlanEvents;
 import util.Filter;
 import util.Time;
 
@@ -238,7 +239,7 @@ public class ScoutData {
      * Adds the tiles of this enemy main now in our vision to the tiles seen so far, and records the frame on
      * which the tiles seen first cover {@link #ENEMY_MAIN_SCOUTED_COVERAGE} of the main's buildable tiles and
      * {@link #ENEMY_MAIN_GATEWAY_SITE_COVERAGE} of its Gateway sites. Only the first such frame is kept, and
-     * vision before {@link #ENEMY_MAIN_VISION_START} is ignored.
+     * reported as an ENEMY_MAIN_SCOUTED plan event; vision before {@link #ENEMY_MAIN_VISION_START} is ignored.
      *
      * @param visibleTiles buildable tiles of the enemy main's area in our vision this frame
      * @param mainTileCount buildable tiles in the enemy main's area
@@ -252,8 +253,9 @@ public class ScoutData {
         Set<TilePosition> seen = enemyMainSeenTiles.computeIfAbsent(enemyMain, base -> new HashSet<>());
         seen.addAll(visibleTiles);
         int seenGatewaySites = (int) gatewaySites.stream().filter(seen::contains).count();
-        if (isScouted(seen.size(), mainTileCount, seenGatewaySites, gatewaySites.size())) {
-            enemyMainScoutedFrames.putIfAbsent(enemyMain, frame);
+        if (isScouted(seen.size(), mainTileCount, seenGatewaySites, gatewaySites.size())
+                && enemyMainScoutedFrames.putIfAbsent(enemyMain, frame) == null && enemyMain != null) {
+            PlanEvents.enemyMainScouted(enemyMain.getLocation());
         }
     }
 

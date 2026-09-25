@@ -41,10 +41,10 @@ class BuilderLostTelemetryTest {
     }
 
     @Test
-    void theBuilderColumnsAreAppendedAfterBaseInnerInOneBlock() {
+    void theBuilderColumnsAreAppendedAfterTheEnemyMainColumnsInOneBlock() {
         List<String> columns = Arrays.asList(PlanEventLogger.PLAN_HEADER.split(",", -1));
         int role = columns.indexOf("builder_role");
-        assertEquals(columns.indexOf("base_inner") + 1, role);
+        assertEquals(columns.indexOf("enemy_main_source_y") + 1, role);
         assertEquals(role + 1, columns.indexOf("builder_order"));
         assertEquals(role + 2, columns.indexOf("builder_in_range"));
         assertEquals(role + 3, columns.indexOf("previous_executor_unit_id"));

@@ -16,12 +16,16 @@ import macro.plan.PlanCancelReason;
 import telemetry.PlanEvents;
 import util.Distance;
 
+import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Predicate;
 import java.util.function.ToIntFunction;
 import java.util.stream.Collectors;
 
@@ -45,11 +49,25 @@ public class BaseData {
 
     static final int EXTRACTOR_REPLAN_BACKOFF_FRAMES = 500;
 
+    private static final Comparator<Base> BY_TILE_LOCATION = Comparator
+            .comparingInt((Base base) -> base.getLocation().getX())
+            .thenComparingInt(base -> base.getLocation().getY());
+
+    /**
+     * The buildings that, standing at a starting location's natural, wall it off and imply the main behind it.
+     */
+    private static final Set<UnitType> NATURAL_WALL_TYPES = EnumSet.of(UnitType.Protoss_Forge,
+            UnitType.Protoss_Photon_Cannon, UnitType.Terran_Bunker);
+
     private Base mainBase;
     private Base naturalExpansion;
     @Getter
     private Base inferredNaturalBase;
     private Base mainEnemyBase;
+    @Getter
+    private EnemyMainEvidence mainEnemyBaseEvidence;
+    private HashSet<Base> startsSeenEmpty = new HashSet<>();
+    private boolean enemyDepotSeenOnStart = false;
     @Getter
     private boolean enemyMainBaseFound = false;
     private HashSet<Unit> macroHatcheries = new HashSet<>();
@@ -89,6 +107,8 @@ public class BaseData {
     private Base enemyNaturalBase;
     @Getter @Setter
     private boolean allowSunkenAtMain = false;
+    private Base lastSquadRallyBase;
+    private Base lastEnemyMainBase;
 
     public BaseData(List<Base> allBases) {
         for (Base base: allBases) {
@@ -725,6 +745,104 @@ public class BaseData {
         return naturalExpansion != null;
     }
 
+    /**
+     * The base squads rally to. See {@link #squadRallyBase(Object, Object, Object, Predicate, Collection,
+     * ToIntFunction, Comparator)}; distance to the enemy is the ground distance from the enemy main, or from the
+     * last enemy main located once it is no longer tracked, and ties go to the lower tile location.
+     *
+     * @return the base squads rally to
+     */
+    public Base squadRallyBase() {
+        return squadRallyBase(naturalExpansion, inferredNaturalBase, mainBase, this::isHeldOrMorphing, myBases,
+                groundDistanceFromEnemyMain(), BY_TILE_LOCATION);
+    }
+
+    /**
+     * Writes a RALLY_POINT_CHANGED plan event when the squad rally base differs from the one last seen, including
+     * the first frame the main is known.
+     */
+    public void updateSquadRallyBase() {
+        if (mainBase == null) {
+            return;
+        }
+        Base rally = squadRallyBase();
+        if (rally == lastSquadRallyBase) {
+            return;
+        }
+        lastSquadRallyBase = rally;
+        PlanEvents.rallyPointChanged(rally.getLocation(),
+                squadRallyReason(rally, naturalExpansion, inferredNaturalBase, mainBase));
+    }
+
+    private ToIntFunction<Base> groundDistanceFromEnemyMain() {
+        if (mainEnemyBase != null) {
+            lastEnemyMainBase = mainEnemyBase;
+        }
+        StartingLocationPaths enemyPaths = lastEnemyMainBase == null ? null
+                : startingLocationPaths.get(lastEnemyMainBase);
+        if (enemyPaths == null) {
+            return null;
+        }
+        return base -> {
+            GroundPath path = enemyPaths.getPath(base);
+            return path == null ? Integer.MAX_VALUE : path.getGroundDistance();
+        };
+    }
+
+    /**
+     * Picks the base squads rally to:
+     * <ol>
+     *   <li>the first expansion we took, while a hatchery of ours stands or morphs on it;
+     *   <li>otherwise the inferred natural, while a hatchery of ours stands or morphs on it;
+     *   <li>otherwise, once an expansion has been taken and the enemy is located, the held base nearest the enemy,
+     *       preferring the main and then {@code tieBreak} among equally near bases, or the main when no held base
+     *       is reachable from the enemy;
+     *   <li>otherwise the main.
+     * </ol>
+     * A lost natural is skipped until a hatchery of ours stands or morphs on it again.
+     *
+     * @param takenNatural the first expansion we took, or null
+     * @param inferredNatural the natural inferred from the ground paths out of the main, or null
+     * @param main our main
+     * @param heldOrMorphing whether a hatchery of ours stands or morphs on a base
+     * @param heldBases bases a completed hatchery of ours stands on
+     * @param distanceToEnemy distance from a base to the enemy, {@link Integer#MAX_VALUE} for a base the enemy
+     *     cannot reach, or null when the enemy is not located
+     * @param tieBreak order among held bases equally near the enemy
+     * @return the rally base
+     */
+    static <T> T squadRallyBase(T takenNatural, T inferredNatural, T main, Predicate<T> heldOrMorphing,
+                                Collection<T> heldBases, ToIntFunction<T> distanceToEnemy,
+                                Comparator<? super T> tieBreak) {
+        if (takenNatural != null && heldOrMorphing.test(takenNatural)) {
+            return takenNatural;
+        }
+        if (inferredNatural != null && heldOrMorphing.test(inferredNatural)) {
+            return inferredNatural;
+        }
+        if (takenNatural == null || distanceToEnemy == null) {
+            return main;
+        }
+        Comparator<T> nearestEnemy = Comparator.comparingInt(distanceToEnemy);
+        return heldBases.stream()
+                .filter(base -> distanceToEnemy.applyAsInt(base) != Integer.MAX_VALUE)
+                .min(nearestEnemy.thenComparing(base -> base != main).thenComparing(tieBreak))
+                .orElse(main);
+    }
+
+    /**
+     * @return NATURAL for either natural, MAIN for the main, otherwise FORWARD_BASE
+     */
+    static <T> String squadRallyReason(T rally, T takenNatural, T inferredNatural, T main) {
+        if (rally == takenNatural || rally == inferredNatural) {
+            return "NATURAL";
+        }
+        if (rally == main) {
+            return "MAIN";
+        }
+        return "FORWARD_BASE";
+    }
+
     public boolean isBaseTilePosition(TilePosition tilePosition) {
         return baseTilePositionSet.contains(tilePosition);
     }
@@ -1041,34 +1159,160 @@ public class BaseData {
     }
 
     /**
-     * Adds an enemy base to the tracking structures.
+     * Adds an enemy base to the tracking structures. The enemy main is set only by
+     * {@link #assignEnemyMain}.
      * @param base The enemy base to add.
      */
     public void addEnemyBase(Base base) {
         if (enemyBases.add(base)) {
             availableBases.remove(base);
             reservedBases.remove(base);
-            // Automatically set as main enemy base if it's a starting location and not already set
-            if (mains.contains(base) && mainEnemyBase == null) {
-                mainEnemyBase = base;
-                enemyMainBaseFound = true;
-                StartingLocationPaths paths = startingLocationPaths.get(base);
-                if (paths != null) {
-                    enemyNaturalBase = paths.getNaturalExpansion();
-                }
-            }
         }
     }
 
     /**
-     * Removes an enemy base from tracking and makes it available if accessible.
-     * @param base The enemy base to remove.
+     * Offers a visible enemy building as evidence of the enemy main, strongest first. A resource depot whose
+     * tile is a starting location's is DEPOT evidence for it; any other building standing in a starting
+     * location's BWEM Area is MAIN_AREA evidence for that one. Until an enemy depot has been seen on a start, a
+     * Forge, Photon Cannon or Bunker standing in the Area of exactly one other start's natural, not ours, is
+     * NATURAL_AREA evidence for that start, and any building is LAST_START evidence for the one other start not
+     * seen empty. A building that is none of these, such as a proxy Gateway in the open or at a natural, leaves
+     * the enemy main as it is.
+     *
+     * @param type the building's type
+     * @param tile the building's tile
+     * @param position the building's position
+     * @param standsInArea whether the building stands in a base's BWEM Area
+     * @return whether the enemy main changed
      */
-    public void removeEnemyBase(Base base) {
+    public boolean offerEnemyMainEvidence(UnitType type, TilePosition tile, Position position,
+                                          Predicate<Base> standsInArea) {
+        Base depotStart = type.isResourceDepot() ? baseTilePositionLookup.get(tile) : null;
+        if (depotStart != null && mains.contains(depotStart)) {
+            return assignEnemyMain(depotStart, EnemyMainEvidence.DEPOT, type, position);
+        }
+        Base areaStart = mains.stream()
+                .filter(start -> start != mainBase)
+                .filter(standsInArea)
+                .findFirst()
+                .orElse(null);
+        if (areaStart != null && assignEnemyMain(areaStart, EnemyMainEvidence.MAIN_AREA, type, position)) {
+            return true;
+        }
+        if (enemyDepotSeenOnStart) {
+            return false;
+        }
+        Base wallStart = NATURAL_WALL_TYPES.contains(type) ? startBehindNatural(standsInArea) : null;
+        if (wallStart != null && assignEnemyMain(wallStart, EnemyMainEvidence.NATURAL_AREA, type, position)) {
+            return true;
+        }
+        return assignEnemyMain(lastStartNotSeenEmpty(), EnemyMainEvidence.LAST_START, type, position);
+    }
+
+    /**
+     * The one starting location other than ours whose natural's BWEM Area the building stands in, or null when
+     * there is none, more than one, or the natural is ours.
+     */
+    private Base startBehindNatural(Predicate<Base> standsInArea) {
+        List<Base> starts = mains.stream()
+                .filter(start -> start != mainBase)
+                .filter(start -> {
+                    StartingLocationPaths paths = startingLocationPaths.get(start);
+                    Base natural = paths == null ? null : paths.getNaturalExpansion();
+                    return natural != null && natural != inferredNaturalBase && standsInArea.test(natural);
+                })
+                .collect(Collectors.toList());
+        return starts.size() == 1 ? starts.get(0) : null;
+    }
+
+    /**
+     * The one starting location other than ours not seen empty, or null when there is none or more than one.
+     */
+    private Base lastStartNotSeenEmpty() {
+        List<Base> starts = mains.stream()
+                .filter(start -> start != mainBase)
+                .filter(start -> !startsSeenEmpty.contains(start))
+                .collect(Collectors.toList());
+        return starts.size() == 1 ? starts.get(0) : null;
+    }
+
+    /**
+     * Makes a starting location other than ours the enemy main on the evidence of an enemy building, adds it to
+     * the enemy bases and takes the enemy natural from its paths. A main already known is replaced only by
+     * stronger evidence at another starting location, which clears the old main first. A starting location
+     * seen empty takes nothing weaker than a depot, and a depot on it lifts that mark. Once any depot has been
+     * seen on a starting location, NATURAL_AREA and LAST_START evidence is no longer offered.
+     *
+     * @param start the starting location the building is evidence for
+     * @param evidence how the building ties to that starting location
+     * @param source the building's type
+     * @param sourcePosition the building's position
+     * @return whether the enemy main changed
+     */
+    public boolean assignEnemyMain(Base start, EnemyMainEvidence evidence, UnitType source, Position sourcePosition) {
+        if (start == null || start == mainBase || !mains.contains(start)) {
+            return false;
+        }
+        if (evidence == EnemyMainEvidence.DEPOT) {
+            enemyDepotSeenOnStart = true;
+            startsSeenEmpty.remove(start);
+        } else if (startsSeenEmpty.contains(start)) {
+            return false;
+        }
+        if (start == mainEnemyBase) {
+            if (evidence.isStrongerThan(mainEnemyBaseEvidence)) {
+                mainEnemyBaseEvidence = evidence;
+            }
+            return false;
+        }
+        if (mainEnemyBase != null) {
+            if (!evidence.isStrongerThan(mainEnemyBaseEvidence)) {
+                return false;
+            }
+            removeEnemyBase(mainEnemyBase, evidence == EnemyMainEvidence.DEPOT
+                    ? EnemyMainClearReason.REPLACED_BY_DEPOT : EnemyMainClearReason.REPLACED_BY_STRONGER_EVIDENCE);
+        }
+        addEnemyBase(start);
+        mainEnemyBase = start;
+        mainEnemyBaseEvidence = evidence;
+        enemyMainBaseFound = true;
+        StartingLocationPaths paths = startingLocationPaths.get(start);
+        enemyNaturalBase = paths == null ? null : paths.getNaturalExpansion();
+        PlanEvents.enemyMainAssigned(start.getLocation(), evidence, source, sourcePosition);
+        return true;
+    }
+
+    /**
+     * Records that a starting location other than ours was in our vision with no enemy depot on it, so it is not
+     * where the enemy started.
+     */
+    public void markStartSeenEmpty(Base start) {
+        if (start != mainBase && mains.contains(start)) {
+            startsSeenEmpty.add(start);
+        }
+    }
+
+    /**
+     * Whether a starting location was in our vision with no enemy depot on it, and no depot has been seen on it
+     * since.
+     */
+    public boolean isStartSeenEmpty(Base start) {
+        return startsSeenEmpty.contains(start);
+    }
+
+    /**
+     * Removes an enemy base from tracking and makes it available if accessible. Removing the enemy main clears
+     * it and the enemy natural.
+     * @param base The enemy base to remove.
+     * @param reason why the base is removed, reported when it is the enemy main
+     */
+    public void removeEnemyBase(Base base, EnemyMainClearReason reason) {
         if (enemyBases.remove(base)) {
             if (base == mainEnemyBase) {
                 mainEnemyBase = null;
+                mainEnemyBaseEvidence = null;
                 enemyNaturalBase = null;
+                PlanEvents.enemyMainCleared(base.getLocation(), reason);
             }
             // Re-add to available bases if not an island
             if (!islands.contains(base)) {
