@@ -2,6 +2,7 @@ package strategy.buildorder.terran;
 
 import bwapi.TilePosition;
 import bwapi.UnitType;
+import bwapi.UpgradeType;
 import info.TechProgression;
 import info.UnitTypeCount;
 import macro.AdvancedUnitEligibility;
@@ -359,5 +360,20 @@ class TwoHatchMutaTest {
 
         assertEquals(1, queue.size());
         assertEquals(1, count.get(UnitType.Zerg_Mutalisk));
+    }
+
+    private static int flyerAttackPriority(int livingMutalisks) {
+        UnitTypeCount count = new UnitTypeCount();
+        for (int i = 0; i < livingMutalisks; i++) {
+            count.addUnit(UnitType.Zerg_Mutalisk);
+        }
+        return new TwoHatchMuta().upgradePriority(UpgradeType.Zerg_Flyer_Attacks, count, 12000);
+    }
+
+    @Test
+    void flyerAttacksPollsAheadOfMutalisksOnceTheMutalisksThatPlanItAreAlive() {
+        assertEquals(12000, flyerAttackPriority(TwoHatchMuta.MUTALISKS_BEFORE_FLYER_UPGRADE - 1));
+        assertEquals(BuildOrder.ARMY_UPGRADE_PRIORITY, flyerAttackPriority(TwoHatchMuta.MUTALISKS_BEFORE_FLYER_UPGRADE));
+        assertEquals(BuildOrder.ARMY_UPGRADE_PRIORITY, flyerAttackPriority(TwoHatchMuta.MUTALISKS_BEFORE_FLYER_UPGRADE + 1));
     }
 }

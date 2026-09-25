@@ -2,6 +2,7 @@ package strategy.buildorder.terran;
 
 import bwapi.TilePosition;
 import bwapi.UnitType;
+import bwapi.UpgradeType;
 import info.TechProgression;
 import info.UnitTypeCount;
 import macro.plan.Plan;
@@ -196,5 +197,38 @@ class ThreeHatchLurkerTest {
             count.addUnit(UnitType.Zerg_Hydralisk);
         }
         return count;
+    }
+
+    private static final int UPGRADE_QUEUED_FRAME = 9000;
+
+    private static UnitTypeCount livingHydralisksAndLurkers(int hydralisks, int lurkers) {
+        UnitTypeCount count = hydralisks(0, hydralisks);
+        for (int i = 0; i < lurkers; i++) {
+            count.addUnit(UnitType.Zerg_Lurker);
+        }
+        return count;
+    }
+
+    private static int upgradePriority(UpgradeType upgradeType, int hydralisks, int lurkers) {
+        return new ThreeHatchLurker().upgradePriority(upgradeType,
+                livingHydralisksAndLurkers(hydralisks, lurkers), UPGRADE_QUEUED_FRAME);
+    }
+
+    @Test
+    void hydraliskDenUpgradesCountHydralisksAndLurkersTogether() {
+        int trigger = ThreeHatchLurker.HYDRALISKS_AND_LURKERS_BEFORE_DEN_UPGRADE_PRIORITY;
+
+        assertEquals(UPGRADE_QUEUED_FRAME, upgradePriority(UpgradeType.Muscular_Augments, trigger - 3, 2));
+        assertEquals(BuildOrder.ARMY_UPGRADE_PRIORITY, upgradePriority(UpgradeType.Muscular_Augments, trigger - 2, 2));
+        assertEquals(BuildOrder.ARMY_UPGRADE_PRIORITY, upgradePriority(UpgradeType.Grooved_Spines, trigger - 1, 2));
+    }
+
+    @Test
+    void evolutionUpgradesMoveAtTheirOwnTrigger() {
+        int trigger = ThreeHatchLurker.HYDRALISKS_AND_LURKERS_BEFORE_EVOLUTION_UPGRADE_PRIORITY;
+
+        assertEquals(UPGRADE_QUEUED_FRAME, upgradePriority(UpgradeType.Zerg_Missile_Attacks, trigger - 1, 0));
+        assertEquals(BuildOrder.ARMY_UPGRADE_PRIORITY, upgradePriority(UpgradeType.Zerg_Carapace, trigger, 0));
+        assertEquals(BuildOrder.ARMY_UPGRADE_PRIORITY, upgradePriority(UpgradeType.Zerg_Missile_Attacks, trigger - 4, 5));
     }
 }

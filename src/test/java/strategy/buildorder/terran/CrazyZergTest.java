@@ -1,8 +1,12 @@
 package strategy.buildorder.terran;
 
+import bwapi.UnitType;
+import bwapi.UpgradeType;
 import info.TechProgression;
+import info.UnitTypeCount;
 import macro.AdvancedUnitEligibility;
 import org.junit.jupiter.api.Test;
+import strategy.buildorder.BuildOrder;
 import strategy.buildorder.LarvaBoundMacroHatchery;
 import strategy.buildorder.GasBoundHiveTech;
 
@@ -236,5 +240,34 @@ class CrazyZergTest {
         assertFalse(GasBoundHiveTech.Gate.TECH_UNAVAILABLE.isRequest());
         assertTrue(GasBoundHiveTech.Gate.GAS_SHORT.isRequest());
         assertTrue(GasBoundHiveTech.Gate.TRIGGER.isRequest());
+    }
+
+    private static int upgradePriority(UpgradeType upgradeType, UnitType unitType, int living) {
+        UnitTypeCount count = new UnitTypeCount();
+        for (int i = 0; i < living; i++) {
+            count.addUnit(unitType);
+        }
+        return new CrazyZerg().upgradePriority(upgradeType, count, 15000);
+    }
+
+    @Test
+    void flyerAttacksPollsAheadOfMutalisksAtTheMutaliskCap() {
+        assertEquals(15000, upgradePriority(UpgradeType.Zerg_Flyer_Attacks, UnitType.Zerg_Mutalisk, 8));
+        assertEquals(BuildOrder.ARMY_UPGRADE_PRIORITY, upgradePriority(UpgradeType.Zerg_Flyer_Attacks, UnitType.Zerg_Mutalisk, 9));
+    }
+
+    @Test
+    void ultraliskUpgradesPollAheadOfUltralisksOnceTheTriggerIsAlive() {
+        int trigger = CrazyZerg.ULTRALISKS_BEFORE_ULTRALISK_UPGRADE_PRIORITY;
+
+        assertEquals(15000, upgradePriority(UpgradeType.Chitinous_Plating, UnitType.Zerg_Ultralisk, trigger - 1));
+        assertEquals(BuildOrder.ARMY_UPGRADE_PRIORITY, upgradePriority(UpgradeType.Chitinous_Plating, UnitType.Zerg_Ultralisk, trigger));
+        assertEquals(BuildOrder.ARMY_UPGRADE_PRIORITY, upgradePriority(UpgradeType.Anabolic_Synthesis, UnitType.Zerg_Ultralisk, trigger + 1));
+    }
+
+    @Test
+    void groundUpgradesKeepTheirFramePriority() {
+        assertEquals(15000, upgradePriority(UpgradeType.Zerg_Carapace, UnitType.Zerg_Ultralisk, 20));
+        assertEquals(15000, upgradePriority(UpgradeType.Zerg_Melee_Attacks, UnitType.Zerg_Zergling, 40));
     }
 }

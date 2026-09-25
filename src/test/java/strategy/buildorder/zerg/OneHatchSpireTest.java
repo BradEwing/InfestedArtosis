@@ -1,12 +1,14 @@
 package strategy.buildorder.zerg;
 
 import bwapi.UnitType;
+import bwapi.UpgradeType;
 import info.TechProgression;
 import info.UnitTypeCount;
 import macro.ProductionQueue;
 import macro.plan.BuildingPlan;
 import macro.plan.Plan;
 import org.junit.jupiter.api.Test;
+import strategy.buildorder.BuildOrder;
 
 import java.util.Arrays;
 import java.util.Collections;
@@ -153,5 +155,20 @@ class OneHatchSpireTest {
     @Test
     void withholdsAnotherGasWhileTheExtractorRequestIsBarred() {
         assertFalse(OneHatchSpire.shouldPlanAnotherGas(ONE_SPIRE, !CAN_PLAN_EXTRACTOR));
+    }
+
+    private static int flyerCarapacePriority(int livingMutalisks) {
+        UnitTypeCount count = new UnitTypeCount();
+        for (int i = 0; i < livingMutalisks; i++) {
+            count.addUnit(UnitType.Zerg_Mutalisk);
+        }
+        return new OneHatchSpire().upgradePriority(UpgradeType.Zerg_Flyer_Carapace, count, 12000);
+    }
+
+    @Test
+    void flyerCarapacePollsAheadOfMutalisksOnceTheMutalisksThatPlanItAreAlive() {
+        assertEquals(12000, flyerCarapacePriority(OneHatchSpire.MUTALISKS_BEFORE_FLYER_UPGRADE - 1));
+        assertEquals(BuildOrder.ARMY_UPGRADE_PRIORITY, flyerCarapacePriority(OneHatchSpire.MUTALISKS_BEFORE_FLYER_UPGRADE));
+        assertEquals(BuildOrder.ARMY_UPGRADE_PRIORITY, flyerCarapacePriority(OneHatchSpire.MUTALISKS_BEFORE_FLYER_UPGRADE + 1));
     }
 }

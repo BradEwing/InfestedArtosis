@@ -4,6 +4,7 @@ import bwapi.TechType;
 import bwapi.TilePosition;
 import bwapi.UnitType;
 import bwapi.UpgradeType;
+import info.UnitTypeCount;
 import macro.ProductionManager.PlanScheduler;
 import macro.ProductionManager.ScanOutcome;
 import macro.plan.BuildingPlan;
@@ -18,6 +19,7 @@ import macro.plan.UpgradePlan;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import strategy.buildorder.BuildOrder;
+import strategy.buildorder.protoss.ThreeHatchHydra;
 import telemetry.PlanEventSink;
 import telemetry.PlanEvents;
 
@@ -793,6 +795,123 @@ class ProductionManagerTest {
 
         assertFalse(reportedBlockers.contains(PlanBlocker.RESEARCH_CLAIM));
         assertEquals(zerglings, outcome.scheduled);
+    }
+
+    private static final int MUSCULAR_AUGMENTS_QUEUED_FRAME = 6236;
+
+    private static UnitTypeCount livingHydralisks(int hydralisks) {
+        UnitTypeCount count = new UnitTypeCount();
+        for (int i = 0; i < hydralisks; i++) {
+            count.addUnit(UnitType.Zerg_Hydralisk);
+        }
+        return count;
+    }
+
+    private Plan muscularAugments() {
+        return new UpgradePlan(UpgradeType.Muscular_Augments, MUSCULAR_AUGMENTS_QUEUED_FRAME);
+    }
+
+    @Test
+    void aQueuedArmyUpgradeMovesIntoTheBandOnceItsTriggerIsMet() {
+        ProductionQueue queue = new ProductionQueue();
+        Plan muscular = muscularAugments();
+        queue.add(muscular);
+
+        ProductionManager.promoteArmyUpgrades(queue, new ThreeHatchHydra(),
+                livingHydralisks(ThreeHatchHydra.HYDRALISKS_BEFORE_DEN_UPGRADE_PRIORITY));
+
+        assertEquals(BuildOrder.ARMY_UPGRADE_PRIORITY, muscular.getPriority());
+    }
+
+    @Test
+    void aQueuedArmyUpgradeKeepsItsFramePriorityBelowTheTrigger() {
+        ProductionQueue queue = new ProductionQueue();
+        Plan muscular = muscularAugments();
+        queue.add(muscular);
+
+        ProductionManager.promoteArmyUpgrades(queue, new ThreeHatchHydra(),
+                livingHydralisks(ThreeHatchHydra.HYDRALISKS_BEFORE_DEN_UPGRADE_PRIORITY - 1));
+
+        assertEquals(MUSCULAR_AUGMENTS_QUEUED_FRAME, muscular.getPriority());
+    }
+
+    @Test
+    void promotionLeavesUntriggeredUpgradesUnitsAndLowerBandsAlone() {
+        ProductionQueue queue = new ProductionQueue();
+        Plan speed = metabolicBoost();
+        Plan overlordSpeed = new UpgradePlan(UpgradeType.Pneumatized_Carapace, 100);
+        Plan hydralisk = new UnitPlan(UnitType.Zerg_Hydralisk, UnitPlan.ADVANCED_UNIT_PRIORITY);
+        Plan drone = drone(FRAME);
+        queue.add(speed);
+        queue.add(overlordSpeed);
+        queue.add(hydralisk);
+        queue.add(drone);
+
+        ProductionManager.promoteArmyUpgrades(queue, new ThreeHatchHydra(), livingHydralisks(20));
+
+        assertEquals(3330, speed.getPriority());
+        assertEquals(100, overlordSpeed.getPriority());
+        assertEquals(UnitPlan.ADVANCED_UNIT_PRIORITY, hydralisk.getPriority());
+        assertEquals(FRAME, drone.getPriority());
+    }
+
+    /**
+     * PLUTOW64C: Muscular Augments queued at frame 6236 with Hydralisks at priority 150. Once six
+     * Hydralisks are alive the upgrade polls ahead of them, and its mineral hold bars the next
+     * Hydralisk until it is funded. An emergency Zergling still polls ahead, and an Overlord
+     * behind the hold still schedules.
+     */
+    @Test
+    void aPromotedArmyUpgradeHoldsTheNextHydraliskUntilFunded() {
+        ProductionQueue queue = new ProductionQueue();
+        Plan muscular = muscularAugments();
+        Plan hydralisk = new UnitPlan(UnitType.Zerg_Hydralisk, UnitPlan.ADVANCED_UNIT_PRIORITY);
+        Plan overlord = overlord(7232);
+        Plan emergencyZergling = emergency(UnitType.Zerg_Zergling);
+        queue.add(muscular);
+        queue.add(hydralisk);
+        queue.add(overlord);
+        queue.add(emergencyZergling);
+        ProductionManager.promoteArmyUpgrades(queue, new ThreeHatchHydra(),
+                livingHydralisks(ThreeHatchHydra.HYDRALISKS_BEFORE_DEN_UPGRADE_PRIORITY));
+        int bankBeforeUpgrade = UnitType.Zerg_Zergling.mineralPrice() + muscular.mineralPrice() - 1;
+        ResearchBank bank = new ResearchBank(bankBeforeUpgrade, muscular.gasPrice(), false);
+        PlanEvents.register(blockerRecorder());
+
+        ScanOutcome held = ProductionManager.scanPlans(queue.toSortedList(), bank);
+
+        assertEquals(Arrays.asList(emergencyZergling, overlord), held.scheduled);
+        assertEquals(Arrays.asList(muscular, hydralisk), reportedPlans);
+        assertEquals(Arrays.asList(PlanBlocker.RESEARCH_MINERALS, PlanBlocker.RESEARCH_CLAIM), reportedBlockers);
+
+        bank.mine(UnitType.Zerg_Overlord.mineralPrice() + 1);
+        ScanOutcome funded = ProductionManager.scanPlans(held.requeued, bank);
+
+        assertEquals(Arrays.asList(muscular, hydralisk), funded.scheduled);
+    }
+
+    /**
+     * The ordering this promotion removes: below the trigger the upgrade keeps its frame
+     * priority, so the Hydralisk at priority 150 takes the bank on credit before the upgrade is
+     * checked, and the upgrade's hold reaches nothing behind it.
+     */
+    @Test
+    void belowTheTriggerTheHydraliskTakesTheBankAheadOfTheUpgrade() {
+        ProductionQueue queue = new ProductionQueue();
+        Plan muscular = muscularAugments();
+        Plan hydralisk = new UnitPlan(UnitType.Zerg_Hydralisk, UnitPlan.ADVANCED_UNIT_PRIORITY);
+        queue.add(muscular);
+        queue.add(hydralisk);
+        ProductionManager.promoteArmyUpgrades(queue, new ThreeHatchHydra(),
+                livingHydralisks(ThreeHatchHydra.HYDRALISKS_BEFORE_DEN_UPGRADE_PRIORITY - 1));
+        ResearchBank bank = new ResearchBank(muscular.mineralPrice() - 1, muscular.gasPrice(), false);
+        PlanEvents.register(blockerRecorder());
+
+        ScanOutcome outcome = ProductionManager.scanPlans(queue.toSortedList(), bank);
+
+        assertEquals(Collections.singletonList(hydralisk), outcome.scheduled);
+        assertEquals(Collections.singletonList(muscular), reportedPlans);
+        assertFalse(reportedBlockers.contains(PlanBlocker.RESEARCH_CLAIM));
     }
 
     @Test

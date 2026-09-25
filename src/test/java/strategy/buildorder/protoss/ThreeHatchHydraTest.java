@@ -1,6 +1,7 @@
 package strategy.buildorder.protoss;
 
 import bwapi.UnitType;
+import bwapi.UpgradeType;
 import info.TechProgression;
 import info.UnitTypeCount;
 import macro.AdvancedUnitEligibility;
@@ -9,6 +10,7 @@ import macro.plan.Plan;
 import macro.plan.UnitPlan;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import strategy.buildorder.BuildOrder;
 import telemetry.PlanEvents;
 
 import java.util.List;
@@ -162,5 +164,71 @@ class ThreeHatchHydraTest {
         techProgression.setSpawningPool(true);
 
         assertFalse(ThreeHatchHydra.wantEvolutionChamber(techProgression, HYDRALISKS_FOR_UPGRADES));
+    }
+
+    private static final int UPGRADE_QUEUED_FRAME = 6236;
+
+    private static UnitTypeCount hydralisks(int planned, int living) {
+        UnitTypeCount count = new UnitTypeCount();
+        for (int i = 0; i < planned; i++) {
+            count.planUnit(UnitType.Zerg_Hydralisk);
+        }
+        for (int i = 0; i < living; i++) {
+            count.addUnit(UnitType.Zerg_Hydralisk);
+        }
+        return count;
+    }
+
+    private static int upgradePriority(UpgradeType upgradeType, int livingHydralisks) {
+        return new ThreeHatchHydra().upgradePriority(upgradeType, hydralisks(0, livingHydralisks), UPGRADE_QUEUED_FRAME);
+    }
+
+    @Test
+    void hydraliskDenUpgradesKeepTheirFramePriorityBelowTheTrigger() {
+        int below = ThreeHatchHydra.HYDRALISKS_BEFORE_DEN_UPGRADE_PRIORITY - 1;
+
+        assertEquals(UPGRADE_QUEUED_FRAME, upgradePriority(UpgradeType.Muscular_Augments, below));
+        assertEquals(UPGRADE_QUEUED_FRAME, upgradePriority(UpgradeType.Grooved_Spines, below));
+    }
+
+    @Test
+    void hydraliskDenUpgradesPollAheadOfHydralisksAtTheTrigger() {
+        int at = ThreeHatchHydra.HYDRALISKS_BEFORE_DEN_UPGRADE_PRIORITY;
+
+        assertEquals(BuildOrder.ARMY_UPGRADE_PRIORITY, upgradePriority(UpgradeType.Muscular_Augments, at));
+        assertEquals(BuildOrder.ARMY_UPGRADE_PRIORITY, upgradePriority(UpgradeType.Grooved_Spines, at));
+        assertTrue(BuildOrder.ARMY_UPGRADE_PRIORITY < UnitPlan.ADVANCED_UNIT_PRIORITY);
+    }
+
+    @Test
+    void hydraliskDenUpgradesPollAheadOfHydralisksAboveTheTrigger() {
+        int above = ThreeHatchHydra.HYDRALISKS_BEFORE_DEN_UPGRADE_PRIORITY + 1;
+
+        assertEquals(BuildOrder.ARMY_UPGRADE_PRIORITY, upgradePriority(UpgradeType.Muscular_Augments, above));
+        assertEquals(BuildOrder.ARMY_UPGRADE_PRIORITY, upgradePriority(UpgradeType.Grooved_Spines, above));
+    }
+
+    @Test
+    void evolutionUpgradesMoveAtTheirOwnTrigger() {
+        int trigger = ThreeHatchHydra.HYDRALISKS_BEFORE_EVOLUTION_UPGRADE_PRIORITY;
+
+        assertEquals(UPGRADE_QUEUED_FRAME, upgradePriority(UpgradeType.Zerg_Missile_Attacks, trigger - 1));
+        assertEquals(UPGRADE_QUEUED_FRAME, upgradePriority(UpgradeType.Zerg_Carapace, trigger - 1));
+        assertEquals(BuildOrder.ARMY_UPGRADE_PRIORITY, upgradePriority(UpgradeType.Zerg_Missile_Attacks, trigger));
+        assertEquals(BuildOrder.ARMY_UPGRADE_PRIORITY, upgradePriority(UpgradeType.Zerg_Carapace, trigger + 1));
+    }
+
+    @Test
+    void plannedHydralisksDoNotCountTowardTheTrigger() {
+        UnitTypeCount count = hydralisks(ThreeHatchHydra.HYDRALISKS_BEFORE_DEN_UPGRADE_PRIORITY, 0);
+
+        assertEquals(UPGRADE_QUEUED_FRAME,
+                new ThreeHatchHydra().upgradePriority(UpgradeType.Muscular_Augments, count, UPGRADE_QUEUED_FRAME));
+    }
+
+    @Test
+    void upgradesWithoutATriggerKeepTheirFramePriority() {
+        assertEquals(UPGRADE_QUEUED_FRAME, upgradePriority(UpgradeType.Metabolic_Boost, 20));
+        assertEquals(UPGRADE_QUEUED_FRAME, upgradePriority(UpgradeType.Pneumatized_Carapace, 20));
     }
 }

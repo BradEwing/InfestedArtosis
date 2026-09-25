@@ -10,6 +10,7 @@ import info.TechProgression;
 import info.UnitTypeCount;
 import info.tracking.StrategyTracker;
 import macro.plan.Plan;
+import strategy.buildorder.ArmyUpgradeTrigger;
 import strategy.buildorder.LarvaBoundMacroHatchery;
 import strategy.buildorder.ZerglingTargets;
 import util.Time;
@@ -32,6 +33,10 @@ public class ThreeHatchHydra extends ProtossBase {
     static final int UPGRADE_EVOLUTION_CHAMBERS = 2;
 
     private static final int HYDRALISKS_BEFORE_EVOLUTION_CHAMBER = 6;
+
+    public static final int HYDRALISKS_BEFORE_DEN_UPGRADE_PRIORITY = 6;
+
+    static final int HYDRALISKS_BEFORE_EVOLUTION_UPGRADE_PRIORITY = 12;
 
     private boolean plannedFirstMacroHatch = false;
     private boolean plannedSecondMacroHatch = false;
@@ -369,6 +374,25 @@ public class ThreeHatchHydra extends ProtossBase {
         }
 
         return techProgression.isHydraliskDen() && hydras > HYDRALISKS_BEFORE_EVOLUTION_CHAMBER;
+    }
+
+    /**
+     * Muscular Augments and Grooved Spines move ahead of the Hydralisk stream once
+     * {@value #HYDRALISKS_BEFORE_DEN_UPGRADE_PRIORITY} Hydralisks are alive, and Missile Attacks
+     * and Carapace once {@value #HYDRALISKS_BEFORE_EVOLUTION_UPGRADE_PRIORITY} are.
+     */
+    @Override
+    protected ArmyUpgradeTrigger armyUpgradeTrigger(UpgradeType upgradeType) {
+        switch (upgradeType) {
+            case Muscular_Augments:
+            case Grooved_Spines:
+                return new ArmyUpgradeTrigger(HYDRALISKS_BEFORE_DEN_UPGRADE_PRIORITY, UnitType.Zerg_Hydralisk);
+            case Zerg_Missile_Attacks:
+            case Zerg_Carapace:
+                return new ArmyUpgradeTrigger(HYDRALISKS_BEFORE_EVOLUTION_UPGRADE_PRIORITY, UnitType.Zerg_Hydralisk);
+            default:
+                return null;
+        }
     }
 
     // Unit production methods

@@ -879,6 +879,7 @@ public class ProductionManager {
         }
 
         reprioritizeHatcheriesForLarvaConstraint();
+        promoteArmyUpgrades(gameState.getProductionQueue(), activeBuildOrder, gameState.getUnitTypeCount());
 
         List<Plan> schedulable = new ArrayList<>();
         int queueSize = gameState.getProductionQueue().size();
@@ -904,6 +905,27 @@ public class ProductionManager {
         schedulingBatch = new ArrayList<>();
         gameState.getPlansScheduled().addAll(outcome.scheduled);
         gameState.getProductionQueue().addAll(outcome.requeued);
+    }
+
+    /**
+     * Moves every queued upgrade whose army trigger the active build order reports met into
+     * {@link BuildOrder#ARMY_UPGRADE_PRIORITY}, ahead of the advanced units it upgrades.
+     *
+     * <p>An upgrade is often planned before its army is fielded, so the priority
+     * {@link BuildOrder#upgradePriority} gave it on enqueue is revisited here every frame. The move
+     * is one way: an upgrade already at or ahead of the band keeps its priority, and one moved into
+     * the band stays there if the army later falls below the trigger.
+     *
+     * @param productionQueue plans not yet scheduled
+     * @param buildOrder the active build order, which names the triggers
+     * @param count our unit counts
+     */
+    static void promoteArmyUpgrades(ProductionQueue productionQueue, BuildOrder buildOrder, UnitTypeCount count) {
+        productionQueue.setPriorityWhere(
+                plan -> plan.getType() == PlanType.UPGRADE
+                        && plan.getPriority() > BuildOrder.ARMY_UPGRADE_PRIORITY
+                        && buildOrder.isArmyUpgradeTriggered(plan.getPlannedUpgrade(), count),
+                BuildOrder.ARMY_UPGRADE_PRIORITY);
     }
 
     private PlanBlocker schedulePlan(Plan plan, boolean bankClaimedAhead, boolean larvaClaimedAhead,

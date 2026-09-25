@@ -13,10 +13,13 @@ public class UnitPlan extends Plan {
      * first. A unit that a late tech building unlocks therefore enters behind the plans derived
      * while it was waiting.
      *
-     * <p>Reactions, tech buildings and the upgrades use lower fixed bands, so they keep their
-     * precedence. Expansion hatcheries and the extractor carry the frame they were derived on and
-     * sequence with the build order. This band polls before every frame-numbered plan still queued
-     * when a tech building completes.
+     * <p>Reactions and emergency defence, the Lair, Hive, Spire and the hive tech buildings,
+     * colonies, Pneumatized Carapace, Lurker Aspect and an army upgrade whose
+     * {@code ArmyUpgradeTrigger} is met use lower fixed bands, so they keep their precedence.
+     * Every other upgrade, the Hydralisk Den, the Evolution Chamber, expansion hatcheries and the
+     * extractor carry the frame they were derived on and sequence with the build order, so this band
+     * polls ahead of them. This band polls before every frame-numbered plan still queued when a
+     * tech building completes.
      */
     public static final int ADVANCED_UNIT_PRIORITY = 150;
 
