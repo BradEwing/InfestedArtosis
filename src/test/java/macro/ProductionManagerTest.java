@@ -475,6 +475,24 @@ class ProductionManagerTest {
                 OverlordHold.Phase.RELEASED, 1, none, none, ProductionManager.SUPPLY_BUFFER - 1, 0, 15));
     }
 
+    /**
+     * With the only Overlord dead, the Hatchery's supply is all there is, so supply used can
+     * never climb to 9 and the first-Overlord rule must not wait for it.
+     */
+    @Test
+    void theFirstOverlordIsReplacedOnceNoSupplyIsFree() {
+        List<Plan> none = Collections.<Plan>emptyList();
+
+        assertEquals(Collections.singletonList(1), ProductionManager.overlordPriorities(
+                OverlordHold.Phase.FREE, 0, none, none, -14, 0, 16));
+        assertEquals(Collections.singletonList(1), ProductionManager.overlordPriorities(
+                OverlordHold.Phase.FREE, 0, none, none, 0, 0, 2));
+        assertTrue(ProductionManager.overlordPriorities(
+                OverlordHold.Phase.FREE, 0, none, none, -14, UnitType.Zerg_Overlord.supplyProvided(), 16).isEmpty());
+        assertTrue(ProductionManager.overlordPriorities(
+                OverlordHold.Phase.FREE, 1, none, none, 1, 0, 16).isEmpty());
+    }
+
     @Test
     void aReleaseAddsNothingWhileAnOverlordIsInFlight() {
         List<Plan> none = Collections.<Plan>emptyList();

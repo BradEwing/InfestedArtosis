@@ -39,7 +39,11 @@ public class NinePoolSpeed extends BuildOrder {
     protected boolean openerComplete(GameState gameState) {
         TechProgression techProgression = gameState.getTechProgression();
         return openingDone(gameState.ourUnitCount(UnitType.Zerg_Zergling),
-                speedQueued || techProgression.isPlannedMetabolicBoost() || techProgression.isMetabolicBoost());
+                speedQueued || techProgression.isPlannedMetabolicBoost() || techProgression.isMetabolicBoost(),
+                extractorDenied(
+                        gameState.structureCount(Readiness.STANDING, UnitType.Zerg_Extractor),
+                        gameState.getBaseData().numExtractor(),
+                        gameState.canPlanExtractor()));
     }
 
     @Override
@@ -130,14 +134,31 @@ public class NinePoolSpeed extends BuildOrder {
 
     /**
      * Whether the opening is finished: the six opening zerglings exist or are planned, and
-     * Metabolic Boost is queued, researching or done.
+     * Metabolic Boost is queued, researching or done, or cannot come because no Extractor can.
+     * The SCV rush reaction blocks Extractors until 12 zerglings live while the opener stops
+     * short of that, and a stolen geyser leaves none to take, so waiting on speed there would
+     * keep the opener from ever handing over.
      *
      * @param zerglingCount zerglings living and planned, two per plan
      * @param speedCommitted whether Metabolic Boost is queued, researching or finished
+     * @param extractorDenied whether no Extractor stands, none is reserved and none can be planned
      * @return true once the opener may hand over
      */
-    static boolean openingDone(int zerglingCount, boolean speedCommitted) {
-        return zerglingCount >= OPENING_ZERGLINGS && speedCommitted;
+    static boolean openingDone(int zerglingCount, boolean speedCommitted, boolean extractorDenied) {
+        return zerglingCount >= OPENING_ZERGLINGS && (speedCommitted || extractorDenied);
+    }
+
+    /**
+     * Whether the opener's Extractor cannot come: none stands, none is reserved by a queued plan,
+     * and none may be planned.
+     *
+     * @param standingExtractors Extractors finished or under construction
+     * @param reservedExtractors Extractors standing or reserved by a queued plan
+     * @param canPlanExtractor whether a new Extractor may be planned this frame
+     * @return true while no Extractor can be expected
+     */
+    static boolean extractorDenied(int standingExtractors, int reservedExtractors, boolean canPlanExtractor) {
+        return standingExtractors < 1 && reservedExtractors < 1 && !canPlanExtractor;
     }
 
     /**
@@ -188,7 +209,8 @@ public class NinePoolSpeed extends BuildOrder {
      */
     static boolean holdsOverlords(int standingPools, int standingExtractors, int reservedExtractors,
                                   boolean canPlanExtractor) {
-        return standingPools < 1 || standingExtractors < 1 && (reservedExtractors > 0 || canPlanExtractor);
+        return standingPools < 1
+                || standingExtractors < 1 && !extractorDenied(standingExtractors, reservedExtractors, canPlanExtractor);
     }
 
     /**

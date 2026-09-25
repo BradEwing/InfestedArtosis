@@ -101,9 +101,27 @@ class NinePoolSpeedTest {
 
     @Test
     void handsOverOnlyAfterSixZerglingsAndSpeed() {
-        assertFalse(NinePoolSpeed.openingDone(NinePoolSpeed.OPENING_ZERGLINGS - 2, true));
-        assertFalse(NinePoolSpeed.openingDone(NinePoolSpeed.OPENING_ZERGLINGS, false));
-        assertTrue(NinePoolSpeed.openingDone(NinePoolSpeed.OPENING_ZERGLINGS, true));
+        assertFalse(NinePoolSpeed.openingDone(NinePoolSpeed.OPENING_ZERGLINGS - 2, true, false));
+        assertFalse(NinePoolSpeed.openingDone(NinePoolSpeed.OPENING_ZERGLINGS, false, false));
+        assertTrue(NinePoolSpeed.openingDone(NinePoolSpeed.OPENING_ZERGLINGS, true, false));
+    }
+
+    /**
+     * The SCV rush reaction cancels Extractors and blocks new ones until 12 zerglings live, and a
+     * stolen geyser leaves none to take. Metabolic Boost cannot come, so six zerglings hand over.
+     */
+    @Test
+    void handsOverAfterSixZerglingsWhenNoExtractorCanCome() {
+        assertTrue(NinePoolSpeed.openingDone(NinePoolSpeed.OPENING_ZERGLINGS, false, true));
+        assertFalse(NinePoolSpeed.openingDone(NinePoolSpeed.OPENING_ZERGLINGS - 2, false, true));
+    }
+
+    @Test
+    void theExtractorIsDeniedOnlyWhenNoneStandsNoneIsReservedAndNoneCanBePlanned() {
+        assertTrue(NinePoolSpeed.extractorDenied(NO_EXTRACTOR, NO_EXTRACTOR, false));
+        assertFalse(NinePoolSpeed.extractorDenied(NO_EXTRACTOR, NO_EXTRACTOR, true));
+        assertFalse(NinePoolSpeed.extractorDenied(NO_EXTRACTOR, ONE_EXTRACTOR, false));
+        assertFalse(NinePoolSpeed.extractorDenied(ONE_EXTRACTOR, ONE_EXTRACTOR, false));
     }
 
     /**

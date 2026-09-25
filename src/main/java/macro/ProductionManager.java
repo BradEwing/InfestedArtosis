@@ -648,8 +648,9 @@ public class ProductionManager {
      *
      * <p>Nothing while the build order holds Overlords. While fewer than two Overlords are alive,
      * only the first-Overlord rule applies: one Overlord at priority 1 once no Overlord is in
-     * flight and either 9 supply is used or the hold released this frame with less than
-     * {@link #SUPPLY_BUFFER} supply free. An opener that holds its Overlords can hand over below
+     * flight and either 9 supply is used, no supply is free, or the hold released this frame with
+     * less than {@link #SUPPLY_BUFFER} supply free. No free supply below 9 used means the only
+     * Overlord died, and supply used could then never climb to 9. An opener that holds its Overlords can hand over below
      * 9 supply, and waiting for 9 there leaves its next steps supply blocked. The queue walker
      * takes over from the second Overlord. Every build order goes through the same rule, so the
      * walker cannot insert the first Overlord ahead of an opener's early drones.
@@ -692,6 +693,7 @@ public class ProductionManager {
             return false;
         }
         return supplyUsed >= FIRST_OVERLORD_SUPPLY_USED
+                || freeSupply <= 0
                 || holdPhase == OverlordHold.Phase.RELEASED && freeSupply < SUPPLY_BUFFER;
     }
 
