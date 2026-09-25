@@ -145,6 +145,16 @@ class ObservedUnitTrackerTest {
     }
 
     @Test
+    void aDestroyedUnitTheFilterAcceptsHasBeenObserved() {
+        ObservedUnit corsair = ObservedUnitFixture.observedUnit(UnitType.Protoss_Corsair, DRONE_OBSERVED);
+        corsair.setDestroyedFrame(POOL_COMPLETED);
+        ObservedUnitTracker tracker = ObservedUnitFixture.trackerHolding(corsair);
+
+        assertTrue(tracker.hasObservedAny(type -> type == UnitType.Protoss_Corsair));
+        assertFalse(tracker.hasObservedAny(type -> type == UnitType.Protoss_Scout));
+    }
+
+    @Test
     void unitFirstObservedAfterTheTimeIsNotCounted() {
         ObservedUnit lair = ObservedUnitFixture.observedUnit(UnitType.Zerg_Lair, POOL_COMPLETED);
         ObservedUnitTracker tracker = ObservedUnitFixture.trackerHolding(lair);

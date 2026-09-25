@@ -1345,6 +1345,81 @@ public class ReactionsTest {
     }
 
     @Test
+    void enemyFlyersAreAirOrCloakThreats() {
+        UnitType[] flyers = {
+            UnitType.Protoss_Corsair, UnitType.Protoss_Shuttle, UnitType.Protoss_Carrier,
+            UnitType.Terran_Dropship, UnitType.Terran_Battlecruiser, UnitType.Zerg_Mutalisk, UnitType.Zerg_Scourge
+        };
+        for (UnitType unitType : flyers) {
+            assertTrue(Reactions.isAirOrCloakThreat(unitType), unitType.toString());
+        }
+    }
+
+    @Test
+    void flyerTechBuildingsAreAirOrCloakThreats() {
+        UnitType[] flyerTech = {
+            UnitType.Protoss_Stargate, UnitType.Protoss_Fleet_Beacon, UnitType.Terran_Starport,
+            UnitType.Terran_Control_Tower, UnitType.Terran_Physics_Lab, UnitType.Zerg_Spire, UnitType.Zerg_Greater_Spire
+        };
+        for (UnitType unitType : flyerTech) {
+            assertTrue(Reactions.isAirOrCloakThreat(unitType), unitType.toString());
+        }
+    }
+
+    @Test
+    void cloakedUnitsAreAirOrCloakThreats() {
+        UnitType[] cloaked = {
+            UnitType.Protoss_Dark_Templar, UnitType.Protoss_Observer, UnitType.Protoss_Arbiter,
+            UnitType.Terran_Ghost, UnitType.Terran_Wraith, UnitType.Terran_Vulture_Spider_Mine, UnitType.Zerg_Lurker
+        };
+        for (UnitType unitType : cloaked) {
+            assertTrue(Reactions.isAirOrCloakThreat(unitType), unitType.toString());
+        }
+    }
+
+    @Test
+    void cloakTechIsAnAirOrCloakThreat() {
+        UnitType[] cloakTech = {
+            UnitType.Protoss_Templar_Archives, UnitType.Protoss_Observatory, UnitType.Protoss_Arbiter_Tribunal,
+            UnitType.Terran_Covert_Ops, UnitType.Zerg_Lurker_Egg
+        };
+        for (UnitType unitType : cloakTech) {
+            assertTrue(Reactions.isAirOrCloakThreat(unitType), unitType.toString());
+        }
+    }
+
+    @Test
+    void aPlainGroundArmyIsNotAnAirOrCloakThreat() {
+        UnitType[] ground = {
+            UnitType.Protoss_Zealot, UnitType.Protoss_Dragoon, UnitType.Protoss_Reaver, UnitType.Protoss_Probe,
+            UnitType.Protoss_Gateway, UnitType.Protoss_Cybernetics_Core, UnitType.Protoss_Robotics_Facility,
+            UnitType.Terran_Marine, UnitType.Terran_Medic, UnitType.Terran_Siege_Tank_Tank_Mode, UnitType.Terran_Vulture,
+            UnitType.Terran_Barracks, UnitType.Terran_Factory, UnitType.Terran_Machine_Shop,
+            UnitType.Zerg_Zergling, UnitType.Zerg_Hydralisk, UnitType.Zerg_Hydralisk_Den, UnitType.Zerg_Lair
+        };
+        for (UnitType unitType : ground) {
+            assertFalse(Reactions.isAirOrCloakThreat(unitType), unitType.toString());
+        }
+    }
+
+    @Test
+    void theEnemyOverlordIsNotAnAirOrCloakThreat() {
+        assertFalse(Reactions.isAirOrCloakThreat(UnitType.Zerg_Overlord));
+    }
+
+    @Test
+    void overlordSpeedStartsInTheReactionBandWhenAnAirOrCloakThreatAndTheReactionBothHold() {
+        assertEquals(Reactions.OVERLORD_SPEED_REACTION_PRIORITY, Reactions.overlordSpeedPlanPriority(9452, true, true));
+    }
+
+    @Test
+    void overlordSpeedKeepsItsFramePriorityUnlessTheThreatAndTheReactionBothHold() {
+        assertEquals(9452, Reactions.overlordSpeedPlanPriority(9452, true, false));
+        assertEquals(9452, Reactions.overlordSpeedPlanPriority(9452, false, true));
+        assertEquals(9452, Reactions.overlordSpeedPlanPriority(9452, false, false));
+    }
+
+    @Test
     void thePoolAndEvolutionChamberAloneDoNotCommitArmyTech() {
         TechProgression techProgression = withSpawningPool();
         techProgression.setEvolutionChambers(1);

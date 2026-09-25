@@ -9,6 +9,7 @@ import info.Readiness;
 import info.TechProgression;
 import info.UnitTypeCount;
 import info.tracking.StrategyTracker;
+import macro.Reactions;
 import macro.plan.Plan;
 import strategy.buildorder.LarvaBoundMacroHatchery;
 import strategy.buildorder.ZerglingTargets;
@@ -100,6 +101,7 @@ public class ThreeHatchHydra extends ProtossBase {
         boolean wantRangedUpgrades = techProgression.canPlanRangedUpgrades();
         boolean wantCarapaceUpgrade = techProgression.canPlanCarapaceUpgrades();
         boolean wantOverlordSpeed = shouldPlanOverlordSpeed(needOverlordSpeed(gameState) && techProgression.canPlanOverlordSpeed(),
+                Reactions.isAirOrCloakThreatSeen(gameState),
                 wantMuscularAugments, wantGroovedSpines, wantRangedUpgrades, wantCarapaceUpgrade);
 
         // Plan buildings

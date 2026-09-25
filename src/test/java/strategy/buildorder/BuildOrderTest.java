@@ -668,26 +668,41 @@ class BuildOrderTest {
 
     @Test
     void withholdsOverlordSpeedWhileTheFirstArmyUpgradeIsStillToBeQueued() {
-        assertFalse(BuildOrder.shouldPlanOverlordSpeed(true, true, false));
+        assertFalse(BuildOrder.shouldPlanOverlordSpeed(true, false, true, false));
     }
 
     @Test
     void withholdsOverlordSpeedWhileTheLastArmyUpgradeIsStillToBeQueued() {
-        assertFalse(BuildOrder.shouldPlanOverlordSpeed(true, false, true));
+        assertFalse(BuildOrder.shouldPlanOverlordSpeed(true, false, false, true));
     }
 
     @Test
     void queuesOverlordSpeedOnceEveryArmyUpgradeIsQueued() {
-        assertTrue(BuildOrder.shouldPlanOverlordSpeed(true, false, false));
+        assertTrue(BuildOrder.shouldPlanOverlordSpeed(true, false, false, false));
     }
 
     @Test
     void queuesOverlordSpeedWhenTheBuildPlansNoArmyUpgrade() {
-        assertTrue(BuildOrder.shouldPlanOverlordSpeed(true));
+        assertTrue(BuildOrder.shouldPlanOverlordSpeed(true, false));
     }
 
     @Test
     void withholdsOverlordSpeedTheBuildDoesNotWant() {
-        assertFalse(BuildOrder.shouldPlanOverlordSpeed(false, false, false));
+        assertFalse(BuildOrder.shouldPlanOverlordSpeed(false, false, false, false));
+    }
+
+    @Test
+    void anAirOrCloakThreatQueuesOverlordSpeedAheadOfTheArmyUpgradesStillToBeQueued() {
+        assertTrue(BuildOrder.shouldPlanOverlordSpeed(true, true, true, true));
+    }
+
+    @Test
+    void withoutAnAirOrCloakThreatOverlordSpeedStillWaitsForTheArmyUpgrades() {
+        assertFalse(BuildOrder.shouldPlanOverlordSpeed(true, false, true, true));
+    }
+
+    @Test
+    void anAirOrCloakThreatDoesNotQueueOverlordSpeedTheBuildDoesNotWant() {
+        assertFalse(BuildOrder.shouldPlanOverlordSpeed(false, true, true));
     }
 }

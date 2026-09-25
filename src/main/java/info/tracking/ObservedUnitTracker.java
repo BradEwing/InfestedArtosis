@@ -171,6 +171,16 @@ public class ObservedUnitTracker {
                 .anyMatch(ou -> ou.getFirstObservedFrame().lessThanOrEqual(t));
     }
 
+    /**
+     * Whether a unit of a type the filter accepts has ever been observed, counting units since
+     * destroyed. A unit that morphed is counted under the type it was last seen as.
+     */
+    public boolean hasObservedAny(Predicate<UnitType> typeFilter) {
+        return observedUnits.values()
+                .stream()
+                .anyMatch(ou -> typeFilter.test(ou.getUnitType()));
+    }
+
     public int getUnitTypeCountCompletedBeforeTime(UnitType type, Time t) {
         return (int) observedUnits.values()
                 .stream()

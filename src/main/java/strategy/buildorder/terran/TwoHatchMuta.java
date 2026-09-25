@@ -8,6 +8,7 @@ import info.GameState;
 import info.Readiness;
 import info.TechProgression;
 import info.UnitTypeCount;
+import macro.Reactions;
 import macro.plan.Plan;
 import strategy.buildorder.LarvaBoundMacroHatchery;
 
@@ -73,6 +74,7 @@ public class TwoHatchMuta extends TerranBase {
         boolean wantMetabolicBoost = techProgression.canPlanMetabolicBoost() && !techProgression.isMetabolicBoost() && lairCount > 0;
         boolean wantFlyingAttack = shouldPlanFlyerAttack(techProgression, livingMutaCount);
         boolean wantOverlordSpeed = shouldPlanOverlordSpeed(needOverlordSpeed(gameState) && techProgression.canPlanOverlordSpeed(),
+                Reactions.isAirOrCloakThreatSeen(gameState),
                 wantFlyingAttack);
 
         // Plan buildings

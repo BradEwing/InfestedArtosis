@@ -9,6 +9,7 @@ import info.Readiness;
 import info.TechProgression;
 import info.tracking.StrategyTracker;
 import info.tracking.protoss.ProxyGate;
+import macro.Reactions;
 import macro.plan.Plan;
 import strategy.buildorder.LarvaBoundMacroHatchery;
 import util.Time;
@@ -106,6 +107,7 @@ public class ThreeHatchMuta extends ProtossBase {
         boolean wantMetabolicBoost = techProgression.canPlanMetabolicBoost() && !techProgression.isMetabolicBoost() && lairCount > 0;
         boolean wantCarapaceUpgrade = techProgression.canPlanCarapaceUpgrades();
         boolean wantOverlordSpeed = shouldPlanOverlordSpeed(needOverlordSpeed(gameState) && techProgression.canPlanOverlordSpeed(),
+                Reactions.isAirOrCloakThreatSeen(gameState),
                 wantCarapaceUpgrade);
 
         // Plan buildings

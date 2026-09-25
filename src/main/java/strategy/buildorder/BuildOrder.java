@@ -206,8 +206,9 @@ public abstract class BuildOrder {
      * <p>This only decides whether the upgrade is queued. {@link #planUpgrade} queues it at frame
      * priority, behind the army upgrades already waiting; only a threat the upgrade answers, from
      * {@link Reactions#isOverlordSpeedThreatened(GameState)}, lifts it to
-     * {@link Reactions#OVERLORD_SPEED_REACTION_PRIORITY}. The clock, enemy tech buildings, the
-     * Science Vessel and an Observer queue it without lifting it.
+     * {@link Reactions#OVERLORD_SPEED_REACTION_PRIORITY}, and a plan created while that threat and
+     * {@link Reactions#isAirOrCloakThreatSeen(GameState)} both hold starts in the band. The clock,
+     * enemy tech buildings, the Science Vessel and an Observer queue it without lifting it.
      */
     public boolean needOverlordSpeed(GameState gameState) {
         if (gameState.structureCount(Readiness.USABLE, bwapi.UnitType.Zerg_Lair) < 1) {
@@ -252,13 +253,22 @@ public abstract class BuildOrder {
      * behind them unless the Overlord speed reaction lifts it. Queueing it in the same pass is not
      * enough: plans of equal priority leave the queue in no fixed order.
      *
+     * <p>Once the enemy has shown flyers or cloak, from
+     * {@link Reactions#isAirOrCloakThreatSeen(GameState)}, the upgrade does not wait for the army
+     * upgrades and is queued whenever the build wants it.
+     *
      * @param wantOverlordSpeed whether the build wants the upgrade and it may be queued
+     * @param airOrCloakThreatSeen whether the enemy has shown flyers or cloak
      * @param armyUpgradesToQueue for each army upgrade the build plans, whether it is still to be queued
      * @return true while the upgrade should be queued
      */
-    protected static boolean shouldPlanOverlordSpeed(boolean wantOverlordSpeed, boolean... armyUpgradesToQueue) {
+    protected static boolean shouldPlanOverlordSpeed(boolean wantOverlordSpeed, boolean airOrCloakThreatSeen,
+                                                     boolean... armyUpgradesToQueue) {
         if (!wantOverlordSpeed) {
             return false;
+        }
+        if (airOrCloakThreatSeen) {
+            return true;
         }
         for (boolean toQueue : armyUpgradesToQueue) {
             if (toQueue) {
@@ -970,6 +980,8 @@ public abstract class BuildOrder {
                 break;
             case Pneumatized_Carapace:
                 techProgression.setPlannedOverlordSpeed(true);
+                priority = Reactions.overlordSpeedPlanPriority(priority, Reactions.isAirOrCloakThreatSeen(gameState),
+                        Reactions.isOverlordSpeedThreatened(gameState));
                 break;
             case Chitinous_Plating:
                 techProgression.setPlannedChitinousPlating(true);
