@@ -66,7 +66,10 @@ import java.util.stream.Collectors;
  *
  * <p>CONTAIN_COLLAPSE is emitted on the frame a containing squad collapses on the enemies inside its arc's sector,
  * and CONTAIN_COLLAPSE_REJECTED on a frame it tested a collapse with an armed enemy in the sector and declined,
- * deduplicated per contain episode and outcome. Both carry the outcome, the enemies in the sector, the sector sim
+ * deduplicated per contain episode and outcome: a rejection of an outcome other than the last one written for the
+ * squad writes a row again. A test that passed but has not yet held through the hysteresis gate is rejected as
+ * UNSUSTAINED, and one that passed while the squad was collapsing or inside its collapse cooldown as COOLING_DOWN.
+ * Both carry the outcome, the enemies in the sector, the sector sim
  * ratio, the flank count and whether the enemy centroid is clear of static defence. CONTAIN_COLLAPSE_COMMIT is
  * emitted on the frame the centre of a collapse commits, which changes no status.
  *

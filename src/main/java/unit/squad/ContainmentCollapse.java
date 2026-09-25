@@ -29,6 +29,10 @@ import java.util.function.DoubleSupplier;
  * of static defence, sieged tanks and Lurkers, see {@link #fixedFireZones}, and a sim over exactly those enemies
  * reads at or above the matchup engage threshold. No squad collapses against Protoss, see {@link #appliesAgainst}.
  *
+ * <p>A passed test commits only once it has held, see {@link #gate}: the squad must pass it on
+ * {@link #ENTRY_EVALUATIONS} consecutive evaluations, and never while a collapse is under way or within
+ * {@link #COOLDOWN_FRAMES} frames of the end of its last one.
+ *
  * <p>The collapse wraps before it commits. The outer third of the squad on each side, by bearing around the choke,
  * are the flanks: each moves to a point past the enemy centroid on the choke side, offset to its own side. The rest
  * hold their points until every flank has arrived or {@link #WRAP_FRAME_CAP} frames have passed, then the whole
@@ -48,6 +52,16 @@ public final class ContainmentCollapse {
     static final int FLANK_ARRIVAL_DISTANCE = 96;
     /** Tuning value: frames after a collapse at which the centre commits whether or not the flanks arrived. */
     static final int WRAP_FRAME_CAP = 72;
+    /**
+     * Tuning value: consecutive containment evaluations on which the collapse test must pass before a collapse
+     * commits. A containing squad is evaluated once a frame, so this is one second of a held signal.
+     */
+    static final int ENTRY_EVALUATIONS = 24;
+    /**
+     * Tuning value: frames after a collapse ends, when its centre commits or the squad drops the wrap, before the
+     * squad may start another. A collapse that could not plan a wrap ends on the frame it starts.
+     */
+    static final int COOLDOWN_FRAMES = 240;
     /** Ratio a read reports when too few armed enemies stood in the sector for the sim to run. */
     static final double NOT_SIMULATED = -1;
 
@@ -60,7 +74,9 @@ public final class ContainmentCollapse {
         STATIC_COVERED,
         SIM_UNFAVOURABLE,
         LOCK_REFUSED,
-        TOO_FEW_MEMBERS
+        TOO_FEW_MEMBERS,
+        UNSUSTAINED,
+        COOLING_DOWN
     }
 
     private ContainmentCollapse() {
@@ -132,6 +148,30 @@ public final class ContainmentCollapse {
         }
         if (!lockRenewable) {
             return Outcome.LOCK_REFUSED;
+        }
+        return Outcome.COLLAPSE;
+    }
+
+    /**
+     * The hysteresis gate on a passed collapse test. A squad collapsing or inside its cooldown reads COOLING_DOWN,
+     * and a squad whose test has not passed on {@link #ENTRY_EVALUATIONS} consecutive evaluations reads UNSUSTAINED.
+     * Any other outcome passes through.
+     *
+     * @param outcome the outcome of this evaluation's collapse test
+     * @param coolingDown true while the squad is collapsing or inside its cooldown, see {@link Squad#isCollapseLocked}
+     * @param heldEvaluations consecutive evaluations, this one included, on which the test passed outside the
+     *     cooldown, see {@link Squad#recordCollapseCandidate}
+     * @return COLLAPSE when the passed test has held and the cooldown is over, else the outcome that held it back
+     */
+    static Outcome gate(Outcome outcome, boolean coolingDown, int heldEvaluations) {
+        if (outcome != Outcome.COLLAPSE) {
+            return outcome;
+        }
+        if (coolingDown) {
+            return Outcome.COOLING_DOWN;
+        }
+        if (heldEvaluations < ENTRY_EVALUATIONS) {
+            return Outcome.UNSUSTAINED;
         }
         return Outcome.COLLAPSE;
     }
@@ -344,6 +384,16 @@ public final class ContainmentCollapse {
             this.staticClear = staticClear;
             this.flanks = flanks;
             this.enemyCentroid = enemyCentroid;
+        }
+
+        /**
+         * The same read with another outcome, as the hysteresis gate reports it, see {@link #gate}.
+         *
+         * @param gated the outcome after the gate
+         * @return the read with that outcome
+         */
+        Read withOutcome(Outcome gated) {
+            return new Read(gated, enemiesInSector, ratio, staticClear, flanks, enemyCentroid);
         }
     }
 

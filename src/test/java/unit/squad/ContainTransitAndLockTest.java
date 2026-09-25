@@ -205,6 +205,80 @@ class ContainTransitAndLockTest {
     }
 
     @Test
+    void aMergeKeepsTheLatestCollapseCooldown() {
+        Squad cooled = new GroundSquad();
+        cooled.setStatus(SquadStatus.CONTAIN);
+        cooled.endCollapse(6000);
+        Squad fresh = new GroundSquad();
+        fresh.setStatus(SquadStatus.CONTAIN);
+
+        Squad merged = new GroundSquad();
+        merged.inheritStateFrom(Arrays.asList(fresh, cooled));
+
+        assertTrue(merged.isCollapseLocked(6000 + ContainmentCollapse.COOLDOWN_FRAMES - 1));
+        assertFalse(merged.isCollapseLocked(6000 + ContainmentCollapse.COOLDOWN_FRAMES));
+    }
+
+    @Test
+    void aMergeThatDropsACollapseHoldsTheSquadOffAnotherUntilItsCooldownWouldEnd() {
+        ContainmentCollapse.Maneuver kept = new ContainmentCollapse.Maneuver(Collections.emptyMap(),
+                Collections.emptySet(), 6000);
+        Squad first = new GroundSquad();
+        first.setStatus(SquadStatus.FIGHT);
+        first.setCollapse(kept);
+        Squad second = new GroundSquad();
+        second.setStatus(SquadStatus.FIGHT);
+        second.setCollapse(new ContainmentCollapse.Maneuver(Collections.emptyMap(), Collections.emptySet(), 6100));
+
+        Squad merged = new GroundSquad();
+        merged.inheritStateFrom(Arrays.asList(first, second));
+        merged.endCollapse(6010);
+        int latestEnd = 6100 + ContainmentCollapse.WRAP_FRAME_CAP;
+
+        assertTrue(merged.isCollapseLocked(latestEnd + ContainmentCollapse.COOLDOWN_FRAMES - 1),
+                "the dropped wrap could have run to its cap");
+        assertFalse(merged.isCollapseLocked(latestEnd + ContainmentCollapse.COOLDOWN_FRAMES));
+    }
+
+    @Test
+    void aSplitCarriesTheCooldownAndTheEntryRunOfAContainingSquad() {
+        Squad parent = new GroundSquad();
+        parent.setStatus(SquadStatus.CONTAIN);
+        parent.endCollapse(6000);
+        parent.recordCollapseCandidate(true);
+        parent.recordCollapseCandidate(true);
+
+        Squad child = parent.createSibling();
+        child.inheritStateFrom(parent);
+
+        assertTrue(child.isCollapseLocked(6000 + ContainmentCollapse.COOLDOWN_FRAMES - 1));
+        assertEquals(3, child.recordCollapseCandidate(true));
+        assertEquals(3, parent.recordCollapseCandidate(true));
+    }
+
+    @Test
+    void aMergeKeepsTheEntryRunOfTheSourceWhoseArcItKeepsAndOnlyInContain() {
+        Squad containing = new GroundSquad();
+        containing.setStatus(SquadStatus.CONTAIN);
+        containing.recordCollapseCandidate(true);
+        containing.recordCollapseCandidate(true);
+        Squad joiner = new GroundSquad();
+        joiner.setStatus(SquadStatus.RALLY);
+
+        Squad merged = new GroundSquad();
+        merged.inheritStateFrom(Arrays.asList(joiner, containing));
+        assertEquals(SquadStatus.CONTAIN, merged.getStatus());
+        assertEquals(3, merged.recordCollapseCandidate(true));
+
+        Squad fighting = new GroundSquad();
+        fighting.setStatus(SquadStatus.FIGHT);
+        Squad left = new GroundSquad();
+        left.inheritStateFrom(Arrays.asList(containing, fighting));
+        assertEquals(SquadStatus.FIGHT, left.getStatus());
+        assertEquals(1, left.recordCollapseCandidate(true), "a squad that left the arc starts the run over");
+    }
+
+    @Test
     void aPushbackThatChangedNothingWritesNoRow() {
         Position midpoint = new Position(1453, 559);
 

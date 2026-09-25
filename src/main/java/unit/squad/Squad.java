@@ -63,6 +63,8 @@ public class Squad implements Comparable<Squad> {
     private RunbyState runbyState;
     private int containRadius = 0;
     private ContainmentCollapse.Maneuver collapse;
+    protected int collapseLockedUntilFrame = 0;
+    private int collapseCandidateEvaluations = 0;
     private final ContainmentAttrition containmentAttrition = new ContainmentAttrition();
     protected Time fightHysteresis = new Time(0, 3);
     protected Time retreatHysteresis = new Time(0, 5);
@@ -239,6 +241,11 @@ public class Squad implements Comparable<Squad> {
      * exit, which is not inherited. A collapse under way in a FIGHT source is carried on when the merged squad is in
      * FIGHT: its members keep their wrap and hold orders, and every other member fights.
      *
+     * <p>The collapse gate carries on too: the cooldown folds to the latest expiry among the sources, and a collapse
+     * the merge drops holds the squad off another until one cooldown after the latest frame its wrap could have
+     * ended. A merge that stays in CONTAIN keeps the count of consecutive passed collapse tests of the source whose
+     * arc it keeps; any other merged status starts it over.
+     *
      * @param sources squads being merged into this one
      */
     public void inheritStateFrom(Collection<Squad> sources) {
@@ -248,6 +255,7 @@ public class Squad implements Comparable<Squad> {
         Arc inheritedArc = null;
         RunbyState inheritedRunby = null;
         int inheritedRadius = 0;
+        int inheritedCandidateEvaluations = 0;
         ContainmentAttrition inheritedAttrition = new ContainmentAttrition();
         ContainmentCollapse.Maneuver inheritedCollapse = null;
         for (Squad source: sources) {
@@ -264,6 +272,7 @@ public class Squad implements Comparable<Squad> {
             if (inheritedArc == null && source.status == SquadStatus.CONTAIN) {
                 inheritedArc = source.containmentArc;
                 inheritedRadius = source.containRadius;
+                inheritedCandidateEvaluations = source.collapseCandidateEvaluations;
             }
             if (source.status == SquadStatus.CONTAIN) {
                 inheritedAttrition.absorb(source.containmentAttrition);
@@ -276,6 +285,7 @@ public class Squad implements Comparable<Squad> {
                 this.retreatLockedUntilFrame = Math.max(this.retreatLockedUntilFrame, source.retreatLockedUntilFrame);
             }
             this.containLockedUntilFrame = Math.max(this.containLockedUntilFrame, source.containLockedUntilFrame);
+            this.collapseLockedUntilFrame = Math.max(this.collapseLockedUntilFrame, source.collapseLockedUntilFrame);
         }
 
         this.status = mergedStatus;
@@ -289,6 +299,14 @@ public class Squad implements Comparable<Squad> {
         }
         this.commitFrame = earliestCommit;
         this.collapse = mergedStatus == SquadStatus.FIGHT ? inheritedCollapse : null;
+        this.collapseCandidateEvaluations = mergedStatus == SquadStatus.CONTAIN ? inheritedCandidateEvaluations : 0;
+        for (Squad source: sources) {
+            if (source.collapse != null && source.collapse != this.collapse) {
+                this.collapseLockedUntilFrame = Math.max(this.collapseLockedUntilFrame,
+                        source.collapse.getStartFrame() + ContainmentCollapse.WRAP_FRAME_CAP
+                                + ContainmentCollapse.COOLDOWN_FRAMES);
+            }
+        }
     }
 
     public boolean isMergeEligible(int currentFrame) {
@@ -448,6 +466,57 @@ public class Squad implements Comparable<Squad> {
     private void resetContainmentEpisode() {
         containRadius = 0;
         containmentAttrition.reset();
+        clearCollapseStart();
+    }
+
+    /**
+     * Whether the squad may not start a collapse on this frame: a collapse is under way, or the last one ended less
+     * than {@link ContainmentCollapse#COOLDOWN_FRAMES} frames ago.
+     *
+     * @param currentFrame frame of the evaluation
+     * @return true while collapsing or inside the cooldown
+     */
+    public boolean isCollapseLocked(int currentFrame) {
+        return collapse != null || currentFrame < collapseLockedUntilFrame;
+    }
+
+    /**
+     * Arms the collapse cooldown from the frame a collapse ended, see {@link ContainmentCollapse#COOLDOWN_FRAMES}.
+     *
+     * @param currentFrame frame the collapse ended on
+     */
+    public void startCollapseLock(int currentFrame) {
+        collapseLockedUntilFrame = Math.max(collapseLockedUntilFrame,
+                currentFrame + ContainmentCollapse.COOLDOWN_FRAMES);
+    }
+
+    /**
+     * Ends a collapse under way and arms the cooldown from this frame.
+     *
+     * @param currentFrame frame the collapse ended on
+     */
+    public void endCollapse(int currentFrame) {
+        collapse = null;
+        startCollapseLock(currentFrame);
+    }
+
+    /**
+     * Records one collapse test of a containing squad and returns how many consecutive evaluations, this one
+     * included, have passed it. Any evaluation that did not pass starts the count over.
+     *
+     * @param candidate true when this evaluation passed the collapse test outside the cooldown
+     * @return consecutive passed evaluations, 0 when this one did not pass
+     */
+    public int recordCollapseCandidate(boolean candidate) {
+        collapseCandidateEvaluations = candidate ? collapseCandidateEvaluations + 1 : 0;
+        return collapseCandidateEvaluations;
+    }
+
+    /**
+     * Starts the count of consecutive passed collapse tests over, as a new or ended contain episode does.
+     */
+    public void clearCollapseStart() {
+        collapseCandidateEvaluations = 0;
     }
 
     /**

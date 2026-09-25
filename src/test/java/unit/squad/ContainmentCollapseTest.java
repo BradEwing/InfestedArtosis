@@ -343,4 +343,114 @@ class ContainmentCollapseTest {
         assertFalse(ContainmentCollapse.wrapComplete(ContainmentCollapse.WRAP_FRAME_CAP - 1, farFlank));
         assertTrue(ContainmentCollapse.wrapComplete(0, Collections.emptyList()), "every flank died");
     }
+
+    private static ContainmentCollapse.Read passedTest() {
+        return ContainmentCollapse.read(inSector(heldArc(), marinesInTheBowl()), Collections.emptyList(), PADDING,
+                FAVOURABLE, TERRAN_THRESHOLD, true, MEMBERS);
+    }
+
+    private static ContainmentCollapse.Read failedTest() {
+        return ContainmentCollapse.read(inSector(heldArc(), marinesInTheBowl()), Collections.emptyList(), PADDING,
+                UNFAVOURABLE, TERRAN_THRESHOLD, true, MEMBERS);
+    }
+
+    @Test
+    void aPassedTestDoesNotCommitBeforeItHasHeldAndCommitsWhenItHas() {
+        Squad squad = new GroundSquad();
+        ContainmentCollapse.Read passed = passedTest();
+        int first = 9000;
+
+        for (int i = 0; i < ContainmentCollapse.ENTRY_EVALUATIONS - 1; i++) {
+            ContainmentCollapse.Read gated = SquadManager.gateCollapse(squad, passed, first + i);
+            assertEquals(ContainmentCollapse.Outcome.UNSUSTAINED, gated.getOutcome(), "evaluation " + (i + 1));
+            assertEquals(2.0, gated.getRatio());
+        }
+        assertEquals(ContainmentCollapse.Outcome.COLLAPSE, SquadManager.gateCollapse(squad, passed,
+                first + ContainmentCollapse.ENTRY_EVALUATIONS - 1).getOutcome());
+    }
+
+    @Test
+    void aFailedOrMissingTestStartsTheRunOver() {
+        Squad squad = new GroundSquad();
+        ContainmentCollapse.Read passed = passedTest();
+        int frame = 9000;
+        for (int i = 0; i < ContainmentCollapse.ENTRY_EVALUATIONS - 1; i++) {
+            SquadManager.gateCollapse(squad, passed, frame++);
+        }
+
+        assertEquals(ContainmentCollapse.Outcome.SIM_UNFAVOURABLE,
+                SquadManager.gateCollapse(squad, failedTest(), frame++).getOutcome());
+        assertEquals(ContainmentCollapse.Outcome.UNSUSTAINED,
+                SquadManager.gateCollapse(squad, passed, frame++).getOutcome());
+
+        assertNull(SquadManager.gateCollapse(squad, null, frame++), "the enemies left the sector");
+        for (int i = 0; i < ContainmentCollapse.ENTRY_EVALUATIONS - 1; i++) {
+            assertEquals(ContainmentCollapse.Outcome.UNSUSTAINED,
+                    SquadManager.gateCollapse(squad, passed, frame++).getOutcome());
+        }
+        assertEquals(ContainmentCollapse.Outcome.COLLAPSE,
+                SquadManager.gateCollapse(squad, passed, frame).getOutcome());
+    }
+
+    @Test
+    void noCollapseStartsInsideTheCooldownAndOneMayAfterIt() {
+        Squad squad = new GroundSquad();
+        ContainmentCollapse.Read passed = passedTest();
+        int ended = 9000;
+        squad.endCollapse(ended);
+
+        for (int frame = ended; frame < ended + ContainmentCollapse.COOLDOWN_FRAMES; frame++) {
+            assertEquals(ContainmentCollapse.Outcome.COOLING_DOWN,
+                    SquadManager.gateCollapse(squad, passed, frame).getOutcome(), "frame " + frame);
+        }
+        int open = ended + ContainmentCollapse.COOLDOWN_FRAMES;
+        assertFalse(squad.isCollapseLocked(open));
+        for (int i = 0; i < ContainmentCollapse.ENTRY_EVALUATIONS - 1; i++) {
+            assertEquals(ContainmentCollapse.Outcome.UNSUSTAINED,
+                    SquadManager.gateCollapse(squad, passed, open + i).getOutcome(),
+                    "the run starts only once the cooldown is over");
+        }
+        assertEquals(ContainmentCollapse.Outcome.COLLAPSE, SquadManager.gateCollapse(squad, passed,
+                open + ContainmentCollapse.ENTRY_EVALUATIONS - 1).getOutcome());
+    }
+
+    @Test
+    void aCollapseUnderWayHoldsTheGateAndItsEndArmsTheCooldown() {
+        Squad squad = new GroundSquad();
+        squad.setCollapse(new ContainmentCollapse.Maneuver(Collections.emptyMap(), Collections.emptySet(), 9000));
+
+        assertTrue(squad.isCollapseLocked(20000), "locked for as long as the wrap runs");
+
+        squad.endCollapse(9050);
+
+        assertNull(squad.getCollapse());
+        assertTrue(squad.isCollapseLocked(9050 + ContainmentCollapse.COOLDOWN_FRAMES - 1));
+        assertFalse(squad.isCollapseLocked(9050 + ContainmentCollapse.COOLDOWN_FRAMES));
+    }
+
+    @Test
+    void aNewContainEpisodeStartsTheRunOver() {
+        Squad squad = new GroundSquad();
+        ContainmentCollapse.Read passed = passedTest();
+        for (int i = 0; i < ContainmentCollapse.ENTRY_EVALUATIONS - 1; i++) {
+            SquadManager.gateCollapse(squad, passed, 9000 + i);
+        }
+
+        squad.clearContainStart();
+
+        assertEquals(1, squad.recordCollapseCandidate(true));
+    }
+
+    @Test
+    void theGatePassesEveryOtherOutcomeThrough() {
+        for (ContainmentCollapse.Outcome outcome : ContainmentCollapse.Outcome.values()) {
+            if (outcome != ContainmentCollapse.Outcome.COLLAPSE) {
+                assertEquals(outcome, ContainmentCollapse.gate(outcome, true, 0));
+                assertEquals(outcome, ContainmentCollapse.gate(outcome, false,
+                        ContainmentCollapse.ENTRY_EVALUATIONS));
+            }
+        }
+        assertEquals(ContainmentCollapse.Outcome.COOLING_DOWN, ContainmentCollapse.gate(
+                ContainmentCollapse.Outcome.COLLAPSE, true, ContainmentCollapse.ENTRY_EVALUATIONS));
+    }
 }
