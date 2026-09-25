@@ -2,11 +2,14 @@ package telemetry;
 
 import bwapi.Position;
 import bwapi.UnitType;
+import unit.managed.ManagedUnit;
 import unit.squad.CombatSimulator;
 import unit.squad.ContainmentCollapse;
 import unit.squad.DefenseSim;
 import unit.squad.RunbyState;
 import unit.squad.Squad;
+
+import java.util.List;
 
 /**
  * Receives the inputs SquadManager used to pick a squad status. Implementations must never throw:
@@ -122,7 +125,10 @@ public interface SquadDecisionSink {
      * Worker defence at a base pulled gatherers, abandoned its defence, or released its defenders.
      *
      * <p>sim is the full commitment simulation behind a PULL or ABANDON, and null when none ran.
+     *
+     * @param pulled gatherers the defence took on, in pull order
+     * @param released defenders the defence let go, still holding the roles they had in the squad
      */
-    void onDefenseEvaluated(Squad squad, DefenseEvent event, int candidates, int pulled, int released,
-                            DefenseSim sim);
+    void onDefenseEvaluated(Squad squad, DefenseEvent event, int candidates, List<ManagedUnit> pulled,
+                            List<ManagedUnit> released, DefenseSim sim);
 }

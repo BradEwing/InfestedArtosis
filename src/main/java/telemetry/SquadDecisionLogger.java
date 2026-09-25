@@ -4,6 +4,8 @@ import bwapi.Game;
 import bwapi.Position;
 import bwapi.UnitType;
 import info.GameState;
+import unit.managed.ManagedUnit;
+import unit.managed.UnitRole;
 import unit.squad.CombatSimulator;
 import unit.squad.ContainmentCollapse;
 import unit.squad.DefenseSim;
@@ -16,11 +18,13 @@ import util.Arc;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Records squad status changes and the decisions behind them.
@@ -42,6 +46,11 @@ import java.util.Set;
  * squad_type DEFENSE. They carry the candidate, pulled and released worker counts and the full
  * commitment simulation; sim_result is ENGAGE when that simulation wins, RETREAT when it loses and
  * NONE when none ran. Fight squad rows leave the defense columns at -1.
+ *
+ * <p>pulled_unit_ids names the workers a DEFENSE_PULL row took on, as unit ids joined by semicolons.
+ * released_unit_ids names the workers a DEFENSE_ABANDON or DEFENSE_RELEASE row let go, as id:ROLE pairs joined by
+ * semicolons, where ROLE is the role the worker held when it left the squad, so a builder dispatched out of the
+ * squad shows as BUILD. Either cell is NONE when it names no worker, which is every fight squad row.
  *
  * <p>Rows for a squad holding a containment arc carry the arc's center and its points as x:y pairs joined by
  * semicolons; every other row carries -1 and NONE there.
@@ -88,7 +97,8 @@ public class SquadDecisionLogger implements SquadDecisionSink {
             + "decision_path,sim_enemy_composition,sim_enemy_unscored_supply,runby_phase_old,runby_phase,"
             + "pushback_from_x,pushback_from_y,pushback_to_x,pushback_to_y,pushback_enemy_type,"
             + "pushback_members_moved,contain_supply_lost,outranged_hit,sim_enemy_air_share,sim_our_air_share,"
-            + "move_out_threshold,move_out_strength,collapse_outcome,collapse_enemies_in_sector,collapse_sim_ratio,"
+            + "move_out_threshold,move_out_strength,pulled_unit_ids,released_unit_ids,"
+            + "collapse_outcome,collapse_enemies_in_sector,collapse_sim_ratio,"
             + "collapse_flank_count,collapse_static_clear,contain_arc_distance";
 
     private static final int FLUSH_INTERVAL_FRAMES = 480;
@@ -419,8 +429,8 @@ public class SquadDecisionLogger implements SquadDecisionSink {
     }
 
     @Override
-    public void onDefenseEvaluated(Squad squad, DefenseEvent event, int candidates, int pulled, int released,
-                                   DefenseSim sim) {
+    public void onDefenseEvaluated(Squad squad, DefenseEvent event, int candidates, List<ManagedUnit> pulled,
+                                   List<ManagedUnit> released, DefenseSim sim) {
         if (disabled) {
             return;
         }
@@ -620,12 +630,13 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         fields.addAll(containmentCells(context));
         fields.addAll(simDomainCells(context));
         fields.addAll(moveOutCells(context));
+        fields.addAll(workerIdCells(Collections.emptyList(), Collections.emptyList()));
         fields.addAll(collapseCells(context));
         return String.join(",", fields);
     }
 
-    private String defenseRow(Squad squad, int frame, DefenseEvent event, int candidates, int pulled, int released,
-                              DefenseSim sim) {
+    private String defenseRow(Squad squad, int frame, DefenseEvent event, int candidates, List<ManagedUnit> pulled,
+                              List<ManagedUnit> released, DefenseSim sim) {
         SquadDecision context = new SquadDecision();
         if (sim != null && sim.isSimulated()) {
             context.setResult(sim.wins() ? CombatSimulator.CombatResult.ENGAGE : CombatSimulator.CombatResult.RETREAT);
@@ -635,7 +646,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
                 gameState.getScoutData().isEnemyBuildingLocationKnown(),
                 groundDistanceToNearestBase(squad.getCenter()), frame));
         fields.addAll(rallyCells(RallyReason.NONE, RallyRelease.NONE));
-        fields.addAll(defenseCells(candidates, pulled, released, sim));
+        fields.addAll(defenseCells(candidates, pulled.size(), released.size(), sim));
         fields.addAll(arcCells(squad));
         fields.addAll(pathCells(context));
         fields.addAll(enemySampleCells(context));
@@ -643,8 +654,32 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         fields.addAll(containmentCells(context));
         fields.addAll(simDomainCells(context));
         fields.addAll(moveOutCells(context));
+        fields.addAll(workerIdCells(
+                pulled.stream().map(worker -> String.valueOf(worker.getUnitID())).collect(Collectors.toList()),
+                released.stream().map(worker -> releasedWorkerEntry(worker.getUnitID(), worker.getRole()))
+                        .collect(Collectors.toList())));
         fields.addAll(collapseCells(context));
         return String.join(",", fields);
+    }
+
+    /**
+     * Builds the pulled_unit_ids and released_unit_ids cells, each the given entries joined by semicolons, or NONE
+     * when there are none.
+     *
+     * @param pulled unit ids of the workers pulled
+     * @param released entries of the workers released, see {@link #releasedWorkerEntry}
+     * @return the pulled cell and the released cell
+     */
+    static List<String> workerIdCells(List<String> pulled, List<String> released) {
+        return Arrays.asList(pulled.isEmpty() ? NONE : String.join(";", pulled),
+                released.isEmpty() ? NONE : String.join(";", released));
+    }
+
+    /**
+     * Names one released worker as its unit id and the role it held when it left the squad, as id:ROLE.
+     */
+    static String releasedWorkerEntry(int unitId, UnitRole role) {
+        return unitId + ":" + Csv.name(role);
     }
 
     /**

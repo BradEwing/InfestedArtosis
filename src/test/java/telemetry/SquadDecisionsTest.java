@@ -4,6 +4,8 @@ import bwapi.Position;
 import bwapi.UnitType;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import unit.managed.ManagedUnit;
+import unit.managed.UnitRole;
 import unit.squad.AirSquad;
 import unit.squad.CombatSimulator;
 import unit.squad.ContainmentCollapse;
@@ -15,6 +17,7 @@ import unit.squad.SquadStatus;
 import util.Arc;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
@@ -110,9 +113,9 @@ class SquadDecisionsTest {
             }
 
             @Override
-            public void onDefenseEvaluated(Squad squad, DefenseEvent event, int candidates, int pulled, int released,
-                                           DefenseSim sim) {
-                events.add("DEFENSE:" + event + ":" + candidates + ":" + pulled + ":" + released);
+            public void onDefenseEvaluated(Squad squad, DefenseEvent event, int candidates, List<ManagedUnit> pulled,
+                                           List<ManagedUnit> released, DefenseSim sim) {
+                events.add("DEFENSE:" + event + ":" + candidates + ":" + pulled.size() + ":" + released.size());
             }
         };
     }
@@ -139,6 +142,8 @@ class SquadDecisionsTest {
                 + "," + String.join(",", SquadDecisionLogger.containmentCells(context))
                 + "," + String.join(",", SquadDecisionLogger.simDomainCells(context))
                 + "," + String.join(",", SquadDecisionLogger.moveOutCells(context))
+                + "," + String.join(",", SquadDecisionLogger.workerIdCells(Collections.emptyList(),
+                Collections.emptyList()))
                 + "," + String.join(",", SquadDecisionLogger.collapseCells(context));
         return row.split(",", -1);
     }
@@ -472,10 +477,11 @@ class SquadDecisionsTest {
         SquadDecisions.register(recorder());
         Squad squad = new Squad();
 
-        SquadDecisions.defenseEvaluated(squad, DefenseEvent.ABANDON, 6, 0, 2, DefenseSim.unsimulated(8, 0.5));
+        SquadDecisions.defenseEvaluated(squad, DefenseEvent.ABANDON, 6, Collections.emptyList(),
+                Collections.emptyList(), DefenseSim.unsimulated(8, 0.5));
 
         assertEquals(1, events.size());
-        assertEquals("DEFENSE:ABANDON:6:0:2", events.get(0));
+        assertEquals("DEFENSE:ABANDON:6:0:0", events.get(0));
     }
 
     @Test
@@ -495,6 +501,9 @@ class SquadDecisionsTest {
                 + "," + String.join(",", SquadDecisionLogger.containmentCells(context))
                 + "," + String.join(",", SquadDecisionLogger.simDomainCells(context))
                 + "," + String.join(",", SquadDecisionLogger.moveOutCells(context))
+                + "," + String.join(",", SquadDecisionLogger.workerIdCells(Collections.emptyList(),
+                Arrays.asList(SquadDecisionLogger.releasedWorkerEntry(161, UnitRole.BUILD),
+                        SquadDecisionLogger.releasedWorkerEntry(162, UnitRole.DEFEND))))
                 + "," + String.join(",", SquadDecisionLogger.collapseCells(context));
         String[] fields = row.split(",", -1);
 
@@ -509,6 +518,33 @@ class SquadDecisionsTest {
         assertEquals("1", fields[columnIndex("defense_sim_defender_survivors")]);
         assertEquals("5", fields[columnIndex("defense_sim_enemy_survivors")]);
         assertEquals("0.5000", fields[columnIndex("defense_win_threshold")]);
+        assertEquals("NONE", fields[columnIndex("pulled_unit_ids")]);
+        assertEquals("161:BUILD;162:DEFEND", fields[columnIndex("released_unit_ids")]);
+    }
+
+    @Test
+    void pullRowsNameThePulledUnitIds() {
+        List<String> cells = SquadDecisionLogger.workerIdCells(Arrays.asList("161", "170"), Collections.emptyList());
+
+        assertEquals(Arrays.asList("161;170", "NONE"), cells);
+    }
+
+    @Test
+    void fightSquadRowsNameNoWorkers() {
+        String[] fields = rowFor(new GroundSquad());
+
+        assertEquals("NONE", fields[columnIndex("pulled_unit_ids")]);
+        assertEquals("NONE", fields[columnIndex("released_unit_ids")]);
+    }
+
+    @Test
+    void workerIdColumnsAreAppendedAfterTheMoveOutColumns() {
+        String[] columns = SquadDecisionLogger.HEADER.split(",", -1);
+        int pulled = columnIndex("pulled_unit_ids");
+
+        assertEquals("move_out_strength", columns[pulled - 1]);
+        assertEquals("released_unit_ids", columns[pulled + 1]);
+        assertEquals("collapse_outcome", columns[pulled + 2]);
     }
 
     @Test
@@ -590,6 +626,8 @@ class SquadDecisionsTest {
                 + "," + String.join(",", SquadDecisionLogger.containmentCells(context))
                 + "," + String.join(",", SquadDecisionLogger.simDomainCells(context))
                 + "," + String.join(",", SquadDecisionLogger.moveOutCells(context))
+                + "," + String.join(",", SquadDecisionLogger.workerIdCells(Collections.emptyList(),
+                Collections.emptyList()))
                 + "," + String.join(",", SquadDecisionLogger.collapseCells(context));
         String[] fields = row.split(",", -1);
 
@@ -644,7 +682,7 @@ class SquadDecisionsTest {
         List<String> cells = SquadDecisionLogger.moveOutCells(context);
         int first = columnIndex("move_out_threshold");
 
-        assertEquals(columnIndex("collapse_outcome") - first, cells.size());
+        assertEquals(columnIndex("pulled_unit_ids") - first, cells.size());
         assertEquals("5", cells.get(0));
         assertEquals("1", cells.get(columnIndex("move_out_strength") - first));
         assertEquals("-1", rowFor(new AirSquad())[columnIndex("move_out_threshold")]);

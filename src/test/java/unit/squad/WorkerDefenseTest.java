@@ -16,6 +16,7 @@ class WorkerDefenseTest {
 
     private static final List<String> MAIN_LINE = Arrays.asList("m1", "m2", "m3", "m4", "m5", "m6");
     private static final List<String> NO_GATHERERS = Collections.emptyList();
+    private static final Predicate<String> ANY = gatherer -> true;
 
     private static Predicate<List<String>> winsWithAtLeast(int defenders, List<List<String>> evaluated) {
         return group -> {
@@ -108,12 +109,12 @@ class WorkerDefenseTest {
 
     @Test
     void gatherersAtAnotherBaseAreNotPulledIntoACombatUnitThreat() {
-        assertTrue(WorkerDefense.candidates(NO_GATHERERS, MAIN_LINE, true, false).isEmpty());
+        assertTrue(WorkerDefense.candidates(NO_GATHERERS, MAIN_LINE, true, false, ANY).isEmpty());
     }
 
     @Test
     void gatherersAtAnotherBaseArePulledNoFurtherThanTheCap() {
-        List<String> candidates = WorkerDefense.candidates(NO_GATHERERS, MAIN_LINE, false, false);
+        List<String> candidates = WorkerDefense.candidates(NO_GATHERERS, MAIN_LINE, false, false, ANY);
 
         assertEquals(WorkerDefense.CROSS_BASE_DEFENDER_CAP, candidates.size());
         assertEquals(MAIN_LINE.subList(0, WorkerDefense.CROSS_BASE_DEFENDER_CAP), candidates);
@@ -121,7 +122,7 @@ class WorkerDefenseTest {
 
     @Test
     void theCrossBaseCapHoldsEvenWhenEveryCandidateWouldBeNeeded() {
-        List<String> candidates = WorkerDefense.candidates(NO_GATHERERS, MAIN_LINE, false, false);
+        List<String> candidates = WorkerDefense.candidates(NO_GATHERERS, MAIN_LINE, false, false, ANY);
         WorkerDefense.Outcome<String> outcome = WorkerDefense.decide(NO_GATHERERS, candidates,
                 group -> true, group -> false);
 
@@ -130,20 +131,44 @@ class WorkerDefenseTest {
 
     @Test
     void aCannonRushLiftsTheCrossBaseCap() {
-        assertEquals(MAIN_LINE, WorkerDefense.candidates(NO_GATHERERS, MAIN_LINE, true, true));
+        assertEquals(MAIN_LINE, WorkerDefense.candidates(NO_GATHERERS, MAIN_LINE, true, true, ANY));
     }
 
     @Test
     void aBaseDefendsWithItsOwnGatherersFirst() {
         List<String> own = Arrays.asList("n1", "n2", "n3", "n4");
 
-        assertEquals(own, WorkerDefense.candidates(own, MAIN_LINE, true, false));
+        assertEquals(own, WorkerDefense.candidates(own, MAIN_LINE, true, false, ANY));
     }
 
     @Test
     void aSourceBaseBelowTheMinimumGivesNoGatherers() {
-        assertTrue(WorkerDefense.candidates(Arrays.asList("n1", "n2"), MAIN_LINE, false, false).isEmpty());
-        assertTrue(WorkerDefense.candidates(NO_GATHERERS, Arrays.asList("m1", "m2"), false, true).isEmpty());
+        assertTrue(WorkerDefense.candidates(Arrays.asList("n1", "n2"), MAIN_LINE, false, false, ANY).isEmpty());
+        assertTrue(WorkerDefense.candidates(NO_GATHERERS, Arrays.asList("m1", "m2"), false, true, ANY).isEmpty());
+    }
+
+    @Test
+    void aHeldBackGathererStillCountsTowardTheMinimum() {
+        List<String> own = Arrays.asList("builder", "n2", "n3");
+
+        assertEquals(Arrays.asList("n2", "n3"),
+                WorkerDefense.candidates(own, MAIN_LINE, false, false, gatherer -> !gatherer.equals("builder")));
+    }
+
+    @Test
+    void aHeldBackGathererIsNeverOffered() {
+        List<String> own = Arrays.asList("n1", "builder", "n3", "n4");
+
+        assertFalse(WorkerDefense.candidates(own, MAIN_LINE, false, false, gatherer -> !gatherer.equals("builder"))
+                .contains("builder"));
+    }
+
+    @Test
+    void theCrossBaseCapFillsFromPullableGatherers() {
+        List<String> candidates = WorkerDefense.candidates(NO_GATHERERS, MAIN_LINE, false, false,
+                gatherer -> !gatherer.equals("m1"));
+
+        assertEquals(Arrays.asList("m2", "m3"), candidates);
     }
 
     @Test
