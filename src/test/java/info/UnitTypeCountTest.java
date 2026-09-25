@@ -224,4 +224,26 @@ class UnitTypeCountTest {
 
         assertEquals(1, count.get(UnitType.Zerg_Spawning_Pool));
     }
+
+    @Test
+    void aCompletedUnitDestroyedCountsAsLost() {
+        UnitTypeCount count = new UnitTypeCount();
+        count.addUnit(UnitType.Zerg_Overlord);
+        count.addUnit(UnitType.Zerg_Overlord);
+
+        count.removeDestroyedUnit(UnitType.Zerg_Overlord, true);
+        count.removeDestroyedUnit(UnitType.Zerg_Overlord, true);
+
+        assertEquals(2, count.getTotalLost(UnitType.Zerg_Overlord));
+        assertEquals(0, count.getTotalLost(UnitType.Zerg_Drone));
+    }
+
+    @Test
+    void aUnitDestroyedBeforeItCompletesIsNotCountedAsLost() {
+        UnitTypeCount count = new UnitTypeCount();
+
+        count.removeDestroyedUnit(UnitType.Zerg_Spawning_Pool, false);
+
+        assertEquals(0, count.getTotalLost(UnitType.Zerg_Spawning_Pool));
+    }
 }

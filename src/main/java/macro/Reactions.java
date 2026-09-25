@@ -73,6 +73,39 @@ public class Reactions {
     private static final Predicate<Plan> IS_SPEED_UPGRADE = p ->
             p.getType() == PlanType.UPGRADE && ((UpgradePlan) p).getPlannedUpgrade() == UpgradeType.Metabolic_Boost;
 
+    private static final Predicate<Plan> IS_OVERLORD_SPEED_UPGRADE = p ->
+            p.getType() == PlanType.UPGRADE && ((UpgradePlan) p).getPlannedUpgrade() == UpgradeType.Pneumatized_Carapace;
+
+    /**
+     * The fixed band Pneumatized Carapace is lifted to while a threat it answers is known: ahead of
+     * the frame stamped army upgrades and of {@link macro.plan.UnitPlan#ADVANCED_UNIT_PRIORITY},
+     * behind the emergency and tech bands.
+     */
+    public static final int OVERLORD_SPEED_REACTION_PRIORITY = 100;
+
+    /**
+     * Completed Overlords the bot must lose before the losses alone count as an Overlord speed
+     * threat. One loss is often a scouting Overlord; a second says the Overlords are being hunted.
+     */
+    static final int OVERLORDS_LOST_TRIGGER = 2;
+
+    /**
+     * Enemy units that hunt Overlords.
+     */
+    private static final UnitType[] OVERLORD_HUNTERS = {
+        UnitType.Protoss_Corsair, UnitType.Protoss_Scout, UnitType.Terran_Wraith,
+        UnitType.Terran_Valkyrie, UnitType.Zerg_Devourer
+    };
+
+    /**
+     * Enemy units that call for an Overlord to keep up with the army as a detector: Dark Templar,
+     * Lurkers and Spider Mines, and the Observer that backs a cloaked army.
+     */
+    private static final UnitType[] DETECTION_THREATS = {
+        UnitType.Protoss_Dark_Templar, UnitType.Protoss_Observer, UnitType.Zerg_Lurker,
+        UnitType.Terran_Vulture_Spider_Mine
+    };
+
     /**
      * Sits behind emergency defense so an unaffordable upgrade can never tie with, and so deny a
      * schedule slot to, the emergency creep colony, while still jumping ahead of tech and normal
@@ -124,6 +157,7 @@ public class Reactions {
         twoGateReaction();
         zvzSunkenReaction();
         ffeReaction();
+        overlordSpeedReaction();
         openMainForStaticDefense();
         clearMainSunkenOnExpansion();
     }
@@ -747,6 +781,61 @@ public class Reactions {
         }
         int priority = Math.max(target, FFE_BOOST_FLOOR);
         productionQueue.setPriorityWhere(boosted.and(p -> p.getPriority() > priority), priority);
+    }
+
+    private void overlordSpeedReaction() {
+        raiseOverlordSpeed(gameState.getProductionQueue(), isOverlordSpeedThreatened(gameState));
+    }
+
+    /**
+     * Whether a threat Pneumatized Carapace answers is known: a living Overlord hunter or detection
+     * threat has been seen, or enough Overlords have been lost. Enemy tech buildings and the clock
+     * are not threats; they queue the upgrade through {@link BuildOrder#needOverlordSpeed} without
+     * lifting it.
+     *
+     * @param gameState the game state the enemy counts and Overlord losses are read from
+     * @return true while the reaction band applies
+     */
+    public static boolean isOverlordSpeedThreatened(GameState gameState) {
+        return isOverlordSpeedThreatened(enemyCount(gameState, OVERLORD_HUNTERS), enemyCount(gameState, DETECTION_THREATS),
+                gameState.totalLost(UnitType.Zerg_Overlord));
+    }
+
+    /**
+     * Whether the Overlord speed reaction fires.
+     *
+     * @param overlordHunters living enemy Corsairs, Scouts, Wraiths, Valkyries and Devourers seen
+     * @param detectionThreats living enemy Dark Templar, Observers, Lurkers and Spider Mines seen
+     * @param overlordsLost completed Overlords the bot has lost this game
+     * @return true when any of them calls for the upgrade
+     */
+    static boolean isOverlordSpeedThreatened(int overlordHunters, int detectionThreats, int overlordsLost) {
+        return overlordHunters > 0 || detectionThreats > 0 || overlordsLost >= OVERLORDS_LOST_TRIGGER;
+    }
+
+    private static int enemyCount(GameState gameState, UnitType[] unitTypes) {
+        int count = 0;
+        for (UnitType unitType : unitTypes) {
+            count += gameState.enemyUnitCount(unitType);
+        }
+        return count;
+    }
+
+    /**
+     * Lifts queued Pneumatized Carapace plans to {@link #OVERLORD_SPEED_REACTION_PRIORITY} while a
+     * threat is known, and leaves them at the frame priority the build order queued them at
+     * otherwise. A plan already at or ahead of the band keeps its priority, and the lift is never
+     * undone, so a plan lifted by a threat that has since died stays ahead.
+     *
+     * @param productionQueue the queue holding plans not yet scheduled
+     * @param threatened whether {@link #isOverlordSpeedThreatened(GameState)} holds this frame
+     */
+    static void raiseOverlordSpeed(ProductionQueue productionQueue, boolean threatened) {
+        if (!threatened) {
+            return;
+        }
+        productionQueue.setPriorityWhere(IS_OVERLORD_SPEED_UPGRADE.and(p -> p.getPriority() > OVERLORD_SPEED_REACTION_PRIORITY),
+                OVERLORD_SPEED_REACTION_PRIORITY);
     }
 
     /**

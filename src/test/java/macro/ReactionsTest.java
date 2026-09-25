@@ -1237,6 +1237,79 @@ public class ReactionsTest {
     }
 
     @Test
+    void noEnemyThreatAndNoOverlordLossesLeaveOverlordSpeedUnthreatened() {
+        assertFalse(Reactions.isOverlordSpeedThreatened(0, 0, 0));
+    }
+
+    @Test
+    void anOverlordHunterThreatensOverlordSpeed() {
+        assertTrue(Reactions.isOverlordSpeedThreatened(1, 0, 0));
+    }
+
+    @Test
+    void aDetectionThreatThreatensOverlordSpeed() {
+        assertTrue(Reactions.isOverlordSpeedThreatened(0, 1, 0));
+    }
+
+    @Test
+    void overlordLossesThreatenOverlordSpeedOnlyAtTheTrigger() {
+        assertFalse(Reactions.isOverlordSpeedThreatened(0, 0, Reactions.OVERLORDS_LOST_TRIGGER - 1));
+        assertTrue(Reactions.isOverlordSpeedThreatened(0, 0, Reactions.OVERLORDS_LOST_TRIGGER));
+    }
+
+    @Test
+    void withoutAThreatOverlordSpeedStaysBehindTheHydraliskDenUpgrades() {
+        ProductionQueue queue = new ProductionQueue();
+        Plan muscularAugments = new UpgradePlan(UpgradeType.Muscular_Augments, 6236);
+        Plan groovedSpines = new UpgradePlan(UpgradeType.Grooved_Spines, 6237);
+        Plan overlordSpeed = new UpgradePlan(UpgradeType.Pneumatized_Carapace, 9452);
+        Plan hydralisk = new UnitPlan(UnitType.Zerg_Hydralisk, UnitPlan.ADVANCED_UNIT_PRIORITY);
+        queue.add(overlordSpeed);
+        queue.add(groovedSpines);
+        queue.add(muscularAugments);
+        queue.add(hydralisk);
+
+        Reactions.raiseOverlordSpeed(queue, false);
+
+        assertEquals(9452, overlordSpeed.getPriority());
+        assertEquals(Arrays.asList(hydralisk, muscularAugments, groovedSpines, overlordSpeed), queue.toSortedList());
+    }
+
+    @Test
+    void aThreatLiftsOverlordSpeedAheadOfTheArmyUpgradesAndAdvancedUnits() {
+        ProductionQueue queue = new ProductionQueue();
+        Plan muscularAugments = new UpgradePlan(UpgradeType.Muscular_Augments, 6236);
+        Plan groovedSpines = new UpgradePlan(UpgradeType.Grooved_Spines, 6237);
+        Plan overlordSpeed = new UpgradePlan(UpgradeType.Pneumatized_Carapace, 9452);
+        Plan hydralisk = new UnitPlan(UnitType.Zerg_Hydralisk, UnitPlan.ADVANCED_UNIT_PRIORITY);
+        queue.add(overlordSpeed);
+        queue.add(groovedSpines);
+        queue.add(muscularAugments);
+        queue.add(hydralisk);
+
+        Reactions.raiseOverlordSpeed(queue, true);
+
+        assertEquals(Reactions.OVERLORD_SPEED_REACTION_PRIORITY, overlordSpeed.getPriority());
+        assertEquals(Arrays.asList(overlordSpeed, hydralisk, muscularAugments, groovedSpines), queue.toSortedList());
+        assertEquals(6236, muscularAugments.getPriority());
+        assertEquals(6237, groovedSpines.getPriority());
+    }
+
+    @Test
+    void theOverlordSpeedLiftLeavesPlansAheadOfTheBandWhereTheyAre() {
+        ProductionQueue queue = new ProductionQueue();
+        Plan lair = new BuildingPlan(UnitType.Zerg_Lair, 3);
+        Plan overlordSpeed = new UpgradePlan(UpgradeType.Pneumatized_Carapace, 50);
+        queue.add(lair);
+        queue.add(overlordSpeed);
+
+        Reactions.raiseOverlordSpeed(queue, true);
+
+        assertEquals(3, lair.getPriority());
+        assertEquals(50, overlordSpeed.getPriority());
+    }
+
+    @Test
     void thePoolAndEvolutionChamberAloneDoNotCommitArmyTech() {
         TechProgression techProgression = withSpawningPool();
         techProgression.setEvolutionChambers(1);
