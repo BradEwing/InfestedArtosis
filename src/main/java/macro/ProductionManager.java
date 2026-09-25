@@ -714,6 +714,18 @@ public class ProductionManager {
 
         List<Plan> plans = activeBuildOrder.plan(gameState);
         gameState.getProductionQueue().addAll(plans);
+        demoteClosedDroneRound();
+    }
+
+    /**
+     * Returns the Drones a closed drone round queued to the current frame, behind the advanced unit
+     * band, so a threat that closes the round puts the army back ahead of them.
+     */
+    private void demoteClosedDroneRound() {
+        if (gameState.getDroneRound().isActive()) {
+            return;
+        }
+        gameState.getProductionQueue().setPriorityWhere(DroneRound::isRoundDrone, currentFrame);
     }
 
 
@@ -900,7 +912,7 @@ public class ProductionManager {
         }
 
         schedulingBatch = schedulable;
-        ScanOutcome outcome = scanPlans(schedulable, this::schedulePlan);
+        ScanOutcome outcome = scanPlans(schedulable, gameState.getDroneRound().isActive(), this::schedulePlan);
         schedulingBatch = new ArrayList<>();
         gameState.getPlansScheduled().addAll(outcome.scheduled);
         gameState.getProductionQueue().addAll(outcome.requeued);
@@ -935,8 +947,20 @@ public class ProductionManager {
         final List<Plan> requeued = new ArrayList<>();
     }
 
-    /** Scans every plan in priority order without stopping at blockers. */
+    /** Scans every plan in priority order without stopping at blockers, with no drone round open. */
     static ScanOutcome scanPlans(List<Plan> plansInPriorityOrder, PlanScheduler scheduler) {
+        return scanPlans(plansInPriorityOrder, false, scheduler);
+    }
+
+    /**
+     * Scans every plan in priority order without stopping at blockers.
+     *
+     * @param plansInPriorityOrder the plans, highest priority first
+     * @param droneRoundActive whether a {@link DroneRound} is open, which lifts the advanced unit larva claim
+     * @param scheduler schedules one plan and reports what blocked it
+     * @return the plans scheduled and the plans to requeue
+     */
+    static ScanOutcome scanPlans(List<Plan> plansInPriorityOrder, boolean droneRoundActive, PlanScheduler scheduler) {
         ScanOutcome outcome = new ScanOutcome();
         boolean bankClaimedAhead = false;
         boolean larvaClaimedAhead = false;
@@ -950,7 +974,7 @@ public class ProductionManager {
             PlanEvents.blocked(plan, blocker);
             outcome.requeued.add(plan);
             bankClaimedAhead = bankClaimedAhead || claimsBank(blocker);
-            larvaClaimedAhead = larvaClaimedAhead || claimsLarva(plan, blocker);
+            larvaClaimedAhead = larvaClaimedAhead || claimsLarva(plan, blocker, droneRoundActive);
             researchClaimedAhead = researchClaimedAhead || blocker == PlanBlocker.RESEARCH_MINERALS;
         }
         return outcome;
@@ -1034,12 +1058,19 @@ public class ProductionManager {
      * by more than a build cycle, with no income for it, or in eviction backoff is not about to use
      * a larva, and holding one for it would only idle larva production.
      *
+     * <p>While a {@link DroneRound} is open an advanced unit plan claims nothing, so the Drones
+     * queued behind it take the larva it is waiting on.
+     *
      * @param plan the blocked plan
      * @param blocker the gate it failed this scan
+     * @param droneRoundActive whether a drone round is open
      * @return true when later larva morphs must leave the larva to this plan
      */
-    static boolean claimsLarva(Plan plan, PlanBlocker blocker) {
+    static boolean claimsLarva(Plan plan, PlanBlocker blocker, boolean droneRoundActive) {
         if (plan.getType() != PlanType.UNIT || !isLarvaMorph(plan.getPlannedUnit())) {
+            return false;
+        }
+        if (droneRoundActive && plan.getPriority() == UnitPlan.ADVANCED_UNIT_PRIORITY) {
             return false;
         }
         return blocker == PlanBlocker.NO_LARVA

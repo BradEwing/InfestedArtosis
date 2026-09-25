@@ -20,6 +20,13 @@ public class UnitPlan extends Plan {
      */
     public static final int ADVANCED_UNIT_PRIORITY = 150;
 
+    /**
+     * Priority of a Drone queued by an open {@link macro.DroneRound}, ahead of the advanced unit
+     * band. Two below it, so it never ties with the Overlord a pending tech wave queues one below
+     * it. A round that closes returns its queued Drones to the frame they are demoted on.
+     */
+    public static final int DRONE_ROUND_PRIORITY = ADVANCED_UNIT_PRIORITY - 2;
+
     @Getter @Setter
     private UnitType plannedUnit;
 

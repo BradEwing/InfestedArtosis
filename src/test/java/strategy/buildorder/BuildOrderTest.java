@@ -112,6 +112,39 @@ class BuildOrderTest {
     }
 
     @Test
+    void anOpenDroneRoundWithholdsANewAdvancedUnitAndReportsIt() {
+        PlanEvents.register(recorder());
+
+        assertTrue(BuildOrder.withheldByDroneRound(true, UnitType.Zerg_Hydralisk));
+        assertTrue(BuildOrder.withheldByDroneRound(true, UnitType.Zerg_Mutalisk));
+        assertEquals(Arrays.asList("Zerg_Hydralisk:DRONE_ROUND", "Zerg_Mutalisk:DRONE_ROUND"), withheld);
+    }
+
+    @Test
+    void aClosedDroneRoundWithholdsNothing() {
+        PlanEvents.register(recorder());
+
+        assertFalse(BuildOrder.withheldByDroneRound(false, UnitType.Zerg_Hydralisk));
+        assertTrue(withheld.isEmpty());
+    }
+
+    @Test
+    void anOpenDroneRoundNeverWithholdsScourge() {
+        PlanEvents.register(recorder());
+
+        assertFalse(BuildOrder.withheldByDroneRound(true, UnitType.Zerg_Scourge));
+        assertTrue(withheld.isEmpty());
+    }
+
+    @Test
+    void anOpenDroneRoundQueuesDronesUntilItsTargetIsCounted() {
+        assertTrue(BuildOrder.wantsRoundDrone(true, 16, 15, true));
+        assertFalse(BuildOrder.wantsRoundDrone(true, 16, 16, true));
+        assertFalse(BuildOrder.wantsRoundDrone(true, 16, 15, false));
+        assertFalse(BuildOrder.wantsRoundDrone(false, 16, 12, true));
+    }
+
+    @Test
     void theGateWithholdsAMutaliskBelowTheGathererFloorAndReportsIt() {
         PlanEvents.register(recorder());
 

@@ -14,7 +14,10 @@ import strategy.buildorder.LarvaBoundMacroHatchery;
 import strategy.buildorder.ZerglingTargets;
 
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 public class ThreeHatchLurker extends TerranBase {
 
@@ -422,6 +425,16 @@ public class ThreeHatchLurker extends TerranBase {
 
         return ZerglingTargets.gasUnitFocus(super.zerglingsNeeded(gameState), den, hydras,
                 HYDRALISKS_BEFORE_ZERGLINGS, gasReachable);
+    }
+
+    @Override
+    protected Set<UnitType> droneRoundArmy() {
+        return new HashSet<>(Arrays.asList(UnitType.Zerg_Lurker, UnitType.Zerg_Hydralisk));
+    }
+
+    @Override
+    protected int droneRoundDroneCap(GameState gameState) {
+        return dronesNeeded(gameState);
     }
 
     protected int dronesNeeded(GameState gameState) {

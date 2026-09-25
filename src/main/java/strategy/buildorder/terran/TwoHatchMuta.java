@@ -12,7 +12,9 @@ import macro.plan.Plan;
 import strategy.buildorder.LarvaBoundMacroHatchery;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Liquipedia Overview: The 2 Hatch Muta build can be a useful variation as many Terrans are comfortable countering
@@ -153,8 +155,10 @@ public class TwoHatchMuta extends TerranBase {
         }
 
         final int desiredMutalisks = desiredMutalisks(gameState);
-        List<Plan> mutaliskPlans = planMutalisk(techProgression, desiredMutalisks, gameState.numGatherers(),
-                gameState.queuedUnitPlanCount(UnitType.Zerg_Mutalisk), gameState.getUnitTypeCount());
+        List<Plan> mutaliskPlans = withheldByDroneRound(gameState.getDroneRound().isActive(), UnitType.Zerg_Mutalisk)
+                ? new ArrayList<>()
+                : planMutalisk(techProgression, desiredMutalisks, gameState.numGatherers(),
+                        gameState.queuedUnitPlanCount(UnitType.Zerg_Mutalisk), gameState.getUnitTypeCount());
         if (!mutaliskPlans.isEmpty()) {
             plans.addAll(mutaliskPlans);
             return plans;
@@ -180,6 +184,16 @@ public class TwoHatchMuta extends TerranBase {
         }
 
         return plans;
+    }
+
+    @Override
+    protected Set<UnitType> droneRoundArmy() {
+        return Collections.singleton(UnitType.Zerg_Mutalisk);
+    }
+
+    @Override
+    protected int droneRoundDroneCap(GameState gameState) {
+        return dronesNeeded(gameState);
     }
 
     protected int dronesNeeded(GameState gameState) {

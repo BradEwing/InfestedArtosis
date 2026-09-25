@@ -27,6 +27,7 @@ import info.tracking.PsiStormTracker;
 import info.tracking.StrategyTracker;
 import learning.Decisions;
 import lombok.Data;
+import macro.DroneRound;
 import macro.HatcheryCapacity;
 import macro.SupplyCapacity;
 import macro.plan.ColonyClaims;
@@ -107,6 +108,7 @@ public class GameState {
     private HashSet<Plan> plansComplete = new HashSet<>();
     private HashSet<Plan> plansImpossible = new HashSet<>();
     private ProductionQueue productionQueue = new ProductionQueue();
+    private DroneRound droneRound = new DroneRound();
     private HashMap<Unit, Plan> assignedPlannedItems = new HashMap<>();
     private int plannedWorkers;
     private int plannedHatcheries = 1;

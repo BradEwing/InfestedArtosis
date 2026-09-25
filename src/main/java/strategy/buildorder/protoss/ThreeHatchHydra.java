@@ -15,7 +15,9 @@ import strategy.buildorder.ZerglingTargets;
 import util.Time;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 
 /**
  * 3HatchHydralisk
@@ -56,7 +58,6 @@ public class ThreeHatchHydra extends ProtossBase {
         int supply = gameState.getSupply();
         int plannedHatcheries = gameState.getPlannedHatcheries();
         int macroHatchCount = baseData.numMacroHatcheries();
-        int hatchCount = gameState.structureCount(Readiness.USABLE, UnitType.Zerg_Hatchery);
         int lairCount = gameState.structureCount(Readiness.USABLE, UnitType.Zerg_Lair);
         int committedDens = gameState.structureCount(Readiness.COMMITTED, UnitType.Zerg_Hydralisk_Den);
         final int plannedAndCurrentHatcheries = plannedHatcheries + baseCount;
@@ -242,8 +243,10 @@ public class ThreeHatchHydra extends ProtossBase {
         }
 
         final int desiredHydralisks = desiredHydralisks(gameState);
-        List<Plan> hydraliskPlans = planHydralisk(techProgression, desiredHydralisks, gameState.numGatherers(),
-                gameState.queuedUnitPlanCount(UnitType.Zerg_Hydralisk), gameState.getUnitTypeCount());
+        List<Plan> hydraliskPlans = withheldByDroneRound(gameState.getDroneRound().isActive(), UnitType.Zerg_Hydralisk)
+                ? new ArrayList<>()
+                : planHydralisk(techProgression, desiredHydralisks, gameState.numGatherers(),
+                        gameState.queuedUnitPlanCount(UnitType.Zerg_Hydralisk), gameState.getUnitTypeCount());
         if (!hydraliskPlans.isEmpty()) {
             plans.addAll(hydraliskPlans);
             return plans;
@@ -255,11 +258,7 @@ public class ThreeHatchHydra extends ProtossBase {
             return plans;
         }
 
-        int droneTarget = hatchCount * 9;
-        if (strategyTracker.isDetectedStrategy("FFE") || strategyTracker.isDetectedStrategy("NexusFirst")) {
-            droneTarget += 8;
-        }
-        droneTarget = Math.min(droneTarget, 55);
+        int droneTarget = droneTarget(gameState);
         if (macroHatchCount > 0 && droneCount < droneTarget) {
             plans.add(this.planUnit(gameState, UnitType.Zerg_Drone));
             return plans;
@@ -277,6 +276,25 @@ public class ThreeHatchHydra extends ProtossBase {
         }
 
         return plans;
+    }
+
+    private int droneTarget(GameState gameState) {
+        StrategyTracker strategyTracker = gameState.getStrategyTracker();
+        int droneTarget = gameState.structureCount(Readiness.USABLE, UnitType.Zerg_Hatchery) * 9;
+        if (strategyTracker.isDetectedStrategy("FFE") || strategyTracker.isDetectedStrategy("NexusFirst")) {
+            droneTarget += 8;
+        }
+        return Math.min(droneTarget, 55);
+    }
+
+    @Override
+    protected Set<UnitType> droneRoundArmy() {
+        return Collections.singleton(UnitType.Zerg_Hydralisk);
+    }
+
+    @Override
+    protected int droneRoundDroneCap(GameState gameState) {
+        return droneTarget(gameState);
     }
 
     // Macro hatchery planning methods
