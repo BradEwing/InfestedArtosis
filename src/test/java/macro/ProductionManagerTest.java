@@ -914,6 +914,47 @@ class ProductionManagerTest {
         assertFalse(reportedBlockers.contains(PlanBlocker.RESEARCH_CLAIM));
     }
 
+    /**
+     * A promoted upgrade whose producer is busy researching another upgrade, and which cannot pay,
+     * reports the plain shortfall: it claims the bank but not the research hold. A Hydralisk behind
+     * it that the bank covers still schedules, and one the bank does not cover is refused
+     * build-ahead credit as BUILD_AHEAD_SLOT_TAKEN rather than RESEARCH_CLAIM.
+     */
+    @Test
+    void aPromotedUpgradeWaitingOnABusyProducerBarsOnlyHydralisksBoughtOnCredit() {
+        ProductionQueue queue = new ProductionQueue();
+        Plan grooved = new UpgradePlan(UpgradeType.Grooved_Spines, MUSCULAR_AUGMENTS_QUEUED_FRAME + 1);
+        Plan onCredit = new UnitPlan(UnitType.Zerg_Hydralisk, UnitPlan.ADVANCED_UNIT_PRIORITY);
+        queue.add(grooved);
+        queue.add(onCredit);
+        ProductionManager.promoteArmyUpgrades(queue, new ThreeHatchHydra(),
+                livingHydralisks(ThreeHatchHydra.HYDRALISKS_BEFORE_DEN_UPGRADE_PRIORITY));
+        BuildAheadSlot slot = new BuildAheadSlot();
+        Set<Plan> affordable = new HashSet<>();
+        PlanScheduler scheduler = (plan, bankClaimedAhead, larvaClaimedAhead, researchClaimedAhead) -> {
+            if (plan == grooved) {
+                return ProductionManager.researchShortfallBlocker(FRAME, FRAME + 100, true, false);
+            }
+            if (ProductionManager.isHeldByResearchClaim(plan, researchClaimedAhead, false)) {
+                return PlanBlocker.RESEARCH_CLAIM;
+            }
+            return ProductionManager.unitAheadBlocker(
+                    slot, plan, FRAME, !affordable.contains(plan), bankClaimedAhead, false, FRAME + 100);
+        };
+        PlanEvents.register(blockerRecorder());
+
+        ScanOutcome credit = ProductionManager.scanPlans(queue.toSortedList(), scheduler);
+
+        assertTrue(credit.scheduled.isEmpty());
+        assertEquals(Arrays.asList(grooved, onCredit), reportedPlans);
+        assertEquals(Arrays.asList(PlanBlocker.RESOURCES, PlanBlocker.BUILD_AHEAD_SLOT_TAKEN), reportedBlockers);
+
+        affordable.add(onCredit);
+        ScanOutcome paid = ProductionManager.scanPlans(credit.requeued, scheduler);
+
+        assertEquals(Collections.singletonList(onCredit), paid.scheduled);
+    }
+
     @Test
     void aResearchClaimReachesEveryPlanBehindItAndNoneAhead() {
         Plan drone = drone(90);
