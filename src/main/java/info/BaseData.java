@@ -19,6 +19,7 @@ import util.Distance;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -52,6 +53,12 @@ public class BaseData {
             .comparingInt((Base base) -> base.getLocation().getX())
             .thenComparingInt(base -> base.getLocation().getY());
 
+    /**
+     * The buildings that, standing at a starting location's natural, wall it off and imply the main behind it.
+     */
+    private static final Set<UnitType> NATURAL_WALL_TYPES = EnumSet.of(UnitType.Protoss_Forge,
+            UnitType.Protoss_Photon_Cannon, UnitType.Terran_Bunker);
+
     private Base mainBase;
     private Base naturalExpansion;
     @Getter
@@ -60,6 +67,7 @@ public class BaseData {
     @Getter
     private EnemyMainEvidence mainEnemyBaseEvidence;
     private HashSet<Base> startsSeenEmpty = new HashSet<>();
+    private boolean enemyDepotSeenOnStart = false;
     @Getter
     private boolean enemyMainBaseFound = false;
     private HashSet<Unit> macroHatcheries = new HashSet<>();
@@ -1163,15 +1171,18 @@ public class BaseData {
     }
 
     /**
-     * Offers a visible enemy building as evidence of the enemy main. A resource depot whose tile is a starting
-     * location's is DEPOT evidence for it; any other building standing in a starting location's BWEM Area is
-     * MAIN_AREA evidence for that one. A building that is neither, such as a proxy in the open or at a natural,
-     * is no evidence and leaves the enemy main as it is.
+     * Offers a visible enemy building as evidence of the enemy main, strongest first. A resource depot whose
+     * tile is a starting location's is DEPOT evidence for it; any other building standing in a starting
+     * location's BWEM Area is MAIN_AREA evidence for that one. Until an enemy depot has been seen on a start, a
+     * Forge, Photon Cannon or Bunker standing in the Area of exactly one other start's natural, not ours, is
+     * NATURAL_AREA evidence for that start, and any building is LAST_START evidence for the one other start not
+     * seen empty. A building that is none of these, such as a proxy Gateway in the open or at a natural, leaves
+     * the enemy main as it is.
      *
      * @param type the building's type
      * @param tile the building's tile
      * @param position the building's position
-     * @param standsInArea whether the building stands in a starting location's BWEM Area
+     * @param standsInArea whether the building stands in a base's BWEM Area
      * @return whether the enemy main changed
      */
     public boolean offerEnemyMainEvidence(UnitType type, TilePosition tile, Position position,
@@ -1185,14 +1196,52 @@ public class BaseData {
                 .filter(standsInArea)
                 .findFirst()
                 .orElse(null);
-        return assignEnemyMain(areaStart, EnemyMainEvidence.MAIN_AREA, type, position);
+        if (areaStart != null && assignEnemyMain(areaStart, EnemyMainEvidence.MAIN_AREA, type, position)) {
+            return true;
+        }
+        if (enemyDepotSeenOnStart) {
+            return false;
+        }
+        Base wallStart = NATURAL_WALL_TYPES.contains(type) ? startBehindNatural(standsInArea) : null;
+        if (wallStart != null && assignEnemyMain(wallStart, EnemyMainEvidence.NATURAL_AREA, type, position)) {
+            return true;
+        }
+        return assignEnemyMain(lastStartNotSeenEmpty(), EnemyMainEvidence.LAST_START, type, position);
+    }
+
+    /**
+     * The one starting location other than ours whose natural's BWEM Area the building stands in, or null when
+     * there is none, more than one, or the natural is ours.
+     */
+    private Base startBehindNatural(Predicate<Base> standsInArea) {
+        List<Base> starts = mains.stream()
+                .filter(start -> start != mainBase)
+                .filter(start -> {
+                    StartingLocationPaths paths = startingLocationPaths.get(start);
+                    Base natural = paths == null ? null : paths.getNaturalExpansion();
+                    return natural != null && natural != inferredNaturalBase && standsInArea.test(natural);
+                })
+                .collect(Collectors.toList());
+        return starts.size() == 1 ? starts.get(0) : null;
+    }
+
+    /**
+     * The one starting location other than ours not seen empty, or null when there is none or more than one.
+     */
+    private Base lastStartNotSeenEmpty() {
+        List<Base> starts = mains.stream()
+                .filter(start -> start != mainBase)
+                .filter(start -> !startsSeenEmpty.contains(start))
+                .collect(Collectors.toList());
+        return starts.size() == 1 ? starts.get(0) : null;
     }
 
     /**
      * Makes a starting location other than ours the enemy main on the evidence of an enemy building, adds it to
      * the enemy bases and takes the enemy natural from its paths. A main already known is replaced only by
      * stronger evidence at another starting location, which clears the old main first. A starting location
-     * seen empty takes nothing weaker than a depot, and a depot on it lifts that mark.
+     * seen empty takes nothing weaker than a depot, and a depot on it lifts that mark. Once any depot has been
+     * seen on a starting location, NATURAL_AREA and LAST_START evidence is no longer offered.
      *
      * @param start the starting location the building is evidence for
      * @param evidence how the building ties to that starting location
@@ -1205,6 +1254,7 @@ public class BaseData {
             return false;
         }
         if (evidence == EnemyMainEvidence.DEPOT) {
+            enemyDepotSeenOnStart = true;
             startsSeenEmpty.remove(start);
         } else if (startsSeenEmpty.contains(start)) {
             return false;
@@ -1219,7 +1269,8 @@ public class BaseData {
             if (!evidence.isStrongerThan(mainEnemyBaseEvidence)) {
                 return false;
             }
-            removeEnemyBase(mainEnemyBase, EnemyMainClearReason.REPLACED_BY_DEPOT);
+            removeEnemyBase(mainEnemyBase, evidence == EnemyMainEvidence.DEPOT
+                    ? EnemyMainClearReason.REPLACED_BY_DEPOT : EnemyMainClearReason.REPLACED_BY_STRONGER_EVIDENCE);
         }
         addEnemyBase(start);
         mainEnemyBase = start;

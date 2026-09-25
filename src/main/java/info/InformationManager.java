@@ -538,7 +538,7 @@ public class InformationManager {
 
                 Area buildingArea = bwem.getMap().getArea(unit.getPosition().toTilePosition());
                 baseData.offerEnemyMainEvidence(unitType, tp, unit.getPosition(),
-                        start -> isSameArea(buildingArea, start.getArea()));
+                        base -> isSameArea(buildingArea, base.getArea()));
 
                 if (unitType.isResourceDepot() && baseData.isBaseTilePosition(tp)) {
                     Base enemyBaseCandidate = baseData.baseAtTilePosition(tp);

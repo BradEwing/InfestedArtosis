@@ -51,6 +51,16 @@ public final class LV28400NFixture {
         baseData.initializeMainBase(ourMain, openMap());
     }
 
+    /**
+     * The same bases without the empty start and its natural, as on a two-player map, where the real main is
+     * the only other start from the first frame.
+     */
+    public BaseData twoStartBaseData() {
+        BaseData twoStarts = new BaseData(Arrays.asList(ourMain, realMain, ourNatural, realNatural));
+        twoStarts.initializeMainBase(ourMain, openMap());
+        return twoStarts;
+    }
+
     private static GameMap openMap() {
         GameMap gameMap = new GameMap(MAP_SIZE, MAP_SIZE);
         for (int x = 0; x < MAP_SIZE; x++) {
