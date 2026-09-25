@@ -5,6 +5,7 @@ import info.ResourceCount;
 import info.TechProgression;
 import info.UnitTypeCount;
 import macro.AdvancedUnitEligibility;
+import macro.DroneRound;
 import macro.HatcheryCapacity;
 import macro.plan.BuildingPlan;
 import macro.plan.Plan;
@@ -142,6 +143,24 @@ class BuildOrderTest {
         assertFalse(BuildOrder.wantsRoundDrone(true, 16, 16, true));
         assertFalse(BuildOrder.wantsRoundDrone(true, 16, 15, false));
         assertFalse(BuildOrder.wantsRoundDrone(false, 16, 12, true));
+    }
+
+    @Test
+    void anOpenDroneRoundQueuesNoDroneWhileQueuedDronesCanBePromotedToItsTarget() {
+        UnitTypeCount count = new UnitTypeCount();
+        for (int i = 0; i < 12; i++) {
+            count.addUnit(UnitType.Zerg_Drone);
+        }
+        for (int i = 0; i < DroneRound.DRONES_PER_ROUND - 1; i++) {
+            count.planUnit(UnitType.Zerg_Drone);
+        }
+        int target = 12 + DroneRound.DRONES_PER_ROUND;
+
+        assertTrue(BuildOrder.wantsRoundDrone(true, target, count.get(UnitType.Zerg_Drone), true));
+
+        count.planUnit(UnitType.Zerg_Drone);
+
+        assertFalse(BuildOrder.wantsRoundDrone(true, target, count.get(UnitType.Zerg_Drone), true));
     }
 
     @Test

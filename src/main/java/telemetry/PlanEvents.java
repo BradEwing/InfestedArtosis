@@ -79,6 +79,14 @@ public final class PlanEvents {
         current.onStale(plan);
     }
 
+    public static void promoted(Plan plan) {
+        PlanEventSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onPromote(plan);
+    }
+
     public static void buildAheadHold(Plan holder, int heldFrames, int starvedBehind) {
         PlanEventSink current = sink;
         if (current == null) {

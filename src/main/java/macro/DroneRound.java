@@ -11,9 +11,10 @@ import macro.plan.UnitPlan;
  * <p>Advanced units queue at {@link UnitPlan#ADVANCED_UNIT_PRIORITY}, ahead of every Drone plan
  * numbered by the frame it was derived on, and a blocked one claims the next larva against the
  * plans behind it. Once the build's army reaches a milestone of living units, a round opens. While
- * it is open the build withholds new advanced unit plans, queues Drones at
- * {@link UnitPlan#DRONE_ROUND_PRIORITY}, and a queued advanced unit no longer claims larva against
- * the plans behind it.
+ * it is open the build withholds new advanced unit plans, production moves the oldest queued Drones
+ * to {@link UnitPlan#DRONE_ROUND_PRIORITY} up to the round's target, the build queues a new Drone at
+ * that priority only when too few are queued to reach it, and a queued advanced unit no longer
+ * claims larva against the plans behind it.
  *
  * <p>A round opens only while the worker gates still want Drones. It closes once
  * {@link #DRONES_PER_ROUND} more Drones are hatched or in an egg, once the build's Drone cap is met,
@@ -45,6 +46,10 @@ public class DroneRound {
     @Getter
     private int droneTarget = 0;
 
+    /** Drones hatched plus Drones in an egg, as of the last update. */
+    @Getter
+    private int drones = 0;
+
     private int startFrame = 0;
 
     /**
@@ -59,6 +64,7 @@ public class DroneRound {
      */
     public void update(int frame, int livingArmy, int drones, int droneCap, boolean workersWanted,
                        boolean threatened) {
+        this.drones = drones;
         if (active) {
             if (threatened) {
                 active = false;
@@ -77,6 +83,20 @@ public class DroneRound {
         active = true;
         startFrame = frame;
         droneTarget = Math.min(drones + DRONES_PER_ROUND, droneCap);
+    }
+
+    /**
+     * How many more Drones the open round may hold at {@link UnitPlan#DRONE_ROUND_PRIORITY}, so
+     * that Drones hatched, in an egg and held at that priority never pass the round's target.
+     *
+     * @param roundDrones Drones held at {@link UnitPlan#DRONE_ROUND_PRIORITY} that are not yet in an egg
+     * @return the Drones still to promote; zero while the round is closed
+     */
+    public int openDroneSlots(int roundDrones) {
+        if (!active) {
+            return 0;
+        }
+        return Math.max(0, droneTarget - drones - roundDrones);
     }
 
     /**

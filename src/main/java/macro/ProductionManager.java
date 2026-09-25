@@ -721,18 +721,91 @@ public class ProductionManager {
 
         List<Plan> plans = activeBuildOrder.plan(gameState);
         gameState.getProductionQueue().addAll(plans);
+        promoteOpenDroneRound();
         demoteClosedDroneRound();
     }
 
     /**
-     * Returns the Drones a closed drone round queued to the current frame, behind the advanced unit
-     * band, so a threat that closes the round puts the army back ahead of them.
+     * Moves the oldest queued Drones to {@link UnitPlan#DRONE_ROUND_PRIORITY} while a drone round is
+     * open, so the Drones the build already queued go ahead of the advanced unit band and the
+     * frame-numbered plans instead of waiting behind them.
      */
-    private void demoteClosedDroneRound() {
-        if (gameState.getDroneRound().isActive()) {
+    private void promoteOpenDroneRound() {
+        DroneRound round = gameState.getDroneRound();
+        if (!round.isActive()) {
             return;
         }
-        gameState.getProductionQueue().setPriorityWhere(DroneRound::isRoundDrone, currentFrame);
+        int roundDronesInFlight = (int) gameState.getPlansScheduled().stream()
+                .filter(plan -> DroneRound.isRoundDrone(plan)
+                        && (plan.getState() == PlanState.SCHEDULE || plan.getState() == PlanState.BUILDING))
+                .count();
+        promoteOldestDrones(gameState.getProductionQueue(), round, roundDronesInFlight);
+    }
+
+    /**
+     * Promotes the oldest queued Drones the open round still has room for to
+     * {@link UnitPlan#DRONE_ROUND_PRIORITY}. Drones already hatched, in an egg, held at that priority
+     * in the queue or scheduled from it count against the round's target, so a promotion never
+     * passes it. Only a PLANNED Drone behind that priority is promoted: one already ahead of it keeps
+     * its place.
+     *
+     * @param queue the production queue
+     * @param round the drone round
+     * @param roundDronesInFlight round Drones scheduled from the queue that are not yet in an egg
+     * @return the promoted plans, oldest first
+     */
+    static List<Plan> promoteOldestDrones(ProductionQueue queue, DroneRound round, int roundDronesInFlight) {
+        int queuedRoundDrones = 0;
+        List<Plan> candidates = new ArrayList<>();
+        for (Plan plan : queue) {
+            if (DroneRound.isRoundDrone(plan)) {
+                queuedRoundDrones++;
+            } else if (isPromotableDrone(plan)) {
+                candidates.add(plan);
+            }
+        }
+        int slots = round.openDroneSlots(queuedRoundDrones + roundDronesInFlight);
+        if (slots == 0 || candidates.isEmpty()) {
+            return new ArrayList<>();
+        }
+        candidates.sort(Comparator.comparingInt(Plan::getPlanId));
+        List<Plan> promoted = new ArrayList<>(candidates.subList(0, Math.min(slots, candidates.size())));
+        Set<Plan> promotedSet = new HashSet<>(promoted);
+        queue.setPriorityWhere(promotedSet::contains, UnitPlan.DRONE_ROUND_PRIORITY);
+        for (Plan plan : promoted) {
+            PlanEvents.promoted(plan);
+        }
+        return promoted;
+    }
+
+    private static boolean isPromotableDrone(Plan plan) {
+        return plan.getType() == PlanType.UNIT
+                && plan.getPlannedUnit() == UnitType.Zerg_Drone
+                && plan.getState() == PlanState.PLANNED
+                && plan.getPriority() > UnitPlan.DRONE_ROUND_PRIORITY;
+    }
+
+    /**
+     * Returns the Drones a closed drone round queued or promoted to the current frame, behind the
+     * advanced unit band, so a threat that closes the round puts the army back ahead of them.
+     */
+    private void demoteClosedDroneRound() {
+        demoteRoundDrones(gameState.getProductionQueue(), gameState.getDroneRound(), currentFrame);
+    }
+
+    /**
+     * Returns every queued Drone at {@link UnitPlan#DRONE_ROUND_PRIORITY}, whether the round queued
+     * or promoted it, to the current frame once the round is closed.
+     *
+     * @param queue the production queue
+     * @param round the drone round
+     * @param frame the current frame, which becomes the demoted Drones' priority
+     */
+    static void demoteRoundDrones(ProductionQueue queue, DroneRound round, int frame) {
+        if (round.isActive()) {
+            return;
+        }
+        queue.setPriorityWhere(DroneRound::isRoundDrone, frame);
     }
 
 
