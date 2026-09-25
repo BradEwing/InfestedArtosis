@@ -7,18 +7,23 @@ import info.GameState;
 import info.Readiness;
 import info.TechProgression;
 import macro.plan.Plan;
+import macro.plan.PlanState;
 import strategy.buildorder.BuildOrder;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Predicate;
 
 /**
  * 9 Pool Speed in the standard order: drones to 9, Spawning Pool at 9, drone, Extractor at 9,
  * Overlord at 8, drone, 6 zerglings the moment the pool finishes, then Metabolic Boost.
  *
- * <p>The opener hands over only once all six zerglings and Metabolic Boost are queued, so the
- * terminal build order's natural hatchery cannot take the minerals the opening zerglings need.
+ * <p>The opener hands over only once Metabolic Boost is queued and all six opening zerglings have
+ * started, each plan holding its larva or already an egg. A zergling that is only queued can still
+ * be held, on supply while the first Overlord is in its egg for one, and the terminal build order's
+ * natural hatchery would then take the build-ahead slot and keep the zergling waiting until the
+ * hatchery morphs. Until then the opener queues nothing past Metabolic Boost.
  */
 public class NinePoolSpeed extends BuildOrder {
     private static final int POOL_SUPPLY = 18;
@@ -31,6 +36,8 @@ public class NinePoolSpeed extends BuildOrder {
 
     private boolean speedQueued = false;
 
+    private final List<Plan> openingZerglings = new ArrayList<>();
+
     public NinePoolSpeed() {
         super("9PoolSpeed");
     }
@@ -39,6 +46,7 @@ public class NinePoolSpeed extends BuildOrder {
     protected boolean openerComplete(GameState gameState) {
         TechProgression techProgression = gameState.getTechProgression();
         return openingDone(gameState.ourUnitCount(UnitType.Zerg_Zergling),
+                unstartedOpeningZerglings(gameState),
                 speedQueued || techProgression.isPlannedMetabolicBoost() || techProgression.isMetabolicBoost(),
                 extractorDenied(
                         gameState.structureCount(Readiness.STANDING, UnitType.Zerg_Extractor),
@@ -80,13 +88,19 @@ public class NinePoolSpeed extends BuildOrder {
         }
 
         if (shouldPlanOpeningZergling(poolCount, zerglingCount) && gameState.canPlanUnit(UnitType.Zerg_Zergling)) {
-            plans.add(planUnit(gameState, UnitType.Zerg_Zergling));
+            Plan zergling = planUnit(gameState, UnitType.Zerg_Zergling);
+            openingZerglings.add(zergling);
+            plans.add(zergling);
             return plans;
         }
 
         if (zerglingCount >= OPENING_ZERGLINGS && gameState.canPlanUpgrade(UpgradeType.Metabolic_Boost)) {
             plans.add(planUpgrade(gameState, UpgradeType.Metabolic_Boost));
             speedQueued = true;
+            return plans;
+        }
+
+        if (unstartedOpeningZerglings(gameState) > 0) {
             return plans;
         }
 
@@ -133,19 +147,54 @@ public class NinePoolSpeed extends BuildOrder {
     }
 
     /**
-     * Whether the opening is finished: the six opening zerglings exist or are planned, and
-     * Metabolic Boost is queued, researching or done, or cannot come because no Extractor can.
-     * The SCV rush reaction blocks Extractors until 12 zerglings live while the opener stops
-     * short of that, and a stolen geyser leaves none to take, so waiting on speed there would
-     * keep the opener from ever handing over.
+     * Whether the opening is finished: the six opening zerglings exist or are planned, none of
+     * their plans is still waiting in the queue or on the schedule, and Metabolic Boost is queued,
+     * researching or done, or cannot come because no Extractor can. The SCV rush reaction blocks
+     * Extractors until 12 zerglings live while the opener stops short of that, and a stolen geyser
+     * leaves none to take, so waiting on speed there would keep the opener from ever handing over.
+     *
+     * <p>A zergling plan that holds its larva, or whose larva is already an egg, has started: its
+     * minerals are spent or reserved and its larva claimed, so nothing the terminal build order
+     * queues can hold it. A cancelled plan is not waited on; it lowers the zergling count, and the
+     * opener queues a replacement that it waits on instead.
      *
      * @param zerglingCount zerglings living and planned, two per plan
+     * @param unstartedOpeningZerglings opening zergling plans still in the queue or on the schedule
      * @param speedCommitted whether Metabolic Boost is queued, researching or finished
      * @param extractorDenied whether no Extractor stands, none is reserved and none can be planned
      * @return true once the opener may hand over
      */
-    static boolean openingDone(int zerglingCount, boolean speedCommitted, boolean extractorDenied) {
-        return zerglingCount >= OPENING_ZERGLINGS && (speedCommitted || extractorDenied);
+    static boolean openingDone(int zerglingCount, int unstartedOpeningZerglings, boolean speedCommitted,
+                               boolean extractorDenied) {
+        return zerglingCount >= OPENING_ZERGLINGS
+                && unstartedOpeningZerglings == 0
+                && (speedCommitted || extractorDenied);
+    }
+
+    private int unstartedOpeningZerglings(GameState gameState) {
+        return unstartedPlans(openingZerglings,
+                plan -> gameState.getProductionQueue().contains(plan) || gameState.getPlansScheduled().contains(plan));
+    }
+
+    /**
+     * Counts the plans that have not started: still carried by the production queue or the
+     * scheduled set, and in {@link PlanState#PLANNED} or {@link PlanState#SCHEDULE}. A plan that
+     * has left both, whether it moved on to a larva or was dropped, is not counted, so a plan
+     * removed without a state change cannot hold the count up.
+     *
+     * @param plans the plans to check
+     * @param carried whether a plan is still in the production queue or the scheduled set
+     * @return the number of plans still waiting to start
+     */
+    static int unstartedPlans(List<Plan> plans, Predicate<Plan> carried) {
+        int unstarted = 0;
+        for (Plan plan : plans) {
+            PlanState state = plan.getState();
+            if (carried.test(plan) && (state == PlanState.PLANNED || state == PlanState.SCHEDULE)) {
+                unstarted += 1;
+            }
+        }
+        return unstarted;
     }
 
     /**

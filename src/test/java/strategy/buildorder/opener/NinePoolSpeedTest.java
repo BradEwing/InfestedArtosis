@@ -1,13 +1,27 @@
 package strategy.buildorder.opener;
 
 import bwapi.Race;
+import bwapi.UnitType;
 import info.GameState;
+import macro.plan.Plan;
+import macro.plan.PlanState;
+import macro.plan.UnitPlan;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class NinePoolSpeedTest {
+
+    private static final int NO_UNSTARTED_PLANS = 0;
+
+    private static final int ONE_UNSTARTED_PLAN = 1;
+
+    private static final int ZERGLING_PRIORITY = 5;
 
     private static final int NO_USABLE_POOL = 0;
 
@@ -101,9 +115,9 @@ class NinePoolSpeedTest {
 
     @Test
     void handsOverOnlyAfterSixZerglingsAndSpeed() {
-        assertFalse(NinePoolSpeed.openingDone(NinePoolSpeed.OPENING_ZERGLINGS - 2, true, false));
-        assertFalse(NinePoolSpeed.openingDone(NinePoolSpeed.OPENING_ZERGLINGS, false, false));
-        assertTrue(NinePoolSpeed.openingDone(NinePoolSpeed.OPENING_ZERGLINGS, true, false));
+        assertFalse(NinePoolSpeed.openingDone(NinePoolSpeed.OPENING_ZERGLINGS - 2, NO_UNSTARTED_PLANS, true, false));
+        assertFalse(NinePoolSpeed.openingDone(NinePoolSpeed.OPENING_ZERGLINGS, NO_UNSTARTED_PLANS, false, false));
+        assertTrue(NinePoolSpeed.openingDone(NinePoolSpeed.OPENING_ZERGLINGS, NO_UNSTARTED_PLANS, true, false));
     }
 
     /**
@@ -112,8 +126,49 @@ class NinePoolSpeedTest {
      */
     @Test
     void handsOverAfterSixZerglingsWhenNoExtractorCanCome() {
-        assertTrue(NinePoolSpeed.openingDone(NinePoolSpeed.OPENING_ZERGLINGS, false, true));
-        assertFalse(NinePoolSpeed.openingDone(NinePoolSpeed.OPENING_ZERGLINGS - 2, false, true));
+        assertTrue(NinePoolSpeed.openingDone(NinePoolSpeed.OPENING_ZERGLINGS, NO_UNSTARTED_PLANS, false, true));
+        assertFalse(NinePoolSpeed.openingDone(NinePoolSpeed.OPENING_ZERGLINGS - 2, NO_UNSTARTED_PLANS, false, true));
+    }
+
+    /**
+     * The pool finishes at 9/9 before the first Overlord does, so an opening zergling plan waits
+     * on supply. Handing over then lets the terminal build order's natural hatchery take the
+     * build-ahead slot ahead of it.
+     */
+    @Test
+    void holdsTheHandOffWhileAnOpeningZerglingIsUnstarted() {
+        assertFalse(NinePoolSpeed.openingDone(NinePoolSpeed.OPENING_ZERGLINGS, ONE_UNSTARTED_PLAN, true, false));
+        assertFalse(NinePoolSpeed.openingDone(NinePoolSpeed.OPENING_ZERGLINGS, ONE_UNSTARTED_PLAN, false, true));
+    }
+
+    @Test
+    void holdsTheHandOffWhileAnOpeningZerglingIsQueuedOrScheduled() {
+        List<Plan> zerglings = openingZerglings(PlanState.MORPHING, PlanState.MORPHING, PlanState.PLANNED);
+        assertEquals(1, NinePoolSpeed.unstartedPlans(zerglings, plan -> true));
+
+        zerglings = openingZerglings(PlanState.MORPHING, PlanState.SCHEDULE, PlanState.PLANNED);
+        assertEquals(2, NinePoolSpeed.unstartedPlans(zerglings, plan -> true));
+    }
+
+    @Test
+    void handsOverOnceEveryOpeningZerglingHasItsLarvaOrIsAnEgg() {
+        List<Plan> zerglings = openingZerglings(PlanState.BUILDING, PlanState.MORPHING, PlanState.COMPLETE);
+        int unstarted = NinePoolSpeed.unstartedPlans(zerglings, plan -> true);
+
+        assertEquals(NO_UNSTARTED_PLANS, unstarted);
+        assertTrue(NinePoolSpeed.openingDone(NinePoolSpeed.OPENING_ZERGLINGS, unstarted, true, false));
+    }
+
+    /**
+     * A cancelled plan, or one dropped from the queue and the scheduled set without a state change,
+     * will never start. Waiting on it would keep the opener from handing over.
+     */
+    @Test
+    void doesNotWaitOnOpeningZerglingsThatWillNeverStart() {
+        List<Plan> zerglings = openingZerglings(PlanState.CANCELLED, PlanState.PLANNED, PlanState.MORPHING);
+        Plan dropped = zerglings.get(1);
+
+        assertEquals(NO_UNSTARTED_PLANS, NinePoolSpeed.unstartedPlans(zerglings, plan -> plan != dropped));
     }
 
     @Test
@@ -201,5 +256,15 @@ class NinePoolSpeedTest {
     void plansNoDroneBeyondThePlannedWorkerLimit() {
         assertFalse(NinePoolSpeed.shouldPlanDrone(EIGHT_DRONES, GameState.canPlanOpeningDrone(3, ONE_HATCHERY)));
         assertTrue(NinePoolSpeed.shouldPlanDrone(EIGHT_DRONES, GameState.canPlanOpeningDrone(2, ONE_HATCHERY)));
+    }
+
+    private static List<Plan> openingZerglings(PlanState... states) {
+        List<Plan> zerglings = new ArrayList<>();
+        for (PlanState state : states) {
+            Plan zergling = new UnitPlan(UnitType.Zerg_Zergling, ZERGLING_PRIORITY);
+            zergling.setState(state);
+            zerglings.add(zergling);
+        }
+        return zerglings;
     }
 }
