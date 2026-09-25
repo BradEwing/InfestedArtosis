@@ -37,6 +37,13 @@ public enum RallyReason {
     HOLD,
 
     /**
+     * An air squad under its move out threshold and not committed had enemies inside its detection radius, but
+     * stood outside the home defence radius of every base we hold, so it was held at the rally point instead of
+     * simulating the fight.
+     */
+    AIR_BELOW_MOVE_OUT_AWAY,
+
+    /**
      * No rally entry has been recorded for this squad. A squad created in RALLY carries this until
      * the first frame something rallies it.
      */
