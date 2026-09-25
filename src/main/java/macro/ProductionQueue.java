@@ -43,6 +43,16 @@ public class ProductionQueue implements Iterable<Plan> {
         queue.remove(plan);
     }
 
+    /** Whether this exact plan is still waiting in the queue. */
+    public boolean contains(Plan plan) {
+        for (Plan queued : queue) {
+            if (queued == plan) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public boolean isEmpty() {
         return queue.isEmpty();
     }

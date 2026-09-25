@@ -140,6 +140,15 @@ public interface PlanEventSink {
     }
 
     /**
+     * The base squads rally to changed, or was first chosen.
+     *
+     * @param base the rally base's tile location
+     * @param reason NATURAL, MAIN or FORWARD_BASE
+     */
+    default void onRallyPointChanged(TilePosition base, String reason) {
+    }
+
+    /**
      * A starting location became the enemy main.
      *
      * @param main the starting location's tile
