@@ -693,7 +693,7 @@ class ProductionManagerTest {
         int claimDeadline = BuildAheadSlot.deadline(FRAME, FRAME + 20, HATCHERY_TRAVEL_FRAMES);
         int frame = claimDeadline - 1;
 
-        ProductionManager.refreshBuildAheadPredictions(slot, frame + 20, p -> HATCHERY_TRAVEL_FRAMES);
+        ProductionManager.refreshBuildAheadPredictions(slot, frame + 20, p -> HATCHERY_TRAVEL_FRAMES, p -> false);
 
         assertTrue(slot.stalled(claimDeadline).isEmpty());
     }
@@ -706,7 +706,7 @@ class ProductionManagerTest {
         slot.claim(plan, FRAME, FRAME + 20, HATCHERY_TRAVEL_FRAMES);
         plan.setState(PlanState.BUILDING);
 
-        ProductionManager.refreshBuildAheadPredictions(slot, FRAME + 800, p -> HATCHERY_TRAVEL_FRAMES);
+        ProductionManager.refreshBuildAheadPredictions(slot, FRAME + 800, p -> HATCHERY_TRAVEL_FRAMES, p -> false);
 
         assertEquals(FRAME + 20, plan.getPredictedReadyFrame());
     }
@@ -719,9 +719,79 @@ class ProductionManagerTest {
         slot.claim(plan, FRAME, FRAME + 20, HATCHERY_TRAVEL_FRAMES);
         plan.setState(PlanState.SCHEDULE);
 
-        ProductionManager.refreshBuildAheadPredictions(slot, FRAME + 800, p -> HATCHERY_TRAVEL_FRAMES);
+        ProductionManager.refreshBuildAheadPredictions(slot, FRAME + 800, p -> HATCHERY_TRAVEL_FRAMES, p -> false);
 
         assertEquals(FRAME + 800, plan.getPredictedReadyFrame());
+    }
+
+    @Test
+    void refreshingAHoldTheBankCoversStopsAtTheMaximumHold() {
+        for (PlanState state : Arrays.asList(PlanState.SCHEDULE, PlanState.BUILDING)) {
+            BuildAheadSlot slot = new BuildAheadSlot();
+            Plan plan = hatchery();
+            slot.claim(plan, FRAME, FRAME + 20, HATCHERY_TRAVEL_FRAMES);
+            plan.setState(state);
+
+            for (int frame = FRAME; frame < FRAME + BuildAheadSlot.TOTAL_HOLD_FRAMES; frame += 24) {
+                ProductionManager.refreshBuildAheadPredictions(
+                        slot, frame + 20 + (frame - FRAME) * 2, p -> HATCHERY_TRAVEL_FRAMES, p -> true);
+            }
+
+            assertTrue(slot.stalled(FRAME + BuildAheadSlot.MAX_HOLD_FRAMES - 1).isEmpty());
+            assertEquals(Collections.singletonList(plan), slot.stalled(FRAME + BuildAheadSlot.MAX_HOLD_FRAMES));
+        }
+    }
+
+    @Test
+    void refreshingAnIncomeBoundHoldStillCarriesItToTheTotalHold() {
+        BuildAheadSlot slot = new BuildAheadSlot();
+        Plan plan = hatchery();
+        slot.claim(plan, FRAME, FRAME + 600, HATCHERY_TRAVEL_FRAMES);
+        plan.setState(PlanState.SCHEDULE);
+
+        for (int frame = FRAME; frame < FRAME + BuildAheadSlot.TOTAL_HOLD_FRAMES; frame += 24) {
+            ProductionManager.refreshBuildAheadPredictions(
+                    slot, frame + 20 + (frame - FRAME) * 2, p -> HATCHERY_TRAVEL_FRAMES, p -> false);
+        }
+
+        assertTrue(slot.stalled(FRAME + BuildAheadSlot.TOTAL_HOLD_FRAMES - 1).isEmpty());
+        assertFalse(slot.stalled(FRAME + BuildAheadSlot.TOTAL_HOLD_FRAMES).isEmpty());
+    }
+
+    @Test
+    void anAffordablePlanEvictedAtTheMaximumHoldWaitsOutItsBackoff() {
+        BuildAheadSlot slot = new BuildAheadSlot();
+        Plan plan = hatchery();
+        slot.claim(plan, FRAME, FRAME + 20, HATCHERY_TRAVEL_FRAMES);
+        int evictionFrame = FRAME + BuildAheadSlot.MAX_HOLD_FRAMES;
+        slot.releaseWithBackoff(plan, evictionFrame);
+        int retryFrame = evictionFrame + BuildAheadSlot.BACKOFF_FRAMES;
+
+        assertEquals(PlanBlocker.BUILD_AHEAD_BACKOFF, ProductionManager.buildAheadBlocker(
+                slot, plan, evictionFrame, false, false, evictionFrame + 20));
+        assertEquals(PlanBlocker.BUILD_AHEAD_BACKOFF, ProductionManager.buildAheadBlocker(
+                slot, plan, retryFrame - 1, false, false, retryFrame + 19));
+        assertEquals(PlanBlocker.NONE, ProductionManager.buildAheadBlocker(
+                slot, plan, retryFrame, false, false, retryFrame + 20));
+    }
+
+    @Test
+    void anAffordablePlanEvictedBeforeTheMaximumHoldResumesWithoutPassingIt() {
+        BuildAheadSlot slot = new BuildAheadSlot();
+        Plan plan = hatchery();
+        slot.claim(plan, FRAME, FRAME + 20, HATCHERY_TRAVEL_FRAMES);
+        int evictionFrame = FRAME + BuildAheadSlot.MAX_HOLD_FRAMES - 100;
+        slot.releaseWithBackoff(plan, evictionFrame);
+
+        PlanBlocker blocker = ProductionManager.buildAheadBlocker(
+                slot, plan, evictionFrame, false, false, evictionFrame + 20);
+        slot.claim(plan, evictionFrame, evictionFrame + 20, HATCHERY_TRAVEL_FRAMES);
+        plan.setState(PlanState.SCHEDULE);
+        ProductionManager.refreshBuildAheadPredictions(slot, FRAME + 9000, p -> HATCHERY_TRAVEL_FRAMES, p -> true);
+
+        assertEquals(PlanBlocker.NONE, blocker);
+        assertTrue(slot.stalled(FRAME + BuildAheadSlot.MAX_HOLD_FRAMES - 1).isEmpty());
+        assertFalse(slot.stalled(FRAME + BuildAheadSlot.MAX_HOLD_FRAMES).isEmpty());
     }
 
     @Test
@@ -732,7 +802,7 @@ class ProductionManagerTest {
         plan.setState(PlanState.MORPHING);
         int claimDeadline = BuildAheadSlot.deadline(FRAME, FRAME + 20, HATCHERY_TRAVEL_FRAMES);
 
-        ProductionManager.refreshBuildAheadPredictions(slot, claimDeadline + 19, p -> HATCHERY_TRAVEL_FRAMES);
+        ProductionManager.refreshBuildAheadPredictions(slot, claimDeadline + 19, p -> HATCHERY_TRAVEL_FRAMES, p -> false);
 
         assertFalse(slot.stalled(claimDeadline).isEmpty());
     }
