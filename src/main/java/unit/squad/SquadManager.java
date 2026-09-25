@@ -130,6 +130,9 @@ public class SquadManager {
     private static final int CONTAINMENT_ENGAGE_RADIUS = 256;
     private static final int ARC_DEGREES = 90;
     private static final int ARC_RADIUS = 160;
+    private static final int MAX_ARC_DEGREES = 180;
+    private static final int MIN_ARC_POINTS = 4;
+    private static final int MAX_SPACED_RADIUS = ContainmentPushback.MAX_RADIUS - ContainmentPushback.RADIUS_STEP;
     private static final int CONTAIN_DEFENSE_MARGIN = 32;
     private static final double REINFORCEMENT_RADIUS = 384.0;
     private static final int TARGETING_RADIUS = 256;
@@ -2489,8 +2492,9 @@ public class SquadManager {
     }
 
     /**
-     * Builds the arc a squad would hold at the choke in front of the enemy base closest to it, at the radius the
-     * episode has been pushed back to, clear of every zone that outranges the squad at the reach learned over the
+     * Builds the arc a squad would hold at the choke in front of the enemy base closest to it, one point per member,
+     * at no less than the radius the episode has been pushed back to and wide enough that consecutive points sit at
+     * least the widest member's width apart, clear of every zone that outranges the squad at the reach learned over the
      * game.
      *
      * @param squad squad offered the arc
@@ -2513,21 +2517,77 @@ public class SquadManager {
                 2 * chokePosition.getY() - enemyBasePosition.getY()
         );
 
-        Arc arc = new Arc(chokePosition, faceTarget, containmentRadius(squad), ARC_DEGREES,
-                Math.max(squad.size(), 4));
+        int points = containmentPoints(squad);
+        int spacing = containmentSpacing(squad.getComposition().keySet());
+        int radius = containmentRadius(squad.getContainRadius(), points, spacing);
+        Arc arc = new Arc(chokePosition, faceTarget, radius, containmentDegrees(radius, points, spacing), points);
         return computeContainmentArc(arc, zones, containmentDefensePadding(squad.getComposition().keySet()),
                 gameState.getGameMap().getAccessibleWalkPositions(), game.mapWidth() * 32, game.mapHeight() * 32);
     }
 
     /**
-     * Radius a squad's arc is drawn at: the radius its episode has been pushed back to, or the default radius for a
-     * squad starting an episode.
+     * Radius a squad's arc is drawn at, from the radius its episode has been pushed back to, its point count and the
+     * width of its widest member, see {@link #containmentRadius(int, int, int)}.
      *
      * @param squad squad offered the arc
      * @return radius in pixels
      */
     static int containmentRadius(Squad squad) {
-        return Math.max(ARC_RADIUS, squad.getContainRadius());
+        return containmentRadius(squad.getContainRadius(), containmentPoints(squad),
+                containmentSpacing(squad.getComposition().keySet()));
+    }
+
+    /**
+     * Radius an arc of the given points is drawn at: the largest of the default radius, the radius the episode has
+     * been pushed back to, and the radius that keeps consecutive points the spacing apart over the default span,
+     * the last capped one {@link ContainmentPushback#RADIUS_STEP} short of {@link ContainmentPushback#MAX_RADIUS} so
+     * an arc sized for its squad can still be pushed back.
+     *
+     * @param pushbackRadius radius the episode has been pushed back to, 0 when it has not
+     * @param points points on the arc
+     * @param spacing pixels wanted between consecutive points
+     * @return radius in pixels
+     */
+    static int containmentRadius(int pushbackRadius, int points, int spacing) {
+        int spaced = Math.min(MAX_SPACED_RADIUS, Arc.radiusForSpacing(points, ARC_DEGREES, spacing));
+        return Math.max(Math.max(ARC_RADIUS, pushbackRadius), spaced);
+    }
+
+    /**
+     * Span of an arc of the given points at the radius: the default span, widened up to {@link #MAX_ARC_DEGREES}
+     * when the radius alone cannot keep consecutive points the spacing apart.
+     *
+     * @param radius radius of the arc in pixels
+     * @param points points on the arc
+     * @param spacing pixels wanted between consecutive points
+     * @return span in degrees
+     */
+    static int containmentDegrees(int radius, int points, int spacing) {
+        return Math.max(ARC_DEGREES, Math.min(MAX_ARC_DEGREES, Arc.degreesForSpacing(points, radius, spacing)));
+    }
+
+    /**
+     * Points on the arc offered to a squad: one per member, and never fewer than four.
+     *
+     * @param squad squad offered the arc
+     * @return point count
+     */
+    static int containmentPoints(Squad squad) {
+        return Math.max(squad.size(), MIN_ARC_POINTS);
+    }
+
+    /**
+     * Pixels kept between consecutive arc points: the width of the widest unit type in the squad.
+     *
+     * @param memberTypes unit types in the squad
+     * @return spacing in pixels, 0 when the squad is empty
+     */
+    static int containmentSpacing(Collection<UnitType> memberTypes) {
+        int widest = 0;
+        for (UnitType type : memberTypes) {
+            widest = Math.max(widest, type.dimensionLeft() + type.dimensionRight());
+        }
+        return widest;
     }
 
     /**

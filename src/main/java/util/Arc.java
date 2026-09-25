@@ -19,11 +19,12 @@ public class Arc {
     private static final int WALKABLE_SEARCH_MAX = 128;
     private static final int DEFENSE_PUSH_STEP = 32;
     private static final int DEFENSE_PUSH_MAX = 256;
+    private static final int SPACING_SLACK = 2;
 
     @Getter private final Position center;
     private final double centerAngle;
     @Getter private final int radius;
-    private final int arcDegrees;
+    @Getter private final int arcDegrees;
     private final int numPoints;
 
     private int mapPixelWidth;
@@ -49,6 +50,41 @@ public class Arc {
         this.radius = radius;
         this.arcDegrees = arcDegrees;
         this.numPoints = numPoints;
+    }
+
+    /**
+     * Smallest radius at which consecutive points of an arc are at least the spacing apart. The spacing is measured
+     * as a chord and padded by {@link #SPACING_SLACK} to absorb the truncation of point coordinates to whole pixels.
+     *
+     * @param numPoints points on the arc
+     * @param arcDegrees span of the arc in degrees
+     * @param spacing pixels wanted between consecutive points
+     * @return radius in pixels, or 0 when the spacing is not positive
+     */
+    public static int radiusForSpacing(int numPoints, int arcDegrees, int spacing) {
+        if (spacing <= 0 || arcDegrees <= 0) {
+            return 0;
+        }
+        double step = Math.toRadians((double) arcDegrees / (Math.max(2, numPoints) - 1));
+        return (int) Math.ceil((spacing + SPACING_SLACK) / (2 * Math.sin(step / 2)));
+    }
+
+    /**
+     * Smallest span in degrees at which consecutive points of an arc at the radius are at least the spacing apart,
+     * padded as in {@link #radiusForSpacing}.
+     *
+     * @param numPoints points on the arc
+     * @param radius radius of the arc in pixels
+     * @param spacing pixels wanted between consecutive points
+     * @return span in degrees, or 0 when the spacing is not positive
+     */
+    public static int degreesForSpacing(int numPoints, int radius, int spacing) {
+        if (spacing <= 0 || radius <= 0) {
+            return 0;
+        }
+        double halfChord = Math.min(1.0, (spacing + SPACING_SLACK) / (2.0 * radius));
+        double step = 2 * Math.asin(halfChord);
+        return (int) Math.ceil(Math.toDegrees(step) * (Math.max(2, numPoints) - 1));
     }
 
     /**
