@@ -36,6 +36,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Predicate;
 import java.util.function.ToIntFunction;
 import java.util.stream.Collectors;
 
@@ -352,7 +353,18 @@ public class ProductionManager {
         refreshBuildAheadPredictions(
                 buildAheadSlot,
                 gameState.frameCanAffordReserved(currentFrame),
-                this::builderTravelFrames);
+                this::builderTravelFrames,
+                gameState.getResourceCount()::bankCovers,
+                this::isBuilderClearingBlocker);
+    }
+
+    private boolean isBuilderClearingBlocker(Plan plan) {
+        Unit executor = executorOf(plan);
+        if (executor == null) {
+            return false;
+        }
+        ManagedUnit builder = gameState.getManagedUnitLookup().get(executor);
+        return builder != null && builder.isClearingBlocker();
     }
 
     /**
@@ -364,11 +376,18 @@ public class ProductionManager {
      * Left stale, the plan rides to the claim-time cap and is evicted with its builder mid-walk.
      * Only a parked plan's predictedReadyFrame is rewritten, since PlanManager releases the builder
      * on it; a launched builder reads it to decide when to clear a blocking mineral.
+     *
+     * <p>A plan the bank already covers is carried no further than
+     * {@code claimFrame + BuildAheadSlot.MAX_HOLD_FRAMES}, so a stalled builder is evicted instead
+     * of riding the sliding ledger prediction to the total hold. A plan whose builder is mining out
+     * a blocking mineral is exempt from that cap while it clears.
      */
     static void refreshBuildAheadPredictions(
             BuildAheadSlot slot,
             int predictedReadyFrame,
-            ToIntFunction<Plan> travelFrames) {
+            ToIntFunction<Plan> travelFrames,
+            Predicate<Plan> bankCovers,
+            Predicate<Plan> clearingBlocker) {
         for (Plan plan : slot.claimedPlans()) {
             PlanState state = plan.getState();
             if (state == PlanState.SCHEDULE) {
@@ -376,7 +395,8 @@ public class ProductionManager {
             } else if (state != PlanState.BUILDING) {
                 continue;
             }
-            slot.extend(plan, predictedReadyFrame, travelFrames.applyAsInt(plan));
+            slot.extend(plan, predictedReadyFrame, travelFrames.applyAsInt(plan), bankCovers.test(plan),
+                    clearingBlocker.test(plan));
         }
     }
 

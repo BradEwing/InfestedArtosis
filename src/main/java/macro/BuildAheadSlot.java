@@ -27,7 +27,8 @@ public class BuildAheadSlot {
     /**
      * The ceiling a refreshed hold can never pass, however far the income prediction slides.
      * Twice the hold a claim is granted: a plan whose income recovers is carried to its builder's
-     * launch, and one whose income is gone is still evicted.
+     * launch, and one whose income is gone is still evicted. Only a plan the bank cannot yet pay
+     * for is carried past {@link #MAX_HOLD_FRAMES}.
      */
     static final int TOTAL_HOLD_FRAMES = 24 * 120;
 
@@ -97,13 +98,33 @@ public class BuildAheadSlot {
      * the plan rides to the claim-time cap and is evicted with its drone parked on minerals. The
      * deadline follows the refreshed estimate but never shortens and never passes
      * {@code claimFrame + TOTAL_HOLD_FRAMES}.
+     *
+     * <p>The hold is carried past {@code claimFrame + MAX_HOLD_FRAMES} only while the bank cannot
+     * pay for the plan. Once the bank covers the plan's own cost the hold is no longer an income
+     * wait: the ledger prediction still slides as plans queued behind it reserve, but following it
+     * would only shelter a builder that is lost or blocked. Such a hold is re-timed against
+     * {@code claimFrame + MAX_HOLD_FRAMES}, and one already carried past that while income-bound
+     * keeps its deadline without being carried further.
+     *
+     * <p>A builder mining out a mineral that blocks its walk is making progress the ledger cannot
+     * see, so while it clears the hold is carried as if income-bound, up to
+     * {@code claimFrame + TOTAL_HOLD_FRAMES}. Once the blocker is gone the deadline it reached is
+     * kept and the builder walks the rest of the way on it.
+     *
+     * @param plan the plan holding the claim
+     * @param predictedReadyFrame the refreshed ledger prediction
+     * @param travelFrames the builder's travel estimate
+     * @param bankCovers whether the mined bank covers the plan's own cost
+     * @param clearingBlocker whether the plan's builder is mining out a mineral blocking its walk
      */
-    public void extend(Plan plan, int predictedReadyFrame, int travelFrames) {
+    public void extend(Plan plan, int predictedReadyFrame, int travelFrames, boolean bankCovers,
+                       boolean clearingBlocker) {
         Claim claim = claims.get(plan);
         if (claim == null) {
             return;
         }
-        int refreshed = deadline(claim.claimFrame, predictedReadyFrame, travelFrames, TOTAL_HOLD_FRAMES);
+        int cap = bankCovers && !clearingBlocker ? MAX_HOLD_FRAMES : TOTAL_HOLD_FRAMES;
+        int refreshed = deadline(claim.claimFrame, predictedReadyFrame, travelFrames, cap);
         claim.deadline = Math.min(claim.claimFrame + TOTAL_HOLD_FRAMES, Math.max(claim.deadline, refreshed));
     }
 
@@ -192,6 +213,8 @@ public class BuildAheadSlot {
     /**
      * A plan claiming during its backoff resumes the hold it was released from rather than starting
      * a new one, so an eviction cannot restart the hold clock of a plan that re-claims at once.
+     * Only a plan the bank can pay for claims during its backoff, so the resumed hold ends by
+     * {@code claimFrame + MAX_HOLD_FRAMES}.
      */
     public void claim(Plan plan, int currentFrame, int predictedReadyFrame, int travelFrames) {
         Backoff backoff = activeBackoff(plan, currentFrame);
@@ -200,7 +223,7 @@ public class BuildAheadSlot {
             claims.put(plan, new Claim(currentFrame, deadline, currentFrame));
             return;
         }
-        int deadline = deadline(backoff.claimFrame, predictedReadyFrame, travelFrames, TOTAL_HOLD_FRAMES);
+        int deadline = deadline(backoff.claimFrame, predictedReadyFrame, travelFrames, MAX_HOLD_FRAMES);
         claims.put(plan, new Claim(backoff.claimFrame, deadline, currentFrame));
     }
 
@@ -252,13 +275,13 @@ public class BuildAheadSlot {
     }
 
     /**
-     * True while a plan in backoff has no hold left to resume. Its released hold already reached
-     * {@code claimFrame + TOTAL_HOLD_FRAMES}, so a resumed claim would expire on the frame it was
-     * taken; the plan waits out its backoff and then claims afresh.
+     * True while a plan in backoff has no hold left to resume. A resumed hold ends by
+     * {@code claimFrame + MAX_HOLD_FRAMES}, so once that frame has passed a resumed claim would
+     * expire on the frame it was taken; the plan waits out its backoff and then claims afresh.
      */
     public boolean isHoldSpent(Plan plan, int currentFrame) {
         Backoff backoff = activeBackoff(plan, currentFrame);
-        return backoff != null && currentFrame >= backoff.claimFrame + TOTAL_HOLD_FRAMES;
+        return backoff != null && currentFrame >= backoff.claimFrame + MAX_HOLD_FRAMES;
     }
 
     private Backoff activeBackoff(Plan plan, int currentFrame) {

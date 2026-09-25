@@ -156,6 +156,21 @@ public class ResourceCount {
         return isShort(availableMinerals, mineralPrice) && !isShort(availableGas, gasPrice);
     }
 
+    /**
+     * True when the mined bank alone, ignoring every reservation, covers the plan's own price.
+     *
+     * <p>A plan holding its reservation counts in the ledger it would be compared against, and the
+     * ledger keeps absorbing plans queued behind it. The bank on its own answers whether the plan
+     * could be paid the moment its builder reached the site.
+     */
+    public boolean bankCovers(Plan plan) {
+        return bankCovers(self.minerals(), self.gas(), plan.mineralPrice(), plan.gasPrice());
+    }
+
+    static boolean bankCovers(int minerals, int gas, int mineralPrice, int gasPrice) {
+        return !isShort(minerals, mineralPrice) && !isShort(gas, gasPrice);
+    }
+
     public boolean cannotAffordResearch(TechType techType) {
         final int mineralPrice = techType.mineralPrice();
         final int gasPrice = techType.gasPrice();
