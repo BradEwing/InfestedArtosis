@@ -80,6 +80,10 @@ public class ManagedUnit {
     @Getter
     private int hitPointsBefore = -1;
     private int hitFrame = -1;
+    @Getter
+    private int attacksStarted;
+    @Getter
+    private int lastAttackStartFrame = -1;
 
     private Position evadePosition;
     private int evadeFrame = -1;
@@ -653,6 +657,19 @@ public class ManagedUnit {
         lastHitPointsType = type;
         if (hitPoints < hitPointsBefore) {
             hitFrame = frame;
+        }
+    }
+
+    /**
+     * Counts an attack when the unit is starting one on this frame, and remembers the frame. Read every frame, so
+     * {@link #getAttacksStarted} is the number of attacks the unit has started since it was first managed.
+     *
+     * @param frame current frame
+     */
+    public void observeAttack(int frame) {
+        if (unit.isStartingAttack()) {
+            attacksStarted++;
+            lastAttackStartFrame = frame;
         }
     }
 

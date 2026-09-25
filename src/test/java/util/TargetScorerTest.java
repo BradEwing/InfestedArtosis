@@ -183,11 +183,11 @@ class TargetScorerTest {
             for (int t = 0; t < types.length; t++) {
                 TargetScorer.Candidate base = new TargetScorer.Candidate(types[t], baseDistances[t] + ling, 1.0,
                         false, false);
-                candidates.add(TargetScorer.withLedger(base, UnitType.Zerg_Zergling, ZERGLING, targetIds[t],
+                candidates.add(TargetScorer.withLedger(base, ling, UnitType.Zerg_Zergling, ZERGLING, targetIds[t],
                         () -> new Position(0, 0), ledger));
             }
             int chosen = TargetScorer.selectIndex(ZERGLING, candidates);
-            ledger.record(UnitType.Zerg_Zergling, targetIds[chosen]);
+            ledger.record(ling, UnitType.Zerg_Zergling, targetIds[chosen]);
             picks.merge(chosen, 1, Integer::sum);
         }
 
@@ -199,6 +199,91 @@ class TargetScorerTest {
         assertEquals(20, picks.values().stream().mapToInt(Integer::intValue).sum());
         assertTrue(picks.size() > 1);
         assertTrue(ledger.meleeAssigned(201) > 0, "the nearer Medic was never chosen");
+    }
+
+    private static final int NEAR_MARINE = 101;
+    private static final int FAR_MARINE = 102;
+
+    private static int lingPicksAMarine(TargetLedger ledger, int ling) {
+        List<TargetScorer.Candidate> candidates = Arrays.asList(
+                TargetScorer.withLedger(at(UnitType.Terran_Marine, 20), ling, UnitType.Zerg_Zergling, ZERGLING,
+                        NEAR_MARINE, () -> new Position(0, 0), ledger),
+                TargetScorer.withLedger(at(UnitType.Terran_Marine, 200), ling, UnitType.Zerg_Zergling, ZERGLING,
+                        FAR_MARINE, () -> new Position(0, 0), ledger));
+        int targetId = TargetScorer.selectIndex(ZERGLING, candidates) == 0 ? NEAR_MARINE : FAR_MARINE;
+        ledger.record(ling, UnitType.Zerg_Zergling, targetId);
+        return targetId;
+    }
+
+    @Test
+    void twoSquadsTargetingTheSameMarineRespectOneSharedCap() {
+        int cap = TargetScorer.meleeCap(UnitType.Terran_Marine, UnitType.Zerg_Zergling);
+        TargetLedger frame = TargetLedger.empty();
+        TargetLedger squadA = TargetLedger.empty();
+        TargetLedger squadB = TargetLedger.empty();
+        int perSquadOnNear = 0;
+
+        for (int i = 0; i < cap; i++) {
+            lingPicksAMarine(frame, 100 + i);
+            lingPicksAMarine(frame, 200 + i);
+            perSquadOnNear += lingPicksAMarine(squadA, 100 + i) == NEAR_MARINE ? 1 : 0;
+            perSquadOnNear += lingPicksAMarine(squadB, 200 + i) == NEAR_MARINE ? 1 : 0;
+        }
+
+        assertEquals(cap, frame.meleeAssigned(NEAR_MARINE));
+        assertEquals(cap, frame.meleeAssigned(FAR_MARINE));
+        assertEquals(2 * cap, perSquadOnNear, "separate ledgers pile both squads onto the near Marine");
+    }
+
+    @Test
+    void aLingRescoredOnTheSameFrameKeepsItsSlotAndANewcomerIsTurnedAway() {
+        int cap = TargetScorer.meleeCap(UnitType.Terran_Marine, UnitType.Zerg_Zergling);
+        TargetLedger frame = TargetLedger.empty();
+        for (int ling = 1; ling <= cap; ling++) {
+            frame.record(ling, UnitType.Zerg_Zergling, NEAR_MARINE);
+        }
+
+        assertEquals(NEAR_MARINE, lingPicksAMarine(frame, 1));
+        assertEquals(FAR_MARINE, lingPicksAMarine(frame, 50));
+        assertEquals(cap, frame.meleeAssigned(NEAR_MARINE));
+    }
+
+    @Test
+    void aLingWhoseOnlyNearbyMarineIsSaturatedFindsAnOpenMarineAmongTheWidenedCandidates() {
+        int cap = TargetScorer.meleeCap(UnitType.Terran_Marine, UnitType.Zerg_Zergling);
+        TargetLedger frame = TargetLedger.empty();
+        for (int other = 10; other < 10 + cap; other++) {
+            frame.record(other, UnitType.Zerg_Zergling, NEAR_MARINE);
+        }
+        TargetScorer.Candidate nearby = TargetScorer.withLedger(at(UnitType.Terran_Marine, 30), 1,
+                UnitType.Zerg_Zergling, ZERGLING, NEAR_MARINE, () -> new Position(0, 0), frame);
+        TargetScorer.Candidate beyond = TargetScorer.withLedger(at(UnitType.Terran_Marine, 400), 1,
+                UnitType.Zerg_Zergling, ZERGLING, FAR_MARINE, () -> new Position(0, 0), frame);
+
+        List<TargetScorer.Candidate> inRadius = Collections.singletonList(nearby);
+        assertTrue(inRadius.get(TargetScorer.selectIndex(ZERGLING, inRadius)).saturated());
+
+        List<TargetScorer.Candidate> widened = Arrays.asList(nearby, beyond);
+        int chosen = TargetScorer.selectIndex(ZERGLING, widened);
+        assertEquals(1, chosen);
+        assertFalse(widened.get(chosen).saturated());
+    }
+
+    @Test
+    void aSeededOverloadIsShedDownToTheCapInOnePass() {
+        int cap = TargetScorer.meleeCap(UnitType.Terran_Marine, UnitType.Zerg_Zergling);
+        TargetLedger frame = TargetLedger.empty();
+        int lings = cap + 5;
+        for (int ling = 1; ling <= lings; ling++) {
+            frame.record(ling, UnitType.Zerg_Zergling, NEAR_MARINE);
+        }
+
+        for (int ling = 1; ling <= lings; ling++) {
+            lingPicksAMarine(frame, ling);
+        }
+
+        assertEquals(cap, frame.meleeAssigned(NEAR_MARINE));
+        assertEquals(5, frame.meleeAssigned(FAR_MARINE));
     }
 
     @Test
@@ -233,12 +318,12 @@ class TargetScorerTest {
     @Test
     void theLedgerSetsTheLoadAndCapForAMeleeAttackerAndNoCapForARangedOne() {
         TargetLedger ledger = TargetLedger.empty();
-        ledger.record(UnitType.Zerg_Zergling, 5);
-        ledger.record(UnitType.Zerg_Zergling, 5);
+        ledger.record(1, UnitType.Zerg_Zergling, 5);
+        ledger.record(2, UnitType.Zerg_Zergling, 5);
 
-        TargetScorer.Candidate forLing = TargetScorer.withLedger(at(UnitType.Terran_Marine, 50),
+        TargetScorer.Candidate forLing = TargetScorer.withLedger(at(UnitType.Terran_Marine, 50), 3,
                 UnitType.Zerg_Zergling, ZERGLING, 5, () -> new Position(0, 0), ledger);
-        TargetScorer.Candidate forHydra = TargetScorer.withLedger(at(UnitType.Terran_Marine, 50),
+        TargetScorer.Candidate forHydra = TargetScorer.withLedger(at(UnitType.Terran_Marine, 50), 3,
                 UnitType.Zerg_Hydralisk, false, 5, () -> new Position(0, 0), ledger);
 
         assertEquals(2, forLing.assignedMelee());
@@ -249,7 +334,7 @@ class TargetScorerTest {
     @Test
     void theLedgerMarksACoveredUnitOrDepotButNotTheDefenceStructureItself() {
         Position bunker = new Position(1000, 1000);
-        TargetLedger ledger = new TargetLedger("s",
+        TargetLedger ledger = new TargetLedger(
                 Collections.singletonList(new StaticDefenseZone(UnitType.Terran_Bunker, bunker, 160)));
         Position near = new Position(1080, 1000);
 
@@ -261,20 +346,20 @@ class TargetScorerTest {
 
     @Test
     void aFlyingAttackerOrAnEmptyLedgerNeverReadsTheCandidatePosition() {
-        TargetLedger withBunker = new TargetLedger("s", Collections.singletonList(
+        TargetLedger withBunker = new TargetLedger(Collections.singletonList(
                 new StaticDefenseZone(UnitType.Terran_Bunker, new Position(1000, 1000), 160)));
         Supplier<Position> unreadable = () -> {
             throw new AssertionError("position read");
         };
 
-        TargetScorer.withLedger(at(UnitType.Terran_Marine, 50), UnitType.Zerg_Mutalisk, MUTALISK, 1, unreadable,
+        TargetScorer.withLedger(at(UnitType.Terran_Marine, 50), 3, UnitType.Zerg_Mutalisk, MUTALISK, 1, unreadable,
                 withBunker);
-        TargetScorer.withLedger(at(UnitType.Terran_Marine, 50), UnitType.Zerg_Zergling, ZERGLING, 1, unreadable,
+        TargetScorer.withLedger(at(UnitType.Terran_Marine, 50), 3, UnitType.Zerg_Zergling, ZERGLING, 1, unreadable,
                 TargetLedger.empty());
     }
 
     private static boolean covered(TargetLedger ledger, UnitType type, Position position) {
-        return TargetScorer.withLedger(at(type, 50), UnitType.Zerg_Zergling, ZERGLING, 1, () -> position, ledger)
+        return TargetScorer.withLedger(at(type, 50), 3, UnitType.Zerg_Zergling, ZERGLING, 1, () -> position, ledger)
                 .inGroundDefense();
     }
 

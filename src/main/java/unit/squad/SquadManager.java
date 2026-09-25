@@ -51,8 +51,10 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.function.ToDoubleFunction;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import util.TargetScorer;
@@ -138,6 +140,7 @@ public class SquadManager {
     private static final int CONTAIN_DEFENSE_MARGIN = 32;
     private static final double REINFORCEMENT_RADIUS = 384.0;
     private static final int TARGETING_RADIUS = 256;
+    private static final int WIDENED_TARGETING_RADIUS = 2 * TARGETING_RADIUS;
     public static final int GROUND_SPLIT_DISTANCE = 256;
     public static final int AIR_SPLIT_DISTANCE = 768;
     private static final int COMMITMENT_RELEASE_DISTANCE = 512;
@@ -150,6 +153,9 @@ public class SquadManager {
     private Set<ManagedUnit> outrangedHits = new HashSet<>();
 
     private final ScoutChase scoutChase = new ScoutChase();
+
+    private TargetLedger fightTargetLedger = TargetLedger.empty();
+    private int fightTargetLedgerFrame = -1;
 
     public SquadManager(Game game, GameState gameState) {
         this.game = game;
@@ -1487,12 +1493,12 @@ public class SquadManager {
     }
 
     /**
-     * Puts every fighter in FIGHT and picks its target. Fighters are targeted in unit id order against one
-     * {@link TargetLedger}, so each melee pick counts toward the load the next fighter sees, and the same
-     * fighters keep their targets from one pass to the next.
+     * Puts every fighter in FIGHT and picks its target. Fighters are targeted in unit id order against the frame's
+     * {@link TargetLedger}, shared by every fight squad, so each melee pick counts toward the load every later
+     * fighter sees, whichever squad it is in.
      */
     private void assignFightTargets(Squad squad, HashSet<ManagedUnit> managedFighters, boolean clearRetreat) {
-        TargetLedger ledger = new TargetLedger(squad.getId(), gameState.getStaticDefenseZones());
+        TargetLedger ledger = fightTargetLedger();
         List<ManagedUnit> ordered = new ArrayList<>(managedFighters);
         ordered.sort(Comparator.comparingInt(ManagedUnit::getUnitID));
         for (ManagedUnit managedUnit : ordered) {
@@ -3372,10 +3378,12 @@ public class SquadManager {
      *
      * @param managedUnit unit that needs a target
      * @param squad squad that passed fight simulation
-     * @param ledger the squad's melee assignments so far in this pass; the chosen target is recorded in it
+     * @param ledger the frame's melee assignments across every fight squad; the unit's entry is dropped, and the
+     *     chosen target recorded in its place
      */
     private void assignEnemyTarget(ManagedUnit managedUnit, Squad squad, TargetLedger ledger) {
         Unit unit = managedUnit.getUnit();
+        ledger.release(unit.getID());
         if (managedUnit.getUnitType() == UnitType.Zerg_Overlord) {
             if (gameState.getTechProgression().isOverlordSpeed()) {
                 managedUnit.setRallyPoint(squad.getCenter());
@@ -3453,29 +3461,65 @@ public class SquadManager {
                 ? Collections.emptyList()
                 : gameState.getStaticDefenseZones();
         int defensePadding = containmentDefensePadding(Collections.singleton(unit.getType()));
-        filtered = filterByProximity(uncapped, unit::getDistance,
-                enemy -> !coveredByStaticDefense(enemy.getPosition(), defenseZones, defensePadding));
+        Predicate<Unit> admitted = enemy -> !coveredByStaticDefense(enemy.getPosition(), defenseZones, defensePadding);
+        filtered = filterByProximity(uncapped, unit::getDistance, admitted);
         if (filtered.isEmpty() && joinArc != null) {
             rallyToDefensePosition(managedUnit, joinArc.closestPosition(unit.getPosition()));
             return;
         }
-
-        if (gameState.isCannonRushed()) {
-            Set<Unit> proxied = gameState.getObservedUnitTracker().getProxiedBuildings();
-            List<Unit> proxiedTargets = filtered.stream()
-                    .filter(proxied::contains)
-                    .collect(Collectors.toList());
-            if (!proxiedTargets.isEmpty()) {
-                filtered = proxiedTargets;
-            }
-        }
-
-        TargetScorer.Selection selection = TargetScorer.selectTarget(unit, filtered, managedUnit.fightTarget, ledger);
+        Function<List<Unit>, TargetScorer.Selection> select = candidates -> TargetScorer.selectTarget(unit,
+                preferProxiedBuildings(candidates), managedUnit.fightTarget, ledger, squad.getId());
+        TargetScorer.Selection selection = widenWhenSaturated(select.apply(filtered), filtered.size(),
+                () -> widenCandidates(uncapped, unit::getDistance, admitted), select);
         if (selection != null) {
             TargetChoices.chosen(managedUnit, managedUnit.fightTarget, selection, scoutCapped);
             managedUnit.setFightTarget(selection.getTarget());
             ledger.recordPick(unit, selection.getTarget());
             recordScoutClaim(unit, selection.getTarget());
+        }
+    }
+
+    /**
+     * While cannon rushed, narrows the candidates to the proxied buildings among them, when there are any.
+     */
+    private List<Unit> preferProxiedBuildings(List<Unit> candidates) {
+        if (!gameState.isCannonRushed()) {
+            return candidates;
+        }
+        Set<Unit> proxied = gameState.getObservedUnitTracker().getProxiedBuildings();
+        List<Unit> proxiedTargets = candidates.stream()
+                .filter(proxied::contains)
+                .collect(Collectors.toList());
+        return proxiedTargets.isEmpty() ? candidates : proxiedTargets;
+    }
+
+    /**
+     * The frame's melee target ledger, shared by every fight squad's targeting. The first read on a frame builds it
+     * from the enemy static defence and seeds it with the fight target each FIGHT member of a fight squad already
+     * holds, so a squad targeted early in the frame sees the load of a squad targeted after it. A member that has
+     * left FIGHT, or whose target no longer exists, is not seeded, and the ledger counts only melee members.
+     */
+    private TargetLedger fightTargetLedger() {
+        int now = game.getFrameCount();
+        if (fightTargetLedgerFrame != now) {
+            fightTargetLedger = new TargetLedger(gameState.getStaticDefenseZones());
+            fightTargetLedgerFrame = now;
+            for (Squad squad : fightSquads) {
+                seedFightTargets(fightTargetLedger, squad.getMembers());
+            }
+        }
+        return fightTargetLedger;
+    }
+
+    /**
+     * Records in the ledger the fight target of every member in FIGHT whose target still exists.
+     */
+    static void seedFightTargets(TargetLedger ledger, Collection<ManagedUnit> members) {
+        for (ManagedUnit member : members) {
+            Unit target = member.fightTarget;
+            if (member.getRole() == UnitRole.FIGHT && target != null && target.exists()) {
+                ledger.record(member.getUnitID(), member.getUnitType(), target.getID());
+            }
         }
     }
 
@@ -3593,6 +3637,51 @@ public class SquadManager {
      */
     static <T> List<T> filterByProximity(List<T> candidates, ToDoubleFunction<T> distance) {
         return filterByProximity(candidates, distance, candidate -> true);
+    }
+
+    /**
+     * Replaces a saturated pick with one made from the widened candidates, when the widened candidates add any and
+     * the pick made from them is not saturated. Otherwise the saturated pick stands.
+     *
+     * @param selection the pick made from the nearby candidates, or null when there was none
+     * @param nearbyCount how many candidates the pick was made from
+     * @param widened candidates within the widened radius, built only when the pick is saturated
+     * @param select picks a target from a candidate list
+     * @return the pick to keep
+     */
+    static <T> TargetScorer.Selection widenWhenSaturated(TargetScorer.Selection selection, int nearbyCount,
+                                                         Supplier<List<T>> widened,
+                                                         Function<List<T>, TargetScorer.Selection> select) {
+        if (selection == null || !selection.isSaturated()) {
+            return selection;
+        }
+        List<T> candidates = widened.get();
+        if (candidates.size() <= nearbyCount) {
+            return selection;
+        }
+        TargetScorer.Selection wider = select.apply(candidates);
+        return wider != null && !wider.isSaturated() ? wider.asWidened() : selection;
+    }
+
+    /**
+     * Candidates a melee fighter falls back to when every target {@link #filterByProximity} gave it is saturated:
+     * those within {@link #TARGETING_RADIUS} of it, and those out to {@link #WIDENED_TARGETING_RADIUS} that the
+     * fallback admits.
+     *
+     * @param candidates attackable enemies
+     * @param distance distance from the attacker to a candidate
+     * @param fallback which candidates beyond the targeting radius may still be chased
+     * @return the candidates within the widened radius
+     */
+    static <T> List<T> widenCandidates(List<T> candidates, ToDoubleFunction<T> distance, Predicate<T> fallback) {
+        List<T> widened = new ArrayList<>();
+        for (T enemy : candidates) {
+            double d = distance.applyAsDouble(enemy);
+            if (d <= TARGETING_RADIUS || d <= WIDENED_TARGETING_RADIUS && fallback.test(enemy)) {
+                widened.add(enemy);
+            }
+        }
+        return widened;
     }
 
     /**

@@ -12,24 +12,22 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * One squad's melee target assignments during a single targeting pass, with the enemy static defence that can
- * fire on ground units. A fresh ledger is built each time a squad's fight targets are assigned; members are
- * scored in turn and each melee pick is recorded, so a later member sees the load earlier members put on a
- * target.
+ * The melee target assignments of every fight squad on one frame, with the enemy static defence that can fire on
+ * ground units. Each melee attacker holds at most one entry: recording a new pick replaces the attacker's previous
+ * one and releasing the attacker drops it, so an attacker targeted twice on a frame is counted once. The load an
+ * attacker sees on a target leaves out its own entry.
  */
 public final class TargetLedger {
 
-    private final String squadId;
     private final List<StaticDefenseZone> groundDefenseZones;
+    private final Map<Integer, Integer> meleeTargetByAttacker = new HashMap<>();
     private final Map<Integer, Integer> meleeAssigned = new HashMap<>();
 
     /**
-     * @param squadId id of the squad whose members are being targeted
      * @param staticDefenseZones enemy static defence zones; those whose structure cannot fire on ground units
      *     are dropped
      */
-    public TargetLedger(String squadId, Collection<StaticDefenseZone> staticDefenseZones) {
-        this.squadId = squadId;
+    public TargetLedger(Collection<StaticDefenseZone> staticDefenseZones) {
         this.groundDefenseZones = new ArrayList<>();
         for (StaticDefenseZone zone : staticDefenseZones) {
             if (TargetScorer.canAttackType(zone.getStructure(), false)) {
@@ -39,38 +37,61 @@ public final class TargetLedger {
     }
 
     /**
-     * @return a ledger with no squad, no assignments and no static defence
+     * @return a ledger with no assignments and no static defence
      */
     public static TargetLedger empty() {
-        return new TargetLedger("", Collections.emptyList());
-    }
-
-    public String getSquadId() {
-        return squadId;
+        return new TargetLedger(Collections.emptyList());
     }
 
     /**
-     * @return melee attackers recorded against the target so far in this pass
+     * @return melee attackers holding the target
      */
     public int meleeAssigned(int targetId) {
         return meleeAssigned.getOrDefault(targetId, 0);
     }
 
     /**
-     * Counts the attacker against its target when it fights in melee; ranged picks are not counted.
+     * @return melee attackers holding the target, not counting the given attacker
+     */
+    public int meleeAssignedExcept(int targetId, int attackerId) {
+        Integer own = meleeTargetByAttacker.get(attackerId);
+        int assigned = meleeAssigned(targetId);
+        return own != null && own == targetId ? assigned - 1 : assigned;
+    }
+
+    /**
+     * Makes the target the attacker's entry when it fights in melee; ranged picks are not counted.
      */
     public void recordPick(Unit attacker, Unit target) {
-        record(attacker.getType(), target.getID());
+        record(attacker.getID(), attacker.getType(), target.getID());
     }
 
-    void record(UnitType attackerType, int targetId) {
-        if (TargetScorer.isMelee(attackerType)) {
-            recordMelee(targetId);
+    /**
+     * Makes the target the attacker's entry when it fights in melee, replacing any entry it held.
+     */
+    public void record(int attackerId, UnitType attackerType, int targetId) {
+        if (!TargetScorer.isMelee(attackerType)) {
+            return;
         }
+        release(attackerId);
+        meleeTargetByAttacker.put(attackerId, targetId);
+        meleeAssigned.merge(targetId, 1, Integer::sum);
     }
 
-    void recordMelee(int targetId) {
-        meleeAssigned.merge(targetId, 1, Integer::sum);
+    /**
+     * Drops the attacker's entry, if it holds one.
+     */
+    public void release(int attackerId) {
+        Integer previous = meleeTargetByAttacker.remove(attackerId);
+        if (previous == null) {
+            return;
+        }
+        int remaining = meleeAssigned.get(previous) - 1;
+        if (remaining > 0) {
+            meleeAssigned.put(previous, remaining);
+        } else {
+            meleeAssigned.remove(previous);
+        }
     }
 
     /**

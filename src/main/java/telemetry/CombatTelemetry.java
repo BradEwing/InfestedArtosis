@@ -287,7 +287,8 @@ public class CombatTelemetry {
             ManagedUnit member = contact.getManagedUnit();
             UnitType type = member.getUnitType();
             engagement.noteUnit(frame, member.getUnitID(), type, member.getUnit().getHitPoints(),
-                    Csv.name(member.getRole()), contact.getSquad().getId());
+                    Csv.name(member.getRole()), contact.getSquad().getId(), member.getAttacksStarted(),
+                    member.getLastAttackStartFrame());
             supply += type.supplyRequired();
         }
 

@@ -175,6 +175,7 @@ public class GameState {
     private void observeHitPoints(int frame) {
         for (ManagedUnit managedUnit : managedUnits) {
             managedUnit.observeHitPoints(frame);
+            managedUnit.observeAttack(frame);
         }
     }
 

@@ -9,16 +9,10 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 public class Zergling extends ManagedUnit {
-    static final int FIGHT_ATTACK_RADIUS = 128;
-
     public Zergling(Game game, Unit unit, UnitRole role, GameMap gameMap) {
         super(game, unit, role, gameMap);
     }
 
-    /**
-     * Attacks the fight target once it is within {@link #FIGHT_ATTACK_RADIUS}, otherwise moves to its tile. Inside
-     * that radius the game's attack order, not a move to the shared tile, steers each ling onto the target.
-     */
     @Override
     protected void fight() {
         if (unit.isAttackFrame()) {
@@ -28,7 +22,7 @@ public class Zergling extends ManagedUnit {
 
         if (fightTarget != null) {
             int distanceToTarget = unit.getDistance(fightTarget);
-            if (distanceToTarget < FIGHT_ATTACK_RADIUS) {
+            if (distanceToTarget < 64) {
                 unit.attack(fightTarget);
                 return;
             } 

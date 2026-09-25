@@ -13,7 +13,7 @@ import java.util.function.Supplier;
 /**
  * Picks a fight target from a candidate list. Every candidate is assigned a {@link Priority} tier and
  * the highest tier wins outright. Within a tier, a melee attacker prefers a target that is not yet
- * saturated with melee attackers from its squad; after that, nearer, more injured candidates score higher,
+ * saturated with melee attackers; after that, nearer, more injured candidates score higher,
  * a ground attacker's score halves for a target inside enemy ground static defence reach (unless the target is
  * itself a structure that fires on ground units), and the current target keeps a stickiness bonus.
  *
@@ -27,8 +27,8 @@ import java.util.function.Supplier;
  *   <li>LOW: buildings, including hostile buildings that cannot attack the attacker's layer</li>
  * </ul>
  *
- * <p>A target is saturated for a melee attacker once {@link #meleeCap} melee attackers of the same squad have
- * already been given it in the current targeting pass, see {@link TargetLedger}.
+ * <p>A target is saturated for a melee attacker once {@link #meleeCap} other melee attackers, from any fight squad,
+ * hold it in the frame's {@link TargetLedger}.
  */
 public final class TargetScorer {
 
@@ -75,15 +75,16 @@ public final class TargetScorer {
      * @return the chosen target with the tier it was assigned, or null when there are no candidates
      */
     public static Selection selectTarget(Unit attacker, List<Unit> candidates, Unit currentTarget) {
-        return selectTarget(attacker, candidates, currentTarget, TargetLedger.empty());
+        return selectTarget(attacker, candidates, currentTarget, TargetLedger.empty(), "");
     }
 
     /**
-     * @param ledger the squad's assignments so far in this targeting pass; it is read, not updated
+     * @param ledger the frame's melee assignments across every fight squad; it is read, not updated
+     * @param squadId id of the squad the attacker fights in, carried on the selection for telemetry
      * @return the chosen target with the tier it was assigned, or null when there are no candidates
      */
     public static Selection selectTarget(Unit attacker, List<Unit> candidates, Unit currentTarget,
-                                         TargetLedger ledger) {
+                                         TargetLedger ledger, String squadId) {
         if (candidates.isEmpty()) {
             return null;
         }
@@ -100,7 +101,7 @@ public final class TargetScorer {
         Candidate chosen = scored.get(best);
         Reason reason = reasonAt(attackerIsFlying, scored, best);
         return new Selection(candidates.get(best), reason.priority(), candidates.size(), reason,
-                chosen.assignedMelee(), chosen.saturated(), ledger.getSquadId());
+                chosen.assignedMelee(), chosen.saturated(), squadId, false);
     }
 
     /**
@@ -228,20 +229,22 @@ public final class TargetScorer {
         boolean isCurrent = currentTarget != null && candidate.getID() == currentTarget.getID();
         Candidate base = new Candidate(type, attacker.getDistance(candidate), hpFraction, isCurrent,
                 Filter.isMeanWorker(candidate));
-        return withLedger(base, attackerType, attacker.isFlying(), candidate.getID(), candidate::getPosition, ledger)
-                .withHealingInjuredBio(type == UnitType.Terran_Medic && healsAnyCandidate(candidate, candidates));
+        return withLedger(base, attacker.getID(), attackerType, attacker.isFlying(), candidate.getID(),
+                candidate::getPosition, ledger).withHealingInjuredBio(type == UnitType.Terran_Medic && healsAnyCandidate(candidate, candidates));
     }
 
     /**
-     * Applies the squad's ledger to a candidate: the melee load already on it with the attacker's cap, and, for a
+     * Applies the frame's ledger to a candidate: the melee load other attackers put on it with the attacker's cap,
+     * and, for a
      * ground attacker, whether it stands inside enemy ground static defence. The position is read only when that
      * check is needed.
      */
-    static Candidate withLedger(Candidate candidate, UnitType attackerType, boolean attackerIsFlying, int targetId,
-                                Supplier<Position> position, TargetLedger ledger) {
+    static Candidate withLedger(Candidate candidate, int attackerId, UnitType attackerType, boolean attackerIsFlying,
+                                int targetId, Supplier<Position> position, TargetLedger ledger) {
         boolean covered = !attackerIsFlying && ledger.hasGroundDefense()
                 && isPenalizedByGroundDefense(candidate.type()) && ledger.insideGroundDefense(position.get());
-        return candidate.withMeleeLoad(ledger.meleeAssigned(targetId), loadCap(attackerType, candidate.type()))
+        return candidate.withMeleeLoad(ledger.meleeAssignedExcept(targetId, attackerId),
+                loadCap(attackerType, candidate.type()))
                 .withGroundDefense(covered);
     }
 
@@ -293,7 +296,7 @@ public final class TargetScorer {
         }
 
         /**
-         * @param assigned melee attackers of the squad already given this candidate
+         * @param assigned other melee attackers holding this candidate in the frame's ledger
          * @param cap load at which the candidate is saturated, see {@link #loadCap}
          */
         Candidate withMeleeLoad(int assigned, int cap) {
@@ -364,7 +367,8 @@ public final class TargetScorer {
 
     /**
      * A chosen target, the tier it was assigned and why, how many candidates it was chosen from, how many
-     * melee attackers of the squad already held it, and whether that load had saturated it.
+     * other melee attackers already held it, whether that load had saturated it, and whether it was found only
+     * after widening the candidates past the targeting radius.
      */
     public static final class Selection {
         private final Unit target;
@@ -374,13 +378,14 @@ public final class TargetScorer {
         private final int assignedCount;
         private final boolean saturated;
         private final String squadId;
+        private final boolean widened;
 
         public Selection(Unit target, Priority priority, int candidateCount) {
-            this(target, priority, candidateCount, null, 0, false, "");
+            this(target, priority, candidateCount, null, 0, false, "", false);
         }
 
         public Selection(Unit target, Priority priority, int candidateCount, Reason reason, int assignedCount,
-                         boolean saturated, String squadId) {
+                         boolean saturated, String squadId, boolean widened) {
             this.target = target;
             this.priority = priority;
             this.candidateCount = candidateCount;
@@ -388,6 +393,14 @@ public final class TargetScorer {
             this.assignedCount = assignedCount;
             this.saturated = saturated;
             this.squadId = squadId;
+            this.widened = widened;
+        }
+
+        /**
+         * @return this selection, marked as made from candidates widened past the targeting radius
+         */
+        public Selection asWidened() {
+            return new Selection(target, priority, candidateCount, reason, assignedCount, saturated, squadId, true);
         }
 
         public Unit getTarget() {
@@ -407,7 +420,7 @@ public final class TargetScorer {
         }
 
         /**
-         * @return melee attackers of the squad given this target earlier in the same targeting pass
+         * @return other melee attackers, from any fight squad, holding this target in the frame's ledger
          */
         public int getAssignedCount() {
             return assignedCount;
@@ -418,10 +431,14 @@ public final class TargetScorer {
         }
 
         /**
-         * @return the id of the squad whose ledger the target was chosen against, empty without one
+         * @return the id of the squad the attacker was targeted for, empty outside one
          */
         public String getSquadId() {
             return squadId;
+        }
+
+        public boolean isWidened() {
+            return widened;
         }
     }
 }

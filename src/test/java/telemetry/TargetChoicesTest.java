@@ -33,7 +33,7 @@ class TargetChoicesTest {
         fields.addAll(TargetChoiceLogger.targetCells(42, targetType, tier, 96, 3));
         fields.addAll(TargetChoiceLogger.previousTargetCells(previousTargetId, previousTargetType));
         fields.add(TargetChoiceLogger.scoutCappedCell(scoutCapped));
-        fields.addAll(TargetChoiceLogger.loadCells("squad-7", 8, true, TargetScorer.Reason.MEDIC_NEARER));
+        fields.addAll(TargetChoiceLogger.loadCells("squad-7", 8, true, TargetScorer.Reason.MEDIC_NEARER, true));
         return String.join(",", fields).split(",", -1);
     }
 
@@ -128,7 +128,8 @@ class TargetChoicesTest {
         String[] columns = TargetChoiceLogger.HEADER.split(",", -1);
 
         assertEquals(columnIndex("scout_capped") + 1, columnIndex("squad_id"));
-        assertEquals("priority_reason", columns[columns.length - 1]);
+        assertEquals(columnIndex("priority_reason") + 1, columnIndex("widened"));
+        assertEquals("widened", columns[columns.length - 1]);
     }
 
     @Test
@@ -139,12 +140,13 @@ class TargetChoicesTest {
         assertEquals("8", fields[columnIndex("assigned_count")]);
         assertEquals("1", fields[columnIndex("saturated")]);
         assertEquals("MEDIC_NEARER", fields[columnIndex("priority_reason")]);
+        assertEquals("1", fields[columnIndex("widened")]);
     }
 
     @Test
     void aChoiceMadeOutsideASquadPassLeavesTheSquadEmptyAndTheReasonNone() {
-        List<String> cells = TargetChoiceLogger.loadCells("", 0, false, null);
+        List<String> cells = TargetChoiceLogger.loadCells("", 0, false, null, false);
 
-        assertEquals(Arrays.asList("", "0", "0", "NONE"), cells);
+        assertEquals(Arrays.asList("", "0", "0", "NONE", "0"), cells);
     }
 }
