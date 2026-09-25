@@ -4,10 +4,13 @@ import bwapi.Position;
 import bwapi.Race;
 import bwapi.TilePosition;
 import bwapi.UnitType;
+import info.EnemyMainEvidence;
+import info.LV28400NFixture;
 import info.ScoutData;
 import info.tracking.ObservedUnit;
 import info.tracking.ObservedUnitFixture;
 import info.tracking.ObservedUnitTracker;
+import info.tracking.StrategyDetectionContext;
 import org.junit.jupiter.api.Test;
 import util.Time;
 
@@ -66,6 +69,10 @@ class ProxyGateTest {
     private static final Position EF_OUR_MAIN = new Position(2112, 3824);
 
     private static final Position EF_ENEMY_MAIN = new Position(1056, 272);
+
+    private static final Time LV28400N_GATEWAY_SHOWN = new Time(3722);
+
+    private static final Time LV28400N_NEXUS_SHOWN = new Time(4329);
 
     private static final Time EARLY = new Time(3314);
 
@@ -320,11 +327,49 @@ class ProxyGateTest {
         assertEquals("ProxyGate", strategy.getName());
     }
 
+    /**
+     * Game LV28400N on (4)Icarus: the proxy Gateway was first shown at frame 3722 and the real Nexus at 4329, both
+     * inside the Gateway window. Air distance stands in for ground paths.
+     */
+    @Test
+    void theLv28400nProxyGatewayIsDetectedOnceTheRealNexusSetsTheMain() {
+        LV28400NFixture icarus = new LV28400NFixture();
+        icarus.baseData.offerEnemyMainEvidence(UnitType.Protoss_Nexus, new TilePosition(116, 47),
+                LV28400NFixture.REAL_NEXUS, start -> false);
+
+        assertTrue(ProxyGate.hasGatewayAway(LV28400N_NEXUS_SHOWN,
+                gatewayTracker(LV28400NFixture.PROXY_GATEWAY, LV28400N_GATEWAY_SHOWN), lv28400nOurSide(icarus)));
+    }
+
+    @Test
+    void theLv28400nProxyGatewayIsDetectedWithTheMainUnknownOnceTheEmptyStartIsSeenEmpty() {
+        LV28400NFixture icarus = new LV28400NFixture();
+        icarus.baseData.markStartSeenEmpty(icarus.emptyStart);
+
+        assertTrue(ProxyGate.hasGatewayAway(LV28400N_GATEWAY_SHOWN,
+                gatewayTracker(LV28400NFixture.PROXY_GATEWAY, LV28400N_GATEWAY_SHOWN), lv28400nOurSide(icarus)));
+    }
+
+    @Test
+    void theLv28400nProxyGatewayIsMissedWhileTheEmptyStartIsTakenForTheMain() {
+        LV28400NFixture icarus = new LV28400NFixture();
+        icarus.baseData.assignEnemyMain(icarus.emptyStart, EnemyMainEvidence.MAIN_AREA, UnitType.Protoss_Pylon,
+                LV28400NFixture.PROXY_PYLON);
+
+        assertFalse(ProxyGate.hasGatewayAway(LV28400N_NEXUS_SHOWN,
+                gatewayTracker(LV28400NFixture.PROXY_GATEWAY, LV28400N_GATEWAY_SHOWN), lv28400nOurSide(icarus)));
+    }
+
     @Test
     void isAProtossStrategyNamedProxyGate() {
         ProxyGate strategy = new ProxyGate();
         assertEquals("ProxyGate", strategy.getName());
         assertEquals(Race.Protoss, strategy.getRace());
+    }
+
+    private static Predicate<Position> lv28400nOurSide(LV28400NFixture icarus) {
+        return position -> StrategyDetectionContext.isOnOurSide(position, icarus.baseData, icarus.bases,
+                (from, to) -> (int) from.getDistance(to));
     }
 
     private static Predicate<Position> onOurSide(Position ourMain, Position enemyMain) {

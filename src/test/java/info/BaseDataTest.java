@@ -9,14 +9,18 @@ import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.function.ToIntFunction;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import bwapi.UnitType;
 import macro.plan.Plan;
@@ -557,5 +561,149 @@ public class BaseDataTest {
 
         assertFalse(BaseData.isInnerBase(new Object(), main, null, null));
         assertFalse(BaseData.isInnerBase(null, main, null, null));
+    }
+
+    private static final String MAIN = "main";
+
+    private static final String NATURAL = "natural";
+
+    private static final String THIRD = "third";
+
+    private static final String FOURTH = "fourth";
+
+    private static ToIntFunction<String> distanceToEnemy() {
+        HashMap<String, Integer> distances = new HashMap<>();
+        distances.put(MAIN, 4000);
+        distances.put(NATURAL, 3000);
+        distances.put(THIRD, 3500);
+        distances.put(FOURTH, 3200);
+        return distances::get;
+    }
+
+    private static String rallyBase(String takenNatural, String inferredNatural, Set<String> heldOrMorphing,
+                                    Set<String> held, ToIntFunction<String> distanceToEnemy) {
+        return BaseData.squadRallyBase(takenNatural, inferredNatural, MAIN, heldOrMorphing::contains, held,
+                distanceToEnemy, Comparator.naturalOrder());
+    }
+
+    private static Set<String> bases(String... bases) {
+        return new HashSet<>(Arrays.asList(bases));
+    }
+
+    @Test
+    void aHeldNaturalIsTheRallyBase() {
+        Set<String> held = bases(MAIN, NATURAL, THIRD);
+
+        assertSame(NATURAL, rallyBase(NATURAL, NATURAL, held, held, distanceToEnemy()));
+    }
+
+    @Test
+    void aLostNaturalWithOnlyTheMainHeldRalliesToTheMain() {
+        Set<String> held = bases(MAIN);
+
+        assertSame(MAIN, rallyBase(NATURAL, NATURAL, held, held, distanceToEnemy()));
+    }
+
+    @Test
+    void aLostNaturalRalliesToTheHeldBaseNearestTheEnemy() {
+        Set<String> held = bases(MAIN, THIRD, FOURTH);
+
+        assertSame(FOURTH, rallyBase(NATURAL, NATURAL, held, held, distanceToEnemy()));
+    }
+
+    @Test
+    void aLostNaturalRalliesToTheMainWhileTheEnemyIsNotLocated() {
+        Set<String> held = bases(MAIN, THIRD);
+
+        assertSame(MAIN, rallyBase(NATURAL, NATURAL, held, held, null));
+    }
+
+    @Test
+    void aLostNaturalWithNoBaseHeldRalliesToTheMain() {
+        assertSame(MAIN, rallyBase(NATURAL, NATURAL, bases(), bases(), distanceToEnemy()));
+    }
+
+    @Test
+    void aNaturalRetakenByAMorphingHatcheryIsTheRallyBaseAgain() {
+        Set<String> held = bases(MAIN, THIRD);
+        assertSame(THIRD, rallyBase(NATURAL, NATURAL, held, held, distanceToEnemy()));
+
+        Set<String> heldOrMorphing = bases(MAIN, THIRD, NATURAL);
+
+        assertSame(NATURAL, rallyBase(NATURAL, NATURAL, heldOrMorphing, held, distanceToEnemy()));
+    }
+
+    @Test
+    void aNaturalRetakenByACompletedHatcheryIsTheRallyBaseAgain() {
+        Set<String> held = bases(MAIN, NATURAL, THIRD);
+
+        assertSame(NATURAL, rallyBase(NATURAL, NATURAL, held, held, distanceToEnemy()));
+    }
+
+    @Test
+    void withNoNaturalEverTakenTheMainIsTheRallyBase() {
+        Set<String> held = bases(MAIN);
+
+        assertSame(MAIN, rallyBase(null, NATURAL, held, held, distanceToEnemy()));
+        assertSame(MAIN, rallyBase(null, NATURAL, held, held, null));
+        assertSame(MAIN, rallyBase(null, null, held, held, distanceToEnemy()));
+    }
+
+    @Test
+    void withNoNaturalEverTakenAMorphingInferredNaturalIsTheRallyBase() {
+        assertSame(NATURAL, rallyBase(null, NATURAL, bases(MAIN, NATURAL), bases(MAIN), distanceToEnemy()));
+    }
+
+    @Test
+    void aHeldInferredNaturalIsTheRallyBaseAfterALostFirstExpansionElsewhere() {
+        Set<String> held = bases(MAIN, NATURAL, FOURTH);
+
+        assertSame(NATURAL, rallyBase(THIRD, NATURAL, held, held, distanceToEnemy()));
+    }
+
+    @Test
+    void aHeldBaseWithNoGroundPathFromTheEnemyIsNeverTheForwardRally() {
+        ToIntFunction<String> islandAware = base -> THIRD.equals(base) ? Integer.MAX_VALUE : 4000;
+
+        assertSame(MAIN, rallyBase(NATURAL, NATURAL, bases(MAIN, THIRD), bases(MAIN, THIRD), islandAware));
+    }
+
+    @Test
+    void withNoHeldBaseReachableFromTheEnemyTheMainIsTheRallyBase() {
+        ToIntFunction<String> unreachable = base -> Integer.MAX_VALUE;
+        Set<String> held = bases(THIRD, FOURTH);
+
+        assertSame(MAIN, rallyBase(NATURAL, NATURAL, held, held, unreachable));
+    }
+
+    @Test
+    void theMainWinsATieForNearestTheEnemy() {
+        ToIntFunction<String> equal = base -> 3000;
+        Set<String> held = bases(FOURTH, MAIN, THIRD);
+
+        assertSame(MAIN, rallyBase(NATURAL, NATURAL, held, held, equal));
+    }
+
+    @Test
+    void aTieBetweenForwardBasesGoesToTheTieBreakWhateverTheSetOrder() {
+        ToIntFunction<String> equal = base -> MAIN.equals(base) ? 4000 : 3000;
+
+        assertSame(FOURTH, rallyBase(NATURAL, NATURAL, bases(MAIN, THIRD, FOURTH), bases(MAIN, THIRD, FOURTH),
+                equal));
+        assertSame(FOURTH, rallyBase(NATURAL, NATURAL, bases(FOURTH, THIRD, MAIN), bases(FOURTH, THIRD, MAIN),
+                equal));
+    }
+
+    @Test
+    void theRallyReasonNamesTheBaseKind() {
+        assertEquals("NATURAL", BaseData.squadRallyReason(NATURAL, NATURAL, null, MAIN));
+        assertEquals("NATURAL", BaseData.squadRallyReason(NATURAL, THIRD, NATURAL, MAIN));
+        assertEquals("MAIN", BaseData.squadRallyReason(MAIN, NATURAL, NATURAL, MAIN));
+        assertEquals("FORWARD_BASE", BaseData.squadRallyReason(FOURTH, NATURAL, NATURAL, MAIN));
+    }
+
+    @Test
+    void theRallyReasonForTheMainWithNoNaturalKnownIsMain() {
+        assertEquals("MAIN", BaseData.squadRallyReason(MAIN, null, null, MAIN));
     }
 }
