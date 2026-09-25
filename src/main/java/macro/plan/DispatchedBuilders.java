@@ -7,8 +7,9 @@ import java.util.Map;
 
 /**
  * The builders walking to their sites, each with the plan it was dispatched for, a fresh
- * {@link BuilderStray} and its last {@link BuilderReading}. A builder is dispatched to one plan at a
- * time, and a builder dispatched again starts a new stray history.
+ * {@link BuilderStray} whose grace period covers the walk, and its last {@link BuilderReading}. A
+ * builder is dispatched to one plan at a time, and a builder dispatched again starts a new stray
+ * history.
  *
  * <p>The last reading outlives the builder's unit: a builder killed on its walk is reported as it
  * was on the last frame it was read.
@@ -20,9 +21,15 @@ public class DispatchedBuilders<B> {
     private final Map<B, BuilderStray> strays = new HashMap<>();
     private final Map<B, BuilderReading> readings = new HashMap<>();
 
-    public void dispatch(B builder, Plan plan) {
+    /**
+     * @param builder the builder
+     * @param plan the plan it walks for
+     * @param frame the frame of the dispatch
+     * @param travelFrames the frames the dispatch expects the walk to take
+     */
+    public void dispatch(B builder, Plan plan, int frame, int travelFrames) {
         plans.put(builder, plan);
-        strays.put(builder, new BuilderStray());
+        strays.put(builder, new BuilderStray(frame, travelFrames));
         readings.remove(builder);
     }
 

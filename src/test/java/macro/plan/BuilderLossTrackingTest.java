@@ -108,7 +108,7 @@ class BuilderLossTrackingTest {
     @Test
     void aDispatchedBuilderKeepsItsLastReading() {
         DispatchedBuilders<String> dispatched = new DispatchedBuilders<>();
-        dispatched.dispatch("drone161", den());
+        dispatched.dispatch("drone161", den(), 0, 0);
         dispatched.read("drone161", WALKING);
         dispatched.read("drone161", LOST);
 
@@ -127,10 +127,10 @@ class BuilderLossTrackingTest {
     @Test
     void dispatchingAgainDropsTheLastReading() {
         DispatchedBuilders<String> dispatched = new DispatchedBuilders<>();
-        dispatched.dispatch("drone161", den());
+        dispatched.dispatch("drone161", den(), 0, 0);
         dispatched.read("drone161", WALKING);
 
-        dispatched.dispatch("drone161", den());
+        dispatched.dispatch("drone161", den(), 0, 0);
 
         assertNull(dispatched.lastReadingOf("drone161"));
     }
@@ -138,7 +138,7 @@ class BuilderLossTrackingTest {
     @Test
     void undispatchingDropsTheLastReading() {
         DispatchedBuilders<String> dispatched = new DispatchedBuilders<>();
-        dispatched.dispatch("drone161", den());
+        dispatched.dispatch("drone161", den(), 0, 0);
         dispatched.read("drone161", WALKING);
 
         dispatched.undispatch("drone161");
