@@ -21,6 +21,15 @@ class ResourceCountTest {
     }
 
     @Test
+    void theBankCoversAPlanOnlyWhenEveryResourceItPricesIsMined() {
+        assertTrue(ResourceCount.bankCovers(300, 0, 300, 0));
+        assertFalse(ResourceCount.bankCovers(299, 500, 300, 0));
+        assertTrue(ResourceCount.bankCovers(100, 50, 100, 50));
+        assertFalse(ResourceCount.bankCovers(500, 49, 100, 50));
+        assertTrue(ResourceCount.bankCovers(75, -10, 75, 0));
+    }
+
+    @Test
     void aReservationWithoutALarvaBlocksTheLastLarva() {
         ResourceCount resourceCount = resourceCount();
         resourceCount.reserveUnit(UnitType.Zerg_Hydralisk);
