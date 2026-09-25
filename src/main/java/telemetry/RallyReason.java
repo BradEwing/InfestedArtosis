@@ -44,6 +44,13 @@ public enum RallyReason {
     AIR_BELOW_MOVE_OUT_AWAY,
 
     /**
+     * Another ground squad holds a containment arc, so the squad was sent to that arc instead of the rally point or
+     * a march on an enemy building. The rally point of each member is the arc point nearest it, and the squad is
+     * folded into the containing squad by the merge once the two are close.
+     */
+    JOIN_CONTAIN,
+
+    /**
      * No rally entry has been recorded for this squad. A squad created in RALLY carries this until
      * the first frame something rallies it.
      */
