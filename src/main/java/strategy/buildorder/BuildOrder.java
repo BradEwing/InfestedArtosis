@@ -158,6 +158,19 @@ public abstract class BuildOrder {
     }
 
     /**
+     * True while the build wants no Overlord queued by the shared supply planner.
+     *
+     * <p>Defaults to false. A build that scripts its own supply timing answers true for as long
+     * as an Overlord would take minerals from steps it has not finished.
+     *
+     * @param gameState current game state
+     * @return true while the supply planner must not queue an Overlord
+     */
+    public boolean holdsOverlords(GameState gameState) {
+        return false;
+    }
+
+    /**
      * Whether no opener offers this build order any more. A retired build order stays registered so
      * learning rows that name it still resolve, but it is not seeded as a playable arm.
      */
@@ -170,6 +183,14 @@ public abstract class BuildOrder {
     }
 
     public boolean needHive() {
+        return false;
+    }
+
+    /**
+     * Whether a reaction must leave Metabolic Boost where this build put it: neither queue it nor
+     * pull it ahead of normal production. False by default, so reactions pull it forward as usual.
+     */
+    public boolean holdsSpeedUpgrade(GameState gameState) {
         return false;
     }
 
@@ -383,9 +404,6 @@ public abstract class BuildOrder {
     }
 
     private Set<Plan> planStaticDefense(GameState gameState) {
-        if (!gameState.getTechProgression().isSpawningPool()) {
-            return Collections.emptySet();
-        }
         boolean earlyRushed = gameState.isEarlyRushed();
         int sunkenTarget = this.requiredSunkens(gameState);
         int priority = DEFAULT_COLONY_PRIORITY;
@@ -623,7 +641,11 @@ public abstract class BuildOrder {
      * <p>A base with no placeable creep tile is skipped rather than ending the call. The ranking
      * puts the main first whenever it is eligible, so ending on the first null location would let
      * a main that is short of target and out of tiles starve every other base for the rest of the
-     * game.
+     * game. A base whose chosen tile is still contested after it lost a colony builder is skipped
+     * the same way, see {@link GameState#isColonySiteOpen}.
+     *
+     * <p>No pair is planned while no Spawning Pool stands, see {@link #sunkenPairBudget}. Every
+     * requester, the shared defense path and each build order, reaches the pair through here.
      */
     protected Set<Plan> planSunkenColony(GameState gameState, int priority, int target) {
         Set<Plan> plans = new HashSet<>();
@@ -631,21 +653,23 @@ public abstract class BuildOrder {
         BuildingPlanner buildingPlanner = gameState.getBuildingPlanner();
         Base mainBase = baseData.getMainBase();
         Set<Base> unplaceable = new HashSet<>();
+        int budget = sunkenPairBudget(gameState.getTechProgression(), target);
         int planned = 0;
-        while (planned < target) {
+        while (planned < budget) {
             Optional<Base> eligibleBase = nextSunkenBase(gameState.basesNeedingSunken(target), unplaceable,
                     base -> sunkenBaseRank(base == mainBase, base.getLocation().getX(), base.getLocation().getY()));
             if (!eligibleBase.isPresent()) {
                 break;
             }
             TilePosition location = buildingPlanner.getLocationForCreepColony(eligibleBase.get(), gameState.getOpponentRace());
-            if (location == null) {
+            if (location == null || !gameState.isColonySiteOpen(eligibleBase.get(), location)) {
                 unplaceable.add(eligibleBase.get());
                 continue;
             }
             baseData.reserveSunkenColony(eligibleBase.get());
             buildingPlanner.reservePlannedBuildingTiles(location, UnitType.Zerg_Creep_Colony);
             Plan creepColonyPlan = new BuildingPlan(UnitType.Zerg_Creep_Colony, priority, location);
+            creepColonyPlan.setColonyBase(eligibleBase.get());
             Plan sunkenColonyPlan = new BuildingPlan(UnitType.Zerg_Sunken_Colony, priority, location);
             sunkenColonyPlan.setPairedColonyPlan(creepColonyPlan);
             sunkenColonyPlan.setReservedColonyBase(eligibleBase.get());
@@ -654,6 +678,24 @@ public abstract class BuildOrder {
             planned++;
         }
         return plans;
+    }
+
+    /**
+     * How many Creep and Sunken Colony pairs one call may plan.
+     *
+     * <p>Zero until a Spawning Pool stands, the same test the production sweep applies to a
+     * Sunken Colony plan. A pair queued while the pool is missing or only planned loses its Sunken
+     * to that sweep on the frame it is queued, and the still planned Creep Colony is cancelled with
+     * it, so planning one would only repeat the pair every frame. The pool itself, including the
+     * emergency pool {@link #planDefense} queues, is planned independently of this budget, and the
+     * pairs follow once it stands.
+     *
+     * @param techProgression the bot's tech state
+     * @param target sunken colonies wanted per base
+     * @return the number of pairs that may be planned
+     */
+    static int sunkenPairBudget(TechProgression techProgression, int target) {
+        return techProgression.canPlanSunkenColony() ? target : 0;
     }
 
     /**
@@ -701,12 +743,13 @@ public abstract class BuildOrder {
             return plans;
         }
         TilePosition location = buildingPlanner.getLocationForSporeColony(eligibleBase.get());
-        if (location == null) {
+        if (location == null || !gameState.isColonySiteOpen(eligibleBase.get(), location)) {
             return plans;
         }
         baseData.reserveSporeColony(eligibleBase.get());
         buildingPlanner.reservePlannedBuildingTiles(location, UnitType.Zerg_Creep_Colony);
         Plan creepColonyPlan = new BuildingPlan(UnitType.Zerg_Creep_Colony, 5, location);
+        creepColonyPlan.setColonyBase(eligibleBase.get());
         Plan sporeColonyPlan = new BuildingPlan(UnitType.Zerg_Spore_Colony, 5, location);
         sporeColonyPlan.setPairedColonyPlan(creepColonyPlan);
         sporeColonyPlan.setReservedColonyBase(eligibleBase.get());

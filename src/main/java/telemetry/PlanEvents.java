@@ -1,8 +1,11 @@
 package telemetry;
 
 import bwapi.Position;
+import bwapi.TilePosition;
 import bwapi.UnitType;
 import info.BuilderThreat;
+import info.EnemyMainClearReason;
+import info.EnemyMainEvidence;
 import macro.plan.BuilderDispatchDecision;
 import macro.plan.Plan;
 import macro.plan.PlanBlocker;
@@ -156,5 +159,63 @@ public final class PlanEvents {
             return;
         }
         current.onExpansionBackoff(lostExpansionBuilders, expansionHeldUntilFrame);
+    }
+
+    public static void colonyBuilderBackoff(TilePosition base, int lostColonyBuilders, int colonyHeldUntilFrame) {
+        PlanEventSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onColonyBuilderBackoff(base, lostColonyBuilders, colonyHeldUntilFrame);
+    }
+
+    public static void strategyDetected(String detectionLabel) {
+        PlanEventSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onStrategyDetected(detectionLabel);
+    }
+
+
+    public static void baseLost(TilePosition base, boolean innerBase) {
+        PlanEventSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onBaseLost(base, innerBase);
+    }
+
+    public static void rallyPointChanged(TilePosition base, String reason) {
+        PlanEventSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onRallyPointChanged(base, reason);
+    }
+
+    public static void enemyMainAssigned(TilePosition main, EnemyMainEvidence evidence, UnitType source,
+                                         Position sourcePosition) {
+        PlanEventSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onEnemyMainAssigned(main, evidence, source, sourcePosition);
+    }
+
+    public static void enemyMainCleared(TilePosition main, EnemyMainClearReason reason) {
+        PlanEventSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onEnemyMainCleared(main, reason);
+    }
+
+    public static void enemyMainScouted(TilePosition main) {
+        PlanEventSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onEnemyMainScouted(main);
     }
 }

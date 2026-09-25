@@ -36,7 +36,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
     private static final double NEARBY_THREAT_RADIUS = 512;
     private static final double APPROACH_BUFFER = 64;
     private static final double WORKER_STRENGTH_DIVISOR = 10.0;
-    private static final double HEIGHT_BONUS = 1.15;
+    static final double HEIGHT_BONUS = 1.15;
     private static final Time RECENTLY_SEEN_THRESHOLD = new Time(0, 5);
     private static final Time BUILDING_SEEN_THRESHOLD = new Time(0, 45);
     private static final double DEFAULT_ENGAGE_THRESHOLD = 1.0;
@@ -71,38 +71,6 @@ public class HorizonCombatSimulator implements CombatSimulator {
         DebugSnapshot snapshot = new DebugSnapshot();
         snapshot.setCapturedFrame(currentFrame);
         snapshot.setSquadCenter(squadCenter);
-
-        double friendlyGroundStr = 0;
-        double friendlyAirStr = 0;
-
-        for (ManagedUnit mu : squad.getMembers()) {
-            if (mu.getUnitType() == UnitType.Zerg_Overlord) continue;
-            double str = computeFriendlyStrength(mu, squadCenter, enemyHasDetection, techProgression);
-            snapshot.getFriendlyUnits().add(new UnitDebugEntry(mu.getUnit().getPosition(), mu.getUnitType(), str, false, false));
-            if (mu.getUnitType().isFlyer()) {
-                friendlyAirStr += str;
-            } else {
-                friendlyGroundStr += str;
-            }
-        }
-
-        if (adjacentSquads != null) {
-            for (Map.Entry<Squad, Double> entry : adjacentSquads.entrySet()) {
-                Squad adjSquad = entry.getKey();
-                double distance = entry.getValue();
-                double weight = distanceWeight(distance);
-                for (ManagedUnit mu : adjSquad.getMembers()) {
-                    if (mu.getUnitType() == UnitType.Zerg_Overlord) continue;
-                    double str = computeFriendlyStrength(mu, squadCenter, enemyHasDetection, techProgression) * weight;
-                    snapshot.getFriendlyUnits().add(new UnitDebugEntry(mu.getUnit().getPosition(), mu.getUnitType(), str, true, false));
-                    if (mu.getUnitType().isFlyer()) {
-                        friendlyAirStr += str;
-                    } else {
-                        friendlyGroundStr += str;
-                    }
-                }
-            }
-        }
 
         EnemySample enemySample = new EnemySample();
 
@@ -177,12 +145,36 @@ public class HorizonCombatSimulator implements CombatSimulator {
 
         creditMedicSupport(snapshot, enemySample, airSquad);
         snapshot.setEnemyUnscoredSupply(enemySample.unscoredSupply());
-        double enemyGroundStr = enemySample.groundTotal();
-        double enemyAntiAirStr = enemySample.antiAirTotal();
+
+        FriendlyForce friendlyForce = new FriendlyForce();
+        for (ManagedUnit mu : squad.getMembers()) {
+            if (mu.getUnitType() == UnitType.Zerg_Overlord) continue;
+            friendlyForce.add(mu.getUnitType(), mu.getUnit().getPosition(),
+                    friendlyWeight(mu, squadCenter, enemyHasDetection, techProgression), false);
+        }
+        if (adjacentSquads != null) {
+            for (Map.Entry<Squad, Double> entry : adjacentSquads.entrySet()) {
+                double weight = distanceWeight(entry.getValue());
+                for (ManagedUnit mu : entry.getKey().getMembers()) {
+                    if (mu.getUnitType() == UnitType.Zerg_Overlord) continue;
+                    friendlyForce.add(mu.getUnitType(), mu.getUnit().getPosition(),
+                            friendlyWeight(mu, squadCenter, enemyHasDetection, techProgression) * weight, true);
+                }
+            }
+        }
+
+        PricedEngagement priced = price(friendlyForce, enemySample);
+        snapshot.getFriendlyUnits().addAll(priced.getFriendlyEntries());
+        snapshot.setEnemyAirShare(priced.getEnemyAirShare());
+        snapshot.setOurAirShare(priced.getOurAirShare());
+        double enemyGroundStr = priced.getEnemyGround();
+        double enemyAntiAirStr = priced.getEnemyAntiAir();
+        double enemyEngagedStr = priced.getEnemyEngaged();
+        double friendlyAirStr = priced.getFriendlyAir();
 
         StaticDefenseSupport ownStaticDefense = evaluateOwnStaticDefense(gameState, squadCenter,
                 engagedGroundEnemies, coveredGroundThreats, coveredAirThreats, !airSquad, snapshot);
-        friendlyGroundStr += ownStaticDefense.strength;
+        double friendlyGroundStr = priced.getFriendlyGround() + ownStaticDefense.strength;
 
         if (!snapshot.getEnemyUnits().isEmpty()) {
             double ex = 0; 
@@ -208,9 +200,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
             snapshot.setCombinedRatio(overallRatio);
         } else {
             double groundRatio = friendlyGroundStr / enemyGroundStr;
-            double totalFriendly = friendlyGroundStr + friendlyAirStr;
-            double totalEnemy = enemyGroundStr + enemyAntiAirStr;
-            double combinedRatio = totalFriendly / totalEnemy;
+            double combinedRatio = combinedRatio(friendlyGroundStr, friendlyAirStr, enemyGroundStr, enemyEngagedStr);
             overallRatio = Math.max(groundRatio, combinedRatio);
             snapshot.setGroundRatio(groundRatio);
             snapshot.setCombinedRatio(combinedRatio);
@@ -227,7 +217,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
         }
 
         CombatResult result = selectResult(friendlyGroundStr, friendlyAirStr, enemyGroundStr,
-                enemyAntiAirStr, airSquad, engageThresh);
+                enemyAntiAirStr, enemyEngagedStr, airSquad, engageThresh);
 
         snapshot.setEngageThreshold(engageThresh);
         snapshot.setRetreatThreshold(retreatThresh);
@@ -250,12 +240,13 @@ public class HorizonCombatSimulator implements CombatSimulator {
      * @param friendlyAirStr our air strength at the engagement
      * @param enemyGroundStr enemy ground strength at the engagement
      * @param enemyAntiAirStr enemy anti-air strength at the engagement
+     * @param enemyEngagedStr enemy strength against our whole force, see {@link EnemySample#engagedTotal}
      * @param airSquad whether the squad is judged on its air arm
      * @param engageThresh the matchup engage threshold the ratio must clear
      * @return the combat verdict for this frame
      */
     static CombatResult selectResult(double friendlyGroundStr, double friendlyAirStr,
-                                     double enemyGroundStr, double enemyAntiAirStr,
+                                     double enemyGroundStr, double enemyAntiAirStr, double enemyEngagedStr,
                                      boolean airSquad, double engageThresh) {
         double relevantEnemyStr = airSquad ? enemyAntiAirStr : enemyGroundStr;
         if (relevantEnemyStr <= MIN_ENEMY_STRENGTH) return CombatResult.ADVANCE;
@@ -264,13 +255,32 @@ public class HorizonCombatSimulator implements CombatSimulator {
             ratio = friendlyAirStr / enemyAntiAirStr;
         } else {
             double groundRatio = friendlyGroundStr / enemyGroundStr;
-            double totalFriendly = friendlyGroundStr + friendlyAirStr;
-            double totalEnemy = enemyGroundStr + enemyAntiAirStr;
-            double combinedRatio = totalFriendly / totalEnemy;
-            ratio = Math.max(groundRatio, combinedRatio);
+            ratio = Math.max(groundRatio,
+                    combinedRatio(friendlyGroundStr, friendlyAirStr, enemyGroundStr, enemyEngagedStr));
         }
         if (ratio < engageThresh) return CombatResult.RETREAT;
         return CombatResult.ENGAGE;
+    }
+
+    /**
+     * Our whole force over the enemy's strength against our whole force. Each enemy unit is priced once, over the
+     * layers our units stand in that it can hit, so a Dragoon facing a ground squad with Mutalisks beside it splits
+     * its one weapon between them rather than counting it against both.
+     *
+     * <p>When nothing the enemy fields can hit the layers our priced units stand in, the enemy ground strength
+     * stands in for the denominator, so a ground squad never reads an unbounded ratio off an enemy that is still
+     * measured against it.
+     *
+     * @param friendlyGroundStr our ground strength at the engagement
+     * @param friendlyAirStr our air strength at the engagement
+     * @param enemyGroundStr enemy ground strength at the engagement, above {@link #MIN_ENEMY_STRENGTH}
+     * @param enemyEngagedStr enemy strength against our whole force
+     * @return the combined ratio
+     */
+    static double combinedRatio(double friendlyGroundStr, double friendlyAirStr, double enemyGroundStr,
+                                double enemyEngagedStr) {
+        double totalEnemy = enemyEngagedStr > 0 ? enemyEngagedStr : enemyGroundStr;
+        return (friendlyGroundStr + friendlyAirStr) / totalEnemy;
     }
 
     /**
@@ -387,10 +397,23 @@ public class HorizonCombatSimulator implements CombatSimulator {
         private double supportedAntiAirStrength;
         private int unscoredSupply;
         private int unscoredMedicSupply;
+        @Getter
+        private double groundStanding;
+        @Getter
+        private double airStanding;
+        private final List<double[]> entries = new ArrayList<>();
+        private final List<Boolean> entrySupported = new ArrayList<>();
 
         void add(UnitType type, double ground, double antiAir) {
             groundStrength += ground;
             antiAirStrength += antiAir;
+            if (type.isFlyer()) {
+                airStanding += Math.max(ground, antiAir);
+            } else {
+                groundStanding += Math.max(ground, antiAir);
+            }
+            entries.add(new double[]{ground, antiAir});
+            entrySupported.add(isMedicSupported(type));
             if (ground + antiAir <= 0) {
                 unscoredSupply += type.supplyRequired();
                 if (type == UnitType.Terran_Medic) {
@@ -423,6 +446,40 @@ public class HorizonCombatSimulator implements CombatSimulator {
         }
 
         /**
+         * The enemy's strength against our whole force: each sampled unit priced once by
+         * {@link UnitStrength#engaged} over the layers our units stand in, then the medic support term on the
+         * supported units' share of it.
+         *
+         * @param ourGround our strength standing on the ground, see {@link FriendlyForce#getGroundStanding}
+         * @param ourAir our strength in the air, see {@link FriendlyForce#getAirStanding}
+         * @return the enemy strength against our force
+         */
+        double engagedTotal(double ourGround, double ourAir) {
+            double total = 0;
+            double supportedTotal = 0;
+            for (int i = 0; i < entries.size(); i++) {
+                double[] entry = entries.get(i);
+                double price = UnitStrength.engaged(entry[0], entry[1], ourGround, ourAir);
+                total += price;
+                if (entrySupported.get(i)) {
+                    supportedTotal += price;
+                }
+            }
+            return total + medicSupportBonus(medics, supported) * supportedTotal;
+        }
+
+        /**
+         * Share of the sample that flies, weighted by each unit's priced strength in its stronger domain so a
+         * unit with one weapon counts once. Unarmed units weigh nothing.
+         *
+         * @return the air share from 0 to 1, or {@link UnitStrength#UNMEASURED_AIR_SHARE} when nothing armed
+         *         was priced
+         */
+        double airShare() {
+            return standingAirShare(groundStanding, airStanding);
+        }
+
+        /**
          * Supply the sample measured and then priced at nothing. Medics drop out of it once the
          * support term they produced is non zero, because on those frames they were priced.
          *
@@ -434,10 +491,105 @@ public class HorizonCombatSimulator implements CombatSimulator {
         }
     }
 
-    private double computeFriendlyStrength(ManagedUnit mu, Position engagementCenter, boolean enemyHasDetection, TechProgression techProgression) {
+    private static double standingAirShare(double groundStanding, double airStanding) {
+        double total = groundStanding + airStanding;
+        if (total <= 0) return UnitStrength.UNMEASURED_AIR_SHARE;
+        return airStanding / total;
+    }
+
+    /**
+     * Our units at the engagement, each carrying every multiplier except its domain pricing, which waits until the
+     * enemy has been sampled. See {@link #price}.
+     */
+    static final class FriendlyForce {
+
+        private final List<FriendlyUnit> units = new ArrayList<>();
+        @Getter
+        private double groundStanding;
+        @Getter
+        private double airStanding;
+
+        /**
+         * @param type our unit's type
+         * @param position where it stands, for the debug snapshot
+         * @param weight health, distance, cloak, burrow, upgrade and speed multipliers, and the adjacency falloff for
+         *               a member of an adjacent squad
+         * @param adjacent whether it belongs to an adjacent squad
+         */
+        void add(UnitType type, Position position, double weight, boolean adjacent) {
+            units.add(new FriendlyUnit(type, position, weight, adjacent));
+            double standing = UnitStrength.strongerDomain(type) * weight;
+            if (type.isFlyer()) {
+                airStanding += standing;
+            } else {
+                groundStanding += standing;
+            }
+        }
+    }
+
+    @lombok.RequiredArgsConstructor
+    private static final class FriendlyUnit {
+        private final UnitType type;
+        private final Position position;
+        private final double weight;
+        private final boolean adjacent;
+    }
+
+    /**
+     * Both sides of one engagement priced against each other.
+     */
+    @Getter
+    static final class PricedEngagement {
+        private double friendlyGround;
+        private double friendlyAir;
+        private double enemyGround;
+        private double enemyAntiAir;
+        private double enemyEngaged;
+        private double enemyAirShare;
+        private double ourAirShare;
+        private final List<UnitDebugEntry> friendlyEntries = new ArrayList<>();
+    }
+
+    /**
+     * Prices our force and the sampled enemy against each other, symmetrically.
+     *
+     * <p>Each of our units is priced by {@link UnitStrength#engagedStrength} over the enemy strength standing in the
+     * layers it can hit, and each enemy unit by {@link UnitStrength#engaged} over the strength our units stand in.
+     * On both sides a weapon that fills two domains counts once. The enemy ground and anti-air totals stay the
+     * per-layer sums the ground and air ratios divide by; the engaged total is the denominator of the combined ratio.
+     *
+     * @param friendly our units at the engagement
+     * @param enemy the sampled enemy
+     * @return both sides' strengths
+     */
+    static PricedEngagement price(FriendlyForce friendly, EnemySample enemy) {
+        PricedEngagement priced = new PricedEngagement();
+        for (FriendlyUnit unit : friendly.units) {
+            double str = UnitStrength.engagedStrength(unit.type, enemy.getGroundStanding(), enemy.getAirStanding())
+                    * unit.weight;
+            priced.friendlyEntries.add(new UnitDebugEntry(unit.position, unit.type, str, unit.adjacent, false));
+            if (unit.type.isFlyer()) {
+                priced.friendlyAir += str;
+            } else {
+                priced.friendlyGround += str;
+            }
+        }
+        priced.enemyGround = enemy.groundTotal();
+        priced.enemyAntiAir = enemy.antiAirTotal();
+        priced.enemyEngaged = enemy.engagedTotal(friendly.getGroundStanding(), friendly.getAirStanding());
+        priced.enemyAirShare = enemy.airShare();
+        priced.ourAirShare = standingAirShare(friendly.getGroundStanding(), friendly.getAirStanding());
+        return priced;
+    }
+
+    /**
+     * Every multiplier on one of our units except its domain pricing: health, distance, cloak, burrow, upgrades and
+     * speed research.
+     */
+    private double friendlyWeight(ManagedUnit mu, Position engagementCenter, boolean enemyHasDetection,
+                                  TechProgression techProgression) {
         Unit unit = mu.getUnit();
         UnitType type = unit.getType();
-        double base = UnitStrength.totalStrength(type);
 
         int hp = unit.getHitPoints();
         int shields = unit.getShields();
@@ -470,7 +622,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
         double adrenalGlands = adrenalGlandsCorrection(unit, type, techProgression);
         double armorUpgrade = armorUpgradeCorrection(unit, type);
 
-        return base * hpWeight * distWeight * cloak * prepPenalty * rangeUpgrade * speedPenalty
+        return hpWeight * distWeight * cloak * prepPenalty * rangeUpgrade * speedPenalty
                 * attackUpgrade * adrenalGlands * armorUpgrade;
     }
 
@@ -865,5 +1017,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
         private boolean enemyMeasured;
         private boolean threatBeyondRadius;
         private int enemyUnscoredSupply;
+        private double enemyAirShare = UnitStrength.UNMEASURED_AIR_SHARE;
+        private double ourAirShare = UnitStrength.UNMEASURED_AIR_SHARE;
     }
 }

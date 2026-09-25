@@ -1,8 +1,11 @@
 package telemetry;
 
 import bwapi.Position;
+import bwapi.TilePosition;
 import bwapi.UnitType;
 import info.BuilderThreat;
+import info.EnemyMainClearReason;
+import info.EnemyMainEvidence;
 import macro.plan.BuilderDispatchDecision;
 import macro.plan.Plan;
 import macro.plan.PlanBlocker;
@@ -105,5 +108,72 @@ public interface PlanEventSink {
      * @param expansionHeldUntilFrame frame expansions become available again
      */
     default void onExpansionBackoff(int lostExpansionBuilders, int expansionHeldUntilFrame) {
+    }
+
+    /**
+     * A lost Creep Colony builder armed a hold on sunken planning at a base.
+     *
+     * @param base the held base's tile location
+     * @param lostColonyBuilders colony builders lost at the base since a colony there last started morphing
+     * @param colonyHeldUntilFrame frame the hold on the base lifts
+     */
+    default void onColonyBuilderBackoff(TilePosition base, int lostColonyBuilders, int colonyHeldUntilFrame) {
+    }
+
+    /**
+     * StrategyTracker added a strategy to its detected set, directly or by implication, after resolving
+     * supersessions for the frame.
+     *
+     * @param detectionLabel the detected strategy's name, followed by the evidence it was detected on when the
+     *     strategy records one, e.g. ProxyGate:MAIN_EMPTY
+     */
+    default void onStrategyDetected(String detectionLabel) {
+    }
+
+    /**
+     * One of our bases lost its hatchery.
+     *
+     * @param base the base's tile location
+     * @param innerBase whether the base was our main or a natural
+     */
+    default void onBaseLost(TilePosition base, boolean innerBase) {
+    }
+
+    /**
+     * The base squads rally to changed, or was first chosen.
+     *
+     * @param base the rally base's tile location
+     * @param reason NATURAL, MAIN or FORWARD_BASE
+     */
+    default void onRallyPointChanged(TilePosition base, String reason) {
+    }
+
+    /**
+     * A starting location became the enemy main.
+     *
+     * @param main the starting location's tile
+     * @param evidence how the building that set it ties to the starting location
+     * @param source the type of the building that set it
+     * @param sourcePosition the position of the building that set it
+     */
+    default void onEnemyMainAssigned(TilePosition main, EnemyMainEvidence evidence, UnitType source,
+                                     Position sourcePosition) {
+    }
+
+    /**
+     * The enemy main stopped being the starting location it was.
+     *
+     * @param main the cleared starting location's tile
+     * @param reason why it was cleared
+     */
+    default void onEnemyMainCleared(TilePosition main, EnemyMainClearReason reason) {
+    }
+
+    /**
+     * ScoutData recorded the first frame our vision covered the enemy main.
+     *
+     * @param main the enemy main's tile
+     */
+    default void onEnemyMainScouted(TilePosition main) {
     }
 }

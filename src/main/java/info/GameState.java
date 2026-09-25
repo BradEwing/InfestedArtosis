@@ -63,6 +63,12 @@ public class GameState {
     private static final int BUNKER_BULLET_RADIUS = 224;
     private static final int BUNKER_SHOT_GRACE_FRAMES = 2;
 
+    /**
+     * Gatherers required before a base other than the main and the naturals
+     * ({@link BaseData#isInnerBase(Base)}) may take Sunken or Spore Colonies. Tuning constant.
+     */
+    public static final int OUTER_BASE_DEFENSE_MIN_GATHERERS = 20;
+
     private Game game;
     private Config config;
     private Player self;
@@ -150,7 +156,8 @@ public class GameState {
         this.activeBuildOrder = decisions.getOpener();
         this.opponentRace = opponentRace;
         this.gameMap = new GameMap(game.mapWidth(), game.mapHeight());
-        this.strategyTracker = new StrategyTracker(game, opponentRace, this.observedUnitTracker, this.baseData, this.gameMap, bwem.getMap());
+        this.strategyTracker = new StrategyTracker(game, opponentRace, this.observedUnitTracker, this.baseData,
+                this.gameMap, bwem.getMap(), this.scoutData);
     }
 
     public void onFrame() {
@@ -162,6 +169,7 @@ public class GameState {
         learnReachFromHits(frame);
         strategyTracker.onFrame();
         clearVisibleEnemyWorkerLocations();
+        baseData.updateSquadRallyBase();
     }
 
     private void observeHitPoints(int frame) {
@@ -523,7 +531,11 @@ public class GameState {
                         baseData.backoffExpansion(base, getGameTime().getFrames());
                     }
                 }
-                
+
+                if (BaseData.shouldBackoffColony(buildingType, plan.getCancelReason())) {
+                    baseData.backoffColony(colonyBaseOf(plan), getGameTime().getFrames());
+                }
+
                 if (buildingType == UnitType.Zerg_Creep_Colony) {
                     cancelPairedColonyPlan(plan);
                 }
@@ -620,6 +632,41 @@ public class GameState {
         } else {
             baseData.unreserveSporeColony(reservedBase);
         }
+    }
+
+    /**
+     * The base a Creep Colony plan was placed for: the base its pair planner recorded, otherwise
+     * the base of ours nearest its tile.
+     */
+    private Base colonyBaseOf(Plan creepColonyPlan) {
+        if (creepColonyPlan.getColonyBase() != null) {
+            return creepColonyPlan.getColonyBase();
+        }
+        TilePosition tp = creepColonyPlan.getBuildPosition();
+        return tp == null ? null : baseData.nearestBase(tp);
+    }
+
+    /**
+     * Whether a building plan is a Creep Colony at a base that has lost a colony builder since a
+     * colony there last started morphing. Its builder does not get the home-site dispatch
+     * carve-out, see {@link macro.plan.PlanManager}.
+     */
+    public boolean isColonyBuilderBackedOff(Plan plan) {
+        return plan.getPlannedUnit() == UnitType.Zerg_Creep_Colony && baseData.hasLostColonyBuilder(colonyBaseOf(plan));
+    }
+
+    /**
+     * Clears the colony builder losses at the base a Creep Colony of ours just started morphing at.
+     *
+     * @param creepColony the colony that started morphing
+     * @param plan the plan its drone was assigned, or null when it had none
+     */
+    public void onCreepColonyMorph(Unit creepColony, Plan plan) {
+        if (plan != null && plan.getPlannedUnit() == UnitType.Zerg_Creep_Colony) {
+            baseData.resetColonyBackoff(colonyBaseOf(plan));
+            return;
+        }
+        baseData.resetColonyBackoff(baseData.nearestBase(creepColony.getTilePosition()));
     }
 
     private boolean isColonyMorphAtPosition(Plan p, TilePosition tp) {
@@ -1159,6 +1206,8 @@ public class GameState {
         switch (readiness) {
             case COMMITTED:
                 return completed + underConstruction + planned;
+            case STANDING:
+                return completed + underConstruction;
             case USABLE:
             default:
                 return completed;
@@ -1287,6 +1336,14 @@ public class GameState {
     }
 
     /**
+     * The base tiles a building site belongs to, the same tiles {@link #builderThreat} counts site
+     * enemies and builder_at_site on.
+     */
+    public Set<TilePosition> siteTiles(TilePosition buildPosition) {
+        return BaseData.siteTiles(gameMap.getMainBaseTiles(), buildPosition, BaseData.NATURAL_DEFENSE_TILE_RADIUS);
+    }
+
+    /**
      * The same reading for a plan whose executor morphs in place rather than walking to its site.
      * The route terms are zero because there is no walk, not because nothing was read.
      *
@@ -1362,6 +1419,29 @@ public class GameState {
         return position;
     }
 
+    /**
+     * Whether a base may take static defense on the current economy. The main and the naturals always
+     * may; any other base waits for {@link #OUTER_BASE_DEFENSE_MIN_GATHERERS} gatherers. The main's own
+     * {@link BaseData#isAllowSunkenAtMain()} gate is applied separately.
+     *
+     * @param innerBase whether the base is our main or a natural, from {@link BaseData#isInnerBase(Base)}
+     * @param gatherers drones currently on a resource, excluding queued drone plans
+     * @return true when the base may take Sunken or Spore Colonies
+     */
+    static boolean mayDefendBase(boolean innerBase, int gatherers) {
+        return innerBase || gatherers >= OUTER_BASE_DEFENSE_MIN_GATHERERS;
+    }
+
+    private boolean mayDefendBase(Base base) {
+        return mayDefendBase(baseData.isInnerBase(base), numGatherers());
+    }
+
+    /**
+     * Bases short of their sunken target that may be offered a pair this frame. A base held after
+     * a lost colony builder is left out, as is one that has lost a builder and still has enemies at
+     * its site, see {@link ColonyBuilderBackoff#isOpen}; the pair goes to another base instead, or
+     * nowhere, and reserves nothing while it waits.
+     */
     public Set<Base> basesNeedingSunken(int target) {
         Time tenMinutes = new Time(10, 0);
         Time currentTime = getGameTime();
@@ -1378,12 +1458,14 @@ public class GameState {
 
 
         for (Base base: baseData.getMyBases()) {
-            if (baseData.isEligibleForSunkenColony(base) && baseData.sunkensPerBase(base) < target) {
+            if (baseData.isEligibleForSunkenColony(base) && mayDefendBase(base)
+                    && baseData.sunkensPerBase(base) < target) {
                 neededBases.add(base);
             }
         }
 
-        return neededBases;
+        return baseData.openColonyBases(neededBases, currentTime.getFrames(),
+                base -> siteThreat(base.getLocation(), null).getSiteEnemies());
     }
 
     public Set<Base> basesNeedingSpore(int target) {
@@ -1395,12 +1477,28 @@ public class GameState {
         }
 
         for (Base base: baseData.getMyBases()) {
-            if (baseData.isEligibleForSporeColony(base) && baseData.sporesPerBase(base) < target) {
+            if (baseData.isEligibleForSporeColony(base) && mayDefendBase(base)
+                    && baseData.sporesPerBase(base) < target) {
                 neededBases.add(base);
             }
         }
 
-        return neededBases;
+        return baseData.openColonyBases(neededBases, getGameTime().getFrames(),
+                base -> siteThreat(base.getLocation(), null).getSiteEnemies());
+    }
+
+    /**
+     * Whether a colony pair may be placed on a chosen tile. A base that has lost a colony builder
+     * takes no pair while enemies stand at the tile's site, read on the same tiles the dispatch
+     * gate will read for the builder, so no pair reserves minerals only to be held there.
+     *
+     * @param base the base the pair is for
+     * @param location the Creep Colony tile the planner chose
+     */
+    public boolean isColonySiteOpen(Base base, TilePosition location) {
+        boolean lostBuilder = baseData.hasLostColonyBuilder(base);
+        int siteEnemies = lostBuilder ? siteThreat(location, null).getSiteEnemies() : 0;
+        return ColonyBuilderBackoff.isOpen(false, lostBuilder, siteEnemies);
     }
 
     public boolean canPlanUnit(UnitType unitType) {
@@ -1584,18 +1682,11 @@ public class GameState {
     }
 
     /**
-     * @return our natural expansion, or the inferred natural while a hatchery of ours morphs there, otherwise our
-     *     main
+     * @return the location of {@link BaseData#squadRallyBase()}: a natural we still hold, otherwise the held base
+     *     nearest the enemy once the natural is lost, otherwise our main
      */
     public Position getSquadRallyPoint() {
-        if (baseData.hasNaturalExpansion()) {
-            return baseData.naturalExpansionPosition().toPosition();
-        }
-        Base inferredNatural = baseData.getInferredNaturalBase();
-        if (inferredNatural != null && baseData.isHeldOrMorphing(inferredNatural)) {
-            return inferredNatural.getLocation().toPosition();
-        }
-        return baseData.mainBasePosition().toPosition();
+        return baseData.squadRallyBase().getLocation().toPosition();
     }
 
     /**
@@ -1729,7 +1820,8 @@ public class GameState {
      * for it has re-armed.
      *
      * <p>Every rule that deletes a queued hatchery plan contributes a term: the excess rule, the
-     * early rush reaction and the SCV rush reaction. No term depends on the opponent's race.
+     * early rush reaction and the SCV rush reaction. No term depends on the opponent's race. The proxy
+     * Gateway expansion hold stands only while the bot is early rushed, so the early rush term covers it.
      */
     public boolean mayQueueExpansionHatchery() {
         return isHatcheryEnqueueRearmed(false)

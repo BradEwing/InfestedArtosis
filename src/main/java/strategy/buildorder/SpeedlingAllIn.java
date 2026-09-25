@@ -1,30 +1,34 @@
 package strategy.buildorder;
 
 import bwapi.Race;
-import bwapi.Unit;
 import bwapi.UnitType;
 import bwapi.UpgradeType;
 import info.BaseData;
 import info.GameState;
 import info.Readiness;
 import info.TechProgression;
+import macro.ProductionQueue;
 import macro.plan.Plan;
+import macro.plan.PlanState;
+import macro.plan.PlanType;
 import util.Time;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Predicate;
 
 /**
  * Two hatchery speedling all-in, playable in every matchup.
  *
  * <p>Hatchery tech by definition: it never plans a Lair and never reports {@link #needLair()} or
  * {@link #needHive()}. Zergling production is continuous and uncapped; the cap is on drones, from
- * {@link #droneTarget(int, int)}. On one base the target is 11, split 8 on minerals and 3 on the
- * single Extractor that funds Metabolic Boost once the natural is up. Holding two bases raises it to
- * 12, and each hatchery standing beyond two adds {@link #DRONES_PER_EXTRA_HATCHERY}, so the income
- * behind a macro hatchery grows with the larva it adds. The target is a total that includes the gas
- * drones. It is a floor as well as a ceiling, so dead drones are replaced and the economy is never
- * cut to zero. An opener that hands over above the target keeps its drones; nothing is cut.
+ * {@link #droneTarget(int, int)}. The target is 11, split 8 on minerals and 3 on the single
+ * Extractor that funds Metabolic Boost once the natural is up, and it stays 11 at two hatcheries,
+ * where larva rather than minerals bound the build. Once two bases are held, each hatchery standing
+ * beyond two adds {@link #DRONES_PER_EXTRA_HATCHERY}, so the income behind a macro hatchery grows
+ * with the larva it adds. The target is a total that includes the gas drones. It is a floor as well
+ * as a ceiling, so dead drones are replaced and the economy is never cut to zero. An opener that
+ * hands over above the target keeps its drones; nothing is cut.
  * It plans its own Spawning Pool when it does not have one, so it is reachable from an opener that
  * transitions before building one.
  *
@@ -68,7 +72,11 @@ public class SpeedlingAllIn extends BuildOrder {
 
     static final int DRONE_TARGET_ONE_BASE = 11;
 
-    static final int DRONE_TARGET_TWO_BASES = 12;
+    /**
+     * The target at two bases and two standing hatcheries. It equals {@link #DRONE_TARGET_ONE_BASE},
+     * so extra drones start only with the third standing hatchery.
+     */
+    static final int DRONE_TARGET_TWO_BASES = 11;
 
     /**
      * Drones added to the target for each standing hatchery beyond {@link #HATCHERY_TARGET}.
@@ -82,9 +90,19 @@ public class SpeedlingAllIn extends BuildOrder {
      */
     static final int ZERGLINGS_BEFORE_EXTRA_DRONES = 12;
 
-    private static final UnitType[] HATCHERY_TYPES = {
+    static final UnitType[] HATCHERY_TYPES = {
         UnitType.Zerg_Hatchery, UnitType.Zerg_Lair, UnitType.Zerg_Hive
     };
+
+    /**
+     * The readiness at which a hatchery raises the drone target: finished or under construction,
+     * never only planned.
+     *
+     * <p>A planned hatchery can still be cancelled, and drones bought for it would stay bought
+     * because the target is never cut. A hatchery under construction counts, since its minerals
+     * and its builder drone are already spent.
+     */
+    static final Readiness HATCHERY_READINESS = Readiness.STANDING;
 
     static final int HATCHERY_TARGET = 2;
 
@@ -96,9 +114,17 @@ public class SpeedlingAllIn extends BuildOrder {
 
     static final int MAX_QUEUED_ZERGLING_PLANS = 6;
 
+    static final int OPENING_ZERGLING_PLANS = MAX_QUEUED_ZERGLING_PLANS;
+
     static final int STALL_ZERGLINGS = 12;
 
     static final Time STALL_TIME = new Time(8, 0);
+
+    private static final Predicate<Plan> IS_UNSTARTED_SPEED_UPGRADE = p ->
+            p.getType() == PlanType.UPGRADE && p.getState() == PlanState.PLANNED
+                    && p.getPlannedUpgrade() == UpgradeType.Metabolic_Boost;
+
+    private final List<Plan> openingZerglings = new ArrayList<>();
 
     public SpeedlingAllIn() {
         super("SpeedlingAllIn");
@@ -144,7 +170,12 @@ public class SpeedlingAllIn extends BuildOrder {
             return plans;
         }
 
-        if (gameState.canPlanUpgrade(UpgradeType.Metabolic_Boost)) {
+        ProductionQueue productionQueue = gameState.getProductionQueue();
+        if (holdsSpeedUpgrade(productionQueue)) {
+            deferSpeedUpgrade(productionQueue);
+        }
+
+        if (shouldPlanSpeed(gameState.canPlanUpgrade(UpgradeType.Metabolic_Boost), openingZerglings.size())) {
             plans.add(this.planUpgrade(gameState, UpgradeType.Metabolic_Boost));
             return plans;
         }
@@ -160,7 +191,8 @@ public class SpeedlingAllIn extends BuildOrder {
         boolean owesZergling = shouldPlanZergling(queuedZerglings, techProgression.isSpawningPool());
 
         int zerglingCount = gameState.ourLivingUnitCount(UnitType.Zerg_Zergling);
-        int droneTarget = droneTarget(baseData.currentBaseCount(), standingHatcheries(gameState));
+        int standingHatcheries = gameState.structureCount(HATCHERY_READINESS, HATCHERY_TYPES);
+        int droneTarget = droneTarget(baseData.currentBaseCount(), standingHatcheries);
         if (shouldPlanDrone(gameState.numEconomyDrones(), droneTarget, zerglingCount, gameState.canPlanDrone(),
                 owesZergling)) {
             plans.add(this.planUnit(gameState, UnitType.Zerg_Drone));
@@ -175,32 +207,67 @@ public class SpeedlingAllIn extends BuildOrder {
         }
 
         if (owesZergling) {
-            plans.add(this.planUnit(gameState, UnitType.Zerg_Zergling));
+            Plan zergling = this.planUnit(gameState, UnitType.Zerg_Zergling);
+            recordOpeningZergling(zergling);
+            deferSpeedUpgrade(productionQueue);
+            plans.add(zergling);
         }
 
         return plans;
     }
 
-    private static int standingHatcheries(GameState gameState) {
-        int completed = gameState.structureCount(Readiness.USABLE, HATCHERY_TYPES);
-        int committed = gameState.structureCount(Readiness.COMMITTED, HATCHERY_TYPES);
-        int underConstruction = 0;
-        for (Unit unit : gameState.getSelf().getUnits()) {
-            if (isHatcheryType(unit.getType()) && !unit.isCompleted()) {
-                underConstruction += 1;
-            }
+    /**
+     * Keeps the first {@link #OPENING_ZERGLING_PLANS} zergling plans this build creates, which are
+     * the opening zerglings Metabolic Boost waits behind.
+     */
+    void recordOpeningZergling(Plan zergling) {
+        if (openingZerglings.size() < OPENING_ZERGLING_PLANS) {
+            openingZerglings.add(zergling);
         }
-        int planned = Math.max(0, committed - completed - underConstruction);
-        return standingHatcheries(completed, underConstruction, planned);
     }
 
-    private static boolean isHatcheryType(UnitType unitType) {
-        for (UnitType hatcheryType : HATCHERY_TYPES) {
-            if (unitType == hatcheryType) {
-                return true;
-            }
+    /**
+     * Moves every queued, unstarted Metabolic Boost plan that sorts ahead of the newest opening
+     * zergling plan to one priority behind it.
+     *
+     * <p>An opener can hand over with Metabolic Boost already queued, and a reaction can pull it to
+     * priority 2 before the hand-off. Either way it sits ahead of the opening zerglings this build
+     * queues, and its research claim would hold them. A plan that is already researching has left
+     * the queue and is not touched, and an upgrade already behind the newest opening zergling keeps
+     * its place.
+     */
+    void deferSpeedUpgrade(ProductionQueue productionQueue) {
+        int newestOpeningPriority = openingZerglings.stream().mapToInt(Plan::getPriority).max().orElse(-1);
+        if (newestOpeningPriority < 0) {
+            return;
         }
-        return false;
+        int deferredPriority = newestOpeningPriority + 1;
+        productionQueue.setPriorityWhere(
+                IS_UNSTARTED_SPEED_UPGRADE.and(p -> p.getPriority() < deferredPriority), deferredPriority);
+    }
+
+    int openingZerglingPlans() {
+        return openingZerglings.size();
+    }
+
+    /**
+     * True until every opening zergling plan has been created and has left the production queue.
+     *
+     * <p>A research plan short only of minerals holds every plan behind it in the scan, so Metabolic
+     * Boost pulled ahead of an opening zergling still waiting in the queue would hold that zergling
+     * until the upgrade is funded. A plan that has left the queue has already reserved its larva and
+     * cost, and the scan no longer reaches it.
+     */
+    @Override
+    public boolean holdsSpeedUpgrade(GameState gameState) {
+        return holdsSpeedUpgrade(gameState.getProductionQueue());
+    }
+
+    boolean holdsSpeedUpgrade(ProductionQueue productionQueue) {
+        if (openingZerglings.size() < OPENING_ZERGLING_PLANS) {
+            return true;
+        }
+        return openingZerglings.stream().anyMatch(productionQueue::contains);
     }
 
     private List<Plan> planStallUpgrades(GameState gameState) {
@@ -258,8 +325,8 @@ public class SpeedlingAllIn extends BuildOrder {
      *
      * <p>Drones above {@link #DRONE_TARGET_ONE_BASE} wait for {@link #ZERGLINGS_BEFORE_EXTRA_DRONES}
      * living zerglings. Once that army stands, the first of them is planned even while a zergling is
-     * owed, so at least one extra drone slips in ahead of the saturated zergling queue and income
-     * starts to grow; the rest wait on the zergling queue like the floor does.
+     * owed, so at least one extra drone slips in before the zergling queue fills and income starts
+     * to grow; the rest wait on the zergling queue like the floor does.
      *
      * @param economyDrones gathering plus queued drones, from {@link GameState#numEconomyDrones()}
      * @param droneTarget the total from {@link #droneTarget(int, int)}
@@ -281,34 +348,19 @@ public class SpeedlingAllIn extends BuildOrder {
     }
 
     /**
-     * The drone total, gas drones included, that this build holds: 11 below two bases, 12 at two,
-     * and {@link #DRONES_PER_EXTRA_HATCHERY} more for each standing hatchery beyond two.
+     * The drone total, gas drones included, that this build holds: {@link #DRONE_TARGET_ONE_BASE}
+     * below two bases, {@link #DRONE_TARGET_TWO_BASES} at two, and {@link #DRONES_PER_EXTRA_HATCHERY}
+     * more for each standing hatchery beyond two once two bases are held.
      * {@link GameState#canPlanDrone()} still bounds the result.
      *
      * @param bases base hatcheries held, from {@link BaseData#currentBaseCount()}
-     * @param standingHatcheries hatcheries, lairs and hives from {@link #standingHatcheries(int, int, int)}
+     * @param standingHatcheries hatcheries, lairs and hives at {@link #HATCHERY_READINESS}
      */
     static int droneTarget(int bases, int standingHatcheries) {
         if (bases < BASE_TARGET) {
             return DRONE_TARGET_ONE_BASE;
         }
         return DRONE_TARGET_TWO_BASES + DRONES_PER_EXTRA_HATCHERY * Math.max(0, standingHatcheries - HATCHERY_TARGET);
-    }
-
-    /**
-     * Hatcheries that raise the drone target: finished or under construction, never only planned.
-     *
-     * <p>A planned hatchery can still be cancelled, and drones bought for it would stay bought
-     * because the target is never cut. A hatchery under construction counts, since its minerals
-     * and its builder drone are already spent.
-     *
-     * @param completed hatcheries, lairs and hives that have finished building
-     * @param underConstruction hatcheries standing on the map part-built
-     * @param planned hatchery plans still in flight
-     * @return the standing count
-     */
-    static int standingHatcheries(int completed, int underConstruction, int planned) {
-        return completed + underConstruction;
     }
 
     /**
@@ -335,6 +387,18 @@ public class SpeedlingAllIn extends BuildOrder {
             return true;
         }
         return hatcheryTotal < MAX_HATCHERIES && availableMinerals >= SURPLUS_MINERALS;
+    }
+
+    /**
+     * Metabolic Boost is planned only once the opening zergling plans have been created. Plan
+     * priority is the frame a plan was queued on, so the upgrade then sorts behind all of them and
+     * its research claim cannot hold them.
+     *
+     * @param canPlanUpgrade whether {@link GameState#canPlanUpgrade} allows Metabolic Boost
+     * @param openingZerglingPlans opening zergling plans this build has created so far
+     */
+    static boolean shouldPlanSpeed(boolean canPlanUpgrade, int openingZerglingPlans) {
+        return canPlanUpgrade && openingZerglingPlans >= OPENING_ZERGLING_PLANS;
     }
 
     /**

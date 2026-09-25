@@ -13,6 +13,7 @@ import info.TechProgression;
 import info.map.BuildingPlanner;
 import info.tracking.ObservedUnitTracker;
 import info.tracking.StrategyTracker;
+import info.tracking.protoss.ProxyGate;
 import util.OneShotGate;
 import util.Time;
 import macro.plan.Plan;
@@ -66,6 +67,9 @@ public class Reactions {
 
     private static final Predicate<Plan> IS_EXPANSION_HATCHERY = IS_HATCHERY.and(p -> !p.isMacroHatchery());
 
+    private static final Predicate<Plan> IS_UNMORPHED_CLAIMED_EXPANSION = IS_EXPANSION_HATCHERY.and(p ->
+            p.getState() == PlanState.SCHEDULE || p.getState() == PlanState.BUILDING);
+
     private static final Predicate<Plan> IS_SPEED_UPGRADE = p ->
             p.getType() == PlanType.UPGRADE && ((UpgradePlan) p).getPlannedUpgrade() == UpgradeType.Metabolic_Boost;
 
@@ -98,6 +102,7 @@ public class Reactions {
     private final OneShotGate lairCancel = new OneShotGate();
     private final OneShotGate droneCut = new OneShotGate();
     private final OneShotGate ffeBoost = new OneShotGate();
+    private final OneShotGate proxyGateExpansionHold = new OneShotGate();
 
     private int quietFrames;
 
@@ -115,6 +120,7 @@ public class Reactions {
         cannonRushReaction();
         scvRushReaction();
         earlyRushReaction();
+        proxyGateReaction();
         twoGateReaction();
         zvzSunkenReaction();
         ffeReaction();
@@ -404,6 +410,7 @@ public class Reactions {
                 gameState.getTechProgression(),
                 gameState.structureCount(Readiness.USABLE, UnitType.Zerg_Extractor) > 0,
                 gameState.canPlanUpgrade(UpgradeType.Metabolic_Boost),
+                gameState.getActiveBuildOrder().holdsSpeedUpgrade(gameState),
                 gameState.getGameTime().getFrames());
     }
 
@@ -418,12 +425,15 @@ public class Reactions {
      * @param techProgression marks the upgrade planned so it is queued once
      * @param haveExtractor whether a finished Extractor exists
      * @param canPlanSpeed whether Metabolic Boost may be queued now
+     * @param held whether the active build order holds the upgrade behind its own production, from
+     *     {@link BuildOrder#holdsSpeedUpgrade}; a held upgrade is neither queued nor pulled forward
      * @param currentFrame the current frame, which the new plan takes as its initial priority before
      *     being pulled forward to {@link #SPEED_UPGRADE_PRIORITY}
      */
     static void planSpeedUpgrade(ProductionQueue productionQueue, TechProgression techProgression,
-                                 boolean haveExtractor, boolean canPlanSpeed, int currentFrame) {
-        if (!haveExtractor) {
+                                 boolean haveExtractor, boolean canPlanSpeed, boolean held,
+                                 int currentFrame) {
+        if (!haveExtractor || held) {
             return;
         }
 
@@ -547,9 +557,89 @@ public class Reactions {
         }
     }
 
+    /**
+     * Holds the natural against a proxy Gateway. ProxyGate implies EarlyRush, so the Pool, Zergling, speed
+     * and drone cut response is the early rush reaction's; this adds the expansion hold.
+     *
+     * <p>The hold stands while ProxyGate is detected and the early rush reaction is armed, so it stands
+     * down with the early rush reaction, at the latest at its hard deadline. On the first frame of each
+     * hold every unmorphed expansion is cancelled. For the rest of the hold no new one is created:
+     * {@link GameState#mayQueueExpansionHatchery()} refuses expansion Hatcheries while the bot is early
+     * rushed, which the hold implies. The early rush reaction runs first each frame, so the flag the hold
+     * reads is current.
+     */
+    private void proxyGateReaction() {
+        boolean holding = isProxyGateExpansionHold(gameState.getStrategyTracker().isDetectedStrategy(ProxyGate.NAME),
+                gameState.isEarlyRushed());
+        if (!shouldCancelExpansionsForProxyGate(holding)) {
+            return;
+        }
+
+        cancelUnmorphedExpansions(gameState.getProductionQueue(), gameState.getPlansScheduled(), gameState.getPlansBuilding(),
+                gameState::setImpossiblePlan,
+                plan -> gameState.cancelPlan(gameState.executorOf(plan), plan, PlanCancelSource.REACTION_PROXY_GATE_EXPANSION));
+    }
+
+    /**
+     * Whether the proxy Gateway expansion hold stands this frame.
+     *
+     * @param proxyGateDetected whether ProxyGate is detected
+     * @param earlyRushed whether the early rush reaction is armed
+     * @return true while both hold
+     */
+    static boolean isProxyGateExpansionHold(boolean proxyGateDetected, boolean earlyRushed) {
+        return proxyGateDetected && earlyRushed;
+    }
+
+    /**
+     * Whether the proxy Gateway reaction cancels unmorphed expansions this frame. The cancel runs once per
+     * hold and rearms whenever the hold lifts, so a hold that returns cancels again.
+     *
+     * @param holding whether the expansion hold stands this frame
+     * @return true on the first frame of each hold
+     */
+    boolean shouldCancelExpansionsForProxyGate(boolean holding) {
+        if (!holding) {
+            proxyGateExpansionHold.rearm();
+            return false;
+        }
+        return proxyGateExpansionHold.fire();
+    }
+
+    /**
+     * Cancels every expansion Hatchery plan whose morph has not been issued: plans still queued, plans
+     * holding a schedule claim, and plans whose drone is assigned or walking to the site. Each plan reaches
+     * exactly one of the two callbacks, once, and a claimed plan leaves the scheduled and building sets
+     * before its callback runs.
+     *
+     * <p>A plan in MORPHING has had its build command accepted, so the drone may already be the Hatchery.
+     * It is kept, as is a Hatchery already morphing: a live morph is never cancelled and is defended where
+     * it stands. A completed base has no plan in any of these sets, so it is never touched. Macro Hatchery
+     * plans are kept, since they are built in the main.
+     *
+     * @param productionQueue plans not yet scheduled
+     * @param plansScheduled plans holding a schedule claim, including building plans whose drone is walking
+     * @param plansBuilding plans whose research or construction has begun
+     * @param cancelQueued retires a plan removed from the queue
+     * @param cancelClaimed retires a claimed plan and releases its reservation
+     */
+    static void cancelUnmorphedExpansions(ProductionQueue productionQueue, Set<Plan> plansScheduled, Set<Plan> plansBuilding,
+                                          Consumer<Plan> cancelQueued, Consumer<Plan> cancelClaimed) {
+        productionQueue.removeWhere(IS_EXPANSION_HATCHERY, PlanCancelSource.REACTION_PROXY_GATE_EXPANSION, cancelQueued);
+
+        Set<Plan> claimed = Stream.concat(plansScheduled.stream(), plansBuilding.stream())
+                .filter(IS_UNMORPHED_CLAIMED_EXPANSION)
+                .collect(Collectors.toSet());
+        for (Plan plan : claimed) {
+            plansScheduled.remove(plan);
+            plansBuilding.remove(plan);
+            cancelClaimed.accept(plan);
+        }
+    }
+
     private void twoGateReaction() {
         StrategyTracker strategyTracker = gameState.getStrategyTracker();
-        if (!strategyTracker.isDetectedStrategy("2Gate")) {
+        if (!strategyTracker.isAnyDetectedStrategy("2Gate", ProxyGate.NAME)) {
             return;
         }
 

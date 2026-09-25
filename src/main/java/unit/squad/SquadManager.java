@@ -18,6 +18,7 @@ import info.tracking.ObservedUnit;
 import info.tracking.ObservedUnitTracker;
 import info.tracking.PsiStormTracker;
 import info.tracking.StrategyTracker;
+import info.tracking.protoss.ProxyGate;
 import lombok.Getter;
 
 import org.bk.ass.sim.Agent;
@@ -104,6 +105,19 @@ public class SquadManager {
         AIR_SQUAD_TYPES.add(UnitType.Zerg_Devourer);
     }
 
+    /** Tuning value: air combat units a squad needs to move out against Protoss, Terran or an unknown race. */
+    static final int AIR_MOVE_OUT_UNITS = 5;
+    /** Tuning value: air combat units a squad needs to move out against Zerg. */
+    static final int AIR_MOVE_OUT_UNITS_VS_ZERG = 2;
+    /** Tuning value: Scourge a Scourge only squad needs to move out, against any race. */
+    static final int SCOURGE_MOVE_OUT_UNITS = 2;
+    /**
+     * Tuning value: ground path length in pixels from the squad centre to the closest base held within which an air
+     * squad under its move out threshold still simulates close threats. Air distance stands in when no base is
+     * reachable on the ground from the centre.
+     */
+    static final int AIR_HOME_DEFENSE_RADIUS = 480;
+
     private static final int RETREAT_VECTOR_MAGNITUDE = 192;
     private static final int COMBAT_SIM_DURATION_FRAMES = 150;
     private static final double DEFENSE_WIN_THRESHOLD = 0.50;
@@ -116,6 +130,9 @@ public class SquadManager {
     private static final int CONTAINMENT_ENGAGE_RADIUS = 256;
     private static final int ARC_DEGREES = 90;
     private static final int ARC_RADIUS = 160;
+    private static final int MAX_ARC_DEGREES = 180;
+    private static final int MIN_ARC_POINTS = 4;
+    private static final int MAX_SPACED_RADIUS = ContainmentPushback.MAX_RADIUS - ContainmentPushback.RADIUS_STEP;
     private static final int CONTAIN_DEFENSE_MARGIN = 32;
     private static final double REINFORCEMENT_RADIUS = 384.0;
     private static final int TARGETING_RADIUS = 256;
@@ -395,8 +412,8 @@ public class SquadManager {
         if (outcome.isAbandoned()) {
             releaseDefenders(defenseSquad);
             defenseAbandonedUntilFrame.put(base, frame + WorkerDefense.ABANDON_HOLD_FRAMES);
-            SquadDecisions.defenseEvaluated(defenseSquad, DefenseEvent.ABANDON, candidates.size(), 0,
-                    outcome.getReleased().size(), fullCommitment);
+            SquadDecisions.defenseEvaluated(defenseSquad, DefenseEvent.ABANDON, candidates.size(),
+                    Collections.emptyList(), outcome.getReleased(), fullCommitment);
             return outcome;
         }
 
@@ -407,7 +424,7 @@ public class SquadManager {
         }
         if (!outcome.getPulled().isEmpty()) {
             SquadDecisions.defenseEvaluated(defenseSquad, DefenseEvent.PULL, candidates.size(),
-                    outcome.getPulled().size(), 0, fullCommitment);
+                    outcome.getPulled(), Collections.emptyList(), fullCommitment);
         }
         return outcome;
     }
@@ -433,8 +450,8 @@ public class SquadManager {
             pulled.add(gatherer);
         }
         if (!pulled.isEmpty()) {
-            SquadDecisions.defenseEvaluated(defenseSquad, DefenseEvent.PULL, candidates.size(), pulled.size(), 0,
-                    null);
+            SquadDecisions.defenseEvaluated(defenseSquad, DefenseEvent.PULL, candidates.size(), pulled,
+                    Collections.emptyList(), null);
         }
         return new WorkerDefense.Outcome<>(false, pulled, Collections.emptyList());
     }
@@ -445,8 +462,8 @@ public class SquadManager {
 
         List<ManagedUnit> reassignedDefenders = releaseDefenders(defenseSquad);
         if (!reassignedDefenders.isEmpty()) {
-            SquadDecisions.defenseEvaluated(defenseSquad, DefenseEvent.RELEASE, 0, 0, reassignedDefenders.size(),
-                    null);
+            SquadDecisions.defenseEvaluated(defenseSquad, DefenseEvent.RELEASE, 0, Collections.emptyList(),
+                    reassignedDefenders, null);
         }
         return reassignedDefenders;
     }
@@ -607,6 +624,9 @@ public class SquadManager {
                 boolean bothGround = squad1.isGroundSquad() && squad2.isGroundSquad();
                 boolean bothAir = squad1.isAirSquad() && squad2.isAirSquad();
                 if (!bothGround && !bothAir) continue;
+                boolean scourge1 = holdsOnlyScourge(squad1.getComposition());
+                boolean scourge2 = holdsOnlyScourge(squad2.getComposition());
+                if (bothAir && !mayMergeAirSquads(scourge1, scourge2)) continue;
                 if (squad1.distance(squad2) < SQUAD_MERGE_DISTANCE) {
                     Set<Squad> mergeSet = new HashSet<>();
                     mergeSet.add(squad1);
@@ -744,8 +764,12 @@ public class SquadManager {
     }
 
     private int strengthOf(Squad squad, List<ManagedUnit> units) {
-        if (squad.isAirSquad() && squad.hasOnly(UnitType.Zerg_Scourge)) {
-            return units.size();
+        if (squad.isAirSquad()) {
+            Map<UnitType, Integer> composition = new HashMap<>();
+            for (ManagedUnit managedUnit : units) {
+                composition.merge(managedUnit.getUnitType(), 1, Integer::sum);
+            }
+            return airMoveOutUnits(composition);
         }
 
         int supply = 0;
@@ -756,10 +780,27 @@ public class SquadManager {
     }
 
     private int squadStrength(Squad squad) {
-        if (squad.isAirSquad() && squad.hasOnly(UnitType.Zerg_Scourge)) {
-            return squad.size();
+        if (squad.isAirSquad()) {
+            return airMoveOutUnits(squad.getComposition());
         }
         return squad.getSupply();
+    }
+
+    /**
+     * Counts the air combat units in a composition, the strength an air squad's move out threshold is measured in.
+     * Overlords escorting the squad are not counted.
+     *
+     * @param composition unit counts by type
+     * @return number of Mutalisks, Scourge, Guardians and Devourers
+     */
+    static int airMoveOutUnits(Map<UnitType, Integer> composition) {
+        int units = 0;
+        for (Map.Entry<UnitType, Integer> entry : composition.entrySet()) {
+            if (AIR_SQUAD_TYPES.contains(entry.getKey())) {
+                units += entry.getValue();
+            }
+        }
+        return units;
     }
 
     private List<Unit> enemyUnitsNearSquad(Squad squad) {
@@ -838,7 +879,11 @@ public class SquadManager {
             return;
         }
 
-        SquadAction action = chooseSquadAction(closeThreats, squadStrength(squad), calculateMoveOutThreshold(squad),
+        int strength = squadStrength(squad);
+        int moveOutThreshold = calculateMoveOutThreshold(squad);
+        SquadDecisions.moveOutEvaluated(squad, moveOutThreshold, strength);
+        boolean holdAway = holdsAwayFromHome(squad, closeThreats, strength, moveOutThreshold);
+        SquadAction action = chooseSquadAction(holdAway, closeThreats, strength, moveOutThreshold,
                 squadStatus, squad.isCommitted(), distanceFromRallyPoint(squad));
 
         if (squadStatus == SquadStatus.RALLY) {
@@ -847,7 +892,10 @@ public class SquadManager {
 
         if (action == SquadAction.RALLY) {
             clearCombatSimSnapshot(squad);
-            rallySquad(squad, RallyReason.BELOW_MOVE_OUT);
+            if (keepsJoiningContain(squadStatus, squad.isCommitted()) && joinActiveContain(squad)) {
+                return;
+            }
+            rallySquad(squad, holdAway ? RallyReason.AIR_BELOW_MOVE_OUT_AWAY : RallyReason.BELOW_MOVE_OUT);
             return;
         }
 
@@ -877,7 +925,7 @@ public class SquadManager {
      * released by {@link #rallySquad} and, for a squad that has walked itself home, by the release distance.
      *
      * @param closeThreats true when enemies sit inside the squad detection radius
-     * @param squadStrength supply of the squad, or unit count for a Scourge only squad
+     * @param squadStrength supply of a ground squad, or air combat unit count of an air squad
      * @param moveOutThreshold strength the squad needs to be cleared to move out
      * @param status status the squad held entering the tick
      * @param committed true when the squad has been cleared to act and has not been recalled since
@@ -899,6 +947,105 @@ public class SquadManager {
             return SquadAction.SIMULATE;
         }
         return SquadAction.RALLY;
+    }
+
+    /**
+     * Picks the branch for a fight squad that is not already containing, holding a sub-threshold air squad at the
+     * rally point when its close threats are away from our bases. Every other squad takes
+     * {@link #chooseSquadAction(boolean, int, int, SquadStatus, boolean, double)}.
+     *
+     * @param holdAwayFromHome result of {@link #holdsAwayFromHome(boolean, boolean, boolean, int, int, boolean)}
+     * @param closeThreats true when enemies sit inside the squad detection radius
+     * @param squadStrength supply of a ground squad, or air combat unit count of an air squad
+     * @param moveOutThreshold strength the squad needs to be cleared to move out
+     * @param status status the squad held entering the tick
+     * @param committed true when the squad has been cleared to act and has not been recalled since
+     * @param distanceFromRallyPoint pixels between the squad center and the global rally point
+     * @return branch to take
+     */
+    static SquadAction chooseSquadAction(boolean holdAwayFromHome, boolean closeThreats, int squadStrength,
+                                         int moveOutThreshold, SquadStatus status, boolean committed,
+                                         double distanceFromRallyPoint) {
+        if (holdAwayFromHome) {
+            return SquadAction.RALLY;
+        }
+        return chooseSquadAction(closeThreats, squadStrength, moveOutThreshold, status, committed,
+                distanceFromRallyPoint);
+    }
+
+    /**
+     * Whether a squad's close threats are refused because it is an air squad under its move out threshold, not
+     * committed, and outside {@link #AIR_HOME_DEFENSE_RADIUS} of every base we hold. Such a squad simulates
+     * close threats only at home, where it is defending Overlords or a drone line; away from home the move out
+     * threshold decides. Ground squads and committed air squads are never held.
+     *
+     * @param airSquad true for an air squad
+     * @param closeThreats true when enemies sit inside the squad detection radius
+     * @param nearHome true when the squad centre is inside the home defence radius of a base we hold
+     * @param squadStrength air combat unit count of the squad
+     * @param moveOutThreshold air combat units the squad needs to be cleared to move out
+     * @param committed true when the squad has been cleared to act and has not been recalled since
+     * @return true when the squad rallies instead of simulating its close threats
+     */
+    static boolean holdsAwayFromHome(boolean airSquad, boolean closeThreats, boolean nearHome, int squadStrength,
+                                     int moveOutThreshold, boolean committed) {
+        return mayHoldAwayFromHome(airSquad, squadStrength, moveOutThreshold, committed) && closeThreats && !nearHome;
+    }
+
+    /**
+     * The terms of {@link #holdsAwayFromHome(boolean, boolean, boolean, int, int, boolean)} that need no enemy scan
+     * or path search: an air squad under its move out threshold and not committed. A squad failing them is never
+     * held, so the costlier terms are measured only for a squad that passes.
+     *
+     * @param airSquad true for an air squad
+     * @param squadStrength air combat unit count of the squad
+     * @param moveOutThreshold air combat units the squad needs to be cleared to move out
+     * @param committed true when the squad has been cleared to act and has not been recalled since
+     * @return true when the squad can be held
+     */
+    static boolean mayHoldAwayFromHome(boolean airSquad, int squadStrength, int moveOutThreshold, boolean committed) {
+        return airSquad && squadStrength < moveOutThreshold && !committed;
+    }
+
+    private boolean holdsAwayFromHome(Squad squad, boolean closeThreats, int squadStrength, int moveOutThreshold) {
+        if (!closeThreats
+                || !mayHoldAwayFromHome(squad.isAirSquad(), squadStrength, moveOutThreshold, squad.isCommitted())) {
+            return false;
+        }
+        return !isNearHome(squad.getCenter());
+    }
+
+    private boolean isNearHome(Position center) {
+        if (center == null) {
+            return true;
+        }
+        Set<Position> basePositions = gameState.getBaseData().getMyBasePositions();
+        int groundDistance = -1;
+        double airDistance = Double.MAX_VALUE;
+        for (Position basePosition : basePositions) {
+            int length = gameState.getBwem().getMap().getPathLength(center, basePosition);
+            if (length >= 0 && (groundDistance < 0 || length < groundDistance)) {
+                groundDistance = length;
+            }
+            airDistance = Math.min(airDistance, center.getDistance(basePosition));
+        }
+        return isInsideHomeDefenseRadius(groundDistance, airDistance);
+    }
+
+    /**
+     * Whether a squad centre is inside {@link #AIR_HOME_DEFENSE_RADIUS} of the bases we hold. The ground path
+     * length is the measure, the same one squad decision telemetry records as ground_distance_to_base; the air
+     * distance is read only when no base is reachable on the ground.
+     *
+     * @param groundDistance shortest ground path length to a base held, or negative when none is reachable
+     * @param airDistance shortest air distance to a base held, or Double.MAX_VALUE when we hold none
+     * @return true when the centre is inside the radius
+     */
+    static boolean isInsideHomeDefenseRadius(int groundDistance, double airDistance) {
+        if (groundDistance >= 0) {
+            return groundDistance <= AIR_HOME_DEFENSE_RADIUS;
+        }
+        return airDistance <= AIR_HOME_DEFENSE_RADIUS;
     }
 
     /**
@@ -948,20 +1095,68 @@ public class SquadManager {
     }
 
     private int calculateAirSquadMoveOutThreshold(Squad squad) {
-        if (squad.hasOnly(UnitType.Zerg_Scourge)) {
-            return 2;
+        return airMoveOutThreshold(holdsOnlyScourge(squad.getComposition()), gameState.getOpponentRace());
+    }
+
+    /**
+     * Whether a composition's air combat units are all Scourge. Escorting Overlords are ignored, and a
+     * composition with no air combat units is not a Scourge squad.
+     *
+     * @param composition unit counts by type
+     * @return true when the composition holds Scourge and no other air combat unit
+     */
+    static boolean holdsOnlyScourge(Map<UnitType, Integer> composition) {
+        int units = airMoveOutUnits(composition);
+        return units > 0 && units == composition.getOrDefault(UnitType.Zerg_Scourge, 0);
+    }
+
+    /**
+     * Whether an air unit may join an air squad. Scourge keep to squads of Scourge so a pair moves out on
+     * {@link #SCOURGE_MOVE_OUT_UNITS}, and every other air unit keeps out of them.
+     *
+     * @param type the joining unit's type
+     * @param squadHoldsOnlyScourge true when the squad's air combat units are all Scourge
+     * @return true when the unit may join the squad
+     */
+    static boolean mayJoinAirSquad(UnitType type, boolean squadHoldsOnlyScourge) {
+        boolean scourge = type == UnitType.Zerg_Scourge;
+        return scourge == squadHoldsOnlyScourge;
+    }
+
+    /**
+     * Whether two air squads may merge. A Scourge squad merges only with another Scourge squad.
+     *
+     * @param firstHoldsOnlyScourge true when the first squad's air combat units are all Scourge
+     * @param secondHoldsOnlyScourge true when the second squad's air combat units are all Scourge
+     * @return true when the squads may merge
+     */
+    static boolean mayMergeAirSquads(boolean firstHoldsOnlyScourge, boolean secondHoldsOnlyScourge) {
+        return firstHoldsOnlyScourge == secondHoldsOnlyScourge;
+    }
+
+    /**
+     * Air combat units an air squad needs before it is cleared to move out, compared against
+     * {@link #airMoveOutUnits}.
+     *
+     * @param scourgeOnly true when the squad holds Scourge and nothing else
+     * @param opponentRace the opponent's race
+     * @return threshold in units
+     */
+    static int airMoveOutThreshold(boolean scourgeOnly, Race opponentRace) {
+        if (scourgeOnly) {
+            return SCOURGE_MOVE_OUT_UNITS;
         }
-        if (gameState.getOpponentRace() == Race.Zerg) {
-            return 2;
+        if (opponentRace == Race.Zerg) {
+            return AIR_MOVE_OUT_UNITS_VS_ZERG;
         }
-        return 3;
+        return AIR_MOVE_OUT_UNITS;
     }
 
     private int defaultMoveOutThreshold() {
         int staticDefensePenalty = min(gameState.getObservedUnitTracker().getHostileToGroundBuildings().size(), 6);
         int moveOutThreshold = 8 * (1 + staticDefensePenalty);
         StrategyTracker strategyTracker = gameState.getStrategyTracker();
-        if (strategyTracker.isDetectedStrategy("2Gate")) {
+        if (strategyTracker.isAnyDetectedStrategy("2Gate", ProxyGate.NAME)) {
             final int zealots = gameState.enemyUnitCount(UnitType.Protoss_Zealot);
             moveOutThreshold += zealots * 2;
         }
@@ -1000,7 +1195,7 @@ public class SquadManager {
         if (gameState.isEarlyRushed()) {
             rushThresholdIncrease = gameState.visibleEnemyMobileGroundCombatUnitsAtOurBases() * 2;
         }
-        if (strategyTracker.isDetectedStrategy("2Gate")) {
+        if (strategyTracker.isAnyDetectedStrategy("2Gate", ProxyGate.NAME)) {
             final int zealots = gameState.enemyUnitCount(UnitType.Protoss_Zealot);
             rushThresholdIncrease = Math.max(rushThresholdIncrease, zealots * 2);
         }
@@ -1020,6 +1215,11 @@ public class SquadManager {
      * <p>A squad with nothing detected anywhere still attacks: the sim has no enemy to weigh, so it
      * returns ADVANCE, and the fighters take the remembered enemy building through
      * {@link #assignFallbackMovementTarget}.
+     *
+     * <p>While another ground squad holds a containment arc, a ground squad's ADVANCE goes to that arc instead,
+     * through {@link #joinActiveContain}, unless one of our bases is threatened. ADVANCE is the verdict for a squad
+     * whose sim found no enemy strength to weigh, so the squad would otherwise march blind on a building behind the
+     * contained choke.
      *
      * @param squad fight squad to tick
      */
@@ -1113,6 +1313,9 @@ public class SquadManager {
         switch (result) {
             case ADVANCE:
                 boolean baseThreatened = squad.getStatus() != SquadStatus.FIGHT && baseThreatened();
+                if (!baseThreatened && joinActiveContain(squad)) {
+                    break;
+                }
                 if (blindAdvanceHeld(squad.getStatus(), enemyMeasured, threatBeyondRadius, baseThreatened)) {
                     holdSquad(squad, managedFighters);
                     break;
@@ -2300,8 +2503,9 @@ public class SquadManager {
     }
 
     /**
-     * Builds the arc a squad would hold at the choke in front of the enemy base closest to it, at the radius the
-     * episode has been pushed back to, clear of every zone that outranges the squad at the reach learned over the
+     * Builds the arc a squad would hold at the choke in front of the enemy base closest to it, one point per member,
+     * at no less than the radius the episode has been pushed back to and wide enough that consecutive points sit at
+     * least the widest member's width apart, clear of every zone that outranges the squad at the reach learned over the
      * game.
      *
      * @param squad squad offered the arc
@@ -2324,21 +2528,77 @@ public class SquadManager {
                 2 * chokePosition.getY() - enemyBasePosition.getY()
         );
 
-        Arc arc = new Arc(chokePosition, faceTarget, containmentRadius(squad), ARC_DEGREES,
-                Math.max(squad.size(), 4));
+        int points = containmentPoints(squad);
+        int spacing = containmentSpacing(squad.getComposition().keySet());
+        int radius = containmentRadius(squad.getContainRadius(), points, spacing);
+        Arc arc = new Arc(chokePosition, faceTarget, radius, containmentDegrees(radius, points, spacing), points);
         return computeContainmentArc(arc, zones, containmentDefensePadding(squad.getComposition().keySet()),
                 gameState.getGameMap().getAccessibleWalkPositions(), game.mapWidth() * 32, game.mapHeight() * 32);
     }
 
     /**
-     * Radius a squad's arc is drawn at: the radius its episode has been pushed back to, or the default radius for a
-     * squad starting an episode.
+     * Radius a squad's arc is drawn at, from the radius its episode has been pushed back to, its point count and the
+     * width of its widest member, see {@link #containmentRadius(int, int, int)}.
      *
      * @param squad squad offered the arc
      * @return radius in pixels
      */
     static int containmentRadius(Squad squad) {
-        return Math.max(ARC_RADIUS, squad.getContainRadius());
+        return containmentRadius(squad.getContainRadius(), containmentPoints(squad),
+                containmentSpacing(squad.getComposition().keySet()));
+    }
+
+    /**
+     * Radius an arc of the given points is drawn at: the largest of the default radius, the radius the episode has
+     * been pushed back to, and the radius that keeps consecutive points the spacing apart over the default span,
+     * the last capped one {@link ContainmentPushback#RADIUS_STEP} short of {@link ContainmentPushback#MAX_RADIUS} so
+     * an arc sized for its squad can still be pushed back.
+     *
+     * @param pushbackRadius radius the episode has been pushed back to, 0 when it has not
+     * @param points points on the arc
+     * @param spacing pixels wanted between consecutive points
+     * @return radius in pixels
+     */
+    static int containmentRadius(int pushbackRadius, int points, int spacing) {
+        int spaced = Math.min(MAX_SPACED_RADIUS, Arc.radiusForSpacing(points, ARC_DEGREES, spacing));
+        return Math.max(Math.max(ARC_RADIUS, pushbackRadius), spaced);
+    }
+
+    /**
+     * Span of an arc of the given points at the radius: the default span, widened up to {@link #MAX_ARC_DEGREES}
+     * when the radius alone cannot keep consecutive points the spacing apart.
+     *
+     * @param radius radius of the arc in pixels
+     * @param points points on the arc
+     * @param spacing pixels wanted between consecutive points
+     * @return span in degrees
+     */
+    static int containmentDegrees(int radius, int points, int spacing) {
+        return Math.max(ARC_DEGREES, Math.min(MAX_ARC_DEGREES, Arc.degreesForSpacing(points, radius, spacing)));
+    }
+
+    /**
+     * Points on the arc offered to a squad: one per member, and never fewer than four.
+     *
+     * @param squad squad offered the arc
+     * @return point count
+     */
+    static int containmentPoints(Squad squad) {
+        return Math.max(squad.size(), MIN_ARC_POINTS);
+    }
+
+    /**
+     * Pixels kept between consecutive arc points: the width of the widest unit type in the squad.
+     *
+     * @param memberTypes unit types in the squad
+     * @return spacing in pixels, 0 when the squad is empty
+     */
+    static int containmentSpacing(Collection<UnitType> memberTypes) {
+        int widest = 0;
+        for (UnitType type : memberTypes) {
+            widest = Math.max(widest, type.dimensionLeft() + type.dimensionRight());
+        }
+        return widest;
     }
 
     /**
@@ -2455,6 +2715,95 @@ public class SquadManager {
         }
         managedUnit.setRole(UnitRole.CONTAIN);
         managedUnit.setContainPosition(assigned);
+    }
+
+    /**
+     * Sends a ground squad to the arc of the contain closest to it, each member to the arc point nearest it.
+     *
+     * <p>The squad takes RALLY rather than FIGHT. The merge folds it into the containing squad once the two are
+     * within {@link #SQUAD_MERGE_DISTANCE}, and RALLY is below CONTAIN in merge precedence, so the merged squad
+     * keeps the arc; a FIGHT reinforcement would end the contain it merged into. Commitment is kept, so a squad
+     * still near the rally point stays on its way to the arc, see {@link #keepsJoiningContain}.
+     *
+     * @param squad squad to send
+     * @return true when the squad was sent, false when it is not a ground squad or no contain holds an arc
+     */
+    private boolean joinActiveContain(Squad squad) {
+        Arc arc = containArcToJoin(squad);
+        if (arc == null) {
+            return false;
+        }
+        SquadDecisions.rallied(squad, RallyReason.JOIN_CONTAIN);
+        SquadDecisions.pathTaken(squad, DecisionPath.RALLY);
+        squad.setStatus(SquadStatus.RALLY);
+        for (ManagedUnit managedUnit : squad.getMembers()) {
+            managedUnit.setRallyPoint(arc.closestPosition(managedUnit.getPosition()));
+            managedUnit.setRole(UnitRole.RALLY);
+        }
+        return true;
+    }
+
+    /**
+     * The arc a ground squad reinforces: the arc of the other containing ground squad closest to it.
+     *
+     * @param squad squad looking for a contain to join
+     * @return the arc, or null when the squad is not a ground squad or no other ground squad holds an arc
+     */
+    private Arc containArcToJoin(Squad squad) {
+        if (!squad.isGroundSquad() || squad.getStatus() == SquadStatus.CONTAIN) {
+            return null;
+        }
+        List<Arc> arcs = new ArrayList<>();
+        for (Squad other : fightSquads) {
+            if (other == squad || !other.isGroundSquad() || other.getStatus() != SquadStatus.CONTAIN) {
+                continue;
+            }
+            arcs.add(other.getContainmentArc());
+        }
+        return arcToJoin(squad.getCenter(), arcs);
+    }
+
+    /**
+     * Picks the arc a reinforcement joins: the one whose held line sits closest to it. Missing and empty arcs are
+     * skipped.
+     *
+     * @param from reinforcement's center
+     * @param arcs arcs held by containing squads
+     * @return the closest arc, or null when there is none to join
+     */
+    static Arc arcToJoin(Position from, Collection<Arc> arcs) {
+        if (from == null) {
+            return null;
+        }
+        Arc closest = null;
+        double closestDistance = Double.MAX_VALUE;
+        for (Arc arc : arcs) {
+            if (arc == null || arc.isEmpty()) {
+                continue;
+            }
+            double distance = from.getDistance(arc.getMidpoint());
+            if (distance < closestDistance) {
+                closestDistance = distance;
+                closest = arc;
+            }
+        }
+        return closest;
+    }
+
+    /**
+     * Whether a squad the move out gate would send back to the rally point goes on to a contain instead.
+     *
+     * <p>{@link #rallySquad} clears commitment and {@link #joinActiveContain} keeps it, so a committed squad in
+     * RALLY is one on its way to an arc. Below the move out threshold and still within the commitment release
+     * distance of the rally point, {@link #chooseSquadAction} returns RALLY for it, and sending it home there would
+     * turn back every reinforcement that left the rally point under the threshold.
+     *
+     * @param status status the squad held entering the tick
+     * @param committed true when the squad has been cleared to act and has not been recalled since
+     * @return true when the squad keeps heading for a contain
+     */
+    static boolean keepsJoiningContain(SquadStatus status, boolean committed) {
+        return status == SquadStatus.RALLY && committed;
     }
 
     private Base closestBaseTo(Position pos, Set<Base> bases) {
@@ -2796,12 +3145,18 @@ public class SquadManager {
         }
 
         squad.addUnit(managedUnit);
-        switch (reinforcementPath(squad.getStatus(), shouldStageSquad(squad))) {
+        boolean stage = shouldStageSquad(squad);
+        boolean holdAway = !stage && squad.getStatus() != SquadStatus.CONTAIN && reinforcementHeldAway(squad);
+        switch (reinforcementPath(squad.getStatus(), stage, holdAway)) {
             case STAGE:
                 rallySquad(squad, RallyReason.STAGING);
                 return;
             case JOIN_CONTAINMENT:
                 joinContainment(squad, managedUnit);
+                return;
+            case HOLD_AWAY:
+                clearCombatSimSnapshot(squad);
+                rallySquad(squad, RallyReason.AIR_BELOW_MOVE_OUT_AWAY);
                 return;
             default:
                 break;
@@ -2821,6 +3176,7 @@ public class SquadManager {
     enum ReinforcementPath {
         STAGE,
         JOIN_CONTAINMENT,
+        HOLD_AWAY,
         SIMULATE
     }
 
@@ -2833,18 +3189,40 @@ public class SquadManager {
      * straight back every 24 frames; simulating on each return would let a blind ADVANCE flip the squad to FIGHT
      * until the next frame re-entered the arc.
      *
+     * <p>A squad with close threats is otherwise simulated at once, except a squad
+     * {@link #holdsAwayFromHome(boolean, boolean, boolean, int, int, boolean)} holds: it returns to the rally
+     * point, the same branch {@link #evaluateSquadRole} takes for it, so a unit hatched under threat away from our
+     * bases does not fight below its move out threshold.
+     *
      * @param status status the squad held as the reinforcement joined
      * @param stage true when the squad is rallying with no enemy inside its detection radius
+     * @param holdAway true when the squad is an air squad held at the rally point away from home
      * @return branch to take
      */
-    static ReinforcementPath reinforcementPath(SquadStatus status, boolean stage) {
+    static ReinforcementPath reinforcementPath(SquadStatus status, boolean stage, boolean holdAway) {
         if (status == SquadStatus.CONTAIN) {
             return ReinforcementPath.JOIN_CONTAINMENT;
         }
         if (stage) {
             return ReinforcementPath.STAGE;
         }
+        if (holdAway) {
+            return ReinforcementPath.HOLD_AWAY;
+        }
         return ReinforcementPath.SIMULATE;
+    }
+
+    private boolean reinforcementHeldAway(Squad squad) {
+        if (!squad.isAirSquad()) {
+            return false;
+        }
+        int strength = squadStrength(squad);
+        int moveOutThreshold = calculateMoveOutThreshold(squad);
+        if (!mayHoldAwayFromHome(true, strength, moveOutThreshold, squad.isCommitted())) {
+            return false;
+        }
+        boolean closeThreats = !enemyUnitsNearSquad(squad).isEmpty();
+        return holdsAwayFromHome(squad, closeThreats, strength, moveOutThreshold);
     }
 
     /**
@@ -2884,21 +3262,35 @@ public class SquadManager {
 
         for (Squad squad : fightSquads) {
             if (!squad.isAirSquad()) continue;
+            if (!mayJoinAirSquad(managedUnit.getUnitType(), holdsOnlyScourge(squad.getComposition()))) continue;
 
-            if (squad.getStatus() == SquadStatus.RALLY || squad.getStatus() == SquadStatus.FIGHT) {
-                double distance = squad.distance(managedUnit);
-
-                boolean canJoin = squad.getStatus() == SquadStatus.RALLY ||
-                                distance < AIR_JOIN_DISTANCE;
-
-                if (canJoin && distance < closestDistance) {
-                    closestDistance = distance;
-                    closestSquad = squad;
-                }
+            double distance = squad.distance(managedUnit);
+            if (mayJoinAirSquadAt(squad.getStatus(), distance) && distance < closestDistance) {
+                closestDistance = distance;
+                closestSquad = squad;
             }
         }
 
         return closestSquad;
+    }
+
+    /**
+     * Whether a new air unit may join an air squad holding a status at a distance. A rallying squad takes it from
+     * anywhere; a fighting or retreating squad only within {@link #AIR_JOIN_DISTANCE}, so the hatchlings of one egg
+     * born beside a retreating squad join it instead of each starting a squad of one.
+     *
+     * @param status the squad's status
+     * @param distance pixels between the squad centre and the unit
+     * @return true when the unit may join the squad
+     */
+    static boolean mayJoinAirSquadAt(SquadStatus status, double distance) {
+        if (status == SquadStatus.RALLY) {
+            return true;
+        }
+        if (status == SquadStatus.FIGHT || status == SquadStatus.RETREAT) {
+            return distance < AIR_JOIN_DISTANCE;
+        }
+        return false;
     }
 
     private Squad newFightSquad(UnitType type) {
@@ -3019,8 +3411,13 @@ public class SquadManager {
             }
         }
 
+        Arc joinArc = containArcToJoin(squad);
         if (filtered.isEmpty()) {
             scoutChase.release(unit.getID());
+            if (joinArc != null) {
+                rallyToDefensePosition(managedUnit, joinArc.closestPosition(unit.getPosition()));
+                return;
+            }
             assignFallbackMovementTarget(managedUnit, squad);
             return;
         }
@@ -3041,7 +3438,16 @@ public class SquadManager {
             }
         }
 
-        filtered = filterByProximity(uncapped, unit::getDistance);
+        List<StaticDefenseZone> defenseZones = joinArc == null
+                ? Collections.emptyList()
+                : gameState.getStaticDefenseZones();
+        int defensePadding = containmentDefensePadding(Collections.singleton(unit.getType()));
+        filtered = filterByProximity(uncapped, unit::getDistance,
+                enemy -> !coveredByStaticDefense(enemy.getPosition(), defenseZones, defensePadding));
+        if (filtered.isEmpty() && joinArc != null) {
+            rallyToDefensePosition(managedUnit, joinArc.closestPosition(unit.getPosition()));
+            return;
+        }
 
         if (gameState.isCannonRushed()) {
             Set<Unit> proxied = gameState.getObservedUnitTracker().getProxiedBuildings();
@@ -3126,8 +3532,8 @@ public class SquadManager {
     }
 
     /**
-     * Sends a unit the scout cap turned away to a position in the RALLY role, rather than marching it on the
-     * enemy's buildings.
+     * Sends a unit to a position in the RALLY role, rather than marching it on the enemy's buildings: a unit the
+     * scout cap turned away, or a unit with nothing to attack outside enemy static defence while a contain is active.
      */
     private void rallyToDefensePosition(ManagedUnit managedUnit, Position position) {
         scoutChase.release(managedUnit.getUnit().getID());
@@ -3174,13 +3580,46 @@ public class SquadManager {
      * @return the candidates within {@link #TARGETING_RADIUS} of the attacker, or every candidate when none are
      */
     static <T> List<T> filterByProximity(List<T> candidates, ToDoubleFunction<T> distance) {
+        return filterByProximity(candidates, distance, candidate -> true);
+    }
+
+    /**
+     * Candidates a fighter may target: those within {@link #TARGETING_RADIUS} of it, or, when none are, the
+     * candidates anywhere on the map that the fallback admits.
+     *
+     * @param candidates attackable enemies
+     * @param distance distance from the attacker to a candidate
+     * @param fallback which candidates beyond the targeting radius may still be chased
+     * @return the nearby candidates, or the admitted candidates when none are nearby
+     */
+    static <T> List<T> filterByProximity(List<T> candidates, ToDoubleFunction<T> distance, Predicate<T> fallback) {
         List<T> nearby = new ArrayList<>();
         for (T enemy : candidates) {
             if (distance.applyAsDouble(enemy) <= TARGETING_RADIUS) {
                 nearby.add(enemy);
             }
         }
-        return nearby.isEmpty() ? candidates : nearby;
+        if (!nearby.isEmpty()) {
+            return nearby;
+        }
+        return candidates.stream().filter(fallback).collect(Collectors.toList());
+    }
+
+    /**
+     * Whether a target stands where enemy static defence fires on the unit attacking it.
+     *
+     * @param target target position
+     * @param zones enemy static defence zones, at the reach learned over the game
+     * @param padding pixels added to every zone's reach, covering the attacker's extent and a margin
+     * @return true when any zone covers the target
+     */
+    static boolean coveredByStaticDefense(Position target, Collection<StaticDefenseZone> zones, int padding) {
+        for (StaticDefenseZone zone : zones) {
+            if (zone.covers(target, padding)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
