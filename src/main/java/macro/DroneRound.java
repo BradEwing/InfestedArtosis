@@ -15,8 +15,9 @@ import macro.plan.UnitPlan;
  * {@link UnitPlan#DRONE_ROUND_PRIORITY}, and a queued advanced unit no longer claims larva against
  * the plans behind it.
  *
- * <p>A round closes once {@link #DRONES_PER_ROUND} more Drones are hatched or in an egg, once the
- * build's Drone cap is met, or after {@link #MAX_ROUND_FRAMES}. The next milestone is then
+ * <p>A round opens only while the worker gates still want Drones. It closes once
+ * {@link #DRONES_PER_ROUND} more Drones are hatched or in an egg, once the build's Drone cap is met,
+ * once the worker gates stop wanting Drones, or after {@link #MAX_ROUND_FRAMES}. The next milestone is then
  * {@link #ARMY_UNITS_PER_ROUND} living army units past the count the round closed on. A threat
  * closes an open round without moving the milestone, so the round reopens once the threat clears,
  * and no round opens while one is present.
@@ -53,21 +54,24 @@ public class DroneRound {
      * @param livingArmy living units of the build's target army types
      * @param drones Drones hatched plus Drones in an egg
      * @param droneCap the build's Drone target; zero for a build that runs no rounds
+     * @param workersWanted whether the worker count is still below what the bases can use
      * @param threatened whether a threat must put the army first
      */
-    public void update(int frame, int livingArmy, int drones, int droneCap, boolean threatened) {
+    public void update(int frame, int livingArmy, int drones, int droneCap, boolean workersWanted,
+                       boolean threatened) {
         if (active) {
             if (threatened) {
                 active = false;
                 return;
             }
-            if (drones >= Math.min(droneTarget, droneCap) || frame - startFrame >= MAX_ROUND_FRAMES) {
+            if (!workersWanted || drones >= Math.min(droneTarget, droneCap)
+                    || frame - startFrame >= MAX_ROUND_FRAMES) {
                 active = false;
                 armyMilestone = livingArmy + ARMY_UNITS_PER_ROUND;
             }
             return;
         }
-        if (threatened || livingArmy < armyMilestone || drones >= droneCap) {
+        if (threatened || !workersWanted || livingArmy < armyMilestone || drones >= droneCap) {
             return;
         }
         active = true;
@@ -80,7 +84,7 @@ public class DroneRound {
      *
      * @param rushed an early, cannon or SCV rush is detected
      * @param allIn the bot has committed to an all-in
-     * @param visibleEnemiesAtBases enemy mobile ground combat units visible at our bases
+     * @param visibleEnemiesAtBases enemy ground or air combat units visible at our bases
      * @return true when the army must come first
      */
     public static boolean isThreatened(boolean rushed, boolean allIn, int visibleEnemiesAtBases) {

@@ -1035,10 +1035,19 @@ public class GameState {
     }
 
     public boolean canPlanDrone() {
-        final int expectedWorkers = expectedWorkers();
         int hatchCount = structureCount(Readiness.USABLE, UnitType.Zerg_Hatchery, UnitType.Zerg_Lair, UnitType.Zerg_Hive);
         int plannedWorkerConstraint = hatchCount * 3;
-        return plannedWorkers < plannedWorkerConstraint && numWorkers() < 80 && numWorkers() < expectedWorkers;
+        return plannedWorkers < plannedWorkerConstraint && workersWanted();
+    }
+
+    /**
+     * Whether the worker count is still below what our bases and extractors can use, ignoring the
+     * cap on Drones already queued that {@link #canPlanDrone} also applies.
+     *
+     * @return true while another worker would still gather
+     */
+    public boolean workersWanted() {
+        return numWorkers() < 80 && numWorkers() < expectedWorkers();
     }
 
     public int numWorkers() {
@@ -1296,6 +1305,17 @@ public class GameState {
      *
      * @return the number of living observed enemy ground combat units whose last known tile is at one of our bases
      */
+    /**
+     * Enemy armed flyers visible at our bases right now, on the tiles
+     * {@link #visibleEnemyMobileGroundCombatUnitsAtOurBases} reads.
+     *
+     * @return the number of visible enemy air combat units at one of our bases
+     */
+    public int visibleEnemyAirCombatUnitsAtOurBases() {
+        Set<TilePosition> tiles = baseData.ourBaseTiles(gameMap, BaseData.NATURAL_DEFENSE_TILE_RADIUS);
+        return observedUnitTracker.getCountOfVisibleUnitsOnTiles(Filter::isAirCombatUnit, tiles);
+    }
+
     public int knownEnemyMobileGroundCombatUnitsAtOurBases() {
         Set<TilePosition> tiles = baseData.ourBaseTiles(gameMap, BaseData.NATURAL_DEFENSE_TILE_RADIUS);
         return observedUnitTracker.getCountOfLivingUnitsOnTiles(Filter::isMobileGroundCombatUnit, tiles);

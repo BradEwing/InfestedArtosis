@@ -1059,7 +1059,8 @@ public class ProductionManager {
      * a larva, and holding one for it would only idle larva production.
      *
      * <p>While a {@link DroneRound} is open an advanced unit plan claims nothing, so the Drones
-     * queued behind it take the larva it is waiting on.
+     * queued behind it take the larva it is waiting on. Scourge keeps its claim, as the round never
+     * withholds it either.
      *
      * @param plan the blocked plan
      * @param blocker the gate it failed this scan
@@ -1070,7 +1071,8 @@ public class ProductionManager {
         if (plan.getType() != PlanType.UNIT || !isLarvaMorph(plan.getPlannedUnit())) {
             return false;
         }
-        if (droneRoundActive && plan.getPriority() == UnitPlan.ADVANCED_UNIT_PRIORITY) {
+        if (droneRoundActive && plan.getPriority() == UnitPlan.ADVANCED_UNIT_PRIORITY
+                && plan.getPlannedUnit() != UnitType.Zerg_Scourge) {
             return false;
         }
         return blocker == PlanBlocker.NO_LARVA

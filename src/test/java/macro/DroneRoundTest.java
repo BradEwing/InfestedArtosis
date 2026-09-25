@@ -18,11 +18,15 @@ class DroneRoundTest {
 
     private static final boolean CALM = false;
 
+    private static final boolean WANTED = true;
+
+    private static final boolean SATURATED = false;
+
     private static final boolean THREAT = true;
 
     private DroneRound openRound() {
         DroneRound round = new DroneRound();
-        round.update(FRAME, DroneRound.FIRST_ROUND_ARMY_UNITS, DRONES, CAP, CALM);
+        round.update(FRAME, DroneRound.FIRST_ROUND_ARMY_UNITS, DRONES, CAP, WANTED, CALM);
         return round;
     }
 
@@ -30,7 +34,7 @@ class DroneRoundTest {
     void noRoundOpensBelowTheFirstArmyMilestone() {
         DroneRound round = new DroneRound();
 
-        round.update(FRAME, DroneRound.FIRST_ROUND_ARMY_UNITS - 1, DRONES, CAP, CALM);
+        round.update(FRAME, DroneRound.FIRST_ROUND_ARMY_UNITS - 1, DRONES, CAP, WANTED, CALM);
 
         assertFalse(round.isActive());
     }
@@ -47,7 +51,7 @@ class DroneRoundTest {
     void theRoundTargetStopsAtTheBuildsDroneCap() {
         DroneRound round = new DroneRound();
 
-        round.update(FRAME, DroneRound.FIRST_ROUND_ARMY_UNITS, CAP - 1, CAP, CALM);
+        round.update(FRAME, DroneRound.FIRST_ROUND_ARMY_UNITS, CAP - 1, CAP, WANTED, CALM);
 
         assertTrue(round.isActive());
         assertEquals(CAP, round.getDroneTarget());
@@ -57,7 +61,7 @@ class DroneRoundTest {
     void noRoundOpensOnceTheBuildsDroneCapIsMet() {
         DroneRound round = new DroneRound();
 
-        round.update(FRAME, DroneRound.FIRST_ROUND_ARMY_UNITS, CAP, CAP, CALM);
+        round.update(FRAME, DroneRound.FIRST_ROUND_ARMY_UNITS, CAP, CAP, WANTED, CALM);
 
         assertFalse(round.isActive());
     }
@@ -66,7 +70,7 @@ class DroneRoundTest {
     void aBuildThatRunsNoRoundsNeverOpensOne() {
         DroneRound round = new DroneRound();
 
-        round.update(FRAME, 40, DRONES, 0, CALM);
+        round.update(FRAME, 40, DRONES, 0, WANTED, CALM);
 
         assertFalse(round.isActive());
     }
@@ -76,10 +80,10 @@ class DroneRoundTest {
         DroneRound round = openRound();
         int target = round.getDroneTarget();
 
-        round.update(FRAME + 100, DroneRound.FIRST_ROUND_ARMY_UNITS, target - 1, CAP, CALM);
+        round.update(FRAME + 100, DroneRound.FIRST_ROUND_ARMY_UNITS, target - 1, CAP, WANTED, CALM);
         assertTrue(round.isActive());
 
-        round.update(FRAME + 200, DroneRound.FIRST_ROUND_ARMY_UNITS + 1, target, CAP, CALM);
+        round.update(FRAME + 200, DroneRound.FIRST_ROUND_ARMY_UNITS + 1, target, CAP, WANTED, CALM);
         assertFalse(round.isActive());
         assertEquals(DroneRound.FIRST_ROUND_ARMY_UNITS + 1 + DroneRound.ARMY_UNITS_PER_ROUND, round.getArmyMilestone());
     }
@@ -87,13 +91,13 @@ class DroneRoundTest {
     @Test
     void theNextRoundWaitsForTheNextArmyMilestone() {
         DroneRound round = openRound();
-        round.update(FRAME + 200, DroneRound.FIRST_ROUND_ARMY_UNITS, round.getDroneTarget(), CAP, CALM);
+        round.update(FRAME + 200, DroneRound.FIRST_ROUND_ARMY_UNITS, round.getDroneTarget(), CAP, WANTED, CALM);
         int milestone = round.getArmyMilestone();
 
-        round.update(FRAME + 300, milestone - 1, DRONES + 4, CAP, CALM);
+        round.update(FRAME + 300, milestone - 1, DRONES + 4, CAP, WANTED, CALM);
         assertFalse(round.isActive());
 
-        round.update(FRAME + 400, milestone, DRONES + 4, CAP, CALM);
+        round.update(FRAME + 400, milestone, DRONES + 4, CAP, WANTED, CALM);
         assertTrue(round.isActive());
     }
 
@@ -101,10 +105,10 @@ class DroneRoundTest {
     void aRoundThatCannotFinishClosesAfterTheLongestRound() {
         DroneRound round = openRound();
 
-        round.update(FRAME + DroneRound.MAX_ROUND_FRAMES - 1, 8, DRONES, CAP, CALM);
+        round.update(FRAME + DroneRound.MAX_ROUND_FRAMES - 1, 8, DRONES, CAP, WANTED, CALM);
         assertTrue(round.isActive());
 
-        round.update(FRAME + DroneRound.MAX_ROUND_FRAMES, 8, DRONES, CAP, CALM);
+        round.update(FRAME + DroneRound.MAX_ROUND_FRAMES, 8, DRONES, CAP, WANTED, CALM);
         assertFalse(round.isActive());
         assertEquals(8 + DroneRound.ARMY_UNITS_PER_ROUND, round.getArmyMilestone());
     }
@@ -113,22 +117,42 @@ class DroneRoundTest {
     void aThreatClosesTheRoundAndItReopensOnceTheThreatClears() {
         DroneRound round = openRound();
 
-        round.update(FRAME + 10, DroneRound.FIRST_ROUND_ARMY_UNITS, DRONES, CAP, THREAT);
+        round.update(FRAME + 10, DroneRound.FIRST_ROUND_ARMY_UNITS, DRONES, CAP, WANTED, THREAT);
         assertFalse(round.isActive());
         assertEquals(DroneRound.FIRST_ROUND_ARMY_UNITS, round.getArmyMilestone());
 
-        round.update(FRAME + 20, DroneRound.FIRST_ROUND_ARMY_UNITS, DRONES, CAP, THREAT);
+        round.update(FRAME + 20, DroneRound.FIRST_ROUND_ARMY_UNITS, DRONES, CAP, WANTED, THREAT);
         assertFalse(round.isActive());
 
-        round.update(FRAME + 30, DroneRound.FIRST_ROUND_ARMY_UNITS, DRONES, CAP, CALM);
+        round.update(FRAME + 30, DroneRound.FIRST_ROUND_ARMY_UNITS, DRONES, CAP, WANTED, CALM);
         assertTrue(round.isActive());
+    }
+
+    @Test
+    void noRoundOpensWhileTheWorkerGatesWantNoDrone() {
+        DroneRound round = new DroneRound();
+
+        round.update(FRAME, DroneRound.FIRST_ROUND_ARMY_UNITS, DRONES, CAP, SATURATED, CALM);
+
+        assertFalse(round.isActive());
+        assertEquals(DroneRound.FIRST_ROUND_ARMY_UNITS, round.getArmyMilestone());
+    }
+
+    @Test
+    void theRoundClosesOnceTheWorkerGatesWantNoDrone() {
+        DroneRound round = openRound();
+
+        round.update(FRAME + 10, 7, DRONES + 1, CAP, SATURATED, CALM);
+
+        assertFalse(round.isActive());
+        assertEquals(7 + DroneRound.ARMY_UNITS_PER_ROUND, round.getArmyMilestone());
     }
 
     @Test
     void noRoundOpensUnderAThreat() {
         DroneRound round = new DroneRound();
 
-        round.update(FRAME, DroneRound.FIRST_ROUND_ARMY_UNITS, DRONES, CAP, THREAT);
+        round.update(FRAME, DroneRound.FIRST_ROUND_ARMY_UNITS, DRONES, CAP, WANTED, THREAT);
 
         assertFalse(round.isActive());
     }
@@ -137,7 +161,7 @@ class DroneRoundTest {
     void aRoundLeftOpenByAPreviousBuildClosesOnAZeroCap() {
         DroneRound round = openRound();
 
-        round.update(FRAME + 1, 0, DRONES, 0, CALM);
+        round.update(FRAME + 1, 0, DRONES, 0, WANTED, CALM);
 
         assertFalse(round.isActive());
     }

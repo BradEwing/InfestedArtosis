@@ -1564,6 +1564,15 @@ class ProductionManagerTest {
     }
 
     @Test
+    void anOpenDroneRoundKeepsTheClaimOfTheScourgeItNeverWithholds() {
+        Plan scourge = new UnitPlan(UnitType.Zerg_Scourge, UnitPlan.ADVANCED_UNIT_PRIORITY);
+
+        assertTrue(ProductionManager.claimsLarva(scourge, PlanBlocker.BUILD_AHEAD_SLOT_TAKEN, true));
+        assertTrue(ProductionManager.claimsLarva(scourge, PlanBlocker.SUPPLY, true));
+        assertTrue(ProductionManager.claimsLarva(scourge, PlanBlocker.NO_LARVA, true));
+    }
+
+    @Test
     void anOpenDroneRoundKeepsTheClaimOfAPlanOutsideTheAdvancedBand() {
         Plan frameHydra = new UnitPlan(UnitType.Zerg_Hydralisk, 6332);
         Plan roundDrone = drone(UnitPlan.DRONE_ROUND_PRIORITY);

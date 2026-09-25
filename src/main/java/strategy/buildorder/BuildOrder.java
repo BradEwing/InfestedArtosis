@@ -169,10 +169,11 @@ public abstract class BuildOrder {
         }
         int drones = gameState.ourLivingUnitCount(UnitType.Zerg_Drone) + dronesInEgg(gameState.getSelf().getUnits());
         boolean rushed = gameState.isEarlyRushed() || gameState.isCannonRushed() || gameState.isScvRushed();
-        boolean threatened = DroneRound.isThreatened(rushed, gameState.isAllIn(),
-                gameState.visibleEnemyMobileGroundCombatUnitsAtOurBases());
+        int enemiesAtBases = gameState.visibleEnemyMobileGroundCombatUnitsAtOurBases()
+                + gameState.visibleEnemyAirCombatUnitsAtOurBases();
+        boolean threatened = DroneRound.isThreatened(rushed, gameState.isAllIn(), enemiesAtBases);
         gameState.getDroneRound().update(gameState.getGameTime().getFrames(), livingArmy, drones,
-                droneRoundDroneCap(gameState), threatened);
+                droneRoundDroneCap(gameState), gameState.workersWanted(), threatened);
     }
 
     private static int dronesInEgg(List<Unit> units) {
