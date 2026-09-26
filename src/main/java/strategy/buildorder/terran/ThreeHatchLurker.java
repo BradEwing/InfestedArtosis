@@ -12,6 +12,7 @@ import info.TechProgression;
 import macro.Reactions;
 import macro.plan.Plan;
 import strategy.buildorder.ArmyUpgradeTrigger;
+import strategy.buildorder.BuildOrder;
 import strategy.buildorder.LarvaBoundMacroHatchery;
 import strategy.buildorder.ZerglingTargets;
 
@@ -444,6 +445,21 @@ public class ThreeHatchLurker extends TerranBase {
     @Override
     public boolean needLair() {
         return true;
+    }
+
+    /**
+     * Hands over to {@link LurkerDefilerUltra} once the build has morphed its Lurkers and the
+     * economy gate in {@link LurkerDefilerUltraTransition} is met.
+     */
+    @Override
+    public boolean shouldTransition(GameState gameState) {
+        return LurkerDefilerUltraTransition.shouldEnter(gameState, getName(),
+                LurkerDefilerUltraTransition.threeHatchLurkerTrigger(gameState.totalProduced(UnitType.Zerg_Lurker)));
+    }
+
+    @Override
+    public Set<BuildOrder> transition(GameState gameState) {
+        return LurkerDefilerUltraTransition.candidates();
     }
 
     @Override

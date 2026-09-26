@@ -122,7 +122,8 @@ public abstract class BuildOrder {
      *
      * <p>An opener is the one exception. It hands over before any tech condition can hold, so the
      * request could only ever stop on its tech gate, and running it would write gate rows naming
-     * a build that can never answer them.
+     * a build that can never answer them. A build whose {@link #allowsLarvaBoundMacroHatchery}
+     * answers false is held out for that frame too.
      *
      * <p>The {@link DroneRound} is updated first, and while it is open a Drone at
      * {@link UnitPlan#DRONE_ROUND_PRIORITY} is added until the round's target is counted.
@@ -139,7 +140,7 @@ public abstract class BuildOrder {
             plans.add(roundDrone);
         }
 
-        if (!runsLarvaBoundMacroHatchery(isOpener(), plans)) {
+        if (!runsLarvaBoundMacroHatchery(isOpener(), plans) || !allowsLarvaBoundMacroHatchery(gameState)) {
             return plans;
         }
 
@@ -254,6 +255,20 @@ public abstract class BuildOrder {
      * @see LarvaBoundMacroHatchery#evaluate
      */
     protected abstract boolean macroHatcheryTechReady(TechProgression techProgression);
+
+    /**
+     * Whether the build lets the shared larva-bound macro hatchery step run this frame at all.
+     *
+     * <p>True by default. A build that caps its macro hatcheries answers false once the cap is
+     * reached, so the shared step cannot take it past its own limit. The step writes no gate row
+     * on a frame this holds it out.
+     *
+     * @param gameState current game state
+     * @return true when the shared step may run
+     */
+    protected boolean allowsLarvaBoundMacroHatchery(GameState gameState) {
+        return true;
+    }
 
     public abstract boolean playsRace(Race race);
 

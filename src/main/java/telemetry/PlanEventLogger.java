@@ -69,6 +69,7 @@ public class PlanEventLogger implements PlanEventSink {
     private static final String EVENT_BUILDER_LOST = "BUILDER_LOST";
     private static final String EVENT_BUILDER_REDISPATCH = "BUILDER_REDISPATCH";
     private static final String EVENT_GEYSER_DEPLETED = "GEYSER_DEPLETED";
+    private static final String EVENT_BUILD_ORDER_TRANSITION = "BUILD_ORDER_TRANSITION";
 
     private static final int NO_STARVED_COUNT = -1;
 
@@ -165,6 +166,11 @@ public class PlanEventLogger implements PlanEventSink {
      * plan column empty, so the frame a strategy was detected is the row's frame. The label is the
      * strategy's name, followed for ProxyGate by the evidence arms that fired: ProxyGate:GATEWAY_AWAY,
      * ProxyGate:MAIN_EMPTY or ProxyGate:GATEWAY_AWAY+MAIN_EMPTY.
+     * <p>
+     * BUILD_ORDER_TRANSITION rows are written on the frame a build order decides to hand over, and
+     * leave every plan column empty. item is the build handing over, the build taking over and the
+     * trigger, as 2HatchMuta>LurkerDefilerUltra:GOLIATHS; build_order is still the chain before the
+     * handover.
      * <p>
      * base_inner is set only on BASE_LOST rows, written when one of our bases loses its hatchery:
      * true for the main or a natural, false for a third or later base. The lost base's location is
@@ -696,6 +702,24 @@ public class PlanEventLogger implements PlanEventSink {
     }
 
     /**
+     * The frame is re-read for the reason {@link #onStrategyDetected} gives: InformationManager
+     * decides the transition ahead of this logger's onFrame on the same frame.
+     */
+    @Override
+    public void onBuildOrderTransition(String transitionLabel) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            currentFrame = game.getFrameCount();
+            buffer.add(buildOrderTransitionRow(transitionLabel));
+        } catch (Exception e) {
+            disabled = true;
+        }
+    }
+
+    /**
      * The frame is re-read rather than taken from the last onFrame, since a base is lost from
      * onUnitDestroy, which JBWAPI dispatches ahead of the frame's onFrame.
      */
@@ -1060,6 +1084,23 @@ public class PlanEventLogger implements PlanEventSink {
         appendEvent(sb, EVENT_STRATEGY_DETECTED);
         appendEmpty(sb, 3);
         sb.append(Csv.sanitize(detectionLabel)).append(',');
+        appendEmpty(sb, 4);
+        appendBlocker(sb, PlanBlocker.NONE, 0);
+        appendEmpty(sb, 3);
+        appendGameState(sb);
+        appendEmpty(sb, 3);
+        sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
+        appendEmpty(sb, 2);
+        appendTrailing(sb, null, null, null, null, null, null, BuilderColumns.BLANK);
+        return sb.toString();
+    }
+
+    /** A row for a build order handing over, which no plan owns, so the plan columns are empty. */
+    private String buildOrderTransitionRow(String transitionLabel) {
+        StringBuilder sb = new StringBuilder();
+        appendEvent(sb, EVENT_BUILD_ORDER_TRANSITION);
+        appendEmpty(sb, 3);
+        sb.append(Csv.sanitize(transitionLabel)).append(',');
         appendEmpty(sb, 4);
         appendBlocker(sb, PlanBlocker.NONE, 0);
         appendEmpty(sb, 3);
