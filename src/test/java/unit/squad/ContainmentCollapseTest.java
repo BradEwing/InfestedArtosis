@@ -37,6 +37,7 @@ class ContainmentCollapseTest {
     private static final DoubleSupplier FAVOURABLE = () -> 2.0;
     private static final DoubleSupplier UNFAVOURABLE = () -> 1.2;
     private static final ContainmentCollapse.UnderFire NOT_UNDER_FIRE = ContainmentCollapse.UnderFire.NONE;
+    private static final boolean[] ALL_ATTACK_MOVE = {true, true, true, true, true, true};
 
     private static Arc heldArc() {
         Arc arc = new Arc(CHOKE, FACE_TARGET, ARC_RADIUS, ARC_DEGREES, MEMBERS);
@@ -482,7 +483,7 @@ class ContainmentCollapseTest {
     void aSquadUnderFireSkipsTheWrapAndEveryMemberFights() {
         int[] sides = {-1, -1, 0, 0, 1, 1};
 
-        ContainmentCollapse.MemberOrder[] orders = ContainmentCollapse.memberOrders(sides,
+        ContainmentCollapse.MemberOrder[] orders = ContainmentCollapse.memberOrders(sides, ALL_ATTACK_MOVE,
                 ContainmentCollapse.UnderFire.HIT);
 
         for (ContainmentCollapse.MemberOrder order : orders) {
@@ -494,7 +495,8 @@ class ContainmentCollapseTest {
     void theCentreFightsFromTheCollapseFrameAndTheFlanksWrap() {
         int[] sides = {-1, -1, 0, 0, 1, 1};
 
-        ContainmentCollapse.MemberOrder[] orders = ContainmentCollapse.memberOrders(sides, NOT_UNDER_FIRE);
+        ContainmentCollapse.MemberOrder[] orders = ContainmentCollapse.memberOrders(sides, ALL_ATTACK_MOVE,
+                NOT_UNDER_FIRE);
 
         assertEquals(ContainmentCollapse.MemberOrder.WRAP, orders[0]);
         assertEquals(ContainmentCollapse.MemberOrder.WRAP, orders[1]);
@@ -591,5 +593,26 @@ class ContainmentCollapseTest {
 
         assertEquals(ContainmentCollapse.Outcome.COLLAPSE, gated.getOutcome());
         assertEquals(9000, gated.getRunStartFrame());
+    }
+
+    @Test
+    void aLurkerOrDefilerFlankFightsInsteadOfWrapping() {
+        int[] sides = {-1, -1, 0, 0, 1, 1};
+        boolean[] attackMoves = {
+            ContainmentCollapse.attackMovesToWrap(UnitType.Zerg_Lurker),
+            ContainmentCollapse.attackMovesToWrap(UnitType.Zerg_Zergling),
+            true,
+            true,
+            ContainmentCollapse.attackMovesToWrap(UnitType.Zerg_Defiler),
+            ContainmentCollapse.attackMovesToWrap(UnitType.Zerg_Hydralisk)
+        };
+
+        ContainmentCollapse.MemberOrder[] orders = ContainmentCollapse.memberOrders(sides, attackMoves,
+                NOT_UNDER_FIRE);
+
+        assertEquals(ContainmentCollapse.MemberOrder.FIGHT, orders[0], "a Lurker flank fights");
+        assertEquals(ContainmentCollapse.MemberOrder.WRAP, orders[1]);
+        assertEquals(ContainmentCollapse.MemberOrder.FIGHT, orders[4], "a Defiler flank fights");
+        assertEquals(ContainmentCollapse.MemberOrder.WRAP, orders[5]);
     }
 }

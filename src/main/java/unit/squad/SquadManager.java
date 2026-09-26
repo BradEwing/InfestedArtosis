@@ -1977,11 +1977,14 @@ public class SquadManager {
         Arc arc = squad.getContainmentArc();
         List<ManagedUnit> members = collapseMembers(squad);
         List<Position> positions = new ArrayList<>();
-        for (ManagedUnit member : members) {
-            positions.add(member.getPosition());
+        boolean[] attackMoves = new boolean[members.size()];
+        for (int i = 0; i < members.size(); i++) {
+            positions.add(members.get(i).getPosition());
+            attackMoves[i] = ContainmentCollapse.attackMovesToWrap(members.get(i).getUnitType());
         }
         int[] sides = ContainmentCollapse.flankSides(arc.getCenter(), arc.getMidpoint(), positions);
-        ContainmentCollapse.MemberOrder[] memberOrders = ContainmentCollapse.memberOrders(sides, read.getUnderFire());
+        ContainmentCollapse.MemberOrder[] memberOrders = ContainmentCollapse.memberOrders(sides, attackMoves,
+                read.getUnderFire());
         Map<Integer, List<Position>> flankPositions = new HashMap<>();
         for (int i = 0; i < sides.length; i++) {
             if (memberOrders[i] == ContainmentCollapse.MemberOrder.WRAP) {

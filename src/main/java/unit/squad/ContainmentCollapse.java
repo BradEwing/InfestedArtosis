@@ -233,18 +233,32 @@ public final class ContainmentCollapse {
 
     /**
      * What each member does from the frame of a collapse. A squad under fire skips the wrap and every member fights.
-     * Otherwise the flanks wrap and the centre fights.
+     * Otherwise the flanks that can attack-move wrap, see {@link #attackMovesToWrap}, and every other member fights.
      *
      * @param sides per member, -1 or 1 for a flank and 0 for the centre, see {@link #flankSides}
+     * @param attackMoves per member, true when its type attack-moves to a wrap point
      * @param underFire whether the enemy was already engaging the squad
      * @return per member, its order
      */
-    static MemberOrder[] memberOrders(int[] sides, UnderFire underFire) {
+    static MemberOrder[] memberOrders(int[] sides, boolean[] attackMoves, UnderFire underFire) {
         MemberOrder[] orders = new MemberOrder[sides.length];
         for (int i = 0; i < sides.length; i++) {
-            orders[i] = sides[i] != 0 && underFire == UnderFire.NONE ? MemberOrder.WRAP : MemberOrder.FIGHT;
+            orders[i] = sides[i] != 0 && attackMoves[i] && underFire == UnderFire.NONE
+                    ? MemberOrder.WRAP
+                    : MemberOrder.FIGHT;
         }
         return orders;
+    }
+
+    /**
+     * Whether a member of a type attack-moves to a wrap point. A Lurker or a Defiler runs its own containing
+     * behaviour and ignores the attack-move, so as a flank it fights instead.
+     *
+     * @param type the member's type
+     * @return false for a Lurker or a Defiler
+     */
+    static boolean attackMovesToWrap(UnitType type) {
+        return type != UnitType.Zerg_Lurker && type != UnitType.Zerg_Defiler;
     }
 
     /**
