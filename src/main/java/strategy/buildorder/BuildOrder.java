@@ -17,6 +17,7 @@ import info.map.BuildingPlanner;
 import lombok.Getter;
 import macro.AdvancedUnitEligibility;
 import macro.HatcheryCapacity;
+import macro.Reactions;
 import macro.plan.BuildingPlan;
 import macro.plan.Plan;
 import macro.plan.PlanBlocker;
@@ -204,20 +205,28 @@ public abstract class BuildOrder {
     }
 
     /**
-     * Returns true if Overlord Speed should be researched, based on Lair, game time and unit triggers.
+     * Returns true if Overlord Speed should be researched, based on Lair, game time, enemy tech
+     * and the reaction trigger.
      *
      * <p>The Lair term reads {@link Readiness#USABLE}, which counts only finished Lairs.
      * That is what it wants: the upgrade is researched at the Lair, so a Lair still morphing
      * cannot start it.
+     *
+     * <p>This only decides whether the upgrade is queued. {@link #planUpgrade} queues it at frame
+     * priority, behind the army upgrades already waiting; only a threat the upgrade answers, from
+     * {@link Reactions#isOverlordSpeedThreatened(GameState)}, lifts it to
+     * {@link Reactions#OVERLORD_SPEED_REACTION_PRIORITY}, and a plan created while that threat and
+     * {@link Reactions#isAirOrCloakThreatSeen(GameState)} both hold starts in the band. The clock,
+     * enemy tech buildings, the Science Vessel and an Observer queue it without lifting it.
      */
     public boolean needOverlordSpeed(GameState gameState) {
         if (gameState.structureCount(Readiness.USABLE, bwapi.UnitType.Zerg_Lair) < 1) {
             return false;
         }
-        if (gameState.getGameTime().greaterThan(new util.Time(12, 0))) {
+        if (Reactions.isOverlordSpeedThreatened(gameState)) {
             return true;
         }
-        if (gameState.enemyUnitCount(bwapi.UnitType.Zerg_Lurker) > 0) {
+        if (gameState.getGameTime().greaterThan(new util.Time(12, 0))) {
             return true;
         }
         if (gameState.enemyUnitCount(bwapi.UnitType.Protoss_Templar_Archives) > 0) {
@@ -226,37 +235,16 @@ public abstract class BuildOrder {
         if (gameState.enemyUnitCount(bwapi.UnitType.Protoss_Fleet_Beacon) > 0) {
             return true;
         }
-        if (gameState.enemyUnitCount(bwapi.UnitType.Protoss_Dark_Templar) > 0) {
+        if (gameState.enemyUnitCount(bwapi.UnitType.Terran_Science_Vessel) > 0) {
             return true;
         }
         if (gameState.enemyUnitCount(bwapi.UnitType.Protoss_Observer) > 0) {
-            return true;
-        }
-        if (gameState.enemyUnitCount(bwapi.UnitType.Terran_Vulture_Spider_Mine) > 0) {
-            return true;
-        }
-        if (gameState.enemyUnitCount(bwapi.UnitType.Terran_Science_Vessel) > 0) {
             return true;
         }
         if (gameState.enemyUnitCount(bwapi.UnitType.Protoss_Stargate) > 0) {
             return true;
         }
         if (gameState.enemyUnitCount(bwapi.UnitType.Terran_Starport) > 0) {
-            return true;
-        }
-        if (gameState.enemyUnitCount(bwapi.UnitType.Terran_Valkyrie) > 0) {
-            return true;
-        }
-        if (gameState.enemyUnitCount(bwapi.UnitType.Terran_Wraith) > 0) {
-            return true;
-        }
-        if (gameState.enemyUnitCount(bwapi.UnitType.Protoss_Scout) > 0) {
-            return true;
-        }
-        if (gameState.enemyUnitCount(bwapi.UnitType.Protoss_Corsair) > 0) {
-            return true;
-        }
-        if (gameState.enemyUnitCount(bwapi.UnitType.Zerg_Devourer) > 0) {
             return true;
         }
         if (gameState.enemyUnitCount(bwapi.UnitType.Zerg_Greater_Spire) > 0) {
@@ -266,6 +254,37 @@ public abstract class BuildOrder {
             return true;
         }
         return false;
+    }
+
+    /**
+     * Whether Pneumatized Carapace is queued this pass. It waits while any of the build's army
+     * upgrades is still to be queued, so its frame priority is later than theirs and it sits
+     * behind them unless the Overlord speed reaction lifts it. Queueing it in the same pass is not
+     * enough: plans of equal priority leave the queue in no fixed order.
+     *
+     * <p>Once the enemy has shown flyers or cloak, from
+     * {@link Reactions#isAirOrCloakThreatSeen(GameState)}, the upgrade does not wait for the army
+     * upgrades and is queued whenever the build wants it.
+     *
+     * @param wantOverlordSpeed whether the build wants the upgrade and it may be queued
+     * @param airOrCloakThreatSeen whether the enemy has shown flyers or cloak
+     * @param armyUpgradesToQueue for each army upgrade the build plans, whether it is still to be queued
+     * @return true while the upgrade should be queued
+     */
+    protected static boolean shouldPlanOverlordSpeed(boolean wantOverlordSpeed, boolean airOrCloakThreatSeen,
+                                                     boolean... armyUpgradesToQueue) {
+        if (!wantOverlordSpeed) {
+            return false;
+        }
+        if (airOrCloakThreatSeen) {
+            return true;
+        }
+        for (boolean toQueue : armyUpgradesToQueue) {
+            if (toQueue) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**
@@ -1030,7 +1049,8 @@ public abstract class BuildOrder {
                 break;
             case Pneumatized_Carapace:
                 techProgression.setPlannedOverlordSpeed(true);
-                priority = 100;
+                priority = Reactions.overlordSpeedPlanPriority(priority, Reactions.isAirOrCloakThreatSeen(gameState),
+                        Reactions.isOverlordSpeedThreatened(gameState));
                 break;
             case Chitinous_Plating:
                 techProgression.setPlannedChitinousPlating(true);

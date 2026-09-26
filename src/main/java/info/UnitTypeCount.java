@@ -9,6 +9,7 @@ public class UnitTypeCount {
     private HashMap<UnitType, Integer> unitTypeCount = new HashMap<>();
     private HashMap<UnitType, Integer> plannedUnitTypeCount = new HashMap<>();
     private HashMap<UnitType, Integer> totalProduced = new HashMap<>();
+    private HashMap<UnitType, Integer> totalLost = new HashMap<>();
 
     public int get(UnitType unitType) {
         ensureUnitType(unitType);
@@ -37,6 +38,16 @@ public class UnitTypeCount {
 
     public int getTotalProduced(UnitType unitType) {
         return totalProduced.getOrDefault(unitType, 0);
+    }
+
+    /**
+     * Completed units of a type destroyed this game, as counted by {@link #removeDestroyedUnit}.
+     *
+     * @param unitType the unit type
+     * @return completed units of that type lost so far
+     */
+    public int getTotalLost(UnitType unitType) {
+        return totalLost.getOrDefault(unitType, 0);
     }
 
     /**
@@ -116,6 +127,9 @@ public class UnitTypeCount {
      * @param isCompleted whether the destroyed unit had finished morphing
      */
     public void removeDestroyedUnit(UnitType unitType, boolean isCompleted) {
+        if (isCompleted) {
+            totalLost.merge(unitType, 1, Integer::sum);
+        }
         UnitType predecessor = morphPredecessor(unitType);
         if (!isCompleted && predecessor != null) {
             removeUnit(predecessor);

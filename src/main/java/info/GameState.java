@@ -1292,6 +1292,10 @@ public class GameState {
         return unitTypeCount.getTotalProduced(unitType);
     }
 
+    public int totalLost(UnitType unitType) {
+        return unitTypeCount.getTotalLost(unitType);
+    }
+
     public int ourUnitCount(UnitType... unitTypes) {
         int i = 0;
         for (UnitType unitType: unitTypes) {

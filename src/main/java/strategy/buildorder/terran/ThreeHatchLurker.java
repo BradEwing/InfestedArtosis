@@ -9,6 +9,7 @@ import info.GameState;
 import info.Readiness;
 import info.ResourceCount;
 import info.TechProgression;
+import macro.Reactions;
 import macro.plan.Plan;
 import strategy.buildorder.ArmyUpgradeTrigger;
 import strategy.buildorder.LarvaBoundMacroHatchery;
@@ -72,7 +73,9 @@ public class ThreeHatchLurker extends TerranBase {
         boolean wantGroovedSpines = techProgression.canPlanGroovedSpines() && shouldPlanGroovedSpines(livingHydraCount);
         boolean wantRangedUpgrades = techProgression.canPlanRangedUpgrades();
         boolean wantCarapaceUpgrade = techProgression.canPlanCarapaceUpgrades();
-        boolean wantOverlordSpeed = needOverlordSpeed(gameState) && techProgression.canPlanOverlordSpeed();
+        boolean wantOverlordSpeed = shouldPlanOverlordSpeed(needOverlordSpeed(gameState) && techProgression.canPlanOverlordSpeed(),
+                Reactions.isAirOrCloakThreatSeen(gameState),
+                wantMuscularAugments, wantGroovedSpines, wantRangedUpgrades, wantCarapaceUpgrade);
 
         // Check for floating resources (follows OneHatchSpire pattern)
         boolean floatingMinerals = gameState.isFloatingMinerals();

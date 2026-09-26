@@ -7,6 +7,7 @@ import info.BaseData;
 import info.GameState;
 import info.Readiness;
 import info.TechProgression;
+import macro.Reactions;
 import macro.plan.Plan;
 import strategy.buildorder.ArmyUpgradeTrigger;
 import strategy.buildorder.LarvaBoundMacroHatchery;
@@ -101,7 +102,9 @@ public class CrazyZerg extends TerranBase {
         boolean wantConsume = techProgression.canPlanConsume();
         boolean wantPlague = techProgression.canPlanPlague();
         boolean wantAdrenalGlands = techProgression.canPlanAdrenalGlands();
-        boolean wantOverlordSpeed = needOverlordSpeed(gameState) && techProgression.canPlanOverlordSpeed();
+        boolean wantOverlordSpeed = shouldPlanOverlordSpeed(needOverlordSpeed(gameState) && techProgression.canPlanOverlordSpeed(),
+                Reactions.isAirOrCloakThreatSeen(gameState),
+                wantCarapace, wantMelee, wantFlyerAttack, wantChitinousPlating, wantAnabolicSynthesis, wantAdrenalGlands);
 
         final int desiredSunkenColonies = this.requiredSunkens(gameState);
         if (!gameState.basesNeedingSunken(desiredSunkenColonies).isEmpty()) {

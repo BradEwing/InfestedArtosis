@@ -6,6 +6,7 @@ import info.BaseData;
 import info.GameState;
 import info.Readiness;
 import info.TechProgression;
+import macro.Reactions;
 import macro.plan.Plan;
 import strategy.buildorder.ArmyUpgradeTrigger;
 import strategy.buildorder.LarvaBoundMacroHatchery;
@@ -53,7 +54,9 @@ public class OneHatchSpire extends ZergBase {
         boolean wantMetabolicBoost = techProgression.canPlanMetabolicBoost() && !techProgression.isMetabolicBoost() && 
                                     zerglingCount > 5 && lairCount > 0;
         boolean wantFlyingCarapace = shouldPlanFlyerCarapace(techProgression, livingMutaCount);
-        boolean wantOverlordSpeed = needOverlordSpeed(gameState) && techProgression.canPlanOverlordSpeed();
+        boolean wantOverlordSpeed = shouldPlanOverlordSpeed(needOverlordSpeed(gameState) && techProgression.canPlanOverlordSpeed(),
+                Reactions.isAirOrCloakThreatSeen(gameState),
+                wantFlyingCarapace);
 
 
         boolean wantExpansion = behindOnBases(gameState);

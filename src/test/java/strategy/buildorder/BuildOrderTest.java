@@ -668,6 +668,46 @@ class BuildOrderTest {
     }
 
     @Test
+    void withholdsOverlordSpeedWhileTheFirstArmyUpgradeIsStillToBeQueued() {
+        assertFalse(BuildOrder.shouldPlanOverlordSpeed(true, false, true, false));
+    }
+
+    @Test
+    void withholdsOverlordSpeedWhileTheLastArmyUpgradeIsStillToBeQueued() {
+        assertFalse(BuildOrder.shouldPlanOverlordSpeed(true, false, false, true));
+    }
+
+    @Test
+    void queuesOverlordSpeedOnceEveryArmyUpgradeIsQueued() {
+        assertTrue(BuildOrder.shouldPlanOverlordSpeed(true, false, false, false));
+    }
+
+    @Test
+    void queuesOverlordSpeedWhenTheBuildPlansNoArmyUpgrade() {
+        assertTrue(BuildOrder.shouldPlanOverlordSpeed(true, false));
+    }
+
+    @Test
+    void withholdsOverlordSpeedTheBuildDoesNotWant() {
+        assertFalse(BuildOrder.shouldPlanOverlordSpeed(false, false, false, false));
+    }
+
+    @Test
+    void anAirOrCloakThreatQueuesOverlordSpeedAheadOfTheArmyUpgradesStillToBeQueued() {
+        assertTrue(BuildOrder.shouldPlanOverlordSpeed(true, true, true, true));
+    }
+
+    @Test
+    void withoutAnAirOrCloakThreatOverlordSpeedStillWaitsForTheArmyUpgrades() {
+        assertFalse(BuildOrder.shouldPlanOverlordSpeed(true, false, true, true));
+    }
+
+    @Test
+    void anAirOrCloakThreatDoesNotQueueOverlordSpeedTheBuildDoesNotWant() {
+        assertFalse(BuildOrder.shouldPlanOverlordSpeed(false, true, true));
+    }
+
+    @Test
     void aBuildWithoutArmyUpgradeTriggersKeepsEveryUpgradeAtItsFrame() {
         UnitTypeCount count = new UnitTypeCount();
         for (int i = 0; i < 20; i++) {
