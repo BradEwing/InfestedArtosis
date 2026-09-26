@@ -9,6 +9,7 @@ import bwapi.UnitType;
 import bwapi.WeaponType;
 import info.GameState;
 import info.TechProgression;
+import info.tracking.EnemyReachMemory;
 import info.tracking.ObservedUnit;
 import info.tracking.ObservedUnitTracker;
 import lombok.Getter;
@@ -35,6 +36,19 @@ public class HorizonCombatSimulator implements CombatSimulator {
     private static final double MAX_ENGAGEMENT_RADIUS = 320;
     private static final double NEARBY_THREAT_RADIUS = 512;
     private static final double APPROACH_BUFFER = 64;
+
+    /**
+     * Distance past an enemy's edge of fire at which {@link #distanceWeight} reaches nothing: an enemy that fires
+     * from where it stands is priced out to its reach plus this much.
+     */
+    static final double FALLOFF_EXTENT = 512;
+
+    /**
+     * Most reach a positional enemy is priced at. The reach memory already caps every type at its reported weapon
+     * range plus a measurement margin, 400 for a sieged tank; this bound keeps any misread from pricing a unit
+     * across a whole base.
+     */
+    static final int MAX_POSITIONAL_REACH = 416;
     private static final double WORKER_STRENGTH_DIVISOR = 10.0;
     static final double HEIGHT_BONUS = 1.15;
     private static final Time RECENTLY_SEEN_THRESHOLD = new Time(0, 5);
@@ -81,6 +95,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
         List<Position> coveredAirThreats = new ArrayList<>();
 
         List<Position> visibleBunkers = visibleCompletedBunkers(tracker);
+        EnemyReachMemory reachMemory = tracker.getReachMemory();
         for (ObservedUnit ou : tracker.getLivingObservedUnits()) {
             UnitType type = ou.getUnitType();
             boolean visible = ou.getUnit().isVisible();
@@ -93,7 +108,9 @@ public class HorizonCombatSimulator implements CombatSimulator {
             if (pos == null) continue;
             if (!visible && enteredBunker(type, pos, visibleBunkers)) continue;
             double dist = squadCenter.getDistance(pos);
-            double radius = engagementRadius(type);
+            boolean edgeOfFire = pricedAtEdgeOfFire(type, airSquad);
+            int reach = edgeOfFire ? positionalReach(type, reachMemory.groundReach(type)) : 0;
+            double radius = edgeOfFire ? edgeOfFireRadius(reach) : engagementRadius(type);
             if (dist > radius) {
                 if (isThreatBeyondRadius(type, dist, radius)) {
                     snapshot.setThreatBeyondRadius(true);
@@ -117,7 +134,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
             if (type.isBuilding() && !ou.isCompleted()) continue;
             double hpWeight = hpWeighting(ou.getLastKnownHitPoints(), ou.getLastKnownShields(),
                     type.maxHitPoints(), type.maxShields());
-            double distWeight = type.isBuilding() ? 1.0 : distanceWeight(dist);
+            double distWeight = enemyDistanceWeight(type, dist, edgeOfFire, reach);
             double heightMod = 1.0;
             if (!type.isFlyer() && isRanged(type) && ou.getLastKnownGroundHeight() > 0) {
                 heightMod = HEIGHT_BONUS;
@@ -285,7 +302,9 @@ public class HorizonCombatSimulator implements CombatSimulator {
 
     /**
      * Whether a fresh, attack-capable, non-worker enemy sits outside its type's engagement radius
-     * but close enough to matter, i.e. within {@link #NEARBY_THREAT_RADIUS}.
+     * but close enough to matter: within {@link #NEARBY_THREAT_RADIUS}, or within its own engagement radius when
+     * that is larger. A positional enemy priced at its edge of fire is priced across the whole of that radius, so
+     * past it such an enemy is never flagged.
      *
      * @param type enemy unit type
      * @param distance distance from the squad center to the enemy
@@ -293,7 +312,9 @@ public class HorizonCombatSimulator implements CombatSimulator {
      * @return true if the enemy is a nearby but unmeasured threat
      */
     static boolean isThreatBeyondRadius(UnitType type, double distance, double engagementRadius) {
-        if (distance <= engagementRadius || distance > NEARBY_THREAT_RADIUS) return false;
+        if (distance <= engagementRadius || distance > Math.max(NEARBY_THREAT_RADIUS, engagementRadius)) {
+            return false;
+        }
         return type.canAttack() && !type.isWorker();
     }
 
@@ -684,7 +705,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
         return RECENTLY_SEEN_THRESHOLD.getFrames();
     }
 
-    private boolean isPositionalUnit(UnitType type) {
+    static boolean isPositionalUnit(UnitType type) {
         return type.isBuilding()
                 || type == UnitType.Terran_Siege_Tank_Siege_Mode
                 || type == UnitType.Zerg_Lurker;
@@ -774,6 +795,58 @@ public class HorizonCombatSimulator implements CombatSimulator {
         int airRange = type.airWeapon() != null && type.airWeapon() != WeaponType.None
                 ? type.airWeapon().maxRange() : 0;
         return Math.max(MAX_ENGAGEMENT_RADIUS, Math.max(groundRange, airRange) + APPROACH_BUFFER);
+    }
+
+    /**
+     * Whether an enemy is priced from the edge of its fire rather than from where it stands: a positional enemy,
+     * one that fires from where it stands, with a ground weapon, evaluated for a ground squad. An air squad keeps
+     * the fixed engagement radius.
+     *
+     * @param type enemy unit type
+     * @param airSquad whether the squad is judged on its air arm
+     * @return true for a sieged tank, a Lurker, a Bunker or ground static defence against a ground squad
+     */
+    static boolean pricedAtEdgeOfFire(UnitType type, boolean airSquad) {
+        if (airSquad || !isPositionalUnit(type)) return false;
+        return EnemyReachMemory.baseGroundRange(type) > 0;
+    }
+
+    /**
+     * The reach a positional enemy is priced at: the larger of its learned ground reach and its base ground range,
+     * no more than {@link #MAX_POSITIONAL_REACH}.
+     *
+     * @param type enemy unit type
+     * @param learnedReach the type's ground reach learned over the game, see {@link EnemyReachMemory#groundReach}
+     * @return reach in pixels
+     */
+    static int positionalReach(UnitType type, int learnedReach) {
+        return Math.min(MAX_POSITIONAL_REACH, Math.max(learnedReach, EnemyReachMemory.baseGroundRange(type)));
+    }
+
+    /**
+     * How far from the squad centre a positional enemy is priced: its reach plus {@link #FALLOFF_EXTENT}.
+     *
+     * @param reach the enemy's priced reach, see {@link #positionalReach}
+     * @return the radius in pixels
+     */
+    static double edgeOfFireRadius(int reach) {
+        return reach + FALLOFF_EXTENT;
+    }
+
+    /**
+     * How much of a sampled enemy bears on the fight. A positional enemy priced at its edge of fire is weighed by
+     * {@link #distanceWeight} from that edge, so it weighs in full out to 256 px past its reach. Any other building
+     * weighs in full, and any other unit by its distance from the squad centre.
+     *
+     * @param type enemy unit type
+     * @param distance pixels from the squad centre to the enemy
+     * @param edgeOfFire whether the enemy is priced at its edge of fire, see {@link #pricedAtEdgeOfFire}
+     * @param reach the enemy's priced reach, read only when edgeOfFire holds
+     * @return the contribution weight, between 0 and 1
+     */
+    static double enemyDistanceWeight(UnitType type, double distance, boolean edgeOfFire, int reach) {
+        if (edgeOfFire) return distanceWeight(Math.max(0, distance - reach));
+        return type.isBuilding() ? 1.0 : distanceWeight(distance);
     }
 
     /**

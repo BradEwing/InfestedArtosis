@@ -17,7 +17,8 @@ public enum DecisionPath {
     NO_VISION_MARCH,
 
     /**
-     * A ground squad of Lurkers only, which fights where it stands.
+     * Written by no path: a Lurker only squad is decided by the combat sim like any other squad. The value stays
+     * so that decision logs naming it still map to a branch.
      */
     LURKER_ONLY,
 

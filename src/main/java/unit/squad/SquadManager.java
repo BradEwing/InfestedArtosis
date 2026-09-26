@@ -26,6 +26,7 @@ import org.bk.ass.sim.BWMirrorAgentFactory;
 import org.bk.ass.sim.Simulator;
 import telemetry.DecisionPath;
 import telemetry.DefenseEvent;
+import telemetry.FixedFireTelemetry;
 import telemetry.RallyReason;
 import telemetry.RallyRelease;
 import telemetry.RunbyTelemetry;
@@ -33,6 +34,7 @@ import telemetry.RunbyTick;
 import telemetry.SquadDecisions;
 import telemetry.SquadLock;
 import telemetry.TargetChoices;
+import unit.managed.Lurker;
 import unit.managed.ManagedUnit;
 import unit.squad.horizon.HorizonCombatSimulator;
 import unit.managed.UnitRole;
@@ -146,6 +148,15 @@ public class SquadManager {
 
     private final Map<Base, RunbyTarget> runbyTargets = new HashMap<>();
     private Set<ManagedUnit> outrangedHits = new HashSet<>();
+    private final FixedFire fixedFire = new FixedFire();
+    private List<StaticDefenseZone> fixedFireZones = Collections.emptyList();
+
+    /**
+     * Pixels a Lurker's hold point must lie clear of every fixed fire zone that outranges it for the Lurker to let
+     * go of the point: the fire that sent it out has moved away or is gone. Two evade rings, so a point just
+     * outside a zone is never let go of while that zone stands.
+     */
+    static final int HOLD_RELEASE_MARGIN = 256;
 
     private final ScoutChase scoutChase = new ScoutChase();
 
@@ -169,6 +180,8 @@ public class SquadManager {
 
         int now = game.getFrameCount();
         outrangedHits = findOutrangedHits(now);
+        fixedFireZones = FixedFire.fixedFireZones(gameState.getGroundThreatZones(now));
+        recordFixedFireHurts(now);
         Set<Squad> removed = new HashSet<>();
         for (Squad fightSquad: fightSquads) {
             fightSquad.onFrame();
@@ -195,6 +208,134 @@ public class SquadManager {
 
         fightSquads.removeAll(removed);
         evadeOutrangedHits(now);
+        holdLurkersOutOfFire(now);
+    }
+
+    /**
+     * Cools every fixed fire zone a ground member of a fight squad was hurt inside this frame, among those that
+     * outrange it, see {@link FixedFire#appliesTo}. A member losing hit points to a Psionic Storm or irradiation is
+     * not read as hurt by the zone.
+     *
+     * @param now current frame
+     */
+    private void recordFixedFireHurts(int now) {
+        fixedFire.expire(now);
+        if (fixedFireZones.isEmpty()) {
+            return;
+        }
+        for (Squad squad : fightSquads) {
+            for (ManagedUnit member : squad.getMembers()) {
+                UnitType type = member.getUnitType();
+                if (!FixedFire.appliesTo(type) || !member.wasHitOn(now) || gameState.isTakingNonWeaponDamage(member)) {
+                    continue;
+                }
+                List<StaticDefenseZone> zones = ContainmentPushback.outrangingZones(fixedFireZones,
+                        EnemyReachMemory.baseGroundRange(type));
+                Position position = member.getPosition();
+                for (StaticDefenseZone started : fixedFire.recordHurt(position, zones,
+                        containmentDefensePadding(Collections.singletonList(type)), now)) {
+                    FixedFireTelemetry.cooldownStarted(now, member.getUnitID(), type, position, started);
+                }
+            }
+        }
+    }
+
+    /**
+     * Whether a squad is committing to the fight, so that no target is skipped for standing in cooling fixed fire
+     * and no Lurker is pulled back out of it: it is fighting on an ENGAGE verdict or under its fight lock.
+     *
+     * @param status the squad's status
+     * @param fightLocked whether the squad's fight lock is active
+     * @param lastVerdict the sim's last verdict for the squad, or null
+     * @return true when the squad is committing
+     */
+    static boolean isCommitting(SquadStatus status, boolean fightLocked, CombatSimulator.CombatResult lastVerdict) {
+        return status == SquadStatus.FIGHT
+                && (fightLocked || lastVerdict == CombatSimulator.CombatResult.ENGAGE);
+    }
+
+    private boolean isCommitting(Squad squad, int now) {
+        HorizonCombatSimulator.DebugSnapshot snapshot = lastSnapshot(squad);
+        return isCommitting(squad.getStatus(), squad.isFightLocked(now), snapshot == null ? null : snapshot.getResult());
+    }
+
+    /**
+     * Pulls Lurkers back out of fixed fire and holds them there. A Lurker in a fighting or retreating ground squad
+     * that is not committing is given a point clear of every fixed fire zone that outranges it when it is hurt
+     * inside a sieged tank's reach, or when its squad retreats with it inside such a zone, see
+     * {@link FixedFire#holdPoint}. It then holds that point in its RETREAT role, see {@link Lurker#holdStep}, until
+     * its squad commits, the fire near the point is gone, or its squad leaves FIGHT and RETREAT. A point the fire
+     * has moved onto is found again.
+     *
+     * @param now current frame
+     */
+    private void holdLurkersOutOfFire(int now) {
+        Predicate<Position> allowed = walkablePoints();
+        int padding = containmentDefensePadding(Collections.singletonList(UnitType.Zerg_Lurker));
+        List<StaticDefenseZone> zones = ContainmentPushback.outrangingZones(fixedFireZones,
+                EnemyReachMemory.baseGroundRange(UnitType.Zerg_Lurker));
+        for (Squad squad : fightSquads) {
+            boolean holding = squad.isGroundSquad()
+                    && (squad.getStatus() == SquadStatus.FIGHT || squad.getStatus() == SquadStatus.RETREAT);
+            String release = !holding ? LurkerHold.RELEASE_STATUS
+                    : isCommitting(squad, now) ? LurkerHold.RELEASE_COMMIT : null;
+            for (ManagedUnit member : squad.getMembers()) {
+                if (member instanceof Lurker) {
+                    holdLurker((Lurker) member, release, zones, padding, allowed, now);
+                }
+            }
+        }
+    }
+
+    private void holdLurker(Lurker lurker, String release, List<StaticDefenseZone> zones, int padding,
+                            Predicate<Position> allowed, int now) {
+        Position position = lurker.getPosition();
+        Position hold = lurker.getHoldPosition();
+        if (release == null && hold != null && RunbyTargeting.zoneMargin(hold, zones, padding) > HOLD_RELEASE_MARGIN) {
+            release = LurkerHold.RELEASE_CLEAR;
+        }
+        if (release != null) {
+            if (hold != null) {
+                lurker.clearHold();
+                FixedFireTelemetry.lurkerHoldReleased(now, lurker.getUnitID(), position, hold, release);
+            }
+            return;
+        }
+        String reason = LurkerHold.reason(hold != null && FixedFire.coveringZone(hold, zones, padding) != null,
+                hitInsideSiegedTankReach(lurker, now, padding),
+                lurker.getRole() == UnitRole.RETREAT && FixedFire.coveringZone(position, zones, padding) != null,
+                hold != null);
+        if (reason != null) {
+            Position point = FixedFire.holdPoint(position, zones, padding, allowed);
+            if (point != null) {
+                lurker.holdAt(point);
+                FixedFireTelemetry.lurkerHold(now, lurker.getUnitID(), position, point,
+                        FixedFire.coveringZone(position, zones, padding), reason);
+            }
+        }
+        if (lurker.getHoldPosition() != null) {
+            lurker.setRole(UnitRole.RETREAT);
+        }
+    }
+
+    private boolean hitInsideSiegedTankReach(ManagedUnit member, int now, int padding) {
+        if (!member.wasHitOn(now) || gameState.isTakingNonWeaponDamage(member)) {
+            return false;
+        }
+        for (StaticDefenseZone zone : fixedFireZones) {
+            if (zone.getStructure() == UnitType.Terran_Siege_Tank_Siege_Mode
+                    && zone.covers(member.getPosition(), padding)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private Predicate<Position> walkablePoints() {
+        Set<WalkPosition> accessible = gameState.getGameMap().getAccessibleWalkPositions();
+        int mapPixelWidth = game.mapWidth() * 32;
+        int mapPixelHeight = game.mapHeight() * 32;
+        return point -> isWalkable(point, accessible, mapPixelWidth, mapPixelHeight);
     }
 
     /**
@@ -233,10 +374,7 @@ public class SquadManager {
             return;
         }
         List<StaticDefenseZone> threats = gameState.getGroundThreatZones(now);
-        Set<WalkPosition> accessible = gameState.getGameMap().getAccessibleWalkPositions();
-        int mapPixelWidth = game.mapWidth() * 32;
-        int mapPixelHeight = game.mapHeight() * 32;
-        Predicate<Position> allowed = point -> isWalkable(point, accessible, mapPixelWidth, mapPixelHeight);
+        Predicate<Position> allowed = walkablePoints();
         for (ManagedUnit member : outrangedHits) {
             if (!member.canStepOutNow()
                     || !ManagedUnit.evadesOutrangedHit(member.getRole(), member.isClosingOnTarget())) {
@@ -1185,10 +1323,6 @@ public class SquadManager {
             }
         }
 
-        if (squad.hasOnly(UnitType.Zerg_Lurker)) {
-            return 1;
-        }
-
         int threshold = 4;
 
         int rushThresholdIncrease = 0;
@@ -1207,8 +1341,8 @@ public class SquadManager {
     /**
      * Runs one tick of a fight squad that is not holding a containment arc.
      *
-     * <p>The composition and hazard branches answer first, before anything is measured: a Lurker
-     * only squad, a Defiler only squad, and a squad standing in a psionic storm. Every other status
+     * <p>The composition and hazard branches answer first, before anything is measured: a Defiler
+     * only squad, and a squad standing in a psionic storm. Every other status
      * is decided at or below the lock reads, so the retreat lock gates it. A branch placed above
      * those reads returns before the simulator runs and neither lock can see it.
      *
@@ -1225,13 +1359,6 @@ public class SquadManager {
      */
     private void simulateFightSquad(Squad squad) {
         HashSet<ManagedUnit> managedFighters = squad.getMembers();
-
-        if (squad.isGroundSquad() && squad.hasOnly(UnitType.Zerg_Lurker)) {
-            squad.setStatus(SquadStatus.FIGHT);
-            SquadDecisions.pathTaken(squad, DecisionPath.LURKER_ONLY);
-            assignFightTargets(squad, managedFighters, false);
-            return;
-        }
 
         if (squad.isGroundSquad() && squad.hasOnly(UnitType.Zerg_Defiler)) {
             rallySquad(squad, RallyReason.DEFILER_ONLY);
@@ -1841,8 +1968,8 @@ public class SquadManager {
                 endContainment(s);
                 s.setStatus(SquadStatus.FIGHT);
                 SquadDecisions.pathTaken(s, DecisionPath.CONTAIN_BREAK);
-                assignFightTargets(s, s.getMembers(), true);
                 s.startFightLock(now);
+                assignFightTargets(s, s.getMembers(), true);
             }
         }
     }
@@ -3438,11 +3565,25 @@ public class SquadManager {
             }
         }
 
+        int defensePadding = containmentDefensePadding(Collections.singleton(unit.getType()));
+        List<StaticDefenseZone> coolingZones = FixedFire.appliesTo(unit.getType())
+                ? fixedFire.coolingZones(ContainmentPushback.outrangingZones(fixedFireZones,
+                        EnemyReachMemory.baseGroundRange(unit.getType())), game.getFrameCount())
+                : Collections.emptyList();
+        List<Unit> outOfCoolingFire = withoutTargetsInCoolingFire(managedUnit, uncapped, coolingZones,
+                defensePadding, isCommitting(squad, game.getFrameCount()));
+        if (outOfCoolingFire.isEmpty() && !uncapped.isEmpty()
+                && holdOutOfCoolingFire(managedUnit, coolingZones, defensePadding)) {
+            return;
+        }
+        if (outOfCoolingFire.isEmpty()) {
+            outOfCoolingFire = uncapped;
+        }
+
         List<StaticDefenseZone> defenseZones = joinArc == null
                 ? Collections.emptyList()
                 : gameState.getStaticDefenseZones();
-        int defensePadding = containmentDefensePadding(Collections.singleton(unit.getType()));
-        filtered = filterByProximity(uncapped, unit::getDistance,
+        filtered = filterByProximity(outOfCoolingFire, unit::getDistance,
                 enemy -> !coveredByStaticDefense(enemy.getPosition(), defenseZones, defensePadding));
         if (filtered.isEmpty() && joinArc != null) {
             rallyToDefensePosition(managedUnit, joinArc.closestPosition(unit.getPosition()));
@@ -3465,6 +3606,74 @@ public class SquadManager {
             managedUnit.setFightTarget(selection.getTarget());
             recordScoutClaim(unit, selection.getTarget());
         }
+    }
+
+    /**
+     * The candidate targets a fighter keeps once those standing in cooling fixed fire are skipped, see
+     * {@link FixedFire#skippingZone}. Each skip is written once per fighter and target per cooldown.
+     *
+     * @param managedUnit the fighter
+     * @param candidates its candidate targets
+     * @param coolingZones cooling fixed fire zones that outrange it
+     * @param padding pixels added to each zone's reach
+     * @param committing whether its squad is committing to the fight
+     * @return the candidates kept
+     */
+    private List<Unit> withoutTargetsInCoolingFire(ManagedUnit managedUnit, List<Unit> candidates,
+                                                   List<StaticDefenseZone> coolingZones, int padding,
+                                                   boolean committing) {
+        if (coolingZones.isEmpty() || committing) {
+            return candidates;
+        }
+        Unit unit = managedUnit.getUnit();
+        int ownRange = EnemyReachMemory.baseGroundRange(unit.getType());
+        int now = game.getFrameCount();
+        List<Unit> kept = new ArrayList<>();
+        for (Unit enemy : candidates) {
+            StaticDefenseZone zone = FixedFire.skippingZone(enemy.getPosition(), unit.getDistance(enemy), ownRange,
+                    coolingZones, padding, false);
+            if (zone == null) {
+                kept.add(enemy);
+            } else if (fixedFire.firstSkip(unit.getID(), enemy.getID(), fixedFire.cooldownStart(zone, now))) {
+                FixedFireTelemetry.targetSkipped(now, unit.getID(), unit.getType(), unit.getPosition(),
+                        enemy.getID(), enemy.getType(), enemy.getPosition(), zone);
+            }
+        }
+        return kept;
+    }
+
+    /**
+     * Keeps a fighter whose every target stands in cooling fixed fire out of that fire, at its wait point, see
+     * {@link FixedFire#waitPoint}. A Lurker within {@link #HOLD_RELEASE_MARGIN} of the fire holds that point in its
+     * RETREAT role, see {@link Lurker#holdStep}, unless it already holds one; any other fighter rallies to it. A
+     * fighter boxed in inside the fire, with no point that gains ground, is left to its targets.
+     *
+     * @param managedUnit the fighter
+     * @param coolingZones cooling fixed fire zones that outrange it
+     * @param padding pixels added to each zone's reach
+     * @return true when the fighter was held out of the fire, false when it is left to its targets
+     */
+    private boolean holdOutOfCoolingFire(ManagedUnit managedUnit, List<StaticDefenseZone> coolingZones,
+                                         int padding) {
+        Lurker lurker = managedUnit instanceof Lurker ? (Lurker) managedUnit : null;
+        if (lurker == null || lurker.getHoldPosition() == null) {
+            Position position = managedUnit.getPosition();
+            Position point = FixedFire.waitPoint(position, coolingZones, padding, walkablePoints());
+            if (point == null) {
+                return false;
+            }
+            if (lurker == null || RunbyTargeting.zoneMargin(position, coolingZones, padding) > HOLD_RELEASE_MARGIN) {
+                rallyToDefensePosition(managedUnit, point);
+                return true;
+            }
+            lurker.holdAt(point);
+            FixedFireTelemetry.lurkerHold(game.getFrameCount(), lurker.getUnitID(), position, point,
+                    FixedFire.coveringZone(position, coolingZones, padding), LurkerHold.COOLDOWN);
+        }
+        scoutChase.release(managedUnit.getUnit().getID());
+        managedUnit.setFightTarget(null);
+        managedUnit.setRole(UnitRole.RETREAT);
+        return true;
     }
 
     /**
