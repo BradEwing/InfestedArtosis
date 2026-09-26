@@ -18,6 +18,8 @@ import telemetry.PerchAssignmentLogger;
 import telemetry.PerchAssignments;
 import telemetry.PlanEventLogger;
 import telemetry.PlanEvents;
+import telemetry.HarassLogger;
+import telemetry.HarassTelemetry;
 import telemetry.RunbyLogger;
 import telemetry.ReachLogger;
 import telemetry.ReachTelemetry;
@@ -59,6 +61,7 @@ public class Bot extends DefaultBWListener {
     private PerchAssignmentLogger perchAssignmentLogger;
     private TargetChoiceLogger targetChoiceLogger;
     private RunbyLogger runbyLogger;
+    private HarassLogger harassLogger;
     private ReachLogger reachLogger;
 
     @Override
@@ -92,6 +95,7 @@ public class Bot extends DefaultBWListener {
         startPerchAssignmentLogging();
         startTargetChoiceLogging();
         startRunbyLogging();
+        startHarassLogging();
         startReachLogging();
         startPlanEventLogging(decisions.getOpener());
     }
@@ -131,6 +135,15 @@ public class Bot extends DefaultBWListener {
 
         runbyLogger = new RunbyLogger(game, combatTelemetry.getGameId());
         RunbyTelemetry.register(runbyLogger);
+    }
+
+    private void startHarassLogging() {
+        if (!gameState.getConfig().telemetryCombat) {
+            return;
+        }
+
+        harassLogger = new HarassLogger(game, combatTelemetry.getGameId());
+        HarassTelemetry.register(harassLogger);
     }
 
     private void startReachLogging() {
@@ -174,6 +187,9 @@ public class Bot extends DefaultBWListener {
         }
         if (runbyLogger != null) {
             runbyLogger.onFrame();
+        }
+        if (harassLogger != null) {
+            harassLogger.onFrame();
         }
         if (reachLogger != null) {
             reachLogger.onFrame();
@@ -255,6 +271,9 @@ public class Bot extends DefaultBWListener {
         }
         if (runbyLogger != null) {
             runbyLogger.onEnd();
+        }
+        if (harassLogger != null) {
+            harassLogger.onEnd();
         }
         if (reachLogger != null) {
             reachLogger.onEnd();

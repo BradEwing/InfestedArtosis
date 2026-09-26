@@ -148,12 +148,14 @@ public class SquadManager {
     private Set<ManagedUnit> outrangedHits = new HashSet<>();
 
     private final ScoutChase scoutChase = new ScoutChase();
+    private final AirHarassController airHarass;
 
     public SquadManager(Game game, GameState gameState) {
         this.game = game;
         this.gameState = gameState;
         this.agentFactory = new BWMirrorAgentFactory();
         this.containmentEvaluator = new ContainmentEvaluator(gameState);
+        this.airHarass = new AirHarassController(game, gameState);
     }
 
     public void updateFightSquads() {
@@ -169,6 +171,7 @@ public class SquadManager {
 
         int now = game.getFrameCount();
         outrangedHits = findOutrangedHits(now);
+        airHarass.onFrame(now, fightSquads);
         Set<Squad> removed = new HashSet<>();
         for (Squad fightSquad: fightSquads) {
             fightSquad.onFrame();
@@ -714,37 +717,37 @@ public class SquadManager {
     }
 
     /**
-     * Whether a squad holding a status may merge with a neighbour. A runby squad is kept apart: a merge would
-     * fold a squad at home into the enemy base, or hand the runby to a squad that recalls it.
+     * Whether a squad holding a status may merge with a neighbour. A runby or harass squad is kept apart: a merge
+     * would fold a squad at home into the enemy base, or hand the raid to a squad that recalls it.
      *
      * @param status the squad's status
      * @return true when the squad may merge
      */
     static boolean mayMerge(SquadStatus status) {
-        return status != SquadStatus.RUNBY;
+        return status != SquadStatus.RUNBY && status != SquadStatus.HARASS;
     }
 
     /**
-     * Whether a squad holding a status may split off its outliers. A runby squad spreads out among the workers
-     * on purpose, so it is never split.
+     * Whether a squad holding a status may split off its outliers. A runby or harass squad spreads out over the
+     * enemy base on purpose, so it is never split.
      *
      * @param status the squad's status
      * @return true when the squad may split
      */
     static boolean maySplit(SquadStatus status) {
         return status != SquadStatus.CONTAIN && status != SquadStatus.RALLY && status != SquadStatus.RETREAT
-                && status != SquadStatus.RUNBY;
+                && status != SquadStatus.RUNBY && status != SquadStatus.HARASS;
     }
 
     /**
-     * Whether a new or re-homed unit may join a squad holding a status. A runby squad takes no
+     * Whether a new or re-homed unit may join a squad holding a status. A runby or harass squad takes no
      * reinforcements: joining one would re-simulate it and overwrite its status.
      *
      * @param status the squad's status
      * @return true when the squad may take the unit
      */
     static boolean mayJoin(SquadStatus status) {
-        return status != SquadStatus.RUNBY;
+        return status != SquadStatus.RUNBY && status != SquadStatus.HARASS;
     }
 
     /**
@@ -869,6 +872,10 @@ public class SquadManager {
             evaluateRunbySquad(squad);
             return;
         }
+        if (squad.getStatus() == SquadStatus.HARASS) {
+            evaluateHarassSquad(squad);
+            return;
+        }
 
         final boolean closeThreats = !enemyUnitsNearSquad(squad).isEmpty();
 
@@ -903,8 +910,76 @@ public class SquadManager {
         if (action == SquadAction.LAUNCH && tryEnterContainment(squad)) {
             return;
         }
+        if (tryEnterHarass(squad)) {
+            return;
+        }
 
         simulateFightSquad(squad);
+    }
+
+    /**
+     * Offers an air squad a harass on every {@link AirHarassEvaluator#HARASS_TICK}, outside its retreat and fight
+     * locks. Overlords escorting the squad go back to the Overlord squad, since they would trail the Mutalisks
+     * into the enemy base.
+     *
+     * @param squad fight squad cleared to act
+     * @return true when the squad entered HARASS
+     */
+    private boolean tryEnterHarass(Squad squad) {
+        int now = game.getFrameCount();
+        if (!AirHarassEvaluator.entryCheckDue(squad.isAirSquad(), squad.isRetreatLocked(now),
+                squad.isFightLocked(now), now)) {
+            return false;
+        }
+        AirHarassController.Entry entry = airHarass.checkEntry(squad, now, basesUnderAttack(), containPoints());
+        if (!entry.enters()) {
+            return false;
+        }
+        for (ManagedUnit member : new ArrayList<>(squad.getMembers())) {
+            if (member.getUnitType() == UnitType.Zerg_Overlord) {
+                squad.removeUnit(member);
+                overlords.addUnit(member);
+                member.setRole(UnitRole.IDLE);
+            }
+        }
+        clearCombatSimSnapshot(squad);
+        squad.setStatus(SquadStatus.HARASS);
+        squad.commit(now);
+        SquadDecisions.pathTaken(squad, DecisionPath.HARASS_ENTER);
+        airHarass.start(squad, entry, now);
+        return true;
+    }
+
+    /**
+     * Runs one frame of a harassing squad. The combat sim, the locks and the containment branches never see it; it
+     * leaves HARASS only through the harass exit, and then retreats.
+     *
+     * @param squad harassing squad
+     */
+    private void evaluateHarassSquad(Squad squad) {
+        int now = game.getFrameCount();
+        AirHarassEvaluator.ExitReason reason = airHarass.tick(squad, now, basesUnderAttack(), containPoints());
+        if (reason == null) {
+            return;
+        }
+        airHarass.stop(squad, reason, now);
+        squad.setHarassState(null);
+        squad.setHarassExitFrame(now);
+        squad.setStatus(SquadStatus.RETREAT);
+        SquadDecisions.pathTaken(squad, DecisionPath.HARASS_EXIT);
+        assignRetreatTargets(squad, squad.getMembers());
+        squad.startRetreatLock(now);
+    }
+
+    private List<Position> containPoints() {
+        List<Position> points = new ArrayList<>();
+        for (Squad squad : fightSquads) {
+            Arc arc = squad.getStatus() == SquadStatus.CONTAIN ? squad.getContainmentArc() : null;
+            if (arc != null && !arc.isEmpty()) {
+                points.add(arc.getMidpoint());
+            }
+        }
+        return points;
     }
 
     /**
@@ -1318,6 +1393,12 @@ public class SquadManager {
                 }
                 if (blindAdvanceHeld(squad.getStatus(), enemyMeasured, threatBeyondRadius, baseThreatened)) {
                     holdSquad(squad, managedFighters);
+                    break;
+                }
+                if (AirHarassEvaluator.holdsBlindAdvance(squad.getHarassExitFrame(), now, enemyMeasured,
+                        squad.getStatus())) {
+                    holdSquad(squad, managedFighters);
+                    SquadDecisions.pathTaken(squad, DecisionPath.HARASS_HOLD);
                     break;
                 }
                 squad.setStatus(SquadStatus.FIGHT);
@@ -3044,6 +3125,7 @@ public class SquadManager {
         scoutChase.releaseScout(unit.getID());
         scoutChase.release(unit.getID());
         creditRunbyKill(unit);
+        airHarass.onUnitDestroy(unit, fightSquads);
     }
 
     /**
@@ -3706,13 +3788,14 @@ public class SquadManager {
     }
 
     /**
-     * Returns a list of Hydralisk and Mutalisk squads, sorted by size (largest first).
+     * Returns a list of Hydralisk and Mutalisk squads that may take an Overlord, sorted by size (largest first). A
+     * squad that takes no reinforcements, such as a harassing one, takes no Overlord either.
      */
     private List<Squad> getHydraliskAndMutaliskSquads() {
         return fightSquads.stream()
             .filter(squad -> {
-                return squad.getCountOf(UnitType.Zerg_Mutalisk) > 0
-                        || squad.getCountOf(UnitType.Zerg_Hydralisk) > 0;
+                return mayJoin(squad.getStatus()) && (squad.getCountOf(UnitType.Zerg_Mutalisk) > 0
+                        || squad.getCountOf(UnitType.Zerg_Hydralisk) > 0);
             })
             .sorted((s1, s2) -> Integer.compare(s2.size(), s1.size()))
             .collect(Collectors.toList());

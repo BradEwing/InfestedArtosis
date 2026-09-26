@@ -47,6 +47,28 @@ public class Mutalisk extends ManagedUnit {
         role = UnitRole.IDLE;
     }
 
+    /**
+     * Moves to the harass destination when one is set, otherwise attacks the fight target. The role is never
+     * changed here, so a Mutalisk without an order waits for the next one instead of going idle and being re-homed.
+     */
+    @Override
+    protected void harass() {
+        if (unit.isAttackFrame()) {
+            return;
+        }
+
+        if (harassDestination != null) {
+            setUnready(4);
+            unit.move(harassDestination);
+            return;
+        }
+
+        if (fightTarget != null) {
+            setUnready(4);
+            unit.attack(fightTarget);
+        }
+    }
+
     @Override
     protected int retreatScanRadius() {
         return 256;

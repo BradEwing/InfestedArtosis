@@ -59,6 +59,8 @@ public class Squad implements Comparable<Squad> {
     protected int containStartFrame = 0;
     private Arc containmentArc;
     private RunbyState runbyState;
+    private AirHarassState harassState;
+    private int harassExitFrame = 0;
     private int containRadius = 0;
     private final ContainmentAttrition containmentAttrition = new ContainmentAttrition();
     protected Time fightHysteresis = new Time(0, 3);
@@ -230,7 +232,8 @@ public class Squad implements Comparable<Squad> {
      *
      * <p>A merge that stays in CONTAIN carries the episode on: the arc, the pushed back radius and the attrition of
      * every containing source. Any other merged status drops them. Enemy reach is kept game-wide in the reach
-     * memory, not on the squad.
+     * memory, not on the squad. A merge that stays in RUNBY or HARASS keeps that episode's state, and the latest
+     * harass exit of any source is kept so its blind advance hold carries over.
      *
      * @param sources squads being merged into this one
      */
@@ -240,12 +243,17 @@ public class Squad implements Comparable<Squad> {
         int earliestCommit = 0;
         Arc inheritedArc = null;
         RunbyState inheritedRunby = null;
+        AirHarassState inheritedHarass = null;
         int inheritedRadius = 0;
         ContainmentAttrition inheritedAttrition = new ContainmentAttrition();
         for (Squad source: sources) {
             if (inheritedRunby == null && source.status == SquadStatus.RUNBY) {
                 inheritedRunby = source.runbyState;
             }
+            if (inheritedHarass == null && source.status == SquadStatus.HARASS) {
+                inheritedHarass = source.harassState;
+            }
+            this.harassExitFrame = Math.max(this.harassExitFrame, source.harassExitFrame);
             mergedStatus = SquadStatus.dominant(mergedStatus, source.status);
             if (source.containStartFrame > 0 && (earliestContainStart == 0 || source.containStartFrame < earliestContainStart)) {
                 earliestContainStart = source.containStartFrame;
@@ -269,6 +277,7 @@ public class Squad implements Comparable<Squad> {
         this.containStartFrame = mergedStatus == SquadStatus.CONTAIN ? earliestContainStart : 0;
         this.containmentArc = mergedStatus == SquadStatus.CONTAIN ? inheritedArc : null;
         this.runbyState = mergedStatus == SquadStatus.RUNBY ? inheritedRunby : null;
+        this.harassState = mergedStatus == SquadStatus.HARASS ? inheritedHarass : null;
         this.containRadius = mergedStatus == SquadStatus.CONTAIN ? inheritedRadius : 0;
         this.containmentAttrition.reset();
         if (mergedStatus == SquadStatus.CONTAIN) {
