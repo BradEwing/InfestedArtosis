@@ -195,6 +195,20 @@ public class SquadManager {
 
         fightSquads.removeAll(removed);
         evadeOutrangedHits(now);
+        gameState.getContainHeldTimer().update(now, anyGroundSquadContaining(fightSquads));
+    }
+
+    /**
+     * @param squads the fight squads
+     * @return true when any ground squad is in CONTAIN
+     */
+    static boolean anyGroundSquadContaining(Collection<Squad> squads) {
+        for (Squad squad : squads) {
+            if (squad.isGroundSquad() && squad.getStatus() == SquadStatus.CONTAIN) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -1646,12 +1660,16 @@ public class SquadManager {
         ContainmentVerdict verdict = containmentVerdict(basesUnderAttack, bleeding, hit, throttled, engaged,
                 timedOut, canBreak, shouldContain);
 
+        DecisionPath exitPath = containmentExitPath(bleeding, arcLost);
+        if (breaksHeldContain(verdict, exitPath)) {
+            gameState.getContainHeldTimer().broken();
+        }
         switch (verdict) {
             case BREAK_ALL:
                 breakAllContainment(now);
                 break;
             case RETREAT:
-                retreatFromContainment(squad, members, now, containmentExitPath(bleeding, arcLost));
+                retreatFromContainment(squad, members, now, exitPath);
                 break;
             case PUSH_BACK:
                 pushBackContainingSquad(squad, zones, underFire);
@@ -1680,6 +1698,24 @@ public class SquadManager {
             return DecisionPath.CONTAIN_OUTRANGED;
         }
         return DecisionPath.CONTAIN_RETREAT;
+    }
+
+    /**
+     * Whether a containing squad's verdict ends the held contain at once rather than letting
+     * {@link ContainHeldTimer} bridge it: every BREAK_ALL, whether a base is under attack or the strength
+     * gate sends the army in, and a retreat the enemy forced by attrition or an outranged arc. A retreat on
+     * the timeout, on containment ceasing to apply, or with no arc left clear of static defence is bridged.
+     *
+     * @param verdict what the containing squad does this frame
+     * @param retreatPath the decision path a RETREAT verdict retreats on
+     * @return true when the held contain is broken
+     */
+    static boolean breaksHeldContain(ContainmentVerdict verdict, DecisionPath retreatPath) {
+        if (verdict == ContainmentVerdict.BREAK_ALL) {
+            return true;
+        }
+        return verdict == ContainmentVerdict.RETREAT
+                && (retreatPath == DecisionPath.CONTAIN_ATTRITION || retreatPath == DecisionPath.CONTAIN_OUTRANGED);
     }
 
     private void retreatFromContainment(Squad squad, HashSet<ManagedUnit> members, int now, DecisionPath path) {

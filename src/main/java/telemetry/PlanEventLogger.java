@@ -12,6 +12,7 @@ import info.EnemyMainEvidence;
 import info.GameState;
 import info.ResourceCount;
 import learning.GameRecord;
+import macro.DroneRound;
 import macro.plan.BuilderDispatchDecision;
 import macro.plan.BuilderLossReason;
 import macro.plan.BuilderReading;
@@ -69,13 +70,15 @@ public class PlanEventLogger implements PlanEventSink {
     private static final String EVENT_BUILDER_LOST = "BUILDER_LOST";
     private static final String EVENT_BUILDER_REDISPATCH = "BUILDER_REDISPATCH";
     private static final String EVENT_GEYSER_DEPLETED = "GEYSER_DEPLETED";
+    private static final String EVENT_DRONE_ROUND_OPEN = "DRONE_ROUND_OPEN";
+    private static final String EVENT_DRONE_ROUND_CLOSE = "DRONE_ROUND_CLOSE";
 
     private static final int NO_STARVED_COUNT = -1;
 
     private static final String EVENT_RECURRING_CANCEL = "RECURRING_CANCEL";
 
     /**
-     * 73 columns; readers that index by position rather than by name must match this order.
+     * 80 columns; readers that index by position rather than by name must match this order.
      * enemy_air, gas_gathered, enemy_barracks, the blocker mineral pair, the enemy ground pair,
      * yield_to_plan_id, the four macro hatchery gate columns and the four Hive tech gate columns
      * are trailing columns written by {@link #appendTrailing}, so every row shape keeps one width.
@@ -191,6 +194,18 @@ public class PlanEventLogger implements PlanEventSink {
      * base the geyser belongs to, empty when it belongs to none; geyser_initial_resources is the gas
      * the geyser started the game with and extractor_completed_frame the frame the Extractor on it
      * completed. Those four columns are set only on GEYSER_DEPLETED rows.
+     * <p>
+     * DRONE_ROUND_OPEN and DRONE_ROUND_CLOSE rows are written when a {@link macro.DroneRound} opens
+     * and closes, and leave every plan column empty. item is the round's kind, ARMY_MILESTONE or
+     * CONTAIN_HELD, on both rows. drone_round_reason is the kind again on an OPEN row and the close
+     * reason on a CLOSE row: SIZE, BUILD_CAP, SOFT_CAP, HARD_CAP, THREAT, CONTAIN_ENDED, TIMEOUT or
+     * INELIGIBLE. drone_round_drones is Drones hatched plus Drones in an egg at that frame, so the CLOSE
+     * row's count less the OPEN row's is the Drones a round added net of any Drones that died during
+     * it. drone_round_size is the Drones the round
+     * set out to add. contain_held_frames is how long our ground squads had held the running contain,
+     * zero with none. drone_round_workers, drone_round_soft_cap and drone_round_hard_cap are the
+     * mineral and gas workers and the two worker caps a contain-held round measures them against.
+     * Those seven columns are set only on the two DRONE_ROUND rows.
      */
     static final String PLAN_HEADER = "frame,time,event,plan_id,executor_unit_id,plan_type,item,from_state,"
             + "to_state,cancel_reason,cancel_source,blocker,blocked_frames,priority,frames_in_state,age_frames,"
@@ -205,7 +220,9 @@ public class PlanEventLogger implements PlanEventSink {
             + "expansion_hold_until_frame,builder_site_at_our_base,builder_at_our_base,base_inner,enemy_main_reason,"
             + "enemy_main_source_x,enemy_main_source_y,"
             + "builder_role,builder_order,builder_in_range,previous_executor_unit_id,"
-            + "geyser_base_x,geyser_base_y,geyser_initial_resources,extractor_completed_frame";
+            + "geyser_base_x,geyser_base_y,geyser_initial_resources,extractor_completed_frame,"
+            + "drone_round_reason,drone_round_drones,drone_round_size,contain_held_frames,drone_round_workers,"
+            + "drone_round_soft_cap,drone_round_hard_cap";
 
     private static final String GAME_HEADER = "timestamp,is_winner,num_starting_locations,map_name,opponent_name,"
             + "opponent_race,opener,build_order,detected_strategies,frame_count";
@@ -232,6 +249,12 @@ public class PlanEventLogger implements PlanEventSink {
     private final Map<String, GasBoundHiveTech.Gate> lastHiveTechGates = new HashMap<>();
 
     private final Map<String, BuilderDispatchDecision> lastDispatchDecisions = new HashMap<>();
+
+    /**
+     * The drone round {@link #appendTrailing} writes the drone round columns from, set only while a
+     * DRONE_ROUND_OPEN or DRONE_ROUND_CLOSE row is built, so every other row leaves them empty.
+     */
+    private DroneRound.Report rowDroneRound;
 
     private boolean disabled;
     private int currentFrame;
@@ -733,6 +756,33 @@ public class PlanEventLogger implements PlanEventSink {
         }
     }
 
+    @Override
+    public void onDroneRoundOpened(DroneRound.Report report) {
+        addDroneRoundRow(EVENT_DRONE_ROUND_OPEN, report);
+    }
+
+    @Override
+    public void onDroneRoundClosed(DroneRound.Report report) {
+        addDroneRoundRow(EVENT_DRONE_ROUND_CLOSE, report);
+    }
+
+    /**
+     * The frame is re-read for the reason {@link #onStrategyDetected} gives: the build order updates the
+     * round during production, which may run ahead of this logger's onFrame on the same frame.
+     */
+    private void addDroneRoundRow(String event, DroneRound.Report report) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            currentFrame = game.getFrameCount();
+            buffer.add(droneRoundRow(event, report));
+        } catch (Exception e) {
+            disabled = true;
+        }
+    }
+
     /**
      * The frame is re-read for the reason {@link #onStrategyDetected} gives: GameState may run ahead of this
      * logger's onFrame on the same frame.
@@ -1111,6 +1161,28 @@ public class PlanEventLogger implements PlanEventSink {
         return sb.toString();
     }
 
+    /** A row for a drone round opening or closing, which no plan owns, so the plan columns are empty. */
+    private String droneRoundRow(String event, DroneRound.Report report) {
+        StringBuilder sb = new StringBuilder();
+        appendEvent(sb, event);
+        appendEmpty(sb, 3);
+        sb.append(report.getKind()).append(',');
+        appendEmpty(sb, 4);
+        appendBlocker(sb, PlanBlocker.NONE, 0);
+        appendEmpty(sb, 3);
+        appendGameState(sb);
+        appendEmpty(sb, 3);
+        sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
+        appendEmpty(sb, 2);
+        rowDroneRound = report;
+        try {
+            appendTrailing(sb, null, null, null, null, null, null, BuilderColumns.BLANK);
+        } finally {
+            rowDroneRound = null;
+        }
+        return sb.toString();
+    }
+
     /** A row for a change of the squad rally base, which no plan owns, so the plan columns are empty. */
     private String rallyPointChangedRow(TilePosition base, String reason) {
         StringBuilder sb = new StringBuilder();
@@ -1240,7 +1312,28 @@ public class PlanEventLogger implements PlanEventSink {
         sb.append(baseEvent == null || baseEvent.geyserBase == null ? ""
                 : String.valueOf(baseEvent.geyserBase.getY())).append(',');
         sb.append(baseEvent == null ? "" : orEmpty(baseEvent.geyserInitialResources)).append(',');
-        sb.append(baseEvent == null ? "" : orEmpty(baseEvent.extractorCompletedFrame));
+        sb.append(baseEvent == null ? "" : orEmpty(baseEvent.extractorCompletedFrame)).append(',');
+        appendDroneRound(sb, rowDroneRound);
+    }
+
+    /**
+     * Writes the seven drone round cells, empty when the row is not a DRONE_ROUND row.
+     *
+     * @param sb the row being built, whose last cell so far is followed by a separator
+     * @param droneRound the round that opened or closed, or null
+     */
+    static void appendDroneRound(StringBuilder sb, DroneRound.Report droneRound) {
+        if (droneRound == null) {
+            sb.append(",,,,,,");
+            return;
+        }
+        sb.append(droneRound.getReason()).append(',');
+        sb.append(droneRound.getDrones()).append(',');
+        sb.append(droneRound.getSize()).append(',');
+        sb.append(droneRound.getContainHeldFrames()).append(',');
+        sb.append(droneRound.getWorkers()).append(',');
+        sb.append(droneRound.getSoftCap()).append(',');
+        sb.append(droneRound.getHardCap());
     }
 
     private static String orEmpty(Object value) {

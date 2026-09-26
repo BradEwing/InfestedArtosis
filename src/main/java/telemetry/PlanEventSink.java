@@ -6,6 +6,7 @@ import bwapi.UnitType;
 import info.BuilderThreat;
 import info.EnemyMainClearReason;
 import info.EnemyMainEvidence;
+import macro.DroneRound;
 import macro.plan.BuilderDispatchDecision;
 import macro.plan.BuilderLossReason;
 import macro.plan.BuilderReading;
@@ -177,6 +178,22 @@ public interface PlanEventSink {
      */
     default void onGeyserDepleted(TilePosition geyser, TilePosition base, int initialResources,
                                   int extractorCompletedFrame) {
+    }
+
+    /**
+     * A drone round opened.
+     *
+     * @param report the round's kind, its open reason, the Drones it opened on, its size and the caps it read
+     */
+    default void onDroneRoundOpened(DroneRound.Report report) {
+    }
+
+    /**
+     * A drone round closed.
+     *
+     * @param report the round's kind, its close reason, the Drones it closed on, its size and the caps it read
+     */
+    default void onDroneRoundClosed(DroneRound.Report report) {
     }
 
     /**
