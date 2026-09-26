@@ -75,6 +75,14 @@ class OpenerTransitionsTest {
         assertTrue(terran.contains("2HatchMuta"), "2HatchMuta must be seeded against Terran: " + terran);
     }
 
+    @Test
+    void noOpenerHandsOverStraightToLurkerDefilerUltra() {
+        for (Race race : Race.values()) {
+            Set<String> names = transitionNames(race);
+            assertFalse(names.contains("LurkerDefilerUltra"), race + " offers LurkerDefilerUltra: " + names);
+        }
+    }
+
     private static Set<String> transitionNames(Race race) {
         return OpenerTransitions.forRace(race)
                 .stream()

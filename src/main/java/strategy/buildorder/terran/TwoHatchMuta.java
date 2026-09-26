@@ -11,6 +11,7 @@ import info.UnitTypeCount;
 import macro.Reactions;
 import macro.plan.Plan;
 import strategy.buildorder.ArmyUpgradeTrigger;
+import strategy.buildorder.BuildOrder;
 import strategy.buildorder.LarvaBoundMacroHatchery;
 
 import java.util.ArrayList;
@@ -247,7 +248,23 @@ public class TwoHatchMuta extends TerranBase {
 
     @Override
     public boolean needLair() {
-        return true; 
+        return true;
+    }
+
+    /**
+     * Hands over to {@link LurkerDefilerUltra} once enemy Goliaths shut the Mutalisks out or the
+     * clock runs past them, and the economy gate in {@link LurkerDefilerUltraTransition} is met.
+     */
+    @Override
+    public boolean shouldTransition(GameState gameState) {
+        return LurkerDefilerUltraTransition.shouldEnter(gameState, getName(),
+                LurkerDefilerUltraTransition.twoHatchMutaTrigger(gameState.enemyUnitCount(UnitType.Terran_Goliath),
+                        gameState.getGameTime()));
+    }
+
+    @Override
+    public Set<BuildOrder> transition(GameState gameState) {
+        return LurkerDefilerUltraTransition.candidates();
     }
 
     static boolean shouldPlanOverlord(int spireCount, int overlordCount, boolean excessSupply) {
