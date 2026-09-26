@@ -6,9 +6,11 @@ import org.junit.jupiter.api.Test;
 import util.TargetScorer;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TargetChoicesTest {
@@ -32,6 +34,8 @@ class TargetChoicesTest {
         fields.addAll(TargetChoiceLogger.targetCells(42, targetType, tier, 96, 3));
         fields.addAll(TargetChoiceLogger.previousTargetCells(previousTargetId, previousTargetType));
         fields.add(TargetChoiceLogger.scoutCappedCell(scoutCapped));
+        fields.addAll(TargetChoiceLogger.loadCells("squad-7", 8, true, false, TargetScorer.Reason.MEDIC_NEARER,
+                true));
         return String.join(",", fields).split(",", -1);
     }
 
@@ -119,5 +123,67 @@ class TargetChoicesTest {
 
         assertEquals(1, flags.size());
         assertTrue(flags.get(0));
+    }
+
+    @Test
+    void theLoadColumnsAreAppendedAfterScoutCapped() {
+        String[] columns = TargetChoiceLogger.HEADER.split(",", -1);
+
+        assertEquals(columnIndex("scout_capped") + 1, columnIndex("squad_id"));
+        assertEquals(columnIndex("priority_reason") + 1, columnIndex("widened"));
+        assertEquals("widened", columns[columns.length - 1]);
+    }
+
+    @Test
+    void aRowRecordsTheSquadItsLoadOnTheTargetAndTheReasonForTheTier() {
+        String[] fields = mutaOnOverlordRow();
+
+        assertEquals("squad-7", fields[columnIndex("squad_id")]);
+        assertEquals("8", fields[columnIndex("assigned_count")]);
+        assertEquals("1", fields[columnIndex("saturated")]);
+        assertEquals("MEDIC_NEARER", fields[columnIndex("priority_reason")]);
+        assertEquals("1", fields[columnIndex("widened")]);
+    }
+
+    @Test
+    void aChoiceMadeOutsideASquadPassLeavesTheSquadEmptyAndTheReasonNone() {
+        List<String> cells = TargetChoiceLogger.loadCells("", 0, false, false, null, false);
+
+        assertEquals(Arrays.asList("", "0", "0", "NONE", "0"), cells);
+    }
+
+    @Test
+    void anOverflowAttackMoveIsMarkedTwoInTheSaturatedCell() {
+        assertEquals("2", TargetChoiceLogger.saturatedCell(true, true));
+        assertEquals("2", TargetChoiceLogger.saturatedCell(false, true));
+        assertEquals("1", TargetChoiceLogger.saturatedCell(true, false));
+        assertEquals("0", TargetChoiceLogger.saturatedCell(false, false));
+        assertEquals("2", TargetChoiceLogger.loadCells("squad-7", 8, true, true, TargetScorer.Reason.THREAT, false)
+                .get(2));
+    }
+
+    @Test
+    void keepingTheTargetWhileEnteringOrLeavingOverflowIsAChange() {
+        assertTrue(TargetChoices.isChange(42, false, 42, true));
+        assertTrue(TargetChoices.isChange(42, true, 42, false));
+        assertTrue(TargetChoices.isChange(40, false, 42, false));
+        assertFalse(TargetChoices.isChange(42, false, 42, false));
+        assertFalse(TargetChoices.isChange(42, true, 42, true));
+    }
+
+    @Test
+    void anAttackMoveSelectionKeepsEveryOtherField() {
+        TargetScorer.Selection pick = new TargetScorer.Selection(null, TargetScorer.Priority.CRITICAL, 3,
+                TargetScorer.Reason.THREAT, 8, true, "squad-7", true);
+
+        TargetScorer.Selection moved = pick.asAttackMove();
+
+        assertTrue(moved.isAttackMove());
+        assertFalse(pick.isAttackMove());
+        assertTrue(moved.isSaturated());
+        assertTrue(moved.isWidened());
+        assertEquals(8, moved.getAssignedCount());
+        assertEquals("squad-7", moved.getSquadId());
+        assertTrue(moved.asWidened().isAttackMove());
     }
 }

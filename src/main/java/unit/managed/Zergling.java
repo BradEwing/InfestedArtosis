@@ -20,6 +20,11 @@ public class Zergling extends ManagedUnit {
         }
         setUnready(5);
 
+        if (fightTarget != null && isAttackMoving()) {
+            attackMoveToward(fightTarget);
+            return;
+        }
+
         if (fightTarget != null) {
             int distanceToTarget = unit.getDistance(fightTarget);
             if (distanceToTarget < 64) {

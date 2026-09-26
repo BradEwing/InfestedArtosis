@@ -118,8 +118,14 @@ public class CombatTelemetry {
             int frame = game.getFrameCount();
             Position position = unit.getPosition();
             int unitId = unit.getID();
+            ManagedUnit managedUnit = gameState.getManagedUnitLookup().get(unit);
             for (Engagement engagement : openEngagements) {
-                engagement.recordDeath(unitId, frame, position);
+                if (managedUnit == null) {
+                    engagement.recordDeath(unitId, frame, position);
+                } else {
+                    engagement.recordDeath(unitId, frame, position, managedUnit.getAttacksStarted(),
+                            managedUnit.getLastAttackStartFrame());
+                }
             }
         } catch (RuntimeException e) {
             disable();
@@ -287,7 +293,8 @@ public class CombatTelemetry {
             ManagedUnit member = contact.getManagedUnit();
             UnitType type = member.getUnitType();
             engagement.noteUnit(frame, member.getUnitID(), type, member.getUnit().getHitPoints(),
-                    Csv.name(member.getRole()), contact.getSquad().getId());
+                    Csv.name(member.getRole()), contact.getSquad().getId(), member.getAttacksStarted(),
+                    member.getLastAttackStartFrame());
             supply += type.supplyRequired();
         }
 

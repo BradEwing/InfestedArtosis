@@ -27,7 +27,7 @@ public final class TelemetryLog {
 
     static final String ENGAGEMENT_UNIT_HEADER = "game_id,engagement_id,unit_id,unit_type,supply,arrival_frame,"
             + "arrival_offset,exit_frame,died,death_frame,death_x,death_y,hp_at_arrival,hp_at_exit,role_at_arrival,"
-            + "squad_at_arrival";
+            + "squad_at_arrival,first_attack_frame,attacks_started";
 
     private final boolean enabled;
     private final TelemetryWriter gameWriter;
