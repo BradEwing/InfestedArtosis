@@ -16,7 +16,9 @@ import info.UnitTypeCount;
 import info.map.BuildingPlanner;
 import lombok.Getter;
 import macro.AdvancedUnitEligibility;
+import macro.DroneRound;
 import macro.HatcheryCapacity;
+import macro.Reactions;
 import macro.plan.BuildingPlan;
 import macro.plan.Plan;
 import macro.plan.PlanBlocker;
@@ -41,6 +43,15 @@ public abstract class BuildOrder {
     private static final int EARLY_RUSH_SECOND_SUNKEN_ATTACKERS = 4;
     private static final int EARLY_RUSH_MIN_ZERGLINGS = 6;
     public static final int EMERGENCY_DEFENSE_PRIORITY = 1;
+
+    /**
+     * Priority band for an army upgrade whose {@link ArmyUpgradeTrigger} is met.
+     *
+     * <p>Polls ahead of {@link UnitPlan#ADVANCED_UNIT_PRIORITY}, so a mineral-short upgrade holds
+     * the advanced units behind it until it is funded, and behind the reaction, colony and fixed
+     * tech bands below it.
+     */
+    public static final int ARMY_UPGRADE_PRIORITY = 120;
     protected static final int SPAWNING_POOL_PRIORITY = 2;
     private static final int DEFAULT_COLONY_PRIORITY = 5;
     private static final int UNKNOWN_RACE_BASE_TARGET = 2;
@@ -113,11 +124,20 @@ public abstract class BuildOrder {
      * request could only ever stop on its tech gate, and running it would write gate rows naming
      * a build that can never answer them.
      *
+     * <p>The {@link DroneRound} is updated first, and while it is open a Drone at
+     * {@link UnitPlan#DRONE_ROUND_PRIORITY} is added until the round's target is counted.
+     *
      * @param gameState current game state
      * @return the build's plans, plus a macro hatchery when the shared request fires
      */
     public final List<Plan> plan(GameState gameState) {
+        updateDroneRound(gameState);
         List<Plan> plans = new ArrayList<>(buildPlans(gameState));
+
+        Plan roundDrone = planRoundDrone(gameState);
+        if (roundDrone != null) {
+            plans.add(roundDrone);
+        }
 
         if (!runsLarvaBoundMacroHatchery(isOpener(), plans)) {
             return plans;
@@ -129,6 +149,90 @@ public abstract class BuildOrder {
         }
 
         return plans;
+    }
+
+    /**
+     * The living army units whose count opens a {@link DroneRound}. A build that runs no rounds
+     * returns none.
+     *
+     * @return the build's target army unit types
+     */
+    protected Set<UnitType> droneRoundArmy() {
+        return Collections.emptySet();
+    }
+
+    /**
+     * The Drone target a {@link DroneRound} stops at. A build that runs no rounds returns zero,
+     * which also closes a round a previous build left open.
+     *
+     * @param gameState current game state
+     * @return the build's Drone target
+     */
+    protected int droneRoundDroneCap(GameState gameState) {
+        return 0;
+    }
+
+    private void updateDroneRound(GameState gameState) {
+        int livingArmy = 0;
+        for (UnitType unitType : droneRoundArmy()) {
+            livingArmy += gameState.ourLivingUnitCount(unitType);
+        }
+        int drones = gameState.ourLivingUnitCount(UnitType.Zerg_Drone) + dronesInEgg(gameState.getSelf().getUnits());
+        boolean rushed = gameState.isEarlyRushed() || gameState.isCannonRushed() || gameState.isScvRushed();
+        int enemiesAtBases = gameState.visibleEnemyMobileGroundCombatUnitsAtOurBases()
+                + gameState.visibleEnemyAirCombatUnitsAtOurBases();
+        boolean threatened = DroneRound.isThreatened(rushed, gameState.isAllIn(), enemiesAtBases);
+        gameState.getDroneRound().update(gameState.getGameTime().getFrames(), livingArmy, drones,
+                droneRoundDroneCap(gameState), gameState.workersWanted(), threatened);
+    }
+
+    private static int dronesInEgg(List<Unit> units) {
+        int eggs = 0;
+        for (Unit unit : units) {
+            if (unit.getType() == UnitType.Zerg_Egg && unit.getBuildType() == UnitType.Zerg_Drone) {
+                eggs++;
+            }
+        }
+        return eggs;
+    }
+
+    private Plan planRoundDrone(GameState gameState) {
+        DroneRound round = gameState.getDroneRound();
+        if (!wantsRoundDrone(round.isActive(), round.getDroneTarget(), gameState.ourUnitCount(UnitType.Zerg_Drone),
+                gameState.canPlanDrone())) {
+            return null;
+        }
+        return planUnit(gameState, UnitType.Zerg_Drone, UnitPlan.DRONE_ROUND_PRIORITY);
+    }
+
+    /**
+     * Whether an open {@link DroneRound} still needs a Drone queued.
+     *
+     * @param roundActive whether the round is open
+     * @param droneTarget the Drone count the round closes on
+     * @param droneCount Drones alive, in an egg or already planned
+     * @param canPlanDrone whether the worker gates allow another Drone
+     * @return true when one more round Drone should be queued this frame
+     */
+    static boolean wantsRoundDrone(boolean roundActive, int droneTarget, int droneCount, boolean canPlanDrone) {
+        return roundActive && canPlanDrone && droneCount < droneTarget;
+    }
+
+    /**
+     * Whether an open {@link DroneRound} withholds a new advanced unit plan, recording the wait.
+     *
+     * <p>Scourge is never withheld: it answers enemy air rather than growing the army.
+     *
+     * @param roundActive whether the round is open
+     * @param unitType the advanced unit the build would plan
+     * @return true when the plan must not be created this frame
+     */
+    protected static boolean withheldByDroneRound(boolean roundActive, UnitType unitType) {
+        if (!roundActive || unitType == UnitType.Zerg_Scourge) {
+            return false;
+        }
+        PlanEvents.withheld(unitType, PlanBlocker.DRONE_ROUND);
+        return true;
     }
 
     /**
@@ -195,20 +299,28 @@ public abstract class BuildOrder {
     }
 
     /**
-     * Returns true if Overlord Speed should be researched, based on Lair, game time and unit triggers.
+     * Returns true if Overlord Speed should be researched, based on Lair, game time, enemy tech
+     * and the reaction trigger.
      *
      * <p>The Lair term reads {@link Readiness#USABLE}, which counts only finished Lairs.
      * That is what it wants: the upgrade is researched at the Lair, so a Lair still morphing
      * cannot start it.
+     *
+     * <p>This only decides whether the upgrade is queued. {@link #planUpgrade} queues it at frame
+     * priority, behind the army upgrades already waiting; only a threat the upgrade answers, from
+     * {@link Reactions#isOverlordSpeedThreatened(GameState)}, lifts it to
+     * {@link Reactions#OVERLORD_SPEED_REACTION_PRIORITY}, and a plan created while that threat and
+     * {@link Reactions#isAirOrCloakThreatSeen(GameState)} both hold starts in the band. The clock,
+     * enemy tech buildings, the Science Vessel and an Observer queue it without lifting it.
      */
     public boolean needOverlordSpeed(GameState gameState) {
         if (gameState.structureCount(Readiness.USABLE, bwapi.UnitType.Zerg_Lair) < 1) {
             return false;
         }
-        if (gameState.getGameTime().greaterThan(new util.Time(12, 0))) {
+        if (Reactions.isOverlordSpeedThreatened(gameState)) {
             return true;
         }
-        if (gameState.enemyUnitCount(bwapi.UnitType.Zerg_Lurker) > 0) {
+        if (gameState.getGameTime().greaterThan(new util.Time(12, 0))) {
             return true;
         }
         if (gameState.enemyUnitCount(bwapi.UnitType.Protoss_Templar_Archives) > 0) {
@@ -217,37 +329,16 @@ public abstract class BuildOrder {
         if (gameState.enemyUnitCount(bwapi.UnitType.Protoss_Fleet_Beacon) > 0) {
             return true;
         }
-        if (gameState.enemyUnitCount(bwapi.UnitType.Protoss_Dark_Templar) > 0) {
+        if (gameState.enemyUnitCount(bwapi.UnitType.Terran_Science_Vessel) > 0) {
             return true;
         }
         if (gameState.enemyUnitCount(bwapi.UnitType.Protoss_Observer) > 0) {
-            return true;
-        }
-        if (gameState.enemyUnitCount(bwapi.UnitType.Terran_Vulture_Spider_Mine) > 0) {
-            return true;
-        }
-        if (gameState.enemyUnitCount(bwapi.UnitType.Terran_Science_Vessel) > 0) {
             return true;
         }
         if (gameState.enemyUnitCount(bwapi.UnitType.Protoss_Stargate) > 0) {
             return true;
         }
         if (gameState.enemyUnitCount(bwapi.UnitType.Terran_Starport) > 0) {
-            return true;
-        }
-        if (gameState.enemyUnitCount(bwapi.UnitType.Terran_Valkyrie) > 0) {
-            return true;
-        }
-        if (gameState.enemyUnitCount(bwapi.UnitType.Terran_Wraith) > 0) {
-            return true;
-        }
-        if (gameState.enemyUnitCount(bwapi.UnitType.Protoss_Scout) > 0) {
-            return true;
-        }
-        if (gameState.enemyUnitCount(bwapi.UnitType.Protoss_Corsair) > 0) {
-            return true;
-        }
-        if (gameState.enemyUnitCount(bwapi.UnitType.Zerg_Devourer) > 0) {
             return true;
         }
         if (gameState.enemyUnitCount(bwapi.UnitType.Zerg_Greater_Spire) > 0) {
@@ -257,6 +348,37 @@ public abstract class BuildOrder {
             return true;
         }
         return false;
+    }
+
+    /**
+     * Whether Pneumatized Carapace is queued this pass. It waits while any of the build's army
+     * upgrades is still to be queued, so its frame priority is later than theirs and it sits
+     * behind them unless the Overlord speed reaction lifts it. Queueing it in the same pass is not
+     * enough: plans of equal priority leave the queue in no fixed order.
+     *
+     * <p>Once the enemy has shown flyers or cloak, from
+     * {@link Reactions#isAirOrCloakThreatSeen(GameState)}, the upgrade does not wait for the army
+     * upgrades and is queued whenever the build wants it.
+     *
+     * @param wantOverlordSpeed whether the build wants the upgrade and it may be queued
+     * @param airOrCloakThreatSeen whether the enemy has shown flyers or cloak
+     * @param armyUpgradesToQueue for each army upgrade the build plans, whether it is still to be queued
+     * @return true while the upgrade should be queued
+     */
+    protected static boolean shouldPlanOverlordSpeed(boolean wantOverlordSpeed, boolean airOrCloakThreatSeen,
+                                                     boolean... armyUpgradesToQueue) {
+        if (!wantOverlordSpeed) {
+            return false;
+        }
+        if (airOrCloakThreatSeen) {
+            return true;
+        }
+        for (boolean toQueue : armyUpgradesToQueue) {
+            if (toQueue) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**
@@ -883,9 +1005,13 @@ public abstract class BuildOrder {
 
     /**
      * Plans a unit that a tech building unlocked, ahead of the backlog. Queues at most one plan
-     * per call, and none while the production sweep would cancel it the same frame.
+     * per call, none while the production sweep would cancel it the same frame, and none while a
+     * {@link DroneRound} is open.
      */
     protected List<Plan> planAdvancedUnit(GameState gameState, UnitType unitType) {
+        if (withheldByDroneRound(gameState.getDroneRound().isActive(), unitType)) {
+            return new ArrayList<>();
+        }
         return planAdvancedUnit(unitType, gameState.getTechProgression(), gameState.numGatherers(),
                 gameState.queuedUnitPlanCount(unitType), gameState.getUnitTypeCount());
     }
@@ -931,9 +1057,69 @@ public abstract class BuildOrder {
         return false;
     }
 
+    /**
+     * The living units that move an upgrade ahead of advanced-unit production in this build.
+     *
+     * <p>Advanced units poll at {@link UnitPlan#ADVANCED_UNIT_PRIORITY}, ahead of an upgrade that
+     * carries the frame it was planned on, so each one reserves the bank before the upgrade is
+     * checked. A build names a trigger for each upgrade that competes with its advanced units.
+     *
+     * @param upgradeType the upgrade
+     * @return the trigger, or null when the upgrade keeps its frame priority
+     */
+    protected ArmyUpgradeTrigger armyUpgradeTrigger(UpgradeType upgradeType) {
+        return null;
+    }
+
+    /**
+     * True when this build's trigger for the upgrade is met.
+     *
+     * @param upgradeType the upgrade
+     * @param count our unit counts
+     */
+    public boolean isArmyUpgradeTriggered(UpgradeType upgradeType, UnitTypeCount count) {
+        ArmyUpgradeTrigger trigger = armyUpgradeTrigger(upgradeType);
+        return trigger != null && trigger.isMet(count);
+    }
+
+    /**
+     * True when the upgrade can take {@link #ARMY_UPGRADE_PRIORITY}: this build's trigger for it is
+     * met and the building it is researched at has finished
+     * ({@link TechProgression#isUpgradePrerequisiteComplete}).
+     *
+     * <p>An upgrade in the band sorts ahead of building plans queued at their frame, so one whose
+     * building is only planned would sort ahead of that building's plan and hold the bank it needs.
+     *
+     * @param upgradeType the upgrade
+     * @param count our unit counts
+     * @param techProgression our finished tech
+     */
+    public boolean isArmyUpgradePromotable(UpgradeType upgradeType, UnitTypeCount count,
+                                           TechProgression techProgression) {
+        return isArmyUpgradeTriggered(upgradeType, count) && techProgression.isUpgradePrerequisiteComplete(upgradeType);
+    }
+
+    /**
+     * The priority {@link #planUpgrade} gives an upgrade: {@link #ARMY_UPGRADE_PRIORITY} once
+     * {@link #isArmyUpgradePromotable} holds, otherwise the frame it is planned on.
+     *
+     * @param upgradeType the upgrade
+     * @param count our unit counts
+     * @param techProgression our finished tech
+     * @param frame the current frame
+     */
+    public int upgradePriority(UpgradeType upgradeType, UnitTypeCount count, TechProgression techProgression,
+                               int frame) {
+        if (isArmyUpgradePromotable(upgradeType, count, techProgression)) {
+            return Math.min(frame, ARMY_UPGRADE_PRIORITY);
+        }
+        return frame;
+    }
+
     protected Plan planUpgrade(GameState gameState, UpgradeType upgradeType) {
         TechProgression techProgression = gameState.getTechProgression();
-        int priority = gameState.getGameTime().getFrames();
+        int priority = upgradePriority(upgradeType, gameState.getUnitTypeCount(), techProgression,
+                gameState.getGameTime().getFrames());
         switch (upgradeType) {
             case Metabolic_Boost:
                 techProgression.setPlannedMetabolicBoost(true);
@@ -961,7 +1147,8 @@ public abstract class BuildOrder {
                 break;
             case Pneumatized_Carapace:
                 techProgression.setPlannedOverlordSpeed(true);
-                priority = 100;
+                priority = Reactions.overlordSpeedPlanPriority(priority, Reactions.isAirOrCloakThreatSeen(gameState),
+                        Reactions.isOverlordSpeedThreatened(gameState));
                 break;
             case Chitinous_Plating:
                 techProgression.setPlannedChitinousPlating(true);

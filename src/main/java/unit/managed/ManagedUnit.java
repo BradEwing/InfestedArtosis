@@ -158,6 +158,11 @@ public class ManagedUnit {
         this.plan = plan;
     }
 
+    /** Whether the builder has been diverted to mine out a mineral blocking its walk. */
+    public boolean isClearingBlocker() {
+        return builderStall.getBlocker() != null;
+    }
+
     public boolean isIrradiated() {
         return unit.isIrradiated();
     }

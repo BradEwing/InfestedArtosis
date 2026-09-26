@@ -7,12 +7,16 @@ import info.BaseData;
 import info.GameState;
 import info.Readiness;
 import info.TechProgression;
+import macro.Reactions;
 import macro.plan.Plan;
+import strategy.buildorder.ArmyUpgradeTrigger;
 import strategy.buildorder.LarvaBoundMacroHatchery;
 import util.Time;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 
 /**
  * A variant of 3 Hatch Muta that skips Lurker tech entirely,
@@ -29,6 +33,7 @@ public class CrazyZerg extends TerranBase {
     private static final int MUTALISK_CAP = 9;
     private static final int DESIRED_DEFILERS = 3;
     private static final int ULTRALISK_THRESHOLD_FOR_MUTA_REPLENISH = 3;
+    static final int ULTRALISKS_BEFORE_ULTRALISK_UPGRADE_PRIORITY = 3;
 
     public CrazyZerg() {
         super("CrazyZerg");
@@ -99,7 +104,9 @@ public class CrazyZerg extends TerranBase {
         boolean wantConsume = techProgression.canPlanConsume();
         boolean wantPlague = techProgression.canPlanPlague();
         boolean wantAdrenalGlands = techProgression.canPlanAdrenalGlands();
-        boolean wantOverlordSpeed = needOverlordSpeed(gameState) && techProgression.canPlanOverlordSpeed();
+        boolean wantOverlordSpeed = shouldPlanOverlordSpeed(needOverlordSpeed(gameState) && techProgression.canPlanOverlordSpeed(),
+                Reactions.isAirOrCloakThreatSeen(gameState),
+                wantCarapace, wantMelee, wantFlyerAttack, wantChitinousPlating, wantAnabolicSynthesis, wantAdrenalGlands);
 
         final int desiredSunkenColonies = this.requiredSunkens(gameState);
         if (!gameState.basesNeedingSunken(desiredSunkenColonies).isEmpty()) {
@@ -307,6 +314,16 @@ public class CrazyZerg extends TerranBase {
         return baseTarget;
     }
 
+    @Override
+    protected Set<UnitType> droneRoundArmy() {
+        return Collections.singleton(UnitType.Zerg_Mutalisk);
+    }
+
+    @Override
+    protected int droneRoundDroneCap(GameState gameState) {
+        return dronesNeeded(gameState);
+    }
+
     private int dronesNeeded(GameState gameState) {
         int drones = 17;
         boolean hasLairOrHive = gameState.structureCount(Readiness.USABLE, UnitType.Zerg_Lair, UnitType.Zerg_Hive) > 0;
@@ -368,5 +385,23 @@ public class CrazyZerg extends TerranBase {
 
     static boolean shouldPlanMutalisk(TechProgression techProgression, boolean wantMoreMutas, int gatherers) {
         return techProgression.isSpire() && wantMoreMutas && canPlanAdvancedUnit(UnitType.Zerg_Mutalisk, techProgression, gatherers);
+    }
+
+    /**
+     * Flyer Attacks moves ahead of the Mutalisk stream once the {@value #MUTALISK_CAP} Mutalisks
+     * that plan it are alive, and Chitinous Plating and Anabolic Synthesis move ahead of the
+     * Ultralisk stream once {@value #ULTRALISKS_BEFORE_ULTRALISK_UPGRADE_PRIORITY} Ultralisks are.
+     */
+    @Override
+    protected ArmyUpgradeTrigger armyUpgradeTrigger(UpgradeType upgradeType) {
+        switch (upgradeType) {
+            case Zerg_Flyer_Attacks:
+                return new ArmyUpgradeTrigger(MUTALISK_CAP, UnitType.Zerg_Mutalisk);
+            case Chitinous_Plating:
+            case Anabolic_Synthesis:
+                return new ArmyUpgradeTrigger(ULTRALISKS_BEFORE_ULTRALISK_UPGRADE_PRIORITY, UnitType.Zerg_Ultralisk);
+            default:
+                return null;
+        }
     }
 }

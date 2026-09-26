@@ -181,6 +181,6 @@ class TechWaveTest {
     @Test
     void aHeldPlanClaimsNeitherTheBankNorTheLarva() {
         assertFalse(ProductionManager.claimsBank(PlanBlocker.TECH_WAVE_RESERVE));
-        assertFalse(ProductionManager.claimsLarva(unit(UnitType.Zerg_Drone), PlanBlocker.TECH_WAVE_RESERVE));
+        assertFalse(ProductionManager.claimsLarva(unit(UnitType.Zerg_Drone), PlanBlocker.TECH_WAVE_RESERVE, false));
     }
 }

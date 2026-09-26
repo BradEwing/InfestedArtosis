@@ -266,4 +266,28 @@ class GameStateTest {
         assertTrue(start >= 0 && end > start, GAME_STATE_SOURCE.toString());
         return source.substring(start, end);
     }
+
+    @Test
+    void capsWorkersAtSevenPerBaseAgainstZergAndTwelveOtherwise() {
+        assertEquals(7, GameState.expectedWorkers(Race.Zerg, 1, 0));
+        assertEquals(12, GameState.expectedWorkers(Race.Protoss, 1, 0));
+        assertEquals(10, GameState.expectedWorkers(Race.Zerg, 1, 1));
+    }
+
+    @Test
+    void theSharedDroneGateKeepsItsExpectedWorkerCeiling() {
+        assertFalse(GameState.canPlanDrone(0, 1, 7, GameState.expectedWorkers(Race.Zerg, 1, 0)));
+        assertTrue(GameState.canPlanDrone(0, 1, 6, GameState.expectedWorkers(Race.Zerg, 1, 0)));
+        assertTrue(GameState.canPlanDrone(0, 1, 8, GameState.expectedWorkers(Race.Terran, 1, 0)));
+        assertFalse(GameState.canPlanDrone(3, 1, 0, GameState.expectedWorkers(Race.Terran, 1, 0)));
+        assertFalse(GameState.canPlanDrone(0, 1, 80, 100));
+    }
+
+    @Test
+    void theOpeningDroneGateAppliesOnlyThePlannedWorkerLimit() {
+        assertTrue(GameState.canPlanOpeningDrone(2, 1));
+        assertFalse(GameState.canPlanOpeningDrone(3, 1));
+        assertTrue(GameState.canPlanOpeningDrone(5, 2));
+        assertFalse(GameState.canPlanOpeningDrone(0, 0));
+    }
 }

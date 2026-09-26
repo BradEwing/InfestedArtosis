@@ -27,6 +27,7 @@ import info.tracking.PsiStormTracker;
 import info.tracking.StrategyTracker;
 import learning.Decisions;
 import lombok.Data;
+import macro.DroneRound;
 import macro.HatcheryCapacity;
 import macro.SupplyCapacity;
 import macro.plan.ColonyClaims;
@@ -107,6 +108,7 @@ public class GameState {
     private HashSet<Plan> plansComplete = new HashSet<>();
     private HashSet<Plan> plansImpossible = new HashSet<>();
     private ProductionQueue productionQueue = new ProductionQueue();
+    private DroneRound droneRound = new DroneRound();
     private HashMap<Unit, Plan> assignedPlannedItems = new HashMap<>();
     private int plannedWorkers;
     private int plannedHatcheries = 1;
@@ -1034,10 +1036,42 @@ public class GameState {
     }
 
     public boolean canPlanDrone() {
-        final int expectedWorkers = expectedWorkers();
-        int hatchCount = structureCount(Readiness.USABLE, UnitType.Zerg_Hatchery, UnitType.Zerg_Lair, UnitType.Zerg_Hive);
-        int plannedWorkerConstraint = hatchCount * 3;
-        return plannedWorkers < plannedWorkerConstraint && numWorkers() < 80 && numWorkers() < expectedWorkers;
+        return canPlanDrone(plannedWorkers, usableHatcheryCount(), numWorkers(),
+                expectedWorkers(opponentRace, baseData.currentBaseCount(), geyserAssignments.size()));
+    }
+
+    /**
+     * Whether an opener may plan one of its own drones below its fixed drone target. Only the
+     * planned-worker limit applies: the expected-worker ceiling in {@link #canPlanDrone()} is 7 at
+     * one base against Zerg, so it would veto the drone that replaces the pool's.
+     *
+     * @return true while fewer drones are planned than three per usable hatchery
+     */
+    public boolean canPlanOpeningDrone() {
+        return canPlanOpeningDrone(plannedWorkers, usableHatcheryCount());
+    }
+
+    public static boolean canPlanOpeningDrone(int plannedWorkers, int hatchCount) {
+        return plannedWorkers < hatchCount * 3;
+    }
+
+    public static boolean canPlanDrone(int plannedWorkers, int hatchCount, int numWorkers, int expectedWorkers) {
+        return canPlanOpeningDrone(plannedWorkers, hatchCount) && numWorkers < 80 && numWorkers < expectedWorkers;
+    }
+
+    /**
+     * Whether the worker count is still below what our bases and extractors can use, ignoring the
+     * cap on Drones already queued that {@link #canPlanDrone} also applies.
+     *
+     * @return true while another worker would still gather
+     */
+    public boolean workersWanted() {
+        int workers = numWorkers();
+        return workers < 80 && workers < expectedWorkers(opponentRace, baseData.currentBaseCount(), geyserAssignments.size());
+    }
+
+    private int usableHatcheryCount() {
+        return structureCount(Readiness.USABLE, UnitType.Zerg_Hatchery, UnitType.Zerg_Lair, UnitType.Zerg_Hive);
     }
 
     public int numWorkers() {
@@ -1052,12 +1086,11 @@ public class GameState {
         return gasGatherers.size();
     }
 
-    private int expectedWorkers() {
+    public static int expectedWorkers(Race race, int baseCount, int geysers) {
         final int base = 5;
-        final int expectedMineralWorkers = baseData.currentBaseCount() * 7;
-        final int expectedGasWorkers = geyserAssignments.size() * 3;
+        final int expectedMineralWorkers = baseCount * 7;
+        final int expectedGasWorkers = geysers * 3;
 
-        Race race = opponentRace;
         switch (race) {
             case Zerg:
                 return expectedMineralWorkers + expectedGasWorkers;
@@ -1273,6 +1306,10 @@ public class GameState {
         return unitTypeCount.getTotalProduced(unitType);
     }
 
+    public int totalLost(UnitType unitType) {
+        return unitTypeCount.getTotalLost(unitType);
+    }
+
     public int ourUnitCount(UnitType... unitTypes) {
         int i = 0;
         for (UnitType unitType: unitTypes) {
@@ -1295,6 +1332,17 @@ public class GameState {
      *
      * @return the number of living observed enemy ground combat units whose last known tile is at one of our bases
      */
+    /**
+     * Enemy armed flyers visible at our bases right now, on the tiles
+     * {@link #visibleEnemyMobileGroundCombatUnitsAtOurBases} reads.
+     *
+     * @return the number of visible enemy air combat units at one of our bases
+     */
+    public int visibleEnemyAirCombatUnitsAtOurBases() {
+        Set<TilePosition> tiles = baseData.ourBaseTiles(gameMap, BaseData.NATURAL_DEFENSE_TILE_RADIUS);
+        return observedUnitTracker.getCountOfVisibleUnitsOnTiles(Filter::isAirCombatUnit, tiles);
+    }
+
     public int knownEnemyMobileGroundCombatUnitsAtOurBases() {
         Set<TilePosition> tiles = baseData.ourBaseTiles(gameMap, BaseData.NATURAL_DEFENSE_TILE_RADIUS);
         return observedUnitTracker.getCountOfLivingUnitsOnTiles(Filter::isMobileGroundCombatUnit, tiles);

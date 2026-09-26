@@ -8,11 +8,15 @@ import info.GameState;
 import info.Readiness;
 import info.TechProgression;
 import info.UnitTypeCount;
+import macro.Reactions;
 import macro.plan.Plan;
+import strategy.buildorder.ArmyUpgradeTrigger;
 import strategy.buildorder.LarvaBoundMacroHatchery;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Liquipedia Overview: The 2 Hatch Muta build can be a useful variation as many Terrans are comfortable countering
@@ -24,6 +28,9 @@ import java.util.List;
  * @see <a href="https://liquipedia.net/starcraft/2_Hatch_Muta_(vs._Terran)">Liquipedia</a>
  */
 public class TwoHatchMuta extends TerranBase {
+
+    static final int MUTALISKS_BEFORE_FLYER_UPGRADE = 7;
+
     public TwoHatchMuta() {
         super("2HatchMuta");
     }
@@ -72,7 +79,9 @@ public class TwoHatchMuta extends TerranBase {
 
         boolean wantMetabolicBoost = techProgression.canPlanMetabolicBoost() && !techProgression.isMetabolicBoost() && lairCount > 0;
         boolean wantFlyingAttack = shouldPlanFlyerAttack(techProgression, livingMutaCount);
-        boolean wantOverlordSpeed = needOverlordSpeed(gameState) && techProgression.canPlanOverlordSpeed();
+        boolean wantOverlordSpeed = shouldPlanOverlordSpeed(needOverlordSpeed(gameState) && techProgression.canPlanOverlordSpeed(),
+                Reactions.isAirOrCloakThreatSeen(gameState),
+                wantFlyingAttack);
 
         // Plan buildings
 
@@ -153,8 +162,10 @@ public class TwoHatchMuta extends TerranBase {
         }
 
         final int desiredMutalisks = desiredMutalisks(gameState);
-        List<Plan> mutaliskPlans = planMutalisk(techProgression, desiredMutalisks, gameState.numGatherers(),
-                gameState.queuedUnitPlanCount(UnitType.Zerg_Mutalisk), gameState.getUnitTypeCount());
+        List<Plan> mutaliskPlans = withheldByDroneRound(gameState.getDroneRound().isActive(), UnitType.Zerg_Mutalisk)
+                ? new ArrayList<>()
+                : planMutalisk(techProgression, desiredMutalisks, gameState.numGatherers(),
+                        gameState.queuedUnitPlanCount(UnitType.Zerg_Mutalisk), gameState.getUnitTypeCount());
         if (!mutaliskPlans.isEmpty()) {
             plans.addAll(mutaliskPlans);
             return plans;
@@ -180,6 +191,16 @@ public class TwoHatchMuta extends TerranBase {
         }
 
         return plans;
+    }
+
+    @Override
+    protected Set<UnitType> droneRoundArmy() {
+        return Collections.singleton(UnitType.Zerg_Mutalisk);
+    }
+
+    @Override
+    protected int droneRoundDroneCap(GameState gameState) {
+        return dronesNeeded(gameState);
     }
 
     protected int dronesNeeded(GameState gameState) {
@@ -247,7 +268,19 @@ public class TwoHatchMuta extends TerranBase {
      * @return true when the next Flyer Attacks level should be queued
      */
     static boolean shouldPlanFlyerAttack(TechProgression techProgression, int livingMutalisks) {
-        return livingMutalisks > 6 && techProgression.canPlanFlyerAttack();
+        return livingMutalisks >= MUTALISKS_BEFORE_FLYER_UPGRADE && techProgression.canPlanFlyerAttack();
+    }
+
+    /**
+     * Flyer Attacks moves ahead of the Mutalisk stream once the
+     * {@value #MUTALISKS_BEFORE_FLYER_UPGRADE} Mutalisks that plan it are alive.
+     */
+    @Override
+    protected ArmyUpgradeTrigger armyUpgradeTrigger(UpgradeType upgradeType) {
+        if (upgradeType == UpgradeType.Zerg_Flyer_Attacks) {
+            return new ArmyUpgradeTrigger(MUTALISKS_BEFORE_FLYER_UPGRADE, UnitType.Zerg_Mutalisk);
+        }
+        return null;
     }
 
     static boolean shouldPlanMutalisk(TechProgression techProgression, int mutaCount, int desiredMutalisks, int gatherers) {

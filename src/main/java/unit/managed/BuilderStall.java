@@ -15,9 +15,9 @@ import java.util.function.BiFunction;
  * @param <B> the blocker type
  */
 public class BuilderStall<B> {
-    static final int ARRIVAL_DISTANCE = 150;
+    public static final int ARRIVAL_DISTANCE = 150;
     static final int MIN_PROGRESS = 32;
-    static final int STALL_FRAMES = 120;
+    public static final int STALL_FRAMES = 120;
     static final int BLOCKER_SEARCH_RADIUS = 256;
 
     private B blocker;
