@@ -223,11 +223,47 @@ class LurkerDefilerUltraTest {
     }
 
     @Test
-    void zerglingsRiseWithTheHiveAndStayCapped() {
-        assertEquals(LurkerDefilerUltra.LAIR_ZERGLINGS, LurkerDefilerUltra.zerglingTarget(0, false));
-        assertEquals(LurkerDefilerUltra.HIVE_ZERGLINGS, LurkerDefilerUltra.zerglingTarget(0, true));
-        assertEquals(30, LurkerDefilerUltra.zerglingTarget(30, true));
-        assertEquals(LurkerDefilerUltra.MAX_ZERGLINGS, LurkerDefilerUltra.zerglingTarget(90, true));
+    void zerglingsRiseWithTheHiveAndKeepAHigherMatchupTarget() {
+        assertEquals(LurkerDefilerUltra.LAIR_ZERGLINGS, LurkerDefilerUltra.zerglingTarget(0, true, false));
+        assertEquals(LurkerDefilerUltra.HIVE_ZERGLINGS, LurkerDefilerUltra.zerglingTarget(0, true, true));
+        assertEquals(30, LurkerDefilerUltra.zerglingTarget(30, true, true));
+        assertEquals(TerranBase.MAX_ZERGLINGS, LurkerDefilerUltra.zerglingTarget(TerranBase.MAX_ZERGLINGS, true, true));
+    }
+
+    @Test
+    void noZerglingsAreAskedForBeforeTheSpawningPoolFinishes() {
+        assertEquals(0, LurkerDefilerUltra.zerglingTarget(0, false, true));
+        assertEquals(0, LurkerDefilerUltra.zerglingTarget(20, false, false));
+    }
+
+    @Test
+    void belowFourBasesTheBuildExpands() {
+        assertEquals(LurkerDefilerUltra.HatcheryStep.NEW_BASE, LurkerDefilerUltra.hatcheryStep(3, false, false, 3, 0));
+        assertEquals(LurkerDefilerUltra.HatcheryStep.NEW_BASE, LurkerDefilerUltra.hatcheryStep(3, false, true, 3, 0));
+    }
+
+    @Test
+    void onFourBasesAFloatBuysAMacroHatcheryUpToTheCap() {
+        assertEquals(LurkerDefilerUltra.HatcheryStep.NONE, LurkerDefilerUltra.hatcheryStep(4, false, false, 4, 0));
+        assertEquals(LurkerDefilerUltra.HatcheryStep.MACRO_HATCHERY,
+                LurkerDefilerUltra.hatcheryStep(4, false, true, 4, 0));
+        assertEquals(LurkerDefilerUltra.HatcheryStep.MACRO_HATCHERY,
+                LurkerDefilerUltra.hatcheryStep(4, false, true, 4, 1));
+    }
+
+    @Test
+    void aFloatPastTheMacroCapTakesANewBase() {
+        assertEquals(LurkerDefilerUltra.HatcheryStep.NEW_BASE, LurkerDefilerUltra.hatcheryStep(4, false, true, 4, 2));
+    }
+
+    @Test
+    void baseParityExpandsAheadOfAMacroHatchery() {
+        assertEquals(LurkerDefilerUltra.HatcheryStep.NEW_BASE, LurkerDefilerUltra.hatcheryStep(4, true, true, 4, 0));
+    }
+
+    @Test
+    void aReservedFourthBaseCountsTowardsTheTargetButNotTowardsTheMacroFloor() {
+        assertEquals(LurkerDefilerUltra.HatcheryStep.NEW_BASE, LurkerDefilerUltra.hatcheryStep(4, false, true, 3, 0));
     }
 
     @Test

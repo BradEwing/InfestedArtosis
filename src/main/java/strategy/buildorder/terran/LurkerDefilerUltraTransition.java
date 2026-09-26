@@ -1,5 +1,6 @@
 package strategy.buildorder.terran;
 
+import bwapi.Race;
 import bwapi.UnitType;
 import info.GameState;
 import strategy.buildorder.BuildOrder;
@@ -99,13 +100,17 @@ public final class LurkerDefilerUltraTransition {
     /**
      * Whether a build with this trigger hands over now.
      *
+     * <p>The race term is the one {@link BuildOrder#shouldTransition} applies by default, kept so
+     * no handover happens while the opponent's race is unresolved.
+     *
      * @param trigger the build's own trigger, or null while it does not hold
+     * @param raceKnown whether the opponent's race is resolved
      * @param livingDrones Drones alive
      * @param bases bases with a hatchery of ours
-     * @return true when the trigger holds and the economy gate is met
+     * @return true when the race is known, the trigger holds and the economy gate is met
      */
-    static boolean shouldEnter(Trigger trigger, int livingDrones, int bases) {
-        return trigger != null && economyReady(livingDrones, bases);
+    static boolean shouldEnter(Trigger trigger, boolean raceKnown, int livingDrones, int bases) {
+        return raceKnown && trigger != null && economyReady(livingDrones, bases);
     }
 
     /**
@@ -121,7 +126,8 @@ public final class LurkerDefilerUltraTransition {
      * @return true when the build hands over now
      */
     static boolean shouldEnter(GameState gameState, String from, Trigger trigger) {
-        boolean enter = shouldEnter(trigger, gameState.ourLivingUnitCount(UnitType.Zerg_Drone),
+        boolean enter = shouldEnter(trigger, gameState.getOpponentRace() != Race.Unknown,
+                gameState.ourLivingUnitCount(UnitType.Zerg_Drone),
                 gameState.getBaseData().currentBaseCount());
         if (enter) {
             PlanEvents.buildOrderTransition(label(from, trigger));

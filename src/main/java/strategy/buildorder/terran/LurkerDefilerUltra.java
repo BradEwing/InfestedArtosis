@@ -108,11 +108,15 @@ public class LurkerDefilerUltra extends TerranBase {
     /** Zergling floor before the Hive. */
     static final int LAIR_ZERGLINGS = 12;
 
-    /** Most Zerglings the build asks for; minerals past this go to the mineral surplus step. */
-    static final int MAX_ZERGLINGS = 48;
-
     /** Ultralisks alive before the Ultralisk upgrades move ahead of the Ultralisk stream. */
     static final int ULTRALISKS_BEFORE_ULTRALISK_UPGRADE_PRIORITY = 3;
+
+    /** The hatchery the build asks for this frame, from {@link #hatcheryStep}. */
+    enum HatcheryStep {
+        NEW_BASE,
+        MACRO_HATCHERY,
+        NONE
+    }
 
     /** The next tech structure or research the build plans, in the order {@link #nextTechStep} reads them. */
     enum TechStep {
@@ -233,16 +237,37 @@ public class LurkerDefilerUltra extends TerranBase {
      * Hatchery while fewer than {@value #MACRO_HATCHERY_CAP} exist, and a new base once they do.
      */
     private Plan planHatchery(GameState gameState, int baseCount, boolean floatingMinerals) {
-        BaseData baseData = gameState.getBaseData();
-        boolean wantBase = baseData.currentAndReservedCount() < BASE_TARGET || behindOnBases(gameState);
-        boolean wantMacroHatchery = floatingMinerals && macroHatcheryAllowed(baseCount, macroHatcheries(gameState));
-        if (!wantBase && wantMacroHatchery) {
-            return this.planMacroHatchery(gameState);
+        switch (hatcheryStep(gameState.getBaseData().currentAndReservedCount(), behindOnBases(gameState),
+                floatingMinerals, baseCount, macroHatcheries(gameState))) {
+            case MACRO_HATCHERY:
+                return this.planMacroHatchery(gameState);
+            case NEW_BASE:
+                return this.planNewBase(gameState);
+            default:
+                return null;
+        }
+    }
+
+    /**
+     * The hatchery the build asks for, as {@link #planHatchery} describes.
+     *
+     * @param basesHeldOrReserved bases we hold or have reserved for a queued hatchery
+     * @param behindOnBases whether the enemy holds as many bases as we do
+     * @param floatingMinerals whether {@link GameState#isFloatingMinerals()} holds
+     * @param baseCount bases with a hatchery of ours
+     * @param macroHatcheries macro Hatcheries finished, under construction and planned
+     * @return the step to take this frame
+     */
+    static HatcheryStep hatcheryStep(int basesHeldOrReserved, boolean behindOnBases, boolean floatingMinerals,
+                                     int baseCount, int macroHatcheries) {
+        boolean wantBase = basesHeldOrReserved < BASE_TARGET || behindOnBases;
+        if (!wantBase && floatingMinerals && macroHatcheryAllowed(baseCount, macroHatcheries)) {
+            return HatcheryStep.MACRO_HATCHERY;
         }
         if (wantBase || floatingMinerals) {
-            return this.planNewBase(gameState);
+            return HatcheryStep.NEW_BASE;
         }
-        return null;
+        return HatcheryStep.NONE;
     }
 
     private static int macroHatcheries(GameState gameState) {
@@ -468,20 +493,28 @@ public class LurkerDefilerUltra extends TerranBase {
 
     @Override
     protected int zerglingsNeeded(GameState gameState) {
-        return zerglingTarget(super.zerglingsNeeded(gameState), gameState.getTechProgression().isHive());
+        TechProgression techProgression = gameState.getTechProgression();
+        return zerglingTarget(super.zerglingsNeeded(gameState), techProgression.isSpawningPool(),
+                techProgression.isHive());
     }
 
     /**
-     * The Zergling target: the matchup's own target, raised to {@value #LAIR_ZERGLINGS} before the
-     * Hive and {@value #HIVE_ZERGLINGS} after it, and capped at {@value #MAX_ZERGLINGS}.
+     * The Zergling target: the matchup's own target, already capped by {@link TerranBase}, raised
+     * to {@value #LAIR_ZERGLINGS} before the Hive and {@value #HIVE_ZERGLINGS} after it. Zero while
+     * no Spawning Pool is finished, since a Zergling plan made then holds a larva it cannot morph.
+     * Minerals past the target go to the mineral surplus step.
      *
      * @param matchupZerglings the target {@link TerranBase} asks for, zero once met
+     * @param poolReady whether a Spawning Pool is finished
      * @param hasHive whether the Hive stands
      * @return the Zergling target, alive plus planned
      */
-    static int zerglingTarget(int matchupZerglings, boolean hasHive) {
+    static int zerglingTarget(int matchupZerglings, boolean poolReady, boolean hasHive) {
+        if (!poolReady) {
+            return 0;
+        }
         int floor = hasHive ? HIVE_ZERGLINGS : LAIR_ZERGLINGS;
-        return Math.min(MAX_ZERGLINGS, Math.max(matchupZerglings, floor));
+        return Math.max(matchupZerglings, floor);
     }
 
     @Override

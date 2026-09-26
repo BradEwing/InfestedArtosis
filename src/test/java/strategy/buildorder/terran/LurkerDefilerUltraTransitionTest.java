@@ -81,14 +81,20 @@ class LurkerDefilerUltraTransitionTest {
     @Test
     void aTriggerWithoutTheEconomyDoesNotTransition() {
         LurkerDefilerUltraTransition.Trigger goliaths = LurkerDefilerUltraTransition.Trigger.GOLIATHS;
-        assertFalse(LurkerDefilerUltraTransition.shouldEnter(goliaths, 20, 3));
-        assertFalse(LurkerDefilerUltraTransition.shouldEnter(goliaths, 40, 2));
-        assertTrue(LurkerDefilerUltraTransition.shouldEnter(goliaths, 21, 3));
+        assertFalse(LurkerDefilerUltraTransition.shouldEnter(goliaths, true, 20, 3));
+        assertFalse(LurkerDefilerUltraTransition.shouldEnter(goliaths, true, 40, 2));
+        assertTrue(LurkerDefilerUltraTransition.shouldEnter(goliaths, true, 21, 3));
     }
 
     @Test
     void theEconomyWithoutATriggerDoesNotTransition() {
-        assertFalse(LurkerDefilerUltraTransition.shouldEnter(null, 60, 5));
+        assertFalse(LurkerDefilerUltraTransition.shouldEnter(null, true, 60, 5));
+    }
+
+    @Test
+    void noHandoverWhileTheOpponentRaceIsUnknown() {
+        assertFalse(LurkerDefilerUltraTransition.shouldEnter(LurkerDefilerUltraTransition.Trigger.LURKERS,
+                false, 60, 5));
     }
 
     @Test
