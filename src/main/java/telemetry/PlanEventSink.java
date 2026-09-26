@@ -168,6 +168,18 @@ public interface PlanEventSink {
     }
 
     /**
+     * The geyser under one of our completed Extractors read empty for the first time.
+     *
+     * @param geyser the geyser's tile location
+     * @param base the tile location of the base the geyser belongs to, or null when it belongs to none
+     * @param initialResources the gas the geyser started the game with
+     * @param extractorCompletedFrame the frame the Extractor on it completed
+     */
+    default void onGeyserDepleted(TilePosition geyser, TilePosition base, int initialResources,
+                                  int extractorCompletedFrame) {
+    }
+
+    /**
      * The base squads rally to changed, or was first chosen.
      *
      * @param base the rally base's tile location

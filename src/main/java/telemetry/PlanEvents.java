@@ -213,6 +213,15 @@ public final class PlanEvents {
         current.onBaseLost(base, innerBase);
     }
 
+    public static void geyserDepleted(TilePosition geyser, TilePosition base, int initialResources,
+                                      int extractorCompletedFrame) {
+        PlanEventSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onGeyserDepleted(geyser, base, initialResources, extractorCompletedFrame);
+    }
+
     public static void rallyPointChanged(TilePosition base, String reason) {
         PlanEventSink current = sink;
         if (current == null) {

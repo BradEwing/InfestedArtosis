@@ -1,6 +1,7 @@
 package telemetry;
 
 import bwapi.Position;
+import bwapi.TilePosition;
 import bwapi.UnitType;
 import macro.ProductionQueue;
 import macro.plan.BuildingPlan;
@@ -31,6 +32,7 @@ class PlanEventsTest {
     private final List<Plan> diverted = new ArrayList<>();
     private final List<Position> divertMinerals = new ArrayList<>();
     private final List<String> hiveTechGates = new ArrayList<>();
+    private final List<String> depletedGeysers = new ArrayList<>();
 
     private PlanEventSink recorder() {
         return new PlanEventSink() {
@@ -71,6 +73,12 @@ class PlanEventsTest {
                 hiveTechGates.add(gate + ":" + structure + ":" + availableGas + ":" + requiredGas + ":"
                         + extractorsCompleted);
             }
+
+            @Override
+            public void onGeyserDepleted(TilePosition geyser, TilePosition base, int initialResources,
+                                         int extractorCompletedFrame) {
+                depletedGeysers.add(geyser + ":" + base + ":" + initialResources + ":" + extractorCompletedFrame);
+            }
         };
     }
 
@@ -91,6 +99,16 @@ class PlanEventsTest {
         assertEquals("PLANNED>SCHEDULE", transitions.get(0));
         assertEquals("SCHEDULE>BUILDING", transitions.get(1));
         assertEquals(PlanState.BUILDING, plan.getState());
+    }
+
+    @Test
+    void geyserDepletedReachesTheSinkWithTheGeyserBaseAndStartingGas() {
+        PlanEvents.register(recorder());
+
+        PlanEvents.geyserDepleted(new TilePosition(10, 20), new TilePosition(12, 24), 5000, 1800);
+
+        assertEquals(Collections.singletonList(new TilePosition(10, 20) + ":" + new TilePosition(12, 24)
+                + ":5000:1800"), depletedGeysers);
     }
 
     @Test
