@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PlanEventLoggerTest {
 
-    private static final int PLAN_COLUMNS = 73;
+    private static final int PLAN_COLUMNS = 80;
 
     private static final boolean STARVED = true;
 
@@ -142,7 +142,20 @@ class PlanEventLoggerTest {
         assertEquals("geyser_base_y", column(base + 1));
         assertEquals("geyser_initial_resources", column(base + 2));
         assertEquals("extractor_completed_frame", column(base + 3));
-        assertEquals("extractor_completed_frame", columns[columns.length - 1]);
+    }
+
+    @Test
+    void theDroneRoundColumnsAreAppendedLast() {
+        String[] columns = PlanEventLogger.PLAN_HEADER.split(",", -1);
+        int reason = indexOf("drone_round_reason");
+        assertEquals(indexOf("extractor_completed_frame") + 1, reason);
+        assertEquals("drone_round_drones", column(reason + 1));
+        assertEquals("drone_round_size", column(reason + 2));
+        assertEquals("contain_held_frames", column(reason + 3));
+        assertEquals("drone_round_workers", column(reason + 4));
+        assertEquals("drone_round_soft_cap", column(reason + 5));
+        assertEquals("drone_round_hard_cap", column(reason + 6));
+        assertEquals("drone_round_hard_cap", columns[columns.length - 1]);
     }
 
     private static String column(int index) {

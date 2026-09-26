@@ -27,6 +27,7 @@ import macro.plan.TechPlan;
 import macro.plan.UnitPlan;
 import macro.plan.UpgradePlan;
 import telemetry.PlanEvents;
+import unit.squad.ContainHeldTimer;
 import util.Time;
 
 import java.util.ArrayList;
@@ -182,8 +183,44 @@ public abstract class BuildOrder {
         int enemiesAtBases = gameState.visibleEnemyMobileGroundCombatUnitsAtOurBases()
                 + gameState.visibleEnemyAirCombatUnitsAtOurBases();
         boolean threatened = DroneRound.isThreatened(rushed, gameState.isAllIn(), enemiesAtBases);
-        gameState.getDroneRound().update(gameState.getGameTime().getFrames(), livingArmy, drones,
-                droneRoundDroneCap(gameState), gameState.workersWanted(), threatened);
+        int frame = gameState.getGameTime().getFrames();
+        gameState.getDroneRound().update(frame, livingArmy, drones, droneRoundDroneCap(gameState),
+                gameState.workersWanted(), threatened, containHeld(gameState, frame));
+    }
+
+    private DroneRound.ContainHeld containHeld(GameState gameState, int frame) {
+        ContainHeldTimer timer = gameState.getContainHeldTimer();
+        return DroneRound.ContainHeld.builder()
+                .eligible(containHeldMatchup(gameState.getOpponentRace()) && runsContainHeldRounds(gameState))
+                .chainStartFrame(timer.getChainStartFrame())
+                .heldFrames(timer.heldFrames(frame))
+                .hatcheries(gameState.hatcheryCount())
+                .workers(gameState.numWorkers())
+                .softCap(gameState.workerSoftCap())
+                .hardCap(gameState.workerHardCap())
+                .build();
+    }
+
+    /**
+     * Whether contain-held drone rounds run against this race: Terran and Protoss, never Zerg, and
+     * never before the race is known.
+     *
+     * @param opponentRace the opponent's race as known now
+     * @return true against Terran or Protoss
+     */
+    static boolean containHeldMatchup(Race opponentRace) {
+        return opponentRace == Race.Terran || opponentRace == Race.Protoss;
+    }
+
+    /**
+     * Whether this build lets a held contain open a {@link DroneRound}. The build's
+     * {@link #droneRoundDroneCap} does not bound such a round.
+     *
+     * @param gameState current game state
+     * @return true unless the build overrides it
+     */
+    protected boolean runsContainHeldRounds(GameState gameState) {
+        return true;
     }
 
     private static int dronesInEgg(List<Unit> units) {

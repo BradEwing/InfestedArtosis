@@ -195,6 +195,20 @@ public class SquadManager {
 
         fightSquads.removeAll(removed);
         evadeOutrangedHits(now);
+        gameState.getContainHeldTimer().update(now, anyGroundSquadContaining(fightSquads));
+    }
+
+    /**
+     * @param squads the fight squads
+     * @return true when any ground squad is in CONTAIN
+     */
+    static boolean anyGroundSquadContaining(Collection<Squad> squads) {
+        for (Squad squad : squads) {
+            if (squad.isGroundSquad() && squad.getStatus() == SquadStatus.CONTAIN) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -1648,6 +1662,9 @@ public class SquadManager {
 
         switch (verdict) {
             case BREAK_ALL:
+                if (basesUnderAttack) {
+                    gameState.getContainHeldTimer().broken();
+                }
                 breakAllContainment(now);
                 break;
             case RETREAT:
@@ -1682,7 +1699,22 @@ public class SquadManager {
         return DecisionPath.CONTAIN_RETREAT;
     }
 
+    /**
+     * Whether a contain exit was forced by the enemy, which breaks the held contain at once rather than
+     * letting {@link ContainHeldTimer} bridge it. A timeout, containment ceasing to apply, or no arc left
+     * clear of static defence is not.
+     *
+     * @param path the decision path the containing squad retreated on
+     * @return true for the attrition and outranged exits
+     */
+    static boolean breaksHeldContain(DecisionPath path) {
+        return path == DecisionPath.CONTAIN_ATTRITION || path == DecisionPath.CONTAIN_OUTRANGED;
+    }
+
     private void retreatFromContainment(Squad squad, HashSet<ManagedUnit> members, int now, DecisionPath path) {
+        if (breaksHeldContain(path)) {
+            gameState.getContainHeldTimer().broken();
+        }
         endContainment(squad);
         squad.setStatus(SquadStatus.RETREAT);
         SquadDecisions.pathTaken(squad, path);

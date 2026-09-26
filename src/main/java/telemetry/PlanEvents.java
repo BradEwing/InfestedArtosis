@@ -6,6 +6,7 @@ import bwapi.UnitType;
 import info.BuilderThreat;
 import info.EnemyMainClearReason;
 import info.EnemyMainEvidence;
+import macro.DroneRound;
 import macro.plan.BuilderDispatchDecision;
 import macro.plan.BuilderLossReason;
 import macro.plan.BuilderReading;
@@ -220,6 +221,22 @@ public final class PlanEvents {
             return;
         }
         current.onGeyserDepleted(geyser, base, initialResources, extractorCompletedFrame);
+    }
+
+    public static void droneRoundOpened(DroneRound.Report report) {
+        PlanEventSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onDroneRoundOpened(report);
+    }
+
+    public static void droneRoundClosed(DroneRound.Report report) {
+        PlanEventSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onDroneRoundClosed(report);
     }
 
     public static void rallyPointChanged(TilePosition base, String reason) {
