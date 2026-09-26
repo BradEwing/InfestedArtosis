@@ -4,15 +4,20 @@ package macro;
  * Rules that decide if the bot wants another hatchery, and whether a hatchery plan queued now
  * survives the frame.
  *
- * <p>Producers and cancellers must agree on the same inputs. Every input to a want rule is
- * invariant under queueing or cancelling a plan: completed hatcheries and macro hatcheries,
- * living larva, mined minerals and the reaction flags. No want rule reads a planned or reserved counter, because a
- * counter that moves when a plan is created lets a producer switch its own canceller on, and a
- * counter that moves when a plan is cancelled lets the canceller switch its own producer back on.
+ * <p>Producers and cancellers must agree on the same inputs. Every input to a canceller and to
+ * the parity request is invariant under queueing or cancelling a plan: completed hatcheries and
+ * macro hatcheries, living larva and the reaction flags. A counter that moves when a plan is
+ * created would let a producer switch its own canceller on, and a counter that moves when a plan
+ * is cancelled would let the canceller switch its own producer back on.
  *
- * <p>{@link #isEnqueueRearmed} is the one rule that reads in-flight plans, and it is a
- * producer-side rate limit only. No canceller reads it, so a request it holds back cannot switch
- * a canceller on, and its cooldown is set by an enqueue and never reset by a cancel.
+ * <p>{@link #isFloatingMinerals} is the one want rule that reads planned and reserved counters:
+ * in-flight hatchery plans and unreserved minerals. No canceller reads it. Creating a hatchery
+ * plan raises its bar, so the request switches itself off; cancelling one lowers the bar and may
+ * switch the request back on, and {@link #isEnqueueRearmed} then holds it for the cooldown.
+ *
+ * <p>{@link #isEnqueueRearmed} reads in-flight plans too, and it is a producer-side rate limit
+ * only. No canceller reads it, so a request it holds back cannot switch a canceller on, and its
+ * cooldown is set by an enqueue and never reset by a cancel.
  *
  * <p>All rules are race agnostic. The reactions that delete hatchery plans fire on detected enemy
  * strategies, not on the opponent's race.
@@ -23,6 +28,10 @@ public final class HatcheryCapacity {
 
     static final int EXCESS_LARVA = 5;
 
+    /**
+     * Unreserved minerals the floating-minerals request needs per in-flight hatchery plan, and
+     * once more on top.
+     */
     static final int MINERALS_PER_HATCHERY = 350;
 
     /**
@@ -124,13 +133,21 @@ public final class HatcheryCapacity {
     }
 
     /**
-     * True when mined minerals outstrip what our larva-producing hatcheries can spend.
+     * True when unreserved minerals exceed {@link #MINERALS_PER_HATCHERY} for every hatchery plan
+     * in flight plus one.
      *
-     * @param minerals minerals mined and unspent, before any reservation
-     * @param hatcheryCount completed larva-producing hatcheries
+     * <p>The bar does not read completed hatcheries, so it stays at 350 with no hatchery plan in
+     * flight however many hatcheries we own. Reservations lower the input, so minerals held for
+     * queued plans never count as floating, and reservations that meet or exceed the bank never
+     * fire.
+     *
+     * @param availableMinerals minerals mined and not reserved by a queued plan; negative while
+     *     reservations exceed the bank
+     * @param plannedHatcheries hatchery plans in flight, expansions and macro hatcheries alike; a
+     *     negative count reads as zero
      * @param pastEarlyGame true once the opening is over
      */
-    public static boolean isFloatingMinerals(int minerals, int hatcheryCount, boolean pastEarlyGame) {
-        return pastEarlyGame && minerals > (hatcheryCount + 1) * MINERALS_PER_HATCHERY;
+    public static boolean isFloatingMinerals(int availableMinerals, int plannedHatcheries, boolean pastEarlyGame) {
+        return pastEarlyGame && availableMinerals > (Math.max(0, plannedHatcheries) + 1) * MINERALS_PER_HATCHERY;
     }
 }
