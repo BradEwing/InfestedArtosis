@@ -136,4 +136,12 @@ public final class SquadDecisions {
         }
         current.onDefenseEvaluated(squad, event, candidates, pulled, released, sim);
     }
+
+    public static void swarmEvaluated(Squad squad, SwarmEvent event, int swarmId, int remainingFrames) {
+        SquadDecisionSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onSwarmEvaluated(squad, event, swarmId, remainingFrames);
+    }
 }

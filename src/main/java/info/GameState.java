@@ -20,6 +20,8 @@ import config.Config;
 import info.map.BuildingPlanner;
 import info.map.GameMap;
 import info.map.MapTile;
+import info.tracking.DarkSwarm;
+import info.tracking.DarkSwarmTracker;
 import info.tracking.EnemyReachMemory;
 import info.tracking.ObservedBulletTracker;
 import info.tracking.ObservedUnitTracker;
@@ -138,6 +140,7 @@ public class GameState {
     private Set<Bullet> lastFrameBunkerBullets = new HashSet<>();
     private Map<Unit, Integer> recentBunkerShotVictims = new HashMap<>();
     private PsiStormTracker psiStormTracker = new PsiStormTracker(observedBulletTracker);
+    private DarkSwarmTracker darkSwarmTracker = new DarkSwarmTracker();
     private StrategyTracker strategyTracker;
 
     // Initialized in InformationManager
@@ -169,9 +172,29 @@ public class GameState {
         observeHitPoints(frame);
         updateBunkerGarrisonCounts();
         learnReachFromHits(frame);
+        updateDarkSwarms();
         strategyTracker.onFrame();
         clearVisibleEnemyWorkerLocations();
         baseData.updateSquadRallyBase();
+    }
+
+    /**
+     * Hands the tracker the friendly Dark Swarms in sight this frame, see {@link DarkSwarmTracker#isFriendly}.
+     */
+    private void updateDarkSwarms() {
+        List<DarkSwarm> sighted = new ArrayList<>();
+        for (Unit unit : game.getAllUnits()) {
+            if (unit.getType() != UnitType.Spell_Dark_Swarm) {
+                continue;
+            }
+            Player owner = unit.getPlayer();
+            boolean ownedBySelf = owner == self;
+            boolean ownedByEnemy = owner != null && owner.isEnemy(self);
+            if (DarkSwarmTracker.isFriendly(ownedBySelf, ownedByEnemy, opponentRace)) {
+                sighted.add(new DarkSwarm(unit.getID(), unit.getPosition(), unit.getRemoveTimer()));
+            }
+        }
+        darkSwarmTracker.update(sighted);
     }
 
     private void observeHitPoints(int frame) {
