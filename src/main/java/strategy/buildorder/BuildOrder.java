@@ -42,6 +42,15 @@ public abstract class BuildOrder {
     private static final int EARLY_RUSH_SECOND_SUNKEN_ATTACKERS = 4;
     private static final int EARLY_RUSH_MIN_ZERGLINGS = 6;
     public static final int EMERGENCY_DEFENSE_PRIORITY = 1;
+
+    /**
+     * Priority band for an army upgrade whose {@link ArmyUpgradeTrigger} is met.
+     *
+     * <p>Polls ahead of {@link UnitPlan#ADVANCED_UNIT_PRIORITY}, so a mineral-short upgrade holds
+     * the advanced units behind it until it is funded, and behind the reaction, colony and fixed
+     * tech bands below it.
+     */
+    public static final int ARMY_UPGRADE_PRIORITY = 120;
     protected static final int SPAWNING_POOL_PRIORITY = 2;
     private static final int DEFAULT_COLONY_PRIORITY = 5;
     private static final int UNKNOWN_RACE_BASE_TARGET = 2;
@@ -950,9 +959,69 @@ public abstract class BuildOrder {
         return false;
     }
 
+    /**
+     * The living units that move an upgrade ahead of advanced-unit production in this build.
+     *
+     * <p>Advanced units poll at {@link UnitPlan#ADVANCED_UNIT_PRIORITY}, ahead of an upgrade that
+     * carries the frame it was planned on, so each one reserves the bank before the upgrade is
+     * checked. A build names a trigger for each upgrade that competes with its advanced units.
+     *
+     * @param upgradeType the upgrade
+     * @return the trigger, or null when the upgrade keeps its frame priority
+     */
+    protected ArmyUpgradeTrigger armyUpgradeTrigger(UpgradeType upgradeType) {
+        return null;
+    }
+
+    /**
+     * True when this build's trigger for the upgrade is met.
+     *
+     * @param upgradeType the upgrade
+     * @param count our unit counts
+     */
+    public boolean isArmyUpgradeTriggered(UpgradeType upgradeType, UnitTypeCount count) {
+        ArmyUpgradeTrigger trigger = armyUpgradeTrigger(upgradeType);
+        return trigger != null && trigger.isMet(count);
+    }
+
+    /**
+     * True when the upgrade can take {@link #ARMY_UPGRADE_PRIORITY}: this build's trigger for it is
+     * met and the building it is researched at has finished
+     * ({@link TechProgression#isUpgradePrerequisiteComplete}).
+     *
+     * <p>An upgrade in the band sorts ahead of building plans queued at their frame, so one whose
+     * building is only planned would sort ahead of that building's plan and hold the bank it needs.
+     *
+     * @param upgradeType the upgrade
+     * @param count our unit counts
+     * @param techProgression our finished tech
+     */
+    public boolean isArmyUpgradePromotable(UpgradeType upgradeType, UnitTypeCount count,
+                                           TechProgression techProgression) {
+        return isArmyUpgradeTriggered(upgradeType, count) && techProgression.isUpgradePrerequisiteComplete(upgradeType);
+    }
+
+    /**
+     * The priority {@link #planUpgrade} gives an upgrade: {@link #ARMY_UPGRADE_PRIORITY} once
+     * {@link #isArmyUpgradePromotable} holds, otherwise the frame it is planned on.
+     *
+     * @param upgradeType the upgrade
+     * @param count our unit counts
+     * @param techProgression our finished tech
+     * @param frame the current frame
+     */
+    public int upgradePriority(UpgradeType upgradeType, UnitTypeCount count, TechProgression techProgression,
+                               int frame) {
+        if (isArmyUpgradePromotable(upgradeType, count, techProgression)) {
+            return Math.min(frame, ARMY_UPGRADE_PRIORITY);
+        }
+        return frame;
+    }
+
     protected Plan planUpgrade(GameState gameState, UpgradeType upgradeType) {
         TechProgression techProgression = gameState.getTechProgression();
-        int priority = gameState.getGameTime().getFrames();
+        int priority = upgradePriority(upgradeType, gameState.getUnitTypeCount(), techProgression,
+                gameState.getGameTime().getFrames());
         switch (upgradeType) {
             case Metabolic_Boost:
                 techProgression.setPlannedMetabolicBoost(true);
