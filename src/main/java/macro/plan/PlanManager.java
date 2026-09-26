@@ -39,6 +39,7 @@ public class PlanManager {
     private HashSet<ManagedUnit> larva;
     private HashSet<ManagedUnit> scheduledDrones = new HashSet<>();
     private DispatchedBuilders<ManagedUnit> dispatchedDrones = new DispatchedBuilders<>();
+    private LostBuilders lostBuilders = new LostBuilders();
     private BuilderReleases<ManagedUnit> builderReleases = new BuilderReleases<>();
 
 
@@ -190,6 +191,9 @@ public class PlanManager {
             plan.setState(PlanState.BUILDING);
             managedUnit.setRole(UnitRole.BUILD);
             dispatchedDrones.dispatch(managedUnit, plan, currentFrame, travelFrames);
+            BuilderReading reading = reading(managedUnit, plan);
+            dispatchedDrones.read(managedUnit, reading);
+            reportRedispatch(lostBuilders, plan, reading);
             executed.add(managedUnit);
         }
 
@@ -248,23 +252,79 @@ public class PlanManager {
      * sits in BUILDING holds the plan, its build-ahead claim and its reservation until the claim is
      * evicted. See {@link BuilderLossReason} for the reasons a builder is lost. A plan past its
      * {@link BuilderReleases} stray cap is no longer measured for a stray and keeps its builder.
+     *
+     * <p>Every builder still walking is read each frame, so one killed before the next frame is
+     * reported as it was on the last frame it was alive.
      */
     private void releaseLostBuilders() {
         final int frame = game.getFrameCount();
+        lostBuilders.forgetSettled();
         for (Map.Entry<ManagedUnit, Plan> entry : dispatchedDrones.snapshot()) {
             ManagedUnit builder = entry.getKey();
             Plan plan = entry.getValue();
             if (plan.getState() != PlanState.BUILDING) {
+                if (diedOnItsWalk(plan.getState(), builder.getUnit().exists())) {
+                    reportLoss(lostBuilders, plan, BuilderLossReason.DIED, dispatchedDrones.lastReadingOf(builder));
+                }
                 dispatchedDrones.undispatch(builder);
                 if (isSettled(plan.getState())) {
                     builderReleases.forget(plan);
                 }
                 continue;
             }
+            BuilderReading reading = reading(builder, plan);
+            dispatchedDrones.read(builder, reading);
             BuilderLossReason reason = lossReason(builder, plan, frame);
             if (reason != null) {
-                releaseLostBuilder(builder, plan, reason);
+                releaseLostBuilder(builder, plan, reason, reading);
             }
+        }
+    }
+
+    /**
+     * Whether a dispatched builder whose plan has left BUILDING was killed on its walk. Losing the
+     * executor of a BUILDING plan cancels it, and a builder that morphed into its building still
+     * exists, or completes the plan when it became an Extractor.
+     *
+     * @param planState the plan's state now
+     * @param builderExists whether the builder's unit still exists
+     */
+    static boolean diedOnItsWalk(PlanState planState, boolean builderExists) {
+        return planState == PlanState.CANCELLED && !builderExists;
+    }
+
+    private BuilderReading reading(ManagedUnit builder, Plan plan) {
+        return BuilderReading.of(builder.getUnit(), builder.getRole(), plan);
+    }
+
+    /**
+     * Reports a lost builder and, unless it died, holds the loss for the plan's next dispatch to
+     * pair with. A builder that died leaves its plan cancelled, so nothing will re-dispatch it.
+     *
+     * @param lostBuilders the losses awaiting a re-dispatch
+     * @param plan the plan that lost its builder
+     * @param reason why the builder was lost
+     * @param builder the lost builder as last read
+     */
+    static void reportLoss(LostBuilders lostBuilders, Plan plan, BuilderLossReason reason, BuilderReading builder) {
+        PlanEvents.builderLost(plan, reason, builder);
+        if (reason != BuilderLossReason.DIED) {
+            lostBuilders.lost(plan, reason, builder);
+        }
+    }
+
+    /**
+     * Reports a dispatch that replaces a builder the plan lost, with both builders. A dispatch of a
+     * plan that lost no builder, including one after a threat recall, reports nothing.
+     *
+     * @param lostBuilders the losses awaiting a re-dispatch
+     * @param plan the plan just dispatched
+     * @param taker the newly dispatched builder, read on its dispatch frame
+     */
+    static void reportRedispatch(LostBuilders lostBuilders, Plan plan, BuilderReading taker) {
+        LostBuilders.Loss loss = lostBuilders.takeOver(plan);
+        if (loss != null) {
+            PlanEvents.builderRedispatched(plan, loss.getReason(), loss.getBuilder(), taker);
         }
     }
 
@@ -314,11 +374,16 @@ public class PlanManager {
      * with no plan left goes IDLE, so the worker manager takes it back; a builder another manager
      * gave a new role keeps that role.
      *
+     * <p>The release writes a BUILDER_LOST row with the builder as read before it was released, and
+     * the next dispatch of the plan writes a BUILDER_REDISPATCH row naming both builders.
+     *
      * @param builder the executor the plan loses
      * @param plan the plan, in BUILDING
      * @param reason why the builder is lost
+     * @param reading the builder as read this frame, before the release
      */
-    private void releaseLostBuilder(ManagedUnit builder, Plan plan, BuilderLossReason reason) {
+    private void releaseLostBuilder(ManagedUnit builder, Plan plan, BuilderLossReason reason,
+            BuilderReading reading) {
         dispatchedDrones.undispatch(builder);
         builderReleases.record(plan, builder, reason, game.getFrameCount());
         if (builder.getPlan() == plan) {
@@ -328,6 +393,7 @@ public class PlanManager {
         returnToSchedule(plan, gameState.getAssignedPlannedItems(), gameState.getPlansBuilding(),
                 gameState.getPlansScheduled());
         PlanEvents.builderDispatchDecision(plan, reason.decision(), builderThreat(builder, plan));
+        reportLoss(lostBuilders, plan, reason, reading);
     }
 
     /**
