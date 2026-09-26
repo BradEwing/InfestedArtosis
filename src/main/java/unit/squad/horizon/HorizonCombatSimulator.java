@@ -9,6 +9,7 @@ import bwapi.UnitType;
 import bwapi.WeaponType;
 import info.GameState;
 import info.TechProgression;
+import info.tracking.DarkSwarm;
 import info.tracking.ObservedUnit;
 import info.tracking.ObservedUnitTracker;
 import lombok.Getter;
@@ -80,6 +81,9 @@ public class HorizonCombatSimulator implements CombatSimulator {
         List<Position> coveredGroundThreats = new ArrayList<>();
         List<Position> coveredAirThreats = new ArrayList<>();
 
+        double swarmCover = swarmCoverShare(squad, gameState.getDarkSwarmTracker().getActiveSwarms());
+        snapshot.setSwarmCover(swarmCover);
+
         List<Position> visibleBunkers = visibleCompletedBunkers(tracker);
         for (ObservedUnit ou : tracker.getLivingObservedUnits()) {
             UnitType type = ou.getUnitType();
@@ -135,9 +139,10 @@ public class HorizonCombatSimulator implements CombatSimulator {
                 antiAirBase /= WORKER_STRENGTH_DIVISOR;
             }
 
-            double groundEnemyStr = groundBase * hpWeight * distWeight * heightMod;
+            double unswarmedGroundStr = groundBase * hpWeight * distWeight * heightMod;
+            double groundEnemyStr = unswarmedGroundStr * SwarmCover.groundMultiplier(type, swarmCover);
             double aaEnemyStr = antiAirBase * hpWeight * distWeight * heightMod;
-            enemySample.add(type, groundEnemyStr, aaEnemyStr);
+            enemySample.add(type, groundEnemyStr, aaEnemyStr, Math.max(unswarmedGroundStr, aaEnemyStr));
 
             double displayStr = airSquad ? aaEnemyStr : groundEnemyStr;
             snapshot.getEnemyUnits().add(new UnitDebugEntry(pos, type, displayStr, false, !visible));
@@ -405,12 +410,20 @@ public class HorizonCombatSimulator implements CombatSimulator {
         private final List<Boolean> entrySupported = new ArrayList<>();
 
         void add(UnitType type, double ground, double antiAir) {
+            add(type, ground, antiAir, Math.max(ground, antiAir));
+        }
+
+        /**
+         * @param standing how much the unit weighs as a target, which our swarm cover does not reduce: a unit whose
+         *                 fire the swarm negates is no smaller a target for it
+         */
+        void add(UnitType type, double ground, double antiAir, double standing) {
             groundStrength += ground;
             antiAirStrength += antiAir;
             if (type.isFlyer()) {
-                airStanding += Math.max(ground, antiAir);
+                airStanding += standing;
             } else {
-                groundStanding += Math.max(ground, antiAir);
+                groundStanding += standing;
             }
             entries.add(new double[]{ground, antiAir});
             entrySupported.add(isMedicSupported(type));
@@ -624,6 +637,26 @@ public class HorizonCombatSimulator implements CombatSimulator {
 
         return hpWeight * distWeight * cloak * prepPenalty * rangeUpgrade * speedPenalty
                 * attackUpgrade * adrenalGlands * armorUpgrade;
+    }
+
+    /**
+     * The squad's own cover under our active Dark Swarms, see {@link SwarmCover#coverShare}: each ground member
+     * weighted by its stronger domain strength. Overlords and flyers carry no cover. Adjacent squads are left out,
+     * so a squad standing in the open is never priced as covered because its neighbour is under a swarm.
+     */
+    private double swarmCoverShare(Squad squad, List<DarkSwarm> swarms) {
+        if (swarms.isEmpty()) return 0;
+        List<Double> covers = new ArrayList<>();
+        List<Double> weights = new ArrayList<>();
+        for (ManagedUnit mu : squad.getMembers()) {
+            UnitType type = mu.getUnitType();
+            if (type == UnitType.Zerg_Overlord || type.isFlyer()) continue;
+            Unit unit = mu.getUnit();
+            double topSpeed = unit.getPlayer().topSpeed(type);
+            covers.add(SwarmCover.unitCover(unit.getPosition(), type, topSpeed, swarms));
+            weights.add(UnitStrength.strongerDomain(type));
+        }
+        return SwarmCover.coverShare(covers, weights);
     }
 
     private double rangeUpgradeCorrection(Unit unit, UnitType type) {
@@ -1017,6 +1050,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
         private boolean enemyMeasured;
         private boolean threatBeyondRadius;
         private int enemyUnscoredSupply;
+        private double swarmCover;
         private double enemyAirShare = UnitStrength.UNMEASURED_AIR_SHARE;
         private double ourAirShare = UnitStrength.UNMEASURED_AIR_SHARE;
     }

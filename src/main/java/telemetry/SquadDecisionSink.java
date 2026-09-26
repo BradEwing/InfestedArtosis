@@ -110,4 +110,13 @@ public interface SquadDecisionSink {
      */
     void onDefenseEvaluated(Squad squad, DefenseEvent event, int candidates, List<ManagedUnit> pulled,
                             List<ManagedUnit> released, DefenseSim sim);
+
+    /**
+     * A melee squad took or dropped a swarm lock, or was sampled near one of our active Dark Swarms.
+     *
+     * @param event what happened
+     * @param swarmId id of the Spell_Dark_Swarm unit the row is about
+     * @param remainingFrames frames the swarm had left, 0 once it was removed
+     */
+    void onSwarmEvaluated(Squad squad, SwarmEvent event, int swarmId, int remainingFrames);
 }

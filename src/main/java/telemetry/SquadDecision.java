@@ -47,6 +47,9 @@ final class SquadDecision {
     private double ourAirShare = NOT_EVALUATED;
     private int moveOutThreshold = NOT_EVALUATED;
     private int moveOutStrength = NOT_EVALUATED;
+    private int swarmId = NOT_EVALUATED;
+    private int swarmRemainingFrames = NOT_EVALUATED;
+    private double swarmCover = NOT_EVALUATED;
 
     static int tristate(boolean value) {
         return value ? 1 : 0;

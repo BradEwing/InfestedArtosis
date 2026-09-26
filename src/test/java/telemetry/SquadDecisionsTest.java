@@ -2,6 +2,7 @@ package telemetry;
 
 import bwapi.Position;
 import bwapi.UnitType;
+import info.tracking.DarkSwarm;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import unit.managed.ManagedUnit;
@@ -19,6 +20,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -103,6 +105,11 @@ class SquadDecisionsTest {
                                            List<ManagedUnit> released, DefenseSim sim) {
                 events.add("DEFENSE:" + event + ":" + candidates + ":" + pulled.size() + ":" + released.size());
             }
+
+            @Override
+            public void onSwarmEvaluated(Squad squad, SwarmEvent event, int swarmId, int remainingFrames) {
+                events.add("SWARM:" + event + ":" + swarmId + ":" + remainingFrames);
+            }
         };
     }
 
@@ -129,8 +136,64 @@ class SquadDecisionsTest {
                 + "," + String.join(",", SquadDecisionLogger.simDomainCells(context))
                 + "," + String.join(",", SquadDecisionLogger.moveOutCells(context))
                 + "," + String.join(",", SquadDecisionLogger.workerIdCells(Collections.emptyList(),
-                Collections.emptyList()));
+                Collections.emptyList()))
+                + "," + String.join(",", SquadDecisionLogger.swarmCells(context.getSwarmId(),
+                context.getSwarmRemainingFrames(), false, context.getSwarmCover()));
         return row.split(",", -1);
+    }
+
+    @Test
+    void swarmColumnsCloseTheRowInOrder() {
+        String[] columns = SquadDecisionLogger.HEADER.split(",", -1);
+        int first = columnIndex("swarm_id");
+
+        assertEquals(columns.length - 4, first);
+        assertEquals(first + 1, columnIndex("swarm_remaining_frames"));
+        assertEquals(first + 2, columnIndex("swarm_locked"));
+        assertEquals(first + 3, columnIndex("sim_swarm_cover"));
+        assertEquals(columnIndex("released_unit_ids") + 1, first);
+    }
+
+    @Test
+    void swarmCellsNameTheSwarmItsTimeLeftTheLockAndTheCover() {
+        assertEquals(Arrays.asList("382", "373", "1", "0.7500"), SquadDecisionLogger.swarmCells(382, 373, true, 0.75));
+        assertEquals(Arrays.asList("-1", "-1", "0", "-1.0000"), SquadDecisionLogger.swarmCells(-1, -1, false, -1));
+    }
+
+    @Test
+    void swarmEventsDispatchWithTheirSwarmAndTimeLeft() {
+        SquadDecisions.register(recorder());
+
+        SquadDecisions.swarmEvaluated(new GroundSquad(), SwarmEvent.SWARM_COMMIT, 382, 900);
+        SquadDecisions.swarmEvaluated(new GroundSquad(), SwarmEvent.SWARM_EXPIRED, 382, 149);
+
+        assertEquals(Arrays.asList("SWARM:SWARM_COMMIT:382:900", "SWARM:SWARM_EXPIRED:382:149"), events);
+    }
+
+    @Test
+    void everySwarmIsSeenOnceAndRemovedOnceWithItsCentreAndTimeLeft() {
+        DarkSwarm s1 = new DarkSwarm(382, new Position(1232, 3520), 900);
+        DarkSwarm s1Later = new DarkSwarm(382, new Position(1232, 3520), 373);
+        DarkSwarm s2 = new DarkSwarm(397, new Position(1264, 3305), 900);
+        Map<Integer, DarkSwarm> none = Collections.emptyMap();
+
+        assertEquals(Collections.singletonList("g,17942,SWARM_SEEN,382,1232,3520,900"),
+                SquadDecisionLogger.swarmLifecycleRows("g", 17942, none, Collections.singletonList(s1)));
+        assertTrue(SquadDecisionLogger.swarmLifecycleRows("g", 18469, Collections.singletonMap(382, s1),
+                Collections.singletonList(s1Later)).isEmpty());
+        assertEquals(Arrays.asList("g,18763,SWARM_SEEN,397,1264,3305,900", "g,18763,SWARM_REMOVED,382,1232,3520,373"),
+                SquadDecisionLogger.swarmLifecycleRows("g", 18763, Collections.singletonMap(382, s1Later),
+                        Collections.singletonList(s2)));
+        assertEquals(SquadDecisionLogger.SWARM_HEADER.split(",", -1).length,
+                SquadDecisionLogger.swarmLifecycleRows("g", 1, none, Collections.singletonList(s2)).get(0)
+                        .split(",", -1).length);
+    }
+
+    @Test
+    void eachSwarmEventNamesItsOwnDecisionPath() {
+        assertEquals(DecisionPath.SWARM_ACTIVE, SwarmEvent.SWARM_ACTIVE.path());
+        assertEquals(DecisionPath.SWARM_COMMIT, SwarmEvent.SWARM_COMMIT.path());
+        assertEquals(DecisionPath.SWARM_EXPIRED, SwarmEvent.SWARM_EXPIRED.path());
     }
 
     private static int columnIndex(String column) {
@@ -488,7 +551,8 @@ class SquadDecisionsTest {
                 + "," + String.join(",", SquadDecisionLogger.moveOutCells(context))
                 + "," + String.join(",", SquadDecisionLogger.workerIdCells(Collections.emptyList(),
                 Arrays.asList(SquadDecisionLogger.releasedWorkerEntry(161, UnitRole.BUILD),
-                        SquadDecisionLogger.releasedWorkerEntry(162, UnitRole.DEFEND))));
+                        SquadDecisionLogger.releasedWorkerEntry(162, UnitRole.DEFEND))))
+                + "," + String.join(",", SquadDecisionLogger.swarmCells(-1, -1, false, -1));
         String[] fields = row.split(",", -1);
 
         assertEquals(SquadDecisionLogger.HEADER.split(",", -1).length, fields.length);
@@ -525,9 +589,10 @@ class SquadDecisionsTest {
     void workerIdColumnsAreAppendedAfterTheMoveOutColumns() {
         String[] columns = SquadDecisionLogger.HEADER.split(",", -1);
 
-        assertEquals("move_out_strength", columns[columns.length - 3]);
-        assertEquals("pulled_unit_ids", columns[columns.length - 2]);
-        assertEquals("released_unit_ids", columns[columns.length - 1]);
+        int pulled = columnIndex("pulled_unit_ids");
+
+        assertEquals("move_out_strength", columns[pulled - 1]);
+        assertEquals("released_unit_ids", columns[pulled + 1]);
     }
 
     @Test
@@ -610,7 +675,8 @@ class SquadDecisionsTest {
                 + "," + String.join(",", SquadDecisionLogger.simDomainCells(context))
                 + "," + String.join(",", SquadDecisionLogger.moveOutCells(context))
                 + "," + String.join(",", SquadDecisionLogger.workerIdCells(Collections.emptyList(),
-                Collections.emptyList()));
+                Collections.emptyList()))
+                + "," + String.join(",", SquadDecisionLogger.swarmCells(-1, -1, false, -1));
         String[] fields = row.split(",", -1);
 
         assertEquals(SquadDecisionLogger.HEADER.split(",", -1).length, fields.length);

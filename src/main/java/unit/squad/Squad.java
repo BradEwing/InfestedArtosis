@@ -59,6 +59,7 @@ public class Squad implements Comparable<Squad> {
     protected int containStartFrame = 0;
     private Arc containmentArc;
     private RunbyState runbyState;
+    private SwarmLock swarmLock;
     private int containRadius = 0;
     private final ContainmentAttrition containmentAttrition = new ContainmentAttrition();
     protected Time fightHysteresis = new Time(0, 3);
@@ -240,11 +241,15 @@ public class Squad implements Comparable<Squad> {
         int earliestCommit = 0;
         Arc inheritedArc = null;
         RunbyState inheritedRunby = null;
+        SwarmLock inheritedSwarmLock = null;
         int inheritedRadius = 0;
         ContainmentAttrition inheritedAttrition = new ContainmentAttrition();
         for (Squad source: sources) {
             if (inheritedRunby == null && source.status == SquadStatus.RUNBY) {
                 inheritedRunby = source.runbyState;
+            }
+            if (inheritedSwarmLock == null) {
+                inheritedSwarmLock = source.swarmLock;
             }
             mergedStatus = SquadStatus.dominant(mergedStatus, source.status);
             if (source.containStartFrame > 0 && (earliestContainStart == 0 || source.containStartFrame < earliestContainStart)) {
@@ -275,6 +280,7 @@ public class Squad implements Comparable<Squad> {
             this.containmentAttrition.absorb(inheritedAttrition);
         }
         this.commitFrame = earliestCommit;
+        this.swarmLock = inheritedSwarmLock;
     }
 
     public boolean isMergeEligible(int currentFrame) {
@@ -364,6 +370,10 @@ public class Squad implements Comparable<Squad> {
 
     public void startRetreatLock(int currentFrame) {
         retreatLockedUntilFrame = currentFrame + retreatHysteresis.getFrames();
+    }
+
+    public void clearRetreatLock() {
+        retreatLockedUntilFrame = 0;
     }
 
     public boolean isContainLocked(int currentFrame) {
