@@ -1323,8 +1323,8 @@ class ProductionManagerTest {
 
     @Test
     void aHeldPlanDoesNotClaimTheLarvaForThePlansBehindIt() {
-        assertFalse(ProductionManager.claimsLarva(drone(7100), PlanBlocker.RESEARCH_CLAIM));
-        assertFalse(ProductionManager.claimsLarva(drone(7100), PlanBlocker.RESEARCH_MINERALS));
+        assertFalse(ProductionManager.claimsLarva(drone(7100), PlanBlocker.RESEARCH_CLAIM, false));
+        assertFalse(ProductionManager.claimsLarva(drone(7100), PlanBlocker.RESEARCH_MINERALS, false));
     }
 
     @Test
@@ -1977,6 +1977,269 @@ class ProductionManagerTest {
         assertEquals(1, scheduler.larva);
     }
 
+    /**
+     * Game PLUTOW64C: a Hydralisk at the advanced unit priority waits on a building's bank while
+     * larva sits idle, and the Drone queued behind it reports NO_LARVA. An open drone round lifts
+     * that claim, so the Drone takes the larva.
+     */
+    @Test
+    void anOpenDroneRoundLetsADroneTakeTheLarvaABlockedHydraliskClaimed() {
+        Plan hydra = new UnitPlan(UnitType.Zerg_Hydralisk, UnitPlan.ADVANCED_UNIT_PRIORITY);
+        Plan drone = drone(5151);
+        Larva closed = new Larva(1, UnitType.Zerg_Drone.mineralPrice(), 20, true);
+
+        ScanOutcome withoutRound = ProductionManager.scanPlans(Arrays.asList(hydra, drone), false, closed);
+
+        assertTrue(withoutRound.scheduled.isEmpty());
+        assertEquals(1, closed.larva);
+
+        Larva open = new Larva(1, UnitType.Zerg_Drone.mineralPrice(), 20, true);
+
+        ScanOutcome withRound = ProductionManager.scanPlans(Arrays.asList(hydra, drone), true, open);
+
+        assertEquals(Collections.singletonList(drone), withRound.scheduled);
+        assertEquals(Collections.singletonList(hydra), withRound.requeued);
+        assertEquals(0, open.larva);
+    }
+
+    @Test
+    void anOpenDroneRoundLiftsTheClaimOfEveryAdvancedUnitBlocker() {
+        for (PlanBlocker blocker : PlanBlocker.values()) {
+            assertFalse(ProductionManager.claimsLarva(mutalisk(), blocker, true), blocker.name());
+            Plan hydra = new UnitPlan(UnitType.Zerg_Hydralisk, UnitPlan.ADVANCED_UNIT_PRIORITY);
+            assertFalse(ProductionManager.claimsLarva(hydra, blocker, true), blocker.name());
+        }
+    }
+
+    @Test
+    void anOpenDroneRoundKeepsTheClaimOfTheScourgeItNeverWithholds() {
+        Plan scourge = new UnitPlan(UnitType.Zerg_Scourge, UnitPlan.ADVANCED_UNIT_PRIORITY);
+
+        assertTrue(ProductionManager.claimsLarva(scourge, PlanBlocker.BUILD_AHEAD_SLOT_TAKEN, true));
+        assertTrue(ProductionManager.claimsLarva(scourge, PlanBlocker.SUPPLY, true));
+        assertTrue(ProductionManager.claimsLarva(scourge, PlanBlocker.NO_LARVA, true));
+    }
+
+    @Test
+    void anOpenDroneRoundKeepsTheClaimOfAPlanOutsideTheAdvancedBand() {
+        Plan frameHydra = new UnitPlan(UnitType.Zerg_Hydralisk, 6332);
+        Plan roundDrone = drone(UnitPlan.DRONE_ROUND_PRIORITY);
+        Plan ling = zergling();
+
+        assertTrue(ProductionManager.claimsLarva(frameHydra, PlanBlocker.BUILD_AHEAD_SLOT_TAKEN, true));
+        assertTrue(ProductionManager.claimsLarva(roundDrone, PlanBlocker.SUPPLY, true));
+        assertTrue(ProductionManager.claimsLarva(ling, PlanBlocker.NO_LARVA, true));
+    }
+
+    @Test
+    void anOpenDroneRoundStillLetsAHeldDroneClaimTheLarvaAgainstTheHydraliskBehindIt() {
+        Plan roundDrone = drone(UnitPlan.DRONE_ROUND_PRIORITY);
+        Plan hydra = new UnitPlan(UnitType.Zerg_Hydralisk, UnitPlan.ADVANCED_UNIT_PRIORITY);
+        Recorder scheduler = new Recorder().block(roundDrone, PlanBlocker.BUILD_AHEAD_SLOT_TAKEN);
+
+        ProductionManager.scanPlans(Arrays.asList(roundDrone, hydra), true, scheduler);
+
+        assertTrue(scheduler.larvaClaimedAhead.get(hydra));
+    }
+
+    @Test
+    void aRoundDronePollsAheadOfTheAdvancedBandWithoutTyingTheTechWaveOverlord() {
+        ProductionQueue queue = new ProductionQueue();
+        Plan hydra = new UnitPlan(UnitType.Zerg_Hydralisk, UnitPlan.ADVANCED_UNIT_PRIORITY);
+        Plan roundDrone = drone(UnitPlan.DRONE_ROUND_PRIORITY);
+        Plan waveOverlord = overlord(UnitPlan.ADVANCED_UNIT_PRIORITY - 1);
+        Plan oldDrone = drone(5151);
+        queue.add(oldDrone);
+        queue.add(hydra);
+        queue.add(roundDrone);
+        queue.add(waveOverlord);
+
+        assertEquals(Arrays.asList(roundDrone, waveOverlord, hydra, oldDrone), queue.toSortedList());
+    }
+
+    @Test
+    void closingTheRoundReturnsItsDronesBehindTheAdvancedBand() {
+        ProductionQueue queue = new ProductionQueue();
+        Plan hydra = new UnitPlan(UnitType.Zerg_Hydralisk, UnitPlan.ADVANCED_UNIT_PRIORITY);
+        Plan roundDrone = drone(UnitPlan.DRONE_ROUND_PRIORITY);
+        Plan roundLing = new UnitPlan(UnitType.Zerg_Zergling, UnitPlan.DRONE_ROUND_PRIORITY);
+        queue.add(hydra);
+        queue.add(roundDrone);
+        queue.add(roundLing);
+
+        ProductionManager.demoteRoundDrones(queue, new DroneRound(), 9000);
+
+        assertEquals(9000, roundDrone.getPriority());
+        assertEquals(UnitPlan.DRONE_ROUND_PRIORITY, roundLing.getPriority());
+        assertEquals(Arrays.asList(roundLing, hydra, roundDrone), queue.toSortedList());
+    }
+
+    private static final int ROUND_FRAME = 9945;
+
+    private static final int ROUND_START_DRONES = 12;
+
+    private static final int ROUND_DRONE_CAP = 27;
+
+    private DroneRound openDroneRound() {
+        DroneRound round = new DroneRound();
+        round.update(ROUND_FRAME, DroneRound.FIRST_ROUND_ARMY_UNITS, ROUND_START_DRONES, ROUND_DRONE_CAP, true, false);
+        return round;
+    }
+
+    private List<Plan> queueDrones(ProductionQueue queue, int count, int firstPriority) {
+        List<Plan> drones = new ArrayList<>();
+        for (int i = 0; i < count; i++) {
+            Plan drone = drone(firstPriority + i);
+            drones.add(drone);
+            queue.add(drone);
+        }
+        return drones;
+    }
+
+    /**
+     * The LWQKG06D shape: about 20 frame-numbered Drones already queued when the round opens, so
+     * the round queues none of its own and must move the oldest of these ahead instead.
+     */
+    @Test
+    void openingARoundPromotesTheOldestQueuedDronesUpToItsTargetAndNoMore() {
+        ProductionQueue queue = new ProductionQueue();
+        List<Plan> drones = queueDrones(queue, 6, 9945);
+        Plan hydra = new UnitPlan(UnitType.Zerg_Hydralisk, UnitPlan.ADVANCED_UNIT_PRIORITY);
+        queue.add(hydra);
+        DroneRound round = openDroneRound();
+
+        List<Plan> promoted = ProductionManager.promoteOldestDrones(queue, round, 0);
+
+        assertEquals(drones.subList(0, DroneRound.DRONES_PER_ROUND), promoted);
+        for (Plan drone : promoted) {
+            assertEquals(UnitPlan.DRONE_ROUND_PRIORITY, drone.getPriority());
+        }
+        assertEquals(9945 + 4, drones.get(4).getPriority());
+        assertEquals(9945 + 5, drones.get(5).getPriority());
+        List<Plan> sorted = queue.toSortedList();
+        assertEquals(new HashSet<>(promoted), new HashSet<>(sorted.subList(0, 4)));
+        assertEquals(Arrays.asList(hydra, drones.get(4), drones.get(5)), sorted.subList(4, 7));
+    }
+
+    @Test
+    void promotionPicksTheOldestPlanNotTheLowestFrameNumber() {
+        ProductionQueue queue = new ProductionQueue();
+        Plan older = drone(9990);
+        Plan newer = drone(9950);
+        queue.add(older);
+        queue.add(newer);
+        DroneRound round = new DroneRound();
+        round.update(ROUND_FRAME, DroneRound.FIRST_ROUND_ARMY_UNITS, ROUND_DRONE_CAP - 1, ROUND_DRONE_CAP, true, false);
+
+        List<Plan> promoted = ProductionManager.promoteOldestDrones(queue, round, 0);
+
+        assertEquals(Collections.singletonList(older), promoted);
+        assertEquals(9950, newer.getPriority());
+    }
+
+    @Test
+    void droneRoundDronesQueuedOrInFlightCountAgainstTheTarget() {
+        ProductionQueue queue = new ProductionQueue();
+        Plan roundDrone = drone(UnitPlan.DRONE_ROUND_PRIORITY);
+        queue.add(roundDrone);
+        List<Plan> drones = queueDrones(queue, 4, 9945);
+        DroneRound round = openDroneRound();
+
+        List<Plan> promoted = ProductionManager.promoteOldestDrones(queue, round, 1);
+
+        assertEquals(drones.subList(0, 2), promoted);
+        assertEquals(9945 + 2, drones.get(2).getPriority());
+        assertTrue(ProductionManager.promoteOldestDrones(queue, round, 1).isEmpty());
+    }
+
+    @Test
+    void dronesHatchedOrInAnEggSinceTheRoundOpenedLeaveNoRoomToPromote() {
+        ProductionQueue queue = new ProductionQueue();
+        List<Plan> drones = queueDrones(queue, 3, 9945);
+        DroneRound round = openDroneRound();
+        round.update(ROUND_FRAME + 100, DroneRound.FIRST_ROUND_ARMY_UNITS, round.getDroneTarget() - 1,
+                ROUND_DRONE_CAP, true, false);
+
+        List<Plan> promoted = ProductionManager.promoteOldestDrones(queue, round, 0);
+
+        assertEquals(drones.subList(0, 1), promoted);
+    }
+
+    @Test
+    void aClosedRoundPromotesNothing() {
+        ProductionQueue queue = new ProductionQueue();
+        List<Plan> drones = queueDrones(queue, 4, 9945);
+
+        assertTrue(ProductionManager.promoteOldestDrones(queue, new DroneRound(), 0).isEmpty());
+        assertEquals(9945, drones.get(0).getPriority());
+    }
+
+    @Test
+    void aDroneAlreadyAheadOfTheRoundBandKeepsItsPlace() {
+        ProductionQueue queue = new ProductionQueue();
+        Plan openerDrone = drone(3);
+        Plan frameDrone = drone(9945);
+        queue.add(openerDrone);
+        queue.add(frameDrone);
+
+        List<Plan> promoted = ProductionManager.promoteOldestDrones(queue, openDroneRound(), 0);
+
+        assertEquals(Collections.singletonList(frameDrone), promoted);
+        assertEquals(3, openerDrone.getPriority());
+    }
+
+    @Test
+    void closingTheRoundDemotesThePromotedDronesToTheCurrentFrame() {
+        ProductionQueue queue = new ProductionQueue();
+        List<Plan> drones = queueDrones(queue, 6, 9945);
+        Plan hydra = new UnitPlan(UnitType.Zerg_Hydralisk, UnitPlan.ADVANCED_UNIT_PRIORITY);
+        queue.add(hydra);
+        DroneRound round = openDroneRound();
+        List<Plan> promoted = ProductionManager.promoteOldestDrones(queue, round, 0);
+
+        ProductionManager.demoteRoundDrones(queue, round, ROUND_FRAME + 10);
+        assertEquals(UnitPlan.DRONE_ROUND_PRIORITY, promoted.get(0).getPriority());
+
+        round.update(ROUND_FRAME + 20, DroneRound.FIRST_ROUND_ARMY_UNITS, ROUND_START_DRONES, ROUND_DRONE_CAP,
+                true, true);
+        ProductionManager.demoteRoundDrones(queue, round, ROUND_FRAME + 20);
+
+        for (Plan drone : promoted) {
+            assertEquals(ROUND_FRAME + 20, drone.getPriority());
+        }
+        assertEquals(9945 + 4, drones.get(4).getPriority());
+        assertEquals(hydra, queue.toSortedList().get(0));
+    }
+
+    @Test
+    void eachPromotionIsReported() {
+        List<Plan> reported = new ArrayList<>();
+        PlanEvents.register(new PlanEventSink() {
+            @Override
+            public void onEnqueue(Plan plan) {
+            }
+
+            @Override
+            public void onStateChange(Plan plan, PlanState from, PlanState to) {
+            }
+
+            @Override
+            public void onBlocked(Plan plan, PlanBlocker blocker) {
+            }
+
+            @Override
+            public void onPromote(Plan plan) {
+                reported.add(plan);
+            }
+        });
+        ProductionQueue queue = new ProductionQueue();
+        List<Plan> drones = queueDrones(queue, 2, 9945);
+
+        ProductionManager.promoteOldestDrones(queue, openDroneRound(), 0);
+
+        assertEquals(drones, reported);
+    }
+
     @Test
     void aSupplyBlockedMutaliskKeepsTheLarvaFromALaterDrone() {
         Plan muta = mutalisk();
@@ -2070,7 +2333,7 @@ class ProductionManagerTest {
             boolean expected = blocker == PlanBlocker.NO_LARVA
                     || blocker == PlanBlocker.SUPPLY
                     || blocker == PlanBlocker.BUILD_AHEAD_SLOT_TAKEN;
-            assertEquals(expected, ProductionManager.claimsLarva(mutalisk(), blocker), blocker.name());
+            assertEquals(expected, ProductionManager.claimsLarva(mutalisk(), blocker, false), blocker.name());
         }
     }
 
@@ -2078,16 +2341,16 @@ class ProductionManagerTest {
     void aPlanThatTakesNoLarvaNeverClaimsTheLarva() {
         Plan lurker = new UnitPlan(UnitType.Zerg_Lurker, UnitPlan.ADVANCED_UNIT_PRIORITY);
         for (PlanBlocker blocker : PlanBlocker.values()) {
-            assertFalse(ProductionManager.claimsLarva(hatchery(), blocker), blocker.name());
-            assertFalse(ProductionManager.claimsLarva(metabolicBoost(), blocker), blocker.name());
-            assertFalse(ProductionManager.claimsLarva(lurker, blocker), blocker.name());
+            assertFalse(ProductionManager.claimsLarva(hatchery(), blocker, false), blocker.name());
+            assertFalse(ProductionManager.claimsLarva(metabolicBoost(), blocker, false), blocker.name());
+            assertFalse(ProductionManager.claimsLarva(lurker, blocker, false), blocker.name());
         }
     }
 
     @Test
     void aNonClaimingBlockerLeavesTheLarvaOpenToThePlansBehindIt() {
         for (PlanBlocker blocker : PlanBlocker.values()) {
-            if (blocker == PlanBlocker.NONE || ProductionManager.claimsLarva(mutalisk(), blocker)) {
+            if (blocker == PlanBlocker.NONE || ProductionManager.claimsLarva(mutalisk(), blocker, false)) {
                 continue;
             }
             Plan muta = mutalisk();

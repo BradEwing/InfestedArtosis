@@ -14,7 +14,9 @@ import strategy.buildorder.LarvaBoundMacroHatchery;
 import util.Time;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 
 /**
  * A variant of 3 Hatch Muta that skips Lurker tech entirely,
@@ -310,6 +312,16 @@ public class CrazyZerg extends TerranBase {
             baseTarget += Math.min(availableGas / 200, 4);
         }
         return baseTarget;
+    }
+
+    @Override
+    protected Set<UnitType> droneRoundArmy() {
+        return Collections.singleton(UnitType.Zerg_Mutalisk);
+    }
+
+    @Override
+    protected int droneRoundDroneCap(GameState gameState) {
+        return dronesNeeded(gameState);
     }
 
     private int dronesNeeded(GameState gameState) {

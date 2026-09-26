@@ -6,6 +6,7 @@ import info.ResourceCount;
 import info.TechProgression;
 import info.UnitTypeCount;
 import macro.AdvancedUnitEligibility;
+import macro.DroneRound;
 import macro.HatcheryCapacity;
 import macro.plan.BuildingPlan;
 import macro.plan.Plan;
@@ -110,6 +111,57 @@ class BuildOrderTest {
     @AfterEach
     void clearSink() {
         PlanEvents.clear();
+    }
+
+    @Test
+    void anOpenDroneRoundWithholdsANewAdvancedUnitAndReportsIt() {
+        PlanEvents.register(recorder());
+
+        assertTrue(BuildOrder.withheldByDroneRound(true, UnitType.Zerg_Hydralisk));
+        assertTrue(BuildOrder.withheldByDroneRound(true, UnitType.Zerg_Mutalisk));
+        assertEquals(Arrays.asList("Zerg_Hydralisk:DRONE_ROUND", "Zerg_Mutalisk:DRONE_ROUND"), withheld);
+    }
+
+    @Test
+    void aClosedDroneRoundWithholdsNothing() {
+        PlanEvents.register(recorder());
+
+        assertFalse(BuildOrder.withheldByDroneRound(false, UnitType.Zerg_Hydralisk));
+        assertTrue(withheld.isEmpty());
+    }
+
+    @Test
+    void anOpenDroneRoundNeverWithholdsScourge() {
+        PlanEvents.register(recorder());
+
+        assertFalse(BuildOrder.withheldByDroneRound(true, UnitType.Zerg_Scourge));
+        assertTrue(withheld.isEmpty());
+    }
+
+    @Test
+    void anOpenDroneRoundQueuesDronesUntilItsTargetIsCounted() {
+        assertTrue(BuildOrder.wantsRoundDrone(true, 16, 15, true));
+        assertFalse(BuildOrder.wantsRoundDrone(true, 16, 16, true));
+        assertFalse(BuildOrder.wantsRoundDrone(true, 16, 15, false));
+        assertFalse(BuildOrder.wantsRoundDrone(false, 16, 12, true));
+    }
+
+    @Test
+    void anOpenDroneRoundQueuesNoDroneWhileQueuedDronesCanBePromotedToItsTarget() {
+        UnitTypeCount count = new UnitTypeCount();
+        for (int i = 0; i < 12; i++) {
+            count.addUnit(UnitType.Zerg_Drone);
+        }
+        for (int i = 0; i < DroneRound.DRONES_PER_ROUND - 1; i++) {
+            count.planUnit(UnitType.Zerg_Drone);
+        }
+        int target = 12 + DroneRound.DRONES_PER_ROUND;
+
+        assertTrue(BuildOrder.wantsRoundDrone(true, target, count.get(UnitType.Zerg_Drone), true));
+
+        count.planUnit(UnitType.Zerg_Drone);
+
+        assertFalse(BuildOrder.wantsRoundDrone(true, target, count.get(UnitType.Zerg_Drone), true));
     }
 
     @Test

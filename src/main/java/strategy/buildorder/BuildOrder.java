@@ -16,6 +16,7 @@ import info.UnitTypeCount;
 import info.map.BuildingPlanner;
 import lombok.Getter;
 import macro.AdvancedUnitEligibility;
+import macro.DroneRound;
 import macro.HatcheryCapacity;
 import macro.Reactions;
 import macro.plan.BuildingPlan;
@@ -123,11 +124,20 @@ public abstract class BuildOrder {
      * request could only ever stop on its tech gate, and running it would write gate rows naming
      * a build that can never answer them.
      *
+     * <p>The {@link DroneRound} is updated first, and while it is open a Drone at
+     * {@link UnitPlan#DRONE_ROUND_PRIORITY} is added until the round's target is counted.
+     *
      * @param gameState current game state
      * @return the build's plans, plus a macro hatchery when the shared request fires
      */
     public final List<Plan> plan(GameState gameState) {
+        updateDroneRound(gameState);
         List<Plan> plans = new ArrayList<>(buildPlans(gameState));
+
+        Plan roundDrone = planRoundDrone(gameState);
+        if (roundDrone != null) {
+            plans.add(roundDrone);
+        }
 
         if (!runsLarvaBoundMacroHatchery(isOpener(), plans)) {
             return plans;
@@ -139,6 +149,90 @@ public abstract class BuildOrder {
         }
 
         return plans;
+    }
+
+    /**
+     * The living army units whose count opens a {@link DroneRound}. A build that runs no rounds
+     * returns none.
+     *
+     * @return the build's target army unit types
+     */
+    protected Set<UnitType> droneRoundArmy() {
+        return Collections.emptySet();
+    }
+
+    /**
+     * The Drone target a {@link DroneRound} stops at. A build that runs no rounds returns zero,
+     * which also closes a round a previous build left open.
+     *
+     * @param gameState current game state
+     * @return the build's Drone target
+     */
+    protected int droneRoundDroneCap(GameState gameState) {
+        return 0;
+    }
+
+    private void updateDroneRound(GameState gameState) {
+        int livingArmy = 0;
+        for (UnitType unitType : droneRoundArmy()) {
+            livingArmy += gameState.ourLivingUnitCount(unitType);
+        }
+        int drones = gameState.ourLivingUnitCount(UnitType.Zerg_Drone) + dronesInEgg(gameState.getSelf().getUnits());
+        boolean rushed = gameState.isEarlyRushed() || gameState.isCannonRushed() || gameState.isScvRushed();
+        int enemiesAtBases = gameState.visibleEnemyMobileGroundCombatUnitsAtOurBases()
+                + gameState.visibleEnemyAirCombatUnitsAtOurBases();
+        boolean threatened = DroneRound.isThreatened(rushed, gameState.isAllIn(), enemiesAtBases);
+        gameState.getDroneRound().update(gameState.getGameTime().getFrames(), livingArmy, drones,
+                droneRoundDroneCap(gameState), gameState.workersWanted(), threatened);
+    }
+
+    private static int dronesInEgg(List<Unit> units) {
+        int eggs = 0;
+        for (Unit unit : units) {
+            if (unit.getType() == UnitType.Zerg_Egg && unit.getBuildType() == UnitType.Zerg_Drone) {
+                eggs++;
+            }
+        }
+        return eggs;
+    }
+
+    private Plan planRoundDrone(GameState gameState) {
+        DroneRound round = gameState.getDroneRound();
+        if (!wantsRoundDrone(round.isActive(), round.getDroneTarget(), gameState.ourUnitCount(UnitType.Zerg_Drone),
+                gameState.canPlanDrone())) {
+            return null;
+        }
+        return planUnit(gameState, UnitType.Zerg_Drone, UnitPlan.DRONE_ROUND_PRIORITY);
+    }
+
+    /**
+     * Whether an open {@link DroneRound} still needs a Drone queued.
+     *
+     * @param roundActive whether the round is open
+     * @param droneTarget the Drone count the round closes on
+     * @param droneCount Drones alive, in an egg or already planned
+     * @param canPlanDrone whether the worker gates allow another Drone
+     * @return true when one more round Drone should be queued this frame
+     */
+    static boolean wantsRoundDrone(boolean roundActive, int droneTarget, int droneCount, boolean canPlanDrone) {
+        return roundActive && canPlanDrone && droneCount < droneTarget;
+    }
+
+    /**
+     * Whether an open {@link DroneRound} withholds a new advanced unit plan, recording the wait.
+     *
+     * <p>Scourge is never withheld: it answers enemy air rather than growing the army.
+     *
+     * @param roundActive whether the round is open
+     * @param unitType the advanced unit the build would plan
+     * @return true when the plan must not be created this frame
+     */
+    protected static boolean withheldByDroneRound(boolean roundActive, UnitType unitType) {
+        if (!roundActive || unitType == UnitType.Zerg_Scourge) {
+            return false;
+        }
+        PlanEvents.withheld(unitType, PlanBlocker.DRONE_ROUND);
+        return true;
     }
 
     /**
@@ -911,9 +1005,13 @@ public abstract class BuildOrder {
 
     /**
      * Plans a unit that a tech building unlocked, ahead of the backlog. Queues at most one plan
-     * per call, and none while the production sweep would cancel it the same frame.
+     * per call, none while the production sweep would cancel it the same frame, and none while a
+     * {@link DroneRound} is open.
      */
     protected List<Plan> planAdvancedUnit(GameState gameState, UnitType unitType) {
+        if (withheldByDroneRound(gameState.getDroneRound().isActive(), unitType)) {
+            return new ArrayList<>();
+        }
         return planAdvancedUnit(unitType, gameState.getTechProgression(), gameState.numGatherers(),
                 gameState.queuedUnitPlanCount(unitType), gameState.getUnitTypeCount());
     }

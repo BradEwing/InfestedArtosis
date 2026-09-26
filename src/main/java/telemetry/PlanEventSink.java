@@ -43,6 +43,10 @@ public interface PlanEventSink {
     default void onStale(Plan plan) {
     }
 
+    /** An open drone round moved a queued Drone to the round's priority. */
+    default void onPromote(Plan plan) {
+    }
+
     /** A building plan still holds the build-ahead slot. */
     default void onBuildAheadHold(Plan holder, int heldFrames, int starvedBehind) {
     }

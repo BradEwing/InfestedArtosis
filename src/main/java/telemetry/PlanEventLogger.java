@@ -45,6 +45,7 @@ public class PlanEventLogger implements PlanEventSink {
     private static final String EVENT_TRANSITION = "TRANSITION";
     private static final String EVENT_BLOCKED = "BLOCKED";
     private static final String EVENT_STALE = "STALE";
+    private static final String EVENT_PROMOTE = "PROMOTE";
     private static final String EVENT_OPEN_AT_GAME_END = "OPEN_AT_GAME_END";
     private static final String EVENT_BUILD_AHEAD_HOLD = "BUILD_AHEAD_HOLD";
     private static final String EVENT_BUILD_AHEAD_EVICT = "BUILD_AHEAD_EVICT";
@@ -179,6 +180,9 @@ public class PlanEventLogger implements PlanEventSink {
      * the assigning building's type in item and its pixel position in enemy_main_source_x and
      * enemy_main_source_y. A SCOUTED row is written when ScoutData first records the scouted frame
      * of the assigned main, so the frame is the row's frame.
+     * <p>
+     * PROMOTE rows are written when an open drone round moves a queued Drone ahead of the advanced
+     * unit band; priority is the new priority and age_frames how long the Drone had been queued.
      */
     static final String PLAN_HEADER = "frame,time,event,plan_id,executor_unit_id,plan_type,item,from_state,"
             + "to_state,cancel_reason,cancel_source,blocker,blocked_frames,priority,frames_in_state,age_frames,"
@@ -389,6 +393,21 @@ public class PlanEventLogger implements PlanEventSink {
             PlanBlocker blocker = trace.getBlocker();
             int waited = blocker == PlanBlocker.NONE ? 0 : currentFrame - trace.getBlockerSinceFrame();
             buffer.add(row(plan, EVENT_STALE, null, plan.getState(), blocker, waited, NO_STARVED_COUNT));
+        } catch (Exception e) {
+            disabled = true;
+        }
+    }
+
+    /** Writes one PROMOTE row, carrying the plan's new priority, without touching its blocker interval. */
+    @Override
+    public void onPromote(Plan plan) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            trace(plan);
+            buffer.add(row(plan, EVENT_PROMOTE, null, plan.getState(), PlanBlocker.NONE, 0, NO_STARVED_COUNT));
         } catch (Exception e) {
             disabled = true;
         }
