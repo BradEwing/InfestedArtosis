@@ -1,11 +1,17 @@
 package info.tracking;
 
 import bwapi.Position;
+import bwapi.TilePosition;
 import bwapi.UnitType;
 import org.junit.jupiter.api.Test;
+import util.TileFootprint;
 import util.Time;
 
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 import java.util.Set;
+import java.util.function.Predicate;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -166,5 +172,49 @@ class ObservedUnitTrackerTest {
         ObservedUnit drone = ObservedUnitFixture.observedUnit(UnitType.Zerg_Drone, DRONE_OBSERVED);
         drone.markCompleted(DRONE_COMPLETED);
         return drone;
+    }
+
+    @Test
+    void aFootprintIsNeverPairedWithItself() {
+        List<TileFootprint> one = Collections.singletonList(barracksAt(10, 10));
+
+        assertFalse(ObservedUnitTracker.hasPairWithinTileGap(one, isBarracks(), isBarracks(), 1, (a, b) -> true));
+    }
+
+    @Test
+    void aPairIsFoundOnlyWithinTheGapAndWithThePairFilter() {
+        TileFootprint barracks = barracksAt(10, 10);
+        TileFootprint depot = new TileFootprint(UnitType.Terran_Supply_Depot, new TilePosition(15, 10));
+        List<TileFootprint> pair = Arrays.asList(depot, barracks);
+
+        assertTrue(ObservedUnitTracker.hasPairWithinTileGap(pair, isBarracks(),
+                type -> type == UnitType.Terran_Supply_Depot, 1, (first, second) -> first == barracks));
+        assertFalse(ObservedUnitTracker.hasPairWithinTileGap(pair, isBarracks(),
+                type -> type == UnitType.Terran_Supply_Depot, 0, (first, second) -> true));
+        assertFalse(ObservedUnitTracker.hasPairWithinTileGap(pair, isBarracks(),
+                type -> type == UnitType.Terran_Supply_Depot, 1, (first, second) -> false));
+    }
+
+    @Test
+    void aDestroyedBuildingHasNoFootprint() {
+        ObservedUnit barracks = ObservedUnitFixture.observedUnit(UnitType.Terran_Barracks, KNOWN, DRONE_OBSERVED);
+        barracks.setDestroyedFrame(DRONE_COMPLETED);
+
+        assertTrue(ObservedUnitFixture.trackerHolding(barracks).getLivingFootprints(type -> true).isEmpty());
+    }
+
+    @Test
+    void aBuildingOfAnotherTypeHasNoFootprint() {
+        ObservedUnit depot = ObservedUnitFixture.observedUnit(UnitType.Terran_Supply_Depot, KNOWN, DRONE_OBSERVED);
+
+        assertTrue(ObservedUnitFixture.trackerHolding(depot).getLivingFootprints(isBarracks()).isEmpty());
+    }
+
+    private static TileFootprint barracksAt(int left, int top) {
+        return new TileFootprint(UnitType.Terran_Barracks, new TilePosition(left, top));
+    }
+
+    private static Predicate<UnitType> isBarracks() {
+        return type -> type == UnitType.Terran_Barracks;
     }
 }

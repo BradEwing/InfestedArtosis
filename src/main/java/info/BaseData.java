@@ -138,6 +138,13 @@ public class BaseData {
     }
 
     /**
+     * Whether the type is one of the buildings that, standing at a starting location's natural, wall it off.
+     */
+    public static boolean isNaturalWallType(UnitType type) {
+        return NATURAL_WALL_TYPES.contains(type);
+    }
+
+    /**
      * Tiles of the base a building site belongs to: the main base tiles for a site in our main, otherwise every
      * tile within the manhattan radius of the site.
      *
