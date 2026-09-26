@@ -78,13 +78,14 @@ public class ObservedUnitTracker {
     }
 
     /**
-     * Zones around every tracked enemy army unit whose observation is fresh, each at its type's learned reach.
+     * Zones around every tracked enemy army unit whose observation is fresh, each at its type's learned reach, and
+     * around every sieged tank however long ago it was seen, see {@link #holdsReachZone}.
      *
      * @param isFresh whether an observation is recent enough to act on, given visibility, the frame it was last
      *     shown or hidden, and the current frame
      * @param isArmyType whether a type belongs to the enemy army
      * @param currentFrame current frame
-     * @return one zone per fresh army unit with a known position
+     * @return one zone per army unit that holds a zone and has a known position
      */
     public List<StaticDefenseZone> getFreshArmyReachZones(FreshnessRule isFresh, Predicate<UnitType> isArmyType,
                                                           int currentFrame) {
@@ -93,8 +94,7 @@ public class ObservedUnitTracker {
             if (ou.getDestroyedFrame() != null || !isArmyType.test(ou.getUnitType())) {
                 continue;
             }
-            boolean visible = ou.getUnit().isVisible();
-            if (!isFresh.test(visible, ou.getLastObservedFrame().getFrames(), currentFrame)) {
+            if (!holdsReachZone(ou, ou.getUnit().isVisible(), isFresh, currentFrame)) {
                 continue;
             }
             Position position = ou.getCurrentOrLastKnownPosition();
@@ -104,6 +104,28 @@ public class ObservedUnitTracker {
             zones.add(new StaticDefenseZone(ou.getUnitType(), position, reachMemory.groundReach(ou.getUnitType())));
         }
         return zones;
+    }
+
+    /**
+     * Whether a tracked unit still holds a reach zone. A living sieged tank holds one at its last known position
+     * however long ago it was seen: it fires from where it stands, and only a sighting of it in Tank Mode, which
+     * retypes it, its death, or a look at the spot that finds it gone, which forgets its position, ends that. Any
+     * other unit holds one only while its observation is fresh.
+     *
+     * @param ou the tracked unit
+     * @param visible whether it is visible now
+     * @param isFresh whether an observation is recent enough to act on
+     * @param currentFrame current frame
+     * @return true when the unit holds a reach zone
+     */
+    static boolean holdsReachZone(ObservedUnit ou, boolean visible, FreshnessRule isFresh, int currentFrame) {
+        if (ou.getDestroyedFrame() != null) {
+            return false;
+        }
+        if (ou.getUnitType() == UnitType.Terran_Siege_Tank_Siege_Mode) {
+            return true;
+        }
+        return isFresh.test(visible, ou.getLastObservedFrame().getFrames(), currentFrame);
     }
 
     /**

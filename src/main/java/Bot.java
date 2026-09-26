@@ -14,6 +14,8 @@ import macro.ProductionManager;
 import macro.plan.PlanManager;
 import strategy.buildorder.BuildOrder;
 import telemetry.CombatTelemetry;
+import telemetry.FixedFireLogger;
+import telemetry.FixedFireTelemetry;
 import telemetry.PerchAssignmentLogger;
 import telemetry.PerchAssignments;
 import telemetry.PlanEventLogger;
@@ -60,6 +62,7 @@ public class Bot extends DefaultBWListener {
     private TargetChoiceLogger targetChoiceLogger;
     private RunbyLogger runbyLogger;
     private ReachLogger reachLogger;
+    private FixedFireLogger fixedFireLogger;
 
     @Override
     public void onStart() {
@@ -93,6 +96,7 @@ public class Bot extends DefaultBWListener {
         startTargetChoiceLogging();
         startRunbyLogging();
         startReachLogging();
+        startFixedFireLogging();
         startPlanEventLogging(decisions.getOpener());
     }
 
@@ -142,6 +146,15 @@ public class Bot extends DefaultBWListener {
         ReachTelemetry.register(reachLogger);
     }
 
+    private void startFixedFireLogging() {
+        if (!gameState.getConfig().telemetryCombat) {
+            return;
+        }
+
+        fixedFireLogger = new FixedFireLogger(game, combatTelemetry.getGameId());
+        FixedFireTelemetry.register(fixedFireLogger);
+    }
+
     private void startPlanEventLogging(BuildOrder opener) {
         if (!gameState.getConfig().logPlanEvents) {
             return;
@@ -177,6 +190,9 @@ public class Bot extends DefaultBWListener {
         }
         if (reachLogger != null) {
             reachLogger.onFrame();
+        }
+        if (fixedFireLogger != null) {
+            fixedFireLogger.onFrame();
         }
         combatTelemetry.onFrame();
         debugMap.onFrame();
@@ -258,6 +274,9 @@ public class Bot extends DefaultBWListener {
         }
         if (reachLogger != null) {
             reachLogger.onEnd();
+        }
+        if (fixedFireLogger != null) {
+            fixedFireLogger.onEnd();
         }
         combatTelemetry.onEnd(isWinner);
     }
