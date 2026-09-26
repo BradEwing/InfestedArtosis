@@ -245,37 +245,38 @@ class ContainTransitAndLockTest {
         Squad parent = new GroundSquad();
         parent.setStatus(SquadStatus.CONTAIN);
         parent.endCollapse(6000);
-        parent.recordCollapseCandidate(true);
-        parent.recordCollapseCandidate(true);
+        parent.recordCollapseTest(ContainmentCollapse.Outcome.COLLAPSE, false, 6100);
+        parent.recordCollapseTest(ContainmentCollapse.Outcome.COLLAPSE, false, 6100);
 
         Squad child = parent.createSibling();
         child.inheritStateFrom(parent);
 
         assertTrue(child.isCollapseLocked(6000 + ContainmentCollapse.COOLDOWN_FRAMES - 1));
-        assertEquals(3, child.recordCollapseCandidate(true));
-        assertEquals(3, parent.recordCollapseCandidate(true));
+        assertEquals(3, child.recordCollapseTest(ContainmentCollapse.Outcome.COLLAPSE, false, 6100));
+        assertEquals(3, parent.recordCollapseTest(ContainmentCollapse.Outcome.COLLAPSE, false, 6100));
     }
 
     @Test
     void aMergeKeepsTheEntryRunOfTheSourceWhoseArcItKeepsAndOnlyInContain() {
         Squad containing = new GroundSquad();
         containing.setStatus(SquadStatus.CONTAIN);
-        containing.recordCollapseCandidate(true);
-        containing.recordCollapseCandidate(true);
+        containing.recordCollapseTest(ContainmentCollapse.Outcome.COLLAPSE, false, 6100);
+        containing.recordCollapseTest(ContainmentCollapse.Outcome.COLLAPSE, false, 6100);
         Squad joiner = new GroundSquad();
         joiner.setStatus(SquadStatus.RALLY);
 
         Squad merged = new GroundSquad();
         merged.inheritStateFrom(Arrays.asList(joiner, containing));
         assertEquals(SquadStatus.CONTAIN, merged.getStatus());
-        assertEquals(3, merged.recordCollapseCandidate(true));
+        assertEquals(3, merged.recordCollapseTest(ContainmentCollapse.Outcome.COLLAPSE, false, 6100));
 
         Squad fighting = new GroundSquad();
         fighting.setStatus(SquadStatus.FIGHT);
         Squad left = new GroundSquad();
         left.inheritStateFrom(Arrays.asList(containing, fighting));
         assertEquals(SquadStatus.FIGHT, left.getStatus());
-        assertEquals(1, left.recordCollapseCandidate(true), "a squad that left the arc starts the run over");
+        assertEquals(1, left.recordCollapseTest(ContainmentCollapse.Outcome.COLLAPSE, false, 6100),
+                "a squad that left the arc starts the run over");
     }
 
     @Test

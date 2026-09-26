@@ -53,6 +53,9 @@ final class SquadDecision {
     private int collapseFlanks = NOT_EVALUATED;
     private int collapseStaticClear = NOT_EVALUATED;
     private int containArcDistance = NOT_EVALUATED;
+    private String collapseUnderFire = "NONE";
+    private int collapseRunStartFrame = NOT_EVALUATED;
+    private String collapseWrapEnd = "NONE";
 
     static int tristate(boolean value) {
         return value ? 1 : 0;

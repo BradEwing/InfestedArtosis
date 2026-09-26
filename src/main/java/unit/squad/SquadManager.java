@@ -231,7 +231,7 @@ public class SquadManager {
      * Moves every member with an outranged hit this frame to the point, within a short ring around it, farthest
      * outside every zone that outranges it. The move is issued this frame, ahead of the unit's ready gate. A
      * burrowed member, or one whose type cannot move, is left to keep attacking from its role, and so is a member
-     * holding or wrapping to its point in a collapse: it was sent into that fire by the collapse test.
+     * fighting or wrapping in a collapse: it was sent into that fire by the collapse test.
      *
      * @param now current frame
      */
@@ -1338,7 +1338,7 @@ public class SquadManager {
                 || fightLockHolds(fightLocked, result, enemyMeasured, ratio, engageThreshold))) {
             SquadDecisions.lockSuppressed(squad, SquadLock.FIGHT);
             SquadDecisions.pathTaken(squad, DecisionPath.FIGHT_LOCK);
-            assignFightTargets(squad, managedFighters, false);
+            assignFightTargets(squad, collapseFighters(managedFighters, squad.getCollapse()), false);
             return;
         }
 
@@ -1736,8 +1736,12 @@ public class SquadManager {
         HashSet<ManagedUnit> members = squad.getMembers();
 
         boolean basesUnderAttack = baseThreatensContainment();
-        ContainmentCollapse.Read collapseRead = gateCollapse(squad, basesUnderAttack ? null : readCollapse(squad, now),
-                now);
+        ContainmentCollapse.Read collapseTest = basesUnderAttack ? null : readCollapse(squad, now);
+        ContainmentCollapse.UnderFire collapseUnderFire = collapseTest != null
+                && collapseTest.getOutcome() == ContainmentCollapse.Outcome.COLLAPSE
+                ? collapseUnderFire(squad, now)
+                : ContainmentCollapse.UnderFire.NONE;
+        ContainmentCollapse.Read collapseRead = gateCollapse(squad, collapseTest, collapseUnderFire, now);
         boolean collapse = collapseRead != null && collapseRead.getOutcome() == ContainmentCollapse.Outcome.COLLAPSE;
         boolean bleeding = !basesUnderAttack && squad.getContainmentAttrition().isBleeding(now, squad.getSupply());
         boolean outrangedHit = !basesUnderAttack && !collapse && !bleeding && hasOutrangedHit(squad);
@@ -1756,7 +1760,7 @@ public class SquadManager {
         if (collapseRead != null) {
             SquadDecisions.containmentCollapseEvaluated(squad, collapseRead.getOutcome(),
                     collapseRead.getEnemiesInSector(), collapseRead.getRatio(), collapseRead.getFlanks(),
-                    collapseRead.isStaticClear());
+                    collapseRead.isStaticClear(), collapseRead.getUnderFire(), collapseRead.getRunStartFrame());
         }
         ContainmentVerdict verdict = rankCollapse(basesUnderAttack, collapse, containmentVerdict(basesUnderAttack,
                 bleeding, hit, throttled, engaged, timedOut, canBreak, shouldContain));
@@ -1814,22 +1818,61 @@ public class SquadManager {
 
     /**
      * Applies the collapse hysteresis gate, see {@link ContainmentCollapse#gate}, to this evaluation's collapse test.
-     * The test counts toward the entry run only when it passed outside the cooldown; a test that did not, or no test
-     * at all, starts the run over.
+     * The test is recorded on the squad's entry run first, see {@link CollapseEntryRun#record}. A squad under fire
+     * commits on its first pass outside the cooldown.
      *
      * @param squad containing squad
      * @param read this evaluation's collapse test, or null when none ran or no armed enemy stood in the sector
+     * @param underFire whether the enemy is already engaging the squad, NONE when the test did not pass
      * @param now current frame
-     * @return the read with the gated outcome, or null when the read was null
+     * @return the read with the gated outcome, the under fire reason and the frame the entry run started, or null
+     *     when the read was null
      */
-    static ContainmentCollapse.Read gateCollapse(Squad squad, ContainmentCollapse.Read read, int now) {
+    static ContainmentCollapse.Read gateCollapse(Squad squad, ContainmentCollapse.Read read,
+                                                 ContainmentCollapse.UnderFire underFire, int now) {
         boolean coolingDown = squad.isCollapseLocked(now);
-        boolean candidate = read != null && read.getOutcome() == ContainmentCollapse.Outcome.COLLAPSE && !coolingDown;
-        int held = squad.recordCollapseCandidate(candidate);
+        int passes = squad.recordCollapseTest(read == null ? null : read.getOutcome(), coolingDown, now);
         if (read == null) {
             return null;
         }
-        return read.withOutcome(ContainmentCollapse.gate(read.getOutcome(), coolingDown, held));
+        return read.gated(ContainmentCollapse.gate(read.getOutcome(), coolingDown, passes, underFire), underFire,
+                squad.getCollapseRunStartFrame());
+    }
+
+    /**
+     * Whether the enemy is already engaging a containing squad: a collapse member lost hit points within
+     * {@link ContainmentCollapse#UNDER_FIRE_FRAMES} while not standing in a Psionic Storm or irradiated, or an armed
+     * enemy stands within {@link ContainmentCollapse#MELEE_CONTACT_DISTANCE} of one.
+     *
+     * @param squad containing squad
+     * @param now current frame
+     * @return the reason, NONE when the enemy is not engaging the squad
+     */
+    private ContainmentCollapse.UnderFire collapseUnderFire(Squad squad, int now) {
+        List<ManagedUnit> members = collapseMembers(squad);
+        boolean hit = false;
+        for (ManagedUnit member : members) {
+            if (member.wasHitSince(now - ContainmentCollapse.UNDER_FIRE_FRAMES)
+                    && !gameState.isTakingNonWeaponDamage(member)) {
+                hit = true;
+                break;
+            }
+        }
+        return ContainmentCollapse.UnderFire.of(hit, armedEnemyInMeleeContact(members));
+    }
+
+    private boolean armedEnemyInMeleeContact(List<ManagedUnit> members) {
+        for (Unit enemy : gameState.getVisibleEnemyUnits()) {
+            if (!canPressTheArc(enemy)) {
+                continue;
+            }
+            for (ManagedUnit member : members) {
+                if (member.getUnit().getDistance(enemy) <= ContainmentCollapse.MELEE_CONTACT_DISTANCE) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     /**
@@ -1873,11 +1916,12 @@ public class SquadManager {
     }
 
     /**
-     * Takes a containing squad off its arc and onto the enemies inside it: FIGHT under a fight lock, the flanks
-     * wrapping past the enemy centroid while the centre holds its points, see {@link #holdCollapseWrap}. The
-     * collapse test admits only a squad large enough to flank, see {@link ContainmentCollapse#MIN_COLLAPSE_MEMBERS},
-     * and only once it has held through the hysteresis gate, see {@link #gateCollapse}. The collapse cooldown is
-     * armed on this frame, and again when the wrap ends.
+     * Takes a containing squad off its arc and onto the enemies inside it: FIGHT under a fight lock. A squad under
+     * fire, see {@link ContainmentCollapse.UnderFire}, skips the wrap and every member fights from this frame.
+     * Otherwise the centre fights from this frame while the flanks attack-move past the enemy centroid, see
+     * {@link #holdCollapseWrap}. The collapse test admits only a squad large enough to flank, see
+     * {@link ContainmentCollapse#MIN_COLLAPSE_MEMBERS}, and only once it has passed the hysteresis gate, see
+     * {@link #gateCollapse}. The collapse cooldown is armed on this frame, and again when the wrap ends.
      *
      * @param squad containing squad
      * @param read the collapse test that passed
@@ -1887,24 +1931,47 @@ public class SquadManager {
         ContainmentCollapse.Maneuver maneuver = planCollapse(squad, read, now);
         endContainment(squad);
         squad.setStatus(SquadStatus.FIGHT);
+        if (maneuver == null) {
+            SquadDecisions.collapseWrapEnded(squad, ContainmentCollapse.WrapEnd.SKIPPED);
+            SquadDecisions.pathTaken(squad, DecisionPath.CONTAIN_COLLAPSE_COMMIT);
+        }
         SquadDecisions.pathTaken(squad, DecisionPath.CONTAIN_COLLAPSE);
-        squad.setCollapse(maneuver);
         squad.startCollapseLock(now);
         squad.startFightLock(now);
-        assignFightTargets(squad, squad.getMembers(), true);
+        if (maneuver == null) {
+            assignFightTargets(squad, squad.getMembers(), true);
+            return;
+        }
+        squad.setCollapse(maneuver);
+        assignFightTargets(squad, collapseFighters(squad.getMembers(), maneuver), true);
         holdCollapseWrap(squad);
     }
 
     /**
-     * Plans the wrap of a collapse: the outer third of the members on each side by bearing around the choke wrap
-     * to a point past the enemy centroid on their side, pulled back to the centroid when a zone that fires from where
-     * it stands covers it, see {@link ContainmentCollapse#fixedFireZones},
-     * and every other member holds the point it stands on the arc.
+     * Members of a squad that fight during a collapse's wrap: every member but the flanks still wrapping.
+     *
+     * @param members the squad's members
+     * @param maneuver the collapse under way, or null
+     * @return the members that take fight targets
+     */
+    static HashSet<ManagedUnit> collapseFighters(Set<ManagedUnit> members, ContainmentCollapse.Maneuver maneuver) {
+        HashSet<ManagedUnit> fighters = new HashSet<>(members);
+        if (maneuver != null) {
+            fighters.removeIf(member -> maneuver.wrapFor(member) != null);
+        }
+        return fighters;
+    }
+
+    /**
+     * Plans the wrap of a collapse, see {@link ContainmentCollapse#memberOrders}: the outer third of the members on
+     * each side by bearing around the choke attack-move to a point past the enemy centroid on their side, pulled back
+     * to the centroid when a zone that fires from where it stands covers it, see
+     * {@link ContainmentCollapse#fixedFireZones}, and every other member fights. A squad under fire plans no wrap.
      *
      * @param squad containing squad, still holding its arc
      * @param read the collapse test that passed
      * @param now current frame
-     * @return the maneuver, or null when the squad has no flanks
+     * @return the maneuver, or null when no member wraps
      */
     private ContainmentCollapse.Maneuver planCollapse(Squad squad, ContainmentCollapse.Read read, int now) {
         Arc arc = squad.getContainmentArc();
@@ -1914,9 +1981,10 @@ public class SquadManager {
             positions.add(member.getPosition());
         }
         int[] sides = ContainmentCollapse.flankSides(arc.getCenter(), arc.getMidpoint(), positions);
+        ContainmentCollapse.MemberOrder[] memberOrders = ContainmentCollapse.memberOrders(sides, read.getUnderFire());
         Map<Integer, List<Position>> flankPositions = new HashMap<>();
         for (int i = 0; i < sides.length; i++) {
-            if (sides[i] != 0) {
+            if (memberOrders[i] == ContainmentCollapse.MemberOrder.WRAP) {
                 flankPositions.computeIfAbsent(sides[i], side -> new ArrayList<>()).add(positions.get(i));
             }
         }
@@ -1934,19 +2002,13 @@ public class SquadManager {
             }
             wraps.put(flank.getKey(), wrap);
         }
-        Map<ManagedUnit, Position> orders = new HashMap<>();
-        Set<ManagedUnit> flanks = new HashSet<>();
+        Map<ManagedUnit, Position> flankWraps = new HashMap<>();
         for (int i = 0; i < members.size(); i++) {
-            ManagedUnit member = members.get(i);
-            if (sides[i] != 0) {
-                flanks.add(member);
-                orders.put(member, wraps.get(sides[i]));
-            } else {
-                Position hold = member.getContainPosition();
-                orders.put(member, hold != null ? hold : member.getPosition());
+            if (memberOrders[i] == ContainmentCollapse.MemberOrder.WRAP) {
+                flankWraps.put(members.get(i), wraps.get(sides[i]));
             }
         }
-        return new ContainmentCollapse.Maneuver(orders, flanks, now);
+        return new ContainmentCollapse.Maneuver(flankWraps, new HashSet<>(members), now);
     }
 
     /**
@@ -1963,14 +2025,13 @@ public class SquadManager {
     }
 
     /**
-     * Carries a collapse's wrap on for one more frame. While it runs, each flank moves to its wrap point and each
-     * other member holds its point, attacking whatever comes within its own range, whatever orders the fight tick
-     * gave them, and the fight tick holds the squad in FIGHT whatever the sim around its center reads: the collapse
-     * was judged on the enemies inside the arc. The wrap ends when every flank has arrived or it has run out its
-     * frames, see
-     * {@link ContainmentCollapse#wrapComplete}: the centre then commits and the fight lock is renewed when the squad
-     * has not lost supply since the collapse. A squad that has left FIGHT drops the wrap. Either way the collapse
-     * ends and its cooldown runs from this frame, see {@link Squad#endCollapse}.
+     * Carries a collapse's wrap on for one more frame. While it runs, each flank attack-moves to its wrap point,
+     * fighting what it meets on the way, while every other member fights the targets the fight tick gave it, and the
+     * fight tick holds the squad in FIGHT whatever the sim around its center reads: the collapse was judged on the
+     * enemies inside the arc. The wrap ends when every flank has arrived or it has run out its frames, see
+     * {@link ContainmentCollapse#wrapEnd}: the flanks then fight too and the fight lock is renewed when the squad has
+     * not lost supply since the collapse. A squad that has left FIGHT drops the wrap. Either way the collapse ends
+     * and its cooldown runs from this frame, see {@link Squad#endCollapse}.
      *
      * @param squad fight squad
      */
@@ -1984,9 +2045,11 @@ public class SquadManager {
             squad.endCollapse(now);
             return;
         }
-        if (ContainmentCollapse.wrapComplete(now - maneuver.getStartFrame(),
-                maneuver.flankDistances(squad.getMembers()))) {
+        ContainmentCollapse.WrapEnd wrapEnd = ContainmentCollapse.wrapEnd(now - maneuver.getStartFrame(),
+                maneuver.flankDistances(squad.getMembers()));
+        if (wrapEnd != null) {
             squad.endCollapse(now);
+            SquadDecisions.collapseWrapEnded(squad, wrapEnd);
             SquadDecisions.pathTaken(squad, DecisionPath.CONTAIN_COLLAPSE_COMMIT);
             if (squad.canRenewFightLock(now)) {
                 squad.startFightLock(now);
@@ -1995,17 +2058,18 @@ public class SquadManager {
             return;
         }
         for (ManagedUnit member : squad.getMembers()) {
-            Position order = maneuver.orderFor(member);
-            if (order == null) {
+            Position wrap = maneuver.wrapFor(member);
+            if (wrap == null) {
                 continue;
             }
             member.setRole(UnitRole.CONTAIN);
-            member.setContainPosition(order);
+            member.setFightTarget(null);
+            member.attackMoveToContainPosition(wrap);
         }
     }
 
     /**
-     * Members of fight squads that are wrapping or holding in a collapse this frame.
+     * Members of fight squads taking part in a collapse under way this frame.
      */
     private Set<ManagedUnit> collapsingMembers() {
         Set<ManagedUnit> collapsing = new HashSet<>();

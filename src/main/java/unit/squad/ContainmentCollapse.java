@@ -27,16 +27,19 @@ import java.util.function.DoubleSupplier;
  * between the bearings of its outermost points. A squad of at least {@link #MIN_COLLAPSE_MEMBERS} members collapses
  * when at least {@link #MIN_ENEMIES_IN_SECTOR} armed enemies stand in the sector, their centroid is clear of the reach
  * of static defence, sieged tanks and Lurkers, see {@link #fixedFireZones}, and a sim over exactly those enemies
- * reads at or above the matchup engage threshold. No squad collapses against Protoss, see {@link #appliesAgainst}.
+ * reads at or above the matchup engage threshold. No squad collapses against Protoss or Zerg, see
+ * {@link #appliesAgainst}.
  *
- * <p>A passed test commits only once it has held, see {@link #gate}: the squad must pass it on
- * {@link #ENTRY_EVALUATIONS} consecutive evaluations, and never while a collapse is under way or within
- * {@link #COOLDOWN_FRAMES} frames of the end of its last one.
+ * <p>A passed test commits only once it has held, see {@link #gate}: the squad's entry run must reach
+ * {@link #ENTRY_EVALUATIONS} passes, see {@link CollapseEntryRun}, and never while a collapse is under way or within
+ * {@link #COOLDOWN_FRAMES} frames of the end of its last one. A squad already under fire, see {@link UnderFire},
+ * commits on its first pass outside the cooldown.
  *
- * <p>The collapse wraps before it commits. The outer third of the squad on each side, by bearing around the choke,
- * are the flanks: each moves to a point past the enemy centroid on the choke side, offset to its own side. The rest
- * hold their points until every flank has arrived or {@link #WRAP_FRAME_CAP} frames have passed, then the whole
- * squad fights.
+ * <p>A squad under fire commits at once: every member fights. Otherwise the collapse wraps while the centre fights.
+ * The outer third of the squad on each side, by bearing around the choke, are the flanks: each attack-moves to a
+ * point past the enemy centroid on the choke side, offset to its own side, fighting what it meets on the way. Every
+ * other member fights from the collapse frame. Once every flank has arrived or {@link #WRAP_FRAME_CAP} frames have
+ * passed, the flanks fight too.
  */
 public final class ContainmentCollapse {
 
@@ -62,6 +65,15 @@ public final class ContainmentCollapse {
      * squad may start another. A collapse that could not plan a wrap ends on the frame it starts.
      */
     static final int COOLDOWN_FRAMES = 240;
+    /**
+     * Tuning value: frames back from a collapse test within which a member losing hit points to a weapon counts as
+     * the squad being under fire. One second.
+     */
+    static final int UNDER_FIRE_FRAMES = 24;
+    /**
+     * Tuning value: pixels, edge to edge, within which an armed enemy stands in melee contact with a member.
+     */
+    static final int MELEE_CONTACT_DISTANCE = 32;
     /** Ratio a read reports when too few armed enemies stood in the sector for the sim to run. */
     static final double NOT_SIMULATED = -1;
 
@@ -79,18 +91,60 @@ public final class ContainmentCollapse {
         COOLING_DOWN
     }
 
+    /**
+     * Whether the enemy is already engaging a containing squad when it tests a collapse, and how: a member lost hit
+     * points to a weapon within {@link #UNDER_FIRE_FRAMES}, an armed enemy stands within
+     * {@link #MELEE_CONTACT_DISTANCE} of a member, or both.
+     */
+    public enum UnderFire {
+        NONE,
+        HIT,
+        MELEE,
+        HIT_AND_MELEE;
+
+        /**
+         * @param hit true when a member lost hit points to a weapon within {@link #UNDER_FIRE_FRAMES}
+         * @param melee true when an armed enemy stands within {@link #MELEE_CONTACT_DISTANCE} of a member
+         * @return the reason, NONE when neither holds
+         */
+        static UnderFire of(boolean hit, boolean melee) {
+            if (hit) {
+                return melee ? HIT_AND_MELEE : HIT;
+            }
+            return melee ? MELEE : NONE;
+        }
+    }
+
+    /**
+     * How the wrap of a collapse ended: skipped because the squad was under fire, every flank arrived, or the wrap
+     * ran out its {@link #WRAP_FRAME_CAP} frames.
+     */
+    public enum WrapEnd {
+        SKIPPED,
+        ARRIVED,
+        CAP
+    }
+
+    /**
+     * What a member does from the frame of a collapse: fight a target, or attack-move to its flank's wrap point.
+     */
+    enum MemberOrder {
+        FIGHT,
+        WRAP
+    }
+
     private ContainmentCollapse() {
     }
 
     /**
      * The matchup gate for a collapse and for a strong ENGAGE breaking an attrition retreat lock: every opponent
-     * race but Protoss, against which both fights traded close to nothing.
+     * race but Protoss and Zerg, against which both fights traded close to nothing.
      *
      * @param opponentRace the opponent's race, Unknown until it is seen
      * @return true when collapses and attrition lock breaks apply against the opponent
      */
     public static boolean appliesAgainst(Race opponentRace) {
-        return opponentRace != Race.Protoss;
+        return opponentRace != Race.Protoss && opponentRace != Race.Zerg;
     }
 
     /**
@@ -154,26 +208,43 @@ public final class ContainmentCollapse {
 
     /**
      * The hysteresis gate on a passed collapse test. A squad collapsing or inside its cooldown reads COOLING_DOWN,
-     * and a squad whose test has not passed on {@link #ENTRY_EVALUATIONS} consecutive evaluations reads UNSUSTAINED.
-     * Any other outcome passes through.
+     * and a squad not under fire whose entry run has fewer than {@link #ENTRY_EVALUATIONS} passes reads UNSUSTAINED.
+     * A squad under fire is not held for the run. Any other outcome passes through.
      *
      * @param outcome the outcome of this evaluation's collapse test
      * @param coolingDown true while the squad is collapsing or inside its cooldown, see {@link Squad#isCollapseLocked}
-     * @param heldEvaluations consecutive evaluations, this one included, on which the test passed outside the
-     *     cooldown, see {@link Squad#recordCollapseCandidate}
-     * @return COLLAPSE when the passed test has held and the cooldown is over, else the outcome that held it back
+     * @param passes passes in the squad's entry run, this test included, see {@link CollapseEntryRun#record}
+     * @param underFire whether the enemy is already engaging the squad
+     * @return COLLAPSE when the passed test has held or the squad is under fire, and the cooldown is over, else the
+     *     outcome that held it back
      */
-    static Outcome gate(Outcome outcome, boolean coolingDown, int heldEvaluations) {
+    static Outcome gate(Outcome outcome, boolean coolingDown, int passes, UnderFire underFire) {
         if (outcome != Outcome.COLLAPSE) {
             return outcome;
         }
         if (coolingDown) {
             return Outcome.COOLING_DOWN;
         }
-        if (heldEvaluations < ENTRY_EVALUATIONS) {
+        if (passes < ENTRY_EVALUATIONS && underFire == UnderFire.NONE) {
             return Outcome.UNSUSTAINED;
         }
         return Outcome.COLLAPSE;
+    }
+
+    /**
+     * What each member does from the frame of a collapse. A squad under fire skips the wrap and every member fights.
+     * Otherwise the flanks wrap and the centre fights.
+     *
+     * @param sides per member, -1 or 1 for a flank and 0 for the centre, see {@link #flankSides}
+     * @param underFire whether the enemy was already engaging the squad
+     * @return per member, its order
+     */
+    static MemberOrder[] memberOrders(int[] sides, UnderFire underFire) {
+        MemberOrder[] orders = new MemberOrder[sides.length];
+        for (int i = 0; i < sides.length; i++) {
+            orders[i] = sides[i] != 0 && underFire == UnderFire.NONE ? MemberOrder.WRAP : MemberOrder.FIGHT;
+        }
+        return orders;
     }
 
     /**
@@ -345,23 +416,21 @@ public final class ContainmentCollapse {
     }
 
     /**
-     * Whether the wrap is over and the centre commits: every flank still alive is within
-     * {@link #FLANK_ARRIVAL_DISTANCE} of its wrap point, or the wrap has run {@link #WRAP_FRAME_CAP} frames.
+     * Whether the wrap is over and the flanks fight: ARRIVED when every flank still alive is within
+     * {@link #FLANK_ARRIVAL_DISTANCE} of its wrap point, else CAP once the wrap has run {@link #WRAP_FRAME_CAP}
+     * frames.
      *
      * @param elapsedFrames frames since the collapse
      * @param flankDistances distance of each live flank from its wrap point
-     * @return true when the centre commits
+     * @return how the wrap ended, or null while it runs
      */
-    static boolean wrapComplete(int elapsedFrames, Collection<Double> flankDistances) {
-        if (elapsedFrames >= WRAP_FRAME_CAP) {
-            return true;
-        }
+    static WrapEnd wrapEnd(int elapsedFrames, Collection<Double> flankDistances) {
         for (double distance : flankDistances) {
             if (distance > FLANK_ARRIVAL_DISTANCE) {
-                return false;
+                return elapsedFrames >= WRAP_FRAME_CAP ? WrapEnd.CAP : null;
             }
         }
-        return true;
+        return WrapEnd.ARRIVED;
     }
 
     /**
@@ -375,62 +444,85 @@ public final class ContainmentCollapse {
         private final boolean staticClear;
         private final int flanks;
         private final Position enemyCentroid;
+        private final UnderFire underFire;
+        private final int runStartFrame;
 
         Read(Outcome outcome, int enemiesInSector, double ratio, boolean staticClear, int flanks,
              Position enemyCentroid) {
+            this(outcome, enemiesInSector, ratio, staticClear, flanks, enemyCentroid, UnderFire.NONE,
+                    CollapseEntryRun.NO_RUN);
+        }
+
+        private Read(Outcome outcome, int enemiesInSector, double ratio, boolean staticClear, int flanks,
+                     Position enemyCentroid, UnderFire underFire, int runStartFrame) {
             this.outcome = outcome;
             this.enemiesInSector = enemiesInSector;
             this.ratio = ratio;
             this.staticClear = staticClear;
             this.flanks = flanks;
             this.enemyCentroid = enemyCentroid;
+            this.underFire = underFire;
+            this.runStartFrame = runStartFrame;
         }
 
         /**
-         * The same read with another outcome, as the hysteresis gate reports it, see {@link #gate}.
+         * The same read as the hysteresis gate reports it, see {@link #gate}.
          *
          * @param gated the outcome after the gate
-         * @return the read with that outcome
+         * @param firing whether the enemy was already engaging the squad
+         * @param runStart frame of the first pass of the squad's entry run, {@link CollapseEntryRun#NO_RUN} when none
+         * @return the read with the gated outcome
          */
-        Read withOutcome(Outcome gated) {
-            return new Read(gated, enemiesInSector, ratio, staticClear, flanks, enemyCentroid);
+        Read gated(Outcome gated, UnderFire firing, int runStart) {
+            return new Read(gated, enemiesInSector, ratio, staticClear, flanks, enemyCentroid, firing, runStart);
         }
     }
 
     /**
-     * A collapse under way: the point each member holds or wraps to until the centre commits.
+     * A collapse under way: its members, and the wrap point each flank attack-moves to until the wrap ends.
      */
     static final class Maneuver {
-        private final Map<ManagedUnit, Position> orders;
-        private final Set<ManagedUnit> flanks;
+        private final Map<ManagedUnit, Position> wraps;
+        private final Set<ManagedUnit> members;
         @Getter
         private final int startFrame;
 
-        Maneuver(Map<ManagedUnit, Position> orders, Set<ManagedUnit> flanks, int startFrame) {
-            this.orders = new HashMap<>(orders);
-            this.flanks = new HashSet<>(flanks);
+        /**
+         * @param wraps the wrap point of each flank
+         * @param members every member taking part, flanks included
+         * @param startFrame frame of the collapse
+         */
+        Maneuver(Map<ManagedUnit, Position> wraps, Set<ManagedUnit> members, int startFrame) {
+            this.wraps = new HashMap<>(wraps);
+            this.members = new HashSet<>(members);
+            this.members.addAll(wraps.keySet());
             this.startFrame = startFrame;
         }
 
-        Position orderFor(ManagedUnit member) {
-            return orders.get(member);
+        /**
+         * @param member a squad member
+         * @return the member's wrap point, or null when it is not a flank
+         */
+        Position wrapFor(ManagedUnit member) {
+            return wraps.get(member);
         }
 
         Set<ManagedUnit> getMembers() {
-            return Collections.unmodifiableSet(orders.keySet());
+            return Collections.unmodifiableSet(members);
         }
 
         /**
          * Distance of each flank still in the squad from its wrap point.
          *
-         * @param members the squad's current members
+         * @param squadMembers the squad's current members
          * @return the distances
          */
-        List<Double> flankDistances(Collection<ManagedUnit> members) {
+        List<Double> flankDistances(Collection<ManagedUnit> squadMembers) {
             List<Double> distances = new ArrayList<>();
-            for (ManagedUnit member : members) {
-                if (flanks.contains(member)) {
-                    distances.add(member.getPosition().getDistance(orders.get(member)));
+            for (ManagedUnit member : squadMembers) {
+                Position wrap = wraps.get(member);
+                if (wrap != null) {
+                    distances.add(member.getPosition().getDistance(wrap));
                 }
             }
             return distances;

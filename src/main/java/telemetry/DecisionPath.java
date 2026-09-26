@@ -127,13 +127,14 @@ public enum DecisionPath {
 
     /**
      * A containing squad collapsed on the enemies inside its arc's sector: it left the arc for FIGHT under a fight
-     * lock, its flanks wrapping past the enemy centroid while the centre holds.
+     * lock, every member fighting when it was under fire, else its flanks attack-moving past the enemy centroid while
+     * the centre fights.
      */
     CONTAIN_COLLAPSE,
 
     /**
-     * The wrap of a collapse ended, every flank having arrived or the wrap having run out its frames, and the centre
-     * of the squad committed to the fight.
+     * The wrap of a collapse ended, skipped under fire, every flank having arrived or the wrap having run out its
+     * frames, and every member of the squad fights.
      */
     CONTAIN_COLLAPSE_COMMIT,
 

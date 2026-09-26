@@ -97,9 +97,15 @@ class SquadDecisionsTest {
             @Override
             public void onContainmentCollapseEvaluated(Squad squad, ContainmentCollapse.Outcome outcome,
                                                        int enemiesInSector, double ratio, int flanks,
-                                                       boolean staticClear) {
+                                                       boolean staticClear,
+                                                       ContainmentCollapse.UnderFire underFire, int runStartFrame) {
                 events.add("COLLAPSE:" + outcome + ":" + enemiesInSector + ":" + ratio + ":" + flanks + ":"
-                        + staticClear);
+                        + staticClear + ":" + underFire + ":" + runStartFrame);
+            }
+
+            @Override
+            public void onCollapseWrapEnded(Squad squad, ContainmentCollapse.WrapEnd wrapEnd) {
+                events.add("WRAP_END:" + wrapEnd);
             }
 
             @Override
@@ -694,10 +700,12 @@ class SquadDecisionsTest {
         SquadDecisions.register(recorder());
 
         SquadDecisions.containmentCollapseEvaluated(new GroundSquad(), ContainmentCollapse.Outcome.STATIC_COVERED,
-                4, 2.5, 6, false);
+                4, 2.5, 6, false, ContainmentCollapse.UnderFire.NONE, 9000);
         SquadDecisions.containArcMeasured(new GroundSquad(), 700);
+        SquadDecisions.collapseWrapEnded(new GroundSquad(), ContainmentCollapse.WrapEnd.CAP);
 
-        assertEquals(java.util.Arrays.asList("COLLAPSE:STATIC_COVERED:4:2.5:6:false", "ARC_DISTANCE:700"), events);
+        assertEquals(java.util.Arrays.asList("COLLAPSE:STATIC_COVERED:4:2.5:6:false:NONE:9000", "ARC_DISTANCE:700",
+                "WRAP_END:CAP"), events);
     }
 
     @Test
@@ -709,17 +717,24 @@ class SquadDecisionsTest {
         context.setCollapseFlanks(6);
         context.setCollapseStaticClear(1);
         context.setContainArcDistance(128);
+        context.setCollapseUnderFire(ContainmentCollapse.UnderFire.HIT_AND_MELEE.name());
+        context.setCollapseRunStartFrame(10471);
+        context.setCollapseWrapEnd(ContainmentCollapse.WrapEnd.SKIPPED.name());
         List<String> cells = SquadDecisionLogger.collapseCells(context);
         String[] columns = SquadDecisionLogger.HEADER.split(",", -1);
         int first = columnIndex("collapse_outcome");
 
         assertEquals(columns.length - first, cells.size());
-        assertEquals(java.util.Arrays.asList("COLLAPSE", "5", "2.2500", "6", "1", "128"), cells);
+        assertEquals(java.util.Arrays.asList("COLLAPSE", "5", "2.2500", "6", "1", "128", "HIT_AND_MELEE", "10471",
+                "SKIPPED"), cells);
         assertEquals("collapse_enemies_in_sector", columns[first + 1]);
         assertEquals("collapse_sim_ratio", columns[first + 2]);
         assertEquals("collapse_flank_count", columns[first + 3]);
         assertEquals("collapse_static_clear", columns[first + 4]);
         assertEquals("contain_arc_distance", columns[first + 5]);
+        assertEquals("collapse_under_fire", columns[first + 6]);
+        assertEquals("collapse_run_start_frame", columns[first + 7]);
+        assertEquals("collapse_wrap_end", columns[first + 8]);
     }
 
     @Test
@@ -739,6 +754,9 @@ class SquadDecisionsTest {
         assertEquals("-1", fields[columnIndex("collapse_enemies_in_sector")]);
         assertEquals("-1", fields[columnIndex("collapse_static_clear")]);
         assertEquals("-1", fields[columnIndex("contain_arc_distance")]);
+        assertEquals("NONE", fields[columnIndex("collapse_under_fire")]);
+        assertEquals("-1", fields[columnIndex("collapse_run_start_frame")]);
+        assertEquals("NONE", fields[columnIndex("collapse_wrap_end")]);
     }
 
     @Test

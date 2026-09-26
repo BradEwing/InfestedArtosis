@@ -105,9 +105,18 @@ public interface SquadDecisionSink {
      *     there and no sim ran
      * @param flanks members that flank in a collapse of this squad
      * @param staticClear true when the enemy centroid is clear of static defence reach
+     * @param underFire whether the enemy was already engaging the squad, NONE unless the test passed
+     * @param runStartFrame frame of the first pass of the squad's collapse entry run, -1 when no run is under way
      */
     void onContainmentCollapseEvaluated(Squad squad, ContainmentCollapse.Outcome outcome, int enemiesInSector,
-                                        double ratio, int flanks, boolean staticClear);
+                                        double ratio, int flanks, boolean staticClear,
+                                        ContainmentCollapse.UnderFire underFire, int runStartFrame);
+
+    /**
+     * The wrap of a collapse ended and every member fights: skipped when the squad was under fire, the flanks
+     * arrived, or the wrap ran out its frames. Called just before the CONTAIN_COLLAPSE_COMMIT path is taken.
+     */
+    void onCollapseWrapEnded(Squad squad, ContainmentCollapse.WrapEnd wrapEnd);
 
     /**
      * A squad was offered a containment arc, with the distance from its center to the nearest arc point. A squad
