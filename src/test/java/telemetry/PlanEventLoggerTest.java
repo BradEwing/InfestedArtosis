@@ -1,8 +1,13 @@
 package telemetry;
 
+import macro.DroneRound;
+import macro.plan.Plan;
+import macro.plan.PlanBlocker;
+import macro.plan.PlanState;
 import org.junit.jupiter.api.Test;
 import strategy.buildorder.LarvaBoundMacroHatchery.Gate;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
@@ -156,6 +161,59 @@ class PlanEventLoggerTest {
         assertEquals("drone_round_soft_cap", column(reason + 5));
         assertEquals("drone_round_hard_cap", column(reason + 6));
         assertEquals("drone_round_hard_cap", columns[columns.length - 1]);
+    }
+
+    @Test
+    void aRowThatIsNotADroneRoundRowWritesSevenEmptyDroneRoundCells() {
+        StringBuilder sb = new StringBuilder();
+
+        PlanEventLogger.appendDroneRound(sb, null);
+
+        assertEquals(Arrays.asList("", "", "", "", "", "", ""), Arrays.asList(sb.toString().split(",", -1)));
+    }
+
+    @Test
+    void aDroneRoundRowWritesItsReasonDronesSizeHeldFramesWorkersAndCapsInHeaderOrder() {
+        List<DroneRound.Report> reports = new ArrayList<>();
+        PlanEvents.register(new PlanEventSink() {
+            @Override
+            public void onEnqueue(Plan plan) {
+            }
+
+            @Override
+            public void onStateChange(Plan plan, PlanState from, PlanState to) {
+            }
+
+            @Override
+            public void onBlocked(Plan plan, PlanBlocker blocker) {
+            }
+
+            @Override
+            public void onDroneRoundOpened(DroneRound.Report report) {
+                reports.add(report);
+            }
+        });
+        try {
+            new DroneRound().update(9000, 0, 20, 0, true, false, DroneRound.ContainHeld.builder()
+                    .eligible(true).chainStartFrame(8000).heldFrames(1000).hatcheries(4)
+                    .workers(18).softCap(26).hardCap(33).build());
+        } finally {
+            PlanEvents.clear();
+        }
+        StringBuilder sb = new StringBuilder();
+
+        PlanEventLogger.appendDroneRound(sb, reports.get(0));
+
+        String[] cells = sb.toString().split(",", -1);
+        int first = indexOf("drone_round_reason");
+        assertEquals(7, cells.length);
+        assertEquals("CONTAIN_HELD", cells[indexOf("drone_round_reason") - first]);
+        assertEquals("20", cells[indexOf("drone_round_drones") - first]);
+        assertEquals("4", cells[indexOf("drone_round_size") - first]);
+        assertEquals("1000", cells[indexOf("contain_held_frames") - first]);
+        assertEquals("18", cells[indexOf("drone_round_workers") - first]);
+        assertEquals("26", cells[indexOf("drone_round_soft_cap") - first]);
+        assertEquals("33", cells[indexOf("drone_round_hard_cap") - first]);
     }
 
     private static String column(int index) {

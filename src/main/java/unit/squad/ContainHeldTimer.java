@@ -8,9 +8,9 @@ package unit.squad;
  * frames have passed since a squad last contained, so a squad that times out of its contain and re-enters it
  * straight away, or a merge that briefly leaves no squad in CONTAIN, keeps the chain and its start frame.
  *
- * <p>A containing squad sent back by the enemy (attrition, an outranged arc, or a base under attack) breaks the
- * chain at once, whether or not another squad still contains; a squad still in CONTAIN starts a new chain on
- * the next update.
+ * <p>A containing squad sent back by the enemy (attrition or an outranged arc), or a break of every contain
+ * (a base under attack or the strength gate sending the army in), breaks the chain at once, whether or not
+ * another squad still contains; a squad still in CONTAIN starts a new chain on the next update.
  */
 public class ContainHeldTimer {
 

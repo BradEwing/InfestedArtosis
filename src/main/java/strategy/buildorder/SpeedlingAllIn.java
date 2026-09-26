@@ -91,8 +91,9 @@ public class SpeedlingAllIn extends BuildOrder {
     static final int ZERGLINGS_BEFORE_EXTRA_DRONES = 12;
 
     /**
-     * Living zerglings required for a held contain to open a drone round, so the round's drones never
-     * come while too few zerglings are alive to keep the contain's pressure up. The same bar as
+     * Living zerglings required for a held contain to open a drone round and keep it open, so the
+     * round's drones never come while too few zerglings are alive to keep the contain's pressure up.
+     * The same bar as
      * {@link #ZERGLINGS_BEFORE_EXTRA_DRONES}.
      */
     static final int ZERGLINGS_FOR_CONTAIN_HELD_ROUND = ZERGLINGS_BEFORE_EXTRA_DRONES;

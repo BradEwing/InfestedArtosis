@@ -198,9 +198,10 @@ public class PlanEventLogger implements PlanEventSink {
      * DRONE_ROUND_OPEN and DRONE_ROUND_CLOSE rows are written when a {@link macro.DroneRound} opens
      * and closes, and leave every plan column empty. item is the round's kind, ARMY_MILESTONE or
      * CONTAIN_HELD, on both rows. drone_round_reason is the kind again on an OPEN row and the close
-     * reason on a CLOSE row: SIZE, BUILD_CAP, SOFT_CAP, HARD_CAP, THREAT, CONTAIN_ENDED or TIMEOUT.
-     * drone_round_drones is Drones hatched plus Drones in an egg at that frame, so the Drones a round
-     * added are the CLOSE row's count less the OPEN row's. drone_round_size is the Drones the round
+     * reason on a CLOSE row: SIZE, BUILD_CAP, SOFT_CAP, HARD_CAP, THREAT, CONTAIN_ENDED, TIMEOUT or
+     * INELIGIBLE. drone_round_drones is Drones hatched plus Drones in an egg at that frame, so the CLOSE
+     * row's count less the OPEN row's is the Drones a round added net of any Drones that died during
+     * it. drone_round_size is the Drones the round
      * set out to add. contain_held_frames is how long our ground squads had held the running contain,
      * zero with none. drone_round_workers, drone_round_soft_cap and drone_round_hard_cap are the
      * mineral and gas workers and the two worker caps a contain-held round measures them against.
@@ -1315,7 +1316,13 @@ public class PlanEventLogger implements PlanEventSink {
         appendDroneRound(sb, rowDroneRound);
     }
 
-    private static void appendDroneRound(StringBuilder sb, DroneRound.Report droneRound) {
+    /**
+     * Writes the seven drone round cells, empty when the row is not a DRONE_ROUND row.
+     *
+     * @param sb the row being built, whose last cell so far is followed by a separator
+     * @param droneRound the round that opened or closed, or null
+     */
+    static void appendDroneRound(StringBuilder sb, DroneRound.Report droneRound) {
         if (droneRound == null) {
             sb.append(",,,,,,");
             return;

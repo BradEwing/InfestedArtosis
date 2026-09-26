@@ -123,9 +123,42 @@ class ContainHeldTimerTest {
     }
 
     @Test
-    void onlyAnEnemyForcedContainExitBreaksTheHeldContain() {
-        assertTrue(SquadManager.breaksHeldContain(DecisionPath.CONTAIN_ATTRITION));
-        assertTrue(SquadManager.breaksHeldContain(DecisionPath.CONTAIN_OUTRANGED));
-        assertFalse(SquadManager.breaksHeldContain(DecisionPath.CONTAIN_RETREAT));
+    void anEnemyForcedRetreatBreaksTheHeldContainButATimeoutRetreatIsBridged() {
+        SquadManager.ContainmentVerdict retreat = SquadManager.ContainmentVerdict.RETREAT;
+        assertTrue(SquadManager.breaksHeldContain(retreat, DecisionPath.CONTAIN_ATTRITION));
+        assertTrue(SquadManager.breaksHeldContain(retreat, DecisionPath.CONTAIN_OUTRANGED));
+        assertFalse(SquadManager.breaksHeldContain(retreat, DecisionPath.CONTAIN_RETREAT));
+    }
+
+    @Test
+    void everyBreakAllBreaksTheHeldContainIncludingTheStrengthGate() {
+        boolean timedOut = false;
+        boolean canBreak = true;
+        SquadManager.ContainmentVerdict strengthGate = SquadManager.containmentVerdict(false, false,
+                SquadManager.OutrangedHit.NONE, false, false, timedOut, canBreak, true);
+        assertEquals(SquadManager.ContainmentVerdict.BREAK_ALL, strengthGate);
+        assertTrue(SquadManager.breaksHeldContain(strengthGate, DecisionPath.CONTAIN_RETREAT));
+
+        SquadManager.ContainmentVerdict baseAttack = SquadManager.containmentVerdict(true, false,
+                SquadManager.OutrangedHit.NONE, false, false, false, false, true);
+        assertTrue(SquadManager.breaksHeldContain(baseAttack, DecisionPath.CONTAIN_RETREAT));
+    }
+
+    @Test
+    void holdingPushingBackOrRepositioningNeverBreaksTheHeldContain() {
+        assertFalse(SquadManager.breaksHeldContain(SquadManager.ContainmentVerdict.HOLD, DecisionPath.CONTAIN_ATTRITION));
+        assertFalse(SquadManager.breaksHeldContain(SquadManager.ContainmentVerdict.PUSH_BACK,
+                DecisionPath.CONTAIN_OUTRANGED));
+        assertFalse(SquadManager.breaksHeldContain(SquadManager.ContainmentVerdict.REPOSITION,
+                DecisionPath.CONTAIN_RETREAT));
+    }
+
+    @Test
+    void theTimeoutRetreatIsTheBridgedPath() {
+        SquadManager.ContainmentVerdict timeout = SquadManager.containmentVerdict(false, false,
+                SquadManager.OutrangedHit.NONE, false, false, true, false, true);
+        assertEquals(SquadManager.ContainmentVerdict.RETREAT, timeout);
+        assertEquals(DecisionPath.CONTAIN_RETREAT, SquadManager.containmentExitPath(false, false));
+        assertFalse(SquadManager.breaksHeldContain(timeout, SquadManager.containmentExitPath(false, false)));
     }
 }

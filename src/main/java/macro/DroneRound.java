@@ -32,7 +32,8 @@ import unit.squad.ContainHeldTimer;
  * under both the hard cap and the soft cap, and no sooner than {@link #CONTAIN_HELD_COOLDOWN_FRAMES}
  * after the last such round closed. Its size is one Drone per hatchery and at least
  * {@link #CONTAIN_HELD_MIN_ROUND_SIZE}; the build's Drone cap does not bound it. It closes on a
- * threat, when the contain it opened on ends or is broken, when the workers reach either cap, once
+ * threat, once the matchup or build no longer allows it, when the contain it opened on ends or is
+ * broken, when the workers reach either cap, once
  * its Drones are hatched or in an egg, or after {@link #MAX_ROUND_FRAMES}. It never reads or moves
  * the army milestone.
  *
@@ -66,7 +67,11 @@ public class DroneRound {
         CONTAIN_HELD
     }
 
-    /** Why a round closed. BUILD_CAP is the build's own Drone cap, which only an army milestone round reads. */
+    /**
+     * Why a round closed. BUILD_CAP is the build's own Drone cap, which only an army milestone round reads.
+     * INELIGIBLE is a contain-held round whose matchup or build no longer allows it, such as a switch to a
+     * build that runs none or too few Zerglings left alive for SpeedlingAllIn.
+     */
     public enum CloseReason {
         SIZE,
         BUILD_CAP,
@@ -74,7 +79,8 @@ public class DroneRound {
         HARD_CAP,
         THREAT,
         CONTAIN_ENDED,
-        TIMEOUT
+        TIMEOUT,
+        INELIGIBLE
     }
 
     /**
@@ -258,6 +264,9 @@ public class DroneRound {
     private CloseReason containHeldClose(int frame, int drones, boolean threatened, ContainHeld containHeld) {
         if (threatened) {
             return CloseReason.THREAT;
+        }
+        if (!containHeld.isEligible()) {
+            return CloseReason.INELIGIBLE;
         }
         if (containHeld.getChainStartFrame() != containChainStartFrame) {
             return CloseReason.CONTAIN_ENDED;

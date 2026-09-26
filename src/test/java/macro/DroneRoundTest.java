@@ -416,6 +416,18 @@ class DroneRoundTest {
     }
 
     @Test
+    void aContainHeldRoundClosesOnceTheMatchupOrBuildNoLongerAllowsIt() {
+        DroneRound round = openContainHeldRound();
+        PlanEvents.register(recorder());
+
+        round.update(FRAME + 1, NO_ARMY, DRONES + 1, 0, WANTED, CALM,
+                held().heldFrames(FRAME + 1 - HELD_AT).eligible(false).build());
+
+        assertFalse(round.isActive());
+        assertEquals(Collections.singletonList("CLOSE:CONTAIN_HELD:INELIGIBLE:" + (DRONES + 1)), reports);
+    }
+
+    @Test
     void aThreatClosesAContainHeldRound() {
         DroneRound round = openContainHeldRound();
         PlanEvents.register(recorder());
