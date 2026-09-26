@@ -159,6 +159,15 @@ class ResourceLedgerTest {
     }
 
     @Test
+    void anExtractorAtABaseWeNoLongerHoldStillCountsAsMining() {
+        ResourceLedger ledger = ledgerWithTwoBases();
+        ledger.addExtractor(NATURAL_EXTRACTOR, NATURAL_GEYSER, NATURAL, STARTING_GAS, COMPLETED_FRAME);
+
+        assertEquals(8, ledger.remainingMineralPatches(Collections.singletonList(MAIN)));
+        assertEquals(1, ledger.miningGeysers());
+    }
+
+    @Test
     void aReadingForAnUntrackedExtractorIsIgnored() {
         ResourceLedger ledger = ledgerWithMainExtractor();
 

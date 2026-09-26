@@ -2057,6 +2057,9 @@ public class GameState {
     }
 
     /**
+     * Unlike {@link #remainingMineralPatches()}, this does not filter by base ownership: an Extractor still
+     * standing at a base whose hatchery was lost is ours and counts.
+     *
      * @return our completed Extractors on geysers that still have gas
      */
     public int miningGeysers() {
@@ -2064,6 +2067,8 @@ public class GameState {
     }
 
     /**
+     * Counts Extractors regardless of base ownership, as {@link #miningGeysers()} does.
+     *
      * @return our completed Extractors on geysers that are empty
      */
     public int depletedGeysers() {
