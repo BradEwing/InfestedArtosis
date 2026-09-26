@@ -159,6 +159,26 @@ class Engagement {
         if (unit == null || unit.isDied()) {
             return;
         }
+        markDied(unit, frame, position);
+    }
+
+    /**
+     * Records a unit's death with the attacks it had started by then, so the attacks it started after its last
+     * sample are counted.
+     *
+     * @param attacksStarted attacks the unit has started since it was first managed
+     * @param lastAttackStartFrame frame of the last of those attacks, -1 when none
+     */
+    void recordDeath(int unitId, int frame, Position position, int attacksStarted, int lastAttackStartFrame) {
+        EngagementUnit unit = units.get(unitId);
+        if (unit == null || unit.isDied()) {
+            return;
+        }
+        unit.observeAttacks(attacksStarted, lastAttackStartFrame);
+        markDied(unit, frame, position);
+    }
+
+    private void markDied(EngagementUnit unit, int frame, Position position) {
         unit.markDied(frame, position);
         unitsLost++;
         supplyLost += unit.getSupply();

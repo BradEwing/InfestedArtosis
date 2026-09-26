@@ -25,7 +25,7 @@ import java.util.List;
  * assigned_count is how many other melee attackers, from any fight squad, held the target in the frame's shared
  * TargetLedger when this attacker chose it. saturated is 0 when the attacker attacks the target with a slot open,
  * 1 when that count had reached the melee cap for this attacker and it still attacks the target directly, and 2 when
- * the attacker is in overflow (see util.MeleeOverflowGate): it attack-moves to the target's position, leaving what it
+ * the attacker is in overflow (see util.MeleeOverflowGate): it attack-moves past the target, leaving what it
  * hits to the game, and is not held in the ledger. A row is also written when the attacker keeps its target but enters
  * or leaves overflow, so previous_target_id then equals target_id; each change of the cell between 2 and 0 or 1 for
  * one attacker_id is one gate transition. priority_reason is why the target got its tier, see TargetScorer.Reason.

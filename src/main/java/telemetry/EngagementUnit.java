@@ -9,9 +9,9 @@ import lombok.Getter;
  * raw trickle signal; everything else here exists to let an analysis script qualify it.
  *
  * <p>The attack columns separate a unit that never reached the enemy from one that fought untouched. They are read
- * at each sample, so an attack started after the unit's last sample, such as just before it died, is not counted,
- * and the first attack frame is the last attack the unit had started by the first sample that saw any, at most one
- * sample interval after the true first attack.
+ * at each sample and once more when the unit dies, so an attack started just before its death is counted, while an
+ * attack started after the last sample of a unit that leaves alive is not. The first attack frame is the last attack
+ * the unit had started by the first reading that saw any, at most one sample interval after the true first attack.
  */
 @Getter
 class EngagementUnit {
@@ -54,6 +54,14 @@ class EngagementUnit {
     void observe(int frame, int hitPoints, int attacksStarted, int lastAttackStartFrame) {
         this.exitFrame = frame;
         this.hitPointsAtExit = hitPoints;
+        observeAttacks(attacksStarted, lastAttackStartFrame);
+    }
+
+    /**
+     * @param attacksStarted attacks the unit has started since it was first managed
+     * @param lastAttackStartFrame frame of the last of those attacks
+     */
+    void observeAttacks(int attacksStarted, int lastAttackStartFrame) {
         this.attacksAtExit = attacksStarted;
         if (firstAttackFrame < 0 && attacksStarted > attacksAtArrival) {
             firstAttackFrame = lastAttackStartFrame;
@@ -61,7 +69,7 @@ class EngagementUnit {
     }
 
     /**
-     * @return attacks the unit started between its arrival and its last sample in the engagement
+     * @return attacks the unit started between its arrival and its last sample in the engagement, or its death
      */
     int getAttacksInEngagement() {
         return attacksAtExit - attacksAtArrival;

@@ -75,7 +75,57 @@ class MeleeOverflowGateTest {
 
         assertTrue(MeleeOverflowGate.MIN_HOLD_FRAMES - 1 >= MeleeOverflowGate.EXIT_FRAMES);
         assertTrue(gate.isOverflowing());
-        assertFalse(gate.observe(false, entered + MeleeOverflowGate.MIN_HOLD_FRAMES));
+        assertTrue(gate.observe(false, entered + MeleeOverflowGate.MIN_HOLD_FRAMES));
+    }
+
+    @Test
+    void openPicksDuringTheHoldDoNotCountTowardLeaving() {
+        MeleeOverflowGate gate = new MeleeOverflowGate();
+        int entered = enterOverflow(gate) - 1;
+        int lockExpires = entered + MeleeOverflowGate.MIN_HOLD_FRAMES;
+
+        int next = report(gate, false, entered + 1, lockExpires - entered - 1);
+        assertFalse(gate.isOverflowLocked(next));
+        next = report(gate, false, next, MeleeOverflowGate.EXIT_FRAMES - 1);
+
+        assertTrue(gate.isOverflowing());
+        assertFalse(gate.observe(false, next));
+        assertTrue(next - lockExpires + 1 == MeleeOverflowGate.EXIT_FRAMES);
+    }
+
+    @Test
+    void aSaturatedReTargetEntersOnItsFirstFrame() {
+        MeleeOverflowGate gate = new MeleeOverflowGate();
+
+        assertTrue(gate.observe(true, true, START));
+        assertTrue(gate.isOverflowLocked(START));
+    }
+
+    @Test
+    void aSaturatedReTargetEntersAfterOpenFramesOnThePreviousTarget() {
+        MeleeOverflowGate gate = new MeleeOverflowGate();
+        int next = report(gate, false, START, 30);
+
+        assertTrue(gate.observe(true, true, next));
+    }
+
+    @Test
+    void anUnsaturatedReTargetDoesNotEnter() {
+        MeleeOverflowGate gate = new MeleeOverflowGate();
+
+        assertFalse(gate.observe(false, true, START));
+        assertFalse(gate.isOverflowing());
+    }
+
+    @Test
+    void aHeldTargetThatBecomesSaturatedStillNeedsTheEnterStreak() {
+        MeleeOverflowGate gate = new MeleeOverflowGate();
+        gate.observe(false, true, START);
+
+        for (int i = 1; i < MeleeOverflowGate.ENTER_FRAMES; i++) {
+            assertFalse(gate.observe(true, false, START + i));
+        }
+        assertTrue(gate.observe(true, false, START + MeleeOverflowGate.ENTER_FRAMES));
     }
 
     @Test

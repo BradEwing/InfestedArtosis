@@ -142,6 +142,10 @@ public class SquadManager {
     private static final double REINFORCEMENT_RADIUS = 384.0;
     private static final int TARGETING_RADIUS = 256;
     private static final int WIDENED_TARGETING_RADIUS = 2 * TARGETING_RADIUS;
+    /**
+     * Stands in for the id of a fight target when a unit holds none that still exists.
+     */
+    static final int NO_TARGET_ID = -1;
     public static final int GROUND_SPLIT_DISTANCE = 256;
     public static final int AIR_SPLIT_DISTANCE = 768;
     private static final int COMMITMENT_RELEASE_DISTANCE = 512;
@@ -3474,7 +3478,8 @@ public class SquadManager {
                 () -> widenCandidates(uncapped, unit::getDistance, admitted), select);
         if (selection != null) {
             TargetScorer.Selection issued = commitPick(ledger, managedUnit.getOverflowGate(), unit.getID(),
-                    unit.getType(), selection, selection.getTarget().getID(), game.getFrameCount());
+                    unit.getType(), selection, selection.getTarget().getID(),
+                    heldTargetId(managedUnit.fightTarget), game.getFrameCount());
             TargetChoices.chosen(managedUnit, managedUnit.fightTarget, managedUnit.isAttackMoving(), issued,
                     scoutCapped);
             managedUnit.setFightTarget(issued.getTarget(), issued.isAttackMove());
@@ -3483,10 +3488,11 @@ public class SquadManager {
     }
 
     /**
-     * Reports the pick to the attacker's {@link MeleeOverflowGate} and decides how it is issued. While the gate holds
-     * the attacker in overflow, the pick comes back marked as an attack-move to the target's position and the ledger
-     * is left alone, so the attacker does not count toward the target's load. Otherwise the pick stands as a direct
-     * attack and is recorded in the ledger.
+     * Reports the pick to the attacker's {@link MeleeOverflowGate} and decides how it is issued. The pick is a
+     * re-target when it is not the target the attacker held, so a saturated re-target enters overflow at once. While
+     * the gate holds the attacker in overflow, the pick comes back marked as an attack-move past the target and the
+     * ledger is left alone, so the attacker does not count toward the target's load. Otherwise the pick stands as a
+     * direct attack and is recorded in the ledger.
      *
      * @param ledger the frame's melee assignments
      * @param gate the attacker's overflow gate
@@ -3494,17 +3500,26 @@ public class SquadManager {
      * @param attackerType the attacker's type
      * @param selection the pick made for the attacker
      * @param targetId the picked target's unit id
+     * @param heldTargetId the id of the fight target the attacker held before this pick, or {@link #NO_TARGET_ID}
+     *     when it held none that still exists
      * @param frame the current frame
      * @return the pick as it is issued
      */
     static TargetScorer.Selection commitPick(TargetLedger ledger, MeleeOverflowGate gate, int attackerId,
                                              UnitType attackerType, TargetScorer.Selection selection, int targetId,
-                                             int frame) {
-        if (gate.observe(selection.isSaturated(), frame)) {
+                                             int heldTargetId, int frame) {
+        if (gate.observe(selection.isSaturated(), heldTargetId != targetId, frame)) {
             return selection.asAttackMove();
         }
         ledger.record(attackerId, attackerType, targetId);
         return selection;
+    }
+
+    /**
+     * @return the id of a fight target that still exists, or {@link #NO_TARGET_ID} for none
+     */
+    static int heldTargetId(Unit fightTarget) {
+        return fightTarget != null && fightTarget.exists() ? fightTarget.getID() : NO_TARGET_ID;
     }
 
     /**

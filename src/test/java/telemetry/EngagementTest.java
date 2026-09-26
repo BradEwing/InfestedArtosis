@@ -55,6 +55,31 @@ class EngagementTest {
     }
 
     @Test
+    void aUnitThatDiesBetweenSamplesKeepsTheAttacksItStartedAfterItsLastSample() {
+        Engagement engagement = engagementAt(100);
+        engagement.noteUnit(100, 1, UnitType.Zerg_Zergling, 35, "FIGHT", "squad-a", 3, 40);
+        engagement.noteUnit(108, 1, UnitType.Zerg_Zergling, 35, "FIGHT", "squad-a", 3, 40);
+
+        engagement.recordDeath(1, 115, new Position(500, 600), 4, 111);
+
+        String[] fields = engagement.toUnitRows(GAME_ID).get(0).split(",", -1);
+        assertEquals("111", fields[unitColumn("first_attack_frame")]);
+        assertEquals("1", fields[unitColumn("attacks_started")]);
+    }
+
+    @Test
+    void aDeathWithoutTheUnitsAttacksKeepsTheSampledCount() {
+        Engagement engagement = engagementAt(100);
+        engagement.noteUnit(100, 1, UnitType.Zerg_Zergling, 35, "FIGHT", "squad-a", 3, 40);
+        engagement.noteUnit(108, 1, UnitType.Zerg_Zergling, 30, "FIGHT", "squad-a", 5, 104);
+
+        engagement.recordDeath(1, 115, new Position(500, 600));
+
+        String[] fields = engagement.toUnitRows(GAME_ID).get(0).split(",", -1);
+        assertEquals("2", fields[unitColumn("attacks_started")]);
+    }
+
+    @Test
     void aUnitThatAttackedRecordsItsFirstAttackAndOnlyTheAttacksStartedInsideTheEngagement() {
         Engagement engagement = engagementAt(100);
         engagement.noteUnit(100, 1, UnitType.Zerg_Zergling, 35, "FIGHT", "squad-a", 3, 40);

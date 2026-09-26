@@ -418,7 +418,7 @@ public final class TargetScorer {
         }
 
         /**
-         * @return this selection, marked as issued as an attack-move to the target's position rather than an attack
+         * @return this selection, marked as issued as an attack-move past the target rather than an attack
          *     on the target, and so not held in the frame's ledger
          */
         public Selection asAttackMove() {
