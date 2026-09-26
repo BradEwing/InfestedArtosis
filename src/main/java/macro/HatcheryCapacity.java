@@ -114,11 +114,12 @@ public final class HatcheryCapacity {
     /**
      * True when a hatchery request that has already been answered may be answered again.
      *
-     * <p>A request such as floating minerals holds for many frames, and nothing it reads moves
-     * when the plan it produced is created, so the request re-arms every frame on its own. A
-     * hatchery plan leaves the production queue on the frame it is created, so counting the
-     * queue alone does not see it either. This holds the request until the plan it produced has
-     * left the production system and the cooldown has run.
+     * <p>A request can hold for many frames after it is answered. The floating-minerals request
+     * raises its own bar when it creates a plan, but a bank that clears the raised bar keeps it
+     * true, and the plan stops counting toward the bar the frame its drone morphs, long before the
+     * hatchery finishes. A hatchery plan leaves the production queue on the frame it is created,
+     * so counting the queue alone does not see it either. This holds the request until the plan
+     * it produced has left the production system and the cooldown has run.
      *
      * <p>There is no exception for a hatchery finishing. A hatchery takes far longer to build
      * than the cooldown lasts, so the request the finished hatchery answers is already off
