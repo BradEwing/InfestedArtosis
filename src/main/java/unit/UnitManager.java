@@ -139,23 +139,9 @@ public class UnitManager {
             UnitRole role = managedUnit.getRole();
 
             // TODO: Clean this up, this is really just avoiding special handling of scouting units
-            switch (role) {
-                case GATHER:
-                case BUILD:
-                case MORPH:
-                case LARVA:
-                case RETREAT:
-                case DEFEND:
-                case BUILDING:
-                case RALLY:
-                case FIGHT:
-                case CONTAIN:
-                case PERCH:
-                case RUNBY:
-                    managedUnit.execute();
-                    continue;
-                default:
-                    break;
+            if (executesDirectly(role)) {
+                managedUnit.execute();
+                continue;
             }
             UnitType type = managedUnit.getUnitType();
             switch (type) {
@@ -472,6 +458,34 @@ public class UnitManager {
             ManagedUnit zergling = availableZerglings.get(i);
             squadManager.removeManagedUnit(zergling);
             scoutManager.addScout(zergling);
+        }
+    }
+
+    /**
+     * Whether a unit holding a role acts on it straight away, skipping the per-type reassignment that idle and
+     * scouting units go through.
+     *
+     * @param role the unit's role
+     * @return true for every role a manager assigns and keeps up to date
+     */
+    static boolean executesDirectly(UnitRole role) {
+        switch (role) {
+            case GATHER:
+            case BUILD:
+            case MORPH:
+            case LARVA:
+            case RETREAT:
+            case DEFEND:
+            case BUILDING:
+            case RALLY:
+            case FIGHT:
+            case CONTAIN:
+            case PERCH:
+            case RUNBY:
+            case HARASS:
+                return true;
+            default:
+                return false;
         }
     }
 
