@@ -265,6 +265,23 @@ class AirHarassEvaluatorTest {
     }
 
     @Test
+    void aHarassSquadRemovedEmptyClosesItsHarassAsWipedOut() {
+        assertEquals(ExitReason.WIPED_OUT, AirHarassEvaluator.removalExit(SquadStatus.HARASS, 0));
+        assertNull(AirHarassEvaluator.removalExit(SquadStatus.HARASS, 1));
+        assertNull(AirHarassEvaluator.removalExit(SquadStatus.RETREAT, 0));
+        assertNull(AirHarassEvaluator.removalExit(SquadStatus.RUNBY, 0));
+    }
+
+    @Test
+    void aKillBesideAnotherSquadIsCreditedOnlyWhenAHarassingMutaWasAttackingIt() {
+        assertTrue(AirHarassEvaluator.creditsKill(true, false, false));
+        assertTrue(AirHarassEvaluator.creditsKill(true, true, true));
+        assertTrue(AirHarassEvaluator.creditsKill(false, true, false));
+        assertFalse(AirHarassEvaluator.creditsKill(false, true, true));
+        assertFalse(AirHarassEvaluator.creditsKill(false, false, false));
+    }
+
+    @Test
     void aMeasuredAdvanceOrASquadThatNeverHarassedIsNotHeld() {
         assertFalse(AirHarassEvaluator.holdsBlindAdvance(NOW - 10, NOW, true, SquadStatus.RETREAT));
         assertFalse(AirHarassEvaluator.holdsBlindAdvance(0, NOW, false, SquadStatus.RETREAT));

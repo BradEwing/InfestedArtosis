@@ -599,6 +599,10 @@ public class SquadManager {
             if (squad.getStatus() == SquadStatus.CONTAIN) {
                 endContainment(squad);
             }
+            AirHarassEvaluator.ExitReason harassExit = AirHarassEvaluator.removalExit(squad.getStatus(), squad.size());
+            if (harassExit != null) {
+                airHarass.stop(squad, harassExit, game.getFrameCount());
+            }
             fightSquads.remove(squad);
         }
     }

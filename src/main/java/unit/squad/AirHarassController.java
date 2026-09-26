@@ -232,7 +232,7 @@ public class AirHarassController {
                         .hpLossFraction(AirHarassEvaluator.hpLossFraction(state.getStartHitPoints(), flock.hitPoints));
         HarassTelemetry.row(row
                 .exitReason(reason)
-                .center(squad.getCenter())
+                .center(squad.size() == 0 ? null : squad.getCenter())
                 .mutas(flock.mutas)
                 .healthyMutas(flock.healthy)
                 .flockHitPoints(flock.hitPoints)
@@ -245,8 +245,9 @@ public class AirHarassController {
 
     /**
      * Books a death against a harassing squad: a member's death as a Mutalisk lost, and an enemy's death as a kill
-     * when a member was attacking it or stood within a Mutalisk's range plus {@link #KILL_CREDIT_MARGIN} of it. Must
-     * run before a dead member is removed from its squad.
+     * as {@link AirHarassEvaluator#creditsKill} rules, the credit radius being a Mutalisk's range plus
+     * {@link #KILL_CREDIT_MARGIN}. A kill goes to the harassing squad whose Mutalisk was attacking it, else to the
+     * first one in range. Must run before a dead member is removed from its squad.
      *
      * @param unit destroyed unit
      * @param squads fight squads
@@ -257,27 +258,54 @@ public class AirHarassController {
         if (!ours && !game.self().isEnemy(unit.getPlayer())) {
             return;
         }
+        if (ours) {
+            creditLoss(unit, squads, now);
+            return;
+        }
         int creditRadius = UnitType.Zerg_Mutalisk.groundWeapon().maxRange() + KILL_CREDIT_MARGIN;
         Position position = unit.getPosition();
+        Squad targeting = null;
+        Squad near = null;
+        boolean otherNear = false;
+        for (Squad squad : squads) {
+            boolean harassing = squad.getStatus() == SquadStatus.HARASS && squad.getHarassState() != null;
+            for (ManagedUnit member : squad.getMembers()) {
+                boolean inRange = member.getPosition().getDistance(position) <= creditRadius;
+                if (!harassing) {
+                    otherNear |= inRange;
+                    continue;
+                }
+                if (targeting == null && member.fightTarget == unit) {
+                    targeting = squad;
+                }
+                if (near == null && inRange) {
+                    near = squad;
+                }
+            }
+        }
+        if (!AirHarassEvaluator.creditsKill(targeting != null, near != null, otherNear)) {
+            return;
+        }
+        Squad credited = targeting != null ? targeting : near;
+        AirHarassState state = credited.getHarassState();
+        state.creditKill(killKind(unit.getType()));
+        HarassTelemetry.row(row(credited, state, HarassRow.Event.KILL, now)
+                .center(position)
+                .killedType(unit.getType())
+                .build());
+    }
+
+    private void creditLoss(Unit unit, Collection<Squad> squads, int now) {
         for (Squad squad : squads) {
             AirHarassState state = squad.getHarassState();
             if (squad.getStatus() != SquadStatus.HARASS || state == null) {
                 continue;
             }
             for (ManagedUnit member : squad.getMembers()) {
-                if (ours && member.getUnit() == unit) {
+                if (member.getUnit() == unit) {
                     state.creditLoss();
                     HarassTelemetry.row(row(squad, state, HarassRow.Event.MUTA_LOST, now)
-                            .center(position)
-                            .build());
-                    return;
-                }
-                if (!ours && (member.fightTarget == unit
-                        || member.getPosition().getDistance(position) <= creditRadius)) {
-                    state.creditKill(killKind(unit.getType()));
-                    HarassTelemetry.row(row(squad, state, HarassRow.Event.KILL, now)
-                            .center(position)
-                            .killedType(unit.getType())
+                            .center(unit.getPosition())
                             .build());
                     return;
                 }

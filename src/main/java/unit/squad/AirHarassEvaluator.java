@@ -48,6 +48,10 @@ public final class AirHarassEvaluator {
 
     /**
      * Outcome of the entry gates, naming the first gate that refused.
+     *
+     * <p>NO_TARGET means no known enemy base holds enough heat to raid. DEFENDED means some base does, but every
+     * such point lies under more anti-air than the flock tolerates, whether or not the flock cooled the rest of the
+     * base by visiting it.
      */
     public enum EntryVerdict {
         ENTER,
@@ -67,7 +71,8 @@ public final class AirHarassEvaluator {
         TOO_FEW,
         HP_LOSS,
         AA_ARRIVED,
-        NO_TARGET
+        NO_TARGET,
+        WIPED_OUT
     }
 
     /**
@@ -348,6 +353,32 @@ public final class AirHarassEvaluator {
             return false;
         }
         return now - harassExitFrame <= REENTRY_HOLD_FRAMES;
+    }
+
+    /**
+     * The exit a squad removed for being empty closes: WIPED_OUT for a harassing squad, whose harass would
+     * otherwise end with no exit at all, and none for any other status.
+     *
+     * @param status the squad's status
+     * @param size members left in the squad
+     * @return WIPED_OUT, or null
+     */
+    public static ExitReason removalExit(SquadStatus status, int size) {
+        return status == SquadStatus.HARASS && size == 0 ? ExitReason.WIPED_OUT : null;
+    }
+
+    /**
+     * Whether an enemy death is credited to a harass: a harassing Mutalisk was attacking it, or one stood in kill
+     * range of it while no unit of another squad did, so a kill made by the army or a runby beside the flock is not
+     * booked as a harass kill.
+     *
+     * @param targeted true when a harassing Mutalisk had the dead enemy as its target
+     * @param harassNear true when a harassing Mutalisk stood within the credit radius of the death
+     * @param otherNear true when a member of any other fight squad stood within the credit radius of the death
+     * @return true to credit the kill
+     */
+    public static boolean creditsKill(boolean targeted, boolean harassNear, boolean otherNear) {
+        return targeted || harassNear && !otherNear;
     }
 
     /**
