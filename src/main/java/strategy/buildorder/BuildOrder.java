@@ -964,7 +964,7 @@ public abstract class BuildOrder {
 
     /**
      * Unreserved minerals are the surplus signal, not {@link GameState#isFloatingMinerals()},
-     * whose bar is scaled to hatchery count because it exists to decide expansions. A build that
+     * whose bar is scaled to in-flight hatchery plans because it exists to decide expansions. A build that
      * has met every unit target it knows how to ask for is not short of hatcheries, it is short of
      * things to spend on, and the same reasoning is written out at
      * {@link SpeedlingAllIn#shouldPlanHatchery}.

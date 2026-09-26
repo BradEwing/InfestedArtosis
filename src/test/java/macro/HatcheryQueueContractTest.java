@@ -1,5 +1,6 @@
 package macro;
 
+import bwapi.UnitType;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -38,6 +39,8 @@ class HatcheryQueueContractTest {
 
     private static final int IDLE_LARVA = HatcheryCapacity.EXCESS_LARVA;
 
+    private static final int HATCHERY_MINERALS = UnitType.Zerg_Hatchery.mineralPrice();
+
     /**
      * The plans of one hatchery kind. Queued plans are what a rush reaction can delete; active
      * plans have left the queue for the scheduled, building or morphing set.
@@ -65,12 +68,22 @@ class HatcheryQueueContractTest {
         private int completedHatcheries;
         private int larva;
         private int minerals;
+        private int reservedByOtherPlans;
         private boolean earlyRushed;
         private boolean scvRushed;
         private int lastEnqueueFrame = -HatcheryCapacity.ENQUEUE_COOLDOWN_FRAMES;
 
+        /**
+         * A hatchery plan reserves its price once it leaves the queue for the scheduled set.
+         */
+        private int availableMinerals() {
+            return minerals - reservedByOtherPlans
+                    - HATCHERY_MINERALS * (expansion.active.size() + macro.active.size());
+        }
+
         private boolean floatingMinerals() {
-            return HatcheryCapacity.isFloatingMinerals(minerals, completedHatcheries, true);
+            return HatcheryCapacity.isFloatingMinerals(
+                    availableMinerals(), expansion.outstanding() + macro.outstanding(), true);
         }
 
         private boolean excess() {
@@ -120,6 +133,7 @@ class HatcheryQueueContractTest {
                 return;
             }
             expansion.active.remove(0);
+            minerals -= HATCHERY_MINERALS;
             completedHatcheries++;
             completionFrames.add(frame);
         }
@@ -280,15 +294,16 @@ class HatcheryQueueContractTest {
 
     /**
      * Game L4KVD0CN. One hatchery, 706 minerals against a 700 bar and no larva to spend, held
-     * while the expansion it asked for was built. It queued three hatcheries in three frames;
-     * the outstanding count now holds the request to one.
+     * while the expansion it asked for was built. It queued three hatcheries in three frames.
+     * The bank here clears the bar even with that expansion in flight, so the outstanding count
+     * is what holds the request to one.
      */
     @Test
     void theFloatingRequestThatQueuedThreeHatcheriesInThreeFramesQueuesOne() {
         Board board = new Board();
         board.completedHatcheries = 1;
         board.larva = 0;
-        board.minerals = 706;
+        board.minerals = 2000;
 
         runFloatingFrames(board, A_LONG_HOLD);
 
@@ -297,16 +312,20 @@ class HatcheryQueueContractTest {
     }
 
     /**
-     * The hatchery the request asked for completes, which raises the floating bar past the
-     * mineral pile and ends the request.
+     * Spending the bank on the hatchery the request asked for ends the request once what is left
+     * is at or under the bar.
      */
     @Test
-    void aCompletedHatcheryEndsTheRequestThatAskedForIt() {
+    void aBankSpentDownToTheBarEndsTheRequest() {
         Board board = new Board();
         board.completedHatcheries = 1;
         board.larva = 0;
-        board.minerals = 706;
+        board.minerals = HatcheryCapacity.MINERALS_PER_HATCHERY;
 
+        runFloatingFrames(board, 100);
+        assertEquals(0, board.totalEnqueues());
+
+        board.minerals += 1;
         runFloatingFrames(board, 100);
         assertEquals(1, board.totalEnqueues());
 
@@ -314,6 +333,89 @@ class HatcheryQueueContractTest {
         runFloatingFrames(board, FRAMES_PER_100_SECONDS);
 
         assertEquals(1, board.totalEnqueues());
+    }
+
+    /**
+     * A completed hatchery does not raise the bar. Once the hatchery is up, a bank still over 350
+     * asks for the next one.
+     */
+    @Test
+    void aCompletedHatcheryDoesNotRaiseTheFloatingBar() {
+        Board board = new Board();
+        board.completedHatcheries = 1;
+        board.larva = 0;
+        board.minerals = 1000;
+
+        runFloatingFrames(board, 100);
+        board.completeOldestExpansion();
+        runFloatingFrames(board, FRAMES_PER_100_SECONDS);
+
+        assertEquals(2, board.totalEnqueues());
+    }
+
+    /**
+     * Game LXMXW0IJ at frame 22470: three completed hatcheries, one of them a macro hatchery,
+     * and a bank just over 1050. The old bar of 1400 held the third base back for another 1230
+     * frames; the bar with no hatchery plan in flight is 350.
+     */
+    @Test
+    void threeCompletedHatcheriesDoNotHoldTheThirdBaseBack() {
+        Board board = new Board();
+        board.completedHatcheries = 3;
+        board.larva = 0;
+        board.minerals = 1051;
+
+        runFloatingFrames(board, 1);
+
+        assertEquals(1, board.totalEnqueues());
+        assertEquals(1, board.expansion.outstanding());
+    }
+
+    /**
+     * Minerals reserved for other queued plans are not floating, and reservations larger than
+     * the bank hold the request however large the bank is.
+     */
+    @Test
+    void reservationsHoldTheRequest() {
+        Board board = new Board();
+        board.completedHatcheries = 2;
+        board.larva = 0;
+        board.minerals = 2000;
+        board.reservedByOtherPlans = 2000 - HatcheryCapacity.MINERALS_PER_HATCHERY;
+
+        runFloatingFrames(board, FRAMES_PER_100_SECONDS);
+        assertEquals(0, board.totalEnqueues());
+
+        board.reservedByOtherPlans = 2400;
+        runFloatingFrames(board, FRAMES_PER_100_SECONDS);
+        assertEquals(0, board.totalEnqueues());
+
+        board.reservedByOtherPlans -= 400 + HatcheryCapacity.MINERALS_PER_HATCHERY + 1;
+        runFloatingFrames(board, 1);
+        assertEquals(1, board.totalEnqueues());
+    }
+
+    /**
+     * A macro hatchery in flight counts toward the bar the same as an expansion: with one macro
+     * hatchery plan scheduled the expansion request needs more than 700 unreserved.
+     */
+    @Test
+    void aMacroHatcheryInFlightRaisesTheExpansionBar() {
+        int barWithOnePlan = HatcheryCapacity.MINERALS_PER_HATCHERY * 2;
+        Board board = new Board();
+        board.completedHatcheries = 2;
+        board.larva = 0;
+        board.minerals = barWithOnePlan + HATCHERY_MINERALS;
+
+        runFrames(board, false, true, 1);
+        assertEquals(1, board.macro.outstanding());
+
+        runFloatingFrames(board, FRAMES_PER_100_SECONDS);
+        assertEquals(0, board.expansion.outstanding());
+
+        board.minerals += 1;
+        runFloatingFrames(board, FRAMES_PER_100_SECONDS);
+        assertEquals(1, board.expansion.outstanding());
     }
 
     /**

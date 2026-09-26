@@ -70,6 +70,11 @@ public class GameState {
      */
     public static final int OUTER_BASE_DEFENSE_MIN_GATHERERS = 20;
 
+    /**
+     * Game time after which {@link #isFloatingMinerals()} may fire.
+     */
+    static final Time FLOATING_MINERALS_FROM = new Time(5, 0);
+
     private Game game;
     private Config config;
     private Player self;
@@ -1829,17 +1834,29 @@ public class GameState {
     }
 
     /**
-     * True when mined minerals outstrip what our larva-producing hatcheries can spend.
+     * True after 5:00 when unreserved minerals exceed 350 for every in-flight hatchery plan plus
+     * 350.
      *
-     * <p>Reads completed hatcheries and unreserved minerals. Neither moves when a hatchery plan
-     * is queued or cancelled, so the value holds across the enqueue and the cancel that used to
-     * toggle it.
+     * <p>Reads {@link ResourceCount#availableMinerals()}, the bank minus every queued plan's
+     * reservation, so it is false while reservations meet or exceed the bank. The hatchery count
+     * is {@link #inFlightHatcheryPlans()}, expansions and macro hatcheries alike; completed
+     * hatcheries and hatcheries whose drone has already morphed are not counted. Queueing a
+     * hatchery plan raises the bar and cancelling one lowers it; the hatchery enqueue cooldown
+     * keeps a cancel from answering the request again at once.
      */
     public boolean isFloatingMinerals() {
+        return isFloatingMinerals(resourceCount, inFlightHatcheryPlans(), getGameTime());
+    }
+
+    /**
+     * @param resourceCount the ledger whose unreserved minerals are read
+     * @param inFlightHatcheryPlans hatchery plans of both kinds the production system carries
+     */
+    static boolean isFloatingMinerals(ResourceCount resourceCount, int inFlightHatcheryPlans, Time gameTime) {
         return HatcheryCapacity.isFloatingMinerals(
-                resourceCount.minedMinerals(),
-                hatcheryCount(),
-                getGameTime().greaterThan(new Time(5, 0)));
+                resourceCount.availableMinerals(),
+                inFlightHatcheryPlans,
+                gameTime.greaterThan(FLOATING_MINERALS_FROM));
     }
 
     /**
@@ -1914,6 +1931,23 @@ public class GameState {
      */
     public int inFlightHatcheryPlans(boolean macroHatchery) {
         return countHatcheryPlans(macroHatchery, productionQueue, plansScheduled, plansBuilding, plansMorphing);
+    }
+
+    /**
+     * Hatchery building plans of both kinds, expansions and macro hatcheries, that the production
+     * system still carries.
+     */
+    public int inFlightHatcheryPlans() {
+        return countHatcheryPlans(productionQueue, plansScheduled, plansBuilding, plansMorphing);
+    }
+
+    /**
+     * Counts hatchery plans of both kinds across every stage the production system holds them in.
+     */
+    static int countHatcheryPlans(Iterable<Plan> queued, Iterable<Plan> scheduled, Iterable<Plan> building,
+            Iterable<Plan> morphing) {
+        return countHatcheryPlans(false, queued, scheduled, building, morphing)
+                + countHatcheryPlans(true, queued, scheduled, building, morphing);
     }
 
     /**

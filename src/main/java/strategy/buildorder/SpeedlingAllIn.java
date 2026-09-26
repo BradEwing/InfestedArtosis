@@ -378,8 +378,7 @@ public class SpeedlingAllIn extends BuildOrder {
     /**
      * Beyond the second hatchery the build is larva limited, not mineral limited, so unreserved
      * minerals are the signal to add one. {@link GameState#isFloatingMinerals()} is not that signal:
-     * it wants more than 1050 banked at two hatcheries, a bar tuned for a macro economy that this
-     * build banks its way to long before reacting.
+     * it stays false before 5:00, and the builds that read it use it to request expansions.
      *
      * @param hatcheryTotal completed hatcheries plus hatcheries already queued
      * @param availableMinerals minerals mined and not reserved by a queued plan

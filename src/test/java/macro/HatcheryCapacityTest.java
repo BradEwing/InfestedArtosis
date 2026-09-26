@@ -36,7 +36,7 @@ class HatcheryCapacityTest {
      */
     @Test
     void theExcessRuleFiresWhileMineralsFloat() {
-        assertTrue(HatcheryCapacity.isFloatingMinerals(2000, SATURATED_HATCHERIES, true));
+        assertTrue(HatcheryCapacity.isFloatingMinerals(2000, 0, true));
         assertTrue(HatcheryCapacity.isExcess(SATURATED_HATCHERIES, IDLE_LARVA));
     }
 
@@ -214,32 +214,47 @@ class HatcheryCapacityTest {
     }
 
     @Test
-    void mineralsAtTheBarAreNotFloating() {
-        int bar = HatcheryCapacity.MINERALS_PER_HATCHERY * 4;
-
-        assertFalse(HatcheryCapacity.isFloatingMinerals(bar, 3, true));
-        assertTrue(HatcheryCapacity.isFloatingMinerals(bar + 1, 3, true));
+    void unreservedMineralsFloatAbove350WithNoHatcheryPlanned() {
+        assertFalse(HatcheryCapacity.isFloatingMinerals(350, 0, true));
+        assertTrue(HatcheryCapacity.isFloatingMinerals(351, 0, true));
     }
 
     @Test
-    void eachCompletedHatcheryRaisesTheFloatingBar() {
+    void eachPlannedHatcheryRaisesTheFloatingBar() {
         int oneHatcheryBar = HatcheryCapacity.MINERALS_PER_HATCHERY * 2;
         int twoHatcheryBar = HatcheryCapacity.MINERALS_PER_HATCHERY * 3;
 
+        assertFalse(HatcheryCapacity.isFloatingMinerals(oneHatcheryBar, 1, true));
         assertTrue(HatcheryCapacity.isFloatingMinerals(oneHatcheryBar + 1, 1, true));
         assertFalse(HatcheryCapacity.isFloatingMinerals(oneHatcheryBar + 1, 2, true));
         assertTrue(HatcheryCapacity.isFloatingMinerals(twoHatcheryBar + 1, 2, true));
     }
 
+    /**
+     * Reservations that meet or exceed the bank leave nothing floating, whatever is planned.
+     */
+    @Test
+    void anEmptyOrOverdrawnUnreservedBankNeverFloats() {
+        assertFalse(HatcheryCapacity.isFloatingMinerals(0, 0, true));
+        assertFalse(HatcheryCapacity.isFloatingMinerals(-150, 0, true));
+    }
+
+    @Test
+    void aNegativePlannedCountReadsAsZero() {
+        assertFalse(HatcheryCapacity.isFloatingMinerals(350, -1, true));
+        assertTrue(HatcheryCapacity.isFloatingMinerals(351, -1, true));
+    }
+
     @Test
     void mineralsAreNotFloatingBeforeTheWindowOpens() {
-        assertFalse(HatcheryCapacity.isFloatingMinerals(5000, 1, false));
+        assertFalse(HatcheryCapacity.isFloatingMinerals(5000, 0, false));
     }
 
     /**
-     * The floating-minerals request holds for many frames and nothing it reads moves when it is
-     * answered. The plan it produced leaves the queue on its enqueue frame and lands in the
-     * building set, so the outstanding count is what holds the request until the hatchery is up.
+     * The floating-minerals request can hold for many frames after it is answered: the plan it
+     * produced raises the bar by one hatchery, which a large enough bank still clears. The plan
+     * leaves the queue on its enqueue frame and lands in the building set, so the outstanding
+     * count is what holds the request until the hatchery is up.
      */
     @Test
     void aRequestThatHoldsForManyFramesProducesOnePlan() {
@@ -249,7 +264,7 @@ class HatcheryCapacityTest {
         int enqueues = 0;
 
         for (int frame = 0; frame < A_LONG_HOLD; frame++) {
-            boolean floating = HatcheryCapacity.isFloatingMinerals(706, hatcheries, true);
+            boolean floating = HatcheryCapacity.isFloatingMinerals(1200, outstanding, true);
             boolean excess = HatcheryCapacity.isExcess(hatcheries, 0);
             boolean rearmed = HatcheryCapacity.isEnqueueRearmed(outstanding, frame - lastEnqueueFrame);
 
