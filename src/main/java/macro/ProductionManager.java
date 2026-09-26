@@ -360,7 +360,17 @@ public class ProductionManager {
                 buildAheadSlot,
                 gameState.frameCanAffordReserved(currentFrame),
                 this::builderTravelFrames,
-                gameState.getResourceCount()::bankCovers);
+                gameState.getResourceCount()::bankCovers,
+                this::isBuilderClearingBlocker);
+    }
+
+    private boolean isBuilderClearingBlocker(Plan plan) {
+        Unit executor = executorOf(plan);
+        if (executor == null) {
+            return false;
+        }
+        ManagedUnit builder = gameState.getManagedUnitLookup().get(executor);
+        return builder != null && builder.isClearingBlocker();
     }
 
     /**
@@ -375,13 +385,15 @@ public class ProductionManager {
      *
      * <p>A plan the bank already covers is carried no further than
      * {@code claimFrame + BuildAheadSlot.MAX_HOLD_FRAMES}, so a stalled builder is evicted instead
-     * of riding the sliding ledger prediction to the total hold.
+     * of riding the sliding ledger prediction to the total hold. A plan whose builder is mining out
+     * a blocking mineral is exempt from that cap while it clears.
      */
     static void refreshBuildAheadPredictions(
             BuildAheadSlot slot,
             int predictedReadyFrame,
             ToIntFunction<Plan> travelFrames,
-            Predicate<Plan> bankCovers) {
+            Predicate<Plan> bankCovers,
+            Predicate<Plan> clearingBlocker) {
         for (Plan plan : slot.claimedPlans()) {
             PlanState state = plan.getState();
             if (state == PlanState.SCHEDULE) {
@@ -389,7 +401,8 @@ public class ProductionManager {
             } else if (state != PlanState.BUILDING) {
                 continue;
             }
-            slot.extend(plan, predictedReadyFrame, travelFrames.applyAsInt(plan), bankCovers.test(plan));
+            slot.extend(plan, predictedReadyFrame, travelFrames.applyAsInt(plan), bankCovers.test(plan),
+                    clearingBlocker.test(plan));
         }
     }
 
