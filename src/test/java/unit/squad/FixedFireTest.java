@@ -126,11 +126,78 @@ class FixedFireTest {
     @Test
     void aSkipIsWrittenOncePerAttackerAndTargetPerCooldown() {
         FixedFire fire = new FixedFire();
+        List<StaticDefenseZone> zones = Collections.singletonList(TANK_ZONE);
+        fire.recordHurt(INSIDE, zones, PADDING, HURT);
+        int start = fire.cooldownStart(TANK_ZONE, HURT);
 
-        assertTrue(fire.firstSkip(7, 42, HURT));
-        assertFalse(fire.firstSkip(7, 42, HURT + 1));
-        assertTrue(fire.firstSkip(8, 42, HURT + 1));
-        assertTrue(fire.firstSkip(7, 42, HURT + FixedFire.COOLDOWN_FRAMES));
+        assertEquals(HURT, start);
+        assertTrue(fire.firstSkip(7, 42, start));
+        assertFalse(fire.firstSkip(7, 42, start));
+        assertTrue(fire.firstSkip(8, 42, start));
+    }
+
+    @Test
+    void aCooldownKeptAliveByRepeatedHurtsWritesEachSkipOnce() {
+        FixedFire fire = new FixedFire();
+        List<StaticDefenseZone> zones = Collections.singletonList(TANK_ZONE);
+        fire.recordHurt(INSIDE, zones, PADDING, HURT);
+        assertTrue(fire.firstSkip(7, 42, fire.cooldownStart(TANK_ZONE, HURT)));
+        int later = HURT + FixedFire.COOLDOWN_FRAMES * 3;
+        for (int frame = HURT + 100; frame <= later; frame += 100) {
+            fire.recordHurt(INSIDE, zones, PADDING, frame);
+            fire.expire(frame);
+        }
+
+        assertEquals(HURT, fire.cooldownStart(TANK_ZONE, later));
+        assertFalse(fire.firstSkip(7, 42, fire.cooldownStart(TANK_ZONE, later)));
+    }
+
+    @Test
+    void aNewCooldownWritesTheSkipAgain() {
+        FixedFire fire = new FixedFire();
+        List<StaticDefenseZone> zones = Collections.singletonList(TANK_ZONE);
+        fire.recordHurt(INSIDE, zones, PADDING, HURT);
+        assertTrue(fire.firstSkip(7, 42, fire.cooldownStart(TANK_ZONE, HURT)));
+        int again = HURT + FixedFire.COOLDOWN_FRAMES + 10;
+        fire.expire(again);
+        fire.recordHurt(INSIDE, zones, PADDING, again);
+
+        assertEquals(again, fire.cooldownStart(TANK_ZONE, again));
+        assertTrue(fire.firstSkip(7, 42, fire.cooldownStart(TANK_ZONE, again)));
+    }
+
+    @Test
+    void aZoneNotCoolingHasNoCooldownStart() {
+        assertEquals(-1, new FixedFire().cooldownStart(TANK_ZONE, HURT));
+    }
+
+    @Test
+    void theCooldownAppliesToGroundUnitsOnly() {
+        assertTrue(FixedFire.appliesTo(UnitType.Zerg_Lurker));
+        assertTrue(FixedFire.appliesTo(UnitType.Zerg_Zergling));
+        assertFalse(FixedFire.appliesTo(UnitType.Zerg_Mutalisk));
+        assertFalse(FixedFire.appliesTo(UnitType.Zerg_Scourge));
+    }
+
+    @Test
+    void aFighterClearOfTheFireWaitsWhereItStands() {
+        assertSame(OUTSIDE, FixedFire.waitPoint(OUTSIDE, Collections.singletonList(TANK_ZONE), PADDING,
+                point -> false));
+    }
+
+    @Test
+    void aFighterInsideTheFireWaitsAtAClearPoint() {
+        List<StaticDefenseZone> zones = Collections.singletonList(TANK_ZONE);
+
+        Position wait = FixedFire.waitPoint(INSIDE, zones, PADDING, point -> true);
+
+        assertNotNull(wait);
+        assertFalse(TANK_ZONE.covers(wait, PADDING));
+    }
+
+    @Test
+    void aFighterBoxedInInsideTheFireHasNoWaitPoint() {
+        assertNull(FixedFire.waitPoint(INSIDE, Collections.singletonList(TANK_ZONE), PADDING, point -> false));
     }
 
     @Test

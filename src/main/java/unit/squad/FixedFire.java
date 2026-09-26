@@ -7,9 +7,10 @@ import util.StaticDefenseZone;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
-import java.util.Iterator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Predicate;
 
 /**
@@ -18,7 +19,7 @@ import java.util.function.Predicate;
  * <p>Fixed fire is the reach of a building, a sieged tank or a Lurker; a hurt mark is not fixed fire. When one of
  * our units is hurt inside a fixed fire zone, the zone cools for {@link #COOLDOWN_FRAMES} frames from the last hurt
  * inside it. While it cools, a fighter whose squad is not committing to the fight skips any target inside it that
- * stands out of the fighter's own range, see {@link #skipsTarget}. A zone is matched across frames by its type and a
+ * stands out of the fighter's own range, see {@link #skippingZone}. A zone is matched across frames by its type and a
  * centre within {@link #ZONE_MATCH_RADIUS}, since a sieged tank's last known position is where it is.
  */
 final class FixedFire {
@@ -126,37 +127,55 @@ final class FixedFire {
     }
 
     /**
-     * Whether a skipped target is new for this attacker since the cooldown that skips it began, so the skip is
-     * written once per attacker and target per cooldown.
+     * The frame the cooldown on a zone began: the first hurt of the run of hurts that has kept it cooling since.
      *
-     * @param attackerId the fighter
-     * @param targetId the target skipped
+     * @param zone the zone
      * @param now current frame
-     * @return true the first time the pair is skipped within {@link #COOLDOWN_FRAMES}
+     * @return the start frame, or -1 when the zone is not cooling
      */
-    boolean firstSkip(int attackerId, int targetId, int now) {
-        long key = (long) attackerId << 32 | targetId & 0xffffffffL;
-        Integer logged = skipsLogged.get(key);
-        if (logged != null && now - logged < COOLDOWN_FRAMES) {
-            return false;
-        }
-        skipsLogged.put(key, now);
-        return true;
+    int cooldownStart(StaticDefenseZone zone, int now) {
+        CoolingZone match = match(zone, now);
+        return match == null ? -1 : match.startFrame;
     }
 
     /**
-     * Drops the cooldowns and skip records that have run out.
+     * Whether a skip is the first of this attacker and target within one cooldown, so the skip is written once per
+     * attacker and target per cooldown however long the zone keeps cooling.
+     *
+     * @param attackerId the fighter
+     * @param targetId the target skipped
+     * @param cooldownStart the frame the cooldown that skips it began, see {@link #cooldownStart}
+     * @return true the first time the pair is skipped within that cooldown
+     */
+    boolean firstSkip(int attackerId, int targetId, int cooldownStart) {
+        long key = (long) attackerId << 32 | targetId & 0xffffffffL;
+        Integer logged = skipsLogged.put(key, cooldownStart);
+        return logged == null || logged != cooldownStart;
+    }
+
+    /**
+     * Drops the cooldowns that have run out, and the skip records of cooldowns no longer cooling.
      *
      * @param now current frame
      */
     void expire(int now) {
         cooling.removeIf(zone -> now - zone.frame >= COOLDOWN_FRAMES);
-        Iterator<Map.Entry<Long, Integer>> it = skipsLogged.entrySet().iterator();
-        while (it.hasNext()) {
-            if (now - it.next().getValue() >= COOLDOWN_FRAMES) {
-                it.remove();
-            }
+        Set<Integer> liveStarts = new HashSet<>();
+        for (CoolingZone zone : cooling) {
+            liveStarts.add(zone.startFrame);
         }
+        skipsLogged.values().removeIf(start -> !liveStarts.contains(start));
+    }
+
+    /**
+     * Whether the cooldown applies to units of this type. Fixed fire zones are ground fire, so it applies to ground
+     * units only.
+     *
+     * @param type our unit's type
+     * @return true for a unit that does not fly
+     */
+    static boolean appliesTo(UnitType type) {
+        return !type.isFlyer();
     }
 
     private CoolingZone match(StaticDefenseZone zone, int now) {
@@ -245,14 +264,34 @@ final class FixedFire {
         return current == from ? null : current;
     }
 
+    /**
+     * Where a fighter waits out a cooldown: where it stands when it is already clear of every zone, otherwise the
+     * nearest point clear of them, see {@link #holdPoint}.
+     *
+     * @param from the fighter's position
+     * @param zones the zones to stay out of
+     * @param padding pixels added to each zone's reach
+     * @param allowed points the fighter may move to
+     * @return the point, or null when the fighter stands inside a zone and no step gains ground
+     */
+    static Position waitPoint(Position from, Collection<StaticDefenseZone> zones, int padding,
+                              Predicate<Position> allowed) {
+        if (RunbyTargeting.zoneMargin(from, zones, padding) >= 0) {
+            return from;
+        }
+        return holdPoint(from, zones, padding, allowed);
+    }
+
     private static final class CoolingZone {
         private final UnitType type;
         private final Position center;
+        private final int startFrame;
         private int frame;
 
         CoolingZone(UnitType type, Position center, int frame) {
             this.type = type;
             this.center = center;
+            this.startFrame = frame;
             this.frame = frame;
         }
     }
