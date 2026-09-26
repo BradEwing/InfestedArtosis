@@ -9,12 +9,15 @@ import info.Readiness;
 import info.TechProgression;
 import info.tracking.StrategyTracker;
 import info.tracking.protoss.ProxyGate;
+import macro.Reactions;
 import macro.plan.Plan;
 import strategy.buildorder.LarvaBoundMacroHatchery;
 import util.Time;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 
 /**
  *
@@ -41,6 +44,26 @@ public class ThreeHatchMuta extends ProtossBase {
         super("3HatchMuta");
     }
 
+    private int droneTarget(GameState gameState) {
+        BaseData baseData = gameState.getBaseData();
+        StrategyTracker strategyTracker = gameState.getStrategyTracker();
+        int droneTarget = (baseData.currentBaseCount() + baseData.numMacroHatcheries()) * 8;
+        if (strategyTracker.isDetectedStrategy("FFE") || strategyTracker.isDetectedStrategy("NexusFirst")) {
+            droneTarget += 8;
+        }
+        return Math.min(droneTarget, 65);
+    }
+
+    @Override
+    protected Set<UnitType> droneRoundArmy() {
+        return Collections.singleton(UnitType.Zerg_Mutalisk);
+    }
+
+    @Override
+    protected int droneRoundDroneCap(GameState gameState) {
+        return droneTarget(gameState);
+    }
+
     @Override
     protected List<Plan> buildPlans(GameState gameState) {
         List<Plan> plans = new ArrayList<>();
@@ -56,8 +79,6 @@ public class ThreeHatchMuta extends ProtossBase {
         int extractorCount = baseData.numExtractor();
         int supply = gameState.getSupply();
         int plannedHatcheries = gameState.getPlannedHatcheries();
-        int macroHatchCount = baseData.numMacroHatcheries();
-        int totalHatcheries = baseCount + macroHatchCount;
         final int plannedAndCurrentHatcheries = plannedHatcheries + baseCount;
         int lairCount         = gameState.structureCount(Readiness.USABLE, UnitType.Zerg_Lair);
         int spireCount        = gameState.structureCount(Readiness.USABLE, UnitType.Zerg_Spire);
@@ -105,7 +126,9 @@ public class ThreeHatchMuta extends ProtossBase {
         // Upgrade timing
         boolean wantMetabolicBoost = techProgression.canPlanMetabolicBoost() && !techProgression.isMetabolicBoost() && lairCount > 0;
         boolean wantCarapaceUpgrade = techProgression.canPlanCarapaceUpgrades();
-        boolean wantOverlordSpeed = needOverlordSpeed(gameState) && techProgression.canPlanOverlordSpeed();
+        boolean wantOverlordSpeed = shouldPlanOverlordSpeed(needOverlordSpeed(gameState) && techProgression.canPlanOverlordSpeed(),
+                Reactions.isAirOrCloakThreatSeen(gameState),
+                wantCarapaceUpgrade);
 
         // Plan buildings
 
@@ -259,12 +282,7 @@ public class ThreeHatchMuta extends ProtossBase {
             return plans;
         }
 
-        int droneTarget = totalHatcheries * 8;
-        if (strategyTracker.isDetectedStrategy("FFE") || strategyTracker.isDetectedStrategy("NexusFirst")) {
-            droneTarget += 8;
-        }
-        droneTarget = Math.min(droneTarget, 65);
-        if (droneCount < droneTarget) {
+        if (droneCount < droneTarget(gameState)) {
             plans.add(this.planUnit(gameState, UnitType.Zerg_Drone));
             return plans;
         }

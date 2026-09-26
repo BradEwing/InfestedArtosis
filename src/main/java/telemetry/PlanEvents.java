@@ -7,6 +7,8 @@ import info.BuilderThreat;
 import info.EnemyMainClearReason;
 import info.EnemyMainEvidence;
 import macro.plan.BuilderDispatchDecision;
+import macro.plan.BuilderLossReason;
+import macro.plan.BuilderReading;
 import macro.plan.Plan;
 import macro.plan.PlanBlocker;
 import macro.plan.PlanCancelSource;
@@ -77,6 +79,14 @@ public final class PlanEvents {
             return;
         }
         current.onStale(plan);
+    }
+
+    public static void promoted(Plan plan) {
+        PlanEventSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onPromote(plan);
     }
 
     public static void buildAheadHold(Plan holder, int heldFrames, int starvedBehind) {
@@ -151,6 +161,23 @@ public final class PlanEvents {
             return;
         }
         current.onBuilderDispatchDecision(plan, decision, threat);
+    }
+
+    public static void builderLost(Plan plan, BuilderLossReason reason, BuilderReading builder) {
+        PlanEventSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onBuilderLost(plan, reason, builder);
+    }
+
+    public static void builderRedispatched(Plan plan, BuilderLossReason reason, BuilderReading lost,
+                                           BuilderReading taker) {
+        PlanEventSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onBuilderRedispatch(plan, reason, lost, taker);
     }
 
     public static void expansionBackoff(int lostExpansionBuilders, int expansionHeldUntilFrame) {

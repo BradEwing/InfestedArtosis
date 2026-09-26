@@ -4,6 +4,8 @@ import bwapi.TechType;
 import bwapi.TilePosition;
 import bwapi.UnitType;
 import bwapi.UpgradeType;
+import info.TechProgression;
+import info.UnitTypeCount;
 import macro.ProductionManager.PlanScheduler;
 import macro.ProductionManager.ScanOutcome;
 import macro.plan.BuildingPlan;
@@ -18,6 +20,7 @@ import macro.plan.UpgradePlan;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import strategy.buildorder.BuildOrder;
+import strategy.buildorder.protoss.ThreeHatchHydra;
 import telemetry.PlanEventSink;
 import telemetry.PlanEvents;
 
@@ -397,6 +400,124 @@ class ProductionManagerTest {
                 ProductionManager.buildAheadCancellationSource(spire(PlanState.SCHEDULE), false, false));
     }
 
+    /**
+     * LUZ9502W frame 6, 9PoolSpeed at 5/9 supply with three drones queued. The walker inserted
+     * the first Overlord at priority 4 and it morphed at 7 supply. With one Overlord alive the
+     * first-Overlord rule governs every build order, and it queues nothing below 9 supply.
+     */
+    @Test
+    void theFirstOverlordIsNotInsertedAheadOfTheEarlyDrones() {
+        List<Plan> drones = Arrays.<Plan>asList(
+                new UnitPlan(UnitType.Zerg_Drone, 1),
+                new UnitPlan(UnitType.Zerg_Drone, 2),
+                new UnitPlan(UnitType.Zerg_Drone, 5));
+
+        assertEquals(Collections.singletonList(4), ProductionManager.overlordInsertPriorities(
+                Collections.<Plan>emptyList(), drones, 8, 0, 10));
+        assertTrue(ProductionManager.overlordPriorities(
+                OverlordHold.Phase.FREE, 1, Collections.<Plan>emptyList(), drones, 8, 0, 10).isEmpty());
+        assertTrue(ProductionManager.overlordPriorities(
+                OverlordHold.Phase.HELD, 1, Collections.<Plan>emptyList(), drones, 8, 0, 10).isEmpty());
+    }
+
+    /**
+     * 9PoolSpeed after its hold releases: the pool standing, the replacement drone morphing, 9/9
+     * supply. The first-Overlord rule is the only source of that Overlord, and the Overlord it
+     * queues is in flight on the next frame, so a second is never added.
+     */
+    @Test
+    void exactlyOneFirstOverlordIsQueuedOnceTheHoldReleases() {
+        List<Plan> zerglings = Collections.<Plan>singletonList(new UnitPlan(UnitType.Zerg_Zergling, 2000));
+
+        assertEquals(Collections.singletonList(1), ProductionManager.overlordPriorities(
+                OverlordHold.Phase.RELEASED, 1, Collections.<Plan>emptyList(), zerglings, 0, 0, 18));
+        assertTrue(ProductionManager.overlordPriorities(
+                OverlordHold.Phase.FREE, 1, Collections.<Plan>emptyList(), zerglings, 0,
+                UnitType.Zerg_Overlord.supplyProvided(), 18).isEmpty());
+    }
+
+    /**
+     * 9Hatch hands over at 8/9 supply, the natural's builder and the pool's drone spent. The
+     * first Overlord is queued on the frame the hold releases, not when supply climbs back to 9,
+     * and only once: it is in flight on the next frame.
+     */
+    @Test
+    void theFirstOverlordIsQueuedOnTheFrameTheHoldReleases() {
+        OverlordHold hold = new OverlordHold();
+        List<Plan> none = Collections.<Plan>emptyList();
+        int overlord = UnitType.Zerg_Overlord.supplyProvided();
+
+        OverlordHold.Phase held = hold.update(true);
+        assertTrue(ProductionManager.overlordPriorities(held, 1, none, none, 2, 0, 16).isEmpty());
+
+        OverlordHold.Phase released = hold.update(false);
+        assertEquals(Collections.singletonList(1), ProductionManager.overlordPriorities(
+                released, 1, none, none, 2, 0, 16));
+
+        OverlordHold.Phase next = hold.update(false);
+        assertTrue(ProductionManager.overlordPriorities(next, 1, none, none, 2, overlord, 16).isEmpty());
+    }
+
+    @Test
+    void aBuildThatNeverHeldWaitsForNineSupply() {
+        List<Plan> none = Collections.<Plan>emptyList();
+
+        assertTrue(ProductionManager.overlordPriorities(
+                OverlordHold.Phase.FREE, 1, none, none, 2, 0, 16).isEmpty());
+        assertEquals(Collections.singletonList(1), ProductionManager.overlordPriorities(
+                OverlordHold.Phase.FREE, 1, none, none, 0, 0, 18));
+    }
+
+    @Test
+    void aReleaseWithSupplyToSpareWaitsForNineSupply() {
+        List<Plan> none = Collections.<Plan>emptyList();
+
+        assertTrue(ProductionManager.overlordPriorities(
+                OverlordHold.Phase.RELEASED, 1, none, none, ProductionManager.SUPPLY_BUFFER, 0, 14).isEmpty());
+        assertEquals(Collections.singletonList(1), ProductionManager.overlordPriorities(
+                OverlordHold.Phase.RELEASED, 1, none, none, ProductionManager.SUPPLY_BUFFER - 1, 0, 15));
+    }
+
+    /**
+     * With the only Overlord dead, the Hatchery's supply is all there is, so supply used can
+     * never climb to 9 and the first-Overlord rule must not wait for it.
+     */
+    @Test
+    void theFirstOverlordIsReplacedOnceNoSupplyIsFree() {
+        List<Plan> none = Collections.<Plan>emptyList();
+
+        assertEquals(Collections.singletonList(1), ProductionManager.overlordPriorities(
+                OverlordHold.Phase.FREE, 0, none, none, -14, 0, 16));
+        assertEquals(Collections.singletonList(1), ProductionManager.overlordPriorities(
+                OverlordHold.Phase.FREE, 0, none, none, 0, 0, 2));
+        assertTrue(ProductionManager.overlordPriorities(
+                OverlordHold.Phase.FREE, 0, none, none, -14, UnitType.Zerg_Overlord.supplyProvided(), 16).isEmpty());
+        assertTrue(ProductionManager.overlordPriorities(
+                OverlordHold.Phase.FREE, 1, none, none, 1, 0, 16).isEmpty());
+    }
+
+    @Test
+    void aReleaseAddsNothingWhileAnOverlordIsInFlight() {
+        List<Plan> none = Collections.<Plan>emptyList();
+
+        assertTrue(ProductionManager.overlordPriorities(
+                OverlordHold.Phase.RELEASED, 1, none, none, 2, UnitType.Zerg_Overlord.supplyProvided(), 16).isEmpty());
+    }
+
+    @Test
+    void theWalkerTakesOverFromTheSecondOverlord() {
+        List<Plan> hydralisks = hydralisks(7, 11000);
+
+        assertEquals(
+                ProductionManager.overlordInsertPriorities(Collections.<Plan>emptyList(), hydralisks, 1, 16, 53),
+                ProductionManager.overlordPriorities(
+                        OverlordHold.Phase.FREE, 2, Collections.<Plan>emptyList(), hydralisks, 1, 16, 53));
+        assertEquals(
+                ProductionManager.overlordInsertPriorities(Collections.<Plan>emptyList(), hydralisks, 1, 16, 53),
+                ProductionManager.overlordPriorities(
+                        OverlordHold.Phase.RELEASED, 2, Collections.<Plan>emptyList(), hydralisks, 1, 16, 53));
+    }
+
     @Test
     void aQueuedOverlordBacklogEarnsNoSupplyHeadroom() {
         List<Plan> hydralisks = hydralisks(7, 11000);
@@ -575,7 +696,7 @@ class ProductionManagerTest {
         int claimDeadline = BuildAheadSlot.deadline(FRAME, FRAME + 20, HATCHERY_TRAVEL_FRAMES);
         int frame = claimDeadline - 1;
 
-        ProductionManager.refreshBuildAheadPredictions(slot, frame + 20, p -> HATCHERY_TRAVEL_FRAMES, p -> false);
+        ProductionManager.refreshBuildAheadPredictions(slot, frame + 20, p -> HATCHERY_TRAVEL_FRAMES, p -> false, p -> false);
 
         assertTrue(slot.stalled(claimDeadline).isEmpty());
     }
@@ -588,7 +709,7 @@ class ProductionManagerTest {
         slot.claim(plan, FRAME, FRAME + 20, HATCHERY_TRAVEL_FRAMES);
         plan.setState(PlanState.BUILDING);
 
-        ProductionManager.refreshBuildAheadPredictions(slot, FRAME + 800, p -> HATCHERY_TRAVEL_FRAMES, p -> false);
+        ProductionManager.refreshBuildAheadPredictions(slot, FRAME + 800, p -> HATCHERY_TRAVEL_FRAMES, p -> false, p -> false);
 
         assertEquals(FRAME + 20, plan.getPredictedReadyFrame());
     }
@@ -601,7 +722,7 @@ class ProductionManagerTest {
         slot.claim(plan, FRAME, FRAME + 20, HATCHERY_TRAVEL_FRAMES);
         plan.setState(PlanState.SCHEDULE);
 
-        ProductionManager.refreshBuildAheadPredictions(slot, FRAME + 800, p -> HATCHERY_TRAVEL_FRAMES, p -> false);
+        ProductionManager.refreshBuildAheadPredictions(slot, FRAME + 800, p -> HATCHERY_TRAVEL_FRAMES, p -> false, p -> false);
 
         assertEquals(FRAME + 800, plan.getPredictedReadyFrame());
     }
@@ -616,12 +737,27 @@ class ProductionManagerTest {
 
             for (int frame = FRAME; frame < FRAME + BuildAheadSlot.TOTAL_HOLD_FRAMES; frame += 24) {
                 ProductionManager.refreshBuildAheadPredictions(
-                        slot, frame + 20 + (frame - FRAME) * 2, p -> HATCHERY_TRAVEL_FRAMES, p -> true);
+                        slot, frame + 20 + (frame - FRAME) * 2, p -> HATCHERY_TRAVEL_FRAMES, p -> true, p -> false);
             }
 
             assertTrue(slot.stalled(FRAME + BuildAheadSlot.MAX_HOLD_FRAMES - 1).isEmpty());
             assertEquals(Collections.singletonList(plan), slot.stalled(FRAME + BuildAheadSlot.MAX_HOLD_FRAMES));
         }
+    }
+
+    @Test
+    void refreshingAHoldWhoseBuilderClearsABlockerIsNotStoppedAtTheMaximumHold() {
+        BuildAheadSlot slot = new BuildAheadSlot();
+        Plan plan = hatchery();
+        slot.claim(plan, FRAME, FRAME + 20, HATCHERY_TRAVEL_FRAMES);
+        plan.setState(PlanState.BUILDING);
+
+        for (int frame = FRAME; frame <= FRAME + BuildAheadSlot.MAX_HOLD_FRAMES; frame += 24) {
+            ProductionManager.refreshBuildAheadPredictions(
+                    slot, frame + 20, p -> HATCHERY_TRAVEL_FRAMES, p -> true, p -> true);
+        }
+
+        assertTrue(slot.stalled(FRAME + BuildAheadSlot.MAX_HOLD_FRAMES).isEmpty());
     }
 
     @Test
@@ -633,7 +769,7 @@ class ProductionManagerTest {
 
         for (int frame = FRAME; frame < FRAME + BuildAheadSlot.TOTAL_HOLD_FRAMES; frame += 24) {
             ProductionManager.refreshBuildAheadPredictions(
-                    slot, frame + 20 + (frame - FRAME) * 2, p -> HATCHERY_TRAVEL_FRAMES, p -> false);
+                    slot, frame + 20 + (frame - FRAME) * 2, p -> HATCHERY_TRAVEL_FRAMES, p -> false, p -> false);
         }
 
         assertTrue(slot.stalled(FRAME + BuildAheadSlot.TOTAL_HOLD_FRAMES - 1).isEmpty());
@@ -669,7 +805,7 @@ class ProductionManagerTest {
                 slot, plan, evictionFrame, false, false, evictionFrame + 20);
         slot.claim(plan, evictionFrame, evictionFrame + 20, HATCHERY_TRAVEL_FRAMES);
         plan.setState(PlanState.SCHEDULE);
-        ProductionManager.refreshBuildAheadPredictions(slot, FRAME + 9000, p -> HATCHERY_TRAVEL_FRAMES, p -> true);
+        ProductionManager.refreshBuildAheadPredictions(slot, FRAME + 9000, p -> HATCHERY_TRAVEL_FRAMES, p -> true, p -> false);
 
         assertEquals(PlanBlocker.NONE, blocker);
         assertTrue(slot.stalled(FRAME + BuildAheadSlot.MAX_HOLD_FRAMES - 1).isEmpty());
@@ -684,7 +820,7 @@ class ProductionManagerTest {
         plan.setState(PlanState.MORPHING);
         int claimDeadline = BuildAheadSlot.deadline(FRAME, FRAME + 20, HATCHERY_TRAVEL_FRAMES);
 
-        ProductionManager.refreshBuildAheadPredictions(slot, claimDeadline + 19, p -> HATCHERY_TRAVEL_FRAMES, p -> false);
+        ProductionManager.refreshBuildAheadPredictions(slot, claimDeadline + 19, p -> HATCHERY_TRAVEL_FRAMES, p -> false, p -> false);
 
         assertFalse(slot.stalled(claimDeadline).isEmpty());
     }
@@ -865,6 +1001,248 @@ class ProductionManagerTest {
         assertEquals(zerglings, outcome.scheduled);
     }
 
+    private static final int MUSCULAR_AUGMENTS_QUEUED_FRAME = 6236;
+
+    private static UnitTypeCount livingHydralisks(int hydralisks) {
+        UnitTypeCount count = new UnitTypeCount();
+        for (int i = 0; i < hydralisks; i++) {
+            count.addUnit(UnitType.Zerg_Hydralisk);
+        }
+        return count;
+    }
+
+    private Plan muscularAugments() {
+        return new UpgradePlan(UpgradeType.Muscular_Augments, MUSCULAR_AUGMENTS_QUEUED_FRAME);
+    }
+
+    private static TechProgression withDen() {
+        TechProgression techProgression = new TechProgression();
+        techProgression.setSpawningPool(true);
+        techProgression.setHydraliskDen(true);
+        return techProgression;
+    }
+
+    @Test
+    void aTriggeredUpgradeKeepsItsFramePriorityUntilItsBuildingHasFinished() {
+        ProductionQueue queue = new ProductionQueue();
+        Plan muscular = muscularAugments();
+        queue.add(muscular);
+        TechProgression denMorphing = new TechProgression();
+        denMorphing.setSpawningPool(true);
+        denMorphing.setPlannedDen(true);
+        UnitTypeCount triggered = livingHydralisks(ThreeHatchHydra.HYDRALISKS_BEFORE_DEN_UPGRADE_PRIORITY);
+
+        ProductionManager.promoteArmyUpgrades(queue, new ThreeHatchHydra(), triggered, denMorphing);
+
+        assertEquals(MUSCULAR_AUGMENTS_QUEUED_FRAME, muscular.getPriority());
+
+        ProductionManager.promoteArmyUpgrades(queue, new ThreeHatchHydra(), triggered, withDen());
+
+        assertEquals(BuildOrder.ARMY_UPGRADE_PRIORITY, muscular.getPriority());
+    }
+
+    /**
+     * 3HatchLurker and 3HatchHydra queue a second Evolution Chamber at its frame beside Carapace.
+     * With one chamber finished and the trigger met, Carapace moves ahead of that chamber plan and
+     * the prerequisite sweep leaves it queued, frame after frame, rather than cancelling it for the
+     * build to plan again.
+     */
+    @Test
+    void aPromotedCarapaceAheadOfASecondQueuedEvolutionChamberSurvivesThePrerequisiteSweep() {
+        ProductionQueue queue = new ProductionQueue();
+        Plan secondChamber = new BuildingPlan(UnitType.Zerg_Evolution_Chamber, 11790);
+        Plan carapace = new UpgradePlan(UpgradeType.Zerg_Carapace, 11791);
+        queue.add(secondChamber);
+        queue.add(carapace);
+        TechProgression oneChamber = withDen();
+        oneChamber.setEvolutionChambers(1);
+        oneChamber.setPlannedEvolutionChambers(1);
+        UnitTypeCount triggered = livingHydralisks(ThreeHatchHydra.HYDRALISKS_BEFORE_EVOLUTION_UPGRADE_PRIORITY);
+
+        for (int frame = 0; frame < 3; frame++) {
+            ProductionManager.promoteArmyUpgrades(queue, new ThreeHatchHydra(), triggered, oneChamber);
+            List<Plan> sorted = queue.toSortedList();
+
+            assertEquals(Arrays.asList(carapace, secondChamber), sorted);
+            assertTrue(ProductionManager.plansWithLaterPrerequisites(sorted, oneChamber).isEmpty());
+        }
+        assertEquals(BuildOrder.ARMY_UPGRADE_PRIORITY, carapace.getPriority());
+    }
+
+    @Test
+    void aTriggeredCarapaceWithNoFinishedChamberStaysBehindTheChamberPlan() {
+        ProductionQueue queue = new ProductionQueue();
+        Plan chamber = new BuildingPlan(UnitType.Zerg_Evolution_Chamber, 11790);
+        Plan carapace = new UpgradePlan(UpgradeType.Zerg_Carapace, 11791);
+        queue.add(chamber);
+        queue.add(carapace);
+        TechProgression chamberPlanned = withDen();
+        chamberPlanned.setPlannedEvolutionChambers(1);
+
+        ProductionManager.promoteArmyUpgrades(queue, new ThreeHatchHydra(),
+                livingHydralisks(ThreeHatchHydra.HYDRALISKS_BEFORE_EVOLUTION_UPGRADE_PRIORITY), chamberPlanned);
+        List<Plan> sorted = queue.toSortedList();
+
+        assertEquals(11791, carapace.getPriority());
+        assertEquals(Arrays.asList(chamber, carapace), sorted);
+        assertTrue(ProductionManager.plansWithLaterPrerequisites(sorted, chamberPlanned).isEmpty());
+    }
+
+    @Test
+    void anUpgradeAheadOfItsOnlyPlannedBuildingIsStillSwept() {
+        Plan carapace = new UpgradePlan(UpgradeType.Zerg_Carapace, 100);
+        Plan chamber = new BuildingPlan(UnitType.Zerg_Evolution_Chamber, 200);
+        TechProgression chamberPlanned = withDen();
+        chamberPlanned.setPlannedEvolutionChambers(1);
+
+        assertEquals(Collections.singletonList(carapace),
+                ProductionManager.plansWithLaterPrerequisites(Arrays.asList(carapace, chamber), chamberPlanned));
+    }
+
+    @Test
+    void aQueuedArmyUpgradeMovesIntoTheBandOnceItsTriggerIsMet() {
+        ProductionQueue queue = new ProductionQueue();
+        Plan muscular = muscularAugments();
+        queue.add(muscular);
+
+        ProductionManager.promoteArmyUpgrades(queue, new ThreeHatchHydra(),
+                livingHydralisks(ThreeHatchHydra.HYDRALISKS_BEFORE_DEN_UPGRADE_PRIORITY), withDen());
+
+        assertEquals(BuildOrder.ARMY_UPGRADE_PRIORITY, muscular.getPriority());
+    }
+
+    @Test
+    void aQueuedArmyUpgradeKeepsItsFramePriorityBelowTheTrigger() {
+        ProductionQueue queue = new ProductionQueue();
+        Plan muscular = muscularAugments();
+        queue.add(muscular);
+
+        ProductionManager.promoteArmyUpgrades(queue, new ThreeHatchHydra(),
+                livingHydralisks(ThreeHatchHydra.HYDRALISKS_BEFORE_DEN_UPGRADE_PRIORITY - 1), withDen());
+
+        assertEquals(MUSCULAR_AUGMENTS_QUEUED_FRAME, muscular.getPriority());
+    }
+
+    @Test
+    void promotionLeavesUntriggeredUpgradesUnitsAndLowerBandsAlone() {
+        ProductionQueue queue = new ProductionQueue();
+        Plan speed = metabolicBoost();
+        Plan overlordSpeed = new UpgradePlan(UpgradeType.Pneumatized_Carapace, 100);
+        Plan hydralisk = new UnitPlan(UnitType.Zerg_Hydralisk, UnitPlan.ADVANCED_UNIT_PRIORITY);
+        Plan drone = drone(FRAME);
+        queue.add(speed);
+        queue.add(overlordSpeed);
+        queue.add(hydralisk);
+        queue.add(drone);
+
+        ProductionManager.promoteArmyUpgrades(queue, new ThreeHatchHydra(), livingHydralisks(20), withDen());
+
+        assertEquals(3330, speed.getPriority());
+        assertEquals(100, overlordSpeed.getPriority());
+        assertEquals(UnitPlan.ADVANCED_UNIT_PRIORITY, hydralisk.getPriority());
+        assertEquals(FRAME, drone.getPriority());
+    }
+
+    /**
+     * PLUTOW64C: Muscular Augments queued at frame 6236 with Hydralisks at priority 150. Once six
+     * Hydralisks are alive the upgrade polls ahead of them, and its mineral hold bars the next
+     * Hydralisk until it is funded. An emergency Zergling still polls ahead, and an Overlord
+     * behind the hold still schedules.
+     */
+    @Test
+    void aPromotedArmyUpgradeHoldsTheNextHydraliskUntilFunded() {
+        ProductionQueue queue = new ProductionQueue();
+        Plan muscular = muscularAugments();
+        Plan hydralisk = new UnitPlan(UnitType.Zerg_Hydralisk, UnitPlan.ADVANCED_UNIT_PRIORITY);
+        Plan overlord = overlord(7232);
+        Plan emergencyZergling = emergency(UnitType.Zerg_Zergling);
+        queue.add(muscular);
+        queue.add(hydralisk);
+        queue.add(overlord);
+        queue.add(emergencyZergling);
+        ProductionManager.promoteArmyUpgrades(queue, new ThreeHatchHydra(),
+                livingHydralisks(ThreeHatchHydra.HYDRALISKS_BEFORE_DEN_UPGRADE_PRIORITY), withDen());
+        int bankBeforeUpgrade = UnitType.Zerg_Zergling.mineralPrice() + muscular.mineralPrice() - 1;
+        ResearchBank bank = new ResearchBank(bankBeforeUpgrade, muscular.gasPrice(), false);
+        PlanEvents.register(blockerRecorder());
+
+        ScanOutcome held = ProductionManager.scanPlans(queue.toSortedList(), bank);
+
+        assertEquals(Arrays.asList(emergencyZergling, overlord), held.scheduled);
+        assertEquals(Arrays.asList(muscular, hydralisk), reportedPlans);
+        assertEquals(Arrays.asList(PlanBlocker.RESEARCH_MINERALS, PlanBlocker.RESEARCH_CLAIM), reportedBlockers);
+
+        bank.mine(UnitType.Zerg_Overlord.mineralPrice() + 1);
+        ScanOutcome funded = ProductionManager.scanPlans(held.requeued, bank);
+
+        assertEquals(Arrays.asList(muscular, hydralisk), funded.scheduled);
+    }
+
+    /**
+     * The ordering this promotion removes: below the trigger the upgrade keeps its frame
+     * priority, so the Hydralisk at priority 150 takes the bank on credit before the upgrade is
+     * checked, and the upgrade's hold reaches nothing behind it.
+     */
+    @Test
+    void belowTheTriggerTheHydraliskTakesTheBankAheadOfTheUpgrade() {
+        ProductionQueue queue = new ProductionQueue();
+        Plan muscular = muscularAugments();
+        Plan hydralisk = new UnitPlan(UnitType.Zerg_Hydralisk, UnitPlan.ADVANCED_UNIT_PRIORITY);
+        queue.add(muscular);
+        queue.add(hydralisk);
+        ProductionManager.promoteArmyUpgrades(queue, new ThreeHatchHydra(),
+                livingHydralisks(ThreeHatchHydra.HYDRALISKS_BEFORE_DEN_UPGRADE_PRIORITY - 1), withDen());
+        ResearchBank bank = new ResearchBank(muscular.mineralPrice() - 1, muscular.gasPrice(), false);
+        PlanEvents.register(blockerRecorder());
+
+        ScanOutcome outcome = ProductionManager.scanPlans(queue.toSortedList(), bank);
+
+        assertEquals(Collections.singletonList(hydralisk), outcome.scheduled);
+        assertEquals(Collections.singletonList(muscular), reportedPlans);
+        assertFalse(reportedBlockers.contains(PlanBlocker.RESEARCH_CLAIM));
+    }
+
+    /**
+     * A promoted upgrade whose producer is busy researching another upgrade, and which cannot pay,
+     * reports the plain shortfall: it claims the bank but not the research hold. A Hydralisk behind
+     * it that the bank covers still schedules, and one the bank does not cover is refused
+     * build-ahead credit as BUILD_AHEAD_SLOT_TAKEN rather than RESEARCH_CLAIM.
+     */
+    @Test
+    void aPromotedUpgradeWaitingOnABusyProducerBarsOnlyHydralisksBoughtOnCredit() {
+        ProductionQueue queue = new ProductionQueue();
+        Plan grooved = new UpgradePlan(UpgradeType.Grooved_Spines, MUSCULAR_AUGMENTS_QUEUED_FRAME + 1);
+        Plan onCredit = new UnitPlan(UnitType.Zerg_Hydralisk, UnitPlan.ADVANCED_UNIT_PRIORITY);
+        queue.add(grooved);
+        queue.add(onCredit);
+        ProductionManager.promoteArmyUpgrades(queue, new ThreeHatchHydra(),
+                livingHydralisks(ThreeHatchHydra.HYDRALISKS_BEFORE_DEN_UPGRADE_PRIORITY), withDen());
+        BuildAheadSlot slot = new BuildAheadSlot();
+        Set<Plan> affordable = new HashSet<>();
+        PlanScheduler scheduler = (plan, bankClaimedAhead, larvaClaimedAhead, researchClaimedAhead) -> {
+            if (plan == grooved) {
+                return ProductionManager.researchShortfallBlocker(FRAME, FRAME + 100, true, false);
+            }
+            if (ProductionManager.isHeldByResearchClaim(plan, researchClaimedAhead, false)) {
+                return PlanBlocker.RESEARCH_CLAIM;
+            }
+            return ProductionManager.unitAheadBlocker(
+                    slot, plan, FRAME, !affordable.contains(plan), bankClaimedAhead, false, FRAME + 100);
+        };
+        PlanEvents.register(blockerRecorder());
+
+        ScanOutcome credit = ProductionManager.scanPlans(queue.toSortedList(), scheduler);
+
+        assertTrue(credit.scheduled.isEmpty());
+        assertEquals(Arrays.asList(grooved, onCredit), reportedPlans);
+        assertEquals(Arrays.asList(PlanBlocker.RESOURCES, PlanBlocker.BUILD_AHEAD_SLOT_TAKEN), reportedBlockers);
+
+        affordable.add(onCredit);
+        ScanOutcome paid = ProductionManager.scanPlans(credit.requeued, scheduler);
+
+        assertEquals(Collections.singletonList(onCredit), paid.scheduled);
+    }
+
     @Test
     void aResearchClaimReachesEveryPlanBehindItAndNoneAhead() {
         Plan drone = drone(90);
@@ -945,8 +1323,8 @@ class ProductionManagerTest {
 
     @Test
     void aHeldPlanDoesNotClaimTheLarvaForThePlansBehindIt() {
-        assertFalse(ProductionManager.claimsLarva(drone(7100), PlanBlocker.RESEARCH_CLAIM));
-        assertFalse(ProductionManager.claimsLarva(drone(7100), PlanBlocker.RESEARCH_MINERALS));
+        assertFalse(ProductionManager.claimsLarva(drone(7100), PlanBlocker.RESEARCH_CLAIM, false));
+        assertFalse(ProductionManager.claimsLarva(drone(7100), PlanBlocker.RESEARCH_MINERALS, false));
     }
 
     @Test
@@ -1599,6 +1977,269 @@ class ProductionManagerTest {
         assertEquals(1, scheduler.larva);
     }
 
+    /**
+     * Game PLUTOW64C: a Hydralisk at the advanced unit priority waits on a building's bank while
+     * larva sits idle, and the Drone queued behind it reports NO_LARVA. An open drone round lifts
+     * that claim, so the Drone takes the larva.
+     */
+    @Test
+    void anOpenDroneRoundLetsADroneTakeTheLarvaABlockedHydraliskClaimed() {
+        Plan hydra = new UnitPlan(UnitType.Zerg_Hydralisk, UnitPlan.ADVANCED_UNIT_PRIORITY);
+        Plan drone = drone(5151);
+        Larva closed = new Larva(1, UnitType.Zerg_Drone.mineralPrice(), 20, true);
+
+        ScanOutcome withoutRound = ProductionManager.scanPlans(Arrays.asList(hydra, drone), false, closed);
+
+        assertTrue(withoutRound.scheduled.isEmpty());
+        assertEquals(1, closed.larva);
+
+        Larva open = new Larva(1, UnitType.Zerg_Drone.mineralPrice(), 20, true);
+
+        ScanOutcome withRound = ProductionManager.scanPlans(Arrays.asList(hydra, drone), true, open);
+
+        assertEquals(Collections.singletonList(drone), withRound.scheduled);
+        assertEquals(Collections.singletonList(hydra), withRound.requeued);
+        assertEquals(0, open.larva);
+    }
+
+    @Test
+    void anOpenDroneRoundLiftsTheClaimOfEveryAdvancedUnitBlocker() {
+        for (PlanBlocker blocker : PlanBlocker.values()) {
+            assertFalse(ProductionManager.claimsLarva(mutalisk(), blocker, true), blocker.name());
+            Plan hydra = new UnitPlan(UnitType.Zerg_Hydralisk, UnitPlan.ADVANCED_UNIT_PRIORITY);
+            assertFalse(ProductionManager.claimsLarva(hydra, blocker, true), blocker.name());
+        }
+    }
+
+    @Test
+    void anOpenDroneRoundKeepsTheClaimOfTheScourgeItNeverWithholds() {
+        Plan scourge = new UnitPlan(UnitType.Zerg_Scourge, UnitPlan.ADVANCED_UNIT_PRIORITY);
+
+        assertTrue(ProductionManager.claimsLarva(scourge, PlanBlocker.BUILD_AHEAD_SLOT_TAKEN, true));
+        assertTrue(ProductionManager.claimsLarva(scourge, PlanBlocker.SUPPLY, true));
+        assertTrue(ProductionManager.claimsLarva(scourge, PlanBlocker.NO_LARVA, true));
+    }
+
+    @Test
+    void anOpenDroneRoundKeepsTheClaimOfAPlanOutsideTheAdvancedBand() {
+        Plan frameHydra = new UnitPlan(UnitType.Zerg_Hydralisk, 6332);
+        Plan roundDrone = drone(UnitPlan.DRONE_ROUND_PRIORITY);
+        Plan ling = zergling();
+
+        assertTrue(ProductionManager.claimsLarva(frameHydra, PlanBlocker.BUILD_AHEAD_SLOT_TAKEN, true));
+        assertTrue(ProductionManager.claimsLarva(roundDrone, PlanBlocker.SUPPLY, true));
+        assertTrue(ProductionManager.claimsLarva(ling, PlanBlocker.NO_LARVA, true));
+    }
+
+    @Test
+    void anOpenDroneRoundStillLetsAHeldDroneClaimTheLarvaAgainstTheHydraliskBehindIt() {
+        Plan roundDrone = drone(UnitPlan.DRONE_ROUND_PRIORITY);
+        Plan hydra = new UnitPlan(UnitType.Zerg_Hydralisk, UnitPlan.ADVANCED_UNIT_PRIORITY);
+        Recorder scheduler = new Recorder().block(roundDrone, PlanBlocker.BUILD_AHEAD_SLOT_TAKEN);
+
+        ProductionManager.scanPlans(Arrays.asList(roundDrone, hydra), true, scheduler);
+
+        assertTrue(scheduler.larvaClaimedAhead.get(hydra));
+    }
+
+    @Test
+    void aRoundDronePollsAheadOfTheAdvancedBandWithoutTyingTheTechWaveOverlord() {
+        ProductionQueue queue = new ProductionQueue();
+        Plan hydra = new UnitPlan(UnitType.Zerg_Hydralisk, UnitPlan.ADVANCED_UNIT_PRIORITY);
+        Plan roundDrone = drone(UnitPlan.DRONE_ROUND_PRIORITY);
+        Plan waveOverlord = overlord(UnitPlan.ADVANCED_UNIT_PRIORITY - 1);
+        Plan oldDrone = drone(5151);
+        queue.add(oldDrone);
+        queue.add(hydra);
+        queue.add(roundDrone);
+        queue.add(waveOverlord);
+
+        assertEquals(Arrays.asList(roundDrone, waveOverlord, hydra, oldDrone), queue.toSortedList());
+    }
+
+    @Test
+    void closingTheRoundReturnsItsDronesBehindTheAdvancedBand() {
+        ProductionQueue queue = new ProductionQueue();
+        Plan hydra = new UnitPlan(UnitType.Zerg_Hydralisk, UnitPlan.ADVANCED_UNIT_PRIORITY);
+        Plan roundDrone = drone(UnitPlan.DRONE_ROUND_PRIORITY);
+        Plan roundLing = new UnitPlan(UnitType.Zerg_Zergling, UnitPlan.DRONE_ROUND_PRIORITY);
+        queue.add(hydra);
+        queue.add(roundDrone);
+        queue.add(roundLing);
+
+        ProductionManager.demoteRoundDrones(queue, new DroneRound(), 9000);
+
+        assertEquals(9000, roundDrone.getPriority());
+        assertEquals(UnitPlan.DRONE_ROUND_PRIORITY, roundLing.getPriority());
+        assertEquals(Arrays.asList(roundLing, hydra, roundDrone), queue.toSortedList());
+    }
+
+    private static final int ROUND_FRAME = 9945;
+
+    private static final int ROUND_START_DRONES = 12;
+
+    private static final int ROUND_DRONE_CAP = 27;
+
+    private DroneRound openDroneRound() {
+        DroneRound round = new DroneRound();
+        round.update(ROUND_FRAME, DroneRound.FIRST_ROUND_ARMY_UNITS, ROUND_START_DRONES, ROUND_DRONE_CAP, true, false);
+        return round;
+    }
+
+    private List<Plan> queueDrones(ProductionQueue queue, int count, int firstPriority) {
+        List<Plan> drones = new ArrayList<>();
+        for (int i = 0; i < count; i++) {
+            Plan drone = drone(firstPriority + i);
+            drones.add(drone);
+            queue.add(drone);
+        }
+        return drones;
+    }
+
+    /**
+     * The LWQKG06D shape: about 20 frame-numbered Drones already queued when the round opens, so
+     * the round queues none of its own and must move the oldest of these ahead instead.
+     */
+    @Test
+    void openingARoundPromotesTheOldestQueuedDronesUpToItsTargetAndNoMore() {
+        ProductionQueue queue = new ProductionQueue();
+        List<Plan> drones = queueDrones(queue, 6, 9945);
+        Plan hydra = new UnitPlan(UnitType.Zerg_Hydralisk, UnitPlan.ADVANCED_UNIT_PRIORITY);
+        queue.add(hydra);
+        DroneRound round = openDroneRound();
+
+        List<Plan> promoted = ProductionManager.promoteOldestDrones(queue, round, 0);
+
+        assertEquals(drones.subList(0, DroneRound.DRONES_PER_ROUND), promoted);
+        for (Plan drone : promoted) {
+            assertEquals(UnitPlan.DRONE_ROUND_PRIORITY, drone.getPriority());
+        }
+        assertEquals(9945 + 4, drones.get(4).getPriority());
+        assertEquals(9945 + 5, drones.get(5).getPriority());
+        List<Plan> sorted = queue.toSortedList();
+        assertEquals(new HashSet<>(promoted), new HashSet<>(sorted.subList(0, 4)));
+        assertEquals(Arrays.asList(hydra, drones.get(4), drones.get(5)), sorted.subList(4, 7));
+    }
+
+    @Test
+    void promotionPicksTheOldestPlanNotTheLowestFrameNumber() {
+        ProductionQueue queue = new ProductionQueue();
+        Plan older = drone(9990);
+        Plan newer = drone(9950);
+        queue.add(older);
+        queue.add(newer);
+        DroneRound round = new DroneRound();
+        round.update(ROUND_FRAME, DroneRound.FIRST_ROUND_ARMY_UNITS, ROUND_DRONE_CAP - 1, ROUND_DRONE_CAP, true, false);
+
+        List<Plan> promoted = ProductionManager.promoteOldestDrones(queue, round, 0);
+
+        assertEquals(Collections.singletonList(older), promoted);
+        assertEquals(9950, newer.getPriority());
+    }
+
+    @Test
+    void droneRoundDronesQueuedOrInFlightCountAgainstTheTarget() {
+        ProductionQueue queue = new ProductionQueue();
+        Plan roundDrone = drone(UnitPlan.DRONE_ROUND_PRIORITY);
+        queue.add(roundDrone);
+        List<Plan> drones = queueDrones(queue, 4, 9945);
+        DroneRound round = openDroneRound();
+
+        List<Plan> promoted = ProductionManager.promoteOldestDrones(queue, round, 1);
+
+        assertEquals(drones.subList(0, 2), promoted);
+        assertEquals(9945 + 2, drones.get(2).getPriority());
+        assertTrue(ProductionManager.promoteOldestDrones(queue, round, 1).isEmpty());
+    }
+
+    @Test
+    void dronesHatchedOrInAnEggSinceTheRoundOpenedLeaveNoRoomToPromote() {
+        ProductionQueue queue = new ProductionQueue();
+        List<Plan> drones = queueDrones(queue, 3, 9945);
+        DroneRound round = openDroneRound();
+        round.update(ROUND_FRAME + 100, DroneRound.FIRST_ROUND_ARMY_UNITS, round.getDroneTarget() - 1,
+                ROUND_DRONE_CAP, true, false);
+
+        List<Plan> promoted = ProductionManager.promoteOldestDrones(queue, round, 0);
+
+        assertEquals(drones.subList(0, 1), promoted);
+    }
+
+    @Test
+    void aClosedRoundPromotesNothing() {
+        ProductionQueue queue = new ProductionQueue();
+        List<Plan> drones = queueDrones(queue, 4, 9945);
+
+        assertTrue(ProductionManager.promoteOldestDrones(queue, new DroneRound(), 0).isEmpty());
+        assertEquals(9945, drones.get(0).getPriority());
+    }
+
+    @Test
+    void aDroneAlreadyAheadOfTheRoundBandKeepsItsPlace() {
+        ProductionQueue queue = new ProductionQueue();
+        Plan openerDrone = drone(3);
+        Plan frameDrone = drone(9945);
+        queue.add(openerDrone);
+        queue.add(frameDrone);
+
+        List<Plan> promoted = ProductionManager.promoteOldestDrones(queue, openDroneRound(), 0);
+
+        assertEquals(Collections.singletonList(frameDrone), promoted);
+        assertEquals(3, openerDrone.getPriority());
+    }
+
+    @Test
+    void closingTheRoundDemotesThePromotedDronesToTheCurrentFrame() {
+        ProductionQueue queue = new ProductionQueue();
+        List<Plan> drones = queueDrones(queue, 6, 9945);
+        Plan hydra = new UnitPlan(UnitType.Zerg_Hydralisk, UnitPlan.ADVANCED_UNIT_PRIORITY);
+        queue.add(hydra);
+        DroneRound round = openDroneRound();
+        List<Plan> promoted = ProductionManager.promoteOldestDrones(queue, round, 0);
+
+        ProductionManager.demoteRoundDrones(queue, round, ROUND_FRAME + 10);
+        assertEquals(UnitPlan.DRONE_ROUND_PRIORITY, promoted.get(0).getPriority());
+
+        round.update(ROUND_FRAME + 20, DroneRound.FIRST_ROUND_ARMY_UNITS, ROUND_START_DRONES, ROUND_DRONE_CAP,
+                true, true);
+        ProductionManager.demoteRoundDrones(queue, round, ROUND_FRAME + 20);
+
+        for (Plan drone : promoted) {
+            assertEquals(ROUND_FRAME + 20, drone.getPriority());
+        }
+        assertEquals(9945 + 4, drones.get(4).getPriority());
+        assertEquals(hydra, queue.toSortedList().get(0));
+    }
+
+    @Test
+    void eachPromotionIsReported() {
+        List<Plan> reported = new ArrayList<>();
+        PlanEvents.register(new PlanEventSink() {
+            @Override
+            public void onEnqueue(Plan plan) {
+            }
+
+            @Override
+            public void onStateChange(Plan plan, PlanState from, PlanState to) {
+            }
+
+            @Override
+            public void onBlocked(Plan plan, PlanBlocker blocker) {
+            }
+
+            @Override
+            public void onPromote(Plan plan) {
+                reported.add(plan);
+            }
+        });
+        ProductionQueue queue = new ProductionQueue();
+        List<Plan> drones = queueDrones(queue, 2, 9945);
+
+        ProductionManager.promoteOldestDrones(queue, openDroneRound(), 0);
+
+        assertEquals(drones, reported);
+    }
+
     @Test
     void aSupplyBlockedMutaliskKeepsTheLarvaFromALaterDrone() {
         Plan muta = mutalisk();
@@ -1692,7 +2333,7 @@ class ProductionManagerTest {
             boolean expected = blocker == PlanBlocker.NO_LARVA
                     || blocker == PlanBlocker.SUPPLY
                     || blocker == PlanBlocker.BUILD_AHEAD_SLOT_TAKEN;
-            assertEquals(expected, ProductionManager.claimsLarva(mutalisk(), blocker), blocker.name());
+            assertEquals(expected, ProductionManager.claimsLarva(mutalisk(), blocker, false), blocker.name());
         }
     }
 
@@ -1700,16 +2341,16 @@ class ProductionManagerTest {
     void aPlanThatTakesNoLarvaNeverClaimsTheLarva() {
         Plan lurker = new UnitPlan(UnitType.Zerg_Lurker, UnitPlan.ADVANCED_UNIT_PRIORITY);
         for (PlanBlocker blocker : PlanBlocker.values()) {
-            assertFalse(ProductionManager.claimsLarva(hatchery(), blocker), blocker.name());
-            assertFalse(ProductionManager.claimsLarva(metabolicBoost(), blocker), blocker.name());
-            assertFalse(ProductionManager.claimsLarva(lurker, blocker), blocker.name());
+            assertFalse(ProductionManager.claimsLarva(hatchery(), blocker, false), blocker.name());
+            assertFalse(ProductionManager.claimsLarva(metabolicBoost(), blocker, false), blocker.name());
+            assertFalse(ProductionManager.claimsLarva(lurker, blocker, false), blocker.name());
         }
     }
 
     @Test
     void aNonClaimingBlockerLeavesTheLarvaOpenToThePlansBehindIt() {
         for (PlanBlocker blocker : PlanBlocker.values()) {
-            if (blocker == PlanBlocker.NONE || ProductionManager.claimsLarva(mutalisk(), blocker)) {
+            if (blocker == PlanBlocker.NONE || ProductionManager.claimsLarva(mutalisk(), blocker, false)) {
                 continue;
             }
             Plan muta = mutalisk();

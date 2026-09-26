@@ -1237,6 +1237,189 @@ public class ReactionsTest {
     }
 
     @Test
+    void noEnemyThreatAndNoOverlordLossesLeaveOverlordSpeedUnthreatened() {
+        assertFalse(Reactions.isOverlordSpeedThreatened(0, 0, 0));
+    }
+
+    @Test
+    void anOverlordHunterThreatensOverlordSpeed() {
+        assertTrue(Reactions.isOverlordSpeedThreatened(1, 0, 0));
+    }
+
+    @Test
+    void aDetectionThreatThreatensOverlordSpeed() {
+        assertTrue(Reactions.isOverlordSpeedThreatened(0, 1, 0));
+    }
+
+    @Test
+    void overlordLossesThreatenOverlordSpeedOnlyAtTheTrigger() {
+        assertFalse(Reactions.isOverlordSpeedThreatened(0, 0, Reactions.OVERLORDS_LOST_TRIGGER - 1));
+        assertTrue(Reactions.isOverlordSpeedThreatened(0, 0, Reactions.OVERLORDS_LOST_TRIGGER));
+    }
+
+    @Test
+    void theOverlordHuntersAreTheAntiAirFlyers() {
+        assertTrue(Reactions.isOverlordHunter(UnitType.Protoss_Corsair));
+        assertTrue(Reactions.isOverlordHunter(UnitType.Protoss_Scout));
+        assertTrue(Reactions.isOverlordHunter(UnitType.Terran_Wraith));
+        assertTrue(Reactions.isOverlordHunter(UnitType.Terran_Valkyrie));
+        assertTrue(Reactions.isOverlordHunter(UnitType.Zerg_Devourer));
+        assertFalse(Reactions.isOverlordHunter(UnitType.Protoss_Stargate));
+    }
+
+    @Test
+    void theDetectionThreatsAreTheCloakedAndBurrowedUnits() {
+        assertTrue(Reactions.isDetectionThreat(UnitType.Protoss_Dark_Templar));
+        assertTrue(Reactions.isDetectionThreat(UnitType.Zerg_Lurker));
+        assertTrue(Reactions.isDetectionThreat(UnitType.Terran_Vulture_Spider_Mine));
+    }
+
+    @Test
+    void anObserverAloneIsNotAnOverlordSpeedThreat() {
+        assertFalse(Reactions.isDetectionThreat(UnitType.Protoss_Observer));
+        assertFalse(Reactions.isOverlordHunter(UnitType.Protoss_Observer));
+    }
+
+    @Test
+    void enemyTechBuildingsAndTheScienceVesselAreNotOverlordSpeedThreats() {
+        UnitType[] queueOnly = {
+            UnitType.Protoss_Templar_Archives, UnitType.Protoss_Fleet_Beacon, UnitType.Protoss_Stargate,
+            UnitType.Terran_Starport, UnitType.Zerg_Greater_Spire, UnitType.Zerg_Hive, UnitType.Terran_Science_Vessel
+        };
+        for (UnitType unitType : queueOnly) {
+            assertFalse(Reactions.isOverlordHunter(unitType));
+            assertFalse(Reactions.isDetectionThreat(unitType));
+        }
+    }
+
+    @Test
+    void withoutAThreatOverlordSpeedStaysBehindTheHydraliskDenUpgrades() {
+        ProductionQueue queue = new ProductionQueue();
+        Plan muscularAugments = new UpgradePlan(UpgradeType.Muscular_Augments, 6236);
+        Plan groovedSpines = new UpgradePlan(UpgradeType.Grooved_Spines, 6237);
+        Plan overlordSpeed = new UpgradePlan(UpgradeType.Pneumatized_Carapace, 9452);
+        Plan hydralisk = new UnitPlan(UnitType.Zerg_Hydralisk, UnitPlan.ADVANCED_UNIT_PRIORITY);
+        queue.add(overlordSpeed);
+        queue.add(groovedSpines);
+        queue.add(muscularAugments);
+        queue.add(hydralisk);
+
+        Reactions.raiseOverlordSpeed(queue, false);
+
+        assertEquals(9452, overlordSpeed.getPriority());
+        assertEquals(Arrays.asList(hydralisk, muscularAugments, groovedSpines, overlordSpeed), queue.toSortedList());
+    }
+
+    @Test
+    void aThreatLiftsOverlordSpeedAheadOfTheArmyUpgradesAndAdvancedUnits() {
+        ProductionQueue queue = new ProductionQueue();
+        Plan muscularAugments = new UpgradePlan(UpgradeType.Muscular_Augments, 6236);
+        Plan groovedSpines = new UpgradePlan(UpgradeType.Grooved_Spines, 6237);
+        Plan overlordSpeed = new UpgradePlan(UpgradeType.Pneumatized_Carapace, 9452);
+        Plan hydralisk = new UnitPlan(UnitType.Zerg_Hydralisk, UnitPlan.ADVANCED_UNIT_PRIORITY);
+        queue.add(overlordSpeed);
+        queue.add(groovedSpines);
+        queue.add(muscularAugments);
+        queue.add(hydralisk);
+
+        Reactions.raiseOverlordSpeed(queue, true);
+
+        assertEquals(Reactions.OVERLORD_SPEED_REACTION_PRIORITY, overlordSpeed.getPriority());
+        assertEquals(Arrays.asList(overlordSpeed, hydralisk, muscularAugments, groovedSpines), queue.toSortedList());
+        assertEquals(6236, muscularAugments.getPriority());
+        assertEquals(6237, groovedSpines.getPriority());
+    }
+
+    @Test
+    void theOverlordSpeedLiftLeavesPlansAheadOfTheBandWhereTheyAre() {
+        ProductionQueue queue = new ProductionQueue();
+        Plan lair = new BuildingPlan(UnitType.Zerg_Lair, 3);
+        Plan overlordSpeed = new UpgradePlan(UpgradeType.Pneumatized_Carapace, 50);
+        queue.add(lair);
+        queue.add(overlordSpeed);
+
+        Reactions.raiseOverlordSpeed(queue, true);
+
+        assertEquals(3, lair.getPriority());
+        assertEquals(50, overlordSpeed.getPriority());
+    }
+
+    @Test
+    void enemyFlyersAreAirOrCloakThreats() {
+        UnitType[] flyers = {
+            UnitType.Protoss_Corsair, UnitType.Protoss_Shuttle, UnitType.Protoss_Carrier,
+            UnitType.Terran_Dropship, UnitType.Terran_Battlecruiser, UnitType.Zerg_Mutalisk, UnitType.Zerg_Scourge
+        };
+        for (UnitType unitType : flyers) {
+            assertTrue(Reactions.isAirOrCloakThreat(unitType), unitType.toString());
+        }
+    }
+
+    @Test
+    void flyerTechBuildingsAreAirOrCloakThreats() {
+        UnitType[] flyerTech = {
+            UnitType.Protoss_Stargate, UnitType.Protoss_Fleet_Beacon, UnitType.Terran_Starport,
+            UnitType.Terran_Control_Tower, UnitType.Terran_Physics_Lab, UnitType.Zerg_Spire, UnitType.Zerg_Greater_Spire
+        };
+        for (UnitType unitType : flyerTech) {
+            assertTrue(Reactions.isAirOrCloakThreat(unitType), unitType.toString());
+        }
+    }
+
+    @Test
+    void cloakedUnitsAreAirOrCloakThreats() {
+        UnitType[] cloaked = {
+            UnitType.Protoss_Dark_Templar, UnitType.Protoss_Observer, UnitType.Protoss_Arbiter,
+            UnitType.Terran_Ghost, UnitType.Terran_Wraith, UnitType.Terran_Vulture_Spider_Mine, UnitType.Zerg_Lurker
+        };
+        for (UnitType unitType : cloaked) {
+            assertTrue(Reactions.isAirOrCloakThreat(unitType), unitType.toString());
+        }
+    }
+
+    @Test
+    void cloakTechIsAnAirOrCloakThreat() {
+        UnitType[] cloakTech = {
+            UnitType.Protoss_Templar_Archives, UnitType.Protoss_Observatory, UnitType.Protoss_Arbiter_Tribunal,
+            UnitType.Terran_Covert_Ops, UnitType.Zerg_Lurker_Egg
+        };
+        for (UnitType unitType : cloakTech) {
+            assertTrue(Reactions.isAirOrCloakThreat(unitType), unitType.toString());
+        }
+    }
+
+    @Test
+    void aPlainGroundArmyIsNotAnAirOrCloakThreat() {
+        UnitType[] ground = {
+            UnitType.Protoss_Zealot, UnitType.Protoss_Dragoon, UnitType.Protoss_Reaver, UnitType.Protoss_Probe,
+            UnitType.Protoss_Gateway, UnitType.Protoss_Cybernetics_Core, UnitType.Protoss_Robotics_Facility,
+            UnitType.Terran_Marine, UnitType.Terran_Medic, UnitType.Terran_Siege_Tank_Tank_Mode, UnitType.Terran_Vulture,
+            UnitType.Terran_Barracks, UnitType.Terran_Factory, UnitType.Terran_Machine_Shop,
+            UnitType.Zerg_Zergling, UnitType.Zerg_Hydralisk, UnitType.Zerg_Hydralisk_Den, UnitType.Zerg_Lair
+        };
+        for (UnitType unitType : ground) {
+            assertFalse(Reactions.isAirOrCloakThreat(unitType), unitType.toString());
+        }
+    }
+
+    @Test
+    void theEnemyOverlordIsNotAnAirOrCloakThreat() {
+        assertFalse(Reactions.isAirOrCloakThreat(UnitType.Zerg_Overlord));
+    }
+
+    @Test
+    void overlordSpeedStartsInTheReactionBandWhenAnAirOrCloakThreatAndTheReactionBothHold() {
+        assertEquals(Reactions.OVERLORD_SPEED_REACTION_PRIORITY, Reactions.overlordSpeedPlanPriority(9452, true, true));
+    }
+
+    @Test
+    void overlordSpeedKeepsItsFramePriorityUnlessTheThreatAndTheReactionBothHold() {
+        assertEquals(9452, Reactions.overlordSpeedPlanPriority(9452, true, false));
+        assertEquals(9452, Reactions.overlordSpeedPlanPriority(9452, false, true));
+        assertEquals(9452, Reactions.overlordSpeedPlanPriority(9452, false, false));
+    }
+
+    @Test
     void thePoolAndEvolutionChamberAloneDoNotCommitArmyTech() {
         TechProgression techProgression = withSpawningPool();
         techProgression.setEvolutionChambers(1);

@@ -9,13 +9,17 @@ import info.Readiness;
 import info.TechProgression;
 import info.UnitTypeCount;
 import info.tracking.StrategyTracker;
+import macro.Reactions;
 import macro.plan.Plan;
+import strategy.buildorder.ArmyUpgradeTrigger;
 import strategy.buildorder.LarvaBoundMacroHatchery;
 import strategy.buildorder.ZerglingTargets;
 import util.Time;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 
 /**
  * 3HatchHydralisk
@@ -32,6 +36,10 @@ public class ThreeHatchHydra extends ProtossBase {
     static final int UPGRADE_EVOLUTION_CHAMBERS = 2;
 
     private static final int HYDRALISKS_BEFORE_EVOLUTION_CHAMBER = 6;
+
+    public static final int HYDRALISKS_BEFORE_DEN_UPGRADE_PRIORITY = 6;
+
+    public static final int HYDRALISKS_BEFORE_EVOLUTION_UPGRADE_PRIORITY = 12;
 
     private boolean plannedFirstMacroHatch = false;
     private boolean plannedSecondMacroHatch = false;
@@ -56,7 +64,6 @@ public class ThreeHatchHydra extends ProtossBase {
         int supply = gameState.getSupply();
         int plannedHatcheries = gameState.getPlannedHatcheries();
         int macroHatchCount = baseData.numMacroHatcheries();
-        int hatchCount = gameState.structureCount(Readiness.USABLE, UnitType.Zerg_Hatchery);
         int lairCount = gameState.structureCount(Readiness.USABLE, UnitType.Zerg_Lair);
         int committedDens = gameState.structureCount(Readiness.COMMITTED, UnitType.Zerg_Hydralisk_Den);
         final int plannedAndCurrentHatcheries = plannedHatcheries + baseCount;
@@ -99,7 +106,9 @@ public class ThreeHatchHydra extends ProtossBase {
         boolean wantGroovedSpines = techProgression.canPlanGroovedSpines();
         boolean wantRangedUpgrades = techProgression.canPlanRangedUpgrades();
         boolean wantCarapaceUpgrade = techProgression.canPlanCarapaceUpgrades();
-        boolean wantOverlordSpeed = needOverlordSpeed(gameState) && techProgression.canPlanOverlordSpeed();
+        boolean wantOverlordSpeed = shouldPlanOverlordSpeed(needOverlordSpeed(gameState) && techProgression.canPlanOverlordSpeed(),
+                Reactions.isAirOrCloakThreatSeen(gameState),
+                wantMuscularAugments, wantGroovedSpines, wantRangedUpgrades, wantCarapaceUpgrade);
 
         // Plan buildings
 
@@ -242,8 +251,10 @@ public class ThreeHatchHydra extends ProtossBase {
         }
 
         final int desiredHydralisks = desiredHydralisks(gameState);
-        List<Plan> hydraliskPlans = planHydralisk(techProgression, desiredHydralisks, gameState.numGatherers(),
-                gameState.queuedUnitPlanCount(UnitType.Zerg_Hydralisk), gameState.getUnitTypeCount());
+        List<Plan> hydraliskPlans = withheldByDroneRound(gameState.getDroneRound().isActive(), UnitType.Zerg_Hydralisk)
+                ? new ArrayList<>()
+                : planHydralisk(techProgression, desiredHydralisks, gameState.numGatherers(),
+                        gameState.queuedUnitPlanCount(UnitType.Zerg_Hydralisk), gameState.getUnitTypeCount());
         if (!hydraliskPlans.isEmpty()) {
             plans.addAll(hydraliskPlans);
             return plans;
@@ -255,11 +266,7 @@ public class ThreeHatchHydra extends ProtossBase {
             return plans;
         }
 
-        int droneTarget = hatchCount * 9;
-        if (strategyTracker.isDetectedStrategy("FFE") || strategyTracker.isDetectedStrategy("NexusFirst")) {
-            droneTarget += 8;
-        }
-        droneTarget = Math.min(droneTarget, 55);
+        int droneTarget = droneTarget(gameState);
         if (macroHatchCount > 0 && droneCount < droneTarget) {
             plans.add(this.planUnit(gameState, UnitType.Zerg_Drone));
             return plans;
@@ -277,6 +284,25 @@ public class ThreeHatchHydra extends ProtossBase {
         }
 
         return plans;
+    }
+
+    private int droneTarget(GameState gameState) {
+        StrategyTracker strategyTracker = gameState.getStrategyTracker();
+        int droneTarget = gameState.structureCount(Readiness.USABLE, UnitType.Zerg_Hatchery) * 9;
+        if (strategyTracker.isDetectedStrategy("FFE") || strategyTracker.isDetectedStrategy("NexusFirst")) {
+            droneTarget += 8;
+        }
+        return Math.min(droneTarget, 55);
+    }
+
+    @Override
+    protected Set<UnitType> droneRoundArmy() {
+        return Collections.singleton(UnitType.Zerg_Hydralisk);
+    }
+
+    @Override
+    protected int droneRoundDroneCap(GameState gameState) {
+        return droneTarget(gameState);
     }
 
     // Macro hatchery planning methods
@@ -369,6 +395,25 @@ public class ThreeHatchHydra extends ProtossBase {
         }
 
         return techProgression.isHydraliskDen() && hydras > HYDRALISKS_BEFORE_EVOLUTION_CHAMBER;
+    }
+
+    /**
+     * Muscular Augments and Grooved Spines move ahead of the Hydralisk stream once
+     * {@value #HYDRALISKS_BEFORE_DEN_UPGRADE_PRIORITY} Hydralisks are alive, and Missile Attacks
+     * and Carapace once {@value #HYDRALISKS_BEFORE_EVOLUTION_UPGRADE_PRIORITY} are.
+     */
+    @Override
+    protected ArmyUpgradeTrigger armyUpgradeTrigger(UpgradeType upgradeType) {
+        switch (upgradeType) {
+            case Muscular_Augments:
+            case Grooved_Spines:
+                return new ArmyUpgradeTrigger(HYDRALISKS_BEFORE_DEN_UPGRADE_PRIORITY, UnitType.Zerg_Hydralisk);
+            case Zerg_Missile_Attacks:
+            case Zerg_Carapace:
+                return new ArmyUpgradeTrigger(HYDRALISKS_BEFORE_EVOLUTION_UPGRADE_PRIORITY, UnitType.Zerg_Hydralisk);
+            default:
+                return null;
+        }
     }
 
     // Unit production methods

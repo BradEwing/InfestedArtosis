@@ -20,6 +20,8 @@ public enum PlanBlocker {
     RESEARCH_MINERALS,
     /** A plan behind a research or upgrade that holds the bank with {@link #RESEARCH_MINERALS}. */
     RESEARCH_CLAIM,
+    /** An advanced unit the build withholds while a {@link macro.DroneRound} is open. */
+    DRONE_ROUND,
     UNSUPPORTED_PLAN_TYPE;
 
     /** The cancel reason a sweep records for a plan this blocker holds. */

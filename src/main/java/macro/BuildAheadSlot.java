@@ -106,17 +106,24 @@ public class BuildAheadSlot {
      * {@code claimFrame + MAX_HOLD_FRAMES}, and one already carried past that while income-bound
      * keeps its deadline without being carried further.
      *
+     * <p>A builder mining out a mineral that blocks its walk is making progress the ledger cannot
+     * see, so while it clears the hold is carried as if income-bound, up to
+     * {@code claimFrame + TOTAL_HOLD_FRAMES}. Once the blocker is gone the deadline it reached is
+     * kept and the builder walks the rest of the way on it.
+     *
      * @param plan the plan holding the claim
      * @param predictedReadyFrame the refreshed ledger prediction
      * @param travelFrames the builder's travel estimate
      * @param bankCovers whether the mined bank covers the plan's own cost
+     * @param clearingBlocker whether the plan's builder is mining out a mineral blocking its walk
      */
-    public void extend(Plan plan, int predictedReadyFrame, int travelFrames, boolean bankCovers) {
+    public void extend(Plan plan, int predictedReadyFrame, int travelFrames, boolean bankCovers,
+                       boolean clearingBlocker) {
         Claim claim = claims.get(plan);
         if (claim == null) {
             return;
         }
-        int cap = bankCovers ? MAX_HOLD_FRAMES : TOTAL_HOLD_FRAMES;
+        int cap = bankCovers && !clearingBlocker ? MAX_HOLD_FRAMES : TOTAL_HOLD_FRAMES;
         int refreshed = deadline(claim.claimFrame, predictedReadyFrame, travelFrames, cap);
         claim.deadline = Math.min(claim.claimFrame + TOTAL_HOLD_FRAMES, Math.max(claim.deadline, refreshed));
     }

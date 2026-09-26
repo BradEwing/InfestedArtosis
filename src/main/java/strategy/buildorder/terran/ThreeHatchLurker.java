@@ -9,18 +9,27 @@ import info.GameState;
 import info.Readiness;
 import info.ResourceCount;
 import info.TechProgression;
+import macro.Reactions;
 import macro.plan.Plan;
+import strategy.buildorder.ArmyUpgradeTrigger;
 import strategy.buildorder.LarvaBoundMacroHatchery;
 import strategy.buildorder.ZerglingTargets;
 
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 public class ThreeHatchLurker extends TerranBase {
 
     static final int HYDRALISKS_BEFORE_ZERGLINGS = 3;
 
     private static final int UPGRADE_EVOLUTION_CHAMBERS = 2;
+
+    static final int HYDRALISKS_AND_LURKERS_BEFORE_DEN_UPGRADE_PRIORITY = 8;
+
+    static final int HYDRALISKS_AND_LURKERS_BEFORE_EVOLUTION_UPGRADE_PRIORITY = 12;
 
     public ThreeHatchLurker() {
         super("3HatchLurker");
@@ -67,7 +76,9 @@ public class ThreeHatchLurker extends TerranBase {
         boolean wantGroovedSpines = techProgression.canPlanGroovedSpines() && shouldPlanGroovedSpines(livingHydraCount);
         boolean wantRangedUpgrades = techProgression.canPlanRangedUpgrades();
         boolean wantCarapaceUpgrade = techProgression.canPlanCarapaceUpgrades();
-        boolean wantOverlordSpeed = needOverlordSpeed(gameState) && techProgression.canPlanOverlordSpeed();
+        boolean wantOverlordSpeed = shouldPlanOverlordSpeed(needOverlordSpeed(gameState) && techProgression.canPlanOverlordSpeed(),
+                Reactions.isAirOrCloakThreatSeen(gameState),
+                wantMuscularAugments, wantGroovedSpines, wantRangedUpgrades, wantCarapaceUpgrade);
 
         // Check for floating resources (follows OneHatchSpire pattern)
         boolean floatingMinerals = gameState.isFloatingMinerals();
@@ -286,6 +297,28 @@ public class ThreeHatchLurker extends TerranBase {
         return livingHydraCount > 6;
     }
 
+    /**
+     * Muscular Augments and Grooved Spines move ahead of the Hydralisk and Lurker stream once
+     * {@value #HYDRALISKS_AND_LURKERS_BEFORE_DEN_UPGRADE_PRIORITY} Hydralisks and Lurkers are alive,
+     * and Missile Attacks and Carapace once
+     * {@value #HYDRALISKS_AND_LURKERS_BEFORE_EVOLUTION_UPGRADE_PRIORITY} are.
+     */
+    @Override
+    protected ArmyUpgradeTrigger armyUpgradeTrigger(UpgradeType upgradeType) {
+        switch (upgradeType) {
+            case Muscular_Augments:
+            case Grooved_Spines:
+                return new ArmyUpgradeTrigger(HYDRALISKS_AND_LURKERS_BEFORE_DEN_UPGRADE_PRIORITY,
+                        UnitType.Zerg_Hydralisk, UnitType.Zerg_Lurker);
+            case Zerg_Missile_Attacks:
+            case Zerg_Carapace:
+                return new ArmyUpgradeTrigger(HYDRALISKS_AND_LURKERS_BEFORE_EVOLUTION_UPGRADE_PRIORITY,
+                        UnitType.Zerg_Hydralisk, UnitType.Zerg_Lurker);
+            default:
+                return null;
+        }
+    }
+
     private boolean wantHydraliskDen(GameState gameState) {
         if (gameState.structureCount(Readiness.USABLE, UnitType.Zerg_Extractor) == 0) {
             return false;
@@ -422,6 +455,16 @@ public class ThreeHatchLurker extends TerranBase {
 
         return ZerglingTargets.gasUnitFocus(super.zerglingsNeeded(gameState), den, hydras,
                 HYDRALISKS_BEFORE_ZERGLINGS, gasReachable);
+    }
+
+    @Override
+    protected Set<UnitType> droneRoundArmy() {
+        return new HashSet<>(Arrays.asList(UnitType.Zerg_Lurker, UnitType.Zerg_Hydralisk));
+    }
+
+    @Override
+    protected int droneRoundDroneCap(GameState gameState) {
+        return dronesNeeded(gameState);
     }
 
     protected int dronesNeeded(GameState gameState) {
