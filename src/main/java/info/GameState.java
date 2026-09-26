@@ -15,6 +15,7 @@ import bwapi.WalkPosition;
 import bwapi.WeaponType;
 import bwem.BWEM;
 import bwem.Base;
+import bwem.Geyser;
 import bwem.Mineral;
 import config.Config;
 import info.map.BuildingPlanner;
@@ -38,6 +39,7 @@ import org.jetbrains.annotations.Nullable;
 import macro.ProductionQueue;
 import macro.plan.PlanState;
 import strategy.buildorder.BuildOrder;
+import telemetry.PlanEvents;
 import unit.managed.ManagedUnit;
 import unit.managed.UnitRole;
 import unit.squad.RunbyEvaluator;
@@ -89,6 +91,7 @@ public class GameState {
 
     private HashMap<Unit, HashSet<ManagedUnit>> geyserAssignments = new HashMap<>();
     private HashMap<Unit, HashSet<ManagedUnit>> mineralAssignments = new HashMap<>();
+    private final ResourceLedger resourceLedger = new ResourceLedger();
 
     private HashSet<ManagedUnit> larva = new HashSet<>();
 
@@ -172,6 +175,7 @@ public class GameState {
         strategyTracker.onFrame();
         clearVisibleEnemyWorkerLocations();
         baseData.updateSquadRallyBase();
+        observeGeyserResources();
     }
 
     private void observeHitPoints(int frame) {
@@ -436,9 +440,14 @@ public class GameState {
         gatherersAssignedToBase.put(base, new HashSet<>());
         this.baseData.addBase(hatchery, base);
 
+        List<Integer> livingMineralPatches = new ArrayList<>();
         for (Mineral mineral: base.getMinerals()) {
             mineralAssignments.put(mineral.getUnit(), new HashSet<>());
+            if (mineral.getUnit().exists()) {
+                livingMineralPatches.add(mineral.getUnit().getID());
+            }
         }
+        resourceLedger.addBase(base.getLocation(), livingMineralPatches);
     }
 
     public void addMainBase(Unit hatchery, Base base) {
@@ -1979,6 +1988,91 @@ public class GameState {
 
     public void setGeyserAssignment(Unit unit) {
         geyserAssignments.put(unit, new HashSet<>());
+    }
+
+    /**
+     * Records a completed Extractor of ours in the resource ledger as mining, with the gas its geyser started the
+     * game with. The starting amount is read from the static geyser on the same tile, since JBWAPI fixes a
+     * unit's initial resources when it first wraps the unit, and falls back to the Extractor's own reading.
+     */
+    public void trackExtractor(Unit extractor) {
+        TilePosition geyserTile = extractor.getTilePosition();
+        int initialResources = extractor.getInitialResources();
+        for (Unit geyser : game.getStaticGeysers()) {
+            if (geyser.getInitialTilePosition().equals(geyserTile)) {
+                initialResources = geyser.getInitialResources();
+            }
+        }
+        resourceLedger.addExtractor(extractor.getID(), geyserTile, baseOfGeyser(geyserTile), initialResources,
+                game.getFrameCount());
+    }
+
+    public void untrackExtractor(Unit extractor) {
+        resourceLedger.removeExtractor(extractor.getID());
+    }
+
+    public void removeMineralPatch(Unit mineralPatch) {
+        resourceLedger.removeMineralPatch(mineralPatch.getID());
+    }
+
+    @Nullable
+    private TilePosition baseOfGeyser(TilePosition geyserTile) {
+        for (Base base : bwem.getMap().getBases()) {
+            for (Geyser geyser : base.getGeysers()) {
+                if (geyser.getTopLeft().equals(geyserTile)) {
+                    return base.getLocation();
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Reads the gas left under each completed Extractor and writes a GEYSER_DEPLETED row the first time a
+     * geyser reads empty.
+     */
+    private void observeGeyserResources() {
+        for (Unit extractor : geyserAssignments.keySet()) {
+            if (!extractor.exists()) {
+                continue;
+            }
+            ResourceLedger.ExtractorGeyser depleted =
+                    resourceLedger.observeResources(extractor.getID(), extractor.getResources());
+            if (depleted != null) {
+                PlanEvents.geyserDepleted(depleted.getGeyser(), depleted.getBase(), depleted.getInitialResources(),
+                        depleted.getCompletedFrame());
+            }
+        }
+    }
+
+    /**
+     * @return mineral patches still alive at the bases we hold
+     */
+    public int remainingMineralPatches() {
+        List<TilePosition> ownedBases = new ArrayList<>();
+        for (Base base : baseData.getMyBases()) {
+            ownedBases.add(base.getLocation());
+        }
+        return resourceLedger.remainingMineralPatches(ownedBases);
+    }
+
+    /**
+     * Unlike {@link #remainingMineralPatches()}, this does not filter by base ownership: an Extractor still
+     * standing at a base whose hatchery was lost is ours and counts.
+     *
+     * @return our completed Extractors on geysers that still have gas
+     */
+    public int miningGeysers() {
+        return resourceLedger.miningGeysers();
+    }
+
+    /**
+     * Counts Extractors regardless of base ownership, as {@link #miningGeysers()} does.
+     *
+     * @return our completed Extractors on geysers that are empty
+     */
+    public int depletedGeysers() {
+        return resourceLedger.depletedGeysers();
     }
 
     public TilePosition pollScoutTarget() {
