@@ -106,6 +106,7 @@ public class LearningManager {
         }
 
         ensureOpenersInOpponentRecord();
+        decisions.setLastGameDetectedStrategies(lastGameDetectedStrategies);
         decisions.setOpener(determineOpener());
     }
 

@@ -14,10 +14,14 @@ import info.tracking.protoss.OneGateCore;
 import info.tracking.protoss.ProxyGate;
 import info.tracking.protoss.TwoGate;
 import info.tracking.terran.SCVRush;
+import info.tracking.terran.TerranWall;
+import info.tracking.terran.TerranWallMain;
+import info.tracking.terran.TerranWallNatural;
 import info.tracking.terran.TwoRaxAcademy;
 import info.tracking.zerg.Hydralisk;
 import info.tracking.zerg.TwoHatchLing;
 import lombok.Getter;
+import lombok.Setter;
 import telemetry.PlanEvents;
 import util.Time;
 
@@ -51,6 +55,13 @@ public class StrategyTracker {
     private final BWMap bwMap;
     private final ScoutData scoutData;
 
+    /**
+     * The strategies the learning file recorded as detected in the previous game against this opponent, joined by
+     * ';'. Empty when there was no previous game.
+     */
+    @Setter
+    private String previousGameDetectedStrategies = "";
+
     public StrategyTracker(Game game, Race opponentRace, ObservedUnitTracker tracker, BaseData baseData, GameMap gameMap,
                            BWMap bwMap, ScoutData scoutData) {
         this.game = game;
@@ -75,6 +86,8 @@ public class StrategyTracker {
         if (race == Race.Terran || race == Race.Unknown) {
             possibleStrategies.add(new TwoRaxAcademy());
             possibleStrategies.add(new SCVRush());
+            possibleStrategies.add(new TerranWallNatural());
+            possibleStrategies.add(new TerranWallMain());
         }
         if (race == Race.Zerg || race == Race.Unknown) {
             possibleStrategies.add(new Hydralisk());
@@ -199,6 +212,14 @@ public class StrategyTracker {
             }
         }
         return false;
+    }
+
+    /**
+     * Whether a Terran wall was detected this game or in the previous game against this opponent.
+     */
+    public boolean isTerranWallDetected() {
+        return isAnyDetectedStrategy(TerranWallNatural.NAME, TerranWallMain.NAME)
+                || TerranWall.isWallIn(previousGameDetectedStrategies);
     }
 
     public String getDetectedStrategiesAsString() {

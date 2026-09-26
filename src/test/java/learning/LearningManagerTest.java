@@ -78,6 +78,50 @@ public class LearningManagerTest {
     }
 
     @Test
+    void aNaturalWallLastGameBarsFourPool() {
+        BuildOrderFactory factory = new BuildOrderFactory(4, Race.Terran);
+        OpponentRecord opponentRecord = opponentRecordFavouring(factory, Race.Terran, "4Pool", "12Pool");
+
+        String selected = LearningManager.selectOpenerName(null, factory, opponentRecord,
+                "1Base;TerranWallNatural", "12Pool", MAP_NAME);
+
+        assertEquals("12Pool", selected);
+    }
+
+    @Test
+    void aMainWallLastGameBarsFourPool() {
+        BuildOrderFactory factory = new BuildOrderFactory(4, Race.Terran);
+        OpponentRecord opponentRecord = opponentRecordFavouring(factory, Race.Terran, "4Pool", "12Pool");
+
+        String selected = LearningManager.selectOpenerName(null, factory, opponentRecord,
+                "TerranWallMain", "12Pool", MAP_NAME);
+
+        assertEquals("12Pool", selected);
+    }
+
+    @Test
+    void fourPoolStaysSelectableWithoutAWallLastGame() {
+        BuildOrderFactory factory = new BuildOrderFactory(4, Race.Terran);
+        OpponentRecord opponentRecord = opponentRecordFavouring(factory, Race.Terran, "4Pool", "12Pool");
+
+        String selected = LearningManager.selectOpenerName(null, factory, opponentRecord,
+                "1Base;2RaxAcademy", "12Pool", MAP_NAME);
+
+        assertEquals("4Pool", selected);
+    }
+
+    @Test
+    void anOpenerOverrideStillForcesFourPoolAfterAWall() {
+        BuildOrderFactory factory = new BuildOrderFactory(4, Race.Terran);
+        OpponentRecord opponentRecord = opponentRecordFavouring(factory, Race.Terran, "12Pool");
+
+        String selected = LearningManager.selectOpenerName("4Pool", factory, opponentRecord,
+                "TerranWallNatural", "12Pool", MAP_NAME);
+
+        assertEquals("4Pool", selected);
+    }
+
+    @Test
     void openerOverrideTakesPrecedenceOverRushTrigger() {
         BuildOrderFactory factory = new BuildOrderFactory(4, Race.Protoss);
         OpponentRecord opponentRecord = opponentRecordFavouring(factory, Race.Protoss, "4Pool");

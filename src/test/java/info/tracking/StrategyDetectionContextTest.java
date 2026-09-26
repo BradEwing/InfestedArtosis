@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -169,6 +170,16 @@ class StrategyDetectionContextTest {
 
         assertFalse(isOnOurSide(icarus, new Position(3584, 1424)));
         assertTrue(isOnOurSide(icarus, new Position(1600, 400)));
+    }
+
+    @Test
+    void aTileIsAtAChokeWithinTheManhattanRadiusOfAnyCentre() {
+        List<TilePosition> chokes = Arrays.asList(new TilePosition(40, 40), new TilePosition(90, 12));
+
+        assertTrue(StrategyDetectionContext.isWithinTileRadius(new TilePosition(45, 43), chokes, 8));
+        assertTrue(StrategyDetectionContext.isWithinTileRadius(new TilePosition(86, 16), chokes, 8));
+        assertFalse(StrategyDetectionContext.isWithinTileRadius(new TilePosition(45, 44), chokes, 8));
+        assertFalse(StrategyDetectionContext.isWithinTileRadius(new TilePosition(40, 40), Collections.emptyList(), 8));
     }
 
     private static boolean isOnOurSide(LV28400NFixture icarus, Position position) {

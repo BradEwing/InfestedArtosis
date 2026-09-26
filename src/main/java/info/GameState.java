@@ -160,6 +160,7 @@ public class GameState {
         this.gameMap = new GameMap(game.mapWidth(), game.mapHeight());
         this.strategyTracker = new StrategyTracker(game, opponentRace, this.observedUnitTracker, this.baseData,
                 this.gameMap, bwem.getMap(), this.scoutData);
+        this.strategyTracker.setPreviousGameDetectedStrategies(decisions.getLastGameDetectedStrategies());
     }
 
     public void onFrame() {

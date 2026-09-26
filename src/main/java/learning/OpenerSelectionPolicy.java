@@ -1,12 +1,20 @@
 package learning;
 
+import info.tracking.terran.TerranWall;
 import strategy.BuildOrderFactory;
 import strategy.buildorder.BuildOrder;
 
 import java.util.List;
 import java.util.stream.Collectors;
 
+/**
+ * Selects the opener for a game: the configured override, then the rush response, then weighted D-UCB over the
+ * playable openers. 4Pool is left out of the D-UCB candidates when the previous game detected a Terran wall.
+ */
 final class OpenerSelectionPolicy {
+
+    static final String FOUR_POOL = "4Pool";
+
     private OpenerSelectionPolicy() {
     }
 
@@ -37,6 +45,9 @@ final class OpenerSelectionPolicy {
                 .stream()
                 .filter(name -> buildOrderFactory.isPlayableOpener(buildOrderFactory.getByName(name)))
                 .collect(Collectors.toList());
+        if (TerranWall.isWallIn(lastGameDetectedStrategies)) {
+            playableOpeners.remove(FOUR_POOL);
+        }
         if (LearningManager.isBarredFromImmediateRepeat(lastGameOpener, playableOpeners, opponentRecord)) {
             playableOpeners.removeIf(name -> name.equals(lastGameOpener));
         }

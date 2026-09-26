@@ -8,14 +8,17 @@ import bwapi.UnitType;
 import bwapi.WeaponType;
 import util.Filter;
 import util.StaticDefenseZone;
+import util.TileFootprint;
 import util.Time;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Arrays;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.BiPredicate;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -484,6 +487,45 @@ public class ObservedUnitTracker {
                     Position pos = ou.getCurrentOrLastKnownPosition();
                     return pos != null && tileFilter.test(pos.toTilePosition());
                 });
+    }
+
+    /**
+     * The tile footprints of the living observed units of the matching types, at their current or last known
+     * positions. Units whose position is unknown are left out.
+     */
+    public List<TileFootprint> getLivingFootprints(Predicate<UnitType> typeFilter) {
+        List<TileFootprint> footprints = new ArrayList<>();
+        for (ObservedUnit ou : observedUnits.values()) {
+            if (ou.getDestroyedFrame() != null || !typeFilter.test(ou.getUnitType())) {
+                continue;
+            }
+            Position position = ou.getCurrentOrLastKnownPosition();
+            if (position != null) {
+                footprints.add(TileFootprint.centredAt(ou.getUnitType(), position));
+            }
+        }
+        return footprints;
+    }
+
+    /**
+     * Whether two distinct footprints, the first of a firstType and the second of a secondType, lie within
+     * maxTileGap tiles of each other and pairFilter accepts them in that order.
+     */
+    public static boolean hasPairWithinTileGap(Collection<TileFootprint> footprints, Predicate<UnitType> firstType,
+                                               Predicate<UnitType> secondType, int maxTileGap,
+                                               BiPredicate<TileFootprint, TileFootprint> pairFilter) {
+        for (TileFootprint first : footprints) {
+            if (!firstType.test(first.getUnitType())) {
+                continue;
+            }
+            for (TileFootprint second : footprints) {
+                if (second != first && secondType.test(second.getUnitType())
+                        && first.tileGap(second) <= maxTileGap && pairFilter.test(first, second)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     public Set<ObservedUnit> getLivingObservedUnits() {

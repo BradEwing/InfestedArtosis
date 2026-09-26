@@ -12,6 +12,7 @@ import info.map.BaseArea;
 import info.map.GameMap;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
+import util.Distance;
 import util.Time;
 
 import java.util.Collection;
@@ -58,6 +59,28 @@ public class StrategyDetectionContext {
             return null;
         }
         return BaseArea.from(enemyNatural, bwMap, proximityTileRadius, areaTileRadius);
+    }
+
+    /**
+     * Tiles within tileRadius manhattan tiles of the centre of a chokepoint of the enemy main's BWEM Area, the
+     * ground a wall across the main's ramp or entrance stands on. Null while the enemy main is unknown.
+     */
+    public Predicate<TilePosition> enemyMainChokeArea(int tileRadius) {
+        Base enemyMain = baseData.getMainEnemyBase();
+        if (enemyMain == null || enemyMain.getArea() == null) {
+            return null;
+        }
+        List<TilePosition> chokeTiles = enemyMain.getArea().getChokePoints().stream()
+                .map(choke -> choke.getCenter().toTilePosition())
+                .collect(Collectors.toList());
+        return tile -> isWithinTileRadius(tile, chokeTiles, tileRadius);
+    }
+
+    /**
+     * Whether the tile lies within tileRadius manhattan tiles of any of the centres.
+     */
+    static boolean isWithinTileRadius(TilePosition tile, Collection<TilePosition> centres, int tileRadius) {
+        return centres.stream().anyMatch(centre -> Distance.manhattanTileDistance(tile, centre) <= tileRadius);
     }
 
     /**
