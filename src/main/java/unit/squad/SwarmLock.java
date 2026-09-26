@@ -5,6 +5,7 @@ import bwapi.UnitType;
 import info.tracking.DarkSwarm;
 import lombok.Getter;
 import unit.squad.horizon.SwarmCover;
+import util.Filter;
 
 import java.util.List;
 import java.util.Map;
@@ -172,6 +173,21 @@ public final class SwarmLock {
     }
 
     /**
+     * Whether a covered enemy of this type is worth committing a squad to: an armed unit other than a worker, or a
+     * building that can attack a ground unit. A worker, an unarmed unit or a building such as a Supply Depot may still
+     * be attacked once the squad is committed, but never draws the commit.
+     *
+     * @param type the enemy's type
+     * @return true when the enemy can make a swarm eligible
+     */
+    public static boolean isCommitTarget(UnitType type) {
+        if (type.isBuilding()) {
+            return Filter.isHostileBuildingToGround(type);
+        }
+        return type.canAttack() && !type.isWorker();
+    }
+
+    /**
      * Whether an enemy's box lies within {@link #COVER_MARGIN} of the footprint.
      *
      * @param swarm the swarm
@@ -193,11 +209,25 @@ public final class SwarmLock {
      * @return the swarm, or null when there is none
      */
     public static DarkSwarm choose(List<DarkSwarm> swarms, Position squadCenter, List<Boolean> eligible) {
+        return nearest(swarms, squadCenter, eligible, MIN_REMAINING_FRAMES);
+    }
+
+    /**
+     * Of the swarms marked eligible with at least the given frames left, the one nearest the squad centre.
+     *
+     * @param swarms our active swarms
+     * @param squadCenter the squad centre
+     * @param eligible for each swarm, in the same order, whether the squad is eligible for it
+     * @param minRemainingFrames frames a swarm must have left to be chosen
+     * @return the swarm, or null when there is none
+     */
+    public static DarkSwarm nearest(List<DarkSwarm> swarms, Position squadCenter, List<Boolean> eligible,
+                                    int minRemainingFrames) {
         DarkSwarm best = null;
         double bestGap = Double.MAX_VALUE;
         for (int i = 0; i < swarms.size(); i++) {
             DarkSwarm swarm = swarms.get(i);
-            if (!eligible.get(i) || swarm.getRemainingFrames() < MIN_REMAINING_FRAMES) {
+            if (!eligible.get(i) || swarm.getRemainingFrames() < minRemainingFrames) {
                 continue;
             }
             double gap = swarm.gap(squadCenter);

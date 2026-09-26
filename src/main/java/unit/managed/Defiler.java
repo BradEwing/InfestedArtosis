@@ -21,9 +21,13 @@ public class Defiler extends ManagedUnit {
     private static final int CONSUME_SEARCH_RANGE = 256;
     private static final int CAST_LOCKOUT_FRAMES = 36;
     private static final int PLAGUE_SPLASH_RADIUS = 64;
-    /** Radius searched around a cast point for existing swarms whose footprint could contain it. */
-    private static final int DARK_SWARM_RADIUS = 192;
     private static final int SWARM_HALF_WIDTH = UnitType.Spell_Dark_Swarm.dimensionLeft();
+    /**
+     * Radius searched around a cast point for existing swarms: any swarm whose footprint could overlap a footprint
+     * centred on the point has its centre within one footprint width on each axis, so within this diagonal.
+     */
+    private static final int DARK_SWARM_RADIUS =
+            (int) Math.ceil(Math.hypot(2 * SWARM_HALF_WIDTH, 2 * SWARM_HALF_WIDTH));
     /**
      * Frames left on a swarm below which a Defiler recasts over melee committed under it: the swarm lock horizon plus
      * the cast lockout, so the replacement is ordered before the lock on the old swarm lapses.
@@ -175,8 +179,8 @@ public class Defiler extends ManagedUnit {
      * <p>The aim is the pair of one of our melee units and an enemy it could be fighting that stand closest together,
      * and the swarm goes down between them, see {@link #castPoint}. Buildings that cannot attack a ground unit are left
      * out of the aim, so a Supply Depot on a wall does not draw the cast. Nothing is cast unless a melee unit is within
-     * {@link #SAFE_DISTANCE} of an aim target, nor where one of our swarms already covers the point, unless that swarm
-     * is about to lapse under melee committed to it, see {@link #blocksCast}.
+     * {@link #SAFE_DISTANCE} of an aim target, nor where its footprint would overlap one of our live swarms, unless
+     * that swarm is about to lapse under melee committed to it, see {@link #blocksCast}.
      */
     private boolean tryDarkSwarm() {
         List<Unit> friendlyMelee = game.getUnitsInRadius(unit.getPosition(), SPELL_RANGE)
@@ -264,9 +268,9 @@ public class Defiler extends ManagedUnit {
     }
 
     /**
-     * Whether an existing swarm rules out casting at a point: the point lies inside its footprint, and it is not
-     * about to lapse under melee committed to it. A swarm with fewer than {@link #RECAST_REMAINING_FRAMES} left and
-     * our melee under it is recast over.
+     * Whether an existing swarm rules out casting at a point: the new footprint, centred on the point, would overlap
+     * the existing one, and the existing one is not about to lapse under melee committed to it. A swarm with fewer
+     * than {@link #RECAST_REMAINING_FRAMES} left and our melee under it is recast over.
      *
      * @param existing the existing swarm
      * @param meleeUnder whether any of our melee units stands under it
@@ -274,7 +278,7 @@ public class Defiler extends ManagedUnit {
      * @return true when the cast is refused
      */
     static boolean blocksCast(DarkSwarm existing, boolean meleeUnder, Position castPosition) {
-        if (existing.gap(castPosition) > 0) return false;
+        if (existing.gap(castPosition) > SWARM_HALF_WIDTH) return false;
         return !meleeUnder || existing.getRemainingFrames() >= RECAST_REMAINING_FRAMES;
     }
 

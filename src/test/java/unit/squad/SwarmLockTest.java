@@ -145,6 +145,28 @@ class SwarmLockTest {
     }
 
     @Test
+    void onlyArmedUnitsAndBuildingsThatHitGroundDrawACommit() {
+        assertTrue(SwarmLock.isCommitTarget(UnitType.Terran_Goliath));
+        assertTrue(SwarmLock.isCommitTarget(UnitType.Terran_Siege_Tank_Siege_Mode));
+        assertTrue(SwarmLock.isCommitTarget(UnitType.Terran_Bunker));
+        assertFalse(SwarmLock.isCommitTarget(UnitType.Terran_SCV));
+        assertFalse(SwarmLock.isCommitTarget(UnitType.Terran_Medic));
+        assertFalse(SwarmLock.isCommitTarget(UnitType.Terran_Supply_Depot));
+        assertFalse(SwarmLock.isCommitTarget(UnitType.Terran_Missile_Turret));
+    }
+
+    @Test
+    void theSampleStillFindsASwarmBelowTheHorizonThatTheCommitWouldSkip() {
+        Position center = new Position(1000, 3520);
+        DarkSwarm expiring = new DarkSwarm(2, new Position(1090, 3520), HORIZON - 1);
+        List<DarkSwarm> swarms = Collections.singletonList(expiring);
+        List<Boolean> eligible = Collections.singletonList(true);
+
+        assertNull(SwarmLock.choose(swarms, center, eligible));
+        assertSame(expiring, SwarmLock.nearest(swarms, center, eligible, 1));
+    }
+
+    @Test
     void aSwarmLockClearsTheRetreatLockAndSurvivesAMerge() {
         Squad locked = new GroundSquad();
         locked.setSwarmLock(new SwarmLock(382, 17942));

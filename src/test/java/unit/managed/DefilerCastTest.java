@@ -62,10 +62,19 @@ class DefilerCastTest {
     }
 
     @Test
-    void aPointOutsideEveryFootprintIsCastOn() {
+    void aCastWhoseFootprintWouldOverlapALiveSwarmIsRefused() {
         DarkSwarm existing = new DarkSwarm(382, new Position(1232, 3520), 900);
 
-        assertFalse(Defiler.blocksCast(existing, false, new Position(1232 + 100, 3520)));
+        assertTrue(Defiler.blocksCast(existing, false, new Position(1232 + 100, 3520)));
+        assertTrue(Defiler.blocksCast(existing, true, new Position(existing.right() + HALF_WIDTH, 3520)));
+    }
+
+    @Test
+    void aCastWhoseFootprintClearsEveryLiveSwarmGoesAhead() {
+        DarkSwarm existing = new DarkSwarm(382, new Position(1232, 3520), 900);
+
+        assertFalse(Defiler.blocksCast(existing, false, new Position(existing.right() + HALF_WIDTH + 1, 3520)));
+        assertFalse(Defiler.blocksCast(existing, false, new Position(1232 + 200, 3520)));
     }
 
     @Test

@@ -81,7 +81,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
         List<Position> coveredGroundThreats = new ArrayList<>();
         List<Position> coveredAirThreats = new ArrayList<>();
 
-        double swarmCover = swarmCoverShare(squad, adjacentSquads, gameState.getDarkSwarmTracker().getActiveSwarms());
+        double swarmCover = swarmCoverShare(squad, gameState.getDarkSwarmTracker().getActiveSwarms());
         snapshot.setSwarmCover(swarmCover);
 
         List<Position> visibleBunkers = visibleCompletedBunkers(tracker);
@@ -640,33 +640,23 @@ public class HorizonCombatSimulator implements CombatSimulator {
     }
 
     /**
-     * Our force's cover under our active Dark Swarms, see {@link SwarmCover#coverShare}. Every ground member of the
-     * squad and of the adjacent squads counts, weighted by its stronger domain strength and, for an adjacent squad,
-     * by the same distance falloff its members are priced with. Overlords and flyers carry no cover.
+     * The squad's own cover under our active Dark Swarms, see {@link SwarmCover#coverShare}: each ground member
+     * weighted by its stronger domain strength. Overlords and flyers carry no cover. Adjacent squads are left out,
+     * so a squad standing in the open is never priced as covered because its neighbour is under a swarm.
      */
-    private double swarmCoverShare(Squad squad, Map<Squad, Double> adjacentSquads, List<DarkSwarm> swarms) {
+    private double swarmCoverShare(Squad squad, List<DarkSwarm> swarms) {
         if (swarms.isEmpty()) return 0;
         List<Double> covers = new ArrayList<>();
         List<Double> weights = new ArrayList<>();
-        addSwarmCovers(squad, 1.0, swarms, covers, weights);
-        if (adjacentSquads != null) {
-            for (Map.Entry<Squad, Double> entry : adjacentSquads.entrySet()) {
-                addSwarmCovers(entry.getKey(), distanceWeight(entry.getValue()), swarms, covers, weights);
-            }
-        }
-        return SwarmCover.coverShare(covers, weights);
-    }
-
-    private void addSwarmCovers(Squad squad, double squadWeight, List<DarkSwarm> swarms, List<Double> covers,
-                                List<Double> weights) {
         for (ManagedUnit mu : squad.getMembers()) {
             UnitType type = mu.getUnitType();
             if (type == UnitType.Zerg_Overlord || type.isFlyer()) continue;
             Unit unit = mu.getUnit();
             double topSpeed = unit.getPlayer().topSpeed(type);
             covers.add(SwarmCover.unitCover(unit.getPosition(), type, topSpeed, swarms));
-            weights.add(UnitStrength.strongerDomain(type) * squadWeight);
+            weights.add(UnitStrength.strongerDomain(type));
         }
+        return SwarmCover.coverShare(covers, weights);
     }
 
     private double rangeUpgradeCorrection(Unit unit, UnitType type) {

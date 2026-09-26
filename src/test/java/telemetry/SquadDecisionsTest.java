@@ -2,6 +2,7 @@ package telemetry;
 
 import bwapi.Position;
 import bwapi.UnitType;
+import info.tracking.DarkSwarm;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import unit.managed.ManagedUnit;
@@ -19,6 +20,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -166,6 +168,25 @@ class SquadDecisionsTest {
         SquadDecisions.swarmEvaluated(new GroundSquad(), SwarmEvent.SWARM_EXPIRED, 382, 149);
 
         assertEquals(Arrays.asList("SWARM:SWARM_COMMIT:382:900", "SWARM:SWARM_EXPIRED:382:149"), events);
+    }
+
+    @Test
+    void everySwarmIsSeenOnceAndRemovedOnceWithItsCentreAndTimeLeft() {
+        DarkSwarm s1 = new DarkSwarm(382, new Position(1232, 3520), 900);
+        DarkSwarm s1Later = new DarkSwarm(382, new Position(1232, 3520), 373);
+        DarkSwarm s2 = new DarkSwarm(397, new Position(1264, 3305), 900);
+        Map<Integer, DarkSwarm> none = Collections.emptyMap();
+
+        assertEquals(Collections.singletonList("g,17942,SWARM_SEEN,382,1232,3520,900"),
+                SquadDecisionLogger.swarmLifecycleRows("g", 17942, none, Collections.singletonList(s1)));
+        assertTrue(SquadDecisionLogger.swarmLifecycleRows("g", 18469, Collections.singletonMap(382, s1),
+                Collections.singletonList(s1Later)).isEmpty());
+        assertEquals(Arrays.asList("g,18763,SWARM_SEEN,397,1264,3305,900", "g,18763,SWARM_REMOVED,382,1232,3520,373"),
+                SquadDecisionLogger.swarmLifecycleRows("g", 18763, Collections.singletonMap(382, s1Later),
+                        Collections.singletonList(s2)));
+        assertEquals(SquadDecisionLogger.SWARM_HEADER.split(",", -1).length,
+                SquadDecisionLogger.swarmLifecycleRows("g", 1, none, Collections.singletonList(s2)).get(0)
+                        .split(",", -1).length);
     }
 
     @Test

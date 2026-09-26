@@ -184,6 +184,7 @@ public class SquadManager {
             }
 
             evaluateSquadRole(fightSquad);
+            sampleSwarm(fightSquad, now);
 
             for (ManagedUnit mu : fightSquad.getMembers()) {
                 if (mu.getUnitType() == UnitType.Zerg_Overlord) {
@@ -921,8 +922,7 @@ public class SquadManager {
     }
 
     /**
-     * Takes, holds or drops a squad's swarm lock for this frame, and samples a melee squad near one of our active
-     * Dark Swarms every {@link #SWARM_SAMPLE_INTERVAL_FRAMES}. See {@link SwarmLock}.
+     * Takes, holds or drops a squad's swarm lock for this frame. See {@link SwarmLock}.
      *
      * @param squad squad to evaluate
      * @return this frame's swarm lock verdict
@@ -934,17 +934,10 @@ public class SquadManager {
             return SwarmLock.Verdict.NONE;
         }
 
-        int now = game.getFrameCount();
         Position center = squad.getCenter();
         boolean melee = !squad.isAirSquad() && SwarmLock.isMeleeSquad(squad.getComposition());
-        boolean sample = melee && center != null && now % SWARM_SAMPLE_INTERVAL_FRAMES == 0;
-        DarkSwarm eligible = melee && center != null && (held == null || sample)
-                ? nearestEligibleSwarm(swarms, center) : null;
-        if (sample && eligible != null) {
-            SquadDecisions.swarmEvaluated(squad, SwarmEvent.SWARM_ACTIVE, eligible.getId(),
-                    eligible.getRemainingFrames());
-        }
-
+        DarkSwarm eligible = held == null && melee && center != null
+                ? SwarmLock.choose(swarms, center, swarmEligibility(swarms, center)) : null;
         DarkSwarm swarm = held != null ? gameState.getDarkSwarmTracker().getSwarm(held.getSwarmId()) : eligible;
         if (swarm == null && held == null) {
             return SwarmLock.Verdict.NONE;
@@ -955,7 +948,7 @@ public class SquadManager {
                 baseThreatened, anyMemberInStorm(squad));
 
         if (verdict == SwarmLock.Verdict.COMMIT) {
-            squad.setSwarmLock(new SwarmLock(swarm.getId(), now));
+            squad.setSwarmLock(new SwarmLock(swarm.getId(), game.getFrameCount()));
             SquadDecisions.swarmEvaluated(squad, SwarmEvent.SWARM_COMMIT, swarm.getId(), remaining);
         } else if (verdict == SwarmLock.Verdict.RELEASE) {
             squad.setSwarmLock(null);
@@ -966,15 +959,49 @@ public class SquadManager {
     }
 
     /**
-     * Of our active swarms that cover an enemy and whose footprint lies within {@link SwarmLock#COMMIT_RADIUS} of
-     * the given centre, the one nearest it with the sim horizon left.
+     * Every {@link #SWARM_SAMPLE_INTERVAL_FRAMES}, writes a SWARM_ACTIVE row for a melee squad near one of our active
+     * Dark Swarms, after the squad has decided its status for the frame. A squad holding a lock is sampled on its
+     * swarm; any other melee squad on the nearest swarm it would be eligible for, whatever time that swarm has left.
+     *
+     * @param squad squad that has just been evaluated
+     * @param now current frame
      */
-    private DarkSwarm nearestEligibleSwarm(List<DarkSwarm> swarms, Position center) {
+    private void sampleSwarm(Squad squad, int now) {
+        List<DarkSwarm> swarms = gameState.getDarkSwarmTracker().getActiveSwarms();
+        Position center = squad.getCenter();
+        if (now % SWARM_SAMPLE_INTERVAL_FRAMES != 0 || swarms.isEmpty() || center == null
+                || squad.getStatus() == SquadStatus.RUNBY || squad.isAirSquad()
+                || !SwarmLock.isMeleeSquad(squad.getComposition())) {
+            return;
+        }
+        SwarmLock held = squad.getSwarmLock();
+        DarkSwarm sampled = held != null ? gameState.getDarkSwarmTracker().getSwarm(held.getSwarmId()) : null;
+        if (sampled == null) {
+            sampled = SwarmLock.nearest(swarms, center, swarmEligibility(swarms, center), 1);
+        }
+        if (sampled != null) {
+            SquadDecisions.swarmEvaluated(squad, SwarmEvent.SWARM_ACTIVE, sampled.getId(),
+                    sampled.getRemainingFrames());
+        }
+    }
+
+    /**
+     * For each swarm, whether a squad centred here may commit to it: its footprint lies within
+     * {@link SwarmLock#COMMIT_RADIUS} and it covers an enemy worth committing to, see {@link SwarmLock#isCommitTarget}.
+     */
+    private List<Boolean> swarmEligibility(List<DarkSwarm> swarms, Position center) {
         List<Boolean> eligibility = new ArrayList<>();
         for (DarkSwarm swarm : swarms) {
-            eligibility.add(SwarmLock.isEligible(swarm, center, !enemiesCoveredBy(swarm).isEmpty()));
+            boolean coversTarget = false;
+            for (Unit enemy : enemiesCoveredBy(swarm)) {
+                if (SwarmLock.isCommitTarget(enemy.getType())) {
+                    coversTarget = true;
+                    break;
+                }
+            }
+            eligibility.add(SwarmLock.isEligible(swarm, center, coversTarget));
         }
-        return SwarmLock.choose(swarms, center, eligibility);
+        return eligibility;
     }
 
     /**
@@ -1042,7 +1069,7 @@ public class SquadManager {
                 ? DecisionPath.SWARM_COMMIT : DecisionPath.SWARM_ACTIVE);
 
         List<Unit> covered = enemiesCoveredBy(swarm);
-        for (ManagedUnit managedUnit : squad.getMembers()) {
+        for (ManagedUnit managedUnit : new ArrayList<>(squad.getMembers())) {
             managedUnit.clearRetreatStart();
             if (!SwarmLock.isMelee(managedUnit.getUnitType())) {
                 managedUnit.setRole(UnitRole.FIGHT);
