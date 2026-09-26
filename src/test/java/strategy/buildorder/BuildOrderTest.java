@@ -1,6 +1,7 @@
 package strategy.buildorder;
 
 import bwapi.UnitType;
+import bwapi.UpgradeType;
 import info.ResourceCount;
 import info.TechProgression;
 import info.UnitTypeCount;
@@ -716,5 +717,77 @@ class BuildOrderTest {
         int attackers = groundCombatUnits(UnitType.Protoss_Probe, UnitType.Protoss_Zealot);
 
         assertEquals(1, BuildOrder.earlyRushSunkens(attackers, attackers));
+    }
+
+    @Test
+    void withholdsOverlordSpeedWhileTheFirstArmyUpgradeIsStillToBeQueued() {
+        assertFalse(BuildOrder.shouldPlanOverlordSpeed(true, false, true, false));
+    }
+
+    @Test
+    void withholdsOverlordSpeedWhileTheLastArmyUpgradeIsStillToBeQueued() {
+        assertFalse(BuildOrder.shouldPlanOverlordSpeed(true, false, false, true));
+    }
+
+    @Test
+    void queuesOverlordSpeedOnceEveryArmyUpgradeIsQueued() {
+        assertTrue(BuildOrder.shouldPlanOverlordSpeed(true, false, false, false));
+    }
+
+    @Test
+    void queuesOverlordSpeedWhenTheBuildPlansNoArmyUpgrade() {
+        assertTrue(BuildOrder.shouldPlanOverlordSpeed(true, false));
+    }
+
+    @Test
+    void withholdsOverlordSpeedTheBuildDoesNotWant() {
+        assertFalse(BuildOrder.shouldPlanOverlordSpeed(false, false, false, false));
+    }
+
+    @Test
+    void anAirOrCloakThreatQueuesOverlordSpeedAheadOfTheArmyUpgradesStillToBeQueued() {
+        assertTrue(BuildOrder.shouldPlanOverlordSpeed(true, true, true, true));
+    }
+
+    @Test
+    void withoutAnAirOrCloakThreatOverlordSpeedStillWaitsForTheArmyUpgrades() {
+        assertFalse(BuildOrder.shouldPlanOverlordSpeed(true, false, true, true));
+    }
+
+    @Test
+    void anAirOrCloakThreatDoesNotQueueOverlordSpeedTheBuildDoesNotWant() {
+        assertFalse(BuildOrder.shouldPlanOverlordSpeed(false, true, true));
+    }
+
+    @Test
+    void aBuildWithoutArmyUpgradeTriggersKeepsEveryUpgradeAtItsFrame() {
+        UnitTypeCount count = new UnitTypeCount();
+        for (int i = 0; i < 20; i++) {
+            count.addUnit(UnitType.Zerg_Hydralisk);
+            count.addUnit(UnitType.Zerg_Zergling);
+        }
+        BuildOrder buildOrder = new TwelvePool();
+        TechProgression techProgression = new TechProgression();
+        techProgression.setSpawningPool(true);
+        techProgression.setHydraliskDen(true);
+
+        assertEquals(4000, buildOrder.upgradePriority(UpgradeType.Muscular_Augments, count, techProgression, 4000));
+        assertEquals(4000, buildOrder.upgradePriority(UpgradeType.Metabolic_Boost, count, techProgression, 4000));
+        assertFalse(buildOrder.isArmyUpgradeTriggered(UpgradeType.Grooved_Spines, count));
+    }
+
+    @Test
+    void aTriggerSumsTheLivingUnitsOfEveryNamedType() {
+        ArmyUpgradeTrigger trigger = new ArmyUpgradeTrigger(3, UnitType.Zerg_Hydralisk, UnitType.Zerg_Lurker);
+        UnitTypeCount count = new UnitTypeCount();
+        count.addUnit(UnitType.Zerg_Hydralisk);
+        count.addUnit(UnitType.Zerg_Lurker);
+        count.planUnit(UnitType.Zerg_Hydralisk);
+
+        assertFalse(trigger.isMet(count));
+
+        count.addUnit(UnitType.Zerg_Lurker);
+
+        assertTrue(trigger.isMet(count));
     }
 }

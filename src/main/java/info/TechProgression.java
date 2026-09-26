@@ -1,5 +1,6 @@
 package info;
 
+import bwapi.UnitType;
 import bwapi.UpgradeType;
 import lombok.Data;
 
@@ -297,6 +298,67 @@ public class TechProgression {
 
     private boolean needHiveForNextEvolutionChamberUpgrades() {
         return meleeUpgrades + rangedUpgrades + carapaceUpgrades > 3;
+    }
+
+    /**
+     * The building an upgrade is researched at.
+     *
+     * @param upgradeType the upgrade
+     * @return the building, or null when the upgrade has none tracked here
+     */
+    public static UnitType prerequisiteForUpgrade(UpgradeType upgradeType) {
+        switch (upgradeType) {
+            case Metabolic_Boost:
+            case Adrenal_Glands:
+                return UnitType.Zerg_Spawning_Pool;
+            case Muscular_Augments:
+            case Grooved_Spines:
+                return UnitType.Zerg_Hydralisk_Den;
+            case Zerg_Carapace:
+            case Zerg_Missile_Attacks:
+            case Zerg_Melee_Attacks:
+                return UnitType.Zerg_Evolution_Chamber;
+            case Zerg_Flyer_Attacks:
+            case Zerg_Flyer_Carapace:
+                return UnitType.Zerg_Spire;
+            case Pneumatized_Carapace:
+                return UnitType.Zerg_Lair;
+            case Chitinous_Plating:
+            case Anabolic_Synthesis:
+                return UnitType.Zerg_Ultralisk_Cavern;
+            default:
+                return null;
+        }
+    }
+
+    /**
+     * True when at least one {@link #prerequisiteForUpgrade} building for the upgrade has finished,
+     * so the upgrade can be researched without waiting on a building plan.
+     *
+     * @param upgradeType the upgrade
+     * @return false when the building is only planned or morphing, or the upgrade has none tracked
+     */
+    public boolean isUpgradePrerequisiteComplete(UpgradeType upgradeType) {
+        UnitType prerequisite = prerequisiteForUpgrade(upgradeType);
+        if (prerequisite == null) {
+            return false;
+        }
+        switch (prerequisite) {
+            case Zerg_Spawning_Pool:
+                return spawningPool;
+            case Zerg_Hydralisk_Den:
+                return hydraliskDen;
+            case Zerg_Evolution_Chamber:
+                return evolutionChambers > 0;
+            case Zerg_Spire:
+                return spire;
+            case Zerg_Lair:
+                return lair;
+            case Zerg_Ultralisk_Cavern:
+                return ultraliskCavern;
+            default:
+                return false;
+        }
     }
 
 }

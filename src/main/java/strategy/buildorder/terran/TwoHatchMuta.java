@@ -8,7 +8,9 @@ import info.GameState;
 import info.Readiness;
 import info.TechProgression;
 import info.UnitTypeCount;
+import macro.Reactions;
 import macro.plan.Plan;
+import strategy.buildorder.ArmyUpgradeTrigger;
 import strategy.buildorder.LarvaBoundMacroHatchery;
 
 import java.util.ArrayList;
@@ -26,6 +28,9 @@ import java.util.Set;
  * @see <a href="https://liquipedia.net/starcraft/2_Hatch_Muta_(vs._Terran)">Liquipedia</a>
  */
 public class TwoHatchMuta extends TerranBase {
+
+    static final int MUTALISKS_BEFORE_FLYER_UPGRADE = 7;
+
     public TwoHatchMuta() {
         super("2HatchMuta");
     }
@@ -74,7 +79,9 @@ public class TwoHatchMuta extends TerranBase {
 
         boolean wantMetabolicBoost = techProgression.canPlanMetabolicBoost() && !techProgression.isMetabolicBoost() && lairCount > 0;
         boolean wantFlyingAttack = shouldPlanFlyerAttack(techProgression, livingMutaCount);
-        boolean wantOverlordSpeed = needOverlordSpeed(gameState) && techProgression.canPlanOverlordSpeed();
+        boolean wantOverlordSpeed = shouldPlanOverlordSpeed(needOverlordSpeed(gameState) && techProgression.canPlanOverlordSpeed(),
+                Reactions.isAirOrCloakThreatSeen(gameState),
+                wantFlyingAttack);
 
         // Plan buildings
 
@@ -261,7 +268,19 @@ public class TwoHatchMuta extends TerranBase {
      * @return true when the next Flyer Attacks level should be queued
      */
     static boolean shouldPlanFlyerAttack(TechProgression techProgression, int livingMutalisks) {
-        return livingMutalisks > 6 && techProgression.canPlanFlyerAttack();
+        return livingMutalisks >= MUTALISKS_BEFORE_FLYER_UPGRADE && techProgression.canPlanFlyerAttack();
+    }
+
+    /**
+     * Flyer Attacks moves ahead of the Mutalisk stream once the
+     * {@value #MUTALISKS_BEFORE_FLYER_UPGRADE} Mutalisks that plan it are alive.
+     */
+    @Override
+    protected ArmyUpgradeTrigger armyUpgradeTrigger(UpgradeType upgradeType) {
+        if (upgradeType == UpgradeType.Zerg_Flyer_Attacks) {
+            return new ArmyUpgradeTrigger(MUTALISKS_BEFORE_FLYER_UPGRADE, UnitType.Zerg_Mutalisk);
+        }
+        return null;
     }
 
     static boolean shouldPlanMutalisk(TechProgression techProgression, int mutaCount, int desiredMutalisks, int gatherers) {

@@ -6,7 +6,9 @@ import info.BaseData;
 import info.GameState;
 import info.Readiness;
 import info.TechProgression;
+import macro.Reactions;
 import macro.plan.Plan;
+import strategy.buildorder.ArmyUpgradeTrigger;
 import strategy.buildorder.LarvaBoundMacroHatchery;
 
 import java.util.ArrayList;
@@ -18,6 +20,9 @@ import java.util.List;
  * <a href="https://liquipedia.net/starcraft/9_Pool_Speed_into_1_Hatch_Spire_(vs._Zerg)">Liquipedia</a>
  */
 public class OneHatchSpire extends ZergBase {
+
+    static final int MUTALISKS_BEFORE_FLYER_UPGRADE = 7;
+
     public OneHatchSpire() {
         super("1HatchSpire");
     }
@@ -49,7 +54,9 @@ public class OneHatchSpire extends ZergBase {
         boolean wantMetabolicBoost = techProgression.canPlanMetabolicBoost() && !techProgression.isMetabolicBoost() && 
                                     zerglingCount > 5 && lairCount > 0;
         boolean wantFlyingCarapace = shouldPlanFlyerCarapace(techProgression, livingMutaCount);
-        boolean wantOverlordSpeed = needOverlordSpeed(gameState) && techProgression.canPlanOverlordSpeed();
+        boolean wantOverlordSpeed = shouldPlanOverlordSpeed(needOverlordSpeed(gameState) && techProgression.canPlanOverlordSpeed(),
+                Reactions.isAirOrCloakThreatSeen(gameState),
+                wantFlyingCarapace);
 
 
         boolean wantExpansion = behindOnBases(gameState);
@@ -183,7 +190,19 @@ public class OneHatchSpire extends ZergBase {
      * @return true when the next Flyer Carapace level should be queued
      */
     static boolean shouldPlanFlyerCarapace(TechProgression techProgression, int livingMutalisks) {
-        return livingMutalisks > 6 && techProgression.canPlanFlyerDefense();
+        return livingMutalisks >= MUTALISKS_BEFORE_FLYER_UPGRADE && techProgression.canPlanFlyerDefense();
+    }
+
+    /**
+     * Flyer Carapace moves ahead of the Mutalisk stream once the
+     * {@value #MUTALISKS_BEFORE_FLYER_UPGRADE} Mutalisks that plan it are alive.
+     */
+    @Override
+    protected ArmyUpgradeTrigger armyUpgradeTrigger(UpgradeType upgradeType) {
+        if (upgradeType == UpgradeType.Zerg_Flyer_Carapace) {
+            return new ArmyUpgradeTrigger(MUTALISKS_BEFORE_FLYER_UPGRADE, UnitType.Zerg_Mutalisk);
+        }
+        return null;
     }
 
     static List<UnitType> unitsToPlan(boolean wantScourge, boolean wantMutalisk, boolean wantZergling, boolean wantDrone) {
