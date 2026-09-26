@@ -195,6 +195,21 @@ class ObservedUnitTrackerTest {
                 type -> type == UnitType.Terran_Supply_Depot, 1, (first, second) -> false));
     }
 
+    @Test
+    void aDestroyedBuildingHasNoFootprint() {
+        ObservedUnit barracks = ObservedUnitFixture.observedUnit(UnitType.Terran_Barracks, KNOWN, DRONE_OBSERVED);
+        barracks.setDestroyedFrame(DRONE_COMPLETED);
+
+        assertTrue(ObservedUnitFixture.trackerHolding(barracks).getLivingFootprints(type -> true).isEmpty());
+    }
+
+    @Test
+    void aBuildingOfAnotherTypeHasNoFootprint() {
+        ObservedUnit depot = ObservedUnitFixture.observedUnit(UnitType.Terran_Supply_Depot, KNOWN, DRONE_OBSERVED);
+
+        assertTrue(ObservedUnitFixture.trackerHolding(depot).getLivingFootprints(isBarracks()).isEmpty());
+    }
+
     private static TileFootprint barracksAt(int left, int top) {
         return new TileFootprint(UnitType.Terran_Barracks, new TilePosition(left, top));
     }

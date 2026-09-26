@@ -36,8 +36,9 @@ public final class TileFootprint {
     }
 
     /**
-     * Rows or columns of tiles between the two rectangles along the axis that separates them most: 0 when they
-     * overlap or touch along an edge or at a corner, 1 when a single row or column of tiles lies between them.
+     * Tiles between the two rectangles along the axis that separates them most, the larger of the horizontal and
+     * the vertical gap: 0 when they overlap or touch along an edge or at a corner, 1 when a single row or column of
+     * tiles lies between them or they sit one tile apart on both axes, diagonally.
      */
     public int tileGap(TileFootprint other) {
         int gapX = axisGap(topLeft.getX(), unitType.tileWidth(), other.topLeft.getX(), other.unitType.tileWidth());
