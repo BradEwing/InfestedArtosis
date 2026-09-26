@@ -67,7 +67,16 @@ class AttackMoveTest {
         Unit saturated = units.unit(UnitType.Terran_Marine);
         Unit acquired = units.unit(UnitType.Terran_Medic);
 
-        assertTrue(ManagedUnit.autoAcquired(Order.AttackUnit, acquired, saturated));
+        assertTrue(ManagedUnit.autoAcquired(Order.AttackUnit, acquired, saturated, false));
+        assertTrue(ManagedUnit.autoAcquired(Order.AttackUnit, acquired, saturated, true));
+    }
+
+    @Test
+    void theSaturatedTargetAcquiredAfterTheAttackMoveWasIssuedIsLeftToRun() {
+        TestUnits units = new TestUnits();
+        Unit saturated = units.unit(UnitType.Terran_Marine);
+
+        assertTrue(ManagedUnit.autoAcquired(Order.AttackUnit, saturated, saturated, true));
     }
 
     @Test
@@ -76,10 +85,33 @@ class AttackMoveTest {
         Unit saturated = units.unit(UnitType.Terran_Marine);
         Unit other = units.unit(UnitType.Terran_Medic);
 
-        assertFalse(ManagedUnit.autoAcquired(Order.AttackUnit, saturated, saturated));
-        assertFalse(ManagedUnit.autoAcquired(Order.AttackUnit, null, saturated));
-        assertFalse(ManagedUnit.autoAcquired(Order.AttackMove, other, saturated));
-        assertFalse(ManagedUnit.autoAcquired(Order.Move, other, saturated));
+        assertFalse(ManagedUnit.autoAcquired(Order.AttackUnit, saturated, saturated, false));
+        assertFalse(ManagedUnit.autoAcquired(Order.AttackUnit, null, saturated, true));
+        assertFalse(ManagedUnit.autoAcquired(Order.AttackMove, other, saturated, true));
+        assertFalse(ManagedUnit.autoAcquired(Order.Move, other, saturated, true));
+    }
+
+    @Test
+    void theFirstOverflowOffsetIsMeasuredPastTheTarget() {
+        Position attacker = new Position(TARGET.getX() - 300, TARGET.getY());
+
+        Position destination = ManagedUnit.overflowOffset(attacker, TARGET, null, null).toPosition(TARGET);
+
+        assertEquals(new Position(TARGET.getX() + ManagedUnit.OVERFLOW_PAST_DISTANCE, TARGET.getY()), destination);
+    }
+
+    @Test
+    void aTargetThatMovedKeepsTheOffsetSoAUnitThatPassedItIsNotSentBackThroughIt() {
+        Position previousAnchor = TARGET;
+        Position previousDestination = new Position(TARGET.getX() + ManagedUnit.OVERFLOW_PAST_DISTANCE, TARGET.getY());
+        Position movedTarget = new Position(TARGET.getX() - 100, TARGET.getY());
+        Position attackerPastIt = new Position(TARGET.getX() + 50, TARGET.getY());
+
+        Position destination = ManagedUnit.overflowOffset(attackerPastIt, movedTarget, previousAnchor,
+                previousDestination).toPosition(movedTarget);
+
+        assertEquals(new Position(movedTarget.getX() + ManagedUnit.OVERFLOW_PAST_DISTANCE, movedTarget.getY()),
+                destination);
     }
 
     @Test

@@ -137,6 +137,21 @@ class SaturatedTargetWideningTest {
     }
 
     @Test
+    void anOverflowAttackerReTargetedOntoAnOpenSlotAttacksItDirectlyAndIsCounted() {
+        TargetLedger ledger = TargetLedger.empty();
+        MeleeOverflowGate gate = new MeleeOverflowGate();
+        assertTrue(SquadManager.commitPick(ledger, gate, LING, UnitType.Zerg_Zergling, selection(true), MARINE,
+                SquadManager.NO_TARGET_ID, 100).isAttackMove());
+        int openMarine = MARINE + 1;
+
+        TargetScorer.Selection issued = SquadManager.commitPick(ledger, gate, LING, UnitType.Zerg_Zergling,
+                selection(false), openMarine, MARINE, 101);
+
+        assertFalse(issued.isAttackMove());
+        assertEquals(1, ledger.meleeAssigned(openMarine));
+    }
+
+    @Test
     void aPackReTargetingOntoOneMarineFillsItsCapAndOverflowsTheRestOnTheSameFrame() {
         TargetLedger ledger = TargetLedger.empty();
         int cap = TargetScorer.meleeCap(UnitType.Terran_Marine, UnitType.Zerg_Zergling);

@@ -9,10 +9,12 @@ package util;
  * died. A saturated re-target enters overflow at once, so a pack re-targeting together when their target dies does
  * not pile onto the next one while a streak builds. A target the attacker already held that becomes saturated
  * enters overflow once the pick has been saturated for {@link #ENTER_FRAMES} consecutive frames. Entering arms the
- * overflow lock for {@link #MIN_HOLD_FRAMES}. The attacker leaves overflow only once an unsaturated pick has been
- * available for {@link #EXIT_FRAMES} consecutive frames after the lock expired; open frames during the lock do not
- * count. A frame without a report breaks both streaks and ends overflow, so an attacker returning to the fight after
- * a retreat, a rally or a frame without candidates starts over with direct attacks.
+ * overflow lock for {@link #MIN_HOLD_FRAMES}. An unsaturated re-target leaves overflow at once, even during the lock,
+ * so an attacker whose target died and that found an open slot takes it and is counted on it. Otherwise the
+ * attacker leaves overflow only once an unsaturated pick has been available for {@link #EXIT_FRAMES} consecutive
+ * frames after the lock expired; open frames during the lock do not count. A frame without a report breaks both
+ * streaks and ends overflow, so an attacker returning to the fight after a retreat, a rally or a frame without
+ * candidates starts over with direct attacks.
  */
 public final class MeleeOverflowGate {
 
@@ -28,7 +30,8 @@ public final class MeleeOverflowGate {
     public static final int EXIT_FRAMES = 24;
 
     /**
-     * Frames the attacker holds the attack-move after entering overflow, whatever the picks it is offered.
+     * Frames the attacker holds the attack-move after entering overflow, whatever picks of its held target it is
+     * offered.
      */
     public static final int MIN_HOLD_FRAMES = 48;
 
@@ -79,7 +82,8 @@ public final class MeleeOverflowGate {
             if (saturated && retargeted || streak(saturatedSince, frame) >= ENTER_FRAMES) {
                 startOverflowLock(frame);
             }
-        } else if (!isOverflowLocked(frame) && streak(openSinceLockExpired(), frame) >= EXIT_FRAMES) {
+        } else if (!saturated && retargeted
+                || !isOverflowLocked(frame) && streak(openSinceLockExpired(), frame) >= EXIT_FRAMES) {
             clearOverflowStart();
         }
         return isOverflowing();

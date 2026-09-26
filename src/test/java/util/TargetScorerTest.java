@@ -453,6 +453,7 @@ class TargetScorerTest {
         assertFalse(TargetScorer.isMelee(UnitType.Zerg_Hydralisk));
         assertFalse(TargetScorer.isMelee(UnitType.Zerg_Mutalisk));
         assertFalse(TargetScorer.isMelee(UnitType.Terran_Medic));
+        assertFalse(TargetScorer.isMelee(UnitType.Zerg_Lurker));
     }
 
     @Test

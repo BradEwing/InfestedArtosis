@@ -82,6 +82,7 @@ public class ManagedUnit {
     private final MeleeOverflowGate overflowGate = new MeleeOverflowGate();
     private Position attackMoveDestination;
     private Position attackMoveAnchor;
+    private boolean attackMoveIssued;
     @Setter
     protected Unit gatherTarget;
 
@@ -1018,6 +1019,7 @@ public class ManagedUnit {
         if (!attackMoving || !sameTarget) {
             attackMoveDestination = null;
             attackMoveAnchor = null;
+            attackMoveIssued = false;
         }
         if (newFightTarget == null) {
             movementTargetPosition = null;
@@ -1032,40 +1034,64 @@ public class ManagedUnit {
     }
 
     /**
-     * Attack-moves to a point {@link #OVERFLOW_PAST_DISTANCE} past the target along the unit's approach, unless the
-     * unit is attacking, is on an attack it acquired itself (see {@link #autoAcquired}), or is already attack-moving
-     * to within {@link #ATTACK_MOVE_REISSUE_DISTANCE} of that point. The
-     * point is measured once from where the unit and the target stand and kept, so it does not swing round as the
-     * unit closes on or passes the target; it is measured again for a new target, or once the target has moved more
-     * than {@link #ATTACK_MOVE_REISSUE_DISTANCE} from where it was measured.
+     * Attack-moves to a point past the target, unless the unit is attacking, is on an attack it acquired itself
+     * (see {@link #autoAcquired}), or is already attack-moving to within {@link #ATTACK_MOVE_REISSUE_DISTANCE} of that
+     * point. The point is kept, so it does not swing round as the unit closes on or passes the target. It is dropped
+     * for a new target, and shifted with the target once the target has moved more than
+     * {@link #ATTACK_MOVE_REISSUE_DISTANCE} from where it was measured (see {@link #overflowOffset}).
      */
     protected void attackMoveToward(Unit target) {
         Position anchor = target.getPosition();
         if (attackMoveDestination == null || anchor.getDistance(attackMoveAnchor) > ATTACK_MOVE_REISSUE_DISTANCE) {
+            Vec2 offset = overflowOffset(unit.getPosition(), anchor, attackMoveAnchor, attackMoveDestination);
             attackMoveAnchor = anchor;
-            attackMoveDestination = pastTarget(unit.getPosition(), anchor).clampToMap(game, anchor);
+            attackMoveDestination = offset.clampToMap(game, anchor);
         }
-        if (autoAcquired(unit.getOrder(), unit.getOrderTarget(), target)) {
+        if (autoAcquired(unit.getOrder(), unit.getOrderTarget(), target, attackMoveIssued)) {
             return;
         }
         if (needsAttackMove(unit.getOrder(), unit.getOrderTargetPosition(), unit.isAttacking(),
                 attackMoveDestination)) {
             unit.attack(attackMoveDestination);
+            attackMoveIssued = true;
         }
     }
 
     /**
-     * Whether an attack-moving unit is attacking an enemy it acquired on its own: its order is to attack a unit other
-     * than the saturated fight target it was sent past. Such an attack is left to run, even while the unit closes on
-     * that enemy between swings. An attack order on the fight target itself is the direct attack the unit held
-     * before it entered overflow, and is replaced by the attack-move.
+     * Whether an attack-moving unit is on an attack it acquired on its own, which is left to run even while the unit
+     * closes on that enemy between swings. Once the attack-move has been issued, any order to attack a unit is the
+     * game's acquisition, the saturated fight target included: the unit reached it in the game's own time, so it is
+     * not cancelled. Before then, an order to attack the fight target is the direct attack the unit held before it
+     * entered overflow, and is replaced by the attack-move; an order to attack any other unit is still left to run.
      *
      * @param order the unit's current order
      * @param orderTarget the unit its order targets, or null
      * @param fightTarget the saturated fight target
+     * @param attackMoveIssued true once the attack-move toward the current destination has been issued
      */
-    static boolean autoAcquired(Order order, Unit orderTarget, Unit fightTarget) {
-        return order == Order.AttackUnit && orderTarget != null && !orderTarget.equals(fightTarget);
+    static boolean autoAcquired(Order order, Unit orderTarget, Unit fightTarget, boolean attackMoveIssued) {
+        return order == Order.AttackUnit && orderTarget != null
+                && (attackMoveIssued || !orderTarget.equals(fightTarget));
+    }
+
+    /**
+     * The offset from the target to the point an overflow attack-move is aimed at. Measured the first time, it is
+     * {@link #pastTarget}. Measured again after the target moved, it keeps the direction and length it had from the
+     * previous anchor, so a unit that has already passed a moving target is not sent back through it.
+     *
+     * @param attacker the attacker's position
+     * @param target the target's position
+     * @param previousAnchor where the target stood when the destination was last measured, or null
+     * @param previousDestination the destination last measured, or null
+     * @return the offset to add to the target's position
+     */
+    static Vec2 overflowOffset(Position attacker, Position target, Position previousAnchor,
+                               Position previousDestination) {
+        if (previousAnchor == null || previousDestination == null) {
+            return pastTarget(attacker, target);
+        }
+        Vec2 kept = Vec2.between(previousAnchor, previousDestination);
+        return kept.length() == 0 ? pastTarget(attacker, target) : kept;
     }
 
     /**

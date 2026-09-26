@@ -110,6 +110,24 @@ class MeleeOverflowGateTest {
     }
 
     @Test
+    void anUnsaturatedReTargetLeavesOverflowAtOnceEvenDuringTheHold() {
+        MeleeOverflowGate gate = new MeleeOverflowGate();
+        int next = enterOverflow(gate);
+        assertTrue(gate.isOverflowLocked(next));
+
+        assertFalse(gate.observe(false, true, next));
+        assertFalse(gate.isOverflowLocked(next));
+    }
+
+    @Test
+    void aSaturatedReTargetDuringTheHoldStaysInOverflow() {
+        MeleeOverflowGate gate = new MeleeOverflowGate();
+        int next = enterOverflow(gate);
+
+        assertTrue(gate.observe(true, true, next));
+    }
+
+    @Test
     void anUnsaturatedReTargetDoesNotEnter() {
         MeleeOverflowGate gate = new MeleeOverflowGate();
 
