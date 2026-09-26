@@ -30,6 +30,7 @@ import unit.managed.UnitRole;
 import util.TravelTime;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -55,6 +56,9 @@ public class ProductionManager {
 
     private static final int MAX_SUPPLY = 400;
 
+    /** Raw supply used, 9 in game terms, at which the first-Overlord rule queues an Overlord. */
+    private static final int FIRST_OVERLORD_SUPPLY_USED = 18;
+
     private static final int HATCHERY_MINERAL_PRICE = UnitType.Zerg_Hatchery.mineralPrice();
 
     private Game game;
@@ -65,6 +69,8 @@ public class ProductionManager {
     private boolean isPlanning = false;
 
     private final BuildAheadSlot buildAheadSlot = new BuildAheadSlot();
+
+    private final OverlordHold overlordHold = new OverlordHold();
 
     private final BuildAheadSlot unitAheadSlot = new BuildAheadSlot();
 
@@ -598,7 +604,8 @@ public class ProductionManager {
             return;
         }
 
-        if (activeBuildOrder.holdsOverlords(gameState)) {
+        final OverlordHold.Phase holdPhase = overlordHold.update(activeBuildOrder.holdsOverlords(gameState));
+        if (holdPhase == OverlordHold.Phase.HELD) {
             return;
         }
 
@@ -606,22 +613,15 @@ public class ProductionManager {
 
         final int overlordCount = gameState.ourLivingUnitCount(UnitType.Zerg_Overlord);
         final int plannedSupply = gameState.getResourceCount().getPlannedSupply();
-        final boolean isNinePool = "9PoolSpeed".equals(activeBuildOrder.getName());
-        if (overlordCount < 2 && !isNinePool) {
-            if (self.supplyUsed() >= 18 && overlordCount < 2 && plannedSupply == 0) {
-                addUnitToQueue(UnitType.Zerg_Overlord, 1);
-                gameState.getResourceCount().setPlannedSupply(OVERLORD_SUPPLY);
-                return;
-            }
-            return;
-        }
-    
+
         List<Plan> sortedQueue = gameState.getProductionQueue().toSortedList();
 
         List<Plan> scheduledPlans = new ArrayList<>(gameState.getPlansScheduled());
         scheduledPlans.sort(new PlanComparator());
 
-        List<Integer> insertPriorities = overlordInsertPriorities(
+        List<Integer> insertPriorities = overlordPriorities(
+                holdPhase,
+                overlordCount,
                 scheduledPlans,
                 sortedQueue,
                 self.supplyTotal() - self.supplyUsed(),
@@ -634,6 +634,10 @@ public class ProductionManager {
         }
         gameState.getResourceCount().setPlannedSupply(supplyAfterInserts);
 
+        if (usesFirstOverlordRule(overlordCount)) {
+            return;
+        }
+
         // Emergency fallback: nothing waiting can fit in the remaining supply, with high minerals
         int cheapestWaitingUnit = Math.min(
                 SupplyCapacity.cheapestUnitSupply(sortedQueue),
@@ -644,6 +648,60 @@ public class ProductionManager {
             addUnitToQueue(UnitType.Zerg_Overlord, 1);
             gameState.getResourceCount().setPlannedSupply(supplyAfterInserts + OVERLORD_SUPPLY);
         }
+    }
+
+    /**
+     * The priorities at which the supply planner inserts Overlords this frame.
+     *
+     * <p>Nothing while the build order holds Overlords. While fewer than two Overlords are alive,
+     * only the first-Overlord rule applies: one Overlord at priority 1 once no Overlord is in
+     * flight and either 9 supply is used, no supply is free, or the hold released this frame with
+     * less than {@link #SUPPLY_BUFFER} supply free. No free supply below 9 used means the only
+     * Overlord died, and supply used could then never climb to 9. An opener that holds its Overlords can hand over below
+     * 9 supply, and waiting for 9 there leaves its next steps supply blocked. The queue walker
+     * takes over from the second Overlord. Every build order goes through the same rule, so the
+     * walker cannot insert the first Overlord ahead of an opener's early drones.
+     *
+     * @param holdPhase where the build order's Overlord hold stands this frame
+     * @param overlordCount living Overlords
+     * @param scheduledPlans plans holding a larva or a builder, in priority order
+     * @param queuedPlans plans still in the production queue, in priority order
+     * @param freeSupply supply total minus supply used
+     * @param plannedSupply supply from Overlords already in flight
+     * @param supplyUsed supply used
+     * @return the priority of each Overlord to insert
+     */
+    static List<Integer> overlordPriorities(
+            OverlordHold.Phase holdPhase,
+            int overlordCount,
+            List<Plan> scheduledPlans,
+            List<Plan> queuedPlans,
+            int freeSupply,
+            int plannedSupply,
+            int supplyUsed) {
+        if (holdPhase == OverlordHold.Phase.HELD) {
+            return Collections.emptyList();
+        }
+        if (usesFirstOverlordRule(overlordCount)) {
+            return shouldQueueFirstOverlord(holdPhase, freeSupply, supplyUsed, plannedSupply)
+                    ? Collections.singletonList(1)
+                    : Collections.<Integer>emptyList();
+        }
+        return overlordInsertPriorities(scheduledPlans, queuedPlans, freeSupply, plannedSupply, supplyUsed);
+    }
+
+    private static boolean usesFirstOverlordRule(int overlordCount) {
+        return overlordCount < 2;
+    }
+
+    private static boolean shouldQueueFirstOverlord(
+            OverlordHold.Phase holdPhase, int freeSupply, int supplyUsed, int plannedSupply) {
+        if (plannedSupply != 0) {
+            return false;
+        }
+        return supplyUsed >= FIRST_OVERLORD_SUPPLY_USED
+                || freeSupply <= 0
+                || holdPhase == OverlordHold.Phase.RELEASED && freeSupply < SUPPLY_BUFFER;
     }
 
     /**
