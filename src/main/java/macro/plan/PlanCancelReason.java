@@ -21,4 +21,5 @@ public enum PlanCancelReason {
     RESEARCH_INTERRUPTED,
     ALREADY_IMPOSSIBLE,
     UNKNOWN,
+    MACRO_HATCHERY_CAP,
 }

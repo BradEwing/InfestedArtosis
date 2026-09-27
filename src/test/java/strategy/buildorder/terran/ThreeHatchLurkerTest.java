@@ -234,4 +234,23 @@ class ThreeHatchLurkerTest {
         assertEquals(BuildOrder.ARMY_UPGRADE_PRIORITY, upgradePriority(UpgradeType.Zerg_Carapace, trigger, 0));
         assertEquals(BuildOrder.ARMY_UPGRADE_PRIORITY, upgradePriority(UpgradeType.Zerg_Missile_Attacks, trigger - 4, 5));
     }
+
+    @Test
+    void theHandoverBaseIsRequestedOnceTheLurkerTriggerHoldsOnTwoBases() {
+        int trigger = LurkerDefilerUltraTransition.LURKER_TRIGGER;
+        int gateBases = LurkerDefilerUltraTransition.ECONOMY_BASES;
+
+        assertFalse(ThreeHatchLurker.wantsHandoverBase(trigger - 1, gateBases - 1));
+        assertTrue(ThreeHatchLurker.wantsHandoverBase(trigger, gateBases - 1));
+        assertTrue(ThreeHatchLurker.wantsHandoverBase(trigger + 5, gateBases - 1));
+    }
+
+    @Test
+    void theHandoverBaseStopsOnceTheGateBasesAreHeldOrReserved() {
+        int trigger = LurkerDefilerUltraTransition.LURKER_TRIGGER;
+        int gateBases = LurkerDefilerUltraTransition.ECONOMY_BASES;
+
+        assertFalse(ThreeHatchLurker.wantsHandoverBase(trigger, gateBases));
+        assertFalse(ThreeHatchLurker.wantsHandoverBase(trigger, gateBases + 1));
+    }
 }

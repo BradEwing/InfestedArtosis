@@ -706,4 +706,32 @@ public class BaseDataTest {
     void theRallyReasonForTheMainWithNoNaturalKnownIsMain() {
         assertEquals("MAIN", BaseData.squadRallyReason(MAIN, null, null, MAIN));
     }
+
+    private static String techBase(Set<String> heldOrMorphing, Set<String> held) {
+        return BaseData.techBuildingBase(MAIN, heldOrMorphing::contains, held, Comparator.naturalOrder());
+    }
+
+    @Test
+    void techBuildingsGoToTheMainWhileItIsHeld() {
+        Set<String> held = bases(MAIN, NATURAL, THIRD);
+
+        assertSame(MAIN, techBase(held, held));
+    }
+
+    @Test
+    void techBuildingsGoToAMainStillMorphing() {
+        assertSame(MAIN, techBase(bases(MAIN), bases()));
+    }
+
+    @Test
+    void techBuildingsLostWithTheMainGoToAnotherHeldBase() {
+        Set<String> held = bases(NATURAL, THIRD);
+
+        assertSame(NATURAL, techBase(held, held));
+    }
+
+    @Test
+    void noTechBuildingBaseOnceEveryBaseIsLost() {
+        assertNull(techBase(bases(), bases()));
+    }
 }

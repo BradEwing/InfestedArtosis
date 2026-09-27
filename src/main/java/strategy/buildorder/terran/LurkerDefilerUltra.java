@@ -7,6 +7,7 @@ import info.BaseData;
 import info.GameState;
 import info.Readiness;
 import info.TechProgression;
+import macro.HatcheryCapacity;
 import macro.Reactions;
 import macro.plan.Plan;
 import macro.plan.UnitPlan;
@@ -31,8 +32,8 @@ import java.util.Set;
  *
  * <p>The tech path, in the order {@link #nextTechStep} reads it: Hydralisk Den, one Evolution
  * Chamber, Queen's Nest, Lurker Aspect, Hive, then the Defiler Mound the moment the Hive finishes.
- * Consume is researched first and Plague only once Consume is done. Ultralisks follow the first
- * Defiler once {@value #ULTRALISK_GEYSERS} geysers are being mined.
+ * Consume is researched first, ahead of the Defilers, and Plague only once Consume is done.
+ * Ultralisks follow the first Defiler once {@value #ULTRALISK_GEYSERS} geysers are being mined.
  *
  * @see <a href="https://liquipedia.net/starcraft/3_Hatch_Muta_(vs._Terran)">Liquipedia: 3 Base Hive
  *     Lurker Defiler</a>
@@ -90,6 +91,22 @@ public class LurkerDefilerUltra extends TerranBase {
      */
     static final int DEFILER_PRIORITY = UnitPlan.ADVANCED_UNIT_PRIORITY - 1;
 
+    /**
+     * Priority of the Consume and Plague research plans: one ahead of {@link #DEFILER_PRIORITY},
+     * so the Defilers queued alongside the research do not take the gas it waits for.
+     */
+    static final int DEFILER_RESEARCH_PRIORITY = DEFILER_PRIORITY - 1;
+
+    /**
+     * Larva short of the excess rule's bar a new base is still requested at. A base requested
+     * closer to the bar is cancelled by the excess sweep as soon as the larva it waits beside
+     * spawn, see {@link HatcheryCapacity#isExcessForExpansion}.
+     */
+    static final int BASE_REQUEST_LARVA_MARGIN = 2;
+
+    /** Frames the build waits after finding no site for a tech building before it looks again. */
+    static final int TECH_SITE_RETRY_FRAMES = 240;
+
     /** Lurkers the build aims for. Liquipedia: about a control group of Lurkers. */
     static final int LURKER_TARGET = 12;
 
@@ -131,6 +148,9 @@ public class LurkerDefilerUltra extends TerranBase {
         NONE
     }
 
+    /** Frame before which no tech building site is looked for again, after a look found none. */
+    private int techSiteRetryFrame = 0;
+
     public LurkerDefilerUltra() {
         super(NAME);
     }
@@ -169,20 +189,25 @@ public class LurkerDefilerUltra extends TerranBase {
         }
 
         if (techProgression.canPlanPool()) {
-            plans.add(this.planSpawningPool(gameState));
+            if (hasTechSite(gameState, UnitType.Zerg_Spawning_Pool)) {
+                plans.add(this.planSpawningPool(gameState));
+            }
             return plans;
         }
 
         boolean wantLair = gameState.canPlanLair() && committedLairOrHive == 0;
-        Plan techPlan = planTechStep(gameState, nextTechStep(techProgression, wantLair, baseCount,
-                gameState.getGameTime(), ultraliskGate));
-        if (techPlan != null) {
-            plans.add(techPlan);
+        TechStep techStep = nextTechStep(techProgression, wantLair, baseCount, gameState.getGameTime(), ultraliskGate);
+        UnitType site = siteBuilding(techStep);
+        if (site == UnitType.None || hasTechSite(gameState, site)) {
+            Plan techPlan = planTechStep(gameState, techStep);
+            if (techPlan != null) {
+                plans.add(techPlan);
+            }
         }
 
         TechType research = nextDefilerResearch(techProgression);
         if (research != TechType.None) {
-            plans.add(this.planTech(gameState, research));
+            plans.add(prioritiseDefilerResearch(this.planTech(gameState, research)));
         }
 
         plans.addAll(planUpgrades(gameState, techProgression));
@@ -235,17 +260,40 @@ public class LurkerDefilerUltra extends TerranBase {
      * <p>Below {@value #BASE_TARGET} bases, or when the enemy holds as many bases as we do, a new
      * base. On {@value #MACRO_HATCHERY_MIN_BASES} or more bases a minerals float buys a macro
      * Hatchery while fewer than {@value #MACRO_HATCHERY_CAP} exist, and a new base once they do.
+     * A new base is requested only while {@link #baseRequestSurvives} holds.
      */
     private Plan planHatchery(GameState gameState, int baseCount, boolean floatingMinerals) {
         switch (hatcheryStep(gameState.getBaseData().currentAndReservedCount(), behindOnBases(gameState),
-                floatingMinerals, baseCount, macroHatcheries(gameState))) {
+                floatingMinerals, baseCount, gameState.macroHatcheries())) {
             case MACRO_HATCHERY:
                 return this.planMacroHatchery(gameState);
             case NEW_BASE:
+                if (!baseRequestSurvives(gameState.getResourceCount().availableMinerals(), gameState.hatcheryCount(),
+                        gameState.getBaseData().numMacroHatcheries(), gameState.numLarva())) {
+                    return null;
+                }
                 return this.planNewBase(gameState);
             default:
                 return null;
         }
+    }
+
+    /**
+     * Whether a new base requested now can be started before the excess sweep cancels it: the
+     * Hatchery is affordable from the unreserved bank, and the excess rule would still not fire
+     * with {@value #BASE_REQUEST_LARVA_MARGIN} more larva. A base asked for short of either waits
+     * in the queue while the larva pile up, and the sweep cancels it.
+     *
+     * @param availableMinerals the unreserved mineral bank
+     * @param hatcheries larva-producing hatcheries we control, see {@link GameState#hatcheryCount()}
+     * @param macroHatcheries completed macro hatcheries among them
+     * @param larva our larva now
+     * @return true when the request may be made this frame
+     */
+    static boolean baseRequestSurvives(int availableMinerals, int hatcheries, int macroHatcheries, int larva) {
+        return availableMinerals >= UnitType.Zerg_Hatchery.mineralPrice()
+                && !HatcheryCapacity.isExcessForExpansion(hatcheries, macroHatcheries,
+                        larva + BASE_REQUEST_LARVA_MARGIN);
     }
 
     /**
@@ -270,12 +318,6 @@ public class LurkerDefilerUltra extends TerranBase {
         return HatcheryStep.NONE;
     }
 
-    private static int macroHatcheries(GameState gameState) {
-        return gameState.getBaseData().numMacroHatcheries()
-                + gameState.inFlightHatcheryPlans(true)
-                + gameState.hatcheriesUnderConstruction(true);
-    }
-
     /**
      * Whether another macro Hatchery is allowed.
      *
@@ -294,7 +336,16 @@ public class LurkerDefilerUltra extends TerranBase {
      */
     @Override
     protected boolean allowsLarvaBoundMacroHatchery(GameState gameState) {
-        return macroHatcheryAllowed(gameState.getBaseData().currentBaseCount(), macroHatcheries(gameState));
+        return macroHatcheryAllowed(gameState.getBaseData().currentBaseCount(), gameState.macroHatcheries());
+    }
+
+    /**
+     * {@value #MACRO_HATCHERY_CAP}: production cancels macro hatchery plans past it, so plans the
+     * build before the transition queued do not take the build over its cap.
+     */
+    @Override
+    public int macroHatcheryCap() {
+        return MACRO_HATCHERY_CAP;
     }
 
     /**
@@ -350,6 +401,60 @@ public class LurkerDefilerUltra extends TerranBase {
      */
     static boolean queensNestDue(int baseCount, Time gameTime) {
         return baseCount >= QUEENS_NEST_BASES || gameTime.getFrames() >= QUEENS_NEST_DUE.getFrames();
+    }
+
+    /**
+     * The building a tech step places on creep, which needs a free site; a morph in place or a
+     * research needs none.
+     *
+     * @param step the tech step
+     * @return the building to find a site for, or {@link UnitType#None}
+     */
+    static UnitType siteBuilding(TechStep step) {
+        switch (step) {
+            case DEFILER_MOUND:
+                return UnitType.Zerg_Defiler_Mound;
+            case HYDRALISK_DEN:
+                return UnitType.Zerg_Hydralisk_Den;
+            case EVOLUTION_CHAMBER:
+                return UnitType.Zerg_Evolution_Chamber;
+            case QUEENS_NEST:
+                return UnitType.Zerg_Queens_Nest;
+            case ULTRALISK_CAVERN:
+                return UnitType.Zerg_Ultralisk_Cavern;
+            default:
+                return UnitType.None;
+        }
+    }
+
+    /**
+     * Whether a site for the tech building exists at {@link info.BaseData#techBuildingBase()}. A
+     * building planned with none is sent to the main, where it waits with no build position for
+     * as long as the main is lost. After a look finds no site, none is looked for again for
+     * {@value #TECH_SITE_RETRY_FRAMES} frames.
+     */
+    private boolean hasTechSite(GameState gameState, UnitType building) {
+        int frame = gameState.getGameTime().getFrames();
+        if (frame < techSiteRetryFrame) {
+            return false;
+        }
+        if (gameState.hasTechBuildingSite(building)) {
+            return true;
+        }
+        techSiteRetryFrame = frame + TECH_SITE_RETRY_FRAMES;
+        return false;
+    }
+
+    /**
+     * Moves a Consume or Plague plan to {@link #DEFILER_RESEARCH_PRIORITY}, ahead of the
+     * build's Defilers and advanced units.
+     *
+     * @param plan the research plan
+     * @return the same plan
+     */
+    static Plan prioritiseDefilerResearch(Plan plan) {
+        plan.setPriority(DEFILER_RESEARCH_PRIORITY);
+        return plan;
     }
 
     private Plan planTechStep(GameState gameState, TechStep step) {

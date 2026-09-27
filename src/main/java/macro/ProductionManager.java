@@ -30,6 +30,7 @@ import unit.managed.UnitRole;
 import util.TravelTime;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -40,6 +41,7 @@ import java.util.Set;
 import java.util.function.Predicate;
 import java.util.function.ToIntFunction;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * Manages the production of units, buildings, upgrades and research.
@@ -121,6 +123,7 @@ public class ProductionManager {
         cancelImpossiblePlans();
         cancelDelayedLairPlans();
         cancelExcessHatcheryPlans();
+        cancelMacroHatcheryPlansOverCap();
         cancelExcessOverlordPlans();
         enforceBuildAheadSlot();
         enforceUnitAheadSlot();
@@ -247,6 +250,64 @@ public class ProductionManager {
         return plan.getType() == PlanType.BUILDING
                 && plan.getPlannedUnit() == UnitType.Zerg_Hatchery
                 && HatcheryCapacity.isExcessPlan(plan.isMacroHatchery(), excess, excessForExpansion);
+    }
+
+    /**
+     * Cancels macro hatchery plans that take the active build past its
+     * {@link BuildOrder#macroHatcheryCap()}, such as plans the build before a transition queued.
+     * Plans not yet given a drone are the only ones cancelled; a drone already walking to its
+     * site keeps its plan.
+     */
+    private void cancelMacroHatcheryPlansOverCap() {
+        int cap = activeBuildOrder.macroHatcheryCap();
+        if (cap == BuildOrder.NO_MACRO_HATCHERY_CAP) {
+            return;
+        }
+        List<Plan> cancelled = macroHatcheryPlansOverCap(gameState.getProductionQueue().toSortedList(),
+                gameState.getPlansScheduled(), gameState.macroHatcheries(), cap);
+        for (Plan plan : cancelled) {
+            if (gameState.getProductionQueue().contains(plan)) {
+                gameState.getProductionQueue().remove(plan);
+                plan.setCancelSource(PlanCancelSource.PRODUCTION_MACRO_HATCHERY_CAP_QUEUED);
+                gameState.setImpossiblePlan(plan);
+                continue;
+            }
+            buildAheadSlot.release(plan);
+            gameState.getPlansScheduled().remove(plan);
+            gameState.cancelPlan(null, plan, PlanCancelSource.PRODUCTION_MACRO_HATCHERY_CAP_SCHEDULED);
+        }
+    }
+
+    /**
+     * The macro hatchery plans to cancel so the build holds its cap: as many as the committed
+     * count exceeds the cap by, queued plans before scheduled ones, and the lowest-priority plan
+     * first within each.
+     *
+     * @param queued plans in the production queue
+     * @param scheduled plans holding a schedule claim
+     * @param committed macro hatcheries finished, under construction and planned
+     * @param cap the most macro hatcheries the active build allows
+     * @return the plans to cancel, empty while the build is within its cap
+     */
+    static List<Plan> macroHatcheryPlansOverCap(Collection<Plan> queued, Collection<Plan> scheduled,
+                                                int committed, int cap) {
+        int overflow = committed - cap;
+        if (overflow <= 0) {
+            return new ArrayList<>();
+        }
+        Comparator<Plan> lowestPriorityFirst = new PlanComparator().reversed();
+        return Stream.concat(
+                        queued.stream().filter(ProductionManager::isOpenMacroHatcheryPlan).sorted(lowestPriorityFirst),
+                        scheduled.stream().filter(ProductionManager::isOpenMacroHatcheryPlan).sorted(lowestPriorityFirst))
+                .limit(overflow)
+                .collect(Collectors.toList());
+    }
+
+    private static boolean isOpenMacroHatcheryPlan(Plan plan) {
+        return plan.getState() != PlanState.CANCELLED
+                && plan.getType() == PlanType.BUILDING
+                && plan.getPlannedUnit() == UnitType.Zerg_Hatchery
+                && plan.isMacroHatchery();
     }
 
     /** Drops scheduled Lair plans while an early rush delays the Lair; the reaction removes only queued ones. */

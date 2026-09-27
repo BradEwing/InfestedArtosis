@@ -1469,11 +1469,33 @@ public class GameState {
         return SupplyCapacity.isExcess(self.supplyTotal(), self.supplyUsed());
     }
 
+    /**
+     * Picks and reserves a site for a tech building at {@link BaseData#techBuildingBase()}: the
+     * main while we hold it, otherwise another base we hold.
+     *
+     * @param unitType the tech building
+     * @return the site, or null when no base is held or the base has no room on creep
+     */
     public TilePosition getTechBuildingLocation(UnitType unitType) {
-        Base main = baseData.getMainBase();
-        TilePosition position = buildingPlanner.getLocationForTechBuilding(main, unitType);
+        Base base = baseData.techBuildingBase();
+        if (base == null) {
+            return null;
+        }
+        TilePosition position = buildingPlanner.getLocationForTechBuilding(base, unitType);
         buildingPlanner.reservePlannedBuildingTiles(position, unitType);
         return position;
+    }
+
+    /**
+     * Whether {@link #getTechBuildingLocation} would find a site for the building now. Reserves
+     * nothing.
+     *
+     * @param unitType the tech building
+     * @return true when a base is held and it has room on creep for the building
+     */
+    public boolean hasTechBuildingSite(UnitType unitType) {
+        Base base = baseData.techBuildingBase();
+        return base != null && buildingPlanner.getLocationForTechBuilding(base, unitType) != null;
     }
 
     /**
@@ -1923,6 +1945,14 @@ public class GameState {
      */
     public int inFlightHatcheryPlans(boolean macroHatchery) {
         return countHatcheryPlans(macroHatchery, productionQueue, plansScheduled, plansBuilding, plansMorphing);
+    }
+
+    /**
+     * Macro hatcheries finished, under construction and planned, including any an earlier build
+     * in the game made.
+     */
+    public int macroHatcheries() {
+        return baseData.numMacroHatcheries() + inFlightHatcheryPlans(true) + hatcheriesUnderConstruction(true);
     }
 
     /**

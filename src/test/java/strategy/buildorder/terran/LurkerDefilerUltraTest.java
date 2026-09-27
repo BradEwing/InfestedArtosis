@@ -3,8 +3,13 @@ package strategy.buildorder.terran;
 import bwapi.TechType;
 import bwapi.UnitType;
 import info.TechProgression;
+import macro.HatcheryCapacity;
+import macro.plan.Plan;
+import macro.plan.PlanComparator;
+import macro.plan.TechPlan;
 import macro.plan.UnitPlan;
 import org.junit.jupiter.api.Test;
+import strategy.buildorder.BuildOrder;
 import util.Time;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -15,9 +20,15 @@ class LurkerDefilerUltraTest {
 
     private static final Time EARLY = new Time(8, 0);
 
+    private static final Time LATE = new Time(16, 0);
+
     private static final int THREE_BASES = 3;
 
     private static final int TWO_BASES = 2;
+
+    private static final int THREE_HATCHERIES = 3;
+
+    private static final int TWO_HATCHERIES = 2;
 
     private static final boolean NO_LAIR_WANTED = false;
 
@@ -278,5 +289,109 @@ class LurkerDefilerUltraTest {
         assertFalse(build.macroHatcheryTechReady(techProgression));
         techProgression.setHydraliskDen(true);
         assertTrue(build.macroHatcheryTechReady(techProgression));
+    }
+
+    @Test
+    void consumeOutranksTheDefilerPlan() {
+        PlanComparator order = new PlanComparator();
+        Plan defiler = new UnitPlan(UnitType.Zerg_Defiler, LurkerDefilerUltra.DEFILER_PRIORITY);
+        Plan lurker = new UnitPlan(UnitType.Zerg_Lurker, UnitPlan.ADVANCED_UNIT_PRIORITY);
+        Plan consume = LurkerDefilerUltra.prioritiseDefilerResearch(
+                new TechPlan(TechType.Consume, LATE.getFrames(), true));
+
+        assertTrue(order.compare(consume, defiler) < 0);
+        assertTrue(order.compare(consume, lurker) < 0);
+    }
+
+    @Test
+    void plagueAlsoOutranksTheDefilerPlan() {
+        Plan defiler = new UnitPlan(UnitType.Zerg_Defiler, LurkerDefilerUltra.DEFILER_PRIORITY);
+        Plan plague = LurkerDefilerUltra.prioritiseDefilerResearch(
+                new TechPlan(TechType.Plague, LATE.getFrames(), true));
+
+        assertEquals(LurkerDefilerUltra.DEFILER_PRIORITY - 1, plague.getPriority());
+        assertTrue(new PlanComparator().compare(plague, defiler) < 0);
+    }
+
+    @Test
+    void aLostHiveReplansTheLairBeforeTheHive() {
+        TechProgression techProgression = twoHatchMutaTech();
+        techProgression.setHydraliskDen(true);
+        techProgression.setLurker(true);
+        techProgression.setEvolutionChambers(2);
+        techProgression.setQueensNest(true);
+        techProgression.setHive(true);
+        techProgression.setDefilerMound(true);
+
+        techProgression.loseLairOrHive(UnitType.Zerg_Hive, 0, 0);
+
+        assertEquals(LurkerDefilerUltra.TechStep.LAIR, LurkerDefilerUltra.nextTechStep(techProgression,
+                techProgression.canPlanLair(), THREE_BASES, LATE, ULTRALISKS_BARRED));
+        techProgression.setPlannedLair(true);
+        assertEquals(LurkerDefilerUltra.TechStep.NONE, LurkerDefilerUltra.nextTechStep(techProgression,
+                techProgression.canPlanLair(), THREE_BASES, LATE, ULTRALISKS_BARRED));
+        techProgression.setPlannedLair(false);
+        techProgression.setLair(true);
+        assertEquals(LurkerDefilerUltra.TechStep.HIVE, LurkerDefilerUltra.nextTechStep(techProgression,
+                techProgression.canPlanLair(), THREE_BASES, LATE, ULTRALISKS_BARRED));
+    }
+
+    @Test
+    void placedTechStepsNeedASiteAndMorphsAndResearchDoNot() {
+        assertEquals(UnitType.Zerg_Defiler_Mound, LurkerDefilerUltra.siteBuilding(LurkerDefilerUltra.TechStep.DEFILER_MOUND));
+        assertEquals(UnitType.Zerg_Hydralisk_Den, LurkerDefilerUltra.siteBuilding(LurkerDefilerUltra.TechStep.HYDRALISK_DEN));
+        assertEquals(UnitType.Zerg_Evolution_Chamber,
+                LurkerDefilerUltra.siteBuilding(LurkerDefilerUltra.TechStep.EVOLUTION_CHAMBER));
+        assertEquals(UnitType.Zerg_Queens_Nest, LurkerDefilerUltra.siteBuilding(LurkerDefilerUltra.TechStep.QUEENS_NEST));
+        assertEquals(UnitType.Zerg_Ultralisk_Cavern,
+                LurkerDefilerUltra.siteBuilding(LurkerDefilerUltra.TechStep.ULTRALISK_CAVERN));
+        assertEquals(UnitType.None, LurkerDefilerUltra.siteBuilding(LurkerDefilerUltra.TechStep.HIVE));
+        assertEquals(UnitType.None, LurkerDefilerUltra.siteBuilding(LurkerDefilerUltra.TechStep.LAIR));
+        assertEquals(UnitType.None, LurkerDefilerUltra.siteBuilding(LurkerDefilerUltra.TechStep.LURKER_ASPECT));
+        assertEquals(UnitType.None, LurkerDefilerUltra.siteBuilding(LurkerDefilerUltra.TechStep.NONE));
+    }
+
+    /** The fewest larva at which the excess rule cancels an expansion beside the given hatcheries. */
+    private static int excessLarva(int hatcheries) {
+        int larva = 0;
+        while (!HatcheryCapacity.isExcessForExpansion(hatcheries, 0, larva)) {
+            larva++;
+        }
+        return larva;
+    }
+
+    @Test
+    void aNewBaseWaitsUntilTheHatcheryIsAffordable() {
+        int price = UnitType.Zerg_Hatchery.mineralPrice();
+
+        assertFalse(LurkerDefilerUltra.baseRequestSurvives(price - 1, THREE_HATCHERIES, 0, 0));
+        assertTrue(LurkerDefilerUltra.baseRequestSurvives(price, THREE_HATCHERIES, 0, 0));
+    }
+
+    @Test
+    void aNewBaseIsNotRequestedWithinTheLarvaMarginOfTheExcessSweep() {
+        int price = UnitType.Zerg_Hatchery.mineralPrice();
+        int excess = excessLarva(THREE_HATCHERIES);
+        int margin = LurkerDefilerUltra.BASE_REQUEST_LARVA_MARGIN;
+
+        assertTrue(LurkerDefilerUltra.baseRequestSurvives(price, THREE_HATCHERIES, 0, excess - margin - 1));
+        assertFalse(LurkerDefilerUltra.baseRequestSurvives(price, THREE_HATCHERIES, 0, excess - margin));
+        assertFalse(LurkerDefilerUltra.baseRequestSurvives(price, THREE_HATCHERIES, 0, excess));
+    }
+
+    @Test
+    void macroHatcheriesDoNotHoldBackANewBase() {
+        int price = UnitType.Zerg_Hatchery.mineralPrice();
+        int excess = excessLarva(THREE_HATCHERIES);
+
+        assertTrue(LurkerDefilerUltra.baseRequestSurvives(price, THREE_HATCHERIES, 1, excess));
+        assertTrue(LurkerDefilerUltra.baseRequestSurvives(price, TWO_HATCHERIES, 0, excess));
+    }
+
+    @Test
+    void theBuildCapsItsMacroHatcheriesForProductionAndOtherBuildsDoNot() {
+        assertEquals(LurkerDefilerUltra.MACRO_HATCHERY_CAP, new LurkerDefilerUltra().macroHatcheryCap());
+        assertEquals(BuildOrder.NO_MACRO_HATCHERY_CAP, new ThreeHatchLurker().macroHatcheryCap());
+        assertEquals(BuildOrder.NO_MACRO_HATCHERY_CAP, new TwoHatchMuta().macroHatcheryCap());
     }
 }

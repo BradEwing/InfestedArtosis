@@ -52,6 +52,9 @@ public abstract class BuildOrder {
      * tech bands below it.
      */
     public static final int ARMY_UPGRADE_PRIORITY = 120;
+
+    /** {@link #macroHatcheryCap()} for a build that does not cap its macro hatcheries. */
+    public static final int NO_MACRO_HATCHERY_CAP = Integer.MAX_VALUE;
     protected static final int SPAWNING_POOL_PRIORITY = 2;
     private static final int DEFAULT_COLONY_PRIORITY = 5;
     private static final int UNKNOWN_RACE_BASE_TARGET = 2;
@@ -268,6 +271,17 @@ public abstract class BuildOrder {
      */
     protected boolean allowsLarvaBoundMacroHatchery(GameState gameState) {
         return true;
+    }
+
+    /**
+     * The most macro hatcheries the build allows, counting those finished, under construction and
+     * planned. Production cancels macro hatchery plans past it, including plans a build before a
+     * transition queued. {@link #NO_MACRO_HATCHERY_CAP} by default.
+     *
+     * @return the cap, or {@link #NO_MACRO_HATCHERY_CAP}
+     */
+    public int macroHatcheryCap() {
+        return NO_MACRO_HATCHERY_CAP;
     }
 
     public abstract boolean playsRace(Race race);

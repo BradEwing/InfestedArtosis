@@ -790,6 +790,35 @@ public class BaseData {
     }
 
     /**
+     * The base tech buildings are placed at. See {@link #techBuildingBase(Object, Predicate, Collection,
+     * Comparator)}; ties go to the lower tile location.
+     *
+     * @return the base to place a tech building at, or null when we hold no base
+     */
+    public Base techBuildingBase() {
+        return techBuildingBase(mainBase, this::isHeldOrMorphing, myBases, BY_TILE_LOCATION);
+    }
+
+    /**
+     * Picks the base tech buildings are placed at: the main while a hatchery of ours stands or
+     * morphs on it, otherwise the first held base in {@code tieBreak} order, so a building lost
+     * with the main is rebuilt where we still hold ground rather than in the enemy's hands.
+     *
+     * @param main our main
+     * @param heldOrMorphing whether a hatchery of ours stands or morphs on a base
+     * @param heldBases bases a completed hatchery of ours stands on
+     * @param tieBreak order among held bases
+     * @return the base to place a tech building at, or null when the main is lost and no base is held
+     */
+    static <T> T techBuildingBase(T main, Predicate<T> heldOrMorphing, Collection<T> heldBases,
+                                  Comparator<? super T> tieBreak) {
+        if (main != null && heldOrMorphing.test(main)) {
+            return main;
+        }
+        return heldBases.stream().min(tieBreak).orElse(null);
+    }
+
+    /**
      * Picks the base squads rally to:
      * <ol>
      *   <li>the first expansion we took, while a hatchery of ours stands or morphs on it;
