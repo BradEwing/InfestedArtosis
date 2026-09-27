@@ -84,9 +84,10 @@ final class BunkerPricing {
     }
 
     /**
-     * The squad and its path as legs: for each member, see {@link #memberLegs}, its position, the leg to the visible
-     * unit it is fighting, and for a ground member fighting none, its march leg toward its own movement target or,
-     * without one, the squad's destination. Overlords are left out, as the simulator leaves them out of our strength.
+     * The squad and its path as legs: for each member whose unit still exists, see {@link #memberLegs}, its position,
+     * the leg to the visible unit it is fighting, and for a ground member fighting none, its march leg toward its own
+     * movement target or, without one, the squad's destination. Overlords are left out, as the simulator leaves them
+     * out of our strength.
      *
      * @param members the squad's members
      * @param airSquad whether the squad is judged on its air arm, in which case no member marches
@@ -98,7 +99,7 @@ final class BunkerPricing {
         for (ManagedUnit mu : members) {
             if (mu.getUnitType() == UnitType.Zerg_Overlord) continue;
             Unit unit = mu.getUnit();
-            if (unit == null) continue;
+            if (unit == null || !unit.exists()) continue;
             Unit target = mu.fightTarget;
             Position fightTarget = target != null && target.exists() && target.isVisible()
                     ? target.getPosition()
@@ -158,7 +159,8 @@ final class BunkerPricing {
 
     /**
      * The squad's destination when a member has no movement target of its own: the known enemy building closest to
-     * the squad centre, the one a fight squad with no visible enemy marches to.
+     * the squad centre, the first place a fight squad with no visible enemy marches to. When no enemy building is
+     * known the squad marches to the enemy main or a scout target instead, and no march leg is drawn.
      *
      * @param squadCenter the squad's centre
      * @param enemyBuildings last known positions of the enemy's buildings
