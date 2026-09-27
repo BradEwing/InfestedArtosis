@@ -234,6 +234,21 @@ class PlanEventLoggerTest {
         assertEquals("floating_minerals_bar", columns[columns.length - 1]);
     }
 
+    /**
+     * The BANK_SAMPLE row is laid out by run lengths rather than by name: event, 8 empty plan cells,
+     * the blocker pair, 3 empty cells, the 14 game state cells, 3 empty cells, build_order, 2 empty
+     * cells, then the trailing columns. A column inserted inside any run shifts every sample.
+     */
+    @Test
+    void theBankSampleRunLengthsMatchTheHeader() {
+        assertEquals(indexOf("event") + 1 + 8, indexOf("blocker"));
+        assertEquals(indexOf("blocked_frames") + 1 + 3, indexOf("minerals"));
+        assertEquals(indexOf("minerals") + 14, indexOf("build_tile_x"));
+        assertEquals("plans_morphing", column(indexOf("build_tile_x") - 1));
+        assertEquals(indexOf("build_tile_x") + 3, indexOf("build_order"));
+        assertEquals(indexOf("build_order") + 1 + 2, indexOf("enemy_air"));
+    }
+
     @Test
     void theFirstBankSampleIsTakenOnTheFirstFrame() {
         assertTrue(PlanEventLogger.isBankSampleDue(0, -PlanEventLogger.BANK_SAMPLE_INTERVAL_FRAMES));
