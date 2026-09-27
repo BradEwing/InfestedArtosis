@@ -60,6 +60,47 @@ final class ContainmentPushback {
     }
 
     /**
+     * The zones that may move a containing squad's arc: static defence, hurt marks, and the enemies that fire from
+     * where they stand, a sieged tank or a Lurker. A zone around any other enemy unit moves with that unit, so an arc
+     * kept out of it steps back every time the unit steps forward; such an enemy is fought on the line, or collapsed
+     * on, instead.
+     *
+     * @param zones every ground threat zone
+     * @return the zones the arc is kept out of
+     */
+    static List<StaticDefenseZone> arcZones(Collection<StaticDefenseZone> zones) {
+        List<StaticDefenseZone> kept = new ArrayList<>();
+        for (StaticDefenseZone zone : zones) {
+            if (movesTheArc(zone.getStructure())) {
+                kept.add(zone);
+            }
+        }
+        return kept;
+    }
+
+    /**
+     * Whether a zone of this type may move a containing squad's arc, see {@link #arcZones}.
+     *
+     * @param type type the zone was built around, {@link UnitType#None} for a hurt mark
+     * @return true for a building, a hurt mark, a sieged tank or a Lurker
+     */
+    static boolean movesTheArc(UnitType type) {
+        return type == UnitType.None || type.isBuilding() || type == UnitType.Terran_Siege_Tank_Siege_Mode
+                || type == UnitType.Zerg_Lurker;
+    }
+
+    /**
+     * Whether a recomputed arc stands anywhere other than the arc it replaces.
+     *
+     * @param current arc the squad holds now, or null
+     * @param next recomputed arc
+     * @return true when the points differ
+     */
+    static boolean moved(Arc current, Arc next) {
+        return current == null || !current.getPositions().equals(next.getPositions());
+    }
+
+    /**
      * Whether any point of the arc lies within reach plus padding of any zone.
      *
      * @param arc computed arc

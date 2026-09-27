@@ -326,6 +326,7 @@ public class InformationManager {
 
         if (unitType == UnitType.Zerg_Extractor) {
             gameState.setGeyserAssignment(unit);
+            gameState.trackExtractor(unit);
         }
 
         ResourceCount resourceCount = gameState.getResourceCount();
@@ -410,6 +411,10 @@ public class InformationManager {
 
     public void onUnitDestroy(Unit unit) {
         UnitType unitType = unit.getType();
+
+        if (unitType.isMineralField()) {
+            gameState.removeMineralPatch(unit);
+        }
 
         if (unit.getPlayer() == game.enemy() && unitType.isBuilding()) {
             ScoutData scoutData = gameState.getScoutData();

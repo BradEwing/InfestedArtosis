@@ -118,8 +118,13 @@ public class CombatTelemetry {
             int frame = game.getFrameCount();
             Position position = unit.getPosition();
             int unitId = unit.getID();
+            ManagedUnit managedUnit = gameState.getManagedUnitLookup().get(unit);
             for (Engagement engagement : openEngagements) {
-                engagement.recordDeath(unitId, frame, position);
+                if (managedUnit == null) {
+                    engagement.recordDeath(unitId, frame, position);
+                } else {
+                    engagement.recordDeath(unitId, frame, position, attacksOf(managedUnit));
+                }
             }
         } catch (RuntimeException e) {
             disable();
@@ -287,7 +292,7 @@ public class CombatTelemetry {
             ManagedUnit member = contact.getManagedUnit();
             UnitType type = member.getUnitType();
             engagement.noteUnit(frame, member.getUnitID(), type, member.getUnit().getHitPoints(),
-                    Csv.name(member.getRole()), contact.getSquad().getId());
+                    Csv.name(member.getRole()), contact.getSquad().getId(), attacksOf(member));
             supply += type.supplyRequired();
         }
 
@@ -385,6 +390,10 @@ public class CombatTelemetry {
         }
     }
 
+    private static AttackTally attacksOf(ManagedUnit unit) {
+        return new AttackTally(unit.getAttacksStarted(), unit.getLastAttackStartFrame(), unit.getDamageDealt());
+    }
+
     private void emit(Engagement engagement) {
         engagementCount++;
         totalUnitsLost += engagement.getUnitsLost();
@@ -397,8 +406,9 @@ public class CombatTelemetry {
 
     /**
      * Enemy losses come from our own kill counters rather than from observed damage. BWEventListener
-     * has no damage event and enemy hit points are readable only while the unit is visible, so
-     * damage dealt is not obtainable and is deliberately absent from the schema.
+     * has no damage event and enemy hit points are readable only while the unit is visible, so the
+     * damage an engagement's enemies took is not observable. The per-unit damage_dealt column is
+     * priced from each of our units' own weapon fire instead (see ManagedUnit.observeAttack).
      */
     private void scanKills() {
         int units = 0;
