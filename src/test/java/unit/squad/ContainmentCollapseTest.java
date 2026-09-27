@@ -462,7 +462,63 @@ class ContainmentCollapseTest {
 
     private static ContainmentCollapse.Read readOf(ContainmentCollapse.Outcome outcome) {
         return new ContainmentCollapse.Read(outcome, 7, 12.3, outcome != ContainmentCollapse.Outcome.STATIC_COVERED,
-                8, new Position(1600, 1420));
+                8, new Position(1600, 1420), true);
+    }
+
+    @Test
+    void aReadIsFavourableOnAnyOutcomeOnceTheSectorSimClearsTheThreshold() {
+        assertTrue(passedTest().isFavourable());
+        assertFalse(failedTest().isFavourable());
+        ContainmentCollapse.Read refused = ContainmentCollapse.read(inSector(heldArc(), marinesInTheBowl()),
+                Collections.emptyList(), PADDING, FAVOURABLE, TERRAN_THRESHOLD, false, MEMBERS);
+        assertEquals(ContainmentCollapse.Outcome.LOCK_REFUSED, refused.getOutcome());
+        assertTrue(refused.isFavourable(), "a refused read still counts toward the first favourable read");
+        ContainmentCollapse.Read tooFew = ContainmentCollapse.read(inSector(heldArc(), marinesInTheBowl()),
+                Collections.emptyList(), PADDING, FAVOURABLE, TERRAN_THRESHOLD, true,
+                ContainmentCollapse.MIN_COLLAPSE_MEMBERS - 1);
+        assertFalse(tooFew.isFavourable(), "no sim ran, so the read is not favourable");
+    }
+
+    @Test
+    void theFirstFavourableReadIsLoggedThroughRefusalsAndAnUnderFireCommit() {
+        Squad squad = new GroundSquad();
+        SquadManager.gateCollapse(squad, readOf(ContainmentCollapse.Outcome.STATIC_COVERED), NOT_UNDER_FIRE, 9000);
+        SquadManager.gateCollapse(squad, readOf(ContainmentCollapse.Outcome.LOCK_REFUSED), NOT_UNDER_FIRE, 9001);
+
+        ContainmentCollapse.Read gated = SquadManager.gateCollapse(squad, passedTest(),
+                ContainmentCollapse.UnderFire.HIT, 9002);
+
+        assertEquals(ContainmentCollapse.Outcome.COLLAPSE, gated.getOutcome());
+        assertEquals(9002, gated.getEntryFrames().getRunStart());
+        assertEquals(9000, gated.getEntryFrames().getFirstFavourable(),
+                "the refusals before the commit count toward the delay");
+    }
+
+    @Test
+    void anUnfavourableOrMissingReadEndsTheFavourableStreak() {
+        Squad squad = new GroundSquad();
+        SquadManager.gateCollapse(squad, passedTest(), NOT_UNDER_FIRE, 9000);
+        assertEquals(CollapseEntryRun.NO_RUN, SquadManager.gateCollapse(squad, failedTest(), NOT_UNDER_FIRE, 9001)
+                .getEntryFrames().getFirstFavourable());
+        assertEquals(9002, SquadManager.gateCollapse(squad, passedTest(), NOT_UNDER_FIRE, 9002)
+                .getEntryFrames().getFirstFavourable());
+        SquadManager.gateCollapse(squad, null, NOT_UNDER_FIRE, 9003);
+        assertEquals(9004, SquadManager.gateCollapse(squad, passedTest(), NOT_UNDER_FIRE, 9004)
+                .getEntryFrames().getFirstFavourable());
+        squad.clearCollapseStart();
+        assertEquals(CollapseEntryRun.NO_RUN, squad.getCollapseEntryFrames().getFirstFavourable(),
+                "a new contain episode starts the streak over");
+    }
+
+    @Test
+    void onlyAHitAnEnemyInTheSectorCouldHaveLandedCountsAsUnderFire() {
+        int marineRange = EnemyReachMemory.baseGroundRange(UnitType.Terran_Marine);
+
+        assertTrue(ContainmentCollapse.inSectorReach(marineRange, marineRange));
+        assertTrue(ContainmentCollapse.inSectorReach(marineRange + ContainmentCollapse.SECTOR_HIT_MARGIN,
+                marineRange));
+        assertFalse(ContainmentCollapse.inSectorReach(marineRange + ContainmentCollapse.SECTOR_HIT_MARGIN + 1,
+                marineRange), "a member hit out of reach of every enemy in the sector was hit from elsewhere");
     }
 
     @Test

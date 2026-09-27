@@ -10,6 +10,10 @@ import lombok.Getter;
  * fight lock, not the enemies in the sector. A STATIC_COVERED test holds it too until the enemy centroid has been
  * covered on {@link #STATIC_COVERED_DEBOUNCE} consecutive tests, so a centroid flickering across the edge of a zone
  * does not start the run over. Any other test, a missing one or a pass inside the cooldown starts it over.
+ *
+ * <p>It also keeps the frame of the first favourable read of the current streak, see
+ * {@link ContainmentCollapse#read}, whatever those reads' outcomes: a read that is not favourable, or a missing one,
+ * ends the streak.
  */
 final class CollapseEntryRun {
 
@@ -23,6 +27,8 @@ final class CollapseEntryRun {
     @Getter
     private int startFrame = NO_RUN;
     private int coveredTests = 0;
+    @Getter
+    private int firstFavourableFrame = NO_RUN;
 
     CollapseEntryRun() {
     }
@@ -31,6 +37,7 @@ final class CollapseEntryRun {
         this.passes = source.passes;
         this.startFrame = source.startFrame;
         this.coveredTests = source.coveredTests;
+        this.firstFavourableFrame = source.firstFavourableFrame;
     }
 
     /**
@@ -60,14 +67,33 @@ final class CollapseEntryRun {
                 return passes;
             }
         }
-        clear();
+        resetRun();
         return passes;
     }
 
     /**
-     * Starts the run over, as a new or ended contain episode does.
+     * Records whether one collapse test read favourable.
+     *
+     * @param favourable true when the read was favourable, false when it was not or no test ran
+     * @param frame frame of the test
+     */
+    void recordFavourable(boolean favourable, int frame) {
+        if (!favourable) {
+            firstFavourableFrame = NO_RUN;
+        } else if (firstFavourableFrame == NO_RUN) {
+            firstFavourableFrame = frame;
+        }
+    }
+
+    /**
+     * Starts the run and the streak of favourable reads over, as a new or ended contain episode does.
      */
     void clear() {
+        resetRun();
+        firstFavourableFrame = NO_RUN;
+    }
+
+    private void resetRun() {
         passes = 0;
         startFrame = NO_RUN;
         coveredTests = 0;

@@ -169,6 +169,114 @@ class ContainTransitAndLockTest {
         assertTrue(SquadManager.launchOffersContain(new GroundSquad(), 5000));
     }
 
+    private static int fightLockExpiry(Squad squad, int from) {
+        int frame = from;
+        while (squad.isFightLocked(frame)) {
+            frame++;
+        }
+        return frame;
+    }
+
+    @Test
+    void aCollapseCommitThenANextFrameRetreatStaysFight() {
+        Squad squad = new GroundSquad();
+        squad.setStatus(SquadStatus.FIGHT);
+        squad.commitCollapse(9701);
+        boolean lockHolds = SquadManager.fightLockHolds(squad.isFightLocked(9702), RETREAT, true, 1.36,
+                TERRAN_THRESHOLD);
+
+        assertFalse(lockHolds, "the fight lock alone releases on a measured whole-squad RETREAT");
+        assertTrue(SquadManager.fightHeld(squad, 9702, lockHolds));
+        assertFalse(SquadManager.launchOffersContain(squad, 9702));
+    }
+
+    @Test
+    void aCollapseCommitHoldsFightUntilItsFightLockExpires() {
+        Squad squad = new GroundSquad();
+        squad.setStatus(SquadStatus.FIGHT);
+        squad.commitCollapse(9701);
+        int expiry = fightLockExpiry(squad, 9701);
+
+        assertTrue(SquadManager.fightHeld(squad, expiry - 1, false));
+        assertFalse(SquadManager.fightHeld(squad, expiry, false), "after the lock the sim decides again");
+    }
+
+    @Test
+    void aRenewedFightLockDoesNotExtendTheCollapseCommitHold() {
+        Squad squad = new GroundSquad();
+        squad.setStatus(SquadStatus.FIGHT);
+        squad.commitCollapse(9701);
+        int expiry = fightLockExpiry(squad, 9701);
+        squad.startFightLock(9750);
+
+        assertTrue(squad.isFightLocked(expiry));
+        assertFalse(squad.isCollapseCommitHeld(expiry));
+        assertFalse(SquadManager.fightHeld(squad, expiry, SquadManager.fightLockHolds(true, RETREAT, true, 0.8,
+                TERRAN_THRESHOLD)), "an ordinary fight lock still releases on a measured RETREAT");
+    }
+
+    @Test
+    void anOrdinaryFightLockStillReleasesOnAMeasuredRetreat() {
+        Squad squad = new GroundSquad();
+        squad.setStatus(SquadStatus.FIGHT);
+        squad.startFightLock(9701);
+
+        assertFalse(SquadManager.fightHeld(squad, 9702, SquadManager.fightLockHolds(squad.isFightLocked(9702),
+                RETREAT, true, 1.36, TERRAN_THRESHOLD)));
+    }
+
+    @Test
+    void aCollapseCommitHoldsOnlyAFightSquad() {
+        Squad squad = new GroundSquad();
+        squad.setStatus(SquadStatus.FIGHT);
+        squad.commitCollapse(9701);
+        squad.setStatus(SquadStatus.RETREAT);
+
+        assertFalse(SquadManager.fightHeld(squad, 9702, false));
+    }
+
+    @Test
+    void aMergeIntoFightKeepsACollapseCommitHold() {
+        Squad committed = new GroundSquad();
+        committed.setStatus(SquadStatus.FIGHT);
+        committed.commitCollapse(9701);
+        Squad joiner = new GroundSquad();
+        joiner.setStatus(SquadStatus.RALLY);
+
+        Squad merged = new GroundSquad();
+        merged.inheritStateFrom(Arrays.asList(joiner, committed));
+
+        assertEquals(SquadStatus.FIGHT, merged.getStatus());
+        assertTrue(SquadManager.fightHeld(merged, 9702, false));
+    }
+
+    @Test
+    void aSplitOfACommittedSquadKeepsTheHoldOnBothSides() {
+        Squad committed = new GroundSquad();
+        committed.setStatus(SquadStatus.FIGHT);
+        committed.commitCollapse(9701);
+
+        Squad child = committed.createSibling();
+        child.inheritStateFrom(committed);
+
+        assertTrue(SquadManager.fightHeld(child, 9702, false));
+        assertTrue(SquadManager.fightHeld(committed, 9702, false));
+    }
+
+    @Test
+    void aMergeIntoAnotherStatusDropsACollapseCommitHold() {
+        Squad merged = new GroundSquad();
+        merged.setStatus(SquadStatus.FIGHT);
+        merged.commitCollapse(9701);
+        Squad containing = new GroundSquad();
+        containing.setStatus(SquadStatus.CONTAIN);
+
+        merged.inheritStateFrom(Collections.singletonList(containing));
+
+        assertEquals(SquadStatus.CONTAIN, merged.getStatus());
+        assertFalse(merged.isCollapseCommitHeld(9702));
+    }
+
     @Test
     void aJoinerMergingIntoACollapseFightsUnderItsLock() {
         ContainmentCollapse.Maneuver wrap = new ContainmentCollapse.Maneuver(Collections.emptyMap(),

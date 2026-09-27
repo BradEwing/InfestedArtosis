@@ -74,6 +74,12 @@ public final class ContainmentCollapse {
      * Tuning value: pixels, edge to edge, within which an armed enemy stands in melee contact with a member.
      */
     static final int MELEE_CONTACT_DISTANCE = 32;
+    /**
+     * Tuning value: pixels, edge to edge, past an armed enemy's known ground reach within which a member it could
+     * have hit still counts as hit by it, see {@link #inSectorReach}. Allows for the enemy or the member moving since
+     * the hit. Pending owner confirmation.
+     */
+    static final int SECTOR_HIT_MARGIN = 32;
     /** Ratio a read reports when too few armed enemies stood in the sector for the sim to run. */
     static final double NOT_SIMULATED = -1;
 
@@ -93,8 +99,9 @@ public final class ContainmentCollapse {
 
     /**
      * Whether the enemy is already engaging a containing squad when it tests a collapse, and how: a member lost hit
-     * points to a weapon within {@link #UNDER_FIRE_FRAMES}, an armed enemy stands within
-     * {@link #MELEE_CONTACT_DISTANCE} of a member, or both.
+     * points to a weapon within {@link #UNDER_FIRE_FRAMES} while an armed enemy inside the arc's sector could reach
+     * it, see {@link #inSectorReach}, an armed enemy stands within {@link #MELEE_CONTACT_DISTANCE} of a member, or
+     * both. A hit no enemy in the sector could have landed does not count.
      */
     public enum UnderFire {
         NONE,
@@ -103,7 +110,8 @@ public final class ContainmentCollapse {
         HIT_AND_MELEE;
 
         /**
-         * @param hit true when a member lost hit points to a weapon within {@link #UNDER_FIRE_FRAMES}
+         * @param hit true when a member lost hit points to a weapon within {@link #UNDER_FIRE_FRAMES} while an armed
+         *     enemy inside the sector could reach it
          * @param melee true when an armed enemy stands within {@link #MELEE_CONTACT_DISTANCE} of a member
          * @return the reason, NONE when neither holds
          */
@@ -159,7 +167,8 @@ public final class ContainmentCollapse {
      * @param engageThreshold the matchup engage threshold
      * @param lockRenewable true when the squad may arm a fight lock now, see {@link Squad#canRenewFightLock}
      * @param members members that would take part in the collapse
-     * @return the read, or null when no armed enemy stands inside the sector
+     * @return the read, or null when no armed enemy stands inside the sector. The read is favourable when the sector
+     *     sim ran and read at or above the engage threshold, whatever the outcome.
      */
     static Read read(List<Position> armedInSector, Collection<StaticDefenseZone> staticZones, int padding,
                      DoubleSupplier sectorSim, double engageThreshold, boolean lockRenewable, int members) {
@@ -172,7 +181,8 @@ public final class ContainmentCollapse {
         double ratio = simulated ? sectorSim.getAsDouble() : NOT_SIMULATED;
         Outcome outcome = evaluate(armedInSector.size(), members, staticClear, ratio, engageThreshold,
                 lockRenewable);
-        return new Read(outcome, armedInSector.size(), ratio, staticClear, flankCount(members), centroid);
+        return new Read(outcome, armedInSector.size(), ratio, staticClear, flankCount(members), centroid,
+                simulated && ratio >= engageThreshold);
     }
 
     /**
@@ -248,6 +258,18 @@ public final class ContainmentCollapse {
                     : MemberOrder.FIGHT;
         }
         return orders;
+    }
+
+    /**
+     * Whether an armed enemy inside the arc's sector could have landed a hit on a member: the member stands within
+     * the enemy's known ground reach plus {@link #SECTOR_HIT_MARGIN}, edge to edge.
+     *
+     * @param distance pixels, edge to edge, from the enemy to the hit member
+     * @param reach the enemy's known ground reach in pixels, see {@link info.tracking.EnemyReachMemory#groundReach}
+     * @return true when the hit counts toward {@link UnderFire#HIT}
+     */
+    static boolean inSectorReach(int distance, int reach) {
+        return distance <= reach + SECTOR_HIT_MARGIN;
     }
 
     /**
@@ -458,25 +480,40 @@ public final class ContainmentCollapse {
         private final boolean staticClear;
         private final int flanks;
         private final Position enemyCentroid;
+        private final boolean favourable;
         private final UnderFire underFire;
-        private final int runStartFrame;
+        private final EntryFrames entryFrames;
 
         Read(Outcome outcome, int enemiesInSector, double ratio, boolean staticClear, int flanks,
-             Position enemyCentroid) {
-            this(outcome, enemiesInSector, ratio, staticClear, flanks, enemyCentroid, UnderFire.NONE,
-                    CollapseEntryRun.NO_RUN);
-        }
-
-        private Read(Outcome outcome, int enemiesInSector, double ratio, boolean staticClear, int flanks,
-                     Position enemyCentroid, UnderFire underFire, int runStartFrame) {
+             Position enemyCentroid, boolean favourable) {
             this.outcome = outcome;
             this.enemiesInSector = enemiesInSector;
             this.ratio = ratio;
             this.staticClear = staticClear;
             this.flanks = flanks;
             this.enemyCentroid = enemyCentroid;
+            this.favourable = favourable;
+            this.underFire = UnderFire.NONE;
+            this.entryFrames = EntryFrames.NONE;
+        }
+
+        private Read(Read source, Outcome outcome, UnderFire underFire, EntryFrames entryFrames) {
+            this.outcome = outcome;
+            this.enemiesInSector = source.enemiesInSector;
+            this.ratio = source.ratio;
+            this.staticClear = source.staticClear;
+            this.flanks = source.flanks;
+            this.enemyCentroid = source.enemyCentroid;
+            this.favourable = source.favourable;
             this.underFire = underFire;
-            this.runStartFrame = runStartFrame;
+            this.entryFrames = entryFrames;
+        }
+
+        /**
+         * @return frame of the first pass of the squad's entry run, {@link CollapseEntryRun#NO_RUN} when none
+         */
+        int getRunStartFrame() {
+            return entryFrames.getRunStart();
         }
 
         /**
@@ -484,11 +521,33 @@ public final class ContainmentCollapse {
          *
          * @param gated the outcome after the gate
          * @param firing whether the enemy was already engaging the squad
-         * @param runStart frame of the first pass of the squad's entry run, {@link CollapseEntryRun#NO_RUN} when none
+         * @param frames the frames the squad's entry run and its streak of favourable reads started on
          * @return the read with the gated outcome
          */
-        Read gated(Outcome gated, UnderFire firing, int runStart) {
-            return new Read(gated, enemiesInSector, ratio, staticClear, flanks, enemyCentroid, firing, runStart);
+        Read gated(Outcome gated, UnderFire firing, EntryFrames frames) {
+            return new Read(this, gated, firing, frames);
+        }
+    }
+
+    /**
+     * The frames a containing squad's collapse tests started on, as the telemetry reports them: the first pass of the
+     * entry run, see {@link CollapseEntryRun}, and the first of the unbroken streak of favourable reads, see
+     * {@link #read}, the current one included. Either is {@link CollapseEntryRun#NO_RUN} when none is under way.
+     */
+    @Getter
+    public static final class EntryFrames {
+        static final EntryFrames NONE = new EntryFrames(CollapseEntryRun.NO_RUN, CollapseEntryRun.NO_RUN);
+
+        private final int runStart;
+        private final int firstFavourable;
+
+        /**
+         * @param runStart frame of the first pass of the entry run
+         * @param firstFavourable frame of the first favourable read of the current streak
+         */
+        public EntryFrames(int runStart, int firstFavourable) {
+            this.runStart = runStart;
+            this.firstFavourable = firstFavourable;
         }
     }
 

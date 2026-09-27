@@ -75,7 +75,11 @@ import java.util.stream.Collectors;
  * under fire skips the entry run and the wrap), and every test carries collapse_run_start_frame, the frame of the
  * first pass of the squad's entry run, -1 when none is under way. The members of a squad take fight targets on the
  * frame of its CONTAIN_COLLAPSE row, so that frame less collapse_run_start_frame is the delay from the first passing
- * test to the attack. CONTAIN_COLLAPSE_COMMIT is emitted on the frame the wrap ends and every member fights, which
+ * test to the attack. Every test also carries collapse_first_favourable_frame, the first frame of the squad's unbroken
+ * streak of favourable reads (at least the minimum armed enemies in the sector and the sector sim at or above the
+ * engage threshold, whatever the outcome), -1 when the read is not favourable; that frame measures the delay from the
+ * first favourable read to the attack, including refusals before the run, and it is set for a squad under fire
+ * that has no run. CONTAIN_COLLAPSE_COMMIT is emitted on the frame the wrap ends and every member fights, which
  * changes no status, with collapse_wrap_end SKIPPED (under fire, on the collapse frame), ARRIVED or CAP.
  *
  * <p>sim_enemy_air_share and sim_our_air_share are the shares of each side's priced strength that fly. Each unit on
@@ -109,7 +113,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
             + "move_out_threshold,move_out_strength,pulled_unit_ids,released_unit_ids,"
             + "collapse_outcome,collapse_enemies_in_sector,collapse_sim_ratio,"
             + "collapse_flank_count,collapse_static_clear,contain_arc_distance,"
-            + "collapse_under_fire,collapse_run_start_frame,collapse_wrap_end";
+            + "collapse_under_fire,collapse_run_start_frame,collapse_wrap_end,collapse_first_favourable_frame";
 
     private static final int FLUSH_INTERVAL_FRAMES = 480;
     private static final String EVENT_STATUS_CHANGE = "STATUS_CHANGE";
@@ -330,16 +334,17 @@ public class SquadDecisionLogger implements SquadDecisionSink {
     @Override
     public void onContainmentCollapseEvaluated(Squad squad, ContainmentCollapse.Outcome outcome, int enemiesInSector,
                                                double ratio, int flanks, boolean staticClear,
-                                               ContainmentCollapse.UnderFire underFire, int runStartFrame) {
+                                               ContainmentCollapse.UnderFire underFire,
+                                               ContainmentCollapse.EntryFrames entryFrames) {
         if (disabled) {
             return;
         }
 
         try {
             fillCollapse(decisionFor(squad), outcome, enemiesInSector, ratio, flanks, staticClear, underFire,
-                    runStartFrame);
+                    entryFrames);
             SquadDecision context = new SquadDecision();
-            fillCollapse(context, outcome, enemiesInSector, ratio, flanks, staticClear, underFire, runStartFrame);
+            fillCollapse(context, outcome, enemiesInSector, ratio, flanks, staticClear, underFire, entryFrames);
             String id = squad.getId();
             if (outcome == ContainmentCollapse.Outcome.COLLAPSE) {
                 lastCollapseRejection.remove(id);
@@ -362,14 +367,16 @@ public class SquadDecisionLogger implements SquadDecisionSink {
 
     private static void fillCollapse(SquadDecision decision, ContainmentCollapse.Outcome outcome, int enemiesInSector,
                                      double ratio, int flanks, boolean staticClear,
-                                     ContainmentCollapse.UnderFire underFire, int runStartFrame) {
+                                     ContainmentCollapse.UnderFire underFire,
+                                     ContainmentCollapse.EntryFrames entryFrames) {
         decision.setCollapseOutcome(outcome.name());
         decision.setCollapseEnemiesInSector(enemiesInSector);
         decision.setCollapseRatio(ratio);
         decision.setCollapseFlanks(flanks);
         decision.setCollapseStaticClear(SquadDecision.tristate(staticClear));
         decision.setCollapseUnderFire(underFire.name());
-        decision.setCollapseRunStartFrame(runStartFrame);
+        decision.setCollapseRunStartFrame(entryFrames.getRunStart());
+        decision.setCollapseFirstFavourableFrame(entryFrames.getFirstFavourable());
     }
 
     @Override
@@ -813,14 +820,15 @@ public class SquadDecisionLogger implements SquadDecisionSink {
      * arc's sector, the squad's strength ratio over exactly those enemies, the members that flank in a collapse,
      * whether the enemy centroid is clear of static defence reach, then the distance from the squad to the nearest
      * point of an arc it was offered, then how the enemy was already engaging a squad whose test passed, the frame
-     * its collapse entry run started and how a collapse's wrap ended.
+     * its collapse entry run started, how a collapse's wrap ended and the frame its streak of favourable reads started.
      *
      * <p>The collapse cells are filled on a frame a containing squad had an armed enemy inside its sector, the arc
      * distance on a frame a squad was offered an arc, the wrap end on the frame a collapse's wrap ended. Every other
      * row carries NONE and the not evaluated sentinels.
      *
      * @param context the decision the row is built from
-     * @return the collapse cells, the arc distance cell, and the under fire, entry run and wrap end cells
+     * @return the collapse cells, the arc distance cell, and the under fire, entry run, wrap end and first favourable
+     *     read cells
      */
     static List<String> collapseCells(SquadDecision context) {
         List<String> fields = new ArrayList<>();
@@ -833,6 +841,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         fields.add(context.getCollapseUnderFire());
         fields.add(String.valueOf(context.getCollapseRunStartFrame()));
         fields.add(context.getCollapseWrapEnd());
+        fields.add(String.valueOf(context.getCollapseFirstFavourableFrame()));
         return fields;
     }
 

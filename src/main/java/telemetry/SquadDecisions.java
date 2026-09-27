@@ -84,13 +84,13 @@ public final class SquadDecisions {
     public static void containmentCollapseEvaluated(Squad squad, ContainmentCollapse.Outcome outcome,
                                                     int enemiesInSector, double ratio, int flanks,
                                                     boolean staticClear, ContainmentCollapse.UnderFire underFire,
-                                                    int runStartFrame) {
+                                                    ContainmentCollapse.EntryFrames entryFrames) {
         SquadDecisionSink current = sink;
         if (current == null) {
             return;
         }
         current.onContainmentCollapseEvaluated(squad, outcome, enemiesInSector, ratio, flanks, staticClear, underFire,
-                runStartFrame);
+                entryFrames);
     }
 
     public static void collapseWrapEnded(Squad squad, ContainmentCollapse.WrapEnd wrapEnd) {

@@ -64,6 +64,7 @@ public class Squad implements Comparable<Squad> {
     private int containRadius = 0;
     private ContainmentCollapse.Maneuver collapse;
     protected int collapseLockedUntilFrame = 0;
+    protected int collapseCommitHeldUntilFrame = 0;
     private CollapseEntryRun collapseEntryRun = new CollapseEntryRun();
     private final ContainmentAttrition containmentAttrition = new ContainmentAttrition();
     protected Time fightHysteresis = new Time(0, 3);
@@ -239,7 +240,8 @@ public class Squad implements Comparable<Squad> {
      *
      * <p>Locks fold to the latest expiry among the sources, except a retreat lock armed by a contain's attrition
      * exit, which is not inherited. A collapse under way in a FIGHT source is carried on when the merged squad is in
-     * FIGHT: its flanks keep their wrap orders, and every other member fights.
+     * FIGHT: its flanks keep their wrap orders, and every other member fights. So is the hold of a collapse a FIGHT
+     * source committed, see {@link #isCollapseCommitHeld}; any other merged status drops it.
      *
      * <p>The collapse gate carries on too: the cooldown folds to the latest expiry among the sources, and a collapse
      * the merge drops holds the squad off another until one cooldown after the latest frame its wrap could have
@@ -286,6 +288,10 @@ public class Squad implements Comparable<Squad> {
             }
             this.containLockedUntilFrame = Math.max(this.containLockedUntilFrame, source.containLockedUntilFrame);
             this.collapseLockedUntilFrame = Math.max(this.collapseLockedUntilFrame, source.collapseLockedUntilFrame);
+            if (source.status == SquadStatus.FIGHT) {
+                this.collapseCommitHeldUntilFrame = Math.max(this.collapseCommitHeldUntilFrame,
+                        source.collapseCommitHeldUntilFrame);
+            }
         }
 
         this.status = mergedStatus;
@@ -299,6 +305,9 @@ public class Squad implements Comparable<Squad> {
         }
         this.commitFrame = earliestCommit;
         this.collapse = mergedStatus == SquadStatus.FIGHT ? inheritedCollapse : null;
+        if (mergedStatus != SquadStatus.FIGHT) {
+            this.collapseCommitHeldUntilFrame = 0;
+        }
         this.collapseEntryRun = mergedStatus == SquadStatus.CONTAIN && inheritedEntryRun != null
                 ? new CollapseEntryRun(inheritedEntryRun)
                 : new CollapseEntryRun();
@@ -503,6 +512,28 @@ public class Squad implements Comparable<Squad> {
     }
 
     /**
+     * Commits a collapse: arms the fight lock and holds the squad in FIGHT until that lock expires, see
+     * {@link #isCollapseCommitHeld}.
+     *
+     * @param currentFrame frame of the commit
+     */
+    public void commitCollapse(int currentFrame) {
+        startFightLock(currentFrame);
+        collapseCommitHeldUntilFrame = fightLockedUntilFrame;
+    }
+
+    /**
+     * Whether a committed collapse still holds the squad in FIGHT: the fight lock its commit armed, see
+     * {@link #commitCollapse}, has not expired. A later renewal of the fight lock does not extend the hold.
+     *
+     * @param currentFrame frame of the evaluation
+     * @return true until the commit's fight lock expires
+     */
+    public boolean isCollapseCommitHeld(int currentFrame) {
+        return currentFrame < collapseCommitHeldUntilFrame;
+    }
+
+    /**
      * Records one collapse test of a containing squad and returns how many tests its entry run has passed, see
      * {@link CollapseEntryRun#record}.
      *
@@ -513,6 +544,25 @@ public class Squad implements Comparable<Squad> {
      */
     public int recordCollapseTest(ContainmentCollapse.Outcome outcome, boolean coolingDown, int currentFrame) {
         return collapseEntryRun.record(outcome, coolingDown, currentFrame);
+    }
+
+    /**
+     * Records whether one collapse test of a containing squad read favourable, see
+     * {@link CollapseEntryRun#recordFavourable}.
+     *
+     * @param favourable true when the read was favourable, false when it was not or no test ran
+     * @param currentFrame frame of the test
+     */
+    public void recordCollapseRead(boolean favourable, int currentFrame) {
+        collapseEntryRun.recordFavourable(favourable, currentFrame);
+    }
+
+    /**
+     * @return the frames the collapse entry run and the streak of favourable collapse reads under way started on
+     */
+    public ContainmentCollapse.EntryFrames getCollapseEntryFrames() {
+        return new ContainmentCollapse.EntryFrames(collapseEntryRun.getStartFrame(),
+                collapseEntryRun.getFirstFavourableFrame());
     }
 
     /**

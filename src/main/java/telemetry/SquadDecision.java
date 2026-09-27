@@ -56,6 +56,7 @@ final class SquadDecision {
     private String collapseUnderFire = "NONE";
     private int collapseRunStartFrame = NOT_EVALUATED;
     private String collapseWrapEnd = "NONE";
+    private int collapseFirstFavourableFrame = NOT_EVALUATED;
 
     static int tristate(boolean value) {
         return value ? 1 : 0;

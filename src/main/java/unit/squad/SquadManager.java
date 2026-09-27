@@ -1334,8 +1334,7 @@ public class SquadManager {
                 return;
             }
         }
-        if (squad.getStatus() == SquadStatus.FIGHT && (squad.getCollapse() != null
-                || fightLockHolds(fightLocked, result, enemyMeasured, ratio, engageThreshold))) {
+        if (fightHeld(squad, now, fightLockHolds(fightLocked, result, enemyMeasured, ratio, engageThreshold))) {
             SquadDecisions.lockSuppressed(squad, SquadLock.FIGHT);
             SquadDecisions.pathTaken(squad, DecisionPath.FIGHT_LOCK);
             assignFightTargets(squad, collapseFighters(managedFighters, squad.getCollapse()), false);
@@ -1426,6 +1425,22 @@ public class SquadManager {
      */
     static double strongEngageThreshold(double engageThreshold) {
         return Math.max(engageThreshold, STRONG_ENGAGE_RATIO);
+    }
+
+    /**
+     * Whether a FIGHT squad stays in FIGHT whatever this frame's verdict: a collapse is wrapping, a committed collapse
+     * still holds it, see {@link Squad#isCollapseCommitHeld}, or its fight lock holds against the verdict, see
+     * {@link #fightLockHolds}. A collapse was judged on the enemies inside the arc's sector, so a whole-squad RETREAT
+     * read around the squad's center does not undo it.
+     *
+     * @param squad fight squad
+     * @param now current frame
+     * @param fightLockHolds whether the squad's fight lock holds against this frame's verdict
+     * @return true when the squad stays in FIGHT and this frame's verdict is suppressed
+     */
+    static boolean fightHeld(Squad squad, int now, boolean fightLockHolds) {
+        return squad.getStatus() == SquadStatus.FIGHT
+                && (squad.getCollapse() != null || squad.isCollapseCommitHeld(now) || fightLockHolds);
     }
 
     /**
@@ -1598,13 +1613,14 @@ public class SquadManager {
      * {@link #CONTAIN_ARRIVAL_DISTANCE} from every arc point stays out of CONTAIN and keeps running the sim on its
      * way, so it answers the enemies it meets in transit rather than walking through them to a line at the choke. A
      * squad wrapping in a collapse never takes an arc: the collapse ends only in its commit or in the squad leaving
-     * FIGHT, see {@link #holdCollapseWrap}.
+     * FIGHT, see {@link #holdCollapseWrap}. Nor does a squad a committed collapse still holds, see
+     * {@link Squad#isCollapseCommitHeld}.
      *
      * @param squad squad offered an arc
      * @return true if the squad took the arc
      */
     private boolean enterContainment(Squad squad) {
-        if (squad.getCollapse() != null) return false;
+        if (squad.getCollapse() != null || squad.isCollapseCommitHeld(game.getFrameCount())) return false;
         Arc arc = containmentArc(squad);
         if (arc == null) return false;
         double arcDistance = squad.getCenter().getDistance(arc.closestPosition(squad.getCenter()));
@@ -1760,7 +1776,7 @@ public class SquadManager {
         if (collapseRead != null) {
             SquadDecisions.containmentCollapseEvaluated(squad, collapseRead.getOutcome(),
                     collapseRead.getEnemiesInSector(), collapseRead.getRatio(), collapseRead.getFlanks(),
-                    collapseRead.isStaticClear(), collapseRead.getUnderFire(), collapseRead.getRunStartFrame());
+                    collapseRead.isStaticClear(), collapseRead.getUnderFire(), collapseRead.getEntryFrames());
         }
         ContainmentVerdict verdict = rankCollapse(basesUnderAttack, collapse, containmentVerdict(basesUnderAttack,
                 bleeding, hit, throttled, engaged, timedOut, canBreak, shouldContain));
@@ -1818,30 +1834,33 @@ public class SquadManager {
 
     /**
      * Applies the collapse hysteresis gate, see {@link ContainmentCollapse#gate}, to this evaluation's collapse test.
-     * The test is recorded on the squad's entry run first, see {@link CollapseEntryRun#record}. A squad under fire
+     * The test is recorded on the squad's entry run first, see {@link CollapseEntryRun#record} and
+     * {@link CollapseEntryRun#recordFavourable}. A squad under fire
      * commits on its first pass outside the cooldown.
      *
      * @param squad containing squad
      * @param read this evaluation's collapse test, or null when none ran or no armed enemy stood in the sector
      * @param underFire whether the enemy is already engaging the squad, NONE when the test did not pass
      * @param now current frame
-     * @return the read with the gated outcome, the under fire reason and the frame the entry run started, or null
-     *     when the read was null
+     * @return the read with the gated outcome, the under fire reason and the frames the entry run and the streak of
+     *     favourable reads started, or null when the read was null
      */
     static ContainmentCollapse.Read gateCollapse(Squad squad, ContainmentCollapse.Read read,
                                                  ContainmentCollapse.UnderFire underFire, int now) {
         boolean coolingDown = squad.isCollapseLocked(now);
         int passes = squad.recordCollapseTest(read == null ? null : read.getOutcome(), coolingDown, now);
+        squad.recordCollapseRead(read != null && read.isFavourable(), now);
         if (read == null) {
             return null;
         }
         return read.gated(ContainmentCollapse.gate(read.getOutcome(), coolingDown, passes, underFire), underFire,
-                squad.getCollapseRunStartFrame());
+                squad.getCollapseEntryFrames());
     }
 
     /**
      * Whether the enemy is already engaging a containing squad: a collapse member lost hit points within
-     * {@link ContainmentCollapse#UNDER_FIRE_FRAMES} while not standing in a Psionic Storm or irradiated, or an armed
+     * {@link ContainmentCollapse#UNDER_FIRE_FRAMES} while not standing in a Psionic Storm or irradiated and within
+     * reach of an armed enemy inside the arc's sector, see {@link ContainmentCollapse#inSectorReach}, or an armed
      * enemy stands within {@link ContainmentCollapse#MELEE_CONTACT_DISTANCE} of one.
      *
      * @param squad containing squad
@@ -1850,15 +1869,31 @@ public class SquadManager {
      */
     private ContainmentCollapse.UnderFire collapseUnderFire(Squad squad, int now) {
         List<ManagedUnit> members = collapseMembers(squad);
+        List<Unit> armedInSector = new ArrayList<>();
+        for (Unit enemy : sectorEnemies(squad.getContainmentArc())) {
+            if (canPressTheArc(enemy)) {
+                armedInSector.add(enemy);
+            }
+        }
         boolean hit = false;
         for (ManagedUnit member : members) {
             if (member.wasHitSince(now - ContainmentCollapse.UNDER_FIRE_FRAMES)
-                    && !gameState.isTakingNonWeaponDamage(member)) {
+                    && !gameState.isTakingNonWeaponDamage(member) && inSectorReach(member, armedInSector)) {
                 hit = true;
                 break;
             }
         }
         return ContainmentCollapse.UnderFire.of(hit, armedEnemyInMeleeContact(members));
+    }
+
+    private boolean inSectorReach(ManagedUnit member, List<Unit> armedInSector) {
+        for (Unit enemy : armedInSector) {
+            int reach = gameState.getReachMemory().groundReach(enemy.getType());
+            if (ContainmentCollapse.inSectorReach(enemy.getDistance(member.getUnit()), reach)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private boolean armedEnemyInMeleeContact(List<ManagedUnit> members) {
@@ -1891,15 +1926,9 @@ public class SquadManager {
         if (arc == null || arc.isEmpty() || !ContainmentCollapse.appliesAgainst(gameState.getOpponentRace())) {
             return null;
         }
-        List<Unit> inSector = new ArrayList<>();
+        List<Unit> inSector = sectorEnemies(arc);
         List<Position> armed = new ArrayList<>();
-        for (Unit enemy : gameState.getVisibleEnemyUnits()) {
-            UnitType type = enemy.getType();
-            if (!type.canMove() || type.isBuilding() || type.isWorker()
-                    || !ContainmentCollapse.inSector(arc.getCenter(), arc.getPositions(), enemy.getPosition())) {
-                continue;
-            }
-            inSector.add(enemy);
+        for (Unit enemy : inSector) {
             if (canPressTheArc(enemy)) {
                 armed.add(enemy.getPosition());
             }
@@ -1916,8 +1945,28 @@ public class SquadManager {
     }
 
     /**
+     * Visible mobile enemies inside an arc's sector, workers excluded, see {@link ContainmentCollapse#inSector}.
+     *
+     * @param arc the containing squad's arc
+     * @return the enemies in the sector
+     */
+    private List<Unit> sectorEnemies(Arc arc) {
+        List<Unit> inSector = new ArrayList<>();
+        for (Unit enemy : gameState.getVisibleEnemyUnits()) {
+            UnitType type = enemy.getType();
+            if (type.canMove() && !type.isBuilding() && !type.isWorker()
+                    && ContainmentCollapse.inSector(arc.getCenter(), arc.getPositions(), enemy.getPosition())) {
+                inSector.add(enemy);
+            }
+        }
+        return inSector;
+    }
+
+    /**
      * Takes a containing squad off its arc and onto the enemies inside it: FIGHT under a fight lock. A squad under
-     * fire, see {@link ContainmentCollapse.UnderFire}, skips the wrap and every member fights from this frame.
+     * fire, see {@link ContainmentCollapse.UnderFire}, skips the wrap, commits, see {@link Squad#commitCollapse}, and
+     * every member fights from this frame; the commit holds it in FIGHT whatever the sim around its center reads
+     * until the commit's fight lock expires.
      * Otherwise the centre fights from this frame while the flanks attack-move past the enemy centroid, see
      * {@link #holdCollapseWrap}. The collapse test admits only a squad large enough to flank, see
      * {@link ContainmentCollapse#MIN_COLLAPSE_MEMBERS}, and only once it has passed the hysteresis gate, see
@@ -1937,11 +1986,12 @@ public class SquadManager {
         }
         SquadDecisions.pathTaken(squad, DecisionPath.CONTAIN_COLLAPSE);
         squad.startCollapseLock(now);
-        squad.startFightLock(now);
         if (maneuver == null) {
+            squad.commitCollapse(now);
             assignFightTargets(squad, squad.getMembers(), true);
             return;
         }
+        squad.startFightLock(now);
         squad.setCollapse(maneuver);
         assignFightTargets(squad, collapseFighters(squad.getMembers(), maneuver), true);
         holdCollapseWrap(squad);
@@ -2032,9 +2082,9 @@ public class SquadManager {
      * fighting what it meets on the way, while every other member fights the targets the fight tick gave it, and the
      * fight tick holds the squad in FIGHT whatever the sim around its center reads: the collapse was judged on the
      * enemies inside the arc. The wrap ends when every flank has arrived or it has run out its frames, see
-     * {@link ContainmentCollapse#wrapEnd}: the flanks then fight too and the fight lock is renewed when the squad has
-     * not lost supply since the collapse. A squad that has left FIGHT drops the wrap. Either way the collapse ends
-     * and its cooldown runs from this frame, see {@link Squad#endCollapse}.
+     * {@link ContainmentCollapse#wrapEnd}: the flanks then fight too and, when the squad has not lost supply since
+     * the collapse, the collapse commits, see {@link Squad#commitCollapse}. A squad that has left FIGHT drops the
+     * wrap. Either way the collapse ends and its cooldown runs from this frame, see {@link Squad#endCollapse}.
      *
      * @param squad fight squad
      */
@@ -2055,7 +2105,7 @@ public class SquadManager {
             SquadDecisions.collapseWrapEnded(squad, wrapEnd);
             SquadDecisions.pathTaken(squad, DecisionPath.CONTAIN_COLLAPSE_COMMIT);
             if (squad.canRenewFightLock(now)) {
-                squad.startFightLock(now);
+                squad.commitCollapse(now);
             }
             assignFightTargets(squad, squad.getMembers(), false);
             return;

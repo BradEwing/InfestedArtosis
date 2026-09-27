@@ -106,11 +106,13 @@ public interface SquadDecisionSink {
      * @param flanks members that flank in a collapse of this squad
      * @param staticClear true when the enemy centroid is clear of static defence reach
      * @param underFire whether the enemy was already engaging the squad, NONE unless the test passed
-     * @param runStartFrame frame of the first pass of the squad's collapse entry run, -1 when no run is under way
+     * @param entryFrames frames of the first pass of the squad's collapse entry run and of the first favourable read
+     *     of its current streak, -1 each when none is under way
      */
     void onContainmentCollapseEvaluated(Squad squad, ContainmentCollapse.Outcome outcome, int enemiesInSector,
                                         double ratio, int flanks, boolean staticClear,
-                                        ContainmentCollapse.UnderFire underFire, int runStartFrame);
+                                        ContainmentCollapse.UnderFire underFire,
+                                        ContainmentCollapse.EntryFrames entryFrames);
 
     /**
      * The wrap of a collapse ended and every member fights: skipped when the squad was under fire, the flanks
