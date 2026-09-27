@@ -29,6 +29,19 @@ class FixedFireTest {
     private static final int HURT = 10000;
 
     @Test
+    void airOnlyStaticDefenceIsNotFixedFire() {
+        StaticDefenseZone turret = new StaticDefenseZone(UnitType.Terran_Missile_Turret, TANK, 224);
+        StaticDefenseZone spore = new StaticDefenseZone(UnitType.Zerg_Spore_Colony, TANK, 224);
+        StaticDefenseZone cannon = new StaticDefenseZone(UnitType.Protoss_Photon_Cannon, TANK, 224);
+        StaticDefenseZone sunken = new StaticDefenseZone(UnitType.Zerg_Sunken_Colony, TANK, 224);
+
+        assertEquals(Arrays.asList(cannon, sunken),
+                FixedFire.fixedFireZones(Arrays.asList(turret, spore, cannon, sunken)));
+        assertFalse(FixedFire.firesFromWhereItStands(UnitType.Terran_Missile_Turret));
+        assertFalse(FixedFire.firesFromWhereItStands(UnitType.Zerg_Spore_Colony));
+    }
+
+    @Test
     void fixedFireIsBuildingsSiegedTanksAndLurkers() {
         StaticDefenseZone bunker = new StaticDefenseZone(UnitType.Terran_Bunker, TANK, 160);
         StaticDefenseZone lurker = new StaticDefenseZone(UnitType.Zerg_Lurker, TANK, 208);
@@ -124,16 +137,35 @@ class FixedFireTest {
     }
 
     @Test
-    void aSkipIsWrittenOncePerAttackerAndTargetPerCooldown() {
+    void aSkipIsWrittenOncePerAttackerAndZonePerCooldown() {
         FixedFire fire = new FixedFire();
-        List<StaticDefenseZone> zones = Collections.singletonList(TANK_ZONE);
-        fire.recordHurt(INSIDE, zones, PADDING, HURT);
-        int start = fire.cooldownStart(TANK_ZONE, HURT);
+        fire.recordHurt(INSIDE, Collections.singletonList(TANK_ZONE), PADDING, HURT);
 
-        assertEquals(HURT, start);
-        assertTrue(fire.firstSkip(7, 42, start));
-        assertFalse(fire.firstSkip(7, 42, start));
-        assertTrue(fire.firstSkip(8, 42, start));
+        assertTrue(fire.firstSkip(7, TANK_ZONE, HURT));
+        assertFalse(fire.firstSkip(7, TANK_ZONE, HURT + 1));
+        assertTrue(fire.firstSkip(8, TANK_ZONE, HURT + 1));
+    }
+
+    @Test
+    void aSkipInsideAnotherCoolingZoneIsWrittenForThatZone() {
+        FixedFire fire = new FixedFire();
+        StaticDefenseZone bunker = new StaticDefenseZone(UnitType.Terran_Bunker, INSIDE, 160);
+        fire.recordHurt(INSIDE, Arrays.asList(TANK_ZONE, bunker), PADDING, HURT);
+
+        assertTrue(fire.firstSkip(7, TANK_ZONE, HURT));
+        assertTrue(fire.firstSkip(7, bunker, HURT));
+        assertFalse(fire.firstSkip(7, bunker, HURT));
+    }
+
+    @Test
+    void aSkipOfAZoneSeenAFewPixelsAwayIsNotWrittenAgain() {
+        FixedFire fire = new FixedFire();
+        fire.recordHurt(INSIDE, Collections.singletonList(TANK_ZONE), PADDING, HURT);
+        StaticDefenseZone seenAgain = new StaticDefenseZone(SIEGED, new Position(TANK.getX() + 8, TANK.getY()),
+                TANK_REACH);
+
+        assertTrue(fire.firstSkip(7, TANK_ZONE, HURT));
+        assertFalse(fire.firstSkip(7, seenAgain, HURT + 5));
     }
 
     @Test
@@ -141,15 +173,13 @@ class FixedFireTest {
         FixedFire fire = new FixedFire();
         List<StaticDefenseZone> zones = Collections.singletonList(TANK_ZONE);
         fire.recordHurt(INSIDE, zones, PADDING, HURT);
-        assertTrue(fire.firstSkip(7, 42, fire.cooldownStart(TANK_ZONE, HURT)));
+        assertTrue(fire.firstSkip(7, TANK_ZONE, HURT));
         int later = HURT + FixedFire.COOLDOWN_FRAMES * 3;
         for (int frame = HURT + 100; frame <= later; frame += 100) {
             fire.recordHurt(INSIDE, zones, PADDING, frame);
             fire.expire(frame);
+            assertFalse(fire.firstSkip(7, TANK_ZONE, frame));
         }
-
-        assertEquals(HURT, fire.cooldownStart(TANK_ZONE, later));
-        assertFalse(fire.firstSkip(7, 42, fire.cooldownStart(TANK_ZONE, later)));
     }
 
     @Test
@@ -157,18 +187,71 @@ class FixedFireTest {
         FixedFire fire = new FixedFire();
         List<StaticDefenseZone> zones = Collections.singletonList(TANK_ZONE);
         fire.recordHurt(INSIDE, zones, PADDING, HURT);
-        assertTrue(fire.firstSkip(7, 42, fire.cooldownStart(TANK_ZONE, HURT)));
+        assertTrue(fire.firstSkip(7, TANK_ZONE, HURT));
         int again = HURT + FixedFire.COOLDOWN_FRAMES + 10;
         fire.expire(again);
         fire.recordHurt(INSIDE, zones, PADDING, again);
 
-        assertEquals(again, fire.cooldownStart(TANK_ZONE, again));
-        assertTrue(fire.firstSkip(7, 42, fire.cooldownStart(TANK_ZONE, again)));
+        assertTrue(fire.firstSkip(7, TANK_ZONE, again));
     }
 
     @Test
-    void aZoneNotCoolingHasNoCooldownStart() {
-        assertEquals(-1, new FixedFire().cooldownStart(TANK_ZONE, HURT));
+    void aZoneNotCoolingWritesNoSkip() {
+        assertFalse(new FixedFire().firstSkip(7, TANK_ZONE, HURT));
+    }
+
+    @Test
+    void theSiegedTankZonesAreTheTanksAmongFixedFire() {
+        StaticDefenseZone bunker = new StaticDefenseZone(UnitType.Terran_Bunker, TANK, 160);
+        StaticDefenseZone lurker = new StaticDefenseZone(UnitType.Zerg_Lurker, TANK, 208);
+
+        assertEquals(Collections.singletonList(TANK_ZONE),
+                FixedFire.siegedTankZones(Arrays.asList(bunker, TANK_ZONE, lurker)));
+    }
+
+    @Test
+    void aLurkerWouldFireOnATargetFromInsideTheTanksReach() {
+        Position lurker = new Position(TANK.getX(), TANK.getY() + 700);
+        Position target = new Position(TANK.getX(), TANK.getY() + 200);
+        double distance = lurker.getDistance(target);
+
+        assertSame(TANK_ZONE, FixedFire.firingPointZone(lurker, target, distance, LURKER_RANGE,
+                Collections.singletonList(TANK_ZONE), PADDING));
+    }
+
+    @Test
+    void aTargetFiredOnFromOutsideTheTanksReachIsKept() {
+        Position lurker = new Position(TANK.getX(), TANK.getY() + 900);
+        Position target = new Position(TANK.getX(), TANK.getY() + 500);
+        double distance = lurker.getDistance(target);
+
+        assertNull(FixedFire.firingPointZone(lurker, target, distance, LURKER_RANGE,
+                Collections.singletonList(TANK_ZONE), PADDING));
+    }
+
+    @Test
+    void aTargetFiredOnJustInsideTheReachIsRefused() {
+        int firingDistance = TANK_REACH + PADDING - 10;
+        Position lurker = new Position(TANK.getX(), TANK.getY() + 900);
+        Position target = new Position(TANK.getX(), TANK.getY() + firingDistance - LURKER_RANGE);
+        double distance = lurker.getDistance(target);
+
+        assertSame(TANK_ZONE, FixedFire.firingPointZone(lurker, target, distance, LURKER_RANGE,
+                Collections.singletonList(TANK_ZONE), PADDING));
+    }
+
+    @Test
+    void aTargetAlreadyInTheLurkersRangeIsNeverRefused() {
+        assertNull(FixedFire.firingPointZone(INSIDE, TANK, LURKER_RANGE, LURKER_RANGE,
+                Collections.singletonList(TANK_ZONE), PADDING));
+    }
+
+    @Test
+    void noTankZonesRefuseNothing() {
+        Position lurker = new Position(TANK.getX(), TANK.getY() + 700);
+
+        assertNull(FixedFire.firingPointZone(lurker, TANK, lurker.getDistance(TANK), LURKER_RANGE,
+                Collections.emptyList(), PADDING));
     }
 
     @Test

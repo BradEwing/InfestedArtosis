@@ -2,21 +2,22 @@ package unit.squad;
 
 import bwapi.Position;
 import bwapi.UnitType;
+import info.tracking.EnemyReachMemory;
 import util.StaticDefenseZone;
+import util.Vec2;
 
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.function.Predicate;
 
 /**
  * Ground an enemy fires on from where it stands, and the cooldown on targets inside it.
  *
- * <p>Fixed fire is the reach of a building, a sieged tank or a Lurker; a hurt mark is not fixed fire. When one of
+ * <p>Fixed fire is the reach of a building, a sieged tank or a Lurker that has a ground weapon; a hurt mark is not
+ * fixed fire, and neither is a Missile Turret or a Spore Colony. When one of
  * our units is hurt inside a fixed fire zone, the zone cools for {@link #COOLDOWN_FRAMES} frames from the last hurt
  * inside it. While it cools, a fighter whose squad is not committing to the fight skips any target inside it that
  * stands out of the fighter's own range, see {@link #skippingZone}. A zone is matched across frames by its type and a
@@ -44,16 +45,33 @@ final class FixedFire {
     static final int MAX_HOLD_STEPS = 6;
 
     private final List<CoolingZone> cooling = new ArrayList<>();
-    private final Map<Long, Integer> skipsLogged = new HashMap<>();
 
     /**
-     * Whether a zone of this type is fixed fire.
+     * Whether a zone of this type is fixed ground fire.
      *
      * @param type type the zone was built around, {@link UnitType#None} for a hurt mark
-     * @return true for a building, a sieged tank or a Lurker
+     * @return true for a building, a sieged tank or a Lurker with a ground weapon, see
+     *     {@link EnemyReachMemory#baseGroundRange}; false for an air-only building such as a Missile Turret
      */
     static boolean firesFromWhereItStands(UnitType type) {
-        return type.isBuilding() || type == UnitType.Terran_Siege_Tank_Siege_Mode || type == UnitType.Zerg_Lurker;
+        return (type.isBuilding() || type == UnitType.Terran_Siege_Tank_Siege_Mode || type == UnitType.Zerg_Lurker)
+                && EnemyReachMemory.baseGroundRange(type) > 0;
+    }
+
+    /**
+     * The sieged-tank zones among fixed fire zones.
+     *
+     * @param zones fixed fire zones
+     * @return the zones around sieged tanks
+     */
+    static List<StaticDefenseZone> siegedTankZones(Collection<StaticDefenseZone> zones) {
+        List<StaticDefenseZone> kept = new ArrayList<>();
+        for (StaticDefenseZone zone : zones) {
+            if (zone.getStructure() == UnitType.Terran_Siege_Tank_Siege_Mode) {
+                kept.add(zone);
+            }
+        }
+        return kept;
     }
 
     /**
@@ -127,44 +145,27 @@ final class FixedFire {
     }
 
     /**
-     * The frame the cooldown on a zone began: the first hurt of the run of hurts that has kept it cooling since.
-     *
-     * @param zone the zone
-     * @param now current frame
-     * @return the start frame, or -1 when the zone is not cooling
-     */
-    int cooldownStart(StaticDefenseZone zone, int now) {
-        CoolingZone match = match(zone, now);
-        return match == null ? -1 : match.startFrame;
-    }
-
-    /**
-     * Whether a skip is the first of this attacker and target within one cooldown, so the skip is written once per
-     * attacker and target per cooldown however long the zone keeps cooling.
+     * Whether a skip is the attacker's first inside this zone's cooldown, so a skip is written once per attacker and
+     * zone per cooldown, whatever the number of targets it skips there and however long the zone keeps cooling.
      *
      * @param attackerId the fighter
-     * @param targetId the target skipped
-     * @param cooldownStart the frame the cooldown that skips it began, see {@link #cooldownStart}
-     * @return true the first time the pair is skipped within that cooldown
+     * @param zone the cooling zone that skips a target
+     * @param now current frame
+     * @return true the first time the attacker skips a target inside the zone within its cooldown, false after that
+     *     or when the zone is not cooling
      */
-    boolean firstSkip(int attackerId, int targetId, int cooldownStart) {
-        long key = (long) attackerId << 32 | targetId & 0xffffffffL;
-        Integer logged = skipsLogged.put(key, cooldownStart);
-        return logged == null || logged != cooldownStart;
+    boolean firstSkip(int attackerId, StaticDefenseZone zone, int now) {
+        CoolingZone match = match(zone, now);
+        return match != null && match.skippers.add(attackerId);
     }
 
     /**
-     * Drops the cooldowns that have run out, and the skip records of cooldowns no longer cooling.
+     * Drops the cooldowns that have run out, with the skips written inside them.
      *
      * @param now current frame
      */
     void expire(int now) {
         cooling.removeIf(zone -> now - zone.frame >= COOLDOWN_FRAMES);
-        Set<Integer> liveStarts = new HashSet<>();
-        for (CoolingZone zone : cooling) {
-            liveStarts.add(zone.startFrame);
-        }
-        skipsLogged.values().removeIf(start -> !liveStarts.contains(start));
     }
 
     /**
@@ -213,6 +214,29 @@ final class FixedFire {
             }
         }
         return null;
+    }
+
+    /**
+     * The zone a Lurker would stand in to fire on a target out of its range: the zone covering the point it walks to,
+     * its range short of the target along the straight line to it.
+     *
+     * @param from where the Lurker stands
+     * @param target where the target stands
+     * @param targetDistance edge distance from the Lurker to the target
+     * @param ownRange the Lurker's ground weapon range
+     * @param zones the zones it keeps out of
+     * @param padding pixels added to each zone's reach
+     * @return the zone covering the firing point, or null when the target is in range or the point is clear
+     */
+    static StaticDefenseZone firingPointZone(Position from, Position target, double targetDistance, int ownRange,
+                                             Collection<StaticDefenseZone> zones, int padding) {
+        if (targetDistance <= ownRange || zones.isEmpty()) {
+            return null;
+        }
+        Vec2 toTarget = Vec2.between(from, target);
+        Position firingPoint = toTarget.normalizeToLength(Math.min(toTarget.length(), targetDistance - ownRange))
+                .toPosition(from);
+        return coveringZone(firingPoint, zones, padding);
     }
 
     /**
@@ -285,13 +309,12 @@ final class FixedFire {
     private static final class CoolingZone {
         private final UnitType type;
         private final Position center;
-        private final int startFrame;
+        private final Set<Integer> skippers = new HashSet<>();
         private int frame;
 
         CoolingZone(UnitType type, Position center, int frame) {
             this.type = type;
             this.center = center;
-            this.startFrame = frame;
             this.frame = frame;
         }
     }

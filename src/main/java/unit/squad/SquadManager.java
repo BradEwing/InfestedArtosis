@@ -150,6 +150,7 @@ public class SquadManager {
     private Set<ManagedUnit> outrangedHits = new HashSet<>();
     private final FixedFire fixedFire = new FixedFire();
     private List<StaticDefenseZone> fixedFireZones = Collections.emptyList();
+    private Map<Squad, Integer> committingSince = new HashMap<>();
 
     /**
      * Pixels a Lurker's hold point must lie clear of every fixed fire zone that outranges it for the Lurker to let
@@ -260,16 +261,47 @@ public class SquadManager {
     }
 
     /**
+     * Records, for every fight squad, the frame its unbroken run of committing frames began, see
+     * {@link LurkerHold#committingSince}.
+     *
+     * @param now current frame
+     */
+    private void trackCommitment(int now) {
+        Map<Squad, Integer> tracked = new HashMap<>();
+        for (Squad squad : fightSquads) {
+            Integer since = LurkerHold.committingSince(isCommitting(squad, now), committingSince.get(squad), now);
+            if (since != null) {
+                tracked.put(squad, since);
+            }
+        }
+        committingSince = tracked;
+    }
+
+    /**
+     * Whether a squad's Lurkers commit with it, see {@link LurkerHold#lurkersCommit}: a single ENGAGE verdict does
+     * not release a Lurker's hold or walk it into sieged-tank reach.
+     *
+     * @param squad the squad
+     * @param now current frame
+     * @return true when the squad has been committing for {@link LurkerHold#COMMIT_FRAMES}
+     */
+    private boolean lurkersCommit(Squad squad, int now) {
+        return LurkerHold.lurkersCommit(committingSince.get(squad), now);
+    }
+
+    /**
      * Pulls Lurkers back out of fixed fire and holds them there. A Lurker in a fighting or retreating ground squad
-     * that is not committing is given a point clear of every fixed fire zone that outranges it when it is hurt
-     * inside a sieged tank's reach, or when its squad retreats with it inside such a zone, see
-     * {@link FixedFire#holdPoint}. It then holds that point in its RETREAT role, see {@link Lurker#holdStep}, until
-     * its squad commits, the fire near the point is gone, or its squad leaves FIGHT and RETREAT. A point the fire
-     * has moved onto is found again.
+     * whose Lurkers do not commit, see {@link #lurkersCommit}, is given a point clear of every fixed fire zone that
+     * outranges it when it is hurt inside a sieged tank's reach, or when its squad retreats with it inside such a
+     * zone, see {@link FixedFire#holdPoint}. It then holds that point in its RETREAT role, see
+     * {@link Lurker#holdStep}, until its Lurkers commit, the fire near the point is gone, or its squad leaves FIGHT
+     * and RETREAT. A point the fire has moved onto is found again, and the Lurker is moved to it only when it stands
+     * {@link LurkerHold#MOVE_GAIN} further out, see {@link LurkerHold#worthMoving}.
      *
      * @param now current frame
      */
     private void holdLurkersOutOfFire(int now) {
+        trackCommitment(now);
         Predicate<Position> allowed = walkablePoints();
         int padding = containmentDefensePadding(Collections.singletonList(UnitType.Zerg_Lurker));
         List<StaticDefenseZone> zones = ContainmentPushback.outrangingZones(fixedFireZones,
@@ -278,7 +310,7 @@ public class SquadManager {
             boolean holding = squad.isGroundSquad()
                     && (squad.getStatus() == SquadStatus.FIGHT || squad.getStatus() == SquadStatus.RETREAT);
             String release = !holding ? LurkerHold.RELEASE_STATUS
-                    : isCommitting(squad, now) ? LurkerHold.RELEASE_COMMIT : null;
+                    : lurkersCommit(squad, now) ? LurkerHold.RELEASE_COMMIT : null;
             for (ManagedUnit member : squad.getMembers()) {
                 if (member instanceof Lurker) {
                     holdLurker((Lurker) member, release, zones, padding, allowed, now);
@@ -307,7 +339,8 @@ public class SquadManager {
                 hold != null);
         if (reason != null) {
             Position point = FixedFire.holdPoint(position, zones, padding, allowed);
-            if (point != null) {
+            if (point != null && (hold == null || LurkerHold.worthMoving(RunbyTargeting.zoneMargin(hold, zones,
+                    padding), RunbyTargeting.zoneMargin(point, zones, padding)))) {
                 lurker.holdAt(point);
                 FixedFireTelemetry.lurkerHold(now, lurker.getUnitID(), position, point,
                         FixedFire.coveringZone(position, zones, padding), reason);
@@ -3566,18 +3599,32 @@ public class SquadManager {
         }
 
         int defensePadding = containmentDefensePadding(Collections.singleton(unit.getType()));
-        List<StaticDefenseZone> coolingZones = FixedFire.appliesTo(unit.getType())
-                ? fixedFire.coolingZones(ContainmentPushback.outrangingZones(fixedFireZones,
-                        EnemyReachMemory.baseGroundRange(unit.getType())), game.getFrameCount())
+        int now = game.getFrameCount();
+        boolean lurker = managedUnit instanceof Lurker;
+        boolean committing = lurker ? lurkersCommit(squad, now) : isCommitting(squad, now);
+        List<StaticDefenseZone> outranging = FixedFire.appliesTo(unit.getType())
+                ? ContainmentPushback.outrangingZones(fixedFireZones, EnemyReachMemory.baseGroundRange(unit.getType()))
                 : Collections.emptyList();
-        List<Unit> outOfCoolingFire = withoutTargetsInCoolingFire(managedUnit, uncapped, coolingZones,
-                defensePadding, isCommitting(squad, game.getFrameCount()));
-        if (outOfCoolingFire.isEmpty() && !uncapped.isEmpty()
-                && holdOutOfCoolingFire(managedUnit, coolingZones, defensePadding)) {
+        List<StaticDefenseZone> tankZones = lurker && !committing
+                ? FixedFire.siegedTankZones(outranging)
+                : Collections.emptyList();
+        List<Unit> outOfTankFire = withoutTargetsInTankFire(unit, uncapped, tankZones, defensePadding);
+        if (outOfTankFire.isEmpty() && !uncapped.isEmpty()
+                && holdOutOfFire(managedUnit, tankZones, defensePadding, LurkerHold.TANK_ZONE)) {
+            return;
+        }
+        if (outOfTankFire.isEmpty()) {
+            outOfTankFire = uncapped;
+        }
+        List<StaticDefenseZone> coolingZones = fixedFire.coolingZones(outranging, now);
+        List<Unit> outOfCoolingFire = withoutTargetsInCoolingFire(managedUnit, outOfTankFire, coolingZones,
+                defensePadding, committing);
+        if (outOfCoolingFire.isEmpty() && !outOfTankFire.isEmpty()
+                && holdOutOfFire(managedUnit, coolingZones, defensePadding, LurkerHold.COOLDOWN)) {
             return;
         }
         if (outOfCoolingFire.isEmpty()) {
-            outOfCoolingFire = uncapped;
+            outOfCoolingFire = outOfTankFire;
         }
 
         List<StaticDefenseZone> defenseZones = joinArc == null
@@ -3609,8 +3656,35 @@ public class SquadManager {
     }
 
     /**
+     * The candidate targets a Lurker keeps once those it would stand inside sieged-tank reach to fire on are dropped,
+     * see {@link FixedFire#firingPointZone}.
+     *
+     * @param unit the Lurker
+     * @param candidates its candidate targets
+     * @param tankZones sieged-tank zones it keeps out of, empty when its squad's Lurkers commit
+     * @param padding pixels added to each zone's reach
+     * @return the candidates kept
+     */
+    private List<Unit> withoutTargetsInTankFire(Unit unit, List<Unit> candidates, List<StaticDefenseZone> tankZones,
+                                                int padding) {
+        if (tankZones.isEmpty()) {
+            return candidates;
+        }
+        int ownRange = EnemyReachMemory.baseGroundRange(unit.getType());
+        List<Unit> kept = new ArrayList<>();
+        for (Unit enemy : candidates) {
+            if (FixedFire.firingPointZone(unit.getPosition(), enemy.getPosition(), unit.getDistance(enemy), ownRange,
+                    tankZones, padding) == null) {
+                kept.add(enemy);
+            }
+        }
+        return kept;
+    }
+
+    /**
      * The candidate targets a fighter keeps once those standing in cooling fixed fire are skipped, see
-     * {@link FixedFire#skippingZone}. Each skip is written once per fighter and target per cooldown.
+     * {@link FixedFire#skippingZone}. A skip is written once per fighter and zone per cooldown, see
+     * {@link FixedFire#firstSkip}.
      *
      * @param managedUnit the fighter
      * @param candidates its candidate targets
@@ -3634,7 +3708,7 @@ public class SquadManager {
                     coolingZones, padding, false);
             if (zone == null) {
                 kept.add(enemy);
-            } else if (fixedFire.firstSkip(unit.getID(), enemy.getID(), fixedFire.cooldownStart(zone, now))) {
+            } else if (fixedFire.firstSkip(unit.getID(), zone, now)) {
                 FixedFireTelemetry.targetSkipped(now, unit.getID(), unit.getType(), unit.getPosition(),
                         enemy.getID(), enemy.getType(), enemy.getPosition(), zone);
             }
@@ -3643,18 +3717,20 @@ public class SquadManager {
     }
 
     /**
-     * Keeps a fighter whose every target stands in cooling fixed fire out of that fire, at its wait point, see
-     * {@link FixedFire#waitPoint}. A Lurker within {@link #HOLD_RELEASE_MARGIN} of the fire holds that point in its
-     * RETREAT role, see {@link Lurker#holdStep}, unless it already holds one; any other fighter rallies to it. A
-     * fighter boxed in inside the fire, with no point that gains ground, is left to its targets.
+     * Keeps a fighter whose every target stands in fire it keeps out of, cooling fixed fire or a sieged tank's reach,
+     * out of that fire, at its wait point, see {@link FixedFire#waitPoint}. A Lurker within
+     * {@link #HOLD_RELEASE_MARGIN} of the fire holds that point in its RETREAT role, see {@link Lurker#holdStep},
+     * unless it already holds one; any other fighter rallies to it. A fighter boxed in inside the fire, with no point
+     * that gains ground, is left to its targets.
      *
      * @param managedUnit the fighter
-     * @param coolingZones cooling fixed fire zones that outrange it
+     * @param coolingZones the zones it keeps out of, all outranging it
      * @param padding pixels added to each zone's reach
+     * @param reason the hold reason written for a Lurker given a new hold point
      * @return true when the fighter was held out of the fire, false when it is left to its targets
      */
-    private boolean holdOutOfCoolingFire(ManagedUnit managedUnit, List<StaticDefenseZone> coolingZones,
-                                         int padding) {
+    private boolean holdOutOfFire(ManagedUnit managedUnit, List<StaticDefenseZone> coolingZones, int padding,
+                                  String reason) {
         Lurker lurker = managedUnit instanceof Lurker ? (Lurker) managedUnit : null;
         if (lurker == null || lurker.getHoldPosition() == null) {
             Position position = managedUnit.getPosition();
@@ -3668,7 +3744,7 @@ public class SquadManager {
             }
             lurker.holdAt(point);
             FixedFireTelemetry.lurkerHold(game.getFrameCount(), lurker.getUnitID(), position, point,
-                    FixedFire.coveringZone(position, coolingZones, padding), LurkerHold.COOLDOWN);
+                    FixedFire.coveringZone(position, coolingZones, padding), reason);
         }
         scoutChase.release(managedUnit.getUnit().getID());
         managedUnit.setFightTarget(null);

@@ -12,16 +12,18 @@ import java.util.List;
  * Writes telemetry_fixed_fire.csv: the cooldowns on targets inside fixed fire, the targets they skip, and the
  * points Lurkers hold out of that fire.
  *
- * <p>Fixed fire is the ground an enemy fires on from where it stands: a building, a sieged tank or a Lurker.
- * COOLDOWN_START is written when one of our units is hurt inside such a zone that was not already cooling; the unit
- * columns name the unit hurt and where it stood. COOLDOWN_SKIP is written once per attacker and target per cooldown
- * when a fighter's target is skipped for standing in a cooling zone; the unit columns name the attacker, the target
- * columns the target, and point_x and point_y where the target stood. LURKER_HOLD is written when a Lurker is given
- * a point to hold out of fire, with the point in point_x and point_y and what sent it out in reason: HIT when it was
- * hurt inside a sieged tank's reach, RETREAT when its squad retreated with it inside fixed fire, MOVED when the fire
- * moved onto the point it held, and COOLDOWN when every target it had stood in cooling fire. LURKER_HOLD_RELEASE
- * is written when it lets go of that point, with the point it held and the reason: COMMIT when its squad commits to
- * the fight, CLEAR when no fixed fire is near the point any more, and STATUS when its squad left FIGHT and RETREAT.
+ * <p>Fixed fire is the ground an enemy fires on from where it stands: a building, a sieged tank or a Lurker with a
+ * ground weapon. COOLDOWN_START is written when one of our units is hurt inside such a zone that was not already
+ * cooling; the unit columns name the unit hurt and where it stood. COOLDOWN_SKIP is written once per attacker and
+ * zone per cooldown, for the first target the fighter skips for standing in that cooling zone; the unit columns name
+ * the attacker, the target columns that target, and point_x and point_y where it stood. LURKER_HOLD is written when a
+ * Lurker is given a point to hold out of fire, with the point in point_x and point_y and what sent it out in reason:
+ * HIT when it was hurt inside a sieged tank's reach, RETREAT when its squad retreated with it inside fixed fire, MOVED
+ * when the fire moved onto the point it held and the new point stands further out, COOLDOWN when every target it had
+ * stood in cooling fire, and TANK_ZONE when it would have had to stand inside a known sieged tank's reach to fire on
+ * every target. LURKER_HOLD_RELEASE is written when it lets go of that point, with the point it held and the reason:
+ * COMMIT when its squad has committed to the fight long enough for its Lurkers to commit, CLEAR when no fixed fire is
+ * near the point any more, and STATUS when its squad left FIGHT and RETREAT.
  *
  * <p>The zone columns describe the zone the row is about: its type, None for a hurt mark, its centre and its reach.
  * A column that does not apply to a row is -1, or NONE for a type or reason.
