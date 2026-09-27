@@ -97,7 +97,10 @@ public class HorizonCombatSimulator implements CombatSimulator {
 
         List<Position> visibleBunkers = visibleCompletedBunkers(tracker);
         EnemyReachMemory reachMemory = tracker.getReachMemory();
-        List<BunkerPricing.Leg> legs = BunkerPricing.legs(squad.getMembers());
+        Position squadDestination = airSquad
+                ? null
+                : BunkerPricing.squadDestination(squadCenter, gameState.getLastKnownPositionsOfBuildings());
+        List<BunkerPricing.Leg> legs = BunkerPricing.legs(squad.getMembers(), airSquad, squadDestination);
         List<BunkerPricing.Candidate> bunkers = new ArrayList<>();
         int pricedLooseShooters = 0;
         for (ObservedUnit ou : tracker.getLivingObservedUnits()) {

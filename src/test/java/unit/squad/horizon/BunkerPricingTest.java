@@ -1,6 +1,7 @@
 package unit.squad.horizon;
 
 import bwapi.Position;
+import bwapi.TilePosition;
 import bwapi.UnitSizeType;
 import bwapi.UnitType;
 import info.tracking.EnemyReachMemory;
@@ -31,6 +32,9 @@ class BunkerPricingTest {
     private static final int GROUND_REACH = BunkerPricing.reach(false, 0);
     private static final int CENTROID_DISTANCE_THAT_FLIPPED = 294;
     private static final int TRUST_FRAMES = 48;
+    private static final int RETREATED_CENTROID_DISTANCE = 481;
+    private static final int FLIPPED_BACK_CENTROID_DISTANCE = 219;
+    private static final Position BUILDING_BEHIND_THE_BUNKER = new Position(700, 1000);
 
     private static Position rightOfBunker(Position bunker, int gap) {
         return new Position(bunker.getX() + UnitType.Terran_Bunker.dimensionRight() + gap, bunker.getY());
@@ -297,5 +301,88 @@ class BunkerPricingTest {
 
         assertTrue(HorizonCombatSimulator.bunkerGarrisonMeasured(bunker, 1000 + TRUST_FRAMES));
         assertFalse(HorizonCombatSimulator.bunkerGarrisonMeasured(bunker, 1000 + TRUST_FRAMES + 1));
+    }
+
+    @Test
+    void aGroundSquadThatSteppedBackOutOfReachStillPricesTheBunkerOnItsMarch() {
+        Position member = new Position(BUNKER.getX() + RETREATED_CENTROID_DISTANCE, BUNKER.getY());
+
+        assertEquals(0.0, pricedWeight(BUNKER, GROUND_REACH, standingAt(member)));
+        assertEquals(1.0, pricedWeight(BUNKER, GROUND_REACH,
+                BunkerPricing.memberLegs(member, null, BUILDING_BEHIND_THE_BUNKER)));
+    }
+
+    @Test
+    void aMarchingSquadPricesTheBunkerTheSameInsideAndOutsideItsReach() {
+        Position stepped = new Position(BUNKER.getX() + RETREATED_CENTROID_DISTANCE, BUNKER.getY());
+        Position inside = new Position(BUNKER.getX() + FLIPPED_BACK_CENTROID_DISTANCE, BUNKER.getY());
+
+        assertEquals(pricedWeight(BUNKER, GROUND_REACH, BunkerPricing.memberLegs(inside, null,
+                BUILDING_BEHIND_THE_BUNKER)), pricedWeight(BUNKER, GROUND_REACH,
+                BunkerPricing.memberLegs(stepped, null, BUILDING_BEHIND_THE_BUNKER)));
+    }
+
+    @Test
+    void aMarchThatLeadsAwayFromTheBunkerAddsNothing() {
+        Position member = new Position(BUNKER.getX() + RETREATED_CENTROID_DISTANCE, BUNKER.getY());
+        Position away = new Position(member.getX() + 600, member.getY());
+
+        assertEquals(0.0, pricedWeight(BUNKER, GROUND_REACH, BunkerPricing.memberLegs(member, null, away)));
+    }
+
+    @Test
+    void theMarchLegStopsAtTheLookahead() {
+        Position member = rightOfBunker(BUNKER,
+                GROUND_REACH + BunkerPricing.APPROACH_FALLOFF + (int) BunkerPricing.MARCH_LOOKAHEAD + 1);
+        BunkerPricing.Leg leg = BunkerPricing.marchLeg(member, BUILDING_BEHIND_THE_BUNKER);
+
+        assertEquals(BunkerPricing.MARCH_LOOKAHEAD, member.getDistance(leg.nearestPointTo(BUNKER)), 1.0);
+        assertEquals(0.0, pricedWeight(BUNKER, GROUND_REACH,
+                BunkerPricing.memberLegs(member, null, BUILDING_BEHIND_THE_BUNKER)));
+    }
+
+    @Test
+    void aShortMarchEndsAtItsDestination() {
+        Position member = new Position(100, 100);
+        Position destination = new Position(300, 100);
+
+        assertEquals(destination, BunkerPricing.marchLeg(member, destination).nearestPointTo(new Position(900, 100)));
+    }
+
+    @Test
+    void aVisibleFightTargetReplacesTheMarchLeg() {
+        Position member = new Position(BUNKER.getX() + RETREATED_CENTROID_DISTANCE, BUNKER.getY());
+        Position target = new Position(member.getX(), member.getY() + 100);
+
+        List<BunkerPricing.Leg> legs = BunkerPricing.memberLegs(member, target, BUILDING_BEHIND_THE_BUNKER);
+
+        assertEquals(2, legs.size());
+        assertEquals(0.0, pricedWeight(BUNKER, GROUND_REACH, legs));
+    }
+
+    @Test
+    void aMemberWithNoFightTargetOrDestinationIsItsPositionAlone() {
+        Position member = new Position(100, 100);
+
+        assertEquals(1, BunkerPricing.memberLegs(member, null, null).size());
+    }
+
+    @Test
+    void aMemberMarchesToItsOwnMovementTargetBeforeTheSquadsDestination() {
+        TilePosition own = new TilePosition(10, 20);
+
+        assertEquals(own.toPosition(), BunkerPricing.marchDestination(own, BUILDING_BEHIND_THE_BUNKER));
+        assertEquals(BUILDING_BEHIND_THE_BUNKER, BunkerPricing.marchDestination(null, BUILDING_BEHIND_THE_BUNKER));
+        assertNull(BunkerPricing.marchDestination(null, null));
+    }
+
+    @Test
+    void theSquadMarchesToTheClosestKnownEnemyBuilding() {
+        Position center = new Position(2000, 1000);
+        Position far = new Position(100, 100);
+
+        assertEquals(BUILDING_BEHIND_THE_BUNKER,
+                BunkerPricing.squadDestination(center, Arrays.asList(far, BUILDING_BEHIND_THE_BUNKER)));
+        assertNull(BunkerPricing.squadDestination(center, Collections.emptyList()));
     }
 }

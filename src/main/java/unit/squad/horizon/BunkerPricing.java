@@ -1,6 +1,7 @@
 package unit.squad.horizon;
 
 import bwapi.Position;
+import bwapi.TilePosition;
 import bwapi.Unit;
 import bwapi.UnitType;
 import info.tracking.EnemyReachMemory;
@@ -18,8 +19,9 @@ import java.util.Set;
  * to exist to fill it.
  *
  * <p>Reach: a Bunker counts only when its fire, for the squad's domain, touches the squad or the squad's path. The
- * squad is the position of each member, and its path is the straight leg from each member to the unit it is fighting.
- * A Bunker weighs in full when any leg passes within its reach, falls off linearly over
+ * squad is the position of each member. Its path is the straight leg from each member to the unit it is fighting, and
+ * for a ground member with no such unit, the first {@link #MARCH_LOOKAHEAD} of the straight leg toward where it
+ * marches. A Bunker weighs in full when any leg passes within its reach, falls off linearly over
  * {@link #APPROACH_FALLOFF} past it, and adds nothing beyond that.
  *
  * <p>Garrison: across the Bunkers one evaluation prices, the occupants never exceed the larger of the unseen infantry
@@ -40,6 +42,14 @@ final class BunkerPricing {
      */
     static final Set<UnitType> SHOOTERS = EnumSet.of(UnitType.Terran_Marine, UnitType.Terran_Firebat,
             UnitType.Terran_Ghost);
+
+    /**
+     * How far ahead of a ground member its march leg runs toward its destination: the distance past a Bunker's reach
+     * out to which the simulator samples it, {@link HorizonCombatSimulator#FALLOFF_EXTENT}. A Bunker the squad samples
+     * at all is then priced in full while the squad's march passes within its reach, wherever inside that radius the
+     * squad stands.
+     */
+    static final double MARCH_LOOKAHEAD = HorizonCombatSimulator.FALLOFF_EXTENT;
 
     private BunkerPricing() {
     }
@@ -74,26 +84,97 @@ final class BunkerPricing {
     }
 
     /**
-     * The squad and its path as legs: one point leg per member at its position, and one leg from each member to the
-     * visible unit it is fighting. Overlords are left out, as the simulator leaves them out of our strength.
+     * The squad and its path as legs: for each member, see {@link #memberLegs}, its position, the leg to the visible
+     * unit it is fighting, and for a ground member fighting none, its march leg toward its own movement target or,
+     * without one, the squad's destination. Overlords are left out, as the simulator leaves them out of our strength.
      *
      * @param members the squad's members
+     * @param airSquad whether the squad is judged on its air arm, in which case no member marches
+     * @param squadDestination where a member with no movement target marches, or null when none is known
      * @return the legs
      */
-    static List<Leg> legs(Collection<ManagedUnit> members) {
+    static List<Leg> legs(Collection<ManagedUnit> members, boolean airSquad, Position squadDestination) {
         List<Leg> legs = new ArrayList<>();
         for (ManagedUnit mu : members) {
             if (mu.getUnitType() == UnitType.Zerg_Overlord) continue;
             Unit unit = mu.getUnit();
             if (unit == null) continue;
-            Position from = unit.getPosition();
-            legs.add(new Leg(from, from));
             Unit target = mu.fightTarget;
-            if (target != null && target.exists() && target.isVisible()) {
-                legs.add(new Leg(from, target.getPosition()));
-            }
+            Position fightTarget = target != null && target.exists() && target.isVisible()
+                    ? target.getPosition()
+                    : null;
+            Position destination = airSquad ? null : marchDestination(mu.getMovementTargetPosition(), squadDestination);
+            legs.addAll(memberLegs(unit.getPosition(), fightTarget, destination));
         }
         return legs;
+    }
+
+    /**
+     * One member's legs: a point leg at its position, the leg to the unit it is fighting when there is one, and
+     * otherwise its march leg toward its destination, see {@link #marchLeg}.
+     *
+     * @param from the member's position
+     * @param fightTarget the position of the visible unit it is fighting, or null
+     * @param marchDestination where it marches when it fights nothing, or null
+     * @return the member's legs
+     */
+    static List<Leg> memberLegs(Position from, Position fightTarget, Position marchDestination) {
+        List<Leg> legs = new ArrayList<>();
+        legs.add(new Leg(from, from));
+        if (fightTarget != null) {
+            legs.add(new Leg(from, fightTarget));
+        } else if (marchDestination != null) {
+            legs.add(marchLeg(from, marchDestination));
+        }
+        return legs;
+    }
+
+    /**
+     * Where a ground member marches when it fights nothing: its own movement target when it holds one, which it keeps
+     * on the march, and otherwise the squad's destination.
+     *
+     * @param movementTarget the member's movement target, or null
+     * @param squadDestination the squad's destination, or null
+     * @return the destination, or null when neither is known
+     */
+    static Position marchDestination(TilePosition movementTarget, Position squadDestination) {
+        return movementTarget != null ? movementTarget.toPosition() : squadDestination;
+    }
+
+    /**
+     * The straight leg from a member toward its destination, cut at {@link #MARCH_LOOKAHEAD}.
+     *
+     * @param from the member's position
+     * @param destination where it marches
+     * @return the leg
+     */
+    static Leg marchLeg(Position from, Position destination) {
+        double length = from.getDistance(destination);
+        if (length <= MARCH_LOOKAHEAD) return new Leg(from, destination);
+        double t = MARCH_LOOKAHEAD / length;
+        return new Leg(from, new Position((int) Math.round(from.getX() + t * (destination.getX() - from.getX())),
+                (int) Math.round(from.getY() + t * (destination.getY() - from.getY()))));
+    }
+
+    /**
+     * The squad's destination when a member has no movement target of its own: the known enemy building closest to
+     * the squad centre, the one a fight squad with no visible enemy marches to.
+     *
+     * @param squadCenter the squad's centre
+     * @param enemyBuildings last known positions of the enemy's buildings
+     * @return the closest, or null when none is known
+     */
+    static Position squadDestination(Position squadCenter, Collection<Position> enemyBuildings) {
+        Position closest = null;
+        double best = Double.MAX_VALUE;
+        for (Position building : enemyBuildings) {
+            double distance = squadCenter.getDistance(building);
+            if (distance < best) {
+                best = distance;
+                closest = building;
+            }
+        }
+        return closest;
     }
 
     /**
