@@ -27,14 +27,17 @@ public class ObservedUnitTracker {
     private final HashMap<Unit, ObservedUnit> observedUnits = new HashMap<>();
     private final HashMap<Unit, BunkerGarrisonEstimator> bunkerGarrisons = new HashMap<>();
     private final EnemyReachMemory reachMemory = new EnemyReachMemory();
+    private final List<Time> replacedExtractorFrames = new ArrayList<>();
 
     public ObservedUnitTracker() {
 
     }
 
     /**
-     * Refreshes every visible unit's hit points, shields and completion, and seeds the reach memory with the ground
-     * range each visible unit's owner reports for its weapon.
+     * Refreshes every visible unit's type, hit points, shields and completion, and seeds the reach memory with the
+     * ground range each visible unit's owner reports for its weapon. The type refresh keeps a unit that morphs while
+     * in view, such as a Drone becoming a Spawning Pool or a Creep Colony becoming a Sunken Colony, counted as what
+     * it is now; a Zerg morph keeps the same Unit.
      *
      * @param currentFrame current frame
      */
@@ -46,6 +49,7 @@ public class ObservedUnitTracker {
             }
             Unit unit = ou.getUnit();
             if (unit.isVisible()) {
+                updateUnitTypeChange(ou, unit.getType(), t);
                 if (unit.isCompleted()) {
                     ou.markCompleted(t);
                 }
@@ -114,21 +118,29 @@ public class ObservedUnitTracker {
         boolean test(boolean visible, int lastObservedFrame, int currentFrame);
     }
 
+    /**
+     * Tracks a unit shown this frame, or refreshes one already tracked. A tracked unit that was destroyed and is
+     * shown again is tracked afresh: a Vespene Geyser whose Extractor was cancelled or destroyed keeps its Unit and
+     * comes back as the next Extractor built on it.
+     */
     public void onUnitShow(Unit unit, int currentFrame, boolean isProxied) {
         Time t = new Time(currentFrame);
-        if (!observedUnits.containsKey(unit)) {
+        ObservedUnit tracked = observedUnits.get(unit);
+        if (tracked == null || tracked.getDestroyedFrame() != null) {
+            if (tracked != null && tracked.getUnitType() == UnitType.Zerg_Extractor) {
+                replacedExtractorFrames.add(tracked.getTypeObservedFrame());
+            }
             ObservedUnit ou = new ObservedUnit(unit, t, isProxied);
             if (unit.isCompleted()) {
                 ou.markCompleted(t);
             }
             observedUnits.put(unit, ou);
         } else {
-            ObservedUnit u = observedUnits.get(unit);
-            u.setLastObservedFrame(t);
-            u.setLastKnownLocation(unit.getPosition());
-            updateUnitTypeChange(u, unit.getType());
+            tracked.setLastObservedFrame(t);
+            tracked.setLastKnownLocation(unit.getPosition());
+            updateUnitTypeChange(tracked, unit.getType(), t);
             if (unit.isCompleted()) {
-                u.markCompleted(t);
+                tracked.markCompleted(t);
             }
         }
     }
@@ -260,13 +272,53 @@ public class ObservedUnitTracker {
      *
      * @param observedUnit the tracked unit
      * @param unitType the type the unit now has
+     * @param currentFrame the frame the unit is observed as unitType
      */
-    static void updateUnitTypeChange(ObservedUnit observedUnit, UnitType unitType) {
+    static void updateUnitTypeChange(ObservedUnit observedUnit, UnitType unitType, Time currentFrame) {
         if (unitType == observedUnit.getUnitType()) {
             return;
         }
         observedUnit.setUnitType(unitType);
+        observedUnit.setTypeObservedFrame(currentFrame);
         observedUnit.resetCompletion();
+    }
+
+    /**
+     * Drones the enemy has produced, reconstructed from what we have seen, see {@link DroneEquivalents}.
+     *
+     * @param isStartDepot whether a depot standing on this tile is the enemy's start Hatchery
+     */
+    public DroneEquivalents getDroneEquivalents(Predicate<TilePosition> isStartDepot) {
+        List<Time> extractorsObserved = observedUnits.values()
+                .stream()
+                .filter(ou -> ou.getUnitType() == UnitType.Zerg_Extractor)
+                .map(ObservedUnit::getTypeObservedFrame)
+                .collect(Collectors.toList());
+        extractorsObserved.addAll(replacedExtractorFrames);
+        return DroneEquivalents.of(observedUnits.values(), extractorsObserved, isStartDepot);
+    }
+
+    /**
+     * Whether a unit of this type was observed as this type at or before t, counting units since destroyed. A
+     * Drone seen early that later becomes a Spawning Pool counts from the frame it was first seen as the Pool.
+     */
+    public boolean hasObservedAsTypeBy(UnitType type, Time t) {
+        return observedUnits.values()
+                .stream()
+                .filter(ou -> ou.getUnitType() == type)
+                .anyMatch(ou -> ou.getTypeObservedFrame().lessThanOrEqual(t));
+    }
+
+    /**
+     * Whether a living unit of this type was still incomplete when last observed, at or after t.
+     */
+    public boolean hasObservedIncompleteSince(UnitType type, Time t) {
+        return observedUnits.values()
+                .stream()
+                .filter(ou -> ou.getUnitType() == type)
+                .filter(ou -> ou.getDestroyedFrame() == null)
+                .filter(ou -> !ou.isCompleted())
+                .anyMatch(ou -> t.lessThanOrEqual(ou.getLastObservedFrame()));
     }
 
     public Set<Position> getLastKnownPositionsOfLivingUnits(UnitType unitType) {

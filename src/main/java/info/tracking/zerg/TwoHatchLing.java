@@ -17,7 +17,7 @@ public class TwoHatchLing extends ZergBaseStrategy {
     static final Time DETECTION_CUTOFF = new Time(6, 0);
     static final int ZERGLING_THRESHOLD = 16;
 
-    private static final UnitType[] LAIR_TECH = {
+    static final UnitType[] LAIR_TECH = {
         UnitType.Zerg_Lair,
         UnitType.Zerg_Hive,
         UnitType.Zerg_Spire,
