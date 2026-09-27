@@ -128,5 +128,10 @@ public enum DecisionPath {
     /**
      * No branch recorded a decision for this row.
      */
-    NONE
+    NONE,
+
+    /**
+     * An air squad's engage commitment kept it fighting through a RETREAT verdict.
+     */
+    AIR_COMMITMENT
 }

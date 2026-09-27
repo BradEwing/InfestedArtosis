@@ -139,6 +139,10 @@ public class SquadManager {
     public static final int GROUND_SPLIT_DISTANCE = 256;
     public static final int AIR_SPLIT_DISTANCE = 768;
     private static final int COMMITMENT_RELEASE_DISTANCE = 512;
+    /**
+     * Multiple of the engage threshold an air squad's ENGAGE read must reach to break its retreat lock.
+     */
+    static final double RETREAT_LOCK_ENGAGE_BREAK_MULTIPLIER = 2.0;
     private static final int RUNBY_AREA_PROXIMITY_TILES = 4;
     private static final int RUNBY_AREA_TILES = 24;
     private static final int LIKELY_SPOT_SEARCH_TILES = 2;
@@ -1221,6 +1225,11 @@ public class SquadManager {
      * whose sim found no enemy strength to weigh, so the squad would otherwise march blind on a building behind the
      * contained choke.
      *
+     * <p>An air squad commits to a fight on a sim-backed ENGAGE: the commitment holds it in FIGHT through RETREAT
+     * verdicts until it expires or the flock loses enough hit points (see {@link AirSquad#engageCommitmentHolds}).
+     * An air squad's retreat lock yields to an ENGAGE of twice the threshold (see
+     * {@link #retreatLockYieldsToEngage}).
+     *
      * @param squad fight squad to tick
      */
     private void simulateFightSquad(Squad squad) {
@@ -1296,6 +1305,12 @@ public class SquadManager {
         double ratio = snapshot != null ? snapshot.getOverallRatio() : 0;
         double engageThreshold = snapshot != null ? snapshot.getEngageThreshold() : 0;
 
+        if (retreatLocked && retreatLockYieldsToEngage(squad.isAirSquad(), result, enemyMeasured, ratio,
+                engageThreshold)) {
+            ((AirSquad) squad).releaseRetreatLock();
+            retreatLocked = false;
+        }
+
         if (squad.getStatus() == SquadStatus.RETREAT && retreatLocked) {
             SquadDecisions.lockSuppressed(squad, SquadLock.RETREAT);
             SquadDecisions.pathTaken(squad, DecisionPath.RETREAT_LOCK);
@@ -1306,6 +1321,14 @@ public class SquadManager {
                 && fightLockHolds(fightLocked, result, enemyMeasured, ratio, engageThreshold)) {
             SquadDecisions.lockSuppressed(squad, SquadLock.FIGHT);
             SquadDecisions.pathTaken(squad, DecisionPath.FIGHT_LOCK);
+            assignFightTargets(squad, managedFighters, false);
+            return;
+        }
+        if (squad.getStatus() == SquadStatus.FIGHT && result == CombatSimulator.CombatResult.RETREAT
+                && squad.isAirSquad()
+                && ((AirSquad) squad).engageCommitmentHolds(now, flockHitPoints(managedFighters))) {
+            SquadDecisions.lockSuppressed(squad, SquadLock.FIGHT);
+            SquadDecisions.pathTaken(squad, DecisionPath.AIR_COMMITMENT);
             assignFightTargets(squad, managedFighters, false);
             return;
         }
@@ -1337,6 +1360,9 @@ public class SquadManager {
                 squad.setStatus(SquadStatus.FIGHT);
                 assignFightTargets(squad, managedFighters, true);
                 updateFightLock(squad, result, retreatLocked, now);
+                if (squad.isAirSquad() && snapshot != null && enemyMeasured) {
+                    ((AirSquad) squad).armEngageCommitment(now, flockHitPoints(managedFighters));
+                }
                 break;
 
             default:
@@ -1361,6 +1387,39 @@ public class SquadManager {
                 && squad.canRenewFightLock(currentFrame)) {
             squad.startFightLock(currentFrame);
         }
+    }
+
+    /**
+     * Whether a strong ENGAGE read breaks an air squad's retreat lock.
+     *
+     * <p>An air squad's retreat lock yields to an ENGAGE measured against a real enemy at
+     * {@link #RETREAT_LOCK_ENGAGE_BREAK_MULTIPLIER} times the engage threshold or more, so a flock that
+     * fell back on a weak read turns around on a decisive one instead of waiting out the lock. Ground
+     * squads keep their retreat lock, and a verdict with no threshold (no snapshot) never breaks it.
+     *
+     * @param airSquad whether the squad is an air squad
+     * @param result this frame's combat sim verdict
+     * @param enemyMeasured whether the sim measured a real enemy this frame
+     * @param ratio the sim's overall strength ratio this frame
+     * @param engageThreshold the engage threshold the sim judged this frame's ratio against
+     * @return true if the retreat lock should be released this frame
+     */
+    static boolean retreatLockYieldsToEngage(boolean airSquad, CombatSimulator.CombatResult result,
+                                             boolean enemyMeasured, double ratio, double engageThreshold) {
+        return airSquad && result == CombatSimulator.CombatResult.ENGAGE && enemyMeasured && engageThreshold > 0
+                && ratio >= engageThreshold * RETREAT_LOCK_ENGAGE_BREAK_MULTIPLIER;
+    }
+
+    /**
+     * @param fighters members of the squad
+     * @return summed hit points of the members
+     */
+    private static int flockHitPoints(Collection<ManagedUnit> fighters) {
+        int hitPoints = 0;
+        for (ManagedUnit fighter : fighters) {
+            hitPoints += fighter.getUnit().getHitPoints();
+        }
+        return hitPoints;
     }
 
     /**

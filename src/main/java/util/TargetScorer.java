@@ -19,6 +19,10 @@ import java.util.List;
  *   <li>NORMAL: mobile units that cannot attack the attacker's layer</li>
  *   <li>LOW: buildings, including hostile buildings that cannot attack the attacker's layer</li>
  * </ul>
+ *
+ * <p>A Mutalisk ranks a Bunker NORMAL, below the mobile anti-air it can kill without flying into the
+ * Bunker's fire and below workers, so a flock is not pulled onto the static defence it would otherwise
+ * retreat from.
  */
 public final class TargetScorer {
 
@@ -42,11 +46,13 @@ public final class TargetScorer {
             return null;
         }
 
+        UnitType attackerType = attacker.getType();
         boolean attackerIsFlying = attacker.isFlying();
 
         if (candidates.size() == 1) {
             Unit only = candidates.get(0);
-            return new Selection(only, assignPriority(only.getType(), attackerIsFlying, Filter.isMeanWorker(only)), 1);
+            return new Selection(only,
+                    assignPriority(only.getType(), attackerType, attackerIsFlying, Filter.isMeanWorker(only)), 1);
         }
 
         List<Candidate> scored = new ArrayList<>(candidates.size());
@@ -54,22 +60,30 @@ public final class TargetScorer {
             scored.add(toCandidate(attacker, candidate, currentTarget));
         }
 
-        int best = selectIndex(attackerIsFlying, scored);
-        return new Selection(candidates.get(best), scored.get(best).priority(attackerIsFlying), candidates.size());
+        int best = selectIndex(attackerType, attackerIsFlying, scored);
+        return new Selection(candidates.get(best), scored.get(best).priority(attackerType, attackerIsFlying),
+                candidates.size());
+    }
+
+    /**
+     * @return index of the best candidate for an attacker with no type-specific ranking
+     */
+    static int selectIndex(boolean attackerIsFlying, List<Candidate> candidates) {
+        return selectIndex(UnitType.None, attackerIsFlying, candidates);
     }
 
     /**
      * @return index of the best candidate: highest tier first, then highest within-tier score. Ties keep
      *     the earlier candidate.
      */
-    static int selectIndex(boolean attackerIsFlying, List<Candidate> candidates) {
+    static int selectIndex(UnitType attackerType, boolean attackerIsFlying, List<Candidate> candidates) {
         int bestIndex = -1;
         Priority bestPriority = null;
         double bestScore = -1;
 
         for (int i = 0; i < candidates.size(); i++) {
             Candidate candidate = candidates.get(i);
-            Priority priority = candidate.priority(attackerIsFlying);
+            Priority priority = candidate.priority(attackerType, attackerIsFlying);
             double score = candidate.score();
 
             if (bestPriority == null
@@ -82,6 +96,18 @@ public final class TargetScorer {
         }
 
         return bestIndex;
+    }
+
+    /**
+     * @return the candidate's tier for this attacker type, which is the layer-based tier except that a
+     *     Mutalisk ranks a Bunker NORMAL
+     */
+    static Priority assignPriority(UnitType candidateType, UnitType attackerType, boolean attackerIsFlying,
+                                   boolean isMeanWorker) {
+        if (attackerType == UnitType.Zerg_Mutalisk && candidateType == UnitType.Terran_Bunker) {
+            return Priority.NORMAL;
+        }
+        return assignPriority(candidateType, attackerIsFlying, isMeanWorker);
     }
 
     static Priority assignPriority(UnitType candidateType, boolean attackerIsFlying, boolean isMeanWorker) {
@@ -138,8 +164,8 @@ public final class TargetScorer {
             return type;
         }
 
-        Priority priority(boolean attackerIsFlying) {
-            return assignPriority(type, attackerIsFlying, meanWorker);
+        Priority priority(UnitType attackerType, boolean attackerIsFlying) {
+            return assignPriority(type, attackerType, attackerIsFlying, meanWorker);
         }
 
         double score() {
