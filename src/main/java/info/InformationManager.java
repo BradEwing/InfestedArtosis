@@ -535,7 +535,6 @@ public class InformationManager {
 
 
             if (unit.isVisible() && unitType.isBuilding()) {
-                // Idempotently track enemy building - only calls onUnitShow if not already tracked
                 boolean isProxied = isProxiedBuilding(unit);
                 tracker.onUnitShow(unit, game.getFrameCount(), isProxied);
 

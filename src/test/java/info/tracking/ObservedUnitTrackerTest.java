@@ -218,6 +218,21 @@ class ObservedUnitTrackerTest {
     }
 
     @Test
+    void wallPartnersSeenAtRealGrimHammerPositionsAreAnchored() {
+        ObservedUnit bunker = ObservedUnitFixture.observedUnit(UnitType.Terran_Bunker, new Position(3440, 864),
+                DRONE_OBSERVED);
+        bunker.recordLift(false);
+        ObservedUnit depot = ObservedUnitFixture.observedUnit(UnitType.Terran_Supply_Depot, new Position(3344, 864),
+                DRONE_OBSERVED);
+        depot.recordLift(false);
+
+        assertTrue(bunker.isGroundedAtAnchor());
+        assertEquals(new TilePosition(106, 26), footprints(bunker).get(0).getTopLeft());
+        assertTrue(depot.isGroundedAtAnchor());
+        assertEquals(new TilePosition(103, 26), footprints(depot).get(0).getTopLeft());
+    }
+
+    @Test
     void aBuildingOfAnotherTypeHasNoFootprint() {
         ObservedUnit depot = ObservedUnitFixture.observedUnit(UnitType.Terran_Supply_Depot, new Position(336, 640),
                 DRONE_OBSERVED);
