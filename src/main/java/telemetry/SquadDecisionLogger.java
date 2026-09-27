@@ -561,6 +561,11 @@ public class SquadDecisionLogger implements SquadDecisionSink {
             context.setSwarmId(swarmId);
             context.setSwarmRemainingFrames(remainingFrames);
             context.setSwarmRelease(release);
+            HorizonCombatSimulator.DebugSnapshot read = carriesSimRead(event, release) ? lastSnapshot(squad) : null;
+            if (read != null) {
+                readSnapshot(squad, context);
+                context.setResult(read.getResult());
+            }
             writer.append(row(squad, game.getFrameCount(), event.name(), squad.getStatus(), squad.getStatus(),
                     context, NONE));
         } catch (RuntimeException e) {
@@ -669,14 +674,30 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         return context;
     }
 
-    private void readSnapshot(Squad squad, SquadDecision decision) {
+    /**
+     * Whether a swarm row carries the squad's sim read. A commit and a release on a RETREAT read are written on the
+     * frame the swarm-priced sim ran for the lock, so the squad's last snapshot is that read. Every other swarm row is
+     * written on a frame the sim may not have run for the squad, and carries none.
+     *
+     * @param event the swarm event
+     * @param release the release reason on the row
+     * @return true when the row carries the sim read
+     */
+    static boolean carriesSimRead(SwarmEvent event, SwarmLock.Release release) {
+        return event == SwarmEvent.SWARM_COMMIT
+                || event == SwarmEvent.SWARM_EXPIRED && release == SwarmLock.Release.SIM_RETREAT;
+    }
+
+    private static HorizonCombatSimulator.DebugSnapshot lastSnapshot(Squad squad) {
         CombatSimulator simulator = squad.getCombatSimulator();
         if (!(simulator instanceof HorizonCombatSimulator)) {
-            return;
+            return null;
         }
+        return ((HorizonCombatSimulator) simulator).getLastSnapshots().get(squad.getId());
+    }
 
-        HorizonCombatSimulator.DebugSnapshot snapshot =
-                ((HorizonCombatSimulator) simulator).getLastSnapshots().get(squad.getId());
+    private void readSnapshot(Squad squad, SquadDecision decision) {
+        HorizonCombatSimulator.DebugSnapshot snapshot = lastSnapshot(squad);
         if (snapshot == null) {
             return;
         }

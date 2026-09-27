@@ -203,6 +203,18 @@ class SquadDecisionsTest {
     }
 
     @Test
+    void onlyACommitAndASimRetreatReleaseCarryTheSwarmLocksSimRead() {
+        assertTrue(SquadDecisionLogger.carriesSimRead(SwarmEvent.SWARM_COMMIT, SwarmLock.Release.NONE));
+        assertTrue(SquadDecisionLogger.carriesSimRead(SwarmEvent.SWARM_EXPIRED, SwarmLock.Release.SIM_RETREAT));
+        for (SwarmLock.Release release : SwarmLock.Release.values()) {
+            if (release != SwarmLock.Release.SIM_RETREAT) {
+                assertFalse(SquadDecisionLogger.carriesSimRead(SwarmEvent.SWARM_EXPIRED, release));
+            }
+            assertFalse(SquadDecisionLogger.carriesSimRead(SwarmEvent.SWARM_ACTIVE, release));
+        }
+    }
+
+    @Test
     void everySwarmIsSeenOnceAndRemovedOnceWithItsCentreAndTimeLeft() {
         DarkSwarm s1 = new DarkSwarm(382, new Position(1232, 3520), 900);
         DarkSwarm s1Later = new DarkSwarm(382, new Position(1232, 3520), 373);

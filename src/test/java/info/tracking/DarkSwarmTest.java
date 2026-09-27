@@ -114,4 +114,20 @@ class DarkSwarmTest {
         assertTrue(tracker.getPendingCasts(19182 + DarkSwarmTracker.PENDING_CAST_FRAMES).isEmpty());
         assertTrue(tracker.getActiveSwarms().isEmpty());
     }
+
+    @Test
+    void readingThePendingCastsLeavesThemInPlaceAndANewCastDropsTheLapsedOnes() {
+        DarkSwarmTracker tracker = new DarkSwarmTracker();
+        Position first = new Position(1102, 2026);
+        Position second = new Position(1600, 2026);
+        tracker.recordCast(first, 19182);
+
+        assertTrue(tracker.getPendingCasts(19182 + DarkSwarmTracker.PENDING_CAST_FRAMES).isEmpty());
+        assertEquals(1, tracker.getPendingCasts(19182).size());
+
+        tracker.recordCast(second, 19182 + DarkSwarmTracker.PENDING_CAST_FRAMES);
+        List<DarkSwarm> pending = tracker.getPendingCasts(19182);
+        assertEquals(1, pending.size());
+        assertEquals(second, pending.get(0).getCenter());
+    }
 }

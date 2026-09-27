@@ -50,12 +50,14 @@ public class DarkSwarmTracker {
     }
 
     /**
-     * Records a Dark Swarm a Defiler has just been ordered to cast.
+     * Records a Dark Swarm a Defiler has just been ordered to cast, and drops the casts older than
+     * {@link #PENDING_CAST_FRAMES}.
      *
      * @param point the cast position
      * @param frame the frame of the order
      */
     public void recordCast(Position point, int frame) {
+        pendingCasts.removeIf(cast -> frame - cast.frame >= PENDING_CAST_FRAMES);
         pendingCasts.add(new PendingCast(point, frame));
     }
 
@@ -67,10 +69,11 @@ public class DarkSwarmTracker {
      * @return the pending casts' footprints
      */
     public List<DarkSwarm> getPendingCasts(int frame) {
-        pendingCasts.removeIf(cast -> frame - cast.frame >= PENDING_CAST_FRAMES);
         List<DarkSwarm> footprints = new ArrayList<>();
         for (PendingCast cast : pendingCasts) {
-            footprints.add(new DarkSwarm(PENDING_CAST_ID, cast.point, SWARM_DURATION_FRAMES));
+            if (frame - cast.frame < PENDING_CAST_FRAMES) {
+                footprints.add(new DarkSwarm(PENDING_CAST_ID, cast.point, SWARM_DURATION_FRAMES));
+            }
         }
         return footprints;
     }
