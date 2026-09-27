@@ -18,6 +18,8 @@ import telemetry.PerchAssignmentLogger;
 import telemetry.PerchAssignments;
 import telemetry.PlanEventLogger;
 import telemetry.PlanEvents;
+import telemetry.AirReinforcementLogger;
+import telemetry.AirReinforcementTelemetry;
 import telemetry.HarassLogger;
 import telemetry.HarassTelemetry;
 import telemetry.RunbyLogger;
@@ -62,6 +64,7 @@ public class Bot extends DefaultBWListener {
     private TargetChoiceLogger targetChoiceLogger;
     private RunbyLogger runbyLogger;
     private HarassLogger harassLogger;
+    private AirReinforcementLogger airReinforcementLogger;
     private ReachLogger reachLogger;
 
     @Override
@@ -96,6 +99,7 @@ public class Bot extends DefaultBWListener {
         startTargetChoiceLogging();
         startRunbyLogging();
         startHarassLogging();
+        startAirReinforcementLogging();
         startReachLogging();
         startPlanEventLogging(decisions.getOpener());
     }
@@ -146,6 +150,16 @@ public class Bot extends DefaultBWListener {
         HarassTelemetry.register(harassLogger);
     }
 
+    private void startAirReinforcementLogging() {
+        if (!gameState.getConfig().telemetryCombat) {
+            return;
+        }
+
+        airReinforcementLogger = new AirReinforcementLogger(game, unitManager.getSquadManager(),
+                combatTelemetry.getGameId());
+        AirReinforcementTelemetry.register(airReinforcementLogger);
+    }
+
     private void startReachLogging() {
         if (!gameState.getConfig().telemetryCombat) {
             return;
@@ -190,6 +204,9 @@ public class Bot extends DefaultBWListener {
         }
         if (harassLogger != null) {
             harassLogger.onFrame();
+        }
+        if (airReinforcementLogger != null) {
+            airReinforcementLogger.onFrame();
         }
         if (reachLogger != null) {
             reachLogger.onFrame();
@@ -274,6 +291,9 @@ public class Bot extends DefaultBWListener {
         }
         if (harassLogger != null) {
             harassLogger.onEnd();
+        }
+        if (airReinforcementLogger != null) {
+            airReinforcementLogger.onEnd();
         }
         if (reachLogger != null) {
             reachLogger.onEnd();

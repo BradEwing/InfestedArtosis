@@ -149,6 +149,7 @@ public class SquadManager {
 
     private final ScoutChase scoutChase = new ScoutChase();
     private final AirHarassController airHarass;
+    private final AirReinforcer airReinforcer;
 
     public SquadManager(Game game, GameState gameState) {
         this.game = game;
@@ -156,6 +157,7 @@ public class SquadManager {
         this.agentFactory = new BWMirrorAgentFactory();
         this.containmentEvaluator = new ContainmentEvaluator(gameState);
         this.airHarass = new AirHarassController(game, gameState);
+        this.airReinforcer = new AirReinforcer(game, gameState);
     }
 
     public void updateFightSquads() {
@@ -164,6 +166,7 @@ public class SquadManager {
         removeEmptySquads();
         mergeSquads();
         splitSquads();
+        airReinforcer.prune(fightSquads);
         rebuildScoutChase();
         evictIrradiatedUnits();
         updateIrradiatedUnits();
@@ -744,8 +747,10 @@ public class SquadManager {
     }
 
     /**
-     * Whether a new or re-homed unit may join a squad holding a status. A runby or harass squad takes no
-     * reinforcements: joining one would re-simulate it and overwrite its status.
+     * Whether a new or re-homed ground unit or Overlord may join a squad holding a status. A runby or harass squad
+     * takes none: joining one would re-simulate it and overwrite its status. Mutalisks join a harassing squad
+     * through {@link #mayJoinAirSquadAt(SquadStatus, double, boolean)} and {@link #joinHarass}, which keep its
+     * status.
      *
      * @param status the squad's status
      * @return true when the squad may take the unit
@@ -890,8 +895,16 @@ public class SquadManager {
             return;
         }
 
+        boolean activeAirSquad = squadStatus == SquadStatus.RALLY && squad.isAirSquad()
+                && AirReinforcer.hasActiveAirSquad(squad, fightSquads);
+        if (activeAirSquad && reinforceActiveAirSquad(squad, closeThreats)) {
+            return;
+        }
+        airReinforcer.forget(squad);
+
         int strength = squadStrength(squad);
-        int moveOutThreshold = calculateMoveOutThreshold(squad);
+        int moveOutThreshold = AirReinforcement.launchThreshold(calculateMoveOutThreshold(squad), squadStatus,
+                activeAirSquad);
         SquadDecisions.moveOutEvaluated(squad, moveOutThreshold, strength);
         boolean holdAway = holdsAwayFromHome(squad, closeThreats, strength, moveOutThreshold);
         SquadAction action = chooseSquadAction(holdAway, closeThreats, strength, moveOutThreshold,
@@ -919,6 +932,88 @@ public class SquadManager {
         }
 
         simulateFightSquad(squad);
+    }
+
+    /**
+     * Sends a rallying air squad to the nearest active air squad it may merge with while a path outside known
+     * anti-air reaches it, and hands its members over on arrival. A squad at home with close threats defends
+     * instead, and a squad with no safe path takes the rally branch, where its move out threshold is suspended by
+     * {@link AirReinforcement#launchThreshold}.
+     *
+     * @param squad rallying air squad
+     * @param closeThreats true when enemies sit inside the squad detection radius
+     * @return true when the squad is reinforcing or has joined its target this frame
+     */
+    private boolean reinforceActiveAirSquad(Squad squad, boolean closeThreats) {
+        if (closeThreats && isNearHome(squad.getCenter())) {
+            return false;
+        }
+        AirReinforcer.Outcome outcome = airReinforcer.reinforce(squad, fightSquads, game.getFrameCount());
+        if (outcome == AirReinforcer.Outcome.REFUSED) {
+            return false;
+        }
+        clearCombatSimSnapshot(squad);
+        SquadDecisions.rallied(squad, RallyReason.AIR_REINFORCE);
+        SquadDecisions.pathTaken(squad, DecisionPath.AIR_REINFORCE);
+        if (outcome == AirReinforcer.Outcome.ARRIVED) {
+            joinAirSquad(squad, airReinforcer.targetOf(squad));
+            airReinforcer.forget(squad);
+        }
+        return true;
+    }
+
+    /**
+     * Moves every member of a reinforcing squad into the active air squad it reached. A harassing target takes
+     * them through {@link #joinHarass}, and escorting Overlords go back to the Overlord squad as they do on a
+     * harass entry; any other target is simulated with its new members, as a unit joining it on hatching is. The
+     * emptied squad is removed on the next frame.
+     *
+     * @param source the reinforcing squad
+     * @param target the active air squad
+     */
+    private void joinAirSquad(Squad source, Squad target) {
+        boolean harass = target.getStatus() == SquadStatus.HARASS;
+        List<ManagedUnit> joined = new ArrayList<>();
+        for (ManagedUnit member : new ArrayList<>(source.getMembers())) {
+            source.removeUnit(member);
+            if (harass && member.getUnitType() == UnitType.Zerg_Overlord) {
+                overlords.addUnit(member);
+                member.setRole(UnitRole.IDLE);
+                continue;
+            }
+            target.addUnit(member);
+            joined.add(member);
+        }
+        if (harass) {
+            joinHarass(target, joined);
+            return;
+        }
+        simulateFightSquad(target);
+    }
+
+    /**
+     * Hands Mutalisks joining a harassing squad the HARASS role and its strike point, and adds their hit points to
+     * the ones the harass started with, so the reinforcement is not read as hit points regained.
+     *
+     * @param squad harassing squad
+     * @param joined units that just joined it
+     */
+    private void joinHarass(Squad squad, Collection<ManagedUnit> joined) {
+        AirHarassState state = squad.getHarassState();
+        int hitPoints = 0;
+        for (ManagedUnit member : joined) {
+            member.setRole(UnitRole.HARASS);
+            member.setFightTarget(null);
+            member.setContainPosition(null);
+            member.setRetreatTarget(null);
+            member.setHarassDestination(state == null ? null : state.getStrikePoint());
+            if (member.getUnitType() == UnitType.Zerg_Mutalisk) {
+                hitPoints += member.getUnit().getHitPoints();
+            }
+        }
+        if (state != null) {
+            state.addStartHitPoints(hitPoints);
+        }
     }
 
     /**
@@ -3244,6 +3339,9 @@ public class SquadManager {
                 clearCombatSimSnapshot(squad);
                 rallySquad(squad, RallyReason.AIR_BELOW_MOVE_OUT_AWAY);
                 return;
+            case JOIN_HARASS:
+                joinHarass(squad, Collections.singletonList(managedUnit));
+                return;
             default:
                 break;
         }
@@ -3263,7 +3361,8 @@ public class SquadManager {
         STAGE,
         JOIN_CONTAINMENT,
         HOLD_AWAY,
-        SIMULATE
+        SIMULATE,
+        JOIN_HARASS
     }
 
     /**
@@ -3280,6 +3379,9 @@ public class SquadManager {
      * point, the same branch {@link #evaluateSquadRole} takes for it, so a unit hatched under threat away from our
      * bases does not fight below its move out threshold.
      *
+     * <p>A Mutalisk joining a harassing squad takes the harass's orders through {@link #joinHarass}; simulating the
+     * squad would overwrite its status.
+     *
      * @param status status the squad held as the reinforcement joined
      * @param stage true when the squad is rallying with no enemy inside its detection radius
      * @param holdAway true when the squad is an air squad held at the rally point away from home
@@ -3288,6 +3390,9 @@ public class SquadManager {
     static ReinforcementPath reinforcementPath(SquadStatus status, boolean stage, boolean holdAway) {
         if (status == SquadStatus.CONTAIN) {
             return ReinforcementPath.JOIN_CONTAINMENT;
+        }
+        if (status == SquadStatus.HARASS) {
+            return ReinforcementPath.JOIN_HARASS;
         }
         if (stage) {
             return ReinforcementPath.STAGE;
@@ -3349,9 +3454,14 @@ public class SquadManager {
         for (Squad squad : fightSquads) {
             if (!squad.isAirSquad()) continue;
             if (!mayJoinAirSquad(managedUnit.getUnitType(), holdsOnlyScourge(squad.getComposition()))) continue;
+            if (!AirReinforcement.mayReinforce(squad.getStatus(),
+                    Collections.singletonMap(managedUnit.getUnitType(), 1))) {
+                continue;
+            }
 
             double distance = squad.distance(managedUnit);
-            if (mayJoinAirSquadAt(squad.getStatus(), distance) && distance < closestDistance) {
+            boolean reinforcing = airReinforcer.isReinforcing(squad);
+            if (mayJoinAirSquadAt(squad.getStatus(), distance, reinforcing) && distance < closestDistance) {
                 closestDistance = distance;
                 closestSquad = squad;
             }
@@ -3361,19 +3471,33 @@ public class SquadManager {
     }
 
     /**
-     * Whether a new air unit may join an air squad holding a status at a distance. A rallying squad takes it from
-     * anywhere; a fighting or retreating squad only within {@link #AIR_JOIN_DISTANCE}, so the hatchlings of one egg
-     * born beside a retreating squad join it instead of each starting a squad of one.
+     * Whether a new air unit may join an air squad holding a status at a distance, the squad not reinforcing.
      *
      * @param status the squad's status
      * @param distance pixels between the squad centre and the unit
      * @return true when the unit may join the squad
+     * @see #mayJoinAirSquadAt(SquadStatus, double, boolean)
      */
     static boolean mayJoinAirSquadAt(SquadStatus status, double distance) {
-        if (status == SquadStatus.RALLY) {
+        return mayJoinAirSquadAt(status, distance, false);
+    }
+
+    /**
+     * Whether a new air unit may join an air squad holding a status at a distance. A rallying squad at home takes
+     * it from anywhere; a rallying squad flying to reinforce another, and a fighting, retreating or harassing squad,
+     * only within {@link #AIR_JOIN_DISTANCE}, so the hatchlings of one egg born beside a squad join it instead of
+     * each starting a squad of one, and a new unit never flies across the map alone to catch a squad up.
+     *
+     * @param status the squad's status
+     * @param distance pixels between the squad centre and the unit
+     * @param reinforcing true when the squad is flying to reinforce an active air squad
+     * @return true when the unit may join the squad
+     */
+    static boolean mayJoinAirSquadAt(SquadStatus status, double distance, boolean reinforcing) {
+        if (status == SquadStatus.RALLY && !reinforcing) {
             return true;
         }
-        if (status == SquadStatus.FIGHT || status == SquadStatus.RETREAT) {
+        if (status == SquadStatus.RALLY || AirReinforcement.isActive(status)) {
             return distance < AIR_JOIN_DISTANCE;
         }
         return false;

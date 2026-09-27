@@ -143,5 +143,11 @@ public enum DecisionPath {
     /**
      * No branch recorded a decision for this row.
      */
-    NONE
+    NONE,
+
+    /**
+     * A rallying air squad flying to, or joining, an active air squad instead of waiting for its move out
+     * threshold.
+     */
+    AIR_REINFORCE
 }
