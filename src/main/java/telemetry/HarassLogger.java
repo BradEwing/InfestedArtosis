@@ -24,6 +24,10 @@ import java.util.Map;
  * PROBE_CLEAR rows for the target base. An ENTER or RETARGET row whose phase is PROBE sends one Mutalisk to sight the
  * base first; PROBE_CLEAR marks the probe clearing the base, and the flock starting its strike.
  *
+ * <p>prober_hp and prober_peak_hp are the probing Mutalisk's hit points and the most it has had since the probe
+ * started, on every row written while a harass probes and on PROBE_CLEAR rows; 0 hit points means the prober is
+ * gone. A probe reads its base as defended once the two differ by the probe's damage limit.
+ *
  * <p>Constructed only when combat telemetry is enabled.
  */
 public class HarassLogger implements HarassSink {
@@ -33,7 +37,7 @@ public class HarassLogger implements HarassSink {
     static final String HEADER = "game_id,frame,squad_id,event,verdict,exit_reason,phase,base_x,base_y,strike_x,"
             + "strike_y,center_x,center_y,mutas,healthy_mutas,flock_hp,hp_loss_fraction,tolerance,air_defense,"
             + "avoided_zones,workers_killed,buildings_killed,other_killed,mutas_lost,killed_type,contain_distance,"
-            + "bases_under_attack,aa_sighting_age";
+            + "bases_under_attack,aa_sighting_age,prober_hp,prober_peak_hp";
 
     private static final int FLUSH_INTERVAL_FRAMES = 480;
     private static final int NOT_EVALUATED = -1;
@@ -148,6 +152,8 @@ public class HarassLogger implements HarassSink {
         fields.add(Csv.format(row.getContainDistance()));
         fields.add(String.valueOf(row.getBasesUnderAttack()));
         fields.add(String.valueOf(row.getAaSightingAge()));
+        fields.add(String.valueOf(row.getProberHitPoints()));
+        fields.add(String.valueOf(row.getProberPeakHitPoints()));
         return String.join(",", fields);
     }
 

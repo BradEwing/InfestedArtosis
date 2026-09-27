@@ -394,11 +394,12 @@ public class AirHarassController {
                 .tolerance(tolerance)
                 .build());
         if (reason != null) {
-            return AirHarassScouting.probeExitReason(reason, state.getPhase() == AirHarassState.Phase.PROBE);
+            return AirHarassScouting.probeExitReason(reason, state.getPhase() == AirHarassState.Phase.PROBE,
+                    flockDefense > tolerance);
         }
         List<AirHarassTargeting.AirThreat> newThreats = state.learnAntiAir(view.threats);
         if (state.getPhase() == AirHarassState.Phase.PROBE && !targetGone) {
-            reason = probeTick(squad, state, strike, now);
+            reason = probeTick(squad, state, strike, view.threats, now);
             if (reason != null) {
                 return reason;
             }
@@ -437,28 +438,29 @@ public class AirHarassController {
     }
 
     /**
-     * Runs one decision tick of a probe: follows the strike point, refreshes the probed base's sighting, sends the
-     * prober on to the strike point once the core is sighted, and acts on what the probe found. A cleared probe
-     * sends the whole flock to the strike point.
+     * Runs one decision tick of a probe: follows the strike point, moves the hold point out of newly known anti-air,
+     * notes when the probed base's resources come into sight, sends the prober on to the strike point once they have,
+     * and acts on what the probe found. A cleared probe sends the whole flock to the strike point.
      *
      * @param strike the base's hottest tolerated point, or null when it has none
+     * @param threats every known anti-air threat
      * @return PROBE_DEFENDED or NO_TARGET to end the harass, or null to keep going
      */
-    private AirHarassEvaluator.ExitReason probeTick(Squad squad, AirHarassState state, Position strike, int now) {
+    private AirHarassEvaluator.ExitReason probeTick(Squad squad, AirHarassState state, Position strike,
+                                                    List<AirHarassTargeting.AirThreat> threats, int now) {
         Base base = state.getTargetBase();
         int sightingAge = sightingAge(base, now);
-        ManagedUnit prober = null;
-        for (ManagedUnit member : squad.getMembers()) {
-            if (member.getUnitID() == state.getProberId()) {
-                prober = member;
-            }
-        }
+        ManagedUnit prober = proberOf(squad, state);
         int proberHitPoints = prober == null ? 0 : prober.getUnit().getHitPoints();
         if (strike != null) {
             state.setStrikePoint(strike);
         }
-        state.setProbeCoreSighted(now - sightingAge >= state.getProbeStartFrame());
-        boolean sighted = AirHarassScouting.probeSighted(state.isProbeCoreSighted(), strike != null,
+        if (AirHarassScouting.holdExposed(threats, state.getHoldPoint())) {
+            state.setHoldPoint(holdPoint(base, squad.getCenter(), threats));
+        }
+        state.setProbeResourcesSighted(AirHarassScouting.probeResourcesSighted(state.isProbeResourcesSighted(),
+                base.getCenter(), resourceCenterOf(base), point -> game.isVisible(point.toTilePosition())));
+        boolean sighted = AirHarassScouting.probeSighted(state.isProbeResourcesSighted(), strike != null,
                 strike != null && game.isVisible(strike.toTilePosition()));
         AirHarassScouting.ProbeOutcome outcome = AirHarassScouting.probeOutcome(prober != null, proberHitPoints,
                 state.getProberPeakHitPoints(), sighted, strike != null, now, state.getProbeStartFrame());
@@ -469,10 +471,13 @@ public class AirHarassController {
             case TIMED_OUT:
                 return AirHarassEvaluator.ExitReason.NO_TARGET;
             case CLEAR:
+                int proberPeakHitPoints = state.getProberPeakHitPoints();
                 state.clearProbe(strike, now);
                 HarassTelemetry.row(row(squad, state, HarassRow.Event.PROBE_CLEAR, now)
                         .center(squad.getCenter())
                         .aaSightingAge(sightingAge)
+                        .proberHitPoints(proberHitPoints)
+                        .proberPeakHitPoints(proberPeakHitPoints)
                         .build());
                 return null;
             default:
@@ -481,7 +486,8 @@ public class AirHarassController {
     }
 
     /**
-     * Starts a probe of a base: the healthiest Mutalisk flies into the base's core while the rest hold short of it.
+     * Starts a probe of a base: the healthiest Mutalisk flies to the base's resources while the rest hold short of
+     * the base, outside the anti-air known now.
      *
      * @return false when the squad has no Mutalisk to probe with
      */
@@ -498,22 +504,40 @@ public class AirHarassController {
         }
         state.probe(base, strike, prober, hitPoints.get(prober),
                 AirHarassScouting.probePoint(base.getCenter(), resourceCenterOf(base)),
-                AirHarassScouting.holdPoint(base.getCenter(), squad.getCenter()), now);
+                holdPoint(base, squad.getCenter(), view(now).threats), now);
         return true;
+    }
+
+    private Position holdPoint(Base base, Position flockCenter, List<AirHarassTargeting.AirThreat> threats) {
+        Position hold = AirHarassScouting.holdPoint(base.getCenter(), flockCenter, threats);
+        return Vec2.between(flockCenter, hold).clampToMap(game, flockCenter);
+    }
+
+    private static ManagedUnit proberOf(Squad squad, AirHarassState state) {
+        for (ManagedUnit member : squad.getMembers()) {
+            if (member.getUnitID() == state.getProberId()) {
+                return member;
+            }
+        }
+        return null;
     }
 
     /**
      * Where a harassing Mutalisk flies when it has no target: during a probe the hold point, or for the prober its
      * {@link AirHarassScouting#proberDestination}; the strike point otherwise.
+     *
+     * @param state the harass state
+     * @param member a Mutalisk of the harassing squad
+     * @return the destination
      */
-    private static Position destinationOf(AirHarassState state, ManagedUnit member) {
+    static Position destinationOf(AirHarassState state, ManagedUnit member) {
         if (state.getPhase() != AirHarassState.Phase.PROBE) {
             return state.getStrikePoint();
         }
         if (member.getUnitID() != state.getProberId()) {
             return state.getHoldPoint();
         }
-        return AirHarassScouting.proberDestination(state.isProbeCoreSighted(), state.getProbePoint(),
+        return AirHarassScouting.proberDestination(state.isProbeResourcesSighted(), state.getProbePoint(),
                 state.getStrikePoint());
     }
 
@@ -748,8 +772,19 @@ public class AirHarassController {
         return nearest;
     }
 
+    /**
+     * Starts a row for a harassing squad. While the harass probes, the row carries the prober's hit points and the
+     * most it has had during the probe, 0 hit points once the prober is gone.
+     */
     private static HarassRow.HarassRowBuilder row(Squad squad, AirHarassState state, HarassRow.Event event, int now) {
-        return HarassRow.builder()
+        HarassRow.HarassRowBuilder row = HarassRow.builder();
+        if (state.getPhase() == AirHarassState.Phase.PROBE) {
+            ManagedUnit prober = proberOf(squad, state);
+            int proberHitPoints = prober == null ? 0 : prober.getUnit().getHitPoints();
+            row.proberHitPoints(proberHitPoints)
+                    .proberPeakHitPoints(Math.max(state.getProberPeakHitPoints(), proberHitPoints));
+        }
+        return row
                 .frame(now)
                 .squadId(squad.getId())
                 .event(event)

@@ -96,7 +96,7 @@ class HarassLoggerTest {
     }
 
     @Test
-    void anEntryCheckAppendsTheAntiAirSightingAgeAsTheLastColumn() {
+    void anEntryCheckCarriesTheAntiAirSightingAgeAfterBasesUnderAttack() {
         HarassRow check = HarassRow.builder()
                 .frame(10296)
                 .squadId("squad-1")
@@ -108,13 +108,37 @@ class HarassLoggerTest {
         String[] columns = HarassLogger.HEADER.split(",", -1);
         String[] fields = HarassLogger.row("game-1", check).split(",", -1);
 
-        assertEquals("aa_sighting_age", columns[columns.length - 1]);
-        assertEquals("bases_under_attack", columns[columns.length - 2]);
+        assertEquals(columnIndex("bases_under_attack") + 1, columnIndex("aa_sighting_age"));
         assertEquals(columns.length, fields.length);
         assertEquals("10296", fields[columnIndex("aa_sighting_age")]);
         assertEquals("PROBE", fields[columnIndex("verdict")]);
         assertEquals("-1", HarassLogger.row("game-1", event(10300, HarassRow.Event.KILL))
                 .split(",", -1)[columnIndex("aa_sighting_age")]);
+    }
+
+    @Test
+    void aProbeRowAppendsTheProberHitPointsAndItsPeakAsTheLastColumns() {
+        HarassRow tick = HarassRow.builder()
+                .frame(10849)
+                .squadId("squad-1")
+                .event(HarassRow.Event.TICK)
+                .phase(AirHarassState.Phase.PROBE)
+                .proberHitPoints(111)
+                .proberPeakHitPoints(120)
+                .build();
+
+        String[] columns = HarassLogger.HEADER.split(",", -1);
+        String[] fields = HarassLogger.row("game-1", tick).split(",", -1);
+
+        assertEquals("aa_sighting_age", columns[columns.length - 3]);
+        assertEquals("prober_hp", columns[columns.length - 2]);
+        assertEquals("prober_peak_hp", columns[columns.length - 1]);
+        assertEquals(columns.length, fields.length);
+        assertEquals("111", fields[columnIndex("prober_hp")]);
+        assertEquals("120", fields[columnIndex("prober_peak_hp")]);
+        String[] kill = HarassLogger.row("game-1", event(10300, HarassRow.Event.KILL)).split(",", -1);
+        assertEquals("-1", kill[columnIndex("prober_hp")]);
+        assertEquals("-1", kill[columnIndex("prober_peak_hp")]);
     }
 
     @Test

@@ -5,6 +5,7 @@ import bwapi.Race;
 import bwapi.UnitType;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -108,7 +109,7 @@ class AirHarassScoutingTest {
     void theFlockHoldsShortOfTheBaseOnItsOwnSide() {
         Position flock = new Position(2009, 589);
 
-        Position hold = AirHarassScouting.holdPoint(BASE, flock);
+        Position hold = AirHarassScouting.holdPoint(BASE, flock, Collections.emptyList());
 
         assertEquals(AirHarassScouting.PROBE_HOLD_DISTANCE, hold.getDistance(BASE), 2);
         assertTrue(hold.getY() < BASE.getY());
@@ -118,7 +119,7 @@ class AirHarassScoutingTest {
     void aFlockAlreadyCloserThanTheHoldDistanceHoldsWhereItIs() {
         Position flock = new Position(2112, 3424);
 
-        assertEquals(flock, AirHarassScouting.holdPoint(BASE, flock));
+        assertEquals(flock, AirHarassScouting.holdPoint(BASE, flock, Collections.emptyList()));
     }
 
     @Test
@@ -285,7 +286,7 @@ class AirHarassScoutingTest {
     }
 
     @Test
-    void theProberFliesOverTheStrikePointOnceTheCoreIsSighted() {
+    void theProberFliesOverTheStrikePointOnceTheResourcesAreSighted() {
         Position probe = new Position(2112, 3887);
 
         assertEquals(probe, AirHarassScouting.proberDestination(false, probe, STRIKE));
@@ -294,7 +295,7 @@ class AirHarassScoutingTest {
     }
 
     @Test
-    void aProbeJudgesTheBaseOnlyOnceItHasSeenTheCoreAndTheStrikePoint() {
+    void aProbeJudgesTheBaseOnlyOnceItHasSeenTheResourcesAndTheStrikePoint() {
         assertFalse(AirHarassScouting.probeSighted(false, true, true));
         assertFalse(AirHarassScouting.probeSighted(true, true, false));
         assertTrue(AirHarassScouting.probeSighted(true, true, true));
@@ -302,15 +303,95 @@ class AirHarassScoutingTest {
     }
 
     @Test
-    void antiAirArrivingDuringAProbeIsTheProbeFindingTheBaseDefended() {
+    void antiAirLeavingTheBaseNoStrikeDuringAProbeIsTheProbeFindingTheBaseDefended() {
         assertEquals(AirHarassEvaluator.ExitReason.PROBE_DEFENDED,
-                AirHarassScouting.probeExitReason(AirHarassEvaluator.ExitReason.AA_ARRIVED, true));
+                AirHarassScouting.probeExitReason(AirHarassEvaluator.ExitReason.AA_ARRIVED, true, false));
         assertEquals(AirHarassEvaluator.ExitReason.AA_ARRIVED,
-                AirHarassScouting.probeExitReason(AirHarassEvaluator.ExitReason.AA_ARRIVED, false));
+                AirHarassScouting.probeExitReason(AirHarassEvaluator.ExitReason.AA_ARRIVED, false, false));
         assertEquals(AirHarassEvaluator.ExitReason.HP_LOSS,
-                AirHarassScouting.probeExitReason(AirHarassEvaluator.ExitReason.HP_LOSS, true));
-        assertNull(AirHarassScouting.probeExitReason(null, true));
+                AirHarassScouting.probeExitReason(AirHarassEvaluator.ExitReason.HP_LOSS, true, false));
+        assertNull(AirHarassScouting.probeExitReason(null, true, false));
     }
+
+    @Test
+    void aFlockStandingInAntiAirDuringAProbeKeepsItsOwnExitReason() {
+        assertEquals(AirHarassEvaluator.ExitReason.AA_ARRIVED,
+                AirHarassScouting.probeExitReason(AirHarassEvaluator.ExitReason.AA_ARRIVED, true, true));
+        assertEquals(AirHarassEvaluator.ExitReason.AA_ARRIVED,
+                AirHarassScouting.probeExitReason(AirHarassEvaluator.ExitReason.AA_ARRIVED, false, true));
+    }
+
+    @Test
+    void aVisibleBaseCenterAloneDoesNotSightTheResourcesForAProbe() {
+        Position resources = new Position(2112, 3950);
+
+        assertFalse(AirHarassScouting.probeResourcesSighted(false, BASE, resources, point -> point.equals(BASE)));
+        assertTrue(AirHarassScouting.probeResourcesSighted(false, BASE, resources,
+                point -> point.equals(resources)));
+        assertTrue(AirHarassScouting.probeResourcesSighted(true, BASE, resources, point -> false));
+        assertTrue(AirHarassScouting.probeResourcesSighted(false, BASE, null, point -> point.equals(BASE)));
+    }
+
+    @Test
+    void aProbeSeeingOnlyTheBaseCenterNeverClearsTheStrike() {
+        Position resources = new Position(2112, 3950);
+        boolean resourcesSighted = AirHarassScouting.probeResourcesSighted(false, BASE, resources,
+                point -> point.equals(BASE) || point.equals(STRIKE));
+        boolean sighted = AirHarassScouting.probeSighted(resourcesSighted, true, true);
+
+        assertEquals(ProbeOutcome.WAIT, AirHarassScouting.probeOutcome(true, 120, 120, sighted, true, NOW, NOW - 24));
+    }
+
+    @Test
+    void theHoldPointMovesOutOfAKnownTurretsReach() {
+        Position flock = new Position(2009, 589);
+        Position plain = AirHarassScouting.holdPoint(BASE, flock, Collections.emptyList());
+        List<AirHarassTargeting.AirThreat> threats = Collections.singletonList(
+                threat(301, UnitType.Terran_Missile_Turret, plain));
+
+        assertTrue(AirHarassScouting.holdExposed(threats, plain));
+        Position hold = AirHarassScouting.holdPoint(BASE, flock, threats);
+
+        assertFalse(AirHarassScouting.holdExposed(threats, hold));
+        assertTrue(hold.getDistance(BASE) > AirHarassScouting.PROBE_HOLD_DISTANCE);
+        assertTrue(hold.getDistance(BASE) <= AirHarassScouting.PROBE_HOLD_DISTANCE
+                + AirHarassScouting.PROBE_HOLD_SEARCH + 1);
+        assertTrue(hold.getY() < plain.getY());
+    }
+
+    @Test
+    void aFlockCloserThanTheHoldDistanceInsideAKnownTurretsReachHoldsFartherOut() {
+        Position flock = new Position(2112, 3424);
+        List<AirHarassTargeting.AirThreat> threats = Collections.singletonList(
+                threat(302, UnitType.Terran_Missile_Turret, flock));
+
+        Position hold = AirHarassScouting.holdPoint(BASE, flock, threats);
+
+        assertFalse(AirHarassScouting.holdExposed(threats, hold));
+        assertTrue(hold.getDistance(BASE) > flock.getDistance(BASE));
+    }
+
+    @Test
+    void aHoldPointCoveredAllTheWayOutStopsAtTheFarthestPointTried() {
+        Position flock = new Position(2112, 1824);
+        List<AirHarassTargeting.AirThreat> threats = new ArrayList<>();
+        for (int y = 3200; y >= 2400; y -= 64) {
+            threats.add(threat(400 + y, UnitType.Terran_Missile_Turret, new Position(2112, y)));
+        }
+
+        Position hold = AirHarassScouting.holdPoint(BASE, flock, threats);
+
+        assertEquals(AirHarassScouting.PROBE_HOLD_DISTANCE + AirHarassScouting.PROBE_HOLD_SEARCH,
+                hold.getDistance(BASE), 2);
+    }
+
+    @Test
+    void aHoldPointNoAntiAirCoversIsNotExposed() {
+        assertFalse(AirHarassScouting.holdExposed(Collections.emptyList(), BASE));
+        assertFalse(AirHarassScouting.holdExposed(
+                Collections.singletonList(threat(303, UnitType.Terran_Missile_Turret, TURRET)), null));
+    }
+
 
     @Test
     void aProbingMutaLeavesOnlyTheProbedBaseHot() {

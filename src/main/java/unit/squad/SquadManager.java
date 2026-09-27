@@ -1049,7 +1049,8 @@ public class SquadManager {
     }
 
     /**
-     * Hands Mutalisks joining a harassing squad the HARASS role and its strike point, and adds their hit points to
+     * Hands Mutalisks joining a harassing squad the HARASS role and its strike point, or its hold point while the
+     * harass probes, see {@link AirHarassController#destinationOf}, and adds their hit points to
      * the ones the harass started with, so the reinforcement is not read as hit points regained.
      *
      * @param squad harassing squad
@@ -1063,7 +1064,7 @@ public class SquadManager {
             member.setFightTarget(null);
             member.setContainPosition(null);
             member.setRetreatTarget(null);
-            member.setHarassDestination(state == null ? null : state.getStrikePoint());
+            member.setHarassDestination(state == null ? null : AirHarassController.destinationOf(state, member));
             if (member.getUnitType() == UnitType.Zerg_Mutalisk) {
                 hitPoints += member.getUnit().getHitPoints();
             }

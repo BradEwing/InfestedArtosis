@@ -69,4 +69,8 @@ public final class HarassRow {
     private final int basesUnderAttack = -1;
     @Builder.Default
     private final int aaSightingAge = -1;
+    @Builder.Default
+    private final int proberHitPoints = -1;
+    @Builder.Default
+    private final int proberPeakHitPoints = -1;
 }

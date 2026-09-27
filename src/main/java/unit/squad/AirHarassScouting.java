@@ -1,6 +1,7 @@
 package unit.squad;
 
 import bwapi.Position;
+import bwapi.UnitType;
 import info.map.HarassHeatMap;
 import util.Vec2;
 
@@ -14,11 +15,12 @@ import java.util.function.Predicate;
  * Mutalisk probe sent into a base whose sighting is stale, the exit on anti-air first seen inside the harass zone,
  * and the one point a flock retreats to when a harass ends.
  *
- * <p>A base's anti-air counts as sighted on a frame when its core, the base center and the center of its resources,
- * is all visible to us. A harass never strikes a base whose core was last sighted more than
- * {@link #STALE_SIGHTING_FRAMES} ago: the flock holds {@link #PROBE_HOLD_DISTANCE} short of it while one Mutalisk
- * flies into the core and then over the strike point, and strikes only once both have been seen and a tolerated
- * strike point is left.
+ * <p>A base's anti-air counts as sighted on a frame when any point of its core, the base center or the center of its
+ * resources, is visible to us. A harass never strikes a base whose core was last sighted more than
+ * {@link #STALE_SIGHTING_FRAMES} ago: the flock holds {@link #PROBE_HOLD_DISTANCE} short of it, or farther out where
+ * known anti-air covers that point, while one Mutalisk flies to its resources and then over the strike point. The
+ * flock strikes only once the probe has seen the center of the base's resources and sees the strike point, and a
+ * tolerated strike point is left.
  *
  * <p>Every decision is a static function over plain values; the constants are tuning values, not Brood War facts.
  */
@@ -28,13 +30,20 @@ public final class AirHarassScouting {
     static final int STALE_SIGHTING_FRAMES = 720;
     /** Tuning value: pixels from the probed base's center at which the rest of the flock holds during a probe. */
     static final int PROBE_HOLD_DISTANCE = 640;
+    /**
+     * Tuning value: pixels past {@link #PROBE_HOLD_DISTANCE} the hold point may move out to, along the flock's side,
+     * to leave the reach of known anti-air.
+     */
+    static final int PROBE_HOLD_SEARCH = 640;
+    /** Tuning value: pixels between two hold points tried on the way out. */
+    static final int PROBE_HOLD_STEP = 32;
     /** Tuning value: frames a probe may run without sighting the base's core before the harass gives up. */
     static final int PROBE_TIMEOUT_FRAMES = 720;
     /**
      * Tuning value: hit points the prober must fall below the most it has had during the probe for the probe to read
-     * the base as defended, a quarter of a Mutalisk's; a stray shot on the way in does not end the probe.
+     * the base as defended, an eighth of a Mutalisk's; a single stray shot on the way in does not end the probe.
      */
-    static final int PROBE_DAMAGE_HIT_POINTS = 30;
+    static final int PROBE_DAMAGE_HIT_POINTS = UnitType.Zerg_Mutalisk.maxHitPoints() / 8;
     /** Tuning value: pixels from a target base's center within which newly seen anti-air ends the harass. */
     static final int NEW_AA_ZONE = HarassHeatMap.RADIUS_TILES * 32;
     /** Tuning value: pixels past a threat's reach that still count as the flock standing at it. */
@@ -122,18 +131,52 @@ public final class AirHarassScouting {
 
     /**
      * Where the rest of the flock waits during a probe: {@link #PROBE_HOLD_DISTANCE} from the base center, on the
-     * side the flock comes from, or where the flock is when it is already closer than that.
+     * side the flock comes from, or where the flock is when it is already closer than that. When known anti-air
+     * covers that point, see {@link #holdExposed}, the point moves out from the base in {@link #PROBE_HOLD_STEP}
+     * steps, up to {@link #PROBE_HOLD_SEARCH} past the hold distance, to the first point no known anti-air covers,
+     * or to the last point tried when every one is covered.
      *
      * @param baseCenter the probed base's center
      * @param flockCenter the flock's center
-     * @return the hold point
+     * @param threats every known anti-air threat
+     * @return the hold point, not clamped to the map
      */
-    public static Position holdPoint(Position baseCenter, Position flockCenter) {
+    public static Position holdPoint(Position baseCenter, Position flockCenter,
+                                     Collection<AirHarassTargeting.AirThreat> threats) {
         Vec2 toFlock = Vec2.between(baseCenter, flockCenter);
-        if (toFlock.length() <= PROBE_HOLD_DISTANCE) {
+        double flockDistance = toFlock.length();
+        if (flockDistance == 0) {
             return flockCenter;
         }
-        return toFlock.normalizeToLength(PROBE_HOLD_DISTANCE).toPosition(baseCenter);
+        Position hold = flockDistance <= PROBE_HOLD_DISTANCE
+                ? flockCenter
+                : toFlock.normalizeToLength(PROBE_HOLD_DISTANCE).toPosition(baseCenter);
+        double distance = Math.min(flockDistance, PROBE_HOLD_DISTANCE);
+        double farthest = PROBE_HOLD_DISTANCE + PROBE_HOLD_SEARCH;
+        while (holdExposed(threats, hold) && distance + PROBE_HOLD_STEP <= farthest) {
+            distance += PROBE_HOLD_STEP;
+            hold = toFlock.normalizeToLength(distance).toPosition(baseCenter);
+        }
+        return hold;
+    }
+
+    /**
+     * Whether known anti-air covers a hold point: the point lies within a threat's reach plus {@link #EXIT_MARGIN}.
+     *
+     * @param threats every known anti-air threat
+     * @param hold the hold point, or null
+     * @return true when some threat covers it
+     */
+    public static boolean holdExposed(Collection<AirHarassTargeting.AirThreat> threats, Position hold) {
+        if (hold == null) {
+            return false;
+        }
+        for (AirHarassTargeting.AirThreat threat : threats) {
+            if (threat.covers(hold, EXIT_MARGIN)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -157,42 +200,60 @@ public final class AirHarassScouting {
     }
 
     /**
-     * Where the probing Mutalisk flies: the probe point until the base's core is sighted, then the strike point, so
-     * anti-air around the strike point is seen before the flock commits to it.
+     * Whether a probe has seen the base's resources: already, or now. A base with no resources is judged on its
+     * center instead. The base center alone never counts, since a base's anti-air stands by its resources.
      *
-     * @param coreSighted true once the base's core has been seen since the probe started
+     * @param alreadySighted true once the probe has seen the resources
+     * @param baseCenter the probed base's center
+     * @param resourceCenter the center of the base's resources, or null when it has none
+     * @param visible whether a point is visible to us now
+     * @return true once the probe has seen the resources
+     */
+    public static boolean probeResourcesSighted(boolean alreadySighted, Position baseCenter, Position resourceCenter,
+                                                Predicate<Position> visible) {
+        return alreadySighted || visible.test(resourceCenter != null ? resourceCenter : baseCenter);
+    }
+
+    /**
+     * Where the probing Mutalisk flies: the probe point until the base's resources are sighted, then the strike point,
+     * so anti-air around the strike point is seen before the flock commits to it.
+     *
+     * @param resourcesSighted true once the probe has seen the base's resources, see {@link #probeResourcesSighted}
      * @param probePoint the probe point
      * @param strikePoint the strike point, or null when there is none
      * @return the destination
      */
-    public static Position proberDestination(boolean coreSighted, Position probePoint, Position strikePoint) {
-        return coreSighted && strikePoint != null ? strikePoint : probePoint;
+    public static Position proberDestination(boolean resourcesSighted, Position probePoint, Position strikePoint) {
+        return resourcesSighted && strikePoint != null ? strikePoint : probePoint;
     }
 
     /**
-     * Whether a probe has seen enough to judge the base: its core since the probe started, and the strike point now
-     * when there is one.
+     * Whether a probe has seen enough to judge the base: the center of its resources since the probe started, and the
+     * strike point now when there is one.
      *
-     * @param coreSighted true once the base's core has been seen since the probe started
+     * @param resourcesSighted true once the probe has seen the base's resources, see {@link #probeResourcesSighted}
      * @param hasStrike true when the base has a tolerated strike point
      * @param strikeVisible true when that strike point is visible now
      * @return true when the probe can clear or refuse the base
      */
-    public static boolean probeSighted(boolean coreSighted, boolean hasStrike, boolean strikeVisible) {
-        return coreSighted && (!hasStrike || strikeVisible);
+    public static boolean probeSighted(boolean resourcesSighted, boolean hasStrike, boolean strikeVisible) {
+        return resourcesSighted && (!hasStrike || strikeVisible);
     }
 
     /**
-     * The reason a harass ends with during a probe: anti-air leaving the base no tolerated strike point, or covering
-     * the flock, is the probe finding the base defended. Every other reason stands.
+     * The reason a harass ends with during a probe. Only the probe's own finding is relabelled: AA_ARRIVED because
+     * the base keeps no tolerated strike point, while the flock itself stands outside anti-air it does not tolerate,
+     * is the probe finding the base defended. AA_ARRIVED with the flock in anti-air stays AA_ARRIVED, and every other
+     * reason stands.
      *
      * @param reason the generic exit reason, or null
      * @param probing true while the harass is probing
-     * @return PROBE_DEFENDED for AA_ARRIVED during a probe, otherwise the reason
+     * @param flockDefended true when the anti-air covering the flock's center exceeds its tolerance
+     * @return PROBE_DEFENDED for the probe's own finding, otherwise the reason
      */
     public static AirHarassEvaluator.ExitReason probeExitReason(AirHarassEvaluator.ExitReason reason,
-                                                                boolean probing) {
-        if (probing && reason == AirHarassEvaluator.ExitReason.AA_ARRIVED) {
+                                                                boolean probing, boolean flockDefended) {
+        if (probing && !flockDefended && reason == AirHarassEvaluator.ExitReason.AA_ARRIVED) {
             return AirHarassEvaluator.ExitReason.PROBE_DEFENDED;
         }
         return reason;

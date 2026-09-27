@@ -20,8 +20,8 @@ import java.util.Set;
  *
  * <p>TRANSIT is the flight to the target base. STRIKE starts once the flock reaches it. A retarget to another base
  * starts TRANSIT again. PROBE replaces TRANSIT on a base whose anti-air sighting is stale: one Mutalisk flies to the
- * probe point, and on to the strike point once the base's core is sighted, while the rest wait at the hold point; the
- * harass moves on to TRANSIT once the probe clears the base.
+ * probe point, and on to the strike point once the base's resources are sighted, while the rest wait at the hold
+ * point; the harass moves on to TRANSIT once the probe clears the base.
  */
 @Getter
 @Setter
@@ -64,7 +64,7 @@ public class AirHarassState {
     private int proberId = -1;
     private int proberPeakHitPoints;
     private int probeStartFrame = -1;
-    private boolean probeCoreSighted;
+    private boolean probeResourcesSighted;
     private Position probePoint;
     private Position holdPoint;
 
@@ -147,7 +147,7 @@ public class AirHarassState {
         this.proberId = -1;
         this.proberPeakHitPoints = 0;
         this.probeStartFrame = -1;
-        this.probeCoreSighted = false;
+        this.probeResourcesSighted = false;
         this.probePoint = null;
         this.holdPoint = null;
     }
