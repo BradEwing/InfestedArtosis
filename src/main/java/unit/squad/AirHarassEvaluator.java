@@ -388,6 +388,19 @@ public final class AirHarassEvaluator {
     }
 
     /**
+     * Whether a squad's harass entry stays closed after a measured ENGAGE broke the retreat lock its harass exit
+     * armed, see {@link #breaksExitLock}. For {@link #REENTRY_HOLD_FRAMES} after the break the squad fights the enemy
+     * it measured instead of going straight back into the harass it just left.
+     *
+     * @param exitEngageFrame frame the squad last broke a harass exit lock, or 0 when it never did
+     * @param now current frame
+     * @return true while entry stays closed
+     */
+    public static boolean holdsReentry(int exitEngageFrame, int now) {
+        return exitEngageFrame > 0 && now - exitEngageFrame <= REENTRY_HOLD_FRAMES;
+    }
+
+    /**
      * The exit a squad removed for being empty closes: WIPED_OUT for a harassing squad, whose harass would
      * otherwise end with no exit at all, and none for any other status.
      *

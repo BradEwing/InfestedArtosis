@@ -15,10 +15,13 @@ import java.util.Set;
  * Harass targets away from a base's heat: groups of enemy units and buildings a Mutalisk flock can raid without
  * standing in more anti-air than it tolerates.
  *
- * <p>Every contact the harass would attack ({@link AirHarassTargeting#tier} is not null) joins the group of the first
- * contact, in id order, within {@link #GROUP_RADIUS} of it. A group is exposed when the anti-air that can fire within
+ * <p>Every contact the harass would attack ({@link AirHarassTargeting#tier} is not null), and every Missile Turret
+ * whose zone the flock does not avoid ({@link AirHarassTargeting#turretTaken}), joins the group of the first contact,
+ * in id order, within {@link #GROUP_RADIUS} of it. A group is exposed when the anti-air that can fire within
  * {@link AirHarassEvaluator#STRIKE_RADIUS} of its anchor, less a lone anti-air unit in the group the flock kills
- * quickly, is within the tolerance. The constants are tuning values, not Brood War facts.
+ * quickly, is within the tolerance. A Turret the flock does not kill quickly still counts there, so a Turret alone is an exposed
+ * target exactly when the flock tolerates the anti-air around it, its own included. The constants are tuning values,
+ * not Brood War facts.
  */
 public final class ExposedTargets {
 
@@ -58,16 +61,23 @@ public final class ExposedTargets {
     /**
      * Groups the contacts the harass would attack. A group's anchor is the centroid of its members and its value
      * the sum of their tiers, counted from 1 for {@link AirHarassTargeting.Tier#OTHER} up to
-     * {@link AirHarassTargeting.Tier#WORKER}.
+     * {@link AirHarassTargeting.Tier#WORKER}; a Turret taken on joins in the isolated anti-air tier.
      *
      * @param contacts enemies a Mutalisk could attack, visible or remembered
      * @param flockSize Mutalisks in the squad
+     * @param avoided the zones the flock avoids, see {@link AirHarassTargeting#avoided}
      * @return the groups
      */
-    public static List<Group> groups(Collection<AirHarassTargeting.Contact> contacts, int flockSize) {
+    public static List<Group> groups(Collection<AirHarassTargeting.Contact> contacts, int flockSize,
+                                     Collection<AirHarassTargeting.AirThreat> avoided) {
+        AirHarassTargeting.Situation situation = AirHarassTargeting.Situation.builder()
+                .flockSize(flockSize)
+                .avoided(new ArrayList<>(avoided))
+                .turretsTaken(true)
+                .build();
         List<AirHarassTargeting.Contact> sorted = new ArrayList<>();
         for (AirHarassTargeting.Contact contact : contacts) {
-            if (AirHarassTargeting.tier(contact, flockSize) != null) {
+            if (AirHarassTargeting.tier(contact, situation) != null) {
                 sorted.add(contact);
             }
         }
@@ -89,12 +99,12 @@ public final class ExposedTargets {
                     continue;
                 }
                 grouped.add(contact.getId());
-                AirHarassTargeting.Tier tier = AirHarassTargeting.tier(contact, flockSize);
+                AirHarassTargeting.Tier tier = AirHarassTargeting.tier(contact, situation);
                 members++;
                 x += contact.getPosition().getX();
                 y += contact.getPosition().getY();
                 value += tier.ordinal() + 1;
-                if (tier == AirHarassTargeting.Tier.ISOLATED_AA) {
+                if (AirHarassTargeting.tier(contact, flockSize) == AirHarassTargeting.Tier.ISOLATED_AA) {
                     isolatedAntiAir.add(contact.getId());
                 }
             }

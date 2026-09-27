@@ -130,9 +130,9 @@ public class AirHarassController {
             options = options(threats, tolerance, containPoints, gameState.getBaseData().getEnemyBases(),
                     MIN_ENTRY_HEAT);
             if (AirHarassEvaluator.chooseBase(options) == null) {
-                exposed = ExposedTargets.choose(
-                        exposedMemory.admitted(ExposedTargets.groups(view.candidates(), flock.mutas), now), threats,
-                        tolerance, squad.getCenter());
+                exposed = ExposedTargets.choose(exposedMemory.admitted(ExposedTargets.groups(view.candidates(),
+                        flock.mutas, AirHarassTargeting.avoided(threats, tolerance)), now), threats, tolerance,
+                        squad.getCenter());
             }
             flockDefense = AirHarassTargeting.defenseAt(threats, squad.getCenter(), 0);
         }
@@ -193,7 +193,7 @@ public class AirHarassController {
         if (entry.option != null) {
             state.target(entry.option.getBase(), entry.option.getStrikePoint(), now);
         } else {
-            state.targetExposed(entry.exposed.getAnchor(), now);
+            state.targetExposed(entry.exposed, now);
         }
         state.setLastTickFrame(now - AirHarassEvaluator.HARASS_TICK);
         squad.setHarassState(state);
@@ -274,9 +274,10 @@ public class AirHarassController {
     }
 
     /**
-     * Builds the EXIT row of a harass. air_defense is the anti-air within {@link AirHarassEvaluator#STRIKE_RADIUS}
-     * of the strike point and flock_defense the anti-air covering the flock's center, the two measures the
-     * STRIKE_DEFENDED and FLOCK_DEFENDED exits read; each is -1 when its point is unknown.
+     * Builds the EXIT row of a harass. air_defense is the anti-air the STRIKE_DEFENDED exit reads: for a base, the
+     * anti-air within {@link AirHarassEvaluator#STRIKE_RADIUS} of the strike point; for an exposed target, the
+     * group's {@link ExposedTargets#defenseAt} at the anchor it was last followed to. flock_defense is the anti-air
+     * covering the flock's center, which the FLOCK_DEFENDED exit reads. Each is -1 when its point is unknown.
      *
      * @param squadId the squad's id
      * @param state the harass state, or null when the squad carried none
@@ -296,7 +297,9 @@ public class AirHarassController {
         } else {
             row = row(squadId, state, HarassRow.Event.EXIT, now)
                     .hpLossFraction(AirHarassEvaluator.hpLossFraction(state.getStartHitPoints(), flockHitPoints));
-            if (state.getStrikePoint() != null) {
+            if (state.targetsExposed() && state.getExposedGroup() != null) {
+                row.airDefense(ExposedTargets.defenseAt(state.getExposedGroup(), threats));
+            } else if (state.getStrikePoint() != null) {
                 row.airDefense(AirHarassTargeting.defenseAt(threats, state.getStrikePoint(),
                         AirHarassEvaluator.STRIKE_RADIUS));
             }
@@ -399,13 +402,14 @@ public class AirHarassController {
         boolean targetGone;
         boolean heated;
         Position strike;
+        List<AirHarassTargeting.AirThreat> avoided = AirHarassTargeting.avoided(view.threats, tolerance);
         if (state.targetsExposed()) {
             ExposedTargets.Group group = ExposedTargets.follow(
-                    ExposedTargets.groups(view.candidates(), flock.mutas), state.getExposedAnchor());
+                    ExposedTargets.groups(view.candidates(), flock.mutas, avoided), state.getExposedAnchor());
             targetGone = group == null;
             heated = !targetGone;
             if (heated) {
-                state.setExposedAnchor(group.getAnchor());
+                state.follow(group);
             }
             strike = heated && ExposedTargets.exposed(group, view.threats, tolerance) ? group.getAnchor() : null;
         } else {
@@ -449,7 +453,7 @@ public class AirHarassController {
                 .tolerance(tolerance)
                 .airDefense(AirHarassTargeting.defenseAt(view.threats, state.getStrikePoint(),
                         AirHarassEvaluator.STRIKE_RADIUS))
-                .avoidedZones(AirHarassTargeting.avoided(view.threats, tolerance).size())
+                .avoidedZones(avoided.size())
                 .containDistance(nearestDistance(squad.getCenter(), containPoints))
                 .basesUnderAttack(basesUnderAttack ? 1 : 0)
                 .build());
@@ -475,13 +479,13 @@ public class AirHarassController {
         if (next != null) {
             state.target(next.getBase(), next.getStrikePoint(), now);
         } else {
-            ExposedTargets.Group exposed = ExposedTargets.choose(
-                    exposedMemory.admitted(ExposedTargets.groups(view.candidates(), mutas), now),
+            ExposedTargets.Group exposed = ExposedTargets.choose(exposedMemory.admitted(ExposedTargets.groups(
+                    view.candidates(), mutas, AirHarassTargeting.avoided(view.threats, tolerance)), now),
                     view.threats, tolerance, squad.getCenter());
             if (exposed == null) {
                 return false;
             }
-            state.targetExposed(exposed.getAnchor(), now);
+            state.targetExposed(exposed, now);
         }
         HarassTelemetry.row(row(squad.getId(), state, HarassRow.Event.RETARGET, now).center(squad.getCenter()).build());
         return true;
@@ -515,7 +519,8 @@ public class AirHarassController {
     /**
      * Gives every Mutalisk of a harassing squad that acts this frame its order. A Mutalisk still waiting on its
      * last order keeps it. Only enemies around the target base, or within {@link ExposedTargets#SEEK_RADIUS} of an
-     * exposed target, are sought out; an enemy anywhere else is taken only when it is close to the Mutalisk.
+     * exposed target, are sought out; an enemy anywhere else is taken only when it is close to the Mutalisk. On an
+     * exposed target a Missile Turret the flock tolerates is taken too, see {@link AirHarassTargeting#turretTaken}.
      */
     private void assignOrders(Squad squad, AirHarassState state, View view,
                               List<AirHarassTargeting.AirThreat> avoided, int mutas, int now) {
@@ -529,6 +534,7 @@ public class AirHarassController {
                 .flockSize(mutas)
                 .seekPoint(state.getStrikePoint())
                 .targetAllowed(point -> point.getDistance(baseCenter) <= baseRadius)
+                .turretsTaken(state.targetsExposed())
                 .pointAllowed(point -> point.getX() >= 0 && point.getY() >= 0 && point.getX() < mapWidth
                         && point.getY() < mapHeight)
                 .now(now)

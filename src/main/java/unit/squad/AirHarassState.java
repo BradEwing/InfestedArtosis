@@ -47,6 +47,7 @@ public class AirHarassState {
     private Phase phase = Phase.TRANSIT;
     private Base targetBase;
     private Position exposedAnchor;
+    private ExposedTargets.Group exposedGroup;
     private Position strikePoint;
     private int lastTickFrame;
     private int lastProgressFrame;
@@ -78,6 +79,7 @@ public class AirHarassState {
     public void target(Base base, Position strike, int frame) {
         this.targetBase = base;
         this.exposedAnchor = null;
+        this.exposedGroup = null;
         this.strikePoint = strike;
         this.phase = Phase.TRANSIT;
         this.arrivedFrame = -1;
@@ -91,16 +93,27 @@ public class AirHarassState {
      * Points the harass at an exposed group of enemies away from a base's heat and starts TRANSIT toward it. The
      * group's anchor is also the strike point.
      *
-     * @param anchor the group's anchor
+     * @param group the group
      * @param frame current frame
      */
-    public void targetExposed(Position anchor, int frame) {
+    public void targetExposed(ExposedTargets.Group group, int frame) {
         this.targetBase = null;
-        this.exposedAnchor = anchor;
-        this.strikePoint = anchor;
+        follow(group);
+        this.strikePoint = group.getAnchor();
         this.phase = Phase.TRANSIT;
         this.arrivedFrame = -1;
         this.lastProgressFrame = frame;
+    }
+
+    /**
+     * Keeps an exposed target on the group found near its last anchor this decision tick: the group and its anchor
+     * replace the old ones. The strike point is left to the caller.
+     *
+     * @param group the group followed
+     */
+    public void follow(ExposedTargets.Group group) {
+        this.exposedGroup = group;
+        this.exposedAnchor = group.getAnchor();
     }
 
     /**

@@ -13,13 +13,15 @@ import java.util.Map;
  * Writes telemetry_harass.csv: one row per air harass event, and one ENTRY_CHECK row whenever the harass entry
  * verdict of an air squad changes.
  *
- * <p>ENTER and EXIT bound a harass episode; EXIT names its exit_reason. TICK rows carry the flock's position, size,
- * hit points and the anti-air it measured at its strike point, and contain_distance, the pixels from the flock to
- * the nearest held containment arc, or -1 with none held. ENTER, TICK and EXIT rows carry air_defense, the anti-air
- * at the strike point, and target_kind, BASE or EXPOSED; for an EXPOSED target base_x and base_y are -1 and the
- * strike point is the group's anchor. TICK and EXIT rows carry flock_defense, the anti-air covering the flock's
- * center, which the FLOCK_DEFENDED exit compares against the tolerance. KILL rows name the killed_type credited to the harass and
- * MUTA_LOST rows a Mutalisk lost while harassing. workers_killed, buildings_killed, other_killed and mutas_lost are
+ * <p>ENTER and EXIT bound a harass episode; EXIT names its exit_reason. TICK rows carry the flock's position, size, hit
+ * points and the anti-air it measured at its strike point, and contain_distance, the pixels from the flock to the
+ * nearest held containment arc, or -1 with none held. ENTER, TICK and EXIT rows carry air_defense, the anti-air at the
+ * strike point, and target_kind, BASE or EXPOSED; for an EXPOSED target base_x and base_y are -1 and the strike point
+ * is the group's anchor. On an EXPOSED EXIT row air_defense is the group's exposure measure at the anchor it was last
+ * followed to, the anti-air the STRIKE_DEFENDED exit compared against the tolerance, which leaves out a lone anti-air
+ * member the flock kills quickly. TICK and EXIT rows carry flock_defense, the anti-air covering the flock's center,
+ * which the FLOCK_DEFENDED exit compares against the tolerance. KILL rows name the killed_type credited to the harass
+ * and MUTA_LOST rows a Mutalisk lost while harassing. workers_killed, buildings_killed, other_killed and mutas_lost are
  * cumulative over the episode on every row that carries them.
  *
  * <p>Constructed only when combat telemetry is enabled.

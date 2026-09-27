@@ -329,6 +329,16 @@ class AirHarassEvaluatorTest {
     }
 
     @Test
+    void aFlockStandingInMoreAntiAirThanItToleratesDoesNotEnterAnExposedTargetEither() {
+        List<AirHarassEvaluator.BaseOption<?>> none = Collections.emptyList();
+
+        assertEquals(EntryVerdict.DEFENDED, AirHarassEvaluator.entryVerdict(
+                entry().options(none).exposedTarget(true).flockDefense(3.0).tolerance(2.0).build()));
+        assertEquals(EntryVerdict.ENTER, AirHarassEvaluator.entryVerdict(
+                entry().options(none).exposedTarget(true).flockDefense(2.0).tolerance(2.0).build()));
+    }
+
+    @Test
     void onlyAMeasuredEngageBreaksTheRetreatLockAHarassExitArmed() {
         assertTrue(AirHarassEvaluator.breaksExitLock(true, CombatSimulator.CombatResult.ENGAGE, true));
         assertFalse(AirHarassEvaluator.breaksExitLock(true, CombatSimulator.CombatResult.ENGAGE, false));
@@ -350,6 +360,48 @@ class AirHarassEvaluatorTest {
                 SquadStatus.RETREAT));
         squad.clearRetreatLock();
         assertFalse(squad.isRetreatLocked(NOW + 1));
+    }
+
+    @Test
+    void harassEntryStaysClosedForTheReentryHoldAfterABrokenExitLock() {
+        int broke = NOW + 1;
+
+        assertFalse(AirHarassEvaluator.holdsReentry(0, NOW));
+        assertTrue(AirHarassEvaluator.holdsReentry(broke, broke));
+        assertTrue(AirHarassEvaluator.holdsReentry(broke, broke + AirHarassEvaluator.REENTRY_HOLD_FRAMES));
+        assertFalse(AirHarassEvaluator.holdsReentry(broke, broke + AirHarassEvaluator.REENTRY_HOLD_FRAMES + 1));
+    }
+
+    @Test
+    void anExitEngageBreakNoLongerFeedsAnImmediateReEntry() {
+        Squad squad = new AirSquad();
+        squad.setHarassExitFrame(NOW);
+        squad.startRetreatLock(NOW);
+        int broke = NOW + 1;
+        assertTrue(AirHarassEvaluator.breaksExitLock(squad.isHarassExitLocked(broke),
+                CombatSimulator.CombatResult.ENGAGE, true));
+        squad.clearRetreatLock();
+        squad.setHarassExitEngageFrame(broke);
+        int reentry = NOW + 24;
+
+        assertTrue(AirHarassEvaluator.entryCheckDue(true, squad.isRetreatLocked(reentry),
+                squad.isFightLocked(reentry), reentry));
+        assertTrue(AirHarassEvaluator.holdsReentry(squad.getHarassExitEngageFrame(), reentry));
+        int reopened = NOW + AirHarassEvaluator.REENTRY_HOLD_FRAMES + AirHarassEvaluator.HARASS_TICK;
+        assertTrue(AirHarassEvaluator.entryCheckDue(true, false, false, reopened));
+        assertFalse(AirHarassEvaluator.holdsReentry(squad.getHarassExitEngageFrame(), reopened));
+    }
+
+    @Test
+    void anExitWithoutABreakLeavesHarassEntryOpen() {
+        Squad squad = new AirSquad();
+        squad.setHarassExitFrame(NOW);
+        squad.startRetreatLock(NOW);
+        int afterLock = NOW + 48;
+
+        assertFalse(squad.isRetreatLocked(afterLock));
+        assertTrue(AirHarassEvaluator.entryCheckDue(true, false, false, afterLock));
+        assertFalse(AirHarassEvaluator.holdsReentry(squad.getHarassExitEngageFrame(), afterLock));
     }
 
     @Test

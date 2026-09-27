@@ -1075,7 +1075,8 @@ public class SquadManager {
 
     /**
      * Offers an air squad a harass on every {@link AirHarassEvaluator#HARASS_TICK}, outside its retreat and fight
-     * locks. Overlords escorting the squad go back to the Overlord squad, since they would trail the Mutalisks
+     * locks and outside the hold that follows a broken harass exit lock, see {@link AirHarassEvaluator#holdsReentry}.
+     * Overlords escorting the squad go back to the Overlord squad, since they would trail the Mutalisks
      * into the enemy base.
      *
      * @param squad fight squad cleared to act
@@ -1084,7 +1085,8 @@ public class SquadManager {
     private boolean tryEnterHarass(Squad squad) {
         int now = game.getFrameCount();
         if (!AirHarassEvaluator.entryCheckDue(squad.isAirSquad(), squad.isRetreatLocked(now),
-                squad.isFightLocked(now), now)) {
+                squad.isFightLocked(now), now)
+                || AirHarassEvaluator.holdsReentry(squad.getHarassExitEngageFrame(), now)) {
             return false;
         }
         AirHarassController.Entry entry = airHarass.checkEntry(squad, now, basesUnderAttack(), containPoints());
@@ -1529,6 +1531,7 @@ public class SquadManager {
                 enemyMeasured);
         if (exitLockBroken) {
             squad.clearRetreatLock();
+            squad.setHarassExitEngageFrame(now);
             retreatLocked = false;
         }
         SquadDecisions.simEvaluated(squad, result, retreatLocked, fightLocked);
