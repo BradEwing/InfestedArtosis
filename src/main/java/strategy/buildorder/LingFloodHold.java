@@ -16,6 +16,11 @@ import java.util.List;
  * <p>The reaction layer decides whether the hold stands; the build order layer reads these rules
  * for the sunken target, the Zergling cap and the Drone floor; the squad layer keeps ground squads
  * at home for as long as it stands.
+ *
+ * <p>The Drone floor is planned from the defense path, ahead of the active build's own plans, so it
+ * overrides any worker cap the build keeps. The Zergling cap applies to the matchup target and the
+ * early rush emergency; a build's own Zergling branch and the mineral surplus Zerglings are not
+ * capped, and wait behind the floor Drones for larva.
  */
 public final class LingFloodHold {
 

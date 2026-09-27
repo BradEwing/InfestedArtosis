@@ -1068,7 +1068,7 @@ public class Reactions {
      * @param baseData our bases and the current main sunken gate
      * @param barracksPressureHoldsMain whether the enemy's observed Barracks read as a bio push the main must answer
      * @param expansionsUnderConstruction expansion Hatcheries that have started morphing and not finished
-     * @param mainHeldThroughExpansion whether the SCV rush or ZvZ pressure reaction held the main open this frame
+     * @param mainHeldThroughExpansion whether the SCV rush, ZvZ pressure or Zergling flood hold reaction held the main open this frame
      * @return true when the gate should close and the main's queued colonies be dropped
      */
     static boolean shouldClearMainSunken(BaseData baseData, boolean barracksPressureHoldsMain,
