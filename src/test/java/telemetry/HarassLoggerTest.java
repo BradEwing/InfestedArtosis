@@ -96,6 +96,28 @@ class HarassLoggerTest {
     }
 
     @Test
+    void anEntryCheckAppendsTheAntiAirSightingAgeAsTheLastColumn() {
+        HarassRow check = HarassRow.builder()
+                .frame(10296)
+                .squadId("squad-1")
+                .event(HarassRow.Event.ENTRY_CHECK)
+                .verdict(AirHarassEvaluator.EntryVerdict.PROBE)
+                .aaSightingAge(10296)
+                .build();
+
+        String[] columns = HarassLogger.HEADER.split(",", -1);
+        String[] fields = HarassLogger.row("game-1", check).split(",", -1);
+
+        assertEquals("aa_sighting_age", columns[columns.length - 1]);
+        assertEquals("bases_under_attack", columns[columns.length - 2]);
+        assertEquals(columns.length, fields.length);
+        assertEquals("10296", fields[columnIndex("aa_sighting_age")]);
+        assertEquals("PROBE", fields[columnIndex("verdict")]);
+        assertEquals("-1", HarassLogger.row("game-1", event(10300, HarassRow.Event.KILL))
+                .split(",", -1)[columnIndex("aa_sighting_age")]);
+    }
+
+    @Test
     void aKillRowNamesTheKilledType() {
         HarassRow kill = HarassRow.builder()
                 .frame(13000)

@@ -19,6 +19,11 @@ import java.util.Map;
  * MUTA_LOST rows a Mutalisk lost while harassing. workers_killed, buildings_killed, other_killed and mutas_lost are
  * cumulative over the episode on every row that carries them.
  *
+ * <p>aa_sighting_age is the frames since the target base's core, and with it its anti-air, was last in sight; a base
+ * never sighted reads the frame count. ENTRY_CHECK rows carry it for the chosen base, and ENTER, RETARGET, TICK and
+ * PROBE_CLEAR rows for the target base. An ENTER or RETARGET row whose phase is PROBE sends one Mutalisk to sight the
+ * base first; PROBE_CLEAR marks the probe clearing the base, and the flock starting its strike.
+ *
  * <p>Constructed only when combat telemetry is enabled.
  */
 public class HarassLogger implements HarassSink {
@@ -28,7 +33,7 @@ public class HarassLogger implements HarassSink {
     static final String HEADER = "game_id,frame,squad_id,event,verdict,exit_reason,phase,base_x,base_y,strike_x,"
             + "strike_y,center_x,center_y,mutas,healthy_mutas,flock_hp,hp_loss_fraction,tolerance,air_defense,"
             + "avoided_zones,workers_killed,buildings_killed,other_killed,mutas_lost,killed_type,contain_distance,"
-            + "bases_under_attack";
+            + "bases_under_attack,aa_sighting_age";
 
     private static final int FLUSH_INTERVAL_FRAMES = 480;
     private static final int NOT_EVALUATED = -1;
@@ -142,6 +147,7 @@ public class HarassLogger implements HarassSink {
         fields.add(Csv.name(row.getKilledType()));
         fields.add(Csv.format(row.getContainDistance()));
         fields.add(String.valueOf(row.getBasesUnderAttack()));
+        fields.add(String.valueOf(row.getAaSightingAge()));
         return String.join(",", fields);
     }
 

@@ -5,8 +5,11 @@ import bwem.Base;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -16,7 +19,8 @@ import java.util.Set;
  * that keeps evasion and targets from flapping.
  *
  * <p>TRANSIT is the flight to the target base. STRIKE starts once the flock reaches it. A retarget to another base
- * starts TRANSIT again.
+ * starts TRANSIT again. PROBE replaces TRANSIT on a base whose anti-air sighting is stale: one Mutalisk flies to the
+ * probe point while the rest wait at the hold point, and the harass moves on to TRANSIT once the probe clears it.
  */
 @Getter
 @Setter
@@ -27,7 +31,8 @@ public class AirHarassState {
      */
     public enum Phase {
         TRANSIT,
-        STRIKE
+        STRIKE,
+        PROBE
     }
 
     /**
@@ -54,6 +59,12 @@ public class AirHarassState {
     private int buildingsKilled;
     private int otherKilled;
     private int mutasLost;
+    private final Set<Integer> knownAntiAir = new HashSet<>();
+    private int proberId = -1;
+    private int proberStartHitPoints;
+    private int probeStartFrame = -1;
+    private Position probePoint;
+    private Position holdPoint;
 
     /**
      * @param startFrame frame the harass started
@@ -79,9 +90,69 @@ public class AirHarassState {
         this.phase = Phase.TRANSIT;
         this.arrivedFrame = -1;
         this.lastProgressFrame = frame;
+        clearProbeFields();
         if (base != null) {
             visitedBases.add(base);
         }
+    }
+
+    /**
+     * Points the harass at a base whose anti-air sighting is stale and starts PROBE on it.
+     *
+     * @param base base to probe
+     * @param strike point to strike at it once the probe clears it
+     * @param proberId unit id of the probing Mutalisk
+     * @param proberHitPoints its hit points now
+     * @param probePoint where it flies
+     * @param holdPoint where the rest of the flock waits
+     * @param frame current frame
+     */
+    public void probe(Base base, Position strike, int proberId, int proberHitPoints, Position probePoint,
+                      Position holdPoint, int frame) {
+        target(base, strike, frame);
+        this.phase = Phase.PROBE;
+        this.proberId = proberId;
+        this.proberStartHitPoints = proberHitPoints;
+        this.probeStartFrame = frame;
+        this.probePoint = probePoint;
+        this.holdPoint = holdPoint;
+    }
+
+    /**
+     * Ends a probe that cleared its base: the whole flock starts TRANSIT to the strike point.
+     *
+     * @param strike point to strike
+     * @param frame current frame
+     */
+    public void clearProbe(Position strike, int frame) {
+        this.strikePoint = strike;
+        this.phase = Phase.TRANSIT;
+        this.lastProgressFrame = frame;
+        clearProbeFields();
+    }
+
+    private void clearProbeFields() {
+        this.proberId = -1;
+        this.proberStartHitPoints = 0;
+        this.probeStartFrame = -1;
+        this.probePoint = null;
+        this.holdPoint = null;
+    }
+
+    /**
+     * Records every anti-air threat as known and returns the ones seen for the first time.
+     *
+     * @param threats every known anti-air threat
+     * @return the threats not known before this call
+     */
+    public List<AirHarassTargeting.AirThreat> learnAntiAir(Collection<AirHarassTargeting.AirThreat> threats) {
+        List<AirHarassTargeting.AirThreat> fresh = new ArrayList<>();
+        for (AirHarassTargeting.AirThreat threat : threats) {
+            if (knownAntiAir.add(threat.getId())) {
+                fresh.add(threat);
+            }
+        }
+        return fresh;
     }
 
     /**

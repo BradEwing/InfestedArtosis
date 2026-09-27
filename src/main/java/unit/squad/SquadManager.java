@@ -956,7 +956,8 @@ public class SquadManager {
 
     /**
      * Runs one frame of a harassing squad. The combat sim, the locks and the containment branches never see it; it
-     * leaves HARASS only through the harass exit, and then retreats.
+     * leaves HARASS only through the harass exit, and then retreats, the whole flock to one exit point when anti-air
+     * is near it.
      *
      * @param squad harassing squad
      */
@@ -972,6 +973,7 @@ public class SquadManager {
         squad.setStatus(SquadStatus.RETREAT);
         SquadDecisions.pathTaken(squad, DecisionPath.HARASS_EXIT);
         assignRetreatTargets(squad, squad.getMembers());
+        airHarass.leaveTogether(squad, now);
         squad.startRetreatLock(now);
     }
 
