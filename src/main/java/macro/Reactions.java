@@ -34,6 +34,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
+import java.util.function.ToIntFunction;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -987,14 +988,28 @@ public class Reactions {
 
     private boolean barracksPressureOpensMain() {
         BaseData baseData = gameState.getBaseData();
-        Base natural = baseData.standingNatural();
-        if (natural == null) {
-            return SunkenTargets.barracksPressureOpensMain(false, 0, 0, false);
-        }
         int naturalTarget = SunkenTargets.perBaseSunkenTarget(gameState.getActiveBuildOrder().requiredSunkens(gameState),
                 gameState.getGameTime());
-        return SunkenTargets.barracksPressureOpensMain(true, baseData.standingSunkens(natural), naturalTarget,
-                baseData.isMainNearerEnemyThan(natural));
+        return barracksPressureOpensMain(baseData.standingNatural(), baseData::standingSunkens, naturalTarget,
+                baseData::isMainNearerEnemyThan);
+    }
+
+    /**
+     * Reads {@link SunkenTargets#barracksPressureOpensMain} for the natural that stands, if any.
+     *
+     * @param standingNatural the natural a completed Hatchery of ours stands on, or null
+     * @param standingSunkens sunkens standing or morphing at a base, leaving out planned pairs
+     * @param naturalTarget the natural's per base target, per {@link SunkenTargets#perBaseSunkenTarget}
+     * @param mainNearerEnemy whether the main is nearer the enemy main by ground path than a base
+     * @return true when Barracks pressure opens the main
+     */
+    static <T> boolean barracksPressureOpensMain(T standingNatural, ToIntFunction<T> standingSunkens, int naturalTarget,
+                                                 Predicate<T> mainNearerEnemy) {
+        if (standingNatural == null) {
+            return SunkenTargets.barracksPressureOpensMain(false, 0, naturalTarget, false);
+        }
+        return SunkenTargets.barracksPressureOpensMain(true, standingSunkens.applyAsInt(standingNatural), naturalTarget,
+                mainNearerEnemy.test(standingNatural));
     }
 
     private boolean isUnderOneBaseFloor() {

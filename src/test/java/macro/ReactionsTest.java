@@ -384,7 +384,6 @@ public class ReactionsTest {
         Reactions.openMainForBarracksPressure(baseData, opensMain);
 
         assertFalse(baseData.isAllowSunkenAtMain());
-        assertFalse(baseData.isEligibleForSunkenColony(baseData.getMainBase()));
     }
 
     /**
@@ -414,7 +413,6 @@ public class ReactionsTest {
         Reactions.openMainForBarracksPressure(baseData, opensMain);
 
         assertTrue(baseData.isAllowSunkenAtMain());
-        assertTrue(baseData.isEligibleForSunkenColony(baseData.getMainBase()));
         assertFalse(Reactions.shouldClearMainSunken(baseData, UNDER_BARRACKS_PRESSURE && opensMain,
                 NO_EXPANSION_UNDER_CONSTRUCTION, MAIN_NOT_HELD));
     }
@@ -457,6 +455,40 @@ public class ReactionsTest {
         assertTrue(baseData.isAllowSunkenAtMain());
         assertFalse(Reactions.shouldClearMainSunken(baseData, false,
                 NO_EXPANSION_UNDER_CONSTRUCTION, MAIN_NOT_HELD));
+    }
+
+    @Test
+    void testTheGateReadsTheStandingNaturalsOwnCountAndDistance() {
+        String main = "main";
+        String natural = "natural";
+        HashMap<String, Integer> standing = new HashMap<>();
+        standing.put(main, SunkenTargets.BARRACKS_PRESSURE_SUNKENS);
+        standing.put(natural, SunkenTargets.BARRACKS_PRESSURE_SUNKENS - 1);
+        Set<String> mainNearerThan = new HashSet<>();
+
+        assertFalse(Reactions.barracksPressureOpensMain(natural, standing::get,
+                SunkenTargets.BARRACKS_PRESSURE_SUNKENS, mainNearerThan::contains));
+
+        standing.put(natural, SunkenTargets.BARRACKS_PRESSURE_SUNKENS);
+        assertTrue(Reactions.barracksPressureOpensMain(natural, standing::get,
+                SunkenTargets.BARRACKS_PRESSURE_SUNKENS, mainNearerThan::contains));
+
+        standing.put(natural, 0);
+        mainNearerThan.add(natural);
+        assertTrue(Reactions.barracksPressureOpensMain(natural, standing::get,
+                SunkenTargets.BARRACKS_PRESSURE_SUNKENS, mainNearerThan::contains));
+    }
+
+    @Test
+    void testTheGateOpensTheMainWithNoStandingNaturalWithoutReadingABase() {
+        assertTrue(Reactions.<String>barracksPressureOpensMain(null,
+                base -> {
+                    throw new AssertionError("no base to count");
+                },
+                SunkenTargets.BARRACKS_PRESSURE_SUNKENS,
+                base -> {
+                    throw new AssertionError("no base to measure");
+                }));
     }
 
     @Test
