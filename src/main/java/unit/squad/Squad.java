@@ -19,6 +19,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -61,6 +62,7 @@ public class Squad implements Comparable<Squad> {
     private RunbyState runbyState;
     private AirHarassState harassState;
     private int harassExitFrame = 0;
+    private Set<Integer> regroupingIds = new HashSet<>();
     private int containRadius = 0;
     private final ContainmentAttrition containmentAttrition = new ContainmentAttrition();
     protected Time fightHysteresis = new Time(0, 3);

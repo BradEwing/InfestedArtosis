@@ -26,6 +26,9 @@ import org.bk.ass.sim.BWMirrorAgentFactory;
 import org.bk.ass.sim.Simulator;
 import telemetry.DecisionPath;
 import telemetry.DefenseEvent;
+import telemetry.FlockLogger;
+import telemetry.FlockRow;
+import telemetry.FlockTelemetry;
 import telemetry.RallyReason;
 import telemetry.RallyRelease;
 import telemetry.RunbyTelemetry;
@@ -198,6 +201,85 @@ public class SquadManager {
 
         fightSquads.removeAll(removed);
         evadeOutrangedHits(now);
+        recordFlockSamples(now);
+    }
+
+    /**
+     * Records a SAMPLE row to telemetry_flock.csv every {@link FlockLogger#SAMPLE_INTERVAL_FRAMES} frames for each
+     * air squad with at least two Mutalisks in FIGHT, HARASS or RETREAT.
+     *
+     * @param now current frame
+     */
+    private void recordFlockSamples(int now) {
+        if (!FlockTelemetry.enabled() || now % FlockLogger.SAMPLE_INTERVAL_FRAMES != 0) {
+            return;
+        }
+        for (Squad squad : fightSquads) {
+            SquadStatus status = squad.getStatus();
+            boolean flockStatus = status == SquadStatus.FIGHT || status == SquadStatus.HARASS
+                    || status == SquadStatus.RETREAT;
+            if (!squad.isAirSquad() || !flockStatus) {
+                continue;
+            }
+            Collection<Position> mutas = memberPositions(squad, UnitType.Zerg_Mutalisk).values();
+            if (mutas.size() < 2) {
+                continue;
+            }
+            Position centroid = AirFlock.centroid(mutas);
+            List<Double> distances = AirFlock.distances(mutas, centroid);
+            FlockTelemetry.row(FlockRow.builder()
+                    .frame(now)
+                    .squadId(squad.getId())
+                    .event(FlockRow.Event.SAMPLE)
+                    .status(status)
+                    .mutas(mutas.size())
+                    .centroid(centroid)
+                    .medianDistance(AirFlock.median(distances))
+                    .maxDistance(distances.get(distances.size() - 1))
+                    .regrouping(squad.getRegroupingIds().size())
+                    .build());
+        }
+    }
+
+    /**
+     * Records a MUTA_LOST row to telemetry_flock.csv for a Mutalisk of ours that died, with the distance to the
+     * nearest other member of its fight squad. Must run before the dead member is removed from its squad.
+     *
+     * @param unit destroyed unit
+     * @param now current frame
+     */
+    private void recordFlockLoss(Unit unit, int now) {
+        if (!FlockTelemetry.enabled() || unit.getPlayer() != game.self()
+                || unit.getType() != UnitType.Zerg_Mutalisk) {
+            return;
+        }
+        Squad owner = null;
+        for (Squad squad : fightSquads) {
+            for (ManagedUnit member : squad.getMembers()) {
+                if (member.getUnit() == unit) {
+                    owner = squad;
+                    break;
+                }
+            }
+        }
+        FlockRow.FlockRowBuilder row = FlockRow.builder()
+                .frame(now)
+                .event(FlockRow.Event.MUTA_LOST)
+                .unitId(unit.getID())
+                .centroid(unit.getPosition());
+        if (owner != null) {
+            List<Position> mates = new ArrayList<>();
+            for (ManagedUnit member : owner.getMembers()) {
+                if (member.getUnit() != unit) {
+                    mates.add(member.getPosition());
+                }
+            }
+            row.squadId(owner.getId())
+                    .status(owner.getStatus())
+                    .mutas(memberPositions(owner, UnitType.Zerg_Mutalisk).size())
+                    .nearestMateDistance(AirFlock.nearestDistance(unit.getPosition(), mates));
+        }
+        FlockTelemetry.row(row.build());
     }
 
     /**
@@ -1555,6 +1637,12 @@ public class SquadManager {
         HashMap<ManagedUnit, Position> retreatTargets = squad.isGroundSquad()
                 ? computeGroundRetreatTargets(squad)
                 : null;
+        Map<Integer, Position> airRetreatTargets = squad.isAirSquad()
+                ? airRetreatTargets(squad)
+                : Collections.emptyMap();
+        if (squad.isAirSquad()) {
+            squad.getRegroupingIds().clear();
+        }
         for (ManagedUnit managedUnit : managedFighters) {
             if (managedUnit.getRole() != UnitRole.RETREAT) {
                 managedUnit.setReady(true);
@@ -1563,17 +1651,69 @@ public class SquadManager {
             managedUnit.setRallyPoint(rallyPoint);
             if (retreatTargets != null) {
                 managedUnit.setRetreatTarget(retreatTargets.get(managedUnit));
+            } else if (squad.isAirSquad()) {
+                managedUnit.setRetreatTarget(airRetreatTargets.get(managedUnit.getUnitID()));
             } else {
                 managedUnit.setRetreatTarget(managedUnit.getRetreatPosition());
             }
         }
     }
 
+    /**
+     * The retreat target of every member of an air squad, one point shared by all, see
+     * {@link AirFlock#retreatTargets}. Enemy buildings count only when they are hostile.
+     *
+     * @param squad air squad
+     * @return targets by unit id, null with no enemy near the flock, so every member falls back to the rally point
+     */
+    private Map<Integer, Position> airRetreatTargets(Squad squad) {
+        Map<Integer, Position> positions = memberPositions(squad, null);
+        List<Position> enemies = new ArrayList<>();
+        for (Unit enemy : gameState.getVisibleEnemyUnits()) {
+            UnitType type = enemy.getType();
+            if (!type.isBuilding() || Filter.isHostileBuilding(type)) {
+                enemies.add(enemy.getPosition());
+            }
+        }
+        return AirFlock.retreatTargets(positions, enemies, game.mapWidth() * 32, game.mapHeight() * 32);
+    }
+
+    /**
+     * Member positions of a squad by unit id.
+     *
+     * @param squad the squad
+     * @param type only members of this type, or null for every member
+     * @return positions by unit id
+     */
+    private static Map<Integer, Position> memberPositions(Squad squad, UnitType type) {
+        Map<Integer, Position> positions = new HashMap<>();
+        for (ManagedUnit member : squad.getMembers()) {
+            if (type == null || member.getUnitType() == type) {
+                positions.put(member.getUnitID(), member.getPosition());
+            }
+        }
+        return positions;
+    }
+
+    /**
+     * Sends every fighter at its target. In an air squad a Mutalisk straggling from the flock, see
+     * {@link AirFlock#stragglers}, regroups on the flock's anchor instead of taking a target.
+     */
     private void assignFightTargets(Squad squad, HashSet<ManagedUnit> managedFighters, boolean clearRetreat) {
+        Map<Integer, Position> mutas = squad.isAirSquad()
+                ? memberPositions(squad, UnitType.Zerg_Mutalisk)
+                : Collections.emptyMap();
+        Position anchor = AirFlock.anchor(mutas);
+        Set<Integer> stragglers = AirFlock.stragglers(mutas, anchor, squad.getRegroupingIds());
+        squad.setRegroupingIds(stragglers);
         for (ManagedUnit managedUnit : managedFighters) {
             managedUnit.setRole(UnitRole.FIGHT);
             if (clearRetreat) {
                 managedUnit.clearRetreatStart();
+            }
+            if (stragglers.contains(managedUnit.getUnitID())) {
+                rallyToDefensePosition(managedUnit, anchor);
+                continue;
             }
             assignEnemyTarget(managedUnit, squad);
         }
@@ -3129,6 +3269,7 @@ public class SquadManager {
         scoutChase.releaseScout(unit.getID());
         scoutChase.release(unit.getID());
         creditRunbyKill(unit);
+        recordFlockLoss(unit, now);
         airHarass.onUnitDestroy(unit, fightSquads);
     }
 

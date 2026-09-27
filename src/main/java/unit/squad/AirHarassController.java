@@ -41,6 +41,11 @@ public class AirHarassController {
     static final double MIN_ENTRY_HEAT = 60;
     /** Tuning value: pixels past a Mutalisk's range within which a death near a harassing Mutalisk is credited. */
     static final int KILL_CREDIT_MARGIN = 32;
+    /**
+     * Tuning value: frames a harassing flock holds its shared point before deciding it again, so the flock does not
+     * swap sides of a zone every order. Matches {@link AirHarassTargeting#EVADE_COMMIT_FRAMES}.
+     */
+    static final int FLOCK_POINT_COMMIT_FRAMES = AirHarassTargeting.EVADE_COMMIT_FRAMES;
 
     private final Game game;
     private final GameState gameState;
@@ -419,8 +424,10 @@ public class AirHarassController {
 
     /**
      * Gives every Mutalisk of a harassing squad that acts this frame its order. A Mutalisk still waiting on its
-     * last order keeps it. Only enemies around the target base are sought out; an enemy anywhere else is taken only
-     * when it is close to the Mutalisk.
+     * last order keeps it. A straggler, see {@link AirFlock#stragglers}, flies back to the flock's anchor around the
+     * avoided zones. Every other Mutalisk moves toward the flock's shared point, decided once per flock and held for
+     * {@link #FLOCK_POINT_COMMIT_FRAMES}, unless it has a target. Only enemies around the target base are sought out;
+     * an enemy anywhere else is taken only when it is close to the Mutalisk.
      */
     private void assignOrders(Squad squad, AirHarassState state, View view,
                               List<AirHarassTargeting.AirThreat> avoided, int mutas, int now) {
@@ -428,14 +435,30 @@ public class AirHarassController {
         int baseRadius = HarassHeatMap.RADIUS_TILES * 32;
         int mapWidth = game.mapWidth() * 32;
         int mapHeight = game.mapHeight() * 32;
+        Predicate<Position> pointAllowed = point -> point.getX() >= 0 && point.getY() >= 0 && point.getX() < mapWidth
+                && point.getY() < mapHeight;
+        Map<Integer, Position> positions = new HashMap<>();
+        for (ManagedUnit member : squad.getMembers()) {
+            positions.put(member.getUnitID(), member.getPosition());
+        }
+        Position anchor = AirFlock.anchor(positions);
+        Set<Integer> stragglers = AirFlock.stragglers(positions, anchor, squad.getRegroupingIds());
+        squad.setRegroupingIds(stragglers);
+        Position strike = state.getStrikePoint();
+        boolean heldPointAvoided = state.getFlockPoint() != null
+                && AirHarassTargeting.minMargin(state.getFlockPoint(), avoided) <= 0;
+        if (strike != null && (heldPointAvoided || state.flockPointDue(strike, now))) {
+            state.holdFlockPoint(strike, AirHarassTargeting.flockPoint(anchor, avoided, strike, pointAllowed),
+                    now + FLOCK_POINT_COMMIT_FRAMES);
+        }
         AirHarassTargeting.Situation situation = AirHarassTargeting.Situation.builder()
                 .contacts(view.contacts)
                 .avoided(avoided)
                 .flockSize(mutas)
-                .seekPoint(state.getStrikePoint())
+                .seekPoint(strike)
+                .flockPoint(state.getFlockPoint())
                 .targetAllowed(point -> point.getDistance(baseCenter) <= baseRadius)
-                .pointAllowed(point -> point.getX() >= 0 && point.getY() >= 0 && point.getX() < mapWidth
-                        && point.getY() < mapHeight)
+                .pointAllowed(pointAllowed)
                 .now(now)
                 .build();
         for (ManagedUnit member : squad.getMembers()) {
@@ -443,6 +466,12 @@ public class AirHarassController {
                 member.setRole(UnitRole.HARASS);
             }
             if (!member.isReady() && now < member.getUnreadyUntilFrame()) {
+                continue;
+            }
+            if (stragglers.contains(member.getUnitID())) {
+                member.setFightTarget(null);
+                member.setHarassDestination(AirHarassTargeting.regroupPoint(member.getPosition(), avoided, anchor,
+                        pointAllowed));
                 continue;
             }
             AirHarassTargeting.Decision decision = AirHarassTargeting.choose(

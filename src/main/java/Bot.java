@@ -14,6 +14,8 @@ import macro.ProductionManager;
 import macro.plan.PlanManager;
 import strategy.buildorder.BuildOrder;
 import telemetry.CombatTelemetry;
+import telemetry.FlockLogger;
+import telemetry.FlockTelemetry;
 import telemetry.PerchAssignmentLogger;
 import telemetry.PerchAssignments;
 import telemetry.PlanEventLogger;
@@ -62,6 +64,7 @@ public class Bot extends DefaultBWListener {
     private TargetChoiceLogger targetChoiceLogger;
     private RunbyLogger runbyLogger;
     private HarassLogger harassLogger;
+    private FlockLogger flockLogger;
     private ReachLogger reachLogger;
 
     @Override
@@ -96,6 +99,7 @@ public class Bot extends DefaultBWListener {
         startTargetChoiceLogging();
         startRunbyLogging();
         startHarassLogging();
+        startFlockLogging();
         startReachLogging();
         startPlanEventLogging(decisions.getOpener());
     }
@@ -146,6 +150,15 @@ public class Bot extends DefaultBWListener {
         HarassTelemetry.register(harassLogger);
     }
 
+    private void startFlockLogging() {
+        if (!gameState.getConfig().telemetryCombat) {
+            return;
+        }
+
+        flockLogger = new FlockLogger(game, combatTelemetry.getGameId());
+        FlockTelemetry.register(flockLogger);
+    }
+
     private void startReachLogging() {
         if (!gameState.getConfig().telemetryCombat) {
             return;
@@ -190,6 +203,9 @@ public class Bot extends DefaultBWListener {
         }
         if (harassLogger != null) {
             harassLogger.onFrame();
+        }
+        if (flockLogger != null) {
+            flockLogger.onFrame();
         }
         if (reachLogger != null) {
             reachLogger.onFrame();
@@ -274,6 +290,9 @@ public class Bot extends DefaultBWListener {
         }
         if (harassLogger != null) {
             harassLogger.onEnd();
+        }
+        if (flockLogger != null) {
+            flockLogger.onEnd();
         }
         if (reachLogger != null) {
             reachLogger.onEnd();
