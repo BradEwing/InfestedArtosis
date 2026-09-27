@@ -17,8 +17,8 @@ import java.util.Set;
  * <p>The flock's anchor is the member with the smallest summed distance to the others, so a single straggler does
  * not drag it away from the rest of the flock. A member farther than {@link #REGROUP_RADIUS} from the anchor
  * regroups on it before taking a new target or strike point, and keeps regrouping until it is back within
- * {@link #REGROUP_JOIN_RADIUS}. A retreating flock flees to one shared point, away from every enemy near any of its
- * members.
+ * {@link #REGROUP_JOIN_RADIUS}. A regrouping member keeps attacking a target already within its weapon range, see
+ * {@link #keepsTarget}. A retreating flock flees to one shared point, away from every enemy near any of its members.
  */
 public final class AirFlock {
 
@@ -83,6 +83,32 @@ public final class AirFlock {
             }
         }
         return stragglers;
+    }
+
+    /**
+     * Whether a regrouping member keeps its current target instead of flying back to the anchor: only a target
+     * already within its weapon range, and never while the member stands inside an avoided zone. A regrouping member
+     * takes no new target.
+     *
+     * @param targetInWeaponRange true when the member holds a target within its weapon range
+     * @param insideAvoidedZone true when the member stands inside an avoided anti-air zone
+     * @return true when the member keeps attacking its target
+     */
+    public static boolean keepsTarget(boolean targetInWeaponRange, boolean insideAvoidedZone) {
+        return targetInWeaponRange && !insideAvoidedZone;
+    }
+
+    /**
+     * The members that started regrouping this frame.
+     *
+     * @param previous unit ids regrouping on the previous frame
+     * @param current unit ids regrouping this frame
+     * @return unit ids in current but not in previous
+     */
+    public static Set<Integer> entered(Set<Integer> previous, Set<Integer> current) {
+        Set<Integer> entered = new HashSet<>(current);
+        entered.removeAll(previous);
+        return entered;
     }
 
     /**

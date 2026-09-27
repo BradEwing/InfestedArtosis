@@ -428,10 +428,13 @@ public class AirHarassController {
 
     /**
      * Gives every Mutalisk of a harassing squad that acts this frame its order. A Mutalisk still waiting on its
-     * last order keeps it. A straggler, see {@link AirFlock#stragglers}, flies back to the flock's anchor around the
-     * avoided zones. Every other Mutalisk moves toward the flock's shared point, decided once per flock and held for
+     * last order keeps it. A straggler, see {@link AirFlock#stragglers}, takes no new target: it keeps attacking a
+     * target already within its weapon range while it stands outside every avoided zone, see
+     * {@link AirFlock#keepsTarget}, and otherwise flies back to the flock's anchor around the avoided zones. Every
+     * other Mutalisk moves toward the flock's shared point, decided once per flock and held for
      * {@link #FLOCK_POINT_COMMIT_FRAMES}, unless it has a target. Only enemies around the target base are sought out;
-     * an enemy anywhere else is taken only when it is close to the Mutalisk.
+     * an enemy anywhere else is taken only when it is close to the Mutalisk. The Mutalisks that started regrouping
+     * are recorded, see {@link SquadManager#recordRegroups}.
      */
     private void assignOrders(Squad squad, AirHarassState state, View view,
                               List<AirHarassTargeting.AirThreat> avoided, int mutas, int now) {
@@ -446,7 +449,8 @@ public class AirHarassController {
             positions.put(member.getUnitID(), member.getPosition());
         }
         Position anchor = AirFlock.anchor(positions);
-        Set<Integer> stragglers = AirFlock.stragglers(positions, anchor, squad.getRegroupingIds());
+        Set<Integer> previous = squad.getRegroupingIds();
+        Set<Integer> stragglers = AirFlock.stragglers(positions, anchor, previous);
         squad.setRegroupingIds(stragglers);
         Position strike = state.getStrikePoint();
         boolean heldPointAvoided = state.getFlockPoint() != null
@@ -473,6 +477,11 @@ public class AirHarassController {
                 continue;
             }
             if (stragglers.contains(member.getUnitID())) {
+                boolean insideZone = AirHarassTargeting.minMargin(member.getPosition(), avoided) <= 0;
+                if (AirFlock.keepsTarget(member.isFightTargetInWeaponRange(), insideZone)) {
+                    member.setHarassDestination(null);
+                    continue;
+                }
                 member.setFightTarget(null);
                 member.setHarassDestination(AirHarassTargeting.regroupPoint(member.getPosition(), avoided, anchor,
                         pointAllowed));
@@ -493,6 +502,7 @@ public class AirHarassController {
             member.setFightTarget(null);
             member.setHarassDestination(decision.getPoint() != null ? decision.getPoint() : state.getStrikePoint());
         }
+        SquadManager.recordRegroups(squad, previous, now);
     }
 
     /**

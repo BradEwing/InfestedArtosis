@@ -3,6 +3,7 @@ package unit.squad;
 import bwapi.Position;
 import bwapi.UnitType;
 import org.junit.jupiter.api.Test;
+import telemetry.FlockRow;
 
 import java.util.Arrays;
 import java.util.Collections;
@@ -285,5 +286,79 @@ class AirFlockTest {
                 .flockPoint(flockPoint)
                 .now(12000)
                 .build();
+    }
+
+    @Test
+    void aStragglerKeepsATargetInWeaponRangeButTakesNoOtherTarget() {
+        assertTrue(AirFlock.keepsTarget(true, false));
+        assertFalse(AirFlock.keepsTarget(false, false));
+    }
+
+    @Test
+    void aStragglerInsideAnAvoidedZoneDropsEvenAnInRangeTarget() {
+        assertFalse(AirFlock.keepsTarget(true, true));
+        assertFalse(AirFlock.keepsTarget(false, true));
+    }
+
+    @Test
+    void anArmedStragglerStaysRegroupingSoItRejoinsOnceItsTargetIsOutOfRange() {
+        Map<Integer, Position> members = clusterWithStraggler();
+        Position anchor = AirFlock.anchor(members);
+        Set<Integer> first = AirFlock.stragglers(members, anchor, Collections.emptySet());
+        assertEquals(Collections.singleton(5), first);
+        assertTrue(AirFlock.keepsTarget(true, false));
+
+        members.put(5, new Position(1200, 1000));
+        Set<Integer> second = AirFlock.stragglers(members, AirFlock.anchor(members), first);
+        assertEquals(Collections.singleton(5), second);
+        assertFalse(AirFlock.keepsTarget(false, false));
+    }
+
+    @Test
+    void onlyMembersNewToTheRegroupSetHaveEnteredIt() {
+        Set<Integer> previous = new HashSet<>(Arrays.asList(1, 2));
+        Set<Integer> current = new HashSet<>(Arrays.asList(2, 3));
+
+        assertEquals(Collections.singleton(3), AirFlock.entered(previous, current));
+        assertTrue(AirFlock.entered(current, current).isEmpty());
+    }
+
+    @Test
+    void aLostMutaCountsOnlyOtherMutalisksAsMates() {
+        Map<Integer, Position> mutas = new LinkedHashMap<>();
+        mutas.put(243, new Position(2836, 1544));
+        mutas.put(250, new Position(3107, 1544));
+        mutas.put(251, new Position(3200, 1544));
+        Set<Integer> regrouping = Collections.singleton(243);
+
+        FlockRow row = SquadManager.flockLossRow(12935, 243, new Position(2836, 1544), "squad-1",
+                SquadStatus.FIGHT, mutas, regrouping);
+
+        assertEquals(3, row.getMutas());
+        assertEquals(271.0, row.getNearestMateDistance(), 1e-9);
+        assertEquals(0, row.getLastMuta());
+        assertEquals(regrouping, row.getRegroupingIds());
+    }
+
+    @Test
+    void theLastMutaOfItsSquadIsFlaggedAndHasNoMate() {
+        Map<Integer, Position> mutas = Collections.singletonMap(243, new Position(2836, 1544));
+
+        FlockRow row = SquadManager.flockLossRow(12935, 243, new Position(2836, 1544), "squad-1",
+                SquadStatus.FIGHT, mutas, Collections.emptySet());
+
+        assertEquals(1, row.getLastMuta());
+        assertEquals(-1.0, row.getNearestMateDistance(), 1e-9);
+    }
+
+    @Test
+    void aLostMutaWithNoSquadLeavesTheSquadColumnsUnevaluated() {
+        FlockRow row = SquadManager.flockLossRow(12935, 243, new Position(2836, 1544), null, null,
+                Collections.emptyMap(), null);
+
+        assertNull(row.getSquadId());
+        assertEquals(-1, row.getLastMuta());
+        assertEquals(-1, row.getMutas());
+        assertNull(row.getRegroupingIds());
     }
 }

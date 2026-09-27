@@ -10,9 +10,13 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class FlockLoggerTest {
 
@@ -56,6 +60,75 @@ class FlockLoggerTest {
         assertEquals("1", fields[columnIndex("regrouping")]);
         assertEquals("-1", fields[columnIndex("unit_id")]);
         assertEquals("-1.0000", fields[columnIndex("nearest_mate_distance")]);
+        assertEquals("-1", fields[columnIndex("regrouping_ids")]);
+        assertEquals("-1", fields[columnIndex("regrouping_armed")]);
+        assertEquals("-1", fields[columnIndex("last_muta")]);
+    }
+
+    @Test
+    void theNewColumnsAreAppendedAfterTheOriginalHeader() {
+        assertTrue(FlockLogger.HEADER.startsWith("game_id,frame,squad_id,event,status,mutas,centroid_x,centroid_y,"
+                + "median_distance,max_distance,regrouping,unit_id,nearest_mate_distance,"));
+        assertTrue(FlockLogger.HEADER.endsWith(",regrouping_ids,regrouping_armed,last_muta"));
+    }
+
+    @Test
+    void aSampleRowListsTheRegroupingIdsAscendingAndHowManyAreArmed() {
+        FlockRow sample = FlockRow.builder()
+                .frame(12888)
+                .squadId("squad-1")
+                .event(FlockRow.Event.SAMPLE)
+                .status(SquadStatus.FIGHT)
+                .mutas(5)
+                .centroid(new Position(2900, 1500))
+                .regrouping(2)
+                .regroupingIds(new HashSet<>(Arrays.asList(250, 243)))
+                .regroupingArmed(1)
+                .build();
+
+        String[] fields = FlockLogger.row("game-1", sample).split(",", -1);
+
+        assertEquals(FlockLogger.HEADER.split(",", -1).length, fields.length);
+        assertEquals("243;250", fields[columnIndex("regrouping_ids")]);
+        assertEquals("1", fields[columnIndex("regrouping_armed")]);
+        assertEquals("-1", fields[columnIndex("last_muta")]);
+    }
+
+    @Test
+    void anEmptyRegroupSetIsWrittenAsAnEmptyField() {
+        FlockRow sample = FlockRow.builder()
+                .event(FlockRow.Event.SAMPLE)
+                .regroupingIds(Collections.emptySet())
+                .regroupingArmed(0)
+                .build();
+
+        String[] fields = FlockLogger.row("game-1", sample).split(",", -1);
+
+        assertEquals("", fields[columnIndex("regrouping_ids")]);
+        assertEquals("0", fields[columnIndex("regrouping_armed")]);
+    }
+
+    @Test
+    void aRegroupRowCarriesTheMutaAndWhetherItKeptItsTarget() {
+        FlockRow regroup = FlockRow.builder()
+                .frame(12912)
+                .squadId("squad-1")
+                .event(FlockRow.Event.REGROUP)
+                .status(SquadStatus.FIGHT)
+                .mutas(5)
+                .centroid(new Position(2836, 1544))
+                .unitId(243)
+                .nearestMateDistance(210)
+                .regroupingArmed(1)
+                .build();
+
+        String[] fields = FlockLogger.row("game-1", regroup).split(",", -1);
+
+        assertEquals("REGROUP", fields[columnIndex("event")]);
+        assertEquals("243", fields[columnIndex("unit_id")]);
+        assertEquals("210.0000", fields[columnIndex("nearest_mate_distance")]);
+        assertEquals("1", fields[columnIndex("regrouping_armed")]);
+        assertEquals("-1", fields[columnIndex("regrouping_ids")]);
     }
 
     @Test
@@ -80,5 +153,6 @@ class FlockLoggerTest {
         assertEquals("265", fields[columnIndex("unit_id")]);
         assertEquals("-1", fields[columnIndex("mutas")]);
         assertEquals("-1.0000", fields[columnIndex("nearest_mate_distance")]);
+        assertEquals("-1", fields[columnIndex("last_muta")]);
     }
 }

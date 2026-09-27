@@ -5,11 +5,13 @@ import lombok.Builder;
 import lombok.Getter;
 import unit.squad.SquadStatus;
 
+import java.util.Collection;
+
 /**
  * One row of telemetry_flock.csv: how spread an air squad's Mutalisks are on a sampled frame, or how far a lost
- * Mutalisk was from its nearest squad-mate.
+ * Mutalisk was from its nearest Mutalisk squad-mate, or which Mutalisk started regrouping on its flock.
  *
- * <p>Counts and measures left at -1 were not evaluated for the row's event.
+ * <p>Counts and measures left at -1 were not evaluated for the row's event, and so are regrouping ids left null.
  */
 @Getter
 @Builder
@@ -20,7 +22,8 @@ public final class FlockRow {
      */
     public enum Event {
         SAMPLE,
-        MUTA_LOST
+        MUTA_LOST,
+        REGROUP
     }
 
     private final int frame;
@@ -40,4 +43,9 @@ public final class FlockRow {
     private final int unitId = -1;
     @Builder.Default
     private final double nearestMateDistance = -1;
+    private final Collection<Integer> regroupingIds;
+    @Builder.Default
+    private final int regroupingArmed = -1;
+    @Builder.Default
+    private final int lastMuta = -1;
 }
