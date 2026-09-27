@@ -47,8 +47,9 @@ class ContainmentBreakGateTest {
     }
 
     @Test
-    void aDefenceSquadOrOneWithNoStatusNeverCounts() {
+    void aDefenceOrRunbySquadOrOneWithNoStatusNeverCounts() {
         assertFalse(countsTowardBreak(SquadStatus.DEFENSE, OVER_THE_MAIN, CONTESTED));
+        assertFalse(countsTowardBreak(SquadStatus.RUNBY, OVER_THE_MAIN, CONTESTED));
         assertFalse(countsTowardBreak(null, OVER_THE_MAIN, CONTESTED));
     }
 

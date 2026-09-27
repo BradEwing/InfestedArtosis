@@ -49,6 +49,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.BooleanSupplier;
 import java.util.function.ToDoubleFunction;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
@@ -1538,7 +1539,7 @@ public class SquadManager {
         squad.setStatus(SquadStatus.CONTAIN);
         SquadDecisions.pathTaken(squad, DecisionPath.CONTAIN_ENTER);
         squad.startContainLock(game.getFrameCount());
-        containmentEscalation.onEntered();
+        containmentEscalation.onEntered(game.getFrameCount());
         assignContainmentPositions(squad, arc);
         return true;
     }
@@ -1631,6 +1632,7 @@ public class SquadManager {
     private void evaluateContainingSquad(Squad squad) {
         int now = game.getFrameCount();
         if (now % RunbyEvaluator.RUNBY_TICK == 0 && tryEnterRunby(squad, now)) {
+            containmentEscalation.onEndedOtherwise();
             return;
         }
         HashSet<ManagedUnit> members = squad.getMembers();
@@ -1651,7 +1653,8 @@ public class SquadManager {
 
         SquadDecisions.outrangedHit(squad, outrangedHit);
         ContainmentVerdict verdict = escalatedVerdict(containmentVerdict(basesUnderAttack, bleeding, hit, throttled,
-                engaged, timedOut, canBreak, shouldContain), timedOut, now);
+                engaged, timedOut, canBreak, shouldContain), timedOut, containmentEscalation,
+                containmentEvaluator::enemyDefenceIsStaticOnly, now);
 
         switch (verdict) {
             case BREAK_ALL:
@@ -1682,17 +1685,22 @@ public class SquadManager {
      * Turns the timeout retreat into an escalation when {@link ContainmentEscalation} says the run of re-entries has
      * reached its limit against a static-only defence, and records every other timeout toward that run.
      *
+     * <p>The static-only test is read only on a timeout.
+     *
      * @param verdict verdict from {@link #containmentVerdict}
      * @param timedOut true when the episode ran past the containment timeout this frame
+     * @param escalation the army's run of timeout re-entries
+     * @param staticOnly whether the enemy has no known army outside its static defence
      * @param now current frame
      * @return ESCALATE for an escalating timeout, else the verdict unchanged
      */
-    private ContainmentVerdict escalatedVerdict(ContainmentVerdict verdict, boolean timedOut, int now) {
+    static ContainmentVerdict escalatedVerdict(ContainmentVerdict verdict, boolean timedOut,
+                                               ContainmentEscalation escalation, BooleanSupplier staticOnly,
+                                               int now) {
         if (verdict != ContainmentVerdict.RETREAT || !timedOut) {
             return verdict;
         }
-        boolean staticOnly = containmentEvaluator.enemyDefenceIsStaticOnly();
-        return containmentEscalation.onTimedOut(staticOnly, now) ? ContainmentVerdict.ESCALATE : verdict;
+        return escalation.onTimedOut(staticOnly.getAsBoolean(), now) ? ContainmentVerdict.ESCALATE : verdict;
     }
 
     /**

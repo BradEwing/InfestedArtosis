@@ -92,8 +92,8 @@ public class ContainmentEvaluator {
     /**
      * Whether our army is strong enough to push into the position being contained.
      *
-     * <p>Our side is the supply of every squad fighting or containing, and of every other squad, air or ground and
-     * whatever it is doing, standing within {@link #NEAR_CONTAIN_RADIUS} of the enemy main or natural or of a
+     * <p>Our side is the supply of every squad fighting or containing, and of every other squad, air or ground, that
+     * is not defending or running by, a break never commits either, standing within {@link #NEAR_CONTAIN_RADIUS} of the enemy main or natural or of a
      * containing squad. The enemy side is its ground army supply, a fixed penalty per Photon Cannon and Sunken Colony
      * near its main or natural, and {@link #BUNKER_SLOT_SUPPLY} per occupant believed to sit in a Bunker there, see
      * {@link BunkerGarrison}.
@@ -130,13 +130,14 @@ public class ContainmentEvaluator {
      * @param status the squad's status
      * @param center the squad's centre
      * @param contested enemy main and natural centres and the centres of our containing squads
-     * @return true for a fighting or containing squad, and for any other non-defence squad near a contested position
+     * @return true for a fighting or containing squad, and for any other squad near a contested position that is
+     *     neither defending nor running by
      */
     static boolean countsTowardBreak(SquadStatus status, Position center, Collection<Position> contested) {
         if (status == SquadStatus.FIGHT || status == SquadStatus.CONTAIN) {
             return true;
         }
-        if (status == null || status == SquadStatus.DEFENSE || center == null) {
+        if (status == null || status == SquadStatus.DEFENSE || status == SquadStatus.RUNBY || center == null) {
             return false;
         }
         for (Position position : contested) {

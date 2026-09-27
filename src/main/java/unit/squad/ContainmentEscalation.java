@@ -5,11 +5,11 @@ package unit.squad;
  * the enemy is known to defend with static defence only.
  *
  * <p>A contain that times out is let go and, because the strength gate still reads the same, is usually re-entered
- * on the next frame. Each entry that follows a timeout counts as a re-entry. Any other end to a contain, a break,
- * attrition, an outranging hit or containment ceasing to apply, clears the run. Once
- * {@link #ESCALATE_AFTER_REENTRIES} re-entries have timed out again against a static-only defence, the timeout
- * escalates instead of retreating, and no squad may take an arc for {@link #ENTRY_HOLD_FRAMES}, so the combat sim
- * decides the attack rather than the next contain.
+ * on the next frame. An entry within {@link #REENTRY_WINDOW_FRAMES} of a timeout counts as a re-entry; a later
+ * one starts a new run. Any other end to a contain, a break, a runby, attrition, an outranging hit or containment
+ * ceasing to apply, clears the run. Once {@link #ESCALATE_AFTER_REENTRIES} re-entries have timed out again against
+ * a static-only defence, the timeout escalates instead of retreating, and no squad may take an arc for
+ * {@link #ENTRY_HOLD_FRAMES}, so the combat sim decides the attack rather than the next contain.
  */
 public class ContainmentEscalation {
 
@@ -25,17 +25,32 @@ public class ContainmentEscalation {
      */
     static final int ENTRY_HOLD_FRAMES = 1400;
 
+    /**
+     * Frames after a timeout within which an entry counts as re-entering the same contain: 96, four seconds. The
+     * stalled contain re-enters on the frame after its timeout, while a contain taken after the squad has walked
+     * away and come back is a new one.
+     */
+    static final int REENTRY_WINDOW_FRAMES = 96;
+
     private boolean timedOutLast;
+    private int lastTimeoutFrame;
     private int reentries;
     private int holdUntilFrame;
 
     /**
      * Records that a squad took a containment arc.
+     *
+     * @param currentFrame current frame
      */
-    public void onEntered() {
-        if (timedOutLast) {
+    public void onEntered(int currentFrame) {
+        if (!timedOutLast) {
+            return;
+        }
+        timedOutLast = false;
+        if (currentFrame - lastTimeoutFrame <= REENTRY_WINDOW_FRAMES) {
             reentries++;
-            timedOutLast = false;
+        } else {
+            reentries = 0;
         }
     }
 
@@ -54,6 +69,7 @@ public class ContainmentEscalation {
             return true;
         }
         timedOutLast = true;
+        lastTimeoutFrame = currentFrame;
         return false;
     }
 
