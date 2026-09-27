@@ -8,6 +8,7 @@ import util.StaticDefenseZone;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 
@@ -152,6 +153,49 @@ class LurkerHoldTest {
         assertEquals("a", first.get("ling"));
         assertEquals("b", first.get("hydra"));
         assertEquals(Arrays.asList("lurker", "ling", "hydra"), new ArrayList<>(first.keySet()));
+    }
+
+    @Test
+    void aContainBreakCommitEndsWithItsFightLockOrAStatusChange() {
+        Squad squad = new GroundSquad();
+        squad.setStatus(SquadStatus.FIGHT);
+        squad.startFightLock(1000);
+
+        assertTrue(SquadManager.wholeSquadCommitHolds(squad, 1000));
+        assertFalse(SquadManager.wholeSquadCommitHolds(squad, 1500));
+        squad.setStatus(SquadStatus.RETREAT);
+        assertFalse(SquadManager.wholeSquadCommitHolds(squad, 1000));
+    }
+
+    @Test
+    void aCollapseWrapOutlastingItsFightLockKeepsTheWholeSquadCommitted() {
+        Squad squad = new GroundSquad();
+        squad.setStatus(SquadStatus.FIGHT);
+        squad.startFightLock(1000);
+        squad.setCollapse(new ContainmentCollapse.Maneuver(Collections.emptyMap(), Collections.emptySet(), 9000));
+
+        assertTrue(SquadManager.wholeSquadCommitHolds(squad, 1500));
+        squad.setCollapse(null);
+        assertFalse(SquadManager.wholeSquadCommitHolds(squad, 1500));
+    }
+
+    @Test
+    void aCommittedCollapseHoldsTheWholeSquadWhileItsCommitHolds() {
+        Squad squad = new GroundSquad();
+        squad.setStatus(SquadStatus.FIGHT);
+        squad.commitCollapse(1000);
+
+        assertTrue(SquadManager.wholeSquadCommitHolds(squad, 1001));
+        assertFalse(SquadManager.wholeSquadCommitHolds(squad, 1500));
+    }
+
+    @Test
+    void aHoldingUnitNotVisitedThisFrameIsLeftBehind() {
+        List<String> left = LurkerHold.leftBehind(Arrays.asList("gone", "kept"),
+                new HashSet<>(Arrays.asList("kept", "new")));
+
+        assertEquals(Collections.singletonList("gone"), left);
+        assertTrue(LurkerHold.leftBehind(Collections.<String>emptyList(), new HashSet<>()).isEmpty());
     }
 
     @Test

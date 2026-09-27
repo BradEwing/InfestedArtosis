@@ -9,6 +9,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 
 /**
@@ -155,5 +156,23 @@ final class LurkerHold {
             }
         }
         return first;
+    }
+
+    /**
+     * The units that held a point last frame and were not visited this frame: they left every fight squad, or died.
+     *
+     * @param holding units that held a point at the end of last frame
+     * @param visited units visited this frame
+     * @param <U> the unit type
+     * @return the holding units not visited
+     */
+    static <U> List<U> leftBehind(Collection<U> holding, Set<U> visited) {
+        List<U> left = new ArrayList<>();
+        for (U unit : holding) {
+            if (!visited.contains(unit)) {
+                left.add(unit);
+            }
+        }
+        return left;
     }
 }

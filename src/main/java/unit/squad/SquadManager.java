@@ -173,6 +173,7 @@ public class SquadManager {
     private final FixedFire fixedFire = new FixedFire();
     private List<StaticDefenseZone> fixedFireZones = Collections.emptyList();
     private final Set<Squad> wholeSquadCommits = new HashSet<>();
+    private Set<Lurker> holdingLurkers = new HashSet<>();
 
     /**
      * Pixels a Lurker's hold point must lie clear of every fixed fire zone that outranges it for the Lurker to let
@@ -294,15 +295,29 @@ public class SquadManager {
     }
 
     /**
-     * Whether a squad is breaking its contain or collapsing: it was marked so on the break or the collapse and is
-     * still in FIGHT under a fight lock.
+     * Whether a squad is breaking its contain or collapsing: it was marked so on the break or the collapse and
+     * {@link #wholeSquadCommitHolds} still holds.
      *
      * @param squad the squad
      * @param now current frame
      * @return true while the whole squad is committed
      */
     private boolean wholeSquadCommit(Squad squad, int now) {
-        return wholeSquadCommits.contains(squad) && squad.getStatus() == SquadStatus.FIGHT && squad.isFightLocked(now);
+        return wholeSquadCommits.contains(squad) && wholeSquadCommitHolds(squad, now);
+    }
+
+    /**
+     * Whether a squad marked on a contain break or a collapse is still committed as a whole: it is in FIGHT and
+     * under its fight lock, in a collapse's wrap, or held by a committed collapse, see
+     * {@link Squad#isCollapseCommitHeld}. A wrap that outlasts the fight lock it armed keeps the mark.
+     *
+     * @param squad the squad
+     * @param now current frame
+     * @return true while the whole-squad commit holds
+     */
+    static boolean wholeSquadCommitHolds(Squad squad, int now) {
+        return squad.getStatus() == SquadStatus.FIGHT
+                && (squad.isFightLocked(now) || squad.getCollapse() != null || squad.isCollapseCommitHeld(now));
     }
 
     /**
@@ -367,7 +382,8 @@ public class SquadManager {
      * when its squad's Lurkers commit and the point lies that far clear of every zone they still keep out of; STATUS
      * when its squad leaves FIGHT and RETREAT. A point the fire has moved onto is found again, and the Lurker is moved
      * to it only when it stands {@link LurkerHold#MOVE_GAIN} further out, see {@link LurkerHold#worthMoving}. A Lurker
-     * listed by two fight squads is visited once, for the first of them.
+     * listed by two fight squads is visited once, for the first of them. A Lurker that held a point last frame and is
+     * no longer in any fight squad lets go of it (STATUS), see {@link LurkerHold#leftBehind}.
      *
      * @param now current frame
      */
@@ -378,16 +394,29 @@ public class SquadManager {
         List<StaticDefenseZone> zones = ContainmentPushback.outrangingZones(fixedFireZones,
                 EnemyReachMemory.baseGroundRange(UnitType.Zerg_Lurker));
         Map<ManagedUnit, Squad> owners = LurkerHold.firstSquadOf(fightSquads, Squad::getMembers);
+        Set<Lurker> visited = new HashSet<>();
         for (Map.Entry<ManagedUnit, Squad> entry : owners.entrySet()) {
             if (!(entry.getKey() instanceof Lurker)) {
                 continue;
             }
+            Lurker lurker = (Lurker) entry.getKey();
+            visited.add(lurker);
             Squad squad = entry.getValue();
             boolean holding = squad.isGroundSquad()
                     && (squad.getStatus() == SquadStatus.FIGHT || squad.getStatus() == SquadStatus.RETREAT);
-            holdLurker((Lurker) entry.getKey(), holding, lurkersCommit(squad, now), zones,
-                    lurkerKeptOutZones(squad, zones, now), padding, allowed, now);
+            holdLurker(lurker, holding, lurkersCommit(squad, now), zones, lurkerKeptOutZones(squad, zones, now),
+                    padding, allowed, now);
         }
+        for (Lurker lurker : LurkerHold.leftBehind(holdingLurkers, visited)) {
+            Position hold = lurker.getHoldPosition();
+            if (hold != null) {
+                lurker.clearHold();
+                FixedFireTelemetry.lurkerHoldReleased(now, lurker.getUnitID(), lurker.getPosition(), hold,
+                        LurkerHold.RELEASE_STATUS);
+            }
+        }
+        holdingLurkers = visited.stream().filter(lurker -> lurker.getHoldPosition() != null)
+                .collect(Collectors.toSet());
     }
 
     private void holdLurker(Lurker lurker, boolean holding, boolean commit, List<StaticDefenseZone> zones,
