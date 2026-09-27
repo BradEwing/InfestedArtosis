@@ -50,4 +50,6 @@ public final class AirReinforcementRow {
     private final int activeAirSquads = -1;
     @Builder.Default
     private final int hatchFrame = -1;
+    @Builder.Default
+    private final double nearestSquadMateDistance = -1;
 }

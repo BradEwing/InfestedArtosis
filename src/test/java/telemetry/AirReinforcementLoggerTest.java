@@ -70,6 +70,7 @@ class AirReinforcementLoggerTest {
         assertEquals("-1", fields[columnIndex("unit_id")]);
         assertEquals("-1.0000", fields[columnIndex("nearest_mate_px")]);
         assertEquals("-1", fields[columnIndex("hatch_frame")]);
+        assertEquals("-1.0000", fields[columnIndex("nearest_squad_mate_px")]);
     }
 
     @Test
@@ -101,10 +102,21 @@ class AirReinforcementLoggerTest {
         positions.put(2, new Position(300, 400));
         positions.put(3, new Position(0, 700));
 
-        assertEquals(500.0, AirReinforcementLogger.nearestMateDistance(1, positions), 1e-9);
-        assertEquals(-1.0, AirReinforcementLogger.nearestMateDistance(9, positions), 1e-9);
+        assertEquals(500.0, AirReinforcementLogger.nearestMateDistance(1, positions, other -> true), 1e-9);
+        assertEquals(-1.0, AirReinforcementLogger.nearestMateDistance(9, positions, other -> true), 1e-9);
         assertEquals(-1.0, AirReinforcementLogger.nearestMateDistance(1,
-                Collections.singletonMap(1, new Position(0, 0))), 1e-9);
+                Collections.singletonMap(1, new Position(0, 0)), other -> true), 1e-9);
+    }
+
+    @Test
+    void theNearestSquadMateIgnoresMutalisksOfOtherSquads() {
+        Map<Integer, Position> positions = new HashMap<>();
+        positions.put(1, new Position(0, 0));
+        positions.put(2, new Position(100, 0));
+        positions.put(3, new Position(0, 700));
+
+        assertEquals(700.0, AirReinforcementLogger.nearestMateDistance(1, positions, other -> other == 3), 1e-9);
+        assertEquals(-1.0, AirReinforcementLogger.nearestMateDistance(1, positions, other -> false), 1e-9);
     }
 
     @Test

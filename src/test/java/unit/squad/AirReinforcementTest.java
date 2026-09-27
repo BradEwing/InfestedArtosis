@@ -153,6 +153,64 @@ class AirReinforcementTest {
     }
 
     @Test
+    void aThreatCoveringTheTargetStillBlocksItsFarSide() {
+        Position east = new Position(4000, 2000);
+        List<AirHarassTargeting.AirThreat> threats = Collections.singletonList(
+                threat(1, UnitType.Terran_Missile_Turret, new Position(GOAL.getX() + 150, GOAL.getY())));
+
+        List<Position> path = AirReinforcement.safePath(east, GOAL, threats, ANYWHERE);
+
+        assertNotNull(path);
+        assertTrue(path.size() >= 2);
+        Position at = east;
+        for (Position point : path) {
+            for (int i = 0; i <= 20; i++) {
+                double t = i / 20.0;
+                Position sample = new Position((int) Math.round(at.getX() + (point.getX() - at.getX()) * t),
+                        (int) Math.round(at.getY() + (point.getY() - at.getY()) * t));
+                assertTrue(!threats.get(0).covers(sample, AirHarassTargeting.padding())
+                        || sample.getDistance(GOAL) < AirReinforcement.ARRIVAL_DISTANCE, sample.toString());
+            }
+            at = point;
+        }
+    }
+
+    @Test
+    void aSquadStandingInAntiAirHasNoPath() {
+        List<AirHarassTargeting.AirThreat> threats = Collections.singletonList(
+                threat(1, UnitType.Terran_Goliath, new Position(FROM.getX() + 50, FROM.getY())));
+
+        assertNull(AirReinforcement.safePath(FROM, GOAL, threats, ANYWHERE));
+    }
+
+    @Test
+    void aSearchOverManyThreatsStillReturnsASafePath() {
+        List<AirHarassTargeting.AirThreat> threats = new ArrayList<>();
+        int id = 0;
+        for (int x = 1500; x <= 2500; x += 250) {
+            for (int y = 1000; y <= 2600; y += 400) {
+                threats.add(threat(id++, UnitType.Terran_Missile_Turret, new Position(x, y)));
+            }
+        }
+        for (int i = 0; i < 40; i++) {
+            threats.add(threat(id++, UnitType.Terran_Marine, new Position(6000 + i * 10, 6000)));
+        }
+
+        List<Position> path = AirReinforcement.safePath(FROM, GOAL, threats, ANYWHERE);
+
+        assertNotNull(path);
+        assertEveryLegOutside(FROM, path, threats);
+    }
+
+    @Test
+    void onlyARallyingAirSquadWithMembersSeeksATarget() {
+        assertTrue(AirReinforcement.seeksReinforcementTarget(SquadStatus.RALLY, true, 1));
+        assertFalse(AirReinforcement.seeksReinforcementTarget(SquadStatus.RALLY, true, 0));
+        assertFalse(AirReinforcement.seeksReinforcementTarget(SquadStatus.RALLY, false, 4));
+        assertFalse(AirReinforcement.seeksReinforcementTarget(SquadStatus.FIGHT, true, 4));
+    }
+
+    @Test
     void theNearestSquadWithNoSafePathIsPassedOverForAFartherOne() {
         Position blockedGoal = new Position(2000, 2000);
         Position openGoal = new Position(1000, 3400);

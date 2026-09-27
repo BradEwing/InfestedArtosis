@@ -895,8 +895,8 @@ public class SquadManager {
             return;
         }
 
-        boolean activeAirSquad = squadStatus == SquadStatus.RALLY && squad.isAirSquad()
-                && AirReinforcer.hasActiveAirSquad(squad, fightSquads);
+        boolean activeAirSquad = AirReinforcement.seeksReinforcementTarget(squadStatus, squad.isAirSquad(),
+                squad.size()) && AirReinforcer.hasActiveAirSquad(squad, fightSquads);
         if (activeAirSquad && reinforceActiveAirSquad(squad, closeThreats)) {
             return;
         }

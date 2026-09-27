@@ -16,19 +16,21 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.IntPredicate;
 
 /**
  * Writes telemetry_air_reinforcement.csv.
  *
  * <p>HATCH is written the first frame a completed Mutalisk is seen, FIRST_ATTACK the first frame its weapon is on
  * cooldown or it starts an attack, carrying hatch_frame, and DEATH the first frame it is gone, carrying the squad it
- * was in and nearest_mate_px, the pixels to the nearest other Mutalisk on the frame before, -1 with none alive. A
+ * was in, nearest_mate_px, the pixels to the nearest other Mutalisk on the frame before, and nearest_squad_mate_px,
+ * the pixels to the nearest other Mutalisk of the same squad on the frame before, each -1 with none alive. A
  * Mutalisk that morphs into a Guardian or Devourer writes no DEATH. ACTIVE_COUNT is written whenever the number of
  * fighting, retreating or harassing air squads changes, in active_air_squads.
  *
  * <p>ROUTE is written when a rallying air squad starts flying to an active air squad, or changes target, with the
- * waypoints and path_px of its path; REFUSED when no active air squad has a safe path, once per refusal episode; and
- * JOIN when it arrives and hands its members over.
+ * number of waypoints of its path in waypoints and its length in path_px; REFUSED when no active air squad has a
+ * safe path, once per refusal episode; and JOIN when it arrives and hands its members over.
  *
  * <p>Constructed only when combat telemetry is enabled.
  */
@@ -38,7 +40,7 @@ public class AirReinforcementLogger implements AirReinforcementSink {
 
     static final String HEADER = "game_id,frame,event,unit_id,squad_id,squad_status,target_squad_id,target_status,"
             + "center_x,center_y,target_x,target_y,mutas,waypoints,path_px,nearest_mate_px,active_air_squads,"
-            + "hatch_frame";
+            + "hatch_frame,nearest_squad_mate_px";
 
     private static final int FLUSH_INTERVAL_FRAMES = 480;
     private static final int NOT_EVALUATED = -1;
@@ -156,7 +158,9 @@ public class AirReinforcementLogger implements AirReinforcementSink {
                     .squadId(squad == null ? null : squad.getId())
                     .squadStatus(squad == null ? null : squad.getStatus())
                     .center(entry.getValue())
-                    .nearestMateDistance(nearestMateDistance(id, lastPositions))
+                    .nearestMateDistance(nearestMateDistance(id, lastPositions, other -> true))
+                    .nearestSquadMateDistance(squad == null ? NOT_EVALUATED
+                            : nearestMateDistance(id, lastPositions, other -> lastSquads.get(other) == squad))
                     .hatchFrame(hatchFrames.getOrDefault(id, NOT_EVALUATED))
                     .build());
         }
@@ -205,20 +209,21 @@ public class AirReinforcementLogger implements AirReinforcementSink {
     }
 
     /**
-     * Pixels from a Mutalisk to the nearest other Mutalisk.
+     * Pixels from a Mutalisk to the nearest other Mutalisk counted as a mate.
      *
      * @param id the Mutalisk's unit id
      * @param positions positions of every Mutalisk by unit id, its own included
-     * @return the distance, or -1 with no other Mutalisk or no position for it
+     * @param mate which other Mutalisks, by unit id, count
+     * @return the distance, or -1 with no mate or no position for it
      */
-    static double nearestMateDistance(int id, Map<Integer, Position> positions) {
+    static double nearestMateDistance(int id, Map<Integer, Position> positions, IntPredicate mate) {
         Position own = positions.get(id);
         if (own == null) {
             return NOT_EVALUATED;
         }
         double nearest = NOT_EVALUATED;
         for (Map.Entry<Integer, Position> entry : positions.entrySet()) {
-            if (entry.getKey() == id) {
+            if (entry.getKey() == id || !mate.test(entry.getKey())) {
                 continue;
             }
             double distance = own.getDistance(entry.getValue());
@@ -260,6 +265,7 @@ public class AirReinforcementLogger implements AirReinforcementSink {
         fields.add(Csv.format(row.getNearestMateDistance()));
         fields.add(String.valueOf(row.getActiveAirSquads()));
         fields.add(String.valueOf(row.getHatchFrame()));
+        fields.add(Csv.format(row.getNearestSquadMateDistance()));
         return String.join(",", fields);
     }
 

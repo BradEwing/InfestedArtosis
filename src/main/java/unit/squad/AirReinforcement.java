@@ -36,6 +36,11 @@ public final class AirReinforcement {
     static final int DETOUR_MARGIN = 64;
     /** Tuning value: detour waypoints placed evenly around each disc. */
     static final int DETOUR_ANGLES = 16;
+    /**
+     * Tuning value: detour waypoints a path search places at most, which bounds its cost however many anti-air
+     * threats are known.
+     */
+    static final int MAX_DETOUR_NODES = 256;
     /** Tuning value: frames between path searches for a reinforcing squad. */
     public static final int REPLAN_FRAMES = 12;
 
@@ -51,6 +56,19 @@ public final class AirReinforcement {
      */
     public static boolean isActive(SquadStatus status) {
         return status == SquadStatus.FIGHT || status == SquadStatus.RETREAT || status == SquadStatus.HARASS;
+    }
+
+    /**
+     * Whether a squad looks for an active air squad to reinforce: a rallying air squad that still holds members. A
+     * squad emptied by its own arrival earlier in the frame is left alone.
+     *
+     * @param status the squad's status
+     * @param airSquad true for an air squad
+     * @param members units in the squad
+     * @return true when the squad may reinforce
+     */
+    public static boolean seeksReinforcementTarget(SquadStatus status, boolean airSquad, int members) {
+        return status == SquadStatus.RALLY && airSquad && members > 0;
     }
 
     /**
@@ -170,7 +188,9 @@ public final class AirReinforcement {
      * leg keeps {@link #WAYPOINT_REACHED} clear of every anti-air disc. It is searched over detour waypoints placed
      * {@link #DETOUR_MARGIN} outside each disc and arrival points evenly around the goal; a squad at an arrival point
      * is inside {@link #ARRIVAL_DISTANCE} of the goal. A disc that covers the goal is the fight the target squad is
-     * already in, and is not avoided.
+     * already in: a leg may cross it only inside {@link #ARRIVAL_DISTANCE} of the goal, where the squad has joined.
+     * Detour waypoints are placed around the discs nearest the straight line first, up to
+     * {@link #MAX_DETOUR_NODES}; every leg is still checked against every disc.
      *
      * @param from start point
      * @param goal the target squad's centre
@@ -182,10 +202,7 @@ public final class AirReinforcement {
                                           Predicate<Position> allowed) {
         List<Disc> discs = new ArrayList<>();
         for (AirHarassTargeting.AirThreat threat : threats) {
-            Disc disc = Disc.of(threat);
-            if (!disc.holds(goal, 0)) {
-                discs.add(disc);
-            }
+            discs.add(Disc.of(threat, goal));
         }
         if (legClear(from, goal, discs)) {
             return Collections.singletonList(goal);
@@ -199,7 +216,12 @@ public final class AirReinforcement {
             }
         }
         int arrivals = nodes.size();
-        for (Disc disc : discs) {
+        List<Disc> nearestFirst = new ArrayList<>(discs);
+        nearestFirst.sort(Comparator.comparingDouble(disc -> disc.segmentDistance(from, goal)));
+        for (Disc disc : nearestFirst) {
+            if (nodes.size() - arrivals >= MAX_DETOUR_NODES) {
+                break;
+            }
             for (Position point : ring(disc.x, disc.y, disc.radius + DETOUR_MARGIN)) {
                 if (allowed.test(point) && outsideAll(point, discs)) {
                     nodes.add(point);
@@ -293,7 +315,7 @@ public final class AirReinforcement {
 
     private static boolean outsideAll(Position point, List<Disc> discs) {
         for (Disc disc : discs) {
-            if (disc.holds(point, WAYPOINT_REACHED)) {
+            if (disc.blocks(point)) {
                 return false;
             }
         }
@@ -301,7 +323,8 @@ public final class AirReinforcement {
     }
 
     /**
-     * Whether a leg between two points keeps {@link #WAYPOINT_REACHED} clear of every disc.
+     * Whether a leg between two points keeps {@link #WAYPOINT_REACHED} clear of every disc, a disc covering the
+     * goal excepted inside {@link #ARRIVAL_DISTANCE} of the goal.
      *
      * @param from one end
      * @param to the other end
@@ -310,7 +333,7 @@ public final class AirReinforcement {
      */
     static boolean legClear(Position from, Position to, List<Disc> discs) {
         for (Disc disc : discs) {
-            if (disc.segmentDistance(from, to) <= disc.radius + WAYPOINT_REACHED) {
+            if (disc.blocks(from, to)) {
                 return false;
             }
         }
@@ -318,29 +341,77 @@ public final class AirReinforcement {
     }
 
     /**
-     * An anti-air threat read as a disc.
+     * An anti-air threat read as a disc. A disc covering the goal only blocks ground outside
+     * {@link #ARRIVAL_DISTANCE} of the goal.
      */
     static final class Disc {
         private final int x;
         private final int y;
         private final double radius;
+        private final Position goal;
 
-        Disc(int x, int y, double radius) {
+        Disc(int x, int y, double radius, Position goal) {
             this.x = x;
             this.y = y;
             this.radius = radius;
+            this.goal = goal;
         }
 
-        static Disc of(AirHarassTargeting.AirThreat threat) {
+        static Disc of(AirHarassTargeting.AirThreat threat, Position goal) {
             UnitType type = threat.getType();
             double corner = Math.hypot(Math.max(type.dimensionLeft(), type.dimensionRight()),
                     Math.max(type.dimensionUp(), type.dimensionDown()));
-            return new Disc(threat.getPosition().getX(), threat.getPosition().getY(),
-                    threat.getReach() + corner + AirHarassTargeting.padding());
+            double radius = threat.getReach() + corner + AirHarassTargeting.padding();
+            Position center = threat.getPosition();
+            boolean coversGoal = Math.hypot(goal.getX() - center.getX(), goal.getY() - center.getY()) <= radius;
+            return new Disc(center.getX(), center.getY(), radius, coversGoal ? goal : null);
         }
 
         boolean holds(Position point, int margin) {
             return Math.hypot(point.getX() - x, point.getY() - y) <= radius + margin;
+        }
+
+        boolean blocks(Position point) {
+            return holds(point, WAYPOINT_REACHED) && !nearGoal(point.getX(), point.getY());
+        }
+
+        /**
+         * Whether a leg passes within {@link #WAYPOINT_REACHED} of the disc. For a disc covering the goal, only the
+         * part of the leg inside that reach counts, and it blocks unless both of its ends are inside
+         * {@link #ARRIVAL_DISTANCE} of the goal; the part is a chord and the arrival area a disc, so the whole part
+         * then lies inside it.
+         */
+        boolean blocks(Position from, Position to) {
+            if (goal == null) {
+                return segmentDistance(from, to) <= radius + WAYPOINT_REACHED;
+            }
+            double dx = to.getX() - from.getX();
+            double dy = to.getY() - from.getY();
+            double fx = from.getX() - x;
+            double fy = from.getY() - y;
+            double reach = radius + WAYPOINT_REACHED;
+            double a = dx * dx + dy * dy;
+            double c = fx * fx + fy * fy - reach * reach;
+            if (a == 0) {
+                return c <= 0 && !nearGoal(from.getX(), from.getY());
+            }
+            double b = 2 * (fx * dx + fy * dy);
+            double discriminant = b * b - 4 * a * c;
+            if (discriminant < 0) {
+                return false;
+            }
+            double root = Math.sqrt(discriminant);
+            double enter = Math.max(0, (-b - root) / (2 * a));
+            double leave = Math.min(1, (-b + root) / (2 * a));
+            if (enter > leave) {
+                return false;
+            }
+            return !nearGoal(from.getX() + enter * dx, from.getY() + enter * dy)
+                    || !nearGoal(from.getX() + leave * dx, from.getY() + leave * dy);
+        }
+
+        private boolean nearGoal(double px, double py) {
+            return goal != null && Math.hypot(px - goal.getX(), py - goal.getY()) < ARRIVAL_DISTANCE;
         }
 
         double segmentDistance(Position from, Position to) {
