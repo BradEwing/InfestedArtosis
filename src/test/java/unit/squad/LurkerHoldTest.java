@@ -127,4 +127,18 @@ class LurkerHoldTest {
         since = LurkerHold.committingSince(SquadManager.isCommitting(SquadStatus.FIGHT, true, ENGAGE), since, frame);
         assertTrue(LurkerHold.lurkersCommit(since, frame));
     }
+
+    @Test
+    void aContainBreakCommitsTheLurkersAtOnceWhileTheSquadKeepsCommitting() {
+        int broken = 5000;
+        Integer since = LurkerHold.alreadyCommittedSince(broken);
+
+        assertTrue(LurkerHold.lurkersCommit(since, broken));
+        since = LurkerHold.committingSince(SquadManager.isCommitting(SquadStatus.FIGHT, true, null), since,
+                broken + 1);
+        assertTrue(LurkerHold.lurkersCommit(since, broken + 1));
+        since = LurkerHold.committingSince(SquadManager.isCommitting(SquadStatus.RETREAT, false, null), since,
+                broken + 2);
+        assertFalse(LurkerHold.lurkersCommit(since, broken + 2));
+    }
 }

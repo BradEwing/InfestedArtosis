@@ -170,7 +170,7 @@ public class GameState {
         updateBunkerGarrisonCounts();
         learnReachFromHits(frame);
         strategyTracker.onFrame();
-        clearVisibleEnemyWorkerLocations();
+        clearVisibleStaleLocations();
         baseData.updateSquadRallyBase();
     }
 
@@ -339,20 +339,25 @@ public class GameState {
         }
     }
 
-    private void clearVisibleEnemyWorkerLocations() {
-        Set<Position> lastKnownWorkerPositions = observedUnitTracker.getLastKnownPositionsOfLivingUnits(
+    /**
+     * Forgets the last known position of every enemy worker and sieged tank whose spot is visible now: one still
+     * standing there is visible and placed by its unit, so a last known position we can see is one it has left.
+     */
+    private void clearVisibleStaleLocations() {
+        Set<Position> lastKnownPositions = observedUnitTracker.getLastKnownPositionsOfLivingUnits(
             UnitType.Terran_SCV,
             UnitType.Protoss_Probe,
-            UnitType.Zerg_Drone
+            UnitType.Zerg_Drone,
+            UnitType.Terran_Siege_Tank_Siege_Mode
         );
 
-        Set<Position> visibleWorkerPositions = lastKnownWorkerPositions.stream()
+        Set<Position> visibleStalePositions = lastKnownPositions.stream()
             .filter(p -> p != null)
             .filter(p -> game.isVisible(p.toTilePosition()))
             .collect(Collectors.toSet());
 
-        if (!visibleWorkerPositions.isEmpty()) {
-            observedUnitTracker.clearLastKnownLocationsAt(visibleWorkerPositions);
+        if (!visibleStalePositions.isEmpty()) {
+            observedUnitTracker.clearLastKnownLocationsAt(visibleStalePositions);
         }
     }
 

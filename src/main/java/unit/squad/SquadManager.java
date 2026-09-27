@@ -279,7 +279,8 @@ public class SquadManager {
 
     /**
      * Whether a squad's Lurkers commit with it, see {@link LurkerHold#lurkersCommit}: a single ENGAGE verdict does
-     * not release a Lurker's hold or walk it into sieged-tank reach.
+     * not release a Lurker's hold or walk it into sieged-tank reach, while a squad breaking its contain commits them
+     * at once, see {@link LurkerHold#alreadyCommittedSince}.
      *
      * @param squad the squad
      * @param now current frame
@@ -343,7 +344,8 @@ public class SquadManager {
                     padding), RunbyTargeting.zoneMargin(point, zones, padding)))) {
                 lurker.holdAt(point);
                 FixedFireTelemetry.lurkerHold(now, lurker.getUnitID(), position, point,
-                        FixedFire.coveringZone(position, zones, padding), reason);
+                        FixedFire.coveringZone(LurkerHold.MOVED.equals(reason) ? hold : position, zones, padding),
+                        reason);
             }
         }
         if (lurker.getHoldPosition() != null) {
@@ -2002,6 +2004,7 @@ public class SquadManager {
                 s.setStatus(SquadStatus.FIGHT);
                 SquadDecisions.pathTaken(s, DecisionPath.CONTAIN_BREAK);
                 s.startFightLock(now);
+                committingSince.put(s, LurkerHold.alreadyCommittedSince(now));
                 assignFightTargets(s, s.getMembers(), true);
             }
         }

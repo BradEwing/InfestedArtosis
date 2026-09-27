@@ -91,4 +91,16 @@ final class LurkerHold {
     static boolean lurkersCommit(Integer since, int now) {
         return since != null && now - since >= COMMIT_FRAMES;
     }
+
+    /**
+     * The start of a committing run that commits a squad's Lurkers at once, for a squad breaking its contain: the
+     * break is a decision to fight with the whole squad, so its Lurkers do not wait out {@link #COMMIT_FRAMES}. The
+     * run lasts while the squad keeps committing, see {@link #committingSince}.
+     *
+     * @param now current frame
+     * @return a run start {@link #COMMIT_FRAMES} before now
+     */
+    static int alreadyCommittedSince(int now) {
+        return now - COMMIT_FRAMES;
+    }
 }

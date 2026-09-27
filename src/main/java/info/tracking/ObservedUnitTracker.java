@@ -46,6 +46,7 @@ public class ObservedUnitTracker {
             }
             Unit unit = ou.getUnit();
             if (unit.isVisible()) {
+                retypeSiegeTankInSight(ou, unit.getType());
                 if (unit.isCompleted()) {
                     ou.markCompleted(t);
                 }
@@ -109,8 +110,9 @@ public class ObservedUnitTracker {
     /**
      * Whether a tracked unit still holds a reach zone. A living sieged tank holds one at its last known position
      * however long ago it was seen: it fires from where it stands, and only a sighting of it in Tank Mode, which
-     * retypes it, its death, or a look at the spot that finds it gone, which forgets its position, ends that. Any
-     * other unit holds one only while its observation is fresh.
+     * retypes it (see {@link #retypeSiegeTankInSight}), its death, or a look at the spot that finds it gone, which
+     * forgets its position (see {@link #clearLastKnownLocationsAt}), ends that. Any other unit holds one only while
+     * its observation is fresh.
      *
      * @param ou the tracked unit
      * @param visible whether it is visible now
@@ -274,6 +276,24 @@ public class ObservedUnitTracker {
      */
     void track(ObservedUnit observedUnit) {
         observedUnits.put(observedUnit.getUnit(), observedUnit);
+    }
+
+    /**
+     * Retypes a tracked Siege Tank to the mode it is seen in, so a tank that sieges or unsieges in sight holds or
+     * drops its sieged-tank zone at once rather than on its next hide and show. Other types keep the type they were
+     * last shown as.
+     *
+     * @param observedUnit the tracked unit, visible this frame
+     * @param seenType the type it is seen as this frame
+     */
+    static void retypeSiegeTankInSight(ObservedUnit observedUnit, UnitType seenType) {
+        if (isSiegeTank(observedUnit.getUnitType()) && isSiegeTank(seenType)) {
+            updateUnitTypeChange(observedUnit, seenType);
+        }
+    }
+
+    private static boolean isSiegeTank(UnitType type) {
+        return type == UnitType.Terran_Siege_Tank_Siege_Mode || type == UnitType.Terran_Siege_Tank_Tank_Mode;
     }
 
     /**
