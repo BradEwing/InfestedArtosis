@@ -30,8 +30,10 @@ import unit.squad.ContainHeldTimer;
  * <p>A {@link OpenReason#CONTAIN_HELD} round opens once our ground squads have held a contain for
  * {@link ContainHeldTimer#HELD_FRAMES}, in a matchup and build that allow it, while the workers are
  * under both the hard cap and the soft cap, and no sooner than {@link #CONTAIN_HELD_COOLDOWN_FRAMES}
- * after the last such round closed. Its size is one Drone per hatchery and at least
- * {@link #CONTAIN_HELD_MIN_ROUND_SIZE}; the build's Drone cap does not bound it. It closes on a
+ * after the last such round closed. At most {@link #MAX_CONTAIN_HELD_ROUNDS_PER_CHAIN} open on one contain
+ * chain; a new chain allows as many again. Its size is one Drone per hatchery and at least
+ * {@link #CONTAIN_HELD_MIN_ROUND_SIZE}, cut to the workers still under the lower of the two caps; the
+ * build's Drone cap does not bound it. It closes on a
  * threat, once the matchup or build no longer allows it, when the contain it opened on ends or is
  * broken, when the workers reach either cap, once
  * its Drones are hatched or in an egg, or after {@link #MAX_ROUND_FRAMES}. It never reads or moves
@@ -58,6 +60,13 @@ public class DroneRound {
 
     /** Fewest Drones a contain-held round adds, whatever the hatchery count. */
     public static final int CONTAIN_HELD_MIN_ROUND_SIZE = 3;
+
+    /**
+     * Contain-held rounds one contain chain may open. The later rounds of a long chain were followed by an
+     * enemy break more often than the first, and each round takes larva from the army holding the line.
+     * Tuning constant.
+     */
+    public static final int MAX_CONTAIN_HELD_ROUNDS_PER_CHAIN = 2;
 
     private static final int NEVER = Integer.MIN_VALUE / 2;
 
@@ -121,6 +130,13 @@ public class DroneRound {
         boolean underCaps() {
             return workers < hardCap && workers < softCap;
         }
+
+        /**
+         * @return workers still to add before the lower of the soft cap and the hard cap
+         */
+        int capRoom() {
+            return Math.min(softCap, hardCap) - workers;
+        }
     }
 
     /** What a DRONE_ROUND_OPEN or DRONE_ROUND_CLOSE row reports. */
@@ -175,6 +191,10 @@ public class DroneRound {
     @Getter
     private int lastContainHeldCloseFrame = NEVER;
 
+    private int countedChainStartFrame = ContainHeldTimer.NO_CHAIN;
+
+    private int countedChainRounds = 0;
+
     /**
      * Opens or closes the round for this frame, with no contain-held round possible.
      *
@@ -221,8 +241,8 @@ public class DroneRound {
             return;
         }
         if (opensContainHeldRound(frame, containHeld)) {
-            open(frame, OpenReason.CONTAIN_HELD, drones + containHeldRoundSize(containHeld.getHatcheries()),
-                    containHeld);
+            countContainHeldRound(containHeld.getChainStartFrame());
+            open(frame, OpenReason.CONTAIN_HELD, drones + containHeldRoundSize(containHeld), containHeld);
         }
     }
 
@@ -234,10 +254,32 @@ public class DroneRound {
         return Math.max(CONTAIN_HELD_MIN_ROUND_SIZE, hatcheries);
     }
 
+    /**
+     * @param containHeld the hatcheries, workers and caps the round opens on
+     * @return {@link #containHeldRoundSize(int)}, cut to the workers still under the lower of the two caps
+     */
+    static int containHeldRoundSize(ContainHeld containHeld) {
+        return Math.min(containHeldRoundSize(containHeld.getHatcheries()), containHeld.capRoom());
+    }
+
+    /**
+     * @param chainStartFrame the start of a contain chain
+     * @return contain-held rounds opened on that chain
+     */
+    public int containHeldRoundsOnChain(int chainStartFrame) {
+        return chainStartFrame == countedChainStartFrame ? countedChainRounds : 0;
+    }
+
+    private void countContainHeldRound(int chainStartFrame) {
+        countedChainRounds = containHeldRoundsOnChain(chainStartFrame) + 1;
+        countedChainStartFrame = chainStartFrame;
+    }
+
     private boolean opensContainHeldRound(int frame, ContainHeld containHeld) {
         return containHeld.isEligible()
                 && containHeld.isHeld()
                 && frame - lastContainHeldCloseFrame >= CONTAIN_HELD_COOLDOWN_FRAMES
+                && containHeldRoundsOnChain(containHeld.getChainStartFrame()) < MAX_CONTAIN_HELD_ROUNDS_PER_CHAIN
                 && containHeld.underCaps();
     }
 

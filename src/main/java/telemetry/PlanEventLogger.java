@@ -202,7 +202,9 @@ public class PlanEventLogger implements PlanEventSink {
      * INELIGIBLE. drone_round_drones is Drones hatched plus Drones in an egg at that frame, so the CLOSE
      * row's count less the OPEN row's is the Drones a round added net of any Drones that died during
      * it. drone_round_size is the Drones the round
-     * set out to add. contain_held_frames is how long our ground squads had held the running contain,
+     * set out to add; a contain-held round's size is already cut to the workers left under the lower cap.
+     * The OPEN row's frame less its contain_held_frames is the start of the chain it opened on, which
+     * identifies the rounds of one chain. contain_held_frames is how long our ground squads had held the running contain,
      * zero with none. drone_round_workers, drone_round_soft_cap and drone_round_hard_cap are the
      * mineral and gas workers and the two worker caps a contain-held round measures them against.
      * Those seven columns are set only on the two DRONE_ROUND rows.
