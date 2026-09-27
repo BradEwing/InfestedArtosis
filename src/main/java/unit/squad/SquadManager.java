@@ -920,14 +920,15 @@ public class SquadManager {
     /**
      * Whether a squad the move out gate launches is offered a containment arc. A squad wrapping in a collapse or
      * holding a fight lock is not: taking the arc would drop the collapse and the fight it committed to on the
-     * frame after it left the arc.
+     * frame after it left the arc. A squad holding a retreat lock is not either: it has just left an arc, and taking
+     * one again at once would undo the exit before the lock expires.
      *
      * @param squad squad being launched
      * @param now current frame
      * @return true when the squad may take an arc on launch
      */
     static boolean launchOffersContain(Squad squad, int now) {
-        return squad.getCollapse() == null && !squad.isFightLocked(now);
+        return squad.getCollapse() == null && !squad.isFightLocked(now) && !squad.isRetreatLocked(now);
     }
 
     /**

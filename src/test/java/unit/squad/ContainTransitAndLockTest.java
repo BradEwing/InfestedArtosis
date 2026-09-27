@@ -169,6 +169,20 @@ class ContainTransitAndLockTest {
         assertTrue(SquadManager.launchOffersContain(new GroundSquad(), 5000));
     }
 
+    @Test
+    void aRetreatLockedSquadIsNotOfferedAnArcUntilTheLockExpires() {
+        Squad squad = new GroundSquad();
+        squad.startRetreatLock(5000);
+
+        assertFalse(SquadManager.launchOffersContain(squad, 5001), "the squad has just left its arc");
+
+        int expiry = 5000;
+        while (squad.isRetreatLocked(expiry)) {
+            expiry++;
+        }
+        assertTrue(SquadManager.launchOffersContain(squad, expiry), "the retreat lock is over");
+    }
+
     private static int fightLockExpiry(Squad squad, int from) {
         int frame = from;
         while (squad.isFightLocked(frame)) {
