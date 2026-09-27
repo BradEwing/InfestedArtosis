@@ -69,8 +69,7 @@ public class TerranWallNatural extends TerranBaseStrategy {
         if (enemyMain == null) {
             return (barracks, partner) -> false;
         }
-        return TerranWallMain.placement(TerranWallMain.atMainChoke(context),
-                context.enemyMainExitPath(TerranWallMain.EXIT_PATH_TILE_RADIUS)::contains,
-                enemyMain.getCenter().toTilePosition());
+        return TerranWallMain.placement(TerranWallMain.atMainChoke(context), TerranWallMain.onExitPath(context),
+                enemyMain.getCenter().toTilePosition(), TerranWallMain.naturalDepotCentre(context));
     }
 }

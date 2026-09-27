@@ -71,13 +71,13 @@ class TerranWallNaturalTest {
     void aPairTheMainDetectorReadsIsNotANaturalWall() {
         Predicate<TilePosition> atMainChoke = tile -> Math.abs(tile.getX() - 42) + Math.abs(tile.getY() - 32) <= 8;
         BiPredicate<TileFootprint, TileFootprint> mainWall = TerranWallMain.placement(atMainChoke, tile -> false,
-                new TilePosition(20, 10));
+                new TilePosition(20, 10), new TilePosition(40, 40));
         List<TileFootprint> rampWall = Arrays.asList(barracks(40, 30), depot(44, 30));
         List<TileFootprint> naturalWall = Arrays.asList(barracks(40, 44), depot(44, 44));
 
         assertNull(TerranWallNatural.evidence(rampWall, Collections.emptyList(), IN_NATURAL, mainWall));
         assertEquals(TerranWall.Evidence.CHOKE_PAIR, TerranWallMain.evidence(rampWall, Collections.emptyList(),
-                atMainChoke, tile -> false, new TilePosition(20, 10)));
+                atMainChoke, tile -> false, new TilePosition(20, 10), new TilePosition(40, 40)));
         assertEquals(TerranWall.Evidence.AREA_PAIR,
                 TerranWallNatural.evidence(naturalWall, Collections.emptyList(), IN_NATURAL, mainWall));
     }

@@ -46,6 +46,8 @@ public class StrategyDetectionContext {
 
     private final Map<Integer, Set<TilePosition>> ourBaseTilesByNaturalRadius = new HashMap<>();
 
+    private final Map<Integer, Set<TilePosition>> enemyMainExitPathByRadius = new HashMap<>();
+
     /**
      * Tiles of our main base plus a manhattan radius around our inferred natural.
      * Cached per context instance so detectors sharing a frame do not recompute it.
@@ -117,9 +119,13 @@ public class StrategyDetectionContext {
 
     /**
      * Tiles within tileRadius manhattan tiles of the ground path from the enemy main to the enemy natural. Empty
-     * while that path is unknown.
+     * while that path is unknown. Cached per context instance so detectors sharing a frame do not recompute it.
      */
     public Set<TilePosition> enemyMainExitPath(int tileRadius) {
+        return enemyMainExitPathByRadius.computeIfAbsent(tileRadius, this::computeEnemyMainExitPath);
+    }
+
+    private Set<TilePosition> computeEnemyMainExitPath(int tileRadius) {
         GroundPath path = baseData.getEnemyMainPathToNatural();
         if (path == null) {
             return Collections.emptySet();

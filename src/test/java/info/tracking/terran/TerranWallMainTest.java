@@ -51,6 +51,13 @@ class TerranWallMainTest {
 
     private static final TilePosition NEO_MOON_GLAIVE_TOP_DEPOT = new TilePosition(69, 7);
 
+    /**
+     * About where the top start's natural depot stands, beside the geyser at (34, 15); the exact tile is not needed.
+     */
+    private static final TilePosition NEO_MOON_GLAIVE_TOP_NATURAL = new TilePosition(40, 16);
+
+    private static final TilePosition FAR_NATURAL_DEPOT_CENTRE = new TilePosition(100, 100);
+
     @Test
     void aBarracksAndDepotTouchingAtTheMainChokeIsAWall() {
         assertEquals(TerranWall.Evidence.CHOKE_PAIR, evidence(barracks(58, 58), depot(62, 58)));
@@ -87,10 +94,10 @@ class TerranWallMainTest {
         Predicate<TilePosition> chokeByTheDepot = atChoke(new TilePosition(46, 40));
 
         assertNull(TerranWallMain.evidence(Arrays.asList(barracks(42, 39), depot(46, 39)), Collections.emptyList(),
-                chokeByTheDepot, NO_EXIT_PATH, MAIN_DEPOT_CENTRE));
+                chokeByTheDepot, NO_EXIT_PATH, MAIN_DEPOT_CENTRE, FAR_NATURAL_DEPOT_CENTRE));
         assertEquals(TerranWall.Evidence.CHOKE_PAIR, TerranWallMain.evidence(
                 Arrays.asList(barracks(48, 39), depot(52, 39)), Collections.emptyList(), chokeByTheDepot,
-                NO_EXIT_PATH, MAIN_DEPOT_CENTRE));
+                NO_EXIT_PATH, MAIN_DEPOT_CENTRE, FAR_NATURAL_DEPOT_CENTRE));
     }
 
     @Test
@@ -99,7 +106,7 @@ class TerranWallMainTest {
         TileFootprint depot = TileFootprint.centredAt(UnitType.Terran_Supply_Depot, new Position(1840, 608));
 
         assertEquals(TerranWall.Evidence.EXIT_PAIR, TerranWallMain.evidence(Arrays.asList(barracks, depot),
-                Collections.emptyList(), tile -> false, neoMoonGlaiveExit(), NEO_MOON_GLAIVE_TOP_DEPOT));
+                Collections.emptyList(), tile -> false, neoMoonGlaiveExit(), NEO_MOON_GLAIVE_TOP_DEPOT, NEO_MOON_GLAIVE_TOP_NATURAL));
     }
 
     @Test
@@ -107,9 +114,29 @@ class TerranWallMainTest {
         Predicate<TilePosition> exit = neoMoonGlaiveExit();
 
         assertNull(TerranWallMain.evidence(Arrays.asList(barracks(58, 20), depot(62, 20)), Collections.emptyList(),
-                tile -> false, exit, NEO_MOON_GLAIVE_TOP_DEPOT));
+                tile -> false, exit, NEO_MOON_GLAIVE_TOP_DEPOT, NEO_MOON_GLAIVE_TOP_NATURAL));
         assertNull(TerranWallMain.evidence(Arrays.asList(barracks(62, 5), depot(62, 8)), Collections.emptyList(),
-                tile -> false, exit, NEO_MOON_GLAIVE_TOP_DEPOT));
+                tile -> false, exit, NEO_MOON_GLAIVE_TOP_DEPOT, NEO_MOON_GLAIVE_TOP_NATURAL));
+    }
+
+    @Test
+    void aProductionBlockBesideTheNaturalDepotOnThePathOutIsNotAnExitWall() {
+        Predicate<TilePosition> exit = neoMoonGlaiveExit();
+        List<TileFootprint> besideTheNatural = Arrays.asList(barracks(47, 14), depot(47, 17));
+
+        assertNull(TerranWallMain.evidence(besideTheNatural, Collections.emptyList(), tile -> false, exit,
+                NEO_MOON_GLAIVE_TOP_DEPOT, new TilePosition(48, 12)));
+        assertEquals(TerranWall.Evidence.EXIT_PAIR, TerranWallMain.evidence(besideTheNatural, Collections.emptyList(),
+                tile -> false, exit, NEO_MOON_GLAIVE_TOP_DEPOT, NEO_MOON_GLAIVE_TOP_NATURAL));
+    }
+
+    @Test
+    void thereIsNoExitWallWhileTheNaturalIsUnknown() {
+        TileFootprint barracks = TileFootprint.centredAt(UnitType.Terran_Barracks, new Position(1824, 688));
+        TileFootprint depot = TileFootprint.centredAt(UnitType.Terran_Supply_Depot, new Position(1840, 608));
+
+        assertNull(TerranWallMain.evidence(Arrays.asList(barracks, depot), Collections.emptyList(), tile -> false,
+                neoMoonGlaiveExit(), NEO_MOON_GLAIVE_TOP_DEPOT, null));
     }
 
     @Test
@@ -119,9 +146,9 @@ class TerranWallMainTest {
                 depot(11, 11));
 
         assertEquals(TerranWall.Evidence.SEALED, TerranWallMain.evidence(sealing, Collections.singletonList(ramp),
-                tile -> false, NO_EXIT_PATH, MAIN_DEPOT_CENTRE));
+                tile -> false, NO_EXIT_PATH, MAIN_DEPOT_CENTRE, FAR_NATURAL_DEPOT_CENTRE));
         assertNull(TerranWallMain.evidence(sealing.subList(0, 1), Collections.singletonList(ramp),
-                tile -> false, NO_EXIT_PATH, MAIN_DEPOT_CENTRE));
+                tile -> false, NO_EXIT_PATH, MAIN_DEPOT_CENTRE, FAR_NATURAL_DEPOT_CENTRE));
     }
 
     @Test
@@ -129,24 +156,25 @@ class TerranWallMainTest {
         List<TileFootprint> footprints = Arrays.asList(barracks(11, 8), depot(11, 11));
 
         assertEquals(TerranWall.Evidence.SEALED, TerranWallMain.evidence(footprints,
-                Collections.singletonList(rampWall()), tile -> true, NO_EXIT_PATH, new TilePosition(40, 40)));
+                Collections.singletonList(rampWall()), tile -> true, NO_EXIT_PATH, new TilePosition(40, 40),
+                FAR_NATURAL_DEPOT_CENTRE));
     }
 
     @Test
     void theMainPlacementTakesEitherWindow() {
         Predicate<TilePosition> exit = neoMoonGlaiveExit();
 
-        assertTrue(TerranWallMain.placement(atChoke(CHOKE), exit, MAIN_DEPOT_CENTRE)
+        assertTrue(TerranWallMain.placement(atChoke(CHOKE), exit, MAIN_DEPOT_CENTRE, FAR_NATURAL_DEPOT_CENTRE)
                 .test(barracks(58, 58), depot(62, 58)));
-        assertTrue(TerranWallMain.placement(tile -> false, exit, NEO_MOON_GLAIVE_TOP_DEPOT)
+        assertTrue(TerranWallMain.placement(tile -> false, exit, NEO_MOON_GLAIVE_TOP_DEPOT, NEO_MOON_GLAIVE_TOP_NATURAL)
                 .test(barracks(55, 20), depot(56, 18)));
-        assertFalse(TerranWallMain.placement(tile -> false, tile -> false, MAIN_DEPOT_CENTRE)
+        assertFalse(TerranWallMain.placement(tile -> false, tile -> false, MAIN_DEPOT_CENTRE, FAR_NATURAL_DEPOT_CENTRE)
                 .test(barracks(58, 58), depot(62, 58)));
     }
 
     private static TerranWall.Evidence evidence(TileFootprint... footprints) {
         return TerranWallMain.evidence(Arrays.asList(footprints), Collections.emptyList(), atChoke(CHOKE),
-                NO_EXIT_PATH, MAIN_DEPOT_CENTRE);
+                NO_EXIT_PATH, MAIN_DEPOT_CENTRE, FAR_NATURAL_DEPOT_CENTRE);
     }
 
     private static Predicate<TilePosition> neoMoonGlaiveExit() {
