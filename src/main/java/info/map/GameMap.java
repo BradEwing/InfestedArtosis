@@ -31,6 +31,8 @@ public class GameMap {
     @Getter
     private ArrayList<MapTile> heatMap = new ArrayList<>();
     @Getter
+    private final HarassHeatMap harassHeatMap;
+    @Getter
     private Set<WalkPosition> accessibleWalkPositions = new HashSet<>();
     @Getter
     private Set<Unit> blockingMinerals = new HashSet<>();
@@ -49,6 +51,7 @@ public class GameMap {
         mapTiles = new MapTile[x][y];
         this.x = x;
         this.y = y;
+        this.harassHeatMap = new HarassHeatMap(x, y);
     }
 
     public void addTile(MapTile tile, int x, int y) {

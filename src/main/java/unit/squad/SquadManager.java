@@ -41,18 +41,25 @@ import unit.managed.UnitRole;
 import util.Arc;
 import util.Filter;
 import util.StaticDefenseZone;
+import util.MeleeOverflowGate;
+import util.TargetLedger;
 import util.Vec2;
 
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import java.util.function.Function;
+import java.util.function.DoubleSupplier;
 import java.util.function.ToDoubleFunction;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import util.TargetScorer;
@@ -138,6 +145,17 @@ public class SquadManager {
     private static final int CONTAIN_DEFENSE_MARGIN = 32;
     private static final double REINFORCEMENT_RADIUS = 384.0;
     private static final int TARGETING_RADIUS = 256;
+    private static final int WIDENED_TARGETING_RADIUS = 2 * TARGETING_RADIUS;
+    /**
+     * Stands in for the id of a fight target when a unit holds none that still exists.
+     */
+    static final int NO_TARGET_ID = -1;
+    /**
+     * Distance within which a melee attacker's pick counts as within reach, so an unsaturated re-target lets an
+     * attacker in overflow attack it directly at once. It matches the radius inside which a Zergling fighting its
+     * target attacks it instead of walking to it.
+     */
+    static final int OVERFLOW_EXIT_REACH = 64;
     public static final int GROUND_SPLIT_DISTANCE = 256;
     public static final int AIR_SPLIT_DISTANCE = 768;
     private static final int COMMITMENT_RELEASE_DISTANCE = 512;
@@ -145,6 +163,10 @@ public class SquadManager {
     private static final int RUNBY_AREA_TILES = 24;
     private static final int LIKELY_SPOT_SEARCH_TILES = 2;
     private static final int RUNBY_KILL_CREDIT_RADIUS = 64;
+    /** Tuning value: pixels from a squad's center to the nearest arc point within which it takes the arc. */
+    static final int CONTAIN_ARRIVAL_DISTANCE = 320;
+    /** Tuning value: ratio an ENGAGE must reach, never below the matchup threshold, to break an attrition lock. */
+    static final double STRONG_ENGAGE_RATIO = 1.5;
 
     private final Map<Base, RunbyTarget> runbyTargets = new HashMap<>();
     private Set<ManagedUnit> outrangedHits = new HashSet<>();
@@ -159,12 +181,19 @@ public class SquadManager {
     static final int HOLD_RELEASE_MARGIN = 256;
 
     private final ScoutChase scoutChase = new ScoutChase();
+    private final AirHarassController airHarass;
+    private final AirReinforcer airReinforcer;
+
+    private TargetLedger fightTargetLedger = TargetLedger.empty();
+    private int fightTargetLedgerFrame = -1;
 
     public SquadManager(Game game, GameState gameState) {
         this.game = game;
         this.gameState = gameState;
         this.agentFactory = new BWMirrorAgentFactory();
         this.containmentEvaluator = new ContainmentEvaluator(gameState);
+        this.airHarass = new AirHarassController(game, gameState);
+        this.airReinforcer = new AirReinforcer(game, gameState);
     }
 
     public void updateFightSquads() {
@@ -173,6 +202,7 @@ public class SquadManager {
         removeEmptySquads();
         mergeSquads();
         splitSquads();
+        airReinforcer.prune(fightSquads);
         rebuildScoutChase();
         evictIrradiatedUnits();
         updateIrradiatedUnits();
@@ -182,6 +212,7 @@ public class SquadManager {
         outrangedHits = findOutrangedHits(now);
         fixedFireZones = FixedFire.fixedFireZones(gameState.getGroundThreatZones(now));
         recordFixedFireHurts(now);
+        airHarass.onFrame(now, fightSquads);
         Set<Squad> removed = new HashSet<>();
         for (Squad fightSquad: fightSquads) {
             fightSquad.onFrame();
@@ -209,6 +240,20 @@ public class SquadManager {
         fightSquads.removeAll(removed);
         evadeOutrangedHits(now);
         holdLurkersOutOfFire(now);
+        gameState.getContainHeldTimer().update(now, anyGroundSquadContaining(fightSquads));
+    }
+
+    /**
+     * @param squads the fight squads
+     * @return true when any ground squad is in CONTAIN
+     */
+    static boolean anyGroundSquadContaining(Collection<Squad> squads) {
+        for (Squad squad : squads) {
+            if (squad.isGroundSquad() && squad.getStatus() == SquadStatus.CONTAIN) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -365,7 +410,8 @@ public class SquadManager {
     /**
      * Moves every member with an outranged hit this frame to the point, within a short ring around it, farthest
      * outside every zone that outranges it. The move is issued this frame, ahead of the unit's ready gate. A
-     * burrowed member, or one whose type cannot move, is left to keep attacking from its role.
+     * burrowed member, or one whose type cannot move, is left to keep attacking from its role, and so is a member
+     * fighting or wrapping in a collapse, or held by its commit: it was sent into that fire by the collapse test.
      *
      * @param now current frame
      */
@@ -375,8 +421,9 @@ public class SquadManager {
         }
         List<StaticDefenseZone> threats = gameState.getGroundThreatZones(now);
         Predicate<Position> allowed = walkablePoints();
+        Set<ManagedUnit> collapsing = collapsingMembers(now);
         for (ManagedUnit member : outrangedHits) {
-            if (!member.canStepOutNow()
+            if (collapsing.contains(member) || !member.canStepOutNow()
                     || !ManagedUnit.evadesOutrangedHit(member.getRole(), member.isClosingOnTarget())) {
                 continue;
             }
@@ -734,6 +781,10 @@ public class SquadManager {
             if (squad.getStatus() == SquadStatus.CONTAIN) {
                 endContainment(squad);
             }
+            AirHarassEvaluator.ExitReason harassExit = AirHarassEvaluator.removalExit(squad.getStatus(), squad.size());
+            if (harassExit != null) {
+                airHarass.stop(squad, harassExit, game.getFrameCount());
+            }
             fightSquads.remove(squad);
         }
     }
@@ -852,37 +903,39 @@ public class SquadManager {
     }
 
     /**
-     * Whether a squad holding a status may merge with a neighbour. A runby squad is kept apart: a merge would
-     * fold a squad at home into the enemy base, or hand the runby to a squad that recalls it.
+     * Whether a squad holding a status may merge with a neighbour. A runby or harass squad is kept apart: a merge
+     * would fold a squad at home into the enemy base, or hand the raid to a squad that recalls it.
      *
      * @param status the squad's status
      * @return true when the squad may merge
      */
     static boolean mayMerge(SquadStatus status) {
-        return status != SquadStatus.RUNBY;
+        return status != SquadStatus.RUNBY && status != SquadStatus.HARASS;
     }
 
     /**
-     * Whether a squad holding a status may split off its outliers. A runby squad spreads out among the workers
-     * on purpose, so it is never split.
+     * Whether a squad holding a status may split off its outliers. A runby or harass squad spreads out over the
+     * enemy base on purpose, so it is never split.
      *
      * @param status the squad's status
      * @return true when the squad may split
      */
     static boolean maySplit(SquadStatus status) {
         return status != SquadStatus.CONTAIN && status != SquadStatus.RALLY && status != SquadStatus.RETREAT
-                && status != SquadStatus.RUNBY;
+                && status != SquadStatus.RUNBY && status != SquadStatus.HARASS;
     }
 
     /**
-     * Whether a new or re-homed unit may join a squad holding a status. A runby squad takes no
-     * reinforcements: joining one would re-simulate it and overwrite its status.
+     * Whether a new or re-homed ground unit or Overlord may join a squad holding a status. A runby or harass squad
+     * takes none: joining one would re-simulate it and overwrite its status. Mutalisks join a harassing squad
+     * through {@link #mayJoinAirSquadAt(SquadStatus, double, boolean)} and {@link #joinHarass}, which keep its
+     * status.
      *
      * @param status the squad's status
      * @return true when the squad may take the unit
      */
     static boolean mayJoin(SquadStatus status) {
-        return status != SquadStatus.RUNBY;
+        return status != SquadStatus.RUNBY && status != SquadStatus.HARASS;
     }
 
     /**
@@ -1007,6 +1060,10 @@ public class SquadManager {
             evaluateRunbySquad(squad);
             return;
         }
+        if (squad.getStatus() == SquadStatus.HARASS) {
+            evaluateHarassSquad(squad);
+            return;
+        }
 
         final boolean closeThreats = !enemyUnitsNearSquad(squad).isEmpty();
 
@@ -1017,8 +1074,16 @@ public class SquadManager {
             return;
         }
 
+        boolean activeAirSquad = AirReinforcement.seeksReinforcementTarget(squadStatus, squad.isAirSquad(),
+                squad.size()) && AirReinforcer.hasActiveAirSquad(squad, fightSquads);
+        if (activeAirSquad && reinforceActiveAirSquad(squad, closeThreats)) {
+            return;
+        }
+        airReinforcer.forget(squad);
+
         int strength = squadStrength(squad);
-        int moveOutThreshold = calculateMoveOutThreshold(squad);
+        int moveOutThreshold = AirReinforcement.launchThreshold(calculateMoveOutThreshold(squad), squadStatus,
+                activeAirSquad);
         SquadDecisions.moveOutEvaluated(squad, moveOutThreshold, strength);
         boolean holdAway = holdsAwayFromHome(squad, closeThreats, strength, moveOutThreshold);
         SquadAction action = chooseSquadAction(holdAway, closeThreats, strength, moveOutThreshold,
@@ -1038,11 +1103,177 @@ public class SquadManager {
         }
 
         squad.commit(game.getFrameCount());
-        if (action == SquadAction.LAUNCH && tryEnterContainment(squad)) {
+        if (action == SquadAction.LAUNCH && launchOffersContain(squad, game.getFrameCount())
+                && tryEnterContainment(squad)) {
+            return;
+        }
+        if (tryEnterHarass(squad)) {
             return;
         }
 
         simulateFightSquad(squad);
+        holdCollapseWrap(squad);
+    }
+
+    /**
+     * Whether a squad the move out gate launches is offered a containment arc. A squad wrapping in a collapse or
+     * holding a fight lock is not: taking the arc would drop the collapse and the fight it committed to on the
+     * frame after it left the arc. A squad holding a retreat lock is not either: it has just left an arc, and taking
+     * one again at once would undo the exit before the lock expires.
+     *
+     * @param squad squad being launched
+     * @param now current frame
+     * @return true when the squad may take an arc on launch
+     */
+    static boolean launchOffersContain(Squad squad, int now) {
+        return squad.getCollapse() == null && !squad.isFightLocked(now) && !squad.isRetreatLocked(now);
+    }
+
+    /**
+     * Sends a rallying air squad to the nearest active air squad it may merge with while a path outside known
+     * anti-air reaches it, and hands its members over on arrival. A squad at home with close threats defends
+     * instead, and a squad with no safe path takes the rally branch, where its move out threshold is suspended by
+     * {@link AirReinforcement#launchThreshold}.
+     *
+     * @param squad rallying air squad
+     * @param closeThreats true when enemies sit inside the squad detection radius
+     * @return true when the squad is reinforcing or has joined its target this frame
+     */
+    private boolean reinforceActiveAirSquad(Squad squad, boolean closeThreats) {
+        if (closeThreats && isNearHome(squad.getCenter())) {
+            return false;
+        }
+        AirReinforcer.Outcome outcome = airReinforcer.reinforce(squad, fightSquads, game.getFrameCount());
+        if (outcome == AirReinforcer.Outcome.REFUSED) {
+            return false;
+        }
+        clearCombatSimSnapshot(squad);
+        SquadDecisions.rallied(squad, RallyReason.AIR_REINFORCE);
+        SquadDecisions.pathTaken(squad, DecisionPath.AIR_REINFORCE);
+        if (outcome == AirReinforcer.Outcome.ARRIVED) {
+            joinAirSquad(squad, airReinforcer.targetOf(squad));
+            airReinforcer.forget(squad);
+        }
+        return true;
+    }
+
+    /**
+     * Moves every member of a reinforcing squad into the active air squad it reached. A harassing target takes
+     * them through {@link #joinHarass}, and escorting Overlords go back to the Overlord squad as they do on a
+     * harass entry; any other target is simulated with its new members, as a unit joining it on hatching is. The
+     * emptied squad is removed on the next frame.
+     *
+     * @param source the reinforcing squad
+     * @param target the active air squad
+     */
+    private void joinAirSquad(Squad source, Squad target) {
+        boolean harass = target.getStatus() == SquadStatus.HARASS;
+        List<ManagedUnit> joined = new ArrayList<>();
+        for (ManagedUnit member : new ArrayList<>(source.getMembers())) {
+            source.removeUnit(member);
+            if (harass && member.getUnitType() == UnitType.Zerg_Overlord) {
+                overlords.addUnit(member);
+                member.setRole(UnitRole.IDLE);
+                continue;
+            }
+            target.addUnit(member);
+            joined.add(member);
+        }
+        if (harass) {
+            joinHarass(target, joined);
+            return;
+        }
+        simulateFightSquad(target);
+    }
+
+    /**
+     * Hands Mutalisks joining a harassing squad the HARASS role and its strike point, and adds their hit points to
+     * the ones the harass started with, so the reinforcement is not read as hit points regained.
+     *
+     * @param squad harassing squad
+     * @param joined units that just joined it
+     */
+    private void joinHarass(Squad squad, Collection<ManagedUnit> joined) {
+        AirHarassState state = squad.getHarassState();
+        int hitPoints = 0;
+        for (ManagedUnit member : joined) {
+            member.setRole(UnitRole.HARASS);
+            member.setFightTarget(null);
+            member.setContainPosition(null);
+            member.setRetreatTarget(null);
+            member.setHarassDestination(state == null ? null : state.getStrikePoint());
+            if (member.getUnitType() == UnitType.Zerg_Mutalisk) {
+                hitPoints += member.getUnit().getHitPoints();
+            }
+        }
+        if (state != null) {
+            state.addStartHitPoints(hitPoints);
+        }
+    }
+
+    /**
+     * Offers an air squad a harass on every {@link AirHarassEvaluator#HARASS_TICK}, outside its retreat and fight
+     * locks. Overlords escorting the squad go back to the Overlord squad, since they would trail the Mutalisks
+     * into the enemy base.
+     *
+     * @param squad fight squad cleared to act
+     * @return true when the squad entered HARASS
+     */
+    private boolean tryEnterHarass(Squad squad) {
+        int now = game.getFrameCount();
+        if (!AirHarassEvaluator.entryCheckDue(squad.isAirSquad(), squad.isRetreatLocked(now),
+                squad.isFightLocked(now), now)) {
+            return false;
+        }
+        AirHarassController.Entry entry = airHarass.checkEntry(squad, now, basesUnderAttack(), containPoints());
+        if (!entry.enters()) {
+            return false;
+        }
+        for (ManagedUnit member : new ArrayList<>(squad.getMembers())) {
+            if (member.getUnitType() == UnitType.Zerg_Overlord) {
+                squad.removeUnit(member);
+                overlords.addUnit(member);
+                member.setRole(UnitRole.IDLE);
+            }
+        }
+        clearCombatSimSnapshot(squad);
+        squad.setStatus(SquadStatus.HARASS);
+        squad.commit(now);
+        SquadDecisions.pathTaken(squad, DecisionPath.HARASS_ENTER);
+        airHarass.start(squad, entry, now);
+        return true;
+    }
+
+    /**
+     * Runs one frame of a harassing squad. The combat sim, the locks and the containment branches never see it; it
+     * leaves HARASS only through the harass exit, and then retreats.
+     *
+     * @param squad harassing squad
+     */
+    private void evaluateHarassSquad(Squad squad) {
+        int now = game.getFrameCount();
+        AirHarassEvaluator.ExitReason reason = airHarass.tick(squad, now, basesUnderAttack(), containPoints());
+        if (reason == null) {
+            return;
+        }
+        airHarass.stop(squad, reason, now);
+        squad.setHarassState(null);
+        squad.setHarassExitFrame(now);
+        squad.setStatus(SquadStatus.RETREAT);
+        SquadDecisions.pathTaken(squad, DecisionPath.HARASS_EXIT);
+        assignRetreatTargets(squad, squad.getMembers());
+        squad.startRetreatLock(now);
+    }
+
+    private List<Position> containPoints() {
+        List<Position> points = new ArrayList<>();
+        for (Squad squad : fightSquads) {
+            Arc arc = squad.getStatus() == SquadStatus.CONTAIN ? squad.getContainmentArc() : null;
+            if (arc != null && !arc.isEmpty()) {
+                points.add(arc.getMidpoint());
+            }
+        }
+        return points;
     }
 
     /**
@@ -1424,16 +1655,24 @@ public class SquadManager {
         double engageThreshold = snapshot != null ? snapshot.getEngageThreshold() : 0;
 
         if (squad.getStatus() == SquadStatus.RETREAT && retreatLocked) {
-            SquadDecisions.lockSuppressed(squad, SquadLock.RETREAT);
-            SquadDecisions.pathTaken(squad, DecisionPath.RETREAT_LOCK);
-            assignRetreatTargets(squad, managedFighters);
-            return;
+            boolean attritionLock = squad.isAttritionRetreatLock()
+                    && ContainmentCollapse.appliesAgainst(gameState.getOpponentRace());
+            if (squad.strongEngagePersisted(strongEngageBreaksRetreatLock(attritionLock, result, enemyMeasured, ratio,
+                    engageThreshold), now)) {
+                squad.clearRetreatLock();
+                retreatLocked = false;
+                SquadDecisions.pathTaken(squad, DecisionPath.RETREAT_LOCK_BROKEN);
+            } else {
+                SquadDecisions.lockSuppressed(squad, SquadLock.RETREAT);
+                SquadDecisions.pathTaken(squad, DecisionPath.RETREAT_LOCK);
+                assignRetreatTargets(squad, managedFighters);
+                return;
+            }
         }
-        if (squad.getStatus() == SquadStatus.FIGHT
-                && fightLockHolds(fightLocked, result, enemyMeasured, ratio, engageThreshold)) {
+        if (fightHeld(squad, now, fightLockHolds(fightLocked, result, enemyMeasured, ratio, engageThreshold))) {
             SquadDecisions.lockSuppressed(squad, SquadLock.FIGHT);
             SquadDecisions.pathTaken(squad, DecisionPath.FIGHT_LOCK);
-            assignFightTargets(squad, managedFighters, false);
+            assignFightTargets(squad, collapseFighters(managedFighters, squad.getCollapse()), false);
             return;
         }
 
@@ -1445,6 +1684,12 @@ public class SquadManager {
                 }
                 if (blindAdvanceHeld(squad.getStatus(), enemyMeasured, threatBeyondRadius, baseThreatened)) {
                     holdSquad(squad, managedFighters);
+                    break;
+                }
+                if (AirHarassEvaluator.holdsBlindAdvance(squad.getHarassExitFrame(), now, enemyMeasured,
+                        squad.getStatus())) {
+                    holdSquad(squad, managedFighters);
+                    SquadDecisions.pathTaken(squad, DecisionPath.HARASS_HOLD);
                     break;
                 }
                 squad.setStatus(SquadStatus.FIGHT);
@@ -1488,6 +1733,54 @@ public class SquadManager {
                 && squad.canRenewFightLock(currentFrame)) {
             squad.startFightLock(currentFrame);
         }
+    }
+
+    /**
+     * Whether this frame's verdict breaks an active retreat lock.
+     *
+     * <p>Only the lock a contain's attrition exit armed can be broken, and only by an ENGAGE measured against a real
+     * enemy at or above {@link #strongEngageThreshold}. Any other retreat lock holds for its full window. The lock
+     * breaks only once such a read has held over a fight hysteresis window, see {@link Squad#strongEngagePersisted},
+     * and never against Protoss, see {@link ContainmentCollapse#appliesAgainst}.
+     *
+     * @param attritionLock true when the lock was armed by a contain's attrition exit against an opponent the
+     *     matchup gate admits
+     * @param result this frame's combat sim verdict
+     * @param enemyMeasured whether the sim measured a real enemy this frame
+     * @param ratio the sim's overall strength ratio this frame
+     * @param engageThreshold the engage threshold the sim judged this frame's ratio against
+     * @return true when the lock is dropped and the verdict acts
+     */
+    static boolean strongEngageBreaksRetreatLock(boolean attritionLock, CombatSimulator.CombatResult result,
+                                                 boolean enemyMeasured, double ratio, double engageThreshold) {
+        return attritionLock && result == CombatSimulator.CombatResult.ENGAGE && enemyMeasured
+                && ratio >= strongEngageThreshold(engageThreshold);
+    }
+
+    /**
+     * Ratio an ENGAGE must reach to break an attrition retreat lock: {@link #STRONG_ENGAGE_RATIO}, or the matchup
+     * engage threshold when that is higher.
+     *
+     * @param engageThreshold the matchup engage threshold
+     * @return the strong engage threshold
+     */
+    static double strongEngageThreshold(double engageThreshold) {
+        return Math.max(engageThreshold, STRONG_ENGAGE_RATIO);
+    }
+
+    /**
+     * Whether a FIGHT squad stays in FIGHT whatever this frame's verdict: a collapse is wrapping, a committed collapse
+     * still holds it, see {@link Squad#isCollapseCommitHeld}, or its fight lock holds against the verdict, see
+     * {@link #fightLockHolds}. A collapse was judged on the enemies inside the arc's sector, so a whole-squad RETREAT
+     * read around the squad's center does not undo it.
+     *
+     * @param squad fight squad
+     * @param now current frame
+     * @param fightLockHolds whether the squad's fight lock holds against this frame's verdict
+     * @return true when the squad stays in FIGHT and this frame's verdict is suppressed
+     */
+    static boolean fightHeld(Squad squad, int now, boolean fightLockHolds) {
+        return squad.getStatus() == SquadStatus.FIGHT && (fightLockHolds || collapseHoldsMembers(squad, now));
     }
 
     /**
@@ -1611,13 +1904,21 @@ public class SquadManager {
         }
     }
 
+    /**
+     * Puts every fighter in FIGHT and picks its target. Fighters are targeted in unit id order against the frame's
+     * {@link TargetLedger}, shared by every fight squad, so each melee pick counts toward the load every later
+     * fighter sees, whichever squad it is in.
+     */
     private void assignFightTargets(Squad squad, HashSet<ManagedUnit> managedFighters, boolean clearRetreat) {
-        for (ManagedUnit managedUnit : managedFighters) {
+        TargetLedger ledger = fightTargetLedger();
+        List<ManagedUnit> ordered = new ArrayList<>(managedFighters);
+        ordered.sort(Comparator.comparingInt(ManagedUnit::getUnitID));
+        for (ManagedUnit managedUnit : ordered) {
             managedUnit.setRole(UnitRole.FIGHT);
             if (clearRetreat) {
                 managedUnit.clearRetreatStart();
             }
-            assignEnemyTarget(managedUnit, squad);
+            assignEnemyTarget(managedUnit, squad, ledger);
         }
     }
 
@@ -1655,9 +1956,24 @@ public class SquadManager {
         return !basesUnderAttack && shouldContain && !canBreak;
     }
 
+    /**
+     * Puts a squad on the arc it is offered once it has arrived there. A squad farther than
+     * {@link #CONTAIN_ARRIVAL_DISTANCE} from every arc point stays out of CONTAIN and keeps running the sim on its
+     * way, so it answers the enemies it meets in transit rather than walking through them to a line at the choke. A
+     * squad wrapping in a collapse never takes an arc: the collapse ends only in its commit or in the squad leaving
+     * FIGHT, see {@link #holdCollapseWrap}. Nor does a squad a committed collapse still holds, see
+     * {@link Squad#isCollapseCommitHeld}.
+     *
+     * @param squad squad offered an arc
+     * @return true if the squad took the arc
+     */
     private boolean enterContainment(Squad squad) {
+        if (squad.getCollapse() != null || squad.isCollapseCommitHeld(game.getFrameCount())) return false;
         Arc arc = containmentArc(squad);
         if (arc == null) return false;
+        double arcDistance = squad.getCenter().getDistance(arc.closestPosition(squad.getCenter()));
+        SquadDecisions.containArcMeasured(squad, (int) arcDistance);
+        if (!arrivedAtArc(arcDistance)) return false;
         squad.setStatus(SquadStatus.CONTAIN);
         SquadDecisions.pathTaken(squad, DecisionPath.CONTAIN_ENTER);
         squad.startContainLock(game.getFrameCount());
@@ -1666,10 +1982,21 @@ public class SquadManager {
     }
 
     /**
+     * Whether a squad is close enough to the arc it is offered to take it.
+     *
+     * @param arcDistance pixels from the squad's center to the nearest arc point
+     * @return true within {@link #CONTAIN_ARRIVAL_DISTANCE}
+     */
+    static boolean arrivedAtArc(double arcDistance) {
+        return arcDistance <= CONTAIN_ARRIVAL_DISTANCE;
+    }
+
+    /**
      * Verdicts available to a squad that is already holding a containment arc.
      */
     enum ContainmentVerdict {
         BREAK_ALL,
+        COLLAPSE,
         RETREAT,
         PUSH_BACK,
         HOLD,
@@ -1698,6 +2025,9 @@ public class SquadManager {
      *
      * <p>A member hit by something it cannot answer moves the arc out of every known reach, overriding both the
      * throttle and an enemy on the arc; with no arc point left out of reach the squad retreats.
+     *
+     * <p>A collapse, see {@link ContainmentCollapse}, is ranked over this verdict by {@link #rankCollapse}: below a
+     * base under attack and above everything else, on any frame.
      *
      * <p>Bases under attack, attrition, an outranged hit and a lost arc outrank the re-evaluation throttle and are
      * the only verdicts reachable on a throttled frame. A squad being ground down, hit from out of its reach, or with
@@ -1748,6 +2078,20 @@ public class SquadManager {
         return ContainmentVerdict.REPOSITION;
     }
 
+    /**
+     * Ranks a passed collapse test against the verdict {@link #containmentVerdict} picked: below a base under
+     * attack, above every other verdict, so a squad bleeding or hit from out of its reach collapses on enemies it can
+     * beat inside its arc instead of retreating or pushing back.
+     *
+     * @param basesUnderAttack true when a combat unit threatens one of our bases, see {@link #threatensContainment}
+     * @param collapse true when the collapse test on the enemies inside the arc's sector passed
+     * @param verdict the verdict without the collapse
+     * @return COLLAPSE when the test passed and no base is under attack, else the verdict
+     */
+    static ContainmentVerdict rankCollapse(boolean basesUnderAttack, boolean collapse, ContainmentVerdict verdict) {
+        return !basesUnderAttack && collapse ? ContainmentVerdict.COLLAPSE : verdict;
+    }
+
     private void evaluateContainingSquad(Squad squad) {
         int now = game.getFrameCount();
         if (now % RunbyEvaluator.RUNBY_TICK == 0 && tryEnterRunby(squad, now)) {
@@ -1756,29 +2100,48 @@ public class SquadManager {
         HashSet<ManagedUnit> members = squad.getMembers();
 
         boolean basesUnderAttack = baseThreatensContainment();
+        ContainmentCollapse.Read collapseTest = basesUnderAttack ? null : readCollapse(squad, now);
+        ContainmentCollapse.UnderFire collapseUnderFire = collapseTest != null
+                && collapseTest.getOutcome() == ContainmentCollapse.Outcome.COLLAPSE
+                ? collapseUnderFire(squad, now)
+                : ContainmentCollapse.UnderFire.NONE;
+        ContainmentCollapse.Read collapseRead = gateCollapse(squad, collapseTest, collapseUnderFire, now);
+        boolean collapse = collapseRead != null && collapseRead.getOutcome() == ContainmentCollapse.Outcome.COLLAPSE;
         boolean bleeding = !basesUnderAttack && squad.getContainmentAttrition().isBleeding(now, squad.getSupply());
-        boolean outrangedHit = !basesUnderAttack && !bleeding && hasOutrangedHit(squad);
+        boolean outrangedHit = !basesUnderAttack && !collapse && !bleeding && hasOutrangedHit(squad);
         List<StaticDefenseZone> zones = outrangedHit ? containmentZones(squad, now) : Collections.emptyList();
         Arc underFire = outrangedHit ? arcUnderFire(squad, zones) : null;
         boolean arcLost = outrangedHit && underFire == null;
         OutrangedHit hit = outrangedHitVerdict(outrangedHit, arcLost);
         boolean throttled = isContainmentThrottled(squad, now);
-        boolean evaluate = !basesUnderAttack && !bleeding && !outrangedHit && !throttled;
+        boolean evaluate = !basesUnderAttack && !collapse && !bleeding && !outrangedHit && !throttled;
         boolean timedOut = evaluate && containmentTimedOut(squad, now);
         boolean canBreak = evaluate && containmentEvaluator.canBreakContainment(fightSquads);
         boolean shouldContain = !evaluate || containmentEvaluator.shouldContain(squad);
         boolean engaged = evaluate && enemiesOnContainmentArc(squad);
 
         SquadDecisions.outrangedHit(squad, outrangedHit);
-        ContainmentVerdict verdict = containmentVerdict(basesUnderAttack, bleeding, hit, throttled, engaged,
-                timedOut, canBreak, shouldContain);
+        if (collapseRead != null) {
+            SquadDecisions.containmentCollapseEvaluated(squad, collapseRead.getOutcome(),
+                    collapseRead.getEnemiesInSector(), collapseRead.getRatio(), collapseRead.getFlanks(),
+                    collapseRead.isStaticClear(), collapseRead.getUnderFire(), collapseRead.getEntryFrames());
+        }
+        ContainmentVerdict verdict = rankCollapse(basesUnderAttack, collapse, containmentVerdict(basesUnderAttack,
+                bleeding, hit, throttled, engaged, timedOut, canBreak, shouldContain));
 
+        DecisionPath exitPath = containmentExitPath(bleeding, arcLost);
+        if (breaksHeldContain(verdict, exitPath)) {
+            gameState.getContainHeldTimer().broken();
+        }
         switch (verdict) {
             case BREAK_ALL:
                 breakAllContainment(now);
                 break;
+            case COLLAPSE:
+                collapseContainingSquad(squad, collapseRead, now);
+                break;
             case RETREAT:
-                retreatFromContainment(squad, members, now, containmentExitPath(bleeding, arcLost));
+                retreatFromContainment(squad, members, now, exitPath);
                 break;
             case PUSH_BACK:
                 pushBackContainingSquad(squad, zones, underFire);
@@ -1809,12 +2172,355 @@ public class SquadManager {
         return DecisionPath.CONTAIN_RETREAT;
     }
 
+    /**
+     * Whether a containing squad's verdict ends the held contain at once rather than letting
+     * {@link ContainHeldTimer} bridge it: every BREAK_ALL, whether a base is under attack or the strength
+     * gate sends the army in, and a retreat the enemy forced by attrition or an outranged arc. A retreat on
+     * the timeout, on containment ceasing to apply, or with no arc left clear of static defence is bridged.
+     *
+     * @param verdict what the containing squad does this frame
+     * @param retreatPath the decision path a RETREAT verdict retreats on
+     * @return true when the held contain is broken
+     */
+    static boolean breaksHeldContain(ContainmentVerdict verdict, DecisionPath retreatPath) {
+        if (verdict == ContainmentVerdict.BREAK_ALL) {
+            return true;
+        }
+        return verdict == ContainmentVerdict.RETREAT
+                && (retreatPath == DecisionPath.CONTAIN_ATTRITION || retreatPath == DecisionPath.CONTAIN_OUTRANGED);
+    }
+
     private void retreatFromContainment(Squad squad, HashSet<ManagedUnit> members, int now, DecisionPath path) {
         endContainment(squad);
         squad.setStatus(SquadStatus.RETREAT);
         SquadDecisions.pathTaken(squad, path);
         assignRetreatTargets(squad, members);
-        squad.startRetreatLock(now);
+        if (path == DecisionPath.CONTAIN_ATTRITION) {
+            squad.startAttritionRetreatLock(now);
+        } else {
+            squad.startRetreatLock(now);
+        }
+    }
+
+    /**
+     * Applies the collapse hysteresis gate, see {@link ContainmentCollapse#gate}, to this evaluation's collapse test.
+     * The test is recorded on the squad's entry run first, see {@link CollapseEntryRun#record} and
+     * {@link CollapseEntryRun#recordFavourable}. A squad under fire
+     * commits on its first pass outside the cooldown.
+     *
+     * @param squad containing squad
+     * @param read this evaluation's collapse test, or null when none ran or no armed enemy stood in the sector
+     * @param underFire whether the enemy is already engaging the squad, NONE when the test did not pass
+     * @param now current frame
+     * @return the read with the gated outcome, the under fire reason and the frames the entry run and the streak of
+     *     favourable reads started, or null when the read was null
+     */
+    static ContainmentCollapse.Read gateCollapse(Squad squad, ContainmentCollapse.Read read,
+                                                 ContainmentCollapse.UnderFire underFire, int now) {
+        boolean coolingDown = squad.isCollapseLocked(now);
+        int passes = squad.recordCollapseTest(read == null ? null : read.getOutcome(), coolingDown, now);
+        squad.recordCollapseRead(read != null && read.isFavourable(), now);
+        if (read == null) {
+            return null;
+        }
+        return read.gated(ContainmentCollapse.gate(read.getOutcome(), coolingDown, passes, underFire), underFire,
+                squad.getCollapseEntryFrames());
+    }
+
+    /**
+     * Whether the enemy is already engaging a containing squad: a collapse member lost hit points within
+     * {@link ContainmentCollapse#UNDER_FIRE_FRAMES} while not standing in a Psionic Storm or irradiated and within
+     * reach of an armed enemy inside the arc's sector, see {@link ContainmentCollapse#inSectorReach}, or an armed
+     * enemy stands within {@link ContainmentCollapse#MELEE_CONTACT_DISTANCE} of one.
+     *
+     * @param squad containing squad
+     * @param now current frame
+     * @return the reason, NONE when the enemy is not engaging the squad
+     */
+    private ContainmentCollapse.UnderFire collapseUnderFire(Squad squad, int now) {
+        List<ManagedUnit> members = collapseMembers(squad);
+        List<Unit> armedInSector = new ArrayList<>();
+        for (Unit enemy : sectorEnemies(squad.getContainmentArc())) {
+            if (canPressTheArc(enemy)) {
+                armedInSector.add(enemy);
+            }
+        }
+        boolean hit = false;
+        for (ManagedUnit member : members) {
+            if (member.wasHitSince(now - ContainmentCollapse.UNDER_FIRE_FRAMES)
+                    && !gameState.isTakingNonWeaponDamage(member) && inSectorReach(member, armedInSector)) {
+                hit = true;
+                break;
+            }
+        }
+        return ContainmentCollapse.UnderFire.of(hit, armedEnemyInMeleeContact(members));
+    }
+
+    private boolean inSectorReach(ManagedUnit member, List<Unit> armedInSector) {
+        for (Unit enemy : armedInSector) {
+            int reach = gameState.getReachMemory().groundReach(enemy.getType());
+            if (ContainmentCollapse.inSectorReach(enemy.getDistance(member.getUnit()), reach)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean armedEnemyInMeleeContact(List<ManagedUnit> members) {
+        for (Unit enemy : gameState.getVisibleEnemyUnits()) {
+            if (!canPressTheArc(enemy)) {
+                continue;
+            }
+            for (ManagedUnit member : members) {
+                if (member.getUnit().getDistance(enemy) <= ContainmentCollapse.MELEE_CONTACT_DISTANCE) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Tests whether a containing squad collapses on the armed enemies inside its arc's sector, see
+     * {@link ContainmentCollapse}. The sim runs over exactly the mobile enemies in the sector, never over a sample
+     * around the squad's center. The enemy centroid must be clear of every zone that fires from where it stands, see
+     * {@link ContainmentCollapse#fixedFireZones}. No test runs against an opponent the matchup gate excludes.
+     *
+     * @param squad containing squad
+     * @param now current frame
+     * @return the read, or null when no armed enemy stands inside the sector or the matchup gate excludes the
+     *     opponent
+     */
+    private ContainmentCollapse.Read readCollapse(Squad squad, int now) {
+        Arc arc = squad.getContainmentArc();
+        if (arc == null || arc.isEmpty() || !ContainmentCollapse.appliesAgainst(gameState.getOpponentRace())) {
+            return null;
+        }
+        List<Unit> inSector = sectorEnemies(arc);
+        List<Position> armed = new ArrayList<>();
+        for (Unit enemy : inSector) {
+            if (canPressTheArc(enemy)) {
+                armed.add(enemy.getPosition());
+            }
+        }
+        CombatSimulator sim = squad.getCombatSimulator();
+        DoubleSupplier sectorSim = () -> sim instanceof HorizonCombatSimulator
+                ? ((HorizonCombatSimulator) sim).sectorRatio(squad, inSector, ContainmentCollapse.centroid(armed),
+                gameState)
+                : ContainmentCollapse.NOT_SIMULATED;
+        return ContainmentCollapse.read(armed, ContainmentCollapse.fixedFireZones(gameState.getGroundThreatZones(now)),
+                containmentDefensePadding(squad.getComposition().keySet()), sectorSim,
+                HorizonCombatSimulator.engageThreshold(gameState.getOpponentRace()), squad.canRenewFightLock(now),
+                collapseMembers(squad).size());
+    }
+
+    /**
+     * Visible mobile enemies inside an arc's sector, workers excluded, see {@link ContainmentCollapse#inSector}.
+     *
+     * @param arc the containing squad's arc
+     * @return the enemies in the sector
+     */
+    private List<Unit> sectorEnemies(Arc arc) {
+        List<Unit> inSector = new ArrayList<>();
+        for (Unit enemy : gameState.getVisibleEnemyUnits()) {
+            UnitType type = enemy.getType();
+            if (type.canMove() && !type.isBuilding() && !type.isWorker()
+                    && ContainmentCollapse.inSector(arc.getCenter(), arc.getPositions(), enemy.getPosition())) {
+                inSector.add(enemy);
+            }
+        }
+        return inSector;
+    }
+
+    /**
+     * Takes a containing squad off its arc and onto the enemies inside it: FIGHT under a fight lock. A squad under
+     * fire, see {@link ContainmentCollapse.UnderFire}, skips the wrap, commits, see {@link Squad#commitCollapse}, and
+     * every member fights from this frame; the commit holds it in FIGHT whatever the sim around its center reads
+     * until the commit's fight lock expires.
+     * Otherwise the centre fights from this frame while the flanks attack-move past the enemy centroid, see
+     * {@link #holdCollapseWrap}. The collapse test admits only a squad large enough to flank, see
+     * {@link ContainmentCollapse#MIN_COLLAPSE_MEMBERS}, and only once it has passed the hysteresis gate, see
+     * {@link #gateCollapse}. The collapse cooldown is armed on this frame, and again when the wrap ends.
+     *
+     * @param squad containing squad
+     * @param read the collapse test that passed
+     * @param now current frame
+     */
+    private void collapseContainingSquad(Squad squad, ContainmentCollapse.Read read, int now) {
+        ContainmentCollapse.Maneuver maneuver = planCollapse(squad, read, now);
+        endContainment(squad);
+        squad.setStatus(SquadStatus.FIGHT);
+        if (maneuver == null) {
+            SquadDecisions.collapseWrapEnded(squad, ContainmentCollapse.WrapEnd.unplanned(read.getUnderFire()));
+            SquadDecisions.pathTaken(squad, DecisionPath.CONTAIN_COLLAPSE_COMMIT);
+        }
+        SquadDecisions.pathTaken(squad, DecisionPath.CONTAIN_COLLAPSE);
+        squad.startCollapseLock(now);
+        if (maneuver == null) {
+            squad.commitCollapse(now);
+            assignFightTargets(squad, squad.getMembers(), true);
+            return;
+        }
+        squad.startFightLock(now);
+        squad.setCollapse(maneuver);
+        assignFightTargets(squad, collapseFighters(squad.getMembers(), maneuver), true);
+        holdCollapseWrap(squad);
+    }
+
+    /**
+     * Members of a squad that fight during a collapse's wrap: every member but the flanks still wrapping.
+     *
+     * @param members the squad's members
+     * @param maneuver the collapse under way, or null
+     * @return the members that take fight targets
+     */
+    static HashSet<ManagedUnit> collapseFighters(Set<ManagedUnit> members, ContainmentCollapse.Maneuver maneuver) {
+        HashSet<ManagedUnit> fighters = new HashSet<>(members);
+        if (maneuver != null) {
+            fighters.removeIf(member -> maneuver.wrapFor(member) != null);
+        }
+        return fighters;
+    }
+
+    /**
+     * Plans the wrap of a collapse, see {@link ContainmentCollapse#memberOrders}: the outer third of the members on
+     * each side by bearing around the choke attack-move to a point past the enemy centroid on their side, pulled back
+     * to the centroid when a zone that fires from where it stands covers it, see
+     * {@link ContainmentCollapse#fixedFireZones}, and every other member fights. A squad under fire plans no wrap.
+     *
+     * @param squad containing squad, still holding its arc
+     * @param read the collapse test that passed
+     * @param now current frame
+     * @return the maneuver, or null when no member wraps
+     */
+    private ContainmentCollapse.Maneuver planCollapse(Squad squad, ContainmentCollapse.Read read, int now) {
+        Arc arc = squad.getContainmentArc();
+        List<ManagedUnit> members = collapseMembers(squad);
+        List<Position> positions = new ArrayList<>();
+        boolean[] attackMoves = new boolean[members.size()];
+        for (int i = 0; i < members.size(); i++) {
+            positions.add(members.get(i).getPosition());
+            attackMoves[i] = ContainmentCollapse.attackMovesToWrap(members.get(i).getUnitType());
+        }
+        int[] sides = ContainmentCollapse.flankSides(arc.getCenter(), arc.getMidpoint(), positions);
+        ContainmentCollapse.MemberOrder[] memberOrders = ContainmentCollapse.memberOrders(sides, attackMoves,
+                read.getUnderFire());
+        Map<Integer, List<Position>> flankPositions = new HashMap<>();
+        for (int i = 0; i < sides.length; i++) {
+            if (memberOrders[i] == ContainmentCollapse.MemberOrder.WRAP) {
+                flankPositions.computeIfAbsent(sides[i], side -> new ArrayList<>()).add(positions.get(i));
+            }
+        }
+        if (flankPositions.isEmpty()) {
+            return null;
+        }
+        List<StaticDefenseZone> staticZones = ContainmentCollapse.fixedFireZones(gameState.getGroundThreatZones(now));
+        int padding = containmentDefensePadding(squad.getComposition().keySet());
+        Map<Integer, Position> wraps = new HashMap<>();
+        for (Map.Entry<Integer, List<Position>> flank : flankPositions.entrySet()) {
+            Position wrap = ContainmentCollapse.wrapPoint(arc.getCenter(), read.getEnemyCentroid(), arc.getMidpoint(),
+                    ContainmentCollapse.centroid(flank.getValue()));
+            if (!ContainmentCollapse.clearOfStaticDefence(wrap, staticZones, padding)) {
+                wrap = read.getEnemyCentroid();
+            }
+            wraps.put(flank.getKey(), wrap);
+        }
+        Map<ManagedUnit, Position> flankWraps = new HashMap<>();
+        for (int i = 0; i < members.size(); i++) {
+            if (memberOrders[i] == ContainmentCollapse.MemberOrder.WRAP) {
+                flankWraps.put(members.get(i), wraps.get(sides[i]));
+            }
+        }
+        return new ContainmentCollapse.Maneuver(flankWraps, new HashSet<>(members), now);
+    }
+
+    /**
+     * Members that take part in a collapse: every member but an escorting Overlord.
+     */
+    private static List<ManagedUnit> collapseMembers(Squad squad) {
+        List<ManagedUnit> members = new ArrayList<>();
+        for (ManagedUnit member : squad.getMembers()) {
+            if (member.getUnitType() != UnitType.Zerg_Overlord) {
+                members.add(member);
+            }
+        }
+        return members;
+    }
+
+    /**
+     * Carries a collapse's wrap on for one more frame. While it runs, each flank attack-moves to its wrap point,
+     * fighting what it meets on the way, while every other member fights the targets the fight tick gave it, and the
+     * fight tick holds the squad in FIGHT whatever the sim around its center reads: the collapse was judged on the
+     * enemies inside the arc. The wrap ends when every flank has arrived or it has run out its frames, see
+     * {@link ContainmentCollapse#wrapEnd}: the flanks then fight too and, when the squad has not lost supply since
+     * the collapse, the collapse commits, see {@link Squad#commitCollapse}. A squad that has left FIGHT drops the
+     * wrap. Either way the collapse ends and its cooldown runs from this frame, see {@link Squad#endCollapse}.
+     *
+     * @param squad fight squad
+     */
+    private void holdCollapseWrap(Squad squad) {
+        ContainmentCollapse.Maneuver maneuver = squad.getCollapse();
+        if (maneuver == null) {
+            return;
+        }
+        int now = game.getFrameCount();
+        if (squad.getStatus() != SquadStatus.FIGHT) {
+            squad.endCollapse(now);
+            return;
+        }
+        ContainmentCollapse.WrapEnd wrapEnd = ContainmentCollapse.wrapEnd(now - maneuver.getStartFrame(),
+                maneuver.flankDistances(squad.getMembers()));
+        if (wrapEnd != null) {
+            squad.endCollapse(now);
+            SquadDecisions.collapseWrapEnded(squad, wrapEnd);
+            SquadDecisions.pathTaken(squad, DecisionPath.CONTAIN_COLLAPSE_COMMIT);
+            if (squad.canRenewFightLock(now)) {
+                squad.commitCollapse(now);
+            }
+            assignFightTargets(squad, squad.getMembers(), false);
+            return;
+        }
+        for (ManagedUnit member : squad.getMembers()) {
+            Position wrap = maneuver.wrapFor(member);
+            if (wrap == null) {
+                continue;
+            }
+            member.setRole(UnitRole.CONTAIN);
+            member.setFightTarget(null);
+            member.attackMoveToContainPosition(wrap);
+        }
+    }
+
+    /**
+     * Members of fight squads taking part in a collapse this frame: the members of a collapse under way, and every
+     * member of a squad a committed collapse still holds, see {@link Squad#isCollapseCommitHeld}.
+     *
+     * @param now current frame
+     * @return the members exempt from evading an outranged hit
+     */
+    private Set<ManagedUnit> collapsingMembers(int now) {
+        Set<ManagedUnit> collapsing = new HashSet<>();
+        for (Squad squad : fightSquads) {
+            if (!collapseHoldsMembers(squad, now)) {
+                continue;
+            }
+            ContainmentCollapse.Maneuver maneuver = squad.getCollapse();
+            collapsing.addAll(maneuver != null ? maneuver.getMembers() : squad.getMembers());
+        }
+        return collapsing;
+    }
+
+    /**
+     * Whether a squad's members are taking part in a collapse, and so hold their ground under outranging fire: a
+     * FIGHT squad with a collapse under way or a committed collapse still holding it.
+     *
+     * @param squad fight squad
+     * @param now current frame
+     * @return true while the collapse or its commit holds the squad
+     */
+    static boolean collapseHoldsMembers(Squad squad, int now) {
+        return squad.getStatus() == SquadStatus.FIGHT
+                && (squad.getCollapse() != null || squad.isCollapseCommitHeld(now));
     }
 
     private void endContainment(Squad squad) {
@@ -1864,7 +2570,9 @@ public class SquadManager {
 
     /**
      * Puts a squad hit from out of its reach on the recomputed arc, reassigning every member, not only the one that
-     * was hit, and reports it on every hit, with no member moved when the recomputed arc left every point in place.
+     * was hit, and reports it on every hit that changed something, see {@link #pushbackChanged}. When the recomputed
+     * arc left every point in place no member is reassigned, so a squad still on its way to the arc is not
+     * re-ordered onto the same line on every hit.
      *
      * @param squad containing squad
      * @param zones zones the arc was recomputed against
@@ -1877,8 +2585,22 @@ public class SquadManager {
                 : ContainmentPushback.coveringType(current, zones,
                 containmentDefensePadding(squad.getComposition().keySet()));
         squad.setContainRadius(Math.max(squad.getContainRadius(), arc.getRadius()));
-        int moved = assignContainmentPositions(squad, arc);
-        SquadDecisions.containmentPushedBack(squad, from, arc.getMidpoint(), enemyType, moved);
+        int moved = ContainmentPushback.moved(current, arc) ? assignContainmentPositions(squad, arc) : 0;
+        if (pushbackChanged(from, arc.getMidpoint(), moved)) {
+            SquadDecisions.containmentPushedBack(squad, from, arc.getMidpoint(), enemyType, moved);
+        }
+    }
+
+    /**
+     * Whether a push back changed anything worth a row: the arc's midpoint moved or a member was reassigned.
+     *
+     * @param from midpoint of the arc before the push back, null when the squad held none
+     * @param to midpoint of the recomputed arc
+     * @param membersMoved members given a new arc point
+     * @return true when the push back is reported
+     */
+    static boolean pushbackChanged(Position from, Position to, int membersMoved) {
+        return membersMoved > 0 || !Objects.equals(from, to);
     }
 
     /**
@@ -2269,7 +2991,7 @@ public class SquadManager {
             RunbyTargeting.Ling ling = new RunbyTargeting.Ling(member.getUnitID(), member.getPosition(),
                     RunbyTargeting.reach(member.getUnitType()));
             RunbyTargeting.Decision decision = RunbyTargeting.choose(ling, situation, state.memoryFor(member.getUnitID()));
-            if (applyRunbyDecision(member, decision, view, state)) {
+            if (applyRunbyDecision(member, decision, view, state, squad.getId())) {
                 state.setLastProgressFrame(now);
             }
         }
@@ -2278,10 +3000,11 @@ public class SquadManager {
     /**
      * Turns a ling's decision into its order.
      *
+     * @param squadId id of the runby squad, recorded with a fight pick
      * @return true when the ling was given an enemy to hit, which counts as progress at the target base
      */
     private boolean applyRunbyDecision(ManagedUnit member, RunbyTargeting.Decision decision, RunbyView view,
-                                       RunbyState state) {
+                                       RunbyState state, String squadId) {
         switch (decision.getKind()) {
             case EVADE:
             case SEEK:
@@ -2299,7 +3022,7 @@ public class SquadManager {
                 member.setFightTarget(target);
                 return true;
             case FIGHT:
-                if (!assignRunbyFightTarget(member, view)) {
+                if (!assignRunbyFightTarget(member, view, squadId)) {
                     seekOrHold(member, state);
                     return false;
                 }
@@ -2320,12 +3043,17 @@ public class SquadManager {
     }
 
     /**
-     * Picks a winnable fight target with TargetScorer among the visible enemies the ling can attack.
+     * Picks a winnable fight target with TargetScorer among the visible enemies the ling can attack, against the
+     * frame's shared melee ledger, and commits it as a fight pick is (see {@link #commitPick}): a direct attack is
+     * recorded in the ledger, and a ling the overflow gate holds attack-moves past a saturated pick instead.
      *
+     * @param squadId id of the runby squad
      * @return true when a target was set, false when no candidate survived the attack filter
      */
-    private boolean assignRunbyFightTarget(ManagedUnit member, RunbyView view) {
+    private boolean assignRunbyFightTarget(ManagedUnit member, RunbyView view, String squadId) {
         Unit unit = member.getUnit();
+        TargetLedger ledger = fightTargetLedger();
+        ledger.release(unit.getID());
         List<Unit> candidates = new ArrayList<>();
         for (Unit enemy : view.units.values()) {
             if (RunbyTargeting.isFightTarget(enemy.getType()) && unit.canAttack(enemy)) {
@@ -2336,12 +3064,14 @@ public class SquadManager {
             return false;
         }
         TargetScorer.Selection selection = TargetScorer.selectTarget(unit,
-                filterByProximity(candidates, unit::getDistance), member.fightTarget);
+                filterByProximity(candidates, unit::getDistance), member.fightTarget, ledger, squadId);
         if (selection == null) {
             return false;
         }
-        TargetChoices.chosen(member, member.fightTarget, selection, false);
-        member.setFightTarget(selection.getTarget());
+        TargetScorer.Selection issued = commitPick(ledger, member.getOverflowGate(), unit, selection,
+                member.fightTarget, game.getFrameCount());
+        TargetChoices.chosen(member, member.fightTarget, member.isAttackMoving(), issued, false);
+        member.setFightTarget(issued.getTarget(), issued.isAttackMove());
         return true;
     }
 
@@ -2750,10 +3480,11 @@ public class SquadManager {
      *
      * @param squad containing squad
      * @param now current frame
-     * @return every static defence zone, and every other zone that outranges the squad's shortest ranged member
+     * @return every static defence zone, and every other zone that may move the arc, see
+     *     {@link ContainmentPushback#arcZones}, and outranges the squad's shortest ranged member
      */
     private List<StaticDefenseZone> containmentZones(Squad squad, int now) {
-        return ContainmentPushback.outrangingZones(gameState.getGroundThreatZones(now),
+        return ContainmentPushback.outrangingZones(ContainmentPushback.arcZones(gameState.getGroundThreatZones(now)),
                 shortestGroundRange(squad.getComposition().keySet()));
     }
 
@@ -3171,6 +3902,7 @@ public class SquadManager {
         scoutChase.releaseScout(unit.getID());
         scoutChase.release(unit.getID());
         creditRunbyKill(unit);
+        airHarass.onUnitDestroy(unit, fightSquads);
     }
 
     /**
@@ -3285,6 +4017,9 @@ public class SquadManager {
                 clearCombatSimSnapshot(squad);
                 rallySquad(squad, RallyReason.AIR_BELOW_MOVE_OUT_AWAY);
                 return;
+            case JOIN_HARASS:
+                joinHarass(squad, Collections.singletonList(managedUnit));
+                return;
             default:
                 break;
         }
@@ -3304,7 +4039,8 @@ public class SquadManager {
         STAGE,
         JOIN_CONTAINMENT,
         HOLD_AWAY,
-        SIMULATE
+        SIMULATE,
+        JOIN_HARASS
     }
 
     /**
@@ -3321,6 +4057,9 @@ public class SquadManager {
      * point, the same branch {@link #evaluateSquadRole} takes for it, so a unit hatched under threat away from our
      * bases does not fight below its move out threshold.
      *
+     * <p>A Mutalisk joining a harassing squad takes the harass's orders through {@link #joinHarass}; simulating the
+     * squad would overwrite its status.
+     *
      * @param status status the squad held as the reinforcement joined
      * @param stage true when the squad is rallying with no enemy inside its detection radius
      * @param holdAway true when the squad is an air squad held at the rally point away from home
@@ -3329,6 +4068,9 @@ public class SquadManager {
     static ReinforcementPath reinforcementPath(SquadStatus status, boolean stage, boolean holdAway) {
         if (status == SquadStatus.CONTAIN) {
             return ReinforcementPath.JOIN_CONTAINMENT;
+        }
+        if (status == SquadStatus.HARASS) {
+            return ReinforcementPath.JOIN_HARASS;
         }
         if (stage) {
             return ReinforcementPath.STAGE;
@@ -3390,9 +4132,14 @@ public class SquadManager {
         for (Squad squad : fightSquads) {
             if (!squad.isAirSquad()) continue;
             if (!mayJoinAirSquad(managedUnit.getUnitType(), holdsOnlyScourge(squad.getComposition()))) continue;
+            if (!AirReinforcement.mayReinforce(squad.getStatus(),
+                    Collections.singletonMap(managedUnit.getUnitType(), 1))) {
+                continue;
+            }
 
             double distance = squad.distance(managedUnit);
-            if (mayJoinAirSquadAt(squad.getStatus(), distance) && distance < closestDistance) {
+            boolean reinforcing = airReinforcer.isReinforcing(squad);
+            if (mayJoinAirSquadAt(squad.getStatus(), distance, reinforcing) && distance < closestDistance) {
                 closestDistance = distance;
                 closestSquad = squad;
             }
@@ -3402,19 +4149,33 @@ public class SquadManager {
     }
 
     /**
-     * Whether a new air unit may join an air squad holding a status at a distance. A rallying squad takes it from
-     * anywhere; a fighting or retreating squad only within {@link #AIR_JOIN_DISTANCE}, so the hatchlings of one egg
-     * born beside a retreating squad join it instead of each starting a squad of one.
+     * Whether a new air unit may join an air squad holding a status at a distance, the squad not reinforcing.
      *
      * @param status the squad's status
      * @param distance pixels between the squad centre and the unit
      * @return true when the unit may join the squad
+     * @see #mayJoinAirSquadAt(SquadStatus, double, boolean)
      */
     static boolean mayJoinAirSquadAt(SquadStatus status, double distance) {
-        if (status == SquadStatus.RALLY) {
+        return mayJoinAirSquadAt(status, distance, false);
+    }
+
+    /**
+     * Whether a new air unit may join an air squad holding a status at a distance. A rallying squad at home takes
+     * it from anywhere; a rallying squad flying to reinforce another, and a fighting, retreating or harassing squad,
+     * only within {@link #AIR_JOIN_DISTANCE}, so the hatchlings of one egg born beside a squad join it instead of
+     * each starting a squad of one, and a new unit never flies across the map alone to catch a squad up.
+     *
+     * @param status the squad's status
+     * @param distance pixels between the squad centre and the unit
+     * @param reinforcing true when the squad is flying to reinforce an active air squad
+     * @return true when the unit may join the squad
+     */
+    static boolean mayJoinAirSquadAt(SquadStatus status, double distance, boolean reinforcing) {
+        if (status == SquadStatus.RALLY && !reinforcing) {
             return true;
         }
-        if (status == SquadStatus.FIGHT || status == SquadStatus.RETREAT) {
+        if (status == SquadStatus.RALLY || AirReinforcement.isActive(status)) {
             return distance < AIR_JOIN_DISTANCE;
         }
         return false;
@@ -3489,9 +4250,12 @@ public class SquadManager {
      *
      * @param managedUnit unit that needs a target
      * @param squad squad that passed fight simulation
+     * @param ledger the frame's melee assignments across every fight squad; the unit's entry is dropped, and the
+     *     chosen target recorded in its place unless the unit attack-moves in overflow (see {@link #commitPick})
      */
-    private void assignEnemyTarget(ManagedUnit managedUnit, Squad squad) {
+    private void assignEnemyTarget(ManagedUnit managedUnit, Squad squad, TargetLedger ledger) {
         Unit unit = managedUnit.getUnit();
+        ledger.release(unit.getID());
         if (managedUnit.getUnitType() == UnitType.Zerg_Overlord) {
             if (gameState.getTechProgression().isOverlordSpeed()) {
                 managedUnit.setRallyPoint(squad.getCenter());
@@ -3583,28 +4347,120 @@ public class SquadManager {
         List<StaticDefenseZone> defenseZones = joinArc == null
                 ? Collections.emptyList()
                 : gameState.getStaticDefenseZones();
-        filtered = filterByProximity(outOfCoolingFire, unit::getDistance,
-                enemy -> !coveredByStaticDefense(enemy.getPosition(), defenseZones, defensePadding));
+        Predicate<Unit> admitted = enemy -> !coveredByStaticDefense(enemy.getPosition(), defenseZones, defensePadding);
+        List<Unit> admissible = outOfCoolingFire;
+        filtered = filterByProximity(admissible, unit::getDistance, admitted);
         if (filtered.isEmpty() && joinArc != null) {
             rallyToDefensePosition(managedUnit, joinArc.closestPosition(unit.getPosition()));
             return;
         }
+        Function<List<Unit>, TargetScorer.Selection> select = candidates -> TargetScorer.selectTarget(unit,
+                preferProxiedBuildings(candidates), managedUnit.fightTarget, ledger, squad.getId());
+        TargetScorer.Selection selection = widenWhenSaturated(select.apply(filtered), filtered.size(),
+                () -> widenCandidates(admissible, unit::getDistance, admitted), select);
+        if (selection != null) {
+            TargetScorer.Selection issued = commitPick(ledger, managedUnit.getOverflowGate(), unit, selection,
+                    managedUnit.fightTarget, game.getFrameCount());
+            TargetChoices.chosen(managedUnit, managedUnit.fightTarget, managedUnit.isAttackMoving(), issued,
+                    scoutCapped);
+            managedUnit.setFightTarget(issued.getTarget(), issued.isAttackMove());
+            recordScoutClaim(unit, issued.getTarget());
+        }
+    }
 
-        if (gameState.isCannonRushed()) {
-            Set<Unit> proxied = gameState.getObservedUnitTracker().getProxiedBuildings();
-            List<Unit> proxiedTargets = filtered.stream()
-                    .filter(proxied::contains)
-                    .collect(Collectors.toList());
-            if (!proxiedTargets.isEmpty()) {
-                filtered = proxiedTargets;
+    /**
+     * Commits a live attacker's pick (see {@link #commitPick(TargetLedger, MeleeOverflowGate, int, UnitType,
+     * TargetScorer.Selection, int, boolean, int)}), taking the pick to be within reach when the attacker is no
+     * further than {@link #OVERFLOW_EXIT_REACH} from it.
+     *
+     * @param heldTarget the fight target the attacker held before this pick, or null
+     * @return the pick as it is issued
+     */
+    private static TargetScorer.Selection commitPick(TargetLedger ledger, MeleeOverflowGate gate, Unit attacker,
+                                                     TargetScorer.Selection selection, Unit heldTarget, int frame) {
+        return commitPick(ledger, gate, attacker.getID(), attacker.getType(), selection, heldTargetId(heldTarget),
+                attacker.getDistance(selection.getTarget()) <= OVERFLOW_EXIT_REACH, frame);
+    }
+
+    /**
+     * Reports the pick to the attacker's {@link MeleeOverflowGate} and decides how it is issued. The pick is a
+     * re-target when it is not the target the attacker held, so a saturated re-target enters overflow at once, and
+     * an unsaturated re-target within reach leaves it at once. While the gate holds the attacker in overflow, the
+     * pick comes back marked as an attack-move past the target and the ledger is left alone, so the attacker does not
+     * count toward the target's load. Otherwise the pick stands as a direct attack and is recorded in the ledger.
+     *
+     * @param ledger the frame's melee assignments
+     * @param gate the attacker's overflow gate
+     * @param attackerId the attacker's unit id
+     * @param attackerType the attacker's type
+     * @param selection the pick made for the attacker
+     * @param heldTargetId the id of the fight target the attacker held before this pick, or {@link #NO_TARGET_ID}
+     *     when it held none that still exists
+     * @param inReach true when the picked target is within {@link #OVERFLOW_EXIT_REACH} of the attacker
+     * @param frame the current frame
+     * @return the pick as it is issued
+     */
+    static TargetScorer.Selection commitPick(TargetLedger ledger, MeleeOverflowGate gate, int attackerId,
+                                             UnitType attackerType, TargetScorer.Selection selection,
+                                             int heldTargetId, boolean inReach, int frame) {
+        int targetId = selection.getTarget().getID();
+        if (gate.observe(selection.isSaturated(), heldTargetId != targetId, inReach, frame)) {
+            return selection.asAttackMove();
+        }
+        ledger.record(attackerId, attackerType, targetId);
+        return selection;
+    }
+
+    /**
+     * @return the id of a fight target that still exists, or {@link #NO_TARGET_ID} for none
+     */
+    static int heldTargetId(Unit fightTarget) {
+        return fightTarget != null && fightTarget.exists() ? fightTarget.getID() : NO_TARGET_ID;
+    }
+
+    /**
+     * While cannon rushed, narrows the candidates to the proxied buildings among them, when there are any.
+     */
+    private List<Unit> preferProxiedBuildings(List<Unit> candidates) {
+        if (!gameState.isCannonRushed()) {
+            return candidates;
+        }
+        Set<Unit> proxied = gameState.getObservedUnitTracker().getProxiedBuildings();
+        List<Unit> proxiedTargets = candidates.stream()
+                .filter(proxied::contains)
+                .collect(Collectors.toList());
+        return proxiedTargets.isEmpty() ? candidates : proxiedTargets;
+    }
+
+    /**
+     * The frame's melee target ledger, shared by every fight squad's targeting. The first read on a frame builds it
+     * from the enemy static defence and seeds it with the fight target each FIGHT member of a fight squad already
+     * holds, so a squad targeted early in the frame sees the load of a squad targeted after it. A member that has
+     * left FIGHT, whose target no longer exists, or that attack-moves in overflow is not seeded, and the ledger counts
+     * only melee members.
+     */
+    private TargetLedger fightTargetLedger() {
+        int now = game.getFrameCount();
+        if (fightTargetLedgerFrame != now) {
+            fightTargetLedger = new TargetLedger(gameState.getStaticDefenseZones());
+            fightTargetLedgerFrame = now;
+            for (Squad squad : fightSquads) {
+                seedFightTargets(fightTargetLedger, squad.getMembers());
             }
         }
+        return fightTargetLedger;
+    }
 
-        TargetScorer.Selection selection = TargetScorer.selectTarget(unit, filtered, managedUnit.fightTarget);
-        if (selection != null) {
-            TargetChoices.chosen(managedUnit, managedUnit.fightTarget, selection, scoutCapped);
-            managedUnit.setFightTarget(selection.getTarget());
-            recordScoutClaim(unit, selection.getTarget());
+    /**
+     * Records in the ledger the fight target of every member in FIGHT whose target still exists and that attacks it
+     * directly.
+     */
+    static void seedFightTargets(TargetLedger ledger, Collection<ManagedUnit> members) {
+        for (ManagedUnit member : members) {
+            Unit target = member.fightTarget;
+            if (seedsFightTarget(member.getRole(), target != null && target.exists(), member.isAttackMoving())) {
+                ledger.record(member.getUnitID(), member.getUnitType(), target.getID());
+            }
         }
     }
 
@@ -3674,6 +4530,19 @@ public class SquadManager {
         managedUnit.setFightTarget(null);
         managedUnit.setRole(UnitRole.RETREAT);
         return true;
+    }
+
+    /**
+     * Whether a member's fight target is seeded into the frame's ledger: only while the member is in FIGHT, the
+     * target still exists and the member attacks it rather than attack-moving to it in overflow. A member
+     * retreating, rallying, containing, on a runby or in overflow holds no fight slot.
+     *
+     * @param role the member's role
+     * @param targetExists true when the member holds a fight target that still exists
+     * @param attackMoving true when the member attack-moves to its target in overflow
+     */
+    static boolean seedsFightTarget(UnitRole role, boolean targetExists, boolean attackMoving) {
+        return role == UnitRole.FIGHT && targetExists && !attackMoving;
     }
 
     /**
@@ -3790,6 +4659,51 @@ public class SquadManager {
      */
     static <T> List<T> filterByProximity(List<T> candidates, ToDoubleFunction<T> distance) {
         return filterByProximity(candidates, distance, candidate -> true);
+    }
+
+    /**
+     * Replaces a saturated pick with one made from the widened candidates, when the widened candidates add any and
+     * the pick made from them is not saturated. Otherwise the saturated pick stands.
+     *
+     * @param selection the pick made from the nearby candidates, or null when there was none
+     * @param nearbyCount how many candidates the pick was made from
+     * @param widened candidates within the widened radius, built only when the pick is saturated
+     * @param select picks a target from a candidate list
+     * @return the pick to keep
+     */
+    static <T> TargetScorer.Selection widenWhenSaturated(TargetScorer.Selection selection, int nearbyCount,
+                                                         Supplier<List<T>> widened,
+                                                         Function<List<T>, TargetScorer.Selection> select) {
+        if (selection == null || !selection.isSaturated()) {
+            return selection;
+        }
+        List<T> candidates = widened.get();
+        if (candidates.size() <= nearbyCount) {
+            return selection;
+        }
+        TargetScorer.Selection wider = select.apply(candidates);
+        return wider != null && !wider.isSaturated() ? wider.asWidened() : selection;
+    }
+
+    /**
+     * Candidates a melee fighter falls back to when every target {@link #filterByProximity} gave it is saturated:
+     * those within {@link #TARGETING_RADIUS} of it, and those out to {@link #WIDENED_TARGETING_RADIUS} that the
+     * fallback admits.
+     *
+     * @param candidates attackable enemies
+     * @param distance distance from the attacker to a candidate
+     * @param fallback which candidates beyond the targeting radius may still be chased
+     * @return the candidates within the widened radius
+     */
+    static <T> List<T> widenCandidates(List<T> candidates, ToDoubleFunction<T> distance, Predicate<T> fallback) {
+        List<T> widened = new ArrayList<>();
+        for (T enemy : candidates) {
+            double d = distance.applyAsDouble(enemy);
+            if (d <= TARGETING_RADIUS || d <= WIDENED_TARGETING_RADIUS && fallback.test(enemy)) {
+                widened.add(enemy);
+            }
+        }
+        return widened;
     }
 
     /**
@@ -3915,13 +4829,14 @@ public class SquadManager {
     }
 
     /**
-     * Returns a list of Hydralisk and Mutalisk squads, sorted by size (largest first).
+     * Returns a list of Hydralisk and Mutalisk squads that may take an Overlord, sorted by size (largest first). A
+     * squad that takes no reinforcements, such as a harassing one, takes no Overlord either.
      */
     private List<Squad> getHydraliskAndMutaliskSquads() {
         return fightSquads.stream()
             .filter(squad -> {
-                return squad.getCountOf(UnitType.Zerg_Mutalisk) > 0
-                        || squad.getCountOf(UnitType.Zerg_Hydralisk) > 0;
+                return mayJoin(squad.getStatus()) && (squad.getCountOf(UnitType.Zerg_Mutalisk) > 0
+                        || squad.getCountOf(UnitType.Zerg_Hydralisk) > 0);
             })
             .sorted((s1, s2) -> Integer.compare(s2.size(), s1.size()))
             .collect(Collectors.toList());
