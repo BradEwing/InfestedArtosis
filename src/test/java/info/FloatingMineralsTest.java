@@ -1,12 +1,14 @@
 package info;
 
 import bwapi.UnitType;
+import macro.HatcheryCapacity;
 import macro.plan.BuildingPlan;
 import macro.plan.Plan;
 import macro.plan.PlanState;
 import org.junit.jupiter.api.Test;
 import util.Time;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
@@ -151,6 +153,97 @@ class FloatingMineralsTest {
     void aFinishedHatcheryReleasesTheBar() {
         assertFalse(GameState.isFloatingMinerals(bank(358), GameState.unfinishedHatcheries(0, 1, 0), MIDGAME));
         assertTrue(GameState.isFloatingMinerals(bank(358), GameState.unfinishedHatcheries(0, 0, 0), MIDGAME));
+    }
+
+    /**
+     * One expansion walked through every state it passes on the way to a finished hatchery. The bar
+     * reads 700 at each: queued, scheduled, BUILDING while its drone walks to the site, MORPHING in
+     * plansBuilding once the drone is ordered to build, MORPHING in plansMorphing after the morph
+     * event, and the incomplete Zerg_Hatchery once the plan completes. It drops to 350 only when the
+     * hatchery finishes.
+     */
+    @Test
+    void anExpansionHoldsTheBarInEveryStateUntilItsHatcheryFinishes() {
+        Plan expansion = hatchery(false);
+        List<Plan> queued = new ArrayList<>(Collections.singletonList(expansion));
+        Set<Plan> scheduled = new HashSet<>();
+        Set<Plan> building = new HashSet<>();
+        Set<Plan> morphing = new HashSet<>();
+        assertEquals(700, bar(queued, scheduled, building, morphing, false, false));
+
+        queued.remove(expansion);
+        scheduled.add(expansion);
+        expansion.setState(PlanState.SCHEDULE);
+        assertEquals(700, bar(queued, scheduled, building, morphing, false, false));
+
+        scheduled.remove(expansion);
+        building.add(expansion);
+        expansion.setState(PlanState.BUILDING);
+        assertEquals(700, bar(queued, scheduled, building, morphing, false, false));
+
+        expansion.setState(PlanState.MORPHING);
+        assertEquals(700, bar(queued, scheduled, building, morphing, false, false));
+
+        building.remove(expansion);
+        morphing.add(expansion);
+        assertEquals(700, bar(queued, scheduled, building, morphing, false, false));
+
+        morphing.remove(expansion);
+        expansion.setState(PlanState.COMPLETE);
+        assertEquals(700, bar(queued, scheduled, building, morphing, true, false));
+
+        assertEquals(350, bar(queued, scheduled, building, morphing, false, false));
+    }
+
+    /**
+     * A builder lost on the way returns its plan to SCHEDULE, and the bar holds while a new drone is
+     * found.
+     */
+    @Test
+    void aPlanReturnedToScheduleByABuilderLossHoldsTheBar() {
+        Plan expansion = hatchery(false);
+        expansion.setState(PlanState.SCHEDULE);
+
+        assertEquals(700, bar(none(), setOf(expansion), setOf(), setOf(), false, false));
+    }
+
+    /**
+     * A completed plan left in plansScheduled is not counted, so the hatchery it became is counted
+     * once, by the unit scan.
+     */
+    @Test
+    void aCompletedPlanLeftInScheduledIsNotCountedTwice() {
+        Plan expansion = hatchery(false);
+        expansion.setState(PlanState.COMPLETE);
+
+        assertEquals(700, bar(none(), setOf(expansion), setOf(), setOf(), true, false));
+    }
+
+    @Test
+    void onlyAnIncompleteHatcheryIsUnderConstruction() {
+        assertTrue(GameState.isHatcheryUnderConstruction(UnitType.Zerg_Hatchery, false, true, false));
+        assertFalse(GameState.isHatcheryUnderConstruction(UnitType.Zerg_Hatchery, true, true, false));
+        assertFalse(GameState.isHatcheryUnderConstruction(UnitType.Zerg_Drone, false, true, false));
+        assertFalse(GameState.isHatcheryUnderConstruction(UnitType.Zerg_Lair, false, true, false));
+    }
+
+    @Test
+    void aHatcheryOnABaseTileIsAnExpansionAndAnyOtherIsAMacroHatchery() {
+        assertTrue(GameState.isHatcheryUnderConstruction(UnitType.Zerg_Hatchery, false, true, false));
+        assertFalse(GameState.isHatcheryUnderConstruction(UnitType.Zerg_Hatchery, false, true, true));
+        assertTrue(GameState.isHatcheryUnderConstruction(UnitType.Zerg_Hatchery, false, false, true));
+        assertFalse(GameState.isHatcheryUnderConstruction(UnitType.Zerg_Hatchery, false, false, false));
+    }
+
+    private static int bar(Iterable<Plan> queued, Iterable<Plan> scheduled, Iterable<Plan> building,
+            Iterable<Plan> morphing, boolean expansionGoingUp, boolean macroHatcheryGoingUp) {
+        int expansions = GameState.isHatcheryUnderConstruction(UnitType.Zerg_Hatchery, !expansionGoingUp, true, false)
+                ? 1 : 0;
+        int macroHatcheries = GameState.isHatcheryUnderConstruction(UnitType.Zerg_Hatchery, !macroHatcheryGoingUp,
+                false, true) ? 1 : 0;
+        int unfinished = GameState.unfinishedHatcheries(
+                GameState.countHatcheryPlans(queued, scheduled, building, morphing), expansions, macroHatcheries);
+        return HatcheryCapacity.floatingMineralsBar(unfinished);
     }
 
     @Test

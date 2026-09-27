@@ -2029,12 +2029,17 @@ public class GameState {
     }
 
     /**
-     * Counts hatchery plans of one kind across every stage the production system holds them in.
+     * Counts hatchery plans of one kind across every stage the production system holds them in:
+     * queued, scheduled, BUILDING while its drone walks to the site, and MORPHING from the frame the
+     * drone is ordered to build, whether the plan still sits in plansBuilding or has moved to
+     * plansMorphing.
      *
-     * <p>A cancelled plan is not carried, and its set membership does not say so:
+     * <p>A cancelled or completed plan is not carried, and its set membership does not say so:
      * {@link #cancelPlan} removes a plan from plansBuilding and plansMorphing but not from
-     * plansScheduled, and {@link #setImpossiblePlan} removes it from none of them. Both set the
-     * plan state, so the state is what this reads.
+     * plansScheduled, {@link #setImpossiblePlan} removes it from none of them, and
+     * {@link #completePlan} leaves a plan in plansScheduled until BuildingManager sweeps it. All three
+     * set the plan state, so the state is what this reads. A completed plan's hatchery is counted by
+     * {@link #hatcheriesUnderConstruction} instead.
      */
     static int countHatcheryPlans(boolean macroHatchery, Iterable<Plan> queued, Iterable<Plan> scheduled,
             Iterable<Plan> building, Iterable<Plan> morphing) {
@@ -2055,10 +2060,12 @@ public class GameState {
     }
 
     /**
-     * True when this plan is a hatchery of the given kind that the bot is still committed to.
+     * True when this plan is a hatchery of the given kind that the bot is still committed to and
+     * whose drone has not yet morphed.
      */
     static boolean isOutstandingHatcheryPlan(Plan plan, boolean macroHatchery) {
         return plan.getState() != PlanState.CANCELLED
+                && plan.getState() != PlanState.COMPLETE
                 && plan.getType() == PlanType.BUILDING
                 && plan.getPlannedUnit() == UnitType.Zerg_Hatchery
                 && plan.isMacroHatchery() == macroHatchery;
@@ -2077,16 +2084,27 @@ public class GameState {
     public int hatcheriesUnderConstruction(boolean macroHatchery) {
         int count = 0;
         for (Unit unit : self.getUnits()) {
-            if (unit.getType() != UnitType.Zerg_Hatchery || unit.isCompleted()) {
-                continue;
-            }
-
-            boolean isMacro = !baseData.isBaseTilePosition(unit.getTilePosition());
-            if (isMacro == macroHatchery) {
+            if (isHatcheryUnderConstruction(unit.getType(), unit.isCompleted(),
+                    baseData.isBaseTilePosition(unit.getTilePosition()), macroHatchery)) {
                 count += 1;
             }
         }
         return count;
+    }
+
+    /**
+     * True when one of our units is a hatchery of the given kind still going up: a Zerg_Hatchery
+     * that is not complete. A Drone ordered to build is not one yet; its plan is still MORPHING and
+     * {@link #countHatcheryPlans} counts it until the drone morphs.
+     *
+     * @param type the unit's type
+     * @param completed whether the unit has finished
+     * @param onBaseTile whether the unit stands on a base tile, which makes it an expansion
+     * @param macroHatchery true to count macro hatcheries, false to count expansions
+     */
+    static boolean isHatcheryUnderConstruction(UnitType type, boolean completed, boolean onBaseTile,
+            boolean macroHatchery) {
+        return type == UnitType.Zerg_Hatchery && !completed && onBaseTile != macroHatchery;
     }
 
     public void setGeyserAssignment(Unit unit) {
