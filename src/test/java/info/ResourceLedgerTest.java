@@ -8,8 +8,10 @@ import java.util.Collections;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ResourceLedgerTest {
 
@@ -220,6 +222,25 @@ class ResourceLedgerTest {
 
         assertEquals(6, ledger.mineralPatchesAt(NATURAL));
         assertEquals(14, ledger.remainingMineralPatches(Arrays.asList(MAIN, NATURAL)));
+    }
+
+    @Test
+    void onlyTheObservationThatForgetsAPatchReportsIt() {
+        ResourceLedger ledger = ledgerWithTwoBases();
+        observe(ledger, 15, ResourceLedger.SEEN_GONE_OBSERVATIONS - 1, true, false);
+
+        assertTrue(ledger.observeMineralPatch(15, true, false));
+        assertFalse(ledger.observeMineralPatch(15, true, false));
+    }
+
+    @Test
+    void aPatchDestroyedByEventIsNeverReportedSeenGone() {
+        ResourceLedger ledger = ledgerWithTwoBases();
+        ledger.removeMineralPatch(15);
+
+        for (int i = 0; i < ResourceLedger.SEEN_GONE_OBSERVATIONS * 2; i++) {
+            assertFalse(ledger.observeMineralPatch(15, true, false));
+        }
     }
 
     @Test

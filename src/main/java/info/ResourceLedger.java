@@ -72,20 +72,23 @@ public class ResourceLedger {
      * @param mineralPatchId the patch's unit ID
      * @param tilesVisible whether every tile the patch covers is visible this frame
      * @param exists whether the patch's unit exists this frame
+     * @return true only on the observation that forgets the patch
      */
-    public void observeMineralPatch(int mineralPatchId, boolean tilesVisible, boolean exists) {
+    public boolean observeMineralPatch(int mineralPatchId, boolean tilesVisible, boolean exists) {
         if (destroyedMineralPatches.contains(mineralPatchId)) {
-            return;
+            return false;
         }
         if (!tilesVisible || exists) {
             seenGoneObservations.remove(mineralPatchId);
-            return;
+            return false;
         }
         int observations = seenGoneObservations.merge(mineralPatchId, 1, Integer::sum);
-        if (observations >= SEEN_GONE_OBSERVATIONS) {
-            seenGoneObservations.remove(mineralPatchId);
-            removeMineralPatch(mineralPatchId);
+        if (observations < SEEN_GONE_OBSERVATIONS) {
+            return false;
         }
+        seenGoneObservations.remove(mineralPatchId);
+        removeMineralPatch(mineralPatchId);
+        return true;
     }
 
     /**

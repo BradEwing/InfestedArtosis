@@ -232,6 +232,15 @@ public final class PlanEvents {
         current.onBaseClaimed(base, baseMineralPatches, mapMineralPatches, remainingMineralPatches);
     }
 
+    public static void mineralPatchSeenGone(TilePosition base, int baseMineralPatches, int mapMineralPatches,
+                                            int remainingMineralPatches) {
+        PlanEventSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onMineralPatchSeenGone(base, baseMineralPatches, mapMineralPatches, remainingMineralPatches);
+    }
+
     public static void rallyPointChanged(TilePosition base, String reason) {
         PlanEventSink current = sink;
         if (current == null) {

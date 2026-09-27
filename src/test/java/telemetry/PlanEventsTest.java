@@ -34,6 +34,7 @@ class PlanEventsTest {
     private final List<String> hiveTechGates = new ArrayList<>();
     private final List<String> depletedGeysers = new ArrayList<>();
     private final List<String> claimedBases = new ArrayList<>();
+    private final List<String> patchesSeenGone = new ArrayList<>();
 
     private PlanEventSink recorder() {
         return new PlanEventSink() {
@@ -88,6 +89,13 @@ class PlanEventsTest {
                 claimedBases.add(base + ":" + baseMineralPatches + ":" + mapMineralPatches + ":"
                         + remainingMineralPatches);
             }
+
+            @Override
+            public void onMineralPatchSeenGone(TilePosition base, int baseMineralPatches, int mapMineralPatches,
+                                               int remainingMineralPatches) {
+                patchesSeenGone.add(base + ":" + baseMineralPatches + ":" + mapMineralPatches + ":"
+                        + remainingMineralPatches);
+            }
         };
     }
 
@@ -127,6 +135,16 @@ class PlanEventsTest {
         PlanEvents.baseClaimed(new TilePosition(30, 12), 8, 8, 17);
 
         assertEquals(Collections.singletonList(new TilePosition(30, 12) + ":8:8:17"), claimedBases);
+    }
+
+    @Test
+    void mineralPatchSeenGoneReachesTheSinkWithTheCountsAfterTheDrop() {
+        PlanEvents.register(recorder());
+
+        PlanEvents.mineralPatchSeenGone(new TilePosition(30, 12), 7, 8, 16);
+
+        assertEquals(Collections.singletonList(new TilePosition(30, 12) + ":7:8:16"), patchesSeenGone);
+        assertTrue(claimedBases.isEmpty());
     }
 
     @Test

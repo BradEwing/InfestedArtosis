@@ -194,6 +194,19 @@ public interface PlanEventSink {
     }
 
     /**
+     * A mineral patch at a base we hold was dropped from the resource ledger because its tiles stayed visible
+     * without it, not because a destroy event was seen.
+     *
+     * @param base the base's tile location
+     * @param baseMineralPatches the mineral patches the resource ledger holds for the base after the drop
+     * @param mapMineralPatches the mineral patches the map assigns the base
+     * @param remainingMineralPatches the mineral patches the ledger counts at every base we hold after the drop
+     */
+    default void onMineralPatchSeenGone(TilePosition base, int baseMineralPatches, int mapMineralPatches,
+                                        int remainingMineralPatches) {
+    }
+
+    /**
      * The base squads rally to changed, or was first chosen.
      *
      * @param base the rally base's tile location

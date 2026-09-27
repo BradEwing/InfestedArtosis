@@ -70,6 +70,7 @@ public class PlanEventLogger implements PlanEventSink {
     private static final String EVENT_BUILDER_REDISPATCH = "BUILDER_REDISPATCH";
     private static final String EVENT_GEYSER_DEPLETED = "GEYSER_DEPLETED";
     private static final String EVENT_BASE_CLAIMED = "BASE_CLAIMED";
+    private static final String EVENT_MINERAL_PATCH_SEEN_GONE = "MINERAL_PATCH_SEEN_GONE";
 
     private static final int NO_STARVED_COUNT = -1;
 
@@ -199,8 +200,11 @@ public class PlanEventLogger implements PlanEventSink {
      * base's tile location is in build_tile_x and build_tile_y. base_mineral_patches is the mineral
      * patches the resource ledger holds for the base, map_mineral_patches the patches the map assigns
      * it, and remaining_mineral_patches the ledger's count at every base we hold, this one included.
-     * Those three columns are set only on BASE_CLAIMED rows. The main is claimed before the logger
-     * starts, so it has no row.
+     * The main is claimed before the logger starts, so its row is written when the logger starts.
+     * <p>
+     * MINERAL_PATCH_SEEN_GONE rows are written when a patch at a base we hold leaves the ledger because
+     * its tiles stayed visible without it, and fill the same columns as BASE_CLAIMED, counted after the
+     * patch left. Those three columns are set only on BASE_CLAIMED and MINERAL_PATCH_SEEN_GONE rows.
      */
     static final String PLAN_HEADER = "frame,time,event,plan_id,executor_unit_id,plan_type,item,from_state,"
             + "to_state,cancel_reason,cancel_source,blocker,blocked_frames,priority,frames_in_state,age_frames,"
@@ -757,8 +761,28 @@ public class PlanEventLogger implements PlanEventSink {
 
         try {
             currentFrame = game.getFrameCount();
-            buffer.add(baseClaimedRow(base,
-                    BaseEventInputs.baseClaimed(baseMineralPatches, mapMineralPatches, remainingMineralPatches)));
+            buffer.add(mineralPatchCountRow(EVENT_BASE_CLAIMED, base,
+                    BaseEventInputs.mineralPatches(baseMineralPatches, mapMineralPatches, remainingMineralPatches)));
+        } catch (Exception e) {
+            disabled = true;
+        }
+    }
+
+    /**
+     * The frame is re-read for the reason {@link #onStrategyDetected} gives: GameState may run ahead of
+     * this logger's onFrame on the same frame.
+     */
+    @Override
+    public void onMineralPatchSeenGone(TilePosition base, int baseMineralPatches, int mapMineralPatches,
+                                       int remainingMineralPatches) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            currentFrame = game.getFrameCount();
+            buffer.add(mineralPatchCountRow(EVENT_MINERAL_PATCH_SEEN_GONE, base,
+                    BaseEventInputs.mineralPatches(baseMineralPatches, mapMineralPatches, remainingMineralPatches)));
         } catch (Exception e) {
             disabled = true;
         }
@@ -1142,10 +1166,13 @@ public class PlanEventLogger implements PlanEventSink {
         return sb.toString();
     }
 
-    /** A row for a base that became ours, which no plan owns, so the plan columns are empty. */
-    private String baseClaimedRow(TilePosition base, BaseEventInputs inputs) {
+    /**
+     * A row for a base that became ours or lost a patch seen gone, which no plan owns, so the plan columns are
+     * empty.
+     */
+    private String mineralPatchCountRow(String event, TilePosition base, BaseEventInputs inputs) {
         StringBuilder sb = new StringBuilder();
-        appendEvent(sb, EVENT_BASE_CLAIMED);
+        appendEvent(sb, event);
         appendEmpty(sb, 3);
         sb.append(Csv.sanitize(UnitType.Zerg_Hatchery.toString())).append(',');
         appendEmpty(sb, 4);
@@ -1243,7 +1270,8 @@ public class PlanEventLogger implements PlanEventSink {
      *     BUILDING plan with an executor behind it
      * @param baseEvent the expansion or colony hold armed, the base lost, the enemy main event, the geyser
      *     that read empty or the base claimed, or null on every row but EXPANSION_BACKOFF,
-     *     COLONY_BUILDER_BACKOFF, BASE_LOST, the ENEMY_MAIN rows, GEYSER_DEPLETED and BASE_CLAIMED
+     *     COLONY_BUILDER_BACKOFF, BASE_LOST, the ENEMY_MAIN rows, GEYSER_DEPLETED, BASE_CLAIMED and
+     *     MINERAL_PATCH_SEEN_GONE
      * @param builder the builder columns, {@link BuilderColumns#BLANK} on every row but
      *     BUILD_AHEAD_HOLD, BUILD_AHEAD_EVICT, BUILD_AHEAD_YIELD, BUILDER_DISPATCH_DECISION,
      *     BUILDER_LOST and BUILDER_REDISPATCH, and the carrier of builder_dispatch_decision
@@ -1411,7 +1439,8 @@ public class PlanEventLogger implements PlanEventSink {
     /**
      * The hold a lost expansion builder armed, whether a lost base was the main or a natural, why the enemy
      * main was assigned or cleared and the position of the building that assigned it, the base, starting gas
-     * and Extractor completion frames of a geyser that read empty, or the mineral patch counts of a base claimed.
+     * and Extractor completion frames of a geyser that read empty, or the mineral patch counts of a base claimed
+     * or of a base that lost a patch seen gone.
      */
     private static final class BaseEventInputs {
         private final Integer lostExpansionBuilders;
@@ -1459,8 +1488,8 @@ public class PlanEventLogger implements PlanEventSink {
             return inputs;
         }
 
-        private static BaseEventInputs baseClaimed(int baseMineralPatches, int mapMineralPatches,
-                                                   int remainingMineralPatches) {
+        private static BaseEventInputs mineralPatches(int baseMineralPatches, int mapMineralPatches,
+                                                      int remainingMineralPatches) {
             BaseEventInputs inputs = new BaseEventInputs(null, null, null, null, null);
             inputs.baseMineralPatches = baseMineralPatches;
             inputs.mapMineralPatches = mapMineralPatches;

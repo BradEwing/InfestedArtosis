@@ -455,6 +455,17 @@ public class GameState {
                 base.getMinerals().size(), remainingMineralPatches());
     }
 
+    /**
+     * Writes a BASE_CLAIMED row for every base we hold. The main is claimed before plan telemetry starts, so
+     * this is called once the plan event sink is registered to give the main its row.
+     */
+    public void reportClaimedBases() {
+        for (Base base : baseData.getMyBases()) {
+            PlanEvents.baseClaimed(base.getLocation(), resourceLedger.mineralPatchesAt(base.getLocation()),
+                    base.getMinerals().size(), remainingMineralPatches());
+        }
+    }
+
     public void addMainBase(Unit hatchery, Base base) {
         this.baseData.initializeMainBase(base, this.gameMap);
         addBaseToGameState(hatchery, base);
@@ -2033,14 +2044,18 @@ public class GameState {
     }
 
     /**
-     * Drops from the resource ledger each mineral patch at a base we hold whose tiles are all visible while the
-     * patch does not exist.
+     * Drops from the resource ledger each mineral patch at a base we hold whose tiles have stayed visible while
+     * the patch does not exist, and writes a MINERAL_PATCH_SEEN_GONE row for each patch dropped.
      */
     private void observeMineralPatches() {
         for (Base base : baseData.getMyBases()) {
             for (Mineral mineral : base.getMinerals()) {
                 Unit patch = mineral.getUnit();
-                resourceLedger.observeMineralPatch(patch.getID(), allTilesVisible(mineral), patch.exists());
+                if (resourceLedger.observeMineralPatch(patch.getID(), allTilesVisible(mineral), patch.exists())) {
+                    PlanEvents.mineralPatchSeenGone(base.getLocation(),
+                            resourceLedger.mineralPatchesAt(base.getLocation()), base.getMinerals().size(),
+                            remainingMineralPatches());
+                }
             }
         }
     }
