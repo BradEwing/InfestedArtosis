@@ -59,7 +59,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
     private static final double SPEED_UPGRADE_PENALTY = 0.75;
     private static final int BUNKER_TRUST_FRAMES = 48;
     private static final int BUNKER_DECAY_FRAMES = 72;
-    private static final int BUNKER_MAX_GARRISON = 4;
+    static final int BUNKER_MAX_GARRISON = 4;
     private static final double BUNKER_LOAD_REACH = 16;
     private static final Set<UnitType> BUNKER_OCCUPANTS = EnumSet.of(UnitType.Terran_Marine, UnitType.Terran_Firebat,
             UnitType.Terran_Ghost, UnitType.Terran_Medic);
@@ -96,6 +96,9 @@ public class HorizonCombatSimulator implements CombatSimulator {
 
         List<Position> visibleBunkers = visibleCompletedBunkers(tracker);
         EnemyReachMemory reachMemory = tracker.getReachMemory();
+        List<BunkerPricing.Leg> legs = BunkerPricing.legs(squad.getMembers());
+        List<BunkerPricing.Candidate> bunkers = new ArrayList<>();
+        int pricedLooseShooters = 0;
         for (ObservedUnit ou : tracker.getLivingObservedUnits()) {
             UnitType type = ou.getUnitType();
             boolean visible = ou.getUnit().isVisible();
@@ -108,9 +111,13 @@ public class HorizonCombatSimulator implements CombatSimulator {
             if (pos == null) continue;
             if (!visible && enteredBunker(type, pos, visibleBunkers)) continue;
             double dist = squadCenter.getDistance(pos);
-            boolean edgeOfFire = pricedAtEdgeOfFire(type, airSquad);
+            boolean bunker = type == UnitType.Terran_Bunker;
+            boolean edgeOfFire = !bunker && pricedAtEdgeOfFire(type, airSquad);
             int reach = edgeOfFire ? positionalReach(type, reachMemory.groundReach(type)) : 0;
-            double radius = edgeOfFire ? edgeOfFireRadius(reach) : engagementRadius(type);
+            if (bunker) {
+                reach = BunkerPricing.reach(airSquad, reachMemory.groundReach(type));
+            }
+            double radius = bunker || edgeOfFire ? edgeOfFireRadius(reach) : engagementRadius(type);
             if (dist > radius) {
                 if (isThreatBeyondRadius(type, dist, radius)) {
                     snapshot.setThreatBeyondRadius(true);
@@ -142,10 +149,15 @@ public class HorizonCombatSimulator implements CombatSimulator {
 
             double groundBase = weightedGroundStrength(type, friendlySizeProportions);
             double antiAirBase = weightedAntiAirStrength(type, friendlySizeProportions);
-            if (type == UnitType.Terran_Bunker) {
-                double garrisonMod = bunkerGarrisonModifier(ou, currentFrame);
-                groundBase *= garrisonMod;
-                antiAirBase *= garrisonMod;
+            if (bunker) {
+                double fireWeight = BunkerPricing.fireWeight(BunkerPricing.nearestGap(pos, legs), reach);
+                if (fireWeight > 0) {
+                    bunkers.add(new BunkerPricing.Candidate(pos, !visible, fireWeight,
+                            bunkerGarrisonModifier(ou, currentFrame) * BUNKER_MAX_GARRISON,
+                            bunkerGarrisonMeasured(ou, currentFrame),
+                            groundBase * hpWeight * heightMod, antiAirBase * hpWeight * heightMod));
+                }
+                continue;
             }
             if (type.isWorker()) {
                 groundBase /= WORKER_STRENGTH_DIVISOR;
@@ -155,9 +167,19 @@ public class HorizonCombatSimulator implements CombatSimulator {
             double groundEnemyStr = groundBase * hpWeight * distWeight * heightMod;
             double aaEnemyStr = antiAirBase * hpWeight * distWeight * heightMod;
             enemySample.add(type, groundEnemyStr, aaEnemyStr);
+            if (!visible && BunkerPricing.SHOOTERS.contains(type)) {
+                pricedLooseShooters++;
+            }
 
             double displayStr = airSquad ? aaEnemyStr : groundEnemyStr;
             snapshot.getEnemyUnits().add(new UnitDebugEntry(pos, type, displayStr, false, !visible));
+        }
+
+        BunkerPricing.allocate(bunkers, BunkerPricing.garrisonPool(tracker.getLivingObservedUnits(), pricedLooseShooters));
+        for (BunkerPricing.Candidate candidate : bunkers) {
+            enemySample.add(UnitType.Terran_Bunker, candidate.ground(), candidate.antiAir());
+            snapshot.getEnemyUnits().add(new UnitDebugEntry(candidate.getPosition(), UnitType.Terran_Bunker,
+                    airSquad ? candidate.antiAir() : candidate.ground(), false, candidate.isFogOfWar()));
         }
 
         creditMedicSupport(snapshot, enemySample, airSquad);
@@ -1018,6 +1040,18 @@ public class HorizonCombatSimulator implements CombatSimulator {
         if (elapsed >= BUNKER_TRUST_FRAMES + BUNKER_DECAY_FRAMES) return 1.0;
         double decayProgress = (double) (elapsed - BUNKER_TRUST_FRAMES) / BUNKER_DECAY_FRAMES;
         return baseModifier + (1.0 - baseModifier) * decayProgress;
+    }
+
+    /**
+     * Whether a Bunker's garrison estimate is still inside the trust window, so its occupants are measured rather
+     * than assumed, see {@link #bunkerGarrisonModifier}.
+     *
+     * @param ou the observed bunker
+     * @param currentFrame current frame
+     * @return true when the estimate is known and no older than the trust window
+     */
+    static boolean bunkerGarrisonMeasured(ObservedUnit ou, int currentFrame) {
+        return ou.getLastKnownLoadedCount() >= 0 && currentFrame - ou.getLastLoadedCheckFrame() <= BUNKER_TRUST_FRAMES;
     }
 
     /**
