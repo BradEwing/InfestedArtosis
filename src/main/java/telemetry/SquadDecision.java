@@ -47,6 +47,7 @@ final class SquadDecision {
     private double ourAirShare = NOT_EVALUATED;
     private int moveOutThreshold = NOT_EVALUATED;
     private int moveOutStrength = NOT_EVALUATED;
+    private RetreatRoute retreatRoute = RetreatRoute.NONE;
 
     static int tristate(boolean value) {
         return value ? 1 : 0;

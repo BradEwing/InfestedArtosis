@@ -7,6 +7,7 @@ import lombok.AccessLevel;
 import lombok.Data;
 import lombok.Getter;
 import org.jetbrains.annotations.NotNull;
+import telemetry.RetreatRoute;
 import unit.managed.ManagedUnit;
 import util.Arc;
 import util.Distance;
@@ -61,6 +62,7 @@ public class Squad implements Comparable<Squad> {
     private RunbyState runbyState;
     private int containRadius = 0;
     private final ContainmentAttrition containmentAttrition = new ContainmentAttrition();
+    private RetreatRoute retreatRoute = RetreatRoute.NONE;
     protected Time fightHysteresis = new Time(0, 3);
     protected Time retreatHysteresis = new Time(0, 5);
     protected Time containHysteresis = new Time(0, 5);

@@ -126,6 +126,12 @@ public enum DecisionPath {
     SPLIT_INHERIT,
 
     /**
+     * A retreating ground squad whose last retreat plan found no path home clear of the enemy turned to fight on an
+     * ENGAGE or ADVANCE verdict, ahead of its retreat lock.
+     */
+    CORNERED_ENGAGE,
+
+    /**
      * No branch recorded a decision for this row.
      */
     NONE

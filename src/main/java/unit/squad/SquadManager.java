@@ -28,6 +28,7 @@ import telemetry.DecisionPath;
 import telemetry.DefenseEvent;
 import telemetry.RallyReason;
 import telemetry.RallyRelease;
+import telemetry.RetreatRoute;
 import telemetry.RunbyTelemetry;
 import telemetry.RunbyTick;
 import telemetry.SquadDecisions;
@@ -148,6 +149,7 @@ public class SquadManager {
     private Set<ManagedUnit> outrangedHits = new HashSet<>();
 
     private final ScoutChase scoutChase = new ScoutChase();
+    private GroundRetreatRouter groundRetreatRouter;
 
     public SquadManager(Game game, GameState gameState) {
         this.game = game;
@@ -1254,6 +1256,7 @@ public class SquadManager {
 
             if (anyUnitInStorm) {
                 squad.setStatus(SquadStatus.RETREAT);
+                squad.setRetreatRoute(RetreatRoute.NONE);
                 SquadDecisions.pathTaken(squad, DecisionPath.STORM_RETREAT);
                 int now = game.getFrameCount();
                 for (ManagedUnit managedUnit : managedFighters) {
@@ -1296,6 +1299,14 @@ public class SquadManager {
         double ratio = snapshot != null ? snapshot.getOverallRatio() : 0;
         double engageThreshold = snapshot != null ? snapshot.getEngageThreshold() : 0;
 
+        if (squad.isGroundSquad() && corneredSquadFights(squad.getStatus(), squad.getRetreatRoute(), result)) {
+            squad.setStatus(SquadStatus.FIGHT);
+            squad.setRetreatRoute(RetreatRoute.NONE);
+            SquadDecisions.pathTaken(squad, DecisionPath.CORNERED_ENGAGE);
+            assignFightTargets(squad, managedFighters, true);
+            updateFightLock(squad, result, false, now);
+            return;
+        }
         if (squad.getStatus() == SquadStatus.RETREAT && retreatLocked) {
             SquadDecisions.lockSuppressed(squad, SquadLock.RETREAT);
             SquadDecisions.pathTaken(squad, DecisionPath.RETREAT_LOCK);
@@ -1467,8 +1478,8 @@ public class SquadManager {
 
     private void assignRetreatTargets(Squad squad, HashSet<ManagedUnit> managedFighters) {
         Position rallyPoint = gameState.getSquadRallyPoint();
-        HashMap<ManagedUnit, Position> retreatTargets = squad.isGroundSquad()
-                ? computeGroundRetreatTargets(squad)
+        Map<ManagedUnit, Position> retreatTargets = squad.isGroundSquad()
+                ? planGroundRetreat(squad, rallyPoint)
                 : null;
         for (ManagedUnit managedUnit : managedFighters) {
             if (managedUnit.getRole() != UnitRole.RETREAT) {
@@ -2839,7 +2850,50 @@ public class SquadManager {
     }
 
     /**
-     * Computes a shared retreat anchor for zerglings with perpendicular jitter per unit.
+     * Plans each member's retreat target along the ground path home to the rally point, around the ground threats
+     * near the squad, and records the route taken on the squad for the cornered fight rule and the telemetry row.
+     * Falls back to backing straight away from the enemy when the rally point has no walkable tile near it.
+     */
+    private Map<ManagedUnit, Position> planGroundRetreat(Squad squad, Position rallyPoint) {
+        GroundRetreatRouter.Plan<ManagedUnit> plan = null;
+        if (rallyPoint != null && gameState.getGameMap() != null && gameState.getGameMap().getWidth() > 0) {
+            if (groundRetreatRouter == null) {
+                groundRetreatRouter = new GroundRetreatRouter(gameState.getGameMap());
+            }
+            Map<ManagedUnit, Position> members = new HashMap<>();
+            for (ManagedUnit member : squad.getMembers()) {
+                members.put(member, member.getUnit().getPosition());
+            }
+            List<Position> threats = enemyUnitsNearSquad(squad).stream()
+                    .filter(enemy -> Filter.isGroundThreat(enemy.getType()))
+                    .map(Unit::getPosition)
+                    .collect(Collectors.toList());
+            plan = groundRetreatRouter.plan(members, rallyPoint, threats);
+        }
+        RetreatRoute route = plan != null ? plan.getRoute() : RetreatRoute.AWAY;
+        squad.setRetreatRoute(route);
+        SquadDecisions.retreatRouted(squad, route);
+        return plan != null ? plan.getTargets() : computeGroundRetreatTargets(squad);
+    }
+
+    /**
+     * Whether a squad held in retreat turns to fight because it has nowhere to go: its last retreat plan found no
+     * path home clear of the enemy, and the sim rates the fight at or above its engage threshold, or finds nothing
+     * worth measuring.
+     *
+     * @param status status the squad holds
+     * @param route route of the squad's last ground retreat plan
+     * @param result the sim's verdict this frame
+     * @return true when the squad fights instead of retreating
+     */
+    static boolean corneredSquadFights(SquadStatus status, RetreatRoute route, CombatSimulator.CombatResult result) {
+        return status == SquadStatus.RETREAT && route == RetreatRoute.CORNERED
+                && (result == CombatSimulator.CombatResult.ENGAGE || result == CombatSimulator.CombatResult.ADVANCE);
+    }
+
+    /**
+     * Computes a shared retreat anchor for zerglings with perpendicular jitter per unit, for a ground retreat whose
+     * rally point has no walkable tile near it.
      * Anchor: vector from squad center away from closest enemy cluster.
      * Jitter: perpendicular offsets to reduce clumping.
      */

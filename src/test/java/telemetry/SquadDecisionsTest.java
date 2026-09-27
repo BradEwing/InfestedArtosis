@@ -99,6 +99,11 @@ class SquadDecisionsTest {
             }
 
             @Override
+            public void onRetreatRouted(Squad squad, RetreatRoute route) {
+                events.add("RETREAT_ROUTE:" + route);
+            }
+
+            @Override
             public void onDefenseEvaluated(Squad squad, DefenseEvent event, int candidates, List<ManagedUnit> pulled,
                                            List<ManagedUnit> released, DefenseSim sim) {
                 events.add("DEFENSE:" + event + ":" + candidates + ":" + pulled.size() + ":" + released.size());
@@ -129,7 +134,8 @@ class SquadDecisionsTest {
                 + "," + String.join(",", SquadDecisionLogger.simDomainCells(context))
                 + "," + String.join(",", SquadDecisionLogger.moveOutCells(context))
                 + "," + String.join(",", SquadDecisionLogger.workerIdCells(Collections.emptyList(),
-                Collections.emptyList()));
+                Collections.emptyList()))
+                + "," + SquadDecisionLogger.retreatRouteCell(context);
         return row.split(",", -1);
     }
 
@@ -488,7 +494,8 @@ class SquadDecisionsTest {
                 + "," + String.join(",", SquadDecisionLogger.moveOutCells(context))
                 + "," + String.join(",", SquadDecisionLogger.workerIdCells(Collections.emptyList(),
                 Arrays.asList(SquadDecisionLogger.releasedWorkerEntry(161, UnitRole.BUILD),
-                        SquadDecisionLogger.releasedWorkerEntry(162, UnitRole.DEFEND))));
+                        SquadDecisionLogger.releasedWorkerEntry(162, UnitRole.DEFEND))))
+                + "," + SquadDecisionLogger.retreatRouteCell(context);
         String[] fields = row.split(",", -1);
 
         assertEquals(SquadDecisionLogger.HEADER.split(",", -1).length, fields.length);
@@ -525,9 +532,10 @@ class SquadDecisionsTest {
     void workerIdColumnsAreAppendedAfterTheMoveOutColumns() {
         String[] columns = SquadDecisionLogger.HEADER.split(",", -1);
 
-        assertEquals("move_out_strength", columns[columns.length - 3]);
-        assertEquals("pulled_unit_ids", columns[columns.length - 2]);
-        assertEquals("released_unit_ids", columns[columns.length - 1]);
+        int pulled = Arrays.asList(columns).indexOf("pulled_unit_ids");
+
+        assertEquals("move_out_strength", columns[pulled - 1]);
+        assertEquals("released_unit_ids", columns[pulled + 1]);
     }
 
     @Test
@@ -610,7 +618,8 @@ class SquadDecisionsTest {
                 + "," + String.join(",", SquadDecisionLogger.simDomainCells(context))
                 + "," + String.join(",", SquadDecisionLogger.moveOutCells(context))
                 + "," + String.join(",", SquadDecisionLogger.workerIdCells(Collections.emptyList(),
-                Collections.emptyList()));
+                Collections.emptyList()))
+                + "," + SquadDecisionLogger.retreatRouteCell(context);
         String[] fields = row.split(",", -1);
 
         assertEquals(SquadDecisionLogger.HEADER.split(",", -1).length, fields.length);
@@ -669,6 +678,27 @@ class SquadDecisionsTest {
         assertEquals("1", cells.get(columnIndex("move_out_strength") - first));
         assertEquals("-1", rowFor(new AirSquad())[columnIndex("move_out_threshold")]);
         assertEquals("-1", rowFor(new AirSquad())[columnIndex("move_out_strength")]);
+    }
+
+    @Test
+    void registeredSinkReceivesRetreatRoutes() {
+        SquadDecisions.register(recorder());
+
+        SquadDecisions.retreatRouted(new GroundSquad(), RetreatRoute.CORNERED);
+
+        assertEquals(Collections.singletonList("RETREAT_ROUTE:CORNERED"), events);
+    }
+
+    @Test
+    void retreatRouteIsTheLastColumnAndDefaultsToNone() {
+        String[] columns = SquadDecisionLogger.HEADER.split(",", -1);
+        SquadDecision context = new SquadDecision();
+
+        assertEquals("released_unit_ids", columns[columns.length - 2]);
+        assertEquals("retreat_route", columns[columns.length - 1]);
+        assertEquals("NONE", rowFor(new GroundSquad())[columnIndex("retreat_route")]);
+        context.setRetreatRoute(RetreatRoute.DETOUR);
+        assertEquals("DETOUR", SquadDecisionLogger.retreatRouteCell(context));
     }
 
     @Test
