@@ -126,6 +126,13 @@ public enum DecisionPath {
     SPLIT_INHERIT,
 
     /**
+     * A contain timed out again after being re-entered in a row against an enemy defending with static defence
+     * only, and every containing squad was committed to FIGHT under a fight lock instead of retreating, with arcs
+     * barred for the hold window so the combat sim decides the attack.
+     */
+    CONTAIN_ESCALATE,
+
+    /**
      * No branch recorded a decision for this row.
      */
     NONE

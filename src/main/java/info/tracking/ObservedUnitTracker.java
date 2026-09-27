@@ -379,6 +379,16 @@ public class ObservedUnitTracker {
                 .count();
     }
 
+    public List<ObservedUnit> getCompletedBuildingsNearPositions(UnitType type, Set<Position> positions,
+                                                                 int distance) {
+        return observedUnits.values().stream()
+                .filter(ou -> ou.getUnitType() == type)
+                .filter(ou -> ou.getDestroyedFrame() == null)
+                .filter(ObservedUnit::isCompleted)
+                .filter(ou -> isNearAnyPosition(ou, positions, distance))
+                .collect(Collectors.toList());
+    }
+
     public int getLivingBuildingCountNearPositions(Set<Position> positions, int distance) {
         return (int) observedUnits.values().stream()
                 .filter(ou -> ou.getUnitType().isBuilding())
