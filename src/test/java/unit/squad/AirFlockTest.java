@@ -51,7 +51,46 @@ class AirFlockTest {
             assertEquals(shared, target);
         }
         assertTrue(shared.getY() < anchor.getY());
-        assertEquals(AirFlock.RETREAT_FLEE_DISTANCE, shared.getDistance(anchor), 1.5);
+        assertTrue(shared.getDistance(anchor) >= AirFlock.RETREAT_FLEE_DISTANCE - 1);
+    }
+
+    @Test
+    void aMemberAheadOnTheFleeSideStaysTheFleeDistanceShortOfTheSharedPoint() {
+        Map<Integer, Position> members = flock(new Position(2000, 2000), new Position(2040, 2000),
+                new Position(2000, 2040), new Position(2000, 1760));
+        List<Position> enemies = Collections.singletonList(new Position(2000, 2200));
+
+        Map<Integer, Position> targets = AirFlock.retreatTargets(members, enemies, MAP, MAP);
+
+        Position shared = targets.get(1);
+        assertEquals(new Position(2000, 1760 - AirFlock.RETREAT_FLEE_DISTANCE), shared);
+        for (Position member : members.values()) {
+            assertTrue(member.getDistance(shared) >= AirFlock.RETREAT_FLEE_DISTANCE - 1);
+        }
+    }
+
+    @Test
+    void theRegroupingCountIsNotReportedInRetreat() {
+        Set<Integer> regrouping = new HashSet<>(Arrays.asList(3, 4));
+
+        assertEquals(2, AirFlock.regroupingCount(SquadStatus.FIGHT, regrouping));
+        assertEquals(2, AirFlock.regroupingCount(SquadStatus.HARASS, regrouping));
+        assertEquals(-1, AirFlock.regroupingCount(SquadStatus.RETREAT, regrouping));
+    }
+
+    @Test
+    void aStragglerInsideAnAvoidedZoneStepsOutOfItFirst() {
+        Position straggler = new Position(2400, 2100);
+        Position anchor = new Position(1800, 2000);
+        AirHarassTargeting.AirThreat turret = turret(new Position(2400, 2000));
+        List<AirHarassTargeting.AirThreat> zones = Collections.singletonList(turret);
+        assertTrue(turret.margin(straggler, AirHarassTargeting.padding()) <= 0);
+
+        Position step = AirHarassTargeting.regroupPoint(straggler, zones, anchor, point -> true);
+
+        assertNotNull(step);
+        assertTrue(turret.margin(step, AirHarassTargeting.padding())
+                > turret.margin(straggler, AirHarassTargeting.padding()));
     }
 
     @Test

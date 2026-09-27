@@ -28,10 +28,8 @@ public final class AirFlock {
     static final int REGROUP_JOIN_RADIUS = 96;
     /** Tuning value: pixels around each member within which an enemy pushes the flock's retreat point. */
     static final int RETREAT_SCAN_RADIUS = 256;
-    /** Tuning value: pixels from the anchor to the flock's retreat point. */
+    /** Tuning value: pixels past the flock's leading member to the flock's retreat point. */
     static final int RETREAT_FLEE_DISTANCE = 256;
-    /** Tuning value: pixels within which a squad-mate keeps a dying Mutalisk from counting as alone. */
-    public static final int ALONE_RADIUS = 256;
 
     private AirFlock() {
     }
@@ -88,6 +86,18 @@ public final class AirFlock {
     }
 
     /**
+     * How many members regroup, as telemetry reports it: -1 in RETREAT, where the flock flees to one point and
+     * nothing regroups.
+     *
+     * @param status the squad's status
+     * @param regrouping unit ids regrouping
+     * @return the count, or -1 in RETREAT
+     */
+    public static int regroupingCount(SquadStatus status, Set<Integer> regrouping) {
+        return status == SquadStatus.RETREAT ? -1 : regrouping.size();
+    }
+
+    /**
      * The retreat target of every member of a retreating flock: the one {@link #retreatPoint} of its anchor, the
      * same for every member, or null for every member with no enemy near the flock.
      *
@@ -108,9 +118,11 @@ public final class AirFlock {
     }
 
     /**
-     * The one point every member of a retreating flock flees to: {@link #RETREAT_FLEE_DISTANCE} from the anchor,
-     * directly away from the summed offsets of every enemy within {@link #RETREAT_SCAN_RADIUS} of any member, kept
-     * inside the map.
+     * The one point every member of a retreating flock flees to: directly away from the summed offsets from the
+     * anchor of every enemy within {@link #RETREAT_SCAN_RADIUS} of any member, {@link #RETREAT_FLEE_DISTANCE} past the
+     * member farthest along that direction, or past the anchor when no member is ahead of it, kept inside the map.
+     * Measuring from the leading member keeps every member at least the flee distance short of the point, so none
+     * arrives at it and swaps it for a flee point of its own.
      *
      * @param anchor the flock's anchor
      * @param members member positions
@@ -139,8 +151,15 @@ public final class AirFlock {
         if (!found || length == 0) {
             return null;
         }
-        int x = anchor.getX() - (int) Math.round(sumDx / length * RETREAT_FLEE_DISTANCE);
-        int y = anchor.getY() - (int) Math.round(sumDy / length * RETREAT_FLEE_DISTANCE);
+        double dirX = -sumDx / length;
+        double dirY = -sumDy / length;
+        double lead = 0;
+        for (Position member : members) {
+            lead = Math.max(lead, (member.getX() - anchor.getX()) * dirX + (member.getY() - anchor.getY()) * dirY);
+        }
+        double flee = lead + RETREAT_FLEE_DISTANCE;
+        int x = anchor.getX() + (int) Math.round(dirX * flee);
+        int y = anchor.getY() + (int) Math.round(dirY * flee);
         return new Position(Math.max(0, Math.min(x, mapWidth - 1)), Math.max(0, Math.min(y, mapHeight - 1)));
     }
 

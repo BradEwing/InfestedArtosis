@@ -236,7 +236,7 @@ public class SquadManager {
                     .centroid(centroid)
                     .medianDistance(AirFlock.median(distances))
                     .maxDistance(distances.get(distances.size() - 1))
-                    .regrouping(squad.getRegroupingIds().size())
+                    .regrouping(AirFlock.regroupingCount(status, squad.getRegroupingIds()))
                     .build());
         }
     }
@@ -255,11 +255,9 @@ public class SquadManager {
         }
         Squad owner = null;
         for (Squad squad : fightSquads) {
-            for (ManagedUnit member : squad.getMembers()) {
-                if (member.getUnit() == unit) {
-                    owner = squad;
-                    break;
-                }
+            if (squad.getMembers().stream().anyMatch(member -> member.getUnit() == unit)) {
+                owner = squad;
+                break;
             }
         }
         FlockRow.FlockRowBuilder row = FlockRow.builder()

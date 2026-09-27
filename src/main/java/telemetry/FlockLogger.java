@@ -10,10 +10,11 @@ import java.util.List;
  *
  * <p>SAMPLE rows are written every {@link #SAMPLE_INTERVAL_FRAMES} frames for each air squad with at least two
  * Mutalisks in FIGHT, HARASS or RETREAT: its Mutalisk count, their centroid, the median and largest Mutalisk
- * distance to that centroid, and how many Mutalisks are regrouping on the flock. MUTA_LOST rows are written for every
+ * distance to that centroid, and how many Mutalisks are regrouping on the flock, -1 in RETREAT, where a flock flees
+ * together and nothing regroups. MUTA_LOST rows are written for every
  * Mutalisk of ours that dies: its squad, if any, the squad's status and Mutalisk count including the dead one, the
  * death position in centroid_x and centroid_y, and nearest_mate_distance, the pixels to the nearest other member of
- * its squad, or -1 with none.
+ * its squad, or -1 with none; a Mutalisk with no squad-mate within 256 pixels died alone.
  *
  * <p>Constructed only when combat telemetry is enabled.
  */
