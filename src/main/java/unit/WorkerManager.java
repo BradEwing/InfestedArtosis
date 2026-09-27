@@ -12,6 +12,7 @@ import macro.SupplyCapacity;
 import macro.plan.Plan;
 import macro.plan.PlanCancelSource;
 import macro.plan.PlanType;
+import strategy.buildorder.BuildOrder;
 import unit.managed.ManagedUnit;
 import unit.managed.UnitRole;
 import util.Distance;
@@ -66,11 +67,21 @@ public class WorkerManager {
         checksLarvaDeadlock();
         handleLarvaDeadlock();
 
-        if (gameState.isScvRushed()) {
+        if (isGasHeld()) {
             cutGasHarvesting();
         } else {
             rebalanceCheck();
         }
+    }
+
+    /**
+     * Whether no drone may gather gas: an SCV rush is on, or the active build order has taken all
+     * the gas it wants.
+     */
+    private boolean isGasHeld() {
+        BuildOrder activeBuildOrder = gameState.getActiveBuildOrder();
+        return gameState.isScvRushed()
+                || activeBuildOrder != null && activeBuildOrder.holdsGasHarvesting(gameState);
     }
 
     public void onUnitComplete(ManagedUnit managedUnit) {
@@ -146,7 +157,7 @@ public class WorkerManager {
     // onExtractorComplete is called when an extractor is complete, to immediately pull 3 mineral gathering drones
     // onto the extractor
     public void onExtractorComplete(Unit unit) {
-        if (gameState.isScvRushed()) {
+        if (isGasHeld()) {
             return;
         }
 

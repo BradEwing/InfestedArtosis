@@ -20,5 +20,6 @@ public enum PlanCancelReason {
     POSITION_INVALID,
     RESEARCH_INTERRUPTED,
     ALREADY_IMPOSSIBLE,
+    EXTRACTOR_TRICK,
     UNKNOWN,
 }
