@@ -15,6 +15,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Predicate;
 import java.util.function.ToIntFunction;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -708,7 +709,17 @@ public class BaseDataTest {
     }
 
     private static String techBase(Set<String> heldOrMorphing, Set<String> held) {
-        return BaseData.techBuildingBase(MAIN, heldOrMorphing::contains, held, Comparator.naturalOrder());
+        return firstTechBase(heldOrMorphing, held, base -> true);
+    }
+
+    private static String techBase(Set<String> heldOrMorphing, Set<String> held, Set<String> withSite) {
+        return firstTechBase(heldOrMorphing, held, withSite::contains);
+    }
+
+    private static String firstTechBase(Set<String> heldOrMorphing, Set<String> held, Predicate<String> hasSite) {
+        return BaseData.firstBaseWithSite(
+                BaseData.techBuildingBases(MAIN, heldOrMorphing::contains, held, Comparator.naturalOrder()),
+                hasSite);
     }
 
     @Test
@@ -733,6 +744,86 @@ public class BaseDataTest {
     @Test
     void noTechBuildingBaseOnceEveryBaseIsLost() {
         assertNull(techBase(bases(), bases()));
+    }
+
+    @Test
+    void aHeldMainWithNoSiteSendsTechBuildingsToAnotherHeldBase() {
+        Set<String> held = bases(MAIN, NATURAL, THIRD);
+
+        assertSame(NATURAL, techBase(held, held, bases(NATURAL, THIRD)));
+        assertSame(THIRD, techBase(held, held, bases(THIRD)));
+    }
+
+    @Test
+    void noTechBuildingBaseWhenNoHeldBaseHasASite() {
+        Set<String> held = bases(MAIN, NATURAL);
+
+        assertNull(techBase(held, held, bases()));
+        assertNull(techBase(held, held, bases(THIRD)));
+    }
+
+    @Test
+    void theHeldMainIsTriedFirstAndOnlyOnceAheadOfTheTieBreak() {
+        Set<String> held = bases(MAIN, NATURAL, THIRD);
+
+        assertEquals(Arrays.asList(THIRD, MAIN, NATURAL),
+                BaseData.techBuildingBases(THIRD, held::contains, held, Comparator.naturalOrder()));
+    }
+
+    @Test
+    void aLostMainIsNotTried() {
+        Set<String> held = bases(NATURAL, THIRD);
+
+        assertEquals(Arrays.asList(NATURAL, THIRD),
+                BaseData.techBuildingBases(MAIN, held::contains, held, Comparator.naturalOrder()));
+    }
+
+    @Test
+    void aGasBaseIsPickedOverANearerMineralOnlyBase() {
+        HashMap<String, Integer> score = new HashMap<>();
+        score.put(NATURAL, 100);
+        score.put(THIRD, 300);
+        score.put(FOURTH, 200);
+        Set<String> gas = bases(THIRD, FOURTH);
+
+        assertEquals(FOURTH, BaseData.bestExpansion(Arrays.asList(NATURAL, THIRD, FOURTH), gas::contains, true,
+                score::get));
+    }
+
+    @Test
+    void aMineralOnlyBaseIsTakenWhenNoGasBaseIsLeft() {
+        HashMap<String, Integer> score = new HashMap<>();
+        score.put(NATURAL, 100);
+        score.put(THIRD, 300);
+
+        assertEquals(NATURAL, BaseData.bestExpansion(Arrays.asList(THIRD, NATURAL), bases()::contains, true,
+                score::get));
+    }
+
+    @Test
+    void withoutTheGasPreferenceTheLowestScoreIsPicked() {
+        HashMap<String, Integer> score = new HashMap<>();
+        score.put(NATURAL, 100);
+        score.put(THIRD, 300);
+        Set<String> gas = bases(THIRD);
+
+        assertEquals(NATURAL, BaseData.bestExpansion(Arrays.asList(THIRD, NATURAL), gas::contains, false,
+                score::get));
+    }
+
+    @Test
+    void theFirstOfEquallyScoredCandidatesIsPicked() {
+        HashMap<String, Integer> score = new HashMap<>();
+        score.put(NATURAL, 100);
+        score.put(THIRD, 100);
+
+        assertEquals(THIRD, BaseData.bestExpansion(Arrays.asList(THIRD, NATURAL), bases()::contains, false,
+                score::get));
+    }
+
+    @Test
+    void noExpansionFromNoCandidates() {
+        assertNull(BaseData.bestExpansion(new ArrayList<String>(), bases()::contains, true, s -> 0));
     }
 
     @Test

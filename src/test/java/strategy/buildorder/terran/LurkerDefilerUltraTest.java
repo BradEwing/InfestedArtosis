@@ -416,4 +416,26 @@ class LurkerDefilerUltraTest {
             assertTrue(priority > LurkerDefilerUltra.DEFILER_RESEARCH_PRIORITY, upgrade.toString());
         }
     }
+
+    @Test
+    void aTechBuildingWithNoSiteIsLookedForAgainOnlyAfterTheRetryWait() {
+        LurkerDefilerUltra.TechSiteRetry retry = new LurkerDefilerUltra.TechSiteRetry();
+        assertTrue(retry.mayLook(UnitType.Zerg_Queens_Nest, 1000));
+
+        retry.noSite(UnitType.Zerg_Queens_Nest, 1000);
+
+        assertFalse(retry.mayLook(UnitType.Zerg_Queens_Nest, 1000 + LurkerDefilerUltra.TECH_SITE_RETRY_FRAMES - 1));
+        assertTrue(retry.mayLook(UnitType.Zerg_Queens_Nest, 1000 + LurkerDefilerUltra.TECH_SITE_RETRY_FRAMES));
+    }
+
+    @Test
+    void aTechBuildingWithNoSiteDoesNotHoldBackAnotherBuilding() {
+        LurkerDefilerUltra.TechSiteRetry retry = new LurkerDefilerUltra.TechSiteRetry();
+
+        retry.noSite(UnitType.Zerg_Evolution_Chamber, 1000);
+
+        assertTrue(retry.mayLook(UnitType.Zerg_Queens_Nest, 1001));
+        assertTrue(retry.mayLook(UnitType.Zerg_Defiler_Mound, 1001));
+        assertFalse(retry.mayLook(UnitType.Zerg_Evolution_Chamber, 1001));
+    }
 }

@@ -7,7 +7,6 @@ import bwapi.UnitType;
 import bwem.Base;
 import info.map.GameMap;
 import info.map.GroundPath;
-import info.map.GroundPathComparator;
 import info.map.MapTile;
 import info.map.StartingLocationPaths;
 import lombok.Getter;
@@ -16,6 +15,7 @@ import macro.plan.PlanCancelReason;
 import telemetry.PlanEvents;
 import util.Distance;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Predicate;
+import java.util.function.ToDoubleFunction;
 import java.util.function.ToIntFunction;
 import java.util.stream.Collectors;
 
@@ -483,12 +484,23 @@ public class BaseData {
      * @param currentFrame frame the reservation is made on, which expires stale backoffs
      */
     public Base reserveBase(int currentFrame) {
+        return reserveBase(currentFrame, false);
+    }
+
+    /**
+     * Reserves the next expansion as {@link #reserveBase(int)} does. With {@code preferGas} the base is picked
+     * among those with a geyser while any is available, and a mineral-only base only when none is.
+     *
+     * @param currentFrame frame the reservation is made on, which expires stale backoffs
+     * @param preferGas whether a base with no geyser is skipped while a base with one is available
+     */
+    public Base reserveBase(int currentFrame, boolean preferGas) {
         if (!isExpansionAvailable(expansionHeldUntil, currentFrame)) {
             return null;
         }
 
         expansionBackoffUntil.values().removeIf(until -> isExpansionAvailable(until, currentFrame));
-        final Base base = this.findNewBase(expansionBackoffUntil.keySet());
+        final Base base = this.findNewBase(expansionBackoffUntil.keySet(), preferGas);
         if (base == null) {
             return null;
         }
@@ -844,32 +856,55 @@ public class BaseData {
     }
 
     /**
-     * The base tech buildings are placed at. See {@link #techBuildingBase(Object, Predicate, Collection,
-     * Comparator)}; ties go to the lower tile location.
+     * The bases tech buildings are placed at, in the order they are tried. See {@link #techBuildingBases(Object,
+     * Predicate, Collection, Comparator)}; other held bases are tried in tile location order.
      *
-     * @return the base to place a tech building at, or null when we hold no base
+     * @return the bases to try, empty when we hold no base
      */
-    public Base techBuildingBase() {
-        return techBuildingBase(mainBase, this::isHeldOrMorphing, myBases, BY_TILE_LOCATION);
+    public List<Base> techBuildingBases() {
+        return techBuildingBases(mainBase, this::isHeldOrMorphing, myBases, BY_TILE_LOCATION);
     }
 
     /**
-     * Picks the base tech buildings are placed at: the main while a hatchery of ours stands or
-     * morphs on it, otherwise the first held base in {@code tieBreak} order, so a building lost
-     * with the main is rebuilt where we still hold ground rather than in the enemy's hands.
+     * The bases a tech building is placed at, in the order they are tried: the main first while a hatchery of
+     * ours stands or morphs on it, then every other held base in {@code tieBreak} order. The building goes to the
+     * first with room on creep, so a main with no free site, or one lost to the enemy, does not hold it back
+     * while another base we hold has room.
      *
      * @param main our main
      * @param heldOrMorphing whether a hatchery of ours stands or morphs on a base
      * @param heldBases bases a completed hatchery of ours stands on
-     * @param tieBreak order among held bases
-     * @return the base to place a tech building at, or null when the main is lost and no base is held
+     * @param tieBreak order among the held bases after the main
+     * @return the bases to try, empty when the main is lost and no base is held
      */
-    static <T> T techBuildingBase(T main, Predicate<T> heldOrMorphing, Collection<T> heldBases,
-                                  Comparator<? super T> tieBreak) {
-        if (main != null && heldOrMorphing.test(main)) {
-            return main;
+    static <T> List<T> techBuildingBases(T main, Predicate<T> heldOrMorphing, Collection<T> heldBases,
+                                         Comparator<? super T> tieBreak) {
+        List<T> bases = new ArrayList<>();
+        boolean mainHeld = main != null && heldOrMorphing.test(main);
+        if (mainHeld) {
+            bases.add(main);
         }
-        return heldBases.stream().min(tieBreak).orElse(null);
+        heldBases.stream()
+                .filter(base -> !mainHeld || !base.equals(main))
+                .sorted(tieBreak)
+                .forEach(bases::add);
+        return bases;
+    }
+
+    /**
+     * The first base with room for a building, in the order given.
+     *
+     * @param bases the bases to try, from {@link #techBuildingBases()}
+     * @param hasSite whether a base has room on creep for the building
+     * @return the first base with room, or null when none has
+     */
+    static <T> T firstBaseWithSite(List<T> bases, Predicate<T> hasSite) {
+        for (T base : bases) {
+            if (hasSite.test(base)) {
+                return base;
+            }
+        }
+        return null;
     }
 
     /**
@@ -961,13 +996,14 @@ public class BaseData {
      * @return the best candidate base according to the criteria, or null if no valid base is available.
      */
     public Base findNewBase() {
-        return findNewBase(Collections.emptySet());
+        return findNewBase(Collections.emptySet(), false);
     }
 
     /**
      * @param excluded bases held out of selection, such as those in expansion backoff
+     * @param preferGas whether the candidates are narrowed to the bases with a geyser while any is left
      */
-    private Base findNewBase(Set<Base> excluded) {
+    private Base findNewBase(Set<Base> excluded, boolean preferGas) {
         // Build a list of candidate bases that are not already reserved.
         List<Map.Entry<Base, GroundPath>> potential = this.availableBases.entrySet()
                 .stream()
@@ -983,34 +1019,50 @@ public class BaseData {
                     .collect(Collectors.toList());
         }
 
-        if (potential.isEmpty()) {
-            return null;
+        ToDoubleFunction<Map.Entry<Base, GroundPath>> score;
+        if (knowEnemyMainBase()) {
+            TilePosition enemyMain = getMainEnemyBase().getLocation();
+            score = e -> e.getValue().getGroundDistance() - e.getKey().getLocation().getDistance(enemyMain);
+        } else {
+            score = e -> e.getValue().getGroundDistance();
         }
 
-        if (knowEnemyMainBase()) {
-            Base enemyBase = getMainEnemyBase();
-            // Compute a score for each candidate: lower is better.
-            // score = (ground path distance from main base) - (Euclidean distance to enemy main base)
-            // This favors bases that are near our main base and far from the enemy.
-            try {
-                return potential.stream()
-                        .min((e1, e2) -> {
-                            double score1 = e1.getValue().getGroundDistance() -
-                                    e1.getKey().getLocation().getDistance(enemyBase.getLocation());
-                            double score2 = e2.getValue().getGroundDistance() -
-                                    e2.getKey().getLocation().getDistance(enemyBase.getLocation());
-                            return Double.compare(score1, score2);
-                        })
-                        .map(Map.Entry::getKey)
-                        .orElse(null);
-            } catch (Exception e) {
-                return null;
-            }
-        } else {
-            // Otherwise, sort solely by the ground path distance from our main base.
-            potential.sort(Map.Entry.comparingByValue(new GroundPathComparator()));
-            return potential.get(0).getKey();
+        try {
+            Map.Entry<Base, GroundPath> best = bestExpansion(potential, e -> !mineralOnlyBase.contains(e.getKey()),
+                    preferGas, score);
+            return best == null ? null : best.getKey();
+        } catch (Exception e) {
+            return null;
         }
+    }
+
+    /**
+     * Picks an expansion among the candidates: the lowest score, the first such candidate on a tie. With
+     * {@code preferGas} only the candidates with a geyser are scored while any is left.
+     *
+     * <p>{@link #findNewBase(Set, boolean)} scores a base by its ground distance from our main, less its distance
+     * to the enemy main once that is known, so the pick is the nearest base by ground that also lies away from
+     * the enemy.
+     *
+     * @param candidates the bases open to expansion
+     * @param hasGas whether a base has a geyser
+     * @param preferGas whether a base with no geyser is skipped while a base with one is a candidate
+     * @param score lower is better
+     * @return the pick, or null when there is no candidate
+     */
+    static <T> T bestExpansion(List<T> candidates, Predicate<T> hasGas, boolean preferGas,
+                               ToDoubleFunction<T> score) {
+        List<T> pool = candidates;
+        if (preferGas && candidates.stream().anyMatch(hasGas)) {
+            pool = candidates.stream().filter(hasGas).collect(Collectors.toList());
+        }
+        T best = null;
+        for (T candidate : pool) {
+            if (best == null || score.applyAsDouble(candidate) < score.applyAsDouble(best)) {
+                best = candidate;
+            }
+        }
+        return best;
     }
 
     /**

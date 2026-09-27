@@ -427,7 +427,16 @@ public class GameState {
     }
 
     public Base reserveBase() {
-        return baseData.reserveBase(getGameTime().getFrames());
+        return reserveBase(false);
+    }
+
+    /**
+     * Reserves the next expansion, see {@link BaseData#reserveBase(int, boolean)}.
+     *
+     * @param preferGas whether a base with no geyser is skipped while a base with one is available
+     */
+    public Base reserveBase(boolean preferGas) {
+        return baseData.reserveBase(getGameTime().getFrames(), preferGas);
     }
 
     public void claimBase(Unit hatchery) {
@@ -1513,32 +1522,32 @@ public class GameState {
     }
 
     /**
-     * Picks and reserves a site for a tech building at {@link BaseData#techBuildingBase()}: the
-     * main while we hold it, otherwise another base we hold.
+     * Picks and reserves a site for a tech building at the first of {@link BaseData#techBuildingBases()} with room
+     * on creep: the main while we hold it and it has room, otherwise another base we hold.
      *
      * @param unitType the tech building
-     * @return the site, or null when no base is held or the base has no room on creep
+     * @return the site, or null when no held base has room on creep
      */
     public TilePosition getTechBuildingLocation(UnitType unitType) {
-        Base base = baseData.techBuildingBase();
-        if (base == null) {
-            return null;
+        for (Base base : baseData.techBuildingBases()) {
+            TilePosition position = buildingPlanner.getLocationForTechBuilding(base, unitType);
+            if (position != null) {
+                buildingPlanner.reservePlannedBuildingTiles(position, unitType);
+                return position;
+            }
         }
-        TilePosition position = buildingPlanner.getLocationForTechBuilding(base, unitType);
-        buildingPlanner.reservePlannedBuildingTiles(position, unitType);
-        return position;
+        return null;
     }
 
     /**
-     * Whether {@link #getTechBuildingLocation} would find a site for the building now. Reserves
-     * nothing.
+     * The base {@link #getTechBuildingLocation} would place the building at now. Reserves nothing.
      *
      * @param unitType the tech building
-     * @return true when a base is held and it has room on creep for the building
+     * @return the first held base with room on creep for the building, or null when none has
      */
-    public boolean hasTechBuildingSite(UnitType unitType) {
-        Base base = baseData.techBuildingBase();
-        return base != null && buildingPlanner.getLocationForTechBuilding(base, unitType) != null;
+    public Base techBuildingSiteBase(UnitType unitType) {
+        return BaseData.firstBaseWithSite(baseData.techBuildingBases(),
+                base -> buildingPlanner.getLocationForTechBuilding(base, unitType) != null);
     }
 
     /**

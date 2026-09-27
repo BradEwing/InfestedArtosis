@@ -213,6 +213,14 @@ public final class PlanEvents {
         current.onBuildOrderTransition(transitionLabel);
     }
 
+    public static void techSiteMiss(UnitType building, TilePosition siteBase) {
+        PlanEventSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onTechSiteMiss(building, siteBase);
+    }
+
 
     public static void baseLost(TilePosition base, boolean innerBase) {
         PlanEventSink current = sink;

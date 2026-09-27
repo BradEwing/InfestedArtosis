@@ -83,8 +83,10 @@ public class ThreeHatchLurker extends TerranBase {
 
         // Check for floating resources (follows OneHatchSpire pattern)
         boolean floatingMinerals = gameState.isFloatingMinerals();
+        int basesHeldOrReserved = baseData.currentAndReservedCount();
         boolean wantExpansion = behindOnBases(gameState) || floatingMinerals
-                || wantsHandoverBase(gameState.totalProduced(UnitType.Zerg_Lurker), baseData.currentAndReservedCount());
+                || LurkerDefilerUltraTransition.wantsThirdBase(gameState.getGameTime(), baseCount, basesHeldOrReserved)
+                || wantsHandoverBase(gameState.totalProduced(UnitType.Zerg_Lurker), basesHeldOrReserved);
 
         final int desiredSunkenColonies = this.requiredSunkens(gameState);
         if (!gameState.basesNeedingSunken(desiredSunkenColonies).isEmpty()) {
@@ -98,7 +100,8 @@ public class ThreeHatchLurker extends TerranBase {
 
         Plan expansionPlan = null;
         if (wantNatural || wantExpansion) {
-            expansionPlan = this.planNewBase(gameState);
+            expansionPlan = this.planNewBase(gameState,
+                    LurkerDefilerUltraTransition.prefersGasBase(basesHeldOrReserved));
             if (expansionPlan != null) {
                 plans.add(expansionPlan);
             }
@@ -264,8 +267,7 @@ public class ThreeHatchLurker extends TerranBase {
     /**
      * Whether the build takes a base for the handover to {@link LurkerDefilerUltra}: once its
      * Lurker trigger holds and it holds or has reserved fewer bases than the handover's economy
-     * gate needs. The third Hatchery the build opens with is a macro Hatchery, which the gate does
-     * not count as a base.
+     * gate needs. A macro Hatchery taken ahead of the third base does not count as a base.
      *
      * @param lurkersMorphed Lurkers this game has produced
      * @param basesHeldOrReserved bases we hold or have reserved for a queued hatchery

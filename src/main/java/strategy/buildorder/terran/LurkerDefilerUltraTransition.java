@@ -45,6 +45,17 @@ public final class LurkerDefilerUltraTransition {
     /** Lurkers 3HatchLurker has morphed before it hands over. Owner decision. */
     static final int LURKER_TRIGGER = 4;
 
+    /** Bases held before the third base is asked for: the main and the natural. */
+    static final int THIRD_BASE_AFTER_BASES = ECONOMY_BASES - 1;
+
+    /**
+     * The game time from which 2HatchMuta and 3HatchLurker ask for their third base. Owner
+     * decision to take it earlier. Before this, 3HatchLurker's own third base was queued at about
+     * 8:00, after a macro Hatchery at about 6:40, and 2HatchMuta's at about 5:55, once six
+     * Mutalisks were out. Set at 5:00, ahead of both.
+     */
+    static final Time THIRD_BASE_DUE = new Time(5, 0);
+
     /** What opened a build's transition, written to the BUILD_ORDER_TRANSITION row. */
     public enum Trigger {
         /** 2HatchMuta saw {@value #GOLIATH_TRIGGER} living Goliaths. */
@@ -84,6 +95,33 @@ public final class LurkerDefilerUltraTransition {
      */
     static Trigger threeHatchLurkerTrigger(int lurkersMorphed) {
         return lurkersMorphed >= LURKER_TRIGGER ? Trigger.LURKERS : null;
+    }
+
+    /**
+     * Whether 2HatchMuta or 3HatchLurker asks for its third base: from {@link #THIRD_BASE_DUE},
+     * once the main and natural stand, while fewer than {@value #ECONOMY_BASES} bases are held or
+     * reserved.
+     *
+     * @param gameTime current game time
+     * @param bases bases with a hatchery of ours
+     * @param basesHeldOrReserved bases we hold or have reserved for a queued hatchery
+     * @return true while the third base should be requested
+     */
+    static boolean wantsThirdBase(Time gameTime, int bases, int basesHeldOrReserved) {
+        return gameTime.getFrames() >= THIRD_BASE_DUE.getFrames()
+                && bases >= THIRD_BASE_AFTER_BASES
+                && basesHeldOrReserved < ECONOMY_BASES;
+    }
+
+    /**
+     * Whether an expansion 2HatchMuta or 3HatchLurker asks for goes to a base with a geyser: while
+     * the third base, which the handover gate counts, is neither held nor reserved.
+     *
+     * @param basesHeldOrReserved bases we hold or have reserved for a queued hatchery
+     * @return true when the expansion should skip bases with no geyser while one with a geyser is left
+     */
+    static boolean prefersGasBase(int basesHeldOrReserved) {
+        return basesHeldOrReserved < ECONOMY_BASES;
     }
 
     /**

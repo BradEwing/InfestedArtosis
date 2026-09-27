@@ -681,11 +681,20 @@ public abstract class BuildOrder {
      * this frame, so a cancelled expansion is not re-created on the following frame.
      */
     protected Plan planNewBase(GameState gameState) {
+        return planNewBase(gameState, false);
+    }
+
+    /**
+     * Plans a hatchery that claims a base, as {@link #planNewBase(GameState)} does.
+     *
+     * @param preferGas whether a base with no geyser is skipped while a base with one is available
+     */
+    protected Plan planNewBase(GameState gameState, boolean preferGas) {
         if (!gameState.mayQueueExpansionHatchery()) {
             return null;
         }
 
-        Base base = gameState.reserveBase();
+        Base base = gameState.reserveBase(preferGas);
         if (base == null) {
             return null;
         }

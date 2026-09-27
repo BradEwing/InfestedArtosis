@@ -183,6 +183,39 @@ class LurkerDefilerUltraTransitionTest {
         assertEquals("2HatchMuta;LurkerDefilerUltra", chain.join());
     }
 
+    @Test
+    void theThirdBaseIsRequestedFromItsDueTimeOnceTheNaturalStands() {
+        Time due = LurkerDefilerUltraTransition.THIRD_BASE_DUE;
+        Time justBefore = new Time(due.getFrames() - 1);
+
+        assertFalse(LurkerDefilerUltraTransition.wantsThirdBase(justBefore, 2, 2));
+        assertTrue(LurkerDefilerUltraTransition.wantsThirdBase(due, 2, 2));
+        assertTrue(LurkerDefilerUltraTransition.wantsThirdBase(EARLY, 2, 2));
+    }
+
+    @Test
+    void theThirdBaseIsDueAheadOfBothBuildsEarlierThirdBases() {
+        assertTrue(LurkerDefilerUltraTransition.THIRD_BASE_DUE.getFrames() < new Time(5, 55).getFrames());
+    }
+
+    @Test
+    void theThirdBaseWaitsForTheNatural() {
+        assertFalse(LurkerDefilerUltraTransition.wantsThirdBase(EARLY, 1, 2));
+    }
+
+    @Test
+    void theThirdBaseIsNotRequestedAgainOnceReservedOrHeld() {
+        assertFalse(LurkerDefilerUltraTransition.wantsThirdBase(EARLY, 2, 3));
+        assertFalse(LurkerDefilerUltraTransition.wantsThirdBase(EARLY, 3, 3));
+    }
+
+    @Test
+    void expansionsPreferAGasBaseUntilTheThirdBaseIsHeldOrReserved() {
+        assertTrue(LurkerDefilerUltraTransition.prefersGasBase(2));
+        assertFalse(LurkerDefilerUltraTransition.prefersGasBase(3));
+        assertFalse(LurkerDefilerUltraTransition.prefersGasBase(4));
+    }
+
     private static void assertOffersOnlyLurkerDefilerUltra(Set<BuildOrder> candidates) {
         assertEquals(1, candidates.size());
         assertEquals(LurkerDefilerUltra.NAME, candidates.iterator().next().getName());

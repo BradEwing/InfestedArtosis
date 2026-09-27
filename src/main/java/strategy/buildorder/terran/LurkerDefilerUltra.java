@@ -3,6 +3,7 @@ package strategy.buildorder.terran;
 import bwapi.TechType;
 import bwapi.UnitType;
 import bwapi.UpgradeType;
+import bwem.Base;
 import info.BaseData;
 import info.GameState;
 import info.Readiness;
@@ -13,12 +14,15 @@ import macro.plan.Plan;
 import macro.plan.UnitPlan;
 import strategy.buildorder.ArmyUpgradeTrigger;
 import strategy.buildorder.LarvaBoundMacroHatchery;
+import telemetry.PlanEvents;
 import util.Time;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -104,7 +108,10 @@ public class LurkerDefilerUltra extends TerranBase {
      */
     static final int BASE_REQUEST_LARVA_MARGIN = 2;
 
-    /** Frames the build waits after finding no site for a tech building before it looks again. */
+    /**
+     * Frames the build waits after finding no site for a tech building at any held base before it
+     * looks again for that building. Other buildings are not held back.
+     */
     static final int TECH_SITE_RETRY_FRAMES = 240;
 
     /** Lurkers the build aims for. Liquipedia: about a control group of Lurkers. */
@@ -148,8 +155,36 @@ public class LurkerDefilerUltra extends TerranBase {
         NONE
     }
 
-    /** Frame before which no tech building site is looked for again, after a look found none. */
-    private int techSiteRetryFrame = 0;
+    /**
+     * When each tech building may be looked for again, after a look found no site for it at any
+     * held base.
+     */
+    static final class TechSiteRetry {
+
+        private final Map<UnitType, Integer> retryFrames = new HashMap<>();
+
+        /**
+         * @param building the tech building
+         * @param frame the current frame
+         * @return false within {@value #TECH_SITE_RETRY_FRAMES} frames of the last look that found no site for
+         *     this building
+         */
+        boolean mayLook(UnitType building, int frame) {
+            return frame >= retryFrames.getOrDefault(building, 0);
+        }
+
+        /**
+         * Holds back the next look for this building, and only this building.
+         *
+         * @param building the tech building no site was found for
+         * @param frame the current frame
+         */
+        void noSite(UnitType building, int frame) {
+            retryFrames.put(building, frame + TECH_SITE_RETRY_FRAMES);
+        }
+    }
+
+    private final TechSiteRetry techSiteRetry = new TechSiteRetry();
 
     public LurkerDefilerUltra() {
         super(NAME);
@@ -428,21 +463,26 @@ public class LurkerDefilerUltra extends TerranBase {
     }
 
     /**
-     * Whether a site for the tech building exists at {@link info.BaseData#techBuildingBase()}. A
-     * building planned with none is sent to the main, where it waits with no build position for
-     * as long as the main is lost. After a look finds no site, none is looked for again for
+     * Whether any of {@link info.BaseData#techBuildingBases()} has a site for the tech building:
+     * the main first, then every other held base. A building planned with none is left with no
+     * build position. A look that finds no site at the main writes a TECH_SITE_MISS row, and a look
+     * that finds none anywhere holds back the next look for that building for
      * {@value #TECH_SITE_RETRY_FRAMES} frames.
      */
     private boolean hasTechSite(GameState gameState, UnitType building) {
         int frame = gameState.getGameTime().getFrames();
-        if (frame < techSiteRetryFrame) {
+        if (!techSiteRetry.mayLook(building, frame)) {
             return false;
         }
-        if (gameState.hasTechBuildingSite(building)) {
-            return true;
+        Base siteBase = gameState.techBuildingSiteBase(building);
+        if (siteBase != gameState.getBaseData().getMainBase()) {
+            PlanEvents.techSiteMiss(building, siteBase == null ? null : siteBase.getLocation());
         }
-        techSiteRetryFrame = frame + TECH_SITE_RETRY_FRAMES;
-        return false;
+        if (siteBase == null) {
+            techSiteRetry.noSite(building, frame);
+            return false;
+        }
+        return true;
     }
 
     /**
