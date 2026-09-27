@@ -131,6 +131,28 @@ class TerranWallMainTest {
     }
 
     @Test
+    void productionInsideTheMainOnThePathOutIsNotAnExitWall() {
+        Predicate<TilePosition> wholeMainOnThePath = tile -> true;
+
+        assertNull(TerranWallMain.evidence(Arrays.asList(barracks(49, 39), depot(53, 39)), Collections.emptyList(),
+                tile -> false, wholeMainOnThePath, MAIN_DEPOT_CENTRE, FAR_NATURAL_DEPOT_CENTRE));
+        assertNull(TerranWallMain.evidence(Arrays.asList(barracks(50, 39), depot(54, 39)), Collections.emptyList(),
+                tile -> false, wholeMainOnThePath, MAIN_DEPOT_CENTRE, FAR_NATURAL_DEPOT_CENTRE));
+        assertEquals(TerranWall.Evidence.EXIT_PAIR, TerranWallMain.evidence(
+                Arrays.asList(barracks(51, 39), depot(55, 39)), Collections.emptyList(), tile -> false,
+                wholeMainOnThePath, MAIN_DEPOT_CENTRE, FAR_NATURAL_DEPOT_CENTRE));
+    }
+
+    @Test
+    void theChokeWindowKeepsItsOwnProductionGate() {
+        Predicate<TilePosition> chokeInTheMain = atChoke(new TilePosition(52, 40));
+
+        assertEquals(TerranWall.Evidence.CHOKE_PAIR, TerranWallMain.evidence(
+                Arrays.asList(barracks(48, 39), depot(52, 39)), Collections.emptyList(), chokeInTheMain,
+                NO_EXIT_PATH, MAIN_DEPOT_CENTRE, FAR_NATURAL_DEPOT_CENTRE));
+    }
+
+    @Test
     void thereIsNoExitWallWhileTheNaturalIsUnknown() {
         TileFootprint barracks = TileFootprint.centredAt(UnitType.Terran_Barracks, new Position(1824, 688));
         TileFootprint depot = TileFootprint.centredAt(UnitType.Terran_Supply_Depot, new Position(1840, 608));

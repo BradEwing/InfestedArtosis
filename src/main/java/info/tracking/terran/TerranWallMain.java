@@ -16,8 +16,9 @@ import java.util.function.Predicate;
  * a wall across a chokepoint of the enemy main's BWEM Area covered, or a {@link TerranWall} pair whose Barracks
  * stands at least {@link #MIN_BARRACKS_TILES_FROM_DEPOT} from the centre of the enemy main's depot with either
  * building within {@link #CHOKE_TILE_RADIUS} of such a chokepoint, or with either building touching the ground
- * within {@link #EXIT_PATH_TILE_RADIUS} of the ground path from the enemy main to its natural and the Barracks also
- * that far from the centre of the natural's depot.
+ * within {@link #EXIT_PATH_TILE_RADIUS} of the ground path from the enemy main to its natural, the Barracks then
+ * at least {@link #MIN_EXIT_BARRACKS_TILES_FROM_MAIN_DEPOT} from the main's depot centre and
+ * {@link #MIN_BARRACKS_TILES_FROM_DEPOT} from the natural's.
  */
 public class TerranWallMain extends TerranBaseStrategy {
 
@@ -42,6 +43,13 @@ public class TerranWallMain extends TerranBaseStrategy {
      * beside the natural's depot is kept out of the exit window the same way.
      */
     static final int MIN_BARRACKS_TILES_FROM_DEPOT = 10;
+
+    /**
+     * Manhattan tiles from the enemy main's depot centre to an exit-window Barracks. The path out starts at the main
+     * depot and crosses the whole main, so production 10-12 tiles out stands on it; walled GrimHammer Barracks stood
+     * 13-36 tiles out, and the NeoMoonGlaive top-start wall 26.
+     */
+    static final int MIN_EXIT_BARRACKS_TILES_FROM_MAIN_DEPOT = 13;
 
     private TerranWall.Evidence evidence;
 
@@ -120,7 +128,7 @@ public class TerranWallMain extends TerranBaseStrategy {
 
     private static BiPredicate<TileFootprint, TileFootprint> chokePlacement(Predicate<TilePosition> atMainChoke,
                                                                             TilePosition mainDepotCentre) {
-        return (barracks, partner) -> isOutOfTheProductionBlock(barracks, mainDepotCentre)
+        return (barracks, partner) -> isAtLeast(barracks, mainDepotCentre, MIN_BARRACKS_TILES_FROM_DEPOT)
                 && TerranWall.eitherStandsAt(barracks, partner, atMainChoke);
     }
 
@@ -128,12 +136,12 @@ public class TerranWallMain extends TerranBaseStrategy {
                                                                            TilePosition mainDepotCentre,
                                                                            TilePosition naturalDepotCentre) {
         return (barracks, partner) -> naturalDepotCentre != null
-                && isOutOfTheProductionBlock(barracks, mainDepotCentre)
-                && isOutOfTheProductionBlock(barracks, naturalDepotCentre)
+                && isAtLeast(barracks, mainDepotCentre, MIN_EXIT_BARRACKS_TILES_FROM_MAIN_DEPOT)
+                && isAtLeast(barracks, naturalDepotCentre, MIN_BARRACKS_TILES_FROM_DEPOT)
                 && TerranWall.eitherTouches(barracks, partner, onExitPath);
     }
 
-    private static boolean isOutOfTheProductionBlock(TileFootprint barracks, TilePosition mainDepotCentre) {
-        return Distance.manhattanTileDistance(barracks.centreTile(), mainDepotCentre) >= MIN_BARRACKS_TILES_FROM_DEPOT;
+    private static boolean isAtLeast(TileFootprint barracks, TilePosition depotCentre, int minTiles) {
+        return Distance.manhattanTileDistance(barracks.centreTile(), depotCentre) >= minTiles;
     }
 }

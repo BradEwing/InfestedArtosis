@@ -83,20 +83,23 @@ class TerranWallNaturalTest {
     }
 
     @Test
-    void buildingsCoveringEverySpotOfANaturalChokeWallAreSealed() {
+    void buildingsCoveringEverySpotOfANaturalBridgeWallAreSealed() {
         GameMap map = new GameMap(24, 24);
         for (int x = 0; x < 24; x++) {
             for (int y = 0; y < 24; y++) {
-                map.addTile(new MapTile(new TilePosition(x, y), 0, true, true, MapTileType.NORMAL), x, y);
+                boolean water = y == 5;
+                boolean bridge = water && x >= 5 && x <= 7;
+                map.addTile(new MapTile(new TilePosition(x, y), 0, !water, !water || bridge, MapTileType.NORMAL),
+                        x, y);
             }
         }
         ChokeWall choke = ChokeWall.across(map, Arrays.asList(new TilePosition(5, 5), new TilePosition(6, 5),
-                new TilePosition(7, 5)), tile -> true);
+                new TilePosition(7, 5)), tile -> tile.getY() < 5);
 
         assertEquals(TerranWall.Evidence.SEALED, TerranWallNatural.evidence(
-                Collections.singletonList(depot(5, 4)), Collections.singletonList(choke), tile -> false,
+                Collections.singletonList(depot(5, 3)), Collections.singletonList(choke), tile -> false,
                 NO_MAIN_WALL));
-        assertNull(TerranWallNatural.evidence(Collections.singletonList(depot(6, 4)),
+        assertNull(TerranWallNatural.evidence(Collections.singletonList(depot(6, 3)),
                 Collections.singletonList(choke), tile -> false, NO_MAIN_WALL));
     }
 

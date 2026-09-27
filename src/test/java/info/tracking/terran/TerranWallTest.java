@@ -1,14 +1,18 @@
 package info.tracking.terran;
 
 import bwapi.Position;
+import bwapi.TilePosition;
 import bwapi.UnitType;
 import info.tracking.ObservedUnit;
 import info.tracking.ObservedUnitFixture;
 import org.junit.jupiter.api.Test;
+import util.TileFootprint;
 import util.Time;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -71,22 +75,47 @@ class TerranWallTest {
 
     @Test
     void nothingFirstObservedAfterTheCutoffIsRead() {
-        ObservedUnit late = ObservedUnitFixture.observedUnit(UnitType.Terran_Barracks, new Position(640, 640),
-                new Time(TerranWall.CUTOFF.getFrames() + 1));
+        ObservedUnit late = grounded(new Position(640, 656), new Time(TerranWall.CUTOFF.getFrames() + 1));
+        ObservedUnit onTime = grounded(new Position(640, 656), TerranWall.CUTOFF);
 
         assertTrue(TerranWall.footprints(ObservedUnitFixture.trackerHolding(late)).isEmpty());
+        assertFalse(TerranWall.footprints(ObservedUnitFixture.trackerHolding(onTime)).isEmpty());
     }
 
     @Test
-    void aLiftedOrMovedBarracksIsNeverPartOfAWall() {
-        ObservedUnit moved = ObservedUnitFixture.observedUnit(UnitType.Terran_Barracks, new Position(3680, 784),
-                new Time(3, 0));
-        moved.setLastKnownLocation(new Position(3599, 1638));
-        ObservedUnit lifted = ObservedUnitFixture.observedUnit(UnitType.Terran_Barracks, new Position(3680, 784),
-                new Time(3, 0));
-        lifted.setSeenLifted(true);
+    void aFloatingBarracksIsNeverPartOfAWall() {
+        ObservedUnit floating = grounded(new Position(3680, 784), new Time(3, 0));
+        floating.setLastKnownLocation(new Position(3605, 1682));
+        floating.recordLift(true);
+        ObservedUnit landedElsewhere = grounded(new Position(3680, 784), new Time(3, 0));
+        landedElsewhere.setLastKnownLocation(new Position(3616, 1680));
+        landedElsewhere.recordLift(false);
 
-        assertTrue(TerranWall.footprints(ObservedUnitFixture.trackerHolding(moved)).isEmpty());
-        assertTrue(TerranWall.footprints(ObservedUnitFixture.trackerHolding(lifted)).isEmpty());
+        assertTrue(TerranWall.footprints(ObservedUnitFixture.trackerHolding(floating)).isEmpty());
+        assertTrue(TerranWall.footprints(ObservedUnitFixture.trackerHolding(landedElsewhere)).isEmpty());
+    }
+
+    @Test
+    void aGateBarracksFirstSeenLiftedIsReadOnceItLandsInItsWall() {
+        ObservedUnit gate = ObservedUnitFixture.observedUnit(UnitType.Terran_Barracks, new Position(3391, 901),
+                new Time(3, 12));
+        gate.recordLift(true);
+        List<TileFootprint> depot = Collections.singletonList(
+                new TileFootprint(UnitType.Terran_Supply_Depot, new TilePosition(108, 28)));
+
+        assertTrue(TerranWall.footprints(ObservedUnitFixture.trackerHolding(gate)).isEmpty());
+
+        gate.setLastKnownLocation(new Position(3392, 944));
+        gate.recordLift(false);
+        List<TileFootprint> wall = new ArrayList<>(TerranWall.footprints(ObservedUnitFixture.trackerHolding(gate)));
+        wall.addAll(depot);
+
+        assertTrue(TerranWall.hasPair(wall, (barracks, partner) -> true));
+    }
+
+    private static ObservedUnit grounded(Position position, Time firstObserved) {
+        ObservedUnit barracks = ObservedUnitFixture.observedUnit(UnitType.Terran_Barracks, position, firstObserved);
+        barracks.recordLift(false);
+        return barracks;
     }
 }

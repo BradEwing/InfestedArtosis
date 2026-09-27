@@ -31,6 +31,14 @@ public final class TileFootprint {
     }
 
     /**
+     * The pixel centre of the rectangle, the inverse of {@link #centredAt(UnitType, Position)}.
+     */
+    public Position centre() {
+        return new Position(topLeft.getX() * 32 + unitType.tileWidth() * 16,
+                topLeft.getY() * 32 + unitType.tileHeight() * 16);
+    }
+
+    /**
      * The tile holding the centre of the rectangle, the tile a building's reported position rounds into.
      */
     public TilePosition centreTile() {

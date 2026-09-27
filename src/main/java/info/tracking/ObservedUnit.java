@@ -1,9 +1,11 @@
 package info.tracking;
 
 import bwapi.Position;
+import bwapi.TilePosition;
 import bwapi.Unit;
 import bwapi.UnitType;
 import lombok.Data;
+import util.TileFootprint;
 import util.Time;
 
 @Data
@@ -13,7 +15,6 @@ public class ObservedUnit {
     private Time destroyedFrame;
     private Time completedFrame;
     private Position lastKnownLocation;
-    private final Position firstObservedLocation;
     private final Unit unit;
     private UnitType unitType;
     private boolean proxied;
@@ -24,7 +25,8 @@ public class ObservedUnit {
     private int lastKnownLoadedCount = -1;
     private int lastLoadedCheckFrame = -1;
     private int lastBunkerBulletFrame = -1;
-    private boolean seenLifted;
+    private Position groundedAnchor;
+    private boolean lastSeenLifted;
 
     public ObservedUnit(Unit unit, Time currentFrame, boolean proxied) {
         this(unit, unit.getType(), unit.getPosition(), currentFrame, proxied);
@@ -36,7 +38,6 @@ public class ObservedUnit {
         this.firstObservedFrame = currentFrame;
         this.lastObservedFrame = currentFrame;
         this.lastKnownLocation = lastKnownLocation;
-        this.firstObservedLocation = lastKnownLocation;
         this.proxied = proxied;
         this.lastKnownHitPoints = unitType.maxHitPoints();
         this.lastKnownShields = unitType.maxShields();
@@ -54,15 +55,35 @@ public class ObservedUnit {
     }
 
     /**
-     * Whether the unit stands where it was first observed and has never been seen lifted: its last known position
-     * is its first, and while it is visible it is neither lifted nor anywhere else. A Terran building that lifted,
-     * or floated and landed elsewhere, fails.
+     * Records whether the latest observation, the one that set the last known position, saw the unit lifted. The
+     * first observation that is grounded and centred on its build tiles anchors the unit there; a building caught
+     * off its build-tile centre, as a lifting or landing one is, does not anchor it.
      */
-    public boolean isGroundedWhereFirstSeen() {
-        if (seenLifted || lastKnownLocation == null || !lastKnownLocation.equals(firstObservedLocation)) {
+    public void recordLift(boolean lifted) {
+        lastSeenLifted = lifted;
+        if (groundedAnchor == null && !lifted && isOnBuildTileCentre(lastKnownLocation)) {
+            groundedAnchor = lastKnownLocation;
+        }
+    }
+
+    /**
+     * Whether the latest observation saw the unit grounded on the build tiles of its first grounded sighting. A
+     * Terran building that lifts and lands back in place counts again once it is seen landed; one last seen lifted,
+     * or landed on other tiles, does not.
+     */
+    public boolean isGroundedAtAnchor() {
+        if (groundedAnchor == null || lastSeenLifted || lastKnownLocation == null) {
             return false;
         }
-        return !unit.isVisible() || !unit.isLifted() && unit.getPosition().equals(firstObservedLocation);
+        return buildTile(lastKnownLocation).equals(buildTile(groundedAnchor));
+    }
+
+    private boolean isOnBuildTileCentre(Position position) {
+        return position != null && new TileFootprint(unitType, buildTile(position)).centre().equals(position);
+    }
+
+    private TilePosition buildTile(Position position) {
+        return TileFootprint.centredAt(unitType, position).getTopLeft();
     }
 
     public void markCompleted(Time currentFrame) {

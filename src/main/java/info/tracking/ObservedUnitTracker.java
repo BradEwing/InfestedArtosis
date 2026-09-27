@@ -124,7 +124,7 @@ public class ObservedUnitTracker {
             if (unit.isCompleted()) {
                 ou.markCompleted(t);
             }
-            markLifted(ou, unit);
+            ou.recordLift(unit.isLifted());
             observedUnits.put(unit, ou);
         } else {
             ObservedUnit u = observedUnits.get(unit);
@@ -134,7 +134,7 @@ public class ObservedUnitTracker {
             if (unit.isCompleted()) {
                 u.markCompleted(t);
             }
-            markLifted(u, unit);
+            u.recordLift(unit.isLifted());
         }
     }
 
@@ -144,13 +144,7 @@ public class ObservedUnitTracker {
             ObservedUnit u = observedUnits.get(unit);
             u.setLastObservedFrame(t);
             u.setLastKnownLocation(unit.getPosition());
-            markLifted(u, unit);
-        }
-    }
-
-    private static void markLifted(ObservedUnit observedUnit, Unit unit) {
-        if (unit.isLifted()) {
-            observedUnit.setSeenLifted(true);
+            u.recordLift(unit.isLifted());
         }
     }
 
@@ -499,18 +493,19 @@ public class ObservedUnitTracker {
     }
 
     /**
-     * The tile footprints, at the positions they were first observed at, of the living observed units of the
-     * matching types first observed no later than firstObservedBy and still grounded there, as
-     * {@link ObservedUnit#isGroundedWhereFirstSeen()} reads it. A lifted or relocated building has no footprint.
+     * The tile footprints, at their grounded anchors, of the living observed units of the matching types first
+     * observed no later than firstObservedBy whose latest observation is grounded there, as
+     * {@link ObservedUnit#isGroundedAtAnchor()} reads it. A building last seen lifted, or landed elsewhere, has no
+     * footprint; one that lifted and landed back in place has one again.
      */
     public List<TileFootprint> getGroundedFootprints(Predicate<UnitType> typeFilter, Time firstObservedBy) {
         List<TileFootprint> footprints = new ArrayList<>();
         for (ObservedUnit ou : observedUnits.values()) {
             if (ou.getDestroyedFrame() != null || !typeFilter.test(ou.getUnitType())
-                    || ou.getFirstObservedFrame().greaterThan(firstObservedBy) || !ou.isGroundedWhereFirstSeen()) {
+                    || ou.getFirstObservedFrame().greaterThan(firstObservedBy) || !ou.isGroundedAtAnchor()) {
                 continue;
             }
-            footprints.add(TileFootprint.centredAt(ou.getUnitType(), ou.getFirstObservedLocation()));
+            footprints.add(TileFootprint.centredAt(ou.getUnitType(), ou.getGroundedAnchor()));
         }
         return footprints;
     }

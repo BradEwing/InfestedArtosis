@@ -80,15 +80,14 @@ class ChokeWallTest {
     }
 
     @Test
-    void aChokeOverBuildableGroundIsWalledAcrossItsOwnTiles() {
+    void aChokeOverBuildableGroundOnlyIsNeverSealed() {
         List<TilePosition> flatChoke = Arrays.asList(new TilePosition(5, 5), new TilePosition(6, 5),
                 new TilePosition(7, 5));
 
-        ChokeWall wall = ChokeWall.across(flatMap(), flatChoke, tile -> false);
+        ChokeWall wall = ChokeWall.across(flatMap(), flatChoke, tile -> true);
 
-        assertEquals(new HashSet<>(flatChoke), wall.getSpots());
-        assertTrue(wall.isSealedBy(Collections.singletonList(footprint(UnitType.Terran_Supply_Depot, 5, 4))));
-        assertFalse(wall.isSealedBy(Collections.singletonList(footprint(UnitType.Terran_Supply_Depot, 6, 4))));
+        assertTrue(wall.getSpots().isEmpty());
+        assertFalse(wall.isSealedBy(Collections.singletonList(footprint(UnitType.Terran_Barracks, 4, 4))));
     }
 
     @Test

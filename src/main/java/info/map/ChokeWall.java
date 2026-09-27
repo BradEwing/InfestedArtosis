@@ -16,7 +16,7 @@ import java.util.function.Predicate;
 /**
  * The spots a building wall across a chokepoint must fill, at tile level. Where the choke runs over walkable,
  * non-buildable ground, a ramp or a bridge, the spots are the walkable, buildable tiles on one side that share an
- * edge with that ground. Where the choke's own tiles are buildable, the spots are those tiles. The choke is walled
+ * edge with that ground. A choke over buildable ground only has no spots and is never walled. The choke is walled
  * when every spot is covered. Gaps narrower than a tile are not read.
  */
 public final class ChokeWall {
@@ -40,14 +40,6 @@ public final class ChokeWall {
     public static ChokeWall across(GameMap map, Collection<TilePosition> chokeTiles, Predicate<TilePosition> side) {
         Set<TilePosition> gap = gapTiles(map, chokeTiles);
         Set<TilePosition> spots = new HashSet<>();
-        if (gap.isEmpty()) {
-            for (TilePosition tile : chokeTiles) {
-                if (isOpenBuildable(map, tile)) {
-                    spots.add(tile);
-                }
-            }
-            return new ChokeWall(spots);
-        }
         for (TilePosition tile : gap) {
             for (TilePosition neighbour : cardinalNeighbours(tile)) {
                 if (!gap.contains(neighbour) && isOpenBuildable(map, neighbour) && side.test(neighbour)) {
