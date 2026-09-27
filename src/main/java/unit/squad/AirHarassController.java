@@ -123,6 +123,7 @@ public class AirHarassController {
         List<AirHarassEvaluator.BaseOption<Base>> options = new ArrayList<>();
         List<AirHarassTargeting.AirThreat> threats = new ArrayList<>();
         ExposedTargets.Group exposed = null;
+        double flockDefense = 0;
         if (cheapGatesPass) {
             View view = view(now);
             threats = view.threats;
@@ -133,6 +134,7 @@ public class AirHarassController {
                         exposedMemory.admitted(ExposedTargets.groups(view.candidates(), flock.mutas), now), threats,
                         tolerance, squad.getCenter());
             }
+            flockDefense = AirHarassTargeting.defenseAt(threats, squad.getCenter(), 0);
         }
         AirHarassEvaluator.EntryVerdict verdict = AirHarassEvaluator.entryVerdict(
                 AirHarassEvaluator.EntryInput.builder()
@@ -142,6 +144,8 @@ public class AirHarassController {
                         .basesUnderAttack(basesUnderAttack)
                         .options(new ArrayList<>(options))
                         .exposedTarget(exposed != null)
+                        .flockDefense(flockDefense)
+                        .tolerance(tolerance)
                         .build());
         boolean enters = verdict == AirHarassEvaluator.EntryVerdict.ENTER;
         AirHarassEvaluator.BaseOption<Base> chosen = enters ? AirHarassEvaluator.chooseBase(options) : null;

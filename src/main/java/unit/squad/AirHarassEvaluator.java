@@ -50,9 +50,11 @@ public final class AirHarassEvaluator {
      * Outcome of the entry gates, naming the first gate that refused.
      *
      * <p>ENTER means a base has a tolerated strike point, or no base has one but an exposed group of enemies does
-     * (see {@link ExposedTargets}). Otherwise NO_TARGET means no known enemy base holds enough heat to raid, and
-     * DEFENDED means some base does, but every such point lies under more anti-air than the flock tolerates, whether
-     * or not the flock cooled the rest of the base by visiting it.
+     * (see {@link ExposedTargets}), and the flock itself does not stand in more anti-air than it tolerates, the test
+     * the exit applies. Otherwise NO_TARGET means no known enemy base holds enough heat to raid and no exposed group
+     * was found, and DEFENDED means the flock stands in more anti-air than it tolerates, or some base holds enough
+     * heat but every such point lies under more anti-air than the flock tolerates, whether or not the flock cooled
+     * the rest of the base by visiting it.
      */
     public enum EntryVerdict {
         ENTER,
@@ -123,6 +125,8 @@ public final class AirHarassEvaluator {
         @Builder.Default
         private final List<BaseOption<?>> options = Collections.emptyList();
         private final boolean exposedTarget;
+        private final double flockDefense;
+        private final double tolerance;
     }
 
     /**
@@ -218,10 +222,13 @@ public final class AirHarassEvaluator {
             heated |= option.isHeated();
             tolerated |= option.getStrikePoint() != null;
         }
-        if (tolerated || input.isExposedTarget()) {
-            return EntryVerdict.ENTER;
+        if (!heated && !input.isExposedTarget()) {
+            return EntryVerdict.NO_TARGET;
         }
-        return heated ? EntryVerdict.DEFENDED : EntryVerdict.NO_TARGET;
+        if (input.getFlockDefense() > input.getTolerance()) {
+            return EntryVerdict.DEFENDED;
+        }
+        return tolerated || input.isExposedTarget() ? EntryVerdict.ENTER : EntryVerdict.DEFENDED;
     }
 
     /**

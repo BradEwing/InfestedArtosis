@@ -259,4 +259,58 @@ class SunkenTargetsTest {
     void pinsTheZerglingLeadThreshold() {
         assertEquals(3, SunkenTargets.ZERGLING_LEAD);
     }
+
+    @Test
+    void aStandingNaturalShortOfItsTargetKeepsTheMainClosedUnderBarracksPressure() {
+        int target = SunkenTargets.BARRACKS_PRESSURE_SUNKENS;
+        assertFalse(SunkenTargets.barracksPressureOpensMain(true, 0, target, false));
+        assertFalse(SunkenTargets.barracksPressureOpensMain(true, target - 1, target, false));
+    }
+
+    @Test
+    void aNaturalAtItsTargetOpensTheMainUnderBarracksPressure() {
+        int target = SunkenTargets.BARRACKS_PRESSURE_SUNKENS;
+        assertTrue(SunkenTargets.barracksPressureOpensMain(true, target, target, false));
+        assertTrue(SunkenTargets.barracksPressureOpensMain(true, target + 1, target, false));
+    }
+
+    @Test
+    void noStandingNaturalOpensTheMainUnderBarracksPressure() {
+        assertTrue(SunkenTargets.barracksPressureOpensMain(false, 0, SunkenTargets.BARRACKS_PRESSURE_SUNKENS, false));
+    }
+
+    @Test
+    void aMainNearerTheEnemyThanTheNaturalOpensEvenWithTheNaturalShort() {
+        assertTrue(SunkenTargets.barracksPressureOpensMain(true, 0, SunkenTargets.BARRACKS_PRESSURE_SUNKENS, true));
+    }
+
+    @Test
+    void theLyrgh001NaturalWithTwoOfThreeKeepsTheMainClosed() {
+        int target = SunkenTargets.sunkenTarget(MATCHUP_SILENT, ONE_BASE, ENEMY_STILL_ON_ONE_BASE, NO_GROUND_LEAD,
+                THREE_RAX, new Time(7, 34));
+        int naturalTarget = SunkenTargets.perBaseSunkenTarget(target, new Time(7, 34));
+
+        assertEquals(SunkenTargets.BARRACKS_PRESSURE_SUNKENS, naturalTarget);
+        assertFalse(SunkenTargets.barracksPressureOpensMain(true, 2, naturalTarget, false));
+    }
+
+    @Test
+    void thePerBaseTargetIsTheBuildOrdersUntilTenMinutes() {
+        assertEquals(3, SunkenTargets.perBaseSunkenTarget(3, new Time(10, 0)));
+        assertEquals(0, SunkenTargets.perBaseSunkenTarget(0, new Time(10, 0)));
+    }
+
+    @Test
+    void thePerBaseTargetIsCappedAtOneAfterTenMinutes() {
+        assertEquals(SunkenTargets.LATE_PER_BASE_SUNKENS, SunkenTargets.perBaseSunkenTarget(3, new Time(10, 1)));
+        assertEquals(0, SunkenTargets.perBaseSunkenTarget(0, LATE));
+        assertEquals(1, SunkenTargets.LATE_PER_BASE_SUNKENS);
+    }
+
+    @Test
+    void aLateNaturalWithOneSunkenIsAtItsCappedTargetAndOpensTheMain() {
+        int naturalTarget = SunkenTargets.perBaseSunkenTarget(SunkenTargets.BARRACKS_PRESSURE_SUNKENS, LATE);
+
+        assertTrue(SunkenTargets.barracksPressureOpensMain(true, 1, naturalTarget, false));
+    }
 }
