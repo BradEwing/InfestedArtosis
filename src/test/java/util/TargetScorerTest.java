@@ -184,6 +184,14 @@ class TargetScorerTest {
     }
 
     @Test
+    void aMutaliskBunkerPickLogsTheMutaBunkerReason() {
+        List<TargetScorer.Candidate> list = Arrays.asList(
+                at(UnitType.Terran_Bunker, 60), at(UnitType.Terran_Supply_Depot, 20));
+
+        assertEquals(TargetScorer.Reason.MUTA_BUNKER, TargetScorer.reasonAt(UnitType.Zerg_Mutalisk, MUTALISK, list, 0));
+    }
+
+    @Test
     void otherAttackersKeepTheBunkerAsACriticalThreat() {
         assertEquals(TargetScorer.Priority.CRITICAL,
                 TargetScorer.assignPriority(UnitType.Terran_Bunker, UnitType.Zerg_Scourge, true, false));
