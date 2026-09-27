@@ -1,5 +1,16 @@
 package unit.squad;
 
+import bwapi.Position;
+import util.StaticDefenseZone;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+
 /**
  * Why a Lurker is sent out of fixed fire to a hold point, and why it lets go of one. The names are the reasons
  * telemetry_fixed_fire.csv records.
@@ -16,12 +27,10 @@ final class LurkerHold {
     static final String RELEASE_STATUS = "STATUS";
 
     /**
-     * Tuning value: frames a squad must have been committing without a break before its Lurkers commit with it,
-     * letting go of their hold points and walking into sieged-tank reach. One second longer than a ground fight lock
-     * ({@link Squad#fightHysteresis}, 3 s), so a single ENGAGE verdict and the lock it arms never commit the Lurkers:
-     * the sim must say ENGAGE again, and keep the squad fighting, past the end of the first lock.
+     * Tuning value: pixels between a sieged-tank zone's centre and a sieged tank the sim priced for the tank to count
+     * as priced. Half a tile: the zone and the sim read the same tracked position, and no two tanks stand this close.
      */
-    static final int COMMIT_FRAMES = 96;
+    static final int PRICED_MATCH_DISTANCE = 16;
 
     /**
      * Tuning value: pixels of margin out of the fire a new hold point must gain over the point a Lurker already holds
@@ -67,40 +76,84 @@ final class LurkerHold {
     }
 
     /**
-     * The frame a squad's unbroken run of committing frames began.
+     * Whether a squad's Lurkers commit with it this frame: it is in FIGHT, and it is either breaking its contain or
+     * collapsing, a decision to fight with the whole squad, or the sim read ENGAGE for it this frame. A fight lock
+     * with no ENGAGE read, including a squad born into FIGHT on its lock, does not commit them.
      *
-     * @param committing whether the squad commits this frame
-     * @param since the frame its run began as of the last frame, or null when it was not committing
-     * @param now current frame
-     * @return the frame the run began, or null when the squad is not committing
+     * @param status the squad's status
+     * @param wholeSquadCommit whether the squad is breaking its contain or collapsing, under the fight lock it armed
+     * @param freshVerdict the sim's verdict for the squad read this frame, or null when it was not read this frame
+     * @return true when the squad's Lurkers commit
      */
-    static Integer committingSince(boolean committing, Integer since, int now) {
-        if (!committing) {
-            return null;
+    static boolean lurkersCommit(SquadStatus status, boolean wholeSquadCommit,
+                                 CombatSimulator.CombatResult freshVerdict) {
+        return status == SquadStatus.FIGHT
+                && (wholeSquadCommit || freshVerdict == CombatSimulator.CombatResult.ENGAGE);
+    }
+
+    /**
+     * The zones a squad's Lurkers keep out of. Lurkers that do not commit keep out of every zone. Lurkers committed by
+     * a contain break or collapse keep out of none. Lurkers committed by an ENGAGE read keep out of the sieged-tank
+     * zones whose tank that read did not price, see {@link #priced}: an ENGAGE never walks them into a tank it did not
+     * weigh.
+     *
+     * @param zones fixed fire zones that outrange a Lurker
+     * @param commit whether the squad's Lurkers commit, see {@link #lurkersCommit}
+     * @param wholeSquadCommit whether the squad is breaking its contain or collapsing
+     * @param pricedTanks positions of the sieged tanks the sim priced this frame
+     * @return the zones the Lurkers keep out of
+     */
+    static List<StaticDefenseZone> keptOut(List<StaticDefenseZone> zones, boolean commit, boolean wholeSquadCommit,
+                                           Collection<Position> pricedTanks) {
+        if (!commit) {
+            return zones;
         }
-        return since == null ? now : since;
+        if (wholeSquadCommit) {
+            return Collections.emptyList();
+        }
+        List<StaticDefenseZone> kept = new ArrayList<>();
+        for (StaticDefenseZone zone : FixedFire.siegedTankZones(zones)) {
+            if (!priced(zone, pricedTanks)) {
+                kept.add(zone);
+            }
+        }
+        return kept;
     }
 
     /**
-     * Whether a squad's Lurkers commit with it: it has been committing for at least {@link #COMMIT_FRAMES}.
+     * Whether a sieged-tank zone's tank was priced by the sim: a priced sieged tank stands within
+     * {@link #PRICED_MATCH_DISTANCE} of the zone's centre.
      *
-     * @param since the frame its run of committing frames began, or null when it is not committing
-     * @param now current frame
-     * @return true when its Lurkers commit
+     * @param zone a sieged-tank zone
+     * @param pricedTanks positions of the sieged tanks the sim priced
+     * @return true when the zone's tank was priced
      */
-    static boolean lurkersCommit(Integer since, int now) {
-        return since != null && now - since >= COMMIT_FRAMES;
+    static boolean priced(StaticDefenseZone zone, Collection<Position> pricedTanks) {
+        for (Position tank : pricedTanks) {
+            if (tank.getDistance(zone.getCenter()) <= PRICED_MATCH_DISTANCE) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
-     * The start of a committing run that commits a squad's Lurkers at once, for a squad breaking its contain: the
-     * break is a decision to fight with the whole squad, so its Lurkers do not wait out {@link #COMMIT_FRAMES}. The
-     * run lasts while the squad keeps committing, see {@link #committingSince}.
+     * Pairs every unit with the first squad, in iteration order, that lists it, so a unit listed by two squads is
+     * visited once per frame.
      *
-     * @param now current frame
-     * @return a run start {@link #COMMIT_FRAMES} before now
+     * @param squads the squads, in visiting order
+     * @param members a squad's members
+     * @param <S> the squad type
+     * @param <U> the unit type
+     * @return each unit and the first squad that lists it, in visiting order
      */
-    static int alreadyCommittedSince(int now) {
-        return now - COMMIT_FRAMES;
+    static <S, U> Map<U, S> firstSquadOf(Collection<S> squads, Function<S, Collection<U>> members) {
+        Map<U, S> first = new LinkedHashMap<>();
+        for (S squad : squads) {
+            for (U unit : members.apply(squad)) {
+                first.putIfAbsent(unit, squad);
+            }
+        }
+        return first;
     }
 }

@@ -1,6 +1,15 @@
 package unit.squad;
 
+import bwapi.Position;
+import bwapi.UnitType;
 import org.junit.jupiter.api.Test;
+import util.StaticDefenseZone;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -11,6 +20,12 @@ import static unit.squad.CombatSimulator.CombatResult.ENGAGE;
 import static unit.squad.CombatSimulator.CombatResult.RETREAT;
 
 class LurkerHoldTest {
+
+    private static final Position TANK_AT = new Position(1000, 1000);
+    private static final StaticDefenseZone TANK = new StaticDefenseZone(UnitType.Terran_Siege_Tank_Siege_Mode,
+            TANK_AT, 400);
+    private static final StaticDefenseZone BUNKER = new StaticDefenseZone(UnitType.Terran_Bunker,
+            new Position(1400, 1000), 192);
 
     @Test
     void aLurkerHitInsideATanksReachIsSentOut() {
@@ -60,39 +75,83 @@ class LurkerHoldTest {
     }
 
     @Test
-    void aSquadNotCommittingHasNoCommitmentRun() {
-        assertNull(LurkerHold.committingSince(false, 100, 200));
-        assertNull(LurkerHold.committingSince(false, null, 200));
+    void anEngageReadThisFrameCommitsTheLurkersAtOnce() {
+        assertTrue(LurkerHold.lurkersCommit(SquadStatus.FIGHT, false, ENGAGE));
     }
 
     @Test
-    void aCommitmentRunStartsOnItsFirstFrameAndKeepsItsStart() {
-        assertEquals(Integer.valueOf(200), LurkerHold.committingSince(true, null, 200));
-        assertEquals(Integer.valueOf(150), LurkerHold.committingSince(true, 150, 200));
+    void aFightLockWithNoEngageReadDoesNotCommitTheLurkers() {
+        assertFalse(LurkerHold.lurkersCommit(SquadStatus.FIGHT, false, null));
+        assertFalse(LurkerHold.lurkersCommit(SquadStatus.FIGHT, false, ADVANCE));
+        assertFalse(LurkerHold.lurkersCommit(SquadStatus.FIGHT, false, RETREAT));
     }
 
     @Test
-    void aSingleEngageDoesNotCommitTheLurkers() {
-        assertFalse(LurkerHold.lurkersCommit(200, 200));
-        assertFalse(LurkerHold.lurkersCommit(200, 206));
-        assertFalse(LurkerHold.lurkersCommit(null, 200));
+    void aSquadBornIntoFightOnItsLockWithNoSimReadIsNotCommittingItsLurkers() {
+        assertTrue(SquadManager.isCommitting(SquadStatus.FIGHT, true, null));
+        assertFalse(LurkerHold.lurkersCommit(SquadStatus.FIGHT, false, null));
     }
 
     @Test
-    void theLurkersCommitOnceTheSquadHasCommittedForTheWholeWindow() {
-        assertFalse(LurkerHold.lurkersCommit(200, 200 + LurkerHold.COMMIT_FRAMES - 1));
-        assertTrue(LurkerHold.lurkersCommit(200, 200 + LurkerHold.COMMIT_FRAMES));
+    void aContainBreakOrCollapseCommitsTheLurkersWithoutARead() {
+        assertTrue(LurkerHold.lurkersCommit(SquadStatus.FIGHT, true, null));
+        assertTrue(LurkerHold.lurkersCommit(SquadStatus.FIGHT, true, RETREAT));
     }
 
     @Test
-    void anEngageBrokenByARetreatStartsTheWindowAgain() {
-        Integer since = LurkerHold.committingSince(true, null, 100);
-        since = LurkerHold.committingSince(true, since, 150);
-        since = LurkerHold.committingSince(false, since, 160);
-        since = LurkerHold.committingSince(true, since, 170);
+    void aSquadOutOfFightNeverCommitsItsLurkers() {
+        assertFalse(LurkerHold.lurkersCommit(SquadStatus.RETREAT, true, ENGAGE));
+        assertFalse(LurkerHold.lurkersCommit(SquadStatus.CONTAIN, false, ENGAGE));
+    }
 
-        assertFalse(LurkerHold.lurkersCommit(since, 100 + LurkerHold.COMMIT_FRAMES));
-        assertTrue(LurkerHold.lurkersCommit(since, 170 + LurkerHold.COMMIT_FRAMES));
+    @Test
+    void lurkersThatDoNotCommitKeepOutOfEveryZone() {
+        List<StaticDefenseZone> zones = Arrays.asList(TANK, BUNKER);
+
+        assertEquals(zones, LurkerHold.keptOut(zones, false, false, Collections.singletonList(TANK_AT)));
+    }
+
+    @Test
+    void lurkersCommittedByABreakKeepOutOfNoZone() {
+        assertTrue(LurkerHold.keptOut(Arrays.asList(TANK, BUNKER), true, true, Collections.emptyList()).isEmpty());
+    }
+
+    @Test
+    void anEngageThatPricedTheTankLetsTheLurkersIntoItsReach() {
+        assertTrue(LurkerHold.keptOut(Arrays.asList(TANK, BUNKER), true, false,
+                Collections.singletonList(TANK_AT)).isEmpty());
+    }
+
+    @Test
+    void anEngageThatDidNotPriceATankKeepsTheLurkersOutOfItsReach() {
+        StaticDefenseZone other = new StaticDefenseZone(UnitType.Terran_Siege_Tank_Siege_Mode,
+                new Position(2400, 1000), 400);
+
+        assertEquals(Collections.singletonList(other), LurkerHold.keptOut(Arrays.asList(TANK, other, BUNKER), true,
+                false, Collections.singletonList(TANK_AT)));
+        assertEquals(Arrays.asList(TANK, other), LurkerHold.keptOut(Arrays.asList(TANK, other, BUNKER), true, false,
+                Collections.emptyList()));
+    }
+
+    @Test
+    void aTankIsPricedOnlyWithinTheMatchDistanceOfItsZone() {
+        assertTrue(LurkerHold.priced(TANK, Collections.singletonList(
+                new Position(TANK_AT.getX() + LurkerHold.PRICED_MATCH_DISTANCE, TANK_AT.getY()))));
+        assertFalse(LurkerHold.priced(TANK, Collections.singletonList(
+                new Position(TANK_AT.getX() + LurkerHold.PRICED_MATCH_DISTANCE + 1, TANK_AT.getY()))));
+        assertFalse(LurkerHold.priced(TANK, Collections.emptyList()));
+    }
+
+    @Test
+    void aUnitInTwoSquadsIsVisitedOnceForTheFirstSquad() {
+        Map<String, String> first = LurkerHold.firstSquadOf(Arrays.asList("a", "b"),
+                squad -> squad.equals("a") ? Arrays.asList("lurker", "ling") : Arrays.asList("lurker", "hydra"));
+
+        assertEquals(3, first.size());
+        assertEquals("a", first.get("lurker"));
+        assertEquals("a", first.get("ling"));
+        assertEquals("b", first.get("hydra"));
+        assertEquals(Arrays.asList("lurker", "ling", "hydra"), new ArrayList<>(first.keySet()));
     }
 
     @Test
@@ -100,45 +159,5 @@ class LurkerHoldTest {
         assertFalse(LurkerHold.worthMoving(-40, -40));
         assertFalse(LurkerHold.worthMoving(-40, -40 + LurkerHold.MOVE_GAIN - 1));
         assertTrue(LurkerHold.worthMoving(-40, -40 + LurkerHold.MOVE_GAIN));
-    }
-
-    @Test
-    void aSingleEngageAndTheFightLockItArmsNeverCommitTheLurkers() {
-        int engage = 1000;
-        int lockEnd = engage + 72;
-        Integer since = null;
-        for (int frame = engage; frame <= lockEnd + 30; frame++) {
-            boolean committing = SquadManager.isCommitting(SquadStatus.FIGHT, frame < lockEnd,
-                    frame == engage ? ENGAGE : ADVANCE);
-            since = LurkerHold.committingSince(committing, since, frame);
-            assertFalse(LurkerHold.lurkersCommit(since, frame));
-        }
-    }
-
-    @Test
-    void anEngageHeldAcrossTheWindowCommitsTheLurkers() {
-        Integer since = null;
-        int frame = 1000;
-        for (; frame < 1000 + LurkerHold.COMMIT_FRAMES; frame++) {
-            since = LurkerHold.committingSince(SquadManager.isCommitting(SquadStatus.FIGHT, true, ENGAGE), since,
-                    frame);
-            assertFalse(LurkerHold.lurkersCommit(since, frame));
-        }
-        since = LurkerHold.committingSince(SquadManager.isCommitting(SquadStatus.FIGHT, true, ENGAGE), since, frame);
-        assertTrue(LurkerHold.lurkersCommit(since, frame));
-    }
-
-    @Test
-    void aContainBreakCommitsTheLurkersAtOnceWhileTheSquadKeepsCommitting() {
-        int broken = 5000;
-        Integer since = LurkerHold.alreadyCommittedSince(broken);
-
-        assertTrue(LurkerHold.lurkersCommit(since, broken));
-        since = LurkerHold.committingSince(SquadManager.isCommitting(SquadStatus.FIGHT, true, null), since,
-                broken + 1);
-        assertTrue(LurkerHold.lurkersCommit(since, broken + 1));
-        since = LurkerHold.committingSince(SquadManager.isCommitting(SquadStatus.RETREAT, false, null), since,
-                broken + 2);
-        assertFalse(LurkerHold.lurkersCommit(since, broken + 2));
     }
 }

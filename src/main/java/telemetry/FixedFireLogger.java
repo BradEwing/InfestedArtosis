@@ -20,10 +20,11 @@ import java.util.List;
  * Lurker is given a point to hold out of fire, with the point in point_x and point_y and what sent it out in reason:
  * HIT when it was hurt inside a sieged tank's reach, RETREAT when its squad retreated with it inside fixed fire, MOVED
  * when the fire moved onto the point it held and the new point stands further out, COOLDOWN when every target it had
- * stood in cooling fire, and TANK_ZONE when it would have had to stand inside a known sieged tank's reach to fire on
- * every target. LURKER_HOLD_RELEASE is written when it lets go of that point, with the point it held and the reason:
- * COMMIT when its squad has committed to the fight long enough for its Lurkers to commit, CLEAR when no fixed fire is
- * near the point any more, and STATUS when its squad left FIGHT and RETREAT.
+ * stood in cooling fire, and TANK_ZONE when it would have had to stand inside the reach of a known sieged tank its
+ * squad's Lurkers keep out of to fire on every target. LURKER_HOLD_RELEASE is written when it lets go of that point,
+ * with the point it held and the reason: COMMIT when its squad's Lurkers commit, on a contain break, a collapse, or an
+ * ENGAGE read that priced every sieged tank near the point, CLEAR when no fixed fire is near the point any more, and
+ * STATUS when its squad left FIGHT and RETREAT.
  *
  * <p>The zone columns describe the zone the row is about: its type, None for a hurt mark, its centre and its reach.
  * A column that does not apply to a row is -1, or NONE for a type or reason.
