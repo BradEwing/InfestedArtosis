@@ -18,6 +18,10 @@ import telemetry.PerchAssignmentLogger;
 import telemetry.PerchAssignments;
 import telemetry.PlanEventLogger;
 import telemetry.PlanEvents;
+import telemetry.AirReinforcementLogger;
+import telemetry.AirReinforcementTelemetry;
+import telemetry.HarassLogger;
+import telemetry.HarassTelemetry;
 import telemetry.RunbyLogger;
 import telemetry.ReachLogger;
 import telemetry.ReachTelemetry;
@@ -59,6 +63,8 @@ public class Bot extends DefaultBWListener {
     private PerchAssignmentLogger perchAssignmentLogger;
     private TargetChoiceLogger targetChoiceLogger;
     private RunbyLogger runbyLogger;
+    private HarassLogger harassLogger;
+    private AirReinforcementLogger airReinforcementLogger;
     private ReachLogger reachLogger;
 
     @Override
@@ -92,6 +98,8 @@ public class Bot extends DefaultBWListener {
         startPerchAssignmentLogging();
         startTargetChoiceLogging();
         startRunbyLogging();
+        startHarassLogging();
+        startAirReinforcementLogging();
         startReachLogging();
         startPlanEventLogging(decisions.getOpener());
     }
@@ -131,6 +139,25 @@ public class Bot extends DefaultBWListener {
 
         runbyLogger = new RunbyLogger(game, combatTelemetry.getGameId());
         RunbyTelemetry.register(runbyLogger);
+    }
+
+    private void startHarassLogging() {
+        if (!gameState.getConfig().telemetryCombat) {
+            return;
+        }
+
+        harassLogger = new HarassLogger(game, combatTelemetry.getGameId());
+        HarassTelemetry.register(harassLogger);
+    }
+
+    private void startAirReinforcementLogging() {
+        if (!gameState.getConfig().telemetryCombat) {
+            return;
+        }
+
+        airReinforcementLogger = new AirReinforcementLogger(game, unitManager.getSquadManager(),
+                combatTelemetry.getGameId());
+        AirReinforcementTelemetry.register(airReinforcementLogger);
     }
 
     private void startReachLogging() {
@@ -175,6 +202,12 @@ public class Bot extends DefaultBWListener {
         }
         if (runbyLogger != null) {
             runbyLogger.onFrame();
+        }
+        if (harassLogger != null) {
+            harassLogger.onFrame();
+        }
+        if (airReinforcementLogger != null) {
+            airReinforcementLogger.onFrame();
         }
         if (reachLogger != null) {
             reachLogger.onFrame();
@@ -256,6 +289,12 @@ public class Bot extends DefaultBWListener {
         }
         if (runbyLogger != null) {
             runbyLogger.onEnd();
+        }
+        if (harassLogger != null) {
+            harassLogger.onEnd();
+        }
+        if (airReinforcementLogger != null) {
+            airReinforcementLogger.onEnd();
         }
         if (reachLogger != null) {
             reachLogger.onEnd();

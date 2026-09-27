@@ -39,9 +39,11 @@ import org.jetbrains.annotations.Nullable;
 import macro.ProductionQueue;
 import macro.plan.PlanState;
 import strategy.buildorder.BuildOrder;
+import strategy.buildorder.SunkenTargets;
 import telemetry.PlanEvents;
 import unit.managed.ManagedUnit;
 import unit.managed.UnitRole;
+import unit.squad.ContainHeldTimer;
 import unit.squad.RunbyEvaluator;
 import util.Distance;
 import util.Filter;
@@ -112,6 +114,7 @@ public class GameState {
     private HashSet<Plan> plansImpossible = new HashSet<>();
     private ProductionQueue productionQueue = new ProductionQueue();
     private DroneRound droneRound = new DroneRound();
+    private final ContainHeldTimer containHeldTimer = new ContainHeldTimer();
     private HashMap<Unit, Plan> assignedPlannedItems = new HashMap<>();
     private int plannedWorkers;
     private int plannedHatcheries = 1;
@@ -182,6 +185,7 @@ public class GameState {
     private void observeHitPoints(int frame) {
         for (ManagedUnit managedUnit : managedUnits) {
             managedUnit.observeHitPoints(frame);
+            managedUnit.observeAttack(frame);
         }
     }
 
@@ -1090,8 +1094,31 @@ public class GameState {
      * @return true while another worker would still gather
      */
     public boolean workersWanted() {
-        int workers = numWorkers();
-        return workers < 80 && workers < expectedWorkers(opponentRace, baseData.currentBaseCount(), geyserAssignments.size());
+        return numWorkers() < workerHardCap();
+    }
+
+    /**
+     * The worker count at which {@link #workersWanted()} stops wanting Drones: 80, or the expected
+     * workers of our bases and Extractors when that is lower.
+     *
+     * @return the hard cap on workers
+     */
+    public int workerHardCap() {
+        return Math.min(80, expectedWorkers(opponentRace, baseData.currentBaseCount(), geyserAssignments.size()));
+    }
+
+    /**
+     * The workers our remaining mineral patches and mining geysers can use: one per patch still alive
+     * at a base we hold, and three per completed Extractor whose geyser still has gas.
+     *
+     * @return the soft cap on workers
+     */
+    public int workerSoftCap() {
+        return workerSoftCap(remainingMineralPatches(), miningGeysers());
+    }
+
+    public static int workerSoftCap(int remainingMineralPatches, int miningGeysers) {
+        return remainingMineralPatches + 3 * miningGeysers;
     }
 
     private int usableHatcheryCount() {
@@ -1547,9 +1574,7 @@ public class GameState {
             return neededBases;
         }
 
-        if (currentTime.greaterThan(tenMinutes)) {
-            target = Math.min(target, 1);
-        }
+        target = SunkenTargets.perBaseSunkenTarget(target, currentTime);
 
 
         for (Base base: baseData.getMyBases()) {

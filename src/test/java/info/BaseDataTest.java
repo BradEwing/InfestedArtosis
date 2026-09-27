@@ -734,4 +734,69 @@ public class BaseDataTest {
     void noTechBuildingBaseOnceEveryBaseIsLost() {
         assertNull(techBase(bases(), bases()));
     }
+
+    @Test
+    void aPlannedSunkenIsNotAStandingOneAtTheNatural() {
+        baseData.reserveSunkenColony(null);
+        assertEquals(0, baseData.standingSunkens(null));
+        assertEquals(1, baseData.sunkensPerBase(null));
+
+        baseData.registerSunkenColony(null, SUNKEN_ID);
+        assertEquals(1, baseData.standingSunkens(null));
+
+        baseData.forgetSunkenColony(SUNKEN_ID);
+        assertEquals(0, baseData.standingSunkens(null));
+    }
+
+    @Test
+    void theStandingNaturalIsTheTakenNaturalWhileItIsHeld() {
+        Set<String> held = new HashSet<>(Arrays.asList(MAIN, NATURAL, THIRD));
+
+        assertEquals(THIRD, BaseData.standingNatural(THIRD, NATURAL, held::contains));
+    }
+
+    @Test
+    void theStandingNaturalFallsBackToTheHeldInferredNatural() {
+        Set<String> held = new HashSet<>(Arrays.asList(MAIN, NATURAL));
+
+        assertEquals(NATURAL, BaseData.standingNatural(THIRD, NATURAL, held::contains));
+        assertEquals(NATURAL, BaseData.standingNatural(null, NATURAL, held::contains));
+    }
+
+    @Test
+    void aNaturalNotYetBuiltMorphingOrLostIsNotStanding() {
+        Set<String> held = new HashSet<>(Arrays.asList(MAIN));
+
+        assertNull(BaseData.standingNatural(NATURAL, NATURAL, held::contains));
+        assertNull(BaseData.standingNatural(null, NATURAL, held::contains));
+        assertNull(BaseData.standingNatural(null, null, held::contains));
+    }
+
+    @Test
+    void theMainIsNearerTheEnemyOnlyWhenStrictlyCloserByGround() {
+        HashMap<String, Integer> distance = new HashMap<>();
+        distance.put(MAIN, 4000);
+        distance.put(NATURAL, 3000);
+        ToIntFunction<String> fromEnemy = distance::get;
+
+        assertFalse(BaseData.isNearerEnemy(MAIN, NATURAL, fromEnemy));
+        assertTrue(BaseData.isNearerEnemy(NATURAL, MAIN, fromEnemy));
+
+        distance.put(NATURAL, 4000);
+        assertFalse(BaseData.isNearerEnemy(MAIN, NATURAL, fromEnemy));
+    }
+
+    @Test
+    void anUnreachableMainIsNeverNearerTheEnemy() {
+        HashMap<String, Integer> distance = new HashMap<>();
+        distance.put(MAIN, Integer.MAX_VALUE);
+        distance.put(NATURAL, 3000);
+
+        assertFalse(BaseData.isNearerEnemy(MAIN, NATURAL, distance::get));
+    }
+
+    @Test
+    void theMainIsNotNearerTheEnemyWhileTheEnemyIsUnlocated() {
+        assertFalse(BaseData.isNearerEnemy(MAIN, NATURAL, null));
+    }
 }
