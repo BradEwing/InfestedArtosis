@@ -643,6 +643,7 @@ public class SquadManager {
 
         for (Squad squad: emptySquads) {
             if (squad.getStatus() == SquadStatus.CONTAIN) {
+                containmentEscalation.onEndedOtherwise();
                 endContainment(squad);
             }
             AirHarassEvaluator.ExitReason harassExit = AirHarassEvaluator.removalExit(squad.getStatus(), squad.size());
@@ -2005,12 +2006,12 @@ public class SquadManager {
         SquadDecisions.outrangedHit(squad, outrangedHit);
         ContainmentVerdict evaluated = containmentVerdict(basesUnderAttack, bleeding, hit, throttled, engaged,
                 timedOut, canBreak, shouldContain);
-        boolean timeoutRetreat = evaluated == ContainmentVerdict.RETREAT && timedOut;
-        boolean staticOnly = timeoutRetreat && containmentEvaluator.enemyDefenceIsStaticOnly(now);
-        if (timeoutRetreat) {
+        boolean onTimeout = timeoutRetreat(evaluated, timedOut, shouldContain);
+        boolean staticOnly = onTimeout && containmentEvaluator.enemyDefenceIsStaticOnly(now);
+        if (onTimeout) {
             SquadDecisions.containmentTimedOut(squad, containmentEscalation.getReentries(), staticOnly);
         }
-        ContainmentVerdict verdict = rankCollapse(basesUnderAttack, collapse, escalatedVerdict(evaluated, timedOut,
+        ContainmentVerdict verdict = rankCollapse(basesUnderAttack, collapse, escalatedVerdict(evaluated, onTimeout,
                 containmentEscalation, () -> staticOnly, now));
 
         DecisionPath exitPath = containmentExitPath(bleeding, arcLost);
@@ -2030,7 +2031,7 @@ public class SquadManager {
                 collapseContainingSquad(squad, collapseRead, now);
                 break;
             case RETREAT:
-                if (!timedOut) {
+                if (!onTimeout) {
                     containmentEscalation.onEndedOtherwise();
                 }
                 retreatFromContainment(squad, members, now, exitPath);
@@ -2044,6 +2045,21 @@ public class SquadManager {
             default:
                 break;
         }
+    }
+
+    /**
+     * Whether a containing squad's verdict is a retreat on the containment timeout alone: a RETREAT on a frame its
+     * clock ran out while containment still applied to it. A squad that has also stopped qualifying to contain on
+     * that frame retreats because containment ceased to apply, which ends the run of re-entries rather than
+     * counting toward it.
+     *
+     * @param verdict verdict from {@link #containmentVerdict}
+     * @param timedOut true when the episode ran past the containment timeout this frame
+     * @param shouldContain true when containment still applies to the squad
+     * @return true for a timeout retreat
+     */
+    static boolean timeoutRetreat(ContainmentVerdict verdict, boolean timedOut, boolean shouldContain) {
+        return verdict == ContainmentVerdict.RETREAT && timedOut && shouldContain;
     }
 
     /**
@@ -2529,6 +2545,7 @@ public class SquadManager {
     private void repositionContainingSquad(Squad squad, HashSet<ManagedUnit> members, int now) {
         Arc arc = containmentArc(squad);
         if (arc == null) {
+            containmentEscalation.onEndedOtherwise();
             retreatFromContainment(squad, members, now, DecisionPath.CONTAIN_RETREAT);
             return;
         }

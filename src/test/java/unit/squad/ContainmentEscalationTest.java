@@ -112,6 +112,24 @@ class ContainmentEscalationTest {
     }
 
     @Test
+    void onlyARetreatOnTheTimeoutWhileContainmentStillAppliesIsATimeoutRetreat() {
+        assertTrue(SquadManager.timeoutRetreat(ContainmentVerdict.RETREAT, TIMED_OUT, true));
+        assertFalse(SquadManager.timeoutRetreat(ContainmentVerdict.RETREAT, TIMED_OUT, false));
+        assertFalse(SquadManager.timeoutRetreat(ContainmentVerdict.RETREAT, IN_TIME, true));
+        assertFalse(SquadManager.timeoutRetreat(ContainmentVerdict.BREAK_ALL, TIMED_OUT, true));
+    }
+
+    @Test
+    void aBelowFloorSquadTimingOutNeverEscalatesTheRun() {
+        ContainmentEscalation escalation = afterReentries(ESCALATE_AFTER_REENTRIES, STATIC_ONLY);
+        int[] calls = {0};
+        boolean onTimeout = SquadManager.timeoutRetreat(ContainmentVerdict.RETREAT, TIMED_OUT, false);
+        assertEquals(ContainmentVerdict.RETREAT, escalatedVerdict(ContainmentVerdict.RETREAT, onTimeout, escalation,
+                reads(STATIC_ONLY, calls), timeoutFrame(ESCALATE_AFTER_REENTRIES)));
+        assertEquals(0, calls[0]);
+    }
+
+    @Test
     void anyOtherEndToTheContainClearsTheRun() {
         ContainmentEscalation escalation = afterReentries(ESCALATE_AFTER_REENTRIES, STATIC_ONLY);
         escalation.onEndedOtherwise();

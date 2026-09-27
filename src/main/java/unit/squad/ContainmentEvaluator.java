@@ -22,7 +22,7 @@ public class ContainmentEvaluator {
     private static final int STATIC_DEFENSE_SUPPLY_PENALTY = 6;
     private static final double BREAK_SUPPLY_RATIO = 1.5;
     private static final int MIN_SUPPLY_THRESHOLD = 8;
-    private static final int STATIC_DEFENSE_BASE_RADIUS = 512;
+    static final int STATIC_DEFENSE_BASE_RADIUS = 512;
 
     /**
      * Distance from an enemy main or natural centre, or from a containing squad's centre, within which a squad that
@@ -129,11 +129,11 @@ public class ContainmentEvaluator {
     /**
      * Whether our army is strong enough to push into the position being contained.
      *
-     * <p>Our side is the supply of every squad fighting or containing, and of every other squad, air or ground, that
-     * is not defending or running by, a break never commits either, standing within {@link #NEAR_CONTAIN_RADIUS} of the enemy main or natural or of a
-     * containing squad. The enemy side is its ground army supply, a fixed penalty per Photon Cannon and Sunken Colony
-     * near its main or natural, and {@link #BUNKER_SLOT_SUPPLY} per occupant believed to sit in a Bunker there, see
-     * {@link BunkerGarrison}.
+     * <p>Our side is the supply of every squad fighting or containing, and of every other squad, air or ground,
+     * standing within {@link #NEAR_CONTAIN_RADIUS} of the enemy main or natural or of a containing squad, unless it
+     * is defending or running by, since a break never commits either. The enemy side is its ground army supply, a
+     * fixed penalty per Photon Cannon and Sunken Colony near its main or natural, and {@link #BUNKER_SLOT_SUPPLY} per
+     * occupant believed to sit in a Bunker there, see {@link BunkerGarrison}.
      *
      * @param allSquads every fight squad
      * @param currentFrame current frame
@@ -198,8 +198,9 @@ public class ContainmentEvaluator {
 
     /**
      * Whether the enemy defends only with static defence, see {@link #staticOnly}, read from the tracker: completed
-     * Bunkers, Photon Cannons and Sunken Colonies at their last known positions, and every living enemy army unit,
-     * see {@link #isArmyUnit}.
+     * Bunkers, Photon Cannons and Sunken Colonies at their last known positions within
+     * {@link #STATIC_DEFENSE_BASE_RADIUS} of the enemy main or natural, the same defence the break prices, and every
+     * living enemy army unit, see {@link #isArmyUnit}. A defence elsewhere shelters nothing for this test.
      *
      * @param currentFrame current frame
      * @return true when no known enemy army stands outside its static defence and the army under it is a
@@ -209,10 +210,14 @@ public class ContainmentEvaluator {
         List<Position> defences = new ArrayList<>();
         List<Position> bunkers = new ArrayList<>();
         List<ArmySighting> army = new ArrayList<>();
+        Set<Position> basePositions = getEnemyBasePositions();
         for (ObservedUnit ou : gameState.getObservedUnitTracker().getLivingObservedUnits()) {
             UnitType type = ou.getUnitType();
             if (STATIC_DEFENSE_TYPES.contains(type)) {
                 Position position = ou.isCompleted() ? ou.getCurrentOrLastKnownPosition() : null;
+                if (position != null && !defendsBase(position, basePositions)) {
+                    position = null;
+                }
                 if (position != null) {
                     defences.add(position);
                 }
@@ -265,6 +270,22 @@ public class ContainmentEvaluator {
             parkedSupply += unit.supply;
         }
         return parkedSupply <= bunkers.size() * PARKED_SUPPLY_PER_BUNKER;
+    }
+
+    /**
+     * Whether a static defence stands at an enemy main or natural.
+     *
+     * @param defence the defence's position
+     * @param basePositions enemy main and natural centres
+     * @return true within {@link #STATIC_DEFENSE_BASE_RADIUS} of one of them
+     */
+    static boolean defendsBase(Position defence, Collection<Position> basePositions) {
+        for (Position base : basePositions) {
+            if (defence.getDistance(base) <= STATIC_DEFENSE_BASE_RADIUS) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

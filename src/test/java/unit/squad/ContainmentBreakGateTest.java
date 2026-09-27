@@ -18,9 +18,11 @@ import static unit.squad.ContainmentEvaluator.ARMY_MEMORY_FRAMES;
 import static unit.squad.ContainmentEvaluator.NEAR_CONTAIN_RADIUS;
 import static unit.squad.ContainmentEvaluator.PARKED_SUPPLY_PER_BUNKER;
 import static unit.squad.ContainmentEvaluator.STATIC_COVER_RADIUS;
+import static unit.squad.ContainmentEvaluator.STATIC_DEFENSE_BASE_RADIUS;
 import static unit.squad.ContainmentEvaluator.breaks;
 import static unit.squad.ContainmentEvaluator.bunkerSupply;
 import static unit.squad.ContainmentEvaluator.countsTowardBreak;
+import static unit.squad.ContainmentEvaluator.defendsBase;
 import static unit.squad.ContainmentEvaluator.isArmyUnit;
 import static unit.squad.ContainmentEvaluator.isFreshSighting;
 import static unit.squad.ContainmentEvaluator.staticOnly;
@@ -40,6 +42,7 @@ class ContainmentBreakGateTest {
 
     @Test
     void anAirSquadRetreatingOrRallyingNearTheContainCountsTowardTheBreak() {
+        assertTrue(countsTowardBreak(SquadStatus.HARASS, OVER_THE_MAIN, CONTESTED));
         assertTrue(countsTowardBreak(SquadStatus.RETREAT, OVER_THE_MAIN, CONTESTED));
         assertTrue(countsTowardBreak(SquadStatus.RALLY, OVER_THE_MAIN, CONTESTED));
         assertTrue(countsTowardBreak(SquadStatus.RETREAT, new Position(240, 1100 + NEAR_CONTAIN_RADIUS), CONTESTED));
@@ -191,6 +194,16 @@ class ContainmentBreakGateTest {
         List<ArmySighting> over = copies(atAllowance, seen(behind, UnitType.Terran_Goliath));
         over.add(seen(behind, UnitType.Terran_Vulture));
         assertFalse(staticOnly(bunkers, bunkers, over));
+    }
+
+    @Test
+    void onlyADefenceAtTheEnemyMainOrNaturalShelters() {
+        List<Position> bases = Collections.singletonList(ENEMY_MAIN);
+        assertTrue(defendsBase(new Position(ENEMY_MAIN.getX() + STATIC_DEFENSE_BASE_RADIUS, ENEMY_MAIN.getY()),
+                bases));
+        assertFalse(defendsBase(new Position(ENEMY_MAIN.getX() + STATIC_DEFENSE_BASE_RADIUS + 1, ENEMY_MAIN.getY()),
+                bases));
+        assertFalse(defendsBase(ENEMY_MAIN, Collections.emptyList()));
     }
 
     @Test
