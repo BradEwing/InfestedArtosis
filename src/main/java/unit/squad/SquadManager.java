@@ -176,6 +176,8 @@ public class SquadManager {
     private int swarmCoverFrame = -1;
     /** The swarm-priced sim read {@link #evaluateSwarmLock} took for the squad it last evaluated, or null. */
     private CombatSimulator.CombatResult swarmSimResult;
+    /** The last frame {@link #evaluateSwarmLock} saw a base threat, or -1; see {@link SwarmLock#baseThreatStands}. */
+    private int swarmBaseThreatFrame = -1;
 
     private final ScoutChase scoutChase = new ScoutChase();
     private final AirHarassController airHarass;
@@ -1165,7 +1167,9 @@ public class SquadManager {
      *
      * <p>When nothing else stands against the lock, the combat sim runs, pricing the swarm's cover, and a RETREAT read
      * refuses the commit or releases the held lock. A squad released that way does not recommit to the same swarm, see
-     * {@link SwarmLock#mayRecommit}. The sim's result is kept for {@link #fightUnderSwarm}, so it runs once a frame.
+     * {@link SwarmLock#mayRecommit}. A commit on a read with no cover for the squad needs a margin over the engage
+     * threshold, see {@link SwarmLock#commitsOnRead}. The sim's result is kept for {@link #fightUnderSwarm}, so it runs
+     * once a frame.
      *
      * @param squad squad to evaluate
      * @return this frame's swarm lock verdict
@@ -1188,20 +1192,29 @@ public class SquadManager {
             return SwarmLock.Verdict.NONE;
         }
         int remaining = swarm != null ? swarm.getRemainingFrames() : 0;
-        boolean baseThreatened = baseThreatensContainment();
+        int now = game.getFrameCount();
+        boolean threatenedNow = baseThreatensContainment();
+        boolean baseThreatened = SwarmLock.baseThreatStands(threatenedNow, now, swarmBaseThreatFrame);
+        if (threatenedNow) {
+            swarmBaseThreatFrame = now;
+        }
         boolean inStorm = anyMemberInStorm(squad);
         SwarmLock.Release reason = SwarmLock.releaseReason(melee, swarm == null, remaining, baseThreatened, inStorm,
                 false);
-        if (SwarmLock.simDecides(held != null, eligible != null, reason)) {
+        boolean commits = eligible != null;
+        if (SwarmLock.simDecides(held != null, commits, reason)) {
             swarmSimResult = squad.getCombatSimulator()
                     .evaluate(squad, getAdjacentSquads(squad, REINFORCEMENT_RADIUS), gameState);
             reason = SwarmLock.releaseReason(melee, false, remaining, baseThreatened, inStorm,
                     swarmSimResult == CombatSimulator.CombatResult.RETREAT);
+            HorizonCombatSimulator.DebugSnapshot read = lastSnapshot(squad);
+            commits = read != null && SwarmLock.commitsOnRead(commits, read.getSwarmCover(), read.getOverallRatio(),
+                    read.getEngageThreshold());
         }
-        SwarmLock.Verdict verdict = SwarmLock.verdict(held != null, eligible != null, reason);
+        SwarmLock.Verdict verdict = SwarmLock.verdict(held != null, commits, reason);
 
         if (verdict == SwarmLock.Verdict.COMMIT) {
-            squad.setSwarmLock(new SwarmLock(swarm.getId(), game.getFrameCount()));
+            squad.setSwarmLock(new SwarmLock(swarm.getId(), now));
             SquadDecisions.swarmEvaluated(squad, SwarmEvent.SWARM_COMMIT, swarm.getId(), remaining,
                     SwarmLock.Release.NONE);
         } else if (verdict == SwarmLock.Verdict.RELEASE) {
@@ -1345,11 +1358,16 @@ public class SquadManager {
                 assignEnemyTarget(managedUnit, squad, fightTargetLedger());
                 continue;
             }
-            assignSwarmTarget(managedUnit, swarm, covered);
+            assignSwarmTarget(managedUnit, squad, swarm, covered);
         }
     }
 
-    private void assignSwarmTarget(ManagedUnit managedUnit, DarkSwarm swarm, List<Unit> covered) {
+    /**
+     * Gives a melee member of a swarm-locked squad a target among the enemies its swarm covers, picked against the
+     * frame's shared melee ledger, see {@link #swarmPick}. With no covered enemy it can attack, the member moves to
+     * the footprint centre.
+     */
+    private void assignSwarmTarget(ManagedUnit managedUnit, Squad squad, DarkSwarm swarm, List<Unit> covered) {
         Unit unit = managedUnit.getUnit();
         List<Unit> attackable = new ArrayList<>();
         for (Unit enemy : covered) {
@@ -1357,16 +1375,40 @@ public class SquadManager {
                 attackable.add(enemy);
             }
         }
-        TargetScorer.Selection selection = attackable.isEmpty()
-                ? null : TargetScorer.selectTarget(unit, attackable, managedUnit.fightTarget);
-        if (selection == null) {
+        TargetScorer.Selection issued = swarmPick(unit, attackable, managedUnit.fightTarget, fightTargetLedger(),
+                squad.getId(), managedUnit.getOverflowGate(), game.getFrameCount());
+        if (issued == null) {
             rallyToDefensePosition(managedUnit, swarm.getCenter());
             return;
         }
         managedUnit.setRole(UnitRole.FIGHT);
-        TargetChoices.chosen(managedUnit, managedUnit.fightTarget, selection, false);
-        managedUnit.setFightTarget(selection.getTarget());
-        recordScoutClaim(unit, selection.getTarget());
+        TargetChoices.chosen(managedUnit, managedUnit.fightTarget, managedUnit.isAttackMoving(), issued, false);
+        managedUnit.setFightTarget(issued.getTarget(), issued.isAttackMove());
+        recordScoutClaim(unit, issued.getTarget());
+    }
+
+    /**
+     * Picks a melee attacker's target under a swarm the way {@link #assignEnemyTarget} does in any fight: the
+     * attacker's entry is dropped from the frame's ledger, the pick is scored against the melee load every fight
+     * squad has put on each candidate, and it is committed through {@link #commitPick}, so it is recorded in the
+     * ledger unless the attacker attack-moves in overflow.
+     *
+     * @param attacker the melee attacker
+     * @param attackable the enemies the swarm covers that the attacker can attack
+     * @param heldTarget the fight target the attacker held before this pick, or null
+     * @param ledger the frame's melee assignments across every fight squad
+     * @param squadId id of the attacker's squad, carried on the selection for telemetry
+     * @param gate the attacker's overflow gate
+     * @param frame the current frame
+     * @return the pick as it is issued, or null when there is nothing to attack
+     */
+    static TargetScorer.Selection swarmPick(Unit attacker, List<Unit> attackable, Unit heldTarget,
+                                            TargetLedger ledger, String squadId, MeleeOverflowGate gate,
+                                            int frame) {
+        ledger.release(attacker.getID());
+        TargetScorer.Selection selection = TargetScorer.selectTarget(attacker, attackable, heldTarget, ledger,
+                squadId);
+        return selection == null ? null : commitPick(ledger, gate, attacker, selection, heldTarget, frame);
     }
 
     /**

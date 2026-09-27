@@ -264,4 +264,39 @@ class SwarmLockTest {
         assertEquals(SquadManager.ReinforcementPath.SIMULATE,
                 SquadManager.reinforcementPath(false, SquadStatus.FIGHT, false, false));
     }
+
+    @Test
+    void aCoveredReadCommitsButAnUncoveredOneNeedsTheMarginOverTheEngageThreshold() {
+        double threshold = 1.44;
+        double margin = threshold * SwarmLock.UNCOVERED_COMMIT_MARGIN;
+
+        assertTrue(SwarmLock.commitsOnRead(true, 0.01, threshold, threshold));
+        assertFalse(SwarmLock.commitsOnRead(true, 0.0, 1.60, threshold));
+        assertFalse(SwarmLock.commitsOnRead(true, 0.0, margin - 0.001, threshold));
+        assertTrue(SwarmLock.commitsOnRead(true, 0.0, margin, threshold));
+        assertFalse(SwarmLock.commitsOnRead(true, -1, 1.60, threshold));
+        assertFalse(SwarmLock.commitsOnRead(false, 1.0, 9.0, threshold));
+
+        assertEquals(NONE, SwarmLock.verdict(false, SwarmLock.commitsOnRead(true, 0.0, 1.60, threshold),
+                SwarmLock.Release.NONE));
+        assertEquals(COMMIT, SwarmLock.verdict(false, SwarmLock.commitsOnRead(true, 0.25, 1.50, threshold),
+                SwarmLock.Release.NONE));
+        assertEquals(HOLD, SwarmLock.verdict(true, SwarmLock.commitsOnRead(false, 0.0, 1.0, threshold),
+                SwarmLock.Release.NONE));
+    }
+
+    @Test
+    void aBaseThreatKeepsStandingAgainstTheLockForTheHoldAfterItWasLastSeen() {
+        int seen = 26352;
+        int hold = SwarmLock.BASE_THREAT_HOLD_FRAMES;
+
+        assertTrue(SwarmLock.baseThreatStands(true, seen, -1));
+        assertFalse(SwarmLock.baseThreatStands(false, seen, -1));
+        assertTrue(SwarmLock.baseThreatStands(false, seen + hold - 1, seen));
+        assertFalse(SwarmLock.baseThreatStands(false, seen + hold, seen));
+        assertEquals(SwarmLock.Release.BASE_THREAT, SwarmLock.releaseReason(true, false, 600,
+                SwarmLock.baseThreatStands(false, seen + 10, seen), false, false));
+        assertEquals(NONE, SwarmLock.verdict(false, true, SwarmLock.releaseReason(true, false, 600,
+                SwarmLock.baseThreatStands(false, seen + 10, seen), false, false)));
+    }
 }

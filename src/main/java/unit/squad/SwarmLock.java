@@ -31,6 +31,24 @@ public final class SwarmLock {
     public static final int MIN_REMAINING_FRAMES = SwarmCover.HORIZON_FRAMES;
 
     /**
+     * Tuning value: the cover share, see {@link SwarmCover#coverShare}, above which a squad's sim read counts as
+     * covered for a commit. Zero, so any cover counts.
+     */
+    public static final double MIN_COMMIT_COVER = 0;
+
+    /**
+     * Tuning value: the multiple of the engage threshold a sim read with no cover for the squad must reach for it to
+     * take a lock, see {@link #commitsOnRead}.
+     */
+    public static final double UNCOVERED_COMMIT_MARGIN = 1.25;
+
+    /**
+     * Tuning value: frames a base threat keeps standing against the lock after it was last seen, see
+     * {@link #baseThreatStands}, so a threat that flickers at a base does not commit and release a squad each time.
+     */
+    public static final int BASE_THREAT_HOLD_FRAMES = 48;
+
+    /**
      * Tuning value: gap in pixels from the squad centre to the footprint within which a melee squad commits. It
      * covers any containment arc, whose radius is capped at {@link ContainmentPushback#MAX_RADIUS}.
      */
@@ -150,6 +168,37 @@ public final class SwarmLock {
             return reason == Release.NONE ? Verdict.HOLD : Verdict.RELEASE;
         }
         return eligible && reason == Release.NONE ? Verdict.COMMIT : Verdict.NONE;
+    }
+
+    /**
+     * Whether a base threat stands against the lock this frame: one threatens a base now, or did within
+     * {@link #BASE_THREAT_HOLD_FRAMES}.
+     *
+     * @param threatenedNow whether an enemy threatens one of our bases this frame
+     * @param frame the current frame
+     * @param lastThreatFrame the last frame a base threat was seen, or a negative value for never
+     * @return true when the threat stands
+     */
+    public static boolean baseThreatStands(boolean threatenedNow, int frame, int lastThreatFrame) {
+        return threatenedNow || lastThreatFrame >= 0 && frame - lastThreatFrame < BASE_THREAT_HOLD_FRAMES;
+    }
+
+    /**
+     * Whether an unlocked squad eligible for a swarm may take the lock on this frame's sim read, which already is not
+     * RETREAT. A read that prices cover above {@link #MIN_COMMIT_COVER} for the squad's own members, see
+     * {@link SwarmCover#coverShare}, may commit. A read with no cover, from a squad still too far from the footprint to
+     * be priced into it, takes no part of its verdict from the swarm, so it commits only when its ratio reaches
+     * {@link #UNCOVERED_COMMIT_MARGIN} times the engage threshold; a read just over the threshold is left to the
+     * ordinary fight path. A held lock is not read this way.
+     *
+     * @param eligible whether the squad has a swarm to commit to, see {@link #isEligible}
+     * @param swarmCover the squad's cover share in the sim read, or a negative value when the read carried none
+     * @param ratio the read's strength ratio
+     * @param engageThreshold the ratio at which the read engages
+     * @return true when the squad may commit
+     */
+    public static boolean commitsOnRead(boolean eligible, double swarmCover, double ratio, double engageThreshold) {
+        return eligible && (swarmCover > MIN_COMMIT_COVER || ratio >= engageThreshold * UNCOVERED_COMMIT_MARGIN);
     }
 
     /**
