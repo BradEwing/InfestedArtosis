@@ -49,7 +49,7 @@ public class BaseManager {
     /**
      * Drops a lost hatchery and reclaims the geyser behind a lost extractor. BaseData counts reserved
      * geysers, so without the reclaim the gas gates read a geyser we no longer own and no further
-     * extractor is ever planned.
+     * extractor is ever planned. A lost extractor also leaves the resource ledger.
      */
     public void onUnitDestroy(Unit unit) {
         UnitType type = unit.getType();
@@ -59,6 +59,7 @@ public class BaseManager {
         }
         if (type == UnitType.Zerg_Extractor) {
             gameState.getBaseData().releaseExtractor(unit.getTilePosition());
+            gameState.untrackExtractor(unit);
         }
     }
 
