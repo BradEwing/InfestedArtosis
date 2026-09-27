@@ -1834,29 +1834,57 @@ public class GameState {
     }
 
     /**
-     * True after 5:00 when unreserved minerals exceed 350 for every in-flight hatchery plan plus
-     * 350.
+     * True after 5:00 when unreserved minerals exceed {@link #floatingMineralsBar()}: 350 for every
+     * unfinished hatchery plus 350.
      *
      * <p>Reads {@link ResourceCount#availableMinerals()}, the bank minus every queued plan's
      * reservation, so it is false while reservations meet or exceed the bank. The hatchery count
-     * is {@link #inFlightHatcheryPlans()}, expansions and macro hatcheries alike; completed
-     * hatcheries and hatcheries whose drone has already morphed are not counted. Queueing a
-     * hatchery plan raises the bar and cancelling one lowers it; the hatchery enqueue cooldown
-     * keeps a cancel from answering the request again at once.
+     * is {@link #unfinishedHatcheries()}: every in-flight hatchery plan and every hatchery under
+     * construction, expansions and macro hatcheries alike. Completed hatcheries are not counted.
+     * Queueing a hatchery plan raises the bar, and the bar holds when its drone morphs until the
+     * hatchery finishes. Cancelling a plan lowers the bar; the hatchery enqueue cooldown keeps a
+     * cancel from answering the request again at once.
      */
     public boolean isFloatingMinerals() {
-        return isFloatingMinerals(resourceCount, inFlightHatcheryPlans(), getGameTime());
+        return isFloatingMinerals(resourceCount, unfinishedHatcheries(), getGameTime());
     }
 
     /**
      * @param resourceCount the ledger whose unreserved minerals are read
-     * @param inFlightHatcheryPlans hatchery plans of both kinds the production system carries
+     * @param unfinishedHatcheries hatchery plans in flight plus hatcheries under construction, both kinds
      */
-    static boolean isFloatingMinerals(ResourceCount resourceCount, int inFlightHatcheryPlans, Time gameTime) {
+    static boolean isFloatingMinerals(ResourceCount resourceCount, int unfinishedHatcheries, Time gameTime) {
         return HatcheryCapacity.isFloatingMinerals(
                 resourceCount.availableMinerals(),
-                inFlightHatcheryPlans,
+                unfinishedHatcheries,
                 gameTime.greaterThan(FLOATING_MINERALS_FROM));
+    }
+
+    /**
+     * Unreserved minerals {@link #isFloatingMinerals()} must exceed this frame.
+     */
+    public int floatingMineralsBar() {
+        return HatcheryCapacity.floatingMineralsBar(unfinishedHatcheries());
+    }
+
+    /**
+     * Hatcheries of both kinds the bot has committed to and not finished: in-flight hatchery plans
+     * plus hatcheries under construction. A hatchery plan completes the frame its drone morphs, so
+     * the plan count alone drops while the hatchery is still going up.
+     */
+    public int unfinishedHatcheries() {
+        return unfinishedHatcheries(inFlightHatcheryPlans(), hatcheriesUnderConstruction(false),
+                hatcheriesUnderConstruction(true));
+    }
+
+    /**
+     * @param inFlightPlans hatchery plans of both kinds the production system carries
+     * @param expansionsUnderConstruction expansion hatcheries started and not finished
+     * @param macroHatcheriesUnderConstruction macro hatcheries started and not finished
+     */
+    static int unfinishedHatcheries(int inFlightPlans, int expansionsUnderConstruction,
+            int macroHatcheriesUnderConstruction) {
+        return inFlightPlans + expansionsUnderConstruction + macroHatcheriesUnderConstruction;
     }
 
     /**

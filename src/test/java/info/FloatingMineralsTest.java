@@ -18,8 +18,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * GameState's floating-minerals request: unreserved minerals against 350 per in-flight hatchery
- * plan plus 350, after 5:00.
+ * GameState's floating-minerals request: unreserved minerals against 350 per unfinished hatchery
+ * (in-flight plan or under construction) plus 350, after 5:00.
  */
 class FloatingMineralsTest {
 
@@ -107,6 +107,50 @@ class FloatingMineralsTest {
         assertEquals(2, planned);
         assertFalse(GameState.isFloatingMinerals(bank(1050), planned, MIDGAME));
         assertTrue(GameState.isFloatingMinerals(bank(1051), planned, MIDGAME));
+    }
+
+    /**
+     * Game LYRGH0GO: a macro Hatchery's drone morphed at frame 13846 and, with that Hatchery still
+     * building and 358 unreserved, the request asked for a fourth base at 14532. The plan leaves
+     * the production system when its drone morphs, and the hatchery it became holds the bar at 700
+     * until it finishes.
+     */
+    @Test
+    void aHatcheryUnderConstructionHoldsTheBarItsPlanRaised() {
+        Plan macroHatchery = hatchery(true);
+        Set<Plan> morphing = setOf(macroHatchery);
+        int beforeMorph = GameState.unfinishedHatcheries(
+                GameState.countHatcheryPlans(none(), none(), none(), morphing), 0, 0);
+
+        morphing.remove(macroHatchery);
+        macroHatchery.setState(PlanState.COMPLETE);
+        int afterMorph = GameState.unfinishedHatcheries(
+                GameState.countHatcheryPlans(none(), none(), none(), morphing), 0, 1);
+
+        assertEquals(1, beforeMorph);
+        assertEquals(1, afterMorph);
+        assertFalse(GameState.isFloatingMinerals(bank(358), afterMorph, MIDGAME));
+        assertFalse(GameState.isFloatingMinerals(bank(700), afterMorph, MIDGAME));
+        assertTrue(GameState.isFloatingMinerals(bank(701), afterMorph, MIDGAME));
+    }
+
+    /**
+     * Hatcheries under construction count whichever kind they are, so an expansion going up holds a
+     * macro-driven bar and a macro hatchery going up holds the expansion request.
+     */
+    @Test
+    void bothKindsUnderConstructionRaiseTheBar() {
+        int unfinished = GameState.unfinishedHatcheries(1, 1, 1);
+
+        assertEquals(3, unfinished);
+        assertFalse(GameState.isFloatingMinerals(bank(1400), unfinished, MIDGAME));
+        assertTrue(GameState.isFloatingMinerals(bank(1401), unfinished, MIDGAME));
+    }
+
+    @Test
+    void aFinishedHatcheryReleasesTheBar() {
+        assertFalse(GameState.isFloatingMinerals(bank(358), GameState.unfinishedHatcheries(0, 1, 0), MIDGAME));
+        assertTrue(GameState.isFloatingMinerals(bank(358), GameState.unfinishedHatcheries(0, 0, 0), MIDGAME));
     }
 
     @Test

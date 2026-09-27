@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PlanEventLoggerTest {
 
-    private static final int PLAN_COLUMNS = 69;
+    private static final int PLAN_COLUMNS = 71;
 
     private static final boolean STARVED = true;
 
@@ -133,7 +133,28 @@ class PlanEventLoggerTest {
         assertEquals("builder_order", column(role + 1));
         assertEquals("builder_in_range", column(role + 2));
         assertEquals("previous_executor_unit_id", column(role + 3));
-        assertEquals("previous_executor_unit_id", columns[columns.length - 1]);
+        assertEquals(role + 3, columns.length - 3);
+    }
+
+    @Test
+    void theHatcheryRequestColumnsAreAppendedLast() {
+        String[] columns = PlanEventLogger.PLAN_HEADER.split(",", -1);
+        int reason = indexOf("hatchery_request_reason");
+        assertEquals(indexOf("previous_executor_unit_id") + 1, reason);
+        assertEquals("floating_minerals_bar", column(reason + 1));
+        assertEquals("floating_minerals_bar", columns[columns.length - 1]);
+    }
+
+    @Test
+    void theFirstBankSampleIsTakenOnTheFirstFrame() {
+        assertTrue(PlanEventLogger.isBankSampleDue(0, -PlanEventLogger.BANK_SAMPLE_INTERVAL_FRAMES));
+    }
+
+    @Test
+    void bankSamplesAreOneIntervalApart() {
+        int last = 480;
+        assertFalse(PlanEventLogger.isBankSampleDue(last + PlanEventLogger.BANK_SAMPLE_INTERVAL_FRAMES - 1, last));
+        assertTrue(PlanEventLogger.isBankSampleDue(last + PlanEventLogger.BANK_SAMPLE_INTERVAL_FRAMES, last));
     }
 
     private static String column(int index) {

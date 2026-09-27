@@ -15,6 +15,7 @@ import learning.GameRecord;
 import macro.plan.BuilderDispatchDecision;
 import macro.plan.BuilderLossReason;
 import macro.plan.BuilderReading;
+import macro.plan.HatcheryRequestReason;
 import macro.plan.Plan;
 import macro.plan.PlanBlocker;
 import macro.plan.PlanCancelSource;
@@ -72,9 +73,17 @@ public class PlanEventLogger implements PlanEventSink {
     private static final int NO_STARVED_COUNT = -1;
 
     private static final String EVENT_RECURRING_CANCEL = "RECURRING_CANCEL";
+    private static final String EVENT_BANK_SAMPLE = "BANK_SAMPLE";
 
     /**
-     * 69 columns; readers that index by position rather than by name must match this order.
+     * Frames between two BANK_SAMPLE rows, about five seconds of game time. Frequent enough that
+     * the share of samples over the floating-minerals bar reads as a share of game time, and rare
+     * enough to add only a few hundred rows to a long game.
+     */
+    static final int BANK_SAMPLE_INTERVAL_FRAMES = 120;
+
+    /**
+     * 71 columns; readers that index by position rather than by name must match this order.
      * enemy_air, gas_gathered, enemy_barracks, the blocker mineral pair, the enemy ground pair,
      * yield_to_plan_id, the four macro hatchery gate columns and the four Hive tech gate columns
      * are trailing columns written by {@link #appendTrailing}, so every row shape keeps one width.
@@ -183,6 +192,18 @@ public class PlanEventLogger implements PlanEventSink {
      * <p>
      * PROMOTE rows are written when an open drone round moves a queued Drone ahead of the advanced
      * unit band; priority is the new priority and age_frames how long the Drone had been queued.
+     * <p>
+     * hatchery_request_reason is the rule that asked for a Hatchery plan
+     * ({@link HatcheryRequestReason}), written on every ENQUEUE, TRANSITION, BLOCKED, STALE,
+     * PROMOTE, RECURRING_CANCEL and OPEN_AT_GAME_END row of that plan, so an EXCESS_HATCHERY cancel
+     * carries the reason its plan was requested for. It is blank on other plans and on a Hatchery
+     * plan created outside the build order's expansion and macro hatchery paths.
+     * <p>
+     * BANK_SAMPLE rows are written every {@link #BANK_SAMPLE_INTERVAL_FRAMES} frames and leave
+     * every plan column empty. minerals and available_minerals are the bank at the sample, and
+     * floating_minerals_bar, set only on these rows, is the unreserved-mineral bar
+     * {@link GameState#isFloatingMinerals()} reads that frame. The bar is written before 5:00 too,
+     * when the rule cannot fire.
      */
     static final String PLAN_HEADER = "frame,time,event,plan_id,executor_unit_id,plan_type,item,from_state,"
             + "to_state,cancel_reason,cancel_source,blocker,blocked_frames,priority,frames_in_state,age_frames,"
@@ -196,7 +217,8 @@ public class PlanEventLogger implements PlanEventSink {
             + "builder_route_defense_zones,builder_at_site,builder_dispatch_decision,lost_expansion_builders,"
             + "expansion_hold_until_frame,builder_site_at_our_base,builder_at_our_base,base_inner,enemy_main_reason,"
             + "enemy_main_source_x,enemy_main_source_y,"
-            + "builder_role,builder_order,builder_in_range,previous_executor_unit_id";
+            + "builder_role,builder_order,builder_in_range,previous_executor_unit_id,"
+            + "hatchery_request_reason,floating_minerals_bar";
 
     private static final String GAME_HEADER = "timestamp,is_winner,num_starting_locations,map_name,opponent_name,"
             + "opponent_race,opener,build_order,detected_strategies,frame_count";
@@ -227,6 +249,7 @@ public class PlanEventLogger implements PlanEventSink {
     private boolean disabled;
     private int currentFrame;
     private int lastFlushFrame;
+    private int lastBankSampleFrame = -BANK_SAMPLE_INTERVAL_FRAMES;
 
     public PlanEventLogger(Game game, GameState gameState, String openerName, int numStartingLocations) {
         this.game = game;
@@ -246,6 +269,10 @@ public class PlanEventLogger implements PlanEventSink {
 
         try {
             currentFrame = game.getFrameCount();
+            if (isBankSampleDue(currentFrame, lastBankSampleFrame)) {
+                buffer.add(bankSampleRow());
+                lastBankSampleFrame = currentFrame;
+            }
             if (currentFrame - lastFlushFrame >= FLUSH_INTERVAL_FRAMES) {
                 flush();
                 lastFlushFrame = currentFrame;
@@ -855,7 +882,38 @@ public class PlanEventLogger implements PlanEventSink {
                        PlanBlocker blocker, int blockedFrames, int starvedBehind) {
         StringBuilder sb = planColumns(plan, event, from, to, blocker, blockedFrames, starvedBehind,
                 executorReading(plan));
-        appendTrailing(sb, null, null, null, null, builderThreat(plan), null, BuilderColumns.BLANK);
+        appendTrailingBeforeHatcheryRequest(sb, null, null, null, null, builderThreat(plan), null,
+                BuilderColumns.BLANK);
+        appendHatcheryRequest(sb, plan.getHatcheryRequestReason(), null);
+        return sb.toString();
+    }
+
+    /**
+     * True when a BANK_SAMPLE row is due on this frame.
+     *
+     * @param frame the current frame
+     * @param lastSampleFrame the frame of the last sample
+     */
+    static boolean isBankSampleDue(int frame, int lastSampleFrame) {
+        return frame - lastSampleFrame >= BANK_SAMPLE_INTERVAL_FRAMES;
+    }
+
+    /**
+     * A periodic sample of the bank and the floating-minerals bar, which no plan owns, so the plan
+     * columns are empty.
+     */
+    private String bankSampleRow() {
+        StringBuilder sb = new StringBuilder();
+        appendEvent(sb, EVENT_BANK_SAMPLE);
+        appendEmpty(sb, 8);
+        appendBlocker(sb, PlanBlocker.NONE, 0);
+        appendEmpty(sb, 3);
+        appendGameState(sb);
+        appendEmpty(sb, 3);
+        sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
+        appendEmpty(sb, 2);
+        appendTrailingBeforeHatcheryRequest(sb, null, null, null, null, null, null, BuilderColumns.BLANK);
+        appendHatcheryRequest(sb, null, gameState.floatingMineralsBar());
         return sb.toString();
     }
 
@@ -1152,6 +1210,19 @@ public class PlanEventLogger implements PlanEventSink {
     private void appendTrailing(StringBuilder sb, Position blockerMineral, Plan yieldTo,
                                 MacroHatcheryGateInputs macroHatchery, HiveTechGateInputs hiveTech,
                                 BuilderThreat builderThreat, BaseEventInputs baseEvent, BuilderColumns builder) {
+        appendTrailingBeforeHatcheryRequest(sb, blockerMineral, yieldTo, macroHatchery, hiveTech, builderThreat,
+                baseEvent, builder);
+        appendHatcheryRequest(sb, null, null);
+    }
+
+    /**
+     * The trailing columns up to previous_executor_unit_id. A row shape that calls this rather than
+     * {@link #appendTrailing} must follow it with {@link #appendHatcheryRequest}, so it keeps the
+     * same width.
+     */
+    private void appendTrailingBeforeHatcheryRequest(StringBuilder sb, Position blockerMineral, Plan yieldTo,
+                                MacroHatcheryGateInputs macroHatchery, HiveTechGateInputs hiveTech,
+                                BuilderThreat builderThreat, BaseEventInputs baseEvent, BuilderColumns builder) {
         appendGameTotals(sb);
         sb.append(',');
         sb.append(blockerMineral == null ? "" : String.valueOf(blockerMineral.getX())).append(',');
@@ -1185,6 +1256,18 @@ public class PlanEventLogger implements PlanEventSink {
         for (String cell : builder.trailing()) {
             sb.append(',').append(cell);
         }
+    }
+
+    /**
+     * The last two trailing columns, which only plan rows and BANK_SAMPLE rows set.
+     *
+     * @param hatcheryRequestReason the rule that asked for the row's Hatchery plan, or null
+     * @param floatingMineralsBar the floating-minerals bar, or null on every row but BANK_SAMPLE
+     */
+    private static void appendHatcheryRequest(StringBuilder sb, HatcheryRequestReason hatcheryRequestReason,
+                                              Integer floatingMineralsBar) {
+        sb.append(',').append(orEmpty(hatcheryRequestReason));
+        sb.append(',').append(orEmpty(floatingMineralsBar));
     }
 
     private static String orEmpty(Object value) {

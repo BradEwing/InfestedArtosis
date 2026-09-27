@@ -220,6 +220,14 @@ class HatcheryCapacityTest {
     }
 
     @Test
+    void theBarIs350PerUnfinishedHatcheryPlusOne() {
+        assertEquals(350, HatcheryCapacity.floatingMineralsBar(0));
+        assertEquals(700, HatcheryCapacity.floatingMineralsBar(1));
+        assertEquals(1050, HatcheryCapacity.floatingMineralsBar(2));
+        assertEquals(350, HatcheryCapacity.floatingMineralsBar(-1));
+    }
+
+    @Test
     void eachPlannedHatcheryRaisesTheFloatingBar() {
         int oneHatcheryBar = HatcheryCapacity.MINERALS_PER_HATCHERY * 2;
         int twoHatcheryBar = HatcheryCapacity.MINERALS_PER_HATCHERY * 3;

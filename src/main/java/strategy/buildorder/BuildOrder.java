@@ -20,6 +20,7 @@ import macro.DroneRound;
 import macro.HatcheryCapacity;
 import macro.Reactions;
 import macro.plan.BuildingPlan;
+import macro.plan.HatcheryRequestReason;
 import macro.plan.Plan;
 import macro.plan.PlanBlocker;
 import macro.plan.PlanType;
@@ -618,13 +619,17 @@ public abstract class BuildOrder {
             return null;
         }
 
+        HatcheryRequestReason reason = HatcheryRequestReason.forExpansion(gameState.isFloatingMinerals(),
+                behindOnBases(gameState));
         Base base = gameState.reserveBase();
         if (base == null) {
             return null;
         }
 
         gameState.addPlannedHatchery(1);
-        return new BuildingPlan(UnitType.Zerg_Hatchery, gameState.getGameTime().getFrames(), base.getLocation());
+        Plan plan = new BuildingPlan(UnitType.Zerg_Hatchery, gameState.getGameTime().getFrames(), base.getLocation());
+        plan.setHatcheryRequestReason(reason);
+        return plan;
     }
 
     protected Plan planLair(GameState gameState) {
@@ -964,7 +969,7 @@ public abstract class BuildOrder {
 
     /**
      * Unreserved minerals are the surplus signal, not {@link GameState#isFloatingMinerals()},
-     * whose bar is scaled to in-flight hatchery plans because it exists to decide expansions. A build that
+     * whose bar is scaled to unfinished hatcheries because it exists to decide expansions. A build that
      * has met every unit target it knows how to ask for is not short of hatcheries, it is short of
      * things to spend on, and the same reasoning is written out at
      * {@link SpeedlingAllIn#shouldPlanHatchery}.
@@ -1399,6 +1404,7 @@ public abstract class BuildOrder {
     public static Plan macroHatcheryPlan(int frame, TilePosition location) {
         Plan plan = new BuildingPlan(UnitType.Zerg_Hatchery, frame, location);
         plan.setMacroHatchery(true);
+        plan.setHatcheryRequestReason(HatcheryRequestReason.MACRO);
         return plan;
     }
 

@@ -43,14 +43,20 @@ class HatcheryQueueContractTest {
 
     /**
      * The plans of one hatchery kind. Queued plans are what a rush reaction can delete; active
-     * plans have left the queue for the scheduled, building or morphing set.
+     * plans have left the queue for the scheduled, building or morphing set. A plan completes the
+     * frame its drone morphs, and the hatchery it became is under construction until it finishes.
      */
     private static final class Kind {
         private final List<Integer> queued = new ArrayList<>();
         private final List<Integer> active = new ArrayList<>();
+        private int underConstruction;
 
         private int outstanding() {
             return queued.size() + active.size();
+        }
+
+        private int unfinished() {
+            return outstanding() + underConstruction;
         }
     }
 
@@ -83,7 +89,7 @@ class HatcheryQueueContractTest {
 
         private boolean floatingMinerals() {
             return HatcheryCapacity.isFloatingMinerals(
-                    availableMinerals(), expansion.outstanding() + macro.outstanding(), true);
+                    availableMinerals(), expansion.unfinished() + macro.unfinished(), true);
         }
 
         private boolean excess() {
@@ -91,7 +97,7 @@ class HatcheryQueueContractTest {
         }
 
         private boolean rearmed(Kind kind) {
-            return HatcheryCapacity.isEnqueueRearmed(kind.outstanding(), frame - lastEnqueueFrame);
+            return HatcheryCapacity.isEnqueueRearmed(kind.unfinished(), frame - lastEnqueueFrame);
         }
 
         private boolean mayQueueExpansion() {
@@ -132,8 +138,22 @@ class HatcheryQueueContractTest {
             if (expansion.active.isEmpty()) {
                 return;
             }
-            expansion.active.remove(0);
+            morphOldest(expansion);
+            finish(expansion);
+        }
+
+        /**
+         * The drone of the kind's oldest active plan morphs: the plan completes, its reservation
+         * becomes a spend, and the hatchery is under construction.
+         */
+        private void morphOldest(Kind kind) {
+            kind.active.remove(0);
             minerals -= HATCHERY_MINERALS;
+            kind.underConstruction++;
+        }
+
+        private void finish(Kind kind) {
+            kind.underConstruction--;
             completedHatcheries++;
             completionFrames.add(frame);
         }
@@ -416,6 +436,56 @@ class HatcheryQueueContractTest {
         board.minerals += 1;
         runFloatingFrames(board, FRAMES_PER_100_SECONDS);
         assertEquals(1, board.expansion.outstanding());
+    }
+
+    /**
+     * Game LYRGH0GO: a macro Hatchery's drone morphed and, with that Hatchery still building and
+     * 358 unreserved, the floating request asked for a fourth base. The hatchery under construction
+     * holds the bar at 700 until it finishes, whichever kind it is, and then the same bank asks.
+     */
+    @Test
+    void aHatcheryUnderConstructionHoldsTheFloatingRequest() {
+        Board board = new Board();
+        board.completedHatcheries = 3;
+        board.larva = 0;
+        board.minerals = 1200;
+
+        runFrames(board, false, true, 1);
+        board.morphOldest(board.macro);
+        board.minerals = 358;
+        runFloatingFrames(board, A_LONG_HOLD);
+
+        assertEquals(1, board.totalEnqueues());
+        assertEquals(0, board.expansion.outstanding());
+
+        board.finish(board.macro);
+        runFloatingFrames(board, 1);
+
+        assertEquals(2, board.totalEnqueues());
+        assertEquals(1, board.expansion.outstanding());
+    }
+
+    /**
+     * The floating request's own expansion holds it through the whole walk and build: one plan per
+     * hatchery finished, however long the bank stays over the raised bar.
+     */
+    @Test
+    void theFloatingRequestAsksAgainOnlyOnceItsHatcheryFinishes() {
+        Board board = new Board();
+        board.completedHatcheries = 2;
+        board.larva = 0;
+        board.minerals = 358 + HATCHERY_MINERALS;
+
+        runFloatingFrames(board, 1);
+        assertEquals(1, board.totalEnqueues());
+
+        board.morphOldest(board.expansion);
+        runFloatingFrames(board, A_LONG_HOLD);
+        assertEquals(1, board.totalEnqueues());
+
+        board.finish(board.expansion);
+        runFloatingFrames(board, 1);
+        assertEquals(2, board.totalEnqueues());
     }
 
     /**
