@@ -18,6 +18,7 @@ import unit.squad.Squad;
 import util.Time;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashMap;
@@ -588,15 +589,21 @@ public class HorizonCombatSimulator implements CombatSimulator {
      */
     private double friendlyWeight(ManagedUnit mu, Position engagementCenter, boolean enemyHasDetection,
                                   TechProgression techProgression) {
+        double dist = mu.getUnit().getPosition().getDistance(engagementCenter);
+        return readinessWeight(mu, enemyHasDetection, techProgression) * distanceWeight(dist);
+    }
+
+    /**
+     * Every multiplier on one of our units except its domain pricing and its distance from the engagement: health,
+     * cloak, burrow, upgrades and speed research.
+     */
+    private double readinessWeight(ManagedUnit mu, boolean enemyHasDetection, TechProgression techProgression) {
         Unit unit = mu.getUnit();
         UnitType type = unit.getType();
 
         int hp = unit.getHitPoints();
         int shields = unit.getShields();
         double hpWeight = hpWeighting(hp, shields, type.maxHitPoints(), type.maxShields());
-
-        double dist = unit.getPosition().getDistance(engagementCenter);
-        double distWeight = distanceWeight(dist);
 
         double cloak = 1.0;
         if (type == UnitType.Zerg_Lurker && unit.isBurrowed() || type == UnitType.Protoss_Dark_Templar) {
@@ -622,8 +629,68 @@ public class HorizonCombatSimulator implements CombatSimulator {
         double adrenalGlands = adrenalGlandsCorrection(unit, type, techProgression);
         double armorUpgrade = armorUpgradeCorrection(unit, type);
 
-        return hpWeight * distWeight * cloak * prepPenalty * rangeUpgrade * speedPenalty
+        return hpWeight * cloak * prepPenalty * rangeUpgrade * speedPenalty
                 * attackUpgrade * adrenalGlands * armorUpgrade;
+    }
+
+    /**
+     * The strength ratio of a squad against exactly the given enemies, the read a containing squad takes before it
+     * collapses on the enemies inside its arc.
+     *
+     * <p>Every member counts at full distance weight: a collapse brings the whole squad onto the enemies at once.
+     * Every enemy counts at full distance weight too, since the caller picked them by where they stand, and no
+     * building, adjacent squad or own static defence is priced. The ratio is the one {@link #evaluate} judges,
+     * the larger of the ground and combined ratios.
+     *
+     * @param squad squad taking the read
+     * @param enemies the enemies to price
+     * @param engagementCenter where the enemies stand, for the enemy detection check
+     * @param gameState game state
+     * @return the ratio, or 0 when the enemies carry no measurable ground strength
+     */
+    public double sectorRatio(Squad squad, Collection<Unit> enemies, Position engagementCenter, GameState gameState) {
+        int currentFrame = gameState.getGame().getFrameCount();
+        boolean enemyHasDetection = enemyHasNearbyDetection(gameState.getObservedUnitTracker(), engagementCenter,
+                currentFrame);
+        TechProgression techProgression = gameState.getTechProgression();
+        Map<UnitSizeType, Double> friendlySizeProportions = sizeProportions(squad, null);
+
+        EnemySample enemySample = new EnemySample();
+        for (Unit enemy : enemies) {
+            UnitType type = enemy.getType();
+            double hpWeight = hpWeighting(enemy.getHitPoints(), enemy.getShields(), type.maxHitPoints(),
+                    type.maxShields());
+            double heightMod = 1.0;
+            if (!type.isFlyer() && isRanged(type)
+                    && gameState.getGame().getGroundHeight(enemy.getTilePosition()) > 0) {
+                heightMod = HEIGHT_BONUS;
+            }
+            enemySample.add(type, weightedGroundStrength(type, friendlySizeProportions) * hpWeight * heightMod,
+                    weightedAntiAirStrength(type, friendlySizeProportions) * hpWeight * heightMod);
+        }
+
+        FriendlyForce friendlyForce = new FriendlyForce();
+        for (ManagedUnit mu : squad.getMembers()) {
+            if (mu.getUnitType() == UnitType.Zerg_Overlord) continue;
+            friendlyForce.add(mu.getUnitType(), mu.getUnit().getPosition(),
+                    readinessWeight(mu, enemyHasDetection, techProgression), false);
+        }
+        return sectorRatio(friendlyForce, enemySample);
+    }
+
+    /**
+     * The ratio {@link #sectorRatio(Squad, Collection, Position, GameState)} reports, on its priced inputs.
+     *
+     * @param friendly our units, each at its readiness weight
+     * @param enemy the enemies being priced
+     * @return the larger of the ground and combined ratios, or 0 when the enemy ground strength is not measurable
+     */
+    static double sectorRatio(FriendlyForce friendly, EnemySample enemy) {
+        PricedEngagement priced = price(friendly, enemy);
+        if (priced.getEnemyGround() <= MIN_ENEMY_STRENGTH) return 0;
+        double groundRatio = priced.getFriendlyGround() / priced.getEnemyGround();
+        return Math.max(groundRatio, combinedRatio(priced.getFriendlyGround(), priced.getFriendlyAir(),
+                priced.getEnemyGround(), priced.getEnemyEngaged()));
     }
 
     private double rangeUpgradeCorrection(Unit unit, UnitType type) {
@@ -963,7 +1030,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
      * @param opponentRace race of the opponent
      * @return the engage threshold for that matchup
      */
-    static double engageThreshold(Race opponentRace) {
+    public static double engageThreshold(Race opponentRace) {
         switch (opponentRace) {
             case Terran:  return 1.44;
             case Protoss: return 1.25;

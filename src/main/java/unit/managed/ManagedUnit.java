@@ -41,8 +41,10 @@ public class ManagedUnit {
     protected Position rallyPoint;
     @Setter @Getter
     protected TilePosition movementTargetPosition;
-    @Setter @Getter
+    @Getter
     protected Position containPosition;
+    @Getter
+    private boolean containAttackMove;
     @Setter @Getter
     protected Position perchPosition;
     @Setter @Getter
@@ -484,6 +486,57 @@ public class ManagedUnit {
         unit.move(rallyPoint);
     }
 
+    /**
+     * Sets the point the unit holds in CONTAIN, reached by a plain move.
+     *
+     * @param containPosition the point to hold
+     */
+    public void setContainPosition(Position containPosition) {
+        this.containPosition = containPosition;
+        this.containAttackMove = false;
+    }
+
+    /**
+     * Sends the unit in CONTAIN to a point by attack-move, so it fights what it meets on the way, as a collapse's
+     * flank wraps.
+     *
+     * @param point the point to attack-move to
+     */
+    public void attackMoveToContainPosition(Position point) {
+        this.containPosition = point;
+        this.containAttackMove = true;
+    }
+
+    /**
+     * What a containing unit does on a ready frame.
+     */
+    public enum ContainStep {
+        ATTACK_ENEMY,
+        HOLD,
+        MOVE,
+        ATTACK_MOVE
+    }
+
+    /**
+     * Picks a containing unit's step: attack an enemy within its range, hold once within 24 pixels of its point, else
+     * go to the point by attack-move when it was sent there that way, see {@link #attackMoveToContainPosition}, or by
+     * a plain move.
+     *
+     * @param enemyInRange true when an enemy stands within the unit's range
+     * @param distanceToPoint pixels from the unit to its contain point
+     * @param attackMove true when the unit goes to its point by attack-move
+     * @return the step
+     */
+    public static ContainStep containStep(boolean enemyInRange, double distanceToPoint, boolean attackMove) {
+        if (enemyInRange) {
+            return ContainStep.ATTACK_ENEMY;
+        }
+        if (distanceToPoint < 24) {
+            return ContainStep.HOLD;
+        }
+        return attackMove ? ContainStep.ATTACK_MOVE : ContainStep.MOVE;
+    }
+
     protected void contain() {
         if (containPosition == null) {
             role = UnitRole.IDLE;
@@ -491,20 +544,21 @@ public class ManagedUnit {
         }
 
         Unit nearbyEnemy = findClosestEnemyInRange();
-        if (nearbyEnemy != null) {
-            setUnready(6);
-            unit.attack(nearbyEnemy);
-            return;
-        }
-
-        if (unit.getDistance(containPosition) < 24) {
-            setUnready(6);
-            unit.holdPosition();
-            return;
-        }
-
         setUnready(6);
-        unit.move(containPosition);
+        switch (containStep(nearbyEnemy != null, unit.getDistance(containPosition), containAttackMove)) {
+            case ATTACK_ENEMY:
+                unit.attack(nearbyEnemy);
+                break;
+            case HOLD:
+                unit.holdPosition();
+                break;
+            case ATTACK_MOVE:
+                unit.attack(containPosition);
+                break;
+            default:
+                unit.move(containPosition);
+                break;
+        }
     }
 
     protected void perch() {
@@ -667,6 +721,14 @@ public class ManagedUnit {
      */
     public boolean wasHitOn(int frame) {
         return hitFrame == frame;
+    }
+
+    /**
+     * @param frame earliest frame counted
+     * @return true when the unit last lost hit points on or after the frame
+     */
+    public boolean wasHitSince(int frame) {
+        return hitFrame >= 0 && hitFrame >= frame;
     }
 
     /**
