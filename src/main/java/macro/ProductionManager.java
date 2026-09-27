@@ -136,7 +136,6 @@ public class ProductionManager {
         }
     }
 
-    /** Re-derives the pending tech wave from the structures under construction this frame. */
     /**
      * Carries out the {@link ExtractorTrick}'s step for this frame. A cancel that the game accepts
      * hands the geyser back without arming the Extractor replan hold, since the build takes the
@@ -171,6 +170,7 @@ public class ProductionManager {
         return null;
     }
 
+    /** Re-derives the pending tech wave from the structures under construction this frame. */
     private void updateTechWave() {
         techWave = null;
         Unit prerequisite = null;
