@@ -2,7 +2,9 @@ package strategy.buildorder.terran;
 
 import bwapi.TechType;
 import bwapi.UnitType;
+import bwapi.UpgradeType;
 import info.TechProgression;
+import info.UnitTypeCount;
 import macro.HatcheryCapacity;
 import macro.plan.Plan;
 import macro.plan.PlanComparator;
@@ -11,6 +13,8 @@ import macro.plan.UnitPlan;
 import org.junit.jupiter.api.Test;
 import strategy.buildorder.BuildOrder;
 import util.Time;
+
+import java.util.Arrays;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -393,5 +397,23 @@ class LurkerDefilerUltraTest {
         assertEquals(LurkerDefilerUltra.MACRO_HATCHERY_CAP, new LurkerDefilerUltra().macroHatcheryCap());
         assertEquals(BuildOrder.NO_MACRO_HATCHERY_CAP, new ThreeHatchLurker().macroHatcheryCap());
         assertEquals(BuildOrder.NO_MACRO_HATCHERY_CAP, new TwoHatchMuta().macroHatcheryCap());
+    }
+
+    @Test
+    void theBuildsOwnCarapaceAndMeleeUpgradesQueueBehindConsume() {
+        LurkerDefilerUltra build = new LurkerDefilerUltra();
+        TechProgression techProgression = new TechProgression();
+        techProgression.setEvolutionChambers(2);
+        UnitTypeCount army = new UnitTypeCount();
+        for (int i = 0; i < 40; i++) {
+            army.addUnit(UnitType.Zerg_Zergling);
+            army.addUnit(UnitType.Zerg_Lurker);
+            army.addUnit(UnitType.Zerg_Hydralisk);
+        }
+
+        for (UpgradeType upgrade : Arrays.asList(UpgradeType.Zerg_Carapace, UpgradeType.Zerg_Melee_Attacks)) {
+            int priority = build.upgradePriority(upgrade, army, techProgression, LATE.getFrames());
+            assertTrue(priority > LurkerDefilerUltra.DEFILER_RESEARCH_PRIORITY, upgrade.toString());
+        }
     }
 }
