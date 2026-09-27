@@ -17,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PlanEventLoggerTest {
 
-    private static final int PLAN_COLUMNS = 80;
+    private static final int PLAN_COLUMNS = 81;
 
     private static final boolean STARVED = true;
 
@@ -160,20 +160,21 @@ class PlanEventLoggerTest {
         assertEquals("drone_round_workers", column(reason + 4));
         assertEquals("drone_round_soft_cap", column(reason + 5));
         assertEquals("drone_round_hard_cap", column(reason + 6));
-        assertEquals("drone_round_hard_cap", columns[columns.length - 1]);
+        assertEquals("contain_period_start_frame", column(reason + 7));
+        assertEquals("contain_period_start_frame", columns[columns.length - 1]);
     }
 
     @Test
-    void aRowThatIsNotADroneRoundRowWritesSevenEmptyDroneRoundCells() {
+    void aRowThatIsNotADroneRoundRowWritesEightEmptyDroneRoundCells() {
         StringBuilder sb = new StringBuilder();
 
         PlanEventLogger.appendDroneRound(sb, null);
 
-        assertEquals(Arrays.asList("", "", "", "", "", "", ""), Arrays.asList(sb.toString().split(",", -1)));
+        assertEquals(Arrays.asList("", "", "", "", "", "", "", ""), Arrays.asList(sb.toString().split(",", -1)));
     }
 
     @Test
-    void aDroneRoundRowWritesItsReasonDronesSizeHeldFramesWorkersAndCapsInHeaderOrder() {
+    void aDroneRoundRowWritesItsReasonDronesSizeHeldFramesWorkersCapsAndPeriodInHeaderOrder() {
         List<DroneRound.Report> reports = new ArrayList<>();
         PlanEvents.register(new PlanEventSink() {
             @Override
@@ -195,7 +196,7 @@ class PlanEventLoggerTest {
         });
         try {
             new DroneRound().update(9000, 0, 20, 0, true, false, DroneRound.ContainHeld.builder()
-                    .eligible(true).chainStartFrame(8000).heldFrames(1000).hatcheries(4)
+                    .eligible(true).chainStartFrame(8000).periodStartFrame(7500).heldFrames(1000).hatcheries(4)
                     .workers(18).softCap(26).hardCap(33).build());
         } finally {
             PlanEvents.clear();
@@ -206,7 +207,7 @@ class PlanEventLoggerTest {
 
         String[] cells = sb.toString().split(",", -1);
         int first = indexOf("drone_round_reason");
-        assertEquals(7, cells.length);
+        assertEquals(8, cells.length);
         assertEquals("CONTAIN_HELD", cells[indexOf("drone_round_reason") - first]);
         assertEquals("20", cells[indexOf("drone_round_drones") - first]);
         assertEquals("4", cells[indexOf("drone_round_size") - first]);
@@ -214,6 +215,7 @@ class PlanEventLoggerTest {
         assertEquals("18", cells[indexOf("drone_round_workers") - first]);
         assertEquals("26", cells[indexOf("drone_round_soft_cap") - first]);
         assertEquals("33", cells[indexOf("drone_round_hard_cap") - first]);
+        assertEquals("7500", cells[indexOf("contain_period_start_frame") - first]);
     }
 
     private static String column(int index) {

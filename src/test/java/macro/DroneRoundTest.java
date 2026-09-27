@@ -214,6 +214,7 @@ class DroneRoundTest {
         return DroneRound.ContainHeld.builder()
                 .eligible(true)
                 .chainStartFrame(HELD_AT)
+                .periodStartFrame(HELD_AT)
                 .heldFrames(ContainHeldTimer.HELD_FRAMES)
                 .hatcheries(2)
                 .workers(WORKERS)
@@ -333,16 +334,16 @@ class DroneRoundTest {
     }
 
     @Test
-    void aContainChainOpensAtMostTwoRounds() {
+    void aContainPeriodOpensAtMostTwoRounds() {
         DroneRound round = openContainHeldRound();
         int firstClose = FRAME + 10;
         round.update(firstClose, NO_ARMY, DRONES + 3, 0, WANTED, CALM, heldAt(firstClose));
-        assertEquals(1, round.containHeldRoundsOnChain(HELD_AT));
+        assertEquals(1, round.containHeldRoundsInPeriod(HELD_AT));
 
         int secondOpen = firstClose + DroneRound.CONTAIN_HELD_COOLDOWN_FRAMES;
         round.update(secondOpen, NO_ARMY, DRONES + 3, 0, WANTED, CALM, heldAt(secondOpen));
         assertTrue(round.isActive());
-        assertEquals(2, round.containHeldRoundsOnChain(HELD_AT));
+        assertEquals(2, round.containHeldRoundsInPeriod(HELD_AT));
 
         int secondClose = secondOpen + 10;
         round.update(secondClose, NO_ARMY, DRONES + 6, 0, WANTED, CALM, heldAt(secondClose));
@@ -351,11 +352,31 @@ class DroneRoundTest {
         int third = secondClose + 10 * DroneRound.CONTAIN_HELD_COOLDOWN_FRAMES;
         round.update(third, NO_ARMY, DRONES + 6, 0, WANTED, CALM, heldAt(third));
         assertFalse(round.isActive());
-        assertEquals(DroneRound.MAX_CONTAIN_HELD_ROUNDS_PER_CHAIN, round.containHeldRoundsOnChain(HELD_AT));
+        assertEquals(DroneRound.MAX_CONTAIN_HELD_ROUNDS_PER_PERIOD, round.containHeldRoundsInPeriod(HELD_AT));
     }
 
     @Test
-    void aNewContainChainOpensRoundsAgain() {
+    void aNewContainPeriodOpensRoundsAgain() {
+        DroneRound round = openContainHeldRound();
+        int firstClose = FRAME + 10;
+        round.update(firstClose, NO_ARMY, DRONES + 3, 0, WANTED, CALM, heldAt(firstClose));
+        int secondOpen = firstClose + DroneRound.CONTAIN_HELD_COOLDOWN_FRAMES;
+        round.update(secondOpen, NO_ARMY, DRONES + 3, 0, WANTED, CALM, heldAt(secondOpen));
+        int secondClose = secondOpen + 10;
+        round.update(secondClose, NO_ARMY, DRONES + 6, 0, WANTED, CALM, heldAt(secondClose));
+
+        int newPeriod = secondClose + 100;
+        int heldFrame = newPeriod + ContainHeldTimer.HELD_FRAMES;
+        round.update(heldFrame, NO_ARMY, DRONES + 6, 0, WANTED, CALM, held().chainStartFrame(newPeriod)
+                .periodStartFrame(newPeriod).heldFrames(ContainHeldTimer.HELD_FRAMES).build());
+
+        assertTrue(round.isActive());
+        assertEquals(1, round.containHeldRoundsInPeriod(newPeriod));
+        assertEquals(0, round.containHeldRoundsInPeriod(HELD_AT));
+    }
+
+    @Test
+    void aNewChainInsideTheSamePeriodOpensNoFurtherRound() {
         DroneRound round = openContainHeldRound();
         int firstClose = FRAME + 10;
         round.update(firstClose, NO_ARMY, DRONES + 3, 0, WANTED, CALM, heldAt(firstClose));
@@ -369,27 +390,53 @@ class DroneRoundTest {
         round.update(heldFrame, NO_ARMY, DRONES + 6, 0, WANTED, CALM,
                 held().chainStartFrame(newChain).heldFrames(ContainHeldTimer.HELD_FRAMES).build());
 
-        assertTrue(round.isActive());
-        assertEquals(1, round.containHeldRoundsOnChain(newChain));
-        assertEquals(0, round.containHeldRoundsOnChain(HELD_AT));
+        assertFalse(round.isActive());
     }
 
     @Test
-    void aRoundThatClosesEarlyStillCountsAgainstItsChain() {
+    void anEnemyBreakWhileAnotherSquadStillContainsDoesNotRestoreTheRoundBudget() {
+        PlanEvents.register(recorder());
+        ContainHeldTimer timer = new ContainHeldTimer();
+        DroneRound round = new DroneRound();
+        int drones = DRONES;
+        int breakFrame = FRAME + 3000;
+        for (int frame = FRAME; frame < FRAME + 6000; frame++) {
+            if (frame == breakFrame) {
+                timer.broken();
+            }
+            timer.update(frame, true);
+            if (round.isActive()) {
+                drones = round.getDroneTarget();
+            }
+            round.update(frame, NO_ARMY, drones, 0, WANTED, CALM, held()
+                    .chainStartFrame(timer.getChainStartFrame())
+                    .periodStartFrame(timer.getPeriodStartFrame())
+                    .heldFrames(timer.heldFrames(frame))
+                    .build());
+        }
+
+        assertEquals(breakFrame, timer.getChainStartFrame());
+        assertEquals(FRAME, timer.getPeriodStartFrame());
+        assertEquals(DroneRound.MAX_CONTAIN_HELD_ROUNDS_PER_PERIOD,
+                reports.stream().filter(report -> report.startsWith("OPEN:")).count());
+    }
+
+    @Test
+    void aRoundThatClosesEarlyStillCountsAgainstItsPeriod() {
         DroneRound round = openContainHeldRound();
         round.update(FRAME + 1, NO_ARMY, DRONES, 0, WANTED, THREAT, heldAt(FRAME + 1));
 
         assertFalse(round.isActive());
-        assertEquals(1, round.containHeldRoundsOnChain(HELD_AT));
+        assertEquals(1, round.containHeldRoundsInPeriod(HELD_AT));
     }
 
     @Test
-    void anArmyMilestoneRoundDoesNotCountAgainstTheContainChain() {
+    void anArmyMilestoneRoundDoesNotCountAgainstTheContainPeriod() {
         DroneRound round = new DroneRound();
         round.update(FRAME, DroneRound.FIRST_ROUND_ARMY_UNITS, DRONES, CAP, WANTED, CALM, held().build());
 
         assertEquals(DroneRound.OpenReason.ARMY_MILESTONE, round.getReason());
-        assertEquals(0, round.containHeldRoundsOnChain(HELD_AT));
+        assertEquals(0, round.containHeldRoundsInPeriod(HELD_AT));
     }
 
     @Test

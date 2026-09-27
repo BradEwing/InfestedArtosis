@@ -193,6 +193,7 @@ public abstract class BuildOrder {
         return DroneRound.ContainHeld.builder()
                 .eligible(containHeldMatchup(gameState.getOpponentRace()) && runsContainHeldRounds(gameState))
                 .chainStartFrame(timer.getChainStartFrame())
+                .periodStartFrame(timer.getPeriodStartFrame())
                 .heldFrames(timer.heldFrames(frame))
                 .hatcheries(gameState.hatcheryCount())
                 .workers(gameState.numWorkers())

@@ -30,8 +30,9 @@ import unit.squad.ContainHeldTimer;
  * <p>A {@link OpenReason#CONTAIN_HELD} round opens once our ground squads have held a contain for
  * {@link ContainHeldTimer#HELD_FRAMES}, in a matchup and build that allow it, while the workers are
  * under both the hard cap and the soft cap, and no sooner than {@link #CONTAIN_HELD_COOLDOWN_FRAMES}
- * after the last such round closed. At most {@link #MAX_CONTAIN_HELD_ROUNDS_PER_CHAIN} open on one contain
- * chain; a new chain allows as many again. Its size is one Drone per hatchery and at least
+ * after the last such round closed. At most {@link #MAX_CONTAIN_HELD_ROUNDS_PER_PERIOD} open in one contain
+ * period ({@link ContainHeldTimer}), however many chains an enemy break splits it into; a new period allows
+ * as many again. Its size is one Drone per hatchery and at least
  * {@link #CONTAIN_HELD_MIN_ROUND_SIZE}, cut to the workers still under the lower of the two caps; the
  * build's Drone cap does not bound it. It closes on a
  * threat, once the matchup or build no longer allows it, when the contain it opened on ends or is
@@ -62,11 +63,11 @@ public class DroneRound {
     public static final int CONTAIN_HELD_MIN_ROUND_SIZE = 3;
 
     /**
-     * Contain-held rounds one contain chain may open. The later rounds of a long chain were followed by an
+     * Contain-held rounds one contain period may open. The later rounds of a long contain were followed by an
      * enemy break more often than the first, and each round takes larva from the army holding the line.
      * Tuning constant.
      */
-    public static final int MAX_CONTAIN_HELD_ROUNDS_PER_CHAIN = 2;
+    public static final int MAX_CONTAIN_HELD_ROUNDS_PER_PERIOD = 2;
 
     private static final int NEVER = Integer.MIN_VALUE / 2;
 
@@ -108,6 +109,10 @@ public class DroneRound {
         @Builder.Default
         private final int chainStartFrame = ContainHeldTimer.NO_CHAIN;
 
+        /** The start of the running contain period, or {@link ContainHeldTimer#NO_CHAIN}. */
+        @Builder.Default
+        private final int periodStartFrame = ContainHeldTimer.NO_CHAIN;
+
         /** Frames the running contain chain has lasted. */
         private final int heldFrames;
 
@@ -147,6 +152,7 @@ public class DroneRound {
         private final int drones;
         private final int size;
         private final int containHeldFrames;
+        private final int containPeriodStartFrame;
         private final int workers;
         private final int softCap;
         private final int hardCap;
@@ -157,6 +163,7 @@ public class DroneRound {
             this.drones = drones;
             this.size = size;
             this.containHeldFrames = containHeld.getHeldFrames();
+            this.containPeriodStartFrame = containHeld.getPeriodStartFrame();
             this.workers = containHeld.getWorkers();
             this.softCap = containHeld.getSoftCap();
             this.hardCap = containHeld.getHardCap();
@@ -191,9 +198,9 @@ public class DroneRound {
     @Getter
     private int lastContainHeldCloseFrame = NEVER;
 
-    private int countedChainStartFrame = ContainHeldTimer.NO_CHAIN;
+    private int countedPeriodStartFrame = ContainHeldTimer.NO_CHAIN;
 
-    private int countedChainRounds = 0;
+    private int countedPeriodRounds = 0;
 
     /**
      * Opens or closes the round for this frame, with no contain-held round possible.
@@ -241,7 +248,7 @@ public class DroneRound {
             return;
         }
         if (opensContainHeldRound(frame, containHeld)) {
-            countContainHeldRound(containHeld.getChainStartFrame());
+            countContainHeldRound(containHeld.getPeriodStartFrame());
             open(frame, OpenReason.CONTAIN_HELD, drones + containHeldRoundSize(containHeld), containHeld);
         }
     }
@@ -263,23 +270,23 @@ public class DroneRound {
     }
 
     /**
-     * @param chainStartFrame the start of a contain chain
-     * @return contain-held rounds opened on that chain
+     * @param periodStartFrame the start of a contain period
+     * @return contain-held rounds opened in that period
      */
-    public int containHeldRoundsOnChain(int chainStartFrame) {
-        return chainStartFrame == countedChainStartFrame ? countedChainRounds : 0;
+    public int containHeldRoundsInPeriod(int periodStartFrame) {
+        return periodStartFrame == countedPeriodStartFrame ? countedPeriodRounds : 0;
     }
 
-    private void countContainHeldRound(int chainStartFrame) {
-        countedChainRounds = containHeldRoundsOnChain(chainStartFrame) + 1;
-        countedChainStartFrame = chainStartFrame;
+    private void countContainHeldRound(int periodStartFrame) {
+        countedPeriodRounds = containHeldRoundsInPeriod(periodStartFrame) + 1;
+        countedPeriodStartFrame = periodStartFrame;
     }
 
     private boolean opensContainHeldRound(int frame, ContainHeld containHeld) {
         return containHeld.isEligible()
                 && containHeld.isHeld()
                 && frame - lastContainHeldCloseFrame >= CONTAIN_HELD_COOLDOWN_FRAMES
-                && containHeldRoundsOnChain(containHeld.getChainStartFrame()) < MAX_CONTAIN_HELD_ROUNDS_PER_CHAIN
+                && containHeldRoundsInPeriod(containHeld.getPeriodStartFrame()) < MAX_CONTAIN_HELD_ROUNDS_PER_PERIOD
                 && containHeld.underCaps();
     }
 

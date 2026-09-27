@@ -109,6 +109,55 @@ class ContainHeldTimerTest {
     }
 
     @Test
+    void anEnemyBreakEndsTheChainButNotThePeriod() {
+        ContainHeldTimer timer = containedFor(ContainHeldTimer.HELD_FRAMES);
+        int breakFrame = START + ContainHeldTimer.HELD_FRAMES + 1;
+
+        timer.broken();
+        assertEquals(START, timer.getPeriodStartFrame());
+
+        timer.update(breakFrame, true);
+        assertEquals(breakFrame, timer.getChainStartFrame());
+        assertEquals(START, timer.getPeriodStartFrame());
+    }
+
+    @Test
+    void aBreakWithNoSquadContainingEndsThePeriodOnlyAfterTheReEntryGap() {
+        ContainHeldTimer timer = containedFor(ContainHeldTimer.HELD_FRAMES);
+        int last = START + ContainHeldTimer.HELD_FRAMES;
+        timer.broken();
+
+        timer.update(last + ContainHeldTimer.REENTRY_GAP_FRAMES, false);
+        assertEquals(START, timer.getPeriodStartFrame());
+
+        timer.update(last + ContainHeldTimer.REENTRY_GAP_FRAMES + 1, false);
+        assertEquals(ContainHeldTimer.NO_CHAIN, timer.getPeriodStartFrame());
+        assertEquals(ContainHeldTimer.NO_CHAIN, timer.getChainStartFrame());
+    }
+
+    @Test
+    void aGapLongerThanTheReEntryGapEndsThePeriodAndTheNextContainStartsANewOne() {
+        ContainHeldTimer timer = containedFor(ContainHeldTimer.HELD_FRAMES);
+        int last = START + ContainHeldTimer.HELD_FRAMES;
+        timer.update(last + ContainHeldTimer.REENTRY_GAP_FRAMES + 1, false);
+
+        timer.update(last + ContainHeldTimer.REENTRY_GAP_FRAMES + 2, true);
+
+        assertEquals(last + ContainHeldTimer.REENTRY_GAP_FRAMES + 2, timer.getPeriodStartFrame());
+    }
+
+    @Test
+    void aTimeoutAndImmediateReEntryKeepThePeriod() {
+        ContainHeldTimer timer = containedFor(TIMEOUT_FRAMES);
+        int reentry = START + TIMEOUT_FRAMES + 1 + ContainHeldTimer.REENTRY_GAP_FRAMES;
+        timer.update(reentry - 1, false);
+
+        timer.update(reentry, true);
+
+        assertEquals(START, timer.getPeriodStartFrame());
+    }
+
+    @Test
     void onlyAGroundSquadInContainCountsAsContaining() {
         Squad containing = new GroundSquad();
         containing.setStatus(SquadStatus.CONTAIN);

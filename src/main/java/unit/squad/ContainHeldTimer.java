@@ -11,6 +11,10 @@ package unit.squad;
  * <p>A containing squad sent back by the enemy (attrition or an outranged arc), or a break of every contain
  * (a base under attack or the strength gate sending the army in), breaks the chain at once, whether or not
  * another squad still contains; a squad still in CONTAIN starts a new chain on the next update.
+ *
+ * <p>A period is the same union without the breaks: it starts with the first chain and ends only once more than
+ * {@link #REENTRY_GAP_FRAMES} frames pass with no ground squad in CONTAIN, so the chains a break splits one
+ * contain into share a period.
  */
 public class ContainHeldTimer {
 
@@ -28,6 +32,8 @@ public class ContainHeldTimer {
 
     private int chainStartFrame = NO_CHAIN;
 
+    private int periodStartFrame = NO_CHAIN;
+
     private int lastContainFrame = NO_CHAIN;
 
     /**
@@ -41,19 +47,31 @@ public class ContainHeldTimer {
             if (chainStartFrame == NO_CHAIN) {
                 chainStartFrame = frame;
             }
+            if (periodStartFrame == NO_CHAIN) {
+                periodStartFrame = frame;
+            }
             lastContainFrame = frame;
             return;
         }
-        if (chainStartFrame != NO_CHAIN && frame - lastContainFrame > REENTRY_GAP_FRAMES) {
-            reset();
+        if (periodStartFrame != NO_CHAIN && frame - lastContainFrame > REENTRY_GAP_FRAMES) {
+            chainStartFrame = NO_CHAIN;
+            periodStartFrame = NO_CHAIN;
+            lastContainFrame = NO_CHAIN;
         }
     }
 
     /**
-     * Ends the chain because the enemy sent a containing squad back.
+     * Ends the chain, but not the period, because the enemy sent a containing squad back.
      */
     public void broken() {
-        reset();
+        chainStartFrame = NO_CHAIN;
+    }
+
+    /**
+     * @return the frame the running period started on, or {@link #NO_CHAIN}
+     */
+    public int getPeriodStartFrame() {
+        return periodStartFrame;
     }
 
     /**
@@ -77,10 +95,5 @@ public class ContainHeldTimer {
      */
     public boolean isHeld(int frame) {
         return chainStartFrame != NO_CHAIN && heldFrames(frame) >= HELD_FRAMES;
-    }
-
-    private void reset() {
-        chainStartFrame = NO_CHAIN;
-        lastContainFrame = NO_CHAIN;
     }
 }

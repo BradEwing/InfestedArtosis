@@ -203,11 +203,12 @@ public class PlanEventLogger implements PlanEventSink {
      * row's count less the OPEN row's is the Drones a round added net of any Drones that died during
      * it. drone_round_size is the Drones the round
      * set out to add; a contain-held round's size is already cut to the workers left under the lower cap.
-     * The OPEN row's frame less its contain_held_frames is the start of the chain it opened on, which
-     * identifies the rounds of one chain. contain_held_frames is how long our ground squads had held the running contain,
-     * zero with none. drone_round_workers, drone_round_soft_cap and drone_round_hard_cap are the
-     * mineral and gas workers and the two worker caps a contain-held round measures them against.
-     * Those seven columns are set only on the two DRONE_ROUND rows.
+     * contain_held_frames is how long our ground squads had held the running contain chain, zero with none, so
+     * the OPEN row's frame less it is the chain start. drone_round_workers, drone_round_soft_cap and
+     * drone_round_hard_cap are the mineral and gas workers and the two worker caps a contain-held round
+     * measures them against. contain_period_start_frame is the start of the running contain period, which an
+     * enemy break does not end, or -1 with none; it groups the contain-held rounds one period opened.
+     * Those eight columns are set only on the two DRONE_ROUND rows.
      */
     static final String PLAN_HEADER = "frame,time,event,plan_id,executor_unit_id,plan_type,item,from_state,"
             + "to_state,cancel_reason,cancel_source,blocker,blocked_frames,priority,frames_in_state,age_frames,"
@@ -224,7 +225,7 @@ public class PlanEventLogger implements PlanEventSink {
             + "builder_role,builder_order,builder_in_range,previous_executor_unit_id,"
             + "geyser_base_x,geyser_base_y,geyser_initial_resources,extractor_completed_frame,"
             + "drone_round_reason,drone_round_drones,drone_round_size,contain_held_frames,drone_round_workers,"
-            + "drone_round_soft_cap,drone_round_hard_cap";
+            + "drone_round_soft_cap,drone_round_hard_cap,contain_period_start_frame";
 
     private static final String GAME_HEADER = "timestamp,is_winner,num_starting_locations,map_name,opponent_name,"
             + "opponent_race,opener,build_order,detected_strategies,frame_count";
@@ -1319,14 +1320,14 @@ public class PlanEventLogger implements PlanEventSink {
     }
 
     /**
-     * Writes the seven drone round cells, empty when the row is not a DRONE_ROUND row.
+     * Writes the eight drone round cells, empty when the row is not a DRONE_ROUND row.
      *
      * @param sb the row being built, whose last cell so far is followed by a separator
      * @param droneRound the round that opened or closed, or null
      */
     static void appendDroneRound(StringBuilder sb, DroneRound.Report droneRound) {
         if (droneRound == null) {
-            sb.append(",,,,,,");
+            sb.append(",,,,,,,");
             return;
         }
         sb.append(droneRound.getReason()).append(',');
@@ -1335,7 +1336,8 @@ public class PlanEventLogger implements PlanEventSink {
         sb.append(droneRound.getContainHeldFrames()).append(',');
         sb.append(droneRound.getWorkers()).append(',');
         sb.append(droneRound.getSoftCap()).append(',');
-        sb.append(droneRound.getHardCap());
+        sb.append(droneRound.getHardCap()).append(',');
+        sb.append(droneRound.getContainPeriodStartFrame());
     }
 
     private static String orEmpty(Object value) {
