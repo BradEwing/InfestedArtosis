@@ -1,6 +1,7 @@
 package telemetry;
 
 import bwapi.Position;
+import bwapi.TilePosition;
 import bwapi.UnitType;
 import macro.ProductionQueue;
 import macro.plan.BuildingPlan;
@@ -31,6 +32,9 @@ class PlanEventsTest {
     private final List<Plan> diverted = new ArrayList<>();
     private final List<Position> divertMinerals = new ArrayList<>();
     private final List<String> hiveTechGates = new ArrayList<>();
+    private final List<String> depletedGeysers = new ArrayList<>();
+    private final List<String> claimedBases = new ArrayList<>();
+    private final List<String> patchesSeenGone = new ArrayList<>();
 
     private PlanEventSink recorder() {
         return new PlanEventSink() {
@@ -71,6 +75,27 @@ class PlanEventsTest {
                 hiveTechGates.add(gate + ":" + structure + ":" + availableGas + ":" + requiredGas + ":"
                         + extractorsCompleted);
             }
+
+            @Override
+            public void onGeyserDepleted(TilePosition geyser, TilePosition base, int initialResources,
+                                         int extractorCompletedFrame, int firstExtractorCompletedFrame) {
+                depletedGeysers.add(geyser + ":" + base + ":" + initialResources + ":" + extractorCompletedFrame
+                        + ":" + firstExtractorCompletedFrame);
+            }
+
+            @Override
+            public void onBaseClaimed(TilePosition base, int baseMineralPatches, int mapMineralPatches,
+                                      int remainingMineralPatches) {
+                claimedBases.add(base + ":" + baseMineralPatches + ":" + mapMineralPatches + ":"
+                        + remainingMineralPatches);
+            }
+
+            @Override
+            public void onMineralPatchSeenGone(TilePosition base, int baseMineralPatches, int mapMineralPatches,
+                                               int remainingMineralPatches) {
+                patchesSeenGone.add(base + ":" + baseMineralPatches + ":" + mapMineralPatches + ":"
+                        + remainingMineralPatches);
+            }
         };
     }
 
@@ -91,6 +116,35 @@ class PlanEventsTest {
         assertEquals("PLANNED>SCHEDULE", transitions.get(0));
         assertEquals("SCHEDULE>BUILDING", transitions.get(1));
         assertEquals(PlanState.BUILDING, plan.getState());
+    }
+
+    @Test
+    void geyserDepletedReachesTheSinkWithTheGeyserBaseAndStartingGas() {
+        PlanEvents.register(recorder());
+
+        PlanEvents.geyserDepleted(new TilePosition(10, 20), new TilePosition(12, 24), 5000, 1800, 1200);
+
+        assertEquals(Collections.singletonList(new TilePosition(10, 20) + ":" + new TilePosition(12, 24)
+                + ":5000:1800:1200"), depletedGeysers);
+    }
+
+    @Test
+    void baseClaimedReachesTheSinkWithTheLedgerAndMapPatchCounts() {
+        PlanEvents.register(recorder());
+
+        PlanEvents.baseClaimed(new TilePosition(30, 12), 8, 8, 17);
+
+        assertEquals(Collections.singletonList(new TilePosition(30, 12) + ":8:8:17"), claimedBases);
+    }
+
+    @Test
+    void mineralPatchSeenGoneReachesTheSinkWithTheCountsAfterTheDrop() {
+        PlanEvents.register(recorder());
+
+        PlanEvents.mineralPatchSeenGone(new TilePosition(30, 12), 7, 8, 16);
+
+        assertEquals(Collections.singletonList(new TilePosition(30, 12) + ":7:8:16"), patchesSeenGone);
+        assertTrue(claimedBases.isEmpty());
     }
 
     @Test

@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PlanEventLoggerTest {
 
-    private static final int PLAN_COLUMNS = 69;
+    private static final int PLAN_COLUMNS = 77;
 
     private static final boolean STARVED = true;
 
@@ -126,14 +126,32 @@ class PlanEventLoggerTest {
     }
 
     @Test
-    void theBuilderRoleColumnsAreAppendedLast() {
-        String[] columns = PlanEventLogger.PLAN_HEADER.split(",", -1);
+    void theBuilderRoleColumnsFollowTheEnemyMainColumns() {
         int role = indexOf("builder_role");
         assertEquals(indexOf("enemy_main_source_y") + 1, role);
         assertEquals("builder_order", column(role + 1));
         assertEquals("builder_in_range", column(role + 2));
         assertEquals("previous_executor_unit_id", column(role + 3));
-        assertEquals("previous_executor_unit_id", columns[columns.length - 1]);
+    }
+
+    @Test
+    void theGeyserDepletedColumnsFollowTheBuilderColumns() {
+        int base = indexOf("geyser_base_x");
+        assertEquals(indexOf("previous_executor_unit_id") + 1, base);
+        assertEquals("geyser_base_y", column(base + 1));
+        assertEquals("geyser_initial_resources", column(base + 2));
+        assertEquals("extractor_completed_frame", column(base + 3));
+        assertEquals("first_extractor_completed_frame", column(base + 4));
+    }
+
+    @Test
+    void theBaseClaimedPatchColumnsAreAppendedLast() {
+        String[] columns = PlanEventLogger.PLAN_HEADER.split(",", -1);
+        int patches = indexOf("base_mineral_patches");
+        assertEquals(indexOf("first_extractor_completed_frame") + 1, patches);
+        assertEquals("map_mineral_patches", column(patches + 1));
+        assertEquals("remaining_mineral_patches", column(patches + 2));
+        assertEquals("remaining_mineral_patches", columns[columns.length - 1]);
     }
 
     private static String column(int index) {

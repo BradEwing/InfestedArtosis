@@ -68,13 +68,16 @@ public class PlanEventLogger implements PlanEventSink {
     private static final String EVENT_ENEMY_MAIN_SCOUTED = "ENEMY_MAIN_SCOUTED";
     private static final String EVENT_BUILDER_LOST = "BUILDER_LOST";
     private static final String EVENT_BUILDER_REDISPATCH = "BUILDER_REDISPATCH";
+    private static final String EVENT_GEYSER_DEPLETED = "GEYSER_DEPLETED";
+    private static final String EVENT_BASE_CLAIMED = "BASE_CLAIMED";
+    private static final String EVENT_MINERAL_PATCH_SEEN_GONE = "MINERAL_PATCH_SEEN_GONE";
 
     private static final int NO_STARVED_COUNT = -1;
 
     private static final String EVENT_RECURRING_CANCEL = "RECURRING_CANCEL";
 
     /**
-     * 69 columns; readers that index by position rather than by name must match this order.
+     * 77 columns; readers that index by position rather than by name must match this order.
      * enemy_air, gas_gathered, enemy_barracks, the blocker mineral pair, the enemy ground pair,
      * yield_to_plan_id, the four macro hatchery gate columns and the four Hive tech gate columns
      * are trailing columns written by {@link #appendTrailing}, so every row shape keeps one width.
@@ -183,6 +186,25 @@ public class PlanEventLogger implements PlanEventSink {
      * <p>
      * PROMOTE rows are written when an open drone round moves a queued Drone ahead of the advanced
      * unit band; priority is the new priority and age_frames how long the Drone had been queued.
+     * <p>
+     * GEYSER_DEPLETED rows are written the first frame the geyser under one of our completed
+     * Extractors reads empty, and leave every plan column empty. The geyser's tile is in
+     * build_tile_x and build_tile_y. geyser_base_x and geyser_base_y are the tile location of the
+     * base the geyser belongs to, empty when it belongs to none; geyser_initial_resources is the gas
+     * the geyser started the game with and extractor_completed_frame the frame the Extractor on it
+     * completed. first_extractor_completed_frame is the frame our first Extractor on the geyser
+     * completed, earlier than extractor_completed_frame when the Extractor was rebuilt. Those five
+     * columns are set only on GEYSER_DEPLETED rows.
+     * <p>
+     * BASE_CLAIMED rows are written when a base becomes ours, and leave every plan column empty. The
+     * base's tile location is in build_tile_x and build_tile_y. base_mineral_patches is the mineral
+     * patches the resource ledger holds for the base, map_mineral_patches the patches the map assigns
+     * it, and remaining_mineral_patches the ledger's count at every base we hold, this one included.
+     * The main is claimed before the logger starts, so its row is written when the logger starts.
+     * <p>
+     * MINERAL_PATCH_SEEN_GONE rows are written when a patch at a base we hold leaves the ledger because
+     * its tiles stayed visible without it, and fill the same columns as BASE_CLAIMED, counted after the
+     * patch left. Those three columns are set only on BASE_CLAIMED and MINERAL_PATCH_SEEN_GONE rows.
      */
     static final String PLAN_HEADER = "frame,time,event,plan_id,executor_unit_id,plan_type,item,from_state,"
             + "to_state,cancel_reason,cancel_source,blocker,blocked_frames,priority,frames_in_state,age_frames,"
@@ -196,7 +218,9 @@ public class PlanEventLogger implements PlanEventSink {
             + "builder_route_defense_zones,builder_at_site,builder_dispatch_decision,lost_expansion_builders,"
             + "expansion_hold_until_frame,builder_site_at_our_base,builder_at_our_base,base_inner,enemy_main_reason,"
             + "enemy_main_source_x,enemy_main_source_y,"
-            + "builder_role,builder_order,builder_in_range,previous_executor_unit_id";
+            + "builder_role,builder_order,builder_in_range,previous_executor_unit_id,"
+            + "geyser_base_x,geyser_base_y,geyser_initial_resources,extractor_completed_frame,"
+            + "first_extractor_completed_frame,base_mineral_patches,map_mineral_patches,remaining_mineral_patches";
 
     private static final String GAME_HEADER = "timestamp,is_winner,num_starting_locations,map_name,opponent_name,"
             + "opponent_race,opener,build_order,detected_strategies,frame_count";
@@ -705,6 +729,66 @@ public class PlanEventLogger implements PlanEventSink {
     }
 
     /**
+     * The frame is re-read for the reason {@link #onStrategyDetected} gives: GameState may run ahead of
+     * this logger's onFrame on the same frame.
+     */
+    @Override
+    public void onGeyserDepleted(TilePosition geyser, TilePosition base, int initialResources,
+                                 int extractorCompletedFrame, int firstExtractorCompletedFrame) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            currentFrame = game.getFrameCount();
+            buffer.add(geyserDepletedRow(geyser, BaseEventInputs.geyserDepleted(base, initialResources,
+                    extractorCompletedFrame, firstExtractorCompletedFrame)));
+        } catch (Exception e) {
+            disabled = true;
+        }
+    }
+
+    /**
+     * The frame is re-read rather than taken from the last onFrame, since a base is claimed from
+     * onUnitComplete, which JBWAPI dispatches ahead of the frame's onFrame.
+     */
+    @Override
+    public void onBaseClaimed(TilePosition base, int baseMineralPatches, int mapMineralPatches,
+                              int remainingMineralPatches) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            currentFrame = game.getFrameCount();
+            buffer.add(mineralPatchCountRow(EVENT_BASE_CLAIMED, base,
+                    BaseEventInputs.mineralPatches(baseMineralPatches, mapMineralPatches, remainingMineralPatches)));
+        } catch (Exception e) {
+            disabled = true;
+        }
+    }
+
+    /**
+     * The frame is re-read for the reason {@link #onStrategyDetected} gives: GameState may run ahead of
+     * this logger's onFrame on the same frame.
+     */
+    @Override
+    public void onMineralPatchSeenGone(TilePosition base, int baseMineralPatches, int mapMineralPatches,
+                                       int remainingMineralPatches) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            currentFrame = game.getFrameCount();
+            buffer.add(mineralPatchCountRow(EVENT_MINERAL_PATCH_SEEN_GONE, base,
+                    BaseEventInputs.mineralPatches(baseMineralPatches, mapMineralPatches, remainingMineralPatches)));
+        } catch (Exception e) {
+            disabled = true;
+        }
+    }
+
+    /**
      * The frame is re-read for the reason {@link #onStrategyDetected} gives: GameState may run ahead of this
      * logger's onFrame on the same frame.
      */
@@ -1063,6 +1147,47 @@ public class PlanEventLogger implements PlanEventSink {
         return sb.toString();
     }
 
+    /** A row for a geyser that read empty, which no plan owns, so the plan columns are empty. */
+    private String geyserDepletedRow(TilePosition geyser, BaseEventInputs inputs) {
+        StringBuilder sb = new StringBuilder();
+        appendEvent(sb, EVENT_GEYSER_DEPLETED);
+        appendEmpty(sb, 3);
+        sb.append(Csv.sanitize(UnitType.Zerg_Extractor.toString())).append(',');
+        appendEmpty(sb, 4);
+        appendBlocker(sb, PlanBlocker.NONE, 0);
+        appendEmpty(sb, 3);
+        appendGameState(sb);
+        sb.append(geyser.getX()).append(',');
+        sb.append(geyser.getY()).append(',');
+        appendEmpty(sb, 1);
+        sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
+        appendEmpty(sb, 2);
+        appendTrailing(sb, null, null, null, null, null, inputs, BuilderColumns.BLANK);
+        return sb.toString();
+    }
+
+    /**
+     * A row for a base that became ours or lost a patch seen gone, which no plan owns, so the plan columns are
+     * empty.
+     */
+    private String mineralPatchCountRow(String event, TilePosition base, BaseEventInputs inputs) {
+        StringBuilder sb = new StringBuilder();
+        appendEvent(sb, event);
+        appendEmpty(sb, 3);
+        sb.append(Csv.sanitize(UnitType.Zerg_Hatchery.toString())).append(',');
+        appendEmpty(sb, 4);
+        appendBlocker(sb, PlanBlocker.NONE, 0);
+        appendEmpty(sb, 3);
+        appendGameState(sb);
+        sb.append(base.getX()).append(',');
+        sb.append(base.getY()).append(',');
+        appendEmpty(sb, 1);
+        sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
+        appendEmpty(sb, 2);
+        appendTrailing(sb, null, null, null, null, null, inputs, BuilderColumns.BLANK);
+        return sb.toString();
+    }
+
     /** A row for a change of the squad rally base, which no plan owns, so the plan columns are empty. */
     private String rallyPointChangedRow(TilePosition base, String reason) {
         StringBuilder sb = new StringBuilder();
@@ -1143,8 +1268,10 @@ public class PlanEventLogger implements PlanEventSink {
      *     HIVE_TECH_TRIGGER and HIVE_TECH_WITHHELD
      * @param builderThreat what the plan's builder would walk into, or null when the row has no
      *     BUILDING plan with an executor behind it
-     * @param baseEvent the expansion or colony hold armed or the base lost, or null on every row but
-     *     EXPANSION_BACKOFF, COLONY_BUILDER_BACKOFF and BASE_LOST
+     * @param baseEvent the expansion or colony hold armed, the base lost, the enemy main event, the geyser
+     *     that read empty or the base claimed, or null on every row but EXPANSION_BACKOFF,
+     *     COLONY_BUILDER_BACKOFF, BASE_LOST, the ENEMY_MAIN rows, GEYSER_DEPLETED, BASE_CLAIMED and
+     *     MINERAL_PATCH_SEEN_GONE
      * @param builder the builder columns, {@link BuilderColumns#BLANK} on every row but
      *     BUILD_AHEAD_HOLD, BUILD_AHEAD_EVICT, BUILD_AHEAD_YIELD, BUILDER_DISPATCH_DECISION,
      *     BUILDER_LOST and BUILDER_REDISPATCH, and the carrier of builder_dispatch_decision
@@ -1185,6 +1312,17 @@ public class PlanEventLogger implements PlanEventSink {
         for (String cell : builder.trailing()) {
             sb.append(',').append(cell);
         }
+        sb.append(',');
+        sb.append(baseEvent == null || baseEvent.geyserBase == null ? ""
+                : String.valueOf(baseEvent.geyserBase.getX())).append(',');
+        sb.append(baseEvent == null || baseEvent.geyserBase == null ? ""
+                : String.valueOf(baseEvent.geyserBase.getY())).append(',');
+        sb.append(baseEvent == null ? "" : orEmpty(baseEvent.geyserInitialResources)).append(',');
+        sb.append(baseEvent == null ? "" : orEmpty(baseEvent.extractorCompletedFrame)).append(',');
+        sb.append(baseEvent == null ? "" : orEmpty(baseEvent.firstExtractorCompletedFrame)).append(',');
+        sb.append(baseEvent == null ? "" : orEmpty(baseEvent.baseMineralPatches)).append(',');
+        sb.append(baseEvent == null ? "" : orEmpty(baseEvent.mapMineralPatches)).append(',');
+        sb.append(baseEvent == null ? "" : orEmpty(baseEvent.remainingMineralPatches));
     }
 
     private static String orEmpty(Object value) {
@@ -1299,8 +1437,10 @@ public class PlanEventLogger implements PlanEventSink {
     }
 
     /**
-     * The hold a lost expansion builder armed, whether a lost base was the main or a natural, or why the enemy
-     * main was assigned or cleared and the position of the building that assigned it.
+     * The hold a lost expansion builder armed, whether a lost base was the main or a natural, why the enemy
+     * main was assigned or cleared and the position of the building that assigned it, the base, starting gas
+     * and Extractor completion frames of a geyser that read empty, or the mineral patch counts of a base claimed
+     * or of a base that lost a patch seen gone.
      */
     private static final class BaseEventInputs {
         private final Integer lostExpansionBuilders;
@@ -1308,6 +1448,13 @@ public class PlanEventLogger implements PlanEventSink {
         private final Boolean baseInner;
         private final String enemyMainReason;
         private final Position enemyMainSource;
+        private TilePosition geyserBase;
+        private Integer geyserInitialResources;
+        private Integer extractorCompletedFrame;
+        private Integer firstExtractorCompletedFrame;
+        private Integer baseMineralPatches;
+        private Integer mapMineralPatches;
+        private Integer remainingMineralPatches;
 
         private BaseEventInputs(Integer lostExpansionBuilders, Integer expansionHeldUntilFrame, Boolean baseInner,
                                 String enemyMainReason, Position enemyMainSource) {
@@ -1328,6 +1475,26 @@ public class PlanEventLogger implements PlanEventSink {
 
         private static BaseEventInputs enemyMain(String reason, Position source) {
             return new BaseEventInputs(null, null, null, reason, source);
+        }
+
+        private static BaseEventInputs geyserDepleted(TilePosition base, int initialResources,
+                                                      int extractorCompletedFrame,
+                                                      int firstExtractorCompletedFrame) {
+            BaseEventInputs inputs = new BaseEventInputs(null, null, null, null, null);
+            inputs.geyserBase = base;
+            inputs.geyserInitialResources = initialResources;
+            inputs.extractorCompletedFrame = extractorCompletedFrame;
+            inputs.firstExtractorCompletedFrame = firstExtractorCompletedFrame;
+            return inputs;
+        }
+
+        private static BaseEventInputs mineralPatches(int baseMineralPatches, int mapMineralPatches,
+                                                      int remainingMineralPatches) {
+            BaseEventInputs inputs = new BaseEventInputs(null, null, null, null, null);
+            inputs.baseMineralPatches = baseMineralPatches;
+            inputs.mapMineralPatches = mapMineralPatches;
+            inputs.remainingMineralPatches = remainingMineralPatches;
+            return inputs;
         }
     }
 }
