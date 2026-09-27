@@ -8,8 +8,10 @@ import java.util.Collections;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ResourceLedgerTest {
 
@@ -183,6 +185,171 @@ class ResourceLedgerTest {
         ResourceLedger.ExtractorGeyser depleted = ledger.observeResources(MAIN_EXTRACTOR, 0);
 
         assertNull(depleted.getBase());
+    }
+
+    @Test
+    void aDestroyedPatchIsNotRegisteredAgainWhenTheBaseIsReclaimed() {
+        ResourceLedger ledger = ledgerWithTwoBases();
+        ledger.removeMineralPatch(12);
+        ledger.removeMineralPatch(13);
+
+        ledger.addBase(NATURAL, Arrays.asList(11, 12, 13, 14, 15, 16, 17));
+
+        assertEquals(5, ledger.mineralPatchesAt(NATURAL));
+    }
+
+    @Test
+    void aPatchDestroyedBeforeItsBaseIsClaimedIsNotRegistered() {
+        ResourceLedger ledger = new ResourceLedger();
+        ledger.removeMineralPatch(14);
+
+        ledger.addBase(NATURAL, Arrays.asList(11, 12, 13, 14, 15, 16, 17));
+
+        assertEquals(6, ledger.mineralPatchesAt(NATURAL));
+    }
+
+    private static void observe(ResourceLedger ledger, int patch, int times, boolean tilesVisible, boolean exists) {
+        for (int i = 0; i < times; i++) {
+            ledger.observeMineralPatch(patch, tilesVisible, exists);
+        }
+    }
+
+    @Test
+    void aPatchWhoseTilesStayVisibleWithoutItLeavesTheLedger() {
+        ResourceLedger ledger = ledgerWithTwoBases();
+
+        observe(ledger, 15, ResourceLedger.SEEN_GONE_OBSERVATIONS, true, false);
+
+        assertEquals(6, ledger.mineralPatchesAt(NATURAL));
+        assertEquals(14, ledger.remainingMineralPatches(Arrays.asList(MAIN, NATURAL)));
+    }
+
+    @Test
+    void onlyTheObservationThatForgetsAPatchReportsIt() {
+        ResourceLedger ledger = ledgerWithTwoBases();
+        observe(ledger, 15, ResourceLedger.SEEN_GONE_OBSERVATIONS - 1, true, false);
+
+        assertTrue(ledger.observeMineralPatch(15, true, false));
+        assertFalse(ledger.observeMineralPatch(15, true, false));
+    }
+
+    @Test
+    void aPatchDestroyedByEventIsNeverReportedSeenGone() {
+        ResourceLedger ledger = ledgerWithTwoBases();
+        ledger.removeMineralPatch(15);
+
+        for (int i = 0; i < ResourceLedger.SEEN_GONE_OBSERVATIONS * 2; i++) {
+            assertFalse(ledger.observeMineralPatch(15, true, false));
+        }
+    }
+
+    @Test
+    void aPatchSeenGoneForOneObservationShortOfTheRunIsKept() {
+        ResourceLedger ledger = ledgerWithTwoBases();
+
+        observe(ledger, 15, ResourceLedger.SEEN_GONE_OBSERVATIONS - 1, true, false);
+
+        assertEquals(7, ledger.mineralPatchesAt(NATURAL));
+    }
+
+    @Test
+    void aPatchThatReappearsRestartsTheSeenGoneRun() {
+        ResourceLedger ledger = ledgerWithTwoBases();
+        observe(ledger, 15, ResourceLedger.SEEN_GONE_OBSERVATIONS - 1, true, false);
+        ledger.observeMineralPatch(15, true, true);
+
+        observe(ledger, 15, ResourceLedger.SEEN_GONE_OBSERVATIONS - 1, true, false);
+
+        assertEquals(7, ledger.mineralPatchesAt(NATURAL));
+    }
+
+    @Test
+    void aPatchLeavingSightRestartsTheSeenGoneRun() {
+        ResourceLedger ledger = ledgerWithTwoBases();
+        observe(ledger, 15, ResourceLedger.SEEN_GONE_OBSERVATIONS - 1, true, false);
+        ledger.observeMineralPatch(15, false, false);
+
+        observe(ledger, 15, ResourceLedger.SEEN_GONE_OBSERVATIONS - 1, true, false);
+
+        assertEquals(7, ledger.mineralPatchesAt(NATURAL));
+    }
+
+    @Test
+    void aPatchSeenGoneIsNotRegisteredAgainWhenTheBaseIsReclaimed() {
+        ResourceLedger ledger = ledgerWithTwoBases();
+        observe(ledger, 15, ResourceLedger.SEEN_GONE_OBSERVATIONS, true, false);
+
+        ledger.addBase(NATURAL, Arrays.asList(11, 12, 13, 14, 15, 16, 17));
+
+        assertEquals(6, ledger.mineralPatchesAt(NATURAL));
+    }
+
+    @Test
+    void aPatchNotFullyInSightIsKeptThoughItDoesNotExist() {
+        ResourceLedger ledger = ledgerWithTwoBases();
+
+        observe(ledger, 15, ResourceLedger.SEEN_GONE_OBSERVATIONS * 10, false, false);
+
+        assertEquals(7, ledger.mineralPatchesAt(NATURAL));
+    }
+
+    @Test
+    void aVisiblePatchThatExistsIsKept() {
+        ResourceLedger ledger = ledgerWithTwoBases();
+
+        observe(ledger, 15, ResourceLedger.SEEN_GONE_OBSERVATIONS * 10, true, true);
+
+        assertEquals(7, ledger.mineralPatchesAt(NATURAL));
+    }
+
+    @Test
+    void aDestroyedPatchKeepsTheCountAfterFurtherObservations() {
+        ResourceLedger ledger = ledgerWithTwoBases();
+        ledger.removeMineralPatch(15);
+
+        observe(ledger, 15, ResourceLedger.SEEN_GONE_OBSERVATIONS * 2, true, false);
+
+        assertEquals(6, ledger.mineralPatchesAt(NATURAL));
+    }
+
+    @Test
+    void everyPatchRegisteredAtClaimCountsWhileOutOfSight() {
+        ResourceLedger ledger = new ResourceLedger();
+        ledger.addBase(NATURAL, Arrays.asList(11, 12, 13, 14, 15, 16, 17));
+
+        observe(ledger, 11, ResourceLedger.SEEN_GONE_OBSERVATIONS, false, false);
+        observe(ledger, 12, ResourceLedger.SEEN_GONE_OBSERVATIONS, false, false);
+
+        assertEquals(7, ledger.remainingMineralPatches(Collections.singletonList(NATURAL)));
+    }
+
+    @Test
+    void theClaimedBaseCountIgnoresOwnership() {
+        ResourceLedger ledger = ledgerWithTwoBases();
+
+        assertEquals(7, ledger.mineralPatchesAt(NATURAL));
+        assertEquals(0, ledger.mineralPatchesAt(new TilePosition(60, 60)));
+    }
+
+    @Test
+    void theFirstExtractorOnAGeyserCarriesItsOwnCompletionAsTheFirst() {
+        ResourceLedger ledger = ledgerWithMainExtractor();
+
+        ResourceLedger.ExtractorGeyser depleted = ledger.observeResources(MAIN_EXTRACTOR, 0);
+
+        assertEquals(COMPLETED_FRAME, depleted.getFirstCompletedFrame());
+    }
+
+    @Test
+    void aRebuiltExtractorKeepsTheGeysersFirstCompletionFrame() {
+        ResourceLedger ledger = ledgerWithMainExtractor();
+        ledger.removeExtractor(MAIN_EXTRACTOR);
+        ledger.addExtractor(MAIN_EXTRACTOR + 100, MAIN_GEYSER, MAIN, STARTING_GAS, COMPLETED_FRAME + 5000);
+
+        ResourceLedger.ExtractorGeyser depleted = ledger.observeResources(MAIN_EXTRACTOR + 100, 0);
+
+        assertEquals(COMPLETED_FRAME + 5000, depleted.getCompletedFrame());
+        assertEquals(COMPLETED_FRAME, depleted.getFirstCompletedFrame());
     }
 
     @Test

@@ -222,12 +222,31 @@ public final class PlanEvents {
     }
 
     public static void geyserDepleted(TilePosition geyser, TilePosition base, int initialResources,
-                                      int extractorCompletedFrame) {
+                                      int extractorCompletedFrame, int firstExtractorCompletedFrame) {
         PlanEventSink current = sink;
         if (current == null) {
             return;
         }
-        current.onGeyserDepleted(geyser, base, initialResources, extractorCompletedFrame);
+        current.onGeyserDepleted(geyser, base, initialResources, extractorCompletedFrame,
+                firstExtractorCompletedFrame);
+    }
+
+    public static void baseClaimed(TilePosition base, int baseMineralPatches, int mapMineralPatches,
+                                   int remainingMineralPatches) {
+        PlanEventSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onBaseClaimed(base, baseMineralPatches, mapMineralPatches, remainingMineralPatches);
+    }
+
+    public static void mineralPatchSeenGone(TilePosition base, int baseMineralPatches, int mapMineralPatches,
+                                            int remainingMineralPatches) {
+        PlanEventSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onMineralPatchSeenGone(base, baseMineralPatches, mapMineralPatches, remainingMineralPatches);
     }
 
     public static void rallyPointChanged(TilePosition base, String reason) {
