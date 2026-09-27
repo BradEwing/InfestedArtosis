@@ -20,7 +20,8 @@ import java.util.Set;
  *
  * <p>TRANSIT is the flight to the target base. STRIKE starts once the flock reaches it. A retarget to another base
  * starts TRANSIT again. PROBE replaces TRANSIT on a base whose anti-air sighting is stale: one Mutalisk flies to the
- * probe point while the rest wait at the hold point, and the harass moves on to TRANSIT once the probe clears it.
+ * probe point, and on to the strike point once the base's core is sighted, while the rest wait at the hold point; the
+ * harass moves on to TRANSIT once the probe clears the base.
  */
 @Getter
 @Setter
@@ -61,8 +62,9 @@ public class AirHarassState {
     private int mutasLost;
     private final Set<Integer> knownAntiAir = new HashSet<>();
     private int proberId = -1;
-    private int proberStartHitPoints;
+    private int proberPeakHitPoints;
     private int probeStartFrame = -1;
+    private boolean probeCoreSighted;
     private Position probePoint;
     private Position holdPoint;
 
@@ -112,7 +114,7 @@ public class AirHarassState {
         target(base, strike, frame);
         this.phase = Phase.PROBE;
         this.proberId = proberId;
-        this.proberStartHitPoints = proberHitPoints;
+        this.proberPeakHitPoints = proberHitPoints;
         this.probeStartFrame = frame;
         this.probePoint = probePoint;
         this.holdPoint = holdPoint;
@@ -131,10 +133,20 @@ public class AirHarassState {
         clearProbeFields();
     }
 
+    /**
+     * Raises the prober's peak hit points to its hit points now, so regeneration does not hide a later hit.
+     *
+     * @param hitPoints the prober's hit points now
+     */
+    public void observeProberHitPoints(int hitPoints) {
+        proberPeakHitPoints = Math.max(proberPeakHitPoints, hitPoints);
+    }
+
     private void clearProbeFields() {
         this.proberId = -1;
-        this.proberStartHitPoints = 0;
+        this.proberPeakHitPoints = 0;
         this.probeStartFrame = -1;
+        this.probeCoreSighted = false;
         this.probePoint = null;
         this.holdPoint = null;
     }

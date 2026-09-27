@@ -236,7 +236,7 @@ class AirHarassScoutingTest {
 
         assertEquals(AirHarassState.Phase.PROBE, state.getPhase());
         assertEquals(265, state.getProberId());
-        assertEquals(120, state.getProberStartHitPoints());
+        assertEquals(120, state.getProberPeakHitPoints());
         assertEquals(NOW, state.getProbeStartFrame());
         assertEquals(probe, state.getProbePoint());
         assertEquals(hold, state.getHoldPoint());
@@ -255,6 +255,70 @@ class AirHarassScoutingTest {
 
         assertEquals(AirHarassState.Phase.TRANSIT, state.getPhase());
         assertNull(state.getProbePoint());
+    }
+
+    @Test
+    void aHitAfterRegenerationStillMeansTheBaseIsDefended() {
+        AirHarassState state = new AirHarassState(NOW, 500);
+        state.probe(null, STRIKE, 265, 100, new Position(2112, 3887), new Position(2112, 3184), NOW);
+        state.observeProberHitPoints(104);
+        state.observeProberHitPoints(102);
+
+        assertEquals(104, state.getProberPeakHitPoints());
+        assertEquals(ProbeOutcome.DEFENDED, AirHarassScouting.probeOutcome(true, 102,
+                state.getProberPeakHitPoints(), false, true, NOW + 24, NOW));
+        assertEquals(ProbeOutcome.WAIT, AirHarassScouting.probeOutcome(true, 104,
+                state.getProberPeakHitPoints(), false, true, NOW + 24, NOW));
+    }
+
+    @Test
+    void theProberFliesOverTheStrikePointOnceTheCoreIsSighted() {
+        Position probe = new Position(2112, 3887);
+
+        assertEquals(probe, AirHarassScouting.proberDestination(false, probe, STRIKE));
+        assertEquals(STRIKE, AirHarassScouting.proberDestination(true, probe, STRIKE));
+        assertEquals(probe, AirHarassScouting.proberDestination(true, probe, null));
+    }
+
+    @Test
+    void aProbeJudgesTheBaseOnlyOnceItHasSeenTheCoreAndTheStrikePoint() {
+        assertFalse(AirHarassScouting.probeSighted(false, true, true));
+        assertFalse(AirHarassScouting.probeSighted(true, true, false));
+        assertTrue(AirHarassScouting.probeSighted(true, true, true));
+        assertTrue(AirHarassScouting.probeSighted(true, false, false));
+    }
+
+    @Test
+    void antiAirArrivingDuringAProbeIsTheProbeFindingTheBaseDefended() {
+        assertEquals(AirHarassEvaluator.ExitReason.PROBE_DEFENDED,
+                AirHarassScouting.probeExitReason(AirHarassEvaluator.ExitReason.AA_ARRIVED, true));
+        assertEquals(AirHarassEvaluator.ExitReason.AA_ARRIVED,
+                AirHarassScouting.probeExitReason(AirHarassEvaluator.ExitReason.AA_ARRIVED, false));
+        assertEquals(AirHarassEvaluator.ExitReason.HP_LOSS,
+                AirHarassScouting.probeExitReason(AirHarassEvaluator.ExitReason.HP_LOSS, true));
+        assertNull(AirHarassScouting.probeExitReason(null, true));
+    }
+
+    @Test
+    void aProbingMutaLeavesOnlyTheProbedBaseHot() {
+        int sight = UnitType.Zerg_Mutalisk.sightRange();
+        int edge = AirHarassScouting.NEW_AA_ZONE + sight;
+
+        assertFalse(AirHarassScouting.coolsHeat(true, new Position(BASE.getX(), BASE.getY() - edge), BASE, sight));
+        assertTrue(AirHarassScouting.coolsHeat(true, new Position(BASE.getX(), BASE.getY() - edge - 1), BASE,
+                sight));
+        assertTrue(AirHarassScouting.coolsHeat(false, BASE, BASE, sight));
+        assertTrue(AirHarassScouting.coolsHeat(true, BASE, null, sight));
+    }
+
+    @Test
+    void aNewTurretCoveringTheFlockEndsTheHarassAfterTheTargetBaseIsGone() {
+        Position flock = new Position(3500, 1100);
+        AirHarassTargeting.AirThreat turret = threat(300, UnitType.Terran_Missile_Turret, new Position(3500, 1000));
+        List<AirHarassTargeting.AirThreat> threats = Collections.singletonList(turret);
+
+        assertTrue(AirHarassScouting.newAntiAirExit(threats, threats, null, flock, AirHarassEvaluator.tolerance(5)));
+        assertFalse(AirHarassScouting.newAntiAirExit(threats, threats, null, STRIKE, AirHarassEvaluator.tolerance(5)));
     }
 
     @Test

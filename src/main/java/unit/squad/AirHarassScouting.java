@@ -17,7 +17,8 @@ import java.util.function.Predicate;
  * <p>A base's anti-air counts as sighted on a frame when its core, the base center and the center of its resources,
  * is all visible to us. A harass never strikes a base whose core was last sighted more than
  * {@link #STALE_SIGHTING_FRAMES} ago: the flock holds {@link #PROBE_HOLD_DISTANCE} short of it while one Mutalisk
- * flies into the core, and strikes only once the core has been seen and a tolerated strike point is left.
+ * flies into the core and then over the strike point, and strikes only once both have been seen and a tolerated
+ * strike point is left.
  *
  * <p>Every decision is a static function over plain values; the constants are tuning values, not Brood War facts.
  */
@@ -154,22 +155,79 @@ public final class AirHarassScouting {
     }
 
     /**
-     * What a probe has found, checked in order: the prober lost or hit means the base is defended; the core in sight
-     * clears the strike when a tolerated strike point is left and means defended otherwise; a probe running
-     * {@link #PROBE_TIMEOUT_FRAMES} without a sighting times out.
+     * Where the probing Mutalisk flies: the probe point until the base's core is sighted, then the strike point, so
+     * anti-air around the strike point is seen before the flock commits to it.
+     *
+     * @param coreSighted true once the base's core has been seen since the probe started
+     * @param probePoint the probe point
+     * @param strikePoint the strike point, or null when there is none
+     * @return the destination
+     */
+    public static Position proberDestination(boolean coreSighted, Position probePoint, Position strikePoint) {
+        return coreSighted && strikePoint != null ? strikePoint : probePoint;
+    }
+
+    /**
+     * Whether a probe has seen enough to judge the base: its core since the probe started, and the strike point now
+     * when there is one.
+     *
+     * @param coreSighted true once the base's core has been seen since the probe started
+     * @param hasStrike true when the base has a tolerated strike point
+     * @param strikeVisible true when that strike point is visible now
+     * @return true when the probe can clear or refuse the base
+     */
+    public static boolean probeSighted(boolean coreSighted, boolean hasStrike, boolean strikeVisible) {
+        return coreSighted && (!hasStrike || strikeVisible);
+    }
+
+    /**
+     * The reason a harass ends with during a probe: anti-air leaving the base no tolerated strike point, or covering
+     * the flock, is the probe finding the base defended. Every other reason stands.
+     *
+     * @param reason the generic exit reason, or null
+     * @param probing true while the harass is probing
+     * @return PROBE_DEFENDED for AA_ARRIVED during a probe, otherwise the reason
+     */
+    public static AirHarassEvaluator.ExitReason probeExitReason(AirHarassEvaluator.ExitReason reason,
+                                                                boolean probing) {
+        if (probing && reason == AirHarassEvaluator.ExitReason.AA_ARRIVED) {
+            return AirHarassEvaluator.ExitReason.PROBE_DEFENDED;
+        }
+        return reason;
+    }
+
+    /**
+     * Whether a harassing Mutalisk zeroes the heat map around it. During a probe, a Mutalisk near the probed base
+     * leaves the heat alone, so the probe does not cool the base the flock is about to strike; anywhere else it
+     * cools as usual.
+     *
+     * @param probing true while the harass is probing
+     * @param member the Mutalisk's position
+     * @param probedBase the probed base's center, or null
+     * @param sightRange the Mutalisk's sight range in pixels
+     * @return true to zero the heat around it
+     */
+    public static boolean coolsHeat(boolean probing, Position member, Position probedBase, int sightRange) {
+        return !probing || probedBase == null || member.getDistance(probedBase) > NEW_AA_ZONE + sightRange;
+    }
+
+    /**
+     * What a probe has found, checked in order: the prober lost, or below the most hit points it has had during the
+     * probe, means the base is defended; a sighted base clears the strike when a tolerated strike point is left and
+     * means defended otherwise; a probe running {@link #PROBE_TIMEOUT_FRAMES} without a sighting times out.
      *
      * @param proberAlive true while the probing Mutalisk is still in the squad
      * @param proberHitPoints its hit points now
-     * @param proberStartHitPoints its hit points when the probe started
-     * @param sighted true once the base's core has been seen since the probe started
+     * @param proberPeakHitPoints the most hit points it has had since the probe started
+     * @param sighted true once the probe has seen enough, see {@link #probeSighted}
      * @param toleratedStrike true when the base still has a strike point the flock tolerates
      * @param now current frame
      * @param probeStartFrame frame the probe started
      * @return the outcome
      */
-    public static ProbeOutcome probeOutcome(boolean proberAlive, int proberHitPoints, int proberStartHitPoints,
+    public static ProbeOutcome probeOutcome(boolean proberAlive, int proberHitPoints, int proberPeakHitPoints,
                                             boolean sighted, boolean toleratedStrike, int now, int probeStartFrame) {
-        if (!proberAlive || proberHitPoints < proberStartHitPoints) {
+        if (!proberAlive || proberHitPoints < proberPeakHitPoints) {
             return ProbeOutcome.DEFENDED;
         }
         if (sighted) {
