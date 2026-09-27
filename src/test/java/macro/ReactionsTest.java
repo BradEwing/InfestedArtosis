@@ -72,6 +72,14 @@ public class ReactionsTest {
 
     private static final boolean ENEMY_LEVEL = false;
 
+    private static final boolean NATURAL_STANDING = true;
+
+    private static final boolean NO_NATURAL_STANDING = false;
+
+    private static final boolean MAIN_NEARER_ENEMY = true;
+
+    private static final boolean MAIN_FARTHER_FROM_ENEMY = false;
+
     private static final int MAIN_ONLY = 1;
 
     private static final int NATURAL_STILL_MORPHING = 1;
@@ -351,8 +359,8 @@ public class ReactionsTest {
     }
 
     /**
-     * Closing the gate cancels the main's queued creep colonies, so the reaction that raised the
-     * sunken count on three Barracks must hold it open on the same threshold.
+     * Closing the gate cancels the main's queued creep colonies, so while Barracks pressure holds the
+     * main, with the natural at its target, the gate stays open.
      */
     @Test
     void testMainStaysOpenUnderBarracksPressureWithTheNaturalUp() throws ReflectiveOperationException {
@@ -360,6 +368,94 @@ public class ReactionsTest {
         baseData.setAllowSunkenAtMain(true);
 
         assertFalse(Reactions.shouldClearMainSunken(baseData, UNDER_BARRACKS_PRESSURE,
+                NO_EXPANSION_UNDER_CONSTRUCTION, MAIN_NOT_HELD));
+    }
+
+    /**
+     * IA-438: Barracks pressure with a standing natural short of its target leaves a closed main
+     * closed, so the colony planner has only the natural to fill.
+     */
+    @Test
+    void testBarracksPressureWithTheNaturalShortDoesNotOpenTheMain() throws ReflectiveOperationException {
+        setBaseCounts(2, 0);
+        boolean opensMain = SunkenTargets.barracksPressureOpensMain(NATURAL_STANDING,
+                SunkenTargets.BARRACKS_PRESSURE_SUNKENS - 1, SunkenTargets.BARRACKS_PRESSURE_SUNKENS, MAIN_FARTHER_FROM_ENEMY);
+
+        Reactions.openMainForBarracksPressure(baseData, opensMain);
+
+        assertFalse(baseData.isAllowSunkenAtMain());
+        assertFalse(baseData.isEligibleForSunkenColony(baseData.getMainBase()));
+    }
+
+    /**
+     * IA-438: a main Barracks pressure opened before the natural fell short is closed, and its queued
+     * colonies dropped, while the natural is short of its target.
+     */
+    @Test
+    void testAMainOpenedEarlierClosesWhileTheNaturalIsShortUnderBarracksPressure() throws ReflectiveOperationException {
+        setBaseCounts(2, 0);
+        baseData.setAllowSunkenAtMain(true);
+        boolean opensMain = SunkenTargets.barracksPressureOpensMain(NATURAL_STANDING,
+                SunkenTargets.BARRACKS_PRESSURE_SUNKENS - 1, SunkenTargets.BARRACKS_PRESSURE_SUNKENS, MAIN_FARTHER_FROM_ENEMY);
+
+        Reactions.openMainForBarracksPressure(baseData, opensMain);
+        boolean pressureHoldsMain = UNDER_BARRACKS_PRESSURE && opensMain;
+
+        assertTrue(Reactions.shouldClearMainSunken(baseData, pressureHoldsMain,
+                NO_EXPANSION_UNDER_CONSTRUCTION, MAIN_NOT_HELD));
+    }
+
+    @Test
+    void testBarracksPressureWithTheNaturalAtTargetOpensTheMain() throws ReflectiveOperationException {
+        setBaseCounts(2, 0);
+        boolean opensMain = SunkenTargets.barracksPressureOpensMain(NATURAL_STANDING,
+                SunkenTargets.BARRACKS_PRESSURE_SUNKENS, SunkenTargets.BARRACKS_PRESSURE_SUNKENS, MAIN_FARTHER_FROM_ENEMY);
+
+        Reactions.openMainForBarracksPressure(baseData, opensMain);
+
+        assertTrue(baseData.isAllowSunkenAtMain());
+        assertTrue(baseData.isEligibleForSunkenColony(baseData.getMainBase()));
+        assertFalse(Reactions.shouldClearMainSunken(baseData, UNDER_BARRACKS_PRESSURE && opensMain,
+                NO_EXPANSION_UNDER_CONSTRUCTION, MAIN_NOT_HELD));
+    }
+
+    @Test
+    void testBarracksPressureWithNoNaturalStandingOpensTheMain() throws ReflectiveOperationException {
+        setBaseCounts(MAIN_ONLY, NATURAL_STILL_MORPHING);
+        boolean opensMain = SunkenTargets.barracksPressureOpensMain(NO_NATURAL_STANDING, 0,
+                SunkenTargets.BARRACKS_PRESSURE_SUNKENS, MAIN_FARTHER_FROM_ENEMY);
+
+        Reactions.openMainForBarracksPressure(baseData, opensMain);
+
+        assertTrue(baseData.isAllowSunkenAtMain());
+        assertFalse(Reactions.shouldClearMainSunken(baseData, UNDER_BARRACKS_PRESSURE && opensMain,
+                NATURAL_HATCHERY_MORPHING, MAIN_NOT_HELD));
+    }
+
+    @Test
+    void testBarracksPressureOpensAMainNearerTheEnemyThanItsShortNatural() throws ReflectiveOperationException {
+        setBaseCounts(2, 0);
+        boolean opensMain = SunkenTargets.barracksPressureOpensMain(NATURAL_STANDING, 0,
+                SunkenTargets.BARRACKS_PRESSURE_SUNKENS, MAIN_NEARER_ENEMY);
+
+        Reactions.openMainForBarracksPressure(baseData, opensMain);
+
+        assertTrue(baseData.isAllowSunkenAtMain());
+    }
+
+    /**
+     * IA-438: the pressure grant never closes the gate itself, so a main the early rush reaction
+     * opened this frame is left as that reaction left it.
+     */
+    @Test
+    void testBarracksPressureDoesNotRevokeARushGrant() throws ReflectiveOperationException {
+        setBaseCounts(MAIN_ONLY, 0);
+        Reactions.allowSunkenAtMainIfNoExpansionUnderway(baseData, NO_EXPANSION_UNDER_CONSTRUCTION);
+
+        Reactions.openMainForBarracksPressure(baseData, false);
+
+        assertTrue(baseData.isAllowSunkenAtMain());
+        assertFalse(Reactions.shouldClearMainSunken(baseData, false,
                 NO_EXPANSION_UNDER_CONSTRUCTION, MAIN_NOT_HELD));
     }
 

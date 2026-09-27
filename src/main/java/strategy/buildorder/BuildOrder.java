@@ -391,7 +391,7 @@ public abstract class BuildOrder {
      * reader of this number - the defense path, the default colony helper and each build order's
      * own plan loop - sees the same target.
      */
-    protected final int requiredSunkens(GameState gameState) {
+    public final int requiredSunkens(GameState gameState) {
         return SunkenTargets.sunkenTarget(matchupSunkens(gameState),
                 gameState.getStrategyTracker().isDetectedStrategy(SunkenTargets.ONE_BASE_STRATEGY),
                 gameState.getBaseData().getEnemyBases().size(),

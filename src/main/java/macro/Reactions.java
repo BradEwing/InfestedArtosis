@@ -941,15 +941,21 @@ public class Reactions {
      * satisfy: allowSunkenAtMain defaults false and is otherwise granted only by the rush and
      * 2Gate reactions.
      *
-     * <p>Barracks pressure holds the main open past the natural, because a bio push of that size
-     * arrives at whichever base is closest to the enemy and the main is where the drones are. The
-     * 1Base floor only opens a main that is still our sole base, which is the case its own floor
-     * could not otherwise reach; once the natural is up that base carries the floor instead.
+     * <p>Barracks pressure fills a standing natural to its target before the main opens, because a
+     * bio push arrives at whichever base is nearest the enemy and the natural normally stands
+     * between it and the main. The main opens under pressure only while no natural of ours stands
+     * (not yet built, still morphing, or lost), once the natural holds its target in standing
+     * sunkens, or when the main is nearer the enemy main by ground path than the natural; see
+     * {@link SunkenTargets#barracksPressureOpensMain}. Pressure only grants here, so a main the rush,
+     * ZvZ or 2Gate reactions opened this frame stays open; {@link #shouldClearMainSunken} closes a
+     * main the pressure no longer holds. The 1Base floor only opens a main that is still our sole
+     * base, which is the case its own floor could not otherwise reach; once the natural is up that
+     * base carries the floor instead.
      */
     private void openMainForStaticDefense() {
         BaseData baseData = gameState.getBaseData();
         if (isUnderBarracksPressure()) {
-            baseData.setAllowSunkenAtMain(true);
+            openMainForBarracksPressure(baseData, barracksPressureOpensMain());
             return;
         }
 
@@ -960,6 +966,35 @@ public class Reactions {
 
     private boolean isUnderBarracksPressure() {
         return SunkenTargets.isBarracksPressure(gameState.enemyUnitCount(UnitType.Terran_Barracks));
+    }
+
+    /**
+     * Opens the main while Barracks pressure opens it, and otherwise leaves the gate as the other
+     * reactions left it this frame; {@link #shouldClearMainSunken} is what closes it.
+     *
+     * @param baseData our bases and the main sunken gate
+     * @param pressureOpensMain whether {@link SunkenTargets#barracksPressureOpensMain} holds this frame
+     */
+    static void openMainForBarracksPressure(BaseData baseData, boolean pressureOpensMain) {
+        if (pressureOpensMain) {
+            baseData.setAllowSunkenAtMain(true);
+        }
+    }
+
+    private boolean barracksPressureHoldsMain() {
+        return isUnderBarracksPressure() && barracksPressureOpensMain();
+    }
+
+    private boolean barracksPressureOpensMain() {
+        BaseData baseData = gameState.getBaseData();
+        Base natural = baseData.standingNatural();
+        if (natural == null) {
+            return SunkenTargets.barracksPressureOpensMain(false, 0, 0, false);
+        }
+        int naturalTarget = SunkenTargets.perBaseSunkenTarget(gameState.getActiveBuildOrder().requiredSunkens(gameState),
+                gameState.getGameTime());
+        return SunkenTargets.barracksPressureOpensMain(true, baseData.standingSunkens(natural), naturalTarget,
+                baseData.isMainNearerEnemyThan(natural));
     }
 
     private boolean isUnderOneBaseFloor() {
@@ -976,8 +1011,11 @@ public class Reactions {
      *
      * <p>Reads the same base count as {@link #allowSunkenAtMainIfSingleBase}, so the two halves of
      * the rule agree on what a single base means, and the same Barracks threshold the build orders
-     * raise their sunken count on. Pressure holds the main open past the natural: closing it would
-     * cancel the colonies the raised count had just asked for there.
+     * raise their sunken count on. Pressure holds the main open past the natural only while it
+     * would open it, per {@link SunkenTargets#barracksPressureOpensMain}: closing it then would
+     * cancel the colonies the raised count had just asked for there. While a standing natural is
+     * short of its target the pressure does not hold the main, so a main opened earlier closes and
+     * its queued colonies are dropped until the natural catches up.
      *
      * <p>The gate also closes as soon as an expansion Hatchery starts morphing, unless a reaction
      * whose threat is at the main held it open this frame. Waiting for the natural to complete
@@ -985,14 +1023,14 @@ public class Reactions {
      * building at the main are left alone; only queued ones are dropped.
      *
      * @param baseData our bases and the current main sunken gate
-     * @param underBarracksPressure whether the enemy's observed Barracks read as a bio push
+     * @param barracksPressureHoldsMain whether the enemy's observed Barracks read as a bio push the main must answer
      * @param expansionsUnderConstruction expansion Hatcheries that have started morphing and not finished
      * @param mainHeldThroughExpansion whether the SCV rush or ZvZ pressure reaction held the main open this frame
      * @return true when the gate should close and the main's queued colonies be dropped
      */
-    static boolean shouldClearMainSunken(BaseData baseData, boolean underBarracksPressure,
+    static boolean shouldClearMainSunken(BaseData baseData, boolean barracksPressureHoldsMain,
                                          int expansionsUnderConstruction, boolean mainHeldThroughExpansion) {
-        if (!baseData.isAllowSunkenAtMain() || underBarracksPressure) {
+        if (!baseData.isAllowSunkenAtMain() || barracksPressureHoldsMain) {
             return false;
         }
         if (baseData.currentBaseCount() >= 2) {
@@ -1003,7 +1041,7 @@ public class Reactions {
 
     private void clearMainSunkenOnExpansion() {
         BaseData baseData = gameState.getBaseData();
-        if (!shouldClearMainSunken(baseData, isUnderBarracksPressure(), expansionsUnderConstruction, mainHeldThroughExpansion)) {
+        if (!shouldClearMainSunken(baseData, barracksPressureHoldsMain(), expansionsUnderConstruction, mainHeldThroughExpansion)) {
             return;
         }
 

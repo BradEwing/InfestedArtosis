@@ -38,6 +38,7 @@ import org.jetbrains.annotations.Nullable;
 import macro.ProductionQueue;
 import macro.plan.PlanState;
 import strategy.buildorder.BuildOrder;
+import strategy.buildorder.SunkenTargets;
 import unit.managed.ManagedUnit;
 import unit.managed.UnitRole;
 import unit.squad.RunbyEvaluator;
@@ -1500,9 +1501,7 @@ public class GameState {
             return neededBases;
         }
 
-        if (currentTime.greaterThan(tenMinutes)) {
-            target = Math.min(target, 1);
-        }
+        target = SunkenTargets.perBaseSunkenTarget(target, currentTime);
 
 
         for (Base base: baseData.getMyBases()) {
