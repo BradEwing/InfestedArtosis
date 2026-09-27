@@ -17,4 +17,5 @@ public enum UnitRole {
     CONTAIN,
     PERCH,
     RUNBY,
+    HARASS,
 }
