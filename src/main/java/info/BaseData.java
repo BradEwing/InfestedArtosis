@@ -774,6 +774,60 @@ public class BaseData {
                 squadRallyReason(rally, naturalExpansion, inferredNaturalBase, mainBase));
     }
 
+    /**
+     * The natural a completed Hatchery of ours stands on. See {@link #standingNatural(Object, Object, Predicate)}.
+     *
+     * @return the standing natural, or null while none stands
+     */
+    public Base standingNatural() {
+        return standingNatural(naturalExpansion, inferredNaturalBase, myBases::contains);
+    }
+
+    /**
+     * Picks the first expansion we took while a completed Hatchery of ours stands on it, otherwise the
+     * inferred natural while one stands on it, otherwise nothing. A natural still morphing or lost is
+     * not standing.
+     *
+     * @param takenNatural the first expansion we took, or null
+     * @param inferredNatural the natural inferred from the ground paths out of the main, or null
+     * @param held whether a completed Hatchery of ours stands on a base
+     * @return the standing natural, or null
+     */
+    static <T> T standingNatural(T takenNatural, T inferredNatural, Predicate<T> held) {
+        if (takenNatural != null && held.test(takenNatural)) {
+            return takenNatural;
+        }
+        if (inferredNatural != null && held.test(inferredNatural)) {
+            return inferredNatural;
+        }
+        return null;
+    }
+
+    /**
+     * Whether our main is nearer the enemy main by ground path than another base, measured from the
+     * enemy main, or from the last enemy main located once it is no longer tracked.
+     *
+     * @param base the base compared against the main
+     * @return true when the main is strictly nearer; false while the enemy main was never located
+     */
+    public boolean isMainNearerEnemyThan(Base base) {
+        return isNearerEnemy(mainBase, base, groundDistanceFromEnemyMain());
+    }
+
+    /**
+     * @param candidate the base asked about
+     * @param other the base it is compared against
+     * @param distanceToEnemy ground distance from a base to the enemy, {@link Integer#MAX_VALUE} for a
+     *     base the enemy cannot reach, or null when the enemy is not located
+     * @return true when the candidate is strictly nearer the enemy than the other base
+     */
+    static <T> boolean isNearerEnemy(T candidate, T other, ToIntFunction<T> distanceToEnemy) {
+        if (distanceToEnemy == null) {
+            return false;
+        }
+        return distanceToEnemy.applyAsInt(candidate) < distanceToEnemy.applyAsInt(other);
+    }
+
     private ToIntFunction<Base> groundDistanceFromEnemyMain() {
         if (mainEnemyBase != null) {
             lastEnemyMainBase = mainEnemyBase;
@@ -1087,6 +1141,17 @@ public class BaseData {
         int reserved = sunkenColonyReserveLookup.getOrDefault(base, 0);
         int sunkens = sunkenColonyLookup.getOrDefault(base, Collections.emptySet()).size();
         return reserved + sunkens;
+    }
+
+    /**
+     * Sunken Colonies standing or morphing at a base, leaving out the pairs planned there and not
+     * yet morphed.
+     *
+     * @param base the base asked about
+     * @return sunkens registered at the base
+     */
+    public int standingSunkens(Base base) {
+        return sunkenColonyLookup.getOrDefault(base, Collections.emptySet()).size();
     }
 
     public int getTotalSunkenCount() {

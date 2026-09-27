@@ -6,6 +6,7 @@ import bwapi.UnitType;
 import info.BuilderThreat;
 import info.EnemyMainClearReason;
 import info.EnemyMainEvidence;
+import macro.DroneRound;
 import macro.plan.BuilderDispatchDecision;
 import macro.plan.BuilderLossReason;
 import macro.plan.BuilderReading;
@@ -165,6 +166,61 @@ public interface PlanEventSink {
      * @param innerBase whether the base was our main or a natural
      */
     default void onBaseLost(TilePosition base, boolean innerBase) {
+    }
+
+    /**
+     * The geyser under one of our completed Extractors read empty for the first time.
+     *
+     * @param geyser the geyser's tile location
+     * @param base the tile location of the base the geyser belongs to, or null when it belongs to none
+     * @param initialResources the gas the geyser started the game with
+     * @param extractorCompletedFrame the frame the Extractor on it completed
+     * @param firstExtractorCompletedFrame the frame our first Extractor on the geyser completed, earlier than
+     *     extractorCompletedFrame when the Extractor was rebuilt
+     */
+    default void onGeyserDepleted(TilePosition geyser, TilePosition base, int initialResources,
+                                  int extractorCompletedFrame, int firstExtractorCompletedFrame) {
+    }
+
+    /**
+     * A base became ours.
+     *
+     * @param base the base's tile location
+     * @param baseMineralPatches the mineral patches the resource ledger holds for the base
+     * @param mapMineralPatches the mineral patches the map assigns the base
+     * @param remainingMineralPatches the mineral patches the ledger counts at every base we hold, this one included
+     */
+    default void onBaseClaimed(TilePosition base, int baseMineralPatches, int mapMineralPatches,
+                               int remainingMineralPatches) {
+    }
+
+    /**
+     * A mineral patch at a base we hold was dropped from the resource ledger because its tiles stayed visible
+     * without it, not because a destroy event was seen.
+     *
+     * @param base the base's tile location
+     * @param baseMineralPatches the mineral patches the resource ledger holds for the base after the drop
+     * @param mapMineralPatches the mineral patches the map assigns the base
+     * @param remainingMineralPatches the mineral patches the ledger counts at every base we hold after the drop
+     */
+    default void onMineralPatchSeenGone(TilePosition base, int baseMineralPatches, int mapMineralPatches,
+                                        int remainingMineralPatches) {
+    }
+
+    /**
+     * A drone round opened.
+     *
+     * @param report the round's kind, its open reason, the Drones it opened on, its size and the caps it read
+     */
+    default void onDroneRoundOpened(DroneRound.Report report) {
+    }
+
+    /**
+     * A drone round closed.
+     *
+     * @param report the round's kind, its close reason, the Drones it closed on, its size and the caps it read
+     */
+    default void onDroneRoundClosed(DroneRound.Report report) {
     }
 
     /**
