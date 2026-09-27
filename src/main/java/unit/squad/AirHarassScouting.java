@@ -115,26 +115,36 @@ public final class AirHarassScouting {
     }
 
     /**
-     * Where the probing Mutalisk flies: midway between the base center and its resources, so both are in its sight.
+     * Where the probing Mutalisk flies: midway between the base center and its resources, or closer to the resources
+     * when the midpoint would leave them farther than its sight range less a tile, so the probe always brings the
+     * resources into sight.
      *
      * @param baseCenter the base's center
      * @param resourceCenter the center of the base's resources, or null when it has none
+     * @param sightRange the prober's sight range in pixels
      * @return the probe point
      */
-    public static Position probePoint(Position baseCenter, Position resourceCenter) {
+    public static Position probePoint(Position baseCenter, Position resourceCenter, int sightRange) {
         if (resourceCenter == null) {
             return baseCenter;
         }
-        return new Position((baseCenter.getX() + resourceCenter.getX()) / 2,
-                (baseCenter.getY() + resourceCenter.getY()) / 2);
+        Vec2 toResources = Vec2.between(baseCenter, resourceCenter);
+        double length = toResources.length();
+        double reach = Math.max(0, sightRange - 32);
+        if (length / 2 <= reach) {
+            return new Position((baseCenter.getX() + resourceCenter.getX()) / 2,
+                    (baseCenter.getY() + resourceCenter.getY()) / 2);
+        }
+        return toResources.normalizeToLength(length - reach).toPosition(baseCenter);
     }
 
     /**
      * Where the rest of the flock waits during a probe: {@link #PROBE_HOLD_DISTANCE} from the base center, on the
      * side the flock comes from, or where the flock is when it is already closer than that. When known anti-air
      * covers that point, see {@link #holdExposed}, the point moves out from the base in {@link #PROBE_HOLD_STEP}
-     * steps, up to {@link #PROBE_HOLD_SEARCH} past the hold distance, to the first point no known anti-air covers,
-     * or to the last point tried when every one is covered.
+     * steps, up to {@link #PROBE_HOLD_SEARCH} past the hold distance, to the first point no known anti-air covers.
+     * When every point tried is covered, the flock holds at the one where the covering anti-air is weakest, the
+     * farthest out on a tie.
      *
      * @param baseCenter the probed base's center
      * @param flockCenter the flock's center
@@ -153,7 +163,17 @@ public final class AirHarassScouting {
                 : toFlock.normalizeToLength(PROBE_HOLD_DISTANCE).toPosition(baseCenter);
         double distance = Math.min(flockDistance, PROBE_HOLD_DISTANCE);
         double farthest = PROBE_HOLD_DISTANCE + PROBE_HOLD_SEARCH;
-        while (holdExposed(threats, hold) && distance + PROBE_HOLD_STEP <= farthest) {
+        Position weakest = hold;
+        double weakestDefense = Double.MAX_VALUE;
+        while (holdExposed(threats, hold)) {
+            double defense = AirHarassTargeting.defenseAt(threats, hold, EXIT_MARGIN);
+            if (defense <= weakestDefense) {
+                weakest = hold;
+                weakestDefense = defense;
+            }
+            if (distance + PROBE_HOLD_STEP > farthest) {
+                return weakest;
+            }
             distance += PROBE_HOLD_STEP;
             hold = toFlock.normalizeToLength(distance).toPosition(baseCenter);
         }

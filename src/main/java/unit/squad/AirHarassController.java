@@ -399,7 +399,8 @@ public class AirHarassController {
         }
         List<AirHarassTargeting.AirThreat> newThreats = state.learnAntiAir(view.threats);
         if (state.getPhase() == AirHarassState.Phase.PROBE && !targetGone) {
-            reason = probeTick(squad, state, strike, view.threats, now);
+            reason = heated ? probeTick(squad, state, strike, view.threats, now)
+                    : AirHarassEvaluator.ExitReason.NO_TARGET;
             if (reason != null) {
                 return reason;
             }
@@ -503,7 +504,8 @@ public class AirHarassController {
             return false;
         }
         state.probe(base, strike, prober, hitPoints.get(prober),
-                AirHarassScouting.probePoint(base.getCenter(), resourceCenterOf(base)),
+                AirHarassScouting.probePoint(base.getCenter(), resourceCenterOf(base),
+                        UnitType.Zerg_Mutalisk.sightRange()),
                 holdPoint(base, squad.getCenter(), view(now).threats), now);
         return true;
     }

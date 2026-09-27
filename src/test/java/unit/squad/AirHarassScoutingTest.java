@@ -101,8 +101,9 @@ class AirHarassScoutingTest {
 
     @Test
     void theProberFliesBetweenTheBaseCenterAndItsResources() {
-        assertEquals(new Position(2112, 3887), AirHarassScouting.probePoint(BASE, new Position(2112, 3950)));
-        assertEquals(BASE, AirHarassScouting.probePoint(BASE, null));
+        assertEquals(new Position(2112, 3887), AirHarassScouting.probePoint(BASE, new Position(2112, 3950),
+                UnitType.Zerg_Mutalisk.sightRange()));
+        assertEquals(BASE, AirHarassScouting.probePoint(BASE, null, UnitType.Zerg_Mutalisk.sightRange()));
     }
 
     @Test
@@ -372,17 +373,40 @@ class AirHarassScoutingTest {
     }
 
     @Test
-    void aHoldPointCoveredAllTheWayOutStopsAtTheFarthestPointTried() {
+    void aHoldPointCoveredAllTheWayOutTakesTheWeakestCoverTried() {
         Position flock = new Position(2112, 1824);
         List<AirHarassTargeting.AirThreat> threats = new ArrayList<>();
         for (int y = 3200; y >= 2400; y -= 64) {
             threats.add(threat(400 + y, UnitType.Terran_Missile_Turret, new Position(2112, y)));
         }
+        Position farthest = new Position(2112, BASE.getY() - AirHarassScouting.PROBE_HOLD_DISTANCE
+                - AirHarassScouting.PROBE_HOLD_SEARCH);
+        for (int i = 0; i < 3; i++) {
+            threats.add(threat(900 + i, UnitType.Terran_Missile_Turret, farthest));
+        }
 
         Position hold = AirHarassScouting.holdPoint(BASE, flock, threats);
 
-        assertEquals(AirHarassScouting.PROBE_HOLD_DISTANCE + AirHarassScouting.PROBE_HOLD_SEARCH,
-                hold.getDistance(BASE), 2);
+        assertTrue(AirHarassScouting.holdExposed(threats, hold));
+        double holdDefense = AirHarassTargeting.defenseAt(threats, hold, AirHarassScouting.EXIT_MARGIN);
+        assertTrue(holdDefense < AirHarassTargeting.defenseAt(threats, farthest, AirHarassScouting.EXIT_MARGIN));
+        for (int distance = AirHarassScouting.PROBE_HOLD_DISTANCE;
+             distance <= AirHarassScouting.PROBE_HOLD_DISTANCE + AirHarassScouting.PROBE_HOLD_SEARCH;
+             distance += AirHarassScouting.PROBE_HOLD_STEP) {
+            Position tried = new Position(2112, BASE.getY() - distance);
+            assertTrue(holdDefense <= AirHarassTargeting.defenseAt(threats, tried, AirHarassScouting.EXIT_MARGIN));
+        }
+    }
+
+    @Test
+    void resourcesFartherThanTheProbersSightFromTheMidpointPullTheProbePointToThem() {
+        int sight = UnitType.Zerg_Mutalisk.sightRange();
+        Position resources = new Position(BASE.getX(), BASE.getY() - 4 * sight);
+
+        Position probe = AirHarassScouting.probePoint(BASE, resources, sight);
+
+        assertEquals(sight - 32, probe.getDistance(resources), 2);
+        assertEquals(BASE.getX(), probe.getX());
     }
 
     @Test
@@ -391,7 +415,6 @@ class AirHarassScoutingTest {
         assertFalse(AirHarassScouting.holdExposed(
                 Collections.singletonList(threat(303, UnitType.Terran_Missile_Turret, TURRET)), null));
     }
-
 
     @Test
     void aProbingMutaLeavesOnlyTheProbedBaseHot() {
