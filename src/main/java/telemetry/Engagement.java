@@ -99,18 +99,17 @@ class Engagement {
     }
 
     /**
-     * @param attacksStarted attacks the unit has started since it was first managed
-     * @param lastAttackStartFrame frame of the last of those attacks, -1 when none
+     * @param attacks the unit's attack counters as of this sample
      */
     void noteUnit(int frame, int unitId, UnitType unitType, int hitPoints, String role, String squadId,
-                  int attacksStarted, int lastAttackStartFrame) {
+                  AttackTally attacks) {
         squadIds.add(squadId);
         EngagementUnit unit = units.get(unitId);
         if (unit == null) {
-            units.put(unitId, new EngagementUnit(unitId, unitType, frame, hitPoints, role, squadId, attacksStarted));
+            units.put(unitId, new EngagementUnit(unitId, unitType, frame, hitPoints, role, squadId, attacks));
             return;
         }
-        unit.observe(frame, hitPoints, attacksStarted, lastAttackStartFrame);
+        unit.observe(frame, hitPoints, attacks);
     }
 
     void noteSupply(int sampleSupply, int armySupply, int enemySupply) {
@@ -163,18 +162,17 @@ class Engagement {
     }
 
     /**
-     * Records a unit's death with the attacks it had started by then, so the attacks it started after its last
-     * sample are counted.
+     * Records a unit's death with the attacks it had started and the damage it had dealt by then, so the attacks
+     * and damage after its last sample are counted.
      *
-     * @param attacksStarted attacks the unit has started since it was first managed
-     * @param lastAttackStartFrame frame of the last of those attacks, -1 when none
+     * @param attacks the unit's attack counters as of its death
      */
-    void recordDeath(int unitId, int frame, Position position, int attacksStarted, int lastAttackStartFrame) {
+    void recordDeath(int unitId, int frame, Position position, AttackTally attacks) {
         EngagementUnit unit = units.get(unitId);
         if (unit == null || unit.isDied()) {
             return;
         }
-        unit.observeAttacks(attacksStarted, lastAttackStartFrame);
+        unit.observeAttacks(attacks);
         markDied(unit, frame, position);
     }
 
@@ -283,6 +281,7 @@ class Engagement {
             fields.add(unit.getSquadAtArrival());
             fields.add(String.valueOf(unit.getFirstAttackFrame()));
             fields.add(String.valueOf(unit.getAttacksInEngagement()));
+            fields.add(String.valueOf(unit.getDamageInEngagement()));
             rows.add(String.join(",", fields));
         }
         return rows;

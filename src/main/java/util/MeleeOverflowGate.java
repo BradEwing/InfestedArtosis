@@ -9,10 +9,12 @@ package util;
  * died. A saturated re-target enters overflow at once, so a pack re-targeting together when their target dies does
  * not pile onto the next one while a streak builds. A target the attacker already held that becomes saturated
  * enters overflow once the pick has been saturated for {@link #ENTER_FRAMES} consecutive frames. Entering arms the
- * overflow lock for {@link #MIN_HOLD_FRAMES}. An unsaturated re-target leaves overflow at once, even during the lock,
- * so an attacker whose target died and that found an open slot takes it and is counted on it. Otherwise the
- * attacker leaves overflow only once an unsaturated pick has been available for {@link #EXIT_FRAMES} consecutive
- * frames after the lock expired; open frames during the lock do not count. A frame without a report breaks both
+ * overflow lock for {@link #MIN_HOLD_FRAMES}. An unsaturated re-target within the attacker's reach leaves overflow at
+ * once, even during the lock, so an attacker whose target died and that stands next to an open slot takes it and is
+ * counted on it. An unsaturated re-target out of reach does not, so an attacker away from the slot does not switch
+ * to a direct attack it cannot land before the slot fills, only to re-enter overflow on its next saturated re-target.
+ * Otherwise the attacker leaves overflow only once an unsaturated pick has been available for {@link #EXIT_FRAMES}
+ * consecutive frames after the lock expired; open frames during the lock do not count. A frame without a report breaks both
  * streaks and ends overflow, so an attacker returning to the fight after a retreat, a rally or a frame without
  * candidates starts over with direct attacks.
  */
@@ -56,15 +58,29 @@ public final class MeleeOverflowGate {
     }
 
     /**
-     * Reports this frame's pick and returns whether the attacker should attack-move rather than attack its pick.
-     * A second report on the same frame replaces the saturation seen on it without extending either streak.
+     * Reports this frame's pick, taken to be within the attacker's reach.
      *
      * @param saturated true when the attacker's pick is saturated
      * @param retargeted true when the pick is not the target the attacker held, or it held none that still exists
      * @param frame the current frame
      * @return true while the attacker is in overflow
+     * @see #observe(boolean, boolean, boolean, int)
      */
     public boolean observe(boolean saturated, boolean retargeted, int frame) {
+        return observe(saturated, retargeted, true, frame);
+    }
+
+    /**
+     * Reports this frame's pick and returns whether the attacker should attack-move rather than attack its pick.
+     * A second report on the same frame replaces the saturation seen on it without extending either streak.
+     *
+     * @param saturated true when the attacker's pick is saturated
+     * @param retargeted true when the pick is not the target the attacker held, or it held none that still exists
+     * @param inReach true when the pick is close enough for the attacker to attack it directly at once
+     * @param frame the current frame
+     * @return true while the attacker is in overflow
+     */
+    public boolean observe(boolean saturated, boolean retargeted, boolean inReach, int frame) {
         if (lastReportFrame == NONE || frame - lastReportFrame > 1) {
             saturatedSince = NONE;
             unsaturatedSince = NONE;
@@ -82,7 +98,7 @@ public final class MeleeOverflowGate {
             if (saturated && retargeted || streak(saturatedSince, frame) >= ENTER_FRAMES) {
                 startOverflowLock(frame);
             }
-        } else if (!saturated && retargeted
+        } else if (!saturated && retargeted && inReach
                 || !isOverflowLocked(frame) && streak(openSinceLockExpired(), frame) >= EXIT_FRAMES) {
             clearOverflowStart();
         }

@@ -120,6 +120,57 @@ class MeleeOverflowGateTest {
     }
 
     @Test
+    void anUnsaturatedReTargetOutOfReachStaysInOverflowThroughTheHold() {
+        MeleeOverflowGate gate = new MeleeOverflowGate();
+        int entered = enterOverflow(gate) - 1;
+
+        for (int frame = entered + 1; frame < entered + MeleeOverflowGate.MIN_HOLD_FRAMES; frame++) {
+            assertTrue(gate.observe(false, true, false, frame));
+        }
+        assertTrue(gate.isOverflowing());
+    }
+
+    @Test
+    void anUnsaturatedReTargetOutOfReachLeavesOnlyByTheOpenStreakAfterTheHold() {
+        MeleeOverflowGate gate = new MeleeOverflowGate();
+        int entered = enterOverflow(gate) - 1;
+        int lockExpires = entered + MeleeOverflowGate.MIN_HOLD_FRAMES;
+        int lastHeld = lockExpires + MeleeOverflowGate.EXIT_FRAMES - 2;
+
+        for (int frame = entered + 1; frame <= lastHeld; frame++) {
+            assertTrue(gate.observe(false, true, false, frame), "frame " + frame);
+        }
+        assertFalse(gate.observe(false, true, false, lastHeld + 1));
+    }
+
+    @Test
+    void anOutOfReachOpenPickBetweenSaturatedReTargetsDoesNotFlipTheAttacker() {
+        MeleeOverflowGate gate = new MeleeOverflowGate();
+        assertTrue(gate.observe(true, true, false, START));
+
+        for (int frame = START + 1; frame < START + MeleeOverflowGate.MIN_HOLD_FRAMES; frame++) {
+            boolean open = frame % 2 == 0;
+            assertTrue(gate.observe(!open, true, false, frame), "frame " + frame);
+        }
+    }
+
+    @Test
+    void anUnsaturatedReTargetInReachLeavesOverflowAtOnce() {
+        MeleeOverflowGate gate = new MeleeOverflowGate();
+        int next = enterOverflow(gate);
+
+        assertFalse(gate.observe(false, true, true, next));
+    }
+
+    @Test
+    void anUnsaturatedPickOfTheHeldTargetInReachStillWaitsForTheOpenStreak() {
+        MeleeOverflowGate gate = new MeleeOverflowGate();
+        int next = enterOverflow(gate);
+
+        assertTrue(gate.observe(false, false, true, next));
+    }
+
+    @Test
     void aSaturatedReTargetDuringTheHoldStaysInOverflow() {
         MeleeOverflowGate gate = new MeleeOverflowGate();
         int next = enterOverflow(gate);

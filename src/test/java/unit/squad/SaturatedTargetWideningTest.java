@@ -1,5 +1,7 @@
 package unit.squad;
 
+import bwapi.TestUnits;
+import bwapi.Unit;
 import bwapi.UnitType;
 import org.junit.jupiter.api.Test;
 import unit.managed.UnitRole;
@@ -21,6 +23,11 @@ class SaturatedTargetWideningTest {
 
     private static final int LING = 5;
     private static final int MARINE = 42;
+    private static final int OPEN_MARINE = MARINE + 1;
+
+    private static final TestUnits UNITS = new TestUnits();
+    private static final Unit MARINE_UNIT = UNITS.unit(UnitType.Terran_Marine, MARINE);
+    private static final Unit OPEN_MARINE_UNIT = UNITS.unit(UnitType.Terran_Marine, OPEN_MARINE);
 
     private static final class Enemy {
         private final int id;
@@ -37,7 +44,11 @@ class SaturatedTargetWideningTest {
     }
 
     private static TargetScorer.Selection selection(boolean saturated) {
-        return new TargetScorer.Selection(null, TargetScorer.Priority.CRITICAL, 1, TargetScorer.Reason.THREAT,
+        return selection(saturated, MARINE_UNIT);
+    }
+
+    private static TargetScorer.Selection selection(boolean saturated, Unit target) {
+        return new TargetScorer.Selection(target, TargetScorer.Priority.CRITICAL, 1, TargetScorer.Reason.THREAT,
                 saturated ? 8 : 0, saturated, "squad-1", false);
     }
 
@@ -119,17 +130,17 @@ class SaturatedTargetWideningTest {
 
     private static TargetScorer.Selection commit(TargetLedger ledger, MeleeOverflowGate gate, boolean saturated,
                                                  int frame) {
-        return SquadManager.commitPick(ledger, gate, LING, UnitType.Zerg_Zergling, selection(saturated), MARINE,
-                MARINE, frame);
+        return SquadManager.commitPick(ledger, gate, LING, UnitType.Zerg_Zergling, selection(saturated),
+                MARINE, true, frame);
     }
 
     @Test
     void aSaturatedReTargetIsAnAttackMoveOnItsFirstFrame() {
-        for (int held : new int[] {SquadManager.NO_TARGET_ID, MARINE + 1}) {
+        for (int held : new int[] {SquadManager.NO_TARGET_ID, OPEN_MARINE}) {
             TargetLedger ledger = TargetLedger.empty();
 
             TargetScorer.Selection issued = SquadManager.commitPick(ledger, new MeleeOverflowGate(), LING,
-                    UnitType.Zerg_Zergling, selection(true), MARINE, held, 100);
+                    UnitType.Zerg_Zergling, selection(true), held, true, 100);
 
             assertTrue(issued.isAttackMove(), "held " + held);
             assertEquals(0, ledger.meleeAssigned(MARINE));
@@ -140,15 +151,28 @@ class SaturatedTargetWideningTest {
     void anOverflowAttackerReTargetedOntoAnOpenSlotAttacksItDirectlyAndIsCounted() {
         TargetLedger ledger = TargetLedger.empty();
         MeleeOverflowGate gate = new MeleeOverflowGate();
-        assertTrue(SquadManager.commitPick(ledger, gate, LING, UnitType.Zerg_Zergling, selection(true), MARINE,
-                SquadManager.NO_TARGET_ID, 100).isAttackMove());
-        int openMarine = MARINE + 1;
+        assertTrue(SquadManager.commitPick(ledger, gate, LING, UnitType.Zerg_Zergling, selection(true),
+                SquadManager.NO_TARGET_ID, true, 100).isAttackMove());
 
         TargetScorer.Selection issued = SquadManager.commitPick(ledger, gate, LING, UnitType.Zerg_Zergling,
-                selection(false), openMarine, MARINE, 101);
+                selection(false, OPEN_MARINE_UNIT), MARINE, true, 101);
 
         assertFalse(issued.isAttackMove());
-        assertEquals(1, ledger.meleeAssigned(openMarine));
+        assertEquals(1, ledger.meleeAssigned(OPEN_MARINE));
+    }
+
+    @Test
+    void anOverflowAttackerReTargetedOntoAnOpenSlotOutOfReachKeepsAttackMovingAndIsNotCounted() {
+        TargetLedger ledger = TargetLedger.empty();
+        MeleeOverflowGate gate = new MeleeOverflowGate();
+        assertTrue(SquadManager.commitPick(ledger, gate, LING, UnitType.Zerg_Zergling, selection(true),
+                SquadManager.NO_TARGET_ID, false, 100).isAttackMove());
+
+        TargetScorer.Selection issued = SquadManager.commitPick(ledger, gate, LING, UnitType.Zerg_Zergling,
+                selection(false, OPEN_MARINE_UNIT), MARINE, false, 101);
+
+        assertTrue(issued.isAttackMove());
+        assertEquals(0, ledger.meleeAssigned(OPEN_MARINE));
     }
 
     @Test
@@ -161,7 +185,7 @@ class SaturatedTargetWideningTest {
         for (int ling = 0; ling < pack; ling++) {
             boolean saturated = ledger.meleeAssigned(MARINE) >= cap;
             TargetScorer.Selection issued = SquadManager.commitPick(ledger, new MeleeOverflowGate(), ling,
-                    UnitType.Zerg_Zergling, selection(saturated), MARINE, SquadManager.NO_TARGET_ID, 100);
+                    UnitType.Zerg_Zergling, selection(saturated), SquadManager.NO_TARGET_ID, true, 100);
             attackMoves += issued.isAttackMove() ? 1 : 0;
         }
 

@@ -109,6 +109,10 @@ public class ManagedUnit {
     private int attacksStarted;
     @Getter
     private int lastAttackStartFrame = -1;
+    @Getter
+    private int damageDealt;
+    private int lastGroundWeaponCooldown = -1;
+    private int lastAirWeaponCooldown = -1;
 
     private Position evadePosition;
     private int evadeFrame = -1;
@@ -694,6 +698,10 @@ public class ManagedUnit {
      * Counts an attack when the unit is starting one on this frame, and remembers the frame. Read every frame, so
      * {@link #getAttacksStarted} is the number of attacks the unit has started since it was first managed.
      *
+     * <p>Separately, adds to {@link #getDamageDealt} each time a weapon fires, seen as its cooldown rising from the
+     * previous frame, the damage one hit of the unit's weapon does to the unit's target. This does not read the
+     * server's starting-attack flag, so it cross-checks {@link #getAttacksStarted}.
+     *
      * @param frame current frame
      */
     public void observeAttack(int frame) {
@@ -701,6 +709,41 @@ public class ManagedUnit {
             attacksStarted++;
             lastAttackStartFrame = frame;
         }
+        int groundCooldown = unit.getGroundWeaponCooldown();
+        int airCooldown = unit.getAirWeaponCooldown();
+        if (weaponFired(lastGroundWeaponCooldown, groundCooldown) || weaponFired(lastAirWeaponCooldown, airCooldown)) {
+            Unit target = weaponTarget();
+            damageDealt += target != null && target.exists() ? damagePerHit(target) : 0;
+        }
+        lastGroundWeaponCooldown = groundCooldown;
+        lastAirWeaponCooldown = airCooldown;
+    }
+
+    /**
+     * Whether a weapon fired since the previous frame, read as its cooldown rising, the same rise the BWAPI server
+     * tests when it sets the starting-attack flag.
+     *
+     * @param previousCooldown the cooldown read on the previous frame, or -1 before the first read
+     * @param cooldown the cooldown read on this frame
+     */
+    static boolean weaponFired(int previousCooldown, int cooldown) {
+        return previousCooldown >= 0 && cooldown > previousCooldown;
+    }
+
+    /**
+     * @return the unit the unit's weapon is aimed at, or the target of its order when it has none, or null
+     */
+    protected Unit weaponTarget() {
+        Unit target = unit.getTarget();
+        return target != null ? target : unit.getOrderTarget();
+    }
+
+    /**
+     * @return the damage BWAPI prices one hit of this unit's weapon at against the target, with both players'
+     *     upgrades
+     */
+    protected int damagePerHit(Unit target) {
+        return game.getDamageFrom(unit.getType(), target.getType(), unit.getPlayer(), target.getPlayer());
     }
 
     /**

@@ -43,11 +43,18 @@ public final class TestUnits {
      * Builds a unit of the given type whose id is the next free index.
      */
     public Unit unit(UnitType type) {
+        return unit(type, data.size());
+    }
+
+    /**
+     * Builds a unit of the given type with the given id, in the next free slot of the buffer.
+     */
+    public Unit unit(UnitType type, int id) {
         int index = data.size();
         ClientData.UnitData unitData = clientData.new UnitData(index * ClientData.UnitData.SIZE);
-        unitData.setId(index);
+        unitData.setId(id);
         unitData.setType(type.id);
-        Unit unit = new Unit(unitData, index, game);
+        Unit unit = new Unit(unitData, id, game);
         data.put(unit, unitData);
         return unit;
     }
@@ -57,5 +64,20 @@ public final class TestUnits {
      */
     public void setStartingAttack(Unit unit, boolean startingAttack) {
         data.get(unit).setIsStartingAttack(startingAttack);
+    }
+
+    /**
+     * Sets the unit's ground and air weapon cooldowns, as the BWAPI server writes them.
+     */
+    public void setWeaponCooldowns(Unit unit, int ground, int air) {
+        data.get(unit).setGroundWeaponCooldown(ground);
+        data.get(unit).setAirWeaponCooldown(air);
+    }
+
+    /**
+     * Sets whether the unit exists, as the BWAPI server writes it.
+     */
+    public void setExists(Unit unit, boolean exists) {
+        data.get(unit).setExists(exists);
     }
 }
