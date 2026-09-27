@@ -177,6 +177,7 @@ public class GameState {
         strategyTracker.onFrame();
         clearVisibleEnemyWorkerLocations();
         baseData.updateSquadRallyBase();
+        observeMineralPatches();
         observeGeyserResources();
     }
 
@@ -435,6 +436,10 @@ public class GameState {
         addBaseToGameState(hatchery, newBase);
     }
 
+    /**
+     * Makes a base ours. Every mineral patch the map assigns the base enters the resource ledger, including
+     * patches not visible at the claim, and a BASE_CLAIMED row records the ledger's count beside the map's.
+     */
     public void addBaseToGameState(Unit hatchery, Base base) {
         if (base == null) { 
             return; 
@@ -442,14 +447,25 @@ public class GameState {
         gatherersAssignedToBase.put(base, new HashSet<>());
         this.baseData.addBase(hatchery, base);
 
-        List<Integer> livingMineralPatches = new ArrayList<>();
+        List<Integer> mineralPatches = new ArrayList<>();
         for (Mineral mineral: base.getMinerals()) {
             mineralAssignments.put(mineral.getUnit(), new HashSet<>());
-            if (mineral.getUnit().exists()) {
-                livingMineralPatches.add(mineral.getUnit().getID());
-            }
+            mineralPatches.add(mineral.getUnit().getID());
         }
-        resourceLedger.addBase(base.getLocation(), livingMineralPatches);
+        resourceLedger.addBase(base.getLocation(), mineralPatches);
+        PlanEvents.baseClaimed(base.getLocation(), resourceLedger.mineralPatchesAt(base.getLocation()),
+                base.getMinerals().size(), remainingMineralPatches());
+    }
+
+    /**
+     * Writes a BASE_CLAIMED row for every base we hold. The main is claimed before plan telemetry starts, so
+     * this is called once the plan event sink is registered to give the main its row.
+     */
+    public void reportClaimedBases() {
+        for (Base base : baseData.getMyBases()) {
+            PlanEvents.baseClaimed(base.getLocation(), resourceLedger.mineralPatchesAt(base.getLocation()),
+                    base.getMinerals().size(), remainingMineralPatches());
+        }
     }
 
     public void addMainBase(Unit hatchery, Base base) {
@@ -2053,6 +2069,36 @@ public class GameState {
     }
 
     /**
+     * Drops from the resource ledger each mineral patch at a base we hold whose tiles have stayed visible while
+     * the patch does not exist, and writes a MINERAL_PATCH_SEEN_GONE row for each patch dropped.
+     */
+    private void observeMineralPatches() {
+        for (Base base : baseData.getMyBases()) {
+            for (Mineral mineral : base.getMinerals()) {
+                Unit patch = mineral.getUnit();
+                if (resourceLedger.observeMineralPatch(patch.getID(), allTilesVisible(mineral), patch.exists())) {
+                    PlanEvents.mineralPatchSeenGone(base.getLocation(),
+                            resourceLedger.mineralPatchesAt(base.getLocation()), base.getMinerals().size(),
+                            remainingMineralPatches());
+                }
+            }
+        }
+    }
+
+    private boolean allTilesVisible(Mineral mineral) {
+        TilePosition topLeft = mineral.getTopLeft();
+        TilePosition bottomRight = mineral.getBottomRight();
+        for (int x = topLeft.getX(); x <= bottomRight.getX(); x++) {
+            for (int y = topLeft.getY(); y <= bottomRight.getY(); y++) {
+                if (!game.isVisible(x, y)) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    /**
      * Reads the gas left under each completed Extractor and writes a GEYSER_DEPLETED row the first time a
      * geyser reads empty.
      */
@@ -2065,7 +2111,7 @@ public class GameState {
                     resourceLedger.observeResources(extractor.getID(), extractor.getResources());
             if (depleted != null) {
                 PlanEvents.geyserDepleted(depleted.getGeyser(), depleted.getBase(), depleted.getInitialResources(),
-                        depleted.getCompletedFrame());
+                        depleted.getCompletedFrame(), depleted.getFirstCompletedFrame());
             }
         }
     }

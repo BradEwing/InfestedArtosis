@@ -17,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PlanEventLoggerTest {
 
-    private static final int PLAN_COLUMNS = 81;
+    private static final int PLAN_COLUMNS = 85;
 
     private static final boolean STARVED = true;
 
@@ -140,20 +140,28 @@ class PlanEventLoggerTest {
     }
 
     @Test
-    void theGeyserDepletedColumnsAreAppendedLast() {
-        String[] columns = PlanEventLogger.PLAN_HEADER.split(",", -1);
+    void theGeyserDepletedColumnsFollowTheBuilderColumns() {
         int base = indexOf("geyser_base_x");
         assertEquals(indexOf("previous_executor_unit_id") + 1, base);
         assertEquals("geyser_base_y", column(base + 1));
         assertEquals("geyser_initial_resources", column(base + 2));
         assertEquals("extractor_completed_frame", column(base + 3));
+        assertEquals("first_extractor_completed_frame", column(base + 4));
+    }
+
+    @Test
+    void theBaseClaimedPatchColumnsFollowTheGeyserColumns() {
+        int patches = indexOf("base_mineral_patches");
+        assertEquals(indexOf("first_extractor_completed_frame") + 1, patches);
+        assertEquals("map_mineral_patches", column(patches + 1));
+        assertEquals("remaining_mineral_patches", column(patches + 2));
     }
 
     @Test
     void theDroneRoundColumnsAreAppendedLast() {
         String[] columns = PlanEventLogger.PLAN_HEADER.split(",", -1);
         int reason = indexOf("drone_round_reason");
-        assertEquals(indexOf("extractor_completed_frame") + 1, reason);
+        assertEquals(indexOf("remaining_mineral_patches") + 1, reason);
         assertEquals("drone_round_drones", column(reason + 1));
         assertEquals("drone_round_size", column(reason + 2));
         assertEquals("contain_held_frames", column(reason + 3));
