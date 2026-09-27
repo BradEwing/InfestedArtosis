@@ -22,6 +22,7 @@ import macro.plan.PlanState;
 import macro.plan.PlanType;
 import macro.plan.UpgradePlan;
 import strategy.buildorder.BuildOrder;
+import strategy.buildorder.LingFloodHold;
 import strategy.buildorder.SunkenTargets;
 import telemetry.PlanEvents;
 
@@ -182,6 +183,7 @@ public class Reactions {
         mainHeldThroughExpansion = false;
         cannonRushReaction();
         scvRushReaction();
+        lingFloodHoldReaction();
         earlyRushReaction();
         proxyGateReaction();
         twoGateReaction();
@@ -271,7 +273,7 @@ public class Reactions {
         }
 
         int droneCount = gameState.ourLivingUnitCount(UnitType.Zerg_Drone);
-        if (shouldFireDroneCut(droneCount, zerglingCount)) {
+        if (shouldFireDroneCut(droneCount, zerglingCount, gameState.isLingFloodHold())) {
             productionQueue.removeWhere(IS_DRONE, PlanCancelSource.REACTION_EARLY_RUSH_DRONE, gameState::setImpossiblePlan);
         }
 
@@ -305,8 +307,34 @@ public class Reactions {
                 .forEach(plan -> plan.setPriority(BuildOrder.EMERGENCY_DEFENSE_PRIORITY));
     }
 
-    boolean shouldFireDroneCut(int livingDrones, int livingZerglings) {
-        return shouldCutDrones(livingDrones, livingZerglings) && droneCut.fire();
+    /**
+     * Whether queued drone plans are dropped this frame. The cut runs once per early rush window, and
+     * never while the Zergling flood hold stands: the hold's floor Drones are what it would drop.
+     *
+     * @param livingDrones drones that have hatched
+     * @param livingZerglings zerglings that have hatched
+     * @param lingFloodHold whether the Zergling flood hold stands this frame
+     * @return true on the one frame the cut applies
+     */
+    boolean shouldFireDroneCut(int livingDrones, int livingZerglings, boolean lingFloodHold) {
+        return !lingFloodHold && shouldCutDrones(livingDrones, livingZerglings) && droneCut.fire();
+    }
+
+    /**
+     * Raises or lowers the Zergling flood hold, and opens a single-base main to its sunkens while it
+     * stands. The main is held through a morphing expansion, since the flood comes from one base
+     * and reaches the main whether or not a natural is going up.
+     */
+    private void lingFloodHoldReaction() {
+        boolean holding = LingFloodHold.isActive(isLingFloodDetected(gameState.getStrategyTracker()), gameState.getGameTime());
+        gameState.setLingFloodHold(holding);
+        if (holding) {
+            holdMainIfSingleBase(gameState.getBaseData());
+        }
+    }
+
+    private static boolean isLingFloodDetected(StrategyTracker strategyTracker) {
+        return strategyTracker.isAnyDetectedStrategy(LingFloodHold.TRIGGER_STRATEGIES.toArray(new String[0]));
     }
 
     /**

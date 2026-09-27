@@ -106,6 +106,7 @@ public class GameState {
     private boolean earlyRushed = false;
     private boolean earlyRushDelayLair = false;
     private boolean earlyRushMacroHatch = false;
+    private boolean lingFloodHold = false;
 
     private HashSet<Plan> plansScheduled = new HashSet<>();
     private HashSet<Plan> plansBuilding = new HashSet<>();
@@ -1920,10 +1921,12 @@ public class GameState {
      * <p>Every rule that deletes a queued hatchery plan contributes a term: the excess rule, the
      * early rush reaction and the SCV rush reaction. No term depends on the opponent's race. The proxy
      * Gateway expansion hold stands only while the bot is early rushed, so the early rush term covers it.
+     * The Zergling flood hold refuses expansions too: it outlasts the early rush reaction, and a base
+     * taken while the flood stands is a drone sent into it.
      */
     public boolean mayQueueExpansionHatchery() {
         return isHatcheryEnqueueRearmed(false)
-                && HatcheryCapacity.isQueueable(hasExcessExpansionHatchery(), isEarlyRushed() || isScvRushed());
+                && HatcheryCapacity.isQueueable(hasExcessExpansionHatchery(), isEarlyRushed() || isScvRushed() || lingFloodHold);
     }
 
     /**

@@ -1396,6 +1396,9 @@ public class SquadManager {
     }
 
     private int calculateGroundSquadMoveOutThreshold(Squad squad) {
+        if (gameState.isLingFloodHold()) {
+            return MAX_MOVE_OUT_THRESHOLD;
+        }
         StrategyTracker strategyTracker = gameState.getStrategyTracker();
         final boolean isActivelyCannonRushed = gameState.isCannonRushed();
         final boolean isCannonRushed = strategyTracker.isDetectedStrategy("CannonRush");
