@@ -1,8 +1,13 @@
 package telemetry;
 
+import macro.DroneRound;
+import macro.plan.Plan;
+import macro.plan.PlanBlocker;
+import macro.plan.PlanState;
 import org.junit.jupiter.api.Test;
 import strategy.buildorder.LarvaBoundMacroHatchery.Gate;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
@@ -12,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PlanEventLoggerTest {
 
-    private static final int PLAN_COLUMNS = 71;
+    private static final int PLAN_COLUMNS = 87;
 
     private static final boolean STARVED = true;
 
@@ -126,21 +131,105 @@ class PlanEventLoggerTest {
     }
 
     @Test
-    void theBuilderRoleColumnsAreAppendedLast() {
-        String[] columns = PlanEventLogger.PLAN_HEADER.split(",", -1);
+    void theBuilderRoleColumnsFollowTheEnemyMainColumns() {
         int role = indexOf("builder_role");
         assertEquals(indexOf("enemy_main_source_y") + 1, role);
         assertEquals("builder_order", column(role + 1));
         assertEquals("builder_in_range", column(role + 2));
         assertEquals("previous_executor_unit_id", column(role + 3));
-        assertEquals(role + 3, columns.length - 3);
+    }
+
+    @Test
+    void theGeyserDepletedColumnsFollowTheBuilderColumns() {
+        int base = indexOf("geyser_base_x");
+        assertEquals(indexOf("previous_executor_unit_id") + 1, base);
+        assertEquals("geyser_base_y", column(base + 1));
+        assertEquals("geyser_initial_resources", column(base + 2));
+        assertEquals("extractor_completed_frame", column(base + 3));
+        assertEquals("first_extractor_completed_frame", column(base + 4));
+    }
+
+    @Test
+    void theBaseClaimedPatchColumnsFollowTheGeyserColumns() {
+        int patches = indexOf("base_mineral_patches");
+        assertEquals(indexOf("first_extractor_completed_frame") + 1, patches);
+        assertEquals("map_mineral_patches", column(patches + 1));
+        assertEquals("remaining_mineral_patches", column(patches + 2));
+    }
+
+    @Test
+    void theDroneRoundColumnsFollowThePatchColumns() {
+        String[] columns = PlanEventLogger.PLAN_HEADER.split(",", -1);
+        int reason = indexOf("drone_round_reason");
+        assertEquals(indexOf("remaining_mineral_patches") + 1, reason);
+        assertEquals("drone_round_drones", column(reason + 1));
+        assertEquals("drone_round_size", column(reason + 2));
+        assertEquals("contain_held_frames", column(reason + 3));
+        assertEquals("drone_round_workers", column(reason + 4));
+        assertEquals("drone_round_soft_cap", column(reason + 5));
+        assertEquals("drone_round_hard_cap", column(reason + 6));
+        assertEquals("contain_period_start_frame", column(reason + 7));
+    }
+
+    @Test
+    void aRowThatIsNotADroneRoundRowWritesEightEmptyDroneRoundCells() {
+        StringBuilder sb = new StringBuilder();
+
+        PlanEventLogger.appendDroneRound(sb, null);
+
+        assertEquals(Arrays.asList("", "", "", "", "", "", "", ""), Arrays.asList(sb.toString().split(",", -1)));
+    }
+
+    @Test
+    void aDroneRoundRowWritesItsReasonDronesSizeHeldFramesWorkersCapsAndPeriodInHeaderOrder() {
+        List<DroneRound.Report> reports = new ArrayList<>();
+        PlanEvents.register(new PlanEventSink() {
+            @Override
+            public void onEnqueue(Plan plan) {
+            }
+
+            @Override
+            public void onStateChange(Plan plan, PlanState from, PlanState to) {
+            }
+
+            @Override
+            public void onBlocked(Plan plan, PlanBlocker blocker) {
+            }
+
+            @Override
+            public void onDroneRoundOpened(DroneRound.Report report) {
+                reports.add(report);
+            }
+        });
+        try {
+            new DroneRound().update(9000, 0, 20, 0, true, false, DroneRound.ContainHeld.builder()
+                    .eligible(true).chainStartFrame(8000).periodStartFrame(7500).heldFrames(1000).hatcheries(4)
+                    .workers(18).softCap(26).hardCap(33).build());
+        } finally {
+            PlanEvents.clear();
+        }
+        StringBuilder sb = new StringBuilder();
+
+        PlanEventLogger.appendDroneRound(sb, reports.get(0));
+
+        String[] cells = sb.toString().split(",", -1);
+        int first = indexOf("drone_round_reason");
+        assertEquals(8, cells.length);
+        assertEquals("CONTAIN_HELD", cells[indexOf("drone_round_reason") - first]);
+        assertEquals("20", cells[indexOf("drone_round_drones") - first]);
+        assertEquals("4", cells[indexOf("drone_round_size") - first]);
+        assertEquals("1000", cells[indexOf("contain_held_frames") - first]);
+        assertEquals("18", cells[indexOf("drone_round_workers") - first]);
+        assertEquals("26", cells[indexOf("drone_round_soft_cap") - first]);
+        assertEquals("33", cells[indexOf("drone_round_hard_cap") - first]);
+        assertEquals("7500", cells[indexOf("contain_period_start_frame") - first]);
     }
 
     @Test
     void theHatcheryRequestColumnsAreAppendedLast() {
         String[] columns = PlanEventLogger.PLAN_HEADER.split(",", -1);
         int reason = indexOf("hatchery_request_reason");
-        assertEquals(indexOf("previous_executor_unit_id") + 1, reason);
+        assertEquals(indexOf("contain_period_start_frame") + 1, reason);
         assertEquals("floating_minerals_bar", column(reason + 1));
         assertEquals("floating_minerals_bar", columns[columns.length - 1]);
     }

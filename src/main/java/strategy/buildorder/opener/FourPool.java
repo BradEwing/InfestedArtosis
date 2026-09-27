@@ -63,6 +63,14 @@ public class FourPool extends BuildOrder {
         return true;
     }
 
+    /**
+     * A held contain opens no drone round: the build never transitions out of its all-in.
+     */
+    @Override
+    protected boolean runsContainHeldRounds(GameState gameState) {
+        return false;
+    }
+
     @Override
     protected int poolPriority(int enqueueFrame) {
         return SPAWNING_POOL_PRIORITY;

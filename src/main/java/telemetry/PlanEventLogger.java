@@ -12,6 +12,7 @@ import info.EnemyMainEvidence;
 import info.GameState;
 import info.ResourceCount;
 import learning.GameRecord;
+import macro.DroneRound;
 import macro.plan.BuilderDispatchDecision;
 import macro.plan.BuilderLossReason;
 import macro.plan.BuilderReading;
@@ -69,6 +70,11 @@ public class PlanEventLogger implements PlanEventSink {
     private static final String EVENT_ENEMY_MAIN_SCOUTED = "ENEMY_MAIN_SCOUTED";
     private static final String EVENT_BUILDER_LOST = "BUILDER_LOST";
     private static final String EVENT_BUILDER_REDISPATCH = "BUILDER_REDISPATCH";
+    private static final String EVENT_GEYSER_DEPLETED = "GEYSER_DEPLETED";
+    private static final String EVENT_BASE_CLAIMED = "BASE_CLAIMED";
+    private static final String EVENT_MINERAL_PATCH_SEEN_GONE = "MINERAL_PATCH_SEEN_GONE";
+    private static final String EVENT_DRONE_ROUND_OPEN = "DRONE_ROUND_OPEN";
+    private static final String EVENT_DRONE_ROUND_CLOSE = "DRONE_ROUND_CLOSE";
 
     private static final int NO_STARVED_COUNT = -1;
 
@@ -83,7 +89,7 @@ public class PlanEventLogger implements PlanEventSink {
     static final int BANK_SAMPLE_INTERVAL_FRAMES = 120;
 
     /**
-     * 71 columns; readers that index by position rather than by name must match this order.
+     * 87 columns; readers that index by position rather than by name must match this order.
      * enemy_air, gas_gathered, enemy_barracks, the blocker mineral pair, the enemy ground pair,
      * yield_to_plan_id, the four macro hatchery gate columns and the four Hive tech gate columns
      * are trailing columns written by {@link #appendTrailing}, so every row shape keeps one width.
@@ -193,6 +199,40 @@ public class PlanEventLogger implements PlanEventSink {
      * PROMOTE rows are written when an open drone round moves a queued Drone ahead of the advanced
      * unit band; priority is the new priority and age_frames how long the Drone had been queued.
      * <p>
+     * GEYSER_DEPLETED rows are written the first frame the geyser under one of our completed
+     * Extractors reads empty, and leave every plan column empty. The geyser's tile is in
+     * build_tile_x and build_tile_y. geyser_base_x and geyser_base_y are the tile location of the
+     * base the geyser belongs to, empty when it belongs to none; geyser_initial_resources is the gas
+     * the geyser started the game with and extractor_completed_frame the frame the Extractor on it
+     * completed. first_extractor_completed_frame is the frame our first Extractor on the geyser
+     * completed, earlier than extractor_completed_frame when the Extractor was rebuilt. Those five
+     * columns are set only on GEYSER_DEPLETED rows.
+     * <p>
+     * BASE_CLAIMED rows are written when a base becomes ours, and leave every plan column empty. The
+     * base's tile location is in build_tile_x and build_tile_y. base_mineral_patches is the mineral
+     * patches the resource ledger holds for the base, map_mineral_patches the patches the map assigns
+     * it, and remaining_mineral_patches the ledger's count at every base we hold, this one included.
+     * The main is claimed before the logger starts, so its row is written when the logger starts.
+     * <p>
+     * MINERAL_PATCH_SEEN_GONE rows are written when a patch at a base we hold leaves the ledger because
+     * its tiles stayed visible without it, and fill the same columns as BASE_CLAIMED, counted after the
+     * patch left. Those three columns are set only on BASE_CLAIMED and MINERAL_PATCH_SEEN_GONE rows.
+     * <p>
+     * DRONE_ROUND_OPEN and DRONE_ROUND_CLOSE rows are written when a {@link macro.DroneRound} opens
+     * and closes, and leave every plan column empty. item is the round's kind, ARMY_MILESTONE or
+     * CONTAIN_HELD, on both rows. drone_round_reason is the kind again on an OPEN row and the close
+     * reason on a CLOSE row: SIZE, BUILD_CAP, SOFT_CAP, HARD_CAP, THREAT, CONTAIN_ENDED, TIMEOUT or
+     * INELIGIBLE. drone_round_drones is Drones hatched plus Drones in an egg at that frame, so the CLOSE
+     * row's count less the OPEN row's is the Drones a round added net of any Drones that died during
+     * it. drone_round_size is the Drones the round
+     * set out to add; a contain-held round's size is already cut to the workers left under the lower cap.
+     * contain_held_frames is how long our ground squads had held the running contain chain, zero with none, so
+     * the OPEN row's frame less it is the chain start. drone_round_workers, drone_round_soft_cap and
+     * drone_round_hard_cap are the mineral and gas workers and the two worker caps a contain-held round
+     * measures them against. contain_period_start_frame is the start of the running contain period, which an
+     * enemy break does not end, or -1 with none; it groups the contain-held rounds one period opened.
+     * Those eight columns are set only on the two DRONE_ROUND rows.
+     * <p>
      * hatchery_request_reason is the rule that asked for a Hatchery plan
      * ({@link HatcheryRequestReason}), written on every row of that plan, the builder and
      * build-ahead rows included, so an EXCESS_HATCHERY cancel carries the reason its plan was
@@ -218,8 +258,11 @@ public class PlanEventLogger implements PlanEventSink {
             + "expansion_hold_until_frame,builder_site_at_our_base,builder_at_our_base,base_inner,enemy_main_reason,"
             + "enemy_main_source_x,enemy_main_source_y,"
             + "builder_role,builder_order,builder_in_range,previous_executor_unit_id,"
+            + "geyser_base_x,geyser_base_y,geyser_initial_resources,extractor_completed_frame,"
+            + "first_extractor_completed_frame,base_mineral_patches,map_mineral_patches,remaining_mineral_patches,"
+            + "drone_round_reason,drone_round_drones,drone_round_size,contain_held_frames,drone_round_workers,"
+            + "drone_round_soft_cap,drone_round_hard_cap,contain_period_start_frame,"
             + "hatchery_request_reason,floating_minerals_bar";
-
     private static final String GAME_HEADER = "timestamp,is_winner,num_starting_locations,map_name,opponent_name,"
             + "opponent_race,opener,build_order,detected_strategies,frame_count";
 
@@ -245,6 +288,12 @@ public class PlanEventLogger implements PlanEventSink {
     private final Map<String, GasBoundHiveTech.Gate> lastHiveTechGates = new HashMap<>();
 
     private final Map<String, BuilderDispatchDecision> lastDispatchDecisions = new HashMap<>();
+
+    /**
+     * The drone round {@link #appendTrailing} writes the drone round columns from, set only while a
+     * DRONE_ROUND_OPEN or DRONE_ROUND_CLOSE row is built, so every other row leaves them empty.
+     */
+    private DroneRound.Report rowDroneRound;
 
     private boolean disabled;
     private int currentFrame;
@@ -732,6 +781,93 @@ public class PlanEventLogger implements PlanEventSink {
     }
 
     /**
+     * The frame is re-read for the reason {@link #onStrategyDetected} gives: GameState may run ahead of
+     * this logger's onFrame on the same frame.
+     */
+    @Override
+    public void onGeyserDepleted(TilePosition geyser, TilePosition base, int initialResources,
+                                 int extractorCompletedFrame, int firstExtractorCompletedFrame) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            currentFrame = game.getFrameCount();
+            buffer.add(geyserDepletedRow(geyser, BaseEventInputs.geyserDepleted(base, initialResources,
+                    extractorCompletedFrame, firstExtractorCompletedFrame)));
+        } catch (Exception e) {
+            disabled = true;
+        }
+    }
+
+    /**
+     * The frame is re-read rather than taken from the last onFrame, since a base is claimed from
+     * onUnitComplete, which JBWAPI dispatches ahead of the frame's onFrame.
+     */
+    @Override
+    public void onBaseClaimed(TilePosition base, int baseMineralPatches, int mapMineralPatches,
+                              int remainingMineralPatches) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            currentFrame = game.getFrameCount();
+            buffer.add(mineralPatchCountRow(EVENT_BASE_CLAIMED, base,
+                    BaseEventInputs.mineralPatches(baseMineralPatches, mapMineralPatches, remainingMineralPatches)));
+        } catch (Exception e) {
+            disabled = true;
+        }
+    }
+
+    /**
+     * The frame is re-read for the reason {@link #onStrategyDetected} gives: GameState may run ahead of
+     * this logger's onFrame on the same frame.
+     */
+    @Override
+    public void onMineralPatchSeenGone(TilePosition base, int baseMineralPatches, int mapMineralPatches,
+                                       int remainingMineralPatches) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            currentFrame = game.getFrameCount();
+            buffer.add(mineralPatchCountRow(EVENT_MINERAL_PATCH_SEEN_GONE, base,
+                    BaseEventInputs.mineralPatches(baseMineralPatches, mapMineralPatches, remainingMineralPatches)));
+        } catch (Exception e) {
+            disabled = true;
+        }
+    }
+
+    @Override
+    public void onDroneRoundOpened(DroneRound.Report report) {
+        addDroneRoundRow(EVENT_DRONE_ROUND_OPEN, report);
+    }
+
+    @Override
+    public void onDroneRoundClosed(DroneRound.Report report) {
+        addDroneRoundRow(EVENT_DRONE_ROUND_CLOSE, report);
+    }
+
+    /**
+     * The frame is re-read for the reason {@link #onStrategyDetected} gives: the build order updates the
+     * round during production, which may run ahead of this logger's onFrame on the same frame.
+     */
+    private void addDroneRoundRow(String event, DroneRound.Report report) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            currentFrame = game.getFrameCount();
+            buffer.add(droneRoundRow(event, report));
+        } catch (Exception e) {
+            disabled = true;
+        }
+    }
+
+    /**
      * The frame is re-read for the reason {@link #onStrategyDetected} gives: GameState may run ahead of this
      * logger's onFrame on the same frame.
      */
@@ -1129,6 +1265,69 @@ public class PlanEventLogger implements PlanEventSink {
         return sb.toString();
     }
 
+    /** A row for a geyser that read empty, which no plan owns, so the plan columns are empty. */
+    private String geyserDepletedRow(TilePosition geyser, BaseEventInputs inputs) {
+        StringBuilder sb = new StringBuilder();
+        appendEvent(sb, EVENT_GEYSER_DEPLETED);
+        appendEmpty(sb, 3);
+        sb.append(Csv.sanitize(UnitType.Zerg_Extractor.toString())).append(',');
+        appendEmpty(sb, 4);
+        appendBlocker(sb, PlanBlocker.NONE, 0);
+        appendEmpty(sb, 3);
+        appendGameState(sb);
+        sb.append(geyser.getX()).append(',');
+        sb.append(geyser.getY()).append(',');
+        appendEmpty(sb, 1);
+        sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
+        appendEmpty(sb, 2);
+        appendTrailing(sb, null, null, null, null, null, inputs, BuilderColumns.BLANK);
+        return sb.toString();
+    }
+
+    /**
+     * A row for a base that became ours or lost a patch seen gone, which no plan owns, so the plan columns are
+     * empty.
+     */
+    private String mineralPatchCountRow(String event, TilePosition base, BaseEventInputs inputs) {
+        StringBuilder sb = new StringBuilder();
+        appendEvent(sb, event);
+        appendEmpty(sb, 3);
+        sb.append(Csv.sanitize(UnitType.Zerg_Hatchery.toString())).append(',');
+        appendEmpty(sb, 4);
+        appendBlocker(sb, PlanBlocker.NONE, 0);
+        appendEmpty(sb, 3);
+        appendGameState(sb);
+        sb.append(base.getX()).append(',');
+        sb.append(base.getY()).append(',');
+        appendEmpty(sb, 1);
+        sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
+        appendEmpty(sb, 2);
+        appendTrailing(sb, null, null, null, null, null, inputs, BuilderColumns.BLANK);
+        return sb.toString();
+    }
+
+    /** A row for a drone round opening or closing, which no plan owns, so the plan columns are empty. */
+    private String droneRoundRow(String event, DroneRound.Report report) {
+        StringBuilder sb = new StringBuilder();
+        appendEvent(sb, event);
+        appendEmpty(sb, 3);
+        sb.append(report.getKind()).append(',');
+        appendEmpty(sb, 4);
+        appendBlocker(sb, PlanBlocker.NONE, 0);
+        appendEmpty(sb, 3);
+        appendGameState(sb);
+        appendEmpty(sb, 3);
+        sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
+        appendEmpty(sb, 2);
+        rowDroneRound = report;
+        try {
+            appendTrailing(sb, null, null, null, null, null, null, BuilderColumns.BLANK);
+        } finally {
+            rowDroneRound = null;
+        }
+        return sb.toString();
+    }
+
     /** A row for a change of the squad rally base, which no plan owns, so the plan columns are empty. */
     private String rallyPointChangedRow(TilePosition base, String reason) {
         StringBuilder sb = new StringBuilder();
@@ -1209,8 +1408,10 @@ public class PlanEventLogger implements PlanEventSink {
      *     HIVE_TECH_TRIGGER and HIVE_TECH_WITHHELD
      * @param builderThreat what the plan's builder would walk into, or null when the row has no
      *     BUILDING plan with an executor behind it
-     * @param baseEvent the expansion or colony hold armed or the base lost, or null on every row but
-     *     EXPANSION_BACKOFF, COLONY_BUILDER_BACKOFF and BASE_LOST
+     * @param baseEvent the expansion or colony hold armed, the base lost, the enemy main event, the geyser
+     *     that read empty or the base claimed, or null on every row but EXPANSION_BACKOFF,
+     *     COLONY_BUILDER_BACKOFF, BASE_LOST, the ENEMY_MAIN rows, GEYSER_DEPLETED, BASE_CLAIMED and
+     *     MINERAL_PATCH_SEEN_GONE
      * @param builder the builder columns, {@link BuilderColumns#BLANK} on every row but
      *     BUILD_AHEAD_HOLD, BUILD_AHEAD_EVICT, BUILD_AHEAD_YIELD, BUILDER_DISPATCH_DECISION,
      *     BUILDER_LOST and BUILDER_REDISPATCH, and the carrier of builder_dispatch_decision
@@ -1224,7 +1425,7 @@ public class PlanEventLogger implements PlanEventSink {
     }
 
     /**
-     * The trailing columns up to previous_executor_unit_id. A row shape that calls this rather than
+     * The trailing columns up to contain_period_start_frame. A row shape that calls this rather than
      * {@link #appendTrailing} must follow it with {@link #appendHatcheryRequest}, so it keeps the
      * same width.
      */
@@ -1264,6 +1465,39 @@ public class PlanEventLogger implements PlanEventSink {
         for (String cell : builder.trailing()) {
             sb.append(',').append(cell);
         }
+        sb.append(',');
+        sb.append(baseEvent == null || baseEvent.geyserBase == null ? ""
+                : String.valueOf(baseEvent.geyserBase.getX())).append(',');
+        sb.append(baseEvent == null || baseEvent.geyserBase == null ? ""
+                : String.valueOf(baseEvent.geyserBase.getY())).append(',');
+        sb.append(baseEvent == null ? "" : orEmpty(baseEvent.geyserInitialResources)).append(',');
+        sb.append(baseEvent == null ? "" : orEmpty(baseEvent.extractorCompletedFrame)).append(',');
+        sb.append(baseEvent == null ? "" : orEmpty(baseEvent.firstExtractorCompletedFrame)).append(',');
+        sb.append(baseEvent == null ? "" : orEmpty(baseEvent.baseMineralPatches)).append(',');
+        sb.append(baseEvent == null ? "" : orEmpty(baseEvent.mapMineralPatches)).append(',');
+        sb.append(baseEvent == null ? "" : orEmpty(baseEvent.remainingMineralPatches)).append(',');
+        appendDroneRound(sb, rowDroneRound);
+    }
+
+    /**
+     * Writes the eight drone round cells, empty when the row is not a DRONE_ROUND row.
+     *
+     * @param sb the row being built, whose last cell so far is followed by a separator
+     * @param droneRound the round that opened or closed, or null
+     */
+    static void appendDroneRound(StringBuilder sb, DroneRound.Report droneRound) {
+        if (droneRound == null) {
+            sb.append(",,,,,,,");
+            return;
+        }
+        sb.append(droneRound.getReason()).append(',');
+        sb.append(droneRound.getDrones()).append(',');
+        sb.append(droneRound.getSize()).append(',');
+        sb.append(droneRound.getContainHeldFrames()).append(',');
+        sb.append(droneRound.getWorkers()).append(',');
+        sb.append(droneRound.getSoftCap()).append(',');
+        sb.append(droneRound.getHardCap()).append(',');
+        sb.append(droneRound.getContainPeriodStartFrame());
     }
 
     /**
@@ -1390,8 +1624,10 @@ public class PlanEventLogger implements PlanEventSink {
     }
 
     /**
-     * The hold a lost expansion builder armed, whether a lost base was the main or a natural, or why the enemy
-     * main was assigned or cleared and the position of the building that assigned it.
+     * The hold a lost expansion builder armed, whether a lost base was the main or a natural, why the enemy
+     * main was assigned or cleared and the position of the building that assigned it, the base, starting gas
+     * and Extractor completion frames of a geyser that read empty, or the mineral patch counts of a base claimed
+     * or of a base that lost a patch seen gone.
      */
     private static final class BaseEventInputs {
         private final Integer lostExpansionBuilders;
@@ -1399,6 +1635,13 @@ public class PlanEventLogger implements PlanEventSink {
         private final Boolean baseInner;
         private final String enemyMainReason;
         private final Position enemyMainSource;
+        private TilePosition geyserBase;
+        private Integer geyserInitialResources;
+        private Integer extractorCompletedFrame;
+        private Integer firstExtractorCompletedFrame;
+        private Integer baseMineralPatches;
+        private Integer mapMineralPatches;
+        private Integer remainingMineralPatches;
 
         private BaseEventInputs(Integer lostExpansionBuilders, Integer expansionHeldUntilFrame, Boolean baseInner,
                                 String enemyMainReason, Position enemyMainSource) {
@@ -1419,6 +1662,26 @@ public class PlanEventLogger implements PlanEventSink {
 
         private static BaseEventInputs enemyMain(String reason, Position source) {
             return new BaseEventInputs(null, null, null, reason, source);
+        }
+
+        private static BaseEventInputs geyserDepleted(TilePosition base, int initialResources,
+                                                      int extractorCompletedFrame,
+                                                      int firstExtractorCompletedFrame) {
+            BaseEventInputs inputs = new BaseEventInputs(null, null, null, null, null);
+            inputs.geyserBase = base;
+            inputs.geyserInitialResources = initialResources;
+            inputs.extractorCompletedFrame = extractorCompletedFrame;
+            inputs.firstExtractorCompletedFrame = firstExtractorCompletedFrame;
+            return inputs;
+        }
+
+        private static BaseEventInputs mineralPatches(int baseMineralPatches, int mapMineralPatches,
+                                                      int remainingMineralPatches) {
+            BaseEventInputs inputs = new BaseEventInputs(null, null, null, null, null);
+            inputs.baseMineralPatches = baseMineralPatches;
+            inputs.mapMineralPatches = mapMineralPatches;
+            inputs.remainingMineralPatches = remainingMineralPatches;
+            return inputs;
         }
     }
 }

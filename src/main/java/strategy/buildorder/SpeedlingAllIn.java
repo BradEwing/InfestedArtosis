@@ -90,6 +90,14 @@ public class SpeedlingAllIn extends BuildOrder {
      */
     static final int ZERGLINGS_BEFORE_EXTRA_DRONES = 12;
 
+    /**
+     * Living zerglings required for a held contain to open a drone round and keep it open, so the
+     * round's drones never come while too few zerglings are alive to keep the contain's pressure up.
+     * The same bar as
+     * {@link #ZERGLINGS_BEFORE_EXTRA_DRONES}.
+     */
+    static final int ZERGLINGS_FOR_CONTAIN_HELD_ROUND = ZERGLINGS_BEFORE_EXTRA_DRONES;
+
     static final UnitType[] HATCHERY_TYPES = {
         UnitType.Zerg_Hatchery, UnitType.Zerg_Lair, UnitType.Zerg_Hive
     };
@@ -135,6 +143,19 @@ public class SpeedlingAllIn extends BuildOrder {
     @Override
     public boolean shouldTransition(GameState gameState) {
         return false;
+    }
+
+    @Override
+    protected boolean runsContainHeldRounds(GameState gameState) {
+        return runsContainHeldRounds(gameState.ourLivingUnitCount(UnitType.Zerg_Zergling));
+    }
+
+    /**
+     * @param livingZerglings zerglings alive now
+     * @return true once {@link #ZERGLINGS_FOR_CONTAIN_HELD_ROUND} zerglings are alive
+     */
+    static boolean runsContainHeldRounds(int livingZerglings) {
+        return livingZerglings >= ZERGLINGS_FOR_CONTAIN_HELD_ROUND;
     }
 
     @Override
