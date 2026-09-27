@@ -63,6 +63,8 @@ public class ManagedUnit {
     protected Position perchPosition;
     @Setter @Getter
     protected Position runbyDestination;
+    @Setter @Getter
+    protected Position harassDestination;
     protected List<TilePosition> pathToTarget;
 
     @Setter
@@ -236,6 +238,9 @@ public class ManagedUnit {
                 break;
             case RUNBY:
                 runby();
+                break;
+            case HARASS:
+                harass();
                 break;
             default:
                 break;
@@ -1024,6 +1029,13 @@ public class ManagedUnit {
      * Acts on the order a runby squad gave this unit. Only zerglings run by, so every other type fights.
      */
     protected void runby() {
+        fight();
+    }
+
+    /**
+     * Acts on the order an air harass squad gave this unit. Only Mutalisks harass, so every other type fights.
+     */
+    protected void harass() {
         fight();
     }
 
