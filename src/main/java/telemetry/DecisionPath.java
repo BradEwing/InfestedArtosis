@@ -7,6 +7,7 @@ package telemetry;
  * names the request the lock refused, which is the branch that would have set the status had the
  * lock not held; the lock branches record {@link #RETREAT_LOCK} or {@link #FIGHT_LOCK} only after
  * that row is written, so the held status on any later row is still attributed to the lock.
+ * {@link #AIR_COMMITMENT} is the exception and names itself on its LOCK_SUPPRESSED row.
  */
 public enum DecisionPath {
 
@@ -131,7 +132,9 @@ public enum DecisionPath {
     NONE,
 
     /**
-     * An air squad's engage commitment kept it fighting through a RETREAT verdict.
+     * An air squad's engage commitment kept it fighting through a RETREAT verdict. Unlike the lock branches, it is
+     * recorded before the LOCK_SUPPRESSED row is written, so that row names AIR_COMMITMENT in place of the refused
+     * SIM_RETREAT request and is told apart from a fight lock suppression.
      */
     AIR_COMMITMENT
 }

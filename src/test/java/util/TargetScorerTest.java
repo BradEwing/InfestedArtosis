@@ -154,7 +154,7 @@ class TargetScorerTest {
     }
 
     @Test
-    void aMutaliskTakesAGoliathOutsideBunkerReachBeforeANearerBunker() {
+    void aMutaliskTakesAFartherGoliathBeforeANearerBunker() {
         List<TargetScorer.Candidate> list = Arrays.asList(
                 at(UnitType.Terran_Bunker, 60), at(UnitType.Terran_Goliath, 300));
 

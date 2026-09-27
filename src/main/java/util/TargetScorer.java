@@ -20,9 +20,9 @@ import java.util.List;
  *   <li>LOW: buildings, including hostile buildings that cannot attack the attacker's layer</li>
  * </ul>
  *
- * <p>A Mutalisk ranks a Bunker NORMAL, below the mobile anti-air it can kill without flying into the
- * Bunker's fire and below workers, so a flock is not pulled onto the static defence it would otherwise
- * retreat from.
+ * <p>A Mutalisk ranks a Bunker NORMAL, below every mobile unit that can attack air and below workers, so
+ * a flock is not pulled onto the static defence it would otherwise retreat from. The scorer has no
+ * positions, so a mobile anti-air unit standing inside a Bunker's reach also outranks the Bunker.
  */
 public final class TargetScorer {
 

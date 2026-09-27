@@ -699,6 +699,9 @@ public class SquadManager {
                 squad.removeUnit(mu);
                 child.addUnit(mu);
             }
+            if (squad.isAirSquad()) {
+                ((AirSquad) squad).rebaseEngageCommitment();
+            }
             toAdd.add(child);
         }
 
@@ -1324,11 +1327,10 @@ public class SquadManager {
             assignFightTargets(squad, managedFighters, false);
             return;
         }
-        if (squad.getStatus() == SquadStatus.FIGHT && result == CombatSimulator.CombatResult.RETREAT
-                && squad.isAirSquad()
+        if (commitmentMayHold(squad.getStatus(), result, squad.isAirSquad())
                 && ((AirSquad) squad).engageCommitmentHolds(now, flockHitPoints(managedFighters))) {
-            SquadDecisions.lockSuppressed(squad, SquadLock.FIGHT);
             SquadDecisions.pathTaken(squad, DecisionPath.AIR_COMMITMENT);
+            SquadDecisions.lockSuppressed(squad, SquadLock.FIGHT);
             assignFightTargets(squad, managedFighters, false);
             return;
         }
@@ -1408,6 +1410,20 @@ public class SquadManager {
                                              boolean enemyMeasured, double ratio, double engageThreshold) {
         return airSquad && result == CombatSimulator.CombatResult.ENGAGE && enemyMeasured && engageThreshold > 0
                 && ratio >= engageThreshold * RETREAT_LOCK_ENGAGE_BREAK_MULTIPLIER;
+    }
+
+    /**
+     * Whether this frame is one an air squad's engage commitment is consulted on: an air squad in FIGHT given a
+     * RETREAT verdict. The commitment itself decides whether it still holds (see
+     * {@link AirSquad#engageCommitmentHolds}).
+     *
+     * @param status the squad's status before this frame's verdict
+     * @param result this frame's combat sim verdict
+     * @param airSquad whether the squad is an air squad
+     * @return true if the commitment should be asked to hold the squad in FIGHT
+     */
+    static boolean commitmentMayHold(SquadStatus status, CombatSimulator.CombatResult result, boolean airSquad) {
+        return airSquad && status == SquadStatus.FIGHT && result == CombatSimulator.CombatResult.RETREAT;
     }
 
     /**

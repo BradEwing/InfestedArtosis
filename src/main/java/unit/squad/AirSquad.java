@@ -5,6 +5,8 @@ import unit.managed.ManagedUnit;
 import unit.squad.horizon.HorizonCombatSimulator;
 import util.Time;
 
+import java.util.Collection;
+
 public class AirSquad extends Squad {
 
     /**
@@ -98,6 +100,40 @@ public class AirSquad extends Squad {
         }
         double lost = (double) (commitmentPeakHitPoints - flockHitPoints) / commitmentPeakHitPoints;
         return lost < COMMITMENT_HP_LOSS_THRESHOLD;
+    }
+
+    /**
+     * Folds the merge sources' state into this squad. A merged squad still in FIGHT keeps the earliest engage
+     * commitment among its air sources, so a merge never lengthens a commitment. Its peak hit points restart
+     * from the merged flock's hit points on the next check.
+     *
+     * @param sources squads being merged into this one
+     */
+    @Override
+    public void inheritStateFrom(Collection<Squad> sources) {
+        super.inheritStateFrom(sources);
+        commitmentStartFrame = 0;
+        commitmentPeakHitPoints = 0;
+        if (getStatus() != SquadStatus.FIGHT) {
+            return;
+        }
+        for (Squad source : sources) {
+            if (!(source instanceof AirSquad)) {
+                continue;
+            }
+            int sourceStart = ((AirSquad) source).commitmentStartFrame;
+            if (sourceStart > 0 && (commitmentStartFrame == 0 || sourceStart < commitmentStartFrame)) {
+                commitmentStartFrame = sourceStart;
+            }
+        }
+    }
+
+    /**
+     * Restarts the commitment's peak hit points from the flock's hit points on the next check, for a flock that
+     * handed living members to another squad, so the members it gave away do not count as lost.
+     */
+    public void rebaseEngageCommitment() {
+        commitmentPeakHitPoints = 0;
     }
 
     /**

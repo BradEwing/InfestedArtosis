@@ -2,6 +2,8 @@ package unit.squad;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.Arrays;
+
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static unit.squad.CombatSimulator.CombatResult.ADVANCE;
@@ -96,6 +98,68 @@ class AirSquadCommitmentTest {
         assertFalse(SquadManager.retreatLockYieldsToEngage(true, RETREAT, true, 9.56, ENGAGE_THRESHOLD));
         assertFalse(SquadManager.retreatLockYieldsToEngage(true, ENGAGE, false, 9.56, ENGAGE_THRESHOLD));
         assertFalse(SquadManager.retreatLockYieldsToEngage(true, ENGAGE, true, 0, 0));
+    }
+
+    @Test
+    void aMergedFlockKeepsTheEarliestCommitmentOfItsSources() {
+        AirSquad early = committedFlock();
+        AirSquad late = new AirSquad();
+        late.setStatus(SquadStatus.FIGHT);
+        late.armEngageCommitment(ARMED + 40, FLOCK_HP);
+
+        AirSquad merged = new AirSquad();
+        merged.inheritStateFrom(Arrays.<Squad>asList(late, early));
+
+        assertTrue(merged.engageCommitmentHolds(ARMED + AirSquad.ENGAGE_COMMITMENT_FRAMES - 1, 2 * FLOCK_HP));
+        assertFalse(merged.engageCommitmentHolds(ARMED + AirSquad.ENGAGE_COMMITMENT_FRAMES, 2 * FLOCK_HP));
+    }
+
+    @Test
+    void aMergedFlockMeasuresItsLossFromTheMergedHitPoints() {
+        AirSquad merged = new AirSquad();
+        merged.inheritStateFrom(Arrays.<Squad>asList(committedFlock(), committedFlock()));
+
+        assertTrue(merged.engageCommitmentHolds(ARMED + 10, 2 * FLOCK_HP));
+        assertFalse(merged.engageCommitmentHolds(ARMED + 11, 2 * FLOCK_HP - 480));
+    }
+
+    @Test
+    void aMergeOutOfFightCarriesNoCommitment() {
+        AirSquad runby = new AirSquad();
+        runby.setStatus(SquadStatus.RUNBY);
+
+        AirSquad merged = new AirSquad();
+        merged.inheritStateFrom(Arrays.<Squad>asList(committedFlock(), runby));
+
+        assertFalse(merged.engageCommitmentHolds(ARMED + 10, FLOCK_HP));
+    }
+
+    @Test
+    void aSplitChildInheritsTheCommitmentAndThePeakRestartsFromItsOwnHitPoints() {
+        AirSquad parent = committedFlock();
+        AirSquad child = new AirSquad();
+        child.inheritStateFrom(parent);
+
+        assertTrue(child.engageCommitmentHolds(ARMED + 10, 240));
+        assertFalse(child.engageCommitmentHolds(ARMED + AirSquad.ENGAGE_COMMITMENT_FRAMES, 240));
+    }
+
+    @Test
+    void aSplitParentDoesNotCountTheMembersItGaveAwayAsLost() {
+        AirSquad parent = committedFlock();
+        parent.rebaseEngageCommitment();
+
+        assertTrue(parent.engageCommitmentHolds(ARMED + 10, 960));
+        assertFalse(parent.engageCommitmentHolds(ARMED + 11, 768));
+    }
+
+    @Test
+    void theCommitmentIsConsultedOnlyForAnAirSquadInFightGivenARetreat() {
+        assertTrue(SquadManager.commitmentMayHold(SquadStatus.FIGHT, RETREAT, true));
+        assertFalse(SquadManager.commitmentMayHold(SquadStatus.FIGHT, RETREAT, false));
+        assertFalse(SquadManager.commitmentMayHold(SquadStatus.FIGHT, ENGAGE, true));
+        assertFalse(SquadManager.commitmentMayHold(SquadStatus.FIGHT, ADVANCE, true));
+        assertFalse(SquadManager.commitmentMayHold(SquadStatus.RETREAT, RETREAT, true));
     }
 
     @Test

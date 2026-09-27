@@ -459,6 +459,8 @@ public class CombatTelemetry {
         fields.add(String.valueOf(CONTACT_RADIUS));
         fields.add(String.valueOf(MERGE_RADIUS));
         fields.add(String.valueOf(CLOSE_COOLDOWN_FRAMES));
+        fields.add(String.valueOf(gameState.getSelf().killedUnitCount(UnitType.Terran_Goliath)));
+        fields.add(String.valueOf(gameState.getSelf().deadUnitCount(UnitType.Zerg_Mutalisk)));
         return String.join(",", fields);
     }
 }
