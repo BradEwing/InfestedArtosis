@@ -114,17 +114,50 @@ class ExposedTargetsTest {
     }
 
     @Test
-    void aRetargetSkipsTheGroupItIsLeaving() {
-        Position leaving = new Position(2000, 2000);
+    void aTargetGivenUpOnIsNotNominatedAgainWithinTheRetryWindow() {
+        int now = 12000;
+        ExposedTargets.Memory memory = new ExposedTargets.Memory();
+        memory.record(new Position(2000, 2000), now);
         List<ExposedTargets.Group> groups = ExposedTargets.groups(Arrays.asList(
-                contact(1, UnitType.Terran_Supply_Depot, 2100, 2000),
+                contact(1, UnitType.Terran_Supply_Depot, 2000 + ExposedTargets.SEEK_RADIUS, 2000),
                 contact(2, UnitType.Terran_Supply_Depot, 3000, 2000)), 6);
 
-        List<ExposedTargets.Group> away = ExposedTargets.groupsAwayFrom(groups, leaving);
+        List<ExposedTargets.Group> admitted = memory.admitted(groups, now + ExposedTargets.RETRY_FRAMES - 1);
 
-        assertEquals(1, away.size());
-        assertEquals(new Position(3000, 2000), away.get(0).getAnchor());
-        assertEquals(2, ExposedTargets.groupsAwayFrom(groups, null).size());
-        assertFalse(away.contains(groups.get(0)));
+        assertEquals(1, admitted.size());
+        assertEquals(new Position(3000, 2000), admitted.get(0).getAnchor());
+        assertEquals(new Position(3000, 2000), ExposedTargets.choose(
+                memory.admitted(groups, now + 1), Collections.emptyList(), 0, FLOCK).getAnchor());
+    }
+
+    @Test
+    void aTargetGivenUpOnIsNominatedAgainOnceTheRetryWindowPasses() {
+        int now = 12000;
+        ExposedTargets.Memory memory = new ExposedTargets.Memory();
+        Position anchor = new Position(2000, 2000);
+        memory.record(anchor, now);
+
+        assertFalse(memory.admits(anchor, now + ExposedTargets.RETRY_FRAMES - 1));
+        assertTrue(memory.admits(anchor, now + ExposedTargets.RETRY_FRAMES));
+        assertTrue(memory.admits(new Position(2001 + ExposedTargets.SEEK_RADIUS, 2000), now));
+        memory.record(null, now);
+        assertTrue(memory.admits(anchor, now));
+    }
+
+    @Test
+    void twoQuicklyKilledAntiAirUnitsInOneGroupDefendEachOther() {
+        int flock = 10;
+        List<ExposedTargets.Group> groups = ExposedTargets.groups(Arrays.asList(
+                contact(5, UnitType.Terran_Goliath, 2000, 2000),
+                contact(6, UnitType.Terran_Goliath, 2100, 2000)), flock);
+        List<AirHarassTargeting.AirThreat> threats = Arrays.asList(
+                threat(5, UnitType.Terran_Goliath, 2000, 2000),
+                threat(6, UnitType.Terran_Goliath, 2100, 2000));
+
+        assertEquals(1, groups.size());
+        assertEquals(2, groups.get(0).getIsolatedAntiAirIds().size());
+        assertEquals(AirHarassTargeting.defenseAt(threats, groups.get(0).getAnchor(),
+                AirHarassEvaluator.STRIKE_RADIUS), ExposedTargets.defenseAt(groups.get(0), threats), 1e-9);
+        assertNull(ExposedTargets.choose(groups, threats, 0, FLOCK));
     }
 }

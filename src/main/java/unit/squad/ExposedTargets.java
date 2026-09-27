@@ -5,6 +5,7 @@ import lombok.Getter;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
@@ -16,8 +17,8 @@ import java.util.Set;
  *
  * <p>Every contact the harass would attack ({@link AirHarassTargeting#tier} is not null) joins the group of the first
  * contact, in id order, within {@link #GROUP_RADIUS} of it. A group is exposed when the anti-air that can fire within
- * {@link AirHarassEvaluator#STRIKE_RADIUS} of its anchor, less the isolated anti-air in the group itself, is within
- * the tolerance. The constants are tuning values, not Brood War facts.
+ * {@link AirHarassEvaluator#STRIKE_RADIUS} of its anchor, less a lone anti-air unit in the group the flock kills
+ * quickly, is within the tolerance. The constants are tuning values, not Brood War facts.
  */
 public final class ExposedTargets {
 
@@ -30,6 +31,8 @@ public final class ExposedTargets {
     static final int SEEK_RADIUS = 320;
     /** Tuning value: pixels of flight that halve a group's value when choosing among exposed groups. */
     static final double DISTANCE_SCALE = 1024;
+    /** Tuning value: frames an exposed target a harass gave up on is not nominated again. */
+    static final int RETRY_FRAMES = 1440;
 
     private ExposedTargets() {
     }
@@ -102,17 +105,21 @@ public final class ExposedTargets {
     }
 
     /**
-     * Anti-air that can fire within {@link AirHarassEvaluator#STRIKE_RADIUS} of a group's anchor, less the isolated
-     * anti-air in the group, which the flock kills rather than avoids.
+     * Anti-air that can fire within {@link AirHarassEvaluator#STRIKE_RADIUS} of a group's anchor. A group holding a
+     * single anti-air unit the flock kills quickly does not count that unit, since the flock kills it rather than
+     * avoids it; a group holding two or more counts them all, since each covers the others.
      *
      * @param group the group
      * @param threats every known anti-air threat
      * @return summed strength
      */
     public static double defenseAt(Group group, Collection<AirHarassTargeting.AirThreat> threats) {
+        Set<Integer> discounted = group.getIsolatedAntiAirIds().size() == 1
+                ? group.getIsolatedAntiAirIds()
+                : Collections.emptySet();
         List<AirHarassTargeting.AirThreat> others = new ArrayList<>();
         for (AirHarassTargeting.AirThreat threat : threats) {
-            if (!group.getIsolatedAntiAirIds().contains(threat.getId())) {
+            if (!discounted.contains(threat.getId())) {
                 others.add(threat);
             }
         }
@@ -170,21 +177,61 @@ public final class ExposedTargets {
     }
 
     /**
-     * The groups more than {@link #SEEK_RADIUS} from an anchor a harass is leaving, so a retarget does not pick the
-     * group it just gave up on.
-     *
-     * @param groups candidate groups
-     * @param leaving the anchor being left, or null when the harass leaves a base
-     * @return the groups far enough away, or every group when nothing is being left
+     * The exposed targets harasses have given up on lately, game-wide: a group whose anchor lies within
+     * {@link #SEEK_RADIUS} of a target given up within the last {@link #RETRY_FRAMES} frames is not nominated again,
+     * so a flock does not cycle on a group it could not hit or on a remembered structure that is no longer there.
      */
-    public static List<Group> groupsAwayFrom(Collection<Group> groups, Position leaving) {
-        List<Group> away = new ArrayList<>();
-        for (Group group : groups) {
-            if (leaving == null || group.getAnchor().getDistance(leaving) > SEEK_RADIUS) {
-                away.add(group);
+    public static final class Memory {
+        private final List<Position> anchors = new ArrayList<>();
+        private final List<Integer> frames = new ArrayList<>();
+
+        /**
+         * Records an exposed target a harass gave up on.
+         *
+         * @param anchor the target's last anchor
+         * @param frame current frame
+         */
+        public void record(Position anchor, int frame) {
+            if (anchor == null) {
+                return;
             }
+            anchors.add(anchor);
+            frames.add(frame);
         }
-        return away;
+
+        /**
+         * Whether a group may be nominated.
+         *
+         * @param anchor the group's anchor
+         * @param now current frame
+         * @return false within {@link #SEEK_RADIUS} of a target given up within {@link #RETRY_FRAMES}
+         */
+        public boolean admits(Position anchor, int now) {
+            for (int i = anchors.size() - 1; i >= 0; i--) {
+                if (now - frames.get(i) >= RETRY_FRAMES) {
+                    anchors.remove(i);
+                    frames.remove(i);
+                } else if (anchors.get(i).getDistance(anchor) <= SEEK_RADIUS) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        /**
+         * @param groups candidate groups
+         * @param now current frame
+         * @return the groups {@link #admits} lets through
+         */
+        public List<Group> admitted(Collection<Group> groups, int now) {
+            List<Group> admitted = new ArrayList<>();
+            for (Group group : groups) {
+                if (admits(group.getAnchor(), now)) {
+                    admitted.add(group);
+                }
+            }
+            return admitted;
+        }
     }
 
     /**

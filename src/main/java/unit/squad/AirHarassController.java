@@ -45,6 +45,7 @@ public class AirHarassController {
     private final Game game;
     private final GameState gameState;
     private final Map<Base, Set<TilePosition>> resourceTiles = new HashMap<>();
+    private final ExposedTargets.Memory exposedMemory = new ExposedTargets.Memory();
 
     public AirHarassController(Game game, GameState gameState) {
         this.game = game;
@@ -128,7 +129,8 @@ public class AirHarassController {
             options = options(threats, tolerance, containPoints, gameState.getBaseData().getEnemyBases(),
                     MIN_ENTRY_HEAT);
             if (AirHarassEvaluator.chooseBase(options) == null) {
-                exposed = ExposedTargets.choose(ExposedTargets.groups(view.candidates(), flock.mutas), threats,
+                exposed = ExposedTargets.choose(
+                        exposedMemory.admitted(ExposedTargets.groups(view.candidates(), flock.mutas), now), threats,
                         tolerance, squad.getCenter());
             }
         }
@@ -243,14 +245,18 @@ public class AirHarassController {
     }
 
     /**
-     * Ends a harass: records the EXIT row and clears every Mutalisk's harass order. The squad's status is left to
-     * the caller.
+     * Ends a harass: records the EXIT row, records an exposed target in the {@link ExposedTargets.Memory}, and
+     * clears every Mutalisk's harass order. The squad's status is left to the caller.
      *
      * @param squad harassing squad
      * @param reason why the harass ended
      * @param now current frame
      */
     public void stop(Squad squad, AirHarassEvaluator.ExitReason reason, int now) {
+        AirHarassState state = squad.getHarassState();
+        if (state != null && state.targetsExposed()) {
+            exposedMemory.record(state.getExposedAnchor(), now);
+        }
         Flock flock = flock(squad);
         HarassTelemetry.row(exitRow(squad.getId(), squad.getHarassState(), reason, now,
                 squad.size() == 0 ? null : squad.getCenter(), flock.hitPoints, view(now).threats)
@@ -448,12 +454,16 @@ public class AirHarassController {
 
     /**
      * Moves a harass on to the best known enemy base it has not raided yet this episode, else to the best exposed
-     * group of enemies more than {@link ExposedTargets#SEEK_RADIUS} from the exposed group it leaves.
+     * group of enemies the {@link ExposedTargets.Memory} admits. An exposed target being left is recorded there
+     * first.
      *
      * @return true when a target was found
      */
     private boolean retarget(Squad squad, AirHarassState state, View view, int mutas, double tolerance,
                              List<Position> containPoints, int now) {
+        if (state.targetsExposed()) {
+            exposedMemory.record(state.getExposedAnchor(), now);
+        }
         Set<Base> candidates = new HashSet<>(gameState.getBaseData().getEnemyBases());
         candidates.removeAll(state.getVisitedBases());
         AirHarassEvaluator.BaseOption<Base> next = AirHarassEvaluator.chooseBase(
@@ -462,8 +472,7 @@ public class AirHarassController {
             state.target(next.getBase(), next.getStrikePoint(), now);
         } else {
             ExposedTargets.Group exposed = ExposedTargets.choose(
-                    ExposedTargets.groupsAwayFrom(ExposedTargets.groups(view.candidates(), mutas),
-                            state.getExposedAnchor()),
+                    exposedMemory.admitted(ExposedTargets.groups(view.candidates(), mutas), now),
                     view.threats, tolerance, squad.getCenter());
             if (exposed == null) {
                 return false;

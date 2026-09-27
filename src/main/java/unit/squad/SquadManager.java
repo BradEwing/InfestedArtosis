@@ -1367,20 +1367,23 @@ public class SquadManager {
         Map<Squad, Double> adjacentSquads = getAdjacentSquads(squad, REINFORCEMENT_RADIUS);
         CombatSimulator.CombatResult result = squad.getCombatSimulator()
                 .evaluate(squad, adjacentSquads, gameState);
-        SquadDecisions.simEvaluated(squad, result, retreatLocked, fightLocked);
-        SquadDecisions.pathTaken(squad, requestPath(noVisionMarch, result));
-
         HorizonCombatSimulator.DebugSnapshot snapshot = lastSnapshot(squad);
         boolean enemyMeasured = snapshot == null || snapshot.isEnemyMeasured();
         boolean threatBeyondRadius = snapshot != null && snapshot.isThreatBeyondRadius();
         double ratio = snapshot != null ? snapshot.getOverallRatio() : 0;
         double engageThreshold = snapshot != null ? snapshot.getEngageThreshold() : 0;
 
-        if (AirHarassEvaluator.breaksExitLock(squad.isHarassExitLocked(now), result, enemyMeasured)) {
+        boolean exitLockBroken = AirHarassEvaluator.breaksExitLock(squad.isHarassExitLocked(now), result,
+                enemyMeasured);
+        if (exitLockBroken) {
             squad.clearRetreatLock();
             retreatLocked = false;
-            SquadDecisions.pathTaken(squad, DecisionPath.HARASS_EXIT_ENGAGE);
         }
+        SquadDecisions.simEvaluated(squad, result, retreatLocked, fightLocked);
+        SquadDecisions.pathTaken(squad, exitLockBroken
+                ? DecisionPath.HARASS_EXIT_ENGAGE
+                : requestPath(noVisionMarch, result));
+
         if (squad.getStatus() == SquadStatus.RETREAT && retreatLocked) {
             SquadDecisions.lockSuppressed(squad, SquadLock.RETREAT);
             SquadDecisions.pathTaken(squad, DecisionPath.RETREAT_LOCK);
