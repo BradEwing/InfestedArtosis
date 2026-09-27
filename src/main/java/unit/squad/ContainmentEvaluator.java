@@ -44,6 +44,19 @@ public class ContainmentEvaluator {
      */
     static final int STATIC_COVER_RADIUS = 256;
 
+    /**
+     * Frames an enemy army unit's last sighting stays trusted for the static-only test: 1000, about 42 seconds. An
+     * older sighting says nothing about where the unit stands now.
+     */
+    static final int ARMY_MEMORY_FRAMES = 1000;
+
+    /**
+     * Army supply outside the Bunkers' garrisons that each completed Bunker may shelter while the defence still
+     * counts as static-only: a garrison-equivalent, the supply of a full Bunker of Marines. A bigger force under the
+     * defence is an army parked behind it, and no supply is allowed under a defence with no Bunker.
+     */
+    static final int PARKED_SUPPLY_PER_BUNKER = BunkerGarrison.MAX_GARRISON * BUNKER_SLOT_SUPPLY;
+
     private static final Set<UnitType> STATIC_DEFENSE_TYPES = EnumSet.of(UnitType.Terran_Bunker,
             UnitType.Protoss_Photon_Cannon, UnitType.Zerg_Sunken_Colony);
 
@@ -70,6 +83,30 @@ public class ContainmentEvaluator {
         UnitType.Zerg_Ultralisk,
         UnitType.Zerg_Defiler,
     };
+
+    /**
+     * What the static-only test knows of one enemy army unit.
+     */
+    static final class ArmySighting {
+        private final Position position;
+        private final int supply;
+        private final boolean fresh;
+        private final boolean bunkerOccupant;
+
+        /**
+         * @param position the unit's current or last known position, null when unknown
+         * @param supply the unit's supply
+         * @param fresh true when the unit is visible or was seen within
+         *     {@link ContainmentEvaluator#ARMY_MEMORY_FRAMES}
+         * @param bunkerOccupant true for a unit type that can garrison a Bunker
+         */
+        ArmySighting(Position position, int supply, boolean fresh, boolean bunkerOccupant) {
+            this.position = position;
+            this.supply = supply;
+            this.fresh = fresh;
+            this.bunkerOccupant = bunkerOccupant;
+        }
+    }
 
     private final GameState gameState;
 
@@ -160,15 +197,18 @@ public class ContainmentEvaluator {
     }
 
     /**
-     * Whether the enemy defends only with static defence: at least one completed static defence is known, and every
-     * known enemy army unit stands within {@link #STATIC_COVER_RADIUS} of one. An army unit whose position is
-     * unknown counts as outside.
+     * Whether the enemy defends only with static defence, see {@link #staticOnly}, read from the tracker: completed
+     * Bunkers, Photon Cannons and Sunken Colonies at their last known positions, and every living enemy army unit,
+     * see {@link #isArmyUnit}.
      *
-     * @return true when no known enemy army stands outside its static defence
+     * @param currentFrame current frame
+     * @return true when no known enemy army stands outside its static defence and the army under it is a
+     *     garrison-sized force
      */
-    public boolean enemyDefenceIsStaticOnly() {
+    public boolean enemyDefenceIsStaticOnly(int currentFrame) {
         List<Position> defences = new ArrayList<>();
-        List<Position> army = new ArrayList<>();
+        List<Position> bunkers = new ArrayList<>();
+        List<ArmySighting> army = new ArrayList<>();
         for (ObservedUnit ou : gameState.getObservedUnitTracker().getLivingObservedUnits()) {
             UnitType type = ou.getUnitType();
             if (STATIC_DEFENSE_TYPES.contains(type)) {
@@ -176,30 +216,67 @@ public class ContainmentEvaluator {
                 if (position != null) {
                     defences.add(position);
                 }
+                if (position != null && type == UnitType.Terran_Bunker) {
+                    bunkers.add(position);
+                }
             } else if (isArmyUnit(type)) {
-                army.add(ou.getCurrentOrLastKnownPosition());
+                boolean fresh = isFreshSighting(ou.getUnit().isVisible(), ou.getLastObservedFrame().getFrames(),
+                        currentFrame);
+                army.add(new ArmySighting(ou.getCurrentOrLastKnownPosition(), type.supplyRequired(), fresh,
+                        BunkerGarrison.OCCUPANTS.contains(type)));
             }
         }
-        return staticOnly(defences, army);
+        return staticOnly(defences, bunkers, army);
     }
 
     /**
-     * Whether every enemy army unit stands under its static defence.
+     * Whether the enemy defends only with static defence: at least one completed static defence is known, every
+     * enemy army unit is known to stand within {@link #STATIC_COVER_RADIUS} of one, and the army standing there
+     * outside the Bunkers' garrisons is no more than {@link #PARKED_SUPPLY_PER_BUNKER} per Bunker.
+     *
+     * <p>A Bunker occupant last seen within {@link #STATIC_COVER_RADIUS} of a Bunker is taken as part of its
+     * garrison, up to {@link BunkerGarrison#MAX_GARRISON} per Bunker, however old the sighting, since a loaded
+     * occupant cannot be seen again until it unloads. Every other army unit counts toward the parked supply, and must
+     * have been seen under cover within {@link #ARMY_MEMORY_FRAMES}: an older sighting, or no known position, leaves
+     * the unit unknown and possibly anywhere, so the defence is not static-only.
      *
      * @param defences positions of the enemy's completed static defence
-     * @param army positions of the enemy's army units, null where unknown
-     * @return true when there is static defence and no army unit stands outside it
+     * @param bunkers positions of the enemy's completed Bunkers, each also among the defences
+     * @param army the enemy's army units
+     * @return true when there is static defence and the only army under it is a garrison-sized force
      */
-    static boolean staticOnly(List<Position> defences, List<Position> army) {
+    static boolean staticOnly(List<Position> defences, List<Position> bunkers, List<ArmySighting> army) {
         if (defences.isEmpty()) {
             return false;
         }
-        for (Position unit : army) {
-            if (unit == null || !coveredBy(unit, defences)) {
+        int garrisonSlots = bunkers.size() * BunkerGarrison.MAX_GARRISON;
+        int parkedSupply = 0;
+        for (ArmySighting unit : army) {
+            if (unit.position == null || !coveredBy(unit.position, defences)) {
                 return false;
             }
+            if (unit.bunkerOccupant && garrisonSlots > 0 && coveredBy(unit.position, bunkers)) {
+                garrisonSlots--;
+                continue;
+            }
+            if (!unit.fresh) {
+                return false;
+            }
+            parkedSupply += unit.supply;
         }
-        return true;
+        return parkedSupply <= bunkers.size() * PARKED_SUPPLY_PER_BUNKER;
+    }
+
+    /**
+     * Whether an enemy army unit's position is recent enough to rule on.
+     *
+     * @param visible true while the unit is in sight
+     * @param lastObservedFrame frame the unit was last shown or hidden
+     * @param currentFrame current frame
+     * @return true while the unit is visible or was seen within {@link #ARMY_MEMORY_FRAMES}
+     */
+    static boolean isFreshSighting(boolean visible, int lastObservedFrame, int currentFrame) {
+        return visible || currentFrame - lastObservedFrame <= ARMY_MEMORY_FRAMES;
     }
 
     /**

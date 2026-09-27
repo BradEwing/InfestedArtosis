@@ -89,6 +89,29 @@ class ContainmentEscalationTest {
     }
 
     @Test
+    void aReentryOnTheFirstFrameTheRetreatLockAllowsStillCounts() {
+        Squad squad = new GroundSquad();
+        ContainmentEscalation escalation = afterReentries(1, STATIC_ONLY);
+        int timeout = timeoutFrame(1);
+        assertFalse(escalation.onTimedOut(STATIC_ONLY, timeout));
+        squad.startRetreatLock(timeout);
+        int firstOffer = timeout;
+        while (!SquadManager.launchOffersContain(squad, firstOffer)) {
+            firstOffer++;
+        }
+        assertTrue(firstOffer - timeout < REENTRY_WINDOW_FRAMES);
+        escalation.onEntered(firstOffer);
+        assertEquals(ESCALATE_AFTER_REENTRIES, escalation.getReentries());
+        assertTrue(escalation.onTimedOut(STATIC_ONLY, firstOffer + TIMEOUT_INTERVAL));
+    }
+
+    @Test
+    void theReentryWindowOutlastsTheRetreatLockWithRoomForTheWalkBack() {
+        int retreatLock = new GroundSquad().getRetreatHysteresis().getFrames();
+        assertTrue(REENTRY_WINDOW_FRAMES >= 3 * retreatLock);
+    }
+
+    @Test
     void anyOtherEndToTheContainClearsTheRun() {
         ContainmentEscalation escalation = afterReentries(ESCALATE_AFTER_REENTRIES, STATIC_ONLY);
         escalation.onEndedOtherwise();

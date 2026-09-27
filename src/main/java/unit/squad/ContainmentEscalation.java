@@ -26,11 +26,12 @@ public class ContainmentEscalation {
     static final int ENTRY_HOLD_FRAMES = 1400;
 
     /**
-     * Frames after a timeout within which an entry counts as re-entering the same contain: 96, four seconds. The
-     * stalled contain re-enters on the frame after its timeout, while a contain taken after the squad has walked
-     * away and come back is a new one.
+     * Frames after a timeout within which an entry counts as re-entering the same contain: 400, about 17 seconds.
+     * A timed-out squad retreats under its retreat lock, 120 frames, and is offered no arc until the lock expires, so
+     * a stalled contain is re-taken just after the lock; the window leaves room for the walk back to the arc, while a
+     * contain taken after the squad has gone home and come back is a new one.
      */
-    static final int REENTRY_WINDOW_FRAMES = 96;
+    static final int REENTRY_WINDOW_FRAMES = 400;
 
     private boolean timedOutLast;
     private int lastTimeoutFrame;

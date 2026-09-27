@@ -2003,10 +2003,15 @@ public class SquadManager {
         boolean engaged = evaluate && enemiesOnContainmentArc(squad);
 
         SquadDecisions.outrangedHit(squad, outrangedHit);
-        ContainmentVerdict verdict = rankCollapse(basesUnderAttack, collapse, escalatedVerdict(
-                containmentVerdict(basesUnderAttack, bleeding, hit, throttled, engaged, timedOut, canBreak,
-                        shouldContain), timedOut, containmentEscalation,
-                containmentEvaluator::enemyDefenceIsStaticOnly, now));
+        ContainmentVerdict evaluated = containmentVerdict(basesUnderAttack, bleeding, hit, throttled, engaged,
+                timedOut, canBreak, shouldContain);
+        boolean timeoutRetreat = evaluated == ContainmentVerdict.RETREAT && timedOut;
+        boolean staticOnly = timeoutRetreat && containmentEvaluator.enemyDefenceIsStaticOnly(now);
+        if (timeoutRetreat) {
+            SquadDecisions.containmentTimedOut(squad, containmentEscalation.getReentries(), staticOnly);
+        }
+        ContainmentVerdict verdict = rankCollapse(basesUnderAttack, collapse, escalatedVerdict(evaluated, timedOut,
+                containmentEscalation, () -> staticOnly, now));
 
         DecisionPath exitPath = containmentExitPath(bleeding, arcLost);
         if (breaksHeldContain(verdict, exitPath)) {
