@@ -31,8 +31,9 @@ import java.util.function.Predicate;
  *
  * <p>Home is contested when the enemy stands on it: home's tile, or every tile next to it, lies within
  * {@link #DANGER_RADIUS} of a threat, so no path home can stay clear of the enemy. The squad is then not cornered but
- * stages outside the enemy: each member walks the direct path home and stops at the last tile before the danger
- * radius, and a member inside it backs out as above to a tile outside it.
+ * stages outside the enemy: each member walks the path home that avoids every threat not standing on home, and stops
+ * at the last tile before the danger radius of those that are. A member inside any danger radius backs out as above
+ * to a tile outside it.
  */
 final class GroundRetreatRouter {
 
@@ -97,7 +98,7 @@ final class GroundRetreatRouter {
         List<Position> enemies = new ArrayList<>(threats);
         boolean[][] danger = dangerTiles(enemies);
         if (homeContested(homeTile, danger)) {
-            return stagingPlan(members, direct, danger, enemies);
+            return stagingPlan(members, homeTile, direct, danger, enemies);
         }
         int[][] safe = enemies.isEmpty()
                 ? direct
@@ -153,11 +154,23 @@ final class GroundRetreatRouter {
         return true;
     }
 
-    private <K> Plan<K> stagingPlan(Map<K, Position> members, int[][] direct, boolean[][] danger,
-                                    List<Position> enemies) {
-        int[][] staging = new int[direct.length][];
-        for (int x = 0; x < direct.length; x++) {
-            staging[x] = direct[x].clone();
+    private <K> Plan<K> stagingPlan(Map<K, Position> members, TilePosition homeTile, int[][] direct,
+                                    boolean[][] danger, List<Position> enemies) {
+        List<TilePosition> approaches = new ArrayList<>(gameMap.groundNeighbors(homeTile));
+        approaches.add(homeTile);
+        List<Position> elsewhere = new ArrayList<>();
+        for (Position enemy : enemies) {
+            if (approaches.stream().noneMatch(tile -> center(tile).getDistance(enemy) <= DANGER_RADIUS)) {
+                elsewhere.add(enemy);
+            }
+        }
+        boolean[][] blocked = dangerTiles(elsewhere);
+        int[][] around = elsewhere.isEmpty()
+                ? direct
+                : gameMap.groundStepDistances(homeTile, tile -> blocked[tile.getX()][tile.getY()]);
+        int[][] staging = new int[around.length][];
+        for (int x = 0; x < around.length; x++) {
+            staging[x] = around[x].clone();
             for (int y = 0; y < staging[x].length; y++) {
                 if (danger[x][y]) {
                     staging[x][y] = -1;

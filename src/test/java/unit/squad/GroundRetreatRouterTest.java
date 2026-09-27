@@ -353,6 +353,40 @@ class GroundRetreatRouterTest {
     }
 
     @Test
+    void memberStagingForAContestedHomeWalksAroundAnEnemyInTheWay() {
+        GameMap map = map(TWO_GAP_WALL);
+        Position home = tileCenter(20, 10);
+        Position patrol = tileCenter(10, 10);
+
+        GroundRetreatRouter.Plan<String> plan = new GroundRetreatRouter(map)
+                .plan(Collections.singletonMap("hydra", tileCenter(3, 10)), home, Arrays.asList(home, patrol));
+
+        Position target = plan.getTargets().get("hydra");
+        TilePosition tile = target.toTilePosition();
+        assertEquals(RetreatRoute.HOME_CONTESTED, plan.getRoute());
+        assertTrue(target.getDistance(patrol) > GroundRetreatRouter.DANGER_RADIUS, "outside the patrol, got " + tile);
+        assertTrue(tile.getY() < 10 && tile.getX() > 3, "heads up toward the top gap, got " + tile);
+        int[][] around = map.groundStepDistances(home.toTilePosition(),
+                t -> tileCenter(t.getX(), t.getY()).getDistance(patrol) <= GroundRetreatRouter.DANGER_RADIUS);
+        assertEquals(around[3][10] - GroundRetreatRouter.PATH_STEP_TILES, around[tile.getX()][tile.getY()]);
+    }
+
+    @Test
+    void enemyNextToHomeWithOneApproachClearDoesNotContestIt() {
+        GameMap map = map(OPEN_FIELD);
+        Position home = tileCenter(21, 10);
+        Position enemy = tileCenter(15, 10);
+        assertTrue(home.getDistance(enemy) > GroundRetreatRouter.DANGER_RADIUS);
+        assertTrue(tileCenter(20, 10).getDistance(enemy) <= GroundRetreatRouter.DANGER_RADIUS);
+
+        GroundRetreatRouter.Plan<String> plan = new GroundRetreatRouter(map)
+                .plan(Collections.singletonMap("ling", tileCenter(4, 3)), home, Collections.singletonList(enemy));
+
+        assertFalse(plan.getRoute() == RetreatRoute.HOME_CONTESTED);
+        assertFalse(plan.getRoute() == RetreatRoute.CORNERED);
+    }
+
+    @Test
     void memberInsideTheDangerAtAContestedHomeBacksOutWithoutClosingOnTheEnemy() {
         GameMap map = map(OPEN_FIELD);
         Position home = tileCenter(21, 10);

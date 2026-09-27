@@ -1538,12 +1538,9 @@ public class SquadManager {
 
         if (squad.isGroundSquad() && squad.corneredEngagePersisted(
                 corneredSquadFights(squad.getStatus(), squad.getRetreatRoute(), result), now)) {
-            squad.setStatus(SquadStatus.FIGHT);
-            squad.setRetreatRoute(RetreatRoute.NONE);
-            squad.holdCorneredFight(now);
+            turnCorneredSquadToFight(squad, result, now);
             SquadDecisions.pathTaken(squad, DecisionPath.CORNERED_ENGAGE);
             assignFightTargets(squad, managedFighters, true);
-            updateFightLock(squad, result, false, now);
             return;
         }
         if (squad.getStatus() == SquadStatus.RETREAT && retreatLocked) {
@@ -1606,6 +1603,22 @@ public class SquadManager {
             default:
                 break;
         }
+    }
+
+    /**
+     * Turns a cornered squad whose ENGAGE persisted to FIGHT: drops its retreat lock and route, holds it in FIGHT for
+     * one fight hysteresis window, see {@link Squad#holdCorneredFight}, and arms the fight lock on the ENGAGE.
+     *
+     * @param squad the cornered squad
+     * @param result this frame's combat sim verdict
+     * @param now current frame
+     */
+    static void turnCorneredSquadToFight(Squad squad, CombatSimulator.CombatResult result, int now) {
+        squad.setStatus(SquadStatus.FIGHT);
+        squad.setRetreatRoute(RetreatRoute.NONE);
+        squad.clearRetreatLock();
+        squad.holdCorneredFight(now);
+        updateFightLock(squad, result, false, now);
     }
 
     /**

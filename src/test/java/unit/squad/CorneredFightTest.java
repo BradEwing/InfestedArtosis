@@ -82,6 +82,22 @@ class CorneredFightTest {
     }
 
     @Test
+    void aCorneredSquadTurnedToFightDropsItsRetreatLockAndIsHeldInFight() {
+        Squad squad = corneredSquad(7471);
+        int window = squad.getFightHysteresis().getFrames();
+
+        SquadManager.turnCorneredSquadToFight(squad, ENGAGE, 7471 + window);
+
+        assertTrue(squad.getStatus() == SquadStatus.FIGHT);
+        assertTrue(squad.getRetreatRoute() == RetreatRoute.NONE);
+        assertFalse(squad.isRetreatLocked(7472 + window));
+        assertTrue(squad.isFightLocked(7472 + window));
+        assertTrue(SquadManager.fightHeld(squad, 7470 + 2 * window,
+                SquadManager.fightLockHolds(true, RETREAT, true, 0.9, 1.25)));
+        assertFalse(SquadManager.fightHeld(squad, 7471 + 2 * window, false));
+    }
+
+    @Test
     void theCorneredHoldStartsTheNextEngageRunOver() {
         Squad squad = corneredSquad(7471);
         int window = squad.getFightHysteresis().getFrames();

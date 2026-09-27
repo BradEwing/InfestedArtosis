@@ -33,8 +33,9 @@ public enum RetreatRoute {
     AWAY,
 
     /**
-     * The enemy stands on home, so no path home clears it: each member walks the direct path home up to the edge of
-     * the enemy's danger radius, or backs out of it. Not cornered, so the squad does not turn to fight for it.
+     * The enemy stands on home, so no path home clears it: each member walks the path home around every other threat
+     * up to the edge of the danger radius of the enemy on home, or backs out of a danger radius. Not cornered, so the
+     * squad does not turn to fight for it.
      */
     HOME_CONTESTED
 }
