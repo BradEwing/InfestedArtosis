@@ -51,7 +51,7 @@ public final class AirHarassEvaluator {
      *
      * <p>NO_TARGET means no known enemy base holds enough heat to raid. DEFENDED means some base does, but every
      * such point lies under more anti-air than the flock tolerates, whether or not the flock cooled the rest of the
-     * base by visiting it.
+     * base by visiting it, or the flock itself stands in more anti-air than it tolerates, the test the exit applies.
      */
     public enum EntryVerdict {
         ENTER,
@@ -116,6 +116,8 @@ public final class AirHarassEvaluator {
         private final boolean basesUnderAttack;
         @Builder.Default
         private final List<BaseOption<?>> options = Collections.emptyList();
+        private final double flockDefense;
+        private final double tolerance;
     }
 
     /**
@@ -213,6 +215,9 @@ public final class AirHarassEvaluator {
         }
         if (!heated) {
             return EntryVerdict.NO_TARGET;
+        }
+        if (input.getFlockDefense() > input.getTolerance()) {
+            return EntryVerdict.DEFENDED;
         }
         return tolerated ? EntryVerdict.ENTER : EntryVerdict.DEFENDED;
     }

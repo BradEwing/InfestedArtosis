@@ -117,10 +117,12 @@ public class AirHarassController {
                 && !basesUnderAttack;
         List<AirHarassEvaluator.BaseOption<Base>> options = new ArrayList<>();
         List<AirHarassTargeting.AirThreat> threats = new ArrayList<>();
+        double flockDefense = 0;
         if (cheapGatesPass) {
             threats = view(now).threats;
             options = options(threats, tolerance, containPoints, gameState.getBaseData().getEnemyBases(),
                     MIN_ENTRY_HEAT);
+            flockDefense = AirHarassTargeting.defenseAt(threats, squad.getCenter(), 0);
         }
         AirHarassEvaluator.EntryVerdict verdict = AirHarassEvaluator.entryVerdict(
                 AirHarassEvaluator.EntryInput.builder()
@@ -129,6 +131,8 @@ public class AirHarassController {
                         .healthyMutas(flock.healthy)
                         .basesUnderAttack(basesUnderAttack)
                         .options(new ArrayList<>(options))
+                        .flockDefense(flockDefense)
+                        .tolerance(tolerance)
                         .build());
         AirHarassEvaluator.BaseOption<Base> chosen = verdict == AirHarassEvaluator.EntryVerdict.ENTER
                 ? AirHarassEvaluator.chooseBase(options)
