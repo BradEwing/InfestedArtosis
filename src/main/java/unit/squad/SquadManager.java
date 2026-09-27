@@ -1289,7 +1289,8 @@ public class SquadManager {
      * <p>The composition and hazard branches answer first, before anything is measured: a Lurker
      * only squad, a Defiler only squad, and a squad standing in a psionic storm. Every other status
      * is decided at or below the lock reads, so the retreat lock gates it. A branch placed above
-     * those reads returns before the simulator runs and neither lock can see it.
+     * those reads returns before the simulator runs and neither lock can see it. The one exception is the retreat
+     * lock a harass exit armed, which a measured ENGAGE breaks (see {@link AirHarassEvaluator#breaksExitLock}).
      *
      * <p>A squad with nothing detected anywhere still attacks: the sim has no enemy to weigh, so it
      * returns ADVANCE, and the fighters take the remembered enemy building through
@@ -1375,6 +1376,11 @@ public class SquadManager {
         double ratio = snapshot != null ? snapshot.getOverallRatio() : 0;
         double engageThreshold = snapshot != null ? snapshot.getEngageThreshold() : 0;
 
+        if (AirHarassEvaluator.breaksExitLock(squad.isHarassExitLocked(now), result, enemyMeasured)) {
+            squad.clearRetreatLock();
+            retreatLocked = false;
+            SquadDecisions.pathTaken(squad, DecisionPath.HARASS_EXIT_ENGAGE);
+        }
         if (squad.getStatus() == SquadStatus.RETREAT && retreatLocked) {
             SquadDecisions.lockSuppressed(squad, SquadLock.RETREAT);
             SquadDecisions.pathTaken(squad, DecisionPath.RETREAT_LOCK);

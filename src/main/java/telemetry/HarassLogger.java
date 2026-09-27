@@ -15,7 +15,10 @@ import java.util.Map;
  *
  * <p>ENTER and EXIT bound a harass episode; EXIT names its exit_reason. TICK rows carry the flock's position, size,
  * hit points and the anti-air it measured at its strike point, and contain_distance, the pixels from the flock to
- * the nearest held containment arc, or -1 with none held. KILL rows name the killed_type credited to the harass and
+ * the nearest held containment arc, or -1 with none held. ENTER, TICK and EXIT rows carry air_defense, the anti-air
+ * at the strike point, and target_kind, BASE or EXPOSED; for an EXPOSED target base_x and base_y are -1 and the
+ * strike point is the group's anchor. TICK and EXIT rows carry flock_defense, the anti-air covering the flock's
+ * center, which the FLOCK_DEFENDED exit compares against the tolerance. KILL rows name the killed_type credited to the harass and
  * MUTA_LOST rows a Mutalisk lost while harassing. workers_killed, buildings_killed, other_killed and mutas_lost are
  * cumulative over the episode on every row that carries them.
  *
@@ -28,7 +31,7 @@ public class HarassLogger implements HarassSink {
     static final String HEADER = "game_id,frame,squad_id,event,verdict,exit_reason,phase,base_x,base_y,strike_x,"
             + "strike_y,center_x,center_y,mutas,healthy_mutas,flock_hp,hp_loss_fraction,tolerance,air_defense,"
             + "avoided_zones,workers_killed,buildings_killed,other_killed,mutas_lost,killed_type,contain_distance,"
-            + "bases_under_attack";
+            + "bases_under_attack,target_kind,flock_defense";
 
     private static final int FLUSH_INTERVAL_FRAMES = 480;
     private static final int NOT_EVALUATED = -1;
@@ -142,6 +145,8 @@ public class HarassLogger implements HarassSink {
         fields.add(Csv.name(row.getKilledType()));
         fields.add(Csv.format(row.getContainDistance()));
         fields.add(String.valueOf(row.getBasesUnderAttack()));
+        fields.add(Csv.name(row.getTargetKind()));
+        fields.add(Csv.format(row.getFlockDefense()));
         return String.join(",", fields);
     }
 

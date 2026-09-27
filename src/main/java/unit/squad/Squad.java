@@ -375,6 +375,22 @@ public class Squad implements Comparable<Squad> {
         retreatLockedUntilFrame = currentFrame + retreatHysteresis.getFrames();
     }
 
+    /**
+     * Whether the retreat lock holding the squad is the one its last harass exit armed, and not one a later retreat
+     * armed or renewed.
+     *
+     * @param currentFrame current frame
+     * @return true while that lock holds
+     */
+    public boolean isHarassExitLocked(int currentFrame) {
+        return harassExitFrame > 0 && isRetreatLocked(currentFrame)
+                && retreatLockedUntilFrame == harassExitFrame + retreatHysteresis.getFrames();
+    }
+
+    public void clearRetreatLock() {
+        retreatLockedUntilFrame = 0;
+    }
+
     public boolean isContainLocked(int currentFrame) {
         return currentFrame < containLockedUntilFrame;
     }

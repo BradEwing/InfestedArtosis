@@ -14,7 +14,7 @@ import java.util.Map;
 
 /**
  * Squad level decisions of an air harass: whether a Mutalisk squad starts harassing, which enemy base it raids,
- * how much anti-air it accepts, and when it stops.
+ * how much anti-air it accepts, when it stops, and what a squad that just stopped may act on.
  *
  * <p>Every decision is a static function over plain values, so it can be tested without a live game. Strengths are
  * priced with the table the combat sim uses ({@link UnitStrength}); the constants are tuning values, not Brood War
@@ -49,9 +49,10 @@ public final class AirHarassEvaluator {
     /**
      * Outcome of the entry gates, naming the first gate that refused.
      *
-     * <p>NO_TARGET means no known enemy base holds enough heat to raid. DEFENDED means some base does, but every
-     * such point lies under more anti-air than the flock tolerates, whether or not the flock cooled the rest of the
-     * base by visiting it.
+     * <p>ENTER means a base has a tolerated strike point, or no base has one but an exposed group of enemies does
+     * (see {@link ExposedTargets}). Otherwise NO_TARGET means no known enemy base holds enough heat to raid, and
+     * DEFENDED means some base does, but every such point lies under more anti-air than the flock tolerates, whether
+     * or not the flock cooled the rest of the base by visiting it.
      */
     public enum EntryVerdict {
         ENTER,
@@ -65,12 +66,17 @@ public final class AirHarassEvaluator {
 
     /**
      * Why a harass ended.
+     *
+     * <p>STRIKE_DEFENDED means the target keeps no strike point within the tolerance, and FLOCK_DEFENDED means the
+     * flock's own center stands in more anti-air than it tolerates. Either can be anti-air the flock already knew
+     * about.
      */
     public enum ExitReason {
         BASE_UNDER_ATTACK,
         TOO_FEW,
         HP_LOSS,
-        AA_ARRIVED,
+        STRIKE_DEFENDED,
+        FLOCK_DEFENDED,
         NO_TARGET,
         WIPED_OUT
     }
@@ -116,6 +122,7 @@ public final class AirHarassEvaluator {
         private final boolean basesUnderAttack;
         @Builder.Default
         private final List<BaseOption<?>> options = Collections.emptyList();
+        private final boolean exposedTarget;
     }
 
     /**
@@ -211,10 +218,10 @@ public final class AirHarassEvaluator {
             heated |= option.isHeated();
             tolerated |= option.getStrikePoint() != null;
         }
-        if (!heated) {
-            return EntryVerdict.NO_TARGET;
+        if (tolerated || input.isExposedTarget()) {
+            return EntryVerdict.ENTER;
         }
-        return tolerated ? EntryVerdict.ENTER : EntryVerdict.DEFENDED;
+        return heated ? EntryVerdict.DEFENDED : EntryVerdict.NO_TARGET;
     }
 
     /**
@@ -260,8 +267,8 @@ public final class AirHarassEvaluator {
      * Whether the harass ends on this decision tick, and why.
      *
      * <p>In order: a base of ours under attack, too few healthy Mutalisks left, the flock losing more than
-     * {@link #HP_LOSS_EXIT_FRACTION} of the hit points it started with, and anti-air arriving, which is the target
-     * base keeping no tolerated strike point or the flock itself standing in more anti-air than it tolerates.
+     * {@link #HP_LOSS_EXIT_FRACTION} of the hit points it started with, the target keeping no tolerated strike point,
+     * and the flock itself standing in more anti-air than it tolerates.
      *
      * @param input squad and intelligence state
      * @return the reason, or null to keep harassing
@@ -276,8 +283,11 @@ public final class AirHarassEvaluator {
         if (input.getHpLossFraction() > HP_LOSS_EXIT_FRACTION) {
             return ExitReason.HP_LOSS;
         }
-        if (input.isStrikeDefended() || input.getFlockDefense() > input.getTolerance()) {
-            return ExitReason.AA_ARRIVED;
+        if (input.isStrikeDefended()) {
+            return ExitReason.STRIKE_DEFENDED;
+        }
+        if (input.getFlockDefense() > input.getTolerance()) {
+            return ExitReason.FLOCK_DEFENDED;
         }
         return null;
     }
@@ -353,6 +363,21 @@ public final class AirHarassEvaluator {
             return false;
         }
         return now - harassExitFrame <= REENTRY_HOLD_FRAMES;
+    }
+
+    /**
+     * Whether this frame's sim verdict breaks the retreat lock a harass exit armed: an ENGAGE measured against a
+     * real enemy acts at once instead of being discarded for the lock's length. Any other lock, and any other
+     * verdict, holds.
+     *
+     * @param harassExitLocked true while the retreat lock armed by the squad's last harass exit holds
+     * @param result this frame's combat sim verdict
+     * @param enemyMeasured whether the sim measured a real enemy this frame
+     * @return true to act on the verdict
+     */
+    public static boolean breaksExitLock(boolean harassExitLocked, CombatSimulator.CombatResult result,
+                                         boolean enemyMeasured) {
+        return harassExitLocked && enemyMeasured && result == CombatSimulator.CombatResult.ENGAGE;
     }
 
     /**
