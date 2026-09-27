@@ -20,6 +20,11 @@ public class Zergling extends ManagedUnit {
         }
         setUnready(5);
 
+        if (fightTarget != null && isAttackMoving()) {
+            attackMoveToward(fightTarget);
+            return;
+        }
+
         if (fightTarget != null) {
             int distanceToTarget = unit.getDistance(fightTarget);
             if (distanceToTarget < 64) {
@@ -40,8 +45,9 @@ public class Zergling extends ManagedUnit {
     /**
      * Moves to the runby destination when one is set, otherwise closes on the fight target and attacks it
      * within 64 pixels. Moving rather than attack-moving keeps the ling from stopping on units it was not
-     * told to hit. The role is never changed here, so a ling without an order waits for the next one instead
-     * of going idle and being re-homed.
+     * told to hit. A ling whose fight pick is saturated and that the overflow gate holds attack-moves past it
+     * instead, as in a fight. The role is never changed here, so a ling without an order waits for the next one
+     * instead of going idle and being re-homed.
      */
     @Override
     protected void runby() {
@@ -57,6 +63,10 @@ public class Zergling extends ManagedUnit {
 
         if (fightTarget != null) {
             setUnready(5);
+            if (isAttackMoving()) {
+                attackMoveToward(fightTarget);
+                return;
+            }
             if (unit.getDistance(fightTarget) < 64) {
                 unit.attack(fightTarget);
                 return;

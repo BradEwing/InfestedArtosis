@@ -39,20 +39,25 @@ import unit.managed.UnitRole;
 import util.Arc;
 import util.Filter;
 import util.StaticDefenseZone;
+import util.MeleeOverflowGate;
+import util.TargetLedger;
 import util.Vec2;
 
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.function.DoubleSupplier;
 import java.util.function.ToDoubleFunction;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import util.TargetScorer;
@@ -138,6 +143,17 @@ public class SquadManager {
     private static final int CONTAIN_DEFENSE_MARGIN = 32;
     private static final double REINFORCEMENT_RADIUS = 384.0;
     private static final int TARGETING_RADIUS = 256;
+    private static final int WIDENED_TARGETING_RADIUS = 2 * TARGETING_RADIUS;
+    /**
+     * Stands in for the id of a fight target when a unit holds none that still exists.
+     */
+    static final int NO_TARGET_ID = -1;
+    /**
+     * Distance within which a melee attacker's pick counts as within reach, so an unsaturated re-target lets an
+     * attacker in overflow attack it directly at once. It matches the radius inside which a Zergling fighting its
+     * target attacks it instead of walking to it.
+     */
+    static final int OVERFLOW_EXIT_REACH = 64;
     public static final int GROUND_SPLIT_DISTANCE = 256;
     public static final int AIR_SPLIT_DISTANCE = 768;
     private static final int COMMITMENT_RELEASE_DISTANCE = 512;
@@ -155,6 +171,9 @@ public class SquadManager {
 
     private final ScoutChase scoutChase = new ScoutChase();
     private final AirHarassController airHarass;
+
+    private TargetLedger fightTargetLedger = TargetLedger.empty();
+    private int fightTargetLedgerFrame = -1;
 
     public SquadManager(Game game, GameState gameState) {
         this.game = game;
@@ -1663,13 +1682,21 @@ public class SquadManager {
         }
     }
 
+    /**
+     * Puts every fighter in FIGHT and picks its target. Fighters are targeted in unit id order against the frame's
+     * {@link TargetLedger}, shared by every fight squad, so each melee pick counts toward the load every later
+     * fighter sees, whichever squad it is in.
+     */
     private void assignFightTargets(Squad squad, HashSet<ManagedUnit> managedFighters, boolean clearRetreat) {
-        for (ManagedUnit managedUnit : managedFighters) {
+        TargetLedger ledger = fightTargetLedger();
+        List<ManagedUnit> ordered = new ArrayList<>(managedFighters);
+        ordered.sort(Comparator.comparingInt(ManagedUnit::getUnitID));
+        for (ManagedUnit managedUnit : ordered) {
             managedUnit.setRole(UnitRole.FIGHT);
             if (clearRetreat) {
                 managedUnit.clearRetreatStart();
             }
-            assignEnemyTarget(managedUnit, squad);
+            assignEnemyTarget(managedUnit, squad, ledger);
         }
     }
 
@@ -2742,7 +2769,7 @@ public class SquadManager {
             RunbyTargeting.Ling ling = new RunbyTargeting.Ling(member.getUnitID(), member.getPosition(),
                     RunbyTargeting.reach(member.getUnitType()));
             RunbyTargeting.Decision decision = RunbyTargeting.choose(ling, situation, state.memoryFor(member.getUnitID()));
-            if (applyRunbyDecision(member, decision, view, state)) {
+            if (applyRunbyDecision(member, decision, view, state, squad.getId())) {
                 state.setLastProgressFrame(now);
             }
         }
@@ -2751,10 +2778,11 @@ public class SquadManager {
     /**
      * Turns a ling's decision into its order.
      *
+     * @param squadId id of the runby squad, recorded with a fight pick
      * @return true when the ling was given an enemy to hit, which counts as progress at the target base
      */
     private boolean applyRunbyDecision(ManagedUnit member, RunbyTargeting.Decision decision, RunbyView view,
-                                       RunbyState state) {
+                                       RunbyState state, String squadId) {
         switch (decision.getKind()) {
             case EVADE:
             case SEEK:
@@ -2772,7 +2800,7 @@ public class SquadManager {
                 member.setFightTarget(target);
                 return true;
             case FIGHT:
-                if (!assignRunbyFightTarget(member, view)) {
+                if (!assignRunbyFightTarget(member, view, squadId)) {
                     seekOrHold(member, state);
                     return false;
                 }
@@ -2793,12 +2821,17 @@ public class SquadManager {
     }
 
     /**
-     * Picks a winnable fight target with TargetScorer among the visible enemies the ling can attack.
+     * Picks a winnable fight target with TargetScorer among the visible enemies the ling can attack, against the
+     * frame's shared melee ledger, and commits it as a fight pick is (see {@link #commitPick}): a direct attack is
+     * recorded in the ledger, and a ling the overflow gate holds attack-moves past a saturated pick instead.
      *
+     * @param squadId id of the runby squad
      * @return true when a target was set, false when no candidate survived the attack filter
      */
-    private boolean assignRunbyFightTarget(ManagedUnit member, RunbyView view) {
+    private boolean assignRunbyFightTarget(ManagedUnit member, RunbyView view, String squadId) {
         Unit unit = member.getUnit();
+        TargetLedger ledger = fightTargetLedger();
+        ledger.release(unit.getID());
         List<Unit> candidates = new ArrayList<>();
         for (Unit enemy : view.units.values()) {
             if (RunbyTargeting.isFightTarget(enemy.getType()) && unit.canAttack(enemy)) {
@@ -2809,12 +2842,14 @@ public class SquadManager {
             return false;
         }
         TargetScorer.Selection selection = TargetScorer.selectTarget(unit,
-                filterByProximity(candidates, unit::getDistance), member.fightTarget);
+                filterByProximity(candidates, unit::getDistance), member.fightTarget, ledger, squadId);
         if (selection == null) {
             return false;
         }
-        TargetChoices.chosen(member, member.fightTarget, selection, false);
-        member.setFightTarget(selection.getTarget());
+        TargetScorer.Selection issued = commitPick(ledger, member.getOverflowGate(), unit, selection,
+                member.fightTarget, game.getFrameCount());
+        TargetChoices.chosen(member, member.fightTarget, member.isAttackMoving(), issued, false);
+        member.setFightTarget(issued.getTarget(), issued.isAttackMove());
         return true;
     }
 
@@ -3964,9 +3999,12 @@ public class SquadManager {
      *
      * @param managedUnit unit that needs a target
      * @param squad squad that passed fight simulation
+     * @param ledger the frame's melee assignments across every fight squad; the unit's entry is dropped, and the
+     *     chosen target recorded in its place unless the unit attack-moves in overflow (see {@link #commitPick})
      */
-    private void assignEnemyTarget(ManagedUnit managedUnit, Squad squad) {
+    private void assignEnemyTarget(ManagedUnit managedUnit, Squad squad, TargetLedger ledger) {
         Unit unit = managedUnit.getUnit();
+        ledger.release(unit.getID());
         if (managedUnit.getUnitType() == UnitType.Zerg_Overlord) {
             if (gameState.getTechProgression().isOverlordSpeed()) {
                 managedUnit.setRallyPoint(squad.getCenter());
@@ -4044,29 +4082,133 @@ public class SquadManager {
                 ? Collections.emptyList()
                 : gameState.getStaticDefenseZones();
         int defensePadding = containmentDefensePadding(Collections.singleton(unit.getType()));
-        filtered = filterByProximity(uncapped, unit::getDistance,
-                enemy -> !coveredByStaticDefense(enemy.getPosition(), defenseZones, defensePadding));
+        Predicate<Unit> admitted = enemy -> !coveredByStaticDefense(enemy.getPosition(), defenseZones, defensePadding);
+        filtered = filterByProximity(uncapped, unit::getDistance, admitted);
         if (filtered.isEmpty() && joinArc != null) {
             rallyToDefensePosition(managedUnit, joinArc.closestPosition(unit.getPosition()));
             return;
         }
+        Function<List<Unit>, TargetScorer.Selection> select = candidates -> TargetScorer.selectTarget(unit,
+                preferProxiedBuildings(candidates), managedUnit.fightTarget, ledger, squad.getId());
+        TargetScorer.Selection selection = widenWhenSaturated(select.apply(filtered), filtered.size(),
+                () -> widenCandidates(uncapped, unit::getDistance, admitted), select);
+        if (selection != null) {
+            TargetScorer.Selection issued = commitPick(ledger, managedUnit.getOverflowGate(), unit, selection,
+                    managedUnit.fightTarget, game.getFrameCount());
+            TargetChoices.chosen(managedUnit, managedUnit.fightTarget, managedUnit.isAttackMoving(), issued,
+                    scoutCapped);
+            managedUnit.setFightTarget(issued.getTarget(), issued.isAttackMove());
+            recordScoutClaim(unit, issued.getTarget());
+        }
+    }
 
-        if (gameState.isCannonRushed()) {
-            Set<Unit> proxied = gameState.getObservedUnitTracker().getProxiedBuildings();
-            List<Unit> proxiedTargets = filtered.stream()
-                    .filter(proxied::contains)
-                    .collect(Collectors.toList());
-            if (!proxiedTargets.isEmpty()) {
-                filtered = proxiedTargets;
+    /**
+     * Commits a live attacker's pick (see {@link #commitPick(TargetLedger, MeleeOverflowGate, int, UnitType,
+     * TargetScorer.Selection, int, boolean, int)}), taking the pick to be within reach when the attacker is no
+     * further than {@link #OVERFLOW_EXIT_REACH} from it.
+     *
+     * @param heldTarget the fight target the attacker held before this pick, or null
+     * @return the pick as it is issued
+     */
+    private static TargetScorer.Selection commitPick(TargetLedger ledger, MeleeOverflowGate gate, Unit attacker,
+                                                     TargetScorer.Selection selection, Unit heldTarget, int frame) {
+        return commitPick(ledger, gate, attacker.getID(), attacker.getType(), selection, heldTargetId(heldTarget),
+                attacker.getDistance(selection.getTarget()) <= OVERFLOW_EXIT_REACH, frame);
+    }
+
+    /**
+     * Reports the pick to the attacker's {@link MeleeOverflowGate} and decides how it is issued. The pick is a
+     * re-target when it is not the target the attacker held, so a saturated re-target enters overflow at once, and
+     * an unsaturated re-target within reach leaves it at once. While the gate holds the attacker in overflow, the
+     * pick comes back marked as an attack-move past the target and the ledger is left alone, so the attacker does not
+     * count toward the target's load. Otherwise the pick stands as a direct attack and is recorded in the ledger.
+     *
+     * @param ledger the frame's melee assignments
+     * @param gate the attacker's overflow gate
+     * @param attackerId the attacker's unit id
+     * @param attackerType the attacker's type
+     * @param selection the pick made for the attacker
+     * @param heldTargetId the id of the fight target the attacker held before this pick, or {@link #NO_TARGET_ID}
+     *     when it held none that still exists
+     * @param inReach true when the picked target is within {@link #OVERFLOW_EXIT_REACH} of the attacker
+     * @param frame the current frame
+     * @return the pick as it is issued
+     */
+    static TargetScorer.Selection commitPick(TargetLedger ledger, MeleeOverflowGate gate, int attackerId,
+                                             UnitType attackerType, TargetScorer.Selection selection,
+                                             int heldTargetId, boolean inReach, int frame) {
+        int targetId = selection.getTarget().getID();
+        if (gate.observe(selection.isSaturated(), heldTargetId != targetId, inReach, frame)) {
+            return selection.asAttackMove();
+        }
+        ledger.record(attackerId, attackerType, targetId);
+        return selection;
+    }
+
+    /**
+     * @return the id of a fight target that still exists, or {@link #NO_TARGET_ID} for none
+     */
+    static int heldTargetId(Unit fightTarget) {
+        return fightTarget != null && fightTarget.exists() ? fightTarget.getID() : NO_TARGET_ID;
+    }
+
+    /**
+     * While cannon rushed, narrows the candidates to the proxied buildings among them, when there are any.
+     */
+    private List<Unit> preferProxiedBuildings(List<Unit> candidates) {
+        if (!gameState.isCannonRushed()) {
+            return candidates;
+        }
+        Set<Unit> proxied = gameState.getObservedUnitTracker().getProxiedBuildings();
+        List<Unit> proxiedTargets = candidates.stream()
+                .filter(proxied::contains)
+                .collect(Collectors.toList());
+        return proxiedTargets.isEmpty() ? candidates : proxiedTargets;
+    }
+
+    /**
+     * The frame's melee target ledger, shared by every fight squad's targeting. The first read on a frame builds it
+     * from the enemy static defence and seeds it with the fight target each FIGHT member of a fight squad already
+     * holds, so a squad targeted early in the frame sees the load of a squad targeted after it. A member that has
+     * left FIGHT, whose target no longer exists, or that attack-moves in overflow is not seeded, and the ledger counts
+     * only melee members.
+     */
+    private TargetLedger fightTargetLedger() {
+        int now = game.getFrameCount();
+        if (fightTargetLedgerFrame != now) {
+            fightTargetLedger = new TargetLedger(gameState.getStaticDefenseZones());
+            fightTargetLedgerFrame = now;
+            for (Squad squad : fightSquads) {
+                seedFightTargets(fightTargetLedger, squad.getMembers());
             }
         }
+        return fightTargetLedger;
+    }
 
-        TargetScorer.Selection selection = TargetScorer.selectTarget(unit, filtered, managedUnit.fightTarget);
-        if (selection != null) {
-            TargetChoices.chosen(managedUnit, managedUnit.fightTarget, selection, scoutCapped);
-            managedUnit.setFightTarget(selection.getTarget());
-            recordScoutClaim(unit, selection.getTarget());
+    /**
+     * Records in the ledger the fight target of every member in FIGHT whose target still exists and that attacks it
+     * directly.
+     */
+    static void seedFightTargets(TargetLedger ledger, Collection<ManagedUnit> members) {
+        for (ManagedUnit member : members) {
+            Unit target = member.fightTarget;
+            if (seedsFightTarget(member.getRole(), target != null && target.exists(), member.isAttackMoving())) {
+                ledger.record(member.getUnitID(), member.getUnitType(), target.getID());
+            }
         }
+    }
+
+    /**
+     * Whether a member's fight target is seeded into the frame's ledger: only while the member is in FIGHT, the
+     * target still exists and the member attacks it rather than attack-moving to it in overflow. A member
+     * retreating, rallying, containing, on a runby or in overflow holds no fight slot.
+     *
+     * @param role the member's role
+     * @param targetExists true when the member holds a fight target that still exists
+     * @param attackMoving true when the member attack-moves to its target in overflow
+     */
+    static boolean seedsFightTarget(UnitRole role, boolean targetExists, boolean attackMoving) {
+        return role == UnitRole.FIGHT && targetExists && !attackMoving;
     }
 
     /**
@@ -4183,6 +4325,51 @@ public class SquadManager {
      */
     static <T> List<T> filterByProximity(List<T> candidates, ToDoubleFunction<T> distance) {
         return filterByProximity(candidates, distance, candidate -> true);
+    }
+
+    /**
+     * Replaces a saturated pick with one made from the widened candidates, when the widened candidates add any and
+     * the pick made from them is not saturated. Otherwise the saturated pick stands.
+     *
+     * @param selection the pick made from the nearby candidates, or null when there was none
+     * @param nearbyCount how many candidates the pick was made from
+     * @param widened candidates within the widened radius, built only when the pick is saturated
+     * @param select picks a target from a candidate list
+     * @return the pick to keep
+     */
+    static <T> TargetScorer.Selection widenWhenSaturated(TargetScorer.Selection selection, int nearbyCount,
+                                                         Supplier<List<T>> widened,
+                                                         Function<List<T>, TargetScorer.Selection> select) {
+        if (selection == null || !selection.isSaturated()) {
+            return selection;
+        }
+        List<T> candidates = widened.get();
+        if (candidates.size() <= nearbyCount) {
+            return selection;
+        }
+        TargetScorer.Selection wider = select.apply(candidates);
+        return wider != null && !wider.isSaturated() ? wider.asWidened() : selection;
+    }
+
+    /**
+     * Candidates a melee fighter falls back to when every target {@link #filterByProximity} gave it is saturated:
+     * those within {@link #TARGETING_RADIUS} of it, and those out to {@link #WIDENED_TARGETING_RADIUS} that the
+     * fallback admits.
+     *
+     * @param candidates attackable enemies
+     * @param distance distance from the attacker to a candidate
+     * @param fallback which candidates beyond the targeting radius may still be chased
+     * @return the candidates within the widened radius
+     */
+    static <T> List<T> widenCandidates(List<T> candidates, ToDoubleFunction<T> distance, Predicate<T> fallback) {
+        List<T> widened = new ArrayList<>();
+        for (T enemy : candidates) {
+            double d = distance.applyAsDouble(enemy);
+            if (d <= TARGETING_RADIUS || d <= WIDENED_TARGETING_RADIUS && fallback.test(enemy)) {
+                widened.add(enemy);
+            }
+        }
+        return widened;
     }
 
     /**
