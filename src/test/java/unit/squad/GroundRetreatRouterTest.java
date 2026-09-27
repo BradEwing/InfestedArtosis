@@ -2,6 +2,7 @@ package unit.squad;
 
 import bwapi.Position;
 import bwapi.TilePosition;
+import bwapi.UnitType;
 import info.map.GameMap;
 import info.map.MapTile;
 import info.map.MapTileType;
@@ -224,8 +225,14 @@ class GroundRetreatRouterTest {
                     assertNotNull(plan);
                     assertEquals(members.size(), plan.getTargets().size());
                     for (Map.Entry<String, Position> target : plan.getTargets().entrySet()) {
+                        String member = "member " + target.getKey() + " enemy " + ex + ":" + ey;
+                        if (target.getValue() == null) {
+                            assertFalse(reachedWithinSnap(connected, members.get(target.getKey())),
+                                    "only a member with no reached tile near it goes unplanned, " + member);
+                            continue;
+                        }
                         TilePosition tile = target.getValue().toTilePosition();
-                        String where = "member " + target.getKey() + " enemy " + ex + ":" + ey + " target " + tile;
+                        String where = member + " target " + tile;
                         assertTrue(map.isWalkableTile(tile), "walkable, " + where);
                         assertTrue(connected[tile.getX()][tile.getY()] >= 0, "connected to home, " + where);
                         assertEquals(GroundRetreatRouter.center(tile), target.getValue());
@@ -294,8 +301,84 @@ class GroundRetreatRouterTest {
     void corneredSquadAtEngageFights() {
         assertTrue(SquadManager.corneredSquadFights(SquadStatus.RETREAT, RetreatRoute.CORNERED,
                 CombatSimulator.CombatResult.ENGAGE));
-        assertTrue(SquadManager.corneredSquadFights(SquadStatus.RETREAT, RetreatRoute.CORNERED,
+    }
+
+    @Test
+    void corneredSquadDoesNotFightAnUnmeasuredAdvance() {
+        assertFalse(SquadManager.corneredSquadFights(SquadStatus.RETREAT, RetreatRoute.CORNERED,
                 CombatSimulator.CombatResult.ADVANCE));
+    }
+
+    @Test
+    void memberWithNoWalkableTileNearItIsLeftUnplanned() {
+        GameMap map = map(POCKET_WITH_EAST_EXIT);
+        Map<String, Position> members = new LinkedHashMap<>();
+        members.put("stranded", tileCenter(20, 1));
+        members.put("ling", tileCenter(4, 7));
+
+        GroundRetreatRouter.Plan<String> plan = new GroundRetreatRouter(map)
+                .plan(members, tileCenter(27, 7), Collections.singletonList(tileCenter(4, 13)));
+
+        assertTrue(plan.getTargets().containsKey("stranded"));
+        assertEquals(null, plan.getTargets().get("stranded"));
+        assertEquals(RetreatRoute.HOME, plan.getRoute());
+    }
+
+    @Test
+    void squadOfOnlyUnplannedMembersIsNotCornered() {
+        GameMap map = map(POCKET_WITH_EAST_EXIT);
+
+        GroundRetreatRouter.Plan<String> plan = new GroundRetreatRouter(map)
+                .plan(Collections.singletonMap("stranded", tileCenter(20, 1)), tileCenter(27, 7),
+                        Collections.singletonList(tileCenter(4, 13)));
+
+        assertFalse(plan.getRoute() == RetreatRoute.CORNERED);
+    }
+
+    @Test
+    void memberDeepInsideTheThreatsWalksItsEscapePathSixStepsOut() {
+        GameMap map = map(OPEN_FIELD);
+        Position squad = tileCenter(12, 10);
+        List<Position> enemies = Arrays.asList(tileCenter(12, 10), tileCenter(12, 5), tileCenter(12, 15),
+                tileCenter(7, 10), tileCenter(17, 10));
+
+        for (int x = 7; x <= 17; x++) {
+            for (int y = 5; y <= 15; y++) {
+                Position near = tileCenter(x, y);
+                assertTrue(enemies.stream().anyMatch(e -> near.getDistance(e) <= GroundRetreatRouter.DANGER_RADIUS),
+                        "every tile within five steps is closed, so the exit is at least six away: " + x + ":" + y);
+            }
+        }
+
+        GroundRetreatRouter.Plan<String> plan = new GroundRetreatRouter(map)
+                .plan(Collections.singletonMap("ling", squad), tileCenter(21, 18), enemies);
+
+        TilePosition tile = plan.getTargets().get("ling").toTilePosition();
+        assertFalse(plan.getRoute() == RetreatRoute.CORNERED);
+        assertEquals(GroundRetreatRouter.PATH_STEP_TILES, Math.max(Math.abs(tile.getX() - 12),
+                Math.abs(tile.getY() - 10)));
+        for (Position enemy : enemies) {
+            assertTrue(GroundRetreatRouter.center(tile).getDistance(enemy) > GroundRetreatRouter.DANGER_RADIUS,
+                    "outside every threat, got " + tile);
+        }
+    }
+
+    @Test
+    void retreatPlanIsKeptForTheReplanInterval() {
+        assertTrue(SquadManager.retreatPlanFresh(RetreatRoute.HOME, 100, 100));
+        assertTrue(SquadManager.retreatPlanFresh(RetreatRoute.CORNERED, 100,
+                100 + SquadManager.RETREAT_REPLAN_FRAMES - 1));
+        assertFalse(SquadManager.retreatPlanFresh(RetreatRoute.HOME, 100, 100 + SquadManager.RETREAT_REPLAN_FRAMES));
+        assertFalse(SquadManager.retreatPlanFresh(RetreatRoute.NONE, 100, 100));
+    }
+
+    @Test
+    void onlyAttackingWorkersCloseARetreatPath() {
+        assertTrue(SquadManager.closesRetreatPath(UnitType.Terran_Marine, false));
+        assertTrue(SquadManager.closesRetreatPath(UnitType.Terran_Bunker, false));
+        assertFalse(SquadManager.closesRetreatPath(UnitType.Terran_SCV, false));
+        assertTrue(SquadManager.closesRetreatPath(UnitType.Terran_SCV, true));
+        assertFalse(SquadManager.closesRetreatPath(UnitType.Terran_Supply_Depot, false));
     }
 
     @Test
@@ -314,6 +397,20 @@ class GroundRetreatRouterTest {
         }
         assertFalse(SquadManager.corneredSquadFights(SquadStatus.FIGHT, RetreatRoute.CORNERED,
                 CombatSimulator.CombatResult.ENGAGE));
+    }
+
+    private static boolean reachedWithinSnap(int[][] connected, Position member) {
+        TilePosition tile = member.toTilePosition();
+        int snap = GroundRetreatRouter.SNAP_TILES;
+        for (int x = Math.max(0, tile.getX() - snap); x <= Math.min(connected.length - 1, tile.getX() + snap); x++) {
+            for (int y = Math.max(0, tile.getY() - snap); y <= Math.min(connected[x].length - 1, tile.getY() + snap);
+                 y++) {
+                if (connected[x][y] >= 0) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private static int homeDistance(GameMap map, Position home, TilePosition tile) {

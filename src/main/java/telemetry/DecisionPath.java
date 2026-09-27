@@ -127,7 +127,7 @@ public enum DecisionPath {
 
     /**
      * A retreating ground squad whose last retreat plan found no path home clear of the enemy turned to fight on an
-     * ENGAGE or ADVANCE verdict, ahead of its retreat lock.
+     * ENGAGE verdict, ahead of its retreat lock.
      */
     CORNERED_ENGAGE,
 

@@ -26,7 +26,8 @@ import java.util.function.Predicate;
  *
  * <p>A squad none of whose members has a path home clear of the enemy is cornered: each member backs off to the tile
  * it can reach without stepping closer to the enemy that lies farthest from it. Every target is the centre of a fully
- * walkable tile that a ground path joins to home.
+ * walkable tile that a ground path joins to home. A member with no such tile within {@link #SNAP_TILES} of it gets a
+ * null target and is left out of the route, so it backs away on its own.
  */
 final class GroundRetreatRouter {
 
@@ -95,14 +96,16 @@ final class GroundRetreatRouter {
                 : gameMap.groundStepDistances(homeTile, tile -> danger[tile.getX()][tile.getY()]);
 
         Map<K, Position> targets = new LinkedHashMap<>();
+        int planned = 0;
         int escaped = 0;
         boolean detour = false;
         for (Map.Entry<K, Position> member : members.entrySet()) {
             TilePosition start = snapToReached(member.getValue().toTilePosition(), direct);
             if (start == null) {
-                targets.put(member.getKey(), center(homeTile));
+                targets.put(member.getKey(), null);
                 continue;
             }
+            planned++;
             if (at(safe, start) >= 0) {
                 targets.put(member.getKey(), center(descend(safe, start, PATH_STEP_TILES, enemies)));
                 escaped++;
@@ -120,7 +123,7 @@ final class GroundRetreatRouter {
         }
 
         RetreatRoute route;
-        if (!members.isEmpty() && escaped == 0) {
+        if (planned > 0 && escaped == 0) {
             route = RetreatRoute.CORNERED;
         } else if (detour) {
             route = RetreatRoute.DETOUR;

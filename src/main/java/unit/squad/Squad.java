@@ -63,6 +63,7 @@ public class Squad implements Comparable<Squad> {
     private int containRadius = 0;
     private final ContainmentAttrition containmentAttrition = new ContainmentAttrition();
     private RetreatRoute retreatRoute = RetreatRoute.NONE;
+    private int retreatPlanFrame = 0;
     protected Time fightHysteresis = new Time(0, 3);
     protected Time retreatHysteresis = new Time(0, 5);
     protected Time containHysteresis = new Time(0, 5);

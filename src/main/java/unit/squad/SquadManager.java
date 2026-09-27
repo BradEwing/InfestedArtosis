@@ -120,6 +120,11 @@ public class SquadManager {
     static final int AIR_HOME_DEFENSE_RADIUS = 480;
 
     private static final int RETREAT_VECTOR_MAGNITUDE = 192;
+    /**
+     * Tuning value: frames a ground retreat plan is kept before it is made again, which bounds the path searches a
+     * retreating squad costs to one per this many frames.
+     */
+    static final int RETREAT_REPLAN_FRAMES = 8;
     private static final int COMBAT_SIM_DURATION_FRAMES = 150;
     private static final double DEFENSE_WIN_THRESHOLD = 0.50;
     private static final double SCV_RUSH_DEFENSE_CLEAR_THRESHOLD = 0.75;
@@ -1478,15 +1483,24 @@ public class SquadManager {
 
     private void assignRetreatTargets(Squad squad, HashSet<ManagedUnit> managedFighters) {
         Position rallyPoint = gameState.getSquadRallyPoint();
-        Map<ManagedUnit, Position> retreatTargets = squad.isGroundSquad()
-                ? planGroundRetreat(squad, rallyPoint)
+        int now = game.getFrameCount();
+        boolean keepPlan = squad.isGroundSquad()
+                && retreatPlanFresh(squad.getRetreatRoute(), squad.getRetreatPlanFrame(), now);
+        Map<ManagedUnit, Position> retreatTargets = squad.isGroundSquad() && !keepPlan
+                ? planGroundRetreat(squad, rallyPoint, now)
                 : null;
+        if (keepPlan) {
+            SquadDecisions.retreatRouted(squad, squad.getRetreatRoute());
+        }
         for (ManagedUnit managedUnit : managedFighters) {
             if (managedUnit.getRole() != UnitRole.RETREAT) {
                 managedUnit.setReady(true);
             }
             managedUnit.setRole(UnitRole.RETREAT);
             managedUnit.setRallyPoint(rallyPoint);
+            if (keepPlan) {
+                continue;
+            }
             if (retreatTargets != null) {
                 managedUnit.setRetreatTarget(retreatTargets.get(managedUnit));
             } else {
@@ -2851,10 +2865,11 @@ public class SquadManager {
 
     /**
      * Plans each member's retreat target along the ground path home to the rally point, around the ground threats
-     * near the squad, and records the route taken on the squad for the cornered fight rule and the telemetry row.
-     * Falls back to backing straight away from the enemy when the rally point has no walkable tile near it.
+     * near the squad, and records the route and the frame of the plan on the squad for the cornered fight rule, the
+     * replan throttle and the telemetry row. Falls back to backing straight away from the enemy when the rally point
+     * has no walkable tile near it.
      */
-    private Map<ManagedUnit, Position> planGroundRetreat(Squad squad, Position rallyPoint) {
+    private Map<ManagedUnit, Position> planGroundRetreat(Squad squad, Position rallyPoint, int now) {
         GroundRetreatRouter.Plan<ManagedUnit> plan = null;
         if (rallyPoint != null && gameState.getGameMap() != null && gameState.getGameMap().getWidth() > 0) {
             if (groundRetreatRouter == null) {
@@ -2865,21 +2880,46 @@ public class SquadManager {
                 members.put(member, member.getUnit().getPosition());
             }
             List<Position> threats = enemyUnitsNearSquad(squad).stream()
-                    .filter(enemy -> Filter.isGroundThreat(enemy.getType()))
+                    .filter(enemy -> closesRetreatPath(enemy.getType(), enemy.isAttacking()))
                     .map(Unit::getPosition)
                     .collect(Collectors.toList());
             plan = groundRetreatRouter.plan(members, rallyPoint, threats);
         }
         RetreatRoute route = plan != null ? plan.getRoute() : RetreatRoute.AWAY;
         squad.setRetreatRoute(route);
+        squad.setRetreatPlanFrame(now);
         SquadDecisions.retreatRouted(squad, route);
         return plan != null ? plan.getTargets() : computeGroundRetreatTargets(squad);
     }
 
     /**
+     * Whether a ground retreat plan made on frame planFrame still stands on frame now. A plan is made at most once per
+     * {@link #RETREAT_REPLAN_FRAMES}; between plans the members keep the targets they were given.
+     *
+     * @param route route of the squad's last ground retreat plan, NONE when the squad has none to keep
+     * @param planFrame frame that plan was made
+     * @param now current frame
+     * @return true when the last plan is kept
+     */
+    static boolean retreatPlanFresh(RetreatRoute route, int planFrame, int now) {
+        return route != RetreatRoute.NONE && now - planFrame < RETREAT_REPLAN_FRAMES;
+    }
+
+    /**
+     * Whether a visible enemy closes the tiles around it to a retreat path home: a type that threatens ground units,
+     * except a worker that is not attacking.
+     *
+     * @param type the enemy's type
+     * @param attacking whether the enemy is attacking
+     * @return true when the retreat routes around it
+     */
+    static boolean closesRetreatPath(UnitType type, boolean attacking) {
+        return Filter.isGroundThreat(type) && (!Filter.isWorkerType(type) || attacking);
+    }
+
+    /**
      * Whether a squad held in retreat turns to fight because it has nowhere to go: its last retreat plan found no
-     * path home clear of the enemy, and the sim rates the fight at or above its engage threshold, or finds nothing
-     * worth measuring.
+     * path home clear of the enemy, and the sim rates the fight at or above its engage threshold.
      *
      * @param status status the squad holds
      * @param route route of the squad's last ground retreat plan
@@ -2888,7 +2928,7 @@ public class SquadManager {
      */
     static boolean corneredSquadFights(SquadStatus status, RetreatRoute route, CombatSimulator.CombatResult result) {
         return status == SquadStatus.RETREAT && route == RetreatRoute.CORNERED
-                && (result == CombatSimulator.CombatResult.ENGAGE || result == CombatSimulator.CombatResult.ADVANCE);
+                && result == CombatSimulator.CombatResult.ENGAGE;
     }
 
     /**
