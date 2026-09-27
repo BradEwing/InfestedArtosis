@@ -150,12 +150,11 @@ public class HorizonCombatSimulator implements CombatSimulator {
             double groundBase = weightedGroundStrength(type, friendlySizeProportions);
             double antiAirBase = weightedAntiAirStrength(type, friendlySizeProportions);
             if (bunker) {
-                double fireWeight = BunkerPricing.fireWeight(BunkerPricing.nearestGap(pos, legs), reach);
-                if (fireWeight > 0) {
-                    bunkers.add(new BunkerPricing.Candidate(pos, !visible, fireWeight,
-                            bunkerGarrisonModifier(ou, currentFrame) * BUNKER_MAX_GARRISON,
-                            bunkerGarrisonMeasured(ou, currentFrame),
-                            groundBase * hpWeight * heightMod, antiAirBase * hpWeight * heightMod));
+                BunkerPricing.Candidate candidate = bunkerCandidate(ou, pos, visible,
+                        BunkerPricing.fireWeight(BunkerPricing.nearestGap(pos, legs), reach), currentFrame,
+                        groundBase * hpWeight * heightMod, antiAirBase * hpWeight * heightMod);
+                if (candidate != null) {
+                    bunkers.add(candidate);
                 }
                 continue;
             }
@@ -175,12 +174,8 @@ public class HorizonCombatSimulator implements CombatSimulator {
             snapshot.getEnemyUnits().add(new UnitDebugEntry(pos, type, displayStr, false, !visible));
         }
 
-        BunkerPricing.allocate(bunkers, BunkerPricing.garrisonPool(tracker.getLivingObservedUnits(), pricedLooseShooters));
-        for (BunkerPricing.Candidate candidate : bunkers) {
-            enemySample.add(UnitType.Terran_Bunker, candidate.ground(), candidate.antiAir());
-            snapshot.getEnemyUnits().add(new UnitDebugEntry(candidate.getPosition(), UnitType.Terran_Bunker,
-                    airSquad ? candidate.antiAir() : candidate.ground(), false, candidate.isFogOfWar()));
-        }
+        priceBunkers(bunkers, BunkerPricing.garrisonPool(tracker.getLivingObservedUnits(), pricedLooseShooters),
+                enemySample, snapshot, airSquad);
 
         creditMedicSupport(snapshot, enemySample, airSquad);
         snapshot.setEnemyUnscoredSupply(enemySample.unscoredSupply());
@@ -1040,6 +1035,46 @@ public class HorizonCombatSimulator implements CombatSimulator {
         if (elapsed >= BUNKER_TRUST_FRAMES + BUNKER_DECAY_FRAMES) return 1.0;
         double decayProgress = (double) (elapsed - BUNKER_TRUST_FRAMES) / BUNKER_DECAY_FRAMES;
         return baseModifier + (1.0 - baseModifier) * decayProgress;
+    }
+
+    /**
+     * A sampled Bunker as a pricing candidate: its occupants before the pool are the ones {@link #bunkerGarrisonModifier}
+     * implies, measured when {@link #bunkerGarrisonMeasured} holds.
+     *
+     * @param ou the observed bunker
+     * @param pos where it stands or was last seen
+     * @param visible whether it is in sight
+     * @param fireWeight its fire weight against the squad, see {@link BunkerPricing#fireWeight}
+     * @param currentFrame current frame
+     * @param fullGround ground strength of a full garrison, after hit point and height weighting
+     * @param fullAntiAir anti-air strength of a full garrison, after hit point and height weighting
+     * @return the candidate, or null when its fire weight is 0 and it is not priced at all
+     */
+    static BunkerPricing.Candidate bunkerCandidate(ObservedUnit ou, Position pos, boolean visible, double fireWeight,
+                                                   int currentFrame, double fullGround, double fullAntiAir) {
+        if (fireWeight <= 0) return null;
+        return new BunkerPricing.Candidate(pos, !visible, fireWeight,
+                bunkerGarrisonModifier(ou, currentFrame) * BUNKER_MAX_GARRISON,
+                bunkerGarrisonMeasured(ou, currentFrame), fullGround, fullAntiAir);
+    }
+
+    /**
+     * Shares the garrison pool across the priced Bunkers, then adds each to the sample and the snapshot.
+     *
+     * @param bunkers the Bunkers this evaluation prices
+     * @param pool unseen infantry known to be alive, see {@link BunkerPricing#garrisonPool}
+     * @param enemySample the sample the Bunkers join
+     * @param snapshot the snapshot the Bunkers join
+     * @param airSquad whether the snapshot displays the anti-air domain
+     */
+    static void priceBunkers(List<BunkerPricing.Candidate> bunkers, int pool, EnemySample enemySample,
+                             DebugSnapshot snapshot, boolean airSquad) {
+        BunkerPricing.allocate(bunkers, pool);
+        for (BunkerPricing.Candidate candidate : bunkers) {
+            enemySample.add(UnitType.Terran_Bunker, candidate.ground(), candidate.antiAir());
+            snapshot.getEnemyUnits().add(new UnitDebugEntry(candidate.getPosition(), UnitType.Terran_Bunker,
+                    airSquad ? candidate.antiAir() : candidate.ground(), false, candidate.isFogOfWar()));
+        }
     }
 
     /**

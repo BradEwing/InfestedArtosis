@@ -17,6 +17,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class BunkerPricingTest {
@@ -210,6 +211,79 @@ class BunkerPricingTest {
         living.add(ObservedUnitFixture.observedUnit(UnitType.Terran_Goliath, new Time(0)));
 
         assertEquals(2, BunkerPricing.garrisonPool(living, 0));
+    }
+
+    private static ObservedUnit observedBunker(int loadedCount, int checkFrame) {
+        ObservedUnit bunker = ObservedUnitFixture.observedUnit(UnitType.Terran_Bunker, new Time(0));
+        bunker.setLastKnownLoadedCount(loadedCount);
+        bunker.setLastLoadedCheckFrame(checkFrame);
+        return bunker;
+    }
+
+    @Test
+    void aSampledBunkerOutOfReachIsNotACandidate() {
+        assertNull(HorizonCombatSimulator.bunkerCandidate(observedBunker(-1, 1000), BUNKER, true, 0, 1000, 1, 1));
+    }
+
+    @Test
+    void anUnknownGarrisonDemandsAFullBunkerUnmeasured() {
+        BunkerPricing.Candidate candidate = HorizonCombatSimulator.bunkerCandidate(observedBunker(-1, 1000), BUNKER,
+                false, 1.0, 1000, 1, 1);
+
+        BunkerPricing.allocate(Collections.singletonList(candidate), FULL);
+
+        assertEquals(FULL, candidate.getOccupants(), 1e-9);
+        assertTrue(candidate.isFogOfWar());
+    }
+
+    @Test
+    void anUnseenBunkerWithNoInfantryKnownAndNoShotsIsPricedEmpty() {
+        BunkerPricing.Candidate candidate = HorizonCombatSimulator.bunkerCandidate(observedBunker(-1, 1000), BUNKER,
+                false, 1.0, 1000, 1, 1);
+
+        BunkerPricing.allocate(Collections.singletonList(candidate), 0);
+
+        assertEquals(0, candidate.antiAir(), 1e-9);
+    }
+
+    @Test
+    void aMeasuredGarrisonIsPricedAtItsCountWithoutThePool() {
+        BunkerPricing.Candidate candidate = HorizonCombatSimulator.bunkerCandidate(observedBunker(2, 1000), BUNKER,
+                true, 1.0, 1000 + TRUST_FRAMES, 1, 1);
+
+        BunkerPricing.allocate(Collections.singletonList(candidate), 0);
+
+        assertEquals(2, candidate.getOccupants(), 1e-9);
+    }
+
+    @Test
+    void aStaleMeasurementDemandsItsDecayedGarrisonFromThePool() {
+        BunkerPricing.Candidate candidate = HorizonCombatSimulator.bunkerCandidate(observedBunker(2, 1000), BUNKER,
+                true, 1.0, 1000 + TRUST_FRAMES + 1, 1, 1);
+
+        BunkerPricing.allocate(Collections.singletonList(candidate), 0);
+
+        assertEquals(0, candidate.getOccupants(), 1e-9);
+    }
+
+    @Test
+    void pricedBunkersJoinTheSampleAndTheSnapshotAtTheirShare() {
+        double fullAntiAir = HorizonCombatSimulator.weightedAntiAirStrength(UnitType.Terran_Bunker, ALL_SMALL);
+        List<BunkerPricing.Candidate> bunkers = Arrays.asList(unmeasured(BUNKER, 1.0), unmeasured(SECOND_BUNKER, 1.0));
+        HorizonCombatSimulator.EnemySample sample = new HorizonCombatSimulator.EnemySample();
+        HorizonCombatSimulator.DebugSnapshot snapshot = new HorizonCombatSimulator.DebugSnapshot();
+
+        HorizonCombatSimulator.priceBunkers(bunkers, KNOWN_MARINES, sample, snapshot, true);
+
+        assertEquals(fullAntiAir, sample.antiAirTotal(), 1e-9);
+        assertEquals(2, snapshot.getEnemyUnits().size());
+        assertEquals(UnitType.Terran_Bunker, snapshot.getEnemyUnits().get(0).getType());
+        assertEquals(fullAntiAir / 2, snapshot.getEnemyUnits().get(0).getStrength(), 1e-9);
+    }
+
+    @Test
+    void aBunkerIsNeverFlaggedAsAThreatBeyondTheRadius() {
+        assertFalse(HorizonCombatSimulator.isThreatBeyondRadius(UnitType.Terran_Bunker, 400, 320));
     }
 
     @Test
