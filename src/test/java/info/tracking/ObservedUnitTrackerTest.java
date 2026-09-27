@@ -32,6 +32,7 @@ class ObservedUnitTrackerTest {
     private static final Time DRONE_COMPLETED = new Time(1496);
     private static final Time POOL_COMPLETED = new Time(2801);
     private static final Time WINDOW = new Time(1, 52);
+    private static final Time WALL_CUTOFF = new Time(6, 0);
 
     @Test
     void recentWorkersOfAnyRaceAreFoundInsideTheArea() {
@@ -200,14 +201,55 @@ class ObservedUnitTrackerTest {
         ObservedUnit barracks = ObservedUnitFixture.observedUnit(UnitType.Terran_Barracks, KNOWN, DRONE_OBSERVED);
         barracks.setDestroyedFrame(DRONE_COMPLETED);
 
-        assertTrue(ObservedUnitFixture.trackerHolding(barracks).getLivingFootprints(type -> true).isEmpty());
+        assertTrue(ObservedUnitFixture.trackerHolding(barracks).getGroundedFootprints(type -> true, WALL_CUTOFF)
+                .isEmpty());
     }
 
     @Test
     void aBuildingOfAnotherTypeHasNoFootprint() {
         ObservedUnit depot = ObservedUnitFixture.observedUnit(UnitType.Terran_Supply_Depot, KNOWN, DRONE_OBSERVED);
 
-        assertTrue(ObservedUnitFixture.trackerHolding(depot).getLivingFootprints(isBarracks()).isEmpty());
+        assertTrue(ObservedUnitFixture.trackerHolding(depot).getGroundedFootprints(isBarracks(), WALL_CUTOFF)
+                .isEmpty());
+    }
+
+    @Test
+    void aBuildingFirstObservedAfterTheCutoffHasNoFootprint() {
+        ObservedUnit barracks = ObservedUnitFixture.observedUnit(UnitType.Terran_Barracks, KNOWN,
+                new Time(WALL_CUTOFF.getFrames() + 1));
+
+        assertTrue(ObservedUnitFixture.trackerHolding(barracks).getGroundedFootprints(type -> true, WALL_CUTOFF)
+                .isEmpty());
+    }
+
+    @Test
+    void aBarracksLastSeenAwayFromWhereItWasFirstSeenHasNoFootprint() {
+        ObservedUnit barracks = ObservedUnitFixture.observedUnit(UnitType.Terran_Barracks, KNOWN, DRONE_OBSERVED);
+        barracks.setLastKnownLocation(new Position(KNOWN.getX() - 81, KNOWN.getY() + 854));
+
+        assertFalse(barracks.isGroundedWhereFirstSeen());
+        assertTrue(ObservedUnitFixture.trackerHolding(barracks).getGroundedFootprints(type -> true, WALL_CUTOFF)
+                .isEmpty());
+    }
+
+    @Test
+    void aBarracksSeenLiftedHasNoFootprintEvenBackWhereItWasFirstSeen() {
+        ObservedUnit barracks = ObservedUnitFixture.observedUnit(UnitType.Terran_Barracks, KNOWN, DRONE_OBSERVED);
+        barracks.setSeenLifted(true);
+
+        assertFalse(barracks.isGroundedWhereFirstSeen());
+        assertTrue(ObservedUnitFixture.trackerHolding(barracks).getGroundedFootprints(type -> true, WALL_CUTOFF)
+                .isEmpty());
+    }
+
+    @Test
+    void aBuildingWhosePositionWasRuledOutHasNoFootprint() {
+        ObservedUnit barracks = ObservedUnitFixture.observedUnit(UnitType.Terran_Barracks, KNOWN, DRONE_OBSERVED);
+        barracks.setLastKnownLocation(null);
+
+        assertFalse(barracks.isGroundedWhereFirstSeen());
+        assertTrue(ObservedUnitFixture.trackerHolding(barracks).getGroundedFootprints(type -> true, WALL_CUTOFF)
+                .isEmpty());
     }
 
     private static TileFootprint barracksAt(int left, int top) {

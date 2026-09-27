@@ -78,29 +78,29 @@ public class LearningManagerTest {
     }
 
     @Test
-    void aNaturalWallLastGameBarsFourPool() {
+    void aPersistentWallBarsFourPool() {
         BuildOrderFactory factory = new BuildOrderFactory(4, Race.Terran);
         OpponentRecord opponentRecord = opponentRecordFavouring(factory, Race.Terran, "4Pool", "12Pool");
 
         String selected = LearningManager.selectOpenerName(null, factory, opponentRecord,
-                "1Base;TerranWallNatural", "12Pool", MAP_NAME);
+                "1Base;TerranWallNatural", true, "12Pool", MAP_NAME);
 
         assertEquals("12Pool", selected);
     }
 
     @Test
-    void aMainWallLastGameBarsFourPool() {
+    void aWallLastGameThatDoesNotPersistLeavesFourPoolSelectable() {
         BuildOrderFactory factory = new BuildOrderFactory(4, Race.Terran);
         OpponentRecord opponentRecord = opponentRecordFavouring(factory, Race.Terran, "4Pool", "12Pool");
 
         String selected = LearningManager.selectOpenerName(null, factory, opponentRecord,
-                "TerranWallMain", "12Pool", MAP_NAME);
+                "TerranWallMain", false, "12Pool", MAP_NAME);
 
-        assertEquals("12Pool", selected);
+        assertEquals("4Pool", selected);
     }
 
     @Test
-    void fourPoolStaysSelectableWithoutAWallLastGame() {
+    void fourPoolStaysSelectableWithoutAWall() {
         BuildOrderFactory factory = new BuildOrderFactory(4, Race.Terran);
         OpponentRecord opponentRecord = opponentRecordFavouring(factory, Race.Terran, "4Pool", "12Pool");
 
@@ -111,12 +111,12 @@ public class LearningManagerTest {
     }
 
     @Test
-    void anOpenerOverrideStillForcesFourPoolAfterAWall() {
+    void anOpenerOverrideStillForcesFourPoolAfterAPersistentWall() {
         BuildOrderFactory factory = new BuildOrderFactory(4, Race.Terran);
         OpponentRecord opponentRecord = opponentRecordFavouring(factory, Race.Terran, "12Pool");
 
         String selected = LearningManager.selectOpenerName("4Pool", factory, opponentRecord,
-                "TerranWallNatural", "12Pool", MAP_NAME);
+                "TerranWallNatural", true, "12Pool", MAP_NAME);
 
         assertEquals("4Pool", selected);
     }

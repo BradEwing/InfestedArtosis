@@ -56,11 +56,11 @@ public class StrategyTracker {
     private final ScoutData scoutData;
 
     /**
-     * The strategies the learning file recorded as detected in the previous game against this opponent, joined by
-     * ';'. Empty when there was no previous game.
+     * Whether the learning file shows a Terran wall persisting across recent games against this opponent, as
+     * {@link TerranWall#isPersistent} reads it.
      */
     @Setter
-    private String previousGameDetectedStrategies = "";
+    private boolean terranWallPersists;
 
     public StrategyTracker(Game game, Race opponentRace, ObservedUnitTracker tracker, BaseData baseData, GameMap gameMap,
                            BWMap bwMap, ScoutData scoutData) {
@@ -215,11 +215,10 @@ public class StrategyTracker {
     }
 
     /**
-     * Whether a Terran wall was detected this game or in the previous game against this opponent.
+     * Whether a Terran wall was detected this game or persists across recent games against this opponent.
      */
     public boolean isTerranWallDetected() {
-        return isAnyDetectedStrategy(TerranWallNatural.NAME, TerranWallMain.NAME)
-                || TerranWall.isWallIn(previousGameDetectedStrategies);
+        return isAnyDetectedStrategy(TerranWallNatural.NAME, TerranWallMain.NAME) || terranWallPersists;
     }
 
     public String getDetectedStrategiesAsString() {

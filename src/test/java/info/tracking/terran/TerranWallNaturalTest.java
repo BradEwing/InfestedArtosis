@@ -2,17 +2,21 @@ package info.tracking.terran;
 
 import bwapi.TilePosition;
 import bwapi.UnitType;
+import info.map.ChokeWall;
+import info.map.GameMap;
+import info.map.MapTile;
+import info.map.MapTileType;
 import org.junit.jupiter.api.Test;
 import util.TileFootprint;
-import util.Time;
 
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.function.BiPredicate;
 import java.util.function.Predicate;
 
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 /**
  * The enemy natural's area stands in as the tiles with x in 30-50 and y in 30-50.
@@ -24,69 +28,81 @@ class TerranWallNaturalTest {
 
     private static final BiPredicate<TileFootprint, TileFootprint> NO_MAIN_WALL = (barracks, partner) -> false;
 
-    private static final Time EARLY = new Time(4, 0);
-
-    private static final Time AFTER_CUTOFF = new Time(TerranWall.CUTOFF.getFrames() + 1);
-
     @Test
     void aBarracksAndDepotTouchingInTheNaturalIsAWall() {
-        assertTrue(detects(EARLY, barracks(40, 40), depot(44, 40)));
+        assertEquals(TerranWall.Evidence.AREA_PAIR, evidence(barracks(40, 40), depot(44, 40)));
     }
 
     @Test
     void aBarracksAndDepotOneTileApartInTheNaturalIsAWall() {
-        assertTrue(detects(EARLY, barracks(40, 40), depot(45, 40)));
+        assertEquals(TerranWall.Evidence.AREA_PAIR, evidence(barracks(40, 40), depot(45, 40)));
     }
 
     @Test
     void aBarracksAndDepotTwoTilesApartIsNotAWall() {
-        assertFalse(detects(EARLY, barracks(40, 40), depot(46, 40)));
-        assertFalse(detects(EARLY, barracks(40, 40), depot(40, 45)));
+        assertNull(evidence(barracks(40, 40), depot(46, 40)));
+        assertNull(evidence(barracks(40, 40), depot(40, 45)));
     }
 
     @Test
     void aBarracksAndBunkerTouchingInTheNaturalIsAWall() {
-        assertTrue(detects(EARLY, barracks(40, 40), footprint(UnitType.Terran_Bunker, 40, 43)));
+        assertEquals(TerranWall.Evidence.AREA_PAIR,
+                evidence(barracks(40, 40), footprint(UnitType.Terran_Bunker, 40, 43)));
     }
 
     @Test
     void aPairWithOnlyThePartnerInTheNaturalIsAWall() {
-        assertTrue(detects(EARLY, barracks(26, 40), depot(30, 40)));
+        assertEquals(TerranWall.Evidence.AREA_PAIR, evidence(barracks(26, 40), depot(30, 40)));
     }
 
     @Test
     void aPairOutsideTheNaturalIsNotAWall() {
-        assertFalse(detects(EARLY, barracks(80, 80), depot(84, 80)));
+        assertNull(evidence(barracks(80, 80), depot(84, 80)));
     }
 
     @Test
     void aBarracksBesideAnotherBuildingIsNotAWall() {
-        assertFalse(detects(EARLY, barracks(40, 40), footprint(UnitType.Terran_Engineering_Bay, 44, 40)));
-        assertFalse(detects(EARLY, barracks(40, 40), barracks(44, 40)));
-        assertFalse(detects(EARLY, depot(40, 40), depot(43, 40)));
-    }
-
-    @Test
-    void nothingIsDetectedAfterTheCutoff() {
-        assertTrue(detects(TerranWall.CUTOFF, barracks(40, 40), depot(44, 40)));
-        assertFalse(detects(AFTER_CUTOFF, barracks(40, 40), depot(44, 40)));
+        assertNull(evidence(barracks(40, 40), footprint(UnitType.Terran_Engineering_Bay, 44, 40)));
+        assertNull(evidence(barracks(40, 40), barracks(44, 40)));
+        assertNull(evidence(depot(40, 40), depot(43, 40)));
     }
 
     @Test
     void aPairTheMainDetectorReadsIsNotANaturalWall() {
         Predicate<TilePosition> atMainChoke = tile -> Math.abs(tile.getX() - 42) + Math.abs(tile.getY() - 32) <= 8;
-        BiPredicate<TileFootprint, TileFootprint> mainWall = TerranWallMain.placement(atMainChoke,
+        BiPredicate<TileFootprint, TileFootprint> mainWall = TerranWallMain.placement(atMainChoke, tile -> false,
                 new TilePosition(20, 10));
         List<TileFootprint> rampWall = Arrays.asList(barracks(40, 30), depot(44, 30));
         List<TileFootprint> naturalWall = Arrays.asList(barracks(40, 44), depot(44, 44));
 
-        assertFalse(TerranWallNatural.isDetected(EARLY, rampWall, IN_NATURAL, mainWall));
-        assertTrue(TerranWallMain.isDetected(EARLY, rampWall, atMainChoke, new TilePosition(20, 10)));
-        assertTrue(TerranWallNatural.isDetected(EARLY, naturalWall, IN_NATURAL, mainWall));
+        assertNull(TerranWallNatural.evidence(rampWall, Collections.emptyList(), IN_NATURAL, mainWall));
+        assertEquals(TerranWall.Evidence.CHOKE_PAIR, TerranWallMain.evidence(rampWall, Collections.emptyList(),
+                atMainChoke, tile -> false, new TilePosition(20, 10)));
+        assertEquals(TerranWall.Evidence.AREA_PAIR,
+                TerranWallNatural.evidence(naturalWall, Collections.emptyList(), IN_NATURAL, mainWall));
     }
 
-    private static boolean detects(Time now, TileFootprint... footprints) {
-        return TerranWallNatural.isDetected(now, Arrays.asList(footprints), IN_NATURAL, NO_MAIN_WALL);
+    @Test
+    void buildingsCoveringEverySpotOfANaturalChokeWallAreSealed() {
+        GameMap map = new GameMap(24, 24);
+        for (int x = 0; x < 24; x++) {
+            for (int y = 0; y < 24; y++) {
+                map.addTile(new MapTile(new TilePosition(x, y), 0, true, true, MapTileType.NORMAL), x, y);
+            }
+        }
+        ChokeWall choke = ChokeWall.across(map, Arrays.asList(new TilePosition(5, 5), new TilePosition(6, 5),
+                new TilePosition(7, 5)), tile -> true);
+
+        assertEquals(TerranWall.Evidence.SEALED, TerranWallNatural.evidence(
+                Collections.singletonList(depot(5, 4)), Collections.singletonList(choke), tile -> false,
+                NO_MAIN_WALL));
+        assertNull(TerranWallNatural.evidence(Collections.singletonList(depot(6, 4)),
+                Collections.singletonList(choke), tile -> false, NO_MAIN_WALL));
+    }
+
+    private static TerranWall.Evidence evidence(TileFootprint... footprints) {
+        return TerranWallNatural.evidence(Arrays.asList(footprints), Collections.emptyList(), IN_NATURAL,
+                NO_MAIN_WALL);
     }
 
     private static TileFootprint barracks(int left, int top) {

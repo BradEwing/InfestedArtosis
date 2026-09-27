@@ -194,6 +194,16 @@ class StrategyDetectionContextTest {
         assertNull(context.enemyMainChokeArea(8));
     }
 
+    @Test
+    void theEnemyWallQueriesAreEmptyWhileTheEnemyBasesAreUnknown() {
+        StrategyDetectionContext context = new StrategyDetectionContext(new ObservedUnitTracker(), new Time(4, 0),
+                new BaseData(new ArrayList<>()), null, null, null);
+
+        assertTrue(context.enemyMainChokeWalls().isEmpty());
+        assertTrue(context.enemyNaturalChokeWalls().isEmpty());
+        assertTrue(context.enemyMainExitPath(2).isEmpty());
+    }
+
     private static boolean isOnOurSide(LV28400NFixture icarus, Position position) {
         return StrategyDetectionContext.isOnOurSide(position, icarus.baseData, icarus.bases,
                 (from, to) -> (int) from.getDistance(to));

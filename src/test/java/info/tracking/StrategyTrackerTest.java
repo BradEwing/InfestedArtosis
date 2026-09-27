@@ -3,6 +3,7 @@ package info.tracking;
 import bwapi.Race;
 import info.tracking.protoss.ProxyGate;
 import info.tracking.protoss.TwoGate;
+import info.tracking.terran.TerranWall;
 import info.tracking.terran.TerranWallMain;
 import info.tracking.terran.TerranWallNatural;
 import info.tracking.zerg.TwoHatchLing;
@@ -298,30 +299,31 @@ class StrategyTrackerTest {
     }
 
     @Test
-    void aWallDetectedLastGameIsATerranWall() {
+    void aPersistentWallIsATerranWall() {
         StrategyTracker strategyTracker = trackerAgainst(Race.Terran);
 
-        strategyTracker.setPreviousGameDetectedStrategies("1Base;TerranWallNatural");
+        strategyTracker.setTerranWallPersists(true);
 
         assertTrue(strategyTracker.isTerranWallDetected());
     }
 
     @Test
-    void theRecordedStrategiesOfAWalledGameReadAsAWallNextGame() {
+    void theRecordedStrategiesOfTwoWalledGamesPersistAsAWall() {
         StrategyTracker walledGame = trackerAgainst(Race.Terran);
         walledGame.recordDetections(Collections.singleton(new TerranWallMain()));
-        StrategyTracker nextGame = trackerAgainst(Race.Terran);
+        StrategyTracker openGame = trackerAgainst(Race.Terran);
+        String walled = walledGame.getDetectedStrategiesAsString();
+        String open = openGame.getDetectedStrategiesAsString();
 
-        nextGame.setPreviousGameDetectedStrategies(walledGame.getDetectedStrategiesAsString());
-
-        assertTrue(nextGame.isTerranWallDetected());
+        assertTrue(TerranWall.isPersistent(Arrays.asList(walled, open, walled)));
+        assertFalse(TerranWall.isPersistent(Arrays.asList(open, open, walled)));
     }
 
     @Test
-    void otherStrategiesLastGameAreNotATerranWall() {
+    void aWallThatDoesNotPersistIsNotATerranWall() {
         StrategyTracker strategyTracker = trackerAgainst(Race.Terran);
 
-        strategyTracker.setPreviousGameDetectedStrategies("1Base;2RaxAcademy;SCVRush");
+        strategyTracker.setTerranWallPersists(false);
 
         assertFalse(strategyTracker.isTerranWallDetected());
     }

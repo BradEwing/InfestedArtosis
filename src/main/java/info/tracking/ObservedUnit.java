@@ -13,6 +13,7 @@ public class ObservedUnit {
     private Time destroyedFrame;
     private Time completedFrame;
     private Position lastKnownLocation;
+    private final Position firstObservedLocation;
     private final Unit unit;
     private UnitType unitType;
     private boolean proxied;
@@ -23,6 +24,7 @@ public class ObservedUnit {
     private int lastKnownLoadedCount = -1;
     private int lastLoadedCheckFrame = -1;
     private int lastBunkerBulletFrame = -1;
+    private boolean seenLifted;
 
     public ObservedUnit(Unit unit, Time currentFrame, boolean proxied) {
         this(unit, unit.getType(), unit.getPosition(), currentFrame, proxied);
@@ -34,6 +36,7 @@ public class ObservedUnit {
         this.firstObservedFrame = currentFrame;
         this.lastObservedFrame = currentFrame;
         this.lastKnownLocation = lastKnownLocation;
+        this.firstObservedLocation = lastKnownLocation;
         this.proxied = proxied;
         this.lastKnownHitPoints = unitType.maxHitPoints();
         this.lastKnownShields = unitType.maxShields();
@@ -48,6 +51,18 @@ public class ObservedUnit {
             return unit.getPosition();
         }
         return lastKnownLocation;
+    }
+
+    /**
+     * Whether the unit stands where it was first observed and has never been seen lifted: its last known position
+     * is its first, and while it is visible it is neither lifted nor anywhere else. A Terran building that lifted,
+     * or floated and landed elsewhere, fails.
+     */
+    public boolean isGroundedWhereFirstSeen() {
+        if (seenLifted || lastKnownLocation == null || !lastKnownLocation.equals(firstObservedLocation)) {
+            return false;
+        }
+        return !unit.isVisible() || !unit.isLifted() && unit.getPosition().equals(firstObservedLocation);
     }
 
     public void markCompleted(Time currentFrame) {

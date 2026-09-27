@@ -5,6 +5,8 @@ import bwapi.TilePosition;
 import bwapi.UnitType;
 import lombok.Getter;
 
+import java.util.function.Predicate;
+
 /**
  * The tiles a building covers: the rectangle of its type's tile width and height anchored at its top-left tile.
  */
@@ -44,6 +46,28 @@ public final class TileFootprint {
         int gapX = axisGap(topLeft.getX(), unitType.tileWidth(), other.topLeft.getX(), other.unitType.tileWidth());
         int gapY = axisGap(topLeft.getY(), unitType.tileHeight(), other.topLeft.getY(), other.unitType.tileHeight());
         return Math.max(gapX, gapY);
+    }
+
+    /**
+     * Whether the tile lies inside the rectangle.
+     */
+    public boolean covers(TilePosition tile) {
+        return tile.getX() >= topLeft.getX() && tile.getX() < topLeft.getX() + unitType.tileWidth()
+                && tile.getY() >= topLeft.getY() && tile.getY() < topLeft.getY() + unitType.tileHeight();
+    }
+
+    /**
+     * Whether any tile of the rectangle passes the tile test.
+     */
+    public boolean anyTile(Predicate<TilePosition> tileTest) {
+        for (int x = topLeft.getX(); x < topLeft.getX() + unitType.tileWidth(); x++) {
+            for (int y = topLeft.getY(); y < topLeft.getY() + unitType.tileHeight(); y++) {
+                if (tileTest.test(new TilePosition(x, y))) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private static int axisGap(int start, int length, int otherStart, int otherLength) {

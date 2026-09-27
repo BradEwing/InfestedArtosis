@@ -1166,6 +1166,18 @@ public class BaseData {
     }
 
     /**
+     * The ground path from the enemy main to the enemy natural, the way out of the enemy main. Null while either
+     * is unknown or no ground path joins them.
+     */
+    public GroundPath getEnemyMainPathToNatural() {
+        StartingLocationPaths paths = mainEnemyBase == null ? null : startingLocationPaths.get(mainEnemyBase);
+        if (paths == null || enemyNaturalBase == null) {
+            return null;
+        }
+        return paths.getPath(enemyNaturalBase);
+    }
+
+    /**
      * Adds an enemy base to the tracking structures. The enemy main is set only by
      * {@link #assignEnemyMain}.
      * @param base The enemy base to add.

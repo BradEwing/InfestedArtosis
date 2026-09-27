@@ -8,8 +8,7 @@ public class Decisions {
     private BuildOrder opener;
 
     /**
-     * The strategies the learning file recorded as detected in the previous game against this opponent, joined by
-     * ';'. Empty when there was no previous game.
+     * Whether the learning file shows a Terran wall persisting across recent games against this opponent.
      */
-    private String lastGameDetectedStrategies = "";
+    private boolean terranWallPersists;
 }
