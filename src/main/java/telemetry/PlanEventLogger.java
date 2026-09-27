@@ -194,9 +194,9 @@ public class PlanEventLogger implements PlanEventSink {
      * unit band; priority is the new priority and age_frames how long the Drone had been queued.
      * <p>
      * hatchery_request_reason is the rule that asked for a Hatchery plan
-     * ({@link HatcheryRequestReason}), written on every ENQUEUE, TRANSITION, BLOCKED, STALE,
-     * PROMOTE, RECURRING_CANCEL and OPEN_AT_GAME_END row of that plan, so an EXCESS_HATCHERY cancel
-     * carries the reason its plan was requested for. It is blank on other plans and on a Hatchery
+     * ({@link HatcheryRequestReason}), written on every row of that plan, the builder and
+     * build-ahead rows included, so an EXCESS_HATCHERY cancel carries the reason its plan was
+     * requested for. It is blank on other plans and on a Hatchery
      * plan created outside the build order's expansion and macro hatchery paths.
      * <p>
      * BANK_SAMPLE rows are written every {@link #BANK_SAMPLE_INTERVAL_FRAMES} frames and leave
@@ -464,7 +464,7 @@ public class PlanEventLogger implements PlanEventSink {
             BuilderColumns builder = BuilderColumns.current(executorReading(holder));
             StringBuilder sb = planColumns(holder, EVENT_BUILD_AHEAD_YIELD, null, holder.getState(),
                     PlanBlocker.BUILD_AHEAD_SLOT_TAKEN, heldFrames, NO_STARVED_COUNT, builder.executor());
-            appendTrailing(sb, null, emergency, null, null, builderThreat(holder), null, builder);
+            appendPlanTrailing(sb, holder, null, emergency, builderThreat(holder), builder);
             buffer.add(sb.toString());
         } catch (Exception e) {
             disabled = true;
@@ -484,7 +484,7 @@ public class PlanEventLogger implements PlanEventSink {
         try {
             StringBuilder sb = planColumns(plan, EVENT_BLOCKER_DIVERT, null, plan.getState(),
                     PlanBlocker.NONE, 0, NO_STARVED_COUNT, executorReading(plan));
-            appendTrailing(sb, mineral, null, null, null, builderThreat(plan), null, BuilderColumns.BLANK);
+            appendPlanTrailing(sb, plan, mineral, null, builderThreat(plan), BuilderColumns.BLANK);
             buffer.add(sb.toString());
         } catch (Exception e) {
             disabled = true;
@@ -605,7 +605,7 @@ public class PlanEventLogger implements PlanEventSink {
             BuilderColumns builder = BuilderColumns.gateDecision(executorReading(plan), decision);
             StringBuilder sb = planColumns(plan, EVENT_BUILDER_DISPATCH_DECISION, null, plan.getState(),
                     PlanBlocker.NONE, 0, NO_STARVED_COUNT, builder.executor());
-            appendTrailing(sb, null, null, null, null, threat, null, builder);
+            appendPlanTrailing(sb, plan, null, null, threat, builder);
             buffer.add(sb.toString());
         } catch (Exception e) {
             disabled = true;
@@ -627,7 +627,7 @@ public class PlanEventLogger implements PlanEventSink {
             BuilderColumns columns = BuilderColumns.lost(reason, builder);
             StringBuilder sb = planColumns(plan, EVENT_BUILDER_LOST, null, plan.getState(),
                     PlanBlocker.NONE, 0, NO_STARVED_COUNT, columns.executor());
-            appendTrailing(sb, null, null, null, null, null, null, columns);
+            appendPlanTrailing(sb, plan, null, null, null, columns);
             buffer.add(sb.toString());
         } catch (Exception e) {
             disabled = true;
@@ -645,7 +645,7 @@ public class PlanEventLogger implements PlanEventSink {
             BuilderColumns columns = BuilderColumns.redispatch(reason, lost, taker);
             StringBuilder sb = planColumns(plan, EVENT_BUILDER_REDISPATCH, null, plan.getState(),
                     PlanBlocker.NONE, 0, NO_STARVED_COUNT, columns.executor());
-            appendTrailing(sb, null, null, null, null, builderThreat(plan), null, columns);
+            appendPlanTrailing(sb, plan, null, null, builderThreat(plan), columns);
             buffer.add(sb.toString());
         } catch (Exception e) {
             disabled = true;
@@ -800,7 +800,7 @@ public class PlanEventLogger implements PlanEventSink {
             BuilderColumns builder = BuilderColumns.current(executorReading(holder));
             StringBuilder sb = planColumns(holder, event, null, holder.getState(),
                     PlanBlocker.BUILD_AHEAD_SLOT_TAKEN, heldFrames, starvedBehind, builder.executor());
-            appendTrailing(sb, null, null, null, null, builderThreat(holder), null, builder);
+            appendPlanTrailing(sb, holder, null, null, builderThreat(holder), builder);
             buffer.add(sb.toString());
         } catch (Exception e) {
             disabled = true;
@@ -882,10 +882,18 @@ public class PlanEventLogger implements PlanEventSink {
                        PlanBlocker blocker, int blockedFrames, int starvedBehind) {
         StringBuilder sb = planColumns(plan, event, from, to, blocker, blockedFrames, starvedBehind,
                 executorReading(plan));
-        appendTrailingBeforeHatcheryRequest(sb, null, null, null, null, builderThreat(plan), null,
-                BuilderColumns.BLANK);
-        appendHatcheryRequest(sb, plan.getHatcheryRequestReason(), null);
+        appendPlanTrailing(sb, plan, null, null, builderThreat(plan), BuilderColumns.BLANK);
         return sb.toString();
+    }
+
+    /**
+     * The trailing columns of a row written for a plan, which carry the plan's hatchery request
+     * reason.
+     */
+    private void appendPlanTrailing(StringBuilder sb, Plan plan, Position blockerMineral, Plan yieldTo,
+                                    BuilderThreat builderThreat, BuilderColumns builder) {
+        appendTrailingBeforeHatcheryRequest(sb, blockerMineral, yieldTo, null, null, builderThreat, null, builder);
+        appendHatcheryRequest(sb, plan.getHatcheryRequestReason(), null);
     }
 
     /**
