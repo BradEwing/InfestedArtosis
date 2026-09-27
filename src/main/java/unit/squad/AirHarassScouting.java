@@ -30,6 +30,11 @@ public final class AirHarassScouting {
     static final int PROBE_HOLD_DISTANCE = 640;
     /** Tuning value: frames a probe may run without sighting the base's core before the harass gives up. */
     static final int PROBE_TIMEOUT_FRAMES = 720;
+    /**
+     * Tuning value: hit points the prober must fall below the most it has had during the probe for the probe to read
+     * the base as defended, a quarter of a Mutalisk's; a stray shot on the way in does not end the probe.
+     */
+    static final int PROBE_DAMAGE_HIT_POINTS = 30;
     /** Tuning value: pixels from a target base's center within which newly seen anti-air ends the harass. */
     static final int NEW_AA_ZONE = HarassHeatMap.RADIUS_TILES * 32;
     /** Tuning value: pixels past a threat's reach that still count as the flock standing at it. */
@@ -85,22 +90,19 @@ public final class AirHarassScouting {
     }
 
     /**
-     * Whether a base's core is in sight.
+     * Whether a base's core is in sight: any of its core points is visible to us.
      *
      * @param samples the base's core points
      * @param visible whether a point is visible to us
-     * @return true when there is at least one point and every one is visible
+     * @return true when at least one point is visible
      */
     public static boolean coreSighted(List<Position> samples, Predicate<Position> visible) {
-        if (samples.isEmpty()) {
-            return false;
-        }
         for (Position sample : samples) {
-            if (sample == null || !visible.test(sample)) {
-                return false;
+            if (sample != null && visible.test(sample)) {
+                return true;
             }
         }
-        return true;
+        return false;
     }
 
     /**
@@ -212,9 +214,10 @@ public final class AirHarassScouting {
     }
 
     /**
-     * What a probe has found, checked in order: the prober lost, or below the most hit points it has had during the
-     * probe, means the base is defended; a sighted base clears the strike when a tolerated strike point is left and
-     * means defended otherwise; a probe running {@link #PROBE_TIMEOUT_FRAMES} without a sighting times out.
+     * What a probe has found, checked in order: the prober lost, or {@link #PROBE_DAMAGE_HIT_POINTS} or more below the
+     * most hit points it has had during the probe, means the base is defended; a sighted base clears the strike when
+     * a tolerated strike point is left and means defended otherwise; a probe running {@link #PROBE_TIMEOUT_FRAMES}
+     * without a sighting times out.
      *
      * @param proberAlive true while the probing Mutalisk is still in the squad
      * @param proberHitPoints its hit points now
@@ -227,7 +230,7 @@ public final class AirHarassScouting {
      */
     public static ProbeOutcome probeOutcome(boolean proberAlive, int proberHitPoints, int proberPeakHitPoints,
                                             boolean sighted, boolean toleratedStrike, int now, int probeStartFrame) {
-        if (!proberAlive || proberHitPoints < proberPeakHitPoints) {
+        if (!proberAlive || proberPeakHitPoints - proberHitPoints >= PROBE_DAMAGE_HIT_POINTS) {
             return ProbeOutcome.DEFENDED;
         }
         if (sighted) {

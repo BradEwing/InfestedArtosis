@@ -87,12 +87,14 @@ class AirHarassScoutingTest {
     }
 
     @Test
-    void theCoreIsSightedOnlyWhenEveryPointIsVisible() {
+    void theCoreIsSightedWhenAnyPointIsVisible() {
         Position resources = new Position(2112, 3950);
         List<Position> core = Arrays.asList(BASE, resources);
 
         assertTrue(AirHarassScouting.coreSighted(core, point -> true));
-        assertFalse(AirHarassScouting.coreSighted(core, point -> point.equals(BASE)));
+        assertTrue(AirHarassScouting.coreSighted(core, point -> point.equals(BASE)));
+        assertTrue(AirHarassScouting.coreSighted(core, point -> point.equals(resources)));
+        assertFalse(AirHarassScouting.coreSighted(core, point -> false));
         assertFalse(AirHarassScouting.coreSighted(Collections.emptyList(), point -> true));
     }
 
@@ -131,11 +133,21 @@ class AirHarassScoutingTest {
     }
 
     @Test
-    void aProberLostOrHitMeansTheBaseIsDefended() {
+    void aProberLostOrHurtMeansTheBaseIsDefended() {
+        int hurt = 120 - AirHarassScouting.PROBE_DAMAGE_HIT_POINTS;
         assertEquals(ProbeOutcome.DEFENDED,
                 AirHarassScouting.probeOutcome(false, 0, 120, false, true, NOW, NOW - 24));
         assertEquals(ProbeOutcome.DEFENDED,
-                AirHarassScouting.probeOutcome(true, 111, 120, true, true, NOW, NOW - 24));
+                AirHarassScouting.probeOutcome(true, hurt, 120, true, true, NOW, NOW - 24));
+    }
+
+    @Test
+    void aStrayHitOnTheProberDoesNotEndTheProbe() {
+        int grazed = 120 - AirHarassScouting.PROBE_DAMAGE_HIT_POINTS + 1;
+        assertEquals(ProbeOutcome.CLEAR,
+                AirHarassScouting.probeOutcome(true, grazed, 120, true, true, NOW, NOW - 24));
+        assertEquals(ProbeOutcome.WAIT,
+                AirHarassScouting.probeOutcome(true, grazed, 120, false, true, NOW, NOW - 24));
     }
 
     @Test
@@ -258,16 +270,17 @@ class AirHarassScoutingTest {
     }
 
     @Test
-    void aHitAfterRegenerationStillMeansTheBaseIsDefended() {
+    void damageIsMeasuredFromTheRegeneratedPeak() {
         AirHarassState state = new AirHarassState(NOW, 500);
         state.probe(null, STRIKE, 265, 100, new Position(2112, 3887), new Position(2112, 3184), NOW);
         state.observeProberHitPoints(104);
-        state.observeProberHitPoints(102);
+        int hurt = 104 - AirHarassScouting.PROBE_DAMAGE_HIT_POINTS;
+        state.observeProberHitPoints(hurt);
 
         assertEquals(104, state.getProberPeakHitPoints());
-        assertEquals(ProbeOutcome.DEFENDED, AirHarassScouting.probeOutcome(true, 102,
+        assertEquals(ProbeOutcome.DEFENDED, AirHarassScouting.probeOutcome(true, hurt,
                 state.getProberPeakHitPoints(), false, true, NOW + 24, NOW));
-        assertEquals(ProbeOutcome.WAIT, AirHarassScouting.probeOutcome(true, 104,
+        assertEquals(ProbeOutcome.WAIT, AirHarassScouting.probeOutcome(true, hurt + 1,
                 state.getProberPeakHitPoints(), false, true, NOW + 24, NOW));
     }
 
