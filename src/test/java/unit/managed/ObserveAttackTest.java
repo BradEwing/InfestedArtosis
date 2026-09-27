@@ -7,6 +7,8 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ObserveAttackTest {
@@ -129,6 +131,43 @@ class ObserveAttackTest {
         gone.observeAttack(100);
 
         assertEquals(0, gone.getDamageDealt());
+    }
+
+    @Test
+    void theWeaponTargetIsTheUnitsTargetThenItsOrderTarget() {
+        Unit unit = units.unit(UnitType.Zerg_Zergling);
+        Unit marine = units.unit(UnitType.Terran_Marine);
+        Unit medic = units.unit(UnitType.Terran_Medic);
+        ManagedUnit ling = zergling(unit);
+
+        assertNull(ling.weaponTarget());
+        units.setTargets(unit, null, medic);
+        assertSame(medic, ling.weaponTarget());
+        units.setTargets(unit, marine, medic);
+        assertSame(marine, ling.weaponTarget());
+    }
+
+    @Test
+    void aHitIsPricedAgainstTheTargetTheServerReports() {
+        Unit unit = units.unit(UnitType.Zerg_Zergling);
+        Unit marine = units.unit(UnitType.Terran_Marine);
+        Unit medic = units.unit(UnitType.Terran_Medic);
+        units.setExists(marine, true);
+        units.setExists(medic, true);
+        ManagedUnit ling = new Zergling(units.game(), unit, UnitRole.FIGHT, null) {
+            @Override
+            protected int damagePerHit(Unit hit) {
+                return hit == marine ? DAMAGE_PER_HIT : 1;
+            }
+        };
+        units.setTargets(unit, marine, medic);
+        units.setWeaponCooldowns(unit, 0, 0);
+        ling.observeAttack(99);
+
+        units.setWeaponCooldowns(unit, 8, 0);
+        ling.observeAttack(100);
+
+        assertEquals(DAMAGE_PER_HIT, ling.getDamageDealt());
     }
 
     @Test
