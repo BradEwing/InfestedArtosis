@@ -1,6 +1,7 @@
 package unit.managed;
 
 import bwapi.Game;
+import bwapi.Order;
 import bwapi.Position;
 import bwapi.TilePosition;
 import bwapi.Unit;
@@ -15,6 +16,7 @@ import macro.plan.Plan;
 import macro.plan.PlanState;
 import telemetry.PlanEvents;
 import util.Filter;
+import util.MeleeOverflowGate;
 import util.Vec2;
 
 import java.util.List;
@@ -24,6 +26,18 @@ import java.util.stream.Collectors;
 public class ManagedUnit {
     protected static int THREE_SECONDS = 72;
     public static final int MELEE_MARGIN = 16;
+    /**
+     * How far, in pixels, an attack-move already under way may point from its destination before it is issued again,
+     * and how far the fight target may move from where the destination was measured before it is measured again.
+     */
+    static final int ATTACK_MOVE_REISSUE_DISTANCE = 64;
+    /**
+     * How far, in pixels, past the fight target along the unit's approach an overflow attack-move is aimed. Three
+     * tiles clears the ring of melee attackers already on the target, so the unit walks through or around the stack
+     * and its auto-acquire finds whatever is beside or behind the target, instead of stopping at the back of the
+     * stack. A judgment call, not measured.
+     */
+    static final int OVERFLOW_PAST_DISTANCE = 96;
     static final int OUTRANGED_EVADE_FRAMES = 12;
     protected Game game;
     protected GameMap gameMap;
@@ -60,6 +74,17 @@ public class ManagedUnit {
     @Setter @Getter
     protected Unit defendTarget;
     public Unit fightTarget;
+    /**
+     * True when the fight target is saturated with melee attackers and the unit attack-moves past it
+     * instead of attacking it, so the game's auto-acquire picks what it hits.
+     */
+    @Getter
+    private boolean attackMoving;
+    @Getter
+    private final MeleeOverflowGate overflowGate = new MeleeOverflowGate();
+    private Position attackMoveDestination;
+    private Position attackMoveAnchor;
+    private boolean attackMoveIssued;
     @Setter
     protected Unit gatherTarget;
 
@@ -82,6 +107,14 @@ public class ManagedUnit {
     @Getter
     private int hitPointsBefore = -1;
     private int hitFrame = -1;
+    @Getter
+    private int attacksStarted;
+    @Getter
+    private int lastAttackStartFrame = -1;
+    @Getter
+    private int damageDealt;
+    private int lastGroundWeaponCooldown = -1;
+    private int lastAirWeaponCooldown = -1;
 
     private Position evadePosition;
     private int evadeFrame = -1;
@@ -716,6 +749,58 @@ public class ManagedUnit {
     }
 
     /**
+     * Counts an attack when the unit is starting one on this frame, and remembers the frame. Read every frame, so
+     * {@link #getAttacksStarted} is the number of attacks the unit has started since it was first managed.
+     *
+     * <p>Separately, adds to {@link #getDamageDealt} each time a weapon fires, seen as its cooldown rising from the
+     * previous frame, the damage one hit of the unit's weapon does to the unit's target. This does not read the
+     * server's starting-attack flag, so it cross-checks {@link #getAttacksStarted}.
+     *
+     * @param frame current frame
+     */
+    public void observeAttack(int frame) {
+        if (unit.isStartingAttack()) {
+            attacksStarted++;
+            lastAttackStartFrame = frame;
+        }
+        int groundCooldown = unit.getGroundWeaponCooldown();
+        int airCooldown = unit.getAirWeaponCooldown();
+        if (weaponFired(lastGroundWeaponCooldown, groundCooldown) || weaponFired(lastAirWeaponCooldown, airCooldown)) {
+            Unit target = weaponTarget();
+            damageDealt += target != null && target.exists() ? damagePerHit(target) : 0;
+        }
+        lastGroundWeaponCooldown = groundCooldown;
+        lastAirWeaponCooldown = airCooldown;
+    }
+
+    /**
+     * Whether a weapon fired since the previous frame, read as its cooldown rising, the same rise the BWAPI server
+     * tests when it sets the starting-attack flag.
+     *
+     * @param previousCooldown the cooldown read on the previous frame, or -1 before the first read
+     * @param cooldown the cooldown read on this frame
+     */
+    static boolean weaponFired(int previousCooldown, int cooldown) {
+        return previousCooldown >= 0 && cooldown > previousCooldown;
+    }
+
+    /**
+     * @return the unit the unit's weapon is aimed at, or the target of its order when it has none, or null
+     */
+    protected Unit weaponTarget() {
+        Unit target = unit.getTarget();
+        return target != null ? target : unit.getOrderTarget();
+    }
+
+    /**
+     * @return the damage BWAPI prices one hit of this unit's weapon at against the target, with both players'
+     *     upgrades
+     */
+    protected int damagePerHit(Unit target) {
+        return game.getDamageFrom(unit.getType(), target.getType(), unit.getPlayer(), target.getPlayer());
+    }
+
+    /**
      * @param frame current frame
      * @return true when the unit lost hit points on the frame
      */
@@ -917,7 +1002,9 @@ public class ManagedUnit {
         setUnready(11);
 
         if (fightTarget != null) {
-            if (canKite(fightTarget)) {
+            if (attackMoving) {
+                attackMoveToward(fightTarget);
+            } else if (canKite(fightTarget)) {
                 kiteEnemy(fightTarget);
             } else {
                 unit.attack(fightTarget);
@@ -1021,7 +1108,24 @@ public class ManagedUnit {
     protected void defend() {}
 
     public void setFightTarget(Unit newFightTarget) {
+        setFightTarget(newFightTarget, false);
+    }
+
+    /**
+     * Sets the fight target and whether the unit attack-moves past it rather than attacking it.
+     *
+     * @param newFightTarget the target, or null for none
+     * @param attackMove true to attack-move toward the target instead of attacking it
+     */
+    public void setFightTarget(Unit newFightTarget, boolean attackMove) {
+        boolean sameTarget = newFightTarget != null && newFightTarget.equals(fightTarget);
         fightTarget = newFightTarget;
+        attackMoving = attackMove && newFightTarget != null;
+        if (!attackMoving || !sameTarget) {
+            attackMoveDestination = null;
+            attackMoveAnchor = null;
+            attackMoveIssued = false;
+        }
         if (newFightTarget == null) {
             movementTargetPosition = null;
             return;
@@ -1032,6 +1136,97 @@ public class ManagedUnit {
         } else {
             movementTargetPosition = null;
         }
+    }
+
+    /**
+     * Attack-moves to a point past the target, unless the unit is attacking, is on an attack it acquired itself
+     * (see {@link #autoAcquired}), or is already attack-moving to within {@link #ATTACK_MOVE_REISSUE_DISTANCE} of that
+     * point. The point is kept, so it does not swing round as the unit closes on or passes the target. It is dropped
+     * for a new target, and shifted with the target once the target has moved more than
+     * {@link #ATTACK_MOVE_REISSUE_DISTANCE} from where it was measured (see {@link #overflowOffset}).
+     */
+    protected void attackMoveToward(Unit target) {
+        Position anchor = target.getPosition();
+        if (attackMoveDestination == null || anchor.getDistance(attackMoveAnchor) > ATTACK_MOVE_REISSUE_DISTANCE) {
+            Vec2 offset = overflowOffset(unit.getPosition(), anchor, attackMoveAnchor, attackMoveDestination);
+            attackMoveAnchor = anchor;
+            attackMoveDestination = offset.clampToMap(game, anchor);
+        }
+        if (autoAcquired(unit.getOrder(), unit.getOrderTarget(), target, attackMoveIssued)) {
+            return;
+        }
+        if (needsAttackMove(unit.getOrder(), unit.getOrderTargetPosition(), unit.isAttacking(),
+                attackMoveDestination)) {
+            unit.attack(attackMoveDestination);
+            attackMoveIssued = true;
+        }
+    }
+
+    /**
+     * Whether an attack-moving unit is on an attack it acquired on its own, which is left to run even while the unit
+     * closes on that enemy between swings. Once the attack-move has been issued, any order to attack a unit is the
+     * game's acquisition, the saturated fight target included: the unit reached it in the game's own time, so it is
+     * not cancelled. Before then, an order to attack the fight target is the direct attack the unit held before it
+     * entered overflow, and is replaced by the attack-move; an order to attack any other unit is still left to run.
+     *
+     * @param order the unit's current order
+     * @param orderTarget the unit its order targets, or null
+     * @param fightTarget the saturated fight target
+     * @param attackMoveIssued true once the attack-move toward the current destination has been issued
+     */
+    static boolean autoAcquired(Order order, Unit orderTarget, Unit fightTarget, boolean attackMoveIssued) {
+        return order == Order.AttackUnit && orderTarget != null
+                && (attackMoveIssued || !orderTarget.equals(fightTarget));
+    }
+
+    /**
+     * The offset from the target to the point an overflow attack-move is aimed at. Measured the first time, it is
+     * {@link #pastTarget}. Measured again after the target moved, it keeps the direction and length it had from the
+     * previous anchor, so a unit that has already passed a moving target is not sent back through it.
+     *
+     * @param attacker the attacker's position
+     * @param target the target's position
+     * @param previousAnchor where the target stood when the destination was last measured, or null
+     * @param previousDestination the destination last measured, or null
+     * @return the offset to add to the target's position
+     */
+    static Vec2 overflowOffset(Position attacker, Position target, Position previousAnchor,
+                               Position previousDestination) {
+        if (previousAnchor == null || previousDestination == null) {
+            return pastTarget(attacker, target);
+        }
+        Vec2 kept = Vec2.between(previousAnchor, previousDestination);
+        return kept.length() == 0 ? pastTarget(attacker, target) : kept;
+    }
+
+    /**
+     * The offset from the target to the point an overflow attack-move is aimed at: {@link #OVERFLOW_PAST_DISTANCE}
+     * further along the line from the attacker through the target, or none when the two stand on one point.
+     *
+     * @param attacker the attacker's position
+     * @param target the target's position
+     * @return the offset to add to the target's position
+     */
+    static Vec2 pastTarget(Position attacker, Position target) {
+        return Vec2.between(attacker, target).normalizeToLength(OVERFLOW_PAST_DISTANCE);
+    }
+
+    /**
+     * Whether an attack-move toward the destination must be issued: not while the unit is attacking, and not while
+     * its current attack-move already points within {@link #ATTACK_MOVE_REISSUE_DISTANCE} of the destination.
+     *
+     * @param order the unit's current order
+     * @param orderTargetPosition where the current order points, or null
+     * @param attacking true when the unit is attacking
+     * @param destination where the attack-move is aimed
+     */
+    static boolean needsAttackMove(Order order, Position orderTargetPosition, boolean attacking,
+                                   Position destination) {
+        if (attacking) {
+            return false;
+        }
+        return order != Order.AttackMove || orderTargetPosition == null
+                || orderTargetPosition.getDistance(destination) > ATTACK_MOVE_REISSUE_DISTANCE;
     }
 
     protected int weaponRange(Unit enemy) {
