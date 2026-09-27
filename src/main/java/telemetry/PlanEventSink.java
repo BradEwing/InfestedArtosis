@@ -174,9 +174,23 @@ public interface PlanEventSink {
      * @param base the tile location of the base the geyser belongs to, or null when it belongs to none
      * @param initialResources the gas the geyser started the game with
      * @param extractorCompletedFrame the frame the Extractor on it completed
+     * @param firstExtractorCompletedFrame the frame our first Extractor on the geyser completed, earlier than
+     *     extractorCompletedFrame when the Extractor was rebuilt
      */
     default void onGeyserDepleted(TilePosition geyser, TilePosition base, int initialResources,
-                                  int extractorCompletedFrame) {
+                                  int extractorCompletedFrame, int firstExtractorCompletedFrame) {
+    }
+
+    /**
+     * A base became ours.
+     *
+     * @param base the base's tile location
+     * @param baseMineralPatches the mineral patches the resource ledger holds for the base
+     * @param mapMineralPatches the mineral patches the map assigns the base
+     * @param remainingMineralPatches the mineral patches the ledger counts at every base we hold, this one included
+     */
+    default void onBaseClaimed(TilePosition base, int baseMineralPatches, int mapMineralPatches,
+                               int remainingMineralPatches) {
     }
 
     /**

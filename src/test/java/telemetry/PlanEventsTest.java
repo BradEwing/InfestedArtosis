@@ -33,6 +33,7 @@ class PlanEventsTest {
     private final List<Position> divertMinerals = new ArrayList<>();
     private final List<String> hiveTechGates = new ArrayList<>();
     private final List<String> depletedGeysers = new ArrayList<>();
+    private final List<String> claimedBases = new ArrayList<>();
 
     private PlanEventSink recorder() {
         return new PlanEventSink() {
@@ -76,8 +77,16 @@ class PlanEventsTest {
 
             @Override
             public void onGeyserDepleted(TilePosition geyser, TilePosition base, int initialResources,
-                                         int extractorCompletedFrame) {
-                depletedGeysers.add(geyser + ":" + base + ":" + initialResources + ":" + extractorCompletedFrame);
+                                         int extractorCompletedFrame, int firstExtractorCompletedFrame) {
+                depletedGeysers.add(geyser + ":" + base + ":" + initialResources + ":" + extractorCompletedFrame
+                        + ":" + firstExtractorCompletedFrame);
+            }
+
+            @Override
+            public void onBaseClaimed(TilePosition base, int baseMineralPatches, int mapMineralPatches,
+                                      int remainingMineralPatches) {
+                claimedBases.add(base + ":" + baseMineralPatches + ":" + mapMineralPatches + ":"
+                        + remainingMineralPatches);
             }
         };
     }
@@ -105,10 +114,19 @@ class PlanEventsTest {
     void geyserDepletedReachesTheSinkWithTheGeyserBaseAndStartingGas() {
         PlanEvents.register(recorder());
 
-        PlanEvents.geyserDepleted(new TilePosition(10, 20), new TilePosition(12, 24), 5000, 1800);
+        PlanEvents.geyserDepleted(new TilePosition(10, 20), new TilePosition(12, 24), 5000, 1800, 1200);
 
         assertEquals(Collections.singletonList(new TilePosition(10, 20) + ":" + new TilePosition(12, 24)
-                + ":5000:1800"), depletedGeysers);
+                + ":5000:1800:1200"), depletedGeysers);
+    }
+
+    @Test
+    void baseClaimedReachesTheSinkWithTheLedgerAndMapPatchCounts() {
+        PlanEvents.register(recorder());
+
+        PlanEvents.baseClaimed(new TilePosition(30, 12), 8, 8, 17);
+
+        assertEquals(Collections.singletonList(new TilePosition(30, 12) + ":8:8:17"), claimedBases);
     }
 
     @Test
