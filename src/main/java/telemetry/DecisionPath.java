@@ -176,5 +176,12 @@ public enum DecisionPath {
      * recorded before the LOCK_SUPPRESSED row is written, so that row names AIR_COMMITMENT in place of the refused
      * SIM_RETREAT request and is told apart from a fight lock suppression.
      */
-    AIR_COMMITMENT
+    AIR_COMMITMENT,
+
+    /**
+     * An air squad held in RETREAT by its retreat lock read ENGAGE at twice the engage threshold over a fight
+     * hysteresis window, and the lock was dropped so the verdict could act. The FIGHT episode it opens arms no
+     * engage commitment.
+     */
+    AIR_RETREAT_LOCK_YIELD
 }

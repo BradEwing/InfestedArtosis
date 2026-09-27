@@ -1461,8 +1461,10 @@ public class SquadManager {
      *
      * <p>An air squad commits to a fight on a sim-backed ENGAGE: the commitment holds it in FIGHT through RETREAT
      * verdicts until it expires or the flock loses enough hit points (see {@link AirSquad#engageCommitmentHolds}).
-     * An air squad's retreat lock yields to an ENGAGE of twice the threshold (see
-     * {@link #retreatLockYieldsToEngage}).
+     * A RETREAT verdict far below the threshold, or one that sampled static anti-air, is let through (see
+     * {@link #commitmentMayHold}). An air squad's retreat lock yields to an ENGAGE of twice the threshold once it
+     * has held over a fight hysteresis window (see {@link #retreatLockYieldsToEngage}), and the FIGHT episode that
+     * yield opens arms no commitment.
      *
      * @param squad fight squad to tick
      */
@@ -1539,20 +1541,21 @@ public class SquadManager {
         double ratio = snapshot != null ? snapshot.getOverallRatio() : 0;
         double engageThreshold = snapshot != null ? snapshot.getEngageThreshold() : 0;
 
-        if (retreatLocked && retreatLockYieldsToEngage(squad.isAirSquad(), result, enemyMeasured, ratio,
-                engageThreshold)) {
-            ((AirSquad) squad).releaseRetreatLock();
-            retreatLocked = false;
-        }
-
         if (squad.getStatus() == SquadStatus.RETREAT && retreatLocked) {
             boolean attritionLock = squad.isAttritionRetreatLock()
                     && ContainmentCollapse.appliesAgainst(gameState.getOpponentRace());
-            if (squad.strongEngagePersisted(strongEngageBreaksRetreatLock(attritionLock, result, enemyMeasured, ratio,
-                    engageThreshold), now)) {
+            boolean airYield = retreatLockYieldsToEngage(squad.isAirSquad(), result, enemyMeasured, ratio,
+                    engageThreshold);
+            if (squad.strongEngagePersisted(airYield || strongEngageBreaksRetreatLock(attritionLock, result,
+                    enemyMeasured, ratio, engageThreshold), now)) {
                 squad.clearRetreatLock();
                 retreatLocked = false;
-                SquadDecisions.pathTaken(squad, DecisionPath.RETREAT_LOCK_BROKEN);
+                if (airYield) {
+                    ((AirSquad) squad).barEngageCommitment();
+                }
+                SquadDecisions.pathTaken(squad, airYield
+                        ? DecisionPath.AIR_RETREAT_LOCK_YIELD
+                        : DecisionPath.RETREAT_LOCK_BROKEN);
             } else {
                 SquadDecisions.lockSuppressed(squad, SquadLock.RETREAT);
                 SquadDecisions.pathTaken(squad, DecisionPath.RETREAT_LOCK);
@@ -1566,7 +1569,8 @@ public class SquadManager {
             assignFightTargets(squad, collapseFighters(managedFighters, squad.getCollapse()), false);
             return;
         }
-        if (commitmentMayHold(squad.getStatus(), result, squad.isAirSquad())
+        if (commitmentMayHold(squad.getStatus(), result, squad.isAirSquad(), ratio, engageThreshold,
+                samplesStaticAntiAir(snapshot))
                 && ((AirSquad) squad).engageCommitmentHolds(now, flockHitPoints(managedFighters))) {
             SquadDecisions.pathTaken(squad, DecisionPath.AIR_COMMITMENT);
             SquadDecisions.lockSuppressed(squad, SquadLock.FIGHT);
@@ -1685,19 +1689,21 @@ public class SquadManager {
     }
 
     /**
-     * Whether a strong ENGAGE read breaks an air squad's retreat lock.
+     * Whether this frame's verdict is a strong enough ENGAGE to count toward breaking an air squad's retreat lock.
      *
      * <p>An air squad's retreat lock yields to an ENGAGE measured against a real enemy at
      * {@link #RETREAT_LOCK_ENGAGE_BREAK_MULTIPLIER} times the engage threshold or more, so a flock that
-     * fell back on a weak read turns around on a decisive one instead of waiting out the lock. Ground
-     * squads keep their retreat lock, and a verdict with no threshold (no snapshot) never breaks it.
+     * fell back on a weak read turns around on a decisive one instead of waiting out the lock. The lock
+     * breaks only once such reads have held over a fight hysteresis window, see {@link Squad#strongEngagePersisted},
+     * so a single spiking read does not break it. Ground squads keep their retreat lock, and a verdict with no
+     * threshold (no snapshot) never breaks it.
      *
      * @param airSquad whether the squad is an air squad
      * @param result this frame's combat sim verdict
      * @param enemyMeasured whether the sim measured a real enemy this frame
      * @param ratio the sim's overall strength ratio this frame
      * @param engageThreshold the engage threshold the sim judged this frame's ratio against
-     * @return true if the retreat lock should be released this frame
+     * @return true if this frame's read counts toward breaking the retreat lock
      */
     static boolean retreatLockYieldsToEngage(boolean airSquad, CombatSimulator.CombatResult result,
                                              boolean enemyMeasured, double ratio, double engageThreshold) {
@@ -1707,16 +1713,41 @@ public class SquadManager {
 
     /**
      * Whether this frame is one an air squad's engage commitment is consulted on: an air squad in FIGHT given a
-     * RETREAT verdict. The commitment itself decides whether it still holds (see
+     * RETREAT verdict that does not release the commitment outright (see
+     * {@link AirSquad#retreatReleasesCommitment}). The commitment itself decides whether it still holds (see
      * {@link AirSquad#engageCommitmentHolds}).
      *
      * @param status the squad's status before this frame's verdict
      * @param result this frame's combat sim verdict
      * @param airSquad whether the squad is an air squad
+     * @param ratio the sim's overall strength ratio this frame
+     * @param engageThreshold the engage threshold the sim judged this frame's ratio against
+     * @param staticAntiAir whether this frame's verdict sampled a building that can attack air
      * @return true if the commitment should be asked to hold the squad in FIGHT
      */
-    static boolean commitmentMayHold(SquadStatus status, CombatSimulator.CombatResult result, boolean airSquad) {
-        return airSquad && status == SquadStatus.FIGHT && result == CombatSimulator.CombatResult.RETREAT;
+    static boolean commitmentMayHold(SquadStatus status, CombatSimulator.CombatResult result, boolean airSquad,
+                                     double ratio, double engageThreshold, boolean staticAntiAir) {
+        return airSquad && status == SquadStatus.FIGHT && result == CombatSimulator.CombatResult.RETREAT
+                && !AirSquad.retreatReleasesCommitment(ratio, engageThreshold, staticAntiAir);
+    }
+
+    /**
+     * Whether a verdict sampled static anti-air. An air squad's snapshot records each enemy at its anti-air
+     * strength, so a building entry with strength above zero is a building that can shoot the flock.
+     *
+     * @param snapshot the air squad's snapshot for this frame, or null when the sim left none
+     * @return true if the snapshot holds a building with anti-air strength
+     */
+    static boolean samplesStaticAntiAir(HorizonCombatSimulator.DebugSnapshot snapshot) {
+        if (snapshot == null) {
+            return false;
+        }
+        for (HorizonCombatSimulator.UnitDebugEntry entry : snapshot.getEnemyUnits()) {
+            if (entry.getType().isBuilding() && entry.getStrength() > 0) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

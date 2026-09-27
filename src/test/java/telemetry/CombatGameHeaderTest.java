@@ -9,6 +9,6 @@ class CombatGameHeaderTest {
     @Test
     void goliathKillsAndMutaliskLossesAreAppendedAfterTheExistingColumns() {
         assertTrue(TelemetryLog.GAME_HEADER.endsWith(
-                ",close_cooldown_frames,goliaths_killed,mutalisks_lost"));
+                ",close_cooldown_frames,goliaths_killed,mutalisks_lost,goliaths_killed_by_mutalisks_by_12m"));
     }
 }

@@ -1,6 +1,9 @@
 package unit.squad;
 
+import bwapi.Position;
+import bwapi.UnitType;
 import org.junit.jupiter.api.Test;
+import unit.squad.horizon.HorizonCombatSimulator;
 
 import java.util.Arrays;
 
@@ -28,7 +31,7 @@ class AirSquadCommitmentTest {
         AirSquad squad = committedFlock();
 
         assertTrue(squad.engageCommitmentHolds(ARMED + 36, FLOCK_HP));
-        assertTrue(squad.engageCommitmentHolds(ARMED + AirSquad.ENGAGE_COMMITMENT_FRAMES - 1, 1000));
+        assertTrue(squad.engageCommitmentHolds(ARMED + AirSquad.ENGAGE_COMMITMENT_FRAMES - 1, 1100));
     }
 
     @Test
@@ -155,19 +158,112 @@ class AirSquadCommitmentTest {
 
     @Test
     void theCommitmentIsConsultedOnlyForAnAirSquadInFightGivenARetreat() {
-        assertTrue(SquadManager.commitmentMayHold(SquadStatus.FIGHT, RETREAT, true));
-        assertFalse(SquadManager.commitmentMayHold(SquadStatus.FIGHT, RETREAT, false));
-        assertFalse(SquadManager.commitmentMayHold(SquadStatus.FIGHT, ENGAGE, true));
-        assertFalse(SquadManager.commitmentMayHold(SquadStatus.FIGHT, ADVANCE, true));
-        assertFalse(SquadManager.commitmentMayHold(SquadStatus.RETREAT, RETREAT, true));
+        double nearMiss = ENGAGE_THRESHOLD * 0.95;
+
+        assertTrue(SquadManager.commitmentMayHold(SquadStatus.FIGHT, RETREAT, true, nearMiss, ENGAGE_THRESHOLD, false));
+        assertFalse(SquadManager.commitmentMayHold(SquadStatus.FIGHT, RETREAT, false, nearMiss, ENGAGE_THRESHOLD,
+                false));
+        assertFalse(SquadManager.commitmentMayHold(SquadStatus.FIGHT, ENGAGE, true, nearMiss, ENGAGE_THRESHOLD, false));
+        assertFalse(SquadManager.commitmentMayHold(SquadStatus.FIGHT, ADVANCE, true, nearMiss, ENGAGE_THRESHOLD,
+                false));
+        assertFalse(SquadManager.commitmentMayHold(SquadStatus.RETREAT, RETREAT, true, nearMiss, ENGAGE_THRESHOLD,
+                false));
     }
 
     @Test
-    void releasingTheRetreatLockUnlocksTheSquad() {
+    void aRetreatReadFarBelowTheThresholdIsLetThrough() {
+        double floor = ENGAGE_THRESHOLD * AirSquad.COMMITMENT_RELEASE_RATIO;
+
+        assertTrue(SquadManager.commitmentMayHold(SquadStatus.FIGHT, RETREAT, true, floor, ENGAGE_THRESHOLD, false));
+        assertFalse(SquadManager.commitmentMayHold(SquadStatus.FIGHT, RETREAT, true, floor - 0.01, ENGAGE_THRESHOLD,
+                false));
+        assertFalse(SquadManager.commitmentMayHold(SquadStatus.FIGHT, RETREAT, true, 1.13, ENGAGE_THRESHOLD, false));
+    }
+
+    @Test
+    void aRetreatReadThatSampledStaticAntiAirIsLetThrough() {
+        assertFalse(SquadManager.commitmentMayHold(SquadStatus.FIGHT, RETREAT, true, ENGAGE_THRESHOLD * 0.95,
+                ENGAGE_THRESHOLD, true));
+    }
+
+    @Test
+    void aRetreatReadWithNoThresholdIsLetThrough() {
+        assertTrue(AirSquad.retreatReleasesCommitment(1.0, 0, false));
+    }
+
+    @Test
+    void aBuildingWithAntiAirStrengthCountsAsStaticAntiAir() {
+        assertTrue(SquadManager.samplesStaticAntiAir(snapshotOf(entry(UnitType.Terran_Goliath, 3.0),
+                entry(UnitType.Terran_Missile_Turret, 2.0))));
+        assertTrue(SquadManager.samplesStaticAntiAir(snapshotOf(entry(UnitType.Terran_Bunker, 1.5))));
+    }
+
+    @Test
+    void mobileAntiAirAndUnarmedBuildingsAreNotStaticAntiAir() {
+        assertFalse(SquadManager.samplesStaticAntiAir(snapshotOf(entry(UnitType.Terran_Goliath, 3.0),
+                entry(UnitType.Terran_Supply_Depot, 0), entry(UnitType.Terran_Bunker, 0))));
+        assertFalse(SquadManager.samplesStaticAntiAir(null));
+    }
+
+    @Test
+    void aSingleStrongEngageReadDoesNotBreakTheAirRetreatLock() {
         AirSquad squad = new AirSquad();
         squad.startRetreatLock(ARMED);
-        squad.releaseRetreatLock();
 
-        assertFalse(squad.isRetreatLocked(ARMED + 1));
+        assertFalse(squad.strongEngagePersisted(true, ARMED + 1));
+        assertFalse(squad.strongEngagePersisted(false, ARMED + 2));
+        assertFalse(squad.strongEngagePersisted(true, ARMED + 13));
+        assertFalse(squad.strongEngagePersisted(true, ARMED + 24));
+        assertTrue(squad.strongEngagePersisted(true, ARMED + 25));
+    }
+
+    @Test
+    void aYieldBarsTheCommitmentForTheFightItOpens() {
+        AirSquad squad = new AirSquad();
+        squad.setStatus(SquadStatus.RETREAT);
+        squad.barEngageCommitment();
+        squad.setStatus(SquadStatus.FIGHT);
+        squad.armEngageCommitment(ARMED, FLOCK_HP);
+
+        assertFalse(squad.engageCommitmentHolds(ARMED + 10, FLOCK_HP));
+
+        squad.armEngageCommitment(ARMED + 20, FLOCK_HP);
+        assertFalse(squad.engageCommitmentHolds(ARMED + 30, FLOCK_HP));
+    }
+
+    @Test
+    void leavingFightLiftsTheBar() {
+        AirSquad squad = new AirSquad();
+        squad.setStatus(SquadStatus.FIGHT);
+        squad.barEngageCommitment();
+        squad.setStatus(SquadStatus.RETREAT);
+        squad.setStatus(SquadStatus.FIGHT);
+        squad.armEngageCommitment(ARMED, FLOCK_HP);
+
+        assertTrue(squad.engageCommitmentHolds(ARMED + 10, FLOCK_HP));
+    }
+
+    @Test
+    void aMergedFlockIsBarredWhenAnySourceWas() {
+        AirSquad barred = new AirSquad();
+        barred.setStatus(SquadStatus.FIGHT);
+        barred.barEngageCommitment();
+
+        AirSquad merged = new AirSquad();
+        merged.inheritStateFrom(Arrays.<Squad>asList(barred, new AirSquad()));
+        merged.setStatus(SquadStatus.FIGHT);
+        merged.armEngageCommitment(ARMED, FLOCK_HP);
+
+        assertFalse(merged.engageCommitmentHolds(ARMED + 10, FLOCK_HP));
+    }
+
+    private static HorizonCombatSimulator.UnitDebugEntry entry(UnitType type, double strength) {
+        return new HorizonCombatSimulator.UnitDebugEntry(new Position(0, 0), type, strength, false, false);
+    }
+
+    private static HorizonCombatSimulator.DebugSnapshot snapshotOf(HorizonCombatSimulator.UnitDebugEntry... entries) {
+        HorizonCombatSimulator.DebugSnapshot snapshot = new HorizonCombatSimulator.DebugSnapshot();
+        snapshot.getEnemyUnits().addAll(Arrays.asList(entries));
+        return snapshot;
     }
 }
