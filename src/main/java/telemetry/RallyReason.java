@@ -54,5 +54,10 @@ public enum RallyReason {
      * No rally entry has been recorded for this squad. A squad created in RALLY carries this until
      * the first frame something rallies it.
      */
-    NONE
+    NONE,
+
+    /**
+     * An air squad flying to reinforce an active air squad along a path outside known anti-air.
+     */
+    AIR_REINFORCE
 }

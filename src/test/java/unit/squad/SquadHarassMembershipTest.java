@@ -27,11 +27,11 @@ class SquadHarassMembershipTest {
     }
 
     @Test
-    void aHarassSquadIsNeverMergedSplitOrJoined() {
+    void aHarassSquadIsNeverMergedSplitOrJoinedByGroundUnits() {
         assertFalse(SquadManager.mayMerge(SquadStatus.HARASS));
         assertFalse(SquadManager.maySplit(SquadStatus.HARASS));
         assertFalse(SquadManager.mayJoin(SquadStatus.HARASS));
-        assertFalse(SquadManager.mayJoinAirSquadAt(SquadStatus.HARASS, 0));
+        assertFalse(SquadManager.mayJoinAirSquadAt(SquadStatus.HARASS, SquadManager.AIR_JOIN_DISTANCE));
     }
 
     @Test
