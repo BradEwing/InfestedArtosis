@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -97,5 +98,20 @@ class DarkSwarmTest {
         assertTrue(DarkSwarmTracker.isFriendly(false, false, Race.Protoss));
         assertFalse(DarkSwarmTracker.isFriendly(false, false, Race.Zerg));
         assertFalse(DarkSwarmTracker.isFriendly(false, false, Race.Unknown));
+    }
+
+    @Test
+    void aCastIsPendingForTheLockoutWithAFullSwarmsFootprintAndThenLapses() {
+        DarkSwarmTracker tracker = new DarkSwarmTracker();
+        Position point = new Position(1102, 2026);
+        tracker.recordCast(point, 19182);
+
+        List<DarkSwarm> pending = tracker.getPendingCasts(19182 + DarkSwarmTracker.PENDING_CAST_FRAMES - 1);
+        assertEquals(1, pending.size());
+        assertEquals(DarkSwarmTracker.PENDING_CAST_ID, pending.get(0).getId());
+        assertEquals(point, pending.get(0).getCenter());
+        assertEquals(DarkSwarmTracker.SWARM_DURATION_FRAMES, pending.get(0).getRemainingFrames());
+        assertTrue(tracker.getPendingCasts(19182 + DarkSwarmTracker.PENDING_CAST_FRAMES).isEmpty());
+        assertTrue(tracker.getActiveSwarms().isEmpty());
     }
 }

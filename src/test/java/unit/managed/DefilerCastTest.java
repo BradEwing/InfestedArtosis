@@ -3,10 +3,16 @@ package unit.managed;
 import bwapi.Position;
 import bwapi.UnitType;
 import info.tracking.DarkSwarm;
+import info.tracking.DarkSwarmTracker;
 import org.junit.jupiter.api.Test;
+
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DefilerCastTest {
@@ -85,5 +91,68 @@ class DefilerCastTest {
         assertFalse(Defiler.blocksCast(new DarkSwarm(382, point, recast - 1), true, point));
         assertTrue(Defiler.blocksCast(new DarkSwarm(382, point, recast), true, point));
         assertTrue(Defiler.blocksCast(new DarkSwarm(382, point, recast - 1), false, point));
+    }
+
+    @Test
+    void aPendingCastBlocksASecondCastOnTheSameSpotBeforeItsSwarmAppears() {
+        DarkSwarmTracker tracker = new DarkSwarmTracker();
+        Position point = new Position(3631, 1928);
+        tracker.recordCast(point, 20112);
+
+        List<DarkSwarm> pending = tracker.getPendingCasts(20112);
+
+        assertNull(Defiler.openCastPoint(Collections.singletonList(point), pending, Collections.emptySet()));
+        assertNull(Defiler.openCastPoint(Collections.singletonList(new Position(3631 + 100, 1928)), pending,
+                Collections.emptySet()));
+    }
+
+    @Test
+    void aPendingCastIsNeverRecastOverEvenWithMeleeUnderIt() {
+        DarkSwarmTracker tracker = new DarkSwarmTracker();
+        Position point = new Position(3631, 1928);
+        tracker.recordCast(point, 20112);
+
+        List<DarkSwarm> pending = tracker.getPendingCasts(20113);
+
+        assertNull(Defiler.openCastPoint(Collections.singletonList(point), pending,
+                Collections.singleton(DarkSwarmTracker.PENDING_CAST_ID)));
+    }
+
+    @Test
+    void aBlockedClosestSpotFallsBackToTheNextOpenSpot() {
+        DarkSwarm existing = new DarkSwarm(382, new Position(1232, 3520), 900);
+        Position covered = new Position(1250, 3520);
+        Position clear = new Position(existing.right() + HALF_WIDTH + 1, 3520);
+
+        assertEquals(clear, Defiler.openCastPoint(Arrays.asList(covered, clear),
+                Collections.singletonList(existing), Collections.emptySet()));
+        assertEquals(covered, Defiler.openCastPoint(Arrays.asList(covered, clear), Collections.emptyList(),
+                Collections.emptySet()));
+    }
+
+    @Test
+    void theEnergyIsHeldWhenEverySpotIsBlocked() {
+        DarkSwarm existing = new DarkSwarm(382, new Position(1232, 3520), 900);
+
+        assertNull(Defiler.openCastPoint(Arrays.asList(new Position(1232, 3520), new Position(1280, 3560)),
+                Collections.singletonList(existing), Collections.emptySet()));
+        assertNull(Defiler.openCastPoint(Collections.emptyList(), Collections.emptyList(), Collections.emptySet()));
+    }
+
+    @Test
+    void castCandidatesTryTheClosestPairFirstAndSkipPairsBeyondTheSafeDistance() {
+        Position near = new Position(1100, 3300);
+        Position mid = new Position(1200, 3300);
+        Position far = new Position(1300, 3300);
+        List<Defiler.CastPair> pairs = Arrays.asList(
+                new Defiler.CastPair(FRONT, mid, 200),
+                new Defiler.CastPair(FRONT, far, 257),
+                new Defiler.CastPair(FRONT, near, 100),
+                new Defiler.CastPair(FRONT, far, 256));
+
+        List<Position> candidates = Defiler.castCandidates(pairs);
+
+        assertEquals(Arrays.asList(Defiler.castPoint(FRONT, near), Defiler.castPoint(FRONT, mid),
+                Defiler.castPoint(FRONT, far)), candidates);
     }
 }

@@ -13,6 +13,7 @@ import unit.squad.DefenseSim;
 import unit.squad.GroundSquad;
 import unit.squad.RunbyState;
 import unit.squad.Squad;
+import unit.squad.SwarmLock;
 import unit.squad.SquadStatus;
 import util.Arc;
 
@@ -107,8 +108,9 @@ class SquadDecisionsTest {
             }
 
             @Override
-            public void onSwarmEvaluated(Squad squad, SwarmEvent event, int swarmId, int remainingFrames) {
-                events.add("SWARM:" + event + ":" + swarmId + ":" + remainingFrames);
+            public void onSwarmEvaluated(Squad squad, SwarmEvent event, int swarmId, int remainingFrames,
+                                         SwarmLock.Release release) {
+                events.add("SWARM:" + event + ":" + swarmId + ":" + remainingFrames + ":" + release);
             }
         };
     }
@@ -138,7 +140,7 @@ class SquadDecisionsTest {
                 + "," + String.join(",", SquadDecisionLogger.workerIdCells(Collections.emptyList(),
                 Collections.emptyList()))
                 + "," + String.join(",", SquadDecisionLogger.swarmCells(context.getSwarmId(),
-                context.getSwarmRemainingFrames(), false, context.getSwarmCover()));
+                context.getSwarmRemainingFrames(), false, context.getSwarmCover(), context.getSwarmRelease()));
         return row.split(",", -1);
     }
 
@@ -147,27 +149,34 @@ class SquadDecisionsTest {
         String[] columns = SquadDecisionLogger.HEADER.split(",", -1);
         int first = columnIndex("swarm_id");
 
-        assertEquals(columns.length - 4, first);
+        assertEquals(columns.length - 5, first);
         assertEquals(first + 1, columnIndex("swarm_remaining_frames"));
         assertEquals(first + 2, columnIndex("swarm_locked"));
         assertEquals(first + 3, columnIndex("sim_swarm_cover"));
+        assertEquals(first + 4, columnIndex("swarm_release_reason"));
         assertEquals(columnIndex("released_unit_ids") + 1, first);
     }
 
     @Test
-    void swarmCellsNameTheSwarmItsTimeLeftTheLockAndTheCover() {
-        assertEquals(Arrays.asList("382", "373", "1", "0.7500"), SquadDecisionLogger.swarmCells(382, 373, true, 0.75));
-        assertEquals(Arrays.asList("-1", "-1", "0", "-1.0000"), SquadDecisionLogger.swarmCells(-1, -1, false, -1));
+    void swarmCellsNameTheSwarmItsTimeLeftTheLockTheCoverAndTheReleaseReason() {
+        assertEquals(Arrays.asList("382", "373", "1", "0.7500", "NONE"),
+                SquadDecisionLogger.swarmCells(382, 373, true, 0.75, SwarmLock.Release.NONE));
+        assertEquals(Arrays.asList("-1", "-1", "0", "-1.0000", "NONE"),
+                SquadDecisionLogger.swarmCells(-1, -1, false, -1, SwarmLock.Release.NONE));
+        assertEquals(Arrays.asList("382", "900", "0", "0.4400", "SIM_RETREAT"),
+                SquadDecisionLogger.swarmCells(382, 900, false, 0.44, SwarmLock.Release.SIM_RETREAT));
     }
 
     @Test
     void swarmEventsDispatchWithTheirSwarmAndTimeLeft() {
         SquadDecisions.register(recorder());
 
-        SquadDecisions.swarmEvaluated(new GroundSquad(), SwarmEvent.SWARM_COMMIT, 382, 900);
-        SquadDecisions.swarmEvaluated(new GroundSquad(), SwarmEvent.SWARM_EXPIRED, 382, 149);
+        SquadDecisions.swarmEvaluated(new GroundSquad(), SwarmEvent.SWARM_COMMIT, 382, 900, SwarmLock.Release.NONE);
+        SquadDecisions.swarmEvaluated(new GroundSquad(), SwarmEvent.SWARM_EXPIRED, 382, 149,
+                SwarmLock.Release.HORIZON);
 
-        assertEquals(Arrays.asList("SWARM:SWARM_COMMIT:382:900", "SWARM:SWARM_EXPIRED:382:149"), events);
+        assertEquals(Arrays.asList("SWARM:SWARM_COMMIT:382:900:NONE", "SWARM:SWARM_EXPIRED:382:149:HORIZON"),
+                events);
     }
 
     @Test
@@ -552,7 +561,8 @@ class SquadDecisionsTest {
                 + "," + String.join(",", SquadDecisionLogger.workerIdCells(Collections.emptyList(),
                 Arrays.asList(SquadDecisionLogger.releasedWorkerEntry(161, UnitRole.BUILD),
                         SquadDecisionLogger.releasedWorkerEntry(162, UnitRole.DEFEND))))
-                + "," + String.join(",", SquadDecisionLogger.swarmCells(-1, -1, false, -1));
+                + "," + String.join(",", SquadDecisionLogger.swarmCells(-1, -1, false, -1,
+                SwarmLock.Release.NONE));
         String[] fields = row.split(",", -1);
 
         assertEquals(SquadDecisionLogger.HEADER.split(",", -1).length, fields.length);
@@ -676,7 +686,8 @@ class SquadDecisionsTest {
                 + "," + String.join(",", SquadDecisionLogger.moveOutCells(context))
                 + "," + String.join(",", SquadDecisionLogger.workerIdCells(Collections.emptyList(),
                 Collections.emptyList()))
-                + "," + String.join(",", SquadDecisionLogger.swarmCells(-1, -1, false, -1));
+                + "," + String.join(",", SquadDecisionLogger.swarmCells(-1, -1, false, -1,
+                SwarmLock.Release.NONE));
         String[] fields = row.split(",", -1);
 
         assertEquals(SquadDecisionLogger.HEADER.split(",", -1).length, fields.length);

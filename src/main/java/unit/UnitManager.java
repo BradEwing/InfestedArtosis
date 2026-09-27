@@ -52,7 +52,7 @@ public class UnitManager {
         this.game = game;
 
         this.gameState = gameState;
-        this.factory = new ManagedUnitFactory(game, gameState.getGameMap());
+        this.factory = new ManagedUnitFactory(game, gameState.getGameMap(), gameState.getDarkSwarmTracker());
 
         this.informationManager = informationManager;
         this.workerManager = new WorkerManager(game, gameState);

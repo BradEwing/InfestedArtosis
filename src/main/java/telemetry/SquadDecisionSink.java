@@ -7,6 +7,7 @@ import unit.squad.CombatSimulator;
 import unit.squad.DefenseSim;
 import unit.squad.RunbyState;
 import unit.squad.Squad;
+import unit.squad.SwarmLock;
 
 import java.util.List;
 
@@ -117,6 +118,7 @@ public interface SquadDecisionSink {
      * @param event what happened
      * @param swarmId id of the Spell_Dark_Swarm unit the row is about
      * @param remainingFrames frames the swarm had left, 0 once it was removed
+     * @param release why a SWARM_EXPIRED row's squad dropped its lock, NONE on every other event
      */
-    void onSwarmEvaluated(Squad squad, SwarmEvent event, int swarmId, int remainingFrames);
+    void onSwarmEvaluated(Squad squad, SwarmEvent event, int swarmId, int remainingFrames, SwarmLock.Release release);
 }

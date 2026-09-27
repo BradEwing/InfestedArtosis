@@ -6,6 +6,7 @@ import bwapi.UnitSizeType;
 import bwapi.UnitType;
 import info.tracking.DarkSwarm;
 import org.junit.jupiter.api.Test;
+import unit.squad.SwarmLock;
 
 import java.util.Arrays;
 import java.util.Collections;
@@ -141,6 +142,28 @@ class SwarmCoverTest {
 
         assertEquals(verdict(ours, enemies, 0), verdict(ours, enemies, 1.0));
         assertEquals(ratio(ours, enemies, 0), ratio(ours, enemies, 1.0), TOLERANCE);
+    }
+
+    @Test
+    void aSquadFacingSiegedTanksUnderFullCoverIsRefusedTheLockAndOneFacingGoliathsTakesIt() {
+        UnitType ling = UnitType.Zerg_Zergling;
+        UnitType[] ours = {ling, ling};
+        UnitType[] tanks = {UnitType.Terran_Siege_Tank_Siege_Mode, UnitType.Terran_Siege_Tank_Siege_Mode};
+        UnitType goliath = UnitType.Terran_Goliath;
+        UnitType marine = UnitType.Terran_Marine;
+        UnitType[] goliaths = {goliath, goliath, marine, marine};
+        UnitType[] fourLings = {ling, ling, ling, ling};
+
+        boolean tankRetreat = verdict(ours, tanks, 1.0) == RETREAT;
+        SwarmLock.Release tankReason = SwarmLock.releaseReason(true, false, 900, false, false, tankRetreat);
+        assertEquals(SwarmLock.Release.SIM_RETREAT, tankReason);
+        assertEquals(SwarmLock.Verdict.NONE, SwarmLock.verdict(false, true, tankReason));
+        assertEquals(SwarmLock.Verdict.RELEASE, SwarmLock.verdict(true, false, tankReason));
+
+        boolean goliathRetreat = verdict(fourLings, goliaths, 1.0) == RETREAT;
+        SwarmLock.Release goliathReason = SwarmLock.releaseReason(true, false, 900, false, false, goliathRetreat);
+        assertEquals(SwarmLock.Release.NONE, goliathReason);
+        assertEquals(SwarmLock.Verdict.COMMIT, SwarmLock.verdict(false, true, goliathReason));
     }
 
     @Test

@@ -27,12 +27,23 @@ class SwarmLockTest {
     private static final int HORIZON = SwarmLock.MIN_REMAINING_FRAMES;
     private static final DarkSwarm S1 = new DarkSwarm(382, new Position(1232, 3520), 900);
 
+    private static SwarmLock.Verdict decide(boolean locked, boolean melee, boolean eligible, int remaining,
+                                            boolean baseThreatened, boolean inStorm) {
+        return decide(locked, melee, eligible, remaining, baseThreatened, inStorm, false);
+    }
+
+    private static SwarmLock.Verdict decide(boolean locked, boolean melee, boolean eligible, int remaining,
+                                            boolean baseThreatened, boolean inStorm, boolean simRetreat) {
+        return SwarmLock.verdict(locked, eligible,
+                SwarmLock.releaseReason(melee, false, remaining, baseThreatened, inStorm, simRetreat));
+    }
+
     private static SwarmLock.Verdict unlocked(int remaining) {
-        return SwarmLock.verdict(false, true, true, remaining, false, false);
+        return decide(false, true, true, remaining, false, false);
     }
 
     private static SwarmLock.Verdict locked(int remaining) {
-        return SwarmLock.verdict(true, true, false, remaining, false, false);
+        return decide(true, true, false, remaining, false, false);
     }
 
     @Test
@@ -41,7 +52,7 @@ class SwarmLockTest {
         assertEquals(COMMIT, unlocked(900));
         assertEquals(COMMIT, unlocked(HORIZON));
         assertEquals(NONE, unlocked(HORIZON - 1));
-        assertEquals(NONE, SwarmLock.verdict(false, true, false, 900, false, false));
+        assertEquals(NONE, decide(false, true, false, 900, false, false));
     }
 
     @Test
@@ -54,16 +65,16 @@ class SwarmLockTest {
 
     @Test
     void baseDefenceAndPsiStormEscapeOutrankTheLock() {
-        assertEquals(RELEASE, SwarmLock.verdict(true, true, true, 900, true, false));
-        assertEquals(RELEASE, SwarmLock.verdict(true, true, true, 900, false, true));
-        assertEquals(NONE, SwarmLock.verdict(false, true, true, 900, true, false));
-        assertEquals(NONE, SwarmLock.verdict(false, true, true, 900, false, true));
+        assertEquals(RELEASE, decide(true, true, true, 900, true, false));
+        assertEquals(RELEASE, decide(true, true, true, 900, false, true));
+        assertEquals(NONE, decide(false, true, true, 900, true, false));
+        assertEquals(NONE, decide(false, true, true, 900, false, true));
     }
 
     @Test
     void aSquadThatIsNoLongerMeleeDropsTheLock() {
-        assertEquals(RELEASE, SwarmLock.verdict(true, false, true, 900, false, false));
-        assertEquals(NONE, SwarmLock.verdict(false, false, true, 900, false, false));
+        assertEquals(RELEASE, decide(true, false, true, 900, false, false));
+        assertEquals(NONE, decide(false, false, true, 900, false, false));
     }
 
     @Test
@@ -186,5 +197,47 @@ class SwarmLockTest {
         Squad sibling = new GroundSquad();
         sibling.inheritStateFrom(locked);
         assertEquals(382, sibling.getSwarmLock().getSwarmId());
+    }
+
+    @Test
+    void aSwarmPricedRetreatRefusesTheCommitAndReleasesAHeldLock() {
+        assertEquals(NONE, decide(false, true, true, 900, false, false, true));
+        assertEquals(RELEASE, decide(true, true, false, 900, false, false, true));
+        assertEquals(COMMIT, decide(false, true, true, 900, false, false, false));
+        assertEquals(HOLD, decide(true, true, false, 900, false, false, false));
+    }
+
+    @Test
+    void theReleaseReasonNamesTheFirstThingThatStandsAgainstTheLock() {
+        assertEquals(SwarmLock.Release.NOT_MELEE, SwarmLock.releaseReason(false, true, 0, true, true, true));
+        assertEquals(SwarmLock.Release.BASE_THREAT, SwarmLock.releaseReason(true, true, 0, true, true, true));
+        assertEquals(SwarmLock.Release.STORM, SwarmLock.releaseReason(true, true, 0, false, true, true));
+        assertEquals(SwarmLock.Release.GONE, SwarmLock.releaseReason(true, true, 0, false, false, true));
+        assertEquals(SwarmLock.Release.HORIZON, SwarmLock.releaseReason(true, false, HORIZON - 1, false, false, true));
+        assertEquals(SwarmLock.Release.SIM_RETREAT, SwarmLock.releaseReason(true, false, HORIZON, false, false, true));
+        assertEquals(SwarmLock.Release.NONE, SwarmLock.releaseReason(true, false, HORIZON, false, false, false));
+    }
+
+    @Test
+    void theSimDecidesOnlyALockNothingElseStandsAgainst() {
+        assertTrue(SwarmLock.simDecides(true, false, SwarmLock.Release.NONE));
+        assertTrue(SwarmLock.simDecides(false, true, SwarmLock.Release.NONE));
+        assertFalse(SwarmLock.simDecides(false, false, SwarmLock.Release.NONE));
+        assertFalse(SwarmLock.simDecides(true, false, SwarmLock.Release.HORIZON));
+        assertFalse(SwarmLock.simDecides(false, true, SwarmLock.Release.BASE_THREAT));
+    }
+
+    @Test
+    void aSquadReleasedOnASimRetreatDoesNotRecommitToThatSwarmButMayTakeAnother() {
+        assertFalse(SwarmLock.mayRecommit(382, 382));
+        assertTrue(SwarmLock.mayRecommit(397, 382));
+        assertTrue(SwarmLock.mayRecommit(382, -1));
+
+        Squad refused = new GroundSquad();
+        assertEquals(-1, refused.getRefusedSwarmId());
+        refused.setRefusedSwarmId(382);
+        Squad merged = new GroundSquad();
+        merged.inheritStateFrom(Arrays.asList(new GroundSquad(), refused));
+        assertEquals(382, merged.getRefusedSwarmId());
     }
 }

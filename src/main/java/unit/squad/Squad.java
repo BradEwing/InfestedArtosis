@@ -60,6 +60,11 @@ public class Squad implements Comparable<Squad> {
     private Arc containmentArc;
     private RunbyState runbyState;
     private SwarmLock swarmLock;
+    /**
+     * The swarm whose lock this squad last dropped on a RETREAT read of the sim, or -1; see
+     * {@link SwarmLock#mayRecommit}.
+     */
+    private int refusedSwarmId = -1;
     private int containRadius = 0;
     private final ContainmentAttrition containmentAttrition = new ContainmentAttrition();
     protected Time fightHysteresis = new Time(0, 3);
@@ -242,6 +247,7 @@ public class Squad implements Comparable<Squad> {
         Arc inheritedArc = null;
         RunbyState inheritedRunby = null;
         SwarmLock inheritedSwarmLock = null;
+        int inheritedRefusedSwarmId = -1;
         int inheritedRadius = 0;
         ContainmentAttrition inheritedAttrition = new ContainmentAttrition();
         for (Squad source: sources) {
@@ -250,6 +256,9 @@ public class Squad implements Comparable<Squad> {
             }
             if (inheritedSwarmLock == null) {
                 inheritedSwarmLock = source.swarmLock;
+            }
+            if (inheritedRefusedSwarmId < 0) {
+                inheritedRefusedSwarmId = source.refusedSwarmId;
             }
             mergedStatus = SquadStatus.dominant(mergedStatus, source.status);
             if (source.containStartFrame > 0 && (earliestContainStart == 0 || source.containStartFrame < earliestContainStart)) {
@@ -281,6 +290,7 @@ public class Squad implements Comparable<Squad> {
         }
         this.commitFrame = earliestCommit;
         this.swarmLock = inheritedSwarmLock;
+        this.refusedSwarmId = inheritedRefusedSwarmId;
     }
 
     public boolean isMergeEligible(int currentFrame) {

@@ -138,7 +138,8 @@ public enum DecisionPath {
 
     /**
      * A melee squad dropped its swarm lock: the swarm fell below the sim horizon or was removed, a base came under
-     * attack, or a member stood in a Psionic Storm.
+     * attack, a member stood in a Psionic Storm, the squad stopped being melee, or the swarm-priced sim read RETREAT.
+     * The row's swarm_release_reason names which.
      */
     SWARM_EXPIRED,
 

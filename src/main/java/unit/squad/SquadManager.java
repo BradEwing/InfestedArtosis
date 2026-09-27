@@ -152,6 +152,8 @@ public class SquadManager {
     private Set<ManagedUnit> outrangedHits = new HashSet<>();
     private final Map<Integer, List<Unit>> swarmCoveredEnemies = new HashMap<>();
     private int swarmCoverFrame = -1;
+    /** The swarm-priced sim read {@link #evaluateSwarmLock} took for the squad it last evaluated, or null. */
+    private CombatSimulator.CombatResult swarmSimResult;
 
     private final ScoutChase scoutChase = new ScoutChase();
 
@@ -924,10 +926,15 @@ public class SquadManager {
     /**
      * Takes, holds or drops a squad's swarm lock for this frame. See {@link SwarmLock}.
      *
+     * <p>When nothing else stands against the lock, the combat sim runs, pricing the swarm's cover, and a RETREAT read
+     * refuses the commit or releases the held lock. A squad released that way does not recommit to the same swarm, see
+     * {@link SwarmLock#mayRecommit}. The sim's result is kept for {@link #fightUnderSwarm}, so it runs once a frame.
+     *
      * @param squad squad to evaluate
      * @return this frame's swarm lock verdict
      */
     private SwarmLock.Verdict evaluateSwarmLock(Squad squad) {
+        swarmSimResult = null;
         SwarmLock held = squad.getSwarmLock();
         List<DarkSwarm> swarms = gameState.getDarkSwarmTracker().getActiveSwarms();
         if (held == null && swarms.isEmpty() || squad.getStatus() == SquadStatus.RUNBY) {
@@ -937,23 +944,36 @@ public class SquadManager {
         Position center = squad.getCenter();
         boolean melee = !squad.isAirSquad() && SwarmLock.isMeleeSquad(squad.getComposition());
         DarkSwarm eligible = held == null && melee && center != null
-                ? SwarmLock.choose(swarms, center, swarmEligibility(swarms, center)) : null;
+                ? SwarmLock.choose(swarms, center, commitEligibility(swarms, center, squad.getRefusedSwarmId()))
+                : null;
         DarkSwarm swarm = held != null ? gameState.getDarkSwarmTracker().getSwarm(held.getSwarmId()) : eligible;
         if (swarm == null && held == null) {
             return SwarmLock.Verdict.NONE;
         }
         int remaining = swarm != null ? swarm.getRemainingFrames() : 0;
         boolean baseThreatened = baseThreatensContainment();
-        SwarmLock.Verdict verdict = SwarmLock.verdict(held != null, melee, eligible != null, remaining,
-                baseThreatened, anyMemberInStorm(squad));
+        boolean inStorm = anyMemberInStorm(squad);
+        SwarmLock.Release reason = SwarmLock.releaseReason(melee, swarm == null, remaining, baseThreatened, inStorm,
+                false);
+        if (SwarmLock.simDecides(held != null, eligible != null, reason)) {
+            swarmSimResult = squad.getCombatSimulator()
+                    .evaluate(squad, getAdjacentSquads(squad, REINFORCEMENT_RADIUS), gameState);
+            reason = SwarmLock.releaseReason(melee, false, remaining, baseThreatened, inStorm,
+                    swarmSimResult == CombatSimulator.CombatResult.RETREAT);
+        }
+        SwarmLock.Verdict verdict = SwarmLock.verdict(held != null, eligible != null, reason);
 
         if (verdict == SwarmLock.Verdict.COMMIT) {
             squad.setSwarmLock(new SwarmLock(swarm.getId(), game.getFrameCount()));
-            SquadDecisions.swarmEvaluated(squad, SwarmEvent.SWARM_COMMIT, swarm.getId(), remaining);
+            SquadDecisions.swarmEvaluated(squad, SwarmEvent.SWARM_COMMIT, swarm.getId(), remaining,
+                    SwarmLock.Release.NONE);
         } else if (verdict == SwarmLock.Verdict.RELEASE) {
             squad.setSwarmLock(null);
+            if (reason == SwarmLock.Release.SIM_RETREAT) {
+                squad.setRefusedSwarmId(held.getSwarmId());
+            }
             SquadDecisions.pathTaken(squad, DecisionPath.SWARM_EXPIRED);
-            SquadDecisions.swarmEvaluated(squad, SwarmEvent.SWARM_EXPIRED, held.getSwarmId(), remaining);
+            SquadDecisions.swarmEvaluated(squad, SwarmEvent.SWARM_EXPIRED, held.getSwarmId(), remaining, reason);
         }
         return verdict;
     }
@@ -981,8 +1001,20 @@ public class SquadManager {
         }
         if (sampled != null) {
             SquadDecisions.swarmEvaluated(squad, SwarmEvent.SWARM_ACTIVE, sampled.getId(),
-                    sampled.getRemainingFrames());
+                    sampled.getRemainingFrames(), SwarmLock.Release.NONE);
         }
+    }
+
+    /**
+     * For each swarm, whether a squad centred here may commit to it: it is eligible, see {@link #swarmEligibility},
+     * and it is not the swarm the squad last dropped on a RETREAT read of the sim, see {@link SwarmLock#mayRecommit}.
+     */
+    private List<Boolean> commitEligibility(List<DarkSwarm> swarms, Position center, int refusedSwarmId) {
+        List<Boolean> eligibility = swarmEligibility(swarms, center);
+        for (int i = 0; i < swarms.size(); i++) {
+            eligibility.set(i, eligibility.get(i) && SwarmLock.mayRecommit(swarms.get(i).getId(), refusedSwarmId));
+        }
+        return eligibility;
     }
 
     /**
@@ -1043,7 +1075,8 @@ public class SquadManager {
 
     /**
      * Runs one tick of a squad holding a swarm lock: it leaves any containment arc, drops its retreat lock and
-     * fights, whatever the sim says. The sim still runs, so the frame's row carries its measurement.
+     * fights. The swarm-priced sim read that let the lock hold, see {@link #evaluateSwarmLock}, is the frame's sim
+     * verdict.
      *
      * <p>A melee member attacks an enemy the swarm covers, see {@link SwarmLock#coversEnemy}; with none to attack it
      * moves to the footprint centre rather than chase an enemy out of the swarm. Every other member takes its target
@@ -1061,9 +1094,7 @@ public class SquadManager {
         squad.clearRetreatLock();
         squad.commit(now);
 
-        CombatSimulator.CombatResult result = squad.getCombatSimulator()
-                .evaluate(squad, getAdjacentSquads(squad, REINFORCEMENT_RADIUS), gameState);
-        SquadDecisions.simEvaluated(squad, result, false, squad.isFightLocked(now));
+        SquadDecisions.simEvaluated(squad, swarmSimResult, false, squad.isFightLocked(now));
         squad.setStatus(SquadStatus.FIGHT);
         SquadDecisions.pathTaken(squad, verdict == SwarmLock.Verdict.COMMIT
                 ? DecisionPath.SWARM_COMMIT : DecisionPath.SWARM_ACTIVE);

@@ -1,5 +1,6 @@
 package info.tracking;
 
+import bwapi.Position;
 import bwapi.Race;
 
 import java.util.ArrayList;
@@ -14,12 +15,27 @@ import java.util.Map;
  *
  * <p>A swarm lasts {@link #SWARM_DURATION_FRAMES} frames and its unit reports the time it has left. The tracker holds
  * exactly the swarms sighted on the latest frame, so a swarm is dropped on the frame its unit is removed.
+ *
+ * <p>It also holds each cast a Defiler has ordered for {@link #PENDING_CAST_FRAMES}, so a second Defiler sees a swarm
+ * that is on its way before its unit exists and casts elsewhere.
  */
 public class DarkSwarmTracker {
 
     public static final int SWARM_DURATION_FRAMES = 900;
 
+    /**
+     * Tuning value: frames an ordered cast is held as pending, covering the time from the order to the swarm's unit
+     * appearing. Two casts on one spot were seen from the same frame to 48 frames apart.
+     */
+    public static final int PENDING_CAST_FRAMES = 48;
+
+    /**
+     * Id of the footprint a pending cast is reported as, which no Spell_Dark_Swarm unit carries.
+     */
+    public static final int PENDING_CAST_ID = -1;
+
     private final Map<Integer, DarkSwarm> activeSwarms = new LinkedHashMap<>();
+    private final List<PendingCast> pendingCasts = new ArrayList<>();
 
     /**
      * Replaces the tracked swarms with the friendly swarms sighted this frame.
@@ -31,6 +47,32 @@ public class DarkSwarmTracker {
         for (DarkSwarm swarm : sighted) {
             activeSwarms.put(swarm.getId(), swarm);
         }
+    }
+
+    /**
+     * Records a Dark Swarm a Defiler has just been ordered to cast.
+     *
+     * @param point the cast position
+     * @param frame the frame of the order
+     */
+    public void recordCast(Position point, int frame) {
+        pendingCasts.add(new PendingCast(point, frame));
+    }
+
+    /**
+     * The casts ordered within the last {@link #PENDING_CAST_FRAMES}, each as the footprint its swarm will take, with
+     * id {@link #PENDING_CAST_ID} and a full {@link #SWARM_DURATION_FRAMES} left.
+     *
+     * @param frame the current frame
+     * @return the pending casts' footprints
+     */
+    public List<DarkSwarm> getPendingCasts(int frame) {
+        pendingCasts.removeIf(cast -> frame - cast.frame >= PENDING_CAST_FRAMES);
+        List<DarkSwarm> footprints = new ArrayList<>();
+        for (PendingCast cast : pendingCasts) {
+            footprints.add(new DarkSwarm(PENDING_CAST_ID, cast.point, SWARM_DURATION_FRAMES));
+        }
+        return footprints;
     }
 
     public List<DarkSwarm> getActiveSwarms() {
@@ -80,5 +122,15 @@ public class DarkSwarmTracker {
             return false;
         }
         return opponentRace == Race.Terran || opponentRace == Race.Protoss;
+    }
+
+    private static final class PendingCast {
+        private final Position point;
+        private final int frame;
+
+        private PendingCast(Position point, int frame) {
+            this.point = point;
+            this.frame = frame;
+        }
     }
 }

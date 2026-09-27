@@ -14,10 +14,13 @@ import java.util.Map;
  * Commits a melee squad to fight under one of our active Dark Swarms.
  *
  * <p>A melee squad within {@link #COMMIT_RADIUS} of a swarm that covers enemies, with at least
- * {@link #MIN_REMAINING_FRAMES} left on it, takes the lock and fights, pathing into the footprint. While the lock holds
- * the squad skips the containment arc, the containment timeout, retreat locks and every sim verdict: SquadManager
- * routes a locked squad before any of them are read, see {@link #route}. A base under attack and a member standing in
- * a Psionic Storm keep their priority and release the lock, as does the swarm dropping below the horizon or expiring.
+ * {@link #MIN_REMAINING_FRAMES} left on it, takes the lock and fights, pathing into the footprint, provided the combat
+ * sim, pricing the swarm's cover, does not read RETREAT. The swarm negates ordinary ranged direct attacks only, so a
+ * RETREAT read under that pricing is carried by what the swarm leaves whole, such as sieged-tank splash. While the lock
+ * holds the squad skips the containment arc, the containment timeout and retreat locks: SquadManager routes a locked
+ * squad before any of them are read, see {@link #route}. A base under attack, a member standing in a Psionic Storm and a
+ * RETREAT read of the swarm-priced sim release the lock, as does the swarm dropping below the horizon or expiring; see
+ * {@link Release} for the reasons in the order they are checked.
  */
 @Getter
 public final class SwarmLock {
@@ -68,6 +71,26 @@ public final class SwarmLock {
     }
 
     /**
+     * Why a squad may not hold, or take, a swarm lock this frame, in the order the reasons are checked.
+     */
+    public enum Release {
+        /** Nothing stands against the lock. */
+        NONE,
+        /** The squad is no longer a melee squad, see {@link #isMeleeSquad}. */
+        NOT_MELEE,
+        /** An enemy threatens one of our bases, which keeps priority as base defence. */
+        BASE_THREAT,
+        /** A member stands in an active Psionic Storm, which keeps priority as storm escape. */
+        STORM,
+        /** The swarm has been removed. */
+        GONE,
+        /** The swarm has fewer than {@link #MIN_REMAINING_FRAMES} left. */
+        HORIZON,
+        /** The combat sim, pricing the swarm's cover, reads RETREAT. */
+        SIM_RETREAT
+    }
+
+    /**
      * The branch SquadManager takes for a squad before anything else about it is read.
      */
     public enum Route {
@@ -78,30 +101,63 @@ public final class SwarmLock {
     }
 
     /**
-     * Decides the lock for one squad.
+     * The first reason, in the order of {@link Release}, that a squad may not hold or take the lock on a swarm.
      *
-     * <p>A squad that is no longer melee, a base under attack and a member in a Psionic Storm answer first and release
-     * a held lock. A held lock then holds for as long as its swarm has {@link #MIN_REMAINING_FRAMES} left, and is
-     * released once it has less or is gone. An unlocked squad commits when it is eligible and the swarm has the
-     * horizon left.
-     *
-     * @param locked whether the squad holds a lock entering the frame
      * @param melee whether the squad is a melee squad, see {@link #isMeleeSquad}
-     * @param eligible whether an unlocked squad has a swarm to commit to, see {@link #isEligible}
-     * @param remainingFrames frames left on the held swarm, or on the swarm it would commit to; 0 when there is none
+     * @param swarmGone whether the swarm has been removed
+     * @param remainingFrames frames left on the swarm
      * @param baseThreatened whether an enemy threatens one of our bases
      * @param inStorm whether a member stands in an active Psionic Storm
+     * @param simRetreat whether the combat sim, pricing the swarm's cover, reads RETREAT; false when it has not run
+     * @return the reason, or {@link Release#NONE}
+     */
+    public static Release releaseReason(boolean melee, boolean swarmGone, int remainingFrames, boolean baseThreatened,
+                                        boolean inStorm, boolean simRetreat) {
+        if (!melee) {
+            return Release.NOT_MELEE;
+        }
+        if (baseThreatened) {
+            return Release.BASE_THREAT;
+        }
+        if (inStorm) {
+            return Release.STORM;
+        }
+        if (swarmGone) {
+            return Release.GONE;
+        }
+        if (remainingFrames < MIN_REMAINING_FRAMES) {
+            return Release.HORIZON;
+        }
+        return simRetreat ? Release.SIM_RETREAT : Release.NONE;
+    }
+
+    /**
+     * Decides the lock for one squad: a held lock holds while nothing stands against it and is released otherwise,
+     * and an unlocked squad commits when it is eligible and nothing stands against the lock.
+     *
+     * @param locked whether the squad holds a lock entering the frame
+     * @param eligible whether an unlocked squad has a swarm to commit to, see {@link #isEligible}
+     * @param reason what stands against the lock, see {@link #releaseReason}
      * @return the verdict
      */
-    public static Verdict verdict(boolean locked, boolean melee, boolean eligible, int remainingFrames,
-                                  boolean baseThreatened, boolean inStorm) {
-        if (!melee || baseThreatened || inStorm) {
-            return locked ? Verdict.RELEASE : Verdict.NONE;
-        }
+    public static Verdict verdict(boolean locked, boolean eligible, Release reason) {
         if (locked) {
-            return remainingFrames >= MIN_REMAINING_FRAMES ? Verdict.HOLD : Verdict.RELEASE;
+            return reason == Release.NONE ? Verdict.HOLD : Verdict.RELEASE;
         }
-        return eligible && remainingFrames >= MIN_REMAINING_FRAMES ? Verdict.COMMIT : Verdict.NONE;
+        return eligible && reason == Release.NONE ? Verdict.COMMIT : Verdict.NONE;
+    }
+
+    /**
+     * Whether the combat sim must run before the lock is decided: the lock would be held or taken on every other
+     * ground, so only the sim's read can still refuse it.
+     *
+     * @param locked whether the squad holds a lock entering the frame
+     * @param eligible whether an unlocked squad has a swarm to commit to
+     * @param reason what stands against the lock before the sim is read
+     * @return true when the sim decides the lock
+     */
+    public static boolean simDecides(boolean locked, boolean eligible, Release reason) {
+        return reason == Release.NONE && (locked || eligible);
     }
 
     /**
@@ -210,6 +266,19 @@ public final class SwarmLock {
      */
     public static DarkSwarm choose(List<DarkSwarm> swarms, Position squadCenter, List<Boolean> eligible) {
         return nearest(swarms, squadCenter, eligible, MIN_REMAINING_FRAMES);
+    }
+
+    /**
+     * Whether a squad may commit to a swarm it would otherwise be eligible for: not the swarm whose lock it last
+     * dropped on a RETREAT read of the sim, so a sim that reads either side of its threshold cannot pull the squad in
+     * and out of the swarm frame by frame. Any other swarm may still take it.
+     *
+     * @param swarmId the swarm's id
+     * @param refusedSwarmId the swarm whose lock the squad last dropped on {@link Release#SIM_RETREAT}, or -1
+     * @return true when the squad may commit to it
+     */
+    public static boolean mayRecommit(int swarmId, int refusedSwarmId) {
+        return swarmId != refusedSwarmId;
     }
 
     /**

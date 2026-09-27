@@ -75,7 +75,7 @@ import java.util.stream.Collectors;
  * <p>SWARM_COMMIT and SWARM_EXPIRED rows are written when a melee squad takes or drops a swarm lock, and SWARM_ACTIVE
  * rows sample, at a fixed interval, every melee squad within the commit radius of one of our active Dark Swarms that
  * covers enemies, with the status it holds. swarm_id, swarm_remaining_frames and swarm_locked name the swarm a row is
- * about, see {@link #swarmCells(int, int, boolean, double)}. Every one of our swarms, committed to or not, also gets a
+ * about, see {@link #swarmCells(int, int, boolean, double, SwarmLock.Release)}. Every one of our swarms, committed to or not, also gets a
  * SWARM_SEEN and a SWARM_REMOVED row in telemetry_dark_swarms.csv, see {@link #swarmLifecycleRows}.
  *
  * <p>LOCK_SUPPRESSED rows are deduplicated per suppression episode, keyed on the lock, its expiry
@@ -99,7 +99,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
             + "pushback_from_x,pushback_from_y,pushback_to_x,pushback_to_y,pushback_enemy_type,"
             + "pushback_members_moved,contain_supply_lost,outranged_hit,sim_enemy_air_share,sim_our_air_share,"
             + "move_out_threshold,move_out_strength,pulled_unit_ids,released_unit_ids,swarm_id,"
-            + "swarm_remaining_frames,swarm_locked,sim_swarm_cover";
+            + "swarm_remaining_frames,swarm_locked,sim_swarm_cover,swarm_release_reason";
 
     static final String SWARM_FILE = "telemetry_dark_swarms.csv";
 
@@ -432,7 +432,8 @@ public class SquadDecisionLogger implements SquadDecisionSink {
     }
 
     @Override
-    public void onSwarmEvaluated(Squad squad, SwarmEvent event, int swarmId, int remainingFrames) {
+    public void onSwarmEvaluated(Squad squad, SwarmEvent event, int swarmId, int remainingFrames,
+                                 SwarmLock.Release release) {
         if (disabled) {
             return;
         }
@@ -442,6 +443,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
             context.setDecisionPath(event.path());
             context.setSwarmId(swarmId);
             context.setSwarmRemainingFrames(remainingFrames);
+            context.setSwarmRelease(release);
             writer.append(row(squad, game.getFrameCount(), event.name(), squad.getStatus(), squad.getStatus(),
                     context, NONE));
         } catch (RuntimeException e) {
@@ -646,32 +648,36 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         if (context.getSwarmId() >= 0) {
             boolean locked = lock != null && lock.getSwarmId() == context.getSwarmId();
             return swarmCells(context.getSwarmId(), context.getSwarmRemainingFrames(), locked,
-                    context.getSwarmCover());
+                    context.getSwarmCover(), context.getSwarmRelease());
         }
         if (lock != null) {
             return swarmCells(lock.getSwarmId(), gameState.getDarkSwarmTracker().getRemainingFrames(lock.getSwarmId()),
-                    true, context.getSwarmCover());
+                    true, context.getSwarmCover(), SwarmLock.Release.NONE);
         }
-        return swarmCells(SquadDecision.NOT_EVALUATED, SquadDecision.NOT_EVALUATED, false, context.getSwarmCover());
+        return swarmCells(SquadDecision.NOT_EVALUATED, SquadDecision.NOT_EVALUATED, false, context.getSwarmCover(),
+                SwarmLock.Release.NONE);
     }
 
     /**
-     * Builds the swarm_id, swarm_remaining_frames, swarm_locked and sim_swarm_cover cells.
+     * Builds the swarm_id, swarm_remaining_frames, swarm_locked, sim_swarm_cover and swarm_release_reason cells.
      *
      * <p>A SWARM_ACTIVE, SWARM_COMMIT or SWARM_EXPIRED row names the swarm it is about; any other row names the swarm
      * the squad holds a lock on, with the frames that swarm has left. swarm_locked is 1 when the squad holds a lock on
      * the named swarm as the row is written, so a SWARM_EXPIRED row carries 0. sim_swarm_cover is the cover the sim
      * priced our force under on the frame, from 0 to 1, and -1 on a row whose decision never read a sim snapshot.
+     * swarm_release_reason names why a SWARM_EXPIRED row's squad dropped its lock, and is NONE on every other row.
      *
      * @param swarmId id of the Spell_Dark_Swarm unit, or -1 when the row names none
      * @param remainingFrames frames the named swarm has left, -1 when the row names none
      * @param locked whether the squad holds a lock on the named swarm
      * @param cover the sim's swarm cover
-     * @return the four cells
+     * @param release why the lock was dropped, NONE on a row that drops none
+     * @return the five cells
      */
-    static List<String> swarmCells(int swarmId, int remainingFrames, boolean locked, double cover) {
+    static List<String> swarmCells(int swarmId, int remainingFrames, boolean locked, double cover,
+                                   SwarmLock.Release release) {
         return Arrays.asList(String.valueOf(swarmId), String.valueOf(remainingFrames),
-                String.valueOf(SquadDecision.tristate(locked)), Csv.format(cover));
+                String.valueOf(SquadDecision.tristate(locked)), Csv.format(cover), release.name());
     }
 
     private String defenseRow(Squad squad, int frame, DefenseEvent event, int candidates, List<ManagedUnit> pulled,
@@ -698,7 +704,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
                 released.stream().map(worker -> releasedWorkerEntry(worker.getUnitID(), worker.getRole()))
                         .collect(Collectors.toList())));
         fields.addAll(swarmCells(SquadDecision.NOT_EVALUATED, SquadDecision.NOT_EVALUATED, false,
-                SquadDecision.NOT_EVALUATED));
+                SquadDecision.NOT_EVALUATED, SwarmLock.Release.NONE));
         return String.join(",", fields);
     }
 

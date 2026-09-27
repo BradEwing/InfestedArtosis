@@ -5,6 +5,7 @@ import bwapi.UnitType;
 import lombok.Getter;
 import lombok.Setter;
 import unit.squad.CombatSimulator;
+import unit.squad.SwarmLock;
 
 /**
  * Everything SquadManager computed about one squad on one frame, held until the frame's status
@@ -50,6 +51,7 @@ final class SquadDecision {
     private int swarmId = NOT_EVALUATED;
     private int swarmRemainingFrames = NOT_EVALUATED;
     private double swarmCover = NOT_EVALUATED;
+    private SwarmLock.Release swarmRelease = SwarmLock.Release.NONE;
 
     static int tristate(boolean value) {
         return value ? 1 : 0;
