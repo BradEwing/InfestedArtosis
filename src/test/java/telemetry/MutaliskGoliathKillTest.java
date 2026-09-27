@@ -2,6 +2,7 @@ package telemetry;
 
 import bwapi.UnitType;
 import org.junit.jupiter.api.Test;
+import unit.managed.UnitRole;
 
 import java.util.Arrays;
 import java.util.Collections;
@@ -32,6 +33,15 @@ class MutaliskGoliathKillTest {
     void aGoliathNoMutaliskTargetsDoesNotCount() {
         assertFalse(CombatTelemetry.countsAsMutaliskGoliathKill(UnitType.Terran_Goliath, true, BEFORE_WINDOW,
                 GOLIATH_ID, Collections.singletonList(97)));
+    }
+
+    @Test
+    void onlyAFightingOrHarassingMutaliskAttributesItsTarget() {
+        assertTrue(CombatTelemetry.attackingMutalisk(UnitType.Zerg_Mutalisk, UnitRole.FIGHT));
+        assertTrue(CombatTelemetry.attackingMutalisk(UnitType.Zerg_Mutalisk, UnitRole.HARASS));
+        assertFalse(CombatTelemetry.attackingMutalisk(UnitType.Zerg_Mutalisk, UnitRole.RETREAT));
+        assertFalse(CombatTelemetry.attackingMutalisk(UnitType.Zerg_Mutalisk, UnitRole.RALLY));
+        assertFalse(CombatTelemetry.attackingMutalisk(UnitType.Zerg_Zergling, UnitRole.FIGHT));
     }
 
     @Test

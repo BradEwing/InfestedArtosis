@@ -9,6 +9,7 @@ import bwapi.UnitType;
 import info.GameState;
 import strategy.buildorder.BuildOrder;
 import unit.managed.ManagedUnit;
+import unit.managed.UnitRole;
 import unit.squad.CombatSimulator;
 import unit.squad.Squad;
 import unit.squad.SquadManager;
@@ -463,8 +464,10 @@ public class CombatTelemetry {
 
     /**
      * Whether a destroyed unit counts as a Goliath killed by Mutalisks: an enemy Goliath that dies before
-     * {@link #MUTALISK_KILL_WINDOW} while one of our Mutalisks holds it as its fight target. The target is the one our
-     * squad logic assigned, not the unit the game credits with the kill.
+     * {@link #MUTALISK_KILL_WINDOW} while one of our attacking Mutalisks (see {@link #attackingMutalisk}) holds it as
+     * its fight target. The
+     * target is the one our squad logic assigned, not the unit the game credits with the kill, so the count is an
+     * upper bound on the Goliaths Mutalisks killed.
      *
      * @param destroyedType type of the destroyed unit
      * @param enemyOwned whether the destroyed unit belonged to the enemy
@@ -479,10 +482,22 @@ public class CombatTelemetry {
                 && frame < MUTALISK_KILL_WINDOW.getFrames() && mutaliskTargetIds.contains(destroyedId);
     }
 
+    /**
+     * Whether a unit's fight target is read as a Mutalisk attack: a Mutalisk in the FIGHT or HARASS role. A Mutalisk
+     * sent back keeps its last fight target until its own tick clears it, so any other role is left out.
+     *
+     * @param type the unit's type
+     * @param role the unit's role
+     * @return true if the unit's fight target counts
+     */
+    static boolean attackingMutalisk(UnitType type, UnitRole role) {
+        return type == UnitType.Zerg_Mutalisk && (role == UnitRole.FIGHT || role == UnitRole.HARASS);
+    }
+
     private List<Integer> mutaliskTargetIds() {
         List<Integer> ids = new ArrayList<>();
         for (ManagedUnit managedUnit : gameState.getManagedUnitLookup().values()) {
-            if (managedUnit.getUnitType() == UnitType.Zerg_Mutalisk && managedUnit.fightTarget != null) {
+            if (attackingMutalisk(managedUnit.getUnitType(), managedUnit.getRole()) && managedUnit.fightTarget != null) {
                 ids.add(managedUnit.fightTarget.getID());
             }
         }

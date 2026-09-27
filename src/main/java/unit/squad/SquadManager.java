@@ -1752,14 +1752,27 @@ public class SquadManager {
 
     /**
      * @param fighters members of the squad
-     * @return summed hit points of the members
+     * @return summed hit points of the members that count toward the flock, see {@link #countsTowardFlockHitPoints}
      */
     private static int flockHitPoints(Collection<ManagedUnit> fighters) {
         int hitPoints = 0;
         for (ManagedUnit fighter : fighters) {
-            hitPoints += fighter.getUnit().getHitPoints();
+            if (countsTowardFlockHitPoints(fighter.getUnitType())) {
+                hitPoints += fighter.getUnit().getHitPoints();
+            }
         }
         return hitPoints;
+    }
+
+    /**
+     * Whether a member's hit points count toward the flock an engage commitment measures its loss against. An
+     * escorting Overlord does not, as the air sim leaves it out of the friendly force.
+     *
+     * @param type the member's type
+     * @return true if the member's hit points count
+     */
+    static boolean countsTowardFlockHitPoints(UnitType type) {
+        return type != UnitType.Zerg_Overlord;
     }
 
     /**

@@ -206,6 +206,13 @@ class AirSquadCommitmentTest {
     }
 
     @Test
+    void anEscortingOverlordIsLeftOutOfTheFlockHitPoints() {
+        assertFalse(SquadManager.countsTowardFlockHitPoints(UnitType.Zerg_Overlord));
+        assertTrue(SquadManager.countsTowardFlockHitPoints(UnitType.Zerg_Mutalisk));
+        assertTrue(SquadManager.countsTowardFlockHitPoints(UnitType.Zerg_Scourge));
+    }
+
+    @Test
     void aSingleStrongEngageReadDoesNotBreakTheAirRetreatLock() {
         AirSquad squad = new AirSquad();
         squad.startRetreatLock(ARMED);
