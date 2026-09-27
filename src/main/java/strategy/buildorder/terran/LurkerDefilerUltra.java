@@ -465,9 +465,9 @@ public class LurkerDefilerUltra extends TerranBase {
     /**
      * Whether any of {@link info.BaseData#techBuildingBases()} has a site for the tech building:
      * the main first, then every other held base. A building planned with none is left with no
-     * build position. A look that finds no site at the main writes a TECH_SITE_MISS row, and a look
-     * that finds none anywhere holds back the next look for that building for
-     * {@value #TECH_SITE_RETRY_FRAMES} frames.
+     * build position. A look that finds no site at a held main writes a TECH_SITE_MISS row, see
+     * {@link #mainSiteMissed}, and a look that finds none anywhere holds back the next look for that
+     * building for {@value #TECH_SITE_RETRY_FRAMES} frames.
      */
     private boolean hasTechSite(GameState gameState, UnitType building) {
         int frame = gameState.getGameTime().getFrames();
@@ -475,7 +475,8 @@ public class LurkerDefilerUltra extends TerranBase {
             return false;
         }
         Base siteBase = gameState.techBuildingSiteBase(building);
-        if (siteBase != gameState.getBaseData().getMainBase()) {
+        if (mainSiteMissed(gameState.getBaseData().getMainBase(), gameState.getBaseData().techBuildingBases(),
+                siteBase)) {
             PlanEvents.techSiteMiss(building, siteBase == null ? null : siteBase.getLocation());
         }
         if (siteBase == null) {
@@ -483,6 +484,19 @@ public class LurkerDefilerUltra extends TerranBase {
             return false;
         }
         return true;
+    }
+
+    /**
+     * Whether a look found no site at our main while we hold it. A lost main is not tried, so a
+     * look after the main falls is not a miss at the main.
+     *
+     * @param main our main
+     * @param tried the bases the look tried, in order, from {@link info.BaseData#techBuildingBases()}
+     * @param siteBase the base the look found a site at, or null
+     * @return true when the main was tried first and the site, if any, is elsewhere
+     */
+    static <T> boolean mainSiteMissed(T main, List<T> tried, T siteBase) {
+        return main != null && !tried.isEmpty() && tried.get(0) == main && siteBase != main;
     }
 
     /**

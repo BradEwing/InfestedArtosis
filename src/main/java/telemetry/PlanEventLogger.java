@@ -179,9 +179,9 @@ public class PlanEventLogger implements PlanEventSink {
      * handover.
      * <p>
      * TECH_SITE_MISS rows are written when a build order about to plan a tech building finds no room on creep
-     * for it at the main, and leave the plan id empty. item is the building. build_tile_x and build_tile_y are
-     * the other held base it goes to instead, empty when no held base has room; LurkerDefilerUltra then looks
-     * again for that building only after its retry wait.
+     * for it at the main while we hold the main, and leave the plan id empty. item is the building. build_tile_x
+     * and build_tile_y are the other held base it goes to instead, empty when no held base has room;
+     * LurkerDefilerUltra then looks again for that building only after its retry wait.
      * <p>
      * base_inner is set only on BASE_LOST rows, written when one of our bases loses its hatchery:
      * true for the main or a natural, false for a third or later base. The lost base's location is

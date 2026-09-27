@@ -438,4 +438,22 @@ class LurkerDefilerUltraTest {
         assertTrue(retry.mayLook(UnitType.Zerg_Defiler_Mound, 1001));
         assertFalse(retry.mayLook(UnitType.Zerg_Evolution_Chamber, 1001));
     }
+
+    @Test
+    void aHeldMainWithNoSiteIsAMissWhereverTheBuildingGoes() {
+        assertTrue(LurkerDefilerUltra.mainSiteMissed("main", Arrays.asList("main", "natural"), "natural"));
+        assertTrue(LurkerDefilerUltra.mainSiteMissed("main", Arrays.asList("main", "natural"), null));
+    }
+
+    @Test
+    void aSiteAtTheHeldMainIsNotAMiss() {
+        assertFalse(LurkerDefilerUltra.mainSiteMissed("main", Arrays.asList("main", "natural"), "main"));
+    }
+
+    @Test
+    void aLookAfterTheMainIsLostIsNotAMiss() {
+        assertFalse(LurkerDefilerUltra.mainSiteMissed("main", Arrays.asList("natural", "third"), "natural"));
+        assertFalse(LurkerDefilerUltra.mainSiteMissed("main", Arrays.asList(), null));
+        assertFalse(LurkerDefilerUltra.mainSiteMissed(null, Arrays.asList("natural"), "natural"));
+    }
 }
