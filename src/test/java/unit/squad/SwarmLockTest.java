@@ -240,4 +240,28 @@ class SwarmLockTest {
         merged.inheritStateFrom(Arrays.asList(new GroundSquad(), refused));
         assertEquals(382, merged.getRefusedSwarmId());
     }
+
+    @Test
+    void aMergeDropsASourceLockOnlyWhenTheMergedSquadDoesNotHoldThatSwarm() {
+        SwarmLock s1 = new SwarmLock(382, 17942);
+        SwarmLock s2 = new SwarmLock(397, 18763);
+
+        assertTrue(SwarmLock.droppedByMerge(s2, s1));
+        assertTrue(SwarmLock.droppedByMerge(s1, null));
+        assertFalse(SwarmLock.droppedByMerge(s1, new SwarmLock(382, 18000)));
+        assertFalse(SwarmLock.droppedByMerge(null, s1));
+        assertFalse(SwarmLock.droppedByMerge(null, null));
+    }
+
+    @Test
+    void aReinforcementJoiningASwarmLockedSquadOnlyTakesTheFightRole() {
+        for (SquadStatus status : SquadStatus.values()) {
+            assertEquals(SquadManager.ReinforcementPath.JOIN_SWARM,
+                    SquadManager.reinforcementPath(true, status, true, true));
+            assertEquals(SquadManager.reinforcementPath(status, false, false),
+                    SquadManager.reinforcementPath(false, status, false, false));
+        }
+        assertEquals(SquadManager.ReinforcementPath.SIMULATE,
+                SquadManager.reinforcementPath(false, SquadStatus.FIGHT, false, false));
+    }
 }

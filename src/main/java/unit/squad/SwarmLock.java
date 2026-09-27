@@ -87,7 +87,12 @@ public final class SwarmLock {
         /** The swarm has fewer than {@link #MIN_REMAINING_FRAMES} left. */
         HORIZON,
         /** The combat sim, pricing the swarm's cover, reads RETREAT. */
-        SIM_RETREAT
+        SIM_RETREAT,
+        /**
+         * The squad merged into one that took another source's lock, see {@link #droppedByMerge}. Not returned by
+         * {@link #releaseReason}.
+         */
+        MERGED
     }
 
     /**
@@ -266,6 +271,18 @@ public final class SwarmLock {
      */
     public static DarkSwarm choose(List<DarkSwarm> swarms, Position squadCenter, List<Boolean> eligible) {
         return nearest(swarms, squadCenter, eligible, MIN_REMAINING_FRAMES);
+    }
+
+    /**
+     * Whether a merge drops a source squad's lock: the source held one and the merged squad holds none, or holds the
+     * lock on another swarm.
+     *
+     * @param source the source squad's lock, or null
+     * @param merged the merged squad's lock, or null
+     * @return true when the source's lock is gone after the merge
+     */
+    public static boolean droppedByMerge(SwarmLock source, SwarmLock merged) {
+        return source != null && (merged == null || merged.getSwarmId() != source.getSwarmId());
     }
 
     /**

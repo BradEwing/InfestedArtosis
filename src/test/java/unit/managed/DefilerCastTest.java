@@ -150,9 +150,31 @@ class DefilerCastTest {
                 new Defiler.CastPair(FRONT, near, 100),
                 new Defiler.CastPair(FRONT, far, 256));
 
-        List<Position> candidates = Defiler.castCandidates(pairs);
+        List<Position> candidates = Defiler.castCandidates(pairs, FRONT);
 
         assertEquals(Arrays.asList(Defiler.castPoint(FRONT, near), Defiler.castPoint(FRONT, mid),
                 Defiler.castPoint(FRONT, far)), candidates);
+    }
+
+    @Test
+    void aCastPointBeyondSpellRangeOfTheDefilerIsLeftOut() {
+        Position target = new Position(1300, 3300);
+        Position cast = Defiler.castPoint(FRONT, target);
+        List<Defiler.CastPair> pairs = Collections.singletonList(new Defiler.CastPair(FRONT, target, 100));
+
+        assertEquals(Collections.singletonList(cast),
+                Defiler.castCandidates(pairs, new Position(cast.getX() - 288, 3300)));
+        assertTrue(Defiler.castCandidates(pairs, new Position(cast.getX() - 289, 3300)).isEmpty());
+    }
+
+    @Test
+    void aCastWhoseFootprintMeetsALiveSwarmOnlyAtTheCornerIsRefused() {
+        DarkSwarm existing = new DarkSwarm(382, new Position(1232, 3520), 900);
+        Position corner = new Position(1232 + 150, 3520 + 150);
+        Position clearCorner = new Position(1232 + 170, 3520 + 170);
+
+        assertTrue(existing.gap(corner) > HALF_WIDTH);
+        assertTrue(Defiler.blocksCast(existing, false, corner));
+        assertFalse(Defiler.blocksCast(existing, false, clearCorner));
     }
 }

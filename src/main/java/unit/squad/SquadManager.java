@@ -658,6 +658,12 @@ public class SquadManager {
             newSquad.inheritStateFrom(mergeSet);
             SquadDecisions.pathTaken(newSquad, DecisionPath.MERGE_INHERIT);
             for (Squad mergingSquad: mergeSet) {
+                SwarmLock dropped = mergingSquad.getSwarmLock();
+                if (SwarmLock.droppedByMerge(dropped, newSquad.getSwarmLock())) {
+                    SquadDecisions.swarmEvaluated(mergingSquad, SwarmEvent.SWARM_EXPIRED, dropped.getSwarmId(),
+                            gameState.getDarkSwarmTracker().getRemainingFrames(dropped.getSwarmId()),
+                            SwarmLock.Release.MERGED);
+                }
                 if (mergeEndsContainment(mergingSquad.getStatus(), newSquad.getStatus())) {
                     endContainment(mergingSquad);
                 }
@@ -3371,7 +3377,10 @@ public class SquadManager {
         squad.addUnit(managedUnit);
         boolean stage = shouldStageSquad(squad);
         boolean holdAway = !stage && squad.getStatus() != SquadStatus.CONTAIN && reinforcementHeldAway(squad);
-        switch (reinforcementPath(squad.getStatus(), stage, holdAway)) {
+        switch (reinforcementPath(squad.getSwarmLock() != null, squad.getStatus(), stage, holdAway)) {
+            case JOIN_SWARM:
+                managedUnit.setRole(UnitRole.FIGHT);
+                return;
             case STAGE:
                 rallySquad(squad, RallyReason.STAGING);
                 return;
@@ -3401,7 +3410,25 @@ public class SquadManager {
         STAGE,
         JOIN_CONTAINMENT,
         HOLD_AWAY,
-        SIMULATE
+        SIMULATE,
+        JOIN_SWARM
+    }
+
+    /**
+     * Picks what a reinforcement does to the squad it joined. A unit joining a squad that holds a swarm lock only
+     * takes the fight role: the squad's orders come from {@link #fightUnderSwarm} on its next evaluation, so the join
+     * never stages, contains, simulates or retreats a squad the lock holds under its swarm. Any other squad goes by
+     * {@link #reinforcementPath(SquadStatus, boolean, boolean)}.
+     *
+     * @param swarmLocked true when the squad holds a swarm lock
+     * @param status status the squad held as the reinforcement joined
+     * @param stage true when the squad is rallying with no enemy inside its detection radius
+     * @param holdAway true when the squad is an air squad held at the rally point away from home
+     * @return branch to take
+     */
+    static ReinforcementPath reinforcementPath(boolean swarmLocked, SquadStatus status, boolean stage,
+                                               boolean holdAway) {
+        return swarmLocked ? ReinforcementPath.JOIN_SWARM : reinforcementPath(status, stage, holdAway);
     }
 
     /**

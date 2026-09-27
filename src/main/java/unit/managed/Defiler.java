@@ -34,11 +34,10 @@ public class Defiler extends ManagedUnit {
     private static final int DARK_SWARM_RADIUS =
             (int) Math.ceil(Math.hypot(2 * SWARM_HALF_WIDTH, 2 * SWARM_HALF_WIDTH));
     /**
-     * Radius searched around the Defiler for existing swarms: a cast point lies at most half a footprint beyond a
-     * melee unit within {@link #SPELL_RANGE}, and a swarm that could block it lies within {@link #DARK_SWARM_RADIUS}
-     * of that point.
+     * Radius searched around the Defiler for existing swarms: a cast point lies within {@link #SPELL_RANGE} of the
+     * Defiler, and a swarm that could block it lies within {@link #DARK_SWARM_RADIUS} of that point.
      */
-    private static final int SWARM_SEARCH_RADIUS = SPELL_RANGE + SWARM_HALF_WIDTH + DARK_SWARM_RADIUS;
+    private static final int SWARM_SEARCH_RADIUS = SPELL_RANGE + DARK_SWARM_RADIUS;
     /**
      * Frames left on a swarm below which a Defiler recasts over melee committed under it: the swarm lock horizon plus
      * the cast lockout, so the replacement is ordered before the lock on the old swarm lapses.
@@ -219,7 +218,7 @@ public class Defiler extends ManagedUnit {
                 pairs.add(new CastPair(melee.getPosition(), enemy.getPosition(), melee.getDistance(enemy)));
             }
         }
-        List<Position> candidates = castCandidates(pairs);
+        List<Position> candidates = castCandidates(pairs, unit.getPosition());
         if (candidates.isEmpty()) return false;
 
         int frame = game.getFrameCount();
@@ -260,12 +259,14 @@ public class Defiler extends ManagedUnit {
 
     /**
      * The cast points a Defiler may try: one for each pair within {@link #SAFE_DISTANCE}, see {@link #castPoint}, the
-     * closest pair first.
+     * closest pair first. A point beyond {@link #SPELL_RANGE} of the Defiler is left out, so a cast point pushed ahead
+     * of our front never walks the Defiler toward the enemy to reach it.
      *
      * @param pairs our melee units paired with aim targets
+     * @param defiler the Defiler's position
      * @return the cast points, closest pair first
      */
-    static List<Position> castCandidates(List<CastPair> pairs) {
+    static List<Position> castCandidates(List<CastPair> pairs, Position defiler) {
         List<CastPair> near = new ArrayList<>();
         for (CastPair pair : pairs) {
             if (pair.distance <= SAFE_DISTANCE) {
@@ -275,7 +276,10 @@ public class Defiler extends ManagedUnit {
         near.sort(Comparator.comparingDouble(pair -> pair.distance));
         List<Position> candidates = new ArrayList<>();
         for (CastPair pair : near) {
-            candidates.add(castPoint(pair.front, pair.target));
+            Position candidate = castPoint(pair.front, pair.target);
+            if (defiler.getDistance(candidate) <= SPELL_RANGE) {
+                candidates.add(candidate);
+            }
         }
         return candidates;
     }
@@ -345,7 +349,8 @@ public class Defiler extends ManagedUnit {
 
     /**
      * Whether an existing swarm or a pending cast rules out casting at a point: the new footprint, centred on the
-     * point, would overlap the existing one, and the existing one is not about to lapse under melee committed to it. A swarm with fewer
+     * point, would share a pixel with the existing one, box to box, and the existing one is not about to lapse under
+     * melee committed to it. A swarm with fewer
      * than {@link #RECAST_REMAINING_FRAMES} left and our melee under it is recast over.
      *
      * @param existing the existing swarm
@@ -354,7 +359,7 @@ public class Defiler extends ManagedUnit {
      * @return true when the cast is refused
      */
     static boolean blocksCast(DarkSwarm existing, boolean meleeUnder, Position castPosition) {
-        if (existing.gap(castPosition) > SWARM_HALF_WIDTH) return false;
+        if (!existing.overlaps(castPosition, UnitType.Spell_Dark_Swarm)) return false;
         return !meleeUnder || existing.getRemainingFrames() >= RECAST_REMAINING_FRAMES;
     }
 
