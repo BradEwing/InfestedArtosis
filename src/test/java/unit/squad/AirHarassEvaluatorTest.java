@@ -45,6 +45,24 @@ class AirHarassEvaluatorTest {
                 .options(Collections.singletonList(option("main", STRIKE, 90, -1)));
     }
 
+    @Test
+    void aFlockStandingInMoreAntiAirThanItToleratesIsNotSentIn() {
+        assertEquals(EntryVerdict.DEFENDED,
+                AirHarassEvaluator.entryVerdict(entry().flockDefense(3.0).tolerance(2.0).build()));
+        assertEquals(EntryVerdict.ENTER,
+                AirHarassEvaluator.entryVerdict(entry().flockDefense(2.0).tolerance(2.0).build()));
+    }
+
+    @Test
+    void theEntryAndTheExitAgreeOnTheFlocksAntiAir() {
+        double flockDefense = 3.0;
+        double tolerance = 2.0;
+        assertEquals(EntryVerdict.DEFENDED, AirHarassEvaluator.entryVerdict(
+                entry().flockDefense(flockDefense).tolerance(tolerance).build()));
+        assertEquals(AirHarassEvaluator.ExitReason.AA_ARRIVED, AirHarassEvaluator.exitReason(
+                exit().flockDefense(flockDefense).tolerance(tolerance).build()));
+    }
+
     private static AirHarassEvaluator.ExitInput.ExitInputBuilder exit() {
         return AirHarassEvaluator.ExitInput.builder()
                 .basesUnderAttack(false)

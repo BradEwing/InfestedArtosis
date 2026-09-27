@@ -10,6 +10,7 @@ import util.Time;
  * <p>Both layers read the same Barracks threshold. A count asked for at the main only becomes
  * sunkens if BaseData already treats the main as eligible, so a reaction that granted eligibility
  * on a different trigger than the one raising the count would leave a target no base can satisfy.
+ * Under Barracks pressure the natural is filled to that count before the main opens.
  */
 public final class SunkenTargets {
 
@@ -33,9 +34,55 @@ public final class SunkenTargets {
      */
     public static final int ZERGLING_LEAD = 3;
 
+    /**
+     * Sunkens a single base may reach once {@link #PER_BASE_CAP_OPENS} has passed, whatever the
+     * build order asks for.
+     */
+    public static final int LATE_PER_BASE_SUNKENS = 1;
+
     private static final Time ONE_BASE_RESPONSE_OPENS = new Time(5, 0);
 
+    private static final Time PER_BASE_CAP_OPENS = new Time(10, 0);
+
     private SunkenTargets() {
+    }
+
+    /**
+     * The sunkens one base is actually planned up to: the build order's target, capped at
+     * {@link #LATE_PER_BASE_SUNKENS} after 10:00.
+     *
+     * @param target sunkens per base the build order asks for
+     * @param gameTime current game time
+     * @return the per base target the colony planner fills to
+     */
+    public static int perBaseSunkenTarget(int target, Time gameTime) {
+        if (gameTime.greaterThan(PER_BASE_CAP_OPENS)) {
+            return Math.min(target, LATE_PER_BASE_SUNKENS);
+        }
+        return target;
+    }
+
+    /**
+     * Whether Barracks pressure opens the main to sunkens.
+     * <p>
+     * A standing natural takes the whole response first: while it holds fewer sunkens than its
+     * target the main stays closed, so the colonies land at the base the push reaches first. The
+     * main opens once the natural is at target, while no natural of ours stands (not yet built,
+     * still morphing, or lost), or when the main is nearer the enemy by ground than the natural,
+     * because then the main is the base the push reaches first.
+     * <p>
+     * The natural's count is its standing sunkens, not its reservations, so a pair planned at the
+     * natural does not open the main before it is built.
+     *
+     * @param naturalStanding whether a completed Hatchery of ours stands on the natural
+     * @param naturalSunkens sunkens standing or morphing at the natural
+     * @param naturalTarget the natural's per base target, per {@link #perBaseSunkenTarget}
+     * @param mainNearerEnemy whether the main is nearer the enemy main by ground path than the natural
+     * @return true when the main may take sunkens under Barracks pressure
+     */
+    public static boolean barracksPressureOpensMain(boolean naturalStanding, int naturalSunkens, int naturalTarget,
+                                                    boolean mainNearerEnemy) {
+        return !naturalStanding || mainNearerEnemy || naturalSunkens >= naturalTarget;
     }
 
     /**
@@ -69,14 +116,14 @@ public final class SunkenTargets {
     }
 
     /**
-     * Whether the Barracks the bot has seen are a bio push it must answer with static defense at
-     * the main.
+     * Whether the Barracks the bot has seen are a bio push it must answer with static defense.
      * <p>
      * Reads living observed Barracks, so the pressure recedes when the production behind it dies
-     * rather than when a clock runs out.
+     * rather than when a clock runs out. Whether the main takes any of those sunkens is
+     * {@link #barracksPressureOpensMain}'s decision.
      *
      * @param enemyBarracks living enemy Barracks we have observed
-     * @return true while the bio production seen so far warrants sunkens at the main
+     * @return true while the bio production seen so far warrants sunkens
      */
     public static boolean isBarracksPressure(int enemyBarracks) {
         return enemyBarracks >= BARRACKS_PRESSURE_COUNT;
