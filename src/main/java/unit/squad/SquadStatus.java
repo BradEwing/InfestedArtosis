@@ -11,8 +11,8 @@ package unit.squad;
  *     <li>RUNBY sits first as a guard. A runby squad is kept out of merges and splits, so the precedence only
  *     matters if one ever reaches a merge, and then the squad inside the enemy base must not be recalled by the
  *     squad it touched</li>
- *     <li>HARASS is the air squad's guard for the same reason: a harassing squad is kept out of merges, splits
- *     and joins</li>
+ *     <li>HARASS is the air squad's guard for the same reason: a harassing squad is kept out of merges and splits,
+ *     and takes only Mutalisk reinforcements, which join it without changing its status</li>
  *     <li>FIGHT outranks every status below it</li>
  *     <li>CONTAIN outranks RETREAT and RALLY because a containing squad has already cleared the moveout threshold and
  *     committed to an arc forward of the rally point</li>

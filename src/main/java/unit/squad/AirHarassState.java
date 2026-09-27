@@ -40,7 +40,7 @@ public class AirHarassState {
     }
 
     private final int startFrame;
-    private final int startHitPoints;
+    private int startHitPoints;
     private final Set<Base> visitedBases = new HashSet<>();
     private final Map<Integer, AirHarassTargeting.MutaMemory> mutaMemory = new HashMap<>();
 
@@ -58,7 +58,8 @@ public class AirHarassState {
 
     /**
      * @param startFrame frame the harass started
-     * @param startHitPoints summed hit points of the squad's Mutalisks at the start
+     * @param startHitPoints summed hit points of the squad's Mutalisks at the start, which grows by the hit points
+     *                       of every Mutalisk that joins later
      */
     public AirHarassState(int startFrame, int startHitPoints) {
         this.startFrame = startFrame;
@@ -178,5 +179,14 @@ public class AirHarassState {
      */
     public void creditLoss() {
         mutasLost++;
+    }
+
+    /**
+     * Adds the hit points of Mutalisks that joined the harass to the ones it started with.
+     *
+     * @param hitPoints summed hit points of the Mutalisks that joined
+     */
+    public void addStartHitPoints(int hitPoints) {
+        startHitPoints += hitPoints;
     }
 }
