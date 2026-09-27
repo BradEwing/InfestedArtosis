@@ -11,9 +11,11 @@ import telemetry.RetreatRoute;
 
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -103,6 +105,15 @@ class GroundRetreatRouterTest {
         "#........#",
         "#........#",
         "##########",
+    };
+
+    /**
+     * A one tile high corridor with home at its west end, so home's only neighbour is the tile east of it.
+     */
+    private static final String[] DEAD_END_HOME = {
+        "#########",
+        "#.......#",
+        "#########",
     };
 
     @Test
@@ -207,7 +218,9 @@ class GroundRetreatRouterTest {
 
     @Test
     void everyRetreatTargetIsWalkableAndConnectedToHome() {
-        List<String[]> layouts = Arrays.asList(POCKET_WITH_EAST_EXIT, OPEN_FIELD, SEALED_POCKET, TWO_GAP_WALL);
+        List<String[]> layouts = Arrays.asList(POCKET_WITH_EAST_EXIT, OPEN_FIELD, SEALED_POCKET, TWO_GAP_WALL,
+                DEAD_END_HOME);
+        Set<RetreatRoute> routes = EnumSet.noneOf(RetreatRoute.class);
         for (String[] layout : layouts) {
             GameMap map = map(layout);
             Position home = firstWalkableFromBottomRight(map);
@@ -223,6 +236,7 @@ class GroundRetreatRouterTest {
                     GroundRetreatRouter.Plan<String> plan = new GroundRetreatRouter(map)
                             .plan(members, home, Collections.singletonList(tileCenter(ex, ey)));
                     assertNotNull(plan);
+                    routes.add(plan.getRoute());
                     assertEquals(members.size(), plan.getTargets().size());
                     for (Map.Entry<String, Position> target : plan.getTargets().entrySet()) {
                         String member = "member " + target.getKey() + " enemy " + ex + ":" + ey;
@@ -240,6 +254,7 @@ class GroundRetreatRouterTest {
                 }
             }
         }
+        assertTrue(routes.contains(RetreatRoute.HOME_CONTESTED), "the sweep covers the contested home plan");
     }
 
     @Test
@@ -295,6 +310,75 @@ class GroundRetreatRouterTest {
                 tileCenter(4, 16), Collections.emptyList()));
         assertEquals(null, new GroundRetreatRouter(solid).plan(Collections.singletonMap("a", tileCenter(4, 4)),
                 tileCenter(6, 6), Collections.emptyList()));
+    }
+
+    @Test
+    void enemyOnTheHomeTileContestsHomeInsteadOfCorneringTheSquad() {
+        GameMap map = map(OPEN_FIELD);
+        Position home = tileCenter(21, 10);
+        Position squad = tileCenter(4, 10);
+
+        GroundRetreatRouter.Plan<String> plan = new GroundRetreatRouter(map)
+                .plan(Collections.singletonMap("ling", squad), home, Collections.singletonList(home));
+
+        assertEquals(RetreatRoute.HOME_CONTESTED, plan.getRoute());
+        TilePosition tile = plan.getTargets().get("ling").toTilePosition();
+        assertEquals(homeDistance(map, home, squad.toTilePosition()) - GroundRetreatRouter.PATH_STEP_TILES,
+                homeDistance(map, home, tile), "walks the direct path home");
+        assertFalse(SquadManager.corneredSquadFights(SquadStatus.RETREAT, plan.getRoute(),
+                CombatSimulator.CombatResult.ENGAGE));
+    }
+
+    @Test
+    void memberWalkingToAContestedHomeStopsAtTheEdgeOfTheDanger() {
+        GameMap map = map(OPEN_FIELD);
+        Position home = tileCenter(21, 10);
+        Position enemy = tileCenter(20, 10);
+
+        GroundRetreatRouter.Plan<String> plan = new GroundRetreatRouter(map)
+                .plan(Collections.singletonMap("ling", tileCenter(13, 10)), home, Collections.singletonList(enemy));
+
+        Position target = plan.getTargets().get("ling");
+        TilePosition tile = target.toTilePosition();
+        assertEquals(RetreatRoute.HOME_CONTESTED, plan.getRoute());
+        assertTrue(target.getDistance(enemy) > GroundRetreatRouter.DANGER_RADIUS, "outside the danger, got " + tile);
+        assertTrue(homeDistance(map, home, tile) < homeDistance(map, home, new TilePosition(13, 10)));
+        int[][] direct = map.groundStepDistances(home.toTilePosition(), t -> false);
+        for (TilePosition next : map.groundNeighbors(tile)) {
+            if (direct[next.getX()][next.getY()] == direct[tile.getX()][tile.getY()] - 1) {
+                assertTrue(GroundRetreatRouter.center(next).getDistance(enemy) <= GroundRetreatRouter.DANGER_RADIUS,
+                        "every next step home enters the danger, " + next);
+            }
+        }
+    }
+
+    @Test
+    void memberInsideTheDangerAtAContestedHomeBacksOutWithoutClosingOnTheEnemy() {
+        GameMap map = map(OPEN_FIELD);
+        Position home = tileCenter(21, 10);
+        Position squad = tileCenter(18, 10);
+
+        GroundRetreatRouter.Plan<String> plan = new GroundRetreatRouter(map)
+                .plan(Collections.singletonMap("ling", squad), home, Collections.singletonList(home));
+
+        Position target = plan.getTargets().get("ling");
+        assertEquals(RetreatRoute.HOME_CONTESTED, plan.getRoute());
+        assertTrue(target.getDistance(home) > GroundRetreatRouter.DANGER_RADIUS, "backs out, got " + target);
+    }
+
+    @Test
+    void enemyCoveringEveryTileNextToHomeContestsIt() {
+        GameMap map = map(DEAD_END_HOME);
+        Position home = tileCenter(1, 1);
+        Position enemy = tileCenter(7, 1);
+        assertTrue(home.getDistance(enemy) > GroundRetreatRouter.DANGER_RADIUS);
+        assertTrue(tileCenter(2, 1).getDistance(enemy) <= GroundRetreatRouter.DANGER_RADIUS);
+
+        GroundRetreatRouter.Plan<String> plan = new GroundRetreatRouter(map)
+                .plan(Collections.singletonMap("ling", tileCenter(4, 1)), home, Collections.singletonList(enemy));
+
+        assertEquals(RetreatRoute.HOME_CONTESTED, plan.getRoute());
+        assertEquals(home, plan.getTargets().get("ling"));
     }
 
     @Test

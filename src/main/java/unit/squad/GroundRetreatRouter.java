@@ -28,6 +28,11 @@ import java.util.function.Predicate;
  * it can reach without stepping closer to the enemy that lies farthest from it. Every target is the centre of a fully
  * walkable tile that a ground path joins to home. A member with no such tile within {@link #SNAP_TILES} of it gets a
  * null target and is left out of the route, so it backs away on its own.
+ *
+ * <p>Home is contested when the enemy stands on it: home's tile, or every tile next to it, lies within
+ * {@link #DANGER_RADIUS} of a threat, so no path home can stay clear of the enemy. The squad is then not cornered but
+ * stages outside the enemy: each member walks the direct path home and stops at the last tile before the danger
+ * radius, and a member inside it backs out as above to a tile outside it.
  */
 final class GroundRetreatRouter {
 
@@ -91,6 +96,9 @@ final class GroundRetreatRouter {
         int[][] direct = homeDistances(homeTile);
         List<Position> enemies = new ArrayList<>(threats);
         boolean[][] danger = dangerTiles(enemies);
+        if (homeContested(homeTile, danger)) {
+            return stagingPlan(members, direct, danger, enemies);
+        }
         int[][] safe = enemies.isEmpty()
                 ? direct
                 : gameMap.groundStepDistances(homeTile, tile -> danger[tile.getX()][tile.getY()]);
@@ -131,6 +139,46 @@ final class GroundRetreatRouter {
             route = RetreatRoute.HOME;
         }
         return new Plan<>(route, targets);
+    }
+
+    private boolean homeContested(TilePosition homeTile, boolean[][] danger) {
+        if (at(danger, homeTile)) {
+            return true;
+        }
+        for (TilePosition neighbor : gameMap.groundNeighbors(homeTile)) {
+            if (!at(danger, neighbor)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private <K> Plan<K> stagingPlan(Map<K, Position> members, int[][] direct, boolean[][] danger,
+                                    List<Position> enemies) {
+        int[][] staging = new int[direct.length][];
+        for (int x = 0; x < direct.length; x++) {
+            staging[x] = direct[x].clone();
+            for (int y = 0; y < staging[x].length; y++) {
+                if (danger[x][y]) {
+                    staging[x][y] = -1;
+                }
+            }
+        }
+        Map<K, Position> targets = new LinkedHashMap<>();
+        for (Map.Entry<K, Position> member : members.entrySet()) {
+            TilePosition start = snapToReached(member.getValue().toTilePosition(), direct);
+            if (start == null) {
+                targets.put(member.getKey(), null);
+            } else if (at(staging, start) >= 0) {
+                targets.put(member.getKey(), center(descend(staging, start, PATH_STEP_TILES, enemies)));
+            } else {
+                Escape escape = escape(start, staging, enemies);
+                targets.put(member.getKey(), center(escape.exit == null
+                        ? escape.farthest
+                        : escape.target(staging, enemies)));
+            }
+        }
+        return new Plan<>(RetreatRoute.HOME_CONTESTED, targets);
     }
 
     private int[][] homeDistances(TilePosition homeTile) {
@@ -277,6 +325,10 @@ final class GroundRetreatRouter {
     }
 
     private static int at(int[][] field, TilePosition tile) {
+        return field[tile.getX()][tile.getY()];
+    }
+
+    private static boolean at(boolean[][] field, TilePosition tile) {
         return field[tile.getX()][tile.getY()];
     }
 

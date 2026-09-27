@@ -1536,9 +1536,11 @@ public class SquadManager {
         double ratio = snapshot != null ? snapshot.getOverallRatio() : 0;
         double engageThreshold = snapshot != null ? snapshot.getEngageThreshold() : 0;
 
-        if (squad.isGroundSquad() && corneredSquadFights(squad.getStatus(), squad.getRetreatRoute(), result)) {
+        if (squad.isGroundSquad() && squad.corneredEngagePersisted(
+                corneredSquadFights(squad.getStatus(), squad.getRetreatRoute(), result), now)) {
             squad.setStatus(SquadStatus.FIGHT);
             squad.setRetreatRoute(RetreatRoute.NONE);
+            squad.holdCorneredFight(now);
             SquadDecisions.pathTaken(squad, DecisionPath.CORNERED_ENGAGE);
             assignFightTargets(squad, managedFighters, true);
             updateFightLock(squad, result, false, now);
@@ -1553,9 +1555,9 @@ public class SquadManager {
                 retreatLocked = false;
                 SquadDecisions.pathTaken(squad, DecisionPath.RETREAT_LOCK_BROKEN);
             } else {
+                assignRetreatTargets(squad, managedFighters);
                 SquadDecisions.lockSuppressed(squad, SquadLock.RETREAT);
                 SquadDecisions.pathTaken(squad, DecisionPath.RETREAT_LOCK);
-                assignRetreatTargets(squad, managedFighters);
                 return;
             }
         }
@@ -1660,9 +1662,10 @@ public class SquadManager {
 
     /**
      * Whether a FIGHT squad stays in FIGHT whatever this frame's verdict: a collapse is wrapping, a committed collapse
-     * still holds it, see {@link Squad#isCollapseCommitHeld}, or its fight lock holds against the verdict, see
-     * {@link #fightLockHolds}. A collapse was judged on the enemies inside the arc's sector, so a whole-squad RETREAT
-     * read around the squad's center does not undo it.
+     * still holds it, see {@link Squad#isCollapseCommitHeld}, a cornered squad that turned to fight is still held, see
+     * {@link Squad#isCorneredFightHeld}, or its fight lock holds against the verdict, see {@link #fightLockHolds}. A
+     * collapse was judged on the enemies inside the arc's sector, so a whole-squad RETREAT read around the squad's
+     * center does not undo it, and a cornered squad has no path home to retreat along.
      *
      * @param squad fight squad
      * @param now current frame
@@ -1670,7 +1673,8 @@ public class SquadManager {
      * @return true when the squad stays in FIGHT and this frame's verdict is suppressed
      */
     static boolean fightHeld(Squad squad, int now, boolean fightLockHolds) {
-        return squad.getStatus() == SquadStatus.FIGHT && (fightLockHolds || collapseHoldsMembers(squad, now));
+        return squad.getStatus() == SquadStatus.FIGHT
+                && (fightLockHolds || collapseHoldsMembers(squad, now) || squad.isCorneredFightHeld(now));
     }
 
     /**
@@ -3650,13 +3654,15 @@ public class SquadManager {
     }
 
     /**
-     * Whether a squad held in retreat turns to fight because it has nowhere to go: its last retreat plan found no
-     * path home clear of the enemy, and the sim rates the fight at or above its engage threshold.
+     * Whether a squad held in retreat reads a cornered ENGAGE: its last retreat plan found no path home clear of the
+     * enemy, and the sim rates the fight at or above its engage threshold. The squad turns to fight once this read has
+     * held over a fight hysteresis window, see {@link Squad#corneredEngagePersisted}, and then stays in FIGHT for one
+     * more, see {@link Squad#holdCorneredFight}. A retreat from a HOME_CONTESTED plan is not cornered.
      *
      * @param status status the squad holds
      * @param route route of the squad's last ground retreat plan
      * @param result the sim's verdict this frame
-     * @return true when the squad fights instead of retreating
+     * @return true when this frame's read counts toward the squad fighting instead of retreating
      */
     static boolean corneredSquadFights(SquadStatus status, RetreatRoute route, CombatSimulator.CombatResult result) {
         return status == SquadStatus.RETREAT && route == RetreatRoute.CORNERED

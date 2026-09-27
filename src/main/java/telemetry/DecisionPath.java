@@ -160,8 +160,8 @@ public enum DecisionPath {
     RETREAT_LOCK_BROKEN,
 
     /**
-     * A retreating ground squad whose last retreat plan found no path home clear of the enemy turned to fight on an
-     * ENGAGE verdict, ahead of its retreat lock.
+     * A retreating ground squad whose last retreat plan found no path home clear of the enemy turned to fight, ahead
+     * of its retreat lock, once ENGAGE had held over a fight hysteresis window. It then stays in FIGHT for one more.
      */
     CORNERED_ENGAGE,
 
