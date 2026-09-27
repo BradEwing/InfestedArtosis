@@ -124,13 +124,25 @@ public final class ContainmentCollapse {
     }
 
     /**
-     * How the wrap of a collapse ended: skipped because the squad was under fire, every flank arrived, or the wrap
-     * ran out its {@link #WRAP_FRAME_CAP} frames.
+     * How the wrap of a collapse ended: skipped because the squad was under fire, every flank arrived, the wrap
+     * ran out its {@link #WRAP_FRAME_CAP} frames, or no flank could wrap because every flank fights instead, see
+     * {@link #attackMovesToWrap}.
      */
     public enum WrapEnd {
         SKIPPED,
         ARRIVED,
-        CAP
+        CAP,
+        NO_FLANKS;
+
+        /**
+         * How a collapse that planned no wrap ended on its own frame.
+         *
+         * @param underFire whether the enemy was already engaging the squad
+         * @return SKIPPED under fire, NO_FLANKS otherwise
+         */
+        static WrapEnd unplanned(UnderFire underFire) {
+            return underFire == UnderFire.NONE ? NO_FLANKS : SKIPPED;
+        }
     }
 
     /**

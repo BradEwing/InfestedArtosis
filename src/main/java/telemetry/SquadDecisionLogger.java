@@ -80,7 +80,8 @@ import java.util.stream.Collectors;
  * engage threshold, whatever the outcome), -1 when the read is not favourable; that frame measures the delay from the
  * first favourable read to the attack, including refusals before the run, and it is set for a squad under fire
  * that has no run. CONTAIN_COLLAPSE_COMMIT is emitted on the frame the wrap ends and every member fights, which
- * changes no status, with collapse_wrap_end SKIPPED (under fire, on the collapse frame), ARRIVED or CAP.
+ * changes no status, with collapse_wrap_end SKIPPED (under fire, on the collapse frame), ARRIVED, CAP or NO_FLANKS
+ * (not under fire, but every flank fights instead of wrapping, on the collapse frame).
  *
  * <p>sim_enemy_air_share and sim_our_air_share are the shares of each side's priced strength that fly. Each unit on
  * one side is priced over the other side's strength in the layers it can hit, so a weapon that fills two domains,

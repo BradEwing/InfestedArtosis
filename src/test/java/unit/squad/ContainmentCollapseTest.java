@@ -511,6 +511,16 @@ class ContainmentCollapseTest {
     }
 
     @Test
+    void aCollapseWithNoWrapIsSkippedOnlyUnderFire() {
+        assertEquals(ContainmentCollapse.WrapEnd.NO_FLANKS, ContainmentCollapse.WrapEnd.unplanned(NOT_UNDER_FIRE),
+                "a squad whose flanks all fight instead of wrapping was not under fire");
+        for (ContainmentCollapse.UnderFire firing : Arrays.asList(ContainmentCollapse.UnderFire.HIT,
+                ContainmentCollapse.UnderFire.MELEE, ContainmentCollapse.UnderFire.HIT_AND_MELEE)) {
+            assertEquals(ContainmentCollapse.WrapEnd.SKIPPED, ContainmentCollapse.WrapEnd.unplanned(firing));
+        }
+    }
+
+    @Test
     void onlyAHitAnEnemyInTheSectorCouldHaveLandedCountsAsUnderFire() {
         int marineRange = EnemyReachMemory.baseGroundRange(UnitType.Terran_Marine);
 

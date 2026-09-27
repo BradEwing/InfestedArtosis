@@ -231,7 +231,7 @@ public class SquadManager {
      * Moves every member with an outranged hit this frame to the point, within a short ring around it, farthest
      * outside every zone that outranges it. The move is issued this frame, ahead of the unit's ready gate. A
      * burrowed member, or one whose type cannot move, is left to keep attacking from its role, and so is a member
-     * fighting or wrapping in a collapse: it was sent into that fire by the collapse test.
+     * fighting or wrapping in a collapse, or held by its commit: it was sent into that fire by the collapse test.
      *
      * @param now current frame
      */
@@ -244,7 +244,7 @@ public class SquadManager {
         int mapPixelWidth = game.mapWidth() * 32;
         int mapPixelHeight = game.mapHeight() * 32;
         Predicate<Position> allowed = point -> isWalkable(point, accessible, mapPixelWidth, mapPixelHeight);
-        Set<ManagedUnit> collapsing = collapsingMembers();
+        Set<ManagedUnit> collapsing = collapsingMembers(now);
         for (ManagedUnit member : outrangedHits) {
             if (collapsing.contains(member) || !member.canStepOutNow()
                     || !ManagedUnit.evadesOutrangedHit(member.getRole(), member.isClosingOnTarget())) {
@@ -1439,8 +1439,7 @@ public class SquadManager {
      * @return true when the squad stays in FIGHT and this frame's verdict is suppressed
      */
     static boolean fightHeld(Squad squad, int now, boolean fightLockHolds) {
-        return squad.getStatus() == SquadStatus.FIGHT
-                && (squad.getCollapse() != null || squad.isCollapseCommitHeld(now) || fightLockHolds);
+        return squad.getStatus() == SquadStatus.FIGHT && (fightLockHolds || collapseHoldsMembers(squad, now));
     }
 
     /**
@@ -1981,7 +1980,7 @@ public class SquadManager {
         endContainment(squad);
         squad.setStatus(SquadStatus.FIGHT);
         if (maneuver == null) {
-            SquadDecisions.collapseWrapEnded(squad, ContainmentCollapse.WrapEnd.SKIPPED);
+            SquadDecisions.collapseWrapEnded(squad, ContainmentCollapse.WrapEnd.unplanned(read.getUnderFire()));
             SquadDecisions.pathTaken(squad, DecisionPath.CONTAIN_COLLAPSE_COMMIT);
         }
         SquadDecisions.pathTaken(squad, DecisionPath.CONTAIN_COLLAPSE);
@@ -2122,17 +2121,35 @@ public class SquadManager {
     }
 
     /**
-     * Members of fight squads taking part in a collapse under way this frame.
+     * Members of fight squads taking part in a collapse this frame: the members of a collapse under way, and every
+     * member of a squad a committed collapse still holds, see {@link Squad#isCollapseCommitHeld}.
+     *
+     * @param now current frame
+     * @return the members exempt from evading an outranged hit
      */
-    private Set<ManagedUnit> collapsingMembers() {
+    private Set<ManagedUnit> collapsingMembers(int now) {
         Set<ManagedUnit> collapsing = new HashSet<>();
         for (Squad squad : fightSquads) {
-            ContainmentCollapse.Maneuver maneuver = squad.getCollapse();
-            if (maneuver != null && squad.getStatus() == SquadStatus.FIGHT) {
-                collapsing.addAll(maneuver.getMembers());
+            if (!collapseHoldsMembers(squad, now)) {
+                continue;
             }
+            ContainmentCollapse.Maneuver maneuver = squad.getCollapse();
+            collapsing.addAll(maneuver != null ? maneuver.getMembers() : squad.getMembers());
         }
         return collapsing;
+    }
+
+    /**
+     * Whether a squad's members are taking part in a collapse, and so hold their ground under outranging fire: a
+     * FIGHT squad with a collapse under way or a committed collapse still holding it.
+     *
+     * @param squad fight squad
+     * @param now current frame
+     * @return true while the collapse or its commit holds the squad
+     */
+    static boolean collapseHoldsMembers(Squad squad, int now) {
+        return squad.getStatus() == SquadStatus.FIGHT
+                && (squad.getCollapse() != null || squad.isCollapseCommitHeld(now));
     }
 
     private void endContainment(Squad squad) {

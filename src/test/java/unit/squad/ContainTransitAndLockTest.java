@@ -226,6 +226,31 @@ class ContainTransitAndLockTest {
     }
 
     @Test
+    void aCommittedCollapseKeepsItsMembersFromEvadingUntilTheHoldEnds() {
+        Squad squad = new GroundSquad();
+        squad.setStatus(SquadStatus.FIGHT);
+        assertFalse(SquadManager.collapseHoldsMembers(squad, 9701));
+
+        squad.commitCollapse(9701);
+        int expiry = fightLockExpiry(squad, 9701);
+
+        assertTrue(SquadManager.collapseHoldsMembers(squad, 9702));
+        assertTrue(SquadManager.collapseHoldsMembers(squad, expiry - 1));
+        assertFalse(SquadManager.collapseHoldsMembers(squad, expiry));
+    }
+
+    @Test
+    void aWrappingCollapseKeepsItsMembersFromEvading() {
+        Squad squad = new GroundSquad();
+        squad.setStatus(SquadStatus.FIGHT);
+        squad.setCollapse(new ContainmentCollapse.Maneuver(Collections.emptyMap(), Collections.emptySet(), 9701));
+
+        assertTrue(SquadManager.collapseHoldsMembers(squad, 9702));
+        squad.setStatus(SquadStatus.RETREAT);
+        assertFalse(SquadManager.collapseHoldsMembers(squad, 9702));
+    }
+
+    @Test
     void aCollapseCommitHoldsOnlyAFightSquad() {
         Squad squad = new GroundSquad();
         squad.setStatus(SquadStatus.FIGHT);
