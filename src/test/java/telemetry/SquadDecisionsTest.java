@@ -121,6 +121,12 @@ class SquadDecisionsTest {
             }
 
             @Override
+            public void onContainmentStalemateRead(Squad squad, int breakShortfall, boolean breakUnreachable,
+                                                   boolean stalemate) {
+                events.add("CONTAIN_STALEMATE_READ:" + breakShortfall + ":" + breakUnreachable + ":" + stalemate);
+            }
+
+            @Override
             public void onMoveOutEvaluated(Squad squad, int moveOutThreshold, int squadStrength) {
                 events.add("MOVE_OUT:" + moveOutThreshold + ":" + squadStrength);
             }
@@ -158,7 +164,8 @@ class SquadDecisionsTest {
                 + "," + String.join(",", SquadDecisionLogger.workerIdCells(Collections.emptyList(),
                 Collections.emptyList()))
                 + "," + String.join(",", SquadDecisionLogger.collapseCells(context))
-                + "," + String.join(",", SquadDecisionLogger.containTimeoutCells(context));
+                + "," + String.join(",", SquadDecisionLogger.containTimeoutCells(context))
+                + "," + String.join(",", SquadDecisionLogger.containStalemateCells(context));
         return row.split(",", -1);
     }
 
@@ -519,7 +526,8 @@ class SquadDecisionsTest {
                 Arrays.asList(SquadDecisionLogger.releasedWorkerEntry(161, UnitRole.BUILD),
                         SquadDecisionLogger.releasedWorkerEntry(162, UnitRole.DEFEND))))
                 + "," + String.join(",", SquadDecisionLogger.collapseCells(context))
-                + "," + String.join(",", SquadDecisionLogger.containTimeoutCells(context));
+                + "," + String.join(",", SquadDecisionLogger.containTimeoutCells(context))
+                + "," + String.join(",", SquadDecisionLogger.containStalemateCells(context));
         String[] fields = row.split(",", -1);
 
         assertEquals(SquadDecisionLogger.HEADER.split(",", -1).length, fields.length);
@@ -644,7 +652,8 @@ class SquadDecisionsTest {
                 + "," + String.join(",", SquadDecisionLogger.workerIdCells(Collections.emptyList(),
                 Collections.emptyList()))
                 + "," + String.join(",", SquadDecisionLogger.collapseCells(context))
-                + "," + String.join(",", SquadDecisionLogger.containTimeoutCells(context));
+                + "," + String.join(",", SquadDecisionLogger.containTimeoutCells(context))
+                + "," + String.join(",", SquadDecisionLogger.containStalemateCells(context));
         String[] fields = row.split(",", -1);
 
         assertEquals(SquadDecisionLogger.HEADER.split(",", -1).length, fields.length);
@@ -760,10 +769,28 @@ class SquadDecisionsTest {
         String[] columns = SquadDecisionLogger.HEADER.split(",", -1);
 
         assertEquals(java.util.Collections.singletonList("CONTAIN_TIMED_OUT:2:true"), events);
-        assertEquals("collapse_first_favourable_frame", columns[columns.length - 3]);
-        assertEquals("contain_timeout_reentries", columns[columns.length - 2]);
-        assertEquals("contain_static_only", columns[columns.length - 1]);
+        int first = columnIndex("contain_timeout_reentries");
+        assertEquals("collapse_first_favourable_frame", columns[first - 1]);
+        assertEquals("contain_static_only", columns[first + 1]);
         assertEquals(java.util.Arrays.asList("2", "0"), SquadDecisionLogger.containTimeoutCells(context));
+    }
+
+    @Test
+    void aTimeoutRowCarriesTheBreakShortfallAndTheStalemateReadAsTheLastColumns() {
+        SquadDecisions.register(recorder());
+        SquadDecisions.containmentStalemateRead(new GroundSquad(), 17, true, true);
+        SquadDecision context = new SquadDecision();
+        context.setContainBreakShortfall(17);
+        context.setContainBreakUnreachable(SquadDecision.tristate(false));
+        context.setContainStalemate(SquadDecision.tristate(true));
+        String[] columns = SquadDecisionLogger.HEADER.split(",", -1);
+
+        assertEquals(java.util.Collections.singletonList("CONTAIN_STALEMATE_READ:17:true:true"), events);
+        assertEquals("contain_static_only", columns[columns.length - 4]);
+        assertEquals("contain_break_shortfall_real", columns[columns.length - 3]);
+        assertEquals("contain_break_unreachable", columns[columns.length - 2]);
+        assertEquals("contain_stalemate", columns[columns.length - 1]);
+        assertEquals(java.util.Arrays.asList("8.5", "0", "1"), SquadDecisionLogger.containStalemateCells(context));
     }
 
     @Test
@@ -773,6 +800,9 @@ class SquadDecisionsTest {
         assertEquals(SquadDecisionLogger.HEADER.split(",", -1).length, fields.length);
         assertEquals("-1", fields[columnIndex("contain_timeout_reentries")]);
         assertEquals("-1", fields[columnIndex("contain_static_only")]);
+        assertEquals("-1", fields[columnIndex("contain_break_shortfall_real")]);
+        assertEquals("-1", fields[columnIndex("contain_break_unreachable")]);
+        assertEquals("-1", fields[columnIndex("contain_stalemate")]);
     }
 
     @Test

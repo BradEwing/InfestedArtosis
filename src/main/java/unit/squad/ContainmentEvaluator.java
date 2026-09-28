@@ -25,6 +25,12 @@ public class ContainmentEvaluator {
     static final int STATIC_DEFENSE_BASE_RADIUS = 512;
 
     /**
+     * The supply cap in BWAPI's doubled units, 200 as the game shows it, the same cap ProductionManager plans
+     * against.
+     */
+    static final int MAX_SUPPLY = 400;
+
+    /**
      * Distance from an enemy main or natural centre, or from a containing squad's centre, within which a squad that
      * is neither fighting nor containing still counts toward the break: 24 tiles, enough to take in a flock
      * harassing or regrouping over the base a ground squad is containing, while leaving out one back at our rally
@@ -140,6 +146,17 @@ public class ContainmentEvaluator {
      * @return true when our supply reaches the break ratio over the enemy's
      */
     public boolean canBreakContainment(Set<Squad> allSquads, int currentFrame) {
+        return measureBreak(allSquads, currentFrame).breaks();
+    }
+
+    /**
+     * Both sides of the break, as {@link #canBreakContainment} counts them.
+     *
+     * @param allSquads every fight squad
+     * @param currentFrame current frame
+     * @return our supply and the enemy's strength
+     */
+    public BreakMeasure measureBreak(Set<Squad> allSquads, int currentFrame) {
         List<Position> contested = contestedPositions(allSquads);
         int ourSupply = 0;
         for (Squad s : allSquads) {
@@ -147,7 +164,67 @@ public class ContainmentEvaluator {
                 ourSupply += estimateSquadSupply(s);
             }
         }
-        return breaks(ourSupply, estimateEnemyArmySupply() + staticDefenseSupply(currentFrame));
+        return new BreakMeasure(ourSupply, estimateEnemyArmySupply() + staticDefenseSupply(currentFrame));
+    }
+
+    /**
+     * Both sides of the break, in BWAPI's doubled supply units.
+     */
+    public static final class BreakMeasure {
+        private final int ourSupply;
+        private final int enemyStrength;
+
+        /**
+         * @param ourSupply supply of the squads that count toward the break
+         * @param enemyStrength enemy army supply plus its static defence supply
+         */
+        public BreakMeasure(int ourSupply, int enemyStrength) {
+            this.ourSupply = ourSupply;
+            this.enemyStrength = enemyStrength;
+        }
+
+        /**
+         * @return true when the army may push in, see {@link ContainmentEvaluator#breaks}
+         */
+        public boolean breaks() {
+            return ContainmentEvaluator.breaks(ourSupply, enemyStrength);
+        }
+
+        /**
+         * @return supply still missing for the break, 0 when it clears
+         */
+        public int shortfall() {
+            return breakShortfall(ourSupply, enemyStrength);
+        }
+
+        /**
+         * @return true when the break needs more than the supply cap, see
+         *     {@link ContainmentEvaluator#breakUnreachable}
+         */
+        public boolean unreachable() {
+            return breakUnreachable(enemyStrength);
+        }
+    }
+
+    /**
+     * Supply our side still needs for the break.
+     *
+     * @param ourSupply supply of the squads that count toward the break
+     * @param enemyStrength enemy army supply plus its static defence supply
+     * @return the smallest supply that would reach the break ratio less our supply, 0 when the break clears
+     */
+    static int breakShortfall(int ourSupply, int enemyStrength) {
+        return Math.max(0, (int) Math.ceil(enemyStrength * BREAK_SUPPLY_RATIO) - ourSupply);
+    }
+
+    /**
+     * Whether the break stays out of reach even with our supply at the cap, {@link #MAX_SUPPLY}, all of it army.
+     *
+     * @param enemyStrength enemy army supply plus its static defence supply
+     * @return true when no army we can field clears the break ratio
+     */
+    static boolean breakUnreachable(int enemyStrength) {
+        return !breaks(MAX_SUPPLY, enemyStrength);
     }
 
     /**

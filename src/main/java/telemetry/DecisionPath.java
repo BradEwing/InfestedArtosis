@@ -175,5 +175,13 @@ public enum DecisionPath {
      * only, and every containing squad was committed to FIGHT under a fight lock instead of retreating, with arcs
      * barred for the hold window so the combat sim decides the attack.
      */
-    CONTAIN_ESCALATE
+    CONTAIN_ESCALATE,
+
+    /**
+     * A contain against an enemy with army outside its static defence timed out as a stalemate: it had been
+     * re-entered in a row after timeouts, its break was out of reach even at the supply cap, or a stalemate was
+     * already detected. The squad retreats and arcs are barred for the stalemate hold window, so the combat sim
+     * decides what the army does instead of the next contain.
+     */
+    CONTAIN_STALEMATE
 }

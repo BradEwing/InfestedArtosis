@@ -133,6 +133,12 @@ public interface SquadDecisionSink {
     void onContainmentTimedOut(Squad squad, int reentries, boolean staticOnly);
 
     /**
+     * A containing squad ran out its containment timeout, with the supply, in BWAPI half-supply, the break still
+     * lacked, whether the break was out of reach even at the supply cap, and whether the timeout was a stalemate.
+     */
+    void onContainmentStalemateRead(Squad squad, int breakShortfall, boolean breakUnreachable, boolean stalemate);
+
+    /**
      * A fight squad's strength was compared against its move out threshold, in the threshold's units: air
      * combat units for an air squad, BWAPI half-supply for a ground squad.
      */

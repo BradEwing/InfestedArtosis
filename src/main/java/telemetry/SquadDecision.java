@@ -59,6 +59,9 @@ final class SquadDecision {
     private int collapseFirstFavourableFrame = NOT_EVALUATED;
     private int containTimeoutReentries = NOT_EVALUATED;
     private int containStaticOnly = NOT_EVALUATED;
+    private int containBreakShortfall = NOT_EVALUATED;
+    private int containBreakUnreachable = NOT_EVALUATED;
+    private int containStalemate = NOT_EVALUATED;
 
     static int tristate(boolean value) {
         return value ? 1 : 0;

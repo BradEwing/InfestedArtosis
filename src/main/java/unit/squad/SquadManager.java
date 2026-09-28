@@ -135,7 +135,7 @@ public class SquadManager {
     private static final int DEFENSE_SIM_RANGE = 256;
     private static final int CONTAINMENT_REEVALUATE_INTERVAL = 48;
     private static final int MAX_MOVE_OUT_THRESHOLD = 40;
-    private static final int CONTAINMENT_TIMEOUT_FRAMES = 1400;
+    static final int CONTAINMENT_TIMEOUT_FRAMES = 1400;
     private static final int CONTAINMENT_ENGAGE_RADIUS = 256;
     private static final int ARC_DEGREES = 90;
     private static final int ARC_RADIUS = 160;
@@ -643,7 +643,7 @@ public class SquadManager {
 
         for (Squad squad: emptySquads) {
             if (squad.getStatus() == SquadStatus.CONTAIN) {
-                containmentEscalation.onEndedOtherwise();
+                containEndedOtherwise();
                 endContainment(squad);
             }
             AirHarassEvaluator.ExitReason harassExit = AirHarassEvaluator.removalExit(squad.getStatus(), squad.size());
@@ -1803,7 +1803,8 @@ public class SquadManager {
      *
      * <p>The evaluator calls stay short circuited in their original order: canBreakContainment is
      * consulted only when shouldContain holds, and enterContainment only when both allow it. No squad takes an arc
-     * while a contain escalation holds entry, see {@link ContainmentEscalation}.
+     * while a contain escalation or a contain stalemate holds entry, see {@link ContainmentEscalation} and
+     * {@link ContainmentStalemate}.
      *
      * @param squad squad offered an arc
      * @return true if the squad took the arc and is now containing
@@ -1814,6 +1815,7 @@ public class SquadManager {
         boolean shouldContain = containmentEvaluator.shouldContain(squad);
         boolean canBreak = shouldContain && containmentEvaluator.canBreakContainment(fightSquads, now);
         boolean entered = !containmentEscalation.holdsEntry(now)
+                && !gameState.getContainmentStalemate().holdsEntry(now)
                 && mayEnterContainment(underAttack, shouldContain, canBreak) && enterContainment(squad);
         SquadDecisions.containmentEvaluated(squad, shouldContain, canBreak, entered);
         return entered;
@@ -1879,6 +1881,7 @@ public class SquadManager {
         ESCALATE,
         COLLAPSE,
         RETREAT,
+        STALEMATE,
         PUSH_BACK,
         HOLD,
         REPOSITION
@@ -1917,7 +1920,7 @@ public class SquadManager {
      * <p>Only a base under attack and the strength gate move the whole army; they are the two signals that are
      * true for every squad at once. A squad that has run out its own containment clock disengages by itself
      * rather than committing squads whose gate has not fired. A timeout RETREAT can still become ESCALATE afterwards,
-     * see {@link #escalatedVerdict}.
+     * see {@link #escalatedVerdict}, or STALEMATE, see {@link #stalemateVerdict}.
      *
      * @param basesUnderAttack true when a combat unit threatens one of our bases, see {@link #threatensContainment}
      * @param bleeding true when the squad is losing supply within the attrition window while killing little
@@ -1977,7 +1980,7 @@ public class SquadManager {
     private void evaluateContainingSquad(Squad squad) {
         int now = game.getFrameCount();
         if (now % RunbyEvaluator.RUNBY_TICK == 0 && tryEnterRunby(squad, now)) {
-            containmentEscalation.onEndedOtherwise();
+            containEndedOtherwise();
             return;
         }
         HashSet<ManagedUnit> members = squad.getMembers();
@@ -1999,7 +2002,9 @@ public class SquadManager {
         boolean throttled = isContainmentThrottled(squad, now);
         boolean evaluate = !basesUnderAttack && !collapse && !bleeding && !outrangedHit && !throttled;
         boolean timedOut = evaluate && containmentTimedOut(squad, now);
-        boolean canBreak = evaluate && containmentEvaluator.canBreakContainment(fightSquads, now);
+        ContainmentEvaluator.BreakMeasure breakMeasure = evaluate
+                ? containmentEvaluator.measureBreak(fightSquads, now) : null;
+        boolean canBreak = breakMeasure != null && breakMeasure.breaks();
         boolean shouldContain = !evaluate || containmentEvaluator.shouldContain(squad);
         boolean engaged = evaluate && enemiesOnContainmentArc(squad);
 
@@ -2008,11 +2013,20 @@ public class SquadManager {
                 timedOut, canBreak, shouldContain);
         boolean onTimeout = timeoutRetreat(evaluated, timedOut, shouldContain);
         boolean staticOnly = onTimeout && containmentEvaluator.enemyDefenceIsStaticOnly(now);
+        int reentries = containmentEscalation.getReentries();
         if (onTimeout) {
-            SquadDecisions.containmentTimedOut(squad, containmentEscalation.getReentries(), staticOnly);
+            SquadDecisions.containmentTimedOut(squad, reentries, staticOnly);
         }
-        ContainmentVerdict verdict = rankCollapse(basesUnderAttack, collapse, escalatedVerdict(evaluated, onTimeout,
-                containmentEscalation, () -> staticOnly, now));
+        ContainmentVerdict escalated = escalatedVerdict(evaluated, onTimeout, containmentEscalation,
+                () -> staticOnly, now);
+        boolean breakUnreachable = onTimeout && breakMeasure.unreachable();
+        ContainmentVerdict stalemated = stalemateVerdict(escalated, onTimeout, reentries, staticOnly,
+                breakUnreachable, gameState.getContainmentStalemate(), now);
+        if (onTimeout) {
+            SquadDecisions.containmentStalemateRead(squad, breakMeasure.shortfall(), breakUnreachable,
+                    stalemated == ContainmentVerdict.STALEMATE);
+        }
+        ContainmentVerdict verdict = rankCollapse(basesUnderAttack, collapse, stalemated);
 
         DecisionPath exitPath = containmentExitPath(bleeding, arcLost);
         if (breaksHeldContain(verdict, exitPath)) {
@@ -2020,21 +2034,25 @@ public class SquadManager {
         }
         switch (verdict) {
             case BREAK_ALL:
-                containmentEscalation.onEndedOtherwise();
+                containEndedOtherwise();
                 breakAllContainment(now, DecisionPath.CONTAIN_BREAK);
                 break;
             case ESCALATE:
+                gameState.getContainmentStalemate().onEndedOtherwise();
                 breakAllContainment(now, DecisionPath.CONTAIN_ESCALATE);
                 break;
             case COLLAPSE:
-                containmentEscalation.onEndedOtherwise();
+                containEndedOtherwise();
                 collapseContainingSquad(squad, collapseRead, now);
                 break;
             case RETREAT:
                 if (!onTimeout) {
-                    containmentEscalation.onEndedOtherwise();
+                    containEndedOtherwise();
                 }
                 retreatFromContainment(squad, members, now, exitPath);
+                break;
+            case STALEMATE:
+                retreatFromContainment(squad, members, now, DecisionPath.CONTAIN_STALEMATE);
                 break;
             case PUSH_BACK:
                 pushBackContainingSquad(squad, zones, underFire);
@@ -2085,6 +2103,39 @@ public class SquadManager {
     }
 
     /**
+     * Turns a timeout retreat that did not escalate into a stalemate exit when {@link ContainmentStalemate} reads
+     * the contain as one that can neither break nor escalate. The squad still retreats, and no squad may take an
+     * arc for the stalemate's hold window.
+     *
+     * @param verdict verdict after {@link #escalatedVerdict}
+     * @param onTimeout true for a timeout retreat, see {@link #timeoutRetreat}
+     * @param reentries re-entries after a timeout in the current run, read before this timeout was recorded
+     * @param staticOnly whether the enemy has no known army outside its static defence
+     * @param breakUnreachable whether the break needs more than the supply cap
+     * @param stalemate the army's stalemate state
+     * @param now current frame
+     * @return STALEMATE for a stalemate timeout, else the verdict unchanged
+     */
+    static ContainmentVerdict stalemateVerdict(ContainmentVerdict verdict, boolean onTimeout, int reentries,
+                                               boolean staticOnly, boolean breakUnreachable,
+                                               ContainmentStalemate stalemate, int now) {
+        if (verdict != ContainmentVerdict.RETREAT || !onTimeout) {
+            return verdict;
+        }
+        return stalemate.onTimedOut(reentries, staticOnly, breakUnreachable, now)
+                ? ContainmentVerdict.STALEMATE : verdict;
+    }
+
+    /**
+     * Records that a contain ended some other way than by timing out, clearing both the run of timeout re-entries
+     * and a detected stalemate.
+     */
+    private void containEndedOtherwise() {
+        containmentEscalation.onEndedOtherwise();
+        gameState.getContainmentStalemate().onEndedOtherwise();
+    }
+
+    /**
      * Names the branch that sent a containing squad back, so attrition and outranging exits are separable from the
      * timeout and the size floor.
      *
@@ -2106,8 +2157,8 @@ public class SquadManager {
      * Whether a containing squad's verdict ends the held contain at once rather than letting
      * {@link ContainHeldTimer} bridge it: every BREAK_ALL, whether a base is under attack or the strength
      * gate sends the army in, an ESCALATE, which sends it in too, and a retreat the enemy forced by attrition or an
-     * outranged arc. A retreat on the timeout, on containment ceasing to apply, or with no arc left clear of static
-     * defence is bridged.
+     * outranged arc. A retreat on the timeout, a stalemate exit, a retreat on containment ceasing to apply, or one
+     * with no arc left clear of static defence is bridged.
      *
      * @param verdict what the containing squad does this frame
      * @param retreatPath the decision path a RETREAT verdict retreats on
@@ -2545,7 +2596,7 @@ public class SquadManager {
     private void repositionContainingSquad(Squad squad, HashSet<ManagedUnit> members, int now) {
         Arc arc = containmentArc(squad);
         if (arc == null) {
-            containmentEscalation.onEndedOtherwise();
+            containEndedOtherwise();
             retreatFromContainment(squad, members, now, DecisionPath.CONTAIN_RETREAT);
             return;
         }

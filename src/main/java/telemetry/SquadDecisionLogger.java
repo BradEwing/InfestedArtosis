@@ -115,7 +115,8 @@ public class SquadDecisionLogger implements SquadDecisionSink {
             + "collapse_outcome,collapse_enemies_in_sector,collapse_sim_ratio,"
             + "collapse_flank_count,collapse_static_clear,contain_arc_distance,"
             + "collapse_under_fire,collapse_run_start_frame,collapse_wrap_end,collapse_first_favourable_frame,"
-            + "contain_timeout_reentries,contain_static_only";
+            + "contain_timeout_reentries,contain_static_only,"
+            + "contain_break_shortfall_real,contain_break_unreachable,contain_stalemate";
 
     private static final int FLUSH_INTERVAL_FRAMES = 480;
     private static final String EVENT_STATUS_CHANGE = "STATUS_CHANGE";
@@ -410,6 +411,23 @@ public class SquadDecisionLogger implements SquadDecisionSink {
     }
 
     @Override
+    public void onContainmentStalemateRead(Squad squad, int breakShortfall, boolean breakUnreachable,
+                                           boolean stalemate) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            SquadDecision decision = decisionFor(squad);
+            decision.setContainBreakShortfall(breakShortfall);
+            decision.setContainBreakUnreachable(SquadDecision.tristate(breakUnreachable));
+            decision.setContainStalemate(SquadDecision.tristate(stalemate));
+        } catch (RuntimeException e) {
+            disable();
+        }
+    }
+
+    @Override
     public void onContainArcMeasured(Squad squad, int distance) {
         if (disabled) {
             return;
@@ -685,6 +703,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         fields.addAll(workerIdCells(Collections.emptyList(), Collections.emptyList()));
         fields.addAll(collapseCells(context));
         fields.addAll(containTimeoutCells(context));
+        fields.addAll(containStalemateCells(context));
         return String.join(",", fields);
     }
 
@@ -713,6 +732,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
                         .collect(Collectors.toList())));
         fields.addAll(collapseCells(context));
         fields.addAll(containTimeoutCells(context));
+        fields.addAll(containStalemateCells(context));
         return String.join(",", fields);
     }
 
@@ -877,6 +897,25 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         List<String> fields = new ArrayList<>();
         fields.add(String.valueOf(context.getContainTimeoutReentries()));
         fields.add(String.valueOf(context.getContainStaticOnly()));
+        return fields;
+    }
+
+    /**
+     * Builds the contain stalemate cells: the real supply the break still lacked, whether the break was out of reach
+     * even at the supply cap, and whether the timeout was a stalemate exit. Filled on the same timeout rows as
+     * {@link #containTimeoutCells}, an escalating timeout among them with 0 in the stalemate cell; every other row
+     * carries the not evaluated sentinels.
+     *
+     * @param context the decision the row is built from
+     * @return the shortfall, unreachable and stalemate cells
+     */
+    static List<String> containStalemateCells(SquadDecision context) {
+        List<String> fields = new ArrayList<>();
+        fields.add(context.getContainBreakShortfall() < 0
+                ? String.valueOf(SquadDecision.NOT_EVALUATED)
+                : Csv.halfSupply(context.getContainBreakShortfall()));
+        fields.add(String.valueOf(context.getContainBreakUnreachable()));
+        fields.add(String.valueOf(context.getContainStalemate()));
         return fields;
     }
 

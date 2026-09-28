@@ -117,6 +117,15 @@ public final class SquadDecisions {
         current.onContainmentTimedOut(squad, reentries, staticOnly);
     }
 
+    public static void containmentStalemateRead(Squad squad, int breakShortfall, boolean breakUnreachable,
+                                                boolean stalemate) {
+        SquadDecisionSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onContainmentStalemateRead(squad, breakShortfall, breakUnreachable, stalemate);
+    }
+
     public static void moveOutEvaluated(Squad squad, int moveOutThreshold, int squadStrength) {
         SquadDecisionSink current = sink;
         if (current == null) {
