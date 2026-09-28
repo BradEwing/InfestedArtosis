@@ -6,6 +6,7 @@ import info.GameState;
 import info.Readiness;
 import macro.plan.Plan;
 import strategy.buildorder.BuildOrder;
+import strategy.buildorder.LingFloodHold;
 import strategy.buildorder.SporeTargets;
 import strategy.buildorder.SunkenTargets;
 
@@ -57,18 +58,23 @@ public abstract class ZergBase extends BuildOrder {
         return 0;
     }
 
+    /**
+     * The matchup's zergling target, capped at the {@link LingFloodHold Zergling flood hold}'s while
+     * the hold stands, so a build that plans drones only once its zerglings are met reaches them.
+     */
     @Override
     protected int zerglingsNeeded(GameState gameState) {
         if (gameState.structureCount(Readiness.USABLE, UnitType.Zerg_Spawning_Pool) < 1) {
             return 0;
         }
 
-        return zerglingTarget(
+        int target = zerglingTarget(
                 gameState.ourUnitCount(UnitType.Zerg_Zergling),
                 gameState.enemyUnitCount(UnitType.Zerg_Zergling),
                 gameState.structureCount(Readiness.USABLE, UnitType.Zerg_Lair),
                 gameState.getTechProgression().isMetabolicBoost(),
                 gameState.getResourceCount().availableMinerals());
+        return LingFloodHold.zerglingTarget(target, gameState.isLingFloodHold());
     }
 
     /**

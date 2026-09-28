@@ -8,14 +8,17 @@ import bwapi.UnitType;
 import bwapi.WeaponType;
 import util.Filter;
 import util.StaticDefenseZone;
+import util.TileFootprint;
 import util.Time;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Arrays;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.BiPredicate;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -121,6 +124,7 @@ public class ObservedUnitTracker {
             if (unit.isCompleted()) {
                 ou.markCompleted(t);
             }
+            ou.recordLift(unit.isLifted());
             observedUnits.put(unit, ou);
         } else {
             ObservedUnit u = observedUnits.get(unit);
@@ -131,6 +135,7 @@ public class ObservedUnitTracker {
             if (unit.isCompleted()) {
                 u.markCompleted(t);
             }
+            u.recordLift(unit.isLifted());
         }
     }
 
@@ -156,6 +161,7 @@ public class ObservedUnitTracker {
             ObservedUnit u = observedUnits.get(unit);
             u.setLastObservedFrame(t);
             u.setLastKnownLocation(unit.getPosition());
+            u.recordLift(unit.isLifted());
         }
     }
 
@@ -396,6 +402,16 @@ public class ObservedUnitTracker {
                 .count();
     }
 
+    public List<ObservedUnit> getCompletedBuildingsNearPositions(UnitType type, Set<Position> positions,
+                                                                 int distance) {
+        return observedUnits.values().stream()
+                .filter(ou -> ou.getUnitType() == type)
+                .filter(ou -> ou.getDestroyedFrame() == null)
+                .filter(ObservedUnit::isCompleted)
+                .filter(ou -> isNearAnyPosition(ou, positions, distance))
+                .collect(Collectors.toList());
+    }
+
     public int getLivingBuildingCountNearPositions(Set<Position> positions, int distance) {
         return (int) observedUnits.values().stream()
                 .filter(ou -> ou.getUnitType().isBuilding())
@@ -501,6 +517,45 @@ public class ObservedUnitTracker {
                     Position pos = ou.getCurrentOrLastKnownPosition();
                     return pos != null && tileFilter.test(pos.toTilePosition());
                 });
+    }
+
+    /**
+     * The tile footprints, at their grounded anchors, of the living observed units of the matching types first
+     * observed no later than firstObservedBy whose latest observation is grounded there, as
+     * {@link ObservedUnit#isGroundedAtAnchor()} reads it. A building last seen lifted, or landed elsewhere, has no
+     * footprint; one that lifted and landed back in place has one again.
+     */
+    public List<TileFootprint> getGroundedFootprints(Predicate<UnitType> typeFilter, Time firstObservedBy) {
+        List<TileFootprint> footprints = new ArrayList<>();
+        for (ObservedUnit ou : observedUnits.values()) {
+            if (ou.getDestroyedFrame() != null || !typeFilter.test(ou.getUnitType())
+                    || ou.getFirstObservedFrame().greaterThan(firstObservedBy) || !ou.isGroundedAtAnchor()) {
+                continue;
+            }
+            footprints.add(TileFootprint.centredAt(ou.getUnitType(), ou.getGroundedAnchor()));
+        }
+        return footprints;
+    }
+
+    /**
+     * Whether two distinct footprints, the first of a firstType and the second of a secondType, lie within
+     * maxTileGap tiles of each other and pairFilter accepts them in that order.
+     */
+    public static boolean hasPairWithinTileGap(Collection<TileFootprint> footprints, Predicate<UnitType> firstType,
+                                               Predicate<UnitType> secondType, int maxTileGap,
+                                               BiPredicate<TileFootprint, TileFootprint> pairFilter) {
+        for (TileFootprint first : footprints) {
+            if (!firstType.test(first.getUnitType())) {
+                continue;
+            }
+            for (TileFootprint second : footprints) {
+                if (second != first && secondType.test(second.getUnitType())
+                        && first.tileGap(second) <= maxTileGap && pairFilter.test(first, second)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     public Set<ObservedUnit> getLivingObservedUnits() {

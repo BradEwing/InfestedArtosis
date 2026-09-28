@@ -1,6 +1,8 @@
 package strategy.buildorder.opener;
 
 import bwapi.Race;
+import info.GameState;
+import info.tracking.StrategyTracker;
 import strategy.buildorder.BuildOrder;
 import strategy.buildorder.SpeedlingAllIn;
 import strategy.buildorder.protoss.ThreeHatchHydra;
@@ -20,7 +22,21 @@ final class OpenerTransitions {
     private OpenerTransitions() {
     }
 
+    /**
+     * The transitions for this game's opponent race, leaving SpeedlingAllIn out against a Terran whose wall was
+     * detected this game or in the previous game.
+     */
+    static Set<BuildOrder> forGame(GameState gameState) {
+        StrategyTracker strategyTracker = gameState.getStrategyTracker();
+        boolean terranWall = strategyTracker != null && strategyTracker.isTerranWallDetected();
+        return forRace(gameState.getOpponentRace(), terranWall);
+    }
+
     static Set<BuildOrder> forRace(Race opponentRace) {
+        return forRace(opponentRace, false);
+    }
+
+    static Set<BuildOrder> forRace(Race opponentRace, boolean terranWall) {
         Set<BuildOrder> next = new HashSet<>();
         switch (opponentRace) {
             case Protoss:
@@ -36,7 +52,9 @@ final class OpenerTransitions {
                 next.add(new CrazyZerg());
                 next.add(new ThreeHatchLurker());
                 next.add(new TwoHatchMuta());
-                next.add(new SpeedlingAllIn());
+                if (!terranWall) {
+                    next.add(new SpeedlingAllIn());
+                }
                 break;
             default:
                 break;

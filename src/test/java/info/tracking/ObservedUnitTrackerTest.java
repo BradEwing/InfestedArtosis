@@ -3,11 +3,17 @@ package info.tracking;
 import bwapi.Position;
 import bwapi.TestUnits;
 import bwapi.Unit;
+import bwapi.TilePosition;
 import bwapi.UnitType;
 import org.junit.jupiter.api.Test;
+import util.TileFootprint;
 import util.Time;
 
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 import java.util.Set;
+import java.util.function.Predicate;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -28,6 +34,12 @@ class ObservedUnitTrackerTest {
     private static final Time DRONE_COMPLETED = new Time(1496);
     private static final Time POOL_COMPLETED = new Time(2801);
     private static final Time WINDOW = new Time(1, 52);
+    private static final Time WALL_CUTOFF = new Time(6, 0);
+
+    /**
+     * A Barracks centre on its build tiles, (8, 19) to (11, 21).
+     */
+    private static final Position GROUNDED = new Position(320, 656);
 
     @Test
     void recentWorkersOfAnyRaceAreFoundInsideTheArea() {
@@ -205,5 +217,174 @@ class ObservedUnitTrackerTest {
         ObservedUnit drone = ObservedUnitFixture.observedUnit(UnitType.Zerg_Drone, DRONE_OBSERVED);
         drone.markCompleted(DRONE_COMPLETED);
         return drone;
+    }
+
+    @Test
+    void aFootprintIsNeverPairedWithItself() {
+        List<TileFootprint> one = Collections.singletonList(barracksAt(10, 10));
+
+        assertFalse(ObservedUnitTracker.hasPairWithinTileGap(one, isBarracks(), isBarracks(), 1, (a, b) -> true));
+    }
+
+    @Test
+    void aPairIsFoundOnlyWithinTheGapAndWithThePairFilter() {
+        TileFootprint barracks = barracksAt(10, 10);
+        TileFootprint depot = new TileFootprint(UnitType.Terran_Supply_Depot, new TilePosition(15, 10));
+        List<TileFootprint> pair = Arrays.asList(depot, barracks);
+
+        assertTrue(ObservedUnitTracker.hasPairWithinTileGap(pair, isBarracks(),
+                type -> type == UnitType.Terran_Supply_Depot, 1, (first, second) -> first == barracks));
+        assertFalse(ObservedUnitTracker.hasPairWithinTileGap(pair, isBarracks(),
+                type -> type == UnitType.Terran_Supply_Depot, 0, (first, second) -> true));
+        assertFalse(ObservedUnitTracker.hasPairWithinTileGap(pair, isBarracks(),
+                type -> type == UnitType.Terran_Supply_Depot, 1, (first, second) -> false));
+    }
+
+    @Test
+    void aBarracksSeenGroundedOnItsBuildTilesHasItsFootprintThere() {
+        ObservedUnit barracks = groundedBarracks();
+
+        assertTrue(barracks.isGroundedAtAnchor());
+        assertFootprintAt(GROUNDED, footprints(barracks));
+    }
+
+    @Test
+    void aDestroyedBuildingHasNoFootprint() {
+        ObservedUnit barracks = groundedBarracks();
+        barracks.setDestroyedFrame(DRONE_COMPLETED);
+
+        assertTrue(footprints(barracks).isEmpty());
+    }
+
+    @Test
+    void wallPartnersSeenAtRealGrimHammerPositionsAreAnchored() {
+        ObservedUnit bunker = ObservedUnitFixture.observedUnit(UnitType.Terran_Bunker, new Position(3440, 864),
+                DRONE_OBSERVED);
+        bunker.recordLift(false);
+        ObservedUnit depot = ObservedUnitFixture.observedUnit(UnitType.Terran_Supply_Depot, new Position(3344, 864),
+                DRONE_OBSERVED);
+        depot.recordLift(false);
+
+        assertTrue(bunker.isGroundedAtAnchor());
+        assertEquals(new TilePosition(106, 26), footprints(bunker).get(0).getTopLeft());
+        assertTrue(depot.isGroundedAtAnchor());
+        assertEquals(new TilePosition(103, 26), footprints(depot).get(0).getTopLeft());
+    }
+
+    @Test
+    void aBuildingOfAnotherTypeHasNoFootprint() {
+        ObservedUnit depot = ObservedUnitFixture.observedUnit(UnitType.Terran_Supply_Depot, new Position(336, 640),
+                DRONE_OBSERVED);
+        depot.recordLift(false);
+
+        assertTrue(depot.isGroundedAtAnchor());
+        assertTrue(ObservedUnitFixture.trackerHolding(depot).getGroundedFootprints(isBarracks(), WALL_CUTOFF)
+                .isEmpty());
+    }
+
+    @Test
+    void aBuildingFirstObservedAfterTheCutoffHasNoFootprint() {
+        ObservedUnit barracks = ObservedUnitFixture.observedUnit(UnitType.Terran_Barracks, GROUNDED,
+                new Time(WALL_CUTOFF.getFrames() + 1));
+        barracks.recordLift(false);
+
+        assertTrue(footprints(barracks).isEmpty());
+    }
+
+    @Test
+    void aBarracksLandedOnOtherTilesHasNoFootprint() {
+        ObservedUnit barracks = groundedBarracks();
+        barracks.setLastKnownLocation(new Position(GROUNDED.getX() - 96, GROUNDED.getY() + 864));
+        barracks.recordLift(false);
+
+        assertFalse(barracks.isGroundedAtAnchor());
+        assertTrue(footprints(barracks).isEmpty());
+    }
+
+    @Test
+    void aBarracksLastSeenLiftedHasNoFootprint() {
+        ObservedUnit barracks = groundedBarracks();
+        barracks.setLastKnownLocation(new Position(GROUNDED.getX() - 1, GROUNDED.getY() - 43));
+        barracks.recordLift(true);
+
+        assertFalse(barracks.isGroundedAtAnchor());
+        assertTrue(footprints(barracks).isEmpty());
+    }
+
+    @Test
+    void aGateBarracksLiftedAndLandedBackInPlaceHasItsFootprintAgain() {
+        ObservedUnit barracks = groundedBarracks();
+        barracks.setLastKnownLocation(new Position(GROUNDED.getX() - 1, GROUNDED.getY() - 43));
+        barracks.recordLift(true);
+        barracks.setLastKnownLocation(GROUNDED);
+        barracks.recordLift(false);
+
+        assertTrue(barracks.isGroundedAtAnchor());
+        assertFootprintAt(GROUNDED, footprints(barracks));
+    }
+
+    @Test
+    void aBarracksFirstSeenLiftedIsAnchoredWhereItLands() {
+        Position landed = new Position(3392, 944);
+        ObservedUnit barracks = ObservedUnitFixture.observedUnit(UnitType.Terran_Barracks, new Position(3391, 901),
+                DRONE_OBSERVED);
+        barracks.recordLift(true);
+
+        assertTrue(footprints(barracks).isEmpty());
+
+        barracks.setLastKnownLocation(landed);
+        barracks.recordLift(false);
+
+        assertEquals(landed, barracks.getGroundedAnchor());
+        assertFootprintAt(landed, footprints(barracks));
+    }
+
+    @Test
+    void aBarracksFirstSeenOffItsBuildTileCentreIsAnchoredWhereItSettles() {
+        Position settled = new Position(3584, 2480);
+        ObservedUnit barracks = ObservedUnitFixture.observedUnit(UnitType.Terran_Barracks, new Position(3584, 2479),
+                DRONE_OBSERVED);
+        barracks.recordLift(false);
+
+        assertNull(barracks.getGroundedAnchor());
+        assertTrue(footprints(barracks).isEmpty());
+
+        barracks.setLastKnownLocation(settled);
+        barracks.recordLift(false);
+
+        assertFootprintAt(settled, footprints(barracks));
+    }
+
+    @Test
+    void aBuildingWhosePositionWasRuledOutHasNoFootprint() {
+        ObservedUnit barracks = groundedBarracks();
+        barracks.setLastKnownLocation(null);
+
+        assertFalse(barracks.isGroundedAtAnchor());
+        assertTrue(footprints(barracks).isEmpty());
+    }
+
+    private static ObservedUnit groundedBarracks() {
+        ObservedUnit barracks = ObservedUnitFixture.observedUnit(UnitType.Terran_Barracks, GROUNDED, DRONE_OBSERVED);
+        barracks.recordLift(false);
+        return barracks;
+    }
+
+    private static void assertFootprintAt(Position centre, List<TileFootprint> footprints) {
+        assertEquals(1, footprints.size());
+        assertEquals(TileFootprint.centredAt(UnitType.Terran_Barracks, centre).getTopLeft(),
+                footprints.get(0).getTopLeft());
+    }
+
+    private static List<TileFootprint> footprints(ObservedUnit observedUnit) {
+        return ObservedUnitFixture.trackerHolding(observedUnit).getGroundedFootprints(type -> true, WALL_CUTOFF);
+    }
+
+    private static TileFootprint barracksAt(int left, int top) {
+        return new TileFootprint(UnitType.Terran_Barracks, new TilePosition(left, top));
+    }
+
+    private static Predicate<UnitType> isBarracks() {
+        return type -> type == UnitType.Terran_Barracks;
     }
 }
