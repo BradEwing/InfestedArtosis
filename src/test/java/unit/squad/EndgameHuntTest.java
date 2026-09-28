@@ -112,6 +112,17 @@ class EndgameHuntTest {
     }
 
     @Test
+    void flyingBuildingHuntWaitsForTheGameTimeAndSupplyFloors() {
+        int late = EndgameHunt.MIN_ANTI_AIR_TIME.getFrames();
+        int ahead = EndgameHunt.MIN_OUR_SUPPLY_USED;
+
+        assertTrue(EndgameHunt.huntsFlyingBuildings(true, late, ahead));
+        assertFalse(EndgameHunt.huntsFlyingBuildings(false, late, ahead));
+        assertFalse(EndgameHunt.huntsFlyingBuildings(true, late - 1, ahead));
+        assertFalse(EndgameHunt.huntsFlyingBuildings(true, late, ahead - 1));
+    }
+
+    @Test
     void everyAntiAirUnitFiresOnFlyers() {
         for (UnitType type : EndgameHunt.ANTI_AIR_UNITS) {
             assertTrue(EndgameHunt.hitsAir(type), type.toString());

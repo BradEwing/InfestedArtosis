@@ -187,7 +187,8 @@ public class SquadManager {
     public void updateFightSquads() {
         disbanded.clear();
         activeContainmentArcs.clear();
-        gameState.getEndgameHunt().update(gameState.getObservedUnitTracker().getLivingObservedUnits());
+        gameState.getEndgameHunt().update(gameState.getObservedUnitTracker().getLivingObservedUnits(),
+                game.getFrameCount(), gameState.getSupply());
         removeEmptySquads();
         mergeSquads();
         splitSquads();

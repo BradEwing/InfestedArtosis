@@ -56,10 +56,12 @@ public abstract class BuildOrder {
     public static final int ARMY_UPGRADE_PRIORITY = 120;
 
     /**
-     * Priority band for the end-game hunt's anti-air, see {@link #planEndgameAntiAir}: ahead of the army upgrade
-     * band and of {@link UnitPlan#ADVANCED_UNIT_PRIORITY}, behind the reaction, colony and fixed tech bands.
+     * Priority for the end-game hunt's anti-air, see {@link #planEndgameAntiAir}: the
+     * {@link UnitPlan#ADVANCED_UNIT_PRIORITY} band. It only has to beat the frame-stamped backlog a won game has
+     * queued, so it shares the band the build's own tech units poll at and never outranks the army upgrade, drone
+     * round, colony, reaction or emergency bands.
      */
-    public static final int ENDGAME_ANTI_AIR_PRIORITY = 110;
+    public static final int ENDGAME_ANTI_AIR_PRIORITY = UnitPlan.ADVANCED_UNIT_PRIORITY;
     protected static final int SPAWNING_POOL_PRIORITY = 2;
     private static final int DEFAULT_COLONY_PRIORITY = 5;
     private static final int UNKNOWN_RACE_BASE_TARGET = 2;

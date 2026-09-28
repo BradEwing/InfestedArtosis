@@ -5,6 +5,7 @@ import bwapi.Unit;
 import bwapi.UnitType;
 import bwapi.WeaponType;
 import info.tracking.ObservedUnit;
+import util.Time;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -13,6 +14,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 
 /**
  * Hunts down the last enemy structures, so a game the enemy can no longer fight ends instead of running to the
@@ -23,8 +25,9 @@ import java.util.Map;
  * one at all when it can hit none, which keeps vision on a lifted building for the fighters that can.
  *
  * <p>A building is taken as lifted when it was lifted the last time we saw it. The hunt turns to flying buildings
- * once the enemy has no unit we know of and every structure we know of is lifted: the build order then asks for
- * anti-air through {@link #antiAirRequest} until {@link #ANTI_AIR_TARGET} anti-air units are alive or on the way.
+ * once the enemy has no unit we know of and every structure we know of is lifted, past a game time and supply floor
+ * (see {@link #huntsFlyingBuildings}): the build order then asks for anti-air through {@link #antiAirRequest} until
+ * {@link #ANTI_AIR_TARGET} anti-air units are alive or on the way.
  */
 public class EndgameHunt {
 
@@ -50,15 +53,39 @@ public class EndgameHunt {
         HYDRALISK_DEN
     }
 
+    /**
+     * Earliest game time the hunt may turn to flying buildings. Tuning value: before it, an enemy army we have not
+     * seen yet is the likelier reason we know of no enemy unit than a won game.
+     */
+    static final Time MIN_ANTI_AIR_TIME = new Time(10, 0);
+
+    /**
+     * Supply we must be using, in BWAPI's half-supply units, before the hunt may turn to flying buildings: 60 supply.
+     * Tuning value: the enemy has no unit we know of by then, so this is the out-supply margin, and a bot that has
+     * just traded its army away is not yet winning.
+     */
+    static final int MIN_OUR_SUPPLY_USED = 120;
+
     private final Map<Unit, Boolean> liftedAtLastSight = new HashMap<>();
     private boolean huntingFlyingBuildings;
 
     /**
-     * Records whether each visible enemy building is lifted, and whether only flying buildings remain.
+     * Records whether each visible enemy building is lifted, and whether the hunt turns to flying buildings, see
+     * {@link #huntsFlyingBuildings}.
      *
      * @param livingEnemies every enemy unit we track as living
+     * @param frame the current frame
+     * @param ourSupplyUsed the supply we are using, in BWAPI's half-supply units
      */
-    public void update(Collection<ObservedUnit> livingEnemies) {
+    public void update(Collection<ObservedUnit> livingEnemies, int frame, int ourSupplyUsed) {
+        update(livingEnemies, frame, ourSupplyUsed, EndgameHunt::liftedIfVisible);
+    }
+
+    /**
+     * @param liftedIfVisible whether a building is lifted while it is visible, or null while it is not
+     */
+    void update(Collection<ObservedUnit> livingEnemies, int frame, int ourSupplyUsed,
+                Function<Unit, Boolean> liftedIfVisible) {
         int supplyUnits = 0;
         int lifted = 0;
         int grounded = 0;
@@ -71,8 +98,9 @@ public class EndgameHunt {
                 continue;
             }
             Unit unit = observed.getUnit();
-            if (unit.isVisible()) {
-                liftedAtLastSight.put(unit, unit.isLifted());
+            Boolean seenLifted = liftedIfVisible.apply(unit);
+            if (seenLifted != null) {
+                liftedAtLastSight.put(unit, seenLifted);
             }
             if (isLifted(unit)) {
                 lifted++;
@@ -80,11 +108,32 @@ public class EndgameHunt {
                 grounded++;
             }
         }
-        huntingFlyingBuildings = onlyFlyingBuildingsRemain(supplyUnits, lifted, grounded);
+        huntingFlyingBuildings = huntsFlyingBuildings(onlyFlyingBuildingsRemain(supplyUnits, lifted, grounded),
+                frame, ourSupplyUsed);
+    }
+
+    private static Boolean liftedIfVisible(Unit unit) {
+        return unit.isVisible() ? unit.isLifted() : null;
     }
 
     /**
-     * @return true while the enemy has no unit we know of and every structure we know of is lifted
+     * Whether the hunt turns to flying buildings, and so asks for anti-air: only flying buildings remain, the game
+     * is at least {@link #MIN_ANTI_AIR_TIME} old and we use at least {@link #MIN_OUR_SUPPLY_USED}. The two floors
+     * keep a mid-game scouting gap, where every building we know of happens to be lifted while the enemy army is
+     * out of sight, from turning production over to anti-air.
+     *
+     * @param onlyFlyingBuildingsRemain whether {@link #onlyFlyingBuildingsRemain} holds
+     * @param frame the current frame
+     * @param ourSupplyUsed the supply we are using, in BWAPI's half-supply units
+     */
+    static boolean huntsFlyingBuildings(boolean onlyFlyingBuildingsRemain, int frame, int ourSupplyUsed) {
+        return onlyFlyingBuildingsRemain
+                && frame >= MIN_ANTI_AIR_TIME.getFrames()
+                && ourSupplyUsed >= MIN_OUR_SUPPLY_USED;
+    }
+
+    /**
+     * @return true while the hunt has turned to flying buildings, see {@link #huntsFlyingBuildings}
      */
     public boolean isHuntingFlyingBuildings() {
         return huntingFlyingBuildings;
@@ -107,12 +156,20 @@ public class EndgameHunt {
      * @return the structure's current or last known position, or null when no structure's position is known
      */
     public Position huntPosition(Position from, Collection<ObservedUnit> livingEnemies, UnitType attackerType) {
+        return huntPosition(from, livingEnemies, attackerType, ObservedUnit::getCurrentOrLastKnownPosition);
+    }
+
+    /**
+     * @param positionOf a tracked unit's current or last known position, or null when it is unknown
+     */
+    Position huntPosition(Position from, Collection<ObservedUnit> livingEnemies, UnitType attackerType,
+                          Function<ObservedUnit, Position> positionOf) {
         List<Target> targets = new ArrayList<>();
         for (ObservedUnit observed : livingEnemies) {
             if (!observed.getUnitType().isBuilding()) {
                 continue;
             }
-            Position position = observed.getCurrentOrLastKnownPosition();
+            Position position = positionOf.apply(observed);
             if (position != null) {
                 targets.add(new Target(observed.getUnitType(), position, isLifted(observed.getUnit())));
             }
