@@ -539,6 +539,10 @@ public abstract class BuildOrder {
      * planned, a pool is queued at emergency priority. A build order that already claimed its own
      * pool is left alone, and claiming one here stops the build order from queuing a second.
      *
+     * <p>While the {@link LingFloodHold Zergling flood hold} stands, the sunken target rises to the
+     * hold's at emergency priority, the emergency zergling target is capped at the hold's, and a
+     * Drone is queued at {@link LingFloodHold#DRONE_PRIORITY} while the hold's Drone floor is unmet.
+     *
      * <p>Returned plans carry reservations (sunken base, build tiles, planned unit counts) and
      * must be added to the production queue by the caller.
      */
@@ -550,11 +554,15 @@ public abstract class BuildOrder {
             poolPlan.setPriority(EMERGENCY_DEFENSE_PRIORITY);
             plans.add(poolPlan);
         }
+        boolean lingFloodHold = gameState.isLingFloodHold();
+        if (LingFloodHold.wantsDrone(lingFloodHold, gameState.ourUnitCount(UnitType.Zerg_Drone), gameState.canPlanOpeningDrone())) {
+            plans.add(this.planUnit(gameState, UnitType.Zerg_Drone, LingFloodHold.DRONE_PRIORITY));
+        }
         if (!gameState.isEarlyRushed()) {
             return plans;
         }
-        int zerglingTarget = Math.max(this.zerglingsNeeded(gameState),
-                earlyRushZerglings(gameState.knownEnemyMobileGroundCombatUnitsAtOurBases()));
+        int zerglingTarget = emergencyZerglingTarget(this.zerglingsNeeded(gameState),
+                gameState.knownEnemyMobileGroundCombatUnitsAtOurBases(), lingFloodHold);
         int zerglingCount = gameState.ourUnitCount(UnitType.Zerg_Zergling);
         if (shouldPlanEmergencyZergling(zerglingCount, zerglingTarget) && gameState.canPlanUnit(UnitType.Zerg_Zergling)) {
             Plan zerglingPlan = this.planUnit(gameState, UnitType.Zerg_Zergling);
@@ -564,19 +572,49 @@ public abstract class BuildOrder {
         return plans;
     }
 
+    /**
+     * The zergling target the early rush emergency plans up to: the build's own target or two per
+     * attacker known at our bases, whichever is larger, capped at the Zergling flood hold's target
+     * while the hold stands.
+     *
+     * @param buildTarget the build order's zergling target
+     * @param knownAttackers living enemy ground combat units last known to be at our bases
+     * @param lingFloodHold whether the Zergling flood hold stands
+     * @return zerglings the emergency plans up to
+     */
+    static int emergencyZerglingTarget(int buildTarget, int knownAttackers, boolean lingFloodHold) {
+        return LingFloodHold.zerglingTarget(Math.max(buildTarget, earlyRushZerglings(knownAttackers)), lingFloodHold);
+    }
+
     private Set<Plan> planStaticDefense(GameState gameState) {
-        boolean earlyRushed = gameState.isEarlyRushed();
-        int sunkenTarget = this.requiredSunkens(gameState);
-        int priority = DEFAULT_COLONY_PRIORITY;
-        if (earlyRushed) {
-            sunkenTarget = Math.max(sunkenTarget, earlyRushSunkens(gameState.knownEnemyMobileGroundCombatUnitsAtOurBases(),
-                    gameState.visibleEnemyMobileGroundCombatUnitsAtOurBases()));
-            priority = EMERGENCY_DEFENSE_PRIORITY;
-        }
+        int sunkenTarget = staticDefenseSunkenTarget(this.requiredSunkens(gameState), gameState.isEarlyRushed(),
+                gameState.isLingFloodHold(), gameState.knownEnemyMobileGroundCombatUnitsAtOurBases(),
+                gameState.visibleEnemyMobileGroundCombatUnitsAtOurBases());
+        int priority = gameState.isEarlyRushed() || gameState.isLingFloodHold() ? EMERGENCY_DEFENSE_PRIORITY : DEFAULT_COLONY_PRIORITY;
         if (gameState.basesNeedingSunken(sunkenTarget).isEmpty()) {
             return Collections.emptySet();
         }
         return this.planSunkenColony(gameState, priority, sunkenTarget);
+    }
+
+    /**
+     * The sunkens per base the defense path plans up to: the build's target, raised to the early
+     * rush floor while rushed and to the Zergling flood hold's target while the hold stands.
+     *
+     * @param buildTarget sunkens per base the build order asks for
+     * @param earlyRushed whether the early rush reaction is armed
+     * @param lingFloodHold whether the Zergling flood hold stands
+     * @param knownAttackers living enemy ground combat units last known to be at our bases
+     * @param visibleAttackers enemy ground combat units visible at our bases now
+     * @return sunkens per base to plan up to
+     */
+    static int staticDefenseSunkenTarget(int buildTarget, boolean earlyRushed, boolean lingFloodHold,
+                                         int knownAttackers, int visibleAttackers) {
+        int target = buildTarget;
+        if (earlyRushed) {
+            target = Math.max(target, earlyRushSunkens(knownAttackers, visibleAttackers));
+        }
+        return LingFloodHold.sunkenTarget(target, lingFloodHold);
     }
 
     /**
