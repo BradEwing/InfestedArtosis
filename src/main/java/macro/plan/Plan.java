@@ -73,6 +73,13 @@ public abstract class Plan {
     private boolean macroHatchery;
 
     /**
+     * Which rule asked for a Hatchery plan, set where the plan is created. Null on every other plan
+     * and on a Hatchery plan created outside the build order's expansion and macro hatchery paths.
+     */
+    @Nullable
+    private HatcheryRequestReason hatcheryRequestReason;
+
+    /**
      * The creep colony plan a Sunken or Spore plan morphs. The pair is formed when both plans are
      * queued and carries through fulfilment, so the morph follows the colony its pair paid for
      * rather than whichever colony happens to be free. Null once the morph adopts another colony.

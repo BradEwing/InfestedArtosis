@@ -571,7 +571,7 @@ public class ReactionsTest {
 
         int cuts = 0;
         for (int frame = 0; frame < SUSTAINED_RUSH_FRAMES; frame++) {
-            if (reactions.shouldFireDroneCut(Reactions.EARLY_RUSH_DRONE_FLOOR, 0)) {
+            if (reactions.shouldFireDroneCut(Reactions.EARLY_RUSH_DRONE_FLOOR, 0, false)) {
                 cuts++;
             }
         }
@@ -582,12 +582,12 @@ public class ReactionsTest {
     @Test
     void cutsDronesAgainAfterTheReactionStandsDown() {
         Reactions reactions = new Reactions(null);
-        assertTrue(reactions.shouldFireDroneCut(Reactions.EARLY_RUSH_DRONE_FLOOR, 0));
-        assertFalse(reactions.shouldFireDroneCut(Reactions.EARLY_RUSH_DRONE_FLOOR, 0));
+        assertTrue(reactions.shouldFireDroneCut(Reactions.EARLY_RUSH_DRONE_FLOOR, 0, false));
+        assertFalse(reactions.shouldFireDroneCut(Reactions.EARLY_RUSH_DRONE_FLOOR, 0, false));
 
         reactions.rearmEarlyRushCuts();
 
-        assertTrue(reactions.shouldFireDroneCut(Reactions.EARLY_RUSH_DRONE_FLOOR, 0));
+        assertTrue(reactions.shouldFireDroneCut(Reactions.EARLY_RUSH_DRONE_FLOOR, 0, false));
     }
 
     /**
@@ -598,8 +598,29 @@ public class ReactionsTest {
     void holdsTheCutAvailableWhileTheTriggerIsFalse() {
         Reactions reactions = new Reactions(null);
 
-        assertFalse(reactions.shouldFireDroneCut(Reactions.EARLY_RUSH_DRONE_FLOOR - 1, 0));
-        assertTrue(reactions.shouldFireDroneCut(Reactions.EARLY_RUSH_DRONE_FLOOR, 0));
+        assertFalse(reactions.shouldFireDroneCut(Reactions.EARLY_RUSH_DRONE_FLOOR - 1, 0, false));
+        assertTrue(reactions.shouldFireDroneCut(Reactions.EARLY_RUSH_DRONE_FLOOR, 0, false));
+    }
+
+    /**
+     * The Zergling flood hold queues Drones past the early rush drone floor with only a small
+     * zergling guard, which is exactly what the drone cut would drop.
+     */
+    @Test
+    void neverCutsDronesWhileTheFloodHoldStands() {
+        Reactions reactions = new Reactions(null);
+
+        for (int frame = 0; frame < SUSTAINED_RUSH_FRAMES; frame++) {
+            assertFalse(reactions.shouldFireDroneCut(Reactions.EARLY_RUSH_DRONE_FLOOR, 0, true));
+        }
+    }
+
+    @Test
+    void keepsTheCutAvailableOnceTheFloodHoldLifts() {
+        Reactions reactions = new Reactions(null);
+        reactions.shouldFireDroneCut(Reactions.EARLY_RUSH_DRONE_FLOOR, 0, true);
+
+        assertTrue(reactions.shouldFireDroneCut(Reactions.EARLY_RUSH_DRONE_FLOOR, 0, false));
     }
 
     /**
