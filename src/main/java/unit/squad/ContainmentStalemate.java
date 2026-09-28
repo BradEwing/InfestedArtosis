@@ -18,9 +18,11 @@ package unit.squad;
  * <p>{@link #isDetected()} is the signal for the rest of the bot that the army cannot win by holding the enemy in.
  *
  * <p>While a stalemate is detected and our supply used reaches {@link #COMMIT_SUPPLY_USED}, the ground army commits:
- * every ground squad fights toward the enemy whatever the combat sim reads, and no squad may take an arc, until the
- * ground army falls below half the supply it committed with or no enemy target is known, see {@link #onFrame}. The
- * army then remaxes under the normal rules, and commits again once it is maxed while the stalemate is still detected.
+ * every ground squad, in any status but RUNBY or HARASS, which keep their own logic, fights toward the enemy whatever
+ * the combat sim reads, and no squad may take an arc, until the ground army falls below half the supply it committed
+ * with or no enemy target is known, see {@link #onFrame}. A threat to one of our bases pauses the commit, see
+ * {@link #takesOver}. The army then remaxes under the normal rules, and commits again once it is maxed
+ * while the stalemate is still detected.
  */
 public class ContainmentStalemate {
 
@@ -44,6 +46,8 @@ public class ContainmentStalemate {
     enum CommitChange {
         NONE,
         STARTED,
+        PAUSED,
+        RESUMED,
         RELEASED
     }
 
@@ -66,6 +70,7 @@ public class ContainmentStalemate {
     private int lastDetectedFrame = -1;
     private int holdUntilFrame;
     private boolean committing;
+    private boolean paused;
     private int committedSupply;
     private int commits;
 
@@ -147,22 +152,33 @@ public class ContainmentStalemate {
     }
 
     /**
-     * Starts or releases the maxed-army commit for this frame.
+     * Starts, pauses, resumes or releases the maxed-army commit for this frame.
+     *
+     * <p>A threat to one of our bases pauses a running commit rather than releasing it: the squads fall back to the
+     * normal rules so they can defend, and the commit resumes with its committed-supply baseline once the threat
+     * clears. The release floor is still read while paused, so an army ground down defending releases. A commit
+     * never starts while a base is threatened.
      *
      * @param supplyUsed our supply used, in BWAPI half-supply
      * @param armySupply supply of our ground fight squads, in BWAPI half-supply
      * @param targetKnown true while an enemy building or the enemy main is known to march on
-     * @return STARTED on the frame the commit starts, RELEASED on the frame it ends, else NONE
+     * @param baseThreatened true while a combat unit threatens one of our bases
+     * @return STARTED, PAUSED, RESUMED or RELEASED on the frame that happens, else NONE
      */
-    public CommitChange onFrame(int supplyUsed, int armySupply, boolean targetKnown) {
+    public CommitChange onFrame(int supplyUsed, int armySupply, boolean targetKnown, boolean baseThreatened) {
         if (committing) {
-            if (!commitReleases(armySupply, committedSupply, targetKnown)) {
+            if (commitReleases(armySupply, committedSupply, targetKnown)) {
+                committing = false;
+                paused = false;
+                return CommitChange.RELEASED;
+            }
+            if (baseThreatened == paused) {
                 return CommitChange.NONE;
             }
-            committing = false;
-            return CommitChange.RELEASED;
+            paused = baseThreatened;
+            return paused ? CommitChange.PAUSED : CommitChange.RESUMED;
         }
-        if (!commitStarts(detected, supplyUsed, armySupply, targetKnown)) {
+        if (baseThreatened || !commitStarts(detected, supplyUsed, armySupply, targetKnown)) {
             return CommitChange.NONE;
         }
         committing = true;
@@ -179,6 +195,28 @@ public class ContainmentStalemate {
      */
     public boolean barsEntry(int currentFrame) {
         return committing || holdsEntry(currentFrame);
+    }
+
+    /**
+     * @return true while a running commit is paused by a threat to one of our bases
+     */
+    public boolean isCommitPaused() {
+        return paused;
+    }
+
+    /**
+     * Whether the commit runs a squad this frame instead of the normal rules: a ground squad in any status but RUNBY
+     * or HARASS, which keep their own logic, while a commit runs and no threat to our bases pauses it. A squad with no
+     * status yet is taken over too.
+     *
+     * @param groundSquad true for a ground squad
+     * @param status the squad's status, null before one is assigned
+     * @param committing true while a commit runs
+     * @param paused true while a base threat pauses the commit
+     * @return true when the commit runs the squad
+     */
+    static boolean takesOver(boolean groundSquad, SquadStatus status, boolean committing, boolean paused) {
+        return groundSquad && committing && !paused && status != SquadStatus.RUNBY && status != SquadStatus.HARASS;
     }
 
     /**

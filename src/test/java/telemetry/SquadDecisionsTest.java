@@ -823,6 +823,8 @@ class SquadDecisionsTest {
     void theStalemateCommitStartAndReleaseAreWrittenAsRowsOfTheirOwn() {
         assertTrue(SquadDecisionLogger.writesOwnRow(DecisionPath.STALEMATE_COMMIT));
         assertTrue(SquadDecisionLogger.writesOwnRow(DecisionPath.STALEMATE_COMMIT_RELEASE));
+        assertTrue(SquadDecisionLogger.writesOwnRow(DecisionPath.STALEMATE_COMMIT_PAUSE));
+        assertTrue(SquadDecisionLogger.writesOwnRow(DecisionPath.STALEMATE_COMMIT_RESUME));
         assertFalse(SquadDecisionLogger.writesOwnRow(DecisionPath.CONTAIN_STALEMATE));
     }
 

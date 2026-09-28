@@ -931,7 +931,9 @@ public class SquadManager {
             return;
         }
 
-        if (squad.isGroundSquad() && gameState.getContainmentStalemate().isCommitting()) {
+        ContainmentStalemate stalemate = gameState.getContainmentStalemate();
+        if (ContainmentStalemate.takesOver(squad.isGroundSquad(), squad.getStatus(), stalemate.isCommitting(),
+                stalemate.isCommitPaused())) {
             clearCombatSimSnapshot(squad);
             commitSquad(squad, game.getFrameCount());
             return;
@@ -2173,9 +2175,11 @@ public class SquadManager {
     }
 
     /**
-     * Starts or releases the maxed-army commit of a detected stalemate, see {@link ContainmentStalemate#onFrame}.
-     * On the start every ground squad drops its arc and its retreat lock and commits; on the release every ground
-     * squad is handed back to the normal rules. Both are logged on every ground squad.
+     * Starts, pauses, resumes or releases the maxed-army commit of a detected stalemate, see
+     * {@link ContainmentStalemate#onFrame}. A base is threatened on the predicate containment entry and the break
+     * read, {@link #baseThreatensContainment}. On a start or a resume every squad the commit takes over, see
+     * {@link ContainmentStalemate#takesOver}, drops its retreat lock and any collapse under way; on a pause or a
+     * release the squads are handed back to the normal rules. Each change is logged on every ground squad.
      *
      * @param now current frame
      */
@@ -2185,21 +2189,44 @@ public class SquadManager {
         boolean targetKnown = !gameState.getLastKnownPositionsOfBuildings().isEmpty()
                 || gameState.getBaseData().getMainEnemyBase() != null;
         ContainmentStalemate.CommitChange change = stalemate.onFrame(game.self().supplyUsed(), armySupply,
-                targetKnown);
+                targetKnown, baseThreatensContainment());
         if (change == ContainmentStalemate.CommitChange.NONE) {
             return;
         }
+        DecisionPath path = commitChangePath(change);
         for (Squad squad : fightSquads) {
             if (!squad.isGroundSquad()) {
                 continue;
             }
             SquadDecisions.stalemateCommit(squad, stalemate.getCommittedSupply(), armySupply);
-            if (change == ContainmentStalemate.CommitChange.RELEASED) {
-                SquadDecisions.pathTaken(squad, DecisionPath.STALEMATE_COMMIT_RELEASE);
-                continue;
+            SquadDecisions.pathTaken(squad, path);
+            if (ContainmentStalemate.takesOver(true, squad.getStatus(), stalemate.isCommitting(),
+                    stalemate.isCommitPaused())) {
+                squad.clearRetreatLock();
+                if (squad.getCollapse() != null) {
+                    squad.endCollapse(now);
+                }
             }
-            squad.clearRetreatLock();
-            SquadDecisions.pathTaken(squad, DecisionPath.STALEMATE_COMMIT);
+        }
+    }
+
+    /**
+     * The decision path a change to the stalemate commit is logged on.
+     *
+     * @param change a change other than NONE
+     * @return STALEMATE_COMMIT for a start, STALEMATE_COMMIT_PAUSE, STALEMATE_COMMIT_RESUME, or
+     *     STALEMATE_COMMIT_RELEASE
+     */
+    static DecisionPath commitChangePath(ContainmentStalemate.CommitChange change) {
+        switch (change) {
+            case PAUSED:
+                return DecisionPath.STALEMATE_COMMIT_PAUSE;
+            case RESUMED:
+                return DecisionPath.STALEMATE_COMMIT_RESUME;
+            case RELEASED:
+                return DecisionPath.STALEMATE_COMMIT_RELEASE;
+            default:
+                return DecisionPath.STALEMATE_COMMIT;
         }
     }
 
@@ -2222,8 +2249,8 @@ public class SquadManager {
     /**
      * Runs one frame of a ground squad under a stalemate commit: the whole-squad storm retreat still pulls it out of
      * a Psionic Storm and holds it back while that retreat lock lasts, see
-     * {@link ContainmentStalemate#stormRetreatHolds}; otherwise it leaves any arc, fights under a fight lock and
-     * marches on the enemy, whatever the combat sim would read.
+     * {@link ContainmentStalemate#stormRetreatHolds}; otherwise it drops any collapse under way, leaves any arc,
+     * fights under a fight lock and marches on the enemy, whatever the combat sim would read.
      *
      * @param squad ground squad
      * @param now current frame
@@ -2236,6 +2263,9 @@ public class SquadManager {
             SquadDecisions.lockSuppressed(squad, SquadLock.RETREAT);
             assignRetreatTargets(squad, squad.getMembers());
             return;
+        }
+        if (squad.getCollapse() != null) {
+            squad.endCollapse(now);
         }
         if (squad.getStatus() == SquadStatus.CONTAIN) {
             endContainment(squad);

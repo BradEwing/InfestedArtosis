@@ -186,10 +186,10 @@ public enum DecisionPath {
     CONTAIN_STALEMATE,
 
     /**
-     * A detected contain stalemate met a maxed supply and committed the ground army: every ground squad leaves its
-     * arc and fights toward the enemy, past combat sim retreats, until the army falls below half the supply it
-     * committed with or no enemy target is known. Written as a row of its own for every ground squad on the frame
-     * the commit starts.
+     * A detected contain stalemate met a maxed supply and committed the ground army: every ground squad but those
+     * running by or harassing leaves its arc and fights toward the enemy, past combat sim retreats, until the army
+     * falls below half the supply it committed with or no enemy target is known. Written as a row of its own for
+     * every ground squad on the frame the commit starts.
      */
     STALEMATE_COMMIT,
 
@@ -197,5 +197,17 @@ public enum DecisionPath {
      * A stalemate commit released: the ground army fell below half the supply it committed with, or no enemy
      * target is known. Written as a row of its own for every ground squad on the frame it releases.
      */
-    STALEMATE_COMMIT_RELEASE
+    STALEMATE_COMMIT_RELEASE,
+
+    /**
+     * A threat to one of our bases paused a running stalemate commit: the squads follow the normal rules until it
+     * clears. Written as a row of its own for every ground squad on the frame the pause starts.
+     */
+    STALEMATE_COMMIT_PAUSE,
+
+    /**
+     * The base threat that paused a stalemate commit cleared and the commit resumed with its committed supply.
+     * Written as a row of its own for every ground squad on the frame it resumes.
+     */
+    STALEMATE_COMMIT_RESUME
 }

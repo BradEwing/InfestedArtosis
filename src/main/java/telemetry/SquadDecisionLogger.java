@@ -250,13 +250,15 @@ public class SquadDecisionLogger implements SquadDecisionSink {
      * the squad already in FIGHT, so no status change would ever carry the path.
      *
      * @param path the branch taken
-     * <p>A stalemate commit's start and release change no squad's status on the frame they happen either.
+     * <p>A stalemate commit's start, pause, resume and release change no squad's status on the frame they happen
+     * either.
      *
-     * @return true for CONTAIN_COLLAPSE_COMMIT, STALEMATE_COMMIT and STALEMATE_COMMIT_RELEASE
+     * @return true for CONTAIN_COLLAPSE_COMMIT and the four stalemate commit paths
      */
     static boolean writesOwnRow(DecisionPath path) {
         return path == DecisionPath.CONTAIN_COLLAPSE_COMMIT || path == DecisionPath.STALEMATE_COMMIT
-                || path == DecisionPath.STALEMATE_COMMIT_RELEASE;
+                || path == DecisionPath.STALEMATE_COMMIT_RELEASE || path == DecisionPath.STALEMATE_COMMIT_PAUSE
+                || path == DecisionPath.STALEMATE_COMMIT_RESUME;
     }
 
     @Override
@@ -942,8 +944,8 @@ public class SquadDecisionLogger implements SquadDecisionSink {
 
     /**
      * Builds the stalemate commit cells: the real ground army supply the commit started with, and the ground army's
-     * real supply on the row's frame. Filled on the STALEMATE_COMMIT and STALEMATE_COMMIT_RELEASE rows; every other
-     * row carries the not evaluated sentinels.
+     * real supply on the row's frame. Filled on the STALEMATE_COMMIT, STALEMATE_COMMIT_PAUSE, STALEMATE_COMMIT_RESUME
+     * and STALEMATE_COMMIT_RELEASE rows; every other row carries the not evaluated sentinels.
      *
      * @param context the decision the row is built from
      * @return the committed supply cell and the army supply cell

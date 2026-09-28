@@ -23,6 +23,8 @@ class ContainmentStalemateTest {
     private static final boolean UNREACHABLE = true;
     private static final boolean REACHABLE = false;
     private static final boolean ON_TIMEOUT = true;
+    private static final boolean SAFE = false;
+    private static final boolean THREATENED = true;
     private static final int FIRST_ENTRY = 32287;
     private static final int RETREAT_LOCK = 120;
     private static final int CONTAIN_TIMEOUT = SquadManager.CONTAINMENT_TIMEOUT_FRAMES;
@@ -207,25 +209,25 @@ class ContainmentStalemateTest {
     @Test
     void aStaleOrClearedStalemateNeverCommitsAMaxedArmy() {
         ContainmentStalemate never = new ContainmentStalemate();
-        assertEquals(CommitChange.NONE, never.onFrame(400, 300, true));
+        assertEquals(CommitChange.NONE, never.onFrame(400, 300, true, SAFE));
         ContainmentStalemate cleared = detected();
         cleared.onEndedOtherwise();
-        assertEquals(CommitChange.NONE, cleared.onFrame(400, 300, true));
+        assertEquals(CommitChange.NONE, cleared.onFrame(400, 300, true, SAFE));
         assertFalse(cleared.isCommitting());
     }
 
     @Test
     void aMaxedArmyCommitsThenReleasesAtTheFloorAndCommitsAgainOnceRemaxed() {
         ContainmentStalemate stalemate = detected();
-        assertEquals(CommitChange.NONE, stalemate.onFrame(COMMIT_SUPPLY_USED - 1, 300, true));
-        assertEquals(CommitChange.STARTED, stalemate.onFrame(COMMIT_SUPPLY_USED, 300, true));
+        assertEquals(CommitChange.NONE, stalemate.onFrame(COMMIT_SUPPLY_USED - 1, 300, true, SAFE));
+        assertEquals(CommitChange.STARTED, stalemate.onFrame(COMMIT_SUPPLY_USED, 300, true, SAFE));
         assertTrue(stalemate.isCommitting());
         assertEquals(300, stalemate.getCommittedSupply());
-        assertEquals(CommitChange.NONE, stalemate.onFrame(250, 150, true));
-        assertEquals(CommitChange.RELEASED, stalemate.onFrame(240, 149, true));
+        assertEquals(CommitChange.NONE, stalemate.onFrame(250, 150, true, SAFE));
+        assertEquals(CommitChange.RELEASED, stalemate.onFrame(240, 149, true, SAFE));
         assertFalse(stalemate.isCommitting());
-        assertEquals(CommitChange.NONE, stalemate.onFrame(350, 280, true));
-        assertEquals(CommitChange.STARTED, stalemate.onFrame(370, 290, true));
+        assertEquals(CommitChange.NONE, stalemate.onFrame(350, 280, true, SAFE));
+        assertEquals(CommitChange.STARTED, stalemate.onFrame(370, 290, true, SAFE));
         assertEquals(290, stalemate.getCommittedSupply());
         assertEquals(2, stalemate.getCommits());
     }
@@ -233,9 +235,61 @@ class ContainmentStalemateTest {
     @Test
     void theCommitReleasesWhenNoTargetIsKnown() {
         ContainmentStalemate stalemate = detected();
-        assertEquals(CommitChange.STARTED, stalemate.onFrame(400, 300, true));
-        assertEquals(CommitChange.RELEASED, stalemate.onFrame(400, 300, false));
-        assertEquals(CommitChange.NONE, stalemate.onFrame(400, 300, false));
+        assertEquals(CommitChange.STARTED, stalemate.onFrame(400, 300, true, SAFE));
+        assertEquals(CommitChange.RELEASED, stalemate.onFrame(400, 300, false, SAFE));
+        assertEquals(CommitChange.NONE, stalemate.onFrame(400, 300, false, SAFE));
+    }
+
+    @Test
+    void aBaseThreatPausesTheCommitAndItResumesWithItsBaseline() {
+        ContainmentStalemate stalemate = detected();
+        assertEquals(CommitChange.STARTED, stalemate.onFrame(400, 300, true, SAFE));
+        assertEquals(CommitChange.PAUSED, stalemate.onFrame(400, 290, true, THREATENED));
+        assertTrue(stalemate.isCommitting());
+        assertTrue(stalemate.isCommitPaused());
+        assertEquals(CommitChange.NONE, stalemate.onFrame(380, 200, true, THREATENED));
+        assertEquals(CommitChange.RESUMED, stalemate.onFrame(380, 200, true, SAFE));
+        assertFalse(stalemate.isCommitPaused());
+        assertEquals(300, stalemate.getCommittedSupply());
+        assertEquals(1, stalemate.getCommits());
+        assertEquals(CommitChange.RELEASED, stalemate.onFrame(300, 149, true, SAFE));
+    }
+
+    @Test
+    void anArmyGroundDownWhilePausedReleasesAndACommitNeverStartsUnderAThreat() {
+        ContainmentStalemate stalemate = detected();
+        assertEquals(CommitChange.NONE, stalemate.onFrame(400, 300, true, THREATENED));
+        assertFalse(stalemate.isCommitting());
+        assertEquals(CommitChange.STARTED, stalemate.onFrame(400, 300, true, SAFE));
+        assertEquals(CommitChange.PAUSED, stalemate.onFrame(400, 300, true, THREATENED));
+        assertEquals(CommitChange.RELEASED, stalemate.onFrame(300, 149, true, THREATENED));
+        assertFalse(stalemate.isCommitPaused());
+        assertFalse(stalemate.isCommitting());
+    }
+
+    @Test
+    void theCommitTakesOverEveryGroundSquadButRunbyAndHarassAndNoneWhilePaused() {
+        SquadStatus[] taken = {SquadStatus.CONTAIN, SquadStatus.FIGHT, SquadStatus.RETREAT, SquadStatus.RALLY,
+            SquadStatus.DEFENSE, null};
+        for (SquadStatus status : taken) {
+            assertTrue(ContainmentStalemate.takesOver(true, status, true, false));
+            assertFalse(ContainmentStalemate.takesOver(true, status, true, true));
+            assertFalse(ContainmentStalemate.takesOver(true, status, false, false));
+            assertFalse(ContainmentStalemate.takesOver(false, status, true, false));
+        }
+        assertFalse(ContainmentStalemate.takesOver(true, SquadStatus.RUNBY, true, false));
+        assertFalse(ContainmentStalemate.takesOver(true, SquadStatus.HARASS, true, false));
+    }
+
+    @Test
+    void eachCommitChangeIsLoggedOnItsOwnPath() {
+        assertEquals(telemetry.DecisionPath.STALEMATE_COMMIT, SquadManager.commitChangePath(CommitChange.STARTED));
+        assertEquals(telemetry.DecisionPath.STALEMATE_COMMIT_PAUSE,
+                SquadManager.commitChangePath(CommitChange.PAUSED));
+        assertEquals(telemetry.DecisionPath.STALEMATE_COMMIT_RESUME,
+                SquadManager.commitChangePath(CommitChange.RESUMED));
+        assertEquals(telemetry.DecisionPath.STALEMATE_COMMIT_RELEASE,
+                SquadManager.commitChangePath(CommitChange.RELEASED));
     }
 
     @Test
@@ -262,12 +316,12 @@ class ContainmentStalemateTest {
     void containmentEntryIsRefusedWhileTheArmyIsCommittedEvenAfterTheHold() {
         ContainmentEscalation escalation = new ContainmentEscalation();
         ContainmentStalemate stalemate = detected();
-        assertEquals(CommitChange.STARTED, stalemate.onFrame(400, 300, true));
+        assertEquals(CommitChange.STARTED, stalemate.onFrame(400, 300, true, SAFE));
         int afterHold = FIRST_ENTRY + HOLD_FRAMES;
         assertFalse(stalemate.holdsEntry(afterHold));
         assertTrue(stalemate.barsEntry(afterHold));
         assertFalse(SquadManager.mayTakeArc(escalation, stalemate, afterHold, false, true, false));
-        stalemate.onFrame(200, 100, true);
+        stalemate.onFrame(200, 100, true, SAFE);
         assertTrue(SquadManager.mayTakeArc(escalation, stalemate, afterHold, false, true, false));
     }
 
