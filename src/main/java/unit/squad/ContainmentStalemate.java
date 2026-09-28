@@ -16,8 +16,35 @@ package unit.squad;
  * that times out is a stalemate at once, until a contain ends some other way than by timing out.
  *
  * <p>{@link #isDetected()} is the signal for the rest of the bot that the army cannot win by holding the enemy in.
+ *
+ * <p>While a stalemate is detected and our supply used reaches {@link #COMMIT_SUPPLY_USED}, the ground army commits:
+ * every ground squad fights toward the enemy whatever the combat sim reads, and no squad may take an arc, until the
+ * ground army falls below half the supply it committed with or no enemy target is known, see {@link #onFrame}. The
+ * army then remaxes under the normal rules, and commits again once it is maxed while the stalemate is still detected.
  */
 public class ContainmentStalemate {
+
+    /**
+     * Supply used, in BWAPI half-supply, at or above which a detected stalemate commits the ground army: 380, 190 of
+     * the 200 cap. Production has all but stopped there, so waiting longer adds no army, while the 10 supply of slack
+     * keeps a maxed army that has lost a few units or a remax that is a larva cycle short from missing the trigger.
+     */
+    static final int COMMIT_SUPPLY_USED = 380;
+
+    /**
+     * The commit releases once the ground army is below this share of the supply it committed with: half. By then the
+     * attack has spent its trade, and the combat sim takes the rest home to remax instead of feeding it in.
+     */
+    static final double COMMIT_RELEASE_SHARE = 0.5;
+
+    /**
+     * What a frame's {@link #onFrame} did to the commit.
+     */
+    enum CommitChange {
+        NONE,
+        STARTED,
+        RELEASED
+    }
 
     /**
      * Re-entries after a timeout that a further timeout against an army-backed defence reads as a stalemate: the
@@ -37,6 +64,9 @@ public class ContainmentStalemate {
     private int detections;
     private int lastDetectedFrame = -1;
     private int holdUntilFrame;
+    private boolean committing;
+    private int committedSupply;
+    private int commits;
 
     /**
      * Records that a contain timed out without escalating, and reports whether the timeout is a stalemate: one that
@@ -113,5 +143,99 @@ public class ContainmentStalemate {
      */
     static boolean isStalemate(int reentries, boolean staticOnly, boolean breakUnreachable) {
         return !staticOnly && (breakUnreachable || reentries >= STALEMATE_AFTER_REENTRIES);
+    }
+
+    /**
+     * Starts or releases the maxed-army commit for this frame.
+     *
+     * @param supplyUsed our supply used, in BWAPI half-supply
+     * @param armySupply supply of our ground fight squads, in BWAPI half-supply
+     * @param targetKnown true while an enemy building or the enemy main is known to march on
+     * @return STARTED on the frame the commit starts, RELEASED on the frame it ends, else NONE
+     */
+    public CommitChange onFrame(int supplyUsed, int armySupply, boolean targetKnown) {
+        if (committing) {
+            if (!commitReleases(armySupply, committedSupply, targetKnown)) {
+                return CommitChange.NONE;
+            }
+            committing = false;
+            return CommitChange.RELEASED;
+        }
+        if (!commitStarts(detected, supplyUsed, armySupply, targetKnown)) {
+            return CommitChange.NONE;
+        }
+        committing = true;
+        committedSupply = armySupply;
+        commits++;
+        return CommitChange.STARTED;
+    }
+
+    /**
+     * Whether no squad may take an arc: inside a stalemate's hold window or while the army is committed.
+     *
+     * @param currentFrame current frame
+     * @return true when containment entry is barred by the stalemate
+     */
+    public boolean barsEntry(int currentFrame) {
+        return committing || holdsEntry(currentFrame);
+    }
+
+    /**
+     * @return true while the ground army is committed
+     */
+    public boolean isCommitting() {
+        return committing;
+    }
+
+    /**
+     * @return ground army supply the running or last commit started with, in BWAPI half-supply
+     */
+    public int getCommittedSupply() {
+        return committedSupply;
+    }
+
+    /**
+     * @return commits started this game
+     */
+    public int getCommits() {
+        return commits;
+    }
+
+    /**
+     * Whether a frame starts the maxed-army commit.
+     *
+     * @param detected true while a stalemate is detected
+     * @param supplyUsed our supply used, in BWAPI half-supply
+     * @param armySupply supply of our ground fight squads, in BWAPI half-supply
+     * @param targetKnown true while an enemy building or the enemy main is known to march on
+     * @return true for a detected stalemate with supply used at {@link #COMMIT_SUPPLY_USED}, a ground army to commit
+     *     and a target to march on
+     */
+    static boolean commitStarts(boolean detected, int supplyUsed, int armySupply, boolean targetKnown) {
+        return detected && targetKnown && armySupply > 0 && supplyUsed >= COMMIT_SUPPLY_USED;
+    }
+
+    /**
+     * Whether a running commit releases.
+     *
+     * @param armySupply supply of our ground fight squads, in BWAPI half-supply
+     * @param committedSupply ground army supply the commit started with
+     * @param targetKnown true while an enemy building or the enemy main is known to march on
+     * @return true once the army is below {@link #COMMIT_RELEASE_SHARE} of its committed supply or no target is known
+     */
+    static boolean commitReleases(int armySupply, int committedSupply, boolean targetKnown) {
+        return !targetKnown || armySupply < committedSupply * COMMIT_RELEASE_SHARE;
+    }
+
+    /**
+     * Whether a committed squad keeps retreating from a Psionic Storm rather than fighting: it retreated from one
+     * and its retreat lock still holds. The commit itself runs on; the squad fights again once the lock expires.
+     *
+     * @param status the squad's status
+     * @param retreatLocked true while the squad's retreat lock holds
+     * @return true while the storm retreat holds the squad
+     */
+    static boolean stormRetreatHolds(SquadStatus status, boolean retreatLocked) {
+        return status == SquadStatus.RETREAT && retreatLocked;
     }
 }

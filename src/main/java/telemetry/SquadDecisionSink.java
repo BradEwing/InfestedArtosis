@@ -139,6 +139,12 @@ public interface SquadDecisionSink {
     void onContainmentStalemateRead(Squad squad, int breakShortfall, boolean breakUnreachable, boolean stalemate);
 
     /**
+     * A stalemate commit started or released, with the ground army supply it started with and the ground army's
+     * supply now, both in BWAPI half-supply.
+     */
+    void onStalemateCommit(Squad squad, int committedSupply, int armySupply);
+
+    /**
      * A fight squad's strength was compared against its move out threshold, in the threshold's units: air
      * combat units for an air squad, BWAPI half-supply for a ground squad.
      */

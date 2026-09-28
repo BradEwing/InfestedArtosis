@@ -127,6 +127,11 @@ class SquadDecisionsTest {
             }
 
             @Override
+            public void onStalemateCommit(Squad squad, int committedSupply, int armySupply) {
+                events.add("STALEMATE_COMMIT:" + committedSupply + ":" + armySupply);
+            }
+
+            @Override
             public void onMoveOutEvaluated(Squad squad, int moveOutThreshold, int squadStrength) {
                 events.add("MOVE_OUT:" + moveOutThreshold + ":" + squadStrength);
             }
@@ -165,7 +170,8 @@ class SquadDecisionsTest {
                 Collections.emptyList()))
                 + "," + String.join(",", SquadDecisionLogger.collapseCells(context))
                 + "," + String.join(",", SquadDecisionLogger.containTimeoutCells(context))
-                + "," + String.join(",", SquadDecisionLogger.containStalemateCells(context));
+                + "," + String.join(",", SquadDecisionLogger.containStalemateCells(context))
+                + "," + String.join(",", SquadDecisionLogger.stalemateCommitCells(context));
         return row.split(",", -1);
     }
 
@@ -527,7 +533,8 @@ class SquadDecisionsTest {
                         SquadDecisionLogger.releasedWorkerEntry(162, UnitRole.DEFEND))))
                 + "," + String.join(",", SquadDecisionLogger.collapseCells(context))
                 + "," + String.join(",", SquadDecisionLogger.containTimeoutCells(context))
-                + "," + String.join(",", SquadDecisionLogger.containStalemateCells(context));
+                + "," + String.join(",", SquadDecisionLogger.containStalemateCells(context))
+                + "," + String.join(",", SquadDecisionLogger.stalemateCommitCells(context));
         String[] fields = row.split(",", -1);
 
         assertEquals(SquadDecisionLogger.HEADER.split(",", -1).length, fields.length);
@@ -653,7 +660,8 @@ class SquadDecisionsTest {
                 Collections.emptyList()))
                 + "," + String.join(",", SquadDecisionLogger.collapseCells(context))
                 + "," + String.join(",", SquadDecisionLogger.containTimeoutCells(context))
-                + "," + String.join(",", SquadDecisionLogger.containStalemateCells(context));
+                + "," + String.join(",", SquadDecisionLogger.containStalemateCells(context))
+                + "," + String.join(",", SquadDecisionLogger.stalemateCommitCells(context));
         String[] fields = row.split(",", -1);
 
         assertEquals(SquadDecisionLogger.HEADER.split(",", -1).length, fields.length);
@@ -786,11 +794,36 @@ class SquadDecisionsTest {
         String[] columns = SquadDecisionLogger.HEADER.split(",", -1);
 
         assertEquals(java.util.Collections.singletonList("CONTAIN_STALEMATE_READ:17:true:true"), events);
-        assertEquals("contain_static_only", columns[columns.length - 4]);
-        assertEquals("contain_break_shortfall_real", columns[columns.length - 3]);
-        assertEquals("contain_break_unreachable", columns[columns.length - 2]);
-        assertEquals("contain_stalemate", columns[columns.length - 1]);
+        int first = columnIndex("contain_break_shortfall_real");
+        assertEquals("contain_static_only", columns[first - 1]);
+        assertEquals("contain_break_unreachable", columns[first + 1]);
+        assertEquals("contain_stalemate", columns[first + 2]);
         assertEquals(java.util.Arrays.asList("8.5", "0", "1"), SquadDecisionLogger.containStalemateCells(context));
+    }
+
+    @Test
+    void aStalemateCommitRowCarriesTheCommittedAndCurrentArmySupplyAsTheLastColumns() {
+        SquadDecisions.register(recorder());
+        SquadDecisions.stalemateCommit(new GroundSquad(), 301, 148);
+        SquadDecision context = new SquadDecision();
+        context.setStalemateCommitSupply(301);
+        context.setStalemateCommitArmy(148);
+        String[] columns = SquadDecisionLogger.HEADER.split(",", -1);
+
+        assertEquals(java.util.Collections.singletonList("STALEMATE_COMMIT:301:148"), events);
+        assertEquals("contain_stalemate", columns[columns.length - 3]);
+        assertEquals("stalemate_commit_supply_real", columns[columns.length - 2]);
+        assertEquals("stalemate_commit_army_real", columns[columns.length - 1]);
+        assertEquals(java.util.Arrays.asList("150.5", "74"), SquadDecisionLogger.stalemateCommitCells(context));
+        assertEquals(java.util.Arrays.asList("-1", "-1"),
+                SquadDecisionLogger.stalemateCommitCells(new SquadDecision()));
+    }
+
+    @Test
+    void theStalemateCommitStartAndReleaseAreWrittenAsRowsOfTheirOwn() {
+        assertTrue(SquadDecisionLogger.writesOwnRow(DecisionPath.STALEMATE_COMMIT));
+        assertTrue(SquadDecisionLogger.writesOwnRow(DecisionPath.STALEMATE_COMMIT_RELEASE));
+        assertFalse(SquadDecisionLogger.writesOwnRow(DecisionPath.CONTAIN_STALEMATE));
     }
 
     @Test
@@ -803,6 +836,8 @@ class SquadDecisionsTest {
         assertEquals("-1", fields[columnIndex("contain_break_shortfall_real")]);
         assertEquals("-1", fields[columnIndex("contain_break_unreachable")]);
         assertEquals("-1", fields[columnIndex("contain_stalemate")]);
+        assertEquals("-1", fields[columnIndex("stalemate_commit_supply_real")]);
+        assertEquals("-1", fields[columnIndex("stalemate_commit_army_real")]);
     }
 
     @Test

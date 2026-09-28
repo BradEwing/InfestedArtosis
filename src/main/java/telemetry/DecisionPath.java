@@ -183,5 +183,19 @@ public enum DecisionPath {
      * already detected. The squad retreats and arcs are barred for the stalemate hold window, so the combat sim
      * decides what the army does instead of the next contain.
      */
-    CONTAIN_STALEMATE
+    CONTAIN_STALEMATE,
+
+    /**
+     * A detected contain stalemate met a maxed supply and committed the ground army: every ground squad leaves its
+     * arc and fights toward the enemy, past combat sim retreats, until the army falls below half the supply it
+     * committed with or no enemy target is known. Written as a row of its own for every ground squad on the frame
+     * the commit starts.
+     */
+    STALEMATE_COMMIT,
+
+    /**
+     * A stalemate commit released: the ground army fell below half the supply it committed with, or no enemy
+     * target is known. Written as a row of its own for every ground squad on the frame it releases.
+     */
+    STALEMATE_COMMIT_RELEASE
 }

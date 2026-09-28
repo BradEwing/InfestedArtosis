@@ -202,6 +202,7 @@ public class SquadManager {
         int now = game.getFrameCount();
         outrangedHits = findOutrangedHits(now);
         airHarass.onFrame(now, fightSquads);
+        updateStalemateCommit(now);
         Set<Squad> removed = new HashSet<>();
         for (Squad fightSquad: fightSquads) {
             fightSquad.onFrame();
@@ -930,6 +931,12 @@ public class SquadManager {
             return;
         }
 
+        if (squad.isGroundSquad() && gameState.getContainmentStalemate().isCommitting()) {
+            clearCombatSimSnapshot(squad);
+            commitSquad(squad, game.getFrameCount());
+            return;
+        }
+
         final boolean closeThreats = !enemyUnitsNearSquad(squad).isEmpty();
 
         SquadStatus squadStatus = squad.getStatus();
@@ -1472,33 +1479,8 @@ public class SquadManager {
             return;
         }
 
-        Set<Position> stormPositions = gameState.getActiveStormPositions();
-        if (!stormPositions.isEmpty()) {
-            boolean anyUnitInStorm = false;
-            for (ManagedUnit managedUnit : managedFighters) {
-                Position unitPos = managedUnit.getUnit().getPosition();
-                for (Position stormPos : stormPositions) {
-                    if (unitPos.getDistance(stormPos) <= PsiStormTracker.STORM_RADIUS) {
-                        anyUnitInStorm = true;
-                        break;
-                    }
-                }
-                if (anyUnitInStorm) break;
-            }
-
-            if (anyUnitInStorm) {
-                squad.setStatus(SquadStatus.RETREAT);
-                SquadDecisions.pathTaken(squad, DecisionPath.STORM_RETREAT);
-                int now = game.getFrameCount();
-                for (ManagedUnit managedUnit : managedFighters) {
-                    managedUnit.setRole(UnitRole.RETREAT);
-                    managedUnit.markRetreatStart(now);
-                    Position retreatTarget = calculateStormRetreatPosition(managedUnit.getUnit().getPosition(), stormPositions);
-                    managedUnit.setRetreatTarget(retreatTarget);
-                }
-                squad.startRetreatLock(now);
-                return;
-            }
+        if (stormRetreat(squad)) {
+            return;
         }
 
         Set<Position> enemyBuildingPositions = gameState.getLastKnownPositionsOfBuildings();
@@ -1590,6 +1572,45 @@ public class SquadManager {
             default:
                 break;
         }
+    }
+
+    /**
+     * Pulls the whole squad out of a Psionic Storm when any member stands in one, under a retreat lock.
+     *
+     * @param squad fight squad
+     * @return true when the squad retreated from a storm this frame
+     */
+    private boolean stormRetreat(Squad squad) {
+        Set<Position> stormPositions = gameState.getActiveStormPositions();
+        if (stormPositions.isEmpty()) {
+            return false;
+        }
+        HashSet<ManagedUnit> managedFighters = squad.getMembers();
+        boolean anyUnitInStorm = false;
+        for (ManagedUnit managedUnit : managedFighters) {
+            Position unitPos = managedUnit.getUnit().getPosition();
+            for (Position stormPos : stormPositions) {
+                if (unitPos.getDistance(stormPos) <= PsiStormTracker.STORM_RADIUS) {
+                    anyUnitInStorm = true;
+                    break;
+                }
+            }
+            if (anyUnitInStorm) break;
+        }
+        if (!anyUnitInStorm) {
+            return false;
+        }
+        squad.setStatus(SquadStatus.RETREAT);
+        SquadDecisions.pathTaken(squad, DecisionPath.STORM_RETREAT);
+        int now = game.getFrameCount();
+        for (ManagedUnit managedUnit : managedFighters) {
+            managedUnit.setRole(UnitRole.RETREAT);
+            managedUnit.markRetreatStart(now);
+            Position retreatTarget = calculateStormRetreatPosition(managedUnit.getUnit().getPosition(), stormPositions);
+            managedUnit.setRetreatTarget(retreatTarget);
+        }
+        squad.startRetreatLock(now);
+        return true;
     }
 
     /**
@@ -1803,8 +1824,7 @@ public class SquadManager {
      *
      * <p>The evaluator calls stay short circuited in their original order: canBreakContainment is
      * consulted only when shouldContain holds, and enterContainment only when both allow it. No squad takes an arc
-     * while a contain escalation or a contain stalemate holds entry, see {@link ContainmentEscalation} and
-     * {@link ContainmentStalemate}.
+     * while a contain escalation or a contain stalemate bars entry, see {@link #mayTakeArc}.
      *
      * @param squad squad offered an arc
      * @return true if the squad took the arc and is now containing
@@ -1814,11 +1834,28 @@ public class SquadManager {
         boolean underAttack = baseThreatensContainment();
         boolean shouldContain = containmentEvaluator.shouldContain(squad);
         boolean canBreak = shouldContain && containmentEvaluator.canBreakContainment(fightSquads, now);
-        boolean entered = !containmentEscalation.holdsEntry(now)
-                && !gameState.getContainmentStalemate().holdsEntry(now)
-                && mayEnterContainment(underAttack, shouldContain, canBreak) && enterContainment(squad);
+        boolean entered = mayTakeArc(containmentEscalation, gameState.getContainmentStalemate(), now, underAttack,
+                shouldContain, canBreak) && enterContainment(squad);
         SquadDecisions.containmentEvaluated(squad, shouldContain, canBreak, entered);
         return entered;
+    }
+
+    /**
+     * Whether a squad offered an arc may take it: neither a contain escalation's hold nor a contain stalemate's hold
+     * or commit bars entry, see {@link ContainmentStalemate#barsEntry}, and {@link #mayEnterContainment} allows it.
+     *
+     * @param escalation the army's run of timeout re-entries
+     * @param stalemate the army's stalemate state
+     * @param now current frame
+     * @param basesUnderAttack true when a combat unit threatens one of our bases
+     * @param shouldContain true when containment applies to the squad
+     * @param canBreak true when the strength gate clears the army to push in
+     * @return true when the squad may take the arc
+     */
+    static boolean mayTakeArc(ContainmentEscalation escalation, ContainmentStalemate stalemate, int now,
+                              boolean basesUnderAttack, boolean shouldContain, boolean canBreak) {
+        return !escalation.holdsEntry(now) && !stalemate.barsEntry(now)
+                && mayEnterContainment(basesUnderAttack, shouldContain, canBreak);
     }
 
     /**
@@ -2133,6 +2170,82 @@ public class SquadManager {
     private void containEndedOtherwise() {
         containmentEscalation.onEndedOtherwise();
         gameState.getContainmentStalemate().onEndedOtherwise();
+    }
+
+    /**
+     * Starts or releases the maxed-army commit of a detected stalemate, see {@link ContainmentStalemate#onFrame}.
+     * On the start every ground squad drops its arc and its retreat lock and commits; on the release every ground
+     * squad is handed back to the normal rules. Both are logged on every ground squad.
+     *
+     * @param now current frame
+     */
+    private void updateStalemateCommit(int now) {
+        ContainmentStalemate stalemate = gameState.getContainmentStalemate();
+        int armySupply = groundArmySupply(fightSquads);
+        boolean targetKnown = !gameState.getLastKnownPositionsOfBuildings().isEmpty()
+                || gameState.getBaseData().getMainEnemyBase() != null;
+        ContainmentStalemate.CommitChange change = stalemate.onFrame(game.self().supplyUsed(), armySupply,
+                targetKnown);
+        if (change == ContainmentStalemate.CommitChange.NONE) {
+            return;
+        }
+        for (Squad squad : fightSquads) {
+            if (!squad.isGroundSquad()) {
+                continue;
+            }
+            SquadDecisions.stalemateCommit(squad, stalemate.getCommittedSupply(), armySupply);
+            if (change == ContainmentStalemate.CommitChange.RELEASED) {
+                SquadDecisions.pathTaken(squad, DecisionPath.STALEMATE_COMMIT_RELEASE);
+                continue;
+            }
+            squad.clearRetreatLock();
+            SquadDecisions.pathTaken(squad, DecisionPath.STALEMATE_COMMIT);
+        }
+    }
+
+    /**
+     * Supply of the ground fight squads, the army a stalemate commit sends in.
+     *
+     * @param squads the fight squads
+     * @return summed supply of the ground squads, in BWAPI half-supply
+     */
+    static int groundArmySupply(Collection<Squad> squads) {
+        int supply = 0;
+        for (Squad squad : squads) {
+            if (squad.isGroundSquad()) {
+                supply += squad.getSupply();
+            }
+        }
+        return supply;
+    }
+
+    /**
+     * Runs one frame of a ground squad under a stalemate commit: the whole-squad storm retreat still pulls it out of
+     * a Psionic Storm and holds it back while that retreat lock lasts, see
+     * {@link ContainmentStalemate#stormRetreatHolds}; otherwise it leaves any arc, fights under a fight lock and
+     * marches on the enemy, whatever the combat sim would read.
+     *
+     * @param squad ground squad
+     * @param now current frame
+     */
+    private void commitSquad(Squad squad, int now) {
+        if (stormRetreat(squad)) {
+            return;
+        }
+        if (ContainmentStalemate.stormRetreatHolds(squad.getStatus(), squad.isRetreatLocked(now))) {
+            SquadDecisions.lockSuppressed(squad, SquadLock.RETREAT);
+            assignRetreatTargets(squad, squad.getMembers());
+            return;
+        }
+        if (squad.getStatus() == SquadStatus.CONTAIN) {
+            endContainment(squad);
+        }
+        if (squad.getStatus() != SquadStatus.FIGHT) {
+            squad.setStatus(SquadStatus.FIGHT);
+            squad.startFightLock(now);
+        }
+        squad.commit(now);
+        assignFightTargets(squad, squad.getMembers(), true);
     }
 
     /**

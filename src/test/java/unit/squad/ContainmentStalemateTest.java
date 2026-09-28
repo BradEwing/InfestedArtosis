@@ -8,6 +8,8 @@ import java.util.function.BooleanSupplier;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static unit.squad.ContainmentStalemate.COMMIT_SUPPLY_USED;
+import static unit.squad.ContainmentStalemate.CommitChange;
 import static unit.squad.ContainmentStalemate.HOLD_FRAMES;
 import static unit.squad.ContainmentStalemate.STALEMATE_AFTER_REENTRIES;
 import static unit.squad.SquadManager.ContainmentVerdict;
@@ -172,6 +174,112 @@ class ContainmentStalemateTest {
         assertFalse(ContainmentEvaluator.breakUnreachable(266));
         assertTrue(ContainmentEvaluator.breakUnreachable(267));
         assertFalse(new ContainmentEvaluator.BreakMeasure(ContainmentEvaluator.MAX_SUPPLY, enemy).breaks());
+    }
+
+    private static ContainmentStalemate detected() {
+        ContainmentStalemate stalemate = new ContainmentStalemate();
+        assertTrue(stalemate.onTimedOut(STALEMATE_AFTER_REENTRIES, ARMY_OUTSIDE, REACHABLE, FIRST_ENTRY));
+        return stalemate;
+    }
+
+    @Test
+    void theCommitStartsOnlyForADetectedStalemateAtTheSupplyThresholdWithAnArmyAndATarget() {
+        assertTrue(ContainmentStalemate.commitStarts(true, COMMIT_SUPPLY_USED, 300, true));
+        assertTrue(ContainmentStalemate.commitStarts(true, 400, 300, true));
+        assertFalse(ContainmentStalemate.commitStarts(true, COMMIT_SUPPLY_USED - 1, 300, true));
+        assertFalse(ContainmentStalemate.commitStarts(false, 400, 300, true));
+        assertFalse(ContainmentStalemate.commitStarts(true, 400, 300, false));
+        assertFalse(ContainmentStalemate.commitStarts(true, 400, 0, true));
+    }
+
+    @Test
+    void theCommitReleasesBelowHalfItsCommittedSupplyOrWithNoTarget() {
+        assertFalse(ContainmentStalemate.commitReleases(150, 300, true));
+        assertTrue(ContainmentStalemate.commitReleases(149, 300, true));
+        assertFalse(ContainmentStalemate.commitReleases(151, 301, true));
+        assertTrue(ContainmentStalemate.commitReleases(150, 301, true));
+        assertTrue(ContainmentStalemate.commitReleases(300, 300, false));
+    }
+
+    @Test
+    void aStaleOrClearedStalemateNeverCommitsAMaxedArmy() {
+        ContainmentStalemate never = new ContainmentStalemate();
+        assertEquals(CommitChange.NONE, never.onFrame(400, 300, true));
+        ContainmentStalemate cleared = detected();
+        cleared.onEndedOtherwise();
+        assertEquals(CommitChange.NONE, cleared.onFrame(400, 300, true));
+        assertFalse(cleared.isCommitting());
+    }
+
+    @Test
+    void aMaxedArmyCommitsThenReleasesAtTheFloorAndCommitsAgainOnceRemaxed() {
+        ContainmentStalemate stalemate = detected();
+        assertEquals(CommitChange.NONE, stalemate.onFrame(COMMIT_SUPPLY_USED - 1, 300, true));
+        assertEquals(CommitChange.STARTED, stalemate.onFrame(COMMIT_SUPPLY_USED, 300, true));
+        assertTrue(stalemate.isCommitting());
+        assertEquals(300, stalemate.getCommittedSupply());
+        assertEquals(CommitChange.NONE, stalemate.onFrame(250, 150, true));
+        assertEquals(CommitChange.RELEASED, stalemate.onFrame(240, 149, true));
+        assertFalse(stalemate.isCommitting());
+        assertEquals(CommitChange.NONE, stalemate.onFrame(370, 280, true));
+        assertEquals(CommitChange.STARTED, stalemate.onFrame(390, 290, true));
+        assertEquals(290, stalemate.getCommittedSupply());
+        assertEquals(2, stalemate.getCommits());
+    }
+
+    @Test
+    void theCommitReleasesWhenNoTargetIsKnown() {
+        ContainmentStalemate stalemate = detected();
+        assertEquals(CommitChange.STARTED, stalemate.onFrame(400, 300, true));
+        assertEquals(CommitChange.RELEASED, stalemate.onFrame(400, 300, false));
+        assertEquals(CommitChange.NONE, stalemate.onFrame(400, 300, false));
+    }
+
+    @Test
+    void aStormRetreatHoldsACommittedSquadOnlyWhileItsRetreatLockLasts() {
+        assertTrue(ContainmentStalemate.stormRetreatHolds(SquadStatus.RETREAT, true));
+        assertFalse(ContainmentStalemate.stormRetreatHolds(SquadStatus.RETREAT, false));
+        assertFalse(ContainmentStalemate.stormRetreatHolds(SquadStatus.FIGHT, true));
+    }
+
+    @Test
+    void containmentEntryIsRefusedWhileTheStalemateHoldsEntry() {
+        ContainmentEscalation escalation = new ContainmentEscalation();
+        ContainmentStalemate stalemate = new ContainmentStalemate();
+        int frame = FIRST_ENTRY;
+        assertTrue(SquadManager.mayTakeArc(escalation, stalemate, frame, false, true, false));
+        assertTrue(stalemate.onTimedOut(0, ARMY_OUTSIDE, UNREACHABLE, frame));
+        assertTrue(stalemate.holdsEntry(frame + 1));
+        assertFalse(SquadManager.mayTakeArc(escalation, stalemate, frame + 1, false, true, false));
+        assertFalse(SquadManager.mayTakeArc(escalation, stalemate, frame + HOLD_FRAMES - 1, false, true, false));
+        assertTrue(SquadManager.mayTakeArc(escalation, stalemate, frame + HOLD_FRAMES, false, true, false));
+    }
+
+    @Test
+    void containmentEntryIsRefusedWhileTheArmyIsCommittedEvenAfterTheHold() {
+        ContainmentEscalation escalation = new ContainmentEscalation();
+        ContainmentStalemate stalemate = detected();
+        assertEquals(CommitChange.STARTED, stalemate.onFrame(400, 300, true));
+        int afterHold = FIRST_ENTRY + HOLD_FRAMES;
+        assertFalse(stalemate.holdsEntry(afterHold));
+        assertTrue(stalemate.barsEntry(afterHold));
+        assertFalse(SquadManager.mayTakeArc(escalation, stalemate, afterHold, false, true, false));
+        stalemate.onFrame(200, 100, true);
+        assertTrue(SquadManager.mayTakeArc(escalation, stalemate, afterHold, false, true, false));
+    }
+
+    @Test
+    void theEntrySeamKeepsTheOtherEntryRules() {
+        ContainmentEscalation escalation = new ContainmentEscalation();
+        ContainmentStalemate stalemate = new ContainmentStalemate();
+        assertFalse(SquadManager.mayTakeArc(escalation, stalemate, FIRST_ENTRY, true, true, false));
+        assertFalse(SquadManager.mayTakeArc(escalation, stalemate, FIRST_ENTRY, false, false, false));
+        assertFalse(SquadManager.mayTakeArc(escalation, stalemate, FIRST_ENTRY, false, true, true));
+    }
+
+    @Test
+    void theGroundArmySupplyCountsOnlyGroundSquads() {
+        assertEquals(0, SquadManager.groundArmySupply(java.util.Arrays.asList(new GroundSquad(), new AirSquad())));
     }
 
     @Test
