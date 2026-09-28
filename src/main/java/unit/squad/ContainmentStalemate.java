@@ -25,11 +25,12 @@ package unit.squad;
 public class ContainmentStalemate {
 
     /**
-     * Supply used, in BWAPI half-supply, at or above which a detected stalemate commits the ground army: 380, 190 of
-     * the 200 cap. Production has all but stopped there, so waiting longer adds no army, while the 10 supply of slack
-     * keeps a maxed army that has lost a few units or a remax that is a larva cycle short from missing the trigger.
+     * Supply used, in BWAPI half-supply, at or above which a detected stalemate commits the ground army: 360, 180 of
+     * the 200 cap. A stalled contain army plateaus below the cap, M1I1V0CJ held 370 from minute 30 to 40, and a Zerg
+     * army carrying about 40 drones rarely climbs back to 380 once it has traded, so the 20 supply of slack still
+     * reads such an army as maxed while production has all but stopped.
      */
-    static final int COMMIT_SUPPLY_USED = 380;
+    static final int COMMIT_SUPPLY_USED = 360;
 
     /**
      * The commit releases once the ground army is below this share of the supply it committed with: half. By then the

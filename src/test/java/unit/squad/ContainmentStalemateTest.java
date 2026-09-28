@@ -187,6 +187,9 @@ class ContainmentStalemateTest {
         assertTrue(ContainmentStalemate.commitStarts(true, COMMIT_SUPPLY_USED, 300, true));
         assertTrue(ContainmentStalemate.commitStarts(true, 400, 300, true));
         assertFalse(ContainmentStalemate.commitStarts(true, COMMIT_SUPPLY_USED - 1, 300, true));
+        assertEquals(360, COMMIT_SUPPLY_USED);
+        assertFalse(ContainmentStalemate.commitStarts(true, 359, 300, true));
+        assertTrue(ContainmentStalemate.commitStarts(true, 370, 300, true));
         assertFalse(ContainmentStalemate.commitStarts(false, 400, 300, true));
         assertFalse(ContainmentStalemate.commitStarts(true, 400, 300, false));
         assertFalse(ContainmentStalemate.commitStarts(true, 400, 0, true));
@@ -221,8 +224,8 @@ class ContainmentStalemateTest {
         assertEquals(CommitChange.NONE, stalemate.onFrame(250, 150, true));
         assertEquals(CommitChange.RELEASED, stalemate.onFrame(240, 149, true));
         assertFalse(stalemate.isCommitting());
-        assertEquals(CommitChange.NONE, stalemate.onFrame(370, 280, true));
-        assertEquals(CommitChange.STARTED, stalemate.onFrame(390, 290, true));
+        assertEquals(CommitChange.NONE, stalemate.onFrame(350, 280, true));
+        assertEquals(CommitChange.STARTED, stalemate.onFrame(370, 290, true));
         assertEquals(290, stalemate.getCommittedSupply());
         assertEquals(2, stalemate.getCommits());
     }
