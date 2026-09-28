@@ -124,6 +124,7 @@ public class ObservedUnitTracker {
             observedUnits.put(unit, ou);
         } else {
             ObservedUnit u = observedUnits.get(unit);
+            reviveRebuilt(u);
             u.setLastObservedFrame(t);
             u.setLastKnownLocation(unit.getPosition());
             updateUnitTypeChange(u, unit.getType());
@@ -131,6 +132,22 @@ public class ObservedUnitTracker {
                 u.markCompleted(t);
             }
         }
+    }
+
+    /**
+     * Brings a unit recorded as destroyed back to life when it is shown again. BWAPI keeps one unit for a Vespene
+     * Geyser: a gas structure destroyed on it turns back into the neutral geyser and is recorded destroyed, and a gas
+     * structure rebuilt on that geyser is the same unit, so without this the rebuilt structure is never tracked as
+     * living and is never hunted. The completion stamp belonged to the destroyed structure and is dropped.
+     *
+     * @param observedUnit the tracked unit being shown
+     */
+    static void reviveRebuilt(ObservedUnit observedUnit) {
+        if (observedUnit.getDestroyedFrame() == null) {
+            return;
+        }
+        observedUnit.setDestroyedFrame(null);
+        observedUnit.resetCompletion();
     }
 
     public void onUnitHide(Unit unit, int currentFrame) {
