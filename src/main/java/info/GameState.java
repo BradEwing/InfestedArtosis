@@ -44,6 +44,7 @@ import telemetry.PlanEvents;
 import unit.managed.ManagedUnit;
 import unit.managed.UnitRole;
 import unit.squad.ContainHeldTimer;
+import unit.squad.ContainmentStalemate;
 import unit.squad.RunbyEvaluator;
 import util.Distance;
 import util.Filter;
@@ -121,6 +122,7 @@ public class GameState {
     private ProductionQueue productionQueue = new ProductionQueue();
     private DroneRound droneRound = new DroneRound();
     private final ContainHeldTimer containHeldTimer = new ContainHeldTimer();
+    private final ContainmentStalemate containmentStalemate = new ContainmentStalemate();
     private HashMap<Unit, Plan> assignedPlannedItems = new HashMap<>();
     private int plannedWorkers;
     private int plannedHatcheries = 1;
