@@ -126,7 +126,7 @@ public enum DecisionPath {
     SPLIT_INHERIT,
 
     /**
-     * An air squad started a harass. telemetry_harass.csv holds the ENTER row with the target base.
+     * An air squad started a harass. telemetry_harass.csv holds the ENTER row with the target base or exposed group.
      */
     HARASS_ENTER,
 
@@ -139,6 +139,12 @@ public enum DecisionPath {
      * An air squad that left a harass recently held on a blind sim ADVANCE instead of marching on it.
      */
     HARASS_HOLD,
+
+    /**
+     * An air squad still under the retreat lock its harass exit armed acted on a sim ENGAGE measured against a real
+     * enemy, which broke the lock.
+     */
+    HARASS_EXIT_ENGAGE,
 
     /**
      * A containing squad collapsed on the enemies inside its arc's sector: it left the arc for FIGHT under a fight

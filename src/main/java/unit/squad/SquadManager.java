@@ -1075,7 +1075,8 @@ public class SquadManager {
 
     /**
      * Offers an air squad a harass on every {@link AirHarassEvaluator#HARASS_TICK}, outside its retreat and fight
-     * locks. Overlords escorting the squad go back to the Overlord squad, since they would trail the Mutalisks
+     * locks and outside the hold that follows a broken harass exit lock, see {@link AirHarassEvaluator#holdsReentry}.
+     * Overlords escorting the squad go back to the Overlord squad, since they would trail the Mutalisks
      * into the enemy base.
      *
      * @param squad fight squad cleared to act
@@ -1084,7 +1085,8 @@ public class SquadManager {
     private boolean tryEnterHarass(Squad squad) {
         int now = game.getFrameCount();
         if (!AirHarassEvaluator.entryCheckDue(squad.isAirSquad(), squad.isRetreatLocked(now),
-                squad.isFightLocked(now), now)) {
+                squad.isFightLocked(now), now)
+                || AirHarassEvaluator.holdsReentry(squad.getHarassExitEngageFrame(), now)) {
             return false;
         }
         AirHarassController.Entry entry = airHarass.checkEntry(squad, now, basesUnderAttack(), containPoints());
@@ -1441,7 +1443,8 @@ public class SquadManager {
      * <p>The composition and hazard branches answer first, before anything is measured: a Lurker
      * only squad, a Defiler only squad, and a squad standing in a psionic storm. Every other status
      * is decided at or below the lock reads, so the retreat lock gates it. A branch placed above
-     * those reads returns before the simulator runs and neither lock can see it.
+     * those reads returns before the simulator runs and neither lock can see it. The one exception is the retreat
+     * lock a harass exit armed, which a measured ENGAGE breaks (see {@link AirHarassEvaluator#breaksExitLock}).
      *
      * <p>A squad with nothing detected anywhere still attacks: the sim has no enemy to weigh, so it
      * returns ADVANCE, and the fighters take the remembered enemy building through
@@ -1518,14 +1521,23 @@ public class SquadManager {
         Map<Squad, Double> adjacentSquads = getAdjacentSquads(squad, REINFORCEMENT_RADIUS);
         CombatSimulator.CombatResult result = squad.getCombatSimulator()
                 .evaluate(squad, adjacentSquads, gameState);
-        SquadDecisions.simEvaluated(squad, result, retreatLocked, fightLocked);
-        SquadDecisions.pathTaken(squad, requestPath(noVisionMarch, result));
-
         HorizonCombatSimulator.DebugSnapshot snapshot = lastSnapshot(squad);
         boolean enemyMeasured = snapshot == null || snapshot.isEnemyMeasured();
         boolean threatBeyondRadius = snapshot != null && snapshot.isThreatBeyondRadius();
         double ratio = snapshot != null ? snapshot.getOverallRatio() : 0;
         double engageThreshold = snapshot != null ? snapshot.getEngageThreshold() : 0;
+
+        boolean exitLockBroken = AirHarassEvaluator.breaksExitLock(squad.isHarassExitLocked(now), result,
+                enemyMeasured);
+        if (exitLockBroken) {
+            squad.clearRetreatLock();
+            squad.setHarassExitEngageFrame(now);
+            retreatLocked = false;
+        }
+        SquadDecisions.simEvaluated(squad, result, retreatLocked, fightLocked);
+        SquadDecisions.pathTaken(squad, exitLockBroken
+                ? DecisionPath.HARASS_EXIT_ENGAGE
+                : requestPath(noVisionMarch, result));
 
         if (squad.getStatus() == SquadStatus.RETREAT && retreatLocked) {
             boolean attritionLock = squad.isAttritionRetreatLock()

@@ -12,6 +12,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -74,6 +75,63 @@ class AirHarassTargetingTest {
         assertNull(AirHarassTargeting.tier(goliath, 2));
         assertEquals(Tier.ISOLATED_AA, AirHarassTargeting.tier(goliath, 9));
         assertNull(AirHarassTargeting.tier(turret, 9));
+    }
+
+    @Test
+    void onAnExposedTargetAMutaAttacksATurretTheFlockTolerates() {
+        Position turretAt = east(100);
+        AirHarassTargeting.Contact turret = contact(2, UnitType.Terran_Missile_Turret, turretAt);
+        assertNull(AirHarassTargeting.tier(turret, 9));
+
+        AirHarassTargeting.Decision decision = AirHarassTargeting.choose(muta(), situation(9)
+                .contacts(Collections.singletonList(turret))
+                .turretsTaken(true)
+                .build(), new AirHarassTargeting.MutaMemory());
+
+        assertEquals(Kind.ATTACK, decision.getKind());
+        assertEquals(2, decision.getTargetId());
+        assertEquals(Tier.ISOLATED_AA, decision.getTier());
+    }
+
+    @Test
+    void aTolerableTurretIsLeftAloneOnABaseHarass() {
+        AirHarassTargeting.Contact turret = contact(2, UnitType.Terran_Missile_Turret, east(100));
+
+        AirHarassTargeting.Decision decision = AirHarassTargeting.choose(muta(), situation(9)
+                .contacts(Collections.singletonList(turret))
+                .build(), new AirHarassTargeting.MutaMemory());
+
+        assertNotEquals(Kind.ATTACK, decision.getKind());
+    }
+
+    @Test
+    void anAvoidedTurretIsNotTakenEvenOnAnExposedTarget() {
+        Position turretAt = east(400);
+        AirHarassTargeting.Contact turret = contact(2, UnitType.Terran_Missile_Turret, turretAt);
+        List<AirHarassTargeting.AirThreat> avoided = Collections.singletonList(
+                threat(2, UnitType.Terran_Missile_Turret, turretAt));
+        AirHarassTargeting.Situation situation = situation(9)
+                .contacts(Collections.singletonList(turret))
+                .avoided(avoided)
+                .turretsTaken(true)
+                .build();
+
+        assertFalse(AirHarassTargeting.turretTaken(turret, avoided));
+        assertNull(AirHarassTargeting.tier(turret, situation));
+        assertNotEquals(Kind.ATTACK, AirHarassTargeting.choose(muta(), situation,
+                new AirHarassTargeting.MutaMemory()).getKind());
+    }
+
+    @Test
+    void onlyAMissileTurretIsTakenOnTolerance() {
+        AirHarassTargeting.AirThreat bunker = threat(3, UnitType.Terran_Bunker, east(100));
+        AirHarassTargeting.Situation situation = situation(9).turretsTaken(true).build();
+
+        assertNull(AirHarassTargeting.tier(contact(3, UnitType.Terran_Bunker, east(100)), situation));
+        assertNull(AirHarassTargeting.tier(contact(4, UnitType.Terran_Goliath, east(100)), situation(2)
+                .turretsTaken(true).build()));
+        assertTrue(AirHarassTargeting.turretTaken(contact(2, UnitType.Terran_Missile_Turret, east(100)),
+                Collections.singletonList(bunker)));
     }
 
     @Test
