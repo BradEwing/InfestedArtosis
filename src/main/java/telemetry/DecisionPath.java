@@ -174,5 +174,12 @@ public enum DecisionPath {
      * A rallying air squad flying to, or joining, an active air squad instead of waiting for its move out
      * threshold.
      */
-    AIR_REINFORCE
+    AIR_REINFORCE,
+
+    /**
+     * A contain timed out again after being re-entered in a row against an enemy defending with static defence
+     * only, and every containing squad was committed to FIGHT under a fight lock instead of retreating, with arcs
+     * barred for the hold window so the combat sim decides the attack.
+     */
+    CONTAIN_ESCALATE
 }

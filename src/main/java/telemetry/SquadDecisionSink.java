@@ -127,6 +127,12 @@ public interface SquadDecisionSink {
     void onContainArcMeasured(Squad squad, int distance);
 
     /**
+     * A containing squad ran out its containment timeout, with the re-entries in a row after a timeout the contain
+     * had made before this one, and whether the enemy read as defending with static defence only.
+     */
+    void onContainmentTimedOut(Squad squad, int reentries, boolean staticOnly);
+
+    /**
      * A fight squad's strength was compared against its move out threshold, in the threshold's units: air
      * combat units for an air squad, BWAPI half-supply for a ground squad.
      */

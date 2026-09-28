@@ -114,7 +114,8 @@ public class SquadDecisionLogger implements SquadDecisionSink {
             + "move_out_threshold,move_out_strength,pulled_unit_ids,released_unit_ids,"
             + "collapse_outcome,collapse_enemies_in_sector,collapse_sim_ratio,"
             + "collapse_flank_count,collapse_static_clear,contain_arc_distance,"
-            + "collapse_under_fire,collapse_run_start_frame,collapse_wrap_end,collapse_first_favourable_frame";
+            + "collapse_under_fire,collapse_run_start_frame,collapse_wrap_end,collapse_first_favourable_frame,"
+            + "contain_timeout_reentries,contain_static_only";
 
     private static final int FLUSH_INTERVAL_FRAMES = 480;
     private static final String EVENT_STATUS_CHANGE = "STATUS_CHANGE";
@@ -388,6 +389,21 @@ public class SquadDecisionLogger implements SquadDecisionSink {
 
         try {
             decisionFor(squad).setCollapseWrapEnd(wrapEnd.name());
+        } catch (RuntimeException e) {
+            disable();
+        }
+    }
+
+    @Override
+    public void onContainmentTimedOut(Squad squad, int reentries, boolean staticOnly) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            SquadDecision decision = decisionFor(squad);
+            decision.setContainTimeoutReentries(reentries);
+            decision.setContainStaticOnly(SquadDecision.tristate(staticOnly));
         } catch (RuntimeException e) {
             disable();
         }
@@ -668,6 +684,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         fields.addAll(moveOutCells(context));
         fields.addAll(workerIdCells(Collections.emptyList(), Collections.emptyList()));
         fields.addAll(collapseCells(context));
+        fields.addAll(containTimeoutCells(context));
         return String.join(",", fields);
     }
 
@@ -695,6 +712,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
                 released.stream().map(worker -> releasedWorkerEntry(worker.getUnitID(), worker.getRole()))
                         .collect(Collectors.toList())));
         fields.addAll(collapseCells(context));
+        fields.addAll(containTimeoutCells(context));
         return String.join(",", fields);
     }
 
@@ -843,6 +861,22 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         fields.add(String.valueOf(context.getCollapseRunStartFrame()));
         fields.add(context.getCollapseWrapEnd());
         fields.add(String.valueOf(context.getCollapseFirstFavourableFrame()));
+        return fields;
+    }
+
+    /**
+     * Builds the contain timeout cells: the re-entries in a row after a timeout a contain had made before the timeout
+     * this frame, and whether the enemy then read as defending with static defence only. Filled on the frame a
+     * containing squad ran out its timeout, whether it retreated or escalated; every other row, a retreat because
+     * containment ceased to apply among them, carries the not evaluated sentinels.
+     *
+     * @param context the decision the row is built from
+     * @return the re-entries cell and the static-only cell
+     */
+    static List<String> containTimeoutCells(SquadDecision context) {
+        List<String> fields = new ArrayList<>();
+        fields.add(String.valueOf(context.getContainTimeoutReentries()));
+        fields.add(String.valueOf(context.getContainStaticOnly()));
         return fields;
     }
 
