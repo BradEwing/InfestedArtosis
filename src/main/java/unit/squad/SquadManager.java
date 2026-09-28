@@ -64,7 +64,6 @@ import java.util.stream.Collectors;
 import util.TargetScorer;
 
 import static java.lang.Math.min;
-import static util.Distance.closestPosition;
 import static util.Distance.manhattanTileDistance;
 
 public class SquadManager {
@@ -190,6 +189,8 @@ public class SquadManager {
     public void updateFightSquads() {
         disbanded.clear();
         activeContainmentArcs.clear();
+        gameState.getEndgameHunt().update(gameState.getObservedUnitTracker().getLivingObservedUnits(),
+                game.getFrameCount(), gameState.getSupply());
         removeEmptySquads();
         mergeSquads();
         splitSquads();
@@ -4681,6 +4682,10 @@ public class SquadManager {
     /**
      * Keeps a fighter that has no attackable target moving toward the enemy.
      *
+     * <p>The fighter hunts the remembered enemy structure {@link EndgameHunt#huntPosition} picks from the squad's
+     * center: the nearest one its weapons reach, gas structures and lifted buildings included, or the nearest one at
+     * all when it reaches none.
+     *
      * <p>The current movement target is held until it is reached; ManagedUnit clears it once the tile
      * is visible. pollScoutTarget() mutates scout assignment accounting and returns a different base
      * on every call, so polling it per frame makes fighters thrash between map corners.
@@ -4690,7 +4695,8 @@ public class SquadManager {
             return;
         }
 
-        Position closestBuilding = closestKnownEnemyBuilding(squad.getCenter());
+        Position closestBuilding = gameState.getEndgameHunt().huntPosition(squad.getCenter(),
+                gameState.getObservedUnitTracker().getLivingObservedUnits(), managedUnit.getUnitType());
         if (closestBuilding != null) {
             managedUnit.setMovementTargetPosition(closestBuilding.toTilePosition());
             return;
@@ -4703,13 +4709,6 @@ public class SquadManager {
         }
 
         managedUnit.setMovementTargetPosition(gameState.pollScoutTarget());
-    }
-
-    /**
-     * @return closest last known enemy building position to the given position, or null if none are known
-     */
-    private Position closestKnownEnemyBuilding(Position from) {
-        return closestPosition(from, gameState.getLastKnownPositionsOfBuildings());
     }
 
     /**

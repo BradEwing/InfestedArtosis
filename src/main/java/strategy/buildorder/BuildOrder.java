@@ -29,6 +29,7 @@ import macro.plan.UnitPlan;
 import macro.plan.UpgradePlan;
 import telemetry.PlanEvents;
 import unit.squad.ContainHeldTimer;
+import unit.squad.EndgameHunt;
 import util.Time;
 
 import java.util.ArrayList;
@@ -54,6 +55,14 @@ public abstract class BuildOrder {
      * tech bands below it.
      */
     public static final int ARMY_UPGRADE_PRIORITY = 120;
+
+    /**
+     * Priority for the end-game hunt's anti-air, see {@link #planEndgameAntiAir}: the
+     * {@link UnitPlan#ADVANCED_UNIT_PRIORITY} band. It only has to beat the frame-stamped backlog a won game has
+     * queued, so it shares the band the build's own tech units poll at and never outranks the army upgrade, drone
+     * round, colony, reaction or emergency bands.
+     */
+    public static final int ENDGAME_ANTI_AIR_PRIORITY = UnitPlan.ADVANCED_UNIT_PRIORITY;
     protected static final int SPAWNING_POOL_PRIORITY = 2;
     private static final int DEFAULT_COLONY_PRIORITY = 5;
     private static final int UNKNOWN_RACE_BASE_TARGET = 2;
@@ -539,6 +548,8 @@ public abstract class BuildOrder {
      * planned, a pool is queued at emergency priority. A build order that already claimed its own
      * pool is left alone, and claiming one here stops the build order from queuing a second.
      *
+     * <p>The end-game hunt's anti-air comes from here too, see {@link #planEndgameAntiAir}.
+     *
      * <p>While the {@link LingFloodHold Zergling flood hold} stands, the sunken target rises to the
      * hold's at emergency priority, the emergency zergling target is capped at the hold's, and a
      * Drone is queued at {@link LingFloodHold#DRONE_PRIORITY} while the hold's Drone floor is unmet.
@@ -548,6 +559,7 @@ public abstract class BuildOrder {
      */
     public List<Plan> planDefense(GameState gameState) {
         List<Plan> plans = new ArrayList<>(planStaticDefense(gameState));
+        plans.addAll(planEndgameAntiAir(gameState));
         boolean rushed = gameState.isEarlyRushed() || gameState.isScvRushed();
         if (shouldPlanEmergencyPool(rushed, gameState.getTechProgression().canPlanPool())) {
             Plan poolPlan = this.planSpawningPool(gameState);
@@ -570,6 +582,45 @@ public abstract class BuildOrder {
             plans.add(zerglingPlan);
         }
         return plans;
+    }
+
+    /**
+     * Anti-air for the end-game hunt, whatever the build: while the enemy has no unit we know of and every
+     * structure we know of is lifted ({@link EndgameHunt#isHuntingFlyingBuildings()}), one plan per frame at
+     * {@link #ENDGAME_ANTI_AIR_PRIORITY} for what {@link EndgameHunt#antiAirRequest} names, until
+     * {@link EndgameHunt#ANTI_AIR_TARGET} anti-air units are alive or on the way.
+     */
+    private List<Plan> planEndgameAntiAir(GameState gameState) {
+        if (!gameState.getEndgameHunt().isHuntingFlyingBuildings()) {
+            return Collections.emptyList();
+        }
+        TechProgression techProgression = gameState.getTechProgression();
+        int antiAirUnits = 0;
+        for (UnitType unitType : EndgameHunt.ANTI_AIR_UNITS) {
+            antiAirUnits += gameState.ourLivingUnitCount(unitType) + gameState.outstandingUnitPlanCount(unitType);
+        }
+        EndgameHunt.AntiAirRequest request = EndgameHunt.antiAirRequest(
+                gameState.getEndgameHunt().isHuntingFlyingBuildings(), antiAirUnits, techProgression.isSpire(),
+                techProgression.isHydraliskDen(), techProgression.canPlanHydraliskDen());
+        switch (request) {
+            case MUTALISK:
+                return planEndgameAntiAirUnit(gameState, UnitType.Zerg_Mutalisk);
+            case HYDRALISK:
+                return planEndgameAntiAirUnit(gameState, UnitType.Zerg_Hydralisk);
+            case HYDRALISK_DEN:
+                Plan den = planHydraliskDen(gameState);
+                den.setPriority(ENDGAME_ANTI_AIR_PRIORITY);
+                return Collections.singletonList(den);
+            default:
+                return Collections.emptyList();
+        }
+    }
+
+    private List<Plan> planEndgameAntiAirUnit(GameState gameState, UnitType unitType) {
+        if (!canPlanAdvancedUnit(gameState, unitType)) {
+            return Collections.emptyList();
+        }
+        return Collections.singletonList(planUnit(gameState, unitType, ENDGAME_ANTI_AIR_PRIORITY));
     }
 
     /**

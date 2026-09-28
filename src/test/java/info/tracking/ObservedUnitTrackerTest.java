@@ -1,6 +1,8 @@
 package info.tracking;
 
 import bwapi.Position;
+import bwapi.TestUnits;
+import bwapi.Unit;
 import bwapi.TilePosition;
 import bwapi.UnitType;
 import org.junit.jupiter.api.Test;
@@ -172,6 +174,43 @@ class ObservedUnitTrackerTest {
         ObservedUnitTracker tracker = ObservedUnitFixture.trackerHolding(lair);
 
         assertFalse(tracker.hasObservedAnyBeforeTime(WINDOW, UnitType.Zerg_Lair));
+    }
+
+    @Test
+    void assimilatorRebuiltOnItsGeyserIsTrackedAsLivingAgain() {
+        Unit geyser = new TestUnits().unit(UnitType.Protoss_Assimilator, 61);
+        ObservedUnitTracker tracker = new ObservedUnitTracker();
+
+        tracker.onUnitShow(geyser, 6921, false);
+        tracker.onUnitDestroy(geyser, 8318);
+        assertTrue(tracker.getLivingObservedUnits().isEmpty());
+
+        tracker.onUnitShow(geyser, 18874, false);
+
+        assertEquals(1, tracker.getLivingObservedUnits().size());
+        assertEquals(1, tracker.getCountOfLivingUnits(UnitType.Protoss_Assimilator));
+    }
+
+    @Test
+    void revivedUnitDropsTheDestroyedStructuresCompletionStamp() {
+        ObservedUnit assimilator = ObservedUnitFixture.observedUnit(UnitType.Protoss_Assimilator, DRONE_OBSERVED);
+        assimilator.markCompleted(DRONE_COMPLETED);
+        assimilator.setDestroyedFrame(POOL_COMPLETED);
+
+        ObservedUnitTracker.reviveRebuilt(assimilator);
+
+        assertNull(assimilator.getDestroyedFrame());
+        assertFalse(assimilator.isCompleted());
+    }
+
+    @Test
+    void livingUnitShownAgainKeepsItsCompletionStamp() {
+        ObservedUnit drone = completedDrone();
+
+        ObservedUnitTracker.reviveRebuilt(drone);
+
+        assertTrue(drone.isCompleted());
+        assertEquals(DRONE_COMPLETED, drone.getCompletedFrame());
     }
 
     private static ObservedUnit completedDrone() {
