@@ -74,6 +74,11 @@ public class GameState {
      */
     public static final int OUTER_BASE_DEFENSE_MIN_GATHERERS = 20;
 
+    /**
+     * Game time after which {@link #isFloatingMinerals()} may fire.
+     */
+    static final Time FLOATING_MINERALS_FROM = new Time(5, 0);
+
     private Game game;
     private Config config;
     private Player self;
@@ -1879,17 +1884,57 @@ public class GameState {
     }
 
     /**
-     * True when mined minerals outstrip what our larva-producing hatcheries can spend.
+     * True after 5:00 when unreserved minerals exceed {@link #floatingMineralsBar()}: 350 for every
+     * unfinished hatchery plus 350.
      *
-     * <p>Reads completed hatcheries and unreserved minerals. Neither moves when a hatchery plan
-     * is queued or cancelled, so the value holds across the enqueue and the cancel that used to
-     * toggle it.
+     * <p>Reads {@link ResourceCount#availableMinerals()}, the bank minus every queued plan's
+     * reservation, so it is false while reservations meet or exceed the bank. The hatchery count
+     * is {@link #unfinishedHatcheries()}: every in-flight hatchery plan and every hatchery under
+     * construction, expansions and macro hatcheries alike. Completed hatcheries are not counted.
+     * Queueing a hatchery plan raises the bar, and the bar holds when its drone morphs until the
+     * hatchery finishes. Cancelling a plan lowers the bar; the hatchery enqueue cooldown keeps a
+     * cancel from answering the request again at once.
      */
     public boolean isFloatingMinerals() {
+        return isFloatingMinerals(resourceCount, unfinishedHatcheries(), getGameTime());
+    }
+
+    /**
+     * @param resourceCount the ledger whose unreserved minerals are read
+     * @param unfinishedHatcheries hatchery plans in flight plus hatcheries under construction, both kinds
+     */
+    static boolean isFloatingMinerals(ResourceCount resourceCount, int unfinishedHatcheries, Time gameTime) {
         return HatcheryCapacity.isFloatingMinerals(
-                resourceCount.minedMinerals(),
-                hatcheryCount(),
-                getGameTime().greaterThan(new Time(5, 0)));
+                resourceCount.availableMinerals(),
+                unfinishedHatcheries,
+                gameTime.greaterThan(FLOATING_MINERALS_FROM));
+    }
+
+    /**
+     * Unreserved minerals {@link #isFloatingMinerals()} must exceed this frame.
+     */
+    public int floatingMineralsBar() {
+        return HatcheryCapacity.floatingMineralsBar(unfinishedHatcheries());
+    }
+
+    /**
+     * Hatcheries of both kinds the bot has committed to and not finished: in-flight hatchery plans
+     * plus hatcheries under construction. A hatchery plan completes the frame its drone morphs, so
+     * the plan count alone drops while the hatchery is still going up.
+     */
+    public int unfinishedHatcheries() {
+        return unfinishedHatcheries(inFlightHatcheryPlans(), hatcheriesUnderConstruction(false),
+                hatcheriesUnderConstruction(true));
+    }
+
+    /**
+     * @param inFlightPlans hatchery plans of both kinds the production system carries
+     * @param expansionsUnderConstruction expansion hatcheries started and not finished
+     * @param macroHatcheriesUnderConstruction macro hatcheries started and not finished
+     */
+    static int unfinishedHatcheries(int inFlightPlans, int expansionsUnderConstruction,
+            int macroHatcheriesUnderConstruction) {
+        return inFlightPlans + expansionsUnderConstruction + macroHatcheriesUnderConstruction;
     }
 
     /**
@@ -1967,12 +2012,34 @@ public class GameState {
     }
 
     /**
-     * Counts hatchery plans of one kind across every stage the production system holds them in.
+     * Hatchery building plans of both kinds, expansions and macro hatcheries, that the production
+     * system still carries.
+     */
+    public int inFlightHatcheryPlans() {
+        return countHatcheryPlans(productionQueue, plansScheduled, plansBuilding, plansMorphing);
+    }
+
+    /**
+     * Counts hatchery plans of both kinds across every stage the production system holds them in.
+     */
+    static int countHatcheryPlans(Iterable<Plan> queued, Iterable<Plan> scheduled, Iterable<Plan> building,
+            Iterable<Plan> morphing) {
+        return countHatcheryPlans(false, queued, scheduled, building, morphing)
+                + countHatcheryPlans(true, queued, scheduled, building, morphing);
+    }
+
+    /**
+     * Counts hatchery plans of one kind across every stage the production system holds them in:
+     * queued, scheduled, BUILDING while its drone walks to the site, and MORPHING from the frame the
+     * drone is ordered to build, whether the plan still sits in plansBuilding or has moved to
+     * plansMorphing.
      *
-     * <p>A cancelled plan is not carried, and its set membership does not say so:
+     * <p>A cancelled or completed plan is not carried, and its set membership does not say so:
      * {@link #cancelPlan} removes a plan from plansBuilding and plansMorphing but not from
-     * plansScheduled, and {@link #setImpossiblePlan} removes it from none of them. Both set the
-     * plan state, so the state is what this reads.
+     * plansScheduled, {@link #setImpossiblePlan} removes it from none of them, and
+     * {@link #completePlan} leaves a plan in plansScheduled until BuildingManager sweeps it. All three
+     * set the plan state, so the state is what this reads. A completed plan's hatchery is counted by
+     * {@link #hatcheriesUnderConstruction} instead.
      */
     static int countHatcheryPlans(boolean macroHatchery, Iterable<Plan> queued, Iterable<Plan> scheduled,
             Iterable<Plan> building, Iterable<Plan> morphing) {
@@ -1993,10 +2060,12 @@ public class GameState {
     }
 
     /**
-     * True when this plan is a hatchery of the given kind that the bot is still committed to.
+     * True when this plan is a hatchery of the given kind that the bot is still committed to and
+     * whose drone has not yet morphed.
      */
     static boolean isOutstandingHatcheryPlan(Plan plan, boolean macroHatchery) {
         return plan.getState() != PlanState.CANCELLED
+                && plan.getState() != PlanState.COMPLETE
                 && plan.getType() == PlanType.BUILDING
                 && plan.getPlannedUnit() == UnitType.Zerg_Hatchery
                 && plan.isMacroHatchery() == macroHatchery;
@@ -2015,16 +2084,27 @@ public class GameState {
     public int hatcheriesUnderConstruction(boolean macroHatchery) {
         int count = 0;
         for (Unit unit : self.getUnits()) {
-            if (unit.getType() != UnitType.Zerg_Hatchery || unit.isCompleted()) {
-                continue;
-            }
-
-            boolean isMacro = !baseData.isBaseTilePosition(unit.getTilePosition());
-            if (isMacro == macroHatchery) {
+            if (isHatcheryUnderConstruction(unit.getType(), unit.isCompleted(),
+                    baseData.isBaseTilePosition(unit.getTilePosition()), macroHatchery)) {
                 count += 1;
             }
         }
         return count;
+    }
+
+    /**
+     * True when one of our units is a hatchery of the given kind still going up: a Zerg_Hatchery
+     * that is not complete. A Drone ordered to build is not one yet; its plan is still MORPHING and
+     * {@link #countHatcheryPlans} counts it until the drone morphs.
+     *
+     * @param type the unit's type
+     * @param completed whether the unit has finished
+     * @param onBaseTile whether the unit stands on a base tile, which makes it an expansion
+     * @param macroHatchery true to count macro hatcheries, false to count expansions
+     */
+    static boolean isHatcheryUnderConstruction(UnitType type, boolean completed, boolean onBaseTile,
+            boolean macroHatchery) {
+        return type == UnitType.Zerg_Hatchery && !completed && onBaseTile != macroHatchery;
     }
 
     public void setGeyserAssignment(Unit unit) {
