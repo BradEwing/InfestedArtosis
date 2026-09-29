@@ -172,6 +172,8 @@ public class SquadManager {
     static final int CONTAIN_ARRIVAL_DISTANCE = 320;
     /** Tuning value: ratio an ENGAGE must reach, never below the matchup threshold, to break an attrition lock. */
     static final double STRONG_ENGAGE_RATIO = 1.5;
+    /** Tuning value: share of the engage threshold a measured read needs for a HOME_CONTESTED squad to defend. */
+    static final double CONTESTED_HOME_DEFEND_FRACTION = 0.9;
 
     private final Map<Base, RunbyTarget> runbyTargets = new HashMap<>();
     private Set<ManagedUnit> outrangedHits = new HashSet<>();
@@ -1539,9 +1541,14 @@ public class SquadManager {
                 : requestPath(noVisionMarch, result));
 
         if (squad.isGroundSquad() && squad.corneredEngagePersisted(
-                corneredSquadFights(squad.getStatus(), squad.getRetreatRoute(), result), now)) {
+                corneredSquadFights(squad.getStatus(), squad.getRetreatRoute(), result)
+                        || contestedHomeDefends(squad.getStatus(), squad.getRetreatRoute(), result, enemyMeasured,
+                        ratio, engageThreshold), now)) {
+            DecisionPath turnPath = squad.getRetreatRoute() == RetreatRoute.HOME_CONTESTED
+                    ? DecisionPath.HOME_CONTESTED_DEFEND
+                    : DecisionPath.CORNERED_ENGAGE;
             turnCorneredSquadToFight(squad, result, now);
-            SquadDecisions.pathTaken(squad, DecisionPath.CORNERED_ENGAGE);
+            SquadDecisions.pathTaken(squad, turnPath);
             assignFightTargets(squad, managedFighters, true);
             return;
         }
@@ -1608,10 +1615,11 @@ public class SquadManager {
     }
 
     /**
-     * Turns a cornered squad whose ENGAGE persisted to FIGHT: drops its retreat lock and route, holds it in FIGHT for
-     * one fight hysteresis window, see {@link Squad#holdCorneredFight}, and arms the fight lock on the ENGAGE.
+     * Turns a cornered squad whose ENGAGE persisted, or a HOME_CONTESTED squad whose defend read persisted, to FIGHT:
+     * drops its retreat lock and route, holds it in FIGHT for one fight hysteresis window, see
+     * {@link Squad#holdCorneredFight}, and arms the fight lock on an ENGAGE.
      *
-     * @param squad the cornered squad
+     * @param squad the cornered or contested squad
      * @param result this frame's combat sim verdict
      * @param now current frame
      */
@@ -3939,7 +3947,8 @@ public class SquadManager {
      * Whether a squad held in retreat reads a cornered ENGAGE: its last retreat plan found no path home clear of the
      * enemy, and the sim rates the fight at or above its engage threshold. The squad turns to fight once this read has
      * held over a fight hysteresis window, see {@link Squad#corneredEngagePersisted}, and then stays in FIGHT for one
-     * more, see {@link Squad#holdCorneredFight}. A retreat from a HOME_CONTESTED plan is not cornered.
+     * more, see {@link Squad#holdCorneredFight}. A retreat from a HOME_CONTESTED plan is not cornered, see
+     * {@link #contestedHomeDefends}.
      *
      * @param status status the squad holds
      * @param route route of the squad's last ground retreat plan
@@ -3949,6 +3958,33 @@ public class SquadManager {
     static boolean corneredSquadFights(SquadStatus status, RetreatRoute route, CombatSimulator.CombatResult result) {
         return status == SquadStatus.RETREAT && route == RetreatRoute.CORNERED
                 && result == CombatSimulator.CombatResult.ENGAGE;
+    }
+
+    /**
+     * Whether a squad held in retreat reads a contested home it should defend instead of staging at the edge of the
+     * threats on it: its last retreat plan was HOME_CONTESTED, and the sim reads ENGAGE, or a RETREAT measured against
+     * a real enemy at or above {@link #CONTESTED_HOME_DEFEND_FRACTION} of its engage threshold. Like a cornered
+     * ENGAGE, the squad turns to fight once this read has held over a fight hysteresis window, see
+     * {@link Squad#corneredEngagePersisted}, and then stays in FIGHT for one more, see {@link Squad#holdCorneredFight}.
+     *
+     * @param status status the squad holds
+     * @param route route of the squad's last ground retreat plan
+     * @param result the sim's verdict this frame
+     * @param enemyMeasured whether the sim measured a real enemy this frame
+     * @param ratio the sim's overall strength ratio this frame
+     * @param engageThreshold the engage threshold the sim judged this frame's ratio against
+     * @return true when this frame's read counts toward the squad defending its home instead of staging
+     */
+    static boolean contestedHomeDefends(SquadStatus status, RetreatRoute route, CombatSimulator.CombatResult result,
+                                        boolean enemyMeasured, double ratio, double engageThreshold) {
+        if (status != SquadStatus.RETREAT || route != RetreatRoute.HOME_CONTESTED) {
+            return false;
+        }
+        if (result == CombatSimulator.CombatResult.ENGAGE) {
+            return true;
+        }
+        return result == CombatSimulator.CombatResult.RETREAT && enemyMeasured && engageThreshold > 0
+                && ratio >= CONTESTED_HOME_DEFEND_FRACTION * engageThreshold;
     }
 
     /**

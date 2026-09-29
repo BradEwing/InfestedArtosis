@@ -416,6 +416,46 @@ class GroundRetreatRouterTest {
     }
 
     @Test
+    void squadStagedForAContestedHomeTurnsToDefendItWhenTheEnemyCloses() {
+        GameMap map = map(OPEN_FIELD);
+        Position home = tileCenter(21, 10);
+        Position enemy = tileCenter(20, 10);
+        GroundRetreatRouter.Plan<String> plan = new GroundRetreatRouter(map)
+                .plan(Collections.singletonMap("ling", tileCenter(13, 10)), home, Collections.singletonList(enemy));
+        Squad squad = new GroundSquad();
+        squad.setStatus(SquadStatus.RETREAT);
+        squad.setRetreatRoute(plan.getRoute());
+        squad.startRetreatLock(18700);
+        int window = squad.getFightHysteresis().getFrames();
+        double threshold = 1.44;
+        assertEquals(RetreatRoute.HOME_CONTESTED, plan.getRoute());
+
+        for (int frame = 18701; frame <= 18701 + 2 * window; frame++) {
+            assertFalse(squad.corneredEngagePersisted(defendRead(squad, 0.8, threshold), frame),
+                    "stages while the enemy standing on home reads well below the threshold, frame " + frame);
+        }
+        int closes = 18702 + 2 * window;
+        for (int frame = closes; frame < closes + window; frame++) {
+            assertFalse(squad.corneredEngagePersisted(defendRead(squad, 1.337, threshold), frame));
+        }
+        assertTrue(squad.corneredEngagePersisted(defendRead(squad, 1.337, threshold), closes + window));
+        SquadManager.turnCorneredSquadToFight(squad, CombatSimulator.CombatResult.RETREAT, closes + window);
+
+        assertEquals(SquadStatus.FIGHT, squad.getStatus());
+        assertEquals(RetreatRoute.NONE, squad.getRetreatRoute());
+        assertFalse(squad.isRetreatLocked(closes + window + 1));
+        assertTrue(SquadManager.fightHeld(squad, closes + 2 * window - 1,
+                SquadManager.fightLockHolds(false, CombatSimulator.CombatResult.RETREAT, true, 1.2, threshold)),
+                "defends through the hold whatever the sim reads");
+        assertFalse(SquadManager.fightHeld(squad, closes + 2 * window, false));
+    }
+
+    private static boolean defendRead(Squad squad, double ratio, double threshold) {
+        return SquadManager.contestedHomeDefends(squad.getStatus(), squad.getRetreatRoute(),
+                CombatSimulator.CombatResult.RETREAT, true, ratio, threshold);
+    }
+
+    @Test
     void corneredSquadAtEngageFights() {
         assertTrue(SquadManager.corneredSquadFights(SquadStatus.RETREAT, RetreatRoute.CORNERED,
                 CombatSimulator.CombatResult.ENGAGE));

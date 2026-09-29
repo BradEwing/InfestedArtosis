@@ -5,12 +5,14 @@ import telemetry.RetreatRoute;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static unit.squad.CombatSimulator.CombatResult.ADVANCE;
 import static unit.squad.CombatSimulator.CombatResult.ENGAGE;
 import static unit.squad.CombatSimulator.CombatResult.RETREAT;
 
 /**
  * The cornered fight rule: a retreating ground squad whose last plan was CORNERED turns to fight only once ENGAGE has
- * held over a fight hysteresis window, and then stays in FIGHT for one more.
+ * held over a fight hysteresis window, and then stays in FIGHT for one more. A squad whose last plan was HOME_CONTESTED
+ * does the same on ENGAGE or a measured read at or above the defend fraction of the engage threshold.
  */
 class CorneredFightTest {
 
@@ -54,9 +56,9 @@ class CorneredFightTest {
     }
 
     @Test
-    void aSquadWithAWayHomeOrAContestedHomeNeverRunsTowardAFight() {
-        for (RetreatRoute route : new RetreatRoute[]{RetreatRoute.HOME, RetreatRoute.DETOUR,
-            RetreatRoute.HOME_CONTESTED, RetreatRoute.AWAY, RetreatRoute.NONE}) {
+    void aSquadWithAWayHomeNeverRunsTowardAFight() {
+        for (RetreatRoute route : new RetreatRoute[]{RetreatRoute.HOME, RetreatRoute.DETOUR, RetreatRoute.AWAY,
+            RetreatRoute.NONE}) {
             Squad squad = corneredSquad(7471);
             squad.setRetreatRoute(route);
             int window = squad.getFightHysteresis().getFrames();
@@ -107,6 +109,45 @@ class CorneredFightTest {
 
         assertFalse(squad.corneredEngagePersisted(true, 7472 + window + 1));
         assertTrue(squad.corneredEngagePersisted(true, 7472 + 2 * window + 1));
+    }
+
+    @Test
+    void aContestedHomeIsDefendedOnEngageOrAMeasuredReadWithinTheDefendFractionOfTheThreshold() {
+        double threshold = 1.44;
+        double defend = SquadManager.CONTESTED_HOME_DEFEND_FRACTION * threshold;
+
+        assertTrue(contestedRead(SquadStatus.RETREAT, RetreatRoute.HOME_CONTESTED, ENGAGE, true, 1.5, threshold));
+        assertTrue(contestedRead(SquadStatus.RETREAT, RetreatRoute.HOME_CONTESTED, RETREAT, true, 1.337, threshold),
+                "the M1WPZ01O read, 1.337 against 1.44");
+        assertTrue(contestedRead(SquadStatus.RETREAT, RetreatRoute.HOME_CONTESTED, RETREAT, true, defend, threshold));
+        assertFalse(contestedRead(SquadStatus.RETREAT, RetreatRoute.HOME_CONTESTED, RETREAT, true, defend - 0.01,
+                threshold));
+        assertFalse(contestedRead(SquadStatus.RETREAT, RetreatRoute.HOME_CONTESTED, RETREAT, false, 1.337, threshold),
+                "an unmeasured enemy is not a read to defend on");
+        assertFalse(contestedRead(SquadStatus.RETREAT, RetreatRoute.HOME_CONTESTED, ADVANCE, true, 1.337, threshold));
+        assertFalse(contestedRead(SquadStatus.RETREAT, RetreatRoute.HOME_CONTESTED, RETREAT, true, 0, 0));
+        assertFalse(contestedRead(SquadStatus.FIGHT, RetreatRoute.HOME_CONTESTED, ENGAGE, true, 1.5, threshold));
+        for (RetreatRoute route : new RetreatRoute[]{RetreatRoute.HOME, RetreatRoute.DETOUR, RetreatRoute.CORNERED,
+            RetreatRoute.AWAY, RetreatRoute.NONE}) {
+            assertFalse(contestedRead(SquadStatus.RETREAT, route, RETREAT, true, 1.337, threshold), route.name());
+        }
+    }
+
+    @Test
+    void aContestedHomeDefendReadFlappingBelowTheFractionNeverTurnsTheSquadToFight() {
+        Squad squad = corneredSquad(7471);
+        squad.setRetreatRoute(RetreatRoute.HOME_CONTESTED);
+
+        for (int frame = 7472; frame < 8331; frame++) {
+            double ratio = (frame - 7472) / FLAP_PERIOD % 2 == 0 ? 1.337 : 1.2;
+            assertFalse(squad.corneredEngagePersisted(SquadManager.contestedHomeDefends(squad.getStatus(),
+                    squad.getRetreatRoute(), RETREAT, true, ratio, 1.44), frame), "frame " + frame);
+        }
+    }
+
+    private static boolean contestedRead(SquadStatus status, RetreatRoute route, CombatSimulator.CombatResult result,
+                                         boolean enemyMeasured, double ratio, double threshold) {
+        return SquadManager.contestedHomeDefends(status, route, result, enemyMeasured, ratio, threshold);
     }
 
     private static Squad corneredSquad(int frame) {

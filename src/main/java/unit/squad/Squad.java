@@ -470,7 +470,8 @@ public class Squad implements Comparable<Squad> {
      * persisted. A cornered ENGAGE starts the run, any other read ends it, and the run persists once it has lasted one
      * fight hysteresis window, as {@link #strongEngagePersisted} does for the attrition lock.
      *
-     * @param corneredEngage true when this evaluation read ENGAGE for a squad retreating from a CORNERED plan
+     * @param corneredEngage true when this evaluation read ENGAGE for a squad retreating from a CORNERED plan, or a
+     *     defend read for a squad retreating from a HOME_CONTESTED plan
      * @param currentFrame frame of the evaluation
      * @return true when every evaluation over the last fight hysteresis window read a cornered ENGAGE
      */
