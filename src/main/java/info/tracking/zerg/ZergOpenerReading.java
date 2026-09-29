@@ -18,7 +18,6 @@ import util.Time;
  *     <li>9PoolSpeed and Overpool start the Pool by frame 2111 and finish it by 3319; the earliest 12 pool starts
  *     it at 2113, finishes it at 3321 and hatches its first Zergling at 3778. No Hatchery-first opener finishes a
  *     Pool before 3655 or hatches a Zergling before 4159.</li>
- *     <li>By 2:00, 12Pool and 12Hatch have 12 drone equivalents, 9PoolSpeed and Overpool 9 to 11.</li>
  *     <li>12Hatch starts the natural Hatchery from frame 2333, the earliest 12 pool starts it at 3426.</li>
  * </ul>
  * Drone equivalents are a lower bound that runs several Drones short by 3:00, so a count alone never reads an
