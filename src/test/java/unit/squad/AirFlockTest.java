@@ -94,18 +94,50 @@ class AirFlockTest {
 
     @Test
     void aFarMemberWhosePathToTheSharedPointIsBlockedRegroupsOnTheAnchorWhenThatPathIsClear() {
-        Map<Integer, Position> members = flock(new Position(1000, 1000), new Position(1040, 1000),
-                new Position(1000, 1040), new Position(1040, 1040), new Position(1600, 700));
-        List<Position> enemies = Arrays.asList(new Position(1000, 1200), new Position(1350, 480));
+        Position anchor = new Position(1000, 1000);
+        Position member = new Position(1600, 700);
+        Position shared = new Position(1100, 300);
+        List<Position> enemies = Collections.singletonList(new Position(1350, 500));
+        assertTrue(AirFlock.pathThroughEnemy(member, shared, enemies));
+        assertFalse(AirFlock.pathThroughEnemy(member, anchor, enemies));
+
+        assertEquals(anchor, AirFlock.memberRetreatTarget(member, anchor, shared, enemies, MAP, MAP));
+    }
+
+    @Test
+    void anEnemyFarFromEveryMemberDoesNotDivertAFarMemberFromTheSharedPoint() {
+        Map<Integer, Position> members = clusterWithStraggler();
+        Position nearEnemy = new Position(1000, 1200);
+        Position shared = AirFlock.retreatTargets(members, Collections.singletonList(nearEnemy), MAP, MAP).get(1);
+        Position straggler = members.get(5);
+        Position distant = new Position(straggler.getX() + (int) Math.round(0.95 * (shared.getX() - straggler.getX())),
+                straggler.getY() + (int) Math.round(0.95 * (shared.getY() - straggler.getY())));
+        for (Position member : members.values()) {
+            assertTrue(member.getDistance(distant) > AirFlock.RETREAT_SCAN_RADIUS);
+        }
+        List<Position> enemies = Arrays.asList(nearEnemy, distant);
+        assertTrue(straggler.getDistance(AirFlock.anchor(members)) > AirFlock.REGROUP_RADIUS);
+        assertTrue(AirFlock.pathThroughEnemy(straggler, shared, enemies));
 
         Map<Integer, Position> targets = AirFlock.retreatTargets(members, enemies, MAP, MAP);
 
-        Position shared = targets.get(1);
-        Position straggler = members.get(5);
-        Position anchor = AirFlock.anchor(members);
-        assertTrue(AirFlock.pathThroughEnemy(straggler, shared, enemies));
-        assertFalse(AirFlock.pathThroughEnemy(straggler, anchor, enemies));
-        assertEquals(anchor, targets.get(5));
+        assertEquals(shared, targets.get(1));
+        assertEquals(shared, targets.get(5));
+    }
+
+    @Test
+    void aFarMemberPinnedAgainstTheMapEdgeRegroupsOnTheAnchor() {
+        Position anchor = new Position(600, 600);
+        Position member = new Position(10, 10);
+        Position shared = new Position(1000, 1000);
+        List<Position> enemies = Collections.singletonList(new Position(200, 200));
+        assertTrue(AirFlock.pathThroughEnemy(member, shared, enemies));
+        assertTrue(AirFlock.pathThroughEnemy(member, anchor, enemies));
+        Position flee = AirFlock.fleePoint(member, shared, enemies, MAP, MAP);
+        assertNotNull(flee);
+        assertTrue(flee.getDistance(member) < AirFlock.MIN_FLEE_STEP);
+
+        assertEquals(anchor, AirFlock.memberRetreatTarget(member, anchor, shared, enemies, MAP, MAP));
     }
 
     @Test

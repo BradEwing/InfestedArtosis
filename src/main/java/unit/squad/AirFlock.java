@@ -34,6 +34,8 @@ public final class AirFlock {
     static final int RETREAT_FLEE_DISTANCE = 256;
     /** Tuning value: pixels from an enemy ahead within which a straight retreat path counts as running through it. */
     static final int RETREAT_PATH_CLEARANCE = 160;
+    /** Tuning value: pixels a member's own flee point must lie from it to be taken over the anchor. */
+    static final int MIN_FLEE_STEP = 64;
 
     private AirFlock() {
     }
@@ -129,8 +131,8 @@ public final class AirFlock {
 
     /**
      * The retreat target of every member of a retreating flock: the one {@link #retreatPoint} of its anchor, shared
-     * by every member except a far member whose path to it runs through an enemy, see {@link #memberRetreatTarget},
-     * or null for every member with no enemy near the flock.
+     * by every member except a far member whose path to it runs through an enemy within {@link #RETREAT_SCAN_RADIUS}
+     * of some member, see {@link #memberRetreatTarget}, or null for every member with no enemy near the flock.
      *
      * @param members member positions by unit id
      * @param enemies enemy positions
@@ -142,10 +144,11 @@ public final class AirFlock {
                                                         int mapWidth, int mapHeight) {
         Position anchor = anchor(members);
         Position point = retreatPoint(anchor, members.values(), enemies, mapWidth, mapHeight);
+        List<Position> near = nearFlock(enemies, members.values());
         Map<Integer, Position> targets = new HashMap<>();
         for (Map.Entry<Integer, Position> entry : members.entrySet()) {
             targets.put(entry.getKey(), point == null ? null
-                    : memberRetreatTarget(entry.getValue(), anchor, point, enemies, mapWidth, mapHeight));
+                    : memberRetreatTarget(entry.getValue(), anchor, point, near, mapWidth, mapHeight));
         }
         return targets;
     }
@@ -154,7 +157,7 @@ public final class AirFlock {
      * Where one member of a retreating flock flees. A member within {@link #REGROUP_RADIUS} of the anchor, or one
      * whose straight path to the shared point runs through no enemy, see {@link #pathThroughEnemy}, takes the shared
      * point. A farther member takes the anchor when its path there runs through no enemy, and otherwise its own
-     * {@link #fleePoint}, or the anchor when it has none.
+     * {@link #fleePoint}, or the anchor when it has none or the map edge leaves it within {@link #MIN_FLEE_STEP}.
      *
      * @param member the member's position
      * @param anchor the flock's anchor
@@ -173,7 +176,7 @@ public final class AirFlock {
             return anchor;
         }
         Position flee = fleePoint(member, shared, enemies, mapWidth, mapHeight);
-        return flee != null ? flee : anchor;
+        return flee != null && flee.getDistance(member) >= MIN_FLEE_STEP ? flee : anchor;
     }
 
     /**
@@ -254,13 +257,17 @@ public final class AirFlock {
         if (anchor == null) {
             return null;
         }
+        return awayFrom(anchor, members, nearFlock(enemies, members), mapWidth, mapHeight);
+    }
+
+    private static List<Position> nearFlock(Collection<Position> enemies, Collection<Position> members) {
         List<Position> near = new ArrayList<>();
         for (Position enemy : enemies) {
             if (nearAny(enemy, members, RETREAT_SCAN_RADIUS)) {
                 near.add(enemy);
             }
         }
-        return awayFrom(anchor, members, near, mapWidth, mapHeight);
+        return near;
     }
 
     private static Position awayFrom(Position anchor, Collection<Position> members, Collection<Position> threats,
