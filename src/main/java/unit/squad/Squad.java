@@ -69,6 +69,7 @@ public class Squad implements Comparable<Squad> {
     private int refusedSwarmId = -1;
     private AirHarassState harassState;
     private int harassExitFrame = 0;
+    private int harassExitEngageFrame = 0;
     private int containRadius = 0;
     private ContainmentCollapse.Maneuver collapse;
     protected int collapseLockedUntilFrame = 0;
@@ -245,7 +246,8 @@ public class Squad implements Comparable<Squad> {
      * <p>A merge that stays in CONTAIN carries the episode on: the arc, the pushed back radius and the attrition of
      * every containing source. Any other merged status drops them. Enemy reach is kept game-wide in the reach
      * memory, not on the squad. A merge that stays in RUNBY or HARASS keeps that episode's state, and the latest
-     * harass exit of any source is kept so its blind advance hold carries over.
+     * harass exit of any source is kept so its blind advance hold carries over. So is the latest broken harass exit
+     * lock, so the harass re-entry hold that follows it carries over too.
      *
      * <p>Locks fold to the latest expiry among the sources, except a retreat lock armed by a contain's attrition
      * exit, which is not inherited. A collapse under way in a FIGHT source is carried on when the merged squad is in
@@ -289,6 +291,7 @@ public class Squad implements Comparable<Squad> {
                 inheritedHarass = source.harassState;
             }
             this.harassExitFrame = Math.max(this.harassExitFrame, source.harassExitFrame);
+            this.harassExitEngageFrame = Math.max(this.harassExitEngageFrame, source.harassExitEngageFrame);
             mergedStatus = SquadStatus.dominant(mergedStatus, source.status);
             if (source.containStartFrame > 0 && (earliestContainStart == 0 || source.containStartFrame < earliestContainStart)) {
                 earliestContainStart = source.containStartFrame;
@@ -471,6 +474,18 @@ public class Squad implements Comparable<Squad> {
         retreatLockedUntilFrame = 0;
         attritionRetreatLock = false;
         strongEngageSinceFrame = -1;
+    }
+
+    /**
+     * Whether the retreat lock holding the squad is the one its last harass exit armed, and not one a later retreat
+     * armed or renewed.
+     *
+     * @param currentFrame current frame
+     * @return true while that lock holds
+     */
+    public boolean isHarassExitLocked(int currentFrame) {
+        return harassExitFrame > 0 && isRetreatLocked(currentFrame)
+                && retreatLockedUntilFrame == harassExitFrame + retreatHysteresis.getFrames();
     }
 
     public boolean isContainLocked(int currentFrame) {

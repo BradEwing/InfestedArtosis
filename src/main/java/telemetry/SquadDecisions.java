@@ -110,6 +110,31 @@ public final class SquadDecisions {
         current.onContainArcMeasured(squad, distance);
     }
 
+    public static void containmentTimedOut(Squad squad, int reentries, boolean staticOnly) {
+        SquadDecisionSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onContainmentTimedOut(squad, reentries, staticOnly);
+    }
+
+    public static void containmentStalemateRead(Squad squad, int breakShortfall, boolean breakUnreachable,
+                                                boolean stalemate) {
+        SquadDecisionSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onContainmentStalemateRead(squad, breakShortfall, breakUnreachable, stalemate);
+    }
+
+    public static void stalemateCommit(Squad squad, int committedSupply, int armySupply) {
+        SquadDecisionSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onStalemateCommit(squad, committedSupply, armySupply);
+    }
+
     public static void moveOutEvaluated(Squad squad, int moveOutThreshold, int squadStrength) {
         SquadDecisionSink current = sink;
         if (current == null) {
