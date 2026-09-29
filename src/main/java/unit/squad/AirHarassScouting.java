@@ -23,7 +23,8 @@ import java.util.function.Predicate;
  * flock strikes only once the probe has seen the center of the base's resources and sees the strike point, and a
  * tolerated strike point is left. A base whose probe point known anti-air structures cover is not probed: it counts as
  * sighted, and the entry verdict prices that anti-air. A base a probe found defended is neither probed nor entered
- * for {@link #PROBE_REFUSAL_FRAMES}, and the prober flies back to the hold point before it takes its squad's orders.
+ * for {@link #PROBE_REFUSAL_FRAMES}, and when a probe ends the harass the prober flies back to a hold point clear of
+ * known anti-air before it takes its squad's orders.
  *
  * <p>Every decision is a static function over plain values; the constants are tuning values, not Brood War facts.
  */
@@ -146,6 +147,21 @@ public final class AirHarassScouting {
      */
     public static boolean refusesBase(AirHarassEvaluator.ExitReason reason) {
         return reason == AirHarassEvaluator.ExitReason.PROBE_DEFENDED;
+    }
+
+    /**
+     * Whether the prober of a probe that ended flies back to the hold point ahead of its squad's orders: only when the
+     * probe itself ended the harass, finding the base defended or no target left, and no known anti-air covers the
+     * hold point, see {@link #holdExposed}. Any other exit leaves the prober to its squad's orders, since the hold point
+     * is then no safer than where the squad goes.
+     *
+     * @param reason why the harass ended
+     * @param holdExposed true when known anti-air covers the hold point
+     * @return true to send the prober back to the hold point
+     */
+    public static boolean proberRegroups(AirHarassEvaluator.ExitReason reason, boolean holdExposed) {
+        return !holdExposed && (reason == AirHarassEvaluator.ExitReason.PROBE_DEFENDED
+                || reason == AirHarassEvaluator.ExitReason.NO_TARGET);
     }
 
     /**

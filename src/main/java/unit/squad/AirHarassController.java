@@ -307,8 +307,9 @@ public class AirHarassController {
     /**
      * Ends a harass: records the EXIT row, records an exposed target in the {@link ExposedTargets.Memory}, refuses
      * a base the probe found defended for {@link AirHarassScouting#PROBE_REFUSAL_FRAMES}, and clears every
-     * Mutalisk's harass order. When the harass ends during a probe, the prober flies back to the hold point ahead of
-     * the squad's next orders, see {@link ManagedUnit#regroup}. The squad's status is left to the caller.
+     * Mutalisk's harass order. When a probe ends the harass and its hold point is clear of known anti-air, see
+     * {@link AirHarassScouting#proberRegroups}, the prober flies back to the hold point ahead of the squad's next
+     * orders, see {@link ManagedUnit#regroup}. The squad's status is left to the caller.
      *
      * @param squad harassing squad
      * @param reason why the harass ended
@@ -323,14 +324,17 @@ public class AirHarassController {
             probeRefusedUntil.put(state.getTargetBase(), now + AirHarassScouting.PROBE_REFUSAL_FRAMES);
         }
         Flock flock = flock(squad);
+        List<AirHarassTargeting.AirThreat> threats = view(now).threats;
         HarassTelemetry.row(withProber(exitRow(squad.getId(), state, reason, now,
-                squad.size() == 0 ? null : squad.getCenter(), flock.hitPoints, view(now).threats), squad, state)
+                squad.size() == 0 ? null : squad.getCenter(), flock.hitPoints, threats), squad, state)
                 .mutas(flock.mutas)
                 .healthyMutas(flock.healthy)
                 .build());
         ManagedUnit prober = state != null && state.getPhase() == AirHarassState.Phase.PROBE
                 ? proberOf(squad, state) : null;
-        if (prober != null && state.getHoldPoint() != null) {
+        if (prober != null && state.getHoldPoint() != null
+                && AirHarassScouting.proberRegroups(reason, AirHarassScouting.holdExposed(threats,
+                        state.getHoldPoint()))) {
             prober.regroup(state.getHoldPoint(), now + AirHarassScouting.PROBER_REGROUP_FRAMES);
         }
         for (ManagedUnit member : squad.getMembers()) {

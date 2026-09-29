@@ -493,6 +493,28 @@ class AirHarassScoutingTest {
     }
 
     @Test
+    void theProberRegroupsOnlyWhenTheProbeEndedTheHarassAndTheHoldPointIsClear() {
+        for (AirHarassEvaluator.ExitReason reason : AirHarassEvaluator.ExitReason.values()) {
+            boolean probeEnded = reason == AirHarassEvaluator.ExitReason.PROBE_DEFENDED
+                    || reason == AirHarassEvaluator.ExitReason.NO_TARGET;
+            assertEquals(probeEnded, AirHarassScouting.proberRegroups(reason, false), reason.name());
+            assertFalse(AirHarassScouting.proberRegroups(reason, true), reason.name());
+        }
+    }
+
+    @Test
+    void aFlockDefendedProbeExitDoesNotSendTheProberBackToAHoldPointInsideTurrets() {
+        AirHarassTargeting.AirThreat turret = threat(259, UnitType.Terran_Missile_Turret, TURRET);
+        Position hold = new Position(2016, 3900);
+
+        assertTrue(AirHarassScouting.holdExposed(Collections.singletonList(turret), hold));
+        assertFalse(AirHarassScouting.proberRegroups(AirHarassEvaluator.ExitReason.FLOCK_DEFENDED,
+                AirHarassScouting.holdExposed(Collections.singletonList(turret), hold)));
+        assertFalse(AirHarassScouting.proberRegroups(AirHarassEvaluator.ExitReason.PROBE_DEFENDED,
+                AirHarassScouting.holdExposed(Collections.singletonList(turret), hold)));
+    }
+
+    @Test
     void aRefusedBaseIsLeftOutUntilItsRefusalRunsOut() {
         Map<String, Integer> refusedUntil = new HashMap<>();
         refusedUntil.put("main", NOW + AirHarassScouting.PROBE_REFUSAL_FRAMES);
