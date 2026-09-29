@@ -234,6 +234,21 @@ class BuildOrderTest {
         assertEquals(40, BuildOrder.earlyRushZerglings(20));
     }
 
+    @Test
+    void theEmergencyZerglingTargetFollowsTheAttackersWithoutTheFloodHold() {
+        assertEquals(40, BuildOrder.emergencyZerglingTarget(10, 20, false));
+        assertEquals(12, BuildOrder.emergencyZerglingTarget(12, 0, false));
+    }
+
+    /**
+     * Two zerglings per attacker can never be met against a zergling flood; the hold caps it.
+     */
+    @Test
+    void theFloodHoldCapsTheEmergencyZerglingTarget() {
+        assertEquals(LingFloodHold.ZERGLINGS, BuildOrder.emergencyZerglingTarget(10, 20, true));
+        assertEquals(LingFloodHold.ZERGLINGS, BuildOrder.emergencyZerglingTarget(40, 0, true));
+    }
+
     private static Plan poolPlanFor(BuildOrder buildOrder) {
         return new BuildingPlan(UnitType.Zerg_Spawning_Pool, buildOrder.poolPriority(POOL_FRAME));
     }
@@ -679,6 +694,27 @@ class BuildOrderTest {
 
     private static int groundCombatUnits(UnitType... sighted) {
         return (int) Arrays.stream(sighted).filter(Filter::isMobileGroundCombatUnit).count();
+    }
+
+    @Test
+    void theStaticDefenseTargetIsTheBuildsWithoutARushOrTheFloodHold() {
+        assertEquals(1, BuildOrder.staticDefenseSunkenTarget(1, false, false, 10, 10));
+    }
+
+    @Test
+    void theStaticDefenseTargetTakesTheEarlyRushFloor() {
+        assertEquals(2, BuildOrder.staticDefenseSunkenTarget(0, true, false,
+                EARLY_RUSH_SECOND_SUNKEN_ATTACKERS, EARLY_RUSH_SECOND_SUNKEN_ATTACKERS));
+    }
+
+    /**
+     * The flood hold does not wait for an attacker at our bases: the flood's first wave lands soon
+     * after the detection, and a colony takes a creep colony's and a sunken's build time to stand.
+     */
+    @Test
+    void theFloodHoldRaisesTheStaticDefenseTargetWithNoAttackerAtOurBases() {
+        assertEquals(LingFloodHold.SUNKENS, BuildOrder.staticDefenseSunkenTarget(0, true, true, 0, 0));
+        assertEquals(LingFloodHold.SUNKENS, BuildOrder.staticDefenseSunkenTarget(0, false, true, 0, 0));
     }
 
     @Test

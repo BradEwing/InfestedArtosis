@@ -113,7 +113,7 @@ public class TwelveHatch extends BuildOrder {
 
     @Override
     public Set<BuildOrder> transition(GameState gameState) {
-        return OpenerTransitions.forRace(gameState.getOpponentRace());
+        return OpenerTransitions.forGame(gameState);
     }
 
     @Override

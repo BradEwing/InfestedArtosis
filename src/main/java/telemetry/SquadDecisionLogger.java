@@ -119,6 +119,9 @@ public class SquadDecisionLogger implements SquadDecisionSink {
             + "collapse_outcome,collapse_enemies_in_sector,collapse_sim_ratio,"
             + "collapse_flank_count,collapse_static_clear,contain_arc_distance,"
             + "collapse_under_fire,collapse_run_start_frame,collapse_wrap_end,collapse_first_favourable_frame,"
+            + "contain_timeout_reentries,contain_static_only,"
+            + "contain_break_shortfall_real,contain_break_unreachable,contain_stalemate,"
+            + "stalemate_commit_supply_real,stalemate_commit_army_real,"
             + "retreat_route";
 
     private static final int FLUSH_INTERVAL_FRAMES = 480;
@@ -252,10 +255,15 @@ public class SquadDecisionLogger implements SquadDecisionSink {
      * the squad already in FIGHT, so no status change would ever carry the path.
      *
      * @param path the branch taken
-     * @return true for CONTAIN_COLLAPSE_COMMIT
+     * <p>A stalemate commit's start, pause, resume and release change no squad's status on the frame they happen
+     * either.
+     *
+     * @return true for CONTAIN_COLLAPSE_COMMIT and the four stalemate commit paths
      */
     static boolean writesOwnRow(DecisionPath path) {
-        return path == DecisionPath.CONTAIN_COLLAPSE_COMMIT;
+        return path == DecisionPath.CONTAIN_COLLAPSE_COMMIT || path == DecisionPath.STALEMATE_COMMIT
+                || path == DecisionPath.STALEMATE_COMMIT_RELEASE || path == DecisionPath.STALEMATE_COMMIT_PAUSE
+                || path == DecisionPath.STALEMATE_COMMIT_RESUME;
     }
 
     @Override
@@ -393,6 +401,53 @@ public class SquadDecisionLogger implements SquadDecisionSink {
 
         try {
             decisionFor(squad).setCollapseWrapEnd(wrapEnd.name());
+        } catch (RuntimeException e) {
+            disable();
+        }
+    }
+
+    @Override
+    public void onContainmentTimedOut(Squad squad, int reentries, boolean staticOnly) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            SquadDecision decision = decisionFor(squad);
+            decision.setContainTimeoutReentries(reentries);
+            decision.setContainStaticOnly(SquadDecision.tristate(staticOnly));
+        } catch (RuntimeException e) {
+            disable();
+        }
+    }
+
+    @Override
+    public void onContainmentStalemateRead(Squad squad, int breakShortfall, boolean breakUnreachable,
+                                           boolean stalemate) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            SquadDecision decision = decisionFor(squad);
+            decision.setContainBreakShortfall(breakShortfall);
+            decision.setContainBreakUnreachable(SquadDecision.tristate(breakUnreachable));
+            decision.setContainStalemate(SquadDecision.tristate(stalemate));
+        } catch (RuntimeException e) {
+            disable();
+        }
+    }
+
+    @Override
+    public void onStalemateCommit(Squad squad, int committedSupply, int armySupply) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            SquadDecision decision = decisionFor(squad);
+            decision.setStalemateCommitSupply(committedSupply);
+            decision.setStalemateCommitArmy(armySupply);
         } catch (RuntimeException e) {
             disable();
         }
@@ -686,6 +741,9 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         fields.addAll(moveOutCells(context));
         fields.addAll(workerIdCells(Collections.emptyList(), Collections.emptyList()));
         fields.addAll(collapseCells(context));
+        fields.addAll(containTimeoutCells(context));
+        fields.addAll(containStalemateCells(context));
+        fields.addAll(stalemateCommitCells(context));
         fields.add(retreatRouteCell(context));
         return String.join(",", fields);
     }
@@ -714,6 +772,9 @@ public class SquadDecisionLogger implements SquadDecisionSink {
                 released.stream().map(worker -> releasedWorkerEntry(worker.getUnitID(), worker.getRole()))
                         .collect(Collectors.toList())));
         fields.addAll(collapseCells(context));
+        fields.addAll(containTimeoutCells(context));
+        fields.addAll(containStalemateCells(context));
+        fields.addAll(stalemateCommitCells(context));
         fields.add(retreatRouteCell(context));
         return String.join(",", fields);
     }
@@ -875,6 +936,60 @@ public class SquadDecisionLogger implements SquadDecisionSink {
      */
     static String retreatRouteCell(SquadDecision context) {
         return Csv.name(context.getRetreatRoute());
+    }
+
+    /**
+     * Builds the contain timeout cells: the re-entries in a row after a timeout a contain had made before the timeout
+     * this frame, and whether the enemy then read as defending with static defence only. Filled on the frame a
+     * containing squad ran out its timeout, whether it retreated or escalated; every other row, a retreat because
+     * containment ceased to apply among them, carries the not evaluated sentinels.
+     *
+     * @param context the decision the row is built from
+     * @return the re-entries cell and the static-only cell
+     */
+    static List<String> containTimeoutCells(SquadDecision context) {
+        List<String> fields = new ArrayList<>();
+        fields.add(String.valueOf(context.getContainTimeoutReentries()));
+        fields.add(String.valueOf(context.getContainStaticOnly()));
+        return fields;
+    }
+
+    /**
+     * Builds the contain stalemate cells: the real supply the break still lacked, whether the break was out of reach
+     * even at the supply cap, and whether the timeout was a stalemate exit. Filled on the same timeout rows as
+     * {@link #containTimeoutCells}, an escalating timeout among them with 0 in the stalemate cell; every other row
+     * carries the not evaluated sentinels.
+     *
+     * @param context the decision the row is built from
+     * @return the shortfall, unreachable and stalemate cells
+     */
+    static List<String> containStalemateCells(SquadDecision context) {
+        List<String> fields = new ArrayList<>();
+        fields.add(context.getContainBreakShortfall() < 0
+                ? String.valueOf(SquadDecision.NOT_EVALUATED)
+                : Csv.halfSupply(context.getContainBreakShortfall()));
+        fields.add(String.valueOf(context.getContainBreakUnreachable()));
+        fields.add(String.valueOf(context.getContainStalemate()));
+        return fields;
+    }
+
+    /**
+     * Builds the stalemate commit cells: the real ground army supply the commit started with, and the ground army's
+     * real supply on the row's frame. Filled on the STALEMATE_COMMIT, STALEMATE_COMMIT_PAUSE, STALEMATE_COMMIT_RESUME
+     * and STALEMATE_COMMIT_RELEASE rows; every other row carries the not evaluated sentinels.
+     *
+     * @param context the decision the row is built from
+     * @return the committed supply cell and the army supply cell
+     */
+    static List<String> stalemateCommitCells(SquadDecision context) {
+        List<String> fields = new ArrayList<>();
+        fields.add(halfSupplyOrSentinel(context.getStalemateCommitSupply()));
+        fields.add(halfSupplyOrSentinel(context.getStalemateCommitArmy()));
+        return fields;
+    }
+
+    private static String halfSupplyOrSentinel(int halfUnits) {
+        return halfUnits < 0 ? String.valueOf(SquadDecision.NOT_EVALUATED) : Csv.halfSupply(halfUnits);
     }
 
     /**

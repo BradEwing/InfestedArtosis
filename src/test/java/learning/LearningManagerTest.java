@@ -78,6 +78,50 @@ public class LearningManagerTest {
     }
 
     @Test
+    void aPersistentWallBarsFourPool() {
+        BuildOrderFactory factory = new BuildOrderFactory(4, Race.Terran);
+        OpponentRecord opponentRecord = opponentRecordFavouring(factory, Race.Terran, "4Pool", "12Pool");
+
+        String selected = LearningManager.selectOpenerName(null, factory, opponentRecord,
+                "1Base;TerranWallNatural", true, "12Pool", MAP_NAME);
+
+        assertEquals("12Pool", selected);
+    }
+
+    @Test
+    void aWallLastGameThatDoesNotPersistLeavesFourPoolSelectable() {
+        BuildOrderFactory factory = new BuildOrderFactory(4, Race.Terran);
+        OpponentRecord opponentRecord = opponentRecordFavouring(factory, Race.Terran, "4Pool", "12Pool");
+
+        String selected = LearningManager.selectOpenerName(null, factory, opponentRecord,
+                "TerranWallMain", false, "12Pool", MAP_NAME);
+
+        assertEquals("4Pool", selected);
+    }
+
+    @Test
+    void fourPoolStaysSelectableWithoutAWall() {
+        BuildOrderFactory factory = new BuildOrderFactory(4, Race.Terran);
+        OpponentRecord opponentRecord = opponentRecordFavouring(factory, Race.Terran, "4Pool", "12Pool");
+
+        String selected = LearningManager.selectOpenerName(null, factory, opponentRecord,
+                "1Base;2RaxAcademy", "12Pool", MAP_NAME);
+
+        assertEquals("4Pool", selected);
+    }
+
+    @Test
+    void anOpenerOverrideStillForcesFourPoolAfterAPersistentWall() {
+        BuildOrderFactory factory = new BuildOrderFactory(4, Race.Terran);
+        OpponentRecord opponentRecord = opponentRecordFavouring(factory, Race.Terran, "12Pool");
+
+        String selected = LearningManager.selectOpenerName("4Pool", factory, opponentRecord,
+                "TerranWallNatural", true, "12Pool", MAP_NAME);
+
+        assertEquals("4Pool", selected);
+    }
+
+    @Test
     void openerOverrideTakesPrecedenceOverRushTrigger() {
         BuildOrderFactory factory = new BuildOrderFactory(4, Race.Protoss);
         OpponentRecord opponentRecord = opponentRecordFavouring(factory, Race.Protoss, "4Pool");

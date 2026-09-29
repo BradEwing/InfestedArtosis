@@ -116,6 +116,22 @@ class SquadDecisionsTest {
             }
 
             @Override
+            public void onContainmentTimedOut(Squad squad, int reentries, boolean staticOnly) {
+                events.add("CONTAIN_TIMED_OUT:" + reentries + ":" + staticOnly);
+            }
+
+            @Override
+            public void onContainmentStalemateRead(Squad squad, int breakShortfall, boolean breakUnreachable,
+                                                   boolean stalemate) {
+                events.add("CONTAIN_STALEMATE_READ:" + breakShortfall + ":" + breakUnreachable + ":" + stalemate);
+            }
+
+            @Override
+            public void onStalemateCommit(Squad squad, int committedSupply, int armySupply) {
+                events.add("STALEMATE_COMMIT:" + committedSupply + ":" + armySupply);
+            }
+
+            @Override
             public void onMoveOutEvaluated(Squad squad, int moveOutThreshold, int squadStrength) {
                 events.add("MOVE_OUT:" + moveOutThreshold + ":" + squadStrength);
             }
@@ -158,6 +174,9 @@ class SquadDecisionsTest {
                 + "," + String.join(",", SquadDecisionLogger.workerIdCells(Collections.emptyList(),
                 Collections.emptyList()))
                 + "," + String.join(",", SquadDecisionLogger.collapseCells(context))
+                + "," + String.join(",", SquadDecisionLogger.containTimeoutCells(context))
+                + "," + String.join(",", SquadDecisionLogger.containStalemateCells(context))
+                + "," + String.join(",", SquadDecisionLogger.stalemateCommitCells(context))
                 + "," + SquadDecisionLogger.retreatRouteCell(context);
         return row.split(",", -1);
     }
@@ -519,6 +538,9 @@ class SquadDecisionsTest {
                 Arrays.asList(SquadDecisionLogger.releasedWorkerEntry(161, UnitRole.BUILD),
                         SquadDecisionLogger.releasedWorkerEntry(162, UnitRole.DEFEND))))
                 + "," + String.join(",", SquadDecisionLogger.collapseCells(context))
+                + "," + String.join(",", SquadDecisionLogger.containTimeoutCells(context))
+                + "," + String.join(",", SquadDecisionLogger.containStalemateCells(context))
+                + "," + String.join(",", SquadDecisionLogger.stalemateCommitCells(context))
                 + "," + SquadDecisionLogger.retreatRouteCell(context);
         String[] fields = row.split(",", -1);
 
@@ -644,6 +666,9 @@ class SquadDecisionsTest {
                 + "," + String.join(",", SquadDecisionLogger.workerIdCells(Collections.emptyList(),
                 Collections.emptyList()))
                 + "," + String.join(",", SquadDecisionLogger.collapseCells(context))
+                + "," + String.join(",", SquadDecisionLogger.containTimeoutCells(context))
+                + "," + String.join(",", SquadDecisionLogger.containStalemateCells(context))
+                + "," + String.join(",", SquadDecisionLogger.stalemateCommitCells(context))
                 + "," + SquadDecisionLogger.retreatRouteCell(context);
         String[] fields = row.split(",", -1);
 
@@ -719,7 +744,7 @@ class SquadDecisionsTest {
         String[] columns = SquadDecisionLogger.HEADER.split(",", -1);
         SquadDecision context = new SquadDecision();
 
-        assertEquals("collapse_first_favourable_frame", columns[columns.length - 2]);
+        assertEquals("stalemate_commit_army_real", columns[columns.length - 2]);
         assertEquals("retreat_route", columns[columns.length - 1]);
         assertEquals("NONE", rowFor(new GroundSquad())[columnIndex("retreat_route")]);
         context.setRetreatRoute(RetreatRoute.DETOUR);
@@ -757,7 +782,7 @@ class SquadDecisionsTest {
         String[] columns = SquadDecisionLogger.HEADER.split(",", -1);
         int first = columnIndex("collapse_outcome");
 
-        assertEquals(columns.length - first - 1, cells.size());
+        assertEquals(columnIndex("contain_timeout_reentries") - first, cells.size());
         assertEquals(java.util.Arrays.asList("COLLAPSE", "5", "2.2500", "6", "1", "128", "HIT_AND_MELEE", "10471",
                 "SKIPPED", "10462"), cells);
         assertEquals("collapse_enemies_in_sector", columns[first + 1]);
@@ -769,6 +794,81 @@ class SquadDecisionsTest {
         assertEquals("collapse_run_start_frame", columns[first + 7]);
         assertEquals("collapse_wrap_end", columns[first + 8]);
         assertEquals("collapse_first_favourable_frame", columns[first + 9]);
+    }
+
+    @Test
+    void aTimeoutRowCarriesTheReentriesAndTheStaticOnlyReadAsTheLastColumns() {
+        SquadDecisions.register(recorder());
+        SquadDecisions.containmentTimedOut(new GroundSquad(), 2, true);
+        SquadDecision context = new SquadDecision();
+        context.setContainTimeoutReentries(2);
+        context.setContainStaticOnly(SquadDecision.tristate(false));
+        String[] columns = SquadDecisionLogger.HEADER.split(",", -1);
+
+        assertEquals(java.util.Collections.singletonList("CONTAIN_TIMED_OUT:2:true"), events);
+        int first = columnIndex("contain_timeout_reentries");
+        assertEquals("collapse_first_favourable_frame", columns[first - 1]);
+        assertEquals("contain_static_only", columns[first + 1]);
+        assertEquals(java.util.Arrays.asList("2", "0"), SquadDecisionLogger.containTimeoutCells(context));
+    }
+
+    @Test
+    void aTimeoutRowCarriesTheBreakShortfallAndTheStalemateReadAsTheLastColumns() {
+        SquadDecisions.register(recorder());
+        SquadDecisions.containmentStalemateRead(new GroundSquad(), 17, true, true);
+        SquadDecision context = new SquadDecision();
+        context.setContainBreakShortfall(17);
+        context.setContainBreakUnreachable(SquadDecision.tristate(false));
+        context.setContainStalemate(SquadDecision.tristate(true));
+        String[] columns = SquadDecisionLogger.HEADER.split(",", -1);
+
+        assertEquals(java.util.Collections.singletonList("CONTAIN_STALEMATE_READ:17:true:true"), events);
+        int first = columnIndex("contain_break_shortfall_real");
+        assertEquals("contain_static_only", columns[first - 1]);
+        assertEquals("contain_break_unreachable", columns[first + 1]);
+        assertEquals("contain_stalemate", columns[first + 2]);
+        assertEquals(java.util.Arrays.asList("8.5", "0", "1"), SquadDecisionLogger.containStalemateCells(context));
+    }
+
+    @Test
+    void aStalemateCommitRowCarriesTheCommittedAndCurrentArmySupplyAfterTheStalemateColumn() {
+        SquadDecisions.register(recorder());
+        SquadDecisions.stalemateCommit(new GroundSquad(), 301, 148);
+        SquadDecision context = new SquadDecision();
+        context.setStalemateCommitSupply(301);
+        context.setStalemateCommitArmy(148);
+        String[] columns = SquadDecisionLogger.HEADER.split(",", -1);
+
+        assertEquals(java.util.Collections.singletonList("STALEMATE_COMMIT:301:148"), events);
+        int first = columnIndex("stalemate_commit_supply_real");
+        assertEquals("contain_stalemate", columns[first - 1]);
+        assertEquals("stalemate_commit_army_real", columns[first + 1]);
+        assertEquals(java.util.Arrays.asList("150.5", "74"), SquadDecisionLogger.stalemateCommitCells(context));
+        assertEquals(java.util.Arrays.asList("-1", "-1"),
+                SquadDecisionLogger.stalemateCommitCells(new SquadDecision()));
+    }
+
+    @Test
+    void theStalemateCommitStartAndReleaseAreWrittenAsRowsOfTheirOwn() {
+        assertTrue(SquadDecisionLogger.writesOwnRow(DecisionPath.STALEMATE_COMMIT));
+        assertTrue(SquadDecisionLogger.writesOwnRow(DecisionPath.STALEMATE_COMMIT_RELEASE));
+        assertTrue(SquadDecisionLogger.writesOwnRow(DecisionPath.STALEMATE_COMMIT_PAUSE));
+        assertTrue(SquadDecisionLogger.writesOwnRow(DecisionPath.STALEMATE_COMMIT_RESUME));
+        assertFalse(SquadDecisionLogger.writesOwnRow(DecisionPath.CONTAIN_STALEMATE));
+    }
+
+    @Test
+    void aRowWithNoTimeoutCarriesTimeoutSentinels() {
+        String[] fields = rowFor(new GroundSquad());
+
+        assertEquals(SquadDecisionLogger.HEADER.split(",", -1).length, fields.length);
+        assertEquals("-1", fields[columnIndex("contain_timeout_reentries")]);
+        assertEquals("-1", fields[columnIndex("contain_static_only")]);
+        assertEquals("-1", fields[columnIndex("contain_break_shortfall_real")]);
+        assertEquals("-1", fields[columnIndex("contain_break_unreachable")]);
+        assertEquals("-1", fields[columnIndex("contain_stalemate")]);
+        assertEquals("-1", fields[columnIndex("stalemate_commit_supply_real")]);
+        assertEquals("-1", fields[columnIndex("stalemate_commit_army_real")]);
     }
 
     @Test
