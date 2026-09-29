@@ -10,6 +10,7 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -47,6 +48,26 @@ class OpenerTransitionsTest {
     }
 
     @Test
+    void terranTransitionsOfferSpeedlingAllInWithoutAWall() {
+        Set<String> names = transitionNames(Race.Terran, false);
+        assertTrue(names.contains("SpeedlingAllIn"), "Terran without a wall must offer SpeedlingAllIn: " + names);
+    }
+
+    @Test
+    void aTerranWallBarsSpeedlingAllInAndKeepsTheOtherTransitions() {
+        Set<String> names = transitionNames(Race.Terran, true);
+        assertFalse(names.contains("SpeedlingAllIn"), "a Terran wall must bar SpeedlingAllIn: " + names);
+        assertEquals(new HashSet<>(Arrays.asList("CrazyZerg", "3HatchLurker", "2HatchMuta")), names);
+    }
+
+    @Test
+    void aWallReadingLeavesTheOtherRacesAlone() {
+        for (Race race : new Race[] {Race.Protoss, Race.Zerg}) {
+            assertEquals(transitionNames(race, false), transitionNames(race, true), race + " transitions changed");
+        }
+    }
+
+    @Test
     void reEnabledBuildOrdersResolveByNameAndAreNotRetired() {
         BuildOrderFactory factory = new BuildOrderFactory(4, Race.Protoss);
         for (String reEnabled : REENABLED) {
@@ -76,8 +97,15 @@ class OpenerTransitionsTest {
     }
 
     private static Set<String> transitionNames(Race race) {
-        return OpenerTransitions.forRace(race)
-                .stream()
+        return names(OpenerTransitions.forRace(race));
+    }
+
+    private static Set<String> transitionNames(Race race, boolean terranWall) {
+        return names(OpenerTransitions.forRace(race, terranWall));
+    }
+
+    private static Set<String> names(Set<BuildOrder> buildOrders) {
+        return buildOrders.stream()
                 .map(BuildOrder::getName)
                 .collect(Collectors.toSet());
     }

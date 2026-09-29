@@ -127,7 +127,7 @@ public enum DecisionPath {
     SPLIT_INHERIT,
 
     /**
-     * An air squad started a harass. telemetry_harass.csv holds the ENTER row with the target base.
+     * An air squad started a harass. telemetry_harass.csv holds the ENTER row with the target base or exposed group.
      */
     HARASS_ENTER,
 
@@ -140,6 +140,12 @@ public enum DecisionPath {
      * An air squad that left a harass recently held on a blind sim ADVANCE instead of marching on it.
      */
     HARASS_HOLD,
+
+    /**
+     * An air squad still under the retreat lock its harass exit armed acted on a sim ENGAGE measured against a real
+     * enemy, which broke the lock.
+     */
+    HARASS_EXIT_ENGAGE,
 
     /**
      * A containing squad collapsed on the enemies inside its arc's sector: it left the arc for FIGHT under a fight
@@ -169,5 +175,46 @@ public enum DecisionPath {
      * A rallying air squad flying to, or joining, an active air squad instead of waiting for its move out
      * threshold.
      */
-    AIR_REINFORCE
+    AIR_REINFORCE,
+
+    /**
+     * A contain timed out again after being re-entered in a row against an enemy defending with static defence
+     * only, and every containing squad was committed to FIGHT under a fight lock instead of retreating, with arcs
+     * barred for the hold window so the combat sim decides the attack.
+     */
+    CONTAIN_ESCALATE,
+
+    /**
+     * A contain against an enemy with army outside its static defence timed out as a stalemate: it had been
+     * re-entered in a row after timeouts, its break was out of reach even at the supply cap, or a stalemate was
+     * already detected. The squad retreats and arcs are barred for the stalemate hold window, so the combat sim
+     * decides what the army does instead of the next contain.
+     */
+    CONTAIN_STALEMATE,
+
+    /**
+     * A detected contain stalemate met a maxed supply and committed the ground army: every ground squad but those
+     * running by or harassing leaves its arc and fights toward the enemy, past combat sim retreats, until the army
+     * falls below half the supply it committed with or no enemy target is known. Written as a row of its own for
+     * every ground squad on the frame the commit starts.
+     */
+    STALEMATE_COMMIT,
+
+    /**
+     * A stalemate commit released: the ground army fell below half the supply it committed with, or no enemy
+     * target is known. Written as a row of its own for every ground squad on the frame it releases.
+     */
+    STALEMATE_COMMIT_RELEASE,
+
+    /**
+     * A threat to one of our bases paused a running stalemate commit: the squads follow the normal rules until it
+     * clears. Written as a row of its own for every ground squad on the frame the pause starts.
+     */
+    STALEMATE_COMMIT_PAUSE,
+
+    /**
+     * The base threat that paused a stalemate commit cleared and the commit resumed with its committed supply.
+     * Written as a row of its own for every ground squad on the frame it resumes.
+     */
+    STALEMATE_COMMIT_RESUME
 }

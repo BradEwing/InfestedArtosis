@@ -57,6 +57,13 @@ final class SquadDecision {
     private int collapseRunStartFrame = NOT_EVALUATED;
     private String collapseWrapEnd = "NONE";
     private int collapseFirstFavourableFrame = NOT_EVALUATED;
+    private int containTimeoutReentries = NOT_EVALUATED;
+    private int containStaticOnly = NOT_EVALUATED;
+    private int containBreakShortfall = NOT_EVALUATED;
+    private int containBreakUnreachable = NOT_EVALUATED;
+    private int containStalemate = NOT_EVALUATED;
+    private int stalemateCommitSupply = NOT_EVALUATED;
+    private int stalemateCommitArmy = NOT_EVALUATED;
 
     static int tristate(boolean value) {
         return value ? 1 : 0;

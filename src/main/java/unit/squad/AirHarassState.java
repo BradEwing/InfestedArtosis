@@ -11,12 +11,12 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Everything a squad in {@link SquadStatus#HARASS} carries between frames: the phase, the base it is raiding and
- * the point it strikes, the hit points it started with, what it has killed and lost, and the per-Mutalisk memory
- * that keeps evasion and targets from flapping.
+ * Everything a squad in {@link SquadStatus#HARASS} carries between frames: the phase, the base or exposed group of
+ * enemies it is raiding and the point it strikes, the hit points it started with, what it has killed and lost, and
+ * the per-Mutalisk memory that keeps evasion and targets from flapping.
  *
- * <p>TRANSIT is the flight to the target base. STRIKE starts once the flock reaches it. A retarget to another base
- * starts TRANSIT again.
+ * <p>TRANSIT is the flight to the target. STRIKE starts once the flock reaches it. A retarget starts TRANSIT
+ * again.
  */
 @Getter
 @Setter
@@ -46,6 +46,8 @@ public class AirHarassState {
 
     private Phase phase = Phase.TRANSIT;
     private Base targetBase;
+    private Position exposedAnchor;
+    private ExposedTargets.Group exposedGroup;
     private Position strikePoint;
     private int lastTickFrame;
     private int lastProgressFrame;
@@ -76,6 +78,8 @@ public class AirHarassState {
      */
     public void target(Base base, Position strike, int frame) {
         this.targetBase = base;
+        this.exposedAnchor = null;
+        this.exposedGroup = null;
         this.strikePoint = strike;
         this.phase = Phase.TRANSIT;
         this.arrivedFrame = -1;
@@ -83,6 +87,57 @@ public class AirHarassState {
         if (base != null) {
             visitedBases.add(base);
         }
+    }
+
+    /**
+     * Points the harass at an exposed group of enemies away from a base's heat and starts TRANSIT toward it. The
+     * group's anchor is also the strike point.
+     *
+     * @param group the group
+     * @param frame current frame
+     */
+    public void targetExposed(ExposedTargets.Group group, int frame) {
+        this.targetBase = null;
+        follow(group);
+        this.strikePoint = group.getAnchor();
+        this.phase = Phase.TRANSIT;
+        this.arrivedFrame = -1;
+        this.lastProgressFrame = frame;
+    }
+
+    /**
+     * Keeps an exposed target on the group found near its last anchor this decision tick: the group and its anchor
+     * replace the old ones. The strike point is left to the caller.
+     *
+     * @param group the group followed
+     */
+    public void follow(ExposedTargets.Group group) {
+        this.exposedGroup = group;
+        this.exposedAnchor = group.getAnchor();
+    }
+
+    /**
+     * @return true while the harass targets a base or an exposed group
+     */
+    public boolean hasTarget() {
+        return targetBase != null || exposedAnchor != null;
+    }
+
+    /**
+     * @return true while the harass targets an exposed group rather than a base
+     */
+    public boolean targetsExposed() {
+        return targetBase == null && exposedAnchor != null;
+    }
+
+    /**
+     * @return the target base's center, the exposed group's anchor, or null with no target
+     */
+    public Position targetCenter() {
+        if (targetBase != null) {
+            return targetBase.getCenter();
+        }
+        return exposedAnchor;
     }
 
     /**

@@ -3,6 +3,9 @@ package info.tracking;
 import bwapi.Race;
 import info.tracking.protoss.ProxyGate;
 import info.tracking.protoss.TwoGate;
+import info.tracking.terran.TerranWall;
+import info.tracking.terran.TerranWallMain;
+import info.tracking.terran.TerranWallNatural;
 import info.tracking.zerg.TwoHatchLing;
 import macro.plan.Plan;
 import macro.plan.PlanBlocker;
@@ -249,6 +252,101 @@ class StrategyTrackerTest {
         } finally {
             PlanEvents.clear();
         }
+    }
+
+    @Test
+    void theWallDetectorsAreWatchedAgainstTerranAndUnknownOnly() {
+        for (Race race : Arrays.asList(Race.Terran, Race.Unknown)) {
+            assertTrue(trackerAgainst(race).isPossibleStrategy(TerranWallNatural.NAME), race.toString());
+            assertTrue(trackerAgainst(race).isPossibleStrategy(TerranWallMain.NAME), race.toString());
+        }
+        for (Race race : Arrays.asList(Race.Protoss, Race.Zerg)) {
+            assertFalse(trackerAgainst(race).isPossibleStrategy(TerranWallNatural.NAME), race.toString());
+            assertFalse(trackerAgainst(race).isPossibleStrategy(TerranWallMain.NAME), race.toString());
+        }
+    }
+
+    @Test
+    void eachWallIsReportedOncePerGame() {
+        List<String> reported = new ArrayList<>();
+        PlanEvents.register(strategyRecorder(reported));
+        try {
+            StrategyTracker strategyTracker = trackerAgainst(Race.Terran);
+            TerranWallNatural natural = new TerranWallNatural();
+            TerranWallMain main = new TerranWallMain();
+
+            strategyTracker.recordDetections(Collections.singleton(natural));
+            strategyTracker.recordDetections(Collections.emptySet());
+            strategyTracker.recordDetections(Collections.singleton(main));
+            strategyTracker.recordDetections(new HashSet<>(Arrays.asList(natural, main)));
+
+            assertEquals(Arrays.asList(TerranWallNatural.NAME, TerranWallMain.NAME), reported);
+            assertEquals(1, occurrences(strategyTracker, TerranWallNatural.NAME));
+            assertEquals(1, occurrences(strategyTracker, TerranWallMain.NAME));
+        } finally {
+            PlanEvents.clear();
+        }
+    }
+
+    @Test
+    void aWallDetectedThisGameIsATerranWall() {
+        StrategyTracker strategyTracker = trackerAgainst(Race.Terran);
+        assertFalse(strategyTracker.isTerranWallDetected());
+
+        strategyTracker.recordDetections(Collections.singleton(new TerranWallMain()));
+
+        assertTrue(strategyTracker.isTerranWallDetected());
+    }
+
+    @Test
+    void aPersistentWallIsATerranWall() {
+        StrategyTracker strategyTracker = trackerAgainst(Race.Terran);
+
+        strategyTracker.setTerranWallPersists(true);
+
+        assertTrue(strategyTracker.isTerranWallDetected());
+    }
+
+    @Test
+    void theRecordedStrategiesOfTwoWalledGamesPersistAsAWall() {
+        StrategyTracker walledGame = trackerAgainst(Race.Terran);
+        walledGame.recordDetections(Collections.singleton(new TerranWallMain()));
+        StrategyTracker openGame = trackerAgainst(Race.Terran);
+        String walled = walledGame.getDetectedStrategiesAsString();
+        String open = openGame.getDetectedStrategiesAsString();
+
+        assertTrue(TerranWall.isPersistent(Arrays.asList(walled, open, walled)));
+        assertFalse(TerranWall.isPersistent(Arrays.asList(open, open, walled)));
+    }
+
+    @Test
+    void aWallThatDoesNotPersistIsNotATerranWall() {
+        StrategyTracker strategyTracker = trackerAgainst(Race.Terran);
+
+        strategyTracker.setTerranWallPersists(false);
+
+        assertFalse(strategyTracker.isTerranWallDetected());
+    }
+
+    private static PlanEventSink strategyRecorder(List<String> reported) {
+        return new PlanEventSink() {
+            @Override
+            public void onEnqueue(Plan plan) {
+            }
+
+            @Override
+            public void onStateChange(Plan plan, PlanState from, PlanState to) {
+            }
+
+            @Override
+            public void onBlocked(Plan plan, PlanBlocker blocker) {
+            }
+
+            @Override
+            public void onStrategyDetected(String detectionLabel) {
+                reported.add(detectionLabel);
+            }
+        };
     }
 
     private static StrategyTracker trackerAgainst(Race race) {
