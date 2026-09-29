@@ -5,7 +5,11 @@ import bwapi.UnitType;
 import org.junit.jupiter.api.Test;
 import util.Time;
 
+import java.util.Collections;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SiegedTankZonePersistenceTest {
@@ -57,5 +61,43 @@ class SiegedTankZonePersistenceTest {
 
         assertTrue(ObservedUnitTracker.holdsReachZone(marine, true, FRESH, LONG_AFTER));
         assertFalse(ObservedUnitTracker.holdsReachZone(marine, false, FRESH, LONG_AFTER));
+    }
+
+    @Test
+    void aSiegedTankSeenUnsiegingInSightIsRetypedAtOnce() {
+        ObservedUnit tank = seenAt(UnitType.Terran_Siege_Tank_Siege_Mode);
+
+        ObservedUnitTracker.retypeSiegeTankInSight(tank, UnitType.Terran_Siege_Tank_Tank_Mode);
+
+        assertEquals(UnitType.Terran_Siege_Tank_Tank_Mode, tank.getUnitType());
+        assertFalse(ObservedUnitTracker.holdsReachZone(tank, false, FRESH, LONG_AFTER));
+    }
+
+    @Test
+    void aTankSeenSiegingInSightIsRetypedAtOnce() {
+        ObservedUnit tank = seenAt(UnitType.Terran_Siege_Tank_Tank_Mode);
+
+        ObservedUnitTracker.retypeSiegeTankInSight(tank, UnitType.Terran_Siege_Tank_Siege_Mode);
+
+        assertEquals(UnitType.Terran_Siege_Tank_Siege_Mode, tank.getUnitType());
+    }
+
+    @Test
+    void otherTypesAreNotRetypedInSight() {
+        ObservedUnit lair = seenAt(UnitType.Zerg_Hatchery);
+
+        ObservedUnitTracker.retypeSiegeTankInSight(lair, UnitType.Zerg_Lair);
+
+        assertEquals(UnitType.Zerg_Hatchery, lair.getUnitType());
+    }
+
+    @Test
+    void aSiegedTanksSpotSeenEmptyForgetsItsPosition() {
+        ObservedUnit tank = seenAt(UnitType.Terran_Siege_Tank_Siege_Mode);
+        ObservedUnitTracker tracker = ObservedUnitFixture.trackerHolding(tank);
+
+        tracker.clearLastKnownLocationsAt(Collections.singleton(SPOT));
+
+        assertNull(tank.getLastKnownLocation());
     }
 }

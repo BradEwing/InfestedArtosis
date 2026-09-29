@@ -17,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PlanEventLoggerTest {
 
-    private static final int PLAN_COLUMNS = 85;
+    private static final int PLAN_COLUMNS = 87;
 
     private static final boolean STARVED = true;
 
@@ -158,7 +158,7 @@ class PlanEventLoggerTest {
     }
 
     @Test
-    void theDroneRoundColumnsAreAppendedLast() {
+    void theDroneRoundColumnsFollowThePatchColumns() {
         String[] columns = PlanEventLogger.PLAN_HEADER.split(",", -1);
         int reason = indexOf("drone_round_reason");
         assertEquals(indexOf("remaining_mineral_patches") + 1, reason);
@@ -169,7 +169,6 @@ class PlanEventLoggerTest {
         assertEquals("drone_round_soft_cap", column(reason + 5));
         assertEquals("drone_round_hard_cap", column(reason + 6));
         assertEquals("contain_period_start_frame", column(reason + 7));
-        assertEquals("contain_period_start_frame", columns[columns.length - 1]);
     }
 
     @Test
@@ -224,6 +223,42 @@ class PlanEventLoggerTest {
         assertEquals("26", cells[indexOf("drone_round_soft_cap") - first]);
         assertEquals("33", cells[indexOf("drone_round_hard_cap") - first]);
         assertEquals("7500", cells[indexOf("contain_period_start_frame") - first]);
+    }
+
+    @Test
+    void theHatcheryRequestColumnsAreAppendedLast() {
+        String[] columns = PlanEventLogger.PLAN_HEADER.split(",", -1);
+        int reason = indexOf("hatchery_request_reason");
+        assertEquals(indexOf("contain_period_start_frame") + 1, reason);
+        assertEquals("floating_minerals_bar", column(reason + 1));
+        assertEquals("floating_minerals_bar", columns[columns.length - 1]);
+    }
+
+    /**
+     * The BANK_SAMPLE row is laid out by run lengths rather than by name: event, 8 empty plan cells,
+     * the blocker pair, 3 empty cells, the 14 game state cells, 3 empty cells, build_order, 2 empty
+     * cells, then the trailing columns. A column inserted inside any run shifts every sample.
+     */
+    @Test
+    void theBankSampleRunLengthsMatchTheHeader() {
+        assertEquals(indexOf("event") + 1 + 8, indexOf("blocker"));
+        assertEquals(indexOf("blocked_frames") + 1 + 3, indexOf("minerals"));
+        assertEquals(indexOf("minerals") + 14, indexOf("build_tile_x"));
+        assertEquals("plans_morphing", column(indexOf("build_tile_x") - 1));
+        assertEquals(indexOf("build_tile_x") + 3, indexOf("build_order"));
+        assertEquals(indexOf("build_order") + 1 + 2, indexOf("enemy_air"));
+    }
+
+    @Test
+    void theFirstBankSampleIsTakenOnTheFirstFrame() {
+        assertTrue(PlanEventLogger.isBankSampleDue(0, -PlanEventLogger.BANK_SAMPLE_INTERVAL_FRAMES));
+    }
+
+    @Test
+    void bankSamplesAreOneIntervalApart() {
+        int last = 480;
+        assertFalse(PlanEventLogger.isBankSampleDue(last + PlanEventLogger.BANK_SAMPLE_INTERVAL_FRAMES - 1, last));
+        assertTrue(PlanEventLogger.isBankSampleDue(last + PlanEventLogger.BANK_SAMPLE_INTERVAL_FRAMES, last));
     }
 
     private static String column(int index) {
