@@ -3,6 +3,8 @@ package strategy.buildorder.opener;
 import bwapi.Race;
 import org.junit.jupiter.api.Test;
 import strategy.BuildOrderFactory;
+import strategy.buildorder.BuildOrder;
+import util.Time;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -29,6 +31,8 @@ class NinePoolGasHatchSpeed8DTest {
     private static final int ONE_EXTRACTOR = 1;
 
     private static final int NONE_QUEUED = 0;
+
+    private static final Time FIVE_MINUTES = new Time(5, 0);
 
     @Test
     void isAZvZOpenerOnly() {
@@ -122,5 +126,36 @@ class NinePoolGasHatchSpeed8DTest {
         assertFalse(NinePoolGasHatchSpeed8D.shouldPlanExtractor(false, ONE_EXTRACTOR, true));
         assertFalse(NinePoolGasHatchSpeed8D.shouldPlanExtractor(false, NO_EXTRACTOR, false));
         assertFalse(NinePoolGasHatchSpeed8D.shouldPlanExtractor(true, NO_EXTRACTOR, true));
+    }
+
+    @Test
+    void handsOverOnceEveryZerglingPairIsQueued() {
+        assertFalse(NinePoolGasHatchSpeed8D.openerComplete(
+                NinePoolGasHatchSpeed8D.TOTAL_ZERGLING_PLANS - 1, false, FIVE_MINUTES));
+        assertTrue(NinePoolGasHatchSpeed8D.openerComplete(
+                NinePoolGasHatchSpeed8D.TOTAL_ZERGLING_PLANS, false, FIVE_MINUTES));
+    }
+
+    @Test
+    void handsOverAsSoonAsTheZerglingFloodHoldStands() {
+        assertTrue(NinePoolGasHatchSpeed8D.openerComplete(NinePoolGasHatchSpeed8D.FIRST_ZERGLING_PLANS, true,
+                new Time(2, 49)));
+        assertTrue(NinePoolGasHatchSpeed8D.openerComplete(0, true, new Time(1, 0)));
+    }
+
+    @Test
+    void handsOverAtTheDeadlineWhenZerglingsAreStarved() {
+        int starved = 34;
+        assertFalse(NinePoolGasHatchSpeed8D.openerComplete(starved, false,
+                NinePoolGasHatchSpeed8D.HAND_OVER_DEADLINE));
+        assertTrue(NinePoolGasHatchSpeed8D.openerComplete(starved, false,
+                new Time(NinePoolGasHatchSpeed8D.HAND_OVER_DEADLINE.getFrames() + 1)));
+        assertTrue(NinePoolGasHatchSpeed8D.openerComplete(starved, false, new Time(12, 9)));
+    }
+
+    @Test
+    void aCapDroneOutranksTheZerglingPairsAndStaysBehindTheEmergencyBand() {
+        assertTrue(NinePoolGasHatchSpeed8D.CAP_DRONE_PRIORITY > BuildOrder.EMERGENCY_DEFENSE_PRIORITY);
+        assertTrue(NinePoolGasHatchSpeed8D.CAP_DRONE_PRIORITY < new Time(2, 0).getFrames());
     }
 }

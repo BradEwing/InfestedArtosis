@@ -11,6 +11,8 @@ import macro.ExtractorTrick;
 import macro.plan.Plan;
 import macro.plan.PlanType;
 import strategy.buildorder.BuildOrder;
+import strategy.buildorder.LingFloodHold;
+import util.Time;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -30,7 +32,10 @@ import java.util.Set;
  * <p>The Extractor mines {@link #GAS_TARGET} gas, the cost of Metabolic Boost, and every drone
  * then leaves gas for the rest of the opener. The Hatchery is a macro hatchery placed in the main.
  *
- * <p>The opener hands over once all {@link #TOTAL_ZERGLING_PLANS} zergling pairs are queued.
+ * <p>The opener hands over once all {@link #TOTAL_ZERGLING_PLANS} zergling pairs are queued, once
+ * the {@link LingFloodHold Zergling flood hold} stands, or at {@link #HAND_OVER_DEADLINE}, so a
+ * starved Zergling count or the hold's Drone floor and home-kept army cannot keep the bot on a
+ * Zergling-only build with no tech.
  */
 public class NinePoolGasHatchSpeed8D extends BuildOrder {
     private static final int POOL_SUPPLY = 18;
@@ -51,6 +56,18 @@ public class NinePoolGasHatchSpeed8D extends BuildOrder {
 
     static final int MAX_QUEUED_ZERGLING_PLANS = 2;
 
+    /**
+     * The game time the opener hands over at even when Zergling pairs are still owed.
+     */
+    static final Time HAND_OVER_DEADLINE = new Time(8, 0);
+
+    /**
+     * The priority a drone that restores the cap is queued at: behind the emergency defense band
+     * and the Spawning Pool, ahead of every Zergling pair and Metabolic Boost, which are queued at
+     * their enqueue frame.
+     */
+    static final int CAP_DRONE_PRIORITY = EMERGENCY_DEFENSE_PRIORITY + 2;
+
     private int zerglingPlans = 0;
 
     private boolean macroHatcheryPlanned = false;
@@ -67,7 +84,20 @@ public class NinePoolGasHatchSpeed8D extends BuildOrder {
 
     @Override
     protected boolean openerComplete(GameState gameState) {
-        return zerglingPlans >= TOTAL_ZERGLING_PLANS;
+        return openerComplete(zerglingPlans, gameState.isLingFloodHold(), gameState.getGameTime());
+    }
+
+    /**
+     * Whether the opener hands over: every Zergling pair is queued, the Zergling flood hold
+     * stands, or {@link #HAND_OVER_DEADLINE} has passed.
+     *
+     * @param zerglingPlans zergling plans this opener has queued so far
+     * @param lingFloodHold whether the Zergling flood hold stands
+     * @param gameTime current game time
+     * @return true when the opener is done
+     */
+    static boolean openerComplete(int zerglingPlans, boolean lingFloodHold, Time gameTime) {
+        return zerglingPlans >= TOTAL_ZERGLING_PLANS || lingFloodHold || gameTime.greaterThan(HAND_OVER_DEADLINE);
     }
 
     @Override
@@ -91,7 +121,7 @@ public class NinePoolGasHatchSpeed8D extends BuildOrder {
 
         if (shouldPlanCapDrone(macroHatcheryPlanned, dronesAliveOrComing(gameState),
                 gameState.canPlanOpeningDrone())) {
-            plans.add(planUnit(gameState, UnitType.Zerg_Drone));
+            plans.add(planUnit(gameState, UnitType.Zerg_Drone, CAP_DRONE_PRIORITY));
             return plans;
         }
 

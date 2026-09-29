@@ -1,6 +1,7 @@
 package unit;
 
 import bwapi.Game;
+import bwapi.Order;
 import bwapi.Player;
 import bwapi.Unit;
 import bwapi.UnitType;
@@ -675,15 +676,32 @@ public class WorkerManager {
      * Cuts gas harvesting when gas is floating.
      * Reassigns gas workers to maintain proper mineral/gas balance.
      */
+    /**
+     * Moves every drone off gas: the drones assigned to a geyser, and any other gatherer whose
+     * order still heads it to a geyser.
+     */
     private void cutGasHarvesting() {
-        int gasWorkers = gameState.getGeyserWorkers();
-
-        if (gasWorkers > 0) {    
-            List<ManagedUnit> geyserWorkers = new ArrayList<>(gasGatherers);
-            for (ManagedUnit worker: geyserWorkers) {
-                gameState.clearAssignments(worker);
-                assignToMineral(worker);
+        HashSet<ManagedUnit> geyserWorkers = new HashSet<>(gasGatherers);
+        for (ManagedUnit gatherer: gatherers) {
+            if (headsToGas(gatherer.getUnit().getOrder())) {
+                geyserWorkers.add(gatherer);
             }
         }
+
+        for (ManagedUnit worker: geyserWorkers) {
+            gameState.clearAssignments(worker);
+            assignToMineral(worker);
+        }
+    }
+
+    /**
+     * Whether a worker's order takes it to a geyser or keeps it harvesting there. A worker
+     * returning gas it already carries is left to deliver it.
+     *
+     * @param order the worker's current order
+     * @return true for the orders that move to, wait at or harvest a geyser
+     */
+    static boolean headsToGas(Order order) {
+        return order == Order.MoveToGas || order == Order.WaitForGas || order == Order.HarvestGas;
     }
 }
