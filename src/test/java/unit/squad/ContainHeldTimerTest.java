@@ -194,6 +194,12 @@ class ContainHeldTimerTest {
     }
 
     @Test
+    void anEscalationSendsTheArmyInAndBreaksTheHeldContain() {
+        assertTrue(SquadManager.breaksHeldContain(SquadManager.ContainmentVerdict.ESCALATE,
+                DecisionPath.CONTAIN_RETREAT));
+    }
+
+    @Test
     void holdingPushingBackOrRepositioningNeverBreaksTheHeldContain() {
         assertFalse(SquadManager.breaksHeldContain(SquadManager.ContainmentVerdict.HOLD, DecisionPath.CONTAIN_ATTRITION));
         assertFalse(SquadManager.breaksHeldContain(SquadManager.ContainmentVerdict.PUSH_BACK,

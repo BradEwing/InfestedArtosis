@@ -10,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SquadHarassMembershipTest {
 
@@ -58,6 +59,20 @@ class SquadHarassMembershipTest {
 
         assertNull(child.getHarassState());
         assertEquals(9500, child.getHarassExitFrame());
+    }
+
+    @Test
+    void aMergeCarriesTheLatestBrokenHarassExitLockSoTheReentryHoldHolds() {
+        Squad broke = squad(SquadStatus.FIGHT);
+        broke.setHarassExitEngageFrame(9501);
+        Squad older = squad(SquadStatus.RETREAT);
+        older.setHarassExitEngageFrame(9000);
+
+        Squad merged = new AirSquad();
+        merged.inheritStateFrom(Arrays.asList(older, broke, squad(SquadStatus.FIGHT)));
+
+        assertEquals(9501, merged.getHarassExitEngageFrame());
+        assertTrue(AirHarassEvaluator.holdsReentry(merged.getHarassExitEngageFrame(), 9600));
     }
 
     @Test

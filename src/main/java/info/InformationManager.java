@@ -354,8 +354,13 @@ public class InformationManager {
 
     }
 
+    /**
+     * A unit that changes owner to the neutral player is forgotten as if destroyed, as is a gas structure destroyed
+     * back into its Vespene Geyser. A neutral unit belongs to no player, so it is never attacked and does not keep
+     * the game going, and a remembered one would hold the end-game hunt on a structure it will not attack.
+     */
     public void onUnitRenegade(Unit unit) {
-        if (unit.getType() == UnitType.Resource_Vespene_Geyser) {
+        if (unit.getType() == UnitType.Resource_Vespene_Geyser || unit.getPlayer().isNeutral()) {
             onUnitDestroy(unit);
         }
     }
@@ -536,7 +541,6 @@ public class InformationManager {
 
 
             if (unit.isVisible() && unitType.isBuilding()) {
-                // Idempotently track enemy building - only calls onUnitShow if not already tracked
                 boolean isProxied = isProxiedBuilding(unit);
                 tracker.onUnitShow(unit, game.getFrameCount(), isProxied);
 

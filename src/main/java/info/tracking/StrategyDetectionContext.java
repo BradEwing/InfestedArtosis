@@ -3,20 +3,27 @@ package info.tracking;
 import bwapi.Position;
 import bwapi.TilePosition;
 import bwapi.UnitType;
+import bwapi.WalkPosition;
 import bwem.Area;
 import bwem.BWMap;
 import bwem.Base;
+import bwem.ChokePoint;
 import info.BaseData;
 import info.ScoutData;
 import info.map.BaseArea;
+import info.map.ChokeWall;
 import info.map.GameMap;
+import info.map.GroundPath;
+import info.map.MapTile;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
+import util.Distance;
 import util.Time;
 
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -39,6 +46,8 @@ public class StrategyDetectionContext {
 
     private final Map<Integer, Set<TilePosition>> ourBaseTilesByNaturalRadius = new HashMap<>();
 
+    private final Map<Integer, Set<TilePosition>> enemyMainExitPathByRadius = new HashMap<>();
+
     /**
      * Tiles of our main base plus a manhattan radius around our inferred natural.
      * Cached per context instance so detectors sharing a frame do not recompute it.
@@ -58,6 +67,92 @@ public class StrategyDetectionContext {
             return null;
         }
         return BaseArea.from(enemyNatural, bwMap, proximityTileRadius, areaTileRadius);
+    }
+
+    /**
+     * Tiles within tileRadius manhattan tiles of the centre of a chokepoint of the enemy main's BWEM Area, the
+     * ground a wall across the main's ramp or entrance stands on. Null while the enemy main is unknown.
+     */
+    public Predicate<TilePosition> enemyMainChokeArea(int tileRadius) {
+        Base enemyMain = baseData.getMainEnemyBase();
+        if (enemyMain == null || enemyMain.getArea() == null) {
+            return null;
+        }
+        List<TilePosition> chokeTiles = enemyMain.getArea().getChokePoints().stream()
+                .map(choke -> choke.getCenter().toTilePosition())
+                .collect(Collectors.toList());
+        return tile -> isWithinTileRadius(tile, chokeTiles, tileRadius);
+    }
+
+    /**
+     * The walls across the chokepoints of the enemy main's BWEM Area, spotted on the main's side. Empty while the
+     * enemy main is unknown.
+     */
+    public List<ChokeWall> enemyMainChokeWalls() {
+        Base enemyMain = baseData.getMainEnemyBase();
+        if (enemyMain == null || enemyMain.getArea() == null) {
+            return Collections.emptyList();
+        }
+        Area mainArea = enemyMain.getArea();
+        return mainArea.getChokePoints().stream()
+                .map(choke -> chokeWall(choke, mainArea))
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * The walls across the chokepoints of the enemy natural's BWEM Area, other than those it shares with the enemy
+     * main's Area, spotted on the natural's side. Empty while the enemy natural is unknown.
+     */
+    public List<ChokeWall> enemyNaturalChokeWalls() {
+        Base enemyNatural = baseData.getEnemyNaturalBase();
+        if (enemyNatural == null || enemyNatural.getArea() == null) {
+            return Collections.emptyList();
+        }
+        Base enemyMain = baseData.getMainEnemyBase();
+        Area mainArea = enemyMain == null ? null : enemyMain.getArea();
+        Area naturalArea = enemyNatural.getArea();
+        return naturalArea.getChokePoints().stream()
+                .filter(choke -> !joins(choke, mainArea))
+                .map(choke -> chokeWall(choke, naturalArea))
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Tiles within tileRadius manhattan tiles of the ground path from the enemy main to the enemy natural. Empty
+     * while that path is unknown. Cached per context instance so detectors sharing a frame do not recompute it.
+     */
+    public Set<TilePosition> enemyMainExitPath(int tileRadius) {
+        return enemyMainExitPathByRadius.computeIfAbsent(tileRadius, this::computeEnemyMainExitPath);
+    }
+
+    private Set<TilePosition> computeEnemyMainExitPath(int tileRadius) {
+        GroundPath path = baseData.getEnemyMainPathToNatural();
+        if (path == null) {
+            return Collections.emptySet();
+        }
+        Set<TilePosition> tiles = new HashSet<>();
+        for (MapTile mapTile : path.getPath()) {
+            tiles.addAll(Distance.tilesWithinManhattanDistance(mapTile.getTile(), tileRadius));
+        }
+        return tiles;
+    }
+
+    private ChokeWall chokeWall(ChokePoint choke, Area side) {
+        Set<TilePosition> chokeTiles = choke.getGeometry().stream()
+                .map(WalkPosition::toTilePosition)
+                .collect(Collectors.toSet());
+        return ChokeWall.across(gameMap, chokeTiles, tile -> isInArea(tile, side));
+    }
+
+    private static boolean joins(ChokePoint choke, Area area) {
+        return area != null && (area.equals(choke.getAreas().getFirst()) || area.equals(choke.getAreas().getSecond()));
+    }
+
+    /**
+     * Whether the tile lies within tileRadius manhattan tiles of any of the centres.
+     */
+    static boolean isWithinTileRadius(TilePosition tile, Collection<TilePosition> centres, int tileRadius) {
+        return centres.stream().anyMatch(centre -> Distance.manhattanTileDistance(tile, centre) <= tileRadius);
     }
 
     /**
