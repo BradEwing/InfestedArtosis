@@ -5,6 +5,7 @@ import bwapi.UnitType;
 import info.map.HarassHeatMap;
 import util.Vec2;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -20,7 +21,9 @@ import java.util.function.Predicate;
  * {@link #STALE_SIGHTING_FRAMES} ago: the flock holds {@link #PROBE_HOLD_DISTANCE} short of it, or farther out where
  * known anti-air covers that point, while one Mutalisk flies to its resources and then over the strike point. The
  * flock strikes only once the probe has seen the center of the base's resources and sees the strike point, and a
- * tolerated strike point is left.
+ * tolerated strike point is left. A base whose probe point known anti-air structures cover is not probed: it counts as
+ * sighted, and the entry verdict prices that anti-air. A base a probe found defended is neither probed nor entered
+ * for {@link #PROBE_REFUSAL_FRAMES}, and the prober flies back to the hold point before it takes its squad's orders.
  *
  * <p>Every decision is a static function over plain values; the constants are tuning values, not Brood War facts.
  */
@@ -48,6 +51,13 @@ public final class AirHarassScouting {
     static final int NEW_AA_ZONE = HarassHeatMap.RADIUS_TILES * 32;
     /** Tuning value: pixels past a threat's reach that still count as the flock standing at it. */
     static final int EXIT_MARGIN = 128;
+    /**
+     * Tuning value: frames a base whose probe found it defended is left alone, neither probed nor entered, about two
+     * minutes of game time.
+     */
+    static final int PROBE_REFUSAL_FRAMES = 2880;
+    /** Tuning value: frames the prober of a probe that ended may fly back to the hold point ahead of other orders. */
+    static final int PROBER_REGROUP_FRAMES = 360;
 
     private AirHarassScouting() {
     }
@@ -96,6 +106,66 @@ public final class AirHarassScouting {
             return AirHarassEvaluator.EntryVerdict.PROBE;
         }
         return verdict;
+    }
+
+    /**
+     * Whether known anti-air structures already answer what a probe would find: one covers the probe point, see
+     * {@link AirHarassTargeting.AirThreat#covers}. Mobile anti-air does not count, since it may have moved on.
+     *
+     * @param threats every known anti-air threat
+     * @param probePoint the base's probe point, see {@link #probePoint}
+     * @return true when a known anti-air structure covers the probe point
+     */
+    public static boolean knownAntiAirCovers(Collection<AirHarassTargeting.AirThreat> threats, Position probePoint) {
+        for (AirHarassTargeting.AirThreat threat : threats) {
+            if (threat.getType().isBuilding() && threat.covers(probePoint, 0)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * The sighting age a harass decides a base's entry mode on: a base whose probe point known anti-air structures
+     * cover counts as sighted now, so the entry verdict prices the known anti-air instead of a probe flying into it.
+     *
+     * @param sightingAge frames since the base's core was last in sight
+     * @param knownCover true when known anti-air covers the base's probe point, see {@link #knownAntiAirCovers}
+     * @return 0 for a covered base, otherwise the sighting age
+     */
+    public static int probeSightingAge(int sightingAge, boolean knownCover) {
+        return knownCover ? 0 : sightingAge;
+    }
+
+    /**
+     * Whether an exit refuses the harassed base for {@link #PROBE_REFUSAL_FRAMES}: only a probe finding the base
+     * defended does.
+     *
+     * @param reason why the harass ended
+     * @return true for PROBE_DEFENDED
+     */
+    public static boolean refusesBase(AirHarassEvaluator.ExitReason reason) {
+        return reason == AirHarassEvaluator.ExitReason.PROBE_DEFENDED;
+    }
+
+    /**
+     * The bases a harass may probe or enter now: every base whose refusal, see {@link #refusesBase}, has run out.
+     *
+     * @param bases candidate bases
+     * @param refusedUntil last refused frame of each refused base
+     * @param now current frame
+     * @param <B> base type
+     * @return the bases not refused, in their original order
+     */
+    public static <B> List<B> unrefused(Collection<B> bases, Map<B, Integer> refusedUntil, int now) {
+        List<B> kept = new ArrayList<>();
+        for (B base : bases) {
+            Integer until = refusedUntil.get(base);
+            if (until == null || now > until) {
+                kept.add(base);
+            }
+        }
+        return kept;
     }
 
     /**

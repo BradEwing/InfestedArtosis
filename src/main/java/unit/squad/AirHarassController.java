@@ -48,6 +48,7 @@ public class AirHarassController {
     private final Map<Base, Set<TilePosition>> resourceTiles = new HashMap<>();
     private final ExposedTargets.Memory exposedMemory = new ExposedTargets.Memory();
     private final Map<Base, Integer> lastSighted = new HashMap<>();
+    private final Map<Base, Integer> probeRefusedUntil = new HashMap<>();
 
     public AirHarassController(Game game, GameState gameState) {
         this.game = game;
@@ -56,21 +57,23 @@ public class AirHarassController {
 
     /**
      * The outcome of an entry check: the verdict, the base and strike point, or the exposed group, a harass would
-     * start on, and the age of that base's anti-air sighting. A PROBE verdict starts the harass with a probe of the
-     * base; an exposed group is never probed.
+     * start on, the age of that base's anti-air sighting, and whether known anti-air structures cover its probe
+     * point. A PROBE verdict starts the harass with a probe of the base; an exposed group is never probed.
      */
     public static final class Entry {
         private final AirHarassEvaluator.EntryVerdict verdict;
         private final AirHarassEvaluator.BaseOption<Base> option;
         private final ExposedTargets.Group exposed;
         private final int sightingAge;
+        private final int knownCover;
 
         Entry(AirHarassEvaluator.EntryVerdict verdict, AirHarassEvaluator.BaseOption<Base> option,
-              ExposedTargets.Group exposed, int sightingAge) {
+              ExposedTargets.Group exposed, int sightingAge, int knownCover) {
             this.verdict = verdict;
             this.option = option;
             this.exposed = exposed;
             this.sightingAge = sightingAge;
+            this.knownCover = knownCover;
         }
 
         public boolean enters() {
@@ -119,7 +122,9 @@ public class AirHarassController {
 
     /**
      * Runs the entry gates for an air squad and records the verdict. The base options are only read for a squad
-     * that passes the cheap gates, and the exposed groups only when no base has a tolerated strike point.
+     * that passes the cheap gates, and the exposed groups only when no base has a tolerated strike point. A base a
+     * probe found defended is left out until its refusal runs out, see {@link AirHarassScouting#unrefused}, and a
+     * stale base whose probe point known anti-air structures cover is entered on the entry verdict, not probed.
      *
      * @param squad air squad
      * @param now current frame
@@ -141,8 +146,8 @@ public class AirHarassController {
         if (cheapGatesPass) {
             View view = view(now);
             threats = view.threats;
-            options = options(threats, tolerance, containPoints, gameState.getBaseData().getEnemyBases(),
-                    MIN_ENTRY_HEAT);
+            options = options(threats, tolerance, containPoints, AirHarassScouting.unrefused(
+                    gameState.getBaseData().getEnemyBases(), probeRefusedUntil, now), MIN_ENTRY_HEAT);
             if (AirHarassEvaluator.chooseBase(options) == null) {
                 exposed = ExposedTargets.choose(exposedMemory.admitted(ExposedTargets.groups(view.candidates(),
                         flock.mutas, AirHarassTargeting.avoided(threats, tolerance)), now), threats, tolerance,
@@ -167,8 +172,10 @@ public class AirHarassController {
         Position strike = chosen != null ? chosen.getStrikePoint()
                 : chosenExposed != null ? chosenExposed.getAnchor() : null;
         int sightingAge = chosen == null ? -1 : sightingAge(chosen.getBase(), now);
+        int knownCover = chosen == null ? -1 : knownCover(chosen.getBase(), threats);
         if (chosenExposed == null) {
-            verdict = AirHarassScouting.entryMode(verdict, sightingAge);
+            verdict = AirHarassScouting.entryMode(verdict,
+                    AirHarassScouting.probeSightingAge(sightingAge, knownCover == 1));
         }
         HarassTelemetry.row(HarassRow.builder()
                 .frame(now)
@@ -188,8 +195,9 @@ public class AirHarassController {
                 .basesUnderAttack(basesUnderAttack ? 1 : 0)
                 .targetKind(targetKind(chosen != null, chosenExposed != null))
                 .aaSightingAge(sightingAge)
+                .aaKnownCover(knownCover)
                 .build());
-        return new Entry(verdict, chosen, chosenExposed, sightingAge);
+        return new Entry(verdict, chosen, chosenExposed, sightingAge, knownCover);
     }
 
     private static HarassRow.TargetKind targetKind(boolean base, boolean exposed) {
@@ -221,6 +229,7 @@ public class AirHarassController {
         state.setLastTickFrame(now - AirHarassEvaluator.HARASS_TICK);
         squad.setHarassState(state);
         for (ManagedUnit member : squad.getMembers()) {
+            member.clearRegroup();
             member.setRole(UnitRole.HARASS);
             member.setFightTarget(null);
             member.setContainPosition(null);
@@ -235,6 +244,7 @@ public class AirHarassController {
                 .airDefense(AirHarassTargeting.defenseAt(view(now).threats, state.getStrikePoint(),
                         AirHarassEvaluator.STRIKE_RADIUS))
                 .aaSightingAge(entry.sightingAge)
+                .aaKnownCover(entry.knownCover)
                 .build());
     }
 
@@ -295,8 +305,10 @@ public class AirHarassController {
     }
 
     /**
-     * Ends a harass: records the EXIT row, records an exposed target in the {@link ExposedTargets.Memory}, and
-     * clears every Mutalisk's harass order. The squad's status is left to the caller.
+     * Ends a harass: records the EXIT row, records an exposed target in the {@link ExposedTargets.Memory}, refuses
+     * a base the probe found defended for {@link AirHarassScouting#PROBE_REFUSAL_FRAMES}, and clears every
+     * Mutalisk's harass order. When the harass ends during a probe, the prober flies back to the hold point ahead of
+     * the squad's next orders, see {@link ManagedUnit#regroup}. The squad's status is left to the caller.
      *
      * @param squad harassing squad
      * @param reason why the harass ended
@@ -307,12 +319,20 @@ public class AirHarassController {
         if (state != null && state.targetsExposed()) {
             exposedMemory.record(state.getExposedAnchor(), now);
         }
+        if (state != null && state.getTargetBase() != null && AirHarassScouting.refusesBase(reason)) {
+            probeRefusedUntil.put(state.getTargetBase(), now + AirHarassScouting.PROBE_REFUSAL_FRAMES);
+        }
         Flock flock = flock(squad);
         HarassTelemetry.row(withProber(exitRow(squad.getId(), state, reason, now,
                 squad.size() == 0 ? null : squad.getCenter(), flock.hitPoints, view(now).threats), squad, state)
                 .mutas(flock.mutas)
                 .healthyMutas(flock.healthy)
                 .build());
+        ManagedUnit prober = state != null && state.getPhase() == AirHarassState.Phase.PROBE
+                ? proberOf(squad, state) : null;
+        if (prober != null && state.getHoldPoint() != null) {
+            prober.regroup(state.getHoldPoint(), now + AirHarassScouting.PROBER_REGROUP_FRAMES);
+        }
         for (ManagedUnit member : squad.getMembers()) {
             member.setHarassDestination(null);
             member.setFightTarget(null);
@@ -562,6 +582,7 @@ public class AirHarassController {
                         .aaSightingAge(sightingAge)
                         .proberHitPoints(proberHitPoints)
                         .proberPeakHitPoints(proberPeakHitPoints)
+                        .proberId(state.getProberId())
                         .build());
                 return null;
             default:
@@ -586,9 +607,7 @@ public class AirHarassController {
         if (prober < 0) {
             return false;
         }
-        state.probe(base, strike, prober, hitPoints.get(prober),
-                AirHarassScouting.probePoint(base.getCenter(), resourceCenterOf(base),
-                        UnitType.Zerg_Mutalisk.sightRange()),
+        state.probe(base, strike, prober, hitPoints.get(prober), probePointOf(base),
                 holdPoint(base, squad.getCenter(), view(now).threats), now);
         return true;
     }
@@ -642,6 +661,20 @@ public class AirHarassController {
     }
 
     /**
+     * Whether known anti-air structures cover a base's probe point, see {@link AirHarassScouting#knownAntiAirCovers}.
+     *
+     * @return 1 when they do, 0 otherwise
+     */
+    private static int knownCover(Base base, List<AirHarassTargeting.AirThreat> threats) {
+        return AirHarassScouting.knownAntiAirCovers(threats, probePointOf(base)) ? 1 : 0;
+    }
+
+    private static Position probePointOf(Base base) {
+        return AirHarassScouting.probePoint(base.getCenter(), resourceCenterOf(base),
+                UnitType.Zerg_Mutalisk.sightRange());
+    }
+
+    /**
      * Frames since a base's anti-air was sighted, counting this frame when its core is in sight now.
      *
      * @return the age, or -1 with no base
@@ -672,9 +705,10 @@ public class AirHarassController {
     }
 
     /**
-     * Moves a harass on to the best known enemy base it has not raided yet this episode, probing it first when its
-     * anti-air sighting is stale, else to the best exposed group of enemies the {@link ExposedTargets.Memory}
-     * admits. An exposed target being left is recorded there first.
+     * Moves a harass on to the best known enemy base it has not raided yet this episode and no probe has refused,
+     * probing it first when its anti-air sighting is stale and no known anti-air structure covers its probe point,
+     * else to the best exposed group of enemies the {@link ExposedTargets.Memory} admits. An exposed target being
+     * left is recorded there first.
      *
      * @return true when a target was found
      */
@@ -683,14 +717,17 @@ public class AirHarassController {
         if (state.targetsExposed()) {
             exposedMemory.record(state.getExposedAnchor(), now);
         }
-        Set<Base> candidates = new HashSet<>(gameState.getBaseData().getEnemyBases());
+        Set<Base> candidates = new HashSet<>(AirHarassScouting.unrefused(gameState.getBaseData().getEnemyBases(),
+                probeRefusedUntil, now));
         candidates.removeAll(state.getVisitedBases());
         AirHarassEvaluator.BaseOption<Base> next = AirHarassEvaluator.chooseBase(
                 options(view.threats, tolerance, containPoints, candidates, 0));
         int sightingAge = -1;
+        int knownCover = -1;
         if (next != null) {
             sightingAge = sightingAge(next.getBase(), now);
-            if (!AirHarassScouting.stale(sightingAge)) {
+            knownCover = knownCover(next.getBase(), view.threats);
+            if (!AirHarassScouting.stale(AirHarassScouting.probeSightingAge(sightingAge, knownCover == 1))) {
                 state.target(next.getBase(), next.getStrikePoint(), now);
             } else if (!beginProbe(squad, state, next.getBase(), next.getStrikePoint(), now)) {
                 return false;
@@ -707,6 +744,7 @@ public class AirHarassController {
         HarassTelemetry.row(row(squad, state, HarassRow.Event.RETARGET, now)
                 .center(squad.getCenter())
                 .aaSightingAge(sightingAge)
+                .aaKnownCover(knownCover)
                 .build());
         return true;
     }
@@ -895,7 +933,8 @@ public class AirHarassController {
             ManagedUnit prober = proberOf(squad, state);
             int proberHitPoints = prober == null ? 0 : prober.getUnit().getHitPoints();
             row.proberHitPoints(proberHitPoints)
-                    .proberPeakHitPoints(Math.max(state.getProberPeakHitPoints(), proberHitPoints));
+                    .proberPeakHitPoints(Math.max(state.getProberPeakHitPoints(), proberHitPoints))
+                    .proberId(state.getProberId());
         }
         return row;
     }

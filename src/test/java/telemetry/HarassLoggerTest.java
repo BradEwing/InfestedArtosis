@@ -112,9 +112,9 @@ class HarassLoggerTest {
         String[] columns = HarassLogger.HEADER.split(",", -1);
 
         assertEquals(columns.length, fields.length);
-        assertEquals("bases_under_attack", columns[columns.length - 6]);
-        assertEquals("target_kind", columns[columns.length - 5]);
-        assertEquals("flock_defense", columns[columns.length - 4]);
+        assertEquals("bases_under_attack", columns[columns.length - 8]);
+        assertEquals("target_kind", columns[columns.length - 7]);
+        assertEquals("flock_defense", columns[columns.length - 6]);
         assertEquals("FLOCK_DEFENDED", fields[columnIndex("exit_reason")]);
         assertEquals("EXPOSED", fields[columnIndex("target_kind")]);
         assertEquals("-1", fields[columnIndex("base_x")]);
@@ -157,15 +157,45 @@ class HarassLoggerTest {
         String[] columns = HarassLogger.HEADER.split(",", -1);
         String[] fields = HarassLogger.row("game-1", tick).split(",", -1);
 
-        assertEquals("aa_sighting_age", columns[columns.length - 3]);
-        assertEquals("prober_hp", columns[columns.length - 2]);
-        assertEquals("prober_peak_hp", columns[columns.length - 1]);
+        assertEquals("aa_sighting_age", columns[columns.length - 5]);
+        assertEquals("prober_hp", columns[columns.length - 4]);
+        assertEquals("prober_peak_hp", columns[columns.length - 3]);
         assertEquals(columns.length, fields.length);
         assertEquals("111", fields[columnIndex("prober_hp")]);
         assertEquals("120", fields[columnIndex("prober_peak_hp")]);
         String[] kill = HarassLogger.row("game-1", event(10300, HarassRow.Event.KILL)).split(",", -1);
         assertEquals("-1", kill[columnIndex("prober_hp")]);
         assertEquals("-1", kill[columnIndex("prober_peak_hp")]);
+    }
+
+    @Test
+    void theProberIdAndTheKnownCoverOfTheProbePointAreAppendedAfterTheProberHitPoints() {
+        HarassRow tick = HarassRow.builder()
+                .frame(10849)
+                .squadId("squad-1")
+                .event(HarassRow.Event.TICK)
+                .phase(AirHarassState.Phase.PROBE)
+                .proberId(265)
+                .build();
+        HarassRow entryCheck = HarassRow.builder()
+                .frame(10296)
+                .squadId("squad-1")
+                .event(HarassRow.Event.ENTRY_CHECK)
+                .aaSightingAge(10296)
+                .aaKnownCover(1)
+                .build();
+
+        String[] columns = HarassLogger.HEADER.split(",", -1);
+        String[] fields = HarassLogger.row("game-1", tick).split(",", -1);
+        String[] check = HarassLogger.row("game-1", entryCheck).split(",", -1);
+
+        assertEquals("prober_id", columns[columns.length - 2]);
+        assertEquals("aa_known_cover", columns[columns.length - 1]);
+        assertEquals(columns.length, fields.length);
+        assertEquals("265", fields[columnIndex("prober_id")]);
+        assertEquals("-1", fields[columnIndex("aa_known_cover")]);
+        assertEquals("1", check[columnIndex("aa_known_cover")]);
+        assertEquals("-1", check[columnIndex("prober_id")]);
     }
 
     @Test

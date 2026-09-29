@@ -453,4 +453,56 @@ class AirHarassScoutingTest {
         assertEquals(252, fresh.get(0).getId());
         assertTrue(state.learnAntiAir(Arrays.asList(turret, other)).isEmpty());
     }
+
+    @Test
+    void aKnownTurretOverTheProbePointMakesTheBaseCountAsSightedSoTheEntryIsNotProbed() {
+        AirHarassTargeting.AirThreat turret = threat(259, UnitType.Terran_Missile_Turret, TURRET);
+        Position probePoint = new Position(2064, 3700);
+        boolean covered = AirHarassScouting.knownAntiAirCovers(Collections.singletonList(turret), probePoint);
+
+        assertTrue(covered);
+        assertEquals(0, AirHarassScouting.probeSightingAge(NOW, covered));
+        assertEquals(EntryVerdict.ENTER, AirHarassScouting.entryMode(EntryVerdict.ENTER,
+                AirHarassScouting.probeSightingAge(NOW, covered)));
+        assertEquals(EntryVerdict.DEFENDED, AirHarassScouting.entryMode(EntryVerdict.DEFENDED,
+                AirHarassScouting.probeSightingAge(NOW, covered)));
+    }
+
+    @Test
+    void aProbePointNoKnownStructureCoversIsStillProbedWhenStale() {
+        AirHarassTargeting.AirThreat farTurret = threat(300, UnitType.Terran_Missile_Turret, new Position(3500, 1000));
+        AirHarassTargeting.AirThreat goliath = threat(301, UnitType.Terran_Goliath, new Position(2064, 3700));
+        Position probePoint = new Position(2064, 3700);
+        boolean covered = AirHarassScouting.knownAntiAirCovers(Arrays.asList(farTurret, goliath), probePoint);
+
+        assertFalse(covered);
+        assertEquals(NOW, AirHarassScouting.probeSightingAge(NOW, covered));
+        assertEquals(EntryVerdict.PROBE, AirHarassScouting.entryMode(EntryVerdict.ENTER,
+                AirHarassScouting.probeSightingAge(NOW, covered)));
+    }
+
+    @Test
+    void onlyAProbeFindingTheBaseDefendedRefusesIt() {
+        assertTrue(AirHarassScouting.refusesBase(AirHarassEvaluator.ExitReason.PROBE_DEFENDED));
+        for (AirHarassEvaluator.ExitReason reason : AirHarassEvaluator.ExitReason.values()) {
+            if (reason != AirHarassEvaluator.ExitReason.PROBE_DEFENDED) {
+                assertFalse(AirHarassScouting.refusesBase(reason), reason.name());
+            }
+        }
+        assertFalse(AirHarassScouting.refusesBase(null));
+    }
+
+    @Test
+    void aRefusedBaseIsLeftOutUntilItsRefusalRunsOut() {
+        Map<String, Integer> refusedUntil = new HashMap<>();
+        refusedUntil.put("main", NOW + AirHarassScouting.PROBE_REFUSAL_FRAMES);
+        List<String> bases = Arrays.asList("main", "natural");
+
+        assertEquals(Collections.singletonList("natural"), AirHarassScouting.unrefused(bases, refusedUntil, NOW));
+        assertEquals(Collections.singletonList("natural"), AirHarassScouting.unrefused(bases, refusedUntil,
+                NOW + AirHarassScouting.PROBE_REFUSAL_FRAMES));
+        assertEquals(bases, AirHarassScouting.unrefused(bases, refusedUntil,
+                NOW + AirHarassScouting.PROBE_REFUSAL_FRAMES + 1));
+        assertEquals(bases, AirHarassScouting.unrefused(bases, new HashMap<>(), NOW));
+    }
 }
