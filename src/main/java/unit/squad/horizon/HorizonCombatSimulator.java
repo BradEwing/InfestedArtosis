@@ -155,7 +155,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
             double antiAirBase = weightedAntiAirStrength(type, friendlySizeProportions);
             if (bunker) {
                 BunkerPricing.Candidate candidate = bunkerCandidate(ou, pos, visible,
-                        BunkerPricing.fireWeight(BunkerPricing.nearestGap(pos, legs), reach), currentFrame,
+                        BunkerPricing.weight(pos, squadCenter, legs, reach), currentFrame,
                         groundBase * hpWeight * heightMod, antiAirBase * hpWeight * heightMod);
                 if (candidate != null) {
                     bunkers.add(candidate);
@@ -1114,7 +1114,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
      * @param ou the observed bunker
      * @param pos where it stands or was last seen
      * @param visible whether it is in sight
-     * @param fireWeight its fire weight against the squad, see {@link BunkerPricing#fireWeight}
+     * @param fireWeight its weight against the squad, see {@link BunkerPricing#weight}
      * @param currentFrame current frame
      * @param fullGround ground strength of a full garrison, after hit point and height weighting
      * @param fullAntiAir anti-air strength of a full garrison, after hit point and height weighting

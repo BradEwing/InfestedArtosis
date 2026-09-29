@@ -22,7 +22,8 @@ import java.util.Set;
  * squad is the position of each member. Its path is the straight leg from each member to the unit it is fighting, and
  * for a ground member with no such unit, the first {@link #MARCH_LOOKAHEAD} of the straight leg toward where it
  * marches. A Bunker weighs in full when any leg passes within its reach, falls off linearly over
- * {@link #APPROACH_FALLOFF} past it, and adds nothing beyond that.
+ * {@link #APPROACH_FALLOFF} past it, and adds nothing beyond that. That weight is scaled down to nothing over the
+ * last {@link #RADIUS_TAPER} of the radius out to which the simulator samples the Bunker from the squad centre.
  *
  * <p>Garrison: across the Bunkers one evaluation prices, the occupants never exceed the larger of the unseen infantry
  * known to be alive and the occupants the Bunkers' own fire has shown. A Bunker whose garrison was measured within
@@ -46,10 +47,18 @@ final class BunkerPricing {
     /**
      * How far ahead of a ground member its march leg runs toward its destination: the distance past a Bunker's reach
      * out to which the simulator samples it, {@link HorizonCombatSimulator#FALLOFF_EXTENT}. A Bunker the squad samples
-     * at all is then priced in full while the squad's march passes within its reach, wherever inside that radius the
-     * squad stands.
+     * at all is then priced at its {@link #radiusTaper} while the squad's march passes within its reach, wherever
+     * inside that radius the squad stands.
      */
     static final double MARCH_LOOKAHEAD = HorizonCombatSimulator.FALLOFF_EXTENT;
+
+    /**
+     * Width of the outer band of the simulator's sample radius, {@link HorizonCombatSimulator#edgeOfFireRadius}, over
+     * which a Bunker's weight falls from full to nothing as the squad centre moves out. A tuning constant, the part of
+     * {@link HorizonCombatSimulator#FALLOFF_EXTENT} past the 256 px out to which other positional enemies weigh in
+     * full, not a claimed game fact.
+     */
+    static final double RADIUS_TAPER = 256;
 
     private BunkerPricing() {
     }
@@ -81,6 +90,36 @@ final class BunkerPricing {
         if (gap <= reach) return 1.0;
         if (gap >= reach + APPROACH_FALLOFF) return 0;
         return 1.0 - (gap - reach) / APPROACH_FALLOFF;
+    }
+
+    /**
+     * The share of a Bunker the simulator keeps for a squad centre the given distance away, so that a Bunker leaves
+     * the sample without a step at the edge of the sample radius.
+     *
+     * @param distance pixels from the squad centre to the Bunker's centre
+     * @param reach the Bunker's priced reach, see {@link #reach}
+     * @return 1 out to {@link #RADIUS_TAPER} inside {@link HorizonCombatSimulator#edgeOfFireRadius}, falling linearly
+     *     to 0 at that radius, 0 beyond
+     */
+    static double radiusTaper(double distance, int reach) {
+        double edge = HorizonCombatSimulator.edgeOfFireRadius(reach);
+        if (distance >= edge) return 0;
+        if (distance <= edge - RADIUS_TAPER) return 1.0;
+        return (edge - distance) / RADIUS_TAPER;
+    }
+
+    /**
+     * The weight a Bunker is priced at for a squad: its fire weight against the squad and its path, see
+     * {@link #fireWeight}, scaled by its place in the sample radius, see {@link #radiusTaper}.
+     *
+     * @param bunker the Bunker's centre
+     * @param squadCenter the squad's centre
+     * @param legs the squad and its path, see {@link #legs}
+     * @param reach the Bunker's priced reach, see {@link #reach}
+     * @return the weight, between 0 and 1
+     */
+    static double weight(Position bunker, Position squadCenter, List<Leg> legs, int reach) {
+        return fireWeight(nearestGap(bunker, legs), reach) * radiusTaper(squadCenter.getDistance(bunker), reach);
     }
 
     /**

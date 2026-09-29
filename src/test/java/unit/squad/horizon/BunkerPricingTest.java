@@ -377,6 +377,43 @@ class BunkerPricingTest {
     }
 
     @Test
+    void aMarchingSquadAtTheEdgeOfTheSampleRadiusIsPricedWithoutAStep() {
+        double edge = HorizonCombatSimulator.edgeOfFireRadius(GROUND_REACH);
+        Position inside = new Position(BUNKER.getX() + (int) edge - 1, BUNKER.getY());
+        Position outside = new Position(BUNKER.getX() + (int) edge + 1, BUNKER.getY());
+        List<BunkerPricing.Leg> insideLegs = BunkerPricing.memberLegs(inside, null, BUILDING_BEHIND_THE_BUNKER);
+        List<BunkerPricing.Leg> outsideLegs = BunkerPricing.memberLegs(outside, null, BUILDING_BEHIND_THE_BUNKER);
+
+        assertEquals(1.0, pricedWeight(BUNKER, GROUND_REACH, insideLegs));
+        assertEquals(1.0, pricedWeight(BUNKER, GROUND_REACH, outsideLegs));
+        assertTrue(inside.getDistance(BUNKER) <= edge);
+        assertTrue(outside.getDistance(BUNKER) > edge);
+        double insideWeight = BunkerPricing.weight(BUNKER, inside, insideLegs, GROUND_REACH);
+        assertEquals(1.0 / BunkerPricing.RADIUS_TAPER, insideWeight, 1e-9);
+        assertEquals(0.0, BunkerPricing.weight(BUNKER, outside, outsideLegs, GROUND_REACH));
+    }
+
+    @Test
+    void theRadiusTaperFallsLinearlyOverTheOuterBandOfTheSampleRadius() {
+        double edge = HorizonCombatSimulator.edgeOfFireRadius(GROUND_REACH);
+
+        assertEquals(1.0, BunkerPricing.radiusTaper(0, GROUND_REACH));
+        assertEquals(1.0, BunkerPricing.radiusTaper(edge - BunkerPricing.RADIUS_TAPER, GROUND_REACH));
+        assertEquals(0.5, BunkerPricing.radiusTaper(edge - BunkerPricing.RADIUS_TAPER / 2, GROUND_REACH), 1e-9);
+        assertEquals(0.0, BunkerPricing.radiusTaper(edge, GROUND_REACH));
+        assertEquals(0.0, BunkerPricing.radiusTaper(edge + 1, GROUND_REACH));
+    }
+
+    @Test
+    void aSquadInsideTheTaperedBandIsPricedAtItsFireWeight() {
+        Position member = rightOfBunker(BUNKER, GROUND_REACH);
+        List<BunkerPricing.Leg> legs = standingAt(member);
+
+        assertEquals(pricedWeight(BUNKER, GROUND_REACH, legs), BunkerPricing.weight(BUNKER, member, legs, GROUND_REACH));
+        assertEquals(1.0, BunkerPricing.weight(BUNKER, member, legs, GROUND_REACH));
+    }
+
+    @Test
     void theSquadMarchesToTheClosestKnownEnemyBuilding() {
         Position center = new Position(2000, 1000);
         Position far = new Position(100, 100);
