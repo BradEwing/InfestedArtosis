@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
+import java.util.function.Predicate;
 
 /**
  * Why a Lurker is sent out of fixed fire to a hold point, and why it lets go of one. The names are the reasons
@@ -39,6 +40,14 @@ final class LurkerHold {
      * unburrows it for no gain.
      */
     static final int MOVE_GAIN = 32;
+
+    /**
+     * Tuning value: factor over the engage threshold the sim's ratio must reach for an ENGAGE read that priced sieged
+     * tanks to commit a squad's Lurkers. Against Terran it asks 1.80 of a 1.44 threshold, so a read that only just
+     * clears the threshold, the kind that reverses to RETREAT within a few frames against sieged tanks, does not send
+     * the Lurkers into the tanks' reach.
+     */
+    static final double TANK_ENGAGE_MARGIN = 1.25;
 
     private LurkerHold() {
     }
@@ -77,30 +86,45 @@ final class LurkerHold {
     }
 
     /**
-     * Whether a squad's Lurkers commit with it this frame: it is in FIGHT, and it is either breaking its contain or
-     * collapsing, a decision to fight with the whole squad, or the sim read ENGAGE for it this frame. A fight lock
-     * with no ENGAGE read, including a squad born into FIGHT on its lock, does not commit them.
+     * Whether a squad's Lurkers commit with it this frame: it is in FIGHT, and it is either committed as a whole, by
+     * a contain break, a collapse or a stalemate commit, or the sim read ENGAGE for it this frame with a ratio that
+     * clears {@link #clearsTankMargin}. A fight lock with no such read, including a squad born into FIGHT on its lock,
+     * does not commit them.
      *
      * @param status the squad's status
-     * @param wholeSquadCommit whether the squad is breaking its contain or collapsing, under the fight lock it armed
+     * @param wholeSquadCommit whether the squad is committed as a whole
      * @param freshVerdict the sim's verdict for the squad read this frame, or null when it was not read this frame
+     * @param clearsTankMargin whether this frame's read clears {@link #clearsTankMargin}
      * @return true when the squad's Lurkers commit
      */
     static boolean lurkersCommit(SquadStatus status, boolean wholeSquadCommit,
-                                 CombatSimulator.CombatResult freshVerdict) {
+                                 CombatSimulator.CombatResult freshVerdict, boolean clearsTankMargin) {
         return status == SquadStatus.FIGHT
-                && (wholeSquadCommit || freshVerdict == CombatSimulator.CombatResult.ENGAGE);
+                && (wholeSquadCommit || freshVerdict == CombatSimulator.CombatResult.ENGAGE && clearsTankMargin);
     }
 
     /**
-     * The zones a squad's Lurkers keep out of. Lurkers that do not commit keep out of every zone. Lurkers committed by
-     * a contain break or collapse keep out of none. Lurkers committed by an ENGAGE read keep out of the sieged-tank
-     * zones whose tank that read did not price, see {@link #priced}: an ENGAGE never walks them into a tank it did not
-     * weigh.
+     * Whether a sim read is strong enough to commit Lurkers against the sieged tanks it priced: with no priced sieged
+     * tank any read qualifies; with one, the ratio must reach {@link #TANK_ENGAGE_MARGIN} times the engage threshold.
+     *
+     * @param ratio the ratio the sim judged this frame
+     * @param engageThreshold the engage threshold the sim judged it against
+     * @param pricedSiegedTanks whether the read priced a sieged tank
+     * @return true when the read clears the margin
+     */
+    static boolean clearsTankMargin(double ratio, double engageThreshold, boolean pricedSiegedTanks) {
+        return !pricedSiegedTanks || ratio >= engageThreshold * TANK_ENGAGE_MARGIN;
+    }
+
+    /**
+     * The zones a squad's Lurkers keep out of. Lurkers that do not commit keep out of every zone. Lurkers committed
+     * with the whole squad, by a contain break, a collapse or a stalemate commit, keep out of none. Lurkers committed
+     * by an ENGAGE read keep out of the sieged-tank zones whose tank that read did not price, see {@link #priced}: an
+     * ENGAGE never walks them into a tank it did not weigh.
      *
      * @param zones fixed fire zones that outrange a Lurker
      * @param commit whether the squad's Lurkers commit, see {@link #lurkersCommit}
-     * @param wholeSquadCommit whether the squad is breaking its contain or collapsing
+     * @param wholeSquadCommit whether the squad is committed as a whole
      * @param pricedTanks positions of the sieged tanks the sim priced this frame
      * @return the zones the Lurkers keep out of
      */
@@ -159,17 +183,19 @@ final class LurkerHold {
     }
 
     /**
-     * The units that held a point last frame and were not visited this frame: they left every fight squad, or died.
+     * The units that held a point last frame, were not visited this frame and still exist: they left every fight
+     * squad. A unit that died is not among them.
      *
      * @param holding units that held a point at the end of last frame
      * @param visited units visited this frame
+     * @param exists whether a unit still exists
      * @param <U> the unit type
-     * @return the holding units not visited
+     * @return the holding units not visited that still exist
      */
-    static <U> List<U> leftBehind(Collection<U> holding, Set<U> visited) {
+    static <U> List<U> leftBehind(Collection<U> holding, Set<U> visited, Predicate<U> exists) {
         List<U> left = new ArrayList<>();
         for (U unit : holding) {
-            if (!visited.contains(unit)) {
+            if (!visited.contains(unit) && exists.test(unit)) {
                 left.add(unit);
             }
         }

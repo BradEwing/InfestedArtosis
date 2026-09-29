@@ -77,32 +77,32 @@ class LurkerHoldTest {
 
     @Test
     void anEngageReadThisFrameCommitsTheLurkersAtOnce() {
-        assertTrue(LurkerHold.lurkersCommit(SquadStatus.FIGHT, false, ENGAGE));
+        assertTrue(LurkerHold.lurkersCommit(SquadStatus.FIGHT, false, ENGAGE, true));
     }
 
     @Test
     void aFightLockWithNoEngageReadDoesNotCommitTheLurkers() {
-        assertFalse(LurkerHold.lurkersCommit(SquadStatus.FIGHT, false, null));
-        assertFalse(LurkerHold.lurkersCommit(SquadStatus.FIGHT, false, ADVANCE));
-        assertFalse(LurkerHold.lurkersCommit(SquadStatus.FIGHT, false, RETREAT));
+        assertFalse(LurkerHold.lurkersCommit(SquadStatus.FIGHT, false, null, true));
+        assertFalse(LurkerHold.lurkersCommit(SquadStatus.FIGHT, false, ADVANCE, true));
+        assertFalse(LurkerHold.lurkersCommit(SquadStatus.FIGHT, false, RETREAT, true));
     }
 
     @Test
     void aSquadBornIntoFightOnItsLockWithNoSimReadIsNotCommittingItsLurkers() {
         assertTrue(SquadManager.isCommitting(SquadStatus.FIGHT, true, null));
-        assertFalse(LurkerHold.lurkersCommit(SquadStatus.FIGHT, false, null));
+        assertFalse(LurkerHold.lurkersCommit(SquadStatus.FIGHT, false, null, true));
     }
 
     @Test
     void aContainBreakOrCollapseCommitsTheLurkersWithoutARead() {
-        assertTrue(LurkerHold.lurkersCommit(SquadStatus.FIGHT, true, null));
-        assertTrue(LurkerHold.lurkersCommit(SquadStatus.FIGHT, true, RETREAT));
+        assertTrue(LurkerHold.lurkersCommit(SquadStatus.FIGHT, true, null, true));
+        assertTrue(LurkerHold.lurkersCommit(SquadStatus.FIGHT, true, RETREAT, true));
     }
 
     @Test
     void aSquadOutOfFightNeverCommitsItsLurkers() {
-        assertFalse(LurkerHold.lurkersCommit(SquadStatus.RETREAT, true, ENGAGE));
-        assertFalse(LurkerHold.lurkersCommit(SquadStatus.CONTAIN, false, ENGAGE));
+        assertFalse(LurkerHold.lurkersCommit(SquadStatus.RETREAT, true, ENGAGE, true));
+        assertFalse(LurkerHold.lurkersCommit(SquadStatus.CONTAIN, false, ENGAGE, true));
     }
 
     @Test
@@ -161,10 +161,10 @@ class LurkerHoldTest {
         squad.setStatus(SquadStatus.FIGHT);
         squad.startFightLock(1000);
 
-        assertTrue(SquadManager.wholeSquadCommitHolds(squad, 1000));
-        assertFalse(SquadManager.wholeSquadCommitHolds(squad, 1500));
+        assertTrue(SquadManager.wholeSquadCommitHolds(squad, 1000, false));
+        assertFalse(SquadManager.wholeSquadCommitHolds(squad, 1500, false));
         squad.setStatus(SquadStatus.RETREAT);
-        assertFalse(SquadManager.wholeSquadCommitHolds(squad, 1000));
+        assertFalse(SquadManager.wholeSquadCommitHolds(squad, 1000, false));
     }
 
     @Test
@@ -174,9 +174,9 @@ class LurkerHoldTest {
         squad.startFightLock(1000);
         squad.setCollapse(new ContainmentCollapse.Maneuver(Collections.emptyMap(), Collections.emptySet(), 9000));
 
-        assertTrue(SquadManager.wholeSquadCommitHolds(squad, 1500));
+        assertTrue(SquadManager.wholeSquadCommitHolds(squad, 1500, false));
         squad.setCollapse(null);
-        assertFalse(SquadManager.wholeSquadCommitHolds(squad, 1500));
+        assertFalse(SquadManager.wholeSquadCommitHolds(squad, 1500, false));
     }
 
     @Test
@@ -185,17 +185,64 @@ class LurkerHoldTest {
         squad.setStatus(SquadStatus.FIGHT);
         squad.commitCollapse(1000);
 
-        assertTrue(SquadManager.wholeSquadCommitHolds(squad, 1001));
-        assertFalse(SquadManager.wholeSquadCommitHolds(squad, 1500));
+        assertTrue(SquadManager.wholeSquadCommitHolds(squad, 1001, false));
+        assertFalse(SquadManager.wholeSquadCommitHolds(squad, 1500, false));
     }
 
     @Test
     void aHoldingUnitNotVisitedThisFrameIsLeftBehind() {
         List<String> left = LurkerHold.leftBehind(Arrays.asList("gone", "kept"),
-                new HashSet<>(Arrays.asList("kept", "new")));
+                new HashSet<>(Arrays.asList("kept", "new")), unit -> true);
 
         assertEquals(Collections.singletonList("gone"), left);
-        assertTrue(LurkerHold.leftBehind(Collections.<String>emptyList(), new HashSet<>()).isEmpty());
+        assertTrue(LurkerHold.leftBehind(Collections.<String>emptyList(), new HashSet<>(), unit -> true).isEmpty());
+    }
+
+    @Test
+    void aHoldingUnitThatDiedIsNotLeftBehind() {
+        List<String> left = LurkerHold.leftBehind(Arrays.asList("dead", "gone"), new HashSet<>(),
+                unit -> !unit.equals("dead"));
+
+        assertEquals(Collections.singletonList("gone"), left);
+    }
+
+    @Test
+    void aStalemateCommitHoldsTheWholeSquadPastItsFightLock() {
+        Squad squad = new GroundSquad();
+        squad.setStatus(SquadStatus.FIGHT);
+        squad.startFightLock(1000);
+
+        assertTrue(SquadManager.wholeSquadCommitHolds(squad, 1500, true));
+        assertFalse(SquadManager.wholeSquadCommitHolds(squad, 1500, false));
+        squad.setStatus(SquadStatus.RETREAT);
+        assertFalse(SquadManager.wholeSquadCommitHolds(squad, 1500, true));
+    }
+
+    @Test
+    void aStalemateCommitCommitsTheLurkersWithoutARead() {
+        assertTrue(LurkerHold.lurkersCommit(SquadStatus.FIGHT, true, null, false));
+    }
+
+    @Test
+    void anEngageReadThatMissesTheTankMarginDoesNotCommitTheLurkers() {
+        assertFalse(LurkerHold.lurkersCommit(SquadStatus.FIGHT, false, ENGAGE, false));
+    }
+
+    @Test
+    void anEngageReadWithNoPricedSiegedTankNeedsNoMargin() {
+        assertTrue(LurkerHold.clearsTankMargin(1.44, 1.44, false));
+        assertTrue(LurkerHold.clearsTankMargin(0, 1.44, false));
+    }
+
+    @Test
+    void anEngageReadPricingSiegedTanksMustClearTheThresholdByTheMargin() {
+        double threshold = 1.44;
+        double needed = threshold * LurkerHold.TANK_ENGAGE_MARGIN;
+
+        assertFalse(LurkerHold.clearsTankMargin(1.53, threshold, true));
+        assertFalse(LurkerHold.clearsTankMargin(needed - 0.001, threshold, true));
+        assertTrue(LurkerHold.clearsTankMargin(needed, threshold, true));
+        assertTrue(LurkerHold.clearsTankMargin(needed + 1, threshold, true));
     }
 
     @Test

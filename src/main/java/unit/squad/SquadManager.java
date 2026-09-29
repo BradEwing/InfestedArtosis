@@ -299,29 +299,35 @@ public class SquadManager {
     }
 
     /**
-     * Whether a squad is breaking its contain or collapsing: it was marked so on the break or the collapse and
-     * {@link #wholeSquadCommitHolds} still holds.
+     * Whether a squad is committed as a whole, breaking its contain, collapsing or under a stalemate commit: it was
+     * marked so on the break, the collapse or the stalemate commit and {@link #wholeSquadCommitHolds} still holds.
      *
      * @param squad the squad
      * @param now current frame
      * @return true while the whole squad is committed
      */
     private boolean wholeSquadCommit(Squad squad, int now) {
-        return wholeSquadCommits.contains(squad) && wholeSquadCommitHolds(squad, now);
+        ContainmentStalemate stalemate = gameState.getContainmentStalemate();
+        return wholeSquadCommits.contains(squad) && wholeSquadCommitHolds(squad, now,
+                ContainmentStalemate.takesOver(squad.isGroundSquad(), squad.getStatus(), stalemate.isCommitting(),
+                        stalemate.isCommitPaused()));
     }
 
     /**
-     * Whether a squad marked on a contain break or a collapse is still committed as a whole: it is in FIGHT and
-     * under its fight lock, in a collapse's wrap, or held by a committed collapse, see
-     * {@link Squad#isCollapseCommitHeld}. A wrap that outlasts the fight lock it armed keeps the mark.
+     * Whether a squad marked on a contain break, a collapse or a stalemate commit is still committed as a whole: it
+     * is in FIGHT and under its fight lock, in a collapse's wrap, held by a committed collapse, see
+     * {@link Squad#isCollapseCommitHeld}, or run by a stalemate commit. A wrap that outlasts the fight lock it armed
+     * keeps the mark, and so does a stalemate commit that outlasts it.
      *
      * @param squad the squad
      * @param now current frame
+     * @param stalemateCommit whether a running, unpaused stalemate commit runs the squad this frame
      * @return true while the whole-squad commit holds
      */
-    static boolean wholeSquadCommitHolds(Squad squad, int now) {
+    static boolean wholeSquadCommitHolds(Squad squad, int now, boolean stalemateCommit) {
         return squad.getStatus() == SquadStatus.FIGHT
-                && (squad.isFightLocked(now) || squad.getCollapse() != null || squad.isCollapseCommitHeld(now));
+                && (squad.isFightLocked(now) || squad.getCollapse() != null || squad.isCollapseCommitHeld(now)
+                || stalemateCommit);
     }
 
     /**
@@ -343,8 +349,12 @@ public class SquadManager {
      */
     private boolean lurkersCommit(Squad squad, int now) {
         HorizonCombatSimulator.DebugSnapshot snapshot = freshSnapshot(squad, now);
-        return LurkerHold.lurkersCommit(squad.getStatus(), wholeSquadCommit(squad, now),
-                snapshot == null ? null : snapshot.getResult());
+        if (snapshot == null) {
+            return LurkerHold.lurkersCommit(squad.getStatus(), wholeSquadCommit(squad, now), null, false);
+        }
+        return LurkerHold.lurkersCommit(squad.getStatus(), wholeSquadCommit(squad, now), snapshot.getResult(),
+                LurkerHold.clearsTankMargin(snapshot.getOverallRatio(), snapshot.getEngageThreshold(),
+                        !pricedSiegedTanks(snapshot).isEmpty()));
     }
 
     /**
@@ -411,7 +421,7 @@ public class SquadManager {
             holdLurker(lurker, holding, lurkersCommit(squad, now), zones, lurkerKeptOutZones(squad, zones, now),
                     padding, allowed, now);
         }
-        for (Lurker lurker : LurkerHold.leftBehind(holdingLurkers, visited)) {
+        for (Lurker lurker : LurkerHold.leftBehind(holdingLurkers, visited, held -> held.getUnit().exists())) {
             Position hold = lurker.getHoldPosition();
             if (hold != null) {
                 lurker.clearHold();
@@ -2501,7 +2511,8 @@ public class SquadManager {
      * Runs one frame of a ground squad under a stalemate commit: the whole-squad storm retreat still pulls it out of
      * a Psionic Storm and holds it back while that retreat lock lasts, see
      * {@link ContainmentStalemate#stormRetreatHolds}; otherwise it drops any collapse under way, leaves any arc,
-     * fights under a fight lock and marches on the enemy, whatever the combat sim would read.
+     * fights under a fight lock and marches on the enemy, whatever the combat sim would read, and is marked committed
+     * as a whole, so its Lurkers go in with it, see {@link #wholeSquadCommit}.
      *
      * @param squad ground squad
      * @param now current frame
@@ -2526,6 +2537,7 @@ public class SquadManager {
             squad.startFightLock(now);
         }
         squad.commit(now);
+        wholeSquadCommits.add(squad);
         assignFightTargets(squad, squad.getMembers(), true);
     }
 
