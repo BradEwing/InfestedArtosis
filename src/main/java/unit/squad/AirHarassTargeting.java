@@ -30,6 +30,9 @@ import java.util.function.ToIntFunction;
  * killing, stepping to the edge point nearest its goal, and otherwise attacks its target or skirts the avoided
  * zones toward the squad's strike point. Ranges, speeds, hit points and damage are read from JBWAPI; the constants
  * are tuning values.
+ *
+ * <p>On an exposed target a Missile Turret whose zone the flock does not avoid is taken in the isolated anti-air tier
+ * too, see {@link #turretTaken}.
  */
 public final class AirHarassTargeting {
 
@@ -50,7 +53,8 @@ public final class AirHarassTargeting {
     }
 
     /**
-     * Target tiers of a harass, lowest first.
+     * Target tiers of a harass, lowest first. ISOLATED_AA is anti-air the flock kills quickly, or on an exposed
+     * target a Missile Turret it tolerates, see {@link #tier(Contact, Situation)}.
      */
     public enum Tier {
         OTHER,
@@ -180,6 +184,7 @@ public final class AirHarassTargeting {
         @Builder.Default
         private final Predicate<Position> pointAllowed = position -> true;
         private final int now;
+        private final boolean turretsTaken;
     }
 
     /**
@@ -343,6 +348,42 @@ public final class AirHarassTargeting {
     }
 
     /**
+     * The tier a contact is taken in on this frame: its {@link #tier(Contact, int)}, or ISOLATED_AA for a Missile
+     * Turret the situation takes, see {@link #turretTaken}.
+     *
+     * @param contact the contact
+     * @param situation the frame's shared view
+     * @return the tier, or null
+     */
+    public static Tier tier(Contact contact, Situation situation) {
+        Tier tier = tier(contact, situation.getFlockSize());
+        if (tier == null && situation.isTurretsTaken() && turretTaken(contact, situation.getAvoided())) {
+            return Tier.ISOLATED_AA;
+        }
+        return tier;
+    }
+
+    /**
+     * Whether a contact is a Missile Turret the flock can take on within its tolerance: one whose zone is not among
+     * the avoided zones, so the anti-air stacked on it, its own included, is within the tolerance.
+     *
+     * @param contact the contact
+     * @param avoided avoided zones, see {@link #avoided}
+     * @return true for such a Turret
+     */
+    public static boolean turretTaken(Contact contact, Collection<AirThreat> avoided) {
+        if (contact.getType() != UnitType.Terran_Missile_Turret) {
+            return false;
+        }
+        for (AirThreat threat : avoided) {
+            if (threat.getId() == contact.getId()) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
      * Whether the flock kills a contact within {@link #KILL_VOLLEYS} volleys of primary damage, less the type's base
      * armor. Upgrades and the Glave Wurm bounce are not counted.
      *
@@ -382,7 +423,7 @@ public final class AirHarassTargeting {
      */
     public static Decision choose(Muta muta, Situation situation, MutaMemory memory) {
         Contact target = bestTarget(muta, situation, memory.targetId);
-        Tier tier = target == null ? null : tier(target, situation.getFlockSize());
+        Tier tier = target == null ? null : tier(target, situation);
         int ignoredId = tier == Tier.ISOLATED_AA ? target.getId() : NO_TARGET;
         List<AirThreat> zones = without(situation.getAvoided(), ignoredId);
         Position goal = target != null ? target.getPosition() : situation.getSeekPoint();
@@ -420,7 +461,7 @@ public final class AirHarassTargeting {
             if (!situation.getTargetAllowed().test(contact.getPosition()) && distance > LOCAL_TARGET_RADIUS) {
                 continue;
             }
-            Tier tier = tier(contact, situation.getFlockSize());
+            Tier tier = tier(contact, situation);
             if (tier == null || covered(contact, situation.getAvoided())) {
                 continue;
             }

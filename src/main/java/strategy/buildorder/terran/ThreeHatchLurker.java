@@ -200,6 +200,7 @@ public class ThreeHatchLurker extends TerranBase {
         final int livingHydralisks = gameState.ourLivingUnitCount(UnitType.Zerg_Hydralisk);
         final int desiredLurkers = desiredLurkers(gameState, livingHydralisks);
         if (techProgression.isLurker()
+                && !gameState.getEndgameHunt().isHuntingFlyingBuildings()
                 && lurkerPipeline < desiredLurkers
                 && livingHydralisks > outstandingLurkers) {
             plans.addAll(this.planAdvancedUnit(gameState, UnitType.Zerg_Lurker));

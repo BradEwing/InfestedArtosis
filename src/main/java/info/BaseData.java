@@ -139,6 +139,13 @@ public class BaseData {
     }
 
     /**
+     * Whether the type is one of the buildings that, standing at a starting location's natural, wall it off.
+     */
+    public static boolean isNaturalWallType(UnitType type) {
+        return NATURAL_WALL_TYPES.contains(type);
+    }
+
+    /**
      * Tiles of the base a building site belongs to: the main base tiles for a site in our main, otherwise every
      * tile within the manhattan radius of the site.
      *
@@ -1302,6 +1309,18 @@ public class BaseData {
 
     public Base getMainEnemyBase() {
         return mainEnemyBase;
+    }
+
+    /**
+     * The ground path from the enemy main to the enemy natural, the way out of the enemy main. Null while either
+     * is unknown or no ground path joins them.
+     */
+    public GroundPath getEnemyMainPathToNatural() {
+        StartingLocationPaths paths = mainEnemyBase == null ? null : startingLocationPaths.get(mainEnemyBase);
+        if (paths == null || enemyNaturalBase == null) {
+            return null;
+        }
+        return paths.getPath(enemyNaturalBase);
     }
 
     /**
