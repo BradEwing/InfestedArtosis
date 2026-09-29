@@ -6,9 +6,7 @@ import org.junit.jupiter.api.Test;
 import util.Time;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ZergOpenerReadingTest {
 
@@ -27,20 +25,26 @@ class ZergOpenerReadingTest {
     }
 
     @Test
-    void fourPoolNeverReachesTheNinePoolBand() {
+    void earlyPoolWithFewerThanSevenEquivalentsReadsNothing() {
         assertNull(ZergOpenerReading.classify(early(BEFORE_BAND, 5).build()));
+        assertNull(ZergOpenerReading.classify(early(IN_BAND, ZergOpenerReading.NINE_POOL_MIN_EQUIVALENTS - 1).build()));
     }
 
     @Test
-    void poolWithTenEquivalentsReadsNinePoolFromTheBandTime() {
-        assertEquals(ZergOpener.NINE_POOL, ZergOpenerReading.classify(poolSeen(IN_BAND, 10).build()));
-        assertEquals(ZergOpener.NINE_POOL, ZergOpenerReading.classify(
-                poolSeen(ZergOpenerReading.NINE_POOL_BAND_FROM, 9).build()));
+    void poolWithoutATimingSignReadsNothingAtAnyCount() {
+        for (int equivalents = 5; equivalents <= 14; equivalents++) {
+            assertNull(ZergOpenerReading.classify(poolSeen(BEFORE_BAND, equivalents).build()));
+            assertNull(ZergOpenerReading.classify(poolSeen(IN_BAND, equivalents).mainScouted(true).build()));
+            assertNull(ZergOpenerReading.classify(poolSeen(ZergOpenerReading.DECISION_CUTOFF, equivalents).build()));
+        }
     }
 
     @Test
-    void poolWithFewEquivalentsBeforeTheBandTimeReadsNothing() {
-        assertNull(ZergOpenerReading.classify(poolSeen(BEFORE_BAND, 9).build()));
+    void twelvePoolScoutedLateWithUndercountedDronesReadsNothing() {
+        ZergOpenerEvidence evidence = poolSeen(new Time(3968), 7).mainScouted(true).naturalLastSeen(new Time(3968))
+                .build();
+
+        assertNull(ZergOpenerReading.classify(evidence));
     }
 
     @Test
@@ -48,11 +52,6 @@ class ZergOpenerReadingTest {
         assertNull(ZergOpenerReading.classify(poolSeen(IN_BAND, 11).build()));
         assertNull(ZergOpenerReading.classify(poolSeen(IN_BAND, 11).mainScouted(true)
                 .naturalLastSeen(IN_BAND).build()));
-    }
-
-    @Test
-    void naturalDepotKeepsTheBandFromReadingNinePool() {
-        assertNull(ZergOpenerReading.classify(poolSeen(IN_BAND, 10).naturalDepotFirstSeen(IN_BAND).build()));
     }
 
     @Test
@@ -105,6 +104,26 @@ class ZergOpenerReadingTest {
     }
 
     @Test
+    void latePoolIsCheckedBeforeTheEarlyPoolSign() {
+        assertEquals(ZergOpener.TWELVE_POOL, ZergOpenerReading.classify(twelvePool().earlyPool(true).build()));
+    }
+
+    @Test
+    void latePoolBesideANaturalDepotIsNotTwelvePool() {
+        assertNull(ZergOpenerReading.classify(twelvePool().naturalDepotFirstSeen(LATE_POOL_SCOUT).build()));
+    }
+
+    @Test
+    void twelvePoolIsReadAfterEarlierFramesReadNothing() {
+        ZergOpenerReading reading = new ZergOpenerReading();
+
+        assertNull(reading.decide(poolSeen(IN_BAND, 9).mainScouted(true).build(), new DroneEquivalents(8, 1, 0)));
+        assertNull(reading.decide(poolSeen(IN_BAND, 10).mainScouted(true).build(), new DroneEquivalents(9, 1, 0)));
+        assertEquals(ZergOpener.TWELVE_POOL, reading.decide(twelvePool().build(), new DroneEquivalents(11, 1, 0)));
+        assertEquals("12Pool:LATE_POOL:11d+1s+0k", reading.getEvidenceLabel());
+    }
+
+    @Test
     void nothingIsReadAfterTheCutoff() {
         Time late = new Time(ZergOpenerReading.DECISION_CUTOFF.getFrames() + 1);
 
@@ -113,9 +132,9 @@ class ZergOpenerReadingTest {
     }
 
     @Test
-    void microwaveTimelineReadsNinePool() {
+    void microwaveTimelineReadsNinePoolOnlyFromTheEarlySign() {
         assertNull(ZergOpenerReading.classify(poolSeen(new Time(2500), 10).build()));
-        assertEquals(ZergOpener.NINE_POOL, ZergOpenerReading.classify(poolSeen(new Time(2923), 10).build()));
+        assertNull(ZergOpenerReading.classify(poolSeen(new Time(2923), 10).build()));
         assertEquals(ZergOpener.NINE_POOL, ZergOpenerReading.classify(early(new Time(3500), 11).build()));
     }
 
@@ -135,10 +154,11 @@ class ZergOpenerReadingTest {
         ZergOpenerReading reading = new ZergOpenerReading();
 
         reading.observeNaturalDepot(false, BEFORE_BAND);
-        assertFalse(reading.naturalDepotSeen());
+        assertNull(reading.getNaturalDepotFirstSeen());
         reading.observeNaturalDepot(true, IN_BAND);
         reading.observeNaturalDepot(false, LATE_POOL_SCOUT);
-        assertTrue(reading.naturalDepotSeen());
+        reading.observeNaturalDepot(true, LATE_POOL_SCOUT);
+        assertEquals(IN_BAND, reading.getNaturalDepotFirstSeen());
     }
 
     @Test
@@ -150,6 +170,14 @@ class ZergOpenerReadingTest {
             assertEquals(opener.getStrategyName(), recognizer.getDetectionLabel());
             assertEquals(Race.Zerg, recognizer.getRace());
         }
+    }
+
+    @Test
+    void labelNamesTheOpenerItsSignAndTheEquivalents() {
+        DroneEquivalents equivalents = new DroneEquivalents(10, 2, 1);
+
+        assertEquals("9Pool:EARLY_POOL:10d+2s+1k", ZergOpenerReading.label(ZergOpener.NINE_POOL, equivalents));
+        assertEquals("12Hatch:HATCH_FIRST:10d+2s+1k", ZergOpenerReading.label(ZergOpener.TWELVE_HATCH, equivalents));
     }
 
     private static ZergOpenerEvidence.ZergOpenerEvidenceBuilder base(Time time, int equivalents) {

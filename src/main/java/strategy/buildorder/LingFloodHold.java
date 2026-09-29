@@ -25,9 +25,11 @@ import java.util.List;
 public final class LingFloodHold {
 
     /**
-     * StrategyTracker names whose detection starts the hold.
+     * StrategyTracker names whose detection starts the hold: 9PoolMainHatch, which reads the flood from the in-main
+     * Hatchery, and 2HatchLing, which reads it once the Zerglings have massed.
      */
-    public static final List<String> TRIGGER_STRATEGIES = Collections.unmodifiableList(Arrays.asList("2HatchLing"));
+    public static final List<String> TRIGGER_STRATEGIES = Collections.unmodifiableList(
+            Arrays.asList("9PoolMainHatch", "2HatchLing"));
 
     /**
      * The last game time the hold stands. The flood's largest waves land before it, and the bot's

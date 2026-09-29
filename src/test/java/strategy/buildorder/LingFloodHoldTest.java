@@ -25,6 +25,11 @@ class LingFloodHoldTest {
     }
 
     @Test
+    void startsOnTheNinePoolMainHatchDetection() {
+        assertTrue(LingFloodHold.TRIGGER_STRATEGIES.contains("9PoolMainHatch"));
+    }
+
+    @Test
     void standsOnceTheFloodIsDetected() {
         assertTrue(LingFloodHold.isActive(true, EARLY));
     }

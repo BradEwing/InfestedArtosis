@@ -100,7 +100,7 @@ public class StrategyTracker {
             for (ZergOpener opener : ZergOpener.values()) {
                 possibleStrategies.add(new ZergOpenerRecognizer(opener, openerReading));
             }
-            possibleStrategies.add(new NinePoolMainHatch(openerReading));
+            possibleStrategies.add(new NinePoolMainHatch());
         }
     }
 

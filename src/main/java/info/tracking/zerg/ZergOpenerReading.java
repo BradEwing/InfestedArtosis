@@ -21,8 +21,10 @@ import util.Time;
  *     <li>By 2:00, 12Pool and 12Hatch have 12 drone equivalents, 9PoolSpeed and Overpool 9 to 11.</li>
  *     <li>12Hatch starts the natural Hatchery from frame 2333, the earliest 12 pool starts it at 3426.</li>
  * </ul>
- * Drone equivalents are a lower bound, so a label needs its band met, and 10 to 11 equivalents with no timing
- * sign reads as nothing. A 4 pool, at 5 equivalents, never reaches the 9Pool band.
+ * Drone equivalents are a lower bound that runs several Drones short by 3:00, so a count alone never reads an
+ * opener: each label needs a timing sign, and a Pool seen with no timing sign reads as nothing at any count. A 4 or
+ * 5 pool shows the early Pool sign too, so it reads 9Pool once its Drones resume past
+ * {@link #NINE_POOL_MIN_EQUIVALENTS}.
  */
 public class ZergOpenerReading {
 
@@ -32,9 +34,7 @@ public class ZergOpenerReading {
     static final Time EARLY_ZERGLING_BY = new Time(3700);
     static final Time LATE_POOL_MORPHING_FROM = new Time(3350);
     static final Time HATCH_BEFORE_ANY_POOL_FIRST_BY = new Time(3400);
-    static final Time NINE_POOL_BAND_FROM = new Time(2, 0);
     static final int NINE_POOL_MIN_EQUIVALENTS = 7;
-    static final int NINE_POOL_MAX_EQUIVALENTS = 10;
     static final int TWELVE_MIN_EQUIVALENTS = 12;
 
     private ZergOpener opener;
@@ -75,24 +75,24 @@ public class ZergOpenerReading {
         }
         opener = classify(evidence);
         if (opener != null) {
-            evidenceLabel = label(opener, evidence, equivalents);
+            evidenceLabel = label(opener, equivalents);
         }
         return opener;
     }
 
     /**
-     * What telemetry records for the frozen opener: its name, the arm it was read on and the drone equivalents
-     * as living drones, structures and lost drones.
+     * What telemetry records for the frozen opener: its name, the timing sign it was read on and the drone
+     * equivalents as living drones, structures and lost drones.
      */
     public String getEvidenceLabel() {
         return evidenceLabel;
     }
 
     /**
-     * Whether a depot has been seen at the enemy natural on any frame so far.
+     * The first frame a depot was seen at the enemy natural, or null if none has been.
      */
-    public boolean naturalDepotSeen() {
-        return naturalDepotFirstSeen != null;
+    Time getNaturalDepotFirstSeen() {
+        return naturalDepotFirstSeen;
     }
 
     /**
@@ -123,52 +123,49 @@ public class ZergOpenerReading {
     }
 
     /**
-     * The opener the evidence supports, or null when it supports none.
+     * The opener the evidence supports, or null when it supports none. 12Pool is checked first, so a Pool seen
+     * morphing late is read as 12Pool whatever else was seen.
      * <ul>
+     *     <li>12Pool: at least {@link #TWELVE_MIN_EQUIVALENTS} equivalents, no natural depot, a Pool still morphing
+     *     after every 9 pool has finished its own, and the natural seen empty at that time or later.</li>
      *     <li>9Pool: a sign the Pool was started before any 12 pool starts one, with at least
-     *     {@link #NINE_POOL_MIN_EQUIVALENTS} equivalents; or, from {@link #NINE_POOL_BAND_FROM}, a Pool with
-     *     {@link #NINE_POOL_MIN_EQUIVALENTS} to {@link #NINE_POOL_MAX_EQUIVALENTS} equivalents and no natural
-     *     depot.</li>
+     *     {@link #NINE_POOL_MIN_EQUIVALENTS} equivalents.</li>
      *     <li>12Hatch: at least {@link #TWELVE_MIN_EQUIVALENTS} equivalents and a natural depot that went down
      *     before its Pool, shown by the depot being seen before any 12 pool expands or by a scouted main with no
      *     Pool.</li>
-     *     <li>12Pool: at least {@link #TWELVE_MIN_EQUIVALENTS} equivalents, a Pool still morphing after every 9
-     *     pool has finished its own, and the natural seen empty at that time or later.</li>
      * </ul>
      */
     static ZergOpener classify(ZergOpenerEvidence evidence) {
-        Time time = evidence.getTime();
-        if (time.greaterThan(DECISION_CUTOFF)) {
+        if (evidence.getTime().greaterThan(DECISION_CUTOFF)) {
             return null;
         }
+        if (isTwelvePool(evidence)) {
+            return ZergOpener.TWELVE_POOL;
+        }
         int equivalents = evidence.getEquivalents();
-        Time naturalDepotFirstSeen = evidence.getNaturalDepotFirstSeen();
         if (evidence.isEarlyPool()) {
             return equivalents >= NINE_POOL_MIN_EQUIVALENTS ? ZergOpener.NINE_POOL : null;
         }
-        if (evidence.isPoolSeen() && naturalDepotFirstSeen == null && NINE_POOL_BAND_FROM.lessThanOrEqual(time)
-                && equivalents >= NINE_POOL_MIN_EQUIVALENTS && equivalents <= NINE_POOL_MAX_EQUIVALENTS) {
-            return ZergOpener.NINE_POOL;
-        }
-        if (equivalents < TWELVE_MIN_EQUIVALENTS) {
+        Time naturalDepotFirstSeen = evidence.getNaturalDepotFirstSeen();
+        if (equivalents < TWELVE_MIN_EQUIVALENTS || naturalDepotFirstSeen == null) {
             return null;
         }
-        if (naturalDepotFirstSeen != null) {
-            boolean hatchFirst = naturalDepotFirstSeen.lessThanOrEqual(HATCH_BEFORE_ANY_POOL_FIRST_BY)
-                    || evidence.isMainScouted() && !evidence.isPoolSeen();
-            return hatchFirst ? ZergOpener.TWELVE_HATCH : null;
-        }
-        Time naturalLastSeen = evidence.getNaturalLastSeen();
-        if (evidence.isLatePool() && naturalLastSeen != null
-                && LATE_POOL_MORPHING_FROM.lessThanOrEqual(naturalLastSeen)) {
-            return ZergOpener.TWELVE_POOL;
-        }
-        return null;
+        boolean hatchFirst = naturalDepotFirstSeen.lessThanOrEqual(HATCH_BEFORE_ANY_POOL_FIRST_BY)
+                || evidence.isMainScouted() && !evidence.isPoolSeen();
+        return hatchFirst ? ZergOpener.TWELVE_HATCH : null;
     }
 
-    static String label(ZergOpener opener, ZergOpenerEvidence evidence, DroneEquivalents equivalents) {
-        String arm = evidence.isEarlyPool() ? "EARLY_POOL" : "BAND";
-        return opener.getStrategyName() + ":" + arm + ":" + equivalents.getDrones() + "d+"
+    private static boolean isTwelvePool(ZergOpenerEvidence evidence) {
+        Time naturalLastSeen = evidence.getNaturalLastSeen();
+        return evidence.getEquivalents() >= TWELVE_MIN_EQUIVALENTS
+                && evidence.getNaturalDepotFirstSeen() == null
+                && evidence.isLatePool()
+                && naturalLastSeen != null
+                && LATE_POOL_MORPHING_FROM.lessThanOrEqual(naturalLastSeen);
+    }
+
+    static String label(ZergOpener opener, DroneEquivalents equivalents) {
+        return opener.getStrategyName() + ":" + opener.getSign() + ":" + equivalents.getDrones() + "d+"
                 + equivalents.getStructures() + "s+" + equivalents.getLostDrones() + "k";
     }
 }

@@ -10,35 +10,37 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class NinePoolMainHatchTest {
 
     @Test
-    void ninePoolWithAnInMainHatcheryIsDetected() {
-        assertTrue(NinePoolMainHatch.matches(ZergOpener.NINE_POOL, true, false, false));
-    }
-
-    @Test
-    void notDetectedWithoutTheNinePoolReading() {
-        assertFalse(NinePoolMainHatch.matches(null, true, false, false));
-        assertFalse(NinePoolMainHatch.matches(ZergOpener.TWELVE_POOL, true, false, false));
-        assertFalse(NinePoolMainHatch.matches(ZergOpener.TWELVE_HATCH, true, false, false));
+    void inMainHatcheryWithNoNaturalAndNoLairTechIsDetected() {
+        assertTrue(NinePoolMainHatch.matches(true, false, false));
     }
 
     @Test
     void notDetectedWithOnlyTheMainDepot() {
-        assertFalse(NinePoolMainHatch.matches(ZergOpener.NINE_POOL, false, false, false));
+        assertFalse(NinePoolMainHatch.matches(false, false, false));
     }
 
     @Test
     void notDetectedWhenTheNaturalIsTaken() {
-        assertFalse(NinePoolMainHatch.matches(ZergOpener.NINE_POOL, true, true, false));
+        assertFalse(NinePoolMainHatch.matches(true, true, false));
     }
 
     @Test
     void notDetectedOnceLairTechIsSeen() {
-        assertFalse(NinePoolMainHatch.matches(ZergOpener.NINE_POOL, true, false, true));
+        assertFalse(NinePoolMainHatch.matches(true, false, true));
+    }
+
+    @Test
+    void naturalDepotSeenOnceKeepsCounting() {
+        NinePoolMainHatch strategy = new NinePoolMainHatch();
+
+        assertFalse(strategy.observeNaturalDepot(false));
+        assertTrue(strategy.observeNaturalDepot(true));
+        assertTrue(strategy.observeNaturalDepot(false));
     }
 
     @Test
     void sharesTwoHatchLingsCutoffAndIsZergOnly() {
-        NinePoolMainHatch strategy = new NinePoolMainHatch(new ZergOpenerReading());
+        NinePoolMainHatch strategy = new NinePoolMainHatch();
 
         assertEquals(TwoHatchLing.DETECTION_CUTOFF, NinePoolMainHatch.DETECTION_CUTOFF);
         assertEquals("9PoolMainHatch", strategy.getName());
