@@ -49,10 +49,8 @@ public final class LurkerDefilerUltraTransition {
     static final int THIRD_BASE_AFTER_BASES = ECONOMY_BASES - 1;
 
     /**
-     * The game time from which 2HatchMuta and 3HatchLurker ask for their third base. Owner
-     * decision to take it earlier. Before this, 3HatchLurker's own third base was queued at about
-     * 8:00, after a macro Hatchery at about 6:40, and 2HatchMuta's at about 5:55, once six
-     * Mutalisks were out. Set at 5:00, ahead of both.
+     * The game time from which 2HatchMuta asks for its third base, ahead of the third it otherwise
+     * takes once six Mutalisks are out. 3HatchLurker does not use it.
      */
     static final Time THIRD_BASE_DUE = new Time(5, 0);
 
@@ -98,7 +96,7 @@ public final class LurkerDefilerUltraTransition {
     }
 
     /**
-     * Whether 2HatchMuta or 3HatchLurker asks for its third base: from {@link #THIRD_BASE_DUE},
+     * Whether 2HatchMuta asks for its third base: from {@link #THIRD_BASE_DUE},
      * once the main and natural stand, while fewer than {@value #ECONOMY_BASES} bases are held or
      * reserved.
      *

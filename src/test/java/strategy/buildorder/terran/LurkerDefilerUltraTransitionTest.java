@@ -194,7 +194,7 @@ class LurkerDefilerUltraTransitionTest {
     }
 
     @Test
-    void theThirdBaseIsDueAheadOfBothBuildsEarlierThirdBases() {
+    void theThirdBaseIsDueAheadOfTwoHatchMutasMutaliskThirdBase() {
         assertTrue(LurkerDefilerUltraTransition.THIRD_BASE_DUE.getFrames() < new Time(5, 55).getFrames());
     }
 

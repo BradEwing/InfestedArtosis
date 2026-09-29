@@ -84,9 +84,8 @@ public class ThreeHatchLurker extends TerranBase {
         // Check for floating resources (follows OneHatchSpire pattern)
         boolean floatingMinerals = gameState.isFloatingMinerals();
         int basesHeldOrReserved = baseData.currentAndReservedCount();
-        boolean wantExpansion = behindOnBases(gameState) || floatingMinerals
-                || LurkerDefilerUltraTransition.wantsThirdBase(gameState.getGameTime(), baseCount, basesHeldOrReserved)
-                || wantsHandoverBase(gameState.totalProduced(UnitType.Zerg_Lurker), basesHeldOrReserved);
+        boolean wantExpansion = wantsExpansion(behindOnBases(gameState), floatingMinerals,
+                gameState.totalProduced(UnitType.Zerg_Lurker), basesHeldOrReserved);
 
         final int desiredSunkenColonies = this.requiredSunkens(gameState);
         if (!gameState.basesNeedingSunken(desiredSunkenColonies).isEmpty()) {
@@ -263,6 +262,22 @@ public class ThreeHatchLurker extends TerranBase {
 
     static boolean hasFieldedLurkersForThirdHatch(int livingLurkerCount) {
         return livingLurkerCount >= 2;
+    }
+
+    /**
+     * Whether the build asks for an expansion: when behind on bases, when floating minerals, or for
+     * the handover base. It takes no third base on the clock; its third comes from these, or as the
+     * handover base once its Lurkers are out.
+     *
+     * @param behindOnBases whether the enemy holds more bases than we do
+     * @param floatingMinerals whether unspent minerals have piled up
+     * @param lurkersMorphed Lurkers this game has produced
+     * @param basesHeldOrReserved bases we hold or have reserved for a queued hatchery
+     * @return true while an expansion should be requested
+     */
+    static boolean wantsExpansion(boolean behindOnBases, boolean floatingMinerals, int lurkersMorphed,
+            int basesHeldOrReserved) {
+        return behindOnBases || floatingMinerals || wantsHandoverBase(lurkersMorphed, basesHeldOrReserved);
     }
 
     /**
