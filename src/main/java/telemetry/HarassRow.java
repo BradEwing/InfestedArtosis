@@ -67,10 +67,21 @@ public final class HarassRow {
     private final double containDistance = -1;
     @Builder.Default
     private final int basesUnderAttack = -1;
+    private final TargetKind targetKind;
+    @Builder.Default
+    private final double flockDefense = -1;
     @Builder.Default
     private final int aaSightingAge = -1;
     @Builder.Default
     private final int proberHitPoints = -1;
     @Builder.Default
     private final int proberPeakHitPoints = -1;
+
+    /**
+     * What a harass targets: a known enemy base, or an exposed group of enemies away from a base's heat.
+     */
+    public enum TargetKind {
+        BASE,
+        EXPOSED
+    }
 }

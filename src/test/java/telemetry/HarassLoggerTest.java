@@ -68,7 +68,7 @@ class HarassLoggerTest {
                 .frame(13000)
                 .squadId("squad-1")
                 .event(HarassRow.Event.EXIT)
-                .exitReason(AirHarassEvaluator.ExitReason.AA_ARRIVED)
+                .exitReason(AirHarassEvaluator.ExitReason.STRIKE_DEFENDED)
                 .phase(AirHarassState.Phase.STRIKE)
                 .base(new Position(320, 3792))
                 .strikePoint(new Position(400, 3700))
@@ -83,7 +83,7 @@ class HarassLoggerTest {
 
         assertEquals(HarassLogger.HEADER.split(",", -1).length, fields.length);
         assertEquals("EXIT", fields[columnIndex("event")]);
-        assertEquals("AA_ARRIVED", fields[columnIndex("exit_reason")]);
+        assertEquals("STRIKE_DEFENDED", fields[columnIndex("exit_reason")]);
         assertEquals("NONE", fields[columnIndex("verdict")]);
         assertEquals("STRIKE", fields[columnIndex("phase")]);
         assertEquals("320", fields[columnIndex("base_x")]);
@@ -96,7 +96,34 @@ class HarassLoggerTest {
     }
 
     @Test
-    void anEntryCheckCarriesTheAntiAirSightingAgeAfterBasesUnderAttack() {
+    void anExitRowWritesItsAirDefenseTargetKindAndFlockDefenseAfterTheOriginalColumns() {
+        HarassRow exit = HarassRow.builder()
+                .frame(13000)
+                .squadId("squad-1")
+                .event(HarassRow.Event.EXIT)
+                .exitReason(AirHarassEvaluator.ExitReason.FLOCK_DEFENDED)
+                .strikePoint(new Position(2000, 2000))
+                .airDefense(40.5)
+                .flockDefense(81)
+                .targetKind(HarassRow.TargetKind.EXPOSED)
+                .build();
+
+        String[] fields = HarassLogger.row("game-1", exit).split(",", -1);
+        String[] columns = HarassLogger.HEADER.split(",", -1);
+
+        assertEquals(columns.length, fields.length);
+        assertEquals("bases_under_attack", columns[columns.length - 6]);
+        assertEquals("target_kind", columns[columns.length - 5]);
+        assertEquals("flock_defense", columns[columns.length - 4]);
+        assertEquals("FLOCK_DEFENDED", fields[columnIndex("exit_reason")]);
+        assertEquals("EXPOSED", fields[columnIndex("target_kind")]);
+        assertEquals("-1", fields[columnIndex("base_x")]);
+        assertEquals(40.5, Double.parseDouble(fields[columnIndex("air_defense")]), 1e-9);
+        assertEquals(81, Double.parseDouble(fields[columnIndex("flock_defense")]), 1e-9);
+    }
+
+    @Test
+    void anEntryCheckCarriesTheAntiAirSightingAgeAfterTheFlockDefense() {
         HarassRow check = HarassRow.builder()
                 .frame(10296)
                 .squadId("squad-1")
@@ -108,7 +135,7 @@ class HarassLoggerTest {
         String[] columns = HarassLogger.HEADER.split(",", -1);
         String[] fields = HarassLogger.row("game-1", check).split(",", -1);
 
-        assertEquals(columnIndex("bases_under_attack") + 1, columnIndex("aa_sighting_age"));
+        assertEquals(columnIndex("flock_defense") + 1, columnIndex("aa_sighting_age"));
         assertEquals(columns.length, fields.length);
         assertEquals("10296", fields[columnIndex("aa_sighting_age")]);
         assertEquals("PROBE", fields[columnIndex("verdict")]);

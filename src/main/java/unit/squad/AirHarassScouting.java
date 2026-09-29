@@ -261,10 +261,10 @@ public final class AirHarassScouting {
     }
 
     /**
-     * The reason a harass ends with during a probe. Only the probe's own finding is relabelled: AA_ARRIVED because
-     * the base keeps no tolerated strike point, while the flock itself stands outside anti-air it does not tolerate,
-     * is the probe finding the base defended. AA_ARRIVED with the flock in anti-air stays AA_ARRIVED, and every other
-     * reason stands.
+     * The reason a harass ends with during a probe. Only the probe's own finding is relabelled: STRIKE_DEFENDED,
+     * the base keeping no tolerated strike point, while the flock itself stands outside anti-air it does not tolerate,
+     * is the probe finding the base defended. FLOCK_DEFENDED, and STRIKE_DEFENDED with the flock in anti-air, stand,
+     * as does every other reason.
      *
      * @param reason the generic exit reason, or null
      * @param probing true while the harass is probing
@@ -273,7 +273,7 @@ public final class AirHarassScouting {
      */
     public static AirHarassEvaluator.ExitReason probeExitReason(AirHarassEvaluator.ExitReason reason,
                                                                 boolean probing, boolean flockDefended) {
-        if (probing && !flockDefended && reason == AirHarassEvaluator.ExitReason.AA_ARRIVED) {
+        if (probing && !flockDefended && reason == AirHarassEvaluator.ExitReason.STRIKE_DEFENDED) {
             return AirHarassEvaluator.ExitReason.PROBE_DEFENDED;
         }
         return reason;

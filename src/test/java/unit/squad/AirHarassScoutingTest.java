@@ -306,9 +306,9 @@ class AirHarassScoutingTest {
     @Test
     void antiAirLeavingTheBaseNoStrikeDuringAProbeIsTheProbeFindingTheBaseDefended() {
         assertEquals(AirHarassEvaluator.ExitReason.PROBE_DEFENDED,
-                AirHarassScouting.probeExitReason(AirHarassEvaluator.ExitReason.AA_ARRIVED, true, false));
-        assertEquals(AirHarassEvaluator.ExitReason.AA_ARRIVED,
-                AirHarassScouting.probeExitReason(AirHarassEvaluator.ExitReason.AA_ARRIVED, false, false));
+                AirHarassScouting.probeExitReason(AirHarassEvaluator.ExitReason.STRIKE_DEFENDED, true, false));
+        assertEquals(AirHarassEvaluator.ExitReason.STRIKE_DEFENDED,
+                AirHarassScouting.probeExitReason(AirHarassEvaluator.ExitReason.STRIKE_DEFENDED, false, false));
         assertEquals(AirHarassEvaluator.ExitReason.HP_LOSS,
                 AirHarassScouting.probeExitReason(AirHarassEvaluator.ExitReason.HP_LOSS, true, false));
         assertNull(AirHarassScouting.probeExitReason(null, true, false));
@@ -316,10 +316,12 @@ class AirHarassScoutingTest {
 
     @Test
     void aFlockStandingInAntiAirDuringAProbeKeepsItsOwnExitReason() {
-        assertEquals(AirHarassEvaluator.ExitReason.AA_ARRIVED,
-                AirHarassScouting.probeExitReason(AirHarassEvaluator.ExitReason.AA_ARRIVED, true, true));
-        assertEquals(AirHarassEvaluator.ExitReason.AA_ARRIVED,
-                AirHarassScouting.probeExitReason(AirHarassEvaluator.ExitReason.AA_ARRIVED, false, true));
+        assertEquals(AirHarassEvaluator.ExitReason.FLOCK_DEFENDED,
+                AirHarassScouting.probeExitReason(AirHarassEvaluator.ExitReason.FLOCK_DEFENDED, true, true));
+        assertEquals(AirHarassEvaluator.ExitReason.STRIKE_DEFENDED,
+                AirHarassScouting.probeExitReason(AirHarassEvaluator.ExitReason.STRIKE_DEFENDED, true, true));
+        assertEquals(AirHarassEvaluator.ExitReason.FLOCK_DEFENDED,
+                AirHarassScouting.probeExitReason(AirHarassEvaluator.ExitReason.FLOCK_DEFENDED, false, true));
     }
 
     @Test

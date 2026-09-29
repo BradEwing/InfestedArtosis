@@ -5,6 +5,7 @@ import bwapi.Race;
 import bwem.BWEM;
 import config.Config;
 import info.GameState;
+import info.tracking.terran.TerranWall;
 import strategy.BuildOrderFactory;
 import strategy.buildorder.BuildOrder;
 
@@ -75,6 +76,7 @@ public class LearningManager {
     private Decisions decisions = new Decisions();
     private Record currentOpener;
     private String lastGameDetectedStrategies = "";
+    private boolean terranWallPersists;
     private String lastGameOpener = "";
 
     private BuildOrderFactory buildOrderFactory;
@@ -101,11 +103,14 @@ public class LearningManager {
                 lastGameDetectedStrategies = lastGame.getDetectedStrategies();
                 lastGameOpener = lastGame.getOpener() != null ? lastGame.getOpener() : "";
             }
+            terranWallPersists = TerranWall.isPersistent(
+                    history.lastGamesDetectedStrategies(TerranWall.RECENT_GAMES));
         } catch (IOException e) {
             this.opponentRecord = recordAccumulator.reconstruct(new LearningHistory(new ArrayList<>()));
         }
 
         ensureOpenersInOpponentRecord();
+        decisions.setTerranWallPersists(terranWallPersists);
         decisions.setOpener(determineOpener());
     }
 
@@ -186,7 +191,7 @@ public class LearningManager {
 
     private BuildOrder determineOpener() {
         String openerName = selectOpenerName(config.openerOverride, buildOrderFactory, opponentRecord,
-                lastGameDetectedStrategies, lastGameOpener, game.mapFileName());
+                lastGameDetectedStrategies, terranWallPersists, lastGameOpener, game.mapFileName());
         if (openerName == null) {
             return null;
         }
@@ -197,7 +202,7 @@ public class LearningManager {
 
     /**
      * Selects the opener by precedence: configured override, then the rush response, then
-     * weighted D-UCB over the opponent's opener history.
+     * weighted D-UCB over the opponent's opener history, against an opponent with no persistent Terran wall.
      */
     static String selectOpenerName(String openerOverride,
                                    BuildOrderFactory buildOrderFactory,
@@ -205,8 +210,23 @@ public class LearningManager {
                                    String lastGameDetectedStrategies,
                                    String lastGameOpener,
                                    String mapName) {
+        return selectOpenerName(openerOverride, buildOrderFactory, opponentRecord, lastGameDetectedStrategies, false,
+                lastGameOpener, mapName);
+    }
+
+    /**
+     * Selects the opener by precedence: configured override, then the rush response, then
+     * weighted D-UCB over the opponent's opener history, leaving 4Pool out of D-UCB while a Terran wall persists.
+     */
+    static String selectOpenerName(String openerOverride,
+                                   BuildOrderFactory buildOrderFactory,
+                                   OpponentRecord opponentRecord,
+                                   String lastGameDetectedStrategies,
+                                   boolean terranWallPersists,
+                                   String lastGameOpener,
+                                   String mapName) {
         return OpenerSelectionPolicy.select(openerOverride, buildOrderFactory, opponentRecord,
-                lastGameDetectedStrategies, lastGameOpener, mapName);
+                lastGameDetectedStrategies, terranWallPersists, lastGameOpener, mapName);
     }
 
     /**
