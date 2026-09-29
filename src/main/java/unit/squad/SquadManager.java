@@ -348,11 +348,25 @@ public class SquadManager {
      * @return true when its Lurkers commit
      */
     private boolean lurkersCommit(Squad squad, int now) {
-        HorizonCombatSimulator.DebugSnapshot snapshot = freshSnapshot(squad, now);
+        return lurkersCommit(squad.getStatus(), wholeSquadCommit(squad, now), freshSnapshot(squad, now));
+    }
+
+    /**
+     * Whether a squad's Lurkers commit on this frame's sim read, see {@link LurkerHold#lurkersCommit}: the read's
+     * verdict, and whether its ratio clears {@link LurkerHold#clearsTankMargin} over its engage threshold given the
+     * sieged tanks it priced.
+     *
+     * @param status the squad's status
+     * @param wholeSquadCommit whether the squad is committed as a whole
+     * @param snapshot the sim's snapshot read this frame, or null when it was not read this frame
+     * @return true when the squad's Lurkers commit
+     */
+    static boolean lurkersCommit(SquadStatus status, boolean wholeSquadCommit,
+                                 HorizonCombatSimulator.DebugSnapshot snapshot) {
         if (snapshot == null) {
-            return LurkerHold.lurkersCommit(squad.getStatus(), wholeSquadCommit(squad, now), null, false);
+            return LurkerHold.lurkersCommit(status, wholeSquadCommit, null, false);
         }
-        return LurkerHold.lurkersCommit(squad.getStatus(), wholeSquadCommit(squad, now), snapshot.getResult(),
+        return LurkerHold.lurkersCommit(status, wholeSquadCommit, snapshot.getResult(),
                 LurkerHold.clearsTankMargin(snapshot.getOverallRatio(), snapshot.getEngageThreshold(),
                         !pricedSiegedTanks(snapshot).isEmpty()));
     }

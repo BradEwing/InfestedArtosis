@@ -3,6 +3,7 @@ package unit.squad;
 import bwapi.Position;
 import bwapi.UnitType;
 import org.junit.jupiter.api.Test;
+import unit.squad.horizon.HorizonCombatSimulator;
 import util.StaticDefenseZone;
 
 import java.util.ArrayList;
@@ -229,6 +230,30 @@ class LurkerHoldTest {
     }
 
     @Test
+    void aThinEngageReadPricingSiegedTanksDoesNotCommitTheLurkers() {
+        HorizonCombatSimulator.DebugSnapshot snapshot = snapshot(1.53, 1.44, 5.0);
+
+        assertFalse(SquadManager.lurkersCommit(SquadStatus.FIGHT, false, snapshot));
+        assertTrue(SquadManager.lurkersCommit(SquadStatus.FIGHT, true, snapshot));
+    }
+
+    @Test
+    void aStrongEngageReadPricingSiegedTanksCommitsTheLurkers() {
+        assertTrue(SquadManager.lurkersCommit(SquadStatus.FIGHT, false, snapshot(1.9, 1.44, 5.0)));
+    }
+
+    @Test
+    void aThinEngageReadWithAnUnpricedSiegedTankCommitsTheLurkers() {
+        assertTrue(SquadManager.lurkersCommit(SquadStatus.FIGHT, false, snapshot(1.53, 1.44, 0)));
+    }
+
+    @Test
+    void noReadThisFrameCommitsTheLurkersOnlyWithTheWholeSquad() {
+        assertFalse(SquadManager.lurkersCommit(SquadStatus.FIGHT, false, null));
+        assertTrue(SquadManager.lurkersCommit(SquadStatus.FIGHT, true, null));
+    }
+
+    @Test
     void anEngageReadWithNoPricedSiegedTankNeedsNoMargin() {
         assertTrue(LurkerHold.clearsTankMargin(1.44, 1.44, false));
         assertTrue(LurkerHold.clearsTankMargin(0, 1.44, false));
@@ -243,6 +268,16 @@ class LurkerHoldTest {
         assertFalse(LurkerHold.clearsTankMargin(needed - 0.001, threshold, true));
         assertTrue(LurkerHold.clearsTankMargin(needed, threshold, true));
         assertTrue(LurkerHold.clearsTankMargin(needed + 1, threshold, true));
+    }
+
+    private static HorizonCombatSimulator.DebugSnapshot snapshot(double ratio, double threshold, double tankStrength) {
+        HorizonCombatSimulator.DebugSnapshot snapshot = new HorizonCombatSimulator.DebugSnapshot();
+        snapshot.setResult(ratio >= threshold ? ENGAGE : RETREAT);
+        snapshot.setOverallRatio(ratio);
+        snapshot.setEngageThreshold(threshold);
+        snapshot.getEnemyUnits().add(new HorizonCombatSimulator.UnitDebugEntry(TANK_AT,
+                UnitType.Terran_Siege_Tank_Siege_Mode, tankStrength, false, false));
+        return snapshot;
     }
 
     @Test
