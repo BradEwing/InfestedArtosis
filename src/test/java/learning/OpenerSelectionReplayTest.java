@@ -43,7 +43,7 @@ public class OpenerSelectionReplayTest {
                         Record.builder().opener(opener).wins(0).losses(0).build());
             }
             String opener = OpenerSelectionPolicy.select(null, factory, opponentRecord,
-                    lastGameDetectedStrategies, lastGameOpener, game.getMapName());
+                    lastGameDetectedStrategies, false, lastGameOpener, game.getMapName());
             accumulator.apply(opponentRecord, GameRecord.builder()
                     .timestamp(game.getTimestamp())
                     .numStartingLocations(game.getNumStartingLocations())
