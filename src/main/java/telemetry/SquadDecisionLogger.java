@@ -117,7 +117,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
             + "collapse_under_fire,collapse_run_start_frame,collapse_wrap_end,collapse_first_favourable_frame,"
             + "contain_timeout_reentries,contain_static_only,"
             + "contain_break_shortfall_real,contain_break_unreachable,contain_stalemate,"
-            + "stalemate_commit_supply_real,stalemate_commit_army_real";
+            + "stalemate_commit_supply_real,stalemate_commit_army_real,air_commitment_release";
 
     private static final int FLUSH_INTERVAL_FRAMES = 480;
     private static final String EVENT_STATUS_CHANGE = "STATUS_CHANGE";
@@ -449,6 +449,19 @@ public class SquadDecisionLogger implements SquadDecisionSink {
     }
 
     @Override
+    public void onCommitmentReleased(Squad squad, CommitmentRelease release) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            decisionFor(squad).setCommitmentRelease(release);
+        } catch (RuntimeException e) {
+            disable();
+        }
+    }
+
+    @Override
     public void onContainArcMeasured(Squad squad, int distance) {
         if (disabled) {
             return;
@@ -726,6 +739,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         fields.addAll(containTimeoutCells(context));
         fields.addAll(containStalemateCells(context));
         fields.addAll(stalemateCommitCells(context));
+        fields.addAll(commitmentReleaseCells(context));
         return String.join(",", fields);
     }
 
@@ -756,6 +770,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         fields.addAll(containTimeoutCells(context));
         fields.addAll(containStalemateCells(context));
         fields.addAll(stalemateCommitCells(context));
+        fields.addAll(commitmentReleaseCells(context));
         return String.join(",", fields);
     }
 
@@ -955,6 +970,18 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         fields.add(halfSupplyOrSentinel(context.getStalemateCommitSupply()));
         fields.add(halfSupplyOrSentinel(context.getStalemateCommitArmy()));
         return fields;
+    }
+
+    /**
+     * Builds the air commitment release cell: the term that let a RETREAT verdict through an air squad's armed engage
+     * commitment, see {@link CommitmentRelease}. Filled on the frame an air squad in FIGHT with an armed commitment
+     * takes a RETREAT verdict the commitment does not hold against; every other row carries NONE.
+     *
+     * @param context the decision the row is built from
+     * @return the release cell
+     */
+    static List<String> commitmentReleaseCells(SquadDecision context) {
+        return Collections.singletonList(context.getCommitmentRelease().name());
     }
 
     private static String halfSupplyOrSentinel(int halfUnits) {

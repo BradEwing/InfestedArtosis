@@ -134,6 +134,14 @@ public final class SquadDecisions {
         current.onStalemateCommit(squad, committedSupply, armySupply);
     }
 
+    public static void commitmentReleased(Squad squad, CommitmentRelease release) {
+        SquadDecisionSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onCommitmentReleased(squad, release);
+    }
+
     public static void moveOutEvaluated(Squad squad, int moveOutThreshold, int squadStrength) {
         SquadDecisionSink current = sink;
         if (current == null) {

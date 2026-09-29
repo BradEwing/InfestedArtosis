@@ -145,6 +145,12 @@ public interface SquadDecisionSink {
     void onStalemateCommit(Squad squad, int committedSupply, int armySupply);
 
     /**
+     * An air squad in FIGHT took a RETREAT verdict its engage commitment did not hold against, with the term that
+     * let it through, NONE when no commitment was armed.
+     */
+    void onCommitmentReleased(Squad squad, CommitmentRelease release);
+
+    /**
      * A fight squad's strength was compared against its move out threshold, in the threshold's units: air
      * combat units for an air squad, BWAPI half-supply for a ground squad.
      */

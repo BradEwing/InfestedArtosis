@@ -1,6 +1,7 @@
 package unit.squad;
 
 import bwapi.UnitType;
+import telemetry.CommitmentRelease;
 import unit.managed.ManagedUnit;
 import unit.squad.horizon.HorizonCombatSimulator;
 import util.Time;
@@ -122,6 +123,45 @@ public class AirSquad extends Squad {
      */
     static boolean retreatReleasesCommitment(double ratio, double engageThreshold, boolean staticAntiAir) {
         return staticAntiAir || engageThreshold <= 0 || ratio < engageThreshold * COMMITMENT_RELEASE_RATIO;
+    }
+
+    /**
+     * Why a RETREAT verdict the commitment did not hold against ended the armed engage commitment.
+     *
+     * @param currentFrame current frame
+     * @param ratio the verdict's overall strength ratio
+     * @param engageThreshold the engage threshold the verdict was judged against
+     * @param staticAntiAir whether the verdict sampled a building that can attack air
+     * @return the release term, or NONE when no commitment is armed
+     */
+    public CommitmentRelease commitmentRelease(int currentFrame, double ratio, double engageThreshold,
+                                               boolean staticAntiAir) {
+        if (commitmentStartFrame == 0) {
+            return CommitmentRelease.NONE;
+        }
+        return releaseTerm(staticAntiAir, ratio, engageThreshold,
+                currentFrame >= commitmentStartFrame + ENGAGE_COMMITMENT_FRAMES);
+    }
+
+    /**
+     * The term that let a RETREAT verdict through an armed commitment: static anti-air, then a ratio release (see
+     * {@link #retreatReleasesCommitment}), then an expired window, and otherwise the flock's hit point loss.
+     *
+     * @param staticAntiAir whether the verdict sampled a building that can attack air
+     * @param ratio the verdict's overall strength ratio
+     * @param engageThreshold the engage threshold the verdict was judged against
+     * @param expired whether the commitment's window has run out
+     * @return the release term
+     */
+    static CommitmentRelease releaseTerm(boolean staticAntiAir, double ratio, double engageThreshold,
+                                         boolean expired) {
+        if (staticAntiAir) {
+            return CommitmentRelease.STATIC_AA;
+        }
+        if (retreatReleasesCommitment(ratio, engageThreshold, false)) {
+            return CommitmentRelease.RATIO;
+        }
+        return expired ? CommitmentRelease.EXPIRED : CommitmentRelease.HP;
     }
 
     /**

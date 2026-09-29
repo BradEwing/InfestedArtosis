@@ -64,6 +64,7 @@ final class SquadDecision {
     private int containStalemate = NOT_EVALUATED;
     private int stalemateCommitSupply = NOT_EVALUATED;
     private int stalemateCommitArmy = NOT_EVALUATED;
+    private CommitmentRelease commitmentRelease = CommitmentRelease.NONE;
 
     static int tristate(boolean value) {
         return value ? 1 : 0;

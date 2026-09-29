@@ -1572,13 +1572,18 @@ public class SquadManager {
             assignFightTargets(squad, collapseFighters(managedFighters, squad.getCollapse()), false);
             return;
         }
-        if (commitmentMayHold(squad.getStatus(), result, squad.isAirSquad(), ratio, engageThreshold,
-                samplesStaticAntiAir(snapshot))
+        boolean staticAntiAir = samplesStaticAntiAir(snapshot);
+        if (commitmentMayHold(squad.getStatus(), result, squad.isAirSquad(), ratio, engageThreshold, staticAntiAir)
                 && ((AirSquad) squad).engageCommitmentHolds(now, flockHitPoints(managedFighters))) {
             SquadDecisions.pathTaken(squad, DecisionPath.AIR_COMMITMENT);
             SquadDecisions.lockSuppressed(squad, SquadLock.FIGHT);
             assignFightTargets(squad, managedFighters, false);
             return;
+        }
+        if (squad.isAirSquad() && squad.getStatus() == SquadStatus.FIGHT
+                && result == CombatSimulator.CombatResult.RETREAT) {
+            SquadDecisions.commitmentReleased(squad,
+                    ((AirSquad) squad).commitmentRelease(now, ratio, engageThreshold, staticAntiAir));
         }
 
         switch (result) {

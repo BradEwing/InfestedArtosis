@@ -3,10 +3,12 @@ package unit.squad;
 import bwapi.Position;
 import bwapi.UnitType;
 import org.junit.jupiter.api.Test;
+import telemetry.CommitmentRelease;
 import unit.squad.horizon.HorizonCombatSimulator;
 
 import java.util.Arrays;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static unit.squad.CombatSimulator.CombatResult.ADVANCE;
@@ -262,6 +264,39 @@ class AirSquadCommitmentTest {
         merged.armEngageCommitment(ARMED, FLOCK_HP);
 
         assertFalse(merged.engageCommitmentHolds(ARMED + 10, FLOCK_HP));
+    }
+
+    @Test
+    void aFlockWithNoArmedCommitmentReleasesNothing() {
+        AirSquad squad = new AirSquad();
+        squad.setStatus(SquadStatus.FIGHT);
+
+        assertEquals(CommitmentRelease.NONE, squad.commitmentRelease(ARMED + 10, 0.1, ENGAGE_THRESHOLD, true));
+    }
+
+    @Test
+    void staticAntiAirIsNamedBeforeALowRatio() {
+        assertEquals(CommitmentRelease.STATIC_AA,
+                committedFlock().commitmentRelease(ARMED + 10, 0.1, ENGAGE_THRESHOLD, true));
+    }
+
+    @Test
+    void aRatioBelowTheReleaseFractionIsNamedBeforeAnExpiredWindow() {
+        double belowRelease = ENGAGE_THRESHOLD * AirSquad.COMMITMENT_RELEASE_RATIO - 0.01;
+
+        assertEquals(CommitmentRelease.RATIO, committedFlock().commitmentRelease(
+                ARMED + AirSquad.ENGAGE_COMMITMENT_FRAMES, belowRelease, ENGAGE_THRESHOLD, false));
+        assertEquals(CommitmentRelease.RATIO, committedFlock().commitmentRelease(ARMED + 10, 1.2, 0, false));
+    }
+
+    @Test
+    void aRetreatAtTheReleaseFractionIsNamedByTheWindowOrTheHitPoints() {
+        double atRelease = ENGAGE_THRESHOLD * AirSquad.COMMITMENT_RELEASE_RATIO;
+
+        assertEquals(CommitmentRelease.EXPIRED, committedFlock().commitmentRelease(
+                ARMED + AirSquad.ENGAGE_COMMITMENT_FRAMES, atRelease, ENGAGE_THRESHOLD, false));
+        assertEquals(CommitmentRelease.HP, committedFlock().commitmentRelease(
+                ARMED + AirSquad.ENGAGE_COMMITMENT_FRAMES - 1, atRelease, ENGAGE_THRESHOLD, false));
     }
 
     private static HorizonCombatSimulator.UnitDebugEntry entry(UnitType type, double strength) {
