@@ -1583,7 +1583,8 @@ public class SquadManager {
         if (squad.isAirSquad() && squad.getStatus() == SquadStatus.FIGHT
                 && result == CombatSimulator.CombatResult.RETREAT) {
             SquadDecisions.commitmentReleased(squad,
-                    ((AirSquad) squad).commitmentRelease(now, ratio, engageThreshold, staticAntiAir));
+                    ((AirSquad) squad).commitmentRelease(now, flockHitPoints(managedFighters), ratio,
+                            engageThreshold, staticAntiAir));
         }
 
         switch (result) {

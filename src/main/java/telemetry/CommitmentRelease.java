@@ -28,6 +28,11 @@ public enum CommitmentRelease {
     HP,
 
     /**
+     * The flock held no hit points the commitment measures, so it had nothing to hold.
+     */
+    EMPTY_FLOCK,
+
+    /**
      * No armed commitment was released on this row.
      */
     NONE

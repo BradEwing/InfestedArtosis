@@ -104,11 +104,16 @@ public class AirSquad extends Squad {
             return false;
         }
         commitmentPeakHitPoints = Math.max(commitmentPeakHitPoints, flockHitPoints);
-        if (commitmentPeakHitPoints <= 0) {
-            return false;
-        }
-        double lost = (double) (commitmentPeakHitPoints - flockHitPoints) / commitmentPeakHitPoints;
-        return lost < COMMITMENT_HP_LOSS_THRESHOLD;
+        return commitmentPeakHitPoints > 0 && !hitPointsLost(commitmentPeakHitPoints, flockHitPoints);
+    }
+
+    /**
+     * @param peakHitPoints the peak hit points the flock held since the commitment was armed, above zero
+     * @param flockHitPoints summed hit points of the flock on this frame
+     * @return true if the flock has lost at least {@link #COMMITMENT_HP_LOSS_THRESHOLD} of its peak hit points
+     */
+    static boolean hitPointsLost(int peakHitPoints, int flockHitPoints) {
+        return (double) (peakHitPoints - flockHitPoints) / peakHitPoints >= COMMITMENT_HP_LOSS_THRESHOLD;
     }
 
     /**
@@ -129,39 +134,50 @@ public class AirSquad extends Squad {
      * Why a RETREAT verdict the commitment did not hold against ended the armed engage commitment.
      *
      * @param currentFrame current frame
+     * @param flockHitPoints summed hit points of the flock on this frame
      * @param ratio the verdict's overall strength ratio
      * @param engageThreshold the engage threshold the verdict was judged against
      * @param staticAntiAir whether the verdict sampled a building that can attack air
      * @return the release term, or NONE when no commitment is armed
      */
-    public CommitmentRelease commitmentRelease(int currentFrame, double ratio, double engageThreshold,
-                                               boolean staticAntiAir) {
+    public CommitmentRelease commitmentRelease(int currentFrame, int flockHitPoints, double ratio,
+                                               double engageThreshold, boolean staticAntiAir) {
         if (commitmentStartFrame == 0) {
             return CommitmentRelease.NONE;
         }
         return releaseTerm(staticAntiAir, ratio, engageThreshold,
-                currentFrame >= commitmentStartFrame + ENGAGE_COMMITMENT_FRAMES);
+                currentFrame >= commitmentStartFrame + ENGAGE_COMMITMENT_FRAMES,
+                Math.max(commitmentPeakHitPoints, flockHitPoints), flockHitPoints);
     }
 
     /**
      * The term that let a RETREAT verdict through an armed commitment: static anti-air, then a ratio release (see
-     * {@link #retreatReleasesCommitment}), then an expired window, and otherwise the flock's hit point loss.
+     * {@link #retreatReleasesCommitment}), then an expired window, then an empty flock, then the flock's hit point
+     * loss (see {@link #hitPointsLost}).
      *
      * @param staticAntiAir whether the verdict sampled a building that can attack air
      * @param ratio the verdict's overall strength ratio
      * @param engageThreshold the engage threshold the verdict was judged against
      * @param expired whether the commitment's window has run out
-     * @return the release term
+     * @param peakHitPoints the peak hit points the flock held since the commitment was armed
+     * @param flockHitPoints summed hit points of the flock on this frame
+     * @return the release term, NONE when none of them applies
      */
     static CommitmentRelease releaseTerm(boolean staticAntiAir, double ratio, double engageThreshold,
-                                         boolean expired) {
+                                         boolean expired, int peakHitPoints, int flockHitPoints) {
         if (staticAntiAir) {
             return CommitmentRelease.STATIC_AA;
         }
         if (retreatReleasesCommitment(ratio, engageThreshold, false)) {
             return CommitmentRelease.RATIO;
         }
-        return expired ? CommitmentRelease.EXPIRED : CommitmentRelease.HP;
+        if (expired) {
+            return CommitmentRelease.EXPIRED;
+        }
+        if (peakHitPoints <= 0) {
+            return CommitmentRelease.EMPTY_FLOCK;
+        }
+        return hitPointsLost(peakHitPoints, flockHitPoints) ? CommitmentRelease.HP : CommitmentRelease.NONE;
     }
 
     /**

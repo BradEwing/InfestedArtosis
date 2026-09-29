@@ -271,13 +271,24 @@ class AirSquadCommitmentTest {
         AirSquad squad = new AirSquad();
         squad.setStatus(SquadStatus.FIGHT);
 
-        assertEquals(CommitmentRelease.NONE, squad.commitmentRelease(ARMED + 10, 0.1, ENGAGE_THRESHOLD, true));
+        assertEquals(CommitmentRelease.NONE,
+                squad.commitmentRelease(ARMED + 10, FLOCK_HP, 0.1, ENGAGE_THRESHOLD, true));
+    }
+
+    @Test
+    void aBarredEpisodeReleasesNothing() {
+        AirSquad squad = committedFlock();
+        squad.barEngageCommitment();
+        squad.armEngageCommitment(ARMED + 5, FLOCK_HP);
+
+        assertEquals(CommitmentRelease.NONE,
+                squad.commitmentRelease(ARMED + 10, FLOCK_HP, 0.1, ENGAGE_THRESHOLD, true));
     }
 
     @Test
     void staticAntiAirIsNamedBeforeALowRatio() {
         assertEquals(CommitmentRelease.STATIC_AA,
-                committedFlock().commitmentRelease(ARMED + 10, 0.1, ENGAGE_THRESHOLD, true));
+                committedFlock().commitmentRelease(ARMED + 10, FLOCK_HP, 0.1, ENGAGE_THRESHOLD, true));
     }
 
     @Test
@@ -285,18 +296,58 @@ class AirSquadCommitmentTest {
         double belowRelease = ENGAGE_THRESHOLD * AirSquad.COMMITMENT_RELEASE_RATIO - 0.01;
 
         assertEquals(CommitmentRelease.RATIO, committedFlock().commitmentRelease(
-                ARMED + AirSquad.ENGAGE_COMMITMENT_FRAMES, belowRelease, ENGAGE_THRESHOLD, false));
-        assertEquals(CommitmentRelease.RATIO, committedFlock().commitmentRelease(ARMED + 10, 1.2, 0, false));
+                ARMED + AirSquad.ENGAGE_COMMITMENT_FRAMES, FLOCK_HP, belowRelease, ENGAGE_THRESHOLD, false));
+        assertEquals(CommitmentRelease.RATIO,
+                committedFlock().commitmentRelease(ARMED + 10, FLOCK_HP, 1.2, 0, false));
     }
 
     @Test
-    void aRetreatAtTheReleaseFractionIsNamedByTheWindowOrTheHitPoints() {
+    void aRetreatAtTheReleaseFractionIsNamedByTheWindowOrTheMeasuredHitPointLoss() {
         double atRelease = ENGAGE_THRESHOLD * AirSquad.COMMITMENT_RELEASE_RATIO;
+        int lossAtThreshold = (int) Math.ceil(FLOCK_HP * AirSquad.COMMITMENT_HP_LOSS_THRESHOLD);
 
         assertEquals(CommitmentRelease.EXPIRED, committedFlock().commitmentRelease(
-                ARMED + AirSquad.ENGAGE_COMMITMENT_FRAMES, atRelease, ENGAGE_THRESHOLD, false));
+                ARMED + AirSquad.ENGAGE_COMMITMENT_FRAMES, FLOCK_HP, atRelease, ENGAGE_THRESHOLD, false));
         assertEquals(CommitmentRelease.HP, committedFlock().commitmentRelease(
-                ARMED + AirSquad.ENGAGE_COMMITMENT_FRAMES - 1, atRelease, ENGAGE_THRESHOLD, false));
+                ARMED + 10, FLOCK_HP - lossAtThreshold, atRelease, ENGAGE_THRESHOLD, false));
+        assertEquals(CommitmentRelease.NONE, committedFlock().commitmentRelease(
+                ARMED + 10, FLOCK_HP - lossAtThreshold + 1, atRelease, ENGAGE_THRESHOLD, false));
+    }
+
+    @Test
+    void aFlockWithNoMeasuredHitPointsIsNamedEmptyNotAHitPointLoss() {
+        AirSquad squad = new AirSquad();
+        squad.setStatus(SquadStatus.FIGHT);
+        squad.armEngageCommitment(ARMED, 0);
+        double atRelease = ENGAGE_THRESHOLD * AirSquad.COMMITMENT_RELEASE_RATIO;
+
+        assertFalse(squad.engageCommitmentHolds(ARMED + 10, 0));
+        assertEquals(CommitmentRelease.EMPTY_FLOCK,
+                squad.commitmentRelease(ARMED + 10, 0, atRelease, ENGAGE_THRESHOLD, false));
+    }
+
+    @Test
+    void anArmedCommitmentThatDeclinesARetreatAlwaysNamesTheTerm() {
+        int window = AirSquad.ENGAGE_COMMITMENT_FRAMES;
+        int[] frames = {ARMED + 1, ARMED + window - 1, ARMED + window};
+        int[] hitPoints = {FLOCK_HP, 1081, 1080, 600, 0};
+        double[] ratios = {0.1, ENGAGE_THRESHOLD * AirSquad.COMMITMENT_RELEASE_RATIO, 1.4};
+        boolean[] staticReads = {false, true};
+        for (int frame : frames) {
+            for (int hp : hitPoints) {
+                for (double ratio : ratios) {
+                    for (boolean staticAntiAir : staticReads) {
+                        AirSquad squad = committedFlock();
+                        CommitmentRelease release = squad.commitmentRelease(frame, hp, ratio, ENGAGE_THRESHOLD,
+                                staticAntiAir);
+                        boolean held = SquadManager.commitmentMayHold(SquadStatus.FIGHT, RETREAT, true, ratio,
+                                ENGAGE_THRESHOLD, staticAntiAir) && squad.engageCommitmentHolds(frame, hp);
+                        assertEquals(held, release == CommitmentRelease.NONE,
+                                frame + ":" + hp + ":" + ratio + ":" + staticAntiAir);
+                    }
+                }
+            }
+        }
     }
 
     private static HorizonCombatSimulator.UnitDebugEntry entry(UnitType type, double strength) {
