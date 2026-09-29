@@ -1992,8 +1992,8 @@ public class SquadManager {
     }
 
     /**
-     * The retreat target of every member of an air squad, one point shared by all, see
-     * {@link AirFlock#retreatTargets}. Enemy buildings count only when they are hostile.
+     * The retreat target of every member of an air squad, one point shared by all but a far member whose path to it
+     * runs through an enemy, see {@link AirFlock#retreatTargets}. Enemy buildings count only when they are hostile.
      *
      * @param squad air squad
      * @return targets by unit id, null with no enemy near the flock, so every member falls back to the rally point

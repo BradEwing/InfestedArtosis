@@ -71,6 +71,92 @@ class AirFlockTest {
     }
 
     @Test
+    void aFarMemberBeyondTheEnemyFleesOnItsOwnInsteadOfCrossingIt() {
+        Map<Integer, Position> members = flock(new Position(1000, 1000), new Position(1040, 1000),
+                new Position(1000, 1040), new Position(1040, 1040), new Position(1000, 1600));
+        List<Position> enemies = Collections.singletonList(new Position(1000, 1250));
+
+        Map<Integer, Position> targets = AirFlock.retreatTargets(members, enemies, MAP, MAP);
+
+        Position shared = targets.get(1);
+        Position straggler = members.get(5);
+        assertNotNull(shared);
+        assertTrue(straggler.getDistance(AirFlock.anchor(members)) > AirFlock.REGROUP_RADIUS);
+        assertTrue(AirFlock.pathThroughEnemy(straggler, shared, enemies));
+        for (int id = 1; id <= 4; id++) {
+            assertEquals(shared, targets.get(id));
+        }
+        Position own = targets.get(5);
+        assertNotEquals(shared, own);
+        assertFalse(AirFlock.pathThroughEnemy(straggler, own, enemies));
+        assertTrue(own.getY() > straggler.getY());
+    }
+
+    @Test
+    void aFarMemberWhosePathToTheSharedPointIsBlockedRegroupsOnTheAnchorWhenThatPathIsClear() {
+        Map<Integer, Position> members = flock(new Position(1000, 1000), new Position(1040, 1000),
+                new Position(1000, 1040), new Position(1040, 1040), new Position(1600, 700));
+        List<Position> enemies = Arrays.asList(new Position(1000, 1200), new Position(1350, 480));
+
+        Map<Integer, Position> targets = AirFlock.retreatTargets(members, enemies, MAP, MAP);
+
+        Position shared = targets.get(1);
+        Position straggler = members.get(5);
+        Position anchor = AirFlock.anchor(members);
+        assertTrue(AirFlock.pathThroughEnemy(straggler, shared, enemies));
+        assertFalse(AirFlock.pathThroughEnemy(straggler, anchor, enemies));
+        assertEquals(anchor, targets.get(5));
+    }
+
+    @Test
+    void aMemberWithinTheRegroupRadiusKeepsTheSharedPointEvenAcrossAnEnemy() {
+        Position anchor = new Position(1000, 1000);
+        Position member = new Position(1000, 1150);
+        Position shared = new Position(1000, 600);
+        List<Position> enemies = Collections.singletonList(new Position(1000, 900));
+        assertTrue(AirFlock.pathThroughEnemy(member, shared, enemies));
+
+        assertEquals(shared, AirFlock.memberRetreatTarget(member, anchor, shared, enemies, MAP, MAP));
+    }
+
+    @Test
+    void aFarMemberWithAClearPathKeepsTheSharedPoint() {
+        Position anchor = new Position(1000, 1000);
+        Position member = new Position(1400, 1000);
+        Position shared = new Position(1000, 600);
+        List<Position> enemies = Collections.singletonList(new Position(1000, 1300));
+
+        assertEquals(shared, AirFlock.memberRetreatTarget(member, anchor, shared, enemies, MAP, MAP));
+    }
+
+    @Test
+    void onlyAnEnemyAheadWithinTheClearanceRunsThePathThroughIt() {
+        Position from = new Position(1000, 1000);
+        Position to = new Position(1000, 500);
+        int clearance = AirFlock.RETREAT_PATH_CLEARANCE;
+
+        assertTrue(AirFlock.pathThroughEnemy(from, to,
+                Collections.singletonList(new Position(1000 + clearance - 1, 800))));
+        assertFalse(AirFlock.pathThroughEnemy(from, to,
+                Collections.singletonList(new Position(1000 + clearance + 1, 800))));
+        assertFalse(AirFlock.pathThroughEnemy(from, to, Collections.singletonList(new Position(1000, 1050))));
+        assertFalse(AirFlock.pathThroughEnemy(from, to, Collections.singletonList(new Position(1050, 1000))));
+        assertTrue(AirFlock.pathThroughEnemy(from, to, Collections.singletonList(new Position(1000, 400))));
+        assertFalse(AirFlock.pathThroughEnemy(from, from, Collections.singletonList(new Position(1000, 1000))));
+    }
+
+    @Test
+    void aFarMemberWithNoWayOutOfItsOwnRegroupsOnTheAnchor() {
+        Position anchor = new Position(1000, 1000);
+        Position member = new Position(1000, 1600);
+        Position shared = new Position(1000, 400);
+        List<Position> enemies = Arrays.asList(new Position(1000, 1350), new Position(1000, 1850));
+        assertNull(AirFlock.fleePoint(member, shared, enemies, MAP, MAP));
+
+        assertEquals(anchor, AirFlock.memberRetreatTarget(member, anchor, shared, enemies, MAP, MAP));
+    }
+
+    @Test
     void theRegroupingCountIsNotReportedInRetreat() {
         Set<Integer> regrouping = new HashSet<>(Arrays.asList(3, 4));
 

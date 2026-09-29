@@ -18,7 +18,9 @@ import java.util.Set;
  * not drag it away from the rest of the flock. A member farther than {@link #REGROUP_RADIUS} from the anchor
  * regroups on it before taking a new target or strike point, and keeps regrouping until it is back within
  * {@link #REGROUP_JOIN_RADIUS}. A regrouping member keeps attacking a target already within its weapon range, see
- * {@link #keepsTarget}. A retreating flock flees to one shared point, away from every enemy near any of its members.
+ * {@link #keepsTarget}. A retreating flock flees to one shared point, away from every enemy near any of its members;
+ * a member beyond {@link #REGROUP_RADIUS} whose straight path to that point runs through an enemy takes the anchor or
+ * a flee point of its own instead, see {@link #memberRetreatTarget}.
  */
 public final class AirFlock {
 
@@ -30,6 +32,8 @@ public final class AirFlock {
     static final int RETREAT_SCAN_RADIUS = 256;
     /** Tuning value: pixels past the flock's leading member to the flock's retreat point. */
     static final int RETREAT_FLEE_DISTANCE = 256;
+    /** Tuning value: pixels from an enemy ahead within which a straight retreat path counts as running through it. */
+    static final int RETREAT_PATH_CLEARANCE = 160;
 
     private AirFlock() {
     }
@@ -124,8 +128,9 @@ public final class AirFlock {
     }
 
     /**
-     * The retreat target of every member of a retreating flock: the one {@link #retreatPoint} of its anchor, the
-     * same for every member, or null for every member with no enemy near the flock.
+     * The retreat target of every member of a retreating flock: the one {@link #retreatPoint} of its anchor, shared
+     * by every member except a far member whose path to it runs through an enemy, see {@link #memberRetreatTarget},
+     * or null for every member with no enemy near the flock.
      *
      * @param members member positions by unit id
      * @param enemies enemy positions
@@ -135,12 +140,99 @@ public final class AirFlock {
      */
     public static Map<Integer, Position> retreatTargets(Map<Integer, Position> members, Collection<Position> enemies,
                                                         int mapWidth, int mapHeight) {
-        Position point = retreatPoint(anchor(members), members.values(), enemies, mapWidth, mapHeight);
+        Position anchor = anchor(members);
+        Position point = retreatPoint(anchor, members.values(), enemies, mapWidth, mapHeight);
         Map<Integer, Position> targets = new HashMap<>();
-        for (Integer id : members.keySet()) {
-            targets.put(id, point);
+        for (Map.Entry<Integer, Position> entry : members.entrySet()) {
+            targets.put(entry.getKey(), point == null ? null
+                    : memberRetreatTarget(entry.getValue(), anchor, point, enemies, mapWidth, mapHeight));
         }
         return targets;
+    }
+
+    /**
+     * Where one member of a retreating flock flees. A member within {@link #REGROUP_RADIUS} of the anchor, or one
+     * whose straight path to the shared point runs through no enemy, see {@link #pathThroughEnemy}, takes the shared
+     * point. A farther member takes the anchor when its path there runs through no enemy, and otherwise its own
+     * {@link #fleePoint}, or the anchor when it has none.
+     *
+     * @param member the member's position
+     * @param anchor the flock's anchor
+     * @param shared the flock's shared retreat point
+     * @param enemies enemy positions
+     * @param mapWidth map width in pixels
+     * @param mapHeight map height in pixels
+     * @return the member's retreat target
+     */
+    public static Position memberRetreatTarget(Position member, Position anchor, Position shared,
+                                               Collection<Position> enemies, int mapWidth, int mapHeight) {
+        if (member.getDistance(anchor) <= REGROUP_RADIUS || !pathThroughEnemy(member, shared, enemies)) {
+            return shared;
+        }
+        if (!pathThroughEnemy(member, anchor, enemies)) {
+            return anchor;
+        }
+        Position flee = fleePoint(member, shared, enemies, mapWidth, mapHeight);
+        return flee != null ? flee : anchor;
+    }
+
+    /**
+     * Whether a straight flight runs through an enemy: some enemy ahead of the start, past it along the flight,
+     * lies within {@link #RETREAT_PATH_CLEARANCE} of the path. An enemy behind the start, or level with it, does not
+     * count, so fleeing directly away from an enemy close by never runs through it.
+     *
+     * @param from the start of the flight
+     * @param to the end of the flight
+     * @param enemies enemy positions
+     * @return true when an enemy ahead lies within the clearance of the path
+     */
+    public static boolean pathThroughEnemy(Position from, Position to, Collection<Position> enemies) {
+        double dx = to.getX() - from.getX();
+        double dy = to.getY() - from.getY();
+        double lengthSquared = dx * dx + dy * dy;
+        if (lengthSquared == 0) {
+            return false;
+        }
+        double clearanceSquared = (double) RETREAT_PATH_CLEARANCE * RETREAT_PATH_CLEARANCE;
+        for (Position enemy : enemies) {
+            double ex = enemy.getX() - from.getX();
+            double ey = enemy.getY() - from.getY();
+            double along = (ex * dx + ey * dy) / lengthSquared;
+            if (along <= 0) {
+                continue;
+            }
+            double t = Math.min(along, 1);
+            double offX = ex - t * dx;
+            double offY = ey - t * dy;
+            if (offX * offX + offY * offY < clearanceSquared) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * A member's own flee point: directly away from the summed offsets of every enemy within
+     * {@link #RETREAT_SCAN_RADIUS} of it or across its path to the shared point, {@link #RETREAT_FLEE_DISTANCE} from
+     * it, kept inside the map.
+     *
+     * @param member the member's position
+     * @param shared the flock's shared retreat point
+     * @param enemies enemy positions
+     * @param mapWidth map width in pixels
+     * @param mapHeight map height in pixels
+     * @return the flee point, or null with no such enemy or no direction away from them
+     */
+    public static Position fleePoint(Position member, Position shared, Collection<Position> enemies,
+                                     int mapWidth, int mapHeight) {
+        List<Position> threats = new ArrayList<>();
+        for (Position enemy : enemies) {
+            boolean near = member.getDistance(enemy) <= RETREAT_SCAN_RADIUS;
+            if (near || pathThroughEnemy(member, shared, Collections.singletonList(enemy))) {
+                threats.add(enemy);
+            }
+        }
+        return awayFrom(member, Collections.singletonList(member), threats, mapWidth, mapHeight);
     }
 
     /**
@@ -162,19 +254,25 @@ public final class AirFlock {
         if (anchor == null) {
             return null;
         }
+        List<Position> near = new ArrayList<>();
+        for (Position enemy : enemies) {
+            if (nearAny(enemy, members, RETREAT_SCAN_RADIUS)) {
+                near.add(enemy);
+            }
+        }
+        return awayFrom(anchor, members, near, mapWidth, mapHeight);
+    }
+
+    private static Position awayFrom(Position anchor, Collection<Position> members, Collection<Position> threats,
+                                     int mapWidth, int mapHeight) {
         double sumDx = 0;
         double sumDy = 0;
-        boolean found = false;
-        for (Position enemy : enemies) {
-            if (!nearAny(enemy, members, RETREAT_SCAN_RADIUS)) {
-                continue;
-            }
-            found = true;
-            sumDx += enemy.getX() - anchor.getX();
-            sumDy += enemy.getY() - anchor.getY();
+        for (Position threat : threats) {
+            sumDx += threat.getX() - anchor.getX();
+            sumDy += threat.getY() - anchor.getY();
         }
         double length = Math.sqrt(sumDx * sumDx + sumDy * sumDy);
-        if (!found || length == 0) {
+        if (threats.isEmpty() || length == 0) {
             return null;
         }
         double dirX = -sumDx / length;
