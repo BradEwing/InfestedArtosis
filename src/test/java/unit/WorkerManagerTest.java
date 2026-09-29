@@ -34,6 +34,14 @@ class WorkerManagerTest {
     }
 
     @Test
+    void aDronePulledOffGasIsLeftAloneForTheCooldown() {
+        int pulledAt = 5000;
+        assertTrue(WorkerManager.gasPullCoolingDown(pulledAt, pulledAt));
+        assertTrue(WorkerManager.gasPullCoolingDown(pulledAt + WorkerManager.GAS_PULL_COOLDOWN - 1, pulledAt));
+        assertFalse(WorkerManager.gasPullCoolingDown(pulledAt + WorkerManager.GAS_PULL_COOLDOWN, pulledAt));
+    }
+
+    @Test
     void aMineralDeficitIsNotAGasSurplus() {
         assertFalse(WorkerManager.shouldCutGasHarvesting(-75, 116, NO_QUEUED_GAS));
         assertFalse(WorkerManager.shouldCutGasHarvesting(-500, 100, NO_QUEUED_GAS));

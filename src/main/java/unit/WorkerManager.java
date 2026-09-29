@@ -54,6 +54,11 @@ public class WorkerManager {
     // Floor applied on the mineral surplus path, which mineral income already vouches for
     static final int NO_MINERAL_FLOOR = 0;
 
+    // Frames a drone pulled off gas is left alone while its order catches up with the mineral command
+    static final int GAS_PULL_COOLDOWN = 48;
+
+    private final HashMap<ManagedUnit, Integer> gasPullFrames = new HashMap<>();
+
     public WorkerManager(Game game, GameState gameState) {
         this.game = game;
         this.gameState = gameState;
@@ -673,25 +678,38 @@ public class WorkerManager {
     }
 
     /**
-     * Cuts gas harvesting when gas is floating.
-     * Reassigns gas workers to maintain proper mineral/gas balance.
-     */
-    /**
      * Moves every drone off gas: the drones assigned to a geyser, and any other gatherer whose
-     * order still heads it to a geyser.
+     * order still heads it to a geyser. A gatherer pulled by its order is not pulled again for
+     * {@link #GAS_PULL_COOLDOWN} frames, so an order that has not yet caught up with the mineral
+     * command does not re-pull the drone every frame.
      */
     private void cutGasHarvesting() {
+        int frame = game.getFrameCount();
+        gasPullFrames.values().removeIf(pulledAt -> !gasPullCoolingDown(frame, pulledAt));
+
         HashSet<ManagedUnit> geyserWorkers = new HashSet<>(gasGatherers);
         for (ManagedUnit gatherer: gatherers) {
-            if (headsToGas(gatherer.getUnit().getOrder())) {
+            if (!gasPullFrames.containsKey(gatherer) && headsToGas(gatherer.getUnit().getOrder())) {
                 geyserWorkers.add(gatherer);
             }
         }
 
         for (ManagedUnit worker: geyserWorkers) {
+            gasPullFrames.put(worker, frame);
             gameState.clearAssignments(worker);
             assignToMineral(worker);
         }
+    }
+
+    /**
+     * Whether a drone pulled off gas is still inside its {@link #GAS_PULL_COOLDOWN}.
+     *
+     * @param frame the current frame
+     * @param pulledAt the frame the drone was last pulled off gas
+     * @return true while fewer than {@link #GAS_PULL_COOLDOWN} frames have passed
+     */
+    static boolean gasPullCoolingDown(int frame, int pulledAt) {
+        return frame - pulledAt < GAS_PULL_COOLDOWN;
     }
 
     /**
