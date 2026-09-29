@@ -19,8 +19,9 @@ import java.util.Map;
  * RETREAT read under that pricing is carried by what the swarm leaves whole, such as sieged-tank splash. While the lock
  * holds the squad skips the containment arc, the containment timeout and retreat locks: SquadManager routes a locked
  * squad before any of them are read, see {@link #route}. A base under attack, a member standing in a Psionic Storm and a
- * RETREAT read of the swarm-priced sim release the lock, as does the swarm dropping below the horizon or expiring; see
- * {@link Release} for the reasons in the order they are checked.
+ * RETREAT read of the swarm-priced sim well enough under the engage threshold, see {@link #releasesOnRead}, release the
+ * lock, as does the swarm dropping below the horizon or expiring; see {@link Release} for the reasons in the order
+ * they are checked. A squad released on such a read commits to no swarm for {@link #RECOMMIT_COOLDOWN_FRAMES}.
  */
 @Getter
 public final class SwarmLock {
@@ -47,6 +48,21 @@ public final class SwarmLock {
      * {@link #baseThreatStands}, so a threat that flickers at a base does not commit and release a squad each time.
      */
     public static final int BASE_THREAT_HOLD_FRAMES = 48;
+
+    /**
+     * Tuning value: frames after a squad drops a lock on a RETREAT read of the sim before it may commit to any swarm,
+     * see {@link #mayCommit}. Two seconds of game time, long enough to outlast a read that sits either side of the
+     * engage threshold for a few frames, or a squad turning between two nearby swarms, and short beside a swarm's
+     * {@link #MIN_REMAINING_FRAMES}, so a squad the sim would send back in still gets most of the swarm's life.
+     */
+    public static final int RECOMMIT_COOLDOWN_FRAMES = 48;
+
+    /**
+     * Tuning value: the multiple of the engage threshold below which a RETREAT read releases a held lock, see
+     * {@link #releasesOnRead}. A held lock survives a read just under the threshold, so a squad that committed on a
+     * read just over it is not released on the next.
+     */
+    public static final double RELEASE_HYSTERESIS = 0.9;
 
     /**
      * Tuning value: gap in pixels from the squad centre to the footprint within which a melee squad commits. It
@@ -104,7 +120,7 @@ public final class SwarmLock {
         GONE,
         /** The swarm has fewer than {@link #MIN_REMAINING_FRAMES} left. */
         HORIZON,
-        /** The combat sim, pricing the swarm's cover, reads RETREAT. */
+        /** The combat sim, pricing the swarm's cover, reads RETREAT, see {@link #releasesOnRead}. */
         SIM_RETREAT,
         /**
          * The squad merged into one that took another source's lock, see {@link #droppedByMerge}. Not returned by
@@ -131,7 +147,8 @@ public final class SwarmLock {
      * @param remainingFrames frames left on the swarm
      * @param baseThreatened whether an enemy threatens one of our bases
      * @param inStorm whether a member stands in an active Psionic Storm
-     * @param simRetreat whether the combat sim, pricing the swarm's cover, reads RETREAT; false when it has not run
+     * @param simRetreat whether the combat sim's read, pricing the swarm's cover, refuses or releases the lock, see
+     *                   {@link #releasesOnRead}; false when it has not run
      * @return the reason, or {@link Release#NONE}
      */
     public static Release releaseReason(boolean melee, boolean swarmGone, int remainingFrames, boolean baseThreatened,
@@ -189,7 +206,7 @@ public final class SwarmLock {
      * {@link SwarmCover#coverShare}, may commit. A read with no cover, from a squad still too far from the footprint to
      * be priced into it, takes no part of its verdict from the swarm, so it commits only when its ratio reaches
      * {@link #UNCOVERED_COMMIT_MARGIN} times the engage threshold; a read just over the threshold is left to the
-     * ordinary fight path. A held lock is not read this way.
+     * ordinary fight path. A held lock is not read this way, see {@link #releasesOnRead}.
      *
      * @param eligible whether the squad has a swarm to commit to, see {@link #isEligible}
      * @param swarmCover the squad's cover share in the sim read, or a negative value when the read carried none
@@ -199,6 +216,38 @@ public final class SwarmLock {
      */
     public static boolean commitsOnRead(boolean eligible, double swarmCover, double ratio, double engageThreshold) {
         return eligible && (swarmCover > MIN_COMMIT_COVER || ratio >= engageThreshold * UNCOVERED_COMMIT_MARGIN);
+    }
+
+    /**
+     * Whether this frame's sim read stands against the lock as {@link Release#SIM_RETREAT}. An unlocked squad is
+     * refused on any RETREAT read. A held lock is released only on a RETREAT read whose ratio falls below
+     * {@link #RELEASE_HYSTERESIS} times the engage threshold.
+     *
+     * @param locked whether the squad holds a lock entering the frame
+     * @param simRetreat whether the combat sim, pricing the swarm's cover, reads RETREAT
+     * @param ratio the read's strength ratio, 0 when the read left no snapshot
+     * @param engageThreshold the ratio at which the read engages
+     * @return true when the read refuses the commit or releases the held lock
+     */
+    public static boolean releasesOnRead(boolean locked, boolean simRetreat, double ratio, double engageThreshold) {
+        if (!simRetreat) {
+            return false;
+        }
+        return !locked || ratio < engageThreshold * RELEASE_HYSTERESIS;
+    }
+
+    /**
+     * Whether an unlocked squad may commit to any swarm this frame: it has not dropped a lock on a RETREAT read of the
+     * sim within {@link #RECOMMIT_COOLDOWN_FRAMES}, so a sim that reads either side of its threshold cannot pull the
+     * squad in and out of one swarm, or between two, frame by frame.
+     *
+     * @param frame the current frame
+     * @param simRetreatReleaseFrame the frame the squad last dropped a lock on {@link Release#SIM_RETREAT}, or a
+     *                               negative value for never
+     * @return true when the squad may commit
+     */
+    public static boolean mayCommit(int frame, int simRetreatReleaseFrame) {
+        return simRetreatReleaseFrame < 0 || frame - simRetreatReleaseFrame >= RECOMMIT_COOLDOWN_FRAMES;
     }
 
     /**
@@ -332,19 +381,6 @@ public final class SwarmLock {
      */
     public static boolean droppedByMerge(SwarmLock source, SwarmLock merged) {
         return source != null && (merged == null || merged.getSwarmId() != source.getSwarmId());
-    }
-
-    /**
-     * Whether a squad may commit to a swarm it would otherwise be eligible for: not the swarm whose lock it last
-     * dropped on a RETREAT read of the sim, so a sim that reads either side of its threshold cannot pull the squad in
-     * and out of the swarm frame by frame. Any other swarm may still take it.
-     *
-     * @param swarmId the swarm's id
-     * @param refusedSwarmId the swarm whose lock the squad last dropped on {@link Release#SIM_RETREAT}, or -1
-     * @return true when the squad may commit to it
-     */
-    public static boolean mayRecommit(int swarmId, int refusedSwarmId) {
-        return swarmId != refusedSwarmId;
     }
 
     /**

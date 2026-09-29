@@ -1181,8 +1181,9 @@ public class SquadManager {
      * Takes, holds or drops a squad's swarm lock for this frame. See {@link SwarmLock}.
      *
      * <p>When nothing else stands against the lock, the combat sim runs, pricing the swarm's cover, and a RETREAT read
-     * refuses the commit or releases the held lock. A squad released that way does not recommit to the same swarm, see
-     * {@link SwarmLock#mayRecommit}. A commit on a read with no cover for the squad needs a margin over the engage
+     * refuses the commit, and one under the release hysteresis releases the held lock, see
+     * {@link SwarmLock#releasesOnRead}. A squad released that way commits to no swarm for the cooldown, see
+     * {@link SwarmLock#mayCommit}. A commit on a read with no cover for the squad needs a margin over the engage
      * threshold, see {@link SwarmLock#commitsOnRead}. The sim's result is kept for {@link #fightUnderSwarm}, so it runs
      * once a frame.
      *
@@ -1198,16 +1199,17 @@ public class SquadManager {
         }
 
         Position center = squad.getCenter();
+        int now = game.getFrameCount();
         boolean melee = !squad.isAirSquad() && SwarmLock.isMeleeSquad(squad.getComposition());
         DarkSwarm eligible = held == null && melee && center != null
-                ? SwarmLock.choose(swarms, center, commitEligibility(swarms, center, squad.getRefusedSwarmId()))
+                && SwarmLock.mayCommit(now, squad.getSimRetreatReleaseFrame())
+                ? SwarmLock.choose(swarms, center, swarmEligibility(swarms, center))
                 : null;
         DarkSwarm swarm = held != null ? gameState.getDarkSwarmTracker().getSwarm(held.getSwarmId()) : eligible;
         if (swarm == null && held == null) {
             return SwarmLock.Verdict.NONE;
         }
         int remaining = swarm != null ? swarm.getRemainingFrames() : 0;
-        int now = game.getFrameCount();
         boolean threatenedNow = baseThreatensContainment();
         boolean baseThreatened = SwarmLock.baseThreatStands(threatenedNow, now, swarmBaseThreatFrame);
         if (threatenedNow) {
@@ -1220,9 +1222,10 @@ public class SquadManager {
         if (SwarmLock.simDecides(held != null, commits, reason)) {
             swarmSimResult = squad.getCombatSimulator()
                     .evaluate(squad, getAdjacentSquads(squad, REINFORCEMENT_RADIUS), gameState);
-            reason = SwarmLock.releaseReason(melee, false, remaining, baseThreatened, inStorm,
-                    swarmSimResult == CombatSimulator.CombatResult.RETREAT);
             HorizonCombatSimulator.DebugSnapshot read = lastSnapshot(squad);
+            reason = SwarmLock.releaseReason(melee, false, remaining, baseThreatened, inStorm,
+                    SwarmLock.releasesOnRead(held != null, swarmSimResult == CombatSimulator.CombatResult.RETREAT,
+                            read != null ? read.getOverallRatio() : 0, read != null ? read.getEngageThreshold() : 0));
             commits = read != null && SwarmLock.commitsOnRead(commits, read.getSwarmCover(), read.getOverallRatio(),
                     read.getEngageThreshold());
         }
@@ -1235,7 +1238,7 @@ public class SquadManager {
         } else if (verdict == SwarmLock.Verdict.RELEASE) {
             squad.setSwarmLock(null);
             if (reason == SwarmLock.Release.SIM_RETREAT) {
-                squad.setRefusedSwarmId(held.getSwarmId());
+                squad.setSimRetreatReleaseFrame(now);
             }
             SquadDecisions.pathTaken(squad, DecisionPath.SWARM_EXPIRED);
             SquadDecisions.swarmEvaluated(squad, SwarmEvent.SWARM_EXPIRED, held.getSwarmId(), remaining, reason);
@@ -1268,18 +1271,6 @@ public class SquadManager {
             SquadDecisions.swarmEvaluated(squad, SwarmEvent.SWARM_ACTIVE, sampled.getId(),
                     sampled.getRemainingFrames(), SwarmLock.Release.NONE);
         }
-    }
-
-    /**
-     * For each swarm, whether a squad centred here may commit to it: it is eligible, see {@link #swarmEligibility},
-     * and it is not the swarm the squad last dropped on a RETREAT read of the sim, see {@link SwarmLock#mayRecommit}.
-     */
-    private List<Boolean> commitEligibility(List<DarkSwarm> swarms, Position center, int refusedSwarmId) {
-        List<Boolean> eligibility = swarmEligibility(swarms, center);
-        for (int i = 0; i < swarms.size(); i++) {
-            eligibility.set(i, eligibility.get(i) && SwarmLock.mayRecommit(swarms.get(i).getId(), refusedSwarmId));
-        }
-        return eligibility;
     }
 
     /**

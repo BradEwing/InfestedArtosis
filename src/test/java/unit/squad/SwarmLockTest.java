@@ -228,17 +228,65 @@ class SwarmLockTest {
     }
 
     @Test
-    void aSquadReleasedOnASimRetreatDoesNotRecommitToThatSwarmButMayTakeAnother() {
-        assertFalse(SwarmLock.mayRecommit(382, 382));
-        assertTrue(SwarmLock.mayRecommit(397, 382));
-        assertTrue(SwarmLock.mayRecommit(382, -1));
+    void aSquadReleasedOnASimRetreatCommitsToNoSwarmUntilTheCooldownRunsOut() {
+        int released = 29955;
+        int cooldown = SwarmLock.RECOMMIT_COOLDOWN_FRAMES;
 
-        Squad refused = new GroundSquad();
-        assertEquals(-1, refused.getRefusedSwarmId());
-        refused.setRefusedSwarmId(382);
+        assertTrue(SwarmLock.mayCommit(released, -1));
+        assertFalse(SwarmLock.mayCommit(released, released));
+        assertFalse(SwarmLock.mayCommit(released + 20, released));
+        assertFalse(SwarmLock.mayCommit(released + cooldown - 1, released));
+        assertTrue(SwarmLock.mayCommit(released + cooldown, released));
+    }
+
+    @Test
+    void theCooldownBarsTheRecommitsOfASquadTurningBetweenTwoNearbySwarms() {
+        int[][] releaseThenRecommit = {{29955, 29975}, {29981, 29988}, {29991, 29993}, {30005, 30008}, {30015, 30020}};
+
+        for (int[] pair : releaseThenRecommit) {
+            assertFalse(SwarmLock.mayCommit(pair[1], pair[0]));
+        }
+        assertTrue(SwarmLock.mayCommit(29955 + SwarmLock.RECOMMIT_COOLDOWN_FRAMES, 29955));
+    }
+
+    @Test
+    void aMergedSquadKeepsTheLatestSimRetreatReleaseOfItsSources() {
+        Squad early = new GroundSquad();
+        early.setSimRetreatReleaseFrame(29955);
+        Squad late = new GroundSquad();
+        late.setSimRetreatReleaseFrame(29981);
         Squad merged = new GroundSquad();
-        merged.inheritStateFrom(Arrays.asList(new GroundSquad(), refused));
-        assertEquals(382, merged.getRefusedSwarmId());
+
+        assertEquals(-1, new GroundSquad().getSimRetreatReleaseFrame());
+        merged.inheritStateFrom(Arrays.asList(late, new GroundSquad(), early));
+        assertEquals(29981, merged.getSimRetreatReleaseFrame());
+    }
+
+    @Test
+    void aHeldLockSurvivesARetreatReadUntilItFallsBelowTheReleaseHysteresis() {
+        double threshold = 1.44;
+        double release = threshold * SwarmLock.RELEASE_HYSTERESIS;
+
+        assertFalse(SwarmLock.releasesOnRead(true, true, 1.436, threshold));
+        assertFalse(SwarmLock.releasesOnRead(true, true, release, threshold));
+        assertTrue(SwarmLock.releasesOnRead(true, true, release - 0.001, threshold));
+        assertTrue(SwarmLock.releasesOnRead(true, true, 0, threshold));
+        assertFalse(SwarmLock.releasesOnRead(true, false, 0.5, threshold));
+
+        assertEquals(HOLD, SwarmLock.verdict(true, false, SwarmLock.releaseReason(true, false, 600, false, false,
+                SwarmLock.releasesOnRead(true, true, 1.41, threshold))));
+        assertEquals(RELEASE, SwarmLock.verdict(true, false, SwarmLock.releaseReason(true, false, 600, false, false,
+                SwarmLock.releasesOnRead(true, true, 1.20, threshold))));
+    }
+
+    @Test
+    void anUnlockedSquadIsRefusedOnAnyRetreatRead() {
+        double threshold = 1.44;
+
+        assertTrue(SwarmLock.releasesOnRead(false, true, 1.436, threshold));
+        assertFalse(SwarmLock.releasesOnRead(false, false, 1.45, threshold));
+        assertEquals(NONE, SwarmLock.verdict(false, true, SwarmLock.releaseReason(true, false, 600, false, false,
+                SwarmLock.releasesOnRead(false, true, 1.436, threshold))));
     }
 
     @Test

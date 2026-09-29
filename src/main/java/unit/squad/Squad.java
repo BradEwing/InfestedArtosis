@@ -63,10 +63,10 @@ public class Squad implements Comparable<Squad> {
     private RunbyState runbyState;
     private SwarmLock swarmLock;
     /**
-     * The swarm whose lock this squad last dropped on a RETREAT read of the sim, or -1; see
-     * {@link SwarmLock#mayRecommit}.
+     * The frame this squad last dropped a swarm lock on a RETREAT read of the sim, or -1; see
+     * {@link SwarmLock#mayCommit}.
      */
-    private int refusedSwarmId = -1;
+    private int simRetreatReleaseFrame = -1;
     private AirHarassState harassState;
     private int harassExitFrame = 0;
     private int harassExitEngageFrame = 0;
@@ -268,7 +268,7 @@ public class Squad implements Comparable<Squad> {
         Arc inheritedArc = null;
         RunbyState inheritedRunby = null;
         SwarmLock inheritedSwarmLock = null;
-        int inheritedRefusedSwarmId = -1;
+        int inheritedSimRetreatReleaseFrame = -1;
         AirHarassState inheritedHarass = null;
         int inheritedRadius = 0;
         CollapseEntryRun inheritedEntryRun = null;
@@ -284,9 +284,7 @@ public class Squad implements Comparable<Squad> {
             if (inheritedSwarmLock == null) {
                 inheritedSwarmLock = source.swarmLock;
             }
-            if (inheritedRefusedSwarmId < 0) {
-                inheritedRefusedSwarmId = source.refusedSwarmId;
-            }
+            inheritedSimRetreatReleaseFrame = Math.max(inheritedSimRetreatReleaseFrame, source.simRetreatReleaseFrame);
             if (inheritedHarass == null && source.status == SquadStatus.HARASS) {
                 inheritedHarass = source.harassState;
             }
@@ -331,7 +329,7 @@ public class Squad implements Comparable<Squad> {
         }
         this.commitFrame = earliestCommit;
         this.swarmLock = inheritedSwarmLock;
-        this.refusedSwarmId = inheritedRefusedSwarmId;
+        this.simRetreatReleaseFrame = inheritedSimRetreatReleaseFrame;
         this.collapse = mergedStatus == SquadStatus.FIGHT ? inheritedCollapse : null;
         if (mergedStatus != SquadStatus.FIGHT) {
             this.collapseCommitHeldUntilFrame = 0;
