@@ -1222,10 +1222,13 @@ public class SquadManager {
         if (SwarmLock.simDecides(held != null, commits, reason)) {
             swarmSimResult = squad.getCombatSimulator()
                     .evaluate(squad, getAdjacentSquads(squad, REINFORCEMENT_RADIUS), gameState);
-            HorizonCombatSimulator.DebugSnapshot read = lastSnapshot(squad);
+            HorizonCombatSimulator.DebugSnapshot snapshot = lastSnapshot(squad);
+            HorizonCombatSimulator.DebugSnapshot read = snapshot != null && snapshot.getCapturedFrame() == now
+                    ? snapshot : null;
             reason = SwarmLock.releaseReason(melee, false, remaining, baseThreatened, inStorm,
                     SwarmLock.releasesOnRead(held != null, swarmSimResult == CombatSimulator.CombatResult.RETREAT,
-                            read != null ? read.getOverallRatio() : 0, read != null ? read.getEngageThreshold() : 0));
+                            read != null ? read.getOverallRatio() : SwarmLock.NO_READ,
+                            read != null ? read.getEngageThreshold() : 0));
             commits = read != null && SwarmLock.commitsOnRead(commits, read.getSwarmCover(), read.getOverallRatio(),
                     read.getEngageThreshold());
         }

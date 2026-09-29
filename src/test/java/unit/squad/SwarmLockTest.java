@@ -272,6 +272,8 @@ class SwarmLockTest {
         assertTrue(SwarmLock.releasesOnRead(true, true, release - 0.001, threshold));
         assertTrue(SwarmLock.releasesOnRead(true, true, 0, threshold));
         assertFalse(SwarmLock.releasesOnRead(true, false, 0.5, threshold));
+        assertTrue(SwarmLock.releasesOnRead(true, true, SwarmLock.NO_READ, 0));
+        assertFalse(SwarmLock.releasesOnRead(true, false, SwarmLock.NO_READ, 0));
 
         assertEquals(HOLD, SwarmLock.verdict(true, false, SwarmLock.releaseReason(true, false, 600, false, false,
                 SwarmLock.releasesOnRead(true, true, 1.41, threshold))));

@@ -65,6 +65,12 @@ public final class SwarmLock {
     public static final double RELEASE_HYSTERESIS = 0.9;
 
     /**
+     * The ratio passed to {@link #releasesOnRead} when the sim left no snapshot this frame, which releases a held
+     * lock on a RETREAT read.
+     */
+    public static final double NO_READ = -1;
+
+    /**
      * Tuning value: gap in pixels from the squad centre to the footprint within which a melee squad commits. It
      * covers any containment arc, whose radius is capped at {@link ContainmentPushback#MAX_RADIUS}.
      */
@@ -221,11 +227,11 @@ public final class SwarmLock {
     /**
      * Whether this frame's sim read stands against the lock as {@link Release#SIM_RETREAT}. An unlocked squad is
      * refused on any RETREAT read. A held lock is released only on a RETREAT read whose ratio falls below
-     * {@link #RELEASE_HYSTERESIS} times the engage threshold.
+     * {@link #RELEASE_HYSTERESIS} times the engage threshold, or that left no snapshot this frame.
      *
      * @param locked whether the squad holds a lock entering the frame
      * @param simRetreat whether the combat sim, pricing the swarm's cover, reads RETREAT
-     * @param ratio the read's strength ratio, 0 when the read left no snapshot
+     * @param ratio the read's strength ratio, {@link #NO_READ} when the read left no snapshot this frame
      * @param engageThreshold the ratio at which the read engages
      * @return true when the read refuses the commit or releases the held lock
      */
@@ -233,7 +239,7 @@ public final class SwarmLock {
         if (!simRetreat) {
             return false;
         }
-        return !locked || ratio < engageThreshold * RELEASE_HYSTERESIS;
+        return !locked || ratio == NO_READ || ratio < engageThreshold * RELEASE_HYSTERESIS;
     }
 
     /**
