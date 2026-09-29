@@ -405,7 +405,30 @@ class BunkerPricingTest {
     }
 
     @Test
-    void aSquadInsideTheTaperedBandIsPricedAtItsFireWeight() {
+    void aFarBunkerLeavingTheSampleRadiusDoesNotStepTheNearBunkersGarrison() {
+        double edge = HorizonCombatSimulator.edgeOfFireRadius(GROUND_REACH);
+        Position center = rightOfBunker(BUNKER, GROUND_REACH);
+        Position justInside = new Position(center.getX() + (int) edge - 1, center.getY());
+        Position justOutside = new Position(center.getX() + (int) edge + 1, center.getY());
+        List<BunkerPricing.Leg> legs = standingAt(center);
+        BunkerPricing.Candidate nearWithFar = unmeasured(BUNKER, BunkerPricing.weight(BUNKER, center, legs,
+                GROUND_REACH));
+        BunkerPricing.Candidate far = unmeasured(justInside, BunkerPricing.weight(justInside, center,
+                Collections.singletonList(new BunkerPricing.Leg(center, justInside)), GROUND_REACH));
+        BunkerPricing.Candidate nearAlone = unmeasured(BUNKER, BunkerPricing.weight(BUNKER, center, legs,
+                GROUND_REACH));
+
+        BunkerPricing.allocate(Arrays.asList(nearWithFar, far), KNOWN_MARINES);
+        BunkerPricing.allocate(Collections.singletonList(nearAlone), KNOWN_MARINES);
+
+        assertEquals(0.0, BunkerPricing.weight(justOutside, center,
+                Collections.singletonList(new BunkerPricing.Leg(center, justOutside)), GROUND_REACH));
+        assertTrue(far.ground() + nearWithFar.ground() <= nearAlone.ground() * 1.01);
+        assertEquals(nearAlone.getOccupants(), nearWithFar.getOccupants(), 0.05);
+    }
+
+    @Test
+    void aSquadWellInsideTheSampleRadiusIsPricedAtItsFireWeight() {
         Position member = rightOfBunker(BUNKER, GROUND_REACH);
         List<BunkerPricing.Leg> legs = standingAt(member);
 

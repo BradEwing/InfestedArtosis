@@ -25,10 +25,11 @@ import java.util.Set;
  * {@link #APPROACH_FALLOFF} past it, and adds nothing beyond that. That weight is scaled down to nothing over the
  * last {@link #RADIUS_TAPER} of the radius out to which the simulator samples the Bunker from the squad centre.
  *
- * <p>Garrison: across the Bunkers one evaluation prices, the occupants never exceed the larger of the unseen infantry
- * known to be alive and the occupants the Bunkers' own fire has shown. A Bunker whose garrison was measured within
- * the trust window keeps its measured occupants; the rest of the pool is shared among the other Bunkers in
- * proportion to the occupants each would otherwise be priced at, and never above that.
+ * <p>Garrison: across the Bunkers one evaluation prices, the occupants, each weighed by its Bunker's weight, never
+ * exceed the larger of the unseen infantry known to be alive and the occupants the Bunkers' own fire has shown. A
+ * Bunker whose garrison was measured within the trust window keeps its measured occupants; the rest of the pool is
+ * shared among the other Bunkers in proportion to the occupants each would otherwise be priced at, and never above
+ * that.
  */
 final class BunkerPricing {
 
@@ -270,8 +271,9 @@ final class BunkerPricing {
 
     /**
      * Sets each candidate's occupants. Measured candidates keep their demand; the others share what the pool has left
-     * in proportion to their demand, never above it. The total never exceeds the larger of the pool and the measured
-     * occupants.
+     * in proportion to their demand, never above it. Each candidate draws on the pool at its demand times its fire
+     * weight, so a Bunker whose weight fades toward nothing gives its share back to the others as it fades. The
+     * weighted total never exceeds the larger of the pool and the weighted measured occupants.
      *
      * @param candidates the Bunkers this evaluation prices
      * @param pool unseen infantry known to be alive, see {@link #garrisonPool}
@@ -281,9 +283,9 @@ final class BunkerPricing {
         double unmeasured = 0;
         for (Candidate candidate : candidates) {
             if (candidate.measured) {
-                measured += candidate.demand;
+                measured += candidate.demand * candidate.fireWeight;
             } else {
-                unmeasured += candidate.demand;
+                unmeasured += candidate.demand * candidate.fireWeight;
             }
         }
         double available = Math.max(0, pool - measured);
