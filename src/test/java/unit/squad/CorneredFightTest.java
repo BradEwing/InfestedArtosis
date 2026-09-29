@@ -1,9 +1,12 @@
 package unit.squad;
 
 import org.junit.jupiter.api.Test;
+import telemetry.DecisionPath;
 import telemetry.RetreatRoute;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static unit.squad.CombatSimulator.CombatResult.ADVANCE;
 import static unit.squad.CombatSimulator.CombatResult.ENGAGE;
@@ -143,6 +146,21 @@ class CorneredFightTest {
             assertFalse(squad.corneredEngagePersisted(SquadManager.contestedHomeDefends(squad.getStatus(),
                     squad.getRetreatRoute(), RETREAT, true, ratio, 1.44), frame), "frame " + frame);
         }
+    }
+
+    @Test
+    void theTurnPathNamesACorneredEngageOrAContestedHomeDefendAndNothingElse() {
+        assertEquals(DecisionPath.CORNERED_ENGAGE, SquadManager.retreatTurnPath(SquadStatus.RETREAT,
+                RetreatRoute.CORNERED, ENGAGE, true, 1.5, 1.44));
+        assertEquals(DecisionPath.HOME_CONTESTED_DEFEND, SquadManager.retreatTurnPath(SquadStatus.RETREAT,
+                RetreatRoute.HOME_CONTESTED, ENGAGE, true, 1.5, 1.44));
+        assertEquals(DecisionPath.HOME_CONTESTED_DEFEND, SquadManager.retreatTurnPath(SquadStatus.RETREAT,
+                RetreatRoute.HOME_CONTESTED, RETREAT, true, 1.337, 1.44));
+        assertNull(SquadManager.retreatTurnPath(SquadStatus.RETREAT, RetreatRoute.CORNERED, RETREAT, true, 1.337,
+                1.44), "a cornered squad needs ENGAGE");
+        assertNull(SquadManager.retreatTurnPath(SquadStatus.RETREAT, RetreatRoute.HOME, ENGAGE, true, 1.5, 1.44));
+        assertNull(SquadManager.retreatTurnPath(SquadStatus.RETREAT, RetreatRoute.HOME_CONTESTED, RETREAT, true, 1.2,
+                1.44));
     }
 
     private static boolean contestedRead(SquadStatus status, RetreatRoute route, CombatSimulator.CombatResult result,

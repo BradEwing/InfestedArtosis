@@ -1540,13 +1540,9 @@ public class SquadManager {
                 ? DecisionPath.HARASS_EXIT_ENGAGE
                 : requestPath(noVisionMarch, result));
 
-        if (squad.isGroundSquad() && squad.corneredEngagePersisted(
-                corneredSquadFights(squad.getStatus(), squad.getRetreatRoute(), result)
-                        || contestedHomeDefends(squad.getStatus(), squad.getRetreatRoute(), result, enemyMeasured,
-                        ratio, engageThreshold), now)) {
-            DecisionPath turnPath = squad.getRetreatRoute() == RetreatRoute.HOME_CONTESTED
-                    ? DecisionPath.HOME_CONTESTED_DEFEND
-                    : DecisionPath.CORNERED_ENGAGE;
+        DecisionPath turnPath = retreatTurnPath(squad.getStatus(), squad.getRetreatRoute(), result, enemyMeasured,
+                ratio, engageThreshold);
+        if (squad.isGroundSquad() && squad.corneredEngagePersisted(turnPath != null, now)) {
             turnCorneredSquadToFight(squad, result, now);
             SquadDecisions.pathTaken(squad, turnPath);
             assignFightTargets(squad, managedFighters, true);
@@ -3958,6 +3954,30 @@ public class SquadManager {
     static boolean corneredSquadFights(SquadStatus status, RetreatRoute route, CombatSimulator.CombatResult result) {
         return status == SquadStatus.RETREAT && route == RetreatRoute.CORNERED
                 && result == CombatSimulator.CombatResult.ENGAGE;
+    }
+
+    /**
+     * The path a squad held in retreat takes if it turns to fight on this frame's read: CORNERED_ENGAGE for a cornered
+     * ENGAGE, see {@link #corneredSquadFights}, HOME_CONTESTED_DEFEND for a contested home to defend, see
+     * {@link #contestedHomeDefends}, and null when the read does not count toward a turn.
+     *
+     * @param status status the squad holds
+     * @param route route of the squad's last ground retreat plan
+     * @param result the sim's verdict this frame
+     * @param enemyMeasured whether the sim measured a real enemy this frame
+     * @param ratio the sim's overall strength ratio this frame
+     * @param engageThreshold the engage threshold the sim judged this frame's ratio against
+     * @return the turn's decision path, or null
+     */
+    static DecisionPath retreatTurnPath(SquadStatus status, RetreatRoute route, CombatSimulator.CombatResult result,
+                                        boolean enemyMeasured, double ratio, double engageThreshold) {
+        if (corneredSquadFights(status, route, result)) {
+            return DecisionPath.CORNERED_ENGAGE;
+        }
+        if (contestedHomeDefends(status, route, result, enemyMeasured, ratio, engageThreshold)) {
+            return DecisionPath.HOME_CONTESTED_DEFEND;
+        }
+        return null;
     }
 
     /**

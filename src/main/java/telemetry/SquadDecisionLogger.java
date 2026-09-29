@@ -89,7 +89,8 @@ import java.util.stream.Collectors;
  *
  * <p>retreat_route names the route of the ground retreat planned for the squad on the row's frame, see
  * {@link RetreatRoute}, and is NONE on a row of a frame that planned none. A CORNERED_ENGAGE decision_path marks a
- * squad that turned to fight because its last plan was CORNERED.
+ * squad that turned to fight because its last plan was CORNERED, and a HOME_CONTESTED_DEFEND decision_path one that
+ * turned to defend a home its last plan found contested.
  *
  * <p>Every row names the branch that decided the status it reports in decision_path. On a
  * LOCK_SUPPRESSED row that is the request the lock refused, so the suppression episodes a lock
