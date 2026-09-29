@@ -16,6 +16,7 @@ import macro.DroneRound;
 import macro.plan.BuilderDispatchDecision;
 import macro.plan.BuilderLossReason;
 import macro.plan.BuilderReading;
+import macro.plan.HatcheryRequestReason;
 import macro.plan.Plan;
 import macro.plan.PlanBlocker;
 import macro.plan.PlanCancelSource;
@@ -78,9 +79,17 @@ public class PlanEventLogger implements PlanEventSink {
     private static final int NO_STARVED_COUNT = -1;
 
     private static final String EVENT_RECURRING_CANCEL = "RECURRING_CANCEL";
+    private static final String EVENT_BANK_SAMPLE = "BANK_SAMPLE";
 
     /**
-     * 85 columns; readers that index by position rather than by name must match this order.
+     * Frames between two BANK_SAMPLE rows, about five seconds of game time. Frequent enough that
+     * the share of samples over the floating-minerals bar reads as a share of game time, and rare
+     * enough to add only a few hundred rows to a long game.
+     */
+    static final int BANK_SAMPLE_INTERVAL_FRAMES = 120;
+
+    /**
+     * 87 columns; readers that index by position rather than by name must match this order.
      * enemy_air, gas_gathered, enemy_barracks, the blocker mineral pair, the enemy ground pair,
      * yield_to_plan_id, the four macro hatchery gate columns and the four Hive tech gate columns
      * are trailing columns written by {@link #appendTrailing}, so every row shape keeps one width.
@@ -223,6 +232,18 @@ public class PlanEventLogger implements PlanEventSink {
      * measures them against. contain_period_start_frame is the start of the running contain period, which an
      * enemy break does not end, or -1 with none; it groups the contain-held rounds one period opened.
      * Those eight columns are set only on the two DRONE_ROUND rows.
+     * <p>
+     * hatchery_request_reason is the rule that asked for a Hatchery plan
+     * ({@link HatcheryRequestReason}), written on every row of that plan, the builder and
+     * build-ahead rows included, so an EXCESS_HATCHERY cancel carries the reason its plan was
+     * requested for. It is blank on other plans and on a Hatchery
+     * plan created outside the build order's expansion and macro hatchery paths.
+     * <p>
+     * BANK_SAMPLE rows are written every {@link #BANK_SAMPLE_INTERVAL_FRAMES} frames and leave
+     * every plan column empty. minerals and available_minerals are the bank at the sample, and
+     * floating_minerals_bar, set only on these rows, is the unreserved-mineral bar
+     * {@link GameState#isFloatingMinerals()} reads that frame. The bar is written before 5:00 too,
+     * when the rule cannot fire.
      */
     static final String PLAN_HEADER = "frame,time,event,plan_id,executor_unit_id,plan_type,item,from_state,"
             + "to_state,cancel_reason,cancel_source,blocker,blocked_frames,priority,frames_in_state,age_frames,"
@@ -240,8 +261,8 @@ public class PlanEventLogger implements PlanEventSink {
             + "geyser_base_x,geyser_base_y,geyser_initial_resources,extractor_completed_frame,"
             + "first_extractor_completed_frame,base_mineral_patches,map_mineral_patches,remaining_mineral_patches,"
             + "drone_round_reason,drone_round_drones,drone_round_size,contain_held_frames,drone_round_workers,"
-            + "drone_round_soft_cap,drone_round_hard_cap,contain_period_start_frame";
-
+            + "drone_round_soft_cap,drone_round_hard_cap,contain_period_start_frame,"
+            + "hatchery_request_reason,floating_minerals_bar";
     private static final String GAME_HEADER = "timestamp,is_winner,num_starting_locations,map_name,opponent_name,"
             + "opponent_race,opener,build_order,detected_strategies,frame_count";
 
@@ -277,6 +298,7 @@ public class PlanEventLogger implements PlanEventSink {
     private boolean disabled;
     private int currentFrame;
     private int lastFlushFrame;
+    private int lastBankSampleFrame = -BANK_SAMPLE_INTERVAL_FRAMES;
 
     public PlanEventLogger(Game game, GameState gameState, String openerName, int numStartingLocations) {
         this.game = game;
@@ -296,6 +318,10 @@ public class PlanEventLogger implements PlanEventSink {
 
         try {
             currentFrame = game.getFrameCount();
+            if (isBankSampleDue(currentFrame, lastBankSampleFrame)) {
+                buffer.add(bankSampleRow());
+                lastBankSampleFrame = currentFrame;
+            }
             if (currentFrame - lastFlushFrame >= FLUSH_INTERVAL_FRAMES) {
                 flush();
                 lastFlushFrame = currentFrame;
@@ -487,7 +513,7 @@ public class PlanEventLogger implements PlanEventSink {
             BuilderColumns builder = BuilderColumns.current(executorReading(holder));
             StringBuilder sb = planColumns(holder, EVENT_BUILD_AHEAD_YIELD, null, holder.getState(),
                     PlanBlocker.BUILD_AHEAD_SLOT_TAKEN, heldFrames, NO_STARVED_COUNT, builder.executor());
-            appendTrailing(sb, null, emergency, null, null, builderThreat(holder), null, builder);
+            appendPlanTrailing(sb, holder, null, emergency, builderThreat(holder), builder);
             buffer.add(sb.toString());
         } catch (Exception e) {
             disabled = true;
@@ -507,7 +533,7 @@ public class PlanEventLogger implements PlanEventSink {
         try {
             StringBuilder sb = planColumns(plan, EVENT_BLOCKER_DIVERT, null, plan.getState(),
                     PlanBlocker.NONE, 0, NO_STARVED_COUNT, executorReading(plan));
-            appendTrailing(sb, mineral, null, null, null, builderThreat(plan), null, BuilderColumns.BLANK);
+            appendPlanTrailing(sb, plan, mineral, null, builderThreat(plan), BuilderColumns.BLANK);
             buffer.add(sb.toString());
         } catch (Exception e) {
             disabled = true;
@@ -628,7 +654,7 @@ public class PlanEventLogger implements PlanEventSink {
             BuilderColumns builder = BuilderColumns.gateDecision(executorReading(plan), decision);
             StringBuilder sb = planColumns(plan, EVENT_BUILDER_DISPATCH_DECISION, null, plan.getState(),
                     PlanBlocker.NONE, 0, NO_STARVED_COUNT, builder.executor());
-            appendTrailing(sb, null, null, null, null, threat, null, builder);
+            appendPlanTrailing(sb, plan, null, null, threat, builder);
             buffer.add(sb.toString());
         } catch (Exception e) {
             disabled = true;
@@ -650,7 +676,7 @@ public class PlanEventLogger implements PlanEventSink {
             BuilderColumns columns = BuilderColumns.lost(reason, builder);
             StringBuilder sb = planColumns(plan, EVENT_BUILDER_LOST, null, plan.getState(),
                     PlanBlocker.NONE, 0, NO_STARVED_COUNT, columns.executor());
-            appendTrailing(sb, null, null, null, null, null, null, columns);
+            appendPlanTrailing(sb, plan, null, null, null, columns);
             buffer.add(sb.toString());
         } catch (Exception e) {
             disabled = true;
@@ -668,7 +694,7 @@ public class PlanEventLogger implements PlanEventSink {
             BuilderColumns columns = BuilderColumns.redispatch(reason, lost, taker);
             StringBuilder sb = planColumns(plan, EVENT_BUILDER_REDISPATCH, null, plan.getState(),
                     PlanBlocker.NONE, 0, NO_STARVED_COUNT, columns.executor());
-            appendTrailing(sb, null, null, null, null, builderThreat(plan), null, columns);
+            appendPlanTrailing(sb, plan, null, null, builderThreat(plan), columns);
             buffer.add(sb.toString());
         } catch (Exception e) {
             disabled = true;
@@ -910,7 +936,7 @@ public class PlanEventLogger implements PlanEventSink {
             BuilderColumns builder = BuilderColumns.current(executorReading(holder));
             StringBuilder sb = planColumns(holder, event, null, holder.getState(),
                     PlanBlocker.BUILD_AHEAD_SLOT_TAKEN, heldFrames, starvedBehind, builder.executor());
-            appendTrailing(sb, null, null, null, null, builderThreat(holder), null, builder);
+            appendPlanTrailing(sb, holder, null, null, builderThreat(holder), builder);
             buffer.add(sb.toString());
         } catch (Exception e) {
             disabled = true;
@@ -992,7 +1018,46 @@ public class PlanEventLogger implements PlanEventSink {
                        PlanBlocker blocker, int blockedFrames, int starvedBehind) {
         StringBuilder sb = planColumns(plan, event, from, to, blocker, blockedFrames, starvedBehind,
                 executorReading(plan));
-        appendTrailing(sb, null, null, null, null, builderThreat(plan), null, BuilderColumns.BLANK);
+        appendPlanTrailing(sb, plan, null, null, builderThreat(plan), BuilderColumns.BLANK);
+        return sb.toString();
+    }
+
+    /**
+     * The trailing columns of a row written for a plan, which carry the plan's hatchery request
+     * reason.
+     */
+    private void appendPlanTrailing(StringBuilder sb, Plan plan, Position blockerMineral, Plan yieldTo,
+                                    BuilderThreat builderThreat, BuilderColumns builder) {
+        appendTrailingBeforeHatcheryRequest(sb, blockerMineral, yieldTo, null, null, builderThreat, null, builder);
+        appendHatcheryRequest(sb, plan.getHatcheryRequestReason(), null);
+    }
+
+    /**
+     * True when a BANK_SAMPLE row is due on this frame.
+     *
+     * @param frame the current frame
+     * @param lastSampleFrame the frame of the last sample
+     */
+    static boolean isBankSampleDue(int frame, int lastSampleFrame) {
+        return frame - lastSampleFrame >= BANK_SAMPLE_INTERVAL_FRAMES;
+    }
+
+    /**
+     * A periodic sample of the bank and the floating-minerals bar, which no plan owns, so the plan
+     * columns are empty.
+     */
+    private String bankSampleRow() {
+        StringBuilder sb = new StringBuilder();
+        appendEvent(sb, EVENT_BANK_SAMPLE);
+        appendEmpty(sb, 8);
+        appendBlocker(sb, PlanBlocker.NONE, 0);
+        appendEmpty(sb, 3);
+        appendGameState(sb);
+        appendEmpty(sb, 3);
+        sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
+        appendEmpty(sb, 2);
+        appendTrailingBeforeHatcheryRequest(sb, null, null, null, null, null, null, BuilderColumns.BLANK);
+        appendHatcheryRequest(sb, null, gameState.floatingMineralsBar());
         return sb.toString();
     }
 
@@ -1354,6 +1419,19 @@ public class PlanEventLogger implements PlanEventSink {
     private void appendTrailing(StringBuilder sb, Position blockerMineral, Plan yieldTo,
                                 MacroHatcheryGateInputs macroHatchery, HiveTechGateInputs hiveTech,
                                 BuilderThreat builderThreat, BaseEventInputs baseEvent, BuilderColumns builder) {
+        appendTrailingBeforeHatcheryRequest(sb, blockerMineral, yieldTo, macroHatchery, hiveTech, builderThreat,
+                baseEvent, builder);
+        appendHatcheryRequest(sb, null, null);
+    }
+
+    /**
+     * The trailing columns up to contain_period_start_frame. A row shape that calls this rather than
+     * {@link #appendTrailing} must follow it with {@link #appendHatcheryRequest}, so it keeps the
+     * same width.
+     */
+    private void appendTrailingBeforeHatcheryRequest(StringBuilder sb, Position blockerMineral, Plan yieldTo,
+                                MacroHatcheryGateInputs macroHatchery, HiveTechGateInputs hiveTech,
+                                BuilderThreat builderThreat, BaseEventInputs baseEvent, BuilderColumns builder) {
         appendGameTotals(sb);
         sb.append(',');
         sb.append(blockerMineral == null ? "" : String.valueOf(blockerMineral.getX())).append(',');
@@ -1420,6 +1498,18 @@ public class PlanEventLogger implements PlanEventSink {
         sb.append(droneRound.getSoftCap()).append(',');
         sb.append(droneRound.getHardCap()).append(',');
         sb.append(droneRound.getContainPeriodStartFrame());
+    }
+
+    /**
+     * The last two trailing columns, which only plan rows and BANK_SAMPLE rows set.
+     *
+     * @param hatcheryRequestReason the rule that asked for the row's Hatchery plan, or null
+     * @param floatingMineralsBar the floating-minerals bar, or null on every row but BANK_SAMPLE
+     */
+    private static void appendHatcheryRequest(StringBuilder sb, HatcheryRequestReason hatcheryRequestReason,
+                                              Integer floatingMineralsBar) {
+        sb.append(',').append(orEmpty(hatcheryRequestReason));
+        sb.append(',').append(orEmpty(floatingMineralsBar));
     }
 
     private static String orEmpty(Object value) {
