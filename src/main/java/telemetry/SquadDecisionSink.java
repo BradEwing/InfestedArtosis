@@ -8,6 +8,7 @@ import unit.squad.ContainmentCollapse;
 import unit.squad.DefenseSim;
 import unit.squad.RunbyState;
 import unit.squad.Squad;
+import unit.squad.SwarmLock;
 
 import java.util.List;
 
@@ -157,6 +158,11 @@ public interface SquadDecisionSink {
     void onMoveOutEvaluated(Squad squad, int moveOutThreshold, int squadStrength);
 
     /**
+     * A ground squad's retreat targets were planned this frame along the given route.
+     */
+    void onRetreatRouted(Squad squad, RetreatRoute route);
+
+    /**
      * Worker defence at a base pulled gatherers, abandoned its defence, or released its defenders.
      *
      * <p>sim is the full commitment simulation behind a PULL or ABANDON, and null when none ran.
@@ -166,4 +172,14 @@ public interface SquadDecisionSink {
      */
     void onDefenseEvaluated(Squad squad, DefenseEvent event, int candidates, List<ManagedUnit> pulled,
                             List<ManagedUnit> released, DefenseSim sim);
+
+    /**
+     * A melee squad took or dropped a swarm lock, or was sampled near one of our active Dark Swarms.
+     *
+     * @param event what happened
+     * @param swarmId id of the Spell_Dark_Swarm unit the row is about
+     * @param remainingFrames frames the swarm had left, 0 once it was removed
+     * @param release why a SWARM_EXPIRED row's squad dropped its lock, NONE on every other event
+     */
+    void onSwarmEvaluated(Squad squad, SwarmEvent event, int swarmId, int remainingFrames, SwarmLock.Release release);
 }

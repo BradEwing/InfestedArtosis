@@ -8,6 +8,7 @@ import unit.squad.ContainmentCollapse;
 import unit.squad.DefenseSim;
 import unit.squad.RunbyState;
 import unit.squad.Squad;
+import unit.squad.SwarmLock;
 
 import java.util.List;
 
@@ -134,6 +135,14 @@ public final class SquadDecisions {
         current.onStalemateCommit(squad, committedSupply, armySupply);
     }
 
+    public static void retreatRouted(Squad squad, RetreatRoute route) {
+        SquadDecisionSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onRetreatRouted(squad, route);
+    }
+
     public static void commitmentReleased(Squad squad, CommitmentRelease release) {
         SquadDecisionSink current = sink;
         if (current == null) {
@@ -197,5 +206,14 @@ public final class SquadDecisions {
             return;
         }
         current.onDefenseEvaluated(squad, event, candidates, pulled, released, sim);
+    }
+
+    public static void swarmEvaluated(Squad squad, SwarmEvent event, int swarmId, int remainingFrames,
+                                      SwarmLock.Release release) {
+        SquadDecisionSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onSwarmEvaluated(squad, event, swarmId, remainingFrames, release);
     }
 }

@@ -5,6 +5,7 @@ import bwapi.UnitType;
 import lombok.Getter;
 import lombok.Setter;
 import unit.squad.CombatSimulator;
+import unit.squad.SwarmLock;
 
 /**
  * Everything SquadManager computed about one squad on one frame, held until the frame's status
@@ -64,6 +65,11 @@ final class SquadDecision {
     private int containStalemate = NOT_EVALUATED;
     private int stalemateCommitSupply = NOT_EVALUATED;
     private int stalemateCommitArmy = NOT_EVALUATED;
+    private RetreatRoute retreatRoute = RetreatRoute.NONE;
+    private int swarmId = NOT_EVALUATED;
+    private int swarmRemainingFrames = NOT_EVALUATED;
+    private double swarmCover = NOT_EVALUATED;
+    private SwarmLock.Release swarmRelease = SwarmLock.Release.NONE;
     private CommitmentRelease commitmentRelease = CommitmentRelease.NONE;
 
     static int tristate(boolean value) {

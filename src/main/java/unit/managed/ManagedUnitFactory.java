@@ -3,11 +3,13 @@ package unit.managed;
 import bwapi.Game;
 import bwapi.Unit;
 import info.map.GameMap;
+import info.tracking.DarkSwarmTracker;
 
 public class ManagedUnitFactory {
 
     private Game game;
     private GameMap gameMap;
+    private DarkSwarmTracker darkSwarmTracker = new DarkSwarmTracker();
 
     public ManagedUnitFactory(Game game) {
         this.game = game;
@@ -16,6 +18,12 @@ public class ManagedUnitFactory {
     public ManagedUnitFactory(Game game, GameMap gameMap) {
         this.game = game;
         this.gameMap = gameMap;
+    }
+
+    public ManagedUnitFactory(Game game, GameMap gameMap, DarkSwarmTracker darkSwarmTracker) {
+        this.game = game;
+        this.gameMap = gameMap;
+        this.darkSwarmTracker = darkSwarmTracker;
     }
 
     public ManagedUnit create(Unit unit, UnitRole role) {
@@ -58,7 +66,7 @@ public class ManagedUnitFactory {
                 managedUnit = new Lurker(game, unit, role, gameMap);
                 break;
             case Zerg_Defiler:
-                managedUnit = new Defiler(game, unit, role, gameMap);
+                managedUnit = new Defiler(game, unit, role, gameMap, darkSwarmTracker);
                 break;
             case Zerg_Broodling:
                 managedUnit = new Broodling(game, unit, role, gameMap);
