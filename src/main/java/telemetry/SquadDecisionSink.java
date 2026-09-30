@@ -152,6 +152,11 @@ public interface SquadDecisionSink {
     void onMoveOutEvaluated(Squad squad, int moveOutThreshold, int squadStrength);
 
     /**
+     * A ground squad's retreat targets were planned this frame along the given route.
+     */
+    void onRetreatRouted(Squad squad, RetreatRoute route);
+
+    /**
      * Worker defence at a base pulled gatherers, abandoned its defence, or released its defenders.
      *
      * <p>sim is the full commitment simulation behind a PULL or ABANDON, and null when none ran.

@@ -29,6 +29,7 @@ import telemetry.DecisionPath;
 import telemetry.DefenseEvent;
 import telemetry.RallyReason;
 import telemetry.RallyRelease;
+import telemetry.RetreatRoute;
 import telemetry.RunbyTelemetry;
 import telemetry.RunbyTick;
 import telemetry.SquadDecisions;
@@ -129,6 +130,11 @@ public class SquadManager {
     static final int AIR_HOME_DEFENSE_RADIUS = 480;
 
     private static final int RETREAT_VECTOR_MAGNITUDE = 192;
+    /**
+     * Tuning value: frames a ground retreat plan is kept before it is made again, which bounds the path searches a
+     * retreating squad costs to one per this many frames.
+     */
+    static final int RETREAT_REPLAN_FRAMES = 8;
     private static final int COMBAT_SIM_DURATION_FRAMES = 150;
     private static final double DEFENSE_WIN_THRESHOLD = 0.50;
     private static final double SCV_RUSH_DEFENSE_CLEAR_THRESHOLD = 0.75;
@@ -170,6 +176,8 @@ public class SquadManager {
     static final int CONTAIN_ARRIVAL_DISTANCE = 320;
     /** Tuning value: ratio an ENGAGE must reach, never below the matchup threshold, to break an attrition lock. */
     static final double STRONG_ENGAGE_RATIO = 1.5;
+    /** Tuning value: share of the engage threshold a measured read needs for a HOME_CONTESTED squad to defend. */
+    static final double CONTESTED_HOME_DEFEND_FRACTION = 0.9;
 
     private final Map<Base, RunbyTarget> runbyTargets = new HashMap<>();
     private Set<ManagedUnit> outrangedHits = new HashSet<>();
@@ -186,6 +194,8 @@ public class SquadManager {
 
     private TargetLedger fightTargetLedger = TargetLedger.empty();
     private int fightTargetLedgerFrame = -1;
+
+    private GroundRetreatRouter groundRetreatRouter;
 
     public SquadManager(Game game, GameState gameState) {
         this.game = game;
@@ -1797,6 +1807,14 @@ public class SquadManager {
                 ? DecisionPath.HARASS_EXIT_ENGAGE
                 : requestPath(noVisionMarch, result));
 
+        DecisionPath turnPath = retreatTurnPath(squad.getStatus(), squad.getRetreatRoute(), result, enemyMeasured,
+                ratio, engageThreshold);
+        if (squad.isGroundSquad() && squad.corneredEngagePersisted(turnPath != null, now)) {
+            turnCorneredSquadToFight(squad, result, now);
+            SquadDecisions.pathTaken(squad, turnPath);
+            assignFightTargets(squad, managedFighters, true);
+            return;
+        }
         if (squad.getStatus() == SquadStatus.RETREAT && retreatLocked) {
             boolean attritionLock = squad.isAttritionRetreatLock()
                     && ContainmentCollapse.appliesAgainst(gameState.getOpponentRace());
@@ -1806,9 +1824,9 @@ public class SquadManager {
                 retreatLocked = false;
                 SquadDecisions.pathTaken(squad, DecisionPath.RETREAT_LOCK_BROKEN);
             } else {
+                assignRetreatTargets(squad, managedFighters);
                 SquadDecisions.lockSuppressed(squad, SquadLock.RETREAT);
                 SquadDecisions.pathTaken(squad, DecisionPath.RETREAT_LOCK);
-                assignRetreatTargets(squad, managedFighters);
                 return;
             }
         }
@@ -1860,6 +1878,23 @@ public class SquadManager {
     }
 
     /**
+     * Turns a cornered squad whose ENGAGE persisted, or a HOME_CONTESTED squad whose defend read persisted, to FIGHT:
+     * drops its retreat lock and route, holds it in FIGHT for one fight hysteresis window, see
+     * {@link Squad#holdCorneredFight}, and arms the fight lock on an ENGAGE.
+     *
+     * @param squad the cornered or contested squad
+     * @param result this frame's combat sim verdict
+     * @param now current frame
+     */
+    static void turnCorneredSquadToFight(Squad squad, CombatSimulator.CombatResult result, int now) {
+        squad.setStatus(SquadStatus.FIGHT);
+        squad.setRetreatRoute(RetreatRoute.NONE);
+        squad.clearRetreatLock();
+        squad.holdCorneredFight(now);
+        updateFightLock(squad, result, false, now);
+    }
+
+    /**
      * Pulls the whole squad out of a Psionic Storm when any member stands in one, under a retreat lock.
      *
      * @param squad fight squad
@@ -1886,6 +1921,7 @@ public class SquadManager {
             return false;
         }
         squad.setStatus(SquadStatus.RETREAT);
+        squad.setRetreatRoute(RetreatRoute.NONE);
         SquadDecisions.pathTaken(squad, DecisionPath.STORM_RETREAT);
         int now = game.getFrameCount();
         for (ManagedUnit managedUnit : managedFighters) {
@@ -1952,9 +1988,10 @@ public class SquadManager {
 
     /**
      * Whether a FIGHT squad stays in FIGHT whatever this frame's verdict: a collapse is wrapping, a committed collapse
-     * still holds it, see {@link Squad#isCollapseCommitHeld}, or its fight lock holds against the verdict, see
-     * {@link #fightLockHolds}. A collapse was judged on the enemies inside the arc's sector, so a whole-squad RETREAT
-     * read around the squad's center does not undo it.
+     * still holds it, see {@link Squad#isCollapseCommitHeld}, a cornered squad that turned to fight is still held, see
+     * {@link Squad#isCorneredFightHeld}, or its fight lock holds against the verdict, see {@link #fightLockHolds}. A
+     * collapse was judged on the enemies inside the arc's sector, so a whole-squad RETREAT read around the squad's
+     * center does not undo it, and a cornered squad has no path home to retreat along.
      *
      * @param squad fight squad
      * @param now current frame
@@ -1962,7 +1999,8 @@ public class SquadManager {
      * @return true when the squad stays in FIGHT and this frame's verdict is suppressed
      */
     static boolean fightHeld(Squad squad, int now, boolean fightLockHolds) {
-        return squad.getStatus() == SquadStatus.FIGHT && (fightLockHolds || collapseHoldsMembers(squad, now));
+        return squad.getStatus() == SquadStatus.FIGHT
+                && (fightLockHolds || collapseHoldsMembers(squad, now) || squad.isCorneredFightHeld(now));
     }
 
     /**
@@ -2069,15 +2107,24 @@ public class SquadManager {
 
     private void assignRetreatTargets(Squad squad, HashSet<ManagedUnit> managedFighters) {
         Position rallyPoint = gameState.getSquadRallyPoint();
-        HashMap<ManagedUnit, Position> retreatTargets = squad.isGroundSquad()
-                ? computeGroundRetreatTargets(squad)
+        int now = game.getFrameCount();
+        boolean keepPlan = squad.isGroundSquad()
+                && retreatPlanFresh(squad.getRetreatRoute(), squad.getRetreatPlanFrame(), now);
+        Map<ManagedUnit, Position> retreatTargets = squad.isGroundSquad() && !keepPlan
+                ? planGroundRetreat(squad, rallyPoint, now)
                 : null;
+        if (keepPlan) {
+            SquadDecisions.retreatRouted(squad, squad.getRetreatRoute());
+        }
         for (ManagedUnit managedUnit : managedFighters) {
             if (managedUnit.getRole() != UnitRole.RETREAT) {
                 managedUnit.setReady(true);
             }
             managedUnit.setRole(UnitRole.RETREAT);
             managedUnit.setRallyPoint(rallyPoint);
+            if (keepPlan) {
+                continue;
+            }
             if (retreatTargets != null) {
                 managedUnit.setRetreatTarget(retreatTargets.get(managedUnit));
             } else {
@@ -4106,7 +4153,130 @@ public class SquadManager {
     }
 
     /**
-     * Computes a shared retreat anchor for zerglings with perpendicular jitter per unit.
+     * Plans each member's retreat target along the ground path home to the rally point, around the ground threats
+     * near the squad, and records the route and the frame of the plan on the squad for the cornered fight rule, the
+     * replan throttle and the telemetry row. Falls back to backing straight away from the enemy when the rally point
+     * has no walkable tile near it.
+     */
+    private Map<ManagedUnit, Position> planGroundRetreat(Squad squad, Position rallyPoint, int now) {
+        GroundRetreatRouter.Plan<ManagedUnit> plan = null;
+        if (rallyPoint != null && gameState.getGameMap() != null && gameState.getGameMap().getWidth() > 0) {
+            if (groundRetreatRouter == null) {
+                groundRetreatRouter = new GroundRetreatRouter(gameState.getGameMap());
+            }
+            Map<ManagedUnit, Position> members = new HashMap<>();
+            for (ManagedUnit member : squad.getMembers()) {
+                members.put(member, member.getUnit().getPosition());
+            }
+            List<Position> threats = enemyUnitsNearSquad(squad).stream()
+                    .filter(enemy -> closesRetreatPath(enemy.getType(), enemy.isAttacking()))
+                    .map(Unit::getPosition)
+                    .collect(Collectors.toList());
+            plan = groundRetreatRouter.plan(members, rallyPoint, threats);
+        }
+        RetreatRoute route = plan != null ? plan.getRoute() : RetreatRoute.AWAY;
+        squad.setRetreatRoute(route);
+        squad.setRetreatPlanFrame(now);
+        SquadDecisions.retreatRouted(squad, route);
+        return plan != null ? plan.getTargets() : computeGroundRetreatTargets(squad);
+    }
+
+    /**
+     * Whether a ground retreat plan made on frame planFrame still stands on frame now. A plan is made at most once per
+     * {@link #RETREAT_REPLAN_FRAMES}; between plans the members keep the targets they were given.
+     *
+     * @param route route of the squad's last ground retreat plan, NONE when the squad has none to keep
+     * @param planFrame frame that plan was made
+     * @param now current frame
+     * @return true when the last plan is kept
+     */
+    static boolean retreatPlanFresh(RetreatRoute route, int planFrame, int now) {
+        return route != RetreatRoute.NONE && now - planFrame < RETREAT_REPLAN_FRAMES;
+    }
+
+    /**
+     * Whether a visible enemy closes the tiles around it to a retreat path home: a type that threatens ground units,
+     * except a worker that is not attacking.
+     *
+     * @param type the enemy's type
+     * @param attacking whether the enemy is attacking
+     * @return true when the retreat routes around it
+     */
+    static boolean closesRetreatPath(UnitType type, boolean attacking) {
+        return Filter.isGroundThreat(type) && (!Filter.isWorkerType(type) || attacking);
+    }
+
+    /**
+     * Whether a squad held in retreat reads a cornered ENGAGE: its last retreat plan found no path home clear of the
+     * enemy, and the sim rates the fight at or above its engage threshold. The squad turns to fight once this read has
+     * held over a fight hysteresis window, see {@link Squad#corneredEngagePersisted}, and then stays in FIGHT for one
+     * more, see {@link Squad#holdCorneredFight}. A retreat from a HOME_CONTESTED plan is not cornered, see
+     * {@link #contestedHomeDefends}.
+     *
+     * @param status status the squad holds
+     * @param route route of the squad's last ground retreat plan
+     * @param result the sim's verdict this frame
+     * @return true when this frame's read counts toward the squad fighting instead of retreating
+     */
+    static boolean corneredSquadFights(SquadStatus status, RetreatRoute route, CombatSimulator.CombatResult result) {
+        return status == SquadStatus.RETREAT && route == RetreatRoute.CORNERED
+                && result == CombatSimulator.CombatResult.ENGAGE;
+    }
+
+    /**
+     * The path a squad held in retreat takes if it turns to fight on this frame's read: CORNERED_ENGAGE for a cornered
+     * ENGAGE, see {@link #corneredSquadFights}, HOME_CONTESTED_DEFEND for a contested home to defend, see
+     * {@link #contestedHomeDefends}, and null when the read does not count toward a turn.
+     *
+     * @param status status the squad holds
+     * @param route route of the squad's last ground retreat plan
+     * @param result the sim's verdict this frame
+     * @param enemyMeasured whether the sim measured a real enemy this frame
+     * @param ratio the sim's overall strength ratio this frame
+     * @param engageThreshold the engage threshold the sim judged this frame's ratio against
+     * @return the turn's decision path, or null
+     */
+    static DecisionPath retreatTurnPath(SquadStatus status, RetreatRoute route, CombatSimulator.CombatResult result,
+                                        boolean enemyMeasured, double ratio, double engageThreshold) {
+        if (corneredSquadFights(status, route, result)) {
+            return DecisionPath.CORNERED_ENGAGE;
+        }
+        if (contestedHomeDefends(status, route, result, enemyMeasured, ratio, engageThreshold)) {
+            return DecisionPath.HOME_CONTESTED_DEFEND;
+        }
+        return null;
+    }
+
+    /**
+     * Whether a squad held in retreat reads a contested home it should defend instead of staging at the edge of the
+     * threats on it: its last retreat plan was HOME_CONTESTED, and the sim reads ENGAGE, or a RETREAT measured against
+     * a real enemy at or above {@link #CONTESTED_HOME_DEFEND_FRACTION} of its engage threshold. Like a cornered
+     * ENGAGE, the squad turns to fight once this read has held over a fight hysteresis window, see
+     * {@link Squad#corneredEngagePersisted}, and then stays in FIGHT for one more, see {@link Squad#holdCorneredFight}.
+     *
+     * @param status status the squad holds
+     * @param route route of the squad's last ground retreat plan
+     * @param result the sim's verdict this frame
+     * @param enemyMeasured whether the sim measured a real enemy this frame
+     * @param ratio the sim's overall strength ratio this frame
+     * @param engageThreshold the engage threshold the sim judged this frame's ratio against
+     * @return true when this frame's read counts toward the squad defending its home instead of staging
+     */
+    static boolean contestedHomeDefends(SquadStatus status, RetreatRoute route, CombatSimulator.CombatResult result,
+                                        boolean enemyMeasured, double ratio, double engageThreshold) {
+        if (status != SquadStatus.RETREAT || route != RetreatRoute.HOME_CONTESTED) {
+            return false;
+        }
+        if (result == CombatSimulator.CombatResult.ENGAGE) {
+            return true;
+        }
+        return result == CombatSimulator.CombatResult.RETREAT && enemyMeasured && engageThreshold > 0
+                && ratio >= CONTESTED_HOME_DEFEND_FRACTION * engageThreshold;
+    }
+
+    /**
+     * Computes a shared retreat anchor for zerglings with perpendicular jitter per unit, for a ground retreat whose
+     * rally point has no walkable tile near it.
      * Anchor: vector from squad center away from closest enemy cluster.
      * Jitter: perpendicular offsets to reduce clumping.
      */

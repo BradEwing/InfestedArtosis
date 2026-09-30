@@ -140,6 +140,11 @@ class SquadDecisionsTest {
             }
 
             @Override
+            public void onRetreatRouted(Squad squad, RetreatRoute route) {
+                events.add("RETREAT_ROUTE:" + route);
+            }
+
+            @Override
             public void onDefenseEvaluated(Squad squad, DefenseEvent event, int candidates, List<ManagedUnit> pulled,
                                            List<ManagedUnit> released, DefenseSim sim) {
                 events.add("DEFENSE:" + event + ":" + candidates + ":" + pulled.size() + ":" + released.size());
@@ -181,6 +186,7 @@ class SquadDecisionsTest {
                 + "," + String.join(",", SquadDecisionLogger.containTimeoutCells(context))
                 + "," + String.join(",", SquadDecisionLogger.containStalemateCells(context))
                 + "," + String.join(",", SquadDecisionLogger.stalemateCommitCells(context))
+                + "," + SquadDecisionLogger.retreatRouteCell(context)
                 + "," + String.join(",", SquadDecisionLogger.swarmCells(context.getSwarmId(),
                 context.getSwarmRemainingFrames(), false, context.getSwarmCover(), context.getSwarmRelease()));
         return row.split(",", -1);
@@ -196,7 +202,7 @@ class SquadDecisionsTest {
         assertEquals(first + 2, columnIndex("swarm_locked"));
         assertEquals(first + 3, columnIndex("sim_swarm_cover"));
         assertEquals(first + 4, columnIndex("swarm_release_reason"));
-        assertEquals(columnIndex("stalemate_commit_army_real") + 1, first);
+        assertEquals(columnIndex("retreat_route") + 1, first);
     }
 
     @Test
@@ -619,6 +625,7 @@ class SquadDecisionsTest {
                 + "," + String.join(",", SquadDecisionLogger.containTimeoutCells(context))
                 + "," + String.join(",", SquadDecisionLogger.containStalemateCells(context))
                 + "," + String.join(",", SquadDecisionLogger.stalemateCommitCells(context))
+                + "," + SquadDecisionLogger.retreatRouteCell(context)
                 + "," + String.join(",", SquadDecisionLogger.swarmCells(-1, -1, false, -1,
                 SwarmLock.Release.NONE));
         String[] fields = row.split(",", -1);
@@ -748,6 +755,7 @@ class SquadDecisionsTest {
                 + "," + String.join(",", SquadDecisionLogger.containTimeoutCells(context))
                 + "," + String.join(",", SquadDecisionLogger.containStalemateCells(context))
                 + "," + String.join(",", SquadDecisionLogger.stalemateCommitCells(context))
+                + "," + SquadDecisionLogger.retreatRouteCell(context)
                 + "," + String.join(",", SquadDecisionLogger.swarmCells(-1, -1, false, -1,
                 SwarmLock.Release.NONE));
         String[] fields = row.split(",", -1);
@@ -808,6 +816,25 @@ class SquadDecisionsTest {
         assertEquals("1", cells.get(columnIndex("move_out_strength") - first));
         assertEquals("-1", rowFor(new AirSquad())[columnIndex("move_out_threshold")]);
         assertEquals("-1", rowFor(new AirSquad())[columnIndex("move_out_strength")]);
+    }
+
+    @Test
+    void registeredSinkReceivesRetreatRoutes() {
+        SquadDecisions.register(recorder());
+
+        SquadDecisions.retreatRouted(new GroundSquad(), RetreatRoute.CORNERED);
+
+        assertEquals(Collections.singletonList("RETREAT_ROUTE:CORNERED"), events);
+    }
+
+    @Test
+    void retreatRouteFollowsTheStalemateCommitColumnsAndDefaultsToNone() {
+        SquadDecision context = new SquadDecision();
+
+        assertEquals(columnIndex("stalemate_commit_army_real") + 1, columnIndex("retreat_route"));
+        assertEquals("NONE", rowFor(new GroundSquad())[columnIndex("retreat_route")]);
+        context.setRetreatRoute(RetreatRoute.DETOUR);
+        assertEquals("DETOUR", SquadDecisionLogger.retreatRouteCell(context));
     }
 
     @Test

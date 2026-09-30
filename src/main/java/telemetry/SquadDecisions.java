@@ -135,6 +135,14 @@ public final class SquadDecisions {
         current.onStalemateCommit(squad, committedSupply, armySupply);
     }
 
+    public static void retreatRouted(Squad squad, RetreatRoute route) {
+        SquadDecisionSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onRetreatRouted(squad, route);
+    }
+
     public static void moveOutEvaluated(Squad squad, int moveOutThreshold, int squadStrength) {
         SquadDecisionSink current = sink;
         if (current == null) {

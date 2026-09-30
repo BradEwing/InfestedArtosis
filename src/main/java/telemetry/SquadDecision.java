@@ -65,6 +65,7 @@ final class SquadDecision {
     private int containStalemate = NOT_EVALUATED;
     private int stalemateCommitSupply = NOT_EVALUATED;
     private int stalemateCommitArmy = NOT_EVALUATED;
+    private RetreatRoute retreatRoute = RetreatRoute.NONE;
     private int swarmId = NOT_EVALUATED;
     private int swarmRemainingFrames = NOT_EVALUATED;
     private double swarmCover = NOT_EVALUATED;
