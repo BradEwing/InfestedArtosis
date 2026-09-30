@@ -13,6 +13,7 @@ import bwem.CPPath;
 import info.GameState;
 import info.ScoutData;
 import info.map.BaseArea;
+import info.tracking.DarkSwarm;
 import info.tracking.EnemyReachMemory;
 import info.tracking.ObservedUnit;
 import info.tracking.ObservedUnitTracker;
@@ -33,6 +34,7 @@ import telemetry.RunbyTelemetry;
 import telemetry.RunbyTick;
 import telemetry.SquadDecisions;
 import telemetry.SquadLock;
+import telemetry.SwarmEvent;
 import telemetry.TargetChoices;
 import unit.managed.ManagedUnit;
 import unit.squad.horizon.HorizonCombatSimulator;
@@ -168,6 +170,8 @@ public class SquadManager {
     private static final int RUNBY_AREA_TILES = 24;
     private static final int LIKELY_SPOT_SEARCH_TILES = 2;
     private static final int RUNBY_KILL_CREDIT_RADIUS = 64;
+    /** Frames between the SWARM_ACTIVE rows sampled for each melee squad near one of our active Dark Swarms. */
+    private static final int SWARM_SAMPLE_INTERVAL_FRAMES = 24;
     /** Tuning value: pixels from a squad's center to the nearest arc point within which it takes the arc. */
     static final int CONTAIN_ARRIVAL_DISTANCE = 320;
     /** Tuning value: ratio an ENGAGE must reach, never below the matchup threshold, to break an attrition lock. */
@@ -177,6 +181,12 @@ public class SquadManager {
 
     private final Map<Base, RunbyTarget> runbyTargets = new HashMap<>();
     private Set<ManagedUnit> outrangedHits = new HashSet<>();
+    private final Map<Integer, List<Unit>> swarmCoveredEnemies = new HashMap<>();
+    private int swarmCoverFrame = -1;
+    /** The swarm-priced sim read {@link #evaluateSwarmLock} took for the squad it last evaluated, or null. */
+    private CombatSimulator.CombatResult swarmSimResult;
+    /** The last frame {@link #evaluateSwarmLock} saw a base threat, or -1; see {@link SwarmLock#baseThreatStands}. */
+    private int swarmBaseThreatFrame = -1;
 
     private final ScoutChase scoutChase = new ScoutChase();
     private final AirHarassController airHarass;
@@ -223,6 +233,7 @@ public class SquadManager {
             }
 
             evaluateSquadRole(fightSquad);
+            sampleSwarm(fightSquad, now);
 
             for (ManagedUnit mu : fightSquad.getMembers()) {
                 if (mu.getUnitType() == UnitType.Zerg_Overlord) {
@@ -715,6 +726,12 @@ public class SquadManager {
             newSquad.inheritStateFrom(mergeSet);
             SquadDecisions.pathTaken(newSquad, DecisionPath.MERGE_INHERIT);
             for (Squad mergingSquad: mergeSet) {
+                SwarmLock dropped = mergingSquad.getSwarmLock();
+                if (SwarmLock.droppedByMerge(dropped, newSquad.getSwarmLock())) {
+                    SquadDecisions.swarmEvaluated(mergingSquad, SwarmEvent.SWARM_EXPIRED, dropped.getSwarmId(),
+                            gameState.getDarkSwarmTracker().getRemainingFrames(dropped.getSwarmId()),
+                            SwarmLock.Release.MERGED);
+                }
                 if (mergeEndsContainment(mergingSquad.getStatus(), newSquad.getStatus())) {
                     endContainment(mergingSquad);
                 }
@@ -933,9 +950,16 @@ public class SquadManager {
      * @param squad Squad to evaluate
      */
     private void evaluateSquadRole(Squad squad) {
-        if (squad.getStatus() == SquadStatus.RUNBY) {
-            evaluateRunbySquad(squad);
-            return;
+        SwarmLock.Verdict swarmVerdict = evaluateSwarmLock(squad);
+        switch (SwarmLock.route(squad.getStatus(), swarmVerdict)) {
+            case RUNBY:
+                evaluateRunbySquad(squad);
+                return;
+            case SWARM:
+                fightUnderSwarm(squad, swarmVerdict);
+                return;
+            default:
+                break;
         }
         if (squad.getStatus() == SquadStatus.HARASS) {
             evaluateHarassSquad(squad);
@@ -1161,6 +1185,249 @@ public class SquadManager {
             }
         }
         return points;
+    }
+
+    /**
+     * Takes, holds or drops a squad's swarm lock for this frame. See {@link SwarmLock}.
+     *
+     * <p>When nothing else stands against the lock, the combat sim runs, pricing the swarm's cover, and a RETREAT read
+     * refuses the commit, and one under the release hysteresis releases the held lock, see
+     * {@link SwarmLock#releasesOnRead}. A squad released that way commits to no swarm for the cooldown, see
+     * {@link SwarmLock#mayCommit}. A commit on a read with no cover for the squad needs a margin over the engage
+     * threshold, see {@link SwarmLock#commitsOnRead}. The sim's result is kept for {@link #fightUnderSwarm}, so it runs
+     * once a frame.
+     *
+     * @param squad squad to evaluate
+     * @return this frame's swarm lock verdict
+     */
+    private SwarmLock.Verdict evaluateSwarmLock(Squad squad) {
+        swarmSimResult = null;
+        SwarmLock held = squad.getSwarmLock();
+        List<DarkSwarm> swarms = gameState.getDarkSwarmTracker().getActiveSwarms();
+        if (held == null && swarms.isEmpty() || squad.getStatus() == SquadStatus.RUNBY) {
+            return SwarmLock.Verdict.NONE;
+        }
+
+        Position center = squad.getCenter();
+        int now = game.getFrameCount();
+        boolean melee = !squad.isAirSquad() && SwarmLock.isMeleeSquad(squad.getComposition());
+        DarkSwarm eligible = held == null && melee && center != null
+                && SwarmLock.mayCommit(now, squad.getSimRetreatReleaseFrame())
+                ? SwarmLock.choose(swarms, center, swarmEligibility(swarms, center))
+                : null;
+        DarkSwarm swarm = held != null ? gameState.getDarkSwarmTracker().getSwarm(held.getSwarmId()) : eligible;
+        if (swarm == null && held == null) {
+            return SwarmLock.Verdict.NONE;
+        }
+        int remaining = swarm != null ? swarm.getRemainingFrames() : 0;
+        boolean threatenedNow = baseThreatensContainment();
+        boolean baseThreatened = SwarmLock.baseThreatStands(threatenedNow, now, swarmBaseThreatFrame);
+        if (threatenedNow) {
+            swarmBaseThreatFrame = now;
+        }
+        boolean inStorm = anyMemberInStorm(squad);
+        SwarmLock.Release reason = SwarmLock.releaseReason(melee, swarm == null, remaining, baseThreatened, inStorm,
+                false);
+        boolean commits = eligible != null;
+        if (SwarmLock.simDecides(held != null, commits, reason)) {
+            swarmSimResult = squad.getCombatSimulator()
+                    .evaluate(squad, getAdjacentSquads(squad, REINFORCEMENT_RADIUS), gameState);
+            HorizonCombatSimulator.DebugSnapshot snapshot = lastSnapshot(squad);
+            HorizonCombatSimulator.DebugSnapshot read = snapshot != null && snapshot.getCapturedFrame() == now
+                    ? snapshot : null;
+            reason = SwarmLock.releaseReason(melee, false, remaining, baseThreatened, inStorm,
+                    SwarmLock.releasesOnRead(held != null, swarmSimResult == CombatSimulator.CombatResult.RETREAT,
+                            read != null ? read.getOverallRatio() : SwarmLock.NO_READ,
+                            read != null ? read.getEngageThreshold() : 0));
+            commits = read != null && SwarmLock.commitsOnRead(commits, read.getSwarmCover(), read.getOverallRatio(),
+                    read.getEngageThreshold());
+        }
+        SwarmLock.Verdict verdict = SwarmLock.verdict(held != null, commits, reason);
+
+        if (verdict == SwarmLock.Verdict.COMMIT) {
+            squad.setSwarmLock(new SwarmLock(swarm.getId(), now));
+            SquadDecisions.swarmEvaluated(squad, SwarmEvent.SWARM_COMMIT, swarm.getId(), remaining,
+                    SwarmLock.Release.NONE);
+        } else if (verdict == SwarmLock.Verdict.RELEASE) {
+            squad.setSwarmLock(null);
+            if (reason == SwarmLock.Release.SIM_RETREAT) {
+                squad.setSimRetreatReleaseFrame(now);
+            }
+            SquadDecisions.pathTaken(squad, DecisionPath.SWARM_EXPIRED);
+            SquadDecisions.swarmEvaluated(squad, SwarmEvent.SWARM_EXPIRED, held.getSwarmId(), remaining, reason);
+        }
+        return verdict;
+    }
+
+    /**
+     * Every {@link #SWARM_SAMPLE_INTERVAL_FRAMES}, writes a SWARM_ACTIVE row for a melee squad near one of our active
+     * Dark Swarms, after the squad has decided its status for the frame. A squad holding a lock is sampled on its
+     * swarm; any other melee squad on the nearest swarm it would be eligible for, whatever time that swarm has left.
+     *
+     * @param squad squad that has just been evaluated
+     * @param now current frame
+     */
+    private void sampleSwarm(Squad squad, int now) {
+        List<DarkSwarm> swarms = gameState.getDarkSwarmTracker().getActiveSwarms();
+        Position center = squad.getCenter();
+        if (now % SWARM_SAMPLE_INTERVAL_FRAMES != 0 || swarms.isEmpty() || center == null
+                || squad.getStatus() == SquadStatus.RUNBY || squad.isAirSquad()
+                || !SwarmLock.isMeleeSquad(squad.getComposition())) {
+            return;
+        }
+        SwarmLock held = squad.getSwarmLock();
+        DarkSwarm sampled = held != null ? gameState.getDarkSwarmTracker().getSwarm(held.getSwarmId()) : null;
+        if (sampled == null) {
+            sampled = SwarmLock.nearest(swarms, center, swarmEligibility(swarms, center), 1);
+        }
+        if (sampled != null) {
+            SquadDecisions.swarmEvaluated(squad, SwarmEvent.SWARM_ACTIVE, sampled.getId(),
+                    sampled.getRemainingFrames(), SwarmLock.Release.NONE);
+        }
+    }
+
+    /**
+     * For each swarm, whether a squad centred here may commit to it: its footprint lies within
+     * {@link SwarmLock#COMMIT_RADIUS} and it covers an enemy worth committing to, see {@link SwarmLock#isCommitTarget}.
+     */
+    private List<Boolean> swarmEligibility(List<DarkSwarm> swarms, Position center) {
+        List<Boolean> eligibility = new ArrayList<>();
+        for (DarkSwarm swarm : swarms) {
+            boolean coversTarget = false;
+            for (Unit enemy : enemiesCoveredBy(swarm)) {
+                if (SwarmLock.isCommitTarget(enemy.getType())) {
+                    coversTarget = true;
+                    break;
+                }
+            }
+            eligibility.add(SwarmLock.isEligible(swarm, center, coversTarget));
+        }
+        return eligibility;
+    }
+
+    /**
+     * Detected enemy ground units and buildings within {@link SwarmLock#COVER_MARGIN} of a swarm's footprint.
+     * Computed once per swarm per frame.
+     */
+    private List<Unit> enemiesCoveredBy(DarkSwarm swarm) {
+        int now = game.getFrameCount();
+        if (now != swarmCoverFrame) {
+            swarmCoverFrame = now;
+            swarmCoveredEnemies.clear();
+        }
+        List<Unit> covered = swarmCoveredEnemies.get(swarm.getId());
+        if (covered != null) {
+            return covered;
+        }
+        covered = new ArrayList<>();
+        for (Unit enemy : gameState.getVisibleEnemyUnits()) {
+            UnitType type = enemy.getType();
+            if (!enemy.isDetected() || type.isFlyer() || Filter.isLowPriorityCombatTarget(type)) {
+                continue;
+            }
+            if (SwarmLock.coversEnemy(swarm, enemy.getPosition(), type)) {
+                covered.add(enemy);
+            }
+        }
+        swarmCoveredEnemies.put(swarm.getId(), covered);
+        return covered;
+    }
+
+    private boolean anyMemberInStorm(Squad squad) {
+        for (ManagedUnit member : squad.getMembers()) {
+            if (gameState.isPositionInStorm(member.getUnit().getPosition(), 0)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Runs one tick of a squad holding a swarm lock: it leaves any containment arc, drops its retreat lock and
+     * fights. The swarm-priced sim read that let the lock hold, see {@link #evaluateSwarmLock}, is the frame's sim
+     * verdict.
+     *
+     * <p>A melee member attacks an enemy the swarm covers, see {@link SwarmLock#coversEnemy}; with none to attack it
+     * moves to the footprint centre rather than chase an enemy out of the swarm. Every other member takes its target
+     * as in any fight.
+     *
+     * @param squad squad holding the lock
+     * @param verdict COMMIT on the frame the lock is taken, HOLD after
+     */
+    private void fightUnderSwarm(Squad squad, SwarmLock.Verdict verdict) {
+        int now = game.getFrameCount();
+        DarkSwarm swarm = gameState.getDarkSwarmTracker().getSwarm(squad.getSwarmLock().getSwarmId());
+        if (squad.getStatus() == SquadStatus.CONTAIN) {
+            endContainment(squad);
+        }
+        squad.setCollapse(null);
+        squad.clearRetreatLock();
+        squad.commit(now);
+
+        SquadDecisions.simEvaluated(squad, swarmSimResult, false, squad.isFightLocked(now));
+        squad.setStatus(SquadStatus.FIGHT);
+        SquadDecisions.pathTaken(squad, verdict == SwarmLock.Verdict.COMMIT
+                ? DecisionPath.SWARM_COMMIT : DecisionPath.SWARM_ACTIVE);
+
+        List<Unit> covered = enemiesCoveredBy(swarm);
+        for (ManagedUnit managedUnit : new ArrayList<>(squad.getMembers())) {
+            managedUnit.clearRetreatStart();
+            if (!SwarmLock.isMelee(managedUnit.getUnitType())) {
+                managedUnit.setRole(UnitRole.FIGHT);
+                assignEnemyTarget(managedUnit, squad, fightTargetLedger());
+                continue;
+            }
+            assignSwarmTarget(managedUnit, squad, swarm, covered);
+        }
+    }
+
+    /**
+     * Gives a melee member of a swarm-locked squad a target among the enemies its swarm covers, picked against the
+     * frame's shared melee ledger, see {@link #swarmPick}. With no covered enemy it can attack, the member moves to
+     * the footprint centre.
+     */
+    private void assignSwarmTarget(ManagedUnit managedUnit, Squad squad, DarkSwarm swarm, List<Unit> covered) {
+        Unit unit = managedUnit.getUnit();
+        List<Unit> attackable = new ArrayList<>();
+        for (Unit enemy : covered) {
+            if (unit.canAttack(enemy)) {
+                attackable.add(enemy);
+            }
+        }
+        TargetScorer.Selection issued = swarmPick(unit, attackable, managedUnit.fightTarget, fightTargetLedger(),
+                squad.getId(), managedUnit.getOverflowGate(), game.getFrameCount());
+        if (issued == null) {
+            rallyToDefensePosition(managedUnit, swarm.getCenter());
+            return;
+        }
+        managedUnit.setRole(UnitRole.FIGHT);
+        TargetChoices.chosen(managedUnit, managedUnit.fightTarget, managedUnit.isAttackMoving(), issued, false);
+        managedUnit.setFightTarget(issued.getTarget(), issued.isAttackMove());
+        recordScoutClaim(unit, issued.getTarget());
+    }
+
+    /**
+     * Picks a melee attacker's target under a swarm the way {@link #assignEnemyTarget} does in any fight: the
+     * attacker's entry is dropped from the frame's ledger, the pick is scored against the melee load every fight
+     * squad has put on each candidate, and it is committed through {@link #commitPick}, so it is recorded in the
+     * ledger unless the attacker attack-moves in overflow.
+     *
+     * @param attacker the melee attacker
+     * @param attackable the enemies the swarm covers that the attacker can attack
+     * @param heldTarget the fight target the attacker held before this pick, or null
+     * @param ledger the frame's melee assignments across every fight squad
+     * @param squadId id of the attacker's squad, carried on the selection for telemetry
+     * @param gate the attacker's overflow gate
+     * @param frame the current frame
+     * @return the pick as it is issued, or null when there is nothing to attack
+     */
+    static TargetScorer.Selection swarmPick(Unit attacker, List<Unit> attackable, Unit heldTarget,
+                                            TargetLedger ledger, String squadId, MeleeOverflowGate gate,
+                                            int frame) {
+        ledger.release(attacker.getID());
+        TargetScorer.Selection selection = TargetScorer.selectTarget(attacker, attackable, heldTarget, ledger,
+                squadId);
+        return selection == null ? null : commitPick(ledger, gate, attacker, selection, heldTarget, frame);
     }
 
     /**
@@ -4318,7 +4585,10 @@ public class SquadManager {
         squad.addUnit(managedUnit);
         boolean stage = shouldStageSquad(squad);
         boolean holdAway = !stage && squad.getStatus() != SquadStatus.CONTAIN && reinforcementHeldAway(squad);
-        switch (reinforcementPath(squad.getStatus(), stage, holdAway)) {
+        switch (reinforcementPath(squad.getSwarmLock() != null, squad.getStatus(), stage, holdAway)) {
+            case JOIN_SWARM:
+                managedUnit.setRole(UnitRole.FIGHT);
+                return;
             case STAGE:
                 rallySquad(squad, RallyReason.STAGING);
                 return;
@@ -4352,7 +4622,25 @@ public class SquadManager {
         JOIN_CONTAINMENT,
         HOLD_AWAY,
         SIMULATE,
-        JOIN_HARASS
+        JOIN_HARASS,
+        JOIN_SWARM
+    }
+
+    /**
+     * Picks what a reinforcement does to the squad it joined. A unit joining a squad that holds a swarm lock only
+     * takes the fight role: the squad's orders come from {@link #fightUnderSwarm} on its next evaluation, so the join
+     * never stages, contains, simulates or retreats a squad the lock holds under its swarm. Any other squad goes by
+     * {@link #reinforcementPath(SquadStatus, boolean, boolean)}.
+     *
+     * @param swarmLocked true when the squad holds a swarm lock
+     * @param status status the squad held as the reinforcement joined
+     * @param stage true when the squad is rallying with no enemy inside its detection radius
+     * @param holdAway true when the squad is an air squad held at the rally point away from home
+     * @return branch to take
+     */
+    static ReinforcementPath reinforcementPath(boolean swarmLocked, SquadStatus status, boolean stage,
+                                               boolean holdAway) {
+        return swarmLocked ? ReinforcementPath.JOIN_SWARM : reinforcementPath(status, stage, holdAway);
     }
 
     /**

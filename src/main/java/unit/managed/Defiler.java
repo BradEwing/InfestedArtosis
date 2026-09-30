@@ -6,8 +6,15 @@ import bwapi.TechType;
 import bwapi.Unit;
 import bwapi.UnitType;
 import info.map.GameMap;
+import info.tracking.DarkSwarm;
+import info.tracking.DarkSwarmTracker;
+import unit.squad.SwarmLock;
 
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 public class Defiler extends ManagedUnit {
@@ -19,12 +26,30 @@ public class Defiler extends ManagedUnit {
     private static final int CONSUME_SEARCH_RANGE = 256;
     private static final int CAST_LOCKOUT_FRAMES = 36;
     private static final int PLAGUE_SPLASH_RADIUS = 64;
-    private static final int DARK_SWARM_RADIUS = 192;
+    private static final int SWARM_HALF_WIDTH = UnitType.Spell_Dark_Swarm.dimensionLeft();
+    /**
+     * Farthest a swarm's centre can lie from a cast point whose footprint it could overlap: within one footprint width
+     * on each axis, so within this diagonal.
+     */
+    private static final int DARK_SWARM_RADIUS =
+            (int) Math.ceil(Math.hypot(2 * SWARM_HALF_WIDTH, 2 * SWARM_HALF_WIDTH));
+    /**
+     * Radius searched around the Defiler for existing swarms: a cast point lies within {@link #SPELL_RANGE} of the
+     * Defiler, and a swarm that could block it lies within {@link #DARK_SWARM_RADIUS} of that point.
+     */
+    private static final int SWARM_SEARCH_RADIUS = SPELL_RANGE + DARK_SWARM_RADIUS;
+    /**
+     * Frames left on a swarm below which a Defiler recasts over melee committed under it: the swarm lock horizon plus
+     * the cast lockout, so the replacement is ordered before the lock on the old swarm lapses.
+     */
+    static final int RECAST_REMAINING_FRAMES = SwarmLock.MIN_REMAINING_FRAMES + CAST_LOCKOUT_FRAMES;
 
+    private final DarkSwarmTracker darkSwarmTracker;
     private int castLockoutUntilFrame = 0;
 
-    public Defiler(Game game, Unit unit, UnitRole role, GameMap gameMap) {
+    public Defiler(Game game, Unit unit, UnitRole role, GameMap gameMap, DarkSwarmTracker darkSwarmTracker) {
         super(game, unit, role, gameMap);
+        this.darkSwarmTracker = darkSwarmTracker;
     }
 
     @Override
@@ -160,52 +185,182 @@ public class Defiler extends ManagedUnit {
                 || type == UnitType.Protoss_Dragoon;
     }
 
+    /**
+     * Casts Dark Swarm where our melee is fighting or about to fight.
+     *
+     * <p>Each pair of one of our melee units and an enemy it could be fighting, within {@link #SAFE_DISTANCE} of each
+     * other, offers a cast point between them, see {@link #castPoint}, and pairs standing closer together are tried
+     * first. Buildings that cannot attack a ground unit are left out of the aim, so a Supply Depot on a wall does not
+     * draw the cast. The first point that no live swarm and no pending cast blocks is cast on, see
+     * {@link #openCastPoint}; when every point is blocked the energy is held. The cast is then recorded as pending, so
+     * another Defiler does not cast on the same spot before this swarm appears.
+     */
     private boolean tryDarkSwarm() {
         List<Unit> friendlyMelee = game.getUnitsInRadius(unit.getPosition(), SPELL_RANGE)
                 .stream()
                 .filter(u -> u.getPlayer() == game.self())
-                .filter(u -> isMeleeType(u.getType()))
+                .filter(u -> SwarmLock.isMelee(u.getType()))
                 .collect(Collectors.toList());
 
         if (friendlyMelee.isEmpty()) return false;
 
-        List<Unit> nearbyEnemies = game.getUnitsInRadius(unit.getPosition(), SPELL_RANGE)
+        List<Unit> aimTargets = game.getUnitsInRadius(unit.getPosition(), SPELL_RANGE)
                 .stream()
                 .filter(u -> u.getPlayer().isEnemy(game.self()))
-                .filter(u -> u.isDetected() && !u.isUnderDarkSwarm())
+                .filter(u -> u.isDetected() && isAimTarget(u.getType()))
                 .collect(Collectors.toList());
 
-        if (nearbyEnemies.isEmpty()) return false;
+        if (aimTargets.isEmpty()) return false;
 
-        boolean meleeEngaged = friendlyMelee.stream()
-                .anyMatch(m -> nearbyEnemies.stream().anyMatch(e -> m.getDistance(e) <= SAFE_DISTANCE));
-
-        if (!meleeEngaged) return false;
-
-        Position castPosition = centroid(nearbyEnemies);
-
-        for (Unit existing : game.getUnitsInRadius(castPosition, DARK_SWARM_RADIUS)) {
-            if (existing.getType() == UnitType.Spell_Dark_Swarm) {
-                return false;
+        List<CastPair> pairs = new ArrayList<>();
+        for (Unit melee : friendlyMelee) {
+            for (Unit enemy : aimTargets) {
+                pairs.add(new CastPair(melee.getPosition(), enemy.getPosition(), melee.getDistance(enemy)));
             }
         }
+        List<Position> candidates = castCandidates(pairs, unit.getPosition());
+        if (candidates.isEmpty()) return false;
+
+        int frame = game.getFrameCount();
+        List<DarkSwarm> swarms = new ArrayList<>(darkSwarmTracker.getPendingCasts(frame));
+        Set<Integer> meleeUnder = new HashSet<>();
+        for (Unit existing : game.getUnitsInRadius(unit.getPosition(), SWARM_SEARCH_RADIUS)) {
+            if (existing.getType() != UnitType.Spell_Dark_Swarm) continue;
+            DarkSwarm swarm = new DarkSwarm(existing.getID(), existing.getPosition(), existing.getRemoveTimer());
+            swarms.add(swarm);
+            if (meleeUnder(swarm, friendlyMelee)) {
+                meleeUnder.add(swarm.getId());
+            }
+        }
+
+        Position castPosition = openCastPoint(candidates, swarms, meleeUnder);
+        if (castPosition == null) return false;
+
         unit.useTech(TechType.Dark_Swarm, castPosition);
-        castLockoutUntilFrame = game.getFrameCount() + CAST_LOCKOUT_FRAMES;
+        darkSwarmTracker.recordCast(castPosition, frame);
+        castLockoutUntilFrame = frame + CAST_LOCKOUT_FRAMES;
         return true;
     }
 
-    private boolean isMeleeType(UnitType type) {
-        return type == UnitType.Zerg_Zergling || type == UnitType.Zerg_Ultralisk;
+    /**
+     * One of our melee units and an aim target, with the distance between them.
+     */
+    static final class CastPair {
+        private final Position front;
+        private final Position target;
+        private final double distance;
+
+        CastPair(Position front, Position target, double distance) {
+            this.front = front;
+            this.target = target;
+            this.distance = distance;
+        }
     }
 
-    private Position centroid(List<Unit> units) {
-        int sumX = 0;
-        int sumY = 0;
-        for (Unit u : units) {
-            sumX += u.getX();
-            sumY += u.getY();
+    /**
+     * The cast points a Defiler may try: one for each pair within {@link #SAFE_DISTANCE}, see {@link #castPoint}, the
+     * closest pair first. A point beyond {@link #SPELL_RANGE} of the Defiler is left out, so a cast point pushed ahead
+     * of our front never walks the Defiler toward the enemy to reach it.
+     *
+     * @param pairs our melee units paired with aim targets
+     * @param defiler the Defiler's position
+     * @return the cast points, closest pair first
+     */
+    static List<Position> castCandidates(List<CastPair> pairs, Position defiler) {
+        List<CastPair> near = new ArrayList<>();
+        for (CastPair pair : pairs) {
+            if (pair.distance <= SAFE_DISTANCE) {
+                near.add(pair);
+            }
         }
-        return new Position(sumX / units.size(), sumY / units.size());
+        near.sort(Comparator.comparingDouble(pair -> pair.distance));
+        List<Position> candidates = new ArrayList<>();
+        for (CastPair pair : near) {
+            Position candidate = castPoint(pair.front, pair.target);
+            if (defiler.getDistance(candidate) <= SPELL_RANGE) {
+                candidates.add(candidate);
+            }
+        }
+        return candidates;
+    }
+
+    /**
+     * The first cast point that no swarm blocks, see {@link #blocksCast}. The swarms include the pending casts, whose
+     * id no live swarm carries, so they are never recast over.
+     *
+     * @param candidates cast points in the order they are tried
+     * @param swarms live swarms and pending casts near the Defiler
+     * @param meleeUnder ids of the live swarms our melee stand under
+     * @return the point to cast on, or null to hold the energy
+     */
+    static Position openCastPoint(List<Position> candidates, List<DarkSwarm> swarms, Set<Integer> meleeUnder) {
+        for (Position candidate : candidates) {
+            boolean blocked = false;
+            for (DarkSwarm swarm : swarms) {
+                if (blocksCast(swarm, meleeUnder.contains(swarm.getId()), candidate)) {
+                    blocked = true;
+                    break;
+                }
+            }
+            if (!blocked) {
+                return candidate;
+            }
+        }
+        return null;
+    }
+
+    private static boolean meleeUnder(DarkSwarm swarm, List<Unit> friendlyMelee) {
+        for (Unit melee : friendlyMelee) {
+            if (swarm.overlaps(melee.getPosition(), melee.getType())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Whether an enemy of this type may draw a Dark Swarm: any unit, and a building only when it can attack a ground
+     * unit.
+     *
+     * @param type the enemy's type
+     * @return true when the enemy is in the aim set
+     */
+    static boolean isAimTarget(UnitType type) {
+        return !type.isBuilding() || util.Filter.isHostileBuildingToGround(type);
+    }
+
+    /**
+     * Where to cast from our melee unit nearest the enemy toward that enemy: the swarm's centre is placed up to half
+     * the footprint's width ahead of the melee unit, so the footprint's near edge sits on our front and it reaches as
+     * far toward the enemy as it can. An enemy within that half width puts the centre on the enemy.
+     *
+     * @param front our melee unit's position
+     * @param target the enemy's position
+     * @return the cast position
+     */
+    static Position castPoint(Position front, Position target) {
+        double distance = front.getDistance(target);
+        if (distance <= 0) return target;
+        double scale = Math.min(distance, SWARM_HALF_WIDTH) / distance;
+        int x = (int) Math.round(front.getX() + (target.getX() - front.getX()) * scale);
+        int y = (int) Math.round(front.getY() + (target.getY() - front.getY()) * scale);
+        return new Position(x, y);
+    }
+
+    /**
+     * Whether an existing swarm or a pending cast rules out casting at a point: the new footprint, centred on the
+     * point, would share a pixel with the existing one, box to box, and the existing one is not about to lapse under
+     * melee committed to it. A swarm with fewer
+     * than {@link #RECAST_REMAINING_FRAMES} left and our melee under it is recast over.
+     *
+     * @param existing the existing swarm
+     * @param meleeUnder whether any of our melee units stands under it
+     * @param castPosition the point the cast would target
+     * @return true when the cast is refused
+     */
+    static boolean blocksCast(DarkSwarm existing, boolean meleeUnder, Position castPosition) {
+        if (!existing.overlaps(castPosition, UnitType.Spell_Dark_Swarm)) return false;
+        return !meleeUnder || existing.getRemainingFrames() >= RECAST_REMAINING_FRAMES;
     }
 
     private void moveToSafePosition() {

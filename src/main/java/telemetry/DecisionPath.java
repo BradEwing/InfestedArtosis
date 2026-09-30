@@ -166,6 +166,24 @@ public enum DecisionPath {
     RETREAT_LOCK_BROKEN,
 
     /**
+     * A melee squad took a swarm lock and fights under one of our active Dark Swarms.
+     */
+    SWARM_COMMIT,
+
+    /**
+     * A melee squad holding a swarm lock kept fighting under its swarm, whatever the sim, a retreat lock or a
+     * containment arc would have asked. On a SWARM_ACTIVE sample row it names a squad the lock has not taken.
+     */
+    SWARM_ACTIVE,
+
+    /**
+     * A melee squad dropped its swarm lock: the swarm fell below the sim horizon or was removed, a base came under
+     * attack, a member stood in a Psionic Storm, the squad stopped being melee, or the swarm-priced sim read RETREAT.
+     * The row's swarm_release_reason names which.
+     */
+    SWARM_EXPIRED,
+
+    /**
      * No branch recorded a decision for this row.
      */
     NONE,

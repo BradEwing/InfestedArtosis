@@ -2,6 +2,7 @@ package telemetry;
 
 import bwapi.Position;
 import bwapi.UnitType;
+import info.tracking.DarkSwarm;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import unit.managed.ManagedUnit;
@@ -13,6 +14,7 @@ import unit.squad.DefenseSim;
 import unit.squad.GroundSquad;
 import unit.squad.RunbyState;
 import unit.squad.Squad;
+import unit.squad.SwarmLock;
 import unit.squad.SquadStatus;
 import util.Arc;
 
@@ -20,6 +22,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -146,6 +149,12 @@ class SquadDecisionsTest {
                                            List<ManagedUnit> released, DefenseSim sim) {
                 events.add("DEFENSE:" + event + ":" + candidates + ":" + pulled.size() + ":" + released.size());
             }
+
+            @Override
+            public void onSwarmEvaluated(Squad squad, SwarmEvent event, int swarmId, int remainingFrames,
+                                         SwarmLock.Release release) {
+                events.add("SWARM:" + event + ":" + swarmId + ":" + remainingFrames + ":" + release);
+            }
         };
     }
 
@@ -177,8 +186,83 @@ class SquadDecisionsTest {
                 + "," + String.join(",", SquadDecisionLogger.containTimeoutCells(context))
                 + "," + String.join(",", SquadDecisionLogger.containStalemateCells(context))
                 + "," + String.join(",", SquadDecisionLogger.stalemateCommitCells(context))
-                + "," + SquadDecisionLogger.retreatRouteCell(context);
+                + "," + SquadDecisionLogger.retreatRouteCell(context)
+                + "," + String.join(",", SquadDecisionLogger.swarmCells(context.getSwarmId(),
+                context.getSwarmRemainingFrames(), false, context.getSwarmCover(), context.getSwarmRelease()));
         return row.split(",", -1);
+    }
+
+    @Test
+    void swarmColumnsCloseTheRowInOrder() {
+        String[] columns = SquadDecisionLogger.HEADER.split(",", -1);
+        int first = columnIndex("swarm_id");
+
+        assertEquals(columns.length - 5, first);
+        assertEquals(first + 1, columnIndex("swarm_remaining_frames"));
+        assertEquals(first + 2, columnIndex("swarm_locked"));
+        assertEquals(first + 3, columnIndex("sim_swarm_cover"));
+        assertEquals(first + 4, columnIndex("swarm_release_reason"));
+        assertEquals(columnIndex("retreat_route") + 1, first);
+    }
+
+    @Test
+    void swarmCellsNameTheSwarmItsTimeLeftTheLockTheCoverAndTheReleaseReason() {
+        assertEquals(Arrays.asList("382", "373", "1", "0.7500", "NONE"),
+                SquadDecisionLogger.swarmCells(382, 373, true, 0.75, SwarmLock.Release.NONE));
+        assertEquals(Arrays.asList("-1", "-1", "0", "-1.0000", "NONE"),
+                SquadDecisionLogger.swarmCells(-1, -1, false, -1, SwarmLock.Release.NONE));
+        assertEquals(Arrays.asList("382", "900", "0", "0.4400", "SIM_RETREAT"),
+                SquadDecisionLogger.swarmCells(382, 900, false, 0.44, SwarmLock.Release.SIM_RETREAT));
+    }
+
+    @Test
+    void swarmEventsDispatchWithTheirSwarmAndTimeLeft() {
+        SquadDecisions.register(recorder());
+
+        SquadDecisions.swarmEvaluated(new GroundSquad(), SwarmEvent.SWARM_COMMIT, 382, 900, SwarmLock.Release.NONE);
+        SquadDecisions.swarmEvaluated(new GroundSquad(), SwarmEvent.SWARM_EXPIRED, 382, 149,
+                SwarmLock.Release.HORIZON);
+
+        assertEquals(Arrays.asList("SWARM:SWARM_COMMIT:382:900:NONE", "SWARM:SWARM_EXPIRED:382:149:HORIZON"),
+                events);
+    }
+
+    @Test
+    void onlyACommitAndASimRetreatReleaseCarryTheSwarmLocksSimRead() {
+        assertTrue(SquadDecisionLogger.carriesSimRead(SwarmEvent.SWARM_COMMIT, SwarmLock.Release.NONE));
+        assertTrue(SquadDecisionLogger.carriesSimRead(SwarmEvent.SWARM_EXPIRED, SwarmLock.Release.SIM_RETREAT));
+        for (SwarmLock.Release release : SwarmLock.Release.values()) {
+            if (release != SwarmLock.Release.SIM_RETREAT) {
+                assertFalse(SquadDecisionLogger.carriesSimRead(SwarmEvent.SWARM_EXPIRED, release));
+            }
+            assertFalse(SquadDecisionLogger.carriesSimRead(SwarmEvent.SWARM_ACTIVE, release));
+        }
+    }
+
+    @Test
+    void everySwarmIsSeenOnceAndRemovedOnceWithItsCentreAndTimeLeft() {
+        DarkSwarm s1 = new DarkSwarm(382, new Position(1232, 3520), 900);
+        DarkSwarm s1Later = new DarkSwarm(382, new Position(1232, 3520), 373);
+        DarkSwarm s2 = new DarkSwarm(397, new Position(1264, 3305), 900);
+        Map<Integer, DarkSwarm> none = Collections.emptyMap();
+
+        assertEquals(Collections.singletonList("g,17942,SWARM_SEEN,382,1232,3520,900"),
+                SquadDecisionLogger.swarmLifecycleRows("g", 17942, none, Collections.singletonList(s1)));
+        assertTrue(SquadDecisionLogger.swarmLifecycleRows("g", 18469, Collections.singletonMap(382, s1),
+                Collections.singletonList(s1Later)).isEmpty());
+        assertEquals(Arrays.asList("g,18763,SWARM_SEEN,397,1264,3305,900", "g,18763,SWARM_REMOVED,382,1232,3520,373"),
+                SquadDecisionLogger.swarmLifecycleRows("g", 18763, Collections.singletonMap(382, s1Later),
+                        Collections.singletonList(s2)));
+        assertEquals(SquadDecisionLogger.SWARM_HEADER.split(",", -1).length,
+                SquadDecisionLogger.swarmLifecycleRows("g", 1, none, Collections.singletonList(s2)).get(0)
+                        .split(",", -1).length);
+    }
+
+    @Test
+    void eachSwarmEventNamesItsOwnDecisionPath() {
+        assertEquals(DecisionPath.SWARM_ACTIVE, SwarmEvent.SWARM_ACTIVE.path());
+        assertEquals(DecisionPath.SWARM_COMMIT, SwarmEvent.SWARM_COMMIT.path());
+        assertEquals(DecisionPath.SWARM_EXPIRED, SwarmEvent.SWARM_EXPIRED.path());
     }
 
     private static int columnIndex(String column) {
@@ -541,7 +625,9 @@ class SquadDecisionsTest {
                 + "," + String.join(",", SquadDecisionLogger.containTimeoutCells(context))
                 + "," + String.join(",", SquadDecisionLogger.containStalemateCells(context))
                 + "," + String.join(",", SquadDecisionLogger.stalemateCommitCells(context))
-                + "," + SquadDecisionLogger.retreatRouteCell(context);
+                + "," + SquadDecisionLogger.retreatRouteCell(context)
+                + "," + String.join(",", SquadDecisionLogger.swarmCells(-1, -1, false, -1,
+                SwarmLock.Release.NONE));
         String[] fields = row.split(",", -1);
 
         assertEquals(SquadDecisionLogger.HEADER.split(",", -1).length, fields.length);
@@ -669,7 +755,9 @@ class SquadDecisionsTest {
                 + "," + String.join(",", SquadDecisionLogger.containTimeoutCells(context))
                 + "," + String.join(",", SquadDecisionLogger.containStalemateCells(context))
                 + "," + String.join(",", SquadDecisionLogger.stalemateCommitCells(context))
-                + "," + SquadDecisionLogger.retreatRouteCell(context);
+                + "," + SquadDecisionLogger.retreatRouteCell(context)
+                + "," + String.join(",", SquadDecisionLogger.swarmCells(-1, -1, false, -1,
+                SwarmLock.Release.NONE));
         String[] fields = row.split(",", -1);
 
         assertEquals(SquadDecisionLogger.HEADER.split(",", -1).length, fields.length);
@@ -740,12 +828,10 @@ class SquadDecisionsTest {
     }
 
     @Test
-    void retreatRouteIsTheLastColumnAndDefaultsToNone() {
-        String[] columns = SquadDecisionLogger.HEADER.split(",", -1);
+    void retreatRouteFollowsTheStalemateCommitColumnsAndDefaultsToNone() {
         SquadDecision context = new SquadDecision();
 
-        assertEquals("stalemate_commit_army_real", columns[columns.length - 2]);
-        assertEquals("retreat_route", columns[columns.length - 1]);
+        assertEquals(columnIndex("stalemate_commit_army_real") + 1, columnIndex("retreat_route"));
         assertEquals("NONE", rowFor(new GroundSquad())[columnIndex("retreat_route")]);
         context.setRetreatRoute(RetreatRoute.DETOUR);
         assertEquals("DETOUR", SquadDecisionLogger.retreatRouteCell(context));
@@ -766,7 +852,7 @@ class SquadDecisionsTest {
     }
 
     @Test
-    void aRowCarriesTheCollapseTestAndArcDistanceAsTheLastColumns() {
+    void aRowCarriesTheCollapseTestAndArcDistanceBeforeTheSwarmColumns() {
         SquadDecision context = new SquadDecision();
         context.setCollapseOutcome(ContainmentCollapse.Outcome.COLLAPSE.name());
         context.setCollapseEnemiesInSector(5);
@@ -831,7 +917,7 @@ class SquadDecisionsTest {
     }
 
     @Test
-    void aStalemateCommitRowCarriesTheCommittedAndCurrentArmySupplyAfterTheStalemateColumn() {
+    void aStalemateCommitRowCarriesTheCommittedAndCurrentArmySupplyAfterTheStalemateRead() {
         SquadDecisions.register(recorder());
         SquadDecisions.stalemateCommit(new GroundSquad(), 301, 148);
         SquadDecision context = new SquadDecision();
@@ -840,9 +926,9 @@ class SquadDecisionsTest {
         String[] columns = SquadDecisionLogger.HEADER.split(",", -1);
 
         assertEquals(java.util.Collections.singletonList("STALEMATE_COMMIT:301:148"), events);
-        int first = columnIndex("stalemate_commit_supply_real");
-        assertEquals("contain_stalemate", columns[first - 1]);
-        assertEquals("stalemate_commit_army_real", columns[first + 1]);
+        int army = columnIndex("stalemate_commit_army_real");
+        assertEquals("contain_stalemate", columns[army - 2]);
+        assertEquals("stalemate_commit_supply_real", columns[army - 1]);
         assertEquals(java.util.Arrays.asList("150.5", "74"), SquadDecisionLogger.stalemateCommitCells(context));
         assertEquals(java.util.Arrays.asList("-1", "-1"),
                 SquadDecisionLogger.stalemateCommitCells(new SquadDecision()));

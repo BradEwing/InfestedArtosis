@@ -9,6 +9,7 @@ import bwapi.UnitType;
 import bwapi.WeaponType;
 import info.GameState;
 import info.TechProgression;
+import info.tracking.DarkSwarm;
 import info.tracking.ObservedUnit;
 import info.tracking.ObservedUnitTracker;
 import lombok.Getter;
@@ -81,6 +82,9 @@ public class HorizonCombatSimulator implements CombatSimulator {
         List<Position> coveredGroundThreats = new ArrayList<>();
         List<Position> coveredAirThreats = new ArrayList<>();
 
+        double swarmCover = swarmCoverShare(squad, gameState.getDarkSwarmTracker().getActiveSwarms());
+        snapshot.setSwarmCover(swarmCover);
+
         List<Position> visibleBunkers = visibleCompletedBunkers(tracker);
         for (ObservedUnit ou : tracker.getLivingObservedUnits()) {
             UnitType type = ou.getUnitType();
@@ -136,9 +140,10 @@ public class HorizonCombatSimulator implements CombatSimulator {
                 antiAirBase /= WORKER_STRENGTH_DIVISOR;
             }
 
-            double groundEnemyStr = groundBase * hpWeight * distWeight * heightMod;
+            double unswarmedGroundStr = groundBase * hpWeight * distWeight * heightMod;
+            double groundEnemyStr = unswarmedGroundStr * SwarmCover.groundMultiplier(type, swarmCover);
             double aaEnemyStr = antiAirBase * hpWeight * distWeight * heightMod;
-            enemySample.add(type, groundEnemyStr, aaEnemyStr);
+            enemySample.add(type, groundEnemyStr, aaEnemyStr, Math.max(unswarmedGroundStr, aaEnemyStr));
 
             double displayStr = airSquad ? aaEnemyStr : groundEnemyStr;
             snapshot.getEnemyUnits().add(new UnitDebugEntry(pos, type, displayStr, false, !visible));
@@ -406,12 +411,20 @@ public class HorizonCombatSimulator implements CombatSimulator {
         private final List<Boolean> entrySupported = new ArrayList<>();
 
         void add(UnitType type, double ground, double antiAir) {
+            add(type, ground, antiAir, Math.max(ground, antiAir));
+        }
+
+        /**
+         * @param standing how much the unit weighs as a target, which our swarm cover does not reduce: a unit whose
+         *                 fire the swarm negates is no smaller a target for it
+         */
+        void add(UnitType type, double ground, double antiAir, double standing) {
             groundStrength += ground;
             antiAirStrength += antiAir;
             if (type.isFlyer()) {
-                airStanding += Math.max(ground, antiAir);
+                airStanding += standing;
             } else {
-                groundStanding += Math.max(ground, antiAir);
+                groundStanding += standing;
             }
             entries.add(new double[]{ground, antiAir});
             entrySupported.add(isMedicSupported(type));
@@ -634,13 +647,34 @@ public class HorizonCombatSimulator implements CombatSimulator {
     }
 
     /**
+     * The squad's own cover under our active Dark Swarms, see {@link SwarmCover#coverShare}: each ground member
+     * weighted by its stronger domain strength. Overlords and flyers carry no cover. Adjacent squads are left out,
+     * so a squad standing in the open is never priced as covered because its neighbour is under a swarm.
+     */
+    private double swarmCoverShare(Squad squad, List<DarkSwarm> swarms) {
+        if (swarms.isEmpty()) return 0;
+        List<Double> covers = new ArrayList<>();
+        List<Double> weights = new ArrayList<>();
+        for (ManagedUnit mu : squad.getMembers()) {
+            UnitType type = mu.getUnitType();
+            if (type == UnitType.Zerg_Overlord || type.isFlyer()) continue;
+            Unit unit = mu.getUnit();
+            double topSpeed = unit.getPlayer().topSpeed(type);
+            covers.add(SwarmCover.unitCover(unit.getPosition(), type, topSpeed, swarms));
+            weights.add(UnitStrength.strongerDomain(type));
+        }
+        return SwarmCover.coverShare(covers, weights);
+    }
+
+    /**
      * The strength ratio of a squad against exactly the given enemies, the read a containing squad takes before it
      * collapses on the enemies inside its arc.
      *
      * <p>Every member counts at full distance weight: a collapse brings the whole squad onto the enemies at once.
      * Every enemy counts at full distance weight too, since the caller picked them by where they stand, and no
      * building, adjacent squad or own static defence is priced. The ratio is the one {@link #evaluate} judges,
-     * the larger of the ground and combined ratios.
+     * the larger of the ground and combined ratios. The enemies' ground fire is priced down by the squad's own cover
+     * under our active Dark Swarms, as in {@link #evaluate}.
      *
      * @param squad squad taking the read
      * @param enemies the enemies to price
@@ -654,6 +688,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
                 currentFrame);
         TechProgression techProgression = gameState.getTechProgression();
         Map<UnitSizeType, Double> friendlySizeProportions = sizeProportions(squad, null);
+        double swarmCover = swarmCoverShare(squad, gameState.getDarkSwarmTracker().getActiveSwarms());
 
         EnemySample enemySample = new EnemySample();
         for (Unit enemy : enemies) {
@@ -665,8 +700,10 @@ public class HorizonCombatSimulator implements CombatSimulator {
                     && gameState.getGame().getGroundHeight(enemy.getTilePosition()) > 0) {
                 heightMod = HEIGHT_BONUS;
             }
-            enemySample.add(type, weightedGroundStrength(type, friendlySizeProportions) * hpWeight * heightMod,
-                    weightedAntiAirStrength(type, friendlySizeProportions) * hpWeight * heightMod);
+            double unswarmedGround = weightedGroundStrength(type, friendlySizeProportions) * hpWeight * heightMod;
+            double antiAir = weightedAntiAirStrength(type, friendlySizeProportions) * hpWeight * heightMod;
+            enemySample.add(type, unswarmedGround * SwarmCover.groundMultiplier(type, swarmCover), antiAir,
+                    Math.max(unswarmedGround, antiAir));
         }
 
         FriendlyForce friendlyForce = new FriendlyForce();
@@ -1084,6 +1121,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
         private boolean enemyMeasured;
         private boolean threatBeyondRadius;
         private int enemyUnscoredSupply;
+        private double swarmCover;
         private double enemyAirShare = UnitStrength.UNMEASURED_AIR_SHARE;
         private double ourAirShare = UnitStrength.UNMEASURED_AIR_SHARE;
     }

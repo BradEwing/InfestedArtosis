@@ -62,6 +62,12 @@ public class Squad implements Comparable<Squad> {
     protected int containStartFrame = 0;
     private Arc containmentArc;
     private RunbyState runbyState;
+    private SwarmLock swarmLock;
+    /**
+     * The frame this squad last dropped a swarm lock on a RETREAT read of the sim, or -1; see
+     * {@link SwarmLock#mayCommit}.
+     */
+    private int simRetreatReleaseFrame = -1;
     private AirHarassState harassState;
     private int harassExitFrame = 0;
     private int harassExitEngageFrame = 0;
@@ -266,6 +272,8 @@ public class Squad implements Comparable<Squad> {
         int earliestCommit = 0;
         Arc inheritedArc = null;
         RunbyState inheritedRunby = null;
+        SwarmLock inheritedSwarmLock = null;
+        int inheritedSimRetreatReleaseFrame = -1;
         AirHarassState inheritedHarass = null;
         int inheritedRadius = 0;
         CollapseEntryRun inheritedEntryRun = null;
@@ -278,6 +286,10 @@ public class Squad implements Comparable<Squad> {
             if (inheritedRunby == null && source.status == SquadStatus.RUNBY) {
                 inheritedRunby = source.runbyState;
             }
+            if (inheritedSwarmLock == null) {
+                inheritedSwarmLock = source.swarmLock;
+            }
+            inheritedSimRetreatReleaseFrame = Math.max(inheritedSimRetreatReleaseFrame, source.simRetreatReleaseFrame);
             if (inheritedHarass == null && source.status == SquadStatus.HARASS) {
                 inheritedHarass = source.harassState;
             }
@@ -321,6 +333,8 @@ public class Squad implements Comparable<Squad> {
             this.containmentAttrition.absorb(inheritedAttrition);
         }
         this.commitFrame = earliestCommit;
+        this.swarmLock = inheritedSwarmLock;
+        this.simRetreatReleaseFrame = inheritedSimRetreatReleaseFrame;
         this.collapse = mergedStatus == SquadStatus.FIGHT ? inheritedCollapse : null;
         if (mergedStatus != SquadStatus.FIGHT) {
             this.collapseCommitHeldUntilFrame = 0;
