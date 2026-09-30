@@ -215,5 +215,18 @@ public enum DecisionPath {
      * The base threat that paused a stalemate commit cleared and the commit resumed with its committed supply.
      * Written as a row of its own for every ground squad on the frame it resumes.
      */
-    STALEMATE_COMMIT_RESUME
+    STALEMATE_COMMIT_RESUME,
+
+    /**
+     * A retreating ground squad whose last retreat plan found no path home clear of the enemy turned to fight, dropping
+     * its retreat lock, once ENGAGE had held over a fight hysteresis window. It then stays in FIGHT for one more.
+     */
+    CORNERED_ENGAGE,
+
+    /**
+     * A retreating ground squad whose last retreat plan found its home contested turned to defend it instead of
+     * staging at the edge of the threats on it, dropping its retreat lock, once ENGAGE or a measured read at or above
+     * 0.9 of the engage threshold had held over a fight hysteresis window. It then stays in FIGHT for one more.
+     */
+    HOME_CONTESTED_DEFEND
 }

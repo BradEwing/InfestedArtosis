@@ -87,6 +87,11 @@ import java.util.stream.Collectors;
  * one side is priced over the other side's strength in the layers it can hit, so a weapon that fills two domains,
  * a Mutalisk's or a Dragoon's, counts once in sim_our_strength and sim_enemy_strength.
  *
+ * <p>retreat_route names the route of the ground retreat planned for the squad on the row's frame, see
+ * {@link RetreatRoute}, and is NONE on a row of a frame that planned none. A CORNERED_ENGAGE decision_path marks a
+ * squad that turned to fight because its last plan was CORNERED, and a HOME_CONTESTED_DEFEND decision_path one that
+ * turned to defend a home its last plan found contested.
+ *
  * <p>Every row names the branch that decided the status it reports in decision_path. On a
  * LOCK_SUPPRESSED row that is the request the lock refused, so the suppression episodes a lock
  * produced are separable by the branch that asked for them.
@@ -117,7 +122,8 @@ public class SquadDecisionLogger implements SquadDecisionSink {
             + "collapse_under_fire,collapse_run_start_frame,collapse_wrap_end,collapse_first_favourable_frame,"
             + "contain_timeout_reentries,contain_static_only,"
             + "contain_break_shortfall_real,contain_break_unreachable,contain_stalemate,"
-            + "stalemate_commit_supply_real,stalemate_commit_army_real";
+            + "stalemate_commit_supply_real,stalemate_commit_army_real,"
+            + "retreat_route";
 
     private static final int FLUSH_INTERVAL_FRAMES = 480;
     private static final String EVENT_STATUS_CHANGE = "STATUS_CHANGE";
@@ -477,6 +483,19 @@ public class SquadDecisionLogger implements SquadDecisionSink {
     }
 
     @Override
+    public void onRetreatRouted(Squad squad, RetreatRoute route) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            decisionFor(squad).setRetreatRoute(route);
+        } catch (RuntimeException e) {
+            disable();
+        }
+    }
+
+    @Override
     public void onContainmentEnded(Squad squad, int supplyLost) {
         if (disabled) {
             return;
@@ -726,6 +745,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         fields.addAll(containTimeoutCells(context));
         fields.addAll(containStalemateCells(context));
         fields.addAll(stalemateCommitCells(context));
+        fields.add(retreatRouteCell(context));
         return String.join(",", fields);
     }
 
@@ -756,6 +776,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         fields.addAll(containTimeoutCells(context));
         fields.addAll(containStalemateCells(context));
         fields.addAll(stalemateCommitCells(context));
+        fields.add(retreatRouteCell(context));
         return String.join(",", fields);
     }
 
@@ -905,6 +926,17 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         fields.add(context.getCollapseWrapEnd());
         fields.add(String.valueOf(context.getCollapseFirstFavourableFrame()));
         return fields;
+    }
+
+    /**
+     * Builds the retreat_route cell: the route of the ground retreat planned for the squad on the row's frame, NONE
+     * when none was planned.
+     *
+     * @param context the decision the row is built from
+     * @return the retreat route cell
+     */
+    static String retreatRouteCell(SquadDecision context) {
+        return Csv.name(context.getRetreatRoute());
     }
 
     /**
