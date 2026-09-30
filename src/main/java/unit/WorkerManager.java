@@ -1,6 +1,7 @@
 package unit;
 
 import bwapi.Game;
+import bwapi.Order;
 import bwapi.Player;
 import bwapi.Unit;
 import bwapi.UnitType;
@@ -12,6 +13,7 @@ import macro.SupplyCapacity;
 import macro.plan.Plan;
 import macro.plan.PlanCancelSource;
 import macro.plan.PlanType;
+import strategy.buildorder.BuildOrder;
 import unit.managed.ManagedUnit;
 import unit.managed.UnitRole;
 import util.Distance;
@@ -52,6 +54,11 @@ public class WorkerManager {
     // Floor applied on the mineral surplus path, which mineral income already vouches for
     static final int NO_MINERAL_FLOOR = 0;
 
+    // Frames a drone pulled off gas is left alone while its order catches up with the mineral command
+    static final int GAS_PULL_COOLDOWN = 48;
+
+    private final HashMap<ManagedUnit, Integer> gasPullFrames = new HashMap<>();
+
     public WorkerManager(Game game, GameState gameState) {
         this.game = game;
         this.gameState = gameState;
@@ -66,11 +73,21 @@ public class WorkerManager {
         checksLarvaDeadlock();
         handleLarvaDeadlock();
 
-        if (gameState.isScvRushed()) {
+        if (isGasHeld()) {
             cutGasHarvesting();
         } else {
             rebalanceCheck();
         }
+    }
+
+    /**
+     * Whether no drone may gather gas: an SCV rush is on, or the active build order has taken all
+     * the gas it wants.
+     */
+    private boolean isGasHeld() {
+        BuildOrder activeBuildOrder = gameState.getActiveBuildOrder();
+        return gameState.isScvRushed()
+                || activeBuildOrder != null && activeBuildOrder.holdsGasHarvesting(gameState);
     }
 
     public void onUnitComplete(ManagedUnit managedUnit) {
@@ -146,7 +163,7 @@ public class WorkerManager {
     // onExtractorComplete is called when an extractor is complete, to immediately pull 3 mineral gathering drones
     // onto the extractor
     public void onExtractorComplete(Unit unit) {
-        if (gameState.isScvRushed()) {
+        if (isGasHeld()) {
             return;
         }
 
@@ -661,18 +678,48 @@ public class WorkerManager {
     }
 
     /**
-     * Cuts gas harvesting when gas is floating.
-     * Reassigns gas workers to maintain proper mineral/gas balance.
+     * Moves every drone off gas: the drones assigned to a geyser, and any other gatherer whose
+     * order still heads it to a geyser. A gatherer pulled by its order is not pulled again for
+     * {@link #GAS_PULL_COOLDOWN} frames, so an order that has not yet caught up with the mineral
+     * command does not re-pull the drone every frame.
      */
     private void cutGasHarvesting() {
-        int gasWorkers = gameState.getGeyserWorkers();
+        int frame = game.getFrameCount();
+        gasPullFrames.values().removeIf(pulledAt -> !gasPullCoolingDown(frame, pulledAt));
 
-        if (gasWorkers > 0) {    
-            List<ManagedUnit> geyserWorkers = new ArrayList<>(gasGatherers);
-            for (ManagedUnit worker: geyserWorkers) {
-                gameState.clearAssignments(worker);
-                assignToMineral(worker);
+        HashSet<ManagedUnit> geyserWorkers = new HashSet<>(gasGatherers);
+        for (ManagedUnit gatherer: gatherers) {
+            if (!gasPullFrames.containsKey(gatherer) && headsToGas(gatherer.getUnit().getOrder())) {
+                geyserWorkers.add(gatherer);
             }
         }
+
+        for (ManagedUnit worker: geyserWorkers) {
+            gasPullFrames.put(worker, frame);
+            gameState.clearAssignments(worker);
+            assignToMineral(worker);
+        }
+    }
+
+    /**
+     * Whether a drone pulled off gas is still inside its {@link #GAS_PULL_COOLDOWN}.
+     *
+     * @param frame the current frame
+     * @param pulledAt the frame the drone was last pulled off gas
+     * @return true while fewer than {@link #GAS_PULL_COOLDOWN} frames have passed
+     */
+    static boolean gasPullCoolingDown(int frame, int pulledAt) {
+        return frame - pulledAt < GAS_PULL_COOLDOWN;
+    }
+
+    /**
+     * Whether a worker's order takes it to a geyser or keeps it harvesting there. A worker
+     * returning gas it already carries is left to deliver it.
+     *
+     * @param order the worker's current order
+     * @return true for the orders that move to, wait at or harvest a geyser
+     */
+    static boolean headsToGas(Order order) {
+        return order == Order.MoveToGas || order == Order.WaitForGas || order == Order.HarvestGas;
     }
 }

@@ -1,5 +1,6 @@
 package unit;
 
+import bwapi.Order;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -15,6 +16,29 @@ class WorkerManagerTest {
     void gasIsCutOnlyWhenUnreservedGasClearsTheSurplus() {
         assertTrue(WorkerManager.shouldCutGasHarvesting(0, WorkerManager.GAS_SURPLUS + 1, NO_QUEUED_GAS));
         assertFalse(WorkerManager.shouldCutGasHarvesting(0, WorkerManager.GAS_SURPLUS, NO_QUEUED_GAS));
+    }
+
+    @Test
+    void aGasCutPullsWorkersHeadingToOrHarvestingAGeyser() {
+        assertTrue(WorkerManager.headsToGas(Order.MoveToGas));
+        assertTrue(WorkerManager.headsToGas(Order.WaitForGas));
+        assertTrue(WorkerManager.headsToGas(Order.HarvestGas));
+    }
+
+    @Test
+    void aGasCutLeavesReturningAndMineralWorkersAlone() {
+        assertFalse(WorkerManager.headsToGas(Order.ReturnGas));
+        assertFalse(WorkerManager.headsToGas(Order.MoveToMinerals));
+        assertFalse(WorkerManager.headsToGas(Order.MiningMinerals));
+        assertFalse(WorkerManager.headsToGas(Order.PlayerGuard));
+    }
+
+    @Test
+    void aDronePulledOffGasIsLeftAloneForTheCooldown() {
+        int pulledAt = 5000;
+        assertTrue(WorkerManager.gasPullCoolingDown(pulledAt, pulledAt));
+        assertTrue(WorkerManager.gasPullCoolingDown(pulledAt + WorkerManager.GAS_PULL_COOLDOWN - 1, pulledAt));
+        assertFalse(WorkerManager.gasPullCoolingDown(pulledAt + WorkerManager.GAS_PULL_COOLDOWN, pulledAt));
     }
 
     @Test

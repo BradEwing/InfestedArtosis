@@ -116,6 +116,7 @@ public class ProductionManager {
 
         transition();
         reactions.onFrame();
+        runExtractorTrick();
         updateTechWave();
         plan();
         cancelImpossiblePlans();
@@ -133,6 +134,40 @@ public class ProductionManager {
         if (gameState.isTransitionBuildOrder()) {
             this.activeBuildOrder = gameState.getActiveBuildOrder();
         }
+    }
+
+    /**
+     * Carries out the {@link ExtractorTrick}'s step for this frame. A cancel that the game accepts
+     * hands the geyser back without arming the Extractor replan hold, since the build takes the
+     * same geyser again for its real Extractor.
+     */
+    private void runExtractorTrick() {
+        ExtractorTrick trick = gameState.getExtractorTrick();
+        if (!trick.isRunning()) {
+            return;
+        }
+
+        Unit extractor = unfinishedExtractorAt(trick.getGeyser());
+        if (trick.update(currentFrame, extractor != null) != ExtractorTrick.Step.CANCEL) {
+            return;
+        }
+
+        if (extractor.cancelMorph()) {
+            gameState.getBaseData().releaseExtractor(trick.getGeyser());
+            PlanEvents.unplannedCancel(UnitType.Zerg_Extractor, PlanCancelSource.PRODUCTION_EXTRACTOR_TRICK);
+            trick.cancelled();
+        }
+    }
+
+    private Unit unfinishedExtractorAt(TilePosition geyser) {
+        for (Unit unit : game.self().getUnits()) {
+            if (unit.getType() == UnitType.Zerg_Extractor
+                    && !unit.isCompleted()
+                    && unit.getTilePosition().equals(geyser)) {
+                return unit;
+            }
+        }
+        return null;
     }
 
     /** Re-derives the pending tech wave from the structures under construction this frame. */

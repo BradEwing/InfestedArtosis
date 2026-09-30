@@ -323,6 +323,19 @@ public abstract class BuildOrder {
     }
 
     /**
+     * True while the build wants every drone off gas, whatever the worker balance asks for.
+     *
+     * <p>Defaults to false. A build that mines a fixed amount of gas and then returns to minerals
+     * answers true once it has that gas.
+     *
+     * @param gameState current game state
+     * @return true while no drone may gather gas
+     */
+    public boolean holdsGasHarvesting(GameState gameState) {
+        return false;
+    }
+
+    /**
      * Whether no opener offers this build order any more. A retired build order stays registered so
      * learning rows that name it still resolve, but it is not seeded as a playable arm.
      */

@@ -31,6 +31,7 @@ import info.tracking.StrategyTracker;
 import learning.Decisions;
 import lombok.Data;
 import macro.DroneRound;
+import macro.ExtractorTrick;
 import macro.HatcheryCapacity;
 import macro.SupplyCapacity;
 import macro.plan.ColonyClaims;
@@ -124,6 +125,7 @@ public class GameState {
     private HashSet<Plan> plansImpossible = new HashSet<>();
     private ProductionQueue productionQueue = new ProductionQueue();
     private DroneRound droneRound = new DroneRound();
+    private final ExtractorTrick extractorTrick = new ExtractorTrick();
     private final ContainHeldTimer containHeldTimer = new ContainHeldTimer();
     private final EndgameHunt endgameHunt = new EndgameHunt();
     private final ContainmentStalemate containmentStalemate = new ContainmentStalemate();
