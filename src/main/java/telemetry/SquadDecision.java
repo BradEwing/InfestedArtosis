@@ -70,6 +70,7 @@ final class SquadDecision {
     private int swarmRemainingFrames = NOT_EVALUATED;
     private double swarmCover = NOT_EVALUATED;
     private SwarmLock.Release swarmRelease = SwarmLock.Release.NONE;
+    private CommitmentRelease commitmentRelease = CommitmentRelease.NONE;
 
     static int tristate(boolean value) {
         return value ? 1 : 0;

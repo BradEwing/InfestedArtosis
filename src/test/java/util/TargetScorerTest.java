@@ -160,6 +160,48 @@ class TargetScorerTest {
     }
 
     @Test
+    void aMutaliskTakesAFartherGoliathBeforeANearerBunker() {
+        List<TargetScorer.Candidate> list = Arrays.asList(
+                at(UnitType.Terran_Bunker, 60), at(UnitType.Terran_Goliath, 300));
+
+        assertEquals(1, TargetScorer.selectIndex(UnitType.Zerg_Mutalisk, MUTALISK, list));
+    }
+
+    @Test
+    void aMutaliskRanksABunkerBelowWorkersAndAboveBuildings() {
+        assertEquals(TargetScorer.Priority.NORMAL,
+                TargetScorer.assignPriority(UnitType.Terran_Bunker, UnitType.Zerg_Mutalisk, MUTALISK, false));
+        assertEquals(1, TargetScorer.selectIndex(UnitType.Zerg_Mutalisk, MUTALISK, Arrays.asList(
+                at(UnitType.Terran_Bunker, 20), at(UnitType.Terran_SCV, 300))));
+        assertEquals(0, TargetScorer.selectIndex(UnitType.Zerg_Mutalisk, MUTALISK, Arrays.asList(
+                at(UnitType.Terran_Bunker, 300), at(UnitType.Terran_Supply_Depot, 20))));
+    }
+
+    @Test
+    void aMutaliskStillTakesTheBunkerItIsShootingOverABuilding() {
+        assertEquals(0, TargetScorer.selectIndex(UnitType.Zerg_Mutalisk, MUTALISK, Arrays.asList(
+                currentAt(UnitType.Terran_Bunker, 100), at(UnitType.Terran_Command_Center, 10))));
+    }
+
+    @Test
+    void aMutaliskBunkerPickLogsTheMutaBunkerReason() {
+        List<TargetScorer.Candidate> list = Arrays.asList(
+                at(UnitType.Terran_Bunker, 60), at(UnitType.Terran_Supply_Depot, 20));
+
+        assertEquals(TargetScorer.Reason.MUTA_BUNKER, TargetScorer.reasonAt(UnitType.Zerg_Mutalisk, MUTALISK, list, 0));
+    }
+
+    @Test
+    void otherAttackersKeepTheBunkerAsACriticalThreat() {
+        assertEquals(TargetScorer.Priority.CRITICAL,
+                TargetScorer.assignPriority(UnitType.Terran_Bunker, UnitType.Zerg_Scourge, true, false));
+        assertEquals(TargetScorer.Priority.CRITICAL,
+                TargetScorer.assignPriority(UnitType.Terran_Bunker, UnitType.Zerg_Zergling, ZERGLING, false));
+        assertEquals(0, TargetScorer.selectIndex(UnitType.Zerg_Zergling, ZERGLING, Arrays.asList(
+                at(UnitType.Terran_Bunker, 300), at(UnitType.Terran_SCV, 20))));
+    }
+
+    @Test
     void aZeroDistanceCandidateScoresAsOnePixelAway() {
         assertEquals(at(UnitType.Zerg_Drone, 1).score(ZERGLING), at(UnitType.Zerg_Drone, 0).score(ZERGLING));
     }

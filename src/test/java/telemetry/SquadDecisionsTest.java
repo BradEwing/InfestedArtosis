@@ -135,6 +135,11 @@ class SquadDecisionsTest {
             }
 
             @Override
+            public void onCommitmentReleased(Squad squad, CommitmentRelease release) {
+                events.add("COMMITMENT_RELEASED:" + release);
+            }
+
+            @Override
             public void onMoveOutEvaluated(Squad squad, int moveOutThreshold, int squadStrength) {
                 events.add("MOVE_OUT:" + moveOutThreshold + ":" + squadStrength);
             }
@@ -188,16 +193,15 @@ class SquadDecisionsTest {
                 + "," + String.join(",", SquadDecisionLogger.stalemateCommitCells(context))
                 + "," + SquadDecisionLogger.retreatRouteCell(context)
                 + "," + String.join(",", SquadDecisionLogger.swarmCells(context.getSwarmId(),
-                context.getSwarmRemainingFrames(), false, context.getSwarmCover(), context.getSwarmRelease()));
+                context.getSwarmRemainingFrames(), false, context.getSwarmCover(), context.getSwarmRelease()))
+                + "," + String.join(",", SquadDecisionLogger.commitmentReleaseCells(context));
         return row.split(",", -1);
     }
 
     @Test
-    void swarmColumnsCloseTheRowInOrder() {
-        String[] columns = SquadDecisionLogger.HEADER.split(",", -1);
+    void swarmColumnsFollowTheRetreatRouteInOrder() {
         int first = columnIndex("swarm_id");
 
-        assertEquals(columns.length - 5, first);
         assertEquals(first + 1, columnIndex("swarm_remaining_frames"));
         assertEquals(first + 2, columnIndex("swarm_locked"));
         assertEquals(first + 3, columnIndex("sim_swarm_cover"));
@@ -627,7 +631,8 @@ class SquadDecisionsTest {
                 + "," + String.join(",", SquadDecisionLogger.stalemateCommitCells(context))
                 + "," + SquadDecisionLogger.retreatRouteCell(context)
                 + "," + String.join(",", SquadDecisionLogger.swarmCells(-1, -1, false, -1,
-                SwarmLock.Release.NONE));
+                SwarmLock.Release.NONE))
+                + "," + String.join(",", SquadDecisionLogger.commitmentReleaseCells(context));
         String[] fields = row.split(",", -1);
 
         assertEquals(SquadDecisionLogger.HEADER.split(",", -1).length, fields.length);
@@ -757,7 +762,8 @@ class SquadDecisionsTest {
                 + "," + String.join(",", SquadDecisionLogger.stalemateCommitCells(context))
                 + "," + SquadDecisionLogger.retreatRouteCell(context)
                 + "," + String.join(",", SquadDecisionLogger.swarmCells(-1, -1, false, -1,
-                SwarmLock.Release.NONE));
+                SwarmLock.Release.NONE))
+                + "," + String.join(",", SquadDecisionLogger.commitmentReleaseCells(context));
         String[] fields = row.split(",", -1);
 
         assertEquals(SquadDecisionLogger.HEADER.split(",", -1).length, fields.length);
@@ -926,9 +932,9 @@ class SquadDecisionsTest {
         String[] columns = SquadDecisionLogger.HEADER.split(",", -1);
 
         assertEquals(java.util.Collections.singletonList("STALEMATE_COMMIT:301:148"), events);
-        int army = columnIndex("stalemate_commit_army_real");
-        assertEquals("contain_stalemate", columns[army - 2]);
-        assertEquals("stalemate_commit_supply_real", columns[army - 1]);
+        int first = columnIndex("stalemate_commit_supply_real");
+        assertEquals("contain_stalemate", columns[first - 1]);
+        assertEquals("stalemate_commit_army_real", columns[first + 1]);
         assertEquals(java.util.Arrays.asList("150.5", "74"), SquadDecisionLogger.stalemateCommitCells(context));
         assertEquals(java.util.Arrays.asList("-1", "-1"),
                 SquadDecisionLogger.stalemateCommitCells(new SquadDecision()));
@@ -955,6 +961,21 @@ class SquadDecisionsTest {
         assertEquals("-1", fields[columnIndex("contain_stalemate")]);
         assertEquals("-1", fields[columnIndex("stalemate_commit_supply_real")]);
         assertEquals("-1", fields[columnIndex("stalemate_commit_army_real")]);
+        assertEquals("NONE", fields[columnIndex("air_commitment_release")]);
+    }
+
+    @Test
+    void aReleasedCommitmentIsCarriedAsTheLastColumn() {
+        SquadDecisions.register(recorder());
+        SquadDecisions.commitmentReleased(new AirSquad(), CommitmentRelease.STATIC_AA);
+        SquadDecision context = new SquadDecision();
+        context.setCommitmentRelease(CommitmentRelease.HP);
+        String[] columns = SquadDecisionLogger.HEADER.split(",", -1);
+
+        assertEquals(java.util.Collections.singletonList("COMMITMENT_RELEASED:STATIC_AA"), events);
+        assertEquals("air_commitment_release", columns[columns.length - 1]);
+        assertEquals("swarm_release_reason", columns[columns.length - 2]);
+        assertEquals(java.util.Collections.singletonList("HP"), SquadDecisionLogger.commitmentReleaseCells(context));
     }
 
     @Test

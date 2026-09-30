@@ -132,7 +132,8 @@ public class SquadDecisionLogger implements SquadDecisionSink {
             + "contain_break_shortfall_real,contain_break_unreachable,contain_stalemate,"
             + "stalemate_commit_supply_real,stalemate_commit_army_real,"
             + "retreat_route,"
-            + "swarm_id,swarm_remaining_frames,swarm_locked,sim_swarm_cover,swarm_release_reason";
+            + "swarm_id,swarm_remaining_frames,swarm_locked,sim_swarm_cover,swarm_release_reason,"
+            + "air_commitment_release";
 
     static final String SWARM_FILE = "telemetry_dark_swarms.csv";
 
@@ -471,6 +472,19 @@ public class SquadDecisionLogger implements SquadDecisionSink {
             SquadDecision decision = decisionFor(squad);
             decision.setStalemateCommitSupply(committedSupply);
             decision.setStalemateCommitArmy(armySupply);
+        } catch (RuntimeException e) {
+            disable();
+        }
+    }
+
+    @Override
+    public void onCommitmentReleased(Squad squad, CommitmentRelease release) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            decisionFor(squad).setCommitmentRelease(release);
         } catch (RuntimeException e) {
             disable();
         }
@@ -859,6 +873,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         fields.addAll(stalemateCommitCells(context));
         fields.add(retreatRouteCell(context));
         fields.addAll(swarmCells(squad, context));
+        fields.addAll(commitmentReleaseCells(context));
         return String.join(",", fields);
     }
 
@@ -929,6 +944,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         fields.add(retreatRouteCell(context));
         fields.addAll(swarmCells(SquadDecision.NOT_EVALUATED, SquadDecision.NOT_EVALUATED, false,
                 SquadDecision.NOT_EVALUATED, SwarmLock.Release.NONE));
+        fields.addAll(commitmentReleaseCells(context));
         return String.join(",", fields);
     }
 
@@ -1139,6 +1155,18 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         fields.add(halfSupplyOrSentinel(context.getStalemateCommitSupply()));
         fields.add(halfSupplyOrSentinel(context.getStalemateCommitArmy()));
         return fields;
+    }
+
+    /**
+     * Builds the air commitment release cell: the term that let a RETREAT verdict through an air squad's armed engage
+     * commitment, see {@link CommitmentRelease}. Filled on the frame an air squad in FIGHT with an armed commitment
+     * takes a RETREAT verdict the commitment does not hold against; every other row carries NONE.
+     *
+     * @param context the decision the row is built from
+     * @return the release cell
+     */
+    static List<String> commitmentReleaseCells(SquadDecision context) {
+        return Collections.singletonList(context.getCommitmentRelease().name());
     }
 
     private static String halfSupplyOrSentinel(int halfUnits) {
