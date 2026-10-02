@@ -7,6 +7,7 @@ import lombok.AccessLevel;
 import lombok.Data;
 import lombok.Getter;
 import org.jetbrains.annotations.NotNull;
+import telemetry.RetreatRoute;
 import unit.managed.ManagedUnit;
 import util.Arc;
 import util.Distance;
@@ -61,6 +62,12 @@ public class Squad implements Comparable<Squad> {
     protected int containStartFrame = 0;
     private Arc containmentArc;
     private RunbyState runbyState;
+    private SwarmLock swarmLock;
+    /**
+     * The frame this squad last dropped a swarm lock on a RETREAT read of the sim, or -1; see
+     * {@link SwarmLock#mayCommit}.
+     */
+    private int simRetreatReleaseFrame = -1;
     private AirHarassState harassState;
     private int harassExitFrame = 0;
     private int harassExitEngageFrame = 0;
@@ -70,6 +77,10 @@ public class Squad implements Comparable<Squad> {
     protected int collapseCommitHeldUntilFrame = 0;
     private CollapseEntryRun collapseEntryRun = new CollapseEntryRun();
     private final ContainmentAttrition containmentAttrition = new ContainmentAttrition();
+    private RetreatRoute retreatRoute = RetreatRoute.NONE;
+    private int retreatPlanFrame = 0;
+    private int corneredEngageSinceFrame = -1;
+    private int corneredFightHeldUntilFrame = 0;
     protected Time fightHysteresis = new Time(0, 3);
     protected Time retreatHysteresis = new Time(0, 5);
     protected Time containHysteresis = new Time(0, 5);
@@ -261,6 +272,8 @@ public class Squad implements Comparable<Squad> {
         int earliestCommit = 0;
         Arc inheritedArc = null;
         RunbyState inheritedRunby = null;
+        SwarmLock inheritedSwarmLock = null;
+        int inheritedSimRetreatReleaseFrame = -1;
         AirHarassState inheritedHarass = null;
         int inheritedRadius = 0;
         CollapseEntryRun inheritedEntryRun = null;
@@ -273,6 +286,10 @@ public class Squad implements Comparable<Squad> {
             if (inheritedRunby == null && source.status == SquadStatus.RUNBY) {
                 inheritedRunby = source.runbyState;
             }
+            if (inheritedSwarmLock == null) {
+                inheritedSwarmLock = source.swarmLock;
+            }
+            inheritedSimRetreatReleaseFrame = Math.max(inheritedSimRetreatReleaseFrame, source.simRetreatReleaseFrame);
             if (inheritedHarass == null && source.status == SquadStatus.HARASS) {
                 inheritedHarass = source.harassState;
             }
@@ -316,6 +333,8 @@ public class Squad implements Comparable<Squad> {
             this.containmentAttrition.absorb(inheritedAttrition);
         }
         this.commitFrame = earliestCommit;
+        this.swarmLock = inheritedSwarmLock;
+        this.simRetreatReleaseFrame = inheritedSimRetreatReleaseFrame;
         this.collapse = mergedStatus == SquadStatus.FIGHT ? inheritedCollapse : null;
         if (mergedStatus != SquadStatus.FIGHT) {
             this.collapseCommitHeldUntilFrame = 0;
@@ -458,6 +477,49 @@ public class Squad implements Comparable<Squad> {
         retreatLockedUntilFrame = 0;
         attritionRetreatLock = false;
         strongEngageSinceFrame = -1;
+    }
+
+    /**
+     * Records one evaluation of a ground squad and reports whether the cornered ENGAGE that turns it to fight has
+     * persisted. A cornered ENGAGE starts the run, any other read ends it, and the run persists once it has lasted one
+     * fight hysteresis window, as {@link #strongEngagePersisted} does for the attrition lock.
+     *
+     * @param corneredEngage true when this evaluation read ENGAGE for a squad retreating from a CORNERED plan, or a
+     *     defend read for a squad retreating from a HOME_CONTESTED plan
+     * @param currentFrame frame of the evaluation
+     * @return true when every evaluation over the last fight hysteresis window read a cornered ENGAGE
+     */
+    public boolean corneredEngagePersisted(boolean corneredEngage, int currentFrame) {
+        if (!corneredEngage) {
+            corneredEngageSinceFrame = -1;
+            return false;
+        }
+        if (corneredEngageSinceFrame < 0) {
+            corneredEngageSinceFrame = currentFrame;
+        }
+        return currentFrame - corneredEngageSinceFrame >= fightHysteresis.getFrames();
+    }
+
+    /**
+     * Holds a cornered squad that turned to fight in FIGHT for one fight hysteresis window, whatever the sim reads,
+     * see {@link #isCorneredFightHeld}, and starts the next cornered ENGAGE run over. A merge does not inherit the
+     * hold.
+     *
+     * @param currentFrame frame the squad turned to fight
+     */
+    public void holdCorneredFight(int currentFrame) {
+        corneredFightHeldUntilFrame = currentFrame + fightHysteresis.getFrames();
+        corneredEngageSinceFrame = -1;
+    }
+
+    /**
+     * Whether the hold {@link #holdCorneredFight} armed still keeps the squad in FIGHT.
+     *
+     * @param currentFrame frame of the evaluation
+     * @return true until one fight hysteresis window after the squad turned to fight
+     */
+    public boolean isCorneredFightHeld(int currentFrame) {
+        return currentFrame < corneredFightHeldUntilFrame;
     }
 
     /**
