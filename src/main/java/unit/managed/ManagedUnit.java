@@ -923,6 +923,14 @@ public class ManagedUnit {
     }
 
     /**
+     * @return true when the unit is burrowed and unburrows to step out of fire on this frame, so a burrowed unit
+     *     outranged in a contain can leave it
+     */
+    public boolean canWithdrawNow() {
+        return false;
+    }
+
+    /**
      * @return true when the unit has a fight target that still exists
      */
     public boolean isClosingOnTarget() {
@@ -965,7 +973,7 @@ public class ManagedUnit {
         evadeFrame = frame;
     }
 
-    private void issueEvade() {
+    protected void issueEvade() {
         unit.move(evadePosition);
         evadePosition = null;
         setUnready(OUTRANGED_EVADE_FRAMES);

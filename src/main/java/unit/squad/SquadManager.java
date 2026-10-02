@@ -36,6 +36,7 @@ import telemetry.SquadDecisions;
 import telemetry.SquadLock;
 import telemetry.SwarmEvent;
 import telemetry.TargetChoices;
+import unit.managed.Lurker;
 import unit.managed.ManagedUnit;
 import unit.squad.horizon.HorizonCombatSimulator;
 import unit.managed.UnitRole;
@@ -255,6 +256,7 @@ public class SquadManager {
 
         fightSquads.removeAll(removed);
         evadeOutrangedHits(now);
+        updateLurkerFixedFire(now);
         gameState.getContainHeldTimer().update(now, anyGroundSquadContaining(fightSquads));
     }
 
@@ -314,7 +316,7 @@ public class SquadManager {
         Predicate<Position> allowed = point -> isWalkable(point, accessible, mapPixelWidth, mapPixelHeight);
         Set<ManagedUnit> collapsing = collapsingMembers(now);
         for (ManagedUnit member : outrangedHits) {
-            if (collapsing.contains(member) || !member.canStepOutNow()
+            if (collapsing.contains(member) || !member.canStepOutNow() && !member.canWithdrawNow()
                     || !ManagedUnit.evadesOutrangedHit(member.getRole(), member.isClosingOnTarget())) {
                 continue;
             }
@@ -326,6 +328,28 @@ public class SquadManager {
                     containmentDefensePadding(Collections.singletonList(type)), allowed, seek);
             if (point != null) {
                 member.evade(point, now);
+            }
+        }
+    }
+
+    /**
+     * Gives every containing Lurker the ground the enemy fires on from where it stands, so a burrowed one stays put
+     * when its contain point moves a short way, see {@link Lurker#staysBurrowed}.
+     *
+     * @param now current frame
+     */
+    private void updateLurkerFixedFire(int now) {
+        List<StaticDefenseZone> zones = null;
+        int padding = containmentDefensePadding(Collections.singletonList(UnitType.Zerg_Lurker));
+        for (Squad squad : fightSquads) {
+            for (ManagedUnit member : squad.getMembers()) {
+                if (!(member instanceof Lurker) || member.getRole() != UnitRole.CONTAIN) {
+                    continue;
+                }
+                if (zones == null) {
+                    zones = ContainmentCollapse.fixedFireZones(gameState.getGroundThreatZones(now));
+                }
+                ((Lurker) member).setFixedFireZones(zones, padding);
             }
         }
     }
