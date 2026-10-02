@@ -1,6 +1,5 @@
 package unit.squad.horizon;
 
-import bwapi.UnitType;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -17,65 +16,92 @@ class SiegeBandHysteresisTest {
     private static final int SETTLED = HELD_SINCE + SiegeBandHysteresis.MIN_HOLD_FRAMES;
 
     @Test
-    void onlySiegedTanksInsideTheBandHoldTheVerdict() {
-        assertTrue(SiegeBandHysteresis.inBand(UnitType.Terran_Siege_Tank_Siege_Mode, 400));
-        assertTrue(SiegeBandHysteresis.inBand(UnitType.Terran_Siege_Tank_Siege_Mode, 912));
-        assertFalse(SiegeBandHysteresis.inBand(UnitType.Terran_Siege_Tank_Siege_Mode, 399));
-        assertFalse(SiegeBandHysteresis.inBand(UnitType.Terran_Siege_Tank_Siege_Mode, 913));
-        assertFalse(SiegeBandHysteresis.inBand(UnitType.Terran_Siege_Tank_Tank_Mode, 600));
-        assertFalse(SiegeBandHysteresis.inBand(UnitType.Terran_Marine, 600));
+    void theBandRunsFromFourHundredToNineHundredTwelvePixels() {
+        assertTrue(SiegeBandHysteresis.inBand(400));
+        assertTrue(SiegeBandHysteresis.inBand(912));
+        assertFalse(SiegeBandHysteresis.inBand(399));
+        assertFalse(SiegeBandHysteresis.inBand(913));
+        assertFalse(SiegeBandHysteresis.inBand(Double.POSITIVE_INFINITY));
     }
 
     @Test
-    void rawVerdictStandsOutsideTheBand() {
-        assertEquals(RETREAT, SiegeBandHysteresis.apply(RETREAT, ENGAGE, HELD_SINCE, HELD_SINCE + 1, 0.5, THRESH,
-                false));
+    void aTankInRangeNearerThanTheBandTurnsTheBandOffWhateverIsFarther() {
+        double nearest = Math.min(200, 600);
+
+        assertFalse(SiegeBandHysteresis.inBand(nearest));
     }
 
     @Test
-    void rawVerdictStandsWithNothingHeld() {
-        assertEquals(ENGAGE, SiegeBandHysteresis.apply(ENGAGE, null, 0, 5, 2.0, THRESH, true));
-        assertEquals(RETREAT, SiegeBandHysteresis.apply(RETREAT, ADVANCE, HELD_SINCE, HELD_SINCE + 1, 0.5, THRESH,
+    void aRawRetreatAlwaysStands() {
+        assertEquals(RETREAT, SiegeBandHysteresis.apply(RETREAT, ENGAGE, HELD_SINCE, HELD_SINCE + 1, 0.1, THRESH,
+                true));
+        assertEquals(RETREAT, SiegeBandHysteresis.apply(RETREAT, RETREAT, HELD_SINCE, HELD_SINCE + 1, 0.1, THRESH,
                 true));
     }
 
     @Test
+    void aHeldEngageIsNeverKeptAgainstARawRetreat() {
+        assertEquals(RETREAT, SiegeBandHysteresis.apply(RETREAT, ENGAGE, HELD_SINCE, SETTLED + 500, 1.3, THRESH,
+                true));
+    }
+
+    @Test
+    void rawEngageStandsOutsideTheBand() {
+        assertEquals(ENGAGE, SiegeBandHysteresis.apply(ENGAGE, RETREAT, HELD_SINCE, HELD_SINCE + 1, 0.5, THRESH,
+                false));
+    }
+
+    @Test
+    void rawEngageStandsWithNoRetreatHeld() {
+        assertEquals(ENGAGE, SiegeBandHysteresis.apply(ENGAGE, null, 0, 5, 2.0, THRESH, true));
+        assertEquals(ENGAGE, SiegeBandHysteresis.apply(ENGAGE, ADVANCE, HELD_SINCE, HELD_SINCE + 1, 2.0, THRESH,
+                true));
+        assertEquals(ENGAGE, SiegeBandHysteresis.apply(ENGAGE, ENGAGE, HELD_SINCE, HELD_SINCE + 1, 2.0, THRESH, true));
+    }
+
+    @Test
     void advanceIsNeverHeld() {
-        assertEquals(ADVANCE, SiegeBandHysteresis.apply(ADVANCE, ENGAGE, HELD_SINCE, HELD_SINCE + 1, 0, THRESH, true));
+        assertEquals(ADVANCE, SiegeBandHysteresis.apply(ADVANCE, RETREAT, HELD_SINCE, HELD_SINCE + 1, 0, THRESH,
+                true));
     }
 
     @Test
-    void heldEngageSurvivesAnyDropInsideTheHoldWindow() {
-        assertEquals(ENGAGE, SiegeBandHysteresis.apply(RETREAT, ENGAGE, HELD_SINCE, SETTLED - 1, 0.1, THRESH, true));
+    void aHeldRetreatSurvivesAClearRiseInsideTheHoldWindow() {
+        assertEquals(RETREAT, SiegeBandHysteresis.apply(ENGAGE, RETREAT, HELD_SINCE, SETTLED - 1, 5.0, THRESH,
+                true));
     }
 
     @Test
-    void heldEngageSurvivesAShallowDipAfterTheHoldWindow() {
-        double shallow = THRESH * (1 - SiegeBandHysteresis.MARGIN) + 0.01;
-        assertEquals(ENGAGE, SiegeBandHysteresis.apply(RETREAT, ENGAGE, HELD_SINCE, SETTLED, shallow, THRESH, true));
-    }
-
-    @Test
-    void heldEngageIsReplacedByADeepDipAfterTheHoldWindow() {
-        double deep = THRESH * (1 - SiegeBandHysteresis.MARGIN) - 0.01;
-        assertEquals(RETREAT, SiegeBandHysteresis.apply(RETREAT, ENGAGE, HELD_SINCE, SETTLED, deep, THRESH, true));
-    }
-
-    @Test
-    void heldRetreatSurvivesAShallowRiseAfterTheHoldWindow() {
+    void aHeldRetreatSurvivesAShallowRiseAfterTheHoldWindow() {
         double shallow = THRESH * (1 + SiegeBandHysteresis.MARGIN) - 0.01;
         assertEquals(RETREAT, SiegeBandHysteresis.apply(ENGAGE, RETREAT, HELD_SINCE, SETTLED, shallow, THRESH, true));
     }
 
     @Test
-    void heldRetreatIsReplacedByAClearRiseAfterTheHoldWindow() {
+    void aHeldRetreatIsReplacedByAClearRiseAfterTheHoldWindow() {
         double clear = THRESH * (1 + SiegeBandHysteresis.MARGIN);
         assertEquals(ENGAGE, SiegeBandHysteresis.apply(ENGAGE, RETREAT, HELD_SINCE, SETTLED, clear, THRESH, true));
     }
 
     @Test
-    void heldRetreatSurvivesAClearRiseInsideTheHoldWindow() {
-        assertEquals(RETREAT, SiegeBandHysteresis.apply(ENGAGE, RETREAT, HELD_SINCE, SETTLED - 1, 5.0, THRESH,
+    void theSimulatorHoldsARetreatPerSquadAndRestartsTheWindowOnEachChange() {
+        HorizonCombatSimulator sim = new HorizonCombatSimulator();
+
+        assertEquals(RETREAT, sim.holdVerdict("a", RETREAT, 100, 0.5, THRESH, true));
+        assertEquals(RETREAT, sim.holdVerdict("a", ENGAGE, 120, 2.0, THRESH, true));
+        assertEquals(ENGAGE, sim.holdVerdict("b", ENGAGE, 120, 2.0, THRESH, true));
+        assertEquals(ENGAGE, sim.holdVerdict("a", ENGAGE, 100 + SiegeBandHysteresis.MIN_HOLD_FRAMES, 2.0, THRESH,
                 true));
+        assertEquals(RETREAT, sim.holdVerdict("a", RETREAT, 200, 0.5, THRESH, true));
+        assertEquals(RETREAT, sim.holdVerdict("a", ENGAGE, 201, 2.0, THRESH, true));
     }
+
+    @Test
+    void theSimulatorDoesNotHoldWhenNoTankIsInTheBand() {
+        HorizonCombatSimulator sim = new HorizonCombatSimulator();
+
+        assertEquals(RETREAT, sim.holdVerdict("a", RETREAT, 100, 0.5, THRESH, false));
+        assertEquals(ENGAGE, sim.holdVerdict("a", ENGAGE, 101, 2.0, THRESH, false));
+    }
+
 }

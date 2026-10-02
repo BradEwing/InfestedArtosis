@@ -133,7 +133,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
             + "stalemate_commit_supply_real,stalemate_commit_army_real,"
             + "retreat_route,"
             + "swarm_id,swarm_remaining_frames,swarm_locked,sim_swarm_cover,swarm_release_reason,"
-            + "air_commitment_release";
+            + "air_commitment_release,siege_band";
 
     static final String SWARM_FILE = "telemetry_dark_swarms.csv";
 
@@ -802,6 +802,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         decision.setEnemyAirShare(snapshot.getEnemyAirShare());
         decision.setOurAirShare(snapshot.getOurAirShare());
         decision.setSwarmCover(snapshot.getSwarmCover());
+        decision.setSiegeBand(snapshot.getSiegeBand());
     }
 
     /**
@@ -874,6 +875,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         fields.add(retreatRouteCell(context));
         fields.addAll(swarmCells(squad, context));
         fields.addAll(commitmentReleaseCells(context));
+        fields.addAll(siegeBandCells(context));
         return String.join(",", fields);
     }
 
@@ -945,6 +947,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         fields.addAll(swarmCells(SquadDecision.NOT_EVALUATED, SquadDecision.NOT_EVALUATED, false,
                 SquadDecision.NOT_EVALUATED, SwarmLock.Release.NONE));
         fields.addAll(commitmentReleaseCells(context));
+        fields.addAll(siegeBandCells(context));
         return String.join(",", fields);
     }
 
@@ -1167,6 +1170,18 @@ public class SquadDecisionLogger implements SquadDecisionSink {
      */
     static List<String> commitmentReleaseCells(SquadDecision context) {
         return Collections.singletonList(context.getCommitmentRelease().name());
+    }
+
+    /**
+     * Builds the siege_band cell: 0 when the nearest sieged tank is not between 400 and 912 px of the squad, 1 when
+     * it is and the verdict is the raw one, 2 when the band held a RETREAT against a raw ENGAGE, and -1 on a row
+     * whose decision never read a ground sim snapshot.
+     *
+     * @param context the decision the row is built from
+     * @return the siege band cell
+     */
+    static List<String> siegeBandCells(SquadDecision context) {
+        return Collections.singletonList(String.valueOf(context.getSiegeBand()));
     }
 
     private static String halfSupplyOrSentinel(int halfUnits) {

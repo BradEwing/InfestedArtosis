@@ -34,6 +34,9 @@ import java.util.TreeMap;
  */
 public class HorizonCombatSimulator implements CombatSimulator {
 
+    static final int SIEGE_BAND_NONE = 0;
+    static final int SIEGE_BAND_IN = 1;
+    static final int SIEGE_BAND_HELD = 2;
     private static final double MAX_ENGAGEMENT_RADIUS = 320;
     private static final double NEARBY_THREAT_RADIUS = 512;
     private static final double APPROACH_BUFFER = 64;
@@ -88,7 +91,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
         snapshot.setSwarmCover(swarmCover);
 
         List<Position> visibleBunkers = visibleCompletedBunkers(tracker);
-        boolean siegedTankInBand = false;
+        double nearestSiegedTank = Double.POSITIVE_INFINITY;
         for (ObservedUnit ou : tracker.getLivingObservedUnits()) {
             UnitType type = ou.getUnitType();
             boolean visible = ou.getUnit().isVisible();
@@ -101,7 +104,9 @@ public class HorizonCombatSimulator implements CombatSimulator {
             if (pos == null) continue;
             if (!visible && enteredBunker(type, pos, visibleBunkers)) continue;
             double dist = squadCenter.getDistance(pos);
-            if (SiegeBandHysteresis.inBand(type, dist)) siegedTankInBand = true;
+            if (type == UnitType.Terran_Siege_Tank_Siege_Mode) {
+                nearestSiegedTank = Math.min(nearestSiegedTank, dist);
+            }
             double radius = engagementRadius(type);
             if (dist > radius) {
                 if (isThreatBeyondRadius(type, dist, radius)) {
@@ -230,7 +235,10 @@ public class HorizonCombatSimulator implements CombatSimulator {
                 enemyAntiAirStr, enemyEngagedStr, airSquad, engageThresh);
 
         if (!airSquad) {
-            result = holdVerdict(squad.getId(), result, currentFrame, overallRatio, engageThresh, siegedTankInBand);
+            boolean tankInBand = SiegeBandHysteresis.inBand(nearestSiegedTank);
+            CombatResult raw = result;
+            result = holdVerdict(squad.getId(), raw, currentFrame, overallRatio, engageThresh, tankInBand);
+            snapshot.setSiegeBand(!tankInBand ? SIEGE_BAND_NONE : result == raw ? SIEGE_BAND_IN : SIEGE_BAND_HELD);
         }
 
         snapshot.setEngageThreshold(engageThresh);
@@ -242,7 +250,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
         return result;
     }
 
-    private CombatResult holdVerdict(String squadId, CombatResult raw, int frame, double ratio,
+    CombatResult holdVerdict(String squadId, CombatResult raw, int frame, double ratio,
                                      double engageThresh, boolean tankInBand) {
         HeldVerdict held = heldVerdicts.get(squadId);
         CombatResult heldResult = held == null ? null : held.result;
@@ -1151,6 +1159,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
         private boolean threatBeyondRadius;
         private int enemyUnscoredSupply;
         private double swarmCover;
+        private int siegeBand = -1;
         private double enemyAirShare = UnitStrength.UNMEASURED_AIR_SHARE;
         private double ourAirShare = UnitStrength.UNMEASURED_AIR_SHARE;
     }
