@@ -104,6 +104,18 @@ public enum DecisionPath {
     CONTAIN_OUTRANGED,
 
     /**
+     * A squad was refused a contain arc against Terran because its makeup cannot hold one against what the enemy
+     * fields, or a sim RETREAT was not turned into a contain because holding the arc was not safe.
+     */
+    CONTAIN_GATED,
+
+    /**
+     * A squad was refused a contain arc because it is inside its re-entry cooldown after an attrition or outranged
+     * exit.
+     */
+    CONTAIN_COOLDOWN,
+
+    /**
      * A containing squad was hit by an enemy that outranges it, recomputed its arc out of that enemy's reach and kept
      * containing. The arc may be unchanged when it already stood out of reach.
      */

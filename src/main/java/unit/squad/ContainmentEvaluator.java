@@ -81,6 +81,7 @@ public class ContainmentEvaluator {
         UnitType.Terran_Siege_Tank_Siege_Mode,
         UnitType.Terran_Siege_Tank_Tank_Mode,
         UnitType.Terran_Goliath,
+        UnitType.Terran_Ghost,
         UnitType.Protoss_Zealot,
         UnitType.Protoss_Dragoon,
         UnitType.Protoss_Dark_Templar,
@@ -166,7 +167,10 @@ public class ContainmentEvaluator {
         return estimateEnemyArmySupply();
     }
 
-    private boolean versusTerran() {
+    /**
+     * @return true when the opponent is Terran
+     */
+    public boolean versusTerran() {
         return gameState.getOpponentRace() == Race.Terran;
     }
 

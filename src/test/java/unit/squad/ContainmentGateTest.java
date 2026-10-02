@@ -91,6 +91,13 @@ class ContainmentGateTest {
     }
 
     @Test
+    void aUnitWithNoGroundWeaponIsLeftOutOfTheRangedShare() {
+        Map<UnitType, Integer> withDefilers = army(UnitType.Zerg_Zergling, 2, UnitType.Zerg_Hydralisk, 2,
+                UnitType.Zerg_Defiler, 4);
+        assertEquals(2.0 / 3.0, rangedShare(withDefilers), 0.01);
+    }
+
+    @Test
     void aBuildingNeverCountsAsAnOutrangingEnemy() {
         assertFalse(enemyOutranges(0, army(UnitType.Terran_Bunker, 2, UnitType.Terran_Missile_Turret, 1)));
         assertTrue(enemyOutranges(0, BUNKER_AND_MARINE));

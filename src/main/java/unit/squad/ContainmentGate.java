@@ -49,12 +49,16 @@ public final class ContainmentGate {
 
     /**
      * @param composition unit counts of a squad
-     * @return the share of the squad's supply that its ranged units supply, 0 for an empty squad
+     * @return the share of the squad's attacking supply that its ranged units supply, 0 for a squad with none; a
+     *     unit with no ground weapon is left out
      */
     static double rangedShare(Map<UnitType, Integer> composition) {
         int total = 0;
         int ranged = 0;
         for (Map.Entry<UnitType, Integer> entry : composition.entrySet()) {
+            if (groundRange(entry.getKey()) == 0) {
+                continue;
+            }
             int supply = entry.getKey().supplyRequired() * entry.getValue();
             total += supply;
             if (isRanged(entry.getKey())) {

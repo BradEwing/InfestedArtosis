@@ -1,6 +1,9 @@
 package unit.squad;
 
 import org.junit.jupiter.api.Test;
+import telemetry.DecisionPath;
+
+import java.util.Arrays;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -63,6 +66,39 @@ class ContainmentReentryCooldownTest {
         merged.absorb(armed());
         merged.absorb(early);
         assertTrue(merged.blocks(EXIT_FRAME + 1000, SQUAD_SUPPLY, ENEMY_SUPPLY));
+    }
+
+    @Test
+    void aSquadInsideItsCooldownMayNotTakeAnArcWhateverElseAllows() {
+        ContainmentEscalation escalation = new ContainmentEscalation();
+        ContainmentStalemate stalemate = new ContainmentStalemate();
+        assertTrue(SquadManager.mayTakeArc(escalation, stalemate, EXIT_FRAME, false, true, false, false));
+        assertFalse(SquadManager.mayTakeArc(escalation, stalemate, EXIT_FRAME, false, true, false, true));
+    }
+
+    @Test
+    void onlyAnAttritionOrOutrangedExitAgainstTerranArmsTheCooldown() {
+        assertTrue(SquadManager.armsReentryCooldown(DecisionPath.CONTAIN_ATTRITION, true));
+        assertTrue(SquadManager.armsReentryCooldown(DecisionPath.CONTAIN_OUTRANGED, true));
+        assertFalse(SquadManager.armsReentryCooldown(DecisionPath.CONTAIN_RETREAT, true));
+        assertFalse(SquadManager.armsReentryCooldown(DecisionPath.CONTAIN_STALEMATE, true));
+        assertFalse(SquadManager.armsReentryCooldown(DecisionPath.CONTAIN_ATTRITION, false));
+        assertFalse(SquadManager.armsReentryCooldown(DecisionPath.CONTAIN_OUTRANGED, false));
+    }
+
+    @Test
+    void aMergeOrSplitCarriesTheCooldownToTheNewSquad() {
+        Squad source = new Squad();
+        source.setStatus(SquadStatus.RETREAT);
+        source.getContainmentReentryCooldown().arm(EXIT_FRAME, SQUAD_SUPPLY, ENEMY_SUPPLY);
+        Squad other = new Squad();
+        other.setStatus(SquadStatus.RETREAT);
+        Squad merged = new Squad();
+        merged.inheritStateFrom(Arrays.asList(other, source));
+        assertTrue(merged.getContainmentReentryCooldown().blocks(EXIT_FRAME + 192, SQUAD_SUPPLY, ENEMY_SUPPLY));
+        Squad child = new Squad();
+        child.inheritStateFrom(source);
+        assertTrue(child.getContainmentReentryCooldown().blocks(EXIT_FRAME + 192, SQUAD_SUPPLY, ENEMY_SUPPLY));
     }
 
     @Test
