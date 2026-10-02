@@ -16,7 +16,8 @@ public final class TelemetryLog {
 
     static final String GAME_HEADER = "game_id,map_name,opponent_name,opponent_race,build_order,is_winner,end_frame,"
             + "average_fps,engagement_count,our_units_lost,our_supply_lost,enemy_units_killed,enemy_supply_killed,"
-            + "sample_interval_frames,contact_radius_px,merge_radius_px,close_cooldown_frames";
+            + "sample_interval_frames,contact_radius_px,merge_radius_px,close_cooldown_frames,goliaths_killed,"
+            + "mutalisks_lost,goliaths_killed_by_mutalisks_by_12m";
 
     static final String ENGAGEMENT_HEADER = "game_id,engagement_id,start_frame,end_frame,anchor_x,anchor_y,"
             + "our_supply_open,our_supply_peak,our_supply_close,army_supply_open,our_units_lost,our_supply_lost,"

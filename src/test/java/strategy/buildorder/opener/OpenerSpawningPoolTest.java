@@ -46,6 +46,7 @@ class OpenerSpawningPoolTest {
                 new FourPool(),
                 new NineHatch(),
                 new NinePoolSpeed(),
+                new NinePoolGasHatchSpeed8D(),
                 new Overpool(),
                 new ThreeHatchBeforePool(),
                 new TwelveHatch(),
@@ -65,7 +66,11 @@ class OpenerSpawningPoolTest {
             named.add(opener.getName());
         }
 
-        assertEquals(named, new BuildOrderFactory(START_LOCATIONS, Race.Terran).getOpenerNames());
+        Set<String> offered = new HashSet<>();
+        for (Race race : new Race[]{Race.Protoss, Race.Terran, Race.Zerg}) {
+            offered.addAll(new BuildOrderFactory(START_LOCATIONS, race).getOpenerNames());
+        }
+        assertEquals(named, offered);
     }
 
     @Test

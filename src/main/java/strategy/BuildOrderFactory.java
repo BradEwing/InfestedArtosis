@@ -5,12 +5,14 @@ import strategy.buildorder.BuildOrder;
 import strategy.buildorder.SpeedlingAllIn;
 import strategy.buildorder.opener.FourPool;
 import strategy.buildorder.opener.NineHatch;
+import strategy.buildorder.opener.NinePoolGasHatchSpeed8D;
 import strategy.buildorder.opener.NinePoolSpeed;
 import strategy.buildorder.opener.Overpool;
 import strategy.buildorder.opener.ThreeHatchBeforePool;
 import strategy.buildorder.protoss.ThreeHatchHydra;
 import strategy.buildorder.protoss.ThreeHatchMuta;
 import strategy.buildorder.terran.CrazyZerg;
+import strategy.buildorder.terran.LurkerDefilerUltra;
 import strategy.buildorder.terran.ThreeHatchLurker;
 import strategy.buildorder.terran.TwoHatchMuta;
 import strategy.buildorder.zerg.OneHatchSpire;
@@ -76,6 +78,7 @@ public class BuildOrderFactory {
         allBuildOrders.add(new FourPool());
         allBuildOrders.add(new NineHatch());
         allBuildOrders.add(new NinePoolSpeed());
+        allBuildOrders.add(new NinePoolGasHatchSpeed8D());
         allBuildOrders.add(new Overpool());
         allBuildOrders.add(new ThreeHatchBeforePool());
         allBuildOrders.add(new TwelveHatch());
@@ -87,6 +90,7 @@ public class BuildOrderFactory {
 
         // Terran
         allBuildOrders.add(new CrazyZerg());
+        allBuildOrders.add(new LurkerDefilerUltra());
         allBuildOrders.add(new ThreeHatchLurker());
         allBuildOrders.add(new TwoHatchMuta());
 

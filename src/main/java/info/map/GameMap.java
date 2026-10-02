@@ -11,6 +11,7 @@ import lombok.Getter;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -19,6 +20,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.PriorityQueue;
 import java.util.Set;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 /**
@@ -343,6 +345,68 @@ public class GameMap {
         }
 
         return neighbors;
+    }
+
+    public int getWidth() {
+        return x;
+    }
+
+    public int getHeight() {
+        return y;
+    }
+
+    /**
+     * Breadth first ground distances from source, in tile steps, over the tiles a ground path may enter from its
+     * neighbours: fully walkable tiles, with a diagonal step allowed only beside a walkable cardinal tile. The step
+     * relation is symmetric, so each value is also the step count from that tile back to source.
+     *
+     * @param source tile the distances are measured from
+     * @param blocked tiles never entered; source is entered even when blocked
+     * @return distances indexed [x][y], -1 for a tile not reached, all -1 when source is off the map or unwalkable
+     */
+    public int[][] groundStepDistances(TilePosition source, Predicate<TilePosition> blocked) {
+        int[][] distances = new int[x][y];
+        for (int[] column : distances) {
+            Arrays.fill(column, -1);
+        }
+        if (!isValidTile(source) || !mapTiles[source.getX()][source.getY()].isWalkable()) {
+            return distances;
+        }
+
+        ArrayDeque<MapTile> queue = new ArrayDeque<>();
+        distances[source.getX()][source.getY()] = 0;
+        queue.add(mapTiles[source.getX()][source.getY()]);
+        while (!queue.isEmpty()) {
+            MapTile current = queue.poll();
+            int next = distances[current.getX()][current.getY()] + 1;
+            for (MapTile neighbor : getNeighbors(current)) {
+                if (distances[neighbor.getX()][neighbor.getY()] >= 0 || blocked.test(neighbor.getTile())) {
+                    continue;
+                }
+                distances[neighbor.getX()][neighbor.getY()] = next;
+                queue.add(neighbor);
+            }
+        }
+        return distances;
+    }
+
+    /**
+     * The tiles a ground path may step to from tile, by the rule {@link #groundStepDistances} uses.
+     */
+    public List<TilePosition> groundNeighbors(TilePosition tile) {
+        List<TilePosition> neighbors = new ArrayList<>();
+        if (!isValidTile(tile)) {
+            return neighbors;
+        }
+        for (MapTile neighbor : getNeighbors(mapTiles[tile.getX()][tile.getY()])) {
+            neighbors.add(neighbor.getTile());
+        }
+        return neighbors;
+    }
+
+    public boolean isWalkableTile(TilePosition tile) {
+        return isValidTile(tile) && mapTiles[tile.getX()][tile.getY()] != null
+                && mapTiles[tile.getX()][tile.getY()].isWalkable();
     }
 
     public boolean isValidTile(TilePosition tp) {

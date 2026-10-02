@@ -160,6 +160,25 @@ public interface PlanEventSink {
     }
 
     /**
+     * A build order decided to hand over to another.
+     *
+     * @param transitionLabel the build handing over, the build taking over and the trigger, e.g.
+     *     2HatchMuta>LurkerDefilerUltra:GOLIATHS
+     */
+    default void onBuildOrderTransition(String transitionLabel) {
+    }
+
+    /**
+     * The main had no room on creep for a tech building a build order was about to plan.
+     *
+     * @param building the tech building
+     * @param siteBase the tile location of the other held base it goes to instead, or null when no held base
+     *     has room
+     */
+    default void onTechSiteMiss(UnitType building, TilePosition siteBase) {
+    }
+
+    /**
      * One of our bases lost its hatchery.
      *
      * @param base the base's tile location

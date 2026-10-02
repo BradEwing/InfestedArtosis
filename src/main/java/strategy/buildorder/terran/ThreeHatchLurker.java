@@ -12,6 +12,7 @@ import info.TechProgression;
 import macro.Reactions;
 import macro.plan.Plan;
 import strategy.buildorder.ArmyUpgradeTrigger;
+import strategy.buildorder.BuildOrder;
 import strategy.buildorder.LarvaBoundMacroHatchery;
 import strategy.buildorder.ZerglingTargets;
 
@@ -82,7 +83,9 @@ public class ThreeHatchLurker extends TerranBase {
 
         // Check for floating resources (follows OneHatchSpire pattern)
         boolean floatingMinerals = gameState.isFloatingMinerals();
-        boolean wantExpansion = behindOnBases(gameState) || floatingMinerals;
+        int basesHeldOrReserved = baseData.currentAndReservedCount();
+        boolean wantExpansion = wantsExpansion(behindOnBases(gameState), floatingMinerals,
+                gameState.totalProduced(UnitType.Zerg_Lurker), basesHeldOrReserved);
 
         final int desiredSunkenColonies = this.requiredSunkens(gameState);
         if (!gameState.basesNeedingSunken(desiredSunkenColonies).isEmpty()) {
@@ -96,7 +99,8 @@ public class ThreeHatchLurker extends TerranBase {
 
         Plan expansionPlan = null;
         if (wantNatural || wantExpansion) {
-            expansionPlan = this.planNewBase(gameState);
+            expansionPlan = this.planNewBase(gameState,
+                    LurkerDefilerUltraTransition.prefersGasBase(basesHeldOrReserved));
             if (expansionPlan != null) {
                 plans.add(expansionPlan);
             }
@@ -258,6 +262,36 @@ public class ThreeHatchLurker extends TerranBase {
 
     static boolean hasFieldedLurkersForThirdHatch(int livingLurkerCount) {
         return livingLurkerCount >= 2;
+    }
+
+    /**
+     * Whether the build asks for an expansion: when behind on bases, when floating minerals, or for
+     * the handover base. It takes no third base on the clock; its third comes from these, or as the
+     * handover base once its Lurkers are out.
+     *
+     * @param behindOnBases whether the enemy holds more bases than we do
+     * @param floatingMinerals whether unspent minerals have piled up
+     * @param lurkersMorphed Lurkers this game has produced
+     * @param basesHeldOrReserved bases we hold or have reserved for a queued hatchery
+     * @return true while an expansion should be requested
+     */
+    static boolean wantsExpansion(boolean behindOnBases, boolean floatingMinerals, int lurkersMorphed,
+            int basesHeldOrReserved) {
+        return behindOnBases || floatingMinerals || wantsHandoverBase(lurkersMorphed, basesHeldOrReserved);
+    }
+
+    /**
+     * Whether the build takes a base for the handover to {@link LurkerDefilerUltra}: once its
+     * Lurker trigger holds and it holds or has reserved fewer bases than the handover's economy
+     * gate needs. A macro Hatchery taken ahead of the third base does not count as a base.
+     *
+     * @param lurkersMorphed Lurkers this game has produced
+     * @param basesHeldOrReserved bases we hold or have reserved for a queued hatchery
+     * @return true while the base should be requested
+     */
+    static boolean wantsHandoverBase(int lurkersMorphed, int basesHeldOrReserved) {
+        return LurkerDefilerUltraTransition.threeHatchLurkerTrigger(lurkersMorphed) != null
+                && basesHeldOrReserved < LurkerDefilerUltraTransition.ECONOMY_BASES;
     }
 
     /**
@@ -445,6 +479,21 @@ public class ThreeHatchLurker extends TerranBase {
     @Override
     public boolean needLair() {
         return true;
+    }
+
+    /**
+     * Hands over to {@link LurkerDefilerUltra} once the build has morphed its Lurkers and the
+     * economy gate in {@link LurkerDefilerUltraTransition} is met.
+     */
+    @Override
+    public boolean shouldTransition(GameState gameState) {
+        return LurkerDefilerUltraTransition.shouldEnter(gameState, getName(),
+                LurkerDefilerUltraTransition.threeHatchLurkerTrigger(gameState.totalProduced(UnitType.Zerg_Lurker)));
+    }
+
+    @Override
+    public Set<BuildOrder> transition(GameState gameState) {
+        return LurkerDefilerUltraTransition.candidates();
     }
 
     @Override

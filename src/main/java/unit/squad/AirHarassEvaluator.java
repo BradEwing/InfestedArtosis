@@ -54,7 +54,8 @@ public final class AirHarassEvaluator {
      * the exit applies. Otherwise NO_TARGET means no known enemy base holds enough heat to raid and no exposed group
      * was found, and DEFENDED means the flock stands in more anti-air than it tolerates, or some base holds enough
      * heat but every such point lies under more anti-air than the flock tolerates, whether or not the flock cooled
-     * the rest of the base by visiting it.
+     * the rest of the base by visiting it. PROBE is an ENTER on a base whose anti-air sighting is stale, see
+     * {@link AirHarassScouting#entryMode}.
      */
     public enum EntryVerdict {
         ENTER,
@@ -63,7 +64,8 @@ public final class AirHarassEvaluator {
         TOO_FEW,
         BASE_UNDER_ATTACK,
         NO_TARGET,
-        DEFENDED
+        DEFENDED,
+        PROBE
     }
 
     /**
@@ -71,7 +73,8 @@ public final class AirHarassEvaluator {
      *
      * <p>STRIKE_DEFENDED means the target keeps no strike point within the tolerance, and FLOCK_DEFENDED means the
      * flock's own center stands in more anti-air than it tolerates. Either can be anti-air the flock already knew
-     * about.
+     * about. PROBE_DEFENDED is a probe that found the base defended or lost or hurt its Mutalisk, and NEW_AA is
+     * anti-air seen for the first time inside the harass zone, see {@link AirHarassScouting}.
      */
     public enum ExitReason {
         BASE_UNDER_ATTACK,
@@ -80,7 +83,9 @@ public final class AirHarassEvaluator {
         STRIKE_DEFENDED,
         FLOCK_DEFENDED,
         NO_TARGET,
-        WIPED_OUT
+        WIPED_OUT,
+        PROBE_DEFENDED,
+        NEW_AA
     }
 
     /**

@@ -56,6 +56,9 @@ public abstract class BuildOrder {
      */
     public static final int ARMY_UPGRADE_PRIORITY = 120;
 
+    /** {@link #macroHatcheryCap()} for a build that does not cap its macro hatcheries. */
+    public static final int NO_MACRO_HATCHERY_CAP = Integer.MAX_VALUE;
+
     /**
      * Priority for the end-game hunt's anti-air, see {@link #planEndgameAntiAir}: the
      * {@link UnitPlan#ADVANCED_UNIT_PRIORITY} band. It only has to beat the frame-stamped backlog a won game has
@@ -133,7 +136,8 @@ public abstract class BuildOrder {
      *
      * <p>An opener is the one exception. It hands over before any tech condition can hold, so the
      * request could only ever stop on its tech gate, and running it would write gate rows naming
-     * a build that can never answer them.
+     * a build that can never answer them. A build whose {@link #allowsLarvaBoundMacroHatchery}
+     * answers false is held out for that frame too.
      *
      * <p>The {@link DroneRound} is updated first, and while it is open a Drone at
      * {@link UnitPlan#DRONE_ROUND_PRIORITY} is added until the round's target is counted.
@@ -150,7 +154,7 @@ public abstract class BuildOrder {
             plans.add(roundDrone);
         }
 
-        if (!runsLarvaBoundMacroHatchery(isOpener(), plans)) {
+        if (!runsLarvaBoundMacroHatchery(isOpener(), plans) || !allowsLarvaBoundMacroHatchery(gameState)) {
             return plans;
         }
 
@@ -303,6 +307,31 @@ public abstract class BuildOrder {
      */
     protected abstract boolean macroHatcheryTechReady(TechProgression techProgression);
 
+    /**
+     * Whether the build lets the shared larva-bound macro hatchery step run this frame at all.
+     *
+     * <p>True by default. A build that caps its macro hatcheries answers false once the cap is
+     * reached, so the shared step cannot take it past its own limit. The step writes no gate row
+     * on a frame this holds it out.
+     *
+     * @param gameState current game state
+     * @return true when the shared step may run
+     */
+    protected boolean allowsLarvaBoundMacroHatchery(GameState gameState) {
+        return true;
+    }
+
+    /**
+     * The most macro hatcheries the build allows, counting those finished, under construction and
+     * planned. Production cancels macro hatchery plans past it, including plans a build before a
+     * transition queued. {@link #NO_MACRO_HATCHERY_CAP} by default.
+     *
+     * @return the cap, or {@link #NO_MACRO_HATCHERY_CAP}
+     */
+    public int macroHatcheryCap() {
+        return NO_MACRO_HATCHERY_CAP;
+    }
+
     public abstract boolean playsRace(Race race);
 
     public boolean isOpener() {
@@ -319,6 +348,19 @@ public abstract class BuildOrder {
      * @return true while the supply planner must not queue an Overlord
      */
     public boolean holdsOverlords(GameState gameState) {
+        return false;
+    }
+
+    /**
+     * True while the build wants every drone off gas, whatever the worker balance asks for.
+     *
+     * <p>Defaults to false. A build that mines a fixed amount of gas and then returns to minerals
+     * answers true once it has that gas.
+     *
+     * @param gameState current game state
+     * @return true while no drone may gather gas
+     */
+    public boolean holdsGasHarvesting(GameState gameState) {
         return false;
     }
 
@@ -742,13 +784,22 @@ public abstract class BuildOrder {
      * this frame, so a cancelled expansion is not re-created on the following frame.
      */
     protected Plan planNewBase(GameState gameState) {
+        return planNewBase(gameState, false);
+    }
+
+    /**
+     * Plans a hatchery that claims a base, as {@link #planNewBase(GameState)} does.
+     *
+     * @param preferGas whether a base with no geyser is skipped while a base with one is available
+     */
+    protected Plan planNewBase(GameState gameState, boolean preferGas) {
         if (!gameState.mayQueueExpansionHatchery()) {
             return null;
         }
 
         HatcheryRequestReason reason = HatcheryRequestReason.forExpansion(gameState.isFloatingMinerals(),
                 behindOnBases(gameState));
-        Base base = gameState.reserveBase();
+        Base base = gameState.reserveBase(preferGas);
         if (base == null) {
             return null;
         }
