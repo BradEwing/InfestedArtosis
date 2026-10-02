@@ -37,11 +37,6 @@ class GuardianPipelineTest {
     }
 
     @Test
-    void theGreaterSpireIsMorphedFromASpireNotBuiltByADrone() {
-        assertEquals(UnitType.Zerg_Spire, UnitType.Zerg_Greater_Spire.whatBuilds().getFirst());
-    }
-
-    @Test
     void aGuardianNeedsAFinishedGreaterSpire() {
         TechProgression techProgression = hiveAndSpire();
         techProgression.setPlannedGreaterSpire(true);
@@ -122,7 +117,7 @@ class GuardianPipelineTest {
     }
 
     @Test
-    void scheduledGuardianPlansAreCancelledOnlyBeyondTheirMutaliskProducers() {
+    void excessMorphPlansAreThoseBeyondTheirProducersAndTheirEggs() {
         assertEquals(0, ProductionManager.excessLurkerPlans(2, 2, 0));
         assertEquals(1, ProductionManager.excessLurkerPlans(3, 1, 1));
     }

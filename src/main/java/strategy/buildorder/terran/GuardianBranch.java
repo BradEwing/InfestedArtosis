@@ -12,6 +12,8 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.Set;
+import java.util.function.Function;
+import java.util.function.Predicate;
 
 /**
  * The capped Guardian branch of {@link LurkerDefilerUltra}, for a Terran that sits behind sieged
@@ -102,8 +104,8 @@ final class GuardianBranch {
     /**
      * Reads the entrenchment from what was seen recently.
      *
-     * @param recentSiegedTanks sieged Tanks seen within {@value #RECENT_FRAMES} frames
-     * @param recentBunkers Bunkers seen within {@value #RECENT_FRAMES} frames
+     * @param recentSiegedTanks sieged Tanks in view or seen within {@link #RECENT_FRAMES} frames
+     * @param recentBunkers Bunkers in view or seen within {@link #RECENT_FRAMES} frames
      * @return what the enemy has dug in with
      */
     static Entrenchment entrenchment(int recentSiegedTanks, int recentBunkers) {
@@ -123,24 +125,32 @@ final class GuardianBranch {
      *
      * @param lastObservedFrame the frame the unit was last shown or hidden
      * @param currentFrame the current frame
-     * @return true within {@value #RECENT_FRAMES} frames of the last sighting
+     * @return true within {@link #RECENT_FRAMES} frames of the last sighting
      */
     static boolean isRecent(int lastObservedFrame, int currentFrame) {
         return currentFrame - lastObservedFrame <= RECENT_FRAMES;
     }
 
     /**
-     * Living tracked units of one type last seen recently.
+     * Living tracked units of one type in view now or last seen recently. The tracker stamps a
+     * sighting only when a unit is shown or hidden, so a unit that has stayed in view reads as old,
+     * and it changes a unit's type only on a show, so a visible unit's type is read live.
      *
      * @param units the living tracked enemy units
      * @param type the type to count
      * @param currentFrame the current frame
-     * @return how many were seen within {@value #RECENT_FRAMES} frames
+     * @param visible whether a unit is in view now
+     * @param liveType the type of a unit that is in view now
+     * @return how many are in view or were seen within {@link #RECENT_FRAMES} frames
      */
-    static int recentCount(Collection<ObservedUnit> units, UnitType type, int currentFrame) {
+    static int recentCount(Collection<ObservedUnit> units, UnitType type, int currentFrame,
+                           Predicate<ObservedUnit> visible, Function<ObservedUnit, UnitType> liveType) {
         int count = 0;
         for (ObservedUnit unit : units) {
-            if (unit.getUnitType() == type && isRecent(unit.getLastObservedFrame().getFrames(), currentFrame)) {
+            if (visible.test(unit)) {
+                count += liveType.apply(unit) == type ? 1 : 0;
+            } else if (unit.getUnitType() == type
+                    && isRecent(unit.getLastObservedFrame().getFrames(), currentFrame)) {
                 count++;
             }
         }
@@ -291,8 +301,14 @@ final class GuardianBranch {
      * @return the entrenchment seen recently
      */
     static Entrenchment entrenchment(ObservedUnitTracker tracker, int currentFrame) {
-        Set<ObservedUnit> living = tracker.getLivingObservedUnits();
-        return entrenchment(recentCount(living, UnitType.Terran_Siege_Tank_Siege_Mode, currentFrame),
-                recentCount(living, UnitType.Terran_Bunker, currentFrame));
+        return entrenchment(tracker.getLivingObservedUnits(), currentFrame, unit -> unit.getUnit().isVisible(),
+                unit -> unit.getUnit().getType());
+    }
+
+    static Entrenchment entrenchment(Collection<ObservedUnit> living, int currentFrame,
+                                     Predicate<ObservedUnit> visible, Function<ObservedUnit, UnitType> liveType) {
+        return entrenchment(
+                recentCount(living, UnitType.Terran_Siege_Tank_Siege_Mode, currentFrame, visible, liveType),
+                recentCount(living, UnitType.Terran_Bunker, currentFrame, visible, liveType));
     }
 }

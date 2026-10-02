@@ -2,6 +2,7 @@ package strategy.buildorder.terran;
 
 import bwapi.TechType;
 import bwapi.UnitType;
+import bwapi.Unit;
 import bwapi.UpgradeType;
 import bwem.Base;
 import info.BaseData;
@@ -12,6 +13,9 @@ import info.tracking.ObservedUnitTracker;
 import macro.HatcheryCapacity;
 import macro.Reactions;
 import macro.plan.Plan;
+import macro.plan.PlanCancelSource;
+import macro.plan.PlanState;
+import macro.plan.PlanType;
 import macro.plan.UnitPlan;
 import strategy.buildorder.ArmyUpgradeTrigger;
 import strategy.buildorder.LarvaBoundMacroHatchery;
@@ -25,6 +29,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Predicate;
 
 /**
  * The terminal ZvT build: Lurker, Zergling and Hydralisk on four bases, teching straight to Hive
@@ -315,6 +320,9 @@ public class LurkerDefilerUltra extends TerranBase {
                 gameState.getBaseData().currentBaseCount(),
                 gameState.miningGeysers(),
                 reading ? GuardianBranch.entrenchment(tracker, frame) : GuardianBranch.Entrenchment.NONE);
+        if (gate == GuardianBranch.Gate.LATCHED) {
+            cancelGuardianPlans(gameState);
+        }
         if (gate != GuardianBranch.Gate.OPEN) {
             return plans;
         }
@@ -342,6 +350,27 @@ public class LurkerDefilerUltra extends TerranBase {
                 break;
         }
         return plans;
+    }
+
+    /**
+     * Retires every Guardian plan that has not started its morph, once an anti-air sighting has
+     * latched the branch off: queued, scheduled, and assigned to a Mutalisk. A Guardian already
+     * morphing is left to finish.
+     */
+    private void cancelGuardianPlans(GameState gameState) {
+        Predicate<Plan> guardianPlan = plan -> plan.getType() == PlanType.UNIT
+                && plan.getPlannedUnit() == UnitType.Zerg_Guardian;
+        gameState.getProductionQueue().removeWhere(guardianPlan, PlanCancelSource.STRATEGY_GUARDIAN_LATCH,
+                gameState::setImpossiblePlan);
+        List<Plan> inFlight = new ArrayList<>(gameState.getPlansScheduled());
+        inFlight.addAll(gameState.getPlansBuilding());
+        for (Plan plan : inFlight) {
+            if (guardianPlan.test(plan) && plan.getState() != PlanState.MORPHING) {
+                Unit executor = gameState.executorOf(plan);
+                gameState.getPlansScheduled().remove(plan);
+                gameState.cancelPlan(executor, plan, PlanCancelSource.STRATEGY_GUARDIAN_LATCH);
+            }
+        }
     }
 
     /**

@@ -1656,9 +1656,9 @@ public class ProductionManager {
         return PlanBlocker.NONE;
     }
 
-    /** A plan with nowhere to build must not reserve its cost. */
+    /** A plan with nowhere to build must not reserve its cost. A Greater Spire morphs in place and needs no site. */
     private boolean resolveBuildPosition(Plan plan, UnitType building) {
-        if (plan.getBuildPosition() != null) {
+        if (building == UnitType.Zerg_Greater_Spire || plan.getBuildPosition() != null) {
             return true;
         }
 

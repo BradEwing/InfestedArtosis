@@ -2,6 +2,8 @@ package strategy.buildorder.terran;
 
 import bwapi.UnitType;
 import info.TechProgression;
+import info.tracking.ObservedUnit;
+import info.tracking.ObservedUnitFixture;
 import macro.plan.Plan;
 import macro.plan.PlanBlocker;
 import macro.plan.PlanState;
@@ -9,13 +11,16 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import telemetry.PlanEventSink;
 import telemetry.PlanEvents;
+import util.Time;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class GuardianBranchTest {
@@ -255,5 +260,77 @@ class GuardianBranchTest {
     void nothingIsPlannedOnceTheWaveIsFielded() {
         assertEquals(GuardianBranch.Step.NONE, GuardianBranch.nextStep(greaterSpire(), 0, 3, 3, 0));
         assertEquals(GuardianBranch.Step.NONE, GuardianBranch.nextStep(new TechProgression(), 0, 0, 0, 0));
+    }
+
+    private static ObservedUnit unitLastSeenAt(UnitType type, int frame) {
+        ObservedUnit unit = ObservedUnitFixture.observedUnit(type, new Time(0));
+        unit.setLastObservedFrame(new Time(frame));
+        return unit;
+    }
+
+    @Test
+    void aDestroyedGoliathOrTurretStillCountsAsSeenAntiAir() {
+        ObservedUnit goliath = ObservedUnitFixture.observedUnit(UnitType.Terran_Goliath, new Time(1000));
+        goliath.setDestroyedFrame(new Time(2000));
+
+        assertEquals(UnitType.Terran_Goliath,
+                GuardianBranch.seenAntiAir(ObservedUnitFixture.trackerHolding(goliath), 3000));
+
+        ObservedUnit turret = ObservedUnitFixture.observedUnit(UnitType.Terran_Missile_Turret, new Time(1000));
+        turret.setDestroyedFrame(new Time(1500));
+
+        assertEquals(UnitType.Terran_Missile_Turret,
+                GuardianBranch.seenAntiAir(ObservedUnitFixture.trackerHolding(turret), 3000));
+    }
+
+    @Test
+    void aSightingFirstMadeAfterTheCurrentFrameOrOfAnUnarmedTypeIsNotAntiAir() {
+        ObservedUnit marine = ObservedUnitFixture.observedUnit(UnitType.Terran_Marine, new Time(1000));
+        assertNull(GuardianBranch.seenAntiAir(ObservedUnitFixture.trackerHolding(marine), 3000));
+
+        ObservedUnit wraith = ObservedUnitFixture.observedUnit(UnitType.Terran_Wraith, new Time(5000));
+        assertNull(GuardianBranch.seenAntiAir(ObservedUnitFixture.trackerHolding(wraith), 3000));
+    }
+
+    @Test
+    void aTankSeenRecentlyCountsAndAStaleOneDoesNot() {
+        ObservedUnit recent = unitLastSeenAt(UnitType.Terran_Siege_Tank_Siege_Mode, 10000);
+        ObservedUnit stale = unitLastSeenAt(UnitType.Terran_Siege_Tank_Siege_Mode,
+                10000 - GuardianBranch.RECENT_FRAMES - 1);
+
+        assertEquals(1, GuardianBranch.recentCount(Arrays.asList(recent, stale),
+                UnitType.Terran_Siege_Tank_Siege_Mode, 10000, unit -> false, ObservedUnit::getUnitType));
+    }
+
+    @Test
+    void aTankInViewCountsHoweverLongAgoItWasStamped() {
+        ObservedUnit inView = unitLastSeenAt(UnitType.Terran_Siege_Tank_Siege_Mode, 0);
+
+        assertEquals(1, GuardianBranch.recentCount(Collections.singletonList(inView),
+                UnitType.Terran_Siege_Tank_Siege_Mode, 50000, unit -> true, ObservedUnit::getUnitType));
+    }
+
+    @Test
+    void aVisibleTankIsReadAtItsLiveSiegeMode() {
+        ObservedUnit unsiegedNow = unitLastSeenAt(UnitType.Terran_Siege_Tank_Siege_Mode, 100);
+        ObservedUnit siegedNow = unitLastSeenAt(UnitType.Terran_Siege_Tank_Tank_Mode, 100);
+
+        assertEquals(0, GuardianBranch.recentCount(Collections.singletonList(unsiegedNow),
+                UnitType.Terran_Siege_Tank_Siege_Mode, 100, unit -> true,
+                unit -> UnitType.Terran_Siege_Tank_Tank_Mode));
+        assertEquals(1, GuardianBranch.recentCount(Collections.singletonList(siegedNow),
+                UnitType.Terran_Siege_Tank_Siege_Mode, 100, unit -> true,
+                unit -> UnitType.Terran_Siege_Tank_Siege_Mode));
+    }
+
+    @Test
+    void aBunkerInViewOpensTheEntrenchmentRead() {
+        ObservedUnit bunker = unitLastSeenAt(UnitType.Terran_Bunker, 0);
+        List<ObservedUnit> living = Collections.singletonList(bunker);
+
+        assertEquals(GuardianBranch.Entrenchment.BUNKER,
+                GuardianBranch.entrenchment(living, 90000, unit -> true, ObservedUnit::getUnitType));
+        assertEquals(GuardianBranch.Entrenchment.NONE,
+                GuardianBranch.entrenchment(living, 90000, unit -> false, ObservedUnit::getUnitType));
     }
 }
