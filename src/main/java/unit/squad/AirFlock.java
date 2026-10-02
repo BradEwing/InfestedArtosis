@@ -20,7 +20,7 @@ import java.util.Set;
  * {@link #REGROUP_JOIN_RADIUS}. A regrouping member keeps attacking a target already within its weapon range, see
  * {@link #keepsTarget}. A retreating flock flees to one shared point, away from every enemy near any of its members;
  * a member beyond {@link #REGROUP_RADIUS} whose straight path to that point runs through an enemy takes the anchor or
- * a flee point of its own instead, see {@link #memberRetreatTarget}, unless it is beyond {@link #RETREAT_FLEE_LEASH}
+ * a flee point of its own instead, see {@link #retreatBranch}, unless it is beyond {@link #RETREAT_FLEE_LEASH}
  * of the anchor, where it flies to the anchor.
  */
 public final class AirFlock {
@@ -147,35 +147,92 @@ public final class AirFlock {
     }
 
     /**
+     * The retreat target and branch of every member of a retreating flock.
+     */
+    public static final class RetreatPlan {
+
+        private final Map<Integer, Position> targets;
+        private final Map<Integer, RetreatBranch> branches;
+
+        private RetreatPlan(Map<Integer, Position> targets, Map<Integer, RetreatBranch> branches) {
+            this.targets = targets;
+            this.branches = branches;
+        }
+
+        /**
+         * @return retreat targets by unit id, each null when no enemy is near the flock
+         */
+        public Map<Integer, Position> getTargets() {
+            return targets;
+        }
+
+        /**
+         * @return the branch each target comes from, by unit id, every one {@link RetreatBranch#NONE} when no enemy
+         *         is near the flock
+         */
+        public Map<Integer, RetreatBranch> getBranches() {
+            return branches;
+        }
+    }
+
+    /**
      * The retreat target of every member of a retreating flock: the one {@link #retreatPoint} of its anchor, shared
      * by every member except a far member whose path to it runs through an enemy within {@link #RETREAT_SCAN_RADIUS}
-     * of some member, see {@link #memberRetreatTarget}, or null for every member with no enemy near the flock.
+     * of some member, see {@link #retreatBranch}, or null for every member with no enemy near the flock.
+     *
+     * <p>A member beyond {@link #RETREAT_FLEE_LEASH} of the anchor whose path to the shared point is blocked is
+     * added to the leashed ids, and stays on the anchor until it takes the shared point again, so it does not turn
+     * back to a flee point of its own the moment it is inside the leash. The ids of members no longer in the flock,
+     * and every id when no enemy is near the flock, are dropped.
      *
      * @param members member positions by unit id
      * @param enemies enemy positions
      * @param mapWidth map width in pixels
      * @param mapHeight map height in pixels
-     * @return retreat targets by unit id
+     * @param leashed unit ids held on the anchor by the leash, updated in place
+     * @return the targets and branches by unit id
      */
-    public static Map<Integer, Position> retreatTargets(Map<Integer, Position> members, Collection<Position> enemies,
-                                                        int mapWidth, int mapHeight) {
+    public static RetreatPlan retreatPlan(Map<Integer, Position> members, Collection<Position> enemies,
+                                          int mapWidth, int mapHeight, Set<Integer> leashed) {
+        leashed.retainAll(members.keySet());
         Position anchor = anchor(members);
         Position point = retreatPoint(anchor, members.values(), enemies, mapWidth, mapHeight);
-        List<Position> near = nearFlock(enemies, members.values());
         Map<Integer, Position> targets = new HashMap<>();
+        Map<Integer, RetreatBranch> branches = new HashMap<>();
+        if (point == null) {
+            leashed.clear();
+            for (Integer id : members.keySet()) {
+                targets.put(id, null);
+                branches.put(id, RetreatBranch.NONE);
+            }
+            return new RetreatPlan(targets, branches);
+        }
+        List<Position> near = nearFlock(enemies, members.values());
         for (Map.Entry<Integer, Position> entry : members.entrySet()) {
-            targets.put(entry.getKey(), point == null ? null
-                    : memberRetreatTarget(entry.getValue(), anchor, point, near, mapWidth, mapHeight));
+            Integer id = entry.getKey();
+            Position member = entry.getValue();
+            RetreatBranch branch = retreatBranch(member, anchor, point, near, mapWidth, mapHeight,
+                    leashed.contains(id));
+            if (branch == RetreatBranch.SHARED) {
+                leashed.remove(id);
+            } else if (member.getDistance(anchor) > RETREAT_FLEE_LEASH) {
+                leashed.add(id);
+            }
+            branches.put(id, branch);
+            targets.put(id, branch == RetreatBranch.SHARED ? point
+                    : branch == RetreatBranch.FLEE ? fleePoint(member, point, near, mapWidth, mapHeight)
+                    : anchor);
         }
-        return targets;
+        return new RetreatPlan(targets, branches);
     }
 
     /**
-     * Where one member of a retreating flock flees. A member within {@link #REGROUP_RADIUS} of the anchor, or one
-     * whose straight path to the shared point runs through no enemy, see {@link #pathThroughEnemy}, takes the shared
-     * point. A farther member takes the anchor when its path there runs through no enemy or it is beyond
-     * {@link #RETREAT_FLEE_LEASH} of the anchor, and otherwise its own {@link #fleePoint}, or the anchor when it has
-     * none or the map edge leaves it within {@link #MIN_FLEE_STEP}.
+     * Which of the three retreat targets a member takes. A member within {@link #REGROUP_RADIUS} of the anchor, or
+     * one whose straight path to the shared point runs through no enemy, see {@link #pathThroughEnemy}, takes the
+     * shared point. A farther member takes the anchor when it is leashed, when it is beyond
+     * {@link #RETREAT_FLEE_LEASH} of the anchor, or when its path there runs through no enemy; otherwise it takes
+     * its own {@link #fleePoint}, or the anchor when it has none or the map edge leaves it within
+     * {@link #MIN_FLEE_STEP}.
      *
      * @param member the member's position
      * @param anchor the flock's anchor
@@ -183,67 +240,21 @@ public final class AirFlock {
      * @param enemies enemy positions
      * @param mapWidth map width in pixels
      * @param mapHeight map height in pixels
-     * @return the member's retreat target
-     */
-    public static Position memberRetreatTarget(Position member, Position anchor, Position shared,
-                                               Collection<Position> enemies, int mapWidth, int mapHeight) {
-        switch (retreatBranch(member, anchor, shared, enemies, mapWidth, mapHeight)) {
-            case SHARED:
-                return shared;
-            case FLEE:
-                return fleePoint(member, shared, enemies, mapWidth, mapHeight);
-            default:
-                return anchor;
-        }
-    }
-
-    /**
-     * Which of the three retreat targets a member takes, by the rules of {@link #memberRetreatTarget}. A member
-     * beyond {@link #RETREAT_FLEE_LEASH} of the anchor never takes a flee point of its own, so an enemy that follows
-     * it cannot lead it away from the flock.
-     *
-     * @param member the member's position
-     * @param anchor the flock's anchor
-     * @param shared the flock's shared retreat point
-     * @param enemies enemy positions
-     * @param mapWidth map width in pixels
-     * @param mapHeight map height in pixels
+     * @param leashed true when the member is held on the anchor by the leash
      * @return the branch the member's retreat target comes from
      */
     public static RetreatBranch retreatBranch(Position member, Position anchor, Position shared,
-                                              Collection<Position> enemies, int mapWidth, int mapHeight) {
+                                              Collection<Position> enemies, int mapWidth, int mapHeight,
+                                              boolean leashed) {
         double fromAnchor = member.getDistance(anchor);
         if (fromAnchor <= REGROUP_RADIUS || !pathThroughEnemy(member, shared, enemies)) {
             return RetreatBranch.SHARED;
         }
-        if (fromAnchor > RETREAT_FLEE_LEASH || !pathThroughEnemy(member, anchor, enemies)) {
+        if (leashed || fromAnchor > RETREAT_FLEE_LEASH || !pathThroughEnemy(member, anchor, enemies)) {
             return RetreatBranch.ANCHOR;
         }
         Position flee = fleePoint(member, shared, enemies, mapWidth, mapHeight);
         return flee != null && flee.getDistance(member) >= MIN_FLEE_STEP ? RetreatBranch.FLEE : RetreatBranch.ANCHOR;
-    }
-
-    /**
-     * The retreat branch of every member of a retreating flock, see {@link #retreatBranch}.
-     *
-     * @param members member positions by unit id
-     * @param enemies enemy positions
-     * @param mapWidth map width in pixels
-     * @param mapHeight map height in pixels
-     * @return branches by unit id, every one {@link RetreatBranch#NONE} when no enemy is near the flock
-     */
-    public static Map<Integer, RetreatBranch> retreatBranches(Map<Integer, Position> members,
-                                                              Collection<Position> enemies,
-                                                              int mapWidth, int mapHeight) {
-        Position anchor = anchor(members);
-        Position point = retreatPoint(anchor, members.values(), enemies, mapWidth, mapHeight);
-        List<Position> near = nearFlock(enemies, members.values());
-        Map<Integer, RetreatBranch> branches = new HashMap<>();
-        for (Map.Entry<Integer, Position> entry : members.entrySet()) {
-            branches.put(entry.getKey(), point == null ? RetreatBranch.NONE
-                    : retreatBranch(entry.getValue(), anchor, point, near, mapWidth, mapHeight));
-        }
-        return branches;
     }
 
     /**

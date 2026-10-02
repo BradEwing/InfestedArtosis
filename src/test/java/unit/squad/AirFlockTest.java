@@ -5,6 +5,7 @@ import bwapi.UnitType;
 import org.junit.jupiter.api.Test;
 import telemetry.FlockRow;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
@@ -32,6 +33,23 @@ class AirFlockTest {
         return members;
     }
 
+    private static Map<Integer, Position> targets(Map<Integer, Position> members, List<Position> enemies,
+                                                  int mapWidth, int mapHeight) {
+        return AirFlock.retreatPlan(members, enemies, mapWidth, mapHeight, new HashSet<>()).getTargets();
+    }
+
+    private static Position memberTarget(Position member, Position anchor, Position shared, List<Position> enemies,
+                                         int mapWidth, int mapHeight) {
+        switch (AirFlock.retreatBranch(member, anchor, shared, enemies, mapWidth, mapHeight, false)) {
+            case SHARED:
+                return shared;
+            case FLEE:
+                return AirFlock.fleePoint(member, shared, enemies, mapWidth, mapHeight);
+            default:
+                return anchor;
+        }
+    }
+
     private static Map<Integer, Position> clusterWithStraggler() {
         return flock(new Position(1000, 1000), new Position(1040, 1000), new Position(1000, 1040),
                 new Position(1040, 1040), new Position(1400, 1000));
@@ -42,7 +60,7 @@ class AirFlockTest {
         Map<Integer, Position> members = clusterWithStraggler();
         List<Position> enemies = Arrays.asList(new Position(1000, 1200), new Position(1400, 1150));
 
-        Map<Integer, Position> targets = AirFlock.retreatTargets(members, enemies, MAP, MAP);
+        Map<Integer, Position> targets = targets(members, enemies, MAP, MAP);
 
         Position anchor = AirFlock.anchor(members);
         Position shared = targets.get(1);
@@ -61,7 +79,7 @@ class AirFlockTest {
                 new Position(2000, 2040), new Position(2000, 1760));
         List<Position> enemies = Collections.singletonList(new Position(2000, 2200));
 
-        Map<Integer, Position> targets = AirFlock.retreatTargets(members, enemies, MAP, MAP);
+        Map<Integer, Position> targets = targets(members, enemies, MAP, MAP);
 
         Position shared = targets.get(1);
         assertEquals(new Position(2000, 1760 - AirFlock.RETREAT_FLEE_DISTANCE), shared);
@@ -76,7 +94,7 @@ class AirFlockTest {
                 new Position(1000, 1040), new Position(1040, 1040), new Position(1000, 1450));
         List<Position> enemies = Collections.singletonList(new Position(1000, 1250));
 
-        Map<Integer, Position> targets = AirFlock.retreatTargets(members, enemies, MAP, MAP);
+        Map<Integer, Position> targets = targets(members, enemies, MAP, MAP);
 
         Position shared = targets.get(1);
         Position straggler = members.get(5);
@@ -101,14 +119,14 @@ class AirFlockTest {
         assertTrue(AirFlock.pathThroughEnemy(member, shared, enemies));
         assertFalse(AirFlock.pathThroughEnemy(member, anchor, enemies));
 
-        assertEquals(anchor, AirFlock.memberRetreatTarget(member, anchor, shared, enemies, MAP, MAP));
+        assertEquals(anchor, memberTarget(member, anchor, shared, enemies, MAP, MAP));
     }
 
     @Test
     void anEnemyFarFromEveryMemberDoesNotDivertAFarMemberFromTheSharedPoint() {
         Map<Integer, Position> members = clusterWithStraggler();
         Position nearEnemy = new Position(1000, 1200);
-        Position shared = AirFlock.retreatTargets(members, Collections.singletonList(nearEnemy), MAP, MAP).get(1);
+        Position shared = targets(members, Collections.singletonList(nearEnemy), MAP, MAP).get(1);
         Position straggler = members.get(5);
         Position distant = new Position(straggler.getX() + (int) Math.round(0.95 * (shared.getX() - straggler.getX())),
                 straggler.getY() + (int) Math.round(0.95 * (shared.getY() - straggler.getY())));
@@ -119,7 +137,7 @@ class AirFlockTest {
         assertTrue(straggler.getDistance(AirFlock.anchor(members)) > AirFlock.REGROUP_RADIUS);
         assertTrue(AirFlock.pathThroughEnemy(straggler, shared, enemies));
 
-        Map<Integer, Position> targets = AirFlock.retreatTargets(members, enemies, MAP, MAP);
+        Map<Integer, Position> targets = targets(members, enemies, MAP, MAP);
 
         assertEquals(shared, targets.get(1));
         assertEquals(shared, targets.get(5));
@@ -137,7 +155,7 @@ class AirFlockTest {
         assertNotNull(flee);
         assertTrue(flee.getDistance(member) < AirFlock.MIN_FLEE_STEP);
 
-        assertEquals(anchor, AirFlock.memberRetreatTarget(member, anchor, shared, enemies, MAP, MAP));
+        assertEquals(anchor, memberTarget(member, anchor, shared, enemies, MAP, MAP));
     }
 
     @Test
@@ -149,8 +167,8 @@ class AirFlockTest {
         assertTrue(member.getDistance(anchor) <= AirFlock.RETREAT_FLEE_LEASH);
 
         assertEquals(AirFlock.RetreatBranch.FLEE,
-                AirFlock.retreatBranch(member, anchor, shared, enemies, MAP, MAP));
-        assertEquals(new Position(1656, 1000), AirFlock.memberRetreatTarget(member, anchor, shared, enemies, MAP, MAP));
+                AirFlock.retreatBranch(member, anchor, shared, enemies, MAP, MAP, false));
+        assertEquals(new Position(1656, 1000), memberTarget(member, anchor, shared, enemies, MAP, MAP));
     }
 
     @Test
@@ -164,8 +182,8 @@ class AirFlockTest {
         assertTrue(AirFlock.pathThroughEnemy(member, anchor, enemies));
 
         assertEquals(AirFlock.RetreatBranch.ANCHOR,
-                AirFlock.retreatBranch(member, anchor, shared, enemies, MAP, MAP));
-        assertEquals(anchor, AirFlock.memberRetreatTarget(member, anchor, shared, enemies, MAP, MAP));
+                AirFlock.retreatBranch(member, anchor, shared, enemies, MAP, MAP, false));
+        assertEquals(anchor, memberTarget(member, anchor, shared, enemies, MAP, MAP));
     }
 
     @Test
@@ -174,55 +192,109 @@ class AirFlockTest {
         Position shared = new Position(1000, 600);
 
         assertEquals(AirFlock.RetreatBranch.SHARED, AirFlock.retreatBranch(new Position(1000, 1150), anchor, shared,
-                Collections.singletonList(new Position(1000, 900)), MAP, MAP));
+                Collections.singletonList(new Position(1000, 900)), MAP, MAP, false));
         assertEquals(AirFlock.RetreatBranch.ANCHOR, AirFlock.retreatBranch(new Position(1600, 700),
-                anchor, new Position(1100, 300), Collections.singletonList(new Position(1350, 500)), MAP, MAP));
+                anchor, new Position(1100, 300), Collections.singletonList(new Position(1350, 500)), MAP, MAP, false));
     }
 
-    @Test
-    void anEnemyThatFollowsAFarMemberNeverDragsItToTheMapEdge() {
+    private static List<AirFlock.RetreatBranch> farMemberRun(Position enemyStart, boolean chasing, double[] farthest) {
         Map<Integer, Position> members = flock(new Position(2000, 2000), new Position(2040, 2000),
                 new Position(2000, 2040), new Position(2040, 2040), new Position(2400, 2000));
+        Set<Integer> leashed = new HashSet<>();
+        List<AirFlock.RetreatBranch> branches = new ArrayList<>();
         double speed = 20;
-        double chase = 150;
-        double farthest = 0;
+        Position enemy = enemyStart;
         for (int step = 0; step < 400; step++) {
             Position anchor = AirFlock.anchor(members);
             Position member = members.get(5);
-            Position enemy = new Position(
-                    member.getX() - (int) Math.round(chase * Math.signum(member.getX() - anchor.getX())),
-                    member.getY());
-            Map<Integer, Position> targets = AirFlock.retreatTargets(members, Collections.singletonList(enemy),
-                    MAP, MAP);
-            Position target = targets.get(5);
-            assertNotNull(target);
-            double distance = member.getDistance(target);
-            double fraction = Math.min(1, speed / distance);
-            members.put(5, new Position(
+            AirFlock.RetreatPlan plan = AirFlock.retreatPlan(members, Collections.singletonList(enemy), MAP, MAP,
+                    leashed);
+            AirFlock.RetreatBranch branch = plan.getBranches().get(5);
+            branches.add(branch);
+            if (branch == AirFlock.RetreatBranch.SHARED && branches.contains(AirFlock.RetreatBranch.ANCHOR)) {
+                break;
+            }
+            Position target = plan.getTargets().get(5);
+            double fraction = Math.min(1, speed / member.getDistance(target));
+            Position moved = new Position(
                     member.getX() + (int) Math.round(fraction * (target.getX() - member.getX())),
-                    member.getY() + (int) Math.round(fraction * (target.getY() - member.getY()))));
-            farthest = Math.max(farthest, members.get(5).getDistance(anchor));
+                    member.getY() + (int) Math.round(fraction * (target.getY() - member.getY())));
+            members.put(5, moved);
+            farthest[0] = Math.max(farthest[0], moved.getDistance(anchor));
+            if (chasing) {
+                double gap = Math.max(0, enemy.getDistance(moved) - 40);
+                double pull = Math.min(1, speed / Math.max(gap, 1));
+                enemy = new Position(
+                        enemy.getX() + (int) Math.round(pull * (moved.getX() - enemy.getX())),
+                        enemy.getY() + (int) Math.round(pull * (moved.getY() - enemy.getY())));
+            }
         }
+        return branches;
+    }
 
+    private static void assertLeashHolds(List<AirFlock.RetreatBranch> branches, double farthest) {
+        int firstAnchor = branches.indexOf(AirFlock.RetreatBranch.ANCHOR);
+        assertTrue(firstAnchor >= 0);
+        assertFalse(branches.subList(firstAnchor, branches.size()).contains(AirFlock.RetreatBranch.FLEE));
+        assertEquals(AirFlock.RetreatBranch.SHARED, branches.get(branches.size() - 1));
         assertTrue(farthest <= AirFlock.RETREAT_FLEE_LEASH + AirFlock.RETREAT_FLEE_DISTANCE);
-        assertTrue(members.get(5).getX() < MAP - AirFlock.RETREAT_SCAN_RADIUS);
     }
 
     @Test
-    void retreatBranchesNamesEveryMembersBranchAndIsNoneWithNoEnemyNearTheFlock() {
+    void anEnemyThatFollowsAFarMemberNeverDragsItToTheMapEdgeAndTheLeashHolds() {
+        double[] farthest = new double[1];
+
+        List<AirFlock.RetreatBranch> branches = farMemberRun(new Position(2250, 2000), true, farthest);
+
+        assertLeashHolds(branches, farthest[0]);
+    }
+
+    @Test
+    void aStaticEnemyBetweenAFarMemberAndTheFlockDoesNotMakeItFlipBetweenFleeingAndTheAnchor() {
+        double[] farthest = new double[1];
+
+        List<AirFlock.RetreatBranch> branches = farMemberRun(new Position(2200, 2000), false, farthest);
+
+        assertLeashHolds(branches, farthest[0]);
+    }
+
+    @Test
+    void theLeashIsDroppedWhenTheMemberTakesTheSharedPointAndWhenNoEnemyIsNearTheFlock() {
+        Map<Integer, Position> members = flock(new Position(1000, 1000), new Position(1040, 1000),
+                new Position(1000, 1040), new Position(1040, 1040), new Position(1700, 1000));
+        Set<Integer> leashed = new HashSet<>();
+        List<Position> enemy = Collections.singletonList(new Position(1250, 1000));
+
+        AirFlock.RetreatPlan blocked = AirFlock.retreatPlan(members, enemy, MAP, MAP, leashed);
+
+        assertEquals(AirFlock.RetreatBranch.ANCHOR, blocked.getBranches().get(5));
+        assertTrue(leashed.contains(5));
+
+        members.put(5, new Position(1010, 1010));
+        AirFlock.retreatPlan(members, enemy, MAP, MAP, leashed);
+        assertFalse(leashed.contains(5));
+
+        leashed.add(5);
+        AirFlock.retreatPlan(members, Collections.singletonList(new Position(3000, 3000)), MAP, MAP, leashed);
+        assertTrue(leashed.isEmpty());
+    }
+
+    @Test
+    void aRetreatPlanNamesEveryMembersBranchAndIsNoneWithNoEnemyNearTheFlock() {
         Map<Integer, Position> members = flock(new Position(1000, 1000), new Position(1040, 1000),
                 new Position(1000, 1040), new Position(1040, 1040), new Position(1000, 1450));
 
-        Map<Integer, AirFlock.RetreatBranch> none = AirFlock.retreatBranches(members,
-                Collections.singletonList(new Position(3000, 3000)), MAP, MAP);
-        Map<Integer, AirFlock.RetreatBranch> near = AirFlock.retreatBranches(members,
-                Collections.singletonList(new Position(1000, 1250)), MAP, MAP);
+        AirFlock.RetreatPlan none = AirFlock.retreatPlan(members,
+                Collections.singletonList(new Position(3000, 3000)), MAP, MAP, new HashSet<>());
+        AirFlock.RetreatPlan near = AirFlock.retreatPlan(members,
+                Collections.singletonList(new Position(1000, 1250)), MAP, MAP, new HashSet<>());
 
-        for (AirFlock.RetreatBranch branch : none.values()) {
+        for (AirFlock.RetreatBranch branch : none.getBranches().values()) {
             assertEquals(AirFlock.RetreatBranch.NONE, branch);
         }
-        assertEquals(AirFlock.RetreatBranch.SHARED, near.get(1));
-        assertEquals(AirFlock.RetreatBranch.FLEE, near.get(5));
+        assertNull(none.getTargets().get(1));
+        assertEquals(AirFlock.RetreatBranch.SHARED, near.getBranches().get(1));
+        assertEquals(AirFlock.RetreatBranch.FLEE, near.getBranches().get(5));
     }
 
     @Test
@@ -245,7 +317,7 @@ class AirFlockTest {
         List<Position> enemies = Collections.singletonList(new Position(1000, 900));
         assertTrue(AirFlock.pathThroughEnemy(member, shared, enemies));
 
-        assertEquals(shared, AirFlock.memberRetreatTarget(member, anchor, shared, enemies, MAP, MAP));
+        assertEquals(shared, memberTarget(member, anchor, shared, enemies, MAP, MAP));
     }
 
     @Test
@@ -255,7 +327,7 @@ class AirFlockTest {
         Position shared = new Position(1000, 600);
         List<Position> enemies = Collections.singletonList(new Position(1000, 1300));
 
-        assertEquals(shared, AirFlock.memberRetreatTarget(member, anchor, shared, enemies, MAP, MAP));
+        assertEquals(shared, memberTarget(member, anchor, shared, enemies, MAP, MAP));
     }
 
     @Test
@@ -282,7 +354,7 @@ class AirFlockTest {
         List<Position> enemies = Arrays.asList(new Position(1000, 1350), new Position(1000, 1850));
         assertNull(AirFlock.fleePoint(member, shared, enemies, MAP, MAP));
 
-        assertEquals(anchor, AirFlock.memberRetreatTarget(member, anchor, shared, enemies, MAP, MAP));
+        assertEquals(anchor, memberTarget(member, anchor, shared, enemies, MAP, MAP));
     }
 
     @Test
@@ -314,7 +386,7 @@ class AirFlockTest {
         Map<Integer, Position> members = clusterWithStraggler();
         List<Position> enemies = Collections.singletonList(new Position(1400, 1150));
 
-        Map<Integer, Position> targets = AirFlock.retreatTargets(members, enemies, MAP, MAP);
+        Map<Integer, Position> targets = targets(members, enemies, MAP, MAP);
 
         assertNotNull(targets.get(1));
         assertEquals(1, new HashSet<>(targets.values()).size());
@@ -325,7 +397,7 @@ class AirFlockTest {
         Map<Integer, Position> members = clusterWithStraggler();
         List<Position> enemies = Collections.singletonList(new Position(3000, 3000));
 
-        Map<Integer, Position> targets = AirFlock.retreatTargets(members, enemies, MAP, MAP);
+        Map<Integer, Position> targets = targets(members, enemies, MAP, MAP);
 
         assertEquals(members.keySet(), targets.keySet());
         for (Position target : targets.values()) {

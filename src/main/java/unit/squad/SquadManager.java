@@ -133,6 +133,7 @@ public class SquadManager {
     static final int AIR_HOME_DEFENSE_RADIUS = 480;
 
     private static final int RETREAT_VECTOR_MAGNITUDE = 192;
+    private static final int RETREAT_BRANCH_FRESH_FRAMES = 2;
     /**
      * Tuning value: frames a ground retreat plan is kept before it is made again, which bounds the path searches a
      * retreating squad costs to one per this many frames.
@@ -299,9 +300,9 @@ public class SquadManager {
                     .regrouping(AirFlock.regroupingCount(status, squad.getRegroupingIds()))
                     .regroupingIds(retreating ? null : squad.getRegroupingIds())
                     .regroupingArmed(retreating ? -1 : armedRegrouping(squad))
-                    .retreatShared(retreatCount(squad, mutaPositions.keySet(), AirFlock.RetreatBranch.SHARED))
-                    .retreatAnchor(retreatCount(squad, mutaPositions.keySet(), AirFlock.RetreatBranch.ANCHOR))
-                    .retreatFlee(retreatCount(squad, mutaPositions.keySet(), AirFlock.RetreatBranch.FLEE))
+                    .retreatShared(retreatCount(squad, mutaPositions.keySet(), AirFlock.RetreatBranch.SHARED, now))
+                    .retreatAnchor(retreatCount(squad, mutaPositions.keySet(), AirFlock.RetreatBranch.ANCHOR, now))
+                    .retreatFlee(retreatCount(squad, mutaPositions.keySet(), AirFlock.RetreatBranch.FLEE, now))
                     .build());
         }
     }
@@ -312,10 +313,15 @@ public class SquadManager {
      * @param branch a retreat branch
      * @return how many of the Mutalisks took the branch, or -1 while the squad is not in RETREAT
      */
-    private static int retreatCount(Squad squad, Collection<Integer> mutaIds, AirFlock.RetreatBranch branch) {
-        return squad.getStatus() == SquadStatus.RETREAT
+    private static int retreatCount(Squad squad, Collection<Integer> mutaIds, AirFlock.RetreatBranch branch,
+                                    int now) {
+        return squad.getStatus() == SquadStatus.RETREAT && retreatBranchesFresh(squad, now)
                 ? AirFlock.branchCount(squad.getRetreatBranches(), mutaIds, branch)
                 : -1;
+    }
+
+    private static boolean retreatBranchesFresh(Squad squad, int now) {
+        return now - squad.getRetreatBranchFrame() <= RETREAT_BRANCH_FRESH_FRAMES;
     }
 
     /**
@@ -392,7 +398,7 @@ public class SquadManager {
                     Collections.emptyMap(), null, null));
             return;
         }
-        AirFlock.RetreatBranch branch = owner.getStatus() == SquadStatus.RETREAT
+        AirFlock.RetreatBranch branch = owner.getStatus() == SquadStatus.RETREAT && retreatBranchesFresh(owner, now)
                 ? owner.getRetreatBranches().get(unit.getID())
                 : null;
         FlockTelemetry.row(flockLossRow(now, unit.getID(), unit.getPosition(), owner.getId(), owner.getStatus(),
@@ -2427,12 +2433,10 @@ public class SquadManager {
         Map<ManagedUnit, Position> retreatTargets = squad.isGroundSquad() && !keepPlan
                 ? planGroundRetreat(squad, rallyPoint, now)
                 : null;
-        Map<Integer, Position> airRetreatTargets = squad.isAirSquad()
-                ? airRetreatTargets(squad)
-                : Collections.emptyMap();
+        Map<Integer, Position> airRetreatTargets = Collections.emptyMap();
         if (squad.isAirSquad()) {
             squad.getRegroupingIds().clear();
-            squad.setRetreatBranches(airRetreatBranches(squad));
+            airRetreatTargets = planAirRetreat(squad, now);
         }
         if (keepPlan) {
             SquadDecisions.retreatRouted(squad, squad.getRetreatRoute());
@@ -2458,25 +2462,22 @@ public class SquadManager {
 
     /**
      * The retreat target of every member of an air squad, one point shared by all but a far member whose path to it
-     * runs through an enemy, see {@link AirFlock#retreatTargets}. Enemy buildings count only when they are hostile.
+     * runs through an enemy, see {@link AirFlock#retreatPlan}. Enemy buildings count only when they are hostile. The
+     * squad keeps each member's branch and the members held on the anchor by the leash; the leash is dropped when
+     * the squad was not retreating on the previous frames.
      *
      * @param squad air squad
      * @return targets by unit id, null with no enemy near the flock, so every member falls back to the rally point
      */
-    private Map<Integer, Position> airRetreatTargets(Squad squad) {
-        return AirFlock.retreatTargets(memberPositions(squad, null), retreatThreats(),
-                game.mapWidth() * 32, game.mapHeight() * 32);
-    }
-
-    /**
-     * Which branch of {@link AirFlock#retreatBranch} each member of an air squad takes.
-     *
-     * @param squad air squad
-     * @return branches by unit id
-     */
-    private Map<Integer, AirFlock.RetreatBranch> airRetreatBranches(Squad squad) {
-        return AirFlock.retreatBranches(memberPositions(squad, null), retreatThreats(),
-                game.mapWidth() * 32, game.mapHeight() * 32);
+    private Map<Integer, Position> planAirRetreat(Squad squad, int now) {
+        if (!retreatBranchesFresh(squad, now)) {
+            squad.getLeashedIds().clear();
+        }
+        AirFlock.RetreatPlan plan = AirFlock.retreatPlan(memberPositions(squad, null), retreatThreats(),
+                game.mapWidth() * 32, game.mapHeight() * 32, squad.getLeashedIds());
+        squad.setRetreatBranches(plan.getBranches());
+        squad.setRetreatBranchFrame(now);
+        return plan.getTargets();
     }
 
     private List<Position> retreatThreats() {
