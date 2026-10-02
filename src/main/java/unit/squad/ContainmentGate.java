@@ -117,8 +117,7 @@ public final class ContainmentGate {
     /**
      * Whether a squad the combat sim read as RETREAT may hold a contain arc instead: always against a non-Terran
      * opponent, otherwise only when no known mobile enemy outranges the squad's longest weapon, counting melee as
- * {@link #MELEE_MAX_RANGE}, the opponent is not
-     * detected as mech, and the squad's makeup lets it contain, see {@link #compositionAllows}.
+     * {@link #MELEE_MAX_RANGE}, the opponent is not detected as mech, and the squad's makeup lets it contain, see {@link #compositionAllows}.
      *
      * @param versusTerran true when the opponent is Terran
      * @param mechDetected true when the TerranMech strategy has been detected
