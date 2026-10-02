@@ -19,8 +19,13 @@ class ZerglingScoutPullTest {
     }
 
     @Test
-    void fightingAndContainingLingsMayBePulled() {
-        assertTrue(UnitManager.mayPullAsZerglingScout(UnitRole.FIGHT));
-        assertTrue(UnitManager.mayPullAsZerglingScout(UnitRole.CONTAIN));
+    void fightingAndContainingLingsAreNeverPulled() {
+        assertFalse(UnitManager.mayPullAsZerglingScout(UnitRole.FIGHT));
+        assertFalse(UnitManager.mayPullAsZerglingScout(UnitRole.CONTAIN));
+    }
+
+    @Test
+    void anIdleLingMayBePulled() {
+        assertTrue(UnitManager.mayPullAsZerglingScout(UnitRole.IDLE));
     }
 }

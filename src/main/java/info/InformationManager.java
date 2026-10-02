@@ -87,6 +87,7 @@ public class InformationManager {
         trackEnemyBuildings();
         checkEnemyBases();
         recordEnemyMainVision();
+        recordBaseVision();
         checkEnemyBuildingPositions();
         debugEnemyTargets();
         checkScoutTargets();
@@ -649,6 +650,20 @@ public class InformationManager {
                 .collect(Collectors.toList()));
         scoutData.recordEnemyMainVision(enemyMain, visibleTiles, mainTiles.size(), gatewaySites,
                 new Time(game.getFrameCount()));
+    }
+
+    /**
+     * Stamps the current frame on every base whose town hall location is in our vision, so ScoutData
+     * holds when each base was last seen.
+     */
+    private void recordBaseVision() {
+        ScoutData scoutData = gameState.getScoutData();
+        int frame = game.getFrameCount();
+        for (Base base : bwem.getMap().getBases()) {
+            if (game.isVisible(base.getLocation())) {
+                scoutData.recordBaseSeen(base.getLocation(), frame);
+            }
+        }
     }
 
     private List<TilePosition> buildableTilesOfArea(Base base) {
