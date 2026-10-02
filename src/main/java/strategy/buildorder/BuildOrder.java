@@ -1421,7 +1421,10 @@ public abstract class BuildOrder {
         int hatcheries = gameState.hatcheryCount();
         int outstanding = gameState.inFlightHatcheryPlans(true) + gameState.hatcheriesUnderConstruction(true);
         LarvaBoundMacroHatchery.Gate gate = LarvaBoundMacroHatchery.evaluate(techReady, gameState.numLarva(),
-                hatcheries, resourceCount.availableMinerals(), resourceCount.availableGas(),
+                hatcheries, LarvaBoundMacroHatchery.afterQueuedDemand(resourceCount.availableMinerals(),
+                        gameState.getProductionQueue().advancedUnitMineralDemand()),
+                LarvaBoundMacroHatchery.afterQueuedDemand(resourceCount.availableGas(),
+                        gameState.getProductionQueue().advancedUnitGasDemand()),
                 gameState.knownEnemyMobileGroundCombatUnitsAtOurBases(), outstanding);
 
         if (gate != LarvaBoundMacroHatchery.Gate.TRIGGER) {

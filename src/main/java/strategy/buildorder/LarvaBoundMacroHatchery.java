@@ -105,6 +105,21 @@ public final class LarvaBoundMacroHatchery {
     }
 
     /**
+     * The unreserved bank left once queued advanced unit plans have claimed their cost.
+     *
+     * <p>A queued plan reserves nothing until it is scheduled, so the unreserved bank still holds
+     * what a Mutalisk waiting for its larva is about to spend. Passing the result to
+     * {@link #evaluate} keeps the first wave from being read as float.
+     *
+     * @param available minerals or gas mined and not reserved by a scheduled plan
+     * @param queuedDemand the same resource priced by queued advanced unit plans
+     * @return the bank after the queued demand, never below zero
+     */
+    public static int afterQueuedDemand(int available, int queuedDemand) {
+        return Math.max(0, available - queuedDemand);
+    }
+
+    /**
      * The gate the macro hatchery request stops on.
      *
      * <p>The signal is the one a larva limit produces: fewer free larva than hatcheries to make

@@ -135,6 +135,38 @@ class LarvaBoundMacroHatcheryTest {
                 TWO_HATCHERIES, 638, 530, NO_ENEMIES, NO_MACRO_HATCHERY));
     }
 
+    /**
+     * Game M7CHH005 frame 8,894: 306 minerals and 294 gas unreserved with a Mutalisk plan still
+     * PLANNED, so the gate read the first wave's bank as float.
+     */
+    @Test
+    void aQueuedMutaliskCostIsTakenOffTheBankBeforeTheFloatBars() {
+        int mutaliskMinerals = UnitType.Zerg_Mutalisk.mineralPrice();
+        int mutaliskGas = UnitType.Zerg_Mutalisk.gasPrice();
+
+        assertEquals(Gate.TRIGGER, evaluateAfterDemand(306, 294, 0, 0));
+        assertEquals(Gate.NOT_FLOATING, evaluateAfterDemand(306, 294, mutaliskMinerals, 0));
+        assertEquals(Gate.NOT_FLOATING, evaluateAfterDemand(306, 294, 0, mutaliskGas * 2));
+    }
+
+    @Test
+    void aBankThatCoversTheQueuedMutalisksAndTheBarsStillTriggers() {
+        assertEquals(Gate.TRIGGER, evaluateAfterDemand(LarvaBoundMacroHatchery.FLOAT_MINERALS + 100,
+                LarvaBoundMacroHatchery.FLOAT_GAS + 100, 100, 100));
+    }
+
+    @Test
+    void queuedDemandNeverTakesTheBankBelowZero() {
+        assertEquals(0, LarvaBoundMacroHatchery.afterQueuedDemand(50, 300));
+        assertEquals(206, LarvaBoundMacroHatchery.afterQueuedDemand(306, 100));
+    }
+
+    private static Gate evaluateAfterDemand(int minerals, int gas, int queuedMinerals, int queuedGas) {
+        return LarvaBoundMacroHatchery.evaluate(TECH_READY, NO_LARVA, TWO_HATCHERIES,
+                LarvaBoundMacroHatchery.afterQueuedDemand(minerals, queuedMinerals),
+                LarvaBoundMacroHatchery.afterQueuedDemand(gas, queuedGas), NO_ENEMIES, NO_MACRO_HATCHERY);
+    }
+
     @Test
     void theHydraliskConditionReadsAFinishedDen() {
         TechProgression den = new TechProgression();
