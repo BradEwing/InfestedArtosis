@@ -2148,7 +2148,11 @@ public class SquadManager {
                 break;
 
             case RETREAT:
-                boolean enteredContain = tryEnterContainment(squad);
+                boolean safeToHold = containmentEvaluator.safeToHold(squad);
+                if (!safeToHold) {
+                    SquadDecisions.pathTaken(squad, DecisionPath.CONTAIN_GATED);
+                }
+                boolean enteredContain = safeToHold && tryEnterContainment(squad);
                 if (!enteredContain) {
                     squad.setStatus(SquadStatus.RETREAT);
                     assignRetreatTargets(squad, managedFighters);
@@ -2546,8 +2550,15 @@ public class SquadManager {
         boolean underAttack = baseThreatensContainment();
         boolean shouldContain = containmentEvaluator.shouldContain(squad);
         boolean canBreak = shouldContain && containmentEvaluator.canBreakContainment(fightSquads, now);
-        boolean entered = mayTakeArc(containmentEscalation, gameState.getContainmentStalemate(), now, underAttack,
-                shouldContain, canBreak) && enterContainment(squad);
+        boolean cooling = shouldContain && squad.getContainmentReentryCooldown()
+                .blocks(now, squad.getSupply(), containmentEvaluator.enemyArmySupply());
+        boolean entered = mayTakeArc(containmentEscalation, gameState.getContainmentStalemate(), now,
+                underAttack, shouldContain, canBreak, cooling) && enterContainment(squad);
+        if (cooling) {
+            SquadDecisions.pathTaken(squad, DecisionPath.CONTAIN_COOLDOWN);
+        } else if (!containmentEvaluator.compositionAllows(squad)) {
+            SquadDecisions.pathTaken(squad, DecisionPath.CONTAIN_GATED);
+        }
         SquadDecisions.containmentEvaluated(squad, shouldContain, canBreak, entered);
         return entered;
     }
@@ -2562,11 +2573,12 @@ public class SquadManager {
      * @param basesUnderAttack true when a combat unit threatens one of our bases
      * @param shouldContain true when containment applies to the squad
      * @param canBreak true when the strength gate clears the army to push in
+     * @param cooling true when the squad is inside its re-entry cooldown, see {@link ContainmentReentryCooldown}
      * @return true when the squad may take the arc
      */
     static boolean mayTakeArc(ContainmentEscalation escalation, ContainmentStalemate stalemate, int now,
-                              boolean basesUnderAttack, boolean shouldContain, boolean canBreak) {
-        return !escalation.holdsEntry(now) && !stalemate.barsEntry(now)
+                              boolean basesUnderAttack, boolean shouldContain, boolean canBreak, boolean cooling) {
+        return !cooling && !escalation.holdsEntry(now) && !stalemate.barsEntry(now)
                 && mayEnterContainment(basesUnderAttack, shouldContain, canBreak);
     }
 
@@ -3027,11 +3039,25 @@ public class SquadManager {
                 && (retreatPath == DecisionPath.CONTAIN_ATTRITION || retreatPath == DecisionPath.CONTAIN_OUTRANGED);
     }
 
+    /**
+     * Whether a containing squad's retreat arms its re-entry cooldown: an attrition or outranged exit against Terran.
+     *
+     * @param path the decision path of the retreat
+     * @param versusTerran true when the opponent is Terran
+     * @return true when the exit arms the cooldown
+     */
+    static boolean armsReentryCooldown(DecisionPath path, boolean versusTerran) {
+        return versusTerran && (path == DecisionPath.CONTAIN_ATTRITION || path == DecisionPath.CONTAIN_OUTRANGED);
+    }
+
     private void retreatFromContainment(Squad squad, HashSet<ManagedUnit> members, int now, DecisionPath path) {
         endContainment(squad);
         squad.setStatus(SquadStatus.RETREAT);
         SquadDecisions.pathTaken(squad, path);
         assignRetreatTargets(squad, members);
+        if (armsReentryCooldown(path, containmentEvaluator.versusTerran())) {
+            squad.getContainmentReentryCooldown().arm(now, squad.getSupply(), containmentEvaluator.enemyArmySupply());
+        }
         if (path == DecisionPath.CONTAIN_ATTRITION) {
             squad.startAttritionRetreatLock(now);
         } else {
@@ -4450,6 +4476,10 @@ public class SquadManager {
      */
     private Arc containArcToJoin(Squad squad) {
         if (!squad.isGroundSquad() || squad.getStatus() == SquadStatus.CONTAIN) {
+            return null;
+        }
+        if (!containmentEvaluator.compositionAllows(squad) || squad.getContainmentReentryCooldown()
+                .blocks(game.getFrameCount(), squad.getSupply(), containmentEvaluator.enemyArmySupply())) {
             return null;
         }
         List<Arc> arcs = new ArrayList<>();
