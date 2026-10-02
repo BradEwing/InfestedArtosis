@@ -34,6 +34,15 @@ public final class BaseCheckScheduler {
     /** Tuning value: an enemy this close to a checked base, in pixels, makes it occupied. */
     public static final int OCCUPIED_RADIUS_PIXELS = 320;
 
+    /** Tuning value: ling checks, each to its own base, that may be out at once. */
+    public static final int MAX_LING_CHECKS = 2;
+
+    /** Tuning value: overlord checks that may be out at once. */
+    public static final int MAX_OVERLORD_CHECKS = 1;
+
+    /** Tuning value: the longest a base is left alone after failed checks, in check intervals. */
+    public static final int MAX_BACKOFF_INTERVALS = 8;
+
     /** Zerglings sent to a base when Spider Mines are known, so one can trigger a mine for the other. */
     public static final int LINGS_WITH_MINES = 2;
 
@@ -122,6 +131,38 @@ public final class BaseCheckScheduler {
     }
 
     /**
+     * The frame a base may next be checked after a check of it failed to see it. The wait is one check interval
+     * after the first failure and doubles with each consecutive failure, up to {@link #MAX_BACKOFF_INTERVALS}
+     * intervals.
+     *
+     * @param now the frame the check failed
+     * @param consecutiveFailures failed checks of this base in a row, counting this one
+     * @return the first frame the base may be checked again
+     */
+    public static int retryFrame(int now, int consecutiveFailures) {
+        int intervals = 1 << Math.max(0, Math.min(consecutiveFailures - 1, 30));
+        return now + CHECK_INTERVAL_FRAMES * Math.min(intervals, MAX_BACKOFF_INTERVALS);
+    }
+
+    /**
+     * @param inFlight checks of this kind already out
+     * @param overlord whether the check would use an overlord rather than zerglings
+     * @return true while the cap for that kind has room
+     */
+    public static boolean mayStartCheck(int inFlight, boolean overlord) {
+        return inFlight < (overlord ? MAX_OVERLORD_CHECKS : MAX_LING_CHECKS);
+    }
+
+    /**
+     * @param hitPoints the scout's current hit points
+     * @param maxHitPoints the scout's maximum hit points
+     * @return false for a unit the recall would send home the moment it was pulled
+     */
+    public static boolean isHealthy(int hitPoints, int maxHitPoints) {
+        return hitPoints >= maxHitPoints * RECALL_HIT_POINT_SHARE;
+    }
+
+    /**
      * @param spiderMinesKnown whether the enemy is known to have Spider Mines
      * @return zerglings to send to one base
      */
@@ -145,7 +186,7 @@ public final class BaseCheckScheduler {
         if (baseSeen) {
             return Release.SEEN;
         }
-        if (hitPoints < maxHitPoints * RECALL_HIT_POINT_SHARE) {
+        if (!isHealthy(hitPoints, maxHitPoints)) {
             return Release.HP_RECALL;
         }
         if (now - dispatchFrame >= CHECK_TIMEOUT_FRAMES) {

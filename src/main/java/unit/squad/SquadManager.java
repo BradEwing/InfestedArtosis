@@ -4941,6 +4941,45 @@ public class SquadManager {
         overlords.addUnit(overlord);
     }
 
+    /**
+     * Zerglings a ground squad keeps when it lends scouts, so a squad never scouts itself away.
+     */
+    static final int SCOUT_LEND_FLOOR = 4;
+
+    /**
+     * Whether a ground squad can lend a unit to scout: it is rallying, is not on its way to join a containment,
+     * and keeps {@link #SCOUT_LEND_FLOOR} units after the loan.
+     *
+     * @param status the squad's status
+     * @param ground whether it is a ground squad
+     * @param joiningContain whether it is heading to join another squad's containment arc
+     * @param size members in the squad
+     * @return true when the squad can lend a unit
+     */
+    static boolean mayLendScout(SquadStatus status, boolean ground, boolean joiningContain, int size) {
+        return status == SquadStatus.RALLY && ground && !joiningContain && size > SCOUT_LEND_FLOOR;
+    }
+
+    /**
+     * @return true when the unit belongs to a fight squad that can lend it to scout
+     */
+    public boolean mayLendScout(ManagedUnit managedUnit) {
+        for (Squad squad : fightSquads) {
+            if (squad.containsManagedUnit(managedUnit)) {
+                return mayLendScout(squad.getStatus(), squad.isGroundSquad(), containArcToJoin(squad) != null,
+                        squad.size());
+            }
+        }
+        return false;
+    }
+
+    /**
+     * @return true when the overlord is parked in the overlord squad rather than serving a fight squad
+     */
+    public boolean isParkedOverlord(ManagedUnit overlord) {
+        return overlords.containsManagedUnit(overlord);
+    }
+
     public void removeManagedUnit(ManagedUnit managedUnit) {
         irradiatedUnits.remove(managedUnit);
         UnitType unitType = managedUnit.getUnitType();

@@ -10,22 +10,30 @@ class ZerglingScoutPullTest {
 
     @Test
     void aLingOnARunbyIsNeverPulledToScout() {
-        assertFalse(UnitManager.mayPullAsZerglingScout(UnitRole.RUNBY));
+        assertFalse(UnitManager.mayPullAsZerglingScout(UnitRole.RUNBY, true));
     }
 
     @Test
     void aLingAlreadyScoutingIsNotPulledAgain() {
-        assertFalse(UnitManager.mayPullAsZerglingScout(UnitRole.SCOUT));
+        assertFalse(UnitManager.mayPullAsZerglingScout(UnitRole.SCOUT, true));
     }
 
     @Test
-    void fightingAndContainingLingsAreNeverPulled() {
-        assertFalse(UnitManager.mayPullAsZerglingScout(UnitRole.FIGHT));
-        assertFalse(UnitManager.mayPullAsZerglingScout(UnitRole.CONTAIN));
+    void aContainingLingIsNeverPulled() {
+        assertFalse(UnitManager.mayPullAsZerglingScout(UnitRole.CONTAIN, true));
     }
 
     @Test
-    void anIdleLingMayBePulled() {
-        assertTrue(UnitManager.mayPullAsZerglingScout(UnitRole.IDLE));
+    void aLingWhoseSquadCannotSpareItIsNeverPulledWhateverItsRole() {
+        assertFalse(UnitManager.mayPullAsZerglingScout(UnitRole.FIGHT, false));
+        assertFalse(UnitManager.mayPullAsZerglingScout(UnitRole.IDLE, false));
+        assertFalse(UnitManager.mayPullAsZerglingScout(UnitRole.RALLY, false));
+    }
+
+    @Test
+    void aLingItsSquadCanSpareMayBePulled() {
+        assertTrue(UnitManager.mayPullAsZerglingScout(UnitRole.FIGHT, true));
+        assertTrue(UnitManager.mayPullAsZerglingScout(UnitRole.RALLY, true));
+        assertTrue(UnitManager.mayPullAsZerglingScout(UnitRole.IDLE, true));
     }
 }

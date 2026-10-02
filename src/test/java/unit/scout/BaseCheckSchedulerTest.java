@@ -143,6 +143,39 @@ class BaseCheckSchedulerTest {
     }
 
     @Test
+    void aFailedBaseIsLeftAloneUntilItsRetryFrame() {
+        Map<String, Integer> lastSeen = map("a", NOW - 5000, "b", NOW - 3000);
+        int retryFrame = BaseCheckScheduler.retryFrame(NOW, 1);
+        assertEquals("b", BaseCheckScheduler.next(Arrays.asList("a", "b"), lastSeen, Collections.emptyMap(),
+                Collections.singletonList("a"), NOW));
+        assertEquals(NOW + BaseCheckScheduler.CHECK_INTERVAL_FRAMES, retryFrame);
+    }
+
+    @Test
+    void theRetryWaitDoublesWithEachFailureUpToTheCap() {
+        int interval = BaseCheckScheduler.CHECK_INTERVAL_FRAMES;
+        assertEquals(NOW + interval, BaseCheckScheduler.retryFrame(NOW, 1));
+        assertEquals(NOW + 2 * interval, BaseCheckScheduler.retryFrame(NOW, 2));
+        assertEquals(NOW + 4 * interval, BaseCheckScheduler.retryFrame(NOW, 3));
+        assertEquals(NOW + BaseCheckScheduler.MAX_BACKOFF_INTERVALS * interval,
+                BaseCheckScheduler.retryFrame(NOW, 40));
+    }
+
+    @Test
+    void checksAreCappedPerKind() {
+        assertTrue(BaseCheckScheduler.mayStartCheck(BaseCheckScheduler.MAX_LING_CHECKS - 1, false));
+        assertFalse(BaseCheckScheduler.mayStartCheck(BaseCheckScheduler.MAX_LING_CHECKS, false));
+        assertTrue(BaseCheckScheduler.mayStartCheck(0, true));
+        assertFalse(BaseCheckScheduler.mayStartCheck(BaseCheckScheduler.MAX_OVERLORD_CHECKS, true));
+    }
+
+    @Test
+    void aScoutBelowTheRecallLineIsNotHealthyEnoughToSend() {
+        assertFalse(BaseCheckScheduler.isHealthy(17, 35));
+        assertTrue(BaseCheckScheduler.isHealthy(18, 35));
+    }
+
+    @Test
     void aZerglingScoutIsNotReleasedByTheCountOfScoutsOut() {
         assertFalse(BaseCheckScheduler.endsZerglingScout(35, 35, false));
     }
