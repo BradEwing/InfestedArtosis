@@ -232,7 +232,7 @@ public class PlanEventLogger implements PlanEventSink {
      * <p>
      * DRONE_ROUND_OPEN and DRONE_ROUND_CLOSE rows are written when a {@link macro.DroneRound} opens
      * and closes, and leave every plan column empty. item is the round's kind, ARMY_MILESTONE or
-     * CONTAIN_HELD, on both rows. drone_round_reason is the kind again on an OPEN row and the close
+     * CONTAIN_HELD or CALM_ECONOMY, on both rows. drone_round_reason is the kind again on an OPEN row and the close
      * reason on a CLOSE row: SIZE, BUILD_CAP, SOFT_CAP, HARD_CAP, THREAT, CONTAIN_ENDED, TIMEOUT or
      * INELIGIBLE. drone_round_drones is Drones hatched plus Drones in an egg at that frame, so the CLOSE
      * row's count less the OPEN row's is the Drones a round added net of any Drones that died during

@@ -32,6 +32,9 @@ public class TwoHatchMuta extends TerranBase {
 
     static final int MUTALISKS_BEFORE_FLYER_UPGRADE = 7;
 
+    /** Gatherers that must stand before Flyer Attacks level 2 or 3 is queued. Tuning constant. */
+    static final int WORKERS_BEFORE_LATER_FLYER_UPGRADES = 22;
+
     public TwoHatchMuta() {
         super("2HatchMuta");
     }
@@ -81,7 +84,7 @@ public class TwoHatchMuta extends TerranBase {
         boolean wantSpire = techProgression.canPlanSpire() && spireCount < 1 && lairCount >= 1 && droneCount >= 16;
 
         boolean wantMetabolicBoost = techProgression.canPlanMetabolicBoost() && !techProgression.isMetabolicBoost() && lairCount > 0;
-        boolean wantFlyingAttack = shouldPlanFlyerAttack(techProgression, livingMutaCount);
+        boolean wantFlyingAttack = shouldPlanFlyerAttack(techProgression, livingMutaCount, gameState.numGatherers());
         boolean wantOverlordSpeed = shouldPlanOverlordSpeed(needOverlordSpeed(gameState) && techProgression.canPlanOverlordSpeed(),
                 Reactions.isAirOrCloakThreatSeen(gameState),
                 wantFlyingAttack);
@@ -289,6 +292,23 @@ public class TwoHatchMuta extends TerranBase {
      */
     static boolean shouldPlanFlyerAttack(TechProgression techProgression, int livingMutalisks) {
         return livingMutalisks >= MUTALISKS_BEFORE_FLYER_UPGRADE && techProgression.canPlanFlyerAttack();
+    }
+
+    /**
+     * Whether the build should queue the next Flyer Attacks level, holding every level after the
+     * first until {@value #WORKERS_BEFORE_LATER_FLYER_UPGRADES} workers gather. A queued level
+     * holds the bank at the upgrade priority, which outranks every Drone plan.
+     *
+     * @param techProgression the tech state
+     * @param livingMutalisks completed Mutalisks
+     * @param gatherers workers gathering minerals or gas
+     * @return true when the next Flyer Attacks level should be queued
+     */
+    static boolean shouldPlanFlyerAttack(TechProgression techProgression, int livingMutalisks, int gatherers) {
+        if (techProgression.getFlyerAttack() > 0 && gatherers < WORKERS_BEFORE_LATER_FLYER_UPGRADES) {
+            return false;
+        }
+        return shouldPlanFlyerAttack(techProgression, livingMutalisks);
     }
 
     /**

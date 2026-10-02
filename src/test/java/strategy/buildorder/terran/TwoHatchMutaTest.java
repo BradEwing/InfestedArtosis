@@ -149,6 +149,22 @@ class TwoHatchMutaTest {
         assertTrue(TwoHatchMuta.shouldPlanFlyerAttack(techProgression, 7));
     }
 
+    @Test
+    void withholdsTheSecondLevelWhileTheGatherersAreBelowTheWorkerFloor() {
+        TechProgression techProgression = withSpire();
+        techProgression.setFlyerAttack(1);
+
+        assertFalse(TwoHatchMuta.shouldPlanFlyerAttack(techProgression, 7,
+                TwoHatchMuta.WORKERS_BEFORE_LATER_FLYER_UPGRADES - 1));
+        assertTrue(TwoHatchMuta.shouldPlanFlyerAttack(techProgression, 7,
+                TwoHatchMuta.WORKERS_BEFORE_LATER_FLYER_UPGRADES));
+    }
+
+    @Test
+    void plansTheFirstLevelWhateverTheGatherers() {
+        assertTrue(TwoHatchMuta.shouldPlanFlyerAttack(withSpire(), 7, 0));
+    }
+
     private static UnitTypeCount mutalisks(int planned, int living) {
         UnitTypeCount count = new UnitTypeCount();
         for (int i = 0; i < planned; i++) {
