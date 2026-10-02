@@ -9,6 +9,7 @@ import info.UnitTypeCount;
 import macro.ProductionManager.PlanScheduler;
 import macro.ProductionManager.ScanOutcome;
 import macro.plan.BuildingPlan;
+import macro.plan.HatcheryRequestReason;
 import macro.plan.Plan;
 import macro.plan.PlanBlocker;
 import macro.plan.PlanCancelSource;
@@ -2556,5 +2557,133 @@ class ProductionManagerTest {
     void finishedMacroHatcheriesPastTheCapAreNotTornDown() {
         assertTrue(ProductionManager.macroHatcheryPlansOverCap(new ArrayList<>(), new HashSet<>(),
                 MACRO_HATCHERY_CAP + 1, MACRO_HATCHERY_CAP).isEmpty());
+    }
+
+    private static Plan expansionHatchery(int priority, HatcheryRequestReason reason) {
+        Plan plan = new BuildingPlan(UnitType.Zerg_Hatchery, priority, REMOTE_EXPANSION_TILE);
+        plan.setHatcheryRequestReason(reason);
+        return plan;
+    }
+
+    @Test
+    void aStaleExpansionHatcheryPollsAheadOfNewerAdvancedUnitAndResearchPlans() {
+        ProductionQueue queue = new ProductionQueue();
+        Plan expansion = expansionHatchery(19112, HatcheryRequestReason.BEHIND_ON_BASES);
+        Plan lurker = new UnitPlan(UnitType.Zerg_Lurker, UnitPlan.ADVANCED_UNIT_PRIORITY);
+        Plan research = new UpgradePlan(UpgradeType.Metabolic_Boost, BuildOrder.ARMY_UPGRADE_PRIORITY);
+        Plan olderResearch = new UpgradePlan(UpgradeType.Zerg_Carapace, 15000);
+        Plan zergling = new UnitPlan(UnitType.Zerg_Zergling, 19400);
+        expansion.markPlannedSince(19112);
+        queue.add(lurker);
+        queue.add(research);
+        queue.add(olderResearch);
+        queue.add(zergling);
+        queue.add(expansion);
+        int stale = 19112 + ProductionQueue.STALE_PLANNED_FRAMES + 1;
+
+        assertEquals(Arrays.asList(research, lurker, olderResearch), queue.toSortedList().subList(0, 3));
+
+        ProductionManager.promoteStaleExpansions(queue, stale);
+
+        assertEquals(BuildOrder.STALE_EXPANSION_PRIORITY, expansion.getPriority());
+        assertEquals(Arrays.asList(expansion, research, lurker), queue.toSortedList().subList(0, 3));
+    }
+
+    @Test
+    void aStaleExpansionHeldByAnOlderResearchClaimSchedulesOnceItIsPromoted() {
+        ProductionQueue queue = new ProductionQueue();
+        Plan expansion = expansionHatchery(19112, HatcheryRequestReason.BEHIND_ON_BASES);
+        Plan research = new UpgradePlan(UpgradeType.Metabolic_Boost, 15000);
+        expansion.markPlannedSince(19112);
+        queue.add(expansion);
+        queue.add(research);
+        PlanScheduler claimAware = (plan, bankClaimed, larvaClaimed, researchClaimed) -> {
+            if (plan == research) {
+                return PlanBlocker.RESEARCH_MINERALS;
+            }
+            return researchClaimed ? PlanBlocker.RESEARCH_CLAIM : PlanBlocker.NONE;
+        };
+
+        ScanOutcome held = ProductionManager.scanPlans(queue.toSortedList(), claimAware);
+        ProductionManager.promoteStaleExpansions(queue, 19112 + ProductionQueue.STALE_PLANNED_FRAMES + 1);
+        ScanOutcome promoted = ProductionManager.scanPlans(queue.toSortedList(), claimAware);
+
+        assertTrue(held.scheduled.isEmpty());
+        assertEquals(Collections.singletonList(expansion), promoted.scheduled);
+    }
+
+    @Test
+    void promotingAStaleExpansionReportsOnePromoteEvent() {
+        ProductionQueue queue = new ProductionQueue();
+        Plan expansion = expansionHatchery(19112, HatcheryRequestReason.BEHIND_ON_BASES);
+        expansion.markPlannedSince(19112);
+        queue.add(expansion);
+        List<Plan> promoted = new ArrayList<>();
+        PlanEvents.register(new PlanEventSink() {
+            @Override
+            public void onEnqueue(Plan plan) {
+            }
+
+            @Override
+            public void onStateChange(Plan plan, PlanState from, PlanState to) {
+            }
+
+            @Override
+            public void onBlocked(Plan plan, PlanBlocker blocker) {
+            }
+
+            @Override
+            public void onPromote(Plan plan) {
+                promoted.add(plan);
+            }
+        });
+
+        ProductionManager.promoteStaleExpansions(queue, 19112 + ProductionQueue.STALE_PLANNED_FRAMES + 1);
+        ProductionManager.promoteStaleExpansions(queue, 19112 + ProductionQueue.STALE_PLANNED_FRAMES + 2);
+
+        assertEquals(Collections.singletonList(expansion), promoted);
+    }
+
+    @Test
+    void anExpansionHatcheryNotYetStaleKeepsItsFramePriority() {
+        ProductionQueue queue = new ProductionQueue();
+        Plan expansion = expansionHatchery(19112, HatcheryRequestReason.BEHIND_ON_BASES);
+        expansion.markPlannedSince(19112);
+        queue.add(expansion);
+
+        ProductionManager.promoteStaleExpansions(queue, 19112 + ProductionQueue.STALE_PLANNED_FRAMES);
+
+        assertEquals(19112, expansion.getPriority());
+    }
+
+    @Test
+    void aStaleMacroHatcheryAndAnUnreasonedHatcheryKeepTheirPriority() {
+        ProductionQueue queue = new ProductionQueue();
+        Plan macro = expansionHatchery(19112, HatcheryRequestReason.MACRO);
+        Plan flagged = expansionHatchery(19113, HatcheryRequestReason.BUILD_ORDER);
+        flagged.setMacroHatchery(true);
+        Plan unreasoned = new BuildingPlan(UnitType.Zerg_Hatchery, 19114, REMOTE_EXPANSION_TILE);
+        for (Plan plan : Arrays.asList(macro, flagged, unreasoned)) {
+            plan.markPlannedSince(19112);
+            queue.add(plan);
+        }
+
+        ProductionManager.promoteStaleExpansions(queue, 19112 + ProductionQueue.STALE_PLANNED_FRAMES + 1);
+
+        assertEquals(19112, macro.getPriority());
+        assertEquals(19113, flagged.getPriority());
+        assertEquals(19114, unreasoned.getPriority());
+    }
+
+    @Test
+    void aStaleExpansionAlreadyAheadOfTheBandKeepsItsPriority() {
+        ProductionQueue queue = new ProductionQueue();
+        Plan expansion = expansionHatchery(3, HatcheryRequestReason.BUILD_ORDER);
+        expansion.markPlannedSince(0);
+        queue.add(expansion);
+
+        ProductionManager.promoteStaleExpansions(queue, ProductionQueue.STALE_PLANNED_FRAMES + 1);
+
+        assertEquals(3, expansion.getPriority());
     }
 }
