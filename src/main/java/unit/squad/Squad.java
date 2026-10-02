@@ -20,6 +20,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -70,6 +71,10 @@ public class Squad implements Comparable<Squad> {
     private int simRetreatReleaseFrame = -1;
     private AirHarassState harassState;
     private int harassExitFrame = 0;
+    private Set<Integer> regroupingIds = new HashSet<>();
+    private Map<Integer, AirFlock.RetreatBranch> retreatBranches = new HashMap<>();
+    private Set<Integer> leashedIds = new HashSet<>();
+    private int retreatBranchFrame = -1;
     private int harassExitEngageFrame = 0;
     private Position harassExitTarget;
     private Position harassExitEngageTarget;
@@ -79,6 +84,8 @@ public class Squad implements Comparable<Squad> {
     protected int collapseCommitHeldUntilFrame = 0;
     private CollapseEntryRun collapseEntryRun = new CollapseEntryRun();
     private final ContainmentAttrition containmentAttrition = new ContainmentAttrition();
+    @Getter
+    private final ContainmentReentryCooldown containmentReentryCooldown = new ContainmentReentryCooldown();
     private RetreatRoute retreatRoute = RetreatRoute.NONE;
     private int retreatPlanFrame = 0;
     private int corneredEngageSinceFrame = -1;
@@ -320,6 +327,7 @@ public class Squad implements Comparable<Squad> {
                 this.retreatLockedUntilFrame = Math.max(this.retreatLockedUntilFrame, source.retreatLockedUntilFrame);
             }
             this.containLockedUntilFrame = Math.max(this.containLockedUntilFrame, source.containLockedUntilFrame);
+            this.containmentReentryCooldown.absorb(source.containmentReentryCooldown);
             this.collapseLockedUntilFrame = Math.max(this.collapseLockedUntilFrame, source.collapseLockedUntilFrame);
             if (source.status == SquadStatus.FIGHT) {
                 this.collapseCommitHeldUntilFrame = Math.max(this.collapseCommitHeldUntilFrame,
