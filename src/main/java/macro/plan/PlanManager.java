@@ -156,10 +156,11 @@ public class PlanManager {
         }
     }
 
-    private boolean isBuildingMorph(UnitType unitType) {
+    static boolean isBuildingMorph(UnitType unitType) {
         switch (unitType) {
             case Zerg_Lair:
             case Zerg_Hive:
+            case Zerg_Greater_Spire:
             case Zerg_Sunken_Colony:
             case Zerg_Spore_Colony:
                 return true;
@@ -547,18 +548,34 @@ public class PlanManager {
         return Comparator.comparing((T candidate) -> !atSite.test(candidate)).thenComparing(then);
     }
 
-    private boolean assignMorphUnit(Plan plan) {
-        switch (plan.getPlannedUnit()) {
+    /**
+     * The unit a planned unit morphs from when it is not made from larva.
+     *
+     * @param plannedUnit the planned unit
+     * @return the Hydralisk for a Lurker, the Mutalisk for a Guardian, or null for a larva morph
+     */
+    static UnitType morphProducer(UnitType plannedUnit) {
+        switch (plannedUnit) {
             case Zerg_Lurker:
-                return assignMorphHydralisk(plan);
+                return UnitType.Zerg_Hydralisk;
+            case Zerg_Guardian:
+                return UnitType.Zerg_Mutalisk;
             default:
-                return assignMorphLarva(plan);
+                return null;
         }
     }
 
-    private boolean assignMorphHydralisk(Plan plan) {
-        List<ManagedUnit> hydralisks = gameState.getManagedUnitsByType(UnitType.Zerg_Hydralisk);
-        for (ManagedUnit managedUnit: hydralisks) {
+    private boolean assignMorphUnit(Plan plan) {
+        UnitType producer = morphProducer(plan.getPlannedUnit());
+        if (producer == null) {
+            return assignMorphLarva(plan);
+        }
+        return assignMorphProducer(plan, producer);
+    }
+
+    private boolean assignMorphProducer(Plan plan, UnitType producer) {
+        List<ManagedUnit> producers = gameState.getManagedUnitsByType(producer);
+        for (ManagedUnit managedUnit: producers) {
             Unit unit = managedUnit.getUnit();
             if (!gameState.getAssignedPlannedItems().containsKey(unit)) {
                 gameState.clearAssignments(managedUnit);

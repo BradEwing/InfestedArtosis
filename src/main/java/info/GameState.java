@@ -780,6 +780,9 @@ public class GameState {
             case Zerg_Spire:
                 techProgression.setPlannedSpire(false);
                 break;
+            case Zerg_Greater_Spire:
+                techProgression.setPlannedGreaterSpire(false);
+                break;
             case Zerg_Queens_Nest:
                 techProgression.setPlannedQueensNest(false);
                 break;

@@ -169,6 +169,14 @@ public interface PlanEventSink {
     }
 
     /**
+     * LurkerDefilerUltra's Guardian branch opened, closed or was switched off for the game.
+     *
+     * @param branchLabel ENTER, EXIT or LATCH, a colon and the reason, e.g. LATCH:Terran_Goliath
+     */
+    default void onGuardianBranch(String branchLabel) {
+    }
+
+    /**
      * The main had no room on creep for a tech building a build order was about to plan.
      *
      * @param building the tech building

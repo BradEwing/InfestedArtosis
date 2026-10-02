@@ -658,6 +658,8 @@ public class ProductionManager {
             case Zerg_Mutalisk:
             case Zerg_Scourge:
                 return UnitType.Zerg_Spire;
+            case Zerg_Guardian:
+                return UnitType.Zerg_Greater_Spire;
             case Zerg_Queen:
             case Zerg_Hive:
                 return UnitType.Zerg_Queens_Nest;
@@ -1014,9 +1016,10 @@ public class ProductionManager {
                 }
                 return PlanBlocker.TECH_MISSING;
             case Zerg_Lurker:
-                PlanBlocker lurkerBlocker = advancedUnitBlocker(unitType);
-                if (lurkerBlocker != PlanBlocker.NONE) {
-                    return lurkerBlocker;
+            case Zerg_Guardian:
+                PlanBlocker morphBlocker = advancedUnitBlocker(unitType);
+                if (morphBlocker != PlanBlocker.NONE) {
+                    return morphBlocker;
                 }
                 return morphProducerBlocker(unitType);
             case Zerg_Hydralisk:
@@ -1082,6 +1085,8 @@ public class ProductionManager {
             case Zerg_Spire:
             case Zerg_Queens_Nest:
                 return techProgression.isLair();
+            case Zerg_Greater_Spire:
+                return techProgression.isSpire() && techProgression.isHive();
             case Zerg_Hive:
                 return techProgression.isLair() && techProgression.isQueensNest();
             case Zerg_Ultralisk_Cavern:
@@ -2191,23 +2196,34 @@ public class ProductionManager {
      * Retires the scheduled Lurker plans that have no hydralisk left to morph, and only those.
      * Hydralisks already morphing count as producers: the morph turns the unit into a Lurker Egg,
      * which is neither a hydralisk nor a Lurker.
+     *
+     * <p>Scheduled Guardian plans are retired the same way against the Mutalisks and the Cocoons
+     * they morph into.
      */
     private void cancelImpossibleScheduledLurkerPlans() {
-        List<Plan> lurkerPlans = gameState.getPlansScheduled().stream()
-                .filter(plan -> plan.getType() == PlanType.UNIT && plan.getPlannedUnit() == UnitType.Zerg_Lurker)
+        cancelImpossibleScheduledMorphPlans(UnitType.Zerg_Lurker, UnitType.Zerg_Hydralisk, UnitType.Zerg_Lurker_Egg,
+                PlanCancelSource.PRODUCTION_SCHEDULED_LURKER);
+        cancelImpossibleScheduledMorphPlans(UnitType.Zerg_Guardian, UnitType.Zerg_Mutalisk, UnitType.Zerg_Cocoon,
+                PlanCancelSource.PRODUCTION_SCHEDULED_GUARDIAN);
+    }
+
+    private void cancelImpossibleScheduledMorphPlans(UnitType morph, UnitType producer, UnitType egg,
+                                                     PlanCancelSource source) {
+        List<Plan> morphPlans = gameState.getPlansScheduled().stream()
+                .filter(plan -> plan.getType() == PlanType.UNIT && plan.getPlannedUnit() == morph)
                 .sorted(Comparator.comparingInt(Plan::getPriority).reversed())
                 .collect(Collectors.toList());
         int excess = excessLurkerPlans(
-                lurkerPlans.size(),
-                gameState.getUnitTypeCount().livingCount(UnitType.Zerg_Hydralisk),
-                gameState.getUnitTypeCount().livingCount(UnitType.Zerg_Lurker_Egg));
+                morphPlans.size(),
+                gameState.getUnitTypeCount().livingCount(producer),
+                gameState.getUnitTypeCount().livingCount(egg));
 
-        for (Plan plan : lurkerPlans) {
+        for (Plan plan : morphPlans) {
             if (excess <= 0) {
                 break;
             }
             gameState.getPlansScheduled().remove(plan);
-            gameState.cancelPlan(null, plan, PlanCancelSource.PRODUCTION_SCHEDULED_LURKER);
+            gameState.cancelPlan(null, plan, source);
             excess -= 1;
         }
     }

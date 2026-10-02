@@ -879,6 +879,16 @@ public abstract class BuildOrder {
         return plan;
     }
 
+    /**
+     * The Greater Spire morph, taken by a finished Spire the way a Lair or Hive plan is taken by a
+     * finished Hatchery or Lair, so the plan carries no build position of its own.
+     */
+    protected Plan planGreaterSpire(GameState gameState) {
+        TechProgression techProgression = gameState.getTechProgression();
+        techProgression.setPlannedGreaterSpire(true);
+        return new BuildingPlan(UnitType.Zerg_Greater_Spire, 4);
+    }
+
     protected Plan planExtractor(GameState gameState) {
         BaseData baseData = gameState.getBaseData();
         Plan plan = new BuildingPlan(UnitType.Zerg_Extractor, gameState.getGameTime().getFrames());

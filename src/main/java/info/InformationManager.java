@@ -142,6 +142,10 @@ public class InformationManager {
                 techProgression.setSpire(true);
                 techProgression.setPlannedSpire(false);
                 break;
+            case Zerg_Greater_Spire:
+                techProgression.setGreaterSpire(true);
+                techProgression.setPlannedGreaterSpire(false);
+                break;
             case Zerg_Lair:
                 techProgression.setLair(true);
                 techProgression.setPlannedLair(false);
@@ -294,6 +298,8 @@ public class InformationManager {
             UnitTypeCount count = gameState.getUnitTypeCount();
             if (plannedUnit == UnitType.Zerg_Lurker) {
                 count.removeUnit(UnitType.Zerg_Hydralisk);
+            } else if (plannedUnit == UnitType.Zerg_Guardian) {
+                count.removeUnit(UnitType.Zerg_Mutalisk);
             }
         }
     }
@@ -386,6 +392,12 @@ public class InformationManager {
             case Zerg_Spire:
                 techProgression.setSpire(false);
                 techProgression.setPlannedSpire(false);
+                break;
+            case Zerg_Greater_Spire:
+                techProgression.setSpire(false);
+                techProgression.setGreaterSpire(false);
+                techProgression.setPlannedSpire(false);
+                techProgression.setPlannedGreaterSpire(false);
                 break;
             case Zerg_Lair:
             case Zerg_Hive:

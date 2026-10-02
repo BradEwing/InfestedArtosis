@@ -213,6 +213,14 @@ public final class PlanEvents {
         current.onBuildOrderTransition(transitionLabel);
     }
 
+    public static void guardianBranch(String branchLabel) {
+        PlanEventSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onGuardianBranch(branchLabel);
+    }
+
     public static void techSiteMiss(UnitType building, TilePosition siteBase) {
         PlanEventSink current = sink;
         if (current == null) {

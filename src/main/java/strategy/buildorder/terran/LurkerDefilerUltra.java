@@ -8,6 +8,7 @@ import info.BaseData;
 import info.GameState;
 import info.Readiness;
 import info.TechProgression;
+import info.tracking.ObservedUnitTracker;
 import macro.HatcheryCapacity;
 import macro.Reactions;
 import macro.plan.Plan;
@@ -38,6 +39,11 @@ import java.util.Set;
  * Chamber, Queen's Nest, Lurker Aspect, Hive, then the Defiler Mound the moment the Hive finishes.
  * Consume is researched first, ahead of the Defilers, and Plague only once Consume is done.
  * Ultralisks follow the first Defiler once {@value #ULTRALISK_GEYSERS} geysers are being mined.
+ *
+ * <p>Against a Terran dug in behind sieged Tanks or a Bunker with no anti-air seen, the capped
+ * {@link GuardianBranch} also plans a Spire, Mutalisks, a Greater Spire and up to
+ * {@value GuardianBranch#WAVE_CAP} Guardians, and is switched off for the game by the first
+ * anti-air sighting. IA_GUARDIAN_BRANCH=false disables it.
  *
  * @see <a href="https://liquipedia.net/starcraft/3_Hatch_Muta_(vs._Terran)">Liquipedia: 3 Base Hive
  *     Lurker Defiler</a>
@@ -186,6 +192,8 @@ public class LurkerDefilerUltra extends TerranBase {
 
     private final TechSiteRetry techSiteRetry = new TechSiteRetry();
 
+    private final GuardianBranch guardianBranch = new GuardianBranch();
+
     public LurkerDefilerUltra() {
         super(NAME);
     }
@@ -259,6 +267,8 @@ public class LurkerDefilerUltra extends TerranBase {
             plans.addAll(this.planAdvancedUnit(gameState, UnitType.Zerg_Lurker));
         }
 
+        plans.addAll(planGuardianBranch(gameState, techProgression));
+
         if (ultraliskGate && techProgression.isUltraliskCavern()
                 && gameState.ourUnitCount(UnitType.Zerg_Ultralisk) < ULTRALISK_TARGET
                 && canPlanAdvancedUnit(gameState, UnitType.Zerg_Ultralisk)) {
@@ -286,6 +296,51 @@ public class LurkerDefilerUltra extends TerranBase {
             plans.add(surplusPlan);
         }
 
+        return plans;
+    }
+
+    /**
+     * The next step of the {@link GuardianBranch}, one plan at most, while the branch is open. The
+     * enemy sightings are read only while the branch is switched on and not latched off.
+     */
+    private List<Plan> planGuardianBranch(GameState gameState, TechProgression techProgression) {
+        List<Plan> plans = new ArrayList<>();
+        boolean enabled = gameState.getConfig().guardianBranch;
+        boolean reading = enabled && !guardianBranch.isLatched();
+        int frame = gameState.getGameTime().getFrames();
+        ObservedUnitTracker tracker = gameState.getObservedUnitTracker();
+        GuardianBranch.Gate gate = guardianBranch.evaluate(enabled,
+                reading ? GuardianBranch.seenAntiAir(tracker, frame) : null,
+                techProgression.isHive(),
+                gameState.getBaseData().currentBaseCount(),
+                gameState.miningGeysers(),
+                reading ? GuardianBranch.entrenchment(tracker, frame) : GuardianBranch.Entrenchment.NONE);
+        if (gate != GuardianBranch.Gate.OPEN) {
+            return plans;
+        }
+
+        int remaining = GuardianBranch.guardiansRemaining(gameState.ourUnitCount(UnitType.Zerg_Guardian),
+                gameState.totalLost(UnitType.Zerg_Guardian));
+        switch (GuardianBranch.nextStep(techProgression, remaining,
+                gameState.ourLivingUnitCount(UnitType.Zerg_Mutalisk), gameState.ourUnitCount(UnitType.Zerg_Mutalisk),
+                gameState.outstandingUnitPlanCount(UnitType.Zerg_Guardian))) {
+            case SPIRE:
+                if (hasTechSite(gameState, UnitType.Zerg_Spire)) {
+                    plans.add(this.planSpire(gameState));
+                }
+                break;
+            case MUTALISK:
+                plans.addAll(this.planAdvancedUnit(gameState, UnitType.Zerg_Mutalisk));
+                break;
+            case GREATER_SPIRE:
+                plans.add(this.planGreaterSpire(gameState));
+                break;
+            case GUARDIAN:
+                plans.addAll(this.planAdvancedUnit(gameState, UnitType.Zerg_Guardian));
+                break;
+            default:
+                break;
+        }
         return plans;
     }
 
