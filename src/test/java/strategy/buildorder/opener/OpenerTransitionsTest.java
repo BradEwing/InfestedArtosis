@@ -57,7 +57,22 @@ class OpenerTransitionsTest {
     void aTerranWallBarsSpeedlingAllInAndKeepsTheOtherTransitions() {
         Set<String> names = transitionNames(Race.Terran, true);
         assertFalse(names.contains("SpeedlingAllIn"), "a Terran wall must bar SpeedlingAllIn: " + names);
-        assertEquals(new HashSet<>(Arrays.asList("CrazyZerg", "3HatchLurker", "2HatchMuta")), names);
+        assertEquals(new HashSet<>(Arrays.asList("CrazyZerg", "3HatchHydraZvT", "3HatchLurker", "2HatchMuta")), names);
+    }
+
+    @Test
+    void terranTransitionsOfferTheHydraBuildAndOtherRacesDoNot() {
+        assertTrue(transitionNames(Race.Terran).contains("3HatchHydraZvT"));
+        assertTrue(transitionNames(Race.Terran, true).contains("3HatchHydraZvT"));
+        assertFalse(transitionNames(Race.Protoss).contains("3HatchHydraZvT"));
+        assertFalse(transitionNames(Race.Zerg).contains("3HatchHydraZvT"));
+    }
+
+    @Test
+    void theHydraBuildIsSeededAgainstTerranOnly() {
+        assertTrue(new BuildOrderFactory(4, Race.Terran).getPlayableNonOpenerNames().contains("3HatchHydraZvT"));
+        assertFalse(new BuildOrderFactory(4, Race.Protoss).getPlayableNonOpenerNames().contains("3HatchHydraZvT"));
+        assertFalse(new BuildOrderFactory(4, Race.Zerg).getPlayableNonOpenerNames().contains("3HatchHydraZvT"));
     }
 
     @Test

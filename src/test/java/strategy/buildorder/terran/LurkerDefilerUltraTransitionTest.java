@@ -72,6 +72,21 @@ class LurkerDefilerUltraTransitionTest {
     }
 
     @Test
+    void threeHatchHydraTriggersOnTheSixteenthHydraliskProduced() {
+        assertNull(LurkerDefilerUltraTransition.threeHatchHydraTrigger(15));
+        assertEquals(LurkerDefilerUltraTransition.Trigger.HYDRALISKS,
+                LurkerDefilerUltraTransition.threeHatchHydraTrigger(16));
+    }
+
+    @Test
+    void threeHatchHydraOffersOnlyLurkerDefilerUltraAndLabelsItsTrigger() {
+        assertOffersOnlyLurkerDefilerUltra(new ThreeHatchHydraTerran().transition(null));
+        assertEquals("3HatchHydraZvT>LurkerDefilerUltra:HYDRALISKS",
+                LurkerDefilerUltraTransition.label("3HatchHydraZvT",
+                        LurkerDefilerUltraTransition.Trigger.HYDRALISKS));
+    }
+
+    @Test
     void theEconomyGateNeedsTwentyOneDronesAndThreeBases() {
         assertFalse(LurkerDefilerUltraTransition.economyReady(20, 3));
         assertFalse(LurkerDefilerUltraTransition.economyReady(21, 2));

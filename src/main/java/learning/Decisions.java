@@ -11,4 +11,9 @@ public class Decisions {
      * Whether the learning file shows a Terran wall persisting across recent games against this opponent.
      */
     private boolean terranWallPersists;
+
+    /**
+     * Whether the learning file shows Terran mech persisting across recent games against this opponent.
+     */
+    private boolean terranMechPersists;
 }

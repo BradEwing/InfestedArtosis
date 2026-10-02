@@ -229,6 +229,25 @@ public class LearningManagerTest {
         assertEquals("3HatchLurker", LearningManager.selectBuildOrderName(candidates, opponentRecord, MAP_NAME));
     }
 
+    @Test
+    void theHydraArmIsTrackedIndependentlyAndTakesItsFirstExposureWhenUntried() {
+        OpponentRecord opponentRecord = emptyOpponentRecord();
+        Map<String, Record> buildOrders = opponentRecord.getBuildOrderRecord();
+        appendGames(opponentRecord, buildOrders, "3HatchLurker", false, 3);
+        appendGames(opponentRecord, buildOrders, "2HatchMuta", false, 3);
+        appendGames(opponentRecord, buildOrders, "3HatchHydraZvT", false, 0);
+        List<String> candidates = Arrays.asList("3HatchLurker", "2HatchMuta", "3HatchHydraZvT");
+
+        assertEquals("3HatchHydraZvT", LearningManager.selectBuildOrderName(candidates, opponentRecord, MAP_NAME));
+
+        appendGames(opponentRecord, buildOrders, "3HatchHydraZvT", true, 1);
+
+        assertEquals(1, buildOrders.get("3HatchHydraZvT").getWins());
+        assertEquals(0, buildOrders.get("3HatchHydraZvT").getLosses());
+        assertEquals(0, buildOrders.get("3HatchLurker").getWins());
+        assertEquals(3, buildOrders.get("3HatchLurker").getLosses());
+    }
+
     private static OpponentRecord emptyOpponentRecord() {
         return OpponentRecord.builder()
                 .name(OPPONENT_NAME)

@@ -8,6 +8,7 @@ import strategy.buildorder.SpeedlingAllIn;
 import strategy.buildorder.protoss.ThreeHatchHydra;
 import strategy.buildorder.protoss.ThreeHatchMuta;
 import strategy.buildorder.terran.CrazyZerg;
+import strategy.buildorder.terran.ThreeHatchHydraTerran;
 import strategy.buildorder.terran.ThreeHatchLurker;
 import strategy.buildorder.terran.TwoHatchMuta;
 import strategy.buildorder.zerg.OneHatchSpire;
@@ -50,6 +51,7 @@ final class OpenerTransitions {
                 break;
             case Terran:
                 next.add(new CrazyZerg());
+                next.add(new ThreeHatchHydraTerran());
                 next.add(new ThreeHatchLurker());
                 next.add(new TwoHatchMuta());
                 if (!terranWall) {

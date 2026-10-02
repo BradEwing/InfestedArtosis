@@ -5,6 +5,7 @@ import bwapi.Race;
 import bwem.BWEM;
 import config.Config;
 import info.GameState;
+import info.tracking.terran.TerranMech;
 import info.tracking.terran.TerranWall;
 import strategy.BuildOrderFactory;
 import strategy.buildorder.BuildOrder;
@@ -77,6 +78,7 @@ public class LearningManager {
     private Record currentOpener;
     private String lastGameDetectedStrategies = "";
     private boolean terranWallPersists;
+    private boolean terranMechPersists;
     private String lastGameOpener = "";
 
     private BuildOrderFactory buildOrderFactory;
@@ -105,12 +107,15 @@ public class LearningManager {
             }
             terranWallPersists = TerranWall.isPersistent(
                     history.lastGamesDetectedStrategies(TerranWall.RECENT_GAMES));
+            terranMechPersists = TerranMech.isPersistent(
+                    history.lastGamesDetectedStrategies(TerranMech.RECENT_GAMES));
         } catch (IOException e) {
             this.opponentRecord = recordAccumulator.reconstruct(new LearningHistory(new ArrayList<>()));
         }
 
         ensureOpenersInOpponentRecord();
         decisions.setTerranWallPersists(terranWallPersists);
+        decisions.setTerranMechPersists(terranMechPersists);
         decisions.setOpener(determineOpener());
     }
 

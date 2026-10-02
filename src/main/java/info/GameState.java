@@ -182,6 +182,7 @@ public class GameState {
         this.strategyTracker = new StrategyTracker(game, opponentRace, this.observedUnitTracker, this.baseData,
                 this.gameMap, bwem.getMap(), this.scoutData);
         this.strategyTracker.setTerranWallPersists(decisions.isTerranWallPersists());
+        this.strategyTracker.setTerranMechPersists(decisions.isTerranMechPersists());
     }
 
     public void onFrame() {

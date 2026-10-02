@@ -63,6 +63,13 @@ public class StrategyTracker {
     @Setter
     private boolean terranWallPersists;
 
+    /**
+     * Whether the learning file shows Terran mech persisting across recent games against this opponent, as
+     * {@link TerranMech#isPersistent} reads it.
+     */
+    @Setter
+    private boolean terranMechPersists;
+
     public StrategyTracker(Game game, Race opponentRace, ObservedUnitTracker tracker, BaseData baseData, GameMap gameMap,
                            BWMap bwMap, ScoutData scoutData) {
         this.game = game;
@@ -221,6 +228,13 @@ public class StrategyTracker {
      */
     public boolean isTerranWallDetected() {
         return isAnyDetectedStrategy(TerranWallNatural.NAME, TerranWallMain.NAME) || terranWallPersists;
+    }
+
+    /**
+     * Whether Terran mech was detected this game or persists across recent games against this opponent.
+     */
+    public boolean isTerranMechKnown() {
+        return isDetectedStrategy(TerranMech.NAME) || terranMechPersists;
     }
 
     public String getDetectedStrategiesAsString() {
