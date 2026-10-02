@@ -209,7 +209,8 @@ public class PlanEventLogger implements PlanEventSink {
      * of the assigned main, so the frame is the row's frame.
      * <p>
      * PROMOTE rows are written when an open drone round moves a queued Drone ahead of the advanced
-     * unit band; priority is the new priority and age_frames how long the Drone had been queued.
+     * unit band, and when a stale expansion Hatchery plan moves into the stale expansion band;
+     * priority is the new priority and age_frames how long the plan had been queued.
      * <p>
      * GEYSER_DEPLETED rows are written the first frame the geyser under one of our completed
      * Extractors reads empty, and leave every plan column empty. The geyser's tile is in
