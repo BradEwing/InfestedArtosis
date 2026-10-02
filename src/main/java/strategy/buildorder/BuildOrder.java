@@ -56,6 +56,16 @@ public abstract class BuildOrder {
      */
     public static final int ARMY_UPGRADE_PRIORITY = 120;
 
+    /**
+     * Priority band for an expansion Hatchery plan that has waited in PLANNED past
+     * {@link macro.ProductionQueue#STALE_PLANNED_FRAMES}.
+     *
+     * <p>Polls ahead of {@link #ARMY_UPGRADE_PRIORITY}, the advanced units and every frame-stamped
+     * plan, and behind the reaction, colony and fixed tech bands below it, so a late expansion is
+     * not starved by the army backlog queued after it.
+     */
+    public static final int STALE_EXPANSION_PRIORITY = ARMY_UPGRADE_PRIORITY - 10;
+
     /** {@link #macroHatcheryCap()} for a build that does not cap its macro hatcheries. */
     public static final int NO_MACRO_HATCHERY_CAP = Integer.MAX_VALUE;
 
