@@ -71,6 +71,7 @@ public class Squad implements Comparable<Squad> {
     private AirHarassState harassState;
     private int harassExitFrame = 0;
     private int harassExitEngageFrame = 0;
+    private Position harassExitTarget;
     private int containRadius = 0;
     private ContainmentCollapse.Maneuver collapse;
     protected int collapseLockedUntilFrame = 0;
@@ -294,6 +295,9 @@ public class Squad implements Comparable<Squad> {
                 inheritedHarass = source.harassState;
             }
             this.harassExitFrame = Math.max(this.harassExitFrame, source.harassExitFrame);
+            if (source.harassExitEngageFrame > this.harassExitEngageFrame) {
+                this.harassExitTarget = source.harassExitTarget;
+            }
             this.harassExitEngageFrame = Math.max(this.harassExitEngageFrame, source.harassExitEngageFrame);
             mergedStatus = SquadStatus.dominant(mergedStatus, source.status);
             if (source.containStartFrame > 0 && (earliestContainStart == 0 || source.containStartFrame < earliestContainStart)) {

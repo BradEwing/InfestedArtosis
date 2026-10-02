@@ -1129,22 +1129,33 @@ public class SquadManager {
     }
 
     /**
-     * Offers an air squad a harass on every {@link AirHarassEvaluator#HARASS_TICK}, outside its retreat and fight
-     * locks and outside the hold that follows a broken harass exit lock, see {@link AirHarassEvaluator#holdsReentry}.
-     * Overlords escorting the squad go back to the Overlord squad, since they would trail the Mutalisks
-     * into the enemy base.
+     * Offers an air squad a harass on every {@link AirHarassEvaluator#HARASS_TICK}, outside its fight lock and its
+     * retreat lock, and outside the hold that follows a broken harass exit lock, see
+     * {@link AirHarassEvaluator#reentryHold}: the hold closes only the target the failed harass was on. A squad whose
+     * FIGHT and RETREAT crossings read as a stall, see {@link AirStallDetector}, is offered a harass through its
+     * retreat lock and the hold, before it engages the same enemy again. Overlords escorting the squad go back to
+     * the Overlord squad, since they would trail the Mutalisks into the enemy base.
      *
      * @param squad fight squad cleared to act
      * @return true when the squad entered HARASS
      */
     private boolean tryEnterHarass(Squad squad) {
         int now = game.getFrameCount();
-        if (!AirHarassEvaluator.entryCheckDue(squad.isAirSquad(), squad.isRetreatLocked(now),
-                squad.isFightLocked(now), now)
-                || AirHarassEvaluator.holdsReentry(squad.getHarassExitEngageFrame(), now)) {
+        boolean stalled = false;
+        if (squad instanceof AirSquad) {
+            AirStallDetector detector = ((AirSquad) squad).getStallDetector();
+            detector.observe(now, squad.getStatus());
+            stalled = detector.isStalled(now);
+        }
+        AirHarassEvaluator.ReentryHold hold = AirHarassEvaluator.reentryHold(squad.getHarassExitEngageFrame(),
+                squad.getHarassExitTarget(), stalled, now);
+        if (!AirHarassEvaluator.entryCheckDue(squad.isAirSquad(), squad.isRetreatLocked(now) && !stalled,
+                squad.isFightLocked(now), now) || hold == AirHarassEvaluator.ReentryHold.ALL) {
             return false;
         }
-        AirHarassController.Entry entry = airHarass.checkEntry(squad, now, basesUnderAttack(), containPoints());
+        Position heldTarget = hold == AirHarassEvaluator.ReentryHold.TARGET ? squad.getHarassExitTarget() : null;
+        AirHarassController.Entry entry = airHarass.checkEntry(squad, now, basesUnderAttack(), containPoints(),
+                heldTarget);
         if (!entry.enters()) {
             return false;
         }
@@ -1157,6 +1168,9 @@ public class SquadManager {
         }
         clearCombatSimSnapshot(squad);
         squad.setStatus(SquadStatus.HARASS);
+        if (squad instanceof AirSquad) {
+            ((AirSquad) squad).getStallDetector().reset();
+        }
         squad.commit(now);
         SquadDecisions.pathTaken(squad, DecisionPath.HARASS_ENTER);
         airHarass.start(squad, entry, now);
@@ -1176,6 +1190,8 @@ public class SquadManager {
         if (reason == null) {
             return;
         }
+        AirHarassState ended = squad.getHarassState();
+        squad.setHarassExitTarget(ended == null ? null : ended.targetCenter());
         airHarass.stop(squad, reason, now);
         squad.setHarassState(null);
         squad.setHarassExitFrame(now);
@@ -4586,6 +4602,9 @@ public class SquadManager {
         for (Squad squad: fightSquads) {
             if (squad.getTarget() == unit) {
                 squad.setTarget(null);
+            }
+            if (enemy && squad instanceof AirSquad && closestMemberInKillReach(squad, unit) >= 0) {
+                ((AirSquad) squad).getStallDetector().onKill(now);
             }
             if (squad.getStatus() != SquadStatus.CONTAIN) {
                 continue;

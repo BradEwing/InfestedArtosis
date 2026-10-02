@@ -393,6 +393,55 @@ class AirHarassEvaluatorTest {
     }
 
     @Test
+    void theReentryHoldClosesOnlyTheTargetTheFailedHarassWasOn() {
+        Position baseA = new Position(3808, 2096);
+        Position starport = new Position(3000, 1000);
+        int broke = NOW + 1;
+        int inside = broke + AirHarassEvaluator.REENTRY_HOLD_FRAMES - 1;
+
+        assertEquals(AirHarassEvaluator.ReentryHold.TARGET,
+                AirHarassEvaluator.reentryHold(broke, baseA, false, inside));
+        assertEquals(AirHarassEvaluator.ReentryHold.ALL, AirHarassEvaluator.reentryHold(broke, null, false, inside));
+        assertEquals(AirHarassEvaluator.ReentryHold.NONE,
+                AirHarassEvaluator.reentryHold(broke, baseA, false,
+                        broke + AirHarassEvaluator.REENTRY_HOLD_FRAMES + 1));
+        assertEquals(AirHarassEvaluator.ReentryHold.NONE, AirHarassEvaluator.reentryHold(0, baseA, false, inside));
+        assertTrue(AirHarassEvaluator.isFailedTarget(baseA, baseA));
+        assertTrue(AirHarassEvaluator.isFailedTarget(baseA, new Position(3808 + 100, 2096)));
+        assertFalse(AirHarassEvaluator.isFailedTarget(baseA, starport));
+        assertFalse(AirHarassEvaluator.isFailedTarget(null, baseA));
+    }
+
+    @Test
+    void anExposedStarportElsewhereIsSelectableInsideTheHoldWindowAndTheFailedBaseIsNot() {
+        Position baseA = new Position(3808, 2096);
+        AirHarassTargeting.Contact starport = new AirHarassTargeting.Contact(9, UnitType.Terran_Starport,
+                new Position(3000, 1000), UnitType.Terran_Starport.maxHitPoints(), 1.0);
+        List<ExposedTargets.Group> groups = ExposedTargets.groups(Collections.singletonList(starport), 6,
+                Collections.emptyList());
+        int inside = NOW + AirHarassEvaluator.REENTRY_HOLD_FRAMES - 1;
+
+        assertEquals(AirHarassEvaluator.ReentryHold.TARGET,
+                AirHarassEvaluator.reentryHold(NOW, baseA, false, inside));
+        assertFalse(AirHarassEvaluator.isFailedTarget(baseA, groups.get(0).getAnchor()));
+        ExposedTargets.Group chosen = ExposedTargets.choose(groups, Collections.emptyList(), 0, new Position(0, 0));
+        assertEquals(groups.get(0), chosen);
+        assertTrue(AirHarassEvaluator.exposedOutscoresBase(ExposedTargets.score(chosen, new Position(0, 0)), -1));
+        assertTrue(AirHarassEvaluator.isFailedTarget(baseA, baseA));
+    }
+
+    @Test
+    void anExposedGroupIsScoredAgainstTheBestBaseInHeatUnits() {
+        double groupScore = 3.0;
+        double weakBase = AirHarassEvaluator.baseScore(60, -1);
+        double hotBase = AirHarassEvaluator.baseScore(400, -1);
+
+        assertTrue(AirHarassEvaluator.exposedOutscoresBase(groupScore, weakBase));
+        assertFalse(AirHarassEvaluator.exposedOutscoresBase(groupScore, hotBase));
+        assertTrue(AirHarassEvaluator.exposedOutscoresBase(0.1, -1));
+    }
+
+    @Test
     void anExitWithoutABreakLeavesHarassEntryOpen() {
         Squad squad = new AirSquad();
         squad.setHarassExitFrame(NOW);
