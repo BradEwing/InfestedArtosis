@@ -1180,11 +1180,21 @@ public class ProductionManager {
      * @param frame the current frame
      */
     static void promoteStaleExpansions(ProductionQueue productionQueue, int frame) {
-        productionQueue.setPriorityWhere(
-                plan -> isExpansionHatchery(plan)
-                        && plan.getPriority() > BuildOrder.STALE_EXPANSION_PRIORITY
-                        && ProductionQueue.isStale(plan, frame),
-                BuildOrder.STALE_EXPANSION_PRIORITY);
+        Set<Plan> stale = new HashSet<>();
+        for (Plan plan : productionQueue) {
+            if (isExpansionHatchery(plan)
+                    && plan.getPriority() > BuildOrder.STALE_EXPANSION_PRIORITY
+                    && ProductionQueue.isStale(plan, frame)) {
+                stale.add(plan);
+            }
+        }
+        if (stale.isEmpty()) {
+            return;
+        }
+        productionQueue.setPriorityWhere(stale::contains, BuildOrder.STALE_EXPANSION_PRIORITY);
+        for (Plan plan : stale) {
+            PlanEvents.promoted(plan);
+        }
     }
 
     private static boolean isExpansionHatchery(Plan plan) {

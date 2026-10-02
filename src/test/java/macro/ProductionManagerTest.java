@@ -37,7 +37,6 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ProductionManagerTest {
@@ -2571,19 +2570,78 @@ class ProductionManagerTest {
         ProductionQueue queue = new ProductionQueue();
         Plan expansion = expansionHatchery(19112, HatcheryRequestReason.BEHIND_ON_BASES);
         Plan lurker = new UnitPlan(UnitType.Zerg_Lurker, UnitPlan.ADVANCED_UNIT_PRIORITY);
-        Plan research = new UpgradePlan(UpgradeType.Metabolic_Boost, 19500);
+        Plan research = new UpgradePlan(UpgradeType.Metabolic_Boost, BuildOrder.ARMY_UPGRADE_PRIORITY);
+        Plan olderResearch = new UpgradePlan(UpgradeType.Zerg_Carapace, 15000);
         Plan zergling = new UnitPlan(UnitType.Zerg_Zergling, 19400);
         expansion.markPlannedSince(19112);
         queue.add(lurker);
         queue.add(research);
+        queue.add(olderResearch);
         queue.add(zergling);
         queue.add(expansion);
         int stale = 19112 + ProductionQueue.STALE_PLANNED_FRAMES + 1;
 
+        assertEquals(Arrays.asList(research, lurker, olderResearch), queue.toSortedList().subList(0, 3));
+
         ProductionManager.promoteStaleExpansions(queue, stale);
 
         assertEquals(BuildOrder.STALE_EXPANSION_PRIORITY, expansion.getPriority());
-        assertSame(expansion, queue.toSortedList().get(0));
+        assertEquals(Arrays.asList(expansion, research, lurker), queue.toSortedList().subList(0, 3));
+    }
+
+    @Test
+    void aStaleExpansionHeldByAnOlderResearchClaimSchedulesOnceItIsPromoted() {
+        ProductionQueue queue = new ProductionQueue();
+        Plan expansion = expansionHatchery(19112, HatcheryRequestReason.BEHIND_ON_BASES);
+        Plan research = new UpgradePlan(UpgradeType.Metabolic_Boost, 15000);
+        expansion.markPlannedSince(19112);
+        queue.add(expansion);
+        queue.add(research);
+        PlanScheduler claimAware = (plan, bankClaimed, larvaClaimed, researchClaimed) -> {
+            if (plan == research) {
+                return PlanBlocker.RESEARCH_MINERALS;
+            }
+            return researchClaimed ? PlanBlocker.RESEARCH_CLAIM : PlanBlocker.NONE;
+        };
+
+        ScanOutcome held = ProductionManager.scanPlans(queue.toSortedList(), claimAware);
+        ProductionManager.promoteStaleExpansions(queue, 19112 + ProductionQueue.STALE_PLANNED_FRAMES + 1);
+        ScanOutcome promoted = ProductionManager.scanPlans(queue.toSortedList(), claimAware);
+
+        assertTrue(held.scheduled.isEmpty());
+        assertEquals(Collections.singletonList(expansion), promoted.scheduled);
+    }
+
+    @Test
+    void promotingAStaleExpansionReportsOnePromoteEvent() {
+        ProductionQueue queue = new ProductionQueue();
+        Plan expansion = expansionHatchery(19112, HatcheryRequestReason.BEHIND_ON_BASES);
+        expansion.markPlannedSince(19112);
+        queue.add(expansion);
+        List<Plan> promoted = new ArrayList<>();
+        PlanEvents.register(new PlanEventSink() {
+            @Override
+            public void onEnqueue(Plan plan) {
+            }
+
+            @Override
+            public void onStateChange(Plan plan, PlanState from, PlanState to) {
+            }
+
+            @Override
+            public void onBlocked(Plan plan, PlanBlocker blocker) {
+            }
+
+            @Override
+            public void onPromote(Plan plan) {
+                promoted.add(plan);
+            }
+        });
+
+        ProductionManager.promoteStaleExpansions(queue, 19112 + ProductionQueue.STALE_PLANNED_FRAMES + 1);
+        ProductionManager.promoteStaleExpansions(queue, 19112 + ProductionQueue.STALE_PLANNED_FRAMES + 2);
+
+        assertEquals(Collections.singletonList(expansion), promoted);
     }
 
     @Test
