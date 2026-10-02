@@ -1896,7 +1896,7 @@ public class SquadManager {
                 break;
 
             case RETREAT:
-                boolean enteredContain = tryEnterContainment(squad);
+                boolean enteredContain = containmentEvaluator.safeToHold(squad) && tryEnterContainment(squad);
                 if (!enteredContain) {
                     squad.setStatus(SquadStatus.RETREAT);
                     assignRetreatTargets(squad, managedFighters);
@@ -2294,8 +2294,10 @@ public class SquadManager {
         boolean underAttack = baseThreatensContainment();
         boolean shouldContain = containmentEvaluator.shouldContain(squad);
         boolean canBreak = shouldContain && containmentEvaluator.canBreakContainment(fightSquads, now);
-        boolean entered = mayTakeArc(containmentEscalation, gameState.getContainmentStalemate(), now, underAttack,
-                shouldContain, canBreak) && enterContainment(squad);
+        boolean cooling = shouldContain && squad.getContainmentReentryCooldown()
+                .blocks(now, squad.getSupply(), containmentEvaluator.enemyArmySupply());
+        boolean entered = !cooling && mayTakeArc(containmentEscalation, gameState.getContainmentStalemate(), now,
+                underAttack, shouldContain, canBreak) && enterContainment(squad);
         SquadDecisions.containmentEvaluated(squad, shouldContain, canBreak, entered);
         return entered;
     }
@@ -2778,6 +2780,9 @@ public class SquadManager {
         squad.setStatus(SquadStatus.RETREAT);
         SquadDecisions.pathTaken(squad, path);
         assignRetreatTargets(squad, members);
+        if (path == DecisionPath.CONTAIN_ATTRITION || path == DecisionPath.CONTAIN_OUTRANGED) {
+            squad.getContainmentReentryCooldown().arm(now, squad.getSupply(), containmentEvaluator.enemyArmySupply());
+        }
         if (path == DecisionPath.CONTAIN_ATTRITION) {
             squad.startAttritionRetreatLock(now);
         } else {
