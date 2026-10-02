@@ -60,6 +60,8 @@ public class HorizonCombatSimulator implements CombatSimulator {
     @Getter
     private final Map<String, DebugSnapshot> lastSnapshots = new HashMap<>();
 
+    private final Map<String, HeldVerdict> heldVerdicts = new HashMap<>();
+
     @Override
     public CombatResult evaluate(Squad squad, Map<Squad, Double> adjacentSquads, GameState gameState) {
         Position squadCenter = squad.getCenter();
@@ -86,6 +88,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
         snapshot.setSwarmCover(swarmCover);
 
         List<Position> visibleBunkers = visibleCompletedBunkers(tracker);
+        boolean siegedTankInBand = false;
         for (ObservedUnit ou : tracker.getLivingObservedUnits()) {
             UnitType type = ou.getUnitType();
             boolean visible = ou.getUnit().isVisible();
@@ -98,6 +101,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
             if (pos == null) continue;
             if (!visible && enteredBunker(type, pos, visibleBunkers)) continue;
             double dist = squadCenter.getDistance(pos);
+            if (SiegeBandHysteresis.inBand(type, dist)) siegedTankInBand = true;
             double radius = engagementRadius(type);
             if (dist > radius) {
                 if (isThreatBeyondRadius(type, dist, radius)) {
@@ -225,6 +229,10 @@ public class HorizonCombatSimulator implements CombatSimulator {
         CombatResult result = selectResult(friendlyGroundStr, friendlyAirStr, enemyGroundStr,
                 enemyAntiAirStr, enemyEngagedStr, airSquad, engageThresh);
 
+        if (!airSquad) {
+            result = holdVerdict(squad.getId(), result, currentFrame, overallRatio, engageThresh, siegedTankInBand);
+        }
+
         snapshot.setEngageThreshold(engageThresh);
         snapshot.setRetreatThreshold(retreatThresh);
         snapshot.setStaticDefenseCover(ownStaticDefense.coversThreat);
@@ -232,6 +240,27 @@ public class HorizonCombatSimulator implements CombatSimulator {
         lastSnapshots.put(squad.getId(), snapshot);
 
         return result;
+    }
+
+    private CombatResult holdVerdict(String squadId, CombatResult raw, int frame, double ratio,
+                                     double engageThresh, boolean tankInBand) {
+        HeldVerdict held = heldVerdicts.get(squadId);
+        CombatResult heldResult = held == null ? null : held.result;
+        int heldSince = held == null ? frame : held.sinceFrame;
+        CombatResult verdict = SiegeBandHysteresis.apply(raw, heldResult, heldSince, frame, ratio, engageThresh,
+                tankInBand);
+        if (verdict != heldResult) heldVerdicts.put(squadId, new HeldVerdict(verdict, frame));
+        return verdict;
+    }
+
+    private static final class HeldVerdict {
+        private final CombatResult result;
+        private final int sinceFrame;
+
+        private HeldVerdict(CombatResult result, int sinceFrame) {
+            this.result = result;
+            this.sinceFrame = sinceFrame;
+        }
     }
 
     /**
