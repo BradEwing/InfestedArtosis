@@ -41,14 +41,6 @@ final class LurkerHold {
      */
     static final int MOVE_GAIN = 32;
 
-    /**
-     * Tuning value: factor over the engage threshold the sim's ratio must reach for an ENGAGE read that priced sieged
-     * tanks to commit a squad's Lurkers. Against Terran it asks 1.80 of a 1.44 threshold, so a read that only just
-     * clears the threshold, the kind that reverses to RETREAT within a few frames against sieged tanks, does not send
-     * the Lurkers into the tanks' reach.
-     */
-    static final double TANK_ENGAGE_MARGIN = 1.25;
-
     private LurkerHold() {
     }
 
@@ -87,33 +79,18 @@ final class LurkerHold {
 
     /**
      * Whether a squad's Lurkers commit with it this frame: it is in FIGHT, and it is either committed as a whole, by
-     * a contain break, a collapse or a stalemate commit, or the sim read ENGAGE for it this frame with a ratio that
-     * clears {@link #clearsTankMargin}. A fight lock with no such read, including a squad born into FIGHT on its lock,
-     * does not commit them.
+     * a contain break, a collapse or a stalemate commit, or the sim read ENGAGE for it this frame. A fight lock with
+     * no such read, including a squad born into FIGHT on its lock, does not commit them.
      *
      * @param status the squad's status
      * @param wholeSquadCommit whether the squad is committed as a whole
      * @param freshVerdict the sim's verdict for the squad read this frame, or null when it was not read this frame
-     * @param clearsTankMargin whether this frame's read clears {@link #clearsTankMargin}
      * @return true when the squad's Lurkers commit
      */
     static boolean lurkersCommit(SquadStatus status, boolean wholeSquadCommit,
-                                 CombatSimulator.CombatResult freshVerdict, boolean clearsTankMargin) {
+                                 CombatSimulator.CombatResult freshVerdict) {
         return status == SquadStatus.FIGHT
-                && (wholeSquadCommit || freshVerdict == CombatSimulator.CombatResult.ENGAGE && clearsTankMargin);
-    }
-
-    /**
-     * Whether a sim read is strong enough to commit Lurkers against the sieged tanks it priced: with no priced sieged
-     * tank any read qualifies; with one, the ratio must reach {@link #TANK_ENGAGE_MARGIN} times the engage threshold.
-     *
-     * @param ratio the ratio the sim judged this frame
-     * @param engageThreshold the engage threshold the sim judged it against
-     * @param pricedSiegedTanks whether the read priced a sieged tank
-     * @return true when the read clears the margin
-     */
-    static boolean clearsTankMargin(double ratio, double engageThreshold, boolean pricedSiegedTanks) {
-        return !pricedSiegedTanks || ratio >= engageThreshold * TANK_ENGAGE_MARGIN;
+                && (wholeSquadCommit || freshVerdict == CombatSimulator.CombatResult.ENGAGE);
     }
 
     /**

@@ -4,6 +4,7 @@ import bwapi.Game;
 import bwapi.Position;
 import bwapi.UnitType;
 import info.GameState;
+import info.tracking.DarkSwarm;
 import unit.managed.ManagedUnit;
 import unit.managed.UnitRole;
 import unit.squad.CombatSimulator;
@@ -13,6 +14,7 @@ import unit.squad.RunbyState;
 import unit.squad.Squad;
 import unit.squad.SquadManager;
 import unit.squad.SquadStatus;
+import unit.squad.SwarmLock;
 import unit.squad.horizon.HorizonCombatSimulator;
 import util.Arc;
 
@@ -87,9 +89,20 @@ import java.util.stream.Collectors;
  * one side is priced over the other side's strength in the layers it can hit, so a weapon that fills two domains,
  * a Mutalisk's or a Dragoon's, counts once in sim_our_strength and sim_enemy_strength.
  *
+ * <p>retreat_route names the route of the ground retreat planned for the squad on the row's frame, see
+ * {@link RetreatRoute}, and is NONE on a row of a frame that planned none. A CORNERED_ENGAGE decision_path marks a
+ * squad that turned to fight because its last plan was CORNERED, and a HOME_CONTESTED_DEFEND decision_path one that
+ * turned to defend a home its last plan found contested.
+ *
  * <p>Every row names the branch that decided the status it reports in decision_path. On a
  * LOCK_SUPPRESSED row that is the request the lock refused, so the suppression episodes a lock
  * produced are separable by the branch that asked for them.
+ *
+ * <p>SWARM_COMMIT and SWARM_EXPIRED rows are written when a melee squad takes or drops a swarm lock, and SWARM_ACTIVE
+ * rows sample, at a fixed interval, every melee squad within the commit radius of one of our active Dark Swarms that
+ * covers enemies, with the status it holds. swarm_id, swarm_remaining_frames and swarm_locked name the swarm a row is
+ * about, see {@link #swarmCells(int, int, boolean, double, SwarmLock.Release)}. Every one of our swarms, committed to or not, also gets a
+ * SWARM_SEEN and a SWARM_REMOVED row in telemetry_dark_swarms.csv, see {@link #swarmLifecycleRows}.
  *
  * <p>LOCK_SUPPRESSED rows are deduplicated per suppression episode, keyed on the lock, its expiry
  * frame, the overridden verdict, and the branch that asked for it.
@@ -117,7 +130,16 @@ public class SquadDecisionLogger implements SquadDecisionSink {
             + "collapse_under_fire,collapse_run_start_frame,collapse_wrap_end,collapse_first_favourable_frame,"
             + "contain_timeout_reentries,contain_static_only,"
             + "contain_break_shortfall_real,contain_break_unreachable,contain_stalemate,"
-            + "stalemate_commit_supply_real,stalemate_commit_army_real";
+            + "stalemate_commit_supply_real,stalemate_commit_army_real,"
+            + "retreat_route,"
+            + "swarm_id,swarm_remaining_frames,swarm_locked,sim_swarm_cover,swarm_release_reason,"
+            + "air_commitment_release";
+
+    static final String SWARM_FILE = "telemetry_dark_swarms.csv";
+
+    static final String SWARM_HEADER = "game_id,frame,event,swarm_id,x,y,remaining_frames";
+    static final String EVENT_SWARM_SEEN = "SWARM_SEEN";
+    static final String EVENT_SWARM_REMOVED = "SWARM_REMOVED";
 
     private static final int FLUSH_INTERVAL_FRAMES = 480;
     private static final String EVENT_STATUS_CHANGE = "STATUS_CHANGE";
@@ -139,6 +161,8 @@ public class SquadDecisionLogger implements SquadDecisionSink {
     private final SquadManager squadManager;
     private final String gameId;
     private final TelemetryWriter writer;
+    private final TelemetryWriter swarmWriter;
+    private Map<Integer, DarkSwarm> lastSwarms = new HashMap<>();
 
     private final Map<String, SquadStatus> lastStatus = new HashMap<>();
     private final Map<String, SquadDecision> decisions = new HashMap<>();
@@ -155,6 +179,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         this.squadManager = squadManager;
         this.gameId = gameId;
         this.writer = new TelemetryWriter(FILE, HEADER);
+        this.swarmWriter = new TelemetryWriter(SWARM_FILE, SWARM_HEADER);
     }
 
     public void onFrame() {
@@ -165,8 +190,10 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         try {
             int frame = game.getFrameCount();
             sweepStatuses(frame);
+            sweepSwarms(frame);
             if (frame % FLUSH_INTERVAL_FRAMES == 0) {
                 writer.flush();
+                swarmWriter.flush();
             }
         } catch (RuntimeException e) {
             disable();
@@ -180,7 +207,9 @@ public class SquadDecisionLogger implements SquadDecisionSink {
 
         try {
             sweepStatuses(game.getFrameCount());
+            sweepSwarms(game.getFrameCount());
             writer.flush();
+            swarmWriter.flush();
         } catch (RuntimeException e) {
             disable();
         }
@@ -449,6 +478,19 @@ public class SquadDecisionLogger implements SquadDecisionSink {
     }
 
     @Override
+    public void onCommitmentReleased(Squad squad, CommitmentRelease release) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            decisionFor(squad).setCommitmentRelease(release);
+        } catch (RuntimeException e) {
+            disable();
+        }
+    }
+
+    @Override
     public void onContainArcMeasured(Squad squad, int distance) {
         if (disabled) {
             return;
@@ -471,6 +513,19 @@ public class SquadDecisionLogger implements SquadDecisionSink {
             SquadDecision decision = decisionFor(squad);
             decision.setMoveOutThreshold(moveOutThreshold);
             decision.setMoveOutStrength(squadStrength);
+        } catch (RuntimeException e) {
+            disable();
+        }
+    }
+
+    @Override
+    public void onRetreatRouted(Squad squad, RetreatRoute route) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            decisionFor(squad).setRetreatRoute(route);
         } catch (RuntimeException e) {
             disable();
         }
@@ -528,6 +583,79 @@ public class SquadDecisionLogger implements SquadDecisionSink {
 
         try {
             writer.append(defenseRow(squad, game.getFrameCount(), event, candidates, pulled, released, sim));
+        } catch (RuntimeException e) {
+            disable();
+        }
+    }
+
+    private void sweepSwarms(int frame) {
+        List<DarkSwarm> current = gameState.getDarkSwarmTracker().getActiveSwarms();
+        for (String row : swarmLifecycleRows(gameId, frame, lastSwarms, current)) {
+            swarmWriter.append(row);
+        }
+        Map<Integer, DarkSwarm> seen = new HashMap<>();
+        for (DarkSwarm swarm : current) {
+            seen.put(swarm.getId(), swarm);
+        }
+        lastSwarms = seen;
+    }
+
+    /**
+     * Builds the telemetry_dark_swarms.csv rows for one frame: SWARM_SEEN for each of our swarms first tracked this
+     * frame, at its centre with the frames it has left, and SWARM_REMOVED for each swarm tracked on the previous
+     * sweep and gone now, at its centre with the frames it had left when last seen. Every swarm gets both rows
+     * whether or not a squad committed to it, so a batch reads each swarm's window from this file.
+     *
+     * @param gameId game the rows belong to
+     * @param frame frame of the sweep
+     * @param previous swarms tracked on the previous sweep, by id
+     * @param current swarms tracked now
+     * @return the rows, SWARM_SEEN before SWARM_REMOVED
+     */
+    static List<String> swarmLifecycleRows(String gameId, int frame, Map<Integer, DarkSwarm> previous,
+                                           List<DarkSwarm> current) {
+        List<String> rows = new ArrayList<>();
+        Set<Integer> currentIds = new HashSet<>();
+        for (DarkSwarm swarm : current) {
+            currentIds.add(swarm.getId());
+            if (!previous.containsKey(swarm.getId())) {
+                rows.add(swarmRow(gameId, frame, EVENT_SWARM_SEEN, swarm));
+            }
+        }
+        for (DarkSwarm swarm : previous.values()) {
+            if (!currentIds.contains(swarm.getId())) {
+                rows.add(swarmRow(gameId, frame, EVENT_SWARM_REMOVED, swarm));
+            }
+        }
+        return rows;
+    }
+
+    private static String swarmRow(String gameId, int frame, String event, DarkSwarm swarm) {
+        return String.join(",", gameId, String.valueOf(frame), event, String.valueOf(swarm.getId()),
+                String.valueOf(swarm.getCenter().getX()), String.valueOf(swarm.getCenter().getY()),
+                String.valueOf(swarm.getRemainingFrames()));
+    }
+
+    @Override
+    public void onSwarmEvaluated(Squad squad, SwarmEvent event, int swarmId, int remainingFrames,
+                                 SwarmLock.Release release) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            SquadDecision context = new SquadDecision();
+            context.setDecisionPath(event.path());
+            context.setSwarmId(swarmId);
+            context.setSwarmRemainingFrames(remainingFrames);
+            context.setSwarmRelease(release);
+            HorizonCombatSimulator.DebugSnapshot read = carriesSimRead(event, release) ? lastSnapshot(squad) : null;
+            if (read != null) {
+                readSnapshot(squad, context);
+                context.setResult(read.getResult());
+            }
+            writer.append(row(squad, game.getFrameCount(), event.name(), squad.getStatus(), squad.getStatus(),
+                    context, NONE));
         } catch (RuntimeException e) {
             disable();
         }
@@ -634,14 +762,30 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         return context;
     }
 
-    private void readSnapshot(Squad squad, SquadDecision decision) {
+    /**
+     * Whether a swarm row carries the squad's sim read. A commit and a release on a RETREAT read are written on the
+     * frame the swarm-priced sim ran for the lock, so the squad's last snapshot is that read. Every other swarm row is
+     * written on a frame the sim may not have run for the squad, and carries none.
+     *
+     * @param event the swarm event
+     * @param release the release reason on the row
+     * @return true when the row carries the sim read
+     */
+    static boolean carriesSimRead(SwarmEvent event, SwarmLock.Release release) {
+        return event == SwarmEvent.SWARM_COMMIT
+                || event == SwarmEvent.SWARM_EXPIRED && release == SwarmLock.Release.SIM_RETREAT;
+    }
+
+    private static HorizonCombatSimulator.DebugSnapshot lastSnapshot(Squad squad) {
         CombatSimulator simulator = squad.getCombatSimulator();
         if (!(simulator instanceof HorizonCombatSimulator)) {
-            return;
+            return null;
         }
+        return ((HorizonCombatSimulator) simulator).getLastSnapshots().get(squad.getId());
+    }
 
-        HorizonCombatSimulator.DebugSnapshot snapshot =
-                ((HorizonCombatSimulator) simulator).getLastSnapshots().get(squad.getId());
+    private void readSnapshot(Squad squad, SquadDecision decision) {
+        HorizonCombatSimulator.DebugSnapshot snapshot = lastSnapshot(squad);
         if (snapshot == null) {
             return;
         }
@@ -657,6 +801,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         decision.setEnemyUnscoredSupply(snapshot.getEnemyUnscoredSupply());
         decision.setEnemyAirShare(snapshot.getEnemyAirShare());
         decision.setOurAirShare(snapshot.getOurAirShare());
+        decision.setSwarmCover(snapshot.getSwarmCover());
     }
 
     /**
@@ -726,7 +871,47 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         fields.addAll(containTimeoutCells(context));
         fields.addAll(containStalemateCells(context));
         fields.addAll(stalemateCommitCells(context));
+        fields.add(retreatRouteCell(context));
+        fields.addAll(swarmCells(squad, context));
+        fields.addAll(commitmentReleaseCells(context));
         return String.join(",", fields);
+    }
+
+    private List<String> swarmCells(Squad squad, SquadDecision context) {
+        SwarmLock lock = squad.getSwarmLock();
+        if (context.getSwarmId() >= 0) {
+            boolean locked = lock != null && lock.getSwarmId() == context.getSwarmId();
+            return swarmCells(context.getSwarmId(), context.getSwarmRemainingFrames(), locked,
+                    context.getSwarmCover(), context.getSwarmRelease());
+        }
+        if (lock != null) {
+            return swarmCells(lock.getSwarmId(), gameState.getDarkSwarmTracker().getRemainingFrames(lock.getSwarmId()),
+                    true, context.getSwarmCover(), SwarmLock.Release.NONE);
+        }
+        return swarmCells(SquadDecision.NOT_EVALUATED, SquadDecision.NOT_EVALUATED, false, context.getSwarmCover(),
+                SwarmLock.Release.NONE);
+    }
+
+    /**
+     * Builds the swarm_id, swarm_remaining_frames, swarm_locked, sim_swarm_cover and swarm_release_reason cells.
+     *
+     * <p>A SWARM_ACTIVE, SWARM_COMMIT or SWARM_EXPIRED row names the swarm it is about; any other row names the swarm
+     * the squad holds a lock on, with the frames that swarm has left. swarm_locked is 1 when the squad holds a lock on
+     * the named swarm as the row is written, so a SWARM_EXPIRED row carries 0. sim_swarm_cover is the cover the sim
+     * priced our force under on the frame, from 0 to 1, and -1 on a row whose decision never read a sim snapshot.
+     * swarm_release_reason names why a SWARM_EXPIRED row's squad dropped its lock, and is NONE on every other row.
+     *
+     * @param swarmId id of the Spell_Dark_Swarm unit, or -1 when the row names none
+     * @param remainingFrames frames the named swarm has left, -1 when the row names none
+     * @param locked whether the squad holds a lock on the named swarm
+     * @param cover the sim's swarm cover
+     * @param release why the lock was dropped, NONE on a row that drops none
+     * @return the five cells
+     */
+    static List<String> swarmCells(int swarmId, int remainingFrames, boolean locked, double cover,
+                                   SwarmLock.Release release) {
+        return Arrays.asList(String.valueOf(swarmId), String.valueOf(remainingFrames),
+                String.valueOf(SquadDecision.tristate(locked)), Csv.format(cover), release.name());
     }
 
     private String defenseRow(Squad squad, int frame, DefenseEvent event, int candidates, List<ManagedUnit> pulled,
@@ -756,6 +941,10 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         fields.addAll(containTimeoutCells(context));
         fields.addAll(containStalemateCells(context));
         fields.addAll(stalemateCommitCells(context));
+        fields.add(retreatRouteCell(context));
+        fields.addAll(swarmCells(SquadDecision.NOT_EVALUATED, SquadDecision.NOT_EVALUATED, false,
+                SquadDecision.NOT_EVALUATED, SwarmLock.Release.NONE));
+        fields.addAll(commitmentReleaseCells(context));
         return String.join(",", fields);
     }
 
@@ -908,6 +1097,17 @@ public class SquadDecisionLogger implements SquadDecisionSink {
     }
 
     /**
+     * Builds the retreat_route cell: the route of the ground retreat planned for the squad on the row's frame, NONE
+     * when none was planned.
+     *
+     * @param context the decision the row is built from
+     * @return the retreat route cell
+     */
+    static String retreatRouteCell(SquadDecision context) {
+        return Csv.name(context.getRetreatRoute());
+    }
+
+    /**
      * Builds the contain timeout cells: the re-entries in a row after a timeout a contain had made before the timeout
      * this frame, and whether the enemy then read as defending with static defence only. Filled on the frame a
      * containing squad ran out its timeout, whether it retreated or escalated; every other row, a retreat because
@@ -955,6 +1155,18 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         fields.add(halfSupplyOrSentinel(context.getStalemateCommitSupply()));
         fields.add(halfSupplyOrSentinel(context.getStalemateCommitArmy()));
         return fields;
+    }
+
+    /**
+     * Builds the air commitment release cell: the term that let a RETREAT verdict through an air squad's armed engage
+     * commitment, see {@link CommitmentRelease}. Filled on the frame an air squad in FIGHT with an armed commitment
+     * takes a RETREAT verdict the commitment does not hold against; every other row carries NONE.
+     *
+     * @param context the decision the row is built from
+     * @return the release cell
+     */
+    static List<String> commitmentReleaseCells(SquadDecision context) {
+        return Collections.singletonList(context.getCommitmentRelease().name());
     }
 
     private static String halfSupplyOrSentinel(int halfUnits) {

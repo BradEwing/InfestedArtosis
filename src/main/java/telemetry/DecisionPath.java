@@ -7,6 +7,7 @@ package telemetry;
  * names the request the lock refused, which is the branch that would have set the status had the
  * lock not held; the lock branches record {@link #RETREAT_LOCK} or {@link #FIGHT_LOCK} only after
  * that row is written, so the held status on any later row is still attributed to the lock.
+ * {@link #AIR_COMMITMENT} is the exception and names itself on its LOCK_SUPPRESSED row.
  */
 public enum DecisionPath {
 
@@ -167,6 +168,24 @@ public enum DecisionPath {
     RETREAT_LOCK_BROKEN,
 
     /**
+     * A melee squad took a swarm lock and fights under one of our active Dark Swarms.
+     */
+    SWARM_COMMIT,
+
+    /**
+     * A melee squad holding a swarm lock kept fighting under its swarm, whatever the sim, a retreat lock or a
+     * containment arc would have asked. On a SWARM_ACTIVE sample row it names a squad the lock has not taken.
+     */
+    SWARM_ACTIVE,
+
+    /**
+     * A melee squad dropped its swarm lock: the swarm fell below the sim horizon or was removed, a base came under
+     * attack, a member stood in a Psionic Storm, the squad stopped being melee, or the swarm-priced sim read RETREAT.
+     * The row's swarm_release_reason names which.
+     */
+    SWARM_EXPIRED,
+
+    /**
      * No branch recorded a decision for this row.
      */
     NONE,
@@ -216,5 +235,32 @@ public enum DecisionPath {
      * The base threat that paused a stalemate commit cleared and the commit resumed with its committed supply.
      * Written as a row of its own for every ground squad on the frame it resumes.
      */
-    STALEMATE_COMMIT_RESUME
+    STALEMATE_COMMIT_RESUME,
+
+    /**
+     * A retreating ground squad whose last retreat plan found no path home clear of the enemy turned to fight, dropping
+     * its retreat lock, once ENGAGE had held over a fight hysteresis window. It then stays in FIGHT for one more.
+     */
+    CORNERED_ENGAGE,
+
+    /**
+     * A retreating ground squad whose last retreat plan found its home contested turned to defend it instead of
+     * staging at the edge of the threats on it, dropping its retreat lock, once ENGAGE or a measured read at or above
+     * 0.9 of the engage threshold had held over a fight hysteresis window. It then stays in FIGHT for one more.
+     */
+    HOME_CONTESTED_DEFEND,
+
+    /**
+     * An air squad's engage commitment kept it fighting through a RETREAT verdict. Unlike the lock branches, it is
+     * recorded before the LOCK_SUPPRESSED row is written, so that row names AIR_COMMITMENT in place of the refused
+     * SIM_RETREAT request and is told apart from a fight lock suppression.
+     */
+    AIR_COMMITMENT,
+
+    /**
+     * An air squad held in RETREAT by its retreat lock read ENGAGE at twice the engage threshold over a fight
+     * hysteresis window, and the lock was dropped so the verdict could act. The FIGHT episode it opens arms no
+     * engage commitment.
+     */
+    AIR_RETREAT_LOCK_YIELD
 }

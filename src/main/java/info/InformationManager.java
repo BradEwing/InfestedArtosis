@@ -366,10 +366,12 @@ public class InformationManager {
 
     /**
      * Update GameState's tech progression to prevent strategy and production from considering given tech.
+     * Called before the destroyed unit leaves the unit counts.
      *
      * @param unitType tech building
+     * @param completed whether the destroyed building had finished
      */
-    public void updateTechOnDestroy(UnitType unitType) {
+    public void updateTechOnDestroy(UnitType unitType, boolean completed) {
         TechProgression techProgression = gameState.getTechProgression();
 
         switch (unitType) {
@@ -386,8 +388,12 @@ public class InformationManager {
                 techProgression.setPlannedSpire(false);
                 break;
             case Zerg_Lair:
-                techProgression.setLair(false);
-                techProgression.setPlannedLair(false);
+            case Zerg_Hive:
+                techProgression.loseLairOrHive(unitType,
+                        TechProgression.standingAfterLoss(UnitType.Zerg_Lair,
+                                gameState.structureCount(Readiness.USABLE, UnitType.Zerg_Lair), unitType, completed),
+                        TechProgression.standingAfterLoss(UnitType.Zerg_Hive,
+                                gameState.structureCount(Readiness.USABLE, UnitType.Zerg_Hive), unitType, completed));
                 break;
             case Zerg_Evolution_Chamber:
                 final int evolutionChambers = techProgression.getEvolutionChambers();
@@ -396,10 +402,6 @@ public class InformationManager {
             case Zerg_Queens_Nest:
                 techProgression.setQueensNest(false);
                 techProgression.setPlannedQueensNest(false);
-                break;
-            case Zerg_Hive:
-                techProgression.setHive(false);
-                techProgression.setPlannedHive(false);
                 break;
             case Zerg_Ultralisk_Cavern:
                 techProgression.setUltraliskCavern(false);
@@ -433,7 +435,7 @@ public class InformationManager {
 
         if (unit.getPlayer() == game.self()) {
             baseManager.onUnitDestroy(unit);
-            updateTechOnDestroy(unitType);
+            updateTechOnDestroy(unitType, unit.isCompleted());
             UnitTypeCount unitCount = gameState.getUnitTypeCount();
             unitCount.removeDestroyedUnit(unitType, unit.isCompleted());
         } else {

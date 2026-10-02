@@ -8,6 +8,7 @@ import unit.squad.ContainmentCollapse;
 import unit.squad.DefenseSim;
 import unit.squad.RunbyState;
 import unit.squad.Squad;
+import unit.squad.SwarmLock;
 
 import java.util.List;
 
@@ -145,10 +146,21 @@ public interface SquadDecisionSink {
     void onStalemateCommit(Squad squad, int committedSupply, int armySupply);
 
     /**
+     * An air squad in FIGHT took a RETREAT verdict its engage commitment did not hold against, with the term that
+     * let it through, NONE when no commitment was armed.
+     */
+    void onCommitmentReleased(Squad squad, CommitmentRelease release);
+
+    /**
      * A fight squad's strength was compared against its move out threshold, in the threshold's units: air
      * combat units for an air squad, BWAPI half-supply for a ground squad.
      */
     void onMoveOutEvaluated(Squad squad, int moveOutThreshold, int squadStrength);
+
+    /**
+     * A ground squad's retreat targets were planned this frame along the given route.
+     */
+    void onRetreatRouted(Squad squad, RetreatRoute route);
 
     /**
      * Worker defence at a base pulled gatherers, abandoned its defence, or released its defenders.
@@ -160,4 +172,14 @@ public interface SquadDecisionSink {
      */
     void onDefenseEvaluated(Squad squad, DefenseEvent event, int candidates, List<ManagedUnit> pulled,
                             List<ManagedUnit> released, DefenseSim sim);
+
+    /**
+     * A melee squad took or dropped a swarm lock, or was sampled near one of our active Dark Swarms.
+     *
+     * @param event what happened
+     * @param swarmId id of the Spell_Dark_Swarm unit the row is about
+     * @param remainingFrames frames the swarm had left, 0 once it was removed
+     * @param release why a SWARM_EXPIRED row's squad dropped its lock, NONE on every other event
+     */
+    void onSwarmEvaluated(Squad squad, SwarmEvent event, int swarmId, int remainingFrames, SwarmLock.Release release);
 }

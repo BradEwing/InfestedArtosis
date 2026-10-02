@@ -44,7 +44,7 @@ class MacroHatcheryTemplateTest {
 
     private static final String OPENER_PACKAGE = ".opener";
 
-    private static final int REGISTERED_OPENERS = 7;
+    private static final int REGISTERED_OPENERS = 8;
 
     /**
      * A build order that says nothing at all about the macro hatchery: it answers the abstract
@@ -173,6 +173,11 @@ class MacroHatcheryTemplateTest {
     @Test
     void aTerminalBuildThatPlannedNothingReachesTheSharedStep() {
         assertTrue(BuildOrder.runsLarvaBoundMacroHatchery(TERMINAL_BUILD, Collections.emptyList()));
+    }
+
+    @Test
+    void aBuildThatSaysNothingAboutACapLetsTheSharedStepRun() {
+        assertTrue(new SilentBuildOrder().allowsLarvaBoundMacroHatchery(null));
     }
 
     @Test
