@@ -14,13 +14,16 @@ import java.util.List;
  * Mutalisks in FIGHT, HARASS or RETREAT: its Mutalisk count, their centroid, the median and largest Mutalisk
  * distance to that centroid, how many Mutalisks are regrouping on the flock, their unit ids in regrouping_ids, and in
  * regrouping_armed how many of those still attack a target within their weapon range; the regrouping columns are -1
- * in RETREAT, where a flock flees together and nothing regroups.
+ * in RETREAT, where a flock flees together and nothing regroups. In RETREAT, retreat_shared, retreat_anchor and
+ * retreat_flee count the Mutalisks whose retreat target is the flock's shared point, its anchor or a flee point of
+ * their own, and are -1 otherwise.
  *
  * <p>MUTA_LOST rows are written for every Mutalisk of ours that dies: its squad, if any, the squad's status and
  * Mutalisk count including the dead one, the death position in centroid_x and centroid_y, nearest_mate_distance, the
  * pixels to the nearest other Mutalisk of its squad, or -1 with none, the squad's regrouping_ids, and last_muta, 1
- * when no other Mutalisk is in its squad and 0 otherwise. A Mutalisk with no Mutalisk squad-mate within 256 pixels
- * died alone.
+ * when no other Mutalisk is in its squad and 0 otherwise, and retreat_branch, which of NONE, SHARED, ANCHOR or FLEE
+ * its retreat target came from when its squad was in RETREAT, -1 otherwise. A Mutalisk with no Mutalisk squad-mate
+ * within 256 pixels died alone.
  *
  * <p>REGROUP rows are written for each Mutalisk the frame it starts regrouping on its flock: its squad and status,
  * its position in centroid_x and centroid_y, nearest_mate_distance to the nearest other Mutalisk of its squad, and
@@ -35,7 +38,8 @@ public class FlockLogger implements FlockSink {
     static final String FILE = "telemetry_flock.csv";
 
     static final String HEADER = "game_id,frame,squad_id,event,status,mutas,centroid_x,centroid_y,median_distance,"
-            + "max_distance,regrouping,unit_id,nearest_mate_distance,regrouping_ids,regrouping_armed,last_muta";
+            + "max_distance,regrouping,unit_id,nearest_mate_distance,regrouping_ids,regrouping_armed,last_muta,"
+            + "retreat_shared,retreat_anchor,retreat_flee,retreat_branch";
 
     /** Frames between two SAMPLE rows of one squad. */
     public static final int SAMPLE_INTERVAL_FRAMES = 24;
@@ -128,6 +132,10 @@ public class FlockLogger implements FlockSink {
         fields.add(ids(row.getRegroupingIds()));
         fields.add(String.valueOf(row.getRegroupingArmed()));
         fields.add(String.valueOf(row.getLastMuta()));
+        fields.add(String.valueOf(row.getRetreatShared()));
+        fields.add(String.valueOf(row.getRetreatAnchor()));
+        fields.add(String.valueOf(row.getRetreatFlee()));
+        fields.add(row.getRetreatBranch() == null ? String.valueOf(NOT_EVALUATED) : Csv.name(row.getRetreatBranch()));
         return String.join(",", fields);
     }
 

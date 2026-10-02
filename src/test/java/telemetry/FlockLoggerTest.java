@@ -4,6 +4,7 @@ import bwapi.Position;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import unit.squad.AirFlock;
 import unit.squad.SquadStatus;
 
 import java.io.IOException;
@@ -69,7 +70,48 @@ class FlockLoggerTest {
     void theNewColumnsAreAppendedAfterTheOriginalHeader() {
         assertTrue(FlockLogger.HEADER.startsWith("game_id,frame,squad_id,event,status,mutas,centroid_x,centroid_y,"
                 + "median_distance,max_distance,regrouping,unit_id,nearest_mate_distance,"));
-        assertTrue(FlockLogger.HEADER.endsWith(",regrouping_ids,regrouping_armed,last_muta"));
+        assertTrue(FlockLogger.HEADER.endsWith(",regrouping_ids,regrouping_armed,last_muta,"
+                + "retreat_shared,retreat_anchor,retreat_flee,retreat_branch"));
+    }
+
+    @Test
+    void aRetreatSampleRowCountsTheMembersOfEachBranch() {
+        FlockRow sample = FlockRow.builder()
+                .frame(14544)
+                .squadId("squad-1")
+                .event(FlockRow.Event.SAMPLE)
+                .status(SquadStatus.RETREAT)
+                .mutas(3)
+                .retreatShared(1)
+                .retreatAnchor(1)
+                .retreatFlee(1)
+                .build();
+
+        String[] fields = FlockLogger.row("game-1", sample).split(",", -1);
+
+        assertEquals(FlockLogger.HEADER.split(",", -1).length, fields.length);
+        assertEquals("1", fields[columnIndex("retreat_shared")]);
+        assertEquals("1", fields[columnIndex("retreat_anchor")]);
+        assertEquals("1", fields[columnIndex("retreat_flee")]);
+        assertEquals("-1", fields[columnIndex("retreat_branch")]);
+    }
+
+    @Test
+    void aLossRowNamesTheBranchOfTheDeadMutaAndIsMinusOneOutsideRetreat() {
+        FlockRow retreating = FlockRow.builder()
+                .frame(15205)
+                .event(FlockRow.Event.MUTA_LOST)
+                .unitId(266)
+                .retreatBranch(AirFlock.RetreatBranch.FLEE)
+                .build();
+        FlockRow fighting = FlockRow.builder().frame(15205).event(FlockRow.Event.MUTA_LOST).unitId(266).build();
+
+        String[] lost = FlockLogger.row("game-1", retreating).split(",", -1);
+        String[] other = FlockLogger.row("game-1", fighting).split(",", -1);
+
+        assertEquals("FLEE", lost[columnIndex("retreat_branch")]);
+        assertEquals("-1", lost[columnIndex("retreat_shared")]);
+        assertEquals("-1", other[columnIndex("retreat_branch")]);
     }
 
     @Test

@@ -279,7 +279,8 @@ public class SquadManager {
             if (!squad.isAirSquad() || !flockStatus) {
                 continue;
             }
-            Collection<Position> mutas = memberPositions(squad, UnitType.Zerg_Mutalisk).values();
+            Map<Integer, Position> mutaPositions = memberPositions(squad, UnitType.Zerg_Mutalisk);
+            Collection<Position> mutas = mutaPositions.values();
             if (mutas.size() < 2) {
                 continue;
             }
@@ -298,8 +299,23 @@ public class SquadManager {
                     .regrouping(AirFlock.regroupingCount(status, squad.getRegroupingIds()))
                     .regroupingIds(retreating ? null : squad.getRegroupingIds())
                     .regroupingArmed(retreating ? -1 : armedRegrouping(squad))
+                    .retreatShared(retreatCount(squad, mutaPositions.keySet(), AirFlock.RetreatBranch.SHARED))
+                    .retreatAnchor(retreatCount(squad, mutaPositions.keySet(), AirFlock.RetreatBranch.ANCHOR))
+                    .retreatFlee(retreatCount(squad, mutaPositions.keySet(), AirFlock.RetreatBranch.FLEE))
                     .build());
         }
+    }
+
+    /**
+     * @param squad air squad
+     * @param mutaIds unit ids of its Mutalisks
+     * @param branch a retreat branch
+     * @return how many of the Mutalisks took the branch, or -1 while the squad is not in RETREAT
+     */
+    private static int retreatCount(Squad squad, Collection<Integer> mutaIds, AirFlock.RetreatBranch branch) {
+        return squad.getStatus() == SquadStatus.RETREAT
+                ? AirFlock.branchCount(squad.getRetreatBranches(), mutaIds, branch)
+                : -1;
     }
 
     /**
@@ -373,11 +389,14 @@ public class SquadManager {
         }
         if (owner == null) {
             FlockTelemetry.row(flockLossRow(now, unit.getID(), unit.getPosition(), null, null,
-                    Collections.emptyMap(), null));
+                    Collections.emptyMap(), null, null));
             return;
         }
+        AirFlock.RetreatBranch branch = owner.getStatus() == SquadStatus.RETREAT
+                ? owner.getRetreatBranches().get(unit.getID())
+                : null;
         FlockTelemetry.row(flockLossRow(now, unit.getID(), unit.getPosition(), owner.getId(), owner.getStatus(),
-                memberPositions(owner, UnitType.Zerg_Mutalisk), owner.getRegroupingIds()));
+                memberPositions(owner, UnitType.Zerg_Mutalisk), owner.getRegroupingIds(), branch));
     }
 
     /**
@@ -390,10 +409,12 @@ public class SquadManager {
      * @param status its squad's status, or null with no squad
      * @param mutas Mutalisk positions of its squad by unit id, including the dead one, empty with no squad
      * @param regrouping unit ids regrouping in its squad, or null with no squad
+     * @param retreatBranch the branch its retreat target came from, or null when its squad was not retreating
      * @return the row; with no squad, last_muta and nearest_mate_distance are left at -1
      */
     static FlockRow flockLossRow(int now, int unitId, Position death, String squadId, SquadStatus status,
-                                 Map<Integer, Position> mutas, Set<Integer> regrouping) {
+                                 Map<Integer, Position> mutas, Set<Integer> regrouping,
+                                 AirFlock.RetreatBranch retreatBranch) {
         FlockRow.FlockRowBuilder row = FlockRow.builder()
                 .frame(now)
                 .event(FlockRow.Event.MUTA_LOST)
@@ -409,6 +430,7 @@ public class SquadManager {
                 .nearestMateDistance(AirFlock.nearestDistance(death, mates))
                 .regroupingIds(regrouping)
                 .lastMuta(mates.isEmpty() ? 1 : 0)
+                .retreatBranch(retreatBranch)
                 .build();
     }
 
@@ -2410,6 +2432,7 @@ public class SquadManager {
                 : Collections.emptyMap();
         if (squad.isAirSquad()) {
             squad.getRegroupingIds().clear();
+            squad.setRetreatBranches(airRetreatBranches(squad));
         }
         if (keepPlan) {
             SquadDecisions.retreatRouted(squad, squad.getRetreatRoute());
@@ -2441,7 +2464,22 @@ public class SquadManager {
      * @return targets by unit id, null with no enemy near the flock, so every member falls back to the rally point
      */
     private Map<Integer, Position> airRetreatTargets(Squad squad) {
-        Map<Integer, Position> positions = memberPositions(squad, null);
+        return AirFlock.retreatTargets(memberPositions(squad, null), retreatThreats(),
+                game.mapWidth() * 32, game.mapHeight() * 32);
+    }
+
+    /**
+     * Which branch of {@link AirFlock#retreatBranch} each member of an air squad takes.
+     *
+     * @param squad air squad
+     * @return branches by unit id
+     */
+    private Map<Integer, AirFlock.RetreatBranch> airRetreatBranches(Squad squad) {
+        return AirFlock.retreatBranches(memberPositions(squad, null), retreatThreats(),
+                game.mapWidth() * 32, game.mapHeight() * 32);
+    }
+
+    private List<Position> retreatThreats() {
         List<Position> enemies = new ArrayList<>();
         for (Unit enemy : gameState.getVisibleEnemyUnits()) {
             UnitType type = enemy.getType();
@@ -2449,7 +2487,7 @@ public class SquadManager {
                 enemies.add(enemy.getPosition());
             }
         }
-        return AirFlock.retreatTargets(positions, enemies, game.mapWidth() * 32, game.mapHeight() * 32);
+        return enemies;
     }
 
     /**
