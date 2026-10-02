@@ -21,6 +21,10 @@ import java.util.List;
  * overrides any worker cap the build keeps. The Zergling cap applies to the matchup target and the
  * early rush emergency; a build's own Zergling branch and the mineral surplus Zerglings are not
  * capped, and wait behind the floor Drones for larva.
+ *
+ * <p>The hold lifts as soon as enemy Lair tech is observed: a flood runs on a handful of workers and
+ * does not tech, so an opponent that has will not flood. The in-main Hatchery alone also fires on
+ * two-hatch tech builds, which this release hands back to the build order.
  */
 public final class LingFloodHold {
 
@@ -67,11 +71,12 @@ public final class LingFloodHold {
      * Whether the hold stands this frame.
      *
      * @param floodDetected whether any of {@link #TRIGGER_STRATEGIES} has been detected
+     * @param lairTechSeen whether an enemy Lair, Hive, Spire, Mutalisk or Hydralisk Den has been observed
      * @param gameTime current game time
-     * @return true from the detection until {@link #DEADLINE}
+     * @return true from the detection until {@link #DEADLINE} or the first sighting of enemy Lair tech
      */
-    public static boolean isActive(boolean floodDetected, Time gameTime) {
-        return floodDetected && !gameTime.greaterThan(DEADLINE);
+    public static boolean isActive(boolean floodDetected, boolean lairTechSeen, Time gameTime) {
+        return floodDetected && !lairTechSeen && !gameTime.greaterThan(DEADLINE);
     }
 
     /**

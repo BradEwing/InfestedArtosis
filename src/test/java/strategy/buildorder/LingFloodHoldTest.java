@@ -31,22 +31,32 @@ class LingFloodHoldTest {
 
     @Test
     void standsOnceTheFloodIsDetected() {
-        assertTrue(LingFloodHold.isActive(true, EARLY));
+        assertTrue(LingFloodHold.isActive(true, false, EARLY));
     }
 
     @Test
     void doesNotStandWithoutADetection() {
-        assertFalse(LingFloodHold.isActive(false, EARLY));
+        assertFalse(LingFloodHold.isActive(false, false, EARLY));
+    }
+
+    @Test
+    void liftsOnceEnemyLairTechIsSeen() {
+        assertFalse(LingFloodHold.isActive(true, true, EARLY));
+    }
+
+    @Test
+    void doesNotStandOnLairTechAlone() {
+        assertFalse(LingFloodHold.isActive(false, true, EARLY));
     }
 
     @Test
     void standsThroughTheDeadline() {
-        assertTrue(LingFloodHold.isActive(true, LingFloodHold.DEADLINE));
+        assertTrue(LingFloodHold.isActive(true, false, LingFloodHold.DEADLINE));
     }
 
     @Test
     void liftsAfterTheDeadline() {
-        assertFalse(LingFloodHold.isActive(true, AFTER_DEADLINE));
+        assertFalse(LingFloodHold.isActive(true, false, AFTER_DEADLINE));
     }
 
     @Test
