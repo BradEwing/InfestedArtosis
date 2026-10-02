@@ -78,32 +78,32 @@ class LurkerHoldTest {
 
     @Test
     void anEngageReadThisFrameCommitsTheLurkersAtOnce() {
-        assertTrue(LurkerHold.lurkersCommit(SquadStatus.FIGHT, false, ENGAGE, true));
+        assertTrue(LurkerHold.lurkersCommit(SquadStatus.FIGHT, false, ENGAGE));
     }
 
     @Test
     void aFightLockWithNoEngageReadDoesNotCommitTheLurkers() {
-        assertFalse(LurkerHold.lurkersCommit(SquadStatus.FIGHT, false, null, true));
-        assertFalse(LurkerHold.lurkersCommit(SquadStatus.FIGHT, false, ADVANCE, true));
-        assertFalse(LurkerHold.lurkersCommit(SquadStatus.FIGHT, false, RETREAT, true));
+        assertFalse(LurkerHold.lurkersCommit(SquadStatus.FIGHT, false, null));
+        assertFalse(LurkerHold.lurkersCommit(SquadStatus.FIGHT, false, ADVANCE));
+        assertFalse(LurkerHold.lurkersCommit(SquadStatus.FIGHT, false, RETREAT));
     }
 
     @Test
     void aSquadBornIntoFightOnItsLockWithNoSimReadIsNotCommittingItsLurkers() {
         assertTrue(SquadManager.isCommitting(SquadStatus.FIGHT, true, null));
-        assertFalse(LurkerHold.lurkersCommit(SquadStatus.FIGHT, false, null, true));
+        assertFalse(LurkerHold.lurkersCommit(SquadStatus.FIGHT, false, null));
     }
 
     @Test
     void aContainBreakOrCollapseCommitsTheLurkersWithoutARead() {
-        assertTrue(LurkerHold.lurkersCommit(SquadStatus.FIGHT, true, null, true));
-        assertTrue(LurkerHold.lurkersCommit(SquadStatus.FIGHT, true, RETREAT, true));
+        assertTrue(LurkerHold.lurkersCommit(SquadStatus.FIGHT, true, null));
+        assertTrue(LurkerHold.lurkersCommit(SquadStatus.FIGHT, true, RETREAT));
     }
 
     @Test
     void aSquadOutOfFightNeverCommitsItsLurkers() {
-        assertFalse(LurkerHold.lurkersCommit(SquadStatus.RETREAT, true, ENGAGE, true));
-        assertFalse(LurkerHold.lurkersCommit(SquadStatus.CONTAIN, false, ENGAGE, true));
+        assertFalse(LurkerHold.lurkersCommit(SquadStatus.RETREAT, true, ENGAGE));
+        assertFalse(LurkerHold.lurkersCommit(SquadStatus.CONTAIN, false, ENGAGE));
     }
 
     @Test
@@ -221,53 +221,26 @@ class LurkerHoldTest {
 
     @Test
     void aStalemateCommitCommitsTheLurkersWithoutARead() {
-        assertTrue(LurkerHold.lurkersCommit(SquadStatus.FIGHT, true, null, false));
+        assertTrue(LurkerHold.lurkersCommit(SquadStatus.FIGHT, true, null));
     }
 
     @Test
-    void anEngageReadThatMissesTheTankMarginDoesNotCommitTheLurkers() {
-        assertFalse(LurkerHold.lurkersCommit(SquadStatus.FIGHT, false, ENGAGE, false));
+    void aThinEngageReadPricingSiegedTanksCommitsTheLurkers() {
+        assertTrue(SquadManager.lurkersCommit(SquadStatus.FIGHT, false, snapshot(1.53, 1.44, 5.0)));
     }
 
     @Test
-    void aThinEngageReadPricingSiegedTanksDoesNotCommitTheLurkers() {
-        HorizonCombatSimulator.DebugSnapshot snapshot = snapshot(1.53, 1.44, 5.0);
+    void aRetreatReadPricingSiegedTanksCommitsTheLurkersOnlyWithTheWholeSquad() {
+        HorizonCombatSimulator.DebugSnapshot snapshot = snapshot(1.0, 1.44, 5.0);
 
         assertFalse(SquadManager.lurkersCommit(SquadStatus.FIGHT, false, snapshot));
         assertTrue(SquadManager.lurkersCommit(SquadStatus.FIGHT, true, snapshot));
     }
 
     @Test
-    void aStrongEngageReadPricingSiegedTanksCommitsTheLurkers() {
-        assertTrue(SquadManager.lurkersCommit(SquadStatus.FIGHT, false, snapshot(1.9, 1.44, 5.0)));
-    }
-
-    @Test
-    void aThinEngageReadWithAnUnpricedSiegedTankCommitsTheLurkers() {
-        assertTrue(SquadManager.lurkersCommit(SquadStatus.FIGHT, false, snapshot(1.53, 1.44, 0)));
-    }
-
-    @Test
     void noReadThisFrameCommitsTheLurkersOnlyWithTheWholeSquad() {
         assertFalse(SquadManager.lurkersCommit(SquadStatus.FIGHT, false, null));
         assertTrue(SquadManager.lurkersCommit(SquadStatus.FIGHT, true, null));
-    }
-
-    @Test
-    void anEngageReadWithNoPricedSiegedTankNeedsNoMargin() {
-        assertTrue(LurkerHold.clearsTankMargin(1.44, 1.44, false));
-        assertTrue(LurkerHold.clearsTankMargin(0, 1.44, false));
-    }
-
-    @Test
-    void anEngageReadPricingSiegedTanksMustClearTheThresholdByTheMargin() {
-        double threshold = 1.44;
-        double needed = threshold * LurkerHold.TANK_ENGAGE_MARGIN;
-
-        assertFalse(LurkerHold.clearsTankMargin(1.53, threshold, true));
-        assertFalse(LurkerHold.clearsTankMargin(needed - 0.001, threshold, true));
-        assertTrue(LurkerHold.clearsTankMargin(needed, threshold, true));
-        assertTrue(LurkerHold.clearsTankMargin(needed + 1, threshold, true));
     }
 
     private static HorizonCombatSimulator.DebugSnapshot snapshot(double ratio, double threshold, double tankStrength) {
