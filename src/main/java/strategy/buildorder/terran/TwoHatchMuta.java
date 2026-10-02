@@ -84,7 +84,8 @@ public class TwoHatchMuta extends TerranBase {
         boolean wantSpire = techProgression.canPlanSpire() && spireCount < 1 && lairCount >= 1 && droneCount >= 16;
 
         boolean wantMetabolicBoost = techProgression.canPlanMetabolicBoost() && !techProgression.isMetabolicBoost() && lairCount > 0;
-        boolean wantFlyingAttack = shouldPlanFlyerAttack(techProgression, livingMutaCount, gameState.numGatherers());
+        boolean wantFlyingAttack = shouldPlanFlyerAttack(techProgression, livingMutaCount, gameState.numGatherers(),
+                laterFlyerUpgradeWorkerFloor(gameState.workerHardCap(), dronesNeeded(gameState)));
         boolean wantOverlordSpeed = shouldPlanOverlordSpeed(needOverlordSpeed(gameState) && techProgression.canPlanOverlordSpeed(),
                 Reactions.isAirOrCloakThreatSeen(gameState),
                 wantFlyingAttack);
@@ -296,19 +297,31 @@ public class TwoHatchMuta extends TerranBase {
 
     /**
      * Whether the build should queue the next Flyer Attacks level, holding every level after the
-     * first until {@value #WORKERS_BEFORE_LATER_FLYER_UPGRADES} workers gather. A queued level
+     * first until the worker floor of {@link #laterFlyerUpgradeWorkerFloor} gather. A queued level
      * holds the bank at the upgrade priority, which outranks every Drone plan.
      *
      * @param techProgression the tech state
      * @param livingMutalisks completed Mutalisks
      * @param gatherers workers gathering minerals or gas
+     * @param workerFloor gatherers a level after the first needs
      * @return true when the next Flyer Attacks level should be queued
      */
-    static boolean shouldPlanFlyerAttack(TechProgression techProgression, int livingMutalisks, int gatherers) {
-        if (techProgression.getFlyerAttack() > 0 && gatherers < WORKERS_BEFORE_LATER_FLYER_UPGRADES) {
+    static boolean shouldPlanFlyerAttack(TechProgression techProgression, int livingMutalisks, int gatherers,
+                                         int workerFloor) {
+        if (techProgression.getFlyerAttack() > 0 && gatherers < workerFloor) {
             return false;
         }
         return shouldPlanFlyerAttack(techProgression, livingMutalisks);
+    }
+
+    /**
+     * @param workerHardCap workers past which the worker gates want no Drone
+     * @param dronesNeeded the build's Drone target
+     * @return {@value #WORKERS_BEFORE_LATER_FLYER_UPGRADES}, cut to stay under the build's Drone target and
+     *     the hard cap so the floor can always be met
+     */
+    static int laterFlyerUpgradeWorkerFloor(int workerHardCap, int dronesNeeded) {
+        return Math.min(WORKERS_BEFORE_LATER_FLYER_UPGRADES, Math.min(workerHardCap, dronesNeeded) - 1);
     }
 
     /**

@@ -786,6 +786,42 @@ class DroneRoundTest {
     }
 
     @Test
+    void aCalmEconomyRoundIsCutToTheRoomUnderTheLowerCap() {
+        DroneRound round = new DroneRound();
+
+        round.update(FRAME, NO_ARMY, DRONES, CAP, WANTED, CALM,
+                held().eligible(false).workers(SOFT_CAP - DroneRound.CALM_ECONOMY_WORKER_DEFICIT)
+                        .hardCap(SOFT_CAP - DroneRound.CALM_ECONOMY_WORKER_DEFICIT + 2).build());
+
+        assertEquals(2, round.getRoundSize());
+    }
+
+    @Test
+    void aCalmEconomyRoundClosingOnSizeOrTimeoutLeavesTheMilestoneAlone() {
+        DroneRound sized = calmRound(10);
+        sized.update(FRAME + 1, NO_ARMY, DRONES + DroneRound.DRONES_PER_ROUND, CAP, WANTED, CALM,
+                held().eligible(false).workers(10).build());
+        assertFalse(sized.isActive());
+        assertEquals(DroneRound.FIRST_ROUND_ARMY_UNITS, sized.getArmyMilestone());
+
+        DroneRound timedOut = calmRound(10);
+        timedOut.update(FRAME + DroneRound.MAX_ROUND_FRAMES, NO_ARMY, DRONES, CAP, WANTED, CALM,
+                held().eligible(false).workers(10).build());
+        assertFalse(timedOut.isActive());
+        assertEquals(DroneRound.FIRST_ROUND_ARMY_UNITS, timedOut.getArmyMilestone());
+    }
+
+    @Test
+    void aHydraliskMorphingIntoALurkerCountsAsOneMoreArmyUnit() {
+        DroneRound round = new DroneRound();
+        round.update(FRAME, 4, DRONES, CAP, WANTED, CALM);
+        round.update(FRAME + 1, 3, DRONES, CAP, WANTED, CALM);
+        round.update(FRAME + 2, 4, DRONES, CAP, WANTED, CALM);
+
+        assertEquals(5, round.getArmyProduced());
+    }
+
+    @Test
     void aThreatClosesACalmEconomyRoundAndLeavesTheMilestoneAlone() {
         DroneRound round = calmRound(10);
         PlanEvents.register(recorder());

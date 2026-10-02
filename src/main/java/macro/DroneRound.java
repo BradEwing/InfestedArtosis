@@ -41,13 +41,16 @@ import unit.squad.ContainHeldTimer;
  * its Drones are hatched or in an egg, or after {@link #MAX_ROUND_FRAMES}. It never reads or moves
  * the army milestone.
  *
+ * <p>Army produced counts a Hydralisk morphing into a Lurker as one more unit, because the Hydralisk
+ * leaves the living count when the morph starts and the Lurker joins it when the morph completes.
+ *
  * <p>A {@link OpenReason#CALM_ECONOMY} round opens once no threat has stood for
  * {@link #CALM_ECONOMY_FRAMES} while the build's Drone cap is unmet, the worker gates want Drones, and the
  * workers are at least {@link #CALM_ECONOMY_WORKER_DEFICIT} under the soft cap and under the hard cap. It
  * needs neither an army milestone nor a contain, adds up to {@link #DRONES_PER_ROUND} Drones within the
  * build's cap and the room under both worker caps, and no sooner than {@link #CALM_ECONOMY_COOLDOWN_FRAMES}
- * after the last such round closed. It closes like an army milestone round and never reads or moves the
- * army milestone.
+ * after the last such round closed. It closes like an army milestone round, on SIZE, BUILD_CAP, HARD_CAP, THREAT or
+ * TIMEOUT, and never reads or moves the army milestone.
  *
  * <p>Every open and close is reported through {@link PlanEvents} with its reason.
  */
@@ -97,7 +100,7 @@ public class DroneRound {
     }
 
     /**
-     * Why a round closed. BUILD_CAP is the build's own Drone cap, which only an army milestone round reads.
+     * Why a round closed. BUILD_CAP is the build's own Drone cap, which army milestone and calm-economy rounds read.
      * INELIGIBLE is a contain-held round whose matchup or build no longer allows it, such as a switch to a
      * build that runs none or too few Zerglings left alive for SpeedlingAllIn.
      */
