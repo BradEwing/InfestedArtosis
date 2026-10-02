@@ -117,6 +117,10 @@ public class HorizonCombatSimulator implements CombatSimulator {
                 Position bunkerPosition = visible ? ou.getUnit().getPosition() : ou.getLastKnownLocation();
                 if (bunkerPosition != null) {
                     livingBunkers.add(bunkerPosition);
+                    int bunkerReach = BunkerPricing.reach(airSquad, reachMemory.groundReach(type));
+                    if (heldBeyondRadius(retreatMemory, bunkerPosition, squadCenter, edgeOfFireRadius(bunkerReach))) {
+                        snapshot.setThreatBeyondRadius(true);
+                    }
                 }
             }
             if (!visible) {
@@ -136,9 +140,6 @@ public class HorizonCombatSimulator implements CombatSimulator {
             }
             double radius = bunker || edgeOfFire ? edgeOfFireRadius(reach) : engagementRadius(type);
             if (dist > radius) {
-                if (bunker && retreatMemory.holds(pos)) {
-                    snapshot.setThreatBeyondRadius(true);
-                }
                 if (isThreatBeyondRadius(type, dist, radius)) {
                     snapshot.setThreatBeyondRadius(true);
                 }
@@ -337,6 +338,20 @@ public class HorizonCombatSimulator implements CombatSimulator {
                                 double enemyEngagedStr) {
         double totalEnemy = enemyEngagedStr > 0 ? enemyEngagedStr : enemyGroundStr;
         return (friendlyGroundStr + friendlyAirStr) / totalEnemy;
+    }
+
+    /**
+     * Whether a Bunker the squad retreated from still holds its blind advance: it is remembered and lies past the
+     * sample radius. It does not depend on how recently the Bunker was seen, as a squad held far from it cannot see it.
+     *
+     * @param memory the squad's retreat memory
+     * @param bunker where the Bunker stands or was last seen
+     * @param squadCenter the squad's centre
+     * @param radius the Bunker's sample radius, see {@link #edgeOfFireRadius}
+     * @return true when the Bunker is remembered and beyond the radius
+     */
+    static boolean heldBeyondRadius(BunkerRetreatMemory memory, Position bunker, Position squadCenter, double radius) {
+        return memory.holds(bunker) && squadCenter.getDistance(bunker) > radius;
     }
 
     /**
@@ -1192,7 +1207,9 @@ public class HorizonCombatSimulator implements CombatSimulator {
         BunkerPricing.allocate(bunkers, pool);
         for (BunkerPricing.Candidate candidate : bunkers) {
             enemySample.add(UnitType.Terran_Bunker, candidate.ground(), candidate.antiAir());
-            snapshot.getPricedBunkers().add(candidate.getPosition());
+            if (candidate.ground() > 0 || candidate.antiAir() > 0) {
+                snapshot.getPricedBunkers().add(candidate.getPosition());
+            }
             snapshot.getEnemyUnits().add(new UnitDebugEntry(candidate.getPosition(), UnitType.Terran_Bunker,
                     airSquad ? candidate.antiAir() : candidate.ground(), false, candidate.isFogOfWar()));
         }

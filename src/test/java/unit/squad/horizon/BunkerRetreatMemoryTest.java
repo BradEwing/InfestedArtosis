@@ -107,6 +107,46 @@ class BunkerRetreatMemoryTest {
     }
 
     @Test
+    void aSecondRetreatFromTheSameBunkerKeepsTheLargerComposition() {
+        BunkerRetreatMemory memory = new BunkerRetreatMemory();
+        memory.record(Collections.singletonList(BUNKER), squad(12, 0));
+
+        memory.record(Collections.singletonList(BUNKER), squad(8, 0));
+        memory.releaseIfGrown(squad(9, 0));
+
+        assertTrue(memory.holds(BUNKER));
+    }
+
+    @Test
+    void aRememberedBunkerBeyondTheRadiusHoldsWhateverTheTimeSinceItWasSeen() {
+        BunkerRetreatMemory memory = new BunkerRetreatMemory();
+        memory.record(Collections.singletonList(BUNKER), squad(12, 0));
+        Position farSquad = new Position(BUNKER.getX() + 2000, BUNKER.getY());
+        double radius = HorizonCombatSimulator.edgeOfFireRadius(BunkerPricing.reach(false, 0));
+
+        assertTrue(HorizonCombatSimulator.heldBeyondRadius(memory, BUNKER, farSquad, radius));
+    }
+
+    @Test
+    void aRememberedBunkerInsideTheRadiusIsPricedNotHeld() {
+        BunkerRetreatMemory memory = new BunkerRetreatMemory();
+        memory.record(Collections.singletonList(BUNKER), squad(12, 0));
+        Position nearSquad = new Position(BUNKER.getX() + 100, BUNKER.getY());
+        double radius = HorizonCombatSimulator.edgeOfFireRadius(BunkerPricing.reach(false, 0));
+
+        assertFalse(HorizonCombatSimulator.heldBeyondRadius(memory, BUNKER, nearSquad, radius));
+    }
+
+    @Test
+    void anUnrememberedBunkerBeyondTheRadiusIsNotHeld() {
+        BunkerRetreatMemory memory = new BunkerRetreatMemory();
+        Position farSquad = new Position(BUNKER.getX() + 2000, BUNKER.getY());
+        double radius = HorizonCombatSimulator.edgeOfFireRadius(BunkerPricing.reach(false, 0));
+
+        assertFalse(HorizonCombatSimulator.heldBeyondRadius(memory, BUNKER, farSquad, radius));
+    }
+
+    @Test
     void anEmptySquadNeverGrew() {
         assertFalse(BunkerRetreatMemory.grew(squad(12, 0), Collections.<UnitType, Integer>emptyMap()));
     }

@@ -5,6 +5,7 @@ import bwapi.UnitType;
 import unit.managed.ManagedUnit;
 
 import java.util.Collection;
+import java.util.Collections;
 import java.util.EnumMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -68,17 +69,23 @@ public final class BunkerRetreatMemory {
 
     /**
      * Replaces the remembered Bunkers with those a retreat priced, recording the squad's composition at that moment. A
-     * retreat that priced no Bunker leaves the memory as it was.
+     * retreat that priced no Bunker leaves the memory as it was. A retreat from a Bunker already remembered keeps the
+     * larger count of each type, so losses do not lower the bar for release.
      *
      * @param pricedBunkers the Bunkers the sample priced when the squad retreated
      * @param composition the squad's composition at the retreat, see {@link #composition}
      */
     void record(Collection<Position> pricedBunkers, Map<UnitType, Integer> composition) {
         if (pricedBunkers.isEmpty()) return;
+        boolean sameBunkers = !Collections.disjoint(bunkers, pricedBunkers);
         bunkers.clear();
-        recorded.clear();
         bunkers.addAll(pricedBunkers);
-        recorded.putAll(composition);
+        if (!sameBunkers) {
+            recorded.clear();
+        }
+        for (Map.Entry<UnitType, Integer> entry : composition.entrySet()) {
+            recorded.merge(entry.getKey(), entry.getValue(), Math::max);
+        }
     }
 
     /**
