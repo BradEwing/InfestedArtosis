@@ -107,9 +107,18 @@ public class HorizonCombatSimulator implements CombatSimulator {
         List<BunkerPricing.Leg> legs = BunkerPricing.legs(squad.getMembers(), airSquad, squadDestination);
         List<BunkerPricing.Candidate> bunkers = new ArrayList<>();
         int pricedLooseShooters = 0;
+        BunkerRetreatMemory retreatMemory = squad.getBunkerRetreatMemory();
+        retreatMemory.releaseIfGrown(BunkerRetreatMemory.composition(squad.getMembers()));
+        List<Position> livingBunkers = new ArrayList<>();
         for (ObservedUnit ou : tracker.getLivingObservedUnits()) {
             UnitType type = ou.getUnitType();
             boolean visible = ou.getUnit().isVisible();
+            if (type == UnitType.Terran_Bunker) {
+                Position bunkerPosition = visible ? ou.getUnit().getPosition() : ou.getLastKnownLocation();
+                if (bunkerPosition != null) {
+                    livingBunkers.add(bunkerPosition);
+                }
+            }
             if (!visible) {
                 int framesSinceObserved = currentFrame - ou.getLastObservedFrame().getFrames();
                 if (framesSinceObserved > freshnessThreshold(type)) continue;
@@ -127,6 +136,9 @@ public class HorizonCombatSimulator implements CombatSimulator {
             }
             double radius = bunker || edgeOfFire ? edgeOfFireRadius(reach) : engagementRadius(type);
             if (dist > radius) {
+                if (bunker && retreatMemory.holds(pos)) {
+                    snapshot.setThreatBeyondRadius(true);
+                }
                 if (isThreatBeyondRadius(type, dist, radius)) {
                     snapshot.setThreatBeyondRadius(true);
                 }
@@ -183,6 +195,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
             snapshot.getEnemyUnits().add(new UnitDebugEntry(pos, type, displayStr, false, !visible));
         }
 
+        retreatMemory.retain(livingBunkers);
         priceBunkers(bunkers, BunkerPricing.garrisonPool(tracker.getLivingObservedUnits(), pricedLooseShooters),
                 enemySample, snapshot, airSquad);
 
@@ -1179,6 +1192,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
         BunkerPricing.allocate(bunkers, pool);
         for (BunkerPricing.Candidate candidate : bunkers) {
             enemySample.add(UnitType.Terran_Bunker, candidate.ground(), candidate.antiAir());
+            snapshot.getPricedBunkers().add(candidate.getPosition());
             snapshot.getEnemyUnits().add(new UnitDebugEntry(candidate.getPosition(), UnitType.Terran_Bunker,
                     airSquad ? candidate.antiAir() : candidate.ground(), false, candidate.isFogOfWar()));
         }
@@ -1254,6 +1268,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
         private Position enemyCenter;
         private final List<UnitDebugEntry> friendlyUnits = new ArrayList<>();
         private final List<UnitDebugEntry> enemyUnits = new ArrayList<>();
+        private final List<Position> pricedBunkers = new ArrayList<>();
         private double friendlyTotal;
         private double enemyTotal;
         private double groundRatio;

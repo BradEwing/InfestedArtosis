@@ -9,6 +9,7 @@ import lombok.Getter;
 import org.jetbrains.annotations.NotNull;
 import telemetry.RetreatRoute;
 import unit.managed.ManagedUnit;
+import unit.squad.horizon.BunkerRetreatMemory;
 import util.Arc;
 import util.Distance;
 import util.Time;
@@ -68,6 +69,8 @@ public class Squad implements Comparable<Squad> {
      * {@link SwarmLock#mayCommit}.
      */
     private int simRetreatReleaseFrame = -1;
+    @Getter
+    private final BunkerRetreatMemory bunkerRetreatMemory = new BunkerRetreatMemory();
     private AirHarassState harassState;
     private int harassExitFrame = 0;
     private int harassExitEngageFrame = 0;

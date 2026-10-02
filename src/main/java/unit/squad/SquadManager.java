@@ -2149,6 +2149,9 @@ public class SquadManager {
 
             case RETREAT:
                 boolean enteredContain = tryEnterContainment(squad);
+                if (snapshot != null) {
+                    squad.getBunkerRetreatMemory().recordRetreat(snapshot.getPricedBunkers(), squad.getMembers());
+                }
                 if (!enteredContain) {
                     squad.setStatus(SquadStatus.RETREAT);
                     assignRetreatTargets(squad, managedFighters);
