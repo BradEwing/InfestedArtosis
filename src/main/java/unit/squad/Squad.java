@@ -20,6 +20,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -70,6 +71,10 @@ public class Squad implements Comparable<Squad> {
     private int simRetreatReleaseFrame = -1;
     private AirHarassState harassState;
     private int harassExitFrame = 0;
+    private Set<Integer> regroupingIds = new HashSet<>();
+    private Map<Integer, AirFlock.RetreatBranch> retreatBranches = new HashMap<>();
+    private Set<Integer> leashedIds = new HashSet<>();
+    private int retreatBranchFrame = -1;
     private int harassExitEngageFrame = 0;
     private int containRadius = 0;
     private ContainmentCollapse.Maneuver collapse;
