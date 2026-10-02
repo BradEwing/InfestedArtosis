@@ -2495,4 +2495,66 @@ class ProductionManagerTest {
     void theExcessSweepLeavesNonHatcheryPlansAlone() {
         assertFalse(ProductionManager.isExcessHatcheryPlan(extractor(), true, true));
     }
+
+    private static final int MACRO_HATCHERY_CAP = 2;
+
+    private static final TilePosition SECOND_MACRO_TILE = new TilePosition(110, 5);
+
+    @Test
+    void macroHatcheriesWithinTheCapAreKept() {
+        Plan queued = BuildOrder.macroHatcheryPlan(FRAME, MAIN_TILE);
+
+        assertTrue(ProductionManager.macroHatcheryPlansOverCap(Collections.singletonList(queued),
+                new HashSet<>(), MACRO_HATCHERY_CAP, MACRO_HATCHERY_CAP).isEmpty());
+    }
+
+    @Test
+    void aCarriedOverMacroHatcheryPastTheCapIsCancelled() {
+        Plan carriedOver = BuildOrder.macroHatcheryPlan(FRAME, MAIN_TILE);
+
+        assertEquals(Collections.singletonList(carriedOver),
+                ProductionManager.macroHatcheryPlansOverCap(Collections.singletonList(carriedOver),
+                        new HashSet<>(), MACRO_HATCHERY_CAP + 1, MACRO_HATCHERY_CAP));
+    }
+
+    @Test
+    void theCapCancelsQueuedMacroHatcheriesBeforeScheduledOnes() {
+        Plan queued = BuildOrder.macroHatcheryPlan(FRAME, MAIN_TILE);
+        Plan scheduled = BuildOrder.macroHatcheryPlan(FRAME - 1, SECOND_MACRO_TILE);
+
+        assertEquals(Collections.singletonList(queued),
+                ProductionManager.macroHatcheryPlansOverCap(Collections.singletonList(queued),
+                        new HashSet<>(Collections.singletonList(scheduled)), MACRO_HATCHERY_CAP + 1,
+                        MACRO_HATCHERY_CAP));
+        assertEquals(Arrays.asList(queued, scheduled),
+                ProductionManager.macroHatcheryPlansOverCap(Collections.singletonList(queued),
+                        new HashSet<>(Collections.singletonList(scheduled)), MACRO_HATCHERY_CAP + 2,
+                        MACRO_HATCHERY_CAP));
+    }
+
+    @Test
+    void theCapCancelsTheLowestPriorityMacroHatcheryFirst() {
+        Plan earlier = BuildOrder.macroHatcheryPlan(FRAME, MAIN_TILE);
+        Plan later = BuildOrder.macroHatcheryPlan(FRAME + 200, SECOND_MACRO_TILE);
+
+        assertEquals(Collections.singletonList(later),
+                ProductionManager.macroHatcheryPlansOverCap(Arrays.asList(earlier, later), new HashSet<>(),
+                        MACRO_HATCHERY_CAP + 1, MACRO_HATCHERY_CAP));
+    }
+
+    @Test
+    void theCapLeavesExpansionsAndCancelledPlansAlone() {
+        Plan expansion = hatchery();
+        Plan cancelled = BuildOrder.macroHatcheryPlan(FRAME, MAIN_TILE);
+        cancelled.setState(PlanState.CANCELLED);
+
+        assertTrue(ProductionManager.macroHatcheryPlansOverCap(Arrays.asList(expansion, cancelled, extractor()),
+                new HashSet<>(), MACRO_HATCHERY_CAP + 3, MACRO_HATCHERY_CAP).isEmpty());
+    }
+
+    @Test
+    void finishedMacroHatcheriesPastTheCapAreNotTornDown() {
+        assertTrue(ProductionManager.macroHatcheryPlansOverCap(new ArrayList<>(), new HashSet<>(),
+                MACRO_HATCHERY_CAP + 1, MACRO_HATCHERY_CAP).isEmpty());
+    }
 }

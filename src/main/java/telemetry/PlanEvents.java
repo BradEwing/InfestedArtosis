@@ -205,6 +205,22 @@ public final class PlanEvents {
         current.onStrategyDetected(detectionLabel);
     }
 
+    public static void buildOrderTransition(String transitionLabel) {
+        PlanEventSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onBuildOrderTransition(transitionLabel);
+    }
+
+    public static void techSiteMiss(UnitType building, TilePosition siteBase) {
+        PlanEventSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onTechSiteMiss(building, siteBase);
+    }
+
 
     public static void baseLost(TilePosition base, boolean innerBase) {
         PlanEventSink current = sink;

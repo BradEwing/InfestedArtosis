@@ -71,10 +71,12 @@ public class PlanEventLogger implements PlanEventSink {
     private static final String EVENT_BUILDER_LOST = "BUILDER_LOST";
     private static final String EVENT_BUILDER_REDISPATCH = "BUILDER_REDISPATCH";
     private static final String EVENT_GEYSER_DEPLETED = "GEYSER_DEPLETED";
+    private static final String EVENT_BUILD_ORDER_TRANSITION = "BUILD_ORDER_TRANSITION";
     private static final String EVENT_BASE_CLAIMED = "BASE_CLAIMED";
     private static final String EVENT_MINERAL_PATCH_SEEN_GONE = "MINERAL_PATCH_SEEN_GONE";
     private static final String EVENT_DRONE_ROUND_OPEN = "DRONE_ROUND_OPEN";
     private static final String EVENT_DRONE_ROUND_CLOSE = "DRONE_ROUND_CLOSE";
+    private static final String EVENT_TECH_SITE_MISS = "TECH_SITE_MISS";
 
     private static final int NO_STARVED_COUNT = -1;
 
@@ -179,6 +181,16 @@ public class PlanEventLogger implements PlanEventSink {
      * plan column empty, so the frame a strategy was detected is the row's frame. The label is the
      * strategy's name, followed for ProxyGate by the evidence arms that fired: ProxyGate:GATEWAY_AWAY,
      * ProxyGate:MAIN_EMPTY or ProxyGate:GATEWAY_AWAY+MAIN_EMPTY.
+     * <p>
+     * BUILD_ORDER_TRANSITION rows are written on the frame a build order decides to hand over, and
+     * leave every plan column empty. item is the build handing over, the build taking over and the
+     * trigger, as 2HatchMuta>LurkerDefilerUltra:GOLIATHS; build_order is still the chain before the
+     * handover.
+     * <p>
+     * TECH_SITE_MISS rows are written when a build order about to plan a tech building finds no room on creep
+     * for it at the main while we hold the main, and leave the plan id empty. item is the building. build_tile_x
+     * and build_tile_y are the other held base it goes to instead, empty when no held base has room;
+     * LurkerDefilerUltra then looks again for that building only after its retry wait.
      * <p>
      * base_inner is set only on BASE_LOST rows, written when one of our bases loses its hatchery:
      * true for the main or a natural, false for a third or later base. The lost base's location is
@@ -763,6 +775,42 @@ public class PlanEventLogger implements PlanEventSink {
     }
 
     /**
+     * The frame is re-read for the reason {@link #onStrategyDetected} gives: InformationManager
+     * decides the transition ahead of this logger's onFrame on the same frame.
+     */
+    @Override
+    public void onBuildOrderTransition(String transitionLabel) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            currentFrame = game.getFrameCount();
+            buffer.add(buildOrderTransitionRow(transitionLabel));
+        } catch (Exception e) {
+            disabled = true;
+        }
+    }
+
+    /**
+     * The frame is re-read for the reason {@link #onStrategyDetected} gives: the build order probes the site
+     * during production, which may run ahead of this logger's onFrame on the same frame.
+     */
+    @Override
+    public void onTechSiteMiss(UnitType building, TilePosition siteBase) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            currentFrame = game.getFrameCount();
+            buffer.add(techSiteMissRow(building, siteBase));
+        } catch (Exception e) {
+            disabled = true;
+        }
+    }
+
+    /**
      * The frame is re-read rather than taken from the last onFrame, since a base is lost from
      * onUnitDestroy, which JBWAPI dispatches ahead of the frame's onFrame.
      */
@@ -1127,6 +1175,26 @@ public class PlanEventLogger implements PlanEventSink {
         return sb.toString();
     }
 
+    /** A row for a tech building the main had no site for, which no plan owns yet, so the plan columns are empty. */
+    private String techSiteMissRow(UnitType building, TilePosition siteBase) {
+        StringBuilder sb = new StringBuilder();
+        appendEvent(sb, EVENT_TECH_SITE_MISS);
+        appendEmpty(sb, 2);
+        sb.append(PlanType.BUILDING).append(',');
+        sb.append(Csv.sanitize(building.toString())).append(',');
+        appendEmpty(sb, 4);
+        appendBlocker(sb, PlanBlocker.NONE, 0);
+        appendEmpty(sb, 3);
+        appendGameState(sb);
+        sb.append(siteBase == null ? "" : String.valueOf(siteBase.getX())).append(',');
+        sb.append(siteBase == null ? "" : String.valueOf(siteBase.getY())).append(',');
+        appendEmpty(sb, 1);
+        sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
+        appendEmpty(sb, 2);
+        appendTrailing(sb, null, null, null, null, null, null, BuilderColumns.BLANK);
+        return sb.toString();
+    }
+
     /** A row for a macro hatchery request, which has no plan behind it, so the plan columns are empty. */
     private String macroHatcheryGateRow(MacroHatcheryGateInputs inputs) {
         StringBuilder sb = new StringBuilder();
@@ -1233,6 +1301,23 @@ public class PlanEventLogger implements PlanEventSink {
         appendEvent(sb, EVENT_STRATEGY_DETECTED);
         appendEmpty(sb, 3);
         sb.append(Csv.sanitize(detectionLabel)).append(',');
+        appendEmpty(sb, 4);
+        appendBlocker(sb, PlanBlocker.NONE, 0);
+        appendEmpty(sb, 3);
+        appendGameState(sb);
+        appendEmpty(sb, 3);
+        sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
+        appendEmpty(sb, 2);
+        appendTrailing(sb, null, null, null, null, null, null, BuilderColumns.BLANK);
+        return sb.toString();
+    }
+
+    /** A row for a build order handing over, which no plan owns, so the plan columns are empty. */
+    private String buildOrderTransitionRow(String transitionLabel) {
+        StringBuilder sb = new StringBuilder();
+        appendEvent(sb, EVENT_BUILD_ORDER_TRANSITION);
+        appendEmpty(sb, 3);
+        sb.append(Csv.sanitize(transitionLabel)).append(',');
         appendEmpty(sb, 4);
         appendBlocker(sb, PlanBlocker.NONE, 0);
         appendEmpty(sb, 3);

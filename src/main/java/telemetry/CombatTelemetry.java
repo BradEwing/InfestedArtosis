@@ -9,13 +9,16 @@ import bwapi.UnitType;
 import info.GameState;
 import strategy.buildorder.BuildOrder;
 import unit.managed.ManagedUnit;
+import unit.managed.UnitRole;
 import unit.squad.CombatSimulator;
 import unit.squad.Squad;
 import unit.squad.SquadManager;
 import unit.squad.horizon.HorizonCombatSimulator;
+import util.Time;
 
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashMap;
@@ -44,6 +47,12 @@ public class CombatTelemetry {
     static final int MERGE_RADIUS = 512;
     static final int CLOSE_COOLDOWN_FRAMES = 240;
 
+    /**
+     * Game time up to which an enemy Goliath's death is checked for a Mutalisk kill, the window Mutas do their
+     * fighting in.
+     */
+    static final Time MUTALISK_KILL_WINDOW = new Time(12, 0);
+
     private static final int FLUSH_INTERVAL_FRAMES = 480;
     private static final String WRITE_DIRECTORY = "bwapi-data/write";
     private static final Set<UnitType> IGNORED_ENEMY_TYPES = EnumSet.of(
@@ -70,6 +79,7 @@ public class CombatTelemetry {
     private int killedSupply;
     private int lastKilledUnits;
     private int lastKilledSupply;
+    private int goliathsKilledByMutalisks;
 
     public CombatTelemetry(Game game, GameState gameState, SquadManager squadManager) {
         this.game = game;
@@ -105,17 +115,23 @@ public class CombatTelemetry {
     }
 
     public void onUnitDestroy(Unit unit) {
-        if (!enabled || failed || openEngagements.isEmpty()) {
+        if (!enabled || failed) {
             return;
         }
 
         try {
             Player owner = unit.getPlayer();
-            if (owner == null || owner.getID() != gameState.getSelf().getID()) {
+            int frame = game.getFrameCount();
+            boolean enemyOwned = owner != null && owner.isEnemy(gameState.getSelf());
+            UnitType type = unit.getType();
+            if (type == UnitType.Terran_Goliath
+                    && countsAsMutaliskGoliathKill(type, enemyOwned, frame, unit.getID(), mutaliskTargetIds())) {
+                goliathsKilledByMutalisks++;
+            }
+            if (openEngagements.isEmpty() || owner == null || owner.getID() != gameState.getSelf().getID()) {
                 return;
             }
 
-            int frame = game.getFrameCount();
             Position position = unit.getPosition();
             int unitId = unit.getID();
             ManagedUnit managedUnit = gameState.getManagedUnitLookup().get(unit);
@@ -446,6 +462,48 @@ public class CombatTelemetry {
         return candidates;
     }
 
+    /**
+     * Whether a destroyed unit counts as a Goliath killed by Mutalisks: an enemy Goliath that dies before
+     * {@link #MUTALISK_KILL_WINDOW} while one of our attacking Mutalisks (see {@link #attackingMutalisk}) holds it as
+     * its fight target. The
+     * target is the one our squad logic assigned, not the unit the game credits with the kill, so the count is an
+     * upper bound on the Goliaths Mutalisks killed.
+     *
+     * @param destroyedType type of the destroyed unit
+     * @param enemyOwned whether the destroyed unit belonged to the enemy
+     * @param frame frame of the death
+     * @param destroyedId id of the destroyed unit
+     * @param mutaliskTargetIds ids of the fight targets our Mutalisks hold on that frame
+     * @return true if the death is counted
+     */
+    static boolean countsAsMutaliskGoliathKill(UnitType destroyedType, boolean enemyOwned, int frame, int destroyedId,
+                                               Collection<Integer> mutaliskTargetIds) {
+        return destroyedType == UnitType.Terran_Goliath && enemyOwned
+                && frame < MUTALISK_KILL_WINDOW.getFrames() && mutaliskTargetIds.contains(destroyedId);
+    }
+
+    /**
+     * Whether a unit's fight target is read as a Mutalisk attack: a Mutalisk in the FIGHT or HARASS role. A Mutalisk
+     * sent back keeps its last fight target until its own tick clears it, so any other role is left out.
+     *
+     * @param type the unit's type
+     * @param role the unit's role
+     * @return true if the unit's fight target counts
+     */
+    static boolean attackingMutalisk(UnitType type, UnitRole role) {
+        return type == UnitType.Zerg_Mutalisk && (role == UnitRole.FIGHT || role == UnitRole.HARASS);
+    }
+
+    private List<Integer> mutaliskTargetIds() {
+        List<Integer> ids = new ArrayList<>();
+        for (ManagedUnit managedUnit : gameState.getManagedUnitLookup().values()) {
+            if (attackingMutalisk(managedUnit.getUnitType(), managedUnit.getRole()) && managedUnit.fightTarget != null) {
+                ids.add(managedUnit.fightTarget.getID());
+            }
+        }
+        return ids;
+    }
+
     private String gameRow(boolean isWinner, int endFrame) {
         BuildOrder buildOrder = gameState.getActiveBuildOrder();
 
@@ -469,6 +527,9 @@ public class CombatTelemetry {
         fields.add(String.valueOf(CONTACT_RADIUS));
         fields.add(String.valueOf(MERGE_RADIUS));
         fields.add(String.valueOf(CLOSE_COOLDOWN_FRAMES));
+        fields.add(String.valueOf(gameState.getSelf().killedUnitCount(UnitType.Terran_Goliath)));
+        fields.add(String.valueOf(gameState.getSelf().deadUnitCount(UnitType.Zerg_Mutalisk)));
+        fields.add(String.valueOf(goliathsKilledByMutalisks));
         return String.join(",", fields);
     }
 }

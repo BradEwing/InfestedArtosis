@@ -361,4 +361,41 @@ public class TechProgression {
         }
     }
 
+    /**
+     * Applies the loss of a Lair or a Hive. A Hive is the Lair it morphed from, so the Lair flag
+     * set when that Lair finished stays set while the Hive stands, and losing the Hive loses the
+     * Lair tech with it. Each flag stays set only while another structure providing it stands.
+     *
+     * @param destroyed {@code Zerg_Lair} or {@code Zerg_Hive}; any other type is ignored
+     * @param lairsLeft finished Lairs still standing, the destroyed one not included
+     * @param hivesLeft finished Hives still standing, the destroyed one not included
+     */
+    public void loseLairOrHive(UnitType destroyed, int lairsLeft, int hivesLeft) {
+        if (destroyed == UnitType.Zerg_Lair) {
+            plannedLair = false;
+        } else if (destroyed == UnitType.Zerg_Hive) {
+            plannedHive = false;
+        } else {
+            return;
+        }
+        lair = lairsLeft + hivesLeft > 0;
+        hive = hivesLeft > 0;
+    }
+
+    /**
+     * Structures of one type still standing once a destroyed structure is removed. A structure
+     * that dies before an in-place morph finishes is still counted as the structure it morphs
+     * from, as {@link UnitTypeCount#removeDestroyedUnit} applies it.
+     *
+     * @param countedType the type being counted
+     * @param counted structures of that type counted before the loss is applied
+     * @param destroyed the destroyed structure's type
+     * @param completed whether the destroyed structure had finished
+     * @return the count once the loss is applied, never below zero
+     */
+    public static int standingAfterLoss(UnitType countedType, int counted, UnitType destroyed, boolean completed) {
+        UnitType predecessor = UnitTypeCount.morphPredecessor(destroyed);
+        UnitType countedAs = completed || predecessor == null ? destroyed : predecessor;
+        return countedAs == countedType ? Math.max(0, counted - 1) : counted;
+    }
 }

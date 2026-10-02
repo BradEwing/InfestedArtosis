@@ -39,6 +39,10 @@ public class ManagedUnit {
      */
     static final int OVERFLOW_PAST_DISTANCE = 96;
     static final int OUTRANGED_EVADE_FRAMES = 12;
+    /** Tuning value: pixels from its regroup point at which a regrouping unit takes its squad's orders again. */
+    static final int REGROUP_ARRIVAL_DISTANCE = 96;
+    /** Tuning value: frames between two move orders to a regroup point. */
+    static final int REGROUP_ORDER_FRAMES = 4;
     protected Game game;
     protected GameMap gameMap;
 
@@ -65,6 +69,9 @@ public class ManagedUnit {
     protected Position runbyDestination;
     @Setter @Getter
     protected Position harassDestination;
+    @Getter
+    private Position regroupPoint;
+    private int regroupUntilFrame;
     protected List<TilePosition> pathToTarget;
 
     @Setter
@@ -211,6 +218,15 @@ public class ManagedUnit {
 
         if (!isReady) {
             return;
+        }
+
+        if (regroupPoint != null && (role == UnitRole.FIGHT || role == UnitRole.RETREAT)) {
+            if (regroupHolds(unit.getDistance(regroupPoint), game.getFrameCount(), regroupUntilFrame)) {
+                setUnready(REGROUP_ORDER_FRAMES);
+                unit.move(regroupPoint);
+                return;
+            }
+            regroupPoint = null;
         }
 
         switch (role) {
@@ -827,6 +843,36 @@ public class ManagedUnit {
      */
     public boolean wasHitSince(int frame) {
         return hitFrame >= 0 && hitFrame >= frame;
+    }
+
+    /**
+     * Sends the unit to a regroup point ahead of its squad's FIGHT and RETREAT orders: while it holds either role it
+     * flies to the point until it is within {@link #REGROUP_ARRIVAL_DISTANCE} or the frame limit passes, then takes
+     * its squad's orders again. Every other role ignores the point.
+     *
+     * @param point the regroup point
+     * @param untilFrame last frame the regroup overrides the squad's orders
+     */
+    public void regroup(Position point, int untilFrame) {
+        regroupPoint = point;
+        regroupUntilFrame = untilFrame;
+    }
+
+    public void clearRegroup() {
+        regroupPoint = null;
+    }
+
+    /**
+     * Whether a regroup still overrides the squad's orders: the unit is farther than
+     * {@link #REGROUP_ARRIVAL_DISTANCE} from the point and the frame limit has not passed.
+     *
+     * @param distance pixels from the unit to the regroup point
+     * @param now current frame
+     * @param untilFrame last frame the regroup overrides the squad's orders
+     * @return true while the unit should keep flying to the point
+     */
+    public static boolean regroupHolds(double distance, int now, int untilFrame) {
+        return distance > REGROUP_ARRIVAL_DISTANCE && now <= untilFrame;
     }
 
     /**

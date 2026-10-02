@@ -27,6 +27,10 @@ import java.util.function.Supplier;
  *   <li>LOW: buildings, including hostile buildings that cannot attack the attacker's layer</li>
  * </ul>
  *
+ * <p>A Mutalisk ranks a Bunker NORMAL, below every mobile unit that can attack air and below workers, so
+ * a flock is not pulled onto the static defence it would otherwise retreat from. The scorer has no
+ * positions, so a mobile anti-air unit standing inside a Bunker's reach also outranks the Bunker.
+ *
  * <p>A target is saturated for a melee attacker once {@link #meleeCap} other melee attackers, from any fight squad,
  * hold it in the frame's {@link TargetLedger}.
  */
@@ -53,6 +57,7 @@ public final class TargetScorer {
         MEDIC_HEALING(Priority.CRITICAL),
         WORKER(Priority.ELEVATED),
         UNARMED(Priority.NORMAL),
+        MUTA_BUNKER(Priority.NORMAL),
         BUILDING(Priority.LOW);
 
         private final Priority priority;
@@ -97,19 +102,26 @@ public final class TargetScorer {
             scored.add(toCandidate(attacker, attackerType, candidate, currentTarget, candidates, ledger));
         }
 
-        int best = selectIndex(attackerIsFlying, scored);
+        int best = selectIndex(attackerType, attackerIsFlying, scored);
         Candidate chosen = scored.get(best);
-        Reason reason = reasonAt(attackerIsFlying, scored, best);
+        Reason reason = reasonAt(attackerType, attackerIsFlying, scored, best);
         return new Selection(candidates.get(best), reason.priority(), candidates.size(), reason,
                 chosen.assignedMelee(), chosen.saturated(), squadId, false);
+    }
+
+    /**
+     * @return index of the best candidate for an attacker with no type-specific ranking
+     */
+    static int selectIndex(boolean attackerIsFlying, List<Candidate> candidates) {
+        return selectIndex(UnitType.None, attackerIsFlying, candidates);
     }
 
     /**
      * @return index of the best candidate: highest tier first, then unsaturated before saturated, then
      *     highest within-tier score. Ties keep the earlier candidate.
      */
-    static int selectIndex(boolean attackerIsFlying, List<Candidate> candidates) {
-        int nearestThreat = nearestThreatDistance(attackerIsFlying, candidates);
+    static int selectIndex(UnitType attackerType, boolean attackerIsFlying, List<Candidate> candidates) {
+        int nearestThreat = nearestThreatDistance(attackerType, attackerIsFlying, candidates);
         int bestIndex = -1;
         Priority bestPriority = null;
         boolean bestSaturated = false;
@@ -117,7 +129,7 @@ public final class TargetScorer {
 
         for (int i = 0; i < candidates.size(); i++) {
             Candidate candidate = candidates.get(i);
-            Priority priority = candidate.reason(attackerIsFlying, nearestThreat).priority();
+            Priority priority = candidate.reason(attackerType, attackerIsFlying, nearestThreat).priority();
             boolean saturated = candidate.saturated();
             double score = candidate.score(attackerIsFlying);
 
@@ -138,17 +150,42 @@ public final class TargetScorer {
      * @return the reason the candidate at the index was given its tier among these candidates
      */
     static Reason reasonAt(boolean attackerIsFlying, List<Candidate> candidates, int index) {
-        return candidates.get(index).reason(attackerIsFlying, nearestThreatDistance(attackerIsFlying, candidates));
+        return reasonAt(UnitType.None, attackerIsFlying, candidates, index);
+    }
+
+    /**
+     * @return the reason the candidate at the index was given its tier among these candidates, for this attacker type
+     */
+    static Reason reasonAt(UnitType attackerType, boolean attackerIsFlying, List<Candidate> candidates, int index) {
+        return candidates.get(index).reason(attackerType, attackerIsFlying,
+                nearestThreatDistance(attackerType, attackerIsFlying, candidates));
     }
 
     static Priority assignPriority(UnitType candidateType, boolean attackerIsFlying, boolean isMeanWorker) {
-        return baseReason(candidateType, attackerIsFlying, isMeanWorker).priority();
+        return assignPriority(candidateType, UnitType.None, attackerIsFlying, isMeanWorker);
+    }
+
+    /**
+     * @return the candidate's tier for this attacker type, which is the layer-based tier except that a
+     *     Mutalisk ranks a Bunker NORMAL
+     */
+    static Priority assignPriority(UnitType candidateType, UnitType attackerType, boolean attackerIsFlying,
+                                   boolean isMeanWorker) {
+        return baseReason(candidateType, attackerType, attackerIsFlying, isMeanWorker).priority();
+    }
+
+    static Reason baseReason(UnitType candidateType, boolean attackerIsFlying, boolean isMeanWorker) {
+        return baseReason(candidateType, UnitType.None, attackerIsFlying, isMeanWorker);
     }
 
     /**
      * The reason a candidate earns on its own, before any Medic promotion.
      */
-    static Reason baseReason(UnitType candidateType, boolean attackerIsFlying, boolean isMeanWorker) {
+    static Reason baseReason(UnitType candidateType, UnitType attackerType, boolean attackerIsFlying,
+                             boolean isMeanWorker) {
+        if (attackerType == UnitType.Zerg_Mutalisk && candidateType == UnitType.Terran_Bunker) {
+            return Reason.MUTA_BUNKER;
+        }
         if (candidateType.isBuilding()) {
             if (Filter.isHostileBuilding(candidateType) && canAttackType(candidateType, attackerIsFlying)) {
                 return Reason.THREAT;
@@ -207,11 +244,12 @@ public final class TargetScorer {
      *     attacker, or to the nearest CRITICAL candidate when every one is saturated, or Integer.MAX_VALUE when
      *     there is none
      */
-    private static int nearestThreatDistance(boolean attackerIsFlying, List<Candidate> candidates) {
+    private static int nearestThreatDistance(UnitType attackerType, boolean attackerIsFlying,
+                                             List<Candidate> candidates) {
         int nearest = Integer.MAX_VALUE;
         int nearestOpen = Integer.MAX_VALUE;
         for (Candidate candidate : candidates) {
-            if (candidate.baseReason(attackerIsFlying).priority() == Priority.CRITICAL) {
+            if (candidate.baseReason(attackerType, attackerIsFlying).priority() == Priority.CRITICAL) {
                 nearest = Math.min(nearest, candidate.distance);
                 if (!candidate.saturated()) {
                     nearestOpen = Math.min(nearestOpen, candidate.distance);
@@ -335,15 +373,22 @@ public final class TargetScorer {
             return assignedMelee >= meleeCap;
         }
 
-        Reason baseReason(boolean attackerIsFlying) {
-            return TargetScorer.baseReason(type, attackerIsFlying, meanWorker);
+        Reason baseReason(UnitType attackerType, boolean attackerIsFlying) {
+            return TargetScorer.baseReason(type, attackerType, attackerIsFlying, meanWorker);
         }
 
         /**
          * @param nearestThreat distance from {@link TargetScorer#nearestThreatDistance}
          */
         Reason reason(boolean attackerIsFlying, int nearestThreat) {
-            Reason base = baseReason(attackerIsFlying);
+            return reason(UnitType.None, attackerIsFlying, nearestThreat);
+        }
+
+        /**
+         * @param nearestThreat distance from {@link TargetScorer#nearestThreatDistance}
+         */
+        Reason reason(UnitType attackerType, boolean attackerIsFlying, int nearestThreat) {
+            Reason base = baseReason(attackerType, attackerIsFlying);
             if (type != UnitType.Terran_Medic || base.priority() == Priority.CRITICAL) {
                 return base;
             }

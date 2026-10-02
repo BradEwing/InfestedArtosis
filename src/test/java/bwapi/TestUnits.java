@@ -21,6 +21,7 @@ public final class TestUnits {
     private final Game game = new Game();
     private final Map<Unit, ClientData.UnitData> data = new HashMap<>();
     private final Unit[] units = new Unit[MAX_UNITS];
+    private int positionFrame = 0;
 
     public TestUnits() {
         memory.clear();
@@ -95,5 +96,14 @@ public final class TestUnits {
      */
     public void setExists(Unit unit, boolean exists) {
         data.get(unit).setExists(exists);
+    }
+
+    /**
+     * Places the unit at a pixel position, as the BWAPI server writes it and the game's frame update reads it.
+     */
+    public void setPosition(Unit unit, int x, int y) {
+        data.get(unit).setPositionX(x);
+        data.get(unit).setPositionY(y);
+        unit.updatePosition(++positionFrame);
     }
 }

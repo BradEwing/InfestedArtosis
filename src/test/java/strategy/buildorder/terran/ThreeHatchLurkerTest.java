@@ -234,4 +234,44 @@ class ThreeHatchLurkerTest {
         assertEquals(BuildOrder.ARMY_UPGRADE_PRIORITY, upgradePriority(UpgradeType.Zerg_Carapace, trigger, 0));
         assertEquals(BuildOrder.ARMY_UPGRADE_PRIORITY, upgradePriority(UpgradeType.Zerg_Missile_Attacks, trigger - 4, 5));
     }
+
+    @Test
+    void theHandoverBaseIsRequestedOnceTheLurkerTriggerHoldsOnTwoBases() {
+        int trigger = LurkerDefilerUltraTransition.LURKER_TRIGGER;
+        int gateBases = LurkerDefilerUltraTransition.ECONOMY_BASES;
+
+        assertFalse(ThreeHatchLurker.wantsHandoverBase(trigger - 1, gateBases - 1));
+        assertTrue(ThreeHatchLurker.wantsHandoverBase(trigger, gateBases - 1));
+        assertTrue(ThreeHatchLurker.wantsHandoverBase(trigger + 5, gateBases - 1));
+    }
+
+    @Test
+    void theHandoverBaseStopsOnceTheGateBasesAreHeldOrReserved() {
+        int trigger = LurkerDefilerUltraTransition.LURKER_TRIGGER;
+        int gateBases = LurkerDefilerUltraTransition.ECONOMY_BASES;
+
+        assertFalse(ThreeHatchLurker.wantsHandoverBase(trigger, gateBases));
+        assertFalse(ThreeHatchLurker.wantsHandoverBase(trigger, gateBases + 1));
+    }
+
+    @Test
+    void theThirdBaseIsNotTakenOnTheClock() {
+        int twoBases = LurkerDefilerUltraTransition.THIRD_BASE_AFTER_BASES;
+
+        assertFalse(ThreeHatchLurker.wantsExpansion(false, false, 0, twoBases));
+        assertFalse(ThreeHatchLurker.wantsExpansion(false, false,
+                LurkerDefilerUltraTransition.LURKER_TRIGGER - 1, twoBases));
+    }
+
+    @Test
+    void anExpansionIsAskedForWhenBehindOnBasesFloatingOrForTheHandover() {
+        int twoBases = LurkerDefilerUltraTransition.THIRD_BASE_AFTER_BASES;
+
+        assertTrue(ThreeHatchLurker.wantsExpansion(true, false, 0, twoBases));
+        assertTrue(ThreeHatchLurker.wantsExpansion(false, true, 0, twoBases));
+        assertTrue(ThreeHatchLurker.wantsExpansion(false, false, LurkerDefilerUltraTransition.LURKER_TRIGGER,
+                twoBases));
+        assertFalse(ThreeHatchLurker.wantsExpansion(false, false, LurkerDefilerUltraTransition.LURKER_TRIGGER,
+                LurkerDefilerUltraTransition.ECONOMY_BASES));
+    }
 }
