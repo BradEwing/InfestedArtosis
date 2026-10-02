@@ -158,7 +158,7 @@ public abstract class BuildOrder {
             return plans;
         }
 
-        Plan macroHatchery = larvaBoundMacroHatchery(gameState);
+        Plan macroHatchery = larvaBoundMacroHatchery(gameState, plans);
         if (macroHatchery != null) {
             plans.add(macroHatchery);
         }
@@ -1412,19 +1412,25 @@ public abstract class BuildOrder {
      * and placing there keeps the request off the expansion path, so it never reserves a base and
      * is never held by the expansion backoff.
      *
+     * <p>Advanced unit plans the build created this frame are not in the queue yet, so their cost
+     * is added to the queued demand.
+     *
      * @param gameState current game state
+     * @param framePlans the plans the build order produced this frame
      * @return the macro hatchery plan, or null when the request is withheld or cannot be placed
      */
-    private Plan larvaBoundMacroHatchery(GameState gameState) {
+    private Plan larvaBoundMacroHatchery(GameState gameState, List<Plan> framePlans) {
         ResourceCount resourceCount = gameState.getResourceCount();
         boolean techReady = macroHatcheryTechReady(gameState.getTechProgression());
         int hatcheries = gameState.hatcheryCount();
         int outstanding = gameState.inFlightHatcheryPlans(true) + gameState.hatcheriesUnderConstruction(true);
         LarvaBoundMacroHatchery.Gate gate = LarvaBoundMacroHatchery.evaluate(techReady, gameState.numLarva(),
                 hatcheries, LarvaBoundMacroHatchery.afterQueuedDemand(resourceCount.availableMinerals(),
-                        gameState.getProductionQueue().advancedUnitMineralDemand()),
+                        gameState.getProductionQueue().advancedUnitMineralDemand()
+                                + frameAdvancedUnitDemand(framePlans, true)),
                 LarvaBoundMacroHatchery.afterQueuedDemand(resourceCount.availableGas(),
-                        gameState.getProductionQueue().advancedUnitGasDemand()),
+                        gameState.getProductionQueue().advancedUnitGasDemand()
+                                + frameAdvancedUnitDemand(framePlans, false)),
                 gameState.knownEnemyMobileGroundCombatUnitsAtOurBases(), outstanding);
 
         if (gate != LarvaBoundMacroHatchery.Gate.TRIGGER) {
@@ -1436,6 +1442,24 @@ public abstract class BuildOrder {
         PlanEvents.macroHatcheryGate(plan == null
                 ? LarvaBoundMacroHatchery.Gate.PLACEMENT_UNAVAILABLE : gate, techReady, hatcheries, outstanding);
         return plan;
+    }
+
+    /**
+     * The cost of the advanced unit plans in this frame's list, which the production queue has not
+     * received yet.
+     *
+     * @param plans the plans the build order produced this frame
+     * @param minerals true for the mineral cost, false for the gas cost
+     * @return the summed cost of the plans at {@link UnitPlan#ADVANCED_UNIT_PRIORITY}
+     */
+    static int frameAdvancedUnitDemand(List<Plan> plans, boolean minerals) {
+        int demand = 0;
+        for (Plan plan : plans) {
+            if (plan.getType() == PlanType.UNIT && plan.getPriority() == UnitPlan.ADVANCED_UNIT_PRIORITY) {
+                demand += minerals ? plan.mineralPrice() : plan.gasPrice();
+            }
+        }
+        return demand;
     }
 
     /**

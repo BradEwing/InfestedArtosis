@@ -379,32 +379,55 @@ class TwoHatchMutaTest {
         assertEquals(BuildOrder.ARMY_UPGRADE_PRIORITY, flyerAttackPriority(TwoHatchMuta.MUTALISKS_BEFORE_FLYER_UPGRADE + 1));
     }
 
+    private static final int FLOAT_BAR = 350;
+
+    private static final int MUTALISK_MINERALS = UnitType.Zerg_Mutalisk.mineralPrice();
+
     /**
      * Game M7CHH005 frame 8,158: 352 unreserved minerals while the Spire morphed bought an
      * expansion the first Mutalisks needed the bank for.
      */
     @Test
-    void floatingMineralsPlanNoExpansionWhileASpireIsCommittedAndTheFirstWaveIsUnissued() {
-        assertFalse(TwoHatchMuta.wantsBaseAdvantage(false, true, true, 0));
-        assertFalse(TwoHatchMuta.wantsBaseAdvantage(false, true, true,
-                TwoHatchMuta.MUTALISKS_BEFORE_FLYER_UPGRADE - 1));
+    void floatingMineralsPlanNoExpansionWhileTheFirstWaveOwnsTheBank() {
+        assertFalse(TwoHatchMuta.wantsBaseAdvantage(false, true, true, 352, FLOAT_BAR, 0));
+        assertFalse(TwoHatchMuta.wantsBaseAdvantage(false, true, true, FLOAT_BAR + 7 * MUTALISK_MINERALS, FLOAT_BAR, 0));
     }
 
     @Test
-    void floatingMineralsPlanAnExpansionBeforeASpireIsCommittedAndAfterTheFirstWave() {
-        assertTrue(TwoHatchMuta.wantsBaseAdvantage(false, true, false, 0));
-        assertTrue(TwoHatchMuta.wantsBaseAdvantage(false, true, true, TwoHatchMuta.MUTALISKS_BEFORE_FLYER_UPGRADE));
+    void aBankBeyondTheFirstWaveStillPlansAnExpansionWhileTheSpireMorphs() {
+        assertTrue(TwoHatchMuta.wantsBaseAdvantage(false, true, true, FLOAT_BAR + 7 * MUTALISK_MINERALS + 1,
+                FLOAT_BAR, 0));
+    }
+
+    @Test
+    void theFirstWaveCostShrinksAsMutalisksAreCounted() {
+        assertFalse(TwoHatchMuta.wantsBaseAdvantage(false, true, true, FLOAT_BAR + 3 * MUTALISK_MINERALS, FLOAT_BAR, 4));
+        assertTrue(TwoHatchMuta.wantsBaseAdvantage(false, true, true, FLOAT_BAR + 3 * MUTALISK_MINERALS + 1,
+                FLOAT_BAR, 4));
+    }
+
+    @Test
+    void sevenPlannedMutalisksStillHoldWhenQueuedPlansTakeTheBank() {
+        int afterQueuedDemand = 352 - 4 * MUTALISK_MINERALS;
+
+        assertFalse(TwoHatchMuta.wantsBaseAdvantage(false, true, true, afterQueuedDemand, FLOAT_BAR,
+                TwoHatchMuta.MUTALISKS_BEFORE_FLYER_UPGRADE));
+    }
+
+    @Test
+    void floatingMineralsPlanAnExpansionBeforeASpireIsCommitted() {
+        assertTrue(TwoHatchMuta.wantsBaseAdvantage(false, true, false, 352, FLOAT_BAR, 0));
     }
 
     @Test
     void fallingBehindOnBasesStillPlansAnExpansionDuringTheSpireMorph() {
-        assertTrue(TwoHatchMuta.wantsBaseAdvantage(true, false, true, 0));
-        assertTrue(TwoHatchMuta.wantsBaseAdvantage(true, true, true, 0));
+        assertTrue(TwoHatchMuta.wantsBaseAdvantage(true, false, true, 0, FLOAT_BAR, 0));
+        assertTrue(TwoHatchMuta.wantsBaseAdvantage(true, true, true, 352, FLOAT_BAR, 0));
     }
 
     @Test
     void noFloatNoLagPlansNoExpansion() {
-        assertFalse(TwoHatchMuta.wantsBaseAdvantage(false, false, false, 0));
+        assertFalse(TwoHatchMuta.wantsBaseAdvantage(false, false, false, 0, FLOAT_BAR, 0));
     }
 
     /**

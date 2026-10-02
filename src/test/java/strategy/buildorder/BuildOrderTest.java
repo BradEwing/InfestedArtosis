@@ -13,6 +13,7 @@ import macro.plan.Plan;
 import macro.plan.PlanBlocker;
 import macro.plan.PlanComparator;
 import macro.plan.PlanState;
+import macro.plan.UnitPlan;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import strategy.buildorder.opener.FourPool;
@@ -825,5 +826,17 @@ class BuildOrderTest {
         count.addUnit(UnitType.Zerg_Lurker);
 
         assertTrue(trigger.isMet(count));
+    }
+
+    @Test
+    void frameAdvancedUnitDemandCountsOnlyThisFramesAdvancedUnitPlans() {
+        List<Plan> plans = new ArrayList<>();
+        plans.add(new UnitPlan(UnitType.Zerg_Mutalisk, UnitPlan.ADVANCED_UNIT_PRIORITY));
+        plans.add(new UnitPlan(UnitType.Zerg_Mutalisk, UnitPlan.ADVANCED_UNIT_PRIORITY));
+        plans.add(new UnitPlan(UnitType.Zerg_Drone, 9000));
+
+        assertEquals(2 * UnitType.Zerg_Mutalisk.mineralPrice(), BuildOrder.frameAdvancedUnitDemand(plans, true));
+        assertEquals(2 * UnitType.Zerg_Mutalisk.gasPrice(), BuildOrder.frameAdvancedUnitDemand(plans, false));
+        assertEquals(0, BuildOrder.frameAdvancedUnitDemand(new ArrayList<>(), true));
     }
 }

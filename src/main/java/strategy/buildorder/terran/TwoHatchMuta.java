@@ -73,7 +73,10 @@ public class TwoHatchMuta extends TerranBase {
         boolean wantThird    = plannedAndCurrentHatcheries < 3 && spireCount > 0 && mutaCount > 5
                 || LurkerDefilerUltraTransition.wantsThirdBase(gameState.getGameTime(), baseCount, basesHeldOrReserved);
         boolean wantBaseAdvantage = wantsBaseAdvantage(behindOnBases(gameState), floatingMinerals,
-                gameState.structureCount(Readiness.COMMITTED, UnitType.Zerg_Spire) > 0, mutaCount);
+                gameState.structureCount(Readiness.COMMITTED, UnitType.Zerg_Spire) > 0,
+                gameState.getResourceCount().availableMinerals()
+                        - gameState.getProductionQueue().advancedUnitMineralDemand(),
+                gameState.floatingMineralsBar(), mutaCount);
 
         // Lair timing
         boolean wantLair = gameState.canPlanLair() && lairCount < 1 && baseCount >= 2;
@@ -342,8 +345,8 @@ public class TwoHatchMuta extends TerranBase {
      * time.
      *
      * @param larva free larva not yet handed to a plan
-     * @param availableMinerals minerals mined and not reserved by a queued plan
-     * @param availableGas gas mined and not reserved by a queued plan
+     * @param availableMinerals minerals mined and not reserved by a scheduled plan
+     * @param availableGas gas mined and not reserved by a scheduled plan
      * @see #planMutalisk(TechProgression, int, int, int, UnitTypeCount)
      */
     static List<Plan> planMutalisk(TechProgression techProgression, int desiredMutalisks, int gatherers,
@@ -387,19 +390,29 @@ public class TwoHatchMuta extends TerranBase {
     /**
      * Whether the build asks for an expansion beyond its natural and third.
      *
-     * <p>Falling behind the enemy on bases always asks. Floating minerals ask only until the first
-     * Mutalisk wave is issued once a Spire is committed, because the bank then belongs to the
-     * Mutalisks the Spire is about to unlock.
+     * <p>Falling behind the enemy on bases always asks. Floating minerals ask on the unreserved
+     * bank once a Spire is committed only after the Mutalisks still short of
+     * {@value #MUTALISKS_BEFORE_FLYER_UPGRADE} and the queued advanced unit plans are paid for, so
+     * the first wave's bank does not buy an expansion while a bank beyond it still does.
      *
      * @param behindOnBases whether the enemy holds more bases
      * @param floatingMinerals whether unreserved minerals sit above the float bar
      * @param spireCommitted whether a Spire is finished, morphing or planned
+     * @param mineralsAfterQueuedDemand unreserved minerals less queued advanced unit plans
+     * @param floatBar the unreserved minerals that count as floating
      * @param mutaliskCount Mutalisks counted, living and planned
      * @return true when the build should plan a new base
      */
     static boolean wantsBaseAdvantage(boolean behindOnBases, boolean floatingMinerals, boolean spireCommitted,
-                                      int mutaliskCount) {
-        boolean firstWaveOwnsTheBank = spireCommitted && mutaliskCount < MUTALISKS_BEFORE_FLYER_UPGRADE;
-        return behindOnBases || floatingMinerals && !firstWaveOwnsTheBank;
+                                      int mineralsAfterQueuedDemand, int floatBar, int mutaliskCount) {
+        if (behindOnBases) {
+            return true;
+        }
+        if (!spireCommitted) {
+            return floatingMinerals;
+        }
+        int firstWaveShortfall = Math.max(0, MUTALISKS_BEFORE_FLYER_UPGRADE - mutaliskCount);
+        int firstWaveCost = firstWaveShortfall * UnitType.Zerg_Mutalisk.mineralPrice();
+        return floatingMinerals && mineralsAfterQueuedDemand - firstWaveCost > floatBar;
     }
 }
