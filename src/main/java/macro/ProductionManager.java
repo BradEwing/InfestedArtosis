@@ -16,6 +16,7 @@ import info.TechProgression;
 import info.UnitTypeCount;
 import info.map.BuildingPlanner;
 import macro.plan.ColonyClaims;
+import macro.plan.HatcheryRequestReason;
 import macro.plan.Plan;
 import macro.plan.PlanBlocker;
 import macro.plan.PlanCancelSource;
@@ -1138,6 +1139,7 @@ public class ProductionManager {
         }
 
         reprioritizeHatcheriesForLarvaConstraint();
+        promoteStaleExpansions(gameState.getProductionQueue(), currentFrame);
         promoteArmyUpgrades(gameState.getProductionQueue(), activeBuildOrder, gameState.getUnitTypeCount(),
                 gameState.getTechProgression());
 
@@ -1165,6 +1167,43 @@ public class ProductionManager {
         schedulingBatch = new ArrayList<>();
         gameState.getPlansScheduled().addAll(outcome.scheduled);
         gameState.getProductionQueue().addAll(outcome.requeued);
+    }
+
+    /**
+     * Moves every queued expansion Hatchery plan that has waited in PLANNED past
+     * {@link ProductionQueue#STALE_PLANNED_FRAMES} into {@link BuildOrder#STALE_EXPANSION_PRIORITY}.
+     *
+     * <p>A macro Hatchery and a Hatchery plan with no recorded request reason keep their priority.
+     * The move is one way: a plan already at or ahead of the band keeps its priority.
+     *
+     * @param productionQueue plans not yet scheduled
+     * @param frame the current frame
+     */
+    static void promoteStaleExpansions(ProductionQueue productionQueue, int frame) {
+        Set<Plan> stale = new HashSet<>();
+        for (Plan plan : productionQueue) {
+            if (isExpansionHatchery(plan)
+                    && plan.getPriority() > BuildOrder.STALE_EXPANSION_PRIORITY
+                    && ProductionQueue.isStale(plan, frame)) {
+                stale.add(plan);
+            }
+        }
+        if (stale.isEmpty()) {
+            return;
+        }
+        productionQueue.setPriorityWhere(stale::contains, BuildOrder.STALE_EXPANSION_PRIORITY);
+        for (Plan plan : stale) {
+            PlanEvents.promoted(plan);
+        }
+    }
+
+    private static boolean isExpansionHatchery(Plan plan) {
+        return plan.getType() == PlanType.BUILDING
+                && plan.getPlannedUnit() == UnitType.Zerg_Hatchery
+                && plan.getState() == PlanState.PLANNED
+                && !plan.isMacroHatchery()
+                && plan.getHatcheryRequestReason() != null
+                && plan.getHatcheryRequestReason() != HatcheryRequestReason.MACRO;
     }
 
     /**

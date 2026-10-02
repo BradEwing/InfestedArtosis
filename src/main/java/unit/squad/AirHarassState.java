@@ -15,8 +15,8 @@ import java.util.Set;
 
 /**
  * Everything a squad in {@link SquadStatus#HARASS} carries between frames: the phase, the base or exposed group of
- * enemies it is raiding and the point it strikes, the hit points it started with, what it has killed and lost, and
- * the per-Mutalisk memory that keeps evasion and targets from flapping.
+ * enemies it is raiding and the point it strikes, the point the whole flock is moving to, the hit points it started
+ * with, what it has killed and lost, and the per-Mutalisk memory that keeps evasion and targets from flapping.
  *
  * <p>TRANSIT is the flight to the target. STRIKE starts once the flock reaches it. A retarget starts TRANSIT
  * again. PROBE replaces TRANSIT on a base whose anti-air sighting is stale: one Mutalisk flies to the probe point,
@@ -62,6 +62,9 @@ public class AirHarassState {
     private int buildingsKilled;
     private int otherKilled;
     private int mutasLost;
+    private Position flockPoint;
+    private Position flockGoal;
+    private int flockPointUntilFrame;
     private final Set<Integer> knownAntiAir = new HashSet<>();
     private int proberId = -1;
     private int proberPeakHitPoints;
@@ -249,6 +252,31 @@ public class AirHarassState {
      */
     public AirHarassTargeting.MutaMemory memoryFor(int unitId) {
         return mutaMemory.computeIfAbsent(unitId, id -> new AirHarassTargeting.MutaMemory());
+    }
+
+    /**
+     * Whether the flock's shared point must be decided again: none is held, the goal it was decided for has moved,
+     * or its commitment has run out.
+     *
+     * @param goal the point the flock is heading for
+     * @param now current frame
+     * @return true when due
+     */
+    public boolean flockPointDue(Position goal, int now) {
+        return flockPoint == null || !goal.equals(flockGoal) || now >= flockPointUntilFrame;
+    }
+
+    /**
+     * Holds the flock's shared point until a frame.
+     *
+     * @param goal the point it was decided for
+     * @param point the shared point, or null with none
+     * @param until frame the commitment runs out
+     */
+    public void holdFlockPoint(Position goal, Position point, int until) {
+        flockGoal = goal;
+        flockPoint = point;
+        flockPointUntilFrame = until;
     }
 
     /**

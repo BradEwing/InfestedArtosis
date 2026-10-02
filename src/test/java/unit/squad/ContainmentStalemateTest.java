@@ -304,12 +304,12 @@ class ContainmentStalemateTest {
         ContainmentEscalation escalation = new ContainmentEscalation();
         ContainmentStalemate stalemate = new ContainmentStalemate();
         int frame = FIRST_ENTRY;
-        assertTrue(SquadManager.mayTakeArc(escalation, stalemate, frame, false, true, false));
+        assertTrue(SquadManager.mayTakeArc(escalation, stalemate, frame, false, true, false, false));
         assertTrue(stalemate.onTimedOut(0, ARMY_OUTSIDE, UNREACHABLE, frame));
         assertTrue(stalemate.holdsEntry(frame + 1));
-        assertFalse(SquadManager.mayTakeArc(escalation, stalemate, frame + 1, false, true, false));
-        assertFalse(SquadManager.mayTakeArc(escalation, stalemate, frame + HOLD_FRAMES - 1, false, true, false));
-        assertTrue(SquadManager.mayTakeArc(escalation, stalemate, frame + HOLD_FRAMES, false, true, false));
+        assertFalse(SquadManager.mayTakeArc(escalation, stalemate, frame + 1, false, true, false, false));
+        assertFalse(SquadManager.mayTakeArc(escalation, stalemate, frame + HOLD_FRAMES - 1, false, true, false, false));
+        assertTrue(SquadManager.mayTakeArc(escalation, stalemate, frame + HOLD_FRAMES, false, true, false, false));
     }
 
     @Test
@@ -320,18 +320,18 @@ class ContainmentStalemateTest {
         int afterHold = FIRST_ENTRY + HOLD_FRAMES;
         assertFalse(stalemate.holdsEntry(afterHold));
         assertTrue(stalemate.barsEntry(afterHold));
-        assertFalse(SquadManager.mayTakeArc(escalation, stalemate, afterHold, false, true, false));
+        assertFalse(SquadManager.mayTakeArc(escalation, stalemate, afterHold, false, true, false, false));
         stalemate.onFrame(200, 100, true, SAFE);
-        assertTrue(SquadManager.mayTakeArc(escalation, stalemate, afterHold, false, true, false));
+        assertTrue(SquadManager.mayTakeArc(escalation, stalemate, afterHold, false, true, false, false));
     }
 
     @Test
     void theEntrySeamKeepsTheOtherEntryRules() {
         ContainmentEscalation escalation = new ContainmentEscalation();
         ContainmentStalemate stalemate = new ContainmentStalemate();
-        assertFalse(SquadManager.mayTakeArc(escalation, stalemate, FIRST_ENTRY, true, true, false));
-        assertFalse(SquadManager.mayTakeArc(escalation, stalemate, FIRST_ENTRY, false, false, false));
-        assertFalse(SquadManager.mayTakeArc(escalation, stalemate, FIRST_ENTRY, false, true, true));
+        assertFalse(SquadManager.mayTakeArc(escalation, stalemate, FIRST_ENTRY, true, true, false, false));
+        assertFalse(SquadManager.mayTakeArc(escalation, stalemate, FIRST_ENTRY, false, false, false, false));
+        assertFalse(SquadManager.mayTakeArc(escalation, stalemate, FIRST_ENTRY, false, true, true, false));
     }
 
     @Test
