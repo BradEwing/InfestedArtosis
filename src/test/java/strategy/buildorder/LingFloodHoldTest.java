@@ -45,6 +45,11 @@ class LingFloodHoldTest {
     }
 
     @Test
+    void releaseCutoffIsSixMinutes() {
+        assertEquals(new Time(6, 0), LingFloodHold.LAIR_RELEASE_CUTOFF);
+    }
+
+    @Test
     void doesNotStandOnLairTechAlone() {
         assertFalse(LingFloodHold.isActive(false, true, EARLY));
     }

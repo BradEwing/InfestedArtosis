@@ -316,6 +316,19 @@ public class ObservedUnitTracker {
     }
 
     /**
+     * Whether a unit of any of these types was observed as that type at or before t, counting units since destroyed.
+     * A Hatchery first seen early that later becomes a Lair counts from the frame it was first seen as the Lair.
+     */
+    public boolean hasObservedAnyAsTypeBy(Time t, UnitType... types) {
+        for (UnitType type : types) {
+            if (hasObservedAsTypeBy(type, t)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * Whether a living unit of this type was still incomplete when last observed, at or after t.
      */
     public boolean hasObservedIncompleteSince(UnitType type, Time t) {

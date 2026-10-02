@@ -328,7 +328,7 @@ public class Reactions {
      */
     private void lingFloodHoldReaction() {
         boolean lairTechSeen = gameState.getObservedUnitTracker()
-                .hasObservedAnyBeforeTime(gameState.getGameTime(), TwoHatchLing.LAIR_TECH);
+                .hasObservedAnyAsTypeBy(LingFloodHold.LAIR_RELEASE_CUTOFF, TwoHatchLing.LAIR_TECH);
         boolean holding = LingFloodHold.isActive(isLingFloodDetected(gameState.getStrategyTracker()), lairTechSeen, gameState.getGameTime());
         gameState.setLingFloodHold(holding);
         if (holding) {

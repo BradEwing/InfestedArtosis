@@ -151,6 +151,34 @@ class ObservedUnitTrackerTest {
     }
 
     @Test
+    void hatcheryRelabelledAsALairAfterTheCutoffIsNotLairTechByTheCutoff() {
+        ObservedUnit hatchery = ObservedUnitFixture.observedUnit(UnitType.Zerg_Hatchery, new Time(2, 30));
+        ObservedUnitTracker tracker = ObservedUnitFixture.trackerHolding(hatchery);
+        ObservedUnitFixture.changeType(hatchery, UnitType.Zerg_Lair, new Time(8, 30));
+
+        assertFalse(tracker.hasObservedAnyAsTypeBy(WALL_CUTOFF, UnitType.Zerg_Lair, UnitType.Zerg_Spire));
+        assertTrue(tracker.hasObservedAnyAsTypeBy(new Time(8, 30), UnitType.Zerg_Lair, UnitType.Zerg_Spire));
+    }
+
+    @Test
+    void hatcheryRelabelledAsALairBeforeTheCutoffIsLairTechByTheCutoff() {
+        ObservedUnit hatchery = ObservedUnitFixture.observedUnit(UnitType.Zerg_Hatchery, new Time(2, 30));
+        ObservedUnitTracker tracker = ObservedUnitFixture.trackerHolding(hatchery);
+        ObservedUnitFixture.changeType(hatchery, UnitType.Zerg_Lair, new Time(3, 35));
+
+        assertTrue(tracker.hasObservedAnyAsTypeBy(WALL_CUTOFF, UnitType.Zerg_Lair, UnitType.Zerg_Spire));
+    }
+
+    @Test
+    void lairTechObservedExactlyAtTheCutoffCounts() {
+        ObservedUnit spire = ObservedUnitFixture.observedUnit(UnitType.Zerg_Spire, WALL_CUTOFF);
+        ObservedUnitTracker tracker = ObservedUnitFixture.trackerHolding(spire);
+
+        assertTrue(tracker.hasObservedAnyAsTypeBy(WALL_CUTOFF, UnitType.Zerg_Spire));
+        assertFalse(tracker.hasObservedAnyAsTypeBy(new Time(5, 59), UnitType.Zerg_Spire));
+    }
+
+    @Test
     void destroyedUnitStillCountsAsObserved() {
         ObservedUnit spire = ObservedUnitFixture.observedUnit(UnitType.Zerg_Spire, DRONE_OBSERVED);
         spire.setDestroyedFrame(POOL_COMPLETED);
