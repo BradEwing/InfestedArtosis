@@ -690,6 +690,200 @@ class DroneRoundTest {
     }
 
     @Test
+    void lossesAfterARoundClosesDoNotLowerTheNextMilestoneBelowArmyProduced() {
+        DroneRound round = openRound();
+        round.update(FRAME + 1, DroneRound.FIRST_ROUND_ARMY_UNITS, round.getDroneTarget(), CAP, WANTED, CALM);
+        assertFalse(round.isActive());
+        int milestone = round.getArmyMilestone();
+        assertEquals(DroneRound.FIRST_ROUND_ARMY_UNITS + DroneRound.ARMY_UNITS_PER_ROUND, milestone);
+
+        int drones = round.getDroneTarget();
+        int living = DroneRound.FIRST_ROUND_ARMY_UNITS;
+        for (int replaced = 0; replaced < DroneRound.ARMY_UNITS_PER_ROUND; replaced++) {
+            living -= 3;
+            round.update(FRAME + 10 + replaced * 2, living, drones, CAP, WANTED, CALM);
+            living += 3;
+            round.update(FRAME + 11 + replaced * 2, living, drones, CAP, WANTED, CALM);
+        }
+
+        assertTrue(living < milestone);
+        assertTrue(round.isActive());
+        assertEquals(DroneRound.OpenReason.ARMY_MILESTONE, round.getReason());
+    }
+
+    @Test
+    void aLossWithNoReplacementAddsNoArmyProduced() {
+        DroneRound round = new DroneRound();
+        round.update(FRAME, 5, DRONES, CAP, WANTED, CALM);
+        round.update(FRAME + 1, 2, DRONES, CAP, WANTED, CALM);
+
+        assertEquals(5, round.getArmyProduced());
+        assertFalse(round.isActive());
+    }
+
+    private DroneRound calmRound(int workers) {
+        DroneRound round = new DroneRound();
+        round.update(FRAME, NO_ARMY, DRONES, CAP, WANTED, CALM, held().eligible(false).workers(workers).build());
+        return round;
+    }
+
+    @Test
+    void aCalmEconomyOpensARoundWithNoArmyMilestoneAndNoContain() {
+        DroneRound round = calmRound(SOFT_CAP - DroneRound.CALM_ECONOMY_WORKER_DEFICIT);
+
+        assertTrue(round.isActive());
+        assertEquals(DroneRound.OpenReason.CALM_ECONOMY, round.getReason());
+        assertEquals(DRONES + DroneRound.DRONES_PER_ROUND, round.getDroneTarget());
+        assertEquals(DroneRound.FIRST_ROUND_ARMY_UNITS, round.getArmyMilestone());
+    }
+
+    @Test
+    void noCalmEconomyRoundOpensWhileTheBuildHoldsItBack() {
+        int workers = SOFT_CAP - DroneRound.CALM_ECONOMY_WORKER_DEFICIT;
+        DroneRound round = new DroneRound();
+
+        round.update(FRAME, NO_ARMY, DRONES, CAP, WANTED, CALM,
+                held().eligible(false).workers(workers).calmEconomyHeld(true).build());
+
+        assertFalse(round.isActive());
+    }
+
+    @Test
+    void aHeldCalmEconomyDoesNotStopAnArmyMilestoneRound() {
+        DroneRound round = new DroneRound();
+
+        round.update(FRAME, DroneRound.FIRST_ROUND_ARMY_UNITS, DRONES, CAP, WANTED, CALM,
+                held().eligible(false).calmEconomyHeld(true).build());
+
+        assertEquals(DroneRound.OpenReason.ARMY_MILESTONE, round.getReason());
+    }
+
+    @Test
+    void noCalmEconomyRoundOpensBeforeTheCalmInterval() {
+        DroneRound round = new DroneRound();
+        int workers = SOFT_CAP - DroneRound.CALM_ECONOMY_WORKER_DEFICIT;
+        round.update(FRAME, NO_ARMY, DRONES, CAP, WANTED, THREAT, held().eligible(false).workers(workers).build());
+
+        int early = FRAME + DroneRound.CALM_ECONOMY_FRAMES - 1;
+        round.update(early, NO_ARMY, DRONES, CAP, WANTED, CALM, held().eligible(false).workers(workers).build());
+        assertFalse(round.isActive());
+
+        round.update(early + 1, NO_ARMY, DRONES, CAP, WANTED, CALM, held().eligible(false).workers(workers).build());
+        assertTrue(round.isActive());
+    }
+
+    @Test
+    void noCalmEconomyRoundOpensWhenTheWorkersAreNotMateriallyBelowTheSoftCap() {
+        assertFalse(calmRound(SOFT_CAP - DroneRound.CALM_ECONOMY_WORKER_DEFICIT + 1).isActive());
+    }
+
+    @Test
+    void noCalmEconomyRoundOpensForABuildThatRunsNoRounds() {
+        DroneRound round = new DroneRound();
+
+        round.update(FRAME, NO_ARMY, DRONES, 0, WANTED, CALM, held().eligible(false).workers(10).build());
+
+        assertFalse(round.isActive());
+    }
+
+    @Test
+    void noCalmEconomyRoundOpensPastTheBuildsDroneCapOrWhenTheGatesWantNoDrone() {
+        DroneRound capped = new DroneRound();
+        capped.update(FRAME, NO_ARMY, CAP, CAP, WANTED, CALM, held().eligible(false).workers(10).build());
+        assertFalse(capped.isActive());
+
+        DroneRound saturated = new DroneRound();
+        saturated.update(FRAME, NO_ARMY, DRONES, CAP, SATURATED, CALM, held().eligible(false).workers(10).build());
+        assertFalse(saturated.isActive());
+    }
+
+    @Test
+    void aCalmEconomyRoundIsCutToTheBuildsDroneCap() {
+        DroneRound round = new DroneRound();
+
+        round.update(FRAME, NO_ARMY, CAP - 1, CAP, WANTED, CALM, held().eligible(false).workers(10).build());
+
+        assertEquals(CAP, round.getDroneTarget());
+    }
+
+    @Test
+    void aCalmEconomyRoundIsCutToTheRoomUnderTheLowerCap() {
+        DroneRound round = new DroneRound();
+
+        round.update(FRAME, NO_ARMY, DRONES, CAP, WANTED, CALM,
+                held().eligible(false).workers(SOFT_CAP - DroneRound.CALM_ECONOMY_WORKER_DEFICIT)
+                        .hardCap(SOFT_CAP - DroneRound.CALM_ECONOMY_WORKER_DEFICIT + 2).build());
+
+        assertEquals(2, round.getRoundSize());
+    }
+
+    @Test
+    void aCalmEconomyRoundClosingOnSizeOrTimeoutLeavesTheMilestoneAlone() {
+        DroneRound sized = calmRound(10);
+        sized.update(FRAME + 1, NO_ARMY, DRONES + DroneRound.DRONES_PER_ROUND, CAP, WANTED, CALM,
+                held().eligible(false).workers(10).build());
+        assertFalse(sized.isActive());
+        assertEquals(DroneRound.FIRST_ROUND_ARMY_UNITS, sized.getArmyMilestone());
+
+        DroneRound timedOut = calmRound(10);
+        timedOut.update(FRAME + DroneRound.MAX_ROUND_FRAMES, NO_ARMY, DRONES, CAP, WANTED, CALM,
+                held().eligible(false).workers(10).build());
+        assertFalse(timedOut.isActive());
+        assertEquals(DroneRound.FIRST_ROUND_ARMY_UNITS, timedOut.getArmyMilestone());
+    }
+
+    @Test
+    void aHydraliskMorphingIntoALurkerCountsAsOneMoreArmyUnit() {
+        DroneRound round = new DroneRound();
+        round.update(FRAME, 4, DRONES, CAP, WANTED, CALM);
+        round.update(FRAME + 1, 3, DRONES, CAP, WANTED, CALM);
+        round.update(FRAME + 2, 4, DRONES, CAP, WANTED, CALM);
+
+        assertEquals(5, round.getArmyProduced());
+    }
+
+    @Test
+    void aThreatClosesACalmEconomyRoundAndLeavesTheMilestoneAlone() {
+        DroneRound round = calmRound(10);
+        PlanEvents.register(recorder());
+
+        round.update(FRAME + 1, NO_ARMY, DRONES, CAP, WANTED, THREAT);
+
+        assertFalse(round.isActive());
+        assertEquals(DroneRound.FIRST_ROUND_ARMY_UNITS, round.getArmyMilestone());
+        assertEquals(Collections.singletonList("CLOSE:CALM_ECONOMY:THREAT:" + DRONES), reports);
+    }
+
+    @Test
+    void anotherCalmEconomyRoundWaitsForTheCooldownAfterTheLastCloses() {
+        DroneRound round = calmRound(10);
+        int close = FRAME + 10;
+        round.update(close, NO_ARMY, DRONES + DroneRound.DRONES_PER_ROUND, CAP, WANTED, CALM,
+                held().eligible(false).workers(10).build());
+        assertFalse(round.isActive());
+        assertEquals(close, round.getLastCalmEconomyCloseFrame());
+
+        int early = close + DroneRound.CALM_ECONOMY_COOLDOWN_FRAMES - 1;
+        round.update(early, NO_ARMY, DRONES + DroneRound.DRONES_PER_ROUND, CAP, WANTED, CALM,
+                held().eligible(false).workers(10).build());
+        assertFalse(round.isActive());
+
+        round.update(early + 1, NO_ARMY, DRONES + DroneRound.DRONES_PER_ROUND, CAP, WANTED, CALM,
+                held().eligible(false).workers(10).build());
+        assertTrue(round.isActive());
+    }
+
+    @Test
+    void anArmyMilestoneRoundOutranksACalmEconomyRound() {
+        DroneRound round = new DroneRound();
+
+        round.update(FRAME, DroneRound.FIRST_ROUND_ARMY_UNITS, DRONES, CAP, WANTED, CALM,
+                held().eligible(false).workers(10).build());
+
+        assertEquals(DroneRound.OpenReason.ARMY_MILESTONE, round.getReason());
+    }
+
+    @Test
     void anArmyMilestoneRoundLogsItsOpenAndACloseReasonForEachExit() {
         PlanEvents.register(recorder());
         DroneRound round = openRound();

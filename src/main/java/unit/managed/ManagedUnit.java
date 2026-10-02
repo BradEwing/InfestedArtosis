@@ -162,6 +162,14 @@ public class ManagedUnit {
         return unit.getPosition(); 
     }
 
+    /**
+     * @return true when the unit holds a fight target that still exists and is within its weapon range, as the game
+     *     reports it
+     */
+    public boolean isFightTargetInWeaponRange() {
+        return fightTarget != null && fightTarget.exists() && unit.isInWeaponRange(fightTarget);
+    }
+
     public boolean isReady() { 
         return this.isReady; 
     }

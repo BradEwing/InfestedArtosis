@@ -209,7 +209,8 @@ public class PlanEventLogger implements PlanEventSink {
      * of the assigned main, so the frame is the row's frame.
      * <p>
      * PROMOTE rows are written when an open drone round moves a queued Drone ahead of the advanced
-     * unit band; priority is the new priority and age_frames how long the Drone had been queued.
+     * unit band, and when a stale expansion Hatchery plan moves into the stale expansion band;
+     * priority is the new priority and age_frames how long the plan had been queued.
      * <p>
      * GEYSER_DEPLETED rows are written the first frame the geyser under one of our completed
      * Extractors reads empty, and leave every plan column empty. The geyser's tile is in
@@ -232,16 +233,18 @@ public class PlanEventLogger implements PlanEventSink {
      * <p>
      * DRONE_ROUND_OPEN and DRONE_ROUND_CLOSE rows are written when a {@link macro.DroneRound} opens
      * and closes, and leave every plan column empty. item is the round's kind, ARMY_MILESTONE or
-     * CONTAIN_HELD, on both rows. drone_round_reason is the kind again on an OPEN row and the close
+     * CONTAIN_HELD or CALM_ECONOMY, on both rows. drone_round_reason is the kind again on an OPEN row and the close
      * reason on a CLOSE row: SIZE, BUILD_CAP, SOFT_CAP, HARD_CAP, THREAT, CONTAIN_ENDED, TIMEOUT or
-     * INELIGIBLE. drone_round_drones is Drones hatched plus Drones in an egg at that frame, so the CLOSE
+     * INELIGIBLE; a calm-economy round closes only on SIZE, BUILD_CAP, HARD_CAP, THREAT or TIMEOUT.
+     * drone_round_drones is Drones hatched plus Drones in an egg at that frame, so the CLOSE
      * row's count less the OPEN row's is the Drones a round added net of any Drones that died during
      * it. drone_round_size is the Drones the round
-     * set out to add; a contain-held round's size is already cut to the workers left under the lower cap.
+     * set out to add; a contain-held or calm-economy round's size is already cut to the workers left under
+     * the lower cap.
      * contain_held_frames is how long our ground squads had held the running contain chain, zero with none, so
      * the OPEN row's frame less it is the chain start. drone_round_workers, drone_round_soft_cap and
-     * drone_round_hard_cap are the mineral and gas workers and the two worker caps a contain-held round
-     * measures them against. contain_period_start_frame is the start of the running contain period, which an
+     * drone_round_hard_cap are the mineral and gas workers and the two worker caps a contain-held or
+     * calm-economy round measures them against. contain_period_start_frame is the start of the running contain period, which an
      * enemy break does not end, or -1 with none; it groups the contain-held rounds one period opened.
      * Those eight columns are set only on the two DRONE_ROUND rows.
      * <p>
