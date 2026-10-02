@@ -176,6 +176,11 @@ class MacroHatcheryTemplateTest {
     }
 
     @Test
+    void aBuildThatSaysNothingAboutACapLetsTheSharedStepRun() {
+        assertTrue(new SilentBuildOrder().allowsLarvaBoundMacroHatchery(null));
+    }
+
+    @Test
     void theSharedStepStandsDownBehindABuildsOwnHatchery() {
         List<Plan> plans = new ArrayList<>();
         plans.add(BuildOrder.macroHatcheryPlan(FRAME, MAIN_TILE));

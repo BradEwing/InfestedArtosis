@@ -11,6 +11,7 @@ import info.UnitTypeCount;
 import macro.Reactions;
 import macro.plan.Plan;
 import strategy.buildorder.ArmyUpgradeTrigger;
+import strategy.buildorder.BuildOrder;
 import strategy.buildorder.LarvaBoundMacroHatchery;
 
 import java.util.ArrayList;
@@ -68,7 +69,9 @@ public class TwoHatchMuta extends TerranBase {
 
         // Base timing
         boolean wantNatural  = plannedAndCurrentHatcheries < 2 && droneCount >= 12;
-        boolean wantThird    = plannedAndCurrentHatcheries < 3 && spireCount > 0 && mutaCount > 5;
+        int basesHeldOrReserved = baseData.currentAndReservedCount();
+        boolean wantThird    = plannedAndCurrentHatcheries < 3 && spireCount > 0 && mutaCount > 5
+                || LurkerDefilerUltraTransition.wantsThirdBase(gameState.getGameTime(), baseCount, basesHeldOrReserved);
         boolean wantBaseAdvantage = behindOnBases(gameState) || floatingMinerals;
 
         // Lair timing
@@ -98,7 +101,8 @@ public class TwoHatchMuta extends TerranBase {
 
         // Bases
         if (wantNatural || wantThird || wantBaseAdvantage) {
-            Plan expansionPlan = this.planNewBase(gameState);
+            Plan expansionPlan = this.planNewBase(gameState,
+                    LurkerDefilerUltraTransition.prefersGasBase(basesHeldOrReserved));
             if (expansionPlan != null) {
                 plans.add(expansionPlan);
             }
@@ -247,7 +251,23 @@ public class TwoHatchMuta extends TerranBase {
 
     @Override
     public boolean needLair() {
-        return true; 
+        return true;
+    }
+
+    /**
+     * Hands over to {@link LurkerDefilerUltra} once enemy Goliaths shut the Mutalisks out or the
+     * clock runs past them, and the economy gate in {@link LurkerDefilerUltraTransition} is met.
+     */
+    @Override
+    public boolean shouldTransition(GameState gameState) {
+        return LurkerDefilerUltraTransition.shouldEnter(gameState, getName(),
+                LurkerDefilerUltraTransition.twoHatchMutaTrigger(gameState.enemyUnitCount(UnitType.Terran_Goliath),
+                        gameState.getGameTime()));
+    }
+
+    @Override
+    public Set<BuildOrder> transition(GameState gameState) {
+        return LurkerDefilerUltraTransition.candidates();
     }
 
     static boolean shouldPlanOverlord(int spireCount, int overlordCount, boolean excessSupply) {

@@ -463,7 +463,16 @@ public class GameState {
     }
 
     public Base reserveBase() {
-        return baseData.reserveBase(getGameTime().getFrames());
+        return reserveBase(false);
+    }
+
+    /**
+     * Reserves the next expansion, see {@link BaseData#reserveBase(int, boolean)}.
+     *
+     * @param preferGas whether a base with no geyser is skipped while a base with one is available
+     */
+    public Base reserveBase(boolean preferGas) {
+        return baseData.reserveBase(getGameTime().getFrames(), preferGas);
     }
 
     public void claimBase(Unit hatchery) {
@@ -1548,11 +1557,33 @@ public class GameState {
         return SupplyCapacity.isExcess(self.supplyTotal(), self.supplyUsed());
     }
 
+    /**
+     * Picks and reserves a site for a tech building at the first of {@link BaseData#techBuildingBases()} with room
+     * on creep: the main while we hold it and it has room, otherwise another base we hold.
+     *
+     * @param unitType the tech building
+     * @return the site, or null when no held base has room on creep
+     */
     public TilePosition getTechBuildingLocation(UnitType unitType) {
-        Base main = baseData.getMainBase();
-        TilePosition position = buildingPlanner.getLocationForTechBuilding(main, unitType);
-        buildingPlanner.reservePlannedBuildingTiles(position, unitType);
-        return position;
+        for (Base base : baseData.techBuildingBases()) {
+            TilePosition position = buildingPlanner.getLocationForTechBuilding(base, unitType);
+            if (position != null) {
+                buildingPlanner.reservePlannedBuildingTiles(position, unitType);
+                return position;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * The base {@link #getTechBuildingLocation} would place the building at now. Reserves nothing.
+     *
+     * @param unitType the tech building
+     * @return the first held base with room on creep for the building, or null when none has
+     */
+    public Base techBuildingSiteBase(UnitType unitType) {
+        return BaseData.firstBaseWithSite(baseData.techBuildingBases(),
+                base -> buildingPlanner.getLocationForTechBuilding(base, unitType) != null);
     }
 
     /**
@@ -2059,6 +2090,14 @@ public class GameState {
             Iterable<Plan> morphing) {
         return countHatcheryPlans(false, queued, scheduled, building, morphing)
                 + countHatcheryPlans(true, queued, scheduled, building, morphing);
+    }
+
+    /**
+     * Macro hatcheries finished, under construction and planned, including any an earlier build
+     * in the game made.
+     */
+    public int macroHatcheries() {
+        return baseData.numMacroHatcheries() + inFlightHatcheryPlans(true) + hatcheriesUnderConstruction(true);
     }
 
     /**

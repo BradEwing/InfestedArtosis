@@ -22,4 +22,5 @@ public enum PlanCancelReason {
     ALREADY_IMPOSSIBLE,
     EXTRACTOR_TRICK,
     UNKNOWN,
+    MACRO_HATCHERY_CAP,
 }
