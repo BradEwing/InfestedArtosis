@@ -45,8 +45,11 @@ public final class LurkerDefilerUltraTransition {
     /** Lurkers 3HatchLurker has morphed before it hands over. Owner decision. */
     static final int LURKER_TRIGGER = 4;
 
-    /** Hydralisks {@link ThreeHatchHydraTerran} has produced before it hands over. */
-    static final int HYDRALISK_TRIGGER = 16;
+    /**
+     * Hydralisks {@link ThreeHatchHydraTerran} has produced before it hands over, the build's own
+     * mech target. Handing over earlier would morph the hydralisk army into Lurkers in the mid game.
+     */
+    static final int HYDRALISK_TRIGGER = ThreeHatchHydraTerran.MECH_HYDRALISKS;
 
     /** Bases held before the third base is asked for: the main and the natural. */
     static final int THIRD_BASE_AFTER_BASES = ECONOMY_BASES - 1;
@@ -102,13 +105,17 @@ public final class LurkerDefilerUltraTransition {
 
     /**
      * The 3HatchHydraZvT trigger. Hydralisks produced rather than living, so a build that keeps
-     * losing its Hydralisks still hands over once it has made them.
+     * losing its Hydralisks still hands over once it has made them, and only after Muscular
+     * Augments and Grooved Spines are researched.
      *
      * @param hydralisksProduced Hydralisks this game has produced
-     * @return {@link Trigger#HYDRALISKS} once enough have been produced, else null
+     * @param muscularAugments whether Muscular Augments is researched
+     * @param groovedSpines whether Grooved Spines is researched
+     * @return {@link Trigger#HYDRALISKS} once enough have been produced and both are researched, else null
      */
-    static Trigger threeHatchHydraTrigger(int hydralisksProduced) {
-        return hydralisksProduced >= HYDRALISK_TRIGGER ? Trigger.HYDRALISKS : null;
+    static Trigger threeHatchHydraTrigger(int hydralisksProduced, boolean muscularAugments, boolean groovedSpines) {
+        return hydralisksProduced >= HYDRALISK_TRIGGER && muscularAugments && groovedSpines
+                ? Trigger.HYDRALISKS : null;
     }
 
     /**

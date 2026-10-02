@@ -3,8 +3,8 @@ package strategy.buildorder.terran;
 import bwapi.Race;
 import bwapi.UnitType;
 import bwapi.UpgradeType;
+import info.UnitTypeCount;
 import org.junit.jupiter.api.Test;
-import strategy.buildorder.ArmyUpgradeTrigger;
 import strategy.buildorder.LarvaBoundMacroHatchery;
 
 import java.util.Arrays;
@@ -13,8 +13,6 @@ import java.util.HashSet;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ThreeHatchHydraTerranTest {
@@ -88,20 +86,29 @@ class ThreeHatchHydraTerranTest {
     void speedAndRangeMoveAheadOfTheHydraliskStreamBeforeTheEvolutionUpgrades() {
         ThreeHatchHydraTerran build = new ThreeHatchHydraTerran();
 
-        ArmyUpgradeTrigger speed = build.armyUpgradeTrigger(UpgradeType.Muscular_Augments);
-        ArmyUpgradeTrigger range = build.armyUpgradeTrigger(UpgradeType.Grooved_Spines);
-        ArmyUpgradeTrigger missile = build.armyUpgradeTrigger(UpgradeType.Zerg_Missile_Attacks);
-        ArmyUpgradeTrigger carapace = build.armyUpgradeTrigger(UpgradeType.Zerg_Carapace);
+        int denTrigger = ThreeHatchHydraTerran.HYDRALISKS_BEFORE_DEN_UPGRADE_PRIORITY;
+        int evolutionTrigger = ThreeHatchHydraTerran.HYDRALISKS_BEFORE_EVOLUTION_UPGRADE_PRIORITY;
 
-        assertNotNull(speed);
-        assertNotNull(range);
-        assertNotNull(missile);
-        assertNotNull(carapace);
-        assertNull(build.armyUpgradeTrigger(UpgradeType.Metabolic_Boost));
+        assertFalse(build.isArmyUpgradeTriggered(UpgradeType.Muscular_Augments, hydralisks(denTrigger - 1)));
+        assertTrue(build.isArmyUpgradeTriggered(UpgradeType.Muscular_Augments, hydralisks(denTrigger)));
+        assertFalse(build.isArmyUpgradeTriggered(UpgradeType.Grooved_Spines, hydralisks(denTrigger - 1)));
+        assertTrue(build.isArmyUpgradeTriggered(UpgradeType.Grooved_Spines, hydralisks(denTrigger)));
+        assertFalse(build.isArmyUpgradeTriggered(UpgradeType.Zerg_Missile_Attacks, hydralisks(evolutionTrigger - 1)));
+        assertTrue(build.isArmyUpgradeTriggered(UpgradeType.Zerg_Missile_Attacks, hydralisks(evolutionTrigger)));
+        assertFalse(build.isArmyUpgradeTriggered(UpgradeType.Zerg_Carapace, hydralisks(evolutionTrigger - 1)));
+        assertTrue(build.isArmyUpgradeTriggered(UpgradeType.Zerg_Carapace, hydralisks(evolutionTrigger)));
+    }
+
+    private static UnitTypeCount hydralisks(int living) {
+        UnitTypeCount count = new UnitTypeCount();
+        for (int i = 0; i < living; i++) {
+            count.addUnit(UnitType.Zerg_Hydralisk);
+        }
+        return count;
     }
 
     @Test
-    void theArmyIsHydraliskOnlySoNoLurkerMorphTakesTheHydraCore() {
+    void theDroneRoundArmyIsHydraliskOnly() {
         ThreeHatchHydraTerran build = new ThreeHatchHydraTerran();
 
         assertEquals(Collections.singleton(UnitType.Zerg_Hydralisk), build.droneRoundArmy());
@@ -121,8 +128,8 @@ class ThreeHatchHydraTerranTest {
         assertFalse(ThreeHatchHydraTerran.wantsExpansion(false, false, 15, 2));
         assertTrue(ThreeHatchHydraTerran.wantsExpansion(true, false, 0, 3));
         assertTrue(ThreeHatchHydraTerran.wantsExpansion(false, true, 0, 3));
-        assertTrue(ThreeHatchHydraTerran.wantsExpansion(false, false, 16, 2));
-        assertFalse(ThreeHatchHydraTerran.wantsExpansion(false, false, 16, 3));
+        assertTrue(ThreeHatchHydraTerran.wantsExpansion(false, false, ThreeHatchHydraTerran.MECH_HYDRALISKS, 2));
+        assertFalse(ThreeHatchHydraTerran.wantsExpansion(false, false, ThreeHatchHydraTerran.MECH_HYDRALISKS, 3));
     }
 
     @Test

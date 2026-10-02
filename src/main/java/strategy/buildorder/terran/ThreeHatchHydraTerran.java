@@ -24,8 +24,9 @@ import java.util.Set;
 /**
  * The hydralisk-focused ZvT build: Hydralisks and Zerglings on three bases, with Muscular Augments,
  * Grooved Spines, Missile Attacks and Carapace, handing over to {@link LurkerDefilerUltra} once
- * {@value LurkerDefilerUltraTransition#HYDRALISK_TRIGGER} Hydralisks are produced and the economy
- * gate in {@link LurkerDefilerUltraTransition} is met.
+ * {@value LurkerDefilerUltraTransition#HYDRALISK_TRIGGER} Hydralisks are produced, Muscular Augments
+ * and Grooved Spines are researched, and the economy gate in {@link LurkerDefilerUltraTransition}
+ * is met.
  *
  * <p>It never plans Lurker Aspect or a Lurker morph, so every Hydralisk stays in the army. Defences
  * and the Zergling target come from {@link TerranBase}.
@@ -325,12 +326,12 @@ public class ThreeHatchHydraTerran extends TerranBase {
 
     /**
      * Whether the build asks for an expansion beyond the third base it takes on the economy: when
-     * behind on bases, when floating minerals, or for the handover base once the Hydralisk trigger holds.
+     * behind on bases, when floating minerals, or for the handover base once the trigger's Hydralisk count is produced.
      */
     static boolean wantsExpansion(boolean behindOnBases, boolean floatingMinerals, int hydralisksProduced,
                                   int basesHeldOrReserved) {
         return behindOnBases || floatingMinerals
-                || LurkerDefilerUltraTransition.threeHatchHydraTrigger(hydralisksProduced) != null
+                || hydralisksProduced >= LurkerDefilerUltraTransition.HYDRALISK_TRIGGER
                 && basesHeldOrReserved < LurkerDefilerUltraTransition.ECONOMY_BASES;
     }
 
@@ -410,14 +411,16 @@ public class ThreeHatchHydraTerran extends TerranBase {
     }
 
     /**
-     * Hands over to {@link LurkerDefilerUltra} once the build has produced its Hydralisks and the
-     * economy gate in {@link LurkerDefilerUltraTransition} is met.
+     * Hands over to {@link LurkerDefilerUltra} once the build has produced its Hydralisks and
+     * researched their upgrades, and the economy gate in {@link LurkerDefilerUltraTransition} is met.
      */
     @Override
     public boolean shouldTransition(GameState gameState) {
         return LurkerDefilerUltraTransition.shouldEnter(gameState, getName(),
                 LurkerDefilerUltraTransition.threeHatchHydraTrigger(
-                        gameState.totalProduced(UnitType.Zerg_Hydralisk)));
+                        gameState.totalProduced(UnitType.Zerg_Hydralisk),
+                        gameState.getTechProgression().isMuscularAugments(),
+                        gameState.getTechProgression().isGroovedSpines()));
     }
 
     @Override
