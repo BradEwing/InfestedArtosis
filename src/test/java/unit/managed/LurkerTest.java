@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -80,18 +81,18 @@ class LurkerTest {
 
     @Test
     void aSmallContainPointMoveOutsideFixedFireKeepsTheLurkerBurrowed() {
-        assertTrue(Lurker.staysBurrowed(Lurker.KEEP_BURROWED_DISTANCE - 1, false));
+        assertTrue(Lurker.staysBurrowed(Lurker.KEEP_BURROWED_DISTANCE - 1, false, false));
     }
 
     @Test
     void aContainPointMoveOfSixtyFourPixelsOrMoreUnburrows() {
-        assertFalse(Lurker.staysBurrowed(Lurker.KEEP_BURROWED_DISTANCE, false));
-        assertFalse(Lurker.staysBurrowed(200, false));
+        assertFalse(Lurker.staysBurrowed(Lurker.KEEP_BURROWED_DISTANCE, false, false));
+        assertFalse(Lurker.staysBurrowed(200, false, false));
     }
 
     @Test
     void aContainPointInsideFixedFireUnburrowsEvenWhenClose() {
-        assertFalse(Lurker.staysBurrowed(10, true));
+        assertFalse(Lurker.staysBurrowed(10, true, false));
     }
 
     @Test
@@ -121,10 +122,39 @@ class LurkerTest {
         assertFalse(Lurker.withdrawHolds(null, point, -1, 10));
     }
 
+
     @Test
-    void aBurrowedContainingLurkerHitByAnUnansweredShotIsOutranged() {
-        assertTrue(ManagedUnit.isOutrangedHit(100, 94, UnitRole.CONTAIN, false));
-        assertFalse(ManagedUnit.isOutrangedHit(100, 94, UnitRole.CONTAIN, true));
+    void aLurkerStandingInFixedFireUnburrowsWhenItsPointMovesALittle() {
+        assertFalse(Lurker.staysBurrowed(10, false, true));
     }
 
+    @Test
+    void aFreshContainPointOnTheHitFrameSkipsTheWithdrawalHold() {
+        assertFalse(Lurker.recordsWithdrawal(500, 500));
+        assertTrue(Lurker.recordsWithdrawal(499, 500));
+        assertTrue(Lurker.recordsWithdrawal(-1, 500));
+    }
+
+    @Test
+    void aFightingLurkerKeepsItsAssignedBuildingWhileItIsInRange() {
+        assertEquals("bunker", Lurker.pickFightTarget("bunker", true, "marine"));
+    }
+
+    @Test
+    void aFightingLurkerSwitchesToAGroundEnemyInRangeWhenItsTargetIsOutOfRange() {
+        assertEquals("marine", Lurker.pickFightTarget("vulture", false, "marine"));
+    }
+
+    @Test
+    void aFightingLurkerKeepsItsTargetWhenNothingIsInRange() {
+        assertEquals("vulture", Lurker.pickFightTarget("vulture", false, null));
+    }
+
+    @Test
+    void aFightingLurkerBurrowsOnAnyInRangeGroundEnemyOrItsInRangeTarget() {
+        assertTrue(Lurker.burrowsInFight(false, true, true));
+        assertFalse(Lurker.burrowsInFight(false, true, false));
+        assertFalse(Lurker.burrowsInFight(true, true, true));
+        assertFalse(Lurker.burrowsInFight(false, false, true));
+    }
 }

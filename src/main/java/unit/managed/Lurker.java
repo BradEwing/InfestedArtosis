@@ -27,12 +27,15 @@ public class Lurker extends ManagedUnit {
     static final int KEEP_BURROWED_DISTANCE = 64;
     /** Frames a withdrawal point is held before the Lurker takes its contain point again. */
     static final int WITHDRAW_HOLD_FRAMES = 240;
+    /** Pixels added to a radius query, which measures center to center, to cover the size of the enemy. */
+    static final int QUERY_PADDING = 96;
 
     private List<StaticDefenseZone> fixedFireZones = Collections.emptyList();
     private int fixedFirePadding;
     private Position withdrawPoint;
     private Position withdrawnFrom;
     private int withdrawFrame = -1;
+    private int containChangedFrame = -1;
 
     public Lurker(Game game, Unit unit, UnitRole role, GameMap gameMap) {
         super(game, unit, role, gameMap);
@@ -57,17 +60,18 @@ public class Lurker extends ManagedUnit {
         }
         setUnready(11);
 
+        boolean assignedInRange = !hasNoValidFightTarget() && !fightTarget.isFlying()
+                && unit.getDistance(fightTarget.getPosition()) <= weaponRange(fightTarget);
         Unit inRange = findClosestGroundEnemyInRange();
-        if (inRange != null) {
-            if (inRange != fightTarget) {
-                fightTarget = inRange;
-                resetCounters();
-            }
-            if (!unit.isBurrowed() && unit.canBurrow()) {
-                burrow(BurrowReason.FIGHT_ENEMY_IN_RANGE);
-                resetCounters();
-                return;
-            }
+        Unit chosen = pickFightTarget(fightTarget, assignedInRange, inRange);
+        if (chosen != fightTarget) {
+            fightTarget = chosen;
+            resetCounters();
+        }
+        if (burrowsInFight(unit.isBurrowed(), unit.canBurrow(), assignedInRange || inRange != null)) {
+            burrow(BurrowReason.FIGHT_ENEMY_IN_RANGE);
+            resetCounters();
+            return;
         }
 
         if (hasNoValidFightTarget()) {
@@ -150,7 +154,7 @@ public class Lurker extends ManagedUnit {
         }
 
         if (unit.isBurrowed()) {
-            if (staysBurrowed(distance, isInFixedFire(hold))) {
+            if (staysBurrowed(distance, isInFixedFire(hold), isInFixedFire(unit.getPosition()))) {
                 setUnready(11);
                 return;
             }
@@ -191,10 +195,30 @@ public class Lurker extends ManagedUnit {
 
     @Override
     public void evade(Position point, int frame) {
-        withdrawPoint = point;
-        withdrawnFrom = containPosition;
-        withdrawFrame = frame;
+        if (recordsWithdrawal(containChangedFrame, frame)) {
+            withdrawPoint = point;
+            withdrawnFrom = containPosition;
+            withdrawFrame = frame;
+        }
         super.evade(point, frame);
+    }
+
+    @Override
+    public void setContainPosition(Position containPosition) {
+        noteContainChange(containPosition);
+        super.setContainPosition(containPosition);
+    }
+
+    @Override
+    public void attackMoveToContainPosition(Position point) {
+        noteContainChange(point);
+        super.attackMoveToContainPosition(point);
+    }
+
+    private void noteContainChange(Position next) {
+        if (!Objects.equals(next, containPosition)) {
+            containChangedFrame = game.getFrameCount();
+        }
     }
 
     @Override
@@ -223,7 +247,7 @@ public class Lurker extends ManagedUnit {
     }
 
     private Unit findClosestGroundEnemyWithin(int range) {
-        List<Unit> candidates = new ArrayList<>(game.getUnitsInRadius(unit.getPosition(), range));
+        List<Unit> candidates = new ArrayList<>(game.getUnitsInRadius(unit.getPosition(), range + QUERY_PADDING));
         return closestInRange(candidates, this::isGroundTargetCandidate, unit::getDistance, range);
     }
 
@@ -280,10 +304,53 @@ public class Lurker extends ManagedUnit {
      *
      * @param distanceToPoint pixels from the Lurker to its new contain point
      * @param pointInFixedFire true when the point lies within reach of a fixed-fire zone
+     * @param standingInFixedFire true when the Lurker stands within reach of a fixed-fire zone
      * @return true when the Lurker keeps its burrow
      */
-    static boolean staysBurrowed(double distanceToPoint, boolean pointInFixedFire) {
-        return distanceToPoint < KEEP_BURROWED_DISTANCE && !pointInFixedFire;
+    static boolean staysBurrowed(double distanceToPoint, boolean pointInFixedFire, boolean standingInFixedFire) {
+        return distanceToPoint < KEEP_BURROWED_DISTANCE && !pointInFixedFire && !standingInFixedFire;
+    }
+
+    /**
+     * Picks the target a fighting Lurker works on: its assigned target while that is in range, else the closest
+     * ground enemy in range, else the assigned target.
+     *
+     * @param assigned the target the squad assigned, or null
+     * @param assignedInRange true when the assigned target is in range
+     * @param closestInRange the closest ground enemy in range, or null
+     * @param <E> the enemy type
+     * @return the target to work on
+     */
+    static <E> E pickFightTarget(E assigned, boolean assignedInRange, E closestInRange) {
+        if (assignedInRange || closestInRange == null) {
+            return assigned;
+        }
+        return closestInRange;
+    }
+
+    /**
+     * Whether a fighting Lurker burrows now: it is unburrowed, able to burrow, and the assigned target or any other
+     * ground enemy is in range.
+     *
+     * @param burrowed true when the Lurker is burrowed
+     * @param canBurrow true when it can burrow
+     * @param enemyInRange true when its target or any ground enemy is in range
+     * @return true when it burrows
+     */
+    static boolean burrowsInFight(boolean burrowed, boolean canBurrow, boolean enemyInRange) {
+        return !burrowed && canBurrow && enemyInRange;
+    }
+
+    /**
+     * Whether a withdrawal is recorded: not when the squad gave the Lurker a new contain point on the frame it was
+     * hit, since that point already answers the fire.
+     *
+     * @param containChangedFrame frame the contain point last changed, -1 for never
+     * @param frame frame of the hit
+     * @return true when the withdrawal point is held
+     */
+    static boolean recordsWithdrawal(int containChangedFrame, int frame) {
+        return containChangedFrame != frame;
     }
 
     /**
