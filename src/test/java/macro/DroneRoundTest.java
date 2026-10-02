@@ -738,6 +738,27 @@ class DroneRoundTest {
     }
 
     @Test
+    void noCalmEconomyRoundOpensWhileTheBuildHoldsItBack() {
+        int workers = SOFT_CAP - DroneRound.CALM_ECONOMY_WORKER_DEFICIT;
+        DroneRound round = new DroneRound();
+
+        round.update(FRAME, NO_ARMY, DRONES, CAP, WANTED, CALM,
+                held().eligible(false).workers(workers).calmEconomyHeld(true).build());
+
+        assertFalse(round.isActive());
+    }
+
+    @Test
+    void aHeldCalmEconomyDoesNotStopAnArmyMilestoneRound() {
+        DroneRound round = new DroneRound();
+
+        round.update(FRAME, DroneRound.FIRST_ROUND_ARMY_UNITS, DRONES, CAP, WANTED, CALM,
+                held().eligible(false).calmEconomyHeld(true).build());
+
+        assertEquals(DroneRound.OpenReason.ARMY_MILESTONE, round.getReason());
+    }
+
+    @Test
     void noCalmEconomyRoundOpensBeforeTheCalmInterval() {
         DroneRound round = new DroneRound();
         int workers = SOFT_CAP - DroneRound.CALM_ECONOMY_WORKER_DEFICIT;

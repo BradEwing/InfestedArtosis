@@ -32,6 +32,9 @@ public class TwoHatchMuta extends TerranBase {
 
     static final int MUTALISKS_BEFORE_FLYER_UPGRADE = 7;
 
+    /** Mutalisks produced by the first wave, before which no calm-economy round opens once the Spire stands. */
+    static final int FIRST_WAVE_MUTALISKS = 7;
+
     /** Gatherers that must stand before Flyer Attacks level 2 or 3 is queued. Tuning constant. */
     static final int WORKERS_BEFORE_LATER_FLYER_UPGRADES = 22;
 
@@ -209,6 +212,23 @@ public class TwoHatchMuta extends TerranBase {
     @Override
     protected int droneRoundDroneCap(GameState gameState) {
         return dronesNeeded(gameState);
+    }
+
+    @Override
+    protected boolean holdsCalmEconomyRound(GameState gameState) {
+        return holdsFirstWave(gameState.structureCount(Readiness.STANDING, UnitType.Zerg_Spire) > 0,
+                gameState.totalProduced(UnitType.Zerg_Mutalisk));
+    }
+
+    /**
+     * Whether the first Mutalisk wave still outranks a calm-economy round.
+     *
+     * @param spireStanding whether a Spire is morphing or finished
+     * @param mutalisksProduced Mutalisks produced so far, living and lost
+     * @return true while a Spire stands and fewer than {@link #FIRST_WAVE_MUTALISKS} have been produced
+     */
+    static boolean holdsFirstWave(boolean spireStanding, int mutalisksProduced) {
+        return spireStanding && mutalisksProduced < FIRST_WAVE_MUTALISKS;
     }
 
     protected int dronesNeeded(GameState gameState) {

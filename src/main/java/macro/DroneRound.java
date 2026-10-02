@@ -49,7 +49,8 @@ import unit.squad.ContainHeldTimer;
  * workers are at least {@link #CALM_ECONOMY_WORKER_DEFICIT} under the soft cap and under the hard cap. It
  * needs neither an army milestone nor a contain, adds up to {@link #DRONES_PER_ROUND} Drones within the
  * build's cap and the room under both worker caps, and no sooner than {@link #CALM_ECONOMY_COOLDOWN_FRAMES}
- * after the last such round closed. It closes like an army milestone round, on SIZE, BUILD_CAP, HARD_CAP, THREAT or
+ * after the last such round closed. It never opens while the build holds it back
+ * ({@link ContainHeld#isCalmEconomyHeld()}). It closes like an army milestone round, on SIZE, BUILD_CAP, HARD_CAP, THREAT or
  * TIMEOUT, and never reads or moves the army milestone.
  *
  * <p>Every open and close is reported through {@link PlanEvents} with its reason.
@@ -149,6 +150,9 @@ public class DroneRound {
 
         /** Workers past which the worker gates want no Drone. */
         private final int hardCap;
+
+        /** Whether the build holds back a calm-economy round, such as while its first wave is still to come. */
+        private final boolean calmEconomyHeld;
 
         boolean isHeld() {
             return chainStartFrame != ContainHeldTimer.NO_CHAIN && heldFrames >= ContainHeldTimer.HELD_FRAMES;
@@ -305,6 +309,7 @@ public class DroneRound {
     private boolean opensCalmEconomyRound(int frame, int drones, int droneCap, boolean workersWanted,
                                           ContainHeld containHeld) {
         return workersWanted
+                && !containHeld.isCalmEconomyHeld()
                 && drones < droneCap
                 && frame - lastThreatFrame >= CALM_ECONOMY_FRAMES
                 && frame - lastCalmEconomyCloseFrame >= CALM_ECONOMY_COOLDOWN_FRAMES
