@@ -13,6 +13,7 @@ public enum BurrowReason {
     FIGHT_TARGET_OUT_OF_RANGE,
     FIGHT_IDLE,
     RETREAT,
+    RETREAT_HOLD,
     RALLY,
     SCOUT
 }
