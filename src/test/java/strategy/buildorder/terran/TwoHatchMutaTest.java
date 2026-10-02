@@ -29,8 +29,8 @@ class TwoHatchMutaTest {
     void theFirstWaveHoldsBackCalmRoundsOnlyWhileASpireStandsAndFewerThanSevenAreProduced() {
         assertTrue(TwoHatchMuta.holdsFirstWave(true, 0));
         assertTrue(TwoHatchMuta.holdsFirstWave(true, 3));
-        assertTrue(TwoHatchMuta.holdsFirstWave(true, TwoHatchMuta.FIRST_WAVE_MUTALISKS - 1));
-        assertFalse(TwoHatchMuta.holdsFirstWave(true, TwoHatchMuta.FIRST_WAVE_MUTALISKS));
+        assertTrue(TwoHatchMuta.holdsFirstWave(true, TwoHatchMuta.MUTALISKS_BEFORE_FLYER_UPGRADE - 1));
+        assertFalse(TwoHatchMuta.holdsFirstWave(true, TwoHatchMuta.MUTALISKS_BEFORE_FLYER_UPGRADE));
         assertFalse(TwoHatchMuta.holdsFirstWave(false, 0));
     }
 
