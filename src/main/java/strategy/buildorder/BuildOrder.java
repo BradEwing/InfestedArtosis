@@ -213,6 +213,7 @@ public abstract class BuildOrder {
                 .workers(gameState.numWorkers())
                 .softCap(gameState.workerSoftCap())
                 .hardCap(gameState.workerHardCap())
+                .calmEconomyHeld(holdsCalmEconomyRound(gameState))
                 .build();
     }
 
@@ -236,6 +237,17 @@ public abstract class BuildOrder {
      */
     protected boolean runsContainHeldRounds(GameState gameState) {
         return true;
+    }
+
+    /**
+     * Whether this build holds back a calm-economy {@link DroneRound}. Army milestone and contain-held
+     * rounds are unaffected.
+     *
+     * @param gameState current game state
+     * @return false unless the build overrides it
+     */
+    protected boolean holdsCalmEconomyRound(GameState gameState) {
+        return false;
     }
 
     private static int dronesInEgg(List<Unit> units) {

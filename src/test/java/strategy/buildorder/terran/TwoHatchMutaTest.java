@@ -6,6 +6,7 @@ import bwapi.UpgradeType;
 import info.TechProgression;
 import info.UnitTypeCount;
 import macro.AdvancedUnitEligibility;
+import macro.DroneRound;
 import macro.ProductionQueue;
 import macro.plan.Plan;
 import macro.plan.UnitPlan;
@@ -23,6 +24,41 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TwoHatchMutaTest {
+
+    @Test
+    void theFirstWaveHoldsBackCalmRoundsOnlyWhileASpireStandsAndFewerThanSevenAreProduced() {
+        assertTrue(TwoHatchMuta.holdsFirstWave(true, 0));
+        assertTrue(TwoHatchMuta.holdsFirstWave(true, 3));
+        assertTrue(TwoHatchMuta.holdsFirstWave(true, TwoHatchMuta.MUTALISKS_BEFORE_FLYER_UPGRADE - 1));
+        assertFalse(TwoHatchMuta.holdsFirstWave(true, TwoHatchMuta.MUTALISKS_BEFORE_FLYER_UPGRADE));
+        assertFalse(TwoHatchMuta.holdsFirstWave(false, 0));
+    }
+
+    @Test
+    void aCalmRoundOpensOnlyOnceTheFirstWaveIsProduced() {
+        int workers = DroneRound.CALM_ECONOMY_WORKER_DEFICIT;
+        DroneRound spireWithThree = new DroneRound();
+        DroneRound spireWithSeven = new DroneRound();
+        DroneRound noSpire = new DroneRound();
+        int frame = DroneRound.CALM_ECONOMY_FRAMES;
+
+        spireWithThree.update(frame, 0, 10, 30, true, false, calmHeld(workers, TwoHatchMuta.holdsFirstWave(true, 3)));
+        spireWithSeven.update(frame, 0, 10, 30, true, false, calmHeld(workers, TwoHatchMuta.holdsFirstWave(true, 7)));
+        noSpire.update(frame, 0, 10, 30, true, false, calmHeld(workers, TwoHatchMuta.holdsFirstWave(false, 0)));
+
+        assertFalse(spireWithThree.isActive());
+        assertEquals(DroneRound.OpenReason.CALM_ECONOMY, spireWithSeven.getReason());
+        assertEquals(DroneRound.OpenReason.CALM_ECONOMY, noSpire.getReason());
+    }
+
+    private static DroneRound.ContainHeld calmHeld(int deficit, boolean held) {
+        return DroneRound.ContainHeld.builder()
+                .softCap(30)
+                .hardCap(40)
+                .workers(30 - deficit)
+                .calmEconomyHeld(held)
+                .build();
+    }
 
     private static final int GATHERER_FLOOR = AdvancedUnitEligibility.MIN_GATHERERS;
 
@@ -147,6 +183,32 @@ class TwoHatchMutaTest {
         techProgression.setFlyerAttack(1);
 
         assertTrue(TwoHatchMuta.shouldPlanFlyerAttack(techProgression, 7));
+    }
+
+    @Test
+    void withholdsTheSecondLevelWhileTheGatherersAreBelowTheWorkerFloor() {
+        TechProgression techProgression = withSpire();
+        techProgression.setFlyerAttack(1);
+
+        assertFalse(TwoHatchMuta.shouldPlanFlyerAttack(techProgression, 7,
+                TwoHatchMuta.WORKERS_BEFORE_LATER_FLYER_UPGRADES - 1,
+                TwoHatchMuta.WORKERS_BEFORE_LATER_FLYER_UPGRADES));
+        assertTrue(TwoHatchMuta.shouldPlanFlyerAttack(techProgression, 7,
+                TwoHatchMuta.WORKERS_BEFORE_LATER_FLYER_UPGRADES,
+                TwoHatchMuta.WORKERS_BEFORE_LATER_FLYER_UPGRADES));
+    }
+
+    @Test
+    void plansTheFirstLevelWhateverTheGatherers() {
+        assertTrue(TwoHatchMuta.shouldPlanFlyerAttack(withSpire(), 7, 0, 22));
+    }
+
+    @Test
+    void theWorkerFloorStaysUnderTheDroneTargetAndTheHardCap() {
+        assertEquals(22, TwoHatchMuta.laterFlyerUpgradeWorkerFloor(60, 35));
+        assertEquals(22, TwoHatchMuta.laterFlyerUpgradeWorkerFloor(60, 23));
+        assertEquals(21, TwoHatchMuta.laterFlyerUpgradeWorkerFloor(22, 35));
+        assertEquals(14, TwoHatchMuta.laterFlyerUpgradeWorkerFloor(15, 23));
     }
 
     private static UnitTypeCount mutalisks(int planned, int living) {
