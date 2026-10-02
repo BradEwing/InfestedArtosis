@@ -1148,12 +1148,13 @@ public class SquadManager {
             stalled = detector.isStalled(now);
         }
         AirHarassEvaluator.ReentryHold hold = AirHarassEvaluator.reentryHold(squad.getHarassExitEngageFrame(),
-                squad.getHarassExitTarget(), stalled, now);
+                squad.getHarassExitEngageTarget(), stalled, now);
         if (!AirHarassEvaluator.entryCheckDue(squad.isAirSquad(), squad.isRetreatLocked(now) && !stalled,
                 squad.isFightLocked(now), now) || hold == AirHarassEvaluator.ReentryHold.ALL) {
             return false;
         }
-        Position heldTarget = hold == AirHarassEvaluator.ReentryHold.TARGET ? squad.getHarassExitTarget() : null;
+        Position heldTarget = hold == AirHarassEvaluator.ReentryHold.TARGET
+                ? squad.getHarassExitEngageTarget() : null;
         AirHarassController.Entry entry = airHarass.checkEntry(squad, now, basesUnderAttack(), containPoints(),
                 heldTarget);
         if (!entry.enters()) {
@@ -1833,6 +1834,7 @@ public class SquadManager {
         if (exitLockBroken) {
             squad.clearRetreatLock();
             squad.setHarassExitEngageFrame(now);
+            squad.setHarassExitEngageTarget(squad.getHarassExitTarget());
             retreatLocked = false;
         }
         SquadDecisions.simEvaluated(squad, result, retreatLocked, fightLocked);

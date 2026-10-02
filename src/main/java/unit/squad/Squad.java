@@ -72,6 +72,7 @@ public class Squad implements Comparable<Squad> {
     private int harassExitFrame = 0;
     private int harassExitEngageFrame = 0;
     private Position harassExitTarget;
+    private Position harassExitEngageTarget;
     private int containRadius = 0;
     private ContainmentCollapse.Maneuver collapse;
     protected int collapseLockedUntilFrame = 0;
@@ -296,7 +297,7 @@ public class Squad implements Comparable<Squad> {
             }
             this.harassExitFrame = Math.max(this.harassExitFrame, source.harassExitFrame);
             if (source.harassExitEngageFrame > this.harassExitEngageFrame) {
-                this.harassExitTarget = source.harassExitTarget;
+                this.harassExitEngageTarget = source.harassExitEngageTarget;
             }
             this.harassExitEngageFrame = Math.max(this.harassExitEngageFrame, source.harassExitEngageFrame);
             mergedStatus = SquadStatus.dominant(mergedStatus, source.status);

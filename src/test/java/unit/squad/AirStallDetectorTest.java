@@ -44,10 +44,13 @@ class AirStallDetectorTest {
         int broke = now - 40;
 
         assertTrue(detector.isStalled(now));
-        assertEquals(AirHarassEvaluator.ReentryHold.NONE,
-                AirHarassEvaluator.reentryHold(broke, failedBase, detector.isStalled(now), now));
         assertEquals(AirHarassEvaluator.ReentryHold.TARGET,
-                AirHarassEvaluator.reentryHold(broke, failedBase, false, now));
+                AirHarassEvaluator.reentryHold(broke, failedBase, detector.isStalled(now), now));
+        assertEquals(AirHarassEvaluator.ReentryHold.NONE,
+                AirHarassEvaluator.reentryHold(broke, null, detector.isStalled(now), now));
+        assertEquals(AirHarassEvaluator.ReentryHold.ALL, AirHarassEvaluator.reentryHold(broke, null, false, now));
+        assertTrue(AirHarassEvaluator.isFailedTarget(failedBase, failedBase));
+        assertFalse(AirHarassEvaluator.isFailedTarget(failedBase, new Position(1000, 400)));
         int tick = now - now % AirHarassEvaluator.HARASS_TICK;
         boolean retreatLocked = true;
         assertFalse(AirHarassEvaluator.entryCheckDue(true, retreatLocked, false, tick));
@@ -62,6 +65,34 @@ class AirStallDetectorTest {
         detector.onKill(now);
 
         assertFalse(detector.isStalled(now));
+    }
+
+    @Test
+    void aKillOlderThanTheLastKCrossingsDoesNotEndTheStall() {
+        AirStallDetector detector = new AirStallDetector();
+        int now = flap(detector, START, AirStallDetector.CROSSINGS + 1);
+
+        detector.onKill(START + STEP + 1);
+
+        assertTrue(detector.isStalled(now));
+    }
+
+    @Test
+    void aMergedDetectorKeepsTheCrossingsOfItsSources() {
+        AirStallDetector first = new AirStallDetector();
+        AirStallDetector second = new AirStallDetector();
+        int now = flap(first, START, AirStallDetector.CROSSINGS);
+        AirStallDetector merged = new AirStallDetector();
+
+        merged.absorb(first);
+        merged.absorb(second);
+
+        assertTrue(merged.isStalled(now));
+        second.onKill(now);
+        AirStallDetector killed = new AirStallDetector();
+        killed.absorb(first);
+        killed.absorb(second);
+        assertFalse(killed.isStalled(now));
     }
 
     @Test

@@ -432,13 +432,44 @@ class AirHarassEvaluatorTest {
 
     @Test
     void anExposedGroupIsScoredAgainstTheBestBaseInHeatUnits() {
-        double groupScore = 3.0;
-        double weakBase = AirHarassEvaluator.baseScore(60, -1);
         double hotBase = AirHarassEvaluator.baseScore(400, -1);
 
-        assertTrue(AirHarassEvaluator.exposedOutscoresBase(groupScore, weakBase));
-        assertFalse(AirHarassEvaluator.exposedOutscoresBase(groupScore, hotBase));
+        assertTrue(AirHarassEvaluator.exposedOutscoresBase(3.0, AirHarassEvaluator.baseScore(60, -1)));
+        assertTrue(AirHarassEvaluator.exposedOutscoresBase(3.0, hotBase));
+        assertFalse(AirHarassEvaluator.exposedOutscoresBase(1.0, hotBase));
         assertTrue(AirHarassEvaluator.exposedOutscoresBase(0.1, -1));
+    }
+
+    @Test
+    void aStarportGroupBeatsAHotBaseThroughTheControllersSelection() {
+        AirHarassTargeting.Contact starport = new AirHarassTargeting.Contact(9, UnitType.Terran_Starport,
+                new Position(3000, 1000), UnitType.Terran_Starport.maxHitPoints(), 1.0);
+        ExposedTargets.Group group = ExposedTargets.groups(Collections.singletonList(starport), 6,
+                Collections.emptyList()).get(0);
+        Position from = new Position(2900, 1000);
+        AirHarassEvaluator.BaseOption<String> hotBase = option("main", STRIKE, 400, -1);
+
+        assertTrue(AirHarassController.raidsExposed(group, hotBase, from));
+        assertTrue(AirHarassController.raidsExposed(group, null, from));
+        assertFalse(AirHarassController.raidsExposed(null, hotBase, from));
+    }
+
+    @Test
+    void theFailedTargetsGroupsAreFilteredOutOfTheCandidates() {
+        Position baseA = new Position(3808, 2096);
+        AirHarassTargeting.Contact nearA = new AirHarassTargeting.Contact(1, UnitType.Terran_Factory,
+                new Position(3808 - 500, 2096), UnitType.Terran_Factory.maxHitPoints(), 1.0);
+        AirHarassTargeting.Contact far = new AirHarassTargeting.Contact(2, UnitType.Terran_Starport,
+                new Position(3000, 1000), UnitType.Terran_Starport.maxHitPoints(), 1.0);
+        List<ExposedTargets.Group> groups = ExposedTargets.groups(Arrays.asList(nearA, far), 6,
+                Collections.emptyList());
+
+        List<ExposedTargets.Group> open = AirHarassController.withoutFailedTarget(groups, baseA);
+
+        assertEquals(2, groups.size());
+        assertEquals(1, open.size());
+        assertEquals(new Position(3000, 1000), open.get(0).getAnchor());
+        assertEquals(2, AirHarassController.withoutFailedTarget(groups, null).size());
     }
 
     @Test

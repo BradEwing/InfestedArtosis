@@ -1,15 +1,19 @@
 package unit.squad;
 
 import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Deque;
+import java.util.Iterator;
+import java.util.List;
 
 /**
  * Reads an air squad that keeps crossing between FIGHT and RETREAT against the same enemy without killing it.
  *
  * <p>Every flip between FIGHT and RETREAT is a crossing. The squad is stalled when at least {@link #CROSSINGS}
- * crossings fall within the last {@link #WINDOW_FRAMES} frames and no enemy died near the squad since the oldest of
- * them. A stalled squad is offered a harass on another target before it engages the same enemy again. The constants
- * are tuning values, not Brood War facts.
+ * crossings fall within the last {@link #WINDOW_FRAMES} frames and no enemy died near the squad since the
+ * {@link #CROSSINGS}th most recent of them. A stalled squad is offered a harass on another target before it engages
+ * the same enemy again. The constants are tuning values, not Brood War facts.
  */
 public final class AirStallDetector {
 
@@ -53,11 +57,38 @@ public final class AirStallDetector {
     /**
      * @param now current frame
      * @return true when {@link #CROSSINGS} crossings fall within {@link #WINDOW_FRAMES} and the squad killed nothing
-     * since the oldest of them
+     * since the {@link #CROSSINGS}th most recent of them
      */
     public boolean isStalled(int now) {
         prune(now);
-        return crossings.size() >= CROSSINGS && lastKillFrame < crossings.peekFirst();
+        if (crossings.size() < CROSSINGS) {
+            return false;
+        }
+        Iterator<Integer> newestFirst = crossings.descendingIterator();
+        int counted = 0;
+        int oldestCounted = 0;
+        while (counted < CROSSINGS) {
+            oldestCounted = newestFirst.next();
+            counted++;
+        }
+        return lastKillFrame < oldestCounted;
+    }
+
+    /**
+     * Folds a merged squad's crossings and last kill into this detector, so a merge does not hide a flap.
+     *
+     * @param other detector of a squad merged into this one
+     */
+    public void absorb(AirStallDetector other) {
+        List<Integer> merged = new ArrayList<>(crossings);
+        merged.addAll(other.crossings);
+        Collections.sort(merged);
+        crossings.clear();
+        crossings.addAll(merged);
+        lastKillFrame = Math.max(lastKillFrame, other.lastKillFrame);
+        if (lastSide == null) {
+            lastSide = other.lastSide;
+        }
     }
 
     /**

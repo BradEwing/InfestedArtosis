@@ -176,9 +176,7 @@ public class AirHarassController {
                         .build());
         boolean enters = verdict == AirHarassEvaluator.EntryVerdict.ENTER;
         AirHarassEvaluator.BaseOption<Base> bestBase = AirHarassEvaluator.chooseBase(options);
-        boolean raidsExposed = exposed != null && AirHarassEvaluator.exposedOutscoresBase(
-                ExposedTargets.score(exposed, squad.getCenter()), bestBase == null ? -1
-                        : AirHarassEvaluator.baseScore(bestBase.getHeat(), bestBase.getContainDistance()));
+        boolean raidsExposed = raidsExposed(exposed, bestBase, squad.getCenter());
         AirHarassEvaluator.BaseOption<Base> chosen = enters && !raidsExposed ? bestBase : null;
         ExposedTargets.Group chosenExposed = enters && raidsExposed ? exposed : null;
         Position strike = chosen != null ? chosen.getStrikePoint()
@@ -212,7 +210,23 @@ public class AirHarassController {
         return new Entry(verdict, chosen, chosenExposed, sightingAge, knownCover);
     }
 
-    private static List<ExposedTargets.Group> withoutFailedTarget(Collection<ExposedTargets.Group> groups,
+    /**
+     * Whether a harass raids the exposed group instead of the best base, see
+     * {@link AirHarassEvaluator#exposedOutscoresBase}.
+     *
+     * @param exposed the best exposed group, or null
+     * @param bestBase the best base with a tolerated strike point, or null
+     * @param from the flock's center
+     * @return true to raid the group
+     */
+    static boolean raidsExposed(ExposedTargets.Group exposed, AirHarassEvaluator.BaseOption<?> bestBase,
+                                Position from) {
+        return exposed != null && AirHarassEvaluator.exposedOutscoresBase(ExposedTargets.score(exposed, from),
+                bestBase == null ? -1 : AirHarassEvaluator.baseScore(bestBase.getHeat(),
+                        bestBase.getContainDistance()));
+    }
+
+    static List<ExposedTargets.Group> withoutFailedTarget(Collection<ExposedTargets.Group> groups,
                                                                   Position heldTarget) {
         List<ExposedTargets.Group> open = new ArrayList<>();
         for (ExposedTargets.Group group : groups) {
@@ -748,14 +762,16 @@ public class AirHarassController {
         Set<Base> candidates = new HashSet<>(AirHarassScouting.unrefused(gameState.getBaseData().getEnemyBases(),
                 probeRefusedUntil, now));
         candidates.removeAll(state.getVisitedBases());
+        Position held = AirHarassEvaluator.reentryHold(squad.getHarassExitEngageFrame(),
+                squad.getHarassExitEngageTarget(), false, now) == AirHarassEvaluator.ReentryHold.TARGET
+                ? squad.getHarassExitEngageTarget() : null;
+        candidates.removeIf(base -> AirHarassEvaluator.isFailedTarget(held, base.getCenter()));
         AirHarassEvaluator.BaseOption<Base> next = AirHarassEvaluator.chooseBase(
                 options(view.threats, tolerance, containPoints, candidates, 0));
-        ExposedTargets.Group exposed = ExposedTargets.choose(exposedMemory.admitted(ExposedTargets.groups(
-                view.candidates(), mutas, AirHarassTargeting.avoided(view.threats, tolerance)), now),
-                view.threats, tolerance, squad.getCenter());
-        if (exposed != null && next != null && !AirHarassEvaluator.exposedOutscoresBase(
-                ExposedTargets.score(exposed, squad.getCenter()),
-                AirHarassEvaluator.baseScore(next.getHeat(), next.getContainDistance()))) {
+        ExposedTargets.Group exposed = ExposedTargets.choose(withoutFailedTarget(exposedMemory.admitted(
+                ExposedTargets.groups(view.candidates(), mutas, AirHarassTargeting.avoided(view.threats, tolerance)),
+                now), held), view.threats, tolerance, squad.getCenter());
+        if (!raidsExposed(exposed, next, squad.getCenter())) {
             exposed = null;
         }
         int sightingAge = -1;

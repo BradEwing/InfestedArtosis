@@ -209,6 +209,11 @@ public class AirSquad extends Squad {
     @Override
     public void inheritStateFrom(Collection<Squad> sources) {
         super.inheritStateFrom(sources);
+        for (Squad source : sources) {
+            if (source instanceof AirSquad) {
+                stallDetector.absorb(((AirSquad) source).stallDetector);
+            }
+        }
         commitmentStartFrame = 0;
         commitmentPeakHitPoints = 0;
         commitmentBarred = false;

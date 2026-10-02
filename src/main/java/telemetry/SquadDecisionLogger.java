@@ -740,7 +740,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
 
     /**
      * Returns the rally reason a row carries. A row inside a RALLY episode, including the row that enters it and the
-     * row that leaves it, carries the reason the episode opened with; a row of a squad that is not rallying carries
+     * row that leaves it, carries the reason of the squad's latest rally; a row of a squad that is not rallying carries
      * NONE, so a squad that has moved on is not read as still staging.
      *
      * @param stored reason recorded when the squad last rallied

@@ -41,6 +41,8 @@ public final class AirHarassEvaluator {
     static final int HARASS_TICK = 12;
     static final int REENTRY_HOLD_FRAMES = 480;
     static final double HEAT_PER_EXPOSED_VALUE = 60;
+    static final double EXPOSED_BASE_SCORE_CAP = 100;
+    static final int FAILED_TARGET_RADIUS = 640;
     static final double CONTAIN_AWAY_WEIGHT = 1.0;
     static final int CONTAIN_AWAY_SCALE = 1536;
 
@@ -419,10 +421,10 @@ public final class AirHarassEvaluator {
     }
 
     /**
-     * What the post-exit re-entry hold closes for a squad this frame. A stalled squad, see {@link AirStallDetector},
-     * is held on nothing, so it may leave the enemy it keeps flapping against for any target. Otherwise, inside
-     * {@link #holdsReentry}, only the target the failed harass was on stays closed, and the whole entry when that
-     * target is unknown.
+     * What the post-exit re-entry hold closes for a squad this frame. Inside {@link #holdsReentry}, only the target
+     * the failed harass was on stays closed. When that target is unknown the whole entry is closed, unless the
+     * squad is stalled, see {@link AirStallDetector}: a stalled squad is offered any target it is not known to have
+     * failed on, so it may leave the enemy it keeps flapping against.
      *
      * @param exitEngageFrame frame the squad last broke a harass exit lock, or 0 when it never did
      * @param failedTarget center of the base, or anchor of the exposed group, the failed harass was on, or null
@@ -431,15 +433,19 @@ public final class AirHarassEvaluator {
      * @return what stays closed
      */
     public static ReentryHold reentryHold(int exitEngageFrame, Position failedTarget, boolean stalled, int now) {
-        if (stalled || !holdsReentry(exitEngageFrame, now)) {
+        if (!holdsReentry(exitEngageFrame, now)) {
             return ReentryHold.NONE;
         }
-        return failedTarget == null ? ReentryHold.ALL : ReentryHold.TARGET;
+        if (failedTarget != null) {
+            return ReentryHold.TARGET;
+        }
+        return stalled ? ReentryHold.NONE : ReentryHold.ALL;
     }
 
     /**
      * Whether a candidate target is the one a failed harass was on: its center lies within
-     * {@link ExposedTargets#SEEK_RADIUS} of the failed target's.
+     * {@link #FAILED_TARGET_RADIUS} of the failed target's, so the buildings around a failed base count as that
+     * base.
      *
      * @param failedTarget center of the base, or anchor of the exposed group, the failed harass was on, or null
      * @param candidate center of a candidate base, or anchor of a candidate exposed group
@@ -447,20 +453,21 @@ public final class AirHarassEvaluator {
      */
     public static boolean isFailedTarget(Position failedTarget, Position candidate) {
         return failedTarget != null && candidate != null
-                && failedTarget.getDistance(candidate) <= ExposedTargets.SEEK_RADIUS;
+                && failedTarget.getDistance(candidate) <= FAILED_TARGET_RADIUS;
     }
 
     /**
      * Whether an exposed group is raided instead of the best base: its {@link ExposedTargets#score}, in heat units
-     * through {@link #HEAT_PER_EXPOSED_VALUE}, beats the base's {@link #baseScore}. With no tolerated base the group
-     * wins whatever it scores.
+     * through {@link #HEAT_PER_EXPOSED_VALUE}, beats the base's {@link #baseScore} capped at
+     * {@link #EXPOSED_BASE_SCORE_CAP}, since a base's heat keeps growing while it is left alone and would otherwise
+     * outscore every group. With no tolerated base the group wins whatever it scores.
      *
      * @param exposedScore the group's score
      * @param baseScore the best base's score, or a negative number when no base has a tolerated strike point
      * @return true to raid the group
      */
     public static boolean exposedOutscoresBase(double exposedScore, double baseScore) {
-        return baseScore < 0 || exposedScore * HEAT_PER_EXPOSED_VALUE > baseScore;
+        return baseScore < 0 || exposedScore * HEAT_PER_EXPOSED_VALUE > Math.min(baseScore, EXPOSED_BASE_SCORE_CAP);
     }
 
     /**
