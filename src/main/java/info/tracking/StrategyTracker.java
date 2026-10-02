@@ -14,6 +14,7 @@ import info.tracking.protoss.OneGateCore;
 import info.tracking.protoss.ProxyGate;
 import info.tracking.protoss.TwoGate;
 import info.tracking.terran.SCVRush;
+import info.tracking.terran.TerranMech;
 import info.tracking.terran.TerranWall;
 import info.tracking.terran.TerranWallMain;
 import info.tracking.terran.TerranWallNatural;
@@ -89,6 +90,7 @@ public class StrategyTracker {
         }
         if (race == Race.Terran || race == Race.Unknown) {
             possibleStrategies.add(new TwoRaxAcademy());
+            possibleStrategies.add(new TerranMech());
             possibleStrategies.add(new SCVRush());
             possibleStrategies.add(new TerranWallNatural());
             possibleStrategies.add(new TerranWallMain());

@@ -28,8 +28,8 @@ import java.util.function.ToIntFunction;
  * {@link Tier} order, workers first, then isolated anti-air the flock kills quickly, then supply, then production,
  * then anything else. It evades when it stands inside an avoided zone, other than the zone of the anti-air it is
  * killing, stepping to the edge point nearest its goal, and otherwise attacks its target or skirts the avoided
- * zones toward the squad's strike point. Ranges, speeds, hit points and damage are read from JBWAPI; the constants
- * are tuning values.
+ * zones toward the flock's shared {@link #flockPoint}, or the strike point without one. Ranges, speeds, hit points
+ * and damage are read from JBWAPI; the constants are tuning values.
  *
  * <p>On an exposed target a Missile Turret whose zone the flock does not avoid is taken in the isolated anti-air tier
  * too, see {@link #turretTaken}.
@@ -179,6 +179,7 @@ public final class AirHarassTargeting {
         private final List<AirThreat> avoided = Collections.emptyList();
         private final int flockSize;
         private final Position seekPoint;
+        private final Position flockPoint;
         @Builder.Default
         private final Predicate<Position> targetAllowed = position -> true;
         @Builder.Default
@@ -414,7 +415,44 @@ public final class AirHarassTargeting {
     }
 
     /**
-     * Picks what one Mutalisk does this frame and updates its memory.
+     * The one point a harassing flock moves to next: the edge point from the flock's anchor toward the strike point
+     * around the avoided zones, reached by a clear straight hop. Decided once per flock, so every Mutalisk takes the
+     * same side of a zone.
+     *
+     * @param anchor the flock's anchor, see {@link AirFlock#anchor}
+     * @param avoided avoided zones
+     * @param strike the squad's strike point
+     * @param allowed points the flock may move to
+     * @return the point, or null with no anchor, no strike point or no allowed point
+     */
+    public static Position flockPoint(Position anchor, Collection<AirThreat> avoided, Position strike,
+                                      Predicate<Position> allowed) {
+        if (anchor == null) {
+            return null;
+        }
+        return edgePoint(anchor, avoided, strike, allowed, true);
+    }
+
+    /**
+     * Where a straggling Mutalisk flies to rejoin its flock: the edge point from it toward the flock's anchor around
+     * the avoided zones, reached by a clear straight hop, or the anchor itself when no allowed point is found.
+     *
+     * @param from the straggler's position
+     * @param avoided avoided zones
+     * @param anchor the flock's anchor, see {@link AirFlock#anchor}
+     * @param allowed points it may move to
+     * @return the point
+     */
+    public static Position regroupPoint(Position from, Collection<AirThreat> avoided, Position anchor,
+                                        Predicate<Position> allowed) {
+        Position point = edgePoint(from, avoided, anchor, allowed, true);
+        return point != null ? point : anchor;
+    }
+
+    /**
+     * Picks what one Mutalisk does this frame and updates its memory. With a flock point in the situation, a
+     * Mutalisk with no target heads for it, skirting the zones only when its straight line there is blocked, and an
+     * evading Mutalisk without a target steps toward it; without one, both head for the strike point.
      *
      * @param muta the Mutalisk
      * @param situation the squad's shared view of the frame
@@ -426,7 +464,8 @@ public final class AirHarassTargeting {
         Tier tier = target == null ? null : tier(target, situation);
         int ignoredId = tier == Tier.ISOLATED_AA ? target.getId() : NO_TARGET;
         List<AirThreat> zones = without(situation.getAvoided(), ignoredId);
-        Position goal = target != null ? target.getPosition() : situation.getSeekPoint();
+        Position route = situation.getFlockPoint() != null ? situation.getFlockPoint() : situation.getSeekPoint();
+        Position goal = target != null ? target.getPosition() : route;
 
         Position evade = evadePoint(muta, zones, goal, situation, memory);
         if (evade != null) {
@@ -437,8 +476,7 @@ public final class AirHarassTargeting {
             return Decision.attack(target, tier);
         }
         memory.targetId = NO_TARGET;
-        Position skirt = edgePoint(muta.getPosition(), zones, situation.getSeekPoint(), situation.getPointAllowed(),
-                true);
+        Position skirt = edgePoint(muta.getPosition(), zones, route, situation.getPointAllowed(), true);
         return skirt == null ? Decision.none() : Decision.move(Kind.SEEK, skirt);
     }
 

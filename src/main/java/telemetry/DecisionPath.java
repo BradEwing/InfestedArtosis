@@ -18,7 +18,8 @@ public enum DecisionPath {
     NO_VISION_MARCH,
 
     /**
-     * A ground squad of Lurkers only, which fights where it stands.
+     * Written by no path: a Lurker only squad is decided by the combat sim like any other squad. The value stays
+     * so that decision logs naming it still map to a branch.
      */
     LURKER_ONLY,
 
@@ -102,6 +103,18 @@ public enum DecisionPath {
      * outranges it.
      */
     CONTAIN_OUTRANGED,
+
+    /**
+     * A squad was refused a contain arc against Terran because its makeup cannot hold one against what the enemy
+     * fields, or a sim RETREAT was not turned into a contain because holding the arc was not safe.
+     */
+    CONTAIN_GATED,
+
+    /**
+     * A squad was refused a contain arc because it is inside its re-entry cooldown after an attrition or outranged
+     * exit.
+     */
+    CONTAIN_COOLDOWN,
 
     /**
      * A containing squad was hit by an enemy that outranges it, recomputed its arc out of that enemy's reach and kept
