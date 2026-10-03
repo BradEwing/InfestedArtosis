@@ -156,6 +156,8 @@ public class SquadManager {
     private static final int MIN_ARC_POINTS = 4;
     private static final int MAX_SPACED_RADIUS = ContainmentPushback.MAX_RADIUS - ContainmentPushback.RADIUS_STEP;
     private static final int CONTAIN_DEFENSE_MARGIN = 32;
+    /** Pixels past a shooter's learned reach plus the Lurker's padding that a withdrawing Lurker stops at. */
+    static final int WITHDRAW_CLEARANCE = 32;
     private static final double REINFORCEMENT_RADIUS = 384.0;
     private static final int TARGETING_RADIUS = 256;
     private static final int WIDENED_TARGETING_RADIUS = 2 * TARGETING_RADIUS;
@@ -274,6 +276,7 @@ public class SquadManager {
 
         fightSquads.removeAll(removed);
         evadeOutrangedHits(now);
+        updateLurkerFixedFire();
         holdLurkersOutOfFire(now);
         recordFlockSamples(now);
         gameState.getContainHeldTimer().update(now, anyGroundSquadContaining(fightSquads));
@@ -769,18 +772,64 @@ public class SquadManager {
         Predicate<Position> allowed = walkablePoints();
         Set<ManagedUnit> collapsing = collapsingMembers(now);
         for (ManagedUnit member : outrangedHits) {
-            if (collapsing.contains(member) || !member.canStepOutNow()
-                    || !ManagedUnit.evadesOutrangedHit(member.getRole(), member.isClosingOnTarget())) {
+            if (!evadeGateOpen(collapsing.contains(member), member.canStepOutNow(), member.canWithdrawNow(),
+                    member.getRole(), member.isClosingOnTarget())) {
                 continue;
             }
             UnitType type = member.getUnitType();
             List<StaticDefenseZone> zones = ContainmentPushback.outrangingZones(threats,
                     EnemyReachMemory.baseGroundRange(type));
             Position seek = member.getRole() == UnitRole.CONTAIN ? member.getContainPosition() : null;
-            Position point = RunbyTargeting.findEvadePoint(member.getPosition(), zones,
-                    containmentDefensePadding(Collections.singletonList(type)), allowed, seek);
+            int padding = containmentDefensePadding(Collections.singletonList(type));
+            Position point = evadePoint(member, zones, padding, allowed, seek);
             if (point != null) {
+                if (member instanceof Lurker && member.canWithdrawNow()) {
+                    ((Lurker) member).setWithdrawZones(zones, padding + WITHDRAW_CLEARANCE);
+                }
                 member.evade(point, now);
+            }
+        }
+    }
+
+    private static Position evadePoint(ManagedUnit member, List<StaticDefenseZone> zones, int padding,
+                                       Predicate<Position> allowed, Position seek) {
+        if (!member.canWithdrawNow()) {
+            return RunbyTargeting.findEvadePoint(member.getPosition(), zones, padding, allowed, seek);
+        }
+        Position clear = RunbyTargeting.findClearPoint(member.getPosition(), zones, padding, WITHDRAW_CLEARANCE,
+                allowed, seek);
+        return clear != null ? clear
+                : RunbyTargeting.findEvadePoint(member.getPosition(), zones, padding, allowed, seek);
+    }
+
+    /**
+     * Whether a member hit by something it cannot answer is moved out of fire this frame: it is not part of a
+     * collapse, it can step out or unburrow to withdraw, and its role evades an outranged hit.
+     *
+     * @param collapsing true when the member takes part in a collapse
+     * @param canStepOut true when the member can carry out an evade move
+     * @param canWithdraw true when the member is burrowed and unburrows to leave fire
+     * @param role the member's role
+     * @param closingOnTarget true when the member has a live fight target
+     * @return true when the member evades
+     */
+    static boolean evadeGateOpen(boolean collapsing, boolean canStepOut, boolean canWithdraw, UnitRole role,
+                                 boolean closingOnTarget) {
+        return !collapsing && (canStepOut || canWithdraw) && ManagedUnit.evadesOutrangedHit(role, closingOnTarget);
+    }
+
+    /**
+     * Gives every containing Lurker the ground the enemy fires on from where it stands, so a burrowed one stays put
+     * when its contain point moves a short way, see {@link Lurker#staysBurrowed}.
+     */
+    private void updateLurkerFixedFire() {
+        int padding = containmentDefensePadding(Collections.singletonList(UnitType.Zerg_Lurker));
+        for (Squad squad : fightSquads) {
+            for (ManagedUnit member : squad.getMembers()) {
+                if (!(member instanceof Lurker) || member.getRole() != UnitRole.CONTAIN) {
+                    continue;
+                }
+                ((Lurker) member).setFixedFireZones(fixedFireZones, padding);
             }
         }
     }

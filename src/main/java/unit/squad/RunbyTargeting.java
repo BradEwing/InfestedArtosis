@@ -41,6 +41,10 @@ public final class RunbyTargeting {
     static final int VISIT_WORKER_CLEARANCE = 192;
     private static final int[] EVADE_RADII = {64, 96, 128};
     private static final int EVADE_ANGLES = 12;
+    static final int CLEAR_MIN_RADIUS = 64;
+    static final int CLEAR_MAX_RADIUS = 640;
+    static final int CLEAR_RADIUS_STEP = 32;
+    private static final int CLEAR_ANGLES = 24;
     private static final int NO_TARGET = -1;
 
     private RunbyTargeting() {
@@ -355,6 +359,43 @@ public final class RunbyTargeting {
     public static Position findEvadePoint(Position from, Collection<StaticDefenseZone> zones, int padding,
                                           Predicate<Position> allowed, Position seek) {
         return findEvadePoint(from, candidate -> zoneMargin(candidate, zones, padding), allowed, seek);
+    }
+
+    /**
+     * Finds the nearest allowed point that lies outside every zone's reach plus the padding and the clearance,
+     * searching rings out to {@link #CLEAR_MAX_RADIUS}, and breaking ties on a ring toward the seek point.
+     *
+     * @param from the unit's position
+     * @param zones ground the enemy fires on, at the reach learned over the game
+     * @param padding pixels added to every zone's reach, covering the unit's extent and a margin
+     * @param clearance pixels the point must lie beyond the reach plus the padding
+     * @param allowed points the unit may move to
+     * @param seek point ties are broken toward, or null
+     * @return the nearest clear point, or null when no allowed point is clear
+     */
+    public static Position findClearPoint(Position from, Collection<StaticDefenseZone> zones, int padding,
+                                          int clearance, Predicate<Position> allowed, Position seek) {
+        for (int radius = CLEAR_MIN_RADIUS; radius <= CLEAR_MAX_RADIUS; radius += CLEAR_RADIUS_STEP) {
+            Position best = null;
+            double bestSeekDistance = Double.MAX_VALUE;
+            for (int i = 0; i < CLEAR_ANGLES; i++) {
+                double angle = 2 * Math.PI * i / CLEAR_ANGLES;
+                Position candidate = new Position(from.getX() + (int) Math.round(Math.cos(angle) * radius),
+                        from.getY() + (int) Math.round(Math.sin(angle) * radius));
+                if (!allowed.test(candidate) || zoneMargin(candidate, zones, padding) < clearance) {
+                    continue;
+                }
+                double seekDistance = seek == null ? 0 : candidate.getDistance(seek);
+                if (best == null || seekDistance < bestSeekDistance) {
+                    best = candidate;
+                    bestSeekDistance = seekDistance;
+                }
+            }
+            if (best != null) {
+                return best;
+            }
+        }
+        return null;
     }
 
     /**
