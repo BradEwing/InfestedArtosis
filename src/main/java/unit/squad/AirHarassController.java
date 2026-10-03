@@ -771,7 +771,7 @@ public class AirHarassController {
         Set<Base> candidates = new HashSet<>(AirHarassScouting.unrefused(gameState.getBaseData().getEnemyBases(),
                 probeRefusedUntil, now));
         candidates.removeAll(state.getVisitedBases());
-        Position held = Config.airFlapEscape && AirHarassEvaluator.reentryHold(squad.getHarassExitEngageFrame(),
+        Position held = AirHarassEvaluator.reentryHold(Config.airFlapEscape, squad.getHarassExitEngageFrame(),
                 squad.getHarassExitEngageTarget(), false, now) == AirHarassEvaluator.ReentryHold.TARGET
                 ? squad.getHarassExitEngageTarget() : null;
         candidates.removeIf(base -> AirHarassEvaluator.isFailedTarget(held, base.getCenter()));

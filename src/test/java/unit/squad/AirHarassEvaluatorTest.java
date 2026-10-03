@@ -473,6 +473,23 @@ class AirHarassEvaluatorTest {
     }
 
     @Test
+    void withTheEscapeSwitchOffTheHoldClosesTheWholeEntryAndAStallChangesNothing() {
+        Position baseA = new Position(3808, 2096);
+        int inside = NOW + AirHarassEvaluator.REENTRY_HOLD_FRAMES - 1;
+
+        assertEquals(AirHarassEvaluator.ReentryHold.ALL,
+                AirHarassEvaluator.reentryHold(false, NOW, baseA, false, inside));
+        assertEquals(AirHarassEvaluator.ReentryHold.ALL,
+                AirHarassEvaluator.reentryHold(false, NOW, baseA, true, inside));
+        assertEquals(AirHarassEvaluator.ReentryHold.ALL,
+                AirHarassEvaluator.reentryHold(false, NOW, null, true, inside));
+        assertEquals(AirHarassEvaluator.ReentryHold.NONE,
+                AirHarassEvaluator.reentryHold(false, 0, baseA, true, inside));
+        assertEquals(AirHarassEvaluator.ReentryHold.TARGET,
+                AirHarassEvaluator.reentryHold(true, NOW, baseA, false, inside));
+    }
+
+    @Test
     void withTheEscapeSwitchOffAnExposedGroupIsOnlyRaidedWhenNoBaseQualifies() {
         AirHarassTargeting.Contact starport = new AirHarassTargeting.Contact(9, UnitType.Terran_Starport,
                 new Position(3000, 1000), UnitType.Terran_Starport.maxHitPoints(), 1.0);

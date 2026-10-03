@@ -41,7 +41,7 @@ public final class AirHarassEvaluator {
     static final int HARASS_TICK = 12;
     static final int REENTRY_HOLD_FRAMES = 480;
     static final double HEAT_PER_EXPOSED_VALUE = 60;
-    static final double EXPOSED_BASE_SCORE_CAP = 600;
+    static final double EXPOSED_BASE_SCORE_CAP = 270;
     static final int FAILED_TARGET_RADIUS = 640;
     static final double CONTAIN_AWAY_WEIGHT = 1.0;
     static final int CONTAIN_AWAY_SCALE = 1536;
@@ -440,6 +440,23 @@ public final class AirHarassEvaluator {
             return ReentryHold.TARGET;
         }
         return stalled ? ReentryHold.NONE : ReentryHold.ALL;
+    }
+
+    /**
+     * {@link #reentryHold(int, Position, boolean, int)} behind the IA_AIR_FLAP_ESCAPE switch: with the escape off,
+     * the whole entry is closed for the hold window whatever the failed target or the stall.
+     *
+     * @param escapeEnabled false to close the whole entry inside the hold window
+     * @param exitEngageFrame frame the squad last broke a harass exit lock, or 0 when it never did
+     * @param failedTarget center of the base, or anchor of the exposed group, the failed harass was on, or null
+     * @param stalled true while the squad's FIGHT and RETREAT crossings read as a stall
+     * @param now current frame
+     * @return what stays closed
+     */
+    public static ReentryHold reentryHold(boolean escapeEnabled, int exitEngageFrame, Position failedTarget,
+                                          boolean stalled, int now) {
+        return escapeEnabled ? reentryHold(exitEngageFrame, failedTarget, stalled, now)
+                : reentryHold(exitEngageFrame, null, false, now);
     }
 
     /**

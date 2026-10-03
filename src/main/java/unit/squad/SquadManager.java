@@ -1603,10 +1603,8 @@ public class SquadManager {
             detector.observe(now, squad.getStatus());
             stalled = detector.isStalled(now);
         }
-        AirHarassEvaluator.ReentryHold hold = Config.airFlapEscape
-                ? AirHarassEvaluator.reentryHold(squad.getHarassExitEngageFrame(),
-                squad.getHarassExitEngageTarget(), stalled, now)
-                : AirHarassEvaluator.reentryHold(squad.getHarassExitEngageFrame(), null, false, now);
+        AirHarassEvaluator.ReentryHold hold = AirHarassEvaluator.reentryHold(Config.airFlapEscape,
+                squad.getHarassExitEngageFrame(), squad.getHarassExitEngageTarget(), stalled, now);
         if (!AirHarassEvaluator.entryCheckDue(squad.isAirSquad(), squad.isRetreatLocked(now) && !stalled,
                 squad.isFightLocked(now), now) || hold == AirHarassEvaluator.ReentryHold.ALL) {
             return false;
