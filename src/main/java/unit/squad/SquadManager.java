@@ -10,6 +10,7 @@ import bwapi.WeaponType;
 import bwapi.WalkPosition;
 import bwem.Base;
 import bwem.CPPath;
+import config.Config;
 import info.GameState;
 import info.ScoutData;
 import info.map.BaseArea;
@@ -1597,13 +1598,15 @@ public class SquadManager {
     private boolean tryEnterHarass(Squad squad) {
         int now = game.getFrameCount();
         boolean stalled = false;
-        if (squad instanceof AirSquad) {
+        if (squad instanceof AirSquad && Config.airFlapEscape) {
             AirStallDetector detector = ((AirSquad) squad).getStallDetector();
             detector.observe(now, squad.getStatus());
             stalled = detector.isStalled(now);
         }
-        AirHarassEvaluator.ReentryHold hold = AirHarassEvaluator.reentryHold(squad.getHarassExitEngageFrame(),
-                squad.getHarassExitEngageTarget(), stalled, now);
+        AirHarassEvaluator.ReentryHold hold = Config.airFlapEscape
+                ? AirHarassEvaluator.reentryHold(squad.getHarassExitEngageFrame(),
+                squad.getHarassExitEngageTarget(), stalled, now)
+                : AirHarassEvaluator.reentryHold(squad.getHarassExitEngageFrame(), null, false, now);
         if (!AirHarassEvaluator.entryCheckDue(squad.isAirSquad(), squad.isRetreatLocked(now) && !stalled,
                 squad.isFightLocked(now), now) || hold == AirHarassEvaluator.ReentryHold.ALL) {
             return false;

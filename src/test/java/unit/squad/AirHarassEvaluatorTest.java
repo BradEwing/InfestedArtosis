@@ -3,9 +3,11 @@ package unit.squad;
 import bwapi.Position;
 import bwapi.Race;
 import bwapi.UnitType;
+import config.Config;
 import org.junit.jupiter.api.Test;
 import unit.squad.horizon.UnitStrength;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -435,23 +437,58 @@ class AirHarassEvaluatorTest {
         double hotBase = AirHarassEvaluator.baseScore(400, -1);
 
         assertTrue(AirHarassEvaluator.exposedOutscoresBase(3.0, AirHarassEvaluator.baseScore(60, -1)));
-        assertTrue(AirHarassEvaluator.exposedOutscoresBase(3.0, hotBase));
-        assertFalse(AirHarassEvaluator.exposedOutscoresBase(1.0, hotBase));
+        assertTrue(AirHarassEvaluator.exposedOutscoresBase(7.0, hotBase));
+        assertFalse(AirHarassEvaluator.exposedOutscoresBase(3.0, hotBase));
         assertTrue(AirHarassEvaluator.exposedOutscoresBase(0.1, -1));
     }
 
     @Test
-    void aStarportGroupBeatsAHotBaseThroughTheControllersSelection() {
+    void aBaseScoreAboveTheCapIsNotOutscoredByAGroupBelowTheCapInHeatUnits() {
+        double veryHotBase = AirHarassEvaluator.baseScore(5000, -1);
+        double belowCap = AirHarassEvaluator.EXPOSED_BASE_SCORE_CAP / AirHarassEvaluator.HEAT_PER_EXPOSED_VALUE;
+
+        assertFalse(AirHarassEvaluator.exposedOutscoresBase(belowCap, veryHotBase));
+        assertTrue(AirHarassEvaluator.exposedOutscoresBase(belowCap + 0.1, veryHotBase));
+    }
+
+    @Test
+    void aLoneStarportDoesNotBeatAHotBaseButAWorkerGroupDoes() {
+        AirHarassTargeting.Contact starport = new AirHarassTargeting.Contact(9, UnitType.Terran_Starport,
+                new Position(3000, 1000), UnitType.Terran_Starport.maxHitPoints(), 1.0);
+        ExposedTargets.Group lone = ExposedTargets.groups(Collections.singletonList(starport), 6,
+                Collections.emptyList()).get(0);
+        List<AirHarassTargeting.Contact> scvs = new ArrayList<>();
+        for (int i = 0; i < 3; i++) {
+            scvs.add(new AirHarassTargeting.Contact(20 + i, UnitType.Terran_SCV, new Position(3000 + i * 20, 1000),
+                    UnitType.Terran_SCV.maxHitPoints(), 1.0));
+        }
+        ExposedTargets.Group workers = ExposedTargets.groups(scvs, 6, Collections.emptyList()).get(0);
+        Position from = new Position(2900, 1000);
+        AirHarassEvaluator.BaseOption<String> hotBase = option("main", STRIKE, 400, -1);
+
+        assertFalse(AirHarassController.raidsExposed(lone, hotBase, from));
+        assertTrue(AirHarassController.raidsExposed(lone, null, from));
+        assertTrue(AirHarassController.raidsExposed(workers, hotBase, from));
+        assertFalse(AirHarassController.raidsExposed(null, hotBase, from));
+    }
+
+    @Test
+    void withTheEscapeSwitchOffAnExposedGroupIsOnlyRaidedWhenNoBaseQualifies() {
         AirHarassTargeting.Contact starport = new AirHarassTargeting.Contact(9, UnitType.Terran_Starport,
                 new Position(3000, 1000), UnitType.Terran_Starport.maxHitPoints(), 1.0);
         ExposedTargets.Group group = ExposedTargets.groups(Collections.singletonList(starport), 6,
                 Collections.emptyList()).get(0);
         Position from = new Position(2900, 1000);
-        AirHarassEvaluator.BaseOption<String> hotBase = option("main", STRIKE, 400, -1);
-
-        assertTrue(AirHarassController.raidsExposed(group, hotBase, from));
-        assertTrue(AirHarassController.raidsExposed(group, null, from));
-        assertFalse(AirHarassController.raidsExposed(null, hotBase, from));
+        AirHarassEvaluator.BaseOption<String> weakBase = option("main", STRIKE, 10, -1);
+        boolean before = Config.airFlapEscape;
+        try {
+            Config.airFlapEscape = false;
+            assertFalse(AirHarassController.raidsExposed(group, weakBase, from));
+            assertTrue(AirHarassController.raidsExposed(group, null, from));
+        } finally {
+            Config.airFlapEscape = before;
+        }
+        assertTrue(AirHarassController.raidsExposed(group, weakBase, from));
     }
 
     @Test

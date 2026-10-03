@@ -6,6 +6,7 @@ import bwapi.TilePosition;
 import bwapi.Unit;
 import bwapi.UnitType;
 import bwem.Base;
+import config.Config;
 import info.GameState;
 import info.map.HarassHeatMap;
 import info.tracking.ObservedUnit;
@@ -226,6 +227,9 @@ public class AirHarassController {
      */
     static boolean raidsExposed(ExposedTargets.Group exposed, AirHarassEvaluator.BaseOption<?> bestBase,
                                 Position from) {
+        if (!Config.airFlapEscape) {
+            return exposed != null && bestBase == null;
+        }
         return exposed != null && AirHarassEvaluator.exposedOutscoresBase(ExposedTargets.score(exposed, from),
                 bestBase == null ? -1 : AirHarassEvaluator.baseScore(bestBase.getHeat(),
                         bestBase.getContainDistance()));
@@ -767,7 +771,7 @@ public class AirHarassController {
         Set<Base> candidates = new HashSet<>(AirHarassScouting.unrefused(gameState.getBaseData().getEnemyBases(),
                 probeRefusedUntil, now));
         candidates.removeAll(state.getVisitedBases());
-        Position held = AirHarassEvaluator.reentryHold(squad.getHarassExitEngageFrame(),
+        Position held = Config.airFlapEscape && AirHarassEvaluator.reentryHold(squad.getHarassExitEngageFrame(),
                 squad.getHarassExitEngageTarget(), false, now) == AirHarassEvaluator.ReentryHold.TARGET
                 ? squad.getHarassExitEngageTarget() : null;
         candidates.removeIf(base -> AirHarassEvaluator.isFailedTarget(held, base.getCenter()));

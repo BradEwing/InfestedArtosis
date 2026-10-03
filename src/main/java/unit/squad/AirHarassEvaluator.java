@@ -41,7 +41,7 @@ public final class AirHarassEvaluator {
     static final int HARASS_TICK = 12;
     static final int REENTRY_HOLD_FRAMES = 480;
     static final double HEAT_PER_EXPOSED_VALUE = 60;
-    static final double EXPOSED_BASE_SCORE_CAP = 100;
+    static final double EXPOSED_BASE_SCORE_CAP = 600;
     static final int FAILED_TARGET_RADIUS = 640;
     static final double CONTAIN_AWAY_WEIGHT = 1.0;
     static final int CONTAIN_AWAY_SCALE = 1536;
