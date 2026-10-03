@@ -143,7 +143,7 @@ public class WeightedUCBCalculatorTest {
         Map<String, Record> opponentRecords = new HashMap<>();
         Map<String, MapAwareRecord> mapRecords = new HashMap<>();
         List<Long> gameTimestamps = new ArrayList<>();
-        opponentRecords.put("4Pool", thirtyPercentIncumbent(gameTimestamps));
+        opponentRecords.put("4Pool", fiftyPercentIncumbent(gameTimestamps));
         opponentRecords.put("Overpool", Record.builder().opener("Overpool").build());
         List<String> candidates = Arrays.asList("12Pool", "Overpool", "4Pool", "9PoolSpeed");
 
@@ -172,7 +172,7 @@ public class WeightedUCBCalculatorTest {
         Map<String, Record> opponentRecords = new HashMap<>();
         Map<String, MapAwareRecord> mapRecords = new HashMap<>();
         List<Long> gameTimestamps = new ArrayList<>();
-        opponentRecords.put("4Pool", thirtyPercentIncumbent(gameTimestamps));
+        opponentRecords.put("4Pool", fiftyPercentIncumbent(gameTimestamps));
         List<String> candidates = Arrays.asList("12Pool", "Overpool", "4Pool", "9PoolSpeed");
         long timestamp = gameTimestamps.size();
         for (String thin : Arrays.asList("12Pool", "Overpool", "9PoolSpeed")) {
@@ -186,15 +186,15 @@ public class WeightedUCBCalculatorTest {
         for (int lifetime : new int[] {33, 53, 339, 1324}) {
             assertEquals("4Pool", WeightedUCBCalculator.findBestStrategy(candidates, "MapA",
                     mapRecords, opponentRecords, lifetime, gameTimestamps),
-                    "A thinly played arm displaced a 30% incumbent at a lifetime of " + lifetime);
+                    "A thinly played arm displaced a 50% incumbent at a lifetime of " + lifetime);
         }
     }
 
-    private static Record thirtyPercentIncumbent(List<Long> gameTimestamps) {
+    private static Record fiftyPercentIncumbent(List<Long> gameTimestamps) {
         Record incumbent = Record.builder().opener("4Pool").build();
         for (long timestamp = 1; timestamp <= 30; timestamp++) {
             gameTimestamps.add(timestamp);
-            if (timestamp % 10 == 3 || timestamp % 10 == 6 || timestamp % 10 == 9) {
+            if (timestamp % 2 == 1) {
                 incumbent.addWinTimestamp(timestamp);
                 incumbent.setWins(incumbent.getWins() + 1);
             } else {

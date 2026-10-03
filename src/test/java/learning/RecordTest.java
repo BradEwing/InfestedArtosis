@@ -241,7 +241,7 @@ public class RecordTest {
      * - discountedWins = 1.0 + 0.95 + 0.95^2 = 2.8525
      * - discountedGames = 1.0 + 0.95 + 0.95^2 = 2.8525
      * - sampleMean = 2.8525 / 2.8525 = 1.0
-     * - curiosity = 0.15 * (1 - 2.8525 / 10) ≈ 0.107
+     * - curiosity = 0.25 * (1 - 2.8525 / 10) ≈ 0.179
      * The index should be greater than 1.0 due to the curiosity bonus.
      */
     @Test
@@ -311,7 +311,7 @@ public class RecordTest {
     void testZeroMeanArmNeverOutranksAnIncumbentAboveTheCuriosityCap() {
         for (int historyLength : new int[] {30, 53, 339, 1324}) {
             List<Long> gameTimestamps = new ArrayList<>();
-            Record incumbent = evenlySpacedThirtyPercentRecord(historyLength, gameTimestamps);
+            Record incumbent = evenlySpacedFiftyPercentRecord(historyLength, gameTimestamps);
             double incumbentIndex = incumbent.index(historyLength, gameTimestamps);
             assertTrue(incumbent.discountedMean(gameTimestamps) > UCBSelectionPolicy.CURIOSITY_CAP,
                     "The fixture incumbent should lead by more than the cap at " + historyLength);
@@ -595,6 +595,25 @@ public class RecordTest {
         for (long timestamp = 1L; timestamp <= games; timestamp++) {
             gameTimestamps.add(timestamp);
             if (timestamp % 10 == 3 || timestamp % 10 == 6 || timestamp % 10 == 9) {
+                record.addWinTimestamp(timestamp);
+                record.setWins(record.getWins() + 1);
+            } else {
+                record.addLossTimestamp(timestamp);
+                record.setLosses(record.getLosses() + 1);
+            }
+        }
+        return record;
+    }
+
+    /**
+     * A record that wins every other game, and the matching game clock. The most recent game is a
+     * loss, so the fixture does not flatter the discounted mean.
+     */
+    private Record evenlySpacedFiftyPercentRecord(int games, List<Long> gameTimestamps) {
+        Record record = Record.builder().opener("Incumbent").build();
+        for (long timestamp = 1L; timestamp <= games; timestamp++) {
+            gameTimestamps.add(timestamp);
+            if (timestamp % 2 == 1) {
                 record.addWinTimestamp(timestamp);
                 record.setWins(record.getWins() + 1);
             } else {
