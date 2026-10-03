@@ -167,6 +167,8 @@ public class SquadDecisionLogger implements SquadDecisionSink {
     private final Map<String, SquadStatus> lastStatus = new HashMap<>();
     private final Map<String, SquadDecision> decisions = new HashMap<>();
     private final Map<String, String> lastSuppression = new HashMap<>();
+    private final Set<String> holdRun = new HashSet<>();
+    private final Set<String> heldThisSweep = new HashSet<>();
     private final Map<String, String> lastCollapseRejection = new HashMap<>();
     private final Map<String, Squad> lastSquad = new HashMap<>();
     private final Map<String, RallyReason> rallyReason = new HashMap<>();
@@ -265,13 +267,30 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         try {
             SquadDecision decision = decisionFor(squad);
             decision.setDecisionPath(path);
-            if (writesOwnRow(path)) {
+            if (isBlindHold(path)) {
+                heldThisSweep.add(squad.getId());
+                if (holdRun.add(squad.getId())) {
+                    writer.append(row(squad, game.getFrameCount(), path.name(), squad.getStatus(),
+                            squad.getStatus(), decision, NONE));
+                }
+            } else if (writesOwnRow(path)) {
                 writer.append(row(squad, game.getFrameCount(), path.name(), squad.getStatus(), squad.getStatus(),
                         decision, NONE));
             }
         } catch (RuntimeException e) {
             disable();
         }
+    }
+
+    /**
+     * Whether a path is a hold of a blind ADVANCE, written as one row at the start of each run of holds of a squad
+     * rather than on every frame it holds.
+     *
+     * @param path the branch taken
+     * @return true for BLIND_ADVANCE_HOLD and BUNKER_MEMORY_HOLD
+     */
+    static boolean isBlindHold(DecisionPath path) {
+        return path == DecisionPath.BLIND_ADVANCE_HOLD || path == DecisionPath.BUNKER_MEMORY_HOLD;
     }
 
     /**
@@ -669,6 +688,8 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         decisions.clear();
         lastStatus.clear();
         lastSuppression.clear();
+        holdRun.clear();
+        heldThisSweep.clear();
         lastCollapseRejection.clear();
         lastSquad.clear();
         rallyReason.clear();
@@ -708,6 +729,8 @@ public class SquadDecisionLogger implements SquadDecisionSink {
 
         lastStatus.keySet().retainAll(present);
         lastSuppression.keySet().retainAll(present);
+        holdRun.retainAll(heldThisSweep);
+        heldThisSweep.clear();
         lastCollapseRejection.keySet().retainAll(present);
         lastSquad.keySet().retainAll(present);
         rallyReason.keySet().retainAll(present);

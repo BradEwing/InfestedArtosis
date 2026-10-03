@@ -2327,6 +2327,9 @@ public class SquadManager {
                 }
                 if (blindAdvanceHeld(squad.getStatus(), enemyMeasured, threatBeyondRadius, baseThreatened)) {
                     holdSquad(squad, managedFighters);
+                    SquadDecisions.pathTaken(squad, snapshot != null && snapshot.isBunkerMemoryHeld()
+                            ? DecisionPath.BUNKER_MEMORY_HOLD
+                            : DecisionPath.BLIND_ADVANCE_HOLD);
                     break;
                 }
                 if (AirHarassEvaluator.holdsBlindAdvance(squad.getHarassExitFrame(), now, enemyMeasured,
@@ -2345,6 +2348,9 @@ public class SquadManager {
                     SquadDecisions.pathTaken(squad, DecisionPath.CONTAIN_GATED);
                 }
                 boolean enteredContain = safeToHold && tryEnterContainment(squad);
+                if (snapshot != null) {
+                    squad.getBunkerRetreatMemory().recordRetreat(snapshot.getPricedBunkers(), squad.getMembers());
+                }
                 if (!enteredContain) {
                     squad.setStatus(SquadStatus.RETREAT);
                     assignRetreatTargets(squad, managedFighters);
