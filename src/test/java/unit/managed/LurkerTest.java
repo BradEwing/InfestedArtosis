@@ -99,40 +99,38 @@ class LurkerTest {
     void aWithdrawalHoldsForTheContainPointItWasMadeFrom() {
         Position point = new Position(100, 100);
 
-        assertTrue(Lurker.withdrawHolds(point, new Position(100, 100), 500, 500));
-        assertTrue(Lurker.withdrawHolds(point, point, 500, 500 + Lurker.WITHDRAW_HOLD_FRAMES));
+        assertTrue(Lurker.withdrawHolds(point, new Position(100, 100), true, 500, 500));
+        assertTrue(Lurker.withdrawHolds(point, point, true, 500, 500 + Lurker.WITHDRAW_HOLD_FRAMES));
     }
 
     @Test
-    void aWithdrawalEndsWhenTheContainPointChanges() {
-        assertFalse(Lurker.withdrawHolds(new Position(100, 100), new Position(140, 100), 500, 510));
+    void aWithdrawalEndsWhenTheContainPointChangesToOneClearOfTheFire() {
+        assertFalse(Lurker.withdrawHolds(new Position(100, 100), new Position(140, 100), true, 500, 510));
+    }
+
+    @Test
+    void aWithdrawalHoldsWhenTheContainPointChangesToOneStillInTheFire() {
+        assertTrue(Lurker.withdrawHolds(new Position(100, 100), new Position(140, 100), false, 500, 510));
     }
 
     @Test
     void aWithdrawalEndsAfterTheHoldFrames() {
         Position point = new Position(100, 100);
 
-        assertFalse(Lurker.withdrawHolds(point, point, 500, 500 + Lurker.WITHDRAW_HOLD_FRAMES + 1));
+        assertFalse(Lurker.withdrawHolds(point, point, true, 500, 500 + Lurker.WITHDRAW_HOLD_FRAMES + 1));
     }
 
     @Test
     void noWithdrawalHoldsWithoutOne() {
         Position point = new Position(100, 100);
 
-        assertFalse(Lurker.withdrawHolds(null, point, -1, 10));
+        assertFalse(Lurker.withdrawHolds(null, point, true, -1, 10));
     }
 
 
     @Test
     void aLurkerStandingInFixedFireUnburrowsWhenItsPointMovesALittle() {
         assertFalse(Lurker.staysBurrowed(10, false, true));
-    }
-
-    @Test
-    void aFreshContainPointOnTheHitFrameSkipsTheWithdrawalHold() {
-        assertFalse(Lurker.recordsWithdrawal(500, 500));
-        assertTrue(Lurker.recordsWithdrawal(499, 500));
-        assertTrue(Lurker.recordsWithdrawal(-1, 500));
     }
 
     @Test

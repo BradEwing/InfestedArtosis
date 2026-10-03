@@ -37,7 +37,8 @@ public class Lurker extends ManagedUnit {
     private Position withdrawPoint;
     private Position withdrawnFrom;
     private int withdrawFrame = -1;
-    private int containChangedFrame = -1;
+    private List<StaticDefenseZone> withdrawZones = Collections.emptyList();
+    private int withdrawPadding;
     private Boolean commandedBurrow;
 
     /**
@@ -286,17 +287,12 @@ public class Lurker extends ManagedUnit {
 
     @Override
     public boolean canStepOutNow() {
-        return super.canStepOutNow() && !holdsWithdrawal();
-    }
-
-    private boolean holdsWithdrawal() {
-        return withdrawPoint != null
-                && withdrawHolds(withdrawnFrom, containPosition, withdrawFrame, game.getFrameCount());
+        return super.canStepOutNow() && !holdsWithdrawalNow();
     }
 
     @Override
     public void evade(Position point, int frame) {
-        if (unit.isBurrowed() && recordsWithdrawal(containChangedFrame, frame)) {
+        if (unit.isBurrowed()) {
             withdrawPoint = point;
             withdrawnFrom = containPosition;
             withdrawFrame = frame;
@@ -304,22 +300,16 @@ public class Lurker extends ManagedUnit {
         super.evade(point, frame);
     }
 
-    @Override
-    public void setContainPosition(Position containPosition) {
-        noteContainChange(containPosition);
-        super.setContainPosition(containPosition);
-    }
-
-    @Override
-    public void attackMoveToContainPosition(Position point) {
-        noteContainChange(point);
-        super.attackMoveToContainPosition(point);
-    }
-
-    private void noteContainChange(Position next) {
-        if (!Objects.equals(next, containPosition)) {
-            containChangedFrame = game.getFrameCount();
-        }
+    /**
+     * Sets the ground the shooter that hit the Lurker covers, which a withdrawal holds its point against: a new
+     * contain point inside it does not end the withdrawal.
+     *
+     * @param zones the zones, at the reach learned over the game
+     * @param clearPadding pixels added to every zone's reach for a point to count as clear of it
+     */
+    public void setWithdrawZones(List<StaticDefenseZone> zones, int clearPadding) {
+        this.withdrawZones = zones;
+        this.withdrawPadding = clearPadding;
     }
 
     @Override
@@ -443,36 +433,42 @@ public class Lurker extends ManagedUnit {
     }
 
     /**
-     * Whether a withdrawal is recorded: not when the squad gave the Lurker a new contain point on the frame it was
-     * hit, since that point already answers the fire.
-     *
-     * @param containChangedFrame frame the contain point last changed, -1 for never
-     * @param frame frame of the hit
-     * @return true when the withdrawal point is held
-     */
-    static boolean recordsWithdrawal(int containChangedFrame, int frame) {
-        return containChangedFrame != frame;
-    }
-
-    /**
-     * Whether a withdrawal still holds: it was made from the contain point the Lurker has now, and fewer than
-     * {@link #WITHDRAW_HOLD_FRAMES} frames have passed. A new contain point, which the squad draws outside the zones it
-     * has learned, ends it.
+     * Whether a withdrawal still holds: fewer than {@link #WITHDRAW_HOLD_FRAMES} frames have passed, and the Lurker
+     * still has the contain point it withdrew from or has one that lies inside the ground it withdrew from. A new
+     * contain point clear of that ground ends it.
      *
      * @param withdrawnFrom the contain point the Lurker withdrew from, or null
      * @param containPosition the Lurker's contain point now
+     * @param containPointClear true when the contain point lies clear of the ground the Lurker withdrew from
      * @param withdrawFrame frame of the withdrawal, -1 for none
      * @param now current frame
      * @return true while the Lurker holds its withdrawal point
      */
-    static boolean withdrawHolds(Position withdrawnFrom, Position containPosition, int withdrawFrame, int now) {
+    static boolean withdrawHolds(Position withdrawnFrom, Position containPosition, boolean containPointClear,
+                                 int withdrawFrame, int now) {
         return withdrawFrame >= 0 && now - withdrawFrame <= WITHDRAW_HOLD_FRAMES
-                && Objects.equals(withdrawnFrom, containPosition);
+                && (Objects.equals(withdrawnFrom, containPosition) || !containPointClear);
+    }
+
+    private boolean holdsWithdrawalNow() {
+        return withdrawPoint != null && withdrawHolds(withdrawnFrom, containPosition,
+                isClearOfWithdrawZones(containPosition), withdrawFrame, game.getFrameCount());
+    }
+
+    private boolean isClearOfWithdrawZones(Position point) {
+        if (point == null) {
+            return true;
+        }
+        for (StaticDefenseZone zone : withdrawZones) {
+            if (zone.covers(point, withdrawPadding)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private Position holdPoint() {
-        if (withdrawPoint != null
-                && withdrawHolds(withdrawnFrom, containPosition, withdrawFrame, game.getFrameCount())) {
+        if (holdsWithdrawalNow()) {
             return withdrawPoint;
         }
         withdrawPoint = null;

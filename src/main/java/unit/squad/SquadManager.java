@@ -781,14 +781,25 @@ public class SquadManager {
                     EnemyReachMemory.baseGroundRange(type));
             Position seek = member.getRole() == UnitRole.CONTAIN ? member.getContainPosition() : null;
             int padding = containmentDefensePadding(Collections.singletonList(type));
-            Position point = member.canWithdrawNow()
-                    ? RunbyTargeting.findClearPoint(member.getPosition(), zones, padding, WITHDRAW_CLEARANCE,
-                            allowed, seek)
-                    : RunbyTargeting.findEvadePoint(member.getPosition(), zones, padding, allowed, seek);
+            Position point = evadePoint(member, zones, padding, allowed, seek);
             if (point != null) {
+                if (member instanceof Lurker && member.canWithdrawNow()) {
+                    ((Lurker) member).setWithdrawZones(zones, padding + WITHDRAW_CLEARANCE);
+                }
                 member.evade(point, now);
             }
         }
+    }
+
+    private static Position evadePoint(ManagedUnit member, List<StaticDefenseZone> zones, int padding,
+                                       Predicate<Position> allowed, Position seek) {
+        if (!member.canWithdrawNow()) {
+            return RunbyTargeting.findEvadePoint(member.getPosition(), zones, padding, allowed, seek);
+        }
+        Position clear = RunbyTargeting.findClearPoint(member.getPosition(), zones, padding, WITHDRAW_CLEARANCE,
+                allowed, seek);
+        return clear != null ? clear
+                : RunbyTargeting.findEvadePoint(member.getPosition(), zones, padding, allowed, seek);
     }
 
     /**
