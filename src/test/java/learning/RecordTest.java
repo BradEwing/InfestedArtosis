@@ -241,7 +241,7 @@ public class RecordTest {
      * - discountedWins = 1.0 + 0.95 + 0.95^2 = 2.8525
      * - discountedGames = 1.0 + 0.95 + 0.95^2 = 2.8525
      * - sampleMean = 2.8525 / 2.8525 = 1.0
-     * - curiosity = 0.40 * (1 - 2.8525 / 10) ≈ 0.286
+     * - curiosity = 0.25 * (1 - 2.8525 / 10) ≈ 0.179
      * The index should be greater than 1.0 due to the curiosity bonus.
      */
     @Test

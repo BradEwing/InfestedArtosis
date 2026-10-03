@@ -62,14 +62,14 @@ where:
   discountedMean = discountedWins / discountedGames
   curiosity      = CURIOSITY_CAP * max(0, 1 - discountedGames / CURIOSITY_HORIZON)
 
-  CURIOSITY_CAP     = 0.40
+  CURIOSITY_CAP     = 0.25
   CURIOSITY_HORIZON = 10.0
 ```
 
 - `discountedWins` and `discountedGames` use exponential decay (see below), and both outcomes decay at the same
   gamma, so `discountedMean` is a win rate.
 - Curiosity is bounded by the cap and reaches zero at the horizon. Two consequences the bandit depends on:
-  an arm with a zero mean can never displace an incumbent whose discounted mean exceeds 0.40, and the index is
+  an arm with a zero mean can never displace an incumbent whose discounted mean exceeds 0.25, and the index is
   invariant in how long the opponent has been played -- an opponent met 1324 times scores its arms exactly as one
   met 53 times does.
 - `totalGames` (total games played against this opponent, raw count) no longer enters the score. It survives in the
@@ -78,9 +78,9 @@ where:
 
 | Discounted games | Curiosity |
 |---|---|
-| 0 | 0.400 |
-| 1 | 0.360 |
-| 5 | 0.200 |
+| 0 | 0.250 |
+| 1 | 0.225 |
+| 5 | 0.125 |
 | 10 or more | 0.000 |
 
 ### Exponential Decay
@@ -128,8 +128,8 @@ sampleMean      = 1.0
 ```
 
 Both have the same sample mean, but Strategy B holds less discounted evidence, so it earns curiosity of
-`0.40 * (1 - 1.132 / 10) = 0.355` against Strategy A's `0.40 * (1 - 2.852 / 10) = 0.286` -- a nudge to re-test the
-old strategy, worth 6.9 win-rate points and no more.
+`0.25 * (1 - 1.132 / 10) = 0.222` against Strategy A's `0.25 * (1 - 2.852 / 10) = 0.179` -- a nudge to re-test the
+old strategy, worth 4.3 win-rate points and no more.
 
 ### Edge Cases
 
