@@ -440,4 +440,156 @@ class TwoHatchMutaTest {
         assertEquals(BuildOrder.ARMY_UPGRADE_PRIORITY, flyerAttackPriority(TwoHatchMuta.MUTALISKS_BEFORE_FLYER_UPGRADE));
         assertEquals(BuildOrder.ARMY_UPGRADE_PRIORITY, flyerAttackPriority(TwoHatchMuta.MUTALISKS_BEFORE_FLYER_UPGRADE + 1));
     }
+
+    private static final int FLOAT_BAR = 350;
+
+    private static final int ALL_GAS = 1000;
+
+    private static final int MUTALISK_MINERALS = UnitType.Zerg_Mutalisk.mineralPrice();
+
+    /**
+     * Game M7CHH005 frame 8,158: 352 unreserved minerals while the Spire morphed bought an
+     * expansion the first Mutalisks needed the bank for.
+     */
+    @Test
+    void floatingMineralsPlanNoExpansionWhileTheFirstWaveOwnsTheBank() {
+        assertFalse(TwoHatchMuta.wantsBaseAdvantage(false, true, true, 352, ALL_GAS, FLOAT_BAR, 0));
+        assertFalse(TwoHatchMuta.wantsBaseAdvantage(false, true, true, FLOAT_BAR + 7 * MUTALISK_MINERALS, ALL_GAS, FLOAT_BAR, 0));
+    }
+
+    @Test
+    void aBankBeyondTheFirstWaveStillPlansAnExpansionWhileTheSpireMorphs() {
+        assertTrue(TwoHatchMuta.wantsBaseAdvantage(false, true, true, FLOAT_BAR + 7 * MUTALISK_MINERALS + 1, ALL_GAS,
+                FLOAT_BAR, 0));
+    }
+
+    @Test
+    void theFirstWaveCostShrinksAsMutalisksAreCounted() {
+        assertFalse(TwoHatchMuta.wantsBaseAdvantage(false, true, true, FLOAT_BAR + 3 * MUTALISK_MINERALS, ALL_GAS, FLOAT_BAR, 4));
+        assertTrue(TwoHatchMuta.wantsBaseAdvantage(false, true, true, FLOAT_BAR + 3 * MUTALISK_MINERALS + 1, ALL_GAS,
+                FLOAT_BAR, 4));
+    }
+
+    @Test
+    void mineralsTheGasCannotTurnIntoMutalisksAreNotHeldBack() {
+        assertTrue(TwoHatchMuta.wantsBaseAdvantage(false, true, true, 500, 100, FLOAT_BAR, 0));
+        assertFalse(TwoHatchMuta.wantsBaseAdvantage(false, true, true, 500, 200, FLOAT_BAR, 0));
+        assertTrue(TwoHatchMuta.wantsBaseAdvantage(false, true, true, 500, -50, FLOAT_BAR, 0));
+    }
+
+    @Test
+    void theMacroHatcheryAsksOnMineralsAloneOnceTheFirstWaveIsQueuedAndUntilFourHatcheries() {
+        int wave = TwoHatchMuta.MUTALISKS_BEFORE_FLYER_UPGRADE;
+
+        assertEquals(0, TwoHatchMuta.macroHatcheryGasBar(true, wave, 3));
+        assertEquals(LarvaBoundMacroHatchery.FLOAT_GAS, TwoHatchMuta.macroHatcheryGasBar(true, wave - 1, 3));
+        assertEquals(LarvaBoundMacroHatchery.FLOAT_GAS, TwoHatchMuta.macroHatcheryGasBar(false, wave, 3));
+        assertEquals(LarvaBoundMacroHatchery.FLOAT_GAS,
+                TwoHatchMuta.macroHatcheryGasBar(true, wave, TwoHatchMuta.MACRO_HATCHERY_HATCHERY_CAP));
+    }
+
+    @Test
+    void theHoldIsReleasedOnceTheSeventhMutaliskIsCounted() {
+        int mutalisks = TwoHatchMuta.MUTALISKS_BEFORE_FLYER_UPGRADE;
+
+        assertTrue(TwoHatchMuta.ownsFirstWaveBank(true, mutalisks - 1));
+        assertFalse(TwoHatchMuta.ownsFirstWaveBank(true, mutalisks));
+        assertFalse(TwoHatchMuta.ownsFirstWaveBank(false, 0));
+        assertTrue(TwoHatchMuta.wantsBaseAdvantage(false, true, true, FLOAT_BAR - 100, ALL_GAS, FLOAT_BAR, mutalisks));
+    }
+
+    @Test
+    void floatingMineralsPlanAnExpansionBeforeASpireIsCommitted() {
+        assertTrue(TwoHatchMuta.wantsBaseAdvantage(false, true, false, 352, ALL_GAS, FLOAT_BAR, 0));
+    }
+
+    @Test
+    void fallingBehindOnBasesStillPlansAnExpansionDuringTheSpireMorph() {
+        assertTrue(TwoHatchMuta.wantsBaseAdvantage(true, false, true, 0, ALL_GAS, FLOAT_BAR, 0));
+        assertTrue(TwoHatchMuta.wantsBaseAdvantage(true, true, true, 352, ALL_GAS, FLOAT_BAR, 0));
+    }
+
+    @Test
+    void noFloatNoLagPlansNoExpansion() {
+        assertFalse(TwoHatchMuta.wantsBaseAdvantage(false, false, false, 0, ALL_GAS, FLOAT_BAR, 0));
+    }
+
+    /**
+     * Game M7CHH005 frame 8,817: 474 minerals, gas for more, and 3 larva on the Spire frame, with
+     * one Mutalisk planned and a Drone and Zergling taking the other two larva.
+     */
+    @Test
+    void queuesOneMutaliskPerLarvaOnTheSpireCompletionFrame() {
+        UnitTypeCount count = new UnitTypeCount();
+
+        List<Plan> plans = TwoHatchMuta.planMutalisk(withSpire(), WAVE_TARGET, GATHERER_FLOOR, 0, count, 3, 474, 362);
+
+        assertEquals(3, plans.size());
+        assertEquals(3, count.plannedCount(UnitType.Zerg_Mutalisk));
+        for (Plan plan : plans) {
+            assertEquals(UnitType.Zerg_Mutalisk, plan.getPlannedUnit());
+            assertEquals(UnitPlan.ADVANCED_UNIT_PRIORITY, plan.getPriority());
+        }
+    }
+
+    @Test
+    void theFirstWaveQueuesAheadOfTheBacklogOnTheSpireCompletionFrame() {
+        ProductionQueue queue = new ProductionQueue();
+        for (int i = 0; i < BACKLOG_PLANS; i++) {
+            UnitType unitType = i % 2 == 0 ? UnitType.Zerg_Drone : UnitType.Zerg_Zergling;
+            queue.add(new UnitPlan(unitType, FIRST_BACKLOG_FRAME + i * BACKLOG_STEP));
+        }
+
+        queue.addAll(TwoHatchMuta.planMutalisk(withSpire(), WAVE_TARGET, GATHERER_FLOOR, 0, new UnitTypeCount(),
+                3, 474, 362));
+
+        for (int i = 0; i < 3; i++) {
+            assertEquals(UnitType.Zerg_Mutalisk, queue.poll().getPlannedUnit());
+        }
+        assertEquals(BACKLOG_PLANS, queue.size());
+    }
+
+    @Test
+    void theFirstWaveIsBoundByTheBankAndByTheLarva() {
+        assertEquals(2, TwoHatchMuta.mutalisksToQueue(0, 0, 5, 250, 500));
+        assertEquals(2, TwoHatchMuta.mutalisksToQueue(0, 0, 5, 900, 250));
+        assertEquals(1, TwoHatchMuta.mutalisksToQueue(0, 0, 1, 900, 500));
+    }
+
+    @Test
+    void theFirstWaveQueuesOneWhenNoLarvaOrBankIsFree() {
+        assertEquals(1, TwoHatchMuta.mutalisksToQueue(0, 0, 0, 0, 0));
+    }
+
+    @Test
+    void theFirstWaveCountsPlansAlreadyWaiting() {
+        assertEquals(2, TwoHatchMuta.mutalisksToQueue(1, 1, 3, 900, 500));
+        assertEquals(0, TwoHatchMuta.mutalisksToQueue(1, 3, 3, 900, 500));
+    }
+
+    @Test
+    void theFirstWaveStopsAtTheSeventhMutalisk() {
+        assertEquals(2, TwoHatchMuta.mutalisksToQueue(5, 0, 5, 900, 500));
+    }
+
+    @Test
+    void laterMutalisksQueueOneAtATimeWhateverTheLarva() {
+        assertEquals(1, TwoHatchMuta.mutalisksToQueue(TwoHatchMuta.MUTALISKS_BEFORE_FLYER_UPGRADE, 0, 5, 900, 500));
+        assertEquals(0, TwoHatchMuta.mutalisksToQueue(TwoHatchMuta.MUTALISKS_BEFORE_FLYER_UPGRADE, 1, 5, 900, 500));
+    }
+
+    @Test
+    void theFirstWaveNeverExceedsTheMutaliskTarget() {
+        UnitTypeCount count = new UnitTypeCount();
+
+        List<Plan> plans = TwoHatchMuta.planMutalisk(withSpire(), 2, GATHERER_FLOOR, 0, count, 5, 900, 500);
+
+        assertEquals(2, plans.size());
+    }
+
+    @Test
+    void theFirstWaveQueuesNothingBelowTheGathererFloor() {
+        assertTrue(TwoHatchMuta.planMutalisk(withSpire(), WAVE_TARGET, GATHERER_FLOOR - 1, 0, new UnitTypeCount(),
+                3, 474, 362).isEmpty());
+    }
 }
