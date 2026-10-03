@@ -13,6 +13,8 @@ import learning.OpponentRecord;
 import macro.ProductionManager;
 import macro.plan.PlanManager;
 import strategy.buildorder.BuildOrder;
+import telemetry.BaseCheckLogger;
+import telemetry.BaseChecks;
 import telemetry.CombatTelemetry;
 import telemetry.FixedFireLogger;
 import telemetry.FixedFireTelemetry;
@@ -65,6 +67,7 @@ public class Bot extends DefaultBWListener {
     private PlanEventLogger planEventLogger;
     private SquadDecisionLogger squadDecisionLogger;
     private PerchAssignmentLogger perchAssignmentLogger;
+    private BaseCheckLogger baseCheckLogger;
     private TargetChoiceLogger targetChoiceLogger;
     private RunbyLogger runbyLogger;
     private HarassLogger harassLogger;
@@ -102,6 +105,7 @@ public class Bot extends DefaultBWListener {
         combatTelemetry = new CombatTelemetry(game, gameState, unitManager.getSquadManager());
         startSquadDecisionLogging();
         startPerchAssignmentLogging();
+        startBaseCheckLogging();
         startTargetChoiceLogging();
         startRunbyLogging();
         startHarassLogging();
@@ -129,6 +133,15 @@ public class Bot extends DefaultBWListener {
 
         perchAssignmentLogger = new PerchAssignmentLogger(game, gameState, combatTelemetry.getGameId());
         PerchAssignments.register(perchAssignmentLogger);
+    }
+
+    private void startBaseCheckLogging() {
+        if (!gameState.getConfig().telemetryCombat) {
+            return;
+        }
+
+        baseCheckLogger = new BaseCheckLogger(game, combatTelemetry.getGameId());
+        BaseChecks.register(baseCheckLogger);
     }
 
     private void startTargetChoiceLogging() {
@@ -223,6 +236,9 @@ public class Bot extends DefaultBWListener {
         if (perchAssignmentLogger != null) {
             perchAssignmentLogger.onFrame();
         }
+        if (baseCheckLogger != null) {
+            baseCheckLogger.onFrame();
+        }
         if (targetChoiceLogger != null) {
             targetChoiceLogger.onFrame();
         }
@@ -315,6 +331,9 @@ public class Bot extends DefaultBWListener {
         }
         if (perchAssignmentLogger != null) {
             perchAssignmentLogger.onEnd();
+        }
+        if (baseCheckLogger != null) {
+            baseCheckLogger.onEnd();
         }
         if (targetChoiceLogger != null) {
             targetChoiceLogger.onEnd();

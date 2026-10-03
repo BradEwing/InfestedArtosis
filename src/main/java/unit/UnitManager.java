@@ -15,7 +15,9 @@ import macro.plan.PlanState;
 import unit.managed.ManagedUnit;
 import unit.managed.ManagedUnitFactory;
 import unit.managed.UnitRole;
+import unit.scout.BaseCheckScheduler;
 import unit.scout.ScoutManager;
+import unit.squad.Squad;
 import unit.squad.SquadManager;
 import unit.squad.WorkerDefense;
 import util.Distance;
@@ -25,10 +27,14 @@ import util.Time;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 public class UnitManager {
@@ -97,6 +103,7 @@ public class UnitManager {
         // Check every second (24 frames) to minimize overhead
         if (frameCount % 24 == 0) {
             checkAndAssignZerglingScouts();
+            checkAndAssignBaseChecks();
         }
 
         buildingManager.onFrame();
@@ -114,6 +121,14 @@ public class UnitManager {
         }
         squadManager.updateDefenseSquads();
         scoutManager.onFrame();
+
+        for (ManagedUnit managedUnit : scoutManager.drainReleasedChecks()) {
+            scoutManager.removeScout(managedUnit);
+            managedUnit.setRole(UnitRole.RALLY);
+            managedUnit.setMovementTargetPosition(null);
+            managedUnit.setRallyPoint(gameState.getBaseData().mainBasePosition().toPosition());
+            squadManager.addManagedUnit(managedUnit);
+        }
 
         for (ManagedUnit managedUnit : scoutManager.drainRecalledOverlords()) {
             scoutManager.removeScout(managedUnit);
@@ -375,13 +390,16 @@ public class UnitManager {
 
     private void onFrameDefault(ManagedUnit managedUnit, UnitRole role) {
         ScoutData scoutData = gameState.getScoutData();
+        if (role == UnitRole.SCOUT && scoutManager.isBaseCheckScout(managedUnit)) {
+            return;
+        }
         if (role == UnitRole.SCOUT) {
             boolean shouldStopScouting = false;
 
             if (managedUnit.getUnitType() == UnitType.Zerg_Overlord) {
                 shouldStopScouting = !scoutData.shouldOverlordsContinueScouting(gameState.getOpponentRace(), visibleEnemyTypes());
             } else if (managedUnit.getUnitType() == UnitType.Zerg_Zergling) {
-                shouldStopScouting = scoutManager.endZerglingScout();
+                shouldStopScouting = scoutManager.endZerglingScout(managedUnit);
             } else {
                 shouldStopScouting = scoutData.isEnemyBuildingLocationKnown() || informationManager.isEnemyUnitVisible();
             }
@@ -425,40 +443,86 @@ public class UnitManager {
             return;
         }
 
-        List<ManagedUnit> idleZerglings = managedUnits.stream()
-            .filter(mu -> mu.getUnitType() == UnitType.Zerg_Zergling)
-            .filter(mu -> mayPullAsZerglingScout(mu.getRole()))
-            .collect(Collectors.toList());
-
-        Set<ManagedUnit> disbandedZerglings = squadManager.getDisbandedUnits().stream()
-            .filter(mu -> mu.getUnitType() == UnitType.Zerg_Zergling)
-            .collect(Collectors.toSet());
-
-        List<ManagedUnit> availableZerglings = new ArrayList<>();
-        availableZerglings.addAll(idleZerglings);
-        availableZerglings.addAll(disbandedZerglings);
-
-        if (availableZerglings.isEmpty()) {
-            return;
-        }
-
         Base enemyMainBase = gameState.getBaseData().getMainEnemyBase();
         if (enemyMainBase == null) {
             return;
         }
 
-        availableZerglings.sort((z1, z2) -> {
-            double d1 = z1.getPosition().getDistance(enemyMainBase.getCenter());
-            double d2 = z2.getPosition().getDistance(enemyMainBase.getCenter());
-            return Double.compare(d1, d2);
-        });
-
+        List<ManagedUnit> availableZerglings = spareZerglings(enemyMainBase);
         int toAssign = Math.min(scoutsNeeded, availableZerglings.size());
         for (int i = 0; i < toAssign; i++) {
             ManagedUnit zergling = availableZerglings.get(i);
             squadManager.removeManagedUnit(zergling);
-            scoutManager.addScout(zergling);
+            scoutManager.beginBaseCheck(zergling, enemyMainBase, true);
         }
+    }
+
+    private void checkAndAssignBaseChecks() {
+        Base base = scoutManager.nextBaseCheck();
+        if (base == null) {
+            return;
+        }
+
+        int lingsNeeded = scoutManager.lingsPerCheck();
+        List<ManagedUnit> lings = spareZerglings(base);
+        if (scoutManager.mayStartCheck(false) && lings.size() >= lingsNeeded) {
+            for (int i = 0; i < lingsNeeded; i++) {
+                ManagedUnit zergling = lings.get(i);
+                squadManager.removeManagedUnit(zergling);
+                scoutManager.beginBaseCheck(zergling, base, i == 0);
+            }
+            return;
+        }
+
+        if (!scoutManager.mayStartCheck(true)) {
+            return;
+        }
+        Optional<ManagedUnit> overlord = managedUnits.stream()
+            .filter(mu -> mu.getUnitType() == UnitType.Zerg_Overlord)
+            .filter(mu -> mu.getRole() == UnitRole.IDLE)
+            .filter(squadManager::isParkedOverlord)
+            .filter(this::isHealthy)
+            .filter(mu -> scoutManager.mayOverlordCheck(mu, base))
+            .min(Comparator.comparingDouble(mu -> mu.getPosition().getDistance(base.getCenter())));
+        if (overlord.isPresent()) {
+            squadManager.removeManagedUnit(overlord.get());
+            scoutManager.beginBaseCheck(overlord.get(), base, true);
+        }
+    }
+
+    private List<ManagedUnit> spareZerglings(Base base) {
+        return managedUnits.stream()
+            .filter(mu -> mu.getUnitType() == UnitType.Zerg_Zergling)
+            .filter(mu -> !scoutManager.isBaseCheckScout(mu) && !scoutManager.hasPendingRecall(mu))
+            .filter(mu -> mayPullAsZerglingScout(mu.getRole(), squadManager.scoutLendSpare(mu) > 0))
+            .filter(mu -> !mu.isClosingOnTarget())
+            .filter(this::isFitToScout)
+            .sorted(Comparator.comparingDouble(mu -> mu.getPosition().getDistance(base.getCenter())))
+            .filter(squadSpareTracker())
+            .collect(Collectors.toList());
+    }
+
+    private Predicate<ManagedUnit> squadSpareTracker() {
+        Map<Squad, Integer> taken = new HashMap<>();
+        return mu -> {
+            Squad squad = squadManager.fightSquadOf(mu);
+            int already = taken.getOrDefault(squad, 0);
+            if (already >= squadManager.scoutLendSpare(mu)) {
+                return false;
+            }
+            taken.put(squad, already + 1);
+            return true;
+        };
+    }
+
+    private boolean isHealthy(ManagedUnit managedUnit) {
+        Unit unit = managedUnit.getUnit();
+        return BaseCheckScheduler.isHealthy(unit.getHitPoints(), unit.getType().maxHitPoints());
+    }
+
+    private boolean isFitToScout(ManagedUnit managedUnit) {
+        Unit unit = managedUnit.getUnit();
+        return BaseCheckScheduler.isFitToScout(unit.getHitPoints(), unit.getType().maxHitPoints());
     }
 
     /**
@@ -490,14 +554,16 @@ public class UnitManager {
     }
 
     /**
-     * Whether a zergling holding a role may be pulled to scout. A ling already scouting is not pulled again,
-     * and a ling on a runby stays with its squad in the enemy base, where it would otherwise be first in line.
+     * Whether a zergling may be pulled to scout. Only one its squad can spare: a ling in a squad that is
+     * fighting, containing, joining a containment or on a runby stays where it is, and so does one already
+     * scouting. A ling between targets reads as IDLE inside a fighting squad, so the role alone proves nothing.
      *
      * @param role the ling's role
+     * @param squadCanSpare whether the ling's squad can lend it, see {@link SquadManager#mayLendScout}
      * @return true when the ling may be pulled
      */
-    static boolean mayPullAsZerglingScout(UnitRole role) {
-        return role != UnitRole.SCOUT && role != UnitRole.RUNBY;
+    static boolean mayPullAsZerglingScout(UnitRole role, boolean squadCanSpare) {
+        return squadCanSpare && (role == UnitRole.FIGHT || role == UnitRole.RALLY || role == UnitRole.IDLE);
     }
 
     private void assignGatherersToDefense(Base base) {

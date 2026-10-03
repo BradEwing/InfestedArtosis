@@ -1,0 +1,240 @@
+package unit.scout;
+
+import bwapi.Position;
+import bwapi.UnitType;
+import org.junit.jupiter.api.Test;
+
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+class BaseCheckSchedulerTest {
+
+    private static final int NOW = BaseCheckScheduler.FIRST_CHECK_FRAME + 10000;
+
+    private static Map<String, Integer> map(Object... pairs) {
+        Map<String, Integer> result = new HashMap<>();
+        for (int i = 0; i < pairs.length; i += 2) {
+            result.put((String) pairs[i], (Integer) pairs[i + 1]);
+        }
+        return result;
+    }
+
+    @Test
+    void intervalIsOneMinuteAndNotTheHarassStrikeConstant() {
+        assertEquals(1440, BaseCheckScheduler.CHECK_INTERVAL_FRAMES);
+    }
+
+    @Test
+    void aBaseIsDueOnceUnseenForTheInterval() {
+        assertFalse(BaseCheckScheduler.isDue(BaseCheckScheduler.CHECK_INTERVAL_FRAMES - 1));
+        assertTrue(BaseCheckScheduler.isDue(BaseCheckScheduler.CHECK_INTERVAL_FRAMES));
+    }
+
+    @Test
+    void aBaseNeverSeenIsTheStalestPossible() {
+        assertEquals(Integer.MAX_VALUE, BaseCheckScheduler.age(-1, NOW));
+        assertEquals(100, BaseCheckScheduler.age(NOW - 100, NOW));
+    }
+
+    @Test
+    void picksTheStalestDueBase() {
+        Map<String, Integer> lastSeen = map("a", NOW - 2000, "b", NOW - 5000, "c", NOW - 3000);
+        String next = BaseCheckScheduler.next(Arrays.asList("a", "b", "c"), lastSeen, Collections.emptyMap(),
+                Collections.emptyList(), NOW);
+        assertEquals("b", next);
+    }
+
+    @Test
+    void aBaseNeverSeenBeatsAnySeenBase() {
+        Map<String, Integer> lastSeen = map("a", 0);
+        String next = BaseCheckScheduler.next(Arrays.asList("a", "b"), lastSeen, Collections.emptyMap(),
+                Collections.emptyList(), NOW);
+        assertEquals("b", next);
+    }
+
+    @Test
+    void tiesBreakByShorterGroundPath() {
+        Map<String, Integer> lastSeen = map("a", NOW - 3000, "b", NOW - 3000);
+        Map<String, Integer> distances = map("a", 900, "b", 400);
+        String next = BaseCheckScheduler.next(Arrays.asList("a", "b"), lastSeen, distances,
+                Collections.emptyList(), NOW);
+        assertEquals("b", next);
+    }
+
+    @Test
+    void aBaseWithoutAGroundPathSortsLastInATie() {
+        Map<String, Integer> lastSeen = map("a", NOW - 3000, "b", NOW - 3000);
+        Map<String, Integer> distances = map("b", 900);
+        String next = BaseCheckScheduler.next(Arrays.asList("a", "b"), lastSeen, distances,
+                Collections.emptyList(), NOW);
+        assertEquals("b", next);
+    }
+
+    @Test
+    void noBaseIsCheckedBeforeItIsDue() {
+        Map<String, Integer> lastSeen = map("a", NOW - 1000, "b", NOW - 1439);
+        assertNull(BaseCheckScheduler.next(Arrays.asList("a", "b"), lastSeen, Collections.emptyMap(),
+                Collections.emptyList(), NOW));
+    }
+
+    @Test
+    void aBaseAlreadyBeingCheckedIsSkipped() {
+        Map<String, Integer> lastSeen = map("a", NOW - 5000, "b", NOW - 3000);
+        String next = BaseCheckScheduler.next(Arrays.asList("a", "b"), lastSeen, Collections.emptyMap(),
+                Collections.singletonList("a"), NOW);
+        assertEquals("b", next);
+    }
+
+    @Test
+    void noBaseIsCheckedBeforeTheFirstCheckFrame() {
+        assertNull(BaseCheckScheduler.next(Collections.singletonList("a"), Collections.emptyMap(),
+                Collections.emptyMap(), Collections.emptyList(), BaseCheckScheduler.FIRST_CHECK_FRAME - 1));
+    }
+
+    @Test
+    void noCandidatesGivesNoCheck() {
+        assertNull(BaseCheckScheduler.next(Collections.<String>emptyList(), Collections.emptyMap(),
+                Collections.emptyMap(), Collections.emptyList(), NOW));
+    }
+
+    @Test
+    void twoLingsAreSentWhenSpiderMinesAreKnown() {
+        assertEquals(2, BaseCheckScheduler.lingsPerCheck(true));
+        assertEquals(1, BaseCheckScheduler.lingsPerCheck(false));
+    }
+
+    @Test
+    void aHealthyScoutThatHasNotSeenItsBaseIsKeptOutHoweverManyScoutsAreOut() {
+        assertEquals(BaseCheckScheduler.Release.NONE,
+                BaseCheckScheduler.releaseReason(false, 35, 35, NOW - 100, NOW));
+    }
+
+    @Test
+    void seeingTheBaseEndsTheCheck() {
+        assertEquals(BaseCheckScheduler.Release.SEEN,
+                BaseCheckScheduler.releaseReason(true, 35, 35, NOW - 100, NOW));
+    }
+
+    @Test
+    void seeingTheBaseOutranksTheHitPointRecall() {
+        assertEquals(BaseCheckScheduler.Release.SEEN,
+                BaseCheckScheduler.releaseReason(true, 1, 35, NOW - 100, NOW));
+    }
+
+    @Test
+    void underHalfHitPointsRecallsTheScout() {
+        assertEquals(BaseCheckScheduler.Release.HP_RECALL,
+                BaseCheckScheduler.releaseReason(false, 17, 35, NOW - 100, NOW));
+        assertEquals(BaseCheckScheduler.Release.NONE,
+                BaseCheckScheduler.releaseReason(false, 18, 35, NOW - 100, NOW));
+    }
+
+    @Test
+    void aCheckThatNeverSeesItsBaseTimesOut() {
+        assertEquals(BaseCheckScheduler.Release.TIMEOUT, BaseCheckScheduler.releaseReason(false, 35, 35,
+                NOW - BaseCheckScheduler.CHECK_TIMEOUT_FRAMES, NOW));
+    }
+
+    @Test
+    void aFailedBaseIsLeftAloneUntilItsRetryFrame() {
+        Map<String, Integer> lastSeen = map("a", NOW - 5000, "b", NOW - 3000);
+        int retryFrame = BaseCheckScheduler.retryFrame(NOW, 1);
+        assertEquals("b", BaseCheckScheduler.next(Arrays.asList("a", "b"), lastSeen, Collections.emptyMap(),
+                Collections.singletonList("a"), NOW));
+        assertEquals(NOW + BaseCheckScheduler.CHECK_INTERVAL_FRAMES, retryFrame);
+    }
+
+    @Test
+    void theRetryWaitDoublesWithEachFailureUpToTheCap() {
+        int interval = BaseCheckScheduler.CHECK_INTERVAL_FRAMES;
+        assertEquals(NOW + interval, BaseCheckScheduler.retryFrame(NOW, 1));
+        assertEquals(NOW + 2 * interval, BaseCheckScheduler.retryFrame(NOW, 2));
+        assertEquals(NOW + 4 * interval, BaseCheckScheduler.retryFrame(NOW, 3));
+        assertEquals(NOW + BaseCheckScheduler.MAX_BACKOFF_INTERVALS * interval,
+                BaseCheckScheduler.retryFrame(NOW, 40));
+    }
+
+    @Test
+    void checksAreCappedPerKind() {
+        assertTrue(BaseCheckScheduler.mayStartCheck(BaseCheckScheduler.MAX_LING_CHECKS - 1, false));
+        assertFalse(BaseCheckScheduler.mayStartCheck(BaseCheckScheduler.MAX_LING_CHECKS, false));
+        assertTrue(BaseCheckScheduler.mayStartCheck(0, true));
+        assertFalse(BaseCheckScheduler.mayStartCheck(BaseCheckScheduler.MAX_OVERLORD_CHECKS, true));
+    }
+
+    @Test
+    void aScoutBelowTheRecallLineIsNotHealthyEnoughToSend() {
+        assertFalse(BaseCheckScheduler.isHealthy(17, 35));
+        assertTrue(BaseCheckScheduler.isHealthy(18, 35));
+    }
+
+    @Test
+    void aZerglingScoutIsNotReleasedByTheCountOfScoutsOut() {
+        assertFalse(BaseCheckScheduler.endsZerglingScout(35, 35, false));
+    }
+
+    @Test
+    void aZerglingScoutEndsOnLocatingTheEnemyOrTheHitPointRecall() {
+        assertTrue(BaseCheckScheduler.endsZerglingScout(35, 35, true));
+        assertTrue(BaseCheckScheduler.endsZerglingScout(10, 35, false));
+    }
+
+    @Test
+    void anOverlordNeedsSpeedAClearRouteAndNoVeto() {
+        assertTrue(BaseCheckScheduler.overlordMayCheck(true, true, true));
+        assertFalse(BaseCheckScheduler.overlordMayCheck(false, true, true));
+        assertFalse(BaseCheckScheduler.overlordMayCheck(true, false, true));
+        assertFalse(BaseCheckScheduler.overlordMayCheck(true, true, false));
+    }
+
+    @Test
+    void aMarineBesideTheRouteBlocksItAndOneFarFromItDoesNot() {
+        Position from = new Position(0, 0);
+        Position to = new Position(2000, 0);
+        BaseCheckScheduler.Sighting near = new BaseCheckScheduler.Sighting(UnitType.Terran_Marine,
+                new Position(1000, 100));
+        BaseCheckScheduler.Sighting far = new BaseCheckScheduler.Sighting(UnitType.Terran_Marine,
+                new Position(1000, 1500));
+        assertFalse(BaseCheckScheduler.routeClear(from, to, Collections.singletonList(near)));
+        assertTrue(BaseCheckScheduler.routeClear(from, to, Collections.singletonList(far)));
+    }
+
+    @Test
+    void groundUnitsThatCannotShootUpDoNotBlockTheRoute() {
+        BaseCheckScheduler.Sighting zealot = new BaseCheckScheduler.Sighting(UnitType.Protoss_Zealot,
+                new Position(1000, 0));
+        assertTrue(BaseCheckScheduler.routeClear(new Position(0, 0), new Position(2000, 0),
+                Collections.singletonList(zealot)));
+    }
+
+    @Test
+    void anAirThreatBlocksTheRouteWhereverItIs() {
+        BaseCheckScheduler.Sighting wraith = new BaseCheckScheduler.Sighting(UnitType.Terran_Wraith,
+                new Position(1000, 3000));
+        assertFalse(BaseCheckScheduler.routeClear(new Position(0, 0), new Position(2000, 0),
+                Collections.singletonList(wraith)));
+    }
+
+    @Test
+    void distanceToSegmentClampsToTheEndpoints() {
+        assertEquals(100.0, BaseCheckScheduler.distanceToSegment(new Position(-100, 0), new Position(0, 0),
+                new Position(1000, 0)), 1e-9);
+        assertEquals(50.0, BaseCheckScheduler.distanceToSegment(new Position(500, 50), new Position(0, 0),
+                new Position(1000, 0)), 1e-9);
+    }
+
+    @Test
+    void aBaseIsOccupiedOnlyWhenAnEnemyStandsNearIt() {
+        Position center = new Position(1000, 1000);
+        assertTrue(BaseCheckScheduler.isOccupied(Collections.singletonList(new Position(1100, 1000)), center));
+        assertFalse(BaseCheckScheduler.isOccupied(Collections.singletonList(new Position(2000, 1000)), center));
+        assertFalse(BaseCheckScheduler.isOccupied(Collections.<Position>emptyList(), center));
+    }
+}

@@ -12,8 +12,12 @@ import info.GameState;
 import info.InformationManager;
 import info.ScoutData;
 import info.map.GameMap;
+import info.map.GroundPath;
 import info.map.MapTile;
+import info.tracking.ObservedUnit;
 import info.map.ScoutPath;
+import telemetry.BaseCheckEnd;
+import telemetry.BaseChecks;
 import telemetry.PerchAssignments;
 import unit.managed.ManagedUnit;
 import unit.managed.UnitRole;
@@ -42,6 +46,41 @@ public class ScoutManager {
 
     private List<ManagedUnit> recalledOverlords = new ArrayList<>();
 
+    private final Map<ManagedUnit, BaseCheck> baseChecks = new HashMap<>();
+    private final List<ManagedUnit> releasedChecks = new ArrayList<>();
+    private final Map<ManagedUnit, RecalledCheck> recalledChecks = new HashMap<>();
+    private final Map<Base, Integer> retryAfterFrames = new HashMap<>();
+    private final Map<Base, Integer> consecutiveFailures = new HashMap<>();
+
+    private static final class BaseCheck {
+        private final Base base;
+        private final int dispatchFrame;
+        private final int ageAtDispatch;
+        private final boolean primary;
+
+        private BaseCheck(Base base, int dispatchFrame, int ageAtDispatch, boolean primary) {
+            this.base = base;
+            this.dispatchFrame = dispatchFrame;
+            this.ageAtDispatch = ageAtDispatch;
+            this.primary = primary;
+        }
+    }
+
+    private static final class RecalledCheck {
+        private final BaseCheck check;
+        private final BaseCheckScheduler.Release outcome;
+        private final int recallFrame;
+        private final boolean occupied;
+
+        private RecalledCheck(BaseCheck check, BaseCheckScheduler.Release outcome, int recallFrame,
+                              boolean occupied) {
+            this.check = check;
+            this.outcome = outcome;
+            this.recallFrame = recallFrame;
+            this.occupied = occupied;
+        }
+    }
+
     public ScoutManager(Game game, GameState gameState, InformationManager informationManager) {
         this.game = game;
         this.gameState = gameState;
@@ -49,7 +88,14 @@ public class ScoutManager {
     }
 
     public void onFrame() {
+        updateBaseChecks();
+        settleRecalledChecks();
+
         for (ManagedUnit managedUnit: scouts) {
+            if (baseChecks.containsKey(managedUnit) || releasedChecks.contains(managedUnit)) {
+                continue;
+            }
+
             if (managedUnit.getRole() == UnitRole.PERCH) {
                 if (isPerchThreatened(managedUnit)) {
                     recalledOverlords.add(managedUnit);
@@ -71,6 +117,212 @@ public class ScoutManager {
                 assignScoutMovementTarget(managedUnit);
             }
         }
+    }
+
+    /**
+     * Picks the base the next check should go to: the stalest available base not already being checked, once
+     * it has gone {@link BaseCheckScheduler#CHECK_INTERVAL_FRAMES} unseen.
+     *
+     * @return the base to check, or null when none is due
+     */
+    public Base nextBaseCheck() {
+        BaseData baseData = gameState.getBaseData();
+        ScoutData scoutData = gameState.getScoutData();
+        Set<Base> candidates = baseData.availableBases();
+        Map<Base, Integer> lastSeenFrames = new HashMap<>();
+        Map<Base, Integer> groundDistances = new HashMap<>();
+        for (Base base : candidates) {
+            lastSeenFrames.put(base, scoutData.getBaseLastSeenFrame(base.getLocation()));
+            GroundPath path = baseData.getBasePaths().get(base);
+            if (path != null) {
+                groundDistances.put(base, path.getGroundDistance());
+            }
+        }
+        List<Base> excluded = new ArrayList<>();
+        for (BaseCheck check : baseChecks.values()) {
+            excluded.add(check.base);
+        }
+        int now = game.getFrameCount();
+        for (Map.Entry<Base, Integer> retry : retryAfterFrames.entrySet()) {
+            if (retry.getValue() > now) {
+                excluded.add(retry.getKey());
+            }
+        }
+        return BaseCheckScheduler.next(candidates, lastSeenFrames, groundDistances, excluded, now);
+    }
+
+    /**
+     * Whether another check of this kind may start: at most {@link BaseCheckScheduler#MAX_LING_CHECKS} ling
+     * checks and {@link BaseCheckScheduler#MAX_OVERLORD_CHECKS} overlord check are out at once. Lings headed
+     * for the enemy main do not count.
+     */
+    public boolean mayStartCheck(boolean overlord) {
+        Base enemyMain = gameState.getBaseData().getMainEnemyBase();
+        int inFlight = 0;
+        for (Map.Entry<ManagedUnit, BaseCheck> entry : baseChecks.entrySet()) {
+            BaseCheck check = entry.getValue();
+            boolean isOverlord = entry.getKey().getUnitType() == UnitType.Zerg_Overlord;
+            if (check.primary && isOverlord == overlord && !check.base.equals(enemyMain)) {
+                inFlight++;
+            }
+        }
+        return BaseCheckScheduler.mayStartCheck(inFlight, overlord);
+    }
+
+    public int lingsPerCheck() {
+        return BaseCheckScheduler.lingsPerCheck(gameState.enemyUnitCount(UnitType.Terran_Vulture_Spider_Mine) > 0);
+    }
+
+    /**
+     * Whether an overlord may fly a check to this base: Pneumatized Carapace is done, no sighted enemy would
+     * recall it along the route, and the enemy is not one overlords are kept away from.
+     */
+    public boolean mayOverlordCheck(ManagedUnit overlord, Base base) {
+        return BaseCheckScheduler.overlordMayCheck(gameState.getTechProgression().isOverlordSpeed(),
+                routeClear(overlord.getPosition(), base.getCenter()), overlordsMayScout());
+    }
+
+    private boolean overlordsMayScout() {
+        List<UnitType> livingTypes = new ArrayList<>();
+        for (ObservedUnit observed : gameState.getObservedUnitTracker().getLivingObservedUnits()) {
+            livingTypes.add(observed.getUnitType());
+        }
+        return gameState.getScoutData().shouldOverlordsContinueScouting(gameState.getOpponentRace(), livingTypes);
+    }
+
+    private boolean routeClear(Position from, Position to) {
+        List<BaseCheckScheduler.Sighting> sightings = new ArrayList<>();
+        for (ObservedUnit observed : gameState.getObservedUnitTracker().getLivingObservedUnits()) {
+            Position position = observed.getCurrentOrLastKnownPosition();
+            if (position != null) {
+                sightings.add(new BaseCheckScheduler.Sighting(observed.getUnitType(), position));
+            }
+        }
+        return BaseCheckScheduler.routeClear(from, to, sightings);
+    }
+
+    /**
+     * @return true while a released scout's check is held back awaiting word on whether it survived
+     */
+    public boolean hasPendingRecall(ManagedUnit managedUnit) {
+        return recalledChecks.containsKey(managedUnit);
+    }
+
+    public boolean isBaseCheckScout(ManagedUnit managedUnit) {
+        return baseChecks.containsKey(managedUnit);
+    }
+
+    public boolean isScout(ManagedUnit managedUnit) {
+        return scouts.contains(managedUnit);
+    }
+
+    /**
+     * Sends a unit to see a base and holds it there until the base has been seen, the unit is recalled at low
+     * hit points, or the check times out.
+     *
+     * @param primary whether this unit's outcome is the check's telemetry row; the second zergling of a pair is
+     *     not
+     */
+    public void beginBaseCheck(ManagedUnit managedUnit, Base base, boolean primary) {
+        int now = game.getFrameCount();
+        int lastSeen = gameState.getScoutData().getBaseLastSeenFrame(base.getLocation());
+        releaseActiveScoutTarget(managedUnit);
+        managedUnit.setRole(UnitRole.SCOUT);
+        managedUnit.setMovementTargetPosition(base.getLocation());
+        scouts.add(managedUnit);
+        if (managedUnit.getUnitType() == UnitType.Zerg_Zergling) {
+            zerglingScouts.add(managedUnit);
+        }
+        baseChecks.put(managedUnit, new BaseCheck(base, now, BaseCheckScheduler.age(lastSeen, now), primary));
+    }
+
+    /**
+     * Drains and returns the units whose base check ended this frame. They are still scouts until the caller
+     * removes them.
+     */
+    public List<ManagedUnit> drainReleasedChecks() {
+        List<ManagedUnit> drained = new ArrayList<>(releasedChecks);
+        releasedChecks.clear();
+        return drained;
+    }
+
+    private void updateBaseChecks() {
+        int now = game.getFrameCount();
+        ScoutData scoutData = gameState.getScoutData();
+        for (Map.Entry<ManagedUnit, BaseCheck> entry : new ArrayList<>(baseChecks.entrySet())) {
+            ManagedUnit scout = entry.getKey();
+            BaseCheck check = entry.getValue();
+            Unit unit = scout.getUnit();
+            scout.setRole(UnitRole.SCOUT);
+            boolean seen = scoutData.getBaseLastSeenFrame(check.base.getLocation()) >= check.dispatchFrame;
+            BaseCheckScheduler.Release reason = BaseCheckScheduler.releaseReason(seen, unit.getHitPoints(),
+                    unit.getType().maxHitPoints(), check.dispatchFrame, now);
+            if (reason == BaseCheckScheduler.Release.NONE && scout.getUnitType() == UnitType.Zerg_Overlord
+                    && !routeClear(scout.getPosition(), check.base.getCenter())) {
+                reason = BaseCheckScheduler.Release.THREAT;
+            }
+            if (reason != BaseCheckScheduler.Release.NONE) {
+                finishBaseCheck(scout, check, reason);
+                releasedChecks.add(scout);
+            }
+        }
+    }
+
+    private void finishBaseCheck(ManagedUnit scout, BaseCheck check, BaseCheckScheduler.Release outcome) {
+        baseChecks.remove(scout);
+        int now = game.getFrameCount();
+        if (outcome == BaseCheckScheduler.Release.SEEN) {
+            retryAfterFrames.remove(check.base);
+            consecutiveFailures.remove(check.base);
+        } else if (retryAfterFrames.getOrDefault(check.base, 0) <= now) {
+            int failures = consecutiveFailures.getOrDefault(check.base, 0) + 1;
+            consecutiveFailures.put(check.base, failures);
+            retryAfterFrames.put(check.base, BaseCheckScheduler.retryFrame(now, failures));
+        }
+        if (!check.primary) {
+            return;
+        }
+        List<Position> enemyPositions = new ArrayList<>();
+        for (Unit enemy : gameState.getVisibleEnemyUnits()) {
+            enemyPositions.add(enemy.getPosition());
+        }
+        boolean occupied = BaseCheckScheduler.isOccupied(enemyPositions, check.base.getCenter());
+        if (outcome == BaseCheckScheduler.Release.HP_RECALL || outcome == BaseCheckScheduler.Release.TIMEOUT
+                || outcome == BaseCheckScheduler.Release.THREAT) {
+            RecalledCheck earlier = recalledChecks.put(scout, new RecalledCheck(check, outcome, now, occupied));
+            if (earlier != null) {
+                writeCheck(scout, earlier.check, earlier.recallFrame, earlier.outcome, earlier.occupied, -1);
+            }
+            return;
+        }
+        writeCheck(scout, check, now, outcome, occupied, outcome == BaseCheckScheduler.Release.LOST ? now : -1);
+    }
+
+    private void settleRecalledChecks() {
+        int now = game.getFrameCount();
+        for (Map.Entry<ManagedUnit, RecalledCheck> entry : new ArrayList<>(recalledChecks.entrySet())) {
+            ManagedUnit scout = entry.getKey();
+            RecalledCheck recalled = entry.getValue();
+            BaseCheckScheduler.RecallFate fate = BaseCheckScheduler.recallFate(scout.getUnit().exists(),
+                    recalled.recallFrame, now);
+            if (fate == BaseCheckScheduler.RecallFate.PENDING) {
+                continue;
+            }
+            recalledChecks.remove(scout);
+            if (fate == BaseCheckScheduler.RecallFate.DIED) {
+                writeCheck(scout, recalled.check, recalled.recallFrame, BaseCheckScheduler.Release.LOST,
+                        recalled.occupied, now);
+            } else {
+                writeCheck(scout, recalled.check, recalled.recallFrame, recalled.outcome,
+                        recalled.occupied, -1);
+            }
+        }
+    }
+
+    private void writeCheck(ManagedUnit scout, BaseCheck check, int endFrame, BaseCheckScheduler.Release outcome,
+                            boolean occupied, int diedFrame) {
+        BaseChecks.checked(scout.getUnitID(), scout.getUnitType(), check.base.getLocation(), check.ageAtDispatch,
+                check.dispatchFrame, new BaseCheckEnd(endFrame, outcome, occupied, diedFrame));
     }
 
     private boolean hasPerchedOverlord() {
@@ -186,6 +438,13 @@ public class ScoutManager {
             return;
         }
 
+        BaseCheck openCheck = baseChecks.get(managedUnit);
+        if (openCheck != null) {
+            boolean lost = !managedUnit.getUnit().exists();
+            finishBaseCheck(managedUnit, openCheck,
+                    lost ? BaseCheckScheduler.Release.LOST : BaseCheckScheduler.Release.ABORTED);
+        }
+        releasedChecks.remove(managedUnit);
         releaseActiveScoutTarget(managedUnit);
         managedUnit.setPerchPosition(null);
         scouts.remove(managedUnit);
@@ -252,19 +511,10 @@ public class ScoutManager {
      * located. Sighting an enemy unit is not enough: an enemy Overlord crossing the map on its own
      * scout says nothing about where the enemy lives.
      */
-    public boolean endZerglingScout() {
-        for (ManagedUnit managedUnit: zerglingScouts) {
-            Unit unit = managedUnit.getUnit();
-            if (unit.getHitPoints() < unit.getType().maxHitPoints() * 0.5) {
-                return true;
-            }
-        }
-
-        if (isEnemyBaseLocated() && zerglingScouts.size() >= this.getMaxZerglingScouts()) {
-            return true;
-        }
-
-        return false;
+    public boolean endZerglingScout(ManagedUnit managedUnit) {
+        Unit unit = managedUnit.getUnit();
+        return BaseCheckScheduler.endsZerglingScout(unit.getHitPoints(), unit.getType().maxHitPoints(),
+                isEnemyBaseLocated());
     }
 
     private boolean isEnemyBaseLocated() {
@@ -291,7 +541,14 @@ public class ScoutManager {
         }
 
         int maxScouts = getMaxZerglingScouts();
-        int currentScouts = zerglingScouts.size();
+        int currentScouts = 0;
+        Base enemyMain = gameState.getBaseData().getMainEnemyBase();
+        for (ManagedUnit scout : zerglingScouts) {
+            BaseCheck check = baseChecks.get(scout);
+            if (check == null || check.base.equals(enemyMain)) {
+                currentScouts++;
+            }
+        }
         return Math.max(0, maxScouts - currentScouts);
     }
 
