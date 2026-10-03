@@ -16,7 +16,7 @@ final class UCBSelectionPolicy {
     static final double GAMMA = 0.95;
 
     /** Largest curiosity bonus, in win-rate points, and the score of an arm with no evidence. */
-    static final double CURIOSITY_CAP = 0.15;
+    static final double CURIOSITY_CAP = 0.40;
 
     /** Discounted games at which curiosity reaches zero. */
     static final double CURIOSITY_HORIZON = 10.0;

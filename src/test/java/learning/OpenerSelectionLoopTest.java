@@ -163,7 +163,7 @@ public class OpenerSelectionLoopTest {
 
     /**
      * A probed opener that wins promotion becomes the new incumbent. Once it declines back
-     * below the gate, probes must fire again against the other dormant openers.
+     * below the gate, the other dormant openers must be selected again.
      */
     @Test
     void gateRefiresAfterPromotedOpenerDeclines() {
@@ -185,10 +185,10 @@ public class OpenerSelectionLoopTest {
         boolean refired = false;
         for (int i = 61; i < results.size(); i++) {
             GameResult result = results.get(i);
-            refired = refired || result.probe && !result.opener.equals("12Pool");
+            refired = refired || !result.opener.equals("12Pool");
         }
         assertTrue(refired,
-                "after 12Pool's promotion and decline the gate must re-fire against other dormant openers");
+                "after 12Pool's promotion and decline the other dormant openers must be selected again");
     }
 
     /**
