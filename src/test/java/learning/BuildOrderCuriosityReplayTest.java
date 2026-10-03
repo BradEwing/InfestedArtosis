@@ -15,8 +15,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Replays the first 20 games of the beta VOID cold start through LearningManager.selectBuildOrderName.
- * 3HatchLurker lost its first games there, and the arms that followed won now and then. Every later
- * game is a loss, so the incumbent decays and 3HatchLurker has to be offered again.
+ * 3HatchLurker lost its first games there while SpeedlingAllIn won now and then. In every later game
+ * SpeedlingAllIn wins one play in three and every other arm loses, and 3HatchLurker has to be offered again.
  */
 public class BuildOrderCuriosityReplayTest {
 
@@ -24,12 +24,14 @@ public class BuildOrderCuriosityReplayTest {
     private static final String OPPONENT = "VOID";
     private static final String RETRIED = "3HatchLurker";
     private static final String OPENER = "9PoolSpeed";
-    private static final int RETRY_WINDOW = 5;
+    private static final int RETRY_WINDOW = 10;
+    private static final String INCUMBENT = "SpeedlingAllIn";
+    private static final int INCUMBENT_WIN_EVERY = 3;
     private static final List<String> CANDIDATES = Arrays.asList(
-            "2HatchMuta", "3HatchHydraZvT", RETRIED, "CrazyZerg", "SpeedlingAllIn");
+            "2HatchMuta", "3HatchHydraZvT", RETRIED, "CrazyZerg", INCUMBENT);
 
     @Test
-    void threeHatchLurkerIsOfferedAgainWithinFiveGamesOfLaterLosses() throws IOException {
+    void threeHatchLurkerIsOfferedAgainWithinTenGamesWhileTheIncumbentKeepsWinningOccasionally() throws IOException {
         List<GameRecord> recorded = loadRecord();
         LearningRecordAccumulator accumulator = new LearningRecordAccumulator(OPPONENT, Race.Terran);
         OpponentRecord opponentRecord = accumulator.reconstruct(new LearningHistory(new ArrayList<>(recorded)));
@@ -39,12 +41,18 @@ public class BuildOrderCuriosityReplayTest {
         }
 
         List<String> selected = new ArrayList<>();
+        int incumbentPlays = 0;
         long timestamp = recorded.get(recorded.size() - 1).getTimestamp();
         for (int game = 0; game < RETRY_WINDOW; game++) {
             GameRecord template = recorded.get(game % recorded.size());
             String buildOrder = LearningManager.selectBuildOrderName(
                     CANDIDATES, opponentRecord, template.getMapName());
             selected.add(buildOrder);
+            boolean won = false;
+            if (INCUMBENT.equals(buildOrder)) {
+                incumbentPlays++;
+                won = incumbentPlays % INCUMBENT_WIN_EVERY == 0;
+            }
             timestamp += 1000;
             accumulator.apply(opponentRecord, GameRecord.builder()
                     .timestamp(timestamp)
@@ -55,13 +63,13 @@ public class BuildOrderCuriosityReplayTest {
                     .opener(OPENER)
                     .buildOrder(buildOrder)
                     .detectedStrategies(template.getDetectedStrategies())
-                    .isWinner(false)
+                    .isWinner(won)
                     .frameCount(template.getFrameCount())
                     .build());
         }
 
         assertTrue(selected.contains(RETRIED),
-                RETRIED + " was not offered within " + RETRY_WINDOW + " losing games: " + selected);
+                RETRIED + " was not offered within " + RETRY_WINDOW + " games: " + selected);
     }
 
     private static List<GameRecord> loadRecord() throws IOException {

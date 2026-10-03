@@ -185,7 +185,7 @@ public class OpenerSelectionLoopTest {
         boolean refired = false;
         for (int i = 61; i < results.size(); i++) {
             GameResult result = results.get(i);
-            refired = refired || !result.opener.equals("12Pool");
+            refired = refired || DORMANT.contains(result.opener) && !result.opener.equals("12Pool");
         }
         assertTrue(refired,
                 "after 12Pool's promotion and decline the other dormant openers must be selected again");
