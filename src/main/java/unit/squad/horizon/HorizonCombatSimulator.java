@@ -14,9 +14,11 @@ import info.tracking.EnemyReachMemory;
 import info.tracking.ObservedUnit;
 import info.tracking.ObservedUnitTracker;
 import lombok.Getter;
+import telemetry.RetreatRoute;
 import unit.managed.ManagedUnit;
 import unit.squad.CombatSimulator;
 import unit.squad.Squad;
+import unit.squad.SquadStatus;
 import util.Time;
 
 import java.util.ArrayList;
@@ -35,6 +37,10 @@ import java.util.TreeMap;
  */
 public class HorizonCombatSimulator implements CombatSimulator {
 
+    static final int SIEGE_BAND_NONE = 0;
+    static final int SIEGE_BAND_IN = 1;
+    static final int SIEGE_BAND_HELD = 2;
+    static final int MAX_SIM_GAP_FRAMES = 5;
     private static final double MAX_ENGAGEMENT_RADIUS = 320;
     private static final double NEARBY_THREAT_RADIUS = 512;
     private static final double APPROACH_BUFFER = 64;
@@ -74,6 +80,10 @@ public class HorizonCombatSimulator implements CombatSimulator {
     @Getter
     private final Map<String, DebugSnapshot> lastSnapshots = new HashMap<>();
 
+    private final Map<String, HeldVerdict> heldVerdicts = new HashMap<>();
+
+    private final Map<String, BandClock> bandClocks = new HashMap<>();
+
     @Override
     public CombatResult evaluate(Squad squad, Map<Squad, Double> adjacentSquads, GameState gameState) {
         Position squadCenter = squad.getCenter();
@@ -100,6 +110,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
         snapshot.setSwarmCover(swarmCover);
 
         List<Position> visibleBunkers = visibleCompletedBunkers(tracker);
+        double nearestSiegedTank = Double.POSITIVE_INFINITY;
         EnemyReachMemory reachMemory = tracker.getReachMemory();
         for (ObservedUnit ou : tracker.getLivingObservedUnits()) {
             UnitType type = ou.getUnitType();
@@ -113,6 +124,9 @@ public class HorizonCombatSimulator implements CombatSimulator {
             if (pos == null) continue;
             if (!visible && enteredBunker(type, pos, visibleBunkers)) continue;
             double dist = squadCenter.getDistance(pos);
+            if (type == UnitType.Terran_Siege_Tank_Siege_Mode) {
+                nearestSiegedTank = SiegeBandHysteresis.nearer(nearestSiegedTank, dist);
+            }
             boolean edgeOfFire = pricedAtEdgeOfFire(type, airSquad);
             int reach = edgeOfFire ? positionalReach(type, reachMemory.groundReach(type)) : 0;
             double radius = edgeOfFire ? edgeOfFireRadius(reach) : engagementRadius(type);
@@ -242,6 +256,21 @@ public class HorizonCombatSimulator implements CombatSimulator {
         CombatResult result = selectResult(friendlyGroundStr, friendlyAirStr, enemyGroundStr,
                 enemyAntiAirStr, enemyEngagedStr, airSquad, engageThresh);
 
+        if (!airSquad) {
+            boolean tankInBand = SiegeBandHysteresis.inBand(nearestSiegedTank);
+            CombatResult raw = result;
+            boolean retreating = squad.getStatus() == SquadStatus.RETREAT
+                    && squad.getRetreatRoute() != RetreatRoute.CORNERED;
+            result = holdVerdict(squad.getId(), raw, currentFrame, overallRatio, engageThresh, tankInBand,
+                    retreating, squad.isRetreatLocked(currentFrame));
+            int band = !tankInBand ? SIEGE_BAND_NONE : result == raw ? SIEGE_BAND_IN : SIEGE_BAND_HELD;
+            snapshot.setSiegeBand(band);
+            BandClock clock = bandClocks.computeIfAbsent(squad.getId(), id -> new BandClock());
+            clock.tick(currentFrame, band);
+            snapshot.setSiegeBandFrames(clock.inBandFrames);
+            snapshot.setSiegeBandHeldFrames(clock.heldFrames);
+        }
+
         snapshot.setEngageThreshold(engageThresh);
         snapshot.setRetreatThreshold(retreatThresh);
         snapshot.setStaticDefenseCover(ownStaticDefense.coversThreat);
@@ -249,6 +278,64 @@ public class HorizonCombatSimulator implements CombatSimulator {
         lastSnapshots.put(squad.getId(), snapshot);
 
         return result;
+    }
+
+    /**
+     * The verdict the siege band reports for a ground squad. A held RETREAT only exists while the squad is in
+     * RETREAT outside the cornered route and the sim has run within {@link #MAX_SIM_GAP_FRAMES}; otherwise the
+     * memory restarts from the raw verdict. While the squad's retreat lock is active the held RETREAT is not
+     * released, so the margin is judged on the frame the squad actually turns.
+     *
+     * @param squadId the squad
+     * @param raw the verdict for this frame's strengths
+     * @param frame the current frame
+     * @param ratio the ratio the raw verdict was taken from
+     * @param engageThresh the matchup engage threshold
+     * @param tankInBand whether the nearest sieged tank sits in the band
+     * @param retreating whether the squad's status is RETREAT on a route other than the cornered one
+     * @param retreatLocked whether the squad's retreat lock is active
+     * @return the verdict to report
+     */
+    CombatResult holdVerdict(String squadId, CombatResult raw, int frame, double ratio, double engageThresh,
+                             boolean tankInBand, boolean retreating, boolean retreatLocked) {
+        HeldVerdict held = heldVerdicts.get(squadId);
+        boolean live = held != null && retreating && frame - held.lastFrame <= MAX_SIM_GAP_FRAMES;
+        CombatResult heldResult = live ? held.result : null;
+        int heldSince = live ? held.sinceFrame : frame;
+        CombatResult verdict;
+        if (live && retreatLocked && tankInBand && raw == CombatResult.ENGAGE && heldResult == CombatResult.RETREAT) {
+            verdict = heldResult;
+        } else {
+            verdict = SiegeBandHysteresis.apply(raw, heldResult, heldSince, frame, ratio, engageThresh, tankInBand);
+        }
+        int since = verdict == heldResult ? heldSince : frame;
+        heldVerdicts.put(squadId, new HeldVerdict(verdict, since, frame));
+        return verdict;
+    }
+
+    static final class BandClock {
+        private int lastFrame = -1;
+        int inBandFrames;
+        int heldFrames;
+
+        void tick(int frame, int band) {
+            int elapsed = lastFrame < 0 ? 0 : Math.min(frame - lastFrame, MAX_SIM_GAP_FRAMES);
+            if (band != SIEGE_BAND_NONE) inBandFrames += elapsed;
+            if (band == SIEGE_BAND_HELD) heldFrames += elapsed;
+            lastFrame = frame;
+        }
+    }
+
+    private static final class HeldVerdict {
+        private final CombatResult result;
+        private final int sinceFrame;
+        private final int lastFrame;
+
+        private HeldVerdict(CombatResult result, int sinceFrame, int lastFrame) {
+            this.result = result;
+            this.sinceFrame = sinceFrame;
+            this.lastFrame = lastFrame;
+        }
     }
 
     /**
@@ -1195,6 +1282,9 @@ public class HorizonCombatSimulator implements CombatSimulator {
         private boolean threatBeyondRadius;
         private int enemyUnscoredSupply;
         private double swarmCover;
+        private int siegeBand = -1;
+        private int siegeBandFrames = -1;
+        private int siegeBandHeldFrames = -1;
         private double enemyAirShare = UnitStrength.UNMEASURED_AIR_SHARE;
         private double ourAirShare = UnitStrength.UNMEASURED_AIR_SHARE;
     }

@@ -89,8 +89,13 @@ public class Squad implements Comparable<Squad> {
     private int corneredEngageSinceFrame = -1;
     private int corneredFightHeldUntilFrame = 0;
     protected Time fightHysteresis = new Time(0, 3);
-    protected Time retreatHysteresis = new Time(0, 5);
+    protected Time retreatHysteresis = new Time(GROUND_RETREAT_LOCK_FRAMES);
     protected Time containHysteresis = new Time(0, 5);
+
+    /**
+     * Frames a ground squad's retreat lock holds for.
+     */
+    public static final int GROUND_RETREAT_LOCK_FRAMES = 120;
 
     private static final double SMOOTHING_ALPHA = 0.85;
     private static final int SPLIT_MERGE_COOLDOWN = 100;
