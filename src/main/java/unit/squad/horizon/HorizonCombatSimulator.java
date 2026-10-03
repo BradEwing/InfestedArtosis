@@ -110,6 +110,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
         BunkerRetreatMemory retreatMemory = squad.getBunkerRetreatMemory();
         retreatMemory.releaseIfGrown(BunkerRetreatMemory.composition(squad.getMembers()));
         List<Position> livingBunkers = new ArrayList<>();
+        List<Position> rememberedInRadius = new ArrayList<>();
         for (ObservedUnit ou : tracker.getLivingObservedUnits()) {
             UnitType type = ou.getUnitType();
             boolean visible = ou.getUnit().isVisible();
@@ -118,8 +119,13 @@ public class HorizonCombatSimulator implements CombatSimulator {
                 if (bunkerPosition != null) {
                     livingBunkers.add(bunkerPosition);
                     int bunkerReach = BunkerPricing.reach(airSquad, reachMemory.groundReach(type));
-                    if (heldBeyondRadius(retreatMemory, bunkerPosition, squadCenter, edgeOfFireRadius(bunkerReach))) {
-                        snapshot.setThreatBeyondRadius(true);
+                    if (retreatMemory.holds(bunkerPosition)) {
+                        if (heldBeyondRadius(retreatMemory, bunkerPosition, squadCenter,
+                                edgeOfFireRadius(bunkerReach))) {
+                            snapshot.setThreatBeyondRadius(true);
+                        } else {
+                            rememberedInRadius.add(bunkerPosition);
+                        }
                     }
                 }
             }
@@ -199,6 +205,9 @@ public class HorizonCombatSimulator implements CombatSimulator {
         retreatMemory.retain(livingBunkers);
         priceBunkers(bunkers, BunkerPricing.garrisonPool(tracker.getLivingObservedUnits(), pricedLooseShooters),
                 enemySample, snapshot, airSquad);
+        if (anyUnpriced(rememberedInRadius, snapshot.getPricedBunkers())) {
+            snapshot.setThreatBeyondRadius(true);
+        }
 
         creditMedicSupport(snapshot, enemySample, airSquad);
         snapshot.setEnemyUnscoredSupply(enemySample.unscoredSupply());
@@ -352,6 +361,22 @@ public class HorizonCombatSimulator implements CombatSimulator {
      */
     static boolean heldBeyondRadius(BunkerRetreatMemory memory, Position bunker, Position squadCenter, double radius) {
         return memory.holds(bunker) && squadCenter.getDistance(bunker) > radius;
+    }
+
+    /**
+     * Whether a Bunker the squad retreated from, inside its sample radius, still holds its blind advance: any of the
+     * remembered Bunkers there went unpriced, because its fire does not bear on the squad or its path, or it is out of
+     * date. A priced Bunker is measured, so the sim's verdict decides instead.
+     *
+     * @param rememberedInRadius the remembered Bunkers inside their sample radius
+     * @param pricedBunkers the Bunkers this evaluation priced
+     * @return true when at least one remembered Bunker went unpriced
+     */
+    static boolean anyUnpriced(Collection<Position> rememberedInRadius, Collection<Position> pricedBunkers) {
+        for (Position bunker : rememberedInRadius) {
+            if (!pricedBunkers.contains(bunker)) return true;
+        }
+        return false;
     }
 
     /**

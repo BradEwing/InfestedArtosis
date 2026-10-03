@@ -155,6 +155,12 @@ public enum DecisionPath {
     HARASS_HOLD,
 
     /**
+     * A squad held on a sim ADVANCE that measured no enemy while a threat lay beyond its sample radius, such as a
+     * Bunker it retreated from, instead of marching on it.
+     */
+    BLIND_ADVANCE_HOLD,
+
+    /**
      * An air squad still under the retreat lock its harass exit armed acted on a sim ENGAGE measured against a real
      * enemy, which broke the lock.
      */

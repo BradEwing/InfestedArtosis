@@ -274,6 +274,9 @@ public class Squad implements Comparable<Squad> {
      * ended. A merge that stays in CONTAIN keeps the collapse entry run of the source whose arc it keeps, see
      * {@link CollapseEntryRun}; any other merged status starts it over.
      *
+     * <p>The Bunkers the sources retreated from stay remembered, see {@link BunkerRetreatMemory#absorb}: a merged
+     * squad holds off the union of them, and a split keeps them on both halves.
+     *
      * @param sources squads being merged into this one
      */
     public void inheritStateFrom(Collection<Squad> sources) {
@@ -360,6 +363,11 @@ public class Squad implements Comparable<Squad> {
                                 + ContainmentCollapse.COOLDOWN_FRAMES);
             }
         }
+        List<BunkerRetreatMemory.Source> memories = new ArrayList<>();
+        for (Squad source: sources) {
+            memories.add(new BunkerRetreatMemory.Source(source.bunkerRetreatMemory, source.getMembers()));
+        }
+        this.bunkerRetreatMemory.absorb(memories);
     }
 
     public boolean isMergeEligible(int currentFrame) {

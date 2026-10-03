@@ -101,10 +101,63 @@ public final class BunkerRetreatMemory {
     }
 
     /**
+     * Folds the memories of the squads of a merge, or of the squad a split carves a sibling off, into this one: the
+     * remembered Bunkers are the union of the sources' and the recorded composition is the sum of theirs. A source
+     * that remembers no Bunker adds the composition it brings, so reinforcements that join through a merge do not
+     * release the hold. A source's memory is first released if the source grew since it retreated. Nothing is
+     * folded when no source remembers a Bunker.
+     *
+     * @param sources each source's memory with the source's composition now, see {@link #composition}
+     */
+    public void absorb(Collection<Source> sources) {
+        boolean anyHolds = false;
+        for (Source source : sources) {
+            source.memory.releaseIfGrown(source.composition);
+            anyHolds |= !source.memory.bunkers.isEmpty();
+        }
+        if (!anyHolds) return;
+        for (Source source : sources) {
+            if (source.memory.bunkers.isEmpty()) {
+                addCounts(source.composition);
+                continue;
+            }
+            bunkers.addAll(source.memory.bunkers);
+            addCounts(source.memory.recorded);
+        }
+    }
+
+    private void addCounts(Map<UnitType, Integer> counts) {
+        for (Map.Entry<UnitType, Integer> entry : counts.entrySet()) {
+            recorded.merge(entry.getKey(), entry.getValue(), Integer::sum);
+        }
+    }
+
+    /**
+     * A squad's memory with its composition now, as one source of {@link #absorb}.
+     */
+    public static final class Source {
+        private final BunkerRetreatMemory memory;
+        private final Map<UnitType, Integer> composition;
+
+        /**
+         * @param memory the source squad's retreat memory
+         * @param members the source squad's members
+         */
+        public Source(BunkerRetreatMemory memory, Collection<ManagedUnit> members) {
+            this(memory, composition(members));
+        }
+
+        Source(BunkerRetreatMemory memory, Map<UnitType, Integer> composition) {
+            this.memory = memory;
+            this.composition = composition;
+        }
+    }
+
+    /**
      * @param bunker where a Bunker stands or was last seen
      * @return whether the squad retreated from that Bunker and still holds off it
      */
-    boolean holds(Position bunker) {
+    public boolean holds(Position bunker) {
         return bunkers.contains(bunker);
     }
 

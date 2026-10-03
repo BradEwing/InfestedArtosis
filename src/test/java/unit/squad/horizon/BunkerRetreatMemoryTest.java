@@ -150,4 +150,109 @@ class BunkerRetreatMemoryTest {
     void anEmptySquadNeverGrew() {
         assertFalse(BunkerRetreatMemory.grew(squad(12, 0), Collections.<UnitType, Integer>emptyMap()));
     }
+
+    private static BunkerRetreatMemory remembering(Position bunker, Map<UnitType, Integer> composition) {
+        BunkerRetreatMemory memory = new BunkerRetreatMemory();
+        memory.record(Collections.singletonList(bunker), composition);
+        return memory;
+    }
+
+    private static BunkerRetreatMemory merged(BunkerRetreatMemory.Source... sources) {
+        BunkerRetreatMemory merged = new BunkerRetreatMemory();
+        merged.absorb(Arrays.asList(sources));
+        return merged;
+    }
+
+    @Test
+    void aMergedSquadHoldsTheUnionOfTheSourcesBunkers() {
+        BunkerRetreatMemory a = remembering(BUNKER, squad(12, 0));
+        BunkerRetreatMemory b = remembering(OTHER_BUNKER, squad(8, 0));
+
+        BunkerRetreatMemory merged = merged(new BunkerRetreatMemory.Source(a, squad(12, 0)),
+                new BunkerRetreatMemory.Source(b, squad(8, 0)));
+
+        assertTrue(merged.holds(BUNKER));
+        assertTrue(merged.holds(OTHER_BUNKER));
+    }
+
+    @Test
+    void aMergedSquadIsNotReleasedByTheSumOfTheSourcesRecordedComposition() {
+        BunkerRetreatMemory a = remembering(BUNKER, squad(12, 0));
+        BunkerRetreatMemory b = remembering(BUNKER, squad(8, 0));
+
+        BunkerRetreatMemory merged = merged(new BunkerRetreatMemory.Source(a, squad(12, 0)),
+                new BunkerRetreatMemory.Source(b, squad(8, 0)));
+        merged.releaseIfGrown(squad(20, 0));
+
+        assertTrue(merged.holds(BUNKER));
+    }
+
+    @Test
+    void reinforcementsThatJoinThroughAMergeDoNotReleaseTheHold() {
+        BunkerRetreatMemory retreated = remembering(BUNKER, squad(12, 0));
+
+        BunkerRetreatMemory merged = merged(new BunkerRetreatMemory.Source(retreated, squad(12, 0)),
+                new BunkerRetreatMemory.Source(new BunkerRetreatMemory(), squad(6, 2)));
+        merged.releaseIfGrown(squad(18, 2));
+
+        assertTrue(merged.holds(BUNKER));
+    }
+
+    @Test
+    void aMergedSquadStillReleasesWhenItGrowsAfterTheMerge() {
+        BunkerRetreatMemory retreated = remembering(BUNKER, squad(12, 0));
+
+        BunkerRetreatMemory merged = merged(new BunkerRetreatMemory.Source(retreated, squad(12, 0)),
+                new BunkerRetreatMemory.Source(new BunkerRetreatMemory(), squad(6, 0)));
+        merged.releaseIfGrown(squad(19, 0));
+
+        assertFalse(merged.holds(BUNKER));
+    }
+
+    @Test
+    void aSourceThatGrewSinceItsRetreatContributesNoMemory() {
+        BunkerRetreatMemory retreated = remembering(BUNKER, squad(12, 0));
+
+        BunkerRetreatMemory merged = merged(new BunkerRetreatMemory.Source(retreated, squad(14, 0)),
+                new BunkerRetreatMemory.Source(new BunkerRetreatMemory(), squad(6, 0)));
+
+        assertFalse(merged.holds(BUNKER));
+    }
+
+    @Test
+    void mergingSquadsThatRememberNothingRemembersNothing() {
+        BunkerRetreatMemory merged = merged(
+                new BunkerRetreatMemory.Source(new BunkerRetreatMemory(), squad(12, 0)),
+                new BunkerRetreatMemory.Source(new BunkerRetreatMemory(), squad(6, 0)));
+        merged.record(Collections.singletonList(BUNKER), squad(18, 0));
+        merged.releaseIfGrown(squad(18, 0));
+
+        assertTrue(merged.holds(BUNKER));
+        assertFalse(merged.holds(OTHER_BUNKER));
+    }
+
+    @Test
+    void aSplitKeepsTheMemoryOnBothHalves() {
+        BunkerRetreatMemory parent = remembering(BUNKER, squad(12, 0));
+        BunkerRetreatMemory child = merged(new BunkerRetreatMemory.Source(parent, squad(12, 0)));
+
+        child.releaseIfGrown(squad(4, 0));
+        parent.releaseIfGrown(squad(8, 0));
+
+        assertTrue(child.holds(BUNKER));
+        assertTrue(parent.holds(BUNKER));
+    }
+
+    @Test
+    void aRememberedBunkerInsideTheRadiusThatWentUnpricedHoldsTheAdvance() {
+        Position priced = new Position(1, 1);
+        Position unpriced = new Position(2, 2);
+
+        assertTrue(HorizonCombatSimulator.anyUnpriced(Arrays.asList(priced, unpriced),
+                Collections.singletonList(priced)));
+        assertFalse(HorizonCombatSimulator.anyUnpriced(Collections.singletonList(priced),
+                Collections.singletonList(priced)));
+        assertFalse(HorizonCombatSimulator.anyUnpriced(Collections.<Position>emptyList(),
+                Collections.<Position>emptyList()));
+    }
 }
