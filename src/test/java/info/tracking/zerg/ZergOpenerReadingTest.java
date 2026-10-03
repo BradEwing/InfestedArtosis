@@ -48,6 +48,14 @@ class ZergOpenerReadingTest {
     }
 
     @Test
+    void aFinishedPoolSeenOnArrivalWithAnEmptyNaturalIsNotTwelvePool() {
+        Time arrival = new Time(3840);
+        ZergOpenerEvidence evidence = poolSeen(arrival, 14).mainScouted(true).naturalLastSeen(arrival).build();
+
+        assertNull(ZergOpenerReading.classify(evidence));
+    }
+
+    @Test
     void elevenEquivalentsWithoutATimingSignIsAmbiguous() {
         assertNull(ZergOpenerReading.classify(poolSeen(AFTER_TWO_MINUTES, 11).build()));
         assertNull(ZergOpenerReading.classify(poolSeen(AFTER_TWO_MINUTES, 11).mainScouted(true)
