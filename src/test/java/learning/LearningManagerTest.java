@@ -235,10 +235,10 @@ public class LearningManagerTest {
         Map<String, Record> buildOrders = opponentRecord.getBuildOrderRecord();
         appendGames(opponentRecord, buildOrders, "3HatchLurker", false, 3);
         appendGames(opponentRecord, buildOrders, "2HatchMuta", false, 3);
-        appendGames(opponentRecord, buildOrders, "3HatchHydraZvT", false, 0);
-        List<String> candidates = Arrays.asList("3HatchLurker", "2HatchMuta", "3HatchHydraZvT");
+        appendGames(opponentRecord, buildOrders, "2HatchHydraZvT", false, 0);
+        List<String> candidates = Arrays.asList("3HatchLurker", "2HatchMuta", "2HatchHydraZvT");
 
-        assertEquals("3HatchHydraZvT", LearningManager.selectBuildOrderName(candidates, opponentRecord, MAP_NAME));
+        assertEquals("2HatchHydraZvT", LearningManager.selectBuildOrderName(candidates, opponentRecord, MAP_NAME));
     }
 
     private static OpponentRecord emptyOpponentRecord() {

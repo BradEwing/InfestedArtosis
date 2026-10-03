@@ -18,7 +18,7 @@ import java.util.Set;
  * terminal build asks for Hive tech, four gases and Defilers; entered on a smaller economy it
  * would spend the bank the economy still needs.
  *
- * <p>Only 2HatchMuta, 3HatchLurker and 3HatchHydraZvT transition. CrazyZerg is terminal and reaches Hive on its
+ * <p>Only 2HatchMuta, 3HatchLurker and 2HatchHydraZvT transition. CrazyZerg is terminal and reaches Hive on its
  * own.
  */
 public final class LurkerDefilerUltraTransition {
@@ -46,10 +46,10 @@ public final class LurkerDefilerUltraTransition {
     static final int LURKER_TRIGGER = 4;
 
     /**
-     * Hydralisks {@link ThreeHatchHydraTerran} has produced before it hands over, the build's own
+     * Hydralisks {@link TwoHatchHydraTerran} has produced before it hands over, the build's own
      * mech target. Handing over earlier would morph the hydralisk army into Lurkers in the mid game.
      */
-    static final int HYDRALISK_TRIGGER = ThreeHatchHydraTerran.MECH_HYDRALISKS;
+    static final int HYDRALISK_TRIGGER = TwoHatchHydraTerran.MECH_HYDRALISKS;
 
     /** Bases held before the third base is asked for: the main and the natural. */
     static final int THIRD_BASE_AFTER_BASES = ECONOMY_BASES - 1;
@@ -68,7 +68,7 @@ public final class LurkerDefilerUltraTransition {
         CLOCK,
         /** 3HatchLurker morphed {@value #LURKER_TRIGGER} Lurkers. */
         LURKERS,
-        /** 3HatchHydraZvT produced {@value #HYDRALISK_TRIGGER} Hydralisks. */
+        /** 2HatchHydraZvT produced {@value #HYDRALISK_TRIGGER} Hydralisks. */
         HYDRALISKS
     }
 
@@ -104,7 +104,7 @@ public final class LurkerDefilerUltraTransition {
     }
 
     /**
-     * The 3HatchHydraZvT trigger. Hydralisks produced rather than living, so a build that keeps
+     * The 2HatchHydraZvT trigger. Hydralisks produced rather than living, so a build that keeps
      * losing its Hydralisks still hands over once it has made them, and only after Muscular
      * Augments and Grooved Spines are researched.
      *

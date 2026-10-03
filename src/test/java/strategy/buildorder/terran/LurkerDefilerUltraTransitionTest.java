@@ -73,7 +73,7 @@ class LurkerDefilerUltraTransitionTest {
 
     @Test
     void threeHatchHydraWaitsForItsMechTargetAndBothDenUpgrades() {
-        int target = ThreeHatchHydraTerran.MECH_HYDRALISKS;
+        int target = TwoHatchHydraTerran.MECH_HYDRALISKS;
 
         assertEquals(target, LurkerDefilerUltraTransition.HYDRALISK_TRIGGER);
         assertNull(LurkerDefilerUltraTransition.threeHatchHydraTrigger(target - 1, true, true));
@@ -85,9 +85,9 @@ class LurkerDefilerUltraTransitionTest {
 
     @Test
     void threeHatchHydraOffersOnlyLurkerDefilerUltraAndLabelsItsTrigger() {
-        assertOffersOnlyLurkerDefilerUltra(new ThreeHatchHydraTerran().transition(null));
-        assertEquals("3HatchHydraZvT>LurkerDefilerUltra:HYDRALISKS",
-                LurkerDefilerUltraTransition.label("3HatchHydraZvT",
+        assertOffersOnlyLurkerDefilerUltra(new TwoHatchHydraTerran().transition(null));
+        assertEquals("2HatchHydraZvT>LurkerDefilerUltra:HYDRALISKS",
+                LurkerDefilerUltraTransition.label("2HatchHydraZvT",
                         LurkerDefilerUltraTransition.Trigger.HYDRALISKS));
     }
 

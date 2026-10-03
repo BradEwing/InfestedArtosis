@@ -22,8 +22,10 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * The hydralisk-focused ZvT build: Hydralisks and Zerglings on three bases, with Muscular Augments,
- * Grooved Spines, Missile Attacks and Carapace, handing over to {@link LurkerDefilerUltra} once
+ * The hydralisk-focused ZvT build: Hydralisks and Zerglings out before the third base, which is taken
+ * once {@value #HYDRALISKS_BEFORE_THIRD_BASE} Hydralisks stand, on a Drone target of
+ * {@value #DRONES_BEFORE_HYDRALISKS}. It researches Muscular Augments, Grooved Spines, Missile Attacks
+ * and Carapace, and hands over to {@link LurkerDefilerUltra} once
  * {@value LurkerDefilerUltraTransition#HYDRALISK_TRIGGER} Hydralisks are produced, Muscular Augments
  * and Grooved Spines are researched, and the economy gate in {@link LurkerDefilerUltraTransition}
  * is met.
@@ -37,9 +39,9 @@ import java.util.Set;
  * Evolution Chamber upgrades earlier. With no mech evidence the build follows the same sequence at
  * the smaller {@value #BASE_HYDRALISKS} Hydralisk target and the later upgrade thresholds.
  */
-public class ThreeHatchHydraTerran extends TerranBase {
+public class TwoHatchHydraTerran extends TerranBase {
 
-    public static final String NAME = "3HatchHydraZvT";
+    public static final String NAME = "2HatchHydraZvT";
 
     /** Hydralisks wanted once the Den stands and no mech has been seen. */
     static final int BASE_HYDRALISKS = 12;
@@ -73,19 +75,26 @@ public class ThreeHatchHydraTerran extends TerranBase {
 
     private static final int UPGRADE_EVOLUTION_CHAMBERS = 2;
 
-    private static final int THIRD_BASE_DRONES = 20;
-
     private static final int EVOLUTION_CHAMBER_DRONES = 18;
 
     private static final int METABOLIC_BOOST_ZERGLINGS = 12;
 
-    private static final int DRONES_BASE = 12;
+    /** Hydralisks owned before the third base is asked for. */
+    static final int HYDRALISKS_BEFORE_THIRD_BASE = 6;
 
-    private static final int DRONES_WITH_LAIR = 9;
+    /** Hydralisks owned before Drones take larva from the Hydralisk stream. */
+    static final int HYDRALISKS_BEFORE_DRONES = 6;
+
+    /** Drones the build takes larva for ahead of the Hydralisk stream once the first Hydralisks stand. */
+    static final int DRONES_BEFORE_HYDRALISKS = 18;
+
+    private static final int DRONES_BASE = 18;
+
+    private static final int DRONES_WITH_LAIR = 3;
 
     private static final int DRONES_PER_EXTRA_HATCHERY = 6;
 
-    public ThreeHatchHydraTerran() {
+    public TwoHatchHydraTerran() {
         super(NAME);
     }
 
@@ -133,7 +142,7 @@ public class ThreeHatchHydraTerran extends TerranBase {
         int basesHeldOrReserved = baseData.currentAndReservedCount();
         boolean wantExpansion = wantsExpansion(behindOnBases(gameState), gameState.isFloatingMinerals(),
                 gameState.totalProduced(UnitType.Zerg_Hydralisk), basesHeldOrReserved)
-                || wantsThirdBase(plannedAndCurrentHatcheries, droneCount, lairCount);
+                || wantsThirdBase(plannedAndCurrentHatcheries, hydraCount);
 
         final int desiredSunkenColonies = this.requiredSunkens(gameState);
         if (!gameState.basesNeedingSunken(desiredSunkenColonies).isEmpty()) {
@@ -219,21 +228,27 @@ public class ThreeHatchHydraTerran extends TerranBase {
 
         final int desiredHydralisks = desiredHydralisks(techProgression.isHydraliskDen(), mech,
                 resourceCount.availableMinerals());
-        if (hydraCount < desiredHydralisks && canPlanAdvancedUnit(gameState, UnitType.Zerg_Hydralisk)) {
+        final boolean canPlanHydralisk = canPlanAdvancedUnit(gameState, UnitType.Zerg_Hydralisk);
+        final int droneTarget = dronesNeeded(gameState);
+        UnitType next = nextArmyUnit(techProgression.isHydraliskDen(), hydraCount, desiredHydralisks,
+                canPlanHydralisk, zerglingCount, desiredZerglings, droneCount, droneTarget);
+
+        if (next == UnitType.Zerg_Hydralisk) {
             List<Plan> hydraliskPlans = this.planAdvancedUnit(gameState, UnitType.Zerg_Hydralisk);
             if (!hydraliskPlans.isEmpty()) {
                 plans.addAll(hydraliskPlans);
                 return plans;
             }
+            next = nextArmyUnit(techProgression.isHydraliskDen(), hydraCount, desiredHydralisks, false,
+                    zerglingCount, desiredZerglings, droneCount, droneTarget);
         }
 
-        if (zerglingCount < desiredZerglings) {
+        if (next == UnitType.Zerg_Zergling) {
             plans.add(this.planUnit(gameState, UnitType.Zerg_Zergling));
             return plans;
         }
 
-        int droneTarget = dronesNeeded(gameState);
-        if (plans.isEmpty() && gameState.canPlanDrone() && droneCount < droneTarget) {
+        if (next == UnitType.Zerg_Drone && gameState.canPlanDrone()) {
             plans.add(this.planUnit(gameState, UnitType.Zerg_Drone));
             return plans;
         }
@@ -315,13 +330,58 @@ public class ThreeHatchHydraTerran extends TerranBase {
 
     /**
      * Whether the build takes its third base: with fewer than three hatcheries held or planned, once
-     * {@value #THIRD_BASE_DRONES} drones and a Lair stand.
+     * {@value #HYDRALISKS_BEFORE_THIRD_BASE} Hydralisks are owned, so the army is out before the
+     * Hatchery goes down.
      */
-    static boolean wantsThirdBase(int plannedAndCurrentHatcheries, int droneCount, int lairCount) {
+    static boolean wantsThirdBase(int plannedAndCurrentHatcheries, int hydralisksOwned) {
         return plannedAndCurrentHatcheries >= 2
                 && plannedAndCurrentHatcheries < LurkerDefilerUltraTransition.ECONOMY_BASES
-                && droneCount >= THIRD_BASE_DRONES
-                && lairCount > 0;
+                && hydralisksOwned >= HYDRALISKS_BEFORE_THIRD_BASE;
+    }
+
+    /**
+     * Whether the next larva morphs a Drone ahead of the Hydralisk stream: once the Den stands and
+     * {@value #HYDRALISKS_BEFORE_DRONES} Hydralisks are owned, while fewer than
+     * {@value #DRONES_BEFORE_HYDRALISKS} Drones gather.
+     *
+     * @param denStands whether the Hydralisk Den is finished
+     * @param hydralisksOwned Hydralisks owned and queued
+     * @param droneCount gathering plus queued drones
+     * @return true when a Drone outranks the next Hydralisk
+     */
+    static boolean shouldDroneBeforeHydralisks(boolean denStands, int hydralisksOwned, int droneCount) {
+        return denStands && hydralisksOwned >= HYDRALISKS_BEFORE_DRONES && droneCount < DRONES_BEFORE_HYDRALISKS;
+    }
+
+    /**
+     * The unit type the army step of the build morphs next, or null when it morphs none. The build
+     * only ever picks from Hydralisk, Zergling and Drone, so no Lurker morph is reachable. Drones
+     * outrank the Hydralisk stream once the first {@value #HYDRALISKS_BEFORE_DRONES} Hydralisks stand
+     * and until {@value #DRONES_BEFORE_HYDRALISKS} Drones gather.
+     *
+     * @param denStands whether the Hydralisk Den is finished
+     * @param hydralisksOwned Hydralisks owned and queued
+     * @param desiredHydralisks the Hydralisk target
+     * @param canPlanHydralisk whether a Hydralisk plan is currently allowed
+     * @param zerglingsOwned Zerglings owned and queued
+     * @param desiredZerglings the Zergling target
+     * @param droneCount gathering plus queued drones
+     * @param droneTarget the Drone target
+     * @return the unit type to morph next
+     */
+    static UnitType nextArmyUnit(boolean denStands, int hydralisksOwned, int desiredHydralisks,
+                                 boolean canPlanHydralisk, int zerglingsOwned, int desiredZerglings,
+                                 int droneCount, int droneTarget) {
+        if (shouldDroneBeforeHydralisks(denStands, hydralisksOwned, droneCount)) {
+            return UnitType.Zerg_Drone;
+        }
+        if (canPlanHydralisk && hydralisksOwned < desiredHydralisks) {
+            return UnitType.Zerg_Hydralisk;
+        }
+        if (zerglingsOwned < desiredZerglings) {
+            return UnitType.Zerg_Zergling;
+        }
+        return droneCount < droneTarget ? UnitType.Zerg_Drone : null;
     }
 
     /**

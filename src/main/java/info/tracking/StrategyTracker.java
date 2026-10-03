@@ -237,6 +237,14 @@ public class StrategyTracker {
         return isDetectedStrategy(TerranMech.NAME) || terranMechPersists;
     }
 
+    /**
+     * Whether the learning file shows Terran mech persisting across recent games against this opponent,
+     * whatever this game has detected.
+     */
+    public boolean isTerranMechPersistent() {
+        return terranMechPersists;
+    }
+
     public String getDetectedStrategiesAsString() {
         return detectedStrategies.stream()
                 .map(ObservedStrategy::getName)
