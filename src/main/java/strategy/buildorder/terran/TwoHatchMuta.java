@@ -79,6 +79,8 @@ public class TwoHatchMuta extends TerranBase {
                 gameState.structureCount(Readiness.COMMITTED, UnitType.Zerg_Spire) > 0,
                 gameState.getResourceCount().availableMinerals()
                         - gameState.getProductionQueue().advancedUnitMineralDemand(),
+                gameState.getResourceCount().availableGas()
+                        - gameState.getProductionQueue().advancedUnitGasDemand(),
                 gameState.floatingMineralsBar(), mutaCount);
 
         // Lair timing
@@ -215,6 +217,23 @@ public class TwoHatchMuta extends TerranBase {
     @Override
     protected int droneRoundDroneCap(GameState gameState) {
         return dronesNeeded(gameState);
+    }
+
+    @Override
+    protected boolean holdsFirstWaveBank(GameState gameState) {
+        return ownsFirstWaveBank(gameState.structureCount(Readiness.COMMITTED, UnitType.Zerg_Spire) > 0,
+                gameState.ourUnitCount(UnitType.Zerg_Mutalisk) + gameState.queuedUnitPlanCount(UnitType.Zerg_Mutalisk));
+    }
+
+    /**
+     * Whether the first Mutalisk wave still owns the unreserved bank.
+     *
+     * @param spireCommitted whether a Spire is finished, morphing or planned
+     * @param mutaliskCount Mutalisks living and queued
+     * @return true while a Spire is committed and fewer than {@link #MUTALISKS_BEFORE_FLYER_UPGRADE} are counted
+     */
+    static boolean ownsFirstWaveBank(boolean spireCommitted, int mutaliskCount) {
+        return spireCommitted && mutaliskCount < MUTALISKS_BEFORE_FLYER_UPGRADE;
     }
 
     @Override
@@ -441,27 +460,31 @@ public class TwoHatchMuta extends TerranBase {
      * Whether the build asks for an expansion beyond its natural and third.
      *
      * <p>Falling behind the enemy on bases always asks. Floating minerals ask on the unreserved
-     * bank once a Spire is committed only after the Mutalisks still short of
-     * {@value #MUTALISKS_BEFORE_FLYER_UPGRADE} and the queued advanced unit plans are paid for, so
-     * the first wave's bank does not buy an expansion while a bank beyond it still does.
+     * bank once a Spire is committed only after the queued advanced unit plans and the Mutalisks
+     * still short of {@value #MUTALISKS_BEFORE_FLYER_UPGRADE} that the unreserved gas pays for are
+     * covered. Minerals the gas cannot turn into Mutalisks are not held, and the hold is gone once
+     * the seventh Mutalisk is counted.
      *
      * @param behindOnBases whether the enemy holds more bases
      * @param floatingMinerals whether unreserved minerals sit above the float bar
      * @param spireCommitted whether a Spire is finished, morphing or planned
      * @param mineralsAfterQueuedDemand unreserved minerals less queued advanced unit plans
+     * @param gasAfterQueuedDemand unreserved gas less queued advanced unit plans
      * @param floatBar the unreserved minerals that count as floating
      * @param mutaliskCount Mutalisks counted, living and planned
      * @return true when the build should plan a new base
      */
     static boolean wantsBaseAdvantage(boolean behindOnBases, boolean floatingMinerals, boolean spireCommitted,
-                                      int mineralsAfterQueuedDemand, int floatBar, int mutaliskCount) {
+                                      int mineralsAfterQueuedDemand, int gasAfterQueuedDemand, int floatBar,
+                                      int mutaliskCount) {
         if (behindOnBases) {
             return true;
         }
         if (!spireCommitted) {
             return floatingMinerals;
         }
-        int firstWaveShortfall = Math.max(0, MUTALISKS_BEFORE_FLYER_UPGRADE - mutaliskCount);
+        int gasBoundMutalisks = Math.max(0, gasAfterQueuedDemand) / UnitType.Zerg_Mutalisk.gasPrice();
+        int firstWaveShortfall = Math.min(Math.max(0, MUTALISKS_BEFORE_FLYER_UPGRADE - mutaliskCount), gasBoundMutalisks);
         int firstWaveCost = firstWaveShortfall * UnitType.Zerg_Mutalisk.mineralPrice();
         return floatingMinerals && mineralsAfterQueuedDemand - firstWaveCost > floatBar;
     }

@@ -260,6 +260,17 @@ public abstract class BuildOrder {
         return false;
     }
 
+    /**
+     * Whether the build's first advanced unit wave still owns the unreserved bank, so the macro
+     * hatchery gate must read the bank net of queued advanced unit plans.
+     *
+     * @param gameState current game state
+     * @return false unless the build overrides it
+     */
+    protected boolean holdsFirstWaveBank(GameState gameState) {
+        return false;
+    }
+
     private static int dronesInEgg(List<Unit> units) {
         int eggs = 0;
         for (Unit unit : units) {
@@ -1434,8 +1445,9 @@ public abstract class BuildOrder {
      * and placing there keeps the request off the expansion path, so it never reserves a base and
      * is never held by the expansion backoff.
      *
-     * <p>Advanced unit plans the build created this frame are not in the queue yet, so their cost
-     * is added to the queued demand.
+     * <p>While {@link #holdsFirstWaveBank} holds, the cost of queued advanced unit plans is taken
+     * off the bank first, and so is the cost of those the build created this frame, which are not in
+     * the queue yet. Once the first wave is queued the gate reads the bank whole.
      *
      * @param gameState current game state
      * @param framePlans the plans the build order produced this frame
@@ -1446,13 +1458,14 @@ public abstract class BuildOrder {
         boolean techReady = macroHatcheryTechReady(gameState.getTechProgression());
         int hatcheries = gameState.hatcheryCount();
         int outstanding = gameState.inFlightHatcheryPlans(true) + gameState.hatcheriesUnderConstruction(true);
+        boolean holdsBank = holdsFirstWaveBank(gameState);
+        int queuedMinerals = holdsBank ? gameState.getProductionQueue().advancedUnitMineralDemand()
+                + frameAdvancedUnitDemand(framePlans, true) : 0;
+        int queuedGas = holdsBank ? gameState.getProductionQueue().advancedUnitGasDemand()
+                + frameAdvancedUnitDemand(framePlans, false) : 0;
         LarvaBoundMacroHatchery.Gate gate = LarvaBoundMacroHatchery.evaluate(techReady, gameState.numLarva(),
-                hatcheries, LarvaBoundMacroHatchery.afterQueuedDemand(resourceCount.availableMinerals(),
-                        gameState.getProductionQueue().advancedUnitMineralDemand()
-                                + frameAdvancedUnitDemand(framePlans, true)),
-                LarvaBoundMacroHatchery.afterQueuedDemand(resourceCount.availableGas(),
-                        gameState.getProductionQueue().advancedUnitGasDemand()
-                                + frameAdvancedUnitDemand(framePlans, false)),
+                hatcheries, LarvaBoundMacroHatchery.afterQueuedDemand(resourceCount.availableMinerals(), queuedMinerals),
+                LarvaBoundMacroHatchery.afterQueuedDemand(resourceCount.availableGas(), queuedGas),
                 gameState.knownEnemyMobileGroundCombatUnitsAtOurBases(), outstanding);
 
         if (gate != LarvaBoundMacroHatchery.Gate.TRIGGER) {

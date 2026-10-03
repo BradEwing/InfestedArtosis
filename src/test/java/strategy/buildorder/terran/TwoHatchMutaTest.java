@@ -443,6 +443,8 @@ class TwoHatchMutaTest {
 
     private static final int FLOAT_BAR = 350;
 
+    private static final int ALL_GAS = 1000;
+
     private static final int MUTALISK_MINERALS = UnitType.Zerg_Mutalisk.mineralPrice();
 
     /**
@@ -451,20 +453,20 @@ class TwoHatchMutaTest {
      */
     @Test
     void floatingMineralsPlanNoExpansionWhileTheFirstWaveOwnsTheBank() {
-        assertFalse(TwoHatchMuta.wantsBaseAdvantage(false, true, true, 352, FLOAT_BAR, 0));
-        assertFalse(TwoHatchMuta.wantsBaseAdvantage(false, true, true, FLOAT_BAR + 7 * MUTALISK_MINERALS, FLOAT_BAR, 0));
+        assertFalse(TwoHatchMuta.wantsBaseAdvantage(false, true, true, 352, ALL_GAS, FLOAT_BAR, 0));
+        assertFalse(TwoHatchMuta.wantsBaseAdvantage(false, true, true, FLOAT_BAR + 7 * MUTALISK_MINERALS, ALL_GAS, FLOAT_BAR, 0));
     }
 
     @Test
     void aBankBeyondTheFirstWaveStillPlansAnExpansionWhileTheSpireMorphs() {
-        assertTrue(TwoHatchMuta.wantsBaseAdvantage(false, true, true, FLOAT_BAR + 7 * MUTALISK_MINERALS + 1,
+        assertTrue(TwoHatchMuta.wantsBaseAdvantage(false, true, true, FLOAT_BAR + 7 * MUTALISK_MINERALS + 1, ALL_GAS,
                 FLOAT_BAR, 0));
     }
 
     @Test
     void theFirstWaveCostShrinksAsMutalisksAreCounted() {
-        assertFalse(TwoHatchMuta.wantsBaseAdvantage(false, true, true, FLOAT_BAR + 3 * MUTALISK_MINERALS, FLOAT_BAR, 4));
-        assertTrue(TwoHatchMuta.wantsBaseAdvantage(false, true, true, FLOAT_BAR + 3 * MUTALISK_MINERALS + 1,
+        assertFalse(TwoHatchMuta.wantsBaseAdvantage(false, true, true, FLOAT_BAR + 3 * MUTALISK_MINERALS, ALL_GAS, FLOAT_BAR, 4));
+        assertTrue(TwoHatchMuta.wantsBaseAdvantage(false, true, true, FLOAT_BAR + 3 * MUTALISK_MINERALS + 1, ALL_GAS,
                 FLOAT_BAR, 4));
     }
 
@@ -472,24 +474,41 @@ class TwoHatchMutaTest {
     void sevenPlannedMutalisksStillHoldWhenQueuedPlansTakeTheBank() {
         int afterQueuedDemand = 352 - 4 * MUTALISK_MINERALS;
 
-        assertFalse(TwoHatchMuta.wantsBaseAdvantage(false, true, true, afterQueuedDemand, FLOAT_BAR,
+        assertFalse(TwoHatchMuta.wantsBaseAdvantage(false, true, true, afterQueuedDemand, ALL_GAS, FLOAT_BAR,
                 TwoHatchMuta.MUTALISKS_BEFORE_FLYER_UPGRADE));
     }
 
     @Test
+    void mineralsTheGasCannotTurnIntoMutalisksAreNotHeldBack() {
+        assertTrue(TwoHatchMuta.wantsBaseAdvantage(false, true, true, 500, 100, FLOAT_BAR, 0));
+        assertFalse(TwoHatchMuta.wantsBaseAdvantage(false, true, true, 500, 200, FLOAT_BAR, 0));
+        assertTrue(TwoHatchMuta.wantsBaseAdvantage(false, true, true, 500, -50, FLOAT_BAR, 0));
+    }
+
+    @Test
+    void theHoldIsReleasedOnceTheSeventhMutaliskIsCounted() {
+        int mutalisks = TwoHatchMuta.MUTALISKS_BEFORE_FLYER_UPGRADE;
+
+        assertTrue(TwoHatchMuta.ownsFirstWaveBank(true, mutalisks - 1));
+        assertFalse(TwoHatchMuta.ownsFirstWaveBank(true, mutalisks));
+        assertFalse(TwoHatchMuta.ownsFirstWaveBank(false, 0));
+        assertTrue(TwoHatchMuta.wantsBaseAdvantage(false, true, true, FLOAT_BAR + 1, ALL_GAS, FLOAT_BAR, mutalisks));
+    }
+
+    @Test
     void floatingMineralsPlanAnExpansionBeforeASpireIsCommitted() {
-        assertTrue(TwoHatchMuta.wantsBaseAdvantage(false, true, false, 352, FLOAT_BAR, 0));
+        assertTrue(TwoHatchMuta.wantsBaseAdvantage(false, true, false, 352, ALL_GAS, FLOAT_BAR, 0));
     }
 
     @Test
     void fallingBehindOnBasesStillPlansAnExpansionDuringTheSpireMorph() {
-        assertTrue(TwoHatchMuta.wantsBaseAdvantage(true, false, true, 0, FLOAT_BAR, 0));
-        assertTrue(TwoHatchMuta.wantsBaseAdvantage(true, true, true, 352, FLOAT_BAR, 0));
+        assertTrue(TwoHatchMuta.wantsBaseAdvantage(true, false, true, 0, ALL_GAS, FLOAT_BAR, 0));
+        assertTrue(TwoHatchMuta.wantsBaseAdvantage(true, true, true, 352, ALL_GAS, FLOAT_BAR, 0));
     }
 
     @Test
     void noFloatNoLagPlansNoExpansion() {
-        assertFalse(TwoHatchMuta.wantsBaseAdvantage(false, false, false, 0, FLOAT_BAR, 0));
+        assertFalse(TwoHatchMuta.wantsBaseAdvantage(false, false, false, 0, ALL_GAS, FLOAT_BAR, 0));
     }
 
     /**
