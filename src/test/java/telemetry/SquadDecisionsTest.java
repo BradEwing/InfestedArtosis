@@ -437,6 +437,26 @@ class SquadDecisionsTest {
         assertEquals("DISBANDED", fields[columnIndex("rally_release")]);
     }
 
+    @Test
+    void theRallyReasonIsEmptyOnRowsAfterTheSquadLeavesRally() {
+        RallyReason stored = RallyReason.STAGING;
+        Squad squad = new AirSquad();
+
+        RallyReason leaving = SquadDecisionLogger.carriedRallyReason(stored, SquadStatus.RALLY, SquadStatus.FIGHT);
+        RallyReason entering = SquadDecisionLogger.carriedRallyReason(stored, SquadStatus.FIGHT, SquadStatus.RALLY);
+        RallyReason inside = SquadDecisionLogger.carriedRallyReason(stored, SquadStatus.RALLY, SquadStatus.RALLY);
+        RallyReason later = SquadDecisionLogger.carriedRallyReason(stored, SquadStatus.FIGHT, SquadStatus.RETREAT);
+        RallyReason locked = SquadDecisionLogger.carriedRallyReason(stored, SquadStatus.RETREAT, SquadStatus.RETREAT);
+
+        assertEquals(RallyReason.STAGING, leaving);
+        assertEquals(RallyReason.STAGING, entering);
+        assertEquals(RallyReason.STAGING, inside);
+        assertEquals("STAGING", rowFor(squad, "NONE", leaving, RallyRelease.NONE)[columnIndex("rally_reason")]);
+        assertEquals(RallyReason.NONE, later);
+        assertEquals(RallyReason.NONE, locked);
+        assertEquals("NONE", rowFor(squad, "NONE", later, RallyRelease.NONE)[columnIndex("rally_reason")]);
+    }
+
     private static Arc computedArc() {
         Arc arc = new Arc(new Position(1600, 1600), new Position(1600, 960), 160, 90, 3);
         arc.compute(Collections.emptySet(), Collections.emptyList(), 0, 4096, 4096);
