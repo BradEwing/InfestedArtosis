@@ -7,6 +7,10 @@ import info.UnitTypeCount;
 import org.junit.jupiter.api.Test;
 import strategy.buildorder.LarvaBoundMacroHatchery;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
@@ -139,50 +143,58 @@ class TwoHatchHydraTerranTest {
     void hydralisksComeFirstThenDronesToEighteenThenTheRestOfTheStream() {
         int drones = 11;
         assertEquals(UnitType.Zerg_Hydralisk,
-                TwoHatchHydraTerran.nextArmyUnit(true, 0, 12, true, 0, 0, drones, 21));
+                TwoHatchHydraTerran.nextArmyUnit(true, 0, 12, true, false, drones, 21, true));
         assertEquals(UnitType.Zerg_Hydralisk,
-                TwoHatchHydraTerran.nextArmyUnit(true, 5, 12, true, 0, 0, drones, 21));
+                TwoHatchHydraTerran.nextArmyUnit(true, 5, 12, true, false, drones, 21, true));
         assertEquals(UnitType.Zerg_Drone,
-                TwoHatchHydraTerran.nextArmyUnit(true, 6, 12, true, 0, 0, drones, 21));
+                TwoHatchHydraTerran.nextArmyUnit(true, 6, 12, true, false, drones, 21, true));
         assertEquals(UnitType.Zerg_Hydralisk,
-                TwoHatchHydraTerran.nextArmyUnit(true, 6, 12, true, 0, 0, 18, 21));
+                TwoHatchHydraTerran.nextArmyUnit(true, 6, 12, true, false, 18, 21, true));
         assertEquals(UnitType.Zerg_Zergling,
-                TwoHatchHydraTerran.nextArmyUnit(true, 12, 12, true, 0, 8, 18, 21));
+                TwoHatchHydraTerran.nextArmyUnit(true, 12, 12, true, true, 18, 21, true));
         assertEquals(UnitType.Zerg_Drone,
-                TwoHatchHydraTerran.nextArmyUnit(true, 12, 12, true, 8, 8, 18, 21));
-        assertEquals(null, TwoHatchHydraTerran.nextArmyUnit(true, 12, 12, true, 8, 8, 21, 21));
+                TwoHatchHydraTerran.nextArmyUnit(true, 12, 12, true, false, 18, 21, true));
+        assertEquals(null, TwoHatchHydraTerran.nextArmyUnit(true, 12, 12, true, false, 21, 21, true));
     }
 
     @Test
     void aBlockedHydraliskPlanFallsThroughToZerglingsAndDrones() {
         assertEquals(UnitType.Zerg_Zergling,
-                TwoHatchHydraTerran.nextArmyUnit(true, 3, 12, false, 0, 4, 11, 21));
+                TwoHatchHydraTerran.nextArmyUnit(true, 3, 12, false, true, 11, 21, true));
         assertEquals(UnitType.Zerg_Drone,
-                TwoHatchHydraTerran.nextArmyUnit(true, 3, 12, false, 4, 4, 11, 21));
+                TwoHatchHydraTerran.nextArmyUnit(true, 3, 12, false, false, 11, 21, true));
     }
 
     @Test
-    void theArmyStepNeverMorphsALurkerOrPlansLurkerAspect() {
-        for (boolean den : new boolean[] {false, true}) {
-            for (boolean canHydra : new boolean[] {false, true}) {
-                for (int hydras = 0; hydras <= 60; hydras += 3) {
-                    for (int lings = 0; lings <= 20; lings += 5) {
-                        for (int drones = 0; drones <= 30; drones += 3) {
-                            UnitType next = TwoHatchHydraTerran.nextArmyUnit(den, hydras, 24, canHydra, lings, 10,
-                                    drones, 21);
-                            assertTrue(next == null || next == UnitType.Zerg_Hydralisk
-                                    || next == UnitType.Zerg_Zergling || next == UnitType.Zerg_Drone, "" + next);
-                        }
-                    }
-                }
+    void aBlockedDronePlanNeverStarvesTheHydraliskOrZerglingStream() {
+        assertEquals(UnitType.Zerg_Hydralisk,
+                TwoHatchHydraTerran.nextArmyUnit(true, 6, 12, true, false, 11, 21, false));
+        assertEquals(UnitType.Zerg_Zergling,
+                TwoHatchHydraTerran.nextArmyUnit(true, 12, 12, true, true, 11, 21, false));
+        assertEquals(null, TwoHatchHydraTerran.nextArmyUnit(true, 12, 12, true, false, 11, 21, false));
+    }
+
+    @Test
+    void theBuildSourceNeverNamesALurkerMorphOrLurkerAspect() throws IOException {
+        String[] files = {"strategy/buildorder/terran/TwoHatchHydraTerran.java",
+            "strategy/buildorder/terran/TerranBase.java"};
+        for (String file : files) {
+            String source = new String(Files.readAllBytes(Paths.get("src/main/java", file)), StandardCharsets.UTF_8);
+            for (String banned : new String[] {"Zerg_Lurker", "Lurker_Aspect", "planTech(", "planLurker"}) {
+                assertFalse(source.contains(banned), file + " names " + banned);
             }
         }
+    }
+
+    @Test
+    void onlyTheFourArmyUpgradesMoveAheadOfTheHydraliskStream() {
+        TwoHatchHydraTerran build = new TwoHatchHydraTerran();
         UpgradeType[] armyUpgrades = {UpgradeType.Muscular_Augments, UpgradeType.Grooved_Spines,
             UpgradeType.Zerg_Missile_Attacks, UpgradeType.Zerg_Carapace};
         for (UpgradeType upgrade : armyUpgrades) {
-            assertTrue(new TwoHatchHydraTerran().armyUpgradeTrigger(upgrade) != null, upgrade.toString());
+            assertTrue(build.armyUpgradeTrigger(upgrade) != null, upgrade.toString());
         }
-        assertEquals(null, new TwoHatchHydraTerran().armyUpgradeTrigger(UpgradeType.Pneumatized_Carapace));
+        assertEquals(null, build.armyUpgradeTrigger(UpgradeType.Pneumatized_Carapace));
     }
 
     @Test

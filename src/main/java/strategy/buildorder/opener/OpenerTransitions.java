@@ -32,9 +32,16 @@ final class OpenerTransitions {
     static Set<BuildOrder> forGame(GameState gameState) {
         StrategyTracker strategyTracker = gameState.getStrategyTracker();
         boolean terranWall = strategyTracker != null && strategyTracker.isTerranWallDetected();
-        boolean hydraBuild = strategyTracker != null && strategyTracker.isTerranMechPersistent()
-                || isHydraBuildForced(gameState.getConfig());
-        return forRace(gameState.getOpponentRace(), terranWall, hydraBuild);
+        return forRace(gameState.getOpponentRace(), terranWall,
+                offersHydraBuild(strategyTracker, gameState.getConfig()));
+    }
+
+    /**
+     * Whether TwoHatchHydraTerran is offered: the persisted TerranMech prior holds, or the strategy override
+     * names it.
+     */
+    static boolean offersHydraBuild(StrategyTracker strategyTracker, Config config) {
+        return strategyTracker != null && strategyTracker.isTerranMechPersistent() || isHydraBuildForced(config);
     }
 
     /**

@@ -230,8 +230,9 @@ public class TwoHatchHydraTerran extends TerranBase {
                 resourceCount.availableMinerals());
         final boolean canPlanHydralisk = canPlanAdvancedUnit(gameState, UnitType.Zerg_Hydralisk);
         final int droneTarget = dronesNeeded(gameState);
+        final boolean canPlanDrone = gameState.canPlanDrone();
         UnitType next = nextArmyUnit(techProgression.isHydraliskDen(), hydraCount, desiredHydralisks,
-                canPlanHydralisk, zerglingCount, desiredZerglings, droneCount, droneTarget);
+                canPlanHydralisk, zerglingCount < desiredZerglings, droneCount, droneTarget, canPlanDrone);
 
         if (next == UnitType.Zerg_Hydralisk) {
             List<Plan> hydraliskPlans = this.planAdvancedUnit(gameState, UnitType.Zerg_Hydralisk);
@@ -240,7 +241,7 @@ public class TwoHatchHydraTerran extends TerranBase {
                 return plans;
             }
             next = nextArmyUnit(techProgression.isHydraliskDen(), hydraCount, desiredHydralisks, false,
-                    zerglingCount, desiredZerglings, droneCount, droneTarget);
+                    zerglingCount < desiredZerglings, droneCount, droneTarget, canPlanDrone);
         }
 
         if (next == UnitType.Zerg_Zergling) {
@@ -248,7 +249,7 @@ public class TwoHatchHydraTerran extends TerranBase {
             return plans;
         }
 
-        if (next == UnitType.Zerg_Drone && gameState.canPlanDrone()) {
+        if (next == UnitType.Zerg_Drone) {
             plans.add(this.planUnit(gameState, UnitType.Zerg_Drone));
             return plans;
         }
@@ -363,25 +364,26 @@ public class TwoHatchHydraTerran extends TerranBase {
      * @param hydralisksOwned Hydralisks owned and queued
      * @param desiredHydralisks the Hydralisk target
      * @param canPlanHydralisk whether a Hydralisk plan is currently allowed
-     * @param zerglingsOwned Zerglings owned and queued
-     * @param desiredZerglings the Zergling target
+     * @param wantZerglings whether Zerglings owned and queued are below the Zergling target
      * @param droneCount gathering plus queued drones
      * @param droneTarget the Drone target
+     * @param canPlanDrone whether a Drone plan is currently allowed; a Drone is never returned otherwise,
+     *     so the Hydralisk and Zergling steps are not starved
      * @return the unit type to morph next
      */
     static UnitType nextArmyUnit(boolean denStands, int hydralisksOwned, int desiredHydralisks,
-                                 boolean canPlanHydralisk, int zerglingsOwned, int desiredZerglings,
-                                 int droneCount, int droneTarget) {
-        if (shouldDroneBeforeHydralisks(denStands, hydralisksOwned, droneCount)) {
+                                 boolean canPlanHydralisk, boolean wantZerglings,
+                                 int droneCount, int droneTarget, boolean canPlanDrone) {
+        if (canPlanDrone && shouldDroneBeforeHydralisks(denStands, hydralisksOwned, droneCount)) {
             return UnitType.Zerg_Drone;
         }
         if (canPlanHydralisk && hydralisksOwned < desiredHydralisks) {
             return UnitType.Zerg_Hydralisk;
         }
-        if (zerglingsOwned < desiredZerglings) {
+        if (wantZerglings) {
             return UnitType.Zerg_Zergling;
         }
-        return droneCount < droneTarget ? UnitType.Zerg_Drone : null;
+        return canPlanDrone && droneCount < droneTarget ? UnitType.Zerg_Drone : null;
     }
 
     /**
