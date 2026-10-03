@@ -156,6 +156,8 @@ public class SquadManager {
     private static final int MIN_ARC_POINTS = 4;
     private static final int MAX_SPACED_RADIUS = ContainmentPushback.MAX_RADIUS - ContainmentPushback.RADIUS_STEP;
     private static final int CONTAIN_DEFENSE_MARGIN = 32;
+    /** Pixels past a shooter's learned reach plus the Lurker's padding that a withdrawing Lurker stops at. */
+    static final int WITHDRAW_CLEARANCE = 32;
     private static final double REINFORCEMENT_RADIUS = 384.0;
     private static final int TARGETING_RADIUS = 256;
     private static final int WIDENED_TARGETING_RADIUS = 2 * TARGETING_RADIUS;
@@ -770,20 +772,39 @@ public class SquadManager {
         Predicate<Position> allowed = walkablePoints();
         Set<ManagedUnit> collapsing = collapsingMembers(now);
         for (ManagedUnit member : outrangedHits) {
-            if (collapsing.contains(member) || !member.canStepOutNow() && !member.canWithdrawNow()
-                    || !ManagedUnit.evadesOutrangedHit(member.getRole(), member.isClosingOnTarget())) {
+            if (!evadeGateOpen(collapsing.contains(member), member.canStepOutNow(), member.canWithdrawNow(),
+                    member.getRole(), member.isClosingOnTarget())) {
                 continue;
             }
             UnitType type = member.getUnitType();
             List<StaticDefenseZone> zones = ContainmentPushback.outrangingZones(threats,
                     EnemyReachMemory.baseGroundRange(type));
             Position seek = member.getRole() == UnitRole.CONTAIN ? member.getContainPosition() : null;
-            Position point = RunbyTargeting.findEvadePoint(member.getPosition(), zones,
-                    containmentDefensePadding(Collections.singletonList(type)), allowed, seek);
+            int padding = containmentDefensePadding(Collections.singletonList(type));
+            Position point = member.canWithdrawNow()
+                    ? RunbyTargeting.findClearPoint(member.getPosition(), zones, padding, WITHDRAW_CLEARANCE,
+                            allowed, seek)
+                    : RunbyTargeting.findEvadePoint(member.getPosition(), zones, padding, allowed, seek);
             if (point != null) {
                 member.evade(point, now);
             }
         }
+    }
+
+    /**
+     * Whether a member hit by something it cannot answer is moved out of fire this frame: it is not part of a
+     * collapse, it can step out or unburrow to withdraw, and its role evades an outranged hit.
+     *
+     * @param collapsing true when the member takes part in a collapse
+     * @param canStepOut true when the member can carry out an evade move
+     * @param canWithdraw true when the member is burrowed and unburrows to leave fire
+     * @param role the member's role
+     * @param closingOnTarget true when the member has a live fight target
+     * @return true when the member evades
+     */
+    static boolean evadeGateOpen(boolean collapsing, boolean canStepOut, boolean canWithdraw, UnitRole role,
+                                 boolean closingOnTarget) {
+        return !collapsing && (canStepOut || canWithdraw) && ManagedUnit.evadesOutrangedHit(role, closingOnTarget);
     }
 
     /**

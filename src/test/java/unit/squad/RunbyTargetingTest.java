@@ -553,4 +553,58 @@ class RunbyTargetingTest {
         assertEquals(false, RunbyTargeting.isFightTarget(UnitType.Protoss_Probe));
         assertEquals(false, RunbyTargeting.isFightTarget(UnitType.Protoss_Pylon));
     }
+
+    @Test
+    void theClearPointSearchLeavesTheLearnedReachPlusPaddingAndClearance() {
+        StaticDefenseZone tank = new StaticDefenseZone(UnitType.Terran_Siege_Tank_Siege_Mode, east(-100), 384);
+        int padding = SquadManager.containmentDefensePadding(Collections.singletonList(UnitType.Zerg_Lurker));
+        List<StaticDefenseZone> zones = Collections.singletonList(tank);
+        assertTrue(RunbyTargeting.zoneMargin(LING_AT, zones, padding) < 0);
+
+        Position point = RunbyTargeting.findClearPoint(LING_AT, zones, padding, SquadManager.WITHDRAW_CLEARANCE,
+                position -> true, null);
+
+        assertTrue(RunbyTargeting.zoneMargin(point, zones, padding) >= SquadManager.WITHDRAW_CLEARANCE);
+    }
+
+    @Test
+    void theEvadeRingAloneDoesNotLeaveALongReachThatTheClearPointDoes() {
+        StaticDefenseZone tank = new StaticDefenseZone(UnitType.Terran_Siege_Tank_Siege_Mode, east(-100), 384);
+        int padding = SquadManager.containmentDefensePadding(Collections.singletonList(UnitType.Zerg_Lurker));
+        List<StaticDefenseZone> zones = Collections.singletonList(tank);
+
+        Position ring = RunbyTargeting.findEvadePoint(LING_AT, zones, padding, position -> true, null);
+        Position clear = RunbyTargeting.findClearPoint(LING_AT, zones, padding, 0, position -> true, null);
+
+        assertTrue(RunbyTargeting.zoneMargin(ring, zones, padding) < 0);
+        assertTrue(RunbyTargeting.zoneMargin(clear, zones, padding) >= 0);
+    }
+
+    @Test
+    void theClearPointSearchTakesTheNearestRing() {
+        Position point = RunbyTargeting.findClearPoint(LING_AT, Collections.emptyList(), 0, 0, position -> true,
+                null);
+
+        assertEquals(RunbyTargeting.CLEAR_MIN_RADIUS, (int) Math.round(LING_AT.getDistance(point)));
+    }
+
+    @Test
+    void theClearPointSearchBreaksTiesTowardTheSeekPoint() {
+        List<StaticDefenseZone> none = Collections.emptyList();
+
+        Position point = RunbyTargeting.findClearPoint(LING_AT, none, 0, 0, position -> true, east(500));
+
+        assertTrue(point.getX() > LING_AT.getX());
+    }
+
+    @Test
+    void theClearPointSearchFindsNothingWhereNoPointIsAllowedOrClear() {
+        StaticDefenseZone tank = new StaticDefenseZone(UnitType.Terran_Siege_Tank_Siege_Mode, east(-100), 384);
+        List<StaticDefenseZone> zones = Collections.singletonList(tank);
+
+        assertNull(RunbyTargeting.findClearPoint(LING_AT, zones, 0, 0, position -> false, null));
+        StaticDefenseZone huge = new StaticDefenseZone(UnitType.Terran_Siege_Tank_Siege_Mode, east(-100), 5000);
+        assertNull(RunbyTargeting.findClearPoint(LING_AT, Collections.singletonList(huge), 0, 0, position -> true,
+                null));
+    }
 }

@@ -157,4 +157,36 @@ class LurkerTest {
         assertFalse(Lurker.burrowsInFight(true, true, true));
         assertFalse(Lurker.burrowsInFight(false, false, true));
     }
+
+    @Test
+    void onlyABurrowedContainingLurkerThatCanUnburrowWithdraws() {
+        assertTrue(Lurker.canWithdraw(UnitRole.CONTAIN, true, true));
+        assertFalse(Lurker.canWithdraw(UnitRole.CONTAIN, false, true));
+        assertFalse(Lurker.canWithdraw(UnitRole.CONTAIN, true, false));
+        assertFalse(Lurker.canWithdraw(UnitRole.FIGHT, true, true));
+        assertFalse(Lurker.canWithdraw(UnitRole.RETREAT, true, true));
+    }
+
+    @Test
+    void aLurkerWithAnEnemyInReachIsNotHitOutOfRange() {
+        assertFalse(ManagedUnit.isOutrangedHit(100, 80, UnitRole.CONTAIN, true));
+    }
+
+    @Test
+    void theFirstBurrowCommandIsLogged() {
+        assertTrue(Lurker.changesBurrowState(null, true));
+        assertTrue(Lurker.changesBurrowState(null, false));
+    }
+
+    @Test
+    void aRepeatedBurrowCommandIsNotLogged() {
+        assertFalse(Lurker.changesBurrowState(true, true));
+        assertFalse(Lurker.changesBurrowState(false, false));
+    }
+
+    @Test
+    void aFlippedBurrowCommandIsLogged() {
+        assertTrue(Lurker.changesBurrowState(true, false));
+        assertTrue(Lurker.changesBurrowState(false, true));
+    }
 }

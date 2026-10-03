@@ -1,6 +1,7 @@
 package unit.managed;
 
 import bwapi.Game;
+import bwapi.Order;
 import bwapi.Position;
 import bwapi.Unit;
 import bwapi.UnitType;
@@ -37,6 +38,7 @@ public class Lurker extends ManagedUnit {
     private Position withdrawnFrom;
     private int withdrawFrame = -1;
     private int containChangedFrame = -1;
+    private Boolean commandedBurrow;
 
     /**
      * Pixels from its hold point within which a Lurker counts as arrived and burrows, the same tolerance
@@ -132,14 +134,9 @@ public class Lurker extends ManagedUnit {
         }
         this.setUnready();
         this.setRole(UnitRole.FIGHT);
-        if (unit.isBurrowed() && !unit.isUnderAttack()) {
-            return;
+        if (!unit.isBurrowed() && unit.canBurrow()) {
+            burrow(BurrowReason.RETREAT);
         }
-
-        if (!unit.isBurrowed()) {
-            log(true, BurrowReason.RETREAT);
-        }
-        unit.burrow();
     }
 
     /**
@@ -272,12 +269,34 @@ public class Lurker extends ManagedUnit {
 
     @Override
     public boolean canWithdrawNow() {
-        return role == UnitRole.CONTAIN && unit.isBurrowed() && unit.canUnburrow();
+        return canWithdraw(role, unit.isBurrowed(), unit.canUnburrow());
+    }
+
+    /**
+     * Whether a Lurker leaves fire it cannot answer by unburrowing: it is containing, burrowed and able to unburrow.
+     *
+     * @param role the Lurker's role
+     * @param burrowed true when it is burrowed
+     * @param canUnburrow true when it can unburrow now
+     * @return true when it withdraws
+     */
+    public static boolean canWithdraw(UnitRole role, boolean burrowed, boolean canUnburrow) {
+        return role == UnitRole.CONTAIN && burrowed && canUnburrow;
+    }
+
+    @Override
+    public boolean canStepOutNow() {
+        return super.canStepOutNow() && !holdsWithdrawal();
+    }
+
+    private boolean holdsWithdrawal() {
+        return withdrawPoint != null
+                && withdrawHolds(withdrawnFrom, containPosition, withdrawFrame, game.getFrameCount());
     }
 
     @Override
     public void evade(Position point, int frame) {
-        if (recordsWithdrawal(containChangedFrame, frame)) {
+        if (unit.isBurrowed() && recordsWithdrawal(containChangedFrame, frame)) {
             withdrawPoint = point;
             withdrawnFrom = containPosition;
             withdrawFrame = frame;
@@ -470,6 +489,9 @@ public class Lurker extends ManagedUnit {
     }
 
     private void burrow(BurrowReason reason) {
+        if (unit.getOrder() == Order.Burrowing) {
+            return;
+        }
         unit.burrow();
         log(true, reason);
     }
@@ -482,7 +504,22 @@ public class Lurker extends ManagedUnit {
         resetCounters();
     }
 
+    /**
+     * Whether a burrow command is logged: the first one, or one that flips the state last commanded.
+     *
+     * @param lastCommanded the state last commanded, or null for none
+     * @param next the state commanded now, true for burrow
+     * @return true when the command is a state change
+     */
+    static boolean changesBurrowState(Boolean lastCommanded, boolean next) {
+        return lastCommanded == null || lastCommanded != next;
+    }
+
     private void log(boolean burrow, BurrowReason reason) {
+        if (!changesBurrowState(commandedBurrow, burrow)) {
+            return;
+        }
+        commandedBurrow = burrow;
         BurrowTelemetry.burrowCommand(game.getFrameCount(), unitID, burrow, reason, role.name(), unit.getPosition(),
                 unit.getHitPoints(), containPosition);
     }
