@@ -156,6 +156,20 @@ class LarvaBoundMacroHatcheryTest {
     }
 
     @Test
+    void theBankIsReadNetOfQueuedDemandOnlyWhileTheFirstWaveHoldsIt() {
+        assertEquals(206, LarvaBoundMacroHatchery.bankAfterHold(true, 306, 100));
+        assertEquals(306, LarvaBoundMacroHatchery.bankAfterHold(false, 306, 100));
+    }
+
+    @Test
+    void aReleasedRequestCanTriggerOnMineralsWithNoGas() {
+        assertEquals(Gate.TRIGGER, LarvaBoundMacroHatchery.evaluate(TECH_READY, NO_LARVA, TWO_HATCHERIES, 320, 0, 0,
+                NO_ENEMIES, NO_MACRO_HATCHERY));
+        assertEquals(Gate.NOT_FLOATING, LarvaBoundMacroHatchery.evaluate(TECH_READY, NO_LARVA, TWO_HATCHERIES, 320, 0,
+                LarvaBoundMacroHatchery.FLOAT_GAS, NO_ENEMIES, NO_MACRO_HATCHERY));
+    }
+
+    @Test
     void queuedDemandNeverTakesTheBankBelowZero() {
         assertEquals(0, LarvaBoundMacroHatchery.afterQueuedDemand(50, 300));
         assertEquals(206, LarvaBoundMacroHatchery.afterQueuedDemand(306, 100));

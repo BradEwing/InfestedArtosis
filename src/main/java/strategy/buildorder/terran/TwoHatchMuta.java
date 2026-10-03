@@ -32,6 +32,8 @@ public class TwoHatchMuta extends TerranBase {
 
     static final int MUTALISKS_BEFORE_FLYER_UPGRADE = 7;
 
+    static final int MACRO_HATCHERY_HATCHERY_CAP = 4;
+
     /** Gatherers that must stand before Flyer Attacks level 2 or 3 is queued. Tuning constant. */
     static final int WORKERS_BEFORE_LATER_FLYER_UPGRADES = 22;
 
@@ -81,7 +83,7 @@ public class TwoHatchMuta extends TerranBase {
                         - gameState.getProductionQueue().advancedUnitMineralDemand(),
                 gameState.getResourceCount().availableGas()
                         - gameState.getProductionQueue().advancedUnitGasDemand(),
-                gameState.floatingMineralsBar(), mutaCount);
+                gameState.floatingMineralsBar(), firstWaveMutalisks(gameState));
 
         // Lair timing
         boolean wantLair = gameState.canPlanLair() && lairCount < 1 && baseCount >= 2;
@@ -222,7 +224,40 @@ public class TwoHatchMuta extends TerranBase {
     @Override
     protected boolean holdsFirstWaveBank(GameState gameState) {
         return ownsFirstWaveBank(gameState.structureCount(Readiness.COMMITTED, UnitType.Zerg_Spire) > 0,
-                gameState.ourUnitCount(UnitType.Zerg_Mutalisk) + gameState.queuedUnitPlanCount(UnitType.Zerg_Mutalisk));
+                firstWaveMutalisks(gameState));
+    }
+
+    @Override
+    protected int macroHatcheryGasBar(GameState gameState) {
+        return macroHatcheryGasBar(gameState.getTechProgression().isSpire(), firstWaveMutalisks(gameState),
+                gameState.hatcheryCount());
+    }
+
+    /**
+     * Mutalisks produced plus Mutalisk plans not yet finished. Losses do not lower it.
+     */
+    private static int firstWaveMutalisks(GameState gameState) {
+        return gameState.totalProduced(UnitType.Zerg_Mutalisk)
+                + gameState.outstandingUnitPlanCount(UnitType.Zerg_Mutalisk);
+    }
+
+    /**
+     * The unreserved gas the macro hatchery gate counts as floating.
+     *
+     * <p>Once the first wave is queued the gas goes to one Mutalisk at a time and the bank rarely
+     * floats gas, so the hatchery the first wave deferred is asked for on minerals alone until the
+     * build holds {@link #MACRO_HATCHERY_HATCHERY_CAP} hatcheries.
+     *
+     * @param spireReady whether a Spire is finished
+     * @param mutaliskCount Mutalisks produced plus Mutalisk plans not yet finished
+     * @param hatcheries completed larva-producing hatcheries
+     * @return zero for the released request, else {@link LarvaBoundMacroHatchery#FLOAT_GAS}
+     */
+    static int macroHatcheryGasBar(boolean spireReady, int mutaliskCount, int hatcheries) {
+        if (spireReady && !ownsFirstWaveBank(true, mutaliskCount) && hatcheries < MACRO_HATCHERY_HATCHERY_CAP) {
+            return 0;
+        }
+        return LarvaBoundMacroHatchery.FLOAT_GAS;
     }
 
     /**
@@ -462,8 +497,8 @@ public class TwoHatchMuta extends TerranBase {
      * <p>Falling behind the enemy on bases always asks. Floating minerals ask on the unreserved
      * bank once a Spire is committed only after the queued advanced unit plans and the Mutalisks
      * still short of {@value #MUTALISKS_BEFORE_FLYER_UPGRADE} that the unreserved gas pays for are
-     * covered. Minerals the gas cannot turn into Mutalisks are not held, and the hold is gone once
-     * the seventh Mutalisk is counted.
+     * covered. Minerals the gas cannot turn into Mutalisks are not held, and the hold is gone for
+     * good once seven Mutalisks are counted.
      *
      * @param behindOnBases whether the enemy holds more bases
      * @param floatingMinerals whether unreserved minerals sit above the float bar
@@ -471,7 +506,7 @@ public class TwoHatchMuta extends TerranBase {
      * @param mineralsAfterQueuedDemand unreserved minerals less queued advanced unit plans
      * @param gasAfterQueuedDemand unreserved gas less queued advanced unit plans
      * @param floatBar the unreserved minerals that count as floating
-     * @param mutaliskCount Mutalisks counted, living and planned
+     * @param mutaliskCount Mutalisks produced plus Mutalisk plans not yet finished
      * @return true when the build should plan a new base
      */
     static boolean wantsBaseAdvantage(boolean behindOnBases, boolean floatingMinerals, boolean spireCommitted,
@@ -480,7 +515,7 @@ public class TwoHatchMuta extends TerranBase {
         if (behindOnBases) {
             return true;
         }
-        if (!spireCommitted) {
+        if (!ownsFirstWaveBank(spireCommitted, mutaliskCount)) {
             return floatingMinerals;
         }
         int gasBoundMutalisks = Math.max(0, gasAfterQueuedDemand) / UnitType.Zerg_Mutalisk.gasPrice();

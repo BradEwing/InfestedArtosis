@@ -471,18 +471,21 @@ class TwoHatchMutaTest {
     }
 
     @Test
-    void sevenPlannedMutalisksStillHoldWhenQueuedPlansTakeTheBank() {
-        int afterQueuedDemand = 352 - 4 * MUTALISK_MINERALS;
-
-        assertFalse(TwoHatchMuta.wantsBaseAdvantage(false, true, true, afterQueuedDemand, ALL_GAS, FLOAT_BAR,
-                TwoHatchMuta.MUTALISKS_BEFORE_FLYER_UPGRADE));
-    }
-
-    @Test
     void mineralsTheGasCannotTurnIntoMutalisksAreNotHeldBack() {
         assertTrue(TwoHatchMuta.wantsBaseAdvantage(false, true, true, 500, 100, FLOAT_BAR, 0));
         assertFalse(TwoHatchMuta.wantsBaseAdvantage(false, true, true, 500, 200, FLOAT_BAR, 0));
         assertTrue(TwoHatchMuta.wantsBaseAdvantage(false, true, true, 500, -50, FLOAT_BAR, 0));
+    }
+
+    @Test
+    void theMacroHatcheryAsksOnMineralsAloneOnceTheFirstWaveIsQueuedAndUntilFourHatcheries() {
+        int wave = TwoHatchMuta.MUTALISKS_BEFORE_FLYER_UPGRADE;
+
+        assertEquals(0, TwoHatchMuta.macroHatcheryGasBar(true, wave, 3));
+        assertEquals(LarvaBoundMacroHatchery.FLOAT_GAS, TwoHatchMuta.macroHatcheryGasBar(true, wave - 1, 3));
+        assertEquals(LarvaBoundMacroHatchery.FLOAT_GAS, TwoHatchMuta.macroHatcheryGasBar(false, wave, 3));
+        assertEquals(LarvaBoundMacroHatchery.FLOAT_GAS,
+                TwoHatchMuta.macroHatcheryGasBar(true, wave, TwoHatchMuta.MACRO_HATCHERY_HATCHERY_CAP));
     }
 
     @Test
@@ -492,7 +495,7 @@ class TwoHatchMutaTest {
         assertTrue(TwoHatchMuta.ownsFirstWaveBank(true, mutalisks - 1));
         assertFalse(TwoHatchMuta.ownsFirstWaveBank(true, mutalisks));
         assertFalse(TwoHatchMuta.ownsFirstWaveBank(false, 0));
-        assertTrue(TwoHatchMuta.wantsBaseAdvantage(false, true, true, FLOAT_BAR + 1, ALL_GAS, FLOAT_BAR, mutalisks));
+        assertTrue(TwoHatchMuta.wantsBaseAdvantage(false, true, true, FLOAT_BAR - 100, ALL_GAS, FLOAT_BAR, mutalisks));
     }
 
     @Test

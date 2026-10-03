@@ -120,6 +120,18 @@ public final class LarvaBoundMacroHatchery {
     }
 
     /**
+     * The bank the gate reads: net of queued demand while the build's first wave owns it, whole after.
+     *
+     * @param holdsBank whether the first wave still owns the bank
+     * @param available minerals or gas mined and not reserved by a scheduled plan
+     * @param queuedDemand the same resource priced by queued advanced unit plans
+     * @return the bank to hand to {@link #evaluate}
+     */
+    public static int bankAfterHold(boolean holdsBank, int available, int queuedDemand) {
+        return holdsBank ? afterQueuedDemand(available, queuedDemand) : available;
+    }
+
+    /**
      * The gate the macro hatchery request stops on.
      *
      * <p>The signal is the one a larva limit produces: fewer free larva than hatcheries to make
@@ -145,10 +157,22 @@ public final class LarvaBoundMacroHatchery {
      */
     public static Gate evaluate(boolean techReady, int larva, int hatcheries, int availableMinerals,
                                 int availableGas, int enemiesAtBases, int outstandingMacroHatcheries) {
+        return evaluate(techReady, larva, hatcheries, availableMinerals, availableGas, FLOAT_GAS, enemiesAtBases,
+                outstandingMacroHatcheries);
+    }
+
+    /**
+     * The gate the macro hatchery request stops on, with the gas bar the build asks for.
+     *
+     * @param floatGas unreserved gas that counts as floating
+     * @see #evaluate(boolean, int, int, int, int, int, int)
+     */
+    public static Gate evaluate(boolean techReady, int larva, int hatcheries, int availableMinerals,
+                                int availableGas, int floatGas, int enemiesAtBases, int outstandingMacroHatcheries) {
         if (larva >= hatcheries) {
             return Gate.LARVA_NOT_SHORT;
         }
-        if (availableMinerals < FLOAT_MINERALS || availableGas < FLOAT_GAS) {
+        if (availableMinerals < FLOAT_MINERALS || availableGas < floatGas) {
             return Gate.NOT_FLOATING;
         }
         if (!techReady) {

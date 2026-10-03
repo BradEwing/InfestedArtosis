@@ -271,6 +271,16 @@ public abstract class BuildOrder {
         return false;
     }
 
+    /**
+     * The unreserved gas the larva-bound macro hatchery gate counts as floating.
+     *
+     * @param gameState current game state
+     * @return {@link LarvaBoundMacroHatchery#FLOAT_GAS} unless the build overrides it
+     */
+    protected int macroHatcheryGasBar(GameState gameState) {
+        return LarvaBoundMacroHatchery.FLOAT_GAS;
+    }
+
     private static int dronesInEgg(List<Unit> units) {
         int eggs = 0;
         for (Unit unit : units) {
@@ -1459,14 +1469,15 @@ public abstract class BuildOrder {
         int hatcheries = gameState.hatcheryCount();
         int outstanding = gameState.inFlightHatcheryPlans(true) + gameState.hatcheriesUnderConstruction(true);
         boolean holdsBank = holdsFirstWaveBank(gameState);
-        int queuedMinerals = holdsBank ? gameState.getProductionQueue().advancedUnitMineralDemand()
-                + frameAdvancedUnitDemand(framePlans, true) : 0;
-        int queuedGas = holdsBank ? gameState.getProductionQueue().advancedUnitGasDemand()
-                + frameAdvancedUnitDemand(framePlans, false) : 0;
+        int queuedMinerals = gameState.getProductionQueue().advancedUnitMineralDemand()
+                + frameAdvancedUnitDemand(framePlans, true);
+        int queuedGas = gameState.getProductionQueue().advancedUnitGasDemand()
+                + frameAdvancedUnitDemand(framePlans, false);
         LarvaBoundMacroHatchery.Gate gate = LarvaBoundMacroHatchery.evaluate(techReady, gameState.numLarva(),
-                hatcheries, LarvaBoundMacroHatchery.afterQueuedDemand(resourceCount.availableMinerals(), queuedMinerals),
-                LarvaBoundMacroHatchery.afterQueuedDemand(resourceCount.availableGas(), queuedGas),
-                gameState.knownEnemyMobileGroundCombatUnitsAtOurBases(), outstanding);
+                hatcheries, LarvaBoundMacroHatchery.bankAfterHold(holdsBank, resourceCount.availableMinerals(),
+                        queuedMinerals),
+                LarvaBoundMacroHatchery.bankAfterHold(holdsBank, resourceCount.availableGas(), queuedGas),
+                macroHatcheryGasBar(gameState), gameState.knownEnemyMobileGroundCombatUnitsAtOurBases(), outstanding);
 
         if (gate != LarvaBoundMacroHatchery.Gate.TRIGGER) {
             PlanEvents.macroHatcheryGate(gate, techReady, hatcheries, outstanding);
