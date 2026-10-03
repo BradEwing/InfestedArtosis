@@ -44,6 +44,17 @@ final class SiegeBandHysteresis {
     }
 
     /**
+     * The nearer of two sieged tank distances.
+     *
+     * @param nearestSoFar pixels to the nearest sieged tank seen so far, infinite when none
+     * @param candidate pixels to another sieged tank
+     * @return the smaller distance
+     */
+    static double nearer(double nearestSoFar, double candidate) {
+        return Math.min(nearestSoFar, candidate);
+    }
+
+    /**
      * Whether the nearest sieged tank sits inside the band. A sieged tank nearer than {@link #BAND_NEAR} is
      * already shelling the squad, so the verdict is never held on account of a tank farther out.
      *

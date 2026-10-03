@@ -1177,9 +1177,9 @@ public class SquadDecisionLogger implements SquadDecisionSink {
     /**
      * Builds the siege_band cell: 0 when the nearest sieged tank is not between 400 and 912 px of the squad, 1 when
      * it is and the verdict is the raw one, 2 when the band held a RETREAT against a raw ENGAGE, and -1 on a row
-     * whose decision never read a ground sim snapshot. It is followed by the frames the squad has spent with a sieged
-     * tank in the band, and the frames of those the band held a RETREAT, both cumulative over the squad's life and -1
-     * on a row without a ground sim snapshot.
+     * whose decision never read a ground sim snapshot. It is followed by the frames on which the ground sim ran with a
+     * sieged tank in the band, and the frames of those the band held a RETREAT, both cumulative over the squad's life
+     * with at most a few frames counted per sim run, and -1 on a row without a ground sim snapshot.
      *
      * @param context the decision the row is built from
      * @return the siege band, in-band frames and held frames cells

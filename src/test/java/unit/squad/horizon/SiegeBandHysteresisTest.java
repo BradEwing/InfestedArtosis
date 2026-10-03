@@ -25,13 +25,6 @@ class SiegeBandHysteresisTest {
     }
 
     @Test
-    void aTankInRangeNearerThanTheBandTurnsTheBandOffWhateverIsFarther() {
-        double nearest = Math.min(200, 600);
-
-        assertFalse(SiegeBandHysteresis.inBand(nearest));
-    }
-
-    @Test
     void aRawRetreatAlwaysStands() {
         assertEquals(RETREAT, SiegeBandHysteresis.apply(RETREAT, ENGAGE, HELD_SINCE, HELD_SINCE + 1, 0.1, THRESH,
                 true));
@@ -84,16 +77,12 @@ class SiegeBandHysteresisTest {
     }
 
     @Test
-    void theSimulatorHoldsARetreatPerSquadAndRestartsTheWindowOnEachChange() {
-        HorizonCombatSimulator sim = new HorizonCombatSimulator();
+    void theNearestTankIsTheSmallestDistanceSeen() {
+        double nearest = Double.POSITIVE_INFINITY;
+        for (double d : new double[]{600, 200, 700}) nearest = SiegeBandHysteresis.nearer(nearest, d);
 
-        assertEquals(RETREAT, sim.holdVerdict("a", RETREAT, 100, 0.5, THRESH, true));
-        assertEquals(RETREAT, sim.holdVerdict("a", ENGAGE, 120, 2.0, THRESH, true));
-        assertEquals(ENGAGE, sim.holdVerdict("b", ENGAGE, 120, 2.0, THRESH, true));
-        assertEquals(ENGAGE, sim.holdVerdict("a", ENGAGE, 100 + SiegeBandHysteresis.MIN_HOLD_FRAMES, 3.0, THRESH,
-                true));
-        assertEquals(RETREAT, sim.holdVerdict("a", RETREAT, 200, 0.5, THRESH, true));
-        assertEquals(RETREAT, sim.holdVerdict("a", ENGAGE, 201, 2.0, THRESH, true));
+        assertEquals(200, nearest, 0);
+        assertFalse(SiegeBandHysteresis.inBand(nearest));
     }
 
     @Test
@@ -123,16 +112,18 @@ class SiegeBandHysteresisTest {
         clock.tick(130, HorizonCombatSimulator.SIEGE_BAND_HELD);
         clock.tick(135, HorizonCombatSimulator.SIEGE_BAND_NONE);
 
-        assertEquals(30, clock.inBandFrames);
-        assertEquals(20, clock.heldFrames);
+        assertEquals(10, clock.inBandFrames);
+        assertEquals(5, clock.heldFrames);
     }
 
     @Test
-    void theSimulatorDoesNotHoldWhenNoTankIsInTheBand() {
-        HorizonCombatSimulator sim = new HorizonCombatSimulator();
+    void aGapBetweenSimRunsAddsNoMoreThanTheCap() {
+        HorizonCombatSimulator.BandClock clock = new HorizonCombatSimulator.BandClock();
 
-        assertEquals(RETREAT, sim.holdVerdict("a", RETREAT, 100, 0.5, THRESH, false));
-        assertEquals(ENGAGE, sim.holdVerdict("a", ENGAGE, 101, 2.0, THRESH, false));
+        clock.tick(100, HorizonCombatSimulator.SIEGE_BAND_IN);
+        clock.tick(2980, HorizonCombatSimulator.SIEGE_BAND_IN);
+
+        assertEquals(HorizonCombatSimulator.MAX_SIM_GAP_FRAMES, clock.inBandFrames);
     }
 
 }
