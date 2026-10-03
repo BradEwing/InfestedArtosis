@@ -32,6 +32,9 @@ public class TwoHatchMuta extends TerranBase {
 
     static final int MUTALISKS_BEFORE_FLYER_UPGRADE = 7;
 
+    /** Gatherers that must stand before Flyer Attacks level 2 or 3 is queued. Tuning constant. */
+    static final int WORKERS_BEFORE_LATER_FLYER_UPGRADES = 22;
+
     public TwoHatchMuta() {
         super("2HatchMuta");
     }
@@ -81,7 +84,8 @@ public class TwoHatchMuta extends TerranBase {
         boolean wantSpire = techProgression.canPlanSpire() && spireCount < 1 && lairCount >= 1 && droneCount >= 16;
 
         boolean wantMetabolicBoost = techProgression.canPlanMetabolicBoost() && !techProgression.isMetabolicBoost() && lairCount > 0;
-        boolean wantFlyingAttack = shouldPlanFlyerAttack(techProgression, livingMutaCount);
+        boolean wantFlyingAttack = shouldPlanFlyerAttack(techProgression, livingMutaCount, gameState.numGatherers(),
+                laterFlyerUpgradeWorkerFloor(gameState.workerHardCap(), dronesNeeded(gameState)));
         boolean wantOverlordSpeed = shouldPlanOverlordSpeed(needOverlordSpeed(gameState) && techProgression.canPlanOverlordSpeed(),
                 Reactions.isAirOrCloakThreatSeen(gameState),
                 wantFlyingAttack);
@@ -207,6 +211,23 @@ public class TwoHatchMuta extends TerranBase {
         return dronesNeeded(gameState);
     }
 
+    @Override
+    protected boolean holdsCalmEconomyRound(GameState gameState) {
+        return holdsFirstWave(gameState.structureCount(Readiness.STANDING, UnitType.Zerg_Spire) > 0,
+                gameState.totalProduced(UnitType.Zerg_Mutalisk));
+    }
+
+    /**
+     * Whether the first Mutalisk wave still outranks a calm-economy round.
+     *
+     * @param spireStanding whether a Spire is morphing or finished
+     * @param mutalisksProduced Mutalisks produced so far, living and lost
+     * @return true while a Spire stands and fewer than {@link #MUTALISKS_BEFORE_FLYER_UPGRADE} have been produced
+     */
+    static boolean holdsFirstWave(boolean spireStanding, int mutalisksProduced) {
+        return spireStanding && mutalisksProduced < MUTALISKS_BEFORE_FLYER_UPGRADE;
+    }
+
     protected int dronesNeeded(GameState gameState) {
         int drones = 17;
         int lairCount = gameState.structureCount(Readiness.USABLE, UnitType.Zerg_Lair);
@@ -289,6 +310,35 @@ public class TwoHatchMuta extends TerranBase {
      */
     static boolean shouldPlanFlyerAttack(TechProgression techProgression, int livingMutalisks) {
         return livingMutalisks >= MUTALISKS_BEFORE_FLYER_UPGRADE && techProgression.canPlanFlyerAttack();
+    }
+
+    /**
+     * Whether the build should queue the next Flyer Attacks level, holding every level after the
+     * first until the worker floor of {@link #laterFlyerUpgradeWorkerFloor} gather. A queued level
+     * holds the bank at the upgrade priority, which outranks every Drone plan.
+     *
+     * @param techProgression the tech state
+     * @param livingMutalisks completed Mutalisks
+     * @param gatherers workers gathering minerals or gas
+     * @param workerFloor gatherers a level after the first needs
+     * @return true when the next Flyer Attacks level should be queued
+     */
+    static boolean shouldPlanFlyerAttack(TechProgression techProgression, int livingMutalisks, int gatherers,
+                                         int workerFloor) {
+        if (techProgression.getFlyerAttack() > 0 && gatherers < workerFloor) {
+            return false;
+        }
+        return shouldPlanFlyerAttack(techProgression, livingMutalisks);
+    }
+
+    /**
+     * @param workerHardCap workers past which the worker gates want no Drone
+     * @param dronesNeeded the build's Drone target
+     * @return {@value #WORKERS_BEFORE_LATER_FLYER_UPGRADES}, cut to stay under the build's Drone target and
+     *     the hard cap so the floor can always be met
+     */
+    static int laterFlyerUpgradeWorkerFloor(int workerHardCap, int dronesNeeded) {
+        return Math.min(WORKERS_BEFORE_LATER_FLYER_UPGRADES, Math.min(workerHardCap, dronesNeeded) - 1);
     }
 
     /**

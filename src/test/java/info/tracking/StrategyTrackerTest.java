@@ -3,6 +3,7 @@ package info.tracking;
 import bwapi.Race;
 import info.tracking.protoss.ProxyGate;
 import info.tracking.protoss.TwoGate;
+import info.tracking.terran.TerranMech;
 import info.tracking.terran.TerranWall;
 import info.tracking.terran.TerranWallMain;
 import info.tracking.terran.TerranWallNatural;
@@ -264,6 +265,26 @@ class StrategyTrackerTest {
             assertFalse(trackerAgainst(race).isPossibleStrategy(TerranWallNatural.NAME), race.toString());
             assertFalse(trackerAgainst(race).isPossibleStrategy(TerranWallMain.NAME), race.toString());
         }
+    }
+
+    @Test
+    void terranMechIsWatchedAgainstTerranAndUnknownOnly() {
+        for (Race race : Arrays.asList(Race.Terran, Race.Unknown)) {
+            assertTrue(trackerAgainst(race).isPossibleStrategy(TerranMech.NAME), race.toString());
+        }
+        for (Race race : Arrays.asList(Race.Protoss, Race.Zerg)) {
+            assertFalse(trackerAgainst(race).isPossibleStrategy(TerranMech.NAME), race.toString());
+        }
+    }
+
+    @Test
+    void aDetectedTerranMechIsWrittenToTheDetectedStrategiesString() {
+        StrategyTracker strategyTracker = trackerAgainst(Race.Terran);
+
+        strategyTracker.recordDetections(Collections.singleton(new TerranMech()));
+
+        assertTrue(strategyTracker.isDetectedStrategy(TerranMech.NAME));
+        assertTrue(TerranMech.isMechIn(strategyTracker.getDetectedStrategiesAsString()));
     }
 
     @Test
