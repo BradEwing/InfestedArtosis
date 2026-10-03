@@ -229,6 +229,35 @@ public class LearningManagerTest {
         assertEquals("3HatchLurker", LearningManager.selectBuildOrderName(candidates, opponentRecord, MAP_NAME));
     }
 
+    @Test
+    void theTerminalCandidatesBothTakeAnExposureThenTheBanditFollowsTheWinningOne() {
+        OpponentRecord opponentRecord = emptyOpponentRecord();
+        Map<String, Record> buildOrders = opponentRecord.getBuildOrderRecord();
+        List<String> candidates = Arrays.asList("LurkerDefilerGuardian", "LurkerDefilerUltra");
+
+        String first = LearningManager.selectBuildOrderName(candidates, opponentRecord, MAP_NAME);
+        appendGames(opponentRecord, buildOrders, first, first.equals("LurkerDefilerGuardian"), 1);
+        String second = LearningManager.selectBuildOrderName(candidates, opponentRecord, MAP_NAME);
+        appendGames(opponentRecord, buildOrders, second, second.equals("LurkerDefilerGuardian"), 1);
+
+        assertNotEquals(first, second);
+        assertEquals("LurkerDefilerGuardian",
+                LearningManager.selectBuildOrderName(candidates, opponentRecord, MAP_NAME));
+    }
+
+    @Test
+    void aGuardianBuildThatKeepsLosingIsDroppedForTheDefilerBuild() {
+        OpponentRecord opponentRecord = emptyOpponentRecord();
+        Map<String, Record> buildOrders = opponentRecord.getBuildOrderRecord();
+        appendGames(opponentRecord, buildOrders, "LurkerDefilerGuardian", false, 4);
+        appendGames(opponentRecord, buildOrders, "LurkerDefilerUltra", true, 3);
+        appendGames(opponentRecord, buildOrders, "LurkerDefilerUltra", false, 1);
+        List<String> candidates = Arrays.asList("LurkerDefilerGuardian", "LurkerDefilerUltra");
+
+        assertEquals("LurkerDefilerUltra",
+                LearningManager.selectBuildOrderName(candidates, opponentRecord, MAP_NAME));
+    }
+
     private static OpponentRecord emptyOpponentRecord() {
         return OpponentRecord.builder()
                 .name(OPPONENT_NAME)

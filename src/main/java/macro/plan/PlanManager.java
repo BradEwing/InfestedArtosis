@@ -27,6 +27,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Predicate;
+import java.util.function.ToDoubleFunction;
 import java.util.stream.Collectors;
 
 public class PlanManager {
@@ -156,10 +157,11 @@ public class PlanManager {
         }
     }
 
-    private boolean isBuildingMorph(UnitType unitType) {
+    static boolean isBuildingMorph(UnitType unitType) {
         switch (unitType) {
             case Zerg_Lair:
             case Zerg_Hive:
+            case Zerg_Greater_Spire:
             case Zerg_Sunken_Colony:
             case Zerg_Spore_Colony:
                 return true;
@@ -547,29 +549,80 @@ public class PlanManager {
         return Comparator.comparing((T candidate) -> !atSite.test(candidate)).thenComparing(then);
     }
 
-    private boolean assignMorphUnit(Plan plan) {
-        switch (plan.getPlannedUnit()) {
+    /**
+     * The unit a planned unit morphs from when it is not made from larva.
+     *
+     * @param plannedUnit the planned unit
+     * @return the Hydralisk for a Lurker, the Mutalisk for a Guardian, or null for a larva morph
+     */
+    static UnitType morphProducer(UnitType plannedUnit) {
+        switch (plannedUnit) {
             case Zerg_Lurker:
-                return assignMorphHydralisk(plan);
+                return UnitType.Zerg_Hydralisk;
+            case Zerg_Guardian:
+                return UnitType.Zerg_Mutalisk;
             default:
-                return assignMorphLarva(plan);
+                return null;
         }
     }
 
-    private boolean assignMorphHydralisk(Plan plan) {
-        List<ManagedUnit> hydralisks = gameState.getManagedUnitsByType(UnitType.Zerg_Hydralisk);
-        for (ManagedUnit managedUnit: hydralisks) {
-            Unit unit = managedUnit.getUnit();
-            if (!gameState.getAssignedPlannedItems().containsKey(unit)) {
-                gameState.clearAssignments(managedUnit);
-                plan.setState(PlanState.BUILDING);
-                managedUnit.setRole(UnitRole.MORPH);
-                managedUnit.setPlan(plan);
-                gameState.getAssignedPlannedItems().put(unit, plan);
-                return true;
+    private boolean assignMorphUnit(Plan plan) {
+        UnitType producer = morphProducer(plan.getPlannedUnit());
+        if (producer == null) {
+            return assignMorphLarva(plan);
+        }
+        return assignMorphProducer(plan, producer);
+    }
+
+    private boolean assignMorphProducer(Plan plan, UnitType producer) {
+        List<ManagedUnit> free = new ArrayList<>();
+        for (ManagedUnit managedUnit : gameState.getManagedUnitsByType(producer)) {
+            if (!gameState.getAssignedPlannedItems().containsKey(managedUnit.getUnit())) {
+                free.add(managedUnit);
             }
         }
-        return false;
+        ManagedUnit selected = plan.getPlannedUnit() == UnitType.Zerg_Guardian
+                ? nearest(free, candidate -> distanceToNearestHeldBase(candidate.getUnit().getPosition()))
+                : (free.isEmpty() ? null : free.get(0));
+        if (selected == null) {
+            return false;
+        }
+        Unit unit = selected.getUnit();
+        gameState.clearAssignments(selected);
+        plan.setState(PlanState.BUILDING);
+        selected.setRole(UnitRole.MORPH);
+        selected.setPlan(plan);
+        gameState.getAssignedPlannedItems().put(unit, plan);
+        return true;
+    }
+
+    /**
+     * The candidate with the smallest distance, the first on a tie.
+     *
+     * @param candidates the candidates
+     * @param distance the distance of a candidate
+     * @param <T> the candidate type
+     * @return the nearest candidate, or null when there are none
+     */
+    static <T> T nearest(List<T> candidates, ToDoubleFunction<T> distance) {
+        T best = null;
+        double bestDistance = Double.MAX_VALUE;
+        for (T candidate : candidates) {
+            double candidateDistance = distance.applyAsDouble(candidate);
+            if (best == null || candidateDistance < bestDistance) {
+                best = candidate;
+                bestDistance = candidateDistance;
+            }
+        }
+        return best;
+    }
+
+    private double distanceToNearestHeldBase(Position position) {
+        double nearest = Double.MAX_VALUE;
+        for (Base base : gameState.getBaseData().getMyBases()) {
+            nearest = Math.min(nearest, position.getDistance(base.getCenter()));
+        }
+        return nearest;
     }
 
     private boolean assignMorphLarva(Plan plan) {

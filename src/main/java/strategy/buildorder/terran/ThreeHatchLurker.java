@@ -487,13 +487,18 @@ public class ThreeHatchLurker extends TerranBase {
      */
     @Override
     public boolean shouldTransition(GameState gameState) {
-        return LurkerDefilerUltraTransition.shouldEnter(gameState, getName(),
-                LurkerDefilerUltraTransition.threeHatchLurkerTrigger(gameState.totalProduced(UnitType.Zerg_Lurker)));
+        LurkerDefilerUltraTransition.Trigger trigger = LurkerDefilerUltraTransition.threeHatchLurkerTrigger(
+                gameState.totalProduced(UnitType.Zerg_Lurker));
+        boolean enter = LurkerDefilerUltraTransition.shouldEnter(gameState, trigger);
+        if (enter) {
+            setHandoverTrigger(trigger.name());
+        }
+        return enter;
     }
 
     @Override
     public Set<BuildOrder> transition(GameState gameState) {
-        return LurkerDefilerUltraTransition.candidates();
+        return LurkerDefilerUltraTransition.candidates(gameState.getConfig().guardianBranch);
     }
 
     @Override

@@ -125,6 +125,12 @@ public class SquadManager {
     static final int AIR_MOVE_OUT_UNITS = 5;
     /** Tuning value: air combat units a squad needs to move out against Zerg. */
     static final int AIR_MOVE_OUT_UNITS_VS_ZERG = 2;
+    /**
+     * Tuning value: air combat units a squad holding a Guardian needs to move out, against any race. It
+     * equals the Guardians the Guardian branch of LurkerDefilerGuardian fields, so that wave is not stranded
+     * below {@link #AIR_MOVE_OUT_UNITS}.
+     */
+    static final int GUARDIAN_MOVE_OUT_UNITS = 3;
     /** Tuning value: Scourge a Scourge only squad needs to move out, against any race. */
     static final int SCOURGE_MOVE_OUT_UNITS = 2;
     /**
@@ -2083,7 +2089,7 @@ public class SquadManager {
     }
 
     private int calculateAirSquadMoveOutThreshold(Squad squad) {
-        return airMoveOutThreshold(holdsOnlyScourge(squad.getComposition()), gameState.getOpponentRace());
+        return airMoveOutThreshold(squad.getComposition(), gameState.getOpponentRace());
     }
 
     /**
@@ -2138,6 +2144,23 @@ public class SquadManager {
             return AIR_MOVE_OUT_UNITS_VS_ZERG;
         }
         return AIR_MOVE_OUT_UNITS;
+    }
+
+    /**
+     * Air combat units an air squad needs before it is cleared to move out. A squad holding a Guardian
+     * moves out at {@value #GUARDIAN_MOVE_OUT_UNITS} units when that is below the threshold its
+     * other units give.
+     *
+     * @param composition unit counts by type
+     * @param opponentRace the opponent's race
+     * @return threshold in units
+     */
+    static int airMoveOutThreshold(Map<UnitType, Integer> composition, Race opponentRace) {
+        int threshold = airMoveOutThreshold(holdsOnlyScourge(composition), opponentRace);
+        if (composition.getOrDefault(UnitType.Zerg_Guardian, 0) > 0) {
+            return Math.min(threshold, GUARDIAN_MOVE_OUT_UNITS);
+        }
+        return threshold;
     }
 
     private int defaultMoveOutThreshold() {

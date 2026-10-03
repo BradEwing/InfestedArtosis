@@ -120,6 +120,25 @@ public abstract class BuildOrder {
         this.name = name;
     }
 
+    private String handoverTrigger;
+
+    /**
+     * Records what opened this build's handover, for the BUILD_ORDER_TRANSITION row written once the
+     * build taking over is chosen.
+     */
+    protected void setHandoverTrigger(String trigger) {
+        this.handoverTrigger = trigger;
+    }
+
+    /**
+     *  to the name of the build taking over
+     *  the BUILD_ORDER_TRANSITION item, as 2HatchMuta>LurkerDefilerGuardian:GOLIATHS, or null when
+     *     the handover recorded no trigger
+     */
+    public String handoverLabel(String to) {
+        return handoverTrigger == null ? null : name + ">" + to + ":" + handoverTrigger;
+    }
+
     public boolean shouldTransition(GameState gameState) {
         return gameState.getOpponentRace() != Race.Unknown && openerComplete(gameState);
     }
@@ -899,6 +918,16 @@ public abstract class BuildOrder {
         TilePosition buildPosition = gameState.getTechBuildingLocation(UnitType.Zerg_Spire);
         plan.setBuildPosition(buildPosition);
         return plan;
+    }
+
+    /**
+     * The Greater Spire morph, taken by a finished Spire the way a Lair or Hive plan is taken by a
+     * finished Hatchery or Lair, so the plan carries no build position of its own.
+     */
+    protected Plan planGreaterSpire(GameState gameState) {
+        TechProgression techProgression = gameState.getTechProgression();
+        techProgression.setPlannedGreaterSpire(true);
+        return new BuildingPlan(UnitType.Zerg_Greater_Spire, 4);
     }
 
     protected Plan planExtractor(GameState gameState) {

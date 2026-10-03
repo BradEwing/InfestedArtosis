@@ -1,8 +1,11 @@
 package unit.managed;
 
 import bwapi.Game;
+import bwapi.TilePosition;
 import bwapi.Unit;
+import bwapi.UnitType;
 import info.map.GameMap;
+import macro.plan.PlanType;
 import util.Time;
 
 public class Mutalisk extends ManagedUnit {
@@ -67,6 +70,29 @@ public class Mutalisk extends ManagedUnit {
             setUnready(4);
             unit.attack(fightTarget);
         }
+    }
+
+    private boolean isMorphingToGuardian() {
+        return plan != null && plan.getType() == PlanType.UNIT && plan.getPlannedUnit() == UnitType.Zerg_Guardian;
+    }
+
+    @Override
+    public void execute() {
+        if (isMorphingToGuardian() && this.role != UnitRole.MORPH) {
+            this.setRole(UnitRole.MORPH);
+        }
+
+        super.execute();
+    }
+
+    @Override
+    public void setMovementTargetPosition(TilePosition tp) {
+        if (isMorphingToGuardian()) {
+            this.setRole(UnitRole.MORPH);
+            return;
+        }
+
+        super.setMovementTargetPosition(tp);
     }
 
     @Override

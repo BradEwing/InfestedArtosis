@@ -39,6 +39,9 @@ import java.util.Set;
  * Consume is researched first, ahead of the Defilers, and Plague only once Consume is done.
  * Ultralisks follow the first Defiler once {@value #ULTRALISK_GEYSERS} geysers are being mined.
  *
+ * <p>{@link LurkerDefilerGuardian} is this build with the capped {@link GuardianBranch} added; the
+ * handover offers both and the learning module chooses.
+ *
  * @see <a href="https://liquipedia.net/starcraft/3_Hatch_Muta_(vs._Terran)">Liquipedia: 3 Base Hive
  *     Lurker Defiler</a>
  * @see <a href="https://liquipedia.net/starcraft/Defiler">Liquipedia: Defiler</a>
@@ -123,6 +126,15 @@ public class LurkerDefilerUltra extends TerranBase {
     /** Most Hydralisks the enemy flyers can ask for. */
     static final int MAX_ANTI_AIR_HYDRALISKS = 24;
 
+    /** Hydralisks the Guardian build keeps beside its Guardians. */
+    static final int GUARDIAN_SUPPORT_HYDRALISKS = 6;
+
+    /** Mined geysers from which the Guardian build keeps its support Hydralisks. */
+    static final int GUARDIAN_SUPPORT_GEYSERS = 3;
+
+    /** Drones above which the Guardian build keeps its support Hydralisks. */
+    static final int GUARDIAN_SUPPORT_DRONES = 20;
+
     /** Ultralisks the build keeps once they are allowed. */
     static final int ULTRALISK_TARGET = 6;
 
@@ -186,8 +198,21 @@ public class LurkerDefilerUltra extends TerranBase {
 
     private final TechSiteRetry techSiteRetry = new TechSiteRetry();
 
+    private final GuardianBranch guardianBranch = new GuardianBranch();
+
+    private final boolean fieldsGuardians;
+
     public LurkerDefilerUltra() {
-        super(NAME);
+        this(NAME, false);
+    }
+
+    /**
+     * @param name the build's name, which the learning module records results under
+     * @param fieldsGuardians whether the build also runs the {@link GuardianBranch}
+     */
+    protected LurkerDefilerUltra(String name, boolean fieldsGuardians) {
+        super(name);
+        this.fieldsGuardians = fieldsGuardians;
     }
 
     @Override
@@ -259,6 +284,8 @@ public class LurkerDefilerUltra extends TerranBase {
             plans.addAll(this.planAdvancedUnit(gameState, UnitType.Zerg_Lurker));
         }
 
+        plans.addAll(planGuardianBranch(gameState, techProgression));
+
         if (ultraliskGate && techProgression.isUltraliskCavern()
                 && gameState.ourUnitCount(UnitType.Zerg_Ultralisk) < ULTRALISK_TARGET
                 && canPlanAdvancedUnit(gameState, UnitType.Zerg_Ultralisk)) {
@@ -266,7 +293,7 @@ public class LurkerDefilerUltra extends TerranBase {
         }
 
         int hydraliskTarget = hydraliskTarget(techProgression.isLurker() || techProgression.isPlannedLurker(),
-                lurkerPipeline, enemyFlyers(gameState));
+                lurkerPipeline, enemyFlyers(gameState), fieldsGuardians, gameState.miningGeysers(), droneCount);
         if (techProgression.isHydraliskDen() && gameState.ourUnitCount(UnitType.Zerg_Hydralisk) < hydraliskTarget
                 && canPlanAdvancedUnit(gameState, UnitType.Zerg_Hydralisk)) {
             plans.addAll(this.planAdvancedUnit(gameState, UnitType.Zerg_Hydralisk));
@@ -286,6 +313,49 @@ public class LurkerDefilerUltra extends TerranBase {
             plans.add(surplusPlan);
         }
 
+        return plans;
+    }
+
+    /**
+     * The next step of the {@link GuardianBranch}, one plan at most, while the branch is open.
+     * Nothing is planned by a build that does not field Guardians.
+     */
+    private List<Plan> planGuardianBranch(GameState gameState, TechProgression techProgression) {
+        List<Plan> plans = new ArrayList<>();
+        if (!fieldsGuardians) {
+            return plans;
+        }
+        GuardianBranch.Gate gate = guardianBranch.evaluate(techProgression.isHive(),
+                gameState.getBaseData().currentBaseCount(), gameState.miningGeysers());
+        if (gate != GuardianBranch.Gate.OPEN) {
+            return plans;
+        }
+
+        int remaining = GuardianBranch.guardiansRemaining(
+                GuardianBranch.guardiansCommitted(gameState.ourLivingUnitCount(UnitType.Zerg_Guardian),
+                        gameState.ourLivingUnitCount(UnitType.Zerg_Cocoon),
+                        gameState.outstandingUnitPlanCount(UnitType.Zerg_Guardian)),
+                gameState.totalLost(UnitType.Zerg_Guardian));
+        switch (GuardianBranch.nextStep(techProgression, remaining,
+                gameState.ourLivingUnitCount(UnitType.Zerg_Mutalisk), gameState.ourUnitCount(UnitType.Zerg_Mutalisk),
+                gameState.outstandingUnitPlanCount(UnitType.Zerg_Guardian))) {
+            case SPIRE:
+                if (hasTechSite(gameState, UnitType.Zerg_Spire)) {
+                    plans.add(this.planSpire(gameState));
+                }
+                break;
+            case MUTALISK:
+                plans.addAll(this.planAdvancedUnit(gameState, UnitType.Zerg_Mutalisk));
+                break;
+            case GREATER_SPIRE:
+                plans.add(this.planGreaterSpire(gameState));
+                break;
+            case GUARDIAN:
+                plans.addAll(this.planAdvancedUnit(gameState, UnitType.Zerg_Guardian));
+                break;
+            default:
+                break;
+        }
         return plans;
     }
 
@@ -639,6 +709,39 @@ public class LurkerDefilerUltra extends TerranBase {
         int forLurkers = lurkerTech ? Math.max(0, LURKER_TARGET - lurkerPipeline) : 0;
         int forAir = Math.min(MAX_ANTI_AIR_HYDRALISKS, enemyFlyers * HYDRALISKS_PER_ENEMY_FLYER);
         return forLurkers + forAir;
+    }
+
+    /**
+     * The Hydralisk target of {@link #hydraliskTarget(boolean, int, int)} plus the Guardian support
+     * from {@link #guardianSupportHydralisks}.
+     *
+     * @param lurkerTech whether Lurker Aspect is researched or planned
+     * @param lurkerPipeline Lurkers alive plus those planned or morphing
+     * @param enemyFlyers living enemy flyers we have observed
+     * @param fieldsGuardians whether the build runs the {@link GuardianBranch}
+     * @param miningGeysers geysers we are mining
+     * @param drones Drones on the economy
+     * @return the Hydralisk target, alive plus planned
+     */
+    static int hydraliskTarget(boolean lurkerTech, int lurkerPipeline, int enemyFlyers, boolean fieldsGuardians,
+                               int miningGeysers, int drones) {
+        return hydraliskTarget(lurkerTech, lurkerPipeline, enemyFlyers)
+                + guardianSupportHydralisks(fieldsGuardians, miningGeysers, drones);
+    }
+
+    /**
+     * Hydralisks kept as ground support for the Guardians, on top of the target from
+     * {@link #hydraliskTarget}.
+     *
+     * @param fieldsGuardians whether the build runs the {@link GuardianBranch}
+     * @param miningGeysers geysers we are mining
+     * @param drones Drones on the economy
+     * @return {@value #GUARDIAN_SUPPORT_HYDRALISKS} once {@value #GUARDIAN_SUPPORT_GEYSERS} geysers are
+     *     mined or more than {@value #GUARDIAN_SUPPORT_DRONES} Drones work, else zero
+     */
+    static int guardianSupportHydralisks(boolean fieldsGuardians, int miningGeysers, int drones) {
+        boolean funded = miningGeysers >= GUARDIAN_SUPPORT_GEYSERS || drones > GUARDIAN_SUPPORT_DRONES;
+        return fieldsGuardians && funded ? GUARDIAN_SUPPORT_HYDRALISKS : 0;
     }
 
     /**

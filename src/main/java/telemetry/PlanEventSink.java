@@ -169,6 +169,14 @@ public interface PlanEventSink {
     }
 
     /**
+     * LurkerDefilerGuardian's Guardian branch opened or closed.
+     *
+     * @param branchLabel ENTER, or EXIT, a colon and the gate that closed it, e.g. EXIT:FEW_BASES
+     */
+    default void onGuardianBranch(String branchLabel) {
+    }
+
+    /**
      * The main had no room on creep for a tech building a build order was about to plan.
      *
      * @param building the tech building

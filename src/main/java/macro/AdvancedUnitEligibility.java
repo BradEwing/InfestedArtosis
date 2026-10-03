@@ -34,6 +34,8 @@ public final class AdvancedUnitEligibility {
             case Zerg_Mutalisk:
             case Zerg_Scourge:
                 return techProgression.isPlannedSpire() || techProgression.isSpire();
+            case Zerg_Guardian:
+                return techProgression.isGreaterSpire();
             case Zerg_Ultralisk:
                 return techProgression.isPlannedUltraliskCavern() || techProgression.isUltraliskCavern();
             case Zerg_Defiler:

@@ -118,10 +118,17 @@ class MacroHatcheryTemplateTest {
         for (BuildOrder buildOrder : registeredBuildOrders()) {
             Class<?> parent = buildOrder.getClass().getSuperclass();
             while (parent != null && parent != BuildOrder.class) {
+                if (isRegistered(parent)) {
+                    break;
+                }
                 assertFalse(declaresTechCondition(parent), parent.getSimpleName() + " defaults the tech condition");
                 parent = parent.getSuperclass();
             }
         }
+    }
+
+    private static boolean isRegistered(Class<?> type) {
+        return registeredBuildOrders().stream().anyMatch(buildOrder -> buildOrder.getClass() == type);
     }
 
     private static boolean declaresTechCondition(Class<?> type) {

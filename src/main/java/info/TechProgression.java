@@ -12,6 +12,7 @@ public class TechProgression {
     private boolean hydraliskDen = false;
     private boolean lair = false;
     private boolean spire = false;
+    private boolean greaterSpire = false;
     private boolean queensNest = false;
     private boolean hive = false;
     private boolean ultraliskCavern = false;
@@ -23,6 +24,7 @@ public class TechProgression {
     private boolean plannedDen = false;
     private boolean plannedLair = false;
     private boolean plannedSpire = false;
+    private boolean plannedGreaterSpire = false;
     private boolean plannedQueensNest = false;
     private boolean plannedHive = false;
     private boolean plannedUltraliskCavern = false;
@@ -95,7 +97,15 @@ public class TechProgression {
         return lair && !plannedSpire && !spire;
     }
 
-    public boolean canPlanQueensNest() { 
+    /**
+     * The Greater Spire morphs from a finished Spire and needs a finished Hive. The Spire flag stays
+     * set while the Greater Spire stands, since it is the Spire it morphed from.
+     */
+    public boolean canPlanGreaterSpire() {
+        return spire && hive && !plannedGreaterSpire && !greaterSpire;
+    }
+
+    public boolean canPlanQueensNest() {
         return lair && !plannedQueensNest && !queensNest; 
     }
 

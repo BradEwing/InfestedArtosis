@@ -54,6 +54,30 @@ class LurkerDefilerUltraTest {
     }
 
     @Test
+    void theGuardianBuildKeepsSupportHydralisksOnThreeGeysersOrMoreThanTwentyDrones() {
+        assertEquals(LurkerDefilerUltra.GUARDIAN_SUPPORT_HYDRALISKS,
+                LurkerDefilerUltra.guardianSupportHydralisks(true, 3, 10));
+        assertEquals(LurkerDefilerUltra.GUARDIAN_SUPPORT_HYDRALISKS,
+                LurkerDefilerUltra.guardianSupportHydralisks(true, 1, 21));
+        assertEquals(0, LurkerDefilerUltra.guardianSupportHydralisks(true, 2, 20));
+    }
+
+    @Test
+    void theGuardianBuildsHydraliskTargetAddsTheSupportAndTheOtherBuildsDoesNot() {
+        int base = LurkerDefilerUltra.hydraliskTarget(true, 4, 0);
+
+        assertEquals(base + LurkerDefilerUltra.GUARDIAN_SUPPORT_HYDRALISKS,
+                LurkerDefilerUltra.hydraliskTarget(true, 4, 0, true, 3, 25));
+        assertEquals(base, LurkerDefilerUltra.hydraliskTarget(true, 4, 0, false, 3, 25));
+        assertEquals(base, LurkerDefilerUltra.hydraliskTarget(true, 4, 0, true, 2, 15));
+    }
+
+    @Test
+    void theDefilerAndUltraliskBuildKeepsNoSupportHydralisks() {
+        assertEquals(0, LurkerDefilerUltra.guardianSupportHydralisks(false, 4, 40));
+    }
+
+    @Test
     void walksTheTechPathInOrderFromATwoHatchMutaHandover() {
         TechProgression techProgression = twoHatchMutaTech();
 

@@ -35,6 +35,7 @@ public class BuildingManager {
 
     private HashSet<ManagedUnit> hatcheries = new HashSet<>();
     private HashSet<ManagedUnit> colonies = new HashSet<>();
+    private HashSet<ManagedUnit> spires = new HashSet<>();
 
     public BuildingManager(Game game, GameState gameState) {
         this.gameState = gameState;
@@ -54,6 +55,10 @@ public class BuildingManager {
             case Zerg_Lair:
             case Zerg_Hive:
                 this.hatcheries.add(managedUnit);
+                break;
+            case Zerg_Spire:
+            case Zerg_Greater_Spire:
+                this.spires.add(managedUnit);
                 break;
             case Zerg_Creep_Colony:
                 this.colonies.add(managedUnit);
@@ -82,6 +87,10 @@ public class BuildingManager {
             case Zerg_Lair:
             case Zerg_Hive:
                 this.hatcheries.remove(managedUnit);
+                break;
+            case Zerg_Spire:
+            case Zerg_Greater_Spire:
+                this.spires.remove(managedUnit);
                 break;
             case Zerg_Creep_Colony:
                 this.colonies.remove(managedUnit);
@@ -130,6 +139,9 @@ public class BuildingManager {
                     break;
                 case Zerg_Hive:
                     didAssign = this.assignMorphHive(plan);
+                    break;
+                case Zerg_Greater_Spire:
+                    didAssign = this.assignMorphGreaterSpire(plan);
                     break;
                 default:
                     break;
@@ -183,12 +195,26 @@ public class BuildingManager {
      * Lair answers canBuild for a Hive, so a plain Hatchery in the same set is skipped.
      */
     private boolean assignMorphHive(Plan plan) {
-        for (ManagedUnit managedLair : hatcheries) {
-            Unit lairUnit = managedLair.getUnit();
-            if (lairUnit.canBuild(plan.getPlannedUnit()) && !gameState.getAssignedPlannedItems().containsKey(lairUnit)) {
-                managedLair.setRole(UnitRole.MORPH);
-                gameState.getAssignedPlannedItems().put(lairUnit, plan);
-                managedLair.setPlan(plan);
+        return assignMorphFrom(plan, hatcheries);
+    }
+
+    /**
+     * Hands a Greater Spire plan to any completed Spire that carries no plan yet.
+     *
+     * <p>Reads the Spire set, which tracks every Spire and Greater Spire through add and remove.
+     * Only a completed Spire answers canBuild for a Greater Spire.
+     */
+    private boolean assignMorphGreaterSpire(Plan plan) {
+        return assignMorphFrom(plan, spires);
+    }
+
+    private boolean assignMorphFrom(Plan plan, HashSet<ManagedUnit> producers) {
+        for (ManagedUnit managedProducer : producers) {
+            Unit producer = managedProducer.getUnit();
+            if (producer.canBuild(plan.getPlannedUnit()) && !gameState.getAssignedPlannedItems().containsKey(producer)) {
+                managedProducer.setRole(UnitRole.MORPH);
+                gameState.getAssignedPlannedItems().put(producer, plan);
+                managedProducer.setPlan(plan);
                 return true;
             }
         }
