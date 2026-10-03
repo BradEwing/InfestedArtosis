@@ -2,45 +2,52 @@ package unit.squad;
 
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class ScoutLendTest {
 
+    private static final int FLOOR = SquadManager.SCOUT_LEND_FLOOR;
+    private static final int FIGHT_FLOOR = SquadManager.FIGHT_SCOUT_LEND_FLOOR;
+
     @Test
-    void aRallyingGroundSquadAboveTheFloorLendsAScout() {
-        assertTrue(SquadManager.mayLendScout(SquadStatus.RALLY, true, false, SquadManager.SCOUT_LEND_FLOOR + 1));
+    void aRallyingGroundSquadLendsTheLingsAboveTheFloor() {
+        assertEquals(3, SquadManager.scoutLendSpare(SquadStatus.RALLY, true, false, false, FLOOR + 3));
     }
 
     @Test
-    void aSquadAtTheFloorLendsNothing() {
-        assertFalse(SquadManager.mayLendScout(SquadStatus.RALLY, true, false, SquadManager.SCOUT_LEND_FLOOR));
+    void aSquadAtOrBelowTheFloorLendsNothing() {
+        assertEquals(0, SquadManager.scoutLendSpare(SquadStatus.RALLY, true, false, false, FLOOR));
+        assertEquals(0, SquadManager.scoutLendSpare(SquadStatus.RALLY, true, false, false, 1));
     }
 
     @Test
     void squadsThatAreContainingRetreatingOnARunbyOrHarassingLendNothing() {
         for (SquadStatus status : SquadStatus.values()) {
             if (status != SquadStatus.RALLY && status != SquadStatus.FIGHT) {
-                assertFalse(SquadManager.mayLendScout(status, true, false, 40), status.name());
+                assertEquals(0, SquadManager.scoutLendSpare(status, true, false, false, 40), status.name());
             }
         }
     }
 
     @Test
     void aFightingGroundSquadLendsOnlyAboveItsLargerFloor() {
-        assertTrue(SquadManager.mayLendScout(SquadStatus.FIGHT, true, false,
-                SquadManager.FIGHT_SCOUT_LEND_FLOOR + 1));
-        assertFalse(SquadManager.mayLendScout(SquadStatus.FIGHT, true, false,
-                SquadManager.FIGHT_SCOUT_LEND_FLOOR));
+        assertEquals(1, SquadManager.scoutLendSpare(SquadStatus.FIGHT, true, false, false, FIGHT_FLOOR + 1));
+        assertEquals(0, SquadManager.scoutLendSpare(SquadStatus.FIGHT, true, false, false, FIGHT_FLOOR));
+    }
+
+    @Test
+    void aSquadHeldInAFightItMustSeeThroughLendsNothing() {
+        assertEquals(0, SquadManager.scoutLendSpare(SquadStatus.FIGHT, true, false, true, 40));
+        assertEquals(0, SquadManager.scoutLendSpare(SquadStatus.RALLY, true, false, true, 40));
     }
 
     @Test
     void aSquadJoiningAContainmentLendsNothing() {
-        assertFalse(SquadManager.mayLendScout(SquadStatus.RALLY, true, true, 40));
+        assertEquals(0, SquadManager.scoutLendSpare(SquadStatus.RALLY, true, true, false, 40));
     }
 
     @Test
     void anAirSquadLendsNothing() {
-        assertFalse(SquadManager.mayLendScout(SquadStatus.RALLY, false, false, 40));
+        assertEquals(0, SquadManager.scoutLendSpare(SquadStatus.RALLY, false, false, false, 40));
     }
 }

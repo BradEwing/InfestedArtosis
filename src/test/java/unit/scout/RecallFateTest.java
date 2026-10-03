@@ -3,6 +3,8 @@ package unit.scout;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RecallFateTest {
 
@@ -20,6 +22,14 @@ class RecallFateTest {
         assertEquals(BaseCheckScheduler.RecallFate.PENDING, BaseCheckScheduler.recallFate(true, RECALL, RECALL));
         assertEquals(BaseCheckScheduler.RecallFate.PENDING, BaseCheckScheduler.recallFate(true, RECALL,
                 RECALL + BaseCheckScheduler.RECALL_DEATH_WINDOW_FRAMES - 1));
+    }
+
+    @Test
+    void aUnitIsPickedOnlyWellPastTheRecallLine() {
+        assertTrue(BaseCheckScheduler.isHealthy(18, 35));
+        assertFalse(BaseCheckScheduler.isFitToScout(18, 35));
+        assertFalse(BaseCheckScheduler.isFitToScout(27, 35));
+        assertTrue(BaseCheckScheduler.isFitToScout(28, 35));
     }
 
     @Test

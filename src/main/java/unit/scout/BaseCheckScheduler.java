@@ -49,6 +49,9 @@ public final class BaseCheckScheduler {
     /** Zerglings sent to a base otherwise. */
     public static final int LINGS_WITHOUT_MINES = 1;
 
+    /** Share of maximum hit points a unit needs to be picked for a check; the recall line is lower. */
+    public static final double PICK_HIT_POINT_SHARE = 0.8;
+
     /** Frames after an HP recall within which the scout's death makes the check LOST rather than recalled. */
     public static final int RECALL_DEATH_WINDOW_FRAMES = 120;
 
@@ -170,6 +173,16 @@ public final class BaseCheckScheduler {
      */
     public static boolean isHealthy(int hitPoints, int maxHitPoints) {
         return hitPoints >= maxHitPoints * RECALL_HIT_POINT_SHARE;
+    }
+
+    /**
+     * @param hitPoints the unit's current hit points
+     * @param maxHitPoints the unit's maximum hit points
+     * @return true when the unit has recovered well past the recall line, so one regenerated hit point never
+     *     puts a just-recalled unit back out
+     */
+    public static boolean isFitToScout(int hitPoints, int maxHitPoints) {
+        return hitPoints >= maxHitPoints * PICK_HIT_POINT_SHARE;
     }
 
     /**

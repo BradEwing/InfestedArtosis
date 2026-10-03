@@ -68,11 +68,14 @@ public class ScoutManager {
 
     private static final class RecalledCheck {
         private final BaseCheck check;
+        private final BaseCheckScheduler.Release outcome;
         private final int recallFrame;
         private final boolean occupied;
 
-        private RecalledCheck(BaseCheck check, int recallFrame, boolean occupied) {
+        private RecalledCheck(BaseCheck check, BaseCheckScheduler.Release outcome, int recallFrame,
+                              boolean occupied) {
             this.check = check;
+            this.outcome = outcome;
             this.recallFrame = recallFrame;
             this.occupied = occupied;
         }
@@ -198,6 +201,13 @@ public class ScoutManager {
         return BaseCheckScheduler.routeClear(from, to, sightings);
     }
 
+    /**
+     * @return true while a released scout's check is held back awaiting word on whether it survived
+     */
+    public boolean hasPendingRecall(ManagedUnit managedUnit) {
+        return recalledChecks.containsKey(managedUnit);
+    }
+
     public boolean isBaseCheckScout(ManagedUnit managedUnit) {
         return baseChecks.containsKey(managedUnit);
     }
@@ -277,8 +287,12 @@ public class ScoutManager {
             enemyPositions.add(enemy.getPosition());
         }
         boolean occupied = BaseCheckScheduler.isOccupied(enemyPositions, check.base.getCenter());
-        if (outcome == BaseCheckScheduler.Release.HP_RECALL) {
-            recalledChecks.put(scout, new RecalledCheck(check, now, occupied));
+        if (outcome == BaseCheckScheduler.Release.HP_RECALL || outcome == BaseCheckScheduler.Release.TIMEOUT
+                || outcome == BaseCheckScheduler.Release.THREAT) {
+            RecalledCheck earlier = recalledChecks.put(scout, new RecalledCheck(check, outcome, now, occupied));
+            if (earlier != null) {
+                writeCheck(scout, earlier.check, earlier.recallFrame, earlier.outcome, earlier.occupied, -1);
+            }
             return;
         }
         writeCheck(scout, check, now, outcome, occupied, outcome == BaseCheckScheduler.Release.LOST ? now : -1);
@@ -299,7 +313,7 @@ public class ScoutManager {
                 writeCheck(scout, recalled.check, recalled.recallFrame, BaseCheckScheduler.Release.LOST,
                         recalled.occupied, now);
             } else {
-                writeCheck(scout, recalled.check, recalled.recallFrame, BaseCheckScheduler.Release.HP_RECALL,
+                writeCheck(scout, recalled.check, recalled.recallFrame, recalled.outcome,
                         recalled.occupied, -1);
             }
         }

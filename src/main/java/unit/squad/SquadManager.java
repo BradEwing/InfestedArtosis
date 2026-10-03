@@ -5503,37 +5503,59 @@ public class SquadManager {
     static final int FIGHT_SCOUT_LEND_FLOOR = 8;
 
     /**
-     * Whether a ground squad can lend a unit to scout: it is rallying or fighting rather than containing, on a
-     * runby or harassing, is not on its way to join a containment, and keeps {@link #SCOUT_LEND_FLOOR} units
+     * How many zerglings a ground squad can lend to scout: it is rallying or fighting rather than containing, on a
+     * runby or harassing, is not on its way to join a containment, and keeps {@link #SCOUT_LEND_FLOOR} lings
      * after the loan, or {@link #FIGHT_SCOUT_LEND_FLOOR} while fighting.
      *
      * @param status the squad's status
      * @param ground whether it is a ground squad
      * @param joiningContain whether it is heading to join another squad's containment arc
-     * @param size members in the squad
-     * @return true when the squad can lend a unit
+     * @param committed whether the squad is held in a fight it must see through: a fight lock, collapse, swarm
+     *     lock or cornered hold
+     * @param lings zerglings in the squad
+     * @return how many zerglings the squad can lend
      */
-    static boolean mayLendScout(SquadStatus status, boolean ground, boolean joiningContain, int size) {
-        if (!ground || joiningContain) {
-            return false;
+    static int scoutLendSpare(SquadStatus status, boolean ground, boolean joiningContain, boolean committed,
+                              int lings) {
+        if (!ground || joiningContain || committed) {
+            return 0;
         }
         if (status == SquadStatus.RALLY) {
-            return size > SCOUT_LEND_FLOOR;
+            return Math.max(0, lings - SCOUT_LEND_FLOOR);
         }
-        return status == SquadStatus.FIGHT && size > FIGHT_SCOUT_LEND_FLOOR;
+        if (status == SquadStatus.FIGHT) {
+            return Math.max(0, lings - FIGHT_SCOUT_LEND_FLOOR);
+        }
+        return 0;
     }
 
     /**
-     * @return true when the unit belongs to a fight squad that can lend it to scout
+     * @return how many more zerglings the unit's fight squad can lend to scout, zero when it is in none
      */
-    public boolean mayLendScout(ManagedUnit managedUnit) {
+    public int scoutLendSpare(ManagedUnit managedUnit) {
+        int now = game.getFrameCount();
         for (Squad squad : fightSquads) {
             if (squad.containsManagedUnit(managedUnit)) {
-                return mayLendScout(squad.getStatus(), squad.isGroundSquad(), containArcToJoin(squad) != null,
-                        squad.size());
+                boolean committed = wholeSquadCommitHolds(squad, now, false) || squad.getSwarmLock() != null
+                        || squad.isCorneredFightHeld(now);
+                int lings = squad.getComposition().getOrDefault(UnitType.Zerg_Zergling, 0);
+                return scoutLendSpare(squad.getStatus(), squad.isGroundSquad(), containArcToJoin(squad) != null,
+                        committed, lings);
             }
         }
-        return false;
+        return 0;
+    }
+
+    /**
+     * @return the fight squad holding the unit, or null
+     */
+    public Squad fightSquadOf(ManagedUnit managedUnit) {
+        for (Squad squad : fightSquads) {
+            if (squad.containsManagedUnit(managedUnit)) {
+                return squad;
+            }
+        }
+        return null;
     }
 
     /**

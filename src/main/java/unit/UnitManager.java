@@ -17,6 +17,7 @@ import unit.managed.ManagedUnitFactory;
 import unit.managed.UnitRole;
 import unit.scout.BaseCheckScheduler;
 import unit.scout.ScoutManager;
+import unit.squad.Squad;
 import unit.squad.SquadManager;
 import unit.squad.WorkerDefense;
 import util.Distance;
@@ -30,8 +31,10 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 public class UnitManager {
@@ -490,16 +493,36 @@ public class UnitManager {
     private List<ManagedUnit> spareZerglings(Base base) {
         return managedUnits.stream()
             .filter(mu -> mu.getUnitType() == UnitType.Zerg_Zergling)
-            .filter(mu -> !scoutManager.isBaseCheckScout(mu))
-            .filter(mu -> mayPullAsZerglingScout(mu.getRole(), squadManager.mayLendScout(mu)))
-            .filter(this::isHealthy)
+            .filter(mu -> !scoutManager.isBaseCheckScout(mu) && !scoutManager.hasPendingRecall(mu))
+            .filter(mu -> mayPullAsZerglingScout(mu.getRole(), squadManager.scoutLendSpare(mu) > 0))
+            .filter(mu -> !mu.isClosingOnTarget())
+            .filter(this::isFitToScout)
             .sorted(Comparator.comparingDouble(mu -> mu.getPosition().getDistance(base.getCenter())))
+            .filter(squadSpareTracker())
             .collect(Collectors.toList());
+    }
+
+    private Predicate<ManagedUnit> squadSpareTracker() {
+        Map<Squad, Integer> taken = new HashMap<>();
+        return mu -> {
+            Squad squad = squadManager.fightSquadOf(mu);
+            int already = taken.getOrDefault(squad, 0);
+            if (already >= squadManager.scoutLendSpare(mu)) {
+                return false;
+            }
+            taken.put(squad, already + 1);
+            return true;
+        };
     }
 
     private boolean isHealthy(ManagedUnit managedUnit) {
         Unit unit = managedUnit.getUnit();
         return BaseCheckScheduler.isHealthy(unit.getHitPoints(), unit.getType().maxHitPoints());
+    }
+
+    private boolean isFitToScout(ManagedUnit managedUnit) {
+        Unit unit = managedUnit.getUnit();
+        return BaseCheckScheduler.isFitToScout(unit.getHitPoints(), unit.getType().maxHitPoints());
     }
 
     /**
