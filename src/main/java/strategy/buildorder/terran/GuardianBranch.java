@@ -72,9 +72,22 @@ final class GuardianBranch {
     }
 
     /**
+     * Guardians the branch has committed to: those alive, those in a Cocoon and those with a plan
+     * still to morph. A Cocoon that dies is no longer counted, so its Guardian can be planned again.
+     *
+     * @param livingGuardians Guardians alive
+     * @param cocoons Cocoons alive
+     * @param outstandingGuardianPlans Guardian plans queued, scheduled or assigned and not yet morphing
+     * @return the Guardians committed to
+     */
+    static int guardiansCommitted(int livingGuardians, int cocoons, int outstandingGuardianPlans) {
+        return livingGuardians + cocoons + outstandingGuardianPlans;
+    }
+
+    /**
      * Guardians the branch may still field.
      *
-     * @param guardians Guardians alive, in a Cocoon or planned
+     * @param guardians Guardians committed to, from {@link #guardiansCommitted}
      * @param guardiansLost Guardians lost so far
      * @return the room left under {@value #WAVE_CAP}, never negative
      */

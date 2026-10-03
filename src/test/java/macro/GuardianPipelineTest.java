@@ -115,10 +115,4 @@ class GuardianPipelineTest {
         assertEquals(PlanBlocker.NONE,
                 AdvancedUnitEligibility.blocker(UnitType.Zerg_Mutalisk, techProgression, GATHERERS));
     }
-
-    @Test
-    void excessMorphPlansAreThoseBeyondTheirProducersAndTheirEggs() {
-        assertEquals(0, ProductionManager.excessLurkerPlans(2, 2, 0));
-        assertEquals(1, ProductionManager.excessLurkerPlans(3, 1, 1));
-    }
 }

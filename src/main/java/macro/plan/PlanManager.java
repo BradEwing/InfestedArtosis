@@ -27,6 +27,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Predicate;
+import java.util.function.ToDoubleFunction;
 import java.util.stream.Collectors;
 
 public class PlanManager {
@@ -574,19 +575,54 @@ public class PlanManager {
     }
 
     private boolean assignMorphProducer(Plan plan, UnitType producer) {
-        List<ManagedUnit> producers = gameState.getManagedUnitsByType(producer);
-        for (ManagedUnit managedUnit: producers) {
-            Unit unit = managedUnit.getUnit();
-            if (!gameState.getAssignedPlannedItems().containsKey(unit)) {
-                gameState.clearAssignments(managedUnit);
-                plan.setState(PlanState.BUILDING);
-                managedUnit.setRole(UnitRole.MORPH);
-                managedUnit.setPlan(plan);
-                gameState.getAssignedPlannedItems().put(unit, plan);
-                return true;
+        List<ManagedUnit> free = new ArrayList<>();
+        for (ManagedUnit managedUnit : gameState.getManagedUnitsByType(producer)) {
+            if (!gameState.getAssignedPlannedItems().containsKey(managedUnit.getUnit())) {
+                free.add(managedUnit);
             }
         }
-        return false;
+        ManagedUnit selected = plan.getPlannedUnit() == UnitType.Zerg_Guardian
+                ? nearest(free, candidate -> distanceToNearestHeldBase(candidate.getUnit().getPosition()))
+                : (free.isEmpty() ? null : free.get(0));
+        if (selected == null) {
+            return false;
+        }
+        Unit unit = selected.getUnit();
+        gameState.clearAssignments(selected);
+        plan.setState(PlanState.BUILDING);
+        selected.setRole(UnitRole.MORPH);
+        selected.setPlan(plan);
+        gameState.getAssignedPlannedItems().put(unit, plan);
+        return true;
+    }
+
+    /**
+     * The candidate with the smallest distance, the first on a tie.
+     *
+     * @param candidates the candidates
+     * @param distance the distance of a candidate
+     * @param <T> the candidate type
+     * @return the nearest candidate, or null when there are none
+     */
+    static <T> T nearest(List<T> candidates, ToDoubleFunction<T> distance) {
+        T best = null;
+        double bestDistance = Double.MAX_VALUE;
+        for (T candidate : candidates) {
+            double candidateDistance = distance.applyAsDouble(candidate);
+            if (best == null || candidateDistance < bestDistance) {
+                best = candidate;
+                bestDistance = candidateDistance;
+            }
+        }
+        return best;
+    }
+
+    private double distanceToNearestHeldBase(Position position) {
+        double nearest = Double.MAX_VALUE;
+        for (Base base : gameState.getBaseData().getMyBases()) {
+            nearest = Math.min(nearest, position.getDistance(base.getCenter()));
+        }
+        return nearest;
     }
 
     private boolean assignMorphLarva(Plan plan) {

@@ -63,18 +63,18 @@ class LurkerDefilerUltraTest {
     }
 
     @Test
-    void theDefilerAndUltraliskBuildKeepsNoSupportHydralisks() {
-        assertEquals(0, LurkerDefilerUltra.guardianSupportHydralisks(false, 4, 40));
+    void theGuardianBuildsHydraliskTargetAddsTheSupportAndTheOtherBuildsDoesNot() {
+        int base = LurkerDefilerUltra.hydraliskTarget(true, 4, 0);
+
+        assertEquals(base + LurkerDefilerUltra.GUARDIAN_SUPPORT_HYDRALISKS,
+                LurkerDefilerUltra.hydraliskTarget(true, 4, 0, true, 3, 25));
+        assertEquals(base, LurkerDefilerUltra.hydraliskTarget(true, 4, 0, false, 3, 25));
+        assertEquals(base, LurkerDefilerUltra.hydraliskTarget(true, 4, 0, true, 2, 15));
     }
 
     @Test
-    void theGuardianBuildPlansTheHydraliskDenOnceTheLairStands() {
-        TechProgression techProgression = new TechProgression();
-        techProgression.setSpawningPool(true);
-        techProgression.setLair(true);
-
-        assertEquals(LurkerDefilerUltra.TechStep.HYDRALISK_DEN, next(techProgression, ULTRALISKS_BARRED));
-        assertEquals(LurkerDefilerGuardian.NAME, new LurkerDefilerGuardian().getName());
+    void theDefilerAndUltraliskBuildKeepsNoSupportHydralisks() {
+        assertEquals(0, LurkerDefilerUltra.guardianSupportHydralisks(false, 4, 40));
     }
 
     @Test

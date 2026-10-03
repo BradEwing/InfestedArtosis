@@ -3,6 +3,10 @@ package macro.plan;
 import bwapi.UnitType;
 import org.junit.jupiter.api.Test;
 
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -26,6 +30,21 @@ class GuardianMorphTest {
         assertNull(PlanManager.morphProducer(UnitType.Zerg_Mutalisk));
         assertNull(PlanManager.morphProducer(UnitType.Zerg_Zergling));
         assertNull(PlanManager.morphProducer(UnitType.Zerg_Defiler));
+    }
+
+    @Test
+    void theMutaliskNearestAHeldBaseMorphsFirst() {
+        List<Integer> distancesFromHome = Arrays.asList(900, 120, 400);
+
+        assertEquals(120, PlanManager.nearest(distancesFromHome, Integer::doubleValue));
+    }
+
+    @Test
+    void theFirstMutaliskMorphsOnATieAndNoneWhenNoneIsFree() {
+        List<String> tied = Arrays.asList("first", "second");
+
+        assertEquals("first", PlanManager.nearest(tied, candidate -> 10));
+        assertNull(PlanManager.nearest(Collections.<String>emptyList(), candidate -> 10));
     }
 
     @Test

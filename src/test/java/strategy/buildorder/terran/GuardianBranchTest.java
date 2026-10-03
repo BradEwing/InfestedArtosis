@@ -80,6 +80,20 @@ class GuardianBranchTest {
     }
 
     @Test
+    void aCocoonCountsAsAGuardianUntilItDiesAndThenFreesItsPlace() {
+        int livingGuardians = 1;
+        int plans = 1;
+
+        int whileMorphing = GuardianBranch.guardiansCommitted(livingGuardians, 1, plans);
+        int afterTheCocoonDies = GuardianBranch.guardiansCommitted(livingGuardians, 0, plans);
+
+        assertEquals(3, whileMorphing);
+        assertEquals(2, afterTheCocoonDies);
+        assertEquals(0, GuardianBranch.guardiansRemaining(whileMorphing, 0));
+        assertEquals(1, GuardianBranch.guardiansRemaining(afterTheCocoonDies, 0));
+    }
+
+    @Test
     void entersTheBranchOnce() {
         record();
         GuardianBranch branch = new GuardianBranch();

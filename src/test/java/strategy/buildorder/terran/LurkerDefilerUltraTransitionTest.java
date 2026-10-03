@@ -142,11 +142,20 @@ class LurkerDefilerUltraTransitionTest {
     }
 
     @Test
-    void theLabelNamesBothBuildsAndTheTrigger() {
-        assertEquals("2HatchMuta>LurkerDefilerUltra:GOLIATHS",
-                LurkerDefilerUltraTransition.label("2HatchMuta", LurkerDefilerUltraTransition.Trigger.GOLIATHS));
-        assertEquals("3HatchLurker>LurkerDefilerUltra:LURKERS",
-                LurkerDefilerUltraTransition.label("3HatchLurker", LurkerDefilerUltraTransition.Trigger.LURKERS));
+    void theLabelNamesTheBuildThatWasChosenAndTheTrigger() {
+        TwoHatchMuta build = new TwoHatchMuta() {
+            {
+                setHandoverTrigger(LurkerDefilerUltraTransition.Trigger.GOLIATHS.name());
+            }
+        };
+
+        assertEquals("2HatchMuta>LurkerDefilerGuardian:GOLIATHS", build.handoverLabel(LurkerDefilerGuardian.NAME));
+        assertEquals("2HatchMuta>LurkerDefilerUltra:GOLIATHS", build.handoverLabel(LurkerDefilerUltra.NAME));
+    }
+
+    @Test
+    void noLabelIsWrittenForAHandoverThatRecordedNoTrigger() {
+        assertNull(new ThreeHatchLurker().handoverLabel(LurkerDefilerUltra.NAME));
     }
 
     @Test

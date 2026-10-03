@@ -120,6 +120,25 @@ public abstract class BuildOrder {
         this.name = name;
     }
 
+    private String handoverTrigger;
+
+    /**
+     * Records what opened this build's handover, for the BUILD_ORDER_TRANSITION row written once the
+     * build taking over is chosen.
+     */
+    protected void setHandoverTrigger(String trigger) {
+        this.handoverTrigger = trigger;
+    }
+
+    /**
+     *  to the name of the build taking over
+     *  the BUILD_ORDER_TRANSITION item, as 2HatchMuta>LurkerDefilerGuardian:GOLIATHS, or null when
+     *     the handover recorded no trigger
+     */
+    public String handoverLabel(String to) {
+        return handoverTrigger == null ? null : name + ">" + to + ":" + handoverTrigger;
+    }
+
     public boolean shouldTransition(GameState gameState) {
         return gameState.getOpponentRace() != Race.Unknown && openerComplete(gameState);
     }

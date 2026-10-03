@@ -29,6 +29,7 @@ import macro.plan.Plan;
 import macro.plan.PlanCancelSource;
 import macro.plan.PlanType;
 import strategy.buildorder.BuildOrder;
+import telemetry.PlanEvents;
 import util.Time;
 
 import java.util.ArrayList;
@@ -952,6 +953,10 @@ public class InformationManager {
         BuildOrder transition = learningManager.determineBuildOrder(candidates);
         if (transition != null) {
             gameState.getBuildOrderChain().add(transition.getName());
+            String label = active.handoverLabel(transition.getName());
+            if (label != null) {
+                PlanEvents.buildOrderTransition(label);
+            }
         }
         return transition;
     }

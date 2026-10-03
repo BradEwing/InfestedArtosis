@@ -5,7 +5,6 @@ import config.GuardianBranchMode;
 import bwapi.UnitType;
 import info.GameState;
 import strategy.buildorder.BuildOrder;
-import telemetry.PlanEvents;
 import util.Time;
 
 import java.util.HashSet;
@@ -151,33 +150,19 @@ public final class LurkerDefilerUltraTransition {
     }
 
     /**
-     * Whether the named build hands over this frame, writing a BUILD_ORDER_TRANSITION row when it
-     * does.
+     * Whether a build hands over this frame.
      *
-     * <p>InformationManager swaps the active build on the frame this returns true, so the row is
-     * written once per transition.
+     * <p>InformationManager writes the BUILD_ORDER_TRANSITION row once the learning module has
+     * chosen the build taking over, see {@link BuildOrder#handoverLabel}.
      *
      * @param gameState current game state
-     * @param from the name of the build handing over
      * @param trigger the build's own trigger, or null while it does not hold
      * @return true when the build hands over now
      */
-    static boolean shouldEnter(GameState gameState, String from, Trigger trigger) {
-        boolean enter = shouldEnter(trigger, gameState.getOpponentRace() != Race.Unknown,
+    static boolean shouldEnter(GameState gameState, Trigger trigger) {
+        return shouldEnter(trigger, gameState.getOpponentRace() != Race.Unknown,
                 gameState.ourLivingUnitCount(UnitType.Zerg_Drone),
                 gameState.getBaseData().currentBaseCount());
-        if (enter) {
-            PlanEvents.buildOrderTransition(label(from, trigger));
-        }
-        return enter;
-    }
-
-    /**
-     * The item the BUILD_ORDER_TRANSITION row carries: the build handing over, the build taking
-     * over, and the trigger, as {@code 2HatchMuta>LurkerDefilerUltra:GOLIATHS}.
-     */
-    static String label(String from, Trigger trigger) {
-        return from + ">" + LurkerDefilerUltra.NAME + ":" + trigger;
     }
 
     /**
