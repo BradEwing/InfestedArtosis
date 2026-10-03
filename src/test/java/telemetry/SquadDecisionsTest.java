@@ -976,8 +976,10 @@ class SquadDecisionsTest {
         String[] columns = SquadDecisionLogger.HEADER.split(",", -1);
 
         assertEquals(java.util.Collections.singletonList("COMMITMENT_RELEASED:STATIC_AA"), events);
-        assertEquals("siege_band", columns[columns.length - 1]);
-        assertEquals("air_commitment_release", columns[columns.length - 2]);
+        assertEquals("siege_band_held_frames", columns[columns.length - 1]);
+        assertEquals("siege_band_frames", columns[columns.length - 2]);
+        assertEquals("siege_band", columns[columns.length - 3]);
+        assertEquals("air_commitment_release", columns[columns.length - 4]);
         assertEquals(java.util.Collections.singletonList("HP"), SquadDecisionLogger.commitmentReleaseCells(context));
     }
 

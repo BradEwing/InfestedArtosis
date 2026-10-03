@@ -79,6 +79,8 @@ public class HorizonCombatSimulator implements CombatSimulator {
 
     private final Map<String, HeldVerdict> heldVerdicts = new HashMap<>();
 
+    private final Map<String, BandClock> bandClocks = new HashMap<>();
+
     @Override
     public CombatResult evaluate(Squad squad, Map<Squad, Double> adjacentSquads, GameState gameState) {
         Position squadCenter = squad.getCenter();
@@ -255,7 +257,12 @@ public class HorizonCombatSimulator implements CombatSimulator {
             boolean tankInBand = SiegeBandHysteresis.inBand(nearestSiegedTank);
             CombatResult raw = result;
             result = holdVerdict(squad.getId(), raw, currentFrame, overallRatio, engageThresh, tankInBand);
-            snapshot.setSiegeBand(!tankInBand ? SIEGE_BAND_NONE : result == raw ? SIEGE_BAND_IN : SIEGE_BAND_HELD);
+            int band = !tankInBand ? SIEGE_BAND_NONE : result == raw ? SIEGE_BAND_IN : SIEGE_BAND_HELD;
+            snapshot.setSiegeBand(band);
+            BandClock clock = bandClocks.computeIfAbsent(squad.getId(), id -> new BandClock());
+            clock.tick(currentFrame, band);
+            snapshot.setSiegeBandFrames(clock.inBandFrames);
+            snapshot.setSiegeBandHeldFrames(clock.heldFrames);
         }
 
         snapshot.setEngageThreshold(engageThresh);
@@ -276,6 +283,19 @@ public class HorizonCombatSimulator implements CombatSimulator {
                 tankInBand);
         if (verdict != heldResult) heldVerdicts.put(squadId, new HeldVerdict(verdict, frame));
         return verdict;
+    }
+
+    static final class BandClock {
+        private int lastFrame = -1;
+        int inBandFrames;
+        int heldFrames;
+
+        void tick(int frame, int band) {
+            int elapsed = lastFrame < 0 ? 0 : frame - lastFrame;
+            if (band != SIEGE_BAND_NONE) inBandFrames += elapsed;
+            if (band == SIEGE_BAND_HELD) heldFrames += elapsed;
+            lastFrame = frame;
+        }
     }
 
     private static final class HeldVerdict {
@@ -1233,6 +1253,8 @@ public class HorizonCombatSimulator implements CombatSimulator {
         private int enemyUnscoredSupply;
         private double swarmCover;
         private int siegeBand = -1;
+        private int siegeBandFrames = -1;
+        private int siegeBandHeldFrames = -1;
         private double enemyAirShare = UnitStrength.UNMEASURED_AIR_SHARE;
         private double ourAirShare = UnitStrength.UNMEASURED_AIR_SHARE;
     }

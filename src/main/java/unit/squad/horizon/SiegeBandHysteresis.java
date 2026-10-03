@@ -1,6 +1,7 @@
 package unit.squad.horizon;
 
 import unit.squad.CombatSimulator.CombatResult;
+import unit.squad.Squad;
 
 /**
  * Holds a ground squad's ENGAGE or RETREAT verdict steady while a sieged tank sits in the band just beyond its fire.
@@ -8,7 +9,8 @@ import unit.squad.CombatSimulator.CombatResult;
  * <p>A sieged tank between {@link #BAND_NEAR} and {@link #BAND_FAR} px from the squad is priced fully or not at
  * all as the squad steps across the simulator's engagement radius, so the raw verdict flips as the squad approaches
  * and backs off. With the nearest sieged tank in that band, a RETREAT is replaced by ENGAGE only once
- * {@link #MIN_HOLD_FRAMES} have passed since it was set and the ratio clears the engage threshold by {@link #MARGIN}.
+ * {@link #MIN_HOLD_FRAMES} have passed since it was set, which outlasts the squad's retreat lock by
+ * {@link #POST_LOCK_HOLD_FRAMES}, and the ratio clears the engage threshold by {@link #MARGIN}.
  */
 final class SiegeBandHysteresis {
 
@@ -25,12 +27,18 @@ final class SiegeBandHysteresis {
     /**
      * Fraction of the engage threshold the ratio must exceed it by to replace a held RETREAT.
      */
-    static final double MARGIN = 0.15;
+    static final double MARGIN = 0.5;
 
     /**
-     * Frames a RETREAT is held before the band allows it to be replaced.
+     * Frames the hold runs after the ground retreat lock that every RETREAT starts has ended.
      */
-    static final int MIN_HOLD_FRAMES = 48;
+    static final int POST_LOCK_HOLD_FRAMES = 120;
+
+    /**
+     * Frames a RETREAT is held before the band allows it to be replaced, counted from when it was set: the ground
+     * retreat lock plus {@link #POST_LOCK_HOLD_FRAMES}.
+     */
+    static final int MIN_HOLD_FRAMES = Squad.GROUND_RETREAT_LOCK_FRAMES + POST_LOCK_HOLD_FRAMES;
 
     private SiegeBandHysteresis() {
     }

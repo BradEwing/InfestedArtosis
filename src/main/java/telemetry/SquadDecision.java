@@ -70,6 +70,8 @@ final class SquadDecision {
     private int swarmRemainingFrames = NOT_EVALUATED;
     private double swarmCover = NOT_EVALUATED;
     private int siegeBand = NOT_EVALUATED;
+    private int siegeBandFrames = NOT_EVALUATED;
+    private int siegeBandHeldFrames = NOT_EVALUATED;
     private SwarmLock.Release swarmRelease = SwarmLock.Release.NONE;
     private CommitmentRelease commitmentRelease = CommitmentRelease.NONE;
 

@@ -133,7 +133,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
             + "stalemate_commit_supply_real,stalemate_commit_army_real,"
             + "retreat_route,"
             + "swarm_id,swarm_remaining_frames,swarm_locked,sim_swarm_cover,swarm_release_reason,"
-            + "air_commitment_release,siege_band";
+            + "air_commitment_release,siege_band,siege_band_frames,siege_band_held_frames";
 
     static final String SWARM_FILE = "telemetry_dark_swarms.csv";
 
@@ -803,6 +803,8 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         decision.setOurAirShare(snapshot.getOurAirShare());
         decision.setSwarmCover(snapshot.getSwarmCover());
         decision.setSiegeBand(snapshot.getSiegeBand());
+        decision.setSiegeBandFrames(snapshot.getSiegeBandFrames());
+        decision.setSiegeBandHeldFrames(snapshot.getSiegeBandHeldFrames());
     }
 
     /**
@@ -1175,13 +1177,16 @@ public class SquadDecisionLogger implements SquadDecisionSink {
     /**
      * Builds the siege_band cell: 0 when the nearest sieged tank is not between 400 and 912 px of the squad, 1 when
      * it is and the verdict is the raw one, 2 when the band held a RETREAT against a raw ENGAGE, and -1 on a row
-     * whose decision never read a ground sim snapshot.
+     * whose decision never read a ground sim snapshot. It is followed by the frames the squad has spent with a sieged
+     * tank in the band, and the frames of those the band held a RETREAT, both cumulative over the squad's life and -1
+     * on a row without a ground sim snapshot.
      *
      * @param context the decision the row is built from
-     * @return the siege band cell
+     * @return the siege band, in-band frames and held frames cells
      */
     static List<String> siegeBandCells(SquadDecision context) {
-        return Collections.singletonList(String.valueOf(context.getSiegeBand()));
+        return Arrays.asList(String.valueOf(context.getSiegeBand()), String.valueOf(context.getSiegeBandFrames()),
+                String.valueOf(context.getSiegeBandHeldFrames()));
     }
 
     private static String halfSupplyOrSentinel(int halfUnits) {

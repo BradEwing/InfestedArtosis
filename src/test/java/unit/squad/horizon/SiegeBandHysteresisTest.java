@@ -90,10 +90,41 @@ class SiegeBandHysteresisTest {
         assertEquals(RETREAT, sim.holdVerdict("a", RETREAT, 100, 0.5, THRESH, true));
         assertEquals(RETREAT, sim.holdVerdict("a", ENGAGE, 120, 2.0, THRESH, true));
         assertEquals(ENGAGE, sim.holdVerdict("b", ENGAGE, 120, 2.0, THRESH, true));
-        assertEquals(ENGAGE, sim.holdVerdict("a", ENGAGE, 100 + SiegeBandHysteresis.MIN_HOLD_FRAMES, 2.0, THRESH,
+        assertEquals(ENGAGE, sim.holdVerdict("a", ENGAGE, 100 + SiegeBandHysteresis.MIN_HOLD_FRAMES, 3.0, THRESH,
                 true));
         assertEquals(RETREAT, sim.holdVerdict("a", RETREAT, 200, 0.5, THRESH, true));
         assertEquals(RETREAT, sim.holdVerdict("a", ENGAGE, 201, 2.0, THRESH, true));
+    }
+
+    @Test
+    void theHoldOutlastsTheGroundRetreatLock() {
+        int lockEnds = HELD_SINCE + unit.squad.Squad.GROUND_RETREAT_LOCK_FRAMES;
+
+        assertTrue(SiegeBandHysteresis.MIN_HOLD_FRAMES > unit.squad.Squad.GROUND_RETREAT_LOCK_FRAMES);
+        assertEquals(RETREAT, SiegeBandHysteresis.apply(ENGAGE, RETREAT, HELD_SINCE, lockEnds, 5.0, THRESH, true));
+        assertEquals(RETREAT, SiegeBandHysteresis.apply(ENGAGE, RETREAT, HELD_SINCE, lockEnds
+                + SiegeBandHysteresis.POST_LOCK_HOLD_FRAMES - 1, 5.0, THRESH, true));
+        assertEquals(ENGAGE, SiegeBandHysteresis.apply(ENGAGE, RETREAT, HELD_SINCE, lockEnds
+                + SiegeBandHysteresis.POST_LOCK_HOLD_FRAMES, 5.0, THRESH, true));
+    }
+
+    @Test
+    void aRatioOfOnePointFourTimesTheThresholdIsHeldAfterTheWindow() {
+        assertEquals(RETREAT, SiegeBandHysteresis.apply(ENGAGE, RETREAT, HELD_SINCE, SETTLED, THRESH * 1.4, THRESH,
+                true));
+    }
+
+    @Test
+    void theBandClockCountsElapsedFramesPerBandState() {
+        HorizonCombatSimulator.BandClock clock = new HorizonCombatSimulator.BandClock();
+
+        clock.tick(100, HorizonCombatSimulator.SIEGE_BAND_NONE);
+        clock.tick(110, HorizonCombatSimulator.SIEGE_BAND_IN);
+        clock.tick(130, HorizonCombatSimulator.SIEGE_BAND_HELD);
+        clock.tick(135, HorizonCombatSimulator.SIEGE_BAND_NONE);
+
+        assertEquals(30, clock.inBandFrames);
+        assertEquals(20, clock.heldFrames);
     }
 
     @Test
