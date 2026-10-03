@@ -28,6 +28,9 @@ import java.util.Map;
  * never sighted reads the frame count. ENTRY_CHECK rows carry it for the chosen base, and ENTER, RETARGET and TICK
  * rows for the target base.
  *
+ * <p>prober_hp, prober_peak_hp and prober_id are retired and always -1; they keep their columns so the columns after
+ * them stay where they were.
+ *
  * <p>aa_known_cover is 1 when known anti-air structures cover the chosen or target base's core point and 0 when they
  * do not, on ENTRY_CHECK, ENTER and RETARGET rows for a base.
  *
@@ -45,8 +48,8 @@ public class HarassLogger implements HarassSink {
     static final String HEADER = "game_id,frame,squad_id,event,verdict,exit_reason,phase,base_x,base_y,strike_x,"
             + "strike_y,center_x,center_y,mutas,healthy_mutas,flock_hp,hp_loss_fraction,tolerance,air_defense,"
             + "avoided_zones,workers_killed,buildings_killed,other_killed,mutas_lost,killed_type,contain_distance,"
-            + "bases_under_attack,target_kind,flock_defense,aa_sighting_age,aa_known_cover,aa_seen_frame,"
-            + "aa_turn_frame,aa_hp_lost";
+            + "bases_under_attack,target_kind,flock_defense,aa_sighting_age,prober_hp,prober_peak_hp,prober_id,"
+            + "aa_known_cover,aa_seen_frame,aa_turn_frame,aa_hp_lost";
 
     private static final int FLUSH_INTERVAL_FRAMES = 480;
     private static final int NOT_EVALUATED = -1;
@@ -163,6 +166,9 @@ public class HarassLogger implements HarassSink {
         fields.add(Csv.name(row.getTargetKind()));
         fields.add(Csv.format(row.getFlockDefense()));
         fields.add(String.valueOf(row.getAaSightingAge()));
+        fields.add(String.valueOf(NOT_EVALUATED));
+        fields.add(String.valueOf(NOT_EVALUATED));
+        fields.add(String.valueOf(NOT_EVALUATED));
         fields.add(String.valueOf(row.getAaKnownCover()));
         fields.add(String.valueOf(row.getAaSeenFrame()));
         fields.add(String.valueOf(row.getAaTurnFrame()));

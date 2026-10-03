@@ -1,7 +1,9 @@
 package unit.squad;
 
 import bwapi.Position;
+import bwapi.UnitType;
 import info.map.HarassHeatMap;
+import lombok.Getter;
 import util.Vec2;
 
 import java.util.ArrayList;
@@ -132,6 +134,81 @@ public final class AirHarassScouting {
                     (baseCenter.getY() + resourceCenter.getY()) / 2);
         }
         return toResources.normalizeToLength(length - reach).toPosition(baseCenter);
+    }
+
+    /**
+     * What the flock reads from anti-air entering the target zone or its own cover on one frame.
+     */
+    @Getter
+    public static final class Reaction {
+        private final AirHarassTargeting.AirThreat trigger;
+        private final int seenFrame;
+        private final int turnFrame;
+        private final int hitPointsLost;
+        private final boolean atTarget;
+
+        Reaction(AirHarassTargeting.AirThreat trigger, int seenFrame, int turnFrame, int hitPointsLost,
+                 boolean atTarget) {
+            this.trigger = trigger;
+            this.seenFrame = seenFrame;
+            this.turnFrame = turnFrame;
+            this.hitPointsLost = hitPointsLost;
+            this.atTarget = atTarget;
+        }
+    }
+
+    /**
+     * The anti-air the flock reacts to: every threat within {@link #NEW_AA_ZONE} of the target base, or whose reach
+     * plus {@link #EXIT_MARGIN} covers the flock. Interceptors are left out, since a Carrier makes new ones all the
+     * time.
+     *
+     * @param threats every known anti-air threat
+     * @param baseCenter the target base's center, or null with none
+     * @param flockCenter the flock's center
+     * @return the threats at the target or the flock
+     */
+    public static List<AirHarassTargeting.AirThreat> inReach(Collection<AirHarassTargeting.AirThreat> threats,
+                                                             Position baseCenter, Position flockCenter) {
+        List<AirHarassTargeting.AirThreat> inReach = new ArrayList<>();
+        for (AirHarassTargeting.AirThreat threat : threats) {
+            boolean atBase = baseCenter != null && threat.getPosition().getDistance(baseCenter) <= NEW_AA_ZONE;
+            boolean atFlock = flockCenter != null && threat.margin(flockCenter, EXIT_MARGIN) <= 0;
+            if ((atBase || atFlock) && threat.getType() != UnitType.Protoss_Interceptor) {
+                inReach.add(threat);
+            }
+        }
+        return inReach;
+    }
+
+    /**
+     * One frame of the flock's reaction to anti-air. A threat is new to the harass the first frame it is within
+     * reach, see {@link #inReach}, however long it was known elsewhere; it ends the harass when the anti-air covering
+     * it exceeds the tolerance, see {@link #antiAirReaction}. Threats already in reach when the harass started or
+     * moved on are accepted, see {@link AirHarassState#acceptAntiAir}, and never new.
+     *
+     * @param state the harass state
+     * @param threats every known anti-air threat
+     * @param baseCenter the target base's center, or null with none
+     * @param flockCenter the flock's center
+     * @param tolerance anti-air strength the flock accepts
+     * @param now current frame
+     * @param flockHitPoints summed hit points of the Mutalisks now
+     * @return the reaction, or null to stay
+     */
+    public static Reaction react(AirHarassState state, Collection<AirHarassTargeting.AirThreat> threats,
+                                 Position baseCenter, Position flockCenter, double tolerance, int now,
+                                 int flockHitPoints) {
+        List<AirHarassTargeting.AirThreat> fresh = state.learnAntiAir(inReach(threats, baseCenter, flockCenter), now,
+                flockHitPoints);
+        AirHarassTargeting.AirThreat trigger = antiAirReaction(fresh, threats, baseCenter, flockCenter, tolerance);
+        if (trigger == null) {
+            return null;
+        }
+        AirHarassState.AntiAirSighting seen = state.earliestSighting(contributors(trigger, threats));
+        int seenFrame = seen == null ? now : seen.getFrame();
+        int hitPointsLost = seen == null ? 0 : Math.max(0, seen.getFlockHitPoints() - flockHitPoints);
+        boolean atTarget = baseCenter != null && trigger.getPosition().getDistance(baseCenter) <= NEW_AA_ZONE;
+        return new Reaction(trigger, seenFrame, now, hitPointsLost, atTarget);
     }
 
     /**

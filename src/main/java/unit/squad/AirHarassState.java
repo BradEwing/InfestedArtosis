@@ -53,6 +53,7 @@ public class AirHarassState {
     private ExposedTargets.Group exposedGroup;
     private Position strikePoint;
     private int lastTickFrame;
+    private boolean defendedAtTarget;
     private int lastProgressFrame;
     private int arrivedFrame = -1;
     private int workersKilled;
@@ -91,6 +92,7 @@ public class AirHarassState {
         this.phase = Phase.TRANSIT;
         this.arrivedFrame = -1;
         this.lastProgressFrame = frame;
+        this.defendedAtTarget = false;
         if (base != null) {
             visitedBases.add(base);
         }
@@ -148,8 +150,8 @@ public class AirHarassState {
     }
 
     /**
-     * Records every anti-air threat as known, with the frame and the flock's hit points when it was first seen, and
-     * returns the ones seen for the first time.
+     * Records every anti-air threat given as known, with the frame and the flock's hit points when it was first
+     * given, and returns the ones given for the first time.
      *
      * @param threats every known anti-air threat
      * @param frame current frame
@@ -161,7 +163,7 @@ public class AirHarassState {
         List<AirHarassTargeting.AirThreat> fresh = new ArrayList<>();
         for (AirHarassTargeting.AirThreat threat : threats) {
             if (!knownAntiAir.containsKey(threat.getId())) {
-                knownAntiAir.put(threat.getId(), new AntiAirSighting(frame, flockHitPoints));
+                knownAntiAir.put(threat.getId(), new AntiAirSighting(frame, flockHitPoints, false));
                 fresh.add(threat);
             }
         }
@@ -169,16 +171,30 @@ public class AirHarassState {
     }
 
     /**
-     * The earliest first sighting among anti-air threats.
+     * Records anti-air already at the target or at the flock when the harass starts or moves on as accepted: it is
+     * not new, and no reaction measures from it.
+     *
+     * @param threats the threats at the target or the flock
+     * @param frame current frame
+     * @param flockHitPoints summed hit points of the Mutalisks now
+     */
+    public void acceptAntiAir(Collection<AirHarassTargeting.AirThreat> threats, int frame, int flockHitPoints) {
+        for (AirHarassTargeting.AirThreat threat : threats) {
+            knownAntiAir.putIfAbsent(threat.getId(), new AntiAirSighting(frame, flockHitPoints, true));
+        }
+    }
+
+    /**
+     * The earliest first sighting among anti-air threats, leaving out the ones accepted by {@link #acceptAntiAir}.
      *
      * @param ids unit ids of the threats
-     * @return the sighting with the lowest frame, or null when none of the ids was ever seen
+     * @return the sighting with the lowest frame, or null when none of the ids was seen as new
      */
     public AntiAirSighting earliestSighting(Collection<Integer> ids) {
         AntiAirSighting earliest = null;
         for (int id : ids) {
             AntiAirSighting sighting = knownAntiAir.get(id);
-            if (sighting != null && (earliest == null || sighting.getFrame() < earliest.getFrame())) {
+            if (sighting != null && !sighting.isAccepted() && (earliest == null || sighting.getFrame() < earliest.getFrame())) {
                 earliest = sighting;
             }
         }
@@ -192,10 +208,12 @@ public class AirHarassState {
     public static final class AntiAirSighting {
         private final int frame;
         private final int flockHitPoints;
+        private final boolean accepted;
 
-        AntiAirSighting(int frame, int flockHitPoints) {
+        AntiAirSighting(int frame, int flockHitPoints, boolean accepted) {
             this.frame = frame;
             this.flockHitPoints = flockHitPoints;
+            this.accepted = accepted;
         }
     }
 

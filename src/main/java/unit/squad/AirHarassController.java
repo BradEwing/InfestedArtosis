@@ -211,12 +211,13 @@ public class AirHarassController {
     public void start(Squad squad, Entry entry, int now) {
         Flock flock = flock(squad);
         AirHarassState state = new AirHarassState(now, flock.hitPoints);
-        state.learnAntiAir(view(now).threats, now, flock.hitPoints);
         if (entry.option == null) {
             state.targetExposed(entry.exposed, now);
         } else {
             state.target(entry.option.getBase(), entry.option.getStrikePoint(), now);
         }
+        state.acceptAntiAir(AirHarassScouting.inReach(view(now).threats, state.targetCenter(), squad.getCenter()),
+                now, flock.hitPoints);
         state.setLastTickFrame(now - AirHarassEvaluator.HARASS_TICK);
         squad.setHarassState(state);
         for (ManagedUnit member : squad.getMembers()) {
@@ -299,46 +300,41 @@ public class AirHarassController {
     }
 
     /**
-     * Reads the anti-air first seen this frame and, when it is more than the flock can answer at the target or at
-     * the flock, see {@link AirHarassScouting#antiAirReaction}, records the AA_REACTION row: the frame the anti-air
-     * that made up that defense was first seen, this frame as the frame the flock turns, and the hit points the flock
-     * lost between. Runs every frame, not on the decision tick.
+     * Reads the anti-air that came into reach this frame and, when it is more than the flock can answer at the target
+     * or at the flock, see {@link AirHarassScouting#react}, records the AA_REACTION row: the frame the anti-air that
+     * made up that defense came into reach, this frame as the frame the flock turns, and the hit points the flock
+     * lost between. Runs every frame, not on the decision tick. A base is refused only when the trigger stood at it.
      *
      * @return true when the harass ends on newly seen anti-air
      */
     private boolean reactsToAntiAir(Squad squad, AirHarassState state, View view, Flock flock, double tolerance,
                                     int now) {
-        List<AirHarassTargeting.AirThreat> newThreats = state.learnAntiAir(view.threats, now, flock.hitPoints);
-        if (newThreats.isEmpty()) {
+        boolean targetLive = state.targetsExposed()
+                || gameState.getBaseData().getEnemyBases().contains(state.getTargetBase());
+        AirHarassScouting.Reaction reaction = AirHarassScouting.react(state, view.threats,
+                targetLive ? state.targetCenter() : null, squad.getCenter(), tolerance, now, flock.hitPoints);
+        if (reaction == null) {
             return false;
         }
-        AirHarassTargeting.AirThreat trigger = AirHarassScouting.antiAirReaction(newThreats, view.threats,
-                state.targetCenter(), squad.getCenter(), tolerance);
-        if (trigger == null) {
-            return false;
-        }
-        AirHarassState.AntiAirSighting seen = state.earliestSighting(
-                AirHarassScouting.contributors(trigger, view.threats));
-        int seenFrame = seen == null ? now : seen.getFrame();
-        int hitPointsLost = seen == null ? 0 : Math.max(0, seen.getFlockHitPoints() - flock.hitPoints);
+        state.setDefendedAtTarget(reaction.isAtTarget());
         HarassTelemetry.row(row(squad, state, HarassRow.Event.AA_REACTION, now)
                 .center(squad.getCenter())
                 .mutas(flock.mutas)
                 .healthyMutas(flock.healthy)
                 .flockHitPoints(flock.hitPoints)
                 .tolerance(tolerance)
-                .airDefense(AirHarassTargeting.defenseAt(view.threats, trigger.getPosition(),
+                .airDefense(AirHarassTargeting.defenseAt(view.threats, reaction.getTrigger().getPosition(),
                         AirHarassEvaluator.STRIKE_RADIUS))
-                .aaSeenFrame(seenFrame)
-                .aaTurnFrame(now)
-                .aaHitPointsLost(hitPointsLost)
+                .aaSeenFrame(reaction.getSeenFrame())
+                .aaTurnFrame(reaction.getTurnFrame())
+                .aaHitPointsLost(reaction.getHitPointsLost())
                 .build());
         return true;
     }
 
     /**
      * Ends a harass: records the EXIT row, records an exposed target in the {@link ExposedTargets.Memory}, refuses
-     * a base the flock left on newly seen anti-air for {@link AirHarassScouting#DEFENDED_REFUSAL_FRAMES}, and
+     * a base the flock left on anti-air that came into its zone for {@link AirHarassScouting#DEFENDED_REFUSAL_FRAMES}, and
      * clears every Mutalisk's harass order. The squad's status is left to the caller.
      *
      * @param squad harassing squad
@@ -350,7 +346,8 @@ public class AirHarassController {
         if (state != null && state.targetsExposed()) {
             exposedMemory.record(state.getExposedAnchor(), now);
         }
-        if (state != null && state.getTargetBase() != null && AirHarassScouting.refusesBase(reason)) {
+        if (state != null && state.getTargetBase() != null && state.isDefendedAtTarget()
+                && AirHarassScouting.refusesBase(reason)) {
             refusedUntil.put(state.getTargetBase(), now + AirHarassScouting.DEFENDED_REFUSAL_FRAMES);
         }
         Flock flock = flock(squad);
@@ -645,6 +642,8 @@ public class AirHarassController {
             }
             state.targetExposed(exposed, now);
         }
+        state.acceptAntiAir(AirHarassScouting.inReach(view.threats, state.targetCenter(), squad.getCenter()), now,
+                flock(squad).hitPoints);
         HarassTelemetry.row(row(squad, state, HarassRow.Event.RETARGET, now)
                 .center(squad.getCenter())
                 .aaSightingAge(sightingAge)
