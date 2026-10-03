@@ -1,19 +1,23 @@
 package unit.squad;
 
 import bwapi.Position;
+import bwapi.Race;
 import bwapi.UnitType;
 import bwem.Base;
 import info.GameState;
 import info.tracking.BunkerGarrison;
 import info.tracking.ObservedUnit;
 import info.tracking.ObservedUnitTracker;
+import info.tracking.terran.TerranMech;
 import unit.managed.ManagedUnit;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 
@@ -77,6 +81,7 @@ public class ContainmentEvaluator {
         UnitType.Terran_Siege_Tank_Siege_Mode,
         UnitType.Terran_Siege_Tank_Tank_Mode,
         UnitType.Terran_Goliath,
+        UnitType.Terran_Ghost,
         UnitType.Protoss_Zealot,
         UnitType.Protoss_Dragoon,
         UnitType.Protoss_Dark_Templar,
@@ -129,7 +134,58 @@ public class ContainmentEvaluator {
         if (gameState.getBaseData().getEnemyBases().isEmpty()) return false;
         if (!meetsMinimumSize(squad)) return false;
         if (estimateEnemyArmySupply() == 0) return false;
-        return true;
+        return compositionAllows(squad);
+    }
+
+    /**
+     * Whether the squad's makeup lets it contain the enemy, see {@link ContainmentGate#compositionAllows}.
+     *
+     * @param squad the squad offered an arc
+     * @return true when the squad may contain
+     */
+    public boolean compositionAllows(Squad squad) {
+        return ContainmentGate.compositionAllows(versusTerran(), mechDetected(), squad.getComposition(),
+                enemyGroundArmyCounts());
+    }
+
+    /**
+     * Whether a squad the combat sim read as RETREAT may hold a contain arc instead, see
+     * {@link ContainmentGate#safeToHold}.
+     *
+     * @param squad the squad offered an arc
+     * @return true when holding the arc is safe
+     */
+    public boolean safeToHold(Squad squad) {
+        return ContainmentGate.safeToHold(versusTerran(), mechDetected(), squad.getComposition(),
+                enemyGroundArmyCounts());
+    }
+
+    /**
+     * @return the enemy's known ground army supply, in BWAPI's doubled supply units
+     */
+    public int enemyArmySupply() {
+        return estimateEnemyArmySupply();
+    }
+
+    /**
+     * @return true when the opponent is Terran
+     */
+    public boolean versusTerran() {
+        return gameState.getOpponentRace() == Race.Terran;
+    }
+
+    private boolean mechDetected() {
+        return gameState.getStrategyTracker() != null
+                && gameState.getStrategyTracker().isDetectedStrategy(TerranMech.NAME);
+    }
+
+    private Map<UnitType, Integer> enemyGroundArmyCounts() {
+        ObservedUnitTracker tracker = gameState.getObservedUnitTracker();
+        Map<UnitType, Integer> counts = new EnumMap<>(UnitType.class);
+        for (UnitType type : ENEMY_GROUND_ARMY_TYPES) {
+            counts.put(type, tracker.getCountOfLivingUnits(type));
+        }
+        return counts;
     }
 
     /**

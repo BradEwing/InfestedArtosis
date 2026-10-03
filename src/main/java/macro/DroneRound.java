@@ -19,11 +19,12 @@ import unit.squad.ContainHeldTimer;
  * that priority only when too few are queued to reach it, and a queued advanced unit no longer
  * claims larva against the plans behind it. Only one round is open at a time.
  *
- * <p>An {@link OpenReason#ARMY_MILESTONE} round opens once the build's army reaches a milestone of
- * living units, and only while the worker gates still want Drones. It closes once
+ * <p>An {@link OpenReason#ARMY_MILESTONE} round opens once the build's army produced reaches a milestone,
+ * and only while the worker gates still want Drones. Army produced counts every unit that joined the
+ * living army, so losses do not lower it. It closes once
  * {@link #DRONES_PER_ROUND} more Drones are hatched or in an egg, once the build's Drone cap is met,
  * once the worker gates stop wanting Drones, or after {@link #MAX_ROUND_FRAMES}. The next milestone is then
- * {@link #ARMY_UNITS_PER_ROUND} living army units past the count the round closed on. A threat
+ * {@link #ARMY_UNITS_PER_ROUND} army units past the army produced when the round closed. A threat
  * closes an open round without moving the milestone, so the round reopens once the threat clears,
  * and no round opens while one is present.
  *
@@ -39,6 +40,18 @@ import unit.squad.ContainHeldTimer;
  * broken, when the workers reach either cap, once
  * its Drones are hatched or in an egg, or after {@link #MAX_ROUND_FRAMES}. It never reads or moves
  * the army milestone.
+ *
+ * <p>Army produced counts a Hydralisk morphing into a Lurker as one more unit, because the Hydralisk
+ * leaves the living count when the morph starts and the Lurker joins it when the morph completes.
+ *
+ * <p>A {@link OpenReason#CALM_ECONOMY} round opens once no threat has stood for
+ * {@link #CALM_ECONOMY_FRAMES} while the build's Drone cap is unmet, the worker gates want Drones, and the
+ * workers are at least {@link #CALM_ECONOMY_WORKER_DEFICIT} under the soft cap and under the hard cap. It
+ * needs neither an army milestone nor a contain, adds up to {@link #DRONES_PER_ROUND} Drones within the
+ * build's cap and the room under both worker caps, and no sooner than {@link #CALM_ECONOMY_COOLDOWN_FRAMES}
+ * after the last such round closed. It never opens while the build holds it back
+ * ({@link ContainHeld#isCalmEconomyHeld()}). It closes like an army milestone round, on SIZE, BUILD_CAP, HARD_CAP, THREAT or
+ * TIMEOUT, and never reads or moves the army milestone.
  *
  * <p>Every open and close is reported through {@link PlanEvents} with its reason.
  */
@@ -69,16 +82,26 @@ public class DroneRound {
      */
     public static final int MAX_CONTAIN_HELD_ROUNDS_PER_PERIOD = 2;
 
+    /** Frames without a threat before a calm-economy round may open: one minute. Tuning constant. */
+    public static final int CALM_ECONOMY_FRAMES = 1440;
+
+    /** Frames after a calm-economy round closes before another may open: 30 seconds. */
+    public static final int CALM_ECONOMY_COOLDOWN_FRAMES = 720;
+
+    /** Workers under the soft cap that a calm-economy round needs. Tuning constant. */
+    public static final int CALM_ECONOMY_WORKER_DEFICIT = 6;
+
     private static final int NEVER = Integer.MIN_VALUE / 2;
 
     /** Why a round opened. */
     public enum OpenReason {
         ARMY_MILESTONE,
-        CONTAIN_HELD
+        CONTAIN_HELD,
+        CALM_ECONOMY
     }
 
     /**
-     * Why a round closed. BUILD_CAP is the build's own Drone cap, which only an army milestone round reads.
+     * Why a round closed. BUILD_CAP is the build's own Drone cap, which army milestone and calm-economy rounds read.
      * INELIGIBLE is a contain-held round whose matchup or build no longer allows it, such as a switch to a
      * build that runs none or too few Zerglings left alive for SpeedlingAllIn.
      */
@@ -127,6 +150,9 @@ public class DroneRound {
 
         /** Workers past which the worker gates want no Drone. */
         private final int hardCap;
+
+        /** Whether the build holds back a calm-economy round, such as while its first wave is still to come. */
+        private final boolean calmEconomyHeld;
 
         boolean isHeld() {
             return chainStartFrame != ContainHeldTimer.NO_CHAIN && heldFrames >= ContainHeldTimer.HELD_FRAMES;
@@ -180,6 +206,17 @@ public class DroneRound {
     @Getter
     private int armyMilestone = FIRST_ROUND_ARMY_UNITS;
 
+    /** Army units seen to join the living army, which a loss does not take back. */
+    @Getter
+    private int armyProduced = 0;
+
+    private int lastLivingArmy = 0;
+
+    private int lastThreatFrame = 0;
+
+    @Getter
+    private int lastCalmEconomyCloseFrame = NEVER;
+
     @Getter
     private int droneTarget = 0;
 
@@ -231,26 +268,53 @@ public class DroneRound {
     public void update(int frame, int livingArmy, int drones, int droneCap, boolean workersWanted,
                        boolean threatened, ContainHeld containHeld) {
         this.drones = drones;
+        trackArmy(livingArmy);
+        if (threatened) {
+            lastThreatFrame = frame;
+        }
         if (active) {
             CloseReason close = reason == OpenReason.CONTAIN_HELD
                     ? containHeldClose(frame, drones, threatened, containHeld)
                     : armyMilestoneClose(frame, drones, droneCap, workersWanted, threatened);
             if (close != null) {
-                close(frame, close, livingArmy, containHeld);
+                close(frame, close, containHeld);
             }
             return;
         }
         if (threatened) {
             return;
         }
-        if (workersWanted && livingArmy >= armyMilestone && drones < droneCap) {
+        if (workersWanted && armyProduced >= armyMilestone && drones < droneCap) {
             open(frame, OpenReason.ARMY_MILESTONE, Math.min(drones + DRONES_PER_ROUND, droneCap), containHeld);
             return;
         }
         if (opensContainHeldRound(frame, containHeld)) {
             countContainHeldRound(containHeld.getPeriodStartFrame());
             open(frame, OpenReason.CONTAIN_HELD, drones + containHeldRoundSize(containHeld), containHeld);
+            return;
         }
+        if (opensCalmEconomyRound(frame, drones, droneCap, workersWanted, containHeld)) {
+            int size = Math.min(Math.min(DRONES_PER_ROUND, droneCap - drones), containHeld.capRoom());
+            open(frame, OpenReason.CALM_ECONOMY, drones + size, containHeld);
+        }
+    }
+
+    private void trackArmy(int livingArmy) {
+        if (livingArmy > lastLivingArmy) {
+            armyProduced += livingArmy - lastLivingArmy;
+        }
+        lastLivingArmy = livingArmy;
+    }
+
+    private boolean opensCalmEconomyRound(int frame, int drones, int droneCap, boolean workersWanted,
+                                          ContainHeld containHeld) {
+        return workersWanted
+                && !containHeld.isCalmEconomyHeld()
+                && drones < droneCap
+                && frame - lastThreatFrame >= CALM_ECONOMY_FRAMES
+                && frame - lastCalmEconomyCloseFrame >= CALM_ECONOMY_COOLDOWN_FRAMES
+                && containHeld.getSoftCap() - containHeld.getWorkers() >= CALM_ECONOMY_WORKER_DEFICIT
+                && containHeld.underCaps();
     }
 
     /**
@@ -345,14 +409,16 @@ public class DroneRound {
         PlanEvents.droneRoundOpened(new Report(openReason, openReason.name(), drones, roundSize, containHeld));
     }
 
-    private void close(int frame, CloseReason closeReason, int livingArmy, ContainHeld containHeld) {
+    private void close(int frame, CloseReason closeReason, ContainHeld containHeld) {
         OpenReason kind = reason;
         active = false;
         reason = null;
         if (kind == OpenReason.CONTAIN_HELD) {
             lastContainHeldCloseFrame = frame;
+        } else if (kind == OpenReason.CALM_ECONOMY) {
+            lastCalmEconomyCloseFrame = frame;
         } else if (closeReason != CloseReason.THREAT) {
-            armyMilestone = livingArmy + ARMY_UNITS_PER_ROUND;
+            armyMilestone = armyProduced + ARMY_UNITS_PER_ROUND;
         }
         PlanEvents.droneRoundClosed(new Report(kind, closeReason.name(), drones, roundSize, containHeld));
     }
