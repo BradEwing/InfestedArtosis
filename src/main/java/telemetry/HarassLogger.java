@@ -25,18 +25,16 @@ import java.util.Map;
  * cumulative over the episode on every row that carries them.
  *
  * <p>aa_sighting_age is the frames since the target base's core, and with it its anti-air, was last in sight; a base
- * never sighted reads the frame count. ENTRY_CHECK rows carry it for the chosen base, and ENTER, RETARGET, TICK and
- * PROBE_CLEAR rows for the target base. An ENTER or RETARGET row whose phase is PROBE sends one Mutalisk to sight the
- * base first; PROBE_CLEAR marks the probe clearing the base, and the flock starting its strike.
+ * never sighted reads the frame count. ENTRY_CHECK rows carry it for the chosen base, and ENTER, RETARGET and TICK
+ * rows for the target base.
  *
- * <p>prober_hp and prober_peak_hp are the probing Mutalisk's hit points and the most it has had since the probe
- * started, on every row written while a harass probes and on PROBE_CLEAR rows; 0 hit points means the prober is
- * gone. A probe reads its base as defended once the two differ by the probe's damage limit. prober_id is the probing
- * Mutalisk's unit id on the same rows.
+ * <p>aa_known_cover is 1 when known anti-air structures cover the chosen or target base's core point and 0 when they
+ * do not, on ENTRY_CHECK, ENTER and RETARGET rows for a base.
  *
- * <p>aa_known_cover is 1 when known anti-air structures cover the chosen or target base's probe point and 0 when
- * they do not, on ENTRY_CHECK, ENTER and RETARGET rows for a base. A covered base counts as sighted: it is entered on
- * the entry verdict, not probed, whatever its aa_sighting_age.
+ * <p>An AA_REACTION row is written once for every harass the flock ends on newly seen anti-air it cannot answer, just
+ * before the EXIT row whose reason is NEW_AA. aa_seen_frame is the frame the first of the anti-air making up that
+ * defense came into sight, aa_turn_frame the frame the flock turned, and aa_hp_lost the flock's hit points lost
+ * between the two, 0 when they are the same frame.
  *
  * <p>Constructed only when combat telemetry is enabled.
  */
@@ -47,8 +45,8 @@ public class HarassLogger implements HarassSink {
     static final String HEADER = "game_id,frame,squad_id,event,verdict,exit_reason,phase,base_x,base_y,strike_x,"
             + "strike_y,center_x,center_y,mutas,healthy_mutas,flock_hp,hp_loss_fraction,tolerance,air_defense,"
             + "avoided_zones,workers_killed,buildings_killed,other_killed,mutas_lost,killed_type,contain_distance,"
-            + "bases_under_attack,target_kind,flock_defense,aa_sighting_age,prober_hp,prober_peak_hp,prober_id,"
-            + "aa_known_cover";
+            + "bases_under_attack,target_kind,flock_defense,aa_sighting_age,aa_known_cover,aa_seen_frame,"
+            + "aa_turn_frame,aa_hp_lost";
 
     private static final int FLUSH_INTERVAL_FRAMES = 480;
     private static final int NOT_EVALUATED = -1;
@@ -165,10 +163,10 @@ public class HarassLogger implements HarassSink {
         fields.add(Csv.name(row.getTargetKind()));
         fields.add(Csv.format(row.getFlockDefense()));
         fields.add(String.valueOf(row.getAaSightingAge()));
-        fields.add(String.valueOf(row.getProberHitPoints()));
-        fields.add(String.valueOf(row.getProberPeakHitPoints()));
-        fields.add(String.valueOf(row.getProberId()));
         fields.add(String.valueOf(row.getAaKnownCover()));
+        fields.add(String.valueOf(row.getAaSeenFrame()));
+        fields.add(String.valueOf(row.getAaTurnFrame()));
+        fields.add(String.valueOf(row.getAaHitPointsLost()));
         return String.join(",", fields);
     }
 

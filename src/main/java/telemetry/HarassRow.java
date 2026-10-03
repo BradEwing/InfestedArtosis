@@ -9,7 +9,7 @@ import unit.squad.AirHarassState;
 
 /**
  * One row of telemetry_harass.csv: an air squad's harass entry check, the start, a decision tick, a retarget, a
- * credited kill, a Mutalisk lost, the end of a harass, or a probe that cleared its base for the strike.
+ * credited kill, a Mutalisk lost, the flock reacting to anti-air, or the end of a harass.
  *
  * <p>Counts and measures left at -1 were not evaluated for the row's event.
  */
@@ -28,7 +28,7 @@ public final class HarassRow {
         KILL,
         MUTA_LOST,
         EXIT,
-        PROBE_CLEAR
+        AA_REACTION
     }
 
     private final int frame;
@@ -73,13 +73,13 @@ public final class HarassRow {
     @Builder.Default
     private final int aaSightingAge = -1;
     @Builder.Default
-    private final int proberHitPoints = -1;
-    @Builder.Default
-    private final int proberPeakHitPoints = -1;
-    @Builder.Default
-    private final int proberId = -1;
-    @Builder.Default
     private final int aaKnownCover = -1;
+    @Builder.Default
+    private final int aaSeenFrame = -1;
+    @Builder.Default
+    private final int aaTurnFrame = -1;
+    @Builder.Default
+    private final int aaHitPointsLost = -1;
 
     /**
      * What a harass targets: a known enemy base, or an exposed group of enemies away from a base's heat.
