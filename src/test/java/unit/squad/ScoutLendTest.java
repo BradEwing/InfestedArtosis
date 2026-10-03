@@ -18,12 +18,20 @@ class ScoutLendTest {
     }
 
     @Test
-    void squadsThatAreFightingContainingRetreatingOrOnARunbyLendNothing() {
+    void squadsThatAreContainingRetreatingOnARunbyOrHarassingLendNothing() {
         for (SquadStatus status : SquadStatus.values()) {
-            if (status != SquadStatus.RALLY) {
+            if (status != SquadStatus.RALLY && status != SquadStatus.FIGHT) {
                 assertFalse(SquadManager.mayLendScout(status, true, false, 40), status.name());
             }
         }
+    }
+
+    @Test
+    void aFightingGroundSquadLendsOnlyAboveItsLargerFloor() {
+        assertTrue(SquadManager.mayLendScout(SquadStatus.FIGHT, true, false,
+                SquadManager.FIGHT_SCOUT_LEND_FLOOR + 1));
+        assertFalse(SquadManager.mayLendScout(SquadStatus.FIGHT, true, false,
+                SquadManager.FIGHT_SCOUT_LEND_FLOOR));
     }
 
     @Test

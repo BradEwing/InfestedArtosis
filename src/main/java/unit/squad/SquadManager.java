@@ -5493,13 +5493,19 @@ public class SquadManager {
     }
 
     /**
-     * Zerglings a ground squad keeps when it lends scouts, so a squad never scouts itself away.
+     * Zerglings a rallying ground squad keeps when it lends scouts, so a squad never scouts itself away.
      */
     static final int SCOUT_LEND_FLOOR = 4;
 
     /**
-     * Whether a ground squad can lend a unit to scout: it is rallying, is not on its way to join a containment,
-     * and keeps {@link #SCOUT_LEND_FLOOR} units after the loan.
+     * Zerglings a fighting ground squad keeps when it lends scouts.
+     */
+    static final int FIGHT_SCOUT_LEND_FLOOR = 8;
+
+    /**
+     * Whether a ground squad can lend a unit to scout: it is rallying or fighting rather than containing, on a
+     * runby or harassing, is not on its way to join a containment, and keeps {@link #SCOUT_LEND_FLOOR} units
+     * after the loan, or {@link #FIGHT_SCOUT_LEND_FLOOR} while fighting.
      *
      * @param status the squad's status
      * @param ground whether it is a ground squad
@@ -5508,7 +5514,13 @@ public class SquadManager {
      * @return true when the squad can lend a unit
      */
     static boolean mayLendScout(SquadStatus status, boolean ground, boolean joiningContain, int size) {
-        return status == SquadStatus.RALLY && ground && !joiningContain && size > SCOUT_LEND_FLOOR;
+        if (!ground || joiningContain) {
+            return false;
+        }
+        if (status == SquadStatus.RALLY) {
+            return size > SCOUT_LEND_FLOOR;
+        }
+        return status == SquadStatus.FIGHT && size > FIGHT_SCOUT_LEND_FLOOR;
     }
 
     /**

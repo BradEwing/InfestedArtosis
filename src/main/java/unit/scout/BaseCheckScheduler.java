@@ -49,6 +49,16 @@ public final class BaseCheckScheduler {
     /** Zerglings sent to a base otherwise. */
     public static final int LINGS_WITHOUT_MINES = 1;
 
+    /** Frames after an HP recall within which the scout's death makes the check LOST rather than recalled. */
+    public static final int RECALL_DEATH_WINDOW_FRAMES = 120;
+
+    /** What became of a recalled scout: still undecided, died, or came home alive. */
+    public enum RecallFate {
+        PENDING,
+        DIED,
+        SURVIVED
+    }
+
     /** Why a check ended; LOST is a scout that died, ABORTED one taken off the check some other way. */
     public enum Release {
         NONE,
@@ -193,6 +203,22 @@ public final class BaseCheckScheduler {
             return Release.TIMEOUT;
         }
         return Release.NONE;
+    }
+
+    /**
+     * Settles an HP recall: a scout that dies within {@link #RECALL_DEATH_WINDOW_FRAMES} of the recall was lost
+     * on the check, one still alive after the window was recalled.
+     *
+     * @param alive whether the scout still exists
+     * @param recallFrame the frame the scout was recalled
+     * @param now the current frame
+     * @return the fate, {@link RecallFate#PENDING} while the window is open and the scout lives
+     */
+    public static RecallFate recallFate(boolean alive, int recallFrame, int now) {
+        if (!alive) {
+            return RecallFate.DIED;
+        }
+        return now - recallFrame >= RECALL_DEATH_WINDOW_FRAMES ? RecallFate.SURVIVED : RecallFate.PENDING;
     }
 
     /**

@@ -2,7 +2,6 @@ package telemetry;
 
 import bwapi.TilePosition;
 import bwapi.UnitType;
-import unit.scout.BaseCheckScheduler;
 
 /**
  * Static dispatch point for finished base checks. With no sink registered, every method is a no-op.
@@ -23,12 +22,11 @@ public final class BaseChecks {
     }
 
     public static void checked(int unitId, UnitType unitType, TilePosition base, int ageAtDispatch,
-                               int dispatchFrame, int endFrame, BaseCheckScheduler.Release outcome,
-                               boolean occupied) {
+                               int dispatchFrame, BaseCheckEnd end) {
         BaseCheckSink current = sink;
         if (current == null) {
             return;
         }
-        current.onBaseChecked(unitId, unitType, base, ageAtDispatch, dispatchFrame, endFrame, outcome, occupied);
+        current.onBaseChecked(unitId, unitType, base, ageAtDispatch, dispatchFrame, end);
     }
 }

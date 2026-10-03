@@ -16,6 +16,7 @@ import info.map.GroundPath;
 import info.map.MapTile;
 import info.tracking.ObservedUnit;
 import info.map.ScoutPath;
+import telemetry.BaseCheckEnd;
 import telemetry.BaseChecks;
 import telemetry.PerchAssignments;
 import unit.managed.ManagedUnit;
@@ -47,6 +48,7 @@ public class ScoutManager {
 
     private final Map<ManagedUnit, BaseCheck> baseChecks = new HashMap<>();
     private final List<ManagedUnit> releasedChecks = new ArrayList<>();
+    private final Map<ManagedUnit, RecalledCheck> recalledChecks = new HashMap<>();
     private final Map<Base, Integer> retryAfterFrames = new HashMap<>();
     private final Map<Base, Integer> consecutiveFailures = new HashMap<>();
 
@@ -64,6 +66,18 @@ public class ScoutManager {
         }
     }
 
+    private static final class RecalledCheck {
+        private final BaseCheck check;
+        private final int recallFrame;
+        private final boolean occupied;
+
+        private RecalledCheck(BaseCheck check, int recallFrame, boolean occupied) {
+            this.check = check;
+            this.recallFrame = recallFrame;
+            this.occupied = occupied;
+        }
+    }
+
     public ScoutManager(Game game, GameState gameState, InformationManager informationManager) {
         this.game = game;
         this.gameState = gameState;
@@ -72,6 +86,7 @@ public class ScoutManager {
 
     public void onFrame() {
         updateBaseChecks();
+        settleRecalledChecks();
 
         for (ManagedUnit managedUnit: scouts) {
             if (baseChecks.containsKey(managedUnit) || releasedChecks.contains(managedUnit)) {
@@ -228,6 +243,7 @@ public class ScoutManager {
             ManagedUnit scout = entry.getKey();
             BaseCheck check = entry.getValue();
             Unit unit = scout.getUnit();
+            scout.setRole(UnitRole.SCOUT);
             boolean seen = scoutData.getBaseLastSeenFrame(check.base.getLocation()) >= check.dispatchFrame;
             BaseCheckScheduler.Release reason = BaseCheckScheduler.releaseReason(seen, unit.getHitPoints(),
                     unit.getType().maxHitPoints(), check.dispatchFrame, now);
@@ -260,9 +276,39 @@ public class ScoutManager {
         for (Unit enemy : gameState.getVisibleEnemyUnits()) {
             enemyPositions.add(enemy.getPosition());
         }
+        boolean occupied = BaseCheckScheduler.isOccupied(enemyPositions, check.base.getCenter());
+        if (outcome == BaseCheckScheduler.Release.HP_RECALL) {
+            recalledChecks.put(scout, new RecalledCheck(check, now, occupied));
+            return;
+        }
+        writeCheck(scout, check, now, outcome, occupied, outcome == BaseCheckScheduler.Release.LOST ? now : -1);
+    }
+
+    private void settleRecalledChecks() {
+        int now = game.getFrameCount();
+        for (Map.Entry<ManagedUnit, RecalledCheck> entry : new ArrayList<>(recalledChecks.entrySet())) {
+            ManagedUnit scout = entry.getKey();
+            RecalledCheck recalled = entry.getValue();
+            BaseCheckScheduler.RecallFate fate = BaseCheckScheduler.recallFate(scout.getUnit().exists(),
+                    recalled.recallFrame, now);
+            if (fate == BaseCheckScheduler.RecallFate.PENDING) {
+                continue;
+            }
+            recalledChecks.remove(scout);
+            if (fate == BaseCheckScheduler.RecallFate.DIED) {
+                writeCheck(scout, recalled.check, recalled.recallFrame, BaseCheckScheduler.Release.LOST,
+                        recalled.occupied, now);
+            } else {
+                writeCheck(scout, recalled.check, recalled.recallFrame, BaseCheckScheduler.Release.HP_RECALL,
+                        recalled.occupied, -1);
+            }
+        }
+    }
+
+    private void writeCheck(ManagedUnit scout, BaseCheck check, int endFrame, BaseCheckScheduler.Release outcome,
+                            boolean occupied, int diedFrame) {
         BaseChecks.checked(scout.getUnitID(), scout.getUnitType(), check.base.getLocation(), check.ageAtDispatch,
-                check.dispatchFrame, game.getFrameCount(), outcome,
-                BaseCheckScheduler.isOccupied(enemyPositions, check.base.getCenter()));
+                check.dispatchFrame, new BaseCheckEnd(endFrame, outcome, occupied, diedFrame));
     }
 
     private boolean hasPerchedOverlord() {
