@@ -123,6 +123,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
                         if (heldBeyondRadius(retreatMemory, bunkerPosition, squadCenter,
                                 edgeOfFireRadius(bunkerReach))) {
                             snapshot.setThreatBeyondRadius(true);
+                            snapshot.setBunkerMemoryHeld(true);
                         } else {
                             rememberedInRadius.add(bunkerPosition);
                         }
@@ -207,6 +208,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
                 enemySample, snapshot, airSquad);
         if (anyUnpriced(rememberedInRadius, snapshot.getPricedBunkers())) {
             snapshot.setThreatBeyondRadius(true);
+            snapshot.setBunkerMemoryHeld(true);
         }
 
         creditMedicSupport(snapshot, enemySample, airSquad);
@@ -1322,6 +1324,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
         private CombatResult result;
         private boolean enemyMeasured;
         private boolean threatBeyondRadius;
+        private boolean bunkerMemoryHeld;
         private int enemyUnscoredSupply;
         private double swarmCover;
         private double enemyAirShare = UnitStrength.UNMEASURED_AIR_SHARE;

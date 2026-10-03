@@ -8,6 +8,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.EnumMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 
@@ -25,6 +26,7 @@ public final class BunkerRetreatMemory {
 
     private final Set<Position> bunkers = new HashSet<>();
     private final Map<UnitType, Integer> recorded = new EnumMap<>(UnitType.class);
+    private Object lineage;
 
     /**
      * The unit counts of a squad by type, Overlords left out as the simulator leaves them out of our strength.
@@ -80,8 +82,9 @@ public final class BunkerRetreatMemory {
         boolean sameBunkers = !Collections.disjoint(bunkers, pricedBunkers);
         bunkers.clear();
         bunkers.addAll(pricedBunkers);
-        if (!sameBunkers) {
+        if (!sameBunkers || lineage == null) {
             recorded.clear();
+            lineage = new Object();
         }
         for (Map.Entry<UnitType, Integer> entry : composition.entrySet()) {
             recorded.merge(entry.getKey(), entry.getValue(), Math::max);
@@ -97,15 +100,17 @@ public final class BunkerRetreatMemory {
         if (grew(recorded, composition)) {
             bunkers.clear();
             recorded.clear();
+            lineage = null;
         }
     }
 
     /**
      * Folds the memories of the squads of a merge, or of the squad a split carves a sibling off, into this one: the
-     * remembered Bunkers are the union of the sources' and the recorded composition is the sum of theirs. A source
-     * that remembers no Bunker adds the composition it brings, so reinforcements that join through a merge do not
-     * release the hold. A source's memory is first released if the source grew since it retreated. Nothing is
-     * folded when no source remembers a Bunker.
+     * remembered Bunkers are the union of the sources' and the recorded composition is the sum of theirs. Sources
+     * that carry the same retreat, such as the halves of a squad that split, count once, at the larger of their
+     * records of each type. A source that remembers no Bunker adds the composition it brings, so reinforcements that
+     * join through a merge do not release the hold. A source's memory is first released if the source grew since it
+     * retreated. Nothing is folded when no source remembers a Bunker.
      *
      * @param sources each source's memory with the source's composition now, see {@link #composition}
      */
@@ -116,14 +121,23 @@ public final class BunkerRetreatMemory {
             anyHolds |= !source.memory.bunkers.isEmpty();
         }
         if (!anyHolds) return;
+        Map<Object, Map<UnitType, Integer>> byLineage = new LinkedHashMap<>();
         for (Source source : sources) {
             if (source.memory.bunkers.isEmpty()) {
-                addCounts(source.composition);
+                byLineage.put(new Object(), source.composition);
                 continue;
             }
             bunkers.addAll(source.memory.bunkers);
-            addCounts(source.memory.recorded);
+            Map<UnitType, Integer> counts = byLineage.computeIfAbsent(source.memory.lineage,
+                    key -> new EnumMap<>(UnitType.class));
+            for (Map.Entry<UnitType, Integer> entry : source.memory.recorded.entrySet()) {
+                counts.merge(entry.getKey(), entry.getValue(), Math::max);
+            }
         }
+        for (Map.Entry<Object, Map<UnitType, Integer>> entry : byLineage.entrySet()) {
+            addCounts(entry.getValue());
+        }
+        lineage = byLineage.size() == 1 ? byLineage.keySet().iterator().next() : new Object();
     }
 
     private void addCounts(Map<UnitType, Integer> counts) {
@@ -170,6 +184,7 @@ public final class BunkerRetreatMemory {
         bunkers.retainAll(livingBunkers);
         if (bunkers.isEmpty()) {
             recorded.clear();
+            lineage = null;
         }
     }
 }

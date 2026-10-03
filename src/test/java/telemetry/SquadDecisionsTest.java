@@ -1049,4 +1049,11 @@ class SquadDecisionsTest {
         assertEquals(String.valueOf(expiry), fields.get(columnIndex("retreat_lock_until_frame") - IDENTITY_CELLS));
     }
 
+    @Test
+    void theBlindAdvanceHoldsAreWrittenOncePerRunNotAsRowsOfTheirOwnEachFrame() {
+        assertTrue(SquadDecisionLogger.isBlindHold(DecisionPath.BLIND_ADVANCE_HOLD));
+        assertTrue(SquadDecisionLogger.isBlindHold(DecisionPath.BUNKER_MEMORY_HOLD));
+        assertFalse(SquadDecisionLogger.isBlindHold(DecisionPath.HARASS_HOLD));
+        assertFalse(SquadDecisionLogger.writesOwnRow(DecisionPath.BUNKER_MEMORY_HOLD));
+    }
 }

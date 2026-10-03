@@ -255,4 +255,45 @@ class BunkerRetreatMemoryTest {
         assertFalse(HorizonCombatSimulator.anyUnpriced(Collections.<Position>emptyList(),
                 Collections.<Position>emptyList()));
     }
+
+    @Test
+    void theHalvesOfASplitThatMergeAgainCountTheRetreatOnce() {
+        BunkerRetreatMemory parent = remembering(BUNKER, squad(12, 0));
+        BunkerRetreatMemory child = merged(new BunkerRetreatMemory.Source(parent, squad(12, 0)));
+
+        BunkerRetreatMemory rejoined = merged(new BunkerRetreatMemory.Source(parent, squad(8, 0)),
+                new BunkerRetreatMemory.Source(child, squad(4, 0)));
+
+        rejoined.releaseIfGrown(squad(12, 0));
+        assertTrue(rejoined.holds(BUNKER));
+        rejoined.releaseIfGrown(squad(13, 0));
+        assertFalse(rejoined.holds(BUNKER));
+    }
+
+    @Test
+    void halvesThatSplitAndMergeTwiceStillReleaseAtOneUnitMore() {
+        BunkerRetreatMemory first = remembering(BUNKER, squad(12, 0));
+        BunkerRetreatMemory second = merged(new BunkerRetreatMemory.Source(first, squad(12, 0)));
+        BunkerRetreatMemory rejoined = merged(new BunkerRetreatMemory.Source(first, squad(8, 0)),
+                new BunkerRetreatMemory.Source(second, squad(4, 0)));
+        BunkerRetreatMemory third = merged(new BunkerRetreatMemory.Source(rejoined, squad(12, 0)));
+        BunkerRetreatMemory again = merged(new BunkerRetreatMemory.Source(rejoined, squad(6, 0)),
+                new BunkerRetreatMemory.Source(third, squad(6, 0)));
+
+        again.releaseIfGrown(squad(13, 0));
+
+        assertFalse(again.holds(BUNKER));
+    }
+
+    @Test
+    void squadsThatRetreatedSeparatelyStillSum() {
+        BunkerRetreatMemory a = remembering(BUNKER, squad(12, 0));
+        BunkerRetreatMemory b = remembering(BUNKER, squad(8, 0));
+        BunkerRetreatMemory merged = merged(new BunkerRetreatMemory.Source(a, squad(12, 0)),
+                new BunkerRetreatMemory.Source(b, squad(8, 0)));
+
+        merged.releaseIfGrown(squad(21, 0));
+
+        assertFalse(merged.holds(BUNKER));
+    }
 }

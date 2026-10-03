@@ -2327,7 +2327,9 @@ public class SquadManager {
                 }
                 if (blindAdvanceHeld(squad.getStatus(), enemyMeasured, threatBeyondRadius, baseThreatened)) {
                     holdSquad(squad, managedFighters);
-                    SquadDecisions.pathTaken(squad, DecisionPath.BLIND_ADVANCE_HOLD);
+                    SquadDecisions.pathTaken(squad, snapshot != null && snapshot.isBunkerMemoryHeld()
+                            ? DecisionPath.BUNKER_MEMORY_HOLD
+                            : DecisionPath.BLIND_ADVANCE_HOLD);
                     break;
                 }
                 if (AirHarassEvaluator.holdsBlindAdvance(squad.getHarassExitFrame(), now, enemyMeasured,
