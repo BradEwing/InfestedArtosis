@@ -1,6 +1,7 @@
 package strategy.buildorder.terran;
 
 import bwapi.Race;
+import config.GuardianBranchMode;
 import info.BuildOrderChain;
 import macro.plan.Plan;
 import macro.plan.PlanBlocker;
@@ -14,9 +15,12 @@ import telemetry.PlanEvents;
 import util.Time;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -98,9 +102,29 @@ class LurkerDefilerUltraTransitionTest {
     }
 
     @Test
-    void twoHatchMutaAndThreeHatchLurkerOfferOnlyLurkerDefilerUltra() {
-        assertOffersOnlyLurkerDefilerUltra(new TwoHatchMuta().transition(null));
-        assertOffersOnlyLurkerDefilerUltra(new ThreeHatchLurker().transition(null));
+    void theLearnedModeOffersBothTerminalBuildsForTheBanditToChoose() {
+        assertEquals(names(LurkerDefilerUltra.NAME, LurkerDefilerGuardian.NAME),
+                names(LurkerDefilerUltraTransition.candidates(GuardianBranchMode.LEARNED)));
+    }
+
+    @Test
+    void theOnModeOffersOnlyTheGuardianBuild() {
+        assertEquals(names(LurkerDefilerGuardian.NAME),
+                names(LurkerDefilerUltraTransition.candidates(GuardianBranchMode.ON)));
+    }
+
+    @Test
+    void theOffModeOffersOnlyLurkerDefilerUltra() {
+        assertEquals(names(LurkerDefilerUltra.NAME),
+                names(LurkerDefilerUltraTransition.candidates(GuardianBranchMode.OFF)));
+    }
+
+    @Test
+    void theGuardianBuildIsRegisteredByNameAndIsNotAnOpener() {
+        BuildOrderFactory factory = new BuildOrderFactory(4, Race.Terran);
+
+        assertEquals(LurkerDefilerGuardian.NAME, factory.getByName(LurkerDefilerGuardian.NAME).getName());
+        assertFalse(factory.getByName(LurkerDefilerGuardian.NAME).isOpener());
     }
 
     @Test
@@ -176,7 +200,7 @@ class LurkerDefilerUltraTransitionTest {
     void theBuildOrderChainRecordsTheHandover() {
         BuildOrderChain chain = new BuildOrderChain();
         chain.add("2HatchMuta");
-        for (BuildOrder candidate : new TwoHatchMuta().transition(null)) {
+        for (BuildOrder candidate : LurkerDefilerUltraTransition.candidates(GuardianBranchMode.OFF)) {
             chain.add(candidate.getName());
         }
 
@@ -216,8 +240,11 @@ class LurkerDefilerUltraTransitionTest {
         assertFalse(LurkerDefilerUltraTransition.prefersGasBase(4));
     }
 
-    private static void assertOffersOnlyLurkerDefilerUltra(Set<BuildOrder> candidates) {
-        assertEquals(1, candidates.size());
-        assertEquals(LurkerDefilerUltra.NAME, candidates.iterator().next().getName());
+    private static Set<String> names(Set<BuildOrder> candidates) {
+        return candidates.stream().map(BuildOrder::getName).collect(Collectors.toSet());
+    }
+
+    private static Set<String> names(String... names) {
+        return new HashSet<>(Arrays.asList(names));
     }
 }

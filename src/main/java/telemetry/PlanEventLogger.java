@@ -188,10 +188,9 @@ public class PlanEventLogger implements PlanEventSink {
      * trigger, as 2HatchMuta>LurkerDefilerUltra:GOLIATHS; build_order is still the chain before the
      * handover.
      * <p>
-     * GUARDIAN_BRANCH rows are written once per change of LurkerDefilerUltra's Guardian branch, and leave
-     * every plan column empty. item is ENTER, EXIT or LATCH, a colon and the reason: the entrenchment that
-     * opened the branch (SIEGED_TANKS, BUNKER or SIEGED_TANKS+BUNKER), the gate that closed it, or the enemy
-     * anti-air type whose sighting switched it off for the game.
+     * GUARDIAN_BRANCH rows are written once per change of LurkerDefilerGuardian's Guardian branch, and leave
+     * every plan column empty. item is ENTER when the branch opens, or EXIT, a colon and the gate that
+     * closed it.
      * <p>
      * TECH_SITE_MISS rows are written when a build order about to plan a tech building finds no room on creep
      * for it at the main while we hold the main, and leave the plan id empty. item is the building. build_tile_x

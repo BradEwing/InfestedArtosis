@@ -13,8 +13,11 @@ public final class Config {
     public String strategyOverride;
     public String openerOverride;
 
-    /** Whether LurkerDefilerUltra may take its Guardian branch; IA_GUARDIAN_BRANCH=false switches it off. */
-    public boolean guardianBranch = true;
+    /**
+     * Whether the Guardian build is offered at the terminal ZvT handover: IA_GUARDIAN_BRANCH=true
+     * forces it, =false removes it, and unset leaves the choice to the learning module.
+     */
+    public GuardianBranchMode guardianBranch = GuardianBranchMode.LEARNED;
 
     // Debug drawing flags
     // HUD and general info
@@ -66,7 +69,7 @@ public final class Config {
         this.enabledAutoObserver = Boolean.parseBoolean(setting(dotenv, "IA_ENABLE_AUTO_OBSERVER"));
         this.strategyOverride = setting(dotenv, "IA_STRATEGY_OVERRIDE");
         this.openerOverride = setting(dotenv, "IA_OPENER_OVERRIDE");
-        this.guardianBranch = enabledUnlessFalse(setting(dotenv, "IA_GUARDIAN_BRANCH"));
+        this.guardianBranch = GuardianBranchMode.parse(setting(dotenv, "IA_GUARDIAN_BRANCH"));
         this.debugHud = Boolean.parseBoolean(setting(dotenv, "IA_DEBUG_HUD"));
         this.debugUnitCount = Boolean.parseBoolean(setting(dotenv, "IA_DEBUG_UNIT_COUNT"));
         this.debugGameMap = Boolean.parseBoolean(setting(dotenv, "IA_DEBUG_GAME_MAP"));
@@ -98,16 +101,6 @@ public final class Config {
         this.debugResourceReservations = Boolean.parseBoolean(setting(dotenv, "IA_DEBUG_RESOURCE_RESERVATIONS"));
         this.logPlanEvents = Boolean.parseBoolean(setting(dotenv, "IA_LOG_PLAN_EVENTS"));
         this.telemetryCombat = Boolean.parseBoolean(setting(dotenv, "IA_TELEMETRY_COMBAT"));
-    }
-
-    /**
-     * Reads a switch that is on unless it is set to false.
-     *
-     * @param value the raw setting, or null when it is not set
-     * @return false only when the setting is the word false, in any case
-     */
-    static boolean enabledUnlessFalse(String value) {
-        return value == null || !"false".equalsIgnoreCase(value.trim());
     }
 
     /**

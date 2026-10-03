@@ -1,6 +1,7 @@
 package strategy.buildorder.terran;
 
 import bwapi.Race;
+import config.GuardianBranchMode;
 import bwapi.UnitType;
 import info.GameState;
 import strategy.buildorder.BuildOrder;
@@ -180,11 +181,19 @@ public final class LurkerDefilerUltraTransition {
     }
 
     /**
-     * @return the single candidate every transitioning build offers
+     * @param mode how the Guardian build is offered, from IA_GUARDIAN_BRANCH
+     * @return the terminal builds every transitioning build offers: both under
+     *     {@link GuardianBranchMode#LEARNED}, so the learning module chooses, otherwise the one the
+     *     mode forces
      */
-    static Set<BuildOrder> candidates() {
+    static Set<BuildOrder> candidates(GuardianBranchMode mode) {
         Set<BuildOrder> candidates = new HashSet<>();
-        candidates.add(new LurkerDefilerUltra());
+        if (mode != GuardianBranchMode.ON) {
+            candidates.add(new LurkerDefilerUltra());
+        }
+        if (mode != GuardianBranchMode.OFF) {
+            candidates.add(new LurkerDefilerGuardian());
+        }
         return candidates;
     }
 }

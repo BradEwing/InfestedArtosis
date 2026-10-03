@@ -23,5 +23,4 @@ public enum PlanCancelReason {
     EXTRACTOR_TRICK,
     UNKNOWN,
     MACRO_HATCHERY_CAP,
-    BRANCH_LATCHED,
 }

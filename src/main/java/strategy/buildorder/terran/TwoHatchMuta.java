@@ -288,7 +288,7 @@ public class TwoHatchMuta extends TerranBase {
 
     @Override
     public Set<BuildOrder> transition(GameState gameState) {
-        return LurkerDefilerUltraTransition.candidates();
+        return LurkerDefilerUltraTransition.candidates(gameState.getConfig().guardianBranch);
     }
 
     static boolean shouldPlanOverlord(int spireCount, int overlordCount, boolean excessSupply) {

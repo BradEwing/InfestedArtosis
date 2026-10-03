@@ -2,22 +2,27 @@ package config;
 
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class ConfigTest {
 
     @Test
-    void aSwitchThatIsOnUnlessFalseDefaultsOn() {
-        assertTrue(Config.enabledUnlessFalse(null));
-        assertTrue(Config.enabledUnlessFalse(""));
-        assertTrue(Config.enabledUnlessFalse("true"));
+    void theGuardianBranchIsLeftToLearningWhenUnset() {
+        assertEquals(GuardianBranchMode.LEARNED, GuardianBranchMode.parse(null));
+        assertEquals(GuardianBranchMode.LEARNED, GuardianBranchMode.parse(""));
+        assertEquals(GuardianBranchMode.LEARNED, GuardianBranchMode.parse("auto"));
     }
 
     @Test
-    void aSwitchThatIsOnUnlessFalseTurnsOffOnTheWordFalseInAnyCase() {
-        assertFalse(Config.enabledUnlessFalse("false"));
-        assertFalse(Config.enabledUnlessFalse("FALSE"));
-        assertFalse(Config.enabledUnlessFalse(" False "));
+    void theGuardianBranchIsForcedOnByTheWordTrueInAnyCase() {
+        assertEquals(GuardianBranchMode.ON, GuardianBranchMode.parse("true"));
+        assertEquals(GuardianBranchMode.ON, GuardianBranchMode.parse(" TRUE "));
+    }
+
+    @Test
+    void theGuardianBranchIsForcedOffByTheWordFalseInAnyCase() {
+        assertEquals(GuardianBranchMode.OFF, GuardianBranchMode.parse("false"));
+        assertEquals(GuardianBranchMode.OFF, GuardianBranchMode.parse("FALSE"));
+        assertEquals(GuardianBranchMode.OFF, GuardianBranchMode.parse(" False "));
     }
 }

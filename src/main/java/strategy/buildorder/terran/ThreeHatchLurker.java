@@ -493,7 +493,7 @@ public class ThreeHatchLurker extends TerranBase {
 
     @Override
     public Set<BuildOrder> transition(GameState gameState) {
-        return LurkerDefilerUltraTransition.candidates();
+        return LurkerDefilerUltraTransition.candidates(gameState.getConfig().guardianBranch);
     }
 
     @Override

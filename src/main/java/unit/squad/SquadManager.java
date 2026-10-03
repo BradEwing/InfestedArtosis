@@ -127,7 +127,7 @@ public class SquadManager {
     static final int AIR_MOVE_OUT_UNITS_VS_ZERG = 2;
     /**
      * Tuning value: air combat units a squad holding a Guardian needs to move out, against any race. It
-     * equals the Guardians the Terran branch of LurkerDefilerUltra fields, so that wave is not stranded
+     * equals the Guardians the Guardian branch of LurkerDefilerGuardian fields, so that wave is not stranded
      * below {@link #AIR_MOVE_OUT_UNITS}.
      */
     static final int GUARDIAN_MOVE_OUT_UNITS = 3;

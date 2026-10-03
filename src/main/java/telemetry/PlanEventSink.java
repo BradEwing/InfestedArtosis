@@ -169,9 +169,9 @@ public interface PlanEventSink {
     }
 
     /**
-     * LurkerDefilerUltra's Guardian branch opened, closed or was switched off for the game.
+     * LurkerDefilerGuardian's Guardian branch opened or closed.
      *
-     * @param branchLabel ENTER, EXIT or LATCH, a colon and the reason, e.g. LATCH:Terran_Goliath
+     * @param branchLabel ENTER, or EXIT, a colon and the gate that closed it, e.g. EXIT:FEW_BASES
      */
     default void onGuardianBranch(String branchLabel) {
     }
