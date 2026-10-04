@@ -616,4 +616,34 @@ class TwoHatchMutaTest {
         assertTrue(TwoHatchMuta.wantsReleasedMacroHatchery(true, wave, 2 + 1, 0, 0));
         assertFalse(TwoHatchMuta.wantsReleasedMacroHatchery(true, wave, 3 + 1, 0, 0));
     }
+
+    @Test
+    void sevenMutalisksIssuedAndNoneHatchedCountTowardTheFirstWaveAndReleaseTheHatchery() {
+        int wave = TwoHatchMuta.MUTALISKS_BEFORE_FLYER_UPGRADE;
+        int counted = TwoHatchMuta.firstWaveMutalisks(0, wave);
+
+        assertEquals(wave, counted);
+        assertFalse(TwoHatchMuta.ownsFirstWaveBank(true, counted));
+        assertTrue(TwoHatchMuta.wantsReleasedMacroHatchery(true, TwoHatchMuta.scheduledWaveMutalisks(counted, 0), 3, 0, 0));
+    }
+
+    @Test
+    void aMutaliskStillQueuedDoesNotArmTheReleasedHatcheryButOneInAnEggDoes() {
+        int wave = TwoHatchMuta.MUTALISKS_BEFORE_FLYER_UPGRADE;
+        int counted = TwoHatchMuta.firstWaveMutalisks(2, wave - 2);
+
+        assertFalse(TwoHatchMuta.wantsReleasedMacroHatchery(true, TwoHatchMuta.scheduledWaveMutalisks(counted, 1), 3, 0, 0));
+        assertTrue(TwoHatchMuta.wantsReleasedMacroHatchery(true, TwoHatchMuta.scheduledWaveMutalisks(counted, 0), 3, 0, 0));
+    }
+
+    @Test
+    void aSixthMutaliskInAnEggStillHoldsTheBankFromFloatingExpansions() {
+        int wave = TwoHatchMuta.MUTALISKS_BEFORE_FLYER_UPGRADE;
+        int counted = TwoHatchMuta.firstWaveMutalisks(0, wave - 1);
+
+        assertFalse(TwoHatchMuta.wantsBaseAdvantage(false, true, true,
+                FLOAT_BAR + MUTALISK_MINERALS, ALL_GAS, FLOAT_BAR, counted));
+        assertTrue(TwoHatchMuta.wantsBaseAdvantage(false, true, true,
+                FLOAT_BAR + MUTALISK_MINERALS + 1, ALL_GAS, FLOAT_BAR, counted));
+    }
 }

@@ -9,6 +9,7 @@ import info.Readiness;
 import info.TechProgression;
 import info.UnitTypeCount;
 import macro.Reactions;
+import macro.plan.HatcheryRequestReason;
 import macro.plan.Plan;
 import strategy.buildorder.ArmyUpgradeTrigger;
 import strategy.buildorder.BuildOrder;
@@ -129,6 +130,7 @@ public class TwoHatchMuta extends TerranBase {
                 gameState.knownEnemyMobileGroundCombatUnitsAtOurBases())) {
             Plan macroHatcheryPlan = this.planMacroHatcheryAt(gameState, baseData.getMainBase());
             if (macroHatcheryPlan != null) {
+                macroHatcheryPlan.setHatcheryRequestReason(HatcheryRequestReason.RELEASE);
                 plans.add(macroHatcheryPlan);
             }
         }
@@ -247,11 +249,29 @@ public class TwoHatchMuta extends TerranBase {
     }
 
     /**
-     * Mutalisks produced plus Mutalisk plans not yet finished. Losses do not lower it.
+     * Mutalisks produced plus Mutalisks queued, scheduled or in an Egg. Losses do not lower it.
      */
     private static int firstWaveMutalisks(GameState gameState) {
-        return gameState.totalProduced(UnitType.Zerg_Mutalisk)
-                + gameState.outstandingUnitPlanCount(UnitType.Zerg_Mutalisk);
+        return firstWaveMutalisks(gameState.totalProduced(UnitType.Zerg_Mutalisk),
+                gameState.getUnitTypeCount().plannedCount(UnitType.Zerg_Mutalisk));
+    }
+
+    /**
+     * @param mutalisksProduced Mutalisks hatched so far, living and lost
+     * @param mutalisksPlanned Mutalisks queued, scheduled or in an Egg
+     * @return the Mutalisks the first wave has asked for, whether or not they have hatched
+     */
+    static int firstWaveMutalisks(int mutalisksProduced, int mutalisksPlanned) {
+        return mutalisksProduced + mutalisksPlanned;
+    }
+
+    /**
+     * @param firstWaveMutalisks {@link #firstWaveMutalisks(int, int)}
+     * @param queuedMutaliskPlans Mutalisk plans still waiting in the production queue
+     * @return the Mutalisks past the queue: scheduled, in an Egg or hatched
+     */
+    static int scheduledWaveMutalisks(int firstWaveMutalisks, int queuedMutaliskPlans) {
+        return firstWaveMutalisks - queuedMutaliskPlans;
     }
 
     /**
@@ -262,7 +282,7 @@ public class TwoHatchMuta extends TerranBase {
      * build holds {@link #MACRO_HATCHERY_HATCHERY_CAP} hatcheries.
      *
      * @param spireReady whether a Spire is finished
-     * @param mutaliskCount Mutalisks produced plus Mutalisk plans not yet finished
+     * @param mutaliskCount {@link #firstWaveMutalisks(int, int)}
      * @param hatcheries completed larva-producing hatcheries
      * @return zero for the released request, else {@link LarvaBoundMacroHatchery#FLOAT_GAS}
      */
@@ -553,7 +573,7 @@ public class TwoHatchMuta extends TerranBase {
      * @param mineralsAfterQueuedDemand unreserved minerals less queued advanced unit plans
      * @param gasAfterQueuedDemand unreserved gas less queued advanced unit plans
      * @param floatBar the unreserved minerals that count as floating
-     * @param mutaliskCount Mutalisks produced plus Mutalisk plans not yet finished
+     * @param mutaliskCount {@link #firstWaveMutalisks(int, int)}
      * @return true when the build should plan a new base
      */
     static boolean wantsBaseAdvantage(boolean behindOnBases, boolean floatingMinerals, boolean spireCommitted,
