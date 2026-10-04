@@ -58,6 +58,8 @@ public class Squad implements Comparable<Squad> {
     protected int fightLockSupply = 0;
     protected int retreatLockedUntilFrame = 0;
     protected boolean attritionRetreatLock = false;
+    @Getter
+    private final HeldRetreat heldRetreat = new HeldRetreat();
     private int strongEngageSinceFrame = -1;
     protected int containLockedUntilFrame = 0;
     @Getter
@@ -94,8 +96,13 @@ public class Squad implements Comparable<Squad> {
     private int corneredEngageSinceFrame = -1;
     private int corneredFightHeldUntilFrame = 0;
     protected Time fightHysteresis = new Time(0, 3);
-    protected Time retreatHysteresis = new Time(0, 5);
+    protected Time retreatHysteresis = new Time(GROUND_RETREAT_LOCK_FRAMES);
     protected Time containHysteresis = new Time(0, 5);
+
+    /**
+     * Frames a ground squad's retreat lock holds for.
+     */
+    public static final int GROUND_RETREAT_LOCK_FRAMES = 120;
 
     private static final double SMOOTHING_ALPHA = 0.85;
     private static final int SPLIT_MERGE_COOLDOWN = 100;
@@ -279,6 +286,8 @@ public class Squad implements Comparable<Squad> {
      * <p>The Bunkers the sources retreated from stay remembered, see {@link BunkerRetreatMemory#absorb}: a merged
      * squad holds off the union of them, and a split keeps them on both halves.
      *
+     * <p>The held siege band RETREAT folds to the latest one any source holds, see {@link HeldRetreat}.
+     *
      * @param sources squads being merged into this one
      */
     public void inheritStateFrom(Collection<Squad> sources) {
@@ -373,6 +382,7 @@ public class Squad implements Comparable<Squad> {
             memories.add(new BunkerRetreatMemory.Source(source.bunkerRetreatMemory, source.getMembers()));
         }
         this.bunkerRetreatMemory.absorb(memories);
+        this.heldRetreat.absorb(sources);
     }
 
     public boolean isMergeEligible(int currentFrame) {
