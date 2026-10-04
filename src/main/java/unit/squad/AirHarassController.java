@@ -72,14 +72,21 @@ public class AirHarassController {
         private final ExposedTargets.Group exposed;
         private final int sightingAge;
         private final int knownCover;
+        private final boolean stalled;
+        private final double exposedScore;
+        private final double baseScore;
 
         Entry(AirHarassEvaluator.EntryVerdict verdict, AirHarassEvaluator.BaseOption<Base> option,
-              ExposedTargets.Group exposed, int sightingAge, int knownCover) {
+              ExposedTargets.Group exposed, int sightingAge, int knownCover, boolean stalled, double exposedScore,
+              double baseScore) {
             this.verdict = verdict;
             this.option = option;
             this.exposed = exposed;
             this.sightingAge = sightingAge;
             this.knownCover = knownCover;
+            this.stalled = stalled;
+            this.exposedScore = exposedScore;
+            this.baseScore = baseScore;
         }
 
         public boolean enters() {
@@ -183,6 +190,10 @@ public class AirHarassController {
         boolean enters = verdict == AirHarassEvaluator.EntryVerdict.ENTER;
         AirHarassEvaluator.BaseOption<Base> bestBase = AirHarassEvaluator.chooseBase(options);
         boolean raidsExposed = raidsExposed(exposed, bestBase, squad.getCenter());
+        boolean stalled = squad instanceof AirSquad && Config.airFlapEscape
+                && ((AirSquad) squad).getStallDetector().isStalled(now);
+        double exposedScore = exposedScore(exposed, squad.getCenter());
+        double baseScore = baseScore(bestBase);
         AirHarassEvaluator.BaseOption<Base> chosen = enters && !raidsExposed ? bestBase : null;
         ExposedTargets.Group chosenExposed = enters && raidsExposed ? exposed : null;
         Position strike = chosen != null ? chosen.getStrikePoint()
@@ -212,8 +223,11 @@ public class AirHarassController {
                 .targetKind(targetKind(chosen != null, chosenExposed != null))
                 .aaSightingAge(sightingAge)
                 .aaKnownCover(knownCover)
+                .stalled(stalled ? 1 : 0)
+                .exposedScore(exposedScore)
+                .baseScore(baseScore)
                 .build());
-        return new Entry(verdict, chosen, chosenExposed, sightingAge, knownCover);
+        return new Entry(verdict, chosen, chosenExposed, sightingAge, knownCover, stalled, exposedScore, baseScore);
     }
 
     /**
@@ -231,8 +245,30 @@ public class AirHarassController {
             return exposed != null && bestBase == null;
         }
         return exposed != null && AirHarassEvaluator.exposedOutscoresBase(ExposedTargets.score(exposed, from),
-                bestBase == null ? -1 : AirHarassEvaluator.baseScore(bestBase.getHeat(),
-                        bestBase.getContainDistance()));
+                baseScore(bestBase));
+    }
+
+    /**
+     * The score {@link #raidsExposed} gives an exposed group, in heat units and uncapped.
+     *
+     * @param exposed the best exposed group, or null
+     * @param from the flock's center
+     * @return the score, or -1 with no group
+     */
+    static double exposedScore(ExposedTargets.Group exposed, Position from) {
+        return exposed == null ? -1
+                : ExposedTargets.score(exposed, from) * AirHarassEvaluator.HEAT_PER_EXPOSED_VALUE;
+    }
+
+    /**
+     * The score {@link #raidsExposed} gives a base, in heat units and uncapped.
+     *
+     * @param bestBase the best base with a tolerated strike point, or null
+     * @return the score, or -1 with no base
+     */
+    static double baseScore(AirHarassEvaluator.BaseOption<?> bestBase) {
+        return bestBase == null ? -1
+                : AirHarassEvaluator.baseScore(bestBase.getHeat(), bestBase.getContainDistance());
     }
 
     static List<ExposedTargets.Group> withoutFailedTarget(Collection<ExposedTargets.Group> groups,
@@ -291,6 +327,9 @@ public class AirHarassController {
                         AirHarassEvaluator.STRIKE_RADIUS))
                 .aaSightingAge(entry.sightingAge)
                 .aaKnownCover(entry.knownCover)
+                .stalled(entry.stalled ? 1 : 0)
+                .exposedScore(entry.exposedScore)
+                .baseScore(entry.baseScore)
                 .build());
     }
 
@@ -780,6 +819,8 @@ public class AirHarassController {
         ExposedTargets.Group exposed = ExposedTargets.choose(withoutFailedTarget(exposedMemory.admitted(
                 ExposedTargets.groups(view.candidates(), mutas, AirHarassTargeting.avoided(view.threats, tolerance)),
                 now), held), view.threats, tolerance, squad.getCenter());
+        double exposedScore = exposedScore(exposed, squad.getCenter());
+        double baseScore = baseScore(next);
         if (!raidsExposed(exposed, next, squad.getCenter())) {
             exposed = null;
         }
@@ -802,6 +843,8 @@ public class AirHarassController {
                 .center(squad.getCenter())
                 .aaSightingAge(sightingAge)
                 .aaKnownCover(knownCover)
+                .exposedScore(exposedScore)
+                .baseScore(baseScore)
                 .build());
         return true;
     }

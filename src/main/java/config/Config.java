@@ -9,7 +9,11 @@ import io.github.cdimascio.dotenv.Dotenv;
 public final class Config {
 
     public static boolean learnDefensiveSunk = false;
-    public static boolean airFlapEscape = true;
+    /**
+     * Whether an air squad that flaps between FIGHT and RETREAT may leave its retreat lock and re-entry hold to harass
+     * or raid an exposed group. Off unless IA_AIR_FLAP_ESCAPE is set to true.
+     */
+    public static boolean airFlapEscape = false;
     public boolean enabledAutoObserver = false;
     public String strategyOverride;
     public String openerOverride;
@@ -96,7 +100,7 @@ public final class Config {
         this.logPlanEvents = Boolean.parseBoolean(setting(dotenv, "IA_LOG_PLAN_EVENTS"));
         this.telemetryCombat = Boolean.parseBoolean(setting(dotenv, "IA_TELEMETRY_COMBAT"));
         String airFlapEscapeSetting = setting(dotenv, "IA_AIR_FLAP_ESCAPE");
-        airFlapEscape = airFlapEscapeSetting == null || Boolean.parseBoolean(airFlapEscapeSetting);
+        airFlapEscape = Boolean.parseBoolean(airFlapEscapeSetting);
     }
 
     /**

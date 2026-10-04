@@ -38,6 +38,11 @@ import java.util.Map;
  * they do not, on ENTRY_CHECK, ENTER and RETARGET rows for a base. A covered base counts as sighted: it is entered on
  * the entry verdict, not probed, whatever its aa_sighting_age.
  *
+ * <p>stalled is 1 when the squad's FIGHT and RETREAT crossings read as a stall, see AirStallDetector, and 0 when they
+ * do not or the IA_AIR_FLAP_ESCAPE switch is off, on ENTRY_CHECK and ENTER rows. exposed_score is the best exposed
+ * group's score and base_score the best base's, both in heat units and uncapped, so the two compare directly; a score
+ * left at -1 had no group or base to score. ENTRY_CHECK, ENTER and RETARGET rows carry both.
+ *
  * <p>Constructed only when combat telemetry is enabled.
  */
 public class HarassLogger implements HarassSink {
@@ -48,7 +53,7 @@ public class HarassLogger implements HarassSink {
             + "strike_y,center_x,center_y,mutas,healthy_mutas,flock_hp,hp_loss_fraction,tolerance,air_defense,"
             + "avoided_zones,workers_killed,buildings_killed,other_killed,mutas_lost,killed_type,contain_distance,"
             + "bases_under_attack,target_kind,flock_defense,aa_sighting_age,prober_hp,prober_peak_hp,prober_id,"
-            + "aa_known_cover";
+            + "aa_known_cover,stalled,exposed_score,base_score";
 
     private static final int FLUSH_INTERVAL_FRAMES = 480;
     private static final int NOT_EVALUATED = -1;
@@ -169,6 +174,9 @@ public class HarassLogger implements HarassSink {
         fields.add(String.valueOf(row.getProberPeakHitPoints()));
         fields.add(String.valueOf(row.getProberId()));
         fields.add(String.valueOf(row.getAaKnownCover()));
+        fields.add(String.valueOf(row.getStalled()));
+        fields.add(Csv.format(row.getExposedScore()));
+        fields.add(Csv.format(row.getBaseScore()));
         return String.join(",", fields);
     }
 

@@ -4,6 +4,8 @@ import bwapi.Position;
 import bwapi.Race;
 import bwapi.UnitType;
 import config.Config;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import unit.squad.horizon.UnitStrength;
 
@@ -451,6 +453,39 @@ class AirHarassEvaluatorTest {
         assertTrue(AirHarassEvaluator.exposedOutscoresBase(belowCap + 0.1, veryHotBase));
     }
 
+    private static final boolean DEFAULT_ESCAPE = Config.airFlapEscape;
+
+    @BeforeEach
+    void enableTheEscape() {
+        Config.airFlapEscape = true;
+    }
+
+    @AfterEach
+    void restoreTheEscapeSwitch() {
+        Config.airFlapEscape = DEFAULT_ESCAPE;
+    }
+
+    @Test
+    void theEscapeSwitchDefaultsToOff() {
+        assertFalse(DEFAULT_ESCAPE);
+    }
+
+    @Test
+    void entryScoresAreInHeatUnitsAndMinusOneWithNothingToScore() {
+        AirHarassTargeting.Contact starport = new AirHarassTargeting.Contact(9, UnitType.Terran_Starport,
+                new Position(3000, 1000), UnitType.Terran_Starport.maxHitPoints(), 1.0);
+        ExposedTargets.Group group = ExposedTargets.groups(Collections.singletonList(starport), 6,
+                Collections.emptyList()).get(0);
+        Position from = new Position(2900, 1000);
+        AirHarassEvaluator.BaseOption<String> base = option("main", STRIKE, 400, -1);
+
+        assertEquals(ExposedTargets.score(group, from) * AirHarassEvaluator.HEAT_PER_EXPOSED_VALUE,
+                AirHarassController.exposedScore(group, from), 1e-9);
+        assertEquals(AirHarassEvaluator.baseScore(400, -1), AirHarassController.baseScore(base), 1e-9);
+        assertEquals(-1, AirHarassController.exposedScore(null, from), 0);
+        assertEquals(-1, AirHarassController.baseScore(null), 0);
+    }
+
     @Test
     void aLoneStarportDoesNotBeatAHotBaseButAWorkerGroupDoes() {
         AirHarassTargeting.Contact starport = new AirHarassTargeting.Contact(9, UnitType.Terran_Starport,
@@ -497,14 +532,10 @@ class AirHarassEvaluatorTest {
                 Collections.emptyList()).get(0);
         Position from = new Position(2900, 1000);
         AirHarassEvaluator.BaseOption<String> weakBase = option("main", STRIKE, 10, -1);
-        boolean before = Config.airFlapEscape;
-        try {
-            Config.airFlapEscape = false;
-            assertFalse(AirHarassController.raidsExposed(group, weakBase, from));
-            assertTrue(AirHarassController.raidsExposed(group, null, from));
-        } finally {
-            Config.airFlapEscape = before;
-        }
+        Config.airFlapEscape = false;
+        assertFalse(AirHarassController.raidsExposed(group, weakBase, from));
+        assertTrue(AirHarassController.raidsExposed(group, null, from));
+        Config.airFlapEscape = true;
         assertTrue(AirHarassController.raidsExposed(group, weakBase, from));
     }
 

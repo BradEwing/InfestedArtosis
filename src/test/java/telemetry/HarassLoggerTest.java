@@ -112,9 +112,9 @@ class HarassLoggerTest {
         String[] columns = HarassLogger.HEADER.split(",", -1);
 
         assertEquals(columns.length, fields.length);
-        assertEquals("bases_under_attack", columns[columns.length - 8]);
-        assertEquals("target_kind", columns[columns.length - 7]);
-        assertEquals("flock_defense", columns[columns.length - 6]);
+        assertEquals("bases_under_attack", columns[columns.length - 11]);
+        assertEquals("target_kind", columns[columns.length - 10]);
+        assertEquals("flock_defense", columns[columns.length - 9]);
         assertEquals("FLOCK_DEFENDED", fields[columnIndex("exit_reason")]);
         assertEquals("EXPOSED", fields[columnIndex("target_kind")]);
         assertEquals("-1", fields[columnIndex("base_x")]);
@@ -157,9 +157,9 @@ class HarassLoggerTest {
         String[] columns = HarassLogger.HEADER.split(",", -1);
         String[] fields = HarassLogger.row("game-1", tick).split(",", -1);
 
-        assertEquals("aa_sighting_age", columns[columns.length - 5]);
-        assertEquals("prober_hp", columns[columns.length - 4]);
-        assertEquals("prober_peak_hp", columns[columns.length - 3]);
+        assertEquals("aa_sighting_age", columns[columns.length - 8]);
+        assertEquals("prober_hp", columns[columns.length - 7]);
+        assertEquals("prober_peak_hp", columns[columns.length - 6]);
         assertEquals(columns.length, fields.length);
         assertEquals("111", fields[columnIndex("prober_hp")]);
         assertEquals("120", fields[columnIndex("prober_peak_hp")]);
@@ -189,13 +189,45 @@ class HarassLoggerTest {
         String[] fields = HarassLogger.row("game-1", tick).split(",", -1);
         String[] check = HarassLogger.row("game-1", entryCheck).split(",", -1);
 
-        assertEquals("prober_id", columns[columns.length - 2]);
-        assertEquals("aa_known_cover", columns[columns.length - 1]);
+        assertEquals("prober_id", columns[columns.length - 5]);
+        assertEquals("aa_known_cover", columns[columns.length - 4]);
         assertEquals(columns.length, fields.length);
         assertEquals("265", fields[columnIndex("prober_id")]);
         assertEquals("-1", fields[columnIndex("aa_known_cover")]);
         assertEquals("1", check[columnIndex("aa_known_cover")]);
         assertEquals("-1", check[columnIndex("prober_id")]);
+    }
+
+    @Test
+    void stalledAndScoreCellsAppendAfterTheExistingColumnsAndReadMinusOneWhenNotEvaluated() {
+        HarassRow entryCheck = HarassRow.builder()
+                .frame(10296)
+                .squadId("squad-1")
+                .event(HarassRow.Event.ENTRY_CHECK)
+                .stalled(1)
+                .exposedScore(312.5)
+                .baseScore(90)
+                .build();
+        HarassRow tick = HarassRow.builder()
+                .frame(10320)
+                .squadId("squad-1")
+                .event(HarassRow.Event.TICK)
+                .build();
+
+        String[] columns = HarassLogger.HEADER.split(",", -1);
+        String[] check = HarassLogger.row("game-1", entryCheck).split(",", -1);
+        String[] fields = HarassLogger.row("game-1", tick).split(",", -1);
+
+        assertEquals("stalled", columns[columns.length - 3]);
+        assertEquals("exposed_score", columns[columns.length - 2]);
+        assertEquals("base_score", columns[columns.length - 1]);
+        assertEquals(columns.length, check.length);
+        assertEquals("1", check[columnIndex("stalled")]);
+        assertEquals(Csv.format(312.5), check[columnIndex("exposed_score")]);
+        assertEquals(Csv.format(90.0), check[columnIndex("base_score")]);
+        assertEquals("-1", fields[columnIndex("stalled")]);
+        assertEquals(Csv.format(-1.0), fields[columnIndex("exposed_score")]);
+        assertEquals(Csv.format(-1.0), fields[columnIndex("base_score")]);
     }
 
     @Test
