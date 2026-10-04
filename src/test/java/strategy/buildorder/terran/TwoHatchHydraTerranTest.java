@@ -119,13 +119,15 @@ class TwoHatchHydraTerranTest {
     }
 
     @Test
-    void takesTheThirdBaseOnlyOnceTheHydralisksAreOut() {
+    void takesTheThirdBaseOnlyOnceTheHydralisksAreProduced() {
         int out = TwoHatchHydraTerran.HYDRALISKS_BEFORE_THIRD_BASE;
 
         assertFalse(TwoHatchHydraTerran.wantsThirdBase(2, out - 1));
         assertFalse(TwoHatchHydraTerran.wantsThirdBase(1, out));
         assertFalse(TwoHatchHydraTerran.wantsThirdBase(3, out));
         assertTrue(TwoHatchHydraTerran.wantsThirdBase(2, out));
+        assertTrue(TwoHatchHydraTerran.wantsThirdBase(2, out + 1));
+        assertFalse(TwoHatchHydraTerran.wantsThirdBase(2, 0));
     }
 
     @Test
@@ -210,6 +212,11 @@ class TwoHatchHydraTerranTest {
     @Test
     void noHatcheryBeyondTheNaturalIsAskedForBeforeTheFirstHydraliskWave() {
         int wave = TwoHatchHydraTerran.HYDRALISKS_BEFORE_THIRD_BASE;
+        int hatcheries = 2;
+
+        assertFalse(TwoHatchHydraTerran.wantsThirdBase(hatcheries, wave - 1));
+        assertFalse(TwoHatchHydraTerran.macroHatcheryAllowed(true, wave - 1));
+        assertFalse(TwoHatchHydraTerran.wantsExpansion(true, true, wave - 1, hatcheries));
 
         assertFalse(TwoHatchHydraTerran.firstHydraliskWaveProduced(0));
         assertFalse(TwoHatchHydraTerran.firstHydraliskWaveProduced(wave - 1));

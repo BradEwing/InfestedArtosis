@@ -144,7 +144,7 @@ public class TwoHatchHydraTerran extends TerranBase {
         int basesHeldOrReserved = baseData.currentAndReservedCount();
         boolean wantExpansion = wantsExpansion(behindOnBases(gameState), gameState.isFloatingMinerals(),
                 gameState.totalProduced(UnitType.Zerg_Hydralisk), basesHeldOrReserved)
-                || wantsThirdBase(plannedAndCurrentHatcheries, hydraCount);
+                || wantsThirdBase(plannedAndCurrentHatcheries, gameState.totalProduced(UnitType.Zerg_Hydralisk));
 
         final int desiredSunkenColonies = this.requiredSunkens(gameState);
         if (!gameState.basesNeedingSunken(desiredSunkenColonies).isEmpty()) {
@@ -333,13 +333,13 @@ public class TwoHatchHydraTerran extends TerranBase {
 
     /**
      * Whether the build takes its third base: with fewer than three hatcheries held or planned, once
-     * {@value #HYDRALISKS_BEFORE_THIRD_BASE} Hydralisks are owned, so the army is out before the
-     * Hatchery goes down.
+     * the first Hydralisk wave is produced ({@link #firstHydraliskWaveProduced}), so the army is out
+     * before the Hatchery goes down.
      */
-    static boolean wantsThirdBase(int plannedAndCurrentHatcheries, int hydralisksOwned) {
+    static boolean wantsThirdBase(int plannedAndCurrentHatcheries, int hydralisksProduced) {
         return plannedAndCurrentHatcheries >= 2
                 && plannedAndCurrentHatcheries < LurkerDefilerUltraTransition.ECONOMY_BASES
-                && hydralisksOwned >= HYDRALISKS_BEFORE_THIRD_BASE;
+                && firstHydraliskWaveProduced(hydralisksProduced);
     }
 
     /**
@@ -402,9 +402,8 @@ public class TwoHatchHydraTerran extends TerranBase {
 
     /**
      * Whether the first larva wave of Hydralisks has been produced: {@value #HYDRALISKS_BEFORE_THIRD_BASE}
-     * Hydralisks, the count the third base waits on as well, though the third base counts Hydralisks
-     * owned and queued. The macro Hatchery and the other expansions are not asked for earlier, so the first
-     * wave takes the larva and the minerals.
+     * Hydralisks, the count the third base, the macro Hatchery and the other expansions all wait on,
+     * so the first wave takes the larva and the minerals.
      *
      * @param hydralisksProduced Hydralisks this game has produced
      * @return true once the first wave has been produced
