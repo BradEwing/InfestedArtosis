@@ -23,10 +23,10 @@ import java.util.Set;
 
 /**
  * The hydralisk-focused ZvT build: Hydralisks and Zerglings out before the third base, which is taken
- * once {@value #HYDRALISKS_BEFORE_THIRD_BASE} Hydralisks stand, on a Drone target of
- * {@value #DRONES_BEFORE_HYDRALISKS}. No Hatchery beyond the natural, macro or expansion, is asked for
- * before {@value #HYDRALISKS_BEFORE_THIRD_BASE} Hydralisks have been produced. It researches Muscular
- * Augments, Grooved Spines, Missile Attacks and Carapace, and hands over to the build
+ * once {@value #HYDRALISKS_BEFORE_THIRD_BASE} Hydralisks are owned, on a Drone target of
+ * {@value #DRONES_BEFORE_HYDRALISKS}. The macro Hatchery and the behind-on-bases, floating-minerals and
+ * handover expansions wait until {@value #HYDRALISKS_BEFORE_THIRD_BASE} Hydralisks have been produced.
+ * It researches Muscular Augments, Grooved Spines, Missile Attacks and Carapace, and hands over to the build
  * {@link LurkerDefilerUltraTransition#candidates} offers once
  * {@value LurkerDefilerUltraTransition#HYDRALISK_TRIGGER} Hydralisks are produced, Muscular Augments
  * and Grooved Spines are researched, and the economy gate in {@link LurkerDefilerUltraTransition}
@@ -390,7 +390,8 @@ public class TwoHatchHydraTerran extends TerranBase {
 
     /**
      * Whether the build asks for an expansion beyond the third base it takes on the economy: when
-     * behind on bases, when floating minerals, or for the handover base once the trigger's Hydralisk count is produced.
+     * behind on bases, when floating minerals, or for the handover base once the trigger's Hydralisk count is
+     * produced. None of these applies before {@link #firstHydraliskWaveProduced}.
      */
     static boolean wantsExpansion(boolean behindOnBases, boolean floatingMinerals, int hydralisksProduced,
                                   int basesHeldOrReserved) {
@@ -401,8 +402,9 @@ public class TwoHatchHydraTerran extends TerranBase {
 
     /**
      * Whether the first larva wave of Hydralisks has been produced: {@value #HYDRALISKS_BEFORE_THIRD_BASE}
-     * Hydralisks, the count the third base also waits on. No Hatchery past the natural is asked for
-     * earlier, so the first wave takes the larva and the minerals.
+     * Hydralisks, the count the third base waits on as well, though the third base counts Hydralisks
+     * owned and queued. The macro Hatchery and the other expansions are not asked for earlier, so the first
+     * wave takes the larva and the minerals.
      *
      * @param hydralisksProduced Hydralisks this game has produced
      * @return true once the first wave has been produced

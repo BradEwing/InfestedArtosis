@@ -84,7 +84,7 @@ class LurkerDefilerUltraTransitionTest {
     }
 
     @Test
-    void threeHatchHydraOffersOnlyLurkerDefilerUltraAndLabelsItsTrigger() {
+    void twoHatchHydraOffersOnlyLurkerDefilerUltraAndLabelsItsTrigger() {
         assertOffersOnlyLurkerDefilerUltra(new TwoHatchHydraTerran().transition(null));
         assertEquals("2HatchHydraZvT>LurkerDefilerUltra:HYDRALISKS",
                 LurkerDefilerUltraTransition.label("2HatchHydraZvT",

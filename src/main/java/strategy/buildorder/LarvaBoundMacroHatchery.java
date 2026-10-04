@@ -31,7 +31,11 @@ public final class LarvaBoundMacroHatchery {
         LARVA_NOT_SHORT,
         /** One of the unreserved banks is below its float bar. */
         NOT_FLOATING,
-        /** The build's tech is not finished, so the bank may be waiting on its first tech units. */
+        /**
+         * The build's tech is not finished, or the build holds the hatchery for another reason, so the bank may be
+         * waiting on its first tech units. 2HatchHydraZvT also reports it while the Den stands but fewer than its
+         * first wave of Hydralisks has been produced.
+         */
         TECH_NOT_READY,
         /** Enemy ground combat units are known at our bases. */
         THREAT,
