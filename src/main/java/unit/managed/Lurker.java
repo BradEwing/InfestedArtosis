@@ -298,9 +298,10 @@ public class Lurker extends ManagedUnit {
     }
 
     /**
-     * Sets how many zones of the shooters that outrange the Lurker cover it, which the withdrawal row records.
+     * Sets how many zones of the shooters that outrange the Lurker cover where it stands, which the withdrawal row
+     * records.
      *
-     * @param count the number of covering zones, 0 when the hit was not attributed to a shooter
+     * @param count the number of covering zones, 0 when no known shooter covers it
      */
     public void setWithdrawZoneCount(int count) {
         this.withdrawZoneCount = count;
@@ -439,7 +440,8 @@ public class Lurker extends ManagedUnit {
     }
 
     private boolean holdsWithdrawalNow() {
-        return withdrawPoint != null && withdrawHolds(withdrawFrame, game.getFrameCount());
+        return role == UnitRole.CONTAIN && withdrawPoint != null
+                && withdrawHolds(withdrawFrame, game.getFrameCount());
     }
 
     /**

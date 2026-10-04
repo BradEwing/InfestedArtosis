@@ -35,7 +35,7 @@ public class BurrowCommand {
      */
     Position withdrawPoint;
     /**
-     * How many zones of shooters that outrange the Lurker cover it, -1 for any other command.
+     * How many zones of shooters that outrange the Lurker cover where it stood, -1 for any other command.
      */
     @Builder.Default
     int withdrawZones = -1;

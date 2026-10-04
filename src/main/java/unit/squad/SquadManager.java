@@ -784,7 +784,8 @@ public class SquadManager {
             Position point = evadePoint(member, zones, padding, allowed, seek);
             if (point != null) {
                 if (member instanceof Lurker && member.canWithdrawNow()) {
-                    ((Lurker) member).setWithdrawZoneCount(zones.size());
+                    ((Lurker) member).setWithdrawZoneCount(
+                            coveringZones(zones, member.getPosition(), padding));
                 }
                 member.evade(point, now);
             }
@@ -796,19 +797,55 @@ public class SquadManager {
         if (!member.canWithdrawNow()) {
             return RunbyTargeting.findEvadePoint(member.getPosition(), zones, padding, allowed, seek);
         }
-        int minStep = withdrawMinStep(gameState.getReachMemory().longestGroundReach(), padding);
-        Position clear = RunbyTargeting.findClearPoint(member.getPosition(), zones, padding, WITHDRAW_CLEARANCE,
-                minStep, gameState.getSquadRallyPoint(), allowed, seek);
-        if (clear == null) {
-            clear = RunbyTargeting.findClearPoint(member.getPosition(), zones, padding, WITHDRAW_CLEARANCE,
-                    minStep, null, allowed, seek);
-        }
-        if (clear == null) {
-            clear = RunbyTargeting.findClearPoint(member.getPosition(), zones, padding, WITHDRAW_CLEARANCE, allowed,
-                    seek);
-        }
+        Position clear = withdrawDestination(member.getPosition(), zones, padding,
+                gameState.getReachMemory().longestGroundReach(), gameState.getSquadRallyPoint(), allowed, seek);
         return clear != null ? clear
                 : RunbyTargeting.findEvadePoint(member.getPosition(), zones, padding, allowed, seek);
+    }
+
+    /**
+     * Where a withdrawing Lurker walks. With a rally point and no zone covering the Lurker, the hit was not
+     * attributed, so the nearest clear point at least {@link #withdrawMinStep} away on the rally side is taken, ties
+     * toward the rally point. Otherwise, and when none is found, the nearest clear point, ties toward the seek point.
+     *
+     * @param from the Lurker's position
+     * @param zones the zones of the shooters that outrange it
+     * @param padding pixels added to every zone's reach
+     * @param longestReach longest learned enemy ground reach, 0 when none
+     * @param rally the squad's rally point, or null
+     * @param allowed points the Lurker may walk to
+     * @param seek point ties are broken toward, or null
+     * @return the destination, or null when no allowed point is clear
+     */
+    static Position withdrawDestination(Position from, List<StaticDefenseZone> zones, int padding, int longestReach,
+                                        Position rally, Predicate<Position> allowed, Position seek) {
+        if (rally != null && coveringZones(zones, from, padding) == 0) {
+            int minStep = withdrawMinStep(longestReach, padding);
+            Position away = RunbyTargeting.findClearPoint(from, zones, padding, WITHDRAW_CLEARANCE, minStep, rally,
+                    allowed, rally);
+            if (away != null) {
+                return away;
+            }
+        }
+        return RunbyTargeting.findClearPoint(from, zones, padding, WITHDRAW_CLEARANCE, allowed, seek);
+    }
+
+    /**
+     * How many zones cover a position.
+     *
+     * @param zones the zones
+     * @param position the position
+     * @param padding pixels added to every zone's reach
+     * @return the number of zones whose reach plus the padding reaches the position
+     */
+    static int coveringZones(Collection<StaticDefenseZone> zones, Position position, int padding) {
+        int count = 0;
+        for (StaticDefenseZone zone : zones) {
+            if (zone.covers(position, padding)) {
+                count++;
+            }
+        }
+        return count;
     }
 
     /**
