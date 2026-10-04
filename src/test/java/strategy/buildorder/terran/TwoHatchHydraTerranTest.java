@@ -131,6 +131,21 @@ class TwoHatchHydraTerranTest {
     }
 
     @Test
+    void theThirdBaseCountsHydralisksProducedNotQueued() {
+        int out = TwoHatchHydraTerran.HYDRALISKS_BEFORE_THIRD_BASE;
+        UnitTypeCount queued = new UnitTypeCount();
+        UnitTypeCount produced = new UnitTypeCount();
+        for (int i = 0; i < out; i++) {
+            queued.planUnit(UnitType.Zerg_Hydralisk);
+            produced.addUnit(UnitType.Zerg_Hydralisk);
+        }
+
+        assertEquals(out, queued.get(UnitType.Zerg_Hydralisk));
+        assertFalse(TwoHatchHydraTerran.wantsThirdBase(2, queued));
+        assertTrue(TwoHatchHydraTerran.wantsThirdBase(2, produced));
+    }
+
+    @Test
     void dronesOutrankTheHydraliskStreamOnlyAfterTheFirstWaveAndBelowTheTarget() {
         int wave = TwoHatchHydraTerran.HYDRALISKS_BEFORE_DRONES;
         int target = TwoHatchHydraTerran.DRONES_BEFORE_HYDRALISKS;

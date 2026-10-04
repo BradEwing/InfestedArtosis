@@ -8,6 +8,7 @@ import info.GameState;
 import info.Readiness;
 import info.ResourceCount;
 import info.TechProgression;
+import info.UnitTypeCount;
 import info.tracking.StrategyTracker;
 import macro.Reactions;
 import macro.plan.Plan;
@@ -23,9 +24,9 @@ import java.util.Set;
 
 /**
  * The hydralisk-focused ZvT build: Hydralisks and Zerglings out before the third base, which is taken
- * once {@value #HYDRALISKS_BEFORE_THIRD_BASE} Hydralisks are owned, on a Drone target of
+ * once {@value #HYDRALISKS_BEFORE_THIRD_BASE} Hydralisks have been produced, on a Drone target of
  * {@value #DRONES_BEFORE_HYDRALISKS}. The macro Hatchery and the behind-on-bases, floating-minerals and
- * handover expansions wait until {@value #HYDRALISKS_BEFORE_THIRD_BASE} Hydralisks have been produced.
+ * handover expansions wait for the same first wave.
  * It researches Muscular Augments, Grooved Spines, Missile Attacks and Carapace, and hands over to the build
  * {@link LurkerDefilerUltraTransition#candidates} offers once
  * {@value LurkerDefilerUltraTransition#HYDRALISK_TRIGGER} Hydralisks are produced, Muscular Augments
@@ -81,7 +82,7 @@ public class TwoHatchHydraTerran extends TerranBase {
 
     private static final int METABOLIC_BOOST_ZERGLINGS = 12;
 
-    /** Hydralisks owned before the third base is asked for. */
+    /** Hydralisks produced before the third base, the macro Hatchery or any other expansion is asked for. */
     static final int HYDRALISKS_BEFORE_THIRD_BASE = 6;
 
     /** Hydralisks owned before Drones take larva from the Hydralisk stream. */
@@ -144,7 +145,7 @@ public class TwoHatchHydraTerran extends TerranBase {
         int basesHeldOrReserved = baseData.currentAndReservedCount();
         boolean wantExpansion = wantsExpansion(behindOnBases(gameState), gameState.isFloatingMinerals(),
                 gameState.totalProduced(UnitType.Zerg_Hydralisk), basesHeldOrReserved)
-                || wantsThirdBase(plannedAndCurrentHatcheries, gameState.totalProduced(UnitType.Zerg_Hydralisk));
+                || wantsThirdBase(plannedAndCurrentHatcheries, gameState.getUnitTypeCount());
 
         final int desiredSunkenColonies = this.requiredSunkens(gameState);
         if (!gameState.basesNeedingSunken(desiredSunkenColonies).isEmpty()) {
@@ -336,6 +337,10 @@ public class TwoHatchHydraTerran extends TerranBase {
      * the first Hydralisk wave is produced ({@link #firstHydraliskWaveProduced}), so the army is out
      * before the Hatchery goes down.
      */
+    static boolean wantsThirdBase(int plannedAndCurrentHatcheries, UnitTypeCount count) {
+        return wantsThirdBase(plannedAndCurrentHatcheries, count.getTotalProduced(UnitType.Zerg_Hydralisk));
+    }
+
     static boolean wantsThirdBase(int plannedAndCurrentHatcheries, int hydralisksProduced) {
         return plannedAndCurrentHatcheries >= 2
                 && plannedAndCurrentHatcheries < LurkerDefilerUltraTransition.ECONOMY_BASES
