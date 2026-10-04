@@ -36,6 +36,9 @@ public final class AirHarassScouting {
      */
     static final int DEFENDED_REFUSAL_FRAMES = 2880;
 
+    /** Tuning value: frames the anti-air that ended a harass stays accepted by the next one, twice the re-entry hold. */
+    static final int CARRY_FRAMES = 2 * AirHarassEvaluator.REENTRY_HOLD_FRAMES;
+
     private AirHarassScouting() {
     }
 
@@ -75,6 +78,47 @@ public final class AirHarassScouting {
      */
     public static boolean refusesBase(AirHarassEvaluator.ExitReason reason) {
         return reason == AirHarassEvaluator.ExitReason.NEW_AA;
+    }
+
+    /**
+     * How long a harass that ends holds its target base out of the entry: {@link #DEFENDED_REFUSAL_FRAMES} for newly
+     * seen anti-air that stood at the target base, {@link AirHarassEvaluator#REENTRY_HOLD_FRAMES} for newly seen
+     * anti-air that stood only at the flock, since the flock turned away from it on the way and the base may be
+     * clear, and none for any other exit.
+     *
+     * @param reason why the harass ended
+     * @param atTarget whether the anti-air that ended it stood within {@link #NEW_AA_ZONE} of the target base
+     * @return frames the target base is held out of the entry, or 0 for none
+     */
+    public static int holdFrames(AirHarassEvaluator.ExitReason reason, boolean atTarget) {
+        if (!refusesBase(reason)) {
+            return 0;
+        }
+        return atTarget ? DEFENDED_REFUSAL_FRAMES : AirHarassEvaluator.REENTRY_HOLD_FRAMES;
+    }
+
+    /**
+     * The anti-air that ended an earlier harass, still known and not already in reach: accepted by the next harass,
+     * so it judges them on its decision tick instead of turning on them as if they were new. Ids carried longer than
+     * {@link #CARRY_FRAMES} ago are dropped.
+     *
+     * @param threats every known anti-air threat
+     * @param inReach the threats already accepted
+     * @param carriedAt frame each carried id ended a harass
+     * @param now current frame
+     * @return the carried threats not in reach
+     */
+    public static List<AirHarassTargeting.AirThreat> carried(
+            Collection<AirHarassTargeting.AirThreat> threats, Collection<AirHarassTargeting.AirThreat> inReach,
+            Map<Integer, Integer> carriedAt, int now) {
+        carriedAt.values().removeIf(frame -> now - frame > CARRY_FRAMES);
+        List<AirHarassTargeting.AirThreat> carried = new ArrayList<>();
+        for (AirHarassTargeting.AirThreat threat : threats) {
+            if (carriedAt.containsKey(threat.getId()) && !inReach.contains(threat)) {
+                carried.add(threat);
+            }
+        }
+        return carried;
     }
 
     /**
@@ -146,14 +190,16 @@ public final class AirHarassScouting {
         private final int turnFrame;
         private final int hitPointsLost;
         private final boolean atTarget;
+        private final List<Integer> contributorIds;
 
         Reaction(AirHarassTargeting.AirThreat trigger, int seenFrame, int turnFrame, int hitPointsLost,
-                 boolean atTarget) {
+                 boolean atTarget, List<Integer> contributorIds) {
             this.trigger = trigger;
             this.seenFrame = seenFrame;
             this.turnFrame = turnFrame;
             this.hitPointsLost = hitPointsLost;
             this.atTarget = atTarget;
+            this.contributorIds = contributorIds;
         }
     }
 
@@ -204,11 +250,12 @@ public final class AirHarassScouting {
         if (trigger == null) {
             return null;
         }
-        AirHarassState.AntiAirSighting seen = state.earliestSighting(contributors(trigger, threats));
+        List<Integer> contributorIds = contributors(trigger, threats);
+        AirHarassState.AntiAirSighting seen = state.earliestSighting(contributorIds);
         int seenFrame = seen == null ? now : seen.getFrame();
         int hitPointsLost = seen == null ? 0 : Math.max(0, seen.getFlockHitPoints() - flockHitPoints);
         boolean atTarget = baseCenter != null && trigger.getPosition().getDistance(baseCenter) <= NEW_AA_ZONE;
-        return new Reaction(trigger, seenFrame, now, hitPointsLost, atTarget);
+        return new Reaction(trigger, seenFrame, now, hitPointsLost, atTarget, contributorIds);
     }
 
     /**

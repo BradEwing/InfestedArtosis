@@ -230,6 +230,76 @@ class AirHarassScoutingTest {
     }
 
     @Test
+    void newAntiAirAtTheTargetHoldsTheBaseForTheFullRefusalAndAtTheFlockForTheReentryHold() {
+        AirHarassEvaluator.ExitReason newAa = AirHarassEvaluator.ExitReason.NEW_AA;
+
+        assertEquals(AirHarassScouting.DEFENDED_REFUSAL_FRAMES, AirHarassScouting.holdFrames(newAa, true));
+        assertEquals(AirHarassEvaluator.REENTRY_HOLD_FRAMES, AirHarassScouting.holdFrames(newAa, false));
+        for (AirHarassEvaluator.ExitReason reason : AirHarassEvaluator.ExitReason.values()) {
+            if (reason != newAa) {
+                assertEquals(0, AirHarassScouting.holdFrames(reason, true), reason.name());
+                assertEquals(0, AirHarassScouting.holdFrames(reason, false), reason.name());
+            }
+        }
+    }
+
+    @Test
+    void aFlockThatLeftOnFlockSideAntiAirDoesNotReenterTheSameBaseWithinTheHold() {
+        Map<String, Integer> refusedUntil = new HashMap<>();
+        refusedUntil.put("main", NOW + AirHarassScouting.holdFrames(AirHarassEvaluator.ExitReason.NEW_AA, false));
+        List<String> bases = Arrays.asList("main", "natural");
+
+        assertEquals(Collections.singletonList("natural"), AirHarassScouting.unrefused(bases, refusedUntil,
+                NOW + AirHarassEvaluator.REENTRY_HOLD_FRAMES));
+        assertEquals(bases, AirHarassScouting.unrefused(bases, refusedUntil,
+                NOW + AirHarassEvaluator.REENTRY_HOLD_FRAMES + 1));
+    }
+
+    @Test
+    void aReactionAtTheFlockNamesTheTriggerAndTheIdsOfTheDefenseThatEndedTheHarass() {
+        AirHarassState state = new AirHarassState(NOW, 600);
+        AirHarassTargeting.AirThreat goliath = threat(301, UnitType.Terran_Goliath, FAR);
+        double tolerance = goliath.getStrength() / 2;
+
+        AirHarassScouting.Reaction reaction = AirHarassScouting.react(state, Collections.singletonList(goliath),
+                BASE, FAR, tolerance, NOW, 600);
+
+        assertSame(goliath, reaction.getTrigger());
+        assertFalse(reaction.isAtTarget());
+        assertEquals(Collections.singletonList(301), reaction.getContributorIds());
+    }
+
+    @Test
+    void anAntiAirUnitCarriedFromTheLastExitIsAcceptedByTheNextHarassSoItIsNeverNewAgain() {
+        AirHarassTargeting.AirThreat goliath = threat(301, UnitType.Terran_Goliath, FAR);
+        double tolerance = goliath.getStrength() / 2;
+        List<AirHarassTargeting.AirThreat> threats = Collections.singletonList(goliath);
+        Map<Integer, Integer> carriedAt = new HashMap<>();
+        carriedAt.put(301, NOW);
+        int next = NOW + AirHarassEvaluator.REENTRY_HOLD_FRAMES + 1;
+
+        AirHarassState state = new AirHarassState(next, 600);
+        state.acceptAntiAir(AirHarassScouting.carried(threats, Collections.emptyList(), carriedAt, next), next, 600);
+
+        assertNull(AirHarassScouting.react(state, threats, BASE, FAR, tolerance, next + 40, 600));
+    }
+
+    @Test
+    void carriedAntiAirExpiresAndIsNotCarriedTwiceWhenAlreadyInReach() {
+        AirHarassTargeting.AirThreat goliath = threat(301, UnitType.Terran_Goliath, FAR);
+        List<AirHarassTargeting.AirThreat> threats = Collections.singletonList(goliath);
+        Map<Integer, Integer> carriedAt = new HashMap<>();
+        carriedAt.put(301, NOW);
+
+        assertTrue(AirHarassScouting.carried(threats, threats, carriedAt, NOW + 1).isEmpty());
+        assertEquals(threats, AirHarassScouting.carried(threats, Collections.emptyList(), carriedAt,
+                NOW + AirHarassScouting.CARRY_FRAMES));
+        assertTrue(AirHarassScouting.carried(threats, Collections.emptyList(), carriedAt,
+                NOW + AirHarassScouting.CARRY_FRAMES + 1).isEmpty());
+        assertTrue(carriedAt.isEmpty());
+    }
+
+    @Test
     void aRefusedBaseIsLeftOutUntilItsRefusalRunsOut() {
         Map<String, Integer> refusedUntil = new HashMap<>();
         refusedUntil.put("main", NOW + AirHarassScouting.DEFENDED_REFUSAL_FRAMES);

@@ -80,6 +80,11 @@ public final class HarassRow {
     private final int aaTurnFrame = -1;
     @Builder.Default
     private final int aaHitPointsLost = -1;
+    private final UnitType aaTriggerType;
+    @Builder.Default
+    private final int aaTriggerId = -1;
+    @Builder.Default
+    private final int aaAtTarget = -1;
 
     /**
      * What a harass targets: a known enemy base, or an exposed group of enemies away from a base's heat.

@@ -37,7 +37,9 @@ import java.util.Map;
  * <p>An AA_REACTION row is written once for every harass the flock ends on newly seen anti-air it cannot answer, just
  * before the EXIT row whose reason is NEW_AA. aa_seen_frame is the frame the first of the anti-air making up that
  * defense came into sight, aa_turn_frame the frame the flock turned, and aa_hp_lost the flock's hit points lost
- * between the two, 0 when they are the same frame.
+ * between the two, 0 when they are the same frame. aa_trigger_type and aa_trigger_id name the anti-air unit whose
+ * sighting ended the harass, and aa_at_target is 1 when it stood within the zone of the target base and 0 when it
+ * stood only at the flock.
  *
  * <p>Constructed only when combat telemetry is enabled.
  */
@@ -49,7 +51,7 @@ public class HarassLogger implements HarassSink {
             + "strike_y,center_x,center_y,mutas,healthy_mutas,flock_hp,hp_loss_fraction,tolerance,air_defense,"
             + "avoided_zones,workers_killed,buildings_killed,other_killed,mutas_lost,killed_type,contain_distance,"
             + "bases_under_attack,target_kind,flock_defense,aa_sighting_age,prober_hp,prober_peak_hp,prober_id,"
-            + "aa_known_cover,aa_seen_frame,aa_turn_frame,aa_hp_lost";
+            + "aa_known_cover,aa_seen_frame,aa_turn_frame,aa_hp_lost,aa_trigger_type,aa_trigger_id,aa_at_target";
 
     private static final int FLUSH_INTERVAL_FRAMES = 480;
     private static final int NOT_EVALUATED = -1;
@@ -173,6 +175,9 @@ public class HarassLogger implements HarassSink {
         fields.add(String.valueOf(row.getAaSeenFrame()));
         fields.add(String.valueOf(row.getAaTurnFrame()));
         fields.add(String.valueOf(row.getAaHitPointsLost()));
+        fields.add(Csv.name(row.getAaTriggerType()));
+        fields.add(String.valueOf(row.getAaTriggerId()));
+        fields.add(String.valueOf(row.getAaAtTarget()));
         return String.join(",", fields);
     }
 

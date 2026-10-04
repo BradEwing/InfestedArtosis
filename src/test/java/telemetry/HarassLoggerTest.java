@@ -112,9 +112,9 @@ class HarassLoggerTest {
         String[] columns = HarassLogger.HEADER.split(",", -1);
 
         assertEquals(columns.length, fields.length);
-        assertEquals("bases_under_attack", columns[columns.length - 11]);
-        assertEquals("target_kind", columns[columns.length - 10]);
-        assertEquals("flock_defense", columns[columns.length - 9]);
+        assertEquals("bases_under_attack", columns[columns.length - 14]);
+        assertEquals("target_kind", columns[columns.length - 13]);
+        assertEquals("flock_defense", columns[columns.length - 12]);
         assertEquals("FLOCK_DEFENDED", fields[columnIndex("exit_reason")]);
         assertEquals("EXPOSED", fields[columnIndex("target_kind")]);
         assertEquals("-1", fields[columnIndex("base_x")]);
@@ -156,19 +156,25 @@ class HarassLoggerTest {
         String[] columns = HarassLogger.HEADER.split(",", -1);
         String[] check = HarassLogger.row("game-1", entryCheck).split(",", -1);
 
-        assertEquals("aa_sighting_age", columns[columns.length - 8]);
-        assertEquals("prober_hp", columns[columns.length - 7]);
-        assertEquals("prober_id", columns[columns.length - 5]);
-        assertEquals("aa_known_cover", columns[columns.length - 4]);
-        assertEquals("aa_seen_frame", columns[columns.length - 3]);
-        assertEquals("aa_turn_frame", columns[columns.length - 2]);
-        assertEquals("aa_hp_lost", columns[columns.length - 1]);
+        assertEquals("aa_sighting_age", columns[columns.length - 11]);
+        assertEquals("prober_hp", columns[columns.length - 10]);
+        assertEquals("prober_id", columns[columns.length - 8]);
+        assertEquals("aa_known_cover", columns[columns.length - 7]);
+        assertEquals("aa_seen_frame", columns[columns.length - 6]);
+        assertEquals("aa_turn_frame", columns[columns.length - 5]);
+        assertEquals("aa_hp_lost", columns[columns.length - 4]);
+        assertEquals("aa_trigger_type", columns[columns.length - 3]);
+        assertEquals("aa_trigger_id", columns[columns.length - 2]);
+        assertEquals("aa_at_target", columns[columns.length - 1]);
         assertEquals(columns.length, check.length);
         assertEquals("1", check[columnIndex("aa_known_cover")]);
         assertEquals("-1", check[columnIndex("prober_id")]);
         assertEquals("-1", check[columnIndex("aa_seen_frame")]);
         assertEquals("-1", check[columnIndex("aa_turn_frame")]);
         assertEquals("-1", check[columnIndex("aa_hp_lost")]);
+        assertEquals("NONE", check[columnIndex("aa_trigger_type")]);
+        assertEquals("-1", check[columnIndex("aa_trigger_id")]);
+        assertEquals("-1", check[columnIndex("aa_at_target")]);
     }
 
     @Test
@@ -180,6 +186,9 @@ class HarassLoggerTest {
                 .aaSeenFrame(11032)
                 .aaTurnFrame(11040)
                 .aaHitPointsLost(24)
+                .aaTriggerType(UnitType.Terran_Goliath)
+                .aaTriggerId(301)
+                .aaAtTarget(0)
                 .build();
 
         String[] fields = HarassLogger.row("game-1", reaction).split(",", -1);
@@ -188,6 +197,9 @@ class HarassLoggerTest {
         assertEquals("11032", fields[columnIndex("aa_seen_frame")]);
         assertEquals("11040", fields[columnIndex("aa_turn_frame")]);
         assertEquals("24", fields[columnIndex("aa_hp_lost")]);
+        assertEquals("Terran_Goliath", fields[columnIndex("aa_trigger_type")]);
+        assertEquals("301", fields[columnIndex("aa_trigger_id")]);
+        assertEquals("0", fields[columnIndex("aa_at_target")]);
         assertEquals("-1", fields[columnIndex("aa_known_cover")]);
     }
 
