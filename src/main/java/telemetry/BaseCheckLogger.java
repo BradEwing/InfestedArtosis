@@ -28,7 +28,7 @@ public class BaseCheckLogger implements BaseCheckSink {
     static final String FILE = "telemetry_base_checks.csv";
 
     static final String HEADER = "game_id,unit_id,unit_type,base_x,base_y,age_at_dispatch,dispatch_frame,"
-            + "end_frame,outcome,occupied,died_frame";
+            + "end_frame,outcome,occupied,died_frame,primary";
 
     private static final int FLUSH_INTERVAL_FRAMES = 480;
 
@@ -97,6 +97,7 @@ public class BaseCheckLogger implements BaseCheckSink {
         fields.add(Csv.name(end.getOutcome()));
         fields.add(end.isOccupied() ? "1" : "0");
         fields.add(String.valueOf(end.getDiedFrame()));
+        fields.add(end.isPrimary() ? "1" : "0");
         return String.join(",", fields);
     }
 }

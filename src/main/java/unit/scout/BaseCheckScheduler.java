@@ -5,6 +5,7 @@ import bwapi.UnitType;
 import util.Time;
 
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -35,13 +36,19 @@ public final class BaseCheckScheduler {
     public static final int OCCUPIED_RADIUS_PIXELS = 320;
 
     /** Tuning value: ling checks, each to its own base, that may be out at once. */
-    public static final int MAX_LING_CHECKS = 2;
+    public static final int MAX_LING_CHECKS = 3;
 
     /** Tuning value: overlord checks that may be out at once. */
     public static final int MAX_OVERLORD_CHECKS = 1;
 
     /** Tuning value: the longest a base is left alone after failed checks, in check intervals. */
     public static final int MAX_BACKOFF_INTERVALS = 8;
+
+    /** Tuning value: how long a scout's death site is remembered when routing checks, in frames. */
+    public static final int DEATH_MEMORY_FRAMES = 4 * CHECK_INTERVAL_FRAMES;
+
+    /** Tuning value: a route passing this close to a remembered death site, in pixels, is avoided. */
+    public static final int DEATH_AVOID_RADIUS_PIXELS = 288;
 
     /** Zerglings sent to a base when Spider Mines are known, so one can trigger a mine for the other. */
     public static final int LINGS_WITH_MINES = 2;
@@ -116,8 +123,9 @@ public final class BaseCheckScheduler {
     }
 
     /**
-     * Picks the base to check next: the stalest due base not already being checked, ties broken by the
-     * shorter ground path. Returns null before {@link #FIRST_CHECK_FRAME} or when no base is due.
+     * Picks the base to check next: a start location never seen first, then the stalest due base, ties broken
+     * by the shorter ground path. Bases already being checked are skipped. Returns null before
+     * {@link #FIRST_CHECK_FRAME} or when no base is due.
      *
      * @param candidates the bases that may be checked
      * @param lastSeenFrames the frame each base was last seen; a base missing from the map was never seen
@@ -128,6 +136,18 @@ public final class BaseCheckScheduler {
      */
     public static <B> B next(Collection<B> candidates, Map<B, Integer> lastSeenFrames,
                              Map<B, Integer> groundDistances, Collection<B> inFlight, int now) {
+        return next(candidates, lastSeenFrames, groundDistances, inFlight, Collections.emptySet(), now);
+    }
+
+    /**
+     * As {@link #next(Collection, Map, Map, Collection, int)}, with the start locations named so that one never
+     * seen is checked before any other base, however stale.
+     *
+     * @param startLocations the candidates that are start locations
+     */
+    public static <B> B next(Collection<B> candidates, Map<B, Integer> lastSeenFrames,
+                             Map<B, Integer> groundDistances, Collection<B> inFlight,
+                             Collection<B> startLocations, int now) {
         if (now < FIRST_CHECK_FRAME) {
             return null;
         }
@@ -137,10 +157,47 @@ public final class BaseCheckScheduler {
                 .collect(Collectors.toList());
         return due.stream()
                 .min(Comparator
-                        .comparing((B base) -> age(lastSeenFrames.getOrDefault(base, -1), now),
+                        .comparing((B base) -> isUnscoutedStart(base, lastSeenFrames, startLocations) ? 0 : 1)
+                        .thenComparing((B base) -> age(lastSeenFrames.getOrDefault(base, -1), now),
                                 Comparator.reverseOrder())
                         .thenComparing(base -> groundDistances.getOrDefault(base, Integer.MAX_VALUE)))
                 .orElse(null);
+    }
+
+    private static <B> boolean isUnscoutedStart(B base, Map<B, Integer> lastSeenFrames,
+                                                Collection<B> startLocations) {
+        return startLocations.contains(base) && lastSeenFrames.getOrDefault(base, -1) < 0;
+    }
+
+    /**
+     * Whether a scout may be sent to a base the enemy is known to hold: not while a failed check still holds
+     * it back, and not while the base has been seen within {@link #CHECK_INTERVAL_FRAMES}.
+     *
+     * @param age frames since the base was last seen
+     * @param retryAfterFrame the first frame a failed check allows another, or 0 when none failed
+     * @param now the current frame
+     * @return true when a scout may be dispatched
+     */
+    public static boolean mayDispatchToHeldBase(int age, int retryAfterFrame, int now) {
+        return isDue(age) && retryAfterFrame <= now;
+    }
+
+    /**
+     * Whether a route passes within {@link #DEATH_AVOID_RADIUS_PIXELS} of a place a scout died on a check.
+     *
+     * @param route points along the ground route to a base
+     * @param deathSites where scouts died on earlier checks
+     * @return true when any route point is that close to any death site
+     */
+    public static boolean routePassesDeathSite(Collection<Position> route, Collection<Position> deathSites) {
+        for (Position death : deathSites) {
+            for (Position point : route) {
+                if (point.getDistance(death) <= DEATH_AVOID_RADIUS_PIXELS) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     /**

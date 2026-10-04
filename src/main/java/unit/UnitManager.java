@@ -448,6 +448,10 @@ public class UnitManager {
             return;
         }
 
+        if (!scoutManager.mayCheckEnemyMain(enemyMainBase)) {
+            return;
+        }
+
         List<ManagedUnit> availableZerglings = spareZerglings(enemyMainBase);
         int toAssign = Math.min(scoutsNeeded, availableZerglings.size());
         for (int i = 0; i < toAssign; i++) {

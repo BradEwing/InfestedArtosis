@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -236,5 +237,75 @@ class BaseCheckSchedulerTest {
         assertTrue(BaseCheckScheduler.isOccupied(Collections.singletonList(new Position(1100, 1000)), center));
         assertFalse(BaseCheckScheduler.isOccupied(Collections.singletonList(new Position(2000, 1000)), center));
         assertFalse(BaseCheckScheduler.isOccupied(Collections.<Position>emptyList(), center));
+    }
+
+    @Test
+    void anUnscoutedStartLocationBeatsAnEqualNeverSeenExpansionEvenWhenFarther() {
+        Map<String, Integer> distances = map("expansion", 100, "start", 900);
+        String next = BaseCheckScheduler.next(Arrays.asList("expansion", "start"), Collections.emptyMap(),
+                distances, Collections.emptyList(), Collections.singleton("start"), NOW);
+        assertEquals("start", next);
+    }
+
+    @Test
+    void anUnscoutedStartLocationBeatsAStaleSeenBase() {
+        Map<String, Integer> lastSeen = map("stale", 0);
+        String next = BaseCheckScheduler.next(Arrays.asList("stale", "start"), lastSeen, Collections.emptyMap(),
+                Collections.emptyList(), Collections.singleton("start"), NOW);
+        assertEquals("start", next);
+    }
+
+    @Test
+    void aStartLocationAlreadySeenIsOrderedByStalenessLikeAnyOtherBase() {
+        Map<String, Integer> lastSeen = map("start", NOW - 2000, "expansion", NOW - 5000);
+        String next = BaseCheckScheduler.next(Arrays.asList("start", "expansion"), lastSeen,
+                Collections.emptyMap(), Collections.emptyList(), Collections.singleton("start"), NOW);
+        assertEquals("expansion", next);
+    }
+
+    @Test
+    void anUnscoutedStartLocationAlreadyBeingCheckedIsSkipped() {
+        String next = BaseCheckScheduler.next(Arrays.asList("expansion", "start"), Collections.emptyMap(),
+                Collections.emptyMap(), Collections.singletonList("start"), Collections.singleton("start"), NOW);
+        assertEquals("expansion", next);
+    }
+
+    @Test
+    void anUnscoutedStartLocationWaitsForTheFirstCheckFrame() {
+        assertNull(BaseCheckScheduler.next(Collections.singletonList("start"), Collections.emptyMap(),
+                Collections.emptyMap(), Collections.emptyList(), Collections.singleton("start"),
+                BaseCheckScheduler.FIRST_CHECK_FRAME - 1));
+    }
+
+    @Test
+    void aHeldBaseIsNotDispatchedToWhileSeenWithinTheInterval() {
+        assertFalse(BaseCheckScheduler.mayDispatchToHeldBase(BaseCheckScheduler.CHECK_INTERVAL_FRAMES - 1, 0, NOW));
+        assertTrue(BaseCheckScheduler.mayDispatchToHeldBase(BaseCheckScheduler.CHECK_INTERVAL_FRAMES, 0, NOW));
+        assertTrue(BaseCheckScheduler.mayDispatchToHeldBase(Integer.MAX_VALUE, 0, NOW));
+    }
+
+    @Test
+    void aHeldBaseIsNotDispatchedToBeforeItsRetryFrame() {
+        assertFalse(BaseCheckScheduler.mayDispatchToHeldBase(Integer.MAX_VALUE, NOW + 1, NOW));
+        assertTrue(BaseCheckScheduler.mayDispatchToHeldBase(Integer.MAX_VALUE, NOW, NOW));
+    }
+
+    @Test
+    void aRoutePassingNearADeathSiteIsAvoided() {
+        Position death = new Position(500, 500);
+        List<Position> route = Arrays.asList(new Position(0, 0),
+                new Position(500, 500 + BaseCheckScheduler.DEATH_AVOID_RADIUS_PIXELS));
+        assertTrue(BaseCheckScheduler.routePassesDeathSite(route, Collections.singletonList(death)));
+    }
+
+    @Test
+    void aRouteFarFromEveryDeathSiteIsNotAvoided() {
+        Position death = new Position(500, 500);
+        List<Position> route = Arrays.asList(new Position(0, 0),
+                new Position(500, 500 + BaseCheckScheduler.DEATH_AVOID_RADIUS_PIXELS + 1));
+        assertFalse(BaseCheckScheduler.routePassesDeathSite(route, Collections.singletonList(death)));
+        assertFalse(BaseCheckScheduler.routePassesDeathSite(route, Collections.emptyList()));
+        assertFalse(BaseCheckScheduler.routePassesDeathSite(Collections.emptyList(),
+                Collections.singletonList(death)));
     }
 }

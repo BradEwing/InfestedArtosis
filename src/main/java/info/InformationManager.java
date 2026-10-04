@@ -866,6 +866,7 @@ public class InformationManager {
         for (MapTile mapTile : gameMap.getHeatMap()) {
             final TilePosition mapTp = mapTile.getTile();
             if (game.isVisible(mapTp)) {
+                mapTile.setScouted(true);
                 mapTile.setScoutImportance(0);
                 scoutData.removeScoutTarget(mapTp);
             }
