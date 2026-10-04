@@ -13,7 +13,9 @@ import java.util.List;
  * command, x and y are where it stood, and contain_x and contain_y are its contain point, -1 when it has none.
  * withdraw_x and withdraw_y are where an UNDER_FIRE_WITHDRAW sends the Lurker and withdraw_zones is how many zones of
  * shooters that outrange it cover where it stood, 0 when no known shooter does; all three are -1 on any other row. A
- * Lurker that died with no attack started can be classified by the last row of its unit id.
+ * BURROW_REFUSED_UNDER_FIRE rows, command BURROW, are burrows the Lurker did not issue because it stood inside
+ * enemy fire it cannot answer; they are written at most once per 96 frames per Lurker, and a refusal row does not
+ * change the burrow state last commanded. A Lurker that died with no attack started can be classified by the last row of its unit id.
  *
  * <p>Constructed only when combat telemetry is enabled.
  */

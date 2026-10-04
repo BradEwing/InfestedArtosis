@@ -5,6 +5,7 @@ import bwapi.Order;
 import bwapi.Position;
 import bwapi.Unit;
 import bwapi.UnitType;
+import config.Config;
 import info.map.GameMap;
 import lombok.Getter;
 import telemetry.BurrowCommand;
@@ -31,12 +32,22 @@ public class Lurker extends ManagedUnit {
     static final int WITHDRAW_HOLD_FRAMES = 240;
     /** Pixels added to a radius query, which measures center to center, to cover the size of the enemy. */
     static final int QUERY_PADDING = 96;
+    /** Pixels from where it was hit within which a withdrawing Lurker is still in the hit cell. */
+    static final int HIT_CELL_RADIUS = 96;
+    /** Frames between two burrow refusals that are logged. */
+    static final int REFUSAL_LOG_FRAMES = 96;
 
     private List<StaticDefenseZone> fixedFireZones = Collections.emptyList();
     private int fixedFirePadding;
     private Position withdrawPoint;
     private int withdrawFrame = -1;
     private int withdrawZoneCount;
+    private Position withdrawOrigin;
+    private List<StaticDefenseZone> fireZones = Collections.emptyList();
+    private int firePadding;
+    private Position safeFromHere;
+    private Position safeFromHold;
+    private int refusalLoggedFrame = -REFUSAL_LOG_FRAMES;
     private Boolean commandedBurrow;
 
     /**
@@ -63,6 +74,41 @@ public class Lurker extends ManagedUnit {
     public void setFixedFireZones(List<StaticDefenseZone> zones, int padding) {
         this.fixedFireZones = zones;
         this.fixedFirePadding = padding;
+    }
+
+    /**
+     * Sets the ground it must not burrow on: every piece of enemy fire it cannot answer, and the nearest points
+     * outside it.
+     *
+     * @param zones the zones of fixed fire that outrange it and the live hit marks
+     * @param padding pixels added to every zone's reach
+     * @param safeFromHere the nearest point to where it stands that lies outside the zones, or null
+     * @param safeFromHold the nearest point to its contain point that lies outside the zones, or null
+     */
+    public void setFireView(List<StaticDefenseZone> zones, int padding, Position safeFromHere,
+                            Position safeFromHold) {
+        this.fireZones = zones;
+        this.firePadding = padding;
+        this.safeFromHere = safeFromHere;
+        this.safeFromHold = safeFromHold;
+    }
+
+    /**
+     * Whether the Lurker stands inside enemy fire it cannot answer, which it must not burrow in.
+     *
+     * @return true when a fire zone covers it
+     */
+    public boolean standsInFire() {
+        return inFire(unit.getPosition());
+    }
+
+    /**
+     * Whether its contain point lies inside enemy fire it cannot answer.
+     *
+     * @return true when the Lurker has a contain point and a fire zone covers it
+     */
+    public boolean containPointInFire() {
+        return containPosition != null && inFire(containPosition);
     }
 
     @Override
@@ -209,7 +255,7 @@ public class Lurker extends ManagedUnit {
         }
 
         Unit nearbyEnemy = findClosestGroundEnemyInRange();
-        if (answersEnemyInRange(nearbyEnemy != null, unit.isBurrowed(), holdsWithdrawalNow())) {
+        if (answersEnemyInRange(nearbyEnemy != null, unit.isBurrowed(), holdsWithdrawalNow() && inHitCellNow())) {
             setUnready(11);
             if (unit.isBurrowed()) {
                 unit.attack(nearbyEnemy);
@@ -221,7 +267,8 @@ public class Lurker extends ManagedUnit {
             return;
         }
 
-        Position hold = holdPoint();
+        Position plainHold = holdPoint();
+        Position hold = holdTarget(Config.lurkerFireAware, inFire(plainHold), plainHold, safeFromHold);
         double distance = unit.getDistance(hold);
         if (distance < 24) {
             setUnready(11);
@@ -293,6 +340,7 @@ public class Lurker extends ManagedUnit {
         if (unit.isBurrowed()) {
             withdrawPoint = point;
             withdrawFrame = frame;
+            withdrawOrigin = unit.getPosition();
         }
         super.evade(point, frame);
     }
@@ -457,6 +505,72 @@ public class Lurker extends ManagedUnit {
         return enemyInRange && (burrowed || !holdsWithdrawal);
     }
 
+    /**
+     * Whether a withdrawing Lurker is still in the cell it was hit in: within {@link #HIT_CELL_RADIUS} of where it
+     * was hit, or inside enemy fire. Once it has walked out of the cell it burrows on an enemy in range.
+     *
+     * @param distanceFromHit pixels from where it was hit to where it stands
+     * @param inFire true when a fire zone covers it
+     * @return true while it is still in the hit cell
+     */
+    static boolean stillInHitCell(double distanceFromHit, boolean inFire) {
+        return distanceFromHit <= HIT_CELL_RADIUS || inFire;
+    }
+
+    private boolean inHitCellNow() {
+        if (!Config.lurkerFireAware || withdrawOrigin == null) {
+            return true;
+        }
+        return stillInHitCell(unit.getDistance(withdrawOrigin), standsInFire());
+    }
+
+    /**
+     * Whether a Lurker refuses to burrow where it stands: the rule is on and the ground it stands on is inside enemy
+     * fire it cannot answer.
+     *
+     * @param fireAware true when the rule is on
+     * @param standingInFire true when a fire zone covers the Lurker
+     * @return true when the burrow is refused
+     */
+    static boolean burrowRefused(boolean fireAware, boolean standingInFire) {
+        return fireAware && standingInFire;
+    }
+
+    /**
+     * The point a containing Lurker walks to and burrows at: the safe point nearest its hold point when the rule is
+     * on, the hold point lies inside enemy fire and a safe point exists, else the hold point.
+     *
+     * @param fireAware true when the rule is on
+     * @param holdInFire true when a fire zone covers the hold point
+     * @param hold the hold point
+     * @param safe the nearest point to the hold point outside the fire, or null
+     * @return the point to walk to
+     */
+    static Position holdTarget(boolean fireAware, boolean holdInFire, Position hold, Position safe) {
+        return fireAware && holdInFire && safe != null ? safe : hold;
+    }
+
+    /**
+     * Whether a burrow refusal is written to the burrow log: the first, or one {@link #REFUSAL_LOG_FRAMES} after
+     * the last logged.
+     *
+     * @param lastLoggedFrame frame of the last logged refusal
+     * @param now current frame
+     * @return true when the refusal is logged
+     */
+    static boolean logsRefusal(int lastLoggedFrame, int now) {
+        return now - lastLoggedFrame >= REFUSAL_LOG_FRAMES;
+    }
+
+    private boolean inFire(Position point) {
+        for (StaticDefenseZone zone : fireZones) {
+            if (zone.covers(point, firePadding)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private Position holdPoint() {
         if (holdsWithdrawalNow()) {
             return withdrawPoint;
@@ -478,8 +592,33 @@ public class Lurker extends ManagedUnit {
         if (unit.getOrder() == Order.Burrowing) {
             return;
         }
+        if (burrowRefused(Config.lurkerFireAware, standsInFire())) {
+            refuseBurrow();
+            return;
+        }
         unit.burrow();
         log(true, reason);
+    }
+
+    private void refuseBurrow() {
+        if (safeFromHere != null) {
+            unit.move(safeFromHere);
+        }
+        int now = game.getFrameCount();
+        if (!logsRefusal(refusalLoggedFrame, now)) {
+            return;
+        }
+        refusalLoggedFrame = now;
+        BurrowTelemetry.burrowCommand(BurrowCommand.builder()
+                .frame(now)
+                .unitId(unitID)
+                .burrow(true)
+                .reason(BurrowReason.BURROW_REFUSED_UNDER_FIRE)
+                .role(role.name())
+                .position(unit.getPosition())
+                .hitPoints(unit.getHitPoints())
+                .containPoint(containPosition)
+                .build());
     }
 
     private void unburrowAndReset(BurrowReason reason) {

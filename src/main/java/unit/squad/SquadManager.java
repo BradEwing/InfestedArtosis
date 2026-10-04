@@ -159,6 +159,7 @@ public class SquadManager {
     private static final int CONTAIN_DEFENSE_MARGIN = 32;
     /** Pixels past a shooter's learned reach plus the Lurker's padding that a withdrawing Lurker stops at. */
     static final int WITHDRAW_CLEARANCE = 32;
+    static final int LURKER_SAFE_CLEARANCE = 16;
     private static final double REINFORCEMENT_RADIUS = 384.0;
     private static final int TARGETING_RADIUS = 256;
     private static final int WIDENED_TARGETING_RADIUS = 2 * TARGETING_RADIUS;
@@ -278,6 +279,7 @@ public class SquadManager {
         fightSquads.removeAll(removed);
         evadeOutrangedHits(now);
         updateLurkerFixedFire();
+        updateLurkerFire(now);
         holdLurkersOutOfFire(now);
         recordFlockSamples(now);
         gameState.getContainHeldTimer().update(now, anyGroundSquadContaining(fightSquads));
@@ -889,6 +891,44 @@ public class SquadManager {
                     continue;
                 }
                 ((Lurker) member).setFixedFireZones(fixedFireZones, padding);
+            }
+        }
+    }
+
+    /**
+     * Gives every Lurker in a fight squad the ground it must not burrow on, see {@link Lurker#setFireView}: the fixed
+     * fire that outranges it and the live hit marks, and the nearest points outside it to where it stands and to its
+     * contain point. Gives it none with {@link Config#lurkerFireAware} off.
+     *
+     * @param now current frame
+     */
+    private void updateLurkerFire(int now) {
+        boolean fireAware = Config.lurkerFireAware;
+        int padding = containmentDefensePadding(Collections.singletonList(UnitType.Zerg_Lurker));
+        List<StaticDefenseZone> zones = ContainmentPushback.withHurtMarks(fixedFireZones,
+                EnemyReachMemory.baseGroundRange(UnitType.Zerg_Lurker),
+                gameState.getReachMemory().liveHurtMarks(now), fireAware);
+        Predicate<Position> allowed = zones.isEmpty() ? null : walkablePoints();
+        for (Squad squad : fightSquads) {
+            for (ManagedUnit member : squad.getMembers()) {
+                if (!(member instanceof Lurker)) {
+                    continue;
+                }
+                Lurker lurker = (Lurker) member;
+                if (!fireAware || zones.isEmpty()) {
+                    lurker.setFireView(Collections.emptyList(), padding, null, null);
+                    continue;
+                }
+                lurker.setFireView(zones, padding, null, null);
+                Position here = lurker.getPosition();
+                Position hold = lurker.getContainPosition();
+                Position safeHere = lurker.standsInFire()
+                        ? RunbyTargeting.findClearPoint(here, zones, padding, LURKER_SAFE_CLEARANCE, allowed, hold)
+                        : null;
+                Position safeHold = lurker.containPointInFire()
+                        ? RunbyTargeting.findClearPoint(hold, zones, padding, LURKER_SAFE_CLEARANCE, allowed, here)
+                        : null;
+                lurker.setFireView(zones, padding, safeHere, safeHold);
             }
         }
     }
@@ -4748,8 +4788,14 @@ public class SquadManager {
      *     {@link ContainmentPushback#arcZones}, and outranges the squad's shortest ranged member
      */
     private List<StaticDefenseZone> containmentZones(Squad squad, int now) {
-        return ContainmentPushback.outrangingZones(ContainmentPushback.arcZones(gameState.getGroundThreatZones(now)),
+        List<StaticDefenseZone> zones = ContainmentPushback.outrangingZones(
+                ContainmentPushback.arcZones(gameState.getGroundThreatZones(now)),
                 shortestGroundRange(squad.getComposition().keySet()));
+        if (Config.lurkerFireAware && squad.getComposition().containsKey(UnitType.Zerg_Lurker)) {
+            zones.addAll(ContainmentPushback.withHurtMarks(Collections.emptyList(), 0,
+                    gameState.getReachMemory().liveHurtMarks(now), true));
+        }
+        return zones;
     }
 
     /**

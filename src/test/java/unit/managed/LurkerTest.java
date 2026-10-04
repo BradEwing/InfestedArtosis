@@ -1,5 +1,6 @@
 package unit.managed;
 
+import bwapi.Position;
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
@@ -184,6 +185,74 @@ class LurkerTest {
     void aRepeatedBurrowCommandIsNotLogged() {
         assertFalse(Lurker.changesBurrowState(true, true));
         assertFalse(Lurker.changesBurrowState(false, false));
+    }
+
+    @Test
+    void aWithdrawingLurkerInsideTheHitCellStillSkipsTheInRangeBurrow() {
+        assertTrue(Lurker.stillInHitCell(0, false));
+        assertTrue(Lurker.stillInHitCell(Lurker.HIT_CELL_RADIUS, false));
+    }
+
+    @Test
+    void aWithdrawingLurkerPastTheHitCellBurrowsOnAnEnemyInRange() {
+        assertFalse(Lurker.stillInHitCell(Lurker.HIT_CELL_RADIUS + 1, false));
+        assertTrue(Lurker.answersEnemyInRange(true, false, false));
+    }
+
+    @Test
+    void aWithdrawingLurkerPastTheHitCellButInsideFireIsStillInTheHitCell() {
+        assertTrue(Lurker.stillInHitCell(Lurker.HIT_CELL_RADIUS + 300, true));
+    }
+
+    @Test
+    void aLurkerRefusesToBurrowInsideFireWhenTheRuleIsOn() {
+        assertTrue(Lurker.burrowRefused(true, true));
+    }
+
+    @Test
+    void aLurkerBurrowsOutsideFireWhenTheRuleIsOn() {
+        assertFalse(Lurker.burrowRefused(true, false));
+    }
+
+    @Test
+    void aLurkerBurrowsInsideFireWhenTheRuleIsOff() {
+        assertFalse(Lurker.burrowRefused(false, true));
+    }
+
+    @Test
+    void aHoldPointInsideFireIsReplacedByTheNearestSafePoint() {
+        Position hold = new Position(100, 100);
+        Position safe = new Position(300, 100);
+
+        assertSame(safe, Lurker.holdTarget(true, true, hold, safe));
+    }
+
+    @Test
+    void aHoldPointOutsideFireIsKept() {
+        Position hold = new Position(100, 100);
+
+        assertSame(hold, Lurker.holdTarget(true, false, hold, new Position(300, 100)));
+    }
+
+    @Test
+    void aHoldPointInsideFireIsKeptWhenNoSafePointExists() {
+        Position hold = new Position(100, 100);
+
+        assertSame(hold, Lurker.holdTarget(true, true, hold, null));
+    }
+
+    @Test
+    void aHoldPointInsideFireIsKeptWhenTheRuleIsOff() {
+        Position hold = new Position(100, 100);
+
+        assertSame(hold, Lurker.holdTarget(false, true, hold, new Position(300, 100)));
+    }
+
+    @Test
+    void theFirstRefusalIsLoggedAndTheNextOnesWaitForTheInterval() {
+        assertTrue(Lurker.logsRefusal(-Lurker.REFUSAL_LOG_FRAMES, 0));
+        assertFalse(Lurker.logsRefusal(500, 500 + Lurker.REFUSAL_LOG_FRAMES - 1));
+        assertTrue(Lurker.logsRefusal(500, 500 + Lurker.REFUSAL_LOG_FRAMES));
     }
 
     @Test

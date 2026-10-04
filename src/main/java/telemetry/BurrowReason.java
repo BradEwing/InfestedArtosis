@@ -15,5 +15,6 @@ public enum BurrowReason {
     RETREAT,
     RETREAT_HOLD,
     RALLY,
-    SCOUT
+    SCOUT,
+    BURROW_REFUSED_UNDER_FIRE
 }
