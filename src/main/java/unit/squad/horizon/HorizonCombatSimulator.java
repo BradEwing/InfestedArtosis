@@ -17,6 +17,7 @@ import lombok.Getter;
 import telemetry.RetreatRoute;
 import unit.managed.ManagedUnit;
 import unit.squad.CombatSimulator;
+import unit.squad.HeldRetreat;
 import unit.squad.Squad;
 import unit.squad.SquadStatus;
 import util.Time;
@@ -79,8 +80,6 @@ public class HorizonCombatSimulator implements CombatSimulator {
 
     @Getter
     private final Map<String, DebugSnapshot> lastSnapshots = new HashMap<>();
-
-    private final Map<String, HeldVerdict> heldVerdicts = new HashMap<>();
 
     private final Map<String, BandClock> bandClocks = new HashMap<>();
 
@@ -261,8 +260,8 @@ public class HorizonCombatSimulator implements CombatSimulator {
             CombatResult raw = result;
             boolean retreating = squad.getStatus() == SquadStatus.RETREAT
                     && squad.getRetreatRoute() != RetreatRoute.CORNERED;
-            result = holdVerdict(squad.getId(), raw, currentFrame, overallRatio, engageThresh, tankInBand,
-                    retreating, squad.isRetreatLocked(currentFrame));
+            result = holdVerdict(squad.getHeldRetreat(), raw, currentFrame, overallRatio, engageThresh, tankInBand,
+                    retreating, squad.getRetreatLockedUntilFrame());
             int band = !tankInBand ? SIEGE_BAND_NONE : result == raw ? SIEGE_BAND_IN : SIEGE_BAND_HELD;
             snapshot.setSiegeBand(band);
             BandClock clock = bandClocks.computeIfAbsent(squad.getId(), id -> new BandClock());
@@ -283,33 +282,45 @@ public class HorizonCombatSimulator implements CombatSimulator {
     /**
      * The verdict the siege band reports for a ground squad. A held RETREAT only exists while the squad is in
      * RETREAT outside the cornered route and the sim has run within {@link #MAX_SIM_GAP_FRAMES}; otherwise the
-     * memory restarts from the raw verdict. While the squad's retreat lock is active the held RETREAT is not
-     * released, so the margin is judged on the frame the squad actually turns.
+     * memory restarts from the raw verdict. A squad in RETREAT under an active retreat lock always holds a RETREAT,
+     * set when the lock began if the squad carries none, so a squad born of a merge or split is held like its
+     * sources were. While the lock is active the held RETREAT is not released, so the margin is judged on the frame
+     * the squad actually turns. An ENGAGE read outside the band is reported but does not replace the held RETREAT,
+     * which only an in-band release or the squad leaving RETREAT does.
      *
-     * @param squadId the squad
+     * @param memory the squad's held RETREAT
      * @param raw the verdict for this frame's strengths
      * @param frame the current frame
      * @param ratio the ratio the raw verdict was taken from
      * @param engageThresh the matchup engage threshold
      * @param tankInBand whether the nearest sieged tank sits in the band
      * @param retreating whether the squad's status is RETREAT on a route other than the cornered one
-     * @param retreatLocked whether the squad's retreat lock is active
+     * @param retreatLockedUntilFrame the frame the squad's retreat lock ends
      * @return the verdict to report
      */
-    CombatResult holdVerdict(String squadId, CombatResult raw, int frame, double ratio, double engageThresh,
-                             boolean tankInBand, boolean retreating, boolean retreatLocked) {
-        HeldVerdict held = heldVerdicts.get(squadId);
-        boolean live = held != null && retreating && frame - held.lastFrame <= MAX_SIM_GAP_FRAMES;
-        CombatResult heldResult = live ? held.result : null;
-        int heldSince = live ? held.sinceFrame : frame;
+    CombatResult holdVerdict(HeldRetreat memory, CombatResult raw, int frame, double ratio, double engageThresh,
+                             boolean tankInBand, boolean retreating, int retreatLockedUntilFrame) {
+        boolean locked = frame < retreatLockedUntilFrame;
+        boolean live = retreating && memory.isLive(frame, MAX_SIM_GAP_FRAMES);
+        if (retreating && locked && !live) {
+            memory.hold(Math.min(frame, retreatLockedUntilFrame - Squad.GROUND_RETREAT_LOCK_FRAMES), frame);
+            live = true;
+        }
+        CombatResult heldResult = live ? CombatResult.RETREAT : null;
+        int heldSince = live ? memory.getSinceFrame() : frame;
         CombatResult verdict;
-        if (live && retreatLocked && tankInBand && raw == CombatResult.ENGAGE && heldResult == CombatResult.RETREAT) {
+        if (live && locked && tankInBand && raw == CombatResult.ENGAGE) {
             verdict = heldResult;
         } else {
             verdict = SiegeBandHysteresis.apply(raw, heldResult, heldSince, frame, ratio, engageThresh, tankInBand);
         }
-        int since = verdict == heldResult ? heldSince : frame;
-        heldVerdicts.put(squadId, new HeldVerdict(verdict, since, frame));
+        if (verdict == CombatResult.RETREAT) {
+            memory.hold(live ? heldSince : frame, frame);
+        } else if (live && !tankInBand && raw == CombatResult.ENGAGE) {
+            memory.keep(frame);
+        } else {
+            memory.clear(frame);
+        }
         return verdict;
     }
 
@@ -323,18 +334,6 @@ public class HorizonCombatSimulator implements CombatSimulator {
             if (band != SIEGE_BAND_NONE) inBandFrames += elapsed;
             if (band == SIEGE_BAND_HELD) heldFrames += elapsed;
             lastFrame = frame;
-        }
-    }
-
-    private static final class HeldVerdict {
-        private final CombatResult result;
-        private final int sinceFrame;
-        private final int lastFrame;
-
-        private HeldVerdict(CombatResult result, int sinceFrame, int lastFrame) {
-            this.result = result;
-            this.sinceFrame = sinceFrame;
-            this.lastFrame = lastFrame;
         }
     }
 

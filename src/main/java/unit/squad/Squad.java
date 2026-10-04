@@ -57,6 +57,8 @@ public class Squad implements Comparable<Squad> {
     protected int fightLockSupply = 0;
     protected int retreatLockedUntilFrame = 0;
     protected boolean attritionRetreatLock = false;
+    @Getter
+    private final HeldRetreat heldRetreat = new HeldRetreat();
     private int strongEngageSinceFrame = -1;
     protected int containLockedUntilFrame = 0;
     @Getter
@@ -276,6 +278,8 @@ public class Squad implements Comparable<Squad> {
      * ended. A merge that stays in CONTAIN keeps the collapse entry run of the source whose arc it keeps, see
      * {@link CollapseEntryRun}; any other merged status starts it over.
      *
+     * <p>The held siege band RETREAT folds to the latest one any source holds, see {@link HeldRetreat}.
+     *
      * @param sources squads being merged into this one
      */
     public void inheritStateFrom(Collection<Squad> sources) {
@@ -362,6 +366,7 @@ public class Squad implements Comparable<Squad> {
                                 + ContainmentCollapse.COOLDOWN_FRAMES);
             }
         }
+        this.heldRetreat.absorb(sources);
     }
 
     public boolean isMergeEligible(int currentFrame) {
