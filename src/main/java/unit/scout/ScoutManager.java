@@ -35,7 +35,7 @@ import java.util.Set;
 public class ScoutManager {
 
     final int FRAME_DRONE_SCOUT = 1440; // 1m
-    private static final int SKIP_LOG_INTERVAL_FRAMES = 240;
+    static final int SKIP_LOG_INTERVAL_FRAMES = 240;
     private  InformationManager informationManager;
 
     private Game game;
@@ -141,11 +141,14 @@ public class ScoutManager {
      * {@link BaseCheckScheduler#CHECK_INTERVAL_FRAMES} unseen, a start location never seen first. Bases already
      * being checked, held back after a failed check, reached by a route passing a remembered static-defence
      * death, or reached by a route past a static defence that a check already out also passes are skipped, and
-     * each skip of the base the scheduler would have chosen is logged.
+     * a skip of the base the scheduler would have chosen is logged at most once per
+     * {@link #SKIP_LOG_INTERVAL_FRAMES} and only when {@code logSkips} says a dispatch was otherwise possible.
+     * Overlord checks do not count toward a shared defence.
      *
+     * @param logSkips whether a check could have started now, so that a skip is a real one
      * @return the base to check, or null when none is due
      */
-    public Base nextBaseCheck() {
+    public Base nextBaseCheck(boolean logSkips) {
         BaseData baseData = gameState.getBaseData();
         ScoutData scoutData = gameState.getScoutData();
         Set<Base> candidates = baseData.availableBases();
@@ -183,6 +186,10 @@ public class ScoutManager {
         Map<Base, BaseCheckSkip> skipReasons = new HashMap<>();
         Map<Base, Position> skipSites = new HashMap<>();
         for (Base base : checkable) {
+            if (blocked.contains(base)
+                    || !BaseCheckScheduler.isDue(BaseCheckScheduler.age(lastSeenFrames.get(base), now))) {
+                continue;
+            }
             Position site = BaseCheckScheduler.deathSiteOnRoute(routePositions(base), recentDeaths);
             BaseCheckSkip reason = BaseCheckSkip.DEATH_ROUTE;
             if (site == null) {
@@ -200,7 +207,7 @@ public class ScoutManager {
         excluded.addAll(skipReasons.keySet());
         Base chosen = BaseCheckScheduler.next(checkable, lastSeenFrames, groundDistances, excluded,
                 startLocations, now);
-        if (wanted != null && !wanted.equals(chosen) && skipReasons.containsKey(wanted)) {
+        if (logSkips && wanted != null && !wanted.equals(chosen) && skipReasons.containsKey(wanted)) {
             logSkip(wanted, skipReasons.get(wanted), skipSites.get(wanted), now);
         }
         return chosen;
@@ -208,32 +215,54 @@ public class ScoutManager {
 
     /**
      * Whether a zergling may be sent to the enemy main. It has not been seen within
-     * {@link BaseCheckScheduler#CHECK_INTERVAL_FRAMES} (so never when seen, and always while never seen), no
-     * failed check still holds it back, the route to it does not pass where a scout recently died, and it
-     * shares no static defence on its route with a check already out. A refusal for either route reason is
-     * logged.
+     * {@link BaseCheckScheduler#CHECK_INTERVAL_FRAMES}, no failed check still holds it back, and the route to
+     * it does not pass where a scout recently died. While the main has never been seen, a death site lasts
+     * {@link BaseCheckScheduler#DEATH_MEMORY_FRAMES} even if its defence still stands, so the search is
+     * retried, and a check already out for another base does not hold it back. Once the main has been seen it
+     * also shares no static defence on its route with a check already out. A refusal for either route reason
+     * is logged when {@code logRefusals} says a zergling was available.
+     *
+     * @param logRefusals whether a spare zergling was available, so a refusal is a real one
      */
-    public boolean mayCheckEnemyMain(Base enemyMain) {
+    public boolean mayCheckEnemyMain(Base enemyMain, boolean logRefusals) {
         int now = game.getFrameCount();
         int age = BaseCheckScheduler.age(gameState.getScoutData().getBaseLastSeenFrame(enemyMain.getLocation()),
                 now);
         if (!BaseCheckScheduler.mayDispatchToHeldBase(age, retryAfterFrames.getOrDefault(enemyMain, 0), now)) {
             return false;
         }
+        boolean searching = mustFindEnemyMain();
         List<BaseCheckScheduler.Sighting> sightings = knownSightings();
-        Position death = BaseCheckScheduler.deathSiteOnRoute(routePositions(enemyMain),
-                recentDeathSites(now, sightings));
+        List<Position> sites = searching ? deathSitesWithinMemory(now) : recentDeathSites(now, sightings);
+        Position death = BaseCheckScheduler.deathSiteOnRoute(routePositions(enemyMain), sites);
         if (death != null) {
-            logSkip(enemyMain, BaseCheckSkip.DEATH_ROUTE, death, now);
+            if (logRefusals) {
+                logSkip(enemyMain, BaseCheckSkip.DEATH_ROUTE, death, now);
+            }
             return false;
+        }
+        if (searching) {
+            return true;
         }
         Position shared = defenceSharedWithCheckInFlight(enemyMain,
                 BaseCheckScheduler.staticDefencePositions(sightings));
         if (shared != null) {
-            logSkip(enemyMain, BaseCheckSkip.SHARED_DEFENCE, shared, now);
+            if (logRefusals) {
+                logSkip(enemyMain, BaseCheckSkip.SHARED_DEFENCE, shared, now);
+            }
             return false;
         }
         return true;
+    }
+
+    private List<Position> deathSitesWithinMemory(int now) {
+        List<Position> positions = new ArrayList<>();
+        for (DeathSite site : deathSites) {
+            if (BaseCheckScheduler.isDeathRemembered(site.frame, now, false)) {
+                positions.add(site.position);
+            }
+        }
+        return positions;
     }
 
     /**
@@ -251,8 +280,9 @@ public class ScoutManager {
             return null;
         }
         List<Position> route = routePositions(base);
-        for (BaseCheck check : baseChecks.values()) {
-            if (check.base.equals(base)) {
+        for (Map.Entry<ManagedUnit, BaseCheck> entry : baseChecks.entrySet()) {
+            BaseCheck check = entry.getValue();
+            if (check.base.equals(base) || entry.getKey().getUnitType() == UnitType.Zerg_Overlord) {
                 continue;
             }
             Position shared = BaseCheckScheduler.sharedDefence(route, routePositions(check.base), defences);
@@ -311,12 +341,13 @@ public class ScoutManager {
         for (Map.Entry<ManagedUnit, BaseCheck> entry : new ArrayList<>(baseChecks.entrySet())) {
             ManagedUnit scout = entry.getKey();
             BaseCheck check = entry.getValue();
-            if (!BaseCheckScheduler.routePassesDeathSite(routePositions(check.base), sites)) {
+            if (!BaseCheckScheduler.routePassesDeathSite(routePositions(check.base), sites)
+                    || !BaseCheckScheduler.isSiteAhead(scout.getPosition(), check.base.getCenter(), site)) {
                 continue;
             }
             finishBaseCheck(scout, check, BaseCheckScheduler.Release.THREAT);
             releasedChecks.add(scout);
-            logSkip(check.base, BaseCheckSkip.DEATH_RECALL, site, now);
+            BaseChecks.skipped(now, check.base.getLocation(), BaseCheckSkip.DEATH_RECALL, site);
         }
     }
 

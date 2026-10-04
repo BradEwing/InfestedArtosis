@@ -448,11 +448,11 @@ public class UnitManager {
             return;
         }
 
-        if (!scoutManager.mayCheckEnemyMain(enemyMainBase)) {
+        List<ManagedUnit> availableZerglings = spareZerglings(enemyMainBase);
+        if (!scoutManager.mayCheckEnemyMain(enemyMainBase, !availableZerglings.isEmpty())) {
             return;
         }
 
-        List<ManagedUnit> availableZerglings = spareZerglings(enemyMainBase);
         int toAssign = Math.min(scoutsNeeded, availableZerglings.size());
         for (int i = 0; i < toAssign; i++) {
             ManagedUnit zergling = availableZerglings.get(i);
@@ -462,12 +462,14 @@ public class UnitManager {
     }
 
     private void checkAndAssignBaseChecks() {
-        Base base = scoutManager.nextBaseCheck();
+        int lingsNeeded = scoutManager.lingsPerCheck();
+        boolean mayCheck = scoutManager.mayStartCheck(false) && hasSpareZerglings(lingsNeeded)
+                || scoutManager.mayStartCheck(true);
+        Base base = scoutManager.nextBaseCheck(mayCheck);
         if (base == null) {
             return;
         }
 
-        int lingsNeeded = scoutManager.lingsPerCheck();
         List<ManagedUnit> lings = spareZerglings(base);
         if (scoutManager.mayStartCheck(false) && lings.size() >= lingsNeeded) {
             for (int i = 0; i < lingsNeeded; i++) {
@@ -492,6 +494,17 @@ public class UnitManager {
             squadManager.removeManagedUnit(overlord.get());
             scoutManager.beginBaseCheck(overlord.get(), base, true);
         }
+    }
+
+    private boolean hasSpareZerglings(int needed) {
+        return managedUnits.stream()
+            .filter(mu -> mu.getUnitType() == UnitType.Zerg_Zergling)
+            .filter(mu -> !scoutManager.isBaseCheckScout(mu) && !scoutManager.hasPendingRecall(mu))
+            .filter(mu -> mayPullAsZerglingScout(mu.getRole(), squadManager.scoutLendSpare(mu) > 0))
+            .filter(mu -> !mu.isClosingOnTarget())
+            .filter(this::isFitToScout)
+            .filter(squadSpareTracker())
+            .count() >= needed;
     }
 
     private List<ManagedUnit> spareZerglings(Base base) {

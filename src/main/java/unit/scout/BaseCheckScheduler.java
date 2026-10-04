@@ -328,6 +328,19 @@ public final class BaseCheckScheduler {
     }
 
     /**
+     * Whether a death site still lies on the way a scout has to go, so that recalling the scout turns it away
+     * from the site rather than back through it.
+     *
+     * @param scout where the scout is, or null when unknown
+     * @param base the centre of the base the scout is sent to
+     * @param site the death site
+     * @return true when the site is nearer the base than the scout is
+     */
+    public static boolean isSiteAhead(Position scout, Position base, Position site) {
+        return scout == null || scout.getDistance(base) > site.getDistance(base);
+    }
+
+    /**
      * @param lastSeenFrame the frame the known enemy main was last seen, or a negative value if never
      * @param now the current frame
      * @return true when the enemy main is known but its tile has never been in sight and checks are allowed,

@@ -472,4 +472,27 @@ class BaseCheckSchedulerTest {
         assertFalse(BaseCheckScheduler.mustFindEnemyMain(-1, BaseCheckScheduler.FIRST_CHECK_FRAME - 1));
         assertFalse(BaseCheckScheduler.mustFindEnemyMain(0, NOW));
     }
+
+    @Test
+    void aSiteNearerTheBaseThanTheScoutIsAhead() {
+        Position base = new Position(3000, 0);
+        assertTrue(BaseCheckScheduler.isSiteAhead(new Position(0, 0), base, new Position(1500, 0)));
+    }
+
+    @Test
+    void aSiteTheScoutHasPassedIsNotAhead() {
+        Position base = new Position(3000, 0);
+        assertFalse(BaseCheckScheduler.isSiteAhead(new Position(2000, 0), base, new Position(1500, 0)));
+    }
+
+    @Test
+    void aScoutOfUnknownPositionIsRecalledFromAnySite() {
+        assertTrue(BaseCheckScheduler.isSiteAhead(null, new Position(3000, 0), new Position(1500, 0)));
+    }
+
+    @Test
+    void aSiteWhoseDefenceHasFallenExpiresAtTheMemoryWindowEvenForTheMainSearch() {
+        assertTrue(BaseCheckScheduler.isDeathRemembered(0, BaseCheckScheduler.DEATH_MEMORY_FRAMES - 1, false));
+        assertFalse(BaseCheckScheduler.isDeathRemembered(0, BaseCheckScheduler.DEATH_MEMORY_FRAMES, false));
+    }
 }
