@@ -104,6 +104,10 @@ import java.util.stream.Collectors;
  * about, see {@link #swarmCells(int, int, boolean, double, SwarmLock.Release)}. Every one of our swarms, committed to or not, also gets a
  * SWARM_SEEN and a SWARM_REMOVED row in telemetry_dark_swarms.csv, see {@link #swarmLifecycleRows}.
  *
+ * <p>A BUNKER_HOLD_END row is written on the first sweep after a squad's run of BUNKER_MEMORY_HOLD or
+ * BLIND_ADVANCE_HOLD rows, with bunker_hold_release naming why the run ended, see {@link BunkerHoldRelease}. Every
+ * other row carries NONE.
+ *
  * <p>LOCK_SUPPRESSED rows are deduplicated per suppression episode, keyed on the lock, its expiry
  * frame, the overridden verdict, and the branch that asked for it.
  *
