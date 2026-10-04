@@ -20,7 +20,11 @@ import info.tracking.terran.TerranWallMain;
 import info.tracking.terran.TerranWallNatural;
 import info.tracking.terran.TwoRaxAcademy;
 import info.tracking.zerg.Hydralisk;
+import info.tracking.zerg.NinePoolMainHatch;
 import info.tracking.zerg.TwoHatchLing;
+import info.tracking.zerg.ZergOpener;
+import info.tracking.zerg.ZergOpenerReading;
+import info.tracking.zerg.ZergOpenerRecognizer;
 import lombok.Getter;
 import lombok.Setter;
 import telemetry.PlanEvents;
@@ -94,6 +98,11 @@ public class StrategyTracker {
         if (race == Race.Zerg || race == Race.Unknown) {
             possibleStrategies.add(new Hydralisk());
             possibleStrategies.add(new TwoHatchLing());
+            ZergOpenerReading openerReading = new ZergOpenerReading();
+            for (ZergOpener opener : ZergOpener.values()) {
+                possibleStrategies.add(new ZergOpenerRecognizer(opener, openerReading));
+            }
+            possibleStrategies.add(new NinePoolMainHatch());
         }
     }
 

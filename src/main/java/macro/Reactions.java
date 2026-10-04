@@ -14,6 +14,7 @@ import info.map.BuildingPlanner;
 import info.tracking.ObservedUnitTracker;
 import info.tracking.StrategyTracker;
 import info.tracking.protoss.ProxyGate;
+import info.tracking.zerg.TwoHatchLing;
 import util.OneShotGate;
 import util.Time;
 import macro.plan.Plan;
@@ -326,7 +327,9 @@ public class Reactions {
      * and reaches the main whether or not a natural is going up.
      */
     private void lingFloodHoldReaction() {
-        boolean holding = LingFloodHold.isActive(isLingFloodDetected(gameState.getStrategyTracker()), gameState.getGameTime());
+        boolean lairTechSeen = gameState.getObservedUnitTracker()
+                .hasObservedAnyAsTypeBy(LingFloodHold.LAIR_RELEASE_CUTOFF, TwoHatchLing.LAIR_TECH);
+        boolean holding = LingFloodHold.isActive(isLingFloodDetected(gameState.getStrategyTracker()), lairTechSeen, gameState.getGameTime());
         gameState.setLingFloodHold(holding);
         if (holding) {
             holdMainIfSingleBase(gameState.getBaseData());
