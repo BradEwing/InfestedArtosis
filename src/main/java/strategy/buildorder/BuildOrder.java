@@ -1473,11 +1473,13 @@ public abstract class BuildOrder {
                 + frameAdvancedUnitDemand(framePlans, true);
         int queuedGas = gameState.getProductionQueue().advancedUnitGasDemand()
                 + frameAdvancedUnitDemand(framePlans, false);
+        int gasBar = macroHatcheryGasBar(gameState);
         LarvaBoundMacroHatchery.Gate gate = LarvaBoundMacroHatchery.evaluate(techReady, gameState.numLarva(),
                 hatcheries, LarvaBoundMacroHatchery.bankAfterHold(holdsBank, resourceCount.availableMinerals(),
                         queuedMinerals),
                 LarvaBoundMacroHatchery.bankAfterHold(holdsBank, resourceCount.availableGas(), queuedGas),
-                macroHatcheryGasBar(gameState), gameState.knownEnemyMobileGroundCombatUnitsAtOurBases(), outstanding);
+                gasBar, gameState.knownEnemyMobileGroundCombatUnitsAtOurBases(), outstanding);
+        gate = LarvaBoundMacroHatchery.heldReading(gate, holdsBank, gasBar);
 
         if (gate != LarvaBoundMacroHatchery.Gate.TRIGGER) {
             PlanEvents.macroHatcheryGate(gate, techReady, hatcheries, outstanding);

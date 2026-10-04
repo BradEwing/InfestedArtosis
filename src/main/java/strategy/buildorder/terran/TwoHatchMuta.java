@@ -120,6 +120,17 @@ public class TwoHatchMuta extends TerranBase {
             }
         }
 
+        if (expansionPlanned(plans) == null && wantsReleasedMacroHatchery(
+                gameState.structureCount(Readiness.COMMITTED, UnitType.Zerg_Spire) > 0, firstWaveMutalisks(gameState),
+                gameState.hatcheryCount(), gameState.inFlightHatcheryPlans() + gameState.hatcheriesUnderConstruction(true)
+                        + gameState.hatcheriesUnderConstruction(false),
+                gameState.knownEnemyMobileGroundCombatUnitsAtOurBases())) {
+            Plan macroHatcheryPlan = this.planMacroHatcheryAt(gameState, baseData.getMainBase());
+            if (macroHatcheryPlan != null) {
+                plans.add(macroHatcheryPlan);
+            }
+        }
+
         if (firstGas || secondGas) {
             Plan extractorPlan = this.planExtractor(gameState);
             plans.add(extractorPlan);
@@ -258,6 +269,36 @@ public class TwoHatchMuta extends TerranBase {
             return 0;
         }
         return LarvaBoundMacroHatchery.FLOAT_GAS;
+    }
+
+    /**
+     * Whether the build plans the macro hatchery the first wave deferred.
+     *
+     * <p>Asked once the first wave no longer owns the bank, and not conditional on the bank floating:
+     * continuous Mutalisk production spends minerals as they arrive, so the floating-bank request rarely
+     * fires. A plan reserves its minerals when it is scheduled, so it does not wait on a pile.
+     *
+     * @param spireCommitted whether a Spire is finished, morphing or planned
+     * @param mutaliskCount Mutalisks produced plus Mutalisk plans not yet finished
+     * @param hatcheries completed larva-producing hatcheries
+     * @param outstandingHatcheries hatchery plans in flight plus hatcheries under construction
+     * @param enemiesAtBases enemy mobile ground combat units last known at our bases
+     * @return true when fewer than {@link #MACRO_HATCHERY_HATCHERY_CAP} hatcheries stand, none is on its way and
+     *     no enemy is at our bases
+     */
+    static boolean wantsReleasedMacroHatchery(boolean spireCommitted, int mutaliskCount, int hatcheries,
+                                              int outstandingHatcheries, int enemiesAtBases) {
+        return spireCommitted && !ownsFirstWaveBank(spireCommitted, mutaliskCount)
+                && hatcheries < MACRO_HATCHERY_HATCHERY_CAP && outstandingHatcheries == 0 && enemiesAtBases == 0;
+    }
+
+    private static Plan expansionPlanned(List<Plan> plans) {
+        for (Plan plan : plans) {
+            if (plan.getPlannedUnit() == UnitType.Zerg_Hatchery) {
+                return plan;
+            }
+        }
+        return null;
     }
 
     /**

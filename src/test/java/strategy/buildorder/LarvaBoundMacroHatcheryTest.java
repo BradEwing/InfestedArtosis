@@ -189,4 +189,15 @@ class LarvaBoundMacroHatcheryTest {
         assertTrue(LarvaBoundMacroHatchery.isHydraliskTechReady(den));
         assertFalse(LarvaBoundMacroHatchery.isHydraliskTechReady(new TechProgression()));
     }
+
+    @Test
+    void aBankShortfallUnderTheHoldOrALoweredGasBarIsReportedAsHeld() {
+        assertEquals(Gate.HELD_NOT_FLOATING, LarvaBoundMacroHatchery.heldReading(Gate.NOT_FLOATING, true,
+                LarvaBoundMacroHatchery.FLOAT_GAS));
+        assertEquals(Gate.HELD_NOT_FLOATING, LarvaBoundMacroHatchery.heldReading(Gate.NOT_FLOATING, false, 0));
+        assertEquals(Gate.NOT_FLOATING, LarvaBoundMacroHatchery.heldReading(Gate.NOT_FLOATING, false,
+                LarvaBoundMacroHatchery.FLOAT_GAS));
+        assertEquals(Gate.THREAT, LarvaBoundMacroHatchery.heldReading(Gate.THREAT, true, 0));
+        assertTrue(Gate.HELD_NOT_FLOATING.isRequest());
+    }
 }

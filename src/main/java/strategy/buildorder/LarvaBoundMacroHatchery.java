@@ -31,6 +31,14 @@ public final class LarvaBoundMacroHatchery {
         LARVA_NOT_SHORT,
         /** One of the unreserved banks is below its float bar. */
         NOT_FLOATING,
+        /**
+         * One of the unreserved banks is below its float bar while the build's first wave holds the bank or
+         * the build asks on a lowered gas bar.
+         *
+         * <p>Returned by {@link #heldReading}, never by {@link #evaluate}, so the withholding the hold causes
+         * is a row rather than silence.
+         */
+        HELD_NOT_FLOATING,
         /** The build's tech is not finished, so the bank may be waiting on its first tech units. */
         TECH_NOT_READY,
         /** Enemy ground combat units are known at our bases. */
@@ -61,6 +69,23 @@ public final class LarvaBoundMacroHatchery {
         public boolean isRequest() {
             return this != LARVA_NOT_SHORT && this != NOT_FLOATING;
         }
+    }
+
+    /**
+     * The gate a request is reported under, naming a bank shortfall that the first wave's hold or a lowered gas
+     * bar shaped.
+     *
+     * @param gate the gate {@link #evaluate} stopped on
+     * @param holdsBank whether the first wave still owns the bank
+     * @param floatGas the gas bar the request asked on
+     * @return {@link Gate#HELD_NOT_FLOATING} for a bank shortfall while the hold or a bar below
+     *     {@link #FLOAT_GAS} applies, else the gate unchanged
+     */
+    public static Gate heldReading(Gate gate, boolean holdsBank, int floatGas) {
+        if (gate == Gate.NOT_FLOATING && (holdsBank || floatGas < FLOAT_GAS)) {
+            return Gate.HELD_NOT_FLOATING;
+        }
+        return gate;
     }
 
     private LarvaBoundMacroHatchery() {

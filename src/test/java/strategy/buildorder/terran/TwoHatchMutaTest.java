@@ -592,4 +592,20 @@ class TwoHatchMutaTest {
         assertTrue(TwoHatchMuta.planMutalisk(withSpire(), WAVE_TARGET, GATHERER_FLOOR - 1, 0, new UnitTypeCount(),
                 3, 474, 362).isEmpty());
     }
+
+    @Test
+    void theReleasedMacroHatcheryIsPlannedOnceTheFirstWaveIsQueued() {
+        int wave = TwoHatchMuta.MUTALISKS_BEFORE_FLYER_UPGRADE;
+        assertTrue(TwoHatchMuta.wantsReleasedMacroHatchery(true, wave, 3, 0, 0));
+        assertFalse(TwoHatchMuta.wantsReleasedMacroHatchery(true, wave - 1, 3, 0, 0));
+        assertFalse(TwoHatchMuta.wantsReleasedMacroHatchery(false, wave, 3, 0, 0));
+    }
+
+    @Test
+    void theReleasedMacroHatcheryWaitsOnTheCapAnOutstandingHatcheryAndAThreat() {
+        int wave = TwoHatchMuta.MUTALISKS_BEFORE_FLYER_UPGRADE;
+        assertFalse(TwoHatchMuta.wantsReleasedMacroHatchery(true, wave, TwoHatchMuta.MACRO_HATCHERY_HATCHERY_CAP, 0, 0));
+        assertFalse(TwoHatchMuta.wantsReleasedMacroHatchery(true, wave, 3, 1, 0));
+        assertFalse(TwoHatchMuta.wantsReleasedMacroHatchery(true, wave, 3, 0, 1));
+    }
 }
