@@ -20,7 +20,7 @@ import java.util.function.Predicate;
  * resources, is visible to us. The flock enters a base whole whatever its sighting age; the age is recorded with the
  * entry. Anti-air first seen while the flock harasses, a building or a mobile unit, ends the harass on the frame it
  * comes into view when the anti-air covering it exceeds what the flock tolerates, see {@link #antiAirReaction}. A base
- * the harass left for that reason is not entered for {@link #DEFENDED_REFUSAL_FRAMES}.
+ * the harass left for that reason is not entered for {@link #holdFrames}.
  *
  * <p>Every decision is a static function over plain values; the constants are tuning values, not Brood War facts.
  */
@@ -71,7 +71,8 @@ public final class AirHarassScouting {
     }
 
     /**
-     * Whether an exit refuses the harassed base for {@link #DEFENDED_REFUSAL_FRAMES}: only newly seen anti-air does.
+     * Whether an exit holds the harassed base out of the entry, see {@link #holdFrames}: only newly seen anti-air
+     * does.
      *
      * @param reason why the harass ended
      * @return true for NEW_AA
@@ -98,27 +99,29 @@ public final class AirHarassScouting {
     }
 
     /**
-     * The anti-air that ended an earlier harass, still known and not already in reach: accepted by the next harass,
-     * so it judges them on its decision tick instead of turning on them as if they were new. Ids carried longer than
-     * {@link #CARRY_FRAMES} ago are dropped.
+     * The ids of the anti-air that ended an earlier harass, whether or not the unit is still in sight: accepted by
+     * the next harass, so it judges them on its decision tick instead of turning on them as if they were new. Ids
+     * carried longer than {@link #CARRY_FRAMES} ago are dropped.
      *
-     * @param threats every known anti-air threat
-     * @param inReach the threats already accepted
      * @param carriedAt frame each carried id ended a harass
      * @param now current frame
-     * @return the carried threats not in reach
+     * @return the ids still carried
      */
-    public static List<AirHarassTargeting.AirThreat> carried(
-            Collection<AirHarassTargeting.AirThreat> threats, Collection<AirHarassTargeting.AirThreat> inReach,
-            Map<Integer, Integer> carriedAt, int now) {
+    public static List<Integer> carried(Map<Integer, Integer> carriedAt, int now) {
         carriedAt.values().removeIf(frame -> now - frame > CARRY_FRAMES);
-        List<AirHarassTargeting.AirThreat> carried = new ArrayList<>();
-        for (AirHarassTargeting.AirThreat threat : threats) {
-            if (carriedAt.containsKey(threat.getId()) && !inReach.contains(threat)) {
-                carried.add(threat);
-            }
-        }
-        return carried;
+        return new ArrayList<>(carriedAt.keySet());
+    }
+
+    /**
+     * Extends the frame a base is held out of the entry; a shorter hold never cuts a longer one short.
+     *
+     * @param refusedUntil last refused frame of each refused base
+     * @param base the base
+     * @param until last frame of the new hold
+     * @param <B> base type
+     */
+    public static <B> void hold(Map<B, Integer> refusedUntil, B base, int until) {
+        refusedUntil.merge(base, until, Math::max);
     }
 
     /**

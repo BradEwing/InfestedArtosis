@@ -279,23 +279,45 @@ class AirHarassScoutingTest {
         int next = NOW + AirHarassEvaluator.REENTRY_HOLD_FRAMES + 1;
 
         AirHarassState state = new AirHarassState(next, 600);
-        state.acceptAntiAir(AirHarassScouting.carried(threats, Collections.emptyList(), carriedAt, next), next, 600);
+        state.acceptIds(AirHarassScouting.carried(carriedAt, next), next, 600);
 
         assertNull(AirHarassScouting.react(state, threats, BASE, FAR, tolerance, next + 40, 600));
     }
 
     @Test
-    void carriedAntiAirExpiresAndIsNotCarriedTwiceWhenAlreadyInReach() {
+    void aCarriedUnitOutOfSightWhenTheNextHarassStartsIsStillNotNewWhenItIsSeenAgain() {
         AirHarassTargeting.AirThreat goliath = threat(301, UnitType.Terran_Goliath, FAR);
-        List<AirHarassTargeting.AirThreat> threats = Collections.singletonList(goliath);
+        double tolerance = goliath.getStrength() / 2;
+        Map<Integer, Integer> carriedAt = new HashMap<>();
+        carriedAt.put(301, NOW);
+        int next = NOW + AirHarassEvaluator.REENTRY_HOLD_FRAMES + 1;
+        AirHarassState state = new AirHarassState(next, 600);
+        state.acceptIds(AirHarassScouting.carried(carriedAt, next), next, 600);
+
+        assertNull(AirHarassScouting.react(state, Collections.emptyList(), BASE, FAR, tolerance, next + 1, 600));
+        assertNull(AirHarassScouting.react(state, Collections.singletonList(goliath), BASE, FAR, tolerance,
+                next + 30, 600));
+    }
+
+    @Test
+    void aShorterHoldNeverCutsALongerRefusalShort() {
+        Map<String, Integer> refusedUntil = new HashMap<>();
+        AirHarassScouting.hold(refusedUntil, "main", NOW + AirHarassScouting.DEFENDED_REFUSAL_FRAMES);
+        AirHarassScouting.hold(refusedUntil, "main", NOW + AirHarassEvaluator.REENTRY_HOLD_FRAMES);
+
+        assertEquals(NOW + AirHarassScouting.DEFENDED_REFUSAL_FRAMES, (int) refusedUntil.get("main"));
+        AirHarassScouting.hold(refusedUntil, "main", NOW + AirHarassScouting.DEFENDED_REFUSAL_FRAMES + 5);
+        assertEquals(NOW + AirHarassScouting.DEFENDED_REFUSAL_FRAMES + 5, (int) refusedUntil.get("main"));
+    }
+
+    @Test
+    void carriedAntiAirExpires() {
         Map<Integer, Integer> carriedAt = new HashMap<>();
         carriedAt.put(301, NOW);
 
-        assertTrue(AirHarassScouting.carried(threats, threats, carriedAt, NOW + 1).isEmpty());
-        assertEquals(threats, AirHarassScouting.carried(threats, Collections.emptyList(), carriedAt,
+        assertEquals(Collections.singletonList(301), AirHarassScouting.carried(carriedAt,
                 NOW + AirHarassScouting.CARRY_FRAMES));
-        assertTrue(AirHarassScouting.carried(threats, Collections.emptyList(), carriedAt,
-                NOW + AirHarassScouting.CARRY_FRAMES + 1).isEmpty());
+        assertTrue(AirHarassScouting.carried(carriedAt, NOW + AirHarassScouting.CARRY_FRAMES + 1).isEmpty());
         assertTrue(carriedAt.isEmpty());
     }
 

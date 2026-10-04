@@ -185,6 +185,19 @@ public class AirHarassState {
     }
 
     /**
+     * Records anti-air by id as accepted, for units that ended an earlier harass and may be out of sight.
+     *
+     * @param ids unit ids
+     * @param frame current frame
+     * @param flockHitPoints summed hit points of the Mutalisks now
+     */
+    public void acceptIds(Collection<Integer> ids, int frame, int flockHitPoints) {
+        for (int id : ids) {
+            knownAntiAir.putIfAbsent(id, new AntiAirSighting(frame, flockHitPoints, true));
+        }
+    }
+
+    /**
      * The earliest first sighting among anti-air threats, leaving out the ones accepted by {@link #acceptAntiAir}.
      *
      * @param ids unit ids of the threats

@@ -218,10 +218,9 @@ public class AirHarassController {
             state.target(entry.option.getBase(), entry.option.getStrikePoint(), now);
         }
         View view = view(now);
-        List<AirHarassTargeting.AirThreat> accepted = AirHarassScouting.inReach(view.threats, state.targetCenter(),
-                squad.getCenter());
-        accepted.addAll(AirHarassScouting.carried(view.threats, accepted, carriedAntiAir, now));
-        state.acceptAntiAir(accepted, now, flock.hitPoints);
+        state.acceptAntiAir(AirHarassScouting.inReach(view.threats, state.targetCenter(), squad.getCenter()), now,
+                flock.hitPoints);
+        state.acceptIds(AirHarassScouting.carried(carriedAntiAir, now), now, flock.hitPoints);
         state.setLastTickFrame(now - AirHarassEvaluator.HARASS_TICK);
         squad.setHarassState(state);
         for (ManagedUnit member : squad.getMembers()) {
@@ -359,7 +358,7 @@ public class AirHarassController {
         }
         int hold = state == null ? 0 : AirHarassScouting.holdFrames(reason, state.isDefendedAtTarget());
         if (hold > 0 && state.getTargetBase() != null) {
-            refusedUntil.put(state.getTargetBase(), now + hold);
+            AirHarassScouting.hold(refusedUntil, state.getTargetBase(), now + hold);
         }
         Flock flock = flock(squad);
         List<AirHarassTargeting.AirThreat> threats = view(now).threats;
