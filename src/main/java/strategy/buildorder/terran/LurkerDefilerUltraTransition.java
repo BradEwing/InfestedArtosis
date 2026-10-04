@@ -11,7 +11,7 @@ import java.util.HashSet;
 import java.util.Set;
 
 /**
- * When a ZvT build hands over to {@link LurkerDefilerUltra}.
+ * When a ZvT build hands over to the terminal Lurker and Defiler build {@link #candidates} offers.
  *
  * <p>Each transitioning build names its own trigger, and every trigger waits on the same economy
  * gate as well: {@value #ECONOMY_DRONES} living Drones and {@value #ECONOMY_BASES} bases. The
@@ -113,7 +113,7 @@ public final class LurkerDefilerUltraTransition {
      * @param groovedSpines whether Grooved Spines is researched
      * @return {@link Trigger#HYDRALISKS} once enough have been produced and both are researched, else null
      */
-    static Trigger threeHatchHydraTrigger(int hydralisksProduced, boolean muscularAugments, boolean groovedSpines) {
+    static Trigger twoHatchHydraTrigger(int hydralisksProduced, boolean muscularAugments, boolean groovedSpines) {
         return hydralisksProduced >= HYDRALISK_TRIGGER && muscularAugments && groovedSpines
                 ? Trigger.HYDRALISKS : null;
     }

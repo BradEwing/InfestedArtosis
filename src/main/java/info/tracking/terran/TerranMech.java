@@ -21,6 +21,11 @@ public class TerranMech extends TerranBaseStrategy {
     public static final String NAME = "TerranMech";
 
     /**
+     * The STRATEGY_DETECTED label written at frame 0 of a game that starts on the persisted mech prior.
+     */
+    public static final String PRIOR_LABEL = NAME + ":PRIOR";
+
+    /**
      * How many of the most recent games the next-game prior looks back over.
      */
     public static final int RECENT_GAMES = 3;

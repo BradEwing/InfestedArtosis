@@ -364,6 +364,35 @@ class StrategyTrackerTest {
         assertFalse(strategyTracker.isTerranWallDetected());
     }
 
+    @Test
+    void aGameStartedOnThePersistedMechPriorReportsItOnce() {
+        List<String> reported = new ArrayList<>();
+        PlanEvents.register(strategyRecorder(reported));
+        try {
+            StrategyTracker persisted = trackerAgainst(Race.Terran);
+            persisted.setTerranMechPersists(true);
+            persisted.reportTerranMechPrior();
+
+            assertEquals(Collections.singletonList("TerranMech:PRIOR"), reported);
+        } finally {
+            PlanEvents.clear();
+        }
+    }
+
+    @Test
+    void aGameWithoutThePersistedMechPriorReportsNothing() {
+        List<String> reported = new ArrayList<>();
+        PlanEvents.register(strategyRecorder(reported));
+        try {
+            StrategyTracker cold = trackerAgainst(Race.Terran);
+            cold.reportTerranMechPrior();
+
+            assertTrue(reported.isEmpty());
+        } finally {
+            PlanEvents.clear();
+        }
+    }
+
     private static PlanEventSink strategyRecorder(List<String> reported) {
         return new PlanEventSink() {
             @Override

@@ -254,6 +254,16 @@ public class StrategyTracker {
         return terranMechPersists;
     }
 
+    /**
+     * Writes one STRATEGY_DETECTED row labelled {@link TerranMech#PRIOR_LABEL} when the game started on the
+     * persisted mech prior, so the prior that gated the build offer is on the record.
+     */
+    public void reportTerranMechPrior() {
+        if (terranMechPersists) {
+            PlanEvents.strategyDetected(TerranMech.PRIOR_LABEL);
+        }
+    }
+
     public String getDetectedStrategiesAsString() {
         return detectedStrategies.stream()
                 .map(ObservedStrategy::getName)

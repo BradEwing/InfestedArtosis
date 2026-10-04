@@ -199,11 +199,41 @@ class TwoHatchHydraTerranTest {
 
     @Test
     void expandsWhenBehindFloatingOrForTheHandoverBase() {
+        int wave = TwoHatchHydraTerran.HYDRALISKS_BEFORE_THIRD_BASE;
         assertFalse(TwoHatchHydraTerran.wantsExpansion(false, false, 15, 2));
-        assertTrue(TwoHatchHydraTerran.wantsExpansion(true, false, 0, 3));
-        assertTrue(TwoHatchHydraTerran.wantsExpansion(false, true, 0, 3));
+        assertTrue(TwoHatchHydraTerran.wantsExpansion(true, false, wave, 3));
+        assertTrue(TwoHatchHydraTerran.wantsExpansion(false, true, wave, 3));
         assertTrue(TwoHatchHydraTerran.wantsExpansion(false, false, TwoHatchHydraTerran.MECH_HYDRALISKS, 2));
         assertFalse(TwoHatchHydraTerran.wantsExpansion(false, false, TwoHatchHydraTerran.MECH_HYDRALISKS, 3));
+    }
+
+    @Test
+    void noHatcheryBeyondTheNaturalIsAskedForBeforeTheFirstHydraliskWave() {
+        int wave = TwoHatchHydraTerran.HYDRALISKS_BEFORE_THIRD_BASE;
+
+        assertFalse(TwoHatchHydraTerran.firstHydraliskWaveProduced(0));
+        assertFalse(TwoHatchHydraTerran.firstHydraliskWaveProduced(wave - 1));
+        assertTrue(TwoHatchHydraTerran.firstHydraliskWaveProduced(wave));
+
+        assertFalse(TwoHatchHydraTerran.wantsExpansion(true, true, 0, 2));
+        assertFalse(TwoHatchHydraTerran.wantsExpansion(true, true, wave - 1, 2));
+        assertTrue(TwoHatchHydraTerran.wantsExpansion(true, false, wave, 2));
+    }
+
+    @Test
+    void theMacroHatcheryWaitsForTheDenAndTheFirstHydraliskWave() {
+        int wave = TwoHatchHydraTerran.HYDRALISKS_BEFORE_THIRD_BASE;
+
+        assertFalse(TwoHatchHydraTerran.macroHatcheryAllowed(true, 0));
+        assertFalse(TwoHatchHydraTerran.macroHatcheryAllowed(true, wave - 1));
+        assertFalse(TwoHatchHydraTerran.macroHatcheryAllowed(false, wave));
+        assertTrue(TwoHatchHydraTerran.macroHatcheryAllowed(true, wave));
+    }
+
+    @Test
+    void theMacroHatcheryGateIsWiredThroughTheGameStateHook() throws NoSuchMethodException {
+        assertEquals(TwoHatchHydraTerran.class, TwoHatchHydraTerran.class
+                .getDeclaredMethod("macroHatcheryReady", info.GameState.class).getDeclaringClass());
     }
 
     @Test

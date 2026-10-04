@@ -330,6 +330,18 @@ public abstract class BuildOrder {
     protected abstract boolean macroHatcheryTechReady(TechProgression techProgression);
 
     /**
+     * Whether the larva-bound macro hatchery may be asked for this frame. Defaults to
+     * {@link #macroHatcheryTechReady}; a build that must hold the hatchery back for a reason beyond tech
+     * overrides it.
+     *
+     * @param gameState current game state
+     * @return true when the build's tech condition for the macro hatchery holds
+     */
+    protected boolean macroHatcheryReady(GameState gameState) {
+        return macroHatcheryTechReady(gameState.getTechProgression());
+    }
+
+    /**
      * Whether the build lets the shared larva-bound macro hatchery step run this frame at all.
      *
      * <p>True by default. A build that caps its macro hatcheries answers false once the cap is
@@ -1439,7 +1451,7 @@ public abstract class BuildOrder {
      */
     private Plan larvaBoundMacroHatchery(GameState gameState) {
         ResourceCount resourceCount = gameState.getResourceCount();
-        boolean techReady = macroHatcheryTechReady(gameState.getTechProgression());
+        boolean techReady = macroHatcheryReady(gameState);
         int hatcheries = gameState.hatcheryCount();
         int outstanding = gameState.inFlightHatcheryPlans(true) + gameState.hatcheriesUnderConstruction(true);
         LarvaBoundMacroHatchery.Gate gate = LarvaBoundMacroHatchery.evaluate(techReady, gameState.numLarva(),

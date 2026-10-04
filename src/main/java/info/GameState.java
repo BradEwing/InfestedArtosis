@@ -521,6 +521,14 @@ public class GameState {
         }
     }
 
+    /**
+     * Writes the persisted TerranMech prior row. Called once the plan event sink is registered, so the row
+     * lands at frame 0.
+     */
+    public void reportTerranMechPrior() {
+        strategyTracker.reportTerranMechPrior();
+    }
+
     public void addMainBase(Unit hatchery, Base base) {
         this.baseData.initializeMainBase(base, this.gameMap);
         addBaseToGameState(hatchery, base);

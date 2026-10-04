@@ -24,8 +24,10 @@ import java.util.Set;
 /**
  * The hydralisk-focused ZvT build: Hydralisks and Zerglings out before the third base, which is taken
  * once {@value #HYDRALISKS_BEFORE_THIRD_BASE} Hydralisks stand, on a Drone target of
- * {@value #DRONES_BEFORE_HYDRALISKS}. It researches Muscular Augments, Grooved Spines, Missile Attacks
- * and Carapace, and hands over to {@link LurkerDefilerUltra} once
+ * {@value #DRONES_BEFORE_HYDRALISKS}. No Hatchery beyond the natural, macro or expansion, is asked for
+ * before {@value #HYDRALISKS_BEFORE_THIRD_BASE} Hydralisks have been produced. It researches Muscular
+ * Augments, Grooved Spines, Missile Attacks and Carapace, and hands over to the build
+ * {@link LurkerDefilerUltraTransition#candidates} offers once
  * {@value LurkerDefilerUltraTransition#HYDRALISK_TRIGGER} Hydralisks are produced, Muscular Augments
  * and Grooved Spines are researched, and the economy gate in {@link LurkerDefilerUltraTransition}
  * is met.
@@ -392,9 +394,21 @@ public class TwoHatchHydraTerran extends TerranBase {
      */
     static boolean wantsExpansion(boolean behindOnBases, boolean floatingMinerals, int hydralisksProduced,
                                   int basesHeldOrReserved) {
-        return behindOnBases || floatingMinerals
+        return firstHydraliskWaveProduced(hydralisksProduced) && (behindOnBases || floatingMinerals
                 || hydralisksProduced >= LurkerDefilerUltraTransition.HYDRALISK_TRIGGER
-                && basesHeldOrReserved < LurkerDefilerUltraTransition.ECONOMY_BASES;
+                && basesHeldOrReserved < LurkerDefilerUltraTransition.ECONOMY_BASES);
+    }
+
+    /**
+     * Whether the first larva wave of Hydralisks has been produced: {@value #HYDRALISKS_BEFORE_THIRD_BASE}
+     * Hydralisks, the count the third base also waits on. No Hatchery past the natural is asked for
+     * earlier, so the first wave takes the larva and the minerals.
+     *
+     * @param hydralisksProduced Hydralisks this game has produced
+     * @return true once the first wave has been produced
+     */
+    static boolean firstHydraliskWaveProduced(int hydralisksProduced) {
+        return hydralisksProduced >= HYDRALISKS_BEFORE_THIRD_BASE;
     }
 
     /**
@@ -462,6 +476,27 @@ public class TwoHatchHydraTerran extends TerranBase {
         return LarvaBoundMacroHatchery.isHydraliskTechReady(techProgression);
     }
 
+    /**
+     * The Hydralisk Den stands and the first wave of Hydralisks has been produced.
+     */
+    @Override
+    protected boolean macroHatcheryReady(GameState gameState) {
+        return macroHatcheryAllowed(super.macroHatcheryReady(gameState),
+                gameState.totalProduced(UnitType.Zerg_Hydralisk));
+    }
+
+    /**
+     * Whether the macro Hatchery may be asked for: the Hydralisk tech condition holds and the first wave of
+     * Hydralisks has been produced.
+     *
+     * @param techReady whether the Hydralisk Den stands
+     * @param hydralisksProduced Hydralisks this game has produced
+     * @return true when the macro Hatchery gate may open
+     */
+    static boolean macroHatcheryAllowed(boolean techReady, int hydralisksProduced) {
+        return techReady && firstHydraliskWaveProduced(hydralisksProduced);
+    }
+
     @Override
     public boolean playsRace(Race race) {
         return race == Race.Terran;
@@ -473,13 +508,13 @@ public class TwoHatchHydraTerran extends TerranBase {
     }
 
     /**
-     * Hands over to {@link LurkerDefilerUltra} once the build has produced its Hydralisks and
-     * researched their upgrades, and the economy gate in {@link LurkerDefilerUltraTransition} is met.
+     * Hands over once the build has produced its Hydralisks and researched their upgrades, and the
+     * economy gate in {@link LurkerDefilerUltraTransition} is met.
      */
     @Override
     public boolean shouldTransition(GameState gameState) {
         return LurkerDefilerUltraTransition.shouldEnter(gameState, getName(),
-                LurkerDefilerUltraTransition.threeHatchHydraTrigger(
+                LurkerDefilerUltraTransition.twoHatchHydraTrigger(
                         gameState.totalProduced(UnitType.Zerg_Hydralisk),
                         gameState.getTechProgression().isMuscularAugments(),
                         gameState.getTechProgression().isGroovedSpines()));
