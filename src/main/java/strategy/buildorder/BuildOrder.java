@@ -1479,7 +1479,7 @@ public abstract class BuildOrder {
                         queuedMinerals),
                 LarvaBoundMacroHatchery.bankAfterHold(holdsBank, resourceCount.availableGas(), queuedGas),
                 gasBar, gameState.knownEnemyMobileGroundCombatUnitsAtOurBases(), outstanding);
-        gate = LarvaBoundMacroHatchery.heldReading(gate, holdsBank, gasBar);
+        gate = LarvaBoundMacroHatchery.heldReading(gate, techReady, holdsBank, gasBar);
 
         if (gate != LarvaBoundMacroHatchery.Gate.TRIGGER) {
             PlanEvents.macroHatcheryGate(gate, techReady, hatcheries, outstanding);

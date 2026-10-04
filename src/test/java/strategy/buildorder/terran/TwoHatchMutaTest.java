@@ -594,7 +594,7 @@ class TwoHatchMutaTest {
     }
 
     @Test
-    void theReleasedMacroHatcheryIsPlannedOnceTheFirstWaveIsQueued() {
+    void theReleasedMacroHatcheryIsPlannedOnceTheFirstWaveIsScheduled() {
         int wave = TwoHatchMuta.MUTALISKS_BEFORE_FLYER_UPGRADE;
         assertTrue(TwoHatchMuta.wantsReleasedMacroHatchery(true, wave, 3, 0, 0));
         assertFalse(TwoHatchMuta.wantsReleasedMacroHatchery(true, wave - 1, 3, 0, 0));
@@ -602,10 +602,18 @@ class TwoHatchMutaTest {
     }
 
     @Test
-    void theReleasedMacroHatcheryWaitsOnTheCapAnOutstandingHatcheryAndAThreat() {
+    void theReleasedMacroHatcheryWaitsOnTheCapAnOutstandingMacroHatcheryAndAThreat() {
         int wave = TwoHatchMuta.MUTALISKS_BEFORE_FLYER_UPGRADE;
         assertFalse(TwoHatchMuta.wantsReleasedMacroHatchery(true, wave, TwoHatchMuta.MACRO_HATCHERY_HATCHERY_CAP, 0, 0));
         assertFalse(TwoHatchMuta.wantsReleasedMacroHatchery(true, wave, 3, 1, 0));
         assertFalse(TwoHatchMuta.wantsReleasedMacroHatchery(true, wave, 3, 0, 1));
+    }
+
+    @Test
+    void anExpansionOnItsWayCountsTowardTheCapButDoesNotBlockTheMacroHatchery() {
+        int wave = TwoHatchMuta.MUTALISKS_BEFORE_FLYER_UPGRADE;
+        assertTrue(TwoHatchMuta.wantsReleasedMacroHatchery(true, wave, 3, 0, 0));
+        assertTrue(TwoHatchMuta.wantsReleasedMacroHatchery(true, wave, 2 + 1, 0, 0));
+        assertFalse(TwoHatchMuta.wantsReleasedMacroHatchery(true, wave, 3 + 1, 0, 0));
     }
 }

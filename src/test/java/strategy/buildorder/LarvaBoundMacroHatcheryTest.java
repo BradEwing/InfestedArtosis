@@ -192,12 +192,13 @@ class LarvaBoundMacroHatcheryTest {
 
     @Test
     void aBankShortfallUnderTheHoldOrALoweredGasBarIsReportedAsHeld() {
-        assertEquals(Gate.HELD_NOT_FLOATING, LarvaBoundMacroHatchery.heldReading(Gate.NOT_FLOATING, true,
+        assertEquals(Gate.HELD_NOT_FLOATING, LarvaBoundMacroHatchery.heldReading(Gate.NOT_FLOATING, true, true,
                 LarvaBoundMacroHatchery.FLOAT_GAS));
-        assertEquals(Gate.HELD_NOT_FLOATING, LarvaBoundMacroHatchery.heldReading(Gate.NOT_FLOATING, false, 0));
-        assertEquals(Gate.NOT_FLOATING, LarvaBoundMacroHatchery.heldReading(Gate.NOT_FLOATING, false,
+        assertEquals(Gate.HELD_NOT_FLOATING, LarvaBoundMacroHatchery.heldReading(Gate.NOT_FLOATING, true, false, 0));
+        assertEquals(Gate.NOT_FLOATING, LarvaBoundMacroHatchery.heldReading(Gate.NOT_FLOATING, true, false,
                 LarvaBoundMacroHatchery.FLOAT_GAS));
-        assertEquals(Gate.THREAT, LarvaBoundMacroHatchery.heldReading(Gate.THREAT, true, 0));
+        assertEquals(Gate.THREAT, LarvaBoundMacroHatchery.heldReading(Gate.THREAT, true, true, 0));
+        assertEquals(Gate.NOT_FLOATING, LarvaBoundMacroHatchery.heldReading(Gate.NOT_FLOATING, false, true, 0));
         assertTrue(Gate.HELD_NOT_FLOATING.isRequest());
     }
 }

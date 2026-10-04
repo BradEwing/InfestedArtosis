@@ -121,9 +121,11 @@ public class TwoHatchMuta extends TerranBase {
         }
 
         if (expansionPlanned(plans) == null && wantsReleasedMacroHatchery(
-                gameState.structureCount(Readiness.COMMITTED, UnitType.Zerg_Spire) > 0, firstWaveMutalisks(gameState),
-                gameState.hatcheryCount(), gameState.inFlightHatcheryPlans() + gameState.hatcheriesUnderConstruction(true)
-                        + gameState.hatcheriesUnderConstruction(false),
+                gameState.structureCount(Readiness.COMMITTED, UnitType.Zerg_Spire) > 0,
+                firstWaveMutalisks(gameState) - gameState.queuedUnitPlanCount(UnitType.Zerg_Mutalisk),
+                gameState.hatcheryCount() + gameState.inFlightHatcheryPlans()
+                        + gameState.hatcheriesUnderConstruction(true) + gameState.hatcheriesUnderConstruction(false),
+                gameState.inFlightHatcheryPlans(true) + gameState.hatcheriesUnderConstruction(true),
                 gameState.knownEnemyMobileGroundCombatUnitsAtOurBases())) {
             Plan macroHatcheryPlan = this.planMacroHatcheryAt(gameState, baseData.getMainBase());
             if (macroHatcheryPlan != null) {
@@ -276,20 +278,24 @@ public class TwoHatchMuta extends TerranBase {
      *
      * <p>Asked once the first wave no longer owns the bank, and not conditional on the bank floating:
      * continuous Mutalisk production spends minerals as they arrive, so the floating-bank request rarely
-     * fires. A plan reserves its minerals when it is scheduled, so it does not wait on a pile.
+     * fires. The first wave's Mutalisks must all be scheduled or produced first, because a hatchery plan
+     * that cannot yet pay for itself holds the build-ahead slot and blocks every Mutalisk behind it.
      *
      * @param spireCommitted whether a Spire is finished, morphing or planned
-     * @param mutaliskCount Mutalisks produced plus Mutalisk plans not yet finished
-     * @param hatcheries completed larva-producing hatcheries
-     * @param outstandingHatcheries hatchery plans in flight plus hatcheries under construction
+     * @param scheduledWaveMutalisks Mutalisks produced plus Mutalisk plans past the queue
+     * @param hatcheriesAndOnTheWay completed larva-producing hatcheries plus every hatchery plan in flight
+     *     and hatchery under construction, of both kinds
+     * @param outstandingMacroHatcheries macro hatchery plans in flight plus macro hatcheries under construction
      * @param enemiesAtBases enemy mobile ground combat units last known at our bases
-     * @return true when fewer than {@link #MACRO_HATCHERY_HATCHERY_CAP} hatcheries stand, none is on its way and
-     *     no enemy is at our bases
+     * @return true when fewer than {@link #MACRO_HATCHERY_HATCHERY_CAP} hatcheries stand or are coming, no macro
+     *     hatchery is outstanding and no enemy is at our bases
      */
-    static boolean wantsReleasedMacroHatchery(boolean spireCommitted, int mutaliskCount, int hatcheries,
-                                              int outstandingHatcheries, int enemiesAtBases) {
-        return spireCommitted && !ownsFirstWaveBank(spireCommitted, mutaliskCount)
-                && hatcheries < MACRO_HATCHERY_HATCHERY_CAP && outstandingHatcheries == 0 && enemiesAtBases == 0;
+    static boolean wantsReleasedMacroHatchery(boolean spireCommitted, int scheduledWaveMutalisks,
+                                              int hatcheriesAndOnTheWay, int outstandingMacroHatcheries,
+                                              int enemiesAtBases) {
+        return spireCommitted && !ownsFirstWaveBank(spireCommitted, scheduledWaveMutalisks)
+                && hatcheriesAndOnTheWay < MACRO_HATCHERY_HATCHERY_CAP && outstandingMacroHatcheries == 0
+                && enemiesAtBases == 0;
     }
 
     private static Plan expansionPlanned(List<Plan> plans) {

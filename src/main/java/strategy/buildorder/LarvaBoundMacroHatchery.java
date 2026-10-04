@@ -63,8 +63,8 @@ public final class LarvaBoundMacroHatchery {
         TRIGGER;
 
         /**
-         * Whether the build is larva bound and floating both banks, so the request exists and
-         * this gate either answers it or withholds it.
+         * Whether the build is larva bound with its banks not short, or short only by a hold the
+         * build placed, so the request exists and this gate either answers it or withholds it.
          */
         public boolean isRequest() {
             return this != LARVA_NOT_SHORT && this != NOT_FLOATING;
@@ -76,13 +76,14 @@ public final class LarvaBoundMacroHatchery {
      * bar shaped.
      *
      * @param gate the gate {@link #evaluate} stopped on
+     * @param techReady whether the build's tech is finished, since an unfinished tech stops the request anyway
      * @param holdsBank whether the first wave still owns the bank
      * @param floatGas the gas bar the request asked on
-     * @return {@link Gate#HELD_NOT_FLOATING} for a bank shortfall while the hold or a bar below
+     * @return {@link Gate#HELD_NOT_FLOATING} for a bank shortfall with the tech finished while the hold or a bar below
      *     {@link #FLOAT_GAS} applies, else the gate unchanged
      */
-    public static Gate heldReading(Gate gate, boolean holdsBank, int floatGas) {
-        if (gate == Gate.NOT_FLOATING && (holdsBank || floatGas < FLOAT_GAS)) {
+    public static Gate heldReading(Gate gate, boolean techReady, boolean holdsBank, int floatGas) {
+        if (gate == Gate.NOT_FLOATING && techReady && (holdsBank || floatGas < FLOAT_GAS)) {
             return Gate.HELD_NOT_FLOATING;
         }
         return gate;
