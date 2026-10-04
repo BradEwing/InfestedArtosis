@@ -69,8 +69,12 @@ final class SquadDecision {
     private int swarmId = NOT_EVALUATED;
     private int swarmRemainingFrames = NOT_EVALUATED;
     private double swarmCover = NOT_EVALUATED;
+    private int siegeBand = NOT_EVALUATED;
+    private int siegeBandFrames = NOT_EVALUATED;
+    private int siegeBandHeldFrames = NOT_EVALUATED;
     private SwarmLock.Release swarmRelease = SwarmLock.Release.NONE;
     private CommitmentRelease commitmentRelease = CommitmentRelease.NONE;
+    private BunkerHoldRelease bunkerHoldRelease = BunkerHoldRelease.NONE;
 
     static int tristate(boolean value) {
         return value ? 1 : 0;
