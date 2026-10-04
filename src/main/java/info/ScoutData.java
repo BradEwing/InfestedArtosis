@@ -50,6 +50,7 @@ public class ScoutData {
 
     private final HashMap<Base, Set<TilePosition>> enemyMainSeenTiles = new HashMap<>();
     private final HashMap<Base, Time> enemyMainScoutedFrames = new HashMap<>();
+    private final HashMap<Base, Time> enemyNaturalSeenFrames = new HashMap<>();
 
     public void addScoutTarget(TilePosition tp) {
         scoutTargets.add(tp);
@@ -281,6 +282,20 @@ public class ScoutData {
      */
     public Time getEnemyMainScoutedFrame(Base enemyMain) {
         return enemyMainScoutedFrames.get(enemyMain);
+    }
+
+    /**
+     * Records that the depot site of this enemy natural is in our vision this frame.
+     */
+    public void recordEnemyNaturalVision(Base enemyNatural, Time frame) {
+        enemyNaturalSeenFrames.put(enemyNatural, frame);
+    }
+
+    /**
+     * @return the latest frame the depot site of this enemy natural was in our vision, or null if it never was
+     */
+    public Time getEnemyNaturalLastSeenFrame(Base enemyNatural) {
+        return enemyNaturalSeenFrames.get(enemyNatural);
     }
 
     /**
