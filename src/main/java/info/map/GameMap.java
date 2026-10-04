@@ -81,7 +81,7 @@ public class GameMap {
      * @param type what kind of tile it is
      * @param scouted whether the tile has ever been in our vision
      * @return the scout importance the tile gains each frame; a start location never seen gains the most, so an
-     *     enemy main nobody has looked at outranks every tile that has been seen
+     *     unseen start location overtakes a seen one that has gone unseen for as long
      */
     public static int scoutWeight(MapTileType type, boolean scouted) {
         if (type == MapTileType.BASE_START) {

@@ -183,6 +183,47 @@ public final class BaseCheckScheduler {
     }
 
     /**
+     * @param type an enemy unit or building type
+     * @return true for a Bunker, Photon Cannon or Sunken Colony
+     */
+    public static boolean isStaticDefence(UnitType type) {
+        return type == UnitType.Terran_Bunker || type == UnitType.Protoss_Photon_Cannon
+                || type == UnitType.Zerg_Sunken_Colony;
+    }
+
+    /**
+     * Where to remember a scout's death: the nearest known static defence within
+     * {@link #DEATH_AVOID_RADIUS_PIXELS} of the place it died. A death with none near is not remembered, so a
+     * scout killed by a mobile army or near our own bases blocks no route.
+     *
+     * @param death where the scout died
+     * @param sightings enemy units and buildings sighted
+     * @return the position of that defence, or null
+     */
+    public static Position deathSiteAnchor(Position death, Collection<Sighting> sightings) {
+        Position nearest = null;
+        double nearestDistance = Double.MAX_VALUE;
+        for (Sighting sighting : sightings) {
+            double distance = sighting.getPosition().getDistance(death);
+            if (isStaticDefence(sighting.getType()) && distance <= DEATH_AVOID_RADIUS_PIXELS
+                    && distance < nearestDistance) {
+                nearest = sighting.getPosition();
+                nearestDistance = distance;
+            }
+        }
+        return nearest;
+    }
+
+    /**
+     * @param deathFrame the frame the scout died
+     * @param now the current frame
+     * @return true while the death site is still avoided, for {@link #DEATH_MEMORY_FRAMES}
+     */
+    public static boolean isDeathRemembered(int deathFrame, int now) {
+        return now - deathFrame < DEATH_MEMORY_FRAMES;
+    }
+
+    /**
      * Whether a route passes within {@link #DEATH_AVOID_RADIUS_PIXELS} of a place a scout died on a check.
      *
      * @param route points along the ground route to a base

@@ -9,8 +9,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Records one row per base check: the base, the frame the scout was sent, the frame the check ended, why it
- * ended, and whether an enemy stood within sight of the base.
+ * Records one row per scout sent on a base check: the base, the frame the scout was sent, the frame the check
+ * ended, why it ended, and whether an enemy stood within sight of the base.
  *
  * <p>LOST is a scout that died on the check, including one that died within
  * {@link BaseCheckScheduler#RECALL_DEATH_WINDOW_FRAMES} of an HP recall; HP_RECALL is a recalled scout that

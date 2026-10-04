@@ -308,4 +308,60 @@ class BaseCheckSchedulerTest {
         assertFalse(BaseCheckScheduler.routePassesDeathSite(Collections.emptyList(),
                 Collections.singletonList(death)));
     }
+
+    private static BaseCheckScheduler.Sighting sighting(UnitType type, int x, int y) {
+        return new BaseCheckScheduler.Sighting(type, new Position(x, y));
+    }
+
+    @Test
+    void aDeathBesideAStaticDefenceIsAnchoredOnTheDefence() {
+        Position anchor = BaseCheckScheduler.deathSiteAnchor(new Position(500, 500),
+                Arrays.asList(sighting(UnitType.Terran_Marine, 500, 490), sighting(UnitType.Terran_Bunker, 600, 500)));
+        assertEquals(new Position(600, 500), anchor);
+    }
+
+    @Test
+    void aDeathNearTheNearestOfSeveralDefencesIsAnchoredOnThatOne() {
+        Position anchor = BaseCheckScheduler.deathSiteAnchor(new Position(500, 500),
+                Arrays.asList(sighting(UnitType.Zerg_Sunken_Colony, 700, 500),
+                        sighting(UnitType.Protoss_Photon_Cannon, 560, 500)));
+        assertEquals(new Position(560, 500), anchor);
+    }
+
+    @Test
+    void aDeathWithNoStaticDefenceNearIsNotRemembered() {
+        assertNull(BaseCheckScheduler.deathSiteAnchor(new Position(500, 500),
+                Arrays.asList(sighting(UnitType.Terran_Marine, 510, 500), sighting(UnitType.Terran_Bunker, 5000, 500))));
+        assertNull(BaseCheckScheduler.deathSiteAnchor(new Position(500, 500), Collections.emptyList()));
+    }
+
+    @Test
+    void aDefenceJustOutsideTheAvoidRadiusDoesNotAnchorADeath() {
+        int distance = BaseCheckScheduler.DEATH_AVOID_RADIUS_PIXELS;
+        assertEquals(new Position(500 + distance, 500), BaseCheckScheduler.deathSiteAnchor(new Position(500, 500),
+                Collections.singletonList(sighting(UnitType.Terran_Bunker, 500 + distance, 500))));
+        assertNull(BaseCheckScheduler.deathSiteAnchor(new Position(500, 500),
+                Collections.singletonList(sighting(UnitType.Terran_Bunker, 500 + distance + 1, 500))));
+    }
+
+    @Test
+    void onlyBunkersCannonsAndSunkensAreStaticDefence() {
+        assertTrue(BaseCheckScheduler.isStaticDefence(UnitType.Terran_Bunker));
+        assertTrue(BaseCheckScheduler.isStaticDefence(UnitType.Protoss_Photon_Cannon));
+        assertTrue(BaseCheckScheduler.isStaticDefence(UnitType.Zerg_Sunken_Colony));
+        assertFalse(BaseCheckScheduler.isStaticDefence(UnitType.Terran_Marine));
+        assertFalse(BaseCheckScheduler.isStaticDefence(UnitType.Zerg_Spore_Colony));
+    }
+
+    @Test
+    void aDeathIsRememberedForExactlyTheMemoryWindow() {
+        assertTrue(BaseCheckScheduler.isDeathRemembered(1000, 1000 + BaseCheckScheduler.DEATH_MEMORY_FRAMES - 1));
+        assertFalse(BaseCheckScheduler.isDeathRemembered(1000, 1000 + BaseCheckScheduler.DEATH_MEMORY_FRAMES));
+    }
+
+    @Test
+    void lingCheckCapIsThree() {
+        assertTrue(BaseCheckScheduler.mayStartCheck(2, false));
+        assertFalse(BaseCheckScheduler.mayStartCheck(3, false));
+    }
 }

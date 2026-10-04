@@ -131,8 +131,10 @@ public class ScoutManager {
     }
 
     /**
-     * Picks the base the next check should go to: the stalest available base not already being checked, once
-     * it has gone {@link BaseCheckScheduler#CHECK_INTERVAL_FRAMES} unseen.
+     * Picks the base the next check should go to: a start location never seen first, then the stalest available
+     * base, once it has gone {@link BaseCheckScheduler#CHECK_INTERVAL_FRAMES} unseen. Bases already being
+     * checked, held back after a failed check, or reached by a route passing a remembered static-defence death
+     * are skipped.
      *
      * @return the base to check, or null when none is due
      */
@@ -189,7 +191,7 @@ public class ScoutManager {
     }
 
     private List<Position> recentDeathSites(int now) {
-        deathSites.removeIf(site -> now - site.frame >= BaseCheckScheduler.DEATH_MEMORY_FRAMES);
+        deathSites.removeIf(site -> !BaseCheckScheduler.isDeathRemembered(site.frame, now));
         List<Position> positions = new ArrayList<>();
         for (DeathSite site : deathSites) {
             positions.add(site.position);
@@ -210,9 +212,24 @@ public class ScoutManager {
 
     private void recordDeathSite(ManagedUnit scout, int frame) {
         Position position = scout.getPosition();
-        if (position != null) {
-            deathSites.add(new DeathSite(position, frame));
+        if (position == null || scout.getUnitType() != UnitType.Zerg_Zergling) {
+            return;
         }
+        Position anchor = BaseCheckScheduler.deathSiteAnchor(position, knownSightings());
+        if (anchor != null) {
+            deathSites.add(new DeathSite(anchor, frame));
+        }
+    }
+
+    private List<BaseCheckScheduler.Sighting> knownSightings() {
+        List<BaseCheckScheduler.Sighting> sightings = new ArrayList<>();
+        for (ObservedUnit observed : gameState.getObservedUnitTracker().getLivingObservedUnits()) {
+            Position position = observed.getCurrentOrLastKnownPosition();
+            if (position != null) {
+                sightings.add(new BaseCheckScheduler.Sighting(observed.getUnitType(), position));
+            }
+        }
+        return sightings;
     }
 
     /**
@@ -284,8 +301,8 @@ public class ScoutManager {
      * Sends a unit to see a base and holds it there until the base has been seen, the unit is recalled at low
      * hit points, or the check times out.
      *
-     * @param primary whether this unit's outcome is the check's telemetry row; the second zergling of a pair is
-     *     not
+     * @param primary whether this unit's outcome is the check's primary telemetry row; the second zergling of a
+     *     pair writes a row marked not primary and does not count toward the in-flight cap
      */
     public void beginBaseCheck(ManagedUnit managedUnit, Base base, boolean primary) {
         int now = game.getFrameCount();
