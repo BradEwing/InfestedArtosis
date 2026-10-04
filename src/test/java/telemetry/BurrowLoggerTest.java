@@ -32,8 +32,10 @@ class BurrowLoggerTest {
 
     @Test
     void anUnburrowRowCarriesTheReasonAndTheContainPoint() {
-        String[] fields = ("game-1," + BurrowLogger.row(15703, 208, false, BurrowReason.UNDER_FIRE_WITHDRAW, "CONTAIN",
-                new Position(900, 3413), 82, new Position(910, 3400))).split(",", -1);
+        String[] fields = ("game-1," + BurrowLogger.row(BurrowCommand.builder().frame(15703).unitId(208)
+                .reason(BurrowReason.UNDER_FIRE_WITHDRAW).role("CONTAIN").position(new Position(900, 3413))
+                .hitPoints(82).containPoint(new Position(910, 3400)).withdrawPoint(new Position(700, 3300))
+                .withdrawZones(0).build())).split(",", -1);
 
         assertEquals(BurrowLogger.HEADER.split(",", -1).length, fields.length);
         assertEquals("15703", fields[columnIndex("frame")]);
@@ -45,16 +47,29 @@ class BurrowLoggerTest {
         assertEquals("82", fields[columnIndex("hit_points")]);
         assertEquals("910", fields[columnIndex("contain_x")]);
         assertEquals("3400", fields[columnIndex("contain_y")]);
+        assertEquals("700", fields[columnIndex("withdraw_x")]);
+        assertEquals("3300", fields[columnIndex("withdraw_y")]);
+        assertEquals("0", fields[columnIndex("withdraw_zones")]);
+    }
+
+    @Test
+    void theWithdrawColumnsAreAppendedAfterTheContainPoint() {
+        assertEquals(columnIndex("contain_y") + 1, columnIndex("withdraw_x"));
+        assertEquals(BurrowLogger.HEADER.split(",", -1).length - 1, columnIndex("withdraw_zones"));
     }
 
     @Test
     void aLurkerWithNoContainPointWritesMinusOne() {
-        String[] fields = ("game-1," + BurrowLogger.row(100, 7, true, BurrowReason.FIGHT_ENEMY_IN_RANGE, "FIGHT",
-                new Position(10, 20), 125, null)).split(",", -1);
+        String[] fields = ("game-1," + BurrowLogger.row(BurrowCommand.builder().frame(100).unitId(7).burrow(true)
+                .reason(BurrowReason.FIGHT_ENEMY_IN_RANGE).role("FIGHT").position(new Position(10, 20))
+                .hitPoints(125).build())).split(",", -1);
 
         assertEquals("BURROW", fields[columnIndex("command")]);
         assertEquals("-1", fields[columnIndex("contain_x")]);
         assertEquals("-1", fields[columnIndex("contain_y")]);
+        assertEquals("-1", fields[columnIndex("withdraw_x")]);
+        assertEquals("-1", fields[columnIndex("withdraw_y")]);
+        assertEquals("-1", fields[columnIndex("withdraw_zones")]);
     }
 
     @Test
@@ -63,10 +78,12 @@ class BurrowLoggerTest {
         BurrowLogger logger = new BurrowLogger(null, "game-1", new TelemetryWriter(file, BurrowLogger.HEADER));
         BurrowTelemetry.register(logger);
 
-        BurrowTelemetry.burrowCommand(10, 1, true, BurrowReason.CONTAIN_HOLD, "CONTAIN", new Position(1, 2), 125,
-                new Position(3, 4));
-        BurrowTelemetry.burrowCommand(20, 1, false, BurrowReason.CONTAIN_POINT_MOVED, "CONTAIN", new Position(1, 2),
-                125, new Position(90, 4));
+        BurrowTelemetry.burrowCommand(BurrowCommand.builder().frame(10).unitId(1).burrow(true)
+                .reason(BurrowReason.CONTAIN_HOLD).role("CONTAIN").position(new Position(1, 2)).hitPoints(125)
+                .containPoint(new Position(3, 4)).build());
+        BurrowTelemetry.burrowCommand(BurrowCommand.builder().frame(20).unitId(1)
+                .reason(BurrowReason.CONTAIN_POINT_MOVED).role("CONTAIN").position(new Position(1, 2))
+                .hitPoints(125).containPoint(new Position(90, 4)).build());
         logger.onEnd();
 
         List<String> lines = Files.readAllLines(file, StandardCharsets.UTF_8);

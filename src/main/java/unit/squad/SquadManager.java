@@ -784,22 +784,43 @@ public class SquadManager {
             Position point = evadePoint(member, zones, padding, allowed, seek);
             if (point != null) {
                 if (member instanceof Lurker && member.canWithdrawNow()) {
-                    ((Lurker) member).setWithdrawZones(zones, padding + WITHDRAW_CLEARANCE);
+                    ((Lurker) member).setWithdrawZoneCount(zones.size());
                 }
                 member.evade(point, now);
             }
         }
     }
 
-    private static Position evadePoint(ManagedUnit member, List<StaticDefenseZone> zones, int padding,
-                                       Predicate<Position> allowed, Position seek) {
+    private Position evadePoint(ManagedUnit member, List<StaticDefenseZone> zones, int padding,
+                               Predicate<Position> allowed, Position seek) {
         if (!member.canWithdrawNow()) {
             return RunbyTargeting.findEvadePoint(member.getPosition(), zones, padding, allowed, seek);
         }
+        int minStep = withdrawMinStep(gameState.getReachMemory().longestGroundReach(), padding);
         Position clear = RunbyTargeting.findClearPoint(member.getPosition(), zones, padding, WITHDRAW_CLEARANCE,
-                allowed, seek);
+                minStep, gameState.getSquadRallyPoint(), allowed, seek);
+        if (clear == null) {
+            clear = RunbyTargeting.findClearPoint(member.getPosition(), zones, padding, WITHDRAW_CLEARANCE,
+                    minStep, null, allowed, seek);
+        }
+        if (clear == null) {
+            clear = RunbyTargeting.findClearPoint(member.getPosition(), zones, padding, WITHDRAW_CLEARANCE, allowed,
+                    seek);
+        }
         return clear != null ? clear
                 : RunbyTargeting.findEvadePoint(member.getPosition(), zones, padding, allowed, seek);
+    }
+
+    /**
+     * The least a withdrawing Lurker walks: the longest ground reach learned this game, plus the padding and the
+     * clearance, so a hit nothing accounts for still leaves it out of the reach of the longest shooter seen.
+     *
+     * @param longestReach longest learned enemy ground reach, 0 when none
+     * @param padding pixels added to a reach for the unit's extent and a margin
+     * @return the minimum step in pixels, 0 when no reach has been learned
+     */
+    static int withdrawMinStep(int longestReach, int padding) {
+        return longestReach <= 0 ? 0 : longestReach + padding + WITHDRAW_CLEARANCE;
     }
 
     /**
