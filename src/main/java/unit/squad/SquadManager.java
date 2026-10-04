@@ -2349,7 +2349,7 @@ public class SquadManager {
                 }
                 boolean enteredContain = safeToHold && tryEnterContainment(squad);
                 if (snapshot != null) {
-                    squad.getBunkerRetreatMemory().recordRetreat(snapshot.getPricedBunkers(), squad.getMembers());
+                    squad.getBunkerRetreatMemory().recordRetreat(snapshot.getPricedBunkers(), squad.getMembers(), now);
                 }
                 if (!enteredContain) {
                     squad.setStatus(SquadStatus.RETREAT);

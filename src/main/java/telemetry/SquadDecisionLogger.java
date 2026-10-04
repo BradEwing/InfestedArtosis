@@ -133,7 +133,8 @@ public class SquadDecisionLogger implements SquadDecisionSink {
             + "stalemate_commit_supply_real,stalemate_commit_army_real,"
             + "retreat_route,"
             + "swarm_id,swarm_remaining_frames,swarm_locked,sim_swarm_cover,swarm_release_reason,"
-            + "air_commitment_release";
+            + "air_commitment_release,"
+            + "bunker_hold_release";
 
     static final String SWARM_FILE = "telemetry_dark_swarms.csv";
 
@@ -146,6 +147,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
     private static final String EVENT_LOCK_SUPPRESSED = "LOCK_SUPPRESSED";
     private static final String EVENT_SPLIT_SUPPRESSED = "SPLIT_SUPPRESSED";
     private static final String EVENT_SQUAD_DISBANDED = "SQUAD_DISBANDED";
+    static final String EVENT_BUNKER_HOLD_END = "BUNKER_HOLD_END";
     static final String EVENT_PHASE_CHANGE = "PHASE_CHANGE";
     private static final String EVENT_CONTAIN_PUSHBACK = "CONTAIN_PUSHBACK";
     static final String EVENT_CONTAIN_COLLAPSE = "CONTAIN_COLLAPSE";
@@ -729,12 +731,49 @@ public class SquadDecisionLogger implements SquadDecisionSink {
 
         lastStatus.keySet().retainAll(present);
         lastSuppression.keySet().retainAll(present);
+        emitHoldEnds(frame, present);
         holdRun.retainAll(heldThisSweep);
         heldThisSweep.clear();
         lastCollapseRejection.keySet().retainAll(present);
         lastSquad.keySet().retainAll(present);
         rallyReason.keySet().retainAll(present);
         decisions.clear();
+    }
+
+    /**
+     * Emits a BUNKER_HOLD_END row for every squad whose run of blind holds ended this sweep, naming why in
+     * bunker_hold_release, see {@link #holdEndRelease}.
+     */
+    private void emitHoldEnds(int frame, Set<String> present) {
+        for (String id : holdRun) {
+            if (heldThisSweep.contains(id)) {
+                continue;
+            }
+            Squad squad = lastSquad.get(id);
+            if (squad == null) {
+                continue;
+            }
+            SquadDecision context = new SquadDecision();
+            context.setBunkerHoldRelease(holdEndRelease(present.contains(id),
+                    squad.getBunkerRetreatMemory().takeReleaseReason()));
+            writer.append(row(squad, frame, EVENT_BUNKER_HOLD_END, squad.getStatus(), squad.getStatus(), context,
+                    NONE));
+        }
+    }
+
+    /**
+     * Returns the reason a hold run ended: SQUAD_GONE for a squad no longer among the fight squads, otherwise the
+     * release its memory recorded, or OTHER when the memory was not released.
+     *
+     * @param squadPresent whether the squad is still among the fight squads
+     * @param memoryRelease the release the squad's memory recorded since the last hold end
+     * @return the reason to write
+     */
+    static BunkerHoldRelease holdEndRelease(boolean squadPresent, BunkerHoldRelease memoryRelease) {
+        if (!squadPresent) {
+            return BunkerHoldRelease.SQUAD_GONE;
+        }
+        return memoryRelease == BunkerHoldRelease.NONE ? BunkerHoldRelease.OTHER : memoryRelease;
     }
 
     /**
@@ -851,6 +890,17 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         return status == SquadStatus.FIGHT && result == CombatSimulator.CombatResult.RETREAT;
     }
 
+    /**
+     * Builds the bunker_hold_release cell: why a run of Bunker memory or blind advance holds ended, see
+     * {@link BunkerHoldRelease}. Filled on a BUNKER_HOLD_END row; every other row carries NONE.
+     *
+     * @param context the decision the row is built from
+     * @return the release cell
+     */
+    static List<String> bunkerHoldReleaseCells(SquadDecision context) {
+        return Collections.singletonList(context.getBunkerHoldRelease().name());
+    }
+
     private static int lockUntilFrame(Squad squad, SquadLock lock) {
         return lock == SquadLock.RETREAT ? squad.getRetreatLockedUntilFrame() : squad.getFightLockedUntilFrame();
     }
@@ -897,6 +947,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         fields.add(retreatRouteCell(context));
         fields.addAll(swarmCells(squad, context));
         fields.addAll(commitmentReleaseCells(context));
+        fields.addAll(bunkerHoldReleaseCells(context));
         return String.join(",", fields);
     }
 
@@ -968,6 +1019,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         fields.addAll(swarmCells(SquadDecision.NOT_EVALUATED, SquadDecision.NOT_EVALUATED, false,
                 SquadDecision.NOT_EVALUATED, SwarmLock.Release.NONE));
         fields.addAll(commitmentReleaseCells(context));
+        fields.addAll(bunkerHoldReleaseCells(context));
         return String.join(",", fields);
     }
 

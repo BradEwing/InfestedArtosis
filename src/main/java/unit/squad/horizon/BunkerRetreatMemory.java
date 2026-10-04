@@ -2,6 +2,7 @@ package unit.squad.horizon;
 
 import bwapi.Position;
 import bwapi.UnitType;
+import telemetry.BunkerHoldRelease;
 import unit.managed.ManagedUnit;
 
 import java.util.Collection;
@@ -19,14 +20,32 @@ import java.util.Set;
  * <p>A Bunker is remembered from the retreat that priced it. While it is remembered and the squad has not grown, the
  * simulator reports it as a threat beyond its sample radius wherever it stands, so a blind ADVANCE is held at the
  * standoff instead of walking back into its fire. The memory of every Bunker ends when the squad's composition
- * grows, see {@link #releaseIfGrown}, and the memory of one Bunker ends when the Bunker is no longer a living
- * observed Bunker, see {@link #retain}.
+ * grows, see {@link #releaseIfGrown}, when reinforcements that joined through merges add up to more than
+ * {@link #MERGE_GROWTH_FRACTION} of the army that retreated, see {@link #absorb}, and when {@link #HOLD_CAP_FRAMES}
+ * pass since the retreat, see {@link #releaseIfExpired}. The memory of one Bunker ends when the Bunker is no longer a
+ * living observed Bunker, see {@link #retain}.
  */
 public final class BunkerRetreatMemory {
+
+    /**
+     * The share of the supply that retreated which reinforcements joining through merges may add before the hold ends.
+     * Half as much again is the point at which the squad is a different force from the one the Bunker was priced
+     * against, while a trickle of fresh lings that rejoin a squad right after a retreat does not end the hold.
+     */
+    static final double MERGE_GROWTH_FRACTION = 0.5;
+
+    /**
+     * The frames a retreat holds off a Bunker at most, whatever the squad's composition does.
+     */
+    static final int HOLD_CAP_FRAMES = 1440;
 
     private final Set<Position> bunkers = new HashSet<>();
     private final Map<UnitType, Integer> recorded = new EnumMap<>(UnitType.class);
     private Object lineage;
+    private int retreatFrame;
+    private int retreatSupply;
+    private int broughtSupply;
+    private BunkerHoldRelease releaseReason = BunkerHoldRelease.NONE;
 
     /**
      * The unit counts of a squad by type, Overlords left out as the simulator leaves them out of our strength.
@@ -45,13 +64,28 @@ public final class BunkerRetreatMemory {
     }
 
     /**
+     * The supply a composition costs.
+     *
+     * @param composition unit counts by type
+     * @return the summed supply of the units
+     */
+    static int supply(Map<UnitType, Integer> composition) {
+        int supply = 0;
+        for (Map.Entry<UnitType, Integer> entry : composition.entrySet()) {
+            supply += entry.getKey().supplyRequired() * entry.getValue();
+        }
+        return supply;
+    }
+
+    /**
      * Records a retreat of the given squad members from the Bunkers the sample priced, see {@link #record}.
      *
      * @param pricedBunkers the Bunkers the sample priced when the squad retreated
      * @param members the squad's members at the retreat
+     * @param frame the frame of the retreat
      */
-    public void recordRetreat(Collection<Position> pricedBunkers, Collection<ManagedUnit> members) {
-        record(pricedBunkers, composition(members));
+    public void recordRetreat(Collection<Position> pricedBunkers, Collection<ManagedUnit> members, int frame) {
+        record(pricedBunkers, composition(members), frame);
     }
 
     /**
@@ -76,8 +110,9 @@ public final class BunkerRetreatMemory {
      *
      * @param pricedBunkers the Bunkers the sample priced when the squad retreated
      * @param composition the squad's composition at the retreat, see {@link #composition}
+     * @param frame the frame of the retreat
      */
-    void record(Collection<Position> pricedBunkers, Map<UnitType, Integer> composition) {
+    void record(Collection<Position> pricedBunkers, Map<UnitType, Integer> composition, int frame) {
         if (pricedBunkers.isEmpty()) return;
         boolean sameBunkers = !Collections.disjoint(bunkers, pricedBunkers);
         bunkers.clear();
@@ -85,10 +120,15 @@ public final class BunkerRetreatMemory {
         if (!sameBunkers || lineage == null) {
             recorded.clear();
             lineage = new Object();
+            retreatSupply = 0;
+            broughtSupply = 0;
         }
         for (Map.Entry<UnitType, Integer> entry : composition.entrySet()) {
             recorded.merge(entry.getKey(), entry.getValue(), Math::max);
         }
+        retreatFrame = frame;
+        retreatSupply = Math.max(retreatSupply, supply(composition));
+        releaseReason = BunkerHoldRelease.NONE;
     }
 
     /**
@@ -97,20 +137,51 @@ public final class BunkerRetreatMemory {
      * @param composition the squad's composition now, see {@link #composition}
      */
     void releaseIfGrown(Map<UnitType, Integer> composition) {
-        if (grew(recorded, composition)) {
-            bunkers.clear();
-            recorded.clear();
-            lineage = null;
+        if (!bunkers.isEmpty() && grew(recorded, composition)) {
+            release(BunkerHoldRelease.GROWTH);
         }
+    }
+
+    /**
+     * Forgets every Bunker once {@link #HOLD_CAP_FRAMES} have passed since the retreat.
+     *
+     * @param frame the current frame
+     */
+    void releaseIfExpired(int frame) {
+        if (!bunkers.isEmpty() && frame - retreatFrame >= HOLD_CAP_FRAMES) {
+            release(BunkerHoldRelease.TIME_CAP);
+        }
+    }
+
+    private void release(BunkerHoldRelease reason) {
+        bunkers.clear();
+        recorded.clear();
+        lineage = null;
+        retreatSupply = 0;
+        broughtSupply = 0;
+        releaseReason = reason;
+    }
+
+    /**
+     * Returns why the hold ended and resets it, so a hold end is reported once.
+     *
+     * @return the reason of the last release, NONE when no release happened since the last call
+     */
+    public BunkerHoldRelease takeReleaseReason() {
+        BunkerHoldRelease reason = releaseReason;
+        releaseReason = BunkerHoldRelease.NONE;
+        return reason;
     }
 
     /**
      * Folds the memories of the squads of a merge, or of the squad a split carves a sibling off, into this one: the
      * remembered Bunkers are the union of the sources' and the recorded composition is the sum of theirs. Sources
      * that carry the same retreat, such as the halves of a squad that split, count once, at the larger of their
-     * records of each type. A source that remembers no Bunker adds the composition it brings, so reinforcements that
-     * join through a merge do not release the hold. A source's memory is first released if the source grew since it
-     * retreated. Nothing is folded when no source remembers a Bunker.
+     * records of each type. A source that remembers no Bunker adds the composition it brings to the record, so a
+     * trickle of reinforcements does not release the hold at once, and adds its supply to the supply brought since
+     * the retreat. The hold ends when the supply brought through merges exceeds {@link #MERGE_GROWTH_FRACTION} of the
+     * supply that retreated. A source's memory is first released if the source grew since it retreated. Nothing is
+     * folded when no source remembers a Bunker. The earliest retreat among the sources starts the hold's time cap.
      *
      * @param sources each source's memory with the source's composition now, see {@link #composition}
      */
@@ -121,28 +192,57 @@ public final class BunkerRetreatMemory {
             anyHolds |= !source.memory.bunkers.isEmpty();
         }
         if (!anyHolds) return;
-        Map<Object, Map<UnitType, Integer>> byLineage = new LinkedHashMap<>();
+        Map<Object, Lineage> byLineage = new LinkedHashMap<>();
+        int earliestRetreat = Integer.MAX_VALUE;
         for (Source source : sources) {
             if (source.memory.bunkers.isEmpty()) {
-                byLineage.put(new Object(), source.composition);
+                byLineage.put(new Object(), Lineage.brought(source.composition));
                 continue;
             }
             bunkers.addAll(source.memory.bunkers);
-            Map<UnitType, Integer> counts = byLineage.computeIfAbsent(source.memory.lineage,
-                    key -> new EnumMap<>(UnitType.class));
-            for (Map.Entry<UnitType, Integer> entry : source.memory.recorded.entrySet()) {
-                counts.merge(entry.getKey(), entry.getValue(), Math::max);
-            }
+            earliestRetreat = Math.min(earliestRetreat, source.memory.retreatFrame);
+            byLineage.computeIfAbsent(source.memory.lineage, key -> new Lineage()).fold(source.memory);
         }
-        for (Map.Entry<Object, Map<UnitType, Integer>> entry : byLineage.entrySet()) {
-            addCounts(entry.getValue());
+        int retreated = 0;
+        int brought = 0;
+        for (Lineage entry : byLineage.values()) {
+            addCounts(entry.counts);
+            retreated += entry.retreatSupply;
+            brought += entry.broughtSupply;
         }
         lineage = byLineage.size() == 1 ? byLineage.keySet().iterator().next() : new Object();
+        retreatFrame = earliestRetreat;
+        retreatSupply = retreated;
+        broughtSupply = brought;
+        if (brought > retreated * MERGE_GROWTH_FRACTION) {
+            release(BunkerHoldRelease.MERGE_GROWTH);
+        }
     }
 
     private void addCounts(Map<UnitType, Integer> counts) {
         for (Map.Entry<UnitType, Integer> entry : counts.entrySet()) {
             recorded.merge(entry.getKey(), entry.getValue(), Integer::sum);
+        }
+    }
+
+    private static final class Lineage {
+        private final Map<UnitType, Integer> counts = new EnumMap<>(UnitType.class);
+        private int retreatSupply;
+        private int broughtSupply;
+
+        private static Lineage brought(Map<UnitType, Integer> composition) {
+            Lineage lineage = new Lineage();
+            lineage.counts.putAll(composition);
+            lineage.broughtSupply = supply(composition);
+            return lineage;
+        }
+
+        private void fold(BunkerRetreatMemory memory) {
+            for (Map.Entry<UnitType, Integer> entry : memory.recorded.entrySet()) {
+                counts.merge(entry.getKey(), entry.getValue(), Math::max);
+            }
+            retreatSupply = Math.max(retreatSupply, memory.retreatSupply);
+            broughtSupply = Math.max(broughtSupply, memory.broughtSupply);
         }
     }
 
@@ -181,10 +281,10 @@ public final class BunkerRetreatMemory {
      * @param livingBunkers where each living observed Bunker stands or was last seen
      */
     void retain(Collection<Position> livingBunkers) {
+        if (bunkers.isEmpty()) return;
         bunkers.retainAll(livingBunkers);
         if (bunkers.isEmpty()) {
-            recorded.clear();
-            lineage = null;
+            release(BunkerHoldRelease.BUNKER_DIED);
         }
     }
 }

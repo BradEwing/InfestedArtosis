@@ -109,6 +109,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
         int pricedLooseShooters = 0;
         BunkerRetreatMemory retreatMemory = squad.getBunkerRetreatMemory();
         retreatMemory.releaseIfGrown(BunkerRetreatMemory.composition(squad.getMembers()));
+        retreatMemory.releaseIfExpired(currentFrame);
         List<Position> livingBunkers = new ArrayList<>();
         List<Position> rememberedInRadius = new ArrayList<>();
         for (ObservedUnit ou : tracker.getLivingObservedUnits()) {

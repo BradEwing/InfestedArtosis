@@ -218,7 +218,7 @@ class SquadTest {
     void mergedSquadHoldsTheBunkersItsSourcesRetreatedFrom() {
         Position bunker = new Position(1000, 1000);
         Squad retreated = new Squad();
-        retreated.getBunkerRetreatMemory().recordRetreat(Collections.singletonList(bunker), Collections.emptyList());
+        retreated.getBunkerRetreatMemory().recordRetreat(Collections.singletonList(bunker), Collections.emptyList(), 0);
         Squad other = new Squad();
 
         Squad merged = merge(retreated, other);
@@ -230,7 +230,7 @@ class SquadTest {
     void siblingCarvedOffASquadHoldsItsBunkers() {
         Position bunker = new Position(1000, 1000);
         Squad parent = new Squad();
-        parent.getBunkerRetreatMemory().recordRetreat(Collections.singletonList(bunker), Collections.emptyList());
+        parent.getBunkerRetreatMemory().recordRetreat(Collections.singletonList(bunker), Collections.emptyList(), 0);
         Squad child = new Squad();
 
         child.inheritStateFrom(parent);
