@@ -270,4 +270,13 @@ class GuardianBranchTest {
 
         assertEquals(Arrays.asList("ENTER", "EXIT:FEW_BASES"), labels);
     }
+
+    @Test
+    void aGreaterSpireThatWasLostDoesNotUndoTheStart() {
+        GuardianBranch branch = new GuardianBranch();
+
+        assertFalse(branch.observeGreaterSpire(0));
+        assertTrue(branch.observeGreaterSpire(1));
+        assertTrue(branch.observeGreaterSpire(0));
+    }
 }

@@ -48,9 +48,22 @@ final class GuardianBranch {
     }
 
     private boolean entered = false;
+    private boolean greaterSpireStarted = false;
 
     boolean isEntered() {
         return entered;
+    }
+
+    /**
+     * Records the Greater Spire standing this frame. Once seen it stays recorded for the game, so a
+     * Greater Spire that is later destroyed does not undo what its start unlocked.
+     *
+     * @param greaterSpiresStanding Greater Spires morphing or finished
+     * @return whether a Greater Spire has ever started
+     */
+    boolean observeGreaterSpire(int greaterSpiresStanding) {
+        greaterSpireStarted = greaterSpireStarted || greaterSpiresStanding > 0;
+        return greaterSpireStarted;
     }
 
     /**

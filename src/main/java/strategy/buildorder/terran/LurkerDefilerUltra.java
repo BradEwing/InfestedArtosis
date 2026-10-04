@@ -256,8 +256,9 @@ public class LurkerDefilerUltra extends TerranBase {
         }
 
         boolean wantLair = gameState.canPlanLair() && committedLairOrHive == 0;
-        boolean hydraliskHeld = hydraliskHeld(fieldsGuardians,
+        boolean greaterSpireStarted = guardianBranch.observeGreaterSpire(
                 gameState.structureCount(Readiness.STANDING, UnitType.Zerg_Greater_Spire));
+        boolean hydraliskHeld = hydraliskHeld(fieldsGuardians, greaterSpireStarted);
         TechStep techStep = nextTechStep(techProgression, wantLair, baseCount, gameState.getGameTime(), ultraliskGate,
                 hydraliskHeld);
         UnitType site = siteBuilding(techStep);
@@ -331,7 +332,8 @@ public class LurkerDefilerUltra extends TerranBase {
         }
         GuardianBranch.Gate gate = guardianBranch.evaluate(techProgression.isHive(),
                 gameState.getBaseData().currentBaseCount(), gameState.miningGeysers(),
-                gameState.structureCount(Readiness.STANDING, UnitType.Zerg_Greater_Spire) > 0);
+                guardianBranch.observeGreaterSpire(
+                        gameState.structureCount(Readiness.STANDING, UnitType.Zerg_Greater_Spire)));
         if (gate != GuardianBranch.Gate.OPEN) {
             return plans;
         }
@@ -750,11 +752,11 @@ public class LurkerDefilerUltra extends TerranBase {
      * both until its Greater Spire has started morphing.
      *
      * @param fieldsGuardians whether the build runs the {@link GuardianBranch}
-     * @param greaterSpiresStanding Greater Spires morphing or finished
+     * @param greaterSpireStarted whether a Greater Spire has ever started morphing
      * @return true when the build holds the Den and the Hydralisks back
      */
-    static boolean hydraliskHeld(boolean fieldsGuardians, int greaterSpiresStanding) {
-        return fieldsGuardians && greaterSpiresStanding == 0;
+    static boolean hydraliskHeld(boolean fieldsGuardians, boolean greaterSpireStarted) {
+        return fieldsGuardians && !greaterSpireStarted;
     }
 
     /**
