@@ -1,8 +1,10 @@
 package unit.squad;
 
+import bwapi.Position;
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
+import java.util.Collections;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -210,5 +212,30 @@ class SquadTest {
         SquadManager.updateFightLock(squad, CombatSimulator.CombatResult.ENGAGE, true, 1000);
 
         assertEquals(0, squad.getFightLockedUntilFrame());
+    }
+
+    @Test
+    void mergedSquadHoldsTheBunkersItsSourcesRetreatedFrom() {
+        Position bunker = new Position(1000, 1000);
+        Squad retreated = new Squad();
+        retreated.getBunkerRetreatMemory().recordRetreat(Collections.singletonList(bunker), Collections.emptyList(), 0);
+        Squad other = new Squad();
+
+        Squad merged = merge(retreated, other);
+
+        assertTrue(merged.getBunkerRetreatMemory().holds(bunker));
+    }
+
+    @Test
+    void siblingCarvedOffASquadHoldsItsBunkers() {
+        Position bunker = new Position(1000, 1000);
+        Squad parent = new Squad();
+        parent.getBunkerRetreatMemory().recordRetreat(Collections.singletonList(bunker), Collections.emptyList(), 0);
+        Squad child = new Squad();
+
+        child.inheritStateFrom(parent);
+
+        assertTrue(child.getBunkerRetreatMemory().holds(bunker));
+        assertTrue(parent.getBunkerRetreatMemory().holds(bunker));
     }
 }

@@ -75,6 +75,12 @@ public final class HarassRow {
     @Builder.Default
     private final int aaKnownCover = -1;
     @Builder.Default
+    private final int stalled = -1;
+    @Builder.Default
+    private final double exposedScore = -1;
+    @Builder.Default
+    private final double baseScore = -1;
+    @Builder.Default
     private final int aaSeenFrame = -1;
     @Builder.Default
     private final int aaTurnFrame = -1;

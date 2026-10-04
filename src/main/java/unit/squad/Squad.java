@@ -9,6 +9,7 @@ import lombok.Getter;
 import org.jetbrains.annotations.NotNull;
 import telemetry.RetreatRoute;
 import unit.managed.ManagedUnit;
+import unit.squad.horizon.BunkerRetreatMemory;
 import util.Arc;
 import util.Distance;
 import util.Time;
@@ -57,6 +58,8 @@ public class Squad implements Comparable<Squad> {
     protected int fightLockSupply = 0;
     protected int retreatLockedUntilFrame = 0;
     protected boolean attritionRetreatLock = false;
+    @Getter
+    private final HeldRetreat heldRetreat = new HeldRetreat();
     private int strongEngageSinceFrame = -1;
     protected int containLockedUntilFrame = 0;
     @Getter
@@ -69,6 +72,8 @@ public class Squad implements Comparable<Squad> {
      * {@link SwarmLock#mayCommit}.
      */
     private int simRetreatReleaseFrame = -1;
+    @Getter
+    private final BunkerRetreatMemory bunkerRetreatMemory = new BunkerRetreatMemory();
     private AirHarassState harassState;
     private int harassExitFrame = 0;
     private Set<Integer> regroupingIds = new HashSet<>();
@@ -76,6 +81,8 @@ public class Squad implements Comparable<Squad> {
     private Set<Integer> leashedIds = new HashSet<>();
     private int retreatBranchFrame = -1;
     private int harassExitEngageFrame = 0;
+    private Position harassExitTarget;
+    private Position harassExitEngageTarget;
     private int containRadius = 0;
     private ContainmentCollapse.Maneuver collapse;
     protected int collapseLockedUntilFrame = 0;
@@ -89,8 +96,13 @@ public class Squad implements Comparable<Squad> {
     private int corneredEngageSinceFrame = -1;
     private int corneredFightHeldUntilFrame = 0;
     protected Time fightHysteresis = new Time(0, 3);
-    protected Time retreatHysteresis = new Time(0, 5);
+    protected Time retreatHysteresis = new Time(GROUND_RETREAT_LOCK_FRAMES);
     protected Time containHysteresis = new Time(0, 5);
+
+    /**
+     * Frames a ground squad's retreat lock holds for.
+     */
+    public static final int GROUND_RETREAT_LOCK_FRAMES = 120;
 
     private static final double SMOOTHING_ALPHA = 0.85;
     private static final int SPLIT_MERGE_COOLDOWN = 100;
@@ -271,6 +283,11 @@ public class Squad implements Comparable<Squad> {
      * ended. A merge that stays in CONTAIN keeps the collapse entry run of the source whose arc it keeps, see
      * {@link CollapseEntryRun}; any other merged status starts it over.
      *
+     * <p>The Bunkers the sources retreated from stay remembered, see {@link BunkerRetreatMemory#absorb}: a merged
+     * squad holds off the union of them, and a split keeps them on both halves.
+     *
+     * <p>The held siege band RETREAT folds to the latest one any source holds, see {@link HeldRetreat}.
+     *
      * @param sources squads being merged into this one
      */
     public void inheritStateFrom(Collection<Squad> sources) {
@@ -301,6 +318,9 @@ public class Squad implements Comparable<Squad> {
                 inheritedHarass = source.harassState;
             }
             this.harassExitFrame = Math.max(this.harassExitFrame, source.harassExitFrame);
+            if (source.harassExitEngageFrame > this.harassExitEngageFrame) {
+                this.harassExitEngageTarget = source.harassExitEngageTarget;
+            }
             this.harassExitEngageFrame = Math.max(this.harassExitEngageFrame, source.harassExitEngageFrame);
             mergedStatus = SquadStatus.dominant(mergedStatus, source.status);
             if (source.containStartFrame > 0 && (earliestContainStart == 0 || source.containStartFrame < earliestContainStart)) {
@@ -357,6 +377,12 @@ public class Squad implements Comparable<Squad> {
                                 + ContainmentCollapse.COOLDOWN_FRAMES);
             }
         }
+        List<BunkerRetreatMemory.Source> memories = new ArrayList<>();
+        for (Squad source: sources) {
+            memories.add(new BunkerRetreatMemory.Source(source.bunkerRetreatMemory, source.getMembers()));
+        }
+        this.bunkerRetreatMemory.absorb(memories);
+        this.heldRetreat.absorb(sources);
     }
 
     public boolean isMergeEligible(int currentFrame) {
