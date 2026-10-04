@@ -702,6 +702,9 @@ public class SquadDecisionLogger implements SquadDecisionSink {
             }
             lastStatus.put(id, current);
             writer.append(row(squad, frame, EVENT_STATUS_CHANGE, previous, current, decisions.get(id), NONE));
+            if (current != SquadStatus.RALLY) {
+                rallyReason.remove(id);
+            }
         }
 
         emitDisbands(frame, present);
@@ -733,6 +736,20 @@ public class SquadDecisionLogger implements SquadDecisionSink {
             SquadDecision context = disbandContext(last, decisions.get(entry.getKey()));
             writer.append(row(entry.getValue(), frame, EVENT_SQUAD_DISBANDED, last, null, context, NONE));
         }
+    }
+
+    /**
+     * Returns the rally reason a row carries. A row inside a RALLY episode, including the row that enters it and the
+     * row that leaves it, carries the reason of the squad's latest rally; a row of a squad that is not rallying carries
+     * NONE, so a squad that has moved on is not read as still staging.
+     *
+     * @param stored reason recorded when the squad last rallied
+     * @param from status the row leaves
+     * @param to status the row enters
+     * @return the stored reason inside a RALLY episode, otherwise NONE
+     */
+    static RallyReason carriedRallyReason(RallyReason stored, SquadStatus from, SquadStatus to) {
+        return from == SquadStatus.RALLY || to == SquadStatus.RALLY ? stored : RallyReason.NONE;
     }
 
     /**
@@ -855,8 +872,8 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         fields.addAll(squadCells(squad, context,
                 gameState.getScoutData().isEnemyBuildingLocationKnown(),
                 groundDistanceToNearestBase(squad.getCenter()), frame));
-        fields.addAll(rallyCells(rallyReason.getOrDefault(squad.getId(), RallyReason.NONE),
-                context.getRallyRelease()));
+        fields.addAll(rallyCells(carriedRallyReason(rallyReason.getOrDefault(squad.getId(), RallyReason.NONE),
+                from, to), context.getRallyRelease()));
         fields.addAll(defenseCells(SquadDecision.NOT_EVALUATED, SquadDecision.NOT_EVALUATED,
                 SquadDecision.NOT_EVALUATED, null));
         fields.addAll(arcCells(squad));

@@ -76,6 +76,8 @@ public class Squad implements Comparable<Squad> {
     private Set<Integer> leashedIds = new HashSet<>();
     private int retreatBranchFrame = -1;
     private int harassExitEngageFrame = 0;
+    private Position harassExitTarget;
+    private Position harassExitEngageTarget;
     private int containRadius = 0;
     private ContainmentCollapse.Maneuver collapse;
     protected int collapseLockedUntilFrame = 0;
@@ -301,6 +303,9 @@ public class Squad implements Comparable<Squad> {
                 inheritedHarass = source.harassState;
             }
             this.harassExitFrame = Math.max(this.harassExitFrame, source.harassExitFrame);
+            if (source.harassExitEngageFrame > this.harassExitEngageFrame) {
+                this.harassExitEngageTarget = source.harassExitEngageTarget;
+            }
             this.harassExitEngageFrame = Math.max(this.harassExitEngageFrame, source.harassExitEngageFrame);
             mergedStatus = SquadStatus.dominant(mergedStatus, source.status);
             if (source.containStartFrame > 0 && (earliestContainStart == 0 || source.containStartFrame < earliestContainStart)) {
