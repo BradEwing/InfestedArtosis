@@ -30,6 +30,7 @@ public class AirSquad extends Squad {
     private int commitmentStartFrame = 0;
     private int commitmentPeakHitPoints = 0;
     private boolean commitmentBarred = false;
+    private final AirStallDetector stallDetector = new AirStallDetector();
 
     public AirSquad() {
         super();
@@ -41,6 +42,13 @@ public class AirSquad extends Squad {
     @Override
     public boolean isAirSquad() {
         return true;
+    }
+
+    /**
+     * @return the detector that reads this squad's FIGHT and RETREAT crossings
+     */
+    public AirStallDetector getStallDetector() {
+        return stallDetector;
     }
 
     @Override
@@ -201,6 +209,11 @@ public class AirSquad extends Squad {
     @Override
     public void inheritStateFrom(Collection<Squad> sources) {
         super.inheritStateFrom(sources);
+        for (Squad source : sources) {
+            if (source instanceof AirSquad) {
+                stallDetector.absorb(((AirSquad) source).stallDetector);
+            }
+        }
         commitmentStartFrame = 0;
         commitmentPeakHitPoints = 0;
         commitmentBarred = false;
