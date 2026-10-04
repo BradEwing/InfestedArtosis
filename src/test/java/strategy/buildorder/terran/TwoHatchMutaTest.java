@@ -646,4 +646,15 @@ class TwoHatchMutaTest {
         assertTrue(TwoHatchMuta.wantsBaseAdvantage(false, true, true,
                 FLOAT_BAR + MUTALISK_MINERALS + 1, ALL_GAS, FLOAT_BAR, counted));
     }
+
+    @Test
+    void aSeventhMutaliskStillQueuedKeepsTheHoldOnTheBankAndTheGasBar() {
+        int wave = TwoHatchMuta.MUTALISKS_BEFORE_FLYER_UPGRADE;
+
+        assertFalse(TwoHatchMuta.wantsBaseAdvantage(false, true, true, FLOAT_BAR - 90, ALL_GAS, FLOAT_BAR, wave, 1));
+        assertTrue(TwoHatchMuta.wantsBaseAdvantage(false, true, true, FLOAT_BAR - 90, ALL_GAS, FLOAT_BAR, wave, 0));
+        assertEquals(LarvaBoundMacroHatchery.FLOAT_GAS, TwoHatchMuta.macroHatcheryGasBar(true,
+                TwoHatchMuta.scheduledWaveMutalisks(wave, 1), 2));
+        assertEquals(0, TwoHatchMuta.macroHatcheryGasBar(true, TwoHatchMuta.scheduledWaveMutalisks(wave, 0), 2));
+    }
 }

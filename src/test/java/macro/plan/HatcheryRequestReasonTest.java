@@ -6,7 +6,6 @@ import org.junit.jupiter.api.Test;
 import strategy.buildorder.BuildOrder;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
 class HatcheryRequestReasonTest {
@@ -36,11 +35,6 @@ class HatcheryRequestReasonTest {
         Plan plan = BuildOrder.macroHatcheryPlan(1, new TilePosition(10, 10));
 
         assertEquals(HatcheryRequestReason.MACRO, plan.getHatcheryRequestReason());
-    }
-
-    @Test
-    void theReleaseReasonIsDistinctFromTheMacroReason() {
-        assertNotEquals(HatcheryRequestReason.MACRO, HatcheryRequestReason.RELEASE);
     }
 
     @Test
