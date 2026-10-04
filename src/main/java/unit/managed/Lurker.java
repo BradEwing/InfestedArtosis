@@ -103,12 +103,26 @@ public class Lurker extends ManagedUnit {
     }
 
     /**
-     * Whether its contain point lies inside enemy fire it cannot answer.
+     * The point the Lurker walks to and holds now: its retreat hold point, else the withdrawal point while that
+     * holds, else its contain point.
      *
-     * @return true when the Lurker has a contain point and a fire zone covers it
+     * @return the point, or null when it has none
      */
-    public boolean containPointInFire() {
-        return containPosition != null && inFire(containPosition);
+    public Position activeHoldPoint() {
+        if (holdPosition != null) {
+            return holdPosition;
+        }
+        return holdsWithdrawalNow() ? withdrawPoint : containPosition;
+    }
+
+    /**
+     * Whether the point it walks to and holds lies inside enemy fire it cannot answer.
+     *
+     * @return true when it has such a point and a fire zone covers it
+     */
+    public boolean activeHoldInFire() {
+        Position hold = activeHoldPoint();
+        return hold != null && inFire(hold);
     }
 
     @Override
@@ -198,14 +212,15 @@ public class Lurker extends ManagedUnit {
     }
 
     private void holdOutOfFire() {
-        switch (holdStep(unit.isBurrowed(), unit.getDistance(holdPosition))) {
+        Position target = holdTarget(Config.lurkerFireAware, inFire(holdPosition), holdPosition, safeFromHold);
+        switch (holdStep(unit.isBurrowed(), unit.getDistance(target))) {
             case UNBURROW:
                 setUnready();
                 unburrowAndReset(BurrowReason.RETREAT_HOLD);
                 return;
             case MOVE:
                 setUnready(HOLD_MOVE_FRAMES);
-                unit.move(holdPosition);
+                unit.move(target);
                 return;
             case BURROW:
                 setUnready();
@@ -525,15 +540,16 @@ public class Lurker extends ManagedUnit {
     }
 
     /**
-     * Whether a Lurker refuses to burrow where it stands: the rule is on and the ground it stands on is inside enemy
-     * fire it cannot answer.
+     * Whether a Lurker refuses to burrow where it stands: the rule is on, the ground it stands on is inside enemy
+     * fire it cannot answer and a safe point exists to walk to. With no safe point it burrows where it is.
      *
      * @param fireAware true when the rule is on
      * @param standingInFire true when a fire zone covers the Lurker
+     * @param hasSafePoint true when a point outside the fire is known
      * @return true when the burrow is refused
      */
-    static boolean burrowRefused(boolean fireAware, boolean standingInFire) {
-        return fireAware && standingInFire;
+    static boolean burrowRefused(boolean fireAware, boolean standingInFire, boolean hasSafePoint) {
+        return fireAware && standingInFire && hasSafePoint;
     }
 
     /**
@@ -592,7 +608,7 @@ public class Lurker extends ManagedUnit {
         if (unit.getOrder() == Order.Burrowing) {
             return;
         }
-        if (burrowRefused(Config.lurkerFireAware, standsInFire())) {
+        if (burrowRefused(Config.lurkerFireAware, standsInFire(), safeFromHere != null)) {
             refuseBurrow();
             return;
         }
@@ -601,9 +617,7 @@ public class Lurker extends ManagedUnit {
     }
 
     private void refuseBurrow() {
-        if (safeFromHere != null) {
-            unit.move(safeFromHere);
-        }
+        unit.move(safeFromHere);
         int now = game.getFrameCount();
         if (!logsRefusal(refusalLoggedFrame, now)) {
             return;

@@ -206,17 +206,22 @@ class LurkerTest {
 
     @Test
     void aLurkerRefusesToBurrowInsideFireWhenTheRuleIsOn() {
-        assertTrue(Lurker.burrowRefused(true, true));
+        assertTrue(Lurker.burrowRefused(true, true, true));
     }
 
     @Test
     void aLurkerBurrowsOutsideFireWhenTheRuleIsOn() {
-        assertFalse(Lurker.burrowRefused(true, false));
+        assertFalse(Lurker.burrowRefused(true, false, true));
     }
 
     @Test
     void aLurkerBurrowsInsideFireWhenTheRuleIsOff() {
-        assertFalse(Lurker.burrowRefused(false, true));
+        assertFalse(Lurker.burrowRefused(false, true, true));
+    }
+
+    @Test
+    void aLurkerInsideFireWithNoSafePointBurrowsWhereItStands() {
+        assertFalse(Lurker.burrowRefused(true, true, false));
     }
 
     @Test

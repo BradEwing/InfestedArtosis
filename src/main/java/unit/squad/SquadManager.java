@@ -159,7 +159,7 @@ public class SquadManager {
     private static final int CONTAIN_DEFENSE_MARGIN = 32;
     /** Pixels past a shooter's learned reach plus the Lurker's padding that a withdrawing Lurker stops at. */
     static final int WITHDRAW_CLEARANCE = 32;
-    static final int LURKER_SAFE_CLEARANCE = 16;
+    static final int LURKER_SAFE_CLEARANCE = 32;
     private static final double REINFORCEMENT_RADIUS = 384.0;
     private static final int TARGETING_RADIUS = 256;
     private static final int WIDENED_TARGETING_RADIUS = 2 * TARGETING_RADIUS;
@@ -905,32 +905,57 @@ public class SquadManager {
     private void updateLurkerFire(int now) {
         boolean fireAware = Config.lurkerFireAware;
         int padding = containmentDefensePadding(Collections.singletonList(UnitType.Zerg_Lurker));
-        List<StaticDefenseZone> zones = ContainmentPushback.withHurtMarks(fixedFireZones,
-                EnemyReachMemory.baseGroundRange(UnitType.Zerg_Lurker),
+        int range = EnemyReachMemory.baseGroundRange(UnitType.Zerg_Lurker);
+        List<StaticDefenseZone> marks = ContainmentPushback.withHurtMarks(Collections.emptyList(), range,
                 gameState.getReachMemory().liveHurtMarks(now), fireAware);
-        Predicate<Position> allowed = zones.isEmpty() ? null : walkablePoints();
+        Predicate<Position> allowed = walkablePoints();
+        Position rally = gameState.getSquadRallyPoint();
         for (Squad squad : fightSquads) {
+            List<StaticDefenseZone> squadZones = fireAware
+                    ? lurkerKeptOutZones(squad, ContainmentPushback.outrangingZones(fixedFireZones, range), now)
+                    : Collections.emptyList();
             for (ManagedUnit member : squad.getMembers()) {
                 if (!(member instanceof Lurker)) {
                     continue;
                 }
                 Lurker lurker = (Lurker) member;
-                if (!fireAware || zones.isEmpty()) {
-                    lurker.setFireView(Collections.emptyList(), padding, null, null);
+                List<StaticDefenseZone> zones = unanswered(squadZones, lurker.getPosition(), range);
+                zones.addAll(marks);
+                if (zones.isEmpty()) {
+                    lurker.setFireView(zones, padding, null, null);
                     continue;
                 }
                 lurker.setFireView(zones, padding, null, null);
-                Position here = lurker.getPosition();
-                Position hold = lurker.getContainPosition();
                 Position safeHere = lurker.standsInFire()
-                        ? RunbyTargeting.findClearPoint(here, zones, padding, LURKER_SAFE_CLEARANCE, allowed, hold)
+                        ? RunbyTargeting.findClearPoint(lurker.getPosition(), zones, padding,
+                                LURKER_SAFE_CLEARANCE, allowed, rally)
                         : null;
-                Position safeHold = lurker.containPointInFire()
-                        ? RunbyTargeting.findClearPoint(hold, zones, padding, LURKER_SAFE_CLEARANCE, allowed, here)
+                Position hold = lurker.activeHoldPoint();
+                Position safeHold = lurker.activeHoldInFire()
+                        ? RunbyTargeting.findClearPoint(hold, zones, padding, LURKER_SAFE_CLEARANCE, allowed, rally)
                         : null;
                 lurker.setFireView(zones, padding, safeHere, safeHold);
             }
         }
+    }
+
+    /**
+     * The zones among {@code zones} whose shooter a unit cannot hit from where it stands: a zone around a structure
+     * or sieged tank the unit has within its own range is one it answers, so it is dropped.
+     *
+     * @param zones fixed fire zones
+     * @param position where the unit stands
+     * @param range the unit's ground weapon range in pixels
+     * @return a new list of the zones the unit cannot answer
+     */
+    static List<StaticDefenseZone> unanswered(Collection<StaticDefenseZone> zones, Position position, int range) {
+        List<StaticDefenseZone> kept = new ArrayList<>();
+        for (StaticDefenseZone zone : zones) {
+            if (zone.edgeDistance(position.getX(), position.getY()) > range) {
+                kept.add(zone);
+            }
+        }
+        return kept;
     }
 
     private static boolean isWalkable(Position point, Set<WalkPosition> accessible, int mapPixelWidth,
@@ -4785,7 +4810,8 @@ public class SquadManager {
      * @param squad containing squad
      * @param now current frame
      * @return every static defence zone, and every other zone that may move the arc, see
-     *     {@link ContainmentPushback#arcZones}, and outranges the squad's shortest ranged member
+     *     {@link ContainmentPushback#arcZones}, and outranges the squad's shortest ranged member, and with
+     *     {@link Config#lurkerFireAware} on and a Lurker in the squad, every live hit mark
      */
     private List<StaticDefenseZone> containmentZones(Squad squad, int now) {
         List<StaticDefenseZone> zones = ContainmentPushback.outrangingZones(
