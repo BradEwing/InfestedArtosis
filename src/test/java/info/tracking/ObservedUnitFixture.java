@@ -28,6 +28,10 @@ public final class ObservedUnitFixture {
     }
 
     public static void changeType(ObservedUnit observedUnit, UnitType unitType) {
-        ObservedUnitTracker.updateUnitTypeChange(observedUnit, unitType);
+        changeType(observedUnit, unitType, observedUnit.getLastObservedFrame());
+    }
+
+    public static void changeType(ObservedUnit observedUnit, UnitType unitType, Time observedFrame) {
+        ObservedUnitTracker.updateUnitTypeChange(observedUnit, unitType, observedFrame);
     }
 }

@@ -88,6 +88,7 @@ public class InformationManager {
         checkEnemyBases();
         recordEnemyMainVision();
         recordBaseVision();
+        recordEnemyNaturalVision();
         checkEnemyBuildingPositions();
         debugEnemyTargets();
         checkScoutTargets();
@@ -664,6 +665,18 @@ public class InformationManager {
                 scoutData.recordBaseSeen(base.getLocation(), frame);
             }
         }
+    }
+
+    /**
+     * Records the frame the inferred enemy natural's depot site is in our vision, so a natural seen without a
+     * depot can be told from one never looked at.
+     */
+    private void recordEnemyNaturalVision() {
+        Base enemyNatural = gameState.getBaseData().getEnemyNaturalBase();
+        if (enemyNatural == null || !game.isVisible(enemyNatural.getCenter().toTilePosition())) {
+            return;
+        }
+        gameState.getScoutData().recordEnemyNaturalVision(enemyNatural, new Time(game.getFrameCount()));
     }
 
     private List<TilePosition> buildableTilesOfArea(Base base) {
