@@ -766,18 +766,18 @@ public class SquadDecisionLogger implements SquadDecisionSink {
     }
 
     /**
-     * Returns the reason a hold run ended: SQUAD_GONE for a squad no longer among the fight squads, otherwise the
-     * release its memory recorded, or OTHER when the memory was not released.
+     * Returns the reason a hold run ended: the release its memory recorded, otherwise SQUAD_GONE for a squad no
+     * longer among the fight squads, or OTHER when the memory was not released.
      *
      * @param squadPresent whether the squad is still among the fight squads
      * @param memoryRelease the release the squad's memory recorded since the last hold end
      * @return the reason to write
      */
     static BunkerHoldRelease holdEndRelease(boolean squadPresent, BunkerHoldRelease memoryRelease) {
-        if (!squadPresent) {
-            return BunkerHoldRelease.SQUAD_GONE;
+        if (memoryRelease != BunkerHoldRelease.NONE) {
+            return memoryRelease;
         }
-        return memoryRelease == BunkerHoldRelease.NONE ? BunkerHoldRelease.OTHER : memoryRelease;
+        return squadPresent ? BunkerHoldRelease.OTHER : BunkerHoldRelease.SQUAD_GONE;
     }
 
     /**

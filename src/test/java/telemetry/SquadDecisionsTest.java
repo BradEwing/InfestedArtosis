@@ -999,8 +999,10 @@ class SquadDecisionsTest {
         assertEquals(BunkerHoldRelease.TIME_CAP,
                 SquadDecisionLogger.holdEndRelease(true, BunkerHoldRelease.TIME_CAP));
         assertEquals(BunkerHoldRelease.OTHER, SquadDecisionLogger.holdEndRelease(true, BunkerHoldRelease.NONE));
+        assertEquals(BunkerHoldRelease.MERGE_GROWTH,
+                SquadDecisionLogger.holdEndRelease(false, BunkerHoldRelease.MERGE_GROWTH));
         assertEquals(BunkerHoldRelease.SQUAD_GONE,
-                SquadDecisionLogger.holdEndRelease(false, BunkerHoldRelease.GROWTH));
+                SquadDecisionLogger.holdEndRelease(false, BunkerHoldRelease.NONE));
     }
 
     @Test

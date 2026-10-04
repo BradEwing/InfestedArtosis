@@ -251,6 +251,30 @@ class BunkerRetreatMemoryTest {
     }
 
     @Test
+    void aMergeThatReleasesTheHoldMarksTheHoldingSourcesWithMergeGrowth() {
+        BunkerRetreatMemory retreated = remembering(BUNKER, squad(12, 0));
+
+        mergedWith(retreated, squad(12, 0), squad(7, 0));
+
+        assertEquals(BunkerHoldRelease.MERGE_GROWTH, retreated.takeReleaseReason());
+    }
+
+    @Test
+    void halvesThatPassThroughDifferentMergesStillCountTheRetreatOnce() {
+        BunkerRetreatMemory retreated = remembering(BUNKER, squad(20, 0));
+        BunkerRetreatMemory a = merged(new BunkerRetreatMemory.Source(retreated, squad(10, 0)));
+        BunkerRetreatMemory b = merged(new BunkerRetreatMemory.Source(retreated, squad(10, 0)));
+        BunkerRetreatMemory reinforced = mergedWith(a, squad(10, 0), squad(4, 0));
+
+        BunkerRetreatMemory rejoined = merged(new BunkerRetreatMemory.Source(reinforced, squad(14, 0)),
+                new BunkerRetreatMemory.Source(b, squad(10, 0)));
+        assertTrue(rejoined.holds(BUNKER));
+        BunkerRetreatMemory more = mergedWith(rejoined, squad(24, 0), squad(7, 0));
+
+        assertFalse(more.holds(BUNKER));
+    }
+
+    @Test
     void theHoldEndsOnceTheCapPassesSinceTheRetreat() {
         BunkerRetreatMemory memory = new BunkerRetreatMemory();
         memory.record(Collections.singletonList(BUNKER), squad(12, 0), 100);

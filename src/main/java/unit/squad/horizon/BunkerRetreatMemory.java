@@ -180,7 +180,8 @@ public final class BunkerRetreatMemory {
      * records of each type. A source that remembers no Bunker adds the composition it brings to the record, so a
      * trickle of reinforcements does not release the hold at once, and adds its supply to the supply brought since
      * the retreat. The hold ends when the supply brought through merges exceeds {@link #MERGE_GROWTH_FRACTION} of the
-     * supply that retreated. A source's memory is first released if the source grew since it retreated. Nothing is
+     * supply that retreated. A source's memory is first released if the source grew since it retreated. A merge that
+     * releases the hold marks each source that held with MERGE_GROWTH, as the merged squad is a new squad. Nothing is
      * folded when no source remembers a Bunker. The earliest retreat among the sources starts the hold's time cap.
      *
      * @param sources each source's memory with the source's composition now, see {@link #composition}
@@ -193,6 +194,7 @@ public final class BunkerRetreatMemory {
         }
         if (!anyHolds) return;
         Map<Object, Lineage> byLineage = new LinkedHashMap<>();
+        Set<Object> heldLineages = new HashSet<>();
         int earliestRetreat = Integer.MAX_VALUE;
         for (Source source : sources) {
             if (source.memory.bunkers.isEmpty()) {
@@ -201,6 +203,7 @@ public final class BunkerRetreatMemory {
             }
             bunkers.addAll(source.memory.bunkers);
             earliestRetreat = Math.min(earliestRetreat, source.memory.retreatFrame);
+            heldLineages.add(source.memory.lineage);
             byLineage.computeIfAbsent(source.memory.lineage, key -> new Lineage()).fold(source.memory);
         }
         int retreated = 0;
@@ -210,11 +213,16 @@ public final class BunkerRetreatMemory {
             retreated += entry.retreatSupply;
             brought += entry.broughtSupply;
         }
-        lineage = byLineage.size() == 1 ? byLineage.keySet().iterator().next() : new Object();
+        lineage = heldLineages.size() == 1 ? heldLineages.iterator().next() : new Object();
         retreatFrame = earliestRetreat;
         retreatSupply = retreated;
         broughtSupply = brought;
         if (brought > retreated * MERGE_GROWTH_FRACTION) {
+            for (Source source : sources) {
+                if (!source.memory.bunkers.isEmpty()) {
+                    source.memory.releaseReason = BunkerHoldRelease.MERGE_GROWTH;
+                }
+            }
             release(BunkerHoldRelease.MERGE_GROWTH);
         }
     }
