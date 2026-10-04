@@ -2,7 +2,6 @@ package telemetry;
 
 import bwapi.Game;
 import bwapi.Position;
-import unit.squad.AirHarassEvaluator;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -38,6 +37,12 @@ import java.util.Map;
  * they do not, on ENTRY_CHECK, ENTER and RETARGET rows for a base. A covered base counts as sighted: it is entered on
  * the entry verdict, not probed, whatever its aa_sighting_age.
  *
+ * <p>stalled is 1 when the squad's FIGHT and RETREAT crossings read as a stall, see AirStallDetector, and 0 when they
+ * do not, on ENTRY_CHECK and ENTER rows; it is -1 while the IA_AIR_FLAP_ESCAPE switch is off, which leaves the stall
+ * detector unread. exposed_score is the best exposed
+ * group's score and base_score the best base's, both in heat units and uncapped, so the two compare directly; a score
+ * left at -1 had no group or base to score. ENTRY_CHECK, ENTER and RETARGET rows carry both.
+ *
  * <p>Constructed only when combat telemetry is enabled.
  */
 public class HarassLogger implements HarassSink {
@@ -48,7 +53,7 @@ public class HarassLogger implements HarassSink {
             + "strike_y,center_x,center_y,mutas,healthy_mutas,flock_hp,hp_loss_fraction,tolerance,air_defense,"
             + "avoided_zones,workers_killed,buildings_killed,other_killed,mutas_lost,killed_type,contain_distance,"
             + "bases_under_attack,target_kind,flock_defense,aa_sighting_age,prober_hp,prober_peak_hp,prober_id,"
-            + "aa_known_cover";
+            + "aa_known_cover,stalled,exposed_score,base_score";
 
     private static final int FLUSH_INTERVAL_FRAMES = 480;
     private static final int NOT_EVALUATED = -1;
@@ -56,7 +61,7 @@ public class HarassLogger implements HarassSink {
     private final Game game;
     private final String gameId;
     private final TelemetryWriter writer;
-    private final Map<String, AirHarassEvaluator.EntryVerdict> lastVerdict = new HashMap<>();
+    private final Map<String, String> lastVerdict = new HashMap<>();
 
     private boolean disabled;
 
@@ -97,8 +102,8 @@ public class HarassLogger implements HarassSink {
     }
 
     /**
-     * Records a row. An ENTRY_CHECK is written only when the squad's verdict differs from the last one written for
-     * it, and an ENTER forgets that verdict, so the first check after a harass ends is written again.
+     * Records a row. An ENTRY_CHECK is written only when the squad's verdict or stalled cell differs from the last
+     * one written for it, and an ENTER forgets that verdict, so the first check after a harass ends is written again.
      *
      * @param row the row
      */
@@ -110,10 +115,11 @@ public class HarassLogger implements HarassSink {
 
         try {
             if (row.getEvent() == HarassRow.Event.ENTRY_CHECK) {
-                if (row.getVerdict() == lastVerdict.get(row.getSquadId())) {
+                String check = row.getVerdict() + "/" + row.getStalled();
+                if (check.equals(lastVerdict.get(row.getSquadId()))) {
                     return;
                 }
-                lastVerdict.put(row.getSquadId(), row.getVerdict());
+                lastVerdict.put(row.getSquadId(), check);
             } else if (row.getEvent() == HarassRow.Event.ENTER) {
                 lastVerdict.remove(row.getSquadId());
             }
@@ -169,6 +175,9 @@ public class HarassLogger implements HarassSink {
         fields.add(String.valueOf(row.getProberPeakHitPoints()));
         fields.add(String.valueOf(row.getProberId()));
         fields.add(String.valueOf(row.getAaKnownCover()));
+        fields.add(String.valueOf(row.getStalled()));
+        fields.add(Csv.format(row.getExposedScore()));
+        fields.add(Csv.format(row.getBaseScore()));
         return String.join(",", fields);
     }
 

@@ -14,9 +14,12 @@ import info.tracking.EnemyReachMemory;
 import info.tracking.ObservedUnit;
 import info.tracking.ObservedUnitTracker;
 import lombok.Getter;
+import telemetry.RetreatRoute;
 import unit.managed.ManagedUnit;
 import unit.squad.CombatSimulator;
+import unit.squad.HeldRetreat;
 import unit.squad.Squad;
+import unit.squad.SquadStatus;
 import util.Time;
 
 import java.util.ArrayList;
@@ -35,6 +38,10 @@ import java.util.TreeMap;
  */
 public class HorizonCombatSimulator implements CombatSimulator {
 
+    static final int SIEGE_BAND_NONE = 0;
+    static final int SIEGE_BAND_IN = 1;
+    static final int SIEGE_BAND_HELD = 2;
+    static final int MAX_SIM_GAP_FRAMES = 5;
     private static final double MAX_ENGAGEMENT_RADIUS = 320;
     private static final double NEARBY_THREAT_RADIUS = 512;
     private static final double APPROACH_BUFFER = 64;
@@ -61,7 +68,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
     private static final double SPEED_UPGRADE_PENALTY = 0.75;
     private static final int BUNKER_TRUST_FRAMES = 48;
     private static final int BUNKER_DECAY_FRAMES = 72;
-    private static final int BUNKER_MAX_GARRISON = 4;
+    static final int BUNKER_MAX_GARRISON = 4;
     private static final double BUNKER_LOAD_REACH = 16;
     private static final Set<UnitType> BUNKER_OCCUPANTS = EnumSet.of(UnitType.Terran_Marine, UnitType.Terran_Firebat,
             UnitType.Terran_Ghost, UnitType.Terran_Medic);
@@ -73,6 +80,8 @@ public class HorizonCombatSimulator implements CombatSimulator {
 
     @Getter
     private final Map<String, DebugSnapshot> lastSnapshots = new HashMap<>();
+
+    private final Map<String, BandClock> bandClocks = new HashMap<>();
 
     @Override
     public CombatResult evaluate(Squad squad, Map<Squad, Double> adjacentSquads, GameState gameState) {
@@ -100,10 +109,38 @@ public class HorizonCombatSimulator implements CombatSimulator {
         snapshot.setSwarmCover(swarmCover);
 
         List<Position> visibleBunkers = visibleCompletedBunkers(tracker);
+        double nearestSiegedTank = Double.POSITIVE_INFINITY;
         EnemyReachMemory reachMemory = tracker.getReachMemory();
+        Position squadDestination = airSquad
+                ? null
+                : BunkerPricing.squadDestination(squadCenter, gameState.getLastKnownPositionsOfBuildings());
+        List<BunkerPricing.Leg> legs = BunkerPricing.legs(squad.getMembers(), airSquad, squadDestination);
+        List<BunkerPricing.Candidate> bunkers = new ArrayList<>();
+        int pricedLooseShooters = 0;
+        BunkerRetreatMemory retreatMemory = squad.getBunkerRetreatMemory();
+        retreatMemory.releaseIfGrown(BunkerRetreatMemory.composition(squad.getMembers()));
+        retreatMemory.releaseIfExpired(currentFrame);
+        List<Position> livingBunkers = new ArrayList<>();
+        List<Position> rememberedInRadius = new ArrayList<>();
         for (ObservedUnit ou : tracker.getLivingObservedUnits()) {
             UnitType type = ou.getUnitType();
             boolean visible = ou.getUnit().isVisible();
+            if (type == UnitType.Terran_Bunker) {
+                Position bunkerPosition = visible ? ou.getUnit().getPosition() : ou.getLastKnownLocation();
+                if (bunkerPosition != null) {
+                    livingBunkers.add(bunkerPosition);
+                    int bunkerReach = BunkerPricing.reach(airSquad, reachMemory.groundReach(type));
+                    if (retreatMemory.holds(bunkerPosition)) {
+                        if (heldBeyondRadius(retreatMemory, bunkerPosition, squadCenter,
+                                edgeOfFireRadius(bunkerReach))) {
+                            snapshot.setThreatBeyondRadius(true);
+                            snapshot.setBunkerMemoryHeld(true);
+                        } else {
+                            rememberedInRadius.add(bunkerPosition);
+                        }
+                    }
+                }
+            }
             if (!visible) {
                 int framesSinceObserved = currentFrame - ou.getLastObservedFrame().getFrames();
                 if (framesSinceObserved > freshnessThreshold(type)) continue;
@@ -113,9 +150,16 @@ public class HorizonCombatSimulator implements CombatSimulator {
             if (pos == null) continue;
             if (!visible && enteredBunker(type, pos, visibleBunkers)) continue;
             double dist = squadCenter.getDistance(pos);
-            boolean edgeOfFire = pricedAtEdgeOfFire(type, airSquad);
+            if (type == UnitType.Terran_Siege_Tank_Siege_Mode) {
+                nearestSiegedTank = SiegeBandHysteresis.nearer(nearestSiegedTank, dist);
+            }
+            boolean bunker = type == UnitType.Terran_Bunker;
+            boolean edgeOfFire = !bunker && pricedAtEdgeOfFire(type, airSquad);
             int reach = edgeOfFire ? positionalReach(type, reachMemory.groundReach(type)) : 0;
-            double radius = edgeOfFire ? edgeOfFireRadius(reach) : engagementRadius(type);
+            if (bunker) {
+                reach = BunkerPricing.reach(airSquad, reachMemory.groundReach(type));
+            }
+            double radius = bunker || edgeOfFire ? edgeOfFireRadius(reach) : engagementRadius(type);
             if (dist > radius) {
                 if (isThreatBeyondRadius(type, dist, radius)) {
                     snapshot.setThreatBeyondRadius(true);
@@ -147,10 +191,14 @@ public class HorizonCombatSimulator implements CombatSimulator {
 
             double groundBase = weightedGroundStrength(type, friendlySizeProportions);
             double antiAirBase = weightedAntiAirStrength(type, friendlySizeProportions);
-            if (type == UnitType.Terran_Bunker) {
-                double garrisonMod = bunkerGarrisonModifier(ou, currentFrame);
-                groundBase *= garrisonMod;
-                antiAirBase *= garrisonMod;
+            if (bunker) {
+                BunkerPricing.Candidate candidate = bunkerCandidate(ou, pos, visible,
+                        BunkerPricing.weight(pos, squadCenter, legs, reach), currentFrame,
+                        groundBase * hpWeight * heightMod, antiAirBase * hpWeight * heightMod);
+                if (candidate != null) {
+                    bunkers.add(candidate);
+                }
+                continue;
             }
             if (type.isWorker()) {
                 groundBase /= WORKER_STRENGTH_DIVISOR;
@@ -161,9 +209,20 @@ public class HorizonCombatSimulator implements CombatSimulator {
             double groundEnemyStr = unswarmedGroundStr * SwarmCover.groundMultiplier(type, swarmCover);
             double aaEnemyStr = antiAirBase * hpWeight * distWeight * heightMod;
             enemySample.add(type, groundEnemyStr, aaEnemyStr, Math.max(unswarmedGroundStr, aaEnemyStr));
+            if (!visible && BunkerPricing.SHOOTERS.contains(type)) {
+                pricedLooseShooters++;
+            }
 
             double displayStr = airSquad ? aaEnemyStr : groundEnemyStr;
             snapshot.getEnemyUnits().add(new UnitDebugEntry(pos, type, displayStr, false, !visible));
+        }
+
+        retreatMemory.retain(livingBunkers);
+        priceBunkers(bunkers, BunkerPricing.garrisonPool(tracker.getLivingObservedUnits(), pricedLooseShooters),
+                enemySample, snapshot, airSquad);
+        if (anyUnpriced(rememberedInRadius, snapshot.getPricedBunkers())) {
+            snapshot.setThreatBeyondRadius(true);
+            snapshot.setBunkerMemoryHeld(true);
         }
 
         creditMedicSupport(snapshot, enemySample, airSquad);
@@ -242,6 +301,21 @@ public class HorizonCombatSimulator implements CombatSimulator {
         CombatResult result = selectResult(friendlyGroundStr, friendlyAirStr, enemyGroundStr,
                 enemyAntiAirStr, enemyEngagedStr, airSquad, engageThresh);
 
+        if (!airSquad) {
+            boolean tankInBand = SiegeBandHysteresis.inBand(nearestSiegedTank);
+            CombatResult raw = result;
+            boolean retreating = squad.getStatus() == SquadStatus.RETREAT
+                    && squad.getRetreatRoute() != RetreatRoute.CORNERED;
+            result = holdVerdict(squad.getHeldRetreat(), raw, currentFrame, overallRatio, engageThresh, tankInBand,
+                    retreating, squad.isAttritionRetreatLock() ? 0 : squad.getRetreatLockedUntilFrame());
+            int band = !tankInBand ? SIEGE_BAND_NONE : result == raw ? SIEGE_BAND_IN : SIEGE_BAND_HELD;
+            snapshot.setSiegeBand(band);
+            BandClock clock = bandClocks.computeIfAbsent(squad.getId(), id -> new BandClock());
+            clock.tick(currentFrame, band);
+            snapshot.setSiegeBandFrames(clock.inBandFrames);
+            snapshot.setSiegeBandHeldFrames(clock.heldFrames);
+        }
+
         snapshot.setEngageThreshold(engageThresh);
         snapshot.setRetreatThreshold(retreatThresh);
         snapshot.setStaticDefenseCover(ownStaticDefense.coversThreat);
@@ -249,6 +323,66 @@ public class HorizonCombatSimulator implements CombatSimulator {
         lastSnapshots.put(squad.getId(), snapshot);
 
         return result;
+    }
+
+    /**
+     * The verdict the siege band reports for a ground squad. A held RETREAT only exists while the squad is in
+     * RETREAT outside the cornered route and the sim has run within {@link #MAX_SIM_GAP_FRAMES}; otherwise the
+     * memory restarts from the raw verdict. A squad in RETREAT under an active retreat lock always holds a RETREAT,
+     * set when the lock began if the squad carries none, so a squad born of a merge or split is held like its
+     * sources were. While the lock is active the held RETREAT is not released, so the margin is judged on the frame
+     * the squad actually turns. A live held RETREAT survives every verdict except an in-band release: an ENGAGE read
+     * outside the band or an ADVANCE is reported without replacing it, and only an in-band release, the squad
+     * leaving RETREAT or a gap in sim runs does. A retreat lock armed by a contain's attrition exit is passed as 0,
+     * so it neither seeds nor holds a RETREAT and a strong ENGAGE can still break it.
+     *
+     * @param memory the squad's held RETREAT
+     * @param raw the verdict for this frame's strengths
+     * @param frame the current frame
+     * @param ratio the ratio the raw verdict was taken from
+     * @param engageThresh the matchup engage threshold
+     * @param tankInBand whether the nearest sieged tank sits in the band
+     * @param retreating whether the squad's status is RETREAT on a route other than the cornered one
+     * @param retreatLockedUntilFrame the frame the squad's retreat lock ends, 0 when it has none to hold on
+     * @return the verdict to report
+     */
+    CombatResult holdVerdict(HeldRetreat memory, CombatResult raw, int frame, double ratio, double engageThresh,
+                             boolean tankInBand, boolean retreating, int retreatLockedUntilFrame) {
+        boolean locked = frame < retreatLockedUntilFrame;
+        boolean live = retreating && memory.isLive(frame, MAX_SIM_GAP_FRAMES);
+        if (retreating && locked && !live) {
+            memory.hold(Math.min(frame, retreatLockedUntilFrame - Squad.GROUND_RETREAT_LOCK_FRAMES), frame);
+            live = true;
+        }
+        CombatResult heldResult = live ? CombatResult.RETREAT : null;
+        int heldSince = live ? memory.getSinceFrame() : frame;
+        CombatResult verdict;
+        if (live && locked && tankInBand && raw == CombatResult.ENGAGE) {
+            verdict = heldResult;
+        } else {
+            verdict = SiegeBandHysteresis.apply(raw, heldResult, heldSince, frame, ratio, engageThresh, tankInBand);
+        }
+        if (verdict == CombatResult.RETREAT) {
+            memory.hold(live ? heldSince : frame, frame);
+        } else if (live && !(raw == CombatResult.ENGAGE && tankInBand)) {
+            memory.keep(frame);
+        } else {
+            memory.clear(frame);
+        }
+        return verdict;
+    }
+
+    static final class BandClock {
+        private int lastFrame = -1;
+        int inBandFrames;
+        int heldFrames;
+
+        void tick(int frame, int band) {
+            int elapsed = lastFrame < 0 ? 0 : Math.min(frame - lastFrame, MAX_SIM_GAP_FRAMES);
+            if (band != SIEGE_BAND_NONE) inBandFrames += elapsed;
+            if (band == SIEGE_BAND_HELD) heldFrames += elapsed;
+            lastFrame = frame;
+        }
     }
 
     /**
@@ -304,6 +438,36 @@ public class HorizonCombatSimulator implements CombatSimulator {
                                 double enemyEngagedStr) {
         double totalEnemy = enemyEngagedStr > 0 ? enemyEngagedStr : enemyGroundStr;
         return (friendlyGroundStr + friendlyAirStr) / totalEnemy;
+    }
+
+    /**
+     * Whether a Bunker the squad retreated from still holds its blind advance: it is remembered and lies past the
+     * sample radius. It does not depend on how recently the Bunker was seen, as a squad held far from it cannot see it.
+     *
+     * @param memory the squad's retreat memory
+     * @param bunker where the Bunker stands or was last seen
+     * @param squadCenter the squad's centre
+     * @param radius the Bunker's sample radius, see {@link #edgeOfFireRadius}
+     * @return true when the Bunker is remembered and beyond the radius
+     */
+    static boolean heldBeyondRadius(BunkerRetreatMemory memory, Position bunker, Position squadCenter, double radius) {
+        return memory.holds(bunker) && squadCenter.getDistance(bunker) > radius;
+    }
+
+    /**
+     * Whether a Bunker the squad retreated from, inside its sample radius, still holds its blind advance: any of the
+     * remembered Bunkers there went unpriced, because its fire does not bear on the squad or its path, or it is out of
+     * date. A priced Bunker is measured, so the sim's verdict decides instead.
+     *
+     * @param rememberedInRadius the remembered Bunkers inside their sample radius
+     * @param pricedBunkers the Bunkers this evaluation priced
+     * @return true when at least one remembered Bunker went unpriced
+     */
+    static boolean anyUnpriced(Collection<Position> rememberedInRadius, Collection<Position> pricedBunkers) {
+        for (Position bunker : rememberedInRadius) {
+            if (!pricedBunkers.contains(bunker)) return true;
+        }
+        return false;
     }
 
     /**
@@ -1125,6 +1289,61 @@ public class HorizonCombatSimulator implements CombatSimulator {
     }
 
     /**
+     * A sampled Bunker as a pricing candidate: its occupants before the pool are the ones {@link #bunkerGarrisonModifier}
+     * implies, measured when {@link #bunkerGarrisonMeasured} holds.
+     *
+     * @param ou the observed bunker
+     * @param pos where it stands or was last seen
+     * @param visible whether it is in sight
+     * @param fireWeight its weight against the squad, see {@link BunkerPricing#weight}
+     * @param currentFrame current frame
+     * @param fullGround ground strength of a full garrison, after hit point and height weighting
+     * @param fullAntiAir anti-air strength of a full garrison, after hit point and height weighting
+     * @return the candidate, or null when its fire weight is 0 and it is not priced at all
+     */
+    static BunkerPricing.Candidate bunkerCandidate(ObservedUnit ou, Position pos, boolean visible, double fireWeight,
+                                                   int currentFrame, double fullGround, double fullAntiAir) {
+        if (fireWeight <= 0) return null;
+        return new BunkerPricing.Candidate(pos, !visible, fireWeight,
+                bunkerGarrisonModifier(ou, currentFrame) * BUNKER_MAX_GARRISON,
+                bunkerGarrisonMeasured(ou, currentFrame), fullGround, fullAntiAir);
+    }
+
+    /**
+     * Shares the garrison pool across the priced Bunkers, then adds each to the sample and the snapshot.
+     *
+     * @param bunkers the Bunkers this evaluation prices
+     * @param pool unseen infantry known to be alive, see {@link BunkerPricing#garrisonPool}
+     * @param enemySample the sample the Bunkers join
+     * @param snapshot the snapshot the Bunkers join
+     * @param airSquad whether the snapshot displays the anti-air domain
+     */
+    static void priceBunkers(List<BunkerPricing.Candidate> bunkers, int pool, EnemySample enemySample,
+                             DebugSnapshot snapshot, boolean airSquad) {
+        BunkerPricing.allocate(bunkers, pool);
+        for (BunkerPricing.Candidate candidate : bunkers) {
+            enemySample.add(UnitType.Terran_Bunker, candidate.ground(), candidate.antiAir());
+            if (candidate.ground() > 0 || candidate.antiAir() > 0) {
+                snapshot.getPricedBunkers().add(candidate.getPosition());
+            }
+            snapshot.getEnemyUnits().add(new UnitDebugEntry(candidate.getPosition(), UnitType.Terran_Bunker,
+                    airSquad ? candidate.antiAir() : candidate.ground(), false, candidate.isFogOfWar()));
+        }
+    }
+
+    /**
+     * Whether a Bunker's garrison estimate is still inside the trust window, so its occupants are measured rather
+     * than assumed, see {@link #bunkerGarrisonModifier}.
+     *
+     * @param ou the observed bunker
+     * @param currentFrame current frame
+     * @return true when the estimate is known and no older than the trust window
+     */
+    static boolean bunkerGarrisonMeasured(ObservedUnit ou, int currentFrame) {
+        return ou.getLastKnownLoadedCount() >= 0 && currentFrame - ou.getLastLoadedCheckFrame() <= BUNKER_TRUST_FRAMES;
+    }
+
+    /**
      * Strength ratio a squad must beat before it commits to a fight.
      *
      * <p>Durability is priced per type, so one value cannot hold the same meaning in every matchup.
@@ -1182,6 +1401,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
         private Position enemyCenter;
         private final List<UnitDebugEntry> friendlyUnits = new ArrayList<>();
         private final List<UnitDebugEntry> enemyUnits = new ArrayList<>();
+        private final List<Position> pricedBunkers = new ArrayList<>();
         private double friendlyTotal;
         private double enemyTotal;
         private double groundRatio;
@@ -1193,8 +1413,12 @@ public class HorizonCombatSimulator implements CombatSimulator {
         private CombatResult result;
         private boolean enemyMeasured;
         private boolean threatBeyondRadius;
+        private boolean bunkerMemoryHeld;
         private int enemyUnscoredSupply;
         private double swarmCover;
+        private int siegeBand = -1;
+        private int siegeBandFrames = -1;
+        private int siegeBandHeldFrames = -1;
         private double enemyAirShare = UnitStrength.UNMEASURED_AIR_SHARE;
         private double ourAirShare = UnitStrength.UNMEASURED_AIR_SHARE;
     }
