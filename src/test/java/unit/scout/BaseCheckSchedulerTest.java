@@ -354,14 +354,122 @@ class BaseCheckSchedulerTest {
     }
 
     @Test
-    void aDeathIsRememberedForExactlyTheMemoryWindow() {
-        assertTrue(BaseCheckScheduler.isDeathRemembered(1000, 1000 + BaseCheckScheduler.DEATH_MEMORY_FRAMES - 1));
-        assertFalse(BaseCheckScheduler.isDeathRemembered(1000, 1000 + BaseCheckScheduler.DEATH_MEMORY_FRAMES));
-    }
-
-    @Test
     void lingCheckCapIsThree() {
         assertTrue(BaseCheckScheduler.mayStartCheck(2, false));
         assertFalse(BaseCheckScheduler.mayStartCheck(3, false));
+    }
+
+    @Test
+    void aDeathIsRememberedForExactlyTheMemoryWindowOnceItsDefenceIsGone() {
+        assertTrue(BaseCheckScheduler.isDeathRemembered(1000, 1000 + BaseCheckScheduler.DEATH_MEMORY_FRAMES - 1,
+                false));
+        assertFalse(BaseCheckScheduler.isDeathRemembered(1000, 1000 + BaseCheckScheduler.DEATH_MEMORY_FRAMES,
+                false));
+    }
+
+    @Test
+    void aDeathIsRememberedWithoutLimitWhileItsDefenceStands() {
+        assertTrue(BaseCheckScheduler.isDeathRemembered(1000, 1000 + 10 * BaseCheckScheduler.DEATH_MEMORY_FRAMES,
+                true));
+    }
+
+    @Test
+    void anAnchorIsAliveOnlyWhileAStaticDefenceStandsOnIt() {
+        Position anchor = new Position(600, 500);
+        assertTrue(BaseCheckScheduler.isAnchorAlive(anchor,
+                Collections.singletonList(sighting(UnitType.Terran_Bunker, 600, 500))));
+        assertTrue(BaseCheckScheduler.isAnchorAlive(anchor, Collections.singletonList(
+                sighting(UnitType.Terran_Bunker, 600 + BaseCheckScheduler.ANCHOR_MATCH_PIXELS, 500))));
+        assertFalse(BaseCheckScheduler.isAnchorAlive(anchor, Collections.singletonList(
+                sighting(UnitType.Terran_Bunker, 600 + BaseCheckScheduler.ANCHOR_MATCH_PIXELS + 1, 500))));
+        assertFalse(BaseCheckScheduler.isAnchorAlive(anchor,
+                Collections.singletonList(sighting(UnitType.Terran_Marine, 600, 500))));
+        assertFalse(BaseCheckScheduler.isAnchorAlive(anchor, Collections.emptyList()));
+    }
+
+    @Test
+    void staticDefencePositionsKeepOnlyDefences() {
+        List<Position> positions = BaseCheckScheduler.staticDefencePositions(Arrays.asList(
+                sighting(UnitType.Terran_Marine, 1, 1), sighting(UnitType.Terran_Bunker, 2, 2),
+                sighting(UnitType.Zerg_Sunken_Colony, 3, 3)));
+        assertEquals(Arrays.asList(new Position(2, 2), new Position(3, 3)), positions);
+    }
+
+    @Test
+    void twoRoutesPastTheSameDefenceShareIt() {
+        Position defence = new Position(1000, 1000);
+        List<Position> first = Arrays.asList(new Position(0, 0), new Position(1000, 1100));
+        List<Position> second = Arrays.asList(new Position(0, 500), new Position(900, 1000));
+        assertEquals(defence, BaseCheckScheduler.sharedDefence(first, second, Collections.singletonList(defence)));
+    }
+
+    @Test
+    void routesPastDifferentDefencesShareNone() {
+        List<Position> defences = Arrays.asList(new Position(1000, 1000), new Position(5000, 5000));
+        List<Position> first = Collections.singletonList(new Position(1000, 1100));
+        List<Position> second = Collections.singletonList(new Position(5000, 5100));
+        assertNull(BaseCheckScheduler.sharedDefence(first, second, defences));
+    }
+
+    @Test
+    void aRoutePastNoDefenceSharesNone() {
+        List<Position> route = Collections.singletonList(new Position(0, 0));
+        assertNull(BaseCheckScheduler.sharedDefence(route, route,
+                Collections.singletonList(new Position(1000, 1000))));
+        assertNull(BaseCheckScheduler.sharedDefence(route, route, Collections.emptyList()));
+    }
+
+    @Test
+    void defencesNearARouteAreThoseWithinTheAvoidRadius() {
+        List<Position> route = Collections.singletonList(new Position(0, 0));
+        Position near = new Position(BaseCheckScheduler.DEATH_AVOID_RADIUS_PIXELS, 0);
+        Position far = new Position(BaseCheckScheduler.DEATH_AVOID_RADIUS_PIXELS + 1, 0);
+        assertEquals(Collections.singletonList(near),
+                BaseCheckScheduler.defencesNearRoute(route, Arrays.asList(near, far)));
+    }
+
+    @Test
+    void theDeathSiteOnARouteIsTheFirstOneWithinTheAvoidRadius() {
+        List<Position> route = Collections.singletonList(new Position(0, 0));
+        Position far = new Position(5000, 0);
+        Position near = new Position(100, 0);
+        assertEquals(near, BaseCheckScheduler.deathSiteOnRoute(route, Arrays.asList(far, near)));
+        assertNull(BaseCheckScheduler.deathSiteOnRoute(route, Collections.singletonList(far)));
+    }
+
+    @Test
+    void theProbeStartsAtTenMinutes() {
+        assertEquals(14400, BaseCheckScheduler.PERIODIC_PROBE_START_FRAME);
+    }
+
+    @Test
+    void beforeTheProbeStartsOnlyAnUnscoutedStartIsCheckableWhileTheEnemyMainIsUnknown() {
+        Map<String, Integer> lastSeen = map("seenStart", 100, "stale", 0);
+        List<String> checkable = BaseCheckScheduler.checkable(
+                Arrays.asList("start", "seenStart", "expansion", "stale"), lastSeen,
+                Arrays.asList("start", "seenStart"), false, BaseCheckScheduler.PERIODIC_PROBE_START_FRAME - 1);
+        assertEquals(Collections.singletonList("start"), checkable);
+    }
+
+    @Test
+    void beforeTheProbeStartsNothingIsCheckableOnceTheEnemyMainIsKnown() {
+        assertTrue(BaseCheckScheduler.checkable(Arrays.asList("start", "expansion"), Collections.emptyMap(),
+                Collections.singleton("start"), true, BaseCheckScheduler.PERIODIC_PROBE_START_FRAME - 1).isEmpty());
+    }
+
+    @Test
+    void fromTheProbeStartEveryCandidateIsCheckable() {
+        List<String> all = Arrays.asList("start", "seenStart", "expansion");
+        assertEquals(all, BaseCheckScheduler.checkable(all, map("seenStart", 5), Collections.singleton("start"),
+                true, BaseCheckScheduler.PERIODIC_PROBE_START_FRAME));
+        assertEquals(all, BaseCheckScheduler.checkable(all, map("seenStart", 5), Collections.singleton("start"),
+                false, BaseCheckScheduler.PERIODIC_PROBE_START_FRAME));
+    }
+
+    @Test
+    void anEnemyMainNeverSeenMustBeFoundOnceChecksAreAllowed() {
+        assertTrue(BaseCheckScheduler.mustFindEnemyMain(-1, BaseCheckScheduler.FIRST_CHECK_FRAME));
+        assertFalse(BaseCheckScheduler.mustFindEnemyMain(-1, BaseCheckScheduler.FIRST_CHECK_FRAME - 1));
+        assertFalse(BaseCheckScheduler.mustFindEnemyMain(0, NOW));
     }
 }

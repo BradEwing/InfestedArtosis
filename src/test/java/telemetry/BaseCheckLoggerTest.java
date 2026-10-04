@@ -1,5 +1,6 @@
 package telemetry;
 
+import bwapi.Position;
 import bwapi.TilePosition;
 import bwapi.UnitType;
 import org.junit.jupiter.api.Test;
@@ -36,5 +37,21 @@ class BaseCheckLoggerTest {
         String row = BaseCheckLogger.row(8, UnitType.Zerg_Zergling, new TilePosition(10, 20), 2000, 6000,
                 new BaseCheckEnd(6400, BaseCheckScheduler.Release.LOST, false, 6413, false));
         assertEquals("8,Zerg_Zergling,10,20,2000,6000,6400,LOST,0,6413,0", row);
+    }
+
+    @Test
+    void aSkipRowHasOneFieldPerSkipHeaderColumnOnceTheGameIdIsPrefixed() {
+        String row = "g," + BaseCheckLogger.skipRow(9000, new TilePosition(10, 20), BaseCheckSkip.DEATH_ROUTE,
+                new Position(300, 400));
+        assertEquals(BaseCheckLogger.SKIP_HEADER.split(",").length, row.split(",").length);
+        assertEquals("g,9000,10,20,DEATH_ROUTE,300,400", row);
+    }
+
+    @Test
+    void aSkipRowNamesEachReason() {
+        assertEquals("1,2,3,SHARED_DEFENCE,4,5", BaseCheckLogger.skipRow(1, new TilePosition(2, 3),
+                BaseCheckSkip.SHARED_DEFENCE, new Position(4, 5)));
+        assertEquals("1,2,3,DEATH_RECALL,4,5", BaseCheckLogger.skipRow(1, new TilePosition(2, 3),
+                BaseCheckSkip.DEATH_RECALL, new Position(4, 5)));
     }
 }

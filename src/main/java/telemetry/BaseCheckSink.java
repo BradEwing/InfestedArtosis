@@ -1,5 +1,6 @@
 package telemetry;
 
+import bwapi.Position;
 import bwapi.TilePosition;
 import bwapi.UnitType;
 
@@ -22,4 +23,15 @@ public interface BaseCheckSink {
      */
     void onBaseChecked(int unitId, UnitType unitType, TilePosition base, int ageAtDispatch, int dispatchFrame,
                        BaseCheckEnd end);
+
+    /**
+     * A check was held back or recalled for safety.
+     *
+     * @param frame the current frame
+     * @param base the base the check was meant for
+     * @param reason why it did not go
+     * @param site the death site or static defence that caused it
+     */
+    default void onBaseCheckSkipped(int frame, TilePosition base, BaseCheckSkip reason, Position site) {
+    }
 }

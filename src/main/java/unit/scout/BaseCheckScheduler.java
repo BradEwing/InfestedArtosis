@@ -4,6 +4,7 @@ import bwapi.Position;
 import bwapi.UnitType;
 import util.Time;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
@@ -49,6 +50,15 @@ public final class BaseCheckScheduler {
 
     /** Tuning value: a route passing this close to a remembered death site, in pixels, is avoided. */
     public static final int DEATH_AVOID_RADIUS_PIXELS = 288;
+
+    /**
+     * Tuning value: no base other than a possible enemy main is checked before this frame. From here the
+     * scheduler probes every available base that has gone unseen for {@link #CHECK_INTERVAL_FRAMES}.
+     */
+    public static final int PERIODIC_PROBE_START_FRAME = new Time(10, 0).getFrames();
+
+    /** Tuning value: a death site is matched to its anchoring defence within this many pixels. */
+    public static final int ANCHOR_MATCH_PIXELS = 16;
 
     /** Zerglings sent to a base when Spider Mines are known, so one can trigger a mine for the other. */
     public static final int LINGS_WITH_MINES = 2;
@@ -217,10 +227,114 @@ public final class BaseCheckScheduler {
     /**
      * @param deathFrame the frame the scout died
      * @param now the current frame
-     * @return true while the death site is still avoided, for {@link #DEATH_MEMORY_FRAMES}
+     * @param anchorAlive whether the defence the site is anchored on is still known to stand
+     * @return true while the anchoring defence stands, and for {@link #DEATH_MEMORY_FRAMES} after the scout
+     *     died otherwise
      */
-    public static boolean isDeathRemembered(int deathFrame, int now) {
-        return now - deathFrame < DEATH_MEMORY_FRAMES;
+    public static boolean isDeathRemembered(int deathFrame, int now, boolean anchorAlive) {
+        return anchorAlive || now - deathFrame < DEATH_MEMORY_FRAMES;
+    }
+
+    /**
+     * @param anchor the position of the defence a death site is anchored on
+     * @param sightings enemy units and buildings still known to stand
+     * @return true when a static defence stands within {@link #ANCHOR_MATCH_PIXELS} of the anchor
+     */
+    public static boolean isAnchorAlive(Position anchor, Collection<Sighting> sightings) {
+        for (Sighting sighting : sightings) {
+            if (isStaticDefence(sighting.getType())
+                    && sighting.getPosition().getDistance(anchor) <= ANCHOR_MATCH_PIXELS) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * @param sightings enemy units and buildings sighted
+     * @return the positions of the Bunkers, Photon Cannons and Sunken Colonies among them
+     */
+    public static List<Position> staticDefencePositions(Collection<Sighting> sightings) {
+        List<Position> positions = new ArrayList<>();
+        for (Sighting sighting : sightings) {
+            if (isStaticDefence(sighting.getType())) {
+                positions.add(sighting.getPosition());
+            }
+        }
+        return positions;
+    }
+
+    /**
+     * @param route points along the ground route to a base
+     * @param defences positions of known static defence
+     * @return the defences within {@link #DEATH_AVOID_RADIUS_PIXELS} of any route point
+     */
+    public static List<Position> defencesNearRoute(Collection<Position> route, Collection<Position> defences) {
+        List<Position> near = new ArrayList<>();
+        for (Position defence : defences) {
+            for (Position point : route) {
+                if (point.getDistance(defence) <= DEATH_AVOID_RADIUS_PIXELS) {
+                    near.add(defence);
+                    break;
+                }
+            }
+        }
+        return near;
+    }
+
+    /**
+     * Whether two routes run past the same static defence, so two scouts sent along them would meet it
+     * together.
+     *
+     * @param route points along the ground route of a candidate check
+     * @param otherRoute points along the ground route of a check already out
+     * @param defences positions of known static defence
+     * @return the first defence both routes pass within {@link #DEATH_AVOID_RADIUS_PIXELS}, or null
+     */
+    public static Position sharedDefence(Collection<Position> route, Collection<Position> otherRoute,
+                                         Collection<Position> defences) {
+        List<Position> other = defencesNearRoute(otherRoute, defences);
+        for (Position defence : defencesNearRoute(route, defences)) {
+            if (other.contains(defence)) {
+                return defence;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Which bases a check may go to now. Until {@link #PERIODIC_PROBE_START_FRAME} the only checks are the
+     * search for the enemy main: a start location never seen, while the enemy main is not known. From then on
+     * every candidate may be probed.
+     *
+     * @param candidates the bases that may be checked
+     * @param lastSeenFrames the frame each base was last seen; a base missing from the map was never seen
+     * @param startLocations the candidates that are start locations
+     * @param enemyMainKnown whether the enemy main has been identified
+     * @param now the current frame
+     * @return the candidates a check may go to
+     */
+    public static <B> List<B> checkable(Collection<B> candidates, Map<B, Integer> lastSeenFrames,
+                                        Collection<B> startLocations, boolean enemyMainKnown, int now) {
+        if (now >= PERIODIC_PROBE_START_FRAME) {
+            return new ArrayList<>(candidates);
+        }
+        if (enemyMainKnown) {
+            return new ArrayList<>();
+        }
+        return candidates.stream()
+                .filter(base -> isUnscoutedStart(base, lastSeenFrames, startLocations))
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * @param lastSeenFrame the frame the known enemy main was last seen, or a negative value if never
+     * @param now the current frame
+     * @return true when the enemy main is known but its tile has never been in sight and checks are allowed,
+     *     so a scout is sent however recently an enemy unit was in sight elsewhere
+     */
+    public static boolean mustFindEnemyMain(int lastSeenFrame, int now) {
+        return lastSeenFrame < 0 && now >= FIRST_CHECK_FRAME;
     }
 
     /**
@@ -231,14 +345,23 @@ public final class BaseCheckScheduler {
      * @return true when any route point is that close to any death site
      */
     public static boolean routePassesDeathSite(Collection<Position> route, Collection<Position> deathSites) {
+        return deathSiteOnRoute(route, deathSites) != null;
+    }
+
+    /**
+     * @param route points along the ground route to a base
+     * @param deathSites where scouts died on earlier checks
+     * @return the first death site within {@link #DEATH_AVOID_RADIUS_PIXELS} of a route point, or null
+     */
+    public static Position deathSiteOnRoute(Collection<Position> route, Collection<Position> deathSites) {
         for (Position death : deathSites) {
             for (Position point : route) {
                 if (point.getDistance(death) <= DEATH_AVOID_RADIUS_PIXELS) {
-                    return true;
+                    return death;
                 }
             }
         }
-        return false;
+        return null;
     }
 
     /**

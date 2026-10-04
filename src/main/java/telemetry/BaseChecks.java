@@ -1,5 +1,6 @@
 package telemetry;
 
+import bwapi.Position;
 import bwapi.TilePosition;
 import bwapi.UnitType;
 
@@ -28,5 +29,13 @@ public final class BaseChecks {
             return;
         }
         current.onBaseChecked(unitId, unitType, base, ageAtDispatch, dispatchFrame, end);
+    }
+
+    public static void skipped(int frame, TilePosition base, BaseCheckSkip reason, Position site) {
+        BaseCheckSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onBaseCheckSkipped(frame, base, reason, site);
     }
 }

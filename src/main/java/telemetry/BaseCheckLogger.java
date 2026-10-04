@@ -1,6 +1,7 @@
 package telemetry;
 
 import bwapi.Game;
+import bwapi.Position;
 import bwapi.TilePosition;
 import bwapi.UnitType;
 import unit.scout.BaseCheckScheduler;
@@ -30,11 +31,16 @@ public class BaseCheckLogger implements BaseCheckSink {
     static final String HEADER = "game_id,unit_id,unit_type,base_x,base_y,age_at_dispatch,dispatch_frame,"
             + "end_frame,outcome,occupied,died_frame,primary";
 
+    static final String SKIP_FILE = "telemetry_base_check_skips.csv";
+
+    static final String SKIP_HEADER = "game_id,frame,base_x,base_y,reason,site_x,site_y";
+
     private static final int FLUSH_INTERVAL_FRAMES = 480;
 
     private final Game game;
     private final String gameId;
     private final TelemetryWriter writer;
+    private final TelemetryWriter skipWriter;
 
     private boolean disabled;
 
@@ -42,6 +48,7 @@ public class BaseCheckLogger implements BaseCheckSink {
         this.game = game;
         this.gameId = gameId;
         this.writer = new TelemetryWriter(FILE, HEADER);
+        this.skipWriter = new TelemetryWriter(SKIP_FILE, SKIP_HEADER);
     }
 
     public void onFrame() {
@@ -52,6 +59,7 @@ public class BaseCheckLogger implements BaseCheckSink {
         try {
             if (game.getFrameCount() % FLUSH_INTERVAL_FRAMES == 0) {
                 writer.flush();
+                skipWriter.flush();
             }
         } catch (Exception e) {
             disabled = true;
@@ -65,6 +73,7 @@ public class BaseCheckLogger implements BaseCheckSink {
 
         try {
             writer.flush();
+            skipWriter.flush();
         } catch (Exception e) {
             disabled = true;
         }
@@ -82,6 +91,30 @@ public class BaseCheckLogger implements BaseCheckSink {
         } catch (Exception e) {
             disabled = true;
         }
+    }
+
+    @Override
+    public void onBaseCheckSkipped(int frame, TilePosition base, BaseCheckSkip reason, Position site) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            skipWriter.append(gameId + "," + skipRow(frame, base, reason, site));
+        } catch (Exception e) {
+            disabled = true;
+        }
+    }
+
+    static String skipRow(int frame, TilePosition base, BaseCheckSkip reason, Position site) {
+        List<String> fields = new ArrayList<>();
+        fields.add(String.valueOf(frame));
+        fields.add(String.valueOf(base.getX()));
+        fields.add(String.valueOf(base.getY()));
+        fields.add(Csv.name(reason));
+        fields.add(String.valueOf(site.getX()));
+        fields.add(String.valueOf(site.getY()));
+        return String.join(",", fields);
     }
 
     static String row(int unitId, UnitType unitType, TilePosition base, int ageAtDispatch,
