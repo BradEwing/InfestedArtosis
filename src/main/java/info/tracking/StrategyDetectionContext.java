@@ -193,6 +193,31 @@ public class StrategyDetectionContext {
     }
 
     /**
+     * The latest frame the inferred enemy natural's depot site was in our vision. Null while the enemy natural is
+     * unknown or has never been seen.
+     */
+    public Time enemyNaturalLastSeenFrame() {
+        Base enemyNatural = baseData.getEnemyNaturalBase();
+        if (enemyNatural == null) {
+            return null;
+        }
+        return scoutData.getEnemyNaturalLastSeenFrame(enemyNatural);
+    }
+
+    /**
+     * Drones the enemy has produced as far as we have seen, not counting the depot on the enemy main's base
+     * location. Null while the enemy main is unknown, since the start depot cannot be told from another.
+     */
+    public DroneEquivalents enemyDroneEquivalents() {
+        Base enemyMain = baseData.getMainEnemyBase();
+        if (enemyMain == null) {
+            return null;
+        }
+        TilePosition mainLocation = enemyMain.getLocation();
+        return tracker.getDroneEquivalents(tile -> occupiesBaseLocation(tile, mainLocation));
+    }
+
+    /**
      * Whether the position is on our side of the map: its BWEM ground path to our main is shorter than its
      * path to the enemy main or, while the enemy main is unknown, to every other starting location not yet seen
      * empty. When every other starting location has been seen empty, as after the enemy main is razed, it is

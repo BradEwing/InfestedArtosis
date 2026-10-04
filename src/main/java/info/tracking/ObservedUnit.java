@@ -11,6 +11,11 @@ import util.Time;
 @Data
 public class ObservedUnit {
     private Time firstObservedFrame;
+    /**
+     * The first frame the unit was observed as its current type. A Drone first seen at 1:00 and next seen as a
+     * Spawning Pool at 1:40 keeps 1:00 as its first observed frame, and holds 1:40 here.
+     */
+    private Time typeObservedFrame;
     private Time lastObservedFrame;
     private Time destroyedFrame;
     private Time completedFrame;
@@ -36,6 +41,7 @@ public class ObservedUnit {
         this.unit = unit;
         this.unitType = unitType;
         this.firstObservedFrame = currentFrame;
+        this.typeObservedFrame = currentFrame;
         this.lastObservedFrame = currentFrame;
         this.lastKnownLocation = lastKnownLocation;
         this.proxied = proxied;

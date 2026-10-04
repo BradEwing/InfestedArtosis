@@ -21,19 +21,30 @@ import java.util.List;
  * overrides any worker cap the build keeps. The Zergling cap applies to the matchup target and the
  * early rush emergency; a build's own Zergling branch and the mineral surplus Zerglings are not
  * capped, and wait behind the floor Drones for larva.
+ *
+ * <p>The hold lifts when enemy Lair tech is observed as Lair tech by {@link #LAIR_RELEASE_CUTOFF}: a flood
+ * runs on a handful of workers and does not tech that early, while the two-hatch tech builds the in-main
+ * Hatchery also fires on do. A flood that teches after the cutoff keeps the hold to its deadline.
  */
 public final class LingFloodHold {
 
     /**
-     * StrategyTracker names whose detection starts the hold.
+     * StrategyTracker names whose detection starts the hold: 9PoolMainHatch, which reads the flood from the in-main
+     * Hatchery, and 2HatchLing, which reads it once the Zerglings have massed.
      */
-    public static final List<String> TRIGGER_STRATEGIES = Collections.unmodifiableList(Arrays.asList("2HatchLing"));
+    public static final List<String> TRIGGER_STRATEGIES = Collections.unmodifiableList(
+            Arrays.asList("9PoolMainHatch", "2HatchLing"));
 
     /**
      * The last game time the hold stands. The flood's largest waves land before it, and the bot's
      * own tech is expected to have taken over from the static defense by then.
      */
     public static final Time DEADLINE = new Time(10, 0);
+
+    /**
+     * The last game time at which an enemy Lair tech sighting releases the hold.
+     */
+    public static final Time LAIR_RELEASE_CUTOFF = new Time(6, 0);
 
     /**
      * Sunkens per base the hold asks for, whether or not an attacker has been seen at the base.
@@ -65,11 +76,12 @@ public final class LingFloodHold {
      * Whether the hold stands this frame.
      *
      * @param floodDetected whether any of {@link #TRIGGER_STRATEGIES} has been detected
+     * @param lairTechSeen whether enemy Lair tech was observed as such by {@link #LAIR_RELEASE_CUTOFF}
      * @param gameTime current game time
-     * @return true from the detection until {@link #DEADLINE}
+     * @return true from the detection until {@link #DEADLINE} or the sighting of early enemy Lair tech
      */
-    public static boolean isActive(boolean floodDetected, Time gameTime) {
-        return floodDetected && !gameTime.greaterThan(DEADLINE);
+    public static boolean isActive(boolean floodDetected, boolean lairTechSeen, Time gameTime) {
+        return floodDetected && !lairTechSeen && !gameTime.greaterThan(DEADLINE);
     }
 
     /**
