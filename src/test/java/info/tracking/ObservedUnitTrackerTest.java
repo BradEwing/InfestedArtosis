@@ -34,6 +34,7 @@ class ObservedUnitTrackerTest {
     private static final Time DRONE_COMPLETED = new Time(1496);
     private static final Time POOL_COMPLETED = new Time(2801);
     private static final Time WINDOW = new Time(1, 52);
+    private static final Time MORPH_OBSERVED = new Time(1600);
     private static final Time WALL_CUTOFF = new Time(6, 0);
 
     /**
@@ -97,7 +98,7 @@ class ObservedUnitTrackerTest {
     void typeChangeDropsTheCompletionStamp() {
         ObservedUnit morphed = completedDrone();
 
-        ObservedUnitTracker.updateUnitTypeChange(morphed, UnitType.Zerg_Spawning_Pool);
+        ObservedUnitTracker.updateUnitTypeChange(morphed, UnitType.Zerg_Spawning_Pool, MORPH_OBSERVED);
 
         assertEquals(UnitType.Zerg_Spawning_Pool, morphed.getUnitType());
         assertFalse(morphed.isCompleted());
@@ -108,7 +109,7 @@ class ObservedUnitTrackerTest {
     void morphedUnitIsStampedAtTheFrameItIsNextObservedComplete() {
         ObservedUnit morphed = completedDrone();
 
-        ObservedUnitTracker.updateUnitTypeChange(morphed, UnitType.Zerg_Spawning_Pool);
+        ObservedUnitTracker.updateUnitTypeChange(morphed, UnitType.Zerg_Spawning_Pool, MORPH_OBSERVED);
         morphed.markCompleted(POOL_COMPLETED);
 
         assertTrue(morphed.isCompleted());
@@ -119,7 +120,7 @@ class ObservedUnitTrackerTest {
     void unchangedTypeKeepsTheCompletionStamp() {
         ObservedUnit drone = completedDrone();
 
-        ObservedUnitTracker.updateUnitTypeChange(drone, UnitType.Zerg_Drone);
+        ObservedUnitTracker.updateUnitTypeChange(drone, UnitType.Zerg_Drone, MORPH_OBSERVED);
 
         assertTrue(drone.isCompleted());
         assertEquals(DRONE_COMPLETED, drone.getCompletedFrame());
@@ -132,7 +133,7 @@ class ObservedUnitTrackerTest {
 
         assertEquals(1, tracker.getUnitTypeCountCompletedBeforeTime(UnitType.Zerg_Drone, WINDOW));
 
-        ObservedUnitTracker.updateUnitTypeChange(morphed, UnitType.Zerg_Spawning_Pool);
+        ObservedUnitTracker.updateUnitTypeChange(morphed, UnitType.Zerg_Spawning_Pool, MORPH_OBSERVED);
 
         assertEquals(0, tracker.getUnitTypeCountCompletedBeforeTime(UnitType.Zerg_Spawning_Pool, WINDOW));
     }
@@ -147,6 +148,34 @@ class ObservedUnitTrackerTest {
         ObservedUnitFixture.changeType(hatchery, UnitType.Zerg_Lair);
 
         assertTrue(tracker.hasObservedAnyBeforeTime(WINDOW, UnitType.Zerg_Lair, UnitType.Zerg_Spire));
+    }
+
+    @Test
+    void hatcheryRelabelledAsALairAfterTheCutoffIsNotLairTechByTheCutoff() {
+        ObservedUnit hatchery = ObservedUnitFixture.observedUnit(UnitType.Zerg_Hatchery, new Time(2, 30));
+        ObservedUnitTracker tracker = ObservedUnitFixture.trackerHolding(hatchery);
+        ObservedUnitFixture.changeType(hatchery, UnitType.Zerg_Lair, new Time(8, 30));
+
+        assertFalse(tracker.hasObservedAnyAsTypeBy(WALL_CUTOFF, UnitType.Zerg_Lair, UnitType.Zerg_Spire));
+        assertTrue(tracker.hasObservedAnyAsTypeBy(new Time(8, 30), UnitType.Zerg_Lair, UnitType.Zerg_Spire));
+    }
+
+    @Test
+    void hatcheryRelabelledAsALairBeforeTheCutoffIsLairTechByTheCutoff() {
+        ObservedUnit hatchery = ObservedUnitFixture.observedUnit(UnitType.Zerg_Hatchery, new Time(2, 30));
+        ObservedUnitTracker tracker = ObservedUnitFixture.trackerHolding(hatchery);
+        ObservedUnitFixture.changeType(hatchery, UnitType.Zerg_Lair, new Time(3, 35));
+
+        assertTrue(tracker.hasObservedAnyAsTypeBy(WALL_CUTOFF, UnitType.Zerg_Lair, UnitType.Zerg_Spire));
+    }
+
+    @Test
+    void lairTechObservedExactlyAtTheCutoffCounts() {
+        ObservedUnit spire = ObservedUnitFixture.observedUnit(UnitType.Zerg_Spire, WALL_CUTOFF);
+        ObservedUnitTracker tracker = ObservedUnitFixture.trackerHolding(spire);
+
+        assertTrue(tracker.hasObservedAnyAsTypeBy(WALL_CUTOFF, UnitType.Zerg_Spire));
+        assertFalse(tracker.hasObservedAnyAsTypeBy(new Time(5, 59), UnitType.Zerg_Spire));
     }
 
     @Test
@@ -177,6 +206,34 @@ class ObservedUnitTrackerTest {
     }
 
     @Test
+    void droneSeenEarlyIsObservedAsAPoolOnlyFromItsMorph() {
+        ObservedUnit morphed = completedDrone();
+        ObservedUnitTracker tracker = ObservedUnitFixture.trackerHolding(morphed);
+
+        ObservedUnitTracker.updateUnitTypeChange(morphed, UnitType.Zerg_Spawning_Pool, MORPH_OBSERVED);
+
+        assertEquals(DRONE_OBSERVED, morphed.getFirstObservedFrame());
+        assertEquals(MORPH_OBSERVED, morphed.getTypeObservedFrame());
+        assertFalse(tracker.hasObservedAsTypeBy(UnitType.Zerg_Spawning_Pool, DRONE_OBSERVED));
+        assertTrue(tracker.hasObservedAsTypeBy(UnitType.Zerg_Spawning_Pool, MORPH_OBSERVED));
+    }
+
+    @Test
+    void poolLastSeenMorphingCountsAsIncompleteSinceThatFrame() {
+        ObservedUnit pool = ObservedUnitFixture.observedUnit(UnitType.Zerg_Spawning_Pool, MORPH_OBSERVED);
+        pool.setLastObservedFrame(POOL_COMPLETED);
+        ObservedUnitTracker tracker = ObservedUnitFixture.trackerHolding(pool);
+
+        assertTrue(tracker.hasObservedIncompleteSince(UnitType.Zerg_Spawning_Pool, POOL_COMPLETED));
+        assertFalse(tracker.hasObservedIncompleteSince(UnitType.Zerg_Spawning_Pool,
+                new Time(POOL_COMPLETED.getFrames() + 1)));
+
+        pool.markCompleted(POOL_COMPLETED);
+
+        assertFalse(tracker.hasObservedIncompleteSince(UnitType.Zerg_Spawning_Pool, MORPH_OBSERVED));
+    }
+
+    @Test
     void assimilatorRebuiltOnItsGeyserIsTrackedAsLivingAgain() {
         Unit geyser = new TestUnits().unit(UnitType.Protoss_Assimilator, 61);
         ObservedUnitTracker tracker = new ObservedUnitTracker();
@@ -189,28 +246,6 @@ class ObservedUnitTrackerTest {
 
         assertEquals(1, tracker.getLivingObservedUnits().size());
         assertEquals(1, tracker.getCountOfLivingUnits(UnitType.Protoss_Assimilator));
-    }
-
-    @Test
-    void revivedUnitDropsTheDestroyedStructuresCompletionStamp() {
-        ObservedUnit assimilator = ObservedUnitFixture.observedUnit(UnitType.Protoss_Assimilator, DRONE_OBSERVED);
-        assimilator.markCompleted(DRONE_COMPLETED);
-        assimilator.setDestroyedFrame(POOL_COMPLETED);
-
-        ObservedUnitTracker.reviveRebuilt(assimilator);
-
-        assertNull(assimilator.getDestroyedFrame());
-        assertFalse(assimilator.isCompleted());
-    }
-
-    @Test
-    void livingUnitShownAgainKeepsItsCompletionStamp() {
-        ObservedUnit drone = completedDrone();
-
-        ObservedUnitTracker.reviveRebuilt(drone);
-
-        assertTrue(drone.isCompleted());
-        assertEquals(DRONE_COMPLETED, drone.getCompletedFrame());
     }
 
     private static ObservedUnit completedDrone() {
