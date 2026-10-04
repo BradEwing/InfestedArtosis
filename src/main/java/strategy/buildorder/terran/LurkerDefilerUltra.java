@@ -256,7 +256,10 @@ public class LurkerDefilerUltra extends TerranBase {
         }
 
         boolean wantLair = gameState.canPlanLair() && committedLairOrHive == 0;
-        TechStep techStep = nextTechStep(techProgression, wantLair, baseCount, gameState.getGameTime(), ultraliskGate);
+        boolean hydraliskHeld = hydraliskHeld(fieldsGuardians,
+                gameState.structureCount(Readiness.STANDING, UnitType.Zerg_Greater_Spire));
+        TechStep techStep = nextTechStep(techProgression, wantLair, baseCount, gameState.getGameTime(), ultraliskGate,
+                hydraliskHeld);
         UnitType site = siteBuilding(techStep);
         if (site == UnitType.None || hasTechSite(gameState, site)) {
             Plan techPlan = planTechStep(gameState, techStep);
@@ -294,7 +297,8 @@ public class LurkerDefilerUltra extends TerranBase {
 
         int hydraliskTarget = hydraliskTarget(techProgression.isLurker() || techProgression.isPlannedLurker(),
                 lurkerPipeline, enemyFlyers(gameState), fieldsGuardians, gameState.miningGeysers(), droneCount);
-        if (techProgression.isHydraliskDen() && gameState.ourUnitCount(UnitType.Zerg_Hydralisk) < hydraliskTarget
+        if (!hydraliskHeld && techProgression.isHydraliskDen()
+                && gameState.ourUnitCount(UnitType.Zerg_Hydralisk) < hydraliskTarget
                 && canPlanAdvancedUnit(gameState, UnitType.Zerg_Hydralisk)) {
             plans.addAll(this.planAdvancedUnit(gameState, UnitType.Zerg_Hydralisk));
         }
@@ -326,7 +330,8 @@ public class LurkerDefilerUltra extends TerranBase {
             return plans;
         }
         GuardianBranch.Gate gate = guardianBranch.evaluate(techProgression.isHive(),
-                gameState.getBaseData().currentBaseCount(), gameState.miningGeysers());
+                gameState.getBaseData().currentBaseCount(), gameState.miningGeysers(),
+                gameState.structureCount(Readiness.STANDING, UnitType.Zerg_Greater_Spire) > 0);
         if (gate != GuardianBranch.Gate.OPEN) {
             return plans;
         }
@@ -470,6 +475,17 @@ public class LurkerDefilerUltra extends TerranBase {
      */
     static TechStep nextTechStep(TechProgression techProgression, boolean wantLair, int baseCount, Time gameTime,
                                  boolean ultraliskGate) {
+        return nextTechStep(techProgression, wantLair, baseCount, gameTime, ultraliskGate, false);
+    }
+
+    /**
+     * {@link #nextTechStep(TechProgression, boolean, int, Time, boolean)} that skips the Hydralisk Den
+     * while the build holds its Hydralisks, see {@link #hydraliskHeld}.
+     *
+     * @param hydraliskHeld whether the build is holding back the Hydralisk Den and Hydralisks
+     */
+    static TechStep nextTechStep(TechProgression techProgression, boolean wantLair, int baseCount, Time gameTime,
+                                 boolean ultraliskGate, boolean hydraliskHeld) {
         if (techProgression.canPlanDefilerMound()) {
             return TechStep.DEFILER_MOUND;
         }
@@ -479,7 +495,7 @@ public class LurkerDefilerUltra extends TerranBase {
         if (wantLair) {
             return TechStep.LAIR;
         }
-        if (techProgression.canPlanHydraliskDen()) {
+        if (!hydraliskHeld && techProgression.canPlanHydraliskDen()) {
             return TechStep.HYDRALISK_DEN;
         }
         if (shouldPlanUpgradeEvolutionChamber(techProgression, 1)) {
@@ -727,6 +743,18 @@ public class LurkerDefilerUltra extends TerranBase {
                                int miningGeysers, int drones) {
         return hydraliskTarget(lurkerTech, lurkerPipeline, enemyFlyers)
                 + guardianSupportHydralisks(fieldsGuardians, miningGeysers, drones);
+    }
+
+    /**
+     * Whether the build plans neither the Hydralisk Den nor any Hydralisk: the Guardian build holds
+     * both until its Greater Spire has started morphing.
+     *
+     * @param fieldsGuardians whether the build runs the {@link GuardianBranch}
+     * @param greaterSpiresStanding Greater Spires morphing or finished
+     * @return true when the build holds the Den and the Hydralisks back
+     */
+    static boolean hydraliskHeld(boolean fieldsGuardians, int greaterSpiresStanding) {
+        return fieldsGuardians && greaterSpiresStanding == 0;
     }
 
     /**

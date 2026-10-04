@@ -18,6 +18,7 @@ import java.util.Arrays;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class LurkerDefilerUltraTest {
@@ -479,5 +480,29 @@ class LurkerDefilerUltraTest {
         assertFalse(LurkerDefilerUltra.mainSiteMissed("main", Arrays.asList("natural", "third"), "natural"));
         assertFalse(LurkerDefilerUltra.mainSiteMissed("main", Arrays.asList(), null));
         assertFalse(LurkerDefilerUltra.mainSiteMissed(null, Arrays.asList("natural"), "natural"));
+    }
+
+    @Test
+    void theGuardianBuildHoldsTheDenAndHydralisksUntilTheGreaterSpireHasStarted() {
+        assertTrue(LurkerDefilerUltra.hydraliskHeld(true, 0));
+        assertFalse(LurkerDefilerUltra.hydraliskHeld(true, 1));
+    }
+
+    @Test
+    void theUltraBuildNeverHoldsTheDenOrHydralisks() {
+        assertFalse(LurkerDefilerUltra.hydraliskHeld(false, 0));
+        assertFalse(LurkerDefilerUltra.hydraliskHeld(false, 1));
+    }
+
+    @Test
+    void aHeldBuildPlansNoHydraliskDenWhereAnUnheldOneDoes() {
+        TechProgression techProgression = new TechProgression();
+        techProgression.setSpawningPool(true);
+        techProgression.setLair(true);
+
+        assertEquals(LurkerDefilerUltra.TechStep.HYDRALISK_DEN, LurkerDefilerUltra.nextTechStep(techProgression,
+                NO_LAIR_WANTED, THREE_BASES, EARLY, ULTRALISKS_BARRED, false));
+        assertNotEquals(LurkerDefilerUltra.TechStep.HYDRALISK_DEN, LurkerDefilerUltra.nextTechStep(techProgression,
+                NO_LAIR_WANTED, THREE_BASES, EARLY, ULTRALISKS_BARRED, true));
     }
 }

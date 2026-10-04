@@ -11,6 +11,9 @@ import telemetry.PlanEvents;
  * opens only on a funded economy: the Hive stands, three bases are held and three geysers are
  * mined. It never reads the enemy; whether it is worth taking is the learning module's call.
  *
+ * <p>Once the Greater Spire has started morphing the branch stays open whatever the economy does,
+ * since the Spire it paid for is worth nothing without the Guardians.
+ *
  * <p>While open the branch plans a Spire, Mutalisks to morph from, a Greater Spire and then
  * Guardians, for at most {@value #WAVE_CAP} Guardians over the game, lost ones included.
  *
@@ -59,6 +62,22 @@ final class GuardianBranch {
      * @return {@link Gate#OPEN}, or the first term that fails
      */
     static Gate gate(boolean hive, int bases, int miningGeysers) {
+        return gate(hive, bases, miningGeysers, false);
+    }
+
+    /**
+     * The gate for one frame, held open once the Greater Spire has started.
+     *
+     * @param hive whether the Hive stands
+     * @param bases bases with a hatchery of ours
+     * @param miningGeysers geysers we are mining
+     * @param greaterSpireStarted whether a Greater Spire is morphing or finished
+     * @return {@link Gate#OPEN} when the Greater Spire has started, else the first term that fails
+     */
+    static Gate gate(boolean hive, int bases, int miningGeysers, boolean greaterSpireStarted) {
+        if (greaterSpireStarted) {
+            return Gate.OPEN;
+        }
         if (!hive) {
             return Gate.NO_HIVE;
         }
@@ -145,7 +164,20 @@ final class GuardianBranch {
      * @return the gate for this frame
      */
     Gate evaluate(boolean hive, int bases, int miningGeysers) {
-        Gate gate = gate(hive, bases, miningGeysers);
+        return evaluate(hive, bases, miningGeysers, false);
+    }
+
+    /**
+     * Updates the entered flag for this frame and writes a telemetry row for each change.
+     *
+     * @param hive whether the Hive stands
+     * @param bases bases with a hatchery of ours
+     * @param miningGeysers geysers we are mining
+     * @param greaterSpireStarted whether a Greater Spire is morphing or finished
+     * @return the gate for this frame
+     */
+    Gate evaluate(boolean hive, int bases, int miningGeysers, boolean greaterSpireStarted) {
+        Gate gate = gate(hive, bases, miningGeysers, greaterSpireStarted);
         boolean open = gate == Gate.OPEN;
         if (open && !entered) {
             entered = true;

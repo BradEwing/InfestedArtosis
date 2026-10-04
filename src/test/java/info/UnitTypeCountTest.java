@@ -246,4 +246,51 @@ class UnitTypeCountTest {
 
         assertEquals(0, count.getTotalLost(UnitType.Zerg_Spawning_Pool));
     }
+
+    @Test
+    void aGuardianMorphCountsACocoonAndConsumesItsMutalisk() {
+        UnitTypeCount count = new UnitTypeCount();
+        count.addUnit(UnitType.Zerg_Mutalisk);
+
+        count.startUnitMorph(UnitType.Zerg_Guardian);
+
+        assertEquals(1, count.livingCount(UnitType.Zerg_Cocoon));
+        assertEquals(0, count.livingCount(UnitType.Zerg_Mutalisk));
+        assertEquals(0, count.getTotalProduced(UnitType.Zerg_Cocoon));
+    }
+
+    @Test
+    void theCocoonLeavesTheCountWhenItsGuardianCompletes() {
+        UnitTypeCount count = new UnitTypeCount();
+        count.addUnit(UnitType.Zerg_Mutalisk);
+        count.startUnitMorph(UnitType.Zerg_Guardian);
+
+        count.addUnit(UnitType.Zerg_Guardian);
+        count.completeMorph(UnitType.Zerg_Guardian);
+
+        assertEquals(0, count.livingCount(UnitType.Zerg_Cocoon));
+        assertEquals(1, count.livingCount(UnitType.Zerg_Guardian));
+    }
+
+    @Test
+    void theCocoonLeavesTheCountWhenItDies() {
+        UnitTypeCount count = new UnitTypeCount();
+        count.addUnit(UnitType.Zerg_Mutalisk);
+        count.startUnitMorph(UnitType.Zerg_Guardian);
+
+        count.removeDestroyedUnit(UnitType.Zerg_Cocoon, false);
+
+        assertEquals(0, count.livingCount(UnitType.Zerg_Cocoon));
+    }
+
+    @Test
+    void aLurkerMorphConsumesAHydraliskAndCountsNoCocoon() {
+        UnitTypeCount count = new UnitTypeCount();
+        count.addUnit(UnitType.Zerg_Hydralisk);
+
+        count.startUnitMorph(UnitType.Zerg_Lurker);
+
+        assertEquals(0, count.livingCount(UnitType.Zerg_Hydralisk));
+        assertEquals(0, count.livingCount(UnitType.Zerg_Cocoon));
+    }
 }

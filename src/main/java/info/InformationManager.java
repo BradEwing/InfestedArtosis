@@ -298,11 +298,7 @@ public class InformationManager {
             count.startBuildingMorph(plannedUnit);
         } else if (assignedPlan.getType() == PlanType.UNIT) {
             UnitTypeCount count = gameState.getUnitTypeCount();
-            if (plannedUnit == UnitType.Zerg_Lurker) {
-                count.removeUnit(UnitType.Zerg_Hydralisk);
-            } else if (plannedUnit == UnitType.Zerg_Guardian) {
-                count.removeUnit(UnitType.Zerg_Mutalisk);
-            }
+            count.startUnitMorph(plannedUnit);
         }
     }
 

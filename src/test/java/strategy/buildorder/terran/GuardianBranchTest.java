@@ -1,6 +1,8 @@
 package strategy.buildorder.terran;
 
+import bwapi.UnitType;
 import info.TechProgression;
+import info.UnitTypeCount;
 import macro.plan.Plan;
 import macro.plan.PlanBlocker;
 import macro.plan.PlanState;
@@ -213,5 +215,59 @@ class GuardianBranchTest {
                 GuardianBranch.Step.MUTALISK, GuardianBranch.Step.MUTALISK, GuardianBranch.Step.GREATER_SPIRE,
                 GuardianBranch.Step.GUARDIAN, GuardianBranch.Step.GUARDIAN, GuardianBranch.Step.GUARDIAN,
                 GuardianBranch.Step.NONE), steps);
+    }
+
+    @Test
+    void aMorphingCocoonTakesTheGuardianPlaceThroughTheLiveCounts() {
+        UnitTypeCount count = new UnitTypeCount();
+        count.addUnit(UnitType.Zerg_Guardian);
+        count.addUnit(UnitType.Zerg_Guardian);
+        count.addUnit(UnitType.Zerg_Mutalisk);
+        count.startUnitMorph(UnitType.Zerg_Guardian);
+
+        int committed = GuardianBranch.guardiansCommitted(count.livingCount(UnitType.Zerg_Guardian),
+                count.livingCount(UnitType.Zerg_Cocoon), 0);
+
+        assertEquals(3, committed);
+        assertEquals(0, GuardianBranch.guardiansRemaining(committed, 0));
+    }
+
+    @Test
+    void aDeadCocoonFreesItsPlaceThroughTheLiveCounts() {
+        UnitTypeCount count = new UnitTypeCount();
+        count.addUnit(UnitType.Zerg_Guardian);
+        count.addUnit(UnitType.Zerg_Mutalisk);
+        count.startUnitMorph(UnitType.Zerg_Guardian);
+        count.removeDestroyedUnit(UnitType.Zerg_Cocoon, false);
+
+        int committed = GuardianBranch.guardiansCommitted(count.livingCount(UnitType.Zerg_Guardian),
+                count.livingCount(UnitType.Zerg_Cocoon), 0);
+
+        assertEquals(1, committed);
+        assertEquals(2, GuardianBranch.guardiansRemaining(committed, 0));
+    }
+
+    @Test
+    void theBranchStaysOpenOnceTheGreaterSpireHasStartedWhateverTheEconomyDoes() {
+        record();
+        GuardianBranch branch = new GuardianBranch();
+        branch.evaluate(HIVE, 3, 3, false);
+
+        assertEquals(GuardianBranch.Gate.OPEN, branch.evaluate(HIVE, 1, 0, true));
+        assertEquals(GuardianBranch.Gate.OPEN, branch.evaluate(false, 1, 0, true));
+
+        assertTrue(branch.isEntered());
+        assertEquals(Arrays.asList("ENTER"), labels);
+    }
+
+    @Test
+    void theBranchStillClosesOnALostBaseBeforeTheGreaterSpireStarts() {
+        record();
+        GuardianBranch branch = new GuardianBranch();
+        branch.evaluate(HIVE, 3, 3, false);
+
+        assertEquals(GuardianBranch.Gate.FEW_BASES, branch.evaluate(HIVE, 2, 3, false));
+
+        assertEquals(Arrays.asList("ENTER", "EXIT:FEW_BASES"), labels);
     }
 }

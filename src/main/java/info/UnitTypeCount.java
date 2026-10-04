@@ -108,7 +108,24 @@ public class UnitTypeCount {
     }
 
     /**
-     * Drops the predecessor of a finished in-place structure upgrade.
+     * Applies the cost of a unit morph when it starts. A Lurker consumes a Hydralisk. A Guardian
+     * consumes a Mutalisk and is carried by a Cocoon, counted until {@link #completeMorph} runs for
+     * the Guardian or the Cocoon dies.
+     *
+     * @param plannedUnit the unit the morph produces
+     */
+    public void startUnitMorph(UnitType plannedUnit) {
+        if (plannedUnit == UnitType.Zerg_Lurker) {
+            removeUnit(UnitType.Zerg_Hydralisk);
+        } else if (plannedUnit == UnitType.Zerg_Guardian) {
+            removeUnit(UnitType.Zerg_Mutalisk);
+            unitTypeCount.merge(UnitType.Zerg_Cocoon, 1, Integer::sum);
+        }
+    }
+
+    /**
+     * Drops the predecessor of a finished in-place structure upgrade, and the Cocoon of a finished
+     * Guardian.
      *
      * @param unitType the structure that completed
      */
@@ -116,6 +133,9 @@ public class UnitTypeCount {
         UnitType predecessor = morphPredecessor(unitType);
         if (predecessor != null) {
             removeUnit(predecessor);
+        }
+        if (unitType == UnitType.Zerg_Guardian) {
+            removeUnit(UnitType.Zerg_Cocoon);
         }
     }
 
