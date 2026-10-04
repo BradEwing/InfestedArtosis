@@ -13,7 +13,8 @@ import java.util.List;
  * <p>Every flip between FIGHT and RETREAT is a crossing. The squad is stalled when at least {@link #CROSSINGS}
  * crossings fall within the last {@link #WINDOW_FRAMES} frames and no enemy died near the squad since the
  * {@link #CROSSINGS}th most recent of them. A stalled squad is offered a harass on another target before it engages
- * the same enemy again. The constants are tuning values, not Brood War facts.
+ * the same enemy again, when {@link config.Config#airFlapEscape} is on; with it off the detector is not read. The
+ * constants are tuning values, not Brood War facts.
  */
 public final class AirStallDetector {
 

@@ -2,7 +2,6 @@ package telemetry;
 
 import bwapi.Game;
 import bwapi.Position;
-import unit.squad.AirHarassEvaluator;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -39,7 +38,8 @@ import java.util.Map;
  * the entry verdict, not probed, whatever its aa_sighting_age.
  *
  * <p>stalled is 1 when the squad's FIGHT and RETREAT crossings read as a stall, see AirStallDetector, and 0 when they
- * do not or the IA_AIR_FLAP_ESCAPE switch is off, on ENTRY_CHECK and ENTER rows. exposed_score is the best exposed
+ * do not, on ENTRY_CHECK and ENTER rows; it is -1 while the IA_AIR_FLAP_ESCAPE switch is off, which leaves the stall
+ * detector unread. exposed_score is the best exposed
  * group's score and base_score the best base's, both in heat units and uncapped, so the two compare directly; a score
  * left at -1 had no group or base to score. ENTRY_CHECK, ENTER and RETARGET rows carry both.
  *
@@ -61,7 +61,7 @@ public class HarassLogger implements HarassSink {
     private final Game game;
     private final String gameId;
     private final TelemetryWriter writer;
-    private final Map<String, AirHarassEvaluator.EntryVerdict> lastVerdict = new HashMap<>();
+    private final Map<String, String> lastVerdict = new HashMap<>();
 
     private boolean disabled;
 
@@ -102,8 +102,8 @@ public class HarassLogger implements HarassSink {
     }
 
     /**
-     * Records a row. An ENTRY_CHECK is written only when the squad's verdict differs from the last one written for
-     * it, and an ENTER forgets that verdict, so the first check after a harass ends is written again.
+     * Records a row. An ENTRY_CHECK is written only when the squad's verdict or stalled cell differs from the last
+     * one written for it, and an ENTER forgets that verdict, so the first check after a harass ends is written again.
      *
      * @param row the row
      */
@@ -115,10 +115,11 @@ public class HarassLogger implements HarassSink {
 
         try {
             if (row.getEvent() == HarassRow.Event.ENTRY_CHECK) {
-                if (row.getVerdict() == lastVerdict.get(row.getSquadId())) {
+                String check = row.getVerdict() + "/" + row.getStalled();
+                if (check.equals(lastVerdict.get(row.getSquadId()))) {
                     return;
                 }
-                lastVerdict.put(row.getSquadId(), row.getVerdict());
+                lastVerdict.put(row.getSquadId(), check);
             } else if (row.getEvent() == HarassRow.Event.ENTER) {
                 lastVerdict.remove(row.getSquadId());
             }

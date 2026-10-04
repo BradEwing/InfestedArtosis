@@ -72,12 +72,12 @@ public class AirHarassController {
         private final ExposedTargets.Group exposed;
         private final int sightingAge;
         private final int knownCover;
-        private final boolean stalled;
+        private final int stalled;
         private final double exposedScore;
         private final double baseScore;
 
         Entry(AirHarassEvaluator.EntryVerdict verdict, AirHarassEvaluator.BaseOption<Base> option,
-              ExposedTargets.Group exposed, int sightingAge, int knownCover, boolean stalled, double exposedScore,
+              ExposedTargets.Group exposed, int sightingAge, int knownCover, int stalled, double exposedScore,
               double baseScore) {
             this.verdict = verdict;
             this.option = option;
@@ -136,10 +136,11 @@ public class AirHarassController {
     /**
      * Runs the entry gates for an air squad and records the verdict. The base options and the exposed groups are only
      * read for a squad that passes the cheap gates, and the harass starts on whichever scores higher, see
-     * {@link AirHarassEvaluator#exposedOutscoresBase}. A base a probe found defended is left out until its refusal
+     * {@link AirHarassEvaluator#exposedOutscoresBase} when {@link Config#airFlapEscape} is on; with it off, which is
+     * the default, an exposed group is raided only when no base qualifies. A base a probe found defended is left out until its refusal
      * runs out, see {@link AirHarassScouting#unrefused}, and a stale base whose probe point known anti-air structures
-     * cover is entered on the entry verdict, not probed. A base or exposed group at the held target is no candidate,
-     * see {@link AirHarassEvaluator#isFailedTarget}.
+     * cover is entered on the entry verdict, not probed. With the escape on, a base or exposed group at the held target
+     * is no candidate, see {@link AirHarassEvaluator#isFailedTarget}; with it off, no target is held.
      *
      * @param squad air squad
      * @param now current frame
@@ -190,8 +191,8 @@ public class AirHarassController {
         boolean enters = verdict == AirHarassEvaluator.EntryVerdict.ENTER;
         AirHarassEvaluator.BaseOption<Base> bestBase = AirHarassEvaluator.chooseBase(options);
         boolean raidsExposed = raidsExposed(exposed, bestBase, squad.getCenter());
-        boolean stalled = squad instanceof AirSquad && Config.airFlapEscape
-                && ((AirSquad) squad).getStallDetector().isStalled(now);
+        int stalled = squad instanceof AirSquad && Config.airFlapEscape
+                ? ((AirSquad) squad).getStallDetector().isStalled(now) ? 1 : 0 : -1;
         double exposedScore = exposedScore(exposed, squad.getCenter());
         double baseScore = baseScore(bestBase);
         AirHarassEvaluator.BaseOption<Base> chosen = enters && !raidsExposed ? bestBase : null;
@@ -223,7 +224,7 @@ public class AirHarassController {
                 .targetKind(targetKind(chosen != null, chosenExposed != null))
                 .aaSightingAge(sightingAge)
                 .aaKnownCover(knownCover)
-                .stalled(stalled ? 1 : 0)
+                .stalled(stalled)
                 .exposedScore(exposedScore)
                 .baseScore(baseScore)
                 .build());
@@ -327,7 +328,7 @@ public class AirHarassController {
                         AirHarassEvaluator.STRIKE_RADIUS))
                 .aaSightingAge(entry.sightingAge)
                 .aaKnownCover(entry.knownCover)
-                .stalled(entry.stalled ? 1 : 0)
+                .stalled(entry.stalled)
                 .exposedScore(entry.exposedScore)
                 .baseScore(entry.baseScore)
                 .build());
@@ -797,8 +798,9 @@ public class AirHarassController {
      * Moves a harass on to the best known enemy base it has not raided yet this episode and no probe has refused,
      * probing it first when its anti-air sighting is stale and no known anti-air structure covers its probe point, or
      * to the best exposed group of enemies the {@link ExposedTargets.Memory} admits when that group outscores the
-     * base, see {@link AirHarassEvaluator#exposedOutscoresBase}. An exposed target being left is recorded there
-     * first.
+     * base, see {@link AirHarassEvaluator#exposedOutscoresBase}, when {@link Config#airFlapEscape} is on; with it
+     * off, a group is taken only when no base qualifies. With the escape on, a base or group at the held target is no
+     * candidate. An exposed target being left is recorded there first.
      *
      * @return true when a target was found
      */

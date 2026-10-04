@@ -1587,9 +1587,11 @@ public class SquadManager {
     /**
      * Offers an air squad a harass on every {@link AirHarassEvaluator#HARASS_TICK}, outside its fight lock and its
      * retreat lock, and outside the hold that follows a broken harass exit lock, see
-     * {@link AirHarassEvaluator#reentryHold}: the hold closes only the target the failed harass was on. A squad whose
-     * FIGHT and RETREAT crossings read as a stall, see {@link AirStallDetector}, is offered a harass through its
-     * retreat lock and the hold, before it engages the same enemy again. Overlords escorting the squad go back to
+     * {@link AirHarassEvaluator#reentryHold}. With {@link Config#airFlapEscape} on, which is not the default, the hold
+     * closes only the target the failed harass was on, and a squad whose FIGHT and RETREAT crossings read as a stall,
+     * see {@link AirStallDetector}, is offered a harass through its retreat lock and the hold, before it engages the
+     * same enemy again. With it off, the retreat lock and the whole hold apply to every squad and the stall detector
+     * is not read. Overlords escorting the squad go back to
      * the Overlord squad, since they would trail the Mutalisks into the enemy base.
      *
      * @param squad fight squad cleared to act
