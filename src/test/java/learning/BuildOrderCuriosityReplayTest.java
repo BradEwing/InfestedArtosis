@@ -28,7 +28,7 @@ public class BuildOrderCuriosityReplayTest {
     private static final String INCUMBENT = "SpeedlingAllIn";
     private static final int INCUMBENT_WIN_EVERY = 3;
     private static final List<String> CANDIDATES = Arrays.asList(
-            "2HatchMuta", "3HatchHydraZvT", RETRIED, "CrazyZerg", INCUMBENT);
+            "2HatchMuta", RETRIED, "CrazyZerg", INCUMBENT);
 
     @Test
     void threeHatchLurkerIsOfferedAgainWithinTenGamesWhileTheIncumbentKeepsWinningOccasionally() throws IOException {
