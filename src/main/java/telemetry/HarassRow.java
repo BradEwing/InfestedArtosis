@@ -80,6 +80,12 @@ public final class HarassRow {
     private final int proberId = -1;
     @Builder.Default
     private final int aaKnownCover = -1;
+    @Builder.Default
+    private final int stalled = -1;
+    @Builder.Default
+    private final double exposedScore = -1;
+    @Builder.Default
+    private final double baseScore = -1;
 
     /**
      * What a harass targets: a known enemy base, or an exposed group of enemies away from a base's heat.
