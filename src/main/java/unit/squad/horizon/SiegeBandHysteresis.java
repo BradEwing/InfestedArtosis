@@ -75,7 +75,7 @@ final class SiegeBandHysteresis {
      * was set. An ADVANCE raw verdict is never held, as it reports that no enemy is measured.
      *
      * @param raw the verdict for this frame's strengths
-     * @param held the verdict the squad last reported, null when it has none
+     * @param held the RETREAT the squad is holding, null when it holds none
      * @param heldSinceFrame the frame the held verdict was set
      * @param frame the current frame
      * @param ratio the ratio the raw verdict was taken from

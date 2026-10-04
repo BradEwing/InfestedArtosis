@@ -261,7 +261,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
             boolean retreating = squad.getStatus() == SquadStatus.RETREAT
                     && squad.getRetreatRoute() != RetreatRoute.CORNERED;
             result = holdVerdict(squad.getHeldRetreat(), raw, currentFrame, overallRatio, engageThresh, tankInBand,
-                    retreating, squad.getRetreatLockedUntilFrame());
+                    retreating, squad.isAttritionRetreatLock() ? 0 : squad.getRetreatLockedUntilFrame());
             int band = !tankInBand ? SIEGE_BAND_NONE : result == raw ? SIEGE_BAND_IN : SIEGE_BAND_HELD;
             snapshot.setSiegeBand(band);
             BandClock clock = bandClocks.computeIfAbsent(squad.getId(), id -> new BandClock());
@@ -285,8 +285,10 @@ public class HorizonCombatSimulator implements CombatSimulator {
      * memory restarts from the raw verdict. A squad in RETREAT under an active retreat lock always holds a RETREAT,
      * set when the lock began if the squad carries none, so a squad born of a merge or split is held like its
      * sources were. While the lock is active the held RETREAT is not released, so the margin is judged on the frame
-     * the squad actually turns. An ENGAGE read outside the band is reported but does not replace the held RETREAT,
-     * which only an in-band release or the squad leaving RETREAT does.
+     * the squad actually turns. A live held RETREAT survives every verdict except an in-band release: an ENGAGE read
+     * outside the band or an ADVANCE is reported without replacing it, and only an in-band release, the squad
+     * leaving RETREAT or a gap in sim runs does. A retreat lock armed by a contain's attrition exit is passed as 0,
+     * so it neither seeds nor holds a RETREAT and a strong ENGAGE can still break it.
      *
      * @param memory the squad's held RETREAT
      * @param raw the verdict for this frame's strengths
@@ -295,7 +297,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
      * @param engageThresh the matchup engage threshold
      * @param tankInBand whether the nearest sieged tank sits in the band
      * @param retreating whether the squad's status is RETREAT on a route other than the cornered one
-     * @param retreatLockedUntilFrame the frame the squad's retreat lock ends
+     * @param retreatLockedUntilFrame the frame the squad's retreat lock ends, 0 when it has none to hold on
      * @return the verdict to report
      */
     CombatResult holdVerdict(HeldRetreat memory, CombatResult raw, int frame, double ratio, double engageThresh,
@@ -316,7 +318,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
         }
         if (verdict == CombatResult.RETREAT) {
             memory.hold(live ? heldSince : frame, frame);
-        } else if (live && !tankInBand && raw == CombatResult.ENGAGE) {
+        } else if (live && !(raw == CombatResult.ENGAGE && tankInBand)) {
             memory.keep(frame);
         } else {
             memory.clear(frame);

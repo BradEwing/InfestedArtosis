@@ -6,6 +6,7 @@ import unit.squad.Squad;
 import unit.squad.SquadStatus;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static unit.squad.CombatSimulator.CombatResult.ADVANCE;
 import static unit.squad.CombatSimulator.CombatResult.ENGAGE;
 import static unit.squad.CombatSimulator.CombatResult.RETREAT;
 
@@ -115,6 +116,36 @@ class SiegeBandHoldTest {
         }
         assertEquals(RETREAT, sim.holdVerdict(memory, ENGAGE, lockEnd, BELOW_BAR, THRESH, true, true, lockEnd));
         assertEquals(RETREAT, sim.holdVerdict(memory, ENGAGE, lockEnd + 4, SPIKE, THRESH, true, true, lockEnd));
+    }
+
+    @Test
+    void theSeedDatesTheHoldFromTheStartOfTheLockNotFromTheFirstSimRun() {
+        HeldRetreat memory = new HeldRetreat();
+        int lockEnd = 1000;
+        int release = lockEnd - LOCK + SiegeBandHysteresis.MIN_HOLD_FRAMES;
+
+        for (int frame = lockEnd - 86; frame < release; frame += 4) {
+            assertEquals(RETREAT, sim.holdVerdict(memory, ENGAGE, frame, SPIKE, THRESH, true, true, lockEnd));
+        }
+        assertEquals(RETREAT, sim.holdVerdict(memory, ENGAGE, release - 1, SPIKE, THRESH, true, true, lockEnd));
+        assertEquals(ENGAGE, sim.holdVerdict(memory, ENGAGE, release, SPIKE, THRESH, true, true, lockEnd));
+    }
+
+    @Test
+    void anAdvanceDoesNotWipeTheHeldRetreat() {
+        HeldRetreat memory = retreatingSince(100);
+        int lockEnd = 100 + LOCK;
+
+        stepEngage(memory, 104, lockEnd - 4, true, lockEnd);
+        assertEquals(ADVANCE, sim.holdVerdict(memory, ADVANCE, lockEnd - 1, SPIKE, THRESH, true, true, lockEnd));
+        assertEquals(RETREAT, sim.holdVerdict(memory, ENGAGE, lockEnd, BELOW_BAR, THRESH, true, true, lockEnd));
+    }
+
+    @Test
+    void anAttritionLockPassedAsZeroLeavesTheRawVerdict() {
+        HeldRetreat memory = new HeldRetreat();
+
+        assertEquals(ENGAGE, sim.holdVerdict(memory, ENGAGE, 500, SPIKE, THRESH, true, true, UNLOCKED));
     }
 
     @Test
