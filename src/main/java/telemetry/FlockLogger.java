@@ -19,9 +19,10 @@ import java.util.List;
  * their own, and are -1 otherwise.
  *
  * <p>On SAMPLE rows, edge_members counts the Mutalisks within MapEdge.BAND of a map edge, and edge_releases the
- * times the squad's Mutalisks have been sent in from the edge band by a retreat that had no target, summed over its
+ * times the squad's Mutalisks have been sent in from the edge band by a retreat that had no target and no rally
+ * point, summed over its
  * current Mutalisks; both are -1 on other rows. A flock that stays at an edge shows edge_members above zero over
- * consecutive samples.
+ * consecutive samples, and a centroid that does not move across samples of a RETREAT squad shows a frozen flock.
  *
  * <p>MUTA_LOST rows are written for every Mutalisk of ours that dies: its squad, if any, the squad's status and
  * Mutalisk count including the dead one, the death position in centroid_x and centroid_y, nearest_mate_distance, the

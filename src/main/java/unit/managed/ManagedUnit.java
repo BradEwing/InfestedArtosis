@@ -80,6 +80,7 @@ public class ManagedUnit {
     private Position lastRetreatPosition;
     private int framesStuck = 0;
     private int retreatStartFrame = 0;
+    private static final int RALLY_ARRIVAL_DISTANCE = 16;
     @Getter
     private int edgeReleases;
 
@@ -1139,12 +1140,12 @@ public class ManagedUnit {
     }
 
     /**
-     * Ends a retreat that has no target. A flyer parked in the map edge band, see {@link MapEdge#inBand}, is sent in
-     * from the edge instead of being handed to the rally role, which a retreating squad resets every frame, so the
-     * order is never issued and the flyer stays against the edge.
+     * Ends a retreat that has no target. A flyer is sent to the rally point at once, since the rally role it is
+     * handed is reset by a retreating squad every frame and never issues its order; with no rally point, a flyer
+     * parked in the map edge band, see {@link MapEdge#inBand}, is sent in from the edge.
      */
     private void fallbackToRally() {
-        if (unit.isFlying() && releaseFromEdge()) {
+        if (unit.isFlying() && flyToRallyOrReleaseFromEdge()) {
             return;
         }
         if (rallyPoint != null) {
@@ -1152,6 +1153,17 @@ public class ManagedUnit {
         } else {
             role = UnitRole.IDLE;
         }
+    }
+
+    private boolean flyToRallyOrReleaseFromEdge() {
+        if (rallyPoint != null) {
+            if (unit.getDistance(rallyPoint) >= RALLY_ARRIVAL_DISTANCE) {
+                setUnready(4);
+                unit.move(rallyPoint);
+            }
+            return false;
+        }
+        return releaseFromEdge();
     }
 
     private boolean releaseFromEdge() {

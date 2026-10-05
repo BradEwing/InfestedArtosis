@@ -39,6 +39,13 @@ public final class AirHarassScouting {
     /** Tuning value: frames the anti-air that ended a harass stays accepted by the next one, twice the re-entry hold. */
     static final int CARRY_FRAMES = 2 * AirHarassEvaluator.REENTRY_HOLD_FRAMES;
 
+    /**
+     * Tuning value: frames after a flock-side exit within which a second one from the same base escalates the hold,
+     * the hold itself plus the carry window, since a re-entry after the hold meets the next unit of the defense
+     * within about the carry window.
+     */
+    static final int ESCALATION_FRAMES = AirHarassEvaluator.REENTRY_HOLD_FRAMES + CARRY_FRAMES;
+
     private AirHarassScouting() {
     }
 
@@ -100,7 +107,7 @@ public final class AirHarassScouting {
 
     /**
      * How long a harass that ends holds its target base out of the entry, see {@link #holdFrames}, escalated: a
-     * second flock-side exit on newly seen anti-air from the same base within {@link #CARRY_FRAMES} of the first
+     * second flock-side exit on newly seen anti-air from the same base within {@link #ESCALATION_FRAMES} of the first
      * means the re-entry met the next unit of the same defense, and holds the base for the full
      * {@link #DEFENDED_REFUSAL_FRAMES}.
      *
@@ -113,7 +120,7 @@ public final class AirHarassScouting {
     public static int holdFrames(AirHarassEvaluator.ExitReason reason, boolean atTarget, Integer lastFlockSideExit,
                                  int now) {
         int hold = holdFrames(reason, atTarget);
-        if (hold > 0 && !atTarget && lastFlockSideExit != null && now - lastFlockSideExit <= CARRY_FRAMES) {
+        if (hold > 0 && !atTarget && lastFlockSideExit != null && now - lastFlockSideExit <= ESCALATION_FRAMES) {
             return DEFENDED_REFUSAL_FRAMES;
         }
         return hold;

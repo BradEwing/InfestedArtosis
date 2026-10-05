@@ -58,14 +58,17 @@ public final class AirHarassTargeting {
 
     /**
      * Target tiers of a harass, lowest first. ISOLATED_AA is anti-air the flock kills quickly, or on an exposed
-     * target a Missile Turret it tolerates, see {@link #tier(Contact, Situation)}.
+     * target a Missile Turret it tolerates, see {@link #tier(Contact, Situation)}. EDGE_TURRET is a lone Missile Turret
+     * the flock takes on, see {@link #edgeTurrets}; it outranks Workers, since the damage budget that admits it holds
+     * only while the flock kills it.
      */
     public enum Tier {
         OTHER,
         PRODUCTION,
         SUPPLY,
         ISOLATED_AA,
-        WORKER
+        WORKER,
+        EDGE_TURRET
     }
 
     /**
@@ -356,18 +359,19 @@ public final class AirHarassTargeting {
 
     /**
      * The tier a contact is taken in on this frame: its {@link #tier(Contact, int)}, or ISOLATED_AA for a Missile
-     * Turret the situation takes, see {@link #turretTaken}, or a lone Turret it takes on, see {@link #edgeTurrets}.
+     * Turret the situation takes, see {@link #turretTaken}, or EDGE_TURRET for a lone Turret it takes on, see
+     * {@link #edgeTurrets}.
      *
      * @param contact the contact
      * @param situation the frame's shared view
      * @return the tier, or null
      */
     public static Tier tier(Contact contact, Situation situation) {
+        if (situation.getEdgeTurretIds().contains(contact.getId())) {
+            return Tier.EDGE_TURRET;
+        }
         Tier tier = tier(contact, situation.getFlockSize());
         if (tier == null && situation.isTurretsTaken() && turretTaken(contact, situation.getAvoided())) {
-            return Tier.ISOLATED_AA;
-        }
-        if (tier == null && situation.getEdgeTurretIds().contains(contact.getId())) {
             return Tier.ISOLATED_AA;
         }
         return tier;
@@ -406,7 +410,7 @@ public final class AirHarassTargeting {
      * Wurm bounce are not counted.
      *
      * @param turret the Missile Turret's threat
-     * @param flockSize healthy Mutalisks in the squad
+     * @param flockSize Mutalisks, injured or not in the squad
      * @return the hit points the turret deals, or positive infinity for an empty flock
      */
     public static double turretDamageBeforeKill(AirThreat turret, int flockSize) {
@@ -434,7 +438,7 @@ public final class AirHarassTargeting {
      * the cost is bounded and the Turret's own zone is all it covers.
      *
      * @param threats every known anti-air threat
-     * @param flockSize healthy Mutalisks in the squad
+     * @param flockSize Mutalisks, injured or not in the squad
      * @return the ids of the Turrets
      */
     public static Set<Integer> edgeTurrets(Collection<AirThreat> threats, int flockSize) {
@@ -557,7 +561,7 @@ public final class AirHarassTargeting {
     public static Decision choose(Muta muta, Situation situation, MutaMemory memory) {
         Contact target = bestTarget(muta, situation, memory.targetId);
         Tier tier = target == null ? null : tier(target, situation);
-        int ignoredId = tier == Tier.ISOLATED_AA ? target.getId() : NO_TARGET;
+        int ignoredId = tier == Tier.ISOLATED_AA || tier == Tier.EDGE_TURRET ? target.getId() : NO_TARGET;
         List<AirThreat> zones = without(situation.getAvoided(), ignoredId);
         Position route = situation.getFlockPoint() != null ? situation.getFlockPoint() : situation.getSeekPoint();
         Position goal = target != null ? target.getPosition() : route;
@@ -586,10 +590,26 @@ public final class AirHarassTargeting {
      * @return the radius in pixels
      */
     static int reachRadius(Tier tier, boolean current) {
-        if (tier == Tier.WORKER || tier == Tier.ISOLATED_AA) {
+        if (tier == Tier.WORKER || tier == Tier.ISOLATED_AA || tier == Tier.EDGE_TURRET) {
             return current ? OPPORTUNITY_LEAVE_RADIUS : OPPORTUNITY_RADIUS;
         }
         return LOCAL_TARGET_RADIUS;
+    }
+
+    /**
+     * Whether leaving one target for another is a switch to higher value rather than a swap between equals: a Worker
+     * taken over a target that is not one, or an edge Turret taken over anything else.
+     *
+     * @param left the type of the target left
+     * @param taken the type of the target taken
+     * @param takenIsEdgeTurret true when the target taken is an edge Turret, see {@link #edgeTurrets}
+     * @return true for such a switch
+     */
+    public static boolean isValueSwitch(UnitType left, UnitType taken, boolean takenIsEdgeTurret) {
+        if (takenIsEdgeTurret) {
+            return left != UnitType.Terran_Missile_Turret;
+        }
+        return Filter.isWorkerType(taken) && !Filter.isWorkerType(left);
     }
 
     /**

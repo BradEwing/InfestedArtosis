@@ -162,7 +162,7 @@ public class AirHarassController {
         double flockDefense = 0;
         if (cheapGatesPass) {
             View view = view(now);
-            view.price(flock.healthy);
+            view.price(flock.mutas);
             threats = view.priced;
             known = view.threats;
             edgeTurrets = view.edgeTurrets.size();
@@ -306,6 +306,7 @@ public class AirHarassController {
             state.target(entry.option.getBase(), entry.option.getStrikePoint(), now);
         }
         View view = view(now);
+        view.price(flock.mutas);
         state.acceptAntiAir(AirHarassScouting.inReach(view.threats, state.targetCenter(), squad.getCenter()), now,
                 flock.hitPoints);
         state.acceptIds(AirHarassScouting.carried(carriedAntiAir, now), now, flock.hitPoints);
@@ -324,7 +325,7 @@ public class AirHarassController {
                 .healthyMutas(flock.healthy)
                 .flockHitPoints(flock.hitPoints)
                 .tolerance(AirHarassEvaluator.tolerance(flock.healthy))
-                .airDefense(AirHarassTargeting.defenseAt(view.threats, state.getStrikePoint(),
+                .airDefense(AirHarassTargeting.defenseAt(view.priced, state.getStrikePoint(),
                         AirHarassEvaluator.STRIKE_RADIUS))
                 .aaSightingAge(entry.sightingAge)
                 .aaKnownCover(entry.knownCover)
@@ -377,7 +378,7 @@ public class AirHarassController {
         }
         View view = view(now);
         Flock flock = flock(squad);
-        view.price(flock.healthy);
+        view.price(flock.mutas);
         double tolerance = AirHarassEvaluator.tolerance(flock.healthy);
         if (reactsToAntiAir(squad, state, view, flock, tolerance, now)) {
             return AirHarassEvaluator.ExitReason.NEW_AA;
@@ -459,7 +460,7 @@ public class AirHarassController {
         }
         Flock flock = flock(squad);
         View view = view(now);
-        view.price(flock.healthy);
+        view.price(flock.mutas);
         List<AirHarassTargeting.AirThreat> threats = view.priced;
         HarassTelemetry.row(exitRow(squad.getId(), state, reason, now,
                 squad.size() == 0 ? null : squad.getCenter(), flock.hitPoints, threats)
@@ -884,13 +885,15 @@ public class AirHarassController {
 
     /**
      * Records a Mutalisk taking a new target: a UNIT_RETARGET row when it leaves a target that is still alive for
-     * another, carrying both, and an EDGE_TURRET row the first time the flock takes a lone Missile Turret on, see
-     * {@link AirHarassTargeting#edgeTurrets}.
+     * one of higher value, see {@link AirHarassTargeting#isValueSwitch}, carrying both, and an EDGE_TURRET row the
+     * first time the flock takes a lone Missile Turret on, see {@link AirHarassTargeting#edgeTurrets}.
      */
     private void recordTargetSwitch(Squad squad, AirHarassState state, View view, ManagedUnit member, Unit target,
                                     int now) {
         Unit previous = member.fightTarget;
-        if (previous != null && previous != target && previous.exists()) {
+        if (previous != null && previous != target && previous.exists()
+                && AirHarassTargeting.isValueSwitch(previous.getType(), target.getType(),
+                        view.edgeTurrets.contains(target.getID()))) {
             HarassTelemetry.row(row(squad, state, HarassRow.Event.UNIT_RETARGET, now)
                     .center(member.getPosition())
                     .retargetOldId(previous.getID())
@@ -1049,12 +1052,12 @@ public class AirHarassController {
         private Set<Integer> edgeTurrets = Collections.emptySet();
 
         /**
-         * Prices the threats for a flock of this many healthy Mutalisks: the lone Turrets it takes on, see
-         * {@link AirHarassTargeting#edgeTurrets}, are left out of {@link #priced}, the anti-air every entry, exit and
-         * movement decision reads.
+         * Prices the threats for a flock of this many Mutalisks, injured or not, since an injured one shoots as
+         * hard: the lone Turrets it takes on, see {@link AirHarassTargeting#edgeTurrets}, are left out of {@link #priced},
+         * the anti-air every entry, exit and movement decision reads.
          */
-        private void price(int healthyMutas) {
-            edgeTurrets = AirHarassTargeting.edgeTurrets(threats, healthyMutas);
+        private void price(int mutas) {
+            edgeTurrets = AirHarassTargeting.edgeTurrets(threats, mutas);
             priced = AirHarassTargeting.priced(threats, edgeTurrets);
         }
 

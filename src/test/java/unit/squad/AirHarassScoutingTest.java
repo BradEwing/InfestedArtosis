@@ -258,15 +258,32 @@ class AirHarassScoutingTest {
     }
 
     @Test
+    void threeFlockSideExitsEscalateOnTheSecondAndStartAgainOnTheThird() {
+        AirHarassEvaluator.ExitReason newAa = AirHarassEvaluator.ExitReason.NEW_AA;
+        Map<String, Integer> lastFlockSideExit = new HashMap<>();
+        int[] frames = {NOW, NOW + 600, NOW + 1200};
+        int[] holds = new int[3];
+
+        for (int i = 0; i < 3; i++) {
+            holds[i] = AirHarassScouting.holdFrames(newAa, false, lastFlockSideExit.get("main"), frames[i]);
+            AirHarassScouting.noteFlockSideExit(lastFlockSideExit, "main", newAa, false, holds[i], frames[i]);
+        }
+
+        assertEquals(AirHarassEvaluator.REENTRY_HOLD_FRAMES, holds[0]);
+        assertEquals(AirHarassScouting.DEFENDED_REFUSAL_FRAMES, holds[1]);
+        assertEquals(AirHarassEvaluator.REENTRY_HOLD_FRAMES, holds[2]);
+    }
+
+    @Test
     void aFlockSideExitAfterTheCarryWindowStartsTheEscalationAgain() {
         AirHarassEvaluator.ExitReason newAa = AirHarassEvaluator.ExitReason.NEW_AA;
         Map<String, Integer> lastFlockSideExit = new HashMap<>();
         lastFlockSideExit.put("main", NOW);
 
         int late = AirHarassScouting.holdFrames(newAa, false, lastFlockSideExit.get("main"),
-                NOW + AirHarassScouting.CARRY_FRAMES + 1);
+                NOW + AirHarassScouting.ESCALATION_FRAMES + 1);
         int onTime = AirHarassScouting.holdFrames(newAa, false, lastFlockSideExit.get("main"),
-                NOW + AirHarassScouting.CARRY_FRAMES);
+                NOW + AirHarassScouting.ESCALATION_FRAMES);
 
         assertEquals(AirHarassEvaluator.REENTRY_HOLD_FRAMES, late);
         assertEquals(AirHarassScouting.DEFENDED_REFUSAL_FRAMES, onTime);

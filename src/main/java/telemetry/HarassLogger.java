@@ -43,7 +43,8 @@ import java.util.Map;
  * <p>edge_turrets is how many lone Missile Turrets the flock takes on instead of pricing them as a defense, see
  * AirHarassTargeting.edgeTurrets, on ENTRY_CHECK and TICK rows. An EDGE_TURRET row is written the first time a
  * Mutalisk of the harass attacks such a Turret, with its unit id in edge_turret_id. A UNIT_RETARGET row is written
- * when a Mutalisk leaves a target that is still alive for another: retarget_old_id and retarget_old_type name the
+ * when a Mutalisk leaves a target that is still alive for one of higher value, a Worker over a non-Worker or an edge
+ * Turret over anything else: retarget_old_id and retarget_old_type name the
  * target it left, retarget_new_id and retarget_new_type the one it took.
  *
  * <p>stalled is 1 when the squad's FIGHT and RETREAT crossings read as a stall, see AirStallDetector, and 0 when they

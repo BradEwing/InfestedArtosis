@@ -15,7 +15,7 @@ public final class MapEdge {
     /** Tuning value: pixels a flee or retreat point keeps from every map edge. */
     public static final int INSET = 96;
     /** Tuning value: pixels from an edge within which a flyer counts as parked at it. */
-    public static final int BAND = 96;
+    public static final int BAND = 128;
     /** Tuning value: pixels from the edge a flyer released from the edge band is sent to. */
     public static final int RELEASE_DEPTH = 192;
     /** Tuning value: share of a flight that must survive the edge, else it slides along the edge instead. */

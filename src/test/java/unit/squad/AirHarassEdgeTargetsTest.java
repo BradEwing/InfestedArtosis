@@ -115,7 +115,7 @@ class AirHarassEdgeTargetsTest {
         AirHarassTargeting.Contact turret = contact(7, UnitType.Terran_Missile_Turret, east(100));
 
         assertNull(AirHarassTargeting.tier(turret, situation(6).build()));
-        assertEquals(Tier.ISOLATED_AA, AirHarassTargeting.tier(turret,
+        assertEquals(Tier.EDGE_TURRET, AirHarassTargeting.tier(turret,
                 situation(6).edgeTurretIds(Collections.singleton(7)).build()));
         assertNull(AirHarassTargeting.tier(turret, situation(6).edgeTurretIds(Collections.singleton(8)).build()));
     }
@@ -133,7 +133,42 @@ class AirHarassEdgeTargetsTest {
 
         assertEquals(Kind.ATTACK, decision.getKind());
         assertEquals(7, decision.getTargetId());
-        assertEquals(Tier.ISOLATED_AA, decision.getTier());
+        assertEquals(Tier.EDGE_TURRET, decision.getTier());
+    }
+
+    @Test
+    void anEdgeTurretOutranksAWorkerInTheTargetArea() {
+        AirHarassTargeting.Contact worker = contact(1, UnitType.Terran_SCV, east(40));
+        AirHarassTargeting.Contact turret = contact(7, UnitType.Terran_Missile_Turret, east(200));
+        AirHarassTargeting.Situation situation = situation(6)
+                .contacts(Arrays.asList(worker, turret))
+                .edgeTurretIds(Collections.singleton(7))
+                .build();
+
+        assertEquals(7, AirHarassTargeting.bestTarget(muta(), situation, -1).getId());
+        assertEquals(7, AirHarassTargeting.bestTarget(muta(), situation, 1).getId());
+        assertEquals(1, AirHarassTargeting.bestTarget(muta(), situation(6)
+                .contacts(Arrays.asList(worker, turret)).build(), -1).getId());
+    }
+
+    @Test
+    void aWorkerStepsInOnlyAsTheEdgeTurretDies() {
+        AirHarassTargeting.Contact worker = contact(1, UnitType.Terran_SCV, east(40));
+
+        assertEquals(1, AirHarassTargeting.bestTarget(muta(), situation(6)
+                .contacts(Collections.singletonList(worker)).edgeTurretIds(Collections.singleton(7)).build(),
+                7).getId());
+    }
+
+    @Test
+    void aSwitchToAWorkerOrAnEdgeTurretIsAValueSwitchAndASwapBetweenEqualsIsNot() {
+        assertTrue(AirHarassTargeting.isValueSwitch(UnitType.Terran_Barracks, UnitType.Terran_SCV, false));
+        assertTrue(AirHarassTargeting.isValueSwitch(UnitType.Terran_SCV, UnitType.Terran_Missile_Turret, true));
+        assertTrue(AirHarassTargeting.isValueSwitch(UnitType.Terran_Barracks, UnitType.Terran_Missile_Turret, true));
+        assertEquals(false, AirHarassTargeting.isValueSwitch(UnitType.Terran_SCV, UnitType.Terran_SCV, false));
+        assertEquals(false, AirHarassTargeting.isValueSwitch(UnitType.Terran_SCV, UnitType.Terran_Barracks, false));
+        assertEquals(false, AirHarassTargeting.isValueSwitch(UnitType.Terran_Missile_Turret,
+                UnitType.Terran_Missile_Turret, true));
     }
 
     @Test
@@ -215,7 +250,7 @@ class AirHarassEdgeTargetsTest {
     void theReachRadiusIsWiderForWorkersAndIsolatedAntiAirAndWidestOnceTheyAreTheTarget() {
         assertEquals(AirHarassTargeting.OPPORTUNITY_RADIUS, AirHarassTargeting.reachRadius(Tier.WORKER, false));
         assertEquals(AirHarassTargeting.OPPORTUNITY_RADIUS,
-                AirHarassTargeting.reachRadius(Tier.ISOLATED_AA, false));
+                AirHarassTargeting.reachRadius(Tier.EDGE_TURRET, false));
         assertEquals(AirHarassTargeting.OPPORTUNITY_LEAVE_RADIUS, AirHarassTargeting.reachRadius(Tier.WORKER, true));
         assertEquals(AirHarassTargeting.LOCAL_TARGET_RADIUS, AirHarassTargeting.reachRadius(Tier.SUPPLY, false));
         assertEquals(AirHarassTargeting.LOCAL_TARGET_RADIUS, AirHarassTargeting.reachRadius(Tier.PRODUCTION, true));
