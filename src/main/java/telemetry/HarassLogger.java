@@ -40,6 +40,12 @@ import java.util.Map;
  * sighting ended the harass, and aa_at_target is 1 when it stood within the zone of the target base and 0 when it
  * stood only at the flock.
  *
+ * <p>edge_turrets is how many lone Missile Turrets the flock takes on instead of pricing them as a defense, see
+ * AirHarassTargeting.edgeTurrets, on ENTRY_CHECK and TICK rows. An EDGE_TURRET row is written the first time a
+ * Mutalisk of the harass attacks such a Turret, with its unit id in edge_turret_id. A UNIT_RETARGET row is written
+ * when a Mutalisk leaves a target that is still alive for another: retarget_old_id and retarget_old_type name the
+ * target it left, retarget_new_id and retarget_new_type the one it took.
+ *
  * <p>stalled is 1 when the squad's FIGHT and RETREAT crossings read as a stall, see AirStallDetector, and 0 when they
  * do not, on ENTRY_CHECK and ENTER rows; it is -1 while the IA_AIR_FLAP_ESCAPE switch is off, which leaves the stall
  * detector unread. exposed_score is the best exposed
@@ -57,7 +63,8 @@ public class HarassLogger implements HarassSink {
             + "avoided_zones,workers_killed,buildings_killed,other_killed,mutas_lost,killed_type,contain_distance,"
             + "bases_under_attack,target_kind,flock_defense,aa_sighting_age,prober_hp,prober_peak_hp,prober_id,"
             + "aa_known_cover,stalled,exposed_score,base_score,aa_seen_frame,aa_turn_frame,aa_hp_lost,"
-            + "aa_trigger_type,aa_trigger_id,aa_at_target";
+            + "aa_trigger_type,aa_trigger_id,aa_at_target,edge_turrets,edge_turret_id,retarget_old_id,"
+            + "retarget_old_type,retarget_new_id,retarget_new_type";
 
     private static final int FLUSH_INTERVAL_FRAMES = 480;
     private static final int NOT_EVALUATED = -1;
@@ -188,6 +195,12 @@ public class HarassLogger implements HarassSink {
         fields.add(Csv.name(row.getAaTriggerType()));
         fields.add(String.valueOf(row.getAaTriggerId()));
         fields.add(String.valueOf(row.getAaAtTarget()));
+        fields.add(String.valueOf(row.getEdgeTurrets()));
+        fields.add(String.valueOf(row.getEdgeTurretId()));
+        fields.add(String.valueOf(row.getRetargetOldId()));
+        fields.add(Csv.name(row.getRetargetOldType()));
+        fields.add(String.valueOf(row.getRetargetNewId()));
+        fields.add(Csv.name(row.getRetargetNewType()));
         return String.join(",", fields);
     }
 

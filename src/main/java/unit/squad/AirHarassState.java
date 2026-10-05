@@ -46,6 +46,7 @@ public class AirHarassState {
     private int startHitPoints;
     private final Set<Base> visitedBases = new HashSet<>();
     private final Map<Integer, AirHarassTargeting.MutaMemory> mutaMemory = new HashMap<>();
+    private final Set<Integer> engagedEdgeTurrets = new HashSet<>();
 
     private Phase phase = Phase.TRANSIT;
     private Base targetBase;
@@ -256,6 +257,23 @@ public class AirHarassState {
      */
     public AirHarassTargeting.MutaMemory memoryFor(int unitId) {
         return mutaMemory.computeIfAbsent(unitId, id -> new AirHarassTargeting.MutaMemory());
+    }
+
+    /**
+     * Records that a Mutalisk of the flock took a lone Missile Turret on, see {@link AirHarassTargeting#edgeTurrets}.
+     *
+     * @param turretId the Turret's unit id
+     * @return true the first time this harass takes that Turret on
+     */
+    public boolean engageEdgeTurret(int turretId) {
+        return engagedEdgeTurrets.add(turretId);
+    }
+
+    /**
+     * @return how many lone Missile Turrets the flock has taken on in this harass
+     */
+    public int edgeTurretsEngaged() {
+        return engagedEdgeTurrets.size();
     }
 
     /**

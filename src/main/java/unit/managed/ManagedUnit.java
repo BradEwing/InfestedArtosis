@@ -16,6 +16,7 @@ import macro.plan.Plan;
 import macro.plan.PlanState;
 import telemetry.PlanEvents;
 import util.Filter;
+import util.MapEdge;
 import util.MeleeOverflowGate;
 import util.Vec2;
 
@@ -79,6 +80,8 @@ public class ManagedUnit {
     private Position lastRetreatPosition;
     private int framesStuck = 0;
     private int retreatStartFrame = 0;
+    @Getter
+    private int edgeReleases;
 
     @Setter @Getter
     protected Unit defendTarget;
@@ -326,6 +329,8 @@ public class ManagedUnit {
 
         if (unit.isFlying()) {
             away = applyBorderRepulsion(away, currentX, currentY);
+            return MapEdge.flee(currentPos, away.x, away.y, retreatFleeDistance(), game.mapWidth() * 32,
+                    game.mapHeight() * 32);
         }
 
         Position retreatPos = away.normalizeToLength(retreatFleeDistance()).clampToMap(game, currentPos);
@@ -1133,12 +1138,33 @@ public class ManagedUnit {
         unit.move(retreatTarget);
     }
 
+    /**
+     * Ends a retreat that has no target. A flyer parked in the map edge band, see {@link MapEdge#inBand}, is sent in
+     * from the edge instead of being handed to the rally role, which a retreating squad resets every frame, so the
+     * order is never issued and the flyer stays against the edge.
+     */
     private void fallbackToRally() {
+        if (unit.isFlying() && releaseFromEdge()) {
+            return;
+        }
         if (rallyPoint != null) {
             role = UnitRole.RALLY;
         } else {
             role = UnitRole.IDLE;
         }
+    }
+
+    private boolean releaseFromEdge() {
+        int mapWidth = game.mapWidth() * 32;
+        int mapHeight = game.mapHeight() * 32;
+        Position current = unit.getPosition();
+        if (!MapEdge.inBand(current, mapWidth, mapHeight)) {
+            return false;
+        }
+        edgeReleases++;
+        setUnready(4);
+        unit.move(MapEdge.release(current, mapWidth, mapHeight));
+        return true;
     }
 
     /**

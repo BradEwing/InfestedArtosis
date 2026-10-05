@@ -28,7 +28,9 @@ public final class HarassRow {
         KILL,
         MUTA_LOST,
         EXIT,
-        AA_REACTION
+        AA_REACTION,
+        UNIT_RETARGET,
+        EDGE_TURRET
     }
 
     private final int frame;
@@ -91,6 +93,16 @@ public final class HarassRow {
     private final int aaTriggerId = -1;
     @Builder.Default
     private final int aaAtTarget = -1;
+    @Builder.Default
+    private final int edgeTurrets = -1;
+    @Builder.Default
+    private final int edgeTurretId = -1;
+    @Builder.Default
+    private final int retargetOldId = -1;
+    private final UnitType retargetOldType;
+    @Builder.Default
+    private final int retargetNewId = -1;
+    private final UnitType retargetNewType;
 
     /**
      * What a harass targets: a known enemy base, or an exposed group of enemies away from a base's heat.

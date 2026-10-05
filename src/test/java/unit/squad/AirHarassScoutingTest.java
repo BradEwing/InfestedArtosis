@@ -244,6 +244,64 @@ class AirHarassScoutingTest {
     }
 
     @Test
+    void aSecondFlockSideExitFromTheSameBaseWithinTheCarryWindowHoldsItForTheFullRefusal() {
+        AirHarassEvaluator.ExitReason newAa = AirHarassEvaluator.ExitReason.NEW_AA;
+        Map<String, Integer> lastFlockSideExit = new HashMap<>();
+
+        int first = AirHarassScouting.holdFrames(newAa, false, lastFlockSideExit.get("main"), NOW);
+        AirHarassScouting.noteFlockSideExit(lastFlockSideExit, "main", newAa, false, first, NOW);
+        int second = AirHarassScouting.holdFrames(newAa, false, lastFlockSideExit.get("main"),
+                NOW + AirHarassEvaluator.REENTRY_HOLD_FRAMES + 120);
+
+        assertEquals(AirHarassEvaluator.REENTRY_HOLD_FRAMES, first);
+        assertEquals(AirHarassScouting.DEFENDED_REFUSAL_FRAMES, second);
+    }
+
+    @Test
+    void aFlockSideExitAfterTheCarryWindowStartsTheEscalationAgain() {
+        AirHarassEvaluator.ExitReason newAa = AirHarassEvaluator.ExitReason.NEW_AA;
+        Map<String, Integer> lastFlockSideExit = new HashMap<>();
+        lastFlockSideExit.put("main", NOW);
+
+        int late = AirHarassScouting.holdFrames(newAa, false, lastFlockSideExit.get("main"),
+                NOW + AirHarassScouting.CARRY_FRAMES + 1);
+        int onTime = AirHarassScouting.holdFrames(newAa, false, lastFlockSideExit.get("main"),
+                NOW + AirHarassScouting.CARRY_FRAMES);
+
+        assertEquals(AirHarassEvaluator.REENTRY_HOLD_FRAMES, late);
+        assertEquals(AirHarassScouting.DEFENDED_REFUSAL_FRAMES, onTime);
+    }
+
+    @Test
+    void anEscalatedHoldForgetsTheEarlierExitAndAnotherBaseIsNotEscalated() {
+        AirHarassEvaluator.ExitReason newAa = AirHarassEvaluator.ExitReason.NEW_AA;
+        Map<String, Integer> lastFlockSideExit = new HashMap<>();
+        lastFlockSideExit.put("main", NOW);
+
+        AirHarassScouting.noteFlockSideExit(lastFlockSideExit, "main", newAa, false,
+                AirHarassScouting.DEFENDED_REFUSAL_FRAMES, NOW + 600);
+
+        assertFalse(lastFlockSideExit.containsKey("main"));
+        assertEquals(AirHarassEvaluator.REENTRY_HOLD_FRAMES,
+                AirHarassScouting.holdFrames(newAa, false, lastFlockSideExit.get("natural"), NOW + 600));
+    }
+
+    @Test
+    void anExitAtTheTargetOrForAnotherReasonIsNotRecordedAsAFlockSideExit() {
+        Map<String, Integer> lastFlockSideExit = new HashMap<>();
+
+        AirHarassScouting.noteFlockSideExit(lastFlockSideExit, "main", AirHarassEvaluator.ExitReason.NEW_AA, true,
+                AirHarassScouting.DEFENDED_REFUSAL_FRAMES, NOW);
+        AirHarassScouting.noteFlockSideExit(lastFlockSideExit, "main", AirHarassEvaluator.ExitReason.NO_TARGET, false,
+                0, NOW);
+
+        assertTrue(lastFlockSideExit.isEmpty());
+        assertEquals(AirHarassScouting.DEFENDED_REFUSAL_FRAMES,
+                AirHarassScouting.holdFrames(AirHarassEvaluator.ExitReason.NEW_AA, true, NOW, NOW + 10));
+        assertEquals(0, AirHarassScouting.holdFrames(AirHarassEvaluator.ExitReason.NO_TARGET, false, NOW, NOW + 10));
+    }
+
+    @Test
     void aFlockThatLeftOnFlockSideAntiAirDoesNotReenterTheSameBaseWithinTheHold() {
         Map<String, Integer> refusedUntil = new HashMap<>();
         refusedUntil.put("main", NOW + AirHarassScouting.holdFrames(AirHarassEvaluator.ExitReason.NEW_AA, false));

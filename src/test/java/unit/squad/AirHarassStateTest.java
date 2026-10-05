@@ -61,4 +61,14 @@ class AirHarassStateTest {
         assertEquals(start, state.getStrikePoint());
         assertTrue(state.targetsExposed());
     }
+
+    @Test
+    void anEdgeTurretIsCountedOnceNoMatterHowManyMutasTakeItOn() {
+        AirHarassState state = new AirHarassState(100, 600);
+
+        assertTrue(state.engageEdgeTurret(7));
+        assertFalse(state.engageEdgeTurret(7));
+        assertTrue(state.engageEdgeTurret(8));
+        assertEquals(2, state.edgeTurretsEngaged());
+    }
 }

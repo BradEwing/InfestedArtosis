@@ -202,6 +202,55 @@ class HarassLoggerTest {
     }
 
     @Test
+    void theEdgeTurretAndRetargetColumnsFollowTheReactionColumnsAndStartAtMinusOne() {
+        HarassRow tick = HarassRow.builder().frame(100).squadId("squad-1").event(HarassRow.Event.TICK).build();
+
+        String[] fields = HarassLogger.row("game-1", tick).split(",", -1);
+
+        assertColumnsInOrder("aa_trigger_id", "aa_at_target", "edge_turrets", "edge_turret_id", "retarget_old_id",
+                "retarget_old_type", "retarget_new_id", "retarget_new_type");
+        assertEquals(HarassLogger.HEADER.split(",", -1).length, fields.length);
+        assertEquals("-1", fields[columnIndex("edge_turrets")]);
+        assertEquals("-1", fields[columnIndex("edge_turret_id")]);
+        assertEquals("-1", fields[columnIndex("retarget_old_id")]);
+        assertEquals("NONE", fields[columnIndex("retarget_old_type")]);
+        assertEquals("-1", fields[columnIndex("retarget_new_id")]);
+        assertEquals("NONE", fields[columnIndex("retarget_new_type")]);
+    }
+
+    @Test
+    void aUnitRetargetRowNamesTheTargetLeftAndTheTargetTaken() {
+        HarassRow retarget = HarassRow.builder()
+                .frame(11100)
+                .squadId("squad-1")
+                .event(HarassRow.Event.UNIT_RETARGET)
+                .retargetOldId(41)
+                .retargetOldType(UnitType.Terran_Barracks)
+                .retargetNewId(52)
+                .retargetNewType(UnitType.Terran_SCV)
+                .build();
+        HarassRow turret = HarassRow.builder()
+                .frame(11120)
+                .squadId("squad-1")
+                .event(HarassRow.Event.EDGE_TURRET)
+                .edgeTurrets(1)
+                .edgeTurretId(77)
+                .build();
+
+        String[] retargetFields = HarassLogger.row("game-1", retarget).split(",", -1);
+        String[] turretFields = HarassLogger.row("game-1", turret).split(",", -1);
+
+        assertEquals("UNIT_RETARGET", retargetFields[columnIndex("event")]);
+        assertEquals("41", retargetFields[columnIndex("retarget_old_id")]);
+        assertEquals("Terran_Barracks", retargetFields[columnIndex("retarget_old_type")]);
+        assertEquals("52", retargetFields[columnIndex("retarget_new_id")]);
+        assertEquals("Terran_SCV", retargetFields[columnIndex("retarget_new_type")]);
+        assertEquals("EDGE_TURRET", turretFields[columnIndex("event")]);
+        assertEquals("1", turretFields[columnIndex("edge_turrets")]);
+        assertEquals("77", turretFields[columnIndex("edge_turret_id")]);
+    }
+
+    @Test
     void aRepeatedEntryVerdictIsWrittenAgainWhenTheStalledCellChanges(@TempDir Path directory)
             throws IOException {
         Path file = directory.resolve(HarassLogger.FILE);

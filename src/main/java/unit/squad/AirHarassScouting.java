@@ -99,6 +99,52 @@ public final class AirHarassScouting {
     }
 
     /**
+     * How long a harass that ends holds its target base out of the entry, see {@link #holdFrames}, escalated: a
+     * second flock-side exit on newly seen anti-air from the same base within {@link #CARRY_FRAMES} of the first
+     * means the re-entry met the next unit of the same defense, and holds the base for the full
+     * {@link #DEFENDED_REFUSAL_FRAMES}.
+     *
+     * @param reason why the harass ended
+     * @param atTarget whether the anti-air that ended it stood within {@link #NEW_AA_ZONE} of the target base
+     * @param lastFlockSideExit frame of the previous flock-side NEW_AA exit from this base, or null for none
+     * @param now current frame
+     * @return frames the target base is held out of the entry, or 0 for none
+     */
+    public static int holdFrames(AirHarassEvaluator.ExitReason reason, boolean atTarget, Integer lastFlockSideExit,
+                                 int now) {
+        int hold = holdFrames(reason, atTarget);
+        if (hold > 0 && !atTarget && lastFlockSideExit != null && now - lastFlockSideExit <= CARRY_FRAMES) {
+            return DEFENDED_REFUSAL_FRAMES;
+        }
+        return hold;
+    }
+
+    /**
+     * Records a flock-side NEW_AA exit from a base, and forgets the base's earlier one once it has escalated the hold,
+     * see {@link #holdFrames(AirHarassEvaluator.ExitReason, boolean, Integer, int)}, so the next exit starts afresh.
+     *
+     * @param lastFlockSideExit frame of the latest flock-side NEW_AA exit from each base
+     * @param base the base the harass left
+     * @param reason why the harass ended
+     * @param atTarget whether the anti-air that ended it stood within {@link #NEW_AA_ZONE} of the target base
+     * @param hold frames the exit holds the base for, as {@link #holdFrames} gave
+     * @param now current frame
+     * @param <B> base type
+     */
+    public static <B> void noteFlockSideExit(Map<B, Integer> lastFlockSideExit, B base,
+                                             AirHarassEvaluator.ExitReason reason, boolean atTarget, int hold,
+                                             int now) {
+        if (!refusesBase(reason) || atTarget) {
+            return;
+        }
+        if (hold >= DEFENDED_REFUSAL_FRAMES) {
+            lastFlockSideExit.remove(base);
+        } else {
+            lastFlockSideExit.put(base, now);
+        }
+    }
+
+    /**
      * The ids of the anti-air that ended an earlier harass, whether or not the unit is still in sight: accepted by
      * the next harass, so it judges them on its decision tick instead of turning on them as if they were new. Ids
      * carried longer than {@link #CARRY_FRAMES} ago are dropped.

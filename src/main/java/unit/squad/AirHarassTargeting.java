@@ -13,7 +13,9 @@ import util.StaticDefenseZone;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.function.Predicate;
 import java.util.function.ToIntFunction;
 
@@ -41,6 +43,8 @@ public final class AirHarassTargeting {
     static final int COVER_MARGIN = 16;
     static final int KILL_VOLLEYS = 2;
     static final int LOCAL_TARGET_RADIUS = 160;
+    static final int OPPORTUNITY_RADIUS = 288;
+    static final int OPPORTUNITY_LEAVE_RADIUS = 432;
     static final int EVADE_HYSTERESIS = 32;
     static final int EVADE_COMMIT_FRAMES = 12;
     static final double CURRENT_TARGET_BONUS = 1.2;
@@ -186,6 +190,8 @@ public final class AirHarassTargeting {
         private final Predicate<Position> pointAllowed = position -> true;
         private final int now;
         private final boolean turretsTaken;
+        @Builder.Default
+        private final Set<Integer> edgeTurretIds = Collections.emptySet();
     }
 
     /**
@@ -350,7 +356,7 @@ public final class AirHarassTargeting {
 
     /**
      * The tier a contact is taken in on this frame: its {@link #tier(Contact, int)}, or ISOLATED_AA for a Missile
-     * Turret the situation takes, see {@link #turretTaken}.
+     * Turret the situation takes, see {@link #turretTaken}, or a lone Turret it takes on, see {@link #edgeTurrets}.
      *
      * @param contact the contact
      * @param situation the frame's shared view
@@ -359,6 +365,9 @@ public final class AirHarassTargeting {
     public static Tier tier(Contact contact, Situation situation) {
         Tier tier = tier(contact, situation.getFlockSize());
         if (tier == null && situation.isTurretsTaken() && turretTaken(contact, situation.getAvoided())) {
+            return Tier.ISOLATED_AA;
+        }
+        if (tier == null && situation.getEdgeTurretIds().contains(contact.getId())) {
             return Tier.ISOLATED_AA;
         }
         return tier;
@@ -382,6 +391,92 @@ public final class AirHarassTargeting {
             }
         }
         return true;
+    }
+
+    /**
+     * Mutalisk hit points a lone Missile Turret's fire may cost before the flock kills it, as a share of one
+     * Mutalisk's maximum.
+     */
+    static final double EDGE_TURRET_DAMAGE_BUDGET = 1.5;
+
+    /**
+     * The hit points a lone Missile Turret's fire costs the flock before it dies: its damage per frame over the
+     * frames the flock spends under it, the approach from the turret's air range in to a Mutalisk's weapon range plus
+     * the time the flock's volleys need for the turret's hit points. Damage types, armor of the flock and the Glave
+     * Wurm bounce are not counted.
+     *
+     * @param turret the Missile Turret's threat
+     * @param flockSize healthy Mutalisks in the squad
+     * @return the hit points the turret deals, or positive infinity for an empty flock
+     */
+    public static double turretDamageBeforeKill(AirThreat turret, int flockSize) {
+        WeaponType glave = UnitType.Zerg_Mutalisk.groundWeapon();
+        WeaponType missile = turret.getType().airWeapon();
+        if (flockSize <= 0) {
+            return Double.POSITIVE_INFINITY;
+        }
+        if (missile == null || missile == WeaponType.None || missile.damageCooldown() == 0) {
+            return 0;
+        }
+        double perHit = Math.max(1, glave.damageAmount() - turret.getType().armor());
+        double flockPerFrame = flockSize * perHit * glave.damageFactor() / glave.damageCooldown();
+        double killFrames = turret.getType().maxHitPoints() / flockPerFrame;
+        double approach = Math.max(0, turret.getReach() - glave.maxRange()) / UnitType.Zerg_Mutalisk.topSpeed();
+        double turretPerFrame = (double) missile.damageAmount() * missile.damageFactor() / missile.damageCooldown();
+        return turretPerFrame * (approach + killFrames);
+    }
+
+    /**
+     * The ids of the Missile Turrets standing alone, with no other anti-air covering them within
+     * {@link AirHarassEvaluator#STRIKE_RADIUS}, that the flock kills for no more than
+     * {@link #EDGE_TURRET_DAMAGE_BUDGET} Mutalisks of hit points, see {@link #turretDamageBeforeKill}. The flock takes
+     * such a Turret on and does not price it as a defense, wherever it stands in the base or on the way to it, since
+     * the cost is bounded and the Turret's own zone is all it covers.
+     *
+     * @param threats every known anti-air threat
+     * @param flockSize healthy Mutalisks in the squad
+     * @return the ids of the Turrets
+     */
+    public static Set<Integer> edgeTurrets(Collection<AirThreat> threats, int flockSize) {
+        Set<Integer> ids = new HashSet<>();
+        double budget = EDGE_TURRET_DAMAGE_BUDGET * UnitType.Zerg_Mutalisk.maxHitPoints();
+        for (AirThreat turret : threats) {
+            if (turret.getType() == UnitType.Terran_Missile_Turret && isLone(turret, threats)
+                    && turretDamageBeforeKill(turret, flockSize) <= budget) {
+                ids.add(turret.getId());
+            }
+        }
+        return ids;
+    }
+
+    private static boolean isLone(AirThreat turret, Collection<AirThreat> threats) {
+        for (AirThreat other : threats) {
+            if (other.getId() != turret.getId()
+                    && other.covers(turret.getPosition(), AirHarassEvaluator.STRIKE_RADIUS)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * The threats the flock prices as a defense: every threat but the Turrets it takes on, see {@link #edgeTurrets}.
+     *
+     * @param threats every known anti-air threat
+     * @param edgeTurrets ids of the Turrets taken on
+     * @return the threats left, in their original order
+     */
+    public static List<AirThreat> priced(Collection<AirThreat> threats, Set<Integer> edgeTurrets) {
+        if (edgeTurrets.isEmpty()) {
+            return new ArrayList<>(threats);
+        }
+        List<AirThreat> kept = new ArrayList<>();
+        for (AirThreat threat : threats) {
+            if (!edgeTurrets.contains(threat.getId())) {
+                kept.add(threat);
+            }
+        }
+        return kept;
     }
 
     /**
@@ -481,7 +576,24 @@ public final class AirHarassTargeting {
     }
 
     /**
-     * The best target for a Mutalisk: among allowed contacts, and contacts within {@link #LOCAL_TARGET_RADIUS} of it,
+     * How far from a Mutalisk a contact outside the target area is still taken: {@link #OPPORTUNITY_RADIUS} for a
+     * Worker or isolated anti-air the flock kills quickly, which a Mutalisk on its way or striking elsewhere switches
+     * to instead of flying past, held out to {@link #OPPORTUNITY_LEAVE_RADIUS} once it is the Mutalisk's target so a
+     * target stepping away does not flip it back, and {@link #LOCAL_TARGET_RADIUS} for any other tier.
+     *
+     * @param tier the contact's tier
+     * @param current true when the contact is the Mutalisk's current target
+     * @return the radius in pixels
+     */
+    static int reachRadius(Tier tier, boolean current) {
+        if (tier == Tier.WORKER || tier == Tier.ISOLATED_AA) {
+            return current ? OPPORTUNITY_LEAVE_RADIUS : OPPORTUNITY_RADIUS;
+        }
+        return LOCAL_TARGET_RADIUS;
+    }
+
+    /**
+     * The best target for a Mutalisk: among allowed contacts, and contacts within {@link #reachRadius} of it,
      * that have a tier and no other avoided zone covers, the highest tier first, then the most injured and nearest,
      * with the current target favoured by {@link #CURRENT_TARGET_BONUS}.
      *
@@ -496,14 +608,16 @@ public final class AirHarassTargeting {
         double bestScore = -1;
         for (Contact contact : situation.getContacts()) {
             double distance = muta.getPosition().getDistance(contact.getPosition());
-            if (!situation.getTargetAllowed().test(contact.getPosition()) && distance > LOCAL_TARGET_RADIUS) {
-                continue;
-            }
             Tier tier = tier(contact, situation);
             if (tier == null || covered(contact, situation.getAvoided())) {
                 continue;
             }
-            double bonus = contact.getId() == currentTargetId ? CURRENT_TARGET_BONUS : 1.0;
+            boolean current = contact.getId() == currentTargetId;
+            if (!situation.getTargetAllowed().test(contact.getPosition())
+                    && distance > reachRadius(tier, current)) {
+                continue;
+            }
+            double bonus = current ? CURRENT_TARGET_BONUS : 1.0;
             double score = (1.0 + 0.5 * (1.0 - contact.getHpFraction())) * bonus / Math.max(distance, 1);
             if (bestTier == null || tier.ordinal() > bestTier.ordinal()
                     || tier == bestTier && score > bestScore) {

@@ -348,8 +348,9 @@ class AirHarassTargetingTest {
 
     @Test
     void aTargetFarFromTheBaseIsTakenOnlyWhenClose() {
-        AirHarassTargeting.Contact near = contact(1, UnitType.Terran_SCV, east(AirHarassTargeting.LOCAL_TARGET_RADIUS));
-        AirHarassTargeting.Contact far = contact(2, UnitType.Terran_SCV,
+        AirHarassTargeting.Contact near = contact(1, UnitType.Terran_Supply_Depot,
+                east(AirHarassTargeting.LOCAL_TARGET_RADIUS));
+        AirHarassTargeting.Contact far = contact(2, UnitType.Terran_Supply_Depot,
                 east(AirHarassTargeting.LOCAL_TARGET_RADIUS + 1));
 
         AirHarassTargeting.Decision nearDecision = AirHarassTargeting.choose(muta(), situation(9)
