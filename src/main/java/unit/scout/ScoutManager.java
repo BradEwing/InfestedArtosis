@@ -61,6 +61,7 @@ public class ScoutManager {
     private final List<DeathSite> deathSites = new ArrayList<>();
     private final Map<String, Integer> skipLoggedFrames = new HashMap<>();
     private final Map<Base, Integer> lastDispatchFrames = new HashMap<>();
+    private int[][] openDistances;
     private int[][] wallDistances;
     private int wallComputedFrame = -WALL_RECOMPUTE_FRAMES;
 
@@ -286,23 +287,38 @@ public class ScoutManager {
     /**
      * Whether known enemy buildings seal every ground route from our main to a base, so a zergling sent there
      * would meet the wall. Measured on tile steps with the grounded enemy buildings other than town halls
-     * blocked, and refreshed every {@link #WALL_RECOMPUTE_FRAMES} frames. A base reached only by air or with no
-     * wall known is not walled.
+     * blocked, and refreshed every {@link #WALL_RECOMPUTE_FRAMES} frames. A base the ground walk reaches with no
+     * buildings blocked, and not with them, is walled; one terrain alone cuts off, or with no wall known, is not.
      *
      * @param base the base a ground check would go to
      * @return true when no ground route reaches the base
      */
     public boolean isWalledOff(Base base) {
+        refreshWallDistances();
+        TilePosition source = gameState.getBaseData().mainBasePosition();
+        return BaseReachability.isWalledOff(openDistances, wallDistances, source, base.getLocation());
+    }
+
+    private void refreshWallDistances() {
         int now = game.getFrameCount();
-        if (wallDistances == null || now - wallComputedFrame >= WALL_RECOMPUTE_FRAMES) {
-            List<TileFootprint> footprints = gameState.getObservedUnitTracker()
-                    .getGroundedFootprints(type -> type.isBuilding() && !type.isResourceDepot(), new Time(now));
-            wallDistances = gameState.getGameMap().groundStepDistances(gameState.getBaseData().mainBasePosition(),
-                    BaseReachability.blockedTiles(footprints)::contains);
-            wallComputedFrame = now;
+        if (wallDistances != null && now - wallComputedFrame < WALL_RECOMPUTE_FRAMES) {
+            return;
         }
-        return BaseReachability.isWalledOff(wallDistances, gameState.getBaseData().mainBasePosition(),
-                base.getLocation());
+        TilePosition source = gameState.getBaseData().mainBasePosition();
+        if (openDistances == null) {
+            openDistances = gameState.getGameMap().groundStepDistances(source, tile -> false);
+        }
+        List<TileFootprint> footprints = gameState.getObservedUnitTracker()
+                .getGroundedFootprints(type -> type.isBuilding() && !type.isResourceDepot(), new Time(now));
+        wallDistances = gameState.getGameMap().groundStepDistances(source,
+                BaseReachability.blockedTiles(footprints)::contains);
+        wallComputedFrame = now;
+    }
+
+    private boolean isOnOurSideOfWall(ManagedUnit scout) {
+        refreshWallDistances();
+        return scout.getPosition() != null
+                && BaseReachability.reachesNear(wallDistances, scout.getPosition().toTilePosition());
     }
 
     /**
@@ -517,7 +533,7 @@ public class ScoutManager {
                 reason = BaseCheckScheduler.Release.THREAT;
             }
             if (reason == BaseCheckScheduler.Release.NONE && scout.getUnitType() != UnitType.Zerg_Overlord
-                    && isWalledOff(check.base)) {
+                    && isWalledOff(check.base) && isOnOurSideOfWall(scout)) {
                 reason = BaseCheckScheduler.Release.THREAT;
                 BaseChecks.skipped(now, check.base.getLocation(), BaseCheckSkip.WALLED, check.base.getCenter());
             }
@@ -810,8 +826,12 @@ public class ScoutManager {
                 currentScouts++;
             }
         }
-        return BaseCheckScheduler.searchLingsToSend(mustFindEnemyMain(), lastDispatchFrames.getOrDefault(enemyMain, -1),
+        return BaseCheckScheduler.searchLingsToSend(neverSeen(enemyMain), lastDispatchFrames.getOrDefault(enemyMain, -1),
                 currentFrame, Math.max(0, maxScouts - currentScouts));
+    }
+
+    private boolean neverSeen(Base enemyMain) {
+        return Config.baseChecks && gameState.getScoutData().getBaseLastSeenFrame(enemyMain.getLocation()) < 0;
     }
 
     private TilePosition pollDroneScoutTarget() {

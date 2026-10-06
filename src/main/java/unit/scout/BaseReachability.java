@@ -40,33 +40,50 @@ public final class BaseReachability {
     }
 
     /**
-     * A base is walled off when our own side is walkable and no tile within {@link #REACH_TILE_RADIUS} of the base
-     * is reached by the walk. A walk that never started, or a base at the map edge with no tile to read, is not a
-     * wall: nothing is known.
+     * A base is walled off when the walk with no buildings blocked reaches it and the walk with the known
+     * buildings blocked does not. A base the open walk cannot reach, an island or ground cut off by terrain, is
+     * not walled: no building is to blame. A walk that never started is not a wall either: nothing is known.
      *
-     * @param stepDistances tile step distances from our side, indexed [x][y], -1 for a tile not reached
-     * @param source the tile the walk started from
+     * @param openDistances tile step distances from our side with nothing blocked, indexed [x][y], -1 for a tile
+     *     not reached
+     * @param blockedDistances the same with the known enemy buildings blocked
+     * @param source the tile both walks started from
      * @param base the town hall location of the base
-     * @return true when the walk started and reaches nowhere near the base
+     * @return true when only the buildings keep the walk from the base
      */
-    public static boolean isWalledOff(int[][] stepDistances, TilePosition source, TilePosition base) {
-        if (!inRange(stepDistances, source) || stepDistances[source.getX()][source.getY()] != 0) {
+    public static boolean isWalledOff(int[][] openDistances, int[][] blockedDistances, TilePosition source,
+                                      TilePosition base) {
+        if (!walkStarted(openDistances, source) || !walkStarted(blockedDistances, source)) {
             return false;
         }
-        boolean anyTileRead = false;
-        for (int x = base.getX() - REACH_TILE_RADIUS; x <= base.getX() + REACH_TILE_RADIUS; x++) {
-            for (int y = base.getY() - REACH_TILE_RADIUS; y <= base.getY() + REACH_TILE_RADIUS; y++) {
-                TilePosition tile = new TilePosition(x, y);
-                if (!inRange(stepDistances, tile)) {
-                    continue;
-                }
-                anyTileRead = true;
-                if (stepDistances[x][y] >= 0) {
-                    return false;
+        return reachesNear(openDistances, base) && !reachesNearOrOffMap(blockedDistances, base);
+    }
+
+    /**
+     * Whether a unit standing on a tile is on ground the walk from our side reaches, as opposed to ground the
+     * buildings cut off from it.
+     *
+     * @param stepDistances tile step distances from our side, indexed [x][y], -1 for a tile not reached
+     * @param tile the unit's tile
+     * @return true when the tile or a neighbour within {@link #REACH_TILE_RADIUS} is reached
+     */
+    public static boolean reachesNear(int[][] stepDistances, TilePosition tile) {
+        for (int x = tile.getX() - REACH_TILE_RADIUS; x <= tile.getX() + REACH_TILE_RADIUS; x++) {
+            for (int y = tile.getY() - REACH_TILE_RADIUS; y <= tile.getY() + REACH_TILE_RADIUS; y++) {
+                if (inRange(stepDistances, new TilePosition(x, y)) && stepDistances[x][y] >= 0) {
+                    return true;
                 }
             }
         }
-        return anyTileRead;
+        return false;
+    }
+
+    private static boolean reachesNearOrOffMap(int[][] stepDistances, TilePosition tile) {
+        return reachesNear(stepDistances, tile) || !inRange(stepDistances, tile);
+    }
+
+    private static boolean walkStarted(int[][] stepDistances, TilePosition source) {
+        return inRange(stepDistances, source) && stepDistances[source.getX()][source.getY()] == 0;
     }
 
     private static boolean inRange(int[][] stepDistances, TilePosition tile) {

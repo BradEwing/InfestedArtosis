@@ -38,7 +38,7 @@ class BaseReachabilityTest {
 
         int[][] distances = map.groundStepDistances(SOURCE, tile -> false);
 
-        assertFalse(BaseReachability.isWalledOff(distances, SOURCE, BASE));
+        assertFalse(BaseReachability.isWalledOff(distances, distances, SOURCE, BASE));
     }
 
     @Test
@@ -51,7 +51,7 @@ class BaseReachabilityTest {
 
         int[][] distances = map.groundStepDistances(SOURCE, blocked::contains);
 
-        assertTrue(BaseReachability.isWalledOff(distances, SOURCE, BASE));
+        assertTrue(BaseReachability.isWalledOff(open(map), distances, SOURCE, BASE));
     }
 
     @Test
@@ -62,7 +62,7 @@ class BaseReachabilityTest {
 
         int[][] distances = map.groundStepDistances(SOURCE, blocked::contains);
 
-        assertFalse(BaseReachability.isWalledOff(distances, SOURCE, BASE));
+        assertFalse(BaseReachability.isWalledOff(open(map), distances, SOURCE, BASE));
     }
 
     @Test
@@ -72,7 +72,18 @@ class BaseReachabilityTest {
 
         int[][] distances = map.groundStepDistances(inRock, tile -> false);
 
-        assertFalse(BaseReachability.isWalledOff(distances, inRock, BASE));
+        assertFalse(BaseReachability.isWalledOff(distances, distances, inRock, BASE));
+    }
+
+    @Test
+    void aBaseTerrainAloneCutsOffIsNotWalled() {
+        GameMap map = gapMap();
+        Set<TilePosition> blocked = BaseReachability.blockedTiles(Collections.singletonList(
+                footprint(UnitType.Terran_Supply_Depot, 10, 12)));
+        int[][] open = map.groundStepDistances(SOURCE, tile -> tile.getX() == 10);
+        int[][] withBuildings = map.groundStepDistances(SOURCE, blocked::contains);
+
+        assertFalse(BaseReachability.isWalledOff(open, withBuildings, SOURCE, BASE));
     }
 
     @Test
@@ -83,20 +94,23 @@ class BaseReachabilityTest {
         }
         distances[0][0] = 0;
 
-        assertFalse(BaseReachability.isWalledOff(distances, new TilePosition(0, 0), new TilePosition(40, 40)));
+        assertFalse(BaseReachability.isWalledOff(distances, distances, new TilePosition(0, 0), new TilePosition(40, 40)));
     }
 
     @Test
-    void anOpenNeighbourOfTheBaseTileCountsAsReached() {
+    void aScoutBesideReachedGroundIsOnOurSideOfTheWall() {
         int[][] distances = new int[8][8];
         for (int[] column : distances) {
             Arrays.fill(column, -1);
         }
-        distances[0][0] = 0;
-        distances[5][4] = 9;
+        distances[3][3] = 4;
 
-        assertFalse(BaseReachability.isWalledOff(distances, new TilePosition(0, 0), new TilePosition(4, 4)));
-        assertTrue(BaseReachability.isWalledOff(distances, new TilePosition(0, 0), new TilePosition(7, 1)));
+        assertTrue(BaseReachability.reachesNear(distances, new TilePosition(4, 4)));
+        assertFalse(BaseReachability.reachesNear(distances, new TilePosition(6, 6)));
+    }
+
+    private static int[][] open(GameMap map) {
+        return map.groundStepDistances(SOURCE, tile -> false);
     }
 
     private static GameMap gapMap() {
