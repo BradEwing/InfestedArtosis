@@ -1,6 +1,7 @@
 package strategy.buildorder.opener;
 
 import bwapi.Race;
+import config.Config;
 import info.GameState;
 import info.tracking.StrategyTracker;
 import strategy.buildorder.BuildOrder;
@@ -8,6 +9,7 @@ import strategy.buildorder.SpeedlingAllIn;
 import strategy.buildorder.protoss.ThreeHatchHydra;
 import strategy.buildorder.protoss.ThreeHatchMuta;
 import strategy.buildorder.terran.CrazyZerg;
+import strategy.buildorder.terran.TwoHatchHydraTerran;
 import strategy.buildorder.terran.ThreeHatchLurker;
 import strategy.buildorder.terran.TwoHatchMuta;
 import strategy.buildorder.zerg.OneHatchSpire;
@@ -24,19 +26,40 @@ final class OpenerTransitions {
 
     /**
      * The transitions for this game's opponent race, leaving SpeedlingAllIn out against a Terran whose wall was
-     * detected this game or in the previous game.
+     * detected this game or in the previous game, and offering TwoHatchHydraTerran only against a Terran whose
+     * mech persists across recent games or when the strategy override names it.
      */
     static Set<BuildOrder> forGame(GameState gameState) {
         StrategyTracker strategyTracker = gameState.getStrategyTracker();
         boolean terranWall = strategyTracker != null && strategyTracker.isTerranWallDetected();
-        return forRace(gameState.getOpponentRace(), terranWall);
+        return forRace(gameState.getOpponentRace(), terranWall,
+                offersHydraBuild(strategyTracker, gameState.getConfig()));
+    }
+
+    /**
+     * Whether TwoHatchHydraTerran is offered: the persisted TerranMech prior holds, or the strategy override
+     * names it.
+     */
+    static boolean offersHydraBuild(StrategyTracker strategyTracker, Config config) {
+        return strategyTracker != null && strategyTracker.isTerranMechPersistent() || isHydraBuildForced(config);
+    }
+
+    /**
+     * Whether the strategy override names {@link TwoHatchHydraTerran}.
+     */
+    static boolean isHydraBuildForced(Config config) {
+        return config != null && TwoHatchHydraTerran.NAME.equals(config.strategyOverride);
     }
 
     static Set<BuildOrder> forRace(Race opponentRace) {
-        return forRace(opponentRace, false);
+        return forRace(opponentRace, false, false);
     }
 
     static Set<BuildOrder> forRace(Race opponentRace, boolean terranWall) {
+        return forRace(opponentRace, terranWall, false);
+    }
+
+    static Set<BuildOrder> forRace(Race opponentRace, boolean terranWall, boolean hydraBuild) {
         Set<BuildOrder> next = new HashSet<>();
         switch (opponentRace) {
             case Protoss:
@@ -50,6 +73,9 @@ final class OpenerTransitions {
                 break;
             case Terran:
                 next.add(new CrazyZerg());
+                if (hydraBuild) {
+                    next.add(new TwoHatchHydraTerran());
+                }
                 next.add(new ThreeHatchLurker());
                 next.add(new TwoHatchMuta());
                 if (!terranWall) {

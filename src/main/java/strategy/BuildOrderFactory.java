@@ -13,6 +13,7 @@ import strategy.buildorder.protoss.ThreeHatchHydra;
 import strategy.buildorder.protoss.ThreeHatchMuta;
 import strategy.buildorder.terran.CrazyZerg;
 import strategy.buildorder.terran.LurkerDefilerUltra;
+import strategy.buildorder.terran.TwoHatchHydraTerran;
 import strategy.buildorder.terran.ThreeHatchLurker;
 import strategy.buildorder.terran.TwoHatchMuta;
 import strategy.buildorder.zerg.OneHatchSpire;
@@ -91,6 +92,7 @@ public class BuildOrderFactory {
         // Terran
         allBuildOrders.add(new CrazyZerg());
         allBuildOrders.add(new LurkerDefilerUltra());
+        allBuildOrders.add(new TwoHatchHydraTerran());
         allBuildOrders.add(new ThreeHatchLurker());
         allBuildOrders.add(new TwoHatchMuta());
 
