@@ -246,4 +246,24 @@ class UnitTypeCountTest {
 
         assertEquals(0, count.getTotalLost(UnitType.Zerg_Spawning_Pool));
     }
+
+    @Test
+    void mutalisksPlannedStayCountedUntilTheyHatchAndSumWithProducedAcrossTheHatch() {
+        UnitTypeCount count = new UnitTypeCount();
+        for (int i = 0; i < 7; i++) {
+            count.planUnit(UnitType.Zerg_Mutalisk);
+        }
+
+        assertEquals(7, count.plannedCount(UnitType.Zerg_Mutalisk));
+        assertEquals(0, count.getTotalProduced(UnitType.Zerg_Mutalisk));
+
+        count.unplanUnit(UnitType.Zerg_Mutalisk);
+        count.addUnit(UnitType.Zerg_Mutalisk);
+
+        assertEquals(7, count.getTotalProduced(UnitType.Zerg_Mutalisk) + count.plannedCount(UnitType.Zerg_Mutalisk));
+
+        count.cancelUnitPlan(UnitType.Zerg_Mutalisk);
+
+        assertEquals(6, count.getTotalProduced(UnitType.Zerg_Mutalisk) + count.plannedCount(UnitType.Zerg_Mutalisk));
+    }
 }

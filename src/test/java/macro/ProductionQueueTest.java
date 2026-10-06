@@ -34,6 +34,24 @@ class ProductionQueueTest {
     }
 
     @Test
+    void advancedUnitDemandSumsOnlyQueuedUnitPlansInTheAdvancedBand() {
+        ProductionQueue queue = new ProductionQueue();
+        queue.add(new UnitPlan(UnitType.Zerg_Mutalisk, UnitPlan.ADVANCED_UNIT_PRIORITY));
+        queue.add(new UnitPlan(UnitType.Zerg_Mutalisk, UnitPlan.ADVANCED_UNIT_PRIORITY));
+        queue.add(new UnitPlan(UnitType.Zerg_Mutalisk, FRAME));
+        queue.add(new UnitPlan(UnitType.Zerg_Drone, FRAME));
+
+        assertEquals(2 * UnitType.Zerg_Mutalisk.mineralPrice(), queue.advancedUnitMineralDemand());
+        assertEquals(2 * UnitType.Zerg_Mutalisk.gasPrice(), queue.advancedUnitGasDemand());
+    }
+
+    @Test
+    void advancedUnitDemandIsZeroWithNoQueuedAdvancedUnits() {
+        assertEquals(0, new ProductionQueue().advancedUnitMineralDemand());
+        assertEquals(0, new ProductionQueue().advancedUnitGasDemand());
+    }
+
+    @Test
     void gasDemandSumsTheGasPriceOfEveryQueuedPlan() {
         ProductionQueue queue = new ProductionQueue();
         assertEquals(0, queue.gasDemand(FRAME));
