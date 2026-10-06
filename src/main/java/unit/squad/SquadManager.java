@@ -919,24 +919,46 @@ public class SquadManager {
                     continue;
                 }
                 Lurker lurker = (Lurker) member;
-                List<StaticDefenseZone> zones = unanswered(squadZones, lurker.getPosition(), range);
+                List<StaticDefenseZone> fixed = unanswered(squadZones, lurker.getPosition(), range);
+                List<StaticDefenseZone> zones = new ArrayList<>(fixed);
                 zones.addAll(marks);
                 if (zones.isEmpty()) {
-                    lurker.setFireView(zones, padding, null, null);
+                    lurker.setFireView(zones, fixed, padding, null, null);
                     continue;
                 }
-                lurker.setFireView(zones, padding, null, null);
+                lurker.setFireView(zones, fixed, padding, null, null);
+                Position here = lurker.getPosition();
                 Position safeHere = lurker.standsInFire()
-                        ? RunbyTargeting.findClearPoint(lurker.getPosition(), zones, padding,
-                                LURKER_SAFE_CLEARANCE, allowed, rally)
+                        ? retreatSidePoint(RunbyTargeting.findClearPoint(here, zones, padding,
+                                LURKER_SAFE_CLEARANCE, 0, rally, allowed, rally), here, rally)
                         : null;
                 Position hold = lurker.activeHoldPoint();
                 Position safeHold = lurker.activeHoldInFire()
-                        ? RunbyTargeting.findClearPoint(hold, zones, padding, LURKER_SAFE_CLEARANCE, allowed, rally)
+                        ? retreatSidePoint(RunbyTargeting.findClearPoint(hold, zones, padding,
+                                LURKER_SAFE_CLEARANCE, 0, rally, allowed, rally), hold, rally)
                         : null;
-                lurker.setFireView(zones, padding, safeHere, safeHold);
+                lurker.setFireView(zones, fixed, padding, safeHere, safeHold);
             }
         }
+    }
+
+    /**
+     * The point a Lurker walks to out of fire: the clear point on the retreat side when one was found, else the rally
+     * point while the Lurker stands more than {@link Lurker#SAFE_POINT_NEAR_DISTANCE} from it, else none.
+     *
+     * @param clear the nearest clear point nearer to the rally point than the Lurker is, or null
+     * @param from where the Lurker stands or holds
+     * @param rally the squad's rally point, or null
+     * @return the point to walk to, or null when there is none
+     */
+    static Position retreatSidePoint(Position clear, Position from, Position rally) {
+        if (clear != null) {
+            return clear;
+        }
+        if (rally != null && from.getDistance(rally) > Lurker.SAFE_POINT_NEAR_DISTANCE) {
+            return rally;
+        }
+        return null;
     }
 
     /**

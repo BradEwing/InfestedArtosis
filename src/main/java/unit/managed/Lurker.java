@@ -36,7 +36,12 @@ public class Lurker extends ManagedUnit {
     static final int HIT_CELL_RADIUS = 96;
     /** Frames between two burrow refusals that are logged. */
     static final int REFUSAL_LOG_FRAMES = 96;
+    /** Frames after losing hit points during which a Lurker counts as losing them. */
+    static final int HURT_FRAMES = 32;
+    /** Pixels from a Lurker within which a safe point is near enough to walk to under fire. */
+    public static final int SAFE_POINT_NEAR_DISTANCE = 64;
 
+    private List<StaticDefenseZone> fixedFireView = Collections.emptyList();
     private List<StaticDefenseZone> fixedFireZones = Collections.emptyList();
     private int fixedFirePadding;
     private Position withdrawPoint;
@@ -81,13 +86,15 @@ public class Lurker extends ManagedUnit {
      * outside it.
      *
      * @param zones the zones of fixed fire that outrange it and the live hit marks
+     * @param fixedZones the zones among them of fixed fire, which a hit mark alone does not make
      * @param padding pixels added to every zone's reach
      * @param safeFromHere the nearest point to where it stands that lies outside the zones, or null
      * @param safeFromHold the nearest point to its contain point that lies outside the zones, or null
      */
-    public void setFireView(List<StaticDefenseZone> zones, int padding, Position safeFromHere,
-                            Position safeFromHold) {
+    public void setFireView(List<StaticDefenseZone> zones, List<StaticDefenseZone> fixedZones, int padding,
+                            Position safeFromHere, Position safeFromHold) {
         this.fireZones = zones;
+        this.fixedFireView = fixedZones;
         this.firePadding = padding;
         this.safeFromHere = safeFromHere;
         this.safeFromHold = safeFromHold;
@@ -540,16 +547,41 @@ public class Lurker extends ManagedUnit {
     }
 
     /**
-     * Whether a Lurker refuses to burrow where it stands: the rule is on, the ground it stands on is inside enemy
-     * fire it cannot answer and a safe point exists to walk to. With no safe point it burrows where it is.
+     * What a Lurker does when it is told to burrow where it stands. It refuses when the rule is on, the ground it
+     * stands on is inside enemy fire it cannot answer and a safe point exists to walk to, except that it burrows and
+     * fires when a ground enemy is within its weapon range and only a hit mark covers it, or when it lost hit points
+     * within {@link #HURT_FRAMES} and the safe point lies more than {@link #SAFE_POINT_NEAR_DISTANCE} away. With no
+     * safe point it burrows where it is.
      *
      * @param fireAware true when the rule is on
      * @param standingInFire true when a fire zone covers the Lurker
+     * @param standingInFixedFire true when a zone of fixed fire, a structure or sieged tank, covers the Lurker
      * @param hasSafePoint true when a point outside the fire is known
-     * @return true when the burrow is refused
+     * @param enemyInRange true when a ground enemy is within the Lurker's weapon range
+     * @param hurtRecently true when the Lurker lost hit points within {@link #HURT_FRAMES}
+     * @param safePointDistance pixels from the Lurker to the safe point
+     * @return the call
      */
-    static boolean burrowRefused(boolean fireAware, boolean standingInFire, boolean hasSafePoint) {
-        return fireAware && standingInFire && hasSafePoint;
+    static BurrowCall burrowCall(boolean fireAware, boolean standingInFire, boolean standingInFixedFire,
+                                 boolean hasSafePoint, boolean enemyInRange, boolean hurtRecently,
+                                 double safePointDistance) {
+        if (!fireAware || !standingInFire || !hasSafePoint) {
+            return BurrowCall.BURROW;
+        }
+        if (enemyInRange && !standingInFixedFire) {
+            return BurrowCall.BURROW_ENEMY_IN_RANGE;
+        }
+        if (hurtRecently && safePointDistance > SAFE_POINT_NEAR_DISTANCE) {
+            return BurrowCall.BURROW_LOSING_HP;
+        }
+        return BurrowCall.REFUSE;
+    }
+
+    enum BurrowCall {
+        BURROW,
+        BURROW_ENEMY_IN_RANGE,
+        BURROW_LOSING_HP,
+        REFUSE
     }
 
     /**
@@ -608,17 +640,34 @@ public class Lurker extends ManagedUnit {
         if (unit.getOrder() == Order.Burrowing) {
             return;
         }
-        if (burrowRefused(Config.lurkerFireAware, standsInFire(), safeFromHere != null)) {
-            refuseBurrow();
+        int now = game.getFrameCount();
+        BurrowCall call = burrowCall(Config.lurkerFireAware, standsInFire(), standsInFixedFireView(),
+                safeFromHere != null, findClosestGroundEnemyInRange() != null, wasHitSince(now - HURT_FRAMES),
+                safeFromHere == null ? 0 : unit.getDistance(safeFromHere));
+        if (call == BurrowCall.REFUSE) {
+            unit.move(safeFromHere);
+            logUnderFire(BurrowReason.BURROW_REFUSED_UNDER_FIRE, now);
             return;
+        }
+        if (call == BurrowCall.BURROW_ENEMY_IN_RANGE) {
+            logUnderFire(BurrowReason.BURROW_UNDER_FIRE_ALLOWED_ENEMY_IN_RANGE, now);
+        } else if (call == BurrowCall.BURROW_LOSING_HP) {
+            logUnderFire(BurrowReason.BURROW_UNDER_FIRE_ALLOWED_LOSING_HP, now);
         }
         unit.burrow();
         log(true, reason);
     }
 
-    private void refuseBurrow() {
-        unit.move(safeFromHere);
-        int now = game.getFrameCount();
+    private boolean standsInFixedFireView() {
+        for (StaticDefenseZone zone : fixedFireView) {
+            if (zone.covers(unit.getPosition(), firePadding)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void logUnderFire(BurrowReason reason, int now) {
         if (!logsRefusal(refusalLoggedFrame, now)) {
             return;
         }
@@ -627,7 +676,7 @@ public class Lurker extends ManagedUnit {
                 .frame(now)
                 .unitId(unitID)
                 .burrow(true)
-                .reason(BurrowReason.BURROW_REFUSED_UNDER_FIRE)
+                .reason(reason)
                 .role(role.name())
                 .position(unit.getPosition())
                 .hitPoints(unit.getHitPoints())

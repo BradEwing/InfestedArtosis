@@ -204,24 +204,65 @@ class LurkerTest {
         assertTrue(Lurker.stillInHitCell(Lurker.HIT_CELL_RADIUS + 300, true));
     }
 
+    private static Lurker.BurrowCall call(boolean fireAware, boolean inFire, boolean inFixedFire, boolean hasSafe,
+                                          boolean enemyInRange, boolean hurt, double safeDistance) {
+        return Lurker.burrowCall(fireAware, inFire, inFixedFire, hasSafe, enemyInRange, hurt, safeDistance);
+    }
+
     @Test
-    void aLurkerRefusesToBurrowInsideFireWhenTheRuleIsOn() {
-        assertTrue(Lurker.burrowRefused(true, true, true));
+    void aLurkerRefusesToBurrowInsideFireWithNoEnemyInRangeNotHurtAndASafePointNear() {
+        assertEquals(Lurker.BurrowCall.REFUSE, call(true, true, false, true, false, false, 40));
+    }
+
+    @Test
+    void aLurkerRefusesToBurrowInsideFireWithNoEnemyInRangeNotHurtAndASafePointFar() {
+        assertEquals(Lurker.BurrowCall.REFUSE, call(true, true, false, true, false, false, 300));
     }
 
     @Test
     void aLurkerBurrowsOutsideFireWhenTheRuleIsOn() {
-        assertFalse(Lurker.burrowRefused(true, false, true));
+        assertEquals(Lurker.BurrowCall.BURROW, call(true, false, false, true, true, true, 300));
     }
 
     @Test
     void aLurkerBurrowsInsideFireWhenTheRuleIsOff() {
-        assertFalse(Lurker.burrowRefused(false, true, true));
+        assertEquals(Lurker.BurrowCall.BURROW, call(false, true, false, true, true, true, 300));
     }
 
     @Test
     void aLurkerInsideFireWithNoSafePointBurrowsWhereItStands() {
-        assertFalse(Lurker.burrowRefused(true, true, false));
+        assertEquals(Lurker.BurrowCall.BURROW, call(true, true, false, false, false, false, 0));
+    }
+
+    @Test
+    void aLurkerInsideOnlyAHitMarkBurrowsAndFiresWithAGroundEnemyInRange() {
+        assertEquals(Lurker.BurrowCall.BURROW_ENEMY_IN_RANGE, call(true, true, false, true, true, false, 40));
+    }
+
+    @Test
+    void aLurkerInsideFixedFireStillRefusesWithAGroundEnemyInRange() {
+        assertEquals(Lurker.BurrowCall.REFUSE, call(true, true, true, true, true, false, 40));
+    }
+
+    @Test
+    void aLurkerLosingHitPointsWithAFarSafePointBurrowsAndFires() {
+        assertEquals(Lurker.BurrowCall.BURROW_LOSING_HP, call(true, true, false, true, false, true, 65));
+    }
+
+    @Test
+    void aLurkerLosingHitPointsInsideFixedFireWithAFarSafePointBurrowsAndFires() {
+        assertEquals(Lurker.BurrowCall.BURROW_LOSING_HP, call(true, true, true, true, true, true, 200));
+    }
+
+    @Test
+    void aLurkerLosingHitPointsWithASafePointNearStillRefuses() {
+        assertEquals(Lurker.BurrowCall.REFUSE,
+                call(true, true, false, true, false, true, Lurker.SAFE_POINT_NEAR_DISTANCE));
+    }
+
+    @Test
+    void aLurkerInFixedFireLosingHitPointsWithASafePointNearStillRefuses() {
+        assertEquals(Lurker.BurrowCall.REFUSE, call(true, true, true, true, true, true, 30));
     }
 
     @Test

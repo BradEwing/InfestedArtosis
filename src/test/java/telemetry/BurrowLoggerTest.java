@@ -66,6 +66,18 @@ class BurrowLoggerTest {
     }
 
     @Test
+    void anAllowedBurrowWritesItsReasonAndNoWithdrawColumns() {
+        String[] fields = ("game-1," + BurrowLogger.row(BurrowCommand.builder().frame(900).unitId(5).burrow(true)
+                .reason(BurrowReason.BURROW_UNDER_FIRE_ALLOWED_LOSING_HP).role("CONTAIN")
+                .position(new Position(10, 20)).hitPoints(16).build())).split(",", -1);
+
+        assertEquals(BurrowLogger.HEADER.split(",", -1).length, fields.length);
+        assertEquals("BURROW", fields[columnIndex("command")]);
+        assertEquals("BURROW_UNDER_FIRE_ALLOWED_LOSING_HP", fields[columnIndex("reason")]);
+        assertEquals("-1", fields[columnIndex("withdraw_zones")]);
+    }
+
+    @Test
     void theWithdrawColumnsAreAppendedAfterTheContainPoint() {
         assertEquals(columnIndex("contain_y") + 1, columnIndex("withdraw_x"));
         assertEquals(BurrowLogger.HEADER.split(",", -1).length - 1, columnIndex("withdraw_zones"));

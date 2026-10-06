@@ -12,10 +12,13 @@ import java.util.List;
  * <p>command is BURROW or UNBURROW and reason is a {@link BurrowReason}. role is the Lurker's role when it issued the
  * command, x and y are where it stood, and contain_x and contain_y are its contain point, -1 when it has none.
  * withdraw_x and withdraw_y are where an UNDER_FIRE_WITHDRAW sends the Lurker and withdraw_zones is how many zones of
- * shooters that outrange it cover where it stood, 0 when no known shooter does; all three are -1 on any other row. A
+ * shooters that outrange it cover where it stood, 0 when no known shooter does; all three are -1 on any other row.
  * BURROW_REFUSED_UNDER_FIRE rows, command BURROW, are burrows the Lurker did not issue because it stood inside
- * enemy fire it cannot answer; they are written at most once per 96 frames per Lurker, and a refusal row does not
- * change the burrow state last commanded. A Lurker that died with no attack started can be classified by the last row of its unit id.
+ * enemy fire it cannot answer. BURROW_UNDER_FIRE_ALLOWED_ENEMY_IN_RANGE and BURROW_UNDER_FIRE_ALLOWED_LOSING_HP rows,
+ * command BURROW, are burrows it issued inside that fire because a ground enemy was in its weapon range with only a
+ * hit mark covering it, or because it was losing hit points with the safe point beyond 64 px. All three are written
+ * at most once per 96 frames per Lurker, and none changes the burrow state last commanded. A Lurker that died with no
+ * attack started can be classified by the last row of its unit id.
  *
  * <p>Constructed only when combat telemetry is enabled.
  */
